@@ -153,6 +153,12 @@ const nativeStubs = {
 const optionalPluginStubs = {
   "@elizaos/plugin-cron": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-cli": path.join(stubsDir, "null-plugin.cjs"),
+  // Static `import * as pluginBrowserBridge from "@elizaos/plugin-browser-bridge"`
+  // in eliza.ts pulls in puppeteer/Chromium plumbing transitively. Mobile
+  // doesn't run a headless browser, and the runtime's plugin filter strips
+  // browser-bridge from the load set anyway, so a null stub satisfies the
+  // top-level resolution without dragging in 200 MB of native deps.
+  "@elizaos/plugin-browser-bridge": path.join(stubsDir, "null-plugin.cjs"),
 };
 
 const stubAliases = { ...nativeStubs, ...optionalPluginStubs };

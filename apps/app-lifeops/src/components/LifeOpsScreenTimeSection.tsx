@@ -15,13 +15,16 @@ import {
   RefreshCw,
   Send,
   Share2,
+  ShieldBan,
   Smartphone,
+  TriangleAlert,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
-  LifeOpsScreenTimeBreakdown,
+  LifeOpsScreenTimeHistoryResponse,
   LifeOpsSocialHabitSummary,
 } from "../api/client-lifeops.js";
+import type { LifeOpsSection } from "../hooks/useLifeOpsSection.js";
 import {
   BucketBars,
   DonutChart,
@@ -29,7 +32,6 @@ import {
   HabitPanel,
   MetricTile,
   StackedBar,
-  startOfLocalDayIso,
 } from "./LifeOpsHabitVisuals.js";
 
 type RangeKey = "today" | "this-week" | "7d" | "30d";
@@ -43,76 +45,107 @@ const RANGE_OPTIONS: Array<{ key: RangeKey; label: string }> = [
 
 const CACHE_TTL_MS = 30_000;
 
-type Period = { since: string; until: string };
+type WebsiteBlockerStatus = Awaited<
+  ReturnType<typeof client.getWebsiteBlockerStatus>
+>;
+type AppBlockerStatus = Awaited<ReturnType<typeof client.getAppBlockerStatus>>;
+type SocialDataSource = LifeOpsSocialHabitSummary["dataSources"][number];
 
-function startOfLocalDay(date: Date): Date {
-  const start = new Date(date);
-  start.setHours(0, 0, 0, 0);
-  return start;
+type UnifiedSocialBlockStatus = {
+  active: boolean;
+  label: string;
+  details: string[];
+};
+
+function formatInlineList(values: string[]): string {
+  if (values.length === 0) return "";
+  if (values.length === 1) return values[0];
+  if (values.length === 2) return `${values[0]} and ${values[1]}`;
+  return `${values.slice(0, -1).join(", ")}, and ${values[values.length - 1]}`;
 }
 
-function addDays(date: Date, days: number): Date {
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next;
+function formatEndsAt(value: string | null): string | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return parsed.toLocaleString();
 }
 
-function computeRange(range: RangeKey): Period {
-  const now = new Date();
-  const until = now.toISOString();
-  if (range === "today") {
-    return { since: startOfLocalDay(now).toISOString(), until };
-  }
-  if (range === "this-week") {
-    const startToday = startOfLocalDay(now);
-    const dayOfWeek = startToday.getDay(); // Sunday = 0
-    const since = addDays(startToday, -dayOfWeek);
-    return { since: since.toISOString(), until };
-  }
-  if (range === "7d") {
-    const since = addDays(startOfLocalDay(now), -6);
-    return { since: since.toISOString(), until };
-  }
-  const since = addDays(startOfLocalDay(now), -29);
-  return { since: since.toISOString(), until };
+function summarizeWebsiteBlock(status: WebsiteBlockerStatus): string {
+  const count = status.websites.length;
+  const targetLabel =
+    count === 0
+      ? "websites"
+      : count === 1
+        ? status.websites[0]
+        : `${count} websites`;
+  const endsAt = formatEndsAt(status.endsAt);
+  return endsAt
+    ? `Websites: ${targetLabel} until ${endsAt}`
+    : `Websites: ${targetLabel}`;
 }
 
-function computePriorRange(range: RangeKey): Period | null {
-  if (range === "today") return null;
-  const current = computeRange(range);
-  const sinceMs = Date.parse(current.since);
-  const untilMs = Date.parse(current.until);
-  const span = untilMs - sinceMs;
+function summarizeAppBlock(status: AppBlockerStatus): string {
+  const count = status.blockedCount;
+  const platform = status.platform
+    ? ` on ${status.platform.toUpperCase()}`
+    : "";
+  const endsAt = formatEndsAt(status.endsAt);
+  const countLabel = `${count} app${count === 1 ? "" : "s"}`;
+  return endsAt
+    ? `Apps: ${countLabel}${platform} until ${endsAt}`
+    : `Apps: ${countLabel}${platform}`;
+}
+
+function buildUnifiedSocialBlockStatus(
+  website: WebsiteBlockerStatus,
+  app: AppBlockerStatus,
+): UnifiedSocialBlockStatus {
+  const websiteActive = website.available && website.active;
+  const appActive = app.available && app.active;
+  if (websiteActive && appActive) {
+    return {
+      active: true,
+      label: "Websites and apps blocked",
+      details: [summarizeWebsiteBlock(website), summarizeAppBlock(app)],
+    };
+  }
+  if (websiteActive) {
+    return {
+      active: true,
+      label: "Websites blocked",
+      details: [summarizeWebsiteBlock(website)],
+    };
+  }
+  if (appActive) {
+    return {
+      active: true,
+      label: "Apps blocked",
+      details: [summarizeAppBlock(app)],
+    };
+  }
+
+  const idleDetails: string[] = [];
+  if (website.available) {
+    idleDetails.push("Website blocker idle");
+  }
+  if (app.available) {
+    idleDetails.push("App blocker idle");
+  }
+  if (idleDetails.length === 0) {
+    idleDetails.push("No website or app blocker is available on this platform");
+  }
   return {
-    since: new Date(sinceMs - span).toISOString(),
-    until: current.since,
+    active: false,
+    label: "No active social block",
+    details: idleDetails,
   };
 }
 
-function enumerateDays(period: Period): Date[] {
-  const days: Date[] = [];
-  const start = startOfLocalDay(new Date(Date.parse(period.since)));
-  const endMs = Date.parse(period.until);
-  let cursor = start;
-  while (cursor.getTime() <= endMs) {
-    days.push(cursor);
-    cursor = addDays(cursor, 1);
-  }
-  return days;
-}
-
-function formatDayLabel(date: Date): string {
-  return new Intl.DateTimeFormat(undefined, {
-    month: "numeric",
-    day: "numeric",
-  }).format(date);
-}
-
-function socialServiceSeconds(
-  summary: LifeOpsSocialHabitSummary | null,
-  key: string,
-): number {
-  return summary?.services.find((item) => item.key === key)?.totalSeconds ?? 0;
+function setupWarningLabel(sources: SocialDataSource[]): string {
+  return formatInlineList(sources.map((source) => source.label));
 }
 
 function sourceTone(state: "live" | "partial" | "unwired"): string {
@@ -124,13 +157,6 @@ function sourceTone(state: "live" | "partial" | "unwired"): string {
     default:
       return "bg-muted";
   }
-}
-
-function deltaPercent(current: number, prior: number): number | null {
-  if (prior <= 0) {
-    return current > 0 ? null : 0;
-  }
-  return Math.round(((current - prior) / prior) * 100);
 }
 
 function DeltaBadge({ percent }: { percent: number | null }) {
@@ -155,7 +181,7 @@ function DeltaBadge({ percent }: { percent: number | null }) {
 function HistoryStrip({
   days,
 }: {
-  days: Array<{ date: Date; totalSeconds: number }>;
+  days: Array<{ date: string; label: string; totalSeconds: number }>;
 }) {
   const maxSeconds = days.reduce(
     (max, day) => (day.totalSeconds > max ? day.totalSeconds : max),
@@ -168,9 +194,9 @@ function HistoryStrip({
         const heightPct = Math.max(2, Math.round(ratio * 100));
         return (
           <div
-            key={day.date.toISOString()}
+            key={day.date}
             className="flex min-w-[18px] flex-1 flex-col items-center gap-1"
-            title={`${formatDayLabel(day.date)} - ${formatDurationSeconds(day.totalSeconds)}`}
+            title={`${day.label} - ${formatDurationSeconds(day.totalSeconds)}`}
           >
             <div className="flex h-20 w-full items-end">
               <div
@@ -179,7 +205,7 @@ function HistoryStrip({
               />
             </div>
             <div className="text-[10px] font-medium tabular-nums text-muted">
-              {formatDayLabel(day.date)}
+              {day.label}
             </div>
           </div>
         );
@@ -190,227 +216,113 @@ function HistoryStrip({
 
 type CacheEntry<T> = { value: T; fetchedAt: number };
 
-type RangeData = {
-  breakdown: LifeOpsScreenTimeBreakdown;
-  social: LifeOpsSocialHabitSummary;
-};
+type RangeData = LifeOpsScreenTimeHistoryResponse;
 
-type PriorData = {
-  breakdown: LifeOpsScreenTimeBreakdown;
-  social: LifeOpsSocialHabitSummary;
-};
-
-type HistoryData = Array<{ date: Date; totalSeconds: number }>;
-
-async function fetchRangeData(period: Period): Promise<RangeData> {
-  const [breakdown, social] = await Promise.all([
-    client.getLifeOpsScreenTimeBreakdown({
-      since: period.since,
-      until: period.until,
-      topN: 16,
-    }),
-    client.getLifeOpsSocialHabitSummary({
-      since: period.since,
-      until: period.until,
-      topN: 12,
-    }),
-  ]);
-  return { breakdown, social };
+async function fetchRangeData(range: RangeKey): Promise<RangeData> {
+  return client.getLifeOpsScreenTimeHistory({
+    range,
+    topN: 16,
+    socialTopN: 12,
+  });
 }
 
-async function fetchHistoryData(period: Period): Promise<HistoryData> {
-  const days = enumerateDays(period);
-  const now = Date.now();
-  const results = await Promise.all(
-    days.map(async (date) => {
-      const dayStart = startOfLocalDay(date);
-      const dayEnd = addDays(dayStart, 1);
-      const sinceIso = dayStart.toISOString();
-      const untilIso = new Date(
-        Math.min(dayEnd.getTime(), now),
-      ).toISOString();
-      const breakdown = await client.getLifeOpsScreenTimeBreakdown({
-        since: sinceIso,
-        until: untilIso,
-        topN: 1,
-      });
-      return { date: dayStart, totalSeconds: breakdown.totalSeconds };
-    }),
-  );
-  return results;
-}
-
-export function LifeOpsScreenTimeSection() {
+export function LifeOpsScreenTimeSection({
+  onNavigate,
+}: {
+  onNavigate?: (section: LifeOpsSection) => void;
+}) {
   const [range, setRange] = useState<RangeKey>("today");
   const [data, setData] = useState<RangeData | null>(null);
-  const [priorData, setPriorData] = useState<PriorData | null>(null);
-  const [history, setHistory] = useState<HistoryData | null>(null);
+  const [blockStatus, setBlockStatus] =
+    useState<UnifiedSocialBlockStatus | null>(null);
+  const [blockStatusError, setBlockStatusError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const dataCache = useRef<Map<RangeKey, CacheEntry<RangeData>>>(new Map());
-  const priorCache = useRef<Map<RangeKey, CacheEntry<PriorData>>>(new Map());
-  const historyCache = useRef<Map<RangeKey, CacheEntry<HistoryData>>>(
-    new Map(),
-  );
 
-  const load = useCallback(
-    async (key: RangeKey, force = false) => {
-      setLoading(true);
-      setError(null);
-      const now = Date.now();
-      const cached = dataCache.current.get(key);
-      const cachedPrior = priorCache.current.get(key);
-      const cachedHistory = historyCache.current.get(key);
-      const fresh = (entry: CacheEntry<unknown> | undefined) =>
-        entry !== undefined && now - entry.fetchedAt < CACHE_TTL_MS;
+  const load = useCallback(async (key: RangeKey, force = false) => {
+    setLoading(true);
+    setError(null);
+    const now = Date.now();
+    const cached = dataCache.current.get(key);
+    const fresh = (entry: CacheEntry<unknown> | undefined) =>
+      entry !== undefined && now - entry.fetchedAt < CACHE_TTL_MS;
 
-      if (
-        !force &&
-        fresh(cached) &&
-        (key === "today" || fresh(cachedPrior)) &&
-        (key === "today" || fresh(cachedHistory))
-      ) {
-        setData(cached!.value);
-        setPriorData(cachedPrior?.value ?? null);
-        setHistory(cachedHistory?.value ?? null);
-        setLoading(false);
-        return;
-      }
+    if (!force && fresh(cached)) {
+      setData(cached!.value);
+      setLoading(false);
+      return;
+    }
 
-      try {
-        const period = computeRange(key);
-        const priorPeriod = computePriorRange(key);
-        const [rangeData, priorRangeData, historyData] = await Promise.all([
-          fetchRangeData(period),
-          priorPeriod ? fetchRangeData(priorPeriod) : Promise.resolve(null),
-          key === "today"
-            ? Promise.resolve(null)
-            : fetchHistoryData(period),
-        ]);
-        const stamp = Date.now();
-        dataCache.current.set(key, { value: rangeData, fetchedAt: stamp });
-        if (priorRangeData) {
-          priorCache.current.set(key, {
-            value: priorRangeData,
-            fetchedAt: stamp,
-          });
-        } else {
-          priorCache.current.delete(key);
-        }
-        if (historyData) {
-          historyCache.current.set(key, {
-            value: historyData,
-            fetchedAt: stamp,
-          });
-        } else {
-          historyCache.current.delete(key);
-        }
-        setData(rangeData);
-        setPriorData(priorRangeData);
-        setHistory(historyData);
-      } catch (cause) {
-        setError(
-          cause instanceof Error && cause.message.trim().length > 0
-            ? cause.message.trim()
-            : "Screen time failed to load.",
-        );
-      } finally {
-        setLoading(false);
-      }
-    },
-    [],
-  );
+    try {
+      const rangeData = await fetchRangeData(key);
+      const stamp = Date.now();
+      dataCache.current.set(key, { value: rangeData, fetchedAt: stamp });
+      setData(rangeData);
+    } catch (cause) {
+      setError(
+        cause instanceof Error && cause.message.trim().length > 0
+          ? cause.message.trim()
+          : "Screen time failed to load.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const loadBlockStatus = useCallback(async () => {
+    try {
+      const [website, app] = await Promise.all([
+        client.getWebsiteBlockerStatus(),
+        client.getAppBlockerStatus(),
+      ]);
+      setBlockStatus(buildUnifiedSocialBlockStatus(website, app));
+      setBlockStatusError(null);
+    } catch (cause) {
+      setBlockStatus(null);
+      setBlockStatusError(
+        cause instanceof Error && cause.message.trim().length > 0
+          ? cause.message.trim()
+          : "Block status failed to load.",
+      );
+    }
+  }, []);
 
   useEffect(() => {
     void load(range);
   }, [load, range]);
 
+  useEffect(() => {
+    void loadBlockStatus();
+  }, [loadBlockStatus]);
+
   const breakdown = data?.breakdown ?? null;
   const social = data?.social ?? null;
-  const priorBreakdown = priorData?.breakdown ?? null;
-  const priorSocial = priorData?.social ?? null;
-
-  const totalSeconds = breakdown?.totalSeconds ?? 0;
-  const appSeconds =
-    breakdown?.bySource.find((item) => item.key === "app")?.totalSeconds ?? 0;
-  const webSeconds =
-    breakdown?.bySource.find((item) => item.key === "website")?.totalSeconds ??
-    0;
-  const phoneSeconds =
-    breakdown?.byDevice.find((item) => item.key === "phone")?.totalSeconds ?? 0;
-  const categories = (breakdown?.byCategory ?? []).filter(
-    (item) => item.totalSeconds > 0,
-  );
-  const devices = (breakdown?.byDevice ?? []).filter(
-    (item) => item.totalSeconds > 0,
-  );
-  const browsers = (breakdown?.byBrowser ?? []).filter(
-    (item) => item.totalSeconds > 0,
-  );
-  const topTargets =
-    breakdown?.items
-      .filter((item) => item.totalSeconds > 0)
-      .map((item) => ({
-        key: `${item.source}:${item.identifier}`,
-        label: item.displayName,
-        totalSeconds: item.totalSeconds,
-      })) ?? [];
-
-  const socialSeconds = social?.totalSeconds ?? 0;
-  const youtubeSeconds = socialServiceSeconds(social, "youtube");
-  const xSeconds = socialServiceSeconds(social, "x");
-  const services = (social?.services ?? []).filter(
-    (item) => item.totalSeconds > 0,
-  );
-  const surfaces = (social?.surfaces ?? []).filter(
-    (item) => item.totalSeconds > 0,
-  );
-  const sessionBuckets =
-    social?.sessions
-      .filter((item) => item.totalSeconds > 0)
-      .map((item) => ({
-        key: `${item.source}:${item.identifier}`,
-        label: item.serviceLabel ?? item.displayName,
-        totalSeconds: item.totalSeconds,
-      })) ?? [];
-  const channels = (social?.messages.channels ?? []).filter(
-    (channel) =>
-      channel.opened > 0 || channel.outbound > 0 || channel.inbound > 0,
-  );
-  const messageOpened = social?.messages.opened ?? 0;
-  const messageOutbound = social?.messages.outbound ?? 0;
-  const messageInbound = social?.messages.inbound ?? 0;
-  const hasMessageActivity =
-    messageOpened > 0 || messageOutbound > 0 || messageInbound > 0;
-
-  const hasUsage =
-    totalSeconds > 0 ||
-    categories.length > 0 ||
-    devices.length > 0 ||
-    browsers.length > 0 ||
-    topTargets.length > 0 ||
-    socialSeconds > 0 ||
-    services.length > 0 ||
-    surfaces.length > 0 ||
-    sessionBuckets.length > 0 ||
-    hasMessageActivity;
-
-  const showDeltas = range !== "today" && priorData !== null;
-  const priorTotalSeconds = priorBreakdown?.totalSeconds ?? 0;
-  const priorAppSeconds =
-    priorBreakdown?.bySource.find((item) => item.key === "app")
-      ?.totalSeconds ?? 0;
-  const priorWebSeconds =
-    priorBreakdown?.bySource.find((item) => item.key === "website")
-      ?.totalSeconds ?? 0;
-  const priorPhoneSeconds =
-    priorBreakdown?.byDevice.find((item) => item.key === "phone")
-      ?.totalSeconds ?? 0;
-  const priorSocialSeconds = priorSocial?.totalSeconds ?? 0;
-  const priorYoutubeSeconds = socialServiceSeconds(priorSocial, "youtube");
-  const priorXSeconds = socialServiceSeconds(priorSocial, "x");
-  const priorMessageOpened = priorSocial?.messages.opened ?? 0;
+  const metrics = data?.metrics ?? null;
+  const visible = data?.visible ?? null;
+  const totalSeconds = metrics?.totalSeconds ?? 0;
+  const appSeconds = metrics?.appSeconds ?? 0;
+  const webSeconds = metrics?.webSeconds ?? 0;
+  const phoneSeconds = metrics?.phoneSeconds ?? 0;
+  const socialSeconds = metrics?.socialSeconds ?? 0;
+  const youtubeSeconds = metrics?.youtubeSeconds ?? 0;
+  const xSeconds = metrics?.xSeconds ?? 0;
+  const messageOpened = metrics?.messageOpened ?? 0;
+  const messageOutbound = metrics?.messageOutbound ?? 0;
+  const messageInbound = metrics?.messageInbound ?? 0;
+  const categories = visible?.categories ?? [];
+  const devices = visible?.devices ?? [];
+  const browsers = visible?.browsers ?? [];
+  const topTargets = visible?.topTargets ?? [];
+  const services = visible?.services ?? [];
+  const surfaces = visible?.surfaces ?? [];
+  const sessionBuckets = visible?.sessionBuckets ?? [];
+  const channels = visible?.channels ?? [];
+  const setupSources = visible?.setupSources ?? [];
+  const hasMessageActivity = visible?.hasMessageActivity ?? false;
+  const hasUsage = visible?.hasUsage ?? false;
+  const showDeltas = metrics?.deltas !== null && metrics?.deltas !== undefined;
 
   const totalLabel = useMemo(() => {
     switch (range) {
@@ -432,9 +344,7 @@ export function LifeOpsScreenTimeSection() {
       value: formatDurationSeconds(totalSeconds),
       label: totalLabel,
       visible: totalSeconds > 0,
-      delta: showDeltas
-        ? deltaPercent(totalSeconds, priorTotalSeconds)
-        : undefined,
+      delta: showDeltas ? metrics?.deltas?.totalPercent : undefined,
     },
     {
       key: "apps",
@@ -442,9 +352,7 @@ export function LifeOpsScreenTimeSection() {
       value: formatDurationSeconds(appSeconds),
       label: "Apps",
       visible: appSeconds > 0,
-      delta: showDeltas
-        ? deltaPercent(appSeconds, priorAppSeconds)
-        : undefined,
+      delta: showDeltas ? metrics?.deltas?.appPercent : undefined,
     },
     {
       key: "web",
@@ -452,9 +360,7 @@ export function LifeOpsScreenTimeSection() {
       value: formatDurationSeconds(webSeconds),
       label: "Web",
       visible: webSeconds > 0,
-      delta: showDeltas
-        ? deltaPercent(webSeconds, priorWebSeconds)
-        : undefined,
+      delta: showDeltas ? metrics?.deltas?.webPercent : undefined,
     },
     {
       key: "phone",
@@ -462,9 +368,7 @@ export function LifeOpsScreenTimeSection() {
       value: formatDurationSeconds(phoneSeconds),
       label: "Phone",
       visible: phoneSeconds > 0,
-      delta: showDeltas
-        ? deltaPercent(phoneSeconds, priorPhoneSeconds)
-        : undefined,
+      delta: showDeltas ? metrics?.deltas?.phonePercent : undefined,
     },
     {
       key: "social",
@@ -472,9 +376,7 @@ export function LifeOpsScreenTimeSection() {
       value: formatDurationSeconds(socialSeconds),
       label: "Social",
       visible: socialSeconds > 0,
-      delta: showDeltas
-        ? deltaPercent(socialSeconds, priorSocialSeconds)
-        : undefined,
+      delta: showDeltas ? metrics?.deltas?.socialPercent : undefined,
     },
     {
       key: "youtube",
@@ -482,9 +384,7 @@ export function LifeOpsScreenTimeSection() {
       value: formatDurationSeconds(youtubeSeconds),
       label: "YouTube",
       visible: youtubeSeconds > 0,
-      delta: showDeltas
-        ? deltaPercent(youtubeSeconds, priorYoutubeSeconds)
-        : undefined,
+      delta: showDeltas ? metrics?.deltas?.youtubePercent : undefined,
     },
     {
       key: "x",
@@ -492,9 +392,7 @@ export function LifeOpsScreenTimeSection() {
       value: formatDurationSeconds(xSeconds),
       label: "X",
       visible: xSeconds > 0,
-      delta: showDeltas
-        ? deltaPercent(xSeconds, priorXSeconds)
-        : undefined,
+      delta: showDeltas ? metrics?.deltas?.xPercent : undefined,
     },
     {
       key: "opened",
@@ -502,13 +400,12 @@ export function LifeOpsScreenTimeSection() {
       value: String(messageOpened),
       label: "Opened",
       visible: messageOpened > 0,
-      delta: showDeltas
-        ? deltaPercent(messageOpened, priorMessageOpened)
-        : undefined,
+      delta: showDeltas ? metrics?.deltas?.messageOpenedPercent : undefined,
     },
   ].filter((item) => item.visible);
 
-  const showHistory = range !== "today" && history !== null && history.length > 0;
+  const history = data?.history ?? [];
+  const showHistory = range !== "today" && history.length > 0;
 
   return (
     <div className="space-y-4" data-testid="lifeops-screen-time-section">
@@ -523,7 +420,10 @@ export function LifeOpsScreenTimeSection() {
           aria-label="Refresh screen time"
           title="Refresh"
           className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/20 bg-bg/30 text-muted transition-colors hover:border-accent/30 hover:text-txt disabled:opacity-40"
-          onClick={() => void load(range, true)}
+          onClick={() => {
+            void load(range, true);
+            void loadBlockStatus();
+          }}
           disabled={loading}
         >
           <RefreshCw
@@ -575,11 +475,87 @@ export function LifeOpsScreenTimeSection() {
         </div>
       ) : null}
 
+      {blockStatus ? (
+        <HabitPanel title="Social Block Status" icon={<ShieldBan />}>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <div
+                className={`text-sm font-semibold ${
+                  blockStatus.active ? "text-amber-200" : "text-txt"
+                }`}
+              >
+                {blockStatus.label}
+              </div>
+              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted">
+                {blockStatus.details.map((detail) => (
+                  <span key={detail}>{detail}</span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </HabitPanel>
+      ) : null}
+
+      {blockStatusError ? (
+        <div className="flex items-center gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+          <TriangleAlert className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          Block status unavailable: {blockStatusError}
+        </div>
+      ) : null}
+
+      {!loading && !error && !hasUsage && setupSources.length > 0 ? (
+        <div
+          className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-amber-500/25 bg-amber-500/10 px-4 py-3"
+          data-testid="lifeops-screen-time-setup-warning"
+        >
+          <div className="flex min-w-0 items-start gap-3">
+            <TriangleAlert
+              className="mt-0.5 h-4 w-4 shrink-0 text-amber-300"
+              aria-hidden
+            />
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-txt">
+                Tracking setup incomplete
+              </div>
+              <div className="mt-1 text-xs leading-5 text-muted">
+                Check {setupWarningLabel(setupSources)}.
+              </div>
+            </div>
+          </div>
+          {onNavigate ? (
+            <button
+              type="button"
+              aria-label="Open LifeOps setup"
+              title="Open setup"
+              className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-border/16 bg-bg/50 px-3 text-xs font-medium text-txt transition-colors hover:border-accent/30 hover:text-accent"
+              onClick={() => onNavigate("setup")}
+            >
+              Open setup
+              <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
       {!loading && !error && (breakdown || social) && !hasUsage ? (
         <HabitPanel title="Screen Time" icon={<Monitor />}>
           <div className="py-3 text-sm text-muted">
-            No screen activity in this range.
+            {setupSources.length > 0
+              ? `No screen activity in this range. Finish setup for ${setupWarningLabel(
+                  setupSources,
+                )}.`
+              : "No screen activity in this range."}
           </div>
+          {onNavigate && setupSources.length > 0 ? (
+            <button
+              type="button"
+              className="inline-flex h-8 items-center gap-1 rounded-md border border-border/16 bg-bg/50 px-3 text-xs font-medium text-txt transition-colors hover:border-accent/30 hover:text-accent"
+              onClick={() => onNavigate("setup")}
+            >
+              Open setup
+              <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+            </button>
+          ) : null}
         </HabitPanel>
       ) : (
         <>

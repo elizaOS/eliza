@@ -53,6 +53,7 @@ describe("USE_COMPUTER action", () => {
     expect(names).toContain("text");
     expect(names).toContain("key");
     expect(names).toContain("scrollDirection");
+    expect(new Set(names).size).toBe(names.length);
   });
 
   it("validates: false without service", async () => {

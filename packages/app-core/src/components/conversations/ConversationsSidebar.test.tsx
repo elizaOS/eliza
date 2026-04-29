@@ -37,11 +37,19 @@ function buildAppState(overrides: Record<string, unknown> = {}) {
     plugins: [],
     ensurePluginsLoaded: vi.fn(async () => {}),
     handlePluginToggle: vi.fn(),
+    setActionNotice: vi.fn(),
     setTab: vi.fn(),
     setState: vi.fn(),
     tab: "chat",
-    t: (_key: string, options?: { defaultValue?: string }) =>
-      options?.defaultValue ?? _key,
+    t: (
+      key: string,
+      options?: { defaultValue?: string } & Record<string, unknown>,
+    ) =>
+      (options?.defaultValue ?? key).replace(
+        /\{\{(\w+)\}\}/g,
+        (_match, token: string) =>
+          typeof options?.[token] === "string" ? options[token] : "",
+      ),
     ...overrides,
   };
 }
@@ -359,6 +367,29 @@ describe("ConversationsSidebar — Terminal channel", () => {
       "activeTerminalSessionId",
       "brand-new",
     );
+  });
+
+  it("shows a visible notice when a terminal session cannot start", async () => {
+    const setActionNotice = vi.fn();
+    appState.value = buildAppState({ setActionNotice });
+    clientMock.spawnShellSession.mockRejectedValueOnce(new Error("denied"));
+
+    renderSidebar();
+    await waitFor(() => {
+      expect(screen.getByTestId("channel-section-add-terminal")).toBeDefined();
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("channel-section-add-terminal"));
+    });
+
+    await waitFor(() => {
+      expect(setActionNotice).toHaveBeenCalledWith(
+        "Failed to start terminal: denied",
+        "error",
+        4800,
+      );
+    });
   });
 
   it("hides legacy page-room titles and untitled empty stubs from Messages", async () => {

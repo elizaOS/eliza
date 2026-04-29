@@ -157,6 +157,51 @@ describe("applyFirstTimeSetupTopology", () => {
       },
     });
   });
+
+  it("omits the cloud embeddings route when useLocalEmbeddings is true", () => {
+    const result = applyFirstTimeSetupTopology({} as never, {
+      isCloudRuntime: true,
+      selectedProviderId: "elizacloud",
+      useLocalEmbeddings: true,
+      cloudOnboardingResult: {
+        apiKey: "cloud-key",
+        baseUrl: "https://elizacloud.ai",
+        agentId: "agent-123",
+      },
+    });
+
+    expect(result.serviceRouting?.embeddings).toBeUndefined();
+    expect(result.serviceRouting?.tts).toMatchObject({
+      backend: "elizacloud",
+      transport: "cloud-proxy",
+    });
+    expect(result.serviceRouting?.media).toMatchObject({
+      backend: "elizacloud",
+      transport: "cloud-proxy",
+    });
+    expect(result.serviceRouting?.rpc).toMatchObject({
+      backend: "elizacloud",
+      transport: "cloud-proxy",
+    });
+  });
+
+  it("routes embeddings to cloud-proxy when useLocalEmbeddings is false", () => {
+    const result = applyFirstTimeSetupTopology({} as never, {
+      isCloudRuntime: true,
+      selectedProviderId: "elizacloud",
+      useLocalEmbeddings: false,
+      cloudOnboardingResult: {
+        apiKey: "cloud-key",
+        baseUrl: "https://elizacloud.ai",
+        agentId: "agent-123",
+      },
+    });
+
+    expect(result.serviceRouting?.embeddings).toMatchObject({
+      backend: "elizacloud",
+      transport: "cloud-proxy",
+    });
+  });
 });
 
 describe("bindCloudProvider", () => {

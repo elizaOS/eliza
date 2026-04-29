@@ -67,6 +67,7 @@ import {
   LIFEOPS_INBOX_CACHE_MODES,
   LIFEOPS_INBOX_CHANNELS,
   LIFEOPS_OWNER_BROWSER_ACCESS_SOURCES,
+  LIFEOPS_SCREEN_TIME_RANGES,
   type LifeOpsGmailSpamReviewStatus,
   type LifeOpsOwnerBrowserAccessSource,
   type VerifyLifeOpsTelegramConnectorRequest,
@@ -182,6 +183,12 @@ const LIFEOPS_RATE_LIMITS = {
   outbound_message: { maxRequests: 5, windowMs: 60_000 },
   default: { maxRequests: 60, windowMs: 60_000 },
 } satisfies Record<string, RateLimitConfig>;
+
+const ACTIVITY_SIGNALS_DEFAULT_LIMIT = 200;
+const ACTIVITY_SIGNALS_MAX_LIMIT = 500;
+const MS_PER_DAY = 86_400_000;
+const MAX_SCREEN_TIME_WINDOW_DAYS = 31;
+const MAX_SCREEN_TIME_WINDOW_MS = MAX_SCREEN_TIME_WINDOW_DAYS * MS_PER_DAY;
 
 /**
  * Check rate limit for a LifeOps operation. If the limit is exceeded,
@@ -563,15 +570,68 @@ function parseScreenTimeSourceQuery(
   return normalized;
 }
 
+function parseScreenTimeIdentifierQuery(value: string | null): string | undefined {
+  const normalized = value?.trim();
+  return normalized && normalized.length > 0 ? normalized : undefined;
+}
+
+function parseScreenTimeRangeQuery(value: string | null) {
+  const normalized = value?.trim().toLowerCase() || "today";
+  if (!isOneOf(normalized, LIFEOPS_SCREEN_TIME_RANGES)) {
+    throw new LifeOpsServiceError(
+      400,
+      `range must be one of: ${LIFEOPS_SCREEN_TIME_RANGES.join(", ")}`,
+    );
+  }
+  return normalized;
+}
+
+const ISO_INSTANT_QUERY_RE =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+
 function parseRequiredIsoQuery(url: URL, field: string): string {
   const value = url.searchParams.get(field)?.trim();
   if (!value) {
     throw new LifeOpsServiceError(400, `${field} is required`);
   }
-  if (!Number.isFinite(Date.parse(value))) {
+  if (!ISO_INSTANT_QUERY_RE.test(value) || !Number.isFinite(Date.parse(value))) {
     throw new LifeOpsServiceError(400, `${field} must be a valid ISO string`);
   }
   return value;
+}
+
+function parseOptionalIsoQuery(
+  value: string | null,
+  field: string,
+): string | null {
+  const normalized = value?.trim();
+  if (!normalized) {
+    return null;
+  }
+  if (!Number.isFinite(Date.parse(normalized))) {
+    throw new LifeOpsServiceError(400, `${field} must be a valid ISO string`);
+  }
+  return normalized;
+}
+
+function parseBoundedIsoWindowQuery(url: URL): {
+  since: string;
+  until: string;
+} {
+  const since = parseRequiredIsoQuery(url, "since");
+  const until = parseRequiredIsoQuery(url, "until");
+  const sinceMs = Date.parse(since);
+  const untilMs = Date.parse(until);
+  if (untilMs <= sinceMs) {
+    throw new LifeOpsServiceError(400, "until must be after since");
+  }
+  if (untilMs - sinceMs > MAX_SCREEN_TIME_WINDOW_MS) {
+    throw new LifeOpsServiceError(
+      400,
+      `window must be ${MAX_SCREEN_TIME_WINDOW_DAYS} days or less`,
+    );
+  }
+  return { since, until };
 }
 
 async function runRoute(
@@ -779,9 +839,8 @@ export async function handleLifeOpsRoutes(
     if (!body) {
       return true;
     }
-    const { isLifeOpsFeatureKey } = await import(
-      "../lifeops/feature-flags.types.js"
-    );
+    const { isLifeOpsFeatureKey } =
+      await import("../lifeops/feature-flags.types.js");
     if (!isLifeOpsFeatureKey(body.featureKey)) {
       ctx.error(res, "featureKey must be a known LifeOpsFeatureKey", 400);
       return true;
@@ -790,9 +849,8 @@ export async function handleLifeOpsRoutes(
       ctx.error(res, "enabled must be a boolean", 400);
       return true;
     }
-    const { createFeatureFlagService } = await import(
-      "../lifeops/feature-flags.js"
-    );
+    const { createFeatureFlagService } =
+      await import("../lifeops/feature-flags.js");
     const service = createFeatureFlagService(runtime);
     const next = body.enabled
       ? await service.enable(body.featureKey, "local", null)
@@ -1209,6 +1267,8 @@ export async function handleLifeOpsRoutes(
       return runRoute(ctx, async (service) => {
         const event = await service.updateCalendarEvent(url, {
           eventId,
+          mode:
+            body.mode ?? parseConnectorModeQuery(url.searchParams.get("mode")),
           side:
             body.side ?? parseConnectorSideQuery(url.searchParams.get("side")),
           grantId: body.grantId ?? url.searchParams.get("grantId") ?? undefined,
@@ -1219,6 +1279,8 @@ export async function handleLifeOpsRoutes(
           startAt: body.startAt,
           endAt: body.endAt,
           timeZone: body.timeZone,
+          location: body.location,
+          attendees: body.attendees,
         });
         json(res, { event });
       });
@@ -1916,10 +1978,7 @@ export async function handleLifeOpsRoutes(
     });
   }
 
-  if (
-    method === "POST" &&
-    pathname === "/api/lifeops/connectors/signal/send"
-  ) {
+  if (method === "POST" && pathname === "/api/lifeops/connectors/signal/send") {
     if (rateLimitRequest(ctx, "outbound_message")) return true;
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
@@ -2110,11 +2169,14 @@ export async function handleLifeOpsRoutes(
     return runRoute(ctx, async (service) => {
       json(res, {
         signals: await service.listActivitySignals({
-          sinceAt: url.searchParams.get("sinceAt"),
-          limit: parsePositiveIntegerQuery(
-            url.searchParams.get("limit"),
-            "limit",
+          sinceAt: parseOptionalIsoQuery(
+            url.searchParams.get("sinceAt"),
+            "sinceAt",
           ),
+          limit:
+            parsePositiveIntegerQuery(url.searchParams.get("limit"), "limit", {
+              max: ACTIVITY_SIGNALS_MAX_LIMIT,
+            }) ?? ACTIVITY_SIGNALS_DEFAULT_LIMIT,
           states: parseActivitySignalStates(url),
         }),
       });
@@ -2341,12 +2403,16 @@ export async function handleLifeOpsRoutes(
 
   if (method === "GET" && pathname === "/api/lifeops/screen-time/summary") {
     return runRoute(ctx, async (service) => {
+      const window = parseBoundedIsoWindowQuery(url);
       json(
         res,
         await service.getScreenTimeSummary({
-          since: parseRequiredIsoQuery(url, "since"),
-          until: parseRequiredIsoQuery(url, "until"),
+          since: window.since,
+          until: window.until,
           source: parseScreenTimeSourceQuery(url.searchParams.get("source")),
+          identifier: parseScreenTimeIdentifierQuery(
+            url.searchParams.get("identifier"),
+          ),
           topN:
             parsePositiveIntegerQuery(url.searchParams.get("topN"), "topN", {
               max: 20,
@@ -2358,12 +2424,16 @@ export async function handleLifeOpsRoutes(
 
   if (method === "GET" && pathname === "/api/lifeops/screen-time/breakdown") {
     return runRoute(ctx, async (service) => {
+      const window = parseBoundedIsoWindowQuery(url);
       json(
         res,
         await service.getScreenTimeBreakdown({
-          since: parseRequiredIsoQuery(url, "since"),
-          until: parseRequiredIsoQuery(url, "until"),
+          since: window.since,
+          until: window.until,
           source: parseScreenTimeSourceQuery(url.searchParams.get("source")),
+          identifier: parseScreenTimeIdentifierQuery(
+            url.searchParams.get("identifier"),
+          ),
           topN:
             parsePositiveIntegerQuery(url.searchParams.get("topN"), "topN", {
               max: 50,
@@ -2373,13 +2443,35 @@ export async function handleLifeOpsRoutes(
     });
   }
 
-  if (method === "GET" && pathname === "/api/lifeops/social/summary") {
+  if (method === "GET" && pathname === "/api/lifeops/screen-time/history") {
     return runRoute(ctx, async (service) => {
       json(
         res,
+        await service.getScreenTimeHistory({
+          range: parseScreenTimeRangeQuery(url.searchParams.get("range")),
+          topN:
+            parsePositiveIntegerQuery(url.searchParams.get("topN"), "topN", {
+              max: 50,
+            }) ?? undefined,
+          socialTopN:
+            parsePositiveIntegerQuery(
+              url.searchParams.get("socialTopN"),
+              "socialTopN",
+              { max: 50 },
+            ) ?? undefined,
+        }),
+      );
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/lifeops/social/summary") {
+    return runRoute(ctx, async (service) => {
+      const window = parseBoundedIsoWindowQuery(url);
+      json(
+        res,
         await service.getSocialHabitSummary({
-          since: parseRequiredIsoQuery(url, "since"),
-          until: parseRequiredIsoQuery(url, "until"),
+          since: window.since,
+          until: window.until,
           topN:
             parsePositiveIntegerQuery(url.searchParams.get("topN"), "topN", {
               max: 50,

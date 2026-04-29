@@ -450,6 +450,16 @@ const children = [];
 /** First Ctrl-C starts graceful shutdown; second exits immediately (pipes keep the process alive until then). */
 let shuttingDown = false;
 
+// Track API restart attempts so we don't hot-loop on a crashing API. When
+// /api/restart, the agent's RESTART action, or any other in-process bounce
+// fires `process.exit(0)`/`process.exit(75)`, the supervisor below re-spawns
+// the API. If it exits again within API_RESTART_BACKOFF_WINDOW_MS, that counts
+// toward the streak. Mirrors the supervisor in dev-ui.mjs.
+const API_RESTART_BACKOFF_WINDOW_MS = 10_000;
+const API_RESTART_BACKOFF_LIMIT = 5;
+let apiRestartStreak = 0;
+let lastApiExitAt = 0;
+
 const namesForLog = [];
 if (!skipApi) namesForLog.push("api");
 if (viteDevServer) namesForLog.push("vite");
@@ -642,23 +652,85 @@ async function launch() {
   }
   console.log("");
 
-  if (!skipApi) {
-    pushChild("api", "bun", ["--watch", devServerEntry], bundleRoot, {
-      NODE_ENV: "development",
-      ELIZA_API_PORT: apiPort,
-      ELIZA_HEADLESS: "1",
-      ELIZA_PORT: String(uiDevPort),
-      ELIZA_UI_PORT: String(uiDevPort),
-      ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? defaultElizaNamespace,
-      ...(rendererUrlForShell
-        ? { ELIZA_RENDERER_URL: rendererUrlForShell }
-        : {}),
-      ELIZA_DESKTOP_API_BASE: `http://127.0.0.1:${apiPort}`,
-      ...screenshotEnvApi,
-      ...(desktopDevLogPath
-        ? { ELIZA_DESKTOP_DEV_LOG_PATH: desktopDevLogPath }
-        : {}),
+  const apiEnv = {
+    NODE_ENV: "development",
+    ELIZA_API_PORT: apiPort,
+    ELIZA_HEADLESS: "1",
+    ELIZA_PORT: String(uiDevPort),
+    ELIZA_UI_PORT: String(uiDevPort),
+    ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? defaultElizaNamespace,
+    ...(rendererUrlForShell
+      ? { ELIZA_RENDERER_URL: rendererUrlForShell }
+      : {}),
+    ELIZA_DESKTOP_API_BASE: `http://127.0.0.1:${apiPort}`,
+    ...screenshotEnvApi,
+    ...(desktopDevLogPath
+      ? { ELIZA_DESKTOP_DEV_LOG_PATH: desktopDevLogPath }
+      : {}),
+  };
+
+  function spawnApi() {
+    const child = spawn(BUN_EXECUTABLE, ["--watch", devServerEntry], {
+      cwd: bundleRoot,
+      env: extendNodePathEnv(
+        { ...process.env, ...apiEnv, FORCE_COLOR: "1" },
+        bundleRoot,
+      ),
+      stdio: ["ignore", "pipe", "pipe"],
+      ...(process.platform !== "win32" ? { detached: true } : {}),
     });
+    if (child.stdout) prefixStream("api", child.stdout);
+    if (child.stderr) prefixStream("api", child.stderr);
+    child.on("exit", (code, signal) => {
+      const reason = signal ? `signal ${signal}` : `exit ${code}`;
+      console.log(`[api] stopped (${reason})`);
+
+      // Drop this child from `children` so shutdown doesn't try to signal a dead PID.
+      const idx = children.indexOf(child);
+      if (idx !== -1) children.splice(idx, 1);
+
+      if (shuttingDown) return;
+
+      const now = Date.now();
+      if (now - lastApiExitAt < API_RESTART_BACKOFF_WINDOW_MS) {
+        apiRestartStreak += 1;
+      } else {
+        apiRestartStreak = 1;
+      }
+      lastApiExitAt = now;
+
+      if (apiRestartStreak > API_RESTART_BACKOFF_LIMIT) {
+        console.error(
+          `\n[eliza] API exited with code ${code} ${apiRestartStreak} times in ${
+            API_RESTART_BACKOFF_WINDOW_MS / 1000
+          }s — giving up. Fix the underlying issue and restart the dev process.`,
+        );
+        shutdownDesktopDev({
+          exitCode: code ?? 1,
+          message:
+            "\n[eliza] API restart backoff exceeded — stopping Vite/Electrobun and closing dev session.",
+        });
+        return;
+      }
+
+      // The agent's RESTART action and `/api/restart` both bounce the
+      // server with `process.exit(0)` (and the CLI runner uses 75 as the
+      // dedicated restart exit code). Bun's `--watch` reload also exits
+      // cleanly. Treat any non-shutdown exit as "please restart me" and
+      // re-spawn — that's what the renderer is already polling for.
+      console.log(
+        `\n[eliza] API exited with code ${code} — relaunching (attempt ${apiRestartStreak}/${API_RESTART_BACKOFF_LIMIT})…`,
+      );
+      setTimeout(() => {
+        if (!shuttingDown) spawnApi();
+      }, 400);
+    });
+    children.push(child);
+    return child;
+  }
+
+  if (!skipApi) {
+    spawnApi();
     await waitForPort(Number(apiPort));
     await waitForApiRoute(Number(apiPort), "/api/status");
   }

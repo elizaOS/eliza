@@ -8,7 +8,7 @@ import {
   type BrowserBridgeSettings,
   type BrowserBridgeTabSummary,
   browserBridgeSchema,
-} from "../../../../plugins/plugin-browser-bridge/src/index.js";
+} from "@elizaos/plugin-browser-bridge";
 import type {
   LifeOpsXDm,
   LifeOpsXFeedItem,
@@ -127,6 +127,13 @@ function deriveConnectorIdentityEmail(
   );
 }
 
+function requireScopedGmailGrantId(grantId: string | null | undefined): string {
+  if (typeof grantId !== "string" || grantId.trim().length === 0) {
+    throw new Error("Gmail message persistence requires grantId.");
+  }
+  return grantId.trim();
+}
+
 export interface LifeOpsWebsiteAccessGrant {
   id: string;
   agentId: string;
@@ -153,9 +160,11 @@ export interface LifeOpsScheduleInsightRecord extends LifeOpsScheduleInsight {
   updatedAt: string;
 }
 
-export interface LifeOpsScheduleObservationRecord extends LifeOpsScheduleObservation {}
+export interface LifeOpsScheduleObservationRecord
+  extends LifeOpsScheduleObservation {}
 
-export interface LifeOpsScheduleMergedStateRecord extends LifeOpsScheduleMergedState {}
+export interface LifeOpsScheduleMergedStateRecord
+  extends LifeOpsScheduleMergedState {}
 
 export type LifeOpsPersistedSleepEpisodeSource =
   | LifeOpsSleepCycleEvidence["source"]
@@ -478,6 +487,7 @@ function parseConnectorGrant(
     provider: toText(row.provider) as LifeOpsConnectorGrant["provider"],
     side: toText(row.side, "owner") as LifeOpsConnectorGrant["side"],
     identity,
+    identityEmail: row.identity_email ? toText(row.identity_email) : null,
     grantedScopes: parseJsonArray(row.granted_scopes_json),
     capabilities: parseJsonArray(row.capabilities_json),
     tokenRef: row.token_ref ? toText(row.token_ref) : null,
@@ -820,6 +830,7 @@ function parseGmailMessageSummary(
     agentId: toText(row.agent_id),
     provider: "google",
     side: toText(row.side, "owner") as LifeOpsGmailMessageSummary["side"],
+    grantId: row.grant_id ? toText(row.grant_id) : undefined,
     threadId: toText(row.thread_id),
     subject: toText(row.subject),
     from: toText(row.from_display),
@@ -896,6 +907,8 @@ function parseCachedInboxMessage(
     gmailAccountEmail: row.gmail_account_email
       ? toText(row.gmail_account_email)
       : undefined,
+    lastSeenAt: row.last_seen_at ? toText(row.last_seen_at) : undefined,
+    repliedAt: row.replied_at ? toText(row.replied_at) : undefined,
     priorityScore,
     priorityCategory:
       priorityCategory as LifeOpsInboxMessage["priorityCategory"],
@@ -1235,6 +1248,7 @@ interface LifeOpsGmailSyncState {
   provider: LifeOpsConnectorGrant["provider"];
   side: LifeOpsConnectorSide;
   mailbox: string;
+  grantId: string;
   maxResults: number;
   syncedAt: string;
   updatedAt: string;
@@ -1249,6 +1263,7 @@ function parseGmailSyncState(
     provider: toText(row.provider) as LifeOpsConnectorGrant["provider"],
     side: toText(row.side, "owner") as LifeOpsConnectorSide,
     mailbox: toText(row.mailbox),
+    grantId: toText(row.grant_id),
     maxResults: toNumber(row.max_results, 0),
     syncedAt: toText(row.synced_at),
     updatedAt: toText(row.updated_at),
@@ -1899,6 +1914,14 @@ export class LifeOpsRepository {
       runtime,
       `CREATE UNIQUE INDEX IF NOT EXISTS idx_life_inbox_messages_agent_channel_external
          ON life_inbox_messages (agent_id, channel, external_id)`,
+    );
+    await executeRawSql(
+      runtime,
+      "ALTER TABLE life_inbox_messages ADD COLUMN IF NOT EXISTS last_seen_at TEXT",
+    );
+    await executeRawSql(
+      runtime,
+      "ALTER TABLE life_inbox_messages ADD COLUMN IF NOT EXISTS replied_at TEXT",
     );
   }
 
@@ -3403,16 +3426,19 @@ export class LifeOpsRepository {
     provider: LifeOpsConnectorGrant["provider"],
     mode?: LifeOpsConnectorGrant["mode"],
     side?: LifeOpsConnectorSide,
+    grantId?: string,
   ): Promise<void> {
     const modeClause = mode ? `AND mode = ${sqlQuote(mode)}` : "";
     const sideClause = side ? `AND side = ${sqlQuote(side)}` : "";
+    const grantClause = grantId ? `AND id = ${sqlQuote(grantId)}` : "";
     await executeRawSql(
       this.runtime,
       `DELETE FROM life_connector_grants
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           ${modeClause}
-          ${sideClause}`,
+          ${sideClause}
+          ${grantClause}`,
     );
   }
 
@@ -3669,20 +3695,22 @@ export class LifeOpsRepository {
     message: LifeOpsGmailMessageSummary,
     side: LifeOpsConnectorSide = message.side,
   ): Promise<void> {
+    const grantId = requireScopedGmailGrantId(message.grantId);
     await executeRawSql(
       this.runtime,
       `INSERT INTO life_gmail_messages (
-        id, agent_id, provider, side, external_message_id, thread_id, subject,
-        from_display, from_email, reply_to, to_json, cc_json, snippet,
-        received_at, is_unread, is_important, likely_reply_needed,
-        triage_score, triage_reason, label_ids_json, html_link, metadata_json,
-        synced_at, updated_at
+        id, agent_id, provider, side, external_message_id, grant_id, thread_id,
+        subject, from_display, from_email, reply_to, to_json, cc_json, snippet,
+        received_at, is_unread, is_important, likely_reply_needed, triage_score,
+        triage_reason, label_ids_json, html_link, metadata_json, synced_at,
+        updated_at
       ) VALUES (
         ${sqlQuote(message.id)},
         ${sqlQuote(message.agentId)},
         ${sqlQuote(message.provider)},
         ${sqlQuote(side)},
         ${sqlQuote(message.externalId)},
+        ${sqlQuote(grantId)},
         ${sqlQuote(message.threadId)},
         ${sqlQuote(message.subject)},
         ${sqlQuote(message.from)},
@@ -3703,7 +3731,8 @@ export class LifeOpsRepository {
         ${sqlQuote(message.syncedAt)},
         ${sqlQuote(message.updatedAt)}
       )
-      ON CONFLICT(agent_id, provider, side, external_message_id) DO UPDATE SET
+      ON CONFLICT(agent_id, provider, side, grant_id, external_message_id) DO UPDATE SET
+        id = excluded.id,
         thread_id = excluded.thread_id,
         subject = excluded.subject,
         from_display = excluded.from_display,
@@ -3731,6 +3760,7 @@ export class LifeOpsRepository {
     provider: LifeOpsConnectorGrant["provider"],
     keepExternalIds: readonly string[],
     side?: LifeOpsConnectorSide,
+    grantId?: string,
   ): Promise<void> {
     const keepClause =
       keepExternalIds.length > 0
@@ -3739,12 +3769,14 @@ export class LifeOpsRepository {
             .join(", ")})`
         : "";
     const sideClause = side ? `AND side = ${sqlQuote(side)}` : "";
+    const grantClause = grantId ? `AND grant_id = ${sqlQuote(grantId)}` : "";
     await executeRawSql(
       this.runtime,
       `DELETE FROM life_gmail_messages
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           ${sideClause}
+          ${grantClause}
           ${keepClause}`,
     );
   }
@@ -3756,6 +3788,7 @@ export class LifeOpsRepository {
       maxResults?: number;
       threadId?: string;
       since?: string;
+      grantId?: string;
     },
     side?: LifeOpsConnectorSide,
   ): Promise<LifeOpsGmailMessageSummary[]> {
@@ -3772,6 +3805,9 @@ export class LifeOpsRepository {
       ? `AND received_at >= ${sqlQuote(options.since)}`
       : "";
     const sideClause = side ? `AND side = ${sqlQuote(side)}` : "";
+    const grantClause = options?.grantId
+      ? `AND grant_id = ${sqlQuote(options.grantId)}`
+      : "";
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -3779,6 +3815,7 @@ export class LifeOpsRepository {
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           ${sideClause}
+          ${grantClause}
           ${threadClause}
           ${sinceClause}
         ORDER BY triage_score DESC, received_at DESC
@@ -3792,8 +3829,10 @@ export class LifeOpsRepository {
     provider: LifeOpsConnectorGrant["provider"],
     messageId: string,
     side?: LifeOpsConnectorSide,
+    grantId?: string,
   ): Promise<LifeOpsGmailMessageSummary | null> {
     const sideClause = side ? `AND side = ${sqlQuote(side)}` : "";
+    const grantClause = grantId ? `AND grant_id = ${sqlQuote(grantId)}` : "";
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -3801,6 +3840,7 @@ export class LifeOpsRepository {
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           ${sideClause}
+          ${grantClause}
           AND id = ${sqlQuote(messageId)}
         LIMIT 1`,
     );
@@ -3821,7 +3861,7 @@ export class LifeOpsRepository {
           id, agent_id, channel, external_id, thread_id, sender_id,
           sender_display, sender_email, subject, snippet, received_at,
           is_unread, deep_link, source_ref_json, chat_type, participant_count,
-          gmail_account_id, gmail_account_email, priority_score,
+          gmail_account_id, gmail_account_email, last_seen_at, replied_at, priority_score,
           priority_category, priority_flags_json, cached_at, updated_at
         ) VALUES (
           ${sqlQuote(message.id)},
@@ -3842,6 +3882,8 @@ export class LifeOpsRepository {
           ${sqlInteger(message.participantCount)},
           ${sqlText(message.gmailAccountId)},
           ${sqlText(message.gmailAccountEmail)},
+          ${sqlText(message.lastSeenAt)},
+          ${sqlText(message.repliedAt)},
           ${sqlInteger(message.priorityScore)},
           ${sqlText(message.priorityCategory)},
           ${sqlJson([])},
@@ -3864,6 +3906,8 @@ export class LifeOpsRepository {
           participant_count = excluded.participant_count,
           gmail_account_id = excluded.gmail_account_id,
           gmail_account_email = excluded.gmail_account_email,
+          last_seen_at = COALESCE(excluded.last_seen_at, life_inbox_messages.last_seen_at),
+          replied_at = COALESCE(excluded.replied_at, life_inbox_messages.replied_at),
           priority_score = COALESCE(excluded.priority_score, life_inbox_messages.priority_score),
           priority_category = COALESCE(excluded.priority_category, life_inbox_messages.priority_category),
           priority_flags_json = CASE
@@ -3915,17 +3959,20 @@ export class LifeOpsRepository {
     provider: LifeOpsConnectorGrant["provider"],
     messageIds: readonly string[],
     side?: LifeOpsConnectorSide,
+    grantId?: string,
   ): Promise<void> {
     if (messageIds.length === 0) {
       return;
     }
     const sideClause = side ? `AND side = ${sqlQuote(side)}` : "";
+    const grantClause = grantId ? `AND grant_id = ${sqlQuote(grantId)}` : "";
     await executeRawSql(
       this.runtime,
       `DELETE FROM life_gmail_messages
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           ${sideClause}
+          ${grantClause}
           AND id IN (${messageIds.map((messageId) => sqlQuote(messageId)).join(", ")})`,
     );
   }
@@ -3934,33 +3981,40 @@ export class LifeOpsRepository {
     agentId: string,
     provider: LifeOpsConnectorGrant["provider"],
     side?: LifeOpsConnectorSide,
+    grantId?: string,
   ): Promise<void> {
     const sideClause = side ? `AND side = ${sqlQuote(side)}` : "";
+    const grantClause = grantId ? `AND grant_id = ${sqlQuote(grantId)}` : "";
     await executeRawSql(
       this.runtime,
       `DELETE FROM life_gmail_messages
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
-          ${sideClause}`,
+          ${sideClause}
+          ${grantClause}`,
     );
   }
 
   async upsertGmailSyncState(state: LifeOpsGmailSyncState): Promise<void> {
+    const grantId = requireScopedGmailGrantId(state.grantId);
     await executeRawSql(
       this.runtime,
       `INSERT INTO life_gmail_sync_states (
-        id, agent_id, provider, side, mailbox, max_results, synced_at, updated_at
+        id, agent_id, provider, side, mailbox, grant_id, max_results, synced_at,
+        updated_at
       ) VALUES (
         ${sqlQuote(state.id)},
         ${sqlQuote(state.agentId)},
         ${sqlQuote(state.provider)},
         ${sqlQuote(state.side)},
         ${sqlQuote(state.mailbox)},
+        ${sqlQuote(grantId)},
         ${sqlInteger(state.maxResults)},
         ${sqlQuote(state.syncedAt)},
         ${sqlQuote(state.updatedAt)}
       )
-      ON CONFLICT(agent_id, provider, side, mailbox) DO UPDATE SET
+      ON CONFLICT(agent_id, provider, side, grant_id, mailbox) DO UPDATE SET
+        id = excluded.id,
         max_results = excluded.max_results,
         synced_at = excluded.synced_at,
         updated_at = excluded.updated_at`,
@@ -3972,8 +4026,10 @@ export class LifeOpsRepository {
     provider: LifeOpsConnectorGrant["provider"],
     mailbox: string,
     side?: LifeOpsConnectorSide,
+    grantId?: string,
   ): Promise<LifeOpsGmailSyncState | null> {
     const sideClause = side ? `AND side = ${sqlQuote(side)}` : "";
+    const grantClause = grantId ? `AND grant_id = ${sqlQuote(grantId)}` : "";
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -3982,6 +4038,7 @@ export class LifeOpsRepository {
           AND provider = ${sqlQuote(provider)}
           AND mailbox = ${sqlQuote(mailbox)}
           ${sideClause}
+          ${grantClause}
         LIMIT 1`,
     );
     const row = rows[0];
@@ -3993,16 +4050,19 @@ export class LifeOpsRepository {
     provider: LifeOpsConnectorGrant["provider"],
     mailbox?: string,
     side?: LifeOpsConnectorSide,
+    grantId?: string,
   ): Promise<void> {
     const mailboxClause = mailbox ? `AND mailbox = ${sqlQuote(mailbox)}` : "";
     const sideClause = side ? `AND side = ${sqlQuote(side)}` : "";
+    const grantClause = grantId ? `AND grant_id = ${sqlQuote(grantId)}` : "";
     await executeRawSql(
       this.runtime,
       `DELETE FROM life_gmail_sync_states
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           ${mailboxClause}
-          ${sideClause}`,
+          ${sideClause}
+          ${grantClause}`,
     );
   }
 
@@ -4139,14 +4199,17 @@ export class LifeOpsRepository {
     agentId: string,
     provider: LifeOpsConnectorGrant["provider"],
     side?: LifeOpsConnectorSide,
+    grantId?: string,
   ): Promise<void> {
     const sideClause = side ? `AND side = ${sqlQuote(side)}` : "";
+    const grantClause = grantId ? `AND grant_id = ${sqlQuote(grantId)}` : "";
     await executeRawSql(
       this.runtime,
       `DELETE FROM life_gmail_spam_review_items
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
-          ${sideClause}`,
+          ${sideClause}
+          ${grantClause}`,
     );
   }
 
@@ -5202,8 +5265,8 @@ export class LifeOpsRepository {
         is_inbound = excluded.is_inbound,
         text = excluded.text,
         received_at = excluded.received_at,
-        read_at = excluded.read_at,
-        replied_at = excluded.replied_at,
+        read_at = COALESCE(excluded.read_at, life_x_dms.read_at),
+        replied_at = COALESCE(excluded.replied_at, life_x_dms.replied_at),
         metadata_json = excluded.metadata_json,
         synced_at = excluded.synced_at,
         updated_at = excluded.updated_at`,

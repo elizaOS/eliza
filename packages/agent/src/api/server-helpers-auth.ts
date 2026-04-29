@@ -392,6 +392,12 @@ function isTrustedLocalOrigin(raw: string): boolean {
 
 export function isTrustedLocalRequest(req: http.IncomingMessage): boolean {
   if (isCloudProvisionedContainer()) return false;
+  // On-device local agent (Android): the loopback interface is shared with
+  // every other app on the device, so loopback alone is NOT a trust signal.
+  // The MiladyAgentService sets MILADY_REQUIRE_LOCAL_AUTH=1 alongside a
+  // per-boot ELIZA_API_TOKEN; with this flag the server requires bearer
+  // auth on every route except /api/health (which is read-only liveness).
+  if (process.env.MILADY_REQUIRE_LOCAL_AUTH === "1") return false;
   if (!isLoopbackRemoteAddress(req.socket?.remoteAddress)) return false;
   if (proxyClientHeaderBlocksLocalTrust(req.headers)) return false;
 

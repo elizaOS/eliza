@@ -59,7 +59,7 @@ function formatSeconds(seconds: number): string {
 
 function resolveWindowDays(value: number | undefined): number {
   const raw = typeof value === "number" && Number.isFinite(value) ? value : 7;
-  return Math.max(1, Math.floor(raw));
+  return Math.min(31, Math.max(1, Math.floor(raw)));
 }
 
 export const screenTimeAction: Action = {
@@ -92,6 +92,7 @@ export const screenTimeAction: Action = {
       const daily = await service.getScreenTimeDaily({
         date,
         source: params.source,
+        identifier: params.identifier,
         limit: 10,
       });
       const total = daily.reduce((acc, row) => acc + row.totalSeconds, 0);
@@ -115,6 +116,7 @@ export const screenTimeAction: Action = {
         since,
         until,
         source: params.source,
+        identifier: params.identifier,
         topN: 10,
       });
       const text =
@@ -142,6 +144,7 @@ export const screenTimeAction: Action = {
         since,
         until,
         daysInWindow,
+        identifier: params.identifier,
       });
       const text =
         weeklyAverage.items.length === 0
@@ -168,6 +171,7 @@ export const screenTimeAction: Action = {
         since,
         until,
         source,
+        identifier: params.identifier,
         topN: 10,
       });
       const label = source === "app" ? "apps" : "websites";
@@ -195,6 +199,7 @@ export const screenTimeAction: Action = {
       since,
       until,
       source: params.source,
+      identifier: params.identifier,
       topN: 10,
     });
     const text =

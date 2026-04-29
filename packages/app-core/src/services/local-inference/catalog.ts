@@ -12,6 +12,20 @@ import type { CatalogModel } from "./types";
 export const MODEL_CATALOG: CatalogModel[] = [
   // ─── tiny / testing ─────────────────────────────────────────────────
   {
+    id: "smollm2-360m",
+    displayName: "SmolLM2 360M Instruct",
+    hfRepo: "bartowski/SmolLM2-360M-Instruct-GGUF",
+    ggufFile: "SmolLM2-360M-Instruct-Q4_K_M.gguf",
+    params: "360M",
+    quant: "Q4_K_M",
+    sizeGb: 0.27,
+    minRamGb: 1,
+    category: "tiny",
+    bucket: "small",
+    blurb:
+      "Mobile-friendly default. ~270MB on disk, runs on phones and 1GB-RAM hosts.",
+  },
+  {
     id: "smollm2-1.7b",
     displayName: "SmolLM2 1.7B Instruct",
     hfRepo: "bartowski/SmolLM2-1.7B-Instruct-GGUF",
@@ -133,6 +147,20 @@ export const MODEL_CATALOG: CatalogModel[] = [
     bucket: "mid",
     blurb: "Nous Hermes 3. Function calling, JSON mode, agentic tool use.",
   },
+  {
+    id: "bonsai-8b-1bit",
+    displayName: "Bonsai 8B 1-bit (TurboQuant)",
+    hfRepo: "apothic/bonsai-8B-1bit-turboquant",
+    ggufFile: "models/gguf/8B/Bonsai-8B.gguf",
+    params: "8B",
+    quant: "1-bit TurboQuant",
+    sizeGb: 1.2,
+    minRamGb: 8,
+    category: "chat",
+    bucket: "mid",
+    blurb:
+      "1-bit weights load on stock llama.cpp, but the TurboQuant KV-cache memory win requires the apothic/llama.cpp-1bit-turboquant fork. Mobile-experimental.",
+  },
 
   // ─── large (8-20 GB) ────────────────────────────────────────────────
   {
@@ -234,7 +262,12 @@ export function buildHuggingFaceResolveUrl(model: CatalogModel): string {
   const base =
     process.env.MILADY_HF_BASE_URL?.trim().replace(/\/+$/, "") ||
     "https://huggingface.co";
-  return `${base}/${model.hfRepo}/resolve/main/${encodeURIComponent(
-    model.ggufFile,
-  )}?download=true`;
+  // Encode each path segment separately so nested layouts like
+  // `models/gguf/8B/Bonsai-8B.gguf` keep their slashes (HF resolve URLs
+  // require a real path, not a `%2F`-mangled basename).
+  const encodedPath = model.ggufFile
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  return `${base}/${model.hfRepo}/resolve/main/${encodedPath}?download=true`;
 }

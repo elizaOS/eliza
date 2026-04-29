@@ -1,17 +1,16 @@
-// @ts-nocheck — mixin: type safety is enforced on the composed class
 import {
   detectHealthBackend,
   getDailySummary,
   getDataPoints,
   getRecentSummaries,
-  HealthBridgeError,
   type HealthBackend,
   type HealthBridgeConfig,
+  HealthBridgeError,
   type HealthDailySummary,
   type HealthDataPoint,
 } from "./health-bridge.js";
-import { LifeOpsServiceError } from "./service-types.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+import { LifeOpsServiceError } from "./service-types.js";
 
 function resolveHealthConfig(): HealthBridgeConfig {
   return {
