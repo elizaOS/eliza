@@ -649,11 +649,8 @@ export function RuntimeGate() {
                     })
                   : t("runtimegate.selectedHint", {
                       defaultValue: "{{target}} selected",
-                      target: runtimeChoiceDetails(
-                        selectedChoice,
-                        t,
-                        isAndroid,
-                      ).label,
+                      target: runtimeChoiceDetails(selectedChoice, t, isAndroid)
+                        .label,
                     })}
               </p>
               <Button
