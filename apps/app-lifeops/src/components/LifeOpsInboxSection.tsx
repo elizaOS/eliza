@@ -957,6 +957,12 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
   const [selectedGmailAccount, setSelectedGmailAccount] =
     useState<string>(ALL_GMAIL_ACCOUNTS);
   const [missedOnly, setMissedOnly] = useState<boolean>(false);
+  const [mailWorkflow, setMailWorkflow] = useState<MailWorkflowState>({
+    kind: null,
+    loading: false,
+    summary: null,
+    error: null,
+  });
 
   const chatTypeFilter = useMemo<ReadonlyArray<InboxChatType> | undefined>(
     () =>
@@ -1049,6 +1055,49 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
   // Subtitle on every Gmail row when more than one account is connected, so
   // users can tell apart two senders that exist in both inboxes.
   const showGmailAccountSubtitles = showGmailAccountChips;
+  const activeGmailGrantId =
+    isMailMode && selectedGmailAccount !== ALL_GMAIL_ACCOUNTS
+      ? selectedGmailAccount
+      : undefined;
+
+  const runMailWorkflow = useCallback(
+    async (kind: MailWorkflowKind) => {
+      setMailWorkflow({ kind, loading: true, summary: null, error: null });
+      try {
+        const request = {
+          maxResults: 40,
+          grantId: activeGmailGrantId,
+        };
+        const summary =
+          kind === "needs_response"
+            ? summarizeNeedsResponseFeed(
+                await client.getLifeOpsGmailNeedsResponse(request),
+              )
+            : kind === "unresponded"
+              ? summarizeUnrespondedFeed(
+                  await client.getLifeOpsGmailUnresponded({
+                    ...request,
+                    olderThanDays: 3,
+                  }),
+                )
+              : summarizeSpamReviewFeed(
+                  await client.getLifeOpsGmailSpamReview({
+                    ...request,
+                    status: "pending",
+                  }),
+                );
+        setMailWorkflow({ kind, loading: false, summary, error: null });
+      } catch (error) {
+        setMailWorkflow({
+          kind,
+          loading: false,
+          summary: null,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+    [activeGmailGrantId],
+  );
 
   // Reset to "all" if the previously selected account disappears from the
   // current feed (e.g. account disconnected).
