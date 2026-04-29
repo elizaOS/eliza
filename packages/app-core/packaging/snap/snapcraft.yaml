@@ -322,7 +322,11 @@ parts:
       node "$APP_CORE_SCRIPTS_DIR/patch-deps.mjs" || true
       node "$APP_CORE_SCRIPTS_DIR/link-browser-server.mjs" || true
 
-      # Build the project
+      # Build the project. scripts/run-with-python-shim.mjs requires
+      # python >= 3.11; point PYTHON_BIN at the python3.11 we pulled in
+      # via build-packages so the shim doesn't fall through to the
+      # core22 default python3.10.
+      export PYTHON_BIN="${PYTHON_BIN:-/usr/bin/python3.11}"
       bun run build
 
       # Install into snap
@@ -369,7 +373,14 @@ parts:
       - curl
       - git
       - build-essential
+      # scripts/run-with-python-shim.mjs (called by `bun run build`)
+      # requires Python >= 3.11 for `python -m venv`/`python -m build`.
+      # core22 ships python3.10 by default; pull python3.11 + venv from
+      # jammy-updates/universe and the `bun run build` step below sets
+      # PYTHON_BIN so the shim picks it up first.
       - python3
+      - python3.11
+      - python3.11-venv
     stage-packages:
       - libatomic1
       - ca-certificates
