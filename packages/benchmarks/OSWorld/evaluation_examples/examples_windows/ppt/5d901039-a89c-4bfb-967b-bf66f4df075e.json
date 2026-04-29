@@ -23,9 +23,7 @@
     }
   ],
   "trajectory": "trajectories/5d901039-a89c-4bfb-967b-bf66f4df075e",
-  "related_apps": [
-    "ppt"
-  ],
+  "related_apps": ["ppt"],
   "evaluator": {
     "postconfig": [
       {

@@ -1,8 +1,8 @@
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { handleComputerUseCompatRoutes } from "./computer-use-compat-routes";
 import type { CompatRuntimeState } from "./compat-route-shared";
+import { handleComputerUseCompatRoutes } from "./computer-use-compat-routes";
 
 interface Harness {
   baseUrl: string;

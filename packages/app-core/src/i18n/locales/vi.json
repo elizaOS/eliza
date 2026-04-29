@@ -143,6 +143,7 @@
   "appsview.URL": "URL",
   "appsview.Viewer": "Giao diện (Viewer)",
   "appwindow.LaunchedNoViewer": "This app launched without a viewer URL. Open it from the apps catalog.",
+  "appwindow.RetryingLaunch": "Retrying launch...",
   "aria.advancedNavigation": "Điều hướng nâng cao",
   "aria.agentVoiceOff": "Tắt giọng nói đại lý",
   "aria.agentVoiceOn": "Bật giọng nói đại lý",

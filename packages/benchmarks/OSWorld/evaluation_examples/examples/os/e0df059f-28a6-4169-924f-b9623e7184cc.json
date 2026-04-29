@@ -23,9 +23,7 @@
       }
     }
   ],
-  "related_apps": [
-    "os"
-  ],
+  "related_apps": ["os"],
   "evaluator": {
     "func": "exact_match",
     "result": {

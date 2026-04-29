@@ -1,12 +1,17 @@
 import type { AppConfig, ChatMessage, ProviderMode } from "./types";
 
-export type ChatResponse = { responseText: string; effectiveMode: ProviderMode };
+export type ChatResponse = {
+  responseText: string;
+  effectiveMode: ProviderMode;
+};
 
 const DEFAULT_BASE_URL = "http://localhost:8787";
 
 function getBaseUrl(): string {
   const fromEnv = import.meta.env.VITE_CHAT_BACKEND_URL as string | undefined;
-  return (fromEnv && fromEnv.trim().length > 0 ? fromEnv : DEFAULT_BASE_URL).replace(/\/+$/, "");
+  return (
+    fromEnv && fromEnv.trim().length > 0 ? fromEnv : DEFAULT_BASE_URL
+  ).replace(/\/+$/, "");
 }
 
 async function postJson<T>(path: string, body: object): Promise<T> {
@@ -29,7 +34,9 @@ export async function fetchGreeting(config: AppConfig): Promise<string> {
 }
 
 export async function fetchHistory(config: AppConfig): Promise<ChatMessage[]> {
-  const data = await postJson<{ history: ChatMessage[] }>("/history", { config });
+  const data = await postJson<{ history: ChatMessage[] }>("/history", {
+    config,
+  });
   return data.history;
 }
 
@@ -37,7 +44,9 @@ export async function resetChat(config: AppConfig): Promise<void> {
   await postJson<{ ok: boolean }>("/reset", { config });
 }
 
-export async function sendChat(config: AppConfig, text: string): Promise<ChatResponse> {
+export async function sendChat(
+  config: AppConfig,
+  text: string,
+): Promise<ChatResponse> {
   return await postJson<ChatResponse>("/chat", { config, text });
 }
-

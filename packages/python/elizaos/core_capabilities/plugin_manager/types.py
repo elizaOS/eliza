@@ -1,6 +1,6 @@
 """Plugin manager type definitions.
 
-Ported from plugin-plugin-manager TypeScript types.  Defines data structures
+Ported from ``@elizaos/core`` plugin-manager TypeScript types.  Defines data structures
 for plugin state tracking, component registration, and plugin metadata.
 """
 
@@ -179,7 +179,6 @@ PROTECTED_PLUGINS: frozenset[str] = frozenset(
         "inference",
         "autonomy",
         "knowledge",
-        "@elizaos/plugin-personality",
         "experience",
         "goals",
         "todo",

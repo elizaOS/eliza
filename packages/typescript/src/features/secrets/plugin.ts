@@ -1,5 +1,5 @@
 /**
- * Secrets Manager Plugin
+ * Secrets capability
  *
  * Comprehensive secret management for ElizaOS with:
  * - Multi-level storage (global, world, user)
@@ -46,7 +46,7 @@ export interface SecretsManagerPluginConfig {
 }
 
 /**
- * Secrets Manager Plugin
+ * Secrets capability
  *
  * Provides comprehensive secret management capabilities:
  *
@@ -64,7 +64,7 @@ export interface SecretsManagerPluginConfig {
  *
  * **Usage:**
  * ```typescript
- * import { secretsManagerPlugin } from '@elizaos/plugin-secrets-manager';
+ * import { secretsManagerPlugin } from '@elizaos/core';
  *
  * const runtime = createAgentRuntime({
  *   plugins: [secretsManagerPlugin],
@@ -81,7 +81,7 @@ export interface SecretsManagerPluginConfig {
  * ```
  */
 export const secretsManagerPlugin: Plugin = {
-	name: "@elizaos/plugin-secrets-manager",
+	name: "secrets",
 	description:
 		"Multi-level secret management with encryption, dynamic plugin activation, and conversational onboarding",
 

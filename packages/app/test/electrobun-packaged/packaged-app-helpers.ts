@@ -257,15 +257,11 @@ function createPackagedDesktopEnv(args: {
   const commonEnv = {
     ELIZA_DESKTOP_TEST_API_BASE: args.apiBase,
     ELIZA_DESKTOP_TEST_PARTITION: partition,
-    ELIZA_DESKTOP_TEST_API_BASE: args.apiBase,
-    ELIZA_DESKTOP_TEST_PARTITION: partition,
     ELIZA_DESKTOP_TEST_AUTO_CONFIRM_DIALOGS: "1",
-    ELIZA_DISABLE_LOCAL_EMBEDDINGS: "1",
     ELIZA_DISABLE_LOCAL_EMBEDDINGS: "1",
     ELIZA_DESKTOP_TEST_BRIDGE_ENABLED: "1",
     ELIZA_DESKTOP_TEST_BRIDGE_PORT: String(args.bridgePort),
     ELIZA_DESKTOP_TEST_BRIDGE_TOKEN: args.bridgeToken,
-    ELIZA_STATE_DIR: args.stateDir,
     ELIZA_STATE_DIR: args.stateDir,
     ELECTROBUN_CONSOLE: "1",
   };

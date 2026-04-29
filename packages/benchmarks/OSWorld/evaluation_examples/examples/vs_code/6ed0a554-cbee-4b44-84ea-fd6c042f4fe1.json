@@ -7,31 +7,19 @@
     {
       "type": "command",
       "parameters": {
-        "command": [
-          "mkdir",
-          "-p",
-          "/home/user/project"
-        ]
+        "command": ["mkdir", "-p", "/home/user/project"]
       }
     },
     {
       "type": "command",
       "parameters": {
-        "command": [
-          "mkdir",
-          "-p",
-          "/home/user/data1"
-        ]
+        "command": ["mkdir", "-p", "/home/user/data1"]
       }
     },
     {
       "type": "command",
       "parameters": {
-        "command": [
-          "mkdir",
-          "-p",
-          "/home/user/data2"
-        ]
+        "command": ["mkdir", "-p", "/home/user/data2"]
       }
     },
     {
@@ -48,10 +36,7 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "code",
-          "/home/user/project.code-workspace"
-        ]
+        "command": ["code", "/home/user/project.code-workspace"]
       }
     },
     {
@@ -62,9 +47,7 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "vscode"
-  ],
+  "related_apps": ["vscode"],
   "evaluator": {
     "func": "check_json_settings",
     "expected": {

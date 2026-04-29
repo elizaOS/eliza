@@ -38,6 +38,8 @@ export interface CharacterExperienceRecord {
   result: string;
   learning: string;
   tags: string[];
+  keywords?: string[];
+  associatedEntityIds?: string[];
   domain?: string | null;
   confidence: number;
   importance: number;
@@ -45,6 +47,8 @@ export interface CharacterExperienceRecord {
   updatedAt?: string | number | null;
   supersedes?: string | null;
   relatedExperienceIds?: string[];
+  mergedExperienceIds?: string[];
+  embeddingDimensions?: number | null;
   previousBelief?: string | null;
   correctedBelief?: string | null;
   sourceMessageIds?: string[];

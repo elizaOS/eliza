@@ -384,7 +384,9 @@ export function BrowserWorkspaceView(): JSX.Element {
   );
   const tabExecCounterRef = useRef(0);
   const tabChainIdRef = useRef(new Map<string, number>());
-  const browserWalletStateRef = useRef<BrowserWorkspaceWalletState | null>(null);
+  const browserWalletStateRef = useRef<BrowserWorkspaceWalletState | null>(
+    null,
+  );
   // Ref-mirror of the selected tab id so the register callback (which is
   // memoized on handleTabHostMessage only) can read the current selection
   // without a fresh closure each render.
@@ -776,7 +778,9 @@ export function BrowserWorkspaceView(): JSX.Element {
             case "eth_requestAccounts":
             case "eth_accounts": {
               if (!evmAddress) {
-                reply({ error: walletState.reason ?? "No EVM wallet connected." });
+                reply({
+                  error: walletState.reason ?? "No EVM wallet connected.",
+                });
                 return;
               }
               reply({ result: [evmAddress] });
@@ -798,7 +802,9 @@ export function BrowserWorkspaceView(): JSX.Element {
                 ? Number.parseInt(chainHex.slice(2), 16)
                 : Number(chainHex);
               if (!Number.isFinite(chainId) || chainId <= 0) {
-                reply({ error: "wallet_switchEthereumChain requires a valid chainId." });
+                reply({
+                  error: "wallet_switchEthereumChain requires a valid chainId.",
+                });
                 return;
               }
               tabChainIdRef.current.set(req.tabId, chainId);
@@ -812,7 +818,8 @@ export function BrowserWorkspaceView(): JSX.Element {
                   error:
                     walletState.mode === "steward"
                       ? "Browser message signing requires a local wallet key."
-                      : (walletState.reason ?? "Browser wallet message signing is unavailable."),
+                      : (walletState.reason ??
+                        "Browser wallet message signing is unavailable."),
                 });
                 return;
               }
@@ -824,7 +831,9 @@ export function BrowserWorkspaceView(): JSX.Element {
                     ? (arr[1] as string)
                     : null;
               if (!message) {
-                reply({ error: "Browser wallet signing requires a message payload." });
+                reply({
+                  error: "Browser wallet signing requires a message payload.",
+                });
                 return;
               }
               const result = await client.signBrowserWalletMessage(message);
@@ -833,7 +842,11 @@ export function BrowserWorkspaceView(): JSX.Element {
             }
             case "eth_sendTransaction": {
               if (!walletState.transactionSigningAvailable) {
-                reply({ error: walletState.reason ?? "Browser wallet transaction signing is unavailable." });
+                reply({
+                  error:
+                    walletState.reason ??
+                    "Browser wallet transaction signing is unavailable.",
+                });
                 return;
               }
               const arr = Array.isArray(req.params) ? req.params : [req.params];
@@ -842,7 +855,9 @@ export function BrowserWorkspaceView(): JSX.Element {
                   ? (arr[0] as Record<string, unknown>)
                   : null;
               if (!tx) {
-                reply({ error: "eth_sendTransaction requires a transaction object." });
+                reply({
+                  error: "eth_sendTransaction requires a transaction object.",
+                });
                 return;
               }
               const chainId = tabChainIdRef.current.get(req.tabId) ?? 1;
@@ -859,7 +874,9 @@ export function BrowserWorkspaceView(): JSX.Element {
                 value,
                 data: typeof tx.data === "string" ? tx.data : undefined,
                 description:
-                  typeof tx.description === "string" ? tx.description : undefined,
+                  typeof tx.description === "string"
+                    ? tx.description
+                    : undefined,
               });
               reply({ result: result.txHash ?? result.txId ?? null });
               const next = await loadBrowserWalletState();
@@ -875,7 +892,9 @@ export function BrowserWorkspaceView(): JSX.Element {
           switch (req.method) {
             case "connect": {
               if (!solanaAddress) {
-                reply({ error: walletState.reason ?? "No Solana wallet connected." });
+                reply({
+                  error: walletState.reason ?? "No Solana wallet connected.",
+                });
                 return;
               }
               reply({ result: { publicKey: solanaAddress } });
@@ -883,16 +902,24 @@ export function BrowserWorkspaceView(): JSX.Element {
             }
             case "signMessage": {
               if (!walletState.solanaMessageSigningAvailable) {
-                reply({ error: walletState.reason ?? "Solana message signing is unavailable." });
+                reply({
+                  error:
+                    walletState.reason ??
+                    "Solana message signing is unavailable.",
+                });
                 return;
               }
               const messageBase64 =
                 req.params && typeof req.params === "object"
-                  ? ((req.params as Record<string, unknown>).messageBase64 as string | undefined)
+                  ? ((req.params as Record<string, unknown>).messageBase64 as
+                      | string
+                      | undefined)
                   : undefined;
               const message =
                 req.params && typeof req.params === "object"
-                  ? ((req.params as Record<string, unknown>).message as string | undefined)
+                  ? ((req.params as Record<string, unknown>).message as
+                      | string
+                      | undefined)
                   : undefined;
               const result = await client.signBrowserSolanaMessage({
                 ...(messageBase64 ? { messageBase64 } : {}),
@@ -904,7 +931,11 @@ export function BrowserWorkspaceView(): JSX.Element {
             case "signTransaction":
             case "signAndSendTransaction": {
               if (!walletState.solanaTransactionSigningAvailable) {
-                reply({ error: walletState.reason ?? "Solana transaction signing is unavailable." });
+                reply({
+                  error:
+                    walletState.reason ??
+                    "Solana transaction signing is unavailable.",
+                });
                 return;
               }
               const transactionBase64 =
@@ -913,7 +944,10 @@ export function BrowserWorkspaceView(): JSX.Element {
                       .transactionBase64 as string | undefined)
                   : undefined;
               if (!transactionBase64) {
-                reply({ error: "Solana transaction signing requires transactionBase64." });
+                reply({
+                  error:
+                    "Solana transaction signing requires transactionBase64.",
+                });
                 return;
               }
               const result = await client.sendBrowserSolanaTransaction({
@@ -1924,15 +1958,12 @@ export function BrowserWorkspaceView(): JSX.Element {
                 className="mt-1"
                 disabled={busyAction !== null}
                 onClick={() =>
-                  void runBrowserWorkspaceAction(
-                    "open:home",
-                    async () => {
-                      await openNewBrowserWorkspaceTab(
-                        BROWSER_WORKSPACE_DEFAULT_HOME_URL,
-                        "user",
-                      );
-                    },
-                  )
+                  void runBrowserWorkspaceAction("open:home", async () => {
+                    await openNewBrowserWorkspaceTab(
+                      BROWSER_WORKSPACE_DEFAULT_HOME_URL,
+                      "user",
+                    );
+                  })
                 }
                 data-testid="browser-workspace-open-home"
               >

@@ -40,4 +40,3 @@ if (!g.process) {
 } else if (!g.process.env) {
   g.process.env = {} as ProcessEnv;
 }
-

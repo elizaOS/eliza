@@ -42,7 +42,10 @@ export function parseReference(ref: VaultReference): ParsedReference {
   return { source, path, raw: ref };
 }
 
-export function buildReference(source: VaultSource, path: string): VaultReference {
+export function buildReference(
+  source: VaultSource,
+  path: string,
+): VaultReference {
   switch (source) {
     case "file":
       return "file://";

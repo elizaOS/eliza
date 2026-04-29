@@ -64,13 +64,12 @@ describe("parseWindowsLockStateOutput", () => {
 
 describe("existing macOS parsers still behave", () => {
   it("parses HID idle time", () => {
-    expect(parseMacOsHidIdleTimeOutput('  "HIDIdleTime" = 5000000000'))
-      .toBe(5);
+    expect(parseMacOsHidIdleTimeOutput('  "HIDIdleTime" = 5000000000')).toBe(5);
   });
   it("parses session locked flag", () => {
-    expect(
-      parseMacOsSessionLockedOutput("CGSSessionScreenIsLocked=1"),
-    ).toBe(true);
+    expect(parseMacOsSessionLockedOutput("CGSSessionScreenIsLocked=1")).toBe(
+      true,
+    );
   });
   it("parses pmset power source", () => {
     expect(parseMacOsPowerSourceOutput("Now drawing from 'AC Power'")).toEqual({

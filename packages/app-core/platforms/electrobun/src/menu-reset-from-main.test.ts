@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  buildMainMenuResetApiCandidates,
   type FetchLike,
   type MainMenuResetPostConfirmDeps,
-  buildMainMenuResetApiCandidates,
   pickReachableMenuResetApiBase,
   pollMenuResetAgentStatusJson,
   runMainMenuResetAfterApiBaseResolved,
@@ -16,10 +16,7 @@ describe("buildMainMenuResetApiCandidates", () => {
       embeddedPort: 31337,
       configuredBase: "http://127.0.0.1:9999",
     });
-    expect(result).toEqual([
-      "http://127.0.0.1:31337",
-      "http://127.0.0.1:9999",
-    ]);
+    expect(result).toEqual(["http://127.0.0.1:31337", "http://127.0.0.1:9999"]);
   });
 
   it("skips embedded when port is null", () => {
@@ -153,7 +150,7 @@ describe("pollMenuResetAgentStatusJson", () => {
       };
     });
     const sleep = vi.fn().mockResolvedValue(undefined);
-    let time = 0;
+    const time = 0;
     const now = () => time;
 
     const result = await pollMenuResetAgentStatusJson({

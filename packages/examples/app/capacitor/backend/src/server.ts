@@ -1,6 +1,15 @@
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { DEFAULT_CONFIG, type AppConfig } from "./types";
-import { getGreetingText, getHistory, resetConversation, sendMessage } from "./runtimeManager";
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
+import {
+  getGreetingText,
+  getHistory,
+  resetConversation,
+  sendMessage,
+} from "./runtimeManager";
+import { type AppConfig, DEFAULT_CONFIG } from "./types";
 
 const PORT = Number(process.env.PORT ?? "8787");
 
@@ -67,7 +76,9 @@ export function createApiServer() {
 
       if (method === "POST" && url === "/greeting") {
         const bodyText = await readBody(req);
-        const parsed = (bodyText ? JSON.parse(bodyText) : {}) as { config?: AppConfig };
+        const parsed = (bodyText ? JSON.parse(bodyText) : {}) as {
+          config?: AppConfig;
+        };
         const config = parseConfig(parsed.config);
         sendJson(res, 200, { greeting: getGreetingText(config) });
         return;
@@ -75,7 +86,9 @@ export function createApiServer() {
 
       if (method === "POST" && url === "/history") {
         const bodyText = await readBody(req);
-        const parsed = (bodyText ? JSON.parse(bodyText) : {}) as { config?: AppConfig };
+        const parsed = (bodyText ? JSON.parse(bodyText) : {}) as {
+          config?: AppConfig;
+        };
         const config = parseConfig(parsed.config);
         const history = await getHistory(config);
         sendJson(res, 200, { history });
@@ -84,7 +97,9 @@ export function createApiServer() {
 
       if (method === "POST" && url === "/reset") {
         const bodyText = await readBody(req);
-        const parsed = (bodyText ? JSON.parse(bodyText) : {}) as { config?: AppConfig };
+        const parsed = (bodyText ? JSON.parse(bodyText) : {}) as {
+          config?: AppConfig;
+        };
         const config = parseConfig(parsed.config);
         await resetConversation(config);
         sendJson(res, 200, { ok: true });
@@ -100,7 +115,9 @@ export function createApiServer() {
         const config = parseConfig(parsed.config);
         const text = typeof parsed.text === "string" ? parsed.text.trim() : "";
         if (!text) {
-          sendJson(res, 400, { error: "Missing 'text' in request body" } satisfies ApiError);
+          sendJson(res, 400, {
+            error: "Missing 'text' in request body",
+          } satisfies ApiError);
           return;
         }
 
@@ -130,4 +147,3 @@ export function startServer(port = PORT) {
 if (import.meta.main) {
   startServer();
 }
-

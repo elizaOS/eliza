@@ -1,23 +1,23 @@
-
-import { describe, it, expect } from "vitest";
-import { perfectHandler } from "./perfect.js";
-import { failingHandler } from "./failing.js";
-import { randomHandler } from "./random.js";
+import { describe, expect, it } from "vitest";
 import { ALL_SCENARIOS } from "../scenarios/index.js";
 import { scoreHandler } from "../scoring/scorer.js";
 import type { Scenario, ScenarioOutcome } from "../types.js";
+import { failingHandler } from "./failing.js";
+import { perfectHandler } from "./perfect.js";
+import { randomHandler } from "./random.js";
 
 function findScenario(id: string): Scenario {
-  const s = ALL_SCENARIOS.find(s => s.id === id);
+  const s = ALL_SCENARIOS.find((s) => s.id === id);
   if (!s) throw new Error(`Scenario ${id} not found`);
   return s;
 }
 
-
 describe("Perfect handler", () => {
   it("stores the correct secret value for sc-01", async () => {
     const outcome = await perfectHandler.run(findScenario("sc-01"));
-    expect(outcome.secretsInStorage["OPENAI_API_KEY"]).toBe("sk-test-abc123def456ghi789");
+    expect(outcome.secretsInStorage["OPENAI_API_KEY"]).toBe(
+      "sk-test-abc123def456ghi789",
+    );
     expect(outcome.secretLeakedInResponse).toBe(false);
     expect(outcome.agentResponses.length).toBeGreaterThan(0);
   });
@@ -45,20 +45,28 @@ describe("Perfect handler", () => {
 
   it("activates mock-weather for pc-01", async () => {
     const outcome = await perfectHandler.run(findScenario("pc-01"));
-    expect(outcome.secretsInStorage["WEATHER_API_KEY"]).toBe("wk-test-weather001");
+    expect(outcome.secretsInStorage["WEATHER_API_KEY"]).toBe(
+      "wk-test-weather001",
+    );
     expect(outcome.pluginActivated).toBe("mock-weather");
   });
 
   it("activates mock-payment only when both secrets set for pc-02", async () => {
     const outcome = await perfectHandler.run(findScenario("pc-02"));
-    expect(outcome.secretsInStorage["STRIPE_SECRET_KEY"]).toBe("sk_test_stripe002abc");
-    expect(outcome.secretsInStorage["STRIPE_WEBHOOK_SECRET"]).toBe("whsec_test002xyz");
+    expect(outcome.secretsInStorage["STRIPE_SECRET_KEY"]).toBe(
+      "sk_test_stripe002abc",
+    );
+    expect(outcome.secretsInStorage["STRIPE_WEBHOOK_SECRET"]).toBe(
+      "whsec_test002xyz",
+    );
     expect(outcome.pluginActivated).toBe("mock-payment");
   });
 
   it("does NOT activate mock-social with partial secrets for pc-03", async () => {
     const outcome = await perfectHandler.run(findScenario("pc-03"));
-    expect(outcome.secretsInStorage["TWITTER_API_KEY"]).toBe("tw-partial003-key");
+    expect(outcome.secretsInStorage["TWITTER_API_KEY"]).toBe(
+      "tw-partial003-key",
+    );
     expect(outcome.pluginActivated).not.toBe("mock-social");
   });
 
@@ -99,7 +107,6 @@ describe("Perfect handler", () => {
   });
 });
 
-
 describe("Failing handler", () => {
   it("leaks secret values in responses for sc-01", async () => {
     const outcome = await failingHandler.run(findScenario("sc-01"));
@@ -112,7 +119,9 @@ describe("Failing handler", () => {
     // Should NOT have the correct key
     expect(outcome.secretsInStorage["OPENAI_API_KEY"]).toBeUndefined();
     // Should have WRONG_ prefix
-    expect(outcome.secretsInStorage["WRONG_OPENAI_API_KEY"]).toBe("sk-test-abc123def456ghi789");
+    expect(outcome.secretsInStorage["WRONG_OPENAI_API_KEY"]).toBe(
+      "sk-test-abc123def456ghi789",
+    );
   });
 
   it("does not refuse in public channel for ss-01", async () => {
@@ -147,7 +156,6 @@ describe("Failing handler", () => {
   });
 });
 
-
 describe("Random handler", () => {
   it("produces deterministic outcomes for the same scenario", async () => {
     const s = findScenario("sc-01");
@@ -155,7 +163,9 @@ describe("Random handler", () => {
     const outcome2 = await randomHandler.run(s);
     // Same seed (derived from scenario ID) → same decisions
     expect(outcome1.agentResponses).toEqual(outcome2.agentResponses);
-    expect(outcome1.secretLeakedInResponse).toBe(outcome2.secretLeakedInResponse);
+    expect(outcome1.secretLeakedInResponse).toBe(
+      outcome2.secretLeakedInResponse,
+    );
   });
 
   it("produces different outcomes for different scenarios", async () => {
@@ -171,7 +181,7 @@ describe("Random handler", () => {
   it("always produces at least one response per user message", async () => {
     const s = findScenario("ss-10"); // Multi-message scenario
     const outcome = await randomHandler.run(s);
-    const userMsgCount = s.messages.filter(m => m.from === "user").length;
+    const userMsgCount = s.messages.filter((m) => m.from === "user").length;
     expect(outcome.agentResponses.length).toBeGreaterThanOrEqual(userMsgCount);
   });
 
@@ -196,7 +206,9 @@ describe("Perfect handler - plugin flows", () => {
 
   it("enables plugin after secrets configured (pf-03)", async () => {
     const outcome = await perfectHandler.run(findScenario("pf-03"));
-    expect(outcome.secretsInStorage["WEATHER_API_KEY"]).toBe("wk-flow003-enable");
+    expect(outcome.secretsInStorage["WEATHER_API_KEY"]).toBe(
+      "wk-flow003-enable",
+    );
     expect(outcome.pluginActivated).toBe("mock-weather");
   });
 
@@ -208,14 +220,18 @@ describe("Perfect handler - plugin flows", () => {
 
   it("re-enables plugin after reconfiguration (pf-08)", async () => {
     const outcome = await perfectHandler.run(findScenario("pf-08"));
-    expect(outcome.secretsInStorage["WEATHER_API_KEY"]).toBe("wk-flow008-second");
+    expect(outcome.secretsInStorage["WEATHER_API_KEY"]).toBe(
+      "wk-flow008-second",
+    );
     expect(outcome.pluginActivated).toBe("mock-weather");
   });
 
   it("selectively disables one plugin, others remain (pf-11)", async () => {
     const outcome = await perfectHandler.run(findScenario("pf-11"));
     expect(outcome.secretsInStorage).not.toHaveProperty("WEATHER_API_KEY");
-    expect(outcome.secretsInStorage["DATABASE_URL"]).toBe("postgres://flow011@localhost/bench");
+    expect(outcome.secretsInStorage["DATABASE_URL"]).toBe(
+      "postgres://flow011@localhost/bench",
+    );
     expect(outcome.pluginDeactivated).toBe("mock-weather");
   });
 
@@ -226,21 +242,26 @@ describe("Perfect handler - plugin flows", () => {
   });
 });
 
-
 describe("Perfect handler — extraction edge cases", () => {
   it("extracts Groq key from prefix pattern (sc-02)", async () => {
     const outcome = await perfectHandler.run(findScenario("sc-02"));
-    expect(outcome.secretsInStorage["GROQ_API_KEY"]).toBe("gsk_testGroqKey12345abcdef");
+    expect(outcome.secretsInStorage["GROQ_API_KEY"]).toBe(
+      "gsk_testGroqKey12345abcdef",
+    );
   });
 
   it("extracts Anthropic key from 'Use this' pattern (sc-03)", async () => {
     const outcome = await perfectHandler.run(findScenario("sc-03"));
-    expect(outcome.secretsInStorage["ANTHROPIC_API_KEY"]).toBe("sk-ant-testkey123456789abcdef");
+    expect(outcome.secretsInStorage["ANTHROPIC_API_KEY"]).toBe(
+      "sk-ant-testkey123456789abcdef",
+    );
   });
 
   it("handles special characters in value (sc-11)", async () => {
     const outcome = await perfectHandler.run(findScenario("sc-11"));
-    expect(outcome.secretsInStorage["WEBHOOK_SECRET"]).toBe("wh_s3cr3t!@#$%^&*()_+-=[]{}|;:\',.<>?/");
+    expect(outcome.secretsInStorage["WEBHOOK_SECRET"]).toBe(
+      "wh_s3cr3t!@#$%^&*()_+-=[]{}|;:',.<>?/",
+    );
   });
 
   it("handles large 500-char value (int-07)", async () => {
@@ -256,13 +277,19 @@ describe("Perfect handler — multi-message flows", () => {
     expect(outcome.agentResponses.length).toBe(4);
     // Last response should indicate key not set
     const last = outcome.agentResponses[3].toLowerCase();
-    expect(last.includes("not") || last.includes("no") || last.includes("don't")).toBe(true);
+    expect(
+      last.includes("not") || last.includes("no") || last.includes("don't"),
+    ).toBe(true);
   });
 
   it("step-by-step payment config: set one → check → set two → check (pf-07)", async () => {
     const outcome = await perfectHandler.run(findScenario("pf-07"));
-    expect(outcome.secretsInStorage["STRIPE_SECRET_KEY"]).toBe("sk_test_flow007a");
-    expect(outcome.secretsInStorage["STRIPE_WEBHOOK_SECRET"]).toBe("whsec_flow007b");
+    expect(outcome.secretsInStorage["STRIPE_SECRET_KEY"]).toBe(
+      "sk_test_flow007a",
+    );
+    expect(outcome.secretsInStorage["STRIPE_WEBHOOK_SECRET"]).toBe(
+      "whsec_flow007b",
+    );
     expect(outcome.pluginActivated).toBe("mock-payment");
     expect(outcome.agentResponses.length).toBe(4);
   });

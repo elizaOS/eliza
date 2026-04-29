@@ -1296,7 +1296,9 @@ export function createGmailMessageId(
 ): string {
   const digest = crypto
     .createHash("sha256")
-    .update(`${agentId}:${provider}:${side}:gmail:${grantId}:${externalMessageId}`)
+    .update(
+      `${agentId}:${provider}:${side}:gmail:${grantId}:${externalMessageId}`,
+    )
     .digest("hex");
   return `life-gmail-${digest.slice(0, 32)}`;
 }

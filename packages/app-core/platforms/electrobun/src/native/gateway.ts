@@ -82,7 +82,8 @@ export class GatewayDiscovery extends EventEmitter {
       };
     }
 
-    const serviceType = options?.serviceType ?? getBrandConfig().mdnsServiceType;
+    const serviceType =
+      options?.serviceType ?? getBrandConfig().mdnsServiceType;
     this.discoveredGateways.clear();
     this.isDiscovering = true;
 

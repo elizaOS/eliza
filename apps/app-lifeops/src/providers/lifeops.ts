@@ -1,7 +1,3 @@
-import type {
-  LifeOpsGmailTriageSummary,
-  LifeOpsNextCalendarEventContext,
-} from "../contracts/index.js";
 import {
   type IAgentRuntime,
   logger,
@@ -11,6 +7,10 @@ import {
   type State,
 } from "@elizaos/core";
 import { hasLifeOpsAccess } from "../actions/lifeops-google-helpers.js";
+import type {
+  LifeOpsGmailTriageSummary,
+  LifeOpsNextCalendarEventContext,
+} from "../contracts/index.js";
 import {
   type LifeOpsOwnerProfile,
   readLifeOpsOwnerProfile,
@@ -90,9 +90,9 @@ function summarizeOwnerProfile(profile: LifeOpsOwnerProfile): string[] {
 export const lifeOpsProvider: Provider = {
   name: "lifeops",
   description:
-    "Owner, explicitly granted users, and the agent only. Provides LifeOps overview plus live calendar and Gmail context. Route executable personal follow-through like todos, habits, goals, reminders, alarms, and live todo-status questions to LIFE; all owner calendar, scheduling, availability, and Calendly work to OWNER_CALENDAR; all owner inbox and Gmail/email work to OWNER_INBOX; morning/night self-review flows to RUN_MORNING_CHECKIN / RUN_NIGHT_CHECKIN; stable owner profile or travel preferences only to UPDATE_OWNER_PROFILE; subscription audits, cancellations, and cancellation-status checks to SUBSCRIPTIONS; direct email-list cleanup to EMAIL_UNSUBSCRIBE; meeting-prep and person-background briefs to DOSSIER; travel booking to BOOK_TRAVEL; X/Twitter reads and search to X_READ; fixed-duration or generic focus blocks to OWNER_WEBSITE_BLOCK; task-gated focus blocks only to BLOCK_UNTIL_TASK_COMPLETE; browser-companion management to MANAGE_LIFEOPS_BROWSER; password-manager field fill on a trusted site to REQUEST_FIELD_FILL; pending approval decisions to APPROVE_REQUEST / REJECT_REQUEST. Available in private owner or granted conversations, including Discord.",
+    "Owner and agent only. Provides LifeOps overview plus live calendar and Gmail context. Route executable personal follow-through like todos, habits, goals, reminders, alarms, and live todo-status questions to LIFE; all owner calendar, scheduling, availability, and Calendly work to OWNER_CALENDAR; all owner inbox and Gmail/email work to OWNER_INBOX; morning/night self-review flows to RUN_MORNING_CHECKIN / RUN_NIGHT_CHECKIN; stable owner profile or travel preferences only to UPDATE_OWNER_PROFILE; subscription audits, cancellations, and cancellation-status checks to SUBSCRIPTIONS; direct email-list cleanup to EMAIL_UNSUBSCRIBE; meeting-prep and person-background briefs to DOSSIER; travel booking to BOOK_TRAVEL; X/Twitter reads and search to X_READ; fixed-duration or generic focus blocks to OWNER_WEBSITE_BLOCK; task-gated focus blocks only to BLOCK_UNTIL_TASK_COMPLETE; browser-companion management to MANAGE_LIFEOPS_BROWSER; password-manager field fill on a trusted site to REQUEST_FIELD_FILL; pending approval decisions to APPROVE_REQUEST / REJECT_REQUEST. Available in private owner conversations, including Discord.",
   descriptionCompressed:
-    "LifeOps overview, upcoming calendar, email triage. Owner/granted only.",
+    "LifeOps overview, upcoming calendar, email triage. Owner only.",
   dynamic: true,
   position: 12,
   async get(
@@ -219,7 +219,7 @@ export const lifeOpsProvider: Provider = {
         "When the owner clearly asks for one of these LifeOps executive-assistant operations, call the best-fit action instead of staying in advice-only chat. If details are missing, let the action ask the minimum follow-up question.",
         "Route examples: sleep/no-call windows -> OWNER_CALENDAR; daily brief additions, missed-call repair, or group-chat handoff -> OWNER_INBOX; 'if direct relaying gets messy here, suggest making a group chat handoff instead' -> OWNER_INBOX; outbound Telegram/Signal/email/Discord/SMS drafts -> OWNER_SEND_MESSAGE; subscription audits or cancellations -> SUBSCRIPTIONS; travel preference memory -> UPDATE_OWNER_PROFILE; clinic-doc reminders or multi-device meeting ladders -> INTENT_SYNC; portal upload or browser filing -> LIFEOPS_COMPUTER_USE; if the agent gets stuck and should phone the owner -> CALL_USER.",
         "When the owner asks about their stable personal details for LifeOps, answer from the stored owner profile values below. If a field is not n/a, treat it as known instead of saying it is missing.",
-        "Owner life-ops are private to the owner, explicitly granted users, and the agent. Agent ops are internal and should stay separated unless explicitly requested.",
+        "Owner life-ops are private to the owner and the agent. Agent ops are internal and should stay separated unless explicitly requested.",
         ...summarizeOwnerProfile(ownerProfile),
         formatCount(
           "Owner open occurrences",

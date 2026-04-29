@@ -1,19 +1,19 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import {
   createServer,
   type IncomingMessage,
   type Server,
   type ServerResponse,
 } from "node:http";
-import { existsSync } from "node:fs";
-import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { WebSocket, WebSocketServer } from "ws";
-import { viteRendererBuildNeeded } from "./lib/vite-renderer-dist-stale.mjs";
 import { buildOnboardingRuntimeConfig } from "../src/onboarding-config";
 import { selectLiveProvider } from "../test/helpers/live-provider";
+import { viteRendererBuildNeeded } from "./lib/vite-renderer-dist-stale.mjs";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
 const APP_DIST_DIR = path.join(REPO_ROOT, "apps", "app", "dist");
@@ -32,8 +32,7 @@ const UI_PORT = Number(
 );
 const LIVE_PROVIDER = selectLiveProvider();
 const FORCE_STUB_STACK =
-  process.env.ELIZA_UI_SMOKE_FORCE_STUB === "1" ||
-  process.env.CI === "true";
+  process.env.ELIZA_UI_SMOKE_FORCE_STUB === "1" || process.env.CI === "true";
 
 type StartedStack = {
   apiBase: string;
@@ -156,7 +155,9 @@ async function proxyUiRequest(args: {
   }
 
   args.response.writeHead(200, {
-    "Content-Type": contentTypeFor(filePath ?? path.join(APP_DIST_DIR, "index.html")),
+    "Content-Type": contentTypeFor(
+      filePath ?? path.join(APP_DIST_DIR, "index.html"),
+    ),
   });
   args.response.end(body);
 }
@@ -475,7 +476,9 @@ async function submitOnboarding(apiBase: string): Promise<void> {
 }
 
 async function startStubStack(): Promise<StartedStack> {
-  const stateDir = await mkdtemp(path.join(os.tmpdir(), "eliza-ui-smoke-stub-"));
+  const stateDir = await mkdtemp(
+    path.join(os.tmpdir(), "eliza-ui-smoke-stub-"),
+  );
   const apiBase = `http://127.0.0.1:${API_PORT}`;
   const apiChild = spawn("node", [UI_SMOKE_STUB_SCRIPT], {
     cwd: REPO_ROOT,
@@ -525,7 +528,9 @@ async function startRealStack(): Promise<StartedStack> {
     return startStubStack();
   }
 
-  const stateDir = await mkdtemp(path.join(os.tmpdir(), "eliza-ui-smoke-live-"));
+  const stateDir = await mkdtemp(
+    path.join(os.tmpdir(), "eliza-ui-smoke-live-"),
+  );
   const apiBase = `http://127.0.0.1:${API_PORT}`;
   const apiChild = spawn(
     "node",
@@ -652,7 +657,7 @@ try {
 } catch (error) {
   console.error(
     `[ui-smoke] failed to start live stack: ${
-      error instanceof Error ? error.stack ?? error.message : String(error)
+      error instanceof Error ? (error.stack ?? error.message) : String(error)
     }`,
   );
   await stopRealStack(stack);

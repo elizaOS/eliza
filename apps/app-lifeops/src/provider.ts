@@ -1,4 +1,4 @@
-import { hasAdminAccess } from "@elizaos/agent/security/access";
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   IAgentRuntime,
   Memory,
@@ -41,7 +41,7 @@ function formatTabLine(
 export const lifeOpsBrowserProvider: Provider = {
   name: "lifeops_browser",
   description:
-    "Owner/admin-only context for the user's real Chrome and Safari browsers connected through Agent Browser Bridge. Separate from Milady Desktop Browser.",
+    "Owner-only context for the user's real Chrome and Safari browsers connected through Agent Browser Bridge. Separate from Milady Desktop Browser.",
   descriptionCompressed: "Owner: real Chrome/Safari browser context.",
   dynamic: true,
   position: 13,
@@ -50,7 +50,7 @@ export const lifeOpsBrowserProvider: Provider = {
     message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
-    if (!(await hasAdminAccess(runtime, message))) {
+    if (!(await hasOwnerAccess(runtime, message))) {
       return { text: "", values: {}, data: {} };
     }
 

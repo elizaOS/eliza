@@ -16,11 +16,7 @@
         "release/*",
         "new-beginnings"
       ],
-      "ignoreChanges": [
-        "**/*.md",
-        "**/test/**",
-        "**/__tests__/**"
-      ],
+      "ignoreChanges": ["**/*.md", "**/test/**", "**/__tests__/**"],
       "verifyAccess": false
     },
     "version": {

@@ -36,6 +36,20 @@ type CloudRuntimeSecrets = Record<string, string | number | boolean>;
 type ReplaceableCloudManager = NonNullable<CloudRouteState["cloudManager"]> & {
   replaceApiKey?: (apiKey: string) => Promise<void>;
 };
+type StartableCloudRelayService = {
+  startRelayLoopIfReady?: () => boolean | Promise<boolean>;
+};
+type RelayStatusService = {
+  getSessionInfo?: () => {
+    sessionId: string | null;
+    organizationId: string | null;
+    userId: string | null;
+    agentName: string | null;
+    platform: string | null;
+    lastSeenAt: string | null;
+    status: "idle" | "registered" | "polling" | "error" | "stopped";
+  };
+};
 
 const CLOUD_LOGIN_POLL_TIMEOUT_MS = 10_000;
 
@@ -144,7 +158,9 @@ async function persistCloudLoginStatus(args: {
     );
   } catch (saveErr) {
     logger.error(
-      `[cloud-login] Failed to save cloud API key to config: ${saveErr instanceof Error ? saveErr.message : String(saveErr)}`,
+      `[cloud-login] Failed to save cloud API key to config: ${
+        saveErr instanceof Error ? saveErr.message : String(saveErr)
+      }`,
     );
   }
 
@@ -176,6 +192,14 @@ async function persistCloudLoginStatus(args: {
       userId: args.userId,
     });
   }
+  const relayService = (runtime?.getService("CLOUD_MANAGED_GATEWAY_RELAY") ??
+    runtime?.getService("cloud-managed-gateway-relay") ??
+    runtime?.getService(
+      "cloudManagedGatewayRelay",
+    )) as StartableCloudRelayService | null;
+  if (typeof relayService?.startRelayLoopIfReady === "function") {
+    await relayService.startRelayLoopIfReady();
+  }
 
   if (!runtime || typeof runtime.updateAgent !== "function") {
     return;
@@ -188,13 +212,17 @@ async function persistCloudLoginStatus(args: {
     };
     if (args.userId) {
       nextSecrets.ELIZA_CLOUD_USER_ID = args.userId;
+      nextSecrets.ELIZAOS_CLOUD_USER_ID = args.userId;
     } else {
       delete nextSecrets.ELIZA_CLOUD_USER_ID;
+      delete nextSecrets.ELIZAOS_CLOUD_USER_ID;
     }
     if (args.organizationId) {
       nextSecrets.ELIZA_CLOUD_ORGANIZATION_ID = args.organizationId;
+      nextSecrets.ELIZAOS_CLOUD_ORG_ID = args.organizationId;
     } else {
       delete nextSecrets.ELIZA_CLOUD_ORGANIZATION_ID;
+      delete nextSecrets.ELIZAOS_CLOUD_ORG_ID;
     }
     if (cloudInferenceSelected) {
       nextSecrets.ELIZAOS_CLOUD_ENABLED = "true";
@@ -204,10 +232,12 @@ async function persistCloudLoginStatus(args: {
     runtime.character.secrets = nextSecrets;
     if (typeof runtime.setSetting === "function") {
       runtime.setSetting("ELIZA_CLOUD_USER_ID", args.userId ?? null);
+      runtime.setSetting("ELIZAOS_CLOUD_USER_ID", args.userId ?? null);
       runtime.setSetting(
         "ELIZA_CLOUD_ORGANIZATION_ID",
         args.organizationId ?? null,
       );
+      runtime.setSetting("ELIZAOS_CLOUD_ORG_ID", args.organizationId ?? null);
     }
     await runtime.updateAgent(runtime.agentId, {
       secrets: { ...nextSecrets },
@@ -215,7 +245,9 @@ async function persistCloudLoginStatus(args: {
   } catch (err) {
     // Non-fatal: config/sealed secret persistence is enough for login continuity.
     logger.warn(
-      `[cloud-routes] Failed to persist cloud secrets to agent DB: ${String(err)}`,
+      `[cloud-routes] Failed to persist cloud secrets to agent DB: ${String(
+        err,
+      )}`,
     );
   }
 }
@@ -235,6 +267,40 @@ export async function handleCloudRoute(
   method: string,
   state: CloudRouteState,
 ): Promise<boolean> {
+  if (method === "GET" && pathname === "/api/cloud/relay-status") {
+    const relayService = (state.runtime?.getService(
+      "CLOUD_MANAGED_GATEWAY_RELAY",
+    ) ??
+      state.runtime?.getService("cloud-managed-gateway-relay") ??
+      state.runtime?.getService(
+        "cloudManagedGatewayRelay",
+      )) as RelayStatusService | null;
+
+    if (typeof relayService?.getSessionInfo !== "function") {
+      sendJson(res, 200, {
+        available: false,
+        status: "not_registered",
+        reason:
+          "Gateway relay service not active. Connect to Eliza Cloud in Settings to enable instance routing.",
+      });
+      return true;
+    }
+
+    try {
+      sendJson(res, 200, {
+        available: true,
+        ...relayService.getSessionInfo(),
+      });
+    } catch (error) {
+      sendJson(res, 200, {
+        available: false,
+        status: "error",
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
+    return true;
+  }
+
   if (method === "POST" && pathname === "/api/cloud/disconnect") {
     // Invalidate any in-flight login poll (see persistCloudLoginStatus).
     cloudDisconnectEpoch++;

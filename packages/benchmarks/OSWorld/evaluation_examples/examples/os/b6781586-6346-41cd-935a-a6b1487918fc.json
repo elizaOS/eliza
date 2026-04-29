@@ -16,9 +16,7 @@
       }
     }
   ],
-  "related_apps": [
-    "os"
-  ],
+  "related_apps": ["os"],
   "evaluator": {
     "func": "is_utc_0",
     "result": {

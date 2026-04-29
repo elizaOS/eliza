@@ -8,6 +8,13 @@ import type {
 
 type ReviewFilter = "all" | "needs-review" | "corrected" | "superseded";
 type SortMode = "priority" | "newest" | "confidence" | "importance";
+type LocalExperienceGraphLink = {
+  sourceId: string;
+  targetId: string;
+  type: "similar" | "supports" | "supersedes" | "co_occurs";
+  strength: number;
+  keywords: string[];
+};
 
 function formatTimestamp(value: string | number | null | undefined): string {
   if (value === null || value === undefined) return "Unknown";
@@ -93,6 +100,107 @@ function uniqueSorted(values: Array<string | null | undefined>): string[] {
 function shortId(value: string | null | undefined): string {
   if (!value) return "Not recorded";
   return value.length > 12 ? `${value.slice(0, 12)}...` : value;
+}
+
+function experienceKeywords(experience: CharacterExperienceRecord): string[] {
+  return experience.keywords && experience.keywords.length > 0
+    ? experience.keywords
+    : experience.tags;
+}
+
+function sharedValues(left: string[], right: string[]): string[] {
+  const rightValues = new Set(right);
+  return left.filter((value) => rightValues.has(value));
+}
+
+function buildLocalGraphLinks(
+  experiences: CharacterExperienceRecord[],
+): LocalExperienceGraphLink[] {
+  const links = new Map<string, LocalExperienceGraphLink>();
+  const addLink = (link: LocalExperienceGraphLink) => {
+    const key = `${link.sourceId}:${link.targetId}:${link.type}`;
+    const existing = links.get(key);
+    if (!existing || existing.strength < link.strength) {
+      links.set(key, link);
+    }
+  };
+  const byId = new Map(
+    experiences.map((experience) => [experience.id, experience]),
+  );
+
+  for (const experience of experiences) {
+    const supersededExperience = experience.supersedes
+      ? byId.get(experience.supersedes)
+      : undefined;
+    if (experience.supersedes && supersededExperience) {
+      addLink({
+        sourceId: experience.id,
+        targetId: experience.supersedes,
+        type: "supersedes",
+        strength: 0.95,
+        keywords: sharedValues(
+          experienceKeywords(experience),
+          experienceKeywords(supersededExperience),
+        ),
+      });
+    }
+    for (const relatedId of experience.relatedExperienceIds ?? []) {
+      const relatedExperience = byId.get(relatedId);
+      if (relatedExperience) {
+        addLink({
+          sourceId: experience.id,
+          targetId: relatedId,
+          type: "similar",
+          strength: 0.7,
+          keywords: sharedValues(
+            experienceKeywords(experience),
+            experienceKeywords(relatedExperience),
+          ),
+        });
+      }
+    }
+  }
+
+  for (let index = 0; index < experiences.length; index++) {
+    const left = experiences[index];
+    if (!left) continue;
+    for (
+      let nextIndex = index + 1;
+      nextIndex < experiences.length;
+      nextIndex++
+    ) {
+      const right = experiences[nextIndex];
+      if (!right) continue;
+      const keywords = sharedValues(
+        experienceKeywords(left),
+        experienceKeywords(right),
+      );
+      const sharedEntity = (left.associatedEntityIds ?? []).some((entityId) =>
+        (right.associatedEntityIds ?? []).includes(entityId),
+      );
+      if (keywords.length >= 2 && left.domain === right.domain) {
+        addLink({
+          sourceId: left.id,
+          targetId: right.id,
+          type: "supports",
+          strength: Math.min(0.85, 0.4 + keywords.length * 0.1),
+          keywords,
+        });
+      } else if (sharedEntity && left.domain === right.domain) {
+        addLink({
+          sourceId: left.id,
+          targetId: right.id,
+          type: "co_occurs",
+          strength: 0.55,
+          keywords,
+        });
+      }
+    }
+  }
+
+  return Array.from(links.values())
+    .sort((left, right) => right.strength - left.strength)
+    .slice(0, 60);
 }
 
 function selectedOrFirst(
@@ -219,6 +327,16 @@ function ProvenancePanel({
               : "Not recorded"}
           </div>
         </div>
+        <div>
+          <div className="text-xs font-semibold text-muted">
+            Associated entities
+          </div>
+          <div className="mt-1 font-mono text-xs text-muted-strong">
+            {(experience.associatedEntityIds ?? []).length > 0
+              ? `${experience.associatedEntityIds?.length} linked`
+              : "Not recorded"}
+          </div>
+        </div>
       </div>
       {trajectoryTarget ? (
         <div className="mt-3 text-xs text-muted">
@@ -236,6 +354,119 @@ function ProvenancePanel({
           {experience.extractionReason}
         </p>
       ) : null}
+    </div>
+  );
+}
+
+function ExperienceGraphPanel({
+  experiences,
+  selectedExperienceId,
+  onSelectExperience,
+}: {
+  experiences: CharacterExperienceRecord[];
+  selectedExperienceId: string | null;
+  onSelectExperience: (experienceId: string) => void;
+}) {
+  const graphExperiences = experiences.slice(0, 24);
+  const links = buildLocalGraphLinks(graphExperiences);
+  const positions = new Map(
+    graphExperiences.map((experience, index) => {
+      const total = Math.max(graphExperiences.length, 1);
+      const angle = (Math.PI * 2 * index) / total;
+      const ring = 0.28 + (index % 4) * 0.09;
+      return [
+        experience.id,
+        {
+          x: 50 + Math.cos(angle) * ring * 100,
+          y: 50 + Math.sin(angle) * ring * 100,
+        },
+      ];
+    }),
+  );
+
+  return (
+    <div
+      data-testid="experience-graph-panel"
+      className="rounded-2xl border border-border/40 bg-bg/70 p-4"
+    >
+      <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-base font-semibold text-txt">Experience graph</h3>
+          <p className="text-sm text-muted">
+            2D map of selected experiences, keyword links, supersession, and
+            recent associated entities.
+          </p>
+        </div>
+        <div className="rounded-full border border-border/40 px-3 py-1 text-xs font-semibold text-muted">
+          {graphExperiences.length} nodes · {links.length} links
+        </div>
+      </div>
+
+      <div className="relative mt-4 h-[22rem] overflow-hidden rounded-xl border border-border/30 bg-bg-muted/10">
+        <svg
+          aria-hidden="true"
+          className="absolute inset-0 h-full w-full"
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+        >
+          {links.map((link) => {
+            const source = positions.get(link.sourceId);
+            const target = positions.get(link.targetId);
+            if (!source || !target) return null;
+            const stroke =
+              link.type === "supersedes"
+                ? "rgb(245 158 11)"
+                : link.type === "co_occurs"
+                  ? "rgb(56 189 248)"
+                  : "rgb(148 163 184)";
+            return (
+              <line
+                key={`${link.sourceId}-${link.targetId}-${link.type}`}
+                x1={source.x}
+                y1={source.y}
+                x2={target.x}
+                y2={target.y}
+                stroke={stroke}
+                strokeWidth={Math.max(0.35, link.strength)}
+                strokeOpacity={0.55}
+              />
+            );
+          })}
+        </svg>
+
+        {graphExperiences.map((experience) => {
+          const position = positions.get(experience.id) ?? { x: 50, y: 50 };
+          const selected = experience.id === selectedExperienceId;
+          return (
+            <button
+              key={experience.id}
+              type="button"
+              data-testid={`experience-graph-node-${experience.id}`}
+              className={`absolute max-w-[12rem] -translate-x-1/2 -translate-y-1/2 rounded-xl border px-3 py-2 text-left shadow-sm transition hover:scale-[1.02] ${
+                selected
+                  ? "border-accent bg-accent/15 text-txt"
+                  : "border-border/40 bg-bg/85 text-muted-strong"
+              }`}
+              style={{
+                left: `${position.x}%`,
+                top: `${position.y}%`,
+              }}
+              onClick={() => onSelectExperience(experience.id)}
+            >
+              <div className="truncate text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-muted">
+                {experience.domain ?? "general"} · {experience.type}
+              </div>
+              <div className="mt-1 line-clamp-2 text-xs font-semibold">
+                {experience.learning || experience.result || experience.context}
+              </div>
+              <div className="mt-1 truncate text-[0.65rem] text-muted">
+                {experienceKeywords(experience).slice(0, 3).join(", ") ||
+                  "no keywords"}
+              </div>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -362,7 +593,10 @@ export function CharacterExperienceWorkspace({
         experience.extractionMethod,
         experience.extractionReason,
         ...(experience.relatedExperienceIds ?? []),
+        ...(experience.mergedExperienceIds ?? []),
         ...(experience.sourceMessageIds ?? []),
+        ...(experience.keywords ?? []),
+        ...(experience.associatedEntityIds ?? []),
         ...experience.tags,
       );
       return haystack.includes(query);
@@ -560,6 +794,12 @@ export function CharacterExperienceWorkspace({
           </label>
         </div>
       </div>
+
+      <ExperienceGraphPanel
+        experiences={filteredExperiences}
+        selectedExperienceId={visibleSelectedExperience?.id ?? null}
+        onSelectExperience={onSelectExperience}
+      />
 
       <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(19rem,25rem)_minmax(0,1fr)]">
         <div className="flex min-h-[28rem] min-w-0 flex-col overflow-hidden rounded-2xl border border-border/40 bg-bg/70">
@@ -779,6 +1019,44 @@ export function CharacterExperienceWorkspace({
                       </span>
                     )}
                   </div>
+                </div>
+                <div>
+                  <div className="text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-muted">
+                    Keywords
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {experienceKeywords(visibleSelectedExperience).length >
+                    0 ? (
+                      experienceKeywords(visibleSelectedExperience).map(
+                        (keyword) => (
+                          <span
+                            key={keyword}
+                            className="rounded-full border border-border/40 bg-bg/50 px-2 py-0.5 text-xs text-muted-strong"
+                          >
+                            {keyword}
+                          </span>
+                        ),
+                      )
+                    ) : (
+                      <span className="text-sm text-muted">
+                        No keywords recorded.
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-muted">
+                    Graph metadata
+                  </div>
+                  <p className="mt-2 text-sm text-muted-strong">
+                    {
+                      (visibleSelectedExperience.associatedEntityIds ?? [])
+                        .length
+                    }{" "}
+                    associated entities ·{" "}
+                    {visibleSelectedExperience.embeddingDimensions ?? 0}{" "}
+                    embedding dimensions
+                  </p>
                 </div>
               </div>
             </div>

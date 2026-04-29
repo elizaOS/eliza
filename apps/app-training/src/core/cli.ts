@@ -57,15 +57,14 @@ const VERTEX_TUNING_SCOPES: readonly VertexTuningScope[] = [
   "user",
 ];
 
-function parseAgentContexts(value: string | undefined): AgentContext[] | undefined {
+function parseAgentContexts(
+  value: string | undefined,
+): AgentContext[] | undefined {
   if (!value) return undefined;
   const out: AgentContext[] = [];
   for (const entry of value.split(",")) {
     const trimmed = entry.trim();
-    if (
-      trimmed &&
-      (AGENT_CONTEXTS as readonly string[]).includes(trimmed)
-    ) {
+    if (trimmed && (AGENT_CONTEXTS as readonly string[]).includes(trimmed)) {
       out.push(trimmed as AgentContext);
     }
   }
@@ -79,10 +78,7 @@ function parseAgentDecisions(
   const out: AgentDecision[] = [];
   for (const entry of value.split(",")) {
     const trimmed = entry.trim();
-    if (
-      trimmed &&
-      (AGENT_DECISIONS as readonly string[]).includes(trimmed)
-    ) {
+    if (trimmed && (AGENT_DECISIONS as readonly string[]).includes(trimmed)) {
       out.push(trimmed as AgentDecision);
     }
   }

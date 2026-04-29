@@ -50,7 +50,13 @@ function resolvePlaywrightModulePath() {
       "test",
       "index.mjs",
     ),
-    path.join(workspaceRoot, "node_modules", "@playwright", "test", "index.mjs"),
+    path.join(
+      workspaceRoot,
+      "node_modules",
+      "@playwright",
+      "test",
+      "index.mjs",
+    ),
     path.join(repoRoot, "node_modules", "@playwright", "test", "index.mjs"),
     path.join(
       repoRoot,

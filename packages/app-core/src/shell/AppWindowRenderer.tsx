@@ -228,7 +228,12 @@ function RegistryAppWindowView({ slug }: { slug: string }): JSX.Element {
       status: "loading",
       run: null,
       launchUrl: null,
-      message: null,
+      message:
+        retryCounter > 0
+          ? t("appwindow.RetryingLaunch", {
+              defaultValue: "Retrying launch...",
+            })
+          : null,
     });
     authSentRef.current = false;
 

@@ -34,19 +34,12 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "vlc",
-          "--repeat",
-          "/home/user/Desktop/landscape.mp4"
-        ]
+        "command": ["vlc", "--repeat", "/home/user/Desktop/landscape.mp4"]
       }
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "libreoffice_impress",
-    "vlc"
-  ],
+  "related_apps": ["libreoffice_impress", "vlc"],
   "evaluator": {
     "postconfig": [
       {

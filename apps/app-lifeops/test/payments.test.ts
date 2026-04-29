@@ -1,9 +1,9 @@
 import { describe, expect, test } from "vitest";
+import { parseTransactionsCsv } from "../src/lifeops/payment-csv-import.js";
 import {
   detectRecurringCharges,
   normalizeMerchant,
 } from "../src/lifeops/payment-recurrence.js";
-import { parseTransactionsCsv } from "../src/lifeops/payment-csv-import.js";
 import type { LifeOpsPaymentTransaction } from "../src/lifeops/payment-types.js";
 
 function txn(
@@ -22,7 +22,8 @@ function txn(
     amountUsd: overrides.amountUsd,
     direction: overrides.direction ?? "debit",
     merchantRaw: overrides.merchantRaw ?? overrides.merchant,
-    merchantNormalized: overrides.merchantNormalized ?? normalizeMerchant(overrides.merchant),
+    merchantNormalized:
+      overrides.merchantNormalized ?? normalizeMerchant(overrides.merchant),
     description: overrides.description ?? null,
     category: overrides.category ?? null,
     currency: overrides.currency ?? "USD",
@@ -195,8 +196,7 @@ describe("parseTransactionsCsv", () => {
   });
 
   test("handles accounting-style negative amounts in parentheses", () => {
-    const csv =
-      "Date,Description,Amount\n" + "2026-04-01,NETFLIX,(15.49)\n";
+    const csv = "Date,Description,Amount\n" + "2026-04-01,NETFLIX,(15.49)\n";
     const result = parseTransactionsCsv(csv);
     expect(result.transactions).toHaveLength(1);
     expect(result.transactions[0].direction).toBe("debit");
@@ -205,8 +205,7 @@ describe("parseTransactionsCsv", () => {
 
   test("handles quoted fields with embedded commas", () => {
     const csv =
-      'Date,Description,Amount\n' +
-      '2026-04-01,"NETFLIX, INC.",-15.49\n';
+      "Date,Description,Amount\n" + '2026-04-01,"NETFLIX, INC.",-15.49\n';
     const result = parseTransactionsCsv(csv);
     expect(result.transactions[0].merchantRaw).toBe("NETFLIX, INC.");
   });

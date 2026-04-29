@@ -19,11 +19,7 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "socat",
-          "tcp-listen:9222,fork",
-          "tcp:localhost:1337"
-        ]
+        "command": ["socat", "tcp-listen:9222,fork", "tcp:localhost:1337"]
       }
     },
     {
@@ -51,9 +47,7 @@
     {
       "type": "execute",
       "parameters": {
-        "command": [
-          "update-desktop-database"
-        ]
+        "command": ["update-desktop-database"]
       }
     },
     {
@@ -109,27 +103,18 @@
     }
   ],
   "trajectory": "trajectories/48c46dc7-fe04-4505-ade7-723cba1aa6f6",
-  "related_apps": [
-    "chrome",
-    "os"
-  ],
+  "related_apps": ["chrome", "os"],
   "evaluator": {
     "postconfig": [
       {
         "type": "execute",
         "parameters": {
-          "command": [
-            "wmctrl",
-            "-lx"
-          ],
+          "command": ["wmctrl", "-lx"],
           "stdout": "wmctrl.out"
         }
       }
     ],
-    "func": [
-      "check_list",
-      "is_expected_tabs"
-    ],
+    "func": ["check_list", "is_expected_tabs"],
     "result": [
       {
         "type": "cache_file",
@@ -153,10 +138,7 @@
         "type": "rule",
         "rules": {
           "type": "url",
-          "urls": [
-            "https://github.com",
-            "https://docs.python.org/3/"
-          ]
+          "urls": ["https://github.com", "https://docs.python.org/3/"]
         }
       }
     ]

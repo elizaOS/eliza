@@ -28,10 +28,7 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "code",
-          "/home/user/Downloads/HW-8-main/"
-        ]
+        "command": ["code", "/home/user/Downloads/HW-8-main/"]
       }
     },
     {
@@ -42,9 +39,7 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "vscode"
-  ],
+  "related_apps": ["vscode"],
   "evaluator": {
     "func": "check_json_settings",
     "expected": {

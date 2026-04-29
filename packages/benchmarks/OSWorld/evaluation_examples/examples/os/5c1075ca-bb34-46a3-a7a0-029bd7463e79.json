@@ -57,9 +57,7 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "os"
-  ],
+  "related_apps": ["os"],
   "evaluator": {
     "postconfig": [
       {
@@ -90,9 +88,7 @@
     "expected": {
       "type": "rule",
       "rules": {
-        "include": [
-          "Evaluation successful."
-        ],
+        "include": ["Evaluation successful."],
         "exclude": []
       }
     }

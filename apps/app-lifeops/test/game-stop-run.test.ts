@@ -13,7 +13,7 @@
  */
 
 import { describe, expect, test, vi } from "vitest";
-
+import { stopRun as twoThousandFourStopRun } from "../../app-2004scape/src/routes.js";
 // Relative imports so no workspace-dep wiring is required. Path-check:
 // apps/app-lifeops/test/ → apps/app-<name>/src/routes.ts.
 import { stopRun as babylonStopRun } from "../../app-babylon/src/routes.js";
@@ -21,7 +21,6 @@ import { stopRun as clawvilleStopRun } from "../../app-clawville/src/routes.js";
 import { stopRun as defenseStopRun } from "../../app-defense-of-the-agents/src/routes.js";
 import { stopRun as hyperscapeStopRun } from "../../app-hyperscape/src/routes.js";
 import { stopRun as scapeStopRun } from "../../app-scape/src/routes.js";
-import { stopRun as twoThousandFourStopRun } from "../../app-2004scape/src/routes.js";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -79,9 +78,7 @@ describe("app-2004scape stopRun", () => {
       agentId: AGENT_ID,
       getService: vi.fn(() => null),
     };
-    await expect(
-      twoThousandFourStopRun({ runtime }),
-    ).resolves.toBeUndefined();
+    await expect(twoThousandFourStopRun({ runtime })).resolves.toBeUndefined();
   });
 
   test("is a no-op when service has no .stop method", async () => {
@@ -89,9 +86,7 @@ describe("app-2004scape stopRun", () => {
       agentId: AGENT_ID,
       getService: vi.fn(() => ({})),
     };
-    await expect(
-      twoThousandFourStopRun({ runtime }),
-    ).resolves.toBeUndefined();
+    await expect(twoThousandFourStopRun({ runtime })).resolves.toBeUndefined();
   });
 
   test("propagates service.stop errors to the app-manager boundary", async () => {
@@ -102,9 +97,7 @@ describe("app-2004scape stopRun", () => {
       agentId: AGENT_ID,
       getService: vi.fn(() => ({ stop: serviceStop })),
     };
-    await expect(
-      twoThousandFourStopRun({ runtime }),
-    ).rejects.toThrow("boom");
+    await expect(twoThousandFourStopRun({ runtime })).rejects.toThrow("boom");
     expect(serviceStop).toHaveBeenCalledOnce();
   });
 });

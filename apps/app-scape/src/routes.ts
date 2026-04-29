@@ -841,9 +841,7 @@ export async function refreshRunSession(
  *
  * Idempotent: if the service isn't running this is a no-op.
  */
-export async function stopRun(ctx: {
-  runtime: unknown | null;
-}): Promise<void> {
+export async function stopRun(ctx: { runtime: unknown | null }): Promise<void> {
   const service = getScapeService(ctx.runtime as IAgentRuntime | null);
   if (!service) {
     return;

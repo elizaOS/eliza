@@ -13,12 +13,11 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
-
 import {
   CAPACITOR_PLUGIN_NAMES,
   NATIVE_PLUGINS_ROOT,
 } from "../../app/scripts/capacitor-plugin-names.mjs";
+import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = resolveRepoRootFromImportMeta(import.meta.url);

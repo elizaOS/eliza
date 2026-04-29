@@ -1,9 +1,10 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
 import crypto from "node:crypto";
 import type {
-  LifeOpsScreenTimeBreakdown as ScreenTimeBreakdown,
-  LifeOpsScreenTimeBreakdownItem as ScreenTimeBreakdownItem,
-  LifeOpsScreenTimeBucket as ScreenTimeBucket,
+  BrowserBridgeCompanionStatus,
+  BrowserBridgeSettings,
+} from "@elizaos/plugin-browser-bridge";
+import type {
   LifeOpsScreenTimeDaily,
   LifeOpsScreenTimeHistoryPoint,
   LifeOpsScreenTimeHistoryResponse,
@@ -14,21 +15,20 @@ import type {
   LifeOpsScreenTimeSummary,
   LifeOpsScreenTimeTargetBucket,
   LifeOpsScreenTimeVisibleBuckets,
+  LifeOpsScreenTimeBreakdown as ScreenTimeBreakdown,
+  LifeOpsScreenTimeBreakdownItem as ScreenTimeBreakdownItem,
+  LifeOpsScreenTimeBucket as ScreenTimeBucket,
   LifeOpsSocialHabitDataSource as SocialHabitDataSource,
   LifeOpsSocialHabitSummary as SocialHabitSummary,
 } from "@elizaos/shared";
-import type {
-  BrowserBridgeCompanionStatus,
-  BrowserBridgeSettings,
-} from "@elizaos/plugin-browser-bridge";
 import { getActivityReportBetween } from "../activity-profile/activity-tracker-reporting.js";
 import { isSystemInactivityApp } from "../activity-profile/system-inactivity-apps.js";
-import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import {
   browserBridgeCompanionIsRecent,
   browserBridgePermissionsReady,
   isBrowserBridgePaused,
 } from "./browser-readiness.js";
+import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import { fail } from "./service-normalize.js";
 import {
   classifyScreenTimeTarget,
@@ -210,21 +210,17 @@ function deltaPercent(current: number, prior: number): number | null {
   return Math.round(((current - prior) / prior) * 100);
 }
 
-function bucketSeconds(
-  buckets: ScreenTimeBucket[],
-  key: string,
-): number {
+function bucketSeconds(buckets: ScreenTimeBucket[], key: string): number {
   return buckets.find((item) => item.key === key)?.totalSeconds ?? 0;
 }
 
-function serviceSeconds(
-  summary: SocialHabitSummary,
-  key: string,
-): number {
+function serviceSeconds(summary: SocialHabitSummary, key: string): number {
   return summary.services.find((item) => item.key === key)?.totalSeconds ?? 0;
 }
 
-function normalizeIdentifierFilter(identifier: string | undefined): string | null {
+function normalizeIdentifierFilter(
+  identifier: string | undefined,
+): string | null {
   const normalized = identifier?.trim();
   return normalized && normalized.length > 0 ? normalized : null;
 }
@@ -1176,7 +1172,8 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
             label: "Mac apps",
             state: "live",
             statusLabel: "Live",
-            detail: "macOS app focus events are included in screen-time totals.",
+            detail:
+              "macOS app focus events are included in screen-time totals.",
           },
           {
             id: "browser_bridge",

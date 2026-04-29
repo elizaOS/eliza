@@ -207,6 +207,71 @@ export const emailUnsubscribeAction: Action & {
     "Scan the connected Gmail inbox for promotional senders using List-Unsubscribe headers, execute RFC 8058 one-click unsubscribe or mailto fallback, and optionally create a Gmail filter to auto-trash future mail. " +
     "Use for requests like 'scan my inbox for subscriptions', 'unsubscribe me from <sender>', or 'clean up my promotional emails'. " +
     "Distinct from SUBSCRIPTIONS (paid service cancellation): this stops future email from a sender, it does not cancel a paid service account.",
+  descriptionCompressed:
+    "Gmail RFC8058 unsub scan mailto fallback optional block-filter not paid cancel",
+
+  parameters: [
+    {
+      name: "mode",
+      description:
+        "scan inbox for promotional senders, unsubscribe sender, or view history.",
+      required: false,
+      schema: {
+        type: "string" as const,
+        enum: ["scan", "unsubscribe", "history"],
+      },
+    },
+    {
+      name: "senderEmail",
+      description: "Target From address for unsubscribe mode.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "listId",
+      description: "Optional list id when multiple lists per sender.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "query",
+      description: "Optional Gmail search query for scan mode.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "maxMessages",
+      description: "Cap messages analyzed in scan mode.",
+      required: false,
+      schema: { type: "number" as const },
+    },
+    {
+      name: "blockAfter",
+      description: "Add blocking filter after successful unsubscribe.",
+      required: false,
+      schema: { type: "boolean" as const },
+    },
+    {
+      name: "trashExisting",
+      description:
+        "Move existing threads from sender to trash during unsubscribe.",
+      required: false,
+      schema: { type: "boolean" as const },
+    },
+    {
+      name: "confirmed",
+      description: "Explicit confirmation gate for unsubscribe execution.",
+      required: false,
+      schema: { type: "boolean" as const },
+    },
+    {
+      name: "limit",
+      description: "History rows to return.",
+      required: false,
+      schema: { type: "number" as const },
+    },
+  ],
+
   suppressPostActionContinuation: true,
   validate: async (runtime: IAgentRuntime, message: Memory) =>
     hasLifeOpsAccess(runtime, message),

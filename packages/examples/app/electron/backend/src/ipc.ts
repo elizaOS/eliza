@@ -1,15 +1,23 @@
-import { app, ipcMain } from "electron";
-import type { AppConfig, ChatMessage, ProviderMode } from "./types";
-import { DEFAULT_CONFIG } from "./types";
-import { getGreetingText, getHistory, resetConversation, sendMessage } from "./runtimeManager";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { app, ipcMain } from "electron";
+import {
+  getGreetingText,
+  getHistory,
+  resetConversation,
+  sendMessage,
+} from "./runtimeManager";
+import type { AppConfig, ChatMessage, ProviderMode } from "./types";
+import { DEFAULT_CONFIG } from "./types";
 
 export type ChatApi = {
   getGreeting: (config?: AppConfig) => Promise<string>;
   getHistory: (config?: AppConfig) => Promise<ChatMessage[]>;
   reset: (config?: AppConfig) => Promise<void>;
-  sendMessage: (config: AppConfig | undefined, text: string) => Promise<{
+  sendMessage: (
+    config: AppConfig | undefined,
+    text: string,
+  ) => Promise<{
     responseText: string;
     effectiveMode: ProviderMode;
   }>;
@@ -38,10 +46,12 @@ export function registerChatIpc(): void {
     await resetConversation(normalizeConfig(config), getDataDir());
   });
 
-  ipcMain.handle("chat:sendMessage", async (_evt, config: AppConfig | undefined, text: string) => {
-    const t = typeof text === "string" ? text.trim() : "";
-    if (!t) throw new Error("Missing text");
-    return await sendMessage(normalizeConfig(config), t, getDataDir());
-  });
+  ipcMain.handle(
+    "chat:sendMessage",
+    async (_evt, config: AppConfig | undefined, text: string) => {
+      const t = typeof text === "string" ? text.trim() : "";
+      if (!t) throw new Error("Missing text");
+      return await sendMessage(normalizeConfig(config), t, getDataDir());
+    },
+  );
 }
-

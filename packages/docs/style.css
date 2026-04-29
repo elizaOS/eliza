@@ -43,7 +43,7 @@
   margin-top: 0.75rem; /* Reduce from 1.5rem to 0.75rem */
 }
 
-#sidebar .lg\\:mt-8 {
+#sidebar [class~="lg:mt-8"] {
   margin-top: 1rem; /* Reduce from 2rem to 1rem on large screens */
 }
 
@@ -54,7 +54,7 @@
 }
 
 @media (min-width: 1024px) {
-  #sidebar .lg\\:mt-8 {
+  #sidebar [class~="lg:mt-8"] {
     margin-top: 1rem; /* Even more compact on large screens */
   }
 }

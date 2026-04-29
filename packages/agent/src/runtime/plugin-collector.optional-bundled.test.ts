@@ -1,7 +1,7 @@
 /**
  * Optional core plugins are listed in OPTIONAL_CORE_PLUGINS and require
  * explicit configuration to load. Built-in capabilities (trust,
- * secrets-manager, plugin-manager) have been moved to core and are no longer
+ * secrets (SECRETS service), plugin-manager) have been moved to core and are no longer
  * in this list.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

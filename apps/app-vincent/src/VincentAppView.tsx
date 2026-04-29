@@ -62,6 +62,7 @@ export function VincentAppView({ exitToApps, t }: OverlayAppContext) {
         <div className="flex items-center gap-2">
           {/* Connection status pill */}
           <span
+            data-testid="vincent-status-card"
             className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs-tight font-semibold ${
               vincentConnected
                 ? "border-ok/35 bg-ok/12 text-ok"
@@ -138,7 +139,10 @@ export function VincentAppView({ exitToApps, t }: OverlayAppContext) {
 
             {/* Right column — wallet status (top-right, sticky on desktop) */}
             {vincentConnected && (
-              <div className="lg:sticky lg:top-4">
+              <div
+                data-testid="vincent-wallet-status-area"
+                className="lg:sticky lg:top-4"
+              >
                 <WalletStatusCard
                   walletAddresses={walletAddresses}
                   walletBalances={walletBalances}

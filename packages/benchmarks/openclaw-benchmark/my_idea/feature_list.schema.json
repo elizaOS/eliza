@@ -2,17 +2,11 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Feature List Schema",
   "type": "object",
-  "required": [
-    "meta",
-    "features"
-  ],
+  "required": ["meta", "features"],
   "properties": {
     "meta": {
       "type": "object",
-      "required": [
-        "version",
-        "status"
-      ],
+      "required": ["version", "status"],
       "properties": {
         "version": {
           "type": "string",
@@ -20,12 +14,7 @@
         },
         "status": {
           "type": "string",
-          "enum": [
-            "draft",
-            "active",
-            "deprecated",
-            "archived"
-          ]
+          "enum": ["draft", "active", "deprecated", "archived"]
         },
         "project_name": {
           "type": "string"
@@ -43,12 +32,7 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": [
-          "id",
-          "title",
-          "status",
-          "priority"
-        ],
+        "required": ["id", "title", "status", "priority"],
         "properties": {
           "id": {
             "type": "string",
@@ -73,12 +57,7 @@
           },
           "priority": {
             "type": "string",
-            "enum": [
-              "low",
-              "medium",
-              "high",
-              "critical"
-            ]
+            "enum": ["low", "medium", "high", "critical"]
           },
           "category": {
             "type": "string",
@@ -93,13 +72,7 @@
           },
           "complexity": {
             "type": "string",
-            "enum": [
-              "XS",
-              "S",
-              "M",
-              "L",
-              "XL"
-            ]
+            "enum": ["XS", "S", "M", "L", "XL"]
           },
           "assigned_to": {
             "type": "string"

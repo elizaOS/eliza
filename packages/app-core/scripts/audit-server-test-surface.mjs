@@ -44,7 +44,9 @@ const SURFACES = [
   {
     id: "app-service-tests",
     include: (relPath) =>
-      /^eliza\/apps\/[^/]+\/src\/services\/.*\.test\.[cm]?[jt]sx?$/.test(relPath),
+      /^eliza\/apps\/[^/]+\/src\/services\/.*\.test\.[cm]?[jt]sx?$/.test(
+        relPath,
+      ),
     patterns: SERVER_TEST_PATTERNS,
   },
   {

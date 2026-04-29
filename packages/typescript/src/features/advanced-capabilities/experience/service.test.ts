@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Memory, UUID } from "../../../types/index.ts";
 import { ExperienceService } from "./service.ts";
 import { ExperienceType, OutcomeType } from "./types.ts";
+import { findDuplicateExperienceByLearning } from "./utils/experienceText.ts";
 
 type RuntimeOverrides = {
 	memories?: Memory[];
@@ -116,6 +117,8 @@ describe("ExperienceService", () => {
 					data: expect.objectContaining({
 						id: created.id,
 						learning: "Install workspace dependencies before starting the app.",
+						keywords: expect.arrayContaining(["dependencies", "install"]),
+						associatedEntityIds: [],
 						sourceMessageIds: ["msg-001", "msg-002"],
 						sourceRoomId: "room-001",
 						sourceTriggerMessageId: "msg-002",
@@ -183,5 +186,120 @@ describe("ExperienceService", () => {
 		await expect(service.deleteExperience(created.id)).resolves.toBe(true);
 		expect(deleteMemory).toHaveBeenCalledWith(created.id);
 		await expect(service.getExperience(created.id)).resolves.toBeNull();
+	});
+
+	it("builds graph nodes and inferred links from keywords and entities", async () => {
+		const { service } = await createServiceHarness();
+
+		await service.recordExperience({
+			context: "Wallet swap request",
+			action: "Collected route parameters",
+			result: "Swap was prepared safely",
+			learning:
+				"Collect source token, destination token, amount, and slippage before swaps.",
+			domain: "finance",
+			keywords: ["wallet", "swap", "slippage"],
+			associatedEntityIds: ["user-001" as UUID],
+			confidence: 0.9,
+			importance: 0.9,
+		});
+		await service.recordExperience({
+			context: "Wallet route review",
+			action: "Checked missing slippage",
+			result: "The agent asked for confirmation",
+			learning:
+				"Wallet swaps need explicit slippage confirmation before execution.",
+			domain: "finance",
+			keywords: ["wallet", "swap", "slippage"],
+			associatedEntityIds: ["user-001" as UUID],
+			confidence: 0.8,
+			importance: 0.8,
+		});
+
+		const graph = await service.getExperienceGraph({ limit: 10 });
+
+		expect(graph.nodes).toHaveLength(2);
+		expect(graph.nodes[0]).toMatchObject({
+			keywords: expect.arrayContaining(["wallet", "swap"]),
+			associatedEntityIds: expect.arrayContaining(["user-001"]),
+		});
+		expect(graph.links).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					type: "supports",
+					keywords: expect.arrayContaining(["wallet", "swap", "slippage"]),
+				}),
+			]),
+		);
+	});
+
+	it("consolidates duplicate experiences without destructive deletion by default", async () => {
+		const { service, deleteMemory } = await createServiceHarness();
+
+		const primary = await service.recordExperience({
+			context: "Dependency setup",
+			action: "Install workspace dependencies",
+			result: "Dev server started",
+			learning:
+				"Install workspace dependencies before starting the app server.",
+			domain: "system",
+			keywords: ["dependencies", "workspace", "server"],
+			confidence: 0.9,
+			importance: 0.9,
+		});
+		const duplicate = await service.recordExperience({
+			context: "Setup retry",
+			action: "Install dependencies",
+			result: "Startup worked",
+			learning:
+				"Install workspace dependencies before starting the app server.",
+			domain: "system",
+			keywords: ["dependencies", "startup"],
+			confidence: 0.5,
+			importance: 0.6,
+		});
+
+		const result = await service.consolidateDuplicateExperiences();
+
+		expect(result).toMatchObject({
+			inspected: 2,
+			merged: 1,
+			deleted: 0,
+		});
+		expect(deleteMemory).not.toHaveBeenCalled();
+		const updatedPrimary = await service.getExperience(primary.id);
+		const updatedDuplicate = await service.getExperience(duplicate.id);
+		expect(updatedPrimary?.mergedExperienceIds).toContain(duplicate.id);
+		expect(updatedPrimary?.keywords).toEqual(
+			expect.arrayContaining(["dependencies", "startup"]),
+		);
+		expect(updatedDuplicate?.supersedes).toBe(primary.id);
+		expect(updatedDuplicate?.confidence).toBeLessThanOrEqual(0.4);
+
+		const secondPass = await service.consolidateDuplicateExperiences();
+		expect(secondPass.merged).toBe(0);
+	});
+
+	it("finds duplicate learnings even when semantic search misses them", async () => {
+		const { service } = await createServiceHarness();
+		await service.recordExperience({
+			context: "Local development after editing environment variables.",
+			action: "manual seed",
+			result:
+				"Restart the Vite dev server after changing environment variables.",
+			learning:
+				"Restart the Vite dev server after changing environment variables so the process loads new config.",
+			domain: "coding",
+			confidence: 0.9,
+			importance: 0.8,
+		});
+		vi.spyOn(service, "findSimilarExperiences").mockResolvedValueOnce([]);
+
+		const duplicate = await findDuplicateExperienceByLearning(
+			service,
+			"Restarting the Vite dev server picks up the changed environment variable.",
+		);
+
+		expect(duplicate?.learning).toContain("Restart the Vite dev server");
 	});
 });

@@ -17,9 +17,9 @@
  *     (default: `<repo root>/.milady`)
  */
 
-import { test } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { test } from "vitest";
 
 export interface StochasticOptions {
   /** Number of runs per invocation. Default 3. */
@@ -141,7 +141,8 @@ export function stochasticTest(
       }
       const durationMs = Date.now() - startedAt;
       const failed = runs - passed;
-      const file = (ctx.task.file as { name?: string } | undefined)?.name ?? "<unknown>";
+      const file =
+        (ctx.task.file as { name?: string } | undefined)?.name ?? "<unknown>";
       appendResult({
         file,
         name,

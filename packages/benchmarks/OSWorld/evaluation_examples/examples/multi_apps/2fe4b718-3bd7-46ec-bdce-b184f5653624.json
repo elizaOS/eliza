@@ -7,9 +7,7 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "gimp"
-        ]
+        "command": ["gimp"]
       }
     },
     {
@@ -26,17 +24,12 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "vlc"
-        ]
+        "command": ["vlc"]
       }
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "vlc",
-    "gimp"
-  ],
+  "related_apps": ["vlc", "gimp"],
   "evaluator": {
     "func": "compare_images",
     "result": {

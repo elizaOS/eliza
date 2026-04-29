@@ -1,0 +1,48 @@
+---
+title: "milady start"
+description: "Start the Milady API server (embedded elizaOS runtime, server-only mode)."
+---
+
+# `milady start`
+
+Starts the HTTP + WebSocket API without an interactive REPL. Use this for local development, desktop shells, and headless deployments. `milady run` is an alias for this command.
+
+## Options
+
+| Flag | Description |
+|------|-------------|
+| `--connection-key [key]` | Set or auto-generate a connection key for remote access. When passed without a value, a random 32-hex-character key is generated. When the server binds to a non-loopback address and no token is already set, a key is auto-generated regardless of this flag. |
+
+## Behavior
+
+- Loads the configured agent runtime and plugins.
+- Binds to the server-only port (default **2138**, override with `MILADY_PORT` or `ELIZA_PORT`).
+- May print a **connection key** when binding on a non-loopback address and no token is set.
+- Shuts down cleanly on `SIGINT` or `SIGTERM`.
+
+## Common Options
+
+| Flag | Description |
+|------|-------------|
+| `--verbose` | Enable informational-level runtime logs |
+| `--debug` | Enable debug-level runtime logs |
+| `--profile <name>` | Load a named CLI profile (applies profile-specific env vars) |
+| `--no-color` | Disable ANSI color output |
+
+Run `milady start --help` for the full flag list in your build.
+
+## Examples
+
+```bash
+# Start the server with default settings
+milady start
+milady start --connection-key
+milady start --connection-key my-secret-key
+MILADY_PORT=3000 milady start
+```
+
+## Related
+
+- [Desktop local development](/apps/desktop-local-development)
+- [REST API](/api-reference)
+- [CLI environment](/cli/environment)

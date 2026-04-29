@@ -14,6 +14,10 @@ import { type ReactNode, type RefCallback, useState } from "react";
 import { type CloudCompatAgent, client, type PluginInfo } from "../../api";
 import { useApp } from "../../state";
 import {
+  ConnectorModeSelector,
+  useConnectorMode,
+} from "../connectors/ConnectorModeSelector";
+import {
   ConnectorSetupPanel,
   hasConnectorSetupPanel,
 } from "../connectors/ConnectorSetupPanel";
@@ -161,6 +165,7 @@ function ConnectorPluginCard({
   togglingPlugins,
 }: ConnectorPluginCardProps) {
   const { elizaCloudConnected, setActionNotice, setState, setTab } = useApp();
+  const connectorMode = useConnectorMode(plugin.id, { elizaCloudConnected });
   const [managedDiscordBusy, setManagedDiscordBusy] = useState(false);
   const [managedDiscordAgents, setManagedDiscordAgents] = useState<
     CloudCompatAgent[]
@@ -465,7 +470,9 @@ function ConnectorPluginCard({
         onCheckedChange={(checked) => {
           void handleTogglePlugin(plugin.id, checked);
         }}
-        aria-label={`${plugin.enabled ? t("common.off") : t("common.on")} ${plugin.name}`}
+        aria-label={`${plugin.enabled ? t("common.off") : t("common.on")} ${
+          plugin.name
+        }`}
       />
       <Button
         variant="ghost"
@@ -478,7 +485,9 @@ function ConnectorPluginCard({
           handleConnectorSectionToggle(plugin.id);
         }}
         aria-expanded={isExpanded}
-        aria-label={`${isExpanded ? collapseLabel : expandLabel} ${plugin.name}`}
+        aria-label={`${isExpanded ? collapseLabel : expandLabel} ${
+          plugin.name
+        }`}
         title={isExpanded ? collapseLabel : expandLabel}
       >
         <ChevronRight
@@ -489,8 +498,16 @@ function ConnectorPluginCard({
       </Button>
     </>
   );
-  const connectorSetupPanel = <ConnectorSetupPanel pluginId={plugin.id} />;
-  const supportsConnectorSetupPanel = hasConnectorSetupPanel(plugin.id);
+  const setupPanelPluginId = connectorMode.setupPluginId ?? plugin.id;
+  const connectorSetupPanel = setupPanelPluginId ? (
+    <ConnectorSetupPanel pluginId={setupPanelPluginId} />
+  ) : null;
+  const supportsConnectorSetupPanel =
+    Boolean(setupPanelPluginId) && hasConnectorSetupPanel(setupPanelPluginId);
+  const showPluginConfig =
+    hasParams &&
+    setupPanelPluginId === plugin.id &&
+    !(plugin.id === "discord" && connectorMode.selectedMode === "managed");
 
   return (
     <div key={plugin.id} data-testid={`connector-section-${plugin.id}`}>
@@ -511,87 +528,101 @@ function ConnectorPluginCard({
         headingClassName="w-full text-inherit"
         actions={connectorHeaderActions}
       >
-        {plugin.id === "discord" && (
-          <PagePanel.Notice
-            tone="default"
-            className="mb-4"
-            actions={
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 rounded-[var(--radius-lg)] px-4 text-xs-tight font-semibold"
-                onClick={() => {
-                  void handleOpenManagedDiscord();
-                }}
-                disabled={managedDiscordBusy}
-              >
-                {managedDiscordBusy
-                  ? "..."
-                  : elizaCloudConnected
-                    ? t("pluginsview.UseManagedDiscord", {
-                        defaultValue: "Use managed Discord",
-                      })
-                    : t("pluginsview.OpenElizaCloud", {
-                        defaultValue: "Open Eliza Cloud",
-                      })}
-              </Button>
-            }
-          >
-            {elizaCloudConnected
-              ? t("pluginsview.ManagedDiscordGatewayHintConnected", {
-                  defaultValue:
-                    "Prefer OAuth? Managed Discord uses a shared gateway and only works for servers owned by the linking Discord account.",
-                })
-              : t("pluginsview.ManagedDiscordGatewayHint", {
-                  defaultValue:
-                    "Prefer OAuth? Connect Eliza Cloud to use the shared Discord gateway instead of a local bot token.",
-                })}
-            {managedDiscordPickerOpen && managedDiscordAgents.length > 1 ? (
-              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-                <Select
-                  value={managedDiscordSelectedAgentId ?? "__none__"}
-                  onValueChange={(next: string) =>
-                    setManagedDiscordSelectedAgentId(
-                      next === "__none__" ? null : next,
-                    )
-                  }
-                >
-                  <SelectTrigger className="h-9 min-w-[14rem] rounded-[var(--radius-lg)] border-border/40 bg-bg/80 text-sm">
-                    <SelectValue
-                      placeholder={t("pluginsview.ManagedDiscordSelectAgent", {
-                        defaultValue: "Select a cloud agent",
-                      })}
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {managedDiscordAgents.map((agent) => (
-                      <SelectItem key={agent.agent_id} value={agent.agent_id}>
-                        {agent.agent_name || agent.agent_id}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+        {connectorMode.modes.length > 1 && (
+          <ConnectorModeSelector
+            connectorId={plugin.id}
+            selectedMode={connectorMode.selectedMode}
+            onModeChange={connectorMode.setSelectedMode}
+            elizaCloudConnected={elizaCloudConnected}
+          />
+        )}
+
+        {plugin.id === "discord" &&
+          (!elizaCloudConnected ||
+            connectorMode.selectedMode === "managed") && (
+            <PagePanel.Notice
+              tone="default"
+              className="mb-4"
+              actions={
                 <Button
-                  variant="default"
+                  variant="outline"
                   size="sm"
-                  className="h-9 rounded-[var(--radius-lg)] px-4 text-xs-tight font-semibold"
+                  className="h-8 rounded-[var(--radius-lg)] px-4 text-xs-tight font-semibold"
                   onClick={() => {
-                    void handleConfirmManagedDiscordAgent();
+                    void handleOpenManagedDiscord();
                   }}
-                  disabled={
-                    managedDiscordBusy || !managedDiscordSelectedAgentId
-                  }
+                  disabled={managedDiscordBusy}
                 >
                   {managedDiscordBusy
                     ? "..."
-                    : t("common.continue", {
-                        defaultValue: "Continue",
-                      })}
+                    : elizaCloudConnected
+                      ? t("pluginsview.UseManagedDiscord", {
+                          defaultValue: "Use managed Discord",
+                        })
+                      : t("pluginsview.OpenElizaCloud", {
+                          defaultValue: "Open Eliza Cloud",
+                        })}
                 </Button>
-              </div>
-            ) : null}
-          </PagePanel.Notice>
-        )}
+              }
+            >
+              {elizaCloudConnected
+                ? t("pluginsview.ManagedDiscordGatewayHintConnected", {
+                    defaultValue:
+                      "Prefer OAuth? Managed Discord uses a shared gateway and only works for servers owned by the linking Discord account.",
+                  })
+                : t("pluginsview.ManagedDiscordGatewayHint", {
+                    defaultValue:
+                      "Prefer OAuth? Connect Eliza Cloud to use the shared Discord gateway instead of a local bot token.",
+                  })}
+              {managedDiscordPickerOpen && managedDiscordAgents.length > 1 ? (
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <Select
+                    value={managedDiscordSelectedAgentId ?? "__none__"}
+                    onValueChange={(next: string) =>
+                      setManagedDiscordSelectedAgentId(
+                        next === "__none__" ? null : next,
+                      )
+                    }
+                  >
+                    <SelectTrigger className="h-9 min-w-[14rem] rounded-[var(--radius-lg)] border-border/40 bg-bg/80 text-sm">
+                      <SelectValue
+                        placeholder={t(
+                          "pluginsview.ManagedDiscordSelectAgent",
+                          {
+                            defaultValue: "Select a cloud agent",
+                          },
+                        )}
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {managedDiscordAgents.map((agent) => (
+                        <SelectItem key={agent.agent_id} value={agent.agent_id}>
+                          {agent.agent_name || agent.agent_id}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="h-9 rounded-[var(--radius-lg)] px-4 text-xs-tight font-semibold"
+                    onClick={() => {
+                      void handleConfirmManagedDiscordAgent();
+                    }}
+                    disabled={
+                      managedDiscordBusy || !managedDiscordSelectedAgentId
+                    }
+                  >
+                    {managedDiscordBusy
+                      ? "..."
+                      : t("common.continue", {
+                          defaultValue: "Continue",
+                        })}
+                  </Button>
+                </div>
+              ) : null}
+            </PagePanel.Notice>
+          )}
 
         {pluginLinks.length > 0 && (
           <div className="mb-4 flex flex-wrap gap-2">
@@ -638,7 +669,7 @@ function ConnectorPluginCard({
           </PagePanel.Notice>
         )}
 
-        {hasParams ? (
+        {showPluginConfig ? (
           <div className="space-y-4">
             {plugin.id === "telegram" ? (
               <TelegramPluginConfig

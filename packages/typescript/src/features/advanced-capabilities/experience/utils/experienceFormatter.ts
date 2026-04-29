@@ -179,6 +179,10 @@ export function formatExperienceForRAG(experience: Experience): string {
 }
 
 export function extractKeywords(experience: Experience): string[] {
+	if (experience.keywords.length > 0) {
+		return [...experience.keywords];
+	}
+
 	const keywords = new Set<string>();
 
 	// Add tags

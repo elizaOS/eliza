@@ -45,7 +45,7 @@ async function createBenchmarkRuntimeFactory(): Promise<{
     const { createMockedTestRuntime, prepareMockedTestEnvironment } =
       await import(
         // @ts-expect-error — path is outside the package, resolved relative to repo root
-        "../../../../../test/mocks/helpers/mock-runtime.ts"
+        "../../../../../eliza/test/mocks/helpers/mock-runtime.ts"
       );
     const environment = await prepareMockedTestEnvironment();
     const { appLifeOpsPlugin } = await import(

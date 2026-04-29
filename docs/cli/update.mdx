@@ -1,0 +1,75 @@
+---
+title: "milady update"
+description: "Check for and install updates, or switch release channels."
+---
+
+# `milady update`
+
+Checks for updates and optionally installs them. Supports three release channels: `stable`, `beta`, and `nightly`.
+
+## Options
+
+| Flag | Description |
+|------|-------------|
+| `-c, --channel <channel>` | Switch release channel before checking (stable, beta, nightly) |
+| `--check` | Check for updates without installing |
+| `--force` | Force update check (bypass interval cache) |
+
+## Subcommands
+
+### `milady update status`
+
+Show the current installed version, release channel, install method, and available versions across all channels.
+
+```bash
+milady update status
+```
+
+### `milady update channel [channel]`
+
+View the current release channel, or switch to a different one. Without an argument, displays all available channels and the active one.
+
+```bash
+milady update channel
+milady update channel beta
+milady update channel stable
+```
+
+## Examples
+
+```bash
+# Check and install updates on the current channel
+milady update
+
+# Check only, don't install
+milady update --check
+
+# Switch to beta and update
+milady update --channel beta
+
+# Force a fresh check (bypass cache)
+milady update --force
+```
+
+## Update channels
+
+Configure which release channel to follow in `~/.milady/milady.json`:
+
+```json5
+{
+  update: {
+    channel: "stable",          // "stable" | "beta" | "nightly"
+    checkOnStart: true,         // check for updates when milady starts
+    checkIntervalSeconds: 14400, // 4 hours between checks
+  },
+}
+```
+
+## Desktop app
+
+The desktop app checks for updates automatically on launch. Updates are downloaded in the background and applied on next restart.
+
+## Related
+
+- [Self-updates](/self-updates) — Update mechanism details
+- [Build and release](/build-and-release) — Release process documentation

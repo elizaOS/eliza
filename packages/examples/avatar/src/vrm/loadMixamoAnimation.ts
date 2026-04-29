@@ -1,6 +1,5 @@
+import type { VRM, VRMHumanBoneName } from "@pixiv/three-vrm";
 import * as THREE from "three";
-import type { VRM } from "@pixiv/three-vrm";
-import type { VRMHumanBoneName } from "@pixiv/three-vrm";
 import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
 import { mixamoVRMRigMap } from "./mixamoVRMRigMap";
 
@@ -27,12 +26,15 @@ function normalizeMixamoRigName(name: string): string {
   return base;
 }
 
-function findObjectByNameVariants(asset: THREE.Object3D, rawName: string): THREE.Object3D | null {
+function findObjectByNameVariants(
+  asset: THREE.Object3D,
+  rawName: string,
+): THREE.Object3D | null {
   const candidates = new Set<string>([
     rawName,
     normalizeMixamoRigName(rawName),
     // If we normalized to "mixamorigHips", also try "mixamorig:Hips"
-    rawName.includes(":") ? rawName.split(":")[1] ?? rawName : rawName,
+    rawName.includes(":") ? (rawName.split(":")[1] ?? rawName) : rawName,
   ]);
 
   // Fast path
@@ -81,11 +83,15 @@ function getHipsHeightFromVrm(vrm: VRM): number {
 /**
  * Load Mixamo-style FBX animation, retarget for three-vrm, and return a VRM-compatible clip.
  */
-export async function loadMixamoAnimation(url: string, vrm: VRM): Promise<THREE.AnimationClip> {
+export async function loadMixamoAnimation(
+  url: string,
+  vrm: VRM,
+): Promise<THREE.AnimationClip> {
   const loader = new FBXLoader();
   const asset = await loader.loadAsync(url);
   const sourceClip =
-    THREE.AnimationClip.findByName(asset.animations, "mixamo.com") ?? asset.animations[0];
+    THREE.AnimationClip.findByName(asset.animations, "mixamo.com") ??
+    asset.animations[0];
   if (!sourceClip) {
     throw new Error("FBX contains no animation clips");
   }
@@ -94,7 +100,9 @@ export async function loadMixamoAnimation(url: string, vrm: VRM): Promise<THREE.
   const vrmHipsHeight = getHipsHeightFromVrm(vrm);
   const hipsPositionScale = vrmHipsHeight / motionHipsHeight;
 
-  const tracks: Array<THREE.QuaternionKeyframeTrack | THREE.VectorKeyframeTrack> = [];
+  const tracks: Array<
+    THREE.QuaternionKeyframeTrack | THREE.VectorKeyframeTrack
+  > = [];
   const restRotationInverse = new THREE.Quaternion();
   const parentRestWorldRotation = new THREE.Quaternion();
   const q = new THREE.Quaternion();
@@ -111,12 +119,17 @@ export async function loadMixamoAnimation(url: string, vrm: VRM): Promise<THREE.
     const vrmBoneName = mixamoVRMRigMap[mixamoRigName];
     if (!vrmBoneName) continue;
 
-    const vrmNode = vrm.humanoid?.getNormalizedBoneNode(vrmBoneName as VRMHumanBoneName);
+    const vrmNode = vrm.humanoid?.getNormalizedBoneNode(
+      vrmBoneName as VRMHumanBoneName,
+    );
     if (!vrmNode) continue;
 
     const vrmNodeName = vrmNode.name;
     if (!rigNodeCache.has(mixamoRigName)) {
-      rigNodeCache.set(mixamoRigName, findObjectByNameVariants(asset, rawRigName));
+      rigNodeCache.set(
+        mixamoRigName,
+        findObjectByNameVariants(asset, rawRigName),
+      );
     }
     const mixamoRigNode = rigNodeCache.get(mixamoRigName);
     if (!mixamoRigNode || !mixamoRigNode.parent) continue;
@@ -147,8 +160,13 @@ export async function loadMixamoAnimation(url: string, vrm: VRM): Promise<THREE.
         const signFixed = isVrm0(vrm) && i % 3 !== 1 ? -v : v;
         return signFixed * hipsPositionScale;
       });
-      tracks.push(new THREE.VectorKeyframeTrack(`${vrmNodeName}.${propertyName}`, track.times, values));
-      continue;
+      tracks.push(
+        new THREE.VectorKeyframeTrack(
+          `${vrmNodeName}.${propertyName}`,
+          track.times,
+          values,
+        ),
+      );
     }
   }
 
@@ -163,4 +181,3 @@ export async function loadMixamoAnimation(url: string, vrm: VRM): Promise<THREE.
 
   return new THREE.AnimationClip("idle", sourceClip.duration, tracks);
 }
-

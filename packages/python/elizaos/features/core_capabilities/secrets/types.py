@@ -1,6 +1,6 @@
 """Secrets manager type definitions.
 
-Ported from plugin-secrets-manager TypeScript types.  Defines data structures
+Ported from ``@elizaos/core`` secrets TypeScript types.  Defines data structures
 for multi-level secret management with encryption, access control, and change
 notification support.
 """
