@@ -99,10 +99,28 @@ interface PluginNodeDefinition {
   credentials?: Array<{ name: string; required?: boolean }>;
 }
 
+/**
+ * Originating-conversation routing context. Hosts pass this when the workflow
+ * is being generated from inside a platform conversation (e.g. a Discord DM),
+ * so the LLM can target "this channel" / "back to me" without the user
+ * naming an ID.
+ *
+ * Mirrors the shape introduced upstream in `@elizaos/plugin-n8n-workflow` —
+ * the host duplicates the type so it doesn't need to import from the plugin.
+ */
+export interface TriggerContext {
+  source?: string;
+  discord?: { channelId?: string; guildId?: string; threadId?: string };
+  telegram?: { chatId?: string | number; threadId?: string | number };
+  slack?: { channelId?: string; teamId?: string };
+  resolvedNames?: { channel?: string; server?: string };
+}
+
 interface RuntimeContextProviderInput {
   userId: string;
   relevantNodes: PluginNodeDefinition[];
   relevantCredTypes: string[];
+  triggerContext?: TriggerContext;
 }
 
 /**
@@ -212,6 +230,40 @@ export interface MiladyN8nRuntimeContextProviderHandle {
 
 /** Re-exported for tests + runtime helpers. */
 export { SERVICE_TYPE as N8N_RUNTIME_CONTEXT_PROVIDER_SERVICE_TYPE };
+
+/**
+ * Render a trigger-source fact line the LLM can read as part of the
+ * `## Runtime Facts` block. Returns `undefined` when the trigger context
+ * is empty / has no actionable platform routing info.
+ */
+function formatTriggerContextFact(
+  ctx: TriggerContext | undefined,
+): string | undefined {
+  if (!ctx) return undefined;
+  const channelName = ctx.resolvedNames?.channel;
+  const serverName = ctx.resolvedNames?.server;
+
+  if (ctx.discord?.channelId) {
+    const channelLabel = channelName ? `#${channelName}` : "the channel";
+    const serverPart = ctx.discord.guildId
+      ? serverName
+        ? ` within "${serverName}" (id ${ctx.discord.guildId})`
+        : ` within guild id ${ctx.discord.guildId}`
+      : "";
+    return `This workflow was prompted from a Discord conversation in ${channelLabel} (id ${ctx.discord.channelId})${serverPart}. When the user references "this channel" or "back to here", target that channel ID.`;
+  }
+  if (ctx.telegram?.chatId !== undefined) {
+    return `This workflow was prompted from a Telegram chat (id ${ctx.telegram.chatId}). When the user references "this chat" or "back to here", target that chat ID.`;
+  }
+  if (ctx.slack?.channelId) {
+    const teamPart = ctx.slack.teamId ? ` in team ${ctx.slack.teamId}` : "";
+    return `This workflow was prompted from a Slack channel (id ${ctx.slack.channelId})${teamPart}. When the user references "this channel" or "back to here", target that channel ID.`;
+  }
+  if (ctx.source) {
+    return `This workflow was prompted from a ${ctx.source} conversation.`;
+  }
+  return undefined;
+}
 
 export function startMiladyN8nRuntimeContextProvider(
   runtime: AgentRuntime,
@@ -391,6 +443,14 @@ export function startMiladyN8nRuntimeContextProvider(
       if (email) {
         facts.push(`Connected Gmail account: ${email}.`);
       }
+    }
+
+    // Originating-conversation routing fact. Surfaced regardless of which
+    // nodes are in scope — the user might say "post the result back here"
+    // and the relevant node search has no way to anchor that intent.
+    const triggerFact = formatTriggerContextFact(input.triggerContext);
+    if (triggerFact) {
+      facts.push(triggerFact);
     }
 
     return { supportedCredentials, facts };

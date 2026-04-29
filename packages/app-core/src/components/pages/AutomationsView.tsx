@@ -4596,6 +4596,7 @@ function AutomationsLayout() {
           prompt,
           ...(title?.trim() ? { name: title.trim() } : {}),
           ...(workflowId ? { workflowId } : {}),
+          ...(bridgeConversationId ? { bridgeConversationId } : {}),
         });
         if (isMissingCredentialsResponse(result)) {
           setMissingCredentials(result.missingCredentials);
