@@ -114,6 +114,132 @@ function buildWindowBounds(
   return { sinceMs, untilMs };
 }
 
+function startOfLocalDay(date: Date): Date {
+  const start = new Date(date);
+  start.setHours(0, 0, 0, 0);
+  return start;
+}
+
+function addDays(date: Date, days: number): Date {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function screenTimeRangeLabel(range: LifeOpsScreenTimeRangeKey): string {
+  switch (range) {
+    case "today":
+      return "Today";
+    case "this-week":
+      return "This Week";
+    case "7d":
+      return "Last 7d";
+    case "30d":
+      return "Last 30d";
+  }
+}
+
+function computeScreenTimeRange(
+  range: LifeOpsScreenTimeRangeKey,
+  now = new Date(),
+): { since: string; until: string } {
+  const until = now.toISOString();
+  if (range === "today") {
+    return { since: startOfLocalDay(now).toISOString(), until };
+  }
+  if (range === "this-week") {
+    const startToday = startOfLocalDay(now);
+    const dayOfWeek = startToday.getDay();
+    return { since: addDays(startToday, -dayOfWeek).toISOString(), until };
+  }
+  if (range === "7d") {
+    return { since: addDays(startOfLocalDay(now), -6).toISOString(), until };
+  }
+  return { since: addDays(startOfLocalDay(now), -29).toISOString(), until };
+}
+
+function computePriorScreenTimeRange(
+  range: LifeOpsScreenTimeRangeKey,
+  current: { since: string; until: string },
+): { since: string; until: string } | null {
+  if (range === "today") {
+    return null;
+  }
+  const sinceMs = Date.parse(current.since);
+  const untilMs = Date.parse(current.until);
+  const spanMs = untilMs - sinceMs;
+  return {
+    since: new Date(sinceMs - spanMs).toISOString(),
+    until: current.since,
+  };
+}
+
+function enumerateHistoryDays(period: {
+  since: string;
+  until: string;
+}): Array<{ date: string; since: string; until: string; label: string }> {
+  const days: Array<{
+    date: string;
+    since: string;
+    until: string;
+    label: string;
+  }> = [];
+  const endMs = Date.parse(period.until);
+  let cursor = startOfLocalDay(new Date(Date.parse(period.since)));
+  while (cursor.getTime() <= endMs) {
+    const dayStart = cursor;
+    const dayEnd = addDays(dayStart, 1);
+    days.push({
+      date: dayStart.toISOString().slice(0, 10),
+      since: dayStart.toISOString(),
+      until: new Date(Math.min(dayEnd.getTime(), endMs)).toISOString(),
+      label: new Intl.DateTimeFormat(undefined, {
+        month: "numeric",
+        day: "numeric",
+      }).format(dayStart),
+    });
+    cursor = dayEnd;
+  }
+  return days;
+}
+
+function deltaPercent(current: number, prior: number): number | null {
+  if (prior <= 0) {
+    return current > 0 ? null : 0;
+  }
+  return Math.round(((current - prior) / prior) * 100);
+}
+
+function bucketSeconds(
+  buckets: ScreenTimeBucket[],
+  key: string,
+): number {
+  return buckets.find((item) => item.key === key)?.totalSeconds ?? 0;
+}
+
+function serviceSeconds(
+  summary: SocialHabitSummary,
+  key: string,
+): number {
+  return summary.services.find((item) => item.key === key)?.totalSeconds ?? 0;
+}
+
+function normalizeIdentifierFilter(identifier: string | undefined): string | null {
+  const normalized = identifier?.trim();
+  return normalized && normalized.length > 0 ? normalized : null;
+}
+
+function filterRowsByIdentifier(
+  rows: ScreenTimeAggregateRow[],
+  identifier: string | undefined,
+): ScreenTimeAggregateRow[] {
+  const normalized = normalizeIdentifierFilter(identifier);
+  if (!normalized) {
+    return rows;
+  }
+  return rows.filter((row) => row.identifier === normalized);
+}
+
 function clipSessionDurationSeconds(
   session: LifeOpsScreenTimeSession,
   windowStartMs: number,

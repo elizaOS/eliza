@@ -587,7 +587,7 @@ function HistoryTab({
         </div>
       ) : null}
 
-      {sortedEpisodes.length > 0 ? (
+      {data && sortedEpisodes.length > 0 ? (
         <>
           <HistorySummaryStrip summary={data.summary} />
           <HistoryCycleMap episodes={sortedEpisodes} />
