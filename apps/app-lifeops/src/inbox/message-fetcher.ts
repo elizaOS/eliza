@@ -292,7 +292,8 @@ export async function fetchXDmMessages(
         ? metadata.participantId.trim()
         : dm.senderId;
     const isGroup = participantIds.length > 2;
-    const xParticipantCount = participantIds.length || (isGroup ? undefined : 2);
+    const xParticipantCount =
+      participantIds.length || (isGroup ? undefined : 2);
     results.push({
       id: dm.id,
       source: "x_dm",
@@ -455,7 +456,9 @@ function normalizeRoomType(value: string): string {
     .replace(/[\s-]+/g, "_");
 }
 
-function classifyRoomTypeValue(value: string | null): ChatClassification | null {
+function classifyRoomTypeValue(
+  value: string | null,
+): ChatClassification | null {
   if (!value) return null;
   const normalized = normalizeRoomType(value);
   if (DIRECT_ROOM_TYPES.has(normalized)) return "dm";

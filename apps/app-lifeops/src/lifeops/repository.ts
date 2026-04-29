@@ -160,9 +160,11 @@ export interface LifeOpsScheduleInsightRecord extends LifeOpsScheduleInsight {
   updatedAt: string;
 }
 
-export interface LifeOpsScheduleObservationRecord extends LifeOpsScheduleObservation {}
+export interface LifeOpsScheduleObservationRecord
+  extends LifeOpsScheduleObservation {}
 
-export interface LifeOpsScheduleMergedStateRecord extends LifeOpsScheduleMergedState {}
+export interface LifeOpsScheduleMergedStateRecord
+  extends LifeOpsScheduleMergedState {}
 
 export type LifeOpsPersistedSleepEpisodeSource =
   | LifeOpsSleepCycleEvidence["source"]

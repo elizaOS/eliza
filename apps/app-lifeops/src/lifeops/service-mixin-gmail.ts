@@ -1,5 +1,6 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
 
+import { ModelType } from "@elizaos/core";
 import type {
   CreateLifeOpsGmailBatchReplyDraftsRequest,
   CreateLifeOpsGmailReplyDraftRequest,
@@ -32,7 +33,6 @@ import type {
   SendLifeOpsGmailReplyRequest,
   UpdateLifeOpsGmailSpamReviewItemRequest,
 } from "../contracts/index.js";
-import { ModelType } from "@elizaos/core";
 import { extractBill } from "./bill-extraction.js";
 import {
   classifyEmail,
