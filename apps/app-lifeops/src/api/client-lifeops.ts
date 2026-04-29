@@ -1379,6 +1379,9 @@ ElizaClient.prototype.getLifeOpsCalendarFeed = async function (
   if (options.side) {
     params.set("side", options.side);
   }
+  if (options.grantId) {
+    params.set("grantId", options.grantId);
+  }
   if (options.calendarId) {
     params.set("calendarId", options.calendarId);
   }

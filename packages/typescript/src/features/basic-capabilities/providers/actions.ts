@@ -28,6 +28,63 @@ const RELATIONSHIP_FOLLOW_UP_ACTIONS = new Set([
 	"IGNORE",
 	"NONE",
 ]);
+const GENERAL_CONTEXT = "general";
+const PAGE_CONTEXT = "page";
+
+type GroupedAction = Action & {
+	actionGroup?: {
+		contexts?: string[];
+	};
+};
+
+function isPageScopedContext(context: unknown): boolean {
+	if (typeof context !== "string") return false;
+	const normalized = context.toLowerCase();
+	return normalized === PAGE_CONTEXT || normalized.startsWith("page-");
+}
+
+function normalizeContextList(contexts: readonly string[] | undefined): string[] {
+	return [...new Set((contexts ?? []).map((context) => context.toLowerCase()))];
+}
+
+function getActionGroupContexts(action: Action): string[] {
+	const contexts = (action as GroupedAction).actionGroup?.contexts;
+	return normalizeContextList(contexts).filter(
+		(context) => context !== GENERAL_CONTEXT && !isPageScopedContext(context),
+	);
+}
+
+function isActionGroup(action: Action): boolean {
+	return getActionGroupContexts(action).length > 0;
+}
+
+function collapseGroupedActionsForMainChat(
+	actions: Action[],
+	activeContexts: string[],
+): Action[] {
+	if (activeContexts.some(isPageScopedContext)) {
+		return actions.filter((action) => !isActionGroup(action));
+	}
+
+	const groupedContexts = new Set<string>();
+	for (const action of actions) {
+		for (const context of getActionGroupContexts(action)) {
+			groupedContexts.add(context);
+		}
+	}
+	if (groupedContexts.size === 0) {
+		return actions;
+	}
+
+	return actions.filter((action) => {
+		if (isActionGroup(action)) {
+			return true;
+		}
+		return !normalizeContextList(resolveActionContexts(action)).some((context) =>
+			groupedContexts.has(context),
+		);
+	});
+}
 
 /**
  * A provider object that fetches possible response actions based on the provided runtime, message, and state.
@@ -92,19 +149,22 @@ export const actionsProvider: Provider = {
 		const hasRelationshipAction = availableActions.some(
 			(action) => action.name === "OWNER_RELATIONSHIP",
 		);
-		const actionsData = availableActions.filter((action) => {
-			if (nonActionableChatter && !GENERIC_CHAT_ACTIONS.has(action.name)) {
-				return false;
-			}
-			if (
-				relationshipFollowUpReminder &&
-				hasRelationshipAction &&
-				!RELATIONSHIP_FOLLOW_UP_ACTIONS.has(action.name)
-			) {
-				return false;
-			}
-			return true;
-		});
+		const actionsData = collapseGroupedActionsForMainChat(
+			availableActions.filter((action) => {
+				if (nonActionableChatter && !GENERIC_CHAT_ACTIONS.has(action.name)) {
+					return false;
+				}
+				if (
+					relationshipFollowUpReminder &&
+					hasRelationshipAction &&
+					!RELATIONSHIP_FOLLOW_UP_ACTIONS.has(action.name)
+				) {
+					return false;
+				}
+				return true;
+			}),
+			activeContexts,
+		);
 		const actionSeed = buildDeterministicSeed(
 			runtime.agentId,
 			message.roomId,

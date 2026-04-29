@@ -13,8 +13,7 @@ import type { InboundMessage } from "./types.js";
 
 /**
  * Discord public channels are typically larger than DMs / threads. We use this
- * threshold both to treat sufficiently-large groups as broadcast channels and
- * to drive the v1 small-group filter in the Messages section.
+ * threshold to treat sufficiently-large groups as broadcast channels.
  */
 const PUBLIC_CHANNEL_PARTICIPANT_THRESHOLD = 15;
 
@@ -126,8 +125,8 @@ export async function fetchChatMessages(
     messagesByRoom.set(m.roomId, arr);
   }
 
-  // Fetch participant counts per room exactly once. Used to classify groups
-  // vs public channels and to filter out >15-person rooms in the inbox.
+  // Fetch participant counts per room exactly once. Used to classify DMs,
+  // group DMs, and public channels without letting unknown rooms default to DM.
   const participantCountByRoom = new Map<string, number>();
   await Promise.all(
     sourceRooms.map(async (room) => {

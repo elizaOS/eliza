@@ -342,6 +342,7 @@ export function EventEditorDrawer({
       setSaving(true);
       try {
         if (isCreate) {
+          const attendees = attendeesToContract(form.attendees);
           const request: CreateLifeOpsCalendarEventRequest = {
             side: form.side,
             grantId: form.grantId || undefined,
@@ -352,10 +353,7 @@ export function EventEditorDrawer({
             startAt: startIso,
             endAt: endIso,
             timeZone: TIME_ZONE,
-            attendees:
-              attendeesToContract(form.attendees).length > 0
-                ? attendeesToContract(form.attendees)
-                : undefined,
+            attendees: attendees.length > 0 ? attendees : undefined,
           };
           const result = await client.createLifeOpsCalendarEvent(request);
           if (!result.event) {
@@ -370,7 +368,14 @@ export function EventEditorDrawer({
           );
           onCreated?.(result.event);
           if (options.keepOpen) {
-            setForm(blankFormState({ ...createDefaults, side: form.side }));
+            setForm(
+              blankFormState({
+                ...createDefaults,
+                side: form.side,
+                grantId: form.grantId,
+                calendarId: form.calendarId,
+              }),
+            );
           } else {
             onClose();
           }
@@ -594,48 +599,6 @@ export function EventEditorDrawer({
             </div>
 
             <div className="space-y-1.5">
-              <label
-                htmlFor="event-editor-recurrence"
-                className="block text-xs font-medium text-muted"
-              >
-                {t("eventEditor.recurrence", { defaultValue: "Repeat" })}
-              </label>
-              <Select
-                value={form.recurrencePreset}
-                onValueChange={(value) =>
-                  updateForm("recurrencePreset", value as RecurrencePresetValue)
-                }
-              >
-                <SelectTrigger
-                  id="event-editor-recurrence"
-                  aria-label={t("eventEditor.recurrenceAria", {
-                    defaultValue: "Recurrence",
-                  })}
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {RECURRENCE_PRESETS.map((preset) => (
-                    <SelectItem key={preset} value={preset}>
-                      {recurrencePresetLabel(preset, startDate)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {form.recurrencePreset === "custom" ? (
-                <Input
-                  className="mt-2"
-                  value={form.customRrule}
-                  onChange={(e) => updateForm("customRrule", e.target.value)}
-                  placeholder="FREQ=WEEKLY;BYDAY=MO,WE,FR"
-                  aria-label={t("eventEditor.customRruleAria", {
-                    defaultValue: "Custom RRULE",
-                  })}
-                />
-              ) : null}
-            </div>
-
-            <div className="space-y-1.5">
               <span className="block text-xs font-medium text-muted">
                 {t("eventEditor.attendees", { defaultValue: "Attendees" })}
               </span>
@@ -670,13 +633,14 @@ export function EventEditorDrawer({
                 value={calendarSelectValue}
                 onValueChange={(value) => {
                   const match = calendarOptions.find(
-                    (calendar) => calendar.calendarId === value,
+                    (calendar) => calendarOptionValue(calendar) === value,
                   );
+                  if (!match) return;
                   setForm((prev) => ({
                     ...prev,
-                    calendarId: value,
-                    grantId: match?.grantId ?? prev.grantId,
-                    side: match?.side ?? prev.side,
+                    calendarId: match.calendarId,
+                    grantId: match.grantId,
+                    side: match.side,
                   }));
                 }}
               >
@@ -701,8 +665,8 @@ export function EventEditorDrawer({
                 <SelectContent>
                   {calendarOptions.map((calendar) => (
                     <SelectItem
-                      key={`${calendar.grantId}:${calendar.calendarId}`}
-                      value={calendar.calendarId}
+                      key={`${calendar.side}:${calendar.grantId}:${calendar.calendarId}`}
+                      value={calendarOptionValue(calendar)}
                     >
                       {calendar.summary}
                       {calendar.accountEmail
@@ -714,109 +678,6 @@ export function EventEditorDrawer({
               </Select>
               {calendarsError ? (
                 <div className="text-[10px] text-danger">{calendarsError}</div>
-              ) : null}
-            </div>
-
-            <div className="space-y-1.5">
-              <span className="block text-xs font-medium text-muted">
-                {t("eventEditor.reminders", { defaultValue: "Reminders" })}
-              </span>
-              <div className="flex flex-wrap gap-1.5">
-                {REMINDER_PRESETS.map((preset) => {
-                  const active = form.reminderMinutes.includes(preset.minutes);
-                  return (
-                    <button
-                      key={preset.minutes}
-                      type="button"
-                      onClick={() => toggleReminderPreset(preset.minutes)}
-                      aria-pressed={active}
-                      className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
-                        active
-                          ? "border-accent bg-accent/15 text-accent"
-                          : "border-border/30 text-muted hover:border-border/60 hover:text-txt"
-                      }`}
-                    >
-                      {preset.label}
-                    </button>
-                  );
-                })}
-                <button
-                  type="button"
-                  onClick={() => setShowCustomReminder((prev) => !prev)}
-                  aria-pressed={showCustomReminder}
-                  className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
-                    showCustomReminder
-                      ? "border-accent bg-accent/15 text-accent"
-                      : "border-border/30 text-muted hover:border-border/60 hover:text-txt"
-                  }`}
-                >
-                  {t("eventEditor.reminderCustom", { defaultValue: "Custom" })}
-                </button>
-              </div>
-              {form.reminderMinutes.some(
-                (minutes) =>
-                  !REMINDER_PRESETS.some(
-                    (preset) => preset.minutes === minutes,
-                  ),
-              ) ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {form.reminderMinutes
-                    .filter(
-                      (minutes) =>
-                        !REMINDER_PRESETS.some(
-                          (preset) => preset.minutes === minutes,
-                        ),
-                    )
-                    .map((minutes) => (
-                      <span
-                        key={minutes}
-                        className="inline-flex items-center gap-1 rounded-full border border-accent/40 bg-accent/10 px-2 py-0.5 text-[11px] font-medium text-accent"
-                      >
-                        {minutes}m
-                        <button
-                          type="button"
-                          aria-label={t("eventEditor.reminderRemove", {
-                            defaultValue: "Remove reminder",
-                          })}
-                          onClick={() => toggleReminderPreset(minutes)}
-                          className="rounded-full p-0.5 hover:bg-accent/20"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                    ))}
-                </div>
-              ) : null}
-              {showCustomReminder ? (
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="number"
-                    min={0}
-                    value={customReminderDraft}
-                    onChange={(e) => setCustomReminderDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        addCustomReminder();
-                      }
-                    }}
-                    placeholder={t("eventEditor.reminderCustomPlaceholder", {
-                      defaultValue: "Minutes before",
-                    })}
-                    aria-label={t("eventEditor.reminderCustomAria", {
-                      defaultValue: "Custom reminder minutes",
-                    })}
-                    className="w-32"
-                  />
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-8 rounded-xl px-3 text-xs"
-                    onClick={addCustomReminder}
-                  >
-                    {t("common.add", { defaultValue: "Add" })}
-                  </Button>
-                </div>
               ) : null}
             </div>
 

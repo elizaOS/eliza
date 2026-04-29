@@ -53,6 +53,7 @@ const {
       status: null as LifeOpsCapabilitiesStatus | null,
     },
     clientMock: {
+      getBrowserBridgeSettings: vi.fn(),
       getLifeOpsOverview: vi.fn<() => Promise<LifeOpsOverview>>(),
       getLifeOpsScreenTimeSummary:
         vi.fn<() => Promise<LifeOpsScreenTimeSummary>>(),
@@ -390,6 +391,22 @@ beforeEach(() => {
   clientMock.getLifeOpsScreenTimeBreakdown.mockResolvedValue({
     totalSeconds: 0,
   });
+  clientMock.getBrowserBridgeSettings.mockResolvedValue({
+    settings: {
+      allowBrowserControl: true,
+      blockedOrigins: [],
+      enabled: true,
+      grantedOrigins: [],
+      incognitoEnabled: false,
+      maxRememberedTabs: 10,
+      metadata: {},
+      pauseUntil: null,
+      requireConfirmationForAccountAffecting: true,
+      siteAccessMode: "all_sites",
+      trackingMode: "current_tab",
+      updatedAt: "2026-04-23T12:00:00.000Z",
+    },
+  });
   clientMock.listBrowserBridgeCompanions.mockResolvedValue({ companions: [] });
 });
 
@@ -470,6 +487,7 @@ describe("LifeOpsOverviewSection", () => {
 
     expect(screen.queryByText("Set up LifeOps")).toBeNull();
     expect(screen.getByText("Partial overview")).toBeTruthy();
+    expect(screen.getByText(/Missing: Screen Time/)).toBeTruthy();
     expect(screen.getByText("Upcoming")).toBeTruthy();
     expect(screen.getAllByText("Reminders").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Sleep").length).toBeGreaterThan(0);
@@ -482,6 +500,58 @@ describe("LifeOpsOverviewSection", () => {
     );
 
     expect(onNavigate).toHaveBeenCalledWith("setup");
+  });
+
+  it("surfaces weekly screen-time comparison failures", async () => {
+    capabilitiesState.status = buildCapabilitiesStatus({
+      capabilities: [
+        {
+          confidence: 0.9,
+          domain: "activity",
+          evidence: [],
+          id: "activity.browser",
+          label: "Browser activity",
+          lastCheckedAt: "2026-04-23T12:00:00.000Z",
+          state: "working",
+          summary: "Browser ready",
+        },
+      ],
+      summary: {
+        blockedCount: 0,
+        degradedCount: 0,
+        notConfiguredCount: 0,
+        totalCount: 1,
+        workingCount: 1,
+      },
+    });
+    clientMock.getLifeOpsScreenTimeSummary.mockResolvedValue({
+      items: [
+        {
+          displayName: "Chrome",
+          identifier: "chrome",
+          source: "app",
+          totalSeconds: 1800,
+        },
+      ],
+      totalSeconds: 1800,
+    });
+    clientMock.getLifeOpsScreenTimeBreakdown.mockRejectedValue(
+      new Error("screen store offline"),
+    );
+
+    renderSection();
+
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("lifeops-overview-screen-weekly-error"),
+      ).toBeTruthy(),
+    );
+
+    expect(
+      screen.getByText(
+        "Weekly comparison unavailable: screen store offline",
+      ),
+    ).toBeTruthy();
   });
 
   it("shows the no-access empty state instead of the setup gate when nothing is connected", async () => {

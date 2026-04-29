@@ -23,7 +23,7 @@ function writeSubscriptionCredentials(provider: "openai-codex"): void {
       credentials: {
         access: "codex-subscription-token",
         refresh: "refresh-token",
-        expires: Date.now() + 60_000,
+        expires: Date.now() + 10 * 60_000,
       },
       createdAt: Date.now(),
       updatedAt: Date.now(),

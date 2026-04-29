@@ -1,10 +1,10 @@
-import { describe, expect, it } from "vitest";
-import { shouldDeferReminderUntilComputerActive } from "../src/lifeops/service-helpers-reminder.js";
-import { isWithinQuietHours } from "../src/lifeops/service-helpers-misc.js";
 import type {
   LifeOpsReminderChannel,
   LifeOpsTaskDefinition,
 } from "@elizaos/app-lifeops";
+import { describe, expect, it } from "vitest";
+import { isWithinQuietHours } from "../src/lifeops/service-helpers-misc.js";
+import { shouldDeferReminderUntilComputerActive } from "../src/lifeops/service-helpers-reminder.js";
 import type { ReminderActivityProfileSnapshot } from "../src/lifeops/service-types.js";
 
 function buildDefinition(

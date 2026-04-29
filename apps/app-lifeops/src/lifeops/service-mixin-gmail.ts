@@ -211,6 +211,15 @@ function managedGoogleGrantId(grant: LifeOpsConnectorGrant): string {
   return grant.cloudConnectionId ?? grant.id;
 }
 
+function googleGrantAccountEmail(grant: LifeOpsConnectorGrant): string | null {
+  return (
+    normalizeOptionalString(grant.identityEmail) ??
+    (typeof grant.identity.email === "string"
+      ? grant.identity.email.trim().toLowerCase()
+      : null)
+  );
+}
+
 export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ): MixinClass<TBase, LifeOpsGmailService> {
@@ -384,26 +393,24 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
                     : null,
                 maxResults: args.maxResults,
               });
-        const persistedMessages = messages.map((message) => ({
-          id: createGmailMessageId(
-            this.agentId(),
-            "google",
-            grant.side,
-            message.externalId,
-          ),
-          agentId: this.agentId(),
-          provider: "google" as const,
-          side: grant.side,
-          ...message,
-          syncedAt,
-          updatedAt: syncedAt,
-        }));
+        const accountEmail = googleGrantAccountEmail(grant);
+        const persistedMessages = messages.map((message) =>
+          materializeGmailMessageSummary({
+            agentId: this.agentId(),
+            side: grant.side,
+            grantId: grant.id,
+            accountEmail,
+            message,
+            syncedAt,
+          }),
+        );
 
         await this.repository.pruneGmailMessages(
           this.agentId(),
           "google",
           messages.map((message) => message.externalId),
           grant.side,
+          grant.id,
         );
         for (const message of persistedMessages) {
           await this.repository.upsertGmailMessage(message, grant.side);
@@ -414,6 +421,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
             provider: "google",
             side: grant.side,
             mailbox: GOOGLE_GMAIL_MAILBOX,
+            grantId: grant.id,
             maxResults: args.maxResults,
             syncedAt,
           }),
@@ -497,6 +505,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
         "google",
         GOOGLE_GMAIL_MAILBOX,
         effectiveSide,
+        grant.id,
       );
       if (
         !forceSync &&
@@ -513,6 +522,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
           "google",
           {
             maxResults,
+            grantId: grant.id,
           },
           effectiveSide,
         );
@@ -584,7 +594,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
           allMessages.push({
             ...message,
             grantId: grant.id,
-            accountEmail: grant.identityEmail ?? undefined,
+            accountEmail: googleGrantAccountEmail(grant) ?? undefined,
           });
         }
       }
@@ -643,6 +653,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
                 "google",
                 {
                   maxResults: DEFAULT_GMAIL_SEARCH_CACHE_SCAN_LIMIT,
+                  grantId: grant.id,
                 },
                 effectiveSide,
               )
@@ -671,6 +682,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
                 "google",
                 {
                   maxResults: DEFAULT_GMAIL_SEARCH_CACHE_SCAN_LIMIT,
+                  grantId: grant.id,
                 },
                 effectiveSide,
               ));
@@ -701,12 +713,14 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
           });
           const messages = filterGmailMessagesBySearch({
             messages: managedSearch.messages.map((message) =>
-              materializeGmailMessageSummary({
-                agentId: this.agentId(),
-                side: effectiveSide,
-                message,
-                syncedAt: managedSearch.syncedAt,
-              }),
+                materializeGmailMessageSummary({
+                  agentId: this.agentId(),
+                  side: effectiveSide,
+                  grantId: grant.id,
+                  accountEmail: googleGrantAccountEmail(grant),
+                  message,
+                  syncedAt: managedSearch.syncedAt,
+                }),
             ),
             query,
             replyNeededOnly,
@@ -720,6 +734,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
               provider: "google",
               side: effectiveSide,
               mailbox: GOOGLE_GMAIL_MAILBOX,
+              grantId: grant.id,
               maxResults,
               syncedAt: managedSearch.syncedAt,
             }),
@@ -784,6 +799,8 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
           materializeGmailMessageSummary({
             agentId: this.agentId(),
             side: effectiveSide,
+            grantId: grant.id,
+            accountEmail: googleGrantAccountEmail(grant),
             message,
             syncedAt,
           }),
@@ -800,6 +817,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
           provider: "google",
           side: effectiveSide,
           mailbox: GOOGLE_GMAIL_MAILBOX,
+          grantId: grant.id,
           maxResults,
           syncedAt,
         }),
@@ -875,6 +893,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
             "google",
             messageId,
             grant.side,
+            grant.id,
           )
         : null;
 
@@ -948,6 +967,8 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
       const message = materializeGmailMessageSummary({
         agentId: this.agentId(),
         side: grant.side,
+        grantId: grant.id,
+        accountEmail: googleGrantAccountEmail(grant),
         message: detail.message,
         syncedAt,
       });
@@ -1192,6 +1213,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
           this.agentId(),
           "google",
           grant.side,
+          grant.id,
           thread.externalMessageId,
         ),
         subject: thread.subject,
@@ -1204,7 +1226,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
         labels: thread.labels,
         htmlLink: thread.htmlLink,
         grantId: grant.id,
-        accountEmail: grant.identityEmail ?? undefined,
+        accountEmail: googleGrantAccountEmail(grant) ?? undefined,
       }));
       await this.clearGoogleGrantAuthFailure(grant);
       return {
@@ -1241,6 +1263,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
             "google",
             messageId,
             args.grant.side,
+            args.grant.id,
           );
           if (!message) {
             const fetched = await fetchGoogleGmailMessage({
@@ -1252,6 +1275,8 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
               ? materializeGmailMessageSummary({
                   agentId: this.agentId(),
                   side: args.grant.side,
+                  grantId: args.grant.id,
+                  accountEmail: googleGrantAccountEmail(args.grant),
                   message: fetched,
                   syncedAt: new Date().toISOString(),
                 })
@@ -1398,7 +1423,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
         labelIds,
         destructive,
         grantId: grant.id,
-        accountEmail: grant.identityEmail ?? undefined,
+        accountEmail: googleGrantAccountEmail(grant) ?? undefined,
       };
     }
 
@@ -1414,6 +1439,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
           "google",
           args.messages.map((message) => message.id),
           args.side,
+          args.messages[0]?.grantId,
         );
         return;
       }
@@ -1501,6 +1527,8 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
       const messageSummary = materializeGmailMessageSummary({
         agentId: this.agentId(),
         side: grant.side,
+        grantId: grant.id,
+        accountEmail: googleGrantAccountEmail(grant),
         message: fetched,
         syncedAt,
       });
@@ -1510,7 +1538,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
           buildGmailSpamReviewItem({
             message: messageSummary,
             grantId: grant.id,
-            accountEmail: grant.identityEmail ?? null,
+            accountEmail: googleGrantAccountEmail(grant),
             now: syncedAt,
           }),
         );
@@ -1672,6 +1700,8 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
             ? materializeGmailMessageSummary({
                 agentId: this.agentId(),
                 side: grant.side,
+                grantId: grant.id,
+                accountEmail: googleGrantAccountEmail(grant),
                 message: fetched,
                 syncedAt: new Date().toISOString(),
               })

@@ -3414,16 +3414,19 @@ export class LifeOpsRepository {
     provider: LifeOpsConnectorGrant["provider"],
     mode?: LifeOpsConnectorGrant["mode"],
     side?: LifeOpsConnectorSide,
+    grantId?: string,
   ): Promise<void> {
     const modeClause = mode ? `AND mode = ${sqlQuote(mode)}` : "";
     const sideClause = side ? `AND side = ${sqlQuote(side)}` : "";
+    const grantClause = grantId ? `AND id = ${sqlQuote(grantId)}` : "";
     await executeRawSql(
       this.runtime,
       `DELETE FROM life_connector_grants
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           ${modeClause}
-          ${sideClause}`,
+          ${sideClause}
+          ${grantClause}`,
     );
   }
 
