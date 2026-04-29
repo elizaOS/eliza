@@ -10,6 +10,12 @@ import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
 import { AgentEventService } from "@elizaos/core";
 import { browserSessionAction } from "../actions/browser-session.js";
 import {
+  disconnectConnectorAction,
+  listConnectorsAction,
+  saveConnectorConfigAction,
+  toggleConnectorAction,
+} from "../actions/connector-control.js";
+import {
   executeDatabaseQueryAction,
   getTableDataAction,
   listDatabaseTablesAction,
@@ -28,12 +34,6 @@ import {
   exportLogsAction,
   queryLogsAction,
 } from "../actions/logs.js";
-import {
-  disconnectConnectorAction,
-  listConnectorsAction,
-  saveConnectorConfigAction,
-  toggleConnectorAction,
-} from "../actions/connector-control.js";
 import { manageTasksAction } from "../actions/manage-tasks.js";
 import { pageActionGroupActions } from "../actions/page-action-groups.js";
 import {
