@@ -20,10 +20,16 @@ type ApprovalSnapshot = {
   }>;
 };
 
-function stateWithService(service: unknown): CompatRuntimeState {
+type ComputerUseService = {
+  getApprovalSnapshot(): ApprovalSnapshot;
+  setApprovalMode(mode: ApprovalSnapshot["mode"]): ApprovalSnapshot["mode"];
+  resolveApproval(): null;
+};
+
+function stateWithService(service: ComputerUseService): CompatRuntimeState {
   return {
     current: {
-      getService(name: string): unknown {
+      getService(name: string): ComputerUseService | null {
         return name === "computeruse" ? service : null;
       },
     } as CompatRuntimeState["current"],
