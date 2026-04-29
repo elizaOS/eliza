@@ -1,12 +1,11 @@
 /**
- * Agent self-status, Privy wallet provisioning, and ERC-8004 registry
- * inline routes.
+ * Agent self-status and ERC-8004 registry inline routes.
  *
- * Extracted from server.ts to reduce file size.
+ * Extracted from server.ts to reduce file size. Privy wallet provisioning
+ * routes were moved to @elizaos/app-steward (setup-routes-privy.ts).
  */
 
 import type http from "node:http";
-import { logger } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.js";
 import type { ReadJsonBodyOptions } from "./http-helpers.js";
 
@@ -74,10 +73,6 @@ export interface AgentStatusRouteDeps {
   ) => string | undefined;
   resolveProviderFromModel: (model: string) => string | null;
   getGlobalAwarenessRegistry: () => AwarenessRegistryLike | null;
-  isPrivyWalletProvisioningEnabled: () => boolean;
-  ensurePrivyWalletsForCustomUser: (
-    userId: string,
-  ) => Promise<Record<string, unknown>>;
   RegistryService: RegistryServiceStatic;
 }
 
@@ -263,50 +258,8 @@ export async function handleAgentStatusRoutes(
     return true;
   }
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // Privy wallet routes
-  // ═══════════════════════════════════════════════════════════════════════
-
-  if (method === "GET" && pathname === "/api/privy/status") {
-    const enabled = deps.isPrivyWalletProvisioningEnabled();
-    json(res, { enabled, configured: enabled });
-    return true;
-  }
-
-  if (method === "POST" && pathname === "/api/privy/login") {
-    if (!deps.isPrivyWalletProvisioningEnabled()) {
-      error(res, "Privy wallet provisioning is not configured.", 503);
-      return true;
-    }
-    const body = await readJsonBody<{ userId?: string }>(req, res);
-    if (!body) return true;
-
-    const userId = (body.userId ?? "").trim();
-    if (!userId) {
-      error(res, "userId is required", 400);
-      return true;
-    }
-
-    try {
-      const result = await deps.ensurePrivyWalletsForCustomUser(userId);
-      json(res, { ok: true, ...result });
-    } catch (err) {
-      logger.error(
-        `[api] Privy login failed: ${err instanceof Error ? err.message : err}`,
-      );
-      error(
-        res,
-        `Privy login failed: ${err instanceof Error ? err.message : "unknown error"}`,
-        500,
-      );
-    }
-    return true;
-  }
-
-  if (method === "POST" && pathname === "/api/privy/logout") {
-    json(res, { ok: true });
-    return true;
-  }
+  // Privy wallet routes (/api/privy/*) are now provided by the
+  // @elizaos/app-steward plugin via the runtime route registry.
 
   // ═══════════════════════════════════════════════════════════════════════
   //  ERC-8004 Registry Routes

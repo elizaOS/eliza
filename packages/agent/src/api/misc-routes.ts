@@ -1,10 +1,6 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import { EMOTE_BY_ID, EMOTE_CATALOG } from "@elizaos/app-companion/emotes";
-import {
-  ensurePrivyWalletsForCustomUser,
-  isPrivyWalletProvisioningEnabled,
-} from "@elizaos/app-steward/services/privy-wallets";
 import { type AgentRuntime, logger, ModelType } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.js";
@@ -786,49 +782,8 @@ export async function handleMiscRoutes(
     return true;
   }
 
-  // ── GET /api/privy/status ───────────────────────────────────────────────
-  if (method === "GET" && pathname === "/api/privy/status") {
-    const enabled = isPrivyWalletProvisioningEnabled();
-    json(res, { enabled, configured: enabled });
-    return true;
-  }
-
-  // ── POST /api/privy/login ───────────────────────────────────────────────
-  if (method === "POST" && pathname === "/api/privy/login") {
-    if (!isPrivyWalletProvisioningEnabled()) {
-      error(res, "Privy wallet provisioning is not configured.", 503);
-      return true;
-    }
-    const body = await readJsonBody<{ userId?: string }>(req, res);
-    if (!body) return true;
-
-    const userId = (body.userId ?? "").trim();
-    if (!userId) {
-      error(res, "userId is required", 400);
-      return true;
-    }
-
-    try {
-      const result = await ensurePrivyWalletsForCustomUser(userId);
-      json(res, { ok: true, ...result });
-    } catch (err) {
-      logger.error(
-        `[api] Privy login failed: ${err instanceof Error ? err.message : err}`,
-      );
-      error(
-        res,
-        `Privy login failed: ${err instanceof Error ? err.message : "unknown error"}`,
-        500,
-      );
-    }
-    return true;
-  }
-
-  // ── POST /api/privy/logout ──────────────────────────────────────────────
-  if (method === "POST" && pathname === "/api/privy/logout") {
-    json(res, { ok: true });
-    return true;
-  }
+  // Privy wallet routes (/api/privy/*) are now provided by the
+  // @elizaos/app-steward plugin via the runtime route registry.
 
   return false;
 }
