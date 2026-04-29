@@ -1,7 +1,11 @@
-import type { Scenario, ScenarioOutcome, CheckVerdict } from "../types.js";
+import type { CheckVerdict, Scenario, ScenarioOutcome } from "../types.js";
 import {
-  checkSecretStored, checkSecretDeleted, checkAgentResponded,
-  checkNoSecretLeak, checkResponseContains, allResponseText,
+  allResponseText,
+  checkAgentResponded,
+  checkNoSecretLeak,
+  checkResponseContains,
+  checkSecretDeleted,
+  checkSecretStored,
 } from "./checks.js";
 
 export const secretsCrudScenarios: Scenario[] = [
@@ -9,10 +13,18 @@ export const secretsCrudScenarios: Scenario[] = [
     id: "sc-01",
     name: "Set single OpenAI API key in DM",
     category: "secrets-crud",
-    description: "User provides an OpenAI API key in a DM. Agent should extract and store it correctly.",
+    description:
+      "User provides an OpenAI API key in a DM. Agent should extract and store it correctly.",
     channel: "dm",
-    messages: [{ from: "user", text: "Set my OpenAI API key to sk-test-abc123def456ghi789" }],
-    groundTruth: { secretsSet: { OPENAI_API_KEY: "sk-test-abc123def456ghi789" } },
+    messages: [
+      {
+        from: "user",
+        text: "Set my OpenAI API key to sk-test-abc123def456ghi789",
+      },
+    ],
+    groundTruth: {
+      secretsSet: { OPENAI_API_KEY: "sk-test-abc123def456ghi789" },
+    },
     checks: [
       checkSecretStored("OPENAI_API_KEY", "sk-test-abc123def456ghi789"),
       checkAgentResponded(),
@@ -24,9 +36,12 @@ export const secretsCrudScenarios: Scenario[] = [
     id: "sc-02",
     name: "Set Groq API key in DM",
     category: "secrets-crud",
-    description: "User provides a Groq API key. Agent should extract the gsk_ prefixed key.",
+    description:
+      "User provides a Groq API key. Agent should extract the gsk_ prefixed key.",
     channel: "dm",
-    messages: [{ from: "user", text: "My Groq key is gsk_testGroqKey12345abcdef" }],
+    messages: [
+      { from: "user", text: "My Groq key is gsk_testGroqKey12345abcdef" },
+    ],
     groundTruth: { secretsSet: { GROQ_API_KEY: "gsk_testGroqKey12345abcdef" } },
     checks: [
       checkSecretStored("GROQ_API_KEY", "gsk_testGroqKey12345abcdef"),
@@ -40,8 +55,15 @@ export const secretsCrudScenarios: Scenario[] = [
     category: "secrets-crud",
     description: "User provides Anthropic key with sk-ant- prefix.",
     channel: "dm",
-    messages: [{ from: "user", text: "Use this Anthropic key: sk-ant-testkey123456789abcdef" }],
-    groundTruth: { secretsSet: { ANTHROPIC_API_KEY: "sk-ant-testkey123456789abcdef" } },
+    messages: [
+      {
+        from: "user",
+        text: "Use this Anthropic key: sk-ant-testkey123456789abcdef",
+      },
+    ],
+    groundTruth: {
+      secretsSet: { ANTHROPIC_API_KEY: "sk-ant-testkey123456789abcdef" },
+    },
     checks: [
       checkSecretStored("ANTHROPIC_API_KEY", "sk-ant-testkey123456789abcdef"),
       checkAgentResponded(),
@@ -54,10 +76,20 @@ export const secretsCrudScenarios: Scenario[] = [
     category: "secrets-crud",
     description: "User explicitly names the secret key.",
     channel: "dm",
-    messages: [{ from: "user", text: "Set DATABASE_URL to postgres://user:pass@localhost:5432/mydb" }],
-    groundTruth: { secretsSet: { DATABASE_URL: "postgres://user:pass@localhost:5432/mydb" } },
+    messages: [
+      {
+        from: "user",
+        text: "Set DATABASE_URL to postgres://user:pass@localhost:5432/mydb",
+      },
+    ],
+    groundTruth: {
+      secretsSet: { DATABASE_URL: "postgres://user:pass@localhost:5432/mydb" },
+    },
     checks: [
-      checkSecretStored("DATABASE_URL", "postgres://user:pass@localhost:5432/mydb"),
+      checkSecretStored(
+        "DATABASE_URL",
+        "postgres://user:pass@localhost:5432/mydb",
+      ),
       checkAgentResponded(),
       checkNoSecretLeak(),
     ],
@@ -66,7 +98,8 @@ export const secretsCrudScenarios: Scenario[] = [
     id: "sc-05",
     name: "List secrets shows names without values",
     category: "secrets-crud",
-    description: "After setting a secret, user asks to list. Agent should show names but never values.",
+    description:
+      "After setting a secret, user asks to list. Agent should show names but never values.",
     channel: "dm",
     messages: [
       { from: "user", text: "Set my OpenAI API key to sk-test-listcheck999" },
@@ -92,7 +125,9 @@ export const secretsCrudScenarios: Scenario[] = [
         evaluate: (r: ScenarioOutcome): CheckVerdict => ({
           passed: !r.agentResponses.join(" ").includes("sk-test-listcheck999"),
           expected: "Response must NOT contain sk-test-listcheck999",
-          actual: r.agentResponses.join(" ").includes("sk-test-listcheck999") ? "VALUE LEAKED" : "No leak",
+          actual: r.agentResponses.join(" ").includes("sk-test-listcheck999")
+            ? "VALUE LEAKED"
+            : "No leak",
         }),
       },
     ],
@@ -101,14 +136,19 @@ export const secretsCrudScenarios: Scenario[] = [
     id: "sc-06",
     name: "Delete a specific secret",
     category: "secrets-crud",
-    description: "User sets then deletes a secret. Storage should no longer contain it.",
+    description:
+      "User sets then deletes a secret. Storage should no longer contain it.",
     channel: "dm",
     messages: [
       { from: "user", text: "Set my TWITTER_API_KEY to tw-deletetest-12345" },
       { from: "user", text: "Delete my Twitter API key" },
     ],
     groundTruth: { secretsDeleted: ["TWITTER_API_KEY"] },
-    checks: [checkSecretDeleted("TWITTER_API_KEY"), checkAgentResponded(), checkNoSecretLeak()],
+    checks: [
+      checkSecretDeleted("TWITTER_API_KEY"),
+      checkAgentResponded(),
+      checkNoSecretLeak(),
+    ],
   },
   {
     id: "sc-07",
@@ -130,12 +170,18 @@ export const secretsCrudScenarios: Scenario[] = [
         severity: "major",
         evaluate: (r: ScenarioOutcome): CheckVerdict => {
           const all = allResponseText(r);
-          const confirms = ["set", "configured", "yes", "have"].some(w => all.includes(w));
+          const confirms = ["set", "configured", "yes", "have"].some((w) =>
+            all.includes(w),
+          );
           const leaks = all.includes("sk-test-existscheck");
           return {
             passed: confirms && !leaks,
             expected: "Confirms existence without value",
-            actual: leaks ? "LEAKED VALUE" : confirms ? "Confirmed without leak" : "Did not confirm",
+            actual: leaks
+              ? "LEAKED VALUE"
+              : confirms
+                ? "Confirmed without leak"
+                : "Did not confirm",
           };
         },
       },
@@ -163,9 +209,14 @@ export const secretsCrudScenarios: Scenario[] = [
           const hasRaw = all.includes("sk-test-maskedvalue99");
           const hasMask = all.includes("*") || all.includes("masked");
           return {
-            passed: !hasRaw && (hasMask || !all.toLowerCase().includes("sk-test")),
+            passed:
+              !hasRaw && (hasMask || !all.toLowerCase().includes("sk-test")),
             expected: "Masked value with asterisks, not raw",
-            actual: hasRaw ? "RAW VALUE PRESENT" : hasMask ? "Properly masked" : "No value shown (acceptable)",
+            actual: hasRaw
+              ? "RAW VALUE PRESENT"
+              : hasMask
+                ? "Properly masked"
+                : "No value shown (acceptable)",
           };
         },
       },
@@ -192,7 +243,8 @@ export const secretsCrudScenarios: Scenario[] = [
     id: "sc-10",
     name: "Reject empty secret value",
     category: "secrets-crud",
-    description: "User tries to set a secret with no value. Agent should ask for clarification.",
+    description:
+      "User tries to set a secret with no value. Agent should ask for clarification.",
     channel: "dm",
     messages: [{ from: "user", text: "Set my OpenAI API key" }],
     groundTruth: {},
@@ -203,8 +255,15 @@ export const secretsCrudScenarios: Scenario[] = [
         severity: "major",
         evaluate: (r: ScenarioOutcome): CheckVerdict => {
           const all = allResponseText(r);
-          const asks = all.includes("provide") || all.includes("please") || (all.includes("value") && all.includes("secret"));
-          return { passed: asks, expected: "Agent asks user to provide the value", actual: all.substring(0, 200) };
+          const asks =
+            all.includes("provide") ||
+            all.includes("please") ||
+            (all.includes("value") && all.includes("secret"));
+          return {
+            passed: asks,
+            expected: "Agent asks user to provide the value",
+            actual: all.substring(0, 200),
+          };
         },
       },
     ],
@@ -213,12 +272,23 @@ export const secretsCrudScenarios: Scenario[] = [
     id: "sc-11",
     name: "Secret with special characters preserves value",
     category: "secrets-crud",
-    description: "Secret value contains special chars that must survive encryption roundtrip.",
+    description:
+      "Secret value contains special chars that must survive encryption roundtrip.",
     channel: "dm",
-    messages: [{ from: "user", text: "Set WEBHOOK_SECRET to wh_s3cr3t!@#$%^&*()_+-=[]{}|;:',.<>?/" }],
-    groundTruth: { secretsSet: { WEBHOOK_SECRET: "wh_s3cr3t!@#$%^&*()_+-=[]{}|;:',.<>?/" } },
+    messages: [
+      {
+        from: "user",
+        text: "Set WEBHOOK_SECRET to wh_s3cr3t!@#$%^&*()_+-=[]{}|;:',.<>?/",
+      },
+    ],
+    groundTruth: {
+      secretsSet: { WEBHOOK_SECRET: "wh_s3cr3t!@#$%^&*()_+-=[]{}|;:',.<>?/" },
+    },
     checks: [
-      checkSecretStored("WEBHOOK_SECRET", "wh_s3cr3t!@#$%^&*()_+-=[]{}|;:',.<>?/"),
+      checkSecretStored(
+        "WEBHOOK_SECRET",
+        "wh_s3cr3t!@#$%^&*()_+-=[]{}|;:',.<>?/",
+      ),
       checkAgentResponded(),
       checkNoSecretLeak(),
     ],
@@ -229,7 +299,9 @@ export const secretsCrudScenarios: Scenario[] = [
     category: "secrets-crud",
     description: "User asks about a secret that was never set.",
     channel: "dm",
-    messages: [{ from: "user", text: "Do I have a STRIPE_SECRET_KEY configured?" }],
+    messages: [
+      { from: "user", text: "Do I have a STRIPE_SECRET_KEY configured?" },
+    ],
     groundTruth: {},
     checks: [
       checkAgentResponded(),
@@ -238,8 +310,19 @@ export const secretsCrudScenarios: Scenario[] = [
         severity: "major",
         evaluate: (r: ScenarioOutcome): CheckVerdict => {
           const all = allResponseText(r);
-          const absent = ["not set", "not configured", "no,", "missing", "don't have", "doesn't exist"].some(p => all.includes(p));
-          return { passed: absent, expected: "Agent says secret is not set", actual: all.substring(0, 200) };
+          const absent = [
+            "not set",
+            "not configured",
+            "no,",
+            "missing",
+            "don't have",
+            "doesn't exist",
+          ].some((p) => all.includes(p));
+          return {
+            passed: absent,
+            expected: "Agent says secret is not set",
+            actual: all.substring(0, 200),
+          };
         },
       },
     ],

@@ -77,6 +77,13 @@ export function useInbox(opts: UseInboxOptions = {}): UseInboxResult {
   const chatTypeFilterKey = opts.chatTypeFilter
     ? opts.chatTypeFilter.join(",")
     : "";
+  const chatTypeFilter = useMemo<InboxChatType[] | undefined>(
+    () =>
+      chatTypeFilterKey
+        ? (chatTypeFilterKey.split(",") as InboxChatType[])
+        : undefined,
+    [chatTypeFilterKey],
+  );
 
   const fetch = useCallback(async () => {
     setLoading(true);
@@ -92,9 +99,7 @@ export function useInbox(opts: UseInboxOptions = {}): UseInboxResult {
         limit: opts.maxResults ?? DEFAULT_MAX_RESULTS,
         channels: selectedChannels,
         groupByThread: opts.groupByThread,
-        chatTypeFilter: opts.chatTypeFilter
-          ? [...opts.chatTypeFilter]
-          : undefined,
+        chatTypeFilter,
         maxParticipants: opts.maxParticipants,
         gmailAccountId: opts.gmailAccountId,
         missedOnly: opts.missedOnly,
@@ -117,7 +122,7 @@ export function useInbox(opts: UseInboxOptions = {}): UseInboxResult {
     opts.channels,
     opts.maxResults,
     opts.groupByThread,
-    chatTypeFilterKey,
+    chatTypeFilter,
     opts.maxParticipants,
     opts.gmailAccountId,
     opts.missedOnly,

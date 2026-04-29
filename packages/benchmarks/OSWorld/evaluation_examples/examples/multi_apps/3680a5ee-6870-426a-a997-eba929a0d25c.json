@@ -28,15 +28,9 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "libreoffice_calc",
-    "terminal"
-  ],
+  "related_apps": ["libreoffice_calc", "terminal"],
   "evaluator": {
-    "func": [
-      "check_include_exclude",
-      "compare_csv"
-    ],
+    "func": ["check_include_exclude", "compare_csv"],
     "conj": "and",
     "result": [
       {
@@ -57,9 +51,7 @@
       {
         "type": "rule",
         "rules": {
-          "include": [
-            "use terminal"
-          ]
+          "include": ["use terminal"]
         }
       },
       {
@@ -70,16 +62,8 @@
           "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/3680a5ee-6870-426a-a997-eba929a0d25c/output_gold2.csv",
           "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/3680a5ee-6870-426a-a997-eba929a0d25c/output_gold3.csv"
         ],
-        "dest": [
-          "output_gold.csv",
-          "output_gold2.csv",
-          "output_gold3.csv"
-        ],
-        "gives": [
-          0,
-          1,
-          2
-        ]
+        "dest": ["output_gold.csv", "output_gold2.csv", "output_gold3.csv"],
+        "gives": [0, 1, 2]
       }
     ]
   },

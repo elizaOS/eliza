@@ -14,12 +14,12 @@ module.exports = {
   loadImage: unavailable,
   Canvas: class {
     constructor() {
-      return unavailable();
+      unavailable();
     }
   },
   Image: class {
     constructor() {
-      return unavailable();
+      unavailable();
     }
   },
 };

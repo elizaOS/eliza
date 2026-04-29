@@ -12,12 +12,16 @@ function createRuntime(agentId: string) {
     agentId,
     handleTurn: async () => ({ text: "ok" }),
     useModel: async () => {
-      throw new Error("useModel should not be called in browser current-page tests");
+      throw new Error(
+        "useModel should not be called in browser current-page tests",
+      );
     },
   });
 }
 
-function installBrowserSchemaBootstrap(runtime: ReturnType<typeof createRuntime>) {
+function installBrowserSchemaBootstrap(
+  runtime: ReturnType<typeof createRuntime>,
+) {
   runtime.adapter.runPluginMigrations = async () => {
     await runtime.adapter.db.execute({
       queryChunks: [

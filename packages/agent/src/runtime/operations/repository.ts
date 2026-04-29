@@ -154,9 +154,7 @@ export class FilesystemRuntimeOperationRepository
 
   async update(
     id: string,
-    patch: Partial<
-      Omit<RuntimeOperation, "id" | "phases" | "intent" | "kind">
-    >,
+    patch: Partial<Omit<RuntimeOperation, "id" | "phases" | "intent" | "kind">>,
   ): Promise<void> {
     this.hydrate();
     const current = this.byId.get(id);
@@ -221,9 +219,7 @@ export class FilesystemRuntimeOperationRepository
     if (opts?.status) {
       ops = ops.filter((o) => o.status === opts.status);
     } else if (opts?.includeTerminal === false) {
-      ops = ops.filter(
-        (o) => o.status === "pending" || o.status === "running",
-      );
+      ops = ops.filter((o) => o.status === "pending" || o.status === "running");
     }
     ops.sort((a, b) => b.startedAt - a.startedAt);
     if (typeof opts?.limit === "number" && opts.limit >= 0) {

@@ -3,11 +3,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
-  lifeSleepEpisodes,
-  lifeopsFeaturesTable,
   lifeOpsSchema,
+  lifeopsFeaturesTable,
   lifeScheduleMergedStates,
   lifeScheduleObservations,
+  lifeSleepEpisodes,
 } from "../src/lifeops/schema.js";
 
 describe("life-ops plugin schema ownership", () => {

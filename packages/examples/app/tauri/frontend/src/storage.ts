@@ -1,4 +1,4 @@
-import { DEFAULT_CONFIG, type AppConfig } from "./types";
+import { type AppConfig, DEFAULT_CONFIG } from "./types";
 
 const CONFIG_KEY = "eliza:tauri-config";
 
@@ -15,4 +15,3 @@ export function loadConfig(): AppConfig {
 export function saveConfig(config: AppConfig): void {
   localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
 }
-

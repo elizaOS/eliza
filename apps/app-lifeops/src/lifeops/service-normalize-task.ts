@@ -15,6 +15,7 @@ import type {
   LifeOpsWorkflowAction,
   LifeOpsWorkflowActionPlan,
 } from "../contracts/index.js";
+import { DAY_MINUTES } from "./service-constants.js";
 import {
   fail,
   normalizeEnumValue,
@@ -26,9 +27,6 @@ import {
   normalizePositiveInteger,
   requireNonEmptyString,
 } from "./service-normalize.js";
-import {
-  DAY_MINUTES,
-} from "./service-constants.js";
 import { normalizeOptionalBrowserKind } from "./service-normalize-connector.js";
 
 function requireRecord(value: unknown, field: string): Record<string, unknown> {

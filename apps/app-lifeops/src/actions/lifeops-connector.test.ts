@@ -49,7 +49,7 @@ vi.mock("../lifeops/service.js", () => {
   }
   return {
     LifeOpsServiceError: FakeError,
-    LifeOpsService: vi.fn(() => new FakeLifeOpsService()),
+    LifeOpsService: FakeLifeOpsService,
   };
 });
 

@@ -24,11 +24,11 @@
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { logger, type Plugin } from "@elizaos/core";
 import {
   extractPlugin,
   resolveFarcasterPluginImportSpecifier,
 } from "@elizaos/app-core";
+import { logger, type Plugin } from "@elizaos/core";
 import dotenv from "dotenv";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { describeIf } from "../helpers/conditional-tests.ts";
@@ -827,7 +827,6 @@ describeIfLive("Farcaster Connector - Error Handling", () => {
     },
     TEST_TIMEOUT,
   );
-
 });
 
 // ---------------------------------------------------------------------------

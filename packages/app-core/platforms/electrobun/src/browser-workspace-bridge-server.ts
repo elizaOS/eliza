@@ -29,7 +29,8 @@ function isLoopback(addr: string | undefined): boolean {
 }
 
 function scrubStack(value: unknown): unknown {
-  if (value instanceof Error) return { error: value.message || "Internal error" };
+  if (value instanceof Error)
+    return { error: value.message || "Internal error" };
   if (Array.isArray(value)) return value.map(scrubStack);
   if (value && typeof value === "object") {
     const out: Record<string, unknown> = {};

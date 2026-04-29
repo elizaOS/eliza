@@ -6,10 +6,10 @@ import {
   emptyStore,
   readStore,
   removeSecret,
+  STORE_VERSION,
+  StoreFormatError,
   setPermissions,
   setSecret,
-  StoreFormatError,
-  STORE_VERSION,
   writeStore,
 } from "../src/store.js";
 
@@ -62,7 +62,11 @@ describe("store", () => {
     await fs.mkdir(dir, { recursive: true });
     await fs.writeFile(
       path,
-      JSON.stringify({ version: STORE_VERSION + 1, secrets: {}, permissions: {} }),
+      JSON.stringify({
+        version: STORE_VERSION + 1,
+        secrets: {},
+        permissions: {},
+      }),
     );
     await expect(readStore(path)).rejects.toThrow(StoreFormatError);
   });

@@ -9,7 +9,6 @@
 import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
 import { AgentEventService } from "@elizaos/core";
 import { browserSessionAction } from "../actions/browser-session.js";
-import { launchpadLaunchAction } from "../actions/launchpad-launch.js";
 import {
   disconnectConnectorAction,
   listConnectorsAction,
@@ -30,6 +29,7 @@ import {
   searchEntityAction,
 } from "../actions/entity-actions.js";
 import { extractPageAction } from "../actions/extract-page.js";
+import { launchpadLaunchAction } from "../actions/launchpad-launch.js";
 import {
   clearLogsAction,
   exportLogsAction,

@@ -17,25 +17,25 @@ import {
   type LIFEOPS_REMINDER_PREFERENCE_SOURCES,
 } from "../contracts/index.js";
 import {
-  requireNonEmptyString,
-  normalizeOptionalString,
-  normalizeOptionalIsoString,
-  fail,
-} from "./service-normalize.js";
-import {
-  REMINDER_INTENSITY_CANONICAL_ALIASES,
   REMINDER_ESCALATION_DELAYS,
-  REMINDER_LIFECYCLE_METADATA_KEY,
+  REMINDER_INTENSITY_CANONICAL_ALIASES,
   REMINDER_INTENSITY_METADATA_KEY,
-  REMINDER_INTENSITY_UPDATED_AT_METADATA_KEY,
   REMINDER_INTENSITY_NOTE_METADATA_KEY,
+  REMINDER_INTENSITY_UPDATED_AT_METADATA_KEY,
+  REMINDER_LIFECYCLE_METADATA_KEY,
   REMINDER_PREFERENCE_SCOPE_METADATA_KEY,
 } from "./service-constants.js";
+import { mergeMetadata } from "./service-helpers-misc.js";
+import {
+  fail,
+  normalizeOptionalIsoString,
+  normalizeOptionalString,
+  requireNonEmptyString,
+} from "./service-normalize.js";
 import type {
   ReminderActivityProfileSnapshot,
   ReminderAttemptLifecycle,
 } from "./service-types.js";
-import { mergeMetadata } from "./service-helpers-misc.js";
 
 export function _isReminderIntensity(
   value: unknown,
@@ -69,7 +69,9 @@ export function coerceReminderIntensity(
   return intensity ? normalizeReminderIntensityInput(intensity, field) : null;
 }
 
-export function isReminderChannel(value: unknown): value is LifeOpsReminderChannel {
+export function isReminderChannel(
+  value: unknown,
+): value is LifeOpsReminderChannel {
   return (
     typeof value === "string" &&
     LIFEOPS_REMINDER_CHANNELS.includes(value as LifeOpsReminderChannel)
@@ -208,7 +210,8 @@ function isActivityAwareStretchReminder(
   if (!definition || definition.cadence.kind !== "interval") {
     return false;
   }
-  const combined = `${definition.title} ${definition.originalIntent}`.toLowerCase();
+  const combined =
+    `${definition.title} ${definition.originalIntent}`.toLowerCase();
   return combined.includes("stretch");
 }
 

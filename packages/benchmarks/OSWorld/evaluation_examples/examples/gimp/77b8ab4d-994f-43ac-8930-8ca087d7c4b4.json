@@ -18,17 +18,12 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "gimp",
-          "/home/user/Desktop/The_Lost_River_Of_Dreams.jpg"
-        ]
+        "command": ["gimp", "/home/user/Desktop/The_Lost_River_Of_Dreams.jpg"]
       }
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "gimp"
-  ],
+  "related_apps": ["gimp"],
   "evaluator": {
     "func": "check_file_exists_and_structure_sim",
     "expected": {

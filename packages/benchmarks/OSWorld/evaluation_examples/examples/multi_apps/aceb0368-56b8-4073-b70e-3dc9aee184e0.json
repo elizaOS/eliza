@@ -18,12 +18,7 @@
     {
       "type": "execute",
       "parameters": {
-        "command": [
-          "unzip",
-          "/home/user/exam.zip",
-          "-d",
-          "/home/user/"
-        ]
+        "command": ["unzip", "/home/user/exam.zip", "-d", "/home/user/"]
       }
     },
     {
@@ -39,28 +34,18 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "libreoffice",
-          "--calc",
-          "/home/user/exam/grades.xlsx"
-        ]
+        "command": ["libreoffice", "--calc", "/home/user/exam/grades.xlsx"]
       }
     },
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "nautilus",
-          "/home/user/exam/"
-        ]
+        "command": ["nautilus", "/home/user/exam/"]
       }
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "thunderbird",
-    "os"
-  ],
+  "related_apps": ["thunderbird", "os"],
   "evaluator": {
     "func": "compare_table",
     "expected": {

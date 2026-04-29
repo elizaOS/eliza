@@ -84,12 +84,7 @@ env.ELIZA_PORT = env.ELIZA_PORT || env.MILADY_UI_SMOKE_PORT;
 for (const spec of specFiles) {
   const result = spawnSync(
     nodeCmd,
-    [
-      uiPlaywrightRunner,
-      "--config",
-      "playwright.ui-smoke.config.ts",
-      spec,
-    ],
+    [uiPlaywrightRunner, "--config", "playwright.ui-smoke.config.ts", spec],
     {
       cwd: repoRoot,
       env,

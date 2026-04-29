@@ -4,6 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  buildCharacterFromConfig,
+  configureLocalEmbeddingPlugin,
+  createElizaPlugin,
+} from "@elizaos/agent";
+import {
   AgentRuntime,
   ChannelType,
   createMessageMemory,
@@ -14,22 +19,20 @@ import dotenv from "dotenv";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
 import { saveEnv, withTimeout } from "../../../../test/helpers/test-utils";
-import {
-  buildCharacterFromConfig,
-  configureLocalEmbeddingPlugin,
-  createElizaPlugin,
-} from "@elizaos/agent";
+import { InboxTriageRepository } from "../src/inbox/repository.js";
 import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
 import { LifeOpsService } from "../src/lifeops/service.js";
-import { InboxTriageRepository } from "../src/inbox/repository.js";
 import {
-  LIVE_PROVIDER_ENV_KEYS,
-  LIVE_TESTS_ENABLED,
   getLifeOpsLiveSetupWarnings,
   getSelectedLiveProviderEnv,
+  LIVE_PROVIDER_ENV_KEYS,
+  LIVE_TESTS_ENABLED,
   selectLifeOpsLiveProvider,
 } from "./helpers/lifeops-live-harness.ts";
-import { ensureRoom, loadPlugin } from "./helpers/lifeops-morning-brief-fixtures.ts";
+import {
+  ensureRoom,
+  loadPlugin,
+} from "./helpers/lifeops-morning-brief-fixtures.ts";
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(testDir, "..");
@@ -152,8 +155,7 @@ async function seedRepairFixtures(args: {
         entityName: "Eliza",
       },
       content: {
-        text:
-          "Frontier Tower still needs the missed walkthrough repaired and rescheduled.",
+        text: "Frontier Tower still needs the missed walkthrough repaired and rescheduled.",
         source: "assistant",
         channelType: ChannelType.DM,
       },
@@ -195,7 +197,8 @@ describeIf(LIVE_SUITE_ENABLED)(
     let ownerId: UUID;
     let dmRoomId: UUID;
     let followUpId: string;
-    let dispatches: Array<{ source: string; target: string; text: string }> = [];
+    const dispatches: Array<{ source: string; target: string; text: string }> =
+      [];
 
     const workspaceDir = fs.mkdtempSync(
       path.join(os.tmpdir(), "eliza-followup-repair-workspace-"),
@@ -360,9 +363,9 @@ describeIf(LIVE_SUITE_ENABLED)(
       });
 
       expect(secondReply.toLowerCase()).toMatch(/approve|sent|message/);
-      expect(dispatches.some((dispatch) => dispatch.source === "telegram")).toBe(
-        true,
-      );
+      expect(
+        dispatches.some((dispatch) => dispatch.source === "telegram"),
+      ).toBe(true);
 
       const nonPending = await approvalQueue.list({
         subjectUserId: String(ownerId),

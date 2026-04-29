@@ -30,16 +30,23 @@ export const ALL_MOCK_PLUGINS: MockPluginDefinition[] = [
   },
 ];
 
-export const PLUGIN_REQUIRED_SECRETS: Record<string, string[]> = Object.fromEntries(
-  ALL_MOCK_PLUGINS.map(p => [
-    p.name,
-    Object.entries(p.requiredSecrets).filter(([_, r]) => r.required).map(([k]) => k),
-  ])
-);
+export const PLUGIN_REQUIRED_SECRETS: Record<string, string[]> =
+  Object.fromEntries(
+    ALL_MOCK_PLUGINS.map((p) => [
+      p.name,
+      Object.entries(p.requiredSecrets)
+        .filter(([_, r]) => r.required)
+        .map(([k]) => k),
+    ]),
+  );
 
-export function getActivatedPlugins(storedSecrets: Record<string, string>): string[] {
+export function getActivatedPlugins(
+  storedSecrets: Record<string, string>,
+): string[] {
   return Object.entries(PLUGIN_REQUIRED_SECRETS)
-    .filter(([_, keys]) => keys.every(k => k in storedSecrets && storedSecrets[k].length > 0))
+    .filter(([_, keys]) =>
+      keys.every((k) => k in storedSecrets && storedSecrets[k].length > 0),
+    )
     .map(([name]) => name);
 }
 

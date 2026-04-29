@@ -7,14 +7,14 @@
  * When credentials are present, a live call to the Twitter API v2 `/dm_events`
  * endpoint is made and the result is persisted in the local PGlite store.
  */
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { itIf } from "../../../../test/helpers/conditional-tests.ts";
-import { createLifeOpsTestRuntime } from "./helpers/runtime.ts";
 import { createLifeOpsConnectorGrant } from "../src/lifeops/repository.js";
 import { LifeOpsService } from "../src/lifeops/service.js";
+import { createLifeOpsTestRuntime } from "./helpers/runtime.ts";
 
 const SKIP_REASON = process.env.SKIP_REASON?.trim();
 const HAS_X_CREDENTIALS = Boolean(
@@ -44,12 +44,16 @@ describe("Integration: X DM inbound", () => {
   });
 
   afterEach(async () => {
-    if (runtime) { await runtime.cleanup(); runtime = undefined; }
+    if (runtime) {
+      await runtime.cleanup();
+      runtime = undefined;
+    }
     if (prevOAuthDir === undefined) delete process.env.ELIZA_OAUTH_DIR;
     else process.env.ELIZA_OAUTH_DIR = prevOAuthDir;
     if (prevStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
     else process.env.ELIZA_STATE_DIR = prevStateDir;
-    if (prevDisableProactive === undefined) delete process.env.ELIZA_DISABLE_PROACTIVE_AGENT;
+    if (prevDisableProactive === undefined)
+      delete process.env.ELIZA_DISABLE_PROACTIVE_AGENT;
     else process.env.ELIZA_DISABLE_PROACTIVE_AGENT = prevDisableProactive;
     await rm(oauthDir, { recursive: true, force: true });
   });

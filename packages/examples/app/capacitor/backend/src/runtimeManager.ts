@@ -1,8 +1,10 @@
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 import {
   AgentRuntime,
   ChannelType,
-  createCharacter,
   type Content,
+  createCharacter,
   createMessageMemory,
   LLMMode,
   type Memory,
@@ -15,8 +17,6 @@ import {
   getElizaGreeting,
 } from "@elizaos/plugin-eliza-classic";
 import localdbPlugin from "@elizaos/plugin-localdb";
-import { mkdirSync } from "node:fs";
-import { join } from "node:path";
 import { v4 as uuidv4 } from "uuid";
 import type { AppConfig, ChatMessage, ProviderMode } from "./types";
 import { getEffectiveMode } from "./types";
@@ -48,7 +48,11 @@ function getDataDir(): string {
   return dir;
 }
 
-function applySettings(runtime: AgentRuntime, config: AppConfig, mode: ProviderMode): void {
+function applySettings(
+  runtime: AgentRuntime,
+  config: AppConfig,
+  mode: ProviderMode,
+): void {
   runtime.setSetting("LLM_MODE", "DEFAULT");
   runtime.setSetting("CHECK_SHOULD_RESPOND", false);
   runtime.setSetting("LOCALDB_DATA_DIR", getDataDir());
@@ -61,9 +65,19 @@ function applySettings(runtime: AgentRuntime, config: AppConfig, mode: ProviderM
   }
 
   if (mode === "anthropic") {
-    runtime.setSetting("ANTHROPIC_API_KEY", config.provider.anthropicApiKey, true);
-    runtime.setSetting("ANTHROPIC_SMALL_MODEL", config.provider.anthropicSmallModel);
-    runtime.setSetting("ANTHROPIC_LARGE_MODEL", config.provider.anthropicLargeModel);
+    runtime.setSetting(
+      "ANTHROPIC_API_KEY",
+      config.provider.anthropicApiKey,
+      true,
+    );
+    runtime.setSetting(
+      "ANTHROPIC_SMALL_MODEL",
+      config.provider.anthropicSmallModel,
+    );
+    runtime.setSetting(
+      "ANTHROPIC_LARGE_MODEL",
+      config.provider.anthropicLargeModel,
+    );
   }
 
   if (mode === "xai") {
@@ -74,7 +88,11 @@ function applySettings(runtime: AgentRuntime, config: AppConfig, mode: ProviderM
   }
 
   if (mode === "gemini") {
-    runtime.setSetting("GOOGLE_GENERATIVE_AI_API_KEY", config.provider.googleGenaiApiKey, true);
+    runtime.setSetting(
+      "GOOGLE_GENERATIVE_AI_API_KEY",
+      config.provider.googleGenaiApiKey,
+      true,
+    );
     runtime.setSetting("GOOGLE_SMALL_MODEL", config.provider.googleSmallModel);
     runtime.setSetting("GOOGLE_LARGE_MODEL", config.provider.googleLargeModel);
   }
@@ -87,14 +105,30 @@ function applySettings(runtime: AgentRuntime, config: AppConfig, mode: ProviderM
   }
 
   if (mode === "openrouter") {
-    runtime.setSetting("OPENROUTER_API_KEY", config.provider.openrouterApiKey, true);
-    runtime.setSetting("OPENROUTER_BASE_URL", config.provider.openrouterBaseUrl);
-    runtime.setSetting("OPENROUTER_SMALL_MODEL", config.provider.openrouterSmallModel);
-    runtime.setSetting("OPENROUTER_LARGE_MODEL", config.provider.openrouterLargeModel);
+    runtime.setSetting(
+      "OPENROUTER_API_KEY",
+      config.provider.openrouterApiKey,
+      true,
+    );
+    runtime.setSetting(
+      "OPENROUTER_BASE_URL",
+      config.provider.openrouterBaseUrl,
+    );
+    runtime.setSetting(
+      "OPENROUTER_SMALL_MODEL",
+      config.provider.openrouterSmallModel,
+    );
+    runtime.setSetting(
+      "OPENROUTER_LARGE_MODEL",
+      config.provider.openrouterLargeModel,
+    );
   }
 
   if (mode === "ollama") {
-    runtime.setSetting("OLLAMA_API_ENDPOINT", config.provider.ollamaApiEndpoint);
+    runtime.setSetting(
+      "OLLAMA_API_ENDPOINT",
+      config.provider.ollamaApiEndpoint,
+    );
     runtime.setSetting("OLLAMA_SMALL_MODEL", config.provider.ollamaSmallModel);
     runtime.setSetting("OLLAMA_LARGE_MODEL", config.provider.ollamaLargeModel);
   }
@@ -125,7 +159,9 @@ async function buildPlugins(mode: ProviderMode): Promise<Plugin[]> {
   }
 }
 
-export async function getOrCreateRuntime(config: AppConfig): Promise<RuntimeBundle> {
+export async function getOrCreateRuntime(
+  config: AppConfig,
+): Promise<RuntimeBundle> {
   const effectiveMode = getEffectiveMode(config);
 
   if (currentBundle && currentMode === effectiveMode) {
@@ -182,7 +218,10 @@ export function getGreetingText(config: AppConfig): string {
     : "Hello! What would you like to chat about?";
 }
 
-function memoryToChatMessage(m: Memory, bundle: RuntimeBundle): ChatMessage | null {
+function memoryToChatMessage(
+  m: Memory,
+  bundle: RuntimeBundle,
+): ChatMessage | null {
   const text = typeof m.content.text === "string" ? m.content.text : "";
   if (!text) return null;
 
@@ -227,7 +266,7 @@ export async function resetConversation(config: AppConfig): Promise<void> {
 
 export async function sendMessage(
   config: AppConfig,
-  userText: string
+  userText: string,
 ): Promise<{ responseText: string; effectiveMode: ProviderMode }> {
   const bundle = await getOrCreateRuntime(config);
   const effectiveMode = getEffectiveMode(config);
@@ -255,7 +294,8 @@ export async function sendMessage(
       if (typeof content.text === "string") responseText = content.text;
       // Persist the assistant response in the same "messages" table.
       // This keeps `/history` consistent across restarts.
-      const assistantText = typeof content.text === "string" ? content.text.trim() : "";
+      const assistantText =
+        typeof content.text === "string" ? content.text.trim() : "";
       if (!assistantText) return [];
       return [
         createMessageMemory({
@@ -270,7 +310,7 @@ export async function sendMessage(
           },
         }),
       ];
-    }
+    },
   );
 
   if (!responseText && typeof result.responseContent?.text === "string") {
@@ -288,4 +328,3 @@ export async function __shutdownForTests(): Promise<void> {
   currentMode = null;
   initializing = null;
 }
-

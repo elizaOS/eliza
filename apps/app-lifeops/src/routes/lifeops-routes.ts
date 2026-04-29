@@ -570,7 +570,9 @@ function parseScreenTimeSourceQuery(
   return normalized;
 }
 
-function parseScreenTimeIdentifierQuery(value: string | null): string | undefined {
+function parseScreenTimeIdentifierQuery(
+  value: string | null,
+): string | undefined {
   const normalized = value?.trim();
   return normalized && normalized.length > 0 ? normalized : undefined;
 }
@@ -594,7 +596,10 @@ function parseRequiredIsoQuery(url: URL, field: string): string {
   if (!value) {
     throw new LifeOpsServiceError(400, `${field} is required`);
   }
-  if (!ISO_INSTANT_QUERY_RE.test(value) || !Number.isFinite(Date.parse(value))) {
+  if (
+    !ISO_INSTANT_QUERY_RE.test(value) ||
+    !Number.isFinite(Date.parse(value))
+  ) {
     throw new LifeOpsServiceError(400, `${field} must be a valid ISO string`);
   }
   return value;
@@ -839,8 +844,9 @@ export async function handleLifeOpsRoutes(
     if (!body) {
       return true;
     }
-    const { isLifeOpsFeatureKey } =
-      await import("../lifeops/feature-flags.types.js");
+    const { isLifeOpsFeatureKey } = await import(
+      "../lifeops/feature-flags.types.js"
+    );
     if (!isLifeOpsFeatureKey(body.featureKey)) {
       ctx.error(res, "featureKey must be a known LifeOpsFeatureKey", 400);
       return true;
@@ -849,8 +855,9 @@ export async function handleLifeOpsRoutes(
       ctx.error(res, "enabled must be a boolean", 400);
       return true;
     }
-    const { createFeatureFlagService } =
-      await import("../lifeops/feature-flags.js");
+    const { createFeatureFlagService } = await import(
+      "../lifeops/feature-flags.js"
+    );
     const service = createFeatureFlagService(runtime);
     const next = body.enabled
       ? await service.enable(body.featureKey, "local", null)

@@ -9,14 +9,14 @@
  */
 
 interface RuntimeLike {
-	getService: (name: string) => unknown;
+  getService: (name: string) => unknown;
 }
 
 export interface WaitForServiceOptions {
-	/** Total time to wait before giving up (default: 10_000). */
-	timeoutMs?: number;
-	/** Polling interval (default: 250). */
-	pollIntervalMs?: number;
+  /** Total time to wait before giving up (default: 10_000). */
+  timeoutMs?: number;
+  /** Polling interval (default: 250). */
+  pollIntervalMs?: number;
 }
 
 /**
@@ -25,24 +25,22 @@ export interface WaitForServiceOptions {
  * `null` explicitly.
  */
 export async function waitForService<TService>(
-	runtime: RuntimeLike,
-	serviceName: string,
-	options?: WaitForServiceOptions,
+  runtime: RuntimeLike,
+  serviceName: string,
+  options?: WaitForServiceOptions,
 ): Promise<TService | null> {
-	const timeoutMs = options?.timeoutMs ?? 10_000;
-	const pollIntervalMs = options?.pollIntervalMs ?? 250;
-	const deadline = Date.now() + timeoutMs;
+  const timeoutMs = options?.timeoutMs ?? 10_000;
+  const pollIntervalMs = options?.pollIntervalMs ?? 250;
+  const deadline = Date.now() + timeoutMs;
 
-	while (true) {
-		const service = runtime.getService(serviceName);
-		if (service) {
-			return service as TService;
-		}
-		if (Date.now() >= deadline) {
-			return null;
-		}
-		await new Promise<void>((resolve) =>
-			setTimeout(resolve, pollIntervalMs),
-		);
-	}
+  while (true) {
+    const service = runtime.getService(serviceName);
+    if (service) {
+      return service as TService;
+    }
+    if (Date.now() >= deadline) {
+      return null;
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, pollIntervalMs));
+  }
 }

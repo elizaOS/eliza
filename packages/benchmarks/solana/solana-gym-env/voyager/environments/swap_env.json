@@ -4,8 +4,7 @@
   "system_prompt_template": "voyager/prompts/swap_system_prompt.txt",
   "package_json": "voyager/environments/swap_package.json",
   "timeout": 30000,
-  "reward_config": {
-  },
+  "reward_config": {},
   "metrics": {
     "track_swap_programs": true,
     "track_instruction_types": true,

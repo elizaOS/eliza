@@ -23,7 +23,9 @@ describe("BROWSER_TAB_PRELOAD_SCRIPT", () => {
     document.body.innerHTML = "";
     document.documentElement
       .querySelectorAll("[data-eliza-cursor]")
-      .forEach((node) => node.remove());
+      .forEach((node) => {
+        node.remove();
+      });
     delete (window as unknown as { __elizaTabKit?: unknown }).__elizaTabKit;
     delete (window as unknown as { __elizaTabExec?: unknown }).__elizaTabExec;
     globalThis.__electrobunSendToHost = undefined;
@@ -32,12 +34,14 @@ describe("BROWSER_TAB_PRELOAD_SCRIPT", () => {
   afterEach(() => {
     document.documentElement
       .querySelectorAll("[data-eliza-cursor]")
-      .forEach((node) => node.remove());
+      .forEach((node) => {
+        node.remove();
+      });
   });
 
   function installPreload(): void {
-    // Indirect eval to run in the global scope of the test realm.
-    (0, eval)(BROWSER_TAB_PRELOAD_SCRIPT);
+    // biome-ignore lint/security/noGlobalEval: test intentionally executes the generated preload script in the jsdom global realm.
+    globalThis.eval(BROWSER_TAB_PRELOAD_SCRIPT);
   }
 
   it("installs __elizaTabKit and lazily mounts the cursor overlay on first show", () => {
@@ -137,7 +141,9 @@ describe("BROWSER_TAB_PRELOAD_SCRIPT — wallet shims", () => {
     document.body.innerHTML = "";
     document.documentElement
       .querySelectorAll("[data-eliza-cursor]")
-      .forEach((node) => node.remove());
+      .forEach((node) => {
+        node.remove();
+      });
     delete (window as unknown as { __elizaTabKit?: unknown }).__elizaTabKit;
     delete (window as unknown as { __elizaWalletInstalled?: boolean })
       .__elizaWalletInstalled;
@@ -150,7 +156,8 @@ describe("BROWSER_TAB_PRELOAD_SCRIPT — wallet shims", () => {
   });
 
   function installPreload(): void {
-    (0, eval)(BROWSER_TAB_PRELOAD_SCRIPT);
+    // biome-ignore lint/security/noGlobalEval: test intentionally executes the generated preload script in the jsdom global realm.
+    globalThis.eval(BROWSER_TAB_PRELOAD_SCRIPT);
   }
 
   it("installs window.ethereum (EIP-1193) and routes request() through the host bridge", async () => {
@@ -162,11 +169,19 @@ describe("BROWSER_TAB_PRELOAD_SCRIPT — wallet shims", () => {
     };
     installPreload();
 
-    const eth = (window as unknown as { ethereum?: { request: (a: unknown) => Promise<unknown>; isMilady: boolean } }).ethereum;
+    const eth = (
+      window as unknown as {
+        ethereum?: {
+          request: (a: unknown) => Promise<unknown>;
+          isMilady: boolean;
+        };
+      }
+    ).ethereum;
     expect(eth).toBeTruthy();
     expect(eth?.isMilady).toBe(true);
+    if (!eth) throw new Error("Milady Ethereum provider was not installed.");
 
-    const promise = eth!.request({
+    const promise = eth.request({
       method: "eth_requestAccounts",
       params: [],
     });
@@ -207,8 +222,9 @@ describe("BROWSER_TAB_PRELOAD_SCRIPT — wallet shims", () => {
     expect(sol).toBeTruthy();
     expect(sol?.isPhantom).toBe(true);
     expect(sol?.isMilady).toBe(true);
+    if (!sol) throw new Error("Milady Solana provider was not installed.");
 
-    const promise = sol!.connect();
+    const promise = sol.connect();
     expect(captured).toMatchObject({
       type: "__elizaWalletRequest",
       protocol: "solana",

@@ -15,26 +15,24 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { resolveOAuthDir } from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import {
-  createLifeOpsTestRuntime,
-  type RealTestRuntimeResult,
-} from "./helpers/runtime.js";
 import { saveEnv } from "../../../../test/helpers/test-utils";
 import {
-  resolveOAuthDir,
-} from "@elizaos/agent";
+  createLifeOpsCalendarSyncState,
+  createLifeOpsConnectorGrant,
+  LifeOpsRepository,
+} from "../src/lifeops/repository.js";
 import {
   addDaysToLocalDate,
   buildUtcDateFromLocalParts,
   getZonedDateParts,
 } from "../src/lifeops/time.js";
 import {
-  createLifeOpsCalendarSyncState,
-  createLifeOpsConnectorGrant,
-  LifeOpsRepository,
-} from "../src/lifeops/repository.js";
+  createLifeOpsTestRuntime,
+  type RealTestRuntimeResult,
+} from "./helpers/runtime.js";
 
 const AGENT_ID = "lifeops-calendar-integration-agent";
 const TEST_TIME_ZONE = "America/Los_Angeles";

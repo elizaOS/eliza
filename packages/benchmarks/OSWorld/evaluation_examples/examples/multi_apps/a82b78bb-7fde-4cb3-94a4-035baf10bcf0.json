@@ -7,20 +7,13 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "google-chrome",
-          "--remote-debugging-port=1337"
-        ]
+        "command": ["google-chrome", "--remote-debugging-port=1337"]
       }
     },
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "socat",
-          "tcp-listen:9222,fork",
-          "tcp:localhost:1337"
-        ]
+        "command": ["socat", "tcp-listen:9222,fork", "tcp:localhost:1337"]
       }
     },
     {
@@ -64,10 +57,7 @@
     }
   ],
   "trajectory": "trajectories/a82b78bb-7fde-4cb3-94a4-035baf10bcf0",
-  "related_apps": [
-    "chrome",
-    "pdf"
-  ],
+  "related_apps": ["chrome", "pdf"],
   "evaluator": {
     "func": "is_expected_bookmarks",
     "result": {
@@ -77,9 +67,7 @@
       "type": "rule",
       "rules": {
         "type": "liked_authors_websites_urls",
-        "names": [
-          "Liked Authors"
-        ],
+        "names": ["Liked Authors"],
         "urls": [
           [
             "https://jimfan.me/",

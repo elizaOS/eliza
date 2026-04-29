@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { deriveSleepWakeEvents } from "../src/lifeops/sleep-wake-events.js";
 import type { LifeOpsScheduleMergedStateRecord } from "../src/lifeops/repository.js";
+import { deriveSleepWakeEvents } from "../src/lifeops/sleep-wake-events.js";
 
 function buildState(
   overrides: Partial<LifeOpsScheduleMergedStateRecord>,
@@ -179,7 +179,10 @@ describe("sleep wake events", () => {
         },
       }),
       current: buildState({
-        regularity: { ...buildState({}).regularity, regularityClass: "regular" },
+        regularity: {
+          ...buildState({}).regularity,
+          regularityClass: "regular",
+        },
       }),
       now: new Date("2026-04-20T08:00:00.000Z"),
     });

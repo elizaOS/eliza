@@ -1,8 +1,6 @@
 {
   "version": "2.0.0-alpha.486",
-  "packages": [
-    "packages/*"
-  ],
+  "packages": ["packages/*"],
   "npmClient": "bun",
   "command": {
     "publish": {
@@ -16,11 +14,7 @@
         "release/*",
         "new-beginnings"
       ],
-      "ignoreChanges": [
-        "**/*.md",
-        "**/test/**",
-        "**/__tests__/**"
-      ],
+      "ignoreChanges": ["**/*.md", "**/test/**", "**/__tests__/**"],
       "verifyAccess": false
     },
     "version": {

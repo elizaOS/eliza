@@ -121,3 +121,7 @@ runs:
       env:
         SKIP_AVATAR_CLONE: ${{ inputs.skip-avatar-clone == 'true' && '1' || '' }}
         ELIZA_NO_VISION_DEPS: ${{ inputs.no-vision-deps == 'true' && '1' || '' }}
+
+    - name: Ensure generated shared i18n data
+      shell: bash
+      run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs

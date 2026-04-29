@@ -7,19 +7,12 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "libreoffice",
-          "--writer"
-        ]
+        "command": ["libreoffice", "--writer"]
       }
     }
   ],
   "trajectory": "trajectories/e1fc0df3-c8b9-4ee7-864c-d0b590d3aa56",
-  "related_apps": [
-    "chrome",
-    "libreoffice",
-    "os"
-  ],
+  "related_apps": ["chrome", "libreoffice", "os"],
   "evaluator": {
     "postconfig": [
       {
@@ -37,19 +30,12 @@
       {
         "type": "command",
         "parameters": {
-          "command": [
-            "apt",
-            "list",
-            "--installed"
-          ],
+          "command": ["apt", "list", "--installed"],
           "stdout": "apt.out"
         }
       }
     ],
-    "func": [
-      "check_list",
-      "check_list"
-    ],
+    "func": ["check_list", "check_list"],
     "result": [
       {
         "type": "cache_file",
@@ -64,17 +50,13 @@
       {
         "type": "rule",
         "rules": {
-          "expect": [
-            "org\\.openoffice\\.languagetool\\.oxt"
-          ]
+          "expect": ["org\\.openoffice\\.languagetool\\.oxt"]
         }
       },
       {
         "type": "rule",
         "rules": {
-          "expect": [
-            "openjdk-\\d+-(jre|jdk)"
-          ]
+          "expect": ["openjdk-\\d+-(jre|jdk)"]
         }
       }
     ]

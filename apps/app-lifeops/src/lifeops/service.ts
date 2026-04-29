@@ -10,25 +10,26 @@ export { LifeOpsServiceError } from "./service-types.js";
 
 import { withBrowser } from "./service-mixin-browser.js";
 import { withCalendar } from "./service-mixin-calendar.js";
+import type { Constructor } from "./service-mixin-core.js";
 import { LifeOpsServiceBase } from "./service-mixin-core.js";
 import { withDefinitions } from "./service-mixin-definitions.js";
 import { withDiscord } from "./service-mixin-discord.js";
 import { withDossier } from "./service-mixin-dossier.js";
 import { withDrive } from "./service-mixin-drive.js";
 import { withEmailUnsubscribe } from "./service-mixin-email-unsubscribe.js";
-import { withPayments } from "./service-mixin-payments.js";
 import { withGmail } from "./service-mixin-gmail.js";
 import { withGoals } from "./service-mixin-goals.js";
 import { withGoogle } from "./service-mixin-google.js";
 import { withHealth } from "./service-mixin-health.js";
 import { withIMessage } from "./service-mixin-imessage.js";
+import { withInbox } from "./service-mixin-inbox.js";
+import { withPayments } from "./service-mixin-payments.js";
 import { withRelationships } from "./service-mixin-relationships.js";
 import { withReminders } from "./service-mixin-reminders.js";
 import { withScheduling } from "./service-mixin-scheduling.js";
 import { withScreenTime } from "./service-mixin-screentime.js";
 import { withSignal } from "./service-mixin-signal.js";
 import { withSleep } from "./service-mixin-sleep.js";
-import type { Constructor } from "./service-mixin-core.js";
 import {
   type StatusMixinDependencies,
   withStatus,
@@ -36,7 +37,6 @@ import {
 import { withSubscriptions } from "./service-mixin-subscriptions.js";
 import { withTelegram } from "./service-mixin-telegram.js";
 import { withTravel } from "./service-mixin-travel.js";
-import { withInbox } from "./service-mixin-inbox.js";
 import { withWhatsApp } from "./service-mixin-whatsapp.js";
 import { withWorkflows } from "./service-mixin-workflows.js";
 import { withX } from "./service-mixin-x.js";
@@ -50,22 +50,16 @@ import { withXRead } from "./service-mixin-x-read.js";
 const LIFEOPS_BASE = withGoogle(LifeOpsServiceBase);
 const LIFEOPS_WITH_DATA = withDrive(withGmail(withCalendar(LIFEOPS_BASE)));
 const LIFEOPS_WITH_BUSINESS = withGoals(
-  withDefinitions(
-    withWorkflows(withBrowser(withReminders(LIFEOPS_WITH_DATA))),
-  ),
+  withDefinitions(withWorkflows(withBrowser(withReminders(LIFEOPS_WITH_DATA)))),
 );
 const LIFEOPS_WITH_X = withX(LIFEOPS_WITH_BUSINESS);
-const LIFEOPS_WITH_RELATIONS = withDossier(
-  withRelationships(LIFEOPS_WITH_X),
-);
+const LIFEOPS_WITH_RELATIONS = withDossier(withRelationships(LIFEOPS_WITH_X));
 const LIFEOPS_WITH_DOMAIN = withEmailUnsubscribe(
   withHealth(LIFEOPS_WITH_RELATIONS),
 );
 const LIFEOPS_WITH_X_READ = withXRead(LIFEOPS_WITH_DOMAIN);
 const LIFEOPS_WITH_CONNECTORS = withWhatsApp(
-  withSignal(
-    withDiscord(withTelegram(withIMessage(LIFEOPS_WITH_X_READ))),
-  ),
+  withSignal(withDiscord(withTelegram(withIMessage(LIFEOPS_WITH_X_READ)))),
 );
 const LIFEOPS_WITH_TRAVEL = withTravel(LIFEOPS_WITH_CONNECTORS);
 const LIFEOPS_WITH_SCHEDULING = withScheduling(LIFEOPS_WITH_TRAVEL);

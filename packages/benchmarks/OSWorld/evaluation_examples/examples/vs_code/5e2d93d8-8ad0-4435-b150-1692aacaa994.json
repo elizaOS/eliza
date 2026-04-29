@@ -7,11 +7,7 @@
     {
       "type": "command",
       "parameters": {
-        "command": [
-          "mkdir",
-          "-p",
-          "/home/user/project/.vscode"
-        ]
+        "command": ["mkdir", "-p", "/home/user/project/.vscode"]
       }
     },
     {
@@ -36,10 +32,7 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "code",
-          "/home/user/project/"
-        ]
+        "command": ["code", "/home/user/project/"]
       }
     },
     {
@@ -50,9 +43,7 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "vscode"
-  ],
+  "related_apps": ["vscode"],
   "evaluator": {
     "func": "is_extension_installed",
     "result": {

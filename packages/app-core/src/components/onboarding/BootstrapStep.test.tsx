@@ -229,13 +229,13 @@ describe("BootstrapStep", () => {
       window.history.replaceState(null, "", "/#bootstrap=tok");
 
       // Pending exchange — never resolves during this render
-      const exchangeFn = vi.fn(() => new Promise<BootstrapExchangeResult>(() => {}));
+      const exchangeFn = vi.fn(
+        () => new Promise<BootstrapExchangeResult>(() => {}),
+      );
 
       render(<BootstrapStep onAdvance={() => {}} exchangeFn={exchangeFn} />);
 
-      expect(
-        screen.getByRole("button", { name: /verifying/i }),
-      ).toBeTruthy();
+      expect(screen.getByRole("button", { name: /verifying/i })).toBeTruthy();
     });
 
     it("falls through to the manual paste form when the hash has no token", () => {
@@ -246,9 +246,7 @@ describe("BootstrapStep", () => {
       render(<BootstrapStep onAdvance={() => {}} exchangeFn={exchangeFn} />);
 
       expect(exchangeFn).not.toHaveBeenCalled();
-      expect(
-        screen.getByRole("button", { name: /activate/i }),
-      ).toBeTruthy();
+      expect(screen.getByRole("button", { name: /activate/i })).toBeTruthy();
     });
 
     it("surfaces a 401 from auto-exchange without advancing", async () => {

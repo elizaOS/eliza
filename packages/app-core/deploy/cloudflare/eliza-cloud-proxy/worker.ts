@@ -17,7 +17,8 @@ function resolveUpstreamOrigin(env: Env): string {
 }
 
 function resolveAllowedOrigins(env: Env): Set<string> {
-  const configured = (env.CF_ALLOWED_ORIGINS || env.ALLOWED_ORIGINS)?.split(",")
+  const configured = (env.CF_ALLOWED_ORIGINS || env.ALLOWED_ORIGINS)
+    ?.split(",")
     .map((item) => item.trim())
     .filter(Boolean);
   return new Set(configured?.length ? configured : DEFAULT_ALLOWED_ORIGINS);

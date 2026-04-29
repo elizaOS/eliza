@@ -1,35 +1,39 @@
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import fs from "node:fs";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import {
-  type AgentRuntime,
-  ChannelType,
-  stringToUuid,
-  type UUID,
-} from "@elizaos/core";
 import {
   decodePathComponent,
   readJsonBody,
   sendJson,
   sendJsonError,
 } from "@elizaos/agent";
+import {
+  type AgentRuntime,
+  ChannelType,
+  stringToUuid,
+  type UUID,
+} from "@elizaos/core";
+import { readRecentMessages } from "@elizaos/plugin-signal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { itIf } from "../../../../test/helpers/conditional-tests.ts";
 import { req } from "../../../../test/helpers/http.ts";
 import { createRealTestRuntime } from "../../../../test/helpers/real-runtime.ts";
-import { readRecentMessages } from "@elizaos/plugin-signal";
 import { crossChannelSendAction } from "../src/actions/cross-channel-send.js";
 import {
   createLifeOpsConnectorGrant,
   LifeOpsRepository,
 } from "../src/lifeops/repository.js";
 import { LifeOpsService } from "../src/lifeops/service.js";
+import { appLifeOpsPlugin } from "../src/plugin.js";
 import type { LifeOpsRouteContext } from "../src/routes/lifeops-routes.js";
 import { handleLifeOpsRoutes } from "../src/routes/lifeops-routes.js";
-import { appLifeOpsPlugin } from "../src/plugin.js";
 
 const SIGNAL_PHONE = "+15551230000";
 const SIGNAL_ACCOUNT = "+15551234567";
@@ -257,7 +261,11 @@ async function startSignalHttpStub(
       return;
     }
 
-    sendJsonError(res, `Unhandled Signal stub route: ${method} ${url.pathname}`, 404);
+    sendJsonError(
+      res,
+      `Unhandled Signal stub route: ${method} ${url.pathname}`,
+      404,
+    );
   });
 
   return {
@@ -348,7 +356,10 @@ async function writeLinkedSignalDevice(
   );
 }
 
-async function seedSignalGrant(runtime: AgentRuntime, authDir: string): Promise<void> {
+async function seedSignalGrant(
+  runtime: AgentRuntime,
+  authDir: string,
+): Promise<void> {
   const service = new LifeOpsService(runtime);
   await service.repository.upsertConnectorGrant(
     createLifeOpsConnectorGrant({
@@ -561,174 +572,174 @@ describe("Real E2E: LifeOps Signal", () => {
     90_000,
   );
 
-  it(
-    "hydrates a connected Signal grant, reads recent messages, and sends through LifeOps",
-    async () => {
-      signalStub = await startSignalHttpStub();
-      process.env.SIGNAL_HTTP_URL = signalStub.baseUrl;
+  it("hydrates a connected Signal grant, reads recent messages, and sends through LifeOps", async () => {
+    signalStub = await startSignalHttpStub();
+    process.env.SIGNAL_HTTP_URL = signalStub.baseUrl;
 
-      runtimeHandle = await createLifeOpsRuntime();
-      runtimeHandle.runtime.setSetting("SIGNAL_HTTP_URL", signalStub.baseUrl, false);
-      routeServer = await startLifeOpsRouteServer(runtimeHandle.runtime);
+    runtimeHandle = await createLifeOpsRuntime();
+    runtimeHandle.runtime.setSetting(
+      "SIGNAL_HTTP_URL",
+      signalStub.baseUrl,
+      false,
+    );
+    routeServer = await startLifeOpsRouteServer(runtimeHandle.runtime);
 
-      const authDir = path.join(oauthDir, "lifeops", "signal", "agent", "owner");
-      await writeLinkedSignalDevice(authDir);
-      await seedSignalGrant(runtimeHandle.runtime, authDir);
+    const authDir = path.join(oauthDir, "lifeops", "signal", "agent", "owner");
+    await writeLinkedSignalDevice(authDir);
+    await seedSignalGrant(runtimeHandle.runtime, authDir);
 
-      const statusResponse = await req(
-        routeServer.port,
-        "GET",
-        "/api/lifeops/connectors/signal/status",
-      );
-      expect(statusResponse.status).toBe(200);
-      expect(statusResponse.data.connected).toBe(true);
-      expect(statusResponse.data.reason).toBe("connected");
-      expect(statusResponse.data.identity).toMatchObject({
-        phoneNumber: SIGNAL_ACCOUNT,
-        uuid: SIGNAL_UUID,
-      });
-      expect(statusResponse.data.grantedCapabilities).toEqual(
-        expect.arrayContaining(["signal.read", "signal.send"]),
-      );
+    const statusResponse = await req(
+      routeServer.port,
+      "GET",
+      "/api/lifeops/connectors/signal/status",
+    );
+    expect(statusResponse.status).toBe(200);
+    expect(statusResponse.data.connected).toBe(true);
+    expect(statusResponse.data.reason).toBe("connected");
+    expect(statusResponse.data.identity).toMatchObject({
+      phoneNumber: SIGNAL_ACCOUNT,
+      uuid: SIGNAL_UUID,
+    });
+    expect(statusResponse.data.grantedCapabilities).toEqual(
+      expect.arrayContaining(["signal.read", "signal.send"]),
+    );
 
-      const signalService = (await runtimeHandle.runtime.getServiceLoadPromise(
-        "signal",
-      )) as {
-        isServiceConnected?: () => boolean;
-      } | null;
-      expect(signalService?.isServiceConnected?.()).toBe(true);
+    const signalService = (await runtimeHandle.runtime.getServiceLoadPromise(
+      "signal",
+    )) as {
+      isServiceConnected?: () => boolean;
+    } | null;
+    expect(signalService?.isServiceConnected?.()).toBe(true);
 
-      await seedSignalMemory(runtimeHandle.runtime);
+    await seedSignalMemory(runtimeHandle.runtime);
 
-      const readCallback = vi.fn();
-      const readResult = await readRecentMessages.handler?.(
-        runtimeHandle.runtime,
-        ownerMessage(runtimeHandle.runtime, "Check my Signal messages"),
-        undefined,
-        undefined,
-        readCallback,
-      );
-      expect(readResult).toMatchObject({
-        success: true,
-        data: expect.objectContaining({
-          messageCount: 1,
-        }),
-      });
-      expect(readCallback).toHaveBeenCalledWith(
-        expect.objectContaining({
-          text: expect.stringContaining("Booking confirmed."),
-        }),
-      );
+    const readCallback = vi.fn();
+    const readResult = await readRecentMessages.handler?.(
+      runtimeHandle.runtime,
+      ownerMessage(runtimeHandle.runtime, "Check my Signal messages"),
+      undefined,
+      undefined,
+      readCallback,
+    );
+    expect(readResult).toMatchObject({
+      success: true,
+      data: expect.objectContaining({
+        messageCount: 1,
+      }),
+    });
+    expect(readCallback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining("Booking confirmed."),
+      }),
+    );
 
-      const draftResult = await crossChannelSendAction.handler?.(
-        runtimeHandle.runtime,
-        ownerMessage(runtimeHandle.runtime, "draft signal send"),
-        undefined,
-        {
-          parameters: {
-            channel: "signal",
-            target: SIGNAL_PHONE,
-            message: "On my way.",
-            confirmed: false,
-          },
-        } as never,
-      );
-      expect(draftResult).toMatchObject({
-        success: true,
-        values: expect.objectContaining({
-          draft: true,
-          channel: "signal",
-        }),
-      });
-      expect(signalStub.sendPayloads).toHaveLength(0);
-
-      const sendResult = await crossChannelSendAction.handler?.(
-        runtimeHandle.runtime,
-        ownerMessage(runtimeHandle.runtime, "confirm signal send"),
-        undefined,
-        {
-          parameters: {
-            channel: "signal",
-            target: SIGNAL_PHONE,
-            message: "On my way.",
-            confirmed: true,
-          },
-        } as never,
-      );
-      expect(sendResult).toMatchObject({
-        success: true,
-        values: expect.objectContaining({
+    const draftResult = await crossChannelSendAction.handler?.(
+      runtimeHandle.runtime,
+      ownerMessage(runtimeHandle.runtime, "draft signal send"),
+      undefined,
+      {
+        parameters: {
           channel: "signal",
           target: SIGNAL_PHONE,
-        }),
-      });
+          message: "On my way.",
+          confirmed: false,
+        },
+      } as never,
+    );
+    expect(draftResult).toMatchObject({
+      success: true,
+      values: expect.objectContaining({
+        draft: true,
+        channel: "signal",
+      }),
+    });
+    expect(signalStub.sendPayloads).toHaveLength(0);
 
-      expect(signalStub.sendPayloads).toHaveLength(1);
-      expect(signalStub.sendPayloads[0]).toMatchObject({
-        message: "On my way.",
-        number: SIGNAL_ACCOUNT,
-        recipients: [SIGNAL_PHONE],
-      });
-    },
-    45_000,
-  );
+    const sendResult = await crossChannelSendAction.handler?.(
+      runtimeHandle.runtime,
+      ownerMessage(runtimeHandle.runtime, "confirm signal send"),
+      undefined,
+      {
+        parameters: {
+          channel: "signal",
+          target: SIGNAL_PHONE,
+          message: "On my way.",
+          confirmed: true,
+        },
+      } as never,
+    );
+    expect(sendResult).toMatchObject({
+      success: true,
+      values: expect.objectContaining({
+        channel: "signal",
+        target: SIGNAL_PHONE,
+      }),
+    });
 
-  it(
-    "reports failed Signal delivery instead of claiming outbound success",
-    async () => {
-      signalStub = await startSignalHttpStub({ failSend: true });
-      process.env.SIGNAL_HTTP_URL = signalStub.baseUrl;
+    expect(signalStub.sendPayloads).toHaveLength(1);
+    expect(signalStub.sendPayloads[0]).toMatchObject({
+      message: "On my way.",
+      number: SIGNAL_ACCOUNT,
+      recipients: [SIGNAL_PHONE],
+    });
+  }, 45_000);
 
-      runtimeHandle = await createLifeOpsRuntime();
-      runtimeHandle.runtime.setSetting("SIGNAL_HTTP_URL", signalStub.baseUrl, false);
+  it("reports failed Signal delivery instead of claiming outbound success", async () => {
+    signalStub = await startSignalHttpStub({ failSend: true });
+    process.env.SIGNAL_HTTP_URL = signalStub.baseUrl;
 
-      const authDir = path.join(oauthDir, "lifeops", "signal", "agent", "owner");
-      await writeLinkedSignalDevice(authDir);
-      await seedSignalGrant(runtimeHandle.runtime, authDir);
+    runtimeHandle = await createLifeOpsRuntime();
+    runtimeHandle.runtime.setSetting(
+      "SIGNAL_HTTP_URL",
+      signalStub.baseUrl,
+      false,
+    );
 
-      const service = new LifeOpsService(runtimeHandle.runtime);
-      await expect(service.getSignalConnectorStatus()).resolves.toMatchObject({
-        connected: true,
-        reason: "connected",
-      });
+    const authDir = path.join(oauthDir, "lifeops", "signal", "agent", "owner");
+    await writeLinkedSignalDevice(authDir);
+    await seedSignalGrant(runtimeHandle.runtime, authDir);
 
-      const signalService = (await runtimeHandle.runtime.getServiceLoadPromise(
-        "signal",
-      )) as {
-        isServiceConnected?: () => boolean;
-      } | null;
-      expect(signalService?.isServiceConnected?.()).toBe(true);
+    const service = new LifeOpsService(runtimeHandle.runtime);
+    await expect(service.getSignalConnectorStatus()).resolves.toMatchObject({
+      connected: true,
+      reason: "connected",
+    });
 
-      const sendResult = await crossChannelSendAction.handler?.(
-        runtimeHandle.runtime,
-        ownerMessage(runtimeHandle.runtime, "confirm signal send failure"),
-        undefined,
-        {
-          parameters: {
-            channel: "signal",
-            target: SIGNAL_PHONE,
-            message: "This should fail.",
-            confirmed: true,
-          },
-        } as never,
-      );
+    const signalService = (await runtimeHandle.runtime.getServiceLoadPromise(
+      "signal",
+    )) as {
+      isServiceConnected?: () => boolean;
+    } | null;
+    expect(signalService?.isServiceConnected?.()).toBe(true);
 
-      expect(sendResult).toMatchObject({
+    const sendResult = await crossChannelSendAction.handler?.(
+      runtimeHandle.runtime,
+      ownerMessage(runtimeHandle.runtime, "confirm signal send failure"),
+      undefined,
+      {
+        parameters: {
+          channel: "signal",
+          target: SIGNAL_PHONE,
+          message: "This should fail.",
+          confirmed: true,
+        },
+      } as never,
+    );
+
+    expect(sendResult).toMatchObject({
+      success: false,
+      values: expect.objectContaining({
         success: false,
-        values: expect.objectContaining({
-          success: false,
-          channel: "signal",
-          target: SIGNAL_PHONE,
-        }),
-      });
-      expect(String(sendResult?.text)).toContain("failed");
-      expect(signalStub.sendPayloads).toHaveLength(1);
-      expect(signalStub.sendPayloads[0]).toMatchObject({
-        message: "This should fail.",
-        number: SIGNAL_ACCOUNT,
-        recipients: [SIGNAL_PHONE],
-      });
-    },
-    45_000,
-  );
+        channel: "signal",
+        target: SIGNAL_PHONE,
+      }),
+    });
+    expect(String(sendResult?.text)).toContain("failed");
+    expect(signalStub.sendPayloads).toHaveLength(1);
+    expect(signalStub.sendPayloads[0]).toMatchObject({
+      message: "This should fail.",
+      number: SIGNAL_ACCOUNT,
+      recipients: [SIGNAL_PHONE],
+    });
+  }, 45_000);
 });

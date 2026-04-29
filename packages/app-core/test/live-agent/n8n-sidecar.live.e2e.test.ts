@@ -176,7 +176,10 @@ describeIf(CAN_RUN)("Live: n8n sidecar end-to-end", () => {
         headers: { "X-N8N-API-KEY": apiKey, Accept: "application/json" },
       });
       expect(res.status).toBe(200);
-      const body = (await res.json()) as { data?: unknown; nextCursor?: unknown };
+      const body = (await res.json()) as {
+        data?: unknown;
+        nextCursor?: unknown;
+      };
       expect(body.data).toBeInstanceOf(Array);
     },
     30_000,
@@ -317,13 +320,16 @@ describeIf(CAN_RUN)("Live: n8n sidecar end-to-end", () => {
         try {
           const { ModelType } = await import("@elizaos/core");
           const model = rt.runtime.getModel(ModelType.TEXT_SMALL);
-          expect(model, "live provider must register a TEXT_SMALL model").toBeTypeOf(
-            "function",
-          );
-          const out = (await (model as unknown as (
-            runtime: unknown,
-            params: { prompt: string; maxTokens: number },
-          ) => Promise<unknown>)(rt.runtime, {
+          expect(
+            model,
+            "live provider must register a TEXT_SMALL model",
+          ).toBeTypeOf("function");
+          const out = (await (
+            model as unknown as (
+              runtime: unknown,
+              params: { prompt: string; maxTokens: number },
+            ) => Promise<unknown>
+          )(rt.runtime, {
             prompt:
               "Answer in one short sentence: in n8n, what's the difference " +
               "between the internal /rest/* API and the public /api/v1/* API?",
@@ -333,7 +339,7 @@ describeIf(CAN_RUN)("Live: n8n sidecar end-to-end", () => {
             typeof out === "string"
               ? out
               : typeof (out as { text?: unknown })?.text === "string"
-                ? ((out as { text: string }).text)
+                ? (out as { text: string }).text
                 : JSON.stringify(out);
           expect(text.length).toBeGreaterThan(10);
         } finally {

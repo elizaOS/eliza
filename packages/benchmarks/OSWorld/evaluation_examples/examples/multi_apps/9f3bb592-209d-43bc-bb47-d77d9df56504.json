@@ -29,11 +29,7 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "os",
-    "vlc",
-    "ubuntu_media_player"
-  ],
+  "related_apps": ["os", "vlc", "ubuntu_media_player"],
   "evaluator": {
     "postconfig": [
       {

@@ -9,14 +9,15 @@
  * run of this file as evidence that the LLM planner or the
  * subscriptions action handle novel/unseen user phrasings.
  */
-import { describe, expect, test } from "vitest";
+
 import type { Content, Memory } from "@elizaos/core";
-import { subscriptionsAction } from "../src/actions/subscriptions.js";
-import { LifeOpsRepository } from "../src/lifeops/repository.js";
-import { createLifeOpsChatTestRuntime } from "./helpers/lifeops-chat-runtime.js";
+import { describe, expect, test } from "vitest";
 import { runScenario } from "../../../packages/scenario-runner/src/executor.ts";
 import cancelGooglePlayScenario from "../../../test/scenarios/browser.lifeops/subscriptions.cancel-google-play.scenario";
 import loginRequiredScenario from "../../../test/scenarios/browser.lifeops/subscriptions.login-required.scenario";
+import { subscriptionsAction } from "../src/actions/subscriptions.js";
+import { LifeOpsRepository } from "../src/lifeops/repository.js";
+import { createLifeOpsChatTestRuntime } from "./helpers/lifeops-chat-runtime.js";
 
 function buildSubscriptionsPlannerStub() {
   return async (_modelType: unknown, input: { prompt?: string } | string) => {
@@ -37,7 +38,10 @@ function buildSubscriptionsPlannerStub() {
     const serviceSlug =
       serviceName === null
         ? null
-        : serviceName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+        : serviceName
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-|-$/g, "");
     const plan = {
       mode: "cancel",
       serviceName,
@@ -111,16 +115,18 @@ async function createScenarioRuntime(agentId: string) {
 
 describe("subscriptions — fixture routing regression test (regex param extraction)", () => {
   test("google play happy-path scenario passes", async () => {
-    const runtime = await createScenarioRuntime("lifeops-subscriptions-scenario-ok");
+    const runtime = await createScenarioRuntime(
+      "lifeops-subscriptions-scenario-ok",
+    );
     const report = await runScenario(cancelGooglePlayScenario, runtime, {
       providerName: "test",
       minJudgeScore: 0.7,
       turnTimeoutMs: 20_000,
     });
     expect(report.status).toBe("passed");
-    expect(
-      report.finalChecks.every((check) => check.status === "passed"),
-    ).toBe(true);
+    expect(report.finalChecks.every((check) => check.status === "passed")).toBe(
+      true,
+    );
   });
 
   test("login-required scenario passes with human-handoff final checks", async () => {
@@ -133,8 +139,8 @@ describe("subscriptions — fixture routing regression test (regex param extract
       turnTimeoutMs: 20_000,
     });
     expect(report.status).toBe("passed");
-    expect(
-      report.finalChecks.every((check) => check.status === "passed"),
-    ).toBe(true);
+    expect(report.finalChecks.every((check) => check.status === "passed")).toBe(
+      true,
+    );
   });
 });

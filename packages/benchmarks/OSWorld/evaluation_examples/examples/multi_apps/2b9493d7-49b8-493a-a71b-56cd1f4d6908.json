@@ -40,20 +40,13 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "libreoffice_writer",
-    "terminal"
-  ],
+  "related_apps": ["libreoffice_writer", "terminal"],
   "evaluator": {
     "postconfig": [
       {
         "type": "execute",
         "parameters": {
-          "command": [
-            "/bin/bash",
-            "-c",
-            "killall gnome-terminal-server"
-          ]
+          "command": ["/bin/bash", "-c", "killall gnome-terminal-server"]
         }
       }
     ],
@@ -69,14 +62,8 @@
     "expected": {
       "type": "rule",
       "rules": {
-        "include": [
-          "no libreoffice is running",
-          "killed from terminal"
-        ],
-        "exclude": [
-          "libreoffice is still running",
-          "not killed from terminal"
-        ]
+        "include": ["no libreoffice is running", "killed from terminal"],
+        "exclude": ["libreoffice is still running", "not killed from terminal"]
       }
     }
   },

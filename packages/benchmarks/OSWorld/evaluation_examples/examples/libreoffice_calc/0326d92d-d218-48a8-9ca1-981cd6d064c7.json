@@ -23,9 +23,7 @@
     }
   ],
   "trajectory": "trajectories/0326d92d-d218-48a8-9ca1-981cd6d064c7",
-  "related_apps": [
-    "libreoffice_calc"
-  ],
+  "related_apps": ["libreoffice_calc"],
   "evaluator": {
     "postconfig": [
       {
@@ -80,10 +78,7 @@
           "type": "chart",
           "sheet_idx0": 0,
           "sheet_idx1": "EI0",
-          "chart_props": [
-            "type",
-            "title"
-          ]
+          "chart_props": ["type", "title"]
         }
       ]
     }

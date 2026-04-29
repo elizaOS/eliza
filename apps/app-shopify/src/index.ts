@@ -1,10 +1,10 @@
+export * from "./CustomersPanel";
+export * from "./InventoryLevelsPanel";
+export * from "./OrdersPanel";
+export * from "./ProductsPanel";
+export { shopifyPlugin } from "./plugin";
+export * from "./routes";
 export * from "./ShopifyAppView";
 export * from "./StoreOverviewCard";
-export * from "./ProductsPanel";
-export * from "./OrdersPanel";
-export * from "./InventoryLevelsPanel";
-export * from "./CustomersPanel";
-export * from "./routes";
-export * from "./useShopifyDashboard";
 export { SHOPIFY_APP_NAME, shopifyApp } from "./shopify-app";
-export { shopifyPlugin } from "./plugin";
+export * from "./useShopifyDashboard";

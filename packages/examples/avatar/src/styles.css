@@ -55,8 +55,17 @@ a {
   width: 100%;
   height: 100%;
   display: block;
-  background: radial-gradient(ellipse 120% 100% at 50% 100%, rgba(124, 58, 237, 0.15), transparent 60%),
-    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(20, 30, 50, 0.8), transparent),
+  background:
+    radial-gradient(
+      ellipse 120% 100% at 50% 100%,
+      rgba(124, 58, 237, 0.15),
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse 80% 60% at 50% 0%,
+      rgba(20, 30, 50, 0.8),
+      transparent
+    ),
     var(--bg);
 }
 
@@ -289,7 +298,6 @@ a {
 .voice-transcript.pending {
   border-color: var(--accent);
 }
-
 
 /* Bottom controls */
 .bottom-controls {
@@ -687,5 +695,9 @@ input[type="range"]::-webkit-slider-thumb {
   width: 100%;
   height: 100%;
   display: block;
-  background: radial-gradient(900px 600px at 60% 40%, rgba(124, 58, 237, 0.18), transparent);
+  background: radial-gradient(
+    900px 600px at 60% 40%,
+    rgba(124, 58, 237, 0.18),
+    transparent
+  );
 }

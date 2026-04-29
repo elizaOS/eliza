@@ -20,7 +20,11 @@ import { handleShopifyRoute } from "./routes";
 // ---------------------------------------------------------------------------
 
 function shopifyRouteHandler(pathname: string) {
-  return async (req: unknown, res: unknown, _runtime: unknown): Promise<void> => {
+  return async (
+    req: unknown,
+    res: unknown,
+    _runtime: unknown,
+  ): Promise<void> => {
     const httpReq = req as http.IncomingMessage;
     const httpRes = res as http.ServerResponse;
     const method = (httpReq.method ?? "GET").toUpperCase();
@@ -73,7 +77,11 @@ const shopifyRoutes: Route[] = [
     type: "POST",
     path: "/api/shopify/inventory/:itemId/adjust",
     rawPath: true,
-    handler: async (req: unknown, res: unknown, _runtime: unknown): Promise<void> => {
+    handler: async (
+      req: unknown,
+      res: unknown,
+      _runtime: unknown,
+    ): Promise<void> => {
       const httpReq = req as http.IncomingMessage;
       const httpRes = res as http.ServerResponse;
       const method = (httpReq.method ?? "GET").toUpperCase();
