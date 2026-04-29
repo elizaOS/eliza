@@ -26,8 +26,8 @@ import type {
   AuthSessionRow,
   AuthStore,
 } from "../../services/auth-store";
-import { tokenMatches } from "../auth";
 import { appendAuditEvent } from "./audit";
+import { tokenMatches } from "./tokens";
 
 // ── TTLs (plan §1.3, §4.4) ───────────────────────────────────────────────────
 

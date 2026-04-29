@@ -10,10 +10,7 @@
  */
 
 import {
-  type ComponentType,
   type JSX,
-  type LazyExoticComponent,
-  lazy,
   Suspense,
   useEffect,
   useMemo,
@@ -61,40 +58,13 @@ import { SkillsView } from "../components/pages/SkillsView";
 import { TasksPageView } from "../components/pages/TasksPageView";
 import { TrajectoriesView } from "../components/pages/TrajectoriesView";
 import { FineTuningView } from "../components/training/injected";
+import { useBootConfig } from "../config/boot-config-react";
 import type { Tab } from "../navigation";
 import { useApp } from "../state/useApp";
 import { openExternalUrl } from "../utils";
 
 interface AppWindowRendererProps {
   slug: string;
-}
-
-type ExtractComponent<TValue> =
-  TValue extends ComponentType<infer Props> ? ComponentType<Props> : never;
-
-/**
- * Reserved for views that are ONLY ever loaded through this renderer (not
- * statically imported anywhere else). Today nothing meets that bar — every
- * tab view is also loaded by the main shell — but keep the helper around
- * so lifeops or future plugin-contributed surfaces can opt in cleanly.
- */
-function lazyNamedView<
-  TModule extends Record<string, unknown>,
-  TKey extends keyof TModule,
->(
-  load: () => Promise<TModule>,
-  exportName: TKey,
-): LazyExoticComponent<ExtractComponent<TModule[TKey]>> {
-  return lazy(async () => {
-    const module = await load();
-    const component = module[exportName];
-    if (typeof component !== "function") {
-      throw new Error(`Missing component export: ${String(exportName)}`);
-    }
-    return {
-      default: component as ExtractComponent<TModule[TKey]>,
-    };
-  });
 }
 
 function AppWindowSuspense({
@@ -153,16 +123,15 @@ function renderInternalToolTab(tab: Tab): JSX.Element | null {
 }
 
 function LifeOpsAppWindowView(): JSX.Element {
-  // LifeOps is injected at boot time and lives in @elizaos/app-lifeops/ui.
-  // Lazy-load it the same way the main shell does.
-  const LifeOpsLazy = useMemo(
-    () =>
-      lazyNamedView(() => import("@elizaos/app-lifeops/ui"), "LifeOpsPageView"),
-    [],
-  );
+  const { lifeOpsPageView: LifeOpsPageView } = useBootConfig();
+  if (!LifeOpsPageView) {
+    return (
+      <AppWindowError message="LifeOps is not registered in this build." />
+    );
+  }
   return (
     <AppWindowSuspense>
-      <LifeOpsLazy />
+      <LifeOpsPageView />
     </AppWindowSuspense>
   );
 }
