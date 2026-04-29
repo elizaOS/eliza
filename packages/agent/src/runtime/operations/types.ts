@@ -25,7 +25,14 @@ import type { AgentRuntime } from "@elizaos/core";
 export interface ProviderSwitchIntent {
   kind: "provider-switch";
   provider: string;
-  apiKey?: string;
+  /**
+   * Vault key that resolves to the provider's API key (e.g.
+   * `"providers.openai.api-key"`). The actual secret never travels through
+   * the intent — only this stable identifier — so persisted operation
+   * records cannot leak credentials. Resolved at apply-env time via
+   * `SecretsManager.get(apiKeyRef)`.
+   */
+  apiKeyRef?: string;
   primaryModel?: string;
 }
 
@@ -110,6 +117,7 @@ export type OperationErrorCode =
   | "no-strategy-for-tier"
   | "no-runtime"
   | "strategy-failed"
+  | "vault-resolve-failed"
   | "health-check-failed";
 
 export interface OperationError {
