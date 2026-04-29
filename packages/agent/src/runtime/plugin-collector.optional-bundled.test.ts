@@ -20,13 +20,17 @@ describe("optional core plugins (require explicit opt-in)", () => {
   const prevCloudKey = process.env.ELIZAOS_CLOUD_API_KEY;
   const prevCloudEnabled = process.env.ELIZAOS_CLOUD_ENABLED;
   const prevOpenAiKey = process.env.OPENAI_API_KEY;
+  const prevAnthropicKey = process.env.ANTHROPIC_API_KEY;
   const prevOllamaBaseUrl = process.env.OLLAMA_BASE_URL;
+  const prevMiladyLocalLlama = process.env.MILADY_LOCAL_LLAMA;
 
   beforeEach(() => {
     delete process.env.ELIZAOS_CLOUD_API_KEY;
     delete process.env.ELIZAOS_CLOUD_ENABLED;
     delete process.env.OPENAI_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
     delete process.env.OLLAMA_BASE_URL;
+    delete process.env.MILADY_LOCAL_LLAMA;
   });
 
   afterEach(() => {
@@ -45,10 +49,20 @@ describe("optional core plugins (require explicit opt-in)", () => {
     } else {
       delete process.env.OPENAI_API_KEY;
     }
+    if (prevAnthropicKey !== undefined) {
+      process.env.ANTHROPIC_API_KEY = prevAnthropicKey;
+    } else {
+      delete process.env.ANTHROPIC_API_KEY;
+    }
     if (prevOllamaBaseUrl !== undefined) {
       process.env.OLLAMA_BASE_URL = prevOllamaBaseUrl;
     } else {
       delete process.env.OLLAMA_BASE_URL;
+    }
+    if (prevMiladyLocalLlama !== undefined) {
+      process.env.MILADY_LOCAL_LLAMA = prevMiladyLocalLlama;
+    } else {
+      delete process.env.MILADY_LOCAL_LLAMA;
     }
   });
 
@@ -149,5 +163,45 @@ describe("optional core plugins (require explicit opt-in)", () => {
     expect(names.has("@elizaos/plugin-elizacloud")).toBe(false);
     expect(names.has("@elizaos/plugin-openai")).toBe(false);
     expect(names.has("@elizaos/plugin-ollama")).toBe(true);
+  });
+
+  it("MILADY_LOCAL_LLAMA=1 strips remote providers even with API keys + cloud config absent", () => {
+    process.env.MILADY_LOCAL_LLAMA = "1";
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+    process.env.OPENAI_API_KEY = "sk-test";
+
+    const names = collectPluginNames({
+      plugins: {
+        allow: ["@elizaos/plugin-anthropic", "@elizaos/plugin-openai"],
+      },
+    } as ElizaConfig);
+
+    expect(names.has("@elizaos/plugin-anthropic")).toBe(false);
+    expect(names.has("@elizaos/plugin-openai")).toBe(false);
+    expect(names.has("@elizaos/plugin-elizacloud")).toBe(false);
+  });
+
+  it("MILADY_LOCAL_LLAMA=1 still allows local provider plugins", () => {
+    process.env.MILADY_LOCAL_LLAMA = "1";
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+    process.env.OLLAMA_BASE_URL = "http://localhost:11434";
+
+    const names = collectPluginNames({
+      plugins: {},
+    } as ElizaConfig);
+
+    expect(names.has("@elizaos/plugin-anthropic")).toBe(false);
+    expect(names.has("@elizaos/plugin-ollama")).toBe(true);
+  });
+
+  it("MILADY_LOCAL_LLAMA unset leaves remote providers alone", () => {
+    delete process.env.MILADY_LOCAL_LLAMA;
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+
+    const names = collectPluginNames({
+      plugins: {},
+    } as ElizaConfig);
+
+    expect(names.has("@elizaos/plugin-anthropic")).toBe(true);
   });
 });

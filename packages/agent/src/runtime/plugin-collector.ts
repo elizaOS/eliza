@@ -234,8 +234,17 @@ export function collectPluginNames(
   );
   const isCloudContainer = process.env.ELIZA_CLOUD_PROVISIONED === "1";
   const cloudExplicitlyDisabled = config.cloud?.enabled === false;
+  // AOSP all-local lock. When the agent process explicitly sets
+  // `MILADY_LOCAL_LLAMA=1`, every cloud and remote provider plugin must be
+  // stripped, even if the operator left an `ANTHROPIC_API_KEY` etc. in
+  // their env. The flag is the canonical signal that the runtime should
+  // route TEXT_SMALL/TEXT_LARGE through the in-process bun:ffi llama loader
+  // and nothing else; downstream `applyProviderPrecedence` reads
+  // `localOnlyInference` to decide what to delete.
+  const aospLocalLlamaEnv = process.env.MILADY_LOCAL_LLAMA?.trim() === "1";
   const localOnlyInference =
     legacyLocalOnlyInference ||
+    aospLocalLlamaEnv ||
     (cloudExplicitlyDisabled &&
       deploymentTarget.runtime === "local" &&
       !serviceRouting?.llmText);
