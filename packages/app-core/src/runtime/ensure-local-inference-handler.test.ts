@@ -27,6 +27,17 @@ vi.mock("@elizaos/capacitor-llama", () => ({
   },
 }));
 
+vi.mock("@elizaos/agent/runtime/aosp-llama-adapter", () => ({
+  registerAospLlamaLoader(runtime: {
+    registerService?: (name: string, impl: MockLocalInferenceLoader) => unknown;
+  }) {
+    runtime.registerService?.("localInferenceLoader", {
+      currentModelPath: () => null,
+    });
+    return true;
+  },
+}));
+
 function makeRuntime() {
   const registrations: CapturedRegistration[] = [];
   const services = new Map<string, unknown>();
@@ -104,5 +115,28 @@ describe("ensureLocalInferenceHandler", () => {
         (r) => r.provider === "milady-device-bridge",
       ),
     ).toHaveLength(2);
+  });
+
+  it("registers AOSP llama loader under the milady-aosp-llama provider when MILADY_LOCAL_LLAMA=1", async () => {
+    process.env.MILADY_PLATFORM = "android";
+    process.env.MILADY_LOCAL_LLAMA = "1";
+    const runtime = makeRuntime();
+
+    await ensureLocalInferenceHandler(
+      runtime as Parameters<typeof ensureLocalInferenceHandler>[0],
+    );
+
+    expect(
+      runtime.registrations.filter((r) => r.provider === "milady-aosp-llama"),
+    ).toHaveLength(2);
+    expect(runtime.getService("localInferenceLoader")).toBeTruthy();
+    // AOSP wins over Capacitor and device-bridge.
+    expect(
+      runtime.registrations.filter(
+        (r) =>
+          r.provider === "capacitor-llama" ||
+          r.provider === "milady-device-bridge",
+      ),
+    ).toHaveLength(0);
   });
 });
