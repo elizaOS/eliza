@@ -34,4 +34,44 @@ describe("classifyScreenTimeTarget", () => {
       serviceLabel: "X",
     });
   });
+
+  it("does not classify unrelated domains that merely contain social tokens", () => {
+    expect(
+      classifyScreenTimeTarget({
+        source: "website",
+        identifier: "examplex.com",
+        displayName: "examplex.com",
+        metadata: { browser: "Chrome", url: "https://examplex.com" },
+      }),
+    ).toMatchObject({
+      category: "other",
+      service: null,
+    });
+
+    expect(
+      classifyScreenTimeTarget({
+        source: "website",
+        identifier: "slackline.example.com",
+        displayName: "slackline.example.com",
+        metadata: { url: "https://slackline.example.com" },
+      }),
+    ).toMatchObject({
+      category: "other",
+      service: null,
+    });
+  });
+
+  it("does not classify app names as browsers through substring matches", () => {
+    expect(
+      classifyScreenTimeTarget({
+        source: "app",
+        identifier: "com.example.architecture",
+        displayName: "Architecture Notes",
+        metadata: {},
+      }),
+    ).toMatchObject({
+      category: "other",
+      browser: null,
+    });
+  });
 });

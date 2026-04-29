@@ -178,7 +178,8 @@ export async function seedMorningBriefFixtures(args: {
     gmailMessageId: "morning-brief-gmail-marco",
     draftText:
       "I reviewed the investor diligence packet and can send comments by 2pm today.",
-    deepLink: "https://mail.google.com/mail/u/0/#inbox/morning-brief-gmail-marco",
+    deepLink:
+      "https://mail.google.com/mail/u/shawmakesmagic%40gmail.com/#inbox/morning-brief-gmail-marco",
     channelName: "Marco Alvarez <marco@northstar.example.com>",
     senderName: "Marco Alvarez",
   };
@@ -510,7 +511,8 @@ async function seedUnreadChannels(
     sourceMessageId: "morning-brief-gmail-tax",
     channelName: "Escrow Ops",
     channelType: "email",
-    deepLink: "https://mail.google.com/mail/u/0/#inbox/morning-brief-gmail-tax",
+    deepLink:
+      "https://mail.google.com/mail/u/shawmakesmagic%40gmail.com/#inbox/morning-brief-gmail-tax",
     classification: "urgent",
     urgency: "high",
     confidence: 0.98,
@@ -526,7 +528,7 @@ async function seedUnreadChannels(
     channelName: "Northside Clinic",
     channelType: "email",
     deepLink:
-      "https://mail.google.com/mail/u/0/#inbox/morning-brief-gmail-clinic-doc",
+      "https://mail.google.com/mail/u/shawmakesmagic%40gmail.com/#inbox/morning-brief-gmail-clinic-doc",
     classification: "urgent",
     urgency: "high",
     confidence: 0.96,
