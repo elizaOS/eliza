@@ -1,5 +1,5 @@
 import { resolveAdminEntityId } from "@elizaos/agent/actions/send-message";
-import { hasAdminAccess } from "@elizaos/agent/security/access";
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -339,13 +339,13 @@ export const inboxAction: Action & {
     "Examples: 'triage my inbox', 'give me my inbox digest', or 'respond to the messages that need an answer in my inbox'. " +
     "DO NOT use this action when the user is only complaining about email or messages without asking for triage, a digest, or a reply workflow. " +
     "If the request is explicitly Gmail or email-specific, about unread emails, or about drafting or sending a reply to a specific email, use GMAIL_ACTION instead. " +
-    "Subactions: triage, digest, respond. Admin/owner only.",
+    "Subactions: triage, digest, respond. Owner only.",
   descriptionCompressed:
-    "Inbox: triage messages, daily digest, draft/send responses, missed-call repair, and group-chat handoff policies. Admin only.",
+    "Inbox: triage messages, daily digest, draft/send responses, missed-call repair, and group-chat handoff policies. Owner only.",
   suppressPostActionContinuation: true,
 
   validate: async (runtime, message) => {
-    return hasAdminAccess(runtime, message);
+    return hasOwnerAccess(runtime, message);
   },
 
   handler: async (
@@ -354,9 +354,9 @@ export const inboxAction: Action & {
     state: State | undefined,
     options: HandlerOptions | undefined,
   ): Promise<ActionResult> => {
-    if (!(await hasAdminAccess(runtime, message))) {
+    if (!(await hasOwnerAccess(runtime, message))) {
       return {
-        text: "Permission denied: only the owner or admin may use inbox actions.",
+        text: "Permission denied: only the owner may use inbox actions.",
         success: false,
         values: { success: false, error: "PERMISSION_DENIED" },
         data: { actionName: ACTION_NAME },

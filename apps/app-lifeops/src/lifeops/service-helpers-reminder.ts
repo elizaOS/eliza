@@ -17,25 +17,25 @@ import {
   type LIFEOPS_REMINDER_PREFERENCE_SOURCES,
 } from "../contracts/index.js";
 import {
-  requireNonEmptyString,
-  normalizeOptionalString,
-  normalizeOptionalIsoString,
-  fail,
-} from "./service-normalize.js";
-import {
-  REMINDER_INTENSITY_CANONICAL_ALIASES,
   REMINDER_ESCALATION_DELAYS,
-  REMINDER_LIFECYCLE_METADATA_KEY,
+  REMINDER_INTENSITY_CANONICAL_ALIASES,
   REMINDER_INTENSITY_METADATA_KEY,
-  REMINDER_INTENSITY_UPDATED_AT_METADATA_KEY,
   REMINDER_INTENSITY_NOTE_METADATA_KEY,
+  REMINDER_INTENSITY_UPDATED_AT_METADATA_KEY,
+  REMINDER_LIFECYCLE_METADATA_KEY,
   REMINDER_PREFERENCE_SCOPE_METADATA_KEY,
 } from "./service-constants.js";
+import { mergeMetadata } from "./service-helpers-misc.js";
+import {
+  fail,
+  normalizeOptionalIsoString,
+  normalizeOptionalString,
+  requireNonEmptyString,
+} from "./service-normalize.js";
 import type {
   ReminderActivityProfileSnapshot,
   ReminderAttemptLifecycle,
 } from "./service-types.js";
-import { mergeMetadata } from "./service-helpers-misc.js";
 
 export function _isReminderIntensity(
   value: unknown,
@@ -69,7 +69,9 @@ export function coerceReminderIntensity(
   return intensity ? normalizeReminderIntensityInput(intensity, field) : null;
 }
 
-export function isReminderChannel(value: unknown): value is LifeOpsReminderChannel {
+export function isReminderChannel(
+  value: unknown,
+): value is LifeOpsReminderChannel {
   return (
     typeof value === "string" &&
     LIFEOPS_REMINDER_CHANNELS.includes(value as LifeOpsReminderChannel)
@@ -147,23 +149,152 @@ export function normalizeOptionalIdleState(
 export function mapPlatformToReminderChannel(
   platform: string | null | undefined,
 ): LifeOpsReminderChannel | null {
-  if (!platform) {
+  const normalized = typeof platform === "string" ? platform.trim() : "";
+  if (!normalized) {
     return null;
   }
-  if (platform === "client_chat") {
+  const lower = normalized.toLowerCase();
+  if (lower === "client_chat") {
     return "in_app";
   }
   if (
-    platform === "desktop_app" ||
-    platform === "mobile_app" ||
-    platform === "web_app"
+    lower === "desktop_app" ||
+    lower === "mobile_app" ||
+    lower === "web_app"
   ) {
     return "in_app";
   }
-  if (platform === "telegram-account" || platform === "telegramAccount") {
+  if (lower === "telegram-account" || lower === "telegramaccount") {
     return "telegram";
   }
-  return isReminderChannel(platform) ? platform : null;
+  return isReminderChannel(lower) ? lower : null;
+}
+
+type ReminderEscalationRoutingHint = {
+  source: string;
+  preferredCommunicationChannel: string | null;
+  lastResponseAt: string | null;
+  lastResponseChannel: string | null;
+};
+
+function addReminderChannelScore(
+  scores: Map<LifeOpsReminderChannel, number>,
+  channel: LifeOpsReminderChannel | null,
+  score: number,
+  evidenceOrder: Map<LifeOpsReminderChannel, number>,
+): void {
+  if (!channel) {
+    return;
+  }
+  if (!evidenceOrder.has(channel)) {
+    evidenceOrder.set(channel, evidenceOrder.size);
+  }
+  scores.set(channel, (scores.get(channel) ?? 0) + score);
+}
+
+function lastResponseRecencyScore(value: string | null): number {
+  if (!value) {
+    return 0;
+  }
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) {
+    return 0;
+  }
+  const ageHours = Math.max(0, (Date.now() - parsed) / 3_600_000);
+  return Math.max(0, 120 - Math.round(ageHours));
+}
+
+export function rankReminderEscalationChannels(args: {
+  activityProfile: ReminderActivityProfileSnapshot | null;
+  ownerContactHints: Record<string, ReminderEscalationRoutingHint>;
+  ownerContactSources: readonly string[];
+  policyChannels: readonly string[];
+  includeInApp?: boolean;
+}): LifeOpsReminderChannel[] {
+  const scores = new Map<LifeOpsReminderChannel, number>();
+  const evidenceOrder = new Map<LifeOpsReminderChannel, number>();
+  if (args.includeInApp !== false) {
+    addReminderChannelScore(scores, "in_app", 10_000, evidenceOrder);
+  }
+
+  const activity = args.activityProfile;
+  addReminderChannelScore(
+    scores,
+    mapPlatformToReminderChannel(
+      activity?.isCurrentlyActive ? activity.lastSeenPlatform : null,
+    ),
+    1_200,
+    evidenceOrder,
+  );
+  addReminderChannelScore(
+    scores,
+    mapPlatformToReminderChannel(activity?.primaryPlatform),
+    900,
+    evidenceOrder,
+  );
+  addReminderChannelScore(
+    scores,
+    mapPlatformToReminderChannel(activity?.secondaryPlatform),
+    650,
+    evidenceOrder,
+  );
+  addReminderChannelScore(
+    scores,
+    mapPlatformToReminderChannel(activity?.lastSeenPlatform),
+    300,
+    evidenceOrder,
+  );
+
+  for (const hint of Object.values(args.ownerContactHints)) {
+    addReminderChannelScore(
+      scores,
+      mapPlatformToReminderChannel(hint.preferredCommunicationChannel),
+      800,
+      evidenceOrder,
+    );
+    addReminderChannelScore(
+      scores,
+      mapPlatformToReminderChannel(hint.lastResponseChannel),
+      550 + lastResponseRecencyScore(hint.lastResponseAt),
+      evidenceOrder,
+    );
+    addReminderChannelScore(
+      scores,
+      mapPlatformToReminderChannel(hint.source),
+      150,
+      evidenceOrder,
+    );
+  }
+
+  for (const source of args.ownerContactSources) {
+    addReminderChannelScore(
+      scores,
+      mapPlatformToReminderChannel(source),
+      100,
+      evidenceOrder,
+    );
+  }
+  for (const channel of args.policyChannels) {
+    addReminderChannelScore(
+      scores,
+      mapPlatformToReminderChannel(channel),
+      75,
+      evidenceOrder,
+    );
+  }
+
+  return [...scores.keys()]
+    .filter((channel) => args.includeInApp !== false || channel !== "in_app")
+    .sort((left, right) => {
+      const scoreDelta = (scores.get(right) ?? 0) - (scores.get(left) ?? 0);
+      if (scoreDelta !== 0) {
+        return scoreDelta;
+      }
+      const orderDelta =
+        (evidenceOrder.get(left) ?? Number.MAX_SAFE_INTEGER) -
+        (evidenceOrder.get(right) ?? Number.MAX_SAFE_INTEGER);
+      return orderDelta !== 0 ? orderDelta : left.localeCompare(right);
+    });
 }
 
 export function readReminderAttemptLifecycle(
@@ -208,7 +339,8 @@ function isActivityAwareStretchReminder(
   if (!definition || definition.cadence.kind !== "interval") {
     return false;
   }
-  const combined = `${definition.title} ${definition.originalIntent}`.toLowerCase();
+  const combined =
+    `${definition.title} ${definition.originalIntent}`.toLowerCase();
   return combined.includes("stretch");
 }
 
@@ -237,8 +369,12 @@ export function shouldDeferReminderUntilComputerActive(args: {
     "title" | "originalIntent" | "cadence"
   > | null;
   activityProfile: ReminderActivityProfileSnapshot | null;
+  urgency?: LifeOpsReminderUrgency;
 }): boolean {
   if (args.channel !== "in_app") {
+    return false;
+  }
+  if (args.urgency === "high" || args.urgency === "critical") {
     return false;
   }
   if (!isActivityAwareStretchReminder(args.definition)) {

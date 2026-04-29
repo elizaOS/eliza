@@ -40,9 +40,7 @@ for (const file of files) {
   const inputPath = path.join(generatedDir, file);
   const outputPath = inputPath.replace(/\.ts$/, ".js");
   const inputStat = fs.statSync(inputPath);
-  const outputStat = fs.existsSync(outputPath)
-    ? fs.statSync(outputPath)
-    : null;
+  const outputStat = fs.existsSync(outputPath) ? fs.statSync(outputPath) : null;
 
   if (outputStat && outputStat.mtimeMs >= inputStat.mtimeMs) {
     continue;

@@ -1,18 +1,19 @@
-
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
+  ALL_MOCK_PLUGINS,
   getActivatedPlugins,
   getNewlyActivatedPlugin,
   getNewlyDeactivatedPlugin,
   PLUGIN_REQUIRED_SECRETS,
-  ALL_MOCK_PLUGINS,
 } from "./index.js";
 
 describe("PLUGIN_REQUIRED_SECRETS", () => {
   it("contains only required=true keys for each plugin", () => {
     // mock-database has DATABASE_URL (required) and DATABASE_POOL_SIZE (optional)
     expect(PLUGIN_REQUIRED_SECRETS["mock-database"]).toEqual(["DATABASE_URL"]);
-    expect(PLUGIN_REQUIRED_SECRETS["mock-database"]).not.toContain("DATABASE_POOL_SIZE");
+    expect(PLUGIN_REQUIRED_SECRETS["mock-database"]).not.toContain(
+      "DATABASE_POOL_SIZE",
+    );
   });
 
   it("has entries for all mock plugins", () => {
@@ -22,7 +23,10 @@ describe("PLUGIN_REQUIRED_SECRETS", () => {
   });
 
   it("mock-payment requires exactly two keys", () => {
-    expect(PLUGIN_REQUIRED_SECRETS["mock-payment"]).toEqual(["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"]);
+    expect(PLUGIN_REQUIRED_SECRETS["mock-payment"]).toEqual([
+      "STRIPE_SECRET_KEY",
+      "STRIPE_WEBHOOK_SECRET",
+    ]);
   });
 });
 
@@ -73,7 +77,10 @@ describe("getActivatedPlugins", () => {
   });
 
   it("ignores unrelated secrets", () => {
-    const activated = getActivatedPlugins({ RANDOM_KEY: "value", ANOTHER: "v2" });
+    const activated = getActivatedPlugins({
+      RANDOM_KEY: "value",
+      ANOTHER: "v2",
+    });
     expect(activated).toEqual([]);
   });
 });
@@ -99,7 +106,10 @@ describe("getNewlyActivatedPlugin", () => {
 
   it("detects activation when second required secret is added", () => {
     const before = { STRIPE_SECRET_KEY: "sk_test" };
-    const after = { STRIPE_SECRET_KEY: "sk_test", STRIPE_WEBHOOK_SECRET: "whsec_test" };
+    const after = {
+      STRIPE_SECRET_KEY: "sk_test",
+      STRIPE_WEBHOOK_SECRET: "whsec_test",
+    };
     expect(getNewlyActivatedPlugin(before, after)).toBe("mock-payment");
   });
 
@@ -121,11 +131,18 @@ describe("getNewlyActivatedPlugin", () => {
 
 describe("getNewlyDeactivatedPlugin", () => {
   it("returns null when nothing changes", () => {
-    expect(getNewlyDeactivatedPlugin({ WEATHER_API_KEY: "wk" }, { WEATHER_API_KEY: "wk" })).toBeNull();
+    expect(
+      getNewlyDeactivatedPlugin(
+        { WEATHER_API_KEY: "wk" },
+        { WEATHER_API_KEY: "wk" },
+      ),
+    ).toBeNull();
   });
 
   it("detects deactivation when secret is removed", () => {
-    expect(getNewlyDeactivatedPlugin({ WEATHER_API_KEY: "wk" }, {})).toBe("mock-weather");
+    expect(getNewlyDeactivatedPlugin({ WEATHER_API_KEY: "wk" }, {})).toBe(
+      "mock-weather",
+    );
   });
 
   it("returns null when secret is added (activation, not deactivation)", () => {
@@ -138,7 +155,6 @@ describe("getNewlyDeactivatedPlugin", () => {
     expect(getNewlyDeactivatedPlugin(before, after)).toBe("mock-payment");
   });
 });
-
 
 describe("getNewlyDeactivatedPlugin — edge cases", () => {
   it("returns null from empty to empty", () => {

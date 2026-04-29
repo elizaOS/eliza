@@ -186,46 +186,43 @@ describe("dispatchCrossChannelSend", () => {
   test.each([
     ["discord", "discord-room-123"],
     ["signal", "+15554445555"],
-  ] as const)(
-    "%s dispatcher forwards through runtime sendMessageToTarget",
-    async (channel, target) => {
-      const captured: unknown[] = [];
-      const runtime = {
-        agentId: SAME_ID,
-        sendMessageToTarget: async (...args: unknown[]) => {
-          captured.push(args);
+  ] as const)("%s dispatcher forwards through runtime sendMessageToTarget", async (channel, target) => {
+    const captured: unknown[] = [];
+    const runtime = {
+      agentId: SAME_ID,
+      sendMessageToTarget: async (...args: unknown[]) => {
+        captured.push(args);
+      },
+    } as unknown as IAgentRuntime;
+
+    const result = await dispatchCrossChannelSend({
+      runtime,
+      service: {} as DispatchService,
+      channel,
+      target,
+      body: "runtime-body",
+    });
+
+    expect(captured).toEqual([
+      [
+        {
+          source: channel,
+          channelId: target,
         },
-      } as unknown as IAgentRuntime;
-
-      const result = await dispatchCrossChannelSend({
-        runtime,
-        service: {} as DispatchService,
-        channel,
-        target,
-        body: "runtime-body",
-      });
-
-      expect(captured).toEqual([
-        [
-          {
-            source: channel,
-            channelId: target,
-          },
-          {
-            text: "runtime-body",
-            source: channel,
-          },
-        ],
-      ]);
-      expect(result.success).toBe(true);
-      expect(result.values?.channel).toBe(channel);
-      expect(result.values?.target).toBe(target);
-      expect(result.data?.actionName).toBe("OWNER_SEND_MESSAGE");
-      expect(result.data?.channel).toBe(channel);
-      expect(result.data?.target).toBe(target);
-      expect(result.data?.message).toBe("runtime-body");
-    },
-  );
+        {
+          text: "runtime-body",
+          source: channel,
+        },
+      ],
+    ]);
+    expect(result.success).toBe(true);
+    expect(result.values?.channel).toBe(channel);
+    expect(result.values?.target).toBe(target);
+    expect(result.data?.actionName).toBe("OWNER_SEND_MESSAGE");
+    expect(result.data?.channel).toBe(channel);
+    expect(result.data?.target).toBe(target);
+    expect(result.data?.message).toBe("runtime-body");
+  });
 
   test("email dispatcher requires a subject before calling the service", async () => {
     let called = false;
@@ -299,22 +296,19 @@ describe("dispatchCrossChannelSend", () => {
   test.each([
     ["telegram", "alice"],
     ["whatsapp", "+15553334444"],
-  ] as const)(
-    "%s dispatcher surfaces a failure when the service method is missing",
-    async (channel, target) => {
-      const result = await dispatchCrossChannelSend({
-        runtime: fakeRuntime,
-        service: {} as DispatchService,
-        channel,
-        target,
-        body: "ping",
-      });
+  ] as const)("%s dispatcher surfaces a failure when the service method is missing", async (channel, target) => {
+    const result = await dispatchCrossChannelSend({
+      runtime: fakeRuntime,
+      service: {} as DispatchService,
+      channel,
+      target,
+      body: "ping",
+    });
 
-      expect(result.success).toBe(false);
-      expect(result.values?.error).toContain("not loaded");
-      expect(result.values?.channel).toBe(channel);
-    },
-  );
+    expect(result.success).toBe(false);
+    expect(result.values?.error).toContain("not loaded");
+    expect(result.values?.channel).toBe(channel);
+  });
 
   test("imessage dispatcher surfaces thrown transport errors", async () => {
     const fakeService = {
@@ -339,57 +333,51 @@ describe("dispatchCrossChannelSend", () => {
   test.each([
     ["telegram", "sendTelegramMessage", "telegram offline"],
     ["whatsapp", "sendWhatsAppMessage", "whatsapp delivery rejected"],
-  ] as const)(
-    "%s dispatcher surfaces thrown transport errors",
-    async (channel, method, errorMessage) => {
-      const fakeService = {
-        [method]: async () => {
-          throw new Error(errorMessage);
-        },
-      };
+  ] as const)("%s dispatcher surfaces thrown transport errors", async (channel, method, errorMessage) => {
+    const fakeService = {
+      [method]: async () => {
+        throw new Error(errorMessage);
+      },
+    };
 
-      const result = await dispatchCrossChannelSend({
-        runtime: fakeRuntime,
-        service: fakeService as DispatchService,
-        channel,
-        target: channel === "telegram" ? "alice" : "+15553334444",
-        body: "ping",
-      });
+    const result = await dispatchCrossChannelSend({
+      runtime: fakeRuntime,
+      service: fakeService as DispatchService,
+      channel,
+      target: channel === "telegram" ? "alice" : "+15553334444",
+      body: "ping",
+    });
 
-      expect(result.success).toBe(false);
-      expect(result.values?.error).toBe(errorMessage);
-      expect(result.values?.channel).toBe(channel);
-      expect(result.data?.actionName).toBe("OWNER_SEND_MESSAGE");
-    },
-  );
+    expect(result.success).toBe(false);
+    expect(result.values?.error).toBe(errorMessage);
+    expect(result.values?.channel).toBe(channel);
+    expect(result.data?.actionName).toBe("OWNER_SEND_MESSAGE");
+  });
 
   test.each([
     ["discord", "discord send failed"],
     ["signal", "signal send failed"],
-  ] as const)(
-    "%s dispatcher surfaces runtime send errors",
-    async (channel, errorMessage) => {
-      const runtime = {
-        agentId: SAME_ID,
-        sendMessageToTarget: async () => {
-          throw new Error(errorMessage);
-        },
-      } as unknown as IAgentRuntime;
+  ] as const)("%s dispatcher surfaces runtime send errors", async (channel, errorMessage) => {
+    const runtime = {
+      agentId: SAME_ID,
+      sendMessageToTarget: async () => {
+        throw new Error(errorMessage);
+      },
+    } as unknown as IAgentRuntime;
 
-      const result = await dispatchCrossChannelSend({
-        runtime,
-        service: {} as DispatchService,
-        channel,
-        target: channel === "discord" ? "discord-room-123" : "+15554445555",
-        body: "ping",
-      });
+    const result = await dispatchCrossChannelSend({
+      runtime,
+      service: {} as DispatchService,
+      channel,
+      target: channel === "discord" ? "discord-room-123" : "+15554445555",
+      body: "ping",
+    });
 
-      expect(result.success).toBe(false);
-      expect(result.values?.error).toBe(errorMessage);
-      expect(result.values?.channel).toBe(channel);
-      expect(result.data?.actionName).toBe("OWNER_SEND_MESSAGE");
-    },
-  );
+    expect(result.success).toBe(false);
+    expect(result.values?.error).toBe(errorMessage);
+    expect(result.values?.channel).toBe(channel);
+    expect(result.data?.actionName).toBe("OWNER_SEND_MESSAGE");
+  });
 
   test("x_dm dispatcher fails when the X API reports delivery failure", async () => {
     const fakeService = {

@@ -362,17 +362,13 @@ export function syncResolvedApiPort(
  */
 const MOBILE_PLATFORM_VALUES = new Set(["android", "ios"]);
 
-export function isMobilePlatform(
-  env: RuntimeEnvRecord = process.env,
-): boolean {
+export function isMobilePlatform(env: RuntimeEnvRecord = process.env): boolean {
   const raw = env.MILADY_PLATFORM?.trim().toLowerCase();
   if (!raw) return false;
   return MOBILE_PLATFORM_VALUES.has(raw);
 }
 
-export function isAndroidMobile(
-  env: RuntimeEnvRecord = process.env,
-): boolean {
+export function isAndroidMobile(env: RuntimeEnvRecord = process.env): boolean {
   return env.MILADY_PLATFORM?.trim().toLowerCase() === "android";
 }
 

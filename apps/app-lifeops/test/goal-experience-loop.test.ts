@@ -1,13 +1,13 @@
 import crypto from "node:crypto";
-import { beforeEach, describe, expect, it } from "vitest";
 import type { LifeOpsOccurrence } from "@elizaos/shared";
-import { createLifeOpsChatTestRuntime } from "./helpers/lifeops-chat-runtime.js";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
   createLifeOpsGoalDefinition,
   createLifeOpsTaskDefinition,
   LifeOpsRepository,
 } from "../src/lifeops/repository.js";
 import { LifeOpsService } from "../src/lifeops/service.js";
+import { createLifeOpsChatTestRuntime } from "./helpers/lifeops-chat-runtime.js";
 
 function createRuntime(agentId: string) {
   const runtime = createLifeOpsChatTestRuntime({

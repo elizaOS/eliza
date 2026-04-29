@@ -4,19 +4,6 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  AgentRuntime,
-  ChannelType,
-  createMessageMemory,
-  type Memory,
-  logger,
-  type Plugin,
-  type UUID,
-} from "@elizaos/core";
-import dotenv from "dotenv";
-import { afterAll, beforeAll, expect, it } from "vitest";
-import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
-import { saveEnv, sleep, withTimeout } from "../../../../test/helpers/test-utils";
-import {
   buildCharacterFromConfig,
   configureLocalEmbeddingPlugin,
   createElizaPlugin,
@@ -27,17 +14,34 @@ import {
   resolveOAuthDir,
 } from "@elizaos/agent";
 import {
-  LIVE_PROVIDER_ENV_KEYS,
-  LIVE_TESTS_ENABLED,
-  getLifeOpsLiveSetupWarnings,
-  getSelectedLiveProviderEnv,
-  selectLifeOpsLiveProvider,
-} from "./helpers/lifeops-live-harness.ts";
+  AgentRuntime,
+  ChannelType,
+  createMessageMemory,
+  logger,
+  type Memory,
+  type Plugin,
+  type UUID,
+} from "@elizaos/core";
+import dotenv from "dotenv";
+import { afterAll, beforeAll, expect, it } from "vitest";
+import { describeIf } from "../../../../eliza/test/helpers/conditional-tests.ts";
+import {
+  saveEnv,
+  sleep,
+  withTimeout,
+} from "../../../../eliza/test/helpers/test-utils";
 import {
   createLifeOpsConnectorGrant,
   createLifeOpsGmailSyncState,
   LifeOpsRepository,
 } from "../src/lifeops/repository.js";
+import {
+  getLifeOpsLiveSetupWarnings,
+  getSelectedLiveProviderEnv,
+  LIVE_PROVIDER_ENV_KEYS,
+  LIVE_TESTS_ENABLED,
+  selectLifeOpsLiveProvider,
+} from "./helpers/lifeops-live-harness.ts";
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(testDir, "..");
@@ -250,36 +254,34 @@ async function seedGoogleConnector(
     { encoding: "utf-8", mode: 0o600 },
   );
 
-  await repository.upsertConnectorGrant(
-    {
-      ...createLifeOpsConnectorGrant({
-        agentId,
-        provider: "google",
-        side: "owner",
-        identity: {
-          email: "shawmakesmagic@gmail.com",
-          name: "Shaw",
-        },
-        grantedScopes: [
-          "openid",
-          "email",
-          "profile",
-          "https://www.googleapis.com/auth/calendar.readonly",
-          "https://www.googleapis.com/auth/gmail.readonly",
-        ],
-        capabilities: [
-          "google.basic_identity",
-          "google.calendar.read",
-          "google.gmail.triage",
-        ],
-        tokenRef,
-        mode: "local",
-        metadata: {},
-        lastRefreshAt: nowIso,
-      }),
-      id: grantId,
-    },
-  );
+  await repository.upsertConnectorGrant({
+    ...createLifeOpsConnectorGrant({
+      agentId,
+      provider: "google",
+      side: "owner",
+      identity: {
+        email: "shawmakesmagic@gmail.com",
+        name: "Shaw",
+      },
+      grantedScopes: [
+        "openid",
+        "email",
+        "profile",
+        "https://www.googleapis.com/auth/calendar.readonly",
+        "https://www.googleapis.com/auth/gmail.readonly",
+      ],
+      capabilities: [
+        "google.basic_identity",
+        "google.calendar.read",
+        "google.gmail.triage",
+      ],
+      tokenRef,
+      mode: "local",
+      metadata: {},
+      lastRefreshAt: nowIso,
+    }),
+    id: grantId,
+  });
 
   return repository;
 }

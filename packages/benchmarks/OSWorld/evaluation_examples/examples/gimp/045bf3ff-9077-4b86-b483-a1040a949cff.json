@@ -18,17 +18,12 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "gimp",
-          "/home/user/Desktop/gate.jpeg"
-        ]
+        "command": ["gimp", "/home/user/Desktop/gate.jpeg"]
       }
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "gimp"
-  ],
+  "related_apps": ["gimp"],
   "evaluator": {
     "func": "infeasible"
   },

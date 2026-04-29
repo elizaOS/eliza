@@ -31,7 +31,11 @@ describe("policy.decide", () => {
       secretId: "llm.openrouter.apiKey",
       grants: [],
     });
-    expect(decision).toMatchObject({ kind: "allow", mode: "always", pattern: "implicit" });
+    expect(decision).toMatchObject({
+      kind: "allow",
+      mode: "always",
+      pattern: "implicit",
+    });
   });
 
   it("explicit deny wins over allow at the same pattern", () => {
@@ -78,11 +82,12 @@ describe("policy.decide", () => {
     const decision = decide({
       skillId: "weather-bot",
       secretId: "llm.openrouter.apiKey",
-      grants: [
-        { pattern: "llm.openrouter.*", mode: "prompt", grantedAt: 1 },
-      ],
+      grants: [{ pattern: "llm.openrouter.*", mode: "prompt", grantedAt: 1 }],
     });
-    expect(decision).toMatchObject({ kind: "prompt", pattern: "llm.openrouter.*" });
+    expect(decision).toMatchObject({
+      kind: "prompt",
+      pattern: "llm.openrouter.*",
+    });
   });
 
   it("implicit ownership applies only to the exact plugin id", () => {

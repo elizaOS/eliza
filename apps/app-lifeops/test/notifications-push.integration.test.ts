@@ -32,8 +32,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   NtfyConfigError,
   readNtfyConfigFromEnv,
-  sendPush,
   type SendPushRequest,
+  sendPush,
 } from "../src/lifeops/notifications-push.js";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -84,9 +84,9 @@ describe("readNtfyConfigFromEnv", () => {
 
 describe("sendPush — config error", () => {
   it("throws NtfyConfigError when no config passed and env is empty", async () => {
-    await expect(
-      sendPush({ title: "Test", message: "Hello" }),
-    ).rejects.toThrow(NtfyConfigError);
+    await expect(sendPush({ title: "Test", message: "Hello" })).rejects.toThrow(
+      NtfyConfigError,
+    );
   });
 });
 
@@ -98,9 +98,9 @@ describe("sendPush — network error handling", () => {
     );
     process.env.NTFY_BASE_URL = "https://ntfy.example.invalid";
 
-    await expect(
-      sendPush({ title: "Test", message: "Hello" }),
-    ).rejects.toThrow("Failed to fetch");
+    await expect(sendPush({ title: "Test", message: "Hello" })).rejects.toThrow(
+      "Failed to fetch",
+    );
   });
 
   it("throws Error on non-OK HTTP response", async () => {
@@ -114,9 +114,9 @@ describe("sendPush — network error handling", () => {
     );
     process.env.NTFY_BASE_URL = "https://ntfy.example.invalid";
 
-    await expect(
-      sendPush({ title: "Test", message: "Hello" }),
-    ).rejects.toThrow("403");
+    await expect(sendPush({ title: "Test", message: "Hello" })).rejects.toThrow(
+      "403",
+    );
   });
 
   it("returns messageId and deliveredAt on success", async () => {
@@ -199,7 +199,8 @@ describe.skipIf(!LIVE_BASE_URL)("sendPush — live Ntfy", () => {
   it("publishes a notification and returns a messageId", async () => {
     const request: SendPushRequest = {
       title: "LifeOps integration test",
-      message: "This is a test push from the notifications-push integration test suite.",
+      message:
+        "This is a test push from the notifications-push integration test suite.",
       priority: 3,
       tags: ["white_check_mark"],
     };

@@ -143,6 +143,7 @@
   "appsview.URL": "URL:",
   "appsview.Viewer": "Visualizador",
   "appwindow.LaunchedNoViewer": "This app launched without a viewer URL. Open it from the apps catalog.",
+  "appwindow.RetryingLaunch": "Retrying launch...",
   "aria.advancedNavigation": "Navegação avançada",
   "aria.agentVoiceOff": "Voz do agente desativada",
   "aria.agentVoiceOn": "Voz do agente ativada",

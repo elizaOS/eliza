@@ -1,0 +1,449 @@
+---
+title: "Installation"
+sidebarTitle: "Installation"
+description: "Téléchargez l'application de bureau ou installez Milady via CLI sur macOS, Windows ou Linux."
+---
+
+<div id="prerequisites">
+## Prérequis
+</div>
+
+Avant d'installer Milady, assurez-vous de disposer de l'environnement d'exécution requis :
+
+| Prérequis | Version | Comment vérifier | Installer |
+|-----------|---------|-----------------|-----------|
+| **Node.js** | >= 22 | `node --version` | [nodejs.org](https://nodejs.org) ou `nvm install 22` |
+
+Pour **compiler depuis les sources** ou pour le développement, vous aurez également besoin de :
+
+| Prérequis | Version | Comment vérifier | Installer |
+|-----------|---------|-----------------|-----------|
+| **Bun** | latest | `bun --version` | `curl -fsSL https://bun.sh/install \| bash` |
+
+<Info>
+Node 22+ est requis car Milady utilise les modules ES natifs, le préfixe de protocole `node:`, et d'autres API Node modernes. Bun n'est nécessaire que pour le développement et la compilation depuis les sources — il est utilisé comme gestionnaire de paquets et exécuteur de scripts. Le paquet npm publié et les scripts d'installation fonctionnent uniquement avec Node.js.
+</Info>
+
+Vous aurez également besoin d'une clé API d'au moins un fournisseur de modèles (Anthropic, OpenAI, OpenRouter, etc.) — sauf si vous prévoyez d'utiliser [Ollama](https://ollama.com) pour une inférence entièrement locale, qui ne nécessite aucune clé API.
+
+<div id="desktop-app-recommended">
+## Application de bureau (Recommandée)
+</div>
+
+L'application de bureau est le moyen le plus simple de commencer. Elle intègre l'ensemble du runtime Milady, le tableau de bord web et la passerelle dans une application native Electrobun avec mises à jour automatiques et intégration dans la barre système.
+
+Téléchargez depuis **[GitHub Releases](https://github.com/milady-ai/milady/releases/latest)** :
+
+| Plateforme | Fichier | Notes |
+|------------|---------|-------|
+| macOS (Apple Silicon) | [`Milady-arm64.dmg`](https://github.com/milady-ai/milady/releases/latest) | Macs M1/M2/M3/M4 |
+| macOS (Intel) | [`Milady-x64.dmg`](https://github.com/milady-ai/milady/releases/latest) | Macs d'avant 2020 |
+| Windows | [`Milady-Setup.exe`](https://github.com/milady-ai/milady/releases/latest) | Windows 10+ |
+| Linux | [`Milady.AppImage`](https://github.com/milady-ai/milady/releases/latest) / [`.deb`](https://github.com/milady-ai/milady/releases/latest) | AppImage ou paquet Debian |
+| iOS | App Store (bientôt) | iPhone et iPad |
+| Android | [Google Play](https://play.google.com/store/apps/details?id=ai.milady.app) / [APK](https://github.com/milady-ai/milady/releases/latest) | Android 10+ |
+
+Toutes les versions sont signées et notariées. Aucun avertissement Gatekeeper sur macOS.
+
+<div id="verify-download-integrity">
+### Vérifier l'intégrité du téléchargement
+</div>
+
+```bash
+cd ~/Downloads
+curl -fsSLO https://github.com/milady-ai/milady/releases/latest/download/SHA256SUMS.txt
+shasum -a 256 --check --ignore-missing SHA256SUMS.txt
+```
+
+<div id="cli-install">
+## Installation CLI
+</div>
+
+<Tabs>
+  <Tab title="macOS / Linux">
+    Le script d'installation télécharge la dernière version, place le binaire dans votre PATH et lance la configuration initiale :
+
+    ```bash
+    curl -fsSL https://get.milady.ai | bash
+    milady setup
+    ```
+
+    Ensuite, lancez Milady :
+
+    ```bash
+    milady
+    ```
+  </Tab>
+  <Tab title="Windows (PowerShell)">
+    ```powershell
+    irm https://get.milady.ai/install.ps1 | iex
+    ```
+
+    Après l'installation, ouvrez une nouvelle fenêtre de terminal et exécutez :
+
+    ```powershell
+    milady setup
+    milady
+    ```
+  </Tab>
+  <Tab title="Bun">
+    Si vous avez Bun installé :
+
+    ```bash
+    bun install -g miladyai
+    milady setup
+    milady
+    ```
+  </Tab>
+  <Tab title="npm">
+    Si vous préférez npm :
+
+    ```bash
+    npm install -g miladyai
+    milady setup
+    milady
+    ```
+  </Tab>
+  <Tab title="Homebrew">
+    ```bash
+    brew tap milady-ai/milady
+    brew install milady          # CLI
+    brew install --cask milady   # Desktop app (macOS only)
+    ```
+  </Tab>
+  <Tab title="Snap">
+    ```bash
+    sudo snap install milady
+    milady setup
+    ```
+
+    Disponible sur Ubuntu, Fedora, Manjaro et toute distribution avec [snapd](https://snapcraft.io/docs/installing-snapd). Les paquets Snap se mettent à jour automatiquement en arrière-plan.
+
+    Pour les dernières versions de développement :
+    ```bash
+    sudo snap install milady --edge
+    ```
+  </Tab>
+  <Tab title="Flatpak">
+    ```bash
+    flatpak install flathub ai.milady.Milady
+    flatpak run ai.milady.Milady
+    ```
+
+    Ou installez en local depuis un [bundle de release](https://github.com/milady-ai/milady/releases/latest) :
+    ```bash
+    flatpak --user install milady.flatpak
+    ```
+  </Tab>
+  <Tab title="APT (Debian / Ubuntu)">
+    ```bash
+    # Add the repository
+    curl -fsSL https://apt.milady.ai/gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/milady.gpg
+    echo "deb [signed-by=/usr/share/keyrings/milady.gpg] https://apt.milady.ai stable main" | \
+      sudo tee /etc/apt/sources.list.d/milady.list
+
+    # Install
+    sudo apt update && sudo apt install milady
+    ```
+
+    Fonctionne sur Debian 12+, Ubuntu 22.04+, Linux Mint 22+, Pop!_OS et autres dérivés de Debian. Les mises à jour s'effectuent via `apt upgrade`.
+  </Tab>
+</Tabs>
+
+<div id="build-from-source">
+## Compiler depuis les sources
+</div>
+
+Pour les contributeurs ou toute personne souhaitant la dernière version de développement :
+
+<Steps>
+  <Step title="Cloner le dépôt">
+    ```bash
+    git clone https://github.com/milady-ai/milady.git
+    cd milady
+    ```
+  </Step>
+  <Step title="Installer les dépendances">
+    ```bash
+    bun install
+    ```
+
+    Le hook `preinstall` initialise les sous-modules git en premier ; le `postinstall` qui suit s'assure que le répertoire des compétences existe, lie le serveur de navigateur et corrige les dépendances.
+  </Step>
+  <Step title="Tout compiler">
+    ```bash
+    bun run build
+    ```
+
+    Cela compile le code source TypeScript avec `tsdown`, écrit les informations de build et construit l'application web dans `apps/app`.
+
+    <Info>
+    `bun run build` exécute le build de production via Node (`scripts/run-production-build.mjs`).
+    </Info>
+  </Step>
+  <Step title="Lancer Milady">
+    ```bash
+    bun run start
+    ```
+
+    Cela lance la passerelle et le serveur API. Au premier lancement, vous serez guidé à travers le flux d'intégration interactif.
+  </Step>
+</Steps>
+
+<div id="development-mode">
+## Mode développement
+</div>
+
+Milady dispose de plusieurs modes de développement selon ce sur quoi vous travaillez :
+
+<CodeGroup>
+```bash Full dev (runtime + UI hot reload)
+bun run dev
+```
+
+```bash UI only (web dashboard hot reload)
+bun run dev:ui
+```
+
+```bash Desktop app (Electrobun with live reload)
+bun run dev:desktop
+```
+
+```bash Desktop app + Vite HMR
+bun run dev:desktop:watch
+```
+</CodeGroup>
+
+Le script `dev` utilise `scripts/dev-ui.mjs` pour démarrer le runtime avec le rechargement à chaud pour le backend et l'interface web. Le script `dev:desktop` lance l'application Electrobun avec le rechargement en direct.
+
+<div id="mobile-builds">
+## Builds mobiles
+</div>
+
+Milady utilise [Capacitor](https://capacitorjs.com) pour cibler Android et iOS :
+
+<Tabs>
+  <Tab title="Android">
+    ```bash
+    bun run build:android
+    ```
+
+    Pour le développement avec rechargement en direct :
+
+    ```bash
+    bun run dev:android
+    ```
+
+    Nécessite Android Studio et le SDK Android.
+  </Tab>
+  <Tab title="iOS">
+    ```bash
+    bun run build:ios
+    ```
+
+    Pour le développement avec rechargement en direct :
+
+    ```bash
+    bun run dev:ios
+    ```
+
+    Nécessite Xcode et un Mac.
+  </Tab>
+</Tabs>
+
+<div id="environment-setup">
+## Configuration de l'environnement
+</div>
+
+Milady stocke tout son état dans `~/.milady/` par défaut. Au premier lancement, le client
+commence par choisir ou se connecter à un serveur. Si vous créez un serveur local, vous
+pouvez toujours préconfigurer les paramètres d'amorçage et les clés de fournisseur avec
+des variables d'environnement ou des fichiers de configuration.
+
+<div id="api-keys">
+### Clés API
+</div>
+
+Vous n'avez besoin de clés de fournisseur locales que lorsque le serveur local doit les
+utiliser. Si vous prévoyez de vous connecter à un serveur LAN, distant ou Eliza Cloud
+existant, ce serveur peut déjà gérer le routage et les identifiants du fournisseur. Pour
+l'amorçage local, vous pouvez définir les clés de fournisseur dans
+`~/.milady/milady.json` sous le champ `env` ou dans `~/.milady/.env` :
+
+<CodeGroup>
+```bash Anthropic (recommended)
+export ANTHROPIC_API_KEY="<ANTHROPIC_API_KEY>"
+```
+
+```bash OpenAI
+export OPENAI_API_KEY="<OPENAI_API_KEY>"
+```
+
+```bash OpenRouter
+export OPENROUTER_API_KEY="<OPENROUTER_API_KEY>"
+```
+
+```bash Google Gemini
+export GOOGLE_API_KEY="<GOOGLE_API_KEY>"
+```
+
+```bash Ollama (local, no key needed)
+export OLLAMA_BASE_URL="http://localhost:11434"
+```
+</CodeGroup>
+
+<div id="ports">
+### Ports
+</div>
+
+| Service | Port par défaut | Variable d'environnement |
+|---------|----------------|--------------------------|
+| Dashboard + API | `2138` | `MILADY_PORT` |
+| Passerelle (WebSocket) | `18789` | `MILADY_GATEWAY_PORT` |
+| Webhook WeChat | `18790` | `MILADY_WECHAT_WEBHOOK_PORT` |
+| Tableau de bord principal | `2142` | `MILADY_HOME_PORT` |
+
+En mode développement (`bun run dev`), l'API s'exécute sur un port séparé :
+
+| Service | Port par défaut | Variable d'environnement |
+|---------|----------------|--------------------------|
+| API + WebSocket (dev) | `31337` | `MILADY_API_PORT` |
+| Interface Dashboard (dev) | `2138` | `MILADY_PORT` |
+
+```bash
+# Example: custom ports
+MILADY_PORT=3000 MILADY_GATEWAY_PORT=19000 milady start
+```
+
+<div id="state-directory">
+### Répertoire d'état
+</div>
+
+| Variable | Défaut | Description |
+|----------|--------|-------------|
+| `MILADY_STATE_DIR` | `~/.milady` | Répertoire racine pour tout l'état de Milady |
+| `MILADY_CONFIG_PATH` | `~/.milady/milady.json` | Chemin explicite du fichier de configuration |
+
+<div id="security-api-token">
+## Sécurité : jeton API
+</div>
+
+Le serveur API se lie à `127.0.0.1` (boucle locale) par défaut — seule votre machine locale peut y accéder. Si vous exposez le serveur sur le réseau (par exemple, `MILADY_API_BIND=0.0.0.0` pour des déploiements en conteneur ou dans le cloud), vous **devez** définir un jeton d'authentification :
+
+```bash
+echo "MILADY_API_TOKEN=$(openssl rand -hex 32)" >> ~/.milady/.env
+```
+
+<Warning>
+Sans jeton sur une adresse de liaison publique, toute personne pouvant atteindre le serveur obtient un accès complet au tableau de bord, aux points de terminaison des agents et aux opérations de portefeuille.
+</Warning>
+
+<div id="verify-installation">
+## Vérifier l'installation
+</div>
+
+Après l'installation, confirmez que tout fonctionne :
+
+```bash
+# Check version
+milady --version
+
+# Show configured model providers
+milady models
+
+# Bootstrap or validate local setup
+milady setup
+```
+
+La commande `models` liste les fournisseurs de modèles configurés et leur statut pour le
+contexte du serveur local sélectionné. La commande `setup` amorce la configuration locale
+si nécessaire et valide votre espace de travail.
+
+<div id="troubleshooting">
+## Dépannage
+</div>
+
+<div id="node-version-too-old">
+### Version de Node trop ancienne
+</div>
+
+```
+Error: Milady requires Node.js >= 22
+```
+
+Mettez à jour Node.js : `nvm install 22 && nvm use 22`, ou téléchargez depuis [nodejs.org](https://nodejs.org).
+
+<div id="bun-not-found">
+### Bun introuvable
+</div>
+
+```
+Error: bun: command not found
+```
+
+Installez Bun :
+```bash
+curl -fsSL https://bun.sh/install | bash
+```
+
+Puis redémarrez votre terminal ou exécutez `source ~/.bashrc` / `source ~/.zshrc`.
+
+<div id="port-already-in-use">
+### Port déjà utilisé
+</div>
+
+```
+Error: EADDRINUSE :::2138
+```
+
+Un autre processus utilise le port par défaut. Arrêtez-le ou utilisez un port différent :
+```bash
+MILADY_PORT=3000 milady start
+```
+
+<div id="permission-denied-on-install-script">
+### Permission refusée sur le script d'installation
+</div>
+
+```bash
+chmod +x ~/.milady/bin/milady
+```
+
+<div id="pglite-database-corruption">
+### PGLite / corruption de base de données
+</div>
+
+Si vous voyez des erreurs de base de données au démarrage, Milady tentera une récupération automatique. Si cela échoue, vous pouvez réinitialiser la base de données :
+
+```bash
+rm -rf ~/.milady/workspace/.eliza/.elizadb
+milady start
+```
+
+<Warning>
+La suppression du répertoire de la base de données efface tout l'historique des conversations et la mémoire. Utilisez ceci en dernier recours.
+</Warning>
+
+<div id="macos-gatekeeper-blocks-the-app">
+### macOS Gatekeeper bloque l'application
+</div>
+
+L'application de bureau est signée et notariée. Si Gatekeeper la bloque malgré tout :
+
+```bash
+xattr -cr /Applications/Milady.app
+```
+
+<div id="local-macos-desktop-builds-unsigned-no-apple-certs">
+### Builds locaux du bureau macOS (non signés / sans certificats Apple)
+</div>
+
+Les **releases** GitHub sont signées et notariées. Si vous **empaquetez l'application Electrobun localement** sans identifiants Developer ID, définissez **`ELECTROBUN_SKIP_CODESIGN=1`** (ou laissez les secrets non définis dans le CI) pour que le build n'attende pas la signature Apple.
+
+Sur **macOS**, après `node scripts/desktop-build.mjs package` (depuis la racine du dépôt), le constructeur de bureau exécute **`apps/app/electrobun/scripts/local-adhoc-sign-macos.ts`** sur le **`.app`** produit pour que le bundle soit **signé ad hoc** pour les tests locaux. Vous pouvez aussi l'exécuter manuellement :
+
+```bash
+cd apps/app/electrobun && bun scripts/local-adhoc-sign-macos.ts /path/to/Milady.app
+```
+
+La signature ad hoc n'est **pas** une notarisation ; Gatekeeper peut encore nécessiter **Clic droit → Ouvrir** la première fois. Contexte complet du pipeline : [Build and release](/fr/build-and-release).

@@ -13,14 +13,13 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentRuntime } from "@elizaos/core";
+import type { AgentRuntime, UUID } from "@elizaos/core";
 import { ChannelType, stringToUuid } from "@elizaos/core";
-import type { UUID } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createRealTestRuntime } from "../../../../test/helpers/real-runtime";
+import { createRealTestRuntime } from "../../../../eliza/test/helpers/real-runtime";
 import { searchAcrossChannelsAction } from "../src/actions/search-across-channels.js";
-import { appLifeOpsPlugin } from "../src/plugin.js";
 import { runCrossChannelSearch } from "../src/lifeops/cross-channel-search.js";
+import { appLifeOpsPlugin } from "../src/plugin.js";
 
 let runtime: AgentRuntime;
 let cleanup: () => Promise<void>;

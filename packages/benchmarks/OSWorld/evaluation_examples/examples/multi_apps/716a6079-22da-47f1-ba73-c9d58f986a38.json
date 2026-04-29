@@ -31,10 +31,7 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "os",
-    "terminal"
-  ],
+  "related_apps": ["os", "terminal"],
   "evaluator": {
     "func": "is_in_vm_clickboard",
     "expected": {

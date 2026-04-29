@@ -1,6 +1,6 @@
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { createRealTestRuntime } from "../../../../test/helpers/real-runtime";
+import { createRealTestRuntime } from "../../../../eliza/test/helpers/real-runtime";
 import { ownerScheduleAction } from "../src/actions/owner-schedule.js";
 import {
   createLifeOpsReminderPlan,

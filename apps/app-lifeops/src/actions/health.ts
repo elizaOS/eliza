@@ -20,6 +20,7 @@ import {
   parseKeyValueXml,
 } from "@elizaos/core";
 import type { HealthDataPoint } from "../lifeops/health-bridge.js";
+import type { LifeOpsHealthSummaryResponse } from "../contracts/index.js";
 import { LifeOpsService } from "../lifeops/service.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
 import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
@@ -242,12 +243,51 @@ function formatSummary(summary: {
   return parts.join("\n");
 }
 
+function formatConnectorDailySummary(
+  summary: LifeOpsHealthSummaryResponse["summaries"][number],
+): string {
+  const parts = [
+    `${summary.date} (${summary.provider}):`,
+    `- Steps: ${Math.round(summary.steps).toLocaleString()}`,
+    `- Active minutes: ${Math.round(summary.activeMinutes)}`,
+    `- Sleep: ${summary.sleepHours.toFixed(1)}h`,
+  ];
+  if (summary.heartRateAvg !== null) {
+    parts.push(`- Heart rate avg: ${summary.heartRateAvg.toFixed(0)} bpm`);
+  }
+  if (summary.calories !== null) {
+    parts.push(`- Calories: ${summary.calories.toFixed(0)}`);
+  }
+  if (summary.distanceMeters !== null) {
+    parts.push(`- Distance: ${(summary.distanceMeters / 1000).toFixed(2)} km`);
+  }
+  if (summary.weightKg !== null) {
+    parts.push(`- Weight: ${summary.weightKg.toFixed(1)} kg`);
+  }
+  return parts.join("\n");
+}
+
+function latestConnectorSummaryForDate(
+  summary: LifeOpsHealthSummaryResponse,
+  date: string,
+): LifeOpsHealthSummaryResponse["summaries"][number] | null {
+  return (
+    summary.summaries.find((candidate) => candidate.date === date) ??
+    summary.summaries[0] ??
+    null
+  );
+}
+
 export const healthAction: Action = {
   name: "HEALTH",
   similes: [
     "FITNESS",
     "HEALTHKIT",
     "GOOGLE_FIT",
+    "STRAVA",
+    "FITBIT",
+    "WITHINGS",
+    "OURA",
     "WELLNESS",
     "SLEEP",
     "SLEEP_DATA",
@@ -261,7 +301,7 @@ export const healthAction: Action = {
     "ACTIVITY_METRICS",
   ],
   description:
-    "Query health and fitness telemetry from HealthKit or Google Fit — sleep " +
+    "Query health and fitness telemetry from HealthKit, Google Fit, Strava, Fitbit, Withings, or Oura — sleep " +
     "(duration, quality, stages), steps, heart rate, workouts, calories, and " +
     "other body/activity metrics. Subactions: today, trend, by_metric, status. " +
     "Use this for questions like 'how did I sleep last night', 'how many steps " +
@@ -330,26 +370,131 @@ export const healthAction: Action = {
     // than throwing a `HealthBridgeError` that bubbles up as a raw server
     // error to the scenario runtime and to end users.
     const connectorStatus = await service.getHealthConnectorStatus();
+    let healthSummary: LifeOpsHealthSummaryResponse | null = null;
+    try {
+      healthSummary = await service.getHealthSummary({
+        days: plannedDays ?? params.days ?? 7,
+      });
+    } catch (error) {
+      runtime.logger?.warn?.(
+        {
+          src: "action:health",
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "LifeOps health connector summary failed to load",
+      );
+    }
+    const connectedProviders =
+      healthSummary?.providers
+        .filter((provider) => provider.connected)
+        .map((provider) => provider.provider) ?? [];
 
     if (subaction === "status") {
+      const connectorText =
+        connectedProviders.length > 0
+          ? ` Connected providers: ${connectedProviders.join(", ")}.`
+          : "";
       const text = connectorStatus.available
-        ? `Health backend available: ${connectorStatus.backend}.`
-        : "No health backend available. Set ELIZA_HEALTHKIT_CLI_PATH or ELIZA_GOOGLE_FIT_ACCESS_TOKEN.";
+        ? `Health backend available: ${connectorStatus.backend}.${connectorText}`
+        : `No HealthKit/Google Fit bridge available.${connectorText || " Connect Strava, Fitbit, Withings, or Oura in LifeOps settings."}`;
       await callback?.({ text, source: "action", action: "HEALTH" });
       return {
         text,
         success: true,
-        data: { subaction, status: connectorStatus },
+        values: {
+          success: true,
+          healthBackendAvailable: connectorStatus.available,
+          healthBackend: connectorStatus.backend,
+          healthConnectedProviders: connectedProviders,
+        },
+        data: {
+          subaction,
+          status: connectorStatus,
+          healthConnectors: healthSummary?.providers ?? [],
+        },
       };
     }
 
     if (!connectorStatus.available) {
+      if (healthSummary && connectedProviders.length > 0) {
+        if (subaction === "trend") {
+          const days =
+            params.days && params.days > 0
+              ? Math.floor(params.days)
+              : (plannedDays ?? 7);
+          const text =
+            healthSummary.summaries.length === 0
+              ? `No wearable health data recorded in the last ${days} days.`
+              : `Health trend (last ${days} days):\n${healthSummary.summaries
+                  .map((entry) => formatConnectorDailySummary(entry))
+                  .join("\n\n")}`;
+          await callback?.({ text, source: "action", action: "HEALTH" });
+          return {
+            text,
+            success: true,
+            values: {
+              success: true,
+              healthConnectedProviders: connectedProviders,
+            },
+            data: { subaction, days, healthSummary },
+          };
+        }
+        if (subaction === "by_metric") {
+          const metric = normalizeHealthMetric(params.metric) ?? plannedMetric;
+          if (!metric) {
+            const text =
+              "Specify a metric: steps, active_minutes, sleep_hours, heart_rate, calories, distance_meters.";
+            await callback?.({ text, source: "action", action: "HEALTH" });
+            return { text, success: false, data: { error: "MISSING_METRIC" } };
+          }
+          const points = healthSummary.samples.filter(
+            (sample) => sample.metric === metric,
+          );
+          const firstPoint = points[0];
+          const total = points.reduce((acc, point) => acc + point.value, 0);
+          const text = firstPoint
+            ? `${metric}: total ${total.toFixed(2)} ${firstPoint.unit} across ${points.length} sample${points.length === 1 ? "" : "s"}.`
+            : `No ${metric} data recorded by connected health providers.`;
+          await callback?.({ text, source: "action", action: "HEALTH" });
+          return {
+            text,
+            success: true,
+            values: {
+              success: true,
+              healthConnectedProviders: connectedProviders,
+            },
+            data: { subaction, metric, points, healthSummary },
+          };
+        }
+        const daily = latestConnectorSummaryForDate(
+          healthSummary,
+          params.date ?? todayIso(),
+        );
+        const text = daily
+          ? `Health summary for ${formatConnectorDailySummary(daily)}`
+          : "Connected health providers have not synced daily summaries yet.";
+        await callback?.({ text, source: "action", action: "HEALTH" });
+        return {
+          text,
+          success: true,
+          values: {
+            success: true,
+            healthConnectedProviders: connectedProviders,
+          },
+          data: { subaction: "today", healthSummary },
+        };
+      }
       const text =
-        "I don't have a health data source connected yet. To share daily summaries, trends, or per-metric details, connect Apple Health (ELIZA_HEALTHKIT_CLI_PATH) or Google Fit (ELIZA_GOOGLE_FIT_ACCESS_TOKEN) and I'll pick it up.";
+        "I don't have a health data source connected yet. Connect Apple Health, Google Fit, Strava, Fitbit, Withings, or Oura and I'll pick it up.";
       await callback?.({ text, source: "action", action: "HEALTH" });
       return {
         text,
         success: true,
+        values: {
+          success: true,
+          healthBackendAvailable: false,
+          healthConnectedProviders: connectedProviders,
+        },
         data: { subaction, status: connectorStatus, degraded: "no-backend" },
       };
     }
@@ -367,7 +512,12 @@ export const healthAction: Action = {
               .map((s) => formatSummary(s))
               .join("\n\n")}`;
       await callback?.({ text, source: "action", action: "HEALTH" });
-      return { text, success: true, data: { subaction, days, trend } };
+      return {
+        text,
+        success: true,
+        values: { success: true, days, pointCount: trend.length },
+        data: { subaction, days, trend },
+      };
     }
 
     if (subaction === "by_metric") {
@@ -399,6 +549,7 @@ export const healthAction: Action = {
         return {
           text,
           success: true,
+          values: { success: true, metric, pointCount: points.length },
           data: { subaction, metric, startAt, endAt, points },
         };
       }
@@ -412,6 +563,7 @@ export const healthAction: Action = {
       return {
         text,
         success: true,
+        values: { success: true, metric, pointCount: points.length },
         data: { subaction, metric, startAt, endAt, points },
       };
     }
@@ -421,7 +573,17 @@ export const healthAction: Action = {
     const summary = await service.getHealthDailySummary(date);
     const text = `Health summary for ${formatSummary(summary)}`;
     await callback?.({ text, source: "action", action: "HEALTH" });
-    return { text, success: true, data: { subaction: "today", date, summary } };
+    return {
+      text,
+      success: true,
+      values: {
+        success: true,
+        steps: summary.steps,
+        activeMinutes: summary.activeMinutes,
+        sleepHours: summary.sleepHours,
+      },
+      data: { subaction: "today", date, summary },
+    };
   },
   parameters: [
     {

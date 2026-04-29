@@ -26,8 +26,7 @@ function isLoopback(addr: string | undefined): boolean {
  * @returns Cleanup to close the server, or `undefined` when disabled.
  */
 export function startScreenshotDevServer(): (() => void) | undefined {
-  const raw =
-    process.env.ELIZA_DESKTOP_SCREENSHOT_SERVER?.trim().toLowerCase();
+  const raw = process.env.ELIZA_DESKTOP_SCREENSHOT_SERVER?.trim().toLowerCase();
   const enabled = raw === "1" || raw === "true" || raw === "yes";
   if (!enabled) {
     return undefined;

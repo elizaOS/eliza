@@ -96,8 +96,7 @@ describe("applyPrivacyFilter", () => {
         {
           llmCalls: [
             {
-              userPrompt:
-                "I leaked supersecret-value-1234567890 by accident",
+              userPrompt: "I leaked supersecret-value-1234567890 by accident",
             },
           ],
         },
@@ -149,9 +148,9 @@ describe("applyPrivacyFilter", () => {
     const out = result.trajectories[0];
     expect(out?.metadata).toEqual(trajectory.metadata);
     // Sanity: the filter did still run on LLM text.
-    expect(
-      out?.steps?.[0]?.llmCalls?.[0]?.userPrompt,
-    ).toContain("<REDACTED:openai-key>");
+    expect(out?.steps?.[0]?.llmCalls?.[0]?.userPrompt).toContain(
+      "<REDACTED:openai-key>",
+    );
   });
 
   it("preserves automation-scope metadata too (parity with page-scopes)", () => {

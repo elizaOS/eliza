@@ -2,10 +2,7 @@ import fs from "node:fs";
 import { createServer as createNetServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import {
-  resolveApiToken,
-  resolveDesktopApiPort,
-} from "@elizaos/shared";
+import { resolveApiToken, resolveDesktopApiPort } from "@elizaos/shared";
 import Electrobun, {
   ApplicationMenu,
   BrowserView,
@@ -650,10 +647,7 @@ function scheduleStateSave(statePath: string, win: BrowserWindow): void {
  * Mixing them would couple unrelated lifecycles.
  */
 function createAppWindowBoundsStore(): BoundsStore {
-  const storePath = path.join(
-    Utils.paths.userData,
-    "app-window-bounds.json",
-  );
+  const storePath = path.join(Utils.paths.userData, "app-window-bounds.json");
   type Blob = Record<string, ManagedWindowFrame>;
   let cache: Blob | null = null;
 

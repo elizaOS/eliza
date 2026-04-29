@@ -4,8 +4,12 @@ import { computeSleepRegularity } from "../src/lifeops/sleep-regularity.js";
 describe("sleep regularity", () => {
   it("classifies a stable schedule as regular", () => {
     const episodes = Array.from({ length: 10 }, (_, index) => ({
-      startAt: new Date(Date.parse("2026-04-01T23:00:00.000Z") + index * 24 * 60 * 60 * 1_000).toISOString(),
-      endAt: new Date(Date.parse("2026-04-02T07:00:00.000Z") + index * 24 * 60 * 60 * 1_000).toISOString(),
+      startAt: new Date(
+        Date.parse("2026-04-01T23:00:00.000Z") + index * 24 * 60 * 60 * 1_000,
+      ).toISOString(),
+      endAt: new Date(
+        Date.parse("2026-04-02T07:00:00.000Z") + index * 24 * 60 * 60 * 1_000,
+      ).toISOString(),
       cycleType: "overnight" as const,
     }));
     const regularity = computeSleepRegularity({

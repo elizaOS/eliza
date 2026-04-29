@@ -101,9 +101,15 @@ import {
   type SyncLifeOpsScheduleObservationsRequest,
   type SyncLifeOpsScheduleObservationsResponse,
 } from "./schedule-sync-contracts.js";
-import { isWithinQuietHours as isWithinQuietHoursPolicy } from "./service-helpers-misc.js";
+import {
+  isWithinQuietHours as isWithinQuietHoursPolicy,
+  priorityToUrgency,
+} from "./service-helpers-misc.js";
 import { computeDefinitionPerformance } from "./service-helpers-occurrence.js";
-import { shouldDeferReminderUntilComputerActive } from "./service-helpers-reminder.js";
+import {
+  rankReminderEscalationChannels,
+  shouldDeferReminderUntilComputerActive,
+} from "./service-helpers-reminder.js";
 import type {
   Constructor,
   LifeOpsServiceBase,
@@ -428,6 +434,9 @@ const REMINDER_ESCALATION_RESOLUTION_METADATA_KEY =
   "reminderEscalationResolution";
 const REMINDER_ESCALATION_RESOLUTION_NOTE_METADATA_KEY =
   "reminderEscalationResolutionNote";
+const REMINDER_REVIEW_AFTER_MINUTES_METADATA_KEY = "reminderReviewAfterMinutes";
+const REMINDER_REVIEW_AT_METADATA_KEY = "reminderReviewAt";
+const REMINDER_REVIEW_REASON_METADATA_KEY = "reminderReviewReason";
 const PROACTIVE_TASK_QUERY_TAGS = ["queue", "repeat", "proactive"] as const;
 
 // ---------------------------------------------------------------------------
@@ -564,13 +573,6 @@ function normalizeReminderUrgency(value: unknown): LifeOpsReminderUrgency {
   return "medium";
 }
 
-function priorityToUrgency(priority: number): LifeOpsReminderUrgency {
-  if (priority >= 80) return "critical";
-  if (priority >= 50) return "high";
-  if (priority >= 20) return "medium";
-  return "low";
-}
-
 const REMINDER_INTENSITY_CANONICAL_ALIASES: Record<
   string,
   LifeOpsReminderIntensity
@@ -609,8 +611,12 @@ function isReminderChannel(value: unknown): value is LifeOpsReminderChannel {
       value === "email" ||
       value === "telegram" ||
       value === "discord" ||
+      value === "signal" ||
+      value === "whatsapp" ||
+      value === "imessage" ||
       value === "sms" ||
-      value === "voice")
+      value === "voice" ||
+      value === "push")
   );
 }
 
@@ -637,21 +643,6 @@ function shouldDeliverReminderForIntensity(
   return true;
 }
 
-function mapPlatformToReminderChannel(
-  platform: string | null | undefined,
-): LifeOpsReminderChannel | null {
-  if (!platform) return null;
-  const lower = platform.toLowerCase();
-  if (lower === "telegram") return "telegram";
-  if (lower === "discord") return "discord";
-  if (lower === "email") return "email";
-  if (lower === "sms") return "sms";
-  if (lower === "voice") return "voice";
-  if (lower === "in_app" || lower === "app" || lower === "client_chat")
-    return "in_app";
-  return null;
-}
-
 function readReminderAttemptLifecycle(
   attempt: LifeOpsReminderAttempt,
 ): ReminderAttemptLifecycle {
@@ -671,14 +662,24 @@ function shouldEscalateImmediately(
   );
 }
 
+function isDeliveredReminderOutcome(
+  outcome: LifeOpsReminderAttemptOutcome,
+): boolean {
+  return (
+    outcome === "delivered" ||
+    outcome === "delivered_read" ||
+    outcome === "delivered_unread"
+  );
+}
+
 const REMINDER_ESCALATION_DELAYS: Record<
   LifeOpsReminderUrgency,
   { initialMinutes: number | null; repeatMinutes: number | null }
 > = {
   low: { initialMinutes: null, repeatMinutes: null },
   medium: { initialMinutes: 90, repeatMinutes: 180 },
-  high: { initialMinutes: 20, repeatMinutes: 45 },
-  critical: { initialMinutes: 5, repeatMinutes: 15 },
+  high: { initialMinutes: 7, repeatMinutes: 10 },
+  critical: { initialMinutes: 5, repeatMinutes: 10 },
 };
 
 function resolveReminderEscalationDelayMinutes(
@@ -690,6 +691,14 @@ function resolveReminderEscalationDelayMinutes(
   if (!delays.initialMinutes) return null;
   if (shouldEscalateImmediately(previousOutcome)) return 0;
   return hasEscalated ? delays.repeatMinutes : delays.initialMinutes;
+}
+
+function readReminderReviewAt(attempt: LifeOpsReminderAttempt): string | null {
+  const value = attempt.deliveryMetadata?.[REMINDER_REVIEW_AT_METADATA_KEY];
+  if (typeof value !== "string") {
+    return null;
+  }
+  return Number.isFinite(Date.parse(value)) ? value : null;
 }
 
 function readReminderPreferenceSettingFromMetadata(
@@ -797,6 +806,20 @@ function formatReminderConversationLine(args: {
   const isAgent = args.memory.entityId === args.agentId;
   const prefix = isAgent ? args.agentName : "User";
   return `${prefix}: ${text}`;
+}
+
+function readMemoryCreatedAtMs(memory: { createdAt?: unknown }): number | null {
+  if (
+    typeof memory.createdAt === "number" &&
+    Number.isFinite(memory.createdAt)
+  ) {
+    return memory.createdAt;
+  }
+  if (typeof memory.createdAt === "string") {
+    const parsed = Date.parse(memory.createdAt);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
 }
 
 function normalizeGeneratedReminderBody(value: string): string | null {
@@ -1098,6 +1121,59 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       }
     }
 
+    public async hasOwnerRespondedAfterReminderAttempt(args: {
+      subjectType: LifeOpsSubjectType;
+      attempt: LifeOpsReminderAttempt;
+      now: Date;
+    }): Promise<boolean> {
+      if (
+        args.subjectType !== "owner" ||
+        typeof this.runtime.getRoomsForParticipants !== "function" ||
+        typeof this.runtime.getMemoriesByRoomIds !== "function"
+      ) {
+        return false;
+      }
+      const attemptedAt =
+        args.attempt.attemptedAt ?? args.attempt.scheduledFor ?? null;
+      const attemptedMs = attemptedAt ? Date.parse(attemptedAt) : Number.NaN;
+      if (!Number.isFinite(attemptedMs)) {
+        return false;
+      }
+
+      const ownerEntityId =
+        (await this.ownerRoutingEntityId()) ?? this.ownerEntityId();
+      const agentId = this.agentId();
+      try {
+        const roomIds = await this.runtime.getRoomsForParticipants([
+          ownerEntityId,
+          agentId,
+        ]);
+        if (!Array.isArray(roomIds) || roomIds.length === 0) {
+          return false;
+        }
+        const memories = await this.runtime.getMemoriesByRoomIds({
+          tableName: "messages",
+          roomIds,
+          limit: 50,
+        });
+        if (!Array.isArray(memories) || memories.length === 0) {
+          return false;
+        }
+        const nowMs = args.now.getTime();
+        return memories.some((memory) => {
+          if (memory.entityId !== ownerEntityId) {
+            return false;
+          }
+          const createdAt = readMemoryCreatedAtMs(memory);
+          return (
+            createdAt !== null && createdAt > attemptedMs && createdAt <= nowMs
+          );
+        });
+      } catch {
+        return false;
+      }
+    }
+
     public async renderReminderBody(args: {
       title: string;
       scheduledFor: string;
@@ -1162,7 +1238,6 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       ].join("\n");
 
       try {
-        // biome-ignore lint/correctness/useHookAtTopLevel: runtime.useModel is an elizaOS model API, not a React hook.
         const response = await this.runtime.useModel(ModelType.TEXT_SMALL, {
           prompt,
         });
@@ -1224,7 +1299,6 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       ].join("\n");
 
       try {
-        // biome-ignore lint/correctness/useHookAtTopLevel: runtime.useModel is an elizaOS model API, not a React hook.
         const response = await this.runtime.useModel(ModelType.TEXT_SMALL, {
           prompt,
         });
@@ -2364,21 +2438,6 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         this.runtime,
         ownerContacts,
       );
-      const preferredChannels = new Set<LifeOpsReminderChannel>();
-      for (const hint of Object.values(ownerContactHints)) {
-        const preferredChannel = mapPlatformToReminderChannel(
-          hint.preferredCommunicationChannel,
-        );
-        const recentChannel = mapPlatformToReminderChannel(
-          hint.lastResponseChannel,
-        );
-        if (preferredChannel) {
-          preferredChannels.add(preferredChannel);
-        }
-        if (recentChannel) {
-          preferredChannels.add(recentChannel);
-        }
-      }
       const pushChannel = async (
         channel: LifeOpsReminderChannel | null,
       ): Promise<void> => {
@@ -2418,34 +2477,14 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         }
       };
 
-      await pushChannel(
-        mapPlatformToReminderChannel(
-          args.activityProfile?.isCurrentlyActive
-            ? args.activityProfile.lastSeenPlatform
-            : null,
-        ),
-      );
-      await pushChannel(
-        mapPlatformToReminderChannel(args.activityProfile?.primaryPlatform),
-      );
-      await pushChannel(
-        mapPlatformToReminderChannel(args.activityProfile?.secondaryPlatform),
-      );
-      for (const preferredChannel of preferredChannels) {
-        await pushChannel(preferredChannel);
-      }
-
-      for (const source of Object.keys(ownerContacts)) {
-        const mappedChannel = mapPlatformToReminderChannel(source);
-        if (mappedChannel === "in_app") {
-          continue;
-        }
-        await pushChannel(mappedChannel);
-      }
-      for (const policy of args.policies) {
-        await pushChannel(
-          isReminderChannel(policy.channelType) ? policy.channelType : null,
-        );
+      const rankedChannels = rankReminderEscalationChannels({
+        activityProfile: args.activityProfile,
+        ownerContactHints,
+        ownerContactSources: Object.keys(ownerContacts),
+        policyChannels: args.policies.map((policy) => policy.channelType),
+      });
+      for (const channel of rankedChannels) {
+        await pushChannel(channel);
       }
       return ordered;
     }
@@ -2721,6 +2760,58 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         return null;
       }
 
+      const previousAttempt =
+        escalationAttempts.at(-1) ?? gatingPlanAttempt ?? lastNormalAttempt;
+      if (!previousAttempt) {
+        return null;
+      }
+      const twilioVoiceAvailable = readTwilioCredentialsFromEnv() !== null;
+      const enforcementState = buildReminderEnforcementState(
+        args.now,
+        args.timezone,
+        args.definition,
+        twilioVoiceAvailable,
+      );
+      const reviewAt = readReminderReviewAt(previousAttempt);
+      let forceVoice =
+        enforcementState?.twilioVoiceAvailable &&
+        enforcementState.definitionIsRoutine &&
+        enforcementState.window.kind !== "none" &&
+        enforcementState.minutesPastStart > 20;
+      let scheduledFor = reviewAt;
+      if (!scheduledFor) {
+        const baseDelayMinutes = resolveReminderEscalationDelayMinutes(
+          args.urgency,
+          previousAttempt.outcome,
+          escalationAttempts.length > 0,
+        );
+        if (baseDelayMinutes === null) {
+          return null;
+        }
+        const enforcement = applyEnforcementOverrides(
+          baseDelayMinutes,
+          enforcementState,
+        );
+        forceVoice = forceVoice || enforcement.forceVoice;
+        scheduledFor = addMinutes(
+          new Date(previousAttempt.attemptedAt ?? previousAttempt.scheduledFor),
+          enforcement.delayMinutes,
+        ).toISOString();
+      }
+      if (Date.parse(scheduledFor) > nowMs) {
+        return null;
+      }
+      if (
+        isDeliveredReminderOutcome(previousAttempt.outcome) &&
+        (await this.hasOwnerRespondedAfterReminderAttempt({
+          subjectType: args.subjectType,
+          attempt: previousAttempt,
+          now: args.now,
+        }))
+      ) {
+        return null;
+      }
+
       const candidateChannels = await this.resolveReminderEscalationChannels({
         activityProfile: args.activityProfile,
         policies: args.policies,
@@ -2735,49 +2826,23 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         null;
       if (
         !nextChannel &&
-        (lastEscalationAttempt?.outcome === "delivered" ||
-          lastEscalationAttempt?.outcome === "delivered_read" ||
-          lastEscalationAttempt?.outcome === "delivered_unread") &&
+        lastEscalationAttempt &&
+        isDeliveredReminderOutcome(lastEscalationAttempt.outcome) &&
         candidateChannels.includes(lastEscalationAttempt.channel)
       ) {
         nextChannel = lastEscalationAttempt.channel;
       }
-      if (!nextChannel) {
-        return null;
+      if (
+        !nextChannel &&
+        isDeliveredReminderOutcome(previousAttempt.outcome) &&
+        candidateChannels.includes(previousAttempt.channel)
+      ) {
+        nextChannel = previousAttempt.channel;
       }
-
-      const previousAttempt =
-        escalationAttempts.at(-1) ?? gatingPlanAttempt ?? lastNormalAttempt;
-      if (!previousAttempt) {
-        return null;
-      }
-      const baseDelayMinutes = resolveReminderEscalationDelayMinutes(
-        args.urgency,
-        previousAttempt.outcome,
-        escalationAttempts.length > 0,
-      );
-      if (baseDelayMinutes === null) {
-        return null;
-      }
-      const twilioVoiceAvailable = readTwilioCredentialsFromEnv() !== null;
-      const enforcementState = buildReminderEnforcementState(
-        args.now,
-        args.timezone,
-        args.definition,
-        twilioVoiceAvailable,
-      );
-      const { delayMinutes, forceVoice } = applyEnforcementOverrides(
-        baseDelayMinutes,
-        enforcementState,
-      );
       if (forceVoice && nextChannel !== "voice") {
         nextChannel = "voice";
       }
-      const scheduledFor = addMinutes(
-        new Date(previousAttempt.attemptedAt ?? previousAttempt.scheduledFor),
-        delayMinutes,
-      ).toISOString();
-      if (Date.parse(scheduledFor) > nowMs) {
+      if (!nextChannel) {
         return null;
       }
 
@@ -3226,6 +3291,28 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
           deliveryMetadata.reason = policy
             ? "target_missing"
             : "unconfigured_channel";
+        }
+      }
+
+      if (
+        outcome === "delivered" &&
+        (args.urgency === "high" || args.urgency === "critical")
+      ) {
+        const reviewDelayMinutes =
+          lifecycle === "escalation"
+            ? REMINDER_ESCALATION_DELAYS[args.urgency].repeatMinutes
+            : REMINDER_ESCALATION_DELAYS[args.urgency].initialMinutes;
+        if (reviewDelayMinutes !== null) {
+          deliveryMetadata[REMINDER_REVIEW_AFTER_MINUTES_METADATA_KEY] =
+            reviewDelayMinutes;
+          deliveryMetadata[REMINDER_REVIEW_AT_METADATA_KEY] = addMinutes(
+            attemptedAtDate,
+            reviewDelayMinutes,
+          ).toISOString();
+          deliveryMetadata[REMINDER_REVIEW_REASON_METADATA_KEY] =
+            lifecycle === "escalation"
+              ? "escalation_unacknowledged_review"
+              : "delivery_acknowledgement_review";
         }
       }
 
@@ -3923,6 +4010,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
               channel: reminder.channel,
               definition,
               activityProfile,
+              urgency,
             })
           ) {
             continue;
@@ -3938,10 +4026,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
             stepIndex: reminder.stepIndex,
             scheduledFor: reminder.scheduledFor,
             dueAt: occurrence.dueAt,
-            urgency:
-              typeof occurrence.metadata.urgency === "string"
-                ? normalizeReminderUrgency(occurrence.metadata.urgency)
-                : priorityToUrgency(occurrence.priority),
+            urgency,
             quietHours: plan.quietHours,
             acknowledged,
             attemptedAt: now.toISOString(),

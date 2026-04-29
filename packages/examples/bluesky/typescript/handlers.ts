@@ -496,7 +496,7 @@ export function registerBlueskyHandlers(runtime: IAgentRuntime): void {
 
 // Export types for tests
 export type {
-  BlueSkyNotificationEventPayload,
   BlueSkyCreatePostEventPayload,
   BlueSkyNotification,
+  BlueSkyNotificationEventPayload,
 };

@@ -9,9 +9,7 @@ function hasHostsOverride(value: string | undefined): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function ensureSelfControlTestHostsPath(
-  env: NodeJS.ProcessEnv,
-): string | null {
+function ensureSelfControlTestHostsPath(env: NodeJS.ProcessEnv): string | null {
   const configuredPath =
     env.WEBSITE_BLOCKER_HOSTS_FILE_PATH ?? env.SELFCONTROL_HOSTS_FILE_PATH;
   if (hasHostsOverride(configuredPath)) {

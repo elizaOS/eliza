@@ -881,7 +881,9 @@ function main(): void {
   fs.rmSync(targetNodeModules, { recursive: true, force: true });
   fs.mkdirSync(targetNodeModules, { recursive: true });
 
-  const alwaysBundled = new Set(discoverAlwaysBundledPackages(PACKAGE_JSON_PATH));
+  const alwaysBundled = new Set(
+    discoverAlwaysBundledPackages(PACKAGE_JSON_PATH),
+  );
   for (const packageName of BASELINE_BUNDLED_RUNTIME_PACKAGES) {
     if (alwaysBundled.has(packageName)) {
       continue;

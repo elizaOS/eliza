@@ -33,11 +33,15 @@ function run(command, args, cwd = APP_CORE_ROOT) {
 }
 
 run("bunx", ["vitest", "run", ...releaseContractTests], REPO_ROOT);
-run("bunx", [
-  "vitest",
-  "run",
-  "eliza/packages/app-core/scripts/startup-integration-script-drift.test.ts",
-], REPO_ROOT);
+run(
+  "bunx",
+  [
+    "vitest",
+    "run",
+    "eliza/packages/app-core/scripts/startup-integration-script-drift.test.ts",
+  ],
+  REPO_ROOT,
+);
 
 // tsdown and the release check both resolve repo-root-relative entries/config.
 run("bunx", ["tsdown", "--fail-on-warn", "false"], REPO_ROOT);

@@ -175,7 +175,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version: "24"
 
       - name: Setup Bun workspace
         uses: ./.github/actions/setup-bun-workspace
@@ -277,7 +277,7 @@ jobs:
     name: Build Agent Browser Bridge companions
     if: ${{ inputs.platform == '' || inputs.platform == 'all' }}
     needs: [prepare, validate-release]
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 60
     outputs:
       packaged: ${{ steps.package-browser-bridge.outputs.packaged }}
@@ -295,7 +295,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version: "24"
 
       - name: Setup Bun workspace
         uses: ./.github/actions/setup-bun-workspace
@@ -371,7 +371,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version: "24"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2

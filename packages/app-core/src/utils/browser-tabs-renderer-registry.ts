@@ -15,15 +15,12 @@ export type BrowserTabsRendererImpl = {
     script: string,
     timeoutMs: number,
   ) => Promise<{ ok: boolean; result?: unknown; error?: string }>;
-  getTabRect: (id: string) => Promise<
-    | {
-        x: number;
-        y: number;
-        width: number;
-        height: number;
-      }
-    | null
-  >;
+  getTabRect: (id: string) => Promise<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>;
 };
 
 const REGISTRY_KEY = "__ELIZA_BROWSER_TABS_REGISTRY__" as const;

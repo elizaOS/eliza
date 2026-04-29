@@ -138,14 +138,14 @@ export function withDossier<TBase extends Constructor<LifeOpsServiceBase>>(
           if (rel.id) {
             if (canResolveCluster) {
               try {
-                const primary = await relationshipsService.resolvePrimaryEntityId(
-                  rel.id,
-                );
+                const primary =
+                  await relationshipsService.resolvePrimaryEntityId(rel.id);
                 if (seenClusterPrimaries.has(primary)) {
                   sources.push({
                     kind: "attendee",
                     ref: handle,
-                    snippet: "(duplicate identity — folded into earlier attendee)",
+                    snippet:
+                      "(duplicate identity — folded into earlier attendee)",
                   });
                   continue;
                 }

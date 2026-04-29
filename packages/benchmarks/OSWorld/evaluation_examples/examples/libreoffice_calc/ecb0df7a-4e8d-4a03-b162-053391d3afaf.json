@@ -23,9 +23,7 @@
     }
   ],
   "trajectory": "trajectories/ecb0df7a-4e8d-4a03-b162-053391d3afaf",
-  "related_apps": [
-    "libreoffice calc"
-  ],
+  "related_apps": ["libreoffice calc"],
   "evaluator": {
     "postconfig": [
       {
@@ -73,10 +71,7 @@
             {
               "ranges": {
                 "method": "spreadsheet_range",
-                "ref": [
-                  "D2:D29",
-                  "D2:D1048576"
-                ]
+                "ref": ["D2:D29", "D2:D1048576"]
               },
               "type": {
                 "method": "eq",
@@ -84,11 +79,7 @@
               },
               "formula1": {
                 "method": "str_set_eq",
-                "ref": [
-                  "Pass",
-                  "Fail",
-                  "Held"
-                ]
+                "ref": ["Pass", "Fail", "Held"]
               }
             }
           ]

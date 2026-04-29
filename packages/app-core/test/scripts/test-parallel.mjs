@@ -36,7 +36,7 @@ const runs = [
   {
     name: "unit",
     cmd: bunCmd,
-    args: ["x", "vitest", "run", "--config", "test/vitest/default.config.ts"],
+    args: ["x", "vitest", "run", "--config", "eliza/test/vitest/default.config.ts"],
     vitest: true,
     reportFile: path.join(os.tmpdir(), "eliza-vitest-unit-report.json"),
   },

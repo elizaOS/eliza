@@ -9,7 +9,6 @@
   color: #1a202c;
   padding: 60px 40px;
   text-align: center;
-  -top: 10px;
 }
 
 .hero-section h1 {
@@ -157,19 +156,19 @@
   .hero-section h1 {
     font-size: 32px;
   }
-  
+
   .subtitle {
     font-size: 18px;
   }
-  
+
   .content-section {
     padding: 30px;
   }
-  
+
   .content-section h2 {
     font-size: 24px;
   }
-  
+
   .content-section p {
     font-size: 16px;
   }

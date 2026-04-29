@@ -28,10 +28,7 @@ export interface ManagedWindowFrame {
 export interface ManagedWindowLike {
   focus(): void;
   setAlwaysOnTop(flag: boolean): void;
-  on(
-    event: "close" | "focus" | "resize" | "move",
-    handler: () => void,
-  ): void;
+  on(event: "close" | "focus" | "resize" | "move", handler: () => void): void;
   /**
    * Optional — when present, used to capture window position+size for
    * per-slug bounds persistence. Mocks may omit this.

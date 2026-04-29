@@ -236,12 +236,34 @@ function buildRuntimeWithDuplicateSystemTasks() {
   };
 }
 
+function buildRuntimeWithCryptoAutomationCapabilities() {
+  const runtime = buildRuntimeStub();
+  return {
+    ...runtime,
+    actions: [
+      ...runtime.actions,
+      {
+        name: "HYPERLIQUID_ACTION",
+        description: "Manage Hyperliquid automation intents.",
+      },
+      {
+        name: "POLYMARKET_ACTION",
+        description: "Manage Polymarket automation intents.",
+      },
+    ],
+    plugins: [{ name: "evm" }, { name: "chain_solana" }],
+  };
+}
+
 describe("automations compat routes", () => {
   let harness: Harness;
 
   beforeEach(() => {
     vi.clearAllMocks();
     delete process.env.ELIZA_API_TOKEN;
+    delete process.env.EVM_PRIVATE_KEY;
+    delete process.env.SOLANA_PRIVATE_KEY;
+    delete process.env.POLYMARKET_PRIVATE_KEY;
 
     toWorkbenchTaskMock.mockImplementation((task) => task);
     listTriggerTasksMock.mockResolvedValue([
@@ -349,6 +371,9 @@ describe("automations compat routes", () => {
   });
 
   afterEach(async () => {
+    delete process.env.EVM_PRIVATE_KEY;
+    delete process.env.SOLANA_PRIVATE_KEY;
+    delete process.env.POLYMARKET_PRIVATE_KEY;
     await harness?.dispose?.();
   });
 
@@ -527,5 +552,122 @@ describe("automations compat routes", () => {
         disabledReason: "Connect the owner Telegram account.",
       }),
     );
+    expect(body.nodes).toContainEqual(
+      expect.objectContaining({
+        id: "crypto:evm.swap",
+        class: "action",
+        source: "static_catalog",
+        ownerScoped: true,
+        availability: "disabled",
+        disabledReason: "Load the EVM plugin with swap support.",
+      }),
+    );
+    expect(body.nodes).toContainEqual(
+      expect.objectContaining({
+        id: "crypto:evm.bridge",
+        class: "action",
+        source: "static_catalog",
+        ownerScoped: true,
+        availability: "disabled",
+        disabledReason: "Load the EVM plugin with bridge support.",
+      }),
+    );
+    expect(body.nodes).toContainEqual(
+      expect.objectContaining({
+        id: "crypto:solana.swap",
+        class: "action",
+        source: "static_catalog",
+        ownerScoped: true,
+        availability: "disabled",
+        disabledReason: "Load the Solana plugin with swap support.",
+      }),
+    );
+    expect(body.nodes).toContainEqual(
+      expect.objectContaining({
+        id: "crypto:hyperliquid.action",
+        class: "action",
+        source: "static_catalog",
+        ownerScoped: true,
+        availability: "disabled",
+        disabledReason: "Load the Hyperliquid runtime plugin.",
+      }),
+    );
+    expect(body.nodes).toContainEqual(
+      expect.objectContaining({
+        id: "crypto:polymarket.action",
+        class: "action",
+        source: "static_catalog",
+        ownerScoped: true,
+        availability: "disabled",
+        disabledReason: "Load the Polymarket runtime plugin.",
+      }),
+    );
+    expect(body.nodes).toContainEqual(
+      expect.objectContaining({
+        id: "trigger:order.schedule",
+        class: "trigger",
+        source: "static_catalog",
+        ownerScoped: false,
+        availability: "enabled",
+      }),
+    );
+    expect(body.nodes).toContainEqual(
+      expect.objectContaining({
+        id: "trigger:order.event",
+        class: "trigger",
+        source: "static_catalog",
+        ownerScoped: false,
+        availability: "disabled",
+        disabledReason: "Load an order-event-capable runtime plugin.",
+      }),
+    );
+  });
+
+  it("enables crypto automation descriptors only when matching capabilities are loaded", async () => {
+    harness = await startApiHarness({
+      current: buildRuntimeWithCryptoAutomationCapabilities() as never,
+      pendingAgentName: null,
+      pendingRestartReasons: [],
+    });
+
+    const response = await fetch(`${harness.baseUrl}/api/automations/nodes`);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      nodes: Array<{ id: string; availability: string }>;
+    };
+
+    for (const id of [
+      "crypto:evm.swap",
+      "crypto:evm.bridge",
+      "crypto:solana.swap",
+      "crypto:hyperliquid.action",
+      "crypto:polymarket.action",
+      "trigger:order.event",
+    ]) {
+      expect(body.nodes).toContainEqual(
+        expect.objectContaining({ id, availability: "enabled" }),
+      );
+    }
+  });
+
+  it("does not leak crypto secrets in the automation node catalog", async () => {
+    process.env.EVM_PRIVATE_KEY = "0x" + "11".repeat(32);
+    process.env.SOLANA_PRIVATE_KEY = "solana-secret-test-key";
+    process.env.POLYMARKET_PRIVATE_KEY = "polymarket-secret-test-key";
+
+    harness = await startApiHarness({
+      current: buildRuntimeStub() as never,
+      pendingAgentName: null,
+      pendingRestartReasons: [],
+    });
+
+    const response = await fetch(`${harness.baseUrl}/api/automations/nodes`);
+    expect(response.status).toBe(200);
+    const payload = await response.text();
+
+    expect(payload).not.toContain(process.env.EVM_PRIVATE_KEY);
+    expect(payload).not.toContain(process.env.SOLANA_PRIVATE_KEY);
+    expect(payload).not.toContain(process.env.POLYMARKET_PRIVATE_KEY);
+    expect(payload).not.toContain("ghp_test_token");
   });
 });

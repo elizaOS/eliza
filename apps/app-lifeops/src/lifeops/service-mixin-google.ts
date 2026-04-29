@@ -1102,9 +1102,10 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
           requestUrl,
           mode: resolvedConfig.mode,
           requestedCapabilities,
-          existingCapabilities: existingGrant && !request.createNewGrant
-            ? normalizeGrantCapabilities(existingGrant.capabilities)
-            : undefined,
+          existingCapabilities:
+            existingGrant && !request.createNewGrant
+              ? normalizeGrantCapabilities(existingGrant.capabilities)
+              : undefined,
           grantId: pendingGrantId,
         });
       } catch (error) {
@@ -1269,7 +1270,8 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
         requestedMode ?? preferredGrant?.mode ?? modeAvailability.defaultMode;
       const fallbackSide = requestedSide ?? preferredGrant?.side ?? "owner";
       const grant = requestedGrantId
-        ? (grants.find((candidate) => candidate.id === requestedGrantId) ?? null)
+        ? (grants.find((candidate) => candidate.id === requestedGrantId) ??
+          null)
         : await this.repository.getConnectorGrant(
             this.agentId(),
             "google",

@@ -15,7 +15,7 @@
  * than running a speculative search on every turn.
  */
 
-import { hasAdminAccess } from "@elizaos/agent/security/access";
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   IAgentRuntime,
   Memory,
@@ -137,9 +137,9 @@ export const crossChannelContextProvider: Provider = {
     "Injects cross-channel hits (Gmail + agent memory + optional WS3 " +
     "cluster fan-out) when the turn carries an explicit " +
     "crossChannelContextRequest signal identifying a query or person. " +
-    "Admin/owner only. Silent on turns without signal.",
+    "Owner only. Silent on turns without signal.",
   descriptionCompressed:
-    "Top cross-channel hits for a signaled person/topic. Admin only.",
+    "Top cross-channel hits for a signaled person/topic. Owner only.",
   dynamic: true,
   // After inboxTriage (14) and before escalation (15).
   position: 14.5,
@@ -149,7 +149,7 @@ export const crossChannelContextProvider: Provider = {
     message: Memory,
     state: State | undefined,
   ): Promise<ProviderResult> {
-    if (!(await hasAdminAccess(runtime, message))) {
+    if (!(await hasOwnerAccess(runtime, message))) {
       return EMPTY;
     }
 

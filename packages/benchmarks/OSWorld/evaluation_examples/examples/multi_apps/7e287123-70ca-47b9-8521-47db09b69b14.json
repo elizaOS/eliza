@@ -100,10 +100,7 @@
     }
   ],
   "trajectory": "trajectories/7e287123-70ca-47b9-8521-47db09b69b14",
-  "related_apps": [
-    "libreoffice_calc",
-    "os"
-  ],
+  "related_apps": ["libreoffice_calc", "os"],
   "evaluator": {
     "postconfig": [
       {
@@ -127,10 +124,7 @@
         "/home/user/Desktop/GRF-p5y.xlsx",
         "/home/user/Desktop/GRF-p5y-Sheet1.csv"
       ],
-      "dest": [
-        "GRF-p5y.xlsx",
-        "GRF-p5y-Sheet1.csv"
-      ],
+      "dest": ["GRF-p5y.xlsx", "GRF-p5y-Sheet1.csv"],
       "multi": true
     },
     "expected": {
@@ -139,10 +133,7 @@
         "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/7e287123-70ca-47b9-8521-47db09b69b14/GRF-p5y.bak.xlsx",
         "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/7e287123-70ca-47b9-8521-47db09b69b14/GRF-p5y.bak-Sheet1.csv"
       ],
-      "dest": [
-        "GRF-p5y-gt.xlsx",
-        "GRF-p5y-gt-Sheet1.csv"
-      ],
+      "dest": ["GRF-p5y-gt.xlsx", "GRF-p5y-gt-Sheet1.csv"],
       "multi": true
     },
     "options": {

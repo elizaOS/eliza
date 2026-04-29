@@ -1,13 +1,13 @@
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
-const { hasAdminAccessMock, runCrossChannelSearchMock } = vi.hoisted(() => ({
-  hasAdminAccessMock: vi.fn(async () => true),
+const { hasOwnerAccessMock, runCrossChannelSearchMock } = vi.hoisted(() => ({
+  hasOwnerAccessMock: vi.fn(async () => true),
   runCrossChannelSearchMock: vi.fn(),
 }));
 
-vi.mock("@elizaos/agent", () => ({
-  hasAdminAccess: hasAdminAccessMock,
+vi.mock("@elizaos/agent/security/access", () => ({
+  hasOwnerAccess: hasOwnerAccessMock,
 }));
 
 vi.mock("../lifeops/cross-channel-search.js", () => ({

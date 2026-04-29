@@ -78,6 +78,7 @@ export interface BugReportBundleResult {
 }
 
 import type { ExistingElizaInstallInfo } from "../rpc-schema";
+
 export type { ExistingElizaInstallInfo };
 
 // Subprocess type from Bun.spawn
@@ -97,7 +98,9 @@ export function getHealthPollTimeoutMs(
   env: NodeJS.ProcessEnv = process.env,
   platform: string = process.platform,
 ): number {
-  const raw = (env.ELIZA_AGENT_HEALTH_TIMEOUT_MS ?? env.ELIZA_AGENT_HEALTH_TIMEOUT_MS)?.trim();
+  const raw = (
+    env.ELIZA_AGENT_HEALTH_TIMEOUT_MS ?? env.ELIZA_AGENT_HEALTH_TIMEOUT_MS
+  )?.trim();
   if (raw) {
     const parsed = Number.parseInt(raw, 10);
     if (Number.isFinite(parsed) && parsed > 0) {
@@ -341,10 +344,16 @@ export function getDiagnosticLogPath(): string {
     if (!fs.existsSync(configDir)) {
       fs.mkdirSync(configDir, { recursive: true });
     }
-    diagnosticLogPath = path.join(configDir, getBrandConfig().startupLogFileName);
+    diagnosticLogPath = path.join(
+      configDir,
+      getBrandConfig().startupLogFileName,
+    );
   } catch {
     // Fallback to temp dir
-    diagnosticLogPath = path.join(os.tmpdir(), getBrandConfig().startupLogFileName);
+    diagnosticLogPath = path.join(
+      os.tmpdir(),
+      getBrandConfig().startupLogFileName,
+    );
   }
   return diagnosticLogPath;
 }
@@ -482,7 +491,10 @@ export function createBugReportBundle(options: {
   const reportJsonPath = path.join(directory, "report.json");
   const logPath = getDiagnosticLogPath();
   const statusPath = getStartupStatusPath();
-  const startupLogTarget = path.join(directory, getBrandConfig().startupLogFileName);
+  const startupLogTarget = path.join(
+    directory,
+    getBrandConfig().startupLogFileName,
+  );
   const startupStatusTarget = path.join(directory, "startup-status.json");
   const startupDiagnostics = getStartupDiagnosticsSnapshot();
   const includeLogTail =
@@ -572,7 +584,10 @@ export function isPackagedDesktopRuntime(
     normalizedExecPath.includes("/self-extraction/") ||
     normalizedExecPath.endsWith("/launcher") ||
     normalizedExecPath.endsWith("/launcher.exe");
-  if ((process.env.ELIZA_DIST_PATH ?? process.env.ELIZA_DIST_PATH)?.trim() && !looksLikePackagedExec) {
+  if (
+    (process.env.ELIZA_DIST_PATH ?? process.env.ELIZA_DIST_PATH)?.trim() &&
+    !looksLikePackagedExec
+  ) {
     return false;
   }
   if (!normalizedModuleDir.includes("/src/")) {
@@ -945,7 +960,12 @@ function shouldAutoRecoverPgliteFailure(line: string): boolean {
  * to restore the old “take over default port” behavior.
  */
 async function maybeReclaimPortWithSigkill(port: number): Promise<void> {
-  const raw = (process.env.ELIZA_AGENT_RECLAIM_STALE_PORT ?? process.env.ELIZA_AGENT_RECLAIM_STALE_PORT)?.trim().toLowerCase();
+  const raw = (
+    process.env.ELIZA_AGENT_RECLAIM_STALE_PORT ??
+    process.env.ELIZA_AGENT_RECLAIM_STALE_PORT
+  )
+    ?.trim()
+    .toLowerCase();
   if (raw !== "1" && raw !== "true" && raw !== "yes") {
     return;
   }

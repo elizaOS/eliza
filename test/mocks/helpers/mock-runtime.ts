@@ -21,10 +21,16 @@ import {
   seedXConnectorGrant,
 } from "./seed-grants.ts";
 import { seedTestUserProfile } from "./seed-test-user-profile.ts";
+import {
+  createLifeOpsSimulatorRuntimeFixtures,
+  seedLifeOpsSimulatorRuntime,
+  type LifeOpsSimulatorSeedResult,
+} from "./lifeops-simulator.ts";
 
 export interface MockedTestRuntime {
   runtime: RealTestRuntimeResult["runtime"];
   mocks: StartedMocks;
+  simulator?: LifeOpsSimulatorSeedResult;
   cleanup(): Promise<void>;
 }
 
@@ -32,7 +38,7 @@ export interface MockedTestEnvironment {
   mocks: StartedMocks;
   envVars: Record<string, string>;
   applyRuntimeFixtures?(
-    runtime: RealTestRuntimeResult["runtime"],
+    runtime: RealTestRuntimeResult["runtime"]
   ): Promise<(() => Promise<void> | void) | void>;
   cleanup(): Promise<void>;
 }
@@ -60,6 +66,11 @@ export interface MockedTestRuntimeOptions {
    * screen-time history. Defaults to true.
    */
   seedBenchmarkFixtures?: boolean;
+  /**
+   * Seed a full cross-channel LifeOps simulator persona. Defaults to false so
+   * provider contract tests can keep using their small exact fixtures.
+   */
+  seedLifeOpsSimulator?: boolean;
   /** Pass-through to the underlying real-runtime factory. */
   withLLM?: boolean;
   plugins?: Plugin[];
@@ -98,7 +109,7 @@ function mockRuntimePlugins(plugins: readonly Plugin[] | undefined): Plugin[] {
 }
 
 function snapshotAndApply(
-  vars: Record<string, string>,
+  vars: Record<string, string>
 ): Record<string, string | undefined> {
   const previous: Record<string, string | undefined> = {};
   for (const [k, v] of Object.entries(vars)) {
@@ -124,7 +135,7 @@ function createMockRuntimeStateEnvironment(): MockRuntimeStateEnvironment {
   fs.writeFileSync(
     configPath,
     JSON.stringify({ ui: { ownerName: "admin" } }, null, 2),
-    "utf8",
+    "utf8"
   );
 
   return {
@@ -141,11 +152,15 @@ function createMockRuntimeStateEnvironment(): MockRuntimeStateEnvironment {
 }
 
 export async function prepareMockedTestEnvironment(
-  opts?: Pick<MockedTestRuntimeOptions, "envs">,
+  opts?: Pick<MockedTestRuntimeOptions, "envs" | "seedLifeOpsSimulator">
 ): Promise<MockedTestEnvironment> {
   const envs = opts?.envs ?? MOCK_ENVIRONMENTS;
-  const mocks = await startMocks({ envs });
+  const seedLifeOpsSimulator = opts?.seedLifeOpsSimulator ?? false;
+  const mocks = await startMocks({ envs, simulator: seedLifeOpsSimulator });
   const benchmarkFixtures = await createBenchmarkRuntimeFixturesEnvironment();
+  const simulatorFixtures = seedLifeOpsSimulator
+    ? createLifeOpsSimulatorRuntimeFixtures()
+    : null;
   const mockRuntimeState = createMockRuntimeStateEnvironment();
   const envVars = {
     ...mocks.envVars,
@@ -158,7 +173,18 @@ export async function prepareMockedTestEnvironment(
   return {
     mocks,
     envVars,
-    applyRuntimeFixtures: benchmarkFixtures.applyRuntimeFixtures,
+    applyRuntimeFixtures: async (runtime) => {
+      const cleanups: Array<(() => Promise<void> | void) | void> = [];
+      cleanups.push(await benchmarkFixtures.applyRuntimeFixtures(runtime));
+      if (simulatorFixtures) {
+        cleanups.push(await simulatorFixtures.applyRuntimeFixtures(runtime));
+      }
+      return async () => {
+        for (const cleanup of cleanups.reverse()) {
+          await cleanup?.();
+        }
+      };
+    },
     cleanup: async () => {
       try {
         await benchmarkFixtures.cleanup();
@@ -172,17 +198,20 @@ export async function prepareMockedTestEnvironment(
 }
 
 export async function createMockedTestRuntime(
-  opts?: MockedTestRuntimeOptions,
+  opts?: MockedTestRuntimeOptions
 ): Promise<MockedTestRuntime> {
   const envs = opts?.envs ?? MOCK_ENVIRONMENTS;
   const sharedEnvironment = opts?.sharedEnvironment;
   const localEnvironment = sharedEnvironment
     ? null
-    : await prepareMockedTestEnvironment({ envs });
+    : await prepareMockedTestEnvironment({
+        envs,
+        seedLifeOpsSimulator: opts?.seedLifeOpsSimulator,
+      });
   const environment = sharedEnvironment ?? localEnvironment;
   if (!environment) {
     throw new Error(
-      "createMockedTestRuntime: expected sharedEnvironment or localEnvironment to be available",
+      "createMockedTestRuntime: expected sharedEnvironment or localEnvironment to be available"
     );
   }
   const mocks = environment.mocks;
@@ -196,7 +225,7 @@ export async function createMockedTestRuntime(
       preferredProvider: opts?.preferredProvider,
     });
     cleanupRuntimeFixtures = await environment.applyRuntimeFixtures?.(
-      real.runtime,
+      real.runtime
     );
   } catch (err) {
     await localEnvironment?.cleanup();
@@ -239,9 +268,21 @@ export async function createMockedTestRuntime(
     }
   }
 
+  let simulator: LifeOpsSimulatorSeedResult | undefined;
+  if (opts?.seedLifeOpsSimulator) {
+    try {
+      simulator = await seedLifeOpsSimulatorRuntime(real.runtime);
+    } catch (err) {
+      await real.cleanup();
+      await localEnvironment?.cleanup();
+      throw err;
+    }
+  }
+
   return {
     runtime: real.runtime,
     mocks,
+    ...(simulator ? { simulator } : {}),
     cleanup: async () => {
       try {
         await cleanupRuntimeFixtures?.();

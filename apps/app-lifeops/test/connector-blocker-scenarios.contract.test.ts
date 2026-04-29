@@ -52,18 +52,25 @@ const BLOCKER_SCENARIOS = [
     id: "cross-platform.group-chat-gateway",
     relativePath:
       "messaging.cross-platform/cross-platform.group-chat-gateway.scenario.ts",
-    requiredSnippets: ["getRoom", "getParticipantsForRoom", "participantEntityIds"],
+    requiredSnippets: [
+      "getRoom",
+      "getParticipantsForRoom",
+      "participantEntityIds",
+    ],
   },
   {
     id: "telegram.local.mute-chat",
     relativePath:
       "messaging.telegram-local/telegram.local.mute-chat.scenario.ts",
-    requiredSnippets: ["getParticipantUserState", "listTriggerTasks", "unmute_chat"],
+    requiredSnippets: [
+      "getParticipantUserState",
+      "listTriggerTasks",
+      "unmute_chat",
+    ],
   },
   {
     id: "twitter.dm.schedule-reply",
-    relativePath:
-      "messaging.twitter-dm/twitter.dm.schedule-reply.scenario.ts",
+    relativePath: "messaging.twitter-dm/twitter.dm.schedule-reply.scenario.ts",
     requiredSnippets: ["listTriggerTasks", "REPLY_X_DM", "sendAtIso"],
   },
   {
@@ -99,12 +106,13 @@ describe("Connector blocker scenario fixtures", () => {
 
       expect(scenario.id).toBe(entry.id);
       expect(source).not.toContain("NotYetImplemented");
-      expect(scenario.finalChecks?.some((check) => check.type === "selectedAction")).toBe(
-        true,
-      );
+      expect(
+        scenario.finalChecks?.some((check) => check.type === "selectedAction"),
+      ).toBe(true);
 
       const customChecks = (scenario.finalChecks ?? []).filter(
-        (check) => check.type === "custom" && typeof check.predicate === "function",
+        (check) =>
+          check.type === "custom" && typeof check.predicate === "function",
       );
       expect(customChecks.length).toBeGreaterThan(0);
 

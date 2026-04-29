@@ -162,7 +162,10 @@ function removeTerminalPunctuation(text: string): string {
 }
 
 function stripPunctuation(text: string): string {
-  return text.replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/gu, " ").trim();
+  return text
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
 }
 
 function lowercaseFirst(text: string): string {
@@ -307,7 +310,9 @@ function extractScenarioSelectedActions(scenario: ScenarioLike): string[] {
   return selectedActions;
 }
 
-function deriveSelfCareExpectation(scenario: ScenarioLike): BenchmarkExpectation {
+function deriveSelfCareExpectation(
+  scenario: ScenarioLike,
+): BenchmarkExpectation {
   if (scenario.id === "brush-teeth-smalltalk-preference") {
     return {
       expectedAction: null,
@@ -338,9 +343,7 @@ function deriveSelfCareExpectation(scenario: ScenarioLike): BenchmarkExpectation
     );
     return {
       expectedAction: "LIFE",
-      acceptableActions: supportsBlockRule
-        ? ["BLOCK_UNTIL_TASK_COMPLETE"]
-        : [],
+      acceptableActions: supportsBlockRule ? ["BLOCK_UNTIL_TASK_COMPLETE"] : [],
       forbiddenActions: [],
       expectedOperation: isGoalScenario ? "create_goal" : "create_definition",
       notes:
@@ -392,7 +395,9 @@ function buildPromptBenchmarkCasesForScenario(args: {
   suiteId: PromptBenchmarkSuiteId;
 }): PromptBenchmarkCase[] {
   const { expectation, scenario, suiteId } = args;
-  const basePrompt = (args.basePromptOverride ?? firstMessageTurnText(scenario)).trim();
+  const basePrompt = (
+    args.basePromptOverride ?? firstMessageTurnText(scenario)
+  ).trim();
   const scenarioTags = scenario.tags ?? [];
 
   return PROMPT_BENCHMARK_VARIANTS.map((variant) => {
@@ -440,7 +445,9 @@ function buildPromptBenchmarkCasesForScenario(args: {
       expectedAction,
       acceptableActions,
       forbiddenActions,
-      expectedOperation: positiveCase ? expectation.expectedOperation ?? null : null,
+      expectedOperation: positiveCase
+        ? (expectation.expectedOperation ?? null)
+        : null,
       tags: uniqueStrings([
         suiteId,
         scenario.domain,
@@ -476,7 +483,9 @@ export async function loadExecutiveAssistantCatalog(): Promise<ExecutiveAssistan
   return JSON.parse(raw) as ExecutiveAssistantCatalog;
 }
 
-export async function loadExecutiveAssistantScenarios(): Promise<ScenarioLike[]> {
+export async function loadExecutiveAssistantScenarios(): Promise<
+  ScenarioLike[]
+> {
   const catalog = await loadExecutiveAssistantCatalog();
   return Promise.all(
     catalog.scenarios.map((entry) =>

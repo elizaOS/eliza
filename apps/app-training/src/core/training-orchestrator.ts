@@ -249,25 +249,25 @@ async function defaultDispatcher(
       const notes = [...result.notes];
       let artifactPath: string | undefined;
       if (result.invoked) {
-        const writePath = await persistOptimizedPromptArtifact(
-          input.runtime,
-          {
-            task: input.task,
-            optimizer: result.optimizer,
-            baseline: baselinePrompt,
-            prompt: result.result.optimizedPrompt,
-            score: result.score,
-            baselineScore: result.baselineScore,
-            datasetId: input.datasetPath,
-            datasetSize: result.datasetSize,
-            generatedAt: new Date().toISOString(),
-            lineage: result.result.lineage,
-            fewShotExamples: result.result.fewShotExamples,
-          },
-        );
+        const writePath = await persistOptimizedPromptArtifact(input.runtime, {
+          task: input.task,
+          optimizer: result.optimizer,
+          baseline: baselinePrompt,
+          prompt: result.result.optimizedPrompt,
+          score: result.score,
+          baselineScore: result.baselineScore,
+          datasetId: input.datasetPath,
+          datasetSize: result.datasetSize,
+          generatedAt: new Date().toISOString(),
+          lineage: result.result.lineage,
+          fewShotExamples: result.result.fewShotExamples,
+        });
         artifactPath = writePath ?? undefined;
         if (writePath) notes.push(`artifact written to ${writePath}`);
-        else notes.push("OptimizedPromptService unavailable; artifact not persisted");
+        else
+          notes.push(
+            "OptimizedPromptService unavailable; artifact not persisted",
+          );
       }
       return {
         invoked: result.invoked,
@@ -278,13 +278,11 @@ async function defaultDispatcher(
   }
 }
 
-interface UseModelLike {
-  (input: {
-    prompt: string;
-    temperature?: number;
-    maxTokens?: number;
-  }): Promise<string | object | undefined>;
-}
+type UseModelLike = (input: {
+  prompt: string;
+  temperature?: number;
+  maxTokens?: number;
+}) => Promise<string | object | undefined>;
 
 interface UseModelRuntime {
   useModel?: (
@@ -315,7 +313,12 @@ interface OptimizedPromptArtifactInput {
   datasetId: string;
   datasetSize: number;
   generatedAt: string;
-  lineage: Array<{ round: number; variant: number; score: number; notes?: string }>;
+  lineage: Array<{
+    round: number;
+    variant: number;
+    score: number;
+    notes?: string;
+  }>;
   fewShotExamples?: Array<{
     id?: string;
     input: { user: string; system?: string };
@@ -336,9 +339,9 @@ async function persistOptimizedPromptArtifact(
   runtime: RuntimeLike,
   artifact: OptimizedPromptArtifactInput,
 ): Promise<string | null> {
-  const service = runtime.getService("optimized_prompt") as
-    | OptimizedPromptServiceLike
-    | null;
+  const service = runtime.getService(
+    "optimized_prompt",
+  ) as OptimizedPromptServiceLike | null;
   if (!service || typeof service.setPrompt !== "function") return null;
   return await service.setPrompt(artifact.task, artifact);
 }

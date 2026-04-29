@@ -774,7 +774,8 @@ export function SettingsView({
     }
 
     function handle(event: Event) {
-      const detail = (event as CustomEvent<SettingsFocusConnectorDetail>).detail;
+      const detail = (event as CustomEvent<SettingsFocusConnectorDetail>)
+        .detail;
       if (!detail?.provider) return;
       // Consume the stash here too — the dispatcher always writes it before
       // firing the event, but if we're already mounted the event path wins

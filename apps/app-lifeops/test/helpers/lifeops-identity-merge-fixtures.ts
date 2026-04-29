@@ -1,16 +1,16 @@
 import {
+  type RelationshipsGraphService,
+  type RelationshipsPersonDetail,
+  type RelationshipsPersonSummary,
+  resolveRelationshipsGraphService,
+} from "@elizaos/agent";
+import {
   type AgentRuntime,
   ChannelType,
   createMessageMemory,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import {
-  type RelationshipsGraphService,
-  type RelationshipsPersonDetail,
-  type RelationshipsPersonSummary,
-  resolveRelationshipsGraphService,
-} from "@elizaos/agent";
 
 type RelationshipsServiceLike = {
   addContact: (
@@ -90,8 +90,7 @@ const PLATFORM_FIXTURES: Record<
     handle: "+14155550101",
     inboundText:
       "Signal: Priya Rao says the contractor can call after 4pm today.",
-    outboundText:
-      "Thanks. Tell the contractor I am free after 4pm Pacific.",
+    outboundText: "Thanks. Tell the contractor I am free after 4pm Pacific.",
   },
   telegram: {
     handle: "@priya_rao",
@@ -393,7 +392,9 @@ export async function assertCanonicalIdentityMerged(args: {
   }
 
   const transcript = detail.recentConversations
-    .flatMap((conversation) => conversation.messages.map((message) => message.text))
+    .flatMap((conversation) =>
+      conversation.messages.map((message) => message.text),
+    )
     .join("\n")
     .toLowerCase();
   for (const platform of expectedPlatforms) {

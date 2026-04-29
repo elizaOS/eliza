@@ -7,10 +7,7 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "libreoffice",
-          "--calc"
-        ]
+        "command": ["libreoffice", "--calc"]
       }
     },
     {
@@ -41,22 +38,14 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "/usr/bin/thunderbird"
-        ]
+        "command": ["/usr/bin/thunderbird"]
       }
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "thunderbird",
-    "libreoffice_calc"
-  ],
+  "related_apps": ["thunderbird", "libreoffice_calc"],
   "evaluator": {
-    "func": [
-      "compare_csv",
-      "compare_table"
-    ],
+    "func": ["compare_csv", "compare_table"],
     "conj": "and",
     "result": [
       {

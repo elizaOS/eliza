@@ -17,7 +17,9 @@ describe("redactDiagnosticUrl", () => {
 
   it("redacts key param", () => {
     expect(
-      redactDiagnosticUrl("https://example.com/api?key=supersecret&format=json"),
+      redactDiagnosticUrl(
+        "https://example.com/api?key=supersecret&format=json",
+      ),
     ).toBe("https://example.com/api?key=[redacted]&format=json");
   });
 
@@ -46,9 +48,7 @@ describe("redactDiagnosticUrl", () => {
       redactDiagnosticUrl(
         "https://api.anthropic.com/v1/messages?x=sk-ant-api03-abcdefghijklmnopqrstuvwxyz",
       ),
-    ).toBe(
-      "https://api.anthropic.com/v1/messages?x=[redacted-token]",
-    );
+    ).toBe("https://api.anthropic.com/v1/messages?x=[redacted-token]");
   });
 
   it("redacts ghp_* GitHub tokens", () => {
@@ -97,8 +97,7 @@ describe("formatRendererDiagnosticLine", () => {
   it("captures post-connect RPC failures with structured details", () => {
     const line = formatRendererDiagnosticLine({
       source: "rpc",
-      message:
-        "Electrobun RPC request failed: agentCloudDisconnectWithConfirm",
+      message: "Electrobun RPC request failed: agentCloudDisconnectWithConfirm",
       details: {
         name: "Error",
         message: "Unauthorized",
