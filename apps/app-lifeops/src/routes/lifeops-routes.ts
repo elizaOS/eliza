@@ -2410,6 +2410,9 @@ export async function handleLifeOpsRoutes(
           since: window.since,
           until: window.until,
           source: parseScreenTimeSourceQuery(url.searchParams.get("source")),
+          identifier: parseScreenTimeIdentifierQuery(
+            url.searchParams.get("identifier"),
+          ),
           topN:
             parsePositiveIntegerQuery(url.searchParams.get("topN"), "topN", {
               max: 20,
@@ -2428,10 +2431,34 @@ export async function handleLifeOpsRoutes(
           since: window.since,
           until: window.until,
           source: parseScreenTimeSourceQuery(url.searchParams.get("source")),
+          identifier: parseScreenTimeIdentifierQuery(
+            url.searchParams.get("identifier"),
+          ),
           topN:
             parsePositiveIntegerQuery(url.searchParams.get("topN"), "topN", {
               max: 50,
             }) ?? undefined,
+        }),
+      );
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/lifeops/screen-time/history") {
+    return runRoute(ctx, async (service) => {
+      json(
+        res,
+        await service.getScreenTimeHistory({
+          range: parseScreenTimeRangeQuery(url.searchParams.get("range")),
+          topN:
+            parsePositiveIntegerQuery(url.searchParams.get("topN"), "topN", {
+              max: 50,
+            }) ?? undefined,
+          socialTopN:
+            parsePositiveIntegerQuery(
+              url.searchParams.get("socialTopN"),
+              "socialTopN",
+              { max: 50 },
+            ) ?? undefined,
         }),
       );
     });
