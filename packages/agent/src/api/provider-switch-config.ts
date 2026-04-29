@@ -703,11 +703,19 @@ export function createProviderSwitchConnection(args: {
   };
 }
 
+export interface ApplyOnboardingConnectionOptions {
+  useLocalEmbeddings?: boolean;
+}
+
 export async function applyOnboardingConnectionConfig(
   config: MutableElizaConfig,
   connection: OnboardingConnection,
+  options: ApplyOnboardingConnectionOptions = {},
 ): Promise<void> {
   const normalizedConnection = connection;
+  const excludeServices = options.useLocalEmbeddings
+    ? (["embeddings"] as const)
+    : undefined;
 
   delete (config as Record<string, unknown>).connection;
   const existingDeploymentTarget = normalizeDeploymentTargetConfig(
@@ -759,6 +767,7 @@ export async function applyOnboardingConnectionConfig(
           mediaDescriptionModel: normalizedConnection.mediaDescriptionModel,
         }),
       },
+      ...(excludeServices ? { excludeServices } : {}),
     });
 
     applyCanonicalOnboardingConfig(config, {
@@ -862,6 +871,7 @@ export async function applyOnboardingConnectionConfig(
           ...(config.serviceRouting ?? {}),
           llmText: directLlmRoute,
         },
+        ...(excludeServices ? { excludeServices } : {}),
       })
     : {
         llmText: directLlmRoute,
