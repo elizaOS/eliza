@@ -66,6 +66,25 @@ android {
         }
     }
 
+    // Preserve .gguf / .so as-is in the packaged APK.
+    //
+    // .gguf is added so bundled chat + embedding models stay byte-identical
+    // for memory-mapped loading; .so already ships uncompressed but
+    // declaring it here matches AGP's recommended noCompress list and
+    // protects against future packaging-default changes.
+    //
+    // `tar.gz` / `tar` are NOT listed because aapt2 pre-processes
+    // `*.tar.gz` by stripping the `.gz` suffix at packaging time
+    // regardless of `noCompress` (which only controls ZIP-level
+    // compression of the entry, not the doubly-compressed-extension
+    // rewrite). MiladyAgentService.extractAssetsIfNeeded() compensates
+    // by reading the assets under the aapt2-rewritten `.tar` name and
+    // writing them to disk as `.tar.gz` so PGlite's runtime loader
+    // (`new URL("../vector.tar.gz", import.meta.url)`) finds them.
+    androidResources {
+        noCompress += ['gguf', 'so']
+    }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_21
         targetCompatibility JavaVersion.VERSION_21
