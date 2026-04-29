@@ -265,9 +265,7 @@ export function filterAppsForCatalog(
   });
 
   return sortedApps.filter((app) => {
-    if (
-      !shouldShowAppInAppsView(app, { isProd, showAllApps, walletEnabled })
-    ) {
+    if (!shouldShowAppInAppsView(app, { isProd, showAllApps, walletEnabled })) {
       return false;
     }
     const sectionLabel = getAppCatalogSectionLabel(app).toLowerCase();
