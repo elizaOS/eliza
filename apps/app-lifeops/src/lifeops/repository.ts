@@ -4403,6 +4403,32 @@ export class LifeOpsRepository {
     return rows.map(parseCachedInboxMessage);
   }
 
+  async markCachedInboxMessageRead(
+    agentId: string,
+    messageId: string,
+    readAt = isoNow(),
+  ): Promise<LifeOpsCachedInboxMessage | null> {
+    await executeRawSql(
+      this.runtime,
+      `UPDATE life_inbox_messages
+          SET is_unread = ${sqlBoolean(false)},
+              last_seen_at = ${sqlQuote(readAt)},
+              updated_at = ${sqlQuote(readAt)}
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(messageId)}`,
+    );
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_inbox_messages
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(messageId)}
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseCachedInboxMessage(row) : null;
+  }
+
   async deleteGmailMessages(
     agentId: string,
     provider: LifeOpsConnectorGrant["provider"],

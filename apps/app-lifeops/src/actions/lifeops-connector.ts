@@ -43,6 +43,7 @@ type ConnectorActionParams = {
   apiId?: number;
   apiHash?: string;
   recentLimit?: number;
+  query?: string;
   sendTarget?: string;
   sendMessage?: string;
   browser?: "chrome" | "safari";
@@ -502,10 +503,41 @@ async function dispatchSignal(
       };
     }
     case "verify":
-      return notImplemented("signal", subaction);
+      return await dispatchSignalVerify(service, side, params);
     case "list":
       return notImplemented("signal", subaction);
   }
+}
+
+async function dispatchSignalVerify(
+  service: LifeOpsService,
+  side: "owner" | "agent",
+  params: ConnectorActionParams,
+): Promise<ActionResult> {
+  const limit = params.recentLimit ?? 10;
+  const [status, messages] = await Promise.all([
+    service.getSignalConnectorStatus(side),
+    service.readSignalInbound(limit),
+  ]);
+  const send = params.sendTarget
+    ? await service.sendSignalMessage({
+        recipient: params.sendTarget,
+        text:
+          params.sendMessage ?? "LifeOps Signal connector verification ping.",
+      })
+    : null;
+  return {
+    success: status.connected && (!params.sendTarget || send?.ok === true),
+    text: `Signal verify: status=${status.connected ? "connected" : "disconnected"}, read=${messages.length} message${messages.length === 1 ? "" : "s"}, send=${send ? "ok" : "skipped"}.`,
+    data: {
+      actionName: ACTION_NAME,
+      connector: "signal",
+      subaction: "verify",
+      status,
+      read: { ok: true, count: messages.length, messages },
+      send,
+    },
+  };
 }
 
 async function dispatchDiscord(
@@ -555,15 +587,51 @@ async function dispatchDiscord(
       };
     }
     case "verify":
-      return notImplemented("discord", subaction);
+      return await dispatchDiscordVerify(service, side, params);
     case "list":
       return notImplemented("discord", subaction);
   }
 }
 
+async function dispatchDiscordVerify(
+  service: LifeOpsService,
+  side: "owner" | "agent",
+  params: ConnectorActionParams,
+): Promise<ActionResult> {
+  const status = await service.getDiscordConnectorStatus(side);
+  const query = params.query?.trim();
+  const hits = query
+    ? await service.searchDiscordMessages({
+        side,
+        query,
+        channelId: params.sendTarget,
+      })
+    : [];
+  const send = params.sendTarget
+    ? await service.sendDiscordMessage({
+        channelId: params.sendTarget,
+        text:
+          params.sendMessage ?? "LifeOps Discord connector verification ping.",
+      })
+    : null;
+  return {
+    success: status.connected && (!params.sendTarget || send?.ok === true),
+    text: `Discord verify: status=${status.connected ? "connected" : "disconnected"}, search=${query ? `${hits.length} hit${hits.length === 1 ? "" : "s"}` : "skipped"}, send=${send ? "ok" : "skipped"}.`,
+    data: {
+      actionName: ACTION_NAME,
+      connector: "discord",
+      subaction: "verify",
+      status,
+      search: query ? { ok: true, query, count: hits.length, hits } : null,
+      send,
+    },
+  };
+}
+
 async function dispatchIMessage(
   service: LifeOpsService,
   subaction: ConnectorSubaction,
+  params: ConnectorActionParams,
 ): Promise<ActionResult> {
   switch (subaction) {
     case "status": {
@@ -592,15 +660,46 @@ async function dispatchIMessage(
         "iMessage disconnect is not exposed by LifeOpsService.",
       );
     case "verify":
-      return notImplemented("imessage", subaction);
+      return await dispatchIMessageVerify(service, params);
     case "list":
       return notImplemented("imessage", subaction);
   }
 }
 
+async function dispatchIMessageVerify(
+  service: LifeOpsService,
+  params: ConnectorActionParams,
+): Promise<ActionResult> {
+  const limit = params.recentLimit ?? 10;
+  const [status, messages] = await Promise.all([
+    service.getIMessageConnectorStatus(),
+    service.readIMessages({ limit }),
+  ]);
+  const send = params.sendTarget
+    ? await service.sendIMessage({
+        to: params.sendTarget,
+        text:
+          params.sendMessage ?? "LifeOps iMessage connector verification ping.",
+      })
+    : null;
+  return {
+    success: status.connected && (!params.sendTarget || send?.ok === true),
+    text: `iMessage verify: status=${status.connected ? "connected" : "disconnected"}, read=${messages.length} message${messages.length === 1 ? "" : "s"}, send=${send ? "ok" : "skipped"}.`,
+    data: {
+      actionName: ACTION_NAME,
+      connector: "imessage",
+      subaction: "verify",
+      status,
+      read: { ok: true, count: messages.length, messages },
+      send,
+    },
+  };
+}
+
 async function dispatchWhatsApp(
   service: LifeOpsService,
   subaction: ConnectorSubaction,
+  params: ConnectorActionParams,
 ): Promise<ActionResult> {
   switch (subaction) {
     case "status": {
@@ -629,10 +728,38 @@ async function dispatchWhatsApp(
         "WhatsApp disconnect is not exposed by LifeOpsService.",
       );
     case "verify":
-      return notImplemented("whatsapp", subaction);
+      return await dispatchWhatsAppVerify(service, params);
     case "list":
       return notImplemented("whatsapp", subaction);
   }
+}
+
+async function dispatchWhatsAppVerify(
+  service: LifeOpsService,
+  params: ConnectorActionParams,
+): Promise<ActionResult> {
+  const limit = params.recentLimit ?? 10;
+  const status = await service.getWhatsAppConnectorStatus();
+  const recent = service.pullWhatsAppRecent(limit);
+  const send = params.sendTarget
+    ? await service.sendWhatsAppMessage({
+        to: params.sendTarget,
+        text:
+          params.sendMessage ?? "LifeOps WhatsApp connector verification ping.",
+      })
+    : null;
+  return {
+    success: status.connected && (!params.sendTarget || send?.ok === true),
+    text: `WhatsApp verify: status=${status.connected ? "connected" : "disconnected"}, read=${recent.count} message${recent.count === 1 ? "" : "s"}, send=${send ? "ok" : "skipped"}.`,
+    data: {
+      actionName: ACTION_NAME,
+      connector: "whatsapp",
+      subaction: "verify",
+      status,
+      read: { ok: true, count: recent.count, messages: recent.messages },
+      send,
+    },
+  };
 }
 
 async function dispatchBrowserBridge(
@@ -731,7 +858,7 @@ export const lifeOpsConnectorAction: Action & {
   description:
     "Manage the lifecycle of every LifeOps connector. " +
     "Connectors: google | x | telegram | signal | discord | imessage | whatsapp | health | browser_bridge. " +
-    "Subactions: connect (start auth/pairing), disconnect (revoke and clear grant), verify (active health probe — Telegram only today), status (per-connector grant/health), list (status across all 9 connectors when no connector is set). " +
+    "Subactions: connect (start auth/pairing), disconnect (revoke and clear grant), verify (active read/send probe where the connector exposes one), status (per-connector grant/health), list (status across all 9 connectors when no connector is set). " +
     "Examples: connect Google for the owner; disconnect Telegram; check Discord status; verify Telegram by sending a self-test; list all connectors. " +
     "When subaction=list and no connector is set, returns status for every connector in one call. " +
     "Connector-specific params: telegram connect needs phone (+ optional apiId/apiHash); browser_bridge connect needs browser (chrome/safari/...). " +
@@ -817,9 +944,9 @@ export const lifeOpsConnectorAction: Action & {
         case "discord":
           return await dispatchDiscord(service, subaction, params);
         case "imessage":
-          return await dispatchIMessage(service, subaction);
+          return await dispatchIMessage(service, subaction, params);
         case "whatsapp":
-          return await dispatchWhatsApp(service, subaction);
+          return await dispatchWhatsApp(service, subaction, params);
         case "health":
           return await dispatchHealth(service, subaction, params);
         case "browser_bridge":
@@ -853,7 +980,7 @@ export const lifeOpsConnectorAction: Action & {
     {
       name: "subaction",
       description:
-        "Lifecycle operation. connect (start auth/pairing); disconnect (revoke + clear grant); verify (health probe, Telegram only); status (per-connector status); list (cross-connector status when connector is omitted). Strongly preferred — when omitted, the handler runs an LLM extraction over the conversation to recover it.",
+        "Lifecycle operation. connect (start auth/pairing); disconnect (revoke + clear grant); verify (active read/send probe where available); status (per-connector status); list (cross-connector status when connector is omitted). Strongly preferred — when omitted, the handler runs an LLM extraction over the conversation to recover it.",
       required: false,
       schema: { type: "string" as const, enum: [...VALID_SUBACTIONS] },
     },
@@ -895,20 +1022,28 @@ export const lifeOpsConnectorAction: Action & {
     },
     {
       name: "recentLimit",
-      description: "Telegram verify only — how many recent dialogs to probe.",
+      description:
+        "verify only — how many recent messages/dialogs to read where the connector supports passive reads.",
       required: false,
       schema: { type: "number" as const },
     },
     {
+      name: "query",
+      description:
+        "Discord verify only — optional search text to prove browser-message reads.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
       name: "sendTarget",
       description:
-        "Telegram verify only — destination chat for the self-test send.",
+        "verify only — destination chat/recipient/channel for the self-test send.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "sendMessage",
-      description: "Telegram verify only — text body for the self-test send.",
+      description: "verify only — text body for the self-test send.",
       required: false,
       schema: { type: "string" as const },
     },
