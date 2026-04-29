@@ -37,6 +37,7 @@ import { CustomActionEditor } from "./components/custom-actions/CustomActionEdit
 import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
 import { ChatView } from "./components/pages/ChatView";
 import type { PageScope } from "./components/pages/page-scoped-conversations";
+import { SecretsManagerModalRoot } from "./components/settings/SecretsManagerSection";
 import { BugReportModal } from "./components/shell/BugReportModal";
 import { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanner";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
@@ -57,6 +58,7 @@ import {
 } from "./hooks";
 import { useActivityEvents } from "./hooks/useActivityEvents";
 import { useAuthStatus } from "./hooks/useAuthStatus";
+import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
 import {
   APPS_ENABLED,
   isAndroidPhoneSurfaceEnabled,
@@ -586,6 +588,7 @@ export function App() {
   const contextMenu = useContextMenu();
 
   useStreamPopoutNavigation(setTab);
+  useSecretsManagerShortcut();
 
   useEffect(() => {
     if (startupCoordinator.phase !== "ready") return;
@@ -1182,6 +1185,7 @@ export function App() {
         onSave={contextMenu.confirmSaveCommand}
         onClose={contextMenu.closeSaveCommandModal}
       />
+      <SecretsManagerModalRoot />
       <CustomActionEditor
         open={customActionsEditorOpen}
         action={editingAction}

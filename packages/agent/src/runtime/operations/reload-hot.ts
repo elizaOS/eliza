@@ -17,6 +17,8 @@
 
 import type { AgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import { formatErrorWithStack } from "@elizaos/shared";
+import type { SecretsManager } from "@elizaos/vault";
 import type {
   OperationIntent,
   OperationPhase,
@@ -24,6 +26,10 @@ import type {
   ReloadContext,
   ReloadStrategy,
 } from "./types.js";
+import {
+  defaultSecretsManager,
+  resolveProviderApiKey,
+} from "./vault-bridge.js";
 
 export interface HotStrategyDeps {
   /**
@@ -46,12 +52,8 @@ export interface HotStrategyDeps {
   ) => Promise<void>;
 }
 
-function nowMs(): number {
-  return Date.now();
-}
-
 function buildPhase(
-  name: string,
+  name: OperationPhase["name"],
   status: OperationPhase["status"],
   startedAt: number,
   finishedAt: number,
@@ -78,7 +80,7 @@ function describeIntent(intent: OperationIntent): {
         detail: {
           provider: intent.provider,
           ...(intent.primaryModel ? { primaryModel: intent.primaryModel } : {}),
-          ...(intent.apiKey ? { apiKeyChanged: true } : {}),
+          ...(intent.apiKeyRef ? { apiKeyChanged: true } : {}),
         },
       };
     case "config-reload":
@@ -101,38 +103,46 @@ function describeIntent(intent: OperationIntent): {
   }
 }
 
-function formatError(err: unknown): string {
-  return err instanceof Error ? (err.stack ?? err.message) : String(err);
-}
-
 /**
  * Default env-pump wrapper. Lazy-imports the onboarding env-pump to keep the
  * dependency graph clean (the operations module sits below the api module
  * in the layering, but the env-pump genuinely owns the canonical mutation).
+ *
+ * The intent carries `apiKeyRef` (a vault key), not the secret itself. The
+ * vault is consulted here on every hot reload and only the resolved
+ * plaintext is passed downstream to `createProviderSwitchConnection`.
  */
-async function defaultApplyProviderEnv(
-  intent: ProviderSwitchIntent,
-): Promise<void> {
-  const { applyOnboardingConnectionConfig, createProviderSwitchConnection } =
-    await import("../../api/provider-switch-config.js");
-  const { loadElizaConfig, saveElizaConfig } = await import(
-    "../../config/config.js"
-  );
-
-  const connection = createProviderSwitchConnection({
-    provider: intent.provider,
-    ...(intent.apiKey ? { apiKey: intent.apiKey } : {}),
-    ...(intent.primaryModel ? { primaryModel: intent.primaryModel } : {}),
-  });
-  if (!connection) {
-    throw new Error(
-      `[runtime-ops] hot reload: invalid provider "${intent.provider}"`,
+function makeDefaultApplyProviderEnv(
+  secrets: SecretsManager,
+): (intent: ProviderSwitchIntent) => Promise<void> {
+  return async (intent: ProviderSwitchIntent): Promise<void> => {
+    const { applyOnboardingConnectionConfig, createProviderSwitchConnection } =
+      await import("../../api/provider-switch-config.js");
+    const { loadElizaConfig, saveElizaConfig } = await import(
+      "../../config/config.js"
     );
-  }
 
-  const config = loadElizaConfig();
-  await applyOnboardingConnectionConfig(config, connection);
-  saveElizaConfig(config);
+    const apiKey = await resolveProviderApiKey({
+      secrets,
+      apiKeyRef: intent.apiKeyRef,
+      caller: "runtime-ops:reload-hot",
+    });
+
+    const connection = createProviderSwitchConnection({
+      provider: intent.provider,
+      ...(apiKey ? { apiKey } : {}),
+      ...(intent.primaryModel ? { primaryModel: intent.primaryModel } : {}),
+    });
+    if (!connection) {
+      throw new Error(
+        `[runtime-ops] hot reload: invalid provider "${intent.provider}"`,
+      );
+    }
+
+    const config = loadElizaConfig();
+    await applyOnboardingConnectionConfig(config, connection);
+    saveElizaConfig(config);
+  };
 }
 
 /**
@@ -168,7 +178,7 @@ async function defaultNotifyConfigChanged(
     } catch (err) {
       failures += 1;
       logger.warn(
-        `[runtime-ops] hot reload: plugin "${plugin.name}" applyConfig failed: ${formatError(err)}`,
+        `[runtime-ops] hot reload: plugin "${plugin.name}" applyConfig failed: ${formatErrorWithStack(err)}`,
       );
     }
   }
@@ -186,24 +196,24 @@ async function defaultNotifyConfigChanged(
 }
 
 export function createHotStrategy(
-  opts: Partial<HotStrategyDeps> = {},
+  opts: Partial<HotStrategyDeps> & { secrets?: SecretsManager } = {},
 ): ReloadStrategy {
-  const applyProviderEnv = opts.applyProviderEnv ?? defaultApplyProviderEnv;
+  const secrets = opts.secrets ?? defaultSecretsManager();
+  const applyProviderEnv =
+    opts.applyProviderEnv ?? makeDefaultApplyProviderEnv(secrets);
   const notifyConfigChanged =
     opts.notifyConfigChanged ?? defaultNotifyConfigChanged;
 
   return {
     tier: "hot",
     async apply(ctx: ReloadContext): Promise<AgentRuntime> {
-      // ── Phase 1: apply-env ──────────────────────────────────────────────
-      const envStarted = nowMs();
+      const envStarted = Date.now();
       if (ctx.intent.kind !== "provider-switch") {
-        // The hot strategy currently only handles provider-switch env mutations
-        // directly. Other hot-eligible intents (config-reload over env./vars./
-        // models.) flow through the plugin notify step only — env was already
-        // mutated by whoever scheduled the operation (e.g. the config writer).
+        // Other hot-eligible intents (config-reload over env./vars./models.)
+        // flow through the plugin notify step only — env was already mutated
+        // by whoever scheduled the operation (e.g. the config writer).
         await ctx.reportPhase(
-          buildPhase("apply-env", "skipped", envStarted, nowMs(), {
+          buildPhase("apply-env", "skipped", envStarted, Date.now(), {
             detail: { reason: `intent=${ctx.intent.kind}` },
           }),
         );
@@ -211,40 +221,39 @@ export function createHotStrategy(
         try {
           await applyProviderEnv(ctx.intent);
           await ctx.reportPhase(
-            buildPhase("apply-env", "succeeded", envStarted, nowMs(), {
+            buildPhase("apply-env", "succeeded", envStarted, Date.now(), {
               detail: { provider: ctx.intent.provider },
             }),
           );
         } catch (err) {
           await ctx.reportPhase(
-            buildPhase("apply-env", "failed", envStarted, nowMs(), {
-              error: { message: formatError(err) },
+            buildPhase("apply-env", "failed", envStarted, Date.now(), {
+              error: { message: formatErrorWithStack(err) },
             }),
           );
           throw err;
         }
       }
 
-      // ── Phase 2: notify-plugins ─────────────────────────────────────────
-      const notifyStarted = nowMs();
+      const notifyStarted = Date.now();
       const change = describeIntent(ctx.intent);
       try {
         await notifyConfigChanged(ctx.runtime, change);
         await ctx.reportPhase(
-          buildPhase("notify-plugins", "succeeded", notifyStarted, nowMs(), {
+          buildPhase("notify-plugins", "succeeded", notifyStarted, Date.now(), {
             detail: change.detail,
           }),
         );
       } catch (err) {
         // Best-effort: env is already applied, so we surface this as a failed
-        // phase with a warning but do NOT throw — the operation should still
-        // succeed at the manager level.
+        // phase with a warning but do NOT throw — the operation still
+        // succeeds at the manager level.
         logger.warn(
-          `[runtime-ops] hot reload: notify-plugins failed (env already applied): ${formatError(err)}`,
+          `[runtime-ops] hot reload: notify-plugins failed (env already applied): ${formatErrorWithStack(err)}`,
         );
         await ctx.reportPhase(
-          buildPhase("notify-plugins", "failed", notifyStarted, nowMs(), {
-            error: { message: formatError(err) },
+          buildPhase("notify-plugins", "failed", notifyStarted, Date.now(), {
+            error: { message: formatErrorWithStack(err) },
           }),
         );
       }

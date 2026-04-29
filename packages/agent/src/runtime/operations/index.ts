@@ -31,3 +31,10 @@ export {
   getDefaultRepository,
 } from "./repository.js";
 export * from "./types.js";
+export {
+  _resetDefaultSecretsManagerForTesting,
+  defaultSecretsManager,
+  persistProviderApiKey,
+  resolveProviderApiKey,
+  vaultKeyForProviderApiKey,
+} from "./vault-bridge.js";

@@ -1,4 +1,4 @@
-import type { AgentRuntime } from "@elizaos/core";
+import type { AgentRuntime, Service } from "@elizaos/core";
 
 type BrowserActionParams =
   | { action: "open" | "navigate"; url: string }
@@ -188,13 +188,15 @@ export function attachFakeSubscriptionComputerUse(
   ),
 ): void {
   const runtimeWithServices = runtime as AgentRuntime & {
-    getService(serviceType: string): unknown | null;
+    getService: AgentRuntime["getService"];
   };
   const previousGetService = runtimeWithServices.getService.bind(runtime);
-  runtimeWithServices.getService = (serviceType: string): unknown | null => {
+  runtimeWithServices.getService = (<T extends Service = Service>(
+    serviceType: string,
+  ): T | null => {
     if (serviceType === "computeruse") {
-      return svc;
+      return svc as unknown as T;
     }
     return previousGetService(serviceType);
-  };
+  }) as AgentRuntime["getService"];
 }

@@ -2745,6 +2745,8 @@
   "settings.sections.localModels.desc": "下载和分配本地模型。",
   "settings.sections.localModels.label": "本地模型",
   "settings.sections.permissions.desc": "功能和访问控制",
+  "settings.sections.secrets.desc": "Where Milady stores your API keys: locally, in 1Password, in Bitwarden, or in Proton Pass.",
+  "settings.sections.secrets.label": "Secrets storage",
   "settings.sections.security.desc": "本地访问、远程密码、会话和令牌。",
   "settings.sections.security.label": "安全",
   "settings.sections.updates.desc": "软件更新设置",

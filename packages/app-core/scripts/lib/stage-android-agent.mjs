@@ -493,18 +493,23 @@ export async function stageAndroidAgentRuntime({
 
   // ABI-independent assets: agent-bundle.js + PGlite payload, falling back
   // to the spike's tiny stub if Phase D hasn't been built yet. Phase D
-  // produces a 33 MB real bundle in eliza/packages/agent/dist-mobile/ via
-  // `bun run --cwd eliza/packages/agent build:mobile`. PGlite at runtime
+  // produces a 33 MB real bundle in packages/agent/dist-mobile/ via
+  // `bun run --cwd packages/agent build:mobile`. PGlite at runtime
   // resolves vector.tar.gz and fuzzystrmatch.tar.gz with `new URL("../X",
   // import.meta.url)`, so those two files must land ONE DIR ABOVE the
   // bundle on the device — MiladyAgentService extracts them into the
   // agent root (../) while the bundle itself sits in agent root (./).
   // Mirror that by staging vector + fuzzystrmatch in the assets tree at
   // the same level as agent-bundle.js, leaving relative resolution alone.
+  //
+  // spikeDir is `<repoRoot>/scripts/spike-android-agent/`; its parent's
+  // parent is the repo root. Resolve dist-mobile relative to that.
+  // (Inside this repo there is no nested `eliza/` directory — that
+  // prefix was a leftover from milady's outer repo layout where eliza
+  // was a submodule.)
   const distMobileDir = path.resolve(
     path.dirname(spikeDir),
     "..",
-    "eliza",
     "packages",
     "agent",
     "dist-mobile",
@@ -522,7 +527,7 @@ export async function stageAndroidAgentRuntime({
     bundleSrc = spikeServerJs;
     tlog(
       "Using spike placeholder agent-bundle.js — run `bun run --cwd " +
-        "eliza/packages/agent build:mobile` to ship the real agent.",
+        "packages/agent build:mobile` to ship the real agent.",
     );
   } else {
     throw new Error(

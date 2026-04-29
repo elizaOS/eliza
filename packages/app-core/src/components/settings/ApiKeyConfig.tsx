@@ -4,7 +4,9 @@ import { client, type PluginParamDef } from "../../api";
 import {
   ConfigRenderer,
   defaultRegistry,
+  useConfigValidation,
 } from "../../components/config-ui/config-renderer";
+import { API_KEY_PREFIX_HINTS } from "../../config/api-key-prefix-hints";
 import type { JsonSchemaObject } from "../../config/config-catalog";
 import { useApp } from "../../state";
 import type { ConfigUiHint } from "../../types";
@@ -18,6 +20,15 @@ interface ProviderPlugin {
   configUiHints?: Record<string, ConfigUiHint>;
   enabled: boolean;
   category: string;
+  /**
+   * Server-side validation results for the currently-saved config.
+   * Populated by `validatePluginConfig` against the live `process.env`
+   * + saved `config.env.X`. Surfaced inline above the form so users
+   * see "your saved OpenRouter key doesn't match sk-or-…" without
+   * having to first edit the field.
+   */
+  validationWarnings?: Array<{ field: string; message: string }>;
+  validationErrors?: Array<{ field: string; message: string }>;
 }
 
 export interface ApiKeyConfigProps {
@@ -39,6 +50,7 @@ export function ApiKeyConfig({
   loadPlugins,
 }: ApiKeyConfigProps) {
   const { setTimeout } = useTimeout();
+  const { configRef, validateAll } = useConfigValidation();
 
   const { t } = useApp();
   const [pluginFieldValues, setPluginFieldValues] = useState<
@@ -62,10 +74,11 @@ export function ApiKeyConfig({
 
   const handlePluginSave = useCallback(
     (pluginId: string) => {
+      if (!validateAll()) return;
       const values = pluginFieldValues[pluginId] ?? {};
       void handlePluginConfigSave(pluginId, values);
     },
-    [pluginFieldValues, handlePluginConfigSave],
+    [pluginFieldValues, handlePluginConfigSave, validateAll],
   );
 
   const handleFetchModels = useCallback(
@@ -119,11 +132,24 @@ export function ApiKeyConfig({
     if (k.includes("URL") || k.includes("ENDPOINT")) prop.format = "uri";
     properties[p.key] = prop;
     if (p.required) required.push(p.key);
-    hints[p.key] = {
+    // Inline prefix validation for known API-key fields. Mirrors
+    // KEY_PREFIX_HINTS in packages/agent/src/api/plugin-validation.ts
+    // — that one runs server-side at save time, this one runs in the
+    // form as the user types so they catch the "I pasted a model slug
+    // into the API key field" mistake before it lands on disk.
+    const prefixHint = API_KEY_PREFIX_HINTS[p.key];
+    const fieldHint: ConfigUiHint = {
       label: autoLabel(p.key, selectedProvider.id),
       sensitive: p.sensitive ?? false,
+      ...(prefixHint
+        ? {
+            pattern: `^${prefixHint.prefix}`,
+            patternError: `${prefixHint.label} keys start with "${prefixHint.prefix}" — this doesn't look like a valid key. (Did you paste a model name into the wrong field?)`,
+          }
+        : {}),
       ...serverHints[p.key],
     };
+    hints[p.key] = fieldHint;
     if (p.description && !hints[p.key].help) hints[p.key].help = p.description;
   }
   const schema = { type: "object", properties, required } as JsonSchemaObject;
@@ -161,7 +187,45 @@ export function ApiKeyConfig({
         </span>
       </div>
 
+      {/*
+        Surface server-side validation issues against the
+        already-saved config. The validatePluginConfig path runs at
+        plugin-list time and produces warnings like "OpenRouter key
+        should start with sk-or-" when a saved value doesn't match
+        — we just route those into the form so users with a
+        previously-corrupted milady.json see the issue without
+        having to edit the field first.
+      */}
+      {(selectedProvider.validationErrors?.length ||
+        selectedProvider.validationWarnings?.length) && (
+        <div className="mb-3 space-y-1.5">
+          {selectedProvider.validationErrors?.map((issue, i) => (
+            <div
+              // biome-ignore lint/suspicious/noArrayIndexKey: stable per-render order
+              key={`err-${i}`}
+              role="alert"
+              className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger"
+            >
+              <span className="font-semibold">{issue.field}</span> —{" "}
+              {issue.message}
+            </div>
+          ))}
+          {selectedProvider.validationWarnings?.map((issue, i) => (
+            <div
+              // biome-ignore lint/suspicious/noArrayIndexKey: stable per-render order
+              key={`warn-${i}`}
+              role="status"
+              className="rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn"
+            >
+              <span className="font-semibold">{issue.field}</span> —{" "}
+              {issue.message}
+            </div>
+          ))}
+        </div>
+      )}
+
       <ConfigRenderer
+        ref={configRef}
         schema={schema}
         hints={hints}
         values={values}
@@ -171,6 +235,27 @@ export function ApiKeyConfig({
         onChange={(key, value) =>
           handlePluginFieldChange(selectedProvider.id, key, String(value ?? ""))
         }
+        revealSecret={async (pluginId, key) => {
+          // Server route at packages/app-core/src/api/plugins-compat-routes.ts
+          // (POST /api/plugins/:id/reveal) round-trips the saved value
+          // back through an audit-logged read. Closes the "no reveal"
+          // bug — Settings UI can now confirm what's actually stored.
+          try {
+            const res = await fetch(
+              `/api/plugins/${encodeURIComponent(pluginId)}/reveal`,
+              {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ key }),
+              },
+            );
+            if (!res.ok) return null;
+            const json = (await res.json()) as { value?: string | null };
+            return typeof json.value === "string" ? json.value : null;
+          } catch {
+            return null;
+          }
+        }}
       />
 
       <div className="mt-3 flex items-center justify-between gap-3">

@@ -14,6 +14,7 @@ import {
   hasAppInterface,
   packageNameToAppRouteSlug,
 } from "../contracts/apps.js";
+import { readJsonFile } from "../utils/atomic-json.js";
 import { getPluginInfo } from "./registry-client.js";
 
 export type {
@@ -224,14 +225,6 @@ interface LocalPluginManifest {
   app?: {
     bridgeExport?: unknown;
   };
-}
-
-async function readJsonFile<T>(filePath: string): Promise<T | null> {
-  try {
-    return JSON.parse(await fs.promises.readFile(filePath, "utf8")) as T;
-  } catch {
-    return null;
-  }
 }
 
 async function readLocalBridgeExport(

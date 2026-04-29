@@ -2745,6 +2745,8 @@
   "settings.sections.localModels.desc": "Download and assign local models.",
   "settings.sections.localModels.label": "Local Models",
   "settings.sections.permissions.desc": "Capabilities and access control",
+  "settings.sections.secrets.desc": "Where Milady stores your API keys: locally, in 1Password, in Bitwarden, or in Proton Pass.",
+  "settings.sections.secrets.label": "Secrets storage",
   "settings.sections.security.desc": "Local access, remote password, sessions, and tokens.",
   "settings.sections.security.label": "Security",
   "settings.sections.updates.desc": "Software update settings",
