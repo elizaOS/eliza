@@ -17,17 +17,24 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import {
+  dispatchSecretsManagerOpen,
+  useSecretsManagerModalState,
+} from "../../hooks/useSecretsManagerModal";
+import { getShortcutLabel } from "../../hooks/useSecretsManagerShortcut";
 
 /**
  * Settings → Storage section.
  *
- * Two parts:
- *  - `SecretsManagerSummary` — the inline Settings row. Shows current
- *    primary backend + status; clicking opens the manager modal. This
- *    is what mounts in SettingsView.
- *  - `SecretsManagerModal` — the actual UI for picking enabled
- *    backends and their priority. Controlled via `open` /
- *    `onOpenChange` so the summary row drives it.
+ * Two exports:
+ *  - `SecretsManagerSection` — the inline launcher row in Settings.
+ *    Shows current primary backend + status; clicking dispatches the
+ *    global open event for the modal. Doesn't mount the modal itself.
+ *  - `SecretsManagerModalRoot` — the modal's top-level mount. Should
+ *    be rendered ONCE at app root (alongside SaveCommandModal etc.
+ *    in App.tsx). Subscribes to global open/close state so any
+ *    trigger (Settings launcher, ⌘⌥⌃V keyboard chord, application
+ *    menu accelerator) shows it.
  *
  * Default: "in-house" only (Milady's local encrypted store). Users
  * additionally enable 1Password, Bitwarden, or Proton Pass and route
@@ -61,13 +68,14 @@ const BACKEND_ORDER: BackendId[] = [
 
 /**
  * Inline summary row for Settings. Shows the current primary backend
- * + a "Manage…" button that opens the modal. Loads its own state so
- * the modal can stay closed by default.
+ * + a "Manage…" button that opens the global modal. Loads its own
+ * lightweight state so the row reflects the user's choice without
+ * having to mount the heavier modal.
  */
 export function SecretsManagerSection() {
-  const [open, setOpen] = useState(false);
   const [primary, setPrimary] = useState<BackendStatus | null>(null);
   const [enabledCount, setEnabledCount] = useState<number>(1);
+  const { isOpen } = useSecretsManagerModalState();
 
   const refreshSummary = useCallback(async () => {
     try {
@@ -82,13 +90,19 @@ export function SecretsManagerSection() {
       setPrimary(bJson.backends.find((b) => b.id === primaryId) ?? null);
       setEnabledCount(pJson.preferences.enabled.length);
     } catch {
-      /* network errors fall through; UI shows "Unknown" */
+      /* network errors fall through; UI shows the default fallback */
     }
   }, []);
 
   useEffect(() => {
     void refreshSummary();
   }, [refreshSummary]);
+
+  // When the modal closes, the user may have changed preferences —
+  // re-fetch summary to reflect the new primary.
+  useEffect(() => {
+    if (!isOpen) void refreshSummary();
+  }, [isOpen, refreshSummary]);
 
   return (
     <section className="space-y-3">
@@ -115,6 +129,7 @@ export function SecretsManagerSection() {
             </div>
             <p className="mt-0.5 truncate text-2xs text-muted">
               Where sensitive values like API keys are stored.
+              <span className="ml-1 text-muted/70">({getShortcutLabel()})</span>
             </p>
           </div>
         </div>
@@ -122,26 +137,29 @@ export function SecretsManagerSection() {
           variant="outline"
           size="sm"
           className="h-9 shrink-0 rounded-lg"
-          onClick={() => setOpen(true)}
+          onClick={() => dispatchSecretsManagerOpen()}
         >
           Manage…
         </Button>
       </div>
-
-      <SecretsManagerModal
-        open={open}
-        onOpenChange={(next) => {
-          setOpen(next);
-          if (!next) void refreshSummary();
-        }}
-      />
     </section>
   );
 }
 
 /**
- * Modal UI. Controlled — pass `open` and `onOpenChange`. Loads its own
- * data when `open` flips to true; saves on user click.
+ * Top-level modal mount. Render ONCE at app root. Subscribes to the
+ * global open/close state, so any trigger (Settings launcher button,
+ * ⌘⌥⌃V keyboard chord, application menu accelerator) shows it.
+ */
+export function SecretsManagerModalRoot() {
+  const { isOpen, setOpen } = useSecretsManagerModalState();
+  return <SecretsManagerModal open={isOpen} onOpenChange={setOpen} />;
+}
+
+/**
+ * The modal itself. Controlled — used internally by
+ * `SecretsManagerModalRoot`. Exposed so tests / Storybook can render
+ * it directly.
  */
 export function SecretsManagerModal({
   open,
@@ -261,9 +279,14 @@ export function SecretsManagerModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <KeyRound className="h-4 w-4 text-muted" aria-hidden />
-            Secrets storage
+          <DialogTitle className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-2">
+              <KeyRound className="h-4 w-4 text-muted" aria-hidden />
+              Secrets storage
+            </span>
+            <span className="rounded-md border border-border/50 bg-bg/40 px-2 py-0.5 font-mono text-2xs font-normal text-muted">
+              {getShortcutLabel()}
+            </span>
           </DialogTitle>
           <DialogDescription>
             Pick where Milady stores your API keys and other sensitive
