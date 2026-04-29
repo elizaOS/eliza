@@ -150,9 +150,7 @@ async function resolveCloudCreditsBalance(
     // decimal.
     const rawBalance =
       coerce(response.balance) ??
-      coerce(
-        (response.data as Record<string, unknown> | undefined)?.balance,
-      );
+      coerce((response.data as Record<string, unknown> | undefined)?.balance);
 
     return typeof rawBalance === "number"
       ? rawBalance.toFixed(2)

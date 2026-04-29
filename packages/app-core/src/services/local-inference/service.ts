@@ -10,6 +10,7 @@
 import type { AgentRuntime } from "@elizaos/core";
 import { ActiveModelCoordinator } from "./active-model";
 import { readEffectiveAssignments, setAssignment } from "./assignments";
+import { registerBundledModels } from "./bundled-models";
 import { MODEL_CATALOG } from "./catalog";
 import { Downloader } from "./downloader";
 import { probeHardware } from "./hardware";
@@ -34,12 +35,30 @@ import { type VerifyResult, verifyInstalledModel } from "./verify";
 export class LocalInferenceService {
   private readonly downloader = new Downloader();
   private readonly activeModel = new ActiveModelCoordinator();
+  private bundledBootstrap: Promise<void> | null = null;
 
   getCatalog() {
     return MODEL_CATALOG;
   }
 
+  /**
+   * Register any bundled GGUF files staged by the AOSP build (or any
+   * other install path that drops a `manifest.json` next to the model
+   * files) into the registry. Runs at most once per process; the
+   * promise is cached so concurrent first callers wait on the same
+   * work.
+   */
+  private bootstrapBundled(): Promise<void> {
+    if (!this.bundledBootstrap) {
+      this.bundledBootstrap = registerBundledModels()
+        .then(() => undefined)
+        .catch(() => undefined);
+    }
+    return this.bundledBootstrap;
+  }
+
   async getInstalled() {
+    await this.bootstrapBundled();
     return listInstalledModels();
   }
 

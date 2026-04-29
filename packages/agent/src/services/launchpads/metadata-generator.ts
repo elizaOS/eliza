@@ -6,7 +6,7 @@
  * provider routing — same path the rest of the agent uses.
  */
 
-import { type IAgentRuntime, ModelType, logger } from "@elizaos/core";
+import { type IAgentRuntime, logger, ModelType } from "@elizaos/core";
 
 export interface GeneratedTokenMetadata {
   name: string;
@@ -53,7 +53,10 @@ function safeParse(raw: string): Record<string, unknown> | null {
 }
 
 function clampSymbol(value: string): string {
-  return value.replace(/[^A-Za-z0-9]/g, "").slice(0, 6).toUpperCase();
+  return value
+    .replace(/[^A-Za-z0-9]/g, "")
+    .slice(0, 6)
+    .toUpperCase();
 }
 
 export async function generateTokenMetadata(

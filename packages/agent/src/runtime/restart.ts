@@ -20,7 +20,7 @@
 
 export {
   RESTART_EXIT_CODE,
-  setRestartHandler,
-  requestRestart,
   type RestartHandler,
+  requestRestart,
+  setRestartHandler,
 } from "@elizaos/shared";
