@@ -4,10 +4,18 @@ import type {
   LifeOpsScreenTimeDaily,
   LifeOpsScreenTimeSession,
 } from "@elizaos/shared";
+import type {
+  BrowserBridgeCompanionStatus,
+  BrowserBridgeSettings,
+} from "@elizaos/plugin-browser-bridge";
 import { getActivityReportBetween } from "../activity-profile/activity-tracker-reporting.js";
 import { isSystemInactivityApp } from "../activity-profile/system-inactivity-apps.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
-import { resolveBrowserBridgeReadiness } from "./browser-readiness.js";
+import {
+  browserBridgeCompanionIsRecent,
+  browserBridgePermissionsReady,
+  isBrowserBridgePaused,
+} from "./browser-readiness.js";
 import { fail } from "./service-normalize.js";
 import {
   classifyScreenTimeTarget,
@@ -577,22 +585,43 @@ function mobileScreenTimeStateFromSignals(
   return "partial";
 }
 
-function browserDataSourceState(
-  state: ReturnType<typeof resolveBrowserBridgeReadiness>["state"],
+function browserTrackingDataSourceState(
+  settings: BrowserBridgeSettings,
+  companions: BrowserBridgeCompanionStatus[],
 ): SocialHabitDataSource["state"] {
-  switch (state) {
-    case "ready":
-      return "live";
-    case "paused":
-    case "control_disabled":
-    case "stale":
-    case "permission_blocked":
-      return "partial";
-    case "disabled":
-    case "tracking_off":
-    case "no_companion":
-      return "unwired";
+  if (!settings.enabled || settings.trackingMode === "off") {
+    return "unwired";
   }
+  if (isBrowserBridgePaused(settings)) {
+    return "partial";
+  }
+  if (companions.length === 0) {
+    return "unwired";
+  }
+
+  const connectedCompanions = companions.filter(
+    (companion) => companion.connectionState === "connected",
+  );
+  if (connectedCompanions.length === 0) {
+    return companions.some(
+      (companion) => companion.connectionState === "permission_blocked",
+    )
+      ? "partial"
+      : "unwired";
+  }
+
+  const recentConnectedCompanions = connectedCompanions.filter((companion) =>
+    browserBridgeCompanionIsRecent(companion),
+  );
+  if (recentConnectedCompanions.length === 0) {
+    return "partial";
+  }
+
+  return recentConnectedCompanions.some((companion) =>
+    browserBridgePermissionsReady(settings, companion.permissions),
+  )
+    ? "live"
+    : "partial";
 }
 
 /** @internal */
@@ -841,11 +870,6 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
             limit: 100,
           }),
         ]);
-      const browserReadiness = resolveBrowserBridgeReadiness(
-        browserSettings,
-        browserCompanions,
-      );
-
       const messageChannels = [
         {
           channel: "x_dm" as const,
@@ -881,7 +905,10 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
           {
             id: "browser_bridge",
             label: "Browser",
-            state: browserDataSourceState(browserReadiness.state),
+            state: browserTrackingDataSourceState(
+              browserSettings,
+              browserCompanions,
+            ),
           },
           {
             id: "android_usage_stats",
