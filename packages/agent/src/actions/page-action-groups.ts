@@ -55,10 +55,13 @@ function normalizeContext(context: AgentContext): string {
   return `${context}`.toLowerCase();
 }
 
-function readParameters(options: HandlerOptions | undefined): PageActionGroupParameters {
+function readParameters(
+  options: HandlerOptions | undefined,
+): PageActionGroupParameters {
   const parameters = options?.parameters ?? {};
   return {
-    action: typeof parameters.action === "string" ? parameters.action : undefined,
+    action:
+      typeof parameters.action === "string" ? parameters.action : undefined,
     parameters:
       parameters.parameters &&
       typeof parameters.parameters === "object" &&
@@ -69,17 +72,24 @@ function readParameters(options: HandlerOptions | undefined): PageActionGroupPar
 }
 
 function isPageActionGroup(action: Action): boolean {
-  return Array.isArray((action as Partial<PageActionGroup>).actionGroup?.contexts);
+  return Array.isArray(
+    (action as Partial<PageActionGroup>).actionGroup?.contexts,
+  );
 }
 
 function actionMatchesName(action: Action, name: string): boolean {
   if (normalizeActionName(action.name) === name) {
     return true;
   }
-  return (action.similes ?? []).some((simile) => normalizeActionName(simile) === name);
+  return (action.similes ?? []).some(
+    (simile) => normalizeActionName(simile) === name,
+  );
 }
 
-function actionMatchesContexts(action: Action, allowedContexts: Set<string>): boolean {
+function actionMatchesContexts(
+  action: Action,
+  allowedContexts: Set<string>,
+): boolean {
   return resolveActionContexts(action).some((context) =>
     allowedContexts.has(normalizeContext(context)),
   );
@@ -107,7 +117,9 @@ function findChildAction(
   return null;
 }
 
-function createPageActionGroupAction(config: PageActionGroupConfig): PageActionGroup {
+function createPageActionGroupAction(
+  config: PageActionGroupConfig,
+): PageActionGroup {
   return {
     name: config.name,
     similes: config.similes ?? [],
