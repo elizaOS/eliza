@@ -99,11 +99,13 @@ describe("ensureLocalInferenceHandler", () => {
       runtime as Parameters<typeof ensureLocalInferenceHandler>[0],
     );
 
+    // TEXT_SMALL + TEXT_LARGE + TEXT_EMBEDDING — the device-bridge
+    // loader exposes `embed` so the embedding handler is wired in too.
     expect(
       runtime.registrations.filter(
         (r) => r.provider === "milady-device-bridge",
       ),
-    ).toHaveLength(2);
+    ).toHaveLength(3);
     expect(runtime.getService("localInferenceLoader")).toBeTruthy();
   });
 
@@ -120,7 +122,7 @@ describe("ensureLocalInferenceHandler", () => {
       runtime.registrations.filter(
         (r) => r.provider === "milady-device-bridge",
       ),
-    ).toHaveLength(2);
+    ).toHaveLength(3);
   });
 
   it("registers AOSP llama loader under the milady-aosp-llama provider when MILADY_LOCAL_LLAMA=1", async () => {

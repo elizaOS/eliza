@@ -411,6 +411,115 @@ describe("DeviceBridge e2e", () => {
     }
   });
 
+  it("routes embed() to the best-scoring device and returns the embedding", async () => {
+    const phone = await connectDevice(harness.wsUrl, {
+      deviceId: "phone",
+      platform: "ios",
+      totalRamGb: 8,
+    });
+    const mac = await connectDevice(harness.wsUrl, {
+      deviceId: "mac",
+      platform: "desktop",
+      totalRamGb: 32,
+    });
+    await waitFor(() => harness.bridge.status().devices.length === 2);
+
+    const pending = harness.bridge.embed({ input: "hello world" });
+    const frame = await mac.nextMessage<{
+      type: string;
+      correlationId: string;
+      input: string;
+    }>("embed");
+    expect(frame.type).toBe("embed");
+    expect(frame.input).toBe("hello world");
+
+    mac.send({
+      type: "embedResult",
+      correlationId: frame.correlationId,
+      ok: true,
+      embedding: [0.1, 0.2, 0.3],
+      tokens: 2,
+    });
+    const result = await pending;
+    expect(result.embedding).toEqual([0.1, 0.2, 0.3]);
+    expect(result.tokens).toBe(2);
+
+    await phone.close();
+    await mac.close();
+  });
+
+  it("times out an embed when no device ever responds", async () => {
+    const savedTimeout = process.env.ELIZA_DEVICE_GENERATE_TIMEOUT_MS;
+    process.env.ELIZA_DEVICE_GENERATE_TIMEOUT_MS = "75";
+    try {
+      const pending = harness.bridge.embed({ input: "no-takers" });
+      await expect(pending).rejects.toThrow(/DEVICE_TIMEOUT/);
+    } finally {
+      if (savedTimeout === undefined) {
+        delete process.env.ELIZA_DEVICE_GENERATE_TIMEOUT_MS;
+      } else {
+        process.env.ELIZA_DEVICE_GENERATE_TIMEOUT_MS = savedTimeout;
+      }
+    }
+  });
+
+  it("reroutes an in-flight embed when the routed device drops", async () => {
+    const mac = await connectDevice(harness.wsUrl, {
+      deviceId: "mac",
+      platform: "desktop",
+      totalRamGb: 32,
+    });
+    const phone = await connectDevice(harness.wsUrl, {
+      deviceId: "phone",
+      platform: "ios",
+      totalRamGb: 8,
+    });
+    await waitFor(() => harness.bridge.status().devices.length === 2);
+
+    const pending = harness.bridge.embed({ input: "rerouted" });
+    const original = await mac.nextMessage<{ correlationId: string }>("embed");
+
+    await mac.close();
+    const reroute = await phone.nextMessage<{
+      type: string;
+      correlationId: string;
+    }>("embed");
+    expect(reroute.correlationId).toBe(original.correlationId);
+
+    phone.send({
+      type: "embedResult",
+      correlationId: original.correlationId,
+      ok: true,
+      embedding: [9, 9, 9],
+      tokens: 1,
+    });
+    const result = await pending;
+    expect(result.embedding).toEqual([9, 9, 9]);
+
+    await phone.close();
+  });
+
+  it("rejects an embed when the device returns an error", async () => {
+    const mac = await connectDevice(harness.wsUrl, {
+      deviceId: "mac",
+      platform: "desktop",
+      totalRamGb: 16,
+    });
+    await waitFor(() => harness.bridge.status().devices.length === 1);
+
+    const pending = harness.bridge.embed({ input: "boom" });
+    const frame = await mac.nextMessage<{ correlationId: string }>("embed");
+    mac.send({
+      type: "embedResult",
+      correlationId: frame.correlationId,
+      ok: false,
+      error: "embedding model not available",
+    });
+    await expect(pending).rejects.toThrow(/embedding model not available/);
+
+    await mac.close();
+  });
+
   it("answers pings with pongs to keep the connection alive", async () => {
     const device = await connectDevice(harness.wsUrl, {
       deviceId: "phone",
