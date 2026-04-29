@@ -463,19 +463,21 @@ export function AppsView() {
         .filter((oa) => !serverApps.some((a) => a.name === oa.name))
         .filter((oa) => !catalogApps.some((a) => a.name === oa.name))
         .map(overlayAppToRegistryInfo);
-      // Server-discovered apps win on conflicts — they have live runtime data.
-      // Catalog apps fill in known-but-not-installed entries (scape, vincent,
-      // hyperscape, etc.) so the page keeps showing them.
+      // Internal-tool entries (first in `catalogApps`) own the canonical
+      // metadata (heroImage, category, descriptions). Server runtime data is
+      // joined onto them via app-runs elsewhere; we must NOT let bare
+      // `serverApps` entries clobber the heroImage by winning the dedup.
+      // Keep the FIRST occurrence so internal tools stay authoritative.
+      const seen = new Set<string>();
       const list = [
         ...catalogApps,
         ...overlayDescriptors,
         ...serverApps,
-      ].filter(
-        (app, index, items) =>
-          !items
-            .slice(index + 1)
-            .some((candidate: RegistryAppInfo) => candidate.name === app.name),
-      );
+      ].filter((app: RegistryAppInfo) => {
+        if (seen.has(app.name)) return false;
+        seen.add(app.name);
+        return true;
+      });
       setApps(list);
     } catch (err) {
       setError(

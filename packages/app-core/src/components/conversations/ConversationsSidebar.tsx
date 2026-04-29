@@ -30,6 +30,7 @@ import {
 } from "../../chat/coding-agent-session-state";
 import { useApp } from "../../state";
 import { usePtySessions } from "../../state/PtySessionsContext";
+import { errorMessage } from "../../utils/errors";
 import {
   ALWAYS_ON_PLUGIN_IDS,
   iconImageSource,
@@ -137,6 +138,7 @@ export function ConversationsSidebar({
     plugins = [],
     ensurePluginsLoaded = async () => {},
     handlePluginToggle,
+    setActionNotice,
     setTab,
     setState,
     tab,
@@ -360,11 +362,18 @@ export function ConversationsSidebar({
       setState("activeTerminalSessionId", sessionId);
       setTab("chat");
     } catch (err) {
-      console.error("[ConversationsSidebar] spawnShellSession failed:", err);
+      setActionNotice(
+        t("conversations.newTerminalFailed", {
+          defaultValue: "Failed to start terminal: {{message}}",
+          message: errorMessage(err),
+        }),
+        "error",
+        4800,
+      );
     } finally {
       spawnShellBusyRef.current = false;
     }
-  }, [setState, setTab]);
+  }, [setActionNotice, setState, setTab, t]);
 
   const selectTerminalSession = useCallback(
     (sessionId: string) => {
@@ -853,12 +862,7 @@ export function ConversationsSidebar({
                         as="div"
                         className="items-center gap-1.5 px-2.5 py-2"
                       >
-                        <SidebarContent.ItemButton
-                          className="items-center gap-2"
-                          onClick={() => {
-                            /* selecting handled by main content */
-                          }}
-                        >
+                        <div className="flex h-auto min-w-0 flex-1 self-stretch items-center gap-2 rounded-none p-0 text-left">
                           <SidebarContent.ItemIcon className="mt-0 h-8 w-8 shrink-0 p-1.5">
                             {renderConnectorIcon(plugin)}
                           </SidebarContent.ItemIcon>
@@ -867,7 +871,7 @@ export function ConversationsSidebar({
                               {plugin.name}
                             </span>
                           </SidebarContent.ItemBody>
-                        </SidebarContent.ItemButton>
+                        </div>
                         <Switch
                           checked={plugin.enabled}
                           disabled={toggleDisabled}

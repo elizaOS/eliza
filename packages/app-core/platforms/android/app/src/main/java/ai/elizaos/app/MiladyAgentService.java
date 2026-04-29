@@ -66,6 +66,16 @@ public class MiladyAgentService extends Service {
     //   agent/{abi}/ld-musl-*.so.1
     //   agent/{abi}/libstdc++.so.6
     //   agent/{abi}/libgcc_s.so.1
+    //   .milady/                   ← MILADY_STATE_DIR (PGlite data, auth, prompts)
+    //
+    // The agent runs in the priv_app SELinux domain — Android.bp deliberately
+    // omits the platform certificate so seapp_contexts puts the APK there
+    // instead of platform_app. AOSP's stock policy includes
+    // `allow priv_app privapp_data_file:file execute;` in
+    // system/sepolicy/private/priv_app.te, which is what lets us execve
+    // the bun binary out of /data/data/<pkg>/files/agent/. No jniLibs
+    // trick, no custom domain, no symlinks: the binary just sits in the
+    // app's writable data dir at canonical names.
     private static final String AGENT_DIR_NAME = "agent";
     private static final String AGENT_STATE_DIR_NAME = ".milady";
     private static final String AGENT_BUNDLE_NAME = "agent-bundle.js";
@@ -89,6 +99,19 @@ public class MiladyAgentService extends Service {
     private volatile boolean shuttingDown;
     private int restartAttempts;
     private String currentStatus = "starting";
+
+    // Per-boot bearer token for the WebView↔agent loopback. Generated when
+    // the service first starts the agent process and cleared on stop.
+    // The Capacitor agent plugin reads it from `localAgentToken()` to
+    // hydrate `window.__ELIZA_API_TOKEN__` so the WebView's fetches
+    // include `Authorization: Bearer <token>`. The agent enforces the
+    // token via MILADY_REQUIRE_LOCAL_AUTH=1.
+    private static volatile String currentLocalAgentToken;
+
+    /** Called by the Capacitor agent plugin Android binding. */
+    public static String localAgentToken() {
+        return currentLocalAgentToken;
+    }
 
     // ── Lifecycle ────────────────────────────────────────────────────────
 
@@ -171,16 +194,11 @@ public class MiladyAgentService extends Service {
     // ── Asset extraction ─────────────────────────────────────────────────
 
     /**
-     * Pick the runtime ABI directory we ship binaries for. Prefers
-     * arm64-v8a (real phones), falls back to x86_64 (cuttlefish/emulator).
+     * Pick the runtime ABI directory we ship binaries for. Walks
+     * Build.SUPPORTED_ABIS in device-priority order so x86_64 cuttlefish
+     * (which lists ["x86_64","arm64-v8a"]) doesn't wrongly pick arm64.
      */
     private String resolveRuntimeAbi() {
-        // Walk SUPPORTED_ABIS in order — Build.SUPPORTED_ABIS[0] is the
-        // device's primary ABI. cuttlefish_x86_64 reports
-        // ["x86_64", "arm64-v8a"], so blindly preferring arm64 picks the
-        // wrong binary set and the agent fails with ENOEXEC at execve.
-        // Real arm64 phones report ["arm64-v8a", ...] and naturally land
-        // on the right ABI.
         String[] supported = Build.SUPPORTED_ABIS;
         if (supported != null) {
             for (String abi : supported) {
@@ -205,8 +223,8 @@ public class MiladyAgentService extends Service {
 
     /**
      * Copy assets/agent/** into the app's data dir on first launch.
-     * Idempotent: skips files that already exist on disk and are non-empty.
-     * Sets +x on bun, the musl loader, and launch.sh.
+     * Idempotent: skips files that already exist on disk and are
+     * non-empty. Sets +x on bun, the musl loader, and launch.sh.
      */
     private void extractAssetsIfNeeded(String abi) throws IOException {
         File root = agentRoot();
@@ -224,17 +242,14 @@ public class MiladyAgentService extends Service {
 
         AssetManager assets = getAssets();
 
-        // Top-level files (cwd contents): agent-bundle.js + launch.sh.
         copyAssetIfMissing(assets, "agent/" + AGENT_BUNDLE_NAME, new File(root, AGENT_BUNDLE_NAME));
-        copyAssetIfMissing(assets, "agent/" + AGENT_LAUNCH_SCRIPT, new File(root, AGENT_LAUNCH_SCRIPT));
+        copyAssetIfPresent(assets, "agent/" + AGENT_LAUNCH_SCRIPT, new File(root, AGENT_LAUNCH_SCRIPT));
 
-        // PGlite runtime assets. The bundle is in `agent/`; PGlite resolves
-        // its WASM + data via `new URL("./pglite.{wasm,data}", import.meta.url)`
-        // which lands them next to the bundle. Vector + fuzzystrmatch use
-        // `new URL("../X.tar.gz", import.meta.url)` and therefore must live
-        // ONE DIRECTORY ABOVE the bundle (in `getFilesDir()`, not `agent/`).
-        // This is Phase D's contract; staging gets it wrong silently if you
-        // co-locate them with the bundle.
+        // PGlite runtime assets. pglite.wasm + pglite.data sit next to
+        // the bundle (`new URL("./pglite.X", import.meta.url)`);
+        // vector.tar.gz and fuzzystrmatch.tar.gz must live one directory
+        // ABOVE the bundle because PGlite resolves them via
+        // `new URL("../X.tar.gz", ...)`.
         copyAssetIfPresent(assets, "agent/pglite.wasm", new File(root, "pglite.wasm"));
         copyAssetIfPresent(assets, "agent/pglite.data", new File(root, "pglite.data"));
         copyAssetIfPresent(assets, "agent/vector.tar.gz",
@@ -244,14 +259,9 @@ public class MiladyAgentService extends Service {
         copyAssetIfPresent(assets, "agent/plugins-manifest.json",
             new File(root, "plugins-manifest.json"));
 
-        // ABI-specific files. Copy everything under assets/agent/{abi}/.
+        // ABI-specific binaries: bun + musl loader + libstdc++ + libgcc.
         String abiAssetDir = "agent/" + abi;
-        String[] abiFiles;
-        try {
-            abiFiles = assets.list(abiAssetDir);
-        } catch (IOException error) {
-            throw new IOException("Could not list " + abiAssetDir + " in APK assets", error);
-        }
+        String[] abiFiles = assets.list(abiAssetDir);
         if (abiFiles == null || abiFiles.length == 0) {
             throw new IOException("APK is missing assets/" + abiAssetDir + " for runtime ABI " + abi);
         }
@@ -259,36 +269,53 @@ public class MiladyAgentService extends Service {
             copyAssetIfMissing(assets, abiAssetDir + "/" + name, new File(abiDir, name));
         }
 
-        // Mark executables. setExecutable(true, false) sets the bit for
-        // all (owner/group/other), which is what we need for the musl
-        // loader to execve bun under our app uid.
         File bun = new File(abiDir, BUN_BINARY);
-        if (bun.exists()) {
-            bun.setExecutable(true, false);
-        }
+        if (bun.exists()) bun.setExecutable(true, false);
         File launch = new File(root, AGENT_LAUNCH_SCRIPT);
-        if (launch.exists()) {
-            launch.setExecutable(true, false);
-        }
+        if (launch.exists()) launch.setExecutable(true, false);
         for (String name : abiFiles) {
             if (name.startsWith("ld-musl-") && name.endsWith(".so.1")) {
                 File loader = new File(abiDir, name);
-                if (loader.exists()) {
-                    loader.setExecutable(true, false);
-                }
+                if (loader.exists()) loader.setExecutable(true, false);
             }
         }
 
-        // SELinux relabel. installd does not consult vendor file_contexts when
-        // it creates files under /data/data/<pkg>/, so freshly extracted
-        // assets carry the inherited priv_app_data_file label, NOT the
-        // milady_agent_exec / milady_agent_data labels declared in
-        // os/android/vendor/milady/sepolicy/file_contexts. Without restorecon
-        // the domain_auto_trans from priv_app to milady_agent never fires,
-        // and the bun execve ends up running as priv_app — which the
-        // milady_agent allow rules don't apply to. This is the single
-        // contract Phase B owes Phase C; without it the SELinux work is dead.
-        relabelAgentTree(root);
+        // bun's binary requests `libstdc++.so.6` at runtime (the soname),
+        // but the actual file we shipped is the versioned realpath
+        // (`libstdc++.so.6.0.33`). Without a symlink the musl loader
+        // can't find the shared object and bun crashes with hundreds of
+        // "Error relocating: symbol not found" lines. Create the symlink
+        // pointing from the soname to the realpath inside the same abi
+        // dir so LD_LIBRARY_PATH resolution works without LD_PRELOAD.
+        for (String name : abiFiles) {
+            if (name.startsWith("libstdc++.so.6.")) {
+                File realPath = new File(abiDir, name);
+                File symlink = new File(abiDir, "libstdc++.so.6");
+                if (realPath.exists() && !symlink.exists()) {
+                    try {
+                        java.nio.file.Files.createSymbolicLink(
+                            symlink.toPath(),
+                            java.nio.file.Paths.get(name)
+                        );
+                    } catch (IOException error) {
+                        Log.w(TAG, "Could not symlink libstdc++.so.6 → " + name + ": " + error.getMessage());
+                    }
+                }
+            }
+        }
+    }
+
+    /** Walk agent/{abi}/ for the musl loader; name varies by ABI. */
+    private String findMuslLoader(File abiDir) {
+        File[] files = abiDir.listFiles();
+        if (files == null) return null;
+        for (File f : files) {
+            String name = f.getName();
+            if (name.startsWith("ld-musl-") && name.endsWith(".so.1")) {
+                return name;
+            }
+        }
+        return null;
     }
 
     /**
@@ -352,18 +379,6 @@ public class MiladyAgentService extends Service {
         copyAssetIfMissing(assets, assetPath, target);
     }
 
-    private String findMuslLoader(File abiDir) {
-        File[] files = abiDir.listFiles();
-        if (files == null) return null;
-        for (File f : files) {
-            String name = f.getName();
-            if (name.startsWith("ld-musl-") && name.endsWith(".so.1")) {
-                return name;
-            }
-        }
-        return null;
-    }
-
     // ── Process lifecycle ────────────────────────────────────────────────
 
     private void startAgentProcess() {
@@ -386,7 +401,7 @@ public class MiladyAgentService extends Service {
             File abiDir = agentAbiDir(abi);
             File bundle = new File(root, AGENT_BUNDLE_NAME);
             File bun = new File(abiDir, BUN_BINARY);
-            String loader = findMuslLoader(abiDir);
+            String loaderName = findMuslLoader(abiDir);
 
             if (!bundle.exists()) {
                 Log.e(TAG, "Agent bundle missing at " + bundle);
@@ -400,36 +415,50 @@ public class MiladyAgentService extends Service {
                 updateNotification();
                 return;
             }
-            if (loader == null) {
+            if (loaderName == null) {
                 Log.e(TAG, "musl loader missing under " + abiDir);
                 currentStatus = "missing-loader";
                 updateNotification();
                 return;
             }
+            File loader = new File(abiDir, loaderName);
 
-            File loaderFile = new File(abiDir, loader);
+            // Generate a fresh per-boot token for the WebView↔agent loopback.
+            // Without this the loopback API would accept any local request
+            // — including from other apps on the device — because the
+            // agent's default isTrustedLocalRequest() heuristic treats
+            // loopback as authoritative, which is wrong on multi-app
+            // Android. MILADY_REQUIRE_LOCAL_AUTH on the server side flips
+            // that heuristic off so every request needs the bearer token.
+            String token = generateLocalAgentToken();
+            currentLocalAgentToken = token;
+            try {
+                writeLocalAgentTokenFile(token);
+            } catch (IOException error) {
+                Log.w(TAG, "Failed to persist local-agent token file: " + error.getMessage());
+            }
 
-            // Replicates the spike's invocation pattern, with cwd = agent/.
-            //   LD_LIBRARY_PATH=agent/{abi} \
-            //   PORT=31337 MILADY_API_PORT=31337 \
-            //   MILADY_STATE_DIR=…/.milady MILADY_PLATFORM=android \
-            //   agent/{abi}/ld-musl-*.so.1  agent/{abi}/bun  agent/agent-bundle.js
+            // Invocation:
+            //   LD_LIBRARY_PATH=<agent/{abi}>  PORT=31337  MILADY_*=…
+            //   ELIZA_API_TOKEN=<token>
+            //   agent/{abi}/ld-musl-…so.1  agent/{abi}/bun  agent/agent-bundle.js
             List<String> command = new ArrayList<>();
-            command.add(loaderFile.getAbsolutePath());
+            command.add(loader.getAbsolutePath());
             command.add(bun.getAbsolutePath());
             command.add(bundle.getAbsolutePath());
 
             ProcessBuilder pb = new ProcessBuilder(command);
             pb.directory(root);
             Map<String, String> env = pb.environment();
-            // Build env explicitly so a future change to the launcher
-            // contract is one place to update.
             Map<String, String> agentEnv = new LinkedHashMap<>();
             agentEnv.put("LD_LIBRARY_PATH", abiDir.getAbsolutePath());
             agentEnv.put("PORT", String.valueOf(AGENT_PORT));
             agentEnv.put("MILADY_API_PORT", String.valueOf(AGENT_PORT));
             agentEnv.put("MILADY_STATE_DIR", agentStateDir().getAbsolutePath());
             agentEnv.put("MILADY_PLATFORM", "android");
+            agentEnv.put("MILADY_DISABLE_DIRECT_RUN", "1");
+            agentEnv.put("MILADY_REQUIRE_LOCAL_AUTH", "1");
+            agentEnv.put("ELIZA_API_TOKEN", token);
             // The Capacitor APK always hosts @elizaos/capacitor-llama in the
             // WebView, so the runtime should always be ready to broker
             // inference over the device-bridge WSS at /api/local-inference/
@@ -465,7 +494,7 @@ public class MiladyAgentService extends Service {
             stderrPump = startStreamPump(started.getErrorStream(), logFile, "err");
             currentStatus = "running";
             updateNotification();
-            Log.i(TAG, "Agent process started (abi=" + abi + ", pid=" + safePid(started) + ").");
+            Log.i(TAG, "Agent process started (pid=" + safePid(started) + ").");
         }
     }
 
@@ -501,6 +530,39 @@ public class MiladyAgentService extends Service {
         }
         if (outPump != null) outPump.interrupt();
         if (errPump != null) errPump.interrupt();
+    }
+
+    private static final java.security.SecureRandom TOKEN_RNG = new java.security.SecureRandom();
+
+    private static String generateLocalAgentToken() {
+        byte[] bytes = new byte[32];
+        TOKEN_RNG.nextBytes(bytes);
+        StringBuilder sb = new StringBuilder(bytes.length * 2);
+        for (byte b : bytes) {
+            sb.append(String.format("%02x", b & 0xff));
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Persist the per-boot token to a UID-restricted file so a future
+     * restart of the WebView (without restarting the service) can re-read
+     * it without losing auth. File is mode 0600; only the app's own UID
+     * can read.
+     */
+    private void writeLocalAgentTokenFile(String token) throws IOException {
+        File dir = new File(getFilesDir(), "auth");
+        if (!dir.exists() && !dir.mkdirs()) {
+            throw new IOException("Could not create " + dir);
+        }
+        File file = new File(dir, "local-agent-token");
+        try (FileOutputStream out = new FileOutputStream(file)) {
+            out.write(token.getBytes());
+        }
+        file.setReadable(false, false);
+        file.setReadable(true, true);
+        file.setWritable(false, false);
+        file.setWritable(true, true);
     }
 
     private long safePid(Process process) {

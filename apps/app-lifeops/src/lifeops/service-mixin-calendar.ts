@@ -1272,6 +1272,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
           "google",
           {
             maxResults: DEFAULT_GMAIL_TRIAGE_MAX_RESULTS,
+            grantId: status.grant.id,
           },
           status.grant.side,
         );

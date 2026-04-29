@@ -52,4 +52,70 @@ describe("buildOnboardingRuntimeConfig", () => {
       provider: "elizacloud",
     });
   });
+
+  it("routes embeddings to cloud-proxy by default for cloud onboarding", () => {
+    const runtimeConfig = buildOnboardingRuntimeConfig({
+      onboardingServerTarget: "elizacloud-hybrid",
+      onboardingCloudApiKey: "",
+      onboardingProvider: "elizacloud",
+      onboardingApiKey: "",
+      onboardingVoiceProvider: "",
+      onboardingVoiceApiKey: "",
+      onboardingPrimaryModel: "",
+      onboardingOpenRouterModel: "",
+      onboardingRemoteConnected: false,
+      onboardingRemoteApiBase: "",
+      onboardingRemoteToken: "",
+    });
+
+    expect(runtimeConfig.serviceRouting?.embeddings?.transport).toBe(
+      "cloud-proxy",
+    );
+    expect(runtimeConfig.serviceRouting?.embeddings?.backend).toBe(
+      "elizacloud",
+    );
+  });
+
+  it("omits the cloud embeddings route when onboardingUseLocalEmbeddings is true", () => {
+    const runtimeConfig = buildOnboardingRuntimeConfig({
+      onboardingServerTarget: "elizacloud-hybrid",
+      onboardingCloudApiKey: "",
+      onboardingProvider: "elizacloud",
+      onboardingApiKey: "",
+      onboardingVoiceProvider: "",
+      onboardingVoiceApiKey: "",
+      onboardingPrimaryModel: "",
+      onboardingOpenRouterModel: "",
+      onboardingRemoteConnected: false,
+      onboardingRemoteApiBase: "",
+      onboardingRemoteToken: "",
+      onboardingUseLocalEmbeddings: true,
+    });
+
+    expect(runtimeConfig.serviceRouting?.embeddings).toBeUndefined();
+    expect(runtimeConfig.serviceRouting?.tts?.transport).toBe("cloud-proxy");
+    expect(runtimeConfig.serviceRouting?.media?.transport).toBe("cloud-proxy");
+    expect(runtimeConfig.serviceRouting?.rpc?.transport).toBe("cloud-proxy");
+  });
+
+  it("routes embeddings to cloud-proxy when onboardingUseLocalEmbeddings is false", () => {
+    const runtimeConfig = buildOnboardingRuntimeConfig({
+      onboardingServerTarget: "elizacloud-hybrid",
+      onboardingCloudApiKey: "",
+      onboardingProvider: "elizacloud",
+      onboardingApiKey: "",
+      onboardingVoiceProvider: "",
+      onboardingVoiceApiKey: "",
+      onboardingPrimaryModel: "",
+      onboardingOpenRouterModel: "",
+      onboardingRemoteConnected: false,
+      onboardingRemoteApiBase: "",
+      onboardingRemoteToken: "",
+      onboardingUseLocalEmbeddings: false,
+    });
+
+    expect(runtimeConfig.serviceRouting?.embeddings?.transport).toBe(
+      "cloud-proxy",
+    );
+  });
 });

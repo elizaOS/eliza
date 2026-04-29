@@ -32,7 +32,7 @@ import type {
   OpenBrowserBridgeCompanionPackagePathResponse,
   SyncBrowserBridgeStateRequest,
   UpdateBrowserBridgeSettingsRequest,
-} from "../../../../plugins/plugin-browser-bridge/src/contracts.js";
+} from "@elizaos/plugin-browser-bridge/contracts";
 import type {
   CaptureLifeOpsActivitySignalRequest,
   CaptureLifeOpsManualOverrideRequest,
@@ -92,6 +92,12 @@ import type {
   LifeOpsOverview,
   LifeOpsPersonalBaselineResponse,
   LifeOpsReminderInspection,
+  LifeOpsScreenTimeBreakdown,
+  LifeOpsScreenTimeHistoryResponse,
+  LifeOpsScreenTimeRangeKey,
+  LifeOpsScreenTimeSummary,
+  LifeOpsScreenTimeSummaryRequest,
+  LifeOpsSocialHabitSummary,
   LifeOpsSignalConnectorStatus,
   LifeOpsSignalPairingStatus,
   LifeOpsSleepHistoryResponse,
@@ -172,99 +178,21 @@ type LifeOpsScheduleMergedStateRequest = {
   refresh?: boolean;
 };
 
-export type LifeOpsScreenTimeSource = "app" | "website";
-
-export type LifeOpsScreenTimeSummaryRequest = {
-  since: string;
-  until: string;
-  source?: LifeOpsScreenTimeSource;
-  topN?: number;
-};
-
-export type LifeOpsScreenTimeSummaryItem = {
-  source: LifeOpsScreenTimeSource;
-  identifier: string;
-  displayName: string;
-  totalSeconds: number;
-};
-
-export type LifeOpsScreenTimeSummary = {
-  items: LifeOpsScreenTimeSummaryItem[];
-  totalSeconds: number;
-};
-
-export type LifeOpsHabitCategory =
-  | "browser"
-  | "communication"
-  | "social"
-  | "system"
-  | "video"
-  | "work"
-  | "other";
-
-export type LifeOpsHabitDevice =
-  | "browser"
-  | "computer"
-  | "phone"
-  | "tablet"
-  | "unknown";
-
-export type LifeOpsScreenTimeBucket = {
-  key: string;
-  label: string;
-  totalSeconds: number;
-};
-
-export type LifeOpsScreenTimeBreakdownItem = LifeOpsScreenTimeSummaryItem & {
-  sessionCount: number;
-  category: LifeOpsHabitCategory;
-  device: LifeOpsHabitDevice;
-  service: string | null;
-  serviceLabel: string | null;
-  browser: string | null;
-};
-
-export type LifeOpsScreenTimeBreakdown = {
-  items: LifeOpsScreenTimeBreakdownItem[];
-  totalSeconds: number;
-  bySource: LifeOpsScreenTimeBucket[];
-  byCategory: LifeOpsScreenTimeBucket[];
-  byDevice: LifeOpsScreenTimeBucket[];
-  byService: LifeOpsScreenTimeBucket[];
-  byBrowser: LifeOpsScreenTimeBucket[];
-  fetchedAt: string;
-};
-
-export type LifeOpsSocialHabitSummary = {
-  since: string;
-  until: string;
-  totalSeconds: number;
-  services: LifeOpsScreenTimeBucket[];
-  devices: LifeOpsScreenTimeBucket[];
-  surfaces: LifeOpsScreenTimeBucket[];
-  browsers: LifeOpsScreenTimeBucket[];
-  sessions: LifeOpsScreenTimeBreakdownItem[];
-  messages: {
-    channels: Array<{
-      channel: "x_dm";
-      label: string;
-      inbound: number;
-      outbound: number;
-      opened: number;
-      replied: number;
-    }>;
-    inbound: number;
-    outbound: number;
-    opened: number;
-    replied: number;
-  };
-  dataSources: Array<{
-    id: string;
-    label: string;
-    state: "live" | "partial" | "unwired";
-  }>;
-  fetchedAt: string;
-};
+export type {
+  LifeOpsHabitCategory,
+  LifeOpsHabitDevice,
+  LifeOpsScreenTimeBreakdown,
+  LifeOpsScreenTimeBreakdownItem,
+  LifeOpsScreenTimeBucket,
+  LifeOpsScreenTimeHistoryResponse,
+  LifeOpsScreenTimeRangeKey,
+  LifeOpsScreenTimeSource,
+  LifeOpsScreenTimeSummary,
+  LifeOpsScreenTimeSummaryItem,
+  LifeOpsScreenTimeSummaryRequest,
+  LifeOpsSocialHabitDataSource,
+  LifeOpsSocialHabitSummary,
+} from "@elizaos/shared";
 
 export type LifeOpsPriorityScoringStateDto = {
   enabled: boolean;
@@ -417,8 +345,13 @@ declare module "@elizaos/app-core/api/client-base" {
     getLifeOpsScreenTimeBreakdown(
       data: LifeOpsScreenTimeSummaryRequest,
     ): Promise<LifeOpsScreenTimeBreakdown>;
+    getLifeOpsScreenTimeHistory(data: {
+      range: LifeOpsScreenTimeRangeKey;
+      topN?: number;
+      socialTopN?: number;
+    }): Promise<LifeOpsScreenTimeHistoryResponse>;
     getLifeOpsSocialHabitSummary(
-      data: Omit<LifeOpsScreenTimeSummaryRequest, "source">,
+      data: Omit<LifeOpsScreenTimeSummaryRequest, "source" | "identifier">,
     ): Promise<LifeOpsSocialHabitSummary>;
     getLifeOpsSleepHistory(opts?: {
       windowDays?: number;
@@ -716,9 +649,7 @@ declare module "@elizaos/app-core/api/client-base" {
     sendWhatsAppConnectorMessage(
       data: SendLifeOpsWhatsAppMessageRequest,
     ): Promise<{ ok: true; messageId: string }>;
-    getWhatsAppConnectorMessages(options?: {
-      limit?: number;
-    }): Promise<{
+    getWhatsAppConnectorMessages(options?: { limit?: number }): Promise<{
       count: number;
       messages: Array<{
         id: string;
@@ -1028,6 +959,9 @@ ElizaClient.prototype.getLifeOpsScreenTimeSummary = async function (
   if (data.source) {
     params.set("source", data.source);
   }
+  if (data.identifier) {
+    params.set("identifier", data.identifier);
+  }
   if (data.topN !== undefined) {
     params.set("topN", String(data.topN));
   }
@@ -1046,11 +980,31 @@ ElizaClient.prototype.getLifeOpsScreenTimeBreakdown = async function (
   if (data.source) {
     params.set("source", data.source);
   }
+  if (data.identifier) {
+    params.set("identifier", data.identifier);
+  }
   if (data.topN !== undefined) {
     params.set("topN", String(data.topN));
   }
   return this.fetch<LifeOpsScreenTimeBreakdown>(
     `/api/lifeops/screen-time/breakdown?${params.toString()}`,
+  );
+};
+
+ElizaClient.prototype.getLifeOpsScreenTimeHistory = async function (
+  this: ElizaClient,
+  data,
+) {
+  const params = new URLSearchParams();
+  params.set("range", data.range);
+  if (data.topN !== undefined) {
+    params.set("topN", String(data.topN));
+  }
+  if (data.socialTopN !== undefined) {
+    params.set("socialTopN", String(data.socialTopN));
+  }
+  return this.fetch<LifeOpsScreenTimeHistoryResponse>(
+    `/api/lifeops/screen-time/history?${params.toString()}`,
   );
 };
 
@@ -1378,6 +1332,9 @@ ElizaClient.prototype.getLifeOpsCalendarFeed = async function (
   }
   if (options.side) {
     params.set("side", options.side);
+  }
+  if (options.grantId) {
+    params.set("grantId", options.grantId);
   }
   if (options.calendarId) {
     params.set("calendarId", options.calendarId);

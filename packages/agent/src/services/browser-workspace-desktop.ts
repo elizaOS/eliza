@@ -559,6 +559,105 @@ export function createDesktopBrowserWorkspaceCommandScript(
       url: location.href,
     };
   };
+  const ensureTabKit = () => {
+    const kit = window.__elizaTabKit;
+    if (!kit) {
+      throw new Error(
+        "browser tab kit not installed (BROWSER_TAB_PRELOAD_SCRIPT missing)",
+      );
+    }
+    return kit;
+  };
+  const runRealisticSubaction = (subaction) => {
+    const kit = ensureTabKit();
+    const cursorDuration = Number(command.cursorDurationMs) || 220;
+    if (subaction === "cursor-hide") {
+      kit.cursor.hide();
+      return { hidden: true };
+    }
+    if (subaction === "cursor-move") {
+      const x = Number(command.x);
+      const y = Number(command.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        throw new Error("cursor-move requires x and y");
+      }
+      kit.cursor.show();
+      return Promise.resolve(
+        kit.cursor.moveTo({ x: x, y: y }, { durationMs: cursorDuration }),
+      ).then(() => ({ x: x, y: y }));
+    }
+    if (subaction === "realistic-press") {
+      const target = findTarget() || document.activeElement || document.body;
+      const key = command.key || "Enter";
+      target.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: key,
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+        }),
+      );
+      target.dispatchEvent(
+        new KeyboardEvent("keyup", {
+          key: key,
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+        }),
+      );
+      return { key: key, selector: selectorFor(target), url: location.href };
+    }
+    const element = findTarget();
+    if (!element) {
+      throw new Error("Target element was not found.");
+    }
+    kit.cursor.show();
+    if (subaction === "realistic-click") {
+      kit.cursor.highlight(element);
+      return Promise.resolve(
+        kit.dispatchPointerSequence(element, { button: 0 }),
+      ).then(() => ({
+        element: serialize(element),
+        url: location.href,
+      }));
+    }
+    if (subaction === "realistic-fill" || subaction === "realistic-type") {
+      const value = command.value ?? command.text ?? "";
+      const replace = subaction === "realistic-fill" || command.replace === true;
+      const perCharDelayMs = Number(command.perCharDelayMs);
+      kit.cursor.highlight(element);
+      return Promise.resolve(
+        kit
+          .dispatchPointerSequence(element, { button: 0 })
+          .then(() =>
+            kit.typeRealistic(element, value, {
+              replace: replace,
+              perCharDelayMs: Number.isFinite(perCharDelayMs)
+                ? perCharDelayMs
+                : undefined,
+            }),
+          ),
+      ).then(() => ({
+        element: serialize(element),
+        value: element.value,
+      }));
+    }
+    if (subaction === "realistic-upload") {
+      const url = (command.files && command.files[0]) || command.url || command.value;
+      if (!url) {
+        throw new Error("realistic-upload requires files[0] or url");
+      }
+      if (element.tagName !== "INPUT" || element.type !== "file") {
+        throw new Error("realistic-upload target must be input[type=file]");
+      }
+      kit.cursor.highlight(element);
+      return Promise.resolve(kit.setFileInput(element, url, {})).then((info) => ({
+        element: serialize(element),
+        upload: info,
+      }));
+    }
+    throw new Error("Unsupported realistic subaction: " + subaction);
+  };
   const keyboardTarget = () => findTarget() || document.activeElement || document.body;
   const keyboardWrite = (appendMode) => {
     const target = keyboardTarget();
@@ -777,6 +876,14 @@ export function createDesktopBrowserWorkspaceCommandScript(
       target.dispatchEvent(new KeyboardEvent("keyup", { key, bubbles: true }));
       return { key, url: location.href };
     }
+    case "realistic-click":
+    case "realistic-fill":
+    case "realistic-type":
+    case "realistic-press":
+    case "realistic-upload":
+    case "cursor-move":
+    case "cursor-hide":
+      return runRealisticSubaction(command.subaction);
     case "scroll":
       return scroll();
     case "scrollinto": {

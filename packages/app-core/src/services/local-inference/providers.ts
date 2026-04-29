@@ -17,6 +17,7 @@
  */
 
 import fs from "node:fs/promises";
+import { getDefaultAccountPool } from "../account-pool";
 import { deviceBridge } from "./device-bridge";
 import { handlerRegistry } from "./handler-registry";
 import { localInferenceRoot } from "./paths";
@@ -26,6 +27,8 @@ export type ProviderId =
   | "milady-local-inference"
   | "milady-device-bridge"
   | "capacitor-llama"
+  | "anthropic-subscription"
+  | "openai-codex"
   | "anthropic"
   | "openai"
   | "grok"
@@ -234,6 +237,30 @@ const ELIZACLOUD_PROVIDER: ProviderDefinition = {
   configureHref: "#ai-model",
 };
 
+const ANTHROPIC_SUBSCRIPTION_PROVIDER: ProviderDefinition = {
+  id: "anthropic-subscription",
+  label: "Claude subscription",
+  kind: "cloud-subscription",
+  description: "Claude Code task-agent access through linked accounts.",
+  supportedSlots: [],
+  async getEnableState(): Promise<ProviderEnableState> {
+    return subscriptionEnableState("anthropic-subscription");
+  },
+  configureHref: "#ai-model",
+};
+
+const OPENAI_CODEX_PROVIDER: ProviderDefinition = {
+  id: "openai-codex",
+  label: "Codex subscription",
+  kind: "cloud-subscription",
+  description: "Codex and ChatGPT subscription access through linked accounts.",
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "OBJECT_SMALL", "OBJECT_LARGE"],
+  async getEnableState(): Promise<ProviderEnableState> {
+    return subscriptionEnableState("openai-codex");
+  },
+  configureHref: "#ai-model",
+};
+
 const GOOGLE_PROVIDER: ProviderDefinition = {
   id: "google",
   label: "Google (Gemini)",
@@ -269,6 +296,8 @@ export const BUILT_IN_PROVIDERS: readonly ProviderDefinition[] = [
   LOCAL_PROVIDER,
   DEVICE_BRIDGE_PROVIDER,
   CAPACITOR_LLAMA_PROVIDER,
+  ANTHROPIC_SUBSCRIPTION_PROVIDER,
+  OPENAI_CODEX_PROVIDER,
   ELIZACLOUD_PROVIDER,
   ANTHROPIC_PROVIDER,
   OPENAI_PROVIDER,
@@ -276,6 +305,25 @@ export const BUILT_IN_PROVIDERS: readonly ProviderDefinition[] = [
   GROK_PROVIDER,
   MISTRAL_PROVIDER,
 ];
+
+function subscriptionEnableState(providerId: ProviderId): ProviderEnableState {
+  if (
+    providerId !== "anthropic-subscription" &&
+    providerId !== "openai-codex"
+  ) {
+    return { enabled: false, reason: "Unsupported subscription" };
+  }
+  const accounts = getDefaultAccountPool()
+    .list(providerId)
+    .filter((account) => account.enabled && account.health === "ok");
+  if (accounts.length === 0) {
+    return { enabled: false, reason: "No linked account" };
+  }
+  return {
+    enabled: true,
+    reason: `${accounts.length} linked account${accounts.length === 1 ? "" : "s"}`,
+  };
+}
 
 export interface ProviderStatus {
   id: ProviderId;

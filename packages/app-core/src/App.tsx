@@ -562,7 +562,8 @@ export function App() {
   const { companionShell: CompanionShell } = useBootConfig();
 
   const isPopout = useIsPopout();
-  const companionShellVisible = activeOverlayApp !== null;
+  const companionShellVisible =
+    activeOverlayApp === "@elizaos/app-companion" || tab === "companion";
 
   // Auth gate — only active after the coordinator reaches "ready".
   // During onboarding / pairing / startup phases the StartupShell handles
@@ -825,10 +826,7 @@ export function App() {
   // ptySessions/agentStatus — so CompanionSceneHost stays stable across polls.
   const shellContent = useMemo(
     () =>
-      uiShellMode === "companion" &&
-      tab !== "character" &&
-      tab !== "character-select" &&
-      CompanionShell ? (
+      uiShellMode === "companion" && isCompanionTab && CompanionShell ? (
         <CompanionShell tab="companion" actionNotice={actionNotice} />
       ) : isCompanionTab ? (
         // Native mode with companion tab: the overlay app renders the companion UI.

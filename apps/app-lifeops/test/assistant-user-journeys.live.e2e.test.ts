@@ -206,6 +206,7 @@ async function seedGoogleConnector(
   const repository = new LifeOpsRepository(runtime);
   const agentId = String(runtime.agentId);
   const tokenRef = `${agentId}/owner/local.json`;
+  const grantId = "assistant-user-journeys-google-grant";
   const tokenPath = path.join(
     resolveOAuthDir(process.env, stateDir),
     "lifeops",
@@ -250,37 +251,42 @@ async function seedGoogleConnector(
   );
 
   await repository.upsertConnectorGrant(
-    createLifeOpsConnectorGrant({
-      agentId,
-      provider: "google",
-      side: "owner",
-      identity: {
-        email: "shawmakesmagic@gmail.com",
-        name: "Shaw",
-      },
-      grantedScopes: [
-        "openid",
-        "email",
-        "profile",
-        "https://www.googleapis.com/auth/calendar.readonly",
-        "https://www.googleapis.com/auth/gmail.readonly",
-      ],
-      capabilities: [
-        "google.basic_identity",
-        "google.calendar.read",
-        "google.gmail.triage",
-      ],
-      tokenRef,
-      mode: "local",
-      metadata: {},
-      lastRefreshAt: nowIso,
-    }),
+    {
+      ...createLifeOpsConnectorGrant({
+        agentId,
+        provider: "google",
+        side: "owner",
+        identity: {
+          email: "shawmakesmagic@gmail.com",
+          name: "Shaw",
+        },
+        grantedScopes: [
+          "openid",
+          "email",
+          "profile",
+          "https://www.googleapis.com/auth/calendar.readonly",
+          "https://www.googleapis.com/auth/gmail.readonly",
+        ],
+        capabilities: [
+          "google.basic_identity",
+          "google.calendar.read",
+          "google.gmail.triage",
+        ],
+        tokenRef,
+        mode: "local",
+        metadata: {},
+        lastRefreshAt: nowIso,
+      }),
+      id: grantId,
+    },
   );
 
   return repository;
 }
 async function seedGmailData(repository: LifeOpsRepository, agentId: string) {
   const nowIso = new Date().toISOString();
+  const grantId = "assistant-user-journeys-google-grant";
+  const accountEmail = "shawmakesmagic@gmail.com";
   const messages = [
     {
       id: "journey-gmail-electric-overdue",
@@ -288,6 +294,8 @@ async function seedGmailData(repository: LifeOpsRepository, agentId: string) {
       agentId,
       provider: "google" as const,
       side: "owner" as const,
+      grantId,
+      accountEmail,
       threadId: "journey-thread-electric-overdue",
       subject: "Final notice: electric bill overdue since March 28",
       from: "Utility Billing <billing@power.example.com>",
@@ -315,6 +323,8 @@ async function seedGmailData(repository: LifeOpsRepository, agentId: string) {
       agentId,
       provider: "google" as const,
       side: "owner" as const,
+      grantId,
+      accountEmail,
       threadId: "journey-thread-water-reminder",
       subject: "Water bill reminder",
       from: "City Water <billing@water.example.com>",
@@ -341,6 +351,8 @@ async function seedGmailData(repository: LifeOpsRepository, agentId: string) {
       agentId,
       provider: "google" as const,
       side: "owner" as const,
+      grantId,
+      accountEmail,
       threadId: "journey-thread-parents",
       subject: "Dinner moved to our place",
       from: "Mom <mom@example.com>",
@@ -368,6 +380,8 @@ async function seedGmailData(repository: LifeOpsRepository, agentId: string) {
       agentId,
       provider: "google" as const,
       side: "owner" as const,
+      grantId,
+      accountEmail,
       threadId: "journey-thread-wedding",
       subject: "Wedding details: adults-only reception",
       from: "Aunt Claire <claire@example.com>",
@@ -400,6 +414,7 @@ async function seedGmailData(repository: LifeOpsRepository, agentId: string) {
       provider: "google",
       side: "owner",
       mailbox: "INBOX",
+      grantId,
       maxResults: 50,
       syncedAt: nowIso,
     }),

@@ -48,9 +48,24 @@ function inferBaseForUrl(url: URL): string {
   return "/";
 }
 
+/**
+ * For http/https origins (web + Electrobun dev static server) the static asset
+ * root is always the origin root. We must NOT honor Vite's `base: "./"` here
+ * because relative resolution against the current SPA route URL produces
+ * `/apps/app-heroes/...` etc., which the SPA's catch-all returns HTML for —
+ * silently breaking <img> tags via decode errors.
+ */
+function shouldIgnoreViteBase(url: URL): boolean {
+  return url.protocol === "http:" || url.protocol === "https:";
+}
+
 function computeBaseHref(currentUrl: string, baseUrl?: string): string {
   const current = new URL(currentUrl);
-  const base = baseUrl?.trim() || inferBaseForUrl(current);
+  const explicit = baseUrl?.trim();
+  const base =
+    explicit && !shouldIgnoreViteBase(current)
+      ? explicit
+      : inferBaseForUrl(current);
   return new URL(base, current).href;
 }
 

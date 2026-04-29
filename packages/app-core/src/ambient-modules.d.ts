@@ -4,12 +4,19 @@ declare module "*.svg" {
 }
 
 declare module "electrobun/view" {
-  type WebviewEventHandler = (...args: unknown[]) => void;
+  type WebviewEventHandler = (event: CustomEvent) => void;
 
   export interface WebviewTagElement extends HTMLElement {
     src: string;
-    partition: string;
+    html: string | null;
+    preload: string | null;
+    partition: string | null;
+    hidden: boolean;
+    transparent: boolean;
+    passthroughEnabled: boolean;
+    webviewId?: number;
     loadURL(url: string): void;
+    loadHTML(html: string): void;
     on(event: string, handler: WebviewEventHandler): void;
     off(event: string, handler: WebviewEventHandler): void;
     goBack(): void;
@@ -17,6 +24,20 @@ declare module "electrobun/view" {
     reload(): void;
     canGoBack(): boolean | Promise<boolean>;
     canGoForward(): boolean | Promise<boolean>;
+    toggleHidden(value?: boolean, bypassState?: boolean): void;
+    toggleTransparent(value?: boolean, bypassState?: boolean): void;
+    togglePassthrough(value?: boolean, bypassState?: boolean): void;
+    setNavigationRules(rules: string[]): void;
+    executeJavascript(js: string): void;
+    syncDimensions(force?: boolean): void;
+    findInPage(
+      searchText: string,
+      options?: { forward?: boolean; matchCase?: boolean },
+    ): void;
+    stopFindInPage(): void;
+    openDevTools(): void;
+    closeDevTools(): void;
+    toggleDevTools(): void;
   }
 }
 

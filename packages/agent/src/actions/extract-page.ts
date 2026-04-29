@@ -7,7 +7,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { hasRoleAccess } from "../security/access.js";
+import { hasOwnerAccess } from "../security/access.js";
 import {
   extractHostedCloudPage,
   isHostedCloudToolingConfigured,
@@ -55,12 +55,21 @@ export const extractPageAction: Action = {
     message: Memory,
     _state?: State,
   ): Promise<boolean> => {
-    if (!(await hasRoleAccess(runtime, message, "USER"))) {
+    if (!(await hasOwnerAccess(runtime, message))) {
       return false;
     }
     return isHostedCloudToolingConfigured(process.env);
   },
-  handler: async (_runtime, message, _state, options) => {
+  handler: async (runtime, message, _state, options) => {
+    if (!(await hasOwnerAccess(runtime, message))) {
+      return {
+        text: "Permission denied: only the owner may extract pages.",
+        success: false,
+        values: { success: false, error: "PERMISSION_DENIED" },
+        data: { actionName: "EXTRACT_PAGE" },
+      };
+    }
+
     if (!isHostedCloudToolingConfigured(process.env)) {
       return {
         text: "Page extraction requires Eliza Cloud hosted tools to be configured.",

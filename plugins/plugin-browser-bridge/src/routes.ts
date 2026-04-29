@@ -5,9 +5,8 @@
  * settings + companion-sync + tabs + current-page + packaging endpoints
  * are fully generic. Session endpoints (confirm/progress/complete) still
  * operate on the LifeOps-owned `life_browser_sessions` table and therefore
- * call into `LifeOpsService` — this is intentional and matches Phase 3's
- * architect-ratified layout where the *session table* stays in LifeOps
- * because it carries `workflowId` plus LifeOps scoping columns.
+ * call into the LifeOps route service because that app owns workflow-scoped
+ * browser sessions.
  *
  * Companion/auto-pair/sync authentication uses the
  * `X-Browser-Bridge-Companion-Id` header paired with a bearer pairing
@@ -122,7 +121,7 @@ function browserAutoPairOriginAllowed(ctx: BrowserBridgeRouteContext): boolean {
       ? ctx.req.headers.origin.trim()
       : "";
   if (!originHeader) {
-    return true;
+    return requestIsLoopback(ctx);
   }
   if (originHeader === ctx.url.origin) {
     return true;
@@ -153,11 +152,16 @@ function rateLimitRequest(
   operation: string,
 ): boolean {
   const agentId = String(ctx.state.runtime?.agentId ?? "unknown");
-  const limitKey = `${agentId}:${operation}`;
+  const companionHeader = ctx.req.headers["x-browser-bridge-companion-id"];
+  const companionId =
+    typeof companionHeader === "string" ? companionHeader.trim() : "anonymous";
+  const remoteAddress = ctx.req.socket.remoteAddress?.trim() ?? "unknown";
+  const limitKey = `${agentId}:${operation}:${remoteAddress}:${companionId}`;
   const config = BROWSER_BRIDGE_RATE_LIMITS.default;
   const { allowed, retryAfterMs } = checkRateLimit(limitKey, config);
   if (!allowed) {
     ctx.res.writeHead(429, {
+      "Content-Type": "application/json",
       "Retry-After": String(Math.ceil(retryAfterMs / 1_000)),
     });
     ctx.res.end(JSON.stringify({ error: "Rate limit exceeded", retryAfterMs }));
@@ -377,10 +381,13 @@ export async function handleBrowserBridgeRoutes(
     method === "POST" &&
     pathname === "/api/browser-bridge/companions/auto-pair"
   ) {
+    if (rateLimitRequest(ctx, "companions:auto-pair")) {
+      return true;
+    }
     if (!browserAutoPairOriginAllowed(ctx)) {
       ctx.error(
         res,
-        "browser auto-pair must come from the LifeOps app or a browser extension",
+        "browser auto-pair must come from the agent app or a browser extension",
         403,
       );
       return true;
@@ -460,6 +467,9 @@ export async function handleBrowserBridgeRoutes(
   }
 
   if (method === "POST" && pathname === "/api/browser-bridge/companions/sync") {
+    if (rateLimitRequest(ctx, "companions:sync")) {
+      return true;
+    }
     const body = await readJsonBody<SyncBrowserBridgeStateRequest>(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
@@ -721,6 +731,9 @@ export async function handleBrowserBridgeRoutes(
     /^\/api\/browser-bridge\/companions\/sessions\/([^/]+)\/progress$/,
   );
   if (method === "POST" && browserCompanionProgressMatch) {
+    if (rateLimitRequest(ctx, "companions:session-progress")) {
+      return true;
+    }
     const sessionId = decodeMatchedPathComponent(
       ctx,
       browserCompanionProgressMatch,
@@ -755,6 +768,9 @@ export async function handleBrowserBridgeRoutes(
     /^\/api\/browser-bridge\/companions\/sessions\/([^/]+)\/complete$/,
   );
   if (method === "POST" && browserCompanionCompleteMatch) {
+    if (rateLimitRequest(ctx, "companions:session-complete")) {
+      return true;
+    }
     const sessionId = decodeMatchedPathComponent(
       ctx,
       browserCompanionCompleteMatch,

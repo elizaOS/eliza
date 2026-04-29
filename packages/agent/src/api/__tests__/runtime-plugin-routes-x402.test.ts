@@ -1,6 +1,7 @@
 import type { ServerResponse } from "node:http";
 import http from "node:http";
 import type { AgentRuntime, Route } from "@elizaos/core";
+import { browserBridgePlugin } from "@elizaos/plugin-browser-bridge/plugin";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -74,6 +75,55 @@ describe("tryHandleRuntimePluginRoute + x402", () => {
         runtime,
         method: "POST",
         pathname: "/api/lifeops/connectors/x/start",
+      }),
+    ).toBe(false);
+  });
+
+  it("treats only pairing-token browser companion callbacks as public", () => {
+    const runtime = {
+      routes: browserBridgePlugin.routes ?? [],
+    } as unknown as AgentRuntime;
+
+    expect(
+      isPublicRuntimePluginRoute({
+        runtime,
+        method: "POST",
+        pathname: "/api/browser-bridge/companions/sync",
+      }),
+    ).toBe(true);
+    expect(
+      isPublicRuntimePluginRoute({
+        runtime,
+        method: "POST",
+        pathname: "/api/browser-bridge/companions/sessions/session-1/progress",
+      }),
+    ).toBe(true);
+    expect(
+      isPublicRuntimePluginRoute({
+        runtime,
+        method: "POST",
+        pathname: "/api/browser-bridge/companions/sessions/session-1/complete",
+      }),
+    ).toBe(true);
+    expect(
+      isPublicRuntimePluginRoute({
+        runtime,
+        method: "POST",
+        pathname: "/api/browser-bridge/companions/pair",
+      }),
+    ).toBe(false);
+    expect(
+      isPublicRuntimePluginRoute({
+        runtime,
+        method: "POST",
+        pathname: "/api/browser-bridge/companions/auto-pair",
+      }),
+    ).toBe(false);
+    expect(
+      isPublicRuntimePluginRoute({
+        runtime,
+        method: "GET",
+        pathname: "/api/browser-bridge/companions",
       }),
     ).toBe(false);
   });

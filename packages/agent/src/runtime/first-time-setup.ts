@@ -56,6 +56,7 @@ export function applyFirstTimeSetupTopology(
     isCloudRuntime: boolean;
     selectedProviderId?: string;
     cloudOnboardingResult?: FirstTimeSetupCloudResult | null;
+    useLocalEmbeddings?: boolean;
   },
 ): ElizaConfig {
   const linkedAccounts = {
@@ -90,6 +91,7 @@ export function applyFirstTimeSetupTopology(
       buildDefaultElizaCloudServiceRouting({
         base: serviceRouting,
         includeInference: shouldUseCloudInference,
+        excludeServices: args.useLocalEmbeddings ? ["embeddings"] : undefined,
       }),
     );
   }

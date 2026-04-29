@@ -3,10 +3,12 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  buildRecommendedAssignments,
   readAssignments,
   setAssignment,
   writeAssignments,
 } from "./assignments";
+import type { InstalledModel } from "./types";
 
 describe("assignments", () => {
   let tmpRoot: string;
@@ -72,5 +74,33 @@ describe("assignments", () => {
       "utf8",
     );
     expect(await readAssignments()).toEqual({});
+  });
+
+  it("recommends the largest installed local model for both text routes", () => {
+    const installed: InstalledModel[] = [
+      {
+        id: "small-local",
+        displayName: "Small Local",
+        path: "/models/small.gguf",
+        sizeBytes: 2_000,
+        installedAt: "2026-01-01T00:00:00.000Z",
+        lastUsedAt: null,
+        source: "external-scan",
+      },
+      {
+        id: "large-local",
+        displayName: "Large Local",
+        path: "/models/large.gguf",
+        sizeBytes: 8_000,
+        installedAt: "2026-01-01T00:00:00.000Z",
+        lastUsedAt: null,
+        source: "external-scan",
+      },
+    ];
+
+    expect(buildRecommendedAssignments(installed)).toEqual({
+      TEXT_LARGE: "large-local",
+      TEXT_SMALL: "large-local",
+    });
   });
 });
