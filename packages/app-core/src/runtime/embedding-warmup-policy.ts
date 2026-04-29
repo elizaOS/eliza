@@ -9,17 +9,29 @@
  * the cloud plugin handles embeddings instead; skipping warmup avoids a large
  * download unrelated to “local inference” for chat.
  */
+
+function isTruthyEnv(...names: string[]): boolean {
+  for (const name of names) {
+    const v = process.env[name]?.trim().toLowerCase();
+    if (v === "1" || v === "true" || v === "yes") return true;
+  }
+  return false;
+}
+
 export function shouldWarmupLocalEmbeddingModel(): boolean {
   if (
-    process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS === "1" ||
-    process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS === "1"
+    isTruthyEnv(
+      "ELIZA_DISABLE_LOCAL_EMBEDDINGS",
+      "MILADY_DISABLE_LOCAL_EMBEDDINGS",
+    )
   ) {
     return false;
   }
 
-  const cloudEmbeddingsRoutedLocally =
-    process.env.ELIZA_CLOUD_EMBEDDINGS_DISABLED === "1" ||
-    process.env.ELIZA_CLOUD_EMBEDDINGS_DISABLED === "1";
+  const cloudEmbeddingsRoutedLocally = isTruthyEnv(
+    "ELIZA_CLOUD_EMBEDDINGS_DISABLED",
+    "MILADY_CLOUD_EMBEDDINGS_DISABLED",
+  );
 
   if (cloudEmbeddingsRoutedLocally) {
     // User turned off cloud for embeddings — local plugin must serve TEXT_EMBEDDING.
