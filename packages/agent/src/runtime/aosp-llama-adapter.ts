@@ -90,6 +90,18 @@ interface BunFFIModule {
   FFIType: FFITypeEnum;
   ptr: (typed: ArrayBufferView) => number;
   read: { cstring: (addr: number) => string };
+  /**
+   * Wrap a raw native pointer as an ArrayBuffer view of `byteLength` bytes
+   * starting at `byteOffset`. Used to copy the `float *` returned from
+   * `llama_get_embeddings_seq` / `llama_get_embeddings` into a JS-owned
+   * Float32Array so the caller can serialize it without holding a reference
+   * to ctx-owned memory across the next `llama_decode` call.
+   */
+  toArrayBuffer: (
+    ptr: number,
+    byteOffset?: number,
+    byteLength?: number,
+  ) => ArrayBuffer;
   CString: new (
     addr: number,
     byteOffset?: number,
@@ -188,6 +200,10 @@ interface AospLoader {
     maxTokens?: number;
     temperature?: number;
   }): Promise<string>;
+  embed(args: { input: string }): Promise<{
+    embedding: number[];
+    tokens: number;
+  }>;
 }
 
 const SERVICE_NAME = "localInferenceLoader";
@@ -522,6 +538,134 @@ class AospLlamaAdapter implements AospLoader {
       this.sym.llama_sampler_free(chain);
     }
   }
+
+  /**
+   * Compute a sentence-level embedding for `input`. Single-context loader:
+   * we toggle the loaded ctx into embeddings mode via `llama_set_embeddings`,
+   * decode the tokenized input as one sequence, then read the per-sequence
+   * pooled embedding. When pooling is NONE (model wasn't trained with a
+   * pooling head), we fall back to mean-pooling the per-token embeddings
+   * from `llama_get_embeddings`.
+   *
+   * Trade-off: the same context is used for generation and embeddings;
+   * toggling between modes flushes the KV cache implicitly on the next
+   * `llama_decode`, so repeated mode-switching is slow. Acceptable for a
+   * mobile-first runtime where embeddings are infrequent (memory + RAG
+   * indexing) compared to chat turns.
+   */
+  async embed(args: { input: string }): Promise<{
+    embedding: number[];
+    tokens: number;
+  }> {
+    if (this.ctx === null || this.model === null || this.vocab === null) {
+      throw new Error("[aosp-llama] embed called before loadModel");
+    }
+    const ctx = this.ctx;
+    const model = this.model;
+    const vocab = this.vocab;
+
+    // 1. Tokenize the input. Embedding pipelines typically include the BOS
+    //    token; we mirror generate() and pass add_special=true.
+    const inputBuf = encodeCString(args.input);
+    const inputByteLen = inputBuf.length - 1;
+    const probeOut = new Int32Array(1);
+    const requested = this.sym.llama_tokenize(
+      vocab,
+      this.ffi.ptr(inputBuf),
+      inputByteLen,
+      this.ffi.ptr(probeOut),
+      0,
+      true,
+      false,
+    );
+    const required = requested < 0 ? -requested : requested;
+    if (required <= 0) {
+      throw new Error(
+        "[aosp-llama] llama_tokenize returned zero tokens for embed input",
+      );
+    }
+    const tokens = new Int32Array(required);
+    const written = this.sym.llama_tokenize(
+      vocab,
+      this.ffi.ptr(inputBuf),
+      inputByteLen,
+      this.ffi.ptr(tokens),
+      required,
+      true,
+      false,
+    );
+    if (written < 0) {
+      throw new Error(
+        `[aosp-llama] llama_tokenize embed second pass failed: ${written}`,
+      );
+    }
+
+    // 2. Switch ctx into embeddings mode, decode, then switch back. The
+    //    next decode() implicitly clears KV cache state when the embeddings
+    //    flag flips — `generate()` callers that ran before `embed()` see a
+    //    fresh prompt anyway, so this is safe to do unconditionally.
+    this.sym.llama_set_embeddings(ctx, true);
+    try {
+      const batch = this.sym.llama_batch_get_one(
+        this.ffi.ptr(tokens),
+        written,
+      );
+      const decodeRc = this.sym.llama_decode(ctx, batch);
+      if (decodeRc !== 0) {
+        throw new Error(
+          `[aosp-llama] llama_decode (embed) returned ${decodeRc}`,
+        );
+      }
+
+      const nEmbd = this.sym.llama_model_n_embd(model);
+      if (nEmbd <= 0) {
+        throw new Error(
+          `[aosp-llama] llama_model_n_embd returned non-positive ${nEmbd}`,
+        );
+      }
+      const byteLength = nEmbd * 4; // float32
+
+      // Prefer the pooled per-sequence buffer. Models trained with a
+      // pooling head (mean / cls / last) return a ready vector here.
+      const pooledPtr = this.sym.llama_get_embeddings_seq(ctx, 0);
+      if (pooledPtr) {
+        const buf = this.ffi.toArrayBuffer(pooledPtr, 0, byteLength);
+        // Copy off the ctx-owned buffer so the result outlives the next
+        // llama_decode() call.
+        const view = new Float32Array(buf.slice(0));
+        return { embedding: Array.from(view), tokens: written };
+      }
+
+      // Fallback: pooling_type == NONE. The ctx exposes per-token
+      // embeddings contiguously via `llama_get_embeddings`. Shape is
+      // `[n_outputs * n_embd]`; we mean-pool across the n_outputs rows.
+      const allPtr = this.sym.llama_get_embeddings(ctx);
+      if (!allPtr) {
+        throw new Error(
+          "[aosp-llama] llama_get_embeddings returned NULL after decode",
+        );
+      }
+      const allBuf = this.ffi.toArrayBuffer(allPtr, 0, written * byteLength);
+      const allView = new Float32Array(allBuf);
+      const pooled = new Array<number>(nEmbd);
+      for (let i = 0; i < nEmbd; i += 1) pooled[i] = 0;
+      for (let row = 0; row < written; row += 1) {
+        const offset = row * nEmbd;
+        for (let i = 0; i < nEmbd; i += 1) {
+          pooled[i] = (pooled[i] ?? 0) + (allView[offset + i] ?? 0);
+        }
+      }
+      const denom = written > 0 ? written : 1;
+      for (let i = 0; i < nEmbd; i += 1) {
+        pooled[i] = (pooled[i] ?? 0) / denom;
+      }
+      return { embedding: pooled, tokens: written };
+    } finally {
+      // Restore generation mode so the next `generate()` call doesn't get
+      // hit with a reload-KV-cache stall on its first decode.
+      this.sym.llama_set_embeddings(ctx, false);
+    }
+  }
 }
 
 let cachedAdapter: AospLlamaAdapter | null = null;
@@ -598,6 +742,7 @@ export async function registerAospLlamaLoader(
       maxTokens?: number;
       temperature?: number;
     }) => adapter.generate(a),
+    embed: (a: { input: string }) => adapter.embed(a),
   });
   logger.info(
     "[aosp-llama] Registered native libllama.so loader (MILADY_LOCAL_LLAMA=1)",

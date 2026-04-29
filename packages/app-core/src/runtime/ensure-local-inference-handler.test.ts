@@ -33,6 +33,12 @@ vi.mock("@elizaos/agent/runtime/aosp-llama-adapter", () => ({
   }) {
     runtime.registerService?.("localInferenceLoader", {
       currentModelPath: () => null,
+      // The AOSP adapter exposes an `embed` surface (bun:ffi via
+      // llama_get_embeddings_seq). Tests that exercise the AOSP code path
+      // expect TEXT_EMBEDDING to be registered alongside generate slots.
+      async embed() {
+        return { embedding: [0, 0, 0], tokens: 0 };
+      },
     });
     return true;
   },
@@ -126,9 +132,11 @@ describe("ensureLocalInferenceHandler", () => {
       runtime as Parameters<typeof ensureLocalInferenceHandler>[0],
     );
 
+    // TEXT_SMALL + TEXT_LARGE + TEXT_EMBEDDING because the AOSP loader
+    // exposes `embed` (bun:ffi via llama_get_embeddings_seq).
     expect(
       runtime.registrations.filter((r) => r.provider === "milady-aosp-llama"),
-    ).toHaveLength(2);
+    ).toHaveLength(3);
     expect(runtime.getService("localInferenceLoader")).toBeTruthy();
     // AOSP wins over Capacitor and device-bridge.
     expect(
@@ -138,5 +146,47 @@ describe("ensureLocalInferenceHandler", () => {
           r.provider === "milady-device-bridge",
       ),
     ).toHaveLength(0);
+  });
+
+  it("registers TEXT_EMBEDDING under the AOSP provider when the loader exposes embed()", async () => {
+    process.env.MILADY_PLATFORM = "android";
+    process.env.MILADY_LOCAL_LLAMA = "1";
+    const runtime = makeRuntime();
+
+    await ensureLocalInferenceHandler(
+      runtime as Parameters<typeof ensureLocalInferenceHandler>[0],
+    );
+
+    // The router-handler ALSO registers TEXT_EMBEDDING at MAX_SAFE_INTEGER
+    // priority, so we look specifically for the AOSP-provider registration
+    // that proves the loader-backed embedding handler was wired in.
+    const aospEmbeddingRegs = runtime.registrations.filter(
+      (r) =>
+        r.modelType === "TEXT_EMBEDDING" &&
+        r.provider === "milady-aosp-llama",
+    );
+    expect(aospEmbeddingRegs).toHaveLength(1);
+  });
+
+  it("does NOT register a loader-backed TEXT_EMBEDDING when the active loader has no embed surface", async () => {
+    // Capacitor mock doesn't expose embed — TEXT_EMBEDDING must fall
+    // through to the operator's configured cloud provider, not be served
+    // by a silent stub. (Commandment 8.) The router still registers a
+    // TEXT_EMBEDDING entry at max priority, but the local-inference
+    // provider must not.
+    (globalThis as CapacitorGlobal).Capacitor = {
+      isNativePlatform: () => true,
+    };
+    const runtime = makeRuntime();
+
+    await ensureLocalInferenceHandler(
+      runtime as Parameters<typeof ensureLocalInferenceHandler>[0],
+    );
+
+    const capacitorEmbeddingRegs = runtime.registrations.filter(
+      (r) =>
+        r.modelType === "TEXT_EMBEDDING" && r.provider === "capacitor-llama",
+    );
+    expect(capacitorEmbeddingRegs).toHaveLength(0);
   });
 });
