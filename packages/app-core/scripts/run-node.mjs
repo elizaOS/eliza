@@ -173,7 +173,7 @@ const runNode = () => {
     platform: process.platform,
     explicitNodePath: process.env.ELIZA_NODE_PATH,
   });
-  const nodeProcess = spawn(execPath, ["eliza.mjs", ...args], {
+  const nodeProcess = spawn(execPath, ["milady.mjs", ...args], {
     cwd,
     env,
     stdio: "inherit",
