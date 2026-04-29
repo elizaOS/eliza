@@ -468,6 +468,13 @@ function sortPriorityMessages(
   messages: LifeOpsInboxMessage[],
 ): LifeOpsInboxMessage[] {
   return [...messages].sort((left, right) => {
+    const leftPriority =
+      typeof left.priorityScore === "number" ? left.priorityScore : 0;
+    const rightPriority =
+      typeof right.priorityScore === "number" ? right.priorityScore : 0;
+    if (leftPriority !== rightPriority) {
+      return rightPriority - leftPriority;
+    }
     if (left.unread !== right.unread) {
       return left.unread ? -1 : 1;
     }
@@ -479,10 +486,15 @@ function hasCapabilityAccess(
   status: LifeOpsCapabilitiesStatus | null,
   capabilityId: string,
 ): boolean {
-  const capability = status?.capabilities.find(
-    (item) => item.id === capabilityId,
-  );
+  const capability = findCapability(status, capabilityId);
   return capability?.state === "working" || capability?.state === "degraded";
+}
+
+function findCapability(
+  status: LifeOpsCapabilitiesStatus | null,
+  capabilityId: string,
+) {
+  return status?.capabilities.find((item) => item.id === capabilityId);
 }
 
 function hasGoogleCapability(
@@ -711,6 +723,9 @@ export function LifeOpsOverviewSection({
   const [weeklyScreenTotalSeconds, setWeeklyScreenTotalSeconds] = useState<
     number | null
   >(null);
+  const [weeklyScreenTimeError, setWeeklyScreenTimeError] = useState<
+    string | null
+  >(null);
 
   const loadOverview = useCallback(async () => {
     setLoading(true);
@@ -775,16 +790,26 @@ export function LifeOpsOverviewSection({
   }, []);
 
   const loadWeeklyScreenTime = useCallback(async () => {
+    setWeeklyScreenTimeError(null);
     const now = new Date();
     const since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const breakdown = await client.getLifeOpsScreenTimeBreakdown({
-      since: since.toISOString(),
-      until: now.toISOString(),
-      topN: 1,
-    });
-    setWeeklyScreenTotalSeconds(
-      Number.isFinite(breakdown.totalSeconds) ? breakdown.totalSeconds : null,
-    );
+    try {
+      const breakdown = await client.getLifeOpsScreenTimeBreakdown({
+        since: since.toISOString(),
+        until: now.toISOString(),
+        topN: 1,
+      });
+      setWeeklyScreenTotalSeconds(
+        Number.isFinite(breakdown.totalSeconds) ? breakdown.totalSeconds : null,
+      );
+    } catch (cause) {
+      setWeeklyScreenTotalSeconds(null);
+      setWeeklyScreenTimeError(
+        cause instanceof Error && cause.message.trim().length > 0
+          ? cause.message.trim()
+          : "Weekly screen-time comparison failed to load.",
+      );
+    }
   }, []);
 
   useEffect(() => {
@@ -796,13 +821,19 @@ export function LifeOpsOverviewSection({
 
   const calendar = useCalendarWeek({ viewMode: "week" });
   const messagesInbox = useInbox({
-    maxResults: 8,
+    maxResults: 40,
     channels: LIFEOPS_MESSAGE_CHANNELS,
+    groupByThread: true,
+    chatTypeFilter: ["dm"],
+    sortByPriority: true,
   });
   const mailInbox = useInbox({
-    maxResults: 8,
+    maxResults: 40,
     channel: "gmail",
     channels: LIFEOPS_MAIL_CHANNELS,
+    groupByThread: true,
+    chatTypeFilter: ["dm"],
+    sortByPriority: true,
   });
 
   const upcomingEvents = useMemo(() => {
@@ -842,14 +873,13 @@ export function LifeOpsOverviewSection({
   const sleepAccess =
     Boolean(schedule) ||
     hasCapabilityAccess(capabilities.status, "sleep.relative_time");
-  const browserActivityAccess = hasCapabilityAccess(
-    capabilities.status,
-    "activity.browser",
-  );
+  const browserActivityReady =
+    findCapability(capabilities.status, "activity.browser")?.state ===
+    "working";
   const screenTimeAccess =
-    (!screenTimeError && browserActivityAccess) || Boolean(screenTime);
+    (!screenTimeError && browserActivityReady) || Boolean(screenTime);
   const socialAccess =
-    (!socialError && browserActivityAccess) || Boolean(social);
+    (!socialError && browserActivityReady) || Boolean(social);
   const calendarAccess =
     hasGoogleCapability(googleConnector.status, [
       "google.calendar.read",
@@ -1116,21 +1146,19 @@ export function LifeOpsOverviewSection({
               <div className="truncate text-sm font-medium text-txt">
                 {hasAnyOverviewAccess ? "Partial overview" : "Connect a source"}
               </div>
+              <div className="mt-1 text-xs leading-5 text-muted">
+                Missing: {formatLabelList(missingWidgets)}
+              </div>
             </div>
           </div>
-          <span
-            className="inline-flex h-7 min-w-7 items-center justify-center rounded-full border border-amber-300/25 bg-amber-300/10 px-2 text-[11px] font-semibold text-amber-200"
-            title={formatLabelList(missingWidgets)}
-          >
-            +{missingWidgets.length}
-          </span>
           <button
             type="button"
             aria-label="Open LifeOps settings"
-            title="Settings"
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/16 bg-bg/50 text-txt transition-colors hover:border-accent/30 hover:text-accent"
+            title="Open setup"
+            className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-border/16 bg-bg/50 px-3 text-xs font-medium text-txt transition-colors hover:border-accent/30 hover:text-accent"
             onClick={() => onNavigate("setup")}
           >
+            Open setup
             <ArrowRight className="h-3.5 w-3.5" aria-hidden />
           </button>
         </div>
@@ -1257,6 +1285,14 @@ export function LifeOpsOverviewSection({
                       data-testid="lifeops-overview-screen-weekly-delta"
                     >
                       {weeklyDelta.label}
+                    </div>
+                  ) : null}
+                  {weeklyScreenTimeError ? (
+                    <div
+                      className="mt-1 text-[11px] font-medium text-rose-300"
+                      data-testid="lifeops-overview-screen-weekly-error"
+                    >
+                      Weekly comparison unavailable: {weeklyScreenTimeError}
                     </div>
                   ) : null}
                 </div>

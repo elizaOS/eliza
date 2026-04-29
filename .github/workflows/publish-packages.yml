@@ -151,7 +151,7 @@ jobs:
       url: https://pypi.org/project/elizaos-app/${{ needs.prepare.outputs.pypi_version }}/
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -215,7 +215,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -272,7 +272,7 @@ jobs:
       contents: write  # gh release upload
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -387,7 +387,7 @@ jobs:
       contents: write  # gh release upload
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
 

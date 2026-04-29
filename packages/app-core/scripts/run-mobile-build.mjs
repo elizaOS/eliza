@@ -308,7 +308,17 @@ export function isCapacitorPlatformReady(
   if (platform === "android") {
     return (
       fs.existsSync(path.join(appDirValue, "android", "gradlew")) &&
-      fs.existsSync(path.join(appDirValue, "android", "app", "build.gradle"))
+      fs.existsSync(path.join(appDirValue, "android", "app", "build.gradle")) &&
+      fs.existsSync(
+        path.join(
+          appDirValue,
+          "android",
+          "app",
+          "src",
+          "main",
+          "AndroidManifest.xml",
+        ),
+      )
     );
   }
   return false;
@@ -609,6 +619,7 @@ function overlayAndroid() {
         .readFileSync(gradlePath, "utf8")
         .match(/namespace\s*(?:[=:]\s*)?["']([^"']+)["']/)?.[1]
     : APP.appId;
+
   const androidPackage = namespace || APP.appId;
   const dstJava = path.join(
     androidDir,

@@ -62,7 +62,9 @@ export async function handleSubscriptionRoutes(
       // UI's existing `find(s => s.provider === ...)` keeps working.
       const linkedAccounts = await readRichLinkedAccountsFromPool();
       const rows = baseRows.map((row) => {
-        const linked = linkedAccounts[row.accountId];
+        const linked =
+          linkedAccounts[`${row.provider}:${row.accountId}`] ??
+          linkedAccounts[row.accountId];
         if (!linked || linked.providerId !== row.provider) return row;
         const enriched: typeof row & {
           priority: number;
@@ -323,7 +325,10 @@ async function readRichLinkedAccountsFromPool(): Promise<
     const pool = mod.getDefaultAccountPool();
     const out: Record<string, LinkedAccountConfig> = {};
     for (const account of pool.list()) {
-      out[account.id] = account;
+      out[`${account.providerId}:${account.id}`] = account;
+      if (!(account.id in out)) {
+        out[account.id] = account;
+      }
     }
     return out;
   } catch (err) {

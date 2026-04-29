@@ -146,6 +146,11 @@ export async function handleComputerUseCompatRoutes(
     }
 
     const service = getComputerUseService(state);
+    if (!service) {
+      sendJsonErrorResponse(res, 404, "Computer use service not available");
+      return true;
+    }
+
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache, no-transform",
@@ -153,17 +158,9 @@ export async function handleComputerUseCompatRoutes(
       "X-Accel-Buffering": "no",
     });
 
-    const initialSnapshot =
-      service?.getApprovalSnapshot() ??
-      ({
-        mode: "full_control",
-        pendingCount: 0,
-        pendingApprovals: [],
-      } satisfies ComputerUseApprovalSnapshot);
-
     writeSseEvent(res, {
       type: "snapshot",
-      snapshot: initialSnapshot,
+      snapshot: service.getApprovalSnapshot(),
     });
 
     const heartbeat = setInterval(() => {
@@ -173,7 +170,7 @@ export async function handleComputerUseCompatRoutes(
       heartbeat.unref();
     }
 
-    const unsubscribe = service?.subscribeApprovals?.((snapshot) => {
+    const unsubscribe = service.subscribeApprovals?.((snapshot) => {
       writeSseEvent(res, {
         type: "snapshot",
         snapshot,
@@ -197,11 +194,7 @@ export async function handleComputerUseCompatRoutes(
 
     const service = getComputerUseService(state);
     if (!service) {
-      sendJsonResponse(res, 200, {
-        mode: "full_control",
-        pendingCount: 0,
-        pendingApprovals: [],
-      } satisfies ComputerUseApprovalSnapshot);
+      sendJsonErrorResponse(res, 404, "Computer use service not available");
       return true;
     }
 

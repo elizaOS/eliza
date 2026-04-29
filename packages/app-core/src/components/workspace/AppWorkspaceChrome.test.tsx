@@ -133,7 +133,7 @@ describe("AppWorkspaceChrome", () => {
 
   it("does not reserve right-chat width on mobile until the user opens it", () => {
     useMediaQueryMock.mockImplementation(
-      (query: string) => query === "(max-width: 639px)",
+      (query: string) => query === "(max-width: 767px)",
     );
 
     render(
@@ -173,7 +173,7 @@ describe("AppWorkspaceChrome", () => {
 
   it("splits mobile controls into left sidebar, content, and right chat", async () => {
     useMediaQueryMock.mockImplementation(
-      (query: string) => query === "(max-width: 639px)",
+      (query: string) => query === "(max-width: 767px)",
     );
 
     function RegisteredSidebar() {
@@ -237,7 +237,7 @@ describe("AppWorkspaceChrome", () => {
 
   it("omits the mobile right pane button when chat is disabled", async () => {
     useMediaQueryMock.mockImplementation(
-      (query: string) => query === "(max-width: 639px)",
+      (query: string) => query === "(max-width: 767px)",
     );
 
     function RegisteredSidebar() {
@@ -284,7 +284,7 @@ describe("AppWorkspaceChrome", () => {
 
   it("lets main-pane content open chat through the workspace chrome context", () => {
     useMediaQueryMock.mockImplementation(
-      (query: string) => query === "(max-width: 639px)",
+      (query: string) => query === "(max-width: 767px)",
     );
 
     function OpenChatFromMain() {

@@ -15,8 +15,8 @@
  */
 
 import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { accessSync, constants as fsConstants } from "node:fs";
+import { promisify } from "node:util";
 import { logger } from "@elizaos/core";
 
 const execFileAsync = promisify(execFile);
@@ -104,7 +104,10 @@ function isFixtureHealthBackendEnabled(): boolean {
 function utcMidnightMs(date: string): number {
   const ms = Date.parse(`${date}T00:00:00.000Z`);
   if (!Number.isFinite(ms)) {
-    throw new HealthBridgeError(`Invalid fixture health date: ${date}`, "fixture");
+    throw new HealthBridgeError(
+      `Invalid fixture health date: ${date}`,
+      "fixture",
+    );
   }
   return ms;
 }
@@ -114,14 +117,19 @@ function todayDateKeyUtc(): string {
 }
 
 function fixtureDayOffset(date: string): number {
-  return Math.round((utcMidnightMs(date) - utcMidnightMs(todayDateKeyUtc())) / ONE_DAY_MS);
+  return Math.round(
+    (utcMidnightMs(date) - utcMidnightMs(todayDateKeyUtc())) / ONE_DAY_MS,
+  );
 }
 
 function fixtureSummaryForDate(date: string): HealthDailySummary {
   const offset = fixtureDayOffset(date);
   const distance = Math.abs(offset);
   const direction = offset < 0 ? 1 : -1;
-  const steps = Math.max(1500, 8420 + direction * distance * 260 + (distance % 3) * 175);
+  const steps = Math.max(
+    1500,
+    8420 + direction * distance * 260 + (distance % 3) * 175,
+  );
   const activeMinutes = Math.max(
     18,
     63 + direction * distance * 4 + (distance % 2 === 0 ? 2 : -3),
@@ -159,11 +167,9 @@ function enumerateFixtureDates(startAt: string, endAt: string): string[] {
   }
 
   const dates: string[] = [];
-  const cursor = new Date(Date.UTC(
-    start.getUTCFullYear(),
-    start.getUTCMonth(),
-    start.getUTCDate(),
-  ));
+  const cursor = new Date(
+    Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()),
+  );
   const endCursorMs = Date.UTC(
     end.getUTCFullYear(),
     end.getUTCMonth(),
@@ -200,10 +206,10 @@ function fixturePointValue(
         : metric === "active_minutes"
           ? summary.activeMinutes
           : metric === "heart_rate"
-            ? summary.heartRateAvg ?? 0
+            ? (summary.heartRateAvg ?? 0)
             : metric === "calories"
-              ? summary.calories ?? 0
-              : summary.distanceMeters ?? 0,
+              ? (summary.calories ?? 0)
+              : (summary.distanceMeters ?? 0),
     unit:
       metric === "steps"
         ? "count"
@@ -345,7 +351,9 @@ function finiteNumber(value: unknown): number {
 }
 
 function optionalFiniteNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 async function healthKitDailySummary(
@@ -523,13 +531,50 @@ function dayBoundsMs(date: string): { startMs: number; endMs: number } {
   return { startMs: start, endMs: start + 24 * 60 * 60 * 1000 };
 }
 
+function enumerateGoogleFitDates(startAt: string, endAt: string): string[] {
+  const start = new Date(startAt);
+  const end = new Date(endAt);
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
+    throw new HealthBridgeError(
+      "Invalid time window for Google Fit data points",
+      "google-fit",
+    );
+  }
+  if (endMs < startMs) {
+    return [];
+  }
+
+  const dates: string[] = [];
+  const cursor = new Date(
+    Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()),
+  );
+  const endCursorMs = Date.UTC(
+    end.getUTCFullYear(),
+    end.getUTCMonth(),
+    end.getUTCDate(),
+  );
+  while (cursor.getTime() <= endCursorMs) {
+    dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return dates;
+}
+
 async function googleFitDailySummary(
   date: string,
   accessToken: string,
 ): Promise<HealthDailySummary> {
   const { startMs, endMs } = dayBoundsMs(date);
   const aggregateBy = (
-    ["steps", "active_minutes", "calories", "distance_meters", "heart_rate"] as GoogleFitMetricKey[]
+    [
+      "steps",
+      "active_minutes",
+      "calories",
+      "distance_meters",
+      "heart_rate",
+    ] as GoogleFitMetricKey[]
   ).map((k) => ({ dataTypeName: GOOGLE_FIT_DATA_TYPES[k].dataTypeName }));
 
   const response = await callGoogleFitAggregate(accessToken, {
@@ -578,7 +623,11 @@ async function googleFitDailySummary(
         for (const point of ds.point ?? []) {
           const startNs = Number(point.startTimeNanos ?? "0");
           const endNs = Number(point.endTimeNanos ?? "0");
-          if (Number.isFinite(startNs) && Number.isFinite(endNs) && endNs > startNs) {
+          if (
+            Number.isFinite(startNs) &&
+            Number.isFinite(endNs) &&
+            endNs > startNs
+          ) {
             sleepMs += (endNs - startNs) / 1_000_000;
           }
         }
@@ -602,11 +651,27 @@ async function googleFitDataPoints(
   accessToken: string,
 ): Promise<HealthDataPoint[]> {
   if (opts.metric === "sleep_hours") {
-    // Sleep is expressed as segments, not point values — out of scope for this
-    // direct data-point helper. Prefer `getDailySummary` for sleep.
-    return [];
+    const points: HealthDataPoint[] = [];
+    for (const date of enumerateGoogleFitDates(opts.startAt, opts.endAt)) {
+      const summary = await googleFitDailySummary(date, accessToken);
+      if (summary.sleepHours <= 0) {
+        continue;
+      }
+      points.push({
+        metric: "sleep_hours",
+        value: summary.sleepHours,
+        unit: "hours",
+        startAt: `${date}T00:00:00.000Z`,
+        endAt: `${date}T23:59:59.999Z`,
+        source: "google-fit",
+      });
+    }
+    return points;
   }
-  const keyMap: Record<Exclude<HealthDataPoint["metric"], "sleep_hours">, GoogleFitMetricKey> = {
+  const keyMap: Record<
+    Exclude<HealthDataPoint["metric"], "sleep_hours">,
+    GoogleFitMetricKey
+  > = {
     steps: "steps",
     active_minutes: "active_minutes",
     heart_rate: "heart_rate",

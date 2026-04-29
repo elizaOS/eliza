@@ -1381,7 +1381,7 @@ function WorkflowTemplatesModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[min(calc(100vw-1.5rem),56rem)] max-w-none">
+      <DialogContent className="w-[min(calc(100vw_-_1.5rem),56rem)] max-w-none">
         <DialogHeader>
           <DialogTitle>
             {t("automations.templatesModalTitle", {
@@ -1395,7 +1395,7 @@ function WorkflowTemplatesModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-3 sm:grid-cols-2 overflow-y-auto max-h-[min(32rem,calc(100dvh-12rem))] pr-1">
+        <div className="grid gap-3 overflow-y-auto pr-1 sm:grid-cols-2 max-h-[min(32rem,calc(100dvh_-_12rem))]">
           {templates.map((template) => {
             const Icon = template.icon;
             return (
@@ -1481,7 +1481,7 @@ function CreateAutomationDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[min(calc(100vw-1.5rem),34rem)] max-w-none">
+      <DialogContent className="w-[min(calc(100vw_-_1.5rem),34rem)] max-w-none">
         <DialogHeader>
           <DialogTitle>Create automation</DialogTitle>
         </DialogHeader>

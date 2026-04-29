@@ -713,6 +713,15 @@ if (!uiOnly) {
 let apiProcess = null;
 let viteProcess = null;
 let shuttingDown = false;
+// Track API restart attempts so we don't hot-loop on a crashing API. When
+// /api/restart, the agent's RESTART action, or any other in-process bounce
+// fires `process.exit(0)`/`process.exit(75)`, the supervisor below re-spawns
+// the API. If it exits again within RESTART_BACKOFF_WINDOW_MS, that counts
+// toward the streak.
+const RESTART_BACKOFF_WINDOW_MS = 10_000;
+const RESTART_BACKOFF_LIMIT = 5;
+let apiRestartStreak = 0;
+let lastApiExitAt = 0;
 
 function terminateChild(proc, signal = "SIGTERM") {
   if (!proc) return;
@@ -902,54 +911,86 @@ if (uiOnly) {
         devServerEntry,
       ];
   const childEnv = createDevChildEnv(process.env);
-  apiProcess = spawn(apiCmd[0], apiCmd.slice(1), {
+  const apiSpawnEnv = extendNodePathEnv(
+    {
+      ...childEnv,
+      NODE_ENV: "development",
+      ELIZA_NAMESPACE: cliName,
+      ELIZA_API_PORT: String(API_PORT),
+      ELIZA_UI_PORT: String(UI_PORT),
+      ELIZA_PORT: String(UI_PORT),
+      ELIZA_HEADLESS: "1",
+      ELIZA_DEV_AUTH_BYPASS: "1",
+      LOG_LEVEL: devLogLevel,
+    },
     cwd,
-    env: extendNodePathEnv(
-      {
-        ...childEnv,
-        NODE_ENV: "development",
-        ELIZA_NAMESPACE: cliName,
-        ELIZA_API_PORT: String(API_PORT),
-        ELIZA_UI_PORT: String(UI_PORT),
-        ELIZA_PORT: String(UI_PORT),
-        ELIZA_HEADLESS: "1",
-        ELIZA_DEV_AUTH_BYPASS: "1",
-        LOG_LEVEL: devLogLevel,
-      },
+  );
+
+  function startApi() {
+    apiProcess = spawn(apiCmd[0], apiCmd.slice(1), {
       cwd,
-    ),
-    stdio: ["inherit", "pipe", "pipe"],
-  });
-
-  apiProcess.on("error", (err) => {
-    console.error(
-      `  ${green(logPrefix)} Failed to start API server: ${err.message}`,
-    );
-    cleanup(1);
-  });
-
-  if (quietApiLogs) {
-    apiProcess.stderr.on("data", createErrorFilter(process.stderr));
-    apiProcess.stdout.on("data", () => {});
-  } else if (verboseApiLogs) {
-    apiProcess.stderr.on("data", (data) => {
-      process.stderr.write(data);
+      env: apiSpawnEnv,
+      stdio: ["inherit", "pipe", "pipe"],
     });
-    apiProcess.stdout.on("data", (data) => {
-      process.stdout.write(data);
+
+    apiProcess.on("error", (err) => {
+      console.error(
+        `  ${green(logPrefix)} Failed to start API server: ${err.message}`,
+      );
+      cleanup(1);
     });
-  } else {
-    apiProcess.stderr.on("data", createStartupFilter(process.stderr));
-    apiProcess.stdout.on("data", createStartupFilter(process.stdout));
+
+    if (quietApiLogs) {
+      apiProcess.stderr.on("data", createErrorFilter(process.stderr));
+      apiProcess.stdout.on("data", () => {});
+    } else if (verboseApiLogs) {
+      apiProcess.stderr.on("data", (data) => {
+        process.stderr.write(data);
+      });
+      apiProcess.stdout.on("data", (data) => {
+        process.stdout.write(data);
+      });
+    } else {
+      apiProcess.stderr.on("data", createStartupFilter(process.stderr));
+      apiProcess.stdout.on("data", createStartupFilter(process.stdout));
+    }
+
+    apiProcess.on("exit", (code) => {
+      if (shuttingDown) return;
+      const now = Date.now();
+      if (now - lastApiExitAt < RESTART_BACKOFF_WINDOW_MS) {
+        apiRestartStreak += 1;
+      } else {
+        apiRestartStreak = 1;
+      }
+      lastApiExitAt = now;
+      apiProcess = null;
+
+      if (apiRestartStreak > RESTART_BACKOFF_LIMIT) {
+        console.error(
+          `\n  ${green(logPrefix)} API exited with code ${code} ${apiRestartStreak} times in ${
+            RESTART_BACKOFF_WINDOW_MS / 1000
+          }s — giving up. Fix the underlying issue and restart the dev process.`,
+        );
+        cleanup(code ?? 1);
+        return;
+      }
+
+      // The agent's RESTART action and `/api/restart` both bounce the
+      // server with `process.exit(0)` (and the CLI runner uses 75 as the
+      // dedicated restart exit code). Bun's `--watch` reload also exits
+      // cleanly. Treat any non-shutdown exit as "please restart me" and
+      // re-spawn — that's what the renderer is already polling for.
+      console.log(
+        `\n  ${green(logPrefix)} API exited with code ${code} — relaunching (attempt ${apiRestartStreak}/${RESTART_BACKOFF_LIMIT})…`,
+      );
+      setTimeout(() => {
+        if (!shuttingDown) startApi();
+      }, 400);
+    });
   }
 
-  apiProcess.on("exit", (code) => {
-    if (shuttingDown) return;
-    if (code !== 0) {
-      console.error(`\n  ${green(logPrefix)} Server exited with code ${code}`);
-      cleanup(code ?? 1);
-    }
-  });
+  startApi();
 
   const startTime = Date.now();
   let phase = "port";

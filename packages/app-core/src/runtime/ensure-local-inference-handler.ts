@@ -19,7 +19,7 @@ import {
   ModelType,
 } from "@elizaos/core";
 import type { LocalInferenceLoader } from "../services/local-inference/active-model";
-import { readAssignments } from "../services/local-inference/assignments";
+import { readEffectiveAssignments } from "../services/local-inference/assignments";
 import { deviceBridge } from "../services/local-inference/device-bridge";
 import { localInferenceEngine } from "../services/local-inference/engine";
 import { handlerRegistry } from "../services/local-inference/handler-registry";
@@ -75,7 +75,7 @@ async function ensureAssignedModelLoaded(
   loader: LocalInferenceLoader | null,
   slot: AgentModelSlot,
 ): Promise<void> {
-  const assignments = await readAssignments();
+  const assignments = await readEffectiveAssignments();
   const assignedId = assignments[slot];
   if (!assignedId) return;
 
