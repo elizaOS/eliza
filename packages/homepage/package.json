@@ -28,8 +28,8 @@
     "libphonenumber-js": "^1.12.35",
     "lucide-react": "^0.563.0",
     "qrcode.react": "^4.2.0",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
+    "react": "19.2.5",
+    "react-dom": "19.2.5",
     "react-router-dom": "^7.10.0",
     "tailwind-merge": "^3.4.0",
     "three": "^0.182.0"
