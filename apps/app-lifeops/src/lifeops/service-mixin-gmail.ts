@@ -1397,6 +1397,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
         operation,
         labelIds,
         side: grant.side,
+        grantId: grant.id,
       });
       await this.clearGoogleGrantAuthFailure(grant);
       await this.recordGmailAudit(
@@ -1432,6 +1433,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
       operation: LifeOpsGmailManageResult["operation"];
       labelIds: string[];
       side: LifeOpsConnectorSide;
+      grantId: string;
     }): Promise<void> {
       if (args.operation === "delete") {
         await this.repository.deleteGmailMessages(
@@ -1439,7 +1441,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
           "google",
           args.messages.map((message) => message.id),
           args.side,
-          args.messages[0]?.grantId,
+          args.grantId,
         );
         return;
       }
@@ -2009,6 +2011,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
         "google",
         messageId,
         grant.side,
+        grant.id,
       );
       if (!message) {
         const accessToken =
@@ -2049,6 +2052,8 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
             ? materializeGmailMessageSummary({
                 agentId: this.agentId(),
                 side: grant.side,
+                grantId: grant.id,
+                accountEmail: googleGrantAccountEmail(grant),
                 message: fetched,
                 syncedAt: new Date().toISOString(),
               })
@@ -2189,6 +2194,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
         "google",
         messageId,
         grant.side,
+        grant.id,
       );
       if (!message) {
         if (resolveGoogleExecutionTarget(grant) === "cloud") {
@@ -2223,6 +2229,8 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
             ? materializeGmailMessageSummary({
                 agentId: this.agentId(),
                 side: grant.side,
+                grantId: grant.id,
+                accountEmail: googleGrantAccountEmail(grant),
                 message: fetched,
                 syncedAt: new Date().toISOString(),
               })
@@ -2381,6 +2389,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
           "google",
           messageId,
           grant.side,
+          grant.id,
         );
         if (!message) {
           if (resolveGoogleExecutionTarget(grant) === "cloud") {
@@ -2415,6 +2424,8 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
               ? materializeGmailMessageSummary({
                   agentId: this.agentId(),
                   side: grant.side,
+                  grantId: grant.id,
+                  accountEmail: googleGrantAccountEmail(grant),
                   message: fetched,
                   syncedAt: new Date().toISOString(),
                 })
