@@ -83,9 +83,17 @@ export interface SetOptions {
 
 export interface CreateVaultOptions {
   /**
-   * Working directory. Default: `$MILADY_STATE_DIR` if set, else
-   * `~/.milady`. The vault writes `vault.json` and `audit/vault.jsonl`
-   * inside it.
+   * Working directory. Resolution order (first non-empty wins):
+   *
+   *   1. `opts.workDir` — explicit caller override (tests, embedded use).
+   *   2. `$ELIZA_STATE_DIR` — the canonical elizaos state-dir env var.
+   *   3. `$MILADY_STATE_DIR` — milady alias, kept for compatibility with
+   *      code that already sets it.
+   *   4. `~/.eliza` — elizaos default. Matches `resolveStateDir()` in the
+   *      agent package; co-locates vault + agent state for the same user.
+   *
+   * The vault writes `vault.json` and `audit/vault.jsonl` inside the
+   * resolved directory.
    */
   readonly workDir?: string;
   /**
@@ -100,9 +108,9 @@ export interface CreateVaultOptions {
 export function createVault(opts: CreateVaultOptions = {}): Vault {
   const root =
     opts.workDir ??
-    process.env.MILADY_STATE_DIR ??
     process.env.ELIZA_STATE_DIR ??
-    join(homedir(), ".milady");
+    process.env.MILADY_STATE_DIR ??
+    join(homedir(), ".eliza");
   const storePath = join(root, "vault.json");
   const auditPath = join(root, "audit", "vault.jsonl");
   const masterKey = opts.masterKey ?? defaultMasterKey();
