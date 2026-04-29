@@ -174,7 +174,12 @@ function grant(
 async function createHarness(): Promise<Harness> {
   const pgClient = new PGlite();
   const db = drizzle(pgClient);
-  await db.execute(sql.raw(BOOTSTRAP));
+  for (const statement of BOOTSTRAP.split(";")) {
+    const trimmed = statement.trim();
+    if (trimmed.length > 0) {
+      await db.execute(sql.raw(trimmed));
+    }
+  }
   const runtime = {
     agentId: AGENT_ID,
     character: { name: "Milady" },

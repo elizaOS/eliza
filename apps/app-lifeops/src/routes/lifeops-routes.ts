@@ -67,6 +67,7 @@ import {
   LIFEOPS_INBOX_CACHE_MODES,
   LIFEOPS_INBOX_CHANNELS,
   LIFEOPS_OWNER_BROWSER_ACCESS_SOURCES,
+  LIFEOPS_SCREEN_TIME_RANGES,
   type LifeOpsGmailSpamReviewStatus,
   type LifeOpsOwnerBrowserAccessSource,
   type VerifyLifeOpsTelegramConnectorRequest,
@@ -569,12 +570,31 @@ function parseScreenTimeSourceQuery(
   return normalized;
 }
 
+function parseScreenTimeIdentifierQuery(value: string | null): string | undefined {
+  const normalized = value?.trim();
+  return normalized && normalized.length > 0 ? normalized : undefined;
+}
+
+function parseScreenTimeRangeQuery(value: string | null) {
+  const normalized = value?.trim().toLowerCase() || "today";
+  if (!isOneOf(normalized, LIFEOPS_SCREEN_TIME_RANGES)) {
+    throw new LifeOpsServiceError(
+      400,
+      `range must be one of: ${LIFEOPS_SCREEN_TIME_RANGES.join(", ")}`,
+    );
+  }
+  return normalized;
+}
+
+const ISO_INSTANT_QUERY_RE =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+
 function parseRequiredIsoQuery(url: URL, field: string): string {
   const value = url.searchParams.get(field)?.trim();
   if (!value) {
     throw new LifeOpsServiceError(400, `${field} is required`);
   }
-  if (!Number.isFinite(Date.parse(value))) {
+  if (!ISO_INSTANT_QUERY_RE.test(value) || !Number.isFinite(Date.parse(value))) {
     throw new LifeOpsServiceError(400, `${field} must be a valid ISO string`);
   }
   return value;
