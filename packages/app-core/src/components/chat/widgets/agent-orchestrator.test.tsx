@@ -4,6 +4,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RegistryAppInfo } from "../../../api";
 import type { AppRunSummary } from "../../../api/client-types-cloud";
+import { resolveRuntimeImageUrl } from "../../apps/app-identity";
 
 const { useAppMock, clientMock } = vi.hoisted(() => ({
   useAppMock: vi.fn(),
@@ -137,9 +138,10 @@ describe("agent orchestrator app runs widget", () => {
     expect(
       (await screen.findAllByText("Milady Companion")).length,
     ).toBeGreaterThan(0);
+    const expectedSrc = resolveRuntimeImageUrl("/heroes/companion.png");
     await waitFor(() => {
       expect(
-        container.querySelector('img[src="/heroes/companion.png"]'),
+        container.querySelector(`img[src="${expectedSrc}"]`),
       ).not.toBeNull();
     });
   });

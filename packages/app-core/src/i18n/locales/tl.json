@@ -507,6 +507,7 @@
   "chatmessage.SaveAndResend": "I-save at ipadala ulit",
   "chatsidebar.OpenView": "Buksan ang view",
   "chatsidebar.launchApp": "Buksan ang {{name}}",
+  "chatview.NoMessagesYet": "Wala pang messages.",
   "chatview.RemoveImage": "Alisin ang larawan",
   "chatview.SilenceEndFirstTo": "Katahimikan end→first token:",
   "chatview.msEndVoiceStart": "ms · wakas→ simula ng boses:",

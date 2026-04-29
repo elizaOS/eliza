@@ -507,6 +507,7 @@
   "chatmessage.SaveAndResend": "Salvar e reenviar",
   "chatsidebar.OpenView": "Abrir visualização",
   "chatsidebar.launchApp": "Abrir {{name}}",
+  "chatview.NoMessagesYet": "Ainda não há mensagens.",
   "chatview.RemoveImage": "Remover imagem",
   "chatview.SilenceEndFirstTo": "Fim do silêncio → primeiro token:",
   "chatview.msEndVoiceStart": "ms · fim → início de voz:",

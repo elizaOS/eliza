@@ -427,6 +427,21 @@ describe("run-mobile-build", () => {
       ),
       "android-app\n",
     );
+    writeFile(
+      path.join(
+        repoRoot,
+        "eliza",
+        "packages",
+        "app-core",
+        "platforms",
+        "android",
+        "app",
+        "src",
+        "main",
+        "AndroidManifest.xml",
+      ),
+      "android-manifest\n",
+    );
 
     expect(isCapacitorPlatformReady("android", { appDirValue: appDir })).toBe(
       false,
@@ -440,6 +455,9 @@ describe("run-mobile-build", () => {
 
     expect(copied).toContain("gradlew");
     expect(copied).toContain(path.join("app", "build.gradle"));
+    expect(copied).toContain(
+      path.join("app", "src", "main", "AndroidManifest.xml"),
+    );
     expect(isCapacitorPlatformReady("android", { appDirValue: appDir })).toBe(
       true,
     );
