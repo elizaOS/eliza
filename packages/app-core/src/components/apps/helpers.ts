@@ -77,6 +77,12 @@ const DEFAULT_HIDDEN_APP_NAMES = new Set<string>([
   "@elizaos/app-vincent",
 ]);
 
+const WALLET_SCOPED_APP_NAMES = new Set<string>([
+  "@elizaos/app-hyperliquid",
+  "@elizaos/app-polymarket",
+  "@elizaos/app-vincent",
+]);
+
 const APP_CATALOG_SECTION_ORDER: readonly AppCatalogSectionKey[] = [
   "featured",
   "favorites",
@@ -124,6 +130,7 @@ interface AppsCatalogFilterOptions {
   searchQuery?: string;
   showAllApps?: boolean;
   showActiveOnly?: boolean;
+  walletEnabled?: boolean;
 }
 
 function parseBooleanEnvValue(value: unknown): boolean {
@@ -161,6 +168,7 @@ export function shouldShowAppInAppsView(
   options: {
     isProd?: boolean;
     showAllApps?: boolean;
+    walletEnabled?: boolean;
   } = {},
 ): boolean {
   const {
@@ -168,6 +176,7 @@ export function shouldShowAppInAppsView(
       ? import.meta.env.PROD
       : Boolean(import.meta.env.PROD),
     showAllApps,
+    walletEnabled = false,
   } = options;
   void isProd;
   if (isHiddenFromAppsView(app.name)) {
@@ -198,6 +207,7 @@ export function shouldShowAppInAppsView(
 
   if (
     DEFAULT_HIDDEN_APP_NAMES.has(canonicalName) &&
+    !(walletEnabled && WALLET_SCOPED_APP_NAMES.has(canonicalName)) &&
     !configuredDefaultAppNames.has(app.name) &&
     !configuredDefaultAppNames.has(canonicalName)
   ) {
@@ -223,6 +233,7 @@ export function filterAppsForCatalog(
     searchQuery = "",
     showAllApps,
     showActiveOnly = false,
+    walletEnabled,
   }: AppsCatalogFilterOptions = {},
 ): RegistryAppInfo[] {
   const normalizedSearch = searchQuery.trim().toLowerCase();
@@ -254,7 +265,7 @@ export function filterAppsForCatalog(
   });
 
   return sortedApps.filter((app) => {
-    if (!shouldShowAppInAppsView(app, { isProd, showAllApps })) {
+    if (!shouldShowAppInAppsView(app, { isProd, showAllApps, walletEnabled })) {
       return false;
     }
     const sectionLabel = getAppCatalogSectionLabel(app).toLowerCase();
@@ -287,6 +298,7 @@ export function getDefaultAppsCatalogSelection(
   options: {
     isProd?: boolean;
     showAllApps?: boolean;
+    walletEnabled?: boolean;
   } = {},
 ): string | null {
   return (

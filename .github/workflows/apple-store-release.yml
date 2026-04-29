@@ -123,7 +123,7 @@ jobs:
     name: Build & Submit iOS
     needs: prepare
     if: needs.prepare.outputs.build_ios == 'true'
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 60
     env:
       APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -223,7 +223,7 @@ jobs:
       - name: Setup Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: "3.4.9"
+          ruby-version: "4.0.3"
           bundler-cache: true
           working-directory: packages/app/ios
 
@@ -275,7 +275,7 @@ jobs:
     name: Build & Submit macOS
     needs: prepare
     if: needs.prepare.outputs.build_macos == 'true'
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 75
     env:
       APPLE_ID: ${{ secrets.APPLE_ID }}
