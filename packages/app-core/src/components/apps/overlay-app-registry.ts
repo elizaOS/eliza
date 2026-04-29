@@ -15,12 +15,12 @@ type OverlayAppRegistryGlobal = typeof globalThis & {
 };
 
 const overlayRegistryGlobal = globalThis as OverlayAppRegistryGlobal;
-const registry =
-  overlayRegistryGlobal[OVERLAY_APP_REGISTRY_KEY] ??
-  (overlayRegistryGlobal[OVERLAY_APP_REGISTRY_KEY] = new Map<
-    string,
-    OverlayApp
-  >());
+let globalRegistry = overlayRegistryGlobal[OVERLAY_APP_REGISTRY_KEY];
+if (!globalRegistry) {
+  globalRegistry = new Map<string, OverlayApp>();
+  overlayRegistryGlobal[OVERLAY_APP_REGISTRY_KEY] = globalRegistry;
+}
+const registry = globalRegistry;
 
 /** Register an overlay app. Call at module scope. */
 export function registerOverlayApp(app: OverlayApp): void {
