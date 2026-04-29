@@ -81,6 +81,30 @@ bun run --filter @elizaos/confidant test
 bun run test
 ```
 
+## Testing harness for plugin authors
+
+`@elizaos/confidant/testing` is a framework-agnostic harness for
+testing your plugin's Confidant integration without an OS keychain or
+real password manager:
+
+```ts
+import { createTestConfidant, MockBackend } from "@elizaos/confidant/testing";
+
+const test = await createTestConfidant({
+  schemas: { "tool.myservice.apiKey": { /*...*/ pluginId: "@vendor/plugin-myservice" } },
+  secrets: { "tool.myservice.apiKey": "test-key" },
+});
+const apiKey = await test.scopeFor("@vendor/plugin-myservice")
+  .resolve("tool.myservice.apiKey");
+expect(await test.getResolves()).toHaveLength(1);
+await test.dispose();
+```
+
+Full guide: [TESTING.md](./TESTING.md). Covers `createTestConfidant`,
+`MockBackend` (with failure injection), `MockPromptHandler`, audit-log
+assertions, and common patterns (plugin-author tests, cross-plugin
+denial, migration bridge, host-app bootstrap).
+
 ## Threat model
 
 See `docs/architecture/confidant.md` §11 for the full table. Headlines:
