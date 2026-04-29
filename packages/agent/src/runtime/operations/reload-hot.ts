@@ -18,6 +18,7 @@
 import type { AgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { formatErrorWithStack } from "@elizaos/shared";
+import type { SecretsManager } from "@elizaos/vault";
 import type {
   OperationIntent,
   OperationPhase,
@@ -25,6 +26,10 @@ import type {
   ReloadContext,
   ReloadStrategy,
 } from "./types.js";
+import {
+  defaultSecretsManager,
+  resolveProviderApiKey,
+} from "./vault-bridge.js";
 
 export interface HotStrategyDeps {
   /**
@@ -75,7 +80,7 @@ function describeIntent(intent: OperationIntent): {
         detail: {
           provider: intent.provider,
           ...(intent.primaryModel ? { primaryModel: intent.primaryModel } : {}),
-          ...(intent.apiKey ? { apiKeyChanged: true } : {}),
+          ...(intent.apiKeyRef ? { apiKeyChanged: true } : {}),
         },
       };
     case "config-reload":
@@ -102,30 +107,42 @@ function describeIntent(intent: OperationIntent): {
  * Default env-pump wrapper. Lazy-imports the onboarding env-pump to keep the
  * dependency graph clean (the operations module sits below the api module
  * in the layering, but the env-pump genuinely owns the canonical mutation).
+ *
+ * The intent carries `apiKeyRef` (a vault key), not the secret itself. The
+ * vault is consulted here on every hot reload and only the resolved
+ * plaintext is passed downstream to `createProviderSwitchConnection`.
  */
-async function defaultApplyProviderEnv(
-  intent: ProviderSwitchIntent,
-): Promise<void> {
-  const { applyOnboardingConnectionConfig, createProviderSwitchConnection } =
-    await import("../../api/provider-switch-config.js");
-  const { loadElizaConfig, saveElizaConfig } = await import(
-    "../../config/config.js"
-  );
-
-  const connection = createProviderSwitchConnection({
-    provider: intent.provider,
-    ...(intent.apiKey ? { apiKey: intent.apiKey } : {}),
-    ...(intent.primaryModel ? { primaryModel: intent.primaryModel } : {}),
-  });
-  if (!connection) {
-    throw new Error(
-      `[runtime-ops] hot reload: invalid provider "${intent.provider}"`,
+function makeDefaultApplyProviderEnv(
+  secrets: SecretsManager,
+): (intent: ProviderSwitchIntent) => Promise<void> {
+  return async (intent: ProviderSwitchIntent): Promise<void> => {
+    const { applyOnboardingConnectionConfig, createProviderSwitchConnection } =
+      await import("../../api/provider-switch-config.js");
+    const { loadElizaConfig, saveElizaConfig } = await import(
+      "../../config/config.js"
     );
-  }
 
-  const config = loadElizaConfig();
-  await applyOnboardingConnectionConfig(config, connection);
-  saveElizaConfig(config);
+    const apiKey = await resolveProviderApiKey({
+      secrets,
+      apiKeyRef: intent.apiKeyRef,
+      caller: "runtime-ops:reload-hot",
+    });
+
+    const connection = createProviderSwitchConnection({
+      provider: intent.provider,
+      ...(apiKey ? { apiKey } : {}),
+      ...(intent.primaryModel ? { primaryModel: intent.primaryModel } : {}),
+    });
+    if (!connection) {
+      throw new Error(
+        `[runtime-ops] hot reload: invalid provider "${intent.provider}"`,
+      );
+    }
+
+    const config = loadElizaConfig();
+    await applyOnboardingConnectionConfig(config, connection);
+    saveElizaConfig(config);
+  };
 }
 
 /**
@@ -179,9 +196,11 @@ async function defaultNotifyConfigChanged(
 }
 
 export function createHotStrategy(
-  opts: Partial<HotStrategyDeps> = {},
+  opts: Partial<HotStrategyDeps> & { secrets?: SecretsManager } = {},
 ): ReloadStrategy {
-  const applyProviderEnv = opts.applyProviderEnv ?? defaultApplyProviderEnv;
+  const secrets = opts.secrets ?? defaultSecretsManager();
+  const applyProviderEnv =
+    opts.applyProviderEnv ?? makeDefaultApplyProviderEnv(secrets);
   const notifyConfigChanged =
     opts.notifyConfigChanged ?? defaultNotifyConfigChanged;
 

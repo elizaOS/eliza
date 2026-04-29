@@ -1,10 +1,13 @@
 import type http from "node:http";
 import { logger } from "@elizaos/core";
+import type { SecretsManager } from "@elizaos/vault";
 import type { ElizaConfig } from "../config/config.js";
 import { normalizeOnboardingProviderId } from "../contracts/onboarding.js";
-import type {
-  ProviderSwitchIntent,
-  RuntimeOperationManager,
+import {
+  defaultSecretsManager,
+  persistProviderApiKey,
+  type ProviderSwitchIntent,
+  type RuntimeOperationManager,
 } from "../runtime/operations/index.js";
 import type { ReadJsonBodyOptions } from "./http-helpers.js";
 import {
@@ -32,6 +35,13 @@ export interface ProviderSwitchRouteContext {
   saveElizaConfig: (config: ElizaConfig) => void;
   scheduleRuntimeRestart: (reason: string) => void;
   runtimeOperationManager: RuntimeOperationManager;
+  /**
+   * Vault-backed secrets manager. Tests inject; production resolves to the
+   * OS-keychain default. The route writes the API key here BEFORE
+   * constructing the intent so the secret never lands on disk in plaintext
+   * inside an operation record.
+   */
+  secretsManager?: SecretsManager;
 }
 
 // ---------------------------------------------------------------------------
@@ -130,10 +140,34 @@ export async function handleProviderSwitchRoutes(
       );
       ctx.saveElizaConfig(config);
 
+      // Persist the API key in the vault BEFORE constructing the intent. The
+      // intent carries only the vault key — the persisted operation record
+      // therefore cannot leak the secret. elizacloud's apiKey is also
+      // captured under its own provider id so a later switch back can
+      // resolve it through the same channel.
+      let apiKeyRef: string | undefined;
+      if (trimmedApiKey) {
+        const secrets = ctx.secretsManager ?? defaultSecretsManager();
+        try {
+          apiKeyRef = await persistProviderApiKey({
+            secrets,
+            normalizedProvider,
+            apiKey: trimmedApiKey,
+            caller: "provider-switch-route",
+          });
+        } catch (vaultErr) {
+          logger.error(
+            `[api] Vault write failed for provider=${normalizedProvider}: ${vaultErr instanceof Error ? vaultErr.message : String(vaultErr)}`,
+          );
+          error(res, "Vault write failed", 500);
+          return true;
+        }
+      }
+
       const intent: ProviderSwitchIntent = {
         kind: "provider-switch",
         provider: normalizedProvider,
-        apiKey: trimmedApiKey,
+        ...(apiKeyRef ? { apiKeyRef } : {}),
         primaryModel:
           typeof body.primaryModel === "string"
             ? body.primaryModel.trim()

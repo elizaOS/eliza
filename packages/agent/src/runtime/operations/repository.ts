@@ -57,6 +57,30 @@ function isTerminal(op: RuntimeOperation): boolean {
   return op.status !== "pending" && op.status !== "running";
 }
 
+/**
+ * Strip the legacy plaintext `apiKey` field that older runtime-ops records
+ * carried on `ProviderSwitchIntent` before the vault migration. Returns the
+ * sanitized op plus a boolean signalling that the on-disk file needs
+ * rewriting. The vault key is preserved (or re-derivable) by the route at
+ * the next switch — we never re-emit the plaintext.
+ */
+function stripLegacyApiKey(op: RuntimeOperation): {
+  op: RuntimeOperation;
+  changed: boolean;
+} {
+  if (op.intent.kind !== "provider-switch") return { op, changed: false };
+  const intent = op.intent as RuntimeOperation["intent"] & {
+    apiKey?: unknown;
+  };
+  if (!("apiKey" in intent)) return { op, changed: false };
+  const { apiKey: _legacy, ...sanitizedIntent } = intent;
+  void _legacy;
+  return {
+    op: { ...op, intent: sanitizedIntent as RuntimeOperation["intent"] },
+    changed: true,
+  };
+}
+
 function operationsDirFor(stateDir: string): string {
   return path.join(stateDir, "runtime-operations");
 }
@@ -109,8 +133,24 @@ export class FilesystemRuntimeOperationRepository
     for (const entry of entries) {
       if (!entry.endsWith(".json")) continue;
       const fullPath = path.join(this.dir, entry);
-      const op = await readOperationFile(fullPath);
-      if (!op) continue;
+      const raw = await readOperationFile(fullPath);
+      if (!raw) continue;
+
+      // Migration: strip legacy plaintext `apiKey` from
+      // ProviderSwitchIntent records written before the vault integration.
+      // Re-persist the sanitized record so the file on disk loses the
+      // secret too — pruning + idempotency keep working untouched.
+      const stripped = stripLegacyApiKey(raw);
+      let op = stripped.op;
+      if (stripped.changed) {
+        await writeJsonAtomic(fullPath, op, {
+          trailingNewline: true,
+          skipMkdir: true,
+        });
+        logger.info(
+          `[runtime-ops] Migrated legacy plaintext apiKey out of ${op.id}`,
+        );
+      }
 
       // Reap abandoned operations: a process died with this op still "live".
       const isLive = op.status === "pending" || op.status === "running";
