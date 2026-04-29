@@ -26,7 +26,7 @@
     "country-flag-icons": "^1.6.12",
     "framer-motion": "^12.29.2",
     "libphonenumber-js": "^1.12.35",
-    "lucide-react": "^0.563.0",
+    "lucide-react": "^0.577.0",
     "qrcode.react": "^4.2.0",
     "react": "19.2.5",
     "react-dom": "19.2.5",
