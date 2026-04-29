@@ -28,6 +28,7 @@
     "./app-hero-art": "./src/app-hero-art.ts",
     "./connectors": "./src/connectors.ts",
     "./env-utils": "./src/env-utils.ts",
+    "./format-error": "./src/format-error.ts",
     "./runtime-env": "./src/runtime-env.ts",
     "./contracts": "./src/contracts/index.ts",
     "./contracts/apps": "./src/contracts/apps.ts",

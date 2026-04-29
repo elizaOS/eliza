@@ -176,6 +176,7 @@ export * from "./dev-settings-table";
 // Callers that need the vendored role helpers must import them through the
 // dedicated subpath: `import { ROLE_RANK } from "@elizaos/shared/eliza-core-roles"`.
 export * from "./env-utils";
+export * from "./format-error";
 export * from "./onboarding-presets";
 export * from "./onboarding-presets.characters";
 export * from "./recent-messages-state";

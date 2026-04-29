@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { resolveStateDir } from "../config/paths.js";
+import { writeJsonAtomicSync } from "../utils/atomic-json.js";
 import type {
   BscTradeSide,
   BscTradeTxStatus,
@@ -250,31 +251,6 @@ function sortAndTrimEntries(
   return sorted.slice(sorted.length - MAX_WALLET_PROFILE_LEDGER_ENTRIES);
 }
 
-function ensureLedgerDir(filePath: string): void {
-  const dir = path.dirname(filePath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  }
-}
-
-function atomicWriteLedger(
-  filePath: string,
-  store: WalletTradeLedgerStore,
-): void {
-  ensureLedgerDir(filePath);
-  const tmpPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
-  try {
-    fs.writeFileSync(tmpPath, JSON.stringify(store, null, 2), {
-      encoding: "utf-8",
-      mode: 0o600,
-    });
-    fs.renameSync(tmpPath, filePath);
-  } finally {
-    if (fs.existsSync(tmpPath)) {
-      fs.rmSync(tmpPath, { force: true });
-    }
-  }
-}
 
 function defaultLedgerStore(): WalletTradeLedgerStore {
   return {
@@ -329,7 +305,7 @@ export function writeWalletTradeLedgerStore(
     updatedAt: nowIso(),
     entries: sortAndTrimEntries(store.entries),
   };
-  atomicWriteLedger(filePath, normalized);
+  writeJsonAtomicSync(filePath, normalized);
   return normalized;
 }
 

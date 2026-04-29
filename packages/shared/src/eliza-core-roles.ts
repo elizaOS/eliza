@@ -7,6 +7,7 @@ import {
   type UUID,
   type World,
 } from "@elizaos/core";
+import { formatError } from "./format-error";
 import { asRecordOrUndefined } from "./type-guards";
 
 // Vendored elizaOS roles helpers for published core builds that do not expose
@@ -102,10 +103,6 @@ function normalizeRoleGrantSource(
 }
 
 const asRecord = asRecordOrUndefined;
-
-function formatError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 function getRuntimeSettingString(
   runtime: IAgentRuntime,
