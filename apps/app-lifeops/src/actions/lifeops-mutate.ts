@@ -263,11 +263,23 @@ async function dispatchGmailManage(
   };
 }
 
-function dispatchMarkRead(): ActionResult {
-  return notImplemented(
-    "mark_read",
-    "LifeOpsService does not yet expose a mark-read mutation for inbox entries (lastSeenAt is updated by passive read paths). Add markInboxEntryRead to LifeOpsService before wiring this subaction.",
-  );
+async function dispatchMarkRead(
+  service: LifeOpsService,
+  params: MutateActionParams,
+): Promise<ActionResult> {
+  if (!params.inboxEntryId) {
+    return missingParamResult("mark_read", ["inboxEntryId"]);
+  }
+  const message = await service.markInboxEntryRead(params.inboxEntryId);
+  return {
+    success: true,
+    text: `Marked inbox entry ${params.inboxEntryId} as read.`,
+    data: {
+      actionName: ACTION_NAME,
+      subaction: "mark_read",
+      message,
+    },
+  };
 }
 
 async function dispatchCalendarCreate(
@@ -582,7 +594,7 @@ export const lifeOpsMutateAction: Action & {
         case "gmail_manage":
           return await dispatchGmailManage(service, params);
         case "mark_read":
-          return dispatchMarkRead();
+          return await dispatchMarkRead(service, params);
         case "calendar_create":
           return await dispatchCalendarCreate(service, params);
         case "calendar_update":
@@ -923,8 +935,7 @@ export const lifeOpsMutateAction: Action & {
     },
     {
       name: "inboxEntryId",
-      description:
-        "mark_read only — LifeOps inbox entry ID. (Not yet implemented.)",
+      description: "mark_read only — LifeOps inbox entry ID.",
       required: false,
       schema: { type: "string" as const },
     },

@@ -1,5 +1,7 @@
+import { fetchChatMessages } from "@elizaos/app-lifeops/inbox/message-fetcher";
 import { LifeOpsService } from "@elizaos/app-lifeops/lifeops/service";
 import { afterEach, describe, expect, it } from "vitest";
+import { LIFEOPS_SIMULATOR_CHANNEL_MESSAGES } from "../../../test/mocks/fixtures/lifeops-simulator.ts";
 import { createMockedTestRuntime } from "../../../test/mocks/helpers/mock-runtime.ts";
 
 const INTERNAL_URL = new URL("http://127.0.0.1:31337");
@@ -22,13 +24,52 @@ describe("LifeOps simulator runtime", () => {
 
     const service = new LifeOpsService(mocked.runtime);
     expect(mocked.simulator?.summary.channelMessages).toBeGreaterThanOrEqual(5);
+    expect(mocked.simulator?.passiveChatMemoryIds).toHaveLength(
+      LIFEOPS_SIMULATOR_CHANNEL_MESSAGES.length,
+    );
+    for (const channel of [
+      "telegram",
+      "discord",
+      "signal",
+      "whatsapp",
+      "imessage",
+    ] as const) {
+      const channelFixtures = LIFEOPS_SIMULATOR_CHANNEL_MESSAGES.filter(
+        (message) => message.channel === channel,
+      );
+      expect(
+        channelFixtures.some((message) => message.threadType === "dm"),
+      ).toBe(true);
+      expect(
+        channelFixtures.some((message) => message.threadType === "group"),
+      ).toBe(true);
+    }
+    const passiveMessages = await fetchChatMessages(mocked.runtime, {
+      sources: ["telegram", "discord", "signal", "whatsapp", "imessage"],
+      limit: 50,
+    });
+    for (const channel of [
+      "telegram",
+      "discord",
+      "signal",
+      "whatsapp",
+      "imessage",
+    ] as const) {
+      const messages = passiveMessages.filter(
+        (message) => message.source === channel,
+      );
+      expect(messages.some((message) => message.chatType === "dm")).toBe(true);
+      expect(messages.some((message) => message.chatType === "group")).toBe(
+        true,
+      );
+    }
 
     const gmail = await service.getGmailTriage(INTERNAL_URL, {
       maxResults: 8,
       forceSync: true,
     });
     expect(gmail.messages.map((message) => message.subject)).toEqual(
-      expect.arrayContaining(["Project Atlas request to meet Thursday"])
+      expect.arrayContaining(["Project Atlas request to meet Thursday"]),
     );
 
     await service.sendGmailMessage(INTERNAL_URL, {
@@ -43,14 +84,14 @@ describe("LifeOps simulator runtime", () => {
       forceSync: true,
       timeMin: new Date(calendarWindowAnchor - 60 * 60 * 1000).toISOString(),
       timeMax: new Date(
-        calendarWindowAnchor + 2 * 24 * 60 * 60 * 1000
+        calendarWindowAnchor + 2 * 24 * 60 * 60 * 1000,
       ).toISOString(),
     });
     expect(calendar.events.map((event) => event.title)).toEqual(
       expect.arrayContaining([
         "Project Atlas working session",
         "Investor diligence review",
-      ])
+      ]),
     );
 
     const createdEvent = await service.createCalendarEvent(INTERNAL_URL, {
@@ -69,7 +110,7 @@ describe("LifeOps simulator runtime", () => {
       limit: 5,
     });
     expect(telegramHits.map((hit) => hit.content).join("\n")).toContain(
-      "Project Atlas"
+      "Project Atlas",
     );
     const telegramSend = await service.sendTelegramMessage({
       target: "alice_ops",
@@ -79,7 +120,7 @@ describe("LifeOps simulator runtime", () => {
 
     const signalMessages = await service.readSignalInbound(10);
     expect(signalMessages.map((message) => message.text).join("\n")).toContain(
-      "Signal check"
+      "Signal check",
     );
     const signalSend = await service.sendSignalMessage({
       recipient: "+15551110001",
@@ -88,9 +129,9 @@ describe("LifeOps simulator runtime", () => {
     expect(signalSend.ok).toBe(true);
 
     const imessages = await service.readIMessages({ limit: 10 });
-    expect(imessages.map((message) => message.text).join("\n")).toContain(
-      "Project Atlas"
-    );
+    const imessageText = imessages.map((message) => message.text).join("\n");
+    expect(imessageText).toContain("Project Atlas");
+    expect(imessageText).toContain("iMessage group check");
     const imessageSend = await service.sendIMessage({
       to: "+15551112222",
       text: "Mock iMessage reply from the simulator.",
@@ -98,9 +139,11 @@ describe("LifeOps simulator runtime", () => {
     expect(imessageSend.ok).toBe(true);
 
     const whatsapp = service.pullWhatsAppRecent(10);
-    expect(
-      whatsapp.messages.map((message) => message.text ?? "").join("\n")
-    ).toContain("WhatsApp ping");
+    const whatsappText = whatsapp.messages
+      .map((message) => message.text ?? "")
+      .join("\n");
+    expect(whatsappText).toContain("WhatsApp ping");
+    expect(whatsappText).toContain("WhatsApp group note");
     const whatsappSend = await service.sendWhatsAppMessage({
       to: "+15553338888",
       text: "Mock WhatsApp reply from the simulator.",
@@ -113,7 +156,7 @@ describe("LifeOps simulator runtime", () => {
       query: "ProjectAtlas",
     });
     expect(discordHits.map((hit) => hit.content).join("\n")).toContain(
-      "ProjectAtlas"
+      "ProjectAtlas",
     );
     const discordSend = await service.sendDiscordMessage({
       channelId: discordStatus.dmInbox.selectedChannelId ?? undefined,
@@ -126,25 +169,25 @@ describe("LifeOps simulator runtime", () => {
       expect.arrayContaining([
         "Review Project Atlas launch checklist",
         "Send diligence packet comments",
-      ])
+      ]),
     );
 
     const ledger = mocked.mocks.requestLedger();
     expect(
-      ledger.some((entry) => entry.gmail?.action === "messages.send")
+      ledger.some((entry) => entry.gmail?.action === "messages.send"),
     ).toBe(true);
     expect(
-      ledger.some((entry) => entry.calendar?.action === "events.create")
+      ledger.some((entry) => entry.calendar?.action === "events.create"),
     ).toBe(true);
     expect(ledger.some((entry) => entry.signal?.action === "send")).toBe(true);
     expect(
-      ledger.some((entry) => entry.whatsapp?.action === "messages.send")
+      ledger.some((entry) => entry.whatsapp?.action === "messages.send"),
     ).toBe(true);
     expect(
-      ledger.some((entry) => entry.bluebubbles?.action === "message.text")
+      ledger.some((entry) => entry.bluebubbles?.action === "message.text"),
     ).toBe(true);
     expect(
-      ledger.some((entry) => entry.browserWorkspace?.action === "tabs.eval")
+      ledger.some((entry) => entry.browserWorkspace?.action === "tabs.eval"),
     ).toBe(true);
   }, 180_000);
 });
