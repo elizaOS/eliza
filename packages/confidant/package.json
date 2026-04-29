@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/confidant",
-  "version": "2.0.0-alpha.494",
+  "version": "2.0.0-alpha.495",
   "description": "Single seam for credential storage, mediation, and audit in Eliza agents.",
   "type": "module",
   "license": "MIT",
