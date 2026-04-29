@@ -25,12 +25,15 @@
 
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import { readAssignments } from "./assignments";
+import { readEffectiveAssignments } from "./assignments";
 import { localInferenceEngine } from "./engine";
 import type { HandlerRegistration } from "./handler-registry";
 import { handlerRegistry } from "./handler-registry";
 import { policyEngine } from "./routing-policy";
-import { readRoutingPreferences } from "./routing-preferences";
+import {
+  DEFAULT_ROUTING_POLICY,
+  readRoutingPreferences,
+} from "./routing-preferences";
 import { AGENT_MODEL_SLOTS, type AgentModelSlot } from "./types";
 
 export const ROUTER_PROVIDER = "milady-router";
@@ -77,9 +80,7 @@ function shouldForceLocalInference(
   policy: string,
   preferredProvider: string | null,
 ): boolean {
-  return (
-    policy === "prefer-local" || preferredProvider === "milady-local-inference"
-  );
+  return policy === "manual" && preferredProvider === "milady-local-inference";
 }
 
 export function filterUnavailableLocalInferenceCandidates(
@@ -109,7 +110,7 @@ export async function filterUnavailableLocalInference(
     return candidates;
   }
 
-  const assignments = await readAssignments();
+  const assignments = await readEffectiveAssignments();
   return filterUnavailableLocalInferenceCandidates(
     candidates,
     Boolean(assignments[slot]) || localInferenceEngine.hasLoadedModel(),
@@ -124,9 +125,9 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
       throw new Error(`[router] Unknown agent slot: ${slot}`);
     }
 
-    // Read the user's policy for this slot. Absent = manual.
+    // Read the user's policy for this slot. Absent = local-first fallback.
     const prefs = await readRoutingPreferences();
-    const policy = prefs.policy[slot] ?? "manual";
+    const policy = prefs.policy[slot] ?? DEFAULT_ROUTING_POLICY;
     const preferred = prefs.preferredProvider[slot] ?? null;
 
     // Ask the policy engine which handler to dispatch to.

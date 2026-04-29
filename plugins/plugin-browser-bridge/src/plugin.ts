@@ -1,10 +1,9 @@
 /**
  * Agent Browser Bridge plugin export.
  *
- * plugin-collector discovers `routes` and `schema` at runtime. Phase 4
- * will register this plugin in the main plugin list (`packages/agent/src/plugins`)
- * alongside `@elizaos/app-lifeops` and flip the agent-server auth
- * carve-outs for `/api/browser-bridge/*`.
+ * plugin-collector discovers `routes` and `schema` at runtime. Milady loads
+ * this as a core plugin so the Browser Workspace UI and browser companion
+ * extension share one route surface.
  */
 
 import type http from "node:http";

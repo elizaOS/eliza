@@ -1,2 +1,2 @@
-export * from "../../../../plugins/plugin-browser-bridge/src/contracts";
+export * from "@elizaos/plugin-browser-bridge/contracts";
 export * from "@elizaos/shared";

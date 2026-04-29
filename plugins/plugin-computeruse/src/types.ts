@@ -125,9 +125,9 @@ export interface WindowActionParams {
   title?: string;
   /** Upstream window alias */
   window?: string;
-  /** Upstream arrangement hint for arrange action */
+  /** Layout hint for arrange action */
   arrangement?: string;
-  /** Upstream coordinates for move action */
+  /** Coordinates for move action */
   x?: number;
   y?: number;
 }

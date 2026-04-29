@@ -62,12 +62,14 @@ import {
   typeTerminal,
 } from "../platform/terminal.js";
 import {
+  arrangeWindows,
   closeWindow,
   focusWindow,
   getScreenSize,
   listWindows,
   maximizeWindow,
   minimizeWindow,
+  moveWindow,
   restoreWindow,
   switchWindow,
 } from "../platform/windows-list.js";
@@ -653,17 +655,15 @@ export class ComputerUseService extends Service {
             message: "Switched window.",
           });
         case "arrange":
-          return this.succeedEntry(entry, {
-            success: true,
-            message:
-              "Window arrangement is a parity no-op on the local runtime unless handled by the platform window manager.",
-          });
-        case "move":
-          return this.succeedEntry(entry, {
-            success: true,
-            message:
-              "Window move is a parity no-op on the local runtime unless handled by the platform window manager.",
-          });
+          return this.succeedEntry(entry, arrangeWindows(params.arrangement));
+        case "move": {
+          const result = moveWindow(
+            this.requireWindowTarget(params),
+            this.requireNumber(params.x, "x is required for window move"),
+            this.requireNumber(params.y, "y is required for window move"),
+          );
+          return this.succeedEntry(entry, result);
+        }
         case "minimize":
           minimizeWindow(this.requireWindowTarget(params));
           return this.succeedEntry(entry, {
@@ -1374,6 +1374,13 @@ export class ComputerUseService extends Service {
     message: string,
   ): string {
     if (!value) {
+      throw new Error(message);
+    }
+    return value;
+  }
+
+  private requireNumber(value: number | undefined, message: string): number {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
       throw new Error(message);
     }
     return value;

@@ -347,7 +347,7 @@ function AdvancedSection() {
             variant="outline"
             type="button"
             onClick={openExportModal}
-            className="min-h-[5.5rem] h-auto rounded-[calc(var(--radius-xl)+2px)] border border-border/50 bg-card/60 p-5 text-left backdrop-blur-md transition-[transform,border-color,background-color,box-shadow] group hover:-translate-y-0.5 hover:border-accent hover:shadow-[0_4px_20px_rgba(var(--accent-rgb),0.1)]"
+            className="min-h-[5.5rem] h-auto rounded-[calc(var(--radius-xl)_+_2px)] border border-border/50 bg-card/60 p-5 text-left backdrop-blur-md transition-[transform,border-color,background-color,box-shadow] group hover:-translate-y-0.5 hover:border-accent hover:shadow-[0_4px_20px_rgba(var(--accent-rgb),0.1)]"
             aria-haspopup="dialog"
           >
             <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-border/50 bg-bg-accent p-3 shadow-sm transition-all group-hover:border-accent group-hover:bg-accent">
@@ -364,7 +364,7 @@ function AdvancedSection() {
             variant="outline"
             type="button"
             onClick={openImportModal}
-            className="min-h-[5.5rem] h-auto rounded-[calc(var(--radius-xl)+2px)] border border-border/50 bg-card/60 p-5 text-left backdrop-blur-md transition-[transform,border-color,background-color,box-shadow] group hover:-translate-y-0.5 hover:border-accent hover:shadow-[0_4px_20px_rgba(var(--accent-rgb),0.1)]"
+            className="min-h-[5.5rem] h-auto rounded-[calc(var(--radius-xl)_+_2px)] border border-border/50 bg-card/60 p-5 text-left backdrop-blur-md transition-[transform,border-color,background-color,box-shadow] group hover:-translate-y-0.5 hover:border-accent hover:shadow-[0_4px_20px_rgba(var(--accent-rgb),0.1)]"
             aria-haspopup="dialog"
           >
             <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-border/50 bg-bg-accent p-3 shadow-sm transition-all group-hover:border-accent group-hover:bg-accent">
@@ -470,7 +470,7 @@ function AdvancedSection() {
               <Button
                 variant="outline"
                 size="sm"
-                className="min-h-[2.625rem] px-4 rounded-[calc(var(--radius-lg)+2px)]"
+                className="min-h-[2.625rem] px-4 rounded-[calc(var(--radius-lg)_+_2px)]"
                 onClick={closeExportModal}
               >
                 {t("common.cancel")}
@@ -478,7 +478,7 @@ function AdvancedSection() {
               <Button
                 variant="default"
                 size="sm"
-                className="min-h-[2.625rem] px-4 rounded-[calc(var(--radius-lg)+2px)]"
+                className="min-h-[2.625rem] px-4 rounded-[calc(var(--radius-lg)_+_2px)]"
                 disabled={exportBusy}
                 onClick={() => void handleAgentExport()}
               >
@@ -517,7 +517,7 @@ function AdvancedSection() {
               </div>
               <Button
                 variant="outline"
-                className="min-h-[2.625rem] px-4 rounded-[calc(var(--radius-lg)+2px)] flex w-full items-center justify-between gap-3 text-left"
+                className="min-h-[2.625rem] px-4 rounded-[calc(var(--radius-lg)_+_2px)] flex w-full items-center justify-between gap-3 text-left"
                 onClick={() => importFileInputRef.current?.click()}
               >
                 <span className="min-w-0 flex-1 truncate text-sm text-txt">
@@ -571,7 +571,7 @@ function AdvancedSection() {
               <Button
                 variant="outline"
                 size="sm"
-                className="min-h-[2.625rem] px-4 rounded-[calc(var(--radius-lg)+2px)]"
+                className="min-h-[2.625rem] px-4 rounded-[calc(var(--radius-lg)_+_2px)]"
                 onClick={closeImportModal}
               >
                 {t("common.cancel")}
@@ -579,7 +579,7 @@ function AdvancedSection() {
               <Button
                 variant="default"
                 size="sm"
-                className="min-h-[2.625rem] px-4 rounded-[calc(var(--radius-lg)+2px)]"
+                className="min-h-[2.625rem] px-4 rounded-[calc(var(--radius-lg)_+_2px)]"
                 disabled={importBusy}
                 onClick={() => void handleAgentImport()}
               >

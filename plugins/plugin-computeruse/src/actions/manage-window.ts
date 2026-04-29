@@ -15,10 +15,7 @@ import type {
 } from "@elizaos/core";
 import type { ComputerUseService } from "../services/computer-use-service.js";
 import type { WindowActionParams, WindowActionResult } from "../types.js";
-import {
-  resolveActionParams,
-  toComputerUseActionResult,
-} from "./helpers.js";
+import { resolveActionParams, toComputerUseActionResult } from "./helpers.js";
 
 function formatWindowResultText(
   params: WindowActionParams,
@@ -27,7 +24,9 @@ function formatWindowResultText(
   if (result.windows) {
     const windowText =
       result.windows.length > 0
-        ? result.windows.map((w) => `[${w.id}] ${w.app} - ${w.title}`).join("\n")
+        ? result.windows
+            .map((w) => `[${w.id}] ${w.app} - ${w.title}`)
+            .join("\n")
         : "No visible windows found.";
     return `Open windows:\n${windowText}`;
   }
@@ -59,8 +58,8 @@ export const manageWindowAction: Action = {
     "- list: List all visible windows with their IDs, titles, and app names.\n" +
     "- focus: Bring a window to the front. Requires windowId.\n" +
     "- switch: Switch to a window by ID, title, or app name.\n" +
-    "- arrange: Expose the upstream arrange_windows stub for layout workflows.\n" +
-    "- move: Expose the upstream move_window stub for positional workflows.\n" +
+    "- arrange: Arrange visible windows using tile, cascade, vertical, or horizontal layout.\n" +
+    "- move: Move a window to screen coordinates. Requires windowId/windowTitle and x/y.\n" +
     "- minimize: Minimize a window. Requires windowId.\n" +
     "- maximize: Maximize a window. Requires windowId.\n" +
     "- restore: Restore a minimized or maximized window.\n" +
@@ -103,21 +102,19 @@ export const manageWindowAction: Action = {
     {
       name: "arrangement",
       description:
-        "Layout hint for the arrange action. Upstream exposes this as a stub.",
+        "Layout for arrange: tile, cascade, vertical, or horizontal.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "x",
-      description:
-        "Target X coordinate for move. Upstream exposes this as a stub.",
+      description: "Target X coordinate for move.",
       required: false,
       schema: { type: "number" },
     },
     {
       name: "y",
-      description:
-        "Target Y coordinate for move. Upstream exposes this as a stub.",
+      description: "Target Y coordinate for move.",
       required: false,
       schema: { type: "number" },
     },

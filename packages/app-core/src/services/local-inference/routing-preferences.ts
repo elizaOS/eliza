@@ -20,6 +20,8 @@ export type RoutingPolicy =
   | "prefer-local"
   | "round-robin";
 
+export const DEFAULT_ROUTING_POLICY: RoutingPolicy = "prefer-local";
+
 export interface RoutingPreferences {
   /**
    * Explicit provider override per agent slot. Empty record = no overrides,
@@ -29,7 +31,8 @@ export interface RoutingPreferences {
   /**
    * Per-slot policy. "manual" honours `preferredProvider` verbatim;
    * everything else lets the router-handler compute a winner from the
-   * policy rule set. Absent = "manual" (matches the legacy behaviour).
+   * policy rule set. Absent = "prefer-local" so local models and
+   * subscriptions are tried before direct paid APIs and managed cloud.
    */
   policy: Partial<Record<AgentModelSlot, RoutingPolicy>>;
 }

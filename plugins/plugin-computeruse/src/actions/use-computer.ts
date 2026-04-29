@@ -252,12 +252,6 @@ export const useComputerAction: Action = {
       schema: { type: "string" },
     },
     {
-      name: "modifiers",
-      description: "Modifier keys for click_with_modifiers.",
-      required: false,
-      schema: { type: "array", items: { type: "string" } },
-    },
-    {
       name: "button",
       description: "Mouse button for click_with_modifiers.",
       required: false,

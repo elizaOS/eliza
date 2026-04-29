@@ -9,7 +9,7 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { ActiveModelCoordinator } from "./active-model";
-import { readAssignments, setAssignment } from "./assignments";
+import { readEffectiveAssignments, setAssignment } from "./assignments";
 import { MODEL_CATALOG } from "./catalog";
 import { Downloader } from "./downloader";
 import { probeHardware } from "./hardware";
@@ -56,14 +56,15 @@ export class LocalInferenceService {
   }
 
   async getAssignments(): Promise<ModelAssignments> {
-    return readAssignments();
+    return readEffectiveAssignments();
   }
 
   async setSlotAssignment(
     slot: AgentModelSlot,
     modelId: string | null,
   ): Promise<ModelAssignments> {
-    return setAssignment(slot, modelId);
+    await setAssignment(slot, modelId);
+    return readEffectiveAssignments();
   }
 
   async snapshot(): Promise<ModelHubSnapshot> {

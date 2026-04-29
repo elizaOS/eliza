@@ -849,8 +849,6 @@ async function handleCompatRoute(
     });
   }
 
-  if (await handleComputerUseCompatRoutes(req, res, state)) return true;
-
   if (method === "POST" && url.pathname === "/api/tts/cloud") {
     if (!(await ensureRouteAuthorized(req, res, state))) return true;
     return await _handleCloudTtsPreviewRoute(req, res);
@@ -1216,7 +1214,10 @@ export function patchHttpCreateServerForCompat(
             return;
           }
         } catch (err) {
-          console.error("[compat] unhandled error in route handler", err);
+          logger.error("[CompatApiServer] Unhandled compat route error", {
+            error: err instanceof Error ? err.message : String(err),
+            stack: err instanceof Error ? err.stack : undefined,
+          });
           if (!res.headersSent) {
             res.statusCode = 500;
             res.setHeader("content-type", "application/json; charset=utf-8");
@@ -1227,7 +1228,10 @@ export function patchHttpCreateServerForCompat(
       }
 
       Promise.resolve(listener(req, res)).catch((err) => {
-        console.error("[compat] upstream listener error", err);
+        logger.error("[CompatApiServer] Upstream listener error", {
+          error: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack : undefined,
+        });
         if (!res.headersSent) {
           res.statusCode = 500;
           res.setHeader("content-type", "application/json; charset=utf-8");

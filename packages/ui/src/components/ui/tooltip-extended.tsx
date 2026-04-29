@@ -132,7 +132,7 @@ export function IconTooltip({
             ? "bottom-full left-1/2 -translate-x-1/2 mb-2"
             : "top-full left-1/2 -translate-x-1/2 mt-2",
           multiline
-            ? "min-w-[10rem] max-w-[min(22rem,calc(100vw-1.5rem))] whitespace-normal text-left leading-snug"
+            ? "min-w-[10rem] max-w-[min(22rem,calc(100vw_-_1.5rem))] whitespace-normal text-left leading-snug"
             : "min-w-[6rem] whitespace-nowrap",
         )}
         role="tooltip"
