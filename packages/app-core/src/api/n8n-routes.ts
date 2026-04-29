@@ -641,7 +641,7 @@ interface TriggerContext {
  * metadata or the runtime can't read memories.
  */
 async function buildTriggerContextFromConversation(
-  runtime: AgentRuntime | undefined,
+  runtime: AgentRuntime | null | undefined,
   roomId: string,
 ): Promise<TriggerContext | undefined> {
   if (!runtime || typeof runtime.getMemories !== "function") return undefined;

@@ -740,9 +740,7 @@ export function SettingsView({
   // Stale-flash guard: keep the latest setTimeout id in a ref and clear the
   // previous one on each new focus so a double-click does not clip the
   // second flash short.
-  const flashTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(
-    null,
-  );
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     function focusProvider(provider: string) {
       if (!provider) return;
@@ -758,7 +756,7 @@ export function SettingsView({
         if (flashTimerRef.current !== null) {
           clearTimeout(flashTimerRef.current);
         }
-        flashTimerRef.current = window.setTimeout(() => {
+        flashTimerRef.current = setTimeout(() => {
           node.classList.remove("connector-flash");
           flashTimerRef.current = null;
         }, 1800);
