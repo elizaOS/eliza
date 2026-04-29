@@ -231,6 +231,7 @@ const LIFEOPS_STATIC_ROUTES: Array<{
   { type: "GET", path: "/api/lifeops/permissions/full-disk-access" },
   { type: "GET", path: "/api/lifeops/screen-time/summary" },
   { type: "GET", path: "/api/lifeops/screen-time/breakdown" },
+  { type: "GET", path: "/api/lifeops/screen-time/history" },
   { type: "GET", path: "/api/lifeops/social/summary" },
   { type: "GET", path: "/api/lifeops/overview" },
   { type: "GET", path: "/api/lifeops/money/dashboard" },

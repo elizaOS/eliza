@@ -92,6 +92,12 @@ import type {
   LifeOpsOverview,
   LifeOpsPersonalBaselineResponse,
   LifeOpsReminderInspection,
+  LifeOpsScreenTimeBreakdown,
+  LifeOpsScreenTimeHistoryResponse,
+  LifeOpsScreenTimeRangeKey,
+  LifeOpsScreenTimeSummary,
+  LifeOpsScreenTimeSummaryRequest,
+  LifeOpsSocialHabitSummary,
   LifeOpsSignalConnectorStatus,
   LifeOpsSignalPairingStatus,
   LifeOpsSleepHistoryResponse,
@@ -172,99 +178,21 @@ type LifeOpsScheduleMergedStateRequest = {
   refresh?: boolean;
 };
 
-export type LifeOpsScreenTimeSource = "app" | "website";
-
-export type LifeOpsScreenTimeSummaryRequest = {
-  since: string;
-  until: string;
-  source?: LifeOpsScreenTimeSource;
-  topN?: number;
-};
-
-export type LifeOpsScreenTimeSummaryItem = {
-  source: LifeOpsScreenTimeSource;
-  identifier: string;
-  displayName: string;
-  totalSeconds: number;
-};
-
-export type LifeOpsScreenTimeSummary = {
-  items: LifeOpsScreenTimeSummaryItem[];
-  totalSeconds: number;
-};
-
-export type LifeOpsHabitCategory =
-  | "browser"
-  | "communication"
-  | "social"
-  | "system"
-  | "video"
-  | "work"
-  | "other";
-
-export type LifeOpsHabitDevice =
-  | "browser"
-  | "computer"
-  | "phone"
-  | "tablet"
-  | "unknown";
-
-export type LifeOpsScreenTimeBucket = {
-  key: string;
-  label: string;
-  totalSeconds: number;
-};
-
-export type LifeOpsScreenTimeBreakdownItem = LifeOpsScreenTimeSummaryItem & {
-  sessionCount: number;
-  category: LifeOpsHabitCategory;
-  device: LifeOpsHabitDevice;
-  service: string | null;
-  serviceLabel: string | null;
-  browser: string | null;
-};
-
-export type LifeOpsScreenTimeBreakdown = {
-  items: LifeOpsScreenTimeBreakdownItem[];
-  totalSeconds: number;
-  bySource: LifeOpsScreenTimeBucket[];
-  byCategory: LifeOpsScreenTimeBucket[];
-  byDevice: LifeOpsScreenTimeBucket[];
-  byService: LifeOpsScreenTimeBucket[];
-  byBrowser: LifeOpsScreenTimeBucket[];
-  fetchedAt: string;
-};
-
-export type LifeOpsSocialHabitSummary = {
-  since: string;
-  until: string;
-  totalSeconds: number;
-  services: LifeOpsScreenTimeBucket[];
-  devices: LifeOpsScreenTimeBucket[];
-  surfaces: LifeOpsScreenTimeBucket[];
-  browsers: LifeOpsScreenTimeBucket[];
-  sessions: LifeOpsScreenTimeBreakdownItem[];
-  messages: {
-    channels: Array<{
-      channel: "x_dm";
-      label: string;
-      inbound: number;
-      outbound: number;
-      opened: number;
-      replied: number;
-    }>;
-    inbound: number;
-    outbound: number;
-    opened: number;
-    replied: number;
-  };
-  dataSources: Array<{
-    id: string;
-    label: string;
-    state: "live" | "partial" | "unwired";
-  }>;
-  fetchedAt: string;
-};
+export type {
+  LifeOpsHabitCategory,
+  LifeOpsHabitDevice,
+  LifeOpsScreenTimeBreakdown,
+  LifeOpsScreenTimeBreakdownItem,
+  LifeOpsScreenTimeBucket,
+  LifeOpsScreenTimeHistoryResponse,
+  LifeOpsScreenTimeRangeKey,
+  LifeOpsScreenTimeSource,
+  LifeOpsScreenTimeSummary,
+  LifeOpsScreenTimeSummaryItem,
+  LifeOpsScreenTimeSummaryRequest,
+  LifeOpsSocialHabitDataSource,
+  LifeOpsSocialHabitSummary,
+} from "@elizaos/shared";
 
 export type LifeOpsPriorityScoringStateDto = {
   enabled: boolean;
