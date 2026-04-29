@@ -475,6 +475,69 @@ public class MiladyAgentService extends Service {
             }
             agentEnv.put("HOME", getFilesDir().getAbsolutePath());
             agentEnv.put("TMPDIR", getCacheDir().getAbsolutePath());
+
+            // ── Android seccomp compatibility (SIGSYS / code 159 fix) ──────
+            //
+            // Android's zygote installs a seccomp-bpf filter on every app
+            // process via `seccomp_set_policy()` in
+            // frameworks/base/core/jni/com_android_internal_os_Zygote.cpp,
+            // sourced from the per-arch allowlists in
+            // bionic/libc/seccomp/{x86_64,arm64}_app_policy.cpp. The filter is
+            // inherited and locked by SECCOMP_FILTER_FLAG_TSYNC; a child
+            // process spawned via fork+execve (which is how this service
+            // launches bun via ProcessBuilder) cannot opt out. SELinux
+            // policy in vendor/milady/sepolicy/ is orthogonal — it does
+            // not (and cannot) override seccomp.
+            //
+            // Bun's Linux runtime exercises several syscalls that Android's
+            // seccomp filter blocks for app domains:
+            //   - `io_uring_setup` / `io_uring_enter` / `io_uring_register`
+            //     (bun's IO pool; not on Android's app allowlist)
+            //   - `pidfd_open` (bun uses it for child-process waiting; not
+            //     on the app allowlist before Android 13 / API 33, and
+            //     gated behind `pidfd_open` allow on newer policy)
+            //   - `preadv2` / `pwritev2` with `RWF_NONBLOCK` (bun's
+            //     async-fs path; some Android kernels gate the flag arg)
+            //
+            // Empirically the agent bundle exit-trapped on SIGSYS (signal
+            // 31, exit code 128 + 31 = 159) at first interpretation of
+            // user code. The four BUN_FEATURE_FLAG_* knobs below opt bun
+            // into its more conservative fallbacks for each of those
+            // syscalls. They are intentionally redundant: enabling all four
+            // costs nothing and protects against future bun versions that
+            // start using a previously-unused gated syscall.
+            //
+            // BUN_FEATURE_FLAG_DISABLE_IO_POOL=1
+            //     Replaces bun's io_uring-backed IO pool with the legacy
+            //     thread-pool implementation. Avoids io_uring_* entirely.
+            //
+            // BUN_FEATURE_FLAG_FORCE_WAITER_THREAD=1
+            //     Forces the dedicated waiter-thread child reaper instead
+            //     of pidfd_open + epoll. Avoids pidfd_open.
+            //
+            // BUN_FEATURE_FLAG_DISABLE_RWF_NONBLOCK=1
+            //     Drops RWF_NONBLOCK from preadv2/pwritev2 calls so bun
+            //     stays on flags Android's seccomp predates. Costs us
+            //     nothing on Android (the kernel runs the same fallback).
+            //
+            // BUN_FEATURE_FLAG_DISABLE_SPAWNSYNC_FAST_PATH=1
+            //     Forces bun's portable spawn fast path off so any
+            //     vfork/clone3 variants the seccomp filter blocks aren't
+            //     attempted.
+            //
+            // To diagnose a future SIGSYS regression on a real boot:
+            //   adb logcat -d | grep -E '(SIGSYS|seccomp|audit:.*type=1326)'
+            //   adb shell dmesg | grep -E '(seccomp|SIGSYS)'
+            // The audit line includes `syscall=N`; map it via
+            //   bionic/libc/kernel/uapi/asm-generic/unistd.h or
+            //   https://chromium.googlesource.com/aosp/platform/bionic/+/refs/heads/master/libc/SYSCALLS.TXT
+            // and either add a new BUN_FEATURE_FLAG_* knob or open a bun
+            // issue if the call has no fallback.
+            agentEnv.put("BUN_FEATURE_FLAG_DISABLE_IO_POOL", "1");
+            agentEnv.put("BUN_FEATURE_FLAG_FORCE_WAITER_THREAD", "1");
+            agentEnv.put("BUN_FEATURE_FLAG_DISABLE_RWF_NONBLOCK", "1");
+            agentEnv.put("BUN_FEATURE_FLAG_DISABLE_SPAWNSYNC_FAST_PATH", "1");
+
             env.putAll(agentEnv);
 
             Process started;
