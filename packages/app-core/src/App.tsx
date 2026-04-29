@@ -67,6 +67,8 @@ import { useApp } from "./state";
 import type { FlaminaGuideTopic } from "./state/types";
 
 const CHAT_MOBILE_BREAKPOINT_PX = 820;
+const MOBILE_NAV_PADDING_CLASS =
+  "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px))]";
 const WALLET_CHAT_PREFILL_EVENT = "milady:chat:prefill";
 type MobileChatSurface = "left" | "center" | "right";
 
@@ -841,7 +843,9 @@ export function App() {
           className="flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg"
         >
           <Header />
-          <main className="flex-1 min-h-0 overflow-hidden">
+          <main
+            className={`flex-1 min-h-0 overflow-hidden ${MOBILE_NAV_PADDING_CLASS}`}
+          >
             <LazyViewBoundary>
               <StreamView />
             </LazyViewBoundary>
@@ -943,9 +947,13 @@ export function App() {
           className="flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg"
         >
           <Header />
-          <LazyViewBoundary>
-            <AutomationsDesktopShell key="automations-view-desktop" />
-          </LazyViewBoundary>
+          <div
+            className={`flex flex-1 min-h-0 min-w-0 overflow-hidden ${MOBILE_NAV_PADDING_CLASS}`}
+          >
+            <LazyViewBoundary>
+              <AutomationsDesktopShell key="automations-view-desktop" />
+            </LazyViewBoundary>
+          </div>
         </div>
       ) : isSettingsPage ? (
         <div
@@ -1006,7 +1014,9 @@ export function App() {
           className="flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg"
         >
           <Header pageRightExtras={characterHeaderActions} />
-          <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
+          <div
+            className={`flex flex-1 min-h-0 min-w-0 overflow-hidden ${MOBILE_NAV_PADDING_CLASS}`}
+          >
             <ViewRouter
               onCharacterHeaderActionsChange={setCharacterHeaderActions}
             />
@@ -1018,7 +1028,9 @@ export function App() {
           className="flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg"
         >
           <Header />
-          <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
+          <div
+            className={`flex flex-1 min-h-0 min-w-0 overflow-hidden ${MOBILE_NAV_PADDING_CLASS}`}
+          >
             <ViewRouter />
           </div>
         </div>
@@ -1028,7 +1040,9 @@ export function App() {
           className="flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg"
         >
           <Header />
-          <div className="flex flex-1 min-h-0 min-w-0">
+          <div
+            className={`flex flex-1 min-h-0 min-w-0 ${MOBILE_NAV_PADDING_CLASS}`}
+          >
             <LazyViewBoundary>
               <DesktopWorkspaceSection />
             </LazyViewBoundary>
@@ -1047,7 +1061,7 @@ export function App() {
               tab === "browser" || tab === "apps"
                 ? ""
                 : "px-3 xl:px-5 py-4 xl:py-6"
-            }`}
+            } ${tab === "browser" ? "" : MOBILE_NAV_PADDING_CLASS}`}
           >
             <ViewRouter
               onCharacterHeaderActionsChange={setCharacterHeaderActions}

@@ -1,10 +1,8 @@
+import { gatePluginSessionForHostedApp } from "@elizaos/agent";
 import type { Plugin, ServiceClass } from "@elizaos/core";
-import {
-  gatePluginSessionForHostedApp,
-} from "@elizaos/agent";
-import { RsSdkGameService } from "./services/game-service.js";
-import { rsSdkProviders } from "./providers/index.js";
 import { rsSdkActions } from "./actions/index.js";
+import { rsSdkProviders } from "./providers/index.js";
+import { RsSdkGameService } from "./services/game-service.js";
 
 const rawRs2004scapePlugin: Plugin = {
   name: "@elizaos/app-2004scape",
@@ -23,11 +21,11 @@ export const rs2004scapePlugin: Plugin = gatePluginSessionForHostedApp(
 
 export default rs2004scapePlugin;
 
+export type { GatewayHandle, GatewayOptions } from "./gateway/index.js";
+export { startGateway } from "./gateway/index.js";
+export { BotActions } from "./sdk/actions.js";
+export { BotSDK } from "./sdk/index.js";
+export type * from "./sdk/types.js";
+export { BotManager } from "./services/bot-manager.js";
 // Re-exports for direct access
 export { RsSdkGameService } from "./services/game-service.js";
-export { BotManager } from "./services/bot-manager.js";
-export { BotSDK } from "./sdk/index.js";
-export { BotActions } from "./sdk/actions.js";
-export { startGateway } from "./gateway/index.js";
-export type { GatewayHandle, GatewayOptions } from "./gateway/index.js";
-export type * from "./sdk/types.js";

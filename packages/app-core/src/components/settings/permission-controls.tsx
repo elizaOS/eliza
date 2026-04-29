@@ -34,9 +34,55 @@ type DesktopMediaPermissionId = Extract<
 const RUNTIME_PERMISSION_IDS: readonly SystemPermissionId[] = [
   "website-blocking",
 ];
+const REQUIRED_PERMISSION_IDS: readonly SystemPermissionId[] = [
+  "accessibility",
+  "screen-recording",
+  "microphone",
+  "camera",
+  "shell",
+  "website-blocking",
+];
+const PERMISSION_STATUSES: readonly PermissionStatus[] = [
+  "granted",
+  "denied",
+  "not-determined",
+  "restricted",
+  "not-applicable",
+];
 
 function isRuntimePermissionId(id: SystemPermissionId): boolean {
   return RUNTIME_PERMISSION_IDS.includes(id);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object";
+}
+
+function isPermissionStatus(value: unknown): value is PermissionStatus {
+  return (
+    typeof value === "string" &&
+    PERMISSION_STATUSES.includes(value as PermissionStatus)
+  );
+}
+
+function isPermissionState(
+  value: unknown,
+  id: SystemPermissionId,
+): value is PermissionState {
+  return (
+    isRecord(value) &&
+    value.id === id &&
+    isPermissionStatus(value.status) &&
+    typeof value.canRequest === "boolean" &&
+    typeof value.lastChecked === "number"
+  );
+}
+
+function isAllPermissionsState(value: unknown): value is AllPermissionsState {
+  return (
+    isRecord(value) &&
+    REQUIRED_PERMISSION_IDS.every((id) => isPermissionState(value[id], id))
+  );
 }
 
 function mapRendererMediaPermissionState(
@@ -347,6 +393,11 @@ export function CapabilityToggle({
     cap.descriptionKey,
     cap.description,
   );
+  const toggleActionLabel = `${
+    enabled
+      ? translateWithFallback(t, "permissionssection.Disable", "Disable")
+      : translateWithFallback(t, "permissionssection.Enable", "Enable")
+  } ${label}`;
 
   return (
     <div
@@ -397,6 +448,7 @@ export function CapabilityToggle({
             checked={enabled}
             onCheckedChange={onToggle}
             disabled={!canEnable}
+            aria-label={toggleActionLabel}
             title={
               !available
                 ? translateWithFallback(
@@ -484,12 +536,10 @@ export function useDesktopPermissionsState() {
         await client.refreshPermissions();
       }
 
-      // Late async refreshes can race test teardown or transient bridge/API
-      // startup gaps. Normalize missing payloads so the panel degrades to its
-      // existing "unable to load permissions" state instead of throwing.
-      const permissions = (bridgedPermissions ??
-        (await client.getPermissions()) ??
-        {}) as AllPermissionsState;
+      const permissions = bridgedPermissions ?? (await client.getPermissions());
+      if (!isAllPermissionsState(permissions)) {
+        throw new Error("Invalid permissions payload.");
+      }
       const shellEnabled =
         bridgedShellEnabled === null
           ? await client.isShellEnabled()

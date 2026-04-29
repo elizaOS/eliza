@@ -1,5 +1,12 @@
-import type { Action, IAgentRuntime, Memory, State, HandlerCallback } from "@elizaos/core";
+import type {
+  Action,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
 import { getCurrentLlmResponse } from "../shared-state.js";
+import { getRsSdkGameService } from "./game-service.js";
 import { extractParam } from "./param-parser.js";
 
 export const dropItem: Action = {
@@ -8,7 +15,10 @@ export const dropItem: Action = {
   descriptionCompressed: "Drop inventory item.",
   similes: ["DISCARD_ITEM", "THROW_AWAY"],
   examples: [],
-  validate: async (_runtime: IAgentRuntime, _message: Memory): Promise<boolean> => {
+  validate: async (
+    _runtime: IAgentRuntime,
+    _message: Memory,
+  ): Promise<boolean> => {
     return _runtime.getService("rs_2004scape") != null;
   },
   handler: async (
@@ -18,8 +28,9 @@ export const dropItem: Action = {
     _options: Record<string, unknown>,
     callback?: HandlerCallback,
   ): Promise<unknown> => {
-    const service = runtime.getService("rs_2004scape") as any;
-    if (!service) return { success: false, message: "Game service not available." };
+    const service = getRsSdkGameService(runtime);
+    if (!service)
+      return { success: false, message: "Game service not available." };
 
     const text = getCurrentLlmResponse();
     const itemName = extractParam(text, "item");
