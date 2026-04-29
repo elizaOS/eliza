@@ -10,21 +10,46 @@ import {
 } from "./paths";
 
 describe("paths", () => {
-  let originalStateDir: string | undefined;
+  let originalMiladyStateDir: string | undefined;
+  let originalElizaStateDir: string | undefined;
 
   beforeEach(() => {
-    originalStateDir = process.env.ELIZA_STATE_DIR;
+    originalMiladyStateDir = process.env.MILADY_STATE_DIR;
+    originalElizaStateDir = process.env.ELIZA_STATE_DIR;
   });
 
   afterEach(() => {
-    if (originalStateDir === undefined) {
+    if (originalMiladyStateDir === undefined) {
+      delete process.env.MILADY_STATE_DIR;
+    } else {
+      process.env.MILADY_STATE_DIR = originalMiladyStateDir;
+    }
+    if (originalElizaStateDir === undefined) {
       delete process.env.ELIZA_STATE_DIR;
     } else {
-      process.env.ELIZA_STATE_DIR = originalStateDir;
+      process.env.ELIZA_STATE_DIR = originalElizaStateDir;
     }
   });
 
-  it("uses ELIZA_STATE_DIR when set", () => {
+  it("uses MILADY_STATE_DIR when set", () => {
+    process.env.MILADY_STATE_DIR = "/milady/state";
+    delete process.env.ELIZA_STATE_DIR;
+    expect(localInferenceRoot()).toBe(
+      path.join("/milady/state", "local-inference"),
+    );
+    expect(miladyModelsDir()).toBe(
+      path.join("/milady/state", "local-inference", "models"),
+    );
+    expect(downloadsStagingDir()).toBe(
+      path.join("/milady/state", "local-inference", "downloads"),
+    );
+    expect(registryPath()).toBe(
+      path.join("/milady/state", "local-inference", "registry.json"),
+    );
+  });
+
+  it("uses ELIZA_STATE_DIR when MILADY_STATE_DIR is unset", () => {
+    delete process.env.MILADY_STATE_DIR;
     process.env.ELIZA_STATE_DIR = "/custom/state";
     expect(localInferenceRoot()).toBe(
       path.join("/custom/state", "local-inference"),
@@ -32,15 +57,18 @@ describe("paths", () => {
     expect(miladyModelsDir()).toBe(
       path.join("/custom/state", "local-inference", "models"),
     );
-    expect(downloadsStagingDir()).toBe(
-      path.join("/custom/state", "local-inference", "downloads"),
-    );
-    expect(registryPath()).toBe(
-      path.join("/custom/state", "local-inference", "registry.json"),
+  });
+
+  it("MILADY_STATE_DIR wins over ELIZA_STATE_DIR when both set", () => {
+    process.env.MILADY_STATE_DIR = "/milady/state";
+    process.env.ELIZA_STATE_DIR = "/eliza/state";
+    expect(localInferenceRoot()).toBe(
+      path.join("/milady/state", "local-inference"),
     );
   });
 
-  it("falls back to ~/.eliza/local-inference when unset", () => {
+  it("falls back to ~/.eliza/local-inference when both unset", () => {
+    delete process.env.MILADY_STATE_DIR;
     delete process.env.ELIZA_STATE_DIR;
     expect(localInferenceRoot()).toBe(
       path.join(os.homedir(), ".eliza", "local-inference"),
@@ -48,6 +76,7 @@ describe("paths", () => {
   });
 
   it("isWithinMiladyRoot rejects the root itself and external paths", () => {
+    delete process.env.MILADY_STATE_DIR;
     process.env.ELIZA_STATE_DIR = "/state";
     const root = path.join("/state", "local-inference");
     expect(isWithinMiladyRoot(root)).toBe(false);

@@ -1,6 +1,6 @@
 export const DEFAULT_ELIZA_CLOUD_BASE = "https://www.elizacloud.ai";
 
-export type IosRuntimeMode = "remote-mac" | "cloud" | "cloud-hybrid";
+export type IosRuntimeMode = "remote-mac" | "cloud" | "cloud-hybrid" | "local";
 
 export interface IosRuntimeConfig {
   mode: IosRuntimeMode;
@@ -34,6 +34,8 @@ function normalizeMode(value: string | undefined): IosRuntimeMode {
     case "cloud+local":
     case "cloud-local":
       return "cloud-hybrid";
+    case "local":
+      return "local";
     default:
       return "cloud";
   }

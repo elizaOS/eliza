@@ -74,6 +74,10 @@
 	path = plugins/plugin-pdf
 	url = https://github.com/elizaos-plugins/plugin-pdf.git
 	branch = alpha
+[submodule "plugins/plugin-plugin-manager"]
+	path = plugins/plugin-plugin-manager
+	url = https://github.com/elizaos-plugins/plugin-plugin-manager.git
+	branch = alpha
 [submodule "plugins/plugin-shell"]
 	path = plugins/plugin-shell
 	url = https://github.com/elizaos-plugins/plugin-shell.git

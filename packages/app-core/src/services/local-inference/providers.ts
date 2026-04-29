@@ -242,7 +242,12 @@ const ANTHROPIC_SUBSCRIPTION_PROVIDER: ProviderDefinition = {
   label: "Claude subscription",
   kind: "cloud-subscription",
   description: "Claude Code task-agent access through linked accounts.",
-  supportedSlots: [],
+  // Claude.ai OAuth subscriptions serve text + structured-object generation
+  // through Anthropic's chat models. Embeddings are not exposed by the
+  // subscription path (Anthropic does not ship an embeddings endpoint), so
+  // TEXT_EMBEDDING is intentionally omitted — that slot needs a separate
+  // API-key provider.
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "OBJECT_SMALL", "OBJECT_LARGE"],
   async getEnableState(): Promise<ProviderEnableState> {
     return subscriptionEnableState("anthropic-subscription");
   },
