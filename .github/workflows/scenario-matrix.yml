@@ -229,7 +229,7 @@ jobs:
 
       - name: Upload shard report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: scenario-report-${{ matrix.shard.name }}
           path: reports/scenarios/${{ github.run_id }}-${{ matrix.shard.name }}/
@@ -252,7 +252,7 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
 
       - name: Download all shard reports
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: scenario-report-*
           path: reports/scenarios/all
