@@ -220,6 +220,41 @@ function googleGrantAccountEmail(grant: LifeOpsConnectorGrant): string | null {
   );
 }
 
+function metadataString(
+  metadata: Record<string, unknown>,
+  key: string,
+): string | null {
+  const value = metadata[key];
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
+}
+
+function emailLikeMessageFromGmailSummary(
+  message: LifeOpsGmailMessageSummary,
+): EmailLikeMessage {
+  const headers: Record<string, string> = {};
+  const listUnsubscribe = metadataString(message.metadata, "listUnsubscribe");
+  if (listUnsubscribe) headers["List-Unsubscribe"] = listUnsubscribe;
+  const listId = metadataString(message.metadata, "listId");
+  if (listId) headers["List-Id"] = listId;
+  const precedence = metadataString(message.metadata, "precedence");
+  if (precedence) headers.Precedence = precedence;
+  const autoSubmitted = metadataString(message.metadata, "autoSubmitted");
+  if (autoSubmitted) headers["Auto-Submitted"] = autoSubmitted;
+  return {
+    id: message.id,
+    externalId: message.externalId,
+    subject: message.subject,
+    from: message.from,
+    fromEmail: message.fromEmail,
+    snippet: message.snippet,
+    labels: message.labels,
+    headers: Object.keys(headers).length > 0 ? headers : null,
+    bodyText: metadataString(message.metadata, "bodyText"),
+  };
+}
+
 export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ): MixinClass<TBase, LifeOpsGmailService> {
@@ -243,15 +278,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
         this.runtime.getSetting?.("lifeops.bills.autoExtract") !== false;
       for (const message of args.messages) {
         try {
-          const candidate: EmailLikeMessage = {
-            id: message.id,
-            externalId: message.externalId,
-            subject: message.subject,
-            from: message.from,
-            fromEmail: message.fromEmail,
-            snippet: message.snippet,
-            labels: message.labels,
-          };
+          const candidate = emailLikeMessageFromGmailSummary(message);
           const classification = await classifyEmail(this.runtime, candidate);
           if (
             classification.category !== "bill" ||
