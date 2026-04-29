@@ -153,7 +153,7 @@ jobs:
           file "$AAB_PATH"
 
       - name: Upload AAB artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: eliza-release-aab
           path: packages/app/android/app/build/outputs/bundle/release/app-release.aab
@@ -187,7 +187,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Download AAB
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: eliza-release-aab
           path: aab/
