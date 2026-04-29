@@ -8,7 +8,7 @@
 
 import type { Action, HandlerOptions, Memory, State } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { hasRoleAccess } from "../security/access.js";
+import { hasOwnerAccess } from "../security/access.js";
 import {
   type HostedSearchResponse,
   isHostedCloudToolingConfigured,
@@ -153,7 +153,7 @@ export const webSearchAction: Action = {
     "Use when you need real-time or recent information that may not be in your training data.",
 
   validate: async (runtime, message, state) => {
-    if (!(await hasRoleAccess(runtime, message, "USER"))) return false;
+    if (!(await hasOwnerAccess(runtime, message))) return false;
     const hasHostedSearch = isHostedCloudToolingConfigured(process.env);
     const braveKey = resolveBraveApiKey(runtime);
     if (!hasHostedSearch && !braveKey) return false;
@@ -161,6 +161,15 @@ export const webSearchAction: Action = {
   },
 
   handler: async (runtime, message, _state, options) => {
+    if (!(await hasOwnerAccess(runtime, message))) {
+      return {
+        text: "Permission denied: only the owner may run web search.",
+        success: false,
+        values: { success: false, error: "PERMISSION_DENIED" },
+        data: { actionName: "WEB_SEARCH" },
+      };
+    }
+
     const braveApiKey = resolveBraveApiKey(runtime);
     const hasHostedSearch = isHostedCloudToolingConfigured(process.env);
     if (!hasHostedSearch && !braveApiKey) {

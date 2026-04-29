@@ -70,6 +70,7 @@ export interface LifeOpsGoogleService {
 }
 
 import { fail } from "./service-normalize.js";
+import { normalizeOptionalString } from "./service-normalize.js";
 import {
   normalizeGoogleCapabilityRequest,
   normalizeGrantCapabilities,
@@ -234,6 +235,30 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
         "google",
         undefined,
         side,
+      );
+    }
+
+    public async clearGoogleGrantData(
+      grant: LifeOpsConnectorGrant,
+    ): Promise<void> {
+      await this.repository.deleteGmailMessagesForProvider(
+        this.agentId(),
+        "google",
+        grant.side,
+        grant.id,
+      );
+      await this.repository.deleteGmailSpamReviewItemsForProvider(
+        this.agentId(),
+        "google",
+        grant.side,
+        grant.id,
+      );
+      await this.repository.deleteGmailSyncState(
+        this.agentId(),
+        "google",
+        undefined,
+        grant.side,
+        grant.id,
       );
     }
 

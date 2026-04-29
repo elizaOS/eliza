@@ -22,6 +22,7 @@ import {
   isPageScopedConversationMetadata,
 } from "../api/conversation-metadata.js";
 import type { ConversationScope } from "../api/server-types.js";
+import { hasOwnerAccess } from "../security/access.js";
 import {
   formatRelativeTimestamp,
   formatSpeakerLabel,
@@ -631,9 +632,26 @@ export const pageScopedContextProvider: Provider = {
     "Operational context for the current page-scoped chat (Browser, Character, Apps, Connectors, Plugins, Settings, LifeOps, Automations, Wallet).",
   dynamic: false,
   position: 5,
+  contexts: [
+    "page",
+    "browser",
+    "wallet",
+    "character",
+    "automation",
+    "apps",
+    "connectors",
+    "plugins",
+    "settings",
+    "lifeops",
+    "phone",
+  ],
 
   async get(runtime: IAgentRuntime, message: Memory): Promise<ProviderResult> {
     try {
+      if (!(await hasOwnerAccess(runtime, message))) {
+        return EMPTY_RESULT;
+      }
+
       const room = await runtime.getRoom(message.roomId);
       const metadata = extractConversationMetadataFromRoom(room);
       const scope = metadata?.scope as ConversationScope | undefined;
@@ -681,8 +699,10 @@ export const pageScopedContextProvider: Provider = {
       };
     } catch (error) {
       logger.error(
-        "[page-scoped-context] Error:",
-        error instanceof Error ? error.message : String(error),
+        {
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "[page-scoped-context] Error",
       );
       return EMPTY_RESULT;
     }
