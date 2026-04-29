@@ -102,9 +102,19 @@ describe("LifeOps inbox cache schema repair", () => {
         externalId: "message-1",
       },
       threadId: "message-1",
+      lastSeenAt: "2026-04-26T23:55:00.000Z",
+      repliedAt: "2026-04-26T23:56:00.000Z",
     };
 
     await repository.upsertCachedInboxMessages(agentId, [message]);
+    await repository.upsertCachedInboxMessages(agentId, [
+      {
+        ...message,
+        snippet: "fresh without state",
+        lastSeenAt: undefined,
+        repliedAt: undefined,
+      },
+    ]);
     const cached = await repository.listCachedInboxMessages(agentId, {
       channels: ["gmail"],
       maxResults: 10,
@@ -112,6 +122,8 @@ describe("LifeOps inbox cache schema repair", () => {
 
     expect(cached).toHaveLength(1);
     expect(cached[0]?.id).toBe("gmail:message-1");
-    expect(cached[0]?.snippet).toBe("fresh");
+    expect(cached[0]?.snippet).toBe("fresh without state");
+    expect(cached[0]?.lastSeenAt).toBe("2026-04-26T23:55:00.000Z");
+    expect(cached[0]?.repliedAt).toBe("2026-04-26T23:56:00.000Z");
   });
 });
