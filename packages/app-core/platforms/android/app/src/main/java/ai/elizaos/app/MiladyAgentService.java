@@ -86,7 +86,20 @@ public class MiladyAgentService extends Service {
     private static final int AGENT_PORT = 31337;
     private static final String HEALTH_URL = "http://127.0.0.1:" + AGENT_PORT + "/api/health";
 
-    private static final long WATCHDOG_INTERVAL_MS = 10_000L;
+    // The on-device boot path is heavy: PGlite extension extraction +
+    // plugin resolution + libllama dlopen + first-time model load can
+    // exceed 240 s on a cold cuttlefish x86_64 image. With the watchdog
+    // at 10 s, two consecutive misses (20 s) kill bun before PGlite
+    // finishes opening the database. The agent-bundle's own
+    // "coordinator not available after 90s (boot)" debug line is also
+    // misleading — the real `[eliza-api] Listening` print happens
+    // ~200–240 s after process start on cvd.
+    //
+    // 120 s × 3 = 360 s grace gives enough headroom. We override the
+    // 2-strike rule below to 3 strikes for the same reason. Tighten back
+    // down once a runtime "ready" signal lands.
+    private static final long WATCHDOG_INTERVAL_MS = 120_000L;
+    private static final int HEALTH_FAIL_STRIKES = 3;
     private static final long HEALTH_TIMEOUT_MS = 3_000L;
     private static final int MAX_RESTART_ATTEMPTS = 5;
     private static final long PROCESS_TERMINATE_GRACE_MS = 5_000L;
@@ -274,7 +287,12 @@ public class MiladyAgentService extends Service {
         File launch = new File(root, AGENT_LAUNCH_SCRIPT);
         if (launch.exists()) launch.setExecutable(true, false);
         for (String name : abiFiles) {
-            if (name.startsWith("ld-musl-") && name.endsWith(".so.1")) {
+            // The musl loader (`ld-musl-<arch>.so.1`) needs +x. With the
+            // SIGSYS-shim wrapper installed (x86_64 only) the original
+            // Alpine loader is shipped as `ld-musl-<arch>.so.1.real` and
+            // ALSO needs +x because loader-wrap execve()s it directly.
+            if (name.startsWith("ld-musl-")
+                && (name.endsWith(".so.1") || name.endsWith(".so.1.real"))) {
                 File loader = new File(abiDir, name);
                 if (loader.exists()) loader.setExecutable(true, false);
             }
@@ -580,6 +598,14 @@ public class MiladyAgentService extends Service {
             agentEnv.put("BUN_FEATURE_FLAG_DISABLE_RWF_NONBLOCK", "1");
             agentEnv.put("BUN_FEATURE_FLAG_DISABLE_SPAWNSYNC_FAST_PATH", "1");
 
+            // Default to info-level logging so plugin resolution + listen
+            // progress is visible in agent.log. The runtime defaults to
+            // `error` which leaves boot hangs invisible. Operators can
+            // override by setting LOG_LEVEL in the parent service env.
+            if (!env.containsKey("LOG_LEVEL")) {
+                agentEnv.put("LOG_LEVEL", "info");
+            }
+
             env.putAll(agentEnv);
 
             Process started;
@@ -807,7 +833,7 @@ public class MiladyAgentService extends Service {
                 } else {
                     unhealthyTicks++;
                     Log.w(TAG, "Agent health probe failed (" + unhealthyTicks + " consecutive).");
-                    if (unhealthyTicks >= 2) {
+                    if (unhealthyTicks >= HEALTH_FAIL_STRIKES) {
                         unhealthyTicks = 0;
                         Log.w(TAG, "Agent unresponsive — force-restarting.");
                         stopAgentProcess();
