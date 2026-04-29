@@ -195,7 +195,7 @@ log "Running repository postinstall"
 if [[ -f scripts/setup-upstreams.mjs ]]; then
   SKIP_AVATAR_CLONE=1 ELIZA_NO_VISION_DEPS=1 node "$APP_CORE_SCRIPTS_DIR/run-repo-setup.mjs"
 else
-  SKIP_AVATAR_CLONE=1 ELIZA_NO_VISION_DEPS=1 bun run postinstall
+  node scripts/patch-nested-core-dist.mjs || true
   node "$APP_CORE_SCRIPTS_DIR/ensure-shared-i18n-data.mjs"
   node "$APP_CORE_SCRIPTS_DIR/patch-deps.mjs" || true
   node "$APP_CORE_SCRIPTS_DIR/ensure-type-package-aliases.mjs" || true
