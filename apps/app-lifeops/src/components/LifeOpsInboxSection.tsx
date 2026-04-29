@@ -324,7 +324,9 @@ function MailWorkflowButton({
   );
 }
 
-function summarizeNeedsResponseFeed(feed: LifeOpsGmailNeedsResponseFeed): string {
+function summarizeNeedsResponseFeed(
+  feed: LifeOpsGmailNeedsResponseFeed,
+): string {
   return `${feed.summary.totalCount} thread${
     feed.summary.totalCount === 1 ? "" : "s"
   } need response`;
@@ -1264,19 +1266,17 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
           </button>
         ) : null}
         {isMailMode
-          ? ([
-              "needs_response",
-              "unresponded",
-              "spam_review",
-            ] as const).map((kind) => (
-              <MailWorkflowButton
-                key={kind}
-                kind={kind}
-                active={mailWorkflow.kind === kind}
-                loading={mailWorkflow.kind === kind && mailWorkflow.loading}
-                onClick={(nextKind) => void runMailWorkflow(nextKind)}
-              />
-            ))
+          ? (["needs_response", "unresponded", "spam_review"] as const).map(
+              (kind) => (
+                <MailWorkflowButton
+                  key={kind}
+                  kind={kind}
+                  active={mailWorkflow.kind === kind}
+                  loading={mailWorkflow.kind === kind && mailWorkflow.loading}
+                  onClick={(nextKind) => void runMailWorkflow(nextKind)}
+                />
+              ),
+            )
           : null}
       </div>
 

@@ -167,7 +167,9 @@ describe("fetchGoogleGmailUnrespondedThreads", () => {
         );
       }
       if (parsed.pathname.includes("/threads/")) {
-        const threadId = decodeURIComponent(parsed.pathname.split("/").pop() ?? "");
+        const threadId = decodeURIComponent(
+          parsed.pathname.split("/").pop() ?? "",
+        );
         return new Response(
           JSON.stringify({
             id: threadId,
@@ -179,7 +181,11 @@ describe("fetchGoogleGmailUnrespondedThreads", () => {
       const id = parsed.pathname.split("/").pop() ?? "unknown";
       return new Response(
         JSON.stringify(
-          sentMetadata(id, threadForId.get(id) ?? `thread-${id}`, Number(id.slice(1))),
+          sentMetadata(
+            id,
+            threadForId.get(id) ?? `thread-${id}`,
+            Number(id.slice(1)),
+          ),
         ),
         { status: 200 },
       );

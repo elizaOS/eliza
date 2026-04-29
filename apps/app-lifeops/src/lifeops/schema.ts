@@ -585,10 +585,7 @@ export const lifeInboxMessages = pgTable(
   },
   (t) => [
     unique().on(t.agentId, t.channel, t.externalId),
-    index("idx_life_inbox_messages_agent_received").on(
-      t.agentId,
-      t.receivedAt,
-    ),
+    index("idx_life_inbox_messages_agent_received").on(t.agentId, t.receivedAt),
     index("idx_life_inbox_messages_agent_channel").on(t.agentId, t.channel),
   ],
 );

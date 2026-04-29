@@ -9,8 +9,7 @@ import { MAX_GMAIL_TRIAGE_MAX_RESULTS } from "./service-constants.js";
 
 const GOOGLE_GMAIL_USER_ENDPOINT =
   "https://gmail.googleapis.com/gmail/v1/users/me";
-const GOOGLE_GMAIL_MESSAGES_ENDPOINT =
-  `${GOOGLE_GMAIL_USER_ENDPOINT}/messages`;
+const GOOGLE_GMAIL_MESSAGES_ENDPOINT = `${GOOGLE_GMAIL_USER_ENDPOINT}/messages`;
 const GOOGLE_GMAIL_THREADS_ENDPOINT = `${GOOGLE_GMAIL_USER_ENDPOINT}/threads`;
 
 const GMAIL_METADATA_HEADERS = [
@@ -88,27 +87,6 @@ export interface SyncedGoogleGmailUnrespondedThread
     "messageId" | "grantId" | "accountEmail"
   > {
   externalMessageId: string;
-}
-
-function readGoogleGmailErrorPrefix(status: number): string {
-  return `Google Gmail request failed with ${status}`;
-}
-
-async function readGoogleGmailError(response: Response): Promise<string> {
-  const text = await response.text();
-  if (!text) {
-    return readGoogleGmailErrorPrefix(response.status);
-  }
-  try {
-    const parsed = JSON.parse(text) as {
-      error?: {
-        message?: string;
-      };
-    };
-    return parsed.error?.message || text;
-  } catch {
-    return text;
-  }
 }
 
 function splitMailboxHeader(value: string): string[] {
@@ -540,11 +518,16 @@ export async function fetchGoogleGmailThread(args: {
   );
   const parsed = (await response.json()) as GoogleGmailThreadResponse;
   return (parsed.messages ?? [])
-    .map((message) => normalizeGoogleGmailMessage(message, args.selfEmail ?? null))
+    .map((message) =>
+      normalizeGoogleGmailMessage(message, args.selfEmail ?? null),
+    )
     .filter(
       (message): message is SyncedGoogleGmailMessageSummary => message !== null,
     )
-    .sort((left, right) => Date.parse(left.receivedAt) - Date.parse(right.receivedAt));
+    .sort(
+      (left, right) =>
+        Date.parse(left.receivedAt) - Date.parse(right.receivedAt),
+    );
 }
 
 export async function fetchGoogleGmailMessageDetail(args: {
@@ -599,7 +582,9 @@ async function mapWithConcurrency<T, TResult>(
       const index = cursor;
       cursor += 1;
       if (index >= items.length) return;
-      results[index] = await mapper(items[index]!);
+      const item = items[index];
+      if (item === undefined) return;
+      results[index] = await mapper(item);
     }
   });
   await Promise.all(workers);
@@ -705,20 +690,18 @@ async function fetchGoogleGmailMessages(args: {
     pageToken = nextPageToken;
   }
 
-  return messages
-    .slice(0, maxResults)
-    .sort((left, right) => {
-      if (left.isImportant !== right.isImportant) {
-        return right.isImportant ? 1 : -1;
-      }
-      if (left.likelyReplyNeeded !== right.likelyReplyNeeded) {
-        return right.likelyReplyNeeded ? 1 : -1;
-      }
-      if (left.isUnread !== right.isUnread) {
-        return right.isUnread ? 1 : -1;
-      }
-      return Date.parse(right.receivedAt) - Date.parse(left.receivedAt);
-    });
+  return messages.slice(0, maxResults).sort((left, right) => {
+    if (left.isImportant !== right.isImportant) {
+      return right.isImportant ? 1 : -1;
+    }
+    if (left.likelyReplyNeeded !== right.likelyReplyNeeded) {
+      return right.likelyReplyNeeded ? 1 : -1;
+    }
+    if (left.isUnread !== right.isUnread) {
+      return right.isUnread ? 1 : -1;
+    }
+    return Date.parse(right.receivedAt) - Date.parse(left.receivedAt);
+  });
 }
 
 function isGoogleGmailMessageFromSelf(
@@ -771,7 +754,10 @@ export async function fetchGoogleGmailUnrespondedThreads(args: {
       : 20;
   const now = args.now ?? new Date();
   const selfEmail = args.selfEmail?.trim().toLowerCase() || null;
-  const sentCandidateLimit = Math.min(Math.max(maxResults * 5, maxResults), 250);
+  const sentCandidateLimit = Math.min(
+    Math.max(maxResults * 5, maxResults),
+    250,
+  );
   const sentCandidates = await fetchGoogleGmailSearchMessages({
     accessToken: args.accessToken,
     selfEmail,

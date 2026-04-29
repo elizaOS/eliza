@@ -123,10 +123,10 @@ describe("fetchGmailMessages", () => {
 
     await fetchGmailMessages(source, { limit: 1200, grantId: "grant-1" });
 
-    expect(source.getGmailTriage).toHaveBeenCalledWith(
-      expect.any(URL),
-      { grantId: "grant-1", maxResults: 1200 },
-    );
+    expect(source.getGmailTriage).toHaveBeenCalledWith(expect.any(URL), {
+      grantId: "grant-1",
+      maxResults: 1200,
+    });
   });
 });
 

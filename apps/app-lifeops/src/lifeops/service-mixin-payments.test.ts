@@ -138,7 +138,9 @@ describe("getUpcomingBills", () => {
           label: "Email bills",
         },
       ],
-      listPaymentTransactions: async (): Promise<LifeOpsPaymentTransaction[]> => [
+      listPaymentTransactions: async (): Promise<
+        LifeOpsPaymentTransaction[]
+      > => [
         transaction("bill-1", {
           kind: "bill",
           dueDate: null,
