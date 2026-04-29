@@ -502,6 +502,42 @@ function appendMissingGradleDependency(content, notation) {
   );
 }
 
+/**
+ * Inject `buildFeatures { buildConfig true }` and the `AOSP_BUILD`
+ * buildConfigField into the app-level build.gradle.
+ *
+ * Why: `MiladyAgentService` reads `BuildConfig.AOSP_BUILD` to decide whether
+ * to export `MILADY_LOCAL_LLAMA=1` to the spawned bun process (see
+ * eliza/packages/agent/src/runtime/aosp-llama-adapter.ts). AGP 8+ defaults
+ * `buildFeatures.buildConfig` to false, so without the flag flip the
+ * BuildConfig.java is never generated and the Java service refuses to
+ * compile. The boolean field defaults to false, so the Capacitor APK build
+ * keeps DeviceBridge inference; the AOSP build flow flips it to true via
+ * the `-PmiladyAospBuild=true` gradle property documented in
+ * scripts/miladyos/build-aosp.mjs and SETUP_AOSP.md.
+ */
+function injectBuildConfigAospField(content) {
+  let next = content;
+  if (!/\bbuildFeatures\s*\{/.test(next)) {
+    next = next.replace(
+      /android\s*\{/,
+      `android {\n    buildFeatures {\n        buildConfig true\n    }\n`,
+    );
+  } else if (!/buildConfig\s+true/.test(next)) {
+    next = next.replace(
+      /buildFeatures\s*\{/,
+      "buildFeatures {\n        buildConfig true",
+    );
+  }
+  if (!/buildConfigField\s+["']boolean["'],\s*["']AOSP_BUILD["']/.test(next)) {
+    next = next.replace(
+      /defaultConfig\s*\{/,
+      `defaultConfig {\n        buildConfigField "boolean", "AOSP_BUILD", "\${project.findProperty('miladyAospBuild') ?: 'false'}"\n`,
+    );
+  }
+  return next;
+}
+
 function patchCapacitorBarcodeScannerGradle() {
   const pkgRel = resolvePackagePath("@capacitor/barcode-scanner", androidDir);
   if (!pkgRel) return;
@@ -1424,6 +1460,7 @@ function patchAndroidGradle() {
       /getDefaultProguardFile\('proguard-android\.txt'\)/g,
       "getDefaultProguardFile('proguard-android-optimize.txt')",
     );
+    patched = injectBuildConfigAospField(patched);
     if (patched !== current) {
       fs.writeFileSync(appGradlePath, patched, "utf8");
       console.log(
@@ -1554,17 +1591,23 @@ async function buildAndroid() {
     ]),
   };
 
-  await run(
-    "./gradlew",
-    [
-      ":elizaos-capacitor-websiteblocker:testDebugUnitTest",
-      ":app:assembleDebug",
-    ],
-    {
-      cwd: androidDir,
-      env,
-    },
-  );
+  // Mirror the AOSP gradle property forwarding from buildAndroidSystem so
+  // a developer iterating with `bun run build:android` under MILADY_AOSP_BUILD=1
+  // gets BuildConfig.AOSP_BUILD=true in the debug APK as well.
+  const gradleArgs = [
+    ":elizaos-capacitor-websiteblocker:testDebugUnitTest",
+    ":app:assembleDebug",
+  ];
+  if (
+    process.env.MILADY_GRADLE_AOSP_BUILD === "true" ||
+    process.env.MILADY_GRADLE_AOSP_BUILD === "1"
+  ) {
+    gradleArgs.unshift("-PmiladyAospBuild=true");
+  }
+  await run("./gradlew", gradleArgs, {
+    cwd: androidDir,
+    env,
+  });
 }
 
 function findAndroidSystemApk() {
@@ -1639,7 +1682,18 @@ async function buildAndroidSystem() {
     ]),
   };
 
-  await run("./gradlew", [":app:assembleRelease"], {
+  // AOSP product builds set MILADY_GRADLE_AOSP_BUILD=true upstream so
+  // gradle bakes BuildConfig.AOSP_BUILD=true into the privileged APK.
+  // The Capacitor APK path leaves it false; both share the same gradle
+  // because the apps/app/android/ tree is regenerated each run.
+  const gradleArgs = [":app:assembleRelease"];
+  if (
+    process.env.MILADY_GRADLE_AOSP_BUILD === "true" ||
+    process.env.MILADY_GRADLE_AOSP_BUILD === "1"
+  ) {
+    gradleArgs.unshift("-PmiladyAospBuild=true");
+  }
+  await run("./gradlew", gradleArgs, {
     cwd: androidDir,
     env,
   });
