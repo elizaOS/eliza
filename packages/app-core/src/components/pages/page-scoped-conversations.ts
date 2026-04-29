@@ -29,13 +29,71 @@ export const PAGE_SCOPES: readonly PageScope[] = [
   "page-wallet",
 ] as const;
 
+const PAGE_SCOPE_ROUTING_CONTEXTS: Record<
+  PageScope,
+  { primaryContext: string; secondaryContexts: string[] }
+> = {
+  "page-browser": {
+    primaryContext: "browser",
+    secondaryContexts: ["page", "page-browser", "browser", "knowledge"],
+  },
+  "page-character": {
+    primaryContext: "character",
+    secondaryContexts: [
+      "page",
+      "page-character",
+      "character",
+      "knowledge",
+      "social",
+    ],
+  },
+  "page-automations": {
+    primaryContext: "automation",
+    secondaryContexts: ["page", "page-automations", "automation"],
+  },
+  "page-apps": {
+    primaryContext: "apps",
+    secondaryContexts: ["page", "page-apps", "apps"],
+  },
+  "page-connectors": {
+    primaryContext: "connectors",
+    secondaryContexts: ["page", "page-connectors", "connectors", "social"],
+  },
+  "page-phone": {
+    primaryContext: "phone",
+    secondaryContexts: ["page", "page-phone", "phone", "social"],
+  },
+  "page-plugins": {
+    primaryContext: "plugins",
+    secondaryContexts: ["page", "page-plugins", "plugins", "system"],
+  },
+  "page-lifeops": {
+    primaryContext: "lifeops",
+    secondaryContexts: [
+      "page",
+      "page-lifeops",
+      "lifeops",
+      "automation",
+      "social",
+    ],
+  },
+  "page-settings": {
+    primaryContext: "settings",
+    secondaryContexts: ["page", "page-settings", "settings", "system"],
+  },
+  "page-wallet": {
+    primaryContext: "wallet",
+    secondaryContexts: ["page", "page-wallet", "wallet"],
+  },
+};
+
 /**
  * Bump when the per-scope brief, intro copy, or live-state shape changes
  * meaningfully — so a future MIPRO/GEPA optimization pass can filter to a
  * single prompt-regime cohort instead of mixing trajectories generated under
  * different surface contracts.
  */
-export const PAGE_SCOPE_VERSION = 12;
+export const PAGE_SCOPE_VERSION = 13;
 
 export interface PageScopeIntroCopy {
   /** Short user-facing intro card title shown when the conversation is empty. */
@@ -201,10 +259,11 @@ export function buildPageScopedRoutingMetadata(
   scope: PageScope,
   options: { sourceConversationId?: string; pageId?: string } = {},
 ): Record<string, unknown> {
+  const routing = PAGE_SCOPE_ROUTING_CONTEXTS[scope];
   const metadata: Record<string, unknown> = {
     __responseContext: {
-      primaryContext: "page",
-      secondaryContexts: ["page", scope],
+      primaryContext: routing.primaryContext,
+      secondaryContexts: routing.secondaryContexts,
     },
     taskId: scope,
     surface: "page-scoped",
