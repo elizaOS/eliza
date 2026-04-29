@@ -523,6 +523,37 @@ function dayBoundsMs(date: string): { startMs: number; endMs: number } {
   return { startMs: start, endMs: start + 24 * 60 * 60 * 1000 };
 }
 
+function enumerateGoogleFitDates(startAt: string, endAt: string): string[] {
+  const start = new Date(startAt);
+  const end = new Date(endAt);
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
+    throw new HealthBridgeError(
+      "Invalid time window for Google Fit data points",
+      "google-fit",
+    );
+  }
+  if (endMs < startMs) {
+    return [];
+  }
+
+  const dates: string[] = [];
+  const cursor = new Date(
+    Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()),
+  );
+  const endCursorMs = Date.UTC(
+    end.getUTCFullYear(),
+    end.getUTCMonth(),
+    end.getUTCDate(),
+  );
+  while (cursor.getTime() <= endCursorMs) {
+    dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return dates;
+}
+
 async function googleFitDailySummary(
   date: string,
   accessToken: string,
@@ -602,9 +633,22 @@ async function googleFitDataPoints(
   accessToken: string,
 ): Promise<HealthDataPoint[]> {
   if (opts.metric === "sleep_hours") {
-    // Sleep is expressed as segments, not point values — out of scope for this
-    // direct data-point helper. Prefer `getDailySummary` for sleep.
-    return [];
+    const points: HealthDataPoint[] = [];
+    for (const date of enumerateGoogleFitDates(opts.startAt, opts.endAt)) {
+      const summary = await googleFitDailySummary(date, accessToken);
+      if (summary.sleepHours <= 0) {
+        continue;
+      }
+      points.push({
+        metric: "sleep_hours",
+        value: summary.sleepHours,
+        unit: "hours",
+        startAt: `${date}T00:00:00.000Z`,
+        endAt: `${date}T23:59:59.999Z`,
+        source: "google-fit",
+      });
+    }
+    return points;
   }
   const keyMap: Record<Exclude<HealthDataPoint["metric"], "sleep_hours">, GoogleFitMetricKey> = {
     steps: "steps",
