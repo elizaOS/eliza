@@ -75,10 +75,7 @@ export function ProvidersList() {
                   className={`inline-flex h-2 w-2 rounded-full ${dot}`}
                   aria-hidden
                 />
-                <Icon
-                  className="h-3.5 w-3.5 shrink-0 text-muted"
-                  aria-hidden
-                />
+                <Icon className="h-3.5 w-3.5 shrink-0 text-muted" aria-hidden />
                 <span className="font-medium truncate">{p.label}</span>
                 <span className="sr-only">{label}</span>
               </div>

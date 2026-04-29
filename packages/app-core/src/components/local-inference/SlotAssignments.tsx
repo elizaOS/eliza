@@ -20,8 +20,7 @@ const SLOTS: Array<{
   {
     slot: "TEXT_SMALL",
     label: "Small text",
-    description:
-      "Short completions, classifications, and background requests.",
+    description: "Short completions, classifications, and background requests.",
   },
   {
     slot: "TEXT_LARGE",
@@ -31,7 +30,8 @@ const SLOTS: Array<{
   {
     slot: "TEXT_EMBEDDING",
     label: "Embeddings",
-    description: "Vector search and memory when a local embedding handler exists.",
+    description:
+      "Vector search and memory when a local embedding handler exists.",
   },
   {
     slot: "OBJECT_SMALL",
