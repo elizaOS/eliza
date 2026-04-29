@@ -54,7 +54,9 @@ vi.mock("../../onboarding/mobile-runtime-mode", () => ({
   persistMobileRuntimeModeForServerTarget: vi.fn(),
   readPersistedMobileRuntimeMode: vi.fn(() => null),
   MOBILE_RUNTIME_MODE_STORAGE_KEY: "eliza:mobile-runtime-mode",
-  normalizeMobileRuntimeMode: vi.fn((v: unknown) => (typeof v === "string" ? v : null)),
+  normalizeMobileRuntimeMode: vi.fn((v: unknown) =>
+    typeof v === "string" ? v : null,
+  ),
 }));
 
 vi.mock("../../onboarding/probe-local-agent", () => ({

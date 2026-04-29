@@ -1,5 +1,5 @@
 {
-  "id": "polymarket",
+  "id": "app-polymarket",
   "name": "Polymarket",
   "description": "Native Polymarket market discovery and trading readiness for prediction markets.",
   "npmName": "@elizaos/app-polymarket",

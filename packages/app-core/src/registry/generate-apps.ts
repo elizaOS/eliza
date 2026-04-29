@@ -231,7 +231,7 @@ const CURATED_APPS: CuratedDef[] = [
     },
   },
   {
-    id: "polymarket",
+    id: "app-polymarket",
     npmName: "@elizaos/app-polymarket",
     displayName: "Polymarket",
     description:
