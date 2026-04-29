@@ -4,8 +4,8 @@ import type {
   LifeOpsActiveReminderView,
   LifeOpsCadence,
   LifeOpsDefinitionRecord,
-  LifeOpsReminderChannel,
   LifeOpsTaskDefinition,
+  LifeOpsWindowPolicy,
   SnoozeLifeOpsOccurrenceRequest,
 } from "@elizaos/shared";
 import {
@@ -88,6 +88,7 @@ const BUCKET_ORDER: UrgencyKey[] = ["overdue", "soon", "today", "later"];
 // in `node:child_process` so we cannot import it from a browser bundle.
 // Keep this constant in sync with apple-reminders.ts.
 const NATIVE_APPLE_REMINDER_METADATA_KEY = "nativeAppleReminder";
+const LIFEOPS_ALARM_METADATA_KEY = "lifeOpsAlarm";
 
 interface NativeAppleReminderMetadataView {
   kind: "alarm" | "reminder";
@@ -106,18 +107,6 @@ const WEEKDAY_LABELS: ReadonlyArray<{
   { key: 5, short: "F", long: "Friday" },
   { key: 6, short: "S", long: "Saturday" },
   { key: 0, short: "S", long: "Sunday" },
-];
-
-const SUPPORTED_CHANNEL_OPTIONS: ReadonlyArray<{
-  value: LifeOpsReminderChannel | "default";
-  label: string;
-}> = [
-  { value: "default", label: "Use default" },
-  { value: "push", label: "Force push" },
-  { value: "sms", label: "Force SMS" },
-  { value: "email", label: "Force email" },
-  { value: "telegram", label: "Force Telegram" },
-  { value: "imessage", label: "Force iMessage" },
 ];
 
 interface SnoozeOption {
@@ -312,43 +301,70 @@ function describeRecurrence(
   }
 }
 
-function pickAlarmCadence(
+interface AlarmScheduleDraft {
+  cadence: LifeOpsCadence;
+  windowPolicy?: LifeOpsWindowPolicy;
+  nativeAppleSyncEligible: boolean;
+}
+
+function sortedWeekdays(weekdays: ReadonlySet<number>): number[] {
+  return Array.from(weekdays).sort((a, b) => a - b);
+}
+
+function buildAlarmScheduleDraft(
   hour: number,
   minute: number,
   weekdays: ReadonlySet<number>,
   timezone: string,
-): LifeOpsCadence {
+): AlarmScheduleDraft {
   const minuteOfDay = hour * 60 + minute;
   if (weekdays.size === 0) {
-    // Single-fire: schedule next occurrence of HH:MM (today if still in the
-    // future, otherwise tomorrow).
     const now = new Date();
     const candidate = new Date(now);
     candidate.setHours(hour, minute, 0, 0);
     if (candidate.getTime() <= now.getTime()) {
       candidate.setDate(candidate.getDate() + 1);
     }
-    return { kind: "once", dueAt: candidate.toISOString() };
+    return {
+      cadence: { kind: "once", dueAt: candidate.toISOString() },
+      nativeAppleSyncEligible: true,
+    };
   }
   if (weekdays.size === 7) {
     return {
-      kind: "times_per_day",
-      slots: [
-        {
-          key: "alarm",
-          label: "Alarm",
-          minuteOfDay,
-          durationMinutes: 1,
-        },
-      ],
+      cadence: {
+        kind: "times_per_day",
+        slots: [
+          {
+            key: "alarm",
+            label: "Alarm",
+            minuteOfDay,
+            durationMinutes: 1,
+          },
+        ],
+      },
+      nativeAppleSyncEligible: false,
     };
   }
+  const customWindow: LifeOpsWindowPolicy["windows"][number] = {
+    name: "custom",
+    label: "Alarm",
+    startMinute: minuteOfDay,
+    endMinute: minuteOfDay + 1,
+  };
   return {
-    kind: "weekly",
-    weekdays: Array.from(weekdays).sort((a, b) => a - b),
-    windows: [],
-    visibilityLeadMinutes: 0,
-    visibilityLagMinutes: 0,
+    cadence: {
+      kind: "weekly",
+      weekdays: sortedWeekdays(weekdays),
+      windows: [customWindow.name],
+      visibilityLeadMinutes: 0,
+      visibilityLagMinutes: 0,
+    },
+    windowPolicy: {
+      timezone,
+      windows: [customWindow],
+    },
+    nativeAppleSyncEligible: false,
   };
 }
 
@@ -501,60 +517,16 @@ function CompleteButton({
 }
 
 // ---------------------------------------------------------------------------
-// Channel override popover
+// Delivery channel label
 // ---------------------------------------------------------------------------
 
-function ChannelOverridePopover({ channel }: { channel: string }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (event: MouseEvent) => {
-      if (!ref.current) return;
-      if (!ref.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [open]);
-
+function DeliveryChannelLabel({ channel }: { channel: string }) {
   return (
-    <span ref={ref} className="relative inline-flex">
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          setOpen((prev) => !prev);
-        }}
-        className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium text-muted/80 hover:bg-bg-muted/50 hover:text-txt"
-        aria-label={`Change delivery channel (currently ${channelLabel(channel)})`}
-        aria-expanded={open}
-      >
-        via {channelLabel(channel)}
-      </button>
-      {open ? (
-        <div
-          role="menu"
-          className="absolute left-0 top-full z-20 mt-1 w-44 overflow-hidden rounded-lg border border-border/20 bg-card shadow-lg"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {SUPPORTED_CHANNEL_OPTIONS.map((option) => (
-            <div
-              key={option.value}
-              role="menuitem"
-              className="px-3 py-1.5 text-[11px] text-muted opacity-60"
-              title="Channel override API not yet wired — Coming soon"
-            >
-              {option.label}
-            </div>
-          ))}
-          <div className="border-t border-border/12 px-3 py-1.5 text-[10px] text-muted/70">
-            Coming soon
-          </div>
-        </div>
-      ) : null}
+    <span
+      className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium text-muted/80"
+      title={`Delivery channel: ${channelLabel(channel)}`}
+    >
+      via {channelLabel(channel)}
     </span>
   );
 }
@@ -649,7 +621,7 @@ function ReminderRow({
                 <span className="text-muted/70">· {reminder.stepLabel}</span>
               ) : null}
               <span className="text-muted/70">·</span>
-              <ChannelOverridePopover channel={reminder.channel} />
+              <DeliveryChannelLabel channel={reminder.channel} />
             </span>
           </span>
           <span
@@ -692,21 +664,21 @@ function SourceBadge({
 }: {
   apple: NativeAppleReminderMetadataView | null;
 }) {
-  if (apple) {
+  if (apple?.reminderId) {
     return (
       <span
         className="inline-flex items-center gap-0.5 rounded-full bg-rose-500/15 px-1.5 py-0 text-[10px] font-medium text-rose-200"
-        title="Mirrored to your Apple Reminders app via the native macOS integration."
+        title="Synced to Reminders.app on macOS."
       >
         <Apple className="h-2.5 w-2.5" aria-hidden />
-        Apple Reminders
+        Reminders.app
       </span>
     );
   }
   return (
     <span
       className="inline-flex items-center gap-0.5 rounded-full bg-bg-muted/40 px-1.5 py-0 text-[10px] font-medium text-muted"
-      title="Delivered in-app by Eliza only — not mirrored to a native reminder service."
+      title="Delivered by LifeOps in-app reminders."
     >
       In-app
     </span>
@@ -739,7 +711,16 @@ interface AlarmEntry {
   reminder: LifeOpsActiveReminderView | null;
   recurrence: string;
   nextFireIso: string | null;
-  apple: NativeAppleReminderMetadataView;
+  apple: NativeAppleReminderMetadataView | null;
+}
+
+function isAlarmDefinition(definition: LifeOpsTaskDefinition): boolean {
+  const nativeApple = readNativeAppleMetadata(definition.metadata);
+  return (
+    nativeApple?.kind === "alarm" ||
+    definition.metadata[LIFEOPS_ALARM_METADATA_KEY] === true ||
+    definition.source === "lifeops_ui_alarm"
+  );
 }
 
 function buildAlarmEntries(
@@ -755,7 +736,7 @@ function buildAlarmEntries(
   const entries: AlarmEntry[] = [];
   for (const record of definitions) {
     const apple = readNativeAppleMetadata(record.definition.metadata);
-    if (!apple || apple.kind !== "alarm") continue;
+    if (!isAlarmDefinition(record.definition)) continue;
     if (record.definition.status === "archived") continue;
     const reminder = remindersByDefId.get(record.definition.id) ?? null;
     const recurrence = describeRecurrence(record.definition.cadence) ?? "Once";
@@ -801,12 +782,18 @@ function computeNextFireIso(
   if (cadence.kind === "weekly") {
     const weekdays = cadence.weekdays ?? [];
     if (weekdays.length === 0) return null;
-    // We don't know the time-of-day in the weekly cadence; fall back to now+1d.
+    const windowNames = new Set(cadence.windows ?? []);
+    const startMinute =
+      definition.windowPolicy.windows
+        .filter((window) => windowNames.has(window.name))
+        .sort((a, b) => a.startMinute - b.startMinute)[0]?.startMinute ?? 0;
     const candidate = new Date(now);
     for (let offset = 0; offset < 8; offset += 1) {
       const probe = new Date(candidate);
       probe.setDate(candidate.getDate() + offset);
-      if (weekdays.includes(probe.getDay())) {
+      probe.setHours(0, 0, 0, 0);
+      probe.setMinutes(startMinute);
+      if (weekdays.includes(probe.getDay()) && probe.getTime() > now.getTime()) {
         return probe.toISOString();
       }
     }
@@ -1257,7 +1244,7 @@ export function LifeOpsRemindersSection() {
       setError(null);
       try {
         const timezone = defaultTimezone();
-        const cadence = pickAlarmCadence(
+        const schedule = buildAlarmScheduleDraft(
           input.hour,
           input.minute,
           input.weekdays,
@@ -1274,20 +1261,26 @@ export function LifeOpsRemindersSection() {
           originalIntent: title,
           timezone,
           priority: 1,
-          cadence,
+          cadence: schedule.cadence,
+          ...(schedule.windowPolicy ? { windowPolicy: schedule.windowPolicy } : {}),
           source: "lifeops_ui_alarm",
           metadata: {
-            [NATIVE_APPLE_REMINDER_METADATA_KEY]: {
-              kind: "alarm",
-              provider: "apple_reminders",
-              reminderId: null,
-              source: "heuristic",
-            },
+            [LIFEOPS_ALARM_METADATA_KEY]: true,
+            ...(schedule.nativeAppleSyncEligible
+              ? {
+                  [NATIVE_APPLE_REMINDER_METADATA_KEY]: {
+                    kind: "alarm",
+                    provider: "apple_reminders",
+                    reminderId: null,
+                    source: "heuristic",
+                  },
+                }
+              : {}),
           },
           reminderPlan: {
             steps: [
               {
-                channel: "push",
+                channel: "in_app",
                 offsetMinutes: 0,
                 label: "Alarm",
               },
@@ -1592,7 +1585,7 @@ function AlarmsTabBody({
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-[11px] text-muted">
-          Clock-time alarms. Mirrored to your native Apple Reminders on macOS.
+          Clock-time LifeOps alerts. One-time alarms sync to Reminders.app on macOS after native sync succeeds.
         </p>
         <button
           type="button"

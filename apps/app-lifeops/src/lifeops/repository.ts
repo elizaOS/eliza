@@ -127,6 +127,13 @@ function deriveConnectorIdentityEmail(
   );
 }
 
+function requireScopedGmailGrantId(grantId: string | null | undefined): string {
+  if (typeof grantId !== "string" || grantId.trim().length === 0) {
+    throw new Error("Gmail message persistence requires grantId.");
+  }
+  return grantId.trim();
+}
+
 export interface LifeOpsWebsiteAccessGrant {
   id: string;
   agentId: string;
@@ -478,6 +485,7 @@ function parseConnectorGrant(
     provider: toText(row.provider) as LifeOpsConnectorGrant["provider"],
     side: toText(row.side, "owner") as LifeOpsConnectorGrant["side"],
     identity,
+    identityEmail: row.identity_email ? toText(row.identity_email) : null,
     grantedScopes: parseJsonArray(row.granted_scopes_json),
     capabilities: parseJsonArray(row.capabilities_json),
     tokenRef: row.token_ref ? toText(row.token_ref) : null,
@@ -820,6 +828,7 @@ function parseGmailMessageSummary(
     agentId: toText(row.agent_id),
     provider: "google",
     side: toText(row.side, "owner") as LifeOpsGmailMessageSummary["side"],
+    grantId: row.grant_id ? toText(row.grant_id) : undefined,
     threadId: toText(row.thread_id),
     subject: toText(row.subject),
     from: toText(row.from_display),

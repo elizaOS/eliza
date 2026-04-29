@@ -131,7 +131,6 @@ export const LIFEOPS_MESSAGE_CHANNELS: LifeOpsInboxChannel[] =
   LIFEOPS_INBOX_CHANNELS.filter((channel) => channel !== "gmail");
 export const LIFEOPS_MAIL_CHANNELS: LifeOpsInboxChannel[] = ["gmail"];
 
-const SMALL_GROUP_PARTICIPANT_CAP = 15;
 const IMPORTANT_PRIORITY_SCORE_THRESHOLD = 70;
 const MISSED_REPLY_GAP_MS = 24 * 60 * 60 * 1000;
 const MISSED_MIN_PRIORITY = 50;
@@ -863,7 +862,7 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
 
   // Derive the section mode from the channel set passed in by the route.
   // Mail mode is gmail-only; everything else is the Messages section, which
-  // hides public channels and groups with more than 15 participants.
+  // is intentionally direct-message only.
   const isMailMode =
     allowedChannels.length === 1 && allowedChannels[0] === "gmail";
   const isMessagesMode = !isMailMode;
@@ -883,7 +882,7 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
   const chatTypeFilter = useMemo<ReadonlyArray<InboxChatType> | undefined>(
     () =>
       isMessagesMode
-        ? (["dm", "group"] as const)
+        ? (["dm"] as const)
         : isMailMode
           ? (["dm"] as const)
           : undefined,
@@ -896,7 +895,7 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
     channels: allowedChannels,
     groupByThread: true,
     chatTypeFilter,
-    maxParticipants: isMessagesMode ? SMALL_GROUP_PARTICIPANT_CAP : undefined,
+    maxParticipants: undefined,
     gmailAccountId:
       isMailMode && selectedGmailAccount !== ALL_GMAIL_ACCOUNTS
         ? selectedGmailAccount
