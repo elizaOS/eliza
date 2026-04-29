@@ -67,42 +67,51 @@ jobs:
       # the daemon and unlock it as separate invocations.
       - name: Install Secret Service (Linux)
         if: matrix.os == 'ubuntu-latest'
+        # Run with explicit `bash` (no `-e`) so a non-zero exit from any
+        # one diagnostic command doesn't silently kill the whole step
+        # before the daemon actually starts. The final test step does
+        # the real validation: if libsecret can't reach the keyring
+        # there, the vault test will fail with a clear error.
+        shell: bash {0}
         run: |
-          sudo apt-get update
+          set -x
+          sudo apt-get update -y || true
           sudo apt-get install -y libsecret-1-dev gnome-keyring dbus-x11
-          # Pre-create the keyring runtime directory. gnome-keyring-daemon
-          # writes its control socket to $XDG_RUNTIME_DIR/keyring/control;
-          # it errors out with "couldn't access control socket" when the
-          # parent doesn't exist, which is the case on default GitHub
-          # runners.
-          uid="$(id -u)"
-          if [ ! -d "/run/user/$uid" ]; then
-            sudo install -d -m 0700 -o "$uid" -g "$(id -g)" "/run/user/$uid"
-          fi
-          mkdir -p "/run/user/$uid/keyring"
-          chmod 700 "/run/user/$uid/keyring"
-          export XDG_RUNTIME_DIR="/run/user/$uid"
-          echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR" >> "$GITHUB_ENV"
+          # Pre-create a runtime directory we know we can own + write
+          # to. /run/user/$UID is sometimes pre-created by the runner
+          # owned by root, making mkdir of subdirs fail; using
+          # $RUNNER_TEMP/runtime sidesteps that entirely. libsecret +
+          # gnome-keyring-daemon both honour XDG_RUNTIME_DIR.
+          runtime_dir="${RUNNER_TEMP:-/tmp}/keyring-runtime"
+          mkdir -p "$runtime_dir/keyring"
+          chmod 700 "$runtime_dir" "$runtime_dir/keyring"
+          export XDG_RUNTIME_DIR="$runtime_dir"
+          echo "XDG_RUNTIME_DIR=$runtime_dir" >> "$GITHUB_ENV"
           # Launch a session DBus.
-          eval "$(dbus-launch --sh-syntax)"
-          {
-            echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS"
-            echo "DBUS_SESSION_BUS_PID=$DBUS_SESSION_BUS_PID"
-          } >> "$GITHUB_ENV"
+          eval "$(dbus-launch --sh-syntax)" || true
+          if [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+            {
+              echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS"
+              echo "DBUS_SESSION_BUS_PID=$DBUS_SESSION_BUS_PID"
+            } >> "$GITHUB_ENV"
+          fi
           # Start the daemon. Forks into background and prints env vars
-          # (GNOME_KEYRING_CONTROL, SSH_AUTH_SOCK, etc.) on stdout in
-          # `KEY=VAL` form. Drop stderr (the "discover_other_daemon"
-          # warning is harmless when no other daemon is running).
-          daemon_env="$(printf '\n' | gnome-keyring-daemon --start --components=secrets 2>/dev/null || true)"
+          # (GNOME_KEYRING_CONTROL, SSH_AUTH_SOCK, etc.) on stdout.
+          # The daemon may exit 1 if it can't bind to the control socket;
+          # tolerate that and let the actual test catch a real issue.
+          daemon_env="$(printf '\n' | gnome-keyring-daemon --start --components=secrets 2>&1 || true)"
+          echo "$daemon_env"
           echo "$daemon_env" | while IFS='=' read -r key value; do
-            [ -n "$key" ] && echo "${key}=${value}" >> "$GITHUB_ENV"
+            case "$key" in
+              GNOME_KEYRING_CONTROL|SSH_AUTH_SOCK)
+                echo "${key}=${value}" >> "$GITHUB_ENV"
+                ;;
+            esac
           done
-          # Unlock the default keyring with an empty password so
-          # @napi-rs/keyring writes don't block on a prompt. Tolerate
-          # exit-1 here: on a brand-new keyring there's nothing to
-          # unlock, and the libsecret call from the test will create
-          # one on demand.
-          printf '\n' | gnome-keyring-daemon --unlock --components=secrets 2>/dev/null || true
+          # Unlock the default keyring with an empty password.
+          printf '\n' | gnome-keyring-daemon --unlock --components=secrets 2>&1 || true
+          # Always exit 0 — the test step is the source of truth.
+          exit 0
 
       - name: Install dependencies
         working-directory: packages/vault
