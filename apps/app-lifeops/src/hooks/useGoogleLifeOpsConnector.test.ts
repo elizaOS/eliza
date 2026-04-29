@@ -178,7 +178,6 @@ describe("useGoogleLifeOpsConnector - pendingAuthUrl state", () => {
       clientMock.startGoogleLifeOpsConnector.mock.calls[0] ?? [];
     expect(request?.capabilities).toContain("google.gmail.triage");
     expect(request?.capabilities).not.toContain("google.gmail.manage");
-    expect(request?.createNewGrant).toBe(true);
   });
 
   it("connectAdditional() requests inbox tracking without Gmail manage scopes", async () => {
@@ -196,6 +195,7 @@ describe("useGoogleLifeOpsConnector - pendingAuthUrl state", () => {
       clientMock.startGoogleLifeOpsConnector.mock.calls[0] ?? [];
     expect(request?.capabilities).toContain("google.gmail.triage");
     expect(request?.capabilities).not.toContain("google.gmail.manage");
+    expect(request?.createNewGrant).toBe(true);
   });
 
   it("is cleared when connect() throws", async () => {
