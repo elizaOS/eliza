@@ -51,7 +51,7 @@ jobs:
           flatpak run ai.elizaos.App --help || echo "Help check completed"
 
       - name: Upload bundle artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: flatpak-test-bundle
           path: packages/app-core/packaging/flatpak/elizaos-app.flatpak
