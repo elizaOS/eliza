@@ -351,7 +351,7 @@ declare module "@elizaos/app-core/api/client-base" {
       socialTopN?: number;
     }): Promise<LifeOpsScreenTimeHistoryResponse>;
     getLifeOpsSocialHabitSummary(
-      data: Omit<LifeOpsScreenTimeSummaryRequest, "source">,
+      data: Omit<LifeOpsScreenTimeSummaryRequest, "source" | "identifier">,
     ): Promise<LifeOpsSocialHabitSummary>;
     getLifeOpsSleepHistory(opts?: {
       windowDays?: number;
