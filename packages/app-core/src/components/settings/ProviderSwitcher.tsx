@@ -6,11 +6,13 @@ import {
 } from "@elizaos/shared";
 import {
   Button,
+  Checkbox,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
+  TooltipHint,
   useTimeout,
 } from "@elizaos/ui";
 import {
@@ -287,6 +289,9 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   const [modelSaveSuccess, setModelSaveSuccess] = useState(false);
   const [cloudCallsDisabled, setCloudCallsDisabled] = useState(false);
   const [routingModeSaving, setRoutingModeSaving] = useState(false);
+  // true = embeddings stay local (cloud embeddings route absent from config).
+  // Pre-checked when the loaded config has no embeddings service route.
+  const [localEmbeddings, setLocalEmbeddings] = useState(false);
 
   const [subscriptionStatus, setSubscriptionStatus] = useState<
     Array<{
@@ -330,6 +335,21 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     [],
   );
 
+  // Returns true when the cloud embeddings route is absent — meaning embeddings
+  // are kept local. Pre-checks the "Use local embeddings" toggle in Settings.
+  const readLocalEmbeddingsFromConfig = useCallback(
+    (cfg: Record<string, unknown>): boolean => {
+      const embeddings = resolveServiceRoutingInConfig(cfg)?.embeddings;
+      if (embeddings === undefined) return true;
+      // Cloud proxy route explicitly set → embeddings are going to the cloud.
+      return !(
+        embeddings.transport === "cloud-proxy" &&
+        embeddings.backend === "elizacloud"
+      );
+    },
+    [],
+  );
+
   const syncSelectionFromConfig = useCallback(
     (cfg: Record<string, unknown>) => {
       const llmText = resolveServiceRoutingInConfig(cfg)?.llmText;
@@ -348,8 +368,9 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         setSelectedProviderId(nextSelectedId);
       }
       setCloudCallsDisabled(readCloudCallsDisabled(cfg));
+      setLocalEmbeddings(readLocalEmbeddingsFromConfig(cfg));
     },
-    [readCloudCallsDisabled],
+    [readCloudCallsDisabled, readLocalEmbeddingsFromConfig],
   );
 
   const loadSubscriptionStatus = useCallback(async () => {
@@ -665,6 +686,22 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     resolvedSelectedId,
     restoreSelection,
   ]);
+
+  const handleToggleLocalEmbeddings = useCallback(
+    async (nextValue: boolean) => {
+      const previous = localEmbeddings;
+      setLocalEmbeddings(nextValue);
+      try {
+        await client.switchProvider("elizacloud", undefined, undefined, {
+          useLocalEmbeddings: nextValue,
+        });
+      } catch (err) {
+        setLocalEmbeddings(previous);
+        notifySelectionFailure("Failed to update embeddings preference", err);
+      }
+    },
+    [localEmbeddings, notifySelectionFailure],
+  );
 
   const isCloudSelected =
     resolvedSelectedId === "__cloud__" || resolvedSelectedId === null;
@@ -1013,6 +1050,14 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
               </Button>
             </ProviderPanelHeader>
             <CloudDashboard />
+            {!cloudCallsDisabled && isCloudSelected ? (
+              <div className="border-border/40 border-t px-4 py-3 sm:px-5">
+                <LocalEmbeddingsCheckbox
+                  checked={localEmbeddings}
+                  onCheckedChange={(v) => void handleToggleLocalEmbeddings(v)}
+                />
+              </div>
+            ) : null}
             {!cloudCallsDisabled &&
             isCloudSelected &&
             elizaCloudConnected &&
@@ -1203,6 +1248,45 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           </div>
         ) : null}
       </section>
+    </div>
+  );
+}
+
+const LOCAL_EMBEDDINGS_TOOLTIP =
+  "Embeddings are vector representations of your messages, used for memory and search. Keeping them local means your message text isn't sent to the cloud just to compute vectors. Chat still goes through the cloud.";
+
+function LocalEmbeddingsCheckbox({
+  checked,
+  onCheckedChange,
+}: {
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+}) {
+  return (
+    <div className="flex items-start gap-2.5 py-1">
+      <Checkbox
+        id="provider-switcher-local-embeddings"
+        checked={checked}
+        onCheckedChange={(value) => onCheckedChange(value === true)}
+        className="mt-0.5 shrink-0"
+        aria-label="Use local embeddings"
+      />
+      <div className="flex min-w-0 items-center gap-1.5">
+        <label
+          htmlFor="provider-switcher-local-embeddings"
+          className="cursor-pointer text-xs-tight text-txt select-none"
+        >
+          Use local embeddings
+        </label>
+        <TooltipHint content={LOCAL_EMBEDDINGS_TOOLTIP} side="top">
+          <span
+            className="inline-flex h-4 w-4 shrink-0 cursor-help items-center justify-center rounded-full border border-border/40 text-2xs text-muted hover:text-txt"
+            aria-hidden="true"
+          >
+            ?
+          </span>
+        </TooltipHint>
+      </div>
     </div>
   );
 }
