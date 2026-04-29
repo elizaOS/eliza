@@ -32,10 +32,6 @@ import {
   probeJsonRpcEndpoint,
   TxService,
 } from "@elizaos/app-steward/api/tx-service";
-import {
-  ensurePrivyWalletsForCustomUser,
-  isPrivyWalletProvisioningEnabled,
-} from "@elizaos/app-steward/services/privy-wallets";
 import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.js";
 // Phase 2 extraction: LifeOps routes → app-lifeops/src/routes/plugin.ts (lifeopsPlugin)
 // import { handleWalletTradeExecuteRoute } from "./wallet-trade-routes.js";
@@ -1993,10 +1989,6 @@ async function handleRequest(
         getGlobalAwarenessRegistry: coerce<
           AgentStatusRouteArg["deps"]["getGlobalAwarenessRegistry"]
         >(getGlobalAwarenessRegistry),
-        isPrivyWalletProvisioningEnabled,
-        ensurePrivyWalletsForCustomUser: coerce<
-          AgentStatusRouteArg["deps"]["ensurePrivyWalletsForCustomUser"]
-        >(ensurePrivyWalletsForCustomUser),
         RegistryService,
       },
     })
