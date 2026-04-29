@@ -1,7 +1,13 @@
+export { calendarAction } from "./actions/calendar.ts";
+export { gmailAction } from "./actions/gmail.ts";
+export { inboxAction } from "./actions/inbox.ts";
+export { getAppBlockerStatus } from "./app-blocker/engine.ts";
 export * from "./contracts/index.ts";
+export { detectHealthBackend } from "./lifeops/health-bridge.ts";
+export { detectPasswordManagerBackend } from "./lifeops/password-manager-bridge.ts";
+export { detectRemoteDesktopBackend } from "./lifeops/remote-desktop.ts";
 export { LifeOpsService, LifeOpsServiceError } from "./lifeops/service.ts";
 export * from "./platform/index.ts";
-export { getAppBlockerStatus } from "./app-blocker/engine.ts";
 export type {
   LifeOpsRouteContext,
   WebsiteBlockerRouteContext,
@@ -31,13 +37,7 @@ export {
   type CloudFeaturesRouteState,
   handleCloudFeaturesRoute,
 } from "./routes/cloud-features-routes.ts";
-export { calendarAction } from "./actions/calendar.ts";
-export { gmailAction } from "./actions/gmail.ts";
-export { inboxAction } from "./actions/inbox.ts";
 export { lifeopsPlugin } from "./routes/plugin.ts";
-export { detectHealthBackend } from "./lifeops/health-bridge.ts";
-export { detectPasswordManagerBackend } from "./lifeops/password-manager-bridge.ts";
-export { detectRemoteDesktopBackend } from "./lifeops/remote-desktop.ts";
 export {
   handleTravelProviderRelayRoute,
   type TravelProviderRelayRouteState,

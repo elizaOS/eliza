@@ -1,7 +1,3 @@
-import type {
-  CaptureLifeOpsActivitySignalRequest,
-  LifeOpsActivitySignal,
-} from "../contracts/index.js";
 import { Capacitor } from "@capacitor/core";
 import {
   APP_PAUSE_EVENT,
@@ -18,6 +14,10 @@ import {
   type MobileSignalsSnapshot,
 } from "@elizaos/capacitor-mobile-signals";
 import { useEffect, useRef } from "react";
+import type {
+  CaptureLifeOpsActivitySignalRequest,
+  LifeOpsActivitySignal,
+} from "../contracts/index.js";
 import { dispatchLifeOpsActivitySignalsStatus } from "../events/index.js";
 
 const APP_SIGNAL_DEDUP_WINDOW_MS = 5_000;

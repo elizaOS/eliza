@@ -1,12 +1,12 @@
 import { PGlite } from "@electric-sql/pglite";
-import type {
-  LifeOpsConnectorGrant,
-  LifeOpsGmailMessageSummary,
-} from "../contracts/index.js";
 import type { IAgentRuntime } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type {
+  LifeOpsConnectorGrant,
+  LifeOpsGmailMessageSummary,
+} from "../contracts/index.js";
 import {
   createLifeOpsConnectorGrant,
   createLifeOpsGmailSyncState,
@@ -374,7 +374,8 @@ describe("LifeOps Gmail account safety repository", () => {
       new URL("http://127.0.0.1:31337"),
     );
 
-    const remainingGrants = await harness.repository.listConnectorGrants(AGENT_ID);
+    const remainingGrants =
+      await harness.repository.listConnectorGrants(AGENT_ID);
     expect(remainingGrants.map((item) => item.id)).toEqual(["grant-b"]);
     await expect(
       harness.repository.listGmailMessages(

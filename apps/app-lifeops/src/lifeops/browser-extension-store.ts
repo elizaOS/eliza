@@ -65,15 +65,13 @@ function parseIsoMs(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function normalizeReport(
-  report: {
-    deviceId: string;
-    generatedAt?: string;
-    windowStart: string;
-    windowEnd: string;
-    domains: readonly DomainActivity[];
-  },
-): BrowserActivityReport | null {
+function normalizeReport(report: {
+  deviceId: string;
+  generatedAt?: string;
+  windowStart: string;
+  windowEnd: string;
+  domains: readonly DomainActivity[];
+}): BrowserActivityReport | null {
   const windowStartMs = parseIsoMs(report.windowStart);
   const windowEndMs = parseIsoMs(report.windowEnd);
   if (
@@ -95,7 +93,9 @@ function normalizeReport(
   };
 }
 
-function trimReports(reports: BrowserActivityReport[]): BrowserActivityReport[] {
+function trimReports(
+  reports: BrowserActivityReport[],
+): BrowserActivityReport[] {
   if (reports.length === 0) {
     return reports;
   }
@@ -119,7 +119,10 @@ function matchingReports(
   return reports.filter((report) => report.deviceId === deviceId);
 }
 
-function domainsMatch(reportedDomain: string, requestedDomain: string): boolean {
+function domainsMatch(
+  reportedDomain: string,
+  requestedDomain: string,
+): boolean {
   return (
     reportedDomain === requestedDomain ||
     reportedDomain.endsWith(`.${requestedDomain}`) ||
@@ -242,18 +245,19 @@ export async function getBrowserDomainActivity(
     return { totalMs: 0, reportCount: 0 };
   }
 
-  const reports = matchingReports(getStore(runtime).reports, options.deviceId).filter(
-    (report) => {
-      const reportStartMs = parseIsoMs(report.windowStart);
-      const reportEndMs = parseIsoMs(report.windowEnd);
-      return (
-        reportStartMs !== null &&
-        reportEndMs !== null &&
-        reportEndMs > options.sinceMs &&
-        reportStartMs < options.untilMs
-      );
-    },
-  );
+  const reports = matchingReports(
+    getStore(runtime).reports,
+    options.deviceId,
+  ).filter((report) => {
+    const reportStartMs = parseIsoMs(report.windowStart);
+    const reportEndMs = parseIsoMs(report.windowEnd);
+    return (
+      reportStartMs !== null &&
+      reportEndMs !== null &&
+      reportEndMs > options.sinceMs &&
+      reportStartMs < options.untilMs
+    );
+  });
 
   let totalMs = 0;
   for (const report of reports) {

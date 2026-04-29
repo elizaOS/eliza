@@ -2,8 +2,8 @@ import type { IAgentRuntime, Memory, Room, UUID } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import type {
   LifeOpsCalendarEvent,
-  LifeOpsXFeedItem,
   LifeOpsXDm,
+  LifeOpsXFeedItem,
 } from "@elizaos/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

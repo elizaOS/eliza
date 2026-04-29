@@ -1,9 +1,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
 
-function parseReflectionObject(
-  raw: string,
-): Record<string, unknown> | null {
+function parseReflectionObject(raw: string): Record<string, unknown> | null {
   const parsed = parseJSONObjectFromText(raw);
   return parsed && typeof parsed === "object" ? parsed : null;
 }

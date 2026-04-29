@@ -195,7 +195,9 @@ export const ALL_FEATURE_KEYS: ReadonlyArray<LifeOpsFeatureKey> = Object.keys(
   BASE_FEATURE_DEFAULTS,
 ) as LifeOpsFeatureKey[];
 
-export function isLifeOpsFeatureKey(value: unknown): value is LifeOpsFeatureKey {
+export function isLifeOpsFeatureKey(
+  value: unknown,
+): value is LifeOpsFeatureKey {
   return typeof value === "string" && value in BASE_FEATURE_DEFAULTS;
 }
 
