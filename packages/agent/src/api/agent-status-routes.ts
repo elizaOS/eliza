@@ -6,30 +6,13 @@
  */
 
 import type http from "node:http";
+import { getElizaMakerRegistryService } from "@elizaos/app-elizamaker/registry-service-registry";
 import type { ElizaConfig } from "../config/config.js";
 import type { ReadJsonBodyOptions } from "./http-helpers.js";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-interface RegistryServiceLike {
-  getStatus: () => Promise<Record<string, unknown>>;
-  register: (args: {
-    name: string;
-    endpoint: string;
-    capabilitiesHash: string;
-    tokenURI: string;
-  }) => Promise<unknown>;
-  updateTokenURI: (tokenURI: string) => Promise<string>;
-  syncProfile: (args: {
-    name: string;
-    endpoint: string;
-    capabilitiesHash: string;
-    tokenURI: string;
-  }) => Promise<string>;
-  getChainId: () => Promise<number>;
-}
 
 interface RegistryServiceStatic {
   defaultCapabilitiesHash: () => string;
@@ -87,7 +70,6 @@ export interface AgentStatusRouteState {
   model?: string;
   startedAt?: number;
   shellEnabled?: boolean;
-  registryService: RegistryServiceLike | null;
 }
 
 export interface AgentStatusRouteContext {
@@ -265,7 +247,7 @@ export async function handleAgentStatusRoutes(
   //  ERC-8004 Registry Routes
   // ═══════════════════════════════════════════════════════════════════════
 
-  const { registryService } = state;
+  const registryService = getElizaMakerRegistryService();
 
   if (method === "GET" && pathname === "/api/registry/status") {
     if (!registryService) {

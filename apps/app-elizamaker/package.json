@@ -12,12 +12,15 @@
     "./routes/drop-routes": "./src/drop-routes.ts",
     "./drop-service-registry": "./src/drop-service-registry.ts",
     "./drop-service": "./src/drop-service.ts",
+    "./registry-service-registry": "./src/registry-service-registry.ts",
+    "./init-registry-services": "./src/init-registry-services.ts",
     "./nft-verify": "./src/nft-verify.ts",
     "./twitter-verify": "./src/twitter-verify.ts",
     "./merkle-tree": "./src/merkle-tree.ts",
     "./og-tracker": "./src/og-tracker.ts"
   },
   "dependencies": {
+    "@elizaos/agent": "workspace:*",
     "@elizaos/app-steward": "workspace:*",
     "@elizaos/core": "workspace:*",
     "ethers": "^6.15.0"
