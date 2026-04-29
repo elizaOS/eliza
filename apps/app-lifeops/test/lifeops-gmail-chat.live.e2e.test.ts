@@ -32,6 +32,8 @@ const LIVE_GMAIL_CHAT_ENABLED = isLiveTestEnabled() && Boolean(LIVE_PROVIDER);
 
 function buildGmailMessage(args: {
   agentId: string;
+  grantId: string;
+  accountEmail: string;
   id: string;
   externalId: string;
   threadId: string;
@@ -50,6 +52,8 @@ function buildGmailMessage(args: {
     externalId: args.externalId,
     threadId: args.threadId,
     agentId: args.agentId,
+    grantId: args.grantId,
+    accountEmail: args.accountEmail,
     provider: "google" as const,
     side: "owner" as const,
     subject: args.subject,
@@ -66,7 +70,7 @@ function buildGmailMessage(args: {
     triageScore: args.triageScore ?? 50,
     triageReason: args.likelyReplyNeeded ? "reply needed" : "search hit",
     labels: args.isUnread ? ["INBOX", "UNREAD"] : ["INBOX"],
-    htmlLink: `https://mail.google.com/mail/u/0/#all/${args.threadId}`,
+    htmlLink: `https://mail.google.com/mail/u/${encodeURIComponent(args.accountEmail)}/#all/${args.threadId}`,
     metadata: {
       messageIdHeader: `<${args.externalId}@example.com>`,
       referencesHeader: `<${args.threadId}@example.com>`,

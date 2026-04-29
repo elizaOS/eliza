@@ -80,6 +80,7 @@ interface RuntimeLike {
     secrets?: Record<string, string | number | boolean>;
   };
   getService?: (name: string) => unknown;
+  setSetting?: (key: string, value: string | null) => unknown;
   updateAgent?: (
     agentId: string,
     update: {
@@ -465,12 +466,20 @@ export async function handleCloudRoute(
       return true;
     }
 
-    let data: { status: string; apiKey?: string; keyPrefix?: string };
+    let data: {
+      status: string;
+      apiKey?: string;
+      keyPrefix?: string;
+      organizationId?: string;
+      userId?: string;
+    };
     try {
       data = (await pollRes.json()) as {
         status: string;
         apiKey?: string;
         keyPrefix?: string;
+        organizationId?: string;
+        userId?: string;
       };
     } catch (parseErr) {
       loginPollSpan.failure({ error: parseErr, statusCode: pollRes.status });
@@ -537,10 +546,28 @@ export async function handleCloudRoute(
         }
         const secrets = character.secrets as Record<string, string>;
         secrets.ELIZAOS_CLOUD_API_KEY = data.apiKey;
+        if (data.userId) {
+          secrets.ELIZA_CLOUD_USER_ID = data.userId;
+        } else {
+          delete secrets.ELIZA_CLOUD_USER_ID;
+        }
+        if (data.organizationId) {
+          secrets.ELIZA_CLOUD_ORGANIZATION_ID = data.organizationId;
+        } else {
+          delete secrets.ELIZA_CLOUD_ORGANIZATION_ID;
+        }
         if (cloudInferenceSelected) {
           secrets.ELIZAOS_CLOUD_ENABLED = "true";
         } else {
           delete secrets.ELIZAOS_CLOUD_ENABLED;
+        }
+
+        if (typeof state.runtime.setSetting === "function") {
+          state.runtime.setSetting("ELIZA_CLOUD_USER_ID", data.userId ?? null);
+          state.runtime.setSetting(
+            "ELIZA_CLOUD_ORGANIZATION_ID",
+            data.organizationId ?? null,
+          );
         }
 
         if (typeof state.runtime.updateAgent === "function") {
@@ -571,6 +598,8 @@ export async function handleCloudRoute(
       if (typeof cloudAuth?.authenticateWithApiKey === "function") {
         cloudAuth.authenticateWithApiKey({
           apiKey: data.apiKey,
+          organizationId: data.organizationId,
+          userId: data.userId,
         });
       }
 
@@ -698,7 +727,12 @@ export async function handleCloudRoute(
         }
       }
 
-      sendJson(res, { status: "authenticated", keyPrefix: data.keyPrefix });
+      sendJson(res, {
+        status: "authenticated",
+        keyPrefix: data.keyPrefix,
+        organizationId: data.organizationId,
+        userId: data.userId,
+      });
     } else {
       sendJson(res, { status: data.status });
     }
