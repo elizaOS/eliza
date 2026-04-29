@@ -207,7 +207,9 @@ class VaultImpl implements Vault {
     const store = await this.loadStore();
     const keys = Object.keys(store.entries);
     if (!prefix) return keys;
-    return keys.filter((k) => k === prefix || k.startsWith(`${prefix}.`) || k.startsWith(prefix));
+    // Match the prefix as a *segment*, not a substring: `"ui"` should
+    // match `ui` and `ui.theme` but not `ui_legacy_thing` or `uib`.
+    return keys.filter((k) => k === prefix || k.startsWith(`${prefix}.`));
   }
 
   async describe(key: string): Promise<VaultDescriptor | null> {

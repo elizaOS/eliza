@@ -113,6 +113,18 @@ describe("vault — describe / list / stats", () => {
     ]);
   });
 
+  it("list() prefix matches segments only — not substrings", async () => {
+    // Regression: a previous filter included `k.startsWith(prefix)`
+    // which made `list("ui")` match keys like `ui_legacy` or `uib`.
+    // Prefix must be a proper segment.
+    await test.vault.set("ui_legacy_thing", "x");
+    await test.vault.set("uib", "y");
+    const result = (await test.vault.list("ui")).slice().sort();
+    expect(result).toEqual(["ui.locale", "ui.theme"]);
+    expect(result).not.toContain("ui_legacy_thing");
+    expect(result).not.toContain("uib");
+  });
+
   it("stats() returns counts by kind", async () => {
     expect(await test.vault.stats()).toEqual({
       total: 4,

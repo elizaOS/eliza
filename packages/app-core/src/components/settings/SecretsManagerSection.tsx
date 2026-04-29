@@ -200,6 +200,15 @@ export function SecretsManagerModal({
     if (open) void load();
   }, [open, load]);
 
+  // Clear the "Saved" label after 2.5s. Without this, the button reads
+  // "Saved" until the next state change because nothing else triggers a
+  // re-render once the time-based comparison flips false.
+  useEffect(() => {
+    if (savedAt === null) return;
+    const id = setTimeout(() => setSavedAt(null), 2500);
+    return () => clearTimeout(id);
+  }, [savedAt]);
+
   const isEnabled = useCallback(
     (id: BackendId): boolean =>
       preferences?.enabled.includes(id) ?? id === "in-house",
@@ -364,11 +373,7 @@ export function SecretsManagerModal({
               onClick={() => void save()}
               disabled={saving || loading || !preferences}
             >
-              {saving
-                ? "Saving…"
-                : savedAt && Date.now() - savedAt < 2500
-                  ? "Saved"
-                  : "Save"}
+              {saving ? "Saving…" : savedAt !== null ? "Saved" : "Save"}
             </Button>
           </div>
         </DialogFooter>

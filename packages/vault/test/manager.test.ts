@@ -116,6 +116,21 @@ describe("manager — routing", () => {
     expect(desc?.source).toBe("keychain-encrypted");
   });
 
+  it("non-sensitive routing override is IGNORED — values stay in-house", async () => {
+    // Regression: the routing map could push non-sensitive values
+    // (e.g. UI theme) through an external password manager. The
+    // documented invariant is that non-sensitive values always go
+    // in-house regardless of routing entries.
+    const m = newManager();
+    await m.setPreferences({
+      enabled: ["1password", "in-house"],
+      routing: { "ui.theme": "1password" },
+    });
+    await m.set("ui.theme", "dark"); // non-sensitive
+    const desc = await m.vault.describe("ui.theme");
+    expect(desc?.source).toBe("file");
+  });
+
   it("per-key routing override wins over enabled[0]", async () => {
     const m = newManager();
     await m.setPreferences({
