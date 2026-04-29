@@ -171,6 +171,27 @@ export function ApiKeyConfig({
         onChange={(key, value) =>
           handlePluginFieldChange(selectedProvider.id, key, String(value ?? ""))
         }
+        revealSecret={async (pluginId, key) => {
+          // Server route at packages/app-core/src/api/plugins-compat-routes.ts
+          // (POST /api/plugins/:id/reveal) round-trips the saved value
+          // back through an audit-logged read. Closes the "no reveal"
+          // bug — Settings UI can now confirm what's actually stored.
+          try {
+            const res = await fetch(
+              `/api/plugins/${encodeURIComponent(pluginId)}/reveal`,
+              {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ key }),
+              },
+            );
+            if (!res.ok) return null;
+            const json = (await res.json()) as { value?: string | null };
+            return typeof json.value === "string" ? json.value : null;
+          } catch {
+            return null;
+          }
+        }}
       />
 
       <div className="mt-3 flex items-center justify-between gap-3">
