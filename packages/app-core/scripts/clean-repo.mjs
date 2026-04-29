@@ -18,7 +18,7 @@ import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 import {
   CAPACITOR_PLUGIN_NAMES,
   NATIVE_PLUGINS_ROOT,
-} from "../apps/app/scripts/capacitor-plugin-names.mjs";
+} from "../../app/scripts/capacitor-plugin-names.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = resolveRepoRootFromImportMeta(import.meta.url);
