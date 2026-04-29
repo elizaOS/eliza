@@ -32,9 +32,9 @@ export {
 } from "./repository.js";
 export * from "./types.js";
 export {
+  _resetDefaultSecretsManagerForTesting,
   defaultSecretsManager,
   persistProviderApiKey,
   resolveProviderApiKey,
   vaultKeyForProviderApiKey,
-  _resetDefaultSecretsManagerForTesting,
 } from "./vault-bridge.js";

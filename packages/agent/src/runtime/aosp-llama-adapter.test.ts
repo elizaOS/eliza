@@ -378,9 +378,7 @@ describe("aosp-llama-adapter / context_params override invocations", () => {
         setterCalls.push({ name: "set_n_threads", args });
         initOrder.push("set_n_threads");
       },
-      milady_llama_context_params_set_n_threads_batch: (
-        ...args: unknown[]
-      ) => {
+      milady_llama_context_params_set_n_threads_batch: (...args: unknown[]) => {
         setterCalls.push({ name: "set_n_threads_batch", args });
         initOrder.push("set_n_threads_batch");
       },
@@ -492,9 +490,7 @@ describe("aosp-llama-adapter / context_params override invocations", () => {
       milady_llama_context_params_set_n_threads: (...args: unknown[]) => {
         captured.push({ name: "n_threads", args });
       },
-      milady_llama_context_params_set_n_threads_batch: (
-        ...args: unknown[]
-      ) => {
+      milady_llama_context_params_set_n_threads_batch: (...args: unknown[]) => {
         captured.push({ name: "n_threads_batch", args });
       },
       milady_llama_init_from_model: () => 4,

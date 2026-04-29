@@ -282,7 +282,11 @@ describe("vault — atomicity + concurrency", () => {
   it("file is written 0600", async () => {
     await test.vault.set("k", "v");
     const stat = await fs.stat(test.storePath);
-    expect(stat.mode & 0o777).toBe(0o600);
+    // POSIX mode bits aren't honoured on Windows; fs.stat returns 0o666
+    // for any writable file regardless of how it was created.
+    if (process.platform !== "win32") {
+      expect(stat.mode & 0o777).toBe(0o600);
+    }
   });
 
   it("does not leave a .tmp file behind on success", async () => {

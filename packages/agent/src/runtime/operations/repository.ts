@@ -141,7 +141,7 @@ export class FilesystemRuntimeOperationRepository
       // Re-persist the sanitized record so the file on disk loses the
       // secret too — pruning + idempotency keep working untouched.
       const stripped = stripLegacyApiKey(raw);
-      let op = stripped.op;
+      const op = stripped.op;
       if (stripped.changed) {
         await writeJsonAtomic(fullPath, op, {
           trailingNewline: true,
@@ -202,8 +202,7 @@ export class FilesystemRuntimeOperationRepository
     const terminal = Array.from(this.byId.values())
       .filter(isTerminal)
       .sort(
-        (a, b) =>
-          (b.finishedAt ?? b.startedAt) - (a.finishedAt ?? a.startedAt),
+        (a, b) => (b.finishedAt ?? b.startedAt) - (a.finishedAt ?? a.startedAt),
       );
 
     const toDrop: RuntimeOperation[] = [];

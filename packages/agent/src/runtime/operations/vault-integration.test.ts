@@ -27,10 +27,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  createManager,
-  type SecretsManager,
-} from "@elizaos/vault";
+import { createManager, type SecretsManager } from "@elizaos/vault";
 import { createTestVault, type TestVault } from "@elizaos/vault/testing";
 import { defaultClassifier } from "./classifier.js";
 import { createColdStrategy } from "./cold-strategy.js";
@@ -320,9 +317,9 @@ describe("vault × runtime-ops — idempotency does not double-write the vault",
     // it once, and dedup at the manager level does not produce a second
     // call to persistProviderApiKey (the test mirrors that contract).
     const entries = await testVault.vault.list("providers.openai");
-    expect(entries.filter((k) => k === "providers.openai.api-key")).toHaveLength(
-      1,
-    );
+    expect(
+      entries.filter((k) => k === "providers.openai.api-key"),
+    ).toHaveLength(1);
   });
 });
 
@@ -357,19 +354,19 @@ describe("vault × runtime-ops — pruning preserves vault entries", () => {
     expect(listOpsDir()).toEqual(["to-be-pruned.json"]);
 
     // 400 days later — exceeds the 365-day retention window.
-    const removed = await repo.pruneTerminal(
-      now + 400 * 24 * 60 * 60 * 1000,
-    );
+    const removed = await repo.pruneTerminal(now + 400 * 24 * 60 * 60 * 1000);
     expect(removed).toBe(1);
 
     // Op file gone, vault entry preserved (vault has its own retention).
     expect(listOpsDir()).toEqual([]);
     expect(await testVault.vault.has("providers.openai.api-key")).toBe(true);
-    expect(await resolveProviderApiKey({
-      secrets,
-      apiKeyRef: "providers.openai.api-key",
-      caller: "post-prune",
-    })).toBe(apiKey);
+    expect(
+      await resolveProviderApiKey({
+        secrets,
+        apiKeyRef: "providers.openai.api-key",
+        caller: "post-prune",
+      }),
+    ).toBe(apiKey);
   });
 });
 
