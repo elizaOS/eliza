@@ -38,6 +38,58 @@ export enum OutcomeType {
 	MIXED = "mixed",
 }
 
+export type ExperienceGraphLinkType =
+	| "similar"
+	| "supports"
+	| "contradicts"
+	| "supersedes"
+	| "co_occurs";
+
+export interface ExperienceGraphNode {
+	id: UUID;
+	label: string;
+	type: ExperienceType;
+	outcome: OutcomeType;
+	domain: string;
+	keywords: string[];
+	associatedEntityIds: UUID[];
+	confidence: number;
+	importance: number;
+	timeWeight: number;
+	x: number;
+	y: number;
+}
+
+export interface ExperienceGraphLink {
+	sourceId: UUID;
+	targetId: UUID;
+	type: ExperienceGraphLinkType;
+	strength: number;
+	reason: string;
+	keywords: string[];
+}
+
+export interface ExperienceGraphSnapshot {
+	generatedAt: number;
+	totalExperiences: number;
+	nodes: ExperienceGraphNode[];
+	links: ExperienceGraphLink[];
+}
+
+export interface ExperienceConsolidationGroup {
+	primaryId: UUID;
+	duplicateIds: UUID[];
+	mergedKeywords: string[];
+	reason: string;
+}
+
+export interface ExperienceConsolidationResult {
+	inspected: number;
+	groups: ExperienceConsolidationGroup[];
+	merged: number;
+	deleted: number;
+}
+
 export interface Experience {
 	id: UUID;
 	agentId: UUID;
@@ -53,10 +105,13 @@ export interface Experience {
 	// Categorization
 	tags: string[]; // Tags for categorization
 	domain: string; // Domain of experience (e.g., 'shell', 'coding', 'system')
+	keywords: string[]; // Searchable concepts extracted from context/action/result/learning
+	associatedEntityIds: UUID[]; // People/entities recently present when the lesson formed
 
 	// Related experiences
 	relatedExperiences?: UUID[]; // Links to related experiences
 	supersedes?: UUID; // If this experience updates/replaces another
+	mergedExperienceIds?: UUID[]; // Historical duplicate IDs folded into this record
 
 	// Confidence and importance
 	confidence: number; // 0-1, how confident the agent is in this learning
