@@ -948,7 +948,8 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
     async collectScreenTimeRows(opts: {
       since: string;
       until: string;
-      source?: "app" | "website";
+      source?: LifeOpsScreenTimeSource;
+      identifier?: string;
     }): Promise<ScreenTimeAggregateRow[]> {
       const { sinceMs, untilMs } = buildWindowBounds(opts.since, opts.until);
       const rows: ScreenTimeAggregateRow[] = [];
@@ -1004,6 +1005,8 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
                 signal.platform === "android" &&
                 inWindow(signal.observedAt, sinceMs, untilMs),
             ),
+            sinceMs,
+            untilMs,
           ),
         );
       }
@@ -1021,12 +1024,13 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
         );
       }
 
-      return rows;
+      return filterRowsByIdentifier(rows, opts.identifier);
     }
 
     async getScreenTimeDaily(opts: {
       date: string;
-      source?: "app" | "website";
+      source?: LifeOpsScreenTimeSource;
+      identifier?: string;
       limit?: number;
     }): Promise<LifeOpsScreenTimeDaily[]> {
       const { startIso, endIso } = resolveUtcDateWindow(opts.date);
@@ -1034,6 +1038,7 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
         since: startIso,
         until: endIso,
         source: opts.source,
+        identifier: opts.identifier,
       });
 
       const dailyRows = toDailyRows(this.agentId(), opts.date, rows);
@@ -1043,17 +1048,10 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
     async getScreenTimeSummary(opts: {
       since: string;
       until: string;
-      source?: "app" | "website";
+      source?: LifeOpsScreenTimeSource;
+      identifier?: string;
       topN?: number;
-    }): Promise<{
-      items: Array<{
-        source: "app" | "website";
-        identifier: string;
-        displayName: string;
-        totalSeconds: number;
-      }>;
-      totalSeconds: number;
-    }> {
+    }): Promise<LifeOpsScreenTimeSummary> {
       const rows = await this.collectScreenTimeRows(opts);
       return toSummaryItems(rows, opts.topN);
     }
@@ -1061,7 +1059,8 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
     async getScreenTimeBreakdown(opts: {
       since: string;
       until: string;
-      source?: "app" | "website";
+      source?: LifeOpsScreenTimeSource;
+      identifier?: string;
       topN?: number;
     }): Promise<ScreenTimeBreakdown> {
       const rows = await this.collectScreenTimeRows(opts);
