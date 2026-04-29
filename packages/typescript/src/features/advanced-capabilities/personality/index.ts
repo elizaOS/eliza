@@ -1,6 +1,5 @@
 /**
- * Personality / self-modification — bundled with advanced capabilities.
- * Replaces the standalone `@elizaos/plugin-personality` package for TypeScript core.
+ * Personality / self-modification — bundled with advanced capabilities in elizaOS core.
  */
 
 export { manageMessageExamplesAction } from "./actions/manage-message-examples.ts";

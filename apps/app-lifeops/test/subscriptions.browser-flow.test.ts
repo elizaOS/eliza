@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
   attachFakeSubscriptionComputerUse,
   FakeSubscriptionComputerUseService,
-} from "../../../../test/helpers/subscription-computer-use-fixture";
+} from "../../../../eliza/test/helpers/subscription-computer-use-fixture";
 import { LifeOpsRepository } from "../src/lifeops/repository.js";
 import { LifeOpsService } from "../src/lifeops/service.js";
 import { createLifeOpsChatTestRuntime } from "./helpers/lifeops-chat-runtime.js";

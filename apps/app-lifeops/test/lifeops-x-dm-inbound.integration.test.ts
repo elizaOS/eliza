@@ -11,7 +11,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { itIf } from "../../../../test/helpers/conditional-tests.ts";
+import { itIf } from "../../../../eliza/test/helpers/conditional-tests.ts";
 import { createLifeOpsConnectorGrant } from "../src/lifeops/repository.js";
 import { LifeOpsService } from "../src/lifeops/service.js";
 import { createLifeOpsTestRuntime } from "./helpers/runtime.ts";

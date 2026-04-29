@@ -17,7 +17,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect } from "vitest";
-import { selectLiveProvider } from "../../../../test/helpers/live-provider";
+import { selectLiveProvider } from "../../../../eliza/test/helpers/live-provider";
 import { stochasticTest } from "../../../packages/app-core/test/helpers/stochastic-test";
 import { extractCalendarPlanWithLlm } from "../src/actions/calendar.js";
 import { extractGmailPlanWithLlm } from "../src/actions/gmail.js";

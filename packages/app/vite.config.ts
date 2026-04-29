@@ -338,7 +338,13 @@ function tryResolveElizaCorePkgDir(): string | null {
   try {
     return path.dirname(_require.resolve("@elizaos/core/package.json"));
   } catch {
-    return null;
+    const workspaceCorePkg = path.join(
+      elizaRoot,
+      "packages/typescript/package.json",
+    );
+    return fs.existsSync(workspaceCorePkg)
+      ? path.dirname(workspaceCorePkg)
+      : null;
   }
 }
 
@@ -810,6 +816,8 @@ function nativeModuleStubPlugin(): Plugin {
     "@elizaos/plugin-sql",
     "@elizaos/plugin-agent-skills",
     "@elizaos/plugin-agent-orchestrator",
+    "@elizaos/plugin-signal",
+    "@elizaos/plugin-telegram",
     "@elizaos/plugin-whatsapp",
   ]);
   if (!IS_CAPACITOR_MOBILE_BUILD) {
@@ -1083,6 +1091,19 @@ function nativeModuleStubPlugin(): Plugin {
         ].join("\n");
       }
 
+      if (strippedId === "@elizaos/plugin-telegram/account-auth-service") {
+        return [
+          "function serverOnly() { throw new Error('@elizaos/plugin-telegram/account-auth-service is server-only'); }",
+          "export function defaultTelegramAccountDeviceModel() { return 'Eliza Desktop'; }",
+          "export function defaultTelegramAccountSystemVersion() { return 'browser'; }",
+          "export function loadTelegramAccountSessionString() { return serverOnly(); }",
+          "export class TelegramAccountAuthSession {",
+          "  constructor() { serverOnly(); }",
+          "}",
+          "export default { defaultTelegramAccountDeviceModel, defaultTelegramAccountSystemVersion, loadTelegramAccountSessionString, TelegramAccountAuthSession };",
+        ].join("\n");
+      }
+
       // Capacitor native plugins — mobile-only, cloud builds stub them.
       // Must export the exact named identifiers used in app-core sources.
       if (capacitorNativeScopeRe.test(strippedId)) {
@@ -1161,7 +1182,7 @@ function nativeModuleStubPlugin(): Plugin {
         /\(\(\)\s*=>\s*\{\s*throw\s+new\s+Error\(\s*"Cannot require module "\s*\+\s*"node:async_hooks"\s*\)\s*;\s*\}\)\(\)/g,
         "(function(){function A(){} A.prototype.getStore=function(){return undefined};A.prototype.run=function(s,fn){return fn.apply(void 0,[].slice.call(arguments,2))};A.prototype.enterWith=function(){};A.prototype.disable=function(){};return{AsyncLocalStorage:A}})()",
       );
-      // Names that downstream plugins (plugin-secrets-manager, agent runtime)
+      // Names that downstream plugins and the agent runtime
       // import from @elizaos/core but that are missing from the browser entry.
       const missingExports: Record<string, string> = {
         resolveSecretKeyAlias: "function(k){return k}",
@@ -1608,7 +1629,7 @@ export default defineConfig({
             replacement: path.resolve(elizaRoot, "packages/agent/src/$1"),
           },
           // @elizaos/core — force ALL copies (including nested ones in plugins
-          // like plugin-secrets-manager that ship their own older core) to the
+          // that bundle their own older core) to the
           // main workspace copy's browser entry.  The browser entry has all
           // needed exports and avoids pulling in createRequire/node:fs/etc.
           {
@@ -1709,7 +1730,7 @@ export default defineConfig({
       // Contains native-only pty-state-capture / pty-console imports; skip pre-bundling.
       "@elizaos/plugin-agent-orchestrator",
       "pty-console",
-      // @elizaos/plugin-secrets-manager is now built into @elizaos/core features
+      // Built-in secrets live in @elizaos/core features; Vite must not externalize them as a separate package.
       // Node-only HTTP client — crashes in browser, stub via nativeModuleStubPlugin
       "undici",
       // Browser automation is server-only and pulls in proxy-agent/httpUtil.

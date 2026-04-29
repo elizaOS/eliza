@@ -464,16 +464,13 @@ export const perfectHandler: Handler = {
           agentResponses.push(
             "I can manage both plugins and secrets. I can load/unload plugins dynamically and securely store API keys and credentials.",
           );
-        } else if (
-          lower.includes("secrets-manager") ||
-          lower.includes("secret")
-        ) {
+        } else if (lower.includes("secret")) {
           agentResponses.push(
-            "The secrets-manager plugin provides multi-level secret management with AES-256-GCM encryption, dynamic plugin activation, and conversational onboarding.",
+            "The built-in secrets capability in @elizaos/core provides multi-level secret management with AES-256-GCM encryption, dynamic plugin activation, and conversational onboarding.",
           );
         } else {
           agentResponses.push(
-            "Here are the currently loaded plugins: secrets-manager, plugin-manager, bootstrap, and any dynamically loaded plugins.",
+            "Here are the currently loaded plugins: secrets (core capability), plugin-manager, bootstrap, and any dynamically loaded plugins.",
           );
         }
         trackPeak();

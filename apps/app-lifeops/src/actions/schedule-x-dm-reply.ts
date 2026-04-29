@@ -1,5 +1,6 @@
 import type {
   Action,
+  ActionExample,
   ActionResult,
   IAgentRuntime,
   Memory,
@@ -119,6 +120,9 @@ export const scheduleXDmReplyAction: Action = {
     "Schedule a Twitter/X DM reply to send later by creating a real trigger task. " +
     "Use this for requests like 'schedule a reply to @devfriend's Twitter DM for 9am tomorrow saying thanks for the intro'. " +
     "Use OWNER_SEND_MESSAGE with channel=x_dm for immediate draft-now or send-now behavior.",
+  descriptionCompressed:
+    "Queue X DM send-later trigger task OWNER_SEND_MESSAGE x_dm if now",
+
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   handler: async (runtime, message, state, options): Promise<ActionResult> => {
     const params = ((
@@ -173,4 +177,44 @@ export const scheduleXDmReplyAction: Action = {
       },
     };
   },
+
+  parameters: [
+    {
+      name: "recipient",
+      description: "Target X handle or id (without @ preferred).",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "text",
+      description: "DM body to send at sendAtIso.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "sendAtIso",
+      description: "ISO-8601 delivery time (may be filled by planner LLM).",
+      required: false,
+      schema: { type: "string" as const },
+    },
+  ],
+
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text:
+            "Schedule an X DM to devfriend at tomorrow 9am: thanks for the intro.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Queued X DM reply for the requested time.",
+          action: "SCHEDULE_X_DM_REPLY",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };

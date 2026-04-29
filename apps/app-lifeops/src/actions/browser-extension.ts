@@ -16,6 +16,7 @@
 
 import type {
   Action,
+  ActionExample,
   ActionResult,
   HandlerOptions,
   IAgentRuntime,
@@ -62,6 +63,9 @@ export const registerBrowserSessionAction: Action = {
   similes: ["BROWSER_EXTENSION_REGISTER", "ANNOUNCE_BROWSER_SESSION"],
   description:
     "Record that a LifeOps browser extension has announced itself. Parameters: deviceId, userAgent, extensionVersion, browserVendor.",
+  descriptionCompressed:
+    "Persist extension hello deviceId vendor ua version for bridge lookup",
+
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   handler: async (
     runtime: IAgentRuntime,
@@ -98,6 +102,51 @@ export const registerBrowserSessionAction: Action = {
     await callback?.({ text, source: "action", action: REGISTER_NAME });
     return { text, success: true, data: { registration } };
   },
+
+  parameters: [
+    {
+      name: "deviceId",
+      description: "Stable device id from the browser extension.",
+      required: true,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "userAgent",
+      description: "Navigator user agent string when available.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "extensionVersion",
+      description: "Extension semver from the manifest.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "browserVendor",
+      description: "chrome or safari when detectable.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+  ],
+
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "The extension reported device chrome-desktop-7a3; tie it into LifeOps.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: `Registered browser session device-local (${REGISTER_NAME}).`,
+          action: REGISTER_NAME,
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };
 
 export const fetchBrowserActivityAction: Action = {
@@ -105,6 +154,9 @@ export const fetchBrowserActivityAction: Action = {
   similes: ["BROWSER_ACTIVITY", "GET_BROWSER_ACTIVITY", "TIME_ON_SITE"],
   description:
     "Return the most recent per-domain focus time pushed by the LifeOps browser extension. Parameters: deviceId (optional), limit (optional, default 10).",
+  descriptionCompressed:
+    "Read last pushed per-domain focus seconds from extension cache optional device",
+
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   handler: async (
     runtime: IAgentRuntime,
@@ -143,4 +195,38 @@ export const fetchBrowserActivityAction: Action = {
     await callback?.({ text, source: "action", action: FETCH_NAME });
     return { text, success: true, data: { snapshot } };
   },
+
+  parameters: [
+    {
+      name: "deviceId",
+      description:
+        "Filter to one registered device id; omit to use default active device.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "limit",
+      description: "Max domains to include (positive integer).",
+      required: false,
+      schema: { type: "number" as const },
+    },
+  ],
+
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "How much time did I spend on localhost today?",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Browser activity (per-domain focus)...",
+          action: FETCH_NAME,
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };

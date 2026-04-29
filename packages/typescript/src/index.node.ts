@@ -41,6 +41,11 @@ export {
 export * from "./features/advanced-memory";
 // Export capabilities and plugin creation
 export * from "./features/basic-capabilities/index";
+export {
+	SECRETS_SERVICE_TYPE,
+	type SecretsManagerPluginConfig,
+	secretsManagerPlugin,
+} from "./features/secrets/index.ts";
 // Export generated action/provider/evaluator specs from centralized prompts
 export * from "./generated/action-docs";
 export * from "./generated/spec-helpers";

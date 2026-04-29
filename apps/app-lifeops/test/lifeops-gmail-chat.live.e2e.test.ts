@@ -4,17 +4,17 @@ import path from "node:path";
 import { createElizaPlugin, resolveOAuthDir } from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
+import { describeIf } from "../../../../eliza/test/helpers/conditional-tests.ts";
 import {
   createConversation,
   postConversationMessage,
   req,
-} from "../../../../test/helpers/http";
+} from "../../../../eliza/test/helpers/http";
 import {
   isLiveTestEnabled,
   selectLiveProvider,
-} from "../../../../test/helpers/live-provider";
-import { saveEnv } from "../../../../test/helpers/test-utils";
+} from "../../../../eliza/test/helpers/live-provider";
+import { saveEnv } from "../../../../eliza/test/helpers/test-utils";
 import { stochasticTest } from "../../../packages/app-core/test/helpers/stochastic-test";
 import {
   createLifeOpsConnectorGrant,

@@ -30,8 +30,8 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect } from "vitest";
-import { itIf } from "../../../../../test/helpers/conditional-tests.ts";
-import { selectLiveProvider } from "../../../../../test/helpers/live-provider";
+import { itIf } from "../../../../../eliza/test/helpers/conditional-tests.ts";
+import { selectLiveProvider } from "../../../../../eliza/test/helpers/live-provider";
 import {
   expectActionCalled,
   expectActionNotCalled,

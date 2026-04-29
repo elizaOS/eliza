@@ -19,7 +19,6 @@ import { parseReference } from "./references.js";
 import type { ScopedConfidant } from "./scoped.js";
 import { lookupSchema } from "./secret-schema.js";
 import {
-  emptyStore,
   readStore,
   removeSecret,
   type StoreData,

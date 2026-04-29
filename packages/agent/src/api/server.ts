@@ -407,12 +407,11 @@ function requirePluginManager(runtime: AgentRuntime | null): PluginManagerLike {
 }
 
 /**
- * The upstream plugin-plugin-manager has its own registry client that only
- * fetches from GitHub and scans a `plugins/` dir for `elizaos.plugin.json`.
- * Workspace-vendored plugins (under `packages/plugin-*`) are invisible to it.
- * Wrap `installPlugin` so that when the upstream returns "not found in the
- * registry" we retry using our own registry-client (which discovers workspace
- * packages and node_modules symlinks).
+ * The runtime plugin manager's registry client only fetches from GitHub and
+ * scans a `plugins/` dir for `elizaos.plugin.json`. Workspace-vendored plugins
+ * (under `packages/plugin-*`) are invisible to it. Wrap `installPlugin` so that
+ * when it returns "not found in the registry" we retry using our own
+ * registry-client (which discovers workspace packages and node_modules symlinks).
  */
 function wrapPluginManagerWithLocalFallback(
   pm: PluginManagerLike,
@@ -2089,11 +2088,12 @@ async function handleRequest(
         const credStore = runtime.getService("n8n_credential_store") as {
           delete?: (userId: string, credType: string) => Promise<void>;
         } | null;
-        if (!credStore?.delete) return;
+        const deleteCred = credStore?.delete;
+        if (!deleteCred) return;
         const userId = runtime.agentId;
         await Promise.all(
           credTypes.map((credType) =>
-            credStore.delete!(userId, credType).catch(() => {
+            deleteCred(userId, credType).catch(() => {
               /* per-credType failure shouldn't block siblings */
             }),
           ),

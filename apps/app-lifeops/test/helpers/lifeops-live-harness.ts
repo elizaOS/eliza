@@ -8,8 +8,8 @@ import {
   createConversation,
   postConversationMessage,
   req,
-} from "../../../../../test/helpers/http.ts";
-import { createLiveRuntimeChildEnv } from "../../../../../test/helpers/live-child-env.ts";
+} from "../../../../../eliza/test/helpers/http.ts";
+import { createLiveRuntimeChildEnv } from "../../../../../eliza/test/helpers/live-child-env.ts";
 
 export const LIVE_TESTS_ENABLED =
   process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
