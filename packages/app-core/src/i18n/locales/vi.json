@@ -507,6 +507,7 @@
   "chatmessage.SaveAndResend": "Lưu và gửi lại",
   "chatsidebar.OpenView": "Mở chế độ xem",
   "chatsidebar.launchApp": "Mở {{name}}",
+  "chatview.NoMessagesYet": "Chưa có tin nhắn.",
   "chatview.RemoveImage": "Xoá ảnh",
   "chatview.SilenceEndFirstTo": "Im lặng end→first token:",
   "chatview.msEndVoiceStart": "ms · kết thúc→bắt đầu bằng giọng nói:",

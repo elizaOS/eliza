@@ -507,6 +507,7 @@
   "chatmessage.SaveAndResend": "保存并重新发送",
   "chatsidebar.OpenView": "打开视图",
   "chatsidebar.launchApp": "启动 {{name}}",
+  "chatview.NoMessagesYet": "暂无消息。",
   "chatview.RemoveImage": "删除图像",
   "chatview.SilenceEndFirstTo": "沉默结束→第一个标记：",
   "chatview.msEndVoiceStart": "ms·结束→语音开始：",
