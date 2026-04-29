@@ -474,7 +474,7 @@ export function AppWorkspaceChrome({
     >
       <AppWorkspaceChatChromeContext.Provider value={chatChromeContextValue}>
         <div
-          className={`flex min-h-0 min-w-0 w-full flex-1 bg-bg pb-[var(--eliza-mobile-nav-offset,0px)] ${
+          className={`flex min-h-0 min-w-0 w-full flex-1 bg-bg pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px))] ${
             isMobileViewport ? "flex-col" : ""
           }`}
           data-testid={testId}

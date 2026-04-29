@@ -3,13 +3,13 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>LifeOps Browser</title>
+    <title>Agent Browser Bridge</title>
     <link rel="stylesheet" href="./popup.css" />
   </head>
   <body>
     <main class="panel">
       <header class="panel-header">
-        <p class="eyebrow">LifeOps Browser</p>
+        <p class="eyebrow">Agent Browser Bridge</p>
         <h1>Connect Your Browser</h1>
         <p class="lede">Use the exact browser profile that contains your real accounts. Automatic connection is the default. Manual tokens are the fallback.</p>
       </header>
@@ -27,7 +27,7 @@
       <section class="auto-card">
         <div class="import-copy">
           <h2>Automatic Connection</h2>
-          <p>Keep LifeOps open in this same browser profile. If you are using a cloud-hosted LifeOps app, log in there first.</p>
+          <p>Keep Milady open in this same browser profile. If you are using a cloud-hosted Milady app, log in there first.</p>
         </div>
         <div class="actions">
           <button id="autoPair" class="primary" type="button">Auto Connect This Browser</button>
@@ -52,7 +52,7 @@
           </label>
           <label>
             <span>Companion ID</span>
-            <input id="companionId" type="text" placeholder="UUID from LifeOps pairing" />
+            <input id="companionId" type="text" placeholder="UUID from Milady pairing" />
           </label>
           <label>
             <span>Pairing Token</span>
@@ -68,14 +68,14 @@
           </label>
           <label>
             <span>Companion Label</span>
-            <input id="label" type="text" placeholder="LifeOps Browser chrome Default" />
+            <input id="label" type="text" placeholder="Agent Browser Bridge chrome Default" />
           </label>
         </section>
 
         <section class="import-card">
           <div class="import-copy">
             <h2>Manual Pairing JSON</h2>
-            <p>Only use this if automatic connection cannot reach your LifeOps app. Paste the JSON copied from LifeOps, then import it here.</p>
+            <p>Only use this if automatic connection cannot reach your Milady app. Paste the JSON copied from Milady, then import it here.</p>
           </div>
           <textarea
             id="pairingJson"

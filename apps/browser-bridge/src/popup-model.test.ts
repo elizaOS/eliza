@@ -46,7 +46,7 @@ describe("derivePopupStatusModel", () => {
           pairingToken: "lobr_123",
           profileId: "default",
           profileLabel: "Default",
-          label: "LifeOps Browser chrome Default",
+          label: "Agent Browser Bridge chrome Default",
         },
         settings: {
           enabled: true,
@@ -79,7 +79,7 @@ describe("derivePopupStatusModel", () => {
           pairingToken: "lobr_123",
           profileId: "default",
           profileLabel: "Default",
-          label: "LifeOps Browser chrome Default",
+          label: "Agent Browser Bridge chrome Default",
         },
         settings: {
           enabled: true,
@@ -111,7 +111,7 @@ describe("derivePopupStatusModel", () => {
           pairingToken: "lobr_123",
           profileId: "default",
           profileLabel: "Default",
-          label: "LifeOps Browser chrome Default",
+          label: "Agent Browser Bridge chrome Default",
         },
         settings: {
           enabled: true,

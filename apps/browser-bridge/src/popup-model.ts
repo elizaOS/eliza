@@ -68,10 +68,10 @@ export function derivePopupStatusModel(args: {
       badge: "Syncing",
       title: "Checking this browser",
       detail:
-        "LifeOps Browser is syncing tabs and permissions so LifeOps can see the latest browser state.",
+        "Agent Browser Bridge is syncing tabs and permissions so Milady can see the latest browser state.",
       checklist: [
         "Keep this browser open.",
-        "If you are pairing for the first time, leave LifeOps open in this same profile.",
+        "If you are pairing for the first time, leave Milady open in this same profile.",
       ],
       primaryAction: "sync",
       primaryLabel: "Syncing…",
@@ -88,7 +88,7 @@ export function derivePopupStatusModel(args: {
       detail: state.lastError,
       checklist: [
         "Try syncing this browser again.",
-        "If pairing expired, LifeOps will auto-connect again the next time it is open here.",
+        "If pairing expired, Milady will auto-connect again the next time it is open here.",
       ],
       primaryAction: hasConfig ? "sync" : "auto_pair",
       primaryLabel: hasConfig
@@ -106,7 +106,7 @@ export function derivePopupStatusModel(args: {
         badge: "Control Off",
         title: "This browser is connected, but browser control is off",
         detail:
-          "LifeOps can see this browser profile, but it cannot open Discord or focus the DM tab for you until Browser control is enabled.",
+          "Milady can see this browser profile, but it cannot open sites or focus tabs for you until Browser control is enabled.",
         checklist: [
           "Turn on Browser control in Browser setup if you want automatic site opening.",
           "Keep it off only if you are willing to open and focus the target tab manually.",
@@ -121,12 +121,12 @@ export function derivePopupStatusModel(args: {
     return {
       kind: "connected",
       badge: "Connected",
-      title: "This browser is connected to LifeOps",
+      title: "This browser is connected to Milady",
       detail:
-        "LifeOps can read and control the tabs allowed by your Browser settings in this profile.",
+        "Milady can read and control the tabs allowed by your Browser settings in this profile.",
       checklist: [
-        "Open Discord, Gmail, or another owner-side app in this same profile.",
-        "Use the connector cards in LifeOps to verify what this browser is sharing right now.",
+        "Open an account-backed site in this same profile.",
+        "Use Browser settings in Milady to verify what this browser is sharing right now.",
       ],
       primaryAction: "sync",
       primaryLabel: "Sync This Browser",
@@ -145,10 +145,10 @@ export function derivePopupStatusModel(args: {
       badge: paused ? "Paused" : "Access Off",
       title: paused
         ? "Browser access is paused"
-        : "This browser is paired, but LifeOps Browser access is off",
+        : "This browser is paired, but Agent Browser Bridge access is off",
       detail: paused
-        ? "LifeOps is paired to this browser, but Browser access is paused right now."
-        : "Turn Browser access back on in LifeOps so owner-side connectors can see this profile again.",
+        ? "Milady is paired to this browser, but Browser access is paused right now."
+        : "Turn Browser access back on in Milady so enabled connectors can see this profile again.",
       checklist: paused
         ? [
             "Clear Pause until in Browser setup, or wait for it to expire.",
@@ -169,9 +169,9 @@ export function derivePopupStatusModel(args: {
     return {
       kind: "needs_pairing",
       badge: "Ready",
-      title: "LifeOps is open in this browser profile",
+      title: "Milady is open in this browser profile",
       detail:
-        "This browser found a live LifeOps app. Pairing should work automatically now.",
+        "This browser found a live Milady app. Pairing should work automatically now.",
       checklist: [
         "Click Auto Connect This Browser.",
         "If it still fails, use Advanced Tools to import manual pairing JSON.",
@@ -187,16 +187,16 @@ export function derivePopupStatusModel(args: {
     return {
       kind: "needs_app",
       badge: "Waiting",
-      title: "Open LifeOps in this browser profile",
+      title: "Open Milady in this browser profile",
       detail:
-        "Automatic connection works best when LifeOps is open in the same browser profile that holds your real accounts.",
+        "Automatic connection works best when Milady is open in the same browser profile that holds your real accounts.",
       checklist: [
-        "Open LifeOps in this browser profile.",
-        "If you use a cloud-hosted LifeOps app, log in there first.",
+        "Open Milady in this browser profile.",
+        "If you use a cloud-hosted Milady app, log in there first.",
         "Then click Auto Connect This Browser.",
       ],
       primaryAction: "auto_pair",
-      primaryLabel: "Search for LifeOps Again",
+      primaryLabel: "Search for Milady Again",
       showSync: false,
       summary,
     };
@@ -207,10 +207,10 @@ export function derivePopupStatusModel(args: {
     badge: "Attention",
     title: "This browser needs attention",
     detail:
-      "The browser is paired, but LifeOps Browser could not confirm a healthy connection yet.",
+      "The browser is paired, but Agent Browser Bridge could not confirm a healthy connection yet.",
     checklist: [
       "Try syncing this browser again.",
-      "If pairing expired, LifeOps will auto-connect again the next time it is open here.",
+      "If pairing expired, Milady will auto-connect again the next time it is open here.",
     ],
     primaryAction: "sync",
     primaryLabel: "Sync This Browser",

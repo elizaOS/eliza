@@ -148,7 +148,7 @@ function autoPairErrorMessage(
   error: string,
 ): string {
   if (status === 401 || status === 403) {
-    return `Open ${apiBaseUrl} while logged in, then reopen the LifeOps Browser popup to auto-pair.`;
+    return `Open ${apiBaseUrl} while logged in, then reopen the Agent Browser Bridge popup to auto-pair.`;
   }
   if (status === 404) {
     return `${apiBaseUrl} does not expose browser-bridge auto-pair yet.`;
@@ -304,7 +304,7 @@ async function requestAutoPairFromTab(
     return {
       ok: false,
       status: result.status,
-      error: result.error ?? "Auto-pair failed in the LifeOps tab.",
+      error: result.error ?? "Auto-pair failed in the Milady tab.",
     };
   } catch (error) {
     return {
@@ -339,7 +339,7 @@ async function attemptAutoPair(
       ]),
     ];
     let lastErrorMessage =
-      "Open LifeOps in this browser, then reopen the popup to auto-pair.";
+      "Open Milady in this browser, then reopen the popup to auto-pair.";
 
     for (const apiBaseUrl of candidateApiBaseUrls) {
       for (const tabId of tabsForApiBaseUrl(openTabs, apiBaseUrl)) {
@@ -889,7 +889,8 @@ async function syncNow(reason: string): Promise<BackgroundState> {
     await setState({
       syncing: false,
       lastError:
-        backgroundState.lastError ?? "LifeOps Browser companion is not paired.",
+        backgroundState.lastError ??
+        "Agent Browser Bridge companion is not paired.",
       settingsSummary: null,
       lastSessionStatus: null,
     });
@@ -945,7 +946,7 @@ async function syncNow(reason: string): Promise<BackgroundState> {
       syncing: false,
       ...(isPairingInvalid && { config: null, settingsSummary: null }),
       lastError: isPairingInvalid
-        ? "Pairing expired. LifeOps Browser will try to auto-pair again."
+        ? "Pairing expired. Agent Browser Bridge will try to auto-pair again."
         : `${reason}: ${error instanceof Error ? error.message : String(error)}`,
     });
   } finally {
@@ -1022,7 +1023,7 @@ async function handlePopupMessage(
         await setState({
           config: null,
           settings: null,
-          lastError: "LifeOps Browser companion pairing cleared.",
+          lastError: "Agent Browser Bridge companion pairing cleared.",
           lastSessionStatus: null,
           lastSyncAt: null,
           rememberedTabCount: 0,
