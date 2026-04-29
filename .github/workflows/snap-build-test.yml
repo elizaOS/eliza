@@ -46,7 +46,7 @@ jobs:
           df -h /
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           # Recursive picks up nested plugin submodules under plugins/
           # which the snapcraft sandbox needs to satisfy workspace:* deps.
