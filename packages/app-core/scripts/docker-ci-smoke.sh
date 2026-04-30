@@ -228,14 +228,21 @@ if [[ -f "$WHATSAPP_PLUGIN_TS_DIR/package.json" ]]; then
   popd >/dev/null
 fi
 
-if [[ "$APP_CORE_DIR" == "packages/app-core" || "${MILADY_SKIP_LOCAL_UPSTREAMS:-0}" != "1" ]]; then
+if [[ -f "$TYPESCRIPT_DIR/package.json" ]]; then
   log "Building @elizaos/core source artifacts"
   pushd "$TYPESCRIPT_DIR" >/dev/null
   "$BUN_BIN" run build.ts --node-only
   popd >/dev/null
+  node scripts/prepare-package-dist.mjs "$TYPESCRIPT_DIR"
+  CORE_NODE_MODULE="node_modules/@elizaos/core"
+  if [[ -e "$CORE_NODE_MODULE" || -L "$CORE_NODE_MODULE" ]]; then
+    rm -rf "$CORE_NODE_MODULE"
+    mkdir -p "$(dirname "$CORE_NODE_MODULE")"
+    ln -s "../../$TYPESCRIPT_DIR/dist" "$CORE_NODE_MODULE"
+  fi
   node scripts/patch-nested-core-dist.mjs || true
 else
-  log "Skipping @elizaos/core source build in published-only mode"
+  log "No local @elizaos/core source package found at $TYPESCRIPT_DIR; using installed package"
 fi
 
 log "Building agent workspace"
