@@ -94,7 +94,6 @@ import {
 } from "@elizaos/core";
 import * as pluginAgentSkills from "@elizaos/plugin-agent-skills";
 import * as pluginBrowserBridge from "@elizaos/plugin-browser-bridge";
-import * as pluginLocalEmbedding from "@elizaos/plugin-local-embedding";
 import * as pluginPdf from "@elizaos/plugin-pdf";
 import * as pluginSql from "@elizaos/plugin-sql";
 import {
@@ -164,6 +163,16 @@ import rolesPlugin from "./roles.js";
 import { shouldEnableTrajectoryLoggingByDefault } from "./trajectory-persistence.js";
 
 const require = createRequire(import.meta.url);
+// plugin-local-embedding is needed when local embeddings are enabled, but
+// Docker no-embedding smokes must still boot if a published package advertises
+// a missing dist entry.
+let pluginLocalEmbedding: typeof import("@elizaos/plugin-local-embedding") | null =
+  null;
+try {
+  pluginLocalEmbedding = await import("@elizaos/plugin-local-embedding");
+} catch {
+  pluginLocalEmbedding = null;
+}
 // Agent orchestrator ships as the standalone @elizaos/plugin-agent-orchestrator package.
 // Use top-level dynamic import because the package is ESM-only and fails under
 // createRequire() in bun runtime; the await is resolved before module consumers read the binding.
@@ -317,7 +326,9 @@ function registerSignalShutdownHandlers(context: SignalShutdownContext): void {
 // so plugin-resolver.ts can read it without importing this module directly.
 Object.assign(STATIC_ELIZA_PLUGINS, {
   "@elizaos/plugin-sql": pluginSql,
-  "@elizaos/plugin-local-embedding": pluginLocalEmbedding,
+  ...(pluginLocalEmbedding
+    ? { "@elizaos/plugin-local-embedding": pluginLocalEmbedding }
+    : {}),
   // secrets (SECRETS service): now built-in core capability (ENABLE_SECRETS_MANAGER)
   ...(pluginAgentOrchestrator
     ? { "agent-orchestrator": pluginAgentOrchestrator }

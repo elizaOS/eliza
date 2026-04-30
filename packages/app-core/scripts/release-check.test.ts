@@ -114,5 +114,23 @@ describe("agent packaged runtime dependencies", () => {
     expect(relinker).toContain(
       '"eliza/plugins/plugin-agent-skills/typescript"',
     );
+    expect(relinker).toContain(
+      '"eliza/plugins/plugin-local-embedding/typescript"',
+    );
+    expect(relinker).toContain('"eliza/plugins/plugin-pdf/typescript"');
+  });
+
+  it("keeps local embeddings optional during packaged startup", () => {
+    const runtimeEntry = readFileSync(
+      new URL("../../agent/src/runtime/eliza.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(runtimeEntry).not.toContain(
+      'from "@elizaos/plugin-local-embedding"',
+    );
+    expect(runtimeEntry).toContain(
+      'await import("@elizaos/plugin-local-embedding")',
+    );
   });
 });
