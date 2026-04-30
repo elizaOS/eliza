@@ -76,11 +76,12 @@ type CloudStage =
   | "provisioning"
   | "connecting";
 
-const CHOICE_IMAGE_PATH: Record<RuntimeChoice, string> = {
-  cloud: "app-heroes/agentDOD.png",
-  local: "app-heroes/runtime-debugger.png",
-  remote: "app-heroes/log-viewer.png",
-};
+// TODO: replace with real onboarding artwork per runtime choice
+// const CHOICE_IMAGE_PATH: Record<RuntimeChoice, string> = {
+//   cloud: "app-heroes/agentDOD.png",
+//   local: "app-heroes/runtime-debugger.png",
+//   remote: "app-heroes/log-viewer.png",
+// };
 
 function resolveRuntimeChoices(args: {
   isAndroid: boolean;
@@ -126,7 +127,7 @@ function runtimeChoiceDetails(
   eyebrow: string;
   title: string;
   description: string;
-  imageSrc: string;
+  imageSrc?: string;
 } {
   switch (choice) {
     case "cloud":
@@ -142,7 +143,6 @@ function runtimeChoiceDetails(
           defaultValue:
             "Hosted agent with managed LLMs and connectors. Fastest start.",
         }),
-        imageSrc: resolveAppAssetUrl(CHOICE_IMAGE_PATH.cloud),
       };
     case "local":
       return {
@@ -170,7 +170,6 @@ function runtimeChoiceDetails(
               defaultValue:
                 "Keep the agent on this machine. You'll pick a provider after start.",
             }),
-        imageSrc: resolveAppAssetUrl(CHOICE_IMAGE_PATH.local),
       };
     case "remote":
       return {
@@ -185,7 +184,6 @@ function runtimeChoiceDetails(
           defaultValue:
             "Point at an agent you're already running (e.g. on your Mac).",
         }),
-        imageSrc: resolveAppAssetUrl(CHOICE_IMAGE_PATH.remote),
       };
   }
 }
@@ -1138,7 +1136,7 @@ interface ChoiceCardProps {
   eyebrow: string;
   title: string;
   description: string;
-  imageSrc: string;
+  imageSrc?: string;
   selected: boolean;
   statusLabel: string;
   disabled?: boolean;
@@ -1185,20 +1183,22 @@ function ChoiceCard({
           "polygon(12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%,0 12px)",
       }}
     >
-      <span
-        className={`relative h-20 w-24 shrink-0 overflow-hidden border-2 sm:h-24 sm:w-28 md:h-36 md:w-full ${imageBorderClassName}`}
-        style={{
-          clipPath:
-            "polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)",
-        }}
-      >
-        <img
-          src={imageSrc}
-          alt=""
-          aria-hidden="true"
-          className="h-full w-full object-cover opacity-90 saturate-[1.05]"
-        />
-      </span>
+      {imageSrc && (
+        <span
+          className={`relative h-20 w-24 shrink-0 overflow-hidden border-2 sm:h-24 sm:w-28 md:h-36 md:w-full ${imageBorderClassName}`}
+          style={{
+            clipPath:
+              "polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)",
+          }}
+        >
+          <img
+            src={imageSrc}
+            alt=""
+            aria-hidden="true"
+            className="h-full w-full object-cover opacity-90 saturate-[1.05]"
+          />
+        </span>
+      )}
       <span className="flex min-w-0 flex-1 flex-col px-2 py-0.5 sm:px-3 sm:py-1.5 md:px-1 md:pt-3">
         <span
           style={{ fontFamily: MONO_FONT }}
