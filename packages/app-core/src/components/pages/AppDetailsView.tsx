@@ -350,8 +350,13 @@ export function AppDetailsView({
           result.diagnostics?.find(
             (diagnostic) => diagnostic.severity === "error",
           ) ?? result.diagnostics?.[0];
-        if (result.run?.viewer?.url) {
-          setState("activeGameRunId", result.run.runId);
+        const launchedRun = result.run;
+        if (launchedRun?.viewer?.url) {
+          setState("appRuns", [
+            launchedRun,
+            ...appRuns.filter((run) => run.runId !== launchedRun.runId),
+          ]);
+          setState("activeGameRunId", launchedRun.runId);
           setState("tab", "apps");
           setState("appsSubTab", "games");
           recordResult(true);
@@ -408,6 +413,7 @@ export function AppDetailsView({
       setLaunching(false);
     }
   }, [
+    appRuns,
     config.alwaysOnTop,
     config.launchMode,
     launching,
