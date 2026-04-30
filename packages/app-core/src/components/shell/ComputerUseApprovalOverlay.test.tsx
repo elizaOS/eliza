@@ -13,6 +13,11 @@ import { ComputerUseApprovalOverlay } from "./ComputerUseApprovalOverlay";
 const useAppMock = vi.fn();
 const getComputerUseApprovalsMock = vi.fn();
 const respondToComputerUseApprovalMock = vi.fn();
+const emptyApprovalSnapshot = {
+  mode: "full_control",
+  pendingCount: 0,
+  pendingApprovals: [],
+};
 
 vi.mock("../../state", () => ({
   useApp: () => useAppMock(),
@@ -51,6 +56,7 @@ describe("ComputerUseApprovalOverlay", () => {
     useAppMock.mockReset();
     getComputerUseApprovalsMock.mockReset();
     respondToComputerUseApprovalMock.mockReset();
+    getComputerUseApprovalsMock.mockResolvedValue(emptyApprovalSnapshot);
     useAppMock.mockReturnValue({
       setActionNotice: vi.fn(),
       t: (_key: string, values?: Record<string, unknown>) =>
@@ -63,12 +69,6 @@ describe("ComputerUseApprovalOverlay", () => {
   });
 
   it("stays hidden when there are no pending approvals", async () => {
-    getComputerUseApprovalsMock.mockResolvedValue({
-      mode: "full_control",
-      pendingCount: 0,
-      pendingApprovals: [],
-    });
-
     render(<ComputerUseApprovalOverlay />);
 
     await waitFor(() => {

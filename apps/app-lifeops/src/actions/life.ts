@@ -1,4 +1,8 @@
 import { renderGroundedActionReply } from "@elizaos/agent/actions/grounded-action-reply";
+import {
+  extractConversationMetadataFromRoom,
+  isPageScopedConversationMetadata,
+} from "@elizaos/agent/api/conversation-metadata";
 import type {
   Action,
   ActionResult,
@@ -39,10 +43,6 @@ import {
   getZonedDateParts,
 } from "../lifeops/time.js";
 import { gmailAction } from "./gmail.js";
-import {
-  extractConversationMetadataFromRoom,
-  isPageScopedConversationMetadata,
-} from "@elizaos/agent/api/conversation-metadata";
 import {
   type ExtractedLifeMissingField,
   type ExtractedLifeOperation,
@@ -2324,12 +2324,13 @@ export const lifeAction: Action & {
     "Use LIFE for reminder/escalation policies about the owner's own follow-through, such as 'if I still haven't answered about those three events, bump me again with context instead of starting over,' when the request is about reminding the owner rather than modifying the calendar itself. " +
     "Do not fall back to REPLY, UPDATE_ENTITY, or UPDATE_OWNER_PROFILE when the user is asking to create or inspect a todo, habit, goal, reminder, or alarm. " +
     "DO NOT use this action for generic coaching or advice questions like 'any tips on setting better goals?' unless the user is also asking you to create, update, review, or track a concrete goal, task, reminder, or routine. " +
+    "DO NOT use this action for opinion / discussion questions like 'what do you think about <topic>', 'how do you feel about <topic>', 'what's your take on <topic>'. Those are conversation, not LifeOps actions — emit no action and let REPLY handle them. The presence of a topic that COULD relate to routines (remote work, health, productivity, etc.) does not make an opinion question a LIFE request. " +
     "DO NOT use this action for person-specific follow-ups like 'remind me to follow up with David next week about the project' — use OWNER_RELATIONSHIP instead. " +
     "DO NOT use this action for Gmail inbox triage, email search, drafting or sending emails — use OWNER_INBOX with channel=gmail instead. " +
     "DO NOT use this action for daily briefs, unread summaries, drafts awaiting sign-off, or cross-channel inbox review — use OWNER_INBOX instead. " +
     "DO NOT use this action for calendar lookups, scheduling meetings, availability, Calendly, or travel itineraries — use OWNER_CALENDAR instead. " +
-    "DO NOT use this action for multi-device push ladders or device-wide reminder delivery — use PUBLISH_DEVICE_INTENT instead. " +
-    "DO NOT use this action for pre-event asset checklists, questions like 'what slides, bio, title, or portal assets do I still owe before the event', document-signing workflows, collecting updated ID copies, or cancellation-fee warning/escalation policies — use OWNER_INBOX, PUBLISH_DEVICE_INTENT, OWNER_CALENDAR, or LIFEOPS_COMPUTER_USE instead. " +
+    "DO NOT use this action for multi-device push ladders or device-wide reminder delivery — use INTENT_SYNC instead. " +
+    "DO NOT use this action for pre-event asset checklists, questions like 'what slides, bio, title, or portal assets do I still owe before the event', document-signing workflows, collecting updated ID copies, or cancellation-fee warning/escalation policies — use OWNER_INBOX, INTENT_SYNC, OWNER_CALENDAR, or LIFEOPS_COMPUTER_USE instead. " +
     "DO NOT use this action for browser/portal/file workflows on the owner's machine — use LIFEOPS_COMPUTER_USE instead. " +
     "This action provides the final grounded reply; do not pair it with a speculative REPLY action or fall back to advice-only chat when the user wants real LifeOps follow-through.",
   descriptionCompressed:
@@ -2362,7 +2363,7 @@ export const lifeAction: Action & {
     }
     if (!(await hasLifeOpsAccess(runtime, message))) {
       const fallback =
-        "Life management is restricted to the owner, explicitly granted users, and the agent.";
+        "Life management is restricted to the owner and the agent.";
       return {
         success: false,
         text: await renderLifeActionReply({
@@ -2731,6 +2732,21 @@ export const lifeAction: Action & {
                 operation: "create_definition",
               },
             }),
+            // Asking the owner to fill in a missing field — selection +
+            // execution were both correct, terminal state is "needs human
+            // input". Flag so the multi-step loop breaks and the spy
+            // scores this as completed.
+            values: {
+              success: false,
+              error: "MISSING_DEFINITION_FIELD",
+              missingField: "title",
+              requiresConfirmation: true,
+            },
+            data: {
+              actionName: "LIFE",
+              missingField: "title",
+              requiresConfirmation: true,
+            },
           };
         }
         if (!cadence) {
@@ -2749,6 +2765,17 @@ export const lifeAction: Action & {
                 operation: "create_definition",
               },
             }),
+            values: {
+              success: false,
+              error: "MISSING_DEFINITION_FIELD",
+              missingField: "schedule",
+              requiresConfirmation: true,
+            },
+            data: {
+              actionName: "LIFE",
+              missingField: "schedule",
+              requiresConfirmation: true,
+            },
           };
         }
         const kind =
@@ -3664,9 +3691,31 @@ export const lifeAction: Action & {
         if (!target) {
           const weeklyReview = await service.reviewGoalsForWeek();
           if (weeklyReview.summary.totalGoals === 0) {
+            // No goals to review — fall through to overview so todo-list-style
+            // queries like "what's on my todo list today?" still resolve.
+            const overview = await service.getOverview();
+            const userQuery = messageText(message) || intent || "overview";
+            const fallback = formatOverviewForQuery(overview, userQuery);
             return {
-              success: false,
-              text: "I could not find any active goals to review.",
+              success: true,
+              text: await renderLifeActionReply({
+                runtime,
+                message,
+                state,
+                intent: userQuery,
+                scenario: "overview",
+                fallback,
+                context: {
+                  summary: overview.owner.summary,
+                  occurrenceTitles: overview.owner.occurrences
+                    .slice(0, 6)
+                    .map((occurrence) => occurrence.title),
+                  goalTitles: overview.owner.goals
+                    .slice(0, 3)
+                    .map((goal) => goal.title),
+                },
+              }),
+              data: toActionData(overview),
             };
           }
           const fallback = formatWeeklyGoalReview(weeklyReview);

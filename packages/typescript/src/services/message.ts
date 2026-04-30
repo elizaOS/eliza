@@ -1321,9 +1321,30 @@ const ACTION_REPAIR_PASSIVE_ACTIONS = new Set(
 // routinely overrides a correct CREATE_CRON/CREATE_TRIGGER_TASK pick on
 // page-automations with LIFE based on fuzzy description overlap — breaking
 // the scope-gated routing on the page-automations surface.
+// OWNER_RELATIONSHIP is the explicit umbrella action for the contacts /
+// rolodex / follow-up surface. The metadata-based corrector would otherwise
+// override a correct OWNER_RELATIONSHIP pick (subaction=add_follow_up) with
+// SCHEDULE_FOLLOW_UP based on keyword overlap ("follow up with X next week"),
+// even though SCHEDULE_FOLLOW_UP's validate explicitly returns false when
+// OWNER_RELATIONSHIP is registered. The bypassed validate then surfaces a
+// "Contact not found in relationships" error from the wrong action path.
+// Treat OWNER_RELATIONSHIP as explicit planner intent so the corrector does
+// not second-guess it.
+//
+// CREATE_TASK is the orchestrator's coding-sub-agent delegation. When a user
+// says "build me X" or "implement Y", the planner correctly picks CREATE_TASK,
+// but the user's prose contains zero CREATE_TASK keywords. Without this entry
+// the corrector overrides CREATE_TASK with whatever role-gated action
+// (OWNER_CALENDAR, OWNER_INBOX, MANAGE_ISSUES) happens to overlap with
+// incidental words in the prompt — e.g. a build request that mentions a date
+// keyword-rescores OWNER_CALENDAR over CREATE_TASK and the user gets
+// "Google Calendar is not connected" in response to a code request. Same
+// precedent as SPAWN_AGENT, the sibling delegation action that's already
+// protected here.
 const EXPLICIT_INTENT_ACTIONS = new Set(
 	[
 		"SPAWN_AGENT",
+		"CREATE_TASK",
 		"CREATE_TRIGGER_TASK",
 		"CREATE_TRIGGER",
 		"SCHEDULE_TRIGGER",
@@ -1334,6 +1355,13 @@ const EXPLICIT_INTENT_ACTIONS = new Set(
 		"SCHEDULE_AUTOMATION",
 		"CREATE_CRON",
 		"CREATE_RECURRING",
+		"OWNER_RELATIONSHIP",
+		// LIFE picks routine / reminder / todo / habit / goal intents that
+		// frequently mention a verb-noun pair the corrector will mis-rewrite.
+		// "remember to call mom on Sunday" → planner correctly picks LIFE
+		// (a reminder), but the corrector keyword-rescores it to
+		// CALL_EXTERNAL because of "call". Trust the planner's pick.
+		"LIFE",
 	].map(normalizeActionIdentifier),
 );
 
@@ -1942,6 +1970,48 @@ function hasNonPassiveAction(
 					normalizeActionIdentifier("STOP"),
 		) ?? false
 	);
+}
+
+/**
+ * Returns true when the planner deliberately chose to converse — i.e. the
+ * response actions list contains REPLY (or its alias RESPOND).
+ *
+ * REPLY is a deliberate signal that the LLM judged the message as
+ * conversation, not a delegated task. The metadata-overlap rescue path
+ * must respect this and not promote REPLY to a privileged action like
+ * OWNER_INBOX or MANAGE_ISSUES based on incidental keyword overlap with
+ * those actions' example text. Without this gate, a chitchat message
+ * containing common scheduling/workflow words ("workflow", "policy",
+ * "follow up", "friday", "2026") gets force-routed into a role-gated
+ * action and the user sees "Permission denied: only the owner or admin
+ * may use inbox actions" in response to plain conversation.
+ */
+function hasExplicitReplyIntent(
+	responseContent: Pick<Content, "actions"> | null | undefined,
+): boolean {
+	const replyId = normalizeActionIdentifier("REPLY");
+	const respondId = normalizeActionIdentifier("RESPOND");
+	return (
+		responseContent?.actions?.some((actionName) => {
+			if (typeof actionName !== "string") return false;
+			const id = normalizeActionIdentifier(actionName);
+			return id === replyId || id === respondId;
+		}) ?? false
+	);
+}
+
+/**
+ * Gate for the metadata-rescue path that promotes a passive (REPLY/NONE)
+ * response to a privileged action based on keyword overlap. Run only when
+ * the planner produced no real action AND no explicit REPLY — i.e. when
+ * we genuinely have nothing to say.
+ */
+export function shouldRunMetadataActionRescue(
+	responseContent: Pick<Content, "actions"> | null | undefined,
+): boolean {
+	if (hasNonPassiveAction(responseContent)) return false;
+	if (hasExplicitReplyIntent(responseContent)) return false;
+	return true;
 }
 
 function shouldAttemptActionRescue(
@@ -3784,24 +3854,47 @@ export class DefaultMessageService implements IMessageService {
 			state = result.state;
 			mode = result.mode;
 
-			// Race check before we send anything
+			// Race check before we send anything.
+			//
+			// When a newer message arrives in the same room while we were
+			// generating a response, the default behavior is to drop the older
+			// response so the bot only replies to the freshest input.
+			//
+			// Exception: keep the response when the planner picked an explicit
+			// REPLY/RESPOND action. That's a deliberate conversational signal
+			// (often a direct @-mention) and dropping it leaves the user looking
+			// at silence on a tagged message, which the character contract
+			// treats as a bug. The newer message will get its own turn through
+			// the normal pipeline; sending the older REPLY first does not
+			// duplicate either response.
 			const currentResponseId = agentResponses.get(message.roomId);
 			if (currentResponseId !== responseId && !opts.keepExistingResponses) {
-				runtime.logger.info(
-					{
-						src: "service:message",
-						agentId: runtime.agentId,
-						roomId: message.roomId,
-					},
-					"Response discarded - newer message being processed",
-				);
-				return {
-					didRespond: false,
-					responseContent: null,
-					responseMessages: [],
-					state,
-					mode: "none",
-				};
+				if (hasExplicitReplyIntent(responseContent)) {
+					runtime.logger.info(
+						{
+							src: "service:message",
+							agentId: runtime.agentId,
+							roomId: message.roomId,
+						},
+						"Race detected but keeping response (explicit REPLY for an addressed message)",
+					);
+				} else {
+					runtime.logger.info(
+						{
+							src: "service:message",
+							agentId: runtime.agentId,
+							roomId: message.roomId,
+						},
+						"Response discarded - newer message being processed",
+					);
+					return {
+						didRespond: false,
+						responseContent: null,
+						responseMessages: [],
+						state,
+						mode: "none",
+					};
+				}
 			}
 
 			if (responseContent && message.id) {
@@ -5194,6 +5287,53 @@ export class DefaultMessageService implements IMessageService {
 				break;
 			}
 			traceActionResults.push(...latestActionResults);
+
+			// Break the post-action continuation loop when any of the just-run
+			// actions returned a "needs human confirmation" signal. The
+			// confirmation has to come from the next user message — there is
+			// nothing the agent can do to supply it on its own. Without this,
+			// REMOTE_DESKTOP / OWNER_SEND_MESSAGE confirm-then-dispatch /
+			// BLOCK_WEBSITES re-fire their plan every iteration until
+			// maxMultiStepIterations is hit.
+			const confirmErrorCodes = new Set([
+				"CONFIRMATION_REQUIRED",
+				"NOT_CONFIRMED",
+				"REQUIRES_CONFIRMATION",
+				"AWAITING_CONFIRMATION",
+				"NEEDS_CONFIRMATION",
+			]);
+			const requiresConfirmation = latestActionResults.some((r) => {
+				const v =
+					r &&
+					"values" in r &&
+					typeof r.values === "object" &&
+					r.values !== null
+						? (r.values as Record<string, unknown>)
+						: null;
+				const d =
+					r && "data" in r && typeof r.data === "object" && r.data !== null
+						? (r.data as Record<string, unknown>)
+						: null;
+				const ve = typeof v?.error === "string" ? v.error : "";
+				const de = typeof d?.error === "string" ? d.error : "";
+				return (
+					v?.requiresConfirmation === true ||
+					d?.requiresConfirmation === true ||
+					confirmErrorCodes.has(ve) ||
+					confirmErrorCodes.has(de)
+				);
+			});
+			if (requiresConfirmation) {
+				runtime.logger.info(
+					{
+						src: "service:message",
+						agentId: runtime.agentId,
+						iteration: iterationCount + 1,
+					},
+					"Post-action continuation: action returned requiresConfirmation — terminating loop until next user message",
+				);
+				break;
+			}
 		}
 
 		accumulatedState = withTaskCompletion(
@@ -5984,7 +6124,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 			}
 		}
 
-		if (!hasNonPassiveAction(responseContent)) {
+		if (shouldRunMetadataActionRescue(responseContent)) {
 			const metadataSuggestion = suggestOwnedActionFromMetadata(
 				runtime,
 				message,
@@ -6846,6 +6986,63 @@ Output ONLY the continuation, starting immediately after the last character abov
 							? result.text
 							: undefined,
 				});
+
+				// Break the multi-step loop when the action returned a terminal
+				// "needs human confirmation" signal. Without this, actions that
+				// return { requiresConfirmation: true } cause the planner to
+				// re-fire the same plan every iteration. Confirmation must come
+				// from the next user message — there is nothing the agent can
+				// do to supply it on its own.
+				const resultValuesForConfirm =
+					result &&
+					"values" in result &&
+					typeof result.values === "object" &&
+					result.values !== null
+						? (result.values as Record<string, unknown>)
+						: null;
+				const resultDataForConfirm =
+					result &&
+					"data" in result &&
+					typeof result.data === "object" &&
+					result.data !== null
+						? (result.data as Record<string, unknown>)
+						: null;
+				// Recognize any confirmation-required signal an action might use:
+				// the canonical `requiresConfirmation: true` flag (in either values
+				// or data) plus the legacy error codes that some handlers still
+				// return (NOT_CONFIRMED, REQUIRES_CONFIRMATION, AWAITING_CONFIRMATION).
+				const confirmErrorCodes = new Set([
+					"CONFIRMATION_REQUIRED",
+					"NOT_CONFIRMED",
+					"REQUIRES_CONFIRMATION",
+					"AWAITING_CONFIRMATION",
+					"NEEDS_CONFIRMATION",
+				]);
+				const valuesError =
+					typeof resultValuesForConfirm?.error === "string"
+						? resultValuesForConfirm.error
+						: "";
+				const dataError =
+					typeof resultDataForConfirm?.error === "string"
+						? resultDataForConfirm.error
+						: "";
+				const requiresConfirmation =
+					resultValuesForConfirm?.requiresConfirmation === true ||
+					resultDataForConfirm?.requiresConfirmation === true ||
+					confirmErrorCodes.has(valuesError) ||
+					confirmErrorCodes.has(dataError);
+				if (requiresConfirmation) {
+					runtime.logger.info(
+						{
+							src: "service:message",
+							agentId: runtime.agentId,
+							iteration: iterationCount,
+							action,
+						},
+						"Action returned requiresConfirmation — terminating multi-step loop until next user message",
+					);
+					break;
+				}
 			}
 		}
 

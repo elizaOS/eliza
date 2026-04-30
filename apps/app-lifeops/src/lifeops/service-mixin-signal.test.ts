@@ -47,6 +47,7 @@ type SignalConsumer = {
     inbound: boolean;
     reason: string;
     grantedCapabilities: string[];
+    degradations?: Array<{ code: string }>;
   }>;
   readSignalInbound: (limit?: number) => Promise<
     Array<{
@@ -67,6 +68,17 @@ type SignalConsumer = {
       isGroup: boolean;
     }>
   >;
+  sendSignalMessage: (request: {
+    side?: "owner" | "agent";
+    recipient: string;
+    text: string;
+  }) => Promise<{
+    provider: "signal";
+    side: "owner" | "agent";
+    recipient: string;
+    ok: true;
+    timestamp: number;
+  }>;
 };
 
 const Composed = withSignal(StubBase as never);
@@ -177,9 +189,19 @@ describe("withSignal consumer surface", () => {
     );
     expect(process.env.SIGNAL_AUTH_DIR).toBe(previousAuthDir);
     expect(process.env.SIGNAL_ACCOUNT_NUMBER).toBe("+15550000000");
+    expect(service.runtime.setSetting).toHaveBeenCalledWith(
+      "SIGNAL_RECEIVE_MODE",
+      "manual",
+      false,
+    );
+    expect(service.runtime.setSetting).toHaveBeenCalledWith(
+      "SIGNAL_AUTO_REPLY",
+      "false",
+      false,
+    );
   });
 
-  it("upgrades existing linked Signal grants to bidirectional capabilities", async () => {
+  it("does not invent send readiness for read-only linked Signal grants", async () => {
     const authDir = path.join(
       tmpDir,
       "lifeops",
@@ -223,13 +245,63 @@ describe("withSignal consumer surface", () => {
     const status = await service.getSignalConnectorStatus("owner");
 
     expect(status.connected).toBe(true);
-    expect(status.grantedCapabilities).toEqual(["signal.read", "signal.send"]);
-    expect(service.repository.upsertConnectorGrant).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: "grant-1",
-        capabilities: ["signal.read", "signal.send"],
-      }),
+    expect(status.inbound).toBe(true);
+    expect(status.grantedCapabilities).toEqual(["signal.read"]);
+    expect(service.repository.upsertConnectorGrant).not.toHaveBeenCalled();
+  });
+
+  it("reports send readiness only when the connected Signal service can send", async () => {
+    const authDir = path.join(
+      tmpDir,
+      "lifeops",
+      "signal",
+      "agent-signal",
+      "owner",
     );
+    fs.mkdirSync(authDir, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(
+      path.join(authDir, "device-info.json"),
+      JSON.stringify({
+        authDir,
+        phoneNumber: "+15550000000",
+        uuid: "signal-uuid",
+        deviceName: "Milady Mac",
+      }),
+      { encoding: "utf8", mode: 0o600 },
+    );
+    const existingGrant = {
+      id: "grant-1",
+      agentId: "agent-signal",
+      provider: "signal",
+      side: "owner",
+      identity: { phoneNumber: "+15550000000" },
+      grantedScopes: [],
+      capabilities: ["signal.read", "signal.send"],
+      tokenRef: authDir,
+      mode: "local",
+      executionTarget: "local",
+      sourceOfTruth: "local_storage",
+      preferredByAgent: false,
+      cloudConnectionId: null,
+      metadata: {},
+      lastRefreshAt: "2026-04-27T00:00:00.000Z",
+      createdAt: "2026-04-27T00:00:00.000Z",
+      updatedAt: "2026-04-27T00:00:00.000Z",
+    };
+    const signalService = {
+      isServiceConnected: vi.fn(() => true),
+      getRecentMessages: vi.fn(async () => []),
+      sendMessage: vi.fn(async () => ({ timestamp: 1_713_341_100_000 })),
+    };
+    const service = createService(signalService);
+    service.repository.getConnectorGrant.mockResolvedValue(existingGrant);
+
+    const status = await service.getSignalConnectorStatus("owner");
+
+    expect(status.connected).toBe(true);
+    expect(status.inbound).toBe(true);
+    expect(status.grantedCapabilities).toEqual(["signal.read", "signal.send"]);
+    expect(status.degradations).toBeUndefined();
   });
 
   it("reads recent inbound messages from the connected Signal service", async () => {
@@ -324,6 +396,59 @@ describe("withSignal consumer surface", () => {
     ]);
   });
 
+  it("falls back to signal-cli HTTP receive when the connected service has no buffered messages", async () => {
+    process.env.SIGNAL_ACCOUNT_NUMBER = "+15550000000";
+    const signalService = {
+      isServiceConnected: vi.fn(() => true),
+      getRecentMessages: vi.fn(async () => []),
+    };
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      expect(String(input)).toBe(
+        "http://127.0.0.1:8080/v1/receive/%2B15550000000",
+      );
+      return new Response(
+        JSON.stringify([
+          {
+            envelope: {
+              sourceNumber: "+15551110003",
+              sourceName: "Casey",
+              sourceDevice: 1,
+              timestamp: 1_713_341_000_000,
+              dataMessage: {
+                timestamp: 1_713_341_000_000,
+                message: "Passive pull",
+              },
+            },
+            account: "+15550000000",
+          },
+        ]),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+    const service = createService(signalService);
+
+    await expect(service.readSignalInbound(10)).resolves.toEqual([
+      {
+        id: "signal:+15551110003:1713341000000",
+        roomId: "+15551110003",
+        channelId: "+15551110003",
+        threadId: "+15551110003",
+        roomName: "Casey",
+        speakerName: "Casey",
+        senderNumber: "+15551110003",
+        senderUuid: null,
+        sourceDevice: 1,
+        groupId: null,
+        groupType: null,
+        text: "Passive pull",
+        createdAt: 1_713_341_000_000,
+        isInbound: true,
+        isGroup: false,
+      },
+    ]);
+    expect(signalService.getRecentMessages).toHaveBeenCalledWith(10);
+  });
+
   it("surfaces signal-cli receive failures instead of returning an empty success", async () => {
     process.env.SIGNAL_HTTP_URL = "http://127.0.0.1:9000";
     process.env.SIGNAL_ACCOUNT_NUMBER = "+15550000000";
@@ -335,5 +460,148 @@ describe("withSignal consumer surface", () => {
     await expect(service.readSignalInbound(10)).rejects.toThrow(
       "Signal local receive failed with HTTP 503",
     );
+  });
+
+  it("rejects passive reads when no Signal read transport is configured", async () => {
+    const service = createService();
+
+    await expect(service.readSignalInbound(10)).rejects.toThrow(
+      "Signal inbound is not configured.",
+    );
+  });
+
+  it("sends through the signal-cli HTTP RPC path when the plugin service cannot send", async () => {
+    const authDir = path.join(
+      tmpDir,
+      "lifeops",
+      "signal",
+      "agent-signal",
+      "owner",
+    );
+    fs.mkdirSync(authDir, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(
+      path.join(authDir, "device-info.json"),
+      JSON.stringify({
+        authDir,
+        phoneNumber: "+15550000000",
+        uuid: "signal-uuid",
+        deviceName: "Milady Mac",
+      }),
+      { encoding: "utf8", mode: 0o600 },
+    );
+    const existingGrant = {
+      id: "grant-1",
+      agentId: "agent-signal",
+      provider: "signal",
+      side: "owner",
+      identity: { phoneNumber: "+15550000000" },
+      grantedScopes: [],
+      capabilities: ["signal.read", "signal.send"],
+      tokenRef: authDir,
+      mode: "local",
+      executionTarget: "local",
+      sourceOfTruth: "local_storage",
+      preferredByAgent: false,
+      cloudConnectionId: null,
+      metadata: {},
+      lastRefreshAt: "2026-04-27T00:00:00.000Z",
+      createdAt: "2026-04-27T00:00:00.000Z",
+      updatedAt: "2026-04-27T00:00:00.000Z",
+    };
+    process.env.SIGNAL_HTTP_URL = "http://127.0.0.1:9000";
+    const service = createService();
+    service.repository.getConnectorGrant.mockResolvedValue(existingGrant);
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init) => {
+      expect(String(input)).toBe("http://127.0.0.1:9000/api/v1/rpc");
+      const body = JSON.parse(String(init?.body)) as {
+        method?: string;
+        params?: {
+          account?: string;
+          recipients?: string[];
+          message?: string;
+        };
+      };
+      expect(body.method).toBe("send");
+      expect(body.params).toMatchObject({
+        account: "+15550000000",
+        recipients: ["+15551110004"],
+        message: "Local path",
+      });
+      return new Response(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: "rpc-test",
+          result: { timestamp: 1_713_341_200_000 },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+
+    await expect(
+      service.sendSignalMessage({
+        recipient: "+15551110004",
+        text: "Local path",
+      }),
+    ).resolves.toEqual({
+      provider: "signal",
+      side: "owner",
+      recipient: "+15551110004",
+      ok: true,
+      timestamp: 1_713_341_200_000,
+    });
+  });
+
+  it("does not report outbound success without a send timestamp", async () => {
+    const authDir = path.join(
+      tmpDir,
+      "lifeops",
+      "signal",
+      "agent-signal",
+      "owner",
+    );
+    fs.mkdirSync(authDir, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(
+      path.join(authDir, "device-info.json"),
+      JSON.stringify({
+        authDir,
+        phoneNumber: "+15550000000",
+        uuid: "signal-uuid",
+        deviceName: "Milady Mac",
+      }),
+      { encoding: "utf8", mode: 0o600 },
+    );
+    const existingGrant = {
+      id: "grant-1",
+      agentId: "agent-signal",
+      provider: "signal",
+      side: "owner",
+      identity: { phoneNumber: "+15550000000" },
+      grantedScopes: [],
+      capabilities: ["signal.read", "signal.send"],
+      tokenRef: authDir,
+      mode: "local",
+      executionTarget: "local",
+      sourceOfTruth: "local_storage",
+      preferredByAgent: false,
+      cloudConnectionId: null,
+      metadata: {},
+      lastRefreshAt: "2026-04-27T00:00:00.000Z",
+      createdAt: "2026-04-27T00:00:00.000Z",
+      updatedAt: "2026-04-27T00:00:00.000Z",
+    };
+    const signalService = {
+      isServiceConnected: vi.fn(() => true),
+      getRecentMessages: vi.fn(async () => []),
+      sendMessage: vi.fn(async () => ({})),
+    };
+    const service = createService(signalService);
+    service.repository.getConnectorGrant.mockResolvedValue(existingGrant);
+
+    await expect(
+      service.sendSignalMessage({
+        recipient: "+15551110004",
+        text: "No fake timestamp",
+      }),
+    ).rejects.toThrow("Signal send did not return a timestamp.");
   });
 });

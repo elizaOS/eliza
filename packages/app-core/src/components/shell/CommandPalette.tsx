@@ -245,7 +245,7 @@ export function CommandPalette() {
       }}
     >
       <DialogContent
-        className="flex max-h-[420px] w-[520px] max-w-[520px] flex-col rounded-xl p-0 top-[30%] translate-y-0"
+        className="flex max-h-[min(420px,calc(100dvh_-_1rem))] w-[min(calc(100vw_-_1rem),32.5rem)] max-w-none flex-col rounded-xl p-0 sm:top-[30%] sm:translate-y-0"
         onKeyDown={handlePaletteKeyDown}
       >
         <DialogHeader className="sr-only">
@@ -294,7 +294,7 @@ export function CommandPalette() {
                 id={`command-palette-option-${cmd.id}`}
                 role="option"
                 aria-selected={idx === commandActiveIndex}
-                className="w-full px-4 py-2.5 cursor-pointer flex justify-between items-center text-left text-sm font-body border-0 rounded-none h-auto"
+                className="flex h-auto w-full cursor-pointer items-center justify-between gap-3 rounded-none border-0 px-4 py-2.5 text-left font-body text-sm"
                 style={{
                   background:
                     idx === commandActiveIndex
@@ -308,9 +308,12 @@ export function CommandPalette() {
                 }}
                 onMouseEnter={() => setState("commandActiveIndex", idx)}
               >
-                <span>{cmd.label}</span>
+                <span className="min-w-0 truncate">{cmd.label}</span>
                 {cmd.hint && (
-                  <span className="text-xs" style={{ color: "var(--muted)" }}>
+                  <span
+                    className="shrink-0 text-xs"
+                    style={{ color: "var(--muted)" }}
+                  >
                     {cmd.hint}
                   </span>
                 )}

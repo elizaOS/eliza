@@ -45,6 +45,7 @@ import type {
   CreateLifeOpsGmailReplyDraftRequest,
   CreateLifeOpsGoalRequest,
   DisconnectLifeOpsGoogleConnectorRequest,
+  DisconnectLifeOpsHealthConnectorRequest,
   DisconnectLifeOpsMessagingConnectorRequest,
   DisconnectLifeOpsXConnectorRequest,
   GetLifeOpsCalendarFeedRequest,
@@ -53,8 +54,10 @@ import type {
   GetLifeOpsGmailSpamReviewRequest,
   GetLifeOpsGmailTriageRequest,
   GetLifeOpsGmailUnrespondedRequest,
+  GetLifeOpsHealthSummaryRequest,
   GetLifeOpsIMessageMessagesRequest,
   GetLifeOpsInboxRequest,
+  GetLifeOpsSignalMessagesResponse,
   IngestLifeOpsGmailEventRequest,
   LifeOpsActivitySignal,
   LifeOpsBrowserSession,
@@ -80,6 +83,9 @@ import type {
   LifeOpsGoalRecord,
   LifeOpsGoalReview,
   LifeOpsGoogleConnectorStatus,
+  LifeOpsHealthConnectorProvider,
+  LifeOpsHealthConnectorStatus,
+  LifeOpsHealthSummaryResponse,
   LifeOpsIMessageChat,
   LifeOpsIMessageConnectorStatus,
   LifeOpsIMessageMessage,
@@ -91,23 +97,36 @@ import type {
   LifeOpsOverview,
   LifeOpsPersonalBaselineResponse,
   LifeOpsReminderInspection,
+  LifeOpsScreenTimeBreakdown,
+  LifeOpsScreenTimeHistoryResponse,
+  LifeOpsScreenTimeRangeKey,
+  LifeOpsScreenTimeSummary,
+  LifeOpsScreenTimeSummaryRequest,
   LifeOpsSignalConnectorStatus,
   LifeOpsSignalPairingStatus,
   LifeOpsSleepHistoryResponse,
   LifeOpsSleepRegularityResponse,
+  LifeOpsSocialHabitSummary,
   LifeOpsTelegramConnectorStatus,
   LifeOpsWhatsAppConnectorStatus,
   LifeOpsXConnectorStatus,
   ListLifeOpsCalendarsRequest,
   ManageLifeOpsGmailMessagesRequest,
   SelectLifeOpsGoogleConnectorPreferenceRequest,
+  SendLifeOpsDiscordMessageRequest,
+  SendLifeOpsDiscordMessageResponse,
   SendLifeOpsGmailReplyRequest,
   SendLifeOpsIMessageRequest,
+  SendLifeOpsSignalMessageRequest,
+  SendLifeOpsSignalMessageResponse,
+  SendLifeOpsWhatsAppMessageRequest,
   SetLifeOpsCalendarIncludedRequest,
   SnoozeLifeOpsOccurrenceRequest,
   StartLifeOpsDiscordConnectorRequest,
   StartLifeOpsGoogleConnectorRequest,
   StartLifeOpsGoogleConnectorResponse,
+  StartLifeOpsHealthConnectorRequest,
+  StartLifeOpsHealthConnectorResponse,
   StartLifeOpsSignalPairingRequest,
   StartLifeOpsSignalPairingResponse,
   StartLifeOpsTelegramAuthRequest,
@@ -115,10 +134,13 @@ import type {
   StartLifeOpsXConnectorRequest,
   StartLifeOpsXConnectorResponse,
   SubmitLifeOpsTelegramAuthRequest,
+  SyncLifeOpsHealthConnectorRequest,
   UpdateLifeOpsBrowserSessionProgressRequest,
   UpdateLifeOpsDefinitionRequest,
   UpdateLifeOpsGmailSpamReviewItemRequest,
   UpdateLifeOpsGoalRequest,
+  VerifyLifeOpsDiscordConnectorRequest,
+  VerifyLifeOpsDiscordConnectorResponse,
   VerifyLifeOpsTelegramConnectorRequest,
   VerifyLifeOpsTelegramConnectorResponse,
 } from "@elizaos/shared";
@@ -164,99 +186,21 @@ type LifeOpsScheduleMergedStateRequest = {
   refresh?: boolean;
 };
 
-export type LifeOpsScreenTimeSource = "app" | "website";
-
-export type LifeOpsScreenTimeSummaryRequest = {
-  since: string;
-  until: string;
-  source?: LifeOpsScreenTimeSource;
-  topN?: number;
-};
-
-export type LifeOpsScreenTimeSummaryItem = {
-  source: LifeOpsScreenTimeSource;
-  identifier: string;
-  displayName: string;
-  totalSeconds: number;
-};
-
-export type LifeOpsScreenTimeSummary = {
-  items: LifeOpsScreenTimeSummaryItem[];
-  totalSeconds: number;
-};
-
-export type LifeOpsHabitCategory =
-  | "browser"
-  | "communication"
-  | "social"
-  | "system"
-  | "video"
-  | "work"
-  | "other";
-
-export type LifeOpsHabitDevice =
-  | "browser"
-  | "computer"
-  | "phone"
-  | "tablet"
-  | "unknown";
-
-export type LifeOpsScreenTimeBucket = {
-  key: string;
-  label: string;
-  totalSeconds: number;
-};
-
-export type LifeOpsScreenTimeBreakdownItem = LifeOpsScreenTimeSummaryItem & {
-  sessionCount: number;
-  category: LifeOpsHabitCategory;
-  device: LifeOpsHabitDevice;
-  service: string | null;
-  serviceLabel: string | null;
-  browser: string | null;
-};
-
-export type LifeOpsScreenTimeBreakdown = {
-  items: LifeOpsScreenTimeBreakdownItem[];
-  totalSeconds: number;
-  bySource: LifeOpsScreenTimeBucket[];
-  byCategory: LifeOpsScreenTimeBucket[];
-  byDevice: LifeOpsScreenTimeBucket[];
-  byService: LifeOpsScreenTimeBucket[];
-  byBrowser: LifeOpsScreenTimeBucket[];
-  fetchedAt: string;
-};
-
-export type LifeOpsSocialHabitSummary = {
-  since: string;
-  until: string;
-  totalSeconds: number;
-  services: LifeOpsScreenTimeBucket[];
-  devices: LifeOpsScreenTimeBucket[];
-  surfaces: LifeOpsScreenTimeBucket[];
-  browsers: LifeOpsScreenTimeBucket[];
-  sessions: LifeOpsScreenTimeBreakdownItem[];
-  messages: {
-    channels: Array<{
-      channel: "x_dm";
-      label: string;
-      inbound: number;
-      outbound: number;
-      opened: number;
-      replied: number;
-    }>;
-    inbound: number;
-    outbound: number;
-    opened: number;
-    replied: number;
-  };
-  dataSources: Array<{
-    id: string;
-    label: string;
-    state: "live" | "partial" | "unwired";
-  }>;
-  fetchedAt: string;
-};
+export type {
+  LifeOpsHabitCategory,
+  LifeOpsHabitDevice,
+  LifeOpsScreenTimeBreakdown,
+  LifeOpsScreenTimeBreakdownItem,
+  LifeOpsScreenTimeBucket,
+  LifeOpsScreenTimeHistoryResponse,
+  LifeOpsScreenTimeRangeKey,
+  LifeOpsScreenTimeSource,
+  LifeOpsScreenTimeSummary,
+  LifeOpsScreenTimeSummaryItem,
+  LifeOpsScreenTimeSummaryRequest,
+  LifeOpsSocialHabitDataSource,
+  LifeOpsSocialHabitSummary,
+} from "@elizaos/shared";
 
 export type LifeOpsPriorityScoringStateDto = {
   enabled: boolean;
@@ -409,8 +353,13 @@ declare module "@elizaos/app-core/api/client-base" {
     getLifeOpsScreenTimeBreakdown(
       data: LifeOpsScreenTimeSummaryRequest,
     ): Promise<LifeOpsScreenTimeBreakdown>;
+    getLifeOpsScreenTimeHistory(data: {
+      range: LifeOpsScreenTimeRangeKey;
+      topN?: number;
+      socialTopN?: number;
+    }): Promise<LifeOpsScreenTimeHistoryResponse>;
     getLifeOpsSocialHabitSummary(
-      data: Omit<LifeOpsScreenTimeSummaryRequest, "source">,
+      data: Omit<LifeOpsScreenTimeSummaryRequest, "source" | "identifier">,
     ): Promise<LifeOpsSocialHabitSummary>;
     getLifeOpsSleepHistory(opts?: {
       windowDays?: number;
@@ -620,6 +569,29 @@ declare module "@elizaos/app-core/api/client-base" {
       mode?: LifeOpsConnectorMode,
       side?: LifeOpsConnectorSide,
     ): Promise<LifeOpsGoogleConnectorStatus[]>;
+    getHealthLifeOpsConnectorStatuses(
+      mode?: LifeOpsConnectorMode,
+      side?: LifeOpsConnectorSide,
+    ): Promise<LifeOpsHealthConnectorStatus[]>;
+    getHealthLifeOpsConnectorStatus(
+      provider: LifeOpsHealthConnectorProvider,
+      mode?: LifeOpsConnectorMode,
+      side?: LifeOpsConnectorSide,
+    ): Promise<LifeOpsHealthConnectorStatus>;
+    startHealthLifeOpsConnector(
+      provider: LifeOpsHealthConnectorProvider,
+      data?: Omit<StartLifeOpsHealthConnectorRequest, "provider">,
+    ): Promise<StartLifeOpsHealthConnectorResponse>;
+    disconnectHealthLifeOpsConnector(
+      provider: LifeOpsHealthConnectorProvider,
+      data?: Omit<DisconnectLifeOpsHealthConnectorRequest, "provider">,
+    ): Promise<LifeOpsHealthConnectorStatus>;
+    syncLifeOpsHealth(
+      data?: SyncLifeOpsHealthConnectorRequest,
+    ): Promise<LifeOpsHealthSummaryResponse>;
+    getLifeOpsHealthSummary(
+      data?: GetLifeOpsHealthSummaryRequest,
+    ): Promise<LifeOpsHealthSummaryResponse>;
     getXLifeOpsConnectorStatus(
       mode?: LifeOpsConnectorMode,
       side?: LifeOpsConnectorSide,
@@ -679,6 +651,12 @@ declare module "@elizaos/app-core/api/client-base" {
     disconnectSignalConnector(
       data?: DisconnectLifeOpsMessagingConnectorRequest,
     ): Promise<LifeOpsSignalConnectorStatus>;
+    getSignalConnectorMessages(options?: {
+      limit?: number;
+    }): Promise<GetLifeOpsSignalMessagesResponse>;
+    sendSignalConnectorMessage(
+      data: SendLifeOpsSignalMessageRequest,
+    ): Promise<SendLifeOpsSignalMessageResponse>;
 
     // --- Discord connector ---
     getDiscordConnectorStatus(
@@ -690,9 +668,29 @@ declare module "@elizaos/app-core/api/client-base" {
     disconnectDiscordConnector(
       data?: DisconnectLifeOpsMessagingConnectorRequest,
     ): Promise<LifeOpsDiscordConnectorStatus>;
+    sendDiscordConnectorMessage(
+      data: SendLifeOpsDiscordMessageRequest,
+    ): Promise<SendLifeOpsDiscordMessageResponse>;
+    verifyDiscordConnector(
+      data?: VerifyLifeOpsDiscordConnectorRequest,
+    ): Promise<VerifyLifeOpsDiscordConnectorResponse>;
 
     // --- WhatsApp connector ---
     getWhatsAppConnectorStatus(): Promise<LifeOpsWhatsAppConnectorStatus>;
+    sendWhatsAppConnectorMessage(
+      data: SendLifeOpsWhatsAppMessageRequest,
+    ): Promise<{ ok: true; messageId: string }>;
+    getWhatsAppConnectorMessages(options?: { limit?: number }): Promise<{
+      count: number;
+      messages: Array<{
+        id: string;
+        from: string;
+        channelId: string;
+        timestamp: string;
+        type: "text" | "image" | "audio" | "document" | "unknown";
+        text?: string;
+      }>;
+    }>;
 
     // --- Telegram connector ---
     getTelegramConnectorStatus(
@@ -992,6 +990,9 @@ ElizaClient.prototype.getLifeOpsScreenTimeSummary = async function (
   if (data.source) {
     params.set("source", data.source);
   }
+  if (data.identifier) {
+    params.set("identifier", data.identifier);
+  }
   if (data.topN !== undefined) {
     params.set("topN", String(data.topN));
   }
@@ -1010,11 +1011,31 @@ ElizaClient.prototype.getLifeOpsScreenTimeBreakdown = async function (
   if (data.source) {
     params.set("source", data.source);
   }
+  if (data.identifier) {
+    params.set("identifier", data.identifier);
+  }
   if (data.topN !== undefined) {
     params.set("topN", String(data.topN));
   }
   return this.fetch<LifeOpsScreenTimeBreakdown>(
     `/api/lifeops/screen-time/breakdown?${params.toString()}`,
+  );
+};
+
+ElizaClient.prototype.getLifeOpsScreenTimeHistory = async function (
+  this: ElizaClient,
+  data,
+) {
+  const params = new URLSearchParams();
+  params.set("range", data.range);
+  if (data.topN !== undefined) {
+    params.set("topN", String(data.topN));
+  }
+  if (data.socialTopN !== undefined) {
+    params.set("socialTopN", String(data.socialTopN));
+  }
+  return this.fetch<LifeOpsScreenTimeHistoryResponse>(
+    `/api/lifeops/screen-time/history?${params.toString()}`,
   );
 };
 
@@ -1342,6 +1363,9 @@ ElizaClient.prototype.getLifeOpsCalendarFeed = async function (
   }
   if (options.side) {
     params.set("side", options.side);
+  }
+  if (options.grantId) {
+    params.set("grantId", options.grantId);
   }
   if (options.calendarId) {
     params.set("calendarId", options.calendarId);
@@ -1945,6 +1969,99 @@ ElizaClient.prototype.getGoogleLifeOpsConnectorAccounts = async function (
   );
 };
 
+ElizaClient.prototype.getHealthLifeOpsConnectorStatuses = async function (
+  this: ElizaClient,
+  mode?: LifeOpsConnectorMode,
+  side?: LifeOpsConnectorSide,
+) {
+  const params = new URLSearchParams();
+  if (mode) {
+    params.set("mode", mode);
+  }
+  if (side) {
+    params.set("side", side);
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return this.fetch<LifeOpsHealthConnectorStatus[]>(
+    `/api/lifeops/connectors/health/status${query}`,
+  );
+};
+
+ElizaClient.prototype.getHealthLifeOpsConnectorStatus = async function (
+  this: ElizaClient,
+  provider,
+  mode?: LifeOpsConnectorMode,
+  side?: LifeOpsConnectorSide,
+) {
+  const params = new URLSearchParams();
+  if (mode) {
+    params.set("mode", mode);
+  }
+  if (side) {
+    params.set("side", side);
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return this.fetch<LifeOpsHealthConnectorStatus>(
+    `/api/lifeops/connectors/health/${encodeURIComponent(provider)}/status${query}`,
+  );
+};
+
+ElizaClient.prototype.startHealthLifeOpsConnector = async function (
+  this: ElizaClient,
+  provider,
+  data = {},
+) {
+  return this.fetch<StartLifeOpsHealthConnectorResponse>(
+    `/api/lifeops/connectors/health/${encodeURIComponent(provider)}/start`,
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    },
+  );
+};
+
+ElizaClient.prototype.disconnectHealthLifeOpsConnector = async function (
+  this: ElizaClient,
+  provider,
+  data = {},
+) {
+  return this.fetch<LifeOpsHealthConnectorStatus>(
+    `/api/lifeops/connectors/health/${encodeURIComponent(provider)}/disconnect`,
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    },
+  );
+};
+
+ElizaClient.prototype.syncLifeOpsHealth = async function (
+  this: ElizaClient,
+  data = {},
+) {
+  return this.fetch<LifeOpsHealthSummaryResponse>("/api/lifeops/health/sync", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+ElizaClient.prototype.getLifeOpsHealthSummary = async function (
+  this: ElizaClient,
+  data = {},
+) {
+  const params = new URLSearchParams();
+  if (data.provider) params.set("provider", data.provider);
+  if (data.mode) params.set("mode", data.mode);
+  if (data.side) params.set("side", data.side);
+  if (data.days !== undefined) params.set("days", String(data.days));
+  if (data.startDate) params.set("startDate", data.startDate);
+  if (data.endDate) params.set("endDate", data.endDate);
+  if (data.forceSync) params.set("forceSync", "true");
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return this.fetch<LifeOpsHealthSummaryResponse>(
+    `/api/lifeops/health/summary${query}`,
+  );
+};
+
 ElizaClient.prototype.getXLifeOpsConnectorStatus = async function (
   this: ElizaClient,
   mode,
@@ -2107,6 +2224,30 @@ ElizaClient.prototype.disconnectSignalConnector = async function (
   });
 };
 
+ElizaClient.prototype.getSignalConnectorMessages = async function (
+  this: ElizaClient,
+  options = {},
+): Promise<GetLifeOpsSignalMessagesResponse> {
+  const params = new URLSearchParams();
+  if (options.limit !== undefined) {
+    params.set("limit", String(options.limit));
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return this.fetch<GetLifeOpsSignalMessagesResponse>(
+    `/api/lifeops/connectors/signal/messages${query}`,
+  );
+};
+
+ElizaClient.prototype.sendSignalConnectorMessage = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch("/api/lifeops/connectors/signal/send", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
 // ---------------------------------------------------------------------------
 // Discord connector
 // ---------------------------------------------------------------------------
@@ -2143,6 +2284,26 @@ ElizaClient.prototype.disconnectDiscordConnector = async function (
   });
 };
 
+ElizaClient.prototype.sendDiscordConnectorMessage = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch("/api/lifeops/connectors/discord/send", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+ElizaClient.prototype.verifyDiscordConnector = async function (
+  this: ElizaClient,
+  data = {},
+) {
+  return this.fetch("/api/lifeops/connectors/discord/verify", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
 // ---------------------------------------------------------------------------
 // WhatsApp connector
 // ---------------------------------------------------------------------------
@@ -2151,6 +2312,28 @@ ElizaClient.prototype.getWhatsAppConnectorStatus = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/lifeops/connectors/whatsapp/status");
+};
+
+ElizaClient.prototype.sendWhatsAppConnectorMessage = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch("/api/lifeops/connectors/whatsapp/send", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+ElizaClient.prototype.getWhatsAppConnectorMessages = async function (
+  this: ElizaClient,
+  options = {},
+) {
+  const params = new URLSearchParams();
+  if (options.limit !== undefined) {
+    params.set("limit", String(options.limit));
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return this.fetch(`/api/lifeops/connectors/whatsapp/messages${query}`);
 };
 
 // ---------------------------------------------------------------------------

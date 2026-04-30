@@ -127,9 +127,7 @@ function extractDocsPlainText(doc: DocsDocumentResponse): string {
   return parts.join("");
 }
 
-function extractSheetRows(
-  response: SheetsSpreadsheetResponse,
-): string[][] {
+function extractSheetRows(response: SheetsSpreadsheetResponse): string[][] {
   const rows: string[][] = [];
   for (const sheet of response.sheets ?? []) {
     for (const gridData of sheet.data ?? []) {
@@ -332,9 +330,13 @@ export async function createDriveFile(args: {
   if (typeof args.content === "string") {
     requestBody =
       metaPart +
-      [`--${boundary}`, `Content-Type: ${contentMimeType}`, "", args.content, `--${boundary}--`].join(
-        "\r\n",
-      );
+      [
+        `--${boundary}`,
+        `Content-Type: ${contentMimeType}`,
+        "",
+        args.content,
+        `--${boundary}--`,
+      ].join("\r\n");
   } else {
     const enc = new TextEncoder();
     const header = enc.encode(

@@ -1,5 +1,5 @@
-import { defineConfig } from "tsup";
 import path from "path";
+import { defineConfig } from "tsup";
 
 // Monorepo paths
 const monorepoRoot = path.resolve(__dirname, "../../..");
@@ -9,7 +9,7 @@ const pluginsDir = path.join(monorepoRoot, "plugins");
 // Helper to resolve @elizaos packages from monorepo
 function resolvePackage(pkg: string, browserPath?: string): string {
   const pkgName = pkg.replace("@elizaos/", "");
-  
+
   // Check if it's a core package or a plugin
   let basePath: string;
   if (pkgName === "core") {
@@ -19,7 +19,7 @@ function resolvePackage(pkg: string, browserPath?: string): string {
     // Plugins have a typescript/ subdirectory
     basePath = path.join(pluginsDir, pkgName, "typescript");
   }
-  
+
   return browserPath ? path.join(basePath, browserPath) : basePath;
 }
 
@@ -63,10 +63,16 @@ export default defineConfig([
       options.alias = {
         "@elizaos/core": resolvePackage("@elizaos/core"),
         "@elizaos/plugin-openai": resolvePackage("@elizaos/plugin-openai"),
-        "@elizaos/plugin-anthropic": resolvePackage("@elizaos/plugin-anthropic"),
+        "@elizaos/plugin-anthropic": resolvePackage(
+          "@elizaos/plugin-anthropic",
+        ),
         "@elizaos/plugin-groq": resolvePackage("@elizaos/plugin-groq"),
-        "@elizaos/plugin-google-genai": resolvePackage("@elizaos/plugin-google-genai"),
-        "@elizaos/plugin-eliza-classic": resolvePackage("@elizaos/plugin-eliza-classic"),
+        "@elizaos/plugin-google-genai": resolvePackage(
+          "@elizaos/plugin-google-genai",
+        ),
+        "@elizaos/plugin-eliza-classic": resolvePackage(
+          "@elizaos/plugin-eliza-classic",
+        ),
         "@elizaos/plugin-localdb": resolvePackage("@elizaos/plugin-localdb"),
       };
     },
@@ -99,13 +105,34 @@ console.log("[ElizaOS] Offscreen bundle starting...");`,
         global: "globalThis",
       };
       options.alias = {
-        "@elizaos/core": resolvePackage("@elizaos/core", "dist/browser/index.browser.js"),
-        "@elizaos/plugin-openai": resolvePackage("@elizaos/plugin-openai", "dist/browser/index.browser.js"),
-        "@elizaos/plugin-anthropic": resolvePackage("@elizaos/plugin-anthropic", "dist/browser/index.browser.js"),
-        "@elizaos/plugin-groq": resolvePackage("@elizaos/plugin-groq", "dist/browser/index.browser.js"),
-        "@elizaos/plugin-google-genai": resolvePackage("@elizaos/plugin-google-genai", "dist/browser/index.browser.js"),
-        "@elizaos/plugin-eliza-classic": resolvePackage("@elizaos/plugin-eliza-classic", "dist/browser/index.browser.js"),
-        "@elizaos/plugin-localdb": resolvePackage("@elizaos/plugin-localdb", "dist/browser/index.browser.js"),
+        "@elizaos/core": resolvePackage(
+          "@elizaos/core",
+          "dist/browser/index.browser.js",
+        ),
+        "@elizaos/plugin-openai": resolvePackage(
+          "@elizaos/plugin-openai",
+          "dist/browser/index.browser.js",
+        ),
+        "@elizaos/plugin-anthropic": resolvePackage(
+          "@elizaos/plugin-anthropic",
+          "dist/browser/index.browser.js",
+        ),
+        "@elizaos/plugin-groq": resolvePackage(
+          "@elizaos/plugin-groq",
+          "dist/browser/index.browser.js",
+        ),
+        "@elizaos/plugin-google-genai": resolvePackage(
+          "@elizaos/plugin-google-genai",
+          "dist/browser/index.browser.js",
+        ),
+        "@elizaos/plugin-eliza-classic": resolvePackage(
+          "@elizaos/plugin-eliza-classic",
+          "dist/browser/index.browser.js",
+        ),
+        "@elizaos/plugin-localdb": resolvePackage(
+          "@elizaos/plugin-localdb",
+          "dist/browser/index.browser.js",
+        ),
         "@vercel/oidc": path.join(__dirname, "src/stubs/empty.js"),
         dotenv: path.join(__dirname, "src/stubs/empty.js"),
         "fast-redact": path.join(__dirname, "src/stubs/fast-redact.js"),
@@ -154,16 +181,37 @@ console.log("[ElizaOS] Bundle starting...");`,
       };
       // Use browser builds of @elizaos packages
       options.alias = {
-        "@elizaos/core": resolvePackage("@elizaos/core", "dist/browser/index.browser.js"),
-        "@elizaos/plugin-openai": resolvePackage("@elizaos/plugin-openai", "dist/browser/index.browser.js"),
-        "@elizaos/plugin-anthropic": resolvePackage("@elizaos/plugin-anthropic", "dist/browser/index.browser.js"),
-        "@elizaos/plugin-groq": resolvePackage("@elizaos/plugin-groq", "dist/browser/index.browser.js"),
-        "@elizaos/plugin-google-genai": resolvePackage("@elizaos/plugin-google-genai", "dist/browser/index.browser.js"),
-        "@elizaos/plugin-eliza-classic": resolvePackage("@elizaos/plugin-eliza-classic", "dist/browser/index.browser.js"),
-        "@elizaos/plugin-localdb": resolvePackage("@elizaos/plugin-localdb", "dist/browser/index.browser.js"),
+        "@elizaos/core": resolvePackage(
+          "@elizaos/core",
+          "dist/browser/index.browser.js",
+        ),
+        "@elizaos/plugin-openai": resolvePackage(
+          "@elizaos/plugin-openai",
+          "dist/browser/index.browser.js",
+        ),
+        "@elizaos/plugin-anthropic": resolvePackage(
+          "@elizaos/plugin-anthropic",
+          "dist/browser/index.browser.js",
+        ),
+        "@elizaos/plugin-groq": resolvePackage(
+          "@elizaos/plugin-groq",
+          "dist/browser/index.browser.js",
+        ),
+        "@elizaos/plugin-google-genai": resolvePackage(
+          "@elizaos/plugin-google-genai",
+          "dist/browser/index.browser.js",
+        ),
+        "@elizaos/plugin-eliza-classic": resolvePackage(
+          "@elizaos/plugin-eliza-classic",
+          "dist/browser/index.browser.js",
+        ),
+        "@elizaos/plugin-localdb": resolvePackage(
+          "@elizaos/plugin-localdb",
+          "dist/browser/index.browser.js",
+        ),
         // Stub Node.js packages
         "@vercel/oidc": path.join(__dirname, "src/stubs/empty.js"),
-        "dotenv": path.join(__dirname, "src/stubs/empty.js"),
+        dotenv: path.join(__dirname, "src/stubs/empty.js"),
         "fast-redact": path.join(__dirname, "src/stubs/fast-redact.js"),
       };
     },

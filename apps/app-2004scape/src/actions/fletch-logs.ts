@@ -1,4 +1,10 @@
-import type { Action, IAgentRuntime, Memory, State, HandlerCallback } from "@elizaos/core";
+import type {
+  Action,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
 
 export const fletchLogs: Action = {
   name: "FLETCH_LOGS",
@@ -6,7 +12,10 @@ export const fletchLogs: Action = {
   descriptionCompressed: "Fletch logs with knife.",
   similes: ["FLETCHING", "CARVE_LOGS"],
   examples: [],
-  validate: async (_runtime: IAgentRuntime, _message: Memory): Promise<boolean> => {
+  validate: async (
+    _runtime: IAgentRuntime,
+    _message: Memory,
+  ): Promise<boolean> => {
     return _runtime.getService("rs_2004scape") != null;
   },
   handler: async (
@@ -16,8 +25,9 @@ export const fletchLogs: Action = {
     _options: Record<string, unknown>,
     callback?: HandlerCallback,
   ): Promise<unknown> => {
-    const service = runtime.getService("rs_2004scape") as any;
-    if (!service) return { success: false, message: "Game service not available." };
+    const service = getRsSdkGameService(runtime);
+    if (!service)
+      return { success: false, message: "Game service not available." };
 
     const result = await service.executeAction("fletchLogs", {});
     if (callback) callback({ text: result.message, action: "FLETCH_LOGS" });

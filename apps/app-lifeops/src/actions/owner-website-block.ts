@@ -271,7 +271,7 @@ async function resolveOwnerWebsiteBlockPlanWithLlm(args: {
     "Return ONLY valid JSON with exactly these fields:",
     '{"subaction":"block"|"unblock"|"status"|"request_permission"|null,"shouldAct":true|false,"response":"string|null"}',
     "",
-    "OWNER_WEBSITE_BLOCK is the owner/admin umbrella for local website blocking on this Mac.",
+    "OWNER_WEBSITE_BLOCK is the owner-only umbrella for local website blocking on this Mac.",
     "Choose subaction=block for clear requests to block websites now, including direct requests like 'please block x.com for me' and follow-up confirmations like 'please do' or 'actually do it now' when recent conversation already named the websites.",
     "Choose subaction=unblock for requests to remove, stop, end, lift, or turn off the current website block.",
     "For subaction=unblock, hostname detail is optional because the action removes the current website block. Do not ask the user to identify what 'x' means when the intent is clearly to unblock the current website block.",
@@ -342,7 +342,7 @@ export const ownerWebsiteBlockAction: Action & {
     "SELFCONTROL_BLOCK_WEBSITES",
   ],
   description:
-    "Admin/owner-only. Manage local hosts-file website blocking on this Mac. " +
+    "Owner-only. Manage local hosts-file website blocking on this Mac. " +
     "Subactions: block (start a block on a set of public hostnames for a fixed duration or indefinitely — always drafts first; requires confirmed: true to actually edit the hosts file), " +
     "unblock (remove the current website block), " +
     "status (check whether a block is active and when it ends), " +
@@ -355,7 +355,7 @@ export const ownerWebsiteBlockAction: Action & {
     "Unblock requests do not require the user to restate every hostname; remove the current website block when the user clearly wants it gone. " +
     "Do not pair this action with a speculative REPLY; it provides its own final reply.",
   descriptionCompressed:
-    "Admin: block/unblock websites via hosts file + status + permission request.",
+    "Owner: block/unblock websites via hosts file + status + permission request.",
   suppressPostActionContinuation: true,
 
   validate: async (runtime, message) => {
@@ -499,7 +499,9 @@ export const ownerWebsiteBlockAction: Action & {
       }
     }
     if (!subaction) {
-      params = (await extractActionParamsViaLlm<OwnerWebsiteBlockParameters & Record<string, unknown>>({
+      params = (await extractActionParamsViaLlm<
+        OwnerWebsiteBlockParameters & Record<string, unknown>
+      >({
         runtime,
         message,
         state,

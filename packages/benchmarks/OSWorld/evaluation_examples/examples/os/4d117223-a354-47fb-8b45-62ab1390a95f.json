@@ -57,9 +57,7 @@
       }
     }
   ],
-  "related_apps": [
-    "os"
-  ],
+  "related_apps": ["os"],
   "evaluator": {
     "postconfig": [
       {
@@ -90,9 +88,7 @@
     "expected": {
       "type": "rule",
       "rules": {
-        "include": [
-          "All files have the correct permissions."
-        ],
+        "include": ["All files have the correct permissions."],
         "exclude": []
       }
     }

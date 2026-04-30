@@ -56,7 +56,8 @@ export const flapShMainnetProfile: LaunchpadProfile = {
     {
       kind: "fillField",
       field: "description",
-      selector: "textarea[name='description'], textarea[placeholder*='Description' i]",
+      selector:
+        "textarea[name='description'], textarea[placeholder*='Description' i]",
     },
     {
       kind: "uploadImage",

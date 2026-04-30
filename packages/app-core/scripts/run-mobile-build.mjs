@@ -9,12 +9,17 @@
  * Usage: node scripts/run-mobile-build.mjs <android|android-system|ios|ios-overlay>
  *
  * Phases:
- *   1. Resolve config  — read app.config.ts for appId / appName
- *   2. Build web        — vite build → dist/
- *   3. Capacitor sync   — generate native platform projects
- *   4. Overlay native   — permissions, services, entitlements, Podfile
- *   5. Platform patches — Gradle template, SPM compat, xcconfig
- *   6. Native build     — gradlew / xcodebuild
+ *   1. Resolve config       — read app.config.ts for appId / appName
+ *   2. Build web            — vite build → dist/
+ *   3. Capacitor sync       — generate native platform projects
+ *   4. Overlay native       — permissions, services, entitlements, Podfile
+ *   5. Platform patches     — Gradle template, SPM compat, xcconfig
+ *   5b. Stage Android agent — bun + musl + libstdc++ + libgcc + bundle
+ *                             into apps/app/android/app/src/main/assets/agent/
+ *                             (Android targets only; see
+ *                             scripts/lib/stage-android-agent.mjs and
+ *                             docs/agent-on-mobile.md).
+ *   6. Native build         — gradlew / xcodebuild
  */
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -23,6 +28,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
+import { stageAndroidAgentRuntime } from "./lib/stage-android-agent.mjs";
 
 // ── Paths ───────────────────────────────────────────────────────────────
 
@@ -51,6 +57,11 @@ const nativePluginsDir = path.join(
   "eliza",
   "packages",
   "native-plugins",
+);
+const androidAgentSpikeDir = path.join(
+  repoRoot,
+  "scripts",
+  "spike-android-agent",
 );
 // ── Phase 1: Resolve app identity from app.config.ts ────────────────────
 
@@ -297,7 +308,17 @@ export function isCapacitorPlatformReady(
   if (platform === "android") {
     return (
       fs.existsSync(path.join(appDirValue, "android", "gradlew")) &&
-      fs.existsSync(path.join(appDirValue, "android", "app", "build.gradle"))
+      fs.existsSync(path.join(appDirValue, "android", "app", "build.gradle")) &&
+      fs.existsSync(
+        path.join(
+          appDirValue,
+          "android",
+          "app",
+          "src",
+          "main",
+          "AndroidManifest.xml",
+        ),
+      )
     );
   }
   return false;
@@ -460,8 +481,18 @@ const ANDROID_PERMISSIONS = [
   "ACCESS_BACKGROUND_LOCATION",
   "FOREGROUND_SERVICE",
   "FOREGROUND_SERVICE_DATA_SYNC",
+  "FOREGROUND_SERVICE_SPECIAL_USE",
   "POST_NOTIFICATIONS",
   "WAKE_LOCK",
+  // PACKAGE_USAGE_STATS is granted via the privapp-permissions whitelist;
+  // MANAGE_APP_OPS_MODES is what MiladyBootReceiver actually needs to
+  // reflectively flip the GET_USAGE_STATS appop to ALLOWED at boot.
+  // Without MANAGE_APP_OPS_MODES the receiver throws SecurityException
+  // and PACKAGE_USAGE_STATS stays appop-default-denied, which breaks
+  // priv-app usage-stats access. See vendor/milady/permissions/
+  // privapp-permissions-com.miladyai.milady.xml.
+  "PACKAGE_USAGE_STATS",
+  "MANAGE_APP_OPS_MODES",
 ];
 
 function replaceOrInsertGradleString(content, key, value) {
@@ -479,6 +510,90 @@ function appendMissingGradleDependency(content, notation) {
     /dependencies\s*\{/,
     `dependencies {\n    implementation "${notation}"`,
   );
+}
+
+/**
+ * Inject `buildFeatures { buildConfig true }` and the `AOSP_BUILD`
+ * buildConfigField into the app-level build.gradle.
+ *
+ * Why: `MiladyAgentService` reads `BuildConfig.AOSP_BUILD` to decide whether
+ * to export `MILADY_LOCAL_LLAMA=1` to the spawned bun process (see
+ * eliza/packages/agent/src/runtime/aosp-llama-adapter.ts). AGP 8+ defaults
+ * `buildFeatures.buildConfig` to false, so without the flag flip the
+ * BuildConfig.java is never generated and the Java service refuses to
+ * compile. The boolean field defaults to false, so the Capacitor APK build
+ * keeps DeviceBridge inference; the AOSP build flow flips it to true via
+ * the `-PmiladyAospBuild=true` gradle property documented in
+ * scripts/miladyos/build-aosp.mjs and SETUP_AOSP.md.
+ */
+function injectBuildConfigAospField(content) {
+  let next = content;
+  if (!/\bbuildFeatures\s*\{/.test(next)) {
+    next = next.replace(
+      /android\s*\{/,
+      `android {\n    buildFeatures {\n        buildConfig true\n    }\n`,
+    );
+  } else if (!/buildConfig\s+true/.test(next)) {
+    next = next.replace(
+      /buildFeatures\s*\{/,
+      "buildFeatures {\n        buildConfig true",
+    );
+  }
+  if (!/buildConfigField\s+["']boolean["'],\s*["']AOSP_BUILD["']/.test(next)) {
+    next = next.replace(
+      /defaultConfig\s*\{/,
+      `defaultConfig {\n        buildConfigField "boolean", "AOSP_BUILD", "\${project.findProperty('miladyAospBuild') ?: 'false'}"\n`,
+    );
+  }
+  return next;
+}
+
+/**
+ * Inject the `androidResources { noCompress += [...] }` block that keeps
+ * `.tar.gz`, `.tar`, `.gguf`, and `.so` files byte-identical in the
+ * packaged APK.
+ *
+ * Why: aapt2's default packaging treats `.gz` and `.tar.gz` as
+ * "compressed-extension-to-preserve-uncompressed" and rewrites the entry
+ * to a plain `.tar`. PGlite's runtime extension loader resolves
+ * `vector.tar.gz` and `fuzzystrmatch.tar.gz` via
+ * `new URL("../X", import.meta.url)`; when aapt2 strips the `.gz` the
+ * loader can't find the file and the runtime falls over at first
+ * Postgres extension call.
+ *
+ * Idempotent: re-runs are no-ops once the block is present. The matcher
+ * accepts AGP-modern `androidResources` and legacy `aaptOptions` blocks,
+ * but only injects when neither already lists `tar.gz`.
+ */
+export function injectNoCompressTarGz(content) {
+  if (/noCompress[^\n]*['"]tar\.gz['"]/.test(content)) return content;
+  const block =
+    `\n    // Preserve .tar.gz / .tar / .gguf / .so as-is in the packaged APK.\n` +
+    `    // aapt2 otherwise rewrites .tar.gz to .tar and PGlite's runtime\n` +
+    `    // extension loader fails to find vector.tar.gz / fuzzystrmatch.tar.gz.\n` +
+    `    androidResources {\n` +
+    `        noCompress += ['gguf', 'tar.gz', 'so', 'tar']\n` +
+    `    }\n`;
+  // Inject just before the closing brace of the top-level `android { ... }`
+  // block. Match the LAST `}` in the file as a heuristic that's robust
+  // against arbitrary middle content.
+  const androidOpen = content.search(/\n\s*android\s*\{/);
+  if (androidOpen < 0) return content;
+  // Find the matching closing brace by counting from the open.
+  let depth = 0;
+  let i = content.indexOf("{", androidOpen);
+  while (i < content.length) {
+    const ch = content[i];
+    if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return content.slice(0, i) + block + content.slice(i);
+      }
+    }
+    i += 1;
+  }
+  return content;
 }
 
 function patchCapacitorBarcodeScannerGradle() {
@@ -520,7 +635,9 @@ function patchGradleFileForAgp9(filePath, label) {
 
 function patchNativePluginGradleForAgp9() {
   if (!fs.existsSync(nativePluginsDir)) return;
-  for (const entry of fs.readdirSync(nativePluginsDir, { withFileTypes: true })) {
+  for (const entry of fs.readdirSync(nativePluginsDir, {
+    withFileTypes: true,
+  })) {
     if (!entry.isDirectory()) continue;
     patchGradleFileForAgp9(
       path.join(nativePluginsDir, entry.name, "android", "build.gradle"),
@@ -586,6 +703,7 @@ function overlayAndroid() {
         .readFileSync(gradlePath, "utf8")
         .match(/namespace\s*(?:[=:]\s*)?["']([^"']+)["']/)?.[1]
     : APP.appId;
+
   const androidPackage = namespace || APP.appId;
   const dstJava = path.join(
     androidDir,
@@ -624,6 +742,7 @@ function overlayAndroid() {
     for (const file of [
       "GatewayConnectionService.java",
       "MainActivity.java",
+      "MiladyAgentService.java",
       "MiladyAssistActivity.java",
       "MiladyBootReceiver.java",
       "MiladyBrowserActivity.java",
@@ -706,6 +825,37 @@ function overlayAndroid() {
     xml = xml.replace(
       "</application>",
       `\n        <service\n            android:name="${gatewayServiceName}"\n            android:exported="false"\n            android:foregroundServiceType="dataSync" />\n    </application>`,
+    );
+    dirty = true;
+
+    // MiladyAgentService — special-use foreground service that owns the
+    // local Eliza agent process. Nested <property> tag carries the Android
+    // 14+ specialUse subtype. Pattern matches both self-closing and
+    // explicit-close forms so re-runs collapse cleanly.
+    const agentServiceName = `${androidPackage}.MiladyAgentService`;
+    const agentServiceSelfClosingPattern =
+      /\n\s*<service\b[^>]*android:name="[^"]*MiladyAgentService"[^>]*\/>\s*/g;
+    const agentServicePairedPattern =
+      /\n\s*<service\b[^>]*android:name="[^"]*MiladyAgentService"[\s\S]*?<\/service>\s*/g;
+    const withoutAgentServiceSelfClose = xml.replace(
+      agentServiceSelfClosingPattern,
+      "\n",
+    );
+    if (withoutAgentServiceSelfClose !== xml) {
+      xml = withoutAgentServiceSelfClose;
+      dirty = true;
+    }
+    const withoutAgentServicePaired = xml.replace(
+      agentServicePairedPattern,
+      "\n",
+    );
+    if (withoutAgentServicePaired !== xml) {
+      xml = withoutAgentServicePaired;
+      dirty = true;
+    }
+    xml = xml.replace(
+      "</application>",
+      `\n        <service\n            android:name="${agentServiceName}"\n            android:exported="false"\n            android:foregroundServiceType="specialUse">\n            <property\n                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"\n                android:value="local-agent-runtime" />\n        </service>\n    </application>`,
     );
     dirty = true;
     for (const component of [
@@ -1369,6 +1519,8 @@ function patchAndroidGradle() {
       /getDefaultProguardFile\('proguard-android\.txt'\)/g,
       "getDefaultProguardFile('proguard-android-optimize.txt')",
     );
+    patched = injectBuildConfigAospField(patched);
+    patched = injectNoCompressTarGz(patched);
     if (patched !== current) {
       fs.writeFileSync(appGradlePath, patched, "utf8");
       console.log(
@@ -1483,6 +1635,10 @@ async function buildAndroid() {
 
   patchAndroidGradle();
   overlayAndroid();
+  await stageAndroidAgentRuntime({
+    androidDir,
+    spikeDir: androidAgentSpikeDir,
+  });
 
   const env = {
     ...process.env,
@@ -1495,17 +1651,23 @@ async function buildAndroid() {
     ]),
   };
 
-  await run(
-    "./gradlew",
-    [
-      ":elizaos-capacitor-websiteblocker:testDebugUnitTest",
-      ":app:assembleDebug",
-    ],
-    {
-      cwd: androidDir,
-      env,
-    },
-  );
+  // Mirror the AOSP gradle property forwarding from buildAndroidSystem so
+  // a developer iterating with `bun run build:android` under MILADY_AOSP_BUILD=1
+  // gets BuildConfig.AOSP_BUILD=true in the debug APK as well.
+  const gradleArgs = [
+    ":elizaos-capacitor-websiteblocker:testDebugUnitTest",
+    ":app:assembleDebug",
+  ];
+  if (
+    process.env.MILADY_GRADLE_AOSP_BUILD === "true" ||
+    process.env.MILADY_GRADLE_AOSP_BUILD === "1"
+  ) {
+    gradleArgs.unshift("-PmiladyAospBuild=true");
+  }
+  await run("./gradlew", gradleArgs, {
+    cwd: androidDir,
+    env,
+  });
 }
 
 function findAndroidSystemApk() {
@@ -1564,6 +1726,10 @@ async function buildAndroidSystem() {
 
   patchAndroidGradle();
   overlayAndroid();
+  await stageAndroidAgentRuntime({
+    androidDir,
+    spikeDir: androidAgentSpikeDir,
+  });
 
   const env = {
     ...process.env,
@@ -1576,7 +1742,18 @@ async function buildAndroidSystem() {
     ]),
   };
 
-  await run("./gradlew", [":app:assembleRelease"], {
+  // AOSP product builds set MILADY_GRADLE_AOSP_BUILD=true upstream so
+  // gradle bakes BuildConfig.AOSP_BUILD=true into the privileged APK.
+  // The Capacitor APK path leaves it false; both share the same gradle
+  // because the apps/app/android/ tree is regenerated each run.
+  const gradleArgs = [":app:assembleRelease"];
+  if (
+    process.env.MILADY_GRADLE_AOSP_BUILD === "true" ||
+    process.env.MILADY_GRADLE_AOSP_BUILD === "1"
+  ) {
+    gradleArgs.unshift("-PmiladyAospBuild=true");
+  }
+  await run("./gradlew", gradleArgs, {
     cwd: androidDir,
     env,
   });

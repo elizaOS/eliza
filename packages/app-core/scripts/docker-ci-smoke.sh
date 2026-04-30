@@ -10,7 +10,7 @@ set -euo pipefail
 #   4. Optionally boots the container and probes /api/health or /api/status
 #
 # Usage:
-#   bash eliza/packages/app-core/scripts/docker-ci-smoke.sh [--tag TAG] [--version VERSION] [--skip-smoke]
+#   bash packages/app-core/scripts/docker-ci-smoke.sh [--tag TAG] [--version VERSION] [--skip-smoke]
 #
 # Environment:
 #   BUN_VERSION          Bun version to install/use in CI (default: 1.3.9)
@@ -86,16 +86,34 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$REPO_ROOT"
 
 [[ -f package.json ]] || fail "Run from the repo root"
-[[ -f eliza/packages/app-core/deploy/Dockerfile.ci ]] || fail "eliza/packages/app-core/deploy/Dockerfile.ci not found"
-[[ -f eliza/packages/app-core/deploy/.dockerignore.ci ]] || fail "eliza/packages/app-core/deploy/.dockerignore.ci not found"
-[[ -f deploy/deploy.env ]] || fail "deploy/deploy.env not found"
+if [[ -d packages/app-core ]]; then
+  APP_CORE_DIR="packages/app-core"
+  PACKAGES_DIR="packages"
+  APP_DIR="packages/app"
+  PLUGINS_DIR="plugins"
+elif [[ -d eliza/packages/app-core ]]; then
+  APP_CORE_DIR="eliza/packages/app-core"
+  PACKAGES_DIR="eliza/packages"
+  APP_DIR="apps/app"
+  PLUGINS_DIR="eliza/plugins"
+else
+  fail "packages/app-core not found"
+fi
+APP_CORE_SCRIPTS_DIR="$APP_CORE_DIR/scripts"
+AGENT_DIR="$PACKAGES_DIR/agent"
+SCHEMAS_DIR="$PACKAGES_DIR/schemas"
+TYPESCRIPT_DIR="$PACKAGES_DIR/typescript"
 
-load_env_file "eliza/packages/app-core/deploy/deploy.defaults.env"
+[[ -f "$APP_CORE_DIR/deploy/Dockerfile.ci" ]] || fail "$APP_CORE_DIR/deploy/Dockerfile.ci not found"
+[[ -f "$APP_CORE_DIR/deploy/.dockerignore.ci" ]] || fail "$APP_CORE_DIR/deploy/.dockerignore.ci not found"
+[[ -d "$APP_DIR" ]] || fail "$APP_DIR not found"
+
+load_env_file "$APP_CORE_DIR/deploy/deploy.defaults.env"
 load_env_file "deploy/deploy.env"
 
 APP_IMAGE="${APP_IMAGE:-eliza/agent}"
-APP_ENTRYPOINT="${APP_ENTRYPOINT:-app.mjs}"
-APP_CMD_START="${APP_CMD_START:-node --import ./node_modules/tsx/dist/loader.mjs ${APP_ENTRYPOINT} start}"
+APP_ENTRYPOINT="${APP_ENTRYPOINT:-$AGENT_DIR/dist/bin.js}"
+APP_CMD_START="${APP_CMD_START:-node ${APP_ENTRYPOINT} start}"
 APP_PORT="${APP_PORT:-2138}"
 APP_API_BIND="${APP_API_BIND:-127.0.0.1}"
 OCI_SOURCE="${OCI_SOURCE:-}"
@@ -122,6 +140,7 @@ log "Artifact dir: $SMOKE_ARTIFACT_DIR"
 
 command -v node >/dev/null 2>&1 || fail "node is required"
 command -v bun >/dev/null 2>&1 || fail "bun is required"
+BUN_BIN="$(command -v bun)"
 
 DOCKER_BIN="$(find_docker_bin)" || fail "docker is required"
 
@@ -158,9 +177,9 @@ cleanup() {
 trap cleanup EXIT
 
 log "Installing dependencies"
-node scripts/init-submodules.mjs
-MILADY_SKIP_LOCAL_UPSTREAMS=1 ELIZA_SKIP_LOCAL_UPSTREAMS=1 node scripts/disable-local-eliza-workspace.mjs
-MILADY_SKIP_LOCAL_UPSTREAMS=1 ELIZA_SKIP_LOCAL_UPSTREAMS=1 bun install --ignore-scripts --no-frozen-lockfile
+node "$APP_CORE_SCRIPTS_DIR/init-submodules.mjs"
+MILADY_SKIP_LOCAL_UPSTREAMS=1 ELIZA_SKIP_LOCAL_UPSTREAMS=1 node "$APP_CORE_SCRIPTS_DIR/disable-local-eliza-workspace.mjs"
+MILADY_SKIP_LOCAL_UPSTREAMS=1 ELIZA_SKIP_LOCAL_UPSTREAMS=1 "$BUN_BIN" install --ignore-scripts --no-frozen-lockfile
 if [[ -d "$REPO_ROOT/.eliza.ci-disabled" && ! -d "$REPO_ROOT/eliza" ]]; then
   log "Restoring eliza/ from .eliza.ci-disabled for downstream build steps"
   mv "$REPO_ROOT/.eliza.ci-disabled" "$REPO_ROOT/eliza"
@@ -169,60 +188,85 @@ export MILADY_SKIP_LOCAL_UPSTREAMS=1
 export ELIZA_SKIP_LOCAL_UPSTREAMS=1
 
 log "Installing published-workspace fallback dependencies"
-bash "$REPO_ROOT/scripts/install-published-workspace-fallback-deps.sh"
+if [[ -f "$REPO_ROOT/scripts/install-published-workspace-fallback-deps.sh" ]]; then
+  bash "$REPO_ROOT/scripts/install-published-workspace-fallback-deps.sh"
+else
+  log "No published-workspace fallback dependency script found; skipping"
+fi
 
 log "Running repository postinstall"
-SKIP_AVATAR_CLONE=1 ELIZA_NO_VISION_DEPS=1 node eliza/packages/app-core/scripts/run-repo-setup.mjs
+if [[ -f scripts/setup-upstreams.mjs ]]; then
+  SKIP_AVATAR_CLONE=1 ELIZA_NO_VISION_DEPS=1 node "$APP_CORE_SCRIPTS_DIR/run-repo-setup.mjs"
+else
+  node scripts/patch-nested-core-dist.mjs || true
+  node "$APP_CORE_SCRIPTS_DIR/ensure-shared-i18n-data.mjs"
+  node "$APP_CORE_SCRIPTS_DIR/patch-deps.mjs" || true
+  node "$APP_CORE_SCRIPTS_DIR/ensure-type-package-aliases.mjs" || true
+fi
 
-if [[ ! -f eliza/packages/typescript/src/types/generated/eliza/v1/agent_pb.ts ]]; then
+if [[ ! -f "$TYPESCRIPT_DIR/src/types/generated/eliza/v1/agent_pb.ts" ]]; then
   log "Generating core protobuf sources"
-  pushd eliza/packages/schemas >/dev/null
+  pushd "$SCHEMAS_DIR" >/dev/null
   bunx --package @bufbuild/buf@1.68.3 buf generate
   popd >/dev/null
 fi
 
 log "Building Capacitor plugins"
-pushd apps/app >/dev/null
-bun scripts/plugin-build.mjs
+pushd "$APP_DIR" >/dev/null
+"$BUN_BIN" scripts/plugin-build.mjs
 popd >/dev/null
 
-log "Building agent workspace"
-pushd eliza/packages/agent >/dev/null
-bun run build:docker-dist
-popd >/dev/null
-
-if [[ "${MILADY_SKIP_LOCAL_UPSTREAMS:-0}" == "1" ]]; then
-  log "Skipping @elizaos/core source build in published-only mode"
-else
-  log "Building @elizaos/core and @elizaos/plugin-agent-orchestrator"
-  pushd eliza/packages/typescript >/dev/null
-  bun run build:node
+WHATSAPP_PLUGIN_TS_DIR="$PLUGINS_DIR/plugin-whatsapp/typescript"
+if [[ -f "$WHATSAPP_PLUGIN_TS_DIR/package.json" ]]; then
+  log "Building @elizaos/plugin-whatsapp workspace artifacts"
+  pushd "$WHATSAPP_PLUGIN_TS_DIR" >/dev/null
+  "$BUN_BIN" run build
   popd >/dev/null
 fi
 
-log "Building runtime dist"
-npx tsdown
-echo '{"type":"module"}' > dist/package.json
-node --import tsx scripts/write-build-info.ts 2>/dev/null || true
+log "Building agent workspace"
+pushd "$AGENT_DIR" >/dev/null
+"$BUN_BIN" run build:docker-dist
+popd >/dev/null
+
+if [[ "$APP_CORE_DIR" == "packages/app-core" || "${MILADY_SKIP_LOCAL_UPSTREAMS:-0}" != "1" ]]; then
+  log "Building @elizaos/core source artifacts"
+  pushd "$TYPESCRIPT_DIR" >/dev/null
+  "$BUN_BIN" run build.ts --node-only
+  popd >/dev/null
+  node scripts/patch-nested-core-dist.mjs || true
+else
+  log "Skipping @elizaos/core source build in published-only mode"
+fi
+
+if [[ -f tsdown.config.ts || -f tsdown.config.mts || -f tsdown.config.js || -f tsdown.config.mjs ]]; then
+  log "Building runtime dist"
+  npx tsdown
+  echo '{"type":"module"}' > dist/package.json
+  node --import tsx scripts/write-build-info.ts 2>/dev/null || true
+else
+  log "No root tsdown config found; using built agent entrypoint"
+fi
 
 log "Building app UI"
-pushd apps/app >/dev/null
-NODE_ENV=production bun run build:web
+pushd "$APP_DIR" >/dev/null
+NODE_ENV=production "$BUN_BIN" run build:web
 popd >/dev/null
 
 log "Preparing CI dockerignore"
-cp eliza/packages/app-core/deploy/.dockerignore.ci .dockerignore
+cp "$APP_CORE_DIR/deploy/.dockerignore.ci" .dockerignore
 
-log "Re-adding eliza/packages/agent to workspaces for Docker relink"
-node -e "
+log "Ensuring $AGENT_DIR is present in workspaces for Docker relink"
+AGENT_DIR="$AGENT_DIR" node -e "
 const fs = require('fs');
 const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+const agentDir = process.env.AGENT_DIR;
 if (!pkg.workspaces) pkg.workspaces = [];
-if (!pkg.workspaces.includes('eliza/packages/agent')) {
-  pkg.workspaces.push('eliza/packages/agent');
+if (!pkg.workspaces.includes(agentDir)) {
+  pkg.workspaces.push(agentDir);
 }
 fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-console.log('Re-added eliza/packages/agent to workspaces');
+console.log('Ensured ' + agentDir + ' is present in workspaces');
 "
 
 log "Building Docker image"
@@ -230,9 +274,12 @@ log "Docker build disk usage"
 df -h "$REPO_ROOT" || true
 "$DOCKER_BIN" system df || true
 "$DOCKER_BIN" build \
-  --file eliza/packages/app-core/deploy/Dockerfile.ci \
+  --file "$APP_CORE_DIR/deploy/Dockerfile.ci" \
   --tag "$DOCKER_IMAGE" \
   --build-arg "BUN_VERSION=$BUN_VERSION" \
+  --build-arg "APP_CORE_DIR=$APP_CORE_DIR" \
+  --build-arg "AGENT_DIR=$AGENT_DIR" \
+  --build-arg "APP_DIR=$APP_DIR" \
   --build-arg "APP_ENTRYPOINT=$APP_ENTRYPOINT" \
   --build-arg "APP_CMD_START=$APP_CMD_START" \
   --build-arg "APP_PORT=$APP_PORT" \

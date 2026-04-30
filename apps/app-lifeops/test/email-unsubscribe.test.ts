@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   extractListUnsubscribeOptions,
+  type GmailSubscriptionMessageHeaders,
   parseMailtoUnsubscribe,
   performGmailHttpUnsubscribe,
-  type GmailSubscriptionMessageHeaders,
 } from "../src/lifeops/email-unsubscribe-gmail.js";
 
 function makeHeader(

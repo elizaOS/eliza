@@ -162,7 +162,9 @@ const accountPatchSchema = z
       v.label !== undefined ||
       v.enabled !== undefined ||
       v.priority !== undefined,
-    { message: "PATCH body must set at least one of: label, enabled, priority" },
+    {
+      message: "PATCH body must set at least one of: label, enabled, priority",
+    },
   );
 
 const STRATEGY_VALUES = [
@@ -232,10 +234,10 @@ function buildLinkedAccountConfigFromRecord(
     priority,
     createdAt: record.createdAt,
     health: "ok",
-    ...(record.lastUsedAt !== undefined ? { lastUsedAt: record.lastUsedAt } : {}),
-    ...(record.organizationId
-      ? { organizationId: record.organizationId }
+    ...(record.lastUsedAt !== undefined
+      ? { lastUsedAt: record.lastUsedAt }
       : {}),
+    ...(record.organizationId ? { organizationId: record.organizationId } : {}),
     ...(record.userId ? { userId: record.userId } : {}),
     ...(record.email ? { email: record.email } : {}),
   };
@@ -253,9 +255,7 @@ function buildLinkedAccountConfigFromRecord(
  * conservative — anything we can't read becomes `undefined`, never
  * `0`.
  */
-async function probeAnthropicUsage(
-  accessToken: string,
-): Promise<{
+async function probeAnthropicUsage(accessToken: string): Promise<{
   ok: boolean;
   status: number;
   usage?: LinkedAccountConfig["usage"];
@@ -327,19 +327,16 @@ async function probeCodexUsage(
       Authorization: `Bearer ${accessToken}`,
     };
     if (codexAccountId) headers["ChatGPT-Account-Id"] = codexAccountId;
-    const response = await fetch(
-      "https://api.openai.com/v1/chat/completions",
-      {
-        method: "POST",
-        signal: controller.signal,
-        headers,
-        body: JSON.stringify({
-          model: "gpt-5.5-mini",
-          max_tokens: 1,
-          messages: [{ role: "user", content: "hi" }],
-        }),
-      },
-    );
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      signal: controller.signal,
+      headers,
+      body: JSON.stringify({
+        model: "gpt-5.5-mini",
+        max_tokens: 1,
+        messages: [{ role: "user", content: "hi" }],
+      }),
+    });
     const latencyMs = Date.now() - start;
     if (!response.ok) {
       const text = await response.text().catch(() => "");
@@ -589,9 +586,7 @@ async function handleOAuthRoutes(
       // credential file already exists on disk so `pool.list` would
       // include it at a default priority (createdAt-sorted index),
       // which would push the new max one too high.
-      const others = pool
-        .list(providerId)
-        .filter((a) => a.id !== record.id);
+      const others = pool.list(providerId).filter((a) => a.id !== record.id);
       const livePriority =
         others.length === 0
           ? 0
@@ -813,9 +808,7 @@ async function handleTestAccount(
   const pool = await getPool();
   const linked = pool.get(accountId);
   const codexAccountId =
-    linked?.providerId === "openai-codex"
-      ? linked.organizationId
-      : undefined;
+    linked?.providerId === "openai-codex" ? linked.organizationId : undefined;
   const probe =
     subscription === "anthropic-subscription"
       ? await probeAnthropicUsage(accessToken)
@@ -895,4 +888,3 @@ async function handleRefreshUsage(
   json(res, { account: next, probe, source: "inline-probe" });
   return true;
 }
-

@@ -1,7 +1,7 @@
 """Plugin manager sub-module.
 
 Read-only plugin discovery and plugin/core status introspection.
-Ported from plugin-plugin-manager TypeScript.
+Ported from ``@elizaos/core`` plugin-manager TypeScript.
 """
 
 from .actions import (

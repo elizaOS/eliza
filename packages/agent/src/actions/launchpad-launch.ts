@@ -25,22 +25,22 @@ import { hasRoleAccess } from "../security/access.js";
 import { resolveDesktopBrowserWorkspaceTargetTabId } from "../services/browser-workspace-desktop.js";
 import { runLaunchpadImageGeneration } from "../services/launchpads/image-generator.js";
 import { runLaunchpad } from "../services/launchpads/launchpad-engine.js";
+import type {
+  LaunchpadDryRun,
+  LaunchpadProfile,
+} from "../services/launchpads/launchpad-types.js";
 import {
-  generateTokenMetadata,
   type GeneratedTokenMetadata,
+  generateTokenMetadata,
 } from "../services/launchpads/metadata-generator.js";
 import {
-  flapShTestnetProfile,
   flapShMainnetProfile,
+  flapShTestnetProfile,
 } from "../services/launchpads/profiles/flap-sh.js";
 import {
   fourMemeMainnetProfile,
   fourMemeTestnetProfile,
 } from "../services/launchpads/profiles/four-meme.js";
-import type {
-  LaunchpadDryRun,
-  LaunchpadProfile,
-} from "../services/launchpads/launchpad-types.js";
 
 type LaunchpadKey =
   | "four-meme"
@@ -100,10 +100,8 @@ export const launchpadLaunchAction: Action = {
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
     hasRoleAccess(runtime, message, "USER"),
   handler: async (runtime, message, _state, options) => {
-    const params = (options as HandlerOptions | undefined)?.parameters as
-      | unknown as
-      | LaunchpadLaunchParameters
-      | undefined;
+    const params = (options as HandlerOptions | undefined)
+      ?.parameters as unknown as LaunchpadLaunchParameters | undefined;
     if (!params?.launchpad) {
       return {
         text: "LAUNCHPAD_LAUNCH requires a `launchpad` parameter (one of four-meme, four-meme:testnet, flap-sh, flap-sh:testnet).",

@@ -1,12 +1,12 @@
-import { describe, expect, test } from "vitest";
 import type { AgentRuntime } from "@elizaos/core";
-import { LifeOpsRepository } from "../src/lifeops/repository.js";
-import { LifeOpsService } from "../src/lifeops/service.js";
-import { createLifeOpsChatTestRuntime } from "./helpers/lifeops-chat-runtime.js";
+import { describe, expect, test } from "vitest";
 import {
   attachFakeSubscriptionComputerUse,
   FakeSubscriptionComputerUseService,
-} from "../../../../test/helpers/subscription-computer-use-fixture";
+} from "../../../../eliza/test/helpers/subscription-computer-use-fixture";
+import { LifeOpsRepository } from "../src/lifeops/repository.js";
+import { LifeOpsService } from "../src/lifeops/service.js";
+import { createLifeOpsChatTestRuntime } from "./helpers/lifeops-chat-runtime.js";
 
 function createRuntime(agentId: string): AgentRuntime {
   return createLifeOpsChatTestRuntime({
@@ -170,12 +170,14 @@ describe("LifeOps subscriptions integration", () => {
       ],
     });
 
-    const summary = await service.auditSubscriptions(new URL("http://127.0.0.1/"));
+    const summary = await service.auditSubscriptions(
+      new URL("http://127.0.0.1/"),
+    );
 
     expect(summary.audit.totalCandidates).toBeGreaterThanOrEqual(2);
-    expect(summary.candidates.map((candidate) => candidate.serviceSlug)).toEqual(
-      expect.arrayContaining(["google_play", "apple_subscriptions"]),
-    );
+    expect(
+      summary.candidates.map((candidate) => candidate.serviceSlug),
+    ).toEqual(expect.arrayContaining(["google_play", "apple_subscriptions"]));
   });
 
   test("creates a browser companion session for personal-browser cancellations", async () => {

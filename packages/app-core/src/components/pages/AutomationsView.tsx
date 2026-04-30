@@ -62,11 +62,11 @@ import {
 } from "react";
 import { client } from "../../api";
 import {
-  isMissingCredentialsResponse,
   type AutomationListResponse,
   type AutomationNodeDescriptor,
   type AutomationItem as CatalogAutomationItem,
   type Conversation,
+  isMissingCredentialsResponse,
   type N8nStatusResponse,
   type N8nWorkflow,
   type N8nWorkflowMissingCredential,
@@ -75,7 +75,12 @@ import {
   type WorkbenchTask,
 } from "../../api/client";
 import { useWorkflowGenerationState } from "../../hooks/useWorkflowGenerationState";
-import { useApp } from "../../state";
+import {
+  dispatchFocusConnector,
+  prettyCredName,
+  providerFromCredType,
+  useApp,
+} from "../../state";
 import { confirmDesktopAction } from "../../utils";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
 // Direct sub-path import: `widgets/index.ts` re-exports `WidgetHost` while
@@ -192,26 +197,6 @@ function prefillPageChat(text: string, options?: { select?: boolean }): void {
       },
     }),
   );
-}
-
-/**
- * Display name for an n8n credential type. Backend emits raw credential type
- * IDs (e.g. `slackApi`, `gmailOAuth2`); the missing-credentials banner shows
- * users a friendly service name. Falls back to the raw type if unmapped.
- */
-const CRED_TYPE_LABELS: Record<string, string> = {
-  gmailOAuth2: "Gmail",
-  gmailOAuth2Api: "Gmail",
-  slackApi: "Slack",
-  slackOAuth2Api: "Slack",
-  discordApi: "Discord",
-  discordBotApi: "Discord",
-  discordWebhookApi: "Discord",
-  telegramApi: "Telegram",
-};
-
-function prettyCredName(credType: string): string {
-  return CRED_TYPE_LABELS[credType] ?? credType;
 }
 
 function buildWorkflowCopyRequest(
@@ -1396,7 +1381,7 @@ function WorkflowTemplatesModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[min(calc(100vw-1.5rem),56rem)] max-w-none">
+      <DialogContent className="w-[min(calc(100vw_-_1.5rem),56rem)] max-w-none">
         <DialogHeader>
           <DialogTitle>
             {t("automations.templatesModalTitle", {
@@ -1410,7 +1395,7 @@ function WorkflowTemplatesModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-3 sm:grid-cols-2 overflow-y-auto max-h-[min(32rem,calc(100dvh-12rem))] pr-1">
+        <div className="grid gap-3 overflow-y-auto pr-1 sm:grid-cols-2 max-h-[min(32rem,calc(100dvh_-_12rem))]">
           {templates.map((template) => {
             const Icon = template.icon;
             return (
@@ -1496,7 +1481,7 @@ function CreateAutomationDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[min(calc(100vw-1.5rem),34rem)] max-w-none">
+      <DialogContent className="w-[min(calc(100vw_-_1.5rem),34rem)] max-w-none">
         <DialogHeader>
           <DialogTitle>Create automation</DialogTitle>
         </DialogHeader>
@@ -4596,6 +4581,7 @@ function AutomationsLayout() {
           prompt,
           ...(title?.trim() ? { name: title.trim() } : {}),
           ...(workflowId ? { workflowId } : {}),
+          ...(bridgeConversationId ? { bridgeConversationId } : {}),
         });
         if (isMissingCredentialsResponse(result)) {
           setMissingCredentials(result.missingCredentials);
@@ -5287,6 +5273,9 @@ function AutomationsLayout() {
                       variant="outline"
                       onClick={() => {
                         setTab("settings");
+                        dispatchFocusConnector(
+                          providerFromCredType(cred.credType),
+                        );
                         setMissingCredentials(null);
                       }}
                     >

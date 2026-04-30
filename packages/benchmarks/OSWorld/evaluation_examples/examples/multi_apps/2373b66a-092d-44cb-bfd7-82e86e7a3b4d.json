@@ -13,15 +13,9 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "os",
-    "calc"
-  ],
+  "related_apps": ["os", "calc"],
   "evaluator": {
-    "func": [
-      "file_contains",
-      "check_line_number"
-    ],
+    "func": ["file_contains", "check_line_number"],
     "result": [
       {
         "type": "vm_file",

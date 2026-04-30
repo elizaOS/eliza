@@ -13,7 +13,10 @@ const api = {
   reset: async (config?: AppConfig): Promise<void> => {
     await ipcRenderer.invoke("chat:reset", config);
   },
-  sendMessage: async (config: AppConfig | undefined, text: string): Promise<ChatResponse> => {
+  sendMessage: async (
+    config: AppConfig | undefined,
+    text: string,
+  ): Promise<ChatResponse> => {
     return await ipcRenderer.invoke("chat:sendMessage", config, text);
   },
 };
@@ -21,4 +24,3 @@ const api = {
 contextBridge.exposeInMainWorld("elizaChat", api);
 
 export type ElizaChatBridge = typeof api;
-

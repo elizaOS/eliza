@@ -102,17 +102,22 @@ export interface LifeOpsRecurringChargePlaybookHit {
 }
 
 /**
- * A bill detected from email (or other source) and surfaced as an upcoming
- * obligation on the Money dashboard. Backed by a `life_payment_transactions`
- * row whose `source.kind === "email"` and whose `metadata.dueDate` /
- * `metadata.sourceMessageId` fields carry the bill-specific data.
+ * A bill detected from email (or other source) and surfaced on the Money
+ * dashboard. Backed by a `life_payment_transactions` row whose
+ * `source.kind === "email"` and whose metadata carries bill-specific data.
  */
+export type LifeOpsUpcomingBillStatus =
+  | "upcoming"
+  | "overdue"
+  | "needs_due_date";
+
 export interface LifeOpsUpcomingBill {
   id: string;
   merchant: string;
   amountUsd: number;
   currency: string;
-  dueDate: string;
+  dueDate: string | null;
+  status: LifeOpsUpcomingBillStatus;
   postedAt: string;
   sourceMessageId: string | null;
   confidence: number;
@@ -129,8 +134,8 @@ export interface LifeOpsPaymentsDashboard {
   recurringPlaybookHits: LifeOpsRecurringChargePlaybookHit[];
   spending: LifeOpsSpendingSummary;
   /**
-   * Bills extracted from email-classified messages with `dueDate >= now`.
-   * Sorted ascending by `dueDate`. Empty array when no bills are tracked.
+   * Bills extracted from email-classified messages. Includes upcoming bills,
+   * overdue bills, and bills that need a reviewed due date.
    */
   upcomingBills: LifeOpsUpcomingBill[];
   gmailSubscriptionAuditId: string | null;

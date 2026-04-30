@@ -1,0 +1,73 @@
+# Deploy packages/homepage to elizaOS/elizaos.github.io (org GitHub Pages site).
+#
+# What this does:
+#   1. Builds packages/homepage (Vite static site, output in `dist/`).
+#   2. Adds `.nojekyll` so GitHub Pages serves files/dirs that begin with `_`.
+#   3. Pushes the built site to the `main` branch of `elizaOS/elizaos.github.io`
+#      using a deploy key, which the org-pages site serves at https://elizaos.github.io/.
+#
+# Required secret:
+#   HOMEPAGE_DEPLOY_KEY
+#     - SSH private key (PEM, e.g. `ssh-keygen -t ed25519 -C "homepage-deploy" -f homepage-deploy -N ""`).
+#     - The corresponding PUBLIC key must be registered as a Deploy Key with
+#       write access on the target repo `elizaOS/elizaos.github.io`.
+#
+# Target repo prerequisites:
+#   - `elizaOS/elizaos.github.io` must exist.
+#   - In Settings -> Pages, source must be set to:
+#       "Deploy from a branch" -> Branch: `main` / `(root)`.
+#   - No CNAME is required: `elizaos.github.io` is the default org-pages domain.
+
+name: Deploy Homepage
+
+concurrency:
+  group: deploy-homepage
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - "packages/homepage/**"
+      - ".github/workflows/deploy-homepage.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout source repo
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.13"
+
+      - name: Install homepage dependencies
+        working-directory: packages/homepage
+        run: bun install --frozen-lockfile
+
+      - name: Build homepage
+        working-directory: packages/homepage
+        run: bun run build
+
+      - name: Add .nojekyll
+        run: touch packages/homepage/dist/.nojekyll
+
+      - name: Deploy to elizaOS/elizaos.github.io
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          deploy_key: ${{ secrets.HOMEPAGE_DEPLOY_KEY }}
+          external_repository: elizaOS/elizaos.github.io
+          publish_branch: main
+          publish_dir: ./packages/homepage/dist
+          user_name: "github-actions[bot]"
+          user_email: "github-actions[bot]@users.noreply.github.com"
+          commit_message: "deploy: homepage from elizaOS/eliza@${{ github.sha }}"

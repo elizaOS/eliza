@@ -19,7 +19,7 @@ import { join, resolve } from "node:path";
 import {
   CAPACITOR_PLUGIN_NAMES,
   NATIVE_PLUGINS_ROOT,
-} from "../apps/app/scripts/capacitor-plugin-names.mjs";
+} from "../../app/scripts/capacitor-plugin-names.mjs";
 
 const rootDir = resolve(import.meta.dirname, "..");
 const appDir = join(rootDir, "apps", "app");

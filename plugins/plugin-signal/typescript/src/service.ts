@@ -12,6 +12,7 @@ import {
   type HandlerCallback,
   type IAgentRuntime,
   type IMessageService,
+  lifeOpsPassiveConnectorsEnabled,
   type Media,
   type Memory,
   type Room,
@@ -281,17 +282,25 @@ export class SignalService extends Service implements ISignalService {
         shouldIgnoreGroupMessages: false,
         allowedGroups: undefined,
         blockedNumbers: undefined,
+        autoReply: false,
+        receiveMode: "manual",
       };
     }
   }
 
   private loadSettings(): SignalSettings {
     const ignoreGroups = this.runtime.getSetting("SIGNAL_SHOULD_IGNORE_GROUP_MESSAGES");
+    const autoReply = this.runtime.getSetting("SIGNAL_AUTO_REPLY");
+    const receiveMode = this.runtime.getSetting("SIGNAL_RECEIVE_MODE");
 
     return {
       shouldIgnoreGroupMessages: ignoreGroups === "true" || ignoreGroups === true,
       allowedGroups: undefined,
       blockedNumbers: undefined,
+      autoReply:
+        !lifeOpsPassiveConnectorsEnabled(this.runtime) &&
+        (autoReply === "true" || autoReply === true),
+      receiveMode: receiveMode === "on-start" ? "on-start" : "manual",
     };
   }
 
@@ -415,8 +424,8 @@ export class SignalService extends Service implements ISignalService {
 
       const isGroup = room?.type === ChannelType.GROUP;
       const result = isGroup
-        ? await service.sendGroupMessage(channelId, text)
-        : await service.sendMessage(channelId, text);
+        ? await service.sendGroupMessage(channelId, text, { record: false })
+        : await service.sendMessage(channelId, text, { record: false });
 
       if (!target.roomId) {
         return;
@@ -474,8 +483,18 @@ export class SignalService extends Service implements ISignalService {
 
     this.isConnected = true;
 
-    // Start polling for messages
-    this.startPolling();
+    if (this.settings.receiveMode === "on-start") {
+      this.startPolling();
+    } else {
+      this.runtime.logger.info(
+        {
+          src: "plugin:signal",
+          agentId: this.runtime.agentId,
+          receiveMode: this.settings.receiveMode,
+        },
+        "Signal receive polling is manual; LifeOps reads pull from signal-cli directly"
+      );
+    }
   }
 
   private async shutdown(): Promise<void> {
@@ -784,8 +803,14 @@ export class SignalService extends Service implements ISignalService {
       room = await this.ensureRoomExists(msg.sender, msg.groupId);
     }
 
-    // Process the message through the agent
-    await this.processMessage(memory, room, msg.sender, msg.groupId);
+    // Inbound messages are always ingested (memory + MESSAGE_RECEIVED event)
+    // so the user can read history and dispatch sends through LifeOps. The
+    // agent only auto-generates a reply when SIGNAL_AUTO_REPLY is explicitly
+    // enabled — default-off prevents the runtime from speaking on the user's
+    // behalf to real Signal contacts.
+    if (this.settings.autoReply && !lifeOpsPassiveConnectorsEnabled(this.runtime)) {
+      await this.processMessage(memory, room, msg.sender, msg.groupId);
+    }
   }
 
   private async handleReaction(msg: SignalMessage): Promise<void> {
@@ -978,6 +1003,15 @@ export class SignalService extends Service implements ISignalService {
       lastTimestamp = result.timestamp;
     }
 
+    if (options?.record !== false) {
+      await this.recordOutgoingMessage({
+        channelId: normalizedRecipient,
+        text,
+        timestamp: lastTimestamp,
+        isGroup: false,
+      });
+    }
+
     return { timestamp: lastTimestamp };
   }
 
@@ -1001,7 +1035,54 @@ export class SignalService extends Service implements ISignalService {
       lastTimestamp = result.timestamp;
     }
 
+    if (options?.record !== false) {
+      await this.recordOutgoingMessage({
+        channelId: groupId,
+        text,
+        timestamp: lastTimestamp,
+        isGroup: true,
+      });
+    }
+
     return { timestamp: lastTimestamp };
+  }
+
+  private async recordOutgoingMessage(args: {
+    channelId: string;
+    text: string;
+    timestamp: number;
+    isGroup: boolean;
+  }): Promise<void> {
+    const roomId = await this.getRoomId(
+      args.isGroup ? this.accountNumber || "signal-agent" : args.channelId,
+      args.isGroup ? args.channelId : undefined
+    );
+    const worldId = createUniqueUuid(this.runtime, "signal-world");
+    const displayName = this.character?.name || "Agent";
+
+    await this.runtime.ensureConnection({
+      entityId: this.runtime.agentId,
+      roomId,
+      worldId,
+      worldName: "Signal",
+      userId: this.runtime.agentId,
+      userName: displayName,
+      name: displayName,
+      source: "signal",
+      type: args.isGroup ? ChannelType.GROUP : ChannelType.DM,
+      channelId: args.channelId,
+    });
+
+    const memory = createMessageMemory({
+      id: createUniqueUuid(this.runtime, `signal:${args.timestamp}`),
+      entityId: this.runtime.agentId,
+      roomId,
+      content: {
+        text: args.text,
+        source: "signal",
+      },
+    });
+    await this.runtime.createMemory({ ...memory, createdAt: args.timestamp }, "messages");
   }
 
   async sendReaction(

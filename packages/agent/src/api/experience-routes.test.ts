@@ -25,6 +25,8 @@ function makeExperience(id: string): Experience {
     learning: "Learning",
     domain: "general",
     tags: ["memory"],
+    keywords: ["memory"],
+    associatedEntityIds: [],
     confidence: 0.7,
     importance: 0.8,
     createdAt: 1_710_000_000_000,
@@ -110,6 +112,9 @@ describe("handleExperienceRoutes", () => {
         expect.objectContaining({
           id: "exp-001",
           learning: "Learning",
+          keywords: ["memory"],
+          associatedEntityIds: [],
+          embeddingDimensions: 3,
         }),
       ],
       total: 1,
@@ -196,6 +201,77 @@ describe("handleExperienceRoutes", () => {
     expect(remove.recorded.body).toMatchObject({
       ok: true,
       id: "exp-002",
+    });
+  });
+
+  it("returns graph snapshots and runs explicit maintenance", async () => {
+    const getExperienceGraph = vi.fn(async () => ({
+      generatedAt: 1,
+      totalExperiences: 1,
+      nodes: [
+        {
+          id: "exp-001",
+          label: "Learning",
+          type: ExperienceType.LEARNING,
+          outcome: OutcomeType.NEUTRAL,
+          domain: "general",
+          keywords: ["memory"],
+          associatedEntityIds: [],
+          confidence: 0.7,
+          importance: 0.8,
+          timeWeight: 1,
+          x: 0.5,
+          y: 0.5,
+        },
+      ],
+      links: [],
+    }));
+    const consolidateDuplicateExperiences = vi.fn(async () => ({
+      inspected: 4,
+      groups: [
+        {
+          primaryId: "exp-001",
+          duplicateIds: ["exp-002"],
+          mergedKeywords: ["memory"],
+          reason: "duplicate learning text",
+        },
+      ],
+      merged: 1,
+      deleted: 0,
+    }));
+
+    const graph = makeContext({
+      method: "GET",
+      path: "/api/character/experiences/graph?q=wallet&limit=20",
+      service: {
+        getExperienceGraph,
+      },
+    });
+    await handleExperienceRoutes(graph.ctx);
+    expect(getExperienceGraph).toHaveBeenCalledWith(
+      expect.objectContaining({ query: "wallet", limit: 20 }),
+    );
+    expect(graph.recorded.body).toMatchObject({
+      data: expect.objectContaining({
+        nodes: [expect.objectContaining({ id: "exp-001" })],
+      }),
+    });
+
+    const maintenance = makeContext({
+      method: "POST",
+      path: "/api/character/experiences/maintenance",
+      body: { deleteDuplicates: false, limit: 4 },
+      service: {
+        consolidateDuplicateExperiences,
+      },
+    });
+    await handleExperienceRoutes(maintenance.ctx);
+    expect(consolidateDuplicateExperiences).toHaveBeenCalledWith({
+      deleteDuplicates: false,
+      limit: 4,
+    });
+    expect(maintenance.recorded.body).toMatchObject({
+      data: expect.objectContaining({ merged: 1, deleted: 0 }),
     });
   });
 });

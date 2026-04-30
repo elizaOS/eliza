@@ -1,7 +1,7 @@
 """Trust system type definitions.
 
-Ported from plugin-trust TypeScript sources. Defines the core data structures
-for multi-dimensional trust scoring, evidence tracking, and security events.
+Defines the core data structures for multi-dimensional trust scoring, evidence
+tracking, and security events (runtime TypeScript sources).
 """
 
 from __future__ import annotations

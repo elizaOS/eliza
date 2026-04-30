@@ -11,8 +11,8 @@ import {
   type LifeOpsScheduleSummary,
   readScheduleSummary,
 } from "./schedule-insight.js";
-import { fail } from "./service-normalize.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+import { fail } from "./service-normalize.js";
 
 function isoNow(): string {
   return new Date().toISOString();
@@ -121,16 +121,12 @@ export function withScheduling<TBase extends Constructor<LifeOpsServiceBase>>(
         };
       }
       const email =
-        typeof relationship.email === "string"
-          ? relationship.email.trim()
-          : "";
+        typeof relationship.email === "string" ? relationship.email.trim() : "";
       if (email) {
         return { channel: "email", target: email, name: relationship.name };
       }
       const phone =
-        typeof relationship.phone === "string"
-          ? relationship.phone.trim()
-          : "";
+        typeof relationship.phone === "string" ? relationship.phone.trim() : "";
       if (phone) {
         return { channel: "sms", target: phone, name: relationship.name };
       }
@@ -204,21 +200,19 @@ export function withScheduling<TBase extends Constructor<LifeOpsServiceBase>>(
               {
                 source: contact.channel,
                 channelId: contact.target,
-              } as Parameters<
-                typeof this.runtime.sendMessageToTarget
-              >[0],
+              } as Parameters<typeof this.runtime.sendMessageToTarget>[0],
               { text: body, source: contact.channel },
             );
             break;
           }
           case "sms": {
-            fail(
+            return fail(
               501,
               `SCHEDULING_DISPATCH_UNAVAILABLE: sms dispatch for scheduling is not wired (counterparty phone=${contact.target}). Use OWNER_SEND_MESSAGE for SMS.`,
             );
           }
           default: {
-            fail(
+            return fail(
               501,
               `SCHEDULING_DISPATCH_UNAVAILABLE: unsupported channel ${contact.channel}`,
             );
@@ -263,8 +257,7 @@ export function withScheduling<TBase extends Constructor<LifeOpsServiceBase>>(
         subject,
         relationshipId: input.relationshipId ?? null,
         durationMinutes:
-          typeof input.durationMinutes === "number" &&
-          input.durationMinutes > 0
+          typeof input.durationMinutes === "number" && input.durationMinutes > 0
             ? Math.floor(input.durationMinutes)
             : 30,
         timezone: input.timezone ?? "UTC",
@@ -399,10 +392,7 @@ export function withScheduling<TBase extends Constructor<LifeOpsServiceBase>>(
         fail(404, `proposal ${proposalId} not found`);
       }
       if (proposal.status !== "pending") {
-        fail(
-          409,
-          `proposal already in terminal status ${proposal.status}`,
-        );
+        fail(409, `proposal already in terminal status ${proposal.status}`);
       }
       await this.repository.updateSchedulingProposalStatus(
         this.agentId(),

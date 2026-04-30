@@ -18,17 +18,12 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "gimp",
-          "/home/user/Desktop/woman_sitting_by_the_tree2.png"
-        ]
+        "command": ["gimp", "/home/user/Desktop/woman_sitting_by_the_tree2.png"]
       }
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "gimp"
-  ],
+  "related_apps": ["gimp"],
   "evaluator": {
     "postconfig": [
       {

@@ -144,7 +144,9 @@ describe("apps catalog coverage", () => {
 
   it("backs every upstream catalog app package with a package-local hero", () => {
     const missing = readUpstreamAppPackages()
-      .filter(({ name }) => name !== "@elizaos/app")
+      .filter(
+        ({ name }) => name !== "@elizaos/app" && !isHiddenFromAppsView(name),
+      )
       .flatMap(({ dir, name, packageJson }) => {
         const heroImage = packageJson.elizaos?.app?.heroImage;
         if (typeof heroImage !== "string" || !heroImage.trim()) {
@@ -207,6 +209,8 @@ describe("apps catalog coverage", () => {
       makeCatalogCandidate("@elizaos/app-scape", "game"),
       makeCatalogCandidate("@hyperscape/plugin-hyperscape", "game"),
       makeCatalogCandidate("@elizaos/app-vincent", "platform"),
+      makeCatalogCandidate("@elizaos/app-hyperliquid", "platform"),
+      makeCatalogCandidate("@elizaos/app-polymarket", "platform"),
       makeCatalogCandidate("@elizaos/app-shopify", "platform"),
       makeCatalogCandidate("@elizaos/app-steward"),
       makeCatalogCandidate("@elizaos/app-elizamaker"),
@@ -227,11 +231,34 @@ describe("apps catalog coverage", () => {
         "@elizaos/app-scape",
         "@hyperscape/plugin-hyperscape",
         "@elizaos/app-vincent",
+        "@elizaos/app-hyperliquid",
+        "@elizaos/app-polymarket",
         "@elizaos/app-shopify",
         "@elizaos/app-steward",
         "@elizaos/app-elizamaker",
       ]),
     );
+  });
+
+  it("surfaces wallet-scoped trading apps when wallet is enabled", () => {
+    const visibleNames = filterAppsForCatalog(
+      [
+        makeCatalogCandidate("@elizaos/app-vincent", "platform"),
+        makeCatalogCandidate("@elizaos/app-hyperliquid", "platform"),
+        makeCatalogCandidate("@elizaos/app-polymarket", "platform"),
+        makeCatalogCandidate("@elizaos/app-shopify", "platform"),
+      ],
+      { walletEnabled: true },
+    ).map((app) => app.name);
+
+    expect(visibleNames).toEqual(
+      expect.arrayContaining([
+        "@elizaos/app-vincent",
+        "@elizaos/app-hyperliquid",
+        "@elizaos/app-polymarket",
+      ]),
+    );
+    expect(visibleNames).not.toContain("@elizaos/app-shopify");
   });
 
   it("surfaces the current flagship apps in the featured section", () => {

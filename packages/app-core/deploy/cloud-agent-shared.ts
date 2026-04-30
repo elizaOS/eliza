@@ -273,10 +273,7 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
         if (typeof runtimeWithBridge.ensureWorldExists === "function") {
           await runtimeWithBridge.ensureWorldExists({
             id: worldId,
-            name:
-              normalized.source === "discord"
-                ? "Discord"
-                : "Cloud Bridge",
+            name: normalized.source === "discord" ? "Discord" : "Cloud Bridge",
             agentId: runtime.agentId,
             serverId,
           });
@@ -319,9 +316,8 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
             typeof runtimeWithBridge.getEntityById === "function" &&
             typeof runtimeWithBridge.updateEntity === "function"
           ) {
-            const existingEntity = await runtimeWithBridge.getEntityById(
-              entityId,
-            );
+            const existingEntity =
+              await runtimeWithBridge.getEntityById(entityId);
             if (existingEntity) {
               await runtimeWithBridge.updateEntity({
                 ...existingEntity,
@@ -329,7 +325,7 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
                 names:
                   entityPayload.names.length > 0
                     ? entityPayload.names
-                    : (existingEntity.names as string[] | undefined) ?? [],
+                    : ((existingEntity.names as string[] | undefined) ?? []),
               });
             } else if (typeof runtimeWithBridge.createEntity === "function") {
               await runtimeWithBridge.createEntity(entityPayload);
@@ -697,7 +693,9 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
           );
           return;
         }
-        const responseText = await agentRuntime.processMessage(rpc.params ?? {});
+        const responseText = await agentRuntime.processMessage(
+          rpc.params ?? {},
+        );
         res.writeHead(200);
         res.end(
           JSON.stringify({
@@ -768,9 +766,7 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
       console.warn(
         "[cloud-agent] CRITICAL: No BRIDGE_SECRET configured — generated ephemeral secret and bound to 127.0.0.1 only",
       );
-      console.log(
-        `[cloud-agent] Generated BRIDGE_SECRET: ${BRIDGE_SECRET}`,
-      );
+      console.log(`[cloud-agent] Generated BRIDGE_SECRET: ${BRIDGE_SECRET}`);
     }
   });
 

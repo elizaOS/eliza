@@ -1,9 +1,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
 
-function parseReflectionObject(
-  raw: string,
-): Record<string, unknown> | null {
+function parseReflectionObject(raw: string): Record<string, unknown> | null {
   const parsed = parseJSONObjectFromText(raw);
   return parsed && typeof parsed === "object" ? parsed : null;
 }
@@ -69,8 +67,11 @@ export async function reflectOnSendConfirmation(
     };
   } catch (error) {
     logger.warn(
-      "[inbox-reflection] Reflection LLM call failed:",
-      String(error),
+      {
+        src: "inbox-reflection",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "[InboxReflection] send confirmation reflection failed",
     );
     // On error, default to NOT confirmed (safer)
     return {
@@ -146,8 +147,11 @@ export async function reflectOnAutoReply(
     };
   } catch (error) {
     logger.warn(
-      "[inbox-reflection] Auto-reply reflection failed:",
-      String(error),
+      {
+        src: "inbox-reflection",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "[InboxReflection] auto-reply reflection failed",
     );
     return {
       approved: false,

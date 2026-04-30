@@ -7,13 +7,7 @@ import type {
   LifeOpsXPostResponse,
 } from "@elizaos/shared";
 import { useCallback, useEffect, useState } from "react";
-
-function formatError(cause: unknown, fallback: string): string {
-  if (cause instanceof Error && cause.message.trim().length > 0) {
-    return cause.message.trim();
-  }
-  return fallback;
-}
+import { formatConnectorError } from "./connector-error.js";
 
 export function useLifeOpsXConnector(side: LifeOpsConnectorSide = "owner") {
   const [status, setStatus] = useState<LifeOpsXConnectorStatus | null>(null);
@@ -52,7 +46,9 @@ export function useLifeOpsXConnector(side: LifeOpsConnectorSide = "owner") {
       }
       setError(null);
     } catch (cause) {
-      setError(formatError(cause, "X connector status failed to load."));
+      setError(
+        formatConnectorError(cause, "X connector status failed to load."),
+      );
     } finally {
       setLoading(false);
     }
@@ -79,7 +75,9 @@ export function useLifeOpsXConnector(side: LifeOpsConnectorSide = "owner") {
         if (cancelled) {
           return;
         }
-        setError(formatError(cause, "X connector status failed to load."));
+        setError(
+          formatConnectorError(cause, "X connector status failed to load."),
+        );
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -119,7 +117,7 @@ export function useLifeOpsXConnector(side: LifeOpsConnectorSide = "owner") {
         }
         setError(null);
       } catch (cause) {
-        setError(formatError(cause, "X connector connect failed."));
+        setError(formatConnectorError(cause, "X connector connect failed."));
       } finally {
         setActionPending(false);
       }
@@ -141,7 +139,7 @@ export function useLifeOpsXConnector(side: LifeOpsConnectorSide = "owner") {
         setLastPost(result);
         setError(null);
       } catch (cause) {
-        setError(formatError(cause, "X post failed."));
+        setError(formatConnectorError(cause, "X post failed."));
       } finally {
         setActionPending(false);
       }
@@ -164,7 +162,7 @@ export function useLifeOpsXConnector(side: LifeOpsConnectorSide = "owner") {
       setStatus(nextStatus);
       setError(null);
     } catch (cause) {
-      setError(formatError(cause, "X connector disconnect failed."));
+      setError(formatConnectorError(cause, "X connector disconnect failed."));
     } finally {
       setActionPending(false);
     }

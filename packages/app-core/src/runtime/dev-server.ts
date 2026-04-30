@@ -132,6 +132,33 @@ async function bootstrapRuntime(reason: string): Promise<void> {
 
   try {
     logger.info(`${getLogPrefix()} Runtime bootstrap starting (${reason})`);
+
+    // Apply the GitHub PAT saved via Settings → Coding Agents → GitHub
+    // before the runtime loads. The orchestrator's existing
+    // `runtime.getSetting("GITHUB_TOKEN")` resolution and any sub-agent
+    // PTY session that shells out to `gh`/`git` both inherit the same
+    // value from process.env once we set it here. Explicit shell-set
+    // GITHUB_TOKEN always wins.
+    try {
+      const { applySavedTokenToEnv } = await import(
+        "../services/github-credentials.js"
+      );
+      const result = await applySavedTokenToEnv();
+      if (result.applied) {
+        logger.info(
+          `${getLogPrefix()} Applied saved GitHub token to runtime env (user=@${result.username})`,
+        );
+      } else if (result.envAlreadySet) {
+        logger.info(
+          `${getLogPrefix()} GITHUB_TOKEN already set in env — leaving untouched`,
+        );
+      }
+    } catch (err) {
+      logger.warn(
+        `${getLogPrefix()} Failed to apply saved GitHub token (runtime continues without it): ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
     const rt = await createRuntime();
     logger.info(
       `${getLogPrefix()} Runtime created in ${Date.now() - bootstrapStart}ms`,

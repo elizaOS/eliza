@@ -86,7 +86,12 @@
         "required": false,
         "sensitive": false,
         "default": "TEXT_SMALL",
-        "options": ["TEXT_NANO", "TEXT_SMALL", "TEXT_MEDIUM", "TEXT_LARGE"]
+        "options": [
+          "TEXT_NANO",
+          "TEXT_SMALL",
+          "TEXT_MEDIUM",
+          "TEXT_LARGE"
+        ]
       }
     }
   },
@@ -95,7 +100,7 @@
     "app": {
       "displayName": "'scape",
       "category": "game",
-    "heroImage": "assets/hero.png",
+      "heroImage": "assets/hero.png",
       "launchType": "connect",
       "launchUrl": "https://scape-client-2sqyc.kinsta.page",
       "capabilities": [

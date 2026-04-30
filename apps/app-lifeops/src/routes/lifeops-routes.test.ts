@@ -1,5 +1,11 @@
 import type http from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type {
+  LifeOpsHealthConnectorStatus,
+  LifeOpsHealthSummaryResponse,
+  StartLifeOpsHealthConnectorResponse,
+} from "../contracts/index.js";
+import { LIFEOPS_HEALTH_CONNECTOR_PROVIDERS } from "../contracts/index.js";
 import { LifeOpsService } from "../lifeops/service.js";
 import {
   handleLifeOpsRoutes,
@@ -262,6 +268,304 @@ describe("LifeOps route validation", () => {
       400,
     );
     expect(json).not.toHaveBeenCalled();
+  });
+
+  it("passes Signal sends through to the service", async () => {
+    const sendSignalMessage = vi
+      .spyOn(LifeOpsService.prototype, "sendSignalMessage")
+      .mockResolvedValue({
+        provider: "signal",
+        side: "owner",
+        recipient: "+15551112222",
+        ok: true,
+        timestamp: 1777280000000,
+      });
+    const readJsonBody = vi.fn(async () => ({
+      recipient: "+15551112222",
+      text: "hello",
+    }));
+    const { context, error, json } = createContext(
+      "POST",
+      "/api/lifeops/connectors/signal/send",
+      {
+        readJsonBody,
+        state: {
+          runtime: {
+            agentId: "00000000-0000-0000-0000-000000000101",
+          } as LifeOpsRouteContext["state"]["runtime"],
+          adminEntityId: null,
+        },
+      },
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).not.toHaveBeenCalled();
+    expect(sendSignalMessage).toHaveBeenCalledWith({
+      side: undefined,
+      recipient: "+15551112222",
+      text: "hello",
+    });
+    expect(json).toHaveBeenCalledWith(
+      context.res,
+      {
+        provider: "signal",
+        side: "owner",
+        recipient: "+15551112222",
+        ok: true,
+        timestamp: 1777280000000,
+      },
+      201,
+    );
+  });
+
+  it("rejects non-string Signal recipients at the route boundary", async () => {
+    const sendSignalMessage = vi.spyOn(
+      LifeOpsService.prototype,
+      "sendSignalMessage",
+    );
+    const readJsonBody = vi.fn(async () => ({ recipient: 1, text: "hi" }));
+    const { context, error, json } = createContext(
+      "POST",
+      "/api/lifeops/connectors/signal/send",
+      {
+        readJsonBody,
+        state: {
+          runtime: {
+            agentId: "00000000-0000-0000-0000-000000000102",
+          } as LifeOpsRouteContext["state"]["runtime"],
+          adminEntityId: null,
+        },
+      },
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "recipient is required",
+      400,
+    );
+    expect(json).not.toHaveBeenCalled();
+    expect(sendSignalMessage).not.toHaveBeenCalled();
+  });
+
+  it("reads Signal messages through the connector route", async () => {
+    const readSignalInbound = vi
+      .spyOn(LifeOpsService.prototype, "readSignalInbound")
+      .mockResolvedValue([
+        {
+          id: "sig-1",
+          roomId: "room-1",
+          channelId: "+15551112222",
+          threadId: "+15551112222",
+          roomName: "Shaw",
+          speakerName: "Shaw",
+          senderNumber: "+15551112222",
+          senderUuid: null,
+          sourceDevice: null,
+          groupId: null,
+          groupType: null,
+          text: "hello",
+          createdAt: 1777280000000,
+          isInbound: true,
+          isGroup: false,
+        },
+      ]);
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/connectors/signal/messages?limit=1",
+      {
+        state: {
+          runtime: {
+            agentId: "00000000-0000-0000-0000-000000000103",
+          } as LifeOpsRouteContext["state"]["runtime"],
+          adminEntityId: null,
+        },
+      },
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).not.toHaveBeenCalled();
+    expect(readSignalInbound).toHaveBeenCalledWith(1);
+    expect(json).toHaveBeenCalledWith(context.res, {
+      count: 1,
+      messages: [
+        {
+          id: "sig-1",
+          roomId: "room-1",
+          channelId: "+15551112222",
+          threadId: "+15551112222",
+          roomName: "Shaw",
+          speakerName: "Shaw",
+          senderNumber: "+15551112222",
+          senderUuid: null,
+          sourceDevice: null,
+          groupId: null,
+          groupType: null,
+          text: "hello",
+          createdAt: 1777280000000,
+          isInbound: true,
+          isGroup: false,
+        },
+      ],
+    });
+  });
+
+  it("rejects Signal message limits above the route maximum", async () => {
+    const readSignalInbound = vi.spyOn(
+      LifeOpsService.prototype,
+      "readSignalInbound",
+    );
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/connectors/signal/messages?limit=101",
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "limit must be less than or equal to 100",
+      400,
+    );
+    expect(json).not.toHaveBeenCalled();
+    expect(readSignalInbound).not.toHaveBeenCalled();
+  });
+
+  it("passes Discord sends through to the service", async () => {
+    const sendDiscordMessage = vi
+      .spyOn(LifeOpsService.prototype, "sendDiscordMessage")
+      .mockResolvedValue({
+        provider: "discord",
+        side: "owner",
+        channelId: "dm-1",
+        ok: true,
+        deliveryStatus: "unknown",
+      });
+    const readJsonBody = vi.fn(async () => ({
+      channelId: "dm-1",
+      text: "hello",
+    }));
+    const { context, error, json } = createContext(
+      "POST",
+      "/api/lifeops/connectors/discord/send",
+      {
+        readJsonBody,
+        state: {
+          runtime: {
+            agentId: "00000000-0000-0000-0000-000000000103",
+          } as LifeOpsRouteContext["state"]["runtime"],
+          adminEntityId: null,
+        },
+      },
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).not.toHaveBeenCalled();
+    expect(sendDiscordMessage).toHaveBeenCalledWith({
+      side: undefined,
+      channelId: "dm-1",
+      text: "hello",
+    });
+    expect(json).toHaveBeenCalledWith(
+      context.res,
+      {
+        provider: "discord",
+        side: "owner",
+        channelId: "dm-1",
+        ok: true,
+        deliveryStatus: "unknown",
+      },
+      201,
+    );
+  });
+
+  it("rejects non-string Discord messages at the route boundary", async () => {
+    const sendDiscordMessage = vi.spyOn(
+      LifeOpsService.prototype,
+      "sendDiscordMessage",
+    );
+    const readJsonBody = vi.fn(async () => ({ channelId: "dm-1", text: 1 }));
+    const { context, error, json } = createContext(
+      "POST",
+      "/api/lifeops/connectors/discord/send",
+      {
+        readJsonBody,
+        state: {
+          runtime: {
+            agentId: "00000000-0000-0000-0000-000000000104",
+          } as LifeOpsRouteContext["state"]["runtime"],
+          adminEntityId: null,
+        },
+      },
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(context.res, "text is required", 400);
+    expect(json).not.toHaveBeenCalled();
+    expect(sendDiscordMessage).not.toHaveBeenCalled();
+  });
+
+  it("passes WhatsApp sends through to the service", async () => {
+    const sendWhatsAppMessage = vi
+      .spyOn(LifeOpsService.prototype, "sendWhatsAppMessage")
+      .mockResolvedValue({ ok: true, messageId: "wa-1" });
+    const readJsonBody = vi.fn(async () => ({
+      to: "14155551212",
+      text: "hello",
+    }));
+    const { context, error, json } = createContext(
+      "POST",
+      "/api/lifeops/connectors/whatsapp/send",
+      {
+        readJsonBody,
+        state: {
+          runtime: {
+            agentId: "00000000-0000-0000-0000-000000000105",
+          } as LifeOpsRouteContext["state"]["runtime"],
+          adminEntityId: null,
+        },
+      },
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).not.toHaveBeenCalled();
+    expect(sendWhatsAppMessage).toHaveBeenCalledWith({
+      to: "14155551212",
+      text: "hello",
+      replyToMessageId: undefined,
+    });
+    expect(json).toHaveBeenCalledWith(
+      context.res,
+      { ok: true, messageId: "wa-1" },
+      201,
+    );
+  });
+
+  it("rejects WhatsApp message limits above the route maximum", async () => {
+    const pullWhatsAppRecent = vi.spyOn(
+      LifeOpsService.prototype,
+      "pullWhatsAppRecent",
+    );
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/connectors/whatsapp/messages?limit=501",
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "limit must be less than or equal to 500",
+      400,
+    );
+    expect(json).not.toHaveBeenCalled();
+    expect(pullWhatsAppRecent).not.toHaveBeenCalled();
   });
 
   it("rejects string booleans for X DM curation", async () => {
@@ -540,9 +844,12 @@ describe("LifeOps route validation", () => {
       });
     const readJsonBody = vi.fn(async () => ({
       side: "owner",
+      mode: "cloud_managed",
       grantId: "grant-1",
       calendarId: "primary",
       title: "Dentist",
+      location: "",
+      attendees: [],
       timeZone: "America/Los_Angeles",
     }));
     const { context, error, json } = createContext(
@@ -556,6 +863,7 @@ describe("LifeOps route validation", () => {
     expect(error).not.toHaveBeenCalled();
     expect(updateCalendarEvent).toHaveBeenCalledWith(expect.any(URL), {
       eventId: "google-event-1",
+      mode: "cloud_managed",
       side: "owner",
       grantId: "grant-1",
       calendarId: "primary",
@@ -564,6 +872,8 @@ describe("LifeOps route validation", () => {
       startAt: undefined,
       endAt: undefined,
       timeZone: "America/Los_Angeles",
+      location: "",
+      attendees: [],
     });
     expect(json).toHaveBeenCalledWith(
       context.res,
@@ -592,6 +902,66 @@ describe("LifeOps route validation", () => {
       calendarId: "primary",
     });
     expect(json).toHaveBeenCalledWith(context.res, { deleted: true });
+  });
+
+  it("applies a default cap to activity signal reads", async () => {
+    const listActivitySignals = vi
+      .spyOn(LifeOpsService.prototype, "listActivitySignals")
+      .mockResolvedValue([]);
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/activity-signals",
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).not.toHaveBeenCalled();
+    expect(listActivitySignals).toHaveBeenCalledWith({
+      sinceAt: null,
+      limit: 200,
+      states: null,
+    });
+    expect(json).toHaveBeenCalledWith(context.res, { signals: [] });
+  });
+
+  it("rejects unbounded activity signal limits", async () => {
+    const listActivitySignals = vi
+      .spyOn(LifeOpsService.prototype, "listActivitySignals")
+      .mockResolvedValue([]);
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/activity-signals?limit=501",
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "limit must be less than or equal to 500",
+      400,
+    );
+    expect(listActivitySignals).not.toHaveBeenCalled();
+    expect(json).not.toHaveBeenCalled();
+  });
+
+  it("validates activity signal sinceAt before querying", async () => {
+    const listActivitySignals = vi
+      .spyOn(LifeOpsService.prototype, "listActivitySignals")
+      .mockResolvedValue([]);
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/activity-signals?sinceAt=not-a-date",
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "sinceAt must be a valid ISO string",
+      400,
+    );
+    expect(listActivitySignals).not.toHaveBeenCalled();
+    expect(json).not.toHaveBeenCalled();
   });
 
   it("passes screen-time summary query inputs through to the service", async () => {
@@ -665,6 +1035,58 @@ describe("LifeOps route validation", () => {
     );
   });
 
+  it("rejects screen-time windows over the telemetry maximum", async () => {
+    const getScreenTimeSummary = vi
+      .spyOn(LifeOpsService.prototype, "getScreenTimeSummary")
+      .mockResolvedValue({
+        items: [],
+        totalSeconds: 0,
+      });
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/screen-time/summary?since=2026-04-01T00%3A00%3A00.000Z&until=2026-05-03T00%3A00%3A00.000Z",
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "window must be 31 days or less",
+      400,
+    );
+    expect(getScreenTimeSummary).not.toHaveBeenCalled();
+    expect(json).not.toHaveBeenCalled();
+  });
+
+  it("rejects inverted screen-time windows", async () => {
+    const getScreenTimeBreakdown = vi
+      .spyOn(LifeOpsService.prototype, "getScreenTimeBreakdown")
+      .mockResolvedValue({
+        items: [],
+        totalSeconds: 0,
+        bySource: [],
+        byCategory: [],
+        byDevice: [],
+        byService: [],
+        byBrowser: [],
+        fetchedAt: "2026-04-22T12:00:00.000Z",
+      });
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/screen-time/breakdown?since=2026-04-22T12%3A00%3A00.000Z&until=2026-04-22T00%3A00%3A00.000Z",
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "until must be after since",
+      400,
+    );
+    expect(getScreenTimeBreakdown).not.toHaveBeenCalled();
+    expect(json).not.toHaveBeenCalled();
+  });
+
   it("passes social summary query inputs through to the service", async () => {
     const getSocialHabitSummary = vi
       .spyOn(LifeOpsService.prototype, "getSocialHabitSummary")
@@ -708,7 +1130,178 @@ describe("LifeOps route validation", () => {
     );
   });
 
+  it("routes health connector status requests to the service", async () => {
+    const status = healthConnectorStatus();
+    const getHealthDataConnectorStatus = vi
+      .spyOn(LifeOpsService.prototype, "getHealthDataConnectorStatus")
+      .mockResolvedValue(status);
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/connectors/health/strava/status?mode=local&side=owner",
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).not.toHaveBeenCalled();
+    expect(getHealthDataConnectorStatus).toHaveBeenCalledWith(
+      "strava",
+      expect.any(URL),
+      "local",
+      "owner",
+    );
+    expect(json).toHaveBeenCalledWith(context.res, status);
+  });
+
+  it("rejects unknown health connector providers before service dispatch", async () => {
+    const getHealthDataConnectorStatus = vi.spyOn(
+      LifeOpsService.prototype,
+      "getHealthDataConnectorStatus",
+    );
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/connectors/health/not-a-provider/status",
+      {
+        state: {
+          runtime: {
+            agentId: "00000000-0000-0000-0000-000000000201",
+          } as LifeOpsRouteContext["state"]["runtime"],
+          adminEntityId: null,
+        },
+      },
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      `provider must be one of: ${LIFEOPS_HEALTH_CONNECTOR_PROVIDERS.join(", ")}`,
+      400,
+    );
+    expect(getHealthDataConnectorStatus).not.toHaveBeenCalled();
+    expect(json).not.toHaveBeenCalled();
+  });
+
+  it("routes health connector OAuth starts with the provider from the path", async () => {
+    const startResponse: StartLifeOpsHealthConnectorResponse = {
+      provider: "fitbit",
+      side: "owner",
+      mode: "local",
+      requestedCapabilities: ["health.activity.read"],
+      redirectUri:
+        "http://127.0.0.1:31337/api/lifeops/connectors/health/fitbit/callback",
+      authUrl: "https://www.fitbit.com/oauth2/authorize?state=test",
+    };
+    const startHealthConnector = vi
+      .spyOn(LifeOpsService.prototype, "startHealthConnector")
+      .mockResolvedValue(startResponse);
+    const readJsonBody = vi.fn(async () => ({
+      side: "owner",
+      mode: "local",
+      capabilities: ["health.activity.read"],
+    }));
+    const { context, error, json } = createContext(
+      "POST",
+      "/api/lifeops/connectors/health/fitbit/start",
+      { readJsonBody },
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).not.toHaveBeenCalled();
+    expect(startHealthConnector).toHaveBeenCalledWith(
+      {
+        provider: "fitbit",
+        side: "owner",
+        mode: "local",
+        capabilities: ["health.activity.read"],
+      },
+      expect.any(URL),
+    );
+    expect(json).toHaveBeenCalledWith(context.res, startResponse, 201);
+  });
+
+  it("routes health sync requests to the service", async () => {
+    const summary = healthSummaryResponse();
+    const syncHealthConnectors = vi
+      .spyOn(LifeOpsService.prototype, "syncHealthConnectors")
+      .mockResolvedValue(summary);
+    const body = {
+      provider: "strava" as const,
+      side: "owner" as const,
+      days: 7,
+    };
+    const readJsonBody = vi.fn(async () => body);
+    const { context, error, json } = createContext(
+      "POST",
+      "/api/lifeops/health/sync",
+      { readJsonBody },
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).not.toHaveBeenCalled();
+    expect(syncHealthConnectors).toHaveBeenCalledWith(body);
+    expect(json).toHaveBeenCalledWith(context.res, summary);
+  });
+
+  it("rejects health summary windows over the route maximum", async () => {
+    const getHealthSummary = vi.spyOn(
+      LifeOpsService.prototype,
+      "getHealthSummary",
+    );
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/health/summary?days=32",
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "days must be less than or equal to 31",
+      400,
+    );
+    expect(getHealthSummary).not.toHaveBeenCalled();
+    expect(json).not.toHaveBeenCalled();
+  });
+
   // Browser companion + package routes moved to
   // `@elizaos/plugin-browser-bridge` (Phase 3). Tests for those routes now
   // live alongside the plugin package.
 });
+
+function healthConnectorStatus(
+  overrides: Partial<LifeOpsHealthConnectorStatus> = {},
+): LifeOpsHealthConnectorStatus {
+  return {
+    provider: "strava",
+    side: "owner",
+    mode: "local",
+    defaultMode: "local",
+    availableModes: ["local"],
+    executionTarget: "local",
+    sourceOfTruth: "local_storage",
+    configured: true,
+    connected: false,
+    reason: "disconnected",
+    identity: null,
+    grantedCapabilities: [],
+    grantedScopes: [],
+    expiresAt: null,
+    hasRefreshToken: false,
+    lastSyncAt: null,
+    grant: null,
+    ...overrides,
+  };
+}
+
+function healthSummaryResponse(): LifeOpsHealthSummaryResponse {
+  return {
+    providers: [healthConnectorStatus()],
+    summaries: [],
+    samples: [],
+    workouts: [],
+    sleepEpisodes: [],
+    syncedAt: "2026-04-20T12:00:00.000Z",
+  };
+}

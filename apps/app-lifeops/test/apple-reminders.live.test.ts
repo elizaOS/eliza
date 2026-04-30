@@ -1,9 +1,9 @@
-import crypto from "node:crypto";
 import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import crypto from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
+import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
-import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
+import { describeIf } from "../../../../eliza/test/helpers/conditional-tests.ts";
 import {
   createNativeAppleReminderLikeItem,
   deleteNativeAppleReminderLikeItem,
@@ -12,8 +12,7 @@ import {
 
 const execFileAsync = promisify(execFile);
 const LIVE_TESTS_ENABLED =
-  process.env.MILADY_LIVE_TEST === "1" ||
-  process.env.ELIZA_LIVE_TEST === "1";
+  process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const LIVE_APPLE_REMINDER_TESTS_ENABLED =
   LIVE_TESTS_ENABLED &&
   process.platform === "darwin" &&
@@ -128,78 +127,80 @@ async function waitForReminderDeletion(
     }
     await sleep(1_000);
   }
-  throw new Error(`Timed out waiting for native reminder ${reminderId} deletion`);
+  throw new Error(
+    `Timed out waiting for native reminder ${reminderId} deletion`,
+  );
 }
 
 describeLive("native Apple reminders live integration", () => {
-  it(
-    "creates, updates, and deletes a real reminder in Reminders.app",
-    async () => {
-      const suffix = crypto.randomUUID().slice(0, 8);
-      const initialTitle = `Eliza live reminder ${suffix}`;
-      const updatedTitle = `Eliza live reminder updated ${suffix}`;
-      const createdDueAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-      const updatedDueAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+  it("creates, updates, and deletes a real reminder in Reminders.app", async () => {
+    const suffix = crypto.randomUUID().slice(0, 8);
+    const initialTitle = `Eliza live reminder ${suffix}`;
+    const updatedTitle = `Eliza live reminder updated ${suffix}`;
+    const createdDueAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const updatedDueAt = new Date(
+      Date.now() + 2 * 60 * 60 * 1000,
+    ).toISOString();
 
-      const created = await createNativeAppleReminderLikeItem({
-        kind: "reminder",
-        title: initialTitle,
-        dueAt: createdDueAt,
-        notes: "Created by the live macOS reminder test.",
-        originalIntent: "live test create a reminder",
+    const created = await createNativeAppleReminderLikeItem({
+      kind: "reminder",
+      title: initialTitle,
+      dueAt: createdDueAt,
+      notes: "Created by the live macOS reminder test.",
+      originalIntent: "live test create a reminder",
+    });
+    expect(created).toMatchObject({
+      ok: true,
+      provider: "apple_reminders",
+    });
+    const reminderId =
+      created.ok === true ? (created.reminderId ?? null) : null;
+    expect(reminderId).toBeTruthy();
+    if (!reminderId) {
+      throw new Error("Live native reminder test did not return a reminder id");
+    }
+
+    try {
+      const initialSnapshot = await waitForReminder(
+        reminderId,
+        (snapshot) =>
+          snapshot.title === initialTitle &&
+          snapshot.body.includes("Created by the live macOS reminder test.") &&
+          snapshot.body.includes("Eliza request: live test create a reminder"),
+      );
+      expect(initialSnapshot.dueText.length).toBeGreaterThan(0);
+
+      const updated = await updateNativeAppleReminderLikeItem({
+        reminderId,
+        kind: "alarm",
+        title: updatedTitle,
+        dueAt: updatedDueAt,
+        notes: "Updated by the live macOS reminder test.",
+        originalIntent: "live test update the reminder",
       });
-      expect(created).toMatchObject({
+      expect(updated).toMatchObject({
+        ok: true,
+        provider: "apple_reminders",
+        reminderId,
+      });
+
+      const updatedSnapshot = await waitForReminder(
+        reminderId,
+        (snapshot) =>
+          snapshot.title === updatedTitle &&
+          snapshot.body.includes("Updated by the live macOS reminder test.") &&
+          snapshot.body.includes(
+            "Eliza request: live test update the reminder",
+          ),
+      );
+      expect(updatedSnapshot.dueText.length).toBeGreaterThan(0);
+    } finally {
+      const deleted = await deleteNativeAppleReminderLikeItem(reminderId);
+      expect(deleted).toMatchObject({
         ok: true,
         provider: "apple_reminders",
       });
-      const reminderId =
-        created.ok === true ? (created.reminderId ?? null) : null;
-      expect(reminderId).toBeTruthy();
-      if (!reminderId) {
-        throw new Error("Live native reminder test did not return a reminder id");
-      }
-
-      try {
-        const initialSnapshot = await waitForReminder(
-          reminderId,
-          (snapshot) =>
-            snapshot.title === initialTitle &&
-            snapshot.body.includes("Created by the live macOS reminder test.") &&
-            snapshot.body.includes("Eliza request: live test create a reminder"),
-        );
-        expect(initialSnapshot.dueText.length).toBeGreaterThan(0);
-
-        const updated = await updateNativeAppleReminderLikeItem({
-          reminderId,
-          kind: "alarm",
-          title: updatedTitle,
-          dueAt: updatedDueAt,
-          notes: "Updated by the live macOS reminder test.",
-          originalIntent: "live test update the reminder",
-        });
-        expect(updated).toMatchObject({
-          ok: true,
-          provider: "apple_reminders",
-          reminderId,
-        });
-
-        const updatedSnapshot = await waitForReminder(
-          reminderId,
-          (snapshot) =>
-            snapshot.title === updatedTitle &&
-            snapshot.body.includes("Updated by the live macOS reminder test.") &&
-            snapshot.body.includes("Eliza request: live test update the reminder"),
-        );
-        expect(updatedSnapshot.dueText.length).toBeGreaterThan(0);
-      } finally {
-        const deleted = await deleteNativeAppleReminderLikeItem(reminderId);
-        expect(deleted).toMatchObject({
-          ok: true,
-          provider: "apple_reminders",
-        });
-        await waitForReminderDeletion(reminderId);
-      }
-    },
-    120_000,
-  );
+      await waitForReminderDeletion(reminderId);
+    }
+  }, 120_000);
 });

@@ -1,18 +1,13 @@
-import type { IAgentRuntime, UUID } from "@elizaos/core";
-
-export async function buildDeepLink(
-  runtime: IAgentRuntime,
+export function buildDeepLink(
   source: string,
   opts: {
-    roomId?: string;
     messageId?: string;
     roomMeta?: Record<string, unknown>;
     worldMeta?: Record<string, unknown>;
   },
-): Promise<string | null> {
-  const meta = opts.roomMeta ?? (await fetchRoomMeta(runtime, opts.roomId));
-  const worldMeta =
-    opts.worldMeta ?? (await fetchWorldMetaForRoom(runtime, opts.roomId));
+): string | null {
+  const meta = opts.roomMeta ?? {};
+  const worldMeta = opts.worldMeta ?? {};
 
   switch (source) {
     case "discord":
@@ -121,45 +116,14 @@ function buildGmailLink(
 ): string | null {
   const gmailId = messageId || str(room.gmailMessageId);
   if (gmailId) {
-    return `https://mail.google.com/mail/u/0/#inbox/${gmailId}`;
+    const account =
+      str(room.gmailAccountEmail) ||
+      str(room.accountEmail) ||
+      str(room.email) ||
+      "0";
+    return `https://mail.google.com/mail/u/${encodeURIComponent(account)}/#inbox/${gmailId}`;
   }
   return null;
-}
-
-async function fetchRoomMeta(
-  runtime: IAgentRuntime,
-  roomId?: string,
-): Promise<Record<string, unknown>> {
-  if (!roomId) return {};
-  try {
-    const room = await runtime.getRoom(roomId as UUID);
-    if (!room) return {};
-    const meta =
-      typeof room.metadata === "object" && room.metadata
-        ? (room.metadata as Record<string, unknown>)
-        : {};
-    return { ...meta, roomId: room.id, roomName: room.name };
-  } catch {
-    return {};
-  }
-}
-
-async function fetchWorldMetaForRoom(
-  runtime: IAgentRuntime,
-  roomId?: string,
-): Promise<Record<string, unknown>> {
-  if (!roomId) return {};
-  try {
-    const room = await runtime.getRoom(roomId as UUID);
-    if (!room?.worldId) return {};
-    const world = await runtime.getWorld(room.worldId);
-    if (!world) return {};
-    return typeof world.metadata === "object" && world.metadata
-      ? (world.metadata as Record<string, unknown>)
-      : {};
-  } catch {
-    return {};
-  }
 }
 
 function str(value: unknown): string | null {

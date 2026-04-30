@@ -35,8 +35,8 @@ const specFiles = [
   "test/ui-smoke/apps-session-direct-b.spec.ts",
   "test/ui-smoke/browser-workspace.spec.ts",
   "test/ui-smoke/cloud-wallet-import.spec.ts",
+  "test/ui-smoke/connectors.spec.ts",
   "test/ui-smoke/ui-smoke.spec.ts",
-  "test/ui-smoke/settings-chat-companion.spec.ts",
 ];
 
 function getFreePort() {
@@ -85,12 +85,7 @@ env.ELIZA_PORT = env.ELIZA_PORT || env.MILADY_UI_SMOKE_PORT;
 for (const spec of specFiles) {
   const result = spawnSync(
     nodeCmd,
-    [
-      uiPlaywrightRunner,
-      "--config",
-      "playwright.ui-smoke.config.ts",
-      spec,
-    ],
+    [uiPlaywrightRunner, "--config", "playwright.ui-smoke.config.ts", spec],
     {
       cwd: repoRoot,
       env,

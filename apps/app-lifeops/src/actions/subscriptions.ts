@@ -12,15 +12,15 @@ import {
   parseJSONObjectFromText,
   parseKeyValueXml,
 } from "@elizaos/core";
+import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
+import { PLAYBOOK_NOT_IMPLEMENTED_ERROR } from "../lifeops/subscriptions-playbooks.js";
+import type { LifeOpsSubscriptionExecutor } from "../lifeops/subscriptions-types.js";
+import { recentConversationTexts } from "./life-recent-context.js";
 import {
   hasLifeOpsAccess,
   INTERNAL_URL,
   messageText,
 } from "./lifeops-google-helpers.js";
-import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
-import { PLAYBOOK_NOT_IMPLEMENTED_ERROR } from "../lifeops/subscriptions-playbooks.js";
-import type { LifeOpsSubscriptionExecutor } from "../lifeops/subscriptions-types.js";
-import { recentConversationTexts } from "./life-recent-context.js";
 
 type SubscriptionSubaction = "audit" | "cancel" | "status";
 
@@ -244,13 +244,31 @@ async function runSubscriptionsAction(
 ): Promise<ActionResult> {
   const params = mergeParams(message, options);
   const service = new LifeOpsService(runtime);
-  const planner = await resolveSubscriptionsPlanWithLlm({
-    runtime,
-    message,
-    state,
-    params,
-  });
-  const mode = normalizeMode(params.mode) ?? planner.mode ?? null;
+  // Trust planner-supplied mode. The action planner has already chosen the
+  // subaction, and the shared LLM param extractor (in handlers that route
+  // here through an umbrella) has already filled in any missing mode field.
+  // Only fall back to the in-handler LLM planner when the mode is genuinely
+  // missing — running it unconditionally just throws away correct hints
+  // (this was the root cause of subscriptions-cancel-* never completing).
+  const trustedMode = normalizeMode(params.mode);
+  const planner = trustedMode
+    ? {
+        mode: trustedMode,
+        shouldAct: true as const,
+        response: null,
+        serviceName: null,
+        serviceSlug: null,
+        executor: null,
+        confirmed: null,
+        queryWindowDays: undefined as number | undefined,
+      }
+    : await resolveSubscriptionsPlanWithLlm({
+        runtime,
+        message,
+        state,
+        params,
+      });
+  const mode = trustedMode ?? planner.mode ?? null;
 
   if (planner.shouldAct === false && planner.response) {
     return {
@@ -265,16 +283,22 @@ async function runSubscriptionsAction(
       text:
         planner.response ??
         "Tell me whether you want a subscription audit, a cancellation, or a status check.",
-      data: { error: "AMBIGUOUS_SUBSCRIPTIONS_REQUEST" },
+      values: {
+        success: false,
+        error: "AMBIGUOUS_SUBSCRIPTIONS_REQUEST",
+        requiresConfirmation: true,
+      },
+      data: {
+        actionName: ACTION_NAME,
+        error: "AMBIGUOUS_SUBSCRIPTIONS_REQUEST",
+        requiresConfirmation: true,
+      },
     };
   }
 
   const serviceName = params.serviceName ?? planner.serviceName ?? null;
   const serviceSlug = params.serviceSlug ?? planner.serviceSlug ?? null;
-  const executor =
-    params.executor ??
-    planner.executor ??
-    null;
+  const executor = params.executor ?? planner.executor ?? null;
   const confirmed =
     typeof params.confirmed === "boolean"
       ? params.confirmed
@@ -313,15 +337,26 @@ async function runSubscriptionsAction(
         summary.cancellation.status === "unsupported_surface" &&
         typeof summary.cancellation.error === "string" &&
         summary.cancellation.error.startsWith(PLAYBOOK_NOT_IMPLEMENTED_ERROR);
+      // Cancellation flows that legitimately stop at a "needs human" handoff
+      // (awaiting confirmation, MFA, retention offer, sign-in, no automated
+      // playbook yet, etc.) are NOT execution failures: the action correctly
+      // reached its terminal pending-confirmation state. Surface that to the
+      // runtime + benchmark scorer via `requiresConfirmation`.
+      const needsHumanHandoff =
+        browserTaskData(summary).needsHuman === true || playbookNotImplemented;
       return {
         success:
           summary.cancellation.status !== "failed" &&
           summary.cancellation.status !== "unsupported_surface",
         text: service.summarizeSubscriptionCancellation(summary),
+        ...(needsHumanHandoff
+          ? { values: { requiresConfirmation: true } }
+          : {}),
         data: {
           cancellation: summary.cancellation,
           candidate: summary.candidate,
           browserTask: browserTaskData(summary),
+          ...(needsHumanHandoff ? { requiresConfirmation: true } : {}),
           ...(playbookNotImplemented
             ? {
                 error: PLAYBOOK_NOT_IMPLEMENTED_ERROR,
@@ -373,7 +408,9 @@ const examples: ActionExample[][] = [
   [
     {
       name: "{{name1}}",
-      content: { text: "Audit my subscriptions and tell me what I can cancel." },
+      content: {
+        text: "Audit my subscriptions and tell me what I can cancel.",
+      },
     },
     {
       name: "{{agentName}}",
@@ -475,6 +512,61 @@ export const subscriptionsAction: Action & {
     "Audit recurring subscriptions from LifeOps signals, cancel supported subscriptions through the browser, and report cancellation status with artifacts and human-handoff states. " +
     "Use this for requests like 'cancel my Netflix subscription', 'cancel Hulu in my browser', 'cancel my Google Play subscription', or 'cancel my App Store subscription on this Mac'. " +
     "Do not use this for generic cancellation-fee warnings, deadline-risk escalations, or 'warn me and offer to handle it now' policies when the user has not yet asked to audit, cancel, or status-check a specific subscription.",
+  descriptionCompressed:
+    "Paid sub audit cancel browser status artifacts not email-unsubscribe",
+
+  parameters: [
+    {
+      name: "mode",
+      description: "audit | cancel | status when supplied.",
+      required: false,
+      schema: { type: "string" as const, enum: ["audit", "cancel", "status"] },
+    },
+    {
+      name: "serviceName",
+      description: "Display name of the subscription service.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "serviceSlug",
+      description: "Normalized slug for routing.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "candidateId",
+      description: "Internal audit candidate identifier.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "cancellationId",
+      description: "Ongoing cancellation id for status lookups.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "executor",
+      description:
+        "Browser executor: user_browser | agent_browser | desktop_native.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "queryWindowDays",
+      description: "Days of history for audit queries.",
+      required: false,
+      schema: { type: "number" as const },
+    },
+    {
+      name: "confirmed",
+      description: "User confirmed cancellation prerequisites.",
+      required: false,
+      schema: { type: "boolean" as const },
+    },
+  ],
+
   suppressPostActionContinuation: true,
   validate: async (runtime: IAgentRuntime, message: Memory) =>
     hasLifeOpsAccess(runtime, message),

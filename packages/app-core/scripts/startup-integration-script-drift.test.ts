@@ -63,10 +63,11 @@ describe("startup integration script drift", () => {
   );
 
   it.skipIf(
-    !hasWorkflows([
-      ".github/workflows/test.yml",
-      ".github/workflows/nightly.yml",
-    ]),
+    !selfControlScriptsExpected ||
+      !hasWorkflows([
+        ".github/workflows/test.yml",
+        ".github/workflows/nightly.yml",
+      ]),
   )("keeps CI workflows calling the startup smoke guards", () => {
     const workflowExpectations = new Map([
       [

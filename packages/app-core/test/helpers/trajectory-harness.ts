@@ -86,6 +86,8 @@ export interface TrajectoryActionRecord {
   actionStatus?: string;
   actionId?: string;
   runId?: string;
+  /** See ActionSpyCall.actionConfirmationPending. */
+  actionConfirmationPending?: boolean;
   timestamp: number;
   contentText?: string;
 }
@@ -297,6 +299,7 @@ export class RecordingHarness {
         actionStatus: a.actionStatus,
         actionId: a.actionId,
         runId: a.runId,
+        actionConfirmationPending: a.actionConfirmationPending,
         timestamp: a.timestamp,
         contentText:
           typeof a.payload.content?.text === "string"

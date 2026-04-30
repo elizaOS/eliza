@@ -1,17 +1,19 @@
 import type { Memory } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const createBrowserSession = vi.fn(async (request: Record<string, unknown>) => ({
-  id: "session-1",
-  title: String(request.title ?? "Session"),
-  status: "queued",
-  browser: null,
-  profileId: null,
-  tabId: null,
-}));
+const createBrowserSession = vi.fn(
+  async (request: Record<string, unknown>) => ({
+    id: "session-1",
+    title: String(request.title ?? "Session"),
+    status: "queued",
+    browser: null,
+    profileId: null,
+    tabId: null,
+  }),
+);
 
-vi.mock("@elizaos/agent", () => ({
-  hasAdminAccess: vi.fn(async () => true),
+vi.mock("@elizaos/agent/security/access", () => ({
+  hasOwnerAccess: vi.fn(async () => true),
 }));
 
 vi.mock("./lifeops/service.js", () => ({

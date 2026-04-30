@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import * as serviceModule from "../src/lifeops/service.js";
 import { dossierAction } from "../src/actions/dossier.js";
+import * as serviceModule from "../src/lifeops/service.js";
 
 const SAME_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -48,11 +48,11 @@ let generateDossier: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   generateDossier = vi.fn(async () => makeDossier());
-  vi.spyOn(serviceModule, "LifeOpsService").mockImplementation(
-    function (this: Record<string, unknown>) {
-      this.generateDossier = generateDossier;
-    } as unknown as typeof serviceModule.LifeOpsService,
-  );
+  vi.spyOn(serviceModule, "LifeOpsService").mockImplementation(function (
+    this: Record<string, unknown>,
+  ) {
+    this.generateDossier = generateDossier;
+  } as unknown as typeof serviceModule.LifeOpsService);
 });
 
 afterEach(() => {
@@ -127,12 +127,9 @@ describe("dossierAction handler", () => {
   test("propagates service errors (does not swallow)", async () => {
     generateDossier.mockRejectedValueOnce(new Error("downstream boom"));
     await expect(
-      dossierAction.handler!(
-        makeRuntime(),
-        makeMessage(),
-        undefined,
-        { parameters: { subject: "topic" } },
-      ),
+      dossierAction.handler!(makeRuntime(), makeMessage(), undefined, {
+        parameters: { subject: "topic" },
+      }),
     ).rejects.toThrow("downstream boom");
   });
 });

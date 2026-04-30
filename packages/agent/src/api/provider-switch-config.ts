@@ -703,11 +703,19 @@ export function createProviderSwitchConnection(args: {
   };
 }
 
+export interface ApplyOnboardingConnectionOptions {
+  useLocalEmbeddings?: boolean;
+}
+
 export async function applyOnboardingConnectionConfig(
   config: MutableElizaConfig,
   connection: OnboardingConnection,
+  options: ApplyOnboardingConnectionOptions = {},
 ): Promise<void> {
   const normalizedConnection = connection;
+  const excludeServices = options.useLocalEmbeddings
+    ? (["embeddings"] as const)
+    : undefined;
 
   delete (config as Record<string, unknown>).connection;
   const existingDeploymentTarget = normalizeDeploymentTargetConfig(
@@ -717,6 +725,7 @@ export async function applyOnboardingConnectionConfig(
   if (normalizedConnection.kind === "cloud-managed") {
     clearRemoteProviderConfig(config);
     clearCloudModelSelections(config);
+    setPrimaryModel(config, undefined);
 
     const cloud = ensureCloud(config);
     const models = ensureModels(config);
@@ -758,6 +767,7 @@ export async function applyOnboardingConnectionConfig(
           mediaDescriptionModel: normalizedConnection.mediaDescriptionModel,
         }),
       },
+      ...(excludeServices ? { excludeServices } : {}),
     });
 
     applyCanonicalOnboardingConfig(config, {
@@ -796,6 +806,7 @@ export async function applyOnboardingConnectionConfig(
     clearSubscriptionProviderConfig(config);
     clearCloudModelSelections(config);
     clearRemoteProviderConfig(config);
+    setPrimaryModel(config, undefined);
 
     applyCanonicalOnboardingConfig(config, {
       deploymentTarget: {
@@ -860,6 +871,7 @@ export async function applyOnboardingConnectionConfig(
           ...(config.serviceRouting ?? {}),
           llmText: directLlmRoute,
         },
+        ...(excludeServices ? { excludeServices } : {}),
       })
     : {
         llmText: directLlmRoute,

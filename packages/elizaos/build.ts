@@ -64,6 +64,10 @@ function prepareTemplates(): void {
     templates: loadTemplateDefinitions(),
   };
   fs.writeFileSync(MANIFEST_PATH, `${JSON.stringify(manifest, null, 2)}\n`);
+  execSync(`bunx --bun @biomejs/biome format --write ${MANIFEST_PATH}`, {
+    cwd: PACKAGE_DIR,
+    stdio: "inherit",
+  });
 }
 
 function buildTypescript(): void {

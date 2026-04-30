@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { logger } from "@elizaos/core";
 import type { LifeOpsSignalInboundMessage } from "@elizaos/shared";
 
@@ -36,6 +37,11 @@ export interface SignalLocalClientConfig {
   accountNumber: string;
 }
 
+export interface SignalLocalSendRequest {
+  recipient: string;
+  text: string;
+}
+
 export class SignalLocalClientError extends Error {
   readonly status: number | null;
   readonly category: "auth" | "not_found" | "network" | "unknown";
@@ -57,6 +63,7 @@ export class SignalLocalClientError extends Error {
 const REQUEST_TIMEOUT_MS = 10_000;
 const MAX_RECEIVE_LIMIT = 100;
 const DEFAULT_RECEIVE_LIMIT = 25;
+const DEFAULT_SIGNAL_HTTP_URL = "http://127.0.0.1:8080";
 
 /**
  * Read env-based configuration for the signal-cli HTTP client.
@@ -65,9 +72,9 @@ const DEFAULT_RECEIVE_LIMIT = 25;
 export function readSignalLocalClientConfigFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): SignalLocalClientConfig | null {
-  const httpUrl = env.SIGNAL_HTTP_URL?.trim();
+  const httpUrl = env.SIGNAL_HTTP_URL?.trim() || DEFAULT_SIGNAL_HTTP_URL;
   const accountNumber = env.SIGNAL_ACCOUNT_NUMBER?.trim();
-  if (!httpUrl || !accountNumber) return null;
+  if (!accountNumber) return null;
   return { httpUrl, accountNumber };
 }
 
@@ -103,7 +110,24 @@ interface SignalCliReceiveResponse {
   account?: string;
 }
 
-function isSignalCliReceiveResponse(value: unknown): value is SignalCliReceiveResponse {
+interface SignalCliRpcResponse<T> {
+  jsonrpc?: string;
+  id?: string | number | null;
+  result?: T;
+  error?: {
+    code?: number | string;
+    message?: string;
+    data?: unknown;
+  };
+}
+
+function isSignalCliReceiveResponse(
+  value: unknown,
+): value is SignalCliReceiveResponse {
+  return Boolean(value && typeof value === "object");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object");
 }
 
@@ -127,7 +151,10 @@ export async function readSignalInboundMessages(
   config: SignalLocalClientConfig,
   limit = DEFAULT_RECEIVE_LIMIT,
 ): Promise<LifeOpsSignalInboundMessage[]> {
-  const clampedLimit = Math.min(Math.max(1, Math.floor(limit)), MAX_RECEIVE_LIMIT);
+  const clampedLimit = Math.min(
+    Math.max(1, Math.floor(limit)),
+    MAX_RECEIVE_LIMIT,
+  );
   const accountEncoded = encodeURIComponent(config.accountNumber);
   const url = `${config.httpUrl.replace(/\/$/, "")}/v1/receive/${accountEncoded}`;
 
@@ -203,7 +230,9 @@ export async function readSignalInboundMessages(
   }
 
   const messages: LifeOpsSignalInboundMessage[] = [];
-  for (const item of body.filter(isSignalCliReceiveResponse).slice(0, clampedLimit)) {
+  for (const item of body
+    .filter(isSignalCliReceiveResponse)
+    .slice(0, clampedLimit)) {
     const envelope = item.envelope;
     if (!envelope) continue;
 
@@ -213,14 +242,17 @@ export async function readSignalInboundMessages(
 
     const senderNumber = envelope.sourceNumber ?? envelope.source ?? null;
     const senderUuid = envelope.sourceUuid ?? null;
-    const speakerName = envelope.sourceName ?? senderNumber ?? "Unknown Signal sender";
+    const speakerName =
+      envelope.sourceName ?? senderNumber ?? "Unknown Signal sender";
     const isGroup = Boolean(dataMessage.groupInfo?.groupId);
     const groupId = dataMessage.groupInfo?.groupId ?? null;
     const groupType = dataMessage.groupInfo?.type ?? null;
-    const channelId = isGroup && groupId ? groupId : (senderNumber ?? senderUuid ?? "");
+    const channelId =
+      isGroup && groupId ? groupId : (senderNumber ?? senderUuid ?? "");
     if (!channelId) continue;
     const senderKey = senderNumber ?? senderUuid ?? channelId;
-    const roomName = isGroup && groupId ? `Signal group ${groupId}` : speakerName;
+    const roomName =
+      isGroup && groupId ? `Signal group ${groupId}` : speakerName;
 
     // Stable ID: timestamp + sender — signal-cli does not assign message IDs in
     // the receive response, so we derive one from the envelope timestamp.
@@ -242,7 +274,9 @@ export async function readSignalInboundMessages(
       senderNumber,
       senderUuid,
       sourceDevice:
-        typeof envelope.sourceDevice === "number" ? envelope.sourceDevice : null,
+        typeof envelope.sourceDevice === "number"
+          ? envelope.sourceDevice
+          : null,
       groupId,
       groupType,
       text: dataMessage.message,
@@ -253,4 +287,111 @@ export async function readSignalInboundMessages(
   }
 
   return messages;
+}
+
+export async function sendSignalLocalMessage(
+  config: SignalLocalClientConfig,
+  request: SignalLocalSendRequest,
+): Promise<{ timestamp: number }> {
+  const url = `${config.httpUrl.replace(/\/$/, "")}/api/v1/rpc`;
+  const rpcId = randomUUID();
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: rpcId,
+        method: "send",
+        params: {
+          account: config.accountNumber,
+          recipients: [request.recipient],
+          message: request.text,
+        },
+      }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.warn(
+      {
+        boundary: "lifeops",
+        integration: "signal",
+        operation: "signal_local_send",
+        httpUrl: config.httpUrl,
+      },
+      `[lifeops] Signal local client send network failure: ${message}`,
+    );
+    throw new SignalLocalClientError(`Signal local send failed: ${message}`, {
+      status: null,
+      category: "network",
+    });
+  }
+
+  if (!response.ok) {
+    const category =
+      response.status === 401 || response.status === 403
+        ? "auth"
+        : response.status === 404
+          ? "not_found"
+          : "unknown";
+    logger.warn(
+      {
+        boundary: "lifeops",
+        integration: "signal",
+        operation: "signal_local_send",
+        statusCode: response.status,
+      },
+      `[lifeops] Signal local client send HTTP ${response.status}`,
+    );
+    throw new SignalLocalClientError(
+      `Signal local send failed with HTTP ${response.status}`,
+      { status: response.status, category },
+    );
+  }
+
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    logger.warn(
+      {
+        boundary: "lifeops",
+        integration: "signal",
+        operation: "signal_local_send",
+      },
+      "[lifeops] Signal local client send returned non-JSON body",
+    );
+    throw new SignalLocalClientError("Signal local send returned non-JSON", {
+      status: response.status,
+      category: "unknown",
+    });
+  }
+
+  const rpcResponse = body as SignalCliRpcResponse<unknown>;
+  if (isRecord(rpcResponse.error)) {
+    const message =
+      typeof rpcResponse.error.message === "string"
+        ? rpcResponse.error.message
+        : "Signal RPC send failed";
+    throw new SignalLocalClientError(`Signal local send failed: ${message}`, {
+      status: response.status,
+      category: "unknown",
+    });
+  }
+
+  const result = rpcResponse.result;
+  if (!isRecord(result) || typeof result.timestamp !== "number") {
+    throw new SignalLocalClientError(
+      "Signal local send did not return a timestamp",
+      { status: response.status, category: "unknown" },
+    );
+  }
+
+  return { timestamp: result.timestamp };
 }

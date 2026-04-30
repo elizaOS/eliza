@@ -5,9 +5,7 @@
   "source": "https://support.google.com/chrome/thread/219988391/increase-search-results-per-page?hl=en",
   "config": [],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "chrome"
-  ],
+  "related_apps": ["chrome"],
   "evaluator": {
     "func": "infeasible"
   },

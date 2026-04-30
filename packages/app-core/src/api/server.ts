@@ -131,6 +131,7 @@ import { handleCloudStatusRoutes } from "./cloud-status-routes";
 import { handleComputerUseCompatRoutes } from "./computer-use-compat-routes";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
+import { handleGitHubRoutes } from "./github-routes";
 import { handleLocalInferenceCompatRoutes } from "./local-inference-compat-routes";
 import { handleN8nRoutes } from "./n8n-routes";
 import { handleOnboardingCompatRoute } from "./onboarding-compat-routes";
@@ -832,7 +833,21 @@ async function handleCompatRoute(
     });
   }
 
-  if (await handleComputerUseCompatRoutes(req, res, state)) return true;
+  // GitHub PAT routes — power the "GitHub" connection card in Settings →
+  // Coding Agents. Auth sits in front so the saved token never leaves
+  // the loopback boundary unauthenticated.
+  if (url.pathname === "/api/github/token") {
+    if (!(await ensureRouteAuthorized(req, res, state))) return true;
+    return handleGitHubRoutes({
+      req,
+      res,
+      method,
+      pathname: url.pathname,
+      json: (status, body) => {
+        sendJsonResponse(res, status, body);
+      },
+    });
+  }
 
   if (method === "POST" && url.pathname === "/api/tts/cloud") {
     if (!(await ensureRouteAuthorized(req, res, state))) return true;
@@ -1199,7 +1214,13 @@ export function patchHttpCreateServerForCompat(
             return;
           }
         } catch (err) {
-          console.error("[compat] unhandled error in route handler", err);
+          logger.error(
+            {
+              error: err instanceof Error ? err.message : String(err),
+              stack: err instanceof Error ? err.stack : undefined,
+            },
+            "[CompatApiServer] Unhandled compat route error",
+          );
           if (!res.headersSent) {
             res.statusCode = 500;
             res.setHeader("content-type", "application/json; charset=utf-8");
@@ -1210,7 +1231,13 @@ export function patchHttpCreateServerForCompat(
       }
 
       Promise.resolve(listener(req, res)).catch((err) => {
-        console.error("[compat] upstream listener error", err);
+        logger.error(
+          {
+            error: err instanceof Error ? err.message : String(err),
+            stack: err instanceof Error ? err.stack : undefined,
+          },
+          "[CompatApiServer] Upstream listener error",
+        );
         if (!res.headersSent) {
           res.statusCode = 500;
           res.setHeader("content-type", "application/json; charset=utf-8");

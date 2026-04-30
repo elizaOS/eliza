@@ -9,7 +9,12 @@
 import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
 import { AgentEventService } from "@elizaos/core";
 import { browserSessionAction } from "../actions/browser-session.js";
-import { launchpadLaunchAction } from "../actions/launchpad-launch.js";
+import {
+  disconnectConnectorAction,
+  listConnectorsAction,
+  saveConnectorConfigAction,
+  toggleConnectorAction,
+} from "../actions/connector-control.js";
 import {
   executeDatabaseQueryAction,
   getTableDataAction,
@@ -24,6 +29,7 @@ import {
   searchEntityAction,
 } from "../actions/entity-actions.js";
 import { extractPageAction } from "../actions/extract-page.js";
+import { launchpadLaunchAction } from "../actions/launchpad-launch.js";
 import {
   clearLogsAction,
   exportLogsAction,
@@ -35,6 +41,7 @@ import {
   forgetMemoryAction,
   recallMemoryFilteredAction,
 } from "../actions/memories.js";
+import { pageActionGroupActions } from "../actions/page-action-groups.js";
 import { readChannelAction } from "../actions/read-channel.js";
 import { readMessagesAction } from "../actions/read-messages.js";
 import { restartAction } from "../actions/restart.js";
@@ -269,6 +276,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       toggleWorkflowActiveAction,
       promoteTaskToWorkflowAction,
       manageTasksAction,
+      ...pageActionGroupActions,
       setUserNameAction,
       skillCommandAction,
       webSearchAction,
@@ -288,6 +296,10 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       updateAiProviderAction,
       toggleCapabilityAction,
       toggleAutoTrainingAction,
+      listConnectorsAction,
+      toggleConnectorAction,
+      saveConnectorConfigAction,
+      disconnectConnectorAction,
       // Observability / introspection actions
       queryLogsAction,
       exportLogsAction,

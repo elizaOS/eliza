@@ -55,11 +55,23 @@ export function useWhatsAppPairing(accountId = "default") {
     void client
       .getWhatsAppStatus(accountId, LIFEOPS_WHATSAPP_PAIRING_OPTIONS)
       .then((response) => {
-        if (!cancelled && response.authExists) {
+        if (cancelled) {
+          return;
+        }
+        if (response.status === "connected" && response.serviceConnected) {
           setState((previous) => ({
             ...previous,
             status: "connected",
             phoneNumber: response.servicePhone,
+          }));
+          return;
+        }
+        if (response.authExists) {
+          setState((previous) => ({
+            ...previous,
+            status: "disconnected",
+            phoneNumber: response.servicePhone,
+            error: null,
           }));
         }
       })

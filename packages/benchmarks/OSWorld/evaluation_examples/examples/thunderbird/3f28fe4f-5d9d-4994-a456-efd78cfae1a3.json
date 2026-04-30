@@ -32,16 +32,12 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "/usr/bin/thunderbird"
-        ]
+        "command": ["/usr/bin/thunderbird"]
       }
     }
   ],
   "trajectory": "trajectories/6766f2b8-8a72-417f-a9e5-56fcaa735837",
-  "related_apps": [
-    "thunderbird"
-  ],
+  "related_apps": ["thunderbird"],
   "evaluator": {
     "postconfig": [
       {

@@ -443,7 +443,7 @@ async function applyStrengthen(
 	op: StrengthenOp,
 ): Promise<boolean> {
 	const fact = ctx.candidatesById.get(op.factId);
-	if (!fact || !fact.id) return false;
+	if (!fact?.id) return false;
 	await applyStrengthenForMemory(ctx, fact);
 	return true;
 }
@@ -513,7 +513,7 @@ async function applyStrengthenForMemory(
 
 async function applyDecay(ctx: ApplyContext, op: DecayOp): Promise<boolean> {
 	const fact = ctx.candidatesById.get(op.factId);
-	if (!fact || !fact.id) return false;
+	if (!fact?.id) return false;
 	const nextConfidence = clamp01(pickFactConfidence(fact) - DECAY_DELTA);
 	if (nextConfidence < FACT_DECAY_FLOOR) {
 		await ctx.runtime.deleteMemory(fact.id);

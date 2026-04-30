@@ -37,11 +37,7 @@
     }
   ],
   "trajectory": "trajectories/20236825-b5df-46e7-89bf-62e1d640a897",
-  "related_apps": [
-    "vscode",
-    "libreoffice_writer",
-    "os"
-  ],
+  "related_apps": ["vscode", "libreoffice_writer", "os"],
   "evaluator": {
     "func": "compare_text_file",
     "expected": {

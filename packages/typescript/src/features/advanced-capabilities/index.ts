@@ -32,6 +32,7 @@ import {
 	experienceEvaluator,
 	experienceProvider,
 	recordExperienceAction,
+	searchExperiencesAction,
 } from "./experience/index.ts";
 
 // Form imports
@@ -91,6 +92,7 @@ export const advancedActions = [
 	withCanonicalActionDocs(actions.updateRoleAction),
 	withCanonicalActionDocs(actions.updateSettingsAction),
 	withCanonicalActionDocs(recordExperienceAction),
+	withCanonicalActionDocs(searchExperiencesAction),
 	// Clipboard actions
 	clipboardWriteAction,
 	clipboardReadAction,

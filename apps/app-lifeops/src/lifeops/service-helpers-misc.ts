@@ -12,34 +12,26 @@ import type {
   SnoozeLifeOpsOccurrenceRequest,
   UpdateLifeOpsDefinitionRequest,
 } from "../contracts/index.js";
+import { LIFEOPS_REMINDER_CHANNELS } from "../contracts/index.js";
+import { DEFAULT_REMINDER_STEPS, isValidTimeZone } from "./defaults.js";
+import { DAY_MINUTES, MAX_OVERVIEW_OCCURRENCES } from "./service-constants.js";
 import {
-  LIFEOPS_REMINDER_CHANNELS,
-} from "../contracts/index.js";
-import {
-  requireNonEmptyString,
-  normalizeOptionalString,
+  fail,
   normalizeEnumValue,
   normalizeFiniteNumber,
-  fail,
+  normalizeOptionalString,
+  requireNonEmptyString,
 } from "./service-normalize.js";
-import { LifeOpsServiceError } from "./service-types.js";
+import { normalizeQuietHoursInput } from "./service-normalize-connector.js";
 import type { ReminderAttemptLifecycle } from "./service-types.js";
+import { LifeOpsServiceError } from "./service-types.js";
 import {
-  DAY_MINUTES,
-  MAX_OVERVIEW_OCCURRENCES,
-} from "./service-constants.js";
-import {
-  DEFAULT_REMINDER_STEPS,
-  isValidTimeZone,
-} from "./defaults.js";
-import {
-  addMinutes,
   addDaysToLocalDate,
+  addMinutes,
   buildUtcDateFromLocalParts,
   getZonedDateParts,
   type ZonedDateParts,
 } from "./time.js";
-import { normalizeQuietHoursInput } from "./service-normalize-connector.js";
 
 // ---------------------------------------------------------------------------
 // Record / metadata utilities (lines 810-900)
@@ -92,7 +84,10 @@ export function cloneRecord(value: unknown): Record<string, unknown> {
   return { ...value };
 }
 
-export function requireRecord(value: unknown, field: string): Record<string, unknown> {
+export function requireRecord(
+  value: unknown,
+  field: string,
+): Record<string, unknown> {
   if (!isRecord(value)) {
     fail(400, `${field} must be an object`);
   }
@@ -459,7 +454,9 @@ export function buildActiveCalendarEventReminders(
   return reminders;
 }
 
-export function parseQuietHoursPolicy(value: LifeOpsReminderPlan["quietHours"]): {
+export function parseQuietHoursPolicy(
+  value: LifeOpsReminderPlan["quietHours"],
+): {
   timezone: string;
   startMinute: number;
   endMinute: number;
@@ -709,7 +706,9 @@ export function formatNearbyReminderTitlesForPrompt(titles: string[]): string {
   return titles.map((title) => `- ${title}`).join("\n");
 }
 
-export function formatNearbyReminderTitlesForFallback(titles: string[]): string {
+export function formatNearbyReminderTitlesForFallback(
+  titles: string[],
+): string {
   const unique = [...new Set(titles)].slice(0, 2);
   if (unique.length === 0) {
     return "";

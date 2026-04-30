@@ -1,11 +1,33 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
 import crypto from "node:crypto";
 import type {
+  BrowserBridgeCompanionStatus,
+  BrowserBridgeSettings,
+} from "@elizaos/plugin-browser-bridge";
+import type {
   LifeOpsScreenTimeDaily,
+  LifeOpsScreenTimeHistoryPoint,
+  LifeOpsScreenTimeHistoryResponse,
+  LifeOpsScreenTimeMetrics,
+  LifeOpsScreenTimeRangeKey,
   LifeOpsScreenTimeSession,
+  LifeOpsScreenTimeSource,
+  LifeOpsScreenTimeSummary,
+  LifeOpsScreenTimeTargetBucket,
+  LifeOpsScreenTimeVisibleBuckets,
+  LifeOpsScreenTimeBreakdown as ScreenTimeBreakdown,
+  LifeOpsScreenTimeBreakdownItem as ScreenTimeBreakdownItem,
+  LifeOpsScreenTimeBucket as ScreenTimeBucket,
+  LifeOpsSocialHabitDataSource as SocialHabitDataSource,
+  LifeOpsSocialHabitSummary as SocialHabitSummary,
 } from "@elizaos/shared";
 import { getActivityReportBetween } from "../activity-profile/activity-tracker-reporting.js";
 import { isSystemInactivityApp } from "../activity-profile/system-inactivity-apps.js";
+import {
+  browserBridgeCompanionIsRecent,
+  browserBridgePermissionsReady,
+  isBrowserBridgePaused,
+} from "./browser-readiness.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import { fail } from "./service-normalize.js";
 import {
@@ -38,7 +60,7 @@ function computeDurationSeconds(
 }
 
 type ScreenTimeAggregateRow = {
-  source: "app" | "website";
+  source: LifeOpsScreenTimeSource;
   identifier: string;
   displayName: string;
   totalSeconds: number;
@@ -55,66 +77,7 @@ type ScreenTimeWeeklyAverageItem = {
   averageMinutesPerDay: number;
 };
 
-type ScreenTimeBucket = {
-  key: string;
-  label: string;
-  totalSeconds: number;
-};
-
-type ScreenTimeBreakdownItem = {
-  source: "app" | "website";
-  identifier: string;
-  displayName: string;
-  totalSeconds: number;
-  sessionCount: number;
-  category: string;
-  device: string;
-  service: string | null;
-  serviceLabel: string | null;
-  browser: string | null;
-};
-
-type ScreenTimeBreakdown = {
-  items: ScreenTimeBreakdownItem[];
-  totalSeconds: number;
-  bySource: ScreenTimeBucket[];
-  byCategory: ScreenTimeBucket[];
-  byDevice: ScreenTimeBucket[];
-  byService: ScreenTimeBucket[];
-  byBrowser: ScreenTimeBucket[];
-  fetchedAt: string;
-};
-
-type SocialHabitSummary = {
-  since: string;
-  until: string;
-  totalSeconds: number;
-  services: ScreenTimeBucket[];
-  devices: ScreenTimeBucket[];
-  surfaces: ScreenTimeBucket[];
-  browsers: ScreenTimeBucket[];
-  sessions: ScreenTimeBreakdownItem[];
-  messages: {
-    channels: Array<{
-      channel: "x_dm";
-      label: string;
-      inbound: number;
-      outbound: number;
-      opened: number;
-      replied: number;
-    }>;
-    inbound: number;
-    outbound: number;
-    opened: number;
-    replied: number;
-  };
-  dataSources: Array<{
-    id: string;
-    label: string;
-    state: "live" | "partial" | "unwired";
-  }>;
-  fetchedAt: string;
-};
+const DAY_MS = 86_400_000;
 
 function resolveUtcDateWindow(date: string): {
   startIso: string;
@@ -149,6 +112,128 @@ function buildWindowBounds(
     fail(400, "since and until must be valid ISO strings with until > since");
   }
   return { sinceMs, untilMs };
+}
+
+function startOfLocalDay(date: Date): Date {
+  const start = new Date(date);
+  start.setHours(0, 0, 0, 0);
+  return start;
+}
+
+function addDays(date: Date, days: number): Date {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function screenTimeRangeLabel(range: LifeOpsScreenTimeRangeKey): string {
+  switch (range) {
+    case "today":
+      return "Today";
+    case "this-week":
+      return "This Week";
+    case "7d":
+      return "Last 7d";
+    case "30d":
+      return "Last 30d";
+  }
+}
+
+function computeScreenTimeRange(
+  range: LifeOpsScreenTimeRangeKey,
+  now = new Date(),
+): { since: string; until: string } {
+  const until = now.toISOString();
+  if (range === "today") {
+    return { since: startOfLocalDay(now).toISOString(), until };
+  }
+  if (range === "this-week") {
+    const startToday = startOfLocalDay(now);
+    const dayOfWeek = startToday.getDay();
+    return { since: addDays(startToday, -dayOfWeek).toISOString(), until };
+  }
+  if (range === "7d") {
+    return { since: addDays(startOfLocalDay(now), -6).toISOString(), until };
+  }
+  return { since: addDays(startOfLocalDay(now), -29).toISOString(), until };
+}
+
+function computePriorScreenTimeRange(
+  range: LifeOpsScreenTimeRangeKey,
+  current: { since: string; until: string },
+): { since: string; until: string } | null {
+  if (range === "today") {
+    return null;
+  }
+  const sinceMs = Date.parse(current.since);
+  const untilMs = Date.parse(current.until);
+  const spanMs = untilMs - sinceMs;
+  return {
+    since: new Date(sinceMs - spanMs).toISOString(),
+    until: current.since,
+  };
+}
+
+function enumerateHistoryDays(period: {
+  since: string;
+  until: string;
+}): Array<{ date: string; since: string; until: string; label: string }> {
+  const days: Array<{
+    date: string;
+    since: string;
+    until: string;
+    label: string;
+  }> = [];
+  const endMs = Date.parse(period.until);
+  let cursor = startOfLocalDay(new Date(Date.parse(period.since)));
+  while (cursor.getTime() <= endMs) {
+    const dayStart = cursor;
+    const dayEnd = addDays(dayStart, 1);
+    days.push({
+      date: dayStart.toISOString().slice(0, 10),
+      since: dayStart.toISOString(),
+      until: new Date(Math.min(dayEnd.getTime(), endMs)).toISOString(),
+      label: new Intl.DateTimeFormat(undefined, {
+        month: "numeric",
+        day: "numeric",
+      }).format(dayStart),
+    });
+    cursor = dayEnd;
+  }
+  return days;
+}
+
+function deltaPercent(current: number, prior: number): number | null {
+  if (prior <= 0) {
+    return current > 0 ? null : 0;
+  }
+  return Math.round(((current - prior) / prior) * 100);
+}
+
+function bucketSeconds(buckets: ScreenTimeBucket[], key: string): number {
+  return buckets.find((item) => item.key === key)?.totalSeconds ?? 0;
+}
+
+function serviceSeconds(summary: SocialHabitSummary, key: string): number {
+  return summary.services.find((item) => item.key === key)?.totalSeconds ?? 0;
+}
+
+function normalizeIdentifierFilter(
+  identifier: string | undefined,
+): string | null {
+  const normalized = identifier?.trim();
+  return normalized && normalized.length > 0 ? normalized : null;
+}
+
+function filterRowsByIdentifier(
+  rows: ScreenTimeAggregateRow[],
+  identifier: string | undefined,
+): ScreenTimeAggregateRow[] {
+  const normalized = normalizeIdentifierFilter(identifier);
+  if (!normalized) {
+    return rows;
+  }
+  return rows.filter((row) => row.identifier === normalized);
 }
 
 function clipSessionDurationSeconds(
@@ -463,6 +548,144 @@ function toBreakdownItems(
   };
 }
 
+function buildScreenTimeMetrics(
+  breakdown: ScreenTimeBreakdown,
+  social: SocialHabitSummary,
+  priorBreakdown: ScreenTimeBreakdown | null,
+  priorSocial: SocialHabitSummary | null,
+): LifeOpsScreenTimeMetrics {
+  const totalSeconds = breakdown.totalSeconds;
+  const appSeconds = bucketSeconds(breakdown.bySource, "app");
+  const webSeconds = bucketSeconds(breakdown.bySource, "website");
+  const phoneSeconds = bucketSeconds(breakdown.byDevice, "phone");
+  const socialSeconds = social.totalSeconds;
+  const youtubeSeconds = serviceSeconds(social, "youtube");
+  const xSeconds = serviceSeconds(social, "x");
+  const messageOpened = social.messages.opened;
+  const messageOutbound = social.messages.outbound;
+  const messageInbound = social.messages.inbound;
+
+  if (!priorBreakdown || !priorSocial) {
+    return {
+      totalSeconds,
+      appSeconds,
+      webSeconds,
+      phoneSeconds,
+      socialSeconds,
+      youtubeSeconds,
+      xSeconds,
+      messageOpened,
+      messageOutbound,
+      messageInbound,
+      deltas: null,
+    };
+  }
+
+  return {
+    totalSeconds,
+    appSeconds,
+    webSeconds,
+    phoneSeconds,
+    socialSeconds,
+    youtubeSeconds,
+    xSeconds,
+    messageOpened,
+    messageOutbound,
+    messageInbound,
+    deltas: {
+      totalPercent: deltaPercent(totalSeconds, priorBreakdown.totalSeconds),
+      appPercent: deltaPercent(
+        appSeconds,
+        bucketSeconds(priorBreakdown.bySource, "app"),
+      ),
+      webPercent: deltaPercent(
+        webSeconds,
+        bucketSeconds(priorBreakdown.bySource, "website"),
+      ),
+      phonePercent: deltaPercent(
+        phoneSeconds,
+        bucketSeconds(priorBreakdown.byDevice, "phone"),
+      ),
+      socialPercent: deltaPercent(socialSeconds, priorSocial.totalSeconds),
+      youtubePercent: deltaPercent(
+        youtubeSeconds,
+        serviceSeconds(priorSocial, "youtube"),
+      ),
+      xPercent: deltaPercent(xSeconds, serviceSeconds(priorSocial, "x")),
+      messageOpenedPercent: deltaPercent(
+        messageOpened,
+        priorSocial.messages.opened,
+      ),
+    },
+  };
+}
+
+function buildVisibleBuckets(
+  breakdown: ScreenTimeBreakdown,
+  social: SocialHabitSummary,
+): LifeOpsScreenTimeVisibleBuckets {
+  const categories = breakdown.byCategory.filter(
+    (item) => item.totalSeconds > 0,
+  );
+  const devices = breakdown.byDevice.filter((item) => item.totalSeconds > 0);
+  const browsers = breakdown.byBrowser.filter((item) => item.totalSeconds > 0);
+  const services = social.services.filter((item) => item.totalSeconds > 0);
+  const surfaces = social.surfaces.filter((item) => item.totalSeconds > 0);
+  const topTargets: LifeOpsScreenTimeTargetBucket[] = breakdown.items
+    .filter((item) => item.totalSeconds > 0)
+    .map((item) => ({
+      key: `${item.source}:${item.identifier}`,
+      label: item.displayName,
+      totalSeconds: item.totalSeconds,
+      source: item.source,
+      identifier: item.identifier,
+    }));
+  const sessionBuckets = social.sessions
+    .filter((item) => item.totalSeconds > 0)
+    .map((item) => ({
+      key: `${item.source}:${item.identifier}`,
+      label: item.serviceLabel ?? item.displayName,
+      totalSeconds: item.totalSeconds,
+      source: item.source,
+      identifier: item.identifier,
+    }));
+  const channels = social.messages.channels.filter(
+    (channel) =>
+      channel.opened > 0 || channel.outbound > 0 || channel.inbound > 0,
+  );
+  const hasMessageActivity =
+    social.messages.opened > 0 ||
+    social.messages.outbound > 0 ||
+    social.messages.inbound > 0;
+  const setupSources = social.dataSources.filter(
+    (source) => source.state !== "live",
+  );
+
+  return {
+    categories,
+    devices,
+    browsers,
+    services,
+    surfaces,
+    topTargets,
+    sessionBuckets,
+    channels,
+    setupSources,
+    hasMessageActivity,
+    hasUsage:
+      breakdown.totalSeconds > 0 ||
+      categories.length > 0 ||
+      devices.length > 0 ||
+      browsers.length > 0 ||
+      topTargets.length > 0 ||
+      social.totalSeconds > 0 ||
+      services.length > 0 ||
+      surfaces.length > 0 ||
+      sessionBuckets.length > 0 ||
+      hasMessageActivity,
+  };
+}
+
 function inWindow(
   iso: string | null | undefined,
   sinceMs: number,
@@ -510,7 +733,13 @@ function androidPackageLabel(packageName: string): string {
 
 function androidUsageRowsFromSignals(
   signals: Array<{ metadata: Record<string, unknown> }>,
+  sinceMs: number,
+  untilMs: number,
 ): ScreenTimeAggregateRow[] {
+  if (untilMs - sinceMs > DAY_MS) {
+    return [];
+  }
+
   const byPackage = new Map<string, ScreenTimeAggregateRow>();
   for (const signal of signals) {
     const screenTime = asRecord(signal.metadata.screenTime);
@@ -539,6 +768,115 @@ function androidUsageRowsFromSignals(
     }
   }
   return [...byPackage.values()];
+}
+
+function mobileScreenTimeDataSourceFromSignals(
+  signals: Array<{
+    platform: string;
+    source: string;
+    metadata: Record<string, unknown>;
+  }>,
+  platform: "android" | "ios",
+): Pick<SocialHabitDataSource, "state" | "statusLabel" | "detail"> {
+  const platformSignals = signals.filter(
+    (signal) =>
+      signal.platform === platform &&
+      (signal.source === "mobile_device" || signal.source === "mobile_health"),
+  );
+  if (platformSignals.length === 0) {
+    return {
+      state: "unwired",
+      statusLabel: "Not connected",
+      detail:
+        platform === "android"
+          ? "No recent Android Usage Stats signal has been received."
+          : "No recent iOS Screen Time signal has been received.",
+    };
+  }
+
+  for (const signal of platformSignals) {
+    const screenTime = asRecord(signal.metadata.screenTime);
+    if (!screenTime) continue;
+    if (platform === "android") {
+      return screenTime.granted === true
+        ? {
+            state: "partial",
+            statusLabel: "Snapshot only",
+            detail:
+              "Android currently provides rolling Usage Stats snapshots; multi-day totals exclude Android until daily exports are wired.",
+          }
+        : {
+            state: "partial",
+            statusLabel: "Permission needed",
+            detail: "Android Usage Stats permission has not been granted.",
+          };
+    }
+    const authorization = asRecord(screenTime.authorization);
+    if (authorization?.status === "approved") {
+      return {
+        state: "partial",
+        statusLabel: "Export pending",
+        detail:
+          "iOS Screen Time authorization is present, but usage export is not wired yet.",
+      };
+    }
+    return screenTime.supported === true
+      ? {
+          state: "partial",
+          statusLabel: "Authorization needed",
+          detail: "iOS Screen Time setup has not been approved.",
+        }
+      : {
+          state: "unwired",
+          statusLabel: "Unsupported",
+          detail: "This iOS device has not reported Screen Time support.",
+        };
+  }
+
+  return {
+    state: "partial",
+    statusLabel: "Signal incomplete",
+    detail: "Recent mobile signals did not include screen-time metadata.",
+  };
+}
+
+function browserTrackingDataSourceState(
+  settings: BrowserBridgeSettings,
+  companions: BrowserBridgeCompanionStatus[],
+): SocialHabitDataSource["state"] {
+  if (!settings.enabled || settings.trackingMode === "off") {
+    return "unwired";
+  }
+  if (isBrowserBridgePaused(settings)) {
+    return "partial";
+  }
+  if (companions.length === 0) {
+    return "unwired";
+  }
+
+  const connectedCompanions = companions.filter(
+    (companion) => companion.connectionState === "connected",
+  );
+  if (connectedCompanions.length === 0) {
+    return companions.some(
+      (companion) => companion.connectionState === "permission_blocked",
+    )
+      ? "partial"
+      : "unwired";
+  }
+
+  const recentConnectedCompanions = connectedCompanions.filter((companion) =>
+    browserBridgeCompanionIsRecent(companion),
+  );
+  if (recentConnectedCompanions.length === 0) {
+    return "partial";
+  }
+
+  return recentConnectedCompanions.some((companion) =>
+    browserBridgePermissionsReady(settings, companion.permissions),
+  )
+    ? "live"
+    : "partial";
 }
 
 /** @internal */
@@ -606,7 +944,8 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
     async collectScreenTimeRows(opts: {
       since: string;
       until: string;
-      source?: "app" | "website";
+      source?: LifeOpsScreenTimeSource;
+      identifier?: string;
     }): Promise<ScreenTimeAggregateRow[]> {
       const { sinceMs, untilMs } = buildWindowBounds(opts.since, opts.until);
       const rows: ScreenTimeAggregateRow[] = [];
@@ -662,6 +1001,8 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
                 signal.platform === "android" &&
                 inWindow(signal.observedAt, sinceMs, untilMs),
             ),
+            sinceMs,
+            untilMs,
           ),
         );
       }
@@ -679,12 +1020,13 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
         );
       }
 
-      return rows;
+      return filterRowsByIdentifier(rows, opts.identifier);
     }
 
     async getScreenTimeDaily(opts: {
       date: string;
-      source?: "app" | "website";
+      source?: LifeOpsScreenTimeSource;
+      identifier?: string;
       limit?: number;
     }): Promise<LifeOpsScreenTimeDaily[]> {
       const { startIso, endIso } = resolveUtcDateWindow(opts.date);
@@ -692,6 +1034,7 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
         since: startIso,
         until: endIso,
         source: opts.source,
+        identifier: opts.identifier,
       });
 
       const dailyRows = toDailyRows(this.agentId(), opts.date, rows);
@@ -701,17 +1044,10 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
     async getScreenTimeSummary(opts: {
       since: string;
       until: string;
-      source?: "app" | "website";
+      source?: LifeOpsScreenTimeSource;
+      identifier?: string;
       topN?: number;
-    }): Promise<{
-      items: Array<{
-        source: "app" | "website";
-        identifier: string;
-        displayName: string;
-        totalSeconds: number;
-      }>;
-      totalSeconds: number;
-    }> {
+    }): Promise<LifeOpsScreenTimeSummary> {
       const rows = await this.collectScreenTimeRows(opts);
       return toSummaryItems(rows, opts.topN);
     }
@@ -719,7 +1055,8 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
     async getScreenTimeBreakdown(opts: {
       since: string;
       until: string;
-      source?: "app" | "website";
+      source?: LifeOpsScreenTimeSource;
+      identifier?: string;
       topN?: number;
     }): Promise<ScreenTimeBreakdown> {
       const rows = await this.collectScreenTimeRows(opts);
@@ -778,6 +1115,15 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
         inWindow(dm.repliedAt, sinceMs, untilMs),
       ).length;
 
+      const [browserSettings, browserCompanions, recentMobileSignals] =
+        await Promise.all([
+          this.getBrowserSettings(),
+          this.listBrowserCompanions(),
+          this.repository.listActivitySignals(this.agentId(), {
+            sinceAt: new Date(Date.now() - 7 * 24 * 60 * 60_000).toISOString(),
+            limit: 100,
+          }),
+        ]);
       const messageChannels = [
         {
           channel: "x_dm" as const,
@@ -788,9 +1134,17 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
           replied: xReplied,
         },
       ];
-      const hasBrowserRows = socialRows.some((row) => row.source === "website");
-      const hasPhoneRows = socialRows.some(
-        (row) => row.device === "phone" || row.device === "tablet",
+      const browserState = browserTrackingDataSourceState(
+        browserSettings,
+        browserCompanions,
+      );
+      const androidState = mobileScreenTimeDataSourceFromSignals(
+        recentMobileSignals,
+        "android",
+      );
+      const iosState = mobileScreenTimeDataSourceFromSignals(
+        recentMobileSignals,
+        "ios",
       );
 
       return {
@@ -813,19 +1167,111 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
           replied: xReplied,
         },
         dataSources: [
-          { id: "macos_activity", label: "Mac apps", state: "live" },
+          {
+            id: "macos_activity",
+            label: "Mac apps",
+            state: "live",
+            statusLabel: "Live",
+            detail:
+              "macOS app focus events are included in screen-time totals.",
+          },
           {
             id: "browser_bridge",
-            label: "Chrome/Safari",
-            state: hasBrowserRows ? "live" : "partial",
+            label: "Browser",
+            state: browserState,
+            statusLabel:
+              browserState === "live"
+                ? "Live"
+                : browserState === "partial"
+                  ? "Needs attention"
+                  : "Not connected",
+            detail:
+              browserState === "live"
+                ? "Browser focus sessions are included in website totals."
+                : browserState === "partial"
+                  ? "Browser tracking is enabled but permissions, recency, or pause state are incomplete."
+                  : "Browser tracking is disabled or no companion is connected.",
           },
           {
             id: "android_usage_stats",
             label: "Android apps",
-            state: hasPhoneRows ? "live" : "partial",
+            ...androidState,
           },
-          { id: "ios_device_activity", label: "iOS apps", state: "unwired" },
+          {
+            id: "ios_device_activity",
+            label: "iOS apps",
+            ...iosState,
+          },
         ],
+        fetchedAt: isoNow(),
+      };
+    }
+
+    async getScreenTimeHistory(opts: {
+      range: LifeOpsScreenTimeRangeKey;
+      topN?: number;
+      socialTopN?: number;
+    }): Promise<LifeOpsScreenTimeHistoryResponse> {
+      const window = computeScreenTimeRange(opts.range);
+      const priorWindow = computePriorScreenTimeRange(opts.range, window);
+      const [breakdown, social, priorBreakdown, priorSocial] =
+        await Promise.all([
+          this.getScreenTimeBreakdown({
+            since: window.since,
+            until: window.until,
+            topN: opts.topN,
+          }),
+          this.getSocialHabitSummary({
+            since: window.since,
+            until: window.until,
+            topN: opts.socialTopN,
+          }),
+          priorWindow
+            ? this.getScreenTimeBreakdown({
+                since: priorWindow.since,
+                until: priorWindow.until,
+                topN: opts.topN,
+              })
+            : Promise.resolve(null),
+          priorWindow
+            ? this.getSocialHabitSummary({
+                since: priorWindow.since,
+                until: priorWindow.until,
+                topN: opts.socialTopN,
+              })
+            : Promise.resolve(null),
+        ]);
+      const history: LifeOpsScreenTimeHistoryPoint[] =
+        opts.range === "today"
+          ? []
+          : await Promise.all(
+              enumerateHistoryDays(window).map(async (day) => {
+                const summary = await this.getScreenTimeSummary({
+                  since: day.since,
+                  until: day.until,
+                });
+                return {
+                  ...day,
+                  totalSeconds: summary.totalSeconds,
+                };
+              }),
+            );
+
+      return {
+        range: opts.range,
+        label: screenTimeRangeLabel(opts.range),
+        window,
+        priorWindow,
+        breakdown,
+        social,
+        history,
+        metrics: buildScreenTimeMetrics(
+          breakdown,
+          social,
+          priorBreakdown,
+          priorSocial,
+        ),
+        visible: buildVisibleBuckets(breakdown, social),
         fetchedAt: isoNow(),
       };
     }
@@ -834,6 +1280,7 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
       since: string;
       until: string;
       daysInWindow: number;
+      identifier?: string;
       topN?: number;
     }): Promise<{
       items: ScreenTimeWeeklyAverageItem[];
@@ -844,6 +1291,7 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
         since: opts.since,
         until: opts.until,
         source: "app",
+        identifier: opts.identifier,
         topN: opts.topN,
       });
       const daysInWindow = Math.max(1, Math.floor(opts.daysInWindow));

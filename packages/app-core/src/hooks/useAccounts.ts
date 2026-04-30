@@ -9,14 +9,17 @@
  * `setActionNotice` so the parent settings panel can surface them.
  */
 
-import type { LinkedAccountConfig, LinkedAccountProviderId } from "@elizaos/shared";
+import type {
+  LinkedAccountConfig,
+  LinkedAccountProviderId,
+} from "@elizaos/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../api";
 import type {
   AccountRefreshUsageResult,
   AccountStrategy,
-  AccountTestResult,
   AccountsListResponse,
+  AccountTestResult,
 } from "../api/client-agent";
 
 type ActionTone = "info" | "success" | "error";
@@ -100,9 +103,7 @@ function replaceAccount(
   };
 }
 
-export function useAccounts(
-  opts: UseAccountsOptions = {},
-): UseAccountsResult {
+export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
   const { setActionNotice, pollMs = DEFAULT_POLL_MS } = opts;
   const [data, setData] = useState<AccountsListResponse | null>(null);
   const [loading, setLoading] = useState(true);

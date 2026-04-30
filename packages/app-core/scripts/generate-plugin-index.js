@@ -800,9 +800,7 @@ async function main() {
 
     // Get existing entry to preserve hand-authored metadata
     const existingEntry = existingManifest.get(id);
-    const localMeta = dirName
-      ? readLocalPackageMetadata(dirName, npmName)
-      : {};
+    const localMeta = dirName ? readLocalPackageMetadata(dirName, npmName) : {};
     const override = metadataOverrides[id] ?? {};
     const publishedMeta = isBuiltInAdvancedCapability
       ? {}

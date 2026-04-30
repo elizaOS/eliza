@@ -8,6 +8,7 @@ import type {
   LifeOpsSleepCycleType,
   LifeOpsSleepHistoryEpisode,
   LifeOpsSleepHistoryResponse,
+  LifeOpsSleepHistorySummary,
   LifeOpsSleepRegularityResponse,
 } from "@elizaos/shared";
 import {
@@ -387,7 +388,8 @@ function HistoryEpisodeRow({
   const typeLabel = cycleTypeLabel(episode.cycleType);
   const typeBadge = cycleTypeBadgeClass(episode.cycleType);
   const durationPct =
-    typeof episode.durationMin === "number" && Number.isFinite(episode.durationMin)
+    typeof episode.durationMin === "number" &&
+    Number.isFinite(episode.durationMin)
       ? Math.min(100, Math.max(6, (episode.durationMin / 600) * 100))
       : 0;
 
@@ -447,42 +449,23 @@ function HistoryEpisodeRow({
 }
 
 function HistorySummaryStrip({
-  episodes,
+  summary,
 }: {
-  episodes: readonly LifeOpsSleepHistoryEpisode[];
+  summary: LifeOpsSleepHistorySummary;
 }) {
-  const summary = useMemo(() => {
-    let totalDuration = 0;
-    let durationCount = 0;
-    let overnightCount = 0;
-    let napCount = 0;
-    let openCount = 0;
-    for (const episode of episodes) {
-      if (episode.cycleType === "overnight") overnightCount += 1;
-      if (episode.cycleType === "nap") napCount += 1;
-      if (!episode.endedAt) openCount += 1;
-      if (
-        typeof episode.durationMin === "number" &&
-        Number.isFinite(episode.durationMin)
-      ) {
-        totalDuration += episode.durationMin;
-        durationCount += 1;
-      }
-    }
-    return {
-      averageMin: durationCount > 0 ? totalDuration / durationCount : null,
-      overnightCount,
-      napCount,
-      openCount,
-    };
-  }, [episodes]);
-
   return (
-    <div className="grid gap-2 sm:grid-cols-4" data-testid="sleep-history-summary">
-      <MetricTile icon={<Moon />} value={String(episodes.length)} label="Cycles" />
+    <div
+      className="grid gap-2 sm:grid-cols-4"
+      data-testid="sleep-history-summary"
+    >
       <MetricTile
         icon={<Moon />}
-        value={formatDurationMinutes(summary.averageMin)}
+        value={String(summary.cycleCount)}
+        label="Cycles"
+      />
+      <MetricTile
+        icon={<Moon />}
+        value={formatDurationMinutes(summary.averageDurationMin)}
         label="Avg"
       />
       <MetricTile
@@ -604,9 +587,9 @@ function HistoryTab({
         </div>
       ) : null}
 
-      {sortedEpisodes.length > 0 ? (
+      {data && sortedEpisodes.length > 0 ? (
         <>
-          <HistorySummaryStrip episodes={sortedEpisodes} />
+          <HistorySummaryStrip summary={data.summary} />
           <HistoryCycleMap episodes={sortedEpisodes} />
           <ul className="space-y-2" data-testid="sleep-history-list">
             {sortedEpisodes.map((ep) => (
@@ -838,12 +821,12 @@ export function LifeOpsSleepSection() {
     [],
   );
 
-  const loadPattern = useCallback(async (naps: boolean) => {
+  const loadPattern = useCallback(async () => {
     setPatternLoading(true);
     setPatternError(null);
     try {
       const [reg, base] = await Promise.all([
-        client.getLifeOpsSleepRegularity({ includeNaps: naps }),
+        client.getLifeOpsSleepRegularity(),
         client.getLifeOpsPersonalBaseline(),
       ]);
       setRegularity(reg);
@@ -871,9 +854,9 @@ export function LifeOpsSleepSection() {
 
   useEffect(() => {
     if (tab === "pattern") {
-      void loadPattern(includeNaps);
+      void loadPattern();
     }
-  }, [tab, includeNaps, loadPattern]);
+  }, [tab, loadPattern]);
 
   const refreshActiveTab = useCallback(() => {
     if (tab === "tonight") {
@@ -884,7 +867,7 @@ export function LifeOpsSleepSection() {
       void loadHistory(historyWindow, includeNaps);
       return;
     }
-    void loadPattern(includeNaps);
+    void loadPattern();
   }, [tab, historyWindow, includeNaps, loadTonight, loadHistory, loadPattern]);
 
   const refreshing =
@@ -903,7 +886,9 @@ export function LifeOpsSleepSection() {
           </h1>
         </div>
         <div className="flex items-center gap-3">
-          <NapToggle value={includeNaps} onChange={setIncludeNaps} />
+          {tab === "history" ? (
+            <NapToggle value={includeNaps} onChange={setIncludeNaps} />
+          ) : null}
           <button
             type="button"
             aria-label="Refresh sleep"

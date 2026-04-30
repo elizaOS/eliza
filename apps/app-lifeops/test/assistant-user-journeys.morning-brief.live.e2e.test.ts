@@ -4,6 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  buildCharacterFromConfig,
+  configureLocalEmbeddingPlugin,
+  createElizaPlugin,
+} from "@elizaos/agent";
+import {
   AgentRuntime,
   ChannelType,
   createMessageMemory,
@@ -12,33 +17,26 @@ import {
 } from "@elizaos/core";
 import dotenv from "dotenv";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
-import { saveEnv, withTimeout } from "../../../../test/helpers/test-utils";
-import {
-  buildCharacterFromConfig,
-  configureLocalEmbeddingPlugin,
-  createElizaPlugin,
-} from "@elizaos/agent";
-import {
-  createApprovalQueue,
-} from "../src/lifeops/approval-queue.js";
-import { LifeOpsService } from "../src/lifeops/service.js";
+import { describeIf } from "../../../../eliza/test/helpers/conditional-tests.ts";
+import { saveEnv, withTimeout } from "../../../../eliza/test/helpers/test-utils";
 import { InboxTriageRepository } from "../src/inbox/repository.js";
+import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
+import { LifeOpsService } from "../src/lifeops/service.js";
 import {
-  LIVE_PROVIDER_ENV_KEYS,
-  LIVE_TESTS_ENABLED,
   getLifeOpsLiveSetupWarnings,
   getSelectedLiveProviderEnv,
+  LIVE_PROVIDER_ENV_KEYS,
+  LIVE_TESTS_ENABLED,
   selectLifeOpsLiveProvider,
 } from "./helpers/lifeops-live-harness.ts";
 import {
-  GOOGLE_CLIENT_ID,
   containsAllFragments,
+  ensureRoom,
+  GOOGLE_CLIENT_ID,
   loadPlugin,
+  type MorningBriefSeedContext,
   normalizeText,
   seedMorningBriefFixtures,
-  type MorningBriefSeedContext,
-  ensureRoom,
 } from "./helpers/lifeops-morning-brief-fixtures.ts";
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
@@ -96,7 +94,11 @@ async function sendUserTurn(args: {
     },
   });
 
-  return await handleMessageAndCollectText(args.runtime, message, args.timeoutMs);
+  return await handleMessageAndCollectText(
+    args.runtime,
+    message,
+    args.timeoutMs,
+  );
 }
 
 function sectionIndex(text: string, section: string): number {
@@ -289,15 +291,19 @@ describeIf(LIVE_SUITE_ENABLED)(
         action: null,
         limit: 10,
       });
-      expect(pendingBefore.some((request) => request.id === seeded.pendingDraftRequestId)).toBe(
-        true,
-      );
+      expect(
+        pendingBefore.some(
+          (request) => request.id === seeded.pendingDraftRequestId,
+        ),
+      ).toBe(true);
 
       const followupsBefore = await service.getDailyFollowUpQueue({
         limit: 10,
       });
       expect(
-        followupsBefore.some((followup) => followup.reason === seeded.followupReason),
+        followupsBefore.some(
+          (followup) => followup.reason === seeded.followupReason,
+        ),
       ).toBe(true);
 
       const triageBefore = await triageRepo.getRecentForDigest(
@@ -359,9 +365,11 @@ describeIf(LIVE_SUITE_ENABLED)(
         action: null,
         limit: 10,
       });
-      expect(pendingAfter.some((request) => request.id === seeded.pendingDraftRequestId)).toBe(
-        true,
-      );
+      expect(
+        pendingAfter.some(
+          (request) => request.id === seeded.pendingDraftRequestId,
+        ),
+      ).toBe(true);
     }, 180_000);
   },
 );

@@ -5,8 +5,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   buildSelfControlBlockPolicy,
   buildSelfControlManagedHostsBlock,
-  isWebsiteBlockSinkholeAddress,
   isWebsiteBlockedByPolicy,
+  isWebsiteBlockSinkholeAddress,
   parseResolvedAddressesFromDscacheutilOutput,
   reconcileSelfControlBlockState,
   type SelfControlPluginConfig,
@@ -151,6 +151,31 @@ describe("website blocker engine", () => {
     const hosts = await readFile(hostsFilePath, "utf8");
     expect(hosts).not.toContain("0.0.0.0 x.com");
     expect(hosts).toContain("0.0.0.0 reddit.com");
+  });
+
+  it("expands reddit.com into exact consumer and media hostnames", () => {
+    const policy = buildSelfControlBlockPolicy(["reddit.com"]);
+
+    expect(policy.requestedWebsites).toEqual(["reddit.com"]);
+    expect(policy.blockedWebsites).toEqual(
+      expect.arrayContaining([
+        "reddit.com",
+        "www.reddit.com",
+        "old.reddit.com",
+        "new.reddit.com",
+        "m.reddit.com",
+        "np.reddit.com",
+        "i.redd.it",
+        "v.redd.it",
+        "preview.redd.it",
+        "external-preview.redd.it",
+      ]),
+    );
+    expect(isWebsiteBlockedByPolicy(policy, "old.reddit.com")).toBe(true);
+    expect(isWebsiteBlockedByPolicy(policy, "m.reddit.com")).toBe(true);
+    expect(isWebsiteBlockedByPolicy(policy, "i.redd.it")).toBe(true);
+    expect(isWebsiteBlockedByPolicy(policy, "api.reddit.com")).toBe(false);
+    expect(isWebsiteBlockedByPolicy(policy, "notreddit.com")).toBe(false);
   });
 
   it("expands x.com into the hostnames X actually needs while preserving simple status text", async () => {

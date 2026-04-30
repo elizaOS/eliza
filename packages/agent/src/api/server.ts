@@ -59,6 +59,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import {
+  credTypesForConnector,
   getStylePresets,
   normalizeCharacterLanguage,
   resolveApiBindHost,
@@ -84,6 +85,20 @@ import {
   type AgentEventServiceLike,
   getAgentEventService,
 } from "../runtime/agent-event-service.js";
+import {
+  resolvePreferredProviderId,
+  resolvePrimaryModel,
+} from "../runtime/eliza.js";
+import {
+  type ClassifyContext,
+  createColdStrategy,
+  createHotStrategy,
+  DefaultRuntimeOperationManager,
+  defaultClassifier,
+  getDefaultHealthChecker,
+  getDefaultRepository,
+  type RuntimeOperationManager,
+} from "../runtime/operations/index.js";
 import { classifyRegistryPluginRelease } from "../runtime/release-plugin-policy.js";
 import {
   AUDIT_EVENT_TYPES,
@@ -392,12 +407,11 @@ function requirePluginManager(runtime: AgentRuntime | null): PluginManagerLike {
 }
 
 /**
- * The upstream plugin-plugin-manager has its own registry client that only
- * fetches from GitHub and scans a `plugins/` dir for `elizaos.plugin.json`.
- * Workspace-vendored plugins (under `packages/plugin-*`) are invisible to it.
- * Wrap `installPlugin` so that when the upstream returns "not found in the
- * registry" we retry using our own registry-client (which discovers workspace
- * packages and node_modules symlinks).
+ * The runtime plugin manager's registry client only fetches from GitHub and
+ * scans a `plugins/` dir for `elizaos.plugin.json`. Workspace-vendored plugins
+ * (under `packages/plugin-*`) are invisible to it. Wrap `installPlugin` so that
+ * when it returns "not found in the registry" we retry using our own
+ * registry-client (which discovers workspace packages and node_modules symlinks).
  */
 function wrapPluginManagerWithLocalFallback(
   pm: PluginManagerLike,
@@ -1044,6 +1058,46 @@ const clearPairing = _clearPairing;
 /** Guard against concurrent provider switch requests (P0 §3). */
 let providerSwitchInProgress = false;
 
+/**
+ * Lazy per-process runtime operation manager. Constructed on first
+ * request because it needs the per-server `state` reference + the
+ * `onRestart` closure. Cached so subsequent requests see the same
+ * active-op slot and execution chain.
+ */
+let cachedRuntimeOperationManager: RuntimeOperationManager | null = null;
+
+function getOrCreateRuntimeOperationManager(
+  state: ServerState,
+  restartRuntime: (reason: string) => Promise<boolean>,
+): RuntimeOperationManager {
+  if (cachedRuntimeOperationManager) {
+    return cachedRuntimeOperationManager;
+  }
+  const repository = getDefaultRepository();
+  const healthChecker = getDefaultHealthChecker();
+  const coldStrategy = createColdStrategy({
+    restartRuntime: async (reason) => {
+      const ok = await restartRuntime(reason);
+      if (!ok) return null;
+      return state.runtime;
+    },
+  });
+  const hotStrategy = createHotStrategy({});
+  const classifyContext = (): ClassifyContext => ({
+    currentProvider: resolvePreferredProviderId(state.config),
+    currentPrimaryModel: resolvePrimaryModel(state.config),
+  });
+  cachedRuntimeOperationManager = new DefaultRuntimeOperationManager({
+    repository,
+    runtime: () => state.runtime,
+    classifyContext,
+    classifier: defaultClassifier,
+    healthChecker,
+    strategies: { cold: coldStrategy, hot: hotStrategy },
+  });
+  return cachedRuntimeOperationManager;
+}
+
 // PluginConfigMutationRejection, resolvePluginConfigMutationRejections,
 // WalletExportRejection, resolveWalletExportRejection
 // extracted to server-helpers-plugin.ts and server-helpers-wallet.ts respectively.
@@ -1283,7 +1337,6 @@ async function handleRequest(
     !isCloudOnboardingStatusEndpoint &&
     !isWhatsAppWebhookEndpoint &&
     !isBlueBubblesWebhookEndpoint &&
-    !pathname.startsWith("/api/browser-bridge/companions/") &&
     !isPublicRuntimePluginRoute({
       runtime: state.runtime,
       method,
@@ -1323,6 +1376,10 @@ async function handleRequest(
   };
 
   // ── POST /api/provider/switch (extracted to provider-switch-routes.ts) ──
+  const runtimeOperationManager = getOrCreateRuntimeOperationManager(
+    state,
+    restartRuntime,
+  );
   if (
     await handleProviderSwitchRoutes({
       req,
@@ -1339,7 +1396,7 @@ async function handleRequest(
       setProviderSwitchInProgress: (v: boolean) => {
         providerSwitchInProgress = v;
       },
-      restartRuntime,
+      runtimeOperationManager,
     })
   ) {
     return;
@@ -2019,6 +2076,29 @@ async function handleRequest(
       redactConfigSecrets,
       isBlockedObjectKey,
       cloneWithoutBlockedObjectKeys,
+      onConnectorDisconnect: async (connectorName) => {
+        // Disconnect cascades to the n8n credential cache: without this,
+        // credStore.get() returns a stale n8n credential id and the next
+        // workflow generation silently bypasses the missing-credentials
+        // banner.
+        const credTypes = credTypesForConnector(connectorName);
+        if (credTypes.length === 0) return;
+        const runtime = state.runtime;
+        if (!runtime) return;
+        const credStore = runtime.getService("n8n_credential_store") as {
+          delete?: (userId: string, credType: string) => Promise<void>;
+        } | null;
+        const deleteCred = credStore?.delete;
+        if (!deleteCred) return;
+        const userId = runtime.agentId;
+        await Promise.all(
+          credTypes.map((credType) =>
+            deleteCred(userId, credType).catch(() => {
+              /* per-credType failure shouldn't block siblings */
+            }),
+          ),
+        );
+      },
     })
   ) {
     return;

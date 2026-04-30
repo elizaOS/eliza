@@ -176,6 +176,10 @@ function isManagedWindowsChangedEvent(
   return Array.isArray(windows);
 }
 
+function isOverlayLaunchApp(app: RegistryAppInfo): boolean {
+  return isOverlayApp(app.name) || app.launchType === "overlay";
+}
+
 export function AppsView() {
   const {
     appRuns,
@@ -183,6 +187,7 @@ export function AppsView() {
     activeGameViewerUrl,
     appsSubTab,
     favoriteApps,
+    walletEnabled,
     recentApps,
     setTab,
     setState,
@@ -738,7 +743,7 @@ export function AppsView() {
       }
 
       // Web fallback: overlay apps (e.g. companion) mount inside the shell.
-      if (isOverlayApp(app.name)) {
+      if (isOverlayLaunchApp(app)) {
         pushRecentApp(app.name);
         setState("activeOverlayApp", app.name);
         pushAppsUrl(getAppSlug(app.name));
@@ -877,7 +882,7 @@ export function AppsView() {
 
     // Restored game runs should not block direct overlay-app routes like
     // /apps/companion, which are expected to take over immediately.
-    if (activeGameRunId && !isOverlayApp(app.name)) return;
+    if (activeGameRunId && !isOverlayLaunchApp(app)) return;
 
     void handleLaunch(app);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-time on first apps load
@@ -994,12 +999,13 @@ export function AppsView() {
     return filterAppsForCatalog(apps, {
       activeAppNames,
       searchQuery,
+      walletEnabled,
     });
-  }, [activeAppNames, apps, searchQuery]);
+  }, [activeAppNames, apps, searchQuery, walletEnabled]);
 
   const browseApps = useMemo(() => {
-    return filterAppsForCatalog(apps);
-  }, [apps]);
+    return filterAppsForCatalog(apps, { walletEnabled });
+  }, [apps, walletEnabled]);
 
   const handleToggleFavorite = useCallback(
     (appName: string) => {
@@ -1202,9 +1208,11 @@ export function AppsView() {
         {appsDetailsSlug ? (
           <AppDetailsView
             slug={appsDetailsSlug}
-            onLaunched={() => {
+            onLaunched={(launch) => {
               setAppsDetailsSlug(null);
-              pushAppsUrl();
+              if (launch.mode === "window") {
+                pushAppsUrl();
+              }
             }}
           />
         ) : (

@@ -1,4 +1,4 @@
-import { hasPrivateAccess } from "@elizaos/agent/security/access";
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type { Action, Memory, ProviderDataRecord } from "@elizaos/core";
 import type {
   LifeOpsCalendarEvent,
@@ -65,7 +65,16 @@ export async function hasLifeOpsAccess(
   runtime: Parameters<NonNullable<Action["validate"]>>[0],
   message: Memory,
 ): Promise<boolean> {
-  return hasPrivateAccess(runtime, message);
+  if (
+    !runtime ||
+    typeof runtime.agentId !== "string" ||
+    !message ||
+    typeof message.entityId !== "string" ||
+    message.entityId.length === 0
+  ) {
+    return false;
+  }
+  return hasOwnerAccess(runtime, message);
 }
 
 export function detailString(

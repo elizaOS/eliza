@@ -13,6 +13,7 @@ export * from "../chat/ChatAvatar";
 export * from "./CompanionAppView";
 export * from "./CompanionHeader";
 export * from "./CompanionSceneHost";
+export * from "./CompanionSettingsPanel";
 export * from "./CompanionShell";
 export * from "./CompanionView";
 export * from "./companion-scene-status-context";

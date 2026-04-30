@@ -264,6 +264,12 @@ describe("APP create dispatch", () => {
 					profile: "full",
 				},
 			});
+
+			// originRoomId plumbed through CREATE_TASK metadata so the
+			// VerificationRoomBridgeService can post the verdict back into
+			// the originating chat room.
+			const metadata = parameters.metadata as Record<string, unknown>;
+			expect(metadata.originRoomId).toBe("room-1");
 		} finally {
 			await rm(repoRoot, { recursive: true, force: true });
 		}
@@ -352,6 +358,11 @@ describe("APP create dispatch", () => {
 					profile: "full",
 				},
 			});
+
+			// originRoomId on the edit path mirrors the create path — bridge
+			// posts the verdict back into the same room the edit was started in.
+			const metadata = parameters.metadata as Record<string, unknown>;
+			expect(metadata.originRoomId).toBe("room-edit");
 		} finally {
 			await rm(repoRoot, { recursive: true, force: true });
 		}
@@ -432,9 +443,7 @@ describe("APP create dispatch", () => {
 		expect(result.values?.subMode).toBe("choice");
 		expect(createTask).toHaveBeenCalledTimes(1);
 		expect(messages.some((m) => m.startsWith("[CHOICE:app-create"))).toBe(true);
-		expect(messages.join("\n")).toMatch(
-			/edit-1\s*=\s*Edit existing: Notes/,
-		);
+		expect(messages.join("\n")).toMatch(/edit-1\s*=\s*Edit existing: Notes/);
 		expect(messages.join("\n")).toMatch(/cancel\s*=\s*Cancel/);
 	});
 });

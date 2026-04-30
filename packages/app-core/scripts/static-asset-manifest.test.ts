@@ -28,19 +28,22 @@ describe("static asset manifest", () => {
   it("excludes hidden and system files from the manifest", () => {
     const root = makeTempRoot();
     const appPublic = path.join(root, "apps", "app", "public");
-    const homepagePublic = path.join(root, "apps", "homepage", "public");
+    const homepagePublic = path.join(root, "packages", "homepage", "public");
 
     fs.mkdirSync(path.join(appPublic, ".ignored-dir"), { recursive: true });
     fs.mkdirSync(homepagePublic, { recursive: true });
     fs.writeFileSync(path.join(appPublic, "logo.png"), "ok");
     fs.writeFileSync(path.join(appPublic, ".DS_Store"), "noise");
     fs.writeFileSync(path.join(appPublic, "Thumbs.db"), "noise");
-    fs.writeFileSync(path.join(appPublic, ".ignored-dir", "secret.txt"), "nope");
+    fs.writeFileSync(
+      path.join(appPublic, ".ignored-dir", "secret.txt"),
+      "nope",
+    );
     fs.writeFileSync(path.join(homepagePublic, "hero.png"), "ok");
 
     expect(buildStaticAssetManifest(root)).toEqual({
       app: ["apps/app/public/logo.png"],
-      homepage: ["apps/homepage/public/hero.png"],
+      homepage: ["packages/homepage/public/hero.png"],
     });
   });
 });

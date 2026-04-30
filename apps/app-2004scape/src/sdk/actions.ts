@@ -5,24 +5,24 @@
 /*  entity lookup, proximity checks, wait-for-effect, and retries.     */
 /* ------------------------------------------------------------------ */
 
-import { BotSDK } from "./index.js";
-import type { BotWorldState, ActionResult } from "./types.js";
 import {
-  findNpcByName,
-  findLocByName,
+  distance,
+  findBankItemByName,
+  findGroundItemByName,
   findInventoryItem,
   findInventoryItemById,
-  findGroundItemByName,
+  findLocByName,
+  findNpcByName,
   findShopItemByName,
-  findBankItemByName,
   getOptionIndex,
-  waitForMovementComplete,
-  withDoorRetry,
-  walkStepToward,
-  isInventoryFull,
   getSkillLevel,
-  distance,
+  isInventoryFull,
+  waitForMovementComplete,
+  walkStepToward,
+  withDoorRetry,
 } from "./actions-helpers.js";
+import type { BotSDK } from "./index.js";
+import type { ActionResult, BotWorldState } from "./types.js";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
@@ -63,7 +63,17 @@ const FOOD_ITEMS = [
 ];
 
 const TREE_KEYWORDS = ["tree", "oak", "willow", "yew", "maple", "magic"];
-const ROCK_KEYWORDS = ["rock", "ore", "copper", "tin", "iron", "coal", "mithril", "adamant", "rune"];
+const ROCK_KEYWORDS = [
+  "rock",
+  "ore",
+  "copper",
+  "tin",
+  "iron",
+  "coal",
+  "mithril",
+  "adamant",
+  "rune",
+];
 const FISHING_KEYWORDS = ["fishing", "rod", "net", "cage", "harpoon"];
 
 const DEFAULT_TIMEOUT = 15_000;
@@ -89,9 +99,13 @@ function fail(
   return { success: false, action, message, details };
 }
 
-function requireState(sdk: BotSDK, action: string): BotWorldState | ActionResult {
+function requireState(
+  sdk: BotSDK,
+  action: string,
+): BotWorldState | ActionResult {
   const state = sdk.getState();
-  if (!state?.player) return fail(action, "No game state available — not logged in");
+  if (!state?.player)
+    return fail(action, "No game state available — not logged in");
   return state;
 }
 
@@ -114,7 +128,12 @@ export class BotActions {
     const state = requireState(this.sdk, "WALK_TO");
     if ("success" in state) return state;
 
-    const startDist = distance(state.player!.worldX, state.player!.worldZ, x, z);
+    const startDist = distance(
+      state.player!.worldX,
+      state.player!.worldZ,
+      x,
+      z,
+    );
     if (startDist <= 2) {
       return ok("WALK_TO", `Already at destination (${x}, ${z})`, { x, z });
     }
@@ -141,11 +160,15 @@ export class BotActions {
       const remaining = now?.player
         ? distance(now.player.worldX, now.player.worldZ, x, z)
         : -1;
-      return fail("WALK_TO", `Timed out walking to (${x}, ${z}) — ${remaining} tiles away`, {
-        x,
-        z,
-        remaining,
-      });
+      return fail(
+        "WALK_TO",
+        `Timed out walking to (${x}, ${z}) — ${remaining} tiles away`,
+        {
+          x,
+          z,
+          remaining,
+        },
+      );
     }
   }
 
@@ -154,7 +177,10 @@ export class BotActions {
     const dest = NAMED_DESTINATIONS[key];
     if (!dest) {
       const known = Object.keys(NAMED_DESTINATIONS).join(", ");
-      return fail("WALK_TO_NAMED", `Unknown destination "${destination}". Known: ${known}`);
+      return fail(
+        "WALK_TO_NAMED",
+        `Unknown destination "${destination}". Known: ${known}`,
+      );
     }
     return this.walkTo(dest.x, dest.z, destination);
   }
@@ -201,13 +227,18 @@ export class BotActions {
     if ("success" in state) return state;
 
     const loc = findLocByName(state, objectName);
-    if (!loc) return fail("INTERACT_OBJECT", `No object named "${objectName}" nearby`);
+    if (!loc)
+      return fail("INTERACT_OBJECT", `No object named "${objectName}" nearby`);
 
     const opIdx = option ? getOptionIndex(loc.options, option) : 0;
 
     if (loc.distance > 3) {
       try {
-        await this.sdk.sendWalk(loc.worldX, loc.worldZ, `Approaching ${loc.name}`);
+        await this.sdk.sendWalk(
+          loc.worldX,
+          loc.worldZ,
+          `Approaching ${loc.name}`,
+        );
         await waitForMovementComplete(this.sdk, SHORT_TIMEOUT);
       } catch {
         /* best effort */
@@ -245,7 +276,10 @@ export class BotActions {
     try {
       await this.sdk.sendTalkToNpc(npc.nid);
     } catch {
-      return fail("TALK_TO_NPC", `Failed to start conversation with ${npc.name}`);
+      return fail(
+        "TALK_TO_NPC",
+        `Failed to start conversation with ${npc.name}`,
+      );
     }
 
     // Wait for the dialog to open.
@@ -258,7 +292,10 @@ export class BotActions {
         dialogOptions: dialogState?.dialog?.options,
       });
     } catch {
-      return fail("TALK_TO_NPC", `Dialog did not open after talking to ${npc.name}`);
+      return fail(
+        "TALK_TO_NPC",
+        `Dialog did not open after talking to ${npc.name}`,
+      );
     }
   }
 
@@ -273,7 +310,10 @@ export class BotActions {
     try {
       await this.sdk.sendDialogOption(optionIndex);
     } catch {
-      return fail("NAVIGATE_DIALOG", `Failed to select dialog option ${optionIndex}`);
+      return fail(
+        "NAVIGATE_DIALOG",
+        `Failed to select dialog option ${optionIndex}`,
+      );
     }
 
     // Wait for the dialog to update or close.
@@ -313,9 +353,13 @@ export class BotActions {
       });
     } catch {
       // May already have killed it quickly.
-      return ok("ATTACK_NPC", `Attacked ${npc.name} (combat may have ended quickly)`, {
-        nid: npc.nid,
-      });
+      return ok(
+        "ATTACK_NPC",
+        `Attacked ${npc.name} (combat may have ended quickly)`,
+        {
+          nid: npc.nid,
+        },
+      );
     }
   }
 
@@ -324,11 +368,18 @@ export class BotActions {
     if ("success" in state) return state;
 
     const npc = findNpcByName(state, npcName);
-    if (!npc) return fail("PICKPOCKET_NPC", `NPC "${npcName}" not found nearby`);
+    if (!npc)
+      return fail("PICKPOCKET_NPC", `NPC "${npcName}" not found nearby`);
 
     const opIdx = getOptionIndex(npc.options, "Pickpocket");
-    if (opIdx === 0 && !npc.options.some((o) => o.toLowerCase() === "pickpocket")) {
-      return fail("PICKPOCKET_NPC", `${npc.name} does not have a Pickpocket option`);
+    if (
+      opIdx === 0 &&
+      !npc.options.some((o) => o.toLowerCase() === "pickpocket")
+    ) {
+      return fail(
+        "PICKPOCKET_NPC",
+        `${npc.name} does not have a Pickpocket option`,
+      );
     }
 
     if (npc.distance > 1) {
@@ -354,11 +405,11 @@ export class BotActions {
 
     const tree = treeName
       ? findLocByName(state, treeName)
-      : state.nearbyLocs
+      : (state.nearbyLocs
           .filter((l) =>
             TREE_KEYWORDS.some((k) => l.name.toLowerCase().includes(k)),
           )
-          .sort((a, b) => a.distance - b.distance)[0] ?? null;
+          .sort((a, b) => a.distance - b.distance)[0] ?? null);
 
     if (!tree) return fail("CHOP_TREE", "No tree found nearby");
 
@@ -397,11 +448,11 @@ export class BotActions {
 
     const rock = rockName
       ? findLocByName(state, rockName)
-      : state.nearbyLocs
+      : (state.nearbyLocs
           .filter((l) =>
             ROCK_KEYWORDS.some((k) => l.name.toLowerCase().includes(k)),
           )
-          .sort((a, b) => a.distance - b.distance)[0] ?? null;
+          .sort((a, b) => a.distance - b.distance)[0] ?? null);
 
     if (!rock) return fail("MINE_ROCK", "No rock or ore found nearby");
 
@@ -439,11 +490,11 @@ export class BotActions {
     // Fishing spots are NPCs in the game engine.
     const spot = spotName
       ? findNpcByName(state, spotName)
-      : state.nearbyNpcs
+      : (state.nearbyNpcs
           .filter((n) =>
             FISHING_KEYWORDS.some((k) => n.name.toLowerCase().includes(k)),
           )
-          .sort((a, b) => a.distance - b.distance)[0] ?? null;
+          .sort((a, b) => a.distance - b.distance)[0] ?? null);
 
     if (!spot) return fail("FISH", "No fishing spot found nearby");
 
@@ -514,7 +565,10 @@ export class BotActions {
         style: styleIndex,
       });
     } catch {
-      return fail("SET_COMBAT_STYLE", `Failed to set combat style to ${styleIndex}`);
+      return fail(
+        "SET_COMBAT_STYLE",
+        `Failed to set combat style to ${styleIndex}`,
+      );
     }
   }
 
@@ -537,7 +591,8 @@ export class BotActions {
     if ("success" in state) return state;
 
     const item = findInventoryItem(state, itemName);
-    if (!item) return fail("DROP_ITEM", `Item "${itemName}" not found in inventory`);
+    if (!item)
+      return fail("DROP_ITEM", `Item "${itemName}" not found in inventory`);
 
     const invBefore = state.inventory.length;
 
@@ -549,10 +604,15 @@ export class BotActions {
 
     try {
       await this.sdk.waitForState(
-        (s) => s.inventory.length < invBefore || !s.inventory.some((i) => i.slot === item.slot && i.id === item.id),
+        (s) =>
+          s.inventory.length < invBefore ||
+          !s.inventory.some((i) => i.slot === item.slot && i.id === item.id),
         SHORT_TIMEOUT,
       );
-      return ok("DROP_ITEM", `Dropped ${item.name}`, { item: item.name, slot: item.slot });
+      return ok("DROP_ITEM", `Dropped ${item.name}`, {
+        item: item.name,
+        slot: item.slot,
+      });
     } catch {
       return fail("DROP_ITEM", `Timed out dropping ${item.name}`);
     }
@@ -563,12 +623,16 @@ export class BotActions {
     if ("success" in state) return state;
 
     const item = findInventoryItem(state, itemName);
-    if (!item) return fail("USE_ITEM", `Item "${itemName}" not found in inventory`);
+    if (!item)
+      return fail("USE_ITEM", `Item "${itemName}" not found in inventory`);
 
     try {
       await this.sdk.sendUseInventory(item.slot);
       await this.sdk.waitForTicks(2);
-      return ok("USE_ITEM", `Used ${item.name}`, { item: item.name, slot: item.slot });
+      return ok("USE_ITEM", `Used ${item.name}`, {
+        item: item.name,
+        slot: item.slot,
+      });
     } catch {
       return fail("USE_ITEM", `Failed to use ${item.name}`);
     }
@@ -579,7 +643,8 @@ export class BotActions {
     if ("success" in state) return state;
 
     const ground = findGroundItemByName(state, itemName);
-    if (!ground) return fail("PICKUP_ITEM", `Ground item "${itemName}" not found nearby`);
+    if (!ground)
+      return fail("PICKUP_ITEM", `Ground item "${itemName}" not found nearby`);
 
     if (isInventoryFull(state)) {
       return fail("PICKUP_ITEM", "Inventory is full");
@@ -612,7 +677,8 @@ export class BotActions {
     if ("success" in state) return state;
 
     const item = findInventoryItem(state, itemName);
-    if (!item) return fail("EQUIP_ITEM", `Item "${itemName}" not found in inventory`);
+    if (!item)
+      return fail("EQUIP_ITEM", `Item "${itemName}" not found in inventory`);
 
     const equipBefore = state.equipment.length;
 
@@ -655,10 +721,15 @@ export class BotActions {
 
     try {
       await this.sdk.waitForState(
-        (s) => !s.equipment.some((e) => e.slot === equipped.slot && e.id === equipped.id),
+        (s) =>
+          !s.equipment.some(
+            (e) => e.slot === equipped.slot && e.id === equipped.id,
+          ),
         SHORT_TIMEOUT,
       );
-      return ok("UNEQUIP_ITEM", `Unequipped ${equipped.name}`, { item: equipped.name });
+      return ok("UNEQUIP_ITEM", `Unequipped ${equipped.name}`, {
+        item: equipped.name,
+      });
     } catch {
       return fail("UNEQUIP_ITEM", `Timed out unequipping ${equipped.name}`);
     }
@@ -672,10 +743,18 @@ export class BotActions {
     if ("success" in state) return state;
 
     const item1 = findInventoryItem(state, itemName1);
-    if (!item1) return fail("USE_ITEM_ON_ITEM", `Item "${itemName1}" not found in inventory`);
+    if (!item1)
+      return fail(
+        "USE_ITEM_ON_ITEM",
+        `Item "${itemName1}" not found in inventory`,
+      );
 
     const item2 = findInventoryItem(state, itemName2);
-    if (!item2) return fail("USE_ITEM_ON_ITEM", `Item "${itemName2}" not found in inventory`);
+    if (!item2)
+      return fail(
+        "USE_ITEM_ON_ITEM",
+        `Item "${itemName2}" not found in inventory`,
+      );
 
     try {
       await this.sdk.sendUseItemOnItem(item1.slot, item2.slot);
@@ -685,7 +764,10 @@ export class BotActions {
         item2: item2.name,
       });
     } catch {
-      return fail("USE_ITEM_ON_ITEM", `Failed to use ${item1.name} on ${item2.name}`);
+      return fail(
+        "USE_ITEM_ON_ITEM",
+        `Failed to use ${item1.name} on ${item2.name}`,
+      );
     }
   }
 
@@ -706,8 +788,7 @@ export class BotActions {
       .filter((l) => {
         const n = l.name.toLowerCase();
         return (
-          (n.includes("bank") && n.includes("booth")) ||
-          n === "bank booth"
+          (n.includes("bank") && n.includes("booth")) || n === "bank booth"
         );
       })
       .sort((a, b) => a.distance - b.distance)[0];
@@ -749,7 +830,10 @@ export class BotActions {
       await this.sdk.waitForState((s) => !!s.bank?.isOpen, SHORT_TIMEOUT);
       return ok("OPEN_BANK", "Opened bank via banker", { nid: banker.nid });
     } catch {
-      return fail("OPEN_BANK", "Bank did not open after interacting with banker");
+      return fail(
+        "OPEN_BANK",
+        "Bank did not open after interacting with banker",
+      );
     }
   }
 
@@ -772,7 +856,8 @@ export class BotActions {
     }
 
     const item = findInventoryItem(state, itemName);
-    if (!item) return fail("DEPOSIT_ITEM", `Item "${itemName}" not found in inventory`);
+    if (!item)
+      return fail("DEPOSIT_ITEM", `Item "${itemName}" not found in inventory`);
 
     const depositCount = Math.min(count, item.count);
 
@@ -783,15 +868,12 @@ export class BotActions {
     }
 
     try {
-      await this.sdk.waitForState(
-        (s) => {
-          const remaining = s.inventory.find(
-            (i) => i.slot === item.slot && i.id === item.id,
-          );
-          return !remaining || remaining.count < item.count;
-        },
-        SHORT_TIMEOUT,
-      );
+      await this.sdk.waitForState((s) => {
+        const remaining = s.inventory.find(
+          (i) => i.slot === item.slot && i.id === item.id,
+        );
+        return !remaining || remaining.count < item.count;
+      }, SHORT_TIMEOUT);
       return ok("DEPOSIT_ITEM", `Deposited ${depositCount}x ${item.name}`, {
         item: item.name,
         count: depositCount,
@@ -810,7 +892,8 @@ export class BotActions {
     }
 
     const bankItem = findBankItemByName(state, itemName);
-    if (!bankItem) return fail("WITHDRAW_ITEM", `Item "${itemName}" not found in bank`);
+    if (!bankItem)
+      return fail("WITHDRAW_ITEM", `Item "${itemName}" not found in bank`);
 
     if (isInventoryFull(state)) {
       return fail("WITHDRAW_ITEM", "Inventory is full");
@@ -829,10 +912,14 @@ export class BotActions {
         (s) => s.inventory.some((i) => i.id === bankItem.id),
         SHORT_TIMEOUT,
       );
-      return ok("WITHDRAW_ITEM", `Withdrew ${withdrawCount}x ${bankItem.name}`, {
-        item: bankItem.name,
-        count: withdrawCount,
-      });
+      return ok(
+        "WITHDRAW_ITEM",
+        `Withdrew ${withdrawCount}x ${bankItem.name}`,
+        {
+          item: bankItem.name,
+          count: withdrawCount,
+        },
+      );
     } catch {
       return fail("WITHDRAW_ITEM", `Timed out withdrawing ${bankItem.name}`);
     }
@@ -874,7 +961,10 @@ export class BotActions {
         itemCount: after?.shop?.items.length,
       });
     } catch {
-      return fail("OPEN_SHOP", `Shop did not open after trading with ${npc.name}`);
+      return fail(
+        "OPEN_SHOP",
+        `Shop did not open after trading with ${npc.name}`,
+      );
     }
   }
 
@@ -897,10 +987,14 @@ export class BotActions {
     }
 
     const shopItem = findShopItemByName(state, itemName);
-    if (!shopItem) return fail("BUY_FROM_SHOP", `Item "${itemName}" not found in shop`);
+    if (!shopItem)
+      return fail("BUY_FROM_SHOP", `Item "${itemName}" not found in shop`);
 
     if (shopItem.stock < count) {
-      return fail("BUY_FROM_SHOP", `Only ${shopItem.stock} ${shopItem.name} in stock (wanted ${count})`);
+      return fail(
+        "BUY_FROM_SHOP",
+        `Only ${shopItem.stock} ${shopItem.name} in stock (wanted ${count})`,
+      );
     }
 
     if (isInventoryFull(state)) {
@@ -937,7 +1031,8 @@ export class BotActions {
     }
 
     const item = findInventoryItem(state, itemName);
-    if (!item) return fail("SELL_TO_SHOP", `Item "${itemName}" not found in inventory`);
+    if (!item)
+      return fail("SELL_TO_SHOP", `Item "${itemName}" not found in inventory`);
 
     const sellCount = Math.min(count, item.count);
 
@@ -948,15 +1043,12 @@ export class BotActions {
     }
 
     try {
-      await this.sdk.waitForState(
-        (s) => {
-          const remaining = s.inventory.find(
-            (i) => i.slot === item.slot && i.id === item.id,
-          );
-          return !remaining || remaining.count < item.count;
-        },
-        SHORT_TIMEOUT,
-      );
+      await this.sdk.waitForState((s) => {
+        const remaining = s.inventory.find(
+          (i) => i.slot === item.slot && i.id === item.id,
+        );
+        return !remaining || remaining.count < item.count;
+      }, SHORT_TIMEOUT);
       return ok("SELL_TO_SHOP", `Sold ${sellCount}x ${item.name}`, {
         item: item.name,
         count: sellCount,
@@ -989,7 +1081,8 @@ export class BotActions {
     // Wait for logs to leave inventory (consumed by fire).
     try {
       await this.sdk.waitForState(
-        (s) => !s.inventory.some((i) => i.slot === logs.slot && i.id === logs.id),
+        (s) =>
+          !s.inventory.some((i) => i.slot === logs.slot && i.id === logs.id),
         DEFAULT_TIMEOUT,
       );
       return ok("BURN_LOGS", `Burned ${logs.name}`, { item: logs.name });
@@ -1020,13 +1113,19 @@ export class BotActions {
     try {
       await this.sdk.sendUseItemOnLoc(rawFood.slot, cookSurface.locId);
     } catch {
-      return fail("COOK_FOOD", `Failed to use ${rawFood.name} on ${cookSurface.name}`);
+      return fail(
+        "COOK_FOOD",
+        `Failed to use ${rawFood.name} on ${cookSurface.name}`,
+      );
     }
 
     // Wait for the raw food to be consumed or transformed.
     try {
       await this.sdk.waitForState(
-        (s) => !s.inventory.some((i) => i.slot === rawFood.slot && i.id === rawFood.id),
+        (s) =>
+          !s.inventory.some(
+            (i) => i.slot === rawFood.slot && i.id === rawFood.id,
+          ),
         DEFAULT_TIMEOUT,
       );
       return ok("COOK_FOOD", `Cooked ${rawFood.name}`, {
@@ -1051,7 +1150,9 @@ export class BotActions {
     try {
       await this.sdk.sendUseItemOnItem(knife.slot, logs.slot);
       await this.sdk.waitForTicks(3);
-      return ok("FLETCH_LOGS", `Used knife on ${logs.name}`, { item: logs.name });
+      return ok("FLETCH_LOGS", `Used knife on ${logs.name}`, {
+        item: logs.name,
+      });
     } catch {
       return fail("FLETCH_LOGS", "Failed to use knife on logs");
     }
@@ -1113,10 +1214,18 @@ export class BotActions {
     if ("success" in state) return state;
 
     const item = findInventoryItem(state, itemName);
-    if (!item) return fail("USE_ITEM_ON_OBJECT", `Item "${itemName}" not found in inventory`);
+    if (!item)
+      return fail(
+        "USE_ITEM_ON_OBJECT",
+        `Item "${itemName}" not found in inventory`,
+      );
 
     const loc = findLocByName(state, objectName);
-    if (!loc) return fail("USE_ITEM_ON_OBJECT", `Object "${objectName}" not found nearby`);
+    if (!loc)
+      return fail(
+        "USE_ITEM_ON_OBJECT",
+        `Object "${objectName}" not found nearby`,
+      );
 
     try {
       await this.sdk.sendUseItemOnLoc(item.slot, loc.locId);

@@ -1,10 +1,5 @@
 import crypto from "node:crypto";
-import type {
-  ChannelType,
-  IAgentRuntime,
-  Memory,
-  UUID,
-} from "@elizaos/core";
+import type { ChannelType, IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { createUniqueUuid, logger, stringToUuid } from "@elizaos/core";
 import { blockWebsitesAction } from "../../actions/website-blocker.js";
 import { executeRawSql, sqlQuote, sqlText } from "../../lifeops/sql.js";
@@ -84,7 +79,9 @@ function makeSyntheticMessage(
   runtime: IAgentRuntime,
   websites: readonly string[],
 ): Memory {
-  const roomId = stringToUuid(`block-rule-service-room-${String(runtime.agentId)}`);
+  const roomId = stringToUuid(
+    `block-rule-service-room-${String(runtime.agentId)}`,
+  );
   return {
     id: createUniqueUuid(runtime, `block-rule-${Date.now()}`),
     entityId: runtime.agentId as UUID,
@@ -109,7 +106,9 @@ async function ensureSyntheticMessageContext(
     return;
   }
 
-  const worldId = stringToUuid(`block-rule-service-world-${String(runtime.agentId)}`);
+  const worldId = stringToUuid(
+    `block-rule-service-world-${String(runtime.agentId)}`,
+  );
   const metadata = {
     ownership: {
       ownerId: runtime.agentId,

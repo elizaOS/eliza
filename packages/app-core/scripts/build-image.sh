@@ -373,7 +373,7 @@ if $REMOTE; then
     --exclude='./.git' \
     --exclude='./apps/app/node_modules' \
     --exclude='./apps/home/node_modules' \
-    --exclude='./apps/homepage/node_modules' \
+    --exclude='./packages/homepage/node_modules' \
     --exclude='./apps/ui/node_modules' \
     --exclude='./deploy/node_modules' \
     --exclude='./coverage' \

@@ -13,12 +13,11 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
-
 import {
   CAPACITOR_PLUGIN_NAMES,
   NATIVE_PLUGINS_ROOT,
-} from "../apps/app/scripts/capacitor-plugin-names.mjs";
+} from "../../app/scripts/capacitor-plugin-names.mjs";
+import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = resolveRepoRootFromImportMeta(import.meta.url);
@@ -94,8 +93,14 @@ function main() {
   rmPath("dist", path.join(root, "dist"));
   rmPath("apps/app/dist", path.join(root, "apps", "app", "dist"));
   rmPath("apps/app/.vite", path.join(root, "apps", "app", ".vite"));
-  rmPath("apps/homepage/dist", path.join(root, "apps", "homepage", "dist"));
-  rmPath("apps/homepage/.vite", path.join(root, "apps", "homepage", ".vite"));
+  rmPath(
+    "packages/homepage/dist",
+    path.join(root, "packages", "homepage", "dist"),
+  );
+  rmPath(
+    "packages/homepage/.vite",
+    path.join(root, "packages", "homepage", ".vite"),
+  );
 
   rmPath(
     "eliza/packages/app-core/dist",

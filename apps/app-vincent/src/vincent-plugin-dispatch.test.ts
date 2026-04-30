@@ -29,6 +29,21 @@ describe("Vincent plugin route dispatch matching", () => {
     expect(params).toEqual({});
   });
 
+  it("keeps status, strategy, and trading profile routes Vincent-only", () => {
+    const routeCases = [
+      ["GET", "/api/vincent/status"],
+      ["GET", "/api/vincent/strategy"],
+      ["POST", "/api/vincent/strategy"],
+      ["GET", "/api/vincent/trading-profile"],
+    ] as const;
+
+    for (const [method, path] of routeCases) {
+      const route = requireRoute(method, path);
+      expect(route.rawPath).toBe(true);
+      expect(route.path).toMatch(/^\/api\/vincent(?:\/|$)/);
+    }
+  });
+
   it("matches POST /api/vincent/start-login", () => {
     const route = requireRoute("POST", "/api/vincent/start-login");
     const params = matchPluginRoutePath(route.path, "/api/vincent/start-login");
@@ -58,6 +73,17 @@ describe("Vincent plugin route dispatch matching", () => {
     ];
     for (const path of removedPaths) {
       expect(routes.find((route) => route.path === path)).toBeUndefined();
+    }
+  });
+
+  it("does not expose native Hyperliquid or Polymarket execution routes", () => {
+    for (const route of routes) {
+      expect(route.path).not.toMatch(
+        /^\/api\/(?:hyperliquid|polymarket)(?:\/|$)/,
+      );
+      expect(route.path).not.toMatch(
+        /\/(?:execute|execution|order|trade)s?(?:\/|$)/,
+      );
     }
   });
 

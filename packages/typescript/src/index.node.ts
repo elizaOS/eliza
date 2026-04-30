@@ -41,9 +41,15 @@ export {
 export * from "./features/advanced-memory";
 // Export capabilities and plugin creation
 export * from "./features/basic-capabilities/index";
+export {
+	SECRETS_SERVICE_TYPE,
+	type SecretsManagerPluginConfig,
+	secretsManagerPlugin,
+} from "./features/secrets/index.ts";
 // Export generated action/provider/evaluator specs from centralized prompts
 export * from "./generated/action-docs";
 export * from "./generated/spec-helpers";
+export * from "./lifeops-passive-connectors";
 export * from "./logger";
 // Export markdown utilities
 export * from "./markdown";
@@ -130,6 +136,8 @@ export * from "./utils/buffer";
 export * from "./utils/channel-utils";
 // Export browser-compatible utilities
 export * from "./utils/environment";
+// Prompt description compression (parity with Python `compress_prompt_description`)
+export * from "./utils/prompt-compression";
 // Export Node-specific utilities
 export * from "./utils/server-health";
 // Milady state-dir resolution (MILADY_STATE_DIR → ELIZA_STATE_DIR → ~/.milady)

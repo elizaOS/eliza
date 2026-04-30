@@ -122,7 +122,11 @@
         "path": "/api/lifeops/definitions/{{definitionId:Call dentist}}"
       },
       "apiStatus": 200,
-      "apiResponseIncludesAll": ["totalCompletedCount", "1", "currentOccurrenceStreak"]
+      "apiResponseIncludesAll": [
+        "totalCompletedCount",
+        "1",
+        "currentOccurrenceStreak"
+      ]
     }
   ],
   "finalChecks": [

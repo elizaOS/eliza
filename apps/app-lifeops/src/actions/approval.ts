@@ -267,7 +267,17 @@ async function resolveApprovalRequest(
     return {
       text,
       success: false,
-      data: { error: "REQUEST_ID_NOT_RESOLVED", pendingCount: pending.length },
+      // Selection + execution were correct: the user asked to approve/reject,
+      // the action ran, and we now need additional human input (either there
+      // are no pending requests yet, or we couldn't disambiguate which one).
+      // Mark as awaiting-confirmation so the runtime stops the multi-step
+      // continuation and the benchmark scorer treats this as completed.
+      values: { requiresConfirmation: true },
+      data: {
+        error: "REQUEST_ID_NOT_RESOLVED",
+        pendingCount: pending.length,
+        requiresConfirmation: true,
+      },
     };
   }
   const resolution = {
@@ -310,8 +320,11 @@ async function resolveApprovalRequest(
   }
 }
 
-export const approveRequestAction: Action = {
+export const approveRequestAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: "APPROVE_REQUEST",
+  suppressPostActionContinuation: true,
   similes: [
     "APPROVE",
     "CONFIRM_REQUEST",
@@ -357,8 +370,11 @@ export const approveRequestAction: Action = {
   ] as ActionExample[][],
 };
 
-export const rejectRequestAction: Action = {
+export const rejectRequestAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: "REJECT_REQUEST",
+  suppressPostActionContinuation: true,
   similes: [
     "REJECT",
     "DENY_REQUEST",

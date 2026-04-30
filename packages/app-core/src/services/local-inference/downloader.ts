@@ -21,6 +21,7 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import { Readable, type Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { ensureDefaultAssignment } from "./assignments";
 import { buildHuggingFaceResolveUrl, findCatalogModel } from "./catalog";
 import { downloadsStagingDir, miladyModelsDir } from "./paths";
 import { upsertMiladyModel } from "./registry";
@@ -286,6 +287,12 @@ export class Downloader {
         lastVerifiedAt: new Date().toISOString(),
       };
       await upsertMiladyModel(installed);
+
+      // First-light convenience: assign the freshly-installed model to any
+      // empty slot so chat works without a Settings detour. Idempotent —
+      // ignores slots the user has already configured. See
+      // assignments.ts#ensureDefaultAssignment for the per-slot policy.
+      await ensureDefaultAssignment(installed.id);
 
       this.updateState(record, "completed");
       record.job.received = finalStat.size;

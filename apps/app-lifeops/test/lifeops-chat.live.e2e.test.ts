@@ -1,15 +1,15 @@
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
-import { createConversation, req } from "../../../../test/helpers/http";
+import { describeIf } from "../../../../eliza/test/helpers/conditional-tests.ts";
+import { createConversation, req } from "../../../../eliza/test/helpers/http";
 import {
+  assertNoProviderIssue,
+  getLifeOpsLiveSetupWarnings,
   LIVE_CHAT_TEST_TIMEOUT_MS,
   LIVE_RUNTIME_BOOT_TIMEOUT_MS,
   LIVE_TESTS_ENABLED,
   type LifeOpsGoalEntry,
-  type StartedLifeOpsLiveRuntime,
-  assertNoProviderIssue,
-  getLifeOpsLiveSetupWarnings,
   postLiveConversationMessage,
+  type StartedLifeOpsLiveRuntime,
   selectLifeOpsLiveProvider,
   startLifeOpsLiveRuntime,
   waitForDefinitionByTitle,

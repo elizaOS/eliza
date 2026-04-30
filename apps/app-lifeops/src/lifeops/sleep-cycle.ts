@@ -6,6 +6,7 @@ import type {
   LifeOpsSleepCycleEvidence,
   LifeOpsSleepCycleType,
 } from "@elizaos/shared";
+import { LIFEOPS_HEALTH_SIGNAL_SOURCES } from "@elizaos/shared";
 import {
   buildUtcDateFromLocalParts,
   getLocalDateKey,
@@ -110,7 +111,10 @@ function isNullableNumber(value: unknown): value is number | null {
 
 function isHealthSignal(value: unknown): value is LifeOpsHealthSignal {
   if (!isRecord(value)) return false;
-  if (value.source !== "healthkit" && value.source !== "health_connect") {
+  if (
+    typeof value.source !== "string" ||
+    !(LIFEOPS_HEALTH_SIGNAL_SOURCES as readonly string[]).includes(value.source)
+  ) {
     return false;
   }
   const permissions = value.permissions;
@@ -437,16 +441,17 @@ function selectCurrentSleep(
   );
 }
 
-function classifySleepType(
-  episode: LifeOpsSleepEpisode,
-  nowMs: number,
-  timezone: string,
-): LifeOpsSleepCycleType {
-  const endMs = episode.endMs ?? nowMs;
-  const durationMs = intervalDurationMs(episode.startMs, episode.endMs, nowMs);
+export function classifyLifeOpsSleepCycleType(args: {
+  startMs: number;
+  endMs: number | null;
+  nowMs: number;
+  timezone: string;
+}): LifeOpsSleepCycleType {
+  const endMs = args.endMs ?? args.nowMs;
+  const durationMs = intervalDurationMs(args.startMs, args.endMs, args.nowMs);
   const durationHours = durationMs / (60 * 60 * 1_000);
-  const startHour = localHour(episode.startMs, timezone);
-  const endHour = localHour(endMs, timezone);
+  const startHour = localHour(args.startMs, args.timezone);
+  const endHour = localHour(endMs, args.timezone);
   if (
     durationHours >= 4 &&
     (startHour >= 18 || startHour < 6 || endHour <= 11)
@@ -457,6 +462,19 @@ function classifySleepType(
     return "nap";
   }
   return "unknown";
+}
+
+function classifySleepType(
+  episode: LifeOpsSleepEpisode,
+  nowMs: number,
+  timezone: string,
+): LifeOpsSleepCycleType {
+  return classifyLifeOpsSleepCycleType({
+    startMs: episode.startMs,
+    endMs: episode.endMs,
+    nowMs,
+    timezone,
+  });
 }
 
 export interface LifeOpsSleepCycleResolution {

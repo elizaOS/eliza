@@ -4,6 +4,7 @@
  * caller is responsible for routing that through `client.patchProviderStrategy`.
  */
 
+import type { LinkedAccountProviderId } from "@elizaos/shared";
 import {
   Select,
   SelectContent,
@@ -11,9 +12,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@elizaos/ui";
-import type { LinkedAccountProviderId } from "@elizaos/shared";
-import { useApp } from "../../state";
 import type { AccountStrategy } from "../../api/client-agent";
+import { useApp } from "../../state";
 
 interface RotationStrategyPickerProps {
   providerId: LinkedAccountProviderId;
@@ -36,8 +36,7 @@ const STRATEGY_OPTIONS: readonly StrategyOption[] = [
     labelKey: "accounts.strategy.priority.label",
     labelFallback: "Priority",
     descriptionKey: "accounts.strategy.priority.description",
-    descriptionFallback:
-      "Always prefer the top healthy account.",
+    descriptionFallback: "Always prefer the top healthy account.",
   },
   {
     id: "round-robin",
@@ -51,8 +50,7 @@ const STRATEGY_OPTIONS: readonly StrategyOption[] = [
     labelKey: "accounts.strategy.leastUsed.label",
     labelFallback: "Least used",
     descriptionKey: "accounts.strategy.leastUsed.description",
-    descriptionFallback:
-      "Prefer the account with the lowest current usage.",
+    descriptionFallback: "Prefer the account with the lowest current usage.",
   },
   {
     id: "quota-aware",

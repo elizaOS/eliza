@@ -4,7 +4,6 @@
     "module": "ES2022",
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "moduleResolution": "bundler",
-    "ignoreDeprecations": "5.0",
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
@@ -24,12 +23,6 @@
       "@elizaos/core/*": ["./packages/typescript/src/*"],
       "@elizaos/shared": ["./packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["./packages/shared/src/*"],
-      "@elizaos/plugin-browser-bridge": [
-        "./packages/plugin-browser-bridge/src/index.ts"
-      ],
-      "@elizaos/plugin-browser-bridge/*": [
-        "./packages/plugin-browser-bridge/src/*"
-      ]
     }
   },
   "exclude": [

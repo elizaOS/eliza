@@ -5,6 +5,7 @@
 
 import {
   type Action,
+  type ActionExample,
   type ActionResult,
   type HandlerCallback,
   type HandlerOptions,
@@ -93,6 +94,9 @@ export const manageTasksAction: Action = {
   ],
   description:
     "Create, update, complete, or delete tasks. Use when the user wants to manage their task list, add a to-do, mark something as done, or review active tasks.",
+  descriptionCompressed:
+    "Workbench task CRUD+list NL-in-message owner SMALL-model extract",
+
   validate: async (runtime, message) => {
     if (!(await hasOwnerAccess(runtime, message))) return false;
     const currentText = message.content.text ?? "";
@@ -313,4 +317,61 @@ export const manageTasksAction: Action = {
       return { success: false, text: String(error) || "Failed to manage task" };
     }
   },
+
+  parameters: [
+    {
+      name: "operation",
+      description:
+        "Planner hint: create | complete | delete | update | list. Primary intent still comes from the user message.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "name",
+      description: "Suggested task title for create/update hints.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "description",
+      description: "Suggested task description for create/update hints.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "taskId",
+      description: "Target task UUID for complete/delete/update hints.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+  ],
+
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Add a todo to buy groceries tomorrow." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: 'Created task "buy groceries tomorrow".',
+          action: MANAGE_TASKS_ACTION,
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Mark the groceries task complete." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: 'Completed task "buy groceries tomorrow".',
+          action: MANAGE_TASKS_ACTION,
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };

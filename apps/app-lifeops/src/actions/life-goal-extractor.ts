@@ -131,7 +131,10 @@ function extractEvidenceTokens(value: string): string[] {
   return [...new Set(tokens)];
 }
 
-function intentProvidesGoalTitleEvidence(intent: string, title: string): boolean {
+function intentProvidesGoalTitleEvidence(
+  intent: string,
+  title: string,
+): boolean {
   const normalizedIntent = normalizeEvidenceText(intent);
   const normalizedTitle = normalizeEvidenceText(title);
   if (!normalizedIntent || !normalizedTitle) {

@@ -11,8 +11,8 @@ import { getCachedAppBlockerStatus } from "../app-blocker/engine.ts";
 export const appBlockerProvider: Provider = {
   name: "appBlocker",
   description:
-    "Admin-only provider for the native mobile app blocker integration (Family Controls on iPhone, Usage Access overlay on Android)",
-  descriptionCompressed: "Admin: mobile app blocker integration.",
+    "Owner-only provider for the native mobile app blocker integration (Family Controls on iPhone, Usage Access overlay on Android)",
+  descriptionCompressed: "Owner: mobile app blocker integration.",
   dynamic: true,
   get: async (
     runtime: IAgentRuntime,
@@ -47,9 +47,7 @@ export const appBlockerProvider: Provider = {
 
     if (!status.available) {
       return {
-        text:
-          status.reason ??
-          "App blocking is not available on this device.",
+        text: status.reason ?? "App blocking is not available on this device.",
         values: {
           appBlockerAuthorized: true,
           appBlockerAvailable: false,
@@ -74,8 +72,8 @@ export const appBlockerProvider: Provider = {
     const permissionLine =
       status.permissionStatus === "granted"
         ? "Eliza has permission to block apps on this device."
-        : status.reason ??
-          "App blocking permissions have not been granted yet.";
+        : (status.reason ??
+          "App blocking permissions have not been granted yet.");
 
     return {
       text: [statusLine, permissionLine].join(" "),

@@ -925,7 +925,7 @@ export function WorkflowGraphViewer({
             className={[
               "absolute top-3 z-20 flex h-7 w-7 items-center justify-center",
               "rounded border border-border/40 bg-bg/80 text-muted hover:text-txt transition-all duration-200",
-              selectedNode ? "right-[calc(18rem+0.75rem)]" : "right-3",
+              selectedNode ? "right-[calc(18rem_+_0.75rem)]" : "right-3",
             ].join(" ")}
             onClick={() => setFullScreen(true)}
           >

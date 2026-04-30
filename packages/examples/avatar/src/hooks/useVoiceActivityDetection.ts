@@ -256,7 +256,11 @@ export function useVoiceActivityDetection(
             // Reset recognition after sending to keep voice mode continuous.
             // Instead of directly starting a new recognizer (which can race on some browsers),
             // abort the current session and let `onend` restart cleanly.
-            if (isActiveRef.current && !agentSpeakingRef.current && recRef.current) {
+            if (
+              isActiveRef.current &&
+              !agentSpeakingRef.current &&
+              recRef.current
+            ) {
               try {
                 recRef.current.abort();
               } catch {
@@ -322,10 +326,15 @@ export function useVoiceActivityDetection(
 
       const now = Date.now();
       const cooldownUntil = echoCooldownUntilMsRef.current;
-      const delay = now < cooldownUntil ? Math.max(0, cooldownUntil - now) : 100;
+      const delay =
+        now < cooldownUntil ? Math.max(0, cooldownUntil - now) : 100;
 
       restartTimeoutRef.current = setTimeout(() => {
-        if (isActiveRef.current && !recRef.current && canAcceptRecognitionInput()) {
+        if (
+          isActiveRef.current &&
+          !recRef.current &&
+          canAcceptRecognitionInput()
+        ) {
           startRecognition();
         }
       }, delay);
@@ -409,41 +418,48 @@ export function useVoiceActivityDetection(
     startRecognition();
   }, [supported, startRecognition]);
 
-  const setAgentSpeaking = useCallback((speakingNow: boolean) => {
-    const prev = agentSpeakingRef.current;
-    agentSpeakingRef.current = speakingNow;
+  const setAgentSpeaking = useCallback(
+    (speakingNow: boolean) => {
+      const prev = agentSpeakingRef.current;
+      agentSpeakingRef.current = speakingNow;
 
-    if (speakingNow) {
-      // Pause recognition while agent is speaking so we don't capture TTS.
-      echoCooldownUntilMsRef.current = Date.now() + echoCooldownMs;
-      bargeInStartRef.current = null;
-      bargeInTriggeredRef.current = false;
+      if (speakingNow) {
+        // Pause recognition while agent is speaking so we don't capture TTS.
+        echoCooldownUntilMsRef.current = Date.now() + echoCooldownMs;
+        bargeInStartRef.current = null;
+        bargeInTriggeredRef.current = false;
 
-      if (recRef.current) {
-        try {
-          recRef.current.abort();
-        } catch {
-          // ignore
+        if (recRef.current) {
+          try {
+            recRef.current.abort();
+          } catch {
+            // ignore
+          }
+          recRef.current = null;
         }
-        recRef.current = null;
+
+        setInterimTranscript("");
+        setSpeaking(false);
+        return;
       }
 
-      setInterimTranscript("");
-      setSpeaking(false);
-      return;
-    }
-
-    // Agent just finished speaking: apply a cooldown, then restart recognition.
-    if (prev && isActiveRef.current) {
-      echoCooldownUntilMsRef.current = Date.now() + echoCooldownMs;
-      if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current);
-      restartTimeoutRef.current = setTimeout(() => {
-        if (isActiveRef.current && !agentSpeakingRef.current && !recRef.current) {
-          startRecognition();
-        }
-      }, echoCooldownMs);
-    }
-  }, [echoCooldownMs, startRecognition]);
+      // Agent just finished speaking: apply a cooldown, then restart recognition.
+      if (prev && isActiveRef.current) {
+        echoCooldownUntilMsRef.current = Date.now() + echoCooldownMs;
+        if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current);
+        restartTimeoutRef.current = setTimeout(() => {
+          if (
+            isActiveRef.current &&
+            !agentSpeakingRef.current &&
+            !recRef.current
+          ) {
+            startRecognition();
+          }
+        }, echoCooldownMs);
+      }
+    },
+    [echoCooldownMs, startRecognition],
+  );
 
   useEffect(() => {
     return () => {
@@ -466,4 +482,3 @@ export function useVoiceActivityDetection(
     setAgentSpeaking,
   };
 }
-

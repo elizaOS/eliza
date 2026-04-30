@@ -18,13 +18,12 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-
+import { ConversationHarness } from "../helpers/conversation-harness.ts";
 import {
   isTrajectoryCaptureEnabled,
   RecordingHarness,
   type TrajectoryRecord,
 } from "../helpers/trajectory-harness.ts";
-import { ConversationHarness } from "../helpers/conversation-harness.ts";
 import type { ActionBenchmarkCase } from "./action-selection-cases.ts";
 
 export type ActionFailureMode =
@@ -65,6 +64,10 @@ export interface ActionBenchmarkResult {
   registeredActions?: string[];
   /** First ~200 chars of the agent reply, when available. */
   responseText?: string;
+  /** When runsPerCase > 1, the 1-based run index this result came from. */
+  runIndex?: number;
+  /** When runsPerCase > 1, total runs scheduled for this case. */
+  runsPerCase?: number;
 }
 
 export interface ActionBenchmarkLatencyStats {
@@ -79,6 +82,16 @@ export interface ActionBenchmarkTagStats {
   accuracy: number;
 }
 
+export interface CaseReliability {
+  caseId: string;
+  expectedAction: string | null;
+  runs: number;
+  passes: number;
+  passRate: number;
+  /** Per-run actual action (null if no action picked or run errored). */
+  actuals: Array<string | null>;
+}
+
 export interface ActionBenchmarkReport {
   total: number;
   passed: number;
@@ -86,6 +99,10 @@ export interface ActionBenchmarkReport {
   accuracy: number;
   byTag: Record<string, ActionBenchmarkTagStats>;
   latency: ActionBenchmarkLatencyStats;
+  /** Per-case reliability when runsPerCase > 1. */
+  reliability?: CaseReliability[];
+  /** Number of independent runs scheduled per case. */
+  runsPerCase?: number;
   failures: ActionBenchmarkResult[];
   results: ActionBenchmarkResult[];
 }
@@ -111,6 +128,13 @@ export interface ActionBenchmarkRunOptions {
   trajectoryDir?: string;
   /** Force trajectory capture even when the env flag is not set. */
   forceTrajectoryCapture?: boolean;
+  /**
+   * Number of independent runs per case. Defaults to 1. When > 1, the
+   * report includes a reliability table bucketed by pass-rate (0/N, 1/N,
+   * 2/N, …, N/N) so deterministic-broken cases are distinguished from
+   * stochastic flakes. Override via `MILADY_BENCHMARK_RUNS_PER_CASE`.
+   */
+  runsPerCase?: number;
 }
 
 const DEFAULT_TIMEOUT_MS = 60_000;
@@ -262,6 +286,7 @@ function pickObservedAction(
     phase: "started" | "completed";
     actionName: string;
     actionStatus?: string;
+    actionConfirmationPending?: boolean;
   }>,
   phase: "started" | "completed",
   expected: string | null,
@@ -274,7 +299,11 @@ function pickObservedAction(
       if (
         opts?.requireSuccessfulCompletion &&
         phase === "completed" &&
-        record.actionStatus !== "completed"
+        record.actionStatus !== "completed" &&
+        // Actions whose intended terminal state is "user must confirm" return
+        // success: false (so actionStatus is "failed"), but selection +
+        // execution were both correct. Score them as completed.
+        record.actionConfirmationPending !== true
       ) {
         return false;
       }
@@ -437,6 +466,30 @@ async function seedBenchmarkCaseFixtures(
   runtime: AgentRuntime,
   userEntityId: string,
 ): Promise<void> {
+  // 1) Ensure the LifeOps plugin schema (incl. life_scheduling_negotiations,
+  //    life_scheduling_proposals, life_connector_grants, life_relationships)
+  //    is migrated against the per-case PGLite adapter. Idempotent — safe to
+  //    call even when the runtime already ran plugin migrations at boot.
+  try {
+    const { LifeOpsRepository } = (await import(
+      // @ts-expect-error — workspace package resolved at runtime
+      "@elizaos/app-lifeops/lifeops/repository"
+    )) as {
+      LifeOpsRepository: {
+        bootstrapSchema?: (r: AgentRuntime) => Promise<void>;
+      };
+    };
+    if (typeof LifeOpsRepository.bootstrapSchema === "function") {
+      await LifeOpsRepository.bootstrapSchema(runtime);
+    }
+  } catch (error) {
+    runtime.logger?.debug?.(
+      { src: "benchmark", userEntityId, error: String(error) },
+      "seedBenchmarkCaseFixtures: lifeops schema bootstrap skipped",
+    );
+  }
+
+  // 2) Seed a David relationship row used by relationship-flow benchmark cases.
   try {
     const now = new Date().toISOString();
     const { LifeOpsRepository } = await import(
@@ -448,13 +501,16 @@ async function seedBenchmarkCaseFixtures(
       typeof (repo as unknown as { upsertRelationship?: unknown })
         .upsertRelationship === "function"
     ) {
-      await (
+      const upsert = (
         repo as unknown as {
           upsertRelationship: (
             rel: Record<string, unknown>,
           ) => Promise<unknown>;
         }
-      ).upsertRelationship({
+      ).upsertRelationship.bind(repo);
+
+      // Generic personal contact (used by rel-* and follow-up cases).
+      await upsert({
         id: crypto.randomUUID(),
         agentId: runtime.agentId,
         name: "David",
@@ -470,12 +526,139 @@ async function seedBenchmarkCaseFixtures(
         createdAt: now,
         updatedAt: now,
       });
+
+      // Counterparty fixtures referenced by scheduling cases. Without
+      // these, OWNER_CALENDAR(negotiate_start) fails downstream with
+      // SCHEDULING_NO_COUNTERPARTY_CONTACT because the design-team /
+      // Marco / engineering-discord references can't resolve to a known
+      // relationship row.
+      const counterparties = [
+        {
+          name: "design team",
+          primaryChannel: "email" as const,
+          primaryHandle: "design@example.com",
+          email: "design@example.com",
+          relationshipType: "team",
+        },
+        {
+          name: "Marco",
+          primaryChannel: "email" as const,
+          primaryHandle: "marco@example.com",
+          email: "marco@example.com",
+          relationshipType: "colleague",
+        },
+        {
+          name: "Sarah",
+          primaryChannel: "email" as const,
+          primaryHandle: "sarah@example.com",
+          email: "sarah@example.com",
+          relationshipType: "colleague",
+        },
+      ];
+      for (const cp of counterparties) {
+        await upsert({
+          id: crypto.randomUUID(),
+          agentId: runtime.agentId,
+          name: cp.name,
+          primaryChannel: cp.primaryChannel,
+          primaryHandle: cp.primaryHandle,
+          email: cp.email,
+          phone: null,
+          notes: "benchmark fixture",
+          tags: ["benchmark", "counterparty"],
+          relationshipType: cp.relationshipType,
+          lastContactedAt: null,
+          metadata: {},
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
     }
+    runtime.logger?.debug?.(
+      { src: "benchmark", userEntityId },
+      "seedBenchmarkCaseFixtures: relationship seeded",
+    );
   } catch (error) {
     // Relationships plugin may not be loaded in every benchmark variant.
     runtime.logger?.debug?.(
       { src: "benchmark", userEntityId, error: String(error) },
       "seedBenchmarkCaseFixtures: relationship seed skipped",
+    );
+  }
+
+  // 3) Seed a Google OAuth connector grant + token file so calendar/inbox
+  //    cases can reach the mock Google server. The mock's
+  //    `refreshGoogleTokensFromSeededGrants` reads plain-JSON files under
+  //    `${MILADY_STATE_DIR}/credentials/lifeops/google/...` and indexes them
+  //    by `accessToken`. The lifeops handler reads the same file via
+  //    `readStoredGoogleTokenFile`, which transparently supports legacy
+  //    plaintext tokens, so a single plain-JSON write satisfies both sides.
+  try {
+    const seedModule = (await import(
+      // @ts-expect-error — path resolved at runtime relative to repo root
+      "../../../../../eliza/test/mocks/helpers/seed-grants.ts"
+    )) as {
+      seedGoogleConnectorGrant: (
+        runtime: AgentRuntime,
+        opts?: {
+          capabilities?: string[];
+          email?: string;
+          grantId?: string;
+          side?: "owner" | "agent";
+        },
+      ) => Promise<void>;
+    };
+    await seedModule.seedGoogleConnectorGrant(runtime, {
+      grantId: `bench-google-${runtime.agentId}`,
+      email: "owner@example.test",
+    });
+    runtime.logger?.debug?.(
+      { src: "benchmark", userEntityId, agentId: runtime.agentId },
+      "seedBenchmarkCaseFixtures: google connector grant seeded",
+    );
+  } catch (error) {
+    // Mock seed helper not on disk in non-mocked benchmark runs, or lifeops
+    // package not available. Either way: not fatal — only the calendar/inbox
+    // cases will be affected.
+    runtime.logger?.debug?.(
+      { src: "benchmark", userEntityId, error: String(error) },
+      "seedBenchmarkCaseFixtures: google grant seed skipped",
+    );
+  }
+
+  // 4) Seed an X (Twitter) connector grant + minimal env credentials so
+  //    X_READ's `validate()` resolves to true. Local-mode capability resolution
+  //    requires both a grant row and OAuth env credentials before
+  //    `feedRead`/`dmRead` are reported as available.
+  try {
+    process.env.TWITTER_API_KEY = process.env.TWITTER_API_KEY ?? "bench-x-key";
+    process.env.TWITTER_API_SECRET_KEY =
+      process.env.TWITTER_API_SECRET_KEY ?? "bench-x-secret";
+    process.env.TWITTER_ACCESS_TOKEN =
+      process.env.TWITTER_ACCESS_TOKEN ?? "bench-x-token";
+    process.env.TWITTER_ACCESS_TOKEN_SECRET =
+      process.env.TWITTER_ACCESS_TOKEN_SECRET ?? "bench-x-token-secret";
+    process.env.TWITTER_USER_ID =
+      process.env.TWITTER_USER_ID ?? "bench-x-user-id";
+
+    const seedModule = (await import(
+      // @ts-expect-error — path resolved at runtime relative to repo root
+      "../../../../../eliza/test/mocks/helpers/seed-grants.ts"
+    )) as {
+      seedXConnectorGrant: (
+        runtime: AgentRuntime,
+        opts?: { side?: "owner" | "agent"; handle?: string },
+      ) => Promise<void>;
+    };
+    await seedModule.seedXConnectorGrant(runtime, { side: "owner" });
+    runtime.logger?.debug?.(
+      { src: "benchmark", userEntityId, agentId: runtime.agentId },
+      "seedBenchmarkCaseFixtures: x connector grant seeded",
+    );
+  } catch (error) {
+    runtime.logger?.debug?.(
+      { src: "benchmark", userEntityId, error: String(error) },
+      "seedBenchmarkCaseFixtures: x grant seed skipped",
     );
   }
 }
@@ -687,127 +870,6 @@ async function runSingleCaseWithRecording(
   }
 }
 
-async function runSingleCase(
-  runtime: AgentRuntime,
-  tc: ActionBenchmarkCase,
-  timeoutMs: number,
-  registeredActions: string[],
-): Promise<ActionBenchmarkResult> {
-  const started = Date.now();
-  const entityId = resolveBenchmarkOwnerEntityId(runtime);
-  const harness = new ConversationHarness(runtime, {
-    userId: entityId,
-    userName: BENCHMARK_USER_NAME,
-    source: BENCHMARK_SOURCE,
-  });
-
-  try {
-    runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", entityId, false);
-    await seedBenchmarkCaseFixtures(runtime, entityId);
-    await ensureBenchmarkConversation({
-      runtime,
-      entityId,
-      roomId,
-      worldId,
-    });
-
-    runtime.registerPipelineHook({
-      id: hookId,
-      phase: "outgoing_before_deliver",
-      handler: (_runtime, ctx) => {
-        if (ctx.phase !== "outgoing_before_deliver") return;
-        if (ctx.roomId !== roomId) return;
-        if (capture.firstAction !== null) return;
-        const name = ctx.actionName;
-        if (typeof name === "string" && name.trim().length > 0) {
-          capture.firstAction = name;
-        }
-      },
-    });
-
-    const message = createMessageMemory({
-      id: crypto.randomUUID() as UUID,
-      entityId,
-      roomId: harness.roomId,
-      content: {
-        text: tc.userMessage,
-        source: BENCHMARK_SOURCE,
-        channelType: ChannelType.DM,
-      },
-    });
-
-    const filteredActions = await computeFilteredActions(runtime, message);
-
-    const turn = await harness.send(tc.userMessage, { timeoutMs });
-    const startedAction = pickObservedAction(
-      turn.actions,
-      "started",
-      tc.expectedAction,
-      tc.acceptableActions,
-    );
-    const completedAction = pickObservedAction(
-      turn.actions,
-      "completed",
-      tc.expectedAction,
-      tc.acceptableActions,
-      { requireSuccessfulCompletion: true },
-    );
-    const actualAction = completedAction ?? startedAction;
-    const pass = caseMatches(
-      actualAction,
-      tc.expectedAction,
-      tc.acceptableActions,
-    );
-    const failureMode = determineFailureMode({
-      pass,
-      expected: tc.expectedAction,
-      actual: actualAction,
-      planned: actualAction,
-      filtered: filteredActions,
-      hadError: false,
-    });
-
-    return {
-      case: tc,
-      plannedAction: actualAction,
-      plannedActions: actualAction ? [actualAction] : [],
-      startedAction,
-      completedAction,
-      actualAction,
-      selectionPass: pass,
-      executionPass: pass,
-      pass,
-      latencyMs: Date.now() - started,
-      failureMode,
-      filteredActions,
-      registeredActions,
-      responseText:
-        typeof turn.responseText === "string"
-          ? turn.responseText.slice(0, 200)
-          : undefined,
-    };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return {
-      case: tc,
-      plannedAction: null,
-      plannedActions: [],
-      startedAction: null,
-      completedAction: null,
-      actualAction: null,
-      selectionPass: false,
-      executionPass: false,
-      pass: false,
-      latencyMs: Date.now() - started,
-      error: message,
-      failureMode: "error",
-      registeredActions,
-    };
-  } finally {
-    await harness.cleanup();
-  }
-}
-
 function percentile(sorted: number[], p: number): number {
   if (sorted.length === 0) return 0;
   const idx = Math.min(
@@ -834,6 +896,17 @@ export async function runActionSelectionBenchmark(
     await fs.rm(trajectoryDir, { recursive: true, force: true });
   }
 
+  const runsPerCaseEnv = (() => {
+    const raw =
+      typeof process !== "undefined"
+        ? process.env.MILADY_BENCHMARK_RUNS_PER_CASE
+        : undefined;
+    if (!raw) return undefined;
+    const parsed = Number.parseInt(raw, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  })();
+  const runsPerCase = Math.max(1, opts.runsPerCase ?? runsPerCaseEnv ?? 1);
+
   const sharedRegisteredActions =
     opts.runtime?.actions.map((a) => a.name) ?? [];
 
@@ -844,39 +917,25 @@ export async function runActionSelectionBenchmark(
       const handle = await opts.createCaseRuntime();
       const registeredActions = handle.runtime.actions.map((a) => a.name);
       try {
-        return captureEnabled
-          ? await runSingleCaseWithRecording(
-              handle.runtime,
-              tc,
-              timeoutMs,
-              trajectoryDir,
-              registeredActions,
-            )
-          : await runSingleCase(
-              handle.runtime,
-              tc,
-              timeoutMs,
-              registeredActions,
-            );
+        return await runSingleCaseWithRecording(
+          handle.runtime,
+          tc,
+          timeoutMs,
+          captureEnabled ? trajectoryDir : undefined,
+          registeredActions,
+        );
       } finally {
         await handle.cleanup();
       }
     }
 
-    return captureEnabled
-      ? runSingleCaseWithRecording(
-          opts.runtime as AgentRuntime,
-          tc,
-          timeoutMs,
-          trajectoryDir,
-          sharedRegisteredActions,
-        )
-      : runSingleCase(
-          opts.runtime as AgentRuntime,
-          tc,
-          timeoutMs,
-          sharedRegisteredActions,
-        );
+    return runSingleCaseWithRecording(
+      opts.runtime as AgentRuntime,
+      tc,
+      timeoutMs,
+      captureEnabled ? trajectoryDir : undefined,
+      sharedRegisteredActions,
+    );
   };
 
   const runOneWithRetries = async (
@@ -898,12 +957,51 @@ export async function runActionSelectionBenchmark(
   const results: ActionBenchmarkResult[] = [];
   const throttleMs = caseThrottleMs();
 
+  // Expand cases by runsPerCase so each repetition gets its own trajectory
+  // file and result row. We clone the case with a suffixed id when N > 1
+  // so the recording harness writes to per-run paths without clobbering.
+  type ScheduledCase = {
+    case: ActionBenchmarkCase;
+    runIndex: number;
+    originalId: string;
+  };
+  const scheduled: ScheduledCase[] = [];
+  for (const tc of opts.cases) {
+    if (runsPerCase === 1) {
+      scheduled.push({ case: tc, runIndex: 1, originalId: tc.id });
+      continue;
+    }
+    for (let i = 1; i <= runsPerCase; i += 1) {
+      scheduled.push({
+        case: { ...tc, id: `${tc.id}#run${i}` },
+        runIndex: i,
+        originalId: tc.id,
+      });
+    }
+  }
+
+  const stampReliability = (
+    item: ScheduledCase,
+    result: ActionBenchmarkResult,
+  ): ActionBenchmarkResult => {
+    if (runsPerCase === 1) return result;
+    return {
+      ...result,
+      runIndex: item.runIndex,
+      runsPerCase,
+      // Restore the original case id so reliability grouping + tag stats
+      // work on the natural case identity, not the synthetic per-run id.
+      case: { ...result.case, id: item.originalId },
+    };
+  };
+
   if (concurrency === 1) {
     let first = true;
-    for (const tc of opts.cases) {
+    for (const item of scheduled) {
       if (!first && throttleMs > 0) await sleep(throttleMs);
       first = false;
-      results.push(await runOneWithRetries(tc));
+      const res = await runOneWithRetries(item.case);
+      results.push(stampReliability(item, res));
     }
   } else {
     let cursor = 0;
@@ -911,13 +1009,13 @@ export async function runActionSelectionBenchmark(
     for (let i = 0; i < concurrency; i += 1) {
       workers.push(
         (async () => {
-          while (cursor < opts.cases.length) {
+          while (cursor < scheduled.length) {
             const myIdx = cursor;
             cursor += 1;
-            const tc = opts.cases[myIdx];
-            if (!tc) break;
-            const res = await runOneWithRetries(tc);
-            results[myIdx] = res;
+            const item = scheduled[myIdx];
+            if (!item) break;
+            const res = await runOneWithRetries(item.case);
+            results[myIdx] = stampReliability(item, res);
           }
         })(),
       );
@@ -953,6 +1051,35 @@ export async function runActionSelectionBenchmark(
       ? 0
       : latencies.reduce((sum, v) => sum + v, 0) / latencies.length;
 
+  let reliability: CaseReliability[] | undefined;
+  if (runsPerCase > 1) {
+    const grouped = new Map<string, ActionBenchmarkResult[]>();
+    for (const r of results) {
+      const id = r.case.id;
+      const bucket = grouped.get(id) ?? [];
+      bucket.push(r);
+      grouped.set(id, bucket);
+    }
+    reliability = [...grouped.entries()]
+      .map(([caseId, runs]) => {
+        const passes = runs.filter((r) => r.pass).length;
+        const expectedAction = runs[0]?.case.expectedAction ?? null;
+        const actuals = runs.map((r) => r.actualAction);
+        return {
+          caseId,
+          expectedAction,
+          runs: runs.length,
+          passes,
+          passRate: runs.length === 0 ? 0 : passes / runs.length,
+          actuals,
+        };
+      })
+      .sort((a, b) => {
+        if (a.passRate !== b.passRate) return a.passRate - b.passRate;
+        return a.caseId.localeCompare(b.caseId);
+      });
+  }
+
   return {
     total: results.length,
     passed,
@@ -964,6 +1091,8 @@ export async function runActionSelectionBenchmark(
       p50: percentile(latencies, 50),
       p95: percentile(latencies, 95),
     },
+    reliability,
+    runsPerCase: runsPerCase > 1 ? runsPerCase : undefined,
     failures: results.filter((r) => !r.pass),
     results,
   };
@@ -1052,6 +1181,59 @@ export function formatBenchmarkReportMarkdown(
     `**Execution Accuracy:** ${(report.total === 0 ? 0 : (executionPassed / report.total) * 100).toFixed(1)}% (${executionPassed}/${report.total})`,
   );
   lines.push("");
+
+  if (report.reliability && report.runsPerCase && report.runsPerCase > 1) {
+    const N = report.runsPerCase;
+    const buckets = new Map<number, typeof report.reliability>();
+    for (let i = 0; i <= N; i += 1) buckets.set(i, []);
+    for (const r of report.reliability) {
+      const bucket = buckets.get(r.passes);
+      if (bucket) bucket.push(r);
+    }
+    lines.push(`## Reliability (${N} runs per case)`);
+    lines.push("");
+    lines.push("| Pass-rate | Cases | % of total |");
+    lines.push("| --- | ---: | ---: |");
+    for (let i = N; i >= 0; i -= 1) {
+      const bucket = buckets.get(i) ?? [];
+      const pct =
+        report.reliability.length === 0
+          ? 0
+          : (bucket.length / report.reliability.length) * 100;
+      lines.push(`| ${i}/${N} | ${bucket.length} | ${pct.toFixed(1)}% |`);
+    }
+    lines.push("");
+    const flaky = report.reliability.filter(
+      (r) => r.passes > 0 && r.passes < N,
+    );
+    const broken = report.reliability.filter((r) => r.passes === 0);
+    if (broken.length > 0) {
+      lines.push(`### Deterministic broken (0/${N})`);
+      lines.push("");
+      lines.push("| Case | Expected | Actuals across runs |");
+      lines.push("| --- | --- | --- |");
+      for (const r of broken) {
+        const actuals = r.actuals.map((a) => a ?? "(none)").join(" \\| ");
+        lines.push(
+          `| ${r.caseId} | ${r.expectedAction ?? "(none)"} | ${actuals} |`,
+        );
+      }
+      lines.push("");
+    }
+    if (flaky.length > 0) {
+      lines.push(`### Flaky (1..${N - 1}/${N})`);
+      lines.push("");
+      lines.push("| Case | Pass-rate | Expected | Actuals across runs |");
+      lines.push("| --- | ---: | --- | --- |");
+      for (const r of flaky) {
+        const actuals = r.actuals.map((a) => a ?? "(none)").join(" \\| ");
+        lines.push(
+          `| ${r.caseId} | ${r.passes}/${r.runs} | ${r.expectedAction ?? "(none)"} | ${actuals} |`,
+        );
+      }
+      lines.push("");
+    }
+  }
 
   lines.push("## By tag");
   lines.push("");

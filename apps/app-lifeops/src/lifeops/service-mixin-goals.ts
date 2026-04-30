@@ -25,34 +25,7 @@ import {
   LIFEOPS_GOAL_SUGGESTION_KINDS,
   LIFEOPS_REVIEW_STATES,
 } from "../contracts/index.js";
-import {
-  createLifeOpsAuditEvent,
-  createLifeOpsGoalDefinition,
-} from "./repository.js";
-import {
-  fail,
-  normalizeEnumValue,
-  normalizeOptionalString,
-  normalizeReminderUrgency,
-  requireNonEmptyString,
-} from "./service-normalize.js";
-import {
-  isRecord,
-  mergeMetadata,
-  normalizeNullableRecord,
-  normalizeOptionalRecord,
-  requireRecord,
-  buildActiveReminders,
-  buildActiveCalendarEventReminders,
-  selectOverviewOccurrences,
-  priorityToUrgency,
-} from "./service-helpers-misc.js";
-import {
-  shouldDeliverReminderForIntensity,
-} from "./service-helpers-reminder.js";
-import {
-  summarizeOverviewSection,
-} from "./service-helpers-occurrence.js";
+import { resolveDefaultTimeZone } from "./defaults.js";
 import {
   type buildGoalSemanticReviewMetadata,
   mergeGoalSemanticReviewMetadata,
@@ -60,20 +33,42 @@ import {
   readGoalSemanticReviewMetadata,
 } from "./goal-grounding.js";
 import { evaluateGoalProgressWithLlm } from "./goal-semantic-evaluator.js";
-import { resolveDefaultTimeZone } from "./defaults.js";
-import { addMinutes } from "./time.js";
-import { getZonedDateParts } from "./time.js";
+import {
+  createLifeOpsAuditEvent,
+  createLifeOpsGoalDefinition,
+} from "./repository.js";
 import {
   GOAL_REVIEW_LOOKBACK_DAYS,
   GOAL_SEMANTIC_REVIEW_CACHE_TTL_MS,
   MAX_OVERVIEW_REMINDERS,
   OVERVIEW_HORIZON_MINUTES,
 } from "./service-constants.js";
+import {
+  buildActiveCalendarEventReminders,
+  buildActiveReminders,
+  isRecord,
+  mergeMetadata,
+  normalizeNullableRecord,
+  normalizeOptionalRecord,
+  priorityToUrgency,
+  requireRecord,
+  selectOverviewOccurrences,
+} from "./service-helpers-misc.js";
+import { summarizeOverviewSection } from "./service-helpers-occurrence.js";
+import { shouldDeliverReminderForIntensity } from "./service-helpers-reminder.js";
 import type {
   Constructor,
   LifeOpsServiceBase,
   MixinClass,
 } from "./service-mixin-core.js";
+import {
+  fail,
+  normalizeEnumValue,
+  normalizeOptionalString,
+  normalizeReminderUrgency,
+  requireNonEmptyString,
+} from "./service-normalize.js";
+import { addMinutes, getZonedDateParts } from "./time.js";
 
 export interface LifeOpsGoalService {
   deleteGoal(goalId: string): Promise<void>;
@@ -196,8 +191,10 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(
         })(),
         supportStrategy: (() => {
           const strategy =
-            normalizeOptionalRecord(request.supportStrategy, "supportStrategy") ??
-            {};
+            normalizeOptionalRecord(
+              request.supportStrategy,
+              "supportStrategy",
+            ) ?? {};
           if (Array.isArray(strategy)) {
             fail(400, "supportStrategy must be an object, not an array");
           }
@@ -205,8 +202,10 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(
         })(),
         successCriteria: (() => {
           const criteria =
-            normalizeOptionalRecord(request.successCriteria, "successCriteria") ??
-            {};
+            normalizeOptionalRecord(
+              request.successCriteria,
+              "successCriteria",
+            ) ?? {};
           if (Array.isArray(criteria)) {
             fail(400, "successCriteria must be an object, not an array");
           }
@@ -215,7 +214,11 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(
         status:
           request.status === undefined
             ? "active"
-            : normalizeEnumValue(request.status, "status", LIFEOPS_GOAL_STATUSES),
+            : normalizeEnumValue(
+                request.status,
+                "status",
+                LIFEOPS_GOAL_STATUSES,
+              ),
         reviewState:
           request.reviewState === undefined
             ? "idle"
@@ -254,7 +257,10 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(
       request: UpdateLifeOpsGoalRequest,
     ): Promise<LifeOpsGoalRecord> {
       const current = await this.getGoalRecord(goalId);
-      const ownership = this.normalizeOwnership(request.ownership, current.goal);
+      const ownership = this.normalizeOwnership(
+        request.ownership,
+        current.goal,
+      );
       const nextGoal: LifeOpsGoalDefinition = {
         ...current.goal,
         ...ownership,
@@ -280,7 +286,11 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(
             : current.goal.successCriteria,
         status:
           request.status !== undefined
-            ? normalizeEnumValue(request.status, "status", LIFEOPS_GOAL_STATUSES)
+            ? normalizeEnumValue(
+                request.status,
+                "status",
+                LIFEOPS_GOAL_STATUSES,
+              )
             : current.goal.status,
         reviewState:
           request.reviewState !== undefined
@@ -546,7 +556,9 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(
         return 0;
       }
       const referenceTitleTokens = tokenizeGoalText(args.reference.title);
-      const candidateTitleTokens = new Set(tokenizeGoalText(args.candidate.title));
+      const candidateTitleTokens = new Set(
+        tokenizeGoalText(args.candidate.title),
+      );
       const titleOverlap = referenceTitleTokens.filter((token) =>
         candidateTitleTokens.has(token),
       ).length;
@@ -565,7 +577,9 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(
     }): LifeOpsGoalExperienceLoopSuggestion[] {
       const suggestions: LifeOpsGoalExperienceLoopSuggestion[] = [];
       const seen = new Set<string>();
-      const pushSuggestion = (suggestion: LifeOpsGoalExperienceLoopSuggestion) => {
+      const pushSuggestion = (
+        suggestion: LifeOpsGoalExperienceLoopSuggestion,
+      ) => {
         const key = `${suggestion.definitionId ?? "none"}:${suggestion.title.toLowerCase()}`;
         if (seen.has(key)) {
           return;
@@ -763,7 +777,10 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(
       if (!Number.isFinite(reviewedAtMs)) {
         return null;
       }
-      if (args.now.getTime() - reviewedAtMs > GOAL_SEMANTIC_REVIEW_CACHE_TTL_MS) {
+      if (
+        args.now.getTime() - reviewedAtMs >
+        GOAL_SEMANTIC_REVIEW_CACHE_TTL_MS
+      ) {
         return null;
       }
       return cached;
@@ -776,7 +793,9 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(
       semanticReview: ReturnType<typeof buildGoalSemanticReviewMetadata> | null,
       now: Date,
     ): Promise<LifeOpsGoalDefinition> {
-      const currentSemanticReview = readGoalSemanticReviewMetadata(goal.metadata);
+      const currentSemanticReview = readGoalSemanticReviewMetadata(
+        goal.metadata,
+      );
       const semanticUnchanged =
         !semanticReview ||
         (currentSemanticReview &&
@@ -895,7 +914,9 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(
         goal: goalRecord.goal,
         now,
       });
-      const semanticEvidence = readGoalGroundingMetadata(goalRecord.goal.metadata)
+      const semanticEvidence = readGoalGroundingMetadata(
+        goalRecord.goal.metadata,
+      )
         ? await this.buildGoalSemanticEvidence({
             activeOccurrences,
             goal: goalRecord.goal,
@@ -1068,7 +1089,9 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(
       };
     }
 
-    async reviewGoalsForWeek(now = new Date()): Promise<LifeOpsWeeklyGoalReview> {
+    async reviewGoalsForWeek(
+      now = new Date(),
+    ): Promise<LifeOpsWeeklyGoalReview> {
       const goals = (await this.repository.listGoals(this.agentId())).filter(
         (goal) => goal.status === "active",
       );
@@ -1222,7 +1245,9 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(
         "definition",
         overviewOccurrences.map((occurrence) => occurrence.definitionId),
       );
-      const policies = await this.repository.listChannelPolicies(this.agentId());
+      const policies = await this.repository.listChannelPolicies(
+        this.agentId(),
+      );
       const definitionPreferencesById = new Map<
         string,
         LifeOpsReminderPreference
@@ -1235,7 +1260,10 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(
           policies,
         );
         definitionPreferencesById.set(plan.ownerId, preference);
-        const effectivePlan = this.resolveEffectiveReminderPlan(plan, preference);
+        const effectivePlan = this.resolveEffectiveReminderPlan(
+          plan,
+          preference,
+        );
         if (effectivePlan) {
           plansByDefinitionId.set(plan.ownerId, effectivePlan);
         }
@@ -1292,8 +1320,9 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(
           now,
         ).filter((reminder) =>
           shouldDeliverReminderForIntensity(
-            definitionPreferencesById.get(reminder.definitionId ?? "")?.effective
-              ?.intensity ?? globalReminderPreference.effective.intensity,
+            definitionPreferencesById.get(reminder.definitionId ?? "")
+              ?.effective?.intensity ??
+              globalReminderPreference.effective.intensity,
             occurrenceUrgencies.get(reminder.ownerId) ?? "medium",
           ),
         ),

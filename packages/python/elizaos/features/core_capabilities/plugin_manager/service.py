@@ -1,7 +1,7 @@
 """Plugin manager service.
 
 Read-only plugin discovery and plugin/core status introspection.
-Ported from plugin-plugin-manager TypeScript ``PluginManagerService``.
+Ported from ``@elizaos/core`` plugin-manager TypeScript ``PluginManagerService``.
 
 The Python port focuses on plugin state tracking and introspection.
 Dynamic loading/unloading is environment-specific and not fully portable,

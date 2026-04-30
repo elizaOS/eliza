@@ -195,6 +195,51 @@ const stubRelationshipsPeopleResponse = {
   },
 };
 
+const stubRelationshipsGraphResponse = {
+  data: {
+    people: [],
+    relationships: [],
+    stats: {
+      totalPeople: 0,
+      totalRelationships: 0,
+      totalIdentities: 0,
+    },
+    candidateMerges: [],
+  },
+};
+
+const stubAuthIdentity = {
+  id: "owner-1",
+  displayName: "Owner",
+  kind: "owner",
+};
+
+const stubAuthSession = {
+  id: "local-session",
+  kind: "local",
+  expiresAt: null,
+};
+
+const stubAuthAccess = {
+  mode: "local",
+  passwordConfigured: false,
+  ownerConfigured: true,
+};
+
+const stubLogsResponse = {
+  entries: [
+    {
+      timestamp: Date.now(),
+      level: "info",
+      message: "smoke API ready",
+      source: "smoke",
+      tags: ["smoke"],
+    },
+  ],
+  sources: ["smoke"],
+  tags: ["smoke"],
+};
+
 const stubMemoryFeedResponse = {
   memories: [],
   hasMore: false,
@@ -478,6 +523,139 @@ const stubCharacter = {
   messageExamples: [],
   postExamples: [],
 };
+
+const stubExperiences = [
+  {
+    id: "stub-exp-vite-env",
+    type: "correction",
+    outcome: "positive",
+    context:
+      "A local Vite app kept stale environment variables after .env changed.",
+    action: "Restarted the dev server and reran the route check.",
+    result: "The updated API base URL appeared after restart.",
+    learning:
+      "Restart the dev server after changing environment variables so the running process loads new config.",
+    tags: ["vite", "env", "restart"],
+    keywords: ["vite", "env", "restart", "config"],
+    associatedEntityIds: ["stub-user-local", "stub-agent"],
+    domain: "coding",
+    confidence: 0.91,
+    importance: 0.88,
+    createdAt: "2026-04-20T12:00:00.000Z",
+    updatedAt: "2026-04-21T12:00:00.000Z",
+    accessCount: 3,
+    embeddingDimensions: 1536,
+    sourceMessageIds: ["stub-msg-1", "stub-msg-2", "stub-msg-3"],
+    sourceRoomId: "stub-room-local-dev",
+    sourceTriggerMessageId: "stub-msg-3",
+    extractionMethod: "experience_evaluator",
+  },
+  {
+    id: "stub-exp-test-deps",
+    type: "warning",
+    outcome: "negative",
+    context:
+      "A TypeScript test run started before workspace dependencies were ready.",
+    action: "Ran tests before installing packages.",
+    result: "The test suite failed on missing dependencies.",
+    learning:
+      "Install workspace dependencies before running app tests or local dev commands.",
+    tags: ["setup", "tests"],
+    keywords: ["dependencies", "tests", "workspace", "setup"],
+    associatedEntityIds: ["stub-user-local"],
+    domain: "coding",
+    confidence: 0.78,
+    importance: 0.76,
+    createdAt: "2026-04-22T12:00:00.000Z",
+    updatedAt: "2026-04-22T13:00:00.000Z",
+    accessCount: 2,
+    embeddingDimensions: 1536,
+  },
+  {
+    id: "stub-exp-release-notes",
+    type: "success",
+    outcome: "positive",
+    context: "A release note draft contained too much implementation detail.",
+    action: "Grouped changes by user impact first.",
+    result: "The summary was accepted without follow-up edits.",
+    learning:
+      "For release notes, group by user impact before implementation details.",
+    tags: ["writing", "release-notes"],
+    keywords: ["release", "notes", "impact", "writing"],
+    associatedEntityIds: ["stub-user-docs"],
+    domain: "writing",
+    confidence: 0.86,
+    importance: 0.52,
+    createdAt: "2026-04-23T12:00:00.000Z",
+    updatedAt: "2026-04-23T12:00:00.000Z",
+    accessCount: 1,
+    embeddingDimensions: 1536,
+  },
+  {
+    id: "stub-exp-graph-ux",
+    type: "learning",
+    outcome: "neutral",
+    context: "The experience graph used text cards inside the map.",
+    action: "Reviewed visual density and interaction clarity.",
+    result: "The graph felt like a list pasted into a canvas.",
+    learning:
+      "Use visual encodings in graph views and keep text in the detail panel outside the map.",
+    tags: ["graph", "ux"],
+    keywords: ["graph", "visual", "detail", "map"],
+    associatedEntityIds: ["stub-user-design", "stub-agent"],
+    domain: "ux",
+    confidence: 0.82,
+    importance: 0.9,
+    createdAt: "2026-04-24T12:00:00.000Z",
+    updatedAt: "2026-04-24T12:00:00.000Z",
+    accessCount: 1,
+    embeddingDimensions: 1536,
+    relatedExperiences: ["stub-exp-search-action"],
+  },
+  {
+    id: "stub-exp-automation-cadence",
+    type: "correction",
+    outcome: "mixed",
+    context:
+      "Older automation cadence guidance conflicted with newer direct feedback.",
+    action: "Kept the latest explicit preference and linked older records.",
+    result: "Future automation suggestions used the corrected cadence.",
+    learning:
+      "Prefer the latest explicit cadence preference when automation guidance conflicts.",
+    tags: ["automation", "preference"],
+    keywords: ["automation", "cadence", "preference"],
+    associatedEntityIds: ["stub-user-design"],
+    domain: "planning",
+    confidence: 0.72,
+    importance: 0.82,
+    createdAt: "2026-04-25T12:00:00.000Z",
+    updatedAt: "2026-04-25T12:00:00.000Z",
+    accessCount: 1,
+    embeddingDimensions: 1536,
+    supersedes: "stub-exp-release-notes",
+  },
+  {
+    id: "stub-exp-search-action",
+    type: "discovery",
+    outcome: "neutral",
+    context: "A graph search needed more than top-level context injection.",
+    action: "Added a dedicated experience search action with graph data.",
+    result: "The agent can retrieve detailed experience results on demand.",
+    learning:
+      "Expose experience graph search as an action so planning context can stay compact but details remain searchable.",
+    tags: ["search", "graph"],
+    keywords: ["experience", "graph", "search", "action"],
+    associatedEntityIds: ["stub-agent"],
+    domain: "coding",
+    confidence: 0.84,
+    importance: 0.86,
+    createdAt: "2026-04-26T12:00:00.000Z",
+    updatedAt: "2026-04-26T12:00:00.000Z",
+    accessCount: 1,
+    embeddingDimensions: 1536,
+    relatedExperiences: ["stub-exp-graph-ux"],
+  },
+];
 
 function parsePositiveInt(value, fallback) {
   const parsed = Number(value);
@@ -816,6 +994,32 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/auth/me") {
+    sendJson(req, res, 200, {
+      identity: stubAuthIdentity,
+      session: stubAuthSession,
+      access: stubAuthAccess,
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/auth/sessions") {
+    sendJson(req, res, 200, {
+      sessions: [
+        {
+          id: stubAuthSession.id,
+          kind: stubAuthSession.kind,
+          ip: "127.0.0.1",
+          userAgent: "Playwright smoke",
+          lastSeenAt: Date.now(),
+          expiresAt: null,
+          current: true,
+        },
+      ],
+    });
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/agent/status") {
     sendJson(req, res, 200, { onboardingComplete: true, status: "running" });
     return;
@@ -913,6 +1117,11 @@ const server = http.createServer(async (req, res) => {
       limit: Number.isFinite(limit) ? limit : 50,
       offset: Number.isFinite(offset) ? offset : 0,
     });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/relationships/graph") {
+    sendJson(req, res, 200, stubRelationshipsGraphResponse);
     return;
   }
 
@@ -1026,7 +1235,10 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/api/character/experiences") {
-    sendJson(req, res, 200, { data: [], total: 0 });
+    sendJson(req, res, 200, {
+      data: stubExperiences,
+      total: stubExperiences.length,
+    });
     return;
   }
 
@@ -1505,6 +1717,11 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/apps/runs") {
     sendJson(req, res, 200, []);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/logs") {
+    sendJson(req, res, 200, stubLogsResponse);
     return;
   }
 

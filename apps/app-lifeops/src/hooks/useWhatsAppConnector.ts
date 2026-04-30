@@ -1,13 +1,7 @@
 import { client } from "@elizaos/app-core";
 import type { LifeOpsWhatsAppConnectorStatus } from "@elizaos/shared";
 import { useCallback, useEffect, useState } from "react";
-
-function formatError(cause: unknown, fallback: string): string {
-  if (cause instanceof Error && cause.message.trim().length > 0) {
-    return cause.message.trim();
-  }
-  return fallback;
-}
+import { formatConnectorError } from "./connector-error.js";
 
 export function useWhatsAppConnector() {
   const [status, setStatus] = useState<LifeOpsWhatsAppConnectorStatus | null>(
@@ -23,7 +17,12 @@ export function useWhatsAppConnector() {
       setStatus(nextStatus);
       setError(null);
     } catch (cause) {
-      setError(formatError(cause, "WhatsApp connector status failed to load."));
+      setError(
+        formatConnectorError(
+          cause,
+          "WhatsApp connector status failed to load.",
+        ),
+      );
     } finally {
       setLoading(false);
     }
@@ -41,7 +40,10 @@ export function useWhatsAppConnector() {
       } catch (cause) {
         if (cancelled) return;
         setError(
-          formatError(cause, "WhatsApp connector status failed to load."),
+          formatConnectorError(
+            cause,
+            "WhatsApp connector status failed to load.",
+          ),
         );
       } finally {
         if (!cancelled) setLoading(false);

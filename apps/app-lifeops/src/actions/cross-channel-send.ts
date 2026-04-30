@@ -290,13 +290,7 @@ async function resolveCrossChannelSendPlanWithLlm(args: {
       parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
       parseJSONObjectFromText(rawResponse);
     if (!parsed) {
-      const fallbackResponse = rawResponse.trim();
-      return fallbackResponse.length > 0
-        ? {
-            shouldAct: false,
-            response: fallbackResponse,
-          }
-        : {};
+      return {};
     }
     return {
       channel: normalizePlannerResponse(parsed.channel),
@@ -809,7 +803,7 @@ export const crossChannelSendAction: Action & {
     "owner (those use AGENT_SEND_MESSAGE). " +
     "Do NOT use this for 'broadcast/push/send <X> to all my devices' or " +
     "'broadcast a reminder to my phone/desktop/watch' — device-targeted " +
-    "reminders belong to PUBLISH_DEVICE_INTENT. " +
+    "reminders belong to INTENT_SYNC. " +
     "Do NOT use OWNER_CALENDAR for channel-send requests even if the message " +
     "mentions a meeting-like word (e.g. 'standup', 'sync'); OWNER_CALENDAR " +
     "is for negotiating calendar proposals, not relaying chat messages.",

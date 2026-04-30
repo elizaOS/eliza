@@ -1,9 +1,16 @@
 import fs from "node:fs";
 import path from "node:path";
+// Import from the specific subpath instead of "@elizaos/agent" so loading
+// this module during release/build scripts doesn't transitively pull in
+// eliza/packages/agent/src/runtime/eliza.ts (which has top-level imports
+// of @elizaos/plugin-* runtime providers). copy-runtime-node-modules runs
+// in release pipelines where those plugin packages are not yet installed
+// in node_modules, so the broader import path crashes with
+// ERR_MODULE_NOT_FOUND for @elizaos/plugin-anthropic / -sql / etc.
 import {
   BASELINE_BUNDLED_RUNTIME_PACKAGES,
   getBundledRuntimePackages,
-} from "@elizaos/agent";
+} from "@elizaos/agent/runtime/release-plugin-policy.js";
 
 const JS_FILE_RE = /\.(?:[cm]?js)$/i;
 const IMPORT_SPECIFIER_RE =

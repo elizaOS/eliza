@@ -40,19 +40,20 @@ export function redactDetailsSecrets(details: unknown): unknown {
   if (details && typeof details === "object") {
     const out: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(details)) {
-      out[key] =
-        typeof value === "string" ? redactDiagnosticUrl(value) : value;
+      out[key] = typeof value === "string" ? redactDiagnosticUrl(value) : value;
     }
     return out;
   }
   return details;
 }
 
-export function formatRendererDiagnosticLine(params?: {
-  source?: string;
-  message?: string;
-  details?: unknown;
-} | null): string {
+export function formatRendererDiagnosticLine(
+  params?: {
+    source?: string;
+    message?: string;
+    details?: unknown;
+  } | null,
+): string {
   const source = params?.source ?? "renderer";
   const message = params?.message?.trim() || "(no message)";
   const redactedDetails = redactDetailsSecrets(params?.details);

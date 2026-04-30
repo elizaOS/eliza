@@ -273,6 +273,10 @@ export const LIFEOPS_CONNECTOR_PROVIDERS = [
   "signal",
   "whatsapp",
   "imessage",
+  "strava",
+  "fitbit",
+  "withings",
+  "oura",
 ] as const;
 export type LifeOpsConnectorProvider =
   (typeof LIFEOPS_CONNECTOR_PROVIDERS)[number];
@@ -316,6 +320,47 @@ export const LIFEOPS_X_CAPABILITIES = [
   "x.dm.write",
 ] as const;
 export type LifeOpsXCapability = (typeof LIFEOPS_X_CAPABILITIES)[number];
+
+export const LIFEOPS_HEALTH_CONNECTOR_PROVIDERS = [
+  "strava",
+  "fitbit",
+  "withings",
+  "oura",
+] as const;
+export type LifeOpsHealthConnectorProvider =
+  (typeof LIFEOPS_HEALTH_CONNECTOR_PROVIDERS)[number];
+
+export const LIFEOPS_HEALTH_CONNECTOR_CAPABILITIES = [
+  "health.activity.read",
+  "health.workouts.read",
+  "health.sleep.read",
+  "health.readiness.read",
+  "health.body.read",
+  "health.vitals.read",
+] as const;
+export type LifeOpsHealthConnectorCapability =
+  (typeof LIFEOPS_HEALTH_CONNECTOR_CAPABILITIES)[number];
+
+export const LIFEOPS_HEALTH_METRICS = [
+  "steps",
+  "active_minutes",
+  "sleep_hours",
+  "sleep_score",
+  "readiness_score",
+  "heart_rate",
+  "resting_heart_rate",
+  "heart_rate_variability",
+  "calories",
+  "distance_meters",
+  "weight_kg",
+  "body_fat_percent",
+  "blood_pressure_systolic",
+  "blood_pressure_diastolic",
+  "blood_oxygen_percent",
+  "respiratory_rate",
+  "body_temperature_celsius",
+] as const;
+export type LifeOpsHealthMetric = (typeof LIFEOPS_HEALTH_METRICS)[number];
 
 export const LIFEOPS_SIGNAL_CAPABILITIES = [
   "signal.read",
@@ -913,6 +958,10 @@ export type LifeOpsWorkflowAction =
       request?: GetLifeOpsGmailUnrespondedRequest;
     })
   | (LifeOpsWorkflowActionBase & {
+      kind: "get_health_summary";
+      request?: GetLifeOpsHealthSummaryRequest;
+    })
+  | (LifeOpsWorkflowActionBase & {
       kind: "dispatch_n8n_workflow";
       workflowId: string;
       payload?: Record<string, unknown>;
@@ -968,6 +1017,7 @@ export interface LifeOpsConnectorGrant {
   provider: LifeOpsConnectorProvider;
   side: LifeOpsConnectorSide;
   identity: Record<string, unknown>;
+  identityEmail?: string | null;
   grantedScopes: string[];
   capabilities: string[];
   tokenRef: string | null;
@@ -1023,6 +1073,10 @@ export type LifeOpsActivitySignalState =
 export const LIFEOPS_HEALTH_SIGNAL_SOURCES = [
   "healthkit",
   "health_connect",
+  "strava",
+  "fitbit",
+  "withings",
+  "oura",
 ] as const;
 export type LifeOpsHealthSignalSource =
   (typeof LIFEOPS_HEALTH_SIGNAL_SOURCES)[number];
@@ -1054,6 +1108,211 @@ export interface LifeOpsHealthSignal {
   sleep: LifeOpsHealthSignalSleepSummary;
   biometrics: LifeOpsHealthSignalBiometrics;
   warnings: string[];
+}
+
+export const LIFEOPS_HEALTH_CONNECTOR_REASONS = [
+  "connected",
+  "disconnected",
+  "config_missing",
+  "needs_reauth",
+  "sync_failed",
+] as const;
+export type LifeOpsHealthConnectorReason =
+  (typeof LIFEOPS_HEALTH_CONNECTOR_REASONS)[number];
+
+export interface LifeOpsHealthConnectorStatus {
+  provider: LifeOpsHealthConnectorProvider;
+  side: LifeOpsConnectorSide;
+  mode: LifeOpsConnectorMode;
+  defaultMode: LifeOpsConnectorMode;
+  availableModes: LifeOpsConnectorMode[];
+  executionTarget: LifeOpsConnectorExecutionTarget;
+  sourceOfTruth: LifeOpsConnectorSourceOfTruth;
+  configured: boolean;
+  connected: boolean;
+  reason: LifeOpsHealthConnectorReason;
+  identity: Record<string, unknown> | null;
+  grantedCapabilities: LifeOpsHealthConnectorCapability[];
+  grantedScopes: string[];
+  expiresAt: string | null;
+  hasRefreshToken: boolean;
+  lastSyncAt: string | null;
+  grant: LifeOpsConnectorGrant | null;
+  degradations?: LifeOpsConnectorDegradation[];
+}
+
+export interface LifeOpsHealthMetricSample {
+  id: string;
+  agentId: string;
+  provider: LifeOpsHealthConnectorProvider;
+  grantId: string;
+  metric: LifeOpsHealthMetric;
+  value: number;
+  unit: string;
+  startAt: string;
+  endAt: string;
+  localDate: string;
+  sourceExternalId: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LifeOpsHealthWorkout {
+  id: string;
+  agentId: string;
+  provider: LifeOpsHealthConnectorProvider;
+  grantId: string;
+  sourceExternalId: string;
+  workoutType: string;
+  title: string;
+  startAt: string;
+  endAt: string | null;
+  durationSeconds: number;
+  distanceMeters: number | null;
+  calories: number | null;
+  averageHeartRate: number | null;
+  maxHeartRate: number | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LifeOpsHealthSyncState {
+  id: string;
+  agentId: string;
+  provider: LifeOpsHealthConnectorProvider;
+  grantId: string;
+  cursor: string | null;
+  lastSyncedAt: string | null;
+  lastSyncStartedAt: string | null;
+  lastSyncError: string | null;
+  metadata: Record<string, unknown>;
+  updatedAt: string;
+}
+
+export const LIFEOPS_HEALTH_SLEEP_STAGES = [
+  "awake",
+  "light",
+  "deep",
+  "rem",
+  "restless",
+  "unknown",
+] as const;
+export type LifeOpsHealthSleepStage =
+  (typeof LIFEOPS_HEALTH_SLEEP_STAGES)[number];
+
+export interface LifeOpsHealthSleepStageSample {
+  stage: LifeOpsHealthSleepStage;
+  startAt: string;
+  endAt: string;
+  confidence: number | null;
+  providerCode: string | null;
+}
+
+export interface LifeOpsHealthSleepEpisode {
+  id: string;
+  agentId: string;
+  provider: LifeOpsHealthConnectorProvider;
+  grantId: string;
+  sourceExternalId: string;
+  localDate: string;
+  timezone: string | null;
+  startAt: string;
+  endAt: string;
+  isMainSleep: boolean;
+  sleepType: string | null;
+  durationSeconds: number;
+  timeInBedSeconds: number | null;
+  efficiency: number | null;
+  latencySeconds: number | null;
+  awakeSeconds: number | null;
+  lightSleepSeconds: number | null;
+  deepSleepSeconds: number | null;
+  remSleepSeconds: number | null;
+  sleepScore: number | null;
+  readinessScore: number | null;
+  averageHeartRate: number | null;
+  lowestHeartRate: number | null;
+  averageHrvMs: number | null;
+  respiratoryRate: number | null;
+  bloodOxygenPercent: number | null;
+  stageSamples: LifeOpsHealthSleepStageSample[];
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LifeOpsHealthDailySummary {
+  date: string;
+  provider: LifeOpsHealthConnectorProvider | "healthkit" | "google-fit";
+  steps: number;
+  activeMinutes: number;
+  sleepHours: number;
+  calories: number | null;
+  distanceMeters: number | null;
+  heartRateAvg: number | null;
+  restingHeartRate: number | null;
+  hrvMs: number | null;
+  sleepScore: number | null;
+  readinessScore: number | null;
+  weightKg: number | null;
+  bloodPressureSystolic: number | null;
+  bloodPressureDiastolic: number | null;
+  bloodOxygenPercent: number | null;
+}
+
+export interface GetLifeOpsHealthSummaryRequest {
+  provider?: LifeOpsHealthConnectorProvider | null;
+  mode?: LifeOpsConnectorMode;
+  side?: LifeOpsConnectorSide;
+  days?: number;
+  startDate?: string | null;
+  endDate?: string | null;
+  metrics?: LifeOpsHealthMetric[];
+  forceSync?: boolean;
+}
+
+export interface LifeOpsHealthSummaryResponse {
+  providers: LifeOpsHealthConnectorStatus[];
+  summaries: LifeOpsHealthDailySummary[];
+  samples: LifeOpsHealthMetricSample[];
+  workouts: LifeOpsHealthWorkout[];
+  sleepEpisodes: LifeOpsHealthSleepEpisode[];
+  syncedAt: string;
+}
+
+export interface StartLifeOpsHealthConnectorRequest {
+  provider: LifeOpsHealthConnectorProvider;
+  side?: LifeOpsConnectorSide;
+  mode?: LifeOpsConnectorMode;
+  redirectUrl?: string;
+  capabilities?: LifeOpsHealthConnectorCapability[];
+}
+
+export interface StartLifeOpsHealthConnectorResponse {
+  provider: LifeOpsHealthConnectorProvider;
+  side: LifeOpsConnectorSide;
+  mode: LifeOpsConnectorMode;
+  requestedCapabilities: LifeOpsHealthConnectorCapability[];
+  redirectUri: string;
+  authUrl: string | null;
+}
+
+export interface DisconnectLifeOpsHealthConnectorRequest {
+  provider: LifeOpsHealthConnectorProvider;
+  side?: LifeOpsConnectorSide;
+  mode?: LifeOpsConnectorMode;
+  grantId?: string;
+}
+
+export interface SyncLifeOpsHealthConnectorRequest {
+  provider?: LifeOpsHealthConnectorProvider | null;
+  side?: LifeOpsConnectorSide;
+  mode?: LifeOpsConnectorMode;
+  startDate?: string | null;
+  endDate?: string | null;
+  days?: number;
 }
 
 export interface LifeOpsActivitySignal {
@@ -1636,9 +1895,9 @@ export interface LifeOpsCalendarEvent {
   updatedAt: string;
   /** Set on merged feeds so the UI can show which calendar an event came from. */
   calendarSummary?: string;
-  /** Set when aggregating across multiple Google accounts. */
+  /** Google grant that owns this Gmail message cache row. */
   grantId?: string;
-  /** Set when aggregating across multiple Google accounts. */
+  /** Email address for the owning Google account when known. */
   accountEmail?: string;
 }
 
@@ -2274,13 +2533,6 @@ export interface CreateLifeOpsCalendarEventRequest {
   durationMinutes?: number;
   windowPreset?: LifeOpsCalendarWindowPreset;
   attendees?: CreateLifeOpsCalendarEventAttendee[];
-  /**
-   * RFC 5545 RRULE strings (without the leading "RRULE:" prefix), e.g.
-   * `["FREQ=WEEKLY;BYDAY=MO"]`. Forwarded to Google Calendar's
-   * `recurrence` array when creating the event.
-   */
-  recurrence?: string[];
-  reminders?: LifeOpsCalendarEventReminderOverride[];
 }
 
 export interface LifeOpsNextCalendarEventContext {
@@ -2302,12 +2554,9 @@ export interface LifeOpsNextCalendarEventContext {
   >;
 }
 
-export interface LifeOpsCalendarEventReminderOverride {
-  minutesBefore: number;
-}
-
 export interface LifeOpsCalendarEventUpdate {
   side?: LifeOpsConnectorSide;
+  mode?: LifeOpsConnectorMode;
   grantId?: string;
   calendarId?: string;
   title?: string;
@@ -2317,12 +2566,6 @@ export interface LifeOpsCalendarEventUpdate {
   notes?: string;
   location?: string;
   attendees?: CreateLifeOpsCalendarEventAttendee[];
-  /**
-   * RFC 5545 RRULE strings (without the leading "RRULE:" prefix). Forwarded
-   * to Google Calendar's `recurrence` array on patch when supplied.
-   */
-  recurrence?: string[];
-  reminders?: LifeOpsCalendarEventReminderOverride[];
 }
 
 export interface LifeOpsCalendarEventMutationResult {
@@ -2554,6 +2797,20 @@ export interface LifeOpsSignalConnectorStatus {
   degradations?: LifeOpsConnectorDegradation[];
 }
 
+export interface SendLifeOpsSignalMessageRequest {
+  side?: LifeOpsConnectorSide;
+  recipient: string;
+  text: string;
+}
+
+export interface SendLifeOpsSignalMessageResponse {
+  provider: "signal";
+  side: LifeOpsConnectorSide;
+  recipient: string;
+  ok: true;
+  timestamp: number;
+}
+
 /**
  * A single inbound Signal message as returned by {@link readSignalInbound} and
  * the signal-local-client reader.
@@ -2589,6 +2846,15 @@ export interface LifeOpsSignalInboundMessage {
   isInbound: boolean;
   /** True when the message was received in a group conversation. */
   isGroup: boolean;
+}
+
+export interface GetLifeOpsSignalMessagesRequest {
+  limit?: number;
+}
+
+export interface GetLifeOpsSignalMessagesResponse {
+  count: number;
+  messages: LifeOpsSignalInboundMessage[];
 }
 
 export interface LifeOpsDiscordDmPreview {
@@ -2717,6 +2983,7 @@ export interface LifeOpsWhatsAppConnectorStatus {
    */
   inbound: true;
   phoneNumberId?: string;
+  phoneNumber?: string | null;
   localAuthAvailable?: boolean;
   localAuthRegistered?: boolean | null;
   serviceConnected?: boolean;
@@ -2811,6 +3078,46 @@ export interface StartLifeOpsDiscordConnectorRequest {
   source?: LifeOpsOwnerBrowserAccessSource;
 }
 
+export interface SendLifeOpsDiscordMessageRequest {
+  side?: LifeOpsConnectorSide;
+  channelId?: string;
+  text: string;
+}
+
+export interface SendLifeOpsDiscordMessageResponse {
+  provider: "discord";
+  side: LifeOpsConnectorSide;
+  channelId: string;
+  ok: true;
+  deliveryStatus: "sent" | "sending" | "failed" | "unknown";
+}
+
+export interface VerifyLifeOpsDiscordConnectorRequest {
+  side?: LifeOpsConnectorSide;
+  channelId?: string;
+  sendMessage?: string;
+}
+
+export interface VerifyLifeOpsDiscordConnectorResponse {
+  provider: "discord";
+  side: LifeOpsConnectorSide;
+  verifiedAt: string;
+  status: LifeOpsDiscordConnectorStatus;
+  send: {
+    ok: boolean;
+    error: string | null;
+    channelId: string | null;
+    message: string;
+    deliveryStatus: "sent" | "sending" | "failed" | "unknown" | null;
+  };
+}
+
+export interface SendLifeOpsWhatsAppMessageRequest {
+  to: string;
+  text: string;
+  replyToMessageId?: string;
+}
+
 export interface StartLifeOpsTelegramAuthRequest {
   side?: LifeOpsConnectorSide;
   phone: string;
@@ -2846,6 +3153,8 @@ export interface StartLifeOpsGoogleConnectorRequest {
   mode?: LifeOpsConnectorMode;
   /** Re-authenticate an existing account by grant ID (multi-account). */
   grantId?: string;
+  /** Create an additional account grant instead of reusing the side/mode grant. */
+  createNewGrant?: boolean;
   capabilities?: LifeOpsGoogleCapability[];
   redirectUrl?: string;
 }
@@ -2867,6 +3176,7 @@ export interface SelectLifeOpsGoogleConnectorPreferenceRequest {
 export interface DisconnectLifeOpsGoogleConnectorRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
+  grantId?: string;
 }
 
 export interface UpsertLifeOpsXConnectorRequest {
@@ -3379,8 +3689,17 @@ export interface LifeOpsSleepHistoryEpisode {
   confidence: number;
 }
 
+export interface LifeOpsSleepHistorySummary {
+  cycleCount: number;
+  averageDurationMin: number | null;
+  overnightCount: number;
+  napCount: number;
+  openCount: number;
+}
+
 export interface LifeOpsSleepHistoryResponse {
   episodes: LifeOpsSleepHistoryEpisode[];
+  summary: LifeOpsSleepHistorySummary;
   windowDays: number;
   includeNaps: boolean;
 }

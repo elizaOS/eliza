@@ -31,4 +31,3 @@ export function writeLocalStorageJson<T>(key: string, value: T): void {
     // ignore
   }
 }
-

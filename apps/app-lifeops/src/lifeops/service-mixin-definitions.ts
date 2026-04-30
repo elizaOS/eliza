@@ -13,44 +13,39 @@ import {
   LIFEOPS_DEFINITION_KINDS,
   LIFEOPS_DEFINITION_STATUSES,
 } from "../contracts/index.js";
-import { createLifeOpsTaskDefinition } from "./repository.js";
-import {
-  fail,
-  normalizeEnumValue,
-  normalizeOptionalString,
-  normalizeValidTimeZone,
-  normalizePriority,
-  requireNonEmptyString,
-} from "./service-normalize.js";
-import {
-  normalizeCadence,
-  normalizeWebsiteAccessPolicy,
-  normalizeProgressionRule,
-} from "./service-normalize-task.js";
-import {
-  normalizeWindowPolicyInput,
-} from "./service-normalize-connector.js";
-import {
-  normalizeOptionalRecord,
-  mergeMetadata,
-  normalizeReminderPlanDraft,
-  cloneRecord,
-  computeSnoozedUntil,
-} from "./service-helpers-misc.js";
-import {
-  computeDefinitionPerformance,
-} from "./service-helpers-occurrence.js";
 import { resolveDefaultTimeZone } from "./defaults.js";
-
+import { createLifeOpsTaskDefinition } from "./repository.js";
 import {
   ROUTINE_SEED_TEMPLATES,
   type RoutineSeedTemplate,
 } from "./seed-routines.js";
+import {
+  cloneRecord,
+  computeSnoozedUntil,
+  mergeMetadata,
+  normalizeOptionalRecord,
+  normalizeReminderPlanDraft,
+} from "./service-helpers-misc.js";
+import { computeDefinitionPerformance } from "./service-helpers-occurrence.js";
 import type {
   Constructor,
   LifeOpsServiceBase,
   MixinClass,
 } from "./service-mixin-core.js";
+import {
+  fail,
+  normalizeEnumValue,
+  normalizeOptionalString,
+  normalizePriority,
+  normalizeValidTimeZone,
+  requireNonEmptyString,
+} from "./service-normalize.js";
+import { normalizeWindowPolicyInput } from "./service-normalize-connector.js";
+import {
+  normalizeCadence,
+  normalizeProgressionRule,
+  normalizeWebsiteAccessPolicy,
+} from "./service-normalize-task.js";
 
 const ROUTINE_SEED_METADATA_PREFIX = "load-test-user-profile";
 
@@ -321,6 +316,7 @@ export function withDefinitions<TBase extends Constructor<LifeOpsServiceBase>>(
           timezone: effectiveTimezone,
           source: "seed",
           metadata: {
+            ...(template.request.metadata ?? {}),
             seedKey,
           },
         });

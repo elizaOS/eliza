@@ -88,7 +88,10 @@ declare module "./client-base" {
     ): Promise<CloudBillingCryptoQuoteResponse>;
     cloudLogin(): Promise<CloudLoginResponse>;
     cloudLoginPoll(sessionId: string): Promise<CloudLoginPollResponse>;
-    cloudLoginPersist(apiKey: string): Promise<CloudLoginPersistResponse>;
+    cloudLoginPersist(
+      apiKey: string,
+      identity?: { organizationId?: string; userId?: string },
+    ): Promise<CloudLoginPersistResponse>;
     cloudDisconnect(): Promise<{ ok: boolean }>;
     getCloudCompatAgents(): Promise<{
       success: boolean;
@@ -294,6 +297,7 @@ declare module "./client-base" {
       sessionId: string,
     ): Promise<{
       status: "pending" | "authenticated" | "expired" | "error";
+      organizationId?: string;
       token?: string;
       userId?: string;
       error?: string;
@@ -422,10 +426,17 @@ ElizaClient.prototype.cloudLoginPoll = async function (
 ElizaClient.prototype.cloudLoginPersist = async function (
   this: ElizaClient,
   apiKey,
+  identity,
 ) {
   return this.fetch("/api/cloud/login/persist", {
     method: "POST",
-    body: JSON.stringify({ apiKey }),
+    body: JSON.stringify({
+      apiKey,
+      ...(identity?.organizationId
+        ? { organizationId: identity.organizationId }
+        : {}),
+      ...(identity?.userId ? { userId: identity.userId } : {}),
+    }),
   });
 };
 
@@ -913,6 +924,7 @@ ElizaClient.prototype.cloudLoginPollDirect = async function (
     if (data.status === "authenticated" && data.apiKey) {
       return {
         status: "authenticated" as const,
+        organizationId: data.organizationId,
         token: data.apiKey,
         userId: data.userId,
       };

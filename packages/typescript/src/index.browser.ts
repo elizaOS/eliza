@@ -23,6 +23,7 @@ export {
 	fetchKnowledgeFromUrl,
 	isYouTubeUrl,
 } from "./features/knowledge/index";
+export * from "./lifeops-passive-connectors";
 export * from "./logger";
 export * from "./memory";
 export * from "./prompts";

@@ -33,7 +33,7 @@ export class CalendlyError extends Error {
   constructor(
     message: string,
     public readonly status: number,
-    public readonly body?: unknown,
+    public readonly body?: unknown
   ) {
     super(message);
     this.name = "CalendlyError";
@@ -43,11 +43,15 @@ export class CalendlyError extends Error {
 const REQUEST_TIMEOUT_MS = 12_000;
 
 function getCalendlyBaseUrl(): string {
-  return process.env.MILADY_MOCK_CALENDLY_BASE ?? "https://api.calendly.com";
+  return (
+    process.env.MILADY_MOCK_CALENDLY_BASE ??
+    process.env.ELIZA_MOCK_CALENDLY_BASE ??
+    "https://api.calendly.com"
+  );
 }
 
 export function readCalendlyCredentialsFromEnv(
-  env: NodeJS.ProcessEnv = process.env,
+  env: NodeJS.ProcessEnv = process.env
 ): CalendlyCredentials | null {
   const personalAccessToken = env.ELIZA_CALENDLY_TOKEN?.trim();
   if (!personalAccessToken) {
@@ -108,7 +112,7 @@ interface CalendlyRawAvailabilitySlot {
 async function calendlyRequest<T>(
   creds: CalendlyCredentials,
   path: string,
-  init: RequestInit = {},
+  init: RequestInit = {}
 ): Promise<T> {
   const url = path.startsWith("http") ? path : `${getCalendlyBaseUrl()}${path}`;
   const response = await fetch(url, {
@@ -134,7 +138,7 @@ async function calendlyRequest<T>(
         statusCode: response.status,
         path,
       },
-      `[lifeops] Calendly request failed: ${message}`,
+      `[lifeops] Calendly request failed: ${message}`
     );
     throw new CalendlyError(message, response.status, body);
   }
@@ -168,7 +172,7 @@ function extractErrorMessage(body: unknown): string | null {
 async function paginate<TRaw>(
   creds: CalendlyCredentials,
   initialPath: string,
-  limit: number,
+  limit: number
 ): Promise<TRaw[]> {
   const out: TRaw[] = [];
   let nextPath: string | null = initialPath;
@@ -186,12 +190,15 @@ async function paginate<TRaw>(
   return out;
 }
 
-export async function getCalendlyUser(
-  creds: CalendlyCredentials,
-): Promise<{ uri: string; name: string; email: string; schedulingUrl: string }> {
+export async function getCalendlyUser(creds: CalendlyCredentials): Promise<{
+  uri: string;
+  name: string;
+  email: string;
+  schedulingUrl: string;
+}> {
   const response = await calendlyRequest<{ resource: CalendlyRawUser }>(
     creds,
-    "/users/me",
+    "/users/me"
   );
   const user = response.resource;
   return {
@@ -209,7 +216,7 @@ async function resolveUserUri(creds: CalendlyCredentials): Promise<string> {
 }
 
 export async function listCalendlyEventTypes(
-  creds: CalendlyCredentials,
+  creds: CalendlyCredentials
 ): Promise<CalendlyEventType[]> {
   const userUri = await resolveUserUri(creds);
   const path = `/event_types?user=${encodeURIComponent(userUri)}&count=100`;
@@ -231,7 +238,7 @@ export async function listCalendlyScheduledEvents(
     maxStartTime?: string;
     status?: "active" | "canceled";
     limit?: number;
-  } = {},
+  } = {}
 ): Promise<CalendlyScheduledEvent[]> {
   const userUri = await resolveUserUri(creds);
   const limit = opts.limit ?? 50;
@@ -246,7 +253,7 @@ export async function listCalendlyScheduledEvents(
   const rawEvents = await paginate<CalendlyRawScheduledEvent>(
     creds,
     `/scheduled_events?${query.toString()}`,
-    limit,
+    limit
   );
 
   const enriched: CalendlyScheduledEvent[] = [];
@@ -266,7 +273,7 @@ export async function listCalendlyScheduledEvents(
 
 async function fetchEventInvitees(
   creds: CalendlyCredentials,
-  eventUri: string,
+  eventUri: string
 ): Promise<Array<{ name?: string; email?: string; status: string }>> {
   const path = `${eventUri}/invitees`;
   const raw = await paginate<CalendlyRawInvitee>(creds, path, 100);
@@ -279,7 +286,7 @@ async function fetchEventInvitees(
 
 async function fetchEventTypeDurationMinutes(
   creds: CalendlyCredentials,
-  eventTypeUri: string,
+  eventTypeUri: string
 ): Promise<number> {
   const response = await calendlyRequest<{
     resource: CalendlyRawEventType;
@@ -289,7 +296,7 @@ async function fetchEventTypeDurationMinutes(
     throw new CalendlyError(
       `Calendly event type ${eventTypeUri} did not return a usable duration`,
       0,
-      response,
+      response
     );
   }
   return duration;
@@ -298,7 +305,7 @@ async function fetchEventTypeDurationMinutes(
 export async function getCalendlyAvailability(
   creds: CalendlyCredentials,
   eventTypeUri: string,
-  opts: { startDate: string; endDate: string; timezone?: string },
+  opts: { startDate: string; endDate: string; timezone?: string }
 ): Promise<CalendlyAvailability[]> {
   const query = new URLSearchParams({
     event_type: eventTypeUri,
@@ -310,13 +317,16 @@ export async function getCalendlyAvailability(
   const [response, durationMinutes] = await Promise.all([
     calendlyRequest<{ collection: CalendlyRawAvailabilitySlot[] }>(
       creds,
-      `/event_type_available_times?${query.toString()}`,
+      `/event_type_available_times?${query.toString()}`
     ),
     fetchEventTypeDurationMinutes(creds, eventTypeUri),
   ]);
 
   const durationMs = durationMinutes * 60 * 1000;
-  const byDate = new Map<string, Array<{ startTime: string; endTime: string }>>();
+  const byDate = new Map<
+    string,
+    Array<{ startTime: string; endTime: string }>
+  >();
   for (const slot of response.collection ?? []) {
     if (slot.status !== "available") continue;
     const start = new Date(slot.start_time);
@@ -353,7 +363,7 @@ function toDateKey(date: Date, timezone?: string): string {
 
 export async function createCalendlySingleUseLink(
   creds: CalendlyCredentials,
-  eventTypeUri: string,
+  eventTypeUri: string
 ): Promise<{ bookingUrl: string; expiresAt: string | null }> {
   const response = await calendlyRequest<{
     resource: {

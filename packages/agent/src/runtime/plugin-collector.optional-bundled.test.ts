@@ -1,7 +1,7 @@
 /**
  * Optional core plugins are listed in OPTIONAL_CORE_PLUGINS and require
  * explicit configuration to load. Built-in capabilities (trust,
- * secrets-manager, plugin-manager) have been moved to core and are no longer
+ * secrets (SECRETS service), plugin-manager) have been moved to core and are no longer
  * in this list.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -20,13 +20,17 @@ describe("optional core plugins (require explicit opt-in)", () => {
   const prevCloudKey = process.env.ELIZAOS_CLOUD_API_KEY;
   const prevCloudEnabled = process.env.ELIZAOS_CLOUD_ENABLED;
   const prevOpenAiKey = process.env.OPENAI_API_KEY;
+  const prevAnthropicKey = process.env.ANTHROPIC_API_KEY;
   const prevOllamaBaseUrl = process.env.OLLAMA_BASE_URL;
+  const prevMiladyLocalLlama = process.env.MILADY_LOCAL_LLAMA;
 
   beforeEach(() => {
     delete process.env.ELIZAOS_CLOUD_API_KEY;
     delete process.env.ELIZAOS_CLOUD_ENABLED;
     delete process.env.OPENAI_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
     delete process.env.OLLAMA_BASE_URL;
+    delete process.env.MILADY_LOCAL_LLAMA;
   });
 
   afterEach(() => {
@@ -45,10 +49,20 @@ describe("optional core plugins (require explicit opt-in)", () => {
     } else {
       delete process.env.OPENAI_API_KEY;
     }
+    if (prevAnthropicKey !== undefined) {
+      process.env.ANTHROPIC_API_KEY = prevAnthropicKey;
+    } else {
+      delete process.env.ANTHROPIC_API_KEY;
+    }
     if (prevOllamaBaseUrl !== undefined) {
       process.env.OLLAMA_BASE_URL = prevOllamaBaseUrl;
     } else {
       delete process.env.OLLAMA_BASE_URL;
+    }
+    if (prevMiladyLocalLlama !== undefined) {
+      process.env.MILADY_LOCAL_LLAMA = prevMiladyLocalLlama;
+    } else {
+      delete process.env.MILADY_LOCAL_LLAMA;
     }
   });
 
@@ -149,5 +163,66 @@ describe("optional core plugins (require explicit opt-in)", () => {
     expect(names.has("@elizaos/plugin-elizacloud")).toBe(false);
     expect(names.has("@elizaos/plugin-openai")).toBe(false);
     expect(names.has("@elizaos/plugin-ollama")).toBe(true);
+  });
+
+  it("MILADY_LOCAL_LLAMA=1 keeps API-key cloud providers loaded alongside local", () => {
+    // The local handler registers at priority -1 so cloud wins when configured.
+    // Stripping remote providers from the load set would prevent users from
+    // ever routing a slot to Anthropic/OpenAI on AOSP / on-device builds.
+    process.env.MILADY_LOCAL_LLAMA = "1";
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+    process.env.OPENAI_API_KEY = "sk-test";
+
+    const names = collectPluginNames({
+      plugins: {},
+    } as ElizaConfig);
+
+    expect(names.has("@elizaos/plugin-anthropic")).toBe(true);
+    expect(names.has("@elizaos/plugin-openai")).toBe(true);
+  });
+
+  it("MILADY_LOCAL_LLAMA=1 keeps subscription plugins loaded (openai-codex needs plugin-openai)", () => {
+    // openai-codex subscription routes through plugin-openai (modelProvider
+    // mapping in SUBSCRIPTION_PROVIDER_MAP), so the plugin must stay loaded
+    // for the subscription to be usable.
+    process.env.MILADY_LOCAL_LLAMA = "1";
+    process.env.OPENAI_API_KEY = "sk-test";
+
+    const names = collectPluginNames({
+      agents: {
+        defaults: { subscriptionProvider: "openai-codex" },
+      },
+      plugins: {},
+    } as ElizaConfig);
+
+    expect(names.has("@elizaos/plugin-openai")).toBe(true);
+  });
+
+  it("MILADY_LOCAL_LLAMA=1 still respects legacy config-driven local-only mode", () => {
+    // When the operator opts into local-only via config (cloud.inferenceMode),
+    // the existing precedence path strips cloud regardless of MILADY_LOCAL_LLAMA.
+    process.env.MILADY_LOCAL_LLAMA = "1";
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+    process.env.OLLAMA_BASE_URL = "http://localhost:11434";
+
+    const names = collectPluginNames({
+      cloud: { enabled: false, inferenceMode: "local" },
+      plugins: {},
+    } as ElizaConfig);
+
+    expect(names.has("@elizaos/plugin-anthropic")).toBe(false);
+    expect(names.has("@elizaos/plugin-elizacloud")).toBe(false);
+    expect(names.has("@elizaos/plugin-ollama")).toBe(true);
+  });
+
+  it("MILADY_LOCAL_LLAMA unset leaves remote providers alone", () => {
+    delete process.env.MILADY_LOCAL_LLAMA;
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+
+    const names = collectPluginNames({
+      plugins: {},
+    } as ElizaConfig);
+
+    expect(names.has("@elizaos/plugin-anthropic")).toBe(true);
   });
 });

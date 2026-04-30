@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
+  __internal,
   callExternalAction,
   callUserAction,
-  __internal,
 } from "../src/actions/twilio-call.js";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -12,9 +12,7 @@ function makeMessage() {
     entityId: "00000000-0000-0000-0000-000000000001",
     roomId: "00000000-0000-0000-0000-000000000002",
     content: { text: "call", ownerAccess: true },
-  } as unknown as Parameters<
-    NonNullable<typeof callUserAction.handler>
-  >[1];
+  } as unknown as Parameters<NonNullable<typeof callUserAction.handler>>[1];
 }
 
 function makeMessageWithText(text: string) {
@@ -22,9 +20,7 @@ function makeMessageWithText(text: string) {
     entityId: "00000000-0000-0000-0000-000000000001",
     roomId: "00000000-0000-0000-0000-000000000002",
     content: { text, ownerAccess: true },
-  } as unknown as Parameters<
-    NonNullable<typeof callUserAction.handler>
-  >[1];
+  } as unknown as Parameters<NonNullable<typeof callUserAction.handler>>[1];
 }
 
 function makeRuntime(settings: Record<string, string> = {}) {
@@ -32,9 +28,7 @@ function makeRuntime(settings: Record<string, string> = {}) {
     agentId: "00000000-0000-0000-0000-000000000003",
     getSetting: (key: string) => settings[key],
     character: { settings: { OWNER: "test" } },
-  } as unknown as Parameters<
-    NonNullable<typeof callUserAction.handler>
-  >[0];
+  } as unknown as Parameters<NonNullable<typeof callUserAction.handler>>[0];
 }
 
 beforeEach(() => {

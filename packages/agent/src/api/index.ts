@@ -40,6 +40,14 @@ export * from "./rate-limiter.js";
 export * from "./registry-routes.js";
 export * from "./registry-service.js";
 export * from "./route-helpers.js";
+// `runtime-plugin-routes.ts` exports `matchPluginRoutePath` (used by plugin
+// authors and their tests, e.g. apps/app-vincent/src/vincent-plugin-dispatch.test.ts)
+// and the request-handling helper `tryHandleRuntimePluginRoute` (used by
+// agent runtime wiring). Both are part of the public agent surface.
+export {
+  matchPluginRoutePath,
+  tryHandleRuntimePluginRoute,
+} from "./runtime-plugin-routes.js";
 export * from "./sandbox-routes.js";
 export {
   applySignalQrOverride,
@@ -73,12 +81,4 @@ export {
   type WhatsAppRouteDeps,
   type WhatsAppRouteState,
 } from "./whatsapp-routes.js";
-// `runtime-plugin-routes.ts` exports `matchPluginRoutePath` (used by plugin
-// authors and their tests, e.g. apps/app-vincent/src/vincent-plugin-dispatch.test.ts)
-// and the request-handling helper `tryHandleRuntimePluginRoute` (used by
-// agent runtime wiring). Both are part of the public agent surface.
-export {
-  matchPluginRoutePath,
-  tryHandleRuntimePluginRoute,
-} from "./runtime-plugin-routes.js";
 export * from "./zip-utils.js";

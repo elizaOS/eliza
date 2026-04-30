@@ -25,12 +25,12 @@ import {
 } from "../platform/lifeops-github.js";
 import { LifeOpsXPanel } from "./LifeOpsOperationalPanels";
 import type { ManagedAgentGithubEntry } from "./LifeOpsPageSections";
+import { LifeOpsSectionContent } from "./LifeOpsSectionContent.js";
 import {
   type LifeOpsSelection,
   LifeOpsSelectionProvider,
   useLifeOpsSelection,
 } from "./LifeOpsSelectionContext.js";
-import { LifeOpsSectionContent } from "./LifeOpsSectionContent.js";
 import { LifeOpsSettingsSection } from "./LifeOpsSettingsSection";
 import { clearLifeOpsSetupGateDismissed } from "./LifeOpsSetupGate.js";
 import { LifeOpsWorkspaceShell } from "./LifeOpsWorkspaceShell.js";
