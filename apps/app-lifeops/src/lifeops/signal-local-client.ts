@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { logger } from "@elizaos/core";
 import type { LifeOpsSignalInboundMessage } from "@elizaos/shared";
 
@@ -34,6 +35,11 @@ export interface SignalLocalClientConfig {
    * Read from `SIGNAL_ACCOUNT_NUMBER` when not provided directly.
    */
   accountNumber: string;
+}
+
+export interface SignalLocalSendRequest {
+  recipient: string;
+  text: string;
 }
 
 export class SignalLocalClientError extends Error {
@@ -104,9 +110,24 @@ interface SignalCliReceiveResponse {
   account?: string;
 }
 
+interface SignalCliRpcResponse<T> {
+  jsonrpc?: string;
+  id?: string | number | null;
+  result?: T;
+  error?: {
+    code?: number | string;
+    message?: string;
+    data?: unknown;
+  };
+}
+
 function isSignalCliReceiveResponse(
   value: unknown,
 ): value is SignalCliReceiveResponse {
+  return Boolean(value && typeof value === "object");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object");
 }
 
@@ -266,4 +287,111 @@ export async function readSignalInboundMessages(
   }
 
   return messages;
+}
+
+export async function sendSignalLocalMessage(
+  config: SignalLocalClientConfig,
+  request: SignalLocalSendRequest,
+): Promise<{ timestamp: number }> {
+  const url = `${config.httpUrl.replace(/\/$/, "")}/api/v1/rpc`;
+  const rpcId = randomUUID();
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: rpcId,
+        method: "send",
+        params: {
+          account: config.accountNumber,
+          recipients: [request.recipient],
+          message: request.text,
+        },
+      }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.warn(
+      {
+        boundary: "lifeops",
+        integration: "signal",
+        operation: "signal_local_send",
+        httpUrl: config.httpUrl,
+      },
+      `[lifeops] Signal local client send network failure: ${message}`,
+    );
+    throw new SignalLocalClientError(`Signal local send failed: ${message}`, {
+      status: null,
+      category: "network",
+    });
+  }
+
+  if (!response.ok) {
+    const category =
+      response.status === 401 || response.status === 403
+        ? "auth"
+        : response.status === 404
+          ? "not_found"
+          : "unknown";
+    logger.warn(
+      {
+        boundary: "lifeops",
+        integration: "signal",
+        operation: "signal_local_send",
+        statusCode: response.status,
+      },
+      `[lifeops] Signal local client send HTTP ${response.status}`,
+    );
+    throw new SignalLocalClientError(
+      `Signal local send failed with HTTP ${response.status}`,
+      { status: response.status, category },
+    );
+  }
+
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    logger.warn(
+      {
+        boundary: "lifeops",
+        integration: "signal",
+        operation: "signal_local_send",
+      },
+      "[lifeops] Signal local client send returned non-JSON body",
+    );
+    throw new SignalLocalClientError("Signal local send returned non-JSON", {
+      status: response.status,
+      category: "unknown",
+    });
+  }
+
+  const rpcResponse = body as SignalCliRpcResponse<unknown>;
+  if (isRecord(rpcResponse.error)) {
+    const message =
+      typeof rpcResponse.error.message === "string"
+        ? rpcResponse.error.message
+        : "Signal RPC send failed";
+    throw new SignalLocalClientError(`Signal local send failed: ${message}`, {
+      status: response.status,
+      category: "unknown",
+    });
+  }
+
+  const result = rpcResponse.result;
+  if (!isRecord(result) || typeof result.timestamp !== "number") {
+    throw new SignalLocalClientError(
+      "Signal local send did not return a timestamp",
+      { status: response.status, category: "unknown" },
+    );
+  }
+
+  return { timestamp: result.timestamp };
 }

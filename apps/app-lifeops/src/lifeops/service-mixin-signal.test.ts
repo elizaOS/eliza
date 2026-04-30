@@ -470,6 +470,87 @@ describe("withSignal consumer surface", () => {
     );
   });
 
+  it("sends through the signal-cli HTTP RPC path when the plugin service cannot send", async () => {
+    const authDir = path.join(
+      tmpDir,
+      "lifeops",
+      "signal",
+      "agent-signal",
+      "owner",
+    );
+    fs.mkdirSync(authDir, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(
+      path.join(authDir, "device-info.json"),
+      JSON.stringify({
+        authDir,
+        phoneNumber: "+15550000000",
+        uuid: "signal-uuid",
+        deviceName: "Milady Mac",
+      }),
+      { encoding: "utf8", mode: 0o600 },
+    );
+    const existingGrant = {
+      id: "grant-1",
+      agentId: "agent-signal",
+      provider: "signal",
+      side: "owner",
+      identity: { phoneNumber: "+15550000000" },
+      grantedScopes: [],
+      capabilities: ["signal.read", "signal.send"],
+      tokenRef: authDir,
+      mode: "local",
+      executionTarget: "local",
+      sourceOfTruth: "local_storage",
+      preferredByAgent: false,
+      cloudConnectionId: null,
+      metadata: {},
+      lastRefreshAt: "2026-04-27T00:00:00.000Z",
+      createdAt: "2026-04-27T00:00:00.000Z",
+      updatedAt: "2026-04-27T00:00:00.000Z",
+    };
+    process.env.SIGNAL_HTTP_URL = "http://127.0.0.1:9000";
+    const service = createService();
+    service.repository.getConnectorGrant.mockResolvedValue(existingGrant);
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init) => {
+      expect(String(input)).toBe("http://127.0.0.1:9000/api/v1/rpc");
+      const body = JSON.parse(String(init?.body)) as {
+        method?: string;
+        params?: {
+          account?: string;
+          recipients?: string[];
+          message?: string;
+        };
+      };
+      expect(body.method).toBe("send");
+      expect(body.params).toMatchObject({
+        account: "+15550000000",
+        recipients: ["+15551110004"],
+        message: "Local path",
+      });
+      return new Response(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: "rpc-test",
+          result: { timestamp: 1_713_341_200_000 },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+
+    await expect(
+      service.sendSignalMessage({
+        recipient: "+15551110004",
+        text: "Local path",
+      }),
+    ).resolves.toEqual({
+      provider: "signal",
+      side: "owner",
+      recipient: "+15551110004",
+      ok: true,
+      timestamp: 1_713_341_200_000,
+    });
+  });
+
   it("does not report outbound success without a send timestamp", async () => {
     const authDir = path.join(
       tmpDir,
