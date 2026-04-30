@@ -15,6 +15,7 @@ import {
   revealBitwardenLogin,
   revealOnePasswordLogin,
 } from "./external-credentials.js";
+import { resolveActiveValue, type ResolutionContext } from "./profiles.js";
 import { createVault, type Vault } from "./vault.js";
 import type { PasswordManagerReference } from "./types.js";
 
@@ -113,6 +114,18 @@ export interface SecretsManager {
   set(key: string, value: string, opts?: ManagerSetOptions): Promise<void>;
   /** Get a value, resolving through whatever backend it's stored in. */
   get(key: string): Promise<string>;
+  /**
+   * Resolve a value through the profile + per-context routing layer.
+   *
+   * Resolution order:
+   *   1. Per-context routing rule that matches `ctx`
+   *   2. The key's `_meta.<key>.activeProfile`
+   *   3. The global `_routing.config.defaultProfile`
+   *   4. The bare key value (legacy path)
+   *
+   * For keys without any meta entry, this is identical to `get()`.
+   */
+  getActive(key: string, ctx?: ResolutionContext): Promise<string>;
   /** Existence check. */
   has(key: string): Promise<boolean>;
   /** Remove (clears the local entry; doesn't delete from external password manager). */
@@ -267,6 +280,10 @@ class ManagerImpl implements SecretsManager {
     return this.vault.get(key);
   }
 
+  async getActive(key: string, ctx?: ResolutionContext): Promise<string> {
+    return resolveActiveValue(this.vault, key, ctx);
+  }
+
   async has(key: string): Promise<boolean> {
     return this.vault.has(key);
   }
@@ -277,8 +294,16 @@ class ManagerImpl implements SecretsManager {
 
   async list(prefix?: string): Promise<readonly string[]> {
     const all = await this.vault.list(prefix);
-    // Filter out manager-internal keys.
-    return all.filter((k) => !k.startsWith("_manager."));
+    // Filter out manager-internal keys plus the inventory layer's
+    // reserved prefixes — `_meta.*` (per-key metadata) and
+    // `_routing.config` (global routing rules) are implementation
+    // details, not user-visible keys.
+    return all.filter(
+      (k) =>
+        !k.startsWith("_manager.") &&
+        !k.startsWith("_meta.") &&
+        k !== "_routing.config",
+    );
   }
 
   async detectBackends(): Promise<readonly BackendStatus[]> {
