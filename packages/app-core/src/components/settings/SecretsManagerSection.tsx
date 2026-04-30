@@ -36,6 +36,7 @@ import {
   useSecretsManagerModalState,
 } from "../../hooks/useSecretsManagerModal";
 import { getShortcutLabel } from "../../hooks/useSecretsManagerShortcut";
+import { VaultInventoryPanel } from "./VaultInventoryPanel";
 
 /**
  * Settings → Storage section.
@@ -73,6 +74,13 @@ interface BackendStatus {
   available: boolean;
   signedIn?: boolean;
   detail?: string;
+  /**
+   * Auth path used by this backend: `desktop-app` (1Password 8 native
+   * app integration), `session-token` (legacy stored session), or null
+   * (not signed in / not applicable). Drives a badge on the row so the
+   * user sees at a glance which mode is live.
+   */
+  authMode?: "desktop-app" | "session-token" | null;
 }
 
 interface ManagerPreferences {
@@ -433,6 +441,8 @@ export function SecretsManagerModal({
                 ))}
               </div>
 
+              <VaultInventoryPanel />
+
               <SavedLoginsPanel />
             </>
           )}
@@ -567,6 +577,15 @@ export function BackendRow(props: BackendRowProps) {
               {backend.label}
             </span>
             <StatusPill tone={tone} text={status} />
+            {backend.authMode === "desktop-app" && (
+              <span
+                data-testid={`auth-mode-badge-${backend.id}`}
+                className="rounded-full border border-info/40 bg-info/10 px-1.5 py-0.5 text-2xs font-medium text-info"
+                title="Authenticated via 1Password desktop app"
+              >
+                via desktop app
+              </span>
+            )}
             {isPrimary && enabled && (
               <span className="rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-2xs font-medium text-accent">
                 Primary
