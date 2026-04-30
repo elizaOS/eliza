@@ -32,16 +32,12 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "/usr/bin/thunderbird"
-        ]
+        "command": ["/usr/bin/thunderbird"]
       }
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "thunderbird"
-  ],
+  "related_apps": ["thunderbird"],
   "evaluator": {
     "postconfig": [
       {
@@ -72,9 +68,7 @@
             "enabled": "yes",
             "action": "Move to folder",
             "actionValue": "mailbox://nobody@Local%20Folders/Promotions",
-            "condition": [
-              "AND (subject,contains,discount)"
-            ]
+            "condition": ["AND (subject,contains,discount)"]
           }
         ]
       }

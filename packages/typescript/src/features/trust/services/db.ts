@@ -13,6 +13,6 @@ export type DrizzleDB = Record<string, (...args: unknown[]) => any>;
  */
 export function getDb(runtime: IAgentRuntime): DrizzleDB {
 	const db = runtime.db as DrizzleDB | undefined;
-	if (!db) throw new Error("[plugin-trust] Database not available");
+	if (!db) throw new Error("[trust] Database not available");
 	return db;
 }

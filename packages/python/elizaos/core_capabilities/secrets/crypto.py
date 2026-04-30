@@ -1,7 +1,7 @@
 """Encryption module for secrets management.
 
 Provides AES-256-GCM encryption with secure key derivation using the
-``cryptography`` library.  Ported from plugin-secrets-manager TypeScript
+``cryptography`` library.  Ported from ``@elizaos/core`` secrets TypeScript
 encryption module.
 """
 

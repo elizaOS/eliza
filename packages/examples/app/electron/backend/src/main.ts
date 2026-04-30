@@ -1,5 +1,5 @@
-import { app, BrowserWindow } from "electron";
 import { join } from "node:path";
+import { app, BrowserWindow } from "electron";
 import { registerChatIpc } from "./ipc";
 
 let mainWindow: BrowserWindow | null = null;
@@ -39,4 +39,3 @@ app.whenReady().then(() => {
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
-

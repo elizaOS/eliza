@@ -52,6 +52,7 @@ type TsScenario = {
 };
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../../..");
+const ELIZA_SCENARIO_ROOT = path.join(REPO_ROOT, "eliza", "test", "scenarios");
 const JSON_SCENARIO_DIR = path.join(
   REPO_ROOT,
   "eliza",
@@ -60,12 +61,7 @@ const JSON_SCENARIO_DIR = path.join(
   "scenarios",
 );
 const TS_PRD_SCENARIO_DIR = path.join(import.meta.dirname, "scenarios");
-const TS_HABIT_SCENARIO_DIR = path.join(
-  REPO_ROOT,
-  "test",
-  "scenarios",
-  "lifeops.habits",
-);
+const TS_HABIT_SCENARIO_DIR = path.join(ELIZA_SCENARIO_ROOT, "lifeops.habits");
 
 const SELF_CARE_PRD_SCENARIO_IDS = [
   "workout-blocker-basic",
@@ -93,7 +89,10 @@ const SELF_CARE_HABIT_SCENARIO_IDS = [
 ] as const;
 
 async function loadJsonScenario(id: string): Promise<JsonScenario> {
-  const raw = await readFile(path.join(JSON_SCENARIO_DIR, `${id}.json`), "utf8");
+  const raw = await readFile(
+    path.join(JSON_SCENARIO_DIR, `${id}.json`),
+    "utf8",
+  );
   return JSON.parse(raw) as JsonScenario;
 }
 
@@ -208,7 +207,9 @@ describe("LifeOps self-care PRD fixture invariants (shape-only, not behavioral)"
       ),
     ) as Record<string, JsonScenario>;
 
-    expect(getFinalCheck(scenarios["workout-blocker-basic"], "Workout")).toEqual(
+    expect(
+      getFinalCheck(scenarios["workout-blocker-basic"], "Workout"),
+    ).toEqual(
       expect.objectContaining({
         type: "definitionCountDelta",
         cadenceKind: "daily",
@@ -319,9 +320,7 @@ describe("LifeOps self-care PRD fixture invariants (shape-only, not behavioral)"
       ),
     );
 
-    expect(
-      getFinalCheck(dailyCounts, "Push-ups and sit-ups"),
-    ).toEqual(
+    expect(getFinalCheck(dailyCounts, "Push-ups and sit-ups")).toEqual(
       expect.objectContaining({
         type: "definitionCountDelta",
         cadenceKind: "daily",

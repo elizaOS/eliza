@@ -9,9 +9,10 @@
  * and memory.
  */
 
-import { hasAdminAccess } from "@elizaos/agent/security/access";
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
+  ActionExample,
   ActionResult,
   HandlerOptions,
   IAgentRuntime,
@@ -267,7 +268,9 @@ function formatResult(result: CrossChannelSearchResult): string {
 // Action
 // ---------------------------------------------------------------------------
 
-export const searchAcrossChannelsAction: Action = {
+export const searchAcrossChannelsAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: ACTION_NAME,
   similes: [
     "CROSS_CHANNEL_SEARCH",
@@ -280,10 +283,44 @@ export const searchAcrossChannelsAction: Action = {
     "iMessage, WhatsApp, Signal, X DMs, Calendly — plus agent memory. " +
     "Returns merged hits with citations to source platform, room, and " +
     "timestamp. Connectors without native search emit typed unsupported " +
-    "markers (no fabricated results). Admin/owner only.",
-  descriptionCompressed: "Cross-channel search with citations. Admin only.",
+    "markers (no fabricated results). Owner only.",
+  descriptionCompressed: "Cross-channel search with citations. Owner only.",
+  suppressPostActionContinuation: true,
 
-  validate: async (runtime, message) => hasAdminAccess(runtime, message),
+  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
+
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Find every mention of invoice 4412 across Gmail, Telegram, and my calendar from last week.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Cross-channel hits with citations:",
+          action: ACTION_NAME,
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Search my messages for what Sarah said about the rental before Tuesday.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Merged search results with source lines...",
+          action: ACTION_NAME,
+        },
+      },
+    ],
+  ] as ActionExample[][],
 
   handler: async (
     runtime: IAgentRuntime,
@@ -291,9 +328,9 @@ export const searchAcrossChannelsAction: Action = {
     state: State | undefined,
     options: HandlerOptions | undefined,
   ): Promise<ActionResult> => {
-    if (!(await hasAdminAccess(runtime, message))) {
+    if (!(await hasOwnerAccess(runtime, message))) {
       return {
-        text: "Permission denied: only the owner or admins may search across channels.",
+        text: "Permission denied: only the owner may search across channels.",
         success: false,
         values: { success: false, error: "PERMISSION_DENIED" },
         data: { actionName: ACTION_NAME },

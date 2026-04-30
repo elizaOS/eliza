@@ -192,6 +192,87 @@ describe("context-gated providers", () => {
 		]);
 	});
 
+	it("collapses domain child actions behind parent action groups in main chat", async () => {
+		const runtime = {
+			agentId: "agent",
+			actions: [
+				{
+					name: "WALLET_ACTIONS",
+					description: "wallet parent",
+					handler: async () => ({ success: true, text: "ok" }),
+					validate: async () => true,
+					contexts: ["general", "wallet"],
+					actionGroup: { contexts: ["wallet"] },
+				},
+				{
+					name: "CHECK_BALANCE",
+					description: "wallet child",
+					handler: async () => ({ success: true, text: "ok" }),
+					validate: async () => true,
+				},
+				{
+					name: "REPLY",
+					description: "reply",
+					handler: async () => ({ success: true, text: "ok" }),
+					validate: async () => true,
+				},
+			],
+		} as unknown as IAgentRuntime;
+
+		const result = await actionsProvider.get(
+			runtime,
+			message,
+			createState({ primaryContext: "wallet" }),
+		);
+
+		expect(result.data?.actionsData?.map((action) => action.name)).toEqual([
+			"WALLET_ACTIONS",
+			"REPLY",
+		]);
+	});
+
+	it("keeps page-scoped child actions and removes parent groups", async () => {
+		const runtime = {
+			agentId: "agent",
+			actions: [
+				{
+					name: "WALLET_ACTIONS",
+					description: "wallet parent",
+					handler: async () => ({ success: true, text: "ok" }),
+					validate: async () => true,
+					contexts: ["general", "wallet"],
+					actionGroup: { contexts: ["wallet"] },
+				},
+				{
+					name: "CHECK_BALANCE",
+					description: "wallet child",
+					handler: async () => ({ success: true, text: "ok" }),
+					validate: async () => true,
+				},
+				{
+					name: "REPLY",
+					description: "reply",
+					handler: async () => ({ success: true, text: "ok" }),
+					validate: async () => true,
+				},
+			],
+		} as unknown as IAgentRuntime;
+
+		const result = await actionsProvider.get(
+			runtime,
+			message,
+			createState({
+				primaryContext: "wallet",
+				secondaryContexts: ["page", "page-wallet"],
+			}),
+		);
+
+		expect(result.data?.actionsData?.map((action) => action.name)).toEqual([
+			"CHECK_BALANCE",
+			"REPLY",
+		]);
+	});
+
 	it("filters providers by active context", async () => {
 		const runtime = {
 			agentId: "agent",

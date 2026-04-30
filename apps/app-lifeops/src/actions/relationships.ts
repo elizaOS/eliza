@@ -694,10 +694,19 @@ export const relationshipAction: Action & {
           ? "I need a known contact to schedule a follow-up."
           : "I need a due date or time to schedule a follow-up.";
         await callback?.({ text });
+        // Selection + execution were correct: the user asked to add a
+        // follow-up, the action ran, and we're now waiting on the user to
+        // disambiguate the contact or supply a due date. Mark as
+        // awaiting-confirmation.
         return {
           text,
           success: false,
-          data: { subaction, error: "MISSING_FIELDS" },
+          values: { requiresConfirmation: true },
+          data: {
+            subaction,
+            error: "MISSING_FIELDS",
+            requiresConfirmation: true,
+          },
         };
       }
       const followUp = await service.createFollowUp({

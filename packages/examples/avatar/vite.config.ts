@@ -1,6 +1,6 @@
-import react from "@vitejs/plugin-react";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 // `vite.config.ts` lives at `examples/vrm/` → go up 2 levels to the repo root.
@@ -30,4 +30,3 @@ export default defineConfig({
     strictPort: false,
   },
 });
-

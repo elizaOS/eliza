@@ -2,7 +2,11 @@
 
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { AppHero, AppIdentityTile } from "./app-identity";
+import {
+  AppHero,
+  AppIdentityTile,
+  resolveRuntimeImageUrl,
+} from "./app-identity";
 
 describe("app identity visuals", () => {
   afterEach(() => {
@@ -43,11 +47,13 @@ describe("app identity visuals", () => {
     const hero = render(<AppHero app={app} imageOnly />);
     const tile = render(<AppIdentityTile app={app} imageOnly />);
 
+    const expectedSrc = resolveRuntimeImageUrl("/heroes/mystery.png");
+
     expect(
-      hero.container.querySelector('img[src="/heroes/mystery.png"]'),
+      hero.container.querySelector(`img[src="${expectedSrc}"]`),
     ).not.toBeNull();
     expect(
-      tile.container.querySelector('img[src="/heroes/mystery.png"]'),
+      tile.container.querySelector(`img[src="${expectedSrc}"]`),
     ).not.toBeNull();
     expect(hero.container.textContent?.trim()).toBe("");
     expect(tile.container.textContent?.trim()).toBe("");

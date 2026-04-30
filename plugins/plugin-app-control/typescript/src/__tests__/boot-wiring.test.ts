@@ -28,15 +28,11 @@
  */
 
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
-import { appControlPlugin } from "../index.js";
-
 // Pull the built-in capability + the unified PLUGIN action from
 // `@elizaos/core` exactly the way the runtime does.
-import {
-	pluginAction,
-	pluginManagerCapability,
-} from "@elizaos/core";
+import { pluginAction, pluginManagerCapability } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
+import { appControlPlugin } from "../index.js";
 
 function fakeRuntime(agentId = "agent-1"): IAgentRuntime {
 	return { agentId } as unknown as IAgentRuntime;
@@ -142,7 +138,8 @@ describe("boot wiring — PLUGIN action via @elizaos/core", () => {
 	});
 
 	it("PLUGIN action's validate runs without throwing for a happy-path message", async () => {
-		if (!pluginAction.validate) throw new Error("PLUGIN action missing validate");
+		if (!pluginAction.validate)
+			throw new Error("PLUGIN action missing validate");
 		const result = await pluginAction.validate(
 			fakeRuntime("agent-1"),
 			fakeMessage("agent-1", "install the discord plugin"),
@@ -151,7 +148,8 @@ describe("boot wiring — PLUGIN action via @elizaos/core", () => {
 	});
 
 	it("PLUGIN action's validate rejects unrelated chatter without throwing", async () => {
-		if (!pluginAction.validate) throw new Error("PLUGIN action missing validate");
+		if (!pluginAction.validate)
+			throw new Error("PLUGIN action missing validate");
 		const result = await pluginAction.validate(
 			fakeRuntime("agent-1"),
 			fakeMessage("random-user", "good morning"),

@@ -39,7 +39,9 @@ export class BrowserBridgePluginService
   }
 
   private lifeOps(ownerEntityId?: UUID | null): LifeOpsService {
-    return new LifeOpsService(this.runtime, { ownerEntityId: ownerEntityId ?? null });
+    return new LifeOpsService(this.runtime, {
+      ownerEntityId: ownerEntityId ?? null,
+    });
   }
 
   async getBrowserSettings(
@@ -140,7 +142,10 @@ export class BrowserBridgePluginService
     request: ConfirmLifeOpsBrowserSessionRequest,
     ownerEntityId?: UUID | null,
   ): Promise<LifeOpsBrowserSession> {
-    return this.lifeOps(ownerEntityId).confirmBrowserSession(sessionId, request);
+    return this.lifeOps(ownerEntityId).confirmBrowserSession(
+      sessionId,
+      request,
+    );
   }
 
   async updateBrowserSessionProgress(
@@ -159,7 +164,10 @@ export class BrowserBridgePluginService
     request: CompleteLifeOpsBrowserSessionRequest,
     ownerEntityId?: UUID | null,
   ): Promise<LifeOpsBrowserSession> {
-    return this.lifeOps(ownerEntityId).completeBrowserSession(sessionId, request);
+    return this.lifeOps(ownerEntityId).completeBrowserSession(
+      sessionId,
+      request,
+    );
   }
 
   async updateBrowserSessionProgressFromCompanion(
@@ -169,7 +177,9 @@ export class BrowserBridgePluginService
     request: UpdateBrowserBridgeSessionProgressRequest,
     ownerEntityId?: UUID | null,
   ): Promise<LifeOpsBrowserSession> {
-    return this.lifeOps(ownerEntityId).updateBrowserSessionProgressFromCompanion(
+    return this.lifeOps(
+      ownerEntityId,
+    ).updateBrowserSessionProgressFromCompanion(
       companionId,
       pairingToken,
       sessionId,

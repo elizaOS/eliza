@@ -18,7 +18,6 @@
     "./og-tracker": "./src/og-tracker.ts"
   },
   "dependencies": {
-    "@elizaos/agent": "workspace:*",
     "@elizaos/app-steward": "workspace:*",
     "@elizaos/core": "workspace:*",
     "ethers": "^6.15.0"

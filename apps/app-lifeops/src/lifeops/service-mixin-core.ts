@@ -387,16 +387,20 @@ export class LifeOpsServiceBase {
     }
 
     const fallbackVisibility =
-      subjectType === "agent" ? "agent_and_admin" : "owner_agent_admin";
+      subjectType === "agent" ? "agent_and_admin" : "owner_only";
     const fallbackContext = subjectType === "agent" ? "never" : "explicit_only";
+    const visibilityScope =
+      subjectType === "owner"
+        ? "owner_only"
+        : normalizeLifeOpsVisibilityScope(
+            input?.visibilityScope ?? current?.visibilityScope,
+            current?.visibilityScope ?? fallbackVisibility,
+          );
     return {
       domain,
       subjectType,
       subjectId: expectedSubjectId,
-      visibilityScope: normalizeLifeOpsVisibilityScope(
-        input?.visibilityScope ?? current?.visibilityScope,
-        current?.visibilityScope ?? fallbackVisibility,
-      ),
+      visibilityScope,
       contextPolicy: normalizeLifeOpsContextPolicy(
         input?.contextPolicy ?? current?.contextPolicy,
         current?.contextPolicy ?? fallbackContext,

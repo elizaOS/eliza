@@ -32,7 +32,7 @@ export class WhatsAppError extends Error {
   constructor(
     message: string,
     public readonly status: number,
-    public readonly body?: unknown,
+    public readonly body?: unknown
   ) {
     super(message);
     this.name = "WhatsAppError";
@@ -41,11 +41,15 @@ export class WhatsAppError extends Error {
 
 const DEFAULT_API_VERSION = "v21.0";
 function getWhatsAppBaseUrl(): string {
-  return process.env.MILADY_MOCK_WHATSAPP_BASE ?? "https://graph.facebook.com";
+  return (
+    process.env.MILADY_MOCK_WHATSAPP_BASE ??
+    process.env.ELIZA_MOCK_WHATSAPP_BASE ??
+    "https://graph.facebook.com"
+  );
 }
 
 export function readWhatsAppCredentialsFromEnv(
-  env: NodeJS.ProcessEnv = process.env,
+  env: NodeJS.ProcessEnv = process.env
 ): WhatsAppCredentials | null {
   const accessToken = (
     env.ELIZA_WHATSAPP_ACCESS_TOKEN ?? env.WHATSAPP_ACCESS_TOKEN
@@ -68,10 +72,12 @@ export function readWhatsAppCredentialsFromEnv(
 
 export async function sendWhatsAppMessage(
   creds: WhatsAppCredentials,
-  req: WhatsAppSendRequest,
+  req: WhatsAppSendRequest
 ): Promise<{ ok: true; messageId: string }> {
   const apiVersion = creds.apiVersion ?? DEFAULT_API_VERSION;
-  const url = `${getWhatsAppBaseUrl()}/${apiVersion}/${encodeURIComponent(creds.phoneNumberId)}/messages`;
+  const url = `${getWhatsAppBaseUrl()}/${apiVersion}/${encodeURIComponent(
+    creds.phoneNumberId
+  )}/messages`;
 
   const payload: Record<string, unknown> = {
     messaging_product: "whatsapp",
@@ -109,7 +115,7 @@ export async function sendWhatsAppMessage(
         operation: "whatsapp_send",
         statusCode: response.status,
       },
-      `[lifeops] WhatsApp send failed: ${errorMessage}`,
+      `[lifeops] WhatsApp send failed: ${errorMessage}`
     );
     throw new WhatsAppError(errorMessage, response.status, body);
   }
@@ -119,7 +125,7 @@ export async function sendWhatsAppMessage(
     throw new WhatsAppError(
       "WhatsApp response missing message id",
       response.status,
-      body,
+      body
     );
   }
   return { ok: true, messageId };
@@ -189,7 +195,7 @@ function bufferInboundMessages(messages: WhatsAppMessage[]): void {
  * messages.
  */
 export function parseAndBufferWhatsAppWebhookMessages(
-  payload: unknown,
+  payload: unknown
 ): WhatsAppMessage[] {
   const messages = parseWhatsAppWebhookMessages(payload);
   if (messages.length > 0) {
@@ -218,7 +224,7 @@ export function peekWhatsAppInboundBuffer(): WhatsAppMessage[] {
 }
 
 export function parseWhatsAppWebhookMessages(
-  payload: unknown,
+  payload: unknown
 ): WhatsAppMessage[] {
   if (!payload || typeof payload !== "object") {
     return [];
@@ -263,10 +269,10 @@ export function parseWhatsAppWebhookMessages(
         }
       }
       const displayPhoneNumber = optionalString(
-        webhookValue.metadata?.display_phone_number,
+        webhookValue.metadata?.display_phone_number
       );
       const phoneNumberId = optionalString(
-        webhookValue.metadata?.phone_number_id,
+        webhookValue.metadata?.phone_number_id
       );
       const rawMessages = (value as { messages?: unknown }).messages;
       if (!Array.isArray(rawMessages)) continue;
@@ -295,10 +301,10 @@ export function parseWhatsAppWebhookMessages(
           type === "image" && typeof m.image?.id === "string"
             ? m.image.id
             : type === "audio" && typeof m.audio?.id === "string"
-              ? m.audio.id
-              : type === "document" && typeof m.document?.id === "string"
-                ? m.document.id
-                : undefined;
+            ? m.audio.id
+            : type === "document" && typeof m.document?.id === "string"
+            ? m.document.id
+            : undefined;
         const contact = contactByWaId.get(m.from);
         const metadata = {
           ...(displayPhoneNumber ? { displayPhoneNumber } : {}),

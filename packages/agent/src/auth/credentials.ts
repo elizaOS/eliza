@@ -292,9 +292,13 @@ export function getSubscriptionStatus(): SubscriptionAccountStatus[] {
           ? blobExpiresAt === null || blobExpiresAt > Date.now()
           : true;
         const accountId =
-          claudeSource === "claude-code-cli" ? "claude-code-cli" : "setup-token";
+          claudeSource === "claude-code-cli"
+            ? "claude-code-cli"
+            : "setup-token";
         const label =
-          claudeSource === "claude-code-cli" ? "Claude Code CLI" : "Setup Token";
+          claudeSource === "claude-code-cli"
+            ? "Claude Code CLI"
+            : "Setup Token";
         rows.push({
           provider,
           accountId,
@@ -543,7 +547,11 @@ export async function applySubscriptionCredentials(config?: {
       "milady.account-pool.subscription-selector.v1",
     );
     const selector = (globalThis as Record<symbol, unknown>)[selectorSymbol] as
-      | { pickAccountId(providerId: SubscriptionProvider): Promise<string | null> }
+      | {
+          pickAccountId(
+            providerId: SubscriptionProvider,
+          ): Promise<string | null>;
+        }
       | undefined;
     let chosenId: string | null = null;
     if (selector) {

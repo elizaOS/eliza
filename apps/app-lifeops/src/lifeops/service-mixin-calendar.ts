@@ -232,10 +232,12 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
                 }
               })()
             : await (async () => {
-                const accessToken = await ensureFreshGoogleAccessToken(
-                  grant.tokenRef ??
-                    fail(409, "Google Calendar token reference is missing."),
-                );
+                const accessToken = (
+                  await ensureFreshGoogleAccessToken(
+                    grant.tokenRef ??
+                      fail(409, "Google Calendar token reference is missing."),
+                  )
+                ).accessToken;
                 return listGoogleCalendars({ accessToken });
               })();
         for (const entry of entries) {
@@ -1189,20 +1191,13 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
             eventId: externalEventId,
           });
         }
-        // Best-effort: drop the local cached row so subsequent feed reads
-        // don't show a phantom event. Ignore failures here — the source of
-        // truth (Google) has already accepted the delete.
-        try {
-          await this.repository.deleteCalendarEventByExternalId(
-            this.agentId(),
-            "google",
-            calendarId ?? "primary",
-            externalEventId,
-            grant.side,
-          );
-        } catch {
-          // intentionally swallowed: local cache mirror, not authoritative
-        }
+        await this.repository.deleteCalendarEventByExternalId(
+          this.agentId(),
+          "google",
+          calendarId ?? "primary",
+          externalEventId,
+          grant.side,
+        );
         await this.clearGoogleGrantAuthFailure(grant);
         await this.recordCalendarEventAudit(
           externalEventId,
@@ -1270,6 +1265,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
           "google",
           {
             maxResults: DEFAULT_GMAIL_TRIAGE_MAX_RESULTS,
+            grantId: status.grant.id,
           },
           status.grant.side,
         );

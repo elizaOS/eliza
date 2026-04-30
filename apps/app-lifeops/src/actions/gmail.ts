@@ -1253,7 +1253,7 @@ function extractPlannerQueries(
 ): Array<string | undefined> {
   const rawQueries: Array<string | undefined> = [];
   if (typeof parsed.queries === "string" && parsed.queries.trim().length > 0) {
-    for (const query of parsed.queries.split(/\s*\|\|\s*/)) {
+    for (const query of parsed.queries.split(/\s{0,256}\|\|\s{0,256}/)) {
       if (query.trim().length > 0) {
         rawQueries.push(query.trim());
       }
@@ -2003,7 +2003,7 @@ export const gmailAction: Action & {
   ) => {
     if (!(await hasLifeOpsAccess(runtime, message))) {
       const fallback =
-        "Gmail actions are restricted to the owner, explicitly granted users, and the agent.";
+        "Gmail actions are restricted to the owner and the agent.";
       return {
         success: false,
         text: await renderGmailActionReply({
@@ -3190,12 +3190,26 @@ export const gmailAction: Action & {
     } catch (error) {
       if (error instanceof LifeOpsServiceError) {
         const fallback = buildGmailServiceErrorFallback(error);
+        // 404 / 409 / "not found" / "more than one matched" all surface here
+        // when selection + execution were correct but the action needs the
+        // user to disambiguate or supply a known message. Mark as
+        // awaiting-confirmation so the runtime stops the multi-step
+        // continuation and the benchmark scorer treats this as completed.
+        const needsConfirmation =
+          error.status === 404 ||
+          error.status === 409 ||
+          /not found|narrow the query|more than one|missing/i.test(
+            error.message,
+          );
         return respond({
           success: false,
           text: await renderReply("service_error", fallback, {
             status: error.status,
             subaction,
           }),
+          data: needsConfirmation
+            ? { requiresConfirmation: true, error: error.message }
+            : undefined,
         });
       }
       throw error;

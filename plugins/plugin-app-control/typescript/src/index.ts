@@ -17,6 +17,7 @@ import { appAction, createAppAction } from "./actions/app.js";
 import { availableAppsProvider } from "./providers/available-apps.js";
 import { AppRegistryService } from "./services/app-registry-service.js";
 import { AppVerificationService } from "./services/app-verification.js";
+import { VerificationRoomBridgeService } from "./services/verification-room-bridge.js";
 
 export type { AppMode } from "./actions/app.js";
 export type { AppControlClient } from "./client/api.js";
@@ -35,6 +36,10 @@ export {
 	type VerificationResult,
 	type VerifyOptions,
 } from "./services/index.js";
+export {
+	VERIFICATION_ROOM_BRIDGE_SERVICE_TYPE,
+	VerificationRoomBridgeService,
+} from "./services/verification-room-bridge.js";
 export type {
 	AppLaunchResult,
 	AppRunSummary,
@@ -49,7 +54,11 @@ export const appControlPlugin: Plugin = {
 		"Launch, close, list, relaunch, load, and create Milady apps from agent chat. Backed by the Milady dashboard /api/apps/* HTTP surface.",
 	actions: [appAction],
 	providers: [availableAppsProvider],
-	services: [AppRegistryService, AppVerificationService],
+	services: [
+		AppRegistryService,
+		AppVerificationService,
+		VerificationRoomBridgeService,
+	],
 };
 
 export default appControlPlugin;

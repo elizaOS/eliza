@@ -1,4 +1,4 @@
-import { hasAdminAccess } from "@elizaos/agent/security/access";
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionResult,
@@ -376,18 +376,18 @@ export const manageBrowserBridgeAction: Action = {
   name: "MANAGE_LIFEOPS_BROWSER",
   similes: ["PERSONAL_BROWSER", "LIFEOPS_BROWSER", "MANAGE_PERSONAL_BROWSER"],
   description:
-    "Read and control the user's real Chrome and Safari browsers connected through Agent Browser Bridge. This is not Milady Desktop Browser. Use LIFEOPS_COMPUTER_USE instead for Finder/Desktop automation, screenshots, folder creation, or local file workflows on this machine.",
-  validate: async (runtime, message) => hasAdminAccess(runtime, message),
+    "Read and control the user's real Chrome and Safari browsers via the Agent Browser Bridge extension. Scope is strictly in-browser: list tabs, read the current page DOM, navigate a tab, open a URL, change browser settings, manage companion sessions. This action only operates on already-open browser tabs and browser-extension settings. It cannot capture the desktop, cannot operate Finder, cannot launch native apps, and cannot click at OS-level coordinates. Any request mentioning the desktop, the screen, the computer, Finder, a native app, or capturing/clicking outside a browser tab must go to LIFEOPS_COMPUTER_USE instead.",
+  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
     _state: State | undefined,
     options?: HandlerOptions,
   ): Promise<ActionResult> => {
-    if (!(await hasAdminAccess(runtime, message))) {
+    if (!(await hasOwnerAccess(runtime, message))) {
       return {
         success: false,
-        text: "Permission denied: only the owner or admins may use Agent Browser Bridge control.",
+        text: "Permission denied: only the owner may use Agent Browser Bridge control.",
         data: { error: "PERMISSION_DENIED" },
       };
     }

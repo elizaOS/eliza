@@ -1,4 +1,19 @@
-/** Sends messages through a runtime and captures responses plus action calls. */
+/**
+ * Multi-turn conversation test harness with action tracking.
+ *
+ * Wraps the elizaOS runtime's message handling to simulate user/agent
+ * conversations and inspect which actions were invoked at each turn. Action
+ * tracking is event-bus based (`ActionSpy`); see `action-spy.ts`.
+ *
+ * @example
+ * ```ts
+ * const harness = new ConversationHarness(runtime);
+ * await harness.setup();
+ * const turn = await harness.send("Do something");
+ * expectActionCalled(harness.spy, "SOME_ACTION");
+ * await harness.cleanup();
+ * ```
+ */
 import crypto from "node:crypto";
 import type {
   AgentRuntime,
@@ -13,12 +28,21 @@ import {
   createActionSpy,
 } from "./action-spy.js";
 
+/** A single user-sends / agent-replies exchange with tracked actions. */
 export interface ConversationTurn {
+  /** What the user sent. */
   text: string;
+  /** What the agent replied. */
   responseText: string;
+  /** Agent response messages, when the message service surfaces them. */
   responses: Memory[];
+  /** Action calls (started + completed) captured during this turn. */
   actions: ActionSpyCall[];
+  /** Epoch ms when the turn began. */
   startedAt: number;
+  /** Alias of `startedAt` for callers that used the older field name. */
+  timestamp: number;
+  /** Wall-clock duration of the turn in ms. */
   durationMs: number;
 }
 
@@ -27,8 +51,19 @@ export interface ConversationHarnessOptions {
   userId?: UUID;
   worldId?: UUID;
   userName?: string;
+  /** Source tag for created messages. Defaults to "test". */
   source?: string;
+  /** Pre-built `ActionSpy`. If omitted, a fresh one is created and room-filtered. */
   spy?: ActionSpy;
+  /** Default timeout in ms for each `send()`. Defaults to 120_000. */
+  defaultTimeoutMs?: number;
+  /**
+   * Override the action-settle idle window in ms. When set, `send()` waits
+   * this many ms after the message handler resolves rather than polling the
+   * spy until events stop arriving. Useful for deterministic tests against
+   * mock runtimes that emit synchronously.
+   */
+  actionSettleMs?: number;
 }
 
 export interface ConversationSendOptions {
@@ -65,6 +100,12 @@ function withTimeout<T>(
   });
 }
 
+/**
+ * Polls the spy until no new events have arrived for `ACTION_SETTLE_IDLE_MS`
+ * (or until `ACTION_SETTLE_MAX_MS` elapses). Action events and follow-up
+ * callbacks can land slightly after `handleMessage` resolves, especially
+ * under Vitest workers.
+ */
 async function waitForActionSettle(spy: ActionSpy): Promise<void> {
   const startedAt = Date.now();
   const deadline = startedAt + ACTION_SETTLE_MAX_MS;
@@ -99,7 +140,10 @@ export class ConversationHarness {
   readonly source: string;
 
   private attached = false;
+  private setupDone = false;
   private readonly turns: ConversationTurn[] = [];
+  private readonly defaultTimeoutMs: number;
+  private readonly fixedSettleMs: number | null;
 
   constructor(runtime: AgentRuntime, opts: ConversationHarnessOptions = {}) {
     this.runtime = runtime;
@@ -110,8 +154,14 @@ export class ConversationHarness {
     this.source = opts.source ?? "test";
     this.spy = opts.spy ?? createActionSpy();
     this.spy.setRoomFilter(this.roomId);
+    this.defaultTimeoutMs = opts.defaultTimeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.fixedSettleMs = opts.actionSettleMs ?? null;
   }
 
+  /**
+   * Ensure the world, connection, and participants exist on the runtime, and
+   * attach the action spy. Must be called before `send()`.
+   */
   async setup(): Promise<void> {
     const worldMetadata = {
       ownership: {
@@ -152,12 +202,22 @@ export class ConversationHarness {
       this.spy.attach(this.runtime);
       this.attached = true;
     }
+    this.setupDone = true;
   }
 
+  /**
+   * Send a message as the test user and collect the agent's response and
+   * any actions invoked during this turn.
+   */
   async send(
     text: string,
     opts?: ConversationSendOptions,
   ): Promise<ConversationTurn> {
+    if (!this.setupDone) {
+      throw new Error(
+        "ConversationHarness: setup() must be called before send().",
+      );
+    }
     const startedAt = Date.now();
     let responseText = "";
     const callsBefore = this.spy.getCalls().length;
@@ -209,7 +269,7 @@ export class ConversationHarness {
 
     const result = await withTimeout(
       messageService.handleMessage(this.runtime, message, callback, {}),
-      opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+      opts?.timeoutMs ?? this.defaultTimeoutMs,
       "ConversationHarness.send",
     );
 
@@ -222,9 +282,11 @@ export class ConversationHarness {
       }
     }
 
-    // Action events and follow-up callbacks can arrive slightly after the
-    // initial handleMessage promise resolves, especially under Vitest workers.
-    await waitForActionSettle(this.spy);
+    if (this.fixedSettleMs !== null) {
+      await new Promise((resolve) => setTimeout(resolve, this.fixedSettleMs));
+    } else {
+      await waitForActionSettle(this.spy);
+    }
 
     const allCalls = this.spy.getCalls();
     const actions = allCalls.slice(callsBefore);
@@ -235,20 +297,34 @@ export class ConversationHarness {
       responses,
       actions,
       startedAt,
+      timestamp: startedAt,
       durationMs: Date.now() - startedAt,
     };
     this.turns.push(turn);
     return turn;
   }
 
+  /** All turns recorded so far. */
   getTurns(): ConversationTurn[] {
     return [...this.turns];
   }
 
+  /** The most recent turn, or undefined if no turns yet. */
   getLastTurn(): ConversationTurn | undefined {
     return this.turns[this.turns.length - 1];
   }
 
+  /** Room id used by this harness. */
+  getRoomId(): UUID {
+    return this.roomId;
+  }
+
+  /** User entity id used by this harness. */
+  getUserId(): UUID {
+    return this.userId;
+  }
+
+  /** Detach the spy and release runtime hooks. Safe to call repeatedly. */
   async cleanup(): Promise<void> {
     if (this.attached) {
       this.spy.detach(this.runtime);

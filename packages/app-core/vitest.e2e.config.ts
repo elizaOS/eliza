@@ -1,7 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
-import baseConfig from "../../../test/vitest/default.config";
+import baseConfig from "../../test/vitest/default.config";
 
 // E2E tests need the real developer environment (real $HOME so the external
 // scanner finds real LM Studio / Ollama / Jan caches; real network access;
@@ -21,10 +21,7 @@ export default defineConfig({
   test: {
     ...baseConfig.test,
     setupFiles: [path.join(here, "test/setup.ts")],
-    include: [
-      "src/**/*.e2e.test.ts",
-      "src/**/*.e2e.test.tsx",
-    ],
+    include: ["src/**/*.e2e.test.ts", "src/**/*.e2e.test.tsx"],
     exclude: ["dist/**", "**/node_modules/**"],
     testTimeout: 600_000,
     hookTimeout: 60_000,

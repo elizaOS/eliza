@@ -546,7 +546,11 @@ function mirrorTreePreservingSymlinks(src, dst) {
       fs.symlinkSync(linkTarget, dst);
     } catch {
       try {
-        fs.cpSync(src, dst, { recursive: true, force: true, dereference: true });
+        fs.cpSync(src, dst, {
+          recursive: true,
+          force: true,
+          dereference: true,
+        });
       } catch {}
     }
     return;
@@ -558,7 +562,10 @@ function mirrorTreePreservingSymlinks(src, dst) {
     }
     fs.mkdirSync(dst, { recursive: true });
     for (const entry of fs.readdirSync(src)) {
-      mirrorTreePreservingSymlinks(path.join(src, entry), path.join(dst, entry));
+      mirrorTreePreservingSymlinks(
+        path.join(src, entry),
+        path.join(dst, entry),
+      );
     }
     return;
   }

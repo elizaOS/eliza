@@ -51,22 +51,14 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "C:\\Program Files\\Mozilla Thunderbird\\thunderbird.exe"
-        ]
+        "command": ["C:\\Program Files\\Mozilla Thunderbird\\thunderbird.exe"]
       }
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "thunderbird",
-    "excel"
-  ],
+  "related_apps": ["thunderbird", "excel"],
   "evaluator": {
-    "func": [
-      "compare_csv",
-      "compare_table"
-    ],
+    "func": ["compare_csv", "compare_table"],
     "conj": "and",
     "result": [
       {

@@ -14,23 +14,21 @@
  *   GOOGLE_OAUTH_TEST_TOKEN=ya29.xxx bunx vitest run eliza/apps/app-lifeops/test/google-drive.integration.test.ts
  */
 import { describe, expect, it } from "vitest";
-import { itIf } from "../../../../test/helpers/conditional-tests.ts";
+import { itIf } from "../../../../eliza/test/helpers/conditional-tests.ts";
 import {
-  listDriveFiles,
-  getDriveFile,
-  searchDriveFiles,
   getDocContent,
+  getDriveFile,
   getSheetContent,
+  listDriveFiles,
+  searchDriveFiles,
 } from "../src/lifeops/google-drive.js";
 
 const SKIP_REASON = process.env.SKIP_REASON?.trim();
 const ACCESS_TOKEN = process.env.GOOGLE_OAUTH_TEST_TOKEN?.trim() ?? "";
 const LIVE_CREDS_AVAILABLE = !SKIP_REASON && ACCESS_TOKEN.length > 0;
 
-const TEST_FILE_ID =
-  process.env.GOOGLE_DRIVE_TEST_FILE_ID?.trim() ?? "";
-const TEST_DOCUMENT_ID =
-  process.env.GOOGLE_DOCS_TEST_DOCUMENT_ID?.trim() ?? "";
+const TEST_FILE_ID = process.env.GOOGLE_DRIVE_TEST_FILE_ID?.trim() ?? "";
+const TEST_DOCUMENT_ID = process.env.GOOGLE_DOCS_TEST_DOCUMENT_ID?.trim() ?? "";
 const TEST_SPREADSHEET_ID =
   process.env.GOOGLE_SHEETS_TEST_SPREADSHEET_ID?.trim() ?? "";
 

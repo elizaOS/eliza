@@ -7,11 +7,7 @@
     {
       "type": "command",
       "parameters": {
-        "command": [
-          "mkdir",
-          "-p",
-          "/home/user/Documents/Papers"
-        ]
+        "command": ["mkdir", "-p", "/home/user/Documents/Papers"]
       }
     },
     {
@@ -40,18 +36,12 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "nautilus",
-          "/home/user/Documents/Papers"
-        ]
+        "command": ["nautilus", "/home/user/Documents/Papers"]
       }
     }
   ],
   "trajectory": "trajectories/b5062e3e-641c-4e3a-907b-ac864d2e7652",
-  "related_apps": [
-    "libreoffice_calc",
-    "os"
-  ],
+  "related_apps": ["libreoffice_calc", "os"],
   "evaluator": {
     "postconfig": [
       {
@@ -87,24 +77,18 @@
           "sheet_idx1": "ENSheet1",
           "rules": [
             {
-              "range": [
-                "A1:C1"
-              ],
+              "range": ["A1:C1"],
               "type": "includes",
               "ignore_case": true
             },
             {
-              "range": [
-                "A2:B5"
-              ],
+              "range": ["A2:B5"],
               "type": "exact_match",
               "trim_leadings": " ",
               "trim_trailings": " "
             },
             {
-              "range": [
-                "C2:C5"
-              ],
+              "range": ["C2:C5"],
               "type": "exact_match",
               "trim_leadings": " ",
               "trim_trailings": " ",

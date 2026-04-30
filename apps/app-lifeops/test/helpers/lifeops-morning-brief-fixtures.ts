@@ -6,23 +6,16 @@ import {
   type PluginModuleShape,
   resolveOAuthDir,
 } from "@elizaos/agent";
-import type {
-  AgentRuntime,
-  Memory,
-  Plugin,
-  UUID,
-} from "@elizaos/core";
+import type { AgentRuntime, Memory, Plugin, UUID } from "@elizaos/core";
 import { ChannelType, createMessageMemory, logger } from "@elizaos/core";
-import {
-  createApprovalQueue,
-} from "../../src/lifeops/approval-queue.js";
+import { InboxTriageRepository } from "../../src/inbox/repository.js";
+import type { DeferredInboxDraft } from "../../src/inbox/types.js";
+import { createApprovalQueue } from "../../src/lifeops/approval-queue.js";
 import {
   createLifeOpsConnectorGrant,
   createLifeOpsGmailSyncState,
   LifeOpsRepository,
 } from "../../src/lifeops/repository.js";
-import { InboxTriageRepository } from "../../src/inbox/repository.js";
-import type { DeferredInboxDraft } from "../../src/inbox/types.js";
 import { LifeOpsService } from "../../src/lifeops/service.js";
 
 export const GOOGLE_CLIENT_ID = "assistant-user-journeys-google-client";
@@ -42,7 +35,10 @@ export function normalizeText(text: string): string {
   return text.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
-export function containsAllFragments(text: string, fragments: string[]): boolean {
+export function containsAllFragments(
+  text: string,
+  fragments: string[],
+): boolean {
   const normalized = normalizeText(text);
   return fragments.every((fragment) =>
     normalized.includes(normalizeText(fragment)),
@@ -178,7 +174,8 @@ export async function seedMorningBriefFixtures(args: {
     gmailMessageId: "morning-brief-gmail-marco",
     draftText:
       "I reviewed the investor diligence packet and can send comments by 2pm today.",
-    deepLink: "https://mail.google.com/mail/u/0/#inbox/morning-brief-gmail-marco",
+    deepLink:
+      "https://mail.google.com/mail/u/shawmakesmagic%40gmail.com/#inbox/morning-brief-gmail-marco",
     channelName: "Marco Alvarez <marco@northstar.example.com>",
     senderName: "Marco Alvarez",
   };
@@ -211,8 +208,7 @@ export async function seedMorningBriefFixtures(args: {
         entityName: "Eliza",
       },
       content: {
-        text:
-          "Pending draft for Marco Alvarez is still waiting for sign-off about the investor diligence packet.",
+        text: "Pending draft for Marco Alvarez is still waiting for sign-off about the investor diligence packet.",
         source: "assistant",
         channelType: ChannelType.DM,
         inboxDraft: pendingDraft,
@@ -232,8 +228,7 @@ export async function seedMorningBriefFixtures(args: {
       agentId: args.runtime.agentId,
       roomId: args.dmRoomId,
       content: {
-        text:
-          "Follow-up still overdue: Frontier Tower needs the missed walkthrough repaired and rescheduled.",
+        text: "Follow-up still overdue: Frontier Tower needs the missed walkthrough repaired and rescheduled.",
         type: "followup_overdue_digest",
         source: "followup-tracker",
         data: {
@@ -260,8 +255,7 @@ export async function seedMorningBriefFixtures(args: {
       agentId: args.runtime.agentId,
       roomId: args.dmRoomId,
       content: {
-        text:
-          "Document blockers: Clinic intake packet still needs signature and the investor diligence packet still needs review before noon.",
+        text: "Document blockers: Clinic intake packet still needs signature and the investor diligence packet still needs review before noon.",
         source: "assistant",
       },
       createdAt: Date.now() - 10_000,
@@ -288,6 +282,7 @@ async function seedGoogleConnector(
   const repository = new LifeOpsRepository(runtime);
   const agentId = String(runtime.agentId);
   const tokenRef = `${agentId}/owner/local.json`;
+  const grantId = "morning-brief-google-grant";
   const tokenPath = path.join(
     resolveOAuthDir(process.env, stateDir),
     "lifeops",
@@ -332,8 +327,8 @@ async function seedGoogleConnector(
     { encoding: "utf-8", mode: 0o600 },
   );
 
-  await repository.upsertConnectorGrant(
-    createLifeOpsConnectorGrant({
+  await repository.upsertConnectorGrant({
+    ...createLifeOpsConnectorGrant({
       agentId,
       provider: "google",
       side: "owner",
@@ -360,7 +355,8 @@ async function seedGoogleConnector(
       metadata: {},
       lastRefreshAt: nowIso,
     }),
-  );
+    id: grantId,
+  });
 
   return repository;
 }
@@ -370,6 +366,8 @@ async function seedGmail(
   agentId: string,
   nowIso: string,
 ): Promise<void> {
+  const grantId = "morning-brief-google-grant";
+  const accountEmail = "shawmakesmagic@gmail.com";
   const messages = [
     {
       id: "morning-brief-gmail-tax",
@@ -377,6 +375,8 @@ async function seedGmail(
       agentId,
       provider: "google" as const,
       side: "owner" as const,
+      grantId,
+      accountEmail,
       threadId: "morning-brief-thread-tax",
       subject: "Wire cutoff today at 2pm for property tax payment",
       from: "Escrow Ops <escrow@westbridge.example.com>",
@@ -403,6 +403,8 @@ async function seedGmail(
       agentId,
       provider: "google" as const,
       side: "owner" as const,
+      grantId,
+      accountEmail,
       threadId: "morning-brief-thread-clinic-doc",
       subject: "Please sign the clinic intake packet before Thursday",
       from: "Northside Clinic <intake@northside.example.com>",
@@ -436,6 +438,7 @@ async function seedGmail(
       provider: "google",
       side: "owner",
       mailbox: "INBOX",
+      grantId,
       maxResults: 50,
       syncedAt: nowIso,
     }),
@@ -499,7 +502,8 @@ async function seedUnreadChannels(
     sourceMessageId: "morning-brief-gmail-tax",
     channelName: "Escrow Ops",
     channelType: "email",
-    deepLink: "https://mail.google.com/mail/u/0/#inbox/morning-brief-gmail-tax",
+    deepLink:
+      "https://mail.google.com/mail/u/shawmakesmagic%40gmail.com/#inbox/morning-brief-gmail-tax",
     classification: "urgent",
     urgency: "high",
     confidence: 0.98,
@@ -515,11 +519,12 @@ async function seedUnreadChannels(
     channelName: "Northside Clinic",
     channelType: "email",
     deepLink:
-      "https://mail.google.com/mail/u/0/#inbox/morning-brief-gmail-clinic-doc",
+      "https://mail.google.com/mail/u/shawmakesmagic%40gmail.com/#inbox/morning-brief-gmail-clinic-doc",
     classification: "urgent",
     urgency: "high",
     confidence: 0.96,
-    snippet: "Clinic intake packet still needs your signature before Thursday morning.",
+    snippet:
+      "Clinic intake packet still needs your signature before Thursday morning.",
     senderName: "Northside Clinic",
     triageReasoning: "Document blocker tied to an upcoming appointment.",
     suggestedResponse: "I will review and sign the packet today.",

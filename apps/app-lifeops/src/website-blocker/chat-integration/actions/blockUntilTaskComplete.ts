@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import type {
   Action,
   ActionExample,
@@ -7,7 +8,6 @@ import type {
   Memory,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import crypto from "node:crypto";
 import { executeRawSql, sqlQuote } from "../../../lifeops/sql.js";
 import { BlockRuleWriter } from "../block-rule-service.js";
 
@@ -59,8 +59,12 @@ const TASK_GATE_SIGNAL_RE =
 const FIXED_DURATION_SIGNAL_RE =
   /\bfor\s+\d+\s*(minute|minutes|min|hour|hours|hr|hrs|day|days)\b|\b\d+\s*(minute|minutes|min|hour|hours|hr|hrs|day|days)\b/i;
 
-function getMessageText(message: { content?: { text?: unknown } } | undefined): string {
-  return typeof message?.content?.text === "string" ? message.content.text.trim() : "";
+function getMessageText(
+  message: { content?: { text?: unknown } } | undefined,
+): string {
+  return typeof message?.content?.text === "string"
+    ? message.content.text.trim()
+    : "";
 }
 
 function shouldRejectFixedDurationRequest(messageText: string): boolean {
@@ -117,7 +121,7 @@ async function createTodoByName(
        'user_lifeops',
        'owner',
        ${sqlQuote(agentId)},
-       'owner_agent_admin',
+       'owner_only',
        'explicit_only',
        'todo',
        ${sqlQuote(name)},
@@ -138,9 +142,7 @@ async function createTodoByName(
        ${sqlQuote(nowIso)}
      )`,
   );
-  logger.info(
-    `[BLOCK_UNTIL_TASK_COMPLETE] Created todo ${id} for "${name}"`,
-  );
+  logger.info(`[BLOCK_UNTIL_TASK_COMPLETE] Created todo ${id} for "${name}"`);
   return id;
 }
 
@@ -157,8 +159,7 @@ export const blockUntilTaskCompleteAction: Action = {
     "Block websites until a specific todo is marked complete. Use this only when the unblock condition is finishing a task, workout, assignment, or todo, like 'block x.com until I finish my workout'. " +
     "Creates a block rule whose release is gated on todo completion. If todoName is provided with no matching active todo, the todo is created first. " +
     "Do not use this for fixed-duration blocks like 'for 2 hours' or generic focus blocks like 'turn on social media blocking' — those are OWNER_WEBSITE_BLOCK.",
-  descriptionCompressed:
-    "Block websites until a named todo is completed.",
+  descriptionCompressed: "Block websites until a named todo is completed.",
   validate: async (_runtime, message) =>
     !shouldRejectFixedDurationRequest(getMessageText(message)),
   handler: async (
@@ -242,13 +243,15 @@ export const blockUntilTaskCompleteAction: Action = {
     },
     {
       name: "todoId",
-      description: "ID of an existing todo. Preferred over todoName when known.",
+      description:
+        "ID of an existing todo. Preferred over todoName when known.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "todoName",
-      description: "Name of the todo. Resolved against active todos; created if no match.",
+      description:
+        "Name of the todo. Resolved against active todos; created if no match.",
       required: false,
       schema: { type: "string" as const },
     },

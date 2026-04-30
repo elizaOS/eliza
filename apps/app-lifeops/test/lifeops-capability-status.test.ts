@@ -1,4 +1,8 @@
 import type { IAgentRuntime, Task } from "@elizaos/core";
+import type {
+  BrowserBridgeCompanionStatus,
+  BrowserBridgeSettings,
+} from "@elizaos/plugin-browser-bridge";
 import { describe, expect, it, vi } from "vitest";
 import {
   LIFEOPS_TASK_NAME,
@@ -126,25 +130,83 @@ function buildRuntime(): IAgentRuntime {
   } as unknown as IAgentRuntime;
 }
 
-function stubCapabilityDependencies(service: LifeOpsService): void {
-  vi.spyOn(service, "getScheduleMergedState").mockResolvedValue(
-    buildMergedState(),
-  );
-  vi.spyOn(service, "getBrowserSettings").mockResolvedValue({
+function buildBrowserSettings(
+  overrides: Partial<BrowserBridgeSettings> = {},
+): BrowserBridgeSettings {
+  return {
     enabled: true,
-    trackingMode: "metadata",
-    allowBrowserControl: false,
+    trackingMode: "current_tab",
+    allowBrowserControl: true,
     requireConfirmationForAccountAffecting: true,
     incognitoEnabled: false,
-    siteAccessMode: "allowlist",
-    grantedOrigins: ["https://x.com"],
+    siteAccessMode: "all_sites",
+    grantedOrigins: [],
     blockedOrigins: [],
     maxRememberedTabs: 50,
     pauseUntil: null,
     metadata: {},
     updatedAt: NOW,
-  });
-  vi.spyOn(service, "listBrowserCompanions").mockResolvedValue([]);
+    ...overrides,
+  };
+}
+
+function buildBrowserCompanion(
+  overrides: Partial<BrowserBridgeCompanionStatus> = {},
+): BrowserBridgeCompanionStatus {
+  return {
+    agentId: "00000000-0000-0000-0000-000000000001",
+    browser: "chrome",
+    connectionState: "connected",
+    createdAt: NOW,
+    extensionVersion: "1.0.0",
+    id: "browser-companion-1",
+    label: "Chrome Default",
+    lastSeenAt: NOW,
+    metadata: {},
+    pairedAt: NOW,
+    permissions: {
+      activeTab: true,
+      allOrigins: true,
+      grantedOrigins: [],
+      incognitoEnabled: false,
+      scripting: true,
+      tabs: true,
+    },
+    profileId: "default",
+    profileLabel: "Default",
+    updatedAt: NOW,
+    ...overrides,
+  };
+}
+
+function stubCapabilityDependencies(
+  service: LifeOpsService,
+  options: {
+    browserSettings?: BrowserBridgeSettings;
+    browserSettingsError?: Error;
+    browserCompanions?: BrowserBridgeCompanionStatus[];
+    browserCompanionsError?: Error;
+  } = {},
+): void {
+  vi.spyOn(service, "getScheduleMergedState").mockResolvedValue(
+    buildMergedState(),
+  );
+  const browserSettingsSpy = vi.spyOn(service, "getBrowserSettings");
+  if (options.browserSettingsError) {
+    browserSettingsSpy.mockRejectedValue(options.browserSettingsError);
+  } else {
+    browserSettingsSpy.mockResolvedValue(
+      options.browserSettings ?? buildBrowserSettings(),
+    );
+  }
+  const browserCompanionsSpy = vi.spyOn(service, "listBrowserCompanions");
+  if (options.browserCompanionsError) {
+    browserCompanionsSpy.mockRejectedValue(options.browserCompanionsError);
+  } else {
+    browserCompanionsSpy.mockResolvedValue(
+      options.browserCompanions ?? [buildBrowserCompanion()],
+    );
+  }
   vi.spyOn(service, "getHealthConnectorStatus").mockResolvedValue({
     available: true,
     backend: "healthkit",
@@ -191,6 +253,99 @@ describe("LifeOps capability status", () => {
       status.capabilities.find((item) => item.id === "sleep.relative_time")
         ?.summary,
     ).toContain("awake 3h");
+  });
+
+  it("does not mark browser activity working when no companion is paired", async () => {
+    const service = new LifeOpsService(buildRuntime());
+    stubCapabilityDependencies(service, { browserCompanions: [] });
+
+    const status = await service.getCapabilityStatus(new Date(NOW));
+    const browser = status.capabilities.find(
+      (item) => item.id === "activity.browser",
+    );
+
+    expect(browser?.state).toBe("not_configured");
+    expect(browser?.summary).toBe("No browser companion has paired yet");
+  });
+
+  it("marks browser activity working only for a recent connected usable companion", async () => {
+    const service = new LifeOpsService(buildRuntime());
+    stubCapabilityDependencies(service, {
+      browserCompanions: [buildBrowserCompanion()],
+    });
+
+    const status = await service.getCapabilityStatus(new Date(NOW));
+    const browser = status.capabilities.find(
+      (item) => item.id === "activity.browser",
+    );
+
+    expect(browser?.state).toBe("working");
+    expect(browser?.summary).toContain("1 recent companion");
+  });
+
+  it("marks browser activity degraded when the companion is stale", async () => {
+    const service = new LifeOpsService(buildRuntime());
+    stubCapabilityDependencies(service, {
+      browserCompanions: [
+        buildBrowserCompanion({ lastSeenAt: "2026-04-20T09:40:00.000Z" }),
+      ],
+    });
+
+    const status = await service.getCapabilityStatus(new Date(NOW));
+    const browser = status.capabilities.find(
+      (item) => item.id === "activity.browser",
+    );
+
+    expect(browser?.state).toBe("degraded");
+    expect(browser?.summary).toBe(
+      "No connected browser companion has checked in recently",
+    );
+  });
+
+  it("marks browser activity not configured when browser settings are disabled", async () => {
+    const service = new LifeOpsService(buildRuntime());
+    stubCapabilityDependencies(service, {
+      browserSettings: buildBrowserSettings({ enabled: false }),
+    });
+
+    const status = await service.getCapabilityStatus(new Date(NOW));
+    const browser = status.capabilities.find(
+      (item) => item.id === "activity.browser",
+    );
+
+    expect(browser?.state).toBe("not_configured");
+    expect(browser?.summary).toBe("Browser tracking is disabled");
+  });
+
+  it("marks browser activity degraded when browser control is disabled", async () => {
+    const service = new LifeOpsService(buildRuntime());
+    stubCapabilityDependencies(service, {
+      browserSettings: buildBrowserSettings({ allowBrowserControl: false }),
+    });
+
+    const status = await service.getCapabilityStatus(new Date(NOW));
+    const browser = status.capabilities.find(
+      (item) => item.id === "activity.browser",
+    );
+
+    expect(browser?.state).toBe("degraded");
+    expect(browser?.summary).toBe("Browser control is disabled");
+  });
+
+  it("marks browser activity degraded when browser status fails to load", async () => {
+    const service = new LifeOpsService(buildRuntime());
+    stubCapabilityDependencies(service, {
+      browserSettingsError: new Error("settings offline"),
+    });
+
+    const status = await service.getCapabilityStatus(new Date(NOW));
+    const browser = status.capabilities.find(
+      (item) => item.id === "activity.browser",
+    );
+
+    expect(browser?.state).toBe("degraded");
+    expect(browser?.summary).toBe("Browser status failed to load");
+    expect(browser?.evidence[0]?.detail).toBe("settings offline");
   });
 
   it("marks runtime and scheduler degraded when app state cannot be loaded", async () => {

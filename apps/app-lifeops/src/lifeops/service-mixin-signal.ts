@@ -3,7 +3,9 @@ import type { Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
   LIFEOPS_SIGNAL_CAPABILITIES,
+  type LifeOpsConnectorDegradation,
   type LifeOpsConnectorSide,
+  type LifeOpsSignalCapability,
   type LifeOpsSignalConnectorStatus,
   type LifeOpsSignalInboundMessage,
   type LifeOpsSignalPairingStatus,
@@ -25,6 +27,7 @@ import {
 import {
   readSignalInboundMessages,
   readSignalLocalClientConfigFromEnv,
+  sendSignalLocalMessage,
 } from "./signal-local-client.js";
 import {
   removeSignalConnectorConfig,
@@ -49,21 +52,39 @@ type RuntimeWithPluginLifecycle = {
   reloadPlugin?: (plugin: Plugin) => Promise<void>;
 };
 
-const FULL_SIGNAL_CAPABILITIES = [...LIFEOPS_SIGNAL_CAPABILITIES];
+type SignalServiceRecentMessage = {
+  id: string;
+  roomId: string;
+  channelId: string;
+  roomName: string;
+  speakerName: string;
+  text: string;
+  createdAt: number;
+  isFromAgent: boolean;
+  isGroup: boolean;
+};
 
-function withFullSignalCapabilities(
+type SignalServiceLike = {
+  getAccountNumber?: () => string | null;
+  isServiceConnected?: () => boolean;
+  getRecentMessages?: (limit?: number) => Promise<SignalServiceRecentMessage[]>;
+  sendMessage?: (
+    recipient: string,
+    text: string,
+  ) => Promise<{ timestamp?: number }>;
+};
+
+const FULL_SIGNAL_CAPABILITIES: LifeOpsSignalCapability[] = [
+  ...LIFEOPS_SIGNAL_CAPABILITIES,
+];
+
+function normalizeSignalCapabilities(
   capabilities: readonly string[] | null | undefined,
-): Array<"signal.read" | "signal.send"> {
-  const normalized = new Set(
-    (capabilities ?? []).filter(
-      (candidate): candidate is "signal.read" | "signal.send" =>
-        candidate === "signal.read" || candidate === "signal.send",
-    ),
+): LifeOpsSignalCapability[] {
+  return (capabilities ?? []).filter(
+    (candidate): candidate is LifeOpsSignalCapability =>
+      candidate === "signal.read" || candidate === "signal.send",
   );
-  for (const capability of FULL_SIGNAL_CAPABILITIES) {
-    normalized.add(capability);
-  }
-  return [...normalized];
 }
 
 function getConnectorSetupService(
@@ -72,6 +93,70 @@ function getConnectorSetupService(
   return runtime.getService(
     "connector-setup",
   ) as ConnectorSetupServiceLike | null;
+}
+
+function getSignalService(
+  runtime: Constructor<LifeOpsServiceBase>["prototype"]["runtime"],
+): SignalServiceLike | null {
+  const service = runtime.getService("signal") as SignalServiceLike | null;
+  return service && typeof service === "object" ? service : null;
+}
+
+function signalServiceConnected(service: SignalServiceLike | null): boolean {
+  return Boolean(service?.isServiceConnected?.());
+}
+
+function signalServiceCanRead(service: SignalServiceLike | null): boolean {
+  return (
+    signalServiceConnected(service) &&
+    typeof service?.getRecentMessages === "function"
+  );
+}
+
+function signalServiceCanSend(service: SignalServiceLike | null): boolean {
+  return (
+    signalServiceConnected(service) &&
+    typeof service?.sendMessage === "function"
+  );
+}
+
+function signalReadyCapabilities(args: {
+  granted: readonly string[] | null | undefined;
+  inboundReady: boolean;
+  sendReady: boolean;
+}): LifeOpsSignalCapability[] {
+  return normalizeSignalCapabilities(args.granted).filter((capability) =>
+    capability === "signal.read" ? args.inboundReady : args.sendReady,
+  );
+}
+
+function signalStatusDegradations(args: {
+  connected: boolean;
+  grantedCapabilities: readonly LifeOpsSignalCapability[];
+  inboundReady: boolean;
+  sendReady: boolean;
+}): LifeOpsConnectorDegradation[] {
+  const degradations: LifeOpsConnectorDegradation[] = [];
+  const granted = new Set(args.grantedCapabilities);
+  if (args.connected && granted.has("signal.read") && !args.inboundReady) {
+    degradations.push({
+      axis: "transport-offline",
+      code: "signal_inbound_unavailable",
+      message:
+        "Signal is linked, but no runtime or signal-cli receive path is available for inbound reads.",
+      retryable: true,
+    });
+  }
+  if (args.connected && granted.has("signal.send") && !args.sendReady) {
+    degradations.push({
+      axis: "delivery-degraded",
+      code: "signal_send_service_unavailable",
+      message:
+        "Signal is linked, but no runtime or signal-cli send path is available.",
+      retryable: true,
+    });
+  }
+  return degradations;
 }
 
 function setSignalRuntimeEnv(
@@ -137,11 +222,7 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
 ) {
   class LifeOpsSignalServiceMixin extends Base {
     lifeOpsSignalServiceConnected(): boolean {
-      const signalService = this.runtime.getService("signal") as {
-        getAccountNumber?: () => string | null;
-        isServiceConnected?: () => boolean;
-      } | null;
-      return Boolean(signalService?.isServiceConnected?.());
+      return signalServiceConnected(getSignalService(this.runtime));
     }
 
     lifeOpsSignalServiceRegistered(): boolean {
@@ -179,6 +260,8 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
       setSignalRuntimeEnv(authDir, phoneNumber);
       this.runtime.setSetting("SIGNAL_AUTH_DIR", authDir, false);
       this.runtime.setSetting("SIGNAL_ACCOUNT_NUMBER", phoneNumber, false);
+      this.runtime.setSetting("SIGNAL_RECEIVE_MODE", "manual", false);
+      this.runtime.setSetting("SIGNAL_AUTO_REPLY", "false", false);
 
       if (!configChanged && this.lifeOpsSignalServiceRegistered()) {
         return;
@@ -288,18 +371,8 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
         }
       }
 
-      if (grant) {
-        const fullCapabilities = withFullSignalCapabilities(grant.capabilities);
-        if (fullCapabilities.length !== (grant.capabilities ?? []).length) {
-          grant = {
-            ...grant,
-            capabilities: fullCapabilities,
-            lastRefreshAt: new Date().toISOString(),
-          };
-          await this.repository.upsertConnectorGrant(grant);
-        }
-      }
-
+      let inboundReady = false;
+      let sendReady = false;
       if (grant?.tokenRef) {
         const deviceInfo = readSignalLinkedDeviceInfo(grant.tokenRef);
         if (deviceInfo) {
@@ -307,8 +380,14 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
             deviceInfo.authDir,
             deviceInfo.phoneNumber,
           );
-          connected = true;
-          reason = "connected";
+          const signalService = getSignalService(this.runtime);
+          const localClientConfig = readSignalLocalClientConfigFromEnv();
+          inboundReady =
+            signalServiceCanRead(signalService) || localClientConfig !== null;
+          sendReady =
+            signalServiceCanSend(signalService) || localClientConfig !== null;
+          connected = inboundReady || sendReady;
+          reason = connected ? "connected" : "disconnected";
           identity = {
             phoneNumber: deviceInfo.phoneNumber,
             uuid: deviceInfo.uuid,
@@ -323,10 +402,20 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
         reason = "pairing";
       }
 
-      const capabilities = (grant?.capabilities ?? []).filter(
-        (candidate): candidate is "signal.read" | "signal.send" =>
-          candidate === "signal.read" || candidate === "signal.send",
+      const grantedCapabilities = normalizeSignalCapabilities(
+        grant?.capabilities,
       );
+      const capabilities = signalReadyCapabilities({
+        granted: grantedCapabilities,
+        inboundReady,
+        sendReady,
+      });
+      const degradations = signalStatusDegradations({
+        connected,
+        grantedCapabilities,
+        inboundReady,
+        sendReady,
+      });
 
       return {
         provider: "signal",
@@ -338,6 +427,7 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
         grantedCapabilities: capabilities,
         pairing,
         grant,
+        ...(degradations.length > 0 ? { degradations } : {}),
       };
     }
 
@@ -448,67 +538,115 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
      * This mirrors how `telegram-local-client.ts` reads Telegram sessions
      * without the plugin service being active.
      *
-     * Returns an empty array when neither path is available.
-     * Does not throw — callers should check connector status separately.
+     * Throws when neither path is available so a missing read transport is not
+     * mistaken for an empty Signal inbox.
      */
     async readSignalInbound(
       limit = 25,
     ): Promise<LifeOpsSignalInboundMessage[]> {
-      type SignalServiceLike = {
-        isServiceConnected?: () => boolean;
-        getRecentMessages?: (limit?: number) => Promise<
-          Array<{
-            id: string;
-            roomId: string;
-            channelId: string;
-            roomName: string;
-            speakerName: string;
-            text: string;
-            createdAt: number;
-            isFromAgent: boolean;
-            isGroup: boolean;
-          }>
-        >;
-      };
-      const signalService = this.runtime.getService(
-        "signal",
-      ) as SignalServiceLike | null;
+      const signalService = getSignalService(this.runtime);
       const clampedLimit = Math.min(Math.max(1, Math.floor(limit)), 100);
 
-      // Primary path: use the Signal service's in-memory message store.
-      if (signalService?.isServiceConnected?.()) {
+      const localClientConfig = readSignalLocalClientConfigFromEnv();
+      let serviceReadAttempted = false;
+
+      // Primary path: use the Signal service's in-memory message store when it
+      // exists. In passive LifeOps mode the plugin is connected for send/status
+      // only, so this will usually be empty and the direct pull below owns reads.
+      if (signalServiceCanRead(signalService)) {
+        serviceReadAttempted = true;
         const raw = await signalService.getRecentMessages?.(clampedLimit);
-        if (!raw || raw.length === 0) {
-          return [];
+        if (raw && raw.length > 0) {
+          return raw.map(
+            (entry): LifeOpsSignalInboundMessage => ({
+              id: entry.id,
+              roomId: entry.roomId,
+              channelId: entry.channelId,
+              threadId: entry.channelId || entry.roomId,
+              roomName: entry.roomName,
+              speakerName: entry.speakerName,
+              senderNumber: entry.isGroup ? null : entry.channelId || null,
+              senderUuid: null,
+              sourceDevice: null,
+              groupId: entry.isGroup ? entry.channelId || null : null,
+              groupType: null,
+              text: entry.text,
+              createdAt: entry.createdAt,
+              isInbound: !entry.isFromAgent,
+              isGroup: entry.isGroup,
+            }),
+          );
         }
-        return raw.map(
-          (entry): LifeOpsSignalInboundMessage => ({
-            id: entry.id,
-            roomId: entry.roomId,
-            channelId: entry.channelId,
-            threadId: entry.channelId || entry.roomId,
-            roomName: entry.roomName,
-            speakerName: entry.speakerName,
-            senderNumber: entry.isGroup ? null : entry.channelId || null,
-            senderUuid: null,
-            sourceDevice: null,
-            groupId: entry.isGroup ? entry.channelId || null : null,
-            groupType: null,
-            text: entry.text,
-            createdAt: entry.createdAt,
-            isInbound: !entry.isFromAgent,
-            isGroup: entry.isGroup,
-          }),
-        );
       }
 
-      // Fallback path: read directly from the signal-cli REST API.
-      const localClientConfig = readSignalLocalClientConfigFromEnv();
+      // Passive pull path: read directly from the signal-cli REST API.
       if (localClientConfig) {
         return readSignalInboundMessages(localClientConfig, clampedLimit);
       }
 
-      return [];
+      if (serviceReadAttempted) {
+        return [];
+      }
+
+      fail(
+        409,
+        "Signal inbound is not configured. Link Signal or configure signal-cli receive before reading messages.",
+      );
+    }
+
+    async sendSignalMessage(request: {
+      side?: LifeOpsConnectorSide;
+      recipient: string;
+      text: string;
+    }): Promise<{
+      provider: "signal";
+      side: LifeOpsConnectorSide;
+      recipient: string;
+      ok: true;
+      timestamp: number;
+    }> {
+      const normalizedSide =
+        normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
+      const recipient = request.recipient.trim();
+      const text = request.text.trim();
+      if (!recipient) {
+        fail(400, "recipient is required");
+      }
+      if (!text) {
+        fail(400, "text is required");
+      }
+
+      const status = await this.getSignalConnectorStatus(normalizedSide);
+      if (!status.connected) {
+        fail(409, "Signal is not connected.");
+      }
+      if (!status.grantedCapabilities.includes("signal.send")) {
+        fail(403, "Signal send capability is not granted.");
+      }
+
+      const signalService = getSignalService(this.runtime);
+      const localClientConfig = readSignalLocalClientConfigFromEnv();
+      if (!signalServiceCanSend(signalService) && !localClientConfig) {
+        fail(503, "Signal send service is not available.");
+      }
+
+      const result = signalServiceCanSend(signalService)
+        ? await signalService.sendMessage(recipient, text)
+        : await sendSignalLocalMessage(localClientConfig, { recipient, text });
+      if (
+        typeof result.timestamp !== "number" ||
+        !Number.isFinite(result.timestamp)
+      ) {
+        fail(502, "Signal send did not return a timestamp.");
+      }
+
+      return {
+        provider: "signal",
+        side: normalizedSide,
+        recipient,
+        ok: true,
+        timestamp: result.timestamp,
+      };
     }
   }
 

@@ -41,8 +41,14 @@ const ROLE_GATE_RANK: Record<RoleGate, number> = {
 
 const ROLE_GATED_PLUGINS: Readonly<Record<string, RoleGate>> = {
   // Blockchain — financial actions
-  "@elizaos/plugin-evm": "admin",
-  "@elizaos/plugin-solana": "admin",
+  "@elizaos/app-browser": "owner",
+  "@elizaos/app-steward": "owner",
+  "@elizaos/plugin-browser-bridge": "owner",
+  "@elizaos/plugin-computeruse": "owner",
+  "@elizaos/plugin-evm": "owner",
+  "@elizaos/plugin-solana": "owner",
+  evm: "owner",
+  solana: "owner",
 
   // Orchestration — spawns agents, PTY sessions, workspaces
   "agent-orchestrator": "admin",
@@ -53,7 +59,7 @@ const ROLE_GATED_PLUGINS: Readonly<Record<string, RoleGate>> = {
   // (no dedicated `secrets` plugin name to gate against).
   "plugin-manager": "owner",
 
-  // Trust — policy / trust signals (matches plugin `name` from plugin-trust)
+  // Trust — policy / trust signals (built-in trust capability `name`)
   trust: "admin",
 
   // Shell — arbitrary command execution
@@ -176,6 +182,23 @@ const PROVIDER_ROLE_OVERRIDES: Readonly<Record<string, RoleGate>> = {
 
   // Clipboard
   clipboard: "admin",
+
+  // Browser / wallet operational state
+  app_browser_workspace: "owner",
+  computerState: "owner",
+  "get-balance": "owner",
+  "solana-wallet": "owner",
+  wallet: "owner",
+  walletBalance: "owner",
+  walletPortfolio: "owner",
+  tokenPrices: "owner",
+  chainInfo: "owner",
+
+  // Apps / plugins expose local installation/runtime state.
+  available_apps: "owner",
+  pluginConfigurationStatus: "owner",
+  pluginState: "owner",
+  registryPlugins: "owner",
 };
 
 // ---------------------------------------------------------------------------
@@ -216,6 +239,10 @@ function roleCheckPasses(
  * Wrap an action's validate function so it rejects callers below the gate.
  */
 function gateAction(action: Action, gate: RoleGate): void {
+  if ((action as { __roleGate?: RoleGate }).__roleGate === gate) {
+    return;
+  }
+
   const originalValidate = action.validate;
 
   action.validate = async (
@@ -227,10 +254,11 @@ function gateAction(action: Action, gate: RoleGate): void {
 
     const check = await checkSenderRole(runtime, message);
     if (!check) {
-      // No world context (e.g. direct API call) — allow through
-      return originalValidate
-        ? originalValidate(runtime, message, state)
-        : true;
+      logger.debug(
+        `[role-gating] ${action.name} blocked for entity ${message.entityId} ` +
+          `(role: unknown, requires: ${gate})`,
+      );
+      return false;
     }
 
     if (!roleCheckPasses(check, gate)) {
@@ -243,6 +271,7 @@ function gateAction(action: Action, gate: RoleGate): void {
 
     return originalValidate ? originalValidate(runtime, message, state) : true;
   };
+  (action as { __roleGate?: RoleGate }).__roleGate = gate;
 }
 
 /**
@@ -250,6 +279,10 @@ function gateAction(action: Action, gate: RoleGate): void {
  * below the gate. Providers don't block — they just withhold context.
  */
 function gateProvider(provider: Provider, gate: RoleGate): void {
+  if ((provider as { __roleGate?: RoleGate }).__roleGate === gate) {
+    return;
+  }
+
   const originalGet = provider.get;
 
   provider.get = async (
@@ -260,12 +293,21 @@ function gateProvider(provider: Provider, gate: RoleGate): void {
     const { checkSenderRole } = await import("./roles.js");
 
     const check = await checkSenderRole(runtime, message);
-    if (check && !roleCheckPasses(check, gate)) {
+    if (!check || !roleCheckPasses(check, gate)) {
       return { text: "" };
     }
 
     return originalGet.call(provider, runtime, message, state);
   };
+  (provider as { __roleGate?: RoleGate }).__roleGate = gate;
+}
+
+function resolvePluginGate(pluginName: string): RoleGate | undefined {
+  return (
+    ROLE_GATED_PLUGINS[pluginName] ??
+    ROLE_GATED_PLUGINS[pluginName.replace(/^@elizaos\/plugin-/, "")] ??
+    ROLE_GATED_PLUGINS[pluginName.replace(/^@elizaos\/app-/, "")]
+  );
 }
 
 /**
@@ -281,7 +323,7 @@ export function applyPluginRoleGating(plugins: Plugin[]): void {
 
   for (const plugin of plugins) {
     const pluginName = plugin.name ?? "";
-    const pluginGate = ROLE_GATED_PLUGINS[pluginName];
+    const pluginGate = resolvePluginGate(pluginName);
 
     // Gate actions
     if (plugin.actions?.length) {

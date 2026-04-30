@@ -8,9 +8,7 @@
       "type": "googledrive",
       "parameters": {
         "settings_file": "evaluation_examples/settings/googledrive/settings.yml",
-        "operation": [
-          "delete"
-        ],
+        "operation": ["delete"],
         "args": [
           {
             "query": "title = 'form.pdf' or title = 'form.docx' or title = 'form.docx.pdf' or title = 'forms'",
@@ -22,20 +20,13 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "google-chrome",
-          "--remote-debugging-port=1337"
-        ]
+        "command": ["google-chrome", "--remote-debugging-port=1337"]
       }
     },
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "socat",
-          "tcp-listen:9222,fork",
-          "tcp:localhost:1337"
-        ]
+        "command": ["socat", "tcp-listen:9222,fork", "tcp:localhost:1337"]
       }
     },
     {
@@ -75,10 +66,7 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "libreoffice_writer",
-    "chrome"
-  ],
+  "related_apps": ["libreoffice_writer", "chrome"],
   "evaluator": {
     "func": "compare_pdfs",
     "result": {

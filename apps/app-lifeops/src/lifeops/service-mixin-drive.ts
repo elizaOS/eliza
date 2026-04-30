@@ -3,29 +3,25 @@ import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
 } from "@elizaos/shared";
-import {
-  resolveGoogleExecutionTarget,
-} from "./google-connector-gateway.js";
+import { resolveGoogleExecutionTarget } from "./google-connector-gateway.js";
 import {
   appendToDoc,
   createDriveFile,
-  getDriveFile,
+  type GoogleDriveFile,
   getDocContent,
+  getDriveFile,
   getSheetContent,
   listDriveFiles,
   searchDriveFiles,
-  type GoogleDriveFile,
   updateSheetCells,
 } from "./google-drive.js";
-import {
-  ensureFreshGoogleAccessToken,
-} from "./google-oauth.js";
+import { ensureFreshGoogleAccessToken } from "./google-oauth.js";
+import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import { fail } from "./service-normalize.js";
 import {
   normalizeOptionalConnectorMode,
   normalizeOptionalConnectorSide,
 } from "./service-normalize-connector.js";
-import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
 // ---------------------------------------------------------------------------
 // Scope constants — Drive requires the full drive scope for read+write.
@@ -34,8 +30,7 @@ import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
 export const GOOGLE_DRIVE_READ_SCOPE =
   "https://www.googleapis.com/auth/drive.readonly";
-export const GOOGLE_DRIVE_WRITE_SCOPE =
-  "https://www.googleapis.com/auth/drive";
+export const GOOGLE_DRIVE_WRITE_SCOPE = "https://www.googleapis.com/auth/drive";
 export const GOOGLE_DRIVE_FILE_SCOPE =
   "https://www.googleapis.com/auth/drive.file";
 
@@ -43,9 +38,7 @@ export const GOOGLE_DRIVE_FILE_SCOPE =
  * Returns true when the grant has at least one scope that permits reading
  * from Drive (drive, drive.readonly, or drive.file).
  */
-function hasGoogleDriveReadScope(grant: {
-  grantedScopes: string[];
-}): boolean {
+function hasGoogleDriveReadScope(grant: { grantedScopes: string[] }): boolean {
   const scopes = new Set(grant.grantedScopes);
   return (
     scopes.has(GOOGLE_DRIVE_WRITE_SCOPE) ||
@@ -58,11 +51,11 @@ function hasGoogleDriveReadScope(grant: {
  * Returns true when the grant has a scope that permits writing to Drive
  * (drive or drive.file).
  */
-function hasGoogleDriveWriteScope(grant: {
-  grantedScopes: string[];
-}): boolean {
+function hasGoogleDriveWriteScope(grant: { grantedScopes: string[] }): boolean {
   const scopes = new Set(grant.grantedScopes);
-  return scopes.has(GOOGLE_DRIVE_WRITE_SCOPE) || scopes.has(GOOGLE_DRIVE_FILE_SCOPE);
+  return (
+    scopes.has(GOOGLE_DRIVE_WRITE_SCOPE) || scopes.has(GOOGLE_DRIVE_FILE_SCOPE)
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -87,7 +80,6 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ) {
   class LifeOpsDriveServiceMixin extends Base {
-
     // -----------------------------------------------------------------------
     // Grant helpers
     // -----------------------------------------------------------------------
@@ -142,12 +134,13 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
     // Token helper
     // -----------------------------------------------------------------------
 
-    async lifeOpsDriveAccessToken(
-      grant: { tokenRef: string | null },
-    ): Promise<string> {
+    async lifeOpsDriveAccessToken(grant: {
+      tokenRef: string | null;
+    }): Promise<string> {
       return (
         await ensureFreshGoogleAccessToken(
-          grant.tokenRef ?? fail(409, "Google Drive token reference is missing."),
+          grant.tokenRef ??
+            fail(409, "Google Drive token reference is missing."),
         )
       ).accessToken;
     }

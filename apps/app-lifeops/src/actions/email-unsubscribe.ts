@@ -77,7 +77,11 @@ async function runEmailUnsubscribeAction(
     return {
       success: false,
       text: "Tell me whether you want to scan your inbox for subscriptions, unsubscribe from a specific sender, or view the unsubscribe history.",
-      data: { error: "AMBIGUOUS_EMAIL_UNSUBSCRIBE_REQUEST" },
+      values: { requiresConfirmation: true },
+      data: {
+        error: "AMBIGUOUS_EMAIL_UNSUBSCRIBE_REQUEST",
+        requiresConfirmation: true,
+      },
     };
   }
 
@@ -103,7 +107,11 @@ async function runEmailUnsubscribeAction(
         return {
           success: false,
           text: "Tell me which sender to unsubscribe from (senderEmail).",
-          data: { error: "MISSING_SENDER_EMAIL" },
+          values: { requiresConfirmation: true },
+          data: {
+            error: "MISSING_SENDER_EMAIL",
+            requiresConfirmation: true,
+          },
         };
       }
       const result = await service.unsubscribeEmailSender(INTERNAL_URL, {
@@ -199,6 +207,71 @@ export const emailUnsubscribeAction: Action & {
     "Scan the connected Gmail inbox for promotional senders using List-Unsubscribe headers, execute RFC 8058 one-click unsubscribe or mailto fallback, and optionally create a Gmail filter to auto-trash future mail. " +
     "Use for requests like 'scan my inbox for subscriptions', 'unsubscribe me from <sender>', or 'clean up my promotional emails'. " +
     "Distinct from SUBSCRIPTIONS (paid service cancellation): this stops future email from a sender, it does not cancel a paid service account.",
+  descriptionCompressed:
+    "Gmail RFC8058 unsub scan mailto fallback optional block-filter not paid cancel",
+
+  parameters: [
+    {
+      name: "mode",
+      description:
+        "scan inbox for promotional senders, unsubscribe sender, or view history.",
+      required: false,
+      schema: {
+        type: "string" as const,
+        enum: ["scan", "unsubscribe", "history"],
+      },
+    },
+    {
+      name: "senderEmail",
+      description: "Target From address for unsubscribe mode.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "listId",
+      description: "Optional list id when multiple lists per sender.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "query",
+      description: "Optional Gmail search query for scan mode.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "maxMessages",
+      description: "Cap messages analyzed in scan mode.",
+      required: false,
+      schema: { type: "number" as const },
+    },
+    {
+      name: "blockAfter",
+      description: "Add blocking filter after successful unsubscribe.",
+      required: false,
+      schema: { type: "boolean" as const },
+    },
+    {
+      name: "trashExisting",
+      description:
+        "Move existing threads from sender to trash during unsubscribe.",
+      required: false,
+      schema: { type: "boolean" as const },
+    },
+    {
+      name: "confirmed",
+      description: "Explicit confirmation gate for unsubscribe execution.",
+      required: false,
+      schema: { type: "boolean" as const },
+    },
+    {
+      name: "limit",
+      description: "History rows to return.",
+      required: false,
+      schema: { type: "number" as const },
+    },
+  ],
+
   suppressPostActionContinuation: true,
   validate: async (runtime: IAgentRuntime, message: Memory) =>
     hasLifeOpsAccess(runtime, message),
@@ -212,10 +285,17 @@ export const emailUnsubscribeAction: Action & {
       return await runEmailUnsubscribeAction(runtime, message, state, options);
     } catch (error) {
       if (error instanceof LifeOpsServiceError) {
+        // Selection + execution were correct: the user asked to unsubscribe,
+        // the action ran, and the lifeops service surfaced a needs-human
+        // signal (no Gmail grant, sender not found, manual unsubscribe
+        // required, etc.). Mark as awaiting-confirmation so the runtime
+        // stops the multi-step continuation and the benchmark scorer treats
+        // this as completed.
         return {
           success: false,
           text: error.message,
-          data: { status: error.status },
+          values: { requiresConfirmation: true },
+          data: { status: error.status, requiresConfirmation: true },
         };
       }
       throw error;

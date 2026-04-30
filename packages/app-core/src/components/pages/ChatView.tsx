@@ -496,7 +496,11 @@ export function ChatView({
   };
 
   const messagesContent =
-    visibleMsgs.length === 0 && !chatSending ? null : (
+    visibleMsgs.length === 0 && !chatSending ? (
+      <div className="flex h-full items-center justify-center px-6 text-center text-xs text-muted">
+        {t("chatview.NoMessagesYet", { defaultValue: "No messages yet." })}
+      </div>
+    ) : (
       <ChatTranscript
         variant={variant}
         agentName={agentName}

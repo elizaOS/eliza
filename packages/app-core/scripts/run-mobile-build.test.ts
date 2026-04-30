@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   applyIosAppIdentity,
+  injectNoCompressTarGz,
   isCapacitorPlatformReady,
   resolveIosBuildTarget,
   resolvePlatformTemplateRoot,
@@ -427,6 +428,21 @@ describe("run-mobile-build", () => {
       ),
       "android-app\n",
     );
+    writeFile(
+      path.join(
+        repoRoot,
+        "eliza",
+        "packages",
+        "app-core",
+        "platforms",
+        "android",
+        "app",
+        "src",
+        "main",
+        "AndroidManifest.xml",
+      ),
+      "android-manifest\n",
+    );
 
     expect(isCapacitorPlatformReady("android", { appDirValue: appDir })).toBe(
       false,
@@ -440,6 +456,9 @@ describe("run-mobile-build", () => {
 
     expect(copied).toContain("gradlew");
     expect(copied).toContain(path.join("app", "build.gradle"));
+    expect(copied).toContain(
+      path.join("app", "src", "main", "AndroidManifest.xml"),
+    );
     expect(isCapacitorPlatformReady("android", { appDirValue: appDir })).toBe(
       true,
     );
@@ -695,5 +714,74 @@ describe("run-mobile-build", () => {
       destination: "generic/platform=iOS Simulator",
       sdk: "iphonesimulator",
     });
+  });
+});
+
+describe("injectNoCompressTarGz", () => {
+  // PGlite resolves vector.tar.gz / fuzzystrmatch.tar.gz at runtime via
+  // `new URL("../X", import.meta.url)`. aapt2's default packaging
+  // rewrites .tar.gz entries to .tar, which breaks that lookup. The
+  // gradle patcher must inject `androidResources { noCompress += [...] }`
+  // into the regenerated app/build.gradle so the AOSP + Capacitor APK
+  // both ship the file under its real name.
+  const baseGradle = `apply plugin: 'com.android.application'
+
+android {
+    namespace = "com.example.app"
+    defaultConfig {
+        applicationId "com.example.app"
+        minSdkVersion 26
+    }
+    buildTypes {
+        release {
+            minifyEnabled true
+        }
+    }
+}
+
+dependencies {
+    implementation "androidx.core:core:1.13.0"
+}
+`;
+
+  it("inserts the noCompress block before the closing android brace", () => {
+    const patched = injectNoCompressTarGz(baseGradle);
+    expect(patched).not.toBe(baseGradle);
+    expect(patched).toMatch(/androidResources\s*\{[\s\S]*noCompress[\s\S]*['"]tar\.gz['"]/);
+    expect(patched).toMatch(/['"]gguf['"]/);
+    expect(patched).toMatch(/['"]so['"]/);
+    expect(patched).toMatch(/['"]tar['"]/);
+    // The block must land inside the top-level `android { ... }` block,
+    // not in `dependencies { }` or after EOF — verify by index.
+    const androidOpen = patched.indexOf("android {");
+    const androidClose = patched.indexOf("}", patched.indexOf("dependencies"));
+    const blockStart = patched.indexOf("androidResources");
+    expect(blockStart).toBeGreaterThan(androidOpen);
+    expect(blockStart).toBeLessThan(androidClose);
+  });
+
+  it("is idempotent — the second invocation is a no-op", () => {
+    const once = injectNoCompressTarGz(baseGradle);
+    const twice = injectNoCompressTarGz(once);
+    expect(twice).toBe(once);
+  });
+
+  it("respects an existing noCompress that already lists tar.gz", () => {
+    const userManaged = `apply plugin: 'com.android.application'
+
+android {
+    namespace = "com.example.app"
+    aaptOptions {
+        noCompress 'tar.gz', 'gguf'
+    }
+}
+`;
+    expect(injectNoCompressTarGz(userManaged)).toBe(userManaged);
+  });
+
+  it("returns the input unchanged when no android block is present", () => {
+    // Guard against running on the wrong file (root build.gradle, etc.).
+    const rootGradle = `buildscript {\n  repositories { mavenCentral() }\n}\n`;
+    expect(injectNoCompressTarGz(rootGradle)).toBe(rootGradle);
   });
 });

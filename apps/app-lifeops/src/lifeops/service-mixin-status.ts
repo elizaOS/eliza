@@ -12,6 +12,11 @@ import type {
   LifeOpsXConnectorStatus,
 } from "@elizaos/shared";
 import { loadLifeOpsAppState } from "./app-state.js";
+import {
+  type BrowserBridgeReadiness,
+  type BrowserBridgeReadinessState,
+  resolveBrowserBridgeReadiness,
+} from "./browser-readiness.js";
 import { resolveDefaultTimeZone } from "./defaults.js";
 import { createFeatureFlagService } from "./feature-flags.js";
 import type { FeatureFlagState } from "./feature-flags.types.js";
@@ -193,6 +198,68 @@ function summarizeCapabilities(
   };
 }
 
+function browserReadinessCapabilityState(
+  state: BrowserBridgeReadinessState,
+): LifeOpsCapabilityState {
+  switch (state) {
+    case "ready":
+      return "working";
+    case "paused":
+    case "permission_blocked":
+      return "blocked";
+    case "control_disabled":
+    case "stale":
+      return "degraded";
+    case "disabled":
+    case "tracking_off":
+    case "no_companion":
+      return "not_configured";
+  }
+}
+
+function browserReadinessSummary(
+  readiness: BrowserBridgeReadiness,
+  settings: BrowserBridgeSettings,
+): string {
+  switch (readiness.state) {
+    case "ready":
+      return `${settings.trackingMode} tracking; ${readiness.recentConnectedCompanions.length} recent companion`;
+    case "disabled":
+      return "Browser tracking is disabled";
+    case "tracking_off":
+      return "Browser tracking mode is off";
+    case "paused":
+      return "Browser tracking is paused";
+    case "control_disabled":
+      return "Browser control is disabled";
+    case "no_companion":
+      return "No browser companion has paired yet";
+    case "stale":
+      return "No connected browser companion has checked in recently";
+    case "permission_blocked":
+      return "Browser companion permissions or site access are incomplete";
+  }
+}
+
+function browserReadinessConfidence(
+  state: BrowserBridgeReadinessState,
+): number {
+  switch (state) {
+    case "ready":
+      return 0.9;
+    case "control_disabled":
+    case "stale":
+    case "permission_blocked":
+      return 0.55;
+    case "paused":
+      return 0.7;
+    case "disabled":
+    case "tracking_off":
+    case "no_companion":
+      return 0.35;
+  }
+}
+
 /** @internal */
 export function withStatus<TBase extends Constructor<StatusMixinDependencies>>(
   Base: TBase,
@@ -251,6 +318,13 @@ export function withStatus<TBase extends Constructor<StatusMixinDependencies>>(
               companions: browserCompanions.value,
             }
           : null;
+      const browserReadiness = browser
+        ? resolveBrowserBridgeReadiness(
+            browser.settings,
+            browser.companions,
+            now.getTime(),
+          )
+        : null;
       const xStatuses = [xLocal, xCloud]
         .filter(
           (
@@ -366,18 +440,18 @@ export function withStatus<TBase extends Constructor<StatusMixinDependencies>>(
             ? "blocked"
             : appStateLoadFailed
               ? "degraded"
-            : workerRegistered && schedulerTask
-              ? "working"
-              : "degraded",
+              : workerRegistered && schedulerTask
+                ? "working"
+                : "degraded",
           summary: appDisabled
             ? "Scheduler is intentionally suppressed while LifeOps is disabled"
             : appStateLoadFailed
               ? "Scheduler status is degraded because LifeOps app state failed to load"
-            : workerRegistered && schedulerTask
-              ? `Worker registered; interval ${Math.round(
-                  schedulerIntervalMs / 1000,
-                )}s`
-              : "Scheduler worker or task row is missing",
+              : workerRegistered && schedulerTask
+                ? `Worker registered; interval ${Math.round(
+                    schedulerIntervalMs / 1000,
+                  )}s`
+                : "Scheduler worker or task row is missing",
           confidence: workerRegistered && schedulerTask ? 0.88 : 0.45,
           checkedAt,
           evidence: [
@@ -401,31 +475,46 @@ export function withStatus<TBase extends Constructor<StatusMixinDependencies>>(
           id: "activity.browser",
           domain: "activity",
           label: "Browser activity",
-          state: browser
-            ? browser.settings.enabled &&
-              browser.settings.trackingMode !== "off"
-              ? "working"
-              : "not_configured"
+          state: browserReadiness
+            ? browserReadinessCapabilityState(browserReadiness.state)
             : "degraded",
-          summary: browser
-            ? `${browser.settings.trackingMode} tracking; ${browser.companions.length} companions`
-            : "Browser status failed to load",
-          confidence: browser ? 0.75 : 0.3,
+          summary:
+            browser && browserReadiness
+              ? browserReadinessSummary(browserReadiness, browser.settings)
+              : "Browser status failed to load",
+          confidence: browserReadiness
+            ? browserReadinessConfidence(browserReadiness.state)
+            : 0.3,
           checkedAt,
           evidence: [
             {
               label: "Browser settings",
-              state: browser
-                ? browser.settings.enabled
-                  ? "working"
-                  : "not_configured"
+              state: browserReadiness
+                ? browserReadinessCapabilityState(browserReadiness.state)
                 : "degraded",
               detail: browser
-                ? `site access ${browser.settings.siteAccessMode}`
+                ? `${browser.settings.trackingMode}; site access ${browser.settings.siteAccessMode}; control ${browser.settings.allowBrowserControl ? "on" : "off"}`
                 : browserSettings.ok
                   ? "Missing browser companions"
                   : browserSettings.message,
               observedAt: browser?.settings.updatedAt ?? checkedAt,
+            },
+            {
+              label: "Browser companions",
+              state: browserReadiness
+                ? browserReadiness.ready
+                  ? "working"
+                  : browserReadiness.connectedCompanions.length > 0
+                    ? "degraded"
+                    : "not_configured"
+                : "degraded",
+              detail: browserReadiness
+                ? `${browserReadiness.recentConnectedCompanions.length}/${browserReadiness.connectedCompanions.length}/${browser?.companions.length ?? 0} recent/connected/paired`
+                : browserCompanions.ok
+                  ? "Browser settings failed"
+                  : browserCompanions.message,
+              observedAt:
+                browserReadiness?.primaryCompanion?.lastSeenAt ?? checkedAt,
             },
           ],
         }),

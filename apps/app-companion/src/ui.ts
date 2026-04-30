@@ -17,6 +17,7 @@ export * from "./components/avatar/vrm-desktop-energy.ts";
 export * from "./components/chat/ChatAvatar.tsx";
 export * from "./components/companion/CompanionAppView.tsx";
 export * from "./components/companion/CompanionHeader.tsx";
+export * from "./components/companion/CompanionPerformanceSettings.tsx";
 export * from "./components/companion/CompanionSceneHost.tsx";
 export * from "./components/companion/CompanionShell.tsx";
 export * from "./components/companion/CompanionView.tsx";

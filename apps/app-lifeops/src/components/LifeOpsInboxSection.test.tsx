@@ -4,12 +4,18 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const {
+  getLifeOpsGmailNeedsResponseMock,
+  getLifeOpsGmailSpamReviewMock,
+  getLifeOpsGmailUnrespondedMock,
   unsubscribeLifeOpsEmailSenderMock,
   openExternalUrlMock,
   openLifeOpsChatMock,
   useInboxMock,
   useMediaQueryMock,
 } = vi.hoisted(() => ({
+  getLifeOpsGmailNeedsResponseMock: vi.fn(),
+  getLifeOpsGmailSpamReviewMock: vi.fn(),
+  getLifeOpsGmailUnrespondedMock: vi.fn(),
   unsubscribeLifeOpsEmailSenderMock: vi.fn(),
   openExternalUrlMock: vi.fn(),
   openLifeOpsChatMock: vi.fn(),
@@ -22,6 +28,9 @@ vi.mock("@elizaos/app-core", () => ({
   Input: "input",
   Spinner: () => null,
   client: {
+    getLifeOpsGmailNeedsResponse: getLifeOpsGmailNeedsResponseMock,
+    getLifeOpsGmailSpamReview: getLifeOpsGmailSpamReviewMock,
+    getLifeOpsGmailUnresponded: getLifeOpsGmailUnrespondedMock,
     unsubscribeLifeOpsEmailSender: unsubscribeLifeOpsEmailSenderMock,
   },
   openExternalUrl: openExternalUrlMock,
@@ -59,6 +68,9 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   useInboxMock.mockReset();
+  getLifeOpsGmailNeedsResponseMock.mockReset();
+  getLifeOpsGmailSpamReviewMock.mockReset();
+  getLifeOpsGmailUnrespondedMock.mockReset();
   unsubscribeLifeOpsEmailSenderMock.mockReset();
   openLifeOpsChatMock.mockReset();
   useMediaQueryMock.mockReset();
@@ -115,6 +127,38 @@ function gmailFeedFixture(message = SAMPLE_GMAIL_MESSAGE) {
 }
 
 describe("LifeOpsInboxSection", () => {
+  it("requests the Messages section as DM-only", () => {
+    useInboxMock.mockReturnValue({
+      channel: "all",
+      error: null,
+      loading: false,
+      messages: [],
+      threadGroups: [],
+      refresh: vi.fn(),
+      searchQuery: "",
+      setChannel: vi.fn(),
+      setSearchQuery: vi.fn(),
+    });
+
+    render(
+      <LifeOpsInboxSection
+        title="Messages"
+        selection={{ messageId: null }}
+        onSelect={vi.fn()}
+        channels={["discord", "telegram", "signal"]}
+      />,
+    );
+
+    expect(useInboxMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channels: ["discord", "telegram", "signal"],
+        chatTypeFilter: ["dm"],
+        maxParticipants: undefined,
+        sortByPriority: true,
+      }),
+    );
+  });
+
   it("keeps compact inboxes in list mode until a message is selected", () => {
     const onSelect = vi.fn();
 
@@ -200,5 +244,53 @@ describe("LifeOpsInboxSection", () => {
     });
 
     confirmSpy.mockRestore();
+  });
+
+  it("exposes existing Gmail review workflows in Mail mode", async () => {
+    getLifeOpsGmailNeedsResponseMock.mockResolvedValue({
+      messages: [],
+      source: "cache",
+      syncedAt: null,
+      summary: {
+        totalCount: 2,
+        unreadCount: 2,
+        importantCount: 1,
+      },
+    });
+    getLifeOpsGmailSpamReviewMock.mockResolvedValue({
+      items: [],
+      summary: {
+        totalCount: 3,
+        pendingCount: 3,
+        confirmedSpamCount: 0,
+        notSpamCount: 0,
+        dismissedCount: 0,
+      },
+    });
+    useInboxMock.mockReturnValue(gmailFeedFixture());
+
+    render(
+      <LifeOpsInboxSection
+        title="Mail"
+        selection={{ messageId: null }}
+        onSelect={vi.fn()}
+        channels={["gmail"]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Needs response" }));
+    expect(getLifeOpsGmailNeedsResponseMock).toHaveBeenCalledWith({
+      maxResults: 40,
+      grantId: undefined,
+    });
+    expect(await screen.findByText("2 threads need response")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Spam review" }));
+    expect(getLifeOpsGmailSpamReviewMock).toHaveBeenCalledWith({
+      maxResults: 40,
+      grantId: undefined,
+      status: "pending",
+    });
+    expect(await screen.findByText("3 pending spam review items")).toBeTruthy();
   });
 });

@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime, Memory, State } from "../types";
 import { stringToUuid } from "../utils";
-import { DefaultMessageService, extractPlannerActionNames } from "./message.ts";
+import {
+	DefaultMessageService,
+	extractPlannerActionNames,
+	findOwnedActionCorrectionFromMetadata,
+	shouldRunMetadataActionRescue,
+} from "./message.ts";
 
 // Tests for DISABLE_MEMORY_CREATION and ALLOW_MEMORY_SOURCE_IDS logic
 describe("MessageService memory persistence logic", () => {
@@ -187,5 +192,105 @@ describe("DefaultMessageService action-result cache lifecycle", () => {
 
 		expect(result.didRespond).toBe(false);
 		expect(stateCache.has(`${messageId}_action_results`)).toBe(false);
+	});
+});
+
+describe("shouldRunMetadataActionRescue", () => {
+	it("returns true when no actions are present", () => {
+		expect(shouldRunMetadataActionRescue({ actions: [] })).toBe(true);
+		expect(shouldRunMetadataActionRescue(null)).toBe(true);
+		expect(shouldRunMetadataActionRescue(undefined)).toBe(true);
+	});
+
+	it("returns true when actions are only IGNORE / NONE", () => {
+		expect(shouldRunMetadataActionRescue({ actions: ["IGNORE"] })).toBe(true);
+		expect(shouldRunMetadataActionRescue({ actions: ["NONE"] })).toBe(true);
+		expect(shouldRunMetadataActionRescue({ actions: ["IGNORE", "NONE"] })).toBe(
+			true,
+		);
+	});
+
+	it("returns false when REPLY is present (do not override deliberate conversation)", () => {
+		expect(shouldRunMetadataActionRescue({ actions: ["REPLY"] })).toBe(false);
+		expect(shouldRunMetadataActionRescue({ actions: ["RESPOND"] })).toBe(false);
+		expect(
+			shouldRunMetadataActionRescue({ actions: ["reply"] /* lowercase */ }),
+		).toBe(false);
+	});
+
+	it("returns false when a non-passive action is present (already routed)", () => {
+		expect(shouldRunMetadataActionRescue({ actions: ["CREATE_TASK"] })).toBe(
+			false,
+		);
+		expect(shouldRunMetadataActionRescue({ actions: ["SPAWN_AGENT"] })).toBe(
+			false,
+		);
+		expect(
+			shouldRunMetadataActionRescue({ actions: ["REPLY", "CREATE_TASK"] }),
+		).toBe(false);
+	});
+
+	it("ignores non-string entries in the actions array", () => {
+		// The runtime occasionally feeds in malformed planner output; the gate
+		// must not crash on numbers / objects / nulls and must still answer
+		// false when REPLY appears alongside garbage.
+		expect(
+			shouldRunMetadataActionRescue({
+				actions: [42 as unknown as string, null as unknown as string, "REPLY"],
+			}),
+		).toBe(false);
+	});
+});
+
+describe("findOwnedActionCorrectionFromMetadata — explicit-intent guard", () => {
+	// Production observation (2026-04-28): a user asked the bot to "Build
+	// 'Council' at agent-home /apps/council/ ... Each persona turn is a
+	// cloud-SDK call ... debits user balance ...". The planner correctly
+	// chose CREATE_TASK (delegate to a coding sub-agent). The metadata
+	// corrector then overrode CREATE_TASK with OWNER_CALENDAR because today's
+	// date and incidental dev words ("multi turn", "api carries", "workflow",
+	// "call", "user") overlap-scored OWNER_CALENDAR's example text higher
+	// than CREATE_TASK's. The user saw "Google Calendar is not connected.
+	// Connect Google in LifeOps settings." in response to a code request.
+	//
+	// CREATE_TASK is added to EXPLICIT_INTENT_ACTIONS so the corrector
+	// returns null when the planner picked CREATE_TASK, regardless of how
+	// the keyword-overlap scorer feels about it. Same precedent as
+	// SPAWN_AGENT, the sibling delegation action.
+	const runtime = { actions: [] } as unknown as Pick<IAgentRuntime, "actions">;
+
+	it("returns null for CREATE_TASK regardless of overlap candidates", () => {
+		const message = {
+			content: {
+				text: "Build Council at agent-home /apps/council/. Multi-agent debate room — each persona turn is a cloud-SDK call, carries the affiliate header, debits user balance.",
+			},
+		} as unknown as Pick<Memory, "content">;
+		expect(
+			findOwnedActionCorrectionFromMetadata(runtime, message, {
+				actions: ["CREATE_TASK"],
+			}),
+		).toBeNull();
+	});
+
+	it("returns null for SPAWN_AGENT (sibling delegation action)", () => {
+		const message = {
+			content: { text: "spawn an agent to triage open issues by friday" },
+		} as unknown as Pick<Memory, "content">;
+		expect(
+			findOwnedActionCorrectionFromMetadata(runtime, message, {
+				actions: ["SPAWN_AGENT"],
+			}),
+		).toBeNull();
+	});
+
+	it("returns null for REPLY (filtered out by the passive-action check)", () => {
+		const message = {
+			content: { text: "what's on my calendar tuesday" },
+		} as unknown as Pick<Memory, "content">;
+		expect(
+			findOwnedActionCorrectionFromMetadata(runtime, message, {
+				actions: ["REPLY"],
+			}),
+		).toBeNull();
 	});
 });

@@ -1,8 +1,8 @@
 import type http from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LifeOpsService } from "../lifeops/service.js";
-import { handleSleepRoutes } from "./sleep-routes.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
+import { handleSleepRoutes } from "./sleep-routes.js";
 
 const runtime = {
   agentId: "00000000-0000-0000-0000-000000000000",
@@ -56,6 +56,13 @@ describe("handleSleepRoutes", () => {
       .spyOn(LifeOpsService.prototype, "getSleepHistory")
       .mockResolvedValue({
         episodes: [],
+        summary: {
+          averageDurationMin: null,
+          cycleCount: 0,
+          napCount: 0,
+          openCount: 0,
+          overnightCount: 0,
+        },
         includeNaps: false,
         windowDays: 365,
       });
@@ -72,6 +79,13 @@ describe("handleSleepRoutes", () => {
     });
     expect(json).toHaveBeenCalledWith(context.res, {
       episodes: [],
+      summary: {
+        averageDurationMin: null,
+        cycleCount: 0,
+        napCount: 0,
+        openCount: 0,
+        overnightCount: 0,
+      },
       includeNaps: false,
       windowDays: 365,
     });
@@ -82,7 +96,7 @@ describe("handleSleepRoutes", () => {
       .spyOn(LifeOpsService.prototype, "getSleepRegularity")
       .mockResolvedValue({
         bedtimeStddevMin: 0,
-        classification: "stable",
+        classification: "regular",
         midSleepStddevMin: 0,
         sampleSize: 0,
         sri: 1,

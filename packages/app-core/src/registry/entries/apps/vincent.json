@@ -16,17 +16,16 @@
     "actions": ["launch", "configure"]
   },
   "resources": {},
-  "dependsOn": [],
+  "dependsOn": ["wallet"],
   "kind": "app",
   "subtype": "trading",
   "launch": {
     "type": "server-launch",
-    "capabilities": [
-      "hyperliquid",
-      "polymarket",
-      "trading",
-      "prediction-markets"
-    ],
-    "curatedSlug": "vincent"
+    "capabilities": ["vincent", "delegated-trading", "wallet"],
+    "curatedSlug": "vincent",
+    "routePlugin": {
+      "specifier": "@elizaos/app-vincent/plugin",
+      "exportName": "vincentPlugin"
+    }
   }
 }

@@ -23,9 +23,7 @@
     }
   ],
   "trajectory": "trajectories/6054afcb-5bab-4702-90a0-b259b5d3217c",
-  "related_apps": [
-    "excel"
-  ],
+  "related_apps": ["excel"],
   "evaluator": {
     "postconfig": [
       {
@@ -80,9 +78,7 @@
           "type": "row_props",
           "sheet_idx0": 0,
           "sheet_idx1": "EI0",
-          "props": [
-            "hidden"
-          ]
+          "props": ["hidden"]
         }
       ]
     }

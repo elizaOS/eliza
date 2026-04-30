@@ -1,5 +1,4 @@
 import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
-import { hasAdminAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -222,8 +221,12 @@ function missingSubactionResult(): ActionResult {
   return {
     text: "missing subaction; choose triage|digest|respond|needs_response|search|read_message|draft_reply|send_reply|cross_channel_search",
     success: false,
-    values: { success: false, error: "MISSING_SUBACTION" },
-    data: { actionName: ACTION_NAME },
+    values: {
+      success: false,
+      error: "MISSING_SUBACTION",
+      requiresConfirmation: true,
+    },
+    data: { actionName: ACTION_NAME, requiresConfirmation: true },
   };
 }
 
@@ -404,16 +407,13 @@ export const ownerInboxAction: Action & {
     "'evening wrap-up', or 'how did today go?' — those belong to " +
     "RUN_MORNING_CHECKIN / RUN_NIGHT_CHECKIN, even if they may include inbox items. " +
     "DO NOT use this action for the agent's own mailbox — that is AGENT_INBOX. " +
-    "Admin/owner only.",
+    "Owner only.",
   descriptionCompressed:
-    "Owner's inbox (Gmail + Slack + Discord + SMS + Telegram + iMessage + WhatsApp): triage, digest, respond, reply-needed lookup, search, and per-Gmail read/draft/send. Admin only. Not the agent's own mailbox.",
+    "Owner's inbox (Gmail + Slack + Discord + SMS + Telegram + iMessage + WhatsApp): triage, digest, respond, reply-needed lookup, search, and per-Gmail read/draft/send. Owner only. Not the agent's own mailbox.",
   suppressPostActionContinuation: true,
 
   validate: async (runtime, message) => {
-    // Union of the old validators: admin access OR LifeOps access (owner / granted user / agent).
-    if (await hasAdminAccess(runtime, message)) return true;
-    if (await hasLifeOpsAccess(runtime, message)) return true;
-    return false;
+    return hasLifeOpsAccess(runtime, message);
   },
 
   handler: async (

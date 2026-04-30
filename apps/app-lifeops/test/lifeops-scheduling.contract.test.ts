@@ -6,6 +6,8 @@ describe("life-ops scheduling action contract", () => {
     expect(schedulingAction.suppressPostActionContinuation).toBe(true);
     expect(schedulingAction.similes ?? []).not.toContain("SCHEDULE_MEETING");
     expect(schedulingAction.similes ?? []).not.toContain("COORDINATE_SCHEDULE");
-    expect(schedulingAction.description).toContain("existing proposal workflow");
+    expect(schedulingAction.description).toContain(
+      "existing proposal workflow",
+    );
   });
 });

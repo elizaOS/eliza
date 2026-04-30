@@ -1,12 +1,21 @@
 /**
  * Registers the standalone llama.cpp engine as the runtime handler for
- * `ModelType.TEXT_SMALL` and `ModelType.TEXT_LARGE` when no higher-priority
- * provider has claimed those slots.
+ * `ModelType.TEXT_SMALL` and `ModelType.TEXT_LARGE`.
  *
- * Priority is -1 (below the default 0 used by cloud and direct provider plugins)
- * so the Milady router's manual tie-break prefers Eliza Cloud / API providers
- * when the user configured them. Local inference remains available when it is
- * the only option, or when the user explicitly prefers it in routing settings.
+ * Priority is 0 — same band as cloud and direct provider plugins. Tie-breaks
+ * between local and cloud are owned by the routing-policy layer
+ * (`router-handler.ts` + `routing-policy.ts`), not by this priority value:
+ * the router sits at MAX_SAFE_INTEGER and consults the user's policy
+ * (manual / cheapest / fastest / prefer-local / round-robin) on every call.
+ *
+ * Until the cuttlefish smoke landed this was -1 to "let cloud win by default,"
+ * but that conflated routing-policy (a user preference) with handler
+ * priority (a registration ordinal). The runtime's getModel() returns
+ * undefined when no priority-0 handler is registered, which manifested as
+ * "No handler found for delegate type: TEXT_SMALL" on AOSP builds where
+ * the AOSP local inference loader is the only provider. Both cloud-only and
+ * local-only deployments now have a registered priority-0 handler; the
+ * router decides which one fires per request.
  *
  * Parallels `ensure-text-to-speech-handler.ts` — same shape, same guards.
  */
@@ -17,9 +26,13 @@ import {
   type IAgentRuntime,
   logger,
   ModelType,
+  type TextEmbeddingParams,
 } from "@elizaos/core";
 import type { LocalInferenceLoader } from "../services/local-inference/active-model";
-import { readAssignments } from "../services/local-inference/assignments";
+import {
+  autoAssignAtBoot,
+  readEffectiveAssignments,
+} from "../services/local-inference/assignments";
 import { deviceBridge } from "../services/local-inference/device-bridge";
 import { localInferenceEngine } from "../services/local-inference/engine";
 import { handlerRegistry } from "../services/local-inference/handler-registry";
@@ -32,11 +45,23 @@ type GenerateTextHandler = (
   params: GenerateTextParams,
 ) => Promise<string>;
 
+/**
+ * Embedding handler signature — accepts the same union the runtime hands
+ * to TEXT_EMBEDDING calls (`TextEmbeddingParams | string | null`) and
+ * returns the raw float vector.
+ */
+type EmbeddingHandler = (
+  runtime: IAgentRuntime,
+  params: TextEmbeddingParams | string | null,
+) => Promise<number[]>;
+
 type RuntimeWithModelRegistration = AgentRuntime & {
-  getModel: (modelType: string | number) => GenerateTextHandler | undefined;
+  getModel: (
+    modelType: string | number,
+  ) => GenerateTextHandler | EmbeddingHandler | undefined;
   registerModel: (
     modelType: string | number,
-    handler: GenerateTextHandler,
+    handler: GenerateTextHandler | EmbeddingHandler,
     provider: string,
     priority?: number,
   ) => void;
@@ -45,8 +70,21 @@ type RuntimeWithModelRegistration = AgentRuntime & {
 const LOCAL_INFERENCE_PROVIDER = "milady-local-inference";
 const DEVICE_BRIDGE_PROVIDER = "milady-device-bridge";
 const CAPACITOR_LLAMA_PROVIDER = "capacitor-llama";
-/** Below default plugin priority (0) so cloud/direct providers win unless the user prefers local. */
-const LOCAL_INFERENCE_PRIORITY = -1;
+const AOSP_LLAMA_PROVIDER = "milady-aosp-llama";
+/**
+ * Same band as cloud / direct provider plugins. Tie-breaks between
+ * candidates live in `routing-policy.ts`, not in this number — the
+ * router (registered at MAX_SAFE_INTEGER) consults the user's
+ * per-slot policy on every dispatch.
+ *
+ * Was -1 historically, which made `runtime.getModel(TEXT_SMALL)` return
+ * undefined when the AOSP local-inference loader was the only registered
+ * provider. The smoke run failed with "No handler found for delegate
+ * type: TEXT_SMALL"; bumping to 0 unblocks AOSP without changing
+ * cloud-only deployments (cloud providers still register at 0 and the
+ * routing-policy layer picks between them).
+ */
+const LOCAL_INFERENCE_PRIORITY = 0;
 
 function getLoader(runtime: IAgentRuntime): LocalInferenceLoader | null {
   const candidate = (
@@ -75,7 +113,7 @@ async function ensureAssignedModelLoaded(
   loader: LocalInferenceLoader | null,
   slot: AgentModelSlot,
 ): Promise<void> {
-  const assignments = await readAssignments();
+  const assignments = await readEffectiveAssignments();
   const assignedId = assignments[slot];
   if (!assignedId) return;
 
@@ -149,6 +187,44 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
 }
 
 /**
+ * Normalize the runtime's TEXT_EMBEDDING input shape — `params` may be the
+ * structured `TextEmbeddingParams` (when called from a typed plugin), a
+ * raw string (when called from action runners), or `null` (an internal
+ * warmup probe used to size the shipped embedding vector).
+ */
+function extractEmbeddingText(
+  params: TextEmbeddingParams | string | null,
+): string {
+  if (params === null) return "";
+  if (typeof params === "string") return params;
+  return params.text;
+}
+
+/**
+ * Build the TEXT_EMBEDDING handler. Mirrors `makeHandler` for generate:
+ * routes through the loader's `embed` if available, otherwise throws so
+ * the runtime falls back to a non-local provider rather than serving a
+ * silent zero-vector (Commandment 8: don't hide broken pipelines).
+ */
+function makeEmbeddingHandler(): EmbeddingHandler {
+  return async (runtime, params) => {
+    const loader = getLoader(runtime);
+    if (!loader?.embed) {
+      throw new Error(
+        "[local-inference] Active loader does not implement embed; falling through to next provider",
+      );
+    }
+    // Embeddings in this runtime are not slot-aware — there's a single
+    // active model. Make sure the user's TEXT_EMBEDDING assignment, if
+    // any, is loaded before we hit the loader.
+    await ensureAssignedModelLoaded(loader, "TEXT_EMBEDDING");
+    const text = extractEmbeddingText(params);
+    const result = await loader.embed({ input: text });
+    return result.embedding;
+  };
+}
+
+/**
  * Register the device-bridge loader on the runtime. Accepts load/generate
  * calls whether or not a mobile device is currently connected — parked
  * calls resolve on reconnect (up to a timeout). Cheaper than waiting for
@@ -165,8 +241,49 @@ function registerDeviceBridgeLoader(runtime: AgentRuntime): void {
     unloadModel: () => deviceBridge.unloadModel(),
     currentModelPath: () => deviceBridge.currentModelPath(),
     generate: (args) => deviceBridge.generate(args),
+    embed: (args) => deviceBridge.embed(args),
   };
   withRegistration.registerService("localInferenceLoader", loader);
+}
+
+/**
+ * AOSP-only path: load `libllama.so` directly into the bun process via
+ * `bun:ffi`. The adapter no-ops at runtime when `MILADY_LOCAL_LLAMA !== "1"`,
+ * so the dynamic import below is safe on every platform; we only attempt
+ * registration when the user explicitly opted in.
+ *
+ * The `try`/`catch` is justified because the AOSP build can ship the .so on
+ * one ABI but be invoked on another (e.g. cuttlefish_x86_64 reporting both
+ * x86_64 and arm64-v8a). When `MILADY_LOCAL_LLAMA=1` is set but registration
+ * fails, the adapter logs at `error` level — we must NOT silently fall
+ * through to the device-bridge or stock engine: the operator opted in and
+ * deserves the failure surfaced clearly.
+ */
+async function tryRegisterAospLlamaLoader(
+  runtime: AgentRuntime,
+): Promise<boolean> {
+  if (process.env.MILADY_LOCAL_LLAMA?.trim() !== "1") return false;
+  try {
+    const mod = (await import(
+      "@elizaos/agent/runtime/aosp-llama-adapter"
+    )) as unknown as {
+      registerAospLlamaLoader?: (r: AgentRuntime) => Promise<boolean> | boolean;
+    };
+    if (typeof mod.registerAospLlamaLoader !== "function") {
+      logger.error(
+        "[local-inference] AOSP llama adapter import resolved but missing registerAospLlamaLoader export",
+      );
+      return false;
+    }
+    const result = await mod.registerAospLlamaLoader(runtime);
+    return Boolean(result);
+  } catch (err) {
+    logger.error(
+      "[local-inference] AOSP llama adapter unavailable while MILADY_LOCAL_LLAMA=1:",
+      err instanceof Error ? err.message : String(err),
+    );
+    return false;
+  }
 }
 
 async function tryRegisterCapacitorLoader(
@@ -216,19 +333,26 @@ export async function ensureLocalInferenceHandler(
   handlerRegistry.installOn(runtime);
 
   // Loader precedence:
-  //   1. Capacitor native adapter when running on a mobile device itself.
-  //   2. Device-bridge (WebSocket to a paired phone) when explicitly
+  //   1. AOSP native FFI loader when running inside the AOSP agent process
+  //      itself (MILADY_LOCAL_LLAMA=1). This is the canonical AOSP path —
+  //      libllama.so is dlopen'd directly, no IPC.
+  //   2. Capacitor native adapter when running on a mobile device with the
+  //      Capacitor APK shell.
+  //   3. Device-bridge (WebSocket to a paired phone) when explicitly
   //      opted in via ELIZA_DEVICE_BRIDGE_ENABLED=1.
-  //   3. Standalone node-llama-cpp engine for desktop / server.
+  //   4. Standalone node-llama-cpp engine for desktop / server.
   //
-  // All three satisfy the same `localInferenceLoader` service contract.
-  // A later registration overrides an earlier one, so the loader that
-  // wins is the one registered LAST. We check conditions top-down and
-  // register bottom-up to preserve that precedence.
-  const capacitorRegistered = await tryRegisterCapacitorLoader(runtime);
+  // All four satisfy the same `localInferenceLoader` service contract.
+  // A later registration overrides an earlier one, so we register in
+  // LOWEST-priority order first; the AOSP loader runs last so it wins on
+  // AOSP builds. Each `try*Loader` is idempotent and gated on its own env
+  // signal, so they're safe to chain.
+  const aospRegistered = await tryRegisterAospLlamaLoader(runtime);
+  const capacitorRegistered =
+    !aospRegistered && (await tryRegisterCapacitorLoader(runtime));
   const deviceBridgeEnabled =
     process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1";
-  if (!capacitorRegistered && deviceBridgeEnabled) {
+  if (!aospRegistered && !capacitorRegistered && deviceBridgeEnabled) {
     registerDeviceBridgeLoader(runtime);
     logger.info(
       "[local-inference] Registered device-bridge loader; inference routes to paired mobile device when connected",
@@ -240,6 +364,7 @@ export async function ensureLocalInferenceHandler(
   // bridge is always "available" in the sense that it parks calls until a
   // device connects, so if it is enabled we always register handlers.
   if (
+    !aospRegistered &&
     !capacitorRegistered &&
     !deviceBridgeEnabled &&
     !(await localInferenceEngine.available())
@@ -250,11 +375,33 @@ export async function ensureLocalInferenceHandler(
     return;
   }
 
-  const provider = capacitorRegistered
-    ? CAPACITOR_LLAMA_PROVIDER
-    : deviceBridgeEnabled
-      ? DEVICE_BRIDGE_PROVIDER
-      : LOCAL_INFERENCE_PROVIDER;
+  // First-light convenience: when exactly one model is installed and no
+  // slot assignments exist, auto-fill TEXT_SMALL/TEXT_LARGE so the user
+  // lands in chat without opening Settings. The downloader handles the
+  // post-install case; this catches the user who pre-staged a model
+  // (external scan, prior install) and is now booting fresh.
+  try {
+    const installed = await listInstalledModels();
+    const filled = await autoAssignAtBoot(installed);
+    if (filled) {
+      logger.info(
+        `[local-inference] Auto-assigned single installed model to empty slots: ${JSON.stringify(filled)}`,
+      );
+    }
+  } catch (err) {
+    logger.warn(
+      "[local-inference] autoAssignAtBoot failed:",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+
+  const provider = aospRegistered
+    ? AOSP_LLAMA_PROVIDER
+    : capacitorRegistered
+      ? CAPACITOR_LLAMA_PROVIDER
+      : deviceBridgeEnabled
+        ? DEVICE_BRIDGE_PROVIDER
+        : LOCAL_INFERENCE_PROVIDER;
 
   const slots: Array<
     [(typeof ModelType)[keyof typeof ModelType], AgentModelSlot]
@@ -274,6 +421,36 @@ export async function ensureLocalInferenceHandler(
       logger.warn(
         "[local-inference] Could not register ModelType",
         modelType,
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  }
+
+  // Register TEXT_EMBEDDING separately — the runtime contract returns
+  // `number[]` instead of `string`, so it can't share `makeHandler`. We
+  // only register when the active loader actually exposes `embed`;
+  // otherwise the runtime should fall through to the operator-configured
+  // embedding provider.
+  const loaderForEmbed = (
+    runtime as { getService?: (name: string) => unknown }
+  ).getService?.("localInferenceLoader") as
+    | { embed?: unknown }
+    | null
+    | undefined;
+  if (loaderForEmbed && typeof loaderForEmbed.embed === "function") {
+    try {
+      runtimeWithRegistration.registerModel(
+        ModelType.TEXT_EMBEDDING,
+        makeEmbeddingHandler(),
+        provider,
+        LOCAL_INFERENCE_PRIORITY,
+      );
+      logger.info(
+        `[local-inference] Registered ${provider} embedding handler for TEXT_EMBEDDING at priority ${LOCAL_INFERENCE_PRIORITY}`,
+      );
+    } catch (err) {
+      logger.warn(
+        "[local-inference] Could not register TEXT_EMBEDDING handler",
         err instanceof Error ? err.message : String(err),
       );
     }

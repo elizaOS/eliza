@@ -2,8 +2,8 @@ import type { IAgentRuntime, Memory, Room, UUID } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import type {
   LifeOpsCalendarEvent,
-  LifeOpsXFeedItem,
   LifeOpsXDm,
+  LifeOpsXFeedItem,
 } from "@elizaos/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -182,6 +182,30 @@ describe("runCrossChannelSearch", () => {
           chatId: "chat-1",
         },
       ]),
+      readSignalInbound: vi.fn(async () => [
+        {
+          id: "sig-native-1",
+          threadId: "signal-thread-1",
+          roomName: "Signal crew",
+          speakerName: "Sam",
+          senderNumber: "+15551112222",
+          text: "Frontier Tower Signal native read",
+          createdAt: Date.parse("2026-04-01T14:00:00.000Z"),
+        },
+      ]),
+      pullWhatsAppRecent: vi.fn(() => ({
+        count: 1,
+        messages: [
+          {
+            id: "wa-1",
+            from: "+15553334444",
+            channelId: "whatsapp-thread-1",
+            timestamp: "2026-04-01T14:30:00.000Z",
+            text: "Frontier Tower WhatsApp note",
+            metadata: { contactName: "Wendy" },
+          },
+        ],
+      })),
       getCalendarFeed: vi.fn(async () => ({
         calendars: [],
         events: [calendarEvent()],
@@ -218,6 +242,7 @@ describe("runCrossChannelSearch", () => {
         "imessage",
         "signal",
         "telegram",
+        "whatsapp",
         "x",
         "x-dm",
       ].sort(),

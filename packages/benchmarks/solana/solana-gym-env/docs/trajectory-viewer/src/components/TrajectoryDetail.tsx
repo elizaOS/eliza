@@ -1,50 +1,44 @@
-import React, { useEffect, useState } from "react";
-import { useParams, Link, useSearchParams } from "react-router-dom";
+import Prism from "prismjs";
+import type React from "react";
+import { useCallback, useEffect, useState } from "react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import {
-  LineChart,
+  CartesianGrid,
+  Legend,
   Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
 } from "recharts";
-import Prism from "prismjs";
 import "prismjs/components/prism-typescript";
 import "prismjs/themes/prism-tomorrow.css";
-import { RunMetrics, ConversationMessage } from "../App";
+import type { ConversationMessage, RunMetrics } from "../App";
 import "./TrajectoryDetail.css";
 
 const TrajectoryDetail: React.FC = () => {
   const { runId } = useParams<{ runId: string }>();
   const [searchParams] = useSearchParams();
-  const benchmark = searchParams.get('benchmark') || 'basic';
+  const benchmark = searchParams.get("benchmark") || "basic";
   const [metrics, setMetrics] = useState<RunMetrics | null>(null);
   const [conversation, setConversation] = useState<ConversationMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedMessage, setSelectedMessage] = useState<number | null>(null);
 
-  useEffect(() => {
-    if (runId) {
-      loadRunData(runId, benchmark);
-    }
-  }, [runId, benchmark]);
-
-  useEffect(() => {
-    // Highlight code blocks when conversation updates
-    Prism.highlightAll();
-  }, [conversation, selectedMessage]);
-
-  const loadRunData = async (id: string, benchmarkName: string) => {
+  const loadRunData = useCallback(async (id: string, benchmarkName: string) => {
     try {
       // Load metrics
-      const metricsResponse = await fetch(`/solana-gym-env/data/${benchmarkName}/runs/${id}_metrics.json`);
+      const metricsResponse = await fetch(
+        `/solana-gym-env/data/${benchmarkName}/runs/${id}_metrics.json`,
+      );
       const metricsData = await metricsResponse.json();
       setMetrics(metricsData);
 
       // Load conversation
-      const convResponse = await fetch(`/solana-gym-env/data/${benchmarkName}/runs/${id}_conversation.json`);
+      const convResponse = await fetch(
+        `/solana-gym-env/data/${benchmarkName}/runs/${id}_conversation.json`,
+      );
       const convData = await convResponse.json();
       setConversation(convData);
     } catch (error) {
@@ -55,7 +49,19 @@ const TrajectoryDetail: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (runId) {
+      loadRunData(runId, benchmark);
+    }
+  }, [benchmark, loadRunData, runId]);
+
+  useEffect(() => {
+    if (conversation.length > 0 || selectedMessage !== null) {
+      Prism.highlightAll();
+    }
+  }, [conversation.length, selectedMessage]);
 
   const extractCodeBlocks = (content: string): string[] => {
     const codePattern = /```(?:typescript|ts|javascript|js)(.*?)```/gs;
@@ -173,7 +179,7 @@ const TrajectoryDetail: React.FC = () => {
                 <code className="program-id">{program}</code>
                 <span className="discovered-at">Message {messageIdx}</span>
               </div>
-            )
+            ),
           )}
         </div>
       </div>
@@ -190,14 +196,15 @@ const TrajectoryDetail: React.FC = () => {
 
             return (
               <div
-                key={idx}
+                key={msg.originalIndex}
                 className={`message-item ${isExpanded ? "expanded" : ""}`}
               >
-                <div
+                <button
                   className="message-header"
                   onClick={() =>
                     setSelectedMessage(isExpanded ? null : messageNum)
                   }
+                  type="button"
                 >
                   <span className="message-number">Message {messageNum}</span>
                   <span
@@ -212,12 +219,12 @@ const TrajectoryDetail: React.FC = () => {
                     {codeBlocks.length !== 1 ? "s" : ""}
                   </span>
                   <span className="expand-icon">{isExpanded ? "▼" : "▶"}</span>
-                </div>
+                </button>
 
                 {isExpanded && (
                   <div className="message-content">
                     {codeBlocks.map((code, codeIdx) => (
-                      <div key={codeIdx} className="code-block">
+                      <div key={code} className="code-block">
                         <div className="code-header">
                           TypeScript Code {codeIdx + 1}/{codeBlocks.length}
                         </div>
@@ -232,14 +239,14 @@ const TrajectoryDetail: React.FC = () => {
                       <div
                         className={`feedback ${
                           conversation[msg.originalIndex + 1].content.includes(
-                            "✅"
+                            "✅",
                           )
                             ? "success"
                             : conversation[
-                                msg.originalIndex + 1
-                              ].content.includes("❌")
-                            ? "error"
-                            : ""
+                                  msg.originalIndex + 1
+                                ].content.includes("❌")
+                              ? "error"
+                              : ""
                         }`}
                       >
                         <strong>Execution Result:</strong>

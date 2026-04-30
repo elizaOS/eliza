@@ -1,7 +1,7 @@
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import type { BotState } from "../sdk/types.js";
 import { findNearestBank } from "../data/banks.js";
 import { getTrainingRecommendations } from "../data/training.js";
+import type { BotState } from "../sdk/types.js";
 
 export const worldKnowledgeProvider: Provider = {
   name: "RS_SDK_WORLD_KNOWLEDGE",
@@ -31,7 +31,16 @@ export const worldKnowledgeProvider: Provider = {
 
     // Training recommendations for current skills
     const trainable = state.skills.filter((s) =>
-      ["Woodcutting", "Mining", "Fishing", "Attack", "Strength", "Defence", "Cooking", "Smithing"].includes(s.name),
+      [
+        "Woodcutting",
+        "Mining",
+        "Fishing",
+        "Attack",
+        "Strength",
+        "Defence",
+        "Cooking",
+        "Smithing",
+      ].includes(s.name),
     );
 
     if (trainable.length > 0) {
@@ -81,9 +90,20 @@ export const worldKnowledgeProvider: Provider = {
     if (
       state.player.inCombat &&
       !state.inventory.some((item) =>
-        ["shrimp", "anchovies", "bread", "meat", "chicken", "trout", "salmon", "tuna", "lobster", "swordfish", "cake", "pie"].some(
-          (food) => item.name.toLowerCase().includes(food),
-        ),
+        [
+          "shrimp",
+          "anchovies",
+          "bread",
+          "meat",
+          "chicken",
+          "trout",
+          "salmon",
+          "tuna",
+          "lobster",
+          "swordfish",
+          "cake",
+          "pie",
+        ].some((food) => item.name.toLowerCase().includes(food)),
       )
     ) {
       warnings.push(

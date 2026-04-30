@@ -33,6 +33,14 @@ vi.mock("../local-inference/LocalInferencePanel", () => ({
   LocalInferencePanel: () => <div>Local model downloads</div>,
 }));
 
+vi.mock("../local-inference/ProvidersList", () => ({
+  ProvidersList: () => <div>Provider routing list</div>,
+}));
+
+vi.mock("../local-inference/RoutingMatrix", () => ({
+  RoutingMatrix: () => <div>Model routing matrix</div>,
+}));
+
 vi.mock("../pages/ElizaCloudDashboard", () => ({
   CloudDashboard: () => <div>Eliza Cloud account</div>,
 }));
@@ -195,6 +203,47 @@ describe("ProviderSwitcher", () => {
     );
     expect(screen.queryByRole("button", { name: /Local only active/ })).toBe(
       null,
+    );
+  });
+
+  it("renders the local embeddings checkbox pre-checked when serviceRouting.embeddings is undefined", async () => {
+    // baseConfig has no embeddings key → local embeddings active → checkbox pre-checked
+    render(<ProviderSwitcher />);
+
+    const checkbox = await screen.findByRole("checkbox", {
+      name: /use local embeddings/i,
+    });
+    expect(checkbox.getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("toggling the local embeddings checkbox calls switchProvider with useLocalEmbeddings: true", async () => {
+    // Start with cloud embeddings active so the checkbox starts unchecked.
+    clientMock.getConfig.mockResolvedValueOnce({
+      cloud: {},
+      models: {},
+      serviceRouting: {
+        llmText: { backend: "elizacloud", transport: "cloud-proxy" },
+        embeddings: { backend: "elizacloud", transport: "cloud-proxy" },
+      },
+    });
+
+    render(<ProviderSwitcher />);
+
+    const checkbox = await screen.findByRole("checkbox", {
+      name: /use local embeddings/i,
+    });
+    // Cloud embeddings → unchecked initially.
+    expect(checkbox.getAttribute("aria-checked")).toBe("false");
+
+    fireEvent.click(checkbox);
+
+    await waitFor(() =>
+      expect(clientMock.switchProvider).toHaveBeenCalledWith(
+        "elizacloud",
+        undefined,
+        undefined,
+        { useLocalEmbeddings: true },
+      ),
     );
   });
 });

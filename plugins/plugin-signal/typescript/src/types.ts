@@ -145,12 +145,21 @@ export interface SignalSettings {
   shouldIgnoreGroupMessages: boolean;
   allowedGroups: string[] | undefined;
   blockedNumbers: string[] | undefined;
+  /**
+   * When false (default), inbound messages are persisted as memories and a
+   * MESSAGE_RECEIVED event is emitted, but the agent does NOT auto-generate
+   * a reply. Sends only happen via explicit caller action (LifeOps send
+   * route, user-issued chat command). Set SIGNAL_AUTO_REPLY=true to opt in.
+   */
+  autoReply: boolean;
+  receiveMode: "on-start" | "manual";
 }
 
 export interface SignalMessageSendOptions {
-  attachments: string[] | undefined;
-  quote: { timestamp: number; author: string } | undefined;
-  expiresInSeconds: number | undefined;
+  attachments?: string[];
+  quote?: { timestamp: number; author: string };
+  expiresInSeconds?: number;
+  record?: boolean;
 }
 
 export class SignalPluginError extends Error {

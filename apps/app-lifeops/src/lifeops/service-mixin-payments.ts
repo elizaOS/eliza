@@ -1,5 +1,7 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
 import crypto from "node:crypto";
+import path from "node:path";
+import { resolveOAuthDir } from "@elizaos/agent/config/paths";
 import {
   type ParsedCsvTransaction,
   parseTransactionsCsv,
@@ -43,6 +45,13 @@ import {
   requireNonEmptyString,
 } from "./service-normalize.js";
 import { findLifeOpsSubscriptionPlaybook } from "./subscriptions-playbooks.js";
+import {
+  decryptTokenEnvelope,
+  type EncryptedTokenEnvelope,
+  encryptTokenPayload,
+  isEncryptedTokenEnvelope,
+  resolveTokenEncryptionKey,
+} from "./token-encryption.js";
 
 const DEFAULT_WINDOW_DAYS = 30;
 const MS_PER_DAY = 86_400_000;
@@ -56,6 +65,46 @@ const VALID_SOURCE_KINDS: readonly LifeOpsPaymentSourceKind[] = [
 
 const EMAIL_SOURCE_LABEL = "Email bills";
 const SENSITIVE_PAYMENT_SOURCE_METADATA_KEYS = new Set(["plaid", "paypal"]);
+
+function paymentTokenStorageRoot(env: NodeJS.ProcessEnv = process.env): string {
+  return path.join(resolveOAuthDir(env), "lifeops", "payments");
+}
+
+export function encryptPaymentMetadataToken(
+  token: string,
+  env: NodeJS.ProcessEnv = process.env,
+): EncryptedTokenEnvelope {
+  const normalized = requireNonEmptyString(token, "token");
+  const key = resolveTokenEncryptionKey(paymentTokenStorageRoot(env), env);
+  return encryptTokenPayload(normalized, key);
+}
+
+export function readPaymentMetadataToken(
+  value: unknown,
+  field: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  if (typeof value === "string") {
+    return value.trim().length > 0 ? value : null;
+  }
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (!isEncryptedTokenEnvelope(value)) {
+    fail(409, `${field} token metadata is malformed. Re-link the account.`);
+  }
+  try {
+    return decryptTokenEnvelope(
+      value,
+      resolveTokenEncryptionKey(paymentTokenStorageRoot(env), env),
+    );
+  } catch {
+    fail(
+      409,
+      `${field} token metadata could not be decrypted. Restore ELIZA_TOKEN_ENCRYPTION_KEY or re-link the account.`,
+    );
+  }
+}
 
 export function sanitizePaymentSourceForClient(
   source: LifeOpsPaymentSource,
@@ -631,8 +680,8 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
     }
 
     /**
-     * Read upcoming bills (transactions on the email source whose metadata
-     * carries `kind: "bill"` and a future `dueDate`) sorted by due date.
+     * Read bills extracted from email. This includes overdue and no-date bills
+     * so extraction misses do not disappear from the user's review queue.
      */
     async getUpcomingBills(
       args: { now?: Date } = {},
@@ -655,7 +704,12 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
         if (metadata.kind !== "bill") continue;
         const dueDate =
           typeof metadata.dueDate === "string" ? metadata.dueDate : null;
-        if (!dueDate || dueDate < todayIso) continue;
+        const status =
+          dueDate === null
+            ? "needs_due_date"
+            : dueDate < todayIso
+              ? "overdue"
+              : "upcoming";
         const sourceMessageId =
           typeof metadata.sourceMessageId === "string"
             ? metadata.sourceMessageId
@@ -671,12 +725,25 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
           amountUsd: transaction.amountUsd,
           currency: transaction.currency,
           dueDate,
+          status,
           postedAt: transaction.postedAt,
           sourceMessageId,
           confidence,
         });
       }
-      bills.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+      const statusRank: Record<LifeOpsUpcomingBill["status"], number> = {
+        overdue: 0,
+        needs_due_date: 1,
+        upcoming: 2,
+      };
+      bills.sort((a, b) => {
+        const rankDelta = statusRank[a.status] - statusRank[b.status];
+        if (rankDelta !== 0) return rankDelta;
+        if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate);
+        if (a.dueDate) return 1;
+        if (b.dueDate) return -1;
+        return b.postedAt.localeCompare(a.postedAt);
+      });
       return bills;
     }
 
@@ -786,11 +853,7 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
         transactionCount: 0,
         metadata: {
           plaid: {
-            // Storing the access_token in source metadata is required for
-            // sync. The cloud already authorized this Item to the user;
-            // local storage is encrypted at rest by the underlying database
-            // adapter.
-            accessToken: result.accessToken,
+            accessToken: encryptPaymentMetadataToken(result.accessToken),
             itemId: result.itemId,
             institutionId: result.institution.institutionId,
             cursor: "",
@@ -824,10 +887,13 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
       }
       const plaidMetadata =
         (source.metadata?.plaid as
-          | { accessToken?: string; cursor?: string }
+          | { accessToken?: unknown; cursor?: string }
           | undefined) ?? null;
-      const accessToken = plaidMetadata?.accessToken;
-      if (typeof accessToken !== "string" || accessToken.length === 0) {
+      const accessToken = readPaymentMetadataToken(
+        plaidMetadata?.accessToken,
+        "Plaid access",
+      );
+      if (!accessToken) {
         fail(
           409,
           "Plaid source is missing an access token. Re-link the account.",
@@ -887,6 +953,7 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
           ...source.metadata,
           plaid: {
             ...plaidMetadata,
+            accessToken: encryptPaymentMetadataToken(accessToken),
             cursor: pageCursor,
           },
         },
@@ -983,8 +1050,10 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
         transactionCount: 0,
         metadata: {
           paypal: {
-            accessToken: exchange.accessToken,
-            refreshToken: exchange.refreshToken,
+            accessToken: encryptPaymentMetadataToken(exchange.accessToken),
+            refreshToken: exchange.refreshToken
+              ? encryptPaymentMetadataToken(exchange.refreshToken)
+              : null,
             tokenExpiresAt,
             scope: exchange.scope,
             capability: exchange.capability,
@@ -1023,17 +1092,24 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
       if (source.kind !== "paypal") {
         fail(409, `Source ${sourceId} is not a PayPal source.`);
       }
-      const paypalMetadata =
+      let paypalMetadata =
         (source.metadata?.paypal as
           | {
-              accessToken?: string;
-              refreshToken?: string | null;
+              accessToken?: unknown;
+              refreshToken?: unknown;
               tokenExpiresAt?: string;
               capability?: { hasReporting: boolean; hasIdentity: boolean };
             }
           | undefined) ?? null;
-      let accessToken = paypalMetadata?.accessToken;
-      if (typeof accessToken !== "string" || accessToken.length === 0) {
+      let accessToken = readPaymentMetadataToken(
+        paypalMetadata?.accessToken,
+        "PayPal access",
+      );
+      let refreshToken = readPaymentMetadataToken(
+        paypalMetadata?.refreshToken,
+        "PayPal refresh",
+      );
+      if (!accessToken) {
         fail(409, "PayPal source is missing an access token. Re-link.");
       }
       // Refresh if we're within 60s of expiry — saves a round-trip 401.
@@ -1041,27 +1117,31 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
         ? Date.parse(paypalMetadata.tokenExpiresAt)
         : 0;
       if (Number.isFinite(expiryMs) && expiryMs <= Date.now() + 60_000) {
-        if (paypalMetadata?.refreshToken) {
+        if (refreshToken) {
           try {
             const refreshed =
               await this.getPaypalManagedClient().refreshAccessToken({
-                refreshToken: paypalMetadata.refreshToken,
+                refreshToken,
               });
             accessToken = refreshed.accessToken;
+            refreshToken = refreshed.refreshToken ?? refreshToken;
+            const tokenExpiresAt = new Date(
+              Date.now() + Math.max(0, refreshed.expiresIn - 60) * 1_000,
+            ).toISOString();
+            paypalMetadata = {
+              ...paypalMetadata,
+              accessToken: encryptPaymentMetadataToken(accessToken),
+              refreshToken: refreshToken
+                ? encryptPaymentMetadataToken(refreshToken)
+                : null,
+              tokenExpiresAt,
+              scope: refreshed.scope,
+            };
             await this.repository.upsertPaymentSource({
               ...source,
               metadata: {
                 ...source.metadata,
-                paypal: {
-                  ...paypalMetadata,
-                  accessToken: refreshed.accessToken,
-                  refreshToken:
-                    refreshed.refreshToken ?? paypalMetadata.refreshToken,
-                  tokenExpiresAt: new Date(
-                    Date.now() + Math.max(0, refreshed.expiresIn - 60) * 1_000,
-                  ).toISOString(),
-                  scope: refreshed.scope,
-                },
+                paypal: paypalMetadata,
               },
               updatedAt: new Date().toISOString(),
             });
@@ -1135,6 +1215,10 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
               ...source.metadata,
               paypal: {
                 ...paypalMetadata,
+                accessToken: encryptPaymentMetadataToken(accessToken),
+                refreshToken: refreshToken
+                  ? encryptPaymentMetadataToken(refreshToken)
+                  : null,
                 capability: { hasReporting: false, hasIdentity: true },
                 lastFallbackError: error.message,
               },
@@ -1158,6 +1242,16 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
         status: "active",
         lastSyncedAt: new Date().toISOString(),
         transactionCount: newCount,
+        metadata: {
+          ...source.metadata,
+          paypal: {
+            ...paypalMetadata,
+            accessToken: encryptPaymentMetadataToken(accessToken),
+            refreshToken: refreshToken
+              ? encryptPaymentMetadataToken(refreshToken)
+              : null,
+          },
+        },
         updatedAt: new Date().toISOString(),
       });
       return { inserted, skipped, fallback: null };

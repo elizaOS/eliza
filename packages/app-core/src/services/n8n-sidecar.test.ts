@@ -24,6 +24,7 @@ import {
   disposeN8nSidecar,
   getN8nSidecar,
   getN8nSidecarAsync,
+  isBinaryMissingMessage,
   N8nSidecar,
   type N8nSidecarConfig,
   type N8nSidecarDeps,
@@ -965,6 +966,31 @@ describe("N8nSidecar", () => {
       await disposalPromise;
       const next = await nextPromise;
       expect(next).not.toBe(sidecar);
+    });
+  });
+
+  describe("isBinaryMissingMessage", () => {
+    it("matches the four well-known binary-missing signatures", () => {
+      expect(isBinaryMissingMessage("sh: 1: n8n: not found")).toBe(true);
+      expect(isBinaryMissingMessage("bash: n8n: command not found")).toBe(true);
+      expect(
+        isBinaryMissingMessage(
+          "bunx runtime not found on PATH — required for local n8n. Install from https://bun.sh.",
+        ),
+      ).toBe(true);
+      expect(
+        isBinaryMissingMessage(
+          "n8n child exited with code 127 before readiness probe succeeded",
+        ),
+      ).toBe(true);
+    });
+
+    it("does not match generic n8n runtime errors", () => {
+      expect(isBinaryMissingMessage("workflow not found in cache")).toBe(false);
+      expect(isBinaryMissingMessage("user not found")).toBe(false);
+      expect(isBinaryMissingMessage("exited with code 1")).toBe(false);
+      expect(isBinaryMissingMessage("readiness probe timed out")).toBe(false);
+      expect(isBinaryMissingMessage("")).toBe(false);
     });
   });
 });

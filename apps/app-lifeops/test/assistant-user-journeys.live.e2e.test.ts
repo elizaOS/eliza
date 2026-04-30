@@ -4,19 +4,6 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  AgentRuntime,
-  ChannelType,
-  createMessageMemory,
-  type Memory,
-  logger,
-  type Plugin,
-  type UUID,
-} from "@elizaos/core";
-import dotenv from "dotenv";
-import { afterAll, beforeAll, expect, it } from "vitest";
-import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
-import { saveEnv, sleep, withTimeout } from "../../../../test/helpers/test-utils";
-import {
   buildCharacterFromConfig,
   configureLocalEmbeddingPlugin,
   createElizaPlugin,
@@ -27,17 +14,34 @@ import {
   resolveOAuthDir,
 } from "@elizaos/agent";
 import {
-  LIVE_PROVIDER_ENV_KEYS,
-  LIVE_TESTS_ENABLED,
-  getLifeOpsLiveSetupWarnings,
-  getSelectedLiveProviderEnv,
-  selectLifeOpsLiveProvider,
-} from "./helpers/lifeops-live-harness.ts";
+  AgentRuntime,
+  ChannelType,
+  createMessageMemory,
+  logger,
+  type Memory,
+  type Plugin,
+  type UUID,
+} from "@elizaos/core";
+import dotenv from "dotenv";
+import { afterAll, beforeAll, expect, it } from "vitest";
+import { describeIf } from "../../../../eliza/test/helpers/conditional-tests.ts";
+import {
+  saveEnv,
+  sleep,
+  withTimeout,
+} from "../../../../eliza/test/helpers/test-utils";
 import {
   createLifeOpsConnectorGrant,
   createLifeOpsGmailSyncState,
   LifeOpsRepository,
 } from "../src/lifeops/repository.js";
+import {
+  getLifeOpsLiveSetupWarnings,
+  getSelectedLiveProviderEnv,
+  LIVE_PROVIDER_ENV_KEYS,
+  LIVE_TESTS_ENABLED,
+  selectLifeOpsLiveProvider,
+} from "./helpers/lifeops-live-harness.ts";
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(testDir, "..");
@@ -206,6 +210,7 @@ async function seedGoogleConnector(
   const repository = new LifeOpsRepository(runtime);
   const agentId = String(runtime.agentId);
   const tokenRef = `${agentId}/owner/local.json`;
+  const grantId = "assistant-user-journeys-google-grant";
   const tokenPath = path.join(
     resolveOAuthDir(process.env, stateDir),
     "lifeops",
@@ -249,8 +254,8 @@ async function seedGoogleConnector(
     { encoding: "utf-8", mode: 0o600 },
   );
 
-  await repository.upsertConnectorGrant(
-    createLifeOpsConnectorGrant({
+  await repository.upsertConnectorGrant({
+    ...createLifeOpsConnectorGrant({
       agentId,
       provider: "google",
       side: "owner",
@@ -275,12 +280,15 @@ async function seedGoogleConnector(
       metadata: {},
       lastRefreshAt: nowIso,
     }),
-  );
+    id: grantId,
+  });
 
   return repository;
 }
 async function seedGmailData(repository: LifeOpsRepository, agentId: string) {
   const nowIso = new Date().toISOString();
+  const grantId = "assistant-user-journeys-google-grant";
+  const accountEmail = "shawmakesmagic@gmail.com";
   const messages = [
     {
       id: "journey-gmail-electric-overdue",
@@ -288,6 +296,8 @@ async function seedGmailData(repository: LifeOpsRepository, agentId: string) {
       agentId,
       provider: "google" as const,
       side: "owner" as const,
+      grantId,
+      accountEmail,
       threadId: "journey-thread-electric-overdue",
       subject: "Final notice: electric bill overdue since March 28",
       from: "Utility Billing <billing@power.example.com>",
@@ -315,6 +325,8 @@ async function seedGmailData(repository: LifeOpsRepository, agentId: string) {
       agentId,
       provider: "google" as const,
       side: "owner" as const,
+      grantId,
+      accountEmail,
       threadId: "journey-thread-water-reminder",
       subject: "Water bill reminder",
       from: "City Water <billing@water.example.com>",
@@ -341,6 +353,8 @@ async function seedGmailData(repository: LifeOpsRepository, agentId: string) {
       agentId,
       provider: "google" as const,
       side: "owner" as const,
+      grantId,
+      accountEmail,
       threadId: "journey-thread-parents",
       subject: "Dinner moved to our place",
       from: "Mom <mom@example.com>",
@@ -368,6 +382,8 @@ async function seedGmailData(repository: LifeOpsRepository, agentId: string) {
       agentId,
       provider: "google" as const,
       side: "owner" as const,
+      grantId,
+      accountEmail,
       threadId: "journey-thread-wedding",
       subject: "Wedding details: adults-only reception",
       from: "Aunt Claire <claire@example.com>",
@@ -400,6 +416,7 @@ async function seedGmailData(repository: LifeOpsRepository, agentId: string) {
       provider: "google",
       side: "owner",
       mailbox: "INBOX",
+      grantId,
       maxResults: 50,
       syncedAt: nowIso,
     }),

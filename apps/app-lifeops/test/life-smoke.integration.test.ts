@@ -19,7 +19,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createRealTestRuntime } from "../../../../test/helpers/real-runtime";
+import { createRealTestRuntime } from "../../../../eliza/test/helpers/real-runtime";
 import { lifeAction } from "../src/actions/life.js";
 import { appLifeOpsPlugin } from "../src/plugin.js";
 
@@ -186,8 +186,8 @@ describe("LIFE action smoke tests -- BRD acceptance criteria", () => {
     });
     expect(overviewResult).toMatchObject({ success: true });
     const occurrences =
-      ((overviewResult?.data as { occurrences?: Array<{ id: string }> })
-        ?.occurrences ?? []);
+      (overviewResult?.data as { occurrences?: Array<{ id: string }> })
+        ?.occurrences ?? [];
     expect(occurrences.length).toBeGreaterThan(0);
     const targetOccurrenceId = occurrences[0]?.id;
     expect(typeof targetOccurrenceId).toBe("string");
@@ -283,7 +283,6 @@ describe("LIFE action smoke tests -- BRD acceptance criteria", () => {
 
     expect(result).toMatchObject({ success: false });
   }, 60_000);
-
 });
 
 describe("LIFE action -- robustness scenarios", () => {

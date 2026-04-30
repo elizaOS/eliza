@@ -29,9 +29,7 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "libreoffice_impress"
-  ],
+  "related_apps": ["libreoffice_impress"],
   "evaluator": {
     "postconfig": [
       {
@@ -64,10 +62,7 @@
         }
       }
     ],
-    "func": [
-      "compare_pptx_files",
-      "compare_pptx_files"
-    ],
+    "func": ["compare_pptx_files", "compare_pptx_files"],
     "conj": "or",
     "expected": [
       {

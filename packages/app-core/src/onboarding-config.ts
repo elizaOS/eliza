@@ -42,6 +42,7 @@ export interface BuildOnboardingConnectionArgs {
   onboardingFeatureCrypto?: boolean;
   onboardingFeatureBrowser?: boolean;
   onboardingFeatureComputerUse?: boolean;
+  onboardingUseLocalEmbeddings?: boolean;
 }
 
 /** Feature selections from the onboarding features step. */
@@ -215,6 +216,9 @@ export function buildOnboardingRuntimeConfig(
         includeInference:
           shouldConfigureRuntimeProvider &&
           args.onboardingProvider === "elizacloud",
+        excludeServices: args.onboardingUseLocalEmbeddings
+          ? ["embeddings"]
+          : undefined,
         nanoModel,
         smallModel,
         mediumModel,

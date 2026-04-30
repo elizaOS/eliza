@@ -31,7 +31,10 @@ function coerceString(value: unknown): string | undefined {
 export const revokeRemoteSessionAction: Action = {
   name: ACTION_NAME,
   similes: ["END_REMOTE_SESSION", "CLOSE_REMOTE_SESSION", "REMOTE_REVOKE"],
-  description: "Revoke an active remote-control session by id.",
+  description:
+    "Revoke (terminate) one active remote-control session by stable session id returned from REMOTE_DESKTOP or session listings. Owner-only disconnect.",
+  descriptionCompressed:
+    "Revoke remote session by sessionId end T9a session owner",
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
     hasOwnerAccess(runtime, message),

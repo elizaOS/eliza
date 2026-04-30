@@ -184,24 +184,22 @@ function LifeOpsCalendarWidget(_props: ChatSidebarWidgetProps) {
   if (events.length === 0) return null;
 
   const openLifeOps = () => {
-    writeHash(
-      buildLifeOpsHash(
-        typeof window === "undefined" ? "" : window.location.hash,
-        { section: "calendar", eventId: null, messageId: null },
-      ),
+    const hash = buildLifeOpsHash(
+      typeof window === "undefined" ? "" : window.location.hash,
+      { section: "calendar", eventId: null, messageId: null },
     );
     setTab("lifeops");
+    writeHash(hash);
   };
 
   const openEventRow = (event: LifeOpsCalendarEvent) => {
     primeLifeOpsEvent(event);
-    writeHash(
-      buildLifeOpsHash(
-        typeof window === "undefined" ? "" : window.location.hash,
-        { section: "calendar", eventId: event.id, messageId: null },
-      ),
+    const hash = buildLifeOpsHash(
+      typeof window === "undefined" ? "" : window.location.hash,
+      { section: "calendar", eventId: event.id, messageId: null },
     );
     setTab("lifeops");
+    writeHash(hash);
   };
 
   return (
@@ -264,24 +262,22 @@ function LifeOpsInboxWidget(_props: ChatSidebarWidgetProps) {
   if (!showInbox) return null;
 
   const openLifeOps = () => {
-    writeHash(
-      buildLifeOpsHash(
-        typeof window === "undefined" ? "" : window.location.hash,
-        { section: "mail", eventId: null, messageId: null },
-      ),
+    const hash = buildLifeOpsHash(
+      typeof window === "undefined" ? "" : window.location.hash,
+      { section: "mail", eventId: null, messageId: null },
     );
     setTab("lifeops");
+    writeHash(hash);
   };
 
   const openMessageRow = (message: LifeOpsGmailMessageSummary) => {
     primeLifeOpsMessage(message);
-    writeHash(
-      buildLifeOpsHash(
-        typeof window === "undefined" ? "" : window.location.hash,
-        { section: "mail", eventId: null, messageId: message.id },
-      ),
+    const hash = buildLifeOpsHash(
+      typeof window === "undefined" ? "" : window.location.hash,
+      { section: "mail", eventId: null, messageId: message.id },
     );
     setTab("lifeops");
+    writeHash(hash);
   };
 
   return (
@@ -376,37 +372,37 @@ function LifeOpsAutomationsWidget(_props: ChatSidebarWidgetProps) {
     return triggers
       .filter((trigger) => trigger.enabled !== false)
       .sort((a, b) => {
-        const aNext = typeof a.nextRunAtMs === "number" && Number.isFinite(a.nextRunAtMs)
-          ? a.nextRunAtMs
-          : Number.POSITIVE_INFINITY;
-        const bNext = typeof b.nextRunAtMs === "number" && Number.isFinite(b.nextRunAtMs)
-          ? b.nextRunAtMs
-          : Number.POSITIVE_INFINITY;
+        const aNext =
+          typeof a.nextRunAtMs === "number" && Number.isFinite(a.nextRunAtMs)
+            ? a.nextRunAtMs
+            : Number.POSITIVE_INFINITY;
+        const bNext =
+          typeof b.nextRunAtMs === "number" && Number.isFinite(b.nextRunAtMs)
+            ? b.nextRunAtMs
+            : Number.POSITIVE_INFINITY;
         return aNext - bNext;
       })
       .slice(0, AUTOMATIONS_ROW_LIMIT);
   }, [triggers]);
 
   const openAutomationsPage = useCallback(() => {
-    writeHash(
-      buildAutomationsHash(
-        typeof window === "undefined" ? "" : window.location.hash,
-        { triggerId: null },
-      ),
+    const hash = buildAutomationsHash(
+      typeof window === "undefined" ? "" : window.location.hash,
+      { triggerId: null },
     );
     setTab("automations");
+    writeHash(hash);
   }, [setTab]);
 
   const openTriggerRow = useCallback(
     (trigger: TriggerSummary) => {
       primeAutomationsTrigger(trigger);
-      writeHash(
-        buildAutomationsHash(
-          typeof window === "undefined" ? "" : window.location.hash,
-          { triggerId: trigger.id },
-        ),
+      const hash = buildAutomationsHash(
+        typeof window === "undefined" ? "" : window.location.hash,
+        { triggerId: trigger.id },
       );
       setTab("automations");
+      writeHash(hash);
     },
     [setTab],
   );

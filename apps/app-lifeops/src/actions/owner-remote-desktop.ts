@@ -51,8 +51,11 @@ function coerceSubaction(value: unknown): Subaction | undefined {
   return undefined;
 }
 
-export const ownerRemoteDesktopAction: Action = {
+export const ownerRemoteDesktopAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: ACTION_NAME,
+  suppressPostActionContinuation: true,
   similes: [
     "REMOTE_DESKTOP",
     "START_REMOTE_SESSION",

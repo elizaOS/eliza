@@ -23,11 +23,7 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "excel",
-    "chrome",
-    "os"
-  ],
+  "related_apps": ["excel", "chrome", "os"],
   "evaluator": {
     "postconfig": [
       {
@@ -68,32 +64,19 @@
           "Lake Tahoe",
           "Banff",
           "Beijing",
-          [
-            "Montreal",
-            "Montréal"
-          ],
+          ["Montreal", "Montréal"],
           "San Diego",
           "Lille",
-          [
-            "Montreal",
-            "Montréal"
-          ],
+          ["Montreal", "Montréal"],
           "San Juan",
-          [
-            "New York",
-            "New York City",
-            "NYC"
-          ],
+          ["New York", "New York City", "NYC"],
           "Barcelona",
           "Toulon",
           "Sydney",
           "Long Beach",
           "Vancouver",
           "Stockholm",
-          [
-            "Montreal",
-            "Montréal"
-          ],
+          ["Montreal", "Montréal"],
           "New Orleans",
           "Long Beach",
           "Vancouver"

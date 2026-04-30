@@ -7,13 +7,13 @@
  * sequential PATCH calls (no drag-drop dependency).
  */
 
-import { Button, Spinner } from "@elizaos/ui";
 import type { LinkedAccountProviderId } from "@elizaos/shared";
+import { Button, Spinner } from "@elizaos/ui";
 import { Plus } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import type { AccountWithCredentialFlag } from "../../api/client-agent";
-import { useApp } from "../../state";
 import { useAccounts } from "../../hooks/useAccounts";
+import { useApp } from "../../state";
 import { AccountCard } from "./AccountCard";
 import { AddAccountDialog } from "./AddAccountDialog";
 import { RotationStrategyPicker } from "./RotationStrategyPicker";
@@ -144,7 +144,8 @@ export function AccountList({ providerId }: AccountListProps) {
       {sorted.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border/50 px-3 py-6 text-center text-xs text-muted">
           {t("accounts.empty", {
-            defaultValue: "No accounts yet — add one to start using this provider.",
+            defaultValue:
+              "No accounts yet — add one to start using this provider.",
           })}
         </div>
       ) : (
@@ -164,7 +165,9 @@ export function AccountList({ providerId }: AccountListProps) {
               onTest={async () => {
                 await accounts.test(providerId, account.id);
               }}
-              onRefreshUsage={() => accounts.refreshUsage(providerId, account.id)}
+              onRefreshUsage={() =>
+                accounts.refreshUsage(providerId, account.id)
+              }
               onDelete={() => accounts.remove(providerId, account.id)}
             />
           ))}

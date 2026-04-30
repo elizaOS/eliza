@@ -1,9 +1,9 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import {
-  TravelTimeService,
   type CalendarEventLookupLike,
   type TravelBufferResult,
+  TravelTimeService,
 } from "./service.js";
 
 export type CreateEventTravelIntent = {

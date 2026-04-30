@@ -1,7 +1,5 @@
 import type http from "node:http";
-import type {
-  ReadJsonBodyOptions,
-} from "@elizaos/agent";
+import type { ReadJsonBodyOptions } from "@elizaos/agent";
 import type { DropService } from "./drop-service.js";
 import { buildWhitelistTree, generateProof } from "./merkle-tree.js";
 import {

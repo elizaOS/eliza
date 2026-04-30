@@ -23,11 +23,7 @@
     }
   ],
   "trajectory": "trajectories/4c26e3f3-3a14-4d86-b44a-d3cedebbb487",
-  "related_apps": [
-    "gimp",
-    "libreoffice_impress",
-    "os"
-  ],
+  "related_apps": ["gimp", "libreoffice_impress", "os"],
   "evaluator": {
     "func": "check_brightness_decrease_and_structure_sim",
     "expected": {

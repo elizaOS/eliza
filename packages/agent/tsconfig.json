@@ -18,7 +18,7 @@
     "declaration": false,
     "allowImportingTsExtensions": true,
     "noEmit": true,
-    "ignoreDeprecations": "5.0",
+    "ignoreDeprecations": "6.0",
     "paths": {
       "@elizaos/core": ["../typescript/src/index.node.ts"],
       "@elizaos/core/*": ["../typescript/src/*"],
@@ -55,6 +55,12 @@
       "@elizaos/app-training/*": ["../../apps/app-training/src/*"],
       "@elizaos/agent": ["./src/index.ts"],
       "@elizaos/agent/*": ["./src/*"],
+      "@elizaos/plugin-browser-bridge": [
+        "../../plugins/plugin-browser-bridge/src/index.ts"
+      ],
+      "@elizaos/plugin-browser-bridge/*": [
+        "../../plugins/plugin-browser-bridge/src/*"
+      ],
       "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/shared/*": ["../shared/src/*"],
       "@elizaos/skills": ["../skills/src/index.ts"],

@@ -11,8 +11,8 @@
 import {
   AgentRuntime,
   ChannelType,
-  createCharacter,
   type ContentValue,
+  createCharacter,
   createMessageMemory,
   stringToUuid,
   type UUID,
@@ -109,12 +109,15 @@ async function handleChat(
   });
 
   // Create message memory
-  const content: { text: string; source: string; channelType: ChannelType } & JsonObject =
-    {
-      text: message,
-      source: "a2a",
-      channelType: ChannelType.DM,
-    };
+  const content: {
+    text: string;
+    source: string;
+    channelType: ChannelType;
+  } & JsonObject = {
+    text: message,
+    source: "a2a",
+    channelType: ChannelType.DM,
+  };
 
   if (opts?.callerAgentId) {
     content.callerAgentId = opts.callerAgentId;

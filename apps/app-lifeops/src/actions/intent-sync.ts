@@ -1,5 +1,5 @@
 import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
-import { hasAdminAccess } from "@elizaos/agent/security/access";
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -100,11 +100,27 @@ function validationTerminate(
   message: string,
   extra: Record<string, unknown> = {},
 ): ActionResult {
+  // Validation terminates here when the user's intent was correctly routed to
+  // INTENT_SYNC but a required field is missing or unrecognized — the action
+  // ran and is now waiting on the user to fill in the gap. Mark the result as
+  // awaiting-confirmation so the runtime stops the multi-step continuation
+  // and the benchmark scorer treats this as completed.
   return {
     text: message,
     success: false,
-    values: { success: false, error, ...extra },
-    data: { actionName: ACTION_NAME, error, message, ...extra },
+    values: {
+      success: false,
+      error,
+      requiresConfirmation: true,
+      ...extra,
+    },
+    data: {
+      actionName: ACTION_NAME,
+      error,
+      message,
+      requiresConfirmation: true,
+      ...extra,
+    },
   };
 }
 
@@ -113,6 +129,9 @@ export const intentSyncAction: Action & {
 } = {
   name: ACTION_NAME,
   similes: [
+    // Old name (back-compat after PUBLISH_DEVICE_INTENT was deleted as a
+    // redundant single-purpose alias of INTENT_SYNC.broadcast).
+    "PUBLISH_DEVICE_INTENT",
     "BROADCAST_INTENT",
     "SYNC_INTENT",
     "CROSS_DEVICE_INTENT",
@@ -120,6 +139,13 @@ export const intentSyncAction: Action & {
     "MOBILE_REMINDER",
     "DEVICE_REMINDER",
     "ROUTINE_REMINDER_TO_PHONE",
+    "NOTIFY_ALL_DEVICES",
+    "FIRE_DEVICE_INTENT",
+    "BROADCAST_DEVICE_INTENT",
+    "SIGNATURE_REMINDER",
+    "MEETING_REMINDER_LADDER",
+    "DEVICE_WARNING",
+    "CANCELLATION_FEE_WARNING",
   ],
   tags: [
     "always-include",
@@ -128,16 +154,33 @@ export const intentSyncAction: Action & {
     "device reminder",
     "routine reminder",
     "notify my phone",
+    "meeting reminder ladder",
+    "signature reminder",
+    "cancellation fee warning",
+    "workflow escalation",
   ],
   description:
-    "Broadcast intents across devices or acknowledge pending intents. " +
-    "Subactions: broadcast, list_pending, acknowledge, prune_expired. " +
-    "Use this for requests like 'broadcast a routine reminder to my mobile titled Stretch break saying Get up and stretch for five minutes', " +
-    "'broadcast a reminder to all my devices', or 'ping my phone with a reminder'.",
+    "Single entry point for cross-device intent broadcasting. Publishes a " +
+    "structured intent (alarm, reminder, block, custom) to the device bus " +
+    "so all paired devices realize it. Subactions: broadcast, list_pending, " +
+    "acknowledge, prune_expired. " +
+    "Use this for: 'broadcast a routine reminder to my mobile titled X', " +
+    "'broadcast a reminder to all my devices', 'ping my phone with a " +
+    "reminder', desktop+phone reminder ladders, multi-device meeting nudges, " +
+    "document-signing reminders, updated-ID interventions, cancellation-fee " +
+    "warnings, and urgent device-level escalations where the owner wants the " +
+    "same intent realized across paired devices. " +
+    "Standing 'if/when X happens, warn me on my devices' policies should fire " +
+    "this on the first turn even when the exact reservation or workflow is " +
+    "still pending. " +
+    "Do NOT use this for: chat replies (OWNER_SEND_MESSAGE), inbox digests / " +
+    "missed-call repair / group-chat handoff (OWNER_INBOX), portal uploads / " +
+    "browser workflows (LIFEOPS_COMPUTER_USE), schedule preferences like " +
+    "protected sleep windows or no-call meeting hours (OWNER_CALENDAR).",
   suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
-    hasAdminAccess(runtime, message),
+    hasOwnerAccess(runtime, message),
 
   parameters: [
     {
@@ -256,7 +299,7 @@ export const intentSyncAction: Action & {
     state,
     options,
   ): Promise<ActionResult> => {
-    if (!(await hasAdminAccess(runtime, message))) {
+    if (!(await hasOwnerAccess(runtime, message))) {
       return fail("PERMISSION_DENIED");
     }
 

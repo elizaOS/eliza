@@ -24,6 +24,7 @@ export function isSourceCode(file) {
 // suite could meaningfully assert against.
 export function isTestExempt(file) {
   if (file.startsWith("docs/")) return true;
+  if (file.startsWith("eliza/docs/")) return true;
   if (/\.(mdx?|txt)$/i.test(file)) return true;
   if (file.startsWith(".claude/")) return true;
   if (file.startsWith(".github/")) return true;
@@ -31,13 +32,33 @@ export function isTestExempt(file) {
   if (file.startsWith(".cursor/")) return true;
   if (file.startsWith("scripts/")) return true;
   if (/\.sh$/i.test(file)) return true;
-  if (/(^|\/)(bun\.lock|package-lock\.json|yarn\.lock|pnpm-lock\.yaml)$/.test(file))
+  // Static assets (images, fonts, audio, video) have no runtime behavior a
+  // Vitest suite can assert against.
+  if (
+    /\.(png|jpe?g|gif|webp|avif|svg|ico|bmp|tiff?|heic|woff2?|ttf|otf|eot|mp3|mp4|wav|ogg|webm|mov)$/i.test(
+      file,
+    )
+  )
+    return true;
+  if (
+    /(^|\/)(bun\.lock|package-lock\.json|yarn\.lock|pnpm-lock\.yaml)$/.test(
+      file,
+    )
+  )
     return true;
   if (/(^|\/)package\.json$/.test(file)) return true;
   if (/(^|\/)tsconfig(\.[\w-]+)?\.json$/.test(file)) return true;
-  if (/(^|\/)(vite|vitest|tsdown|rollup|tsup|webpack|esbuild)\.config\.[cm]?[jt]s$/.test(file))
+  if (
+    /(^|\/)(vite|vitest|tsdown|rollup|tsup|webpack|esbuild)\.config\.[cm]?[jt]s$/.test(
+      file,
+    )
+  )
     return true;
-  if (file.startsWith("test/helpers/") || /(^|\/)test\/helpers\//.test(file))
+  if (
+    file.startsWith("test/helpers/") ||
+    file.startsWith("eliza/test/helpers/") ||
+    /(^|\/)test\/helpers\//.test(file)
+  )
     return true;
   // Submodule pointer changes appear as a single path with no extension.
   if (file === "eliza" || file === "eliza/cloud" || file === "eliza/steward-fi")
@@ -287,7 +308,7 @@ export function resolveRunnableTestFiles(testFiles, cwd = process.cwd()) {
 }
 
 export function buildRepoTestCommand(repoTests) {
-  return `bunx vitest run --config test/vitest/unit.config.ts ${repoTests.join(" ")}`;
+  return `bunx vitest run --config eliza/test/vitest/unit.config.ts ${repoTests.join(" ")}`;
 }
 
 export function shouldRunTargetedRegressionTests({
@@ -303,10 +324,10 @@ export function splitRunnableTestFiles(testFiles) {
   const repoE2eTests = [];
 
   for (const file of testFiles) {
-    if (file.startsWith("apps/homepage/")) {
-      homepageTests.push(path.relative("apps/homepage", file));
+    if (file.startsWith("packages/homepage/")) {
+      homepageTests.push(path.relative("packages/homepage", file));
     } else if (/\.e2e\.test\.[jt]sx?$/.test(file)) {
-      if (file.startsWith("test/")) {
+      if (file.startsWith("test/") || file.startsWith("eliza/test/")) {
         repoE2eTests.push(file);
       }
     } else {
@@ -489,13 +510,13 @@ export function runChecks() {
 
         if (repoE2eTests.length > 0) {
           testCommands.push(
-            `bunx vitest run --config test/vitest/e2e.config.ts ${repoE2eTests.join(" ")}`,
+            `bunx vitest run --config eliza/test/vitest/e2e.config.ts ${repoE2eTests.join(" ")}`,
           );
         }
 
         if (homepageTests.length > 0) {
           testCommands.push(
-            `cd apps/homepage && bunx vitest run ${homepageTests.join(" ")}`,
+            `cd packages/homepage && bunx vitest run ${homepageTests.join(" ")}`,
           );
         }
 

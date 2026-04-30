@@ -13,8 +13,10 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import { findCatalogModel } from "./catalog";
 import { localInferenceRoot } from "./paths";
-import type { AgentModelSlot, ModelAssignments } from "./types";
+import { listInstalledModels } from "./registry";
+import type { AgentModelSlot, InstalledModel, ModelAssignments } from "./types";
 
 const ASSIGNMENTS_FILENAME = "assignments.json";
 
@@ -42,6 +44,38 @@ export async function readAssignments(): Promise<ModelAssignments> {
   }
 }
 
+function pickLargestInstalledModel(
+  installed: InstalledModel[],
+): InstalledModel | null {
+  return (
+    installed
+      .filter((model) => typeof model.id === "string" && model.id.length > 0)
+      .sort((left, right) => right.sizeBytes - left.sizeBytes)[0] ?? null
+  );
+}
+
+export function buildRecommendedAssignments(
+  installed: InstalledModel[],
+): ModelAssignments {
+  const best = pickLargestInstalledModel(installed);
+  if (!best) return {};
+  return {
+    TEXT_SMALL: best.id,
+    TEXT_LARGE: best.id,
+  };
+}
+
+export async function readEffectiveAssignments(): Promise<ModelAssignments> {
+  const [saved, installed] = await Promise.all([
+    readAssignments(),
+    listInstalledModels(),
+  ]);
+  return {
+    ...buildRecommendedAssignments(installed),
+    ...saved,
+  };
+}
+
 export async function writeAssignments(
   assignments: ModelAssignments,
 ): Promise<void> {
@@ -65,4 +99,91 @@ export async function setAssignment(
   }
   await writeAssignments(next);
   return next;
+}
+
+/**
+ * Decide which slots a freshly-installed model is a sensible default for.
+ *
+ * Today the curated catalog tags models with `category` ∈
+ * `chat | code | tools | tiny | reasoning` and `bucket` ∈
+ * `small | mid | large | xl` — no explicit "embedding" tag, because the
+ * default catalog ships only generative models. The defensive check below
+ * still recognizes an "embedding" category/bucket for future catalog
+ * additions and for external-scan models whose ids contain a recognizable
+ * embedding-family marker (`nomic-embed`, `bge`, `all-minilm`, `gte`,
+ * `e5-`). External GGUFs without a catalog entry default to generative.
+ */
+function isEmbeddingModelId(modelId: string): boolean {
+  const catalog = findCatalogModel(modelId);
+  if (catalog) {
+    if ((catalog.category as string) === "embedding") return true;
+    if ((catalog.bucket as string) === "embedding") return true;
+    return false;
+  }
+  const lowered = modelId.toLowerCase();
+  return (
+    lowered.includes("nomic-embed") ||
+    lowered.includes("bge-") ||
+    lowered.includes("all-minilm") ||
+    lowered.includes("gte-") ||
+    lowered.includes("e5-")
+  );
+}
+
+/**
+ * Fill empty assignment slots with `modelId`. Idempotent: never overwrites
+ * an existing slot. Embedding models only fill `TEXT_EMBEDDING`; generative
+ * models only fill `TEXT_SMALL` and `TEXT_LARGE`. Returns the resulting
+ * assignment map (read state is `readAssignments()`, not effective +
+ * recommended).
+ *
+ * Wired from the downloader's success path and the runtime boot's
+ * "exactly one model installed, no assignments" branch so first-light
+ * users land in chat without a Settings detour. The hard error in
+ * `ensure-local-inference-handler.ts` only fires when the operator has
+ * actively cleared the assignment.
+ */
+export async function ensureDefaultAssignment(
+  modelId: string,
+): Promise<ModelAssignments> {
+  const current = await readAssignments();
+  const next: ModelAssignments = { ...current };
+
+  if (isEmbeddingModelId(modelId)) {
+    if (!next.TEXT_EMBEDDING) next.TEXT_EMBEDDING = modelId;
+  } else {
+    if (!next.TEXT_SMALL) next.TEXT_SMALL = modelId;
+    if (!next.TEXT_LARGE) next.TEXT_LARGE = modelId;
+  }
+
+  // Cheap shortcut: skip the rewrite when nothing changed.
+  if (
+    next.TEXT_SMALL === current.TEXT_SMALL &&
+    next.TEXT_LARGE === current.TEXT_LARGE &&
+    next.TEXT_EMBEDDING === current.TEXT_EMBEDDING &&
+    next.OBJECT_SMALL === current.OBJECT_SMALL &&
+    next.OBJECT_LARGE === current.OBJECT_LARGE
+  ) {
+    return current;
+  }
+
+  await writeAssignments(next);
+  return next;
+}
+
+/**
+ * Boot-time helper. If exactly one model is installed and no assignment
+ * file exists yet, auto-fill its slots so the first session works without
+ * the user opening Settings. No-op when assignments are already present
+ * or when more than one model is installed (we cannot guess intent).
+ */
+export async function autoAssignAtBoot(
+  installed: InstalledModel[],
+): Promise<ModelAssignments | null> {
+  if (installed.length !== 1) return null;
+  const current = await readAssignments();
+  if (Object.keys(current).length > 0) return null;
+  const onlyInstalled = installed[0];
+  if (!onlyInstalled || typeof onlyInstalled.id !== "string") return null;
+  return ensureDefaultAssignment(onlyInstalled.id);
 }

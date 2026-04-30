@@ -426,21 +426,17 @@ describe("computer-use live parity", () => {
     }
   });
 
-  it("supports window listing and parity-safe window management commands live", async () => {
+  it("supports window listing and rejects incomplete window move commands live", async () => {
     const listResult = await service.executeCommand("list_windows");
     expect(listResult.success).toBe(true);
     expect(Array.isArray(listResult.windows)).toBe(true);
-
-    const arrangeResult = await service.executeCommand("arrange_windows", {
-      arrangement: "tile",
-    });
-    expect(arrangeResult.success).toBe(true);
 
     const moveResult = await service.executeCommand("move_window", {
       x: 10,
       y: 20,
     });
-    expect(moveResult.success).toBe(true);
+    expect(moveResult.success).toBe(false);
+    expect(moveResult.error).toMatch(/windowId or windowTitle is required/i);
   });
 
   it("honors approval mode and safe-command auto-approval live", async () => {

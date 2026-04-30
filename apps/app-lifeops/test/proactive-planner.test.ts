@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-  planGm,
-  planGn,
   type InboxDigestSlim,
   type ProactiveRelativeTimeSlim,
+  planGm,
+  planGn,
 } from "../src/activity-profile/proactive-planner.js";
 import { readFiredLogFromMetadata } from "../src/activity-profile/service.js";
 import type {

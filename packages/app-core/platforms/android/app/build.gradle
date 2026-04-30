@@ -3,6 +3,12 @@ apply plugin: 'com.android.application'
 android {
     namespace "ai.elizaos.app"
     compileSdk rootProject.ext.compileSdkVersion
+    // BuildConfig is needed for AOSP_BUILD gating in MiladyAgentService.java —
+    // see eliza/packages/agent/src/runtime/aosp-llama-adapter.ts and
+    // scripts/miladyos/build-aosp.mjs. AGP 8+ defaults this to false.
+    buildFeatures {
+        buildConfig true
+    }
     defaultConfig {
         applicationId "ai.elizaos.app"
         minSdkVersion rootProject.ext.minSdkVersion
@@ -10,6 +16,13 @@ android {
         versionCode System.getenv("ELIZAOS_VERSION_CODE")?.toInteger() ?: 1
         versionName System.getenv("ELIZAOS_VERSION_NAME") ?: "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        // AOSP-only build gate. The MiladyOS AOSP product build sets
+        // -PmiladyAospBuild=true via scripts/miladyos/build-aosp.mjs; the
+        // Capacitor APK build path (`bun run build:android`) leaves it
+        // unset and the field stays false. MiladyAgentService reads this
+        // to decide whether to export MILADY_LOCAL_LLAMA=1 to the bun
+        // process so the AOSP-only libllama.so loader takes over inference.
+        buildConfigField "boolean", "AOSP_BUILD", "${project.findProperty('miladyAospBuild') ?: 'false'}"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
@@ -51,6 +64,25 @@ android {
         abi {
             enableSplit = true
         }
+    }
+
+    // Preserve .gguf / .so as-is in the packaged APK.
+    //
+    // .gguf is added so bundled chat + embedding models stay byte-identical
+    // for memory-mapped loading; .so already ships uncompressed but
+    // declaring it here matches AGP's recommended noCompress list and
+    // protects against future packaging-default changes.
+    //
+    // `tar.gz` / `tar` are NOT listed because aapt2 pre-processes
+    // `*.tar.gz` by stripping the `.gz` suffix at packaging time
+    // regardless of `noCompress` (which only controls ZIP-level
+    // compression of the entry, not the doubly-compressed-extension
+    // rewrite). MiladyAgentService.extractAssetsIfNeeded() compensates
+    // by reading the assets under the aapt2-rewritten `.tar` name and
+    // writing them to disk as `.tar.gz` so PGlite's runtime loader
+    // (`new URL("../vector.tar.gz", import.meta.url)`) finds them.
+    androidResources {
+        noCompress += ['gguf', 'so']
     }
 
     compileOptions {

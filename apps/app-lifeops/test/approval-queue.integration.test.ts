@@ -16,11 +16,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createRealTestRuntime } from "../../../../test/helpers/real-runtime";
+import { createRealTestRuntime } from "../../../../eliza/test/helpers/real-runtime";
 import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
 import {
-  ApprovalNotFoundError,
   type ApprovalEnqueueInput,
+  ApprovalNotFoundError,
   type ApprovalQueue,
   ApprovalStateTransitionError,
 } from "../src/lifeops/approval-queue.types.js";

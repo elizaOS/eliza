@@ -29,6 +29,64 @@ export const PAGE_SCOPES: readonly PageScope[] = [
   "page-wallet",
 ] as const;
 
+const PAGE_SCOPE_ROUTING_CONTEXTS: Record<
+  PageScope,
+  { primaryContext: string; secondaryContexts: string[] }
+> = {
+  "page-browser": {
+    primaryContext: "browser",
+    secondaryContexts: ["page", "page-browser", "browser", "knowledge"],
+  },
+  "page-character": {
+    primaryContext: "character",
+    secondaryContexts: [
+      "page",
+      "page-character",
+      "character",
+      "knowledge",
+      "social",
+    ],
+  },
+  "page-automations": {
+    primaryContext: "automation",
+    secondaryContexts: ["page", "page-automations", "automation"],
+  },
+  "page-apps": {
+    primaryContext: "apps",
+    secondaryContexts: ["page", "page-apps", "apps"],
+  },
+  "page-connectors": {
+    primaryContext: "connectors",
+    secondaryContexts: ["page", "page-connectors", "connectors", "social"],
+  },
+  "page-phone": {
+    primaryContext: "phone",
+    secondaryContexts: ["page", "page-phone", "phone", "social"],
+  },
+  "page-plugins": {
+    primaryContext: "plugins",
+    secondaryContexts: ["page", "page-plugins", "plugins", "system"],
+  },
+  "page-lifeops": {
+    primaryContext: "lifeops",
+    secondaryContexts: [
+      "page",
+      "page-lifeops",
+      "lifeops",
+      "automation",
+      "social",
+    ],
+  },
+  "page-settings": {
+    primaryContext: "settings",
+    secondaryContexts: ["page", "page-settings", "settings", "system"],
+  },
+  "page-wallet": {
+    primaryContext: "wallet",
+    secondaryContexts: ["page", "page-wallet", "wallet"],
+  },
+};
+
 /**
  * Bump when the per-scope brief, intro copy, or live-state shape changes
  * meaningfully — so a future MIPRO/GEPA optimization pass can filter to a
@@ -107,9 +165,9 @@ export const PAGE_SCOPE_COPY: Record<PageScope, PageScopeIntroCopy> = {
   },
   "page-wallet": {
     title: "Wallet chat",
-    body: "Use me to inspect token inventory, NFTs, LP positions, balances, P&L, activity, EVM/Solana addresses, RPC readiness, and Vincent trading. Recommended: ask me to prepare a swap, bridge, or Vincent trading plan with the amount and constraints you want.",
+    body: "Use me to inspect token inventory, NFTs, LP positions, balances, P&L, activity, EVM/Solana addresses, RPC readiness, native Hyperliquid/Polymarket readiness, and Vincent delegated trading. Recommended: ask me to prepare a swap, bridge, market review, or delegated trading plan with the amount and constraints you want.",
     systemAddendum:
-      "You are answering inside the Wallet view. The user can inspect token inventory, NFTs, LP positions, current balance, P&L, activity, EVM/Solana addresses, RPC/provider readiness, wallet/RPC settings, and Vincent trading. There are no chain filters in this surface. Recommend the smallest concrete wallet action that fits the user's goal. For swaps, bridges, transfers, signatures, or trading actions, confirm the asset, amount, destination, slippage/risk limits, and execution path before invoking available wallet actions. If the user asks about trading, betting, gambling, predicting, Hyperliquid, or Polymarket, surface Vincent as the preferred integration when it is connected or suggest connecting it when it is not. Never invent balances, positions, fills, or execution support.",
+      "You are answering inside the Wallet view. The user can inspect token inventory, NFTs, LP positions, current balance, P&L, activity, EVM/Solana addresses, RPC/provider readiness, wallet/RPC settings, native Hyperliquid and Polymarket readiness, and Vincent delegated trading. There are no chain filters in this surface. Recommend the smallest concrete wallet action that fits the user's goal. For swaps, bridges, transfers, signatures, trading actions, or prediction-market actions, confirm the asset/market, amount, destination/outcome, slippage/risk limits, and execution path before invoking available wallet actions. If the user asks about Hyperliquid or Polymarket, prefer the native app surfaces for reads/status and only surface Vincent for delegated automated trading. Never invent balances, positions, fills, markets, odds, or execution support.",
   },
 };
 
@@ -201,10 +259,11 @@ export function buildPageScopedRoutingMetadata(
   scope: PageScope,
   options: { sourceConversationId?: string; pageId?: string } = {},
 ): Record<string, unknown> {
+  const routing = PAGE_SCOPE_ROUTING_CONTEXTS[scope];
   const metadata: Record<string, unknown> = {
     __responseContext: {
-      primaryContext: "page",
-      secondaryContexts: ["page", scope],
+      primaryContext: routing.primaryContext,
+      secondaryContexts: routing.secondaryContexts,
     },
     taskId: scope,
     surface: "page-scoped",

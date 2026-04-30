@@ -35,10 +35,7 @@
     }
   ],
   "trajectory": "trajectories/f918266a-b3e0-4914-865d-4faa564f1aef",
-  "related_apps": [
-    "vscode",
-    "os"
-  ],
+  "related_apps": ["vscode", "os"],
   "evaluator": {
     "func": "compare_text_file",
     "expected": {

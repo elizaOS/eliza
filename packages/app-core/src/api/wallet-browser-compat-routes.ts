@@ -274,6 +274,36 @@ async function signLocalBrowserSolanaMessage(
 
 type SolanaCluster = "mainnet" | "devnet" | "testnet";
 
+interface SolanaWeb3Module {
+  Keypair: {
+    fromSeed(seed: Uint8Array): unknown;
+  };
+  VersionedTransaction: {
+    deserialize(bytes: Uint8Array): {
+      sign(signers: unknown[]): void;
+      serialize(): Uint8Array;
+    };
+  };
+  Transaction: {
+    from(bytes: Uint8Array): {
+      partialSign(...signers: unknown[]): void;
+      serialize(): Uint8Array;
+    };
+  };
+  Connection: new (
+    endpoint: string,
+    commitment: string,
+  ) => {
+    sendRawTransaction(bytes: Uint8Array): Promise<string>;
+  };
+}
+
+const SOLANA_WEB3_PACKAGE: string = "@solana/web3.js";
+
+async function loadSolanaWeb3(): Promise<SolanaWeb3Module> {
+  return (await import(SOLANA_WEB3_PACKAGE)) as SolanaWeb3Module;
+}
+
 function normalizeSolanaCluster(value: unknown): SolanaCluster {
   if (value === "devnet" || value === "testnet" || value === "mainnet") {
     return value;
@@ -310,7 +340,7 @@ async function signLocalBrowserSolanaTransaction(
 
   const { address, seed } = resolveLocalSolanaSeed();
 
-  const web3 = await import("@solana/web3.js");
+  const web3 = await loadSolanaWeb3();
   const { Keypair, VersionedTransaction, Transaction, Connection } = web3;
 
   const keypair = Keypair.fromSeed(new Uint8Array(seed));

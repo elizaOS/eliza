@@ -1,5 +1,5 @@
 import type { ServerWebSocket } from "bun";
-import type { BotWorldState, BotAction, SDKActionAck } from "./types.js";
+import type { BotAction, BotWorldState, SDKActionAck } from "./types.js";
 
 // ── Public interface ────────────────────────────────────────────────
 
@@ -56,7 +56,9 @@ export function startGateway(options: GatewayOptions): GatewayHandle {
 
   // ── Helpers ─────────────────────────────────────────────────────
 
-  function parseRoute(url: string): { kind: "bot" | "sdk"; username: string } | null {
+  function parseRoute(
+    url: string,
+  ): { kind: "bot" | "sdk"; username: string } | null {
     try {
       const parsed = new URL(url, "http://localhost");
       const path = parsed.pathname;
@@ -85,7 +87,9 @@ export function startGateway(options: GatewayOptions): GatewayHandle {
     const map = kind === "bot" ? botSessions : sdkSessions;
     const existing = map.get(username);
     if (existing) {
-      log(`[gateway] ${kind} session takeover for ${username} — closing old connection`);
+      log(
+        `[gateway] ${kind} session takeover for ${username} — closing old connection`,
+      );
       try {
         existing.close(4000, "session takeover");
       } catch {
@@ -246,7 +250,10 @@ export function startGateway(options: GatewayOptions): GatewayHandle {
         if (kind === "sdk") {
           const cachedState = latestState.get(username);
           if (cachedState) {
-            const msg: BotStateMessage = { type: "sdk_state", state: cachedState };
+            const msg: BotStateMessage = {
+              type: "sdk_state",
+              state: cachedState,
+            };
             ws.send(JSON.stringify(msg));
             log(`[gateway] sent cached state to sdk/${username}`);
           }

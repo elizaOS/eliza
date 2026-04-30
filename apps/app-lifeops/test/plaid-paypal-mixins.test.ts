@@ -41,18 +41,16 @@ describe("PlaidManagedClient (config sentinel)", () => {
   });
 
   test("posts to /v1/milady/plaid/link-token with bearer auth", async () => {
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            linkToken: "link-sandbox-1",
-            expiration: "2026-04-23T18:00:00Z",
-            environment: "sandbox",
-          }),
-          { status: 200 },
-        ),
-      );
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          linkToken: "link-sandbox-1",
+          expiration: "2026-04-23T18:00:00Z",
+          environment: "sandbox",
+        }),
+        { status: 200 },
+      ),
+    );
     vi.stubGlobal("fetch", fetchMock);
     try {
       const client = new PlaidManagedClient(() => ({
@@ -85,8 +83,7 @@ describe("PaypalManagedClient (config sentinel)", () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
       new Response(
         JSON.stringify({
-          error:
-            "PayPal Reporting API is unavailable for this account.",
+          error: "PayPal Reporting API is unavailable for this account.",
           fallback: "csv_export",
         }),
         { status: 403 },

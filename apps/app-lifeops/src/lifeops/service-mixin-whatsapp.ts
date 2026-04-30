@@ -25,6 +25,7 @@ type RuntimeWithPluginLifecycle = {
 
 type WhatsAppRuntimeServiceLike = {
   connected?: boolean;
+  phoneNumber?: string | null;
   sendMessage?: (message: {
     type: "text";
     to: string;
@@ -181,6 +182,9 @@ export function withWhatsApp<TBase extends Constructor<LifeOpsServiceBase>>(
         connected: outboundReady || inboundReady,
         inbound: true,
         ...(creds?.phoneNumberId ? { phoneNumberId: creds.phoneNumberId } : {}),
+        ...(runtimeService?.phoneNumber
+          ? { phoneNumber: runtimeService.phoneNumber }
+          : {}),
         localAuthAvailable: hasLocalAuth,
         localAuthRegistered: localAuth?.registered ?? null,
         serviceConnected,

@@ -298,6 +298,70 @@ describe("Actions", () => {
 			const formatted = formatActions([]);
 			expect(formatted).toBe("");
 		});
+
+		// Production observation (2026-04-28): a plugin's action shipped with
+		// `tags: [undefined, "foo"]` (a malformed entry from elsewhere in the
+		// runtime). When the planner-prompt builder formatted that action, the
+		// `(action.tags ?? []).map((tag) => tag.trim())` chain crashed with
+		// "undefined is not an object (evaluating 'tag.trim')". plugin-discord
+		// caught that exception as "Error handling message" and the bot
+		// silently dropped the user's message — no reply, no log line about
+		// the cause beyond the bare error message.
+		//
+		// formatActions must be defensive against non-string entries in
+		// action.tags / action.similes since Action consumers don't always
+		// validate their own arrays.
+		it("skips non-string entries in action.tags without throwing", () => {
+			const formatted = formatActions([
+				{
+					name: "WIDGET",
+					description: "Do widget things.",
+					examples: [],
+					similes: [],
+					tags: [
+						undefined as unknown as string,
+						null as unknown as string,
+						"  alpha  ",
+						42 as unknown as string,
+						"beta",
+					],
+					handler: async () => {
+						throw new Error("Not implemented");
+					},
+					validate: async () => {
+						throw new Error("Not implemented");
+					},
+				},
+			]);
+
+			expect(formatted).toContain("- WIDGET:");
+			expect(formatted).toContain("tags[2]: alpha, beta");
+		});
+
+		it("skips non-string entries in action.similes without throwing", () => {
+			const formatted = formatActions([
+				{
+					name: "GREET",
+					description: "Say hi.",
+					examples: [],
+					similes: [
+						undefined as unknown as string,
+						null as unknown as string,
+						"  hi  ",
+						"hello",
+					],
+					handler: async () => {
+						throw new Error("Not implemented");
+					},
+					validate: async () => {
+						throw new Error("Not implemented");
+					},
+				},
+			]);
+
+			expect(formatted).toContain("- GREET:");
+			expect(formatted).toContain("aliases[2]: hi, hello");
+		});
 	});
 
 	describe("Action benchmark cases", () => {

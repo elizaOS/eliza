@@ -1,5 +1,12 @@
-import type { Action, IAgentRuntime, Memory, State, HandlerCallback } from "@elizaos/core";
+import type {
+  Action,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
 import { getCurrentLlmResponse } from "../shared-state.js";
+import { getRsSdkGameService } from "./game-service.js";
 import { extractParam } from "./param-parser.js";
 
 export const useItemOnObject: Action = {
@@ -8,7 +15,10 @@ export const useItemOnObject: Action = {
   descriptionCompressed: "Use inventory item on world object.",
   similes: ["ITEM_ON_OBJECT"],
   examples: [],
-  validate: async (_runtime: IAgentRuntime, _message: Memory): Promise<boolean> => {
+  validate: async (
+    _runtime: IAgentRuntime,
+    _message: Memory,
+  ): Promise<boolean> => {
     return _runtime.getService("rs_2004scape") != null;
   },
   handler: async (
@@ -18,15 +28,20 @@ export const useItemOnObject: Action = {
     _options: Record<string, unknown>,
     callback?: HandlerCallback,
   ): Promise<unknown> => {
-    const service = runtime.getService("rs_2004scape") as any;
-    if (!service) return { success: false, message: "Game service not available." };
+    const service = getRsSdkGameService(runtime);
+    if (!service)
+      return { success: false, message: "Game service not available." };
 
     const text = getCurrentLlmResponse();
     const itemName = extractParam(text, "item");
     const objectName = extractParam(text, "object");
 
-    const result = await service.executeAction("useItemOnObject", { itemName, objectName });
-    if (callback) callback({ text: result.message, action: "USE_ITEM_ON_OBJECT" });
+    const result = await service.executeAction("useItemOnObject", {
+      itemName,
+      objectName,
+    });
+    if (callback)
+      callback({ text: result.message, action: "USE_ITEM_ON_OBJECT" });
     return result;
   },
 };

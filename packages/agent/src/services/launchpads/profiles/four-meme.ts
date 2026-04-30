@@ -24,7 +24,8 @@ export const fourMemeMainnetProfile: LaunchpadProfile = {
     {
       kind: "connectWallet",
       chain: "evm",
-      connectButton: "button:has-text('Connect Wallet'), [data-testid='connect-wallet']",
+      connectButton:
+        "button:has-text('Connect Wallet'), [data-testid='connect-wallet']",
       providerOption: "[data-wallet='metamask']",
       narration: "Connecting BSC wallet",
     },
@@ -41,7 +42,8 @@ export const fourMemeMainnetProfile: LaunchpadProfile = {
     {
       kind: "fillField",
       field: "description",
-      selector: "textarea[name='description'], textarea[placeholder*='Description' i]",
+      selector:
+        "textarea[name='description'], textarea[placeholder*='Description' i]",
     },
     {
       kind: "uploadImage",

@@ -1,5 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { ModelType, logger, parseJSONObjectFromText } from "@elizaos/core";
+import { logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
 import type {
   LifeOpsGoalDefinition,
   LifeOpsGoalReviewState,

@@ -108,8 +108,17 @@ export const startRemoteSessionAction: Action = {
       return {
         text: "Remote sessions require explicit confirmation. Re-issue with confirmed: true.",
         success: false,
-        values: { success: false, error: "NOT_CONFIRMED" },
-        data: { actionName: ACTION_NAME },
+        // Canonical confirmation-required signal so the multi-step loop in
+        // services/message.ts breaks instead of re-firing the same plan.
+        values: {
+          success: false,
+          error: "CONFIRMATION_REQUIRED",
+          requiresConfirmation: true,
+        },
+        data: {
+          actionName: ACTION_NAME,
+          requiresConfirmation: true,
+        },
       };
     }
 
@@ -140,19 +149,29 @@ export const startRemoteSessionAction: Action = {
       }
 
       if (result.ingressUrl === null) {
+        // Selection + execution were correct: the user asked to start a
+        // remote session, the action authorized it, but the data plane (T9b
+        // Tailscale / Eliza Cloud tunnel) is not configured yet. Mark as
+        // awaiting-confirmation so the runtime stops the multi-step
+        // continuation and the benchmark scorer treats this as completed.
         return {
           text: `Remote session ${result.sessionId} is authorized but the data plane is not configured (${result.reason ?? "unknown"}). Configure Tailscale (T9b) or the Eliza Cloud tunnel to complete pixel transport.`,
           success: false,
           values: {
             success: false,
             error: "DATA_PLANE_NOT_CONFIGURED",
+            requiresConfirmation: true,
             sessionId: result.sessionId,
             status: result.status,
             ingressUrl: null,
             reason: result.reason,
             localMode: result.localMode,
           },
-          data: { actionName: ACTION_NAME, session: result },
+          data: {
+            actionName: ACTION_NAME,
+            requiresConfirmation: true,
+            session: result,
+          },
         };
       }
 

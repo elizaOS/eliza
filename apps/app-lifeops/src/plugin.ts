@@ -17,7 +17,6 @@ import {
 } from "./actions/checkin.js";
 import { lifeOpsComputerUseAction } from "./actions/computer-use.js";
 import { crossChannelSendAction } from "./actions/cross-channel-send.js";
-import { publishDeviceIntentAction } from "./actions/device-bus.js";
 import { dossierAction } from "./actions/dossier.js";
 import { emailUnsubscribeAction } from "./actions/email-unsubscribe.js";
 import { healthAction } from "./actions/health.js";
@@ -71,6 +70,7 @@ import { appBlockerProvider } from "./providers/app-blocker.js";
 import { crossChannelContextProvider } from "./providers/cross-channel-context.js";
 
 // LifeOps core providers
+import { healthProvider } from "./providers/health.js";
 import { inboxTriageProvider } from "./providers/inbox-triage.js";
 import { lifeOpsProvider } from "./providers/lifeops.js";
 import { websiteBlockerProvider } from "./providers/website-blocker.js";
@@ -237,7 +237,6 @@ const rawAppLifeOpsPlugin: Plugin = {
     ownerScheduleAction,
     crossChannelSendAction,
     searchAcrossChannelsAction,
-    publishDeviceIntentAction,
     intentSyncAction,
     passwordManagerAction,
     requestFieldFillAction,
@@ -257,6 +256,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     websiteBlockerProvider,
     appBlockerProvider,
     lifeOpsProvider,
+    healthProvider,
     inboxTriageProvider,
     crossChannelContextProvider,
     activityProfileProvider,
@@ -467,6 +467,7 @@ export {
   resolveLifeOpsTaskIntervalMs,
 } from "./lifeops/runtime.js";
 export { appBlockerProvider } from "./providers/app-blocker.js";
+export { healthProvider } from "./providers/health.js";
 export { inboxTriageProvider } from "./providers/inbox-triage.js";
 export { lifeOpsProvider } from "./providers/lifeops.js";
 export type { LifeOpsRouteContext } from "./routes/lifeops-routes.js";

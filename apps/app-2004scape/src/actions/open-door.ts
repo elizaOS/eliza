@@ -1,4 +1,10 @@
-import type { Action, IAgentRuntime, Memory, State, HandlerCallback } from "@elizaos/core";
+import type {
+  Action,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
 
 export const openDoor: Action = {
   name: "OPEN_DOOR",
@@ -6,7 +12,10 @@ export const openDoor: Action = {
   descriptionCompressed: "Open nearest door/gate.",
   similes: ["OPEN_GATE", "USE_DOOR"],
   examples: [],
-  validate: async (_runtime: IAgentRuntime, _message: Memory): Promise<boolean> => {
+  validate: async (
+    _runtime: IAgentRuntime,
+    _message: Memory,
+  ): Promise<boolean> => {
     return _runtime.getService("rs_2004scape") != null;
   },
   handler: async (
@@ -16,8 +25,9 @@ export const openDoor: Action = {
     _options: Record<string, unknown>,
     callback?: HandlerCallback,
   ): Promise<unknown> => {
-    const service = runtime.getService("rs_2004scape") as any;
-    if (!service) return { success: false, message: "Game service not available." };
+    const service = getRsSdkGameService(runtime);
+    if (!service)
+      return { success: false, message: "Game service not available." };
 
     const result = await service.executeAction("openDoor", {});
     if (callback) callback({ text: result.message, action: "OPEN_DOOR" });
