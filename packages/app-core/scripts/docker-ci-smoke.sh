@@ -215,6 +215,21 @@ if [[ ! -f "$TYPESCRIPT_DIR/src/types/generated/eliza/v1/agent_pb.ts" ]]; then
   popd >/dev/null
 fi
 
+if [[ -f "$TYPESCRIPT_DIR/package.json" ]]; then
+  log "Building @elizaos/core source artifacts"
+  pushd "$TYPESCRIPT_DIR" >/dev/null
+  "$BUN_BIN" run build.ts --node-only
+  popd >/dev/null
+  node scripts/prepare-package-dist.mjs "$TYPESCRIPT_DIR"
+  CORE_NODE_MODULE="node_modules/@elizaos/core"
+  rm -rf "$CORE_NODE_MODULE"
+  mkdir -p "$(dirname "$CORE_NODE_MODULE")"
+  ln -s "../../$TYPESCRIPT_DIR/dist" "$CORE_NODE_MODULE"
+  node scripts/patch-nested-core-dist.mjs || true
+else
+  log "No local @elizaos/core source package found at $TYPESCRIPT_DIR; using installed package"
+fi
+
 log "Building Capacitor plugins"
 pushd "$APP_DIR" >/dev/null
 "$BUN_BIN" scripts/plugin-build.mjs
@@ -226,23 +241,6 @@ if [[ -f "$WHATSAPP_PLUGIN_TS_DIR/package.json" ]]; then
   pushd "$WHATSAPP_PLUGIN_TS_DIR" >/dev/null
   "$BUN_BIN" run build
   popd >/dev/null
-fi
-
-if [[ -f "$TYPESCRIPT_DIR/package.json" ]]; then
-  log "Building @elizaos/core source artifacts"
-  pushd "$TYPESCRIPT_DIR" >/dev/null
-  "$BUN_BIN" run build.ts --node-only
-  popd >/dev/null
-  node scripts/prepare-package-dist.mjs "$TYPESCRIPT_DIR"
-  CORE_NODE_MODULE="node_modules/@elizaos/core"
-  if [[ -e "$CORE_NODE_MODULE" || -L "$CORE_NODE_MODULE" ]]; then
-    rm -rf "$CORE_NODE_MODULE"
-    mkdir -p "$(dirname "$CORE_NODE_MODULE")"
-    ln -s "../../$TYPESCRIPT_DIR/dist" "$CORE_NODE_MODULE"
-  fi
-  node scripts/patch-nested-core-dist.mjs || true
-else
-  log "No local @elizaos/core source package found at $TYPESCRIPT_DIR; using installed package"
 fi
 
 log "Building agent workspace"
