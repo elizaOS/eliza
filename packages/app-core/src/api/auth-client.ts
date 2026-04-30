@@ -9,6 +9,7 @@
  * can be used in auth-gated components before the main client is initialised.
  */
 
+import { getBootConfig } from "../config/boot-config";
 import { fetchWithCsrf } from "./csrf-client";
 
 // ── Shared response shapes ────────────────────────────────────────────────────
@@ -36,7 +37,7 @@ export interface AuthSessionListEntry {
 }
 
 export interface AuthAccessInfo {
-  mode: "local" | "session" | "remote";
+  mode: "local" | "session" | "remote" | "bearer";
   passwordConfigured: boolean;
   ownerConfigured: boolean;
 }
@@ -125,17 +126,8 @@ export type AuthChangePasswordResult =
  */
 function authBase(): string {
   if (typeof window === "undefined") return "";
-  // Prefer the boot-config override (set by deep-link / dev server).
-  try {
-    const { getBootConfig } = require("../config/boot-config") as {
-      getBootConfig: () => { apiBase?: string };
-    };
-    const cfg = getBootConfig();
-    if (cfg.apiBase) return cfg.apiBase.replace(/\/$/, "");
-  } catch {
-    // Module not available in test environments that stub the config.
-  }
-  return window.location.origin;
+  const apiBase = getBootConfig().apiBase;
+  return apiBase ? apiBase.replace(/\/$/, "") : window.location.origin;
 }
 
 // ── Endpoint callers ──────────────────────────────────────────────────────────
@@ -296,9 +288,7 @@ export async function authLogout(): Promise<AuthLogoutResult> {
 export async function authMe(): Promise<AuthMeResult> {
   let res: Response;
   try {
-    res = await fetch(`${authBase()}/api/auth/me`, {
-      credentials: "include",
-    });
+    res = await fetchWithCsrf(`${authBase()}/api/auth/me`);
   } catch {
     return { ok: false, status: 401 };
   }

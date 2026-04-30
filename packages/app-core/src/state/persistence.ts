@@ -18,6 +18,7 @@ import type {
 } from "./types";
 import type { UiShellMode, UiTheme } from "./ui-preferences";
 import { normalizeAvatarIndex } from "./vrm";
+import { fetchWithCsrf } from "../api/csrf-client";
 
 /* ── Shared localStorage helper ──────────────────────────────────────── */
 
@@ -569,7 +570,7 @@ export function saveFavoriteApps(apps: string[]): void {
  */
 export async function fetchServerFavoriteApps(): Promise<string[] | null> {
   try {
-    const resp = await fetch("/api/apps/favorites", {
+    const resp = await fetchWithCsrf("/api/apps/favorites", {
       method: "GET",
       headers: { Accept: "application/json" },
     });
@@ -591,7 +592,7 @@ export async function replaceServerFavoriteApps(
   favoriteAppNames: string[],
 ): Promise<string[] | null> {
   try {
-    const resp = await fetch("/api/apps/favorites/replace", {
+    const resp = await fetchWithCsrf("/api/apps/favorites/replace", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ favoriteAppNames }),
@@ -616,7 +617,7 @@ export async function toggleServerFavoriteApp(
   isFavorite: boolean,
 ): Promise<string[] | null> {
   try {
-    const resp = await fetch("/api/apps/favorites", {
+    const resp = await fetchWithCsrf("/api/apps/favorites", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ appName, isFavorite }),
