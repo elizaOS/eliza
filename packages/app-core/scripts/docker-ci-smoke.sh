@@ -276,6 +276,13 @@ pushd "$APP_DIR" >/dev/null
 NODE_ENV=production "$BUN_BIN" run build:web
 popd >/dev/null
 
+if [[ -n "${CORE_NODE_MODULE:-}" && -f "$TYPESCRIPT_DIR/dist/package.json" ]]; then
+  log "Relinking @elizaos/core to built dist for Docker runtime"
+  rm -rf "$CORE_NODE_MODULE"
+  mkdir -p "$(dirname "$CORE_NODE_MODULE")"
+  ln -s "../../$TYPESCRIPT_DIR/dist" "$CORE_NODE_MODULE"
+fi
+
 log "Preparing CI dockerignore"
 cp "$APP_CORE_DIR/deploy/.dockerignore.ci" .dockerignore
 
