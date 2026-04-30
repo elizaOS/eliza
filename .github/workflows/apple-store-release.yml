@@ -263,7 +263,7 @@ jobs:
           fi
 
       - name: Upload IPA artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ios-ipa
           path: apps/app/ios/build/Eliza.ipa
@@ -448,7 +448,7 @@ jobs:
             --show-progress
 
       - name: Upload pkg artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: macos-mas-pkg
           path: ${{ env.PKG_PATH }}

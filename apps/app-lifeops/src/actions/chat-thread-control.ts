@@ -211,7 +211,9 @@ async function resolveTargetRoom(args: {
   return null;
 }
 
-export const chatThreadControlAction: Action = {
+export const chatThreadControlAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: "CHAT_THREAD_CONTROL",
   similes: [
     "MUTE_TARGET_CHAT",
@@ -225,6 +227,7 @@ export const chatThreadControlAction: Action = {
     "Do not use generic MUTE_ROOM or UNMUTE_ROOM when the owner names a different chat or platform.",
   descriptionCompressed:
     "Mute/unmute named Telegram Discord chat optional timed unmute not current room",
+  suppressPostActionContinuation: true,
 
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   handler: async (runtime, message, state, options): Promise<ActionResult> => {
@@ -234,14 +237,14 @@ export const chatThreadControlAction: Action = {
     const planned = await resolveChatThreadPlan({ runtime, message, state });
     const operation = normalizeOperation(params.operation) ?? planned.operation;
     const platform =
-      normalizePlatform(params.platform) ?? planned.platform ?? "telegram";
+      normalizePlatform(params.platform) ?? planned.platform;
     const roomId = normalizeString(params.roomId) ?? planned.roomId;
     const chatName = normalizeString(params.chatName) ?? planned.chatName;
     const durationMinutes =
       normalizeDurationMinutes(params.durationMinutes) ??
       planned.durationMinutes;
 
-    if (!operation || planned.shouldAct === false) {
+    if (!operation || !platform || planned.shouldAct === false) {
       return {
         success: false,
         text:

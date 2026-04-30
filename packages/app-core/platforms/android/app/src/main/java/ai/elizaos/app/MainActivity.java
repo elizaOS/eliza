@@ -4,6 +4,7 @@ import android.Manifest;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.webkit.WebSettings;
 
 import androidx.core.content.ContextCompat;
 
@@ -16,6 +17,21 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // The Capacitor WebView serves the renderer at https://localhost
+        // (its default secure-context origin); the on-device Eliza agent
+        // listens at http://127.0.0.1:31337. Without this knob the WebView
+        // blocks every fetch to the loopback agent as a mixed-content
+        // upgrade, surfacing in the UI as "Backend Timeout: /api/auth/status
+        // - Failed to fetch" even though the agent is up. Granting
+        // MIXED_CONTENT_ALWAYS_ALLOW only matters for loopback in this app
+        // — the network_security_config still pins the WebView's allowed
+        // cleartext hosts, and the Capacitor server.hostname locks the
+        // page origin.
+        if (getBridge() != null && getBridge().getWebView() != null) {
+            WebSettings settings = getBridge().getWebView().getSettings();
+            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        }
 
         // Android 13+ requires explicit POST_NOTIFICATIONS permission for the
         // foreground service notification to be visible.

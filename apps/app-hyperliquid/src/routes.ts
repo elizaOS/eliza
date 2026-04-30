@@ -4,8 +4,14 @@ import { logger } from "@elizaos/core";
 import {
   HYPERLIQUID_ACCOUNT_BLOCKED_REASON,
   HYPERLIQUID_API_BASE,
+  HYPERLIQUID_API_WALLET_GUIDANCE,
   HYPERLIQUID_EXECUTION_BLOCKED_REASON,
   HYPERLIQUID_EXECUTION_NOT_IMPLEMENTED_REASON,
+  HYPERLIQUID_LOCAL_KEY_GUIDANCE,
+  HYPERLIQUID_VAULT_GUIDANCE,
+  type HyperliquidAccountSource,
+  type HyperliquidApiWalletStatus,
+  type HyperliquidCredentialMode,
   type HyperliquidExecutionDisabledResponse,
   type HyperliquidMarket,
   type HyperliquidMarketsResponse,
@@ -30,10 +36,18 @@ export interface HyperliquidRouteState {
 interface HyperliquidConfig {
   apiBaseUrl: string;
   accountAddress: string | null;
+  accountSource: HyperliquidAccountSource;
   accountBlockedReason: string | null;
+  credentialMode: HyperliquidCredentialMode;
   signerReady: boolean;
   executionReady: boolean;
   executionBlockedReason: string | null;
+  vault: {
+    configured: boolean;
+    ready: boolean;
+    address: string | null;
+  };
+  apiWallet: HyperliquidApiWalletStatus;
 }
 
 interface HyperliquidInfoClient {
@@ -43,6 +57,9 @@ interface HyperliquidInfoClient {
 }
 
 const HEX_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
+const HEX_PRIVATE_KEY_PATTERN = /^0x[a-fA-F0-9]{64}$/;
+const STEWARD_EVM_ADDRESS_ENV_KEY = "STEWARD_EVM_ADDRESS";
+const MANAGED_EVM_ADDRESS_ENV_KEY = "ELIZA_MANAGED_EVM_ADDRESS";
 
 export async function handleHyperliquidRoute(
   _req: http.IncomingMessage,
@@ -63,6 +80,7 @@ export async function handleHyperliquidRoute(
       executionReady: false,
       executionBlockedReason:
         config.executionBlockedReason ?? HYPERLIQUID_EXECUTION_BLOCKED_REASON,
+      credentialMode: config.credentialMode,
     };
     sendJson(res, 501, payload);
     return true;
@@ -76,6 +94,23 @@ export async function handleHyperliquidRoute(
       executionBlockedReason: config.executionBlockedReason,
       accountAddress: config.accountAddress,
       apiBaseUrl: config.apiBaseUrl,
+      credentialMode: config.credentialMode,
+      readiness: {
+        publicReads: Boolean(fetchImpl),
+        accountReads: Boolean(config.accountAddress),
+        signer: config.signerReady,
+        execution: false,
+      },
+      account: {
+        address: config.accountAddress,
+        source: config.accountSource,
+        guidance: config.accountBlockedReason,
+      },
+      vault: {
+        ...config.vault,
+        guidance: HYPERLIQUID_VAULT_GUIDANCE,
+      },
+      apiWallet: config.apiWallet,
     };
     sendJson(res, 200, payload);
     return true;
@@ -219,30 +254,103 @@ export function createHyperliquidInfoClient({
 }
 
 function resolveHyperliquidConfig(env: NodeJS.ProcessEnv): HyperliquidConfig {
+  const managedVaultAddress = readFirstValidAddress(env, [
+    STEWARD_EVM_ADDRESS_ENV_KEY,
+    MANAGED_EVM_ADDRESS_ENV_KEY,
+  ]);
+  const managedVaultConfigured =
+    Boolean(managedVaultAddress) ||
+    Boolean(readEnvString(env, "STEWARD_API_URL")) ||
+    readEnvString(env, "MILADY_WALLET_BACKEND") === "steward";
+  const managedVaultReady = Boolean(managedVaultAddress);
   const rawAccount =
     readEnvString(env, "HYPERLIQUID_ACCOUNT_ADDRESS") ??
     readEnvString(env, "HL_ACCOUNT_ADDRESS");
-  const accountAddress =
+  const envAccountAddress =
     rawAccount && HEX_ADDRESS_PATTERN.test(rawAccount) ? rawAccount : null;
+  const accountAddress = managedVaultAddress ?? envAccountAddress;
+  const accountSource: HyperliquidAccountSource = managedVaultAddress
+    ? "managed_vault"
+    : envAccountAddress
+      ? "env_account"
+      : "none";
   const accountBlockedReason = accountAddress
     ? null
     : rawAccount
       ? "HYPERLIQUID_ACCOUNT_ADDRESS / HL_ACCOUNT_ADDRESS must be a 0x-prefixed EVM address."
       : HYPERLIQUID_ACCOUNT_BLOCKED_REASON;
-  const privateKey =
-    readEnvString(env, "HYPERLIQUID_PRIVATE_KEY") ??
-    readEnvString(env, "HL_PRIVATE_KEY");
+  const privateKey = readFirstValidPrivateKey(env, [
+    "EVM_PRIVATE_KEY",
+    "HYPERLIQUID_PRIVATE_KEY",
+    "HL_PRIVATE_KEY",
+  ]);
+  const localKeyReady = Boolean(privateKey);
+  const signerReady = managedVaultReady || localKeyReady;
+  const credentialMode = resolveCredentialMode({
+    managedVaultReady,
+    localKeyReady,
+  });
+  const apiWalletConfigured = Boolean(
+    readFirstValidPrivateKey(env, ["HYPERLIQUID_AGENT_KEY", "HL_AGENT_KEY"]),
+  );
 
   return {
     apiBaseUrl: HYPERLIQUID_API_BASE,
     accountAddress,
+    accountSource,
     accountBlockedReason,
-    signerReady: Boolean(privateKey),
+    credentialMode,
+    signerReady,
     executionReady: false,
-    executionBlockedReason: privateKey
+    executionBlockedReason: signerReady
       ? HYPERLIQUID_EXECUTION_NOT_IMPLEMENTED_REASON
       : HYPERLIQUID_EXECUTION_BLOCKED_REASON,
+    vault: {
+      configured: managedVaultConfigured,
+      ready: managedVaultReady,
+      address: managedVaultAddress,
+    },
+    apiWallet: {
+      configured: apiWalletConfigured,
+      guidance: apiWalletConfigured
+        ? HYPERLIQUID_API_WALLET_GUIDANCE
+        : `${HYPERLIQUID_API_WALLET_GUIDANCE} ${HYPERLIQUID_LOCAL_KEY_GUIDANCE}`,
+    },
   };
+}
+
+function resolveCredentialMode({
+  managedVaultReady,
+  localKeyReady,
+}: {
+  managedVaultReady: boolean;
+  localKeyReady: boolean;
+}): HyperliquidCredentialMode {
+  if (managedVaultReady) return "managed_vault";
+  if (localKeyReady) return "local_key";
+  return "none";
+}
+
+function readFirstValidAddress(
+  env: NodeJS.ProcessEnv,
+  keys: string[],
+): string | null {
+  for (const key of keys) {
+    const value = readEnvString(env, key);
+    if (value && HEX_ADDRESS_PATTERN.test(value)) return value;
+  }
+  return null;
+}
+
+function readFirstValidPrivateKey(
+  env: NodeJS.ProcessEnv,
+  keys: string[],
+): string | null {
+  for (const key of keys) {
+    const value = readEnvString(env, key);
+    if (value && HEX_PRIVATE_KEY_PATTERN.test(value)) return value;
+  }
+  return null;
 }
 
 function readEnvString(

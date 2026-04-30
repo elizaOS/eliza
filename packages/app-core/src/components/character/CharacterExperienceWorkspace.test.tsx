@@ -168,12 +168,13 @@ describe("CharacterExperienceWorkspace", () => {
     const onSelectExperience = vi.fn();
     renderWorkspace({ onSelectExperience });
 
-    expect(screen.getByTestId("experience-graph-panel")).toBeTruthy();
+    const graph = screen.getByTestId("experience-graph-panel");
+    expect(graph).toBeTruthy();
+    expect(graph.textContent?.replace(/\s+/g, "")).toBe("");
     expect(screen.getByTestId("experience-graph-node-exp-1")).toBeTruthy();
-    expect(screen.getByText(/3 nodes/i)).toBeTruthy();
-    expect(screen.getAllByText("wallet").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("safety").length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/swap/i).length).toBeGreaterThan(0);
+    expect(
+      within(graph).getByLabelText(/select experience: always collect/i),
+    ).toBeTruthy();
     expect(screen.getByText(/2 associated entities/i)).toBeTruthy();
     expect(screen.getByText(/1536 embedding dimensions/i)).toBeTruthy();
 

@@ -9,15 +9,9 @@ import type {
   LifeOpsHealthSummaryResponse,
 } from "../contracts/index.js";
 import { LIFEOPS_HEALTH_CONNECTOR_PROVIDERS } from "../contracts/index.js";
+import { formatConnectorError } from "./connector-error.js";
 
 type ProviderMap<T> = Partial<Record<LifeOpsHealthConnectorProvider, T>>;
-
-function formatHealthConnectorError(cause: unknown, fallback: string): string {
-  if (cause instanceof Error && cause.message.trim().length > 0) {
-    return cause.message.trim();
-  }
-  return fallback;
-}
 
 function providerStatusMap(
   statuses: readonly LifeOpsHealthConnectorStatus[],
@@ -25,6 +19,16 @@ function providerStatusMap(
   return statuses.reduce<ProviderMap<LifeOpsHealthConnectorStatus>>(
     (acc, status) => {
       acc[status.provider] = status;
+      return acc;
+    },
+    {},
+  );
+}
+
+function providerErrorMap(message: string): ProviderMap<string> {
+  return LIFEOPS_HEALTH_CONNECTOR_PROVIDERS.reduce<ProviderMap<string>>(
+    (acc, provider) => {
+      acc[provider] = message;
       return acc;
     },
     {},
@@ -82,15 +86,11 @@ export function useLifeOpsHealthConnectors(
         return next;
       });
     } catch (cause) {
-      const message = formatHealthConnectorError(
+      const message = formatConnectorError(
         cause,
         "Health connector status failed to load.",
       );
-      const nextErrors: ProviderMap<string> = {};
-      for (const provider of LIFEOPS_HEALTH_CONNECTOR_PROVIDERS) {
-        nextErrors[provider] = message;
-      }
-      setErrorByProvider(nextErrors);
+      setErrorByProvider(providerErrorMap(message));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -112,15 +112,11 @@ export function useLifeOpsHealthConnectors(
         }
       } catch (cause) {
         if (!cancelled) {
-          const message = formatHealthConnectorError(
+          const message = formatConnectorError(
             cause,
             "Health connector status failed to load.",
           );
-          const nextErrors: ProviderMap<string> = {};
-          for (const provider of LIFEOPS_HEALTH_CONNECTOR_PROVIDERS) {
-            nextErrors[provider] = message;
-          }
-          setErrorByProvider(nextErrors);
+          setErrorByProvider(providerErrorMap(message));
         }
       } finally {
         if (!cancelled) {
@@ -174,10 +170,7 @@ export function useLifeOpsHealthConnectors(
       } catch (cause) {
         setProviderError(
           provider,
-          formatHealthConnectorError(
-            cause,
-            `${provider} connector connect failed.`,
-          ),
+          formatConnectorError(cause, `${provider} connector connect failed.`),
         );
       } finally {
         setActionPendingProvider(null);
@@ -205,7 +198,7 @@ export function useLifeOpsHealthConnectors(
       } catch (cause) {
         setProviderError(
           provider,
-          formatHealthConnectorError(
+          formatConnectorError(
             cause,
             `${provider} connector disconnect failed.`,
           ),
@@ -232,18 +225,14 @@ export function useLifeOpsHealthConnectors(
         setSummary(nextSummary);
         setStatuses(nextSummary.providers);
       } catch (cause) {
-        const message = formatHealthConnectorError(
+        const message = formatConnectorError(
           cause,
           "Health connector sync failed.",
         );
         if (provider) {
           setProviderError(provider, message);
         } else {
-          const nextErrors: ProviderMap<string> = {};
-          for (const key of LIFEOPS_HEALTH_CONNECTOR_PROVIDERS) {
-            nextErrors[key] = message;
-          }
-          setErrorByProvider(nextErrors);
+          setErrorByProvider(providerErrorMap(message));
         }
       } finally {
         setSyncPendingProvider(null);

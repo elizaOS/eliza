@@ -203,7 +203,10 @@ function sumCounts(counts) {
 }
 
 function applyFileAllowances(text, counts) {
-  if (text.includes("@milady-live-audit allow-route-fixtures")) {
+  if (
+    text.includes("@milady-live-audit allow-route-fixtures") ||
+    text.includes("@agent-live-audit allow-route-fixtures")
+  ) {
     counts["page.route"] = 0;
     counts.fulfillJson = 0;
   }

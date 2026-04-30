@@ -1059,9 +1059,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
                 <div className="border-border/40 border-t px-4 py-3 sm:px-5">
                   <LocalEmbeddingsCheckbox
                     checked={localEmbeddings}
-                    onCheckedChange={(v) =>
-                      void handleToggleLocalEmbeddings(v)
-                    }
+                    onCheckedChange={(v) => void handleToggleLocalEmbeddings(v)}
                   />
                 </div>
               ) : null}

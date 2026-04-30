@@ -19,8 +19,8 @@ import {
   parseJSONObjectFromText,
   parseKeyValueXml,
 } from "@elizaos/core";
-import type { HealthDataPoint } from "../lifeops/health-bridge.js";
 import type { LifeOpsHealthSummaryResponse } from "../contracts/index.js";
+import type { HealthDataPoint } from "../lifeops/health-bridge.js";
 import { LifeOpsService } from "../lifeops/service.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
 import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";

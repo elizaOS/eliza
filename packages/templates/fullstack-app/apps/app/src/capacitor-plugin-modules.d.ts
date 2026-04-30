@@ -1,6 +1,6 @@
 declare module "@elizaos/capacitor-agent" {
-  export { Agent } from "../../../eliza/packages/native-plugins/agent/src/index";
   export type * from "../../../eliza/packages/native-plugins/agent/src/index";
+  export { Agent } from "../../../eliza/packages/native-plugins/agent/src/index";
 }
 
 declare module "@elizaos/capacitor-camera" {
@@ -12,8 +12,8 @@ declare module "@elizaos/capacitor-canvas" {
 }
 
 declare module "@elizaos/capacitor-desktop" {
-  export { Desktop } from "../../../eliza/packages/native-plugins/desktop/src/index";
   export type * from "../../../eliza/packages/native-plugins/desktop/src/index";
+  export { Desktop } from "../../../eliza/packages/native-plugins/desktop/src/index";
 }
 
 declare module "@elizaos/capacitor-gateway" {

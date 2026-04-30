@@ -1,12 +1,21 @@
 /**
  * Registers the standalone llama.cpp engine as the runtime handler for
- * `ModelType.TEXT_SMALL` and `ModelType.TEXT_LARGE` when no higher-priority
- * provider has claimed those slots.
+ * `ModelType.TEXT_SMALL` and `ModelType.TEXT_LARGE`.
  *
- * Priority is -1 (below the default 0 used by cloud and direct provider plugins)
- * so the Milady router's manual tie-break prefers Eliza Cloud / API providers
- * when the user configured them. Local inference remains available when it is
- * the only option, or when the user explicitly prefers it in routing settings.
+ * Priority is 0 — same band as cloud and direct provider plugins. Tie-breaks
+ * between local and cloud are owned by the routing-policy layer
+ * (`router-handler.ts` + `routing-policy.ts`), not by this priority value:
+ * the router sits at MAX_SAFE_INTEGER and consults the user's policy
+ * (manual / cheapest / fastest / prefer-local / round-robin) on every call.
+ *
+ * Until the cuttlefish smoke landed this was -1 to "let cloud win by default,"
+ * but that conflated routing-policy (a user preference) with handler
+ * priority (a registration ordinal). The runtime's getModel() returns
+ * undefined when no priority-0 handler is registered, which manifested as
+ * "No handler found for delegate type: TEXT_SMALL" on AOSP builds where
+ * the AOSP local inference loader is the only provider. Both cloud-only and
+ * local-only deployments now have a registered priority-0 handler; the
+ * router decides which one fires per request.
  *
  * Parallels `ensure-text-to-speech-handler.ts` — same shape, same guards.
  */
@@ -62,8 +71,20 @@ const LOCAL_INFERENCE_PROVIDER = "milady-local-inference";
 const DEVICE_BRIDGE_PROVIDER = "milady-device-bridge";
 const CAPACITOR_LLAMA_PROVIDER = "capacitor-llama";
 const AOSP_LLAMA_PROVIDER = "milady-aosp-llama";
-/** Below default plugin priority (0) so cloud/direct providers win unless the user prefers local. */
-const LOCAL_INFERENCE_PRIORITY = -1;
+/**
+ * Same band as cloud / direct provider plugins. Tie-breaks between
+ * candidates live in `routing-policy.ts`, not in this number — the
+ * router (registered at MAX_SAFE_INTEGER) consults the user's
+ * per-slot policy on every dispatch.
+ *
+ * Was -1 historically, which made `runtime.getModel(TEXT_SMALL)` return
+ * undefined when the AOSP local-inference loader was the only registered
+ * provider. The smoke run failed with "No handler found for delegate
+ * type: TEXT_SMALL"; bumping to 0 unblocks AOSP without changing
+ * cloud-only deployments (cloud providers still register at 0 and the
+ * routing-policy layer picks between them).
+ */
+const LOCAL_INFERENCE_PRIORITY = 0;
 
 function getLoader(runtime: IAgentRuntime): LocalInferenceLoader | null {
   const candidate = (

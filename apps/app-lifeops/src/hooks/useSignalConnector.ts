@@ -5,6 +5,7 @@ import type {
   LifeOpsSignalPairingStatus,
 } from "@elizaos/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { formatConnectorError } from "./connector-error.js";
 
 const PAIRING_POLL_INTERVAL_MS = 2_000;
 
@@ -25,13 +26,6 @@ function pairingStatusError(
     return null;
   }
   return pairing.error ?? "Signal pairing failed.";
-}
-
-function formatError(cause: unknown, fallback: string): string {
-  if (cause instanceof Error && cause.message.trim().length > 0) {
-    return cause.message.trim();
-  }
-  return fallback;
 }
 
 export interface UseSignalConnectorOptions {
@@ -76,7 +70,9 @@ export function useSignalConnector(options: UseSignalConnectorOptions = {}) {
       syncPairingState(nextStatus.pairing);
       setError(pairingStatusError(nextStatus.pairing));
     } catch (cause) {
-      setError(formatError(cause, "Signal connector status failed to load."));
+      setError(
+        formatConnectorError(cause, "Signal connector status failed to load."),
+      );
     } finally {
       setLoading(false);
     }
@@ -94,7 +90,12 @@ export function useSignalConnector(options: UseSignalConnectorOptions = {}) {
         setError(pairingStatusError(nextStatus.pairing));
       } catch (cause) {
         if (cancelled) return;
-        setError(formatError(cause, "Signal connector status failed to load."));
+        setError(
+          formatConnectorError(
+            cause,
+            "Signal connector status failed to load.",
+          ),
+        );
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -145,7 +146,9 @@ export function useSignalConnector(options: UseSignalConnectorOptions = {}) {
           }
         }
       } catch (cause) {
-        setError(formatError(cause, "Signal pairing status poll failed."));
+        setError(
+          formatConnectorError(cause, "Signal pairing status poll failed."),
+        );
       }
     }, PAIRING_POLL_INTERVAL_MS);
 
@@ -170,7 +173,7 @@ export function useSignalConnector(options: UseSignalConnectorOptions = {}) {
       });
       return result.sessionId;
     } catch (cause) {
-      setError(formatError(cause, "Signal pairing failed to start."));
+      setError(formatConnectorError(cause, "Signal pairing failed to start."));
       return null;
     } finally {
       setActionPending(false);
@@ -188,7 +191,7 @@ export function useSignalConnector(options: UseSignalConnectorOptions = {}) {
       setPairingStatus(null);
       setError(null);
     } catch (cause) {
-      setError(formatError(cause, "Signal pairing failed to stop."));
+      setError(formatConnectorError(cause, "Signal pairing failed to stop."));
     } finally {
       setActionPending(false);
     }
@@ -208,7 +211,9 @@ export function useSignalConnector(options: UseSignalConnectorOptions = {}) {
       syncPairingState(nextStatus.pairing);
       setError(pairingStatusError(nextStatus.pairing));
     } catch (cause) {
-      setError(formatError(cause, "Signal connector disconnect failed."));
+      setError(
+        formatConnectorError(cause, "Signal connector disconnect failed."),
+      );
     } finally {
       setActionPending(false);
     }

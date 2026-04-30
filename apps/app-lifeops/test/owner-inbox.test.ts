@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { gmailAction } from "../src/actions/gmail.js";
 import { inboxAction } from "../src/actions/inbox.js";
+import { inboxTriageAction } from "../src/actions/inbox-triage.js";
 import { ownerInboxAction } from "../src/actions/owner-inbox.js";
 import { searchAcrossChannelsAction } from "../src/actions/search-across-channels.js";
 
@@ -122,6 +123,24 @@ describe("OWNER_INBOX routing", () => {
     expect(gmailSpy.mock.calls[0]?.[3]).toMatchObject({
       parameters: { subaction: "send_reply" },
     });
+  });
+});
+
+describe("legacy inbox triage shim gating", () => {
+  it("does not advertise Gmail triage to non-owner connector senders", async () => {
+    const runtime = { agentId: "agent-1" };
+    const result = await inboxTriageAction.validate?.(
+      runtime as never,
+      {
+        id: "m1",
+        roomId: "r1",
+        entityId: "someone-else",
+        content: { text: "check gmail", source: "telegram" },
+      } as Memory,
+      undefined,
+    );
+
+    expect(result).toBe(false);
   });
 });
 
