@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { createManager, type SecretsManager } from "@elizaos/vault";
 import { createTestVault, type TestVault } from "@elizaos/vault/testing";
 import {
