@@ -238,7 +238,7 @@ if [[ -f "$TYPESCRIPT_DIR/package.json" ]]; then
   CORE_NODE_MODULE="node_modules/@elizaos/core"
   rm -rf "$CORE_NODE_MODULE"
   mkdir -p "$(dirname "$CORE_NODE_MODULE")"
-  ln -s "../../$TYPESCRIPT_DIR/dist" "$CORE_NODE_MODULE"
+  ln -s "../../$TYPESCRIPT_DIR" "$CORE_NODE_MODULE"
   node scripts/patch-nested-core-dist.mjs || true
 else
   log "No local @elizaos/core source package found at $TYPESCRIPT_DIR; using installed package"
@@ -285,7 +285,16 @@ const fs = require('fs');
 const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 const agentDir = process.env.AGENT_DIR;
 if (!pkg.workspaces) pkg.workspaces = [];
-if (!pkg.workspaces.includes(agentDir)) {
+const coversAgentDir = (workspace) => {
+  const target = agentDir.replace(/\/+$/, '');
+  const pattern = String(workspace).replace(/\/+$/, '');
+  if (pattern === target) return true;
+  if (!pattern.endsWith('/*')) return false;
+  const base = pattern.slice(0, -2);
+  if (!target.startsWith(base + '/')) return false;
+  return !target.slice(base.length + 1).includes('/');
+};
+if (!pkg.workspaces.some(coversAgentDir)) {
   pkg.workspaces.push(agentDir);
 }
 fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
