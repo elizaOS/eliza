@@ -3158,6 +3158,30 @@ export async function startEliza(
   // 5. Create the Eliza bridge plugin (workspace context + session keys + compaction)
   const agentId = character.name?.toLowerCase().replace(/\s+/g, "-") ?? "main";
 
+  // 5-pre0. Apply per-agent vault profile overrides to process.env.
+  //
+  // Vault keys with multiple named profiles (work / personal / throwaway)
+  // resolve the active profile for THIS agent through the vault's
+  // routing layer, then write the resolved value into process.env so
+  // the synchronous runtime.getSetting fast path picks it up. Idempotent;
+  // safe to run multiple times. Opt-out via
+  // MILADY_DISABLE_VAULT_PROFILE_RESOLVER=1.
+  if (process.env.MILADY_DISABLE_VAULT_PROFILE_RESOLVER !== "1") {
+    try {
+      const { sharedVault } = await import(
+        "@elizaos/app-core/services/vault-mirror"
+      );
+      const { applyVaultProfilesForAgent } = await import(
+        "./vault-profile-resolver.js"
+      );
+      await applyVaultProfilesForAgent(sharedVault(), agentId);
+    } catch (err) {
+      logger.warn(
+        `[vault-profile-resolver] boot-time apply failed agent="${agentId}": ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
   // 5-pre. Ensure each agent has its own EVM + Solana keypair in the vault.
   // The runtime-wide EVM_PRIVATE_KEY / SOLANA_PRIVATE_KEY (process.env) is
   // the *user* wallet; per-agent wallets live inside the encrypted vault and

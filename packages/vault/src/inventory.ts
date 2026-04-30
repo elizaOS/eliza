@@ -276,18 +276,34 @@ export async function listVaultInventory(
     if (split > 0) profileChildren.add(k);
   }
 
-  const out: VaultEntryMeta[] = [];
+  // The set of parents we want to expose:
+  //   1. Every concrete vault key that isn't a profile child or a
+  //      reserved internal key.
+  //   2. Every parent whose `_meta.<key>` exists even if the bare key
+  //      itself doesn't (the user has profiles but no legacy default
+  //      value at the bare key — common after `migrate-to-profiles`).
+  const parentKeys = new Set<string>();
   for (const key of allKeys) {
-    if (key.startsWith(META_PREFIX)) continue;
+    if (key.startsWith(META_PREFIX)) {
+      parentKeys.add(key.slice(META_PREFIX.length));
+      continue;
+    }
     if (key === ROUTING_KEY) continue;
     if (key.startsWith("_manager.")) continue;
     if (profileChildren.has(key)) continue;
+    parentKeys.add(key);
+  }
 
+  const out: VaultEntryMeta[] = [];
+  for (const key of parentKeys) {
     const descriptor = await vault.describe(key);
-    if (!descriptor) continue;
-    const kind = descriptorKind(descriptor.source);
-
     const meta = await readEntryMeta(vault, key);
+    if (!descriptor && !meta) continue; // nothing to surface
+
+    const kind: "secret" | "value" | "reference" = descriptor
+      ? descriptorKind(descriptor.source)
+      : "secret"; // meta-only parents are presumed to back sensitive data
+
     const providerId = meta?.providerId ?? inferProviderId(key) ?? undefined;
     const category = meta?.category ?? categorizeKey(key);
     const label = meta?.label ?? defaultLabel(key, providerId ?? null);
@@ -302,7 +318,11 @@ export async function listVaultInventory(
       hasProfiles,
       ...(meta?.activeProfile ? { activeProfile: meta.activeProfile } : {}),
       ...(hasProfiles ? { profiles } : {}),
-      lastModified: meta?.lastModified ?? descriptor.lastModified,
+      ...(meta?.lastModified !== undefined
+        ? { lastModified: meta.lastModified }
+        : descriptor?.lastModified !== undefined
+          ? { lastModified: descriptor.lastModified }
+          : {}),
       ...(meta?.lastUsed !== undefined ? { lastUsed: meta.lastUsed } : {}),
       kind,
     });
