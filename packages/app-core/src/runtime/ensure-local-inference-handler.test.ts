@@ -164,8 +164,7 @@ describe("ensureLocalInferenceHandler", () => {
     // that proves the loader-backed embedding handler was wired in.
     const aospEmbeddingRegs = runtime.registrations.filter(
       (r) =>
-        r.modelType === "TEXT_EMBEDDING" &&
-        r.provider === "milady-aosp-llama",
+        r.modelType === "TEXT_EMBEDDING" && r.provider === "milady-aosp-llama",
     );
     expect(aospEmbeddingRegs).toHaveLength(1);
   });
@@ -190,5 +189,50 @@ describe("ensureLocalInferenceHandler", () => {
         r.modelType === "TEXT_EMBEDDING" && r.provider === "capacitor-llama",
     );
     expect(capacitorEmbeddingRegs).toHaveLength(0);
+  });
+
+  it("registers AOSP loader handlers at priority 0 so getModel() finds them when no cloud plugin loaded", async () => {
+    // Regression for the smoke "No handler found for delegate type:
+    // TEXT_SMALL" failure. Before the fix the AOSP loader registered
+    // at priority -1, which the runtime's getModel() treats as
+    // missing when no priority-0 handler exists. Tie-breaks between
+    // local and cloud live in routing-policy, not in the priority
+    // ordinal — both bands now register at 0 and the router decides.
+    process.env.MILADY_PLATFORM = "android";
+    process.env.MILADY_LOCAL_LLAMA = "1";
+    const runtime = makeRuntime();
+
+    await ensureLocalInferenceHandler(
+      runtime as Parameters<typeof ensureLocalInferenceHandler>[0],
+    );
+
+    const aospRegs = runtime.registrations.filter(
+      (r) => r.provider === "milady-aosp-llama",
+    );
+    expect(aospRegs.length).toBeGreaterThan(0);
+    for (const reg of aospRegs) {
+      expect(reg.priority).toBe(0);
+    }
+  });
+
+  it("registers device-bridge handlers at priority 0 (same band as cloud)", async () => {
+    // Mirror of the AOSP test for the device-bridge path: it must
+    // register at the standard provider band, not below it. Routing
+    // is the user's choice via Settings → Routing, not an implicit
+    // priority decision baked into the registration site.
+    process.env.ELIZA_DEVICE_BRIDGE_ENABLED = "1";
+    const runtime = makeRuntime();
+
+    await ensureLocalInferenceHandler(
+      runtime as Parameters<typeof ensureLocalInferenceHandler>[0],
+    );
+
+    const bridgeRegs = runtime.registrations.filter(
+      (r) => r.provider === "milady-device-bridge",
+    );
+    expect(bridgeRegs.length).toBeGreaterThan(0);
+    for (const reg of bridgeRegs) {
+      expect(reg.priority).toBe(0);
+    }
   });
 });

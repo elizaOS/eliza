@@ -1,21 +1,18 @@
 import type http from "node:http";
 import { Readable } from "node:stream";
-import { describe, expect, it, vi } from "vitest";
-
-vi.mock("@elizaos/agent", () => ({
-  applyCanonicalOnboardingConfig: vi.fn(
-    (config: Record<string, unknown>, patch: Record<string, unknown>) => {
-      Object.assign(config, patch);
-    },
-  ),
-  createIntegrationTelemetrySpan: vi.fn(() => null),
-  handleCloudRoute: vi.fn(async () => false),
-  normalizeCloudSiteUrl: vi.fn((url: string) => url),
-  saveElizaConfig: vi.fn(),
-  validateCloudBaseUrl: vi.fn((url: string) => url),
-}));
+import { describe, expect, it } from "vitest";
 
 import { type CloudRouteState, handleCloudRoute } from "./cloud-routes";
+
+const testCloudRouteServices: CloudRouteState["services"] = {
+  applyCanonicalOnboardingConfig: (
+    config: Record<string, unknown>,
+    patch: Record<string, unknown>,
+  ) => {
+    Object.assign(config, patch);
+  },
+  saveElizaConfig: () => {},
+};
 
 function jsonRequest(body: unknown): http.IncomingMessage {
   return Readable.from([JSON.stringify(body)]) as http.IncomingMessage;
@@ -112,6 +109,7 @@ describe("cloud-routes", () => {
         },
       } as CloudRouteState["config"],
       runtime: runtime as CloudRouteState["runtime"],
+      services: testCloudRouteServices,
     };
     const req = jsonRequest({
       apiKey: "new-key",

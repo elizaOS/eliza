@@ -15,24 +15,31 @@ function room(
   type: Room["type"] | string,
   name: string,
   metadata: Record<string, unknown> = {},
+  source = "telegram",
 ): Room {
   return {
     id: id as UUID,
     name,
-    source: "telegram",
+    source,
     type: type as Room["type"],
     metadata,
   } as Room;
 }
 
-function memory(id: string, roomId: string, text: string, createdAt: number) {
+function memory(
+  id: string,
+  roomId: string,
+  text: string,
+  createdAt: number,
+  source = "telegram",
+) {
   return {
     id: id as UUID,
     roomId: roomId as UUID,
     entityId: `00000000-0000-0000-0000-0000000001${id.slice(-2)}` as UUID,
     createdAt,
     content: {
-      source: "telegram",
+      source,
       text,
     },
     metadata: {
@@ -121,5 +128,71 @@ describe("fetchChatMessages", () => {
     expect(byRoom.get(rooms[1].id)?.chatType).toBe("group");
     expect(byRoom.get(rooms[2].id)?.chatType).toBe("channel");
     expect(byRoom.get(rooms[3].id)?.chatType).toBe("channel");
+  });
+
+  it("includes connector-tagged rooms by default and normalizes source aliases before filtering", async () => {
+    const rooms = [
+      room(
+        "00000000-0000-0000-0000-000000000021",
+        ChannelType.DM,
+        "Matrix DM",
+        {},
+        "Matrix",
+      ),
+      room(
+        "00000000-0000-0000-0000-000000000022",
+        ChannelType.DM,
+        "Discord DM",
+        {},
+        "Discord",
+      ),
+    ];
+    const messages = [
+      memory(
+        "00000000-0000-0000-0000-000000000201",
+        rooms[0].id,
+        "custom connector",
+        2,
+        "MATRIX",
+      ),
+      memory(
+        "00000000-0000-0000-0000-000000000202",
+        rooms[1].id,
+        "discord alias",
+        1,
+        "DISCORD-LOCAL",
+      ),
+    ];
+
+    const defaultMessages = await fetchChatMessages(
+      runtimeFor({
+        rooms,
+        memories: messages,
+        participantCounts: {
+          [rooms[0].id]: 2,
+          [rooms[1].id]: 2,
+        },
+      }),
+      { limit: 10 },
+    );
+    expect(defaultMessages.map((message) => message.source).sort()).toEqual([
+      "discord",
+      "matrix",
+    ]);
+
+    const discordMessages = await fetchChatMessages(
+      runtimeFor({
+        rooms,
+        memories: messages,
+        participantCounts: {
+          [rooms[0].id]: 2,
+          [rooms[1].id]: 2,
+        },
+      }),
+      { sources: ["discord"], limit: 10 },
+    );
+    expect(discordMessages.map((message) => message.source)).toEqual([
+      "discord",
+    ]);
   });
 });

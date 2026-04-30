@@ -47,7 +47,7 @@ const autonomousElizaPathCandidates = [
   "eliza/packages/agent/src/runtime/eliza.ts",
 ] as const;
 const homepageReleaseDataPathCandidates = [
-  "apps/homepage/src/generated/release-data.ts",
+  "packages/homepage/src/generated/release-data.ts",
 ] as const;
 
 function resolveExistingPath(candidates: readonly string[]) {
@@ -1293,9 +1293,9 @@ function assertHomepageReleaseDataUsesCurrentAssetRoot() {
     process.exit(1);
   }
 
-  if (!releaseDataSource.includes("/apps/homepage/public/")) {
+  if (!releaseDataSource.includes("/packages/homepage/public/")) {
     console.error(
-      "release-check: generated homepage release data must point homepageAssetBaseUrl at /apps/homepage/public/.",
+      "release-check: generated homepage release data must point homepageAssetBaseUrl at /packages/homepage/public/.",
     );
     process.exit(1);
   }

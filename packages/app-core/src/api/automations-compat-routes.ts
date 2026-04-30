@@ -988,9 +988,9 @@ async function buildAutomationNodeCatalog(
       "Owner-scoped Gmail triage, drafting, and send operations.",
       Boolean(
         googleStatus?.connected &&
-        [...googleCapabilities].some((capability) =>
-          capability.includes("gmail"),
-        ),
+          [...googleCapabilities].some((capability) =>
+            capability.includes("gmail"),
+          ),
       ),
       "Connect the owner Google account with Gmail access.",
     ),
@@ -1000,9 +1000,9 @@ async function buildAutomationNodeCatalog(
       "Owner-scoped calendar reading and event creation.",
       Boolean(
         googleStatus?.connected &&
-        [...googleCapabilities].some((capability) =>
-          capability.includes("calendar"),
-        ),
+          [...googleCapabilities].some((capability) =>
+            capability.includes("calendar"),
+          ),
       ),
       "Connect the owner Google account with Calendar access.",
     ),
@@ -1038,9 +1038,9 @@ async function buildAutomationNodeCatalog(
 
   const calendarConnected = Boolean(
     googleStatus?.connected &&
-    [...googleCapabilities].some((capability) =>
-      capability.includes("calendar"),
-    ),
+      [...googleCapabilities].some((capability) =>
+        capability.includes("calendar"),
+      ),
   );
   const lifeOpsEventNodes: AutomationNodeDescriptor[] = [
     buildLifeOpsEventNode(
