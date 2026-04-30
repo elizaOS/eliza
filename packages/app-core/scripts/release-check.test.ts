@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -60,5 +61,25 @@ describe("release-check cloud-agent template guard", () => {
         specifier: "2.0.0-alpha.341",
       },
     ]);
+  });
+});
+
+describe("Docker runtime tsx config", () => {
+  it("does not let tsx resolve workspace packages back to source paths", () => {
+    const dockerfile = readFileSync(
+      new URL("../deploy/Dockerfile.ci", import.meta.url),
+      "utf8",
+    );
+    const runtimeTsconfig = JSON.parse(
+      readFileSync(
+        new URL("../deploy/tsx-runtime-tsconfig.json", import.meta.url),
+        "utf8",
+      ),
+    );
+
+    expect(dockerfile).toContain(
+      "ENV TSX_TSCONFIG_PATH=${APP_CORE_DIR}/deploy/tsx-runtime-tsconfig.json",
+    );
+    expect(runtimeTsconfig.compilerOptions?.paths).toBeUndefined();
   });
 });
