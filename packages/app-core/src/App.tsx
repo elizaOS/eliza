@@ -1155,7 +1155,15 @@ export function App() {
 
   return (
     <BugReportProvider value={bugReport}>
-      <div className="flex flex-col h-screen w-screen overflow-hidden">
+      <div
+        className="flex flex-col h-screen w-screen overflow-hidden"
+        style={{
+          paddingTop: "var(--safe-area-top, env(safe-area-inset-top, 0px))",
+          paddingBottom: "var(--safe-area-bottom, env(safe-area-inset-bottom, 0px))",
+          paddingLeft: "var(--safe-area-left, env(safe-area-inset-left, 0px))",
+          paddingRight: "var(--safe-area-right, env(safe-area-inset-right, 0px))",
+        }}
+      >
         <ConnectionFailedBanner />
         <SystemWarningBanner />
         {shellContent}
