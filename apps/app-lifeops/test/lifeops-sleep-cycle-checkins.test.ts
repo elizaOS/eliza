@@ -288,9 +288,10 @@ async function createFixture(name: string): Promise<Fixture> {
 async function seedSchedule(
   service: LifeOpsService,
   state: LifeOpsScheduleMergedStateRecord,
+  previousState: LifeOpsScheduleMergedStateRecord | null = null,
 ): Promise<void> {
   await service.repository.upsertScheduleMergedState(state);
-  service.readEffectiveScheduleState = async () => null;
+  service.readEffectiveScheduleState = async () => previousState;
   service.refreshEffectiveScheduleState = async () => state;
 }
 
@@ -405,17 +406,25 @@ describe("LifeOps sleep-cycle check-in scheduler", () => {
     const fixture = await createFixture("lifeops-sleeping-checkin-scheduler");
     try {
       const nowIso = "2026-04-22T03:00:00.000Z";
+      const sleepingState = buildScheduleState({
+        agentId: String(fixture.runtime.agentId),
+        nowIso,
+        circadianState: "sleeping",
+        wakeAt: null,
+        bedtimeTargetAt: null,
+        minutesUntilBedtimeTarget: null,
+        currentSleepStartedAt: "2026-04-21T23:00:00.000Z",
+      });
       await seedSchedule(
         fixture.service,
-        buildScheduleState({
-          agentId: String(fixture.runtime.agentId),
-          nowIso,
-          circadianState: "sleeping",
-          wakeAt: null,
-          bedtimeTargetAt: null,
-          minutesUntilBedtimeTarget: null,
-          currentSleepStartedAt: "2026-04-21T23:00:00.000Z",
-        }),
+        sleepingState,
+        {
+          ...sleepingState,
+          id: `${sleepingState.id}:previous`,
+          mergedAt: isoMinutesFrom(nowIso, -5),
+          inferredAt: isoMinutesFrom(nowIso, -5),
+          updatedAt: isoMinutesFrom(nowIso, -5),
+        },
       );
 
       await fixture.service.processScheduledWork({ now: nowIso });

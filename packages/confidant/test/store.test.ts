@@ -40,8 +40,9 @@ describe("store", () => {
     });
     await writeStore(path, data);
     const stat = await fs.stat(path);
-    // mask off file-type bits
-    expect(stat.mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect(stat.mode & 0o777).toBe(0o600);
+    }
     const round = await readStore(path);
     expect(round.secrets["llm.openrouter.apiKey"]).toMatchObject({
       kind: "literal",

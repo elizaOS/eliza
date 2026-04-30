@@ -242,6 +242,7 @@ vitest.config.ts
 !apps/app-training/vitest.config.ts
 !packages/agent/vitest.config.ts
 !packages/app/vitest.config.ts
+!packages/confidant/vitest.config.ts
 !packages/shared/vitest.config.ts
 tsconfig.test.json
 
