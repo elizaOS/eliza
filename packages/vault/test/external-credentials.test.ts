@@ -76,11 +76,15 @@ describe("external-credentials — 1Password", () => {
   it("returns metadata for Login items, never passwords", async () => {
     await vault.set("pm.1password.session", "TOKEN-OP", { sensitive: true });
 
+    // op item list --format=json returns additional_information populated
+    // with the username for Login items. No per-item enrichment needed for
+    // the listing view.
     const listJson = JSON.stringify([
       {
         id: "abc111",
         title: "GitHub",
         category: "LOGIN",
+        additional_information: "alice",
         updated_at: "2024-06-01T12:00:00Z",
         urls: [{ href: "https://github.com/login", primary: true }],
       },
@@ -88,24 +92,9 @@ describe("external-credentials — 1Password", () => {
         id: "def222",
         title: "Slack",
         category: "LOGIN",
+        additional_information: "bob@example.com",
         updated_at: "2024-05-01T12:00:00Z",
         urls: [{ href: "https://example.slack.com" }],
-      },
-    ]);
-    const enrichedJson = JSON.stringify([
-      {
-        id: "abc111",
-        title: "GitHub",
-        fields: [
-          { id: "username", purpose: "USERNAME", label: "username", value: "alice" },
-        ],
-      },
-      {
-        id: "def222",
-        title: "Slack",
-        fields: [
-          { id: "username", purpose: "USERNAME", label: "username", value: "bob@example.com" },
-        ],
       },
     ]);
 
@@ -115,10 +104,6 @@ describe("external-credentials — 1Password", () => {
         {
           match: (_cmd, args) => args.includes("list"),
           stdout: listJson,
-        },
-        {
-          match: (_cmd, args) => args.includes("get") && args.includes("-"),
-          stdout: enrichedJson,
         },
       ],
       calls,
