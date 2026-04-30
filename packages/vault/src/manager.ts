@@ -191,9 +191,9 @@ class ManagerImpl implements SecretsManager {
   async detectBackends(): Promise<readonly BackendStatus[]> {
     return Promise.all([
       Promise.resolve(detectInHouse()),
-      detectOnePassword(),
+      detectOnePassword(this.vault),
       detectProtonPass(),
-      detectBitwarden(),
+      detectBitwarden(this.vault),
     ]);
   }
 
@@ -252,7 +252,19 @@ function detectInHouse(): BackendStatus {
   };
 }
 
-async function detectOnePassword(): Promise<BackendStatus> {
+async function readStoredSession(
+  vault: Vault,
+  backend: "1password" | "bitwarden",
+): Promise<string | null> {
+  try {
+    const value = await vault.get(`pm.${backend}.session`);
+    return value.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+async function detectOnePassword(vault: Vault): Promise<BackendStatus> {
   const present = await isCommandAvailable("op");
   if (!present) {
     return {
@@ -263,8 +275,10 @@ async function detectOnePassword(): Promise<BackendStatus> {
         "`op` CLI not installed. Get it at https://developer.1password.com/docs/cli",
     };
   }
+  const session = await readStoredSession(vault, "1password");
+  const args = session ? ["whoami", `--session=${session}`] : ["whoami"];
   try {
-    await exec("op", ["whoami"], { timeout: 3000 });
+    await exec("op", args, { timeout: 3000 });
     return {
       id: "1password",
       label: "1Password",
@@ -277,7 +291,9 @@ async function detectOnePassword(): Promise<BackendStatus> {
       label: "1Password",
       available: true,
       signedIn: false,
-      detail: "`op` is installed but not signed in. Run `eval $(op signin)`.",
+      detail: session
+        ? "Stored 1Password session is no longer valid. Sign in again."
+        : "`op` is installed but not signed in. Use the Sign-in button.",
     };
   }
 }
@@ -294,7 +310,7 @@ async function detectProtonPass(): Promise<BackendStatus> {
   };
 }
 
-async function detectBitwarden(): Promise<BackendStatus> {
+async function detectBitwarden(vault: Vault): Promise<BackendStatus> {
   const present = await isCommandAvailable("bw");
   if (!present) {
     return {
@@ -304,10 +320,13 @@ async function detectBitwarden(): Promise<BackendStatus> {
       detail: "`bw` CLI not installed. https://bitwarden.com/help/cli/",
     };
   }
+  const session = await readStoredSession(vault, "bitwarden");
+  const env = session ? { ...process.env, BW_SESSION: session } : process.env;
   try {
     const { stdout } = await exec("bw", ["status"], {
       timeout: 3000,
       encoding: "utf8",
+      env,
     });
     const status = JSON.parse(stdout.trim()) as { status?: string };
     if (status.status === "unlocked") {
@@ -323,10 +342,11 @@ async function detectBitwarden(): Promise<BackendStatus> {
       label: "Bitwarden",
       available: true,
       signedIn: false,
-      detail:
-        status.status === "locked"
-          ? "`bw` is signed in but locked. Run `bw unlock`."
-          : "`bw` is installed but not signed in. Run `bw login`.",
+      detail: session
+        ? "Stored Bitwarden session is no longer valid. Sign in again."
+        : status.status === "locked"
+          ? "`bw` is signed in but locked. Use the Sign-in button."
+          : "`bw` is installed but not signed in. Use the Sign-in button.",
     };
   } catch {
     return {
