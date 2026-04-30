@@ -23,6 +23,7 @@ const localPackages = [
   "eliza/apps/app-training",
   "eliza/apps/app-shopify",
   "eliza/apps/app-vincent",
+  "eliza/plugins/plugin-agent-skills/typescript",
   "eliza/plugins/plugin-browser-bridge",
   "eliza/packages/native-plugins/activity-tracker",
   "eliza/plugins/plugin-cron/typescript",

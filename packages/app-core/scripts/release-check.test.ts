@@ -104,4 +104,15 @@ describe("agent packaged runtime dependencies", () => {
       "workspace:*",
     );
   });
+
+  it("relinks statically imported local plugins into the Docker image", () => {
+    const relinker = readFileSync(
+      new URL("./link-docker-local-app-packages.mjs", import.meta.url),
+      "utf8",
+    );
+
+    expect(relinker).toContain(
+      '"eliza/plugins/plugin-agent-skills/typescript"',
+    );
+  });
 });
