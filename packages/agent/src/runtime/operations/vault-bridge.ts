@@ -14,7 +14,73 @@
  * which constructs a fresh manager backed by the OS-keychain vault.
  */
 
-import { createManager, type SecretsManager } from "@elizaos/vault";
+import { createManager, type SecretsManager, type Vault } from "@elizaos/vault";
+
+/** Sentinel prefix marking a config value that resolves through the vault. */
+const VAULT_REF_PREFIX = "vault://";
+
+/** Format a stable vault key into the `vault://<key>` sentinel form. */
+export function formatVaultRef(key: string): string {
+  if (typeof key !== "string" || key.length === 0) {
+    throw new TypeError(
+      `[runtime-ops:vault] formatVaultRef requires a non-empty key`,
+    );
+  }
+  return `${VAULT_REF_PREFIX}${key}`;
+}
+
+/** Type guard: true when `value` is a `vault://<key>` sentinel string. */
+export function isVaultRef(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.startsWith(VAULT_REF_PREFIX) &&
+    value.length > VAULT_REF_PREFIX.length
+  );
+}
+
+/** Extract the underlying vault key from a sentinel; null if malformed. */
+export function parseVaultRef(value: string): string | null {
+  if (!isVaultRef(value)) return null;
+  return value.slice(VAULT_REF_PREFIX.length);
+}
+
+/** Narrow surface of `Vault` used by the boot resolver — easier to stub. */
+export type VaultLike = Pick<Vault, "get" | "has">;
+
+/**
+ * Walk an env-shaped record and replace `vault://<key>` sentinels with the
+ * resolved vault values. Non-sentinel strings are passed through unchanged;
+ * non-string values are dropped (process.env only accepts strings).
+ *
+ * Returns `missing` for sentinel keys the vault does not contain — callers
+ * should warn but continue (the legacy hydrate-from-config-env path will run
+ * next and may still backfill from non-sentinel sources).
+ */
+export async function resolveConfigEnvForProcess(
+  envBag: Record<string, unknown> | undefined,
+  vault: VaultLike,
+): Promise<{ resolved: Record<string, string>; missing: string[] }> {
+  const resolved: Record<string, string> = {};
+  const missing: string[] = [];
+  if (!envBag) return { resolved, missing };
+
+  for (const [envKey, value] of Object.entries(envBag)) {
+    if (typeof value !== "string") continue;
+    if (!isVaultRef(value)) {
+      resolved[envKey] = value;
+      continue;
+    }
+    const vaultKey = parseVaultRef(value);
+    if (!vaultKey) continue;
+    if (!(await vault.has(vaultKey))) {
+      missing.push(vaultKey);
+      continue;
+    }
+    resolved[envKey] = await vault.get(vaultKey);
+  }
+
+  return { resolved, missing };
+}
 
 /** Stable vault key for a provider API key. */
 export function vaultKeyForProviderApiKey(normalizedProvider: string): string {
