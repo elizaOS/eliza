@@ -553,18 +553,24 @@ function embedWindowsIcons() {
     console.log("[desktop-build] Could not find launcher.exe in build output");
     return;
   }
-  // Find rcedit — check node_modules at multiple levels
+  // Find rcedit-x64.exe in node_modules (cross-platform, no shell deps).
   let rceditBin;
   for (const base of [ELECTROBUN_DIR, ROOT]) {
-    const candidates = spawnSync("find", [
-      path.join(base, "node_modules"),
-      "-name", "rcedit-x64.exe",
-      "-not", "-path", "*/electrobun/*",
-    ], { encoding: "utf-8", timeout: 10000 });
-    if (candidates.stdout?.trim()) {
-      rceditBin = candidates.stdout.trim().split("\n")[0];
+    const rceditDir = path.join(base, "node_modules", "rcedit", "bin");
+    const candidate = path.join(rceditDir, "rcedit-x64.exe");
+    if (fs.existsSync(candidate)) {
+      rceditBin = candidate;
       break;
     }
+    // Also check bun's flat cache layout
+    try {
+      for (const entry of fs.readdirSync(path.join(base, "node_modules", ".bun"))) {
+        if (!entry.startsWith("rcedit@")) continue;
+        const nested = path.join(base, "node_modules", ".bun", entry, "node_modules", "rcedit", "bin", "rcedit-x64.exe");
+        if (fs.existsSync(nested)) { rceditBin = nested; break; }
+      }
+    } catch {}
+    if (rceditBin) break;
   }
   if (!rceditBin) {
     console.log("[desktop-build] rcedit-x64.exe not found — install rcedit as a devDep to embed Windows icons");
