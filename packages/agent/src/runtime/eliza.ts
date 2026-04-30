@@ -3158,6 +3158,35 @@ export async function startEliza(
   // 5. Create the Eliza bridge plugin (workspace context + session keys + compaction)
   const agentId = character.name?.toLowerCase().replace(/\s+/g, "-") ?? "main";
 
+  // 5-pre. Ensure each agent has its own EVM + Solana keypair in the vault.
+  // The runtime-wide EVM_PRIVATE_KEY / SOLANA_PRIVATE_KEY (process.env) is
+  // the *user* wallet; per-agent wallets live inside the encrypted vault and
+  // are surfaced separately in the in-app browser. Idempotent — existing
+  // wallets are preserved. Opt-out via MILADY_DISABLE_AGENT_WALLET_BOOTSTRAP=1.
+  if (process.env.MILADY_DISABLE_AGENT_WALLET_BOOTSTRAP !== "1") {
+    try {
+      const { sharedVault } = await import(
+        "@elizaos/app-core/services/vault-mirror"
+      );
+      const { ensureAgentWallets } = await import("./agent-wallets.js");
+      const descriptors = await ensureAgentWallets(
+        sharedVault(),
+        agentId,
+        "agent-bootstrap",
+      );
+      const summary = descriptors
+        .map((d) => `${d.chain}:${d.address}`)
+        .join(" ");
+      logger.info(
+        `[agent-wallets] agent="${agentId}" wallets ready (${summary})`,
+      );
+    } catch (err) {
+      logger.warn(
+        `[agent-wallets] failed to ensure wallets for agent="${agentId}": ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
   // 5a. If cloud is configured and no local GitHub token, try fetching from cloud
   await autoFetchCloudGithubToken(config.cloud?.agentId?.trim() || agentId);
 
