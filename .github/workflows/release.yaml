@@ -115,6 +115,7 @@ jobs:
             "plugins/plugin-ollama/typescript",
             "plugins/plugin-local-ai/typescript",
             "plugins/plugin-pdf/typescript",
+            "plugins/plugin-whatsapp/typescript",
           ];
 
           if (!Array.isArray(pkg.workspaces)) {

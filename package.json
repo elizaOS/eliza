@@ -82,6 +82,7 @@
     "plugins/plugin-sql/typescript",
     "plugins/plugin-ollama/typescript",
     "plugins/plugin-local-ai/typescript",
+    "plugins/plugin-whatsapp/typescript",
     "cloud/packages/sdk"
   ],
   "devDependencies": {
