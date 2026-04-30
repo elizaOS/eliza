@@ -286,8 +286,8 @@ export function SecretsManagerModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[85vh] flex-col gap-0 overflow-hidden sm:max-w-lg">
+        <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center justify-between gap-2">
             <span className="flex items-center gap-2">
               <KeyRound className="h-4 w-4 text-muted" aria-hidden />
@@ -303,56 +303,58 @@ export function SecretsManagerModal({
           </DialogDescription>
         </DialogHeader>
 
-        {loading || !backends || !preferences ? (
-          <div className="flex items-center gap-2 px-1 py-6 text-sm text-muted">
-            <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Loading…
-          </div>
-        ) : (
-          <>
-            {error && (
-              <div
-                aria-live="polite"
-                className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger"
-              >
-                {error}
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
+          {loading || !backends || !preferences ? (
+            <div className="flex items-center gap-2 px-1 py-6 text-sm text-muted">
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Loading…
+            </div>
+          ) : (
+            <>
+              {error && (
+                <div
+                  aria-live="polite"
+                  className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger"
+                >
+                  {error}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between pb-1">
+                <p className="text-2xs text-muted">
+                  Sensitive values route to the first enabled backend.
+                </p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 rounded-md px-2"
+                  onClick={() => void load()}
+                  aria-label="Re-detect backends"
+                  title="Re-detect backends"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+                </Button>
               </div>
-            )}
 
-            <div className="flex items-center justify-between pb-1">
-              <p className="text-2xs text-muted">
-                Sensitive values route to the first enabled backend.
-              </p>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 rounded-md px-2"
-                onClick={() => void load()}
-                aria-label="Re-detect backends"
-                title="Re-detect backends"
-              >
-                <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-              </Button>
-            </div>
+              <div className="space-y-1.5">
+                {orderedBackends(backends, preferences).map((backend) => (
+                  <BackendRow
+                    key={backend.id}
+                    backend={backend}
+                    enabled={isEnabled(backend.id)}
+                    isPrimary={preferences.enabled[0] === backend.id}
+                    position={preferences.enabled.indexOf(backend.id)}
+                    totalEnabled={preferences.enabled.length}
+                    onToggle={(on) => setEnabled(backend.id, on)}
+                    onMoveUp={() => moveUp(backend.id)}
+                    onMoveDown={() => moveDown(backend.id)}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
 
-            <div className="space-y-1.5">
-              {orderedBackends(backends, preferences).map((backend) => (
-                <BackendRow
-                  key={backend.id}
-                  backend={backend}
-                  enabled={isEnabled(backend.id)}
-                  isPrimary={preferences.enabled[0] === backend.id}
-                  position={preferences.enabled.indexOf(backend.id)}
-                  totalEnabled={preferences.enabled.length}
-                  onToggle={(on) => setEnabled(backend.id, on)}
-                  onMoveUp={() => moveUp(backend.id)}
-                  onMoveDown={() => moveDown(backend.id)}
-                />
-              ))}
-            </div>
-          </>
-        )}
-
-        <DialogFooter className="flex flex-row items-center justify-between gap-3 sm:justify-between">
+        <DialogFooter className="flex shrink-0 flex-row items-center justify-between gap-3 border-t border-border/30 pt-3 sm:justify-between">
           <p className="text-2xs text-muted sm:max-w-sm">
             Non-sensitive config always stays in-house.
           </p>
