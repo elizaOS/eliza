@@ -23,6 +23,29 @@ export function buildCorsAllowedPorts(): Set<string> {
   return ports;
 }
 
+/**
+ * Comma-separated explicit origins allowed by the operator (e.g. a
+ * remote dashboard host like https://bot.example.com). Localhost gets
+ * a built-in pass via {@link isAllowedLocalOrigin}; this is the only
+ * way to allow non-loopback hosts.
+ */
+export function getAllowedRemoteOrigins(): Set<string> {
+  const raw = process.env.ELIZA_ALLOWED_ORIGINS ?? "";
+  return new Set(
+    raw
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((origin) => {
+        try {
+          return originString(new URL(origin));
+        } catch {
+          return origin;
+        }
+      }),
+  );
+}
+
 /** Lazily cached port set — computed once, invalidated on port changes. */
 let cachedCorsAllowedPorts: Set<string> | undefined;
 
@@ -39,16 +62,48 @@ export function invalidateCorsAllowedPorts(): void {
 }
 
 /**
- * Check whether a URL string is an allowed localhost origin for CORS.
+ * Capacitor WebView origins for App Store / Play Store mobile builds.
+ *
+ * iOS WKWebView serves the bundled UI at `capacitor://localhost`; Android's
+ * WebView2 uses `https://localhost` (default `androidScheme: "https"`). These
+ * are allowed unconditionally so a self-hosted bot is reachable from the
+ * mobile app without each operator manually adding them to
+ * `ELIZA_ALLOWED_ORIGINS`. Auth still requires a valid bearer; the origin
+ * gate just stops *unrelated* sites from talking to the API.
  */
-export function isAllowedLocalOrigin(
+const CAPACITOR_WEBVIEW_ORIGINS: ReadonlySet<string> = new Set([
+  "capacitor://localhost",
+  "ionic://localhost",
+  "https://localhost",
+]);
+
+/**
+ * URL.origin returns the literal string "null" for non-special schemes
+ * (capacitor:, ionic:), so we compare protocol+host instead.
+ */
+function originString(u: URL): string {
+  return `${u.protocol}//${u.host}`;
+}
+
+/**
+ * Check whether a URL string is an allowed origin for CORS:
+ *   - a configured local API port,
+ *   - a Capacitor / Ionic WebView origin (mobile app builds),
+ *   - or an explicit operator-allowed remote origin.
+ */
+export function isAllowedOrigin(
   urlStr: string,
   allowedPorts?: Set<string>,
+  allowedRemoteOrigins?: Set<string>,
 ): boolean {
   const ports = allowedPorts ?? buildCorsAllowedPorts();
+  const remoteOrigins = allowedRemoteOrigins ?? getAllowedRemoteOrigins();
   try {
     const u = new URL(urlStr);
+    const origin = originString(u);
+    if (CAPACITOR_WEBVIEW_ORIGINS.has(origin)) return true;
     if (u.protocol !== "http:" && u.protocol !== "https:") return false;
+    if (remoteOrigins.has(origin)) return true;
     const h = u.hostname.toLowerCase();
     const isLocal =
       h === "localhost" || h === "127.0.0.1" || h === "[::1]" || h === "::1";
@@ -58,3 +113,6 @@ export function isAllowedLocalOrigin(
     return false;
   }
 }
+
+/** @deprecated retained for API compatibility — use isAllowedOrigin. */
+export const isAllowedLocalOrigin = isAllowedOrigin;

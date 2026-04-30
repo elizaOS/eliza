@@ -6,7 +6,6 @@
  */
 
 import { type AgentStartupDiagnostics, client } from "../api";
-import { isElectrobunRuntime } from "../bridge";
 import {
   computeAgentDeadlineExtensions,
   getAgentReadyTimeoutMs,
@@ -151,15 +150,9 @@ export async function runStartingRuntime(
     } catch (err) {
       const ae = asApiLikeError(err);
       if (ae?.status === 401 && client.hasToken()) {
-        // On desktop, 401 is transient (port not ready / port changed).
-        // Never clear the shell-injected token or show pairing.
-        if (!isElectrobunRuntime()) {
-          client.setToken(null);
-          deps.setAuthRequired(true);
-          deps.setOnboardingLoading(false);
-          dispatch({ type: "BACKEND_AUTH_REQUIRED" });
-          return;
-        }
+        // Transient 401 (port race / pre-bearer endpoint): retry without
+        // wiping the token. /api/auth/status in startup-phase-poll is the
+        // canonical pairing gate.
       }
       lastErr = err;
       deps.setConnected(false);
