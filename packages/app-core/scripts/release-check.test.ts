@@ -85,6 +85,16 @@ describe("Docker runtime tsx config", () => {
 });
 
 describe("agent packaged runtime dependencies", () => {
+  it("keeps agent package-local runtime dependencies in the Docker context", () => {
+    const dockerignore = readFileSync(
+      new URL("../deploy/.dockerignore.ci", import.meta.url),
+      "utf8",
+    );
+
+    expect(dockerignore).toContain("!packages/agent/node_modules/**");
+    expect(dockerignore).toContain("!eliza/packages/agent/node_modules/**");
+  });
+
   it("declares statically imported bundled plugins", () => {
     const runtimeEntry = readFileSync(
       new URL("../../agent/src/runtime/eliza.ts", import.meta.url),
