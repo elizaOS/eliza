@@ -1,5 +1,20 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import {
+  listSavedLogins,
+  getSavedLogin,
+  type SavedLoginSummary,
+} from "./credentials.js";
+import {
+  defaultExecFn,
+  type ExecFn,
+  type ExternalLoginListEntry,
+  type ExternalLoginReveal,
+  listBitwardenLogins,
+  listOnePasswordLogins,
+  revealBitwardenLogin,
+  revealOnePasswordLogin,
+} from "./external-credentials.js";
 import { createVault, type Vault } from "./vault.js";
 import type { PasswordManagerReference } from "./types.js";
 
@@ -99,22 +114,89 @@ export interface SecretsManager {
   getPreferences(): Promise<ManagerPreferences>;
   /** Save the user's preferences. Persisted to the vault. */
   setPreferences(prefs: ManagerPreferences): Promise<void>;
+
+  /**
+   * List saved logins from every available source: in-house vault always,
+   * plus 1Password and Bitwarden when they're signed in.
+   *
+   * Per-backend errors are collected into `failures` rather than thrown —
+   * a flaky external CLI must not block the in-house list.
+   */
+  listAllSavedLogins(
+    opts?: ListAllSavedLoginsOptions,
+  ): Promise<UnifiedLoginListResult>;
+
+  /** Reveal a single login (full credentials) from the indicated source. */
+  revealSavedLogin(
+    source: "in-house" | "1password" | "bitwarden",
+    identifier: string,
+  ): Promise<UnifiedLoginReveal>;
 }
 
 export interface CreateManagerOptions {
   /** Provide your own Vault. Default: `createVault()`. */
   readonly vault?: Vault;
+  /**
+   * Subprocess executor for password-manager CLIs. Tests inject a stub.
+   * Defaults to a real `child_process.execFile`-based runner.
+   */
+  readonly exec?: ExecFn;
+}
+
+/**
+ * Source-tagged saved-login summary spanning every backend.
+ *
+ * `identifier`:
+ *   - `in-house`  → `<domain>:<username>` (matches the route shape used
+ *                   to delete + reveal a single in-house credential)
+ *   - `1password` → the 1Password item id (op_uuid)
+ *   - `bitwarden` → the Bitwarden item id (uuid)
+ */
+export interface UnifiedLoginListEntry {
+  readonly source: "in-house" | "1password" | "bitwarden";
+  readonly identifier: string;
+  readonly domain: string | null;
+  readonly username: string;
+  /** Display name. For in-house this == username; external == op/bw title. */
+  readonly title: string;
+  readonly updatedAt: number;
+}
+
+export interface UnifiedLoginReveal {
+  readonly source: "in-house" | "1password" | "bitwarden";
+  readonly identifier: string;
+  readonly username: string;
+  readonly password: string;
+  readonly totp?: string;
+  readonly domain: string | null;
+}
+
+export interface UnifiedLoginListResult {
+  readonly logins: readonly UnifiedLoginListEntry[];
+  /** Per-backend errors. The list still returns whatever succeeded. */
+  readonly failures: ReadonlyArray<{
+    readonly source: "1password" | "bitwarden";
+    readonly message: string;
+  }>;
+}
+
+export interface ListAllSavedLoginsOptions {
+  readonly domain?: string;
 }
 
 export function createManager(opts: CreateManagerOptions = {}): SecretsManager {
   const vault = opts.vault ?? createVault();
-  return new ManagerImpl(vault);
+  const execFn = opts.exec ?? defaultExecFn();
+  return new ManagerImpl(vault, execFn);
 }
 
 const PREFERENCES_KEY = "_manager.preferences";
 
 class ManagerImpl implements SecretsManager {
-  constructor(readonly vault: Vault) {}
+  constructor(
+    readonly vault: Vault,
+    private readonly execFn: ExecFn,
+  ) {}
 
   async getPreferences(): Promise<ManagerPreferences> {
     try {
@@ -195,6 +277,144 @@ class ManagerImpl implements SecretsManager {
       detectProtonPass(),
       detectBitwarden(this.vault),
     ]);
+  }
+
+  async listAllSavedLogins(
+    opts: ListAllSavedLoginsOptions = {},
+  ): Promise<UnifiedLoginListResult> {
+    const requestedDomain = opts.domain
+      ? opts.domain.trim().toLowerCase()
+      : undefined;
+
+    // In-house always queries successfully (or surfaces a real disk error).
+    // External backends contribute only when they're signed in. Detection
+    // is the gate, but we don't re-detect inline here — we pull the
+    // session-token check into each adapter (it throws BackendNotSignedInError
+    // when no session is stored), and skip those backends silently.
+    const failures: Array<{
+      source: "1password" | "bitwarden";
+      message: string;
+    }> = [];
+
+    const inHouseEntries = await this.fetchInHouseEntries(requestedDomain);
+
+    const externalEntries: ExternalLoginListEntry[] = [];
+    const backends = await this.detectBackends();
+    const onePasswordReady =
+      backends.find((b) => b.id === "1password")?.signedIn === true;
+    const bitwardenReady =
+      backends.find((b) => b.id === "bitwarden")?.signedIn === true;
+
+    if (onePasswordReady) {
+      const result = await safeListExternal("1password", () =>
+        listOnePasswordLogins(this.vault, this.execFn),
+      );
+      if (result.ok) externalEntries.push(...result.entries);
+      else failures.push({ source: "1password", message: result.message });
+    }
+    if (bitwardenReady) {
+      const result = await safeListExternal("bitwarden", () =>
+        listBitwardenLogins(this.vault, this.execFn),
+      );
+      if (result.ok) externalEntries.push(...result.entries);
+      else failures.push({ source: "bitwarden", message: result.message });
+    }
+
+    // Domain filter (case-insensitive) applies uniformly. External
+    // adapters don't accept domain filters at the CLI layer — bw doesn't
+    // expose one and op item list filters by tag/category only — so the
+    // cost is "list everything, filter client-side". For a typical user
+    // (dozens to low-hundreds of items) this stays under a second.
+    const filteredExternal = requestedDomain
+      ? externalEntries.filter(
+          (e) => e.domain !== null && e.domain.toLowerCase() === requestedDomain,
+        )
+      : externalEntries;
+
+    const externalUnified: UnifiedLoginListEntry[] = filteredExternal
+      .map((e) => ({
+        source: e.source,
+        identifier: e.externalId,
+        domain: e.domain,
+        username: e.username,
+        title: e.title,
+        updatedAt: e.updatedAt,
+      }))
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+
+    // In-house first (sort by domain asc, username asc), then externals
+    // by updatedAt desc — matches the spec.
+    const sortedInHouse = [...inHouseEntries].sort((a, b) => {
+      const dA = (a.domain ?? "").toLowerCase();
+      const dB = (b.domain ?? "").toLowerCase();
+      if (dA !== dB) return dA < dB ? -1 : 1;
+      return a.username < b.username ? -1 : a.username > b.username ? 1 : 0;
+    });
+
+    return {
+      logins: [...sortedInHouse, ...externalUnified],
+      failures,
+    };
+  }
+
+  async revealSavedLogin(
+    source: "in-house" | "1password" | "bitwarden",
+    identifier: string,
+  ): Promise<UnifiedLoginReveal> {
+    if (typeof identifier !== "string" || identifier.length === 0) {
+      throw new TypeError("revealSavedLogin: identifier required");
+    }
+    if (source === "in-house") {
+      // In-house identifier is "<domain>:<username>". The username can
+      // contain `:` (rare in emails, but legitimate as a literal), so we
+      // split on the FIRST colon only.
+      const colon = identifier.indexOf(":");
+      if (colon <= 0) {
+        throw new TypeError(
+          `revealSavedLogin: in-house identifier must be "<domain>:<username>", got "${identifier}"`,
+        );
+      }
+      const domain = identifier.slice(0, colon);
+      const username = identifier.slice(colon + 1);
+      const login = await getSavedLogin(this.vault, domain, username);
+      if (!login) {
+        throw new Error(
+          `revealSavedLogin: no in-house login for ${domain}:${username}`,
+        );
+      }
+      const reveal: UnifiedLoginReveal = {
+        source: "in-house",
+        identifier,
+        username: login.username,
+        password: login.password,
+        domain: login.domain,
+        ...(login.otpSeed ? { totp: login.otpSeed } : {}),
+      };
+      return reveal;
+    }
+    if (source === "1password") {
+      const out = await revealOnePasswordLogin(this.vault, this.execFn, identifier);
+      return mapExternalReveal(out);
+    }
+    // bitwarden
+    const out = await revealBitwardenLogin(this.vault, this.execFn, identifier);
+    return mapExternalReveal(out);
+  }
+
+  private async fetchInHouseEntries(
+    requestedDomain: string | undefined,
+  ): Promise<readonly UnifiedLoginListEntry[]> {
+    const summaries: readonly SavedLoginSummary[] = requestedDomain
+      ? await listSavedLogins(this.vault, requestedDomain)
+      : await listSavedLogins(this.vault);
+    return summaries.map((s) => ({
+      source: "in-house" as const,
+      identifier: `${s.domain}:${s.username}`,
+      domain: s.domain,
+      username: s.username,
+      title: s.username,
+      updatedAt: s.lastModified,
+    }));
   }
 
   private async resolveTargetBackend(
@@ -356,6 +576,39 @@ async function detectBitwarden(vault: Vault): Promise<BackendStatus> {
       signedIn: false,
       detail: "`bw status` failed; CLI may need an update.",
     };
+  }
+}
+
+function mapExternalReveal(out: ExternalLoginReveal): UnifiedLoginReveal {
+  return {
+    source: out.source,
+    identifier: out.externalId,
+    username: out.username,
+    password: out.password,
+    domain: out.domain,
+    ...(out.totp ? { totp: out.totp } : {}),
+  };
+}
+
+interface ListExternalOk {
+  readonly ok: true;
+  readonly entries: readonly ExternalLoginListEntry[];
+}
+interface ListExternalErr {
+  readonly ok: false;
+  readonly message: string;
+}
+
+async function safeListExternal(
+  _source: "1password" | "bitwarden",
+  fn: () => Promise<readonly ExternalLoginListEntry[]>,
+): Promise<ListExternalOk | ListExternalErr> {
+  try {
+    const entries = await fn();
+    return { ok: true, entries };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, message };
   }
 }
 

@@ -50,10 +50,29 @@ export type {
   BackendId,
   BackendStatus,
   CreateManagerOptions,
+  ListAllSavedLoginsOptions,
   ManagerPreferences,
   ManagerSetOptions,
   SecretsManager,
+  UnifiedLoginListEntry,
+  UnifiedLoginListResult,
+  UnifiedLoginReveal,
 } from "./manager.js";
+
+export {
+  BackendNotSignedInError,
+  defaultExecFn,
+  listBitwardenLogins,
+  listOnePasswordLogins,
+  revealBitwardenLogin,
+  revealOnePasswordLogin,
+} from "./external-credentials.js";
+export type {
+  ExecFn,
+  ExternalLoginListEntry,
+  ExternalLoginReveal,
+  ExternalLoginSource,
+} from "./external-credentials.js";
 
 export {
   BACKEND_INSTALL_SPECS,

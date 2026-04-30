@@ -192,7 +192,7 @@ describe("SavedLoginsPanel", () => {
 
   it("renders the empty state when no logins are saved", async () => {
     fetchMock.mockResolvedValueOnce(
-      jsonResponse(200, { ok: true, logins: [] }),
+      jsonResponse(200, { ok: true, logins: [], failures: [] }),
     );
     render(<SavedLoginsPanel />);
     await waitFor(() => {
@@ -208,42 +208,111 @@ describe("SavedLoginsPanel", () => {
         ok: true,
         logins: [
           {
+            source: "in-house",
+            identifier: "github.com:alice",
             domain: "github.com",
             username: "alice",
-            lastModified: now - 60_000,
+            title: "alice",
+            updatedAt: now - 60_000,
           },
           {
+            source: "in-house",
+            identifier: "gitlab.com:bob",
             domain: "gitlab.com",
             username: "bob",
-            lastModified: now - 3_600_000,
+            title: "bob",
+            updatedAt: now - 3_600_000,
           },
         ],
+        failures: [],
       }),
     );
     render(<SavedLoginsPanel />);
     await waitFor(() => {
       expect(screen.getByTestId("saved-logins-list")).toBeTruthy();
     });
-    expect(screen.getByText("github.com")).toBeTruthy();
-    expect(screen.getByText("gitlab.com")).toBeTruthy();
+    // Title is the username for in-house entries, with the domain shown
+    // in a parenthetical when it differs from the title.
     expect(screen.getByText(/alice ·/)).toBeTruthy();
     expect(screen.getByText(/bob ·/)).toBeTruthy();
+    expect(screen.getByText("(github.com)")).toBeTruthy();
+    expect(screen.getByText("(gitlab.com)")).toBeTruthy();
+  });
+
+  it("renders source pills for external entries", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, {
+        ok: true,
+        logins: [
+          {
+            source: "1password",
+            identifier: "abc123",
+            domain: "github.com",
+            username: "alice",
+            title: "GitHub Personal",
+            updatedAt: Date.now() - 7 * 86_400_000,
+          },
+          {
+            source: "bitwarden",
+            identifier: "bw-xyz",
+            domain: "gitlab.com",
+            username: "bob",
+            title: "GitLab",
+            updatedAt: Date.now() - 86_400_000,
+          },
+        ],
+        failures: [],
+      }),
+    );
+    render(<SavedLoginsPanel />);
+    await waitFor(() => {
+      expect(screen.getByTestId("saved-logins-list")).toBeTruthy();
+    });
+    expect(screen.getByText("1Password")).toBeTruthy();
+    expect(screen.getByText("Bitwarden")).toBeTruthy();
+    expect(screen.getByText("GitHub Personal")).toBeTruthy();
+    expect(screen.getByText("GitLab")).toBeTruthy();
+  });
+
+  it("renders a backend failure row when the API reports one", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, {
+        ok: true,
+        logins: [],
+        failures: [
+          { source: "1password", message: "session expired" },
+        ],
+      }),
+    );
+    render(<SavedLoginsPanel />);
+    await waitFor(() => {
+      expect(screen.getByTestId("saved-logins-failures")).toBeTruthy();
+    });
+    expect(
+      screen.getByText(/1Password failed to load: session expired/),
+    ).toBeTruthy();
   });
 
   it("submits the add form and refreshes the list", async () => {
     fetchMock
-      .mockResolvedValueOnce(jsonResponse(200, { ok: true, logins: [] }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, { ok: true, logins: [], failures: [] }),
+      )
       .mockResolvedValueOnce(jsonResponse(200, { ok: true }))
       .mockResolvedValueOnce(
         jsonResponse(200, {
           ok: true,
           logins: [
             {
+              source: "in-house",
+              identifier: "github.com:alice",
               domain: "github.com",
               username: "alice",
-              lastModified: Date.now(),
+              title: "alice",
+              updatedAt: Date.now(),
             },
           ],
+          failures: [],
         }),
       );
 
@@ -272,7 +341,9 @@ describe("SavedLoginsPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Save$/ }));
 
     await waitFor(() => {
-      expect(screen.getByText("github.com")).toBeTruthy();
+      // After refresh: in-house entry renders title "alice" with the
+      // domain shown in a parenthetical "(github.com)".
+      expect(screen.getByText("(github.com)")).toBeTruthy();
     });
     // First call: initial GET. Second: POST. Third: refresh GET.
     expect(fetchMock).toHaveBeenCalledTimes(3);

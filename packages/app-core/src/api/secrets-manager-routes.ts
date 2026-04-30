@@ -7,13 +7,14 @@ import {
   getAutofillAllowed,
   getSavedLogin,
   type InstallMethod,
-  listSavedLogins,
   type ManagerPreferences,
   resolveRunnableMethods,
-  type SavedLoginSummary,
   type SecretsManager,
   setAutofillAllowed,
   setSavedLogin,
+  type UnifiedLoginListEntry,
+  type UnifiedLoginListResult,
+  type UnifiedLoginReveal,
 } from "@elizaos/vault";
 import {
   _resetSecretsManagerInstallerForTesting,
@@ -42,13 +43,20 @@ import { sendJson, sendJsonError } from "./response";
  *
  * Saved-login routes (in-app browser autofill):
  *
- *   GET    /api/secrets/logins                 → SavedLoginSummary[] (no passwords)
+ *   GET    /api/secrets/logins                 → UnifiedLoginListEntry[] (no passwords)
+ *                                                Aggregates in-house, 1Password, Bitwarden
  *   GET    /api/secrets/logins?domain=...      → filtered to one domain
- *   GET    /api/secrets/logins/:domain/:user   → reveal one login (sensitive)
- *   POST   /api/secrets/logins                 → save / replace
- *   DELETE /api/secrets/logins/:domain/:user   → remove
+ *   GET    /api/secrets/logins/reveal?source=...&identifier=...
+ *                                              → reveal a single login (sensitive)
+ *   POST   /api/secrets/logins                 → save / replace (in-house ONLY)
+ *   DELETE /api/secrets/logins/:domain/:user   → remove (in-house ONLY)
  *   GET    /api/secrets/logins/:domain/autoallow  → boolean
  *   PUT    /api/secrets/logins/:domain/autoallow  → set boolean
+ *
+ * Why is CREATE in-house only? `op item create` and `bw create item` work
+ * but require a vault path / folder id and structured field metadata that
+ * a generic POST can't safely synthesize for the user. Adding an external
+ * item is deferred to a future iteration with vendor-specific UI.
  *
  * The manager wraps `@elizaos/vault` and routes sensitive writes to
  * the user's chosen password manager (1Password / Proton / Bitwarden)
@@ -64,7 +72,15 @@ import { sendJson, sendJsonError } from "./response";
 let _manager: SecretsManager | null = null;
 
 function getManager(): SecretsManager {
-  if (!_manager) _manager = createManager();
+  if (!_manager) {
+    // Reuse the shared vault: the saved-logins handlers in this file
+    // (POST / autoallow / DELETE) write through `sharedVault()`, and
+    // the manager's `listAllSavedLogins` must read the same `vault.json`
+    // — separate vaults would silently disagree. The shared vault is
+    // also where `mirrorPluginSensitiveToVault` writes plugin secrets,
+    // so the manager's mutex chain stays unified.
+    _manager = createManager({ vault: sharedVault() });
+  }
   return _manager;
 }
 
@@ -75,6 +91,12 @@ function getInstaller(): SecretsManagerInstaller {
 /** Test hook: drop the cached manager. Production code must not call this. */
 export function _resetSecretsManagerForTesting(): void {
   _manager = null;
+  _resetSecretsManagerInstallerForTesting();
+}
+
+/** Test hook: inject a manager built around a test vault + stub exec. */
+export function _setSecretsManagerForTesting(next: SecretsManager | null): void {
+  _manager = next;
   _resetSecretsManagerInstallerForTesting();
 }
 
@@ -104,11 +126,11 @@ export async function handleSecretsManagerRoute(
     return false;
   }
 
-  if (pathname.startsWith("/api/secrets/logins")) {
-    return handleSavedLoginsRoute(req, res, pathname, method);
-  }
-
   const manager = getManager();
+
+  if (pathname.startsWith("/api/secrets/logins")) {
+    return handleSavedLoginsRoute(req, res, pathname, method, manager);
+  }
 
   if (method === "GET" && pathname === "/api/secrets/manager/backends") {
     const statuses = await manager.detectBackends();
@@ -336,24 +358,67 @@ export async function handleSecretsManagerRoute(
 const LOGIN_PATH_RE = /^\/api\/secrets\/logins\/([^/]+)\/([^/]+)$/;
 const LOGIN_AUTOALLOW_RE = /^\/api\/secrets\/logins\/([^/]+)\/autoallow$/;
 
+function isUnifiedSource(
+  v: unknown,
+): v is "in-house" | "1password" | "bitwarden" {
+  return v === "in-house" || v === "1password" || v === "bitwarden";
+}
+
 async function handleSavedLoginsRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   pathname: string,
   method: string,
+  manager: SecretsManager,
 ): Promise<boolean> {
   const vault = sharedVault();
 
   if (method === "GET" && pathname === "/api/secrets/logins") {
     const url = new URL(req.url ?? "", "http://localhost");
     const domain = url.searchParams.get("domain") ?? undefined;
-    const summaries = domain
-      ? await listSavedLogins(vault, domain)
-      : await listSavedLogins(vault);
+    // The manager handles in-house vs external. Per-backend errors are
+    // collected into `failures` so the UI can render a small warning row
+    // without losing the entries that succeeded.
+    const result: UnifiedLoginListResult = await manager.listAllSavedLogins(
+      domain ? { domain } : {},
+    );
     sendJson(res, 200, {
       ok: true,
-      logins: summaries as SavedLoginSummary[],
+      logins: result.logins as readonly UnifiedLoginListEntry[],
+      failures: result.failures,
     });
+    return true;
+  }
+
+  // Unified reveal endpoint. Replaces the legacy
+  // `GET /api/secrets/logins/:domain/:user` which only knew about
+  // in-house entries.
+  if (method === "GET" && pathname === "/api/secrets/logins/reveal") {
+    const url = new URL(req.url ?? "", "http://localhost");
+    const source = url.searchParams.get("source");
+    const identifier = url.searchParams.get("identifier");
+    if (!isUnifiedSource(source)) {
+      sendJsonError(
+        res,
+        400,
+        "`source` must be one of: in-house, 1password, bitwarden",
+      );
+      return true;
+    }
+    if (!identifier) {
+      sendJsonError(res, 400, "`identifier` is required");
+      return true;
+    }
+    try {
+      const reveal: UnifiedLoginReveal = await manager.revealSavedLogin(
+        source,
+        identifier,
+      );
+      sendJson(res, 200, { ok: true, login: reveal });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "reveal failed";
+      sendJsonError(res, 404, message);
+    }
     return true;
   }
 

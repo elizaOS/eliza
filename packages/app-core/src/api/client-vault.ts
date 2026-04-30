@@ -4,34 +4,50 @@
  * Mirrors the wallet-shim contract: the in-tab preload sends
  * `__elizaVaultAutofillRequest` to the host, the host calls these
  * methods, then replies via `tag.executeJavascript("window.__elizaVaultReply(...)")`.
+ *
+ * The list endpoint aggregates entries from every signed-in backend:
+ * in-house vault, 1Password, and Bitwarden. Each entry carries a
+ * `source` + `identifier` pair so callers can reveal credentials
+ * uniformly via `revealSavedLogin(source, identifier)`.
  */
 
 import { ElizaClient } from "./client-base";
 
-export interface SavedLoginRecord {
-  domain: string;
+export type SavedLoginSource = "in-house" | "1password" | "bitwarden";
+
+export interface SavedLoginListRecord {
+  source: SavedLoginSource;
+  identifier: string;
+  domain: string | null;
   username: string;
-  password: string;
-  otpSeed?: string;
-  notes?: string;
-  lastModified: number;
+  title: string;
+  updatedAt: number;
 }
 
-export interface SavedLoginSummaryRecord {
-  domain: string;
+export interface SavedLoginListFailure {
+  source: "1password" | "bitwarden";
+  message: string;
+}
+
+export interface SavedLoginRevealRecord {
+  source: SavedLoginSource;
+  identifier: string;
   username: string;
-  lastModified: number;
+  password: string;
+  totp?: string;
+  domain: string | null;
 }
 
 declare module "./client-base" {
   interface ElizaClient {
-    listSavedLogins(
-      domain?: string,
-    ): Promise<readonly SavedLoginSummaryRecord[]>;
-    getSavedLogin(
-      domain: string,
-      username: string,
-    ): Promise<SavedLoginRecord | null>;
+    listSavedLogins(domain?: string): Promise<{
+      logins: readonly SavedLoginListRecord[];
+      failures: readonly SavedLoginListFailure[];
+    }>;
+    revealSavedLogin(
+      source: SavedLoginSource,
+      identifier: string,
+    ): Promise<SavedLoginRevealRecord>;
     saveSavedLogin(input: {
       domain: string;
       username: string;
@@ -52,29 +68,25 @@ ElizaClient.prototype.listSavedLogins = async function (
   const path = domain
     ? `/api/secrets/logins?domain=${encodeURIComponent(domain)}`
     : "/api/secrets/logins";
-  const out = (
-    await this.fetch<{
-      ok: boolean;
-      logins: readonly SavedLoginSummaryRecord[];
-    }>(path)
-  ).logins;
-  return out;
-};
-
-ElizaClient.prototype.getSavedLogin = async function (
-  this: ElizaClient,
-  domain,
-  username,
-) {
-  const path = `/api/secrets/logins/${encodeURIComponent(domain)}/${encodeURIComponent(username)}`;
   const res = await this.fetch<{
     ok: boolean;
-    login: SavedLoginRecord;
-  }>(path, undefined, { allowNonOk: true });
-  // `allowNonOk` returns the parsed body even on 404; the caller maps
-  // a missing login to null. The fetch wrapper still throws on network
-  // failures, which we propagate.
-  if (!res?.ok) return null;
+    logins: readonly SavedLoginListRecord[];
+    failures: readonly SavedLoginListFailure[];
+  }>(path);
+  return { logins: res.logins, failures: res.failures };
+};
+
+ElizaClient.prototype.revealSavedLogin = async function (
+  this: ElizaClient,
+  source,
+  identifier,
+) {
+  const params = new URLSearchParams({ source, identifier });
+  const path = `/api/secrets/logins/reveal?${params.toString()}`;
+  const res = await this.fetch<{
+    ok: boolean;
+    login: SavedLoginRevealRecord;
+  }>(path);
   return res.login;
 };
 
