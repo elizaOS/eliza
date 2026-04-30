@@ -1,6 +1,5 @@
 import type http from "node:http";
-import type { AgentRuntime, UUID, Experience } from "@elizaos/core";
-import { ExperienceType, OutcomeType } from "@elizaos/core";
+import type { AgentRuntime, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { handleExperienceRoutes } from "./experience-routes.js";
 
@@ -9,12 +8,12 @@ interface RecordedResponse {
   body: unknown;
 }
 
-function makeExperience(id: string): Experience {
+function makeExperience(id: string): any {
   return {
     id: id as UUID,
     agentId: "agent-001" as UUID,
-    type: ExperienceType.LEARNING,
-    outcome: OutcomeType.NEUTRAL,
+    type: "learning",
+    outcome: "neutral",
     context: "Context",
     action: "Action",
     result: "Result",
@@ -96,7 +95,7 @@ describe("handleExperienceRoutes", () => {
     expect(handled).toBe(true);
     expect(listExperiences).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: ExperienceType.LEARNING,
+        type: "learning",
         tags: ["memory"],
         limit: 5,
         includeRelated: true,
@@ -208,8 +207,8 @@ describe("handleExperienceRoutes", () => {
         {
           id: "exp-001",
           label: "Learning",
-          type: ExperienceType.LEARNING,
-          outcome: OutcomeType.NEUTRAL,
+          type: "learning",
+          outcome: "neutral",
           domain: "general",
           keywords: ["memory"],
           associatedEntityIds: [],
