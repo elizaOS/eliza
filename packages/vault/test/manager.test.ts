@@ -242,6 +242,26 @@ describe("manager — backend detection", () => {
       }
     }
   });
+
+  it("authMode is null for every backend when CLI is unavailable", async () => {
+    // CI machines usually don't have `op` or `bw` installed. Whatever
+    // the host detection returns, an unavailable backend must not claim
+    // a desktop-app authMode (which would lie about working secrets
+    // routing).
+    const m = newManager();
+    const statuses = await m.detectBackends();
+    for (const s of statuses) {
+      if (s.id === "in-house") continue;
+      if (!s.available) {
+        expect(s.authMode).toBe(null);
+      } else if (s.signedIn === false) {
+        expect(s.authMode).toBe(null);
+      } else if (s.id === "1password") {
+        // 1Password has two auth modes; either is acceptable when signed in.
+        expect(["desktop-app", "session-token"]).toContain(s.authMode);
+      }
+    }
+  });
 });
 
 describe("manager — listAllSavedLogins", () => {

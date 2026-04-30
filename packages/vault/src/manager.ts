@@ -61,6 +61,17 @@ export interface BackendStatus {
   readonly signedIn?: boolean;
   /** Human-readable detail for display when not fully ready. */
   readonly detail?: string;
+  /**
+   * Authentication path the backend is using. `desktop-app` means the
+   * vendor's desktop app brokers auth (e.g. 1Password 8 native app
+   * integration with the `op` CLI), so no session token is required.
+   * `session-token` means we authenticated via stored session token.
+   * `null` when the backend is unavailable or not signed in.
+   *
+   * Undefined for backends that don't have multiple auth modes
+   * (e.g. in-house, protonpass).
+   */
+  readonly authMode?: "desktop-app" | "session-token" | null;
 }
 
 export interface ManagerPreferences {
@@ -493,17 +504,47 @@ async function detectOnePassword(vault: Vault): Promise<BackendStatus> {
       available: false,
       detail:
         "`op` CLI not installed. Get it at https://developer.1password.com/docs/cli",
+      authMode: null,
     };
   }
-  const session = await readStoredSession(vault, "1password");
-  const args = session ? ["whoami", `--session=${session}`] : ["whoami"];
-  try {
-    await exec("op", args, { timeout: 3000 });
+
+  // Step 1: probe `op whoami` with no session token. When the user has
+  // 1Password 8 desktop app installed and CLI integration enabled, the
+  // CLI authenticates via the desktop app and `whoami` returns 0
+  // without any session being passed. This is the smoothest path —
+  // sessions don't expire, no master-password prompt, no stored token.
+  if (await isOnePasswordDesktopActive()) {
     return {
       id: "1password",
       label: "1Password",
       available: true,
       signedIn: true,
+      authMode: "desktop-app",
+      detail: "Authenticated via 1Password desktop app.",
+    };
+  }
+
+  // Step 2: fall back to the stored session token path.
+  const session = await readStoredSession(vault, "1password");
+  if (!session) {
+    return {
+      id: "1password",
+      label: "1Password",
+      available: true,
+      signedIn: false,
+      authMode: null,
+      detail:
+        "`op` is installed but not signed in. Enable 1Password desktop app integration (Settings → Developer → Integrate with 1Password CLI) or use the Sign-in button.",
+    };
+  }
+  try {
+    await exec("op", ["whoami", `--session=${session}`], { timeout: 3000 });
+    return {
+      id: "1password",
+      label: "1Password",
+      available: true,
+      signedIn: true,
+      authMode: "session-token",
     };
   } catch {
     return {
@@ -511,10 +552,24 @@ async function detectOnePassword(vault: Vault): Promise<BackendStatus> {
       label: "1Password",
       available: true,
       signedIn: false,
-      detail: session
-        ? "Stored 1Password session is no longer valid. Sign in again."
-        : "`op` is installed but not signed in. Use the Sign-in button.",
+      authMode: null,
+      detail: "Stored 1Password session is no longer valid. Sign in again.",
     };
+  }
+}
+
+/**
+ * True when `op whoami` (no session) succeeds — i.e. 1Password desktop
+ * app integration is active. Failures are silent: any exit code, any
+ * stderr text means desktop-app auth isn't available and the caller
+ * should fall through to the session-token path.
+ */
+async function isOnePasswordDesktopActive(): Promise<boolean> {
+  try {
+    await exec("op", ["whoami"], { timeout: 3000 });
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -524,6 +579,7 @@ async function detectProtonPass(): Promise<BackendStatus> {
     id: "protonpass",
     label: "Proton Pass",
     available: present,
+    authMode: null,
     detail: present
       ? "Detected; reference storage will be wired when the vendor CLI stabilizes."
       : "`protonpass-cli` not installed (vendor CLI is in beta).",
@@ -538,6 +594,7 @@ async function detectBitwarden(vault: Vault): Promise<BackendStatus> {
       label: "Bitwarden",
       available: false,
       detail: "`bw` CLI not installed. https://bitwarden.com/help/cli/",
+      authMode: null,
     };
   }
   const session = await readStoredSession(vault, "bitwarden");
@@ -555,6 +612,7 @@ async function detectBitwarden(vault: Vault): Promise<BackendStatus> {
         label: "Bitwarden",
         available: true,
         signedIn: true,
+        authMode: session ? "session-token" : null,
       };
     }
     return {
@@ -562,6 +620,7 @@ async function detectBitwarden(vault: Vault): Promise<BackendStatus> {
       label: "Bitwarden",
       available: true,
       signedIn: false,
+      authMode: null,
       detail: session
         ? "Stored Bitwarden session is no longer valid. Sign in again."
         : status.status === "locked"
@@ -574,6 +633,7 @@ async function detectBitwarden(vault: Vault): Promise<BackendStatus> {
       label: "Bitwarden",
       available: true,
       signedIn: false,
+      authMode: null,
       detail: "`bw status` failed; CLI may need an update.",
     };
   }

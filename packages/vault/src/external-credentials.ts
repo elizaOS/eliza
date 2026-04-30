@@ -86,15 +86,17 @@ export async function listOnePasswordLogins(
   vault: Vault,
   exec: ExecFn,
 ): Promise<readonly ExternalLoginListEntry[]> {
-  const session = await readSessionToken(vault, "1password");
+  const sessionArgs = await readOnePasswordSessionArgs(vault, exec);
 
   // Step 1: list Login items as JSON. `--format=json` is the documented
   // machine-readable form; the example in `op item list --help` chains it
   // into `op item get -` which is what we do for username enrichment.
+  // When 1Password desktop integration is active, `sessionArgs` is empty
+  // and the CLI authenticates via the desktop app.
   const listOut = await exec(
     "op",
     [
-      `--session=${session}`,
+      ...sessionArgs,
       "item",
       "list",
       "--categories",
@@ -136,14 +138,14 @@ export async function revealOnePasswordLogin(
   externalId: string,
 ): Promise<ExternalLoginReveal> {
   if (!externalId) throw new TypeError("revealOnePasswordLogin: externalId required");
-  const session = await readSessionToken(vault, "1password");
+  const sessionArgs = await readOnePasswordSessionArgs(vault, exec);
 
   // `op item get <id> --format=json` includes the full `fields` array with
   // values for username/password/totp.
   const out = await exec(
     "op",
     [
-      `--session=${session}`,
+      ...sessionArgs,
       "item",
       "get",
       externalId,
@@ -309,6 +311,37 @@ async function readSessionToken(
   const token = (await vault.get(key)).trim();
   if (!token) throw new BackendNotSignedInError(source);
   return token;
+}
+
+/**
+ * Resolve the `--session=...` args for an `op` invocation.
+ *
+ * When 1Password 8 desktop app integration is active, `op whoami` (with
+ * no session) returns 0 and we don't pass any session flag — the CLI
+ * authenticates against the running desktop app. When desktop integration
+ * isn't available, we fall back to the stored session token; missing token
+ * raises `BackendNotSignedInError` exactly like the legacy path.
+ *
+ * Returns `[]` for desktop-app, `["--session=<token>"]` for session-token.
+ */
+async function readOnePasswordSessionArgs(
+  vault: Vault,
+  exec: ExecFn,
+): Promise<readonly string[]> {
+  if (await isOnePasswordDesktopActiveWithExec(exec)) {
+    return [];
+  }
+  const session = await readSessionToken(vault, "1password");
+  return [`--session=${session}`];
+}
+
+async function isOnePasswordDesktopActiveWithExec(exec: ExecFn): Promise<boolean> {
+  try {
+    await exec("op", ["whoami"], { timeoutMs: 3000 });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function pickPrimaryUrl(
