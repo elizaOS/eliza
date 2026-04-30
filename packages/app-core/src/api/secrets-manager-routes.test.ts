@@ -1,10 +1,26 @@
+import type { ChildProcess } from "node:child_process";
 import { promises as fs } from "node:fs";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { handleSecretsManagerRoute } from "./secrets-manager-routes";
+import { Readable } from "node:stream";
+import {
+  createManager,
+  createVault,
+  generateMasterKey,
+  inMemoryMasterKey,
+} from "@elizaos/vault";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  _setSecretsManagerInstallerForTesting,
+  SecretsManagerInstaller,
+  type SpawnFn,
+} from "../services/secrets-manager-installer";
+import {
+  _resetSecretsManagerForTesting,
+  handleSecretsManagerRoute,
+} from "./secrets-manager-routes";
 
 interface Harness {
   baseUrl: string;
@@ -64,6 +80,7 @@ describe("secrets-manager routes", () => {
     originalElizaStateDir = process.env.ELIZA_STATE_DIR;
     process.env.MILADY_STATE_DIR = workDir;
     process.env.ELIZA_STATE_DIR = workDir;
+    _resetSecretsManagerForTesting();
   });
 
   afterEach(async () => {
@@ -73,11 +90,14 @@ describe("secrets-manager routes", () => {
     else process.env.MILADY_STATE_DIR = originalStateDir;
     if (originalElizaStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
     else process.env.ELIZA_STATE_DIR = originalElizaStateDir;
+    _resetSecretsManagerForTesting();
   });
 
   it("GET /api/secrets/manager/backends returns the four-entry status array", async () => {
     harness = await startApiHarness();
-    const response = await fetch(`${harness.baseUrl}/api/secrets/manager/backends`);
+    const response = await fetch(
+      `${harness.baseUrl}/api/secrets/manager/backends`,
+    );
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
       ok: boolean;
@@ -185,5 +205,173 @@ describe("secrets-manager routes", () => {
     expect(response.status).toBe(404);
     const body = (await response.json()) as { error: string };
     expect(body.error).toBe("not-found");
+  });
+
+  it("GET /api/secrets/manager/install/methods returns per-backend method arrays", async () => {
+    harness = await startApiHarness();
+    const response = await fetch(
+      `${harness.baseUrl}/api/secrets/manager/install/methods`,
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      ok: boolean;
+      methods: Record<string, Array<{ kind: string }>>;
+    };
+    expect(body.ok).toBe(true);
+    expect(Object.keys(body.methods).sort()).toEqual([
+      "1password",
+      "bitwarden",
+      "protonpass",
+    ]);
+  });
+
+  it("POST /api/secrets/manager/install rejects manual methods", async () => {
+    harness = await startApiHarness();
+    const response = await fetch(
+      `${harness.baseUrl}/api/secrets/manager/install`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          backendId: "protonpass",
+          method: {
+            kind: "manual",
+            instructions: "x",
+            url: "https://proton.me/pass",
+          },
+        }),
+      },
+    );
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toMatch(/manual/i);
+  });
+
+  it("POST /api/secrets/manager/install rejects an unknown backendId", async () => {
+    harness = await startApiHarness();
+    const response = await fetch(
+      `${harness.baseUrl}/api/secrets/manager/install`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          backendId: "lastpass",
+          method: { kind: "brew", package: "lastpass-cli", cask: false },
+        }),
+      },
+    );
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toMatch(/backendId/i);
+  });
+
+  it("POST /api/secrets/manager/signout returns 200 and is idempotent", async () => {
+    harness = await startApiHarness();
+    const r = await fetch(`${harness.baseUrl}/api/secrets/manager/signout`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ backendId: "1password" }),
+    });
+    expect(r.status).toBe(200);
+    const body = (await r.json()) as { ok: boolean };
+    expect(body.ok).toBe(true);
+  });
+
+  it("POST /api/secrets/manager/signin uses the injected installer and persists session", async () => {
+    harness = await startApiHarness();
+
+    const fakeChild = (
+      stdoutLines: readonly string[],
+      exitCode = 0,
+    ): ChildProcess => {
+      const stdout = new Readable({ read: () => undefined });
+      const stderr = new Readable({ read: () => undefined });
+      const handlers: Record<string, Array<(...a: unknown[]) => void>> = {};
+      const onFn = (
+        ev: string,
+        fn: (...a: unknown[]) => void,
+      ): ChildProcess => {
+        handlers[ev] = handlers[ev] ?? [];
+        handlers[ev].push(fn);
+        return child;
+      };
+      const child = {
+        stdout,
+        stderr,
+        stdin: { end: () => undefined },
+        on: onFn,
+        once: onFn,
+        off: () => child,
+        kill: () => true,
+      } as unknown as ChildProcess;
+      setImmediate(() => {
+        for (const line of stdoutLines) stdout.push(`${line}\n`);
+        stdout.push(null);
+        stderr.push(null);
+        let drained = 0;
+        const onDrain = () => {
+          drained++;
+          if (drained === 2) {
+            for (const fn of handlers.close ?? []) fn(exitCode);
+          }
+        };
+        stdout.on("end", onDrain);
+        stderr.on("end", onDrain);
+      });
+      return child;
+    };
+
+    const spawn = vi
+      .fn<SpawnFn>()
+      .mockImplementation(() => fakeChild(["fake-1p-session"], 0));
+    const manager = createManager({
+      vault: createVault({
+        workDir,
+        masterKey: inMemoryMasterKey(generateMasterKey()),
+      }),
+    });
+    _setSecretsManagerInstallerForTesting(
+      new SecretsManagerInstaller({ manager, spawn }),
+    );
+
+    const response = await fetch(
+      `${harness.baseUrl}/api/secrets/manager/signin`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          backendId: "1password",
+          email: "user@example.com",
+          secretKey: "AAAA-BBBBBB-CCCCCC-DDDDDD-EEEEEE-FFFFFF",
+          masterPassword: "p",
+        }),
+      },
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      ok: boolean;
+      result: { sessionStored: boolean };
+    };
+    expect(body.ok).toBe(true);
+    expect(body.result.sessionStored).toBe(true);
+  });
+
+  it("POST /api/secrets/manager/signin returns 400 for missing master password", async () => {
+    harness = await startApiHarness();
+    const response = await fetch(
+      `${harness.baseUrl}/api/secrets/manager/signin`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          backendId: "1password",
+          email: "u@e.com",
+          secretKey: "x",
+        }),
+      },
+    );
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toMatch(/masterPassword/i);
   });
 });

@@ -55,6 +55,22 @@ export type {
   SecretsManager,
 } from "./manager.js";
 
+export {
+  BACKEND_INSTALL_SPECS,
+  buildInstallCommand,
+  currentPlatform,
+  detectPackageManagers,
+  resetInstallerCache,
+  resolveRunnableMethods,
+} from "./install.js";
+export type {
+  BackendInstallSpec,
+  InstallMethod,
+  InstallMethodKind,
+  PackageManagerAvailability,
+  SupportedPlatform,
+} from "./install.js";
+
 export type {
   AuditRecord,
   PasswordManagerReference,
