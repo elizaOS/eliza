@@ -25,6 +25,8 @@ const localPackages = [
   "eliza/apps/app-vincent",
   "eliza/plugins/plugin-agent-skills/typescript",
   "eliza/plugins/plugin-browser-bridge",
+  "eliza/plugins/plugin-local-embedding/typescript",
+  "eliza/plugins/plugin-pdf/typescript",
   "eliza/packages/native-plugins/activity-tracker",
   "eliza/plugins/plugin-cron/typescript",
   "eliza/plugins/plugin-sql/typescript",
