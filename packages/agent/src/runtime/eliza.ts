@@ -159,7 +159,7 @@ import {
   createPgliteInitError,
   getPgliteErrorCode,
   PGLITE_ERROR_CODES,
-} from "./pglite-error-compat";
+} from "./pglite-error-compat.js";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle.js";
 import rolesPlugin from "./roles.js";
 import { shouldEnableTrajectoryLoggingByDefault } from "./trajectory-persistence.js";

@@ -103,6 +103,7 @@
     "lerna": "9.0.7",
     "react-test-renderer": "^19.0.0",
     "turbo": "^2.7.4",
+    "tsx": "^4.21.0",
     "typescript": "^6.0.0",
     "vitest": "^4.0.17"
   },

@@ -23,8 +23,8 @@ import {
   extractRoleIntentWithLlm,
   looksLikeRoleIntent,
   normalizeNaturalRoleLabel,
-} from "./intent";
-import type { RoleName } from "./types";
+} from "./intent.js";
+import type { RoleName } from "./types.js";
 import {
   canModifyRole,
   getLiveEntityMetadataFromMessage,
@@ -33,7 +33,7 @@ import {
   resolveEntityRole,
   resolveWorldForMessage,
   setEntityRole,
-} from "./utils";
+} from "./utils.js";
 
 /** Maximum length for a target username. */
 const MAX_USERNAME_LENGTH = 64;
