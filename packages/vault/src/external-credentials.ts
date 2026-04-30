@@ -107,33 +107,16 @@ export async function listOnePasswordLogins(
 
   if (items.length === 0) return [];
 
-  // Step 2: enrich each item with username via `op item get - --fields username`.
-  // Piping the list JSON into `op item get -` is the documented batch pattern;
-  // it returns a JSON array with one element per input.
-  const idsJson = JSON.stringify(items.map((it) => ({ id: it.id })));
-  const getOut = await exec(
-    "op",
-    [
-      `--session=${session}`,
-      "item",
-      "get",
-      "-",
-      "--fields",
-      "label=username",
-      "--format=json",
-    ],
-    { timeoutMs: 15_000, stdin: idsJson },
-  );
-  const enriched = parseJsonArray<OnePasswordEnrichedItem>(getOut.stdout);
-  // Index enriched objects by id so we can keep the listing order from step 1.
-  const byId = new Map<string, OnePasswordEnrichedItem>();
-  for (const e of enriched) byId.set(e.id, e);
-
+  // The 1Password CLI exposes the username as `additional_information` on
+  // every Login item summary. No per-item enrichment needed for the list
+  // view. Reveal still calls `op item get <id>` to fetch the password.
   const out: ExternalLoginListEntry[] = [];
   for (const item of items) {
     const url = pickPrimaryUrl(item.urls);
-    const enrichedItem = byId.get(item.id);
-    const username = pickOnePasswordUsername(enrichedItem) ?? item.additional_information ?? "";
+    const username =
+      typeof item.additional_information === "string"
+        ? item.additional_information
+        : "";
     out.push({
       source: "1password",
       externalId: item.id,
