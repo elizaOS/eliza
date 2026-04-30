@@ -83,3 +83,25 @@ describe("Docker runtime tsx config", () => {
     expect(runtimeTsconfig.compilerOptions?.paths).toBeUndefined();
   });
 });
+
+describe("agent packaged runtime dependencies", () => {
+  it("declares statically imported bundled plugins", () => {
+    const runtimeEntry = readFileSync(
+      new URL("../../agent/src/runtime/eliza.ts", import.meta.url),
+      "utf8",
+    );
+    const agentPackage = JSON.parse(
+      readFileSync(
+        new URL("../../agent/package.json", import.meta.url),
+        "utf8",
+      ),
+    );
+
+    expect(runtimeEntry).toContain(
+      'from "@elizaos/plugin-agent-skills"',
+    );
+    expect(agentPackage.dependencies?.["@elizaos/plugin-agent-skills"]).toBe(
+      "workspace:*",
+    );
+  });
+});
