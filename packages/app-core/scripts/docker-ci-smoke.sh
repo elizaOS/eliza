@@ -228,11 +228,6 @@ if [[ -f "$WHATSAPP_PLUGIN_TS_DIR/package.json" ]]; then
   popd >/dev/null
 fi
 
-log "Building agent workspace"
-pushd "$AGENT_DIR" >/dev/null
-"$BUN_BIN" run build:docker-dist
-popd >/dev/null
-
 if [[ "$APP_CORE_DIR" == "packages/app-core" || "${MILADY_SKIP_LOCAL_UPSTREAMS:-0}" != "1" ]]; then
   log "Building @elizaos/core source artifacts"
   pushd "$TYPESCRIPT_DIR" >/dev/null
@@ -242,6 +237,11 @@ if [[ "$APP_CORE_DIR" == "packages/app-core" || "${MILADY_SKIP_LOCAL_UPSTREAMS:-
 else
   log "Skipping @elizaos/core source build in published-only mode"
 fi
+
+log "Building agent workspace"
+pushd "$AGENT_DIR" >/dev/null
+"$BUN_BIN" run build:docker-dist
+popd >/dev/null
 
 if [[ -f tsdown.config.ts || -f tsdown.config.mts || -f tsdown.config.js || -f tsdown.config.mjs ]]; then
   log "Building runtime dist"
