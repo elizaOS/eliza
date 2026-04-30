@@ -48,6 +48,7 @@ export function getAllowedRemoteOrigins(): Set<string> {
 
 /** Lazily cached port set — computed once, invalidated on port changes. */
 let cachedCorsAllowedPorts: Set<string> | undefined;
+let cachedRemoteOrigins: Set<string> | undefined;
 
 export function getCorsAllowedPorts(): Set<string> {
   if (!cachedCorsAllowedPorts) {
@@ -56,9 +57,17 @@ export function getCorsAllowedPorts(): Set<string> {
   return cachedCorsAllowedPorts;
 }
 
+export function getCachedRemoteOrigins(): Set<string> {
+  if (!cachedRemoteOrigins) {
+    cachedRemoteOrigins = getAllowedRemoteOrigins();
+  }
+  return cachedRemoteOrigins;
+}
+
 /** Invalidate the cached CORS port set so it is recomputed on next request. */
 export function invalidateCorsAllowedPorts(): void {
   cachedCorsAllowedPorts = undefined;
+  cachedRemoteOrigins = undefined;
 }
 
 /**
@@ -96,8 +105,8 @@ export function isAllowedOrigin(
   allowedPorts?: Set<string>,
   allowedRemoteOrigins?: Set<string>,
 ): boolean {
-  const ports = allowedPorts ?? buildCorsAllowedPorts();
-  const remoteOrigins = allowedRemoteOrigins ?? getAllowedRemoteOrigins();
+  const ports = allowedPorts ?? getCorsAllowedPorts();
+  const remoteOrigins = allowedRemoteOrigins ?? getCachedRemoteOrigins();
   try {
     const u = new URL(urlStr);
     const origin = originString(u);
