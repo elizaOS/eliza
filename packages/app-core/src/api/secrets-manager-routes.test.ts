@@ -17,6 +17,7 @@ import {
   SecretsManagerInstaller,
   type SpawnFn,
 } from "../services/secrets-manager-installer";
+import { _resetSharedVaultForTesting } from "../services/vault-mirror";
 import {
   _resetSecretsManagerForTesting,
   handleSecretsManagerRoute,
@@ -80,6 +81,10 @@ describe("secrets-manager routes", () => {
     originalElizaStateDir = process.env.ELIZA_STATE_DIR;
     process.env.MILADY_STATE_DIR = workDir;
     process.env.ELIZA_STATE_DIR = workDir;
+    // The manager now wraps `sharedVault()`, which itself caches across
+    // tests. Drop both so the next call constructs a fresh `Vault`
+    // pointed at the per-test tmp dir.
+    _resetSharedVaultForTesting(null);
     _resetSecretsManagerForTesting();
   });
 
@@ -90,6 +95,7 @@ describe("secrets-manager routes", () => {
     else process.env.MILADY_STATE_DIR = originalStateDir;
     if (originalElizaStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
     else process.env.ELIZA_STATE_DIR = originalElizaStateDir;
+    _resetSharedVaultForTesting(null);
     _resetSecretsManagerForTesting();
   });
 

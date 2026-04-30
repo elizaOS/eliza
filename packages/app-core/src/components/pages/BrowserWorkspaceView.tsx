@@ -1015,8 +1015,22 @@ export function BrowserWorkspaceView(): JSX.Element {
       }
 
       try {
-        const summaries = await client.listSavedLogins(req.domain);
-        if (summaries.length === 0) {
+        // Aggregate from every signed-in backend. The manager filters by
+        // domain (case-insensitive); external adapters list everything
+        // and filter client-side because their CLIs don't accept a
+        // domain filter.
+        const { logins } = await client.listSavedLogins(req.domain);
+        // The manager already filters by domain, but we double-check
+        // here against the registrable hostname. External entries with
+        // a missing or non-matching domain are dropped — they aren't
+        // valid candidates for this form.
+        const requestDomain = req.domain.toLowerCase();
+        const candidates = logins.filter(
+          (l) =>
+            typeof l.domain === "string" &&
+            l.domain.toLowerCase() === requestDomain,
+        );
+        if (candidates.length === 0) {
           reply({ fields: {} });
           return;
         }
@@ -1024,8 +1038,8 @@ export function BrowserWorkspaceView(): JSX.Element {
         // Pick the most-recently-modified entry. Multi-account selection
         // is a future UI improvement — at first save time only one entry
         // typically exists per domain.
-        const sorted = [...summaries].sort(
-          (a, b) => b.lastModified - a.lastModified,
+        const sorted = [...candidates].sort(
+          (a, b) => b.updatedAt - a.updatedAt,
         );
         const chosen = sorted[0];
         if (!chosen) {
@@ -1033,12 +1047,19 @@ export function BrowserWorkspaceView(): JSX.Element {
           return;
         }
 
+        const sourceLabel =
+          chosen.source === "1password"
+            ? "1Password"
+            : chosen.source === "bitwarden"
+              ? "Bitwarden"
+              : "local vault";
+
         const allowed = await client.getAutofillAllowed(req.domain);
         const consented =
           allowed ||
           (await vaultAutofillConfirm({
             title: `Autofill ${req.domain}`,
-            message: `Sign in as ${chosen.username}?\n\nMilady will fill the saved username and password for this site.`,
+            message: `Sign in as ${chosen.username || chosen.title} from ${sourceLabel}?\n\nMilady will fill the saved username and password for this site.`,
             confirmLabel: "Allow",
             cancelLabel: "Deny",
           }));
@@ -1047,15 +1068,14 @@ export function BrowserWorkspaceView(): JSX.Element {
           return;
         }
 
-        const login = await client.getSavedLogin(req.domain, chosen.username);
-        if (!login) {
-          reply({ fields: {} });
-          return;
-        }
+        const reveal = await client.revealSavedLogin(
+          chosen.source,
+          chosen.identifier,
+        );
 
         const fields: Record<string, string> = {};
-        if (userHint) fields[userHint.selector] = login.username;
-        fields[passwordHint.selector] = login.password;
+        if (userHint) fields[userHint.selector] = reveal.username;
+        fields[passwordHint.selector] = reveal.password;
         reply({ fields });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

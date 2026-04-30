@@ -1127,20 +1127,42 @@ export function SigninSheet({
 
 // ── Saved logins panel ──────────────────────────────────────────────
 //
-// Lists logins saved for in-app browser autofill. Read-mostly — adding
-// is an inline form, deleting is a one-click row action with confirm.
-// Reveal is intentionally omitted from this UI: the autofill flow uses
-// `GET /api/secrets/logins/:domain/:user` directly, and exposing a
-// "show password" affordance here adds nothing the OS keychain doesn't
-// already do.
+// Aggregates logins from every signed-in backend (in-house vault,
+// 1Password, Bitwarden) into one list. Each row shows a source pill so
+// the user can see where a credential came from. External rows are
+// read-only — managing them happens in the password manager itself —
+// while the in-house "Add login" form persists to the vault.
 
-interface SavedLoginSummary {
-  domain: string;
+type SavedLoginSource = "in-house" | "1password" | "bitwarden";
+
+interface UnifiedSavedLogin {
+  source: SavedLoginSource;
+  identifier: string;
+  domain: string | null;
   username: string;
-  lastModified: number;
+  title: string;
+  updatedAt: number;
 }
 
+interface SavedLoginsListFailure {
+  source: "1password" | "bitwarden";
+  message: string;
+}
+
+const SOURCE_LABEL: Record<SavedLoginSource, string> = {
+  "in-house": "Local",
+  "1password": "1Password",
+  bitwarden: "Bitwarden",
+};
+
+const SOURCE_PILL_CLASS: Record<SavedLoginSource, string> = {
+  "in-house": "border-accent/40 bg-accent/10 text-accent",
+  "1password": "border-info/40 bg-info/10 text-info",
+  bitwarden: "border-warn/40 bg-warn/10 text-warn",
+};
+
 function relativeAge(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return "—";
   const elapsed = Date.now() - ms;
   if (elapsed < 60_000) return "just now";
   const minutes = Math.floor(elapsed / 60_000);
@@ -1156,24 +1178,32 @@ function relativeAge(ms: number): string {
 }
 
 export function SavedLoginsPanel() {
-  const [logins, setLogins] = useState<SavedLoginSummary[] | null>(null);
+  const [logins, setLogins] = useState<UnifiedSavedLogin[] | null>(null);
+  const [failures, setFailures] = useState<SavedLoginsListFailure[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [addDomain, setAddDomain] = useState("");
   const [addUsername, setAddUsername] = useState("");
   const [addPassword, setAddPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [filter, setFilter] = useState("");
 
   const load = useCallback(async () => {
     setError(null);
+    setLogins(null);
     try {
       const res = await fetch("/api/secrets/logins");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = (await res.json()) as { logins: SavedLoginSummary[] };
+      const json = (await res.json()) as {
+        logins: UnifiedSavedLogin[];
+        failures?: SavedLoginsListFailure[];
+      };
       setLogins(json.logins);
+      setFailures(json.failures ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "load failed");
       setLogins([]);
+      setFailures([]);
     }
   }, []);
 
@@ -1213,14 +1243,20 @@ export function SavedLoginsPanel() {
   );
 
   const onDelete = useCallback(
-    async (login: SavedLoginSummary) => {
+    async (login: UnifiedSavedLogin) => {
+      // Only in-house entries can be deleted from this UI; external
+      // rows omit the delete affordance entirely.
+      if (login.source !== "in-house") return;
       const ok = window.confirm(
-        `Delete saved login for ${login.domain} (${login.username})?`,
+        `Delete saved login for ${login.domain ?? "—"} (${login.username})?`,
       );
       if (!ok) return;
       setError(null);
       try {
-        const path = `/api/secrets/logins/${encodeURIComponent(login.domain)}/${encodeURIComponent(login.username)}`;
+        const colon = login.identifier.indexOf(":");
+        const domainPart = colon > 0 ? login.identifier.slice(0, colon) : "";
+        const userPart = colon > 0 ? login.identifier.slice(colon + 1) : "";
+        const path = `/api/secrets/logins/${encodeURIComponent(domainPart)}/${encodeURIComponent(userPart)}`;
         const res = await fetch(path, { method: "DELETE" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         await load();
@@ -1231,6 +1267,16 @@ export function SavedLoginsPanel() {
     [load],
   );
 
+  const filtered = (logins ?? []).filter((l) => {
+    if (filter.trim().length === 0) return true;
+    const needle = filter.trim().toLowerCase();
+    return (
+      l.title.toLowerCase().includes(needle) ||
+      l.username.toLowerCase().includes(needle) ||
+      (l.domain ?? "").toLowerCase().includes(needle)
+    );
+  });
+
   return (
     <section
       data-testid="saved-logins-panel"
@@ -1240,7 +1286,7 @@ export function SavedLoginsPanel() {
         <div className="min-w-0">
           <p className="text-sm font-medium text-txt">Saved logins</p>
           <p className="text-2xs text-muted">
-            Browser autofill credentials. Stored encrypted at rest.
+            Browser autofill from local vault, 1Password, and Bitwarden.
           </p>
         </div>
         <Button
@@ -1263,12 +1309,33 @@ export function SavedLoginsPanel() {
         </div>
       )}
 
+      {failures.length > 0 && (
+        <div
+          aria-live="polite"
+          data-testid="saved-logins-failures"
+          className="space-y-1"
+        >
+          {failures.map((f) => (
+            <div
+              key={f.source}
+              className="rounded-md border border-warn/40 bg-warn/10 px-3 py-1.5 text-2xs text-warn"
+            >
+              {SOURCE_LABEL[f.source]} failed to load: {f.message}
+            </div>
+          ))}
+        </div>
+      )}
+
       {showAdd && (
         <form
           onSubmit={onAdd}
           className="space-y-2 rounded-md border border-border/50 bg-card/30 p-2"
           data-testid="saved-logins-add-form"
         >
+          <p className="text-2xs text-muted">
+            Saved to local (encrypted) vault. To add to 1Password or
+            Bitwarden, use that app directly.
+          </p>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <div>
               <Label className="text-2xs text-muted">Domain</Label>
@@ -1337,6 +1404,17 @@ export function SavedLoginsPanel() {
         </form>
       )}
 
+      {logins !== null && logins.length > 0 && (
+        <Input
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder="Filter by title, user, or domain"
+          className="h-8 text-xs"
+          autoComplete="off"
+          data-testid="saved-logins-filter"
+        />
+      )}
+
       {logins === null ? (
         <div className="flex items-center gap-2 px-1 py-3 text-xs text-muted">
           <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> Loading…
@@ -1346,39 +1424,81 @@ export function SavedLoginsPanel() {
           data-testid="saved-logins-empty"
           className="rounded-md border border-dashed border-border/50 bg-card/20 px-3 py-3 text-center text-xs text-muted"
         >
-          No saved logins yet. Add one to enable autofill in the in-app browser.
+          No saved logins yet. Add one here, or sign in to 1Password /
+          Bitwarden above to surface their entries.
+        </div>
+      ) : filtered.length === 0 ? (
+        <div
+          data-testid="saved-logins-no-match"
+          className="rounded-md border border-dashed border-border/50 bg-card/20 px-3 py-3 text-center text-xs text-muted"
+        >
+          No logins match "{filter}".
         </div>
       ) : (
         <ul
           data-testid="saved-logins-list"
           className="space-y-1 rounded-md border border-border/40 bg-card/30 p-1"
         >
-          {logins.map((login) => (
+          {filtered.map((login) => (
             <li
-              key={`${login.domain}:${login.username}`}
+              key={`${login.source}:${login.identifier}`}
               className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-bg-muted/30"
             >
+              <span
+                className={`shrink-0 rounded-full border px-1.5 py-0.5 text-2xs font-medium ${SOURCE_PILL_CLASS[login.source]}`}
+              >
+                {SOURCE_LABEL[login.source]}
+              </span>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-xs font-medium text-txt">
-                  {login.domain}
+                  {login.title}
+                  {login.domain && login.domain !== login.title ? (
+                    <span className="ml-1.5 text-muted">({login.domain})</span>
+                  ) : null}
                 </p>
                 <p className="truncate text-2xs text-muted">
-                  {login.username} · {relativeAge(login.lastModified)}
+                  {login.username || "—"} · {relativeAge(login.updatedAt)}
                 </p>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 w-7 shrink-0 rounded-md p-0 text-muted hover:text-danger"
-                aria-label={`Delete saved login for ${login.domain}`}
-                onClick={() => void onDelete(login)}
-              >
-                <Trash2 className="h-3.5 w-3.5" aria-hidden />
-              </Button>
+              {login.source === "in-house" ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 shrink-0 rounded-md p-0 text-muted hover:text-danger"
+                  aria-label={`Delete saved login for ${login.domain ?? login.username}`}
+                  onClick={() => void onDelete(login)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                </Button>
+              ) : (
+                <ExternalRowAction login={login} />
+              )}
             </li>
           ))}
         </ul>
       )}
     </section>
+  );
+}
+
+function ExternalRowAction({ login }: { login: UnifiedSavedLogin }) {
+  // External rows are read-only. The "view" action sends the user back to
+  // their password manager — they manage the entry there.
+  const href =
+    login.source === "1password"
+      ? `https://my.1password.com/vaults/all/allitems/${encodeURIComponent(login.identifier)}`
+      : "https://vault.bitwarden.com/";
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-border/40 px-2 text-2xs text-muted hover:text-txt"
+      aria-label={`View in ${SOURCE_LABEL[login.source]}`}
+      title={`View in ${SOURCE_LABEL[login.source]}`}
+    >
+      <ExternalLink className="h-3 w-3" aria-hidden />
+      View
+    </a>
   );
 }

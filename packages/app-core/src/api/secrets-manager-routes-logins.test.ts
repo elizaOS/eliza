@@ -4,18 +4,35 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  createManager,
   createVault,
+  type ExecFn,
   generateMasterKey,
   inMemoryMasterKey,
   type SavedLogin,
-  type SavedLoginSummary,
+  type UnifiedLoginListEntry,
+  type UnifiedLoginListResult,
+  type UnifiedLoginReveal,
+  type Vault,
 } from "@elizaos/vault";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { _resetSharedVaultForTesting } from "../services/vault-mirror";
 import {
   _resetSecretsManagerForTesting,
+  _setSecretsManagerForTesting,
   handleSecretsManagerRoute,
 } from "./secrets-manager-routes";
+
+/** No external CLI is available in CI — every adapter call must short-circuit. */
+const noopExec: ExecFn = async () => {
+  throw new Error("exec stub: no external CLI in test");
+};
+
+function buildTestManager(vault: Vault) {
+  const manager = createManager({ vault, exec: noopExec });
+  _setSecretsManagerForTesting(manager);
+  return manager;
+}
 
 interface Harness {
   baseUrl: string;
@@ -67,14 +84,15 @@ describe("secrets-manager logins routes", () => {
   beforeEach(async () => {
     harness = null;
     workDir = await fs.mkdtemp(join(tmpdir(), "milady-logins-routes-"));
-    // Inject a test vault under the shared singleton so the routes
-    // exercise the same `Vault` instance the test seeds.
+    // Inject a test vault under the shared singleton AND wire the
+    // manager around the same vault with a stub exec so external
+    // backend probes never reach the real OS or the user's `op`/`bw`.
     const testVault = createVault({
       workDir,
       masterKey: inMemoryMasterKey(generateMasterKey()),
     });
     _resetSharedVaultForTesting(testVault);
-    _resetSecretsManagerForTesting();
+    buildTestManager(testVault);
   });
 
   afterEach(async () => {
@@ -151,11 +169,12 @@ describe("secrets-manager logins routes", () => {
 
     const res = await fetch(`${harness.baseUrl}/api/secrets/logins`);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      ok: boolean;
-      logins: SavedLoginSummary[];
-    };
+    const body = (await res.json()) as UnifiedLoginListResult & { ok: boolean };
     expect(body.logins.length).toBe(2);
+    expect(body.failures).toEqual([]);
+    for (const entry of body.logins) {
+      expect(entry.source).toBe("in-house");
+    }
     const text = JSON.stringify(body);
     expect(text).not.toContain("VERY-SECRET-1");
     expect(text).not.toContain("VERY-SECRET-2");
@@ -185,9 +204,60 @@ describe("secrets-manager logins routes", () => {
     const res = await fetch(
       `${harness.baseUrl}/api/secrets/logins?domain=github.com`,
     );
-    const body = (await res.json()) as { logins: SavedLoginSummary[] };
+    const body = (await res.json()) as UnifiedLoginListResult;
     expect(body.logins.length).toBe(1);
     expect(body.logins[0]?.domain).toBe("github.com");
+    expect(body.logins[0]?.source).toBe("in-house");
+    expect(body.logins[0]?.identifier).toBe("github.com:alice");
+  });
+
+  it("GET /api/secrets/logins/reveal returns full credentials for in-house", async () => {
+    harness = await startApiHarness();
+    await fetch(`${harness.baseUrl}/api/secrets/logins`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        domain: "github.com",
+        username: "alice",
+        password: "hunter2",
+      }),
+    });
+    const params = new URLSearchParams({
+      source: "in-house",
+      identifier: "github.com:alice",
+    });
+    const res = await fetch(
+      `${harness.baseUrl}/api/secrets/logins/reveal?${params.toString()}`,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; login: UnifiedLoginReveal };
+    expect(body.login.password).toBe("hunter2");
+    expect(body.login.username).toBe("alice");
+    expect(body.login.source).toBe("in-house");
+  });
+
+  it("GET reveal rejects an unknown source", async () => {
+    harness = await startApiHarness();
+    const params = new URLSearchParams({
+      source: "lastpass",
+      identifier: "x:y",
+    });
+    const res = await fetch(
+      `${harness.baseUrl}/api/secrets/logins/reveal?${params.toString()}`,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("GET reveal returns 404 for missing in-house entry", async () => {
+    harness = await startApiHarness();
+    const params = new URLSearchParams({
+      source: "in-house",
+      identifier: "nope.example:none",
+    });
+    const res = await fetch(
+      `${harness.baseUrl}/api/secrets/logins/reveal?${params.toString()}`,
+    );
+    expect(res.status).toBe(404);
   });
 
   it("GET single returns 404 for unknown user", async () => {
