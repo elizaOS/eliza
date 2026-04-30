@@ -1,11 +1,7 @@
 import type http from "node:http";
-import type { AgentRuntime, UUID } from "@elizaos/core";
+import type { AgentRuntime, UUID, Experience } from "@elizaos/core";
+import { ExperienceType, OutcomeType } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import type { Experience } from "../../../typescript/src/features/advanced-capabilities/experience/types.ts";
-import {
-  ExperienceType,
-  OutcomeType,
-} from "../../../typescript/src/features/advanced-capabilities/experience/types.ts";
 import { handleExperienceRoutes } from "./experience-routes.js";
 
 interface RecordedResponse {
