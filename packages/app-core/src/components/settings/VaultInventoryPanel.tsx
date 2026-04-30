@@ -68,6 +68,37 @@ interface VaultEntryMeta {
   kind: "secret" | "value" | "reference";
 }
 
+// Routing config wire types (mirror @elizaos/vault).
+type RoutingScopeKind = "agent" | "app" | "skill";
+
+interface RoutingScope {
+  kind: RoutingScopeKind;
+  agentId?: string;
+  appName?: string;
+  skillId?: string;
+}
+
+interface RoutingRule {
+  keyPattern: string;
+  scope: RoutingScope;
+  profileId: string;
+}
+
+interface RoutingConfig {
+  rules: RoutingRule[];
+  defaultProfile?: string;
+}
+
+interface AgentSummary {
+  id: string;
+  name: string;
+}
+
+interface InstalledApp {
+  name: string;
+  displayName?: string;
+}
+
 const CATEGORY_LABEL: Record<VaultEntryCategory, string> = {
   provider: "Providers",
   plugin: "Plugins",
@@ -656,6 +687,282 @@ function ProfilesPanel({
               disabled={submitting || !newId || !newValue}
             >
               {submitting ? "Saving…" : "Save profile"}
+            </Button>
+          </div>
+        </form>
+      )}
+
+      {hasProfiles && <RoutingRulesEditor entry={entry} />}
+    </div>
+  );
+}
+
+// ── Routing rules editor ───────────────────────────────────────────
+
+function RoutingRulesEditor({ entry }: { entry: VaultEntryMeta }) {
+  const [config, setConfig] = useState<RoutingConfig | null>(null);
+  const [agents, setAgents] = useState<AgentSummary[]>([]);
+  const [apps, setApps] = useState<InstalledApp[]>([]);
+  const [showAdd, setShowAdd] = useState(false);
+  const [scopeKind, setScopeKind] = useState<RoutingScopeKind>("agent");
+  const [scopeAgentId, setScopeAgentId] = useState("");
+  const [scopeAppName, setScopeAppName] = useState("");
+  const [profileId, setProfileId] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    setErr(null);
+    try {
+      const [configRes, agentsRes, appsRes] = await Promise.all([
+        fetch("/api/secrets/routing"),
+        fetch("/api/agents").catch(() => null),
+        fetch("/api/apps").catch(() => null),
+      ]);
+      if (!configRes.ok) throw new Error(`HTTP ${configRes.status}`);
+      const configBody = (await configRes.json()) as { config: RoutingConfig };
+      setConfig(configBody.config);
+
+      // Agents + apps fetches are best-effort: when endpoints don't exist
+      // (e.g. headless build) we still let the user edit existing rules.
+      if (agentsRes && agentsRes.ok) {
+        const aBody = (await agentsRes.json()) as {
+          agents?: AgentSummary[];
+        };
+        setAgents(aBody.agents ?? []);
+      }
+      if (appsRes && appsRes.ok) {
+        const aBody = (await appsRes.json()) as { apps?: InstalledApp[] };
+        setApps(aBody.apps ?? []);
+      }
+    } catch (caughtErr) {
+      setErr(
+        caughtErr instanceof Error ? caughtErr.message : "load failed",
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const myRules = useMemo(
+    () => (config?.rules ?? []).filter((r) => r.keyPattern === entry.key),
+    [config, entry.key],
+  );
+
+  const saveConfig = useCallback(
+    async (next: RoutingConfig) => {
+      setSaving(true);
+      setErr(null);
+      try {
+        const res = await fetch("/api/secrets/routing", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ config: next }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const body = (await res.json()) as { config: RoutingConfig };
+        setConfig(body.config);
+      } catch (caughtErr) {
+        setErr(
+          caughtErr instanceof Error ? caughtErr.message : "save failed",
+        );
+      } finally {
+        setSaving(false);
+      }
+    },
+    [],
+  );
+
+  const onAddRule = useCallback(
+    async (e: FormEvent<HTMLFormElement>) => {
+      e.preventDefault();
+      if (!config) return;
+      let scope: RoutingScope;
+      if (scopeKind === "agent") {
+        if (!scopeAgentId) return;
+        scope = { kind: "agent", agentId: scopeAgentId };
+      } else if (scopeKind === "app") {
+        if (!scopeAppName) return;
+        scope = { kind: "app", appName: scopeAppName };
+      } else {
+        return;
+      }
+      if (!profileId) return;
+      const newRules = [
+        ...config.rules,
+        { keyPattern: entry.key, scope, profileId },
+      ];
+      await saveConfig({ ...config, rules: newRules });
+      setShowAdd(false);
+      setScopeAgentId("");
+      setScopeAppName("");
+      setProfileId("");
+    },
+    [config, entry.key, profileId, saveConfig, scopeAgentId, scopeAppName, scopeKind],
+  );
+
+  const onDeleteRule = useCallback(
+    async (rule: RoutingRule) => {
+      if (!config) return;
+      const newRules = config.rules.filter((r) => r !== rule);
+      await saveConfig({ ...config, rules: newRules });
+    },
+    [config, saveConfig],
+  );
+
+  return (
+    <div
+      data-testid={`routing-editor-${entry.key}`}
+      className="mt-2 space-y-1 border-t border-border/40 pt-2"
+    >
+      <div className="flex items-center justify-between">
+        <p className="text-2xs font-semibold uppercase text-muted">
+          Per-context routing
+        </p>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 gap-1 rounded-md px-2 text-2xs"
+          onClick={() => setShowAdd((v) => !v)}
+          aria-label="Add routing rule"
+          disabled={saving}
+        >
+          <Plus className="h-3 w-3" aria-hidden /> Add rule
+        </Button>
+      </div>
+
+      {err && (
+        <p className="text-2xs text-danger" aria-live="polite">
+          {err}
+        </p>
+      )}
+
+      {myRules.length > 0 ? (
+        <ul className="space-y-1">
+          {myRules.map((rule, idx) => (
+            <li
+              key={`${rule.keyPattern}:${rule.scope.kind}:${rule.scope.agentId ?? rule.scope.appName ?? rule.scope.skillId}:${rule.profileId}:${idx}`}
+              className="flex items-center gap-2 rounded bg-card/30 px-2 py-1 text-2xs"
+            >
+              <span className="rounded-full border border-border/40 bg-bg/40 px-1.5 py-0.5 text-2xs text-muted">
+                {rule.scope.kind}
+              </span>
+              <span className="font-mono text-2xs text-txt">
+                {rule.scope.agentId ?? rule.scope.appName ?? rule.scope.skillId}
+              </span>
+              <span className="text-muted">→</span>
+              <span className="rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-2xs font-medium text-accent">
+                {rule.profileId}
+              </span>
+              <span className="flex-1" />
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-5 w-5 shrink-0 rounded-md p-0 text-muted hover:text-danger"
+                onClick={() => void onDeleteRule(rule)}
+                aria-label="Delete rule"
+              >
+                <Trash2 className="h-3 w-3" aria-hidden />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-2xs text-muted">
+          No rules. Default profile applies for every caller.
+        </p>
+      )}
+
+      {showAdd && (
+        <form
+          onSubmit={onAddRule}
+          data-testid={`add-routing-rule-${entry.key}`}
+          className="mt-1 space-y-1.5 rounded-md border border-border/40 bg-card/40 p-2"
+        >
+          <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-3">
+            <div>
+              <Label className="text-2xs text-muted">Scope</Label>
+              <select
+                value={scopeKind}
+                onChange={(e) => setScopeKind(e.target.value as RoutingScopeKind)}
+                className="block h-7 w-full rounded-md border border-border bg-bg px-2 text-xs text-txt"
+              >
+                <option value="agent">Agent</option>
+                <option value="app">App</option>
+              </select>
+            </div>
+            <div>
+              <Label className="text-2xs text-muted">
+                {scopeKind === "agent" ? "Agent" : "App"}
+              </Label>
+              {scopeKind === "agent" ? (
+                <select
+                  value={scopeAgentId}
+                  onChange={(e) => setScopeAgentId(e.target.value)}
+                  className="block h-7 w-full rounded-md border border-border bg-bg px-2 text-xs text-txt"
+                  required
+                >
+                  <option value="">Select agent…</option>
+                  {agents.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <select
+                  value={scopeAppName}
+                  onChange={(e) => setScopeAppName(e.target.value)}
+                  className="block h-7 w-full rounded-md border border-border bg-bg px-2 text-xs text-txt"
+                  required
+                >
+                  <option value="">Select app…</option>
+                  {apps.map((a) => (
+                    <option key={a.name} value={a.name}>
+                      {a.displayName ?? a.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+            <div>
+              <Label className="text-2xs text-muted">Profile</Label>
+              <select
+                value={profileId}
+                onChange={(e) => setProfileId(e.target.value)}
+                className="block h-7 w-full rounded-md border border-border bg-bg px-2 text-xs text-txt"
+                required
+              >
+                <option value="">Select profile…</option>
+                {(entry.profiles ?? []).map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-6 rounded-md px-2 text-2xs"
+              onClick={() => setShowAdd(false)}
+              disabled={saving}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="default"
+              size="sm"
+              className="h-6 rounded-md px-2 text-2xs"
+              disabled={saving || !profileId}
+            >
+              {saving ? "Saving…" : "Save rule"}
             </Button>
           </div>
         </form>

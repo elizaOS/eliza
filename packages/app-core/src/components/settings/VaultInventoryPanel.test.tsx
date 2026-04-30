@@ -309,6 +309,156 @@ describe("VaultInventoryPanel — profiles", () => {
   });
 });
 
+describe("VaultInventoryPanel — routing editor", () => {
+  it("loads existing rules and renders them filtered to the current key", async () => {
+    setRoute("GET", "/api/secrets/inventory", () => ({
+      status: 200,
+      body: {
+        entries: [
+          {
+            key: "OPENROUTER_API_KEY",
+            category: "provider",
+            label: "OpenRouter",
+            hasProfiles: true,
+            activeProfile: "default",
+            profiles: [
+              { id: "default", label: "Default" },
+              { id: "work", label: "Work" },
+            ],
+            kind: "secret",
+          },
+        ] satisfies VaultEntryMeta[],
+      },
+    }));
+    setRoute("GET", "/api/secrets/routing", () => ({
+      status: 200,
+      body: {
+        config: {
+          rules: [
+            {
+              keyPattern: "OPENROUTER_API_KEY",
+              scope: { kind: "agent", agentId: "agent-A" },
+              profileId: "work",
+            },
+            {
+              keyPattern: "ANTHROPIC_API_KEY", // different key — must not show
+              scope: { kind: "agent", agentId: "agent-A" },
+              profileId: "default",
+            },
+          ],
+        },
+      },
+    }));
+    setRoute("GET", "/api/agents", () => ({
+      status: 200,
+      body: { agents: [{ id: "agent-A", name: "Agent A" }] },
+    }));
+    setRoute("GET", "/api/apps", () => ({
+      status: 200,
+      body: { apps: [] },
+    }));
+
+    render(<VaultInventoryPanel />);
+    await waitFor(() => {
+      expect(screen.getByTestId("profile-badge-OPENROUTER_API_KEY")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Expand/i }));
+
+    await waitFor(() => {
+      const editor = screen.getByTestId("routing-editor-OPENROUTER_API_KEY");
+      expect(editor).toBeTruthy();
+      // Only 1 rule (matching this key) should render.
+      expect(editor.textContent).toContain("agent-A");
+      expect(editor.textContent).toContain("work");
+      expect(editor.textContent).not.toContain("ANTHROPIC");
+    });
+  });
+
+  it("PUTs new rule on save", async () => {
+    setRoute("GET", "/api/secrets/inventory", () => ({
+      status: 200,
+      body: {
+        entries: [
+          {
+            key: "OPENROUTER_API_KEY",
+            category: "provider",
+            label: "OpenRouter",
+            hasProfiles: true,
+            activeProfile: "default",
+            profiles: [
+              { id: "default", label: "Default" },
+              { id: "work", label: "Work" },
+            ],
+            kind: "secret",
+          },
+        ] satisfies VaultEntryMeta[],
+      },
+    }));
+    setRoute("GET", "/api/secrets/routing", () => ({
+      status: 200,
+      body: { config: { rules: [] } },
+    }));
+    setRoute("GET", "/api/agents", () => ({
+      status: 200,
+      body: { agents: [{ id: "agent-A", name: "Agent A" }] },
+    }));
+    setRoute("GET", "/api/apps", () => ({ status: 200, body: { apps: [] } }));
+    let putBody: string | undefined;
+    setRoute("PUT", "/api/secrets/routing", (req) => {
+      putBody = req.body;
+      return {
+        status: 200,
+        body: { config: JSON.parse(req.body!).config },
+      };
+    });
+
+    render(<VaultInventoryPanel />);
+    await waitFor(() => {
+      expect(screen.getByTestId("profile-badge-OPENROUTER_API_KEY")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Expand/i }));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("routing-editor-OPENROUTER_API_KEY"),
+      ).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Add routing rule/i }));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("add-routing-rule-OPENROUTER_API_KEY"),
+      ).toBeTruthy();
+    });
+
+    // Default scope kind is "agent". Pick agent + profile.
+    const selects = screen.getAllByRole("combobox");
+    // selects: [scopeKind, agent/app, profile]
+    fireEvent.change(selects[1]!, { target: { value: "agent-A" } });
+    fireEvent.change(selects[2]!, { target: { value: "work" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /Save rule/i }));
+
+    await waitFor(() => {
+      expect(putBody).toBeDefined();
+    });
+    const parsed = JSON.parse(putBody!) as { config: { rules: RoutingRule[] } };
+    expect(parsed.config.rules).toHaveLength(1);
+    expect(parsed.config.rules[0]).toMatchObject({
+      keyPattern: "OPENROUTER_API_KEY",
+      scope: { kind: "agent", agentId: "agent-A" },
+      profileId: "work",
+    });
+  });
+});
+
+interface RoutingRule {
+  keyPattern: string;
+  scope: { kind: string; agentId?: string; appName?: string };
+  profileId: string;
+}
+
 describe("VaultInventoryPanel — delete flow", () => {
   it("calls DELETE /api/secrets/inventory/:key when confirmed", async () => {
     setRoute("GET", "/api/secrets/inventory", () => ({
