@@ -1,11 +1,17 @@
 import { expect, test } from "@playwright/test";
 import { DIRECT_ROUTE_CASES, escapeRegExp } from "./apps-session-route-cases";
-import { assertReadyChecks, openAppPath, seedAppStorage } from "./helpers";
+import {
+  assertReadyChecks,
+  installDefaultAppRoutes,
+  openAppPath,
+  seedAppStorage,
+} from "./helpers";
 
 const ROUTE_CASES = DIRECT_ROUTE_CASES.slice(7);
 
 test.beforeEach(async ({ page }) => {
   await seedAppStorage(page);
+  await installDefaultAppRoutes(page);
 });
 
 for (const routeCase of ROUTE_CASES) {

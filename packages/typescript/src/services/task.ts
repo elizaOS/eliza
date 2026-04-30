@@ -50,6 +50,7 @@ function resolveDueTime(task: Task): number | null {
  */
 export class TaskService extends Service {
 	private timer: NodeJS.Timeout | null = null;
+	private activeTick: Promise<void> | null = null;
 	private readonly TICK_INTERVAL = 1000; // Check every second
 	/** Tracks task IDs currently being executed to prevent overlapping runs. WHY: blocking tasks must not run again until current run finishes. */
 	private executingTasks: Set<string> = new Set();
@@ -186,8 +187,27 @@ export class TaskService extends Service {
 			clearInterval(this.timer);
 		}
 
-		this.timer = setInterval(async () => {
-			await this.checkTasks();
+		this.timer = setInterval(() => {
+			if (this.activeTick) {
+				return;
+			}
+			const tick = this.checkTasks()
+				.catch((error) => {
+					this.runtime.logger.error(
+						{
+							src: "plugin:basic-capabilities:service:task",
+							agentId: this.runtime.agentId,
+							error,
+						},
+						"Task timer tick failed",
+					);
+				})
+				.finally(() => {
+					if (this.activeTick === tick) {
+						this.activeTick = null;
+					}
+				});
+			this.activeTick = tick;
 		}, this.TICK_INTERVAL) as NodeJS.Timeout;
 	}
 
@@ -232,7 +252,7 @@ export class TaskService extends Service {
 	 * @returns {Promise<void>} Promise that resolves once all tasks are checked and executed
 	 */
 	private async checkTasks() {
-		if (!this.tasksDirty) {
+		if (this.stopped || !this.tasksDirty) {
 			return;
 		}
 		this.tasksDirty = false;
@@ -247,6 +267,9 @@ export class TaskService extends Service {
 			return;
 		}
 
+		if (this.stopped) {
+			return;
+		}
 		await this.runTick(allTasks);
 	}
 
@@ -636,6 +659,9 @@ export class TaskService extends Service {
 		if (this.timer) {
 			clearInterval(this.timer);
 			this.timer = null;
+		}
+		if (this.activeTick) {
+			await this.activeTick;
 		}
 		const inFlight = Array.from(this.executingTaskPromises);
 		if (inFlight.length > 0) {

@@ -1,5 +1,9 @@
 import { type APIRequestContext, expect, test } from "@playwright/test";
-import { openAppPath, seedAppStorage } from "./helpers";
+import {
+  installDefaultAppRoutes,
+  openAppPath,
+  seedAppStorage,
+} from "./helpers";
 
 type BrowserWorkspaceSmokeSnapshot = {
   tabs: { id: string }[];
@@ -40,6 +44,7 @@ async function resetBrowserWorkspaceTabs(
 
 test.beforeEach(async ({ page }) => {
   await seedAppStorage(page);
+  await installDefaultAppRoutes(page);
 });
 
 test("browser workspace can create live tabs and switch selection", async ({
@@ -94,12 +99,13 @@ test("browser workspace can create live tabs and switch selection", async ({
   expect(chatSidebarBox.y).toBeLessThan(addressInputBox.y);
 
   const initialHomeTabButtons = tabsSidebar.locator(
-    '[role="tab"][title="https://eliza.ai/"]',
+    '[role="tab"][title="https://docs.elizaos.ai/"]',
   );
+  await browserWorkspaceView.getByTestId("browser-workspace-open-home").click();
   await expect(initialHomeTabButtons.first()).toBeVisible({
     timeout: 120_000,
   });
-  await expect(addressInput).toHaveValue("https://eliza.ai/");
+  await expect(addressInput).toHaveValue("https://docs.elizaos.ai/");
   await expect(newTabButton).toBeEnabled();
 
   await addressInput.fill("");

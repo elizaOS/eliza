@@ -142,7 +142,7 @@ describeIf(LIVE)("App-Training: API e2e", () => {
 
   afterAll(async () => {
     await runtime?.close();
-  });
+  }, 30_000);
 
   it("training routes are registered and respond", async () => {
     // Training routes return 200 when service is available, 503 when backend
