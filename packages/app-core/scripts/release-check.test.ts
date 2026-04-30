@@ -104,6 +104,7 @@ describe("agent packaged runtime dependencies", () => {
 
     expect(dockerignore).toContain("!packages/agent/node_modules/**");
     expect(dockerignore).toContain("!eliza/packages/agent/node_modules/**");
+    expect(dockerignore).toContain("!apps/app-elizamaker/node_modules/**");
     expect(dockerignore).toContain("!apps/app-lifeops/node_modules/**");
     expect(dockerignore).toContain("!apps/app-steward/node_modules/**");
   });
