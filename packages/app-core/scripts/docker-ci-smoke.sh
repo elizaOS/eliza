@@ -31,6 +31,9 @@ log() {
 }
 
 fail() {
+  if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+    printf '::error::docker-ci-smoke: %s\n' "$*" >&2
+  fi
   printf '[docker-ci-smoke] ERROR: %s\n' "$*" >&2
   exit 1
 }

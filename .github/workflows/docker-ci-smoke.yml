@@ -25,6 +25,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           submodules: recursive
+          show-progress: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -69,7 +70,9 @@ jobs:
           trap 'stop_smoke; exit 130' INT
           trap 'stop_smoke; exit 143' TERM
 
-          setsid bash packages/app-core/scripts/docker-ci-smoke.sh --tag gha-${{ github.run_id }} &
+          mkdir -p .tmp/qa
+          smoke_log=".tmp/qa/docker-ci-smoke-step.log"
+          setsid bash packages/app-core/scripts/docker-ci-smoke.sh --tag gha-${{ github.run_id }} > >(tee "$smoke_log") 2> >(tee -a "$smoke_log" >&2) &
           smoke_pid=$!
           deadline=$((SECONDS + 40 * 60))
 
@@ -85,7 +88,17 @@ jobs:
             sleep 10
           done
 
+          set +e
           wait "$smoke_pid"
+          smoke_status=$?
+          set -e
+          if (( smoke_status != 0 )); then
+            echo "::group::Docker CI smoke step tail"
+            tail -n 240 "$smoke_log" || true
+            echo "::endgroup::"
+            echo "::error::Docker CI smoke failed with exit code ${smoke_status}; see the step tail and uploaded .tmp/qa artifacts."
+            exit "$smoke_status"
+          fi
 
       # Inline log capture runs on failure (not cancelled).
       - name: Dump container log + inspect (inline)
