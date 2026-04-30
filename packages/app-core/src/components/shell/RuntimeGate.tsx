@@ -986,6 +986,8 @@ export function RuntimeGate() {
           })}
           value={remoteUrl}
           onChange={(e) => setRemoteUrl(e.target.value)}
+          onInput={(e) => setRemoteUrl((e.target as HTMLInputElement).value)}
+          onBlur={(e) => setRemoteUrl(e.target.value)}
           className="h-11 rounded-none border-2 border-[#f0b90b]/35 bg-black/48 text-white text-sm placeholder:text-white/40"
         />
 
@@ -996,6 +998,8 @@ export function RuntimeGate() {
           type="password"
           value={remoteToken}
           onChange={(e) => setRemoteToken(e.target.value)}
+          onInput={(e) => setRemoteToken((e.target as HTMLInputElement).value)}
+          onBlur={(e) => setRemoteToken(e.target.value)}
           className="h-11 rounded-none border-2 border-[#f0b90b]/35 bg-black/48 text-white text-sm placeholder:text-white/40"
         />
 
