@@ -7,7 +7,7 @@ ARG APP_CORE_DIR=packages/app-core
 ARG AGENT_DIR=packages/agent
 ARG APP_DIR=packages/app
 ARG APP_ENTRYPOINT=packages/agent/dist/packages/agent/src/bin.js
-ARG APP_CMD_START=""
+ARG APP_CMD_START="node --import tsx packages/agent/dist/packages/agent/src/bin.js start"
 ARG APP_PORT=2138
 ARG APP_API_BIND=127.0.0.1
 ARG OCI_SOURCE=""
@@ -121,4 +121,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
   CMD sh -lc 'port="${PORT:-${APP_PORT:-${ELIZA_PORT:-2138}}}"; code="$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${port}/api/health")" && [ "$code" = "200" -o "$code" = "401" ]'
 
 ENTRYPOINT ["sh", "-lc", "exec sh \"./${APP_CORE_DIR:-packages/app-core}/scripts/docker-entrypoint.sh\" \"$@\"", "--"]
-CMD ["sh", "-lc", "exec ${APP_CMD_START:-node ${APP_ENTRYPOINT} start}"]
+CMD ["sh", "-lc", "exec ${APP_CMD_START:-node --import tsx ${APP_ENTRYPOINT} start}"]
