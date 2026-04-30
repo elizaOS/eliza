@@ -203,13 +203,25 @@ export async function readEntryMeta(
  *
  * Wipe a field by setting its value to `null` in the partial.
  */
+/**
+ * Partial-update payload accepted by `setEntryMeta`. Fields are
+ * optional; passing `null` deletes the underlying field from the
+ * stored meta blob (the only way to wipe e.g. activeProfile without
+ * round-tripping the entire record).
+ */
+export interface VaultEntryMetaUpdate {
+  readonly category?: VaultEntryCategory | null;
+  readonly label?: string | null;
+  readonly providerId?: string | null;
+  readonly lastUsed?: number | null;
+  readonly profiles?: ReadonlyArray<VaultEntryProfile> | null;
+  readonly activeProfile?: string | null;
+}
+
 export async function setEntryMeta(
   vault: Vault,
   key: string,
-  partial: Partial<VaultEntryMetaRecord> & {
-    readonly profiles?: ReadonlyArray<VaultEntryProfile> | null;
-    readonly activeProfile?: string | null;
-  },
+  partial: VaultEntryMetaUpdate,
 ): Promise<void> {
   const metaKey = `${META_PREFIX}${key}`;
   const existing = (await readEntryMeta(vault, key)) ?? {};

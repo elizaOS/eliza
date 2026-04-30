@@ -124,6 +124,7 @@ export type {
   VaultEntryCategory,
   VaultEntryMeta,
   VaultEntryMetaRecord,
+  VaultEntryMetaUpdate,
   VaultEntryProfile,
 } from "./inventory.js";
 
