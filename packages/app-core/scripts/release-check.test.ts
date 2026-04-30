@@ -114,6 +114,8 @@ describe("agent packaged runtime dependencies", () => {
     expect(relinker).toContain(
       '"eliza/plugins/plugin-agent-skills/typescript"',
     );
+    expect(relinker).toContain('"eliza/packages/shared"');
+    expect(relinker).toContain('"eliza/packages/skills"');
     expect(relinker).toContain(
       '"eliza/plugins/plugin-local-embedding/typescript"',
     );
