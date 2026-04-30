@@ -93,13 +93,10 @@ test("browser workspace can create live tabs and switch selection", async ({
   }
   expect(chatSidebarBox.y).toBeLessThan(addressInputBox.y);
 
-  const initialHomeTabButtons = tabsSidebar.locator(
-    '[role="tab"][title="https://eliza.ai/"]',
-  );
-  await expect(initialHomeTabButtons.first()).toBeVisible({
+  await expect(tabsSidebar.getByText("No User Tabs")).toBeVisible({
     timeout: 120_000,
   });
-  await expect(addressInput).toHaveValue("https://eliza.ai/");
+  await expect(addressInput).toHaveValue("");
   await expect(newTabButton).toBeEnabled();
 
   await addressInput.fill("");

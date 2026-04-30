@@ -35,7 +35,7 @@ describe("workspace ui source aliases", () => {
     const repoRoot = path.resolve(here, "../../../..");
 
     expect(resolveAlias("@elizaos/ui/components/shell/Header")).toBe(
-      path.join(repoRoot, "eliza/packages/ui/src/components/shell/Header.tsx"),
+      path.join(repoRoot, "packages/ui/src/components/shell/Header.tsx"),
     );
   });
 
@@ -48,7 +48,7 @@ describe("workspace ui source aliases", () => {
     ).toBe(
       path.join(
         repoRoot,
-        "eliza/packages/ui/src/components/composites/sidebar/sidebar-types.ts",
+        "packages/ui/src/components/composites/sidebar/sidebar-types.ts",
       ),
     );
   });

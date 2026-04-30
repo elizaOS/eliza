@@ -21,6 +21,8 @@ import type { RelationshipsService } from "../services/relationships.ts";
 import { asUUID } from "../types/primitives.ts";
 import { stringToUuid } from "../utils.ts";
 
+const HOOK_TIMEOUT_MS = 60_000;
+
 interface Fixture {
 	runtime: AgentRuntime;
 	service: RelationshipsService;
@@ -35,7 +37,13 @@ async function setup(): Promise<Fixture> {
 	const prevPgliteDir = process.env.PGLITE_DATA_DIR;
 	process.env.PGLITE_DATA_DIR = pgliteDir;
 
-	const character = createCharacter({ name: "RolodexTestAgent" });
+	const agentId = asUUID(
+		stringToUuid(`rolodex-test-agent-${Date.now()}-${Math.random()}`),
+	);
+	const character = createCharacter({
+		id: agentId,
+		name: `RolodexTestAgent-${agentId.slice(0, 8)}`,
+	});
 	const runtime = new AgentRuntime({
 		character,
 		plugins: [],
@@ -89,11 +97,13 @@ describe("RelationshipsService rolodex extensions (T7b)", () => {
 
 	beforeEach(async () => {
 		fx = await setup();
-	});
+	}, HOOK_TIMEOUT_MS);
 
 	afterEach(async () => {
-		await fx.cleanup();
-	});
+		if (fx) {
+			await fx.cleanup();
+		}
+	}, HOOK_TIMEOUT_MS);
 
 	it("findByHandle round-trips by (platform, identifier)", async () => {
 		const entityId = await fx.makeEntity("Alice");

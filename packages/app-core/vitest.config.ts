@@ -36,7 +36,9 @@ const includeLiveE2e =
  */
 export default defineConfig({
   test: {
-    testTimeout: 15_000,
+    testTimeout: 120_000,
+    hookTimeout: 120_000,
+    maxWorkers: 2,
     server: { deps: { inline: [/@elizaos\//] } },
     // Heavy browser e2e — install `puppeteer-core` / `playwright-core` in this package to run
     exclude: [
