@@ -90,10 +90,12 @@ if [[ -d packages/app-core ]]; then
   APP_CORE_DIR="packages/app-core"
   PACKAGES_DIR="packages"
   APP_DIR="packages/app"
+  PLUGINS_DIR="plugins"
 elif [[ -d eliza/packages/app-core ]]; then
   APP_CORE_DIR="eliza/packages/app-core"
   PACKAGES_DIR="eliza/packages"
   APP_DIR="apps/app"
+  PLUGINS_DIR="eliza/plugins"
 else
   fail "packages/app-core not found"
 fi
@@ -213,6 +215,14 @@ log "Building Capacitor plugins"
 pushd "$APP_DIR" >/dev/null
 "$BUN_BIN" scripts/plugin-build.mjs
 popd >/dev/null
+
+WHATSAPP_PLUGIN_TS_DIR="$PLUGINS_DIR/plugin-whatsapp/typescript"
+if [[ -f "$WHATSAPP_PLUGIN_TS_DIR/package.json" ]]; then
+  log "Building @elizaos/plugin-whatsapp workspace artifacts"
+  pushd "$WHATSAPP_PLUGIN_TS_DIR" >/dev/null
+  "$BUN_BIN" run build
+  popd >/dev/null
+fi
 
 log "Building agent workspace"
 pushd "$AGENT_DIR" >/dev/null
