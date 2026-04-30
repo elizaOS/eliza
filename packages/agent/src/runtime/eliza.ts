@@ -21,6 +21,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 // Extracted modules — re-exported for backward compatibility
 // ---------------------------------------------------------------------------
 import { runFirstTimeSetup } from "./first-time-setup.js";
+import { resolveConfigEnvForProcess } from "./operations/vault-bridge.js";
 import { resolvePlugins } from "./plugin-resolver.js";
 import {
   CUSTOM_PLUGINS_DIRNAME as CUSTOM_RUNTIME_PLUGINS_DIRNAME,
@@ -2961,7 +2962,53 @@ export async function startEliza(
   // 2d. Propagate database config into process.env for plugin-sql
   applyDatabaseConfigToEnv(config);
 
-  // 2e. Propagate arbitrary env vars from config.env into process.env.
+  // 2e. Boot-time vault hydration. Migrate plaintext sensitive values from
+  // milady.json + config.env + sensitive process.env keys into the OS-keychain
+  // vault, then resolve any vault://KEY sentinels in `config.env` so the
+  // legacy hydration loop below sees real values.
+  {
+    const { runVaultBootstrap } = await import(
+      "@elizaos/app-core/services/vault-bootstrap"
+    );
+    const { sharedVault } = await import(
+      "@elizaos/app-core/services/vault-mirror"
+    );
+    const bootResult = await runVaultBootstrap();
+    logger.info(
+      `[vault-bootstrap] migrated=${bootResult.migrated} already-hydrated=${bootResult.alreadyHydrated} failed=${bootResult.failed.length}`,
+    );
+
+    const { resolved, missing } = await resolveConfigEnvForProcess(
+      config.env as Record<string, unknown> | undefined,
+      sharedVault(),
+    );
+    if (missing.length > 0) {
+      logger.warn(
+        `[vault-bootstrap] sentinel(s) without vault entry: ${missing.join(", ")}`,
+      );
+    }
+    if (
+      config.env &&
+      typeof config.env === "object" &&
+      !Array.isArray(config.env)
+    ) {
+      for (const [key, value] of Object.entries(resolved)) {
+        (config.env as Record<string, unknown>)[key] = value;
+      }
+    }
+    const varsBag = (config.env as Record<string, unknown> | undefined)?.vars;
+    if (varsBag && typeof varsBag === "object" && !Array.isArray(varsBag)) {
+      const varsResult = await resolveConfigEnvForProcess(
+        varsBag as Record<string, unknown>,
+        sharedVault(),
+      );
+      for (const [key, value] of Object.entries(varsResult.resolved)) {
+        (varsBag as Record<string, unknown>)[key] = value;
+      }
+    }
+  }
+
+  // 2f. Propagate arbitrary env vars from config.env into process.env.
   // Eliza stores user-defined env vars (plugin settings, API URLs, etc.)
   // in config.env; elizaOS plugins read them via process.env / getSetting.
   // Skip ELIZAOS_CLOUD_* — applyCloudConfigToEnv() owns those; otherwise a
