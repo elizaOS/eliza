@@ -8,11 +8,13 @@ import type {
 } from "@elizaos/plugin-browser-bridge/contracts";
 import {
   Button,
+  ConfirmDialog,
   Input,
   SidebarCollapsedActionButton,
   SidebarContent,
   SidebarPanel,
   SidebarScrollRegion,
+  useConfirm,
   useIntervalWhenDocumentVisible,
   WorkspaceLayout,
 } from "@elizaos/ui";
@@ -971,6 +973,98 @@ export function BrowserWorkspaceView(): JSX.Element {
     [loadBrowserWalletState],
   );
 
+  // ── Vault autofill ────────────────────────────────────────────────
+  // The in-tab preload sends `__elizaVaultAutofillRequest` whenever it
+  // detects a login form. We resolve credentials from the vault via the
+  // app API, prompt the user once per domain (unless they have flagged
+  // the domain as auto-allow), then reply with the field values to fill.
+  // No silent autofill: every reply that carries fields requires explicit
+  // user consent, either at request time or via a previously stored
+  // `creds.<domain>.:autoallow` entry.
+  const { confirm: vaultAutofillConfirm, modalProps: vaultAutofillModalProps } =
+    useConfirm();
+
+  const handleTabVaultAutofillRequest = useCallback(
+    async (req: {
+      tabId: string;
+      requestId: number;
+      domain: string;
+      url: string;
+      fieldHints: ReadonlyArray<{
+        kind: "username" | "password";
+        selector: string;
+      }>;
+    }): Promise<void> => {
+      const tag = electrobunWebviewRefs.current.get(req.tabId);
+      const reply = (payload: {
+        fields?: Record<string, string>;
+        error?: string;
+      }): void => {
+        if (!tag) return;
+        tag.executeJavascript(
+          `window.__elizaVaultReply(${JSON.stringify(req.requestId)}, ${JSON.stringify(payload)})`,
+        );
+      };
+
+      const userHint = req.fieldHints.find((h) => h.kind === "username");
+      const passwordHint = req.fieldHints.find((h) => h.kind === "password");
+      if (!passwordHint) {
+        // No password slot — nothing to autofill.
+        reply({ fields: {} });
+        return;
+      }
+
+      try {
+        const summaries = await client.listSavedLogins(req.domain);
+        if (summaries.length === 0) {
+          reply({ fields: {} });
+          return;
+        }
+
+        // Pick the most-recently-modified entry. Multi-account selection
+        // is a future UI improvement — at first save time only one entry
+        // typically exists per domain.
+        const sorted = [...summaries].sort(
+          (a, b) => b.lastModified - a.lastModified,
+        );
+        const chosen = sorted[0];
+        if (!chosen) {
+          reply({ fields: {} });
+          return;
+        }
+
+        const allowed = await client.getAutofillAllowed(req.domain);
+        const consented =
+          allowed ||
+          (await vaultAutofillConfirm({
+            title: `Autofill ${req.domain}`,
+            message: `Sign in as ${chosen.username}?\n\nMilady will fill the saved username and password for this site.`,
+            confirmLabel: "Allow",
+            cancelLabel: "Deny",
+          }));
+        if (!consented) {
+          reply({ fields: {} });
+          return;
+        }
+
+        const login = await client.getSavedLogin(req.domain, chosen.username);
+        if (!login) {
+          reply({ fields: {} });
+          return;
+        }
+
+        const fields: Record<string, string> = {};
+        if (userHint) fields[userHint.selector] = login.username;
+        fields[passwordHint.selector] = login.password;
+        reply({ fields });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        reply({ error: message });
+      }
+    },
+    [vaultAutofillConfirm],
+  );
+
   const handleTabHostMessage = useCallback(
     (event: CustomEvent) => {
       const detail = event.detail as
@@ -983,6 +1077,12 @@ export function BrowserWorkspaceView(): JSX.Element {
             protocol?: "evm" | "solana";
             method?: string;
             params?: unknown;
+            domain?: string;
+            url?: string;
+            fieldHints?: Array<{
+              kind?: string;
+              selector?: string;
+            }>;
           }
         | null
         | undefined;
@@ -1024,9 +1124,47 @@ export function BrowserWorkspaceView(): JSX.Element {
           method: detail.method,
           params: detail.params,
         });
+        return;
+      }
+
+      if (
+        detail.type === "__elizaVaultAutofillRequest" &&
+        typeof detail.requestId === "number" &&
+        typeof detail.domain === "string" &&
+        typeof detail.url === "string" &&
+        Array.isArray(detail.fieldHints)
+      ) {
+        const tag =
+          (event.currentTarget as unknown as WebviewTagElement | null) ?? null;
+        const tabId =
+          [...electrobunWebviewRefs.current.entries()].find(
+            ([, el]) => el === tag,
+          )?.[0] ?? null;
+        if (!tabId) return;
+        const fieldHints: Array<{
+          kind: "username" | "password";
+          selector: string;
+        }> = [];
+        for (const hint of detail.fieldHints) {
+          if (
+            hint &&
+            (hint.kind === "username" || hint.kind === "password") &&
+            typeof hint.selector === "string" &&
+            hint.selector.length > 0
+          ) {
+            fieldHints.push({ kind: hint.kind, selector: hint.selector });
+          }
+        }
+        void handleTabVaultAutofillRequest({
+          tabId,
+          requestId: detail.requestId,
+          domain: detail.domain,
+          url: detail.url,
+          fieldHints,
+        });
       }
     },
-    [handleTabWalletRequest],
+    [handleTabWalletRequest, handleTabVaultAutofillRequest],
   );
 
   const registerBrowserWorkspaceElectrobunWebview = useCallback(
@@ -2282,11 +2420,14 @@ export function BrowserWorkspaceView(): JSX.Element {
   );
 
   return (
-    <AppWorkspaceChrome
-      testId="browser-workspace-view"
-      main={mainNode}
-      chatScope="page-browser"
-      pageScopedChatPaneProps={browserPageScopedChatPaneProps}
-    />
+    <>
+      <AppWorkspaceChrome
+        testId="browser-workspace-view"
+        main={mainNode}
+        chatScope="page-browser"
+        pageScopedChatPaneProps={browserPageScopedChatPaneProps}
+      />
+      <ConfirmDialog {...vaultAutofillModalProps} />
+    </>
   );
 }

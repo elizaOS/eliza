@@ -1,8 +1,14 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { BackendRow } from "./SecretsManagerSection";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { BackendRow, SavedLoginsPanel } from "./SecretsManagerSection";
 
 afterEach(cleanup);
 
@@ -158,5 +164,126 @@ describe("BackendRow — three external states", () => {
     // The master password input is type=password.
     const pwd = screen.getByLabelText(/Master password/i);
     expect((pwd as HTMLInputElement).type).toBe("password");
+  });
+});
+
+describe("SavedLoginsPanel", () => {
+  type FetchMock = ReturnType<typeof vi.fn>;
+  let originalFetch: typeof globalThis.fetch | undefined;
+  let fetchMock: FetchMock;
+
+  function jsonResponse(status: number, body: unknown): Response {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    fetchMock = vi.fn();
+    globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
+  });
+
+  afterEach(() => {
+    if (originalFetch) globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  it("renders the empty state when no logins are saved", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, { ok: true, logins: [] }),
+    );
+    render(<SavedLoginsPanel />);
+    await waitFor(() => {
+      expect(screen.getByTestId("saved-logins-empty")).toBeTruthy();
+    });
+    expect(screen.queryByTestId("saved-logins-list")).toBeNull();
+  });
+
+  it("renders the list of saved logins with relative timestamps", async () => {
+    const now = Date.now();
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, {
+        ok: true,
+        logins: [
+          {
+            domain: "github.com",
+            username: "alice",
+            lastModified: now - 60_000,
+          },
+          {
+            domain: "gitlab.com",
+            username: "bob",
+            lastModified: now - 3_600_000,
+          },
+        ],
+      }),
+    );
+    render(<SavedLoginsPanel />);
+    await waitFor(() => {
+      expect(screen.getByTestId("saved-logins-list")).toBeTruthy();
+    });
+    expect(screen.getByText("github.com")).toBeTruthy();
+    expect(screen.getByText("gitlab.com")).toBeTruthy();
+    expect(screen.getByText(/alice ·/)).toBeTruthy();
+    expect(screen.getByText(/bob ·/)).toBeTruthy();
+  });
+
+  it("submits the add form and refreshes the list", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true, logins: [] }))
+      .mockResolvedValueOnce(jsonResponse(200, { ok: true }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          ok: true,
+          logins: [
+            {
+              domain: "github.com",
+              username: "alice",
+              lastModified: Date.now(),
+            },
+          ],
+        }),
+      );
+
+    render(<SavedLoginsPanel />);
+    await waitFor(() => {
+      expect(screen.getByTestId("saved-logins-empty")).toBeTruthy();
+    });
+
+    const addBtn = screen.getByRole("button", { name: /Add login/i });
+    fireEvent.click(addBtn);
+    expect(screen.getByTestId("saved-logins-add-form")).toBeTruthy();
+
+    fireEvent.change(screen.getByPlaceholderText("github.com"), {
+      target: { value: "github.com" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("alice@example.com"), {
+      target: { value: "alice" },
+    });
+    // The password Input is the only `type=password` field in the panel.
+    const form = screen.getByTestId("saved-logins-add-form");
+    const pwd = form.querySelector(
+      'input[type="password"]',
+    ) as HTMLInputElement;
+    fireEvent.change(pwd, { target: { value: "hunter2" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /^Save$/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText("github.com")).toBeTruthy();
+    });
+    // First call: initial GET. Second: POST. Third: refresh GET.
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const postCall = fetchMock.mock.calls[1];
+    expect(postCall?.[0]).toBe("/api/secrets/logins");
+    expect((postCall?.[1] as RequestInit | undefined)?.method).toBe("POST");
+    const body = JSON.parse(
+      String((postCall?.[1] as RequestInit | undefined)?.body ?? "{}"),
+    ) as { domain: string; username: string; password: string };
+    expect(body.domain).toBe("github.com");
+    expect(body.username).toBe("alice");
+    expect(body.password).toBe("hunter2");
   });
 });

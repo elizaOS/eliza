@@ -740,6 +740,205 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
     window.addEventListener("eip6963:requestProvider", announceEthereum);
     setTimeout(announceEthereum, 0);
   }
+
+  // ── Vault autofill shim ─────────────────────────────────────────────
+  // Detect login forms on each tab page, ask the host to look up saved
+  // credentials for the current domain, and (with user consent) fill the
+  // username/password inputs. Mirrors the wallet shim's request/reply
+  // pattern: tab→host via __electrobunSendToHost; host→tab via
+  // tag.executeJavascript("window.__elizaVaultReply(...)").
+  //
+  // The host (BrowserWorkspaceView) is responsible for showing a consent
+  // prompt before returning credentials. The tab never autofills without
+  // a host response carrying explicit field values.
+  if (typeof window !== "undefined" && !window.__elizaVaultInstalled) {
+    window.__elizaVaultInstalled = true;
+
+    const vaultPending = new Map();
+    let nextVaultReq = 1;
+
+    window.__elizaVaultReply = (requestId, payload) => {
+      const entry = vaultPending.get(requestId);
+      if (!entry) return;
+      vaultPending.delete(requestId);
+      try {
+        if (payload && typeof payload === "object" && payload.error) {
+          entry.reject(new Error(String(payload.error)));
+          return;
+        }
+        entry.resolve(payload && typeof payload === "object" ? payload : null);
+      } catch (_e) {
+        // Listener errors must not bubble up into the tab page.
+      }
+    };
+
+    function cssSelectorFor(el) {
+      if (!el || el.nodeType !== 1) return null;
+      if (el.id) {
+        // Document.querySelector('#…') only works when the id is a valid
+        // selector token. For complex ids fall through to the structural
+        // path so we never produce an unparsable selector.
+        if (/^[A-Za-z][A-Za-z0-9_-]*$/.test(el.id)) {
+          return "#" + el.id;
+        }
+      }
+      const parts = [];
+      let node = el;
+      let depth = 0;
+      while (node && node.nodeType === 1 && depth < 6) {
+        let part = node.tagName.toLowerCase();
+        const parent = node.parentElement;
+        if (parent) {
+          const sameTag = Array.from(parent.children).filter(
+            (c) => c.tagName === node.tagName,
+          );
+          if (sameTag.length > 1) {
+            const idx = sameTag.indexOf(node) + 1;
+            part += ":nth-of-type(" + idx + ")";
+          }
+        }
+        parts.unshift(part);
+        if (parent === document.body || !parent) break;
+        node = parent;
+        depth += 1;
+      }
+      return parts.join(" > ");
+    }
+
+    function findPrecedingTextInput(passwordInput) {
+      // Walk previous form-field siblings/ancestors looking for a text
+      // or email input that's likely the username.
+      const root = passwordInput.form || document.body;
+      const candidates = root.querySelectorAll(
+        'input[type="text"], input[type="email"], input:not([type])',
+      );
+      let lastBefore = null;
+      for (const el of candidates) {
+        if (
+          el.compareDocumentPosition(passwordInput) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+        ) {
+          lastBefore = el;
+        }
+      }
+      return lastBefore;
+    }
+
+    function setNativeInputValue(input, value) {
+      // React (and other VDOM frameworks) overrides the value setter on
+      // HTMLInputElement.prototype to track changes. Calling the prototype
+      // setter directly bypasses that, then dispatching input + change
+      // events re-notifies the framework so controlled inputs see the
+      // update.
+      const proto = Object.getPrototypeOf(input);
+      const desc = Object.getOwnPropertyDescriptor(proto, "value");
+      if (desc && typeof desc.set === "function") {
+        desc.set.call(input, value);
+      } else {
+        input.value = value;
+      }
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+
+    function fillFields(fields) {
+      if (!fields || typeof fields !== "object") return;
+      for (const selector of Object.keys(fields)) {
+        const value = fields[selector];
+        if (typeof value !== "string" || value.length === 0) continue;
+        let target = null;
+        try {
+          target = document.querySelector(selector);
+        } catch (_e) {
+          target = null;
+        }
+        if (!target) continue;
+        setNativeInputValue(target, value);
+      }
+    }
+
+    const callHost = (domain, url, fieldHints) =>
+      new Promise((resolve, reject) => {
+        if (typeof window.__electrobunSendToHost !== "function") {
+          reject(
+            new Error("Vault autofill bridge unavailable: not in an Eliza tab."),
+          );
+          return;
+        }
+        const requestId = nextVaultReq++;
+        vaultPending.set(requestId, { resolve: resolve, reject: reject });
+        window.__electrobunSendToHost({
+          type: "__elizaVaultAutofillRequest",
+          requestId: requestId,
+          domain: domain,
+          url: url,
+          fieldHints: fieldHints,
+        });
+      });
+
+    function scanLoginForms() {
+      const passwords = document.querySelectorAll(
+        'input[type="password"]:not([data-eliza-vault-scanned])',
+      );
+      for (const pw of passwords) {
+        pw.setAttribute("data-eliza-vault-scanned", "1");
+        const form = pw.form;
+        const userInput =
+          (form &&
+            form.querySelector(
+              'input[type="email"], input[name*="user" i], input[name*="email" i], input[name*="login" i]',
+            )) ||
+          findPrecedingTextInput(pw);
+        const fieldHints = [];
+        const pwSelector = cssSelectorFor(pw);
+        if (userInput) {
+          const userSelector = cssSelectorFor(userInput);
+          if (userSelector) {
+            fieldHints.push({ kind: "username", selector: userSelector });
+          }
+        }
+        if (pwSelector) {
+          fieldHints.push({ kind: "password", selector: pwSelector });
+        }
+        if (fieldHints.length === 0) continue;
+        callHost(location.hostname, location.href, fieldHints)
+          .then((payload) => {
+            if (payload && payload.fields) fillFields(payload.fields);
+          })
+          .catch(() => {
+            // User denied, no match, or bridge unavailable. Leave fields
+            // alone so the user can type credentials manually.
+          });
+      }
+    }
+
+    let scanTimer = null;
+    function ensureVaultScan() {
+      if (scanTimer) clearTimeout(scanTimer);
+      scanTimer = setTimeout(() => {
+        scanTimer = null;
+        scanLoginForms();
+      }, 250);
+    }
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("pageshow", ensureVaultScan);
+    }
+    if (typeof MutationObserver === "function" && document.documentElement) {
+      const obs = new MutationObserver(ensureVaultScan);
+      obs.observe(document.documentElement, {
+        childList: true,
+        subtree: true,
+      });
+    }
+    if (document && document.readyState !== "loading") {
+      ensureVaultScan();
+    } else if (typeof document !== "undefined") {
+      document.addEventListener("DOMContentLoaded", () => ensureVaultScan(), {
+        once: true,
+      });
+    }
+  }
 })();
 `;
 
