@@ -3,10 +3,17 @@ import {
   type BackendId,
   type BackendStatus,
   createManager,
+  deleteSavedLogin,
+  getAutofillAllowed,
+  getSavedLogin,
   type InstallMethod,
+  listSavedLogins,
   type ManagerPreferences,
   resolveRunnableMethods,
+  type SavedLoginSummary,
   type SecretsManager,
+  setAutofillAllowed,
+  setSavedLogin,
 } from "@elizaos/vault";
 import {
   _resetSecretsManagerInstallerForTesting,
@@ -16,6 +23,7 @@ import {
   type SecretsManagerInstaller,
   type SigninRequest,
 } from "../services/secrets-manager-installer";
+import { sharedVault } from "../services/vault-mirror";
 import { sendJson, sendJsonError } from "./response";
 
 /**
@@ -31,6 +39,16 @@ import { sendJson, sendJsonError } from "./response";
  *
  *   POST /api/secrets/manager/signin           → run vendor signin, persist session
  *   POST /api/secrets/manager/signout          → drop persisted session
+ *
+ * Saved-login routes (in-app browser autofill):
+ *
+ *   GET    /api/secrets/logins                 → SavedLoginSummary[] (no passwords)
+ *   GET    /api/secrets/logins?domain=...      → filtered to one domain
+ *   GET    /api/secrets/logins/:domain/:user   → reveal one login (sensitive)
+ *   POST   /api/secrets/logins                 → save / replace
+ *   DELETE /api/secrets/logins/:domain/:user   → remove
+ *   GET    /api/secrets/logins/:domain/autoallow  → boolean
+ *   PUT    /api/secrets/logins/:domain/autoallow  → set boolean
  *
  * The manager wraps `@elizaos/vault` and routes sensitive writes to
  * the user's chosen password manager (1Password / Proton / Bitwarden)
@@ -79,7 +97,17 @@ export async function handleSecretsManagerRoute(
   pathname: string,
   method: string,
 ): Promise<boolean> {
-  if (!pathname.startsWith("/api/secrets/manager")) return false;
+  if (
+    !pathname.startsWith("/api/secrets/manager") &&
+    !pathname.startsWith("/api/secrets/logins")
+  ) {
+    return false;
+  }
+
+  if (pathname.startsWith("/api/secrets/logins")) {
+    return handleSavedLoginsRoute(req, res, pathname, method);
+  }
+
   const manager = getManager();
 
   if (method === "GET" && pathname === "/api/secrets/manager/backends") {
@@ -298,6 +326,145 @@ export async function handleSecretsManagerRoute(
     await installer.signOut(id);
     sendJson(res, 200, { ok: true });
     return true;
+  }
+
+  return false;
+}
+
+// ── Saved-logins (in-app browser autofill) ────────────────────────
+
+const LOGIN_PATH_RE = /^\/api\/secrets\/logins\/([^/]+)\/([^/]+)$/;
+const LOGIN_AUTOALLOW_RE = /^\/api\/secrets\/logins\/([^/]+)\/autoallow$/;
+
+async function handleSavedLoginsRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  pathname: string,
+  method: string,
+): Promise<boolean> {
+  const vault = sharedVault();
+
+  if (method === "GET" && pathname === "/api/secrets/logins") {
+    const url = new URL(req.url ?? "", "http://localhost");
+    const domain = url.searchParams.get("domain") ?? undefined;
+    const summaries = domain
+      ? await listSavedLogins(vault, domain)
+      : await listSavedLogins(vault);
+    sendJson(res, 200, {
+      ok: true,
+      logins: summaries as SavedLoginSummary[],
+    });
+    return true;
+  }
+
+  if (method === "POST" && pathname === "/api/secrets/logins") {
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(body || "{}");
+    } catch {
+      sendJsonError(res, 400, "invalid JSON body");
+      return true;
+    }
+    const p = parsed as {
+      domain?: unknown;
+      username?: unknown;
+      password?: unknown;
+      otpSeed?: unknown;
+      notes?: unknown;
+    };
+    if (typeof p.domain !== "string" || p.domain.trim().length === 0) {
+      sendJsonError(res, 400, "`domain` is required");
+      return true;
+    }
+    if (typeof p.username !== "string" || p.username.length === 0) {
+      sendJsonError(res, 400, "`username` is required");
+      return true;
+    }
+    if (typeof p.password !== "string" || p.password.length === 0) {
+      sendJsonError(res, 400, "`password` is required");
+      return true;
+    }
+    if (p.otpSeed !== undefined && typeof p.otpSeed !== "string") {
+      sendJsonError(res, 400, "`otpSeed` must be a string when provided");
+      return true;
+    }
+    if (p.notes !== undefined && typeof p.notes !== "string") {
+      sendJsonError(res, 400, "`notes` must be a string when provided");
+      return true;
+    }
+    await setSavedLogin(vault, {
+      domain: p.domain,
+      username: p.username,
+      password: p.password,
+      ...(typeof p.otpSeed === "string" ? { otpSeed: p.otpSeed } : {}),
+      ...(typeof p.notes === "string" ? { notes: p.notes } : {}),
+    });
+    sendJson(res, 200, { ok: true });
+    return true;
+  }
+
+  const autoallowMatch = pathname.match(LOGIN_AUTOALLOW_RE);
+  if (autoallowMatch) {
+    const rawDomain = autoallowMatch[1];
+    if (!rawDomain) {
+      sendJsonError(res, 400, "missing domain");
+      return true;
+    }
+    const domain = decodeURIComponent(rawDomain);
+    if (method === "GET") {
+      const allowed = await getAutofillAllowed(vault, domain);
+      sendJson(res, 200, { ok: true, allowed });
+      return true;
+    }
+    if (method === "PUT") {
+      let body = "";
+      for await (const chunk of req) body += chunk;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(body || "{}");
+      } catch {
+        sendJsonError(res, 400, "invalid JSON body");
+        return true;
+      }
+      const allowed = (parsed as { allowed?: unknown }).allowed;
+      if (typeof allowed !== "boolean") {
+        sendJsonError(res, 400, "`allowed` must be boolean");
+        return true;
+      }
+      await setAutofillAllowed(vault, domain, allowed);
+      sendJson(res, 200, { ok: true, allowed });
+      return true;
+    }
+  }
+
+  const match = pathname.match(LOGIN_PATH_RE);
+  if (match) {
+    const rawDomain = match[1];
+    const rawUser = match[2];
+    if (!rawDomain || !rawUser) {
+      sendJsonError(res, 400, "missing path segment");
+      return true;
+    }
+    const domain = decodeURIComponent(rawDomain);
+    const username = decodeURIComponent(rawUser);
+
+    if (method === "GET") {
+      const login = await getSavedLogin(vault, domain, username);
+      if (!login) {
+        sendJsonError(res, 404, "no saved login for domain/username");
+        return true;
+      }
+      sendJson(res, 200, { ok: true, login });
+      return true;
+    }
+
+    if (method === "DELETE") {
+      await deleteSavedLogin(vault, domain, username);
+      sendJson(res, 200, { ok: true });
+      return true;
+    }
   }
 
   return false;

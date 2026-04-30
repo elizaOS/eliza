@@ -20,7 +20,9 @@ import {
   Loader2,
   LogIn,
   LogOut,
+  Plus,
   RefreshCw,
+  Trash2,
 } from "lucide-react";
 import {
   type FormEvent,
@@ -430,6 +432,8 @@ export function SecretsManagerModal({
                   />
                 ))}
               </div>
+
+              <SavedLoginsPanel />
             </>
           )}
         </div>
@@ -1118,5 +1122,263 @@ export function SigninSheet({
         </Button>
       </div>
     </form>
+  );
+}
+
+// ── Saved logins panel ──────────────────────────────────────────────
+//
+// Lists logins saved for in-app browser autofill. Read-mostly — adding
+// is an inline form, deleting is a one-click row action with confirm.
+// Reveal is intentionally omitted from this UI: the autofill flow uses
+// `GET /api/secrets/logins/:domain/:user` directly, and exposing a
+// "show password" affordance here adds nothing the OS keychain doesn't
+// already do.
+
+interface SavedLoginSummary {
+  domain: string;
+  username: string;
+  lastModified: number;
+}
+
+function relativeAge(ms: number): string {
+  const elapsed = Date.now() - ms;
+  if (elapsed < 60_000) return "just now";
+  const minutes = Math.floor(elapsed / 60_000);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  const years = Math.floor(months / 12);
+  return `${years}y ago`;
+}
+
+export function SavedLoginsPanel() {
+  const [logins, setLogins] = useState<SavedLoginSummary[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [addDomain, setAddDomain] = useState("");
+  const [addUsername, setAddUsername] = useState("");
+  const [addPassword, setAddPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      const res = await fetch("/api/secrets/logins");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = (await res.json()) as { logins: SavedLoginSummary[] };
+      setLogins(json.logins);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "load failed");
+      setLogins([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const onAdd = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!addDomain.trim() || !addUsername || !addPassword) return;
+      setSubmitting(true);
+      setError(null);
+      try {
+        const res = await fetch("/api/secrets/logins", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            domain: addDomain.trim(),
+            username: addUsername,
+            password: addPassword,
+          }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        setAddDomain("");
+        setAddUsername("");
+        setAddPassword("");
+        setShowAdd(false);
+        await load();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "save failed");
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [addDomain, addUsername, addPassword, load],
+  );
+
+  const onDelete = useCallback(
+    async (login: SavedLoginSummary) => {
+      const ok = window.confirm(
+        `Delete saved login for ${login.domain} (${login.username})?`,
+      );
+      if (!ok) return;
+      setError(null);
+      try {
+        const path = `/api/secrets/logins/${encodeURIComponent(login.domain)}/${encodeURIComponent(login.username)}`;
+        const res = await fetch(path, { method: "DELETE" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        await load();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "delete failed");
+      }
+    },
+    [load],
+  );
+
+  return (
+    <section
+      data-testid="saved-logins-panel"
+      className="space-y-2 border-t border-border/30 pt-3"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-txt">Saved logins</p>
+          <p className="text-2xs text-muted">
+            Browser autofill credentials. Stored encrypted at rest.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 shrink-0 gap-1 rounded-md px-2"
+          onClick={() => setShowAdd((v) => !v)}
+        >
+          <Plus className="h-3.5 w-3.5" aria-hidden />
+          Add login
+        </Button>
+      </div>
+
+      {error && (
+        <div
+          aria-live="polite"
+          className="rounded-md border border-danger/40 bg-danger/10 px-3 py-1.5 text-xs text-danger"
+        >
+          {error}
+        </div>
+      )}
+
+      {showAdd && (
+        <form
+          onSubmit={onAdd}
+          className="space-y-2 rounded-md border border-border/50 bg-card/30 p-2"
+          data-testid="saved-logins-add-form"
+        >
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <div>
+              <Label className="text-2xs text-muted">Domain</Label>
+              <Input
+                value={addDomain}
+                onChange={(e) => setAddDomain(e.target.value)}
+                placeholder="github.com"
+                className="h-8 text-xs"
+                autoComplete="off"
+                required
+              />
+            </div>
+            <div>
+              <Label className="text-2xs text-muted">Username / email</Label>
+              <Input
+                value={addUsername}
+                onChange={(e) => setAddUsername(e.target.value)}
+                placeholder="alice@example.com"
+                className="h-8 text-xs"
+                autoComplete="off"
+                required
+              />
+            </div>
+          </div>
+          <div>
+            <Label className="text-2xs text-muted">Password</Label>
+            <Input
+              type="password"
+              value={addPassword}
+              onChange={(e) => setAddPassword(e.target.value)}
+              className="h-8 text-xs"
+              autoComplete="new-password"
+              required
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 rounded-md px-3 text-xs"
+              onClick={() => setShowAdd(false)}
+              disabled={submitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="default"
+              size="sm"
+              className="h-7 gap-1 rounded-md px-3 text-xs"
+              disabled={
+                submitting || !addDomain.trim() || !addUsername || !addPassword
+              }
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                  Saving…
+                </>
+              ) : (
+                "Save"
+              )}
+            </Button>
+          </div>
+        </form>
+      )}
+
+      {logins === null ? (
+        <div className="flex items-center gap-2 px-1 py-3 text-xs text-muted">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> Loading…
+        </div>
+      ) : logins.length === 0 ? (
+        <div
+          data-testid="saved-logins-empty"
+          className="rounded-md border border-dashed border-border/50 bg-card/20 px-3 py-3 text-center text-xs text-muted"
+        >
+          No saved logins yet. Add one to enable autofill in the in-app browser.
+        </div>
+      ) : (
+        <ul
+          data-testid="saved-logins-list"
+          className="space-y-1 rounded-md border border-border/40 bg-card/30 p-1"
+        >
+          {logins.map((login) => (
+            <li
+              key={`${login.domain}:${login.username}`}
+              className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-bg-muted/30"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-medium text-txt">
+                  {login.domain}
+                </p>
+                <p className="truncate text-2xs text-muted">
+                  {login.username} · {relativeAge(login.lastModified)}
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 shrink-0 rounded-md p-0 text-muted hover:text-danger"
+                aria-label={`Delete saved login for ${login.domain}`}
+                onClick={() => void onDelete(login)}
+              >
+                <Trash2 className="h-3.5 w-3.5" aria-hidden />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

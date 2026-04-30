@@ -78,3 +78,13 @@ export type {
   VaultLogger,
   VaultStats,
 } from "./types.js";
+
+export {
+  deleteSavedLogin,
+  getAutofillAllowed,
+  getSavedLogin,
+  listSavedLogins,
+  setAutofillAllowed,
+  setSavedLogin,
+} from "./credentials.js";
+export type { SavedLogin, SavedLoginSummary } from "./credentials.js";

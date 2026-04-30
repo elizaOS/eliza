@@ -230,6 +230,7 @@ import "./client-imessage";
 import "./client-local-inference";
 import "./client-n8n";
 import "./client-skills";
+import "./client-vault";
 import "./client-wallet";
 import "@elizaos/app-vincent/client";
 
