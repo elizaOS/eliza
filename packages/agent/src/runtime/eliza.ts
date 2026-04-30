@@ -93,7 +93,6 @@ import {
   type UUID,
 } from "@elizaos/core";
 import * as pluginAgentSkills from "@elizaos/plugin-agent-skills";
-import * as pluginAnthropic from "@elizaos/plugin-anthropic";
 import * as pluginBrowserBridge from "@elizaos/plugin-browser-bridge";
 import * as pluginLocalEmbedding from "@elizaos/plugin-local-embedding";
 import * as pluginPdf from "@elizaos/plugin-pdf";
@@ -216,6 +215,15 @@ try {
 } catch {
   pluginOllama = null;
 }
+// Keep plugin-anthropic behind a guarded runtime require too. Some published
+// alpha builds advertise dist/node/index.node.js without shipping that entry,
+// which breaks no-credential Docker startup smokes before provider selection.
+let pluginAnthropic: unknown = null;
+try {
+  pluginAnthropic = require("@elizaos/plugin-anthropic");
+} catch {
+  pluginAnthropic = null;
+}
 // Keep plugin-openai behind a guarded runtime require too. Some published
 // alpha builds advertise dist/node/index.node.js without shipping that entry,
 // which breaks CLI bootstrap and validation in published-only CI.
@@ -321,7 +329,9 @@ Object.assign(STATIC_ELIZA_PLUGINS, {
   ...(pluginCommands ? { "@elizaos/plugin-commands": pluginCommands } : {}),
   "@elizaos/plugin-pdf": pluginPdf,
   ...(pluginOpenai ? { "@elizaos/plugin-openai": pluginOpenai } : {}),
-  "@elizaos/plugin-anthropic": pluginAnthropic,
+  ...(pluginAnthropic
+    ? { "@elizaos/plugin-anthropic": pluginAnthropic }
+    : {}),
   ...(pluginOllama ? { "@elizaos/plugin-ollama": pluginOllama } : {}),
   ...(pluginElizacloud
     ? { "@elizaos/plugin-elizacloud": pluginElizacloud }
