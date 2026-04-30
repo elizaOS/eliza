@@ -570,7 +570,11 @@ function embedWindowsIcons() {
     console.log("[desktop-build] rcedit-x64.exe not found — install rcedit as a devDep to embed Windows icons");
     return;
   }
-  for (const exe of ["launcher.exe", "bun.exe"]) {
+  // Embed into all executables — CEF helper processes create the visible
+  // windows on Windows, so they need the icon too for it to show in the
+  // title bar and taskbar.
+  const exeFiles = fs.readdirSync(binDir).filter((f) => f.endsWith(".exe"));
+  for (const exe of exeFiles) {
     const exePath = path.join(binDir, exe);
     if (!fs.existsSync(exePath)) continue;
     const result = spawnSync(rceditBin, [exePath, "--set-icon", iconPath], {
