@@ -104,6 +104,8 @@ describe("agent packaged runtime dependencies", () => {
 
     expect(dockerignore).toContain("!packages/agent/node_modules/**");
     expect(dockerignore).toContain("!eliza/packages/agent/node_modules/**");
+    expect(dockerignore).toContain("!apps/app-lifeops/node_modules/**");
+    expect(dockerignore).toContain("!apps/app-steward/node_modules/**");
   });
 
   it("declares statically imported bundled plugins", () => {
@@ -118,9 +120,7 @@ describe("agent packaged runtime dependencies", () => {
       ),
     );
 
-    expect(runtimeEntry).toContain(
-      'from "@elizaos/plugin-agent-skills"',
-    );
+    expect(runtimeEntry).toContain('from "@elizaos/plugin-agent-skills"');
     expect(agentPackage.dependencies?.["@elizaos/plugin-agent-skills"]).toBe(
       "workspace:*",
     );
@@ -154,6 +154,54 @@ describe("agent packaged runtime dependencies", () => {
     );
     expect(runtimeEntry).toContain(
       'await import("@elizaos/plugin-local-embedding")',
+    );
+  });
+
+  it("keeps runtime app plugins off the agent root barrel", () => {
+    const companionPlugin = readFileSync(
+      new URL("../../../apps/app-companion/src/plugin.ts", import.meta.url),
+      "utf8",
+    );
+    const companionEmoteAction = readFileSync(
+      new URL(
+        "../../../apps/app-companion/src/actions/emote.ts",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    const appBlockerEngine = readFileSync(
+      new URL(
+        "../../../apps/app-lifeops/src/app-blocker/engine.ts",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+
+    expect(companionPlugin).toContain(
+      '"@elizaos/agent/services/app-session-gate"',
+    );
+    expect(companionEmoteAction).toContain('"@elizaos/agent/security/access"');
+    expect(appBlockerEngine).toContain('"@elizaos/capacitor-appblocker"');
+    expect(companionPlugin).not.toContain('"@elizaos/agent"');
+    expect(companionEmoteAction).not.toContain('"@elizaos/agent"');
+    expect(appBlockerEngine).not.toContain('"@elizaos/app-core"');
+  });
+
+  it("keeps agent API startup on agent-owned transaction helpers", () => {
+    const server = readFileSync(
+      new URL("../../agent/src/api/server.ts", import.meta.url),
+      "utf8",
+    );
+    const registryService = readFileSync(
+      new URL("../../agent/src/api/registry-service.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(server).toContain('from "./tx-service.js"');
+    expect(registryService).toContain('from "./tx-service.js"');
+    expect(server).not.toContain("@elizaos/app-steward/api/tx-service");
+    expect(registryService).not.toContain(
+      "@elizaos/app-steward/api/tx-service",
     );
   });
 });
