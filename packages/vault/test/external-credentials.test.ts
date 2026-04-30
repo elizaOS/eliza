@@ -64,13 +64,69 @@ describe("external-credentials — 1Password", () => {
     await fs.rm(workDir, { recursive: true, force: true });
   });
 
+  /**
+   * 1Password call helpers: every `op` invocation now starts with a
+   * `whoami` probe to detect desktop-app integration. These responders
+   * model the two paths:
+   *   - `whoamiFails` → desktop-app inactive; CLI falls back to stored session
+   *   - `whoamiOk`    → desktop-app active; no `--session=` flag is passed
+   */
+  const whoamiFails = {
+    match: (_cmd: string, args: readonly string[]) =>
+      args.length === 1 && args[0] === "whoami",
+    throws: new Error("not signed in"),
+  };
+  const whoamiOk = {
+    match: (_cmd: string, args: readonly string[]) =>
+      args.length === 1 && args[0] === "whoami",
+    stdout:
+      '{"user_uuid":"u","account_uuid":"a","url":"my.1password.com","email":"x@y","user_type":"REGULAR"}',
+  };
+
   it("throws BackendNotSignedInError when no session is stored", async () => {
     const calls: ExecCall[] = [];
-    const exec = fakeExec([], calls);
+    // Desktop-app probe fails (CLI not integrated), then session lookup
+    // hits the empty vault and throws.
+    const exec = fakeExec([whoamiFails], calls);
     await expect(listOnePasswordLogins(vault, exec)).rejects.toBeInstanceOf(
       BackendNotSignedInError,
     );
-    expect(calls).toHaveLength(0);
+    // Exactly one call: the desktop-app whoami probe. The session
+    // lookup happens against the vault (no exec call) and raises.
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.args).toEqual(["whoami"]);
+  });
+
+  it("uses 1Password desktop-app integration when whoami succeeds without session", async () => {
+    // No session stored. Desktop-app probe succeeds → list call must
+    // omit any `--session=...` flag.
+    const calls: ExecCall[] = [];
+    const exec = fakeExec(
+      [
+        whoamiOk,
+        {
+          match: (_cmd, args) => args.includes("list"),
+          stdout: JSON.stringify([
+            {
+              id: "abc111",
+              title: "GitHub",
+              category: "LOGIN",
+              additional_information: "alice",
+              updated_at: "2024-06-01T12:00:00Z",
+              urls: [{ href: "https://github.com" }],
+            },
+          ]),
+        },
+      ],
+      calls,
+    );
+    const out = await listOnePasswordLogins(vault, exec);
+    expect(out).toHaveLength(1);
+    const listCall = calls.find((c) => c.args.includes("list"));
+    expect(
+      listCall?.args.some((a) => a.startsWith("--session=")),
+      "desktop-app path must NOT pass --session",
+    ).toBe(false);
   });
 
   it("returns metadata for Login items, never passwords", async () => {
@@ -101,6 +157,7 @@ describe("external-credentials — 1Password", () => {
     const calls: ExecCall[] = [];
     const exec = fakeExec(
       [
+        whoamiFails,
         {
           match: (_cmd, args) => args.includes("list"),
           stdout: listJson,
@@ -142,6 +199,7 @@ describe("external-credentials — 1Password", () => {
     const calls: ExecCall[] = [];
     const exec = fakeExec(
       [
+        whoamiFails,
         {
           match: (_cmd, args) => args.includes("list"),
           stdout: JSON.stringify([
@@ -173,20 +231,28 @@ describe("external-credentials — 1Password", () => {
     await vault.set("pm.1password.session", "TOKEN-OP", { sensitive: true });
     const calls: ExecCall[] = [];
     const exec = fakeExec(
-      [{ match: (_cmd, args) => args.includes("list"), stdout: "[]" }],
+      [
+        whoamiFails,
+        { match: (_cmd, args) => args.includes("list"), stdout: "[]" },
+      ],
       calls,
     );
     const out = await listOnePasswordLogins(vault, exec);
     expect(out).toEqual([]);
     // Critically: we never invoke `op item get -` for an empty list.
-    expect(calls).toHaveLength(1);
+    // The whoami probe + the list call = 2 calls; no enrichment.
+    expect(calls).toHaveLength(2);
+    expect(calls.filter((c) => c.args.includes("get"))).toHaveLength(0);
   });
 
   it("throws on malformed JSON", async () => {
     await vault.set("pm.1password.session", "TOKEN-OP", { sensitive: true });
     const calls: ExecCall[] = [];
     const exec = fakeExec(
-      [{ match: (_cmd, args) => args.includes("list"), stdout: "not-json" }],
+      [
+        whoamiFails,
+        { match: (_cmd, args) => args.includes("list"), stdout: "not-json" },
+      ],
       calls,
     );
     await expect(listOnePasswordLogins(vault, exec)).rejects.toThrow();
@@ -208,6 +274,7 @@ describe("external-credentials — 1Password", () => {
     const calls: ExecCall[] = [];
     const exec = fakeExec(
       [
+        whoamiFails,
         {
           match: (_cmd, args) => args.includes("get") && args.includes("abc111"),
           stdout: itemJson,
@@ -228,6 +295,36 @@ describe("external-credentials — 1Password", () => {
     await expect(revealOnePasswordLogin(vault, exec, "")).rejects.toBeInstanceOf(
       TypeError,
     );
+  });
+
+  it("reveal uses desktop-app integration when whoami succeeds", async () => {
+    // No session stored.
+    const itemJson = JSON.stringify({
+      id: "abc111",
+      title: "GitHub",
+      fields: [
+        { purpose: "USERNAME", value: "alice" },
+        { purpose: "PASSWORD", value: "hunter2" },
+      ],
+    });
+    const calls: ExecCall[] = [];
+    const exec = fakeExec(
+      [
+        whoamiOk,
+        {
+          match: (_cmd, args) => args.includes("get") && args.includes("abc111"),
+          stdout: itemJson,
+        },
+      ],
+      calls,
+    );
+    const out = await revealOnePasswordLogin(vault, exec, "abc111");
+    expect(out.password).toBe("hunter2");
+    const getCall = calls.find((c) => c.args.includes("get"));
+    expect(
+      getCall?.args.some((a) => a.startsWith("--session=")),
+      "desktop-app reveal must NOT pass --session",
+    ).toBe(false);
   });
 });
 
