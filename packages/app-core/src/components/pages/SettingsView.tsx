@@ -172,11 +172,11 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
   {
     id: "secrets",
     label: "settings.sections.secrets.label",
-    defaultLabel: "Secrets storage",
+    defaultLabel: "Vault",
     icon: KeyRound,
     description: "settings.sections.secrets.desc",
     defaultDescription:
-      "Where Milady stores your API keys: locally, in 1Password, in Bitwarden, or in Proton Pass.",
+      "Backends, secrets, saved logins, and per-context routing.",
   },
   {
     id: "security",
@@ -1070,11 +1070,11 @@ export function SettingsView({
         <SettingsSection
           id="secrets"
           title={t("settings.sections.secrets.label", {
-            defaultValue: "Secrets storage",
+            defaultValue: "Vault",
           })}
           description={t("settings.sections.secrets.desc", {
             defaultValue:
-              "Where Milady stores your API keys: locally, in 1Password, in Bitwarden, or in Proton Pass.",
+              "Backends, secrets, saved logins, and per-context routing.",
           })}
           ref={registerContentItem("secrets")}
         >
