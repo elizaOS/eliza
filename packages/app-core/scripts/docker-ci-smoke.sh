@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 
 # Smoke-test the production Docker build path used by .github/workflows/build-docker.yml.
 #
@@ -29,6 +29,17 @@ VERSION=""
 log() {
   printf '[docker-ci-smoke] %s\n' "$*"
 }
+
+on_error() {
+  local status=$?
+  local line="${BASH_LINENO[0]:-0}"
+  local command="${BASH_COMMAND:-unknown}"
+  if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+    printf '::error file=packages/app-core/scripts/docker-ci-smoke.sh,line=%s::docker-ci-smoke command failed with exit code %s: %s\n' "$line" "$status" "$command" >&2
+  fi
+}
+
+trap on_error ERR
 
 fail() {
   if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
