@@ -8,6 +8,7 @@ import {
   realpathSync,
   rmSync,
   symlinkSync,
+  unlinkSync,
 } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
@@ -59,10 +60,14 @@ function relink(entryPath, targetPath) {
     }
 
     const stat = lstatSync(entryPath);
-    rmSync(entryPath, {
-      recursive: stat.isDirectory() && !stat.isSymbolicLink(),
-      force: true,
-    });
+    if (stat.isSymbolicLink()) {
+      unlinkSync(entryPath);
+    } else {
+      rmSync(entryPath, {
+        recursive: stat.isDirectory(),
+        force: true,
+      });
+    }
   }
 
   const relativeTarget = relative(entryParent, targetPath) || ".";
