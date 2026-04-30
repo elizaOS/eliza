@@ -213,6 +213,18 @@ const realResolveAlias: ModuleAlias[] = [
         ),
       },
       {
+        find: /^@elizaos\/app-training\/services\/(.*)/,
+        replacement: path.join(
+          repoRoot,
+          "eliza",
+          "apps",
+          "app-training",
+          "src",
+          "services",
+          "$1.ts",
+        ),
+      },
+      {
         find: "@elizaos/app-training/services",
         replacement: path.join(
           repoRoot,

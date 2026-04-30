@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import { EMOTE_BY_ID, EMOTE_CATALOG } from "@elizaos/app-companion/emotes";
-import { type AgentRuntime, logger, ModelType } from "@elizaos/core";
+import { type AgentRuntime, ModelType } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.js";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.js";

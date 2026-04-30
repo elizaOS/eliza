@@ -25,8 +25,6 @@ const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 
 import os from "node:os";
 import path from "node:path";
-// Discord local routes extracted to @elizaos/plugin-discord (setup-routes.ts)
-import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.js";
 // Phase 2 extraction: LifeOps routes → app-lifeops/src/routes/plugin.ts (lifeopsPlugin)
 // import { handleWalletTradeExecuteRoute } from "./wallet-trade-routes.js";
 // import {
@@ -93,7 +91,6 @@ import {
   queryAuditFeed,
   subscribeAuditFeed,
 } from "../security/audit-log.js";
-import { isLoopbackHost } from "../security/network-policy.js";
 import {
   AgentExportError,
   estimateExportSize,
@@ -180,6 +177,8 @@ import { ConnectorHealthMonitor } from "./connector-health.js";
 import { handleConnectorRoutes } from "./connector-routes.js";
 import { extractConversationMetadataFromRoom } from "./conversation-metadata.js";
 import { handleConversationRoutes } from "./conversation-routes.js";
+// Discord local routes extracted to @elizaos/plugin-discord (setup-routes.ts)
+import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.js";
 import { handleCuratedSkillsRoutes } from "./curated-skills-routes.js";
 import { handleDatabaseRoute } from "./database.js";
 import { handleDiagnosticsRoutes } from "./diagnostics-routes.js";
