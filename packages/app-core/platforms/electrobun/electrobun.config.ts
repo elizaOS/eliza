@@ -164,6 +164,7 @@ export function createElectrobunConfig(): ElectrobunConfig {
         [repoPackageJsonPath]: `${runtimeDistDir}/package.json`,
         "assets/appIcon.png": "assets/appIcon.png",
         "assets/appIcon.ico": "assets/appIcon.ico",
+        "assets/brand-config.json": "brand-config.json",
         ...(process.platform === "darwin" &&
         fs.existsSync(libMacWindowEffectsDylib)
           ? { "src/libMacWindowEffects.dylib": "libMacWindowEffects.dylib" }

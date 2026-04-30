@@ -1,0 +1,8 @@
+{
+  "appName": "Milady",
+  "appId": "com.miladyai.milady",
+  "namespace": "milady",
+  "urlScheme": "milady",
+  "configDirName": "Milady",
+  "appDescription": "Cute agents for the acceleration"
+}
