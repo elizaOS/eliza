@@ -14,6 +14,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CSRF_COOKIE_NAME, CSRF_HEADER_NAME } from "./auth/sessions";
 import { fetchWithCsrf, readCsrfTokenFromCookie } from "./csrf-client";
 
+vi.mock("../config/boot-config", () => {
+  let _config: Record<string, unknown> = {};
+  return {
+    getBootConfig: () => _config,
+    setBootConfig: (c: Record<string, unknown>) => {
+      _config = c;
+    },
+    _setTestConfig: (c: Record<string, unknown>) => {
+      _config = c;
+    },
+  };
+});
+
 // ── readCsrfTokenFromCookie ───────────────────────────────────────────────────
 
 describe("readCsrfTokenFromCookie", () => {
@@ -101,5 +114,60 @@ describe("fetchWithCsrf", () => {
     const headers = new Headers(init.headers);
     expect(headers.has(CSRF_HEADER_NAME)).toBe(false);
     expect(init.credentials).toBe("include");
+  });
+});
+
+// ── Bearer token layering ─────────────────────────────────────────────────────
+
+describe("fetchWithCsrf — bearer token", () => {
+  let fetchMock: ReturnType<typeof vi.fn<typeof fetch>>;
+  // biome-ignore lint/suspicious/noExplicitAny: test mock helper
+  let _setTestConfig: (c: any) => void;
+
+  beforeEach(async () => {
+    fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock);
+    const mod = await import("../config/boot-config");
+    _setTestConfig = (mod as Record<string, unknown>)._setTestConfig as typeof _setTestConfig;
+    _setTestConfig({});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    _setTestConfig({});
+  });
+
+  it("attaches Authorization: Bearer when apiToken is set", async () => {
+    _setTestConfig({ apiToken: "my-secret-token" });
+    await fetchWithCsrf("/api/test");
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const headers = new Headers(init.headers);
+    expect(headers.get("Authorization")).toBe("Bearer my-secret-token");
+  });
+
+  it("does not overwrite an explicit Authorization header", async () => {
+    _setTestConfig({ apiToken: "my-secret-token" });
+    await fetchWithCsrf("/api/test", {
+      headers: { Authorization: "Bearer explicit-token" },
+    });
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const headers = new Headers(init.headers);
+    expect(headers.get("Authorization")).toBe("Bearer explicit-token");
+  });
+
+  it("does not attach Authorization when apiToken is absent", async () => {
+    _setTestConfig({});
+    await fetchWithCsrf("/api/test");
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const headers = new Headers(init.headers);
+    expect(headers.has("Authorization")).toBe(false);
+  });
+
+  it("trims whitespace from apiToken", async () => {
+    _setTestConfig({ apiToken: "  spaced-token  " });
+    await fetchWithCsrf("/api/test");
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const headers = new Headers(init.headers);
+    expect(headers.get("Authorization")).toBe("Bearer spaced-token");
   });
 });
