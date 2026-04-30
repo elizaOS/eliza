@@ -180,6 +180,10 @@ log "Installing dependencies"
 node "$APP_CORE_SCRIPTS_DIR/init-submodules.mjs"
 MILADY_SKIP_LOCAL_UPSTREAMS=1 ELIZA_SKIP_LOCAL_UPSTREAMS=1 node "$APP_CORE_SCRIPTS_DIR/disable-local-eliza-workspace.mjs"
 MILADY_SKIP_LOCAL_UPSTREAMS=1 ELIZA_SKIP_LOCAL_UPSTREAMS=1 "$BUN_BIN" install --ignore-scripts --no-frozen-lockfile
+# --ignore-scripts avoids running the full repo postinstall during the package
+# install, but build tools still need their platform binaries materialized.
+node node_modules/esbuild/install.js 2>/dev/null || true
+node node_modules/bun/install.js 2>/dev/null || true
 if [[ -d "$REPO_ROOT/.eliza.ci-disabled" && ! -d "$REPO_ROOT/eliza" ]]; then
   log "Restoring eliza/ from .eliza.ci-disabled for downstream build steps"
   mv "$REPO_ROOT/.eliza.ci-disabled" "$REPO_ROOT/eliza"
