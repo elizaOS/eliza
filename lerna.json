@@ -1,5 +1,5 @@
 {
-  "version": "2.0.0-alpha.495",
+  "version": "2.0.0-alpha.496",
   "packages": [
     "packages/*"
   ],
@@ -16,7 +16,11 @@
         "release/*",
         "new-beginnings"
       ],
-      "ignoreChanges": ["**/*.md", "**/test/**", "**/__tests__/**"],
+      "ignoreChanges": [
+        "**/*.md",
+        "**/test/**",
+        "**/__tests__/**"
+      ],
       "verifyAccess": false
     },
     "version": {
