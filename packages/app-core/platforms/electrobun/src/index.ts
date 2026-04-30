@@ -836,12 +836,22 @@ async function startRendererServer(): Promise<string> {
       : (resolveApiToken(process.env) ?? "");
 
   // Inject the API base into index.html so it's available before React mounts.
+  // Two surfaces both must be set: `__ELIZA_API_BASE__` (legacy global the
+  // appClient reads) and `__ELIZA_APP_BOOT_CONFIG__.apiBase` (typed boot
+  // config the SettingsView reads). Without the second one, the same renderer
+  // loaded via a regular browser at this static-server's origin falls back to
+  // `pageOrigin` for apiBase and every /api/* call returns SPA HTML.
   function injectApiBaseIntoHtml(html: string): string {
     if (!initialApiBase) {
       return html;
     }
-    const script = `<script>window.__ELIZA_API_BASE__=${JSON.stringify(initialApiBase)};${initialApiToken ? `Object.defineProperty(window,"__ELIZA_API_TOKEN__",{value:${JSON.stringify(initialApiToken)},configurable:true,writable:true,enumerable:false});` : ""}</script>`;
-    // Inject before </head> if present, otherwise before <body>
+    const baseLiteral = JSON.stringify(initialApiBase);
+    const tokenLiteral = initialApiToken ? JSON.stringify(initialApiToken) : "";
+    const tokenInject = tokenLiteral
+      ? `Object.defineProperty(window,"__ELIZA_API_TOKEN__",{value:${tokenLiteral},configurable:true,writable:true,enumerable:false});`
+      : "";
+    const bootConfigInject = `(function(){var k=Symbol.for("elizaos.app.boot-config"),w=window,prev=w.__ELIZA_APP_BOOT_CONFIG__||(w[k]&&w[k].current)||{},next=Object.assign({},prev,{apiBase:${baseLiteral}${tokenLiteral ? `,apiToken:${tokenLiteral}` : ""}});w.__ELIZA_APP_BOOT_CONFIG__=next;w[k]={current:next};})();`;
+    const script = `<script>window.__ELIZA_API_BASE__=${baseLiteral};${tokenInject}${bootConfigInject}</script>`;
     if (html.includes("</head>")) {
       return html.replace("</head>", `${script}</head>`);
     }
