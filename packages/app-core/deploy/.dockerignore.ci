@@ -17,8 +17,12 @@
 .env.*.local
 node_modules/.cache
 packages/**/node_modules
+!packages/agent/node_modules/
+!packages/agent/node_modules/**
 apps/**/node_modules
 eliza/**/node_modules
+!eliza/packages/agent/node_modules/
+!eliza/packages/agent/node_modules/**
 eliza/packages/app-core/deploy/**/node_modules
 eliza/.turbo
 eliza/packages/rust
