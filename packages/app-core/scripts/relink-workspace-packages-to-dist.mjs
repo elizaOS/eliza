@@ -91,11 +91,16 @@ for (const packageName of packageNames) {
     );
   }
 
+  const entryPaths = new Set([getNodeModulesEntry(root, packageName)]);
   for (const baseDir of candidateBases) {
     const entryPath = getNodeModulesEntry(baseDir, packageName);
     if (!existsSync(entryPath)) {
       continue;
     }
+    entryPaths.add(entryPath);
+  }
+
+  for (const entryPath of [...entryPaths].sort()) {
     if (relink(entryPath, distDir)) {
       relinkedCount += 1;
       console.log(

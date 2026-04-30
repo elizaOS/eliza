@@ -85,6 +85,17 @@ describe("Docker runtime tsx config", () => {
 });
 
 describe("agent packaged runtime dependencies", () => {
+  it("creates the root @elizaos/agent Docker runtime alias", () => {
+    const relinker = readFileSync(
+      new URL("./relink-workspace-packages-to-dist.mjs", import.meta.url),
+      "utf8",
+    );
+
+    expect(relinker).toContain(
+      "new Set([getNodeModulesEntry(root, packageName)])",
+    );
+  });
+
   it("keeps agent package-local runtime dependencies in the Docker context", () => {
     const dockerignore = readFileSync(
       new URL("../deploy/.dockerignore.ci", import.meta.url),
