@@ -1,11 +1,11 @@
-import type { AgentRuntime, UUID } from "@elizaos/core";
-import type { ExperienceService } from "../../../typescript/src/features/advanced-capabilities/experience/service.ts";
-import {
-  type Experience,
-  type ExperienceQuery,
-  ExperienceType,
-  OutcomeType,
-} from "../../../typescript/src/features/advanced-capabilities/experience/types.ts";
+import type {
+  AgentRuntime,
+  UUID,
+  Experience,
+  ExperienceQuery,
+  ExperienceService,
+} from "@elizaos/core";
+import { ExperienceType, OutcomeType } from "@elizaos/core";
 import type { RouteRequestContext } from "./route-helpers.js";
 
 const EXPERIENCE_ROUTE_PREFIXES = [

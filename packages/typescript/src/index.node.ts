@@ -147,6 +147,16 @@ export * from "./utils/streaming";
 // Export validation utilities
 export * from "./validation";
 
+// Experience types (advanced capabilities)
+export {
+  ExperienceType,
+  OutcomeType,
+  ExperienceServiceType,
+  type Experience,
+  type ExperienceQuery,
+  type ExperienceService,
+} from "./features/advanced-capabilities/experience/types";
+
 // Node-specific exports
 export const isBrowser = false;
 export const isNode = true;
