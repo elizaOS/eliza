@@ -13,7 +13,10 @@
  *   DELETE /api/secrets/inventory/:key/profiles/:id     (drop)
  *   PUT    /api/secrets/inventory/:key/active-profile   (switch active)
  *   POST   /api/secrets/inventory/migrate-to-profiles   (opt-in promotion)
- *   GET/PUT /api/secrets/routing                        (routing rules)
+ *
+ * Routing rules live in a sibling tab (`RoutingTab`); the per-key
+ * "Routing rules for this profile →" affordance hands control back to
+ * the Vault modal via `onJumpToRouting`.
  *
  * Hard rule: revealed values never persist in component state past the
  * 10-second auto-hide window.
@@ -21,6 +24,7 @@
 
 import { Button, Input, Label } from "@elizaos/ui";
 import {
+  ArrowRight,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -36,68 +40,10 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
-
-// ── Wire types (mirror @elizaos/vault) ─────────────────────────────
-
-type VaultEntryCategory =
-  | "provider"
-  | "plugin"
-  | "wallet"
-  | "credential"
-  | "system"
-  | "session";
-
-interface VaultEntryProfile {
-  id: string;
-  label: string;
-  createdAt?: number;
-}
-
-interface VaultEntryMeta {
-  key: string;
-  category: VaultEntryCategory;
-  label: string;
-  providerId?: string;
-  hasProfiles: boolean;
-  activeProfile?: string;
-  profiles?: VaultEntryProfile[];
-  lastModified?: number;
-  lastUsed?: number;
-  kind: "secret" | "value" | "reference";
-}
-
-// Routing config wire types (mirror @elizaos/vault).
-type RoutingScopeKind = "agent" | "app" | "skill";
-
-interface RoutingScope {
-  kind: RoutingScopeKind;
-  agentId?: string;
-  appName?: string;
-  skillId?: string;
-}
-
-interface RoutingRule {
-  keyPattern: string;
-  scope: RoutingScope;
-  profileId: string;
-}
-
-interface RoutingConfig {
-  rules: RoutingRule[];
-  defaultProfile?: string;
-}
-
-interface AgentSummary {
-  id: string;
-  name: string;
-}
-
-interface InstalledApp {
-  name: string;
-  displayName?: string;
-}
+import type { VaultEntryCategory, VaultEntryMeta } from "./vault-tabs/types";
 
 const CATEGORY_LABEL: Record<VaultEntryCategory, string> = {
   provider: "Providers",
@@ -131,8 +77,55 @@ const CATEGORY_INPUT_OPTIONS: Array<{
 
 // ── Public component ───────────────────────────────────────────────
 
-export function VaultInventoryPanel() {
-  const [entries, setEntries] = useState<VaultEntryMeta[] | null>(null);
+export interface VaultInventoryPanelProps {
+  /**
+   * Pre-fetched entries owned by the parent tab. When provided, the
+   * panel skips its internal load and delegates the refresh callback
+   * upward via `onChanged`.
+   */
+  entries?: VaultEntryMeta[];
+  /**
+   * When the parent owns the data, this callback is invoked after every
+   * mutation so the modal can re-fetch and propagate the new list to
+   * sibling tabs.
+   */
+  onChanged?: () => void;
+  /**
+   * Cross-tab jump handler. When a row's "Routing rules for this
+   * profile →" button is clicked, the panel calls this with the row's
+   * key so the Vault modal can switch to the Routing tab pre-filtered.
+   */
+  onJumpToRouting?: (key: string) => void;
+  /**
+   * Optional row to focus when the panel mounts. Used by cross-tab
+   * jumps from the Routing tab. The panel scrolls the row into view
+   * and expands its profile panel, then clears the focus via
+   * `onFocusApplied`.
+   */
+  focusKey?: string | null;
+  /** Optional profile id to highlight inside the focused row. */
+  focusProfileId?: string | null;
+  /**
+   * Called after the panel has applied the focus so the parent can
+   * reset its focus state. Without this the panel would re-apply on
+   * every parent re-render.
+   */
+  onFocusApplied?: () => void;
+}
+
+export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
+  const {
+    entries: externalEntries,
+    onChanged: externalOnChanged,
+    onJumpToRouting,
+    focusKey,
+    focusProfileId,
+    onFocusApplied,
+  } = props;
+  const ownsData = externalEntries === undefined;
+  const [internalEntries, setInternalEntries] = useState<
+    VaultEntryMeta[] | null
+  >(null);
   const [error, setError] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
 
@@ -142,16 +135,26 @@ export function VaultInventoryPanel() {
       const res = await fetch("/api/secrets/inventory");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = (await res.json()) as { entries: VaultEntryMeta[] };
-      setEntries(body.entries);
+      setInternalEntries(body.entries);
     } catch (err) {
+      // Boundary translation: surface fetch / parse errors to the panel
+      // banner so the modal stays usable (other tabs can still load).
       setError(err instanceof Error ? err.message : "load failed");
-      setEntries([]);
+      setInternalEntries([]);
     }
   }, []);
 
   useEffect(() => {
+    if (!ownsData) return;
     void load();
-  }, [load]);
+  }, [load, ownsData]);
+
+  const onChanged = useCallback(() => {
+    if (externalOnChanged) externalOnChanged();
+    else void load();
+  }, [externalOnChanged, load]);
+
+  const entries = ownsData ? internalEntries : (externalEntries ?? []);
 
   const grouped = useMemo(() => {
     const buckets: Record<VaultEntryCategory, VaultEntryMeta[]> = {
@@ -167,13 +170,10 @@ export function VaultInventoryPanel() {
   }, [entries]);
 
   return (
-    <section
-      data-testid="vault-inventory-panel"
-      className="space-y-2 border-t border-border/30 pt-3"
-    >
+    <section data-testid="vault-inventory-panel" className="space-y-2 pt-1">
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-txt">Vault</p>
+          <p className="text-sm font-medium text-txt">Stored secrets</p>
           <p className="text-2xs text-muted">
             Every secret stored locally, grouped by category. Add API keys,
             wallet keys, and plugin tokens here.
@@ -206,7 +206,7 @@ export function VaultInventoryPanel() {
           onClose={() => setShowAdd(false)}
           onSaved={() => {
             setShowAdd(false);
-            void load();
+            onChanged();
           }}
         />
       )}
@@ -232,7 +232,11 @@ export function VaultInventoryPanel() {
                 key={cat}
                 category={cat}
                 entries={rows}
-                onChanged={() => void load()}
+                onChanged={onChanged}
+                onJumpToRouting={onJumpToRouting}
+                focusKey={focusKey ?? null}
+                focusProfileId={focusProfileId ?? null}
+                onFocusApplied={onFocusApplied}
               />
             );
           })}
@@ -248,10 +252,18 @@ function CategoryGroup({
   category,
   entries,
   onChanged,
+  onJumpToRouting,
+  focusKey,
+  focusProfileId,
+  onFocusApplied,
 }: {
   category: VaultEntryCategory;
   entries: VaultEntryMeta[];
   onChanged: () => void;
+  onJumpToRouting?: (key: string) => void;
+  focusKey: string | null;
+  focusProfileId: string | null;
+  onFocusApplied?: () => void;
 }) {
   return (
     <div data-testid={`vault-category-${category}`} className="space-y-1">
@@ -261,7 +273,14 @@ function CategoryGroup({
       <ul className="space-y-1 rounded-md border border-border/40 bg-card/30 p-1">
         {entries.map((entry) => (
           <li key={entry.key}>
-            <EntryRow entry={entry} onChanged={onChanged} />
+            <EntryRow
+              entry={entry}
+              onChanged={onChanged}
+              onJumpToRouting={onJumpToRouting}
+              focusKey={focusKey}
+              focusProfileId={focusProfileId}
+              onFocusApplied={onFocusApplied}
+            />
           </li>
         ))}
       </ul>
@@ -274,9 +293,17 @@ function CategoryGroup({
 function EntryRow({
   entry,
   onChanged,
+  onJumpToRouting,
+  focusKey,
+  focusProfileId,
+  onFocusApplied,
 }: {
   entry: VaultEntryMeta;
   onChanged: () => void;
+  onJumpToRouting?: (key: string) => void;
+  focusKey: string | null;
+  focusProfileId: string | null;
+  onFocusApplied?: () => void;
 }) {
   const [revealed, setRevealed] = useState<{
     value: string;
@@ -286,6 +313,24 @@ function EntryRow({
   const [revealError, setRevealError] = useState<string | null>(null);
   const [revealing, setRevealing] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const rowRef = useRef<HTMLDivElement | null>(null);
+
+  // Apply incoming focus once: expand and scroll into view.
+  useEffect(() => {
+    if (focusKey !== entry.key) return;
+    setExpanded(true);
+    // jsdom doesn't define `scrollIntoView`, so guard before calling.
+    if (rowRef.current && typeof rowRef.current.scrollIntoView === "function") {
+      rowRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    if (onFocusApplied) {
+      // Defer to allow scroll-into-view to settle visually before the
+      // parent clears the focus state and re-renders.
+      const id = window.setTimeout(onFocusApplied, 250);
+      return () => window.clearTimeout(id);
+    }
+    return undefined;
+  }, [focusKey, entry.key, onFocusApplied]);
 
   // Auto-hide the revealed value after 10 seconds.
   useEffect(() => {
@@ -297,33 +342,29 @@ function EntryRow({
   const reveal = useCallback(async () => {
     setRevealing(true);
     setRevealError(null);
-    try {
-      const res = await fetch(
-        `/api/secrets/inventory/${encodeURIComponent(entry.key)}`,
-      );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const body = (await res.json()) as {
-        value: string;
-        source: string;
-        profileId?: string;
-      };
-      setRevealed(body);
-    } catch (err) {
-      setRevealError(err instanceof Error ? err.message : "reveal failed");
-    } finally {
+    const res = await fetch(
+      `/api/secrets/inventory/${encodeURIComponent(entry.key)}`,
+    );
+    if (!res.ok) {
+      setRevealError(`HTTP ${res.status}`);
       setRevealing(false);
+      return;
     }
+    const body = (await res.json()) as {
+      value: string;
+      source: string;
+      profileId?: string;
+    };
+    setRevealed(body);
+    setRevealing(false);
   }, [entry.key]);
 
   const hide = useCallback(() => setRevealed(null), []);
 
   const copy = useCallback(async () => {
     if (!revealed) return;
-    try {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
       await navigator.clipboard.writeText(revealed.value);
-    } catch {
-      // Clipboard write can fail in non-secure contexts; we surface no
-      // alert because Reveal already succeeded — the user can see the value.
     }
   }, [revealed]);
 
@@ -342,7 +383,11 @@ function EntryRow({
   const profileCount = entry.profiles?.length ?? 0;
 
   return (
-    <div className="rounded px-2 py-1.5 hover:bg-bg-muted/30">
+    <div
+      ref={rowRef}
+      data-testid={`vault-entry-row-${entry.key}`}
+      className="rounded px-2 py-1.5 hover:bg-bg-muted/30"
+    >
       <div className="flex items-center gap-2">
         <Button
           variant="ghost"
@@ -437,7 +482,14 @@ function EntryRow({
         <p className="mt-1 text-2xs text-danger">{revealError}</p>
       )}
 
-      {expanded && <ProfilesPanel entry={entry} onChanged={onChanged} />}
+      {expanded && (
+        <ProfilesPanel
+          entry={entry}
+          onChanged={onChanged}
+          onJumpToRouting={onJumpToRouting}
+          highlightProfileId={focusKey === entry.key ? focusProfileId : null}
+        />
+      )}
     </div>
   );
 }
@@ -447,9 +499,13 @@ function EntryRow({
 function ProfilesPanel({
   entry,
   onChanged,
+  onJumpToRouting,
+  highlightProfileId,
 }: {
   entry: VaultEntryMeta;
   onChanged: () => void;
+  onJumpToRouting?: (key: string) => void;
+  highlightProfileId: string | null;
 }) {
   const [showAdd, setShowAdd] = useState(false);
   const [newId, setNewId] = useState("");
@@ -468,32 +524,28 @@ function ProfilesPanel({
       if (!newId || !newValue) return;
       setSubmitting(true);
       setErr(null);
-      try {
-        const res = await fetch(
-          `/api/secrets/inventory/${encodeURIComponent(entry.key)}/profiles`,
-          {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              id: newId,
-              label: newLabel || newId,
-              value: newValue,
-            }),
-          },
-        );
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        setNewId("");
-        setNewLabel("");
-        setNewValue("");
-        setShowAdd(false);
-        onChanged();
-      } catch (caughtErr) {
-        setErr(
-          caughtErr instanceof Error ? caughtErr.message : "save failed",
-        );
-      } finally {
-        setSubmitting(false);
+      const res = await fetch(
+        `/api/secrets/inventory/${encodeURIComponent(entry.key)}/profiles`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            id: newId,
+            label: newLabel || newId,
+            value: newValue,
+          }),
+        },
+      );
+      setSubmitting(false);
+      if (!res.ok) {
+        setErr(`HTTP ${res.status}`);
+        return;
       }
+      setNewId("");
+      setNewLabel("");
+      setNewValue("");
+      setShowAdd(false);
+      onChanged();
     },
     [entry.key, newId, newLabel, newValue, onChanged],
   );
@@ -529,24 +581,17 @@ function ProfilesPanel({
   const onMigrate = useCallback(async () => {
     setMigrating(true);
     setErr(null);
-    try {
-      const res = await fetch(
-        "/api/secrets/inventory/migrate-to-profiles",
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ key: entry.key }),
-        },
-      );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      onChanged();
-    } catch (caughtErr) {
-      setErr(
-        caughtErr instanceof Error ? caughtErr.message : "migrate failed",
-      );
-    } finally {
-      setMigrating(false);
+    const res = await fetch("/api/secrets/inventory/migrate-to-profiles", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ key: entry.key }),
+    });
+    setMigrating(false);
+    if (!res.ok) {
+      setErr(`HTTP ${res.status}`);
+      return;
     }
+    onChanged();
   }, [entry.key, onChanged]);
 
   return (
@@ -556,33 +601,47 @@ function ProfilesPanel({
     >
       <div className="flex items-center justify-between gap-2">
         <p className="text-2xs font-semibold uppercase text-muted">Profiles</p>
-        {hasProfiles ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 gap-1 rounded-md px-2 text-2xs"
-            onClick={() => setShowAdd((v) => !v)}
-            aria-label="Add profile"
-          >
-            <Plus className="h-3 w-3" aria-hidden /> Add profile
-          </Button>
-        ) : (
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-6 gap-1 rounded-md px-2 text-2xs"
-            onClick={() => void onMigrate()}
-            disabled={migrating}
-            aria-label="Enable profiles for this key"
-          >
-            {migrating ? (
-              <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
-            ) : (
-              <Plus className="h-3 w-3" aria-hidden />
-            )}
-            Enable profiles
-          </Button>
-        )}
+        <div className="flex items-center gap-1">
+          {hasProfiles && onJumpToRouting && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 gap-1 rounded-md px-2 text-2xs"
+              onClick={() => onJumpToRouting(entry.key)}
+              aria-label={`Routing rules for ${entry.label}`}
+            >
+              Routing rules for this profile
+              <ArrowRight className="h-3 w-3" aria-hidden />
+            </Button>
+          )}
+          {hasProfiles ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 gap-1 rounded-md px-2 text-2xs"
+              onClick={() => setShowAdd((v) => !v)}
+              aria-label="Add profile"
+            >
+              <Plus className="h-3 w-3" aria-hidden /> Add profile
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 gap-1 rounded-md px-2 text-2xs"
+              onClick={() => void onMigrate()}
+              disabled={migrating}
+              aria-label="Enable profiles for this key"
+            >
+              {migrating ? (
+                <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+              ) : (
+                <Plus className="h-3 w-3" aria-hidden />
+              )}
+              Enable profiles
+            </Button>
+          )}
+        </div>
       </div>
 
       {err && (
@@ -593,39 +652,44 @@ function ProfilesPanel({
 
       {hasProfiles && (
         <ul className="space-y-1">
-          {profiles.map((p) => (
-            <li
-              key={p.id}
-              className="flex items-center gap-2 rounded px-1.5 py-1 text-xs"
-            >
-              <input
-                type="radio"
-                name={`active-${entry.key}`}
-                checked={entry.activeProfile === p.id}
-                onChange={() => void onActivate(p.id)}
-                className="h-3 w-3 cursor-pointer accent-accent"
-                aria-label={`Make ${p.label} active`}
-              />
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-medium text-txt">{p.label}</p>
-                <p className="truncate font-mono text-2xs text-muted">{p.id}</p>
-              </div>
-              {entry.activeProfile === p.id && (
-                <span className="shrink-0 inline-flex items-center gap-0.5 rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-2xs font-medium text-accent">
-                  <CheckCircle2 className="h-3 w-3" aria-hidden /> Active
-                </span>
-              )}
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 w-6 shrink-0 rounded-md p-0 text-muted hover:text-danger"
-                aria-label={`Delete profile ${p.label}`}
-                onClick={() => void onDelete(p.id)}
+          {profiles.map((p) => {
+            const highlight = highlightProfileId === p.id;
+            return (
+              <li
+                key={p.id}
+                className={`flex items-center gap-2 rounded px-1.5 py-1 text-xs ${highlight ? "ring-1 ring-accent/40" : ""}`}
               >
-                <Trash2 className="h-3 w-3" aria-hidden />
-              </Button>
-            </li>
-          ))}
+                <input
+                  type="radio"
+                  name={`active-${entry.key}`}
+                  checked={entry.activeProfile === p.id}
+                  onChange={() => void onActivate(p.id)}
+                  className="h-3 w-3 cursor-pointer accent-accent"
+                  aria-label={`Make ${p.label} active`}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium text-txt">{p.label}</p>
+                  <p className="truncate font-mono text-2xs text-muted">
+                    {p.id}
+                  </p>
+                </div>
+                {entry.activeProfile === p.id && (
+                  <span className="shrink-0 inline-flex items-center gap-0.5 rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-2xs font-medium text-accent">
+                    <CheckCircle2 className="h-3 w-3" aria-hidden /> Active
+                  </span>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 shrink-0 rounded-md p-0 text-muted hover:text-danger"
+                  aria-label={`Delete profile ${p.label}`}
+                  onClick={() => void onDelete(p.id)}
+                >
+                  <Trash2 className="h-3 w-3" aria-hidden />
+                </Button>
+              </li>
+            );
+          })}
         </ul>
       )}
 
@@ -691,282 +755,6 @@ function ProfilesPanel({
           </div>
         </form>
       )}
-
-      {hasProfiles && <RoutingRulesEditor entry={entry} />}
-    </div>
-  );
-}
-
-// ── Routing rules editor ───────────────────────────────────────────
-
-function RoutingRulesEditor({ entry }: { entry: VaultEntryMeta }) {
-  const [config, setConfig] = useState<RoutingConfig | null>(null);
-  const [agents, setAgents] = useState<AgentSummary[]>([]);
-  const [apps, setApps] = useState<InstalledApp[]>([]);
-  const [showAdd, setShowAdd] = useState(false);
-  const [scopeKind, setScopeKind] = useState<RoutingScopeKind>("agent");
-  const [scopeAgentId, setScopeAgentId] = useState("");
-  const [scopeAppName, setScopeAppName] = useState("");
-  const [profileId, setProfileId] = useState("");
-  const [err, setErr] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-
-  const load = useCallback(async () => {
-    setErr(null);
-    try {
-      const [configRes, agentsRes, appsRes] = await Promise.all([
-        fetch("/api/secrets/routing"),
-        fetch("/api/agents").catch(() => null),
-        fetch("/api/apps").catch(() => null),
-      ]);
-      if (!configRes.ok) throw new Error(`HTTP ${configRes.status}`);
-      const configBody = (await configRes.json()) as { config: RoutingConfig };
-      setConfig(configBody.config);
-
-      // Agents + apps fetches are best-effort: when endpoints don't exist
-      // (e.g. headless build) we still let the user edit existing rules.
-      if (agentsRes && agentsRes.ok) {
-        const aBody = (await agentsRes.json()) as {
-          agents?: AgentSummary[];
-        };
-        setAgents(aBody.agents ?? []);
-      }
-      if (appsRes && appsRes.ok) {
-        const aBody = (await appsRes.json()) as { apps?: InstalledApp[] };
-        setApps(aBody.apps ?? []);
-      }
-    } catch (caughtErr) {
-      setErr(
-        caughtErr instanceof Error ? caughtErr.message : "load failed",
-      );
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const myRules = useMemo(
-    () => (config?.rules ?? []).filter((r) => r.keyPattern === entry.key),
-    [config, entry.key],
-  );
-
-  const saveConfig = useCallback(
-    async (next: RoutingConfig) => {
-      setSaving(true);
-      setErr(null);
-      try {
-        const res = await fetch("/api/secrets/routing", {
-          method: "PUT",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ config: next }),
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const body = (await res.json()) as { config: RoutingConfig };
-        setConfig(body.config);
-      } catch (caughtErr) {
-        setErr(
-          caughtErr instanceof Error ? caughtErr.message : "save failed",
-        );
-      } finally {
-        setSaving(false);
-      }
-    },
-    [],
-  );
-
-  const onAddRule = useCallback(
-    async (e: FormEvent<HTMLFormElement>) => {
-      e.preventDefault();
-      if (!config) return;
-      let scope: RoutingScope;
-      if (scopeKind === "agent") {
-        if (!scopeAgentId) return;
-        scope = { kind: "agent", agentId: scopeAgentId };
-      } else if (scopeKind === "app") {
-        if (!scopeAppName) return;
-        scope = { kind: "app", appName: scopeAppName };
-      } else {
-        return;
-      }
-      if (!profileId) return;
-      const newRules = [
-        ...config.rules,
-        { keyPattern: entry.key, scope, profileId },
-      ];
-      await saveConfig({ ...config, rules: newRules });
-      setShowAdd(false);
-      setScopeAgentId("");
-      setScopeAppName("");
-      setProfileId("");
-    },
-    [config, entry.key, profileId, saveConfig, scopeAgentId, scopeAppName, scopeKind],
-  );
-
-  const onDeleteRule = useCallback(
-    async (rule: RoutingRule) => {
-      if (!config) return;
-      const newRules = config.rules.filter((r) => r !== rule);
-      await saveConfig({ ...config, rules: newRules });
-    },
-    [config, saveConfig],
-  );
-
-  return (
-    <div
-      data-testid={`routing-editor-${entry.key}`}
-      className="mt-2 space-y-1 border-t border-border/40 pt-2"
-    >
-      <div className="flex items-center justify-between">
-        <p className="text-2xs font-semibold uppercase text-muted">
-          Per-context routing
-        </p>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 gap-1 rounded-md px-2 text-2xs"
-          onClick={() => setShowAdd((v) => !v)}
-          aria-label="Add routing rule"
-          disabled={saving}
-        >
-          <Plus className="h-3 w-3" aria-hidden /> Add rule
-        </Button>
-      </div>
-
-      {err && (
-        <p className="text-2xs text-danger" aria-live="polite">
-          {err}
-        </p>
-      )}
-
-      {myRules.length > 0 ? (
-        <ul className="space-y-1">
-          {myRules.map((rule, idx) => (
-            <li
-              key={`${rule.keyPattern}:${rule.scope.kind}:${rule.scope.agentId ?? rule.scope.appName ?? rule.scope.skillId}:${rule.profileId}:${idx}`}
-              className="flex items-center gap-2 rounded bg-card/30 px-2 py-1 text-2xs"
-            >
-              <span className="rounded-full border border-border/40 bg-bg/40 px-1.5 py-0.5 text-2xs text-muted">
-                {rule.scope.kind}
-              </span>
-              <span className="font-mono text-2xs text-txt">
-                {rule.scope.agentId ?? rule.scope.appName ?? rule.scope.skillId}
-              </span>
-              <span className="text-muted">→</span>
-              <span className="rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-2xs font-medium text-accent">
-                {rule.profileId}
-              </span>
-              <span className="flex-1" />
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-5 w-5 shrink-0 rounded-md p-0 text-muted hover:text-danger"
-                onClick={() => void onDeleteRule(rule)}
-                aria-label="Delete rule"
-              >
-                <Trash2 className="h-3 w-3" aria-hidden />
-              </Button>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="text-2xs text-muted">
-          No rules. Default profile applies for every caller.
-        </p>
-      )}
-
-      {showAdd && (
-        <form
-          onSubmit={onAddRule}
-          data-testid={`add-routing-rule-${entry.key}`}
-          className="mt-1 space-y-1.5 rounded-md border border-border/40 bg-card/40 p-2"
-        >
-          <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-3">
-            <div>
-              <Label className="text-2xs text-muted">Scope</Label>
-              <select
-                value={scopeKind}
-                onChange={(e) => setScopeKind(e.target.value as RoutingScopeKind)}
-                className="block h-7 w-full rounded-md border border-border bg-bg px-2 text-xs text-txt"
-              >
-                <option value="agent">Agent</option>
-                <option value="app">App</option>
-              </select>
-            </div>
-            <div>
-              <Label className="text-2xs text-muted">
-                {scopeKind === "agent" ? "Agent" : "App"}
-              </Label>
-              {scopeKind === "agent" ? (
-                <select
-                  value={scopeAgentId}
-                  onChange={(e) => setScopeAgentId(e.target.value)}
-                  className="block h-7 w-full rounded-md border border-border bg-bg px-2 text-xs text-txt"
-                  required
-                >
-                  <option value="">Select agent…</option>
-                  {agents.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <select
-                  value={scopeAppName}
-                  onChange={(e) => setScopeAppName(e.target.value)}
-                  className="block h-7 w-full rounded-md border border-border bg-bg px-2 text-xs text-txt"
-                  required
-                >
-                  <option value="">Select app…</option>
-                  {apps.map((a) => (
-                    <option key={a.name} value={a.name}>
-                      {a.displayName ?? a.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-            <div>
-              <Label className="text-2xs text-muted">Profile</Label>
-              <select
-                value={profileId}
-                onChange={(e) => setProfileId(e.target.value)}
-                className="block h-7 w-full rounded-md border border-border bg-bg px-2 text-xs text-txt"
-                required
-              >
-                <option value="">Select profile…</option>
-                {(entry.profiles ?? []).map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div className="flex justify-end gap-2 pt-1">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-6 rounded-md px-2 text-2xs"
-              onClick={() => setShowAdd(false)}
-              disabled={saving}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              variant="default"
-              size="sm"
-              className="h-6 rounded-md px-2 text-2xs"
-              disabled={saving || !profileId}
-            >
-              {saving ? "Saving…" : "Save rule"}
-            </Button>
-          </div>
-        </form>
-      )}
     </div>
   );
 }
@@ -994,29 +782,25 @@ function AddSecretForm({
       if (!key.trim() || !value) return;
       setSubmitting(true);
       setErr(null);
-      try {
-        const res = await fetch(
-          `/api/secrets/inventory/${encodeURIComponent(key.trim())}`,
-          {
-            method: "PUT",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              value,
-              ...(label.trim() ? { label: label.trim() } : {}),
-              ...(providerId.trim() ? { providerId: providerId.trim() } : {}),
-              category,
-            }),
-          },
-        );
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        onSaved();
-      } catch (caughtErr) {
-        setErr(
-          caughtErr instanceof Error ? caughtErr.message : "save failed",
-        );
-      } finally {
-        setSubmitting(false);
+      const res = await fetch(
+        `/api/secrets/inventory/${encodeURIComponent(key.trim())}`,
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            value,
+            ...(label.trim() ? { label: label.trim() } : {}),
+            ...(providerId.trim() ? { providerId: providerId.trim() } : {}),
+            category,
+          }),
+        },
+      );
+      setSubmitting(false);
+      if (!res.ok) {
+        setErr(`HTTP ${res.status}`);
+        return;
       }
+      onSaved();
     },
     [category, key, label, providerId, value, onSaved],
   );
@@ -1070,9 +854,7 @@ function AddSecretForm({
           <Label className="text-2xs text-muted">Category</Label>
           <select
             value={category}
-            onChange={(e) =>
-              setCategory(e.target.value as VaultEntryCategory)
-            }
+            onChange={(e) => setCategory(e.target.value as VaultEntryCategory)}
             className="block h-8 w-full rounded-md border border-border bg-bg px-2 text-xs text-txt"
           >
             {CATEGORY_INPUT_OPTIONS.map((opt) => (
@@ -1083,9 +865,7 @@ function AddSecretForm({
           </select>
         </div>
         <div>
-          <Label className="text-2xs text-muted">
-            Provider id (optional)
-          </Label>
+          <Label className="text-2xs text-muted">Provider id (optional)</Label>
           <Input
             value={providerId}
             onChange={(e) => setProviderId(e.target.value)}

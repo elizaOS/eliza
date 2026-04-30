@@ -1,14 +1,24 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
 } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { BackendRow, SavedLoginsPanel } from "./SecretsManagerSection";
+import {
+  dispatchSecretsManagerOpen,
+  useSecretsManagerModalState,
+} from "../../hooks/useSecretsManagerModal";
+import {
+  BackendRow,
+  SavedLoginsPanel,
+  VaultModal,
+} from "./SecretsManagerSection";
 
 afterEach(cleanup);
 
@@ -279,9 +289,7 @@ describe("SavedLoginsPanel", () => {
       jsonResponse(200, {
         ok: true,
         logins: [],
-        failures: [
-          { source: "1password", message: "session expired" },
-        ],
+        failures: [{ source: "1password", message: "session expired" }],
       }),
     );
     render(<SavedLoginsPanel />);
@@ -356,5 +364,257 @@ describe("SavedLoginsPanel", () => {
     expect(body.domain).toBe("github.com");
     expect(body.username).toBe("alice");
     expect(body.password).toBe("hunter2");
+  });
+});
+
+// ── VaultModal — tabbed shell ──────────────────────────────────────
+
+describe("VaultModal — tabs + hash sync", () => {
+  type RouteResponse = { status: number; body: unknown };
+  type RouteHandler = (req: {
+    method: string;
+    url: string;
+    body?: string;
+  }) => RouteResponse;
+  let routes: Map<string, RouteHandler>;
+
+  function fakeFetch(
+    input: RequestInfo | URL,
+    init?: RequestInit,
+  ): Promise<Response> {
+    const urlPath =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.pathname
+          : new URL(input.url).pathname;
+    const method = (init?.method ?? "GET").toUpperCase();
+    let handler: RouteHandler | undefined = routes.get(`${method} ${urlPath}`);
+    if (!handler) {
+      for (const [pattern, h] of routes.entries()) {
+        const [hMethod, hPath] = pattern.split(" ");
+        if (hMethod !== method) continue;
+        if (hPath?.endsWith("*") && urlPath.startsWith(hPath.slice(0, -1))) {
+          handler = h;
+          break;
+        }
+      }
+    }
+    if (!handler) {
+      throw new Error(`fakeFetch: no handler for ${method} ${urlPath}`);
+    }
+    const result = handler({
+      method,
+      url: urlPath,
+      body: typeof init?.body === "string" ? init.body : undefined,
+    });
+    return Promise.resolve(
+      new Response(JSON.stringify(result.body), { status: result.status }),
+    );
+  }
+
+  function setRoute(method: string, path: string, handler: RouteHandler) {
+    routes.set(`${method} ${path}`, handler);
+  }
+
+  function seedDefaultRoutes() {
+    setRoute("GET", "/api/secrets/manager/backends", () => ({
+      status: 200,
+      body: {
+        backends: [
+          {
+            id: "in-house",
+            label: "Local (encrypted)",
+            available: true,
+            signedIn: true,
+          },
+        ],
+      },
+    }));
+    setRoute("GET", "/api/secrets/manager/preferences", () => ({
+      status: 200,
+      body: { preferences: { enabled: ["in-house"] } },
+    }));
+    setRoute("GET", "/api/secrets/manager/install/methods", () => ({
+      status: 200,
+      body: { methods: { "1password": [], bitwarden: [], protonpass: [] } },
+    }));
+    setRoute("GET", "/api/secrets/inventory", () => ({
+      status: 200,
+      body: { entries: [] },
+    }));
+    setRoute("GET", "/api/secrets/routing", () => ({
+      status: 200,
+      body: { config: { rules: [] } },
+    }));
+    setRoute("GET", "/api/agents", () => ({
+      status: 200,
+      body: { agents: [] },
+    }));
+    setRoute("GET", "/api/apps", () => ({
+      status: 200,
+      body: { apps: [] },
+    }));
+    setRoute("GET", "/api/secrets/logins", () => ({
+      status: 200,
+      body: { logins: [], failures: [] },
+    }));
+  }
+
+  beforeEach(() => {
+    routes = new Map();
+    seedDefaultRoutes();
+    vi.stubGlobal("fetch", fakeFetch as typeof fetch);
+    if (typeof window !== "undefined") window.location.hash = "";
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+    if (typeof window !== "undefined") window.location.hash = "";
+  });
+
+  it("opens on Overview by default and renders all four tabs", async () => {
+    render(<VaultModal open onOpenChange={() => undefined} />);
+    await waitFor(() => {
+      expect(screen.getByTestId("vault-tab-overview")).toBeTruthy();
+    });
+    expect(screen.getByTestId("vault-tab-secrets")).toBeTruthy();
+    expect(screen.getByTestId("vault-tab-logins")).toBeTruthy();
+    expect(screen.getByTestId("vault-tab-routing")).toBeTruthy();
+    // Overview content visible.
+    await waitFor(() => {
+      expect(screen.getByText(/Local \(encrypted\)/i)).toBeTruthy();
+    });
+  });
+
+  it("syncs the URL hash on tab change", async () => {
+    const user = userEvent.setup();
+    render(<VaultModal open onOpenChange={() => undefined} />);
+    await waitFor(() => {
+      expect(screen.getByTestId("vault-tab-secrets")).toBeTruthy();
+    });
+    await user.click(screen.getByTestId("vault-tab-secrets"));
+    await waitFor(() => {
+      expect(window.location.hash).toBe("#vault/secrets");
+    });
+    await user.click(screen.getByTestId("vault-tab-routing"));
+    await waitFor(() => {
+      expect(window.location.hash).toBe("#vault/routing");
+    });
+  });
+
+  it("opens on the requested tab when dispatch carries one", async () => {
+    function Mount() {
+      // Mirror App.tsx's SecretsManagerModalRoot — forward initialTab
+      // / focus props to VaultModal so the dispatch payload survives
+      // the body's late mount.
+      const state = useSecretsManagerModalState();
+      return (
+        <VaultModal
+          open={state.isOpen}
+          onOpenChange={state.setOpen}
+          initialTab={state.initialTab}
+          initialFocusKey={state.focusKey}
+          initialFocusProfileId={state.focusProfileId}
+          onConsumeInitial={state.clearFocus}
+        />
+      );
+    }
+    render(<Mount />);
+    act(() => {
+      dispatchSecretsManagerOpen({ tab: "logins" });
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("vault-tab-logins-content")).toBeTruthy();
+    });
+    expect(window.location.hash).toBe("#vault/logins");
+  });
+
+  it("restores prior hash on close", async () => {
+    if (typeof window === "undefined") return;
+    window.location.hash = "secrets"; // settings section anchor
+    let isOpen = true;
+    const { rerender } = render(
+      <VaultModal open={isOpen} onOpenChange={(next) => (isOpen = next)} />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("vault-tab-overview")).toBeTruthy();
+    });
+    expect(window.location.hash).toBe("#vault/overview");
+    rerender(
+      <VaultModal open={false} onOpenChange={(next) => (isOpen = next)} />,
+    );
+    await waitFor(() => {
+      expect(window.location.hash).toBe("#secrets");
+    });
+  });
+
+  it("cross-jump: Secrets → Routing pre-filters the rules list on the focused key", async () => {
+    setRoute("GET", "/api/secrets/inventory", () => ({
+      status: 200,
+      body: {
+        entries: [
+          {
+            key: "OPENROUTER_API_KEY",
+            category: "provider",
+            label: "OpenRouter",
+            hasProfiles: true,
+            activeProfile: "default",
+            profiles: [
+              { id: "default", label: "Default" },
+              { id: "work", label: "Work" },
+            ],
+            kind: "secret",
+          },
+        ],
+      },
+    }));
+    setRoute("GET", "/api/secrets/routing", () => ({
+      status: 200,
+      body: {
+        config: {
+          rules: [
+            {
+              keyPattern: "OPENROUTER_API_KEY",
+              scope: { kind: "agent", agentId: "agent-A" },
+              profileId: "work",
+            },
+          ],
+        },
+      },
+    }));
+
+    const user = userEvent.setup();
+    render(<VaultModal open onOpenChange={() => undefined} />);
+    await waitFor(() => {
+      expect(screen.getByTestId("vault-tab-secrets")).toBeTruthy();
+    });
+
+    // Switch to Secrets, expand the row, click the routing-rules link.
+    await user.click(screen.getByTestId("vault-tab-secrets"));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("profile-badge-OPENROUTER_API_KEY"),
+      ).toBeTruthy();
+    });
+    await user.click(screen.getByRole("button", { name: /Expand/i }));
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Routing rules for OpenRouter/i }),
+      ).toBeTruthy();
+    });
+    await user.click(
+      screen.getByRole("button", { name: /Routing rules for OpenRouter/i }),
+    );
+
+    // Routing tab should now be active and the filter pre-set.
+    await waitFor(() => {
+      expect(screen.getByTestId("vault-tab-routing-content")).toBeTruthy();
+    });
+    const filter = screen.getByTestId(
+      "routing-rules-filter",
+    ) as HTMLInputElement;
+    expect(filter.value).toBe("OPENROUTER_API_KEY");
   });
 });
