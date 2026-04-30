@@ -107,3 +107,35 @@ export {
   setSavedLogin,
 } from "./credentials.js";
 export type { SavedLogin, SavedLoginSummary } from "./credentials.js";
+
+export {
+  categorizeKey,
+  inferProviderId,
+  listVaultInventory,
+  META_PREFIX,
+  profileStorageKey,
+  PROFILE_SEGMENT,
+  readEntryMeta,
+  removeEntryMeta,
+  ROUTING_KEY,
+  setEntryMeta,
+} from "./inventory.js";
+export type {
+  VaultEntryCategory,
+  VaultEntryMeta,
+  VaultEntryMetaRecord,
+  VaultEntryProfile,
+} from "./inventory.js";
+
+export {
+  readRoutingConfig,
+  resolveActiveValue,
+  writeRoutingConfig,
+} from "./profiles.js";
+export type {
+  ResolutionContext,
+  RoutingConfig,
+  RoutingRule,
+  RoutingScope,
+  RoutingScopeKind,
+} from "./profiles.js";
