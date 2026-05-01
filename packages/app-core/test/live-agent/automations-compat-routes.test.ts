@@ -3,73 +3,66 @@ import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CompatRuntimeState } from "../../src/api/compat-route-shared";
 
-const {
-  toWorkbenchTaskMock,
-  listTriggerTasksMock,
-  taskToTriggerSummaryMock,
-  handleN8nRoutesMock,
-} = vi.hoisted(() => ({
-  toWorkbenchTaskMock: vi.fn(),
-  listTriggerTasksMock: vi.fn(),
-  taskToTriggerSummaryMock: vi.fn(),
-  handleN8nRoutesMock: vi.fn(),
-}));
+type AutomationsCompatRoutesModule = typeof import("../../src/api/automations-compat-routes");
 
-vi.mock("@elizaos/agent/config/config", () => ({
+const toWorkbenchTaskMock = vi.fn();
+const listTriggerTasksMock = vi.fn();
+const taskToTriggerSummaryMock = vi.fn();
+const handleN8nRoutesMock = vi.fn();
+const ensureRouteAuthorizedMock = vi.fn();
+
+vi.doMock("@elizaos/agent/config/config", () => ({
   loadElizaConfig: () => ({
     ui: { assistant: { name: "Milady" } },
     agents: { defaults: { adminEntityId: "admin-entity-id" } },
   }),
 }));
 
-vi.mock("@elizaos/agent", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@elizaos/agent")>();
-  return {
-    ...actual,
-    loadElizaConfig: () => ({
-      ui: { assistant: { name: "Milady" } },
-      agents: { defaults: { adminEntityId: "admin-entity-id" } },
-    }),
-    toWorkbenchTask: (...args: unknown[]) => toWorkbenchTaskMock(...args),
-    listTriggerTasks: (...args: unknown[]) => listTriggerTasksMock(...args),
-    taskToTriggerSummary: (...args: unknown[]) =>
-      taskToTriggerSummaryMock(...args),
-  };
-});
+vi.doMock("@elizaos/agent/api/workbench-helpers", () => ({
+  WORKBENCH_TASK_TAG: "workbench-task",
+  WORKBENCH_TODO_TAG: "workbench-todo",
+  toWorkbenchTask: (...args: unknown[]) => toWorkbenchTaskMock(...args),
+}));
 
-vi.mock("@elizaos/agent/api/workbench-helpers", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@elizaos/agent/api/workbench-helpers")
-    >();
-  return {
-    ...actual,
-    toWorkbenchTask: (...args: unknown[]) => toWorkbenchTaskMock(...args),
-  };
-});
-
-vi.mock("@elizaos/agent/triggers/runtime", () => ({
+vi.doMock("@elizaos/agent/triggers/runtime", () => ({
   listTriggerTasks: (...args: unknown[]) => listTriggerTasksMock(...args),
   taskToTriggerSummary: (...args: unknown[]) =>
     taskToTriggerSummaryMock(...args),
 }));
 
-vi.mock("../../src/api/n8n-routes", () => ({
+vi.doMock("../../src/api/n8n-routes", () => ({
   handleN8nRoutes: (...args: unknown[]) => handleN8nRoutesMock(...args),
+}));
+
+vi.doMock("../../src/api/auth", () => ({
+  ensureRouteAuthorized: (...args: unknown[]) =>
+    ensureRouteAuthorizedMock(...args),
 }));
 
 import {
   clearAutomationNodeContributorsForTests,
   registerAutomationNodeContributor,
 } from "../../src/api/automation-node-contributors";
-import { handleAutomationsCompatRoutes } from "../../src/api/automations-compat-routes";
 
 interface Harness {
   baseUrl: string;
   dispose: () => Promise<void>;
 }
 
+let automationsCompatRoutesImport:
+  | Promise<AutomationsCompatRoutesModule>
+  | undefined;
+
+function importAutomationsCompatRoutes(): Promise<AutomationsCompatRoutesModule> {
+  automationsCompatRoutesImport ??= import(
+    "../../src/api/automations-compat-routes"
+  );
+  return automationsCompatRoutesImport;
+}
+
 async function startApiHarness(state: CompatRuntimeState): Promise<Harness> {
+  const { handleAutomationsCompatRoutes } =
+    await importAutomationsCompatRoutes();
   const server = http.createServer(async (req, res) => {
     try {
       const handled = await handleAutomationsCompatRoutes(req, res, state);
@@ -249,6 +242,7 @@ describe("automations compat routes", () => {
     delete process.env.POLYMARKET_PRIVATE_KEY;
 
     toWorkbenchTaskMock.mockImplementation((task) => task);
+    ensureRouteAuthorizedMock.mockResolvedValue(true);
     listTriggerTasksMock.mockResolvedValue([
       {
         id: "trigger-1",

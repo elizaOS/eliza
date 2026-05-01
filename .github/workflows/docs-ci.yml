@@ -62,7 +62,7 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
 
-          direct_prompt: |
+          prompt: |
             Check all links in the packages/docs/ directory for broken or dead links.
 
             **Instructions:**
@@ -127,7 +127,7 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
 
-          direct_prompt: |
+          prompt: |
             Check all MDX files in packages/docs/ for quality issues.
 
             **Quality Checks:**

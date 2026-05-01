@@ -257,7 +257,8 @@ describe("CharacterHubView experience tab", () => {
     renderHub();
     await screen.findAllByText(experience.learning);
 
-    fireEvent.change(screen.getByLabelText("Learning"), {
+    const learningInput = await screen.findByDisplayValue(experience.learning);
+    fireEvent.change(learningInput, {
       target: { value: updatedLearning },
     });
     fireEvent.change(screen.getByLabelText("Importance"), {

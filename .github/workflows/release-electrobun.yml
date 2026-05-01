@@ -485,6 +485,35 @@ jobs:
           cp packages/shared/src/i18n/generated/validation-keyword-data.js dist/node_modules/@elizaos/shared/src/i18n/generated/
           test -f dist/node_modules/@elizaos/shared/src/i18n/generated/validation-keyword-data.js
 
+      - name: Validate Electrobun runtime copy contract
+        env:
+          ELIZA_ELECTROBUN_REPO_ROOT: ${{ github.workspace }}
+        run: |
+          test -f dist/entry.js
+          test -f package.json
+          test -f dist/node_modules/@elizaos/agent/package.json
+          test -f dist/node_modules/@elizaos/shared/src/i18n/generated/validation-keyword-data.js
+          node --import tsx <<'NODE'
+          const path = await import("node:path");
+          const configModule = await import("./packages/app-core/platforms/electrobun/electrobun.config.ts");
+          const config = configModule.default?.default ?? configModule.default;
+          const electrobunDir = path.resolve("packages/app-core/platforms/electrobun");
+          const copyMap = config.build?.copy ?? {};
+          const runtimeSource = Object.entries(copyMap).find(
+            ([, destination]) => destination === "eliza-dist",
+          )?.[0];
+          if (!runtimeSource) {
+            throw new Error("Electrobun copy map does not include eliza-dist runtime destination");
+          }
+          const resolvedRuntimeSource = path.resolve(electrobunDir, runtimeSource);
+          const expectedRuntimeSource = path.resolve("dist");
+          if (resolvedRuntimeSource !== expectedRuntimeSource) {
+            throw new Error(
+              `Electrobun runtime source resolves to ${resolvedRuntimeSource}, expected ${expectedRuntimeSource}`,
+            );
+          }
+          NODE
+
       # Import the Developer ID certificate into a temporary keychain.
       # Requires CSC_LINK (base64-encoded .p12) + CSC_KEY_PASSWORD.
       # The signing identity string is extracted and passed to Electrobun as
@@ -723,6 +752,7 @@ jobs:
           ELIZA_ELECTROBUN_NOTARIZE: 0
           ELECTROBUN_REAL_XCRUN: /usr/bin/xcrun
           ELECTROBUN_REAL_ZIP: /usr/bin/zip
+          ELIZA_ELECTROBUN_REPO_ROOT: ${{ github.workspace }}
           # Flat release root for the updater. Env is encoded in the platform prefix
           # (canary-macos-arm64-update.json etc.), so the baseUrl has no env subdir.
           # TODO: Configure releases host on elizaOS/eliza repo settings (replace

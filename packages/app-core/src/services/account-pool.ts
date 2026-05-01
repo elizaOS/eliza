@@ -29,12 +29,12 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import type { AccountCredentialRecord } from "@elizaos/agent/auth/account-storage";
 import {
-  type AccountCredentialRecord,
   getAccessToken as getSubscriptionAccessToken,
   listProviderAccounts,
-  type SubscriptionProvider,
-} from "@elizaos/agent";
+} from "@elizaos/agent/auth/credentials";
+import type { SubscriptionProvider } from "@elizaos/agent/auth/types";
 import type {
   LinkedAccountConfig,
   LinkedAccountHealth,

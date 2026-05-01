@@ -93,8 +93,8 @@ type TsScenario = {
   finalChecks?: ScenarioFinalCheck[];
 };
 
-const REPO_ROOT = path.resolve(import.meta.dirname, "../../../..");
-const ELIZA_SCENARIO_ROOT = path.join(REPO_ROOT, "eliza", "test", "scenarios");
+const ELIZA_ROOT = path.resolve(import.meta.dirname, "../../..");
+const ELIZA_SCENARIO_ROOT = path.join(ELIZA_ROOT, "test", "scenarios");
 const CONNECTOR_SCENARIO_DIR = path.join(
   ELIZA_SCENARIO_ROOT,
   "connector-certification",
@@ -106,8 +106,7 @@ const CONNECTOR_CATALOG_PATH = path.join(
   "lifeops-connector-certification.json",
 );
 const SHARED_LIFEOPS_CONTRACT_PATH = path.join(
-  REPO_ROOT,
-  "eliza",
+  ELIZA_ROOT,
   "packages",
   "shared",
   "src",
@@ -115,8 +114,7 @@ const SHARED_LIFEOPS_CONTRACT_PATH = path.join(
   "lifeops.ts",
 );
 const SHARED_LIFEOPS_EXTENSIONS_CONTRACT_PATH = path.join(
-  REPO_ROOT,
-  "eliza",
+  ELIZA_ROOT,
   "packages",
   "shared",
   "src",
@@ -124,8 +122,7 @@ const SHARED_LIFEOPS_EXTENSIONS_CONTRACT_PATH = path.join(
   "lifeops-extensions.ts",
 );
 const SHARED_LIFEOPS_DEGRADATION_CONTRACT_PATH = path.join(
-  REPO_ROOT,
-  "eliza",
+  ELIZA_ROOT,
   "packages",
   "shared",
   "src",
