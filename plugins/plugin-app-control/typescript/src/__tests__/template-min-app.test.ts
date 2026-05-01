@@ -8,9 +8,9 @@
  * surface when a real spawned coding agent failed verification and the
  * parent retried 3 times before escalating to the user.
  *
- * The tempdir is created INSIDE the eliza workspace so bun's hoisted
- * node_modules + workspace package resolution still works for vitest /
- * tsc / @elizaos/core. Skipped if no package manager is on PATH.
+ * The tempdirs are created at the same depth as real generated apps and
+ * plugins, so template-relative tsconfig paths match production scaffolds.
+ * Skipped if no package manager is on PATH.
  */
 
 import { execFile } from "node:child_process";
@@ -40,7 +40,9 @@ const ELIZA_ROOT = path.resolve(HERE, "..", "..", "..", "..", "..");
 const APP_TEMPLATE_DIR = path.join(ELIZA_ROOT, "templates", "min-app");
 const PLUGIN_TEMPLATE_DIR = path.join(ELIZA_ROOT, "templates", "min-plugin");
 const TEST_RUN_ID = `${process.pid}-${Date.now()}-${randomUUID()}`;
-const TMP_PARENT = path.join(ELIZA_ROOT, ".test-tmp-templates", TEST_RUN_ID);
+const APP_TMP_PARENT = path.join(ELIZA_ROOT, "apps");
+const PLUGIN_TMP_PARENT = path.join(ELIZA_ROOT, "plugins");
+const TMP_DIR_PREFIX = `.test-tmp-templates-${TEST_RUN_ID}`;
 
 async function packageManagerAvailable(): Promise<boolean> {
 	for (const pm of ["bun", "pnpm", "npm"]) {
@@ -91,17 +93,22 @@ function copyTemplateAndReplace(
 
 beforeAll(() => {
 	if (skip) return;
-	mkdirSync(TMP_PARENT, { recursive: true });
+	mkdirSync(APP_TMP_PARENT, { recursive: true });
+	mkdirSync(PLUGIN_TMP_PARENT, { recursive: true });
 });
 
 afterAll(() => {
-	if (existsSync(TMP_PARENT)) {
-		rmSync(TMP_PARENT, { recursive: true, force: true });
+	for (const parent of [APP_TMP_PARENT, PLUGIN_TMP_PARENT]) {
+		for (const entry of readdirSync(parent)) {
+			if (entry.startsWith(TMP_DIR_PREFIX)) {
+				rmSync(path.join(parent, entry), { recursive: true, force: true });
+			}
+		}
 	}
 });
 
-function createScaffoldDir(prefix: string): string {
-	return mkdtempSync(path.join(TMP_PARENT, `${prefix}-`));
+function createScaffoldDir(parent: string, prefix: string): string {
+	return mkdtempSync(path.join(parent, `${TMP_DIR_PREFIX}-${prefix}-`));
 }
 
 describe.skipIf(skip)(
@@ -133,7 +140,7 @@ describe.skipIf(skip)(
 		// typecheck+lint, run with `--testNamePattern` and a custom checks
 		// override locally.
 		it("scaffolds + typechecks + lints + tests clean", async () => {
-			const scaffoldDir = createScaffoldDir("min-app");
+			const scaffoldDir = createScaffoldDir(APP_TMP_PARENT, "min-app");
 
 			try {
 				copyTemplateAndReplace(APP_TEMPLATE_DIR, scaffoldDir, {
@@ -203,7 +210,7 @@ describe.skipIf(skip)(
 		});
 
 		it("scaffolds + typechecks + lints + tests clean", async () => {
-			const scaffoldDir = createScaffoldDir("min-plugin");
+			const scaffoldDir = createScaffoldDir(PLUGIN_TMP_PARENT, "min-plugin");
 
 			try {
 				copyTemplateAndReplace(PLUGIN_TEMPLATE_DIR, scaffoldDir, {
