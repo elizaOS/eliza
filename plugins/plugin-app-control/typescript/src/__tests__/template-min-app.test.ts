@@ -14,6 +14,7 @@
  */
 
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import {
 	cpSync,
 	existsSync,
@@ -28,15 +29,7 @@ import {
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import {
-	afterAll,
-	afterEach,
-	beforeAll,
-	beforeEach,
-	describe,
-	expect,
-	it,
-} from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AppVerificationService } from "../services/app-verification.js";
 
 const execFileAsync = promisify(execFile);
@@ -46,7 +39,8 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ELIZA_ROOT = path.resolve(HERE, "..", "..", "..", "..", "..");
 const APP_TEMPLATE_DIR = path.join(ELIZA_ROOT, "templates", "min-app");
 const PLUGIN_TEMPLATE_DIR = path.join(ELIZA_ROOT, "templates", "min-plugin");
-const TMP_PARENT = path.join(ELIZA_ROOT, ".test-tmp-templates");
+const TEST_RUN_ID = `${process.pid}-${Date.now()}-${randomUUID()}`;
+const TMP_PARENT = path.join(ELIZA_ROOT, ".test-tmp-templates", TEST_RUN_ID);
 
 async function packageManagerAvailable(): Promise<boolean> {
 	for (const pm of ["bun", "pnpm", "npm"]) {
@@ -95,8 +89,6 @@ function copyTemplateAndReplace(
 	}
 }
 
-let scaffoldDir: string;
-
 beforeAll(() => {
 	if (skip) return;
 	mkdirSync(TMP_PARENT, { recursive: true });
@@ -108,16 +100,9 @@ afterAll(() => {
 	}
 });
 
-beforeEach(() => {
-	if (skip) return;
-	scaffoldDir = mkdtempSync(path.join(TMP_PARENT, "tpl-"));
-});
-
-afterEach(() => {
-	if (scaffoldDir && existsSync(scaffoldDir)) {
-		rmSync(scaffoldDir, { recursive: true, force: true });
-	}
-});
+function createScaffoldDir(prefix: string): string {
+	return mkdtempSync(path.join(TMP_PARENT, `${prefix}-`));
+}
 
 describe.skipIf(skip)(
 	"templates/min-app — scaffolds into a verifiable workspace",
@@ -148,42 +133,48 @@ describe.skipIf(skip)(
 		// typecheck+lint, run with `--testNamePattern` and a custom checks
 		// override locally.
 		it("scaffolds + typechecks + lints + tests clean", async () => {
-			copyTemplateAndReplace(APP_TEMPLATE_DIR, scaffoldDir, {
-				__APP_NAME__: "scaffold-validation-app",
-				__APP_DISPLAY_NAME__: "Scaffold Validation App",
-			});
+			const scaffoldDir = createScaffoldDir("min-app");
 
-			const pkgRaw = readFileSync(
-				path.join(scaffoldDir, "package.json"),
-				"utf8",
-			);
-			expect(pkgRaw).not.toContain("__APP_NAME__");
-			expect(pkgRaw).toContain("scaffold-validation-app");
+			try {
+				copyTemplateAndReplace(APP_TEMPLATE_DIR, scaffoldDir, {
+					__APP_NAME__: "scaffold-validation-app",
+					__APP_DISPLAY_NAME__: "Scaffold Validation App",
+				});
 
-			const result = await service.verifyApp({
-				workdir: scaffoldDir,
-				appName: "scaffold-validation-app",
-				checks: [{ kind: "typecheck" }, { kind: "lint" }, { kind: "test" }],
-				runId: "template-min-app-with-tests",
-			});
-
-			if (result.verdict !== "pass") {
-				const summary = result.checks
-					.map(
-						(c) =>
-							`  - ${c.kind}: ${c.passed ? "pass" : "FAIL"} (${c.durationMs}ms)`,
-					)
-					.join("\n");
-				throw new Error(
-					`min-app template failed verification.\nChecks:\n${summary}\n\nRetryable prompt:\n${result.retryablePromptForChild}`,
+				const pkgRaw = readFileSync(
+					path.join(scaffoldDir, "package.json"),
+					"utf8",
 				);
+				expect(pkgRaw).not.toContain("__APP_NAME__");
+				expect(pkgRaw).toContain("scaffold-validation-app");
+
+				const result = await service.verifyApp({
+					workdir: scaffoldDir,
+					appName: "scaffold-validation-app",
+					checks: [{ kind: "typecheck" }, { kind: "lint" }, { kind: "test" }],
+					runId: `template-min-app-with-tests-${TEST_RUN_ID}`,
+				});
+
+				if (result.verdict !== "pass") {
+					const summary = result.checks
+						.map(
+							(c) =>
+								`  - ${c.kind}: ${c.passed ? "pass" : "FAIL"} (${c.durationMs}ms)`,
+						)
+						.join("\n");
+					throw new Error(
+						`min-app template failed verification.\nChecks:\n${summary}\n\nRetryable prompt:\n${result.retryablePromptForChild}`,
+					);
+				}
+				expect(result.verdict).toBe("pass");
+				expect(result.checks.find((c) => c.kind === "typecheck")?.passed).toBe(
+					true,
+				);
+				expect(result.checks.find((c) => c.kind === "lint")?.passed).toBe(true);
+				expect(result.checks.find((c) => c.kind === "test")?.passed).toBe(true);
+			} finally {
+				rmSync(scaffoldDir, { recursive: true, force: true });
 			}
-			expect(result.verdict).toBe("pass");
-			expect(result.checks.find((c) => c.kind === "typecheck")?.passed).toBe(
-				true,
-			);
-			expect(result.checks.find((c) => c.kind === "lint")?.passed).toBe(true);
-			expect(result.checks.find((c) => c.kind === "test")?.passed).toBe(true);
 		}, 240_000);
 	},
 );
@@ -212,47 +203,53 @@ describe.skipIf(skip)(
 		});
 
 		it("scaffolds + typechecks + lints + tests clean", async () => {
-			copyTemplateAndReplace(PLUGIN_TEMPLATE_DIR, scaffoldDir, {
-				__PLUGIN_NAME__: "scaffold-validation-plugin",
-				__PLUGIN_DISPLAY_NAME__: "Scaffold Validation Plugin",
-			});
+			const scaffoldDir = createScaffoldDir("min-plugin");
 
-			const pkgRaw = readFileSync(
-				path.join(scaffoldDir, "package.json"),
-				"utf8",
-			);
-			expect(pkgRaw).not.toContain("__PLUGIN_NAME__");
-			expect(pkgRaw).toContain("scaffold-validation-plugin");
+			try {
+				copyTemplateAndReplace(PLUGIN_TEMPLATE_DIR, scaffoldDir, {
+					__PLUGIN_NAME__: "scaffold-validation-plugin",
+					__PLUGIN_DISPLAY_NAME__: "Scaffold Validation Plugin",
+				});
 
-			const result = await service.verifyApp({
-				workdir: scaffoldDir,
-				appName: "scaffold-validation-plugin",
-				checks: [{ kind: "typecheck" }, { kind: "lint" }, { kind: "test" }],
-				// Plugin verifyApp normally requires the agent to emit a
-				// PLUGIN_CREATE_DONE structured-proof line; for template
-				// validation we're not running an agent that emits one,
-				// so opt out.
-				requireStructuredProof: false,
-				runId: "template-min-plugin-with-tests",
-			});
-
-			if (result.verdict !== "pass") {
-				const summary = result.checks
-					.map(
-						(c) =>
-							`  - ${c.kind}: ${c.passed ? "pass" : "FAIL"} (${c.durationMs}ms)`,
-					)
-					.join("\n");
-				throw new Error(
-					`min-plugin template failed verification.\nChecks:\n${summary}\n\nRetryable prompt:\n${result.retryablePromptForChild}`,
+				const pkgRaw = readFileSync(
+					path.join(scaffoldDir, "package.json"),
+					"utf8",
 				);
+				expect(pkgRaw).not.toContain("__PLUGIN_NAME__");
+				expect(pkgRaw).toContain("scaffold-validation-plugin");
+
+				const result = await service.verifyApp({
+					workdir: scaffoldDir,
+					appName: "scaffold-validation-plugin",
+					checks: [{ kind: "typecheck" }, { kind: "lint" }, { kind: "test" }],
+					// Plugin verifyApp normally requires the agent to emit a
+					// PLUGIN_CREATE_DONE structured-proof line; for template
+					// validation we're not running an agent that emits one,
+					// so opt out.
+					requireStructuredProof: false,
+					runId: `template-min-plugin-with-tests-${TEST_RUN_ID}`,
+				});
+
+				if (result.verdict !== "pass") {
+					const summary = result.checks
+						.map(
+							(c) =>
+								`  - ${c.kind}: ${c.passed ? "pass" : "FAIL"} (${c.durationMs}ms)`,
+						)
+						.join("\n");
+					throw new Error(
+						`min-plugin template failed verification.\nChecks:\n${summary}\n\nRetryable prompt:\n${result.retryablePromptForChild}`,
+					);
+				}
+				expect(result.verdict).toBe("pass");
+				expect(result.checks.find((c) => c.kind === "typecheck")?.passed).toBe(
+					true,
+				);
+				expect(result.checks.find((c) => c.kind === "lint")?.passed).toBe(true);
+				expect(result.checks.find((c) => c.kind === "test")?.passed).toBe(true);
+			} finally {
+				rmSync(scaffoldDir, { recursive: true, force: true });
 			}
-			expect(result.verdict).toBe("pass");
-			expect(result.checks.find((c) => c.kind === "typecheck")?.passed).toBe(
-				true,
-			);
-			expect(result.checks.find((c) => c.kind === "lint")?.passed).toBe(true);
-			expect(result.checks.find((c) => c.kind === "test")?.passed).toBe(true);
 		}, 240_000);
 	},
 );
