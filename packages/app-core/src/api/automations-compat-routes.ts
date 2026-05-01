@@ -1,15 +1,21 @@
 import type http from "node:http";
 import {
-  type ConversationMetadata,
-  type ConversationScope,
   extractConversationMetadataFromRoom,
   isAutomationConversationMetadata,
-  listTriggerTasks,
+} from "@elizaos/agent/api/conversation-metadata";
+import type {
+  ConversationMetadata,
+  ConversationScope,
+} from "@elizaos/agent/api/server-types";
+import { toWorkbenchTask } from "@elizaos/agent/api/workbench-helpers";
+import {
   loadElizaConfig,
-  type TriggerSummary,
+} from "@elizaos/agent/config/config";
+import {
+  listTriggerTasks,
   taskToTriggerSummary,
-  toWorkbenchTask,
-} from "@elizaos/agent";
+} from "@elizaos/agent/triggers/runtime";
+import type { TriggerSummary } from "@elizaos/agent/triggers/types";
 import {
   type AgentRuntime,
   type Room,

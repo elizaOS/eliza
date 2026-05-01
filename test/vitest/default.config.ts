@@ -150,6 +150,10 @@ const elizaPluginAliases = workspacePluginPackageNames.flatMap(
     return aliases;
   },
 );
+const workspacePluginSourceAliases = getWorkspacePluginAliases(repoRoot, [
+  "plugin-agent-skills",
+  "plugin-browser-bridge",
+]);
 // Fall back to a stub when an optional plugin tarball has a broken entry point.
 const unresolvedPluginStubs = workspacePluginPackageNames
   .filter((name) => !resolvedPluginNames.has(name))
@@ -292,6 +296,16 @@ const vitestResolveAlias: ModuleAlias[] = [
       "index.ts",
     ),
   },
+  {
+    find: "@elizaos/scenario-schema",
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "packages",
+      "scenario-schema",
+      "index.js",
+    ),
+  },
+  ...workspacePluginSourceAliases,
   ...getOptionalPluginSdkAliases(repoRoot),
   // Keep the roles shim here so Vitest resolves it when the local eliza checkout is absent.
   {
@@ -328,7 +342,6 @@ const vitestResolveAlias: ModuleAlias[] = [
     "app-lifeops",
     "app-knowledge",
   ]),
-  ...getWorkspacePluginAliases(repoRoot, ["plugin-browser-bridge"]),
   ...getSharedSourceAliases(sharedSourceRoot, {
     includeMiladyAlias: true,
   }),
