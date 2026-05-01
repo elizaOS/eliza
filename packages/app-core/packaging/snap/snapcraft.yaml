@@ -361,7 +361,10 @@ parts:
         exec "$SNAP/node/bin/node" "$SNAP/lib/elizaos-app/elizaos-app.mjs" "$@"
       fi
 
-      exec "$SNAP/node/bin/node" "$SNAP/lib/elizaos-app/packages/agent/dist/bin.js" "$@"
+      exec "$SNAP/node/bin/node" \
+        --import "$SNAP/lib/elizaos-app/node_modules/tsx/dist/loader.mjs" \
+        "$SNAP/lib/elizaos-app/packages/agent/dist/packages/agent/src/bin.js" \
+        "$@"
       WRAPPER
       chmod +x "$CRAFT_PART_INSTALL/bin/elizaos-app-wrapper"
 

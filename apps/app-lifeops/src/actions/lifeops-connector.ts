@@ -464,9 +464,18 @@ async function dispatchXVerify(
         confirmSend: true,
       })
     : null;
+  let searchSummary = "skipped";
+  const searchItems =
+    search && "items" in search && Array.isArray(search.items)
+      ? search.items
+      : null;
+  if (query && searchItems) {
+    const hitCount = searchItems.length;
+    searchSummary = `${hitCount} hit${hitCount === 1 ? "" : "s"}`;
+  }
   return {
     success: status.connected && (!params.sendTarget || send?.ok === true),
-    text: `X verify: status=${status.connected ? "connected" : "disconnected"}, read=${inbound.length} inbound DM${inbound.length === 1 ? "" : "s"}, search=${query ? (search?.ok ? `${search.items.length} hit${search.items.length === 1 ? "" : "s"}` : "skipped") : "skipped"}, send=${send ? "ok" : "skipped"}.`,
+    text: `X verify: status=${status.connected ? "connected" : "disconnected"}, read=${inbound.length} inbound DM${inbound.length === 1 ? "" : "s"}, search=${searchSummary}, send=${send ? "ok" : "skipped"}.`,
     data: {
       actionName: ACTION_NAME,
       connector: "x",

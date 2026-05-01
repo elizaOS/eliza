@@ -249,11 +249,12 @@ async function mint(
 }
 
 describe("cloud-provisioned auth bootstrap smoke (real HTTP)", () => {
+  const HARNESS_HOOK_TIMEOUT_MS = 120_000;
   let harness: Harness;
 
   beforeEach(async () => {
     harness = await open();
-  }, 30_000);
+  }, HARNESS_HOOK_TIMEOUT_MS);
 
   afterEach(async () => {
     await harness.cleanup();

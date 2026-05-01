@@ -5,20 +5,32 @@ import type {
 } from "@elizaos/app-lifeops";
 import { describe, expect, it } from "vitest";
 import {
+  REMINDER_ACTIVITY_GATE_METADATA_KEY,
+  REMINDER_URGENCY_METADATA_KEY,
+} from "../src/lifeops/service-constants.js";
+import {
   isWithinQuietHours,
   priorityToUrgency,
 } from "../src/lifeops/service-helpers-misc.js";
 import {
+  classifyReminderOwnerResponseText,
   rankReminderEscalationChannels,
+  resolveReminderDeliveryUrgency,
   shouldDeferReminderUntilComputerActive,
 } from "../src/lifeops/service-helpers-reminder.js";
 import type { ReminderActivityProfileSnapshot } from "../src/lifeops/service-types.js";
 
 function buildDefinition(
   overrides: Partial<
-    Pick<LifeOpsTaskDefinition, "title" | "originalIntent" | "cadence">
+    Pick<
+      LifeOpsTaskDefinition,
+      "title" | "originalIntent" | "cadence" | "metadata"
+    >
   > = {},
-): Pick<LifeOpsTaskDefinition, "title" | "originalIntent" | "cadence"> {
+): Pick<
+  LifeOpsTaskDefinition,
+  "title" | "originalIntent" | "cadence" | "metadata"
+> {
   return {
     title: "Stretch",
     originalIntent: "stretch every 2 hours while I'm working",
@@ -27,6 +39,9 @@ function buildDefinition(
       everyMinutes: 120,
       windows: ["morning", "afternoon", "evening"],
       maxOccurrencesPerDay: 2,
+    },
+    metadata: {
+      [REMINDER_ACTIVITY_GATE_METADATA_KEY]: "active_on_computer",
     },
     ...overrides,
   };
@@ -56,7 +71,7 @@ function shouldDefer(
   profile: ReminderActivityProfileSnapshot | null,
   definition: Pick<
     LifeOpsTaskDefinition,
-    "title" | "originalIntent" | "cadence"
+    "title" | "originalIntent" | "cadence" | "metadata"
   >,
   urgency?: LifeOpsReminderUrgency,
 ): boolean {
@@ -117,7 +132,18 @@ describe("shouldDeferReminderUntilComputerActive", () => {
         buildDefinition({
           title: "Drink water",
           originalIntent: "drink water during the day",
+          metadata: {},
         }),
+      ),
+    ).toBe(false);
+  });
+
+  it("uses explicit activity-gate metadata rather than routine text", () => {
+    expect(
+      shouldDefer(
+        "in_app",
+        buildActivityProfile({ isCurrentlyActive: false }),
+        buildDefinition({ metadata: {} }),
       ),
     ).toBe(false);
   });
@@ -153,6 +179,41 @@ describe("rankReminderEscalationChannels", () => {
     });
 
     expect(channels).toEqual(["in_app"]);
+  });
+});
+
+describe("classifyReminderOwnerResponseText", () => {
+  it("treats explicit completion as a reminder resolution", () => {
+    expect(classifyReminderOwnerResponseText("done")).toMatchObject({
+      decision: "explicit_resolution",
+      resolution: "completed",
+    });
+  });
+
+  it("does not treat unrelated chat as acknowledgement", () => {
+    expect(classifyReminderOwnerResponseText("what time is it?")).toMatchObject(
+      {
+        decision: "unrelated",
+        resolution: null,
+      },
+    );
+  });
+});
+
+describe("resolveReminderDeliveryUrgency", () => {
+  it("keeps task priority separate from delivery urgency metadata", () => {
+    expect(
+      resolveReminderDeliveryUrgency({
+        priority: 4,
+        metadata: { [REMINDER_URGENCY_METADATA_KEY]: "high" },
+      }),
+    ).toBe("high");
+    expect(
+      resolveReminderDeliveryUrgency({
+        priority: 4,
+        metadata: {},
+      }),
+    ).toBe("low");
   });
 });
 

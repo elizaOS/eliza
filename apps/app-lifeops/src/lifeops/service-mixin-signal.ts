@@ -27,6 +27,7 @@ import {
 import {
   readSignalInboundMessages,
   readSignalLocalClientConfigFromEnv,
+  sendSignalLocalMessage,
 } from "./signal-local-client.js";
 import {
   removeSignalConnectorConfig,
@@ -151,7 +152,7 @@ function signalStatusDegradations(args: {
       axis: "delivery-degraded",
       code: "signal_send_service_unavailable",
       message:
-        "Signal is linked, but the runtime send service is not connected.",
+        "Signal is linked, but no runtime or signal-cli send path is available.",
       retryable: true,
     });
   }
@@ -380,10 +381,11 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
             deviceInfo.phoneNumber,
           );
           const signalService = getSignalService(this.runtime);
+          const localClientConfig = readSignalLocalClientConfigFromEnv();
           inboundReady =
-            signalServiceCanRead(signalService) ||
-            readSignalLocalClientConfigFromEnv() !== null;
-          sendReady = signalServiceCanSend(signalService);
+            signalServiceCanRead(signalService) || localClientConfig !== null;
+          sendReady =
+            signalServiceCanSend(signalService) || localClientConfig !== null;
           connected = inboundReady || sendReady;
           reason = connected ? "connected" : "disconnected";
           identity = {
@@ -623,11 +625,14 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
       }
 
       const signalService = getSignalService(this.runtime);
-      if (typeof signalService?.sendMessage !== "function") {
+      const localClientConfig = readSignalLocalClientConfigFromEnv();
+      if (!signalServiceCanSend(signalService) && !localClientConfig) {
         fail(503, "Signal send service is not available.");
       }
 
-      const result = await signalService.sendMessage(recipient, text);
+      const result = signalServiceCanSend(signalService)
+        ? await signalService.sendMessage(recipient, text)
+        : await sendSignalLocalMessage(localClientConfig, { recipient, text });
       if (
         typeof result.timestamp !== "number" ||
         !Number.isFinite(result.timestamp)

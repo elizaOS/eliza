@@ -19,8 +19,11 @@ import type http from "node:http";
 import os from "node:os";
 import path from "node:path";
 
+import {
+  __resetDefaultAccountPoolForTests,
+  getDefaultAccountPool,
+} from "@elizaos/app-core/services/account-pool";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-
 import {
   _registerSyntheticFlow,
   _resetFlowRegistry,
@@ -107,8 +110,7 @@ describe("handleAccountsRoutes", () => {
     _resetAccountsRoutesPoolCache();
     // Drop the pool's own module-level singleton so it picks up the
     // new ELIZA_HOME on first read.
-    const mod = await import("@elizaos/app-core/services/account-pool");
-    mod.__resetDefaultAccountPoolForTests();
+    __resetDefaultAccountPoolForTests();
   });
 
   afterEach(async () => {
@@ -122,8 +124,7 @@ describe("handleAccountsRoutes", () => {
     }
     _resetFlowRegistry();
     _resetAccountsRoutesPoolCache();
-    const mod = await import("@elizaos/app-core/services/account-pool");
-    mod.__resetDefaultAccountPoolForTests();
+    __resetDefaultAccountPoolForTests();
   });
 
   it("returns false for unrelated paths", async () => {
@@ -489,8 +490,7 @@ describe("handleAccountsRoutes", () => {
 
     // Simulate the runtime flipping the account into a rate-limited
     // cooldown — this is what `plugin-anthropic`'s 429 handler does.
-    const mod = await import("@elizaos/app-core/services/account-pool");
-    const pool = mod.getDefaultAccountPool();
+    const pool = getDefaultAccountPool();
     const untilMs = Date.now() + 5 * 60_000;
     await pool.markRateLimited(created.id, untilMs, "test");
 
@@ -634,8 +634,7 @@ describe("handleAccountsRoutes", () => {
     // include the fresh account with default priority 3, max+1=4);
     // with the fix it correctly lands at priority 3.
     const { saveAccount } = await import("../auth/account-storage.js");
-    const mod = await import("@elizaos/app-core/services/account-pool");
-    const pool = mod.getDefaultAccountPool();
+    const pool = getDefaultAccountPool();
 
     const newAccountId = crypto.randomUUID();
     saveAccount({

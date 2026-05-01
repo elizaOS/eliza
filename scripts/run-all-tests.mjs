@@ -18,6 +18,15 @@ const NO_TEST_OUTPUT_PATTERNS = [
   /No test files found/i,
   /No tests found/i,
 ];
+const TEST_FILE_PATTERN = /\.(?:test|spec)\.[cm]?[tj]sx?$/;
+const TEST_FILE_SKIP_DIRS = new Set([
+  ".git",
+  ".turbo",
+  "coverage",
+  "dist",
+  "node_modules",
+  "target",
+]);
 const MAX_CAPTURED_OUTPUT_CHARS = 16_000;
 const ADDITIONAL_PACKAGE_DIRS = [
   path.join(repoRoot, "packages", "app-core", "platforms", "electrobun"),
@@ -296,6 +305,45 @@ function outputIndicatesNoTests(output) {
   return NO_TEST_OUTPUT_PATTERNS.some((pattern) => pattern.test(output));
 }
 
+function hasLocalTestFiles(dir) {
+  let entries;
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return false;
+  }
+
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      if (TEST_FILE_SKIP_DIRS.has(entry.name)) {
+        continue;
+      }
+      if (hasLocalTestFiles(path.join(dir, entry.name))) {
+        return true;
+      }
+      continue;
+    }
+
+    if (entry.isFile() && TEST_FILE_PATTERN.test(entry.name)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function shouldSkipEmptyVitestPassWithNoTests(cwd, scriptName, scripts) {
+  const command =
+    resolveScriptCommand(scriptName, scripts) ||
+    normalizeWhitespace(scripts?.[scriptName] ?? "");
+
+  return (
+    /\bvitest\b/.test(command) &&
+    /--passWithNoTests\b/.test(command) &&
+    !hasLocalTestFiles(cwd)
+  );
+}
+
 function runScript(cwd, scriptName, label) {
   return new Promise((resolve, reject) => {
     const child = spawn(bunCmd, ["run", scriptName], {
@@ -376,6 +424,12 @@ for (const packageJsonPath of packageJsonPaths) {
       continue;
     }
     if (scriptFilter && !scriptFilter.test(scriptName)) {
+      continue;
+    }
+    if (shouldSkipEmptyVitestPassWithNoTests(cwd, scriptName, scripts)) {
+      console.log(
+        `[eliza-test] SKIP ${label} (no local test files for --passWithNoTests vitest script)`,
+      );
       continue;
     }
     console.log(`[eliza-test] START ${label}`);

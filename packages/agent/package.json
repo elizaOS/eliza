@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/agent",
-  "version": "2.0.0-alpha.495",
+  "version": "2.0.0-alpha.525",
   "description": "Standalone elizaOS-based agent and backend server package.",
   "type": "module",
   "license": "MIT",
@@ -143,6 +143,7 @@
     "@elizaos/app-training": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-agent-orchestrator": "workspace:*",
+    "@elizaos/plugin-agent-skills": "workspace:*",
     "@elizaos/plugin-browser-bridge": "workspace:*",
     "@elizaos/plugin-local-embedding": "workspace:*",
     "@elizaos/plugin-ollama": "workspace:*",

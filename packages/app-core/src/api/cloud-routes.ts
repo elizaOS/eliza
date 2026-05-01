@@ -30,6 +30,16 @@ export interface CloudRouteState {
   cloudManager: CloudManager | null;
   /** The running agent runtime — needed to persist cloud credentials to the DB. */
   runtime: AgentRuntime | null;
+  services?: Partial<CloudRouteServices>;
+}
+
+export interface CloudRouteServices {
+  applyCanonicalOnboardingConfig: typeof applyCanonicalOnboardingConfig;
+  createIntegrationTelemetrySpan: typeof createIntegrationTelemetrySpan;
+  handleAutonomousCloudRoute: typeof handleAutonomousCloudRoute;
+  normalizeCloudSiteUrl: typeof normalizeCloudSiteUrl;
+  saveElizaConfig: typeof saveElizaConfig;
+  validateCloudBaseUrl: typeof validateCloudBaseUrl;
 }
 
 type CloudRuntimeSecrets = Record<string, string | number | boolean>;
@@ -52,6 +62,14 @@ type RelayStatusService = {
 };
 
 const CLOUD_LOGIN_POLL_TIMEOUT_MS = 10_000;
+const DEFAULT_CLOUD_ROUTE_SERVICES: CloudRouteServices = {
+  applyCanonicalOnboardingConfig,
+  createIntegrationTelemetrySpan,
+  handleAutonomousCloudRoute,
+  normalizeCloudSiteUrl,
+  saveElizaConfig,
+  validateCloudBaseUrl,
+};
 
 /**
  * Monotonic counter incremented on every `POST /api/cloud/disconnect`.
@@ -84,8 +102,12 @@ function getTelemetrySpan(meta: {
   boundary: "cloud";
   operation: string;
   timeoutMs: number;
+  services: CloudRouteServices;
 }): TelemetrySpan {
-  return createIntegrationTelemetrySpan(meta) ?? createNoopTelemetrySpan();
+  return (
+    meta.services.createIntegrationTelemetrySpan(meta) ??
+    createNoopTelemetrySpan()
+  );
 }
 
 async function fetchCloudLoginStatus(
@@ -104,6 +126,7 @@ async function fetchCloudLoginStatus(
 async function persistCloudLoginStatus(args: {
   apiKey: string;
   organizationId?: string;
+  services: CloudRouteServices;
   state: CloudRouteState;
   userId?: string;
   /**
@@ -139,7 +162,7 @@ async function persistCloudLoginStatus(args: {
   );
 
   args.state.config.cloud = cloud as ElizaConfig["cloud"];
-  applyCanonicalOnboardingConfig(args.state.config, {
+  args.services.applyCanonicalOnboardingConfig(args.state.config, {
     linkedAccounts: {
       elizacloud: {
         status: "linked",
@@ -150,7 +173,7 @@ async function persistCloudLoginStatus(args: {
   migrateLegacyRuntimeConfig(args.state.config as Record<string, unknown>);
 
   try {
-    saveElizaConfig(args.state.config);
+    args.services.saveElizaConfig(args.state.config);
     logger.info("[cloud-login] Saved cloud API key to config file");
     logger.warn(
       "[cloud-login] Cloud API key is stored in cleartext in ~/.eliza/eliza.json. " +
@@ -252,11 +275,21 @@ async function persistCloudLoginStatus(args: {
   }
 }
 
-function toAutonomousState(state: CloudRouteState): AutonomousCloudRouteState {
+function getCloudRouteServices(state: CloudRouteState): CloudRouteServices {
+  return {
+    ...DEFAULT_CLOUD_ROUTE_SERVICES,
+    ...state.services,
+  };
+}
+
+function toAutonomousState(
+  state: CloudRouteState,
+  services: CloudRouteServices,
+): AutonomousCloudRouteState {
   return {
     ...state,
-    saveConfig: () => saveElizaConfig(state.config),
-    createTelemetrySpan: createIntegrationTelemetrySpan,
+    saveConfig: () => services.saveElizaConfig(state.config),
+    createTelemetrySpan: services.createIntegrationTelemetrySpan,
   };
 }
 
@@ -267,6 +300,8 @@ export async function handleCloudRoute(
   method: string,
   state: CloudRouteState,
 ): Promise<boolean> {
+  const services = getCloudRouteServices(state);
+
   if (method === "GET" && pathname === "/api/cloud/relay-status") {
     const relayService = (state.runtime?.getService(
       "CLOUD_MANAGED_GATEWAY_RELAY",
@@ -309,7 +344,7 @@ export async function handleCloudRoute(
         cloudManager: state.cloudManager,
         config: state.config,
         runtime: state.runtime,
-        saveConfig: saveElizaConfig,
+        saveConfig: services.saveElizaConfig,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -345,6 +380,7 @@ export async function handleCloudRoute(
           typeof body.organizationId === "string"
             ? body.organizationId.trim()
             : undefined,
+        services,
         state,
         userId:
           typeof body.userId === "string" ? body.userId.trim() : undefined,
@@ -369,8 +405,8 @@ export async function handleCloudRoute(
       return true;
     }
 
-    const baseUrl = normalizeCloudSiteUrl(state.config.cloud?.baseUrl);
-    const urlError = await validateCloudBaseUrl(baseUrl);
+    const baseUrl = services.normalizeCloudSiteUrl(state.config.cloud?.baseUrl);
+    const urlError = await services.validateCloudBaseUrl(baseUrl);
     if (urlError) {
       sendJsonError(res, 400, urlError);
       return true;
@@ -381,6 +417,7 @@ export async function handleCloudRoute(
     const loginPollSpan = getTelemetrySpan({
       boundary: "cloud",
       operation: "login_poll_status",
+      services,
       timeoutMs: CLOUD_LOGIN_POLL_TIMEOUT_MS,
     });
 
@@ -469,6 +506,7 @@ export async function handleCloudRoute(
           typeof data.organizationId === "string"
             ? data.organizationId
             : undefined,
+        services,
         state,
         epochAtPollStart: epochBeforePoll,
         userId: typeof data.userId === "string" ? data.userId : undefined,
@@ -492,12 +530,12 @@ export async function handleCloudRoute(
     return true;
   }
 
-  const result = await handleAutonomousCloudRoute(
+  const result = await services.handleAutonomousCloudRoute(
     req,
     res,
     pathname,
     method,
-    toAutonomousState(state),
+    toAutonomousState(state, services),
   );
 
   // The upstream handler writes secrets to process.env — scrub them

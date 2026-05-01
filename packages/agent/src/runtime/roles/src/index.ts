@@ -15,15 +15,15 @@
  */
 
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
-import { updateRoleAction } from "./action";
-import { rolesProvider } from "./provider";
-import type { RolesConfig, RolesWorldMetadata } from "./types";
+import { updateRoleAction } from "./action.js";
+import { rolesProvider } from "./provider.js";
+import type { RolesConfig, RolesWorldMetadata } from "./types.js";
 import {
   hasConfiguredCanonicalOwner,
   matchEntityToConnectorAdminWhitelist,
   normalizeRole,
   resolveCanonicalOwnerId,
-} from "./utils";
+} from "./utils.js";
 
 const BOOTSTRAP_RETRY_TIMERS_KEY = Symbol.for(
   "@elizaos/runtime.roles.bootstrapRetries",
@@ -35,8 +35,8 @@ type RuntimeWithBootstrapRetries = IAgentRuntime & {
   [BOOTSTRAP_RETRY_TIMERS_KEY]?: Map<string, ReturnType<typeof setTimeout>>;
 };
 
-export { updateRoleAction } from "./action";
-export { rolesProvider } from "./provider";
+export { updateRoleAction } from "./action.js";
+export { rolesProvider } from "./provider.js";
 export type {
   ConnectorAdminWhitelist,
   RoleCheckResult,
@@ -44,8 +44,8 @@ export type {
   RoleName,
   RolesConfig,
   RolesWorldMetadata,
-} from "./types";
-export { ROLE_RANK } from "./types";
+} from "./types.js";
+export { ROLE_RANK } from "./types.js";
 export {
   canModifyRole,
   checkSenderPrivateAccess,
@@ -62,7 +62,7 @@ export {
   resolveWorldForMessage,
   setConnectorAdminWhitelist,
   setEntityRole,
-} from "./utils";
+} from "./utils.js";
 
 async function updateWorldMetadata(
   runtime: IAgentRuntime,

@@ -47,7 +47,7 @@ function formatError(err: unknown): string {
 }
 
 type FirstTimeSetupCloudResult =
-  import("./cloud-onboarding").CloudOnboardingResult;
+  import("./cloud-onboarding.js").CloudOnboardingResult;
 const DEFAULT_ONBOARDING_AGENT_NAME = getStylePresets()[0]?.name ?? "Eliza";
 
 export function applyFirstTimeSetupTopology(
@@ -338,7 +338,7 @@ export async function runFirstTimeSetup(
   // Present the user with a choice of where to run their agent. Cloud mode
   // skips the local AI provider, wallet, and GitHub steps.
   let cloudOnboardingResult:
-    | import("./cloud-onboarding").CloudOnboardingResult
+    | import("./cloud-onboarding.js").CloudOnboardingResult
     | null = null;
   let isCloudMode = false;
 

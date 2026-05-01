@@ -1,20 +1,38 @@
-import {
-  type AppBlockerPermissionResult,
-  type AppBlockerPluginLike,
-  type AppBlockerStatus,
-  type BlockAppsOptions,
-  type BlockAppsResult,
-  getAppBlockerPlugin,
-  type InstalledApp,
-  type SelectAppsResult,
-  type UnblockAppsResult,
-} from "@elizaos/app-core/bridge/native-plugins";
+import { Capacitor } from "@capacitor/core";
+import type {
+  AppBlockerPermissionResult,
+  AppBlockerPlugin,
+  AppBlockerStatus,
+  BlockAppsOptions,
+  BlockAppsResult,
+  InstalledApp,
+  SelectAppsResult,
+  UnblockAppsResult,
+} from "@elizaos/capacitor-appblocker";
 
 const STATUS_CACHE_TTL_MS = 5_000;
 let statusCache: { expiresAt: number; value: AppBlockerStatus } | null = null;
 
-function getPlugin(): AppBlockerPluginLike {
-  const plugin = getAppBlockerPlugin();
+interface WindowWithCapacitor extends Window {
+  Capacitor?: { Plugins?: Record<string, unknown> };
+}
+
+function getCapacitorPlugins(): Record<string, unknown> {
+  const capacitor = Capacitor as { Plugins?: Record<string, unknown> };
+  if (capacitor.Plugins) {
+    return capacitor.Plugins;
+  }
+  if (typeof window !== "undefined") {
+    return (window as WindowWithCapacitor).Capacitor?.Plugins ?? {};
+  }
+  return {};
+}
+
+function getPlugin(): AppBlockerPlugin {
+  const plugins = getCapacitorPlugins();
+  const plugin = (plugins.ElizaAppBlocker ??
+    plugins.AppBlocker ??
+    {}) as AppBlockerPlugin;
   if (!plugin || typeof plugin.getStatus !== "function") {
     throw new Error(
       "[app-blocker] AppBlocker Capacitor plugin is not available. App blocking is mobile-only.",
