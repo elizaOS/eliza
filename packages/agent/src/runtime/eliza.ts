@@ -21,6 +21,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 // Extracted modules — re-exported for backward compatibility
 // ---------------------------------------------------------------------------
 import { runFirstTimeSetup } from "./first-time-setup.js";
+import { resolveConfigEnvForProcess } from "./operations/vault-bridge.js";
 import { resolvePlugins } from "./plugin-resolver.js";
 import {
   CUSTOM_PLUGINS_DIRNAME as CUSTOM_RUNTIME_PLUGINS_DIRNAME,
@@ -2982,7 +2983,53 @@ export async function startEliza(
   // 2d. Propagate database config into process.env for plugin-sql
   applyDatabaseConfigToEnv(config);
 
-  // 2e. Propagate arbitrary env vars from config.env into process.env.
+  // 2e. Boot-time vault hydration. Migrate plaintext sensitive values from
+  // milady.json + config.env + sensitive process.env keys into the OS-keychain
+  // vault, then resolve any vault://KEY sentinels in `config.env` so the
+  // legacy hydration loop below sees real values.
+  {
+    const { runVaultBootstrap } = await import(
+      "@elizaos/app-core/services/vault-bootstrap"
+    );
+    const { sharedVault } = await import(
+      "@elizaos/app-core/services/vault-mirror"
+    );
+    const bootResult = await runVaultBootstrap();
+    logger.info(
+      `[vault-bootstrap] migrated=${bootResult.migrated} already-hydrated=${bootResult.alreadyHydrated} failed=${bootResult.failed.length}`,
+    );
+
+    const { resolved, missing } = await resolveConfigEnvForProcess(
+      config.env as Record<string, unknown> | undefined,
+      sharedVault(),
+    );
+    if (missing.length > 0) {
+      logger.warn(
+        `[vault-bootstrap] sentinel(s) without vault entry: ${missing.join(", ")}`,
+      );
+    }
+    if (
+      config.env &&
+      typeof config.env === "object" &&
+      !Array.isArray(config.env)
+    ) {
+      for (const [key, value] of Object.entries(resolved)) {
+        (config.env as Record<string, unknown>)[key] = value;
+      }
+    }
+    const varsBag = (config.env as Record<string, unknown> | undefined)?.vars;
+    if (varsBag && typeof varsBag === "object" && !Array.isArray(varsBag)) {
+      const varsResult = await resolveConfigEnvForProcess(
+        varsBag as Record<string, unknown>,
+        sharedVault(),
+      );
+      for (const [key, value] of Object.entries(varsResult.resolved)) {
+        (varsBag as Record<string, unknown>)[key] = value;
+      }
+    }
+  }
+
+  // 2f. Propagate arbitrary env vars from config.env into process.env.
   // Eliza stores user-defined env vars (plugin settings, API URLs, etc.)
   // in config.env; elizaOS plugins read them via process.env / getSetting.
   // Skip ELIZAOS_CLOUD_* — applyCloudConfigToEnv() owns those; otherwise a
@@ -3131,6 +3178,59 @@ export async function startEliza(
 
   // 5. Create the Eliza bridge plugin (workspace context + session keys + compaction)
   const agentId = character.name?.toLowerCase().replace(/\s+/g, "-") ?? "main";
+
+  // 5-pre0. Apply per-agent vault profile overrides to process.env.
+  //
+  // Vault keys with multiple named profiles (work / personal / throwaway)
+  // resolve the active profile for THIS agent through the vault's
+  // routing layer, then write the resolved value into process.env so
+  // the synchronous runtime.getSetting fast path picks it up. Idempotent;
+  // safe to run multiple times. Opt-out via
+  // MILADY_DISABLE_VAULT_PROFILE_RESOLVER=1.
+  if (process.env.MILADY_DISABLE_VAULT_PROFILE_RESOLVER !== "1") {
+    try {
+      const { sharedVault } = await import(
+        "@elizaos/app-core/services/vault-mirror"
+      );
+      const { applyVaultProfilesForAgent } = await import(
+        "./vault-profile-resolver.js"
+      );
+      await applyVaultProfilesForAgent(sharedVault(), agentId);
+    } catch (err) {
+      logger.warn(
+        `[vault-profile-resolver] boot-time apply failed agent="${agentId}": ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  // 5-pre. Ensure each agent has its own EVM + Solana keypair in the vault.
+  // The runtime-wide EVM_PRIVATE_KEY / SOLANA_PRIVATE_KEY (process.env) is
+  // the *user* wallet; per-agent wallets live inside the encrypted vault and
+  // are surfaced separately in the in-app browser. Idempotent — existing
+  // wallets are preserved. Opt-out via MILADY_DISABLE_AGENT_WALLET_BOOTSTRAP=1.
+  if (process.env.MILADY_DISABLE_AGENT_WALLET_BOOTSTRAP !== "1") {
+    try {
+      const { sharedVault } = await import(
+        "@elizaos/app-core/services/vault-mirror"
+      );
+      const { ensureAgentWallets } = await import("./agent-wallets.js");
+      const descriptors = await ensureAgentWallets(
+        sharedVault(),
+        agentId,
+        "agent-bootstrap",
+      );
+      const summary = descriptors
+        .map((d) => `${d.chain}:${d.address}`)
+        .join(" ");
+      logger.info(
+        `[agent-wallets] agent="${agentId}" wallets ready (${summary})`,
+      );
+    } catch (err) {
+      logger.warn(
+        `[agent-wallets] failed to ensure wallets for agent="${agentId}": ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
 
   // 5a. If cloud is configured and no local GitHub token, try fetching from cloud
   await autoFetchCloudGithubToken(config.cloud?.agentId?.trim() || agentId);

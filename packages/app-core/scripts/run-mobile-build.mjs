@@ -35,6 +35,8 @@ import { stageAndroidAgentRuntime } from "./lib/stage-android-agent.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
+const appCoreRoot = path.resolve(__dirname, "..");
+const packagesRoot = path.resolve(appCoreRoot, "..");
 const appDir = resolveMainAppDir(repoRoot, "app");
 const iosDir = path.join(appDir, "ios", "App");
 const androidDir = path.join(appDir, "android");
@@ -46,19 +48,8 @@ const miladyOsVendorDir = path.join(
   "milady",
 );
 const miladyOsApkDir = path.join(miladyOsVendorDir, "apps", "Milady");
-const platformsDir = path.join(
-  repoRoot,
-  "eliza",
-  "packages",
-  "app-core",
-  "platforms",
-);
-const nativePluginsDir = path.join(
-  repoRoot,
-  "eliza",
-  "packages",
-  "native-plugins",
-);
+const platformsDir = path.join(appCoreRoot, "platforms");
+const nativePluginsDir = path.join(packagesRoot, "native-plugins");
 const androidAgentSpikeDir = path.join(
   repoRoot,
   "scripts",
@@ -1766,10 +1757,7 @@ async function buildIos() {
     throw new Error("iOS builds require macOS and Xcode.");
 
   const cocoapodsScript = path.join(
-    repoRoot,
-    "eliza",
-    "packages",
-    "app-core",
+    appCoreRoot,
     "scripts",
     "prepare-ios-cocoapods.sh",
   );

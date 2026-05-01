@@ -7,7 +7,7 @@
  * first launch and `execve()` bun there. Without this stage the APK ships
  * with no executable runtime and the local-agent mode cannot start.
  *
- * Layout produced under `apps/app/android/app/src/main/assets/agent/`:
+ * Layout produced under `packages/app/android/app/src/main/assets/agent/`:
  *
  *   agent-bundle.js                 (ABI-independent entry point; placeholder
  *                                    until Phase D replaces it with the real
@@ -375,7 +375,7 @@ export function stageSeccompShimForAbi({
  * Android assets tree. Idempotent — safe to run on every gradle invocation.
  *
  * Required:
- *   androidDir  Absolute path to apps/app/android/.
+ *   androidDir  Absolute path to packages/app/android/.
  *   spikeDir    Absolute path to scripts/spike-android-agent/ (source of
  *               the placeholder agent-bundle.js until Phase D wires up the
  *               real @elizaos/agent bundle).

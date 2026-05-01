@@ -55,7 +55,7 @@ bun run cap:open:ios
 
 This runs `vite build` to produce the `dist/` web assets, then `capacitor sync ios` to copy them into the native iOS project and update native dependencies.
 
-The Xcode workspace is at `apps/app/ios/App/App.xcworkspace`.
+The Xcode workspace is at `packages/app/ios/App/App.xcworkspace`.
 
 ### Build for Android
 
@@ -69,7 +69,7 @@ bun run cap:open:android
 
 This runs `vite build` followed by `capacitor sync android` to copy web assets and update the Gradle project.
 
-The Android project is at `apps/app/android/`.
+The Android project is at `packages/app/android/`.
 
 ### Build Plugins Only
 
@@ -86,7 +86,7 @@ This iterates through each plugin directory (`gateway`, `swabble`, `camera`, `sc
 If you have already built the web assets and only need to push changes to the native projects:
 
 ```bash
-cd apps/app
+cd packages/app
 
 # Sync all platforms
 bun run cap:sync

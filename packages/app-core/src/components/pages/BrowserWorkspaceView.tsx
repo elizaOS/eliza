@@ -4,11 +4,13 @@ import type {
 } from "@elizaos/plugin-browser-bridge/contracts";
 import {
   Button,
+  ConfirmDialog,
   Input,
   SidebarCollapsedActionButton,
   SidebarContent,
   SidebarPanel,
   SidebarScrollRegion,
+  useConfirm,
   useIntervalWhenDocumentVisible,
   WorkspaceLayout,
 } from "@elizaos/ui";
@@ -32,6 +34,13 @@ import {
   BROWSER_TAB_PRELOAD_SCRIPT,
   setBrowserTabsRendererImpl,
 } from "../../utils/browser-tabs-renderer-registry";
+import {
+  decodeBase64ForPreview,
+  decodeSignableMessage,
+  formatAddressForDisplay,
+  formatWeiForDisplay,
+  truncateMessageForDisplay,
+} from "./browser-wallet-consent-format";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { CollapsibleSidebarSection } from "../shared/CollapsibleSidebarSection";
 import {
@@ -387,6 +396,12 @@ export function BrowserWorkspaceView(): JSX.Element {
   const browserWalletStateRef = useRef<BrowserWorkspaceWalletState | null>(
     null,
   );
+  // Per-session "the user already allowed this domain to read accounts"
+  // set. EIP-1193 dApps poll `eth_accounts` after connect; without this
+  // the consent modal would re-prompt on every poll. Cleared when the
+  // workspace unmounts (i.e. app restart). A persistent vault-backed
+  // version is a follow-up — see Phase 2 brief.
+  const walletConnectAllowedDomainsRef = useRef<Set<string>>(new Set());
   // Ref-mirror of the selected tab id so the register callback (which is
   // memoized on handleTabHostMessage only) can read the current selection
   // without a fresh closure each render.
@@ -750,6 +765,12 @@ export function BrowserWorkspaceView(): JSX.Element {
   browserWalletStateRef.current = browserWalletState;
   selectedTabIdRef.current = selectedTabId;
 
+  // Wallet-action consent (eth_sendTransaction, personal_sign, eth_sign,
+  // first-time eth_requestAccounts). Must be declared before
+  // handleTabWalletRequest references it.
+  const { confirm: walletActionConfirm, modalProps: walletActionModalProps } =
+    useConfirm();
+
   const handleTabWalletRequest = useCallback(
     async (req: {
       tabId: string;
@@ -757,6 +778,7 @@ export function BrowserWorkspaceView(): JSX.Element {
       protocol: "evm" | "solana";
       method: string;
       params: unknown;
+      hostname: string;
     }): Promise<void> => {
       const tag = electrobunWebviewRefs.current.get(req.tabId);
       const reply = (payload: { result?: unknown; error?: string }): void => {
@@ -770,17 +792,46 @@ export function BrowserWorkspaceView(): JSX.Element {
         reply({ error: "Wallet state not yet loaded." });
         return;
       }
+      const domain = (req.hostname || "this site").trim();
       try {
         const evmAddress = walletState.evmAddress;
         const solanaAddress = walletState.solanaAddress;
         if (req.protocol === "evm") {
           switch (req.method) {
-            case "eth_requestAccounts":
-            case "eth_accounts": {
+            case "eth_requestAccounts": {
               if (!evmAddress) {
                 reply({
                   error: walletState.reason ?? "No EVM wallet connected.",
                 });
+                return;
+              }
+              const allowed =
+                walletConnectAllowedDomainsRef.current.has(domain) ||
+                (await walletActionConfirm({
+                  title: `Connect Milady wallet to ${domain}`,
+                  message: `${domain} is requesting your wallet address. Allow it to read ${formatAddressForDisplay(evmAddress)}?`,
+                  confirmLabel: "Connect",
+                  cancelLabel: "Reject",
+                }));
+              if (!allowed) {
+                reply({ error: "User rejected wallet connection." });
+                return;
+              }
+              walletConnectAllowedDomainsRef.current.add(domain);
+              reply({ result: [evmAddress] });
+              return;
+            }
+            case "eth_accounts": {
+              if (!evmAddress) {
+                reply({ result: [] });
+                return;
+              }
+              // Per EIP-1193, eth_accounts returns the list of accounts
+              // the dApp is already authorized to use; an unauthorized
+              // dApp must see [], not a prompt. We honour that here so
+              // we don't block silent polls behind a consent dialog.
+              if (!walletConnectAllowedDomainsRef.current.has(domain)) {
+                reply({ result: [] });
                 return;
               }
               reply({ result: [evmAddress] });
@@ -836,6 +887,16 @@ export function BrowserWorkspaceView(): JSX.Element {
                 });
                 return;
               }
+              const allowed = await walletActionConfirm({
+                title: `${domain} wants to sign a message`,
+                message: `Message preview:\n\n${truncateMessageForDisplay(decodeSignableMessage(message))}\n\nAllow signing?`,
+                confirmLabel: "Sign",
+                cancelLabel: "Reject",
+              });
+              if (!allowed) {
+                reply({ error: "User rejected message signing." });
+                return;
+              }
               const result = await client.signBrowserWalletMessage(message);
               reply({ result: result.signature });
               return;
@@ -867,10 +928,21 @@ export function BrowserWorkspaceView(): JSX.Element {
                     ? BigInt(tx.value).toString()
                     : tx.value
                   : "0";
+              const to = typeof tx.to === "string" ? tx.to : "";
+              const allowed = await walletActionConfirm({
+                title: `${domain} wants to send a transaction`,
+                message: `From: ${formatAddressForDisplay(evmAddress ?? "")}\nTo: ${formatAddressForDisplay(to)}\nValue: ${formatWeiForDisplay(value)}\nChain: ${chainId}\n\nAllow this transaction?`,
+                confirmLabel: "Send",
+                cancelLabel: "Reject",
+              });
+              if (!allowed) {
+                reply({ error: "User rejected transaction." });
+                return;
+              }
               const result = await client.sendBrowserWalletTransaction({
                 broadcast: true,
                 chainId,
-                to: typeof tx.to === "string" ? tx.to : "",
+                to,
                 value,
                 data: typeof tx.data === "string" ? tx.data : undefined,
                 description:
@@ -897,6 +969,19 @@ export function BrowserWorkspaceView(): JSX.Element {
                 });
                 return;
               }
+              const allowed =
+                walletConnectAllowedDomainsRef.current.has(domain) ||
+                (await walletActionConfirm({
+                  title: `Connect Milady Solana wallet to ${domain}`,
+                  message: `${domain} is requesting your Solana address. Allow it to read ${formatAddressForDisplay(solanaAddress)}?`,
+                  confirmLabel: "Connect",
+                  cancelLabel: "Reject",
+                }));
+              if (!allowed) {
+                reply({ error: "User rejected wallet connection." });
+                return;
+              }
+              walletConnectAllowedDomainsRef.current.add(domain);
               reply({ result: { publicKey: solanaAddress } });
               return;
             }
@@ -921,6 +1006,21 @@ export function BrowserWorkspaceView(): JSX.Element {
                       | string
                       | undefined)
                   : undefined;
+              const previewSource =
+                message ??
+                (messageBase64
+                  ? decodeBase64ForPreview(messageBase64)
+                  : "(no message preview available)");
+              const allowed = await walletActionConfirm({
+                title: `${domain} wants to sign a Solana message`,
+                message: `Message preview:\n\n${truncateMessageForDisplay(previewSource)}\n\nAllow signing?`,
+                confirmLabel: "Sign",
+                cancelLabel: "Reject",
+              });
+              if (!allowed) {
+                reply({ error: "User rejected message signing." });
+                return;
+              }
               const result = await client.signBrowserSolanaMessage({
                 ...(messageBase64 ? { messageBase64 } : {}),
                 ...(message ? { message } : {}),
@@ -950,9 +1050,20 @@ export function BrowserWorkspaceView(): JSX.Element {
                 });
                 return;
               }
+              const willBroadcast = req.method === "signAndSendTransaction";
+              const allowed = await walletActionConfirm({
+                title: `${domain} wants to ${willBroadcast ? "send" : "sign"} a Solana transaction`,
+                message: `From: ${formatAddressForDisplay(solanaAddress ?? "")}\n${willBroadcast ? "Will broadcast on submit." : "Returns the signed bytes to the dApp; the dApp may broadcast."}\n\nAllow?`,
+                confirmLabel: willBroadcast ? "Send" : "Sign",
+                cancelLabel: "Reject",
+              });
+              if (!allowed) {
+                reply({ error: "User rejected transaction." });
+                return;
+              }
               const result = await client.sendBrowserSolanaTransaction({
                 transactionBase64,
-                broadcast: req.method === "signAndSendTransaction",
+                broadcast: willBroadcast,
               });
               reply({ result });
               return;
@@ -968,7 +1079,119 @@ export function BrowserWorkspaceView(): JSX.Element {
         reply({ error: message });
       }
     },
-    [loadBrowserWalletState],
+    [loadBrowserWalletState, walletActionConfirm],
+  );
+
+  // ── Vault autofill ────────────────────────────────────────────────
+  // The in-tab preload sends `__elizaVaultAutofillRequest` whenever it
+  // detects a login form. We resolve credentials from the vault via the
+  // app API, prompt the user once per domain (unless they have flagged
+  // the domain as auto-allow), then reply with the field values to fill.
+  // No silent autofill: every reply that carries fields requires explicit
+  // user consent, either at request time or via a previously stored
+  // `creds.<domain>.:autoallow` entry.
+  const { confirm: vaultAutofillConfirm, modalProps: vaultAutofillModalProps } =
+    useConfirm();
+
+  const handleTabVaultAutofillRequest = useCallback(
+    async (req: {
+      tabId: string;
+      requestId: number;
+      domain: string;
+      url: string;
+      fieldHints: ReadonlyArray<{
+        kind: "username" | "password";
+        selector: string;
+      }>;
+    }): Promise<void> => {
+      const tag = electrobunWebviewRefs.current.get(req.tabId);
+      const reply = (payload: {
+        fields?: Record<string, string>;
+        error?: string;
+      }): void => {
+        if (!tag) return;
+        tag.executeJavascript(
+          `window.__elizaVaultReply(${JSON.stringify(req.requestId)}, ${JSON.stringify(payload)})`,
+        );
+      };
+
+      const userHint = req.fieldHints.find((h) => h.kind === "username");
+      const passwordHint = req.fieldHints.find((h) => h.kind === "password");
+      if (!passwordHint) {
+        // No password slot — nothing to autofill.
+        reply({ fields: {} });
+        return;
+      }
+
+      try {
+        // Aggregate from every signed-in backend. The manager filters by
+        // domain (case-insensitive); external adapters list everything
+        // and filter client-side because their CLIs don't accept a
+        // domain filter.
+        const { logins } = await client.listSavedLogins(req.domain);
+        // The manager already filters by domain, but we double-check
+        // here against the registrable hostname. External entries with
+        // a missing or non-matching domain are dropped — they aren't
+        // valid candidates for this form.
+        const requestDomain = req.domain.toLowerCase();
+        const candidates = logins.filter(
+          (l) =>
+            typeof l.domain === "string" &&
+            l.domain.toLowerCase() === requestDomain,
+        );
+        if (candidates.length === 0) {
+          reply({ fields: {} });
+          return;
+        }
+
+        // Pick the most-recently-modified entry. Multi-account selection
+        // is a future UI improvement — at first save time only one entry
+        // typically exists per domain.
+        const sorted = [...candidates].sort(
+          (a, b) => b.updatedAt - a.updatedAt,
+        );
+        const chosen = sorted[0];
+        if (!chosen) {
+          reply({ fields: {} });
+          return;
+        }
+
+        const sourceLabel =
+          chosen.source === "1password"
+            ? "1Password"
+            : chosen.source === "bitwarden"
+              ? "Bitwarden"
+              : "local vault";
+
+        const allowed = await client.getAutofillAllowed(req.domain);
+        const consented =
+          allowed ||
+          (await vaultAutofillConfirm({
+            title: `Autofill ${req.domain}`,
+            message: `Sign in as ${chosen.username || chosen.title} from ${sourceLabel}?\n\nMilady will fill the saved username and password for this site.`,
+            confirmLabel: "Allow",
+            cancelLabel: "Deny",
+          }));
+        if (!consented) {
+          reply({ fields: {} });
+          return;
+        }
+
+        const reveal = await client.revealSavedLogin(
+          chosen.source,
+          chosen.identifier,
+        );
+
+        const fields: Record<string, string> = {};
+        if (userHint) fields[userHint.selector] = reveal.username;
+        fields[passwordHint.selector] = reveal.password;
+        reply({ fields });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        reply({ error: message });
+      }
+    },
+    [vaultAutofillConfirm],
   );
 
   const handleTabHostMessage = useCallback(
@@ -983,6 +1206,14 @@ export function BrowserWorkspaceView(): JSX.Element {
             protocol?: "evm" | "solana";
             method?: string;
             params?: unknown;
+            origin?: string;
+            hostname?: string;
+            domain?: string;
+            url?: string;
+            fieldHints?: Array<{
+              kind?: string;
+              selector?: string;
+            }>;
           }
         | null
         | undefined;
@@ -1023,10 +1254,50 @@ export function BrowserWorkspaceView(): JSX.Element {
           protocol: detail.protocol,
           method: detail.method,
           params: detail.params,
+          hostname:
+            typeof detail.hostname === "string" ? detail.hostname : "",
+        });
+        return;
+      }
+
+      if (
+        detail.type === "__elizaVaultAutofillRequest" &&
+        typeof detail.requestId === "number" &&
+        typeof detail.domain === "string" &&
+        typeof detail.url === "string" &&
+        Array.isArray(detail.fieldHints)
+      ) {
+        const tag =
+          (event.currentTarget as unknown as WebviewTagElement | null) ?? null;
+        const tabId =
+          [...electrobunWebviewRefs.current.entries()].find(
+            ([, el]) => el === tag,
+          )?.[0] ?? null;
+        if (!tabId) return;
+        const fieldHints: Array<{
+          kind: "username" | "password";
+          selector: string;
+        }> = [];
+        for (const hint of detail.fieldHints) {
+          if (
+            hint &&
+            (hint.kind === "username" || hint.kind === "password") &&
+            typeof hint.selector === "string" &&
+            hint.selector.length > 0
+          ) {
+            fieldHints.push({ kind: hint.kind, selector: hint.selector });
+          }
+        }
+        void handleTabVaultAutofillRequest({
+          tabId,
+          requestId: detail.requestId,
+          domain: detail.domain,
+          url: detail.url,
+          fieldHints,
         });
       }
     },
-    [handleTabWalletRequest],
+    [handleTabWalletRequest, handleTabVaultAutofillRequest],
   );
 
   const registerBrowserWorkspaceElectrobunWebview = useCallback(
@@ -2282,11 +2553,15 @@ export function BrowserWorkspaceView(): JSX.Element {
   );
 
   return (
-    <AppWorkspaceChrome
-      testId="browser-workspace-view"
-      main={mainNode}
-      chatScope="page-browser"
-      pageScopedChatPaneProps={browserPageScopedChatPaneProps}
-    />
+    <>
+      <AppWorkspaceChrome
+        testId="browser-workspace-view"
+        main={mainNode}
+        chatScope="page-browser"
+        pageScopedChatPaneProps={browserPageScopedChatPaneProps}
+      />
+      <ConfirmDialog {...vaultAutofillModalProps} />
+      <ConfirmDialog {...walletActionModalProps} />
+    </>
   );
 }

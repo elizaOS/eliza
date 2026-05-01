@@ -105,7 +105,7 @@ export function resolveElizaAssetBaseUrls({
       buildJsDelivrAssetBase({
         repository,
         releaseTag,
-        assetRoot: "apps/app/public",
+        assetRoot: "packages/app/public",
       }),
     homepageAssetBaseUrl:
       explicitHomepageBase ||

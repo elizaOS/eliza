@@ -10,25 +10,15 @@ import {
   hasElectrobunViewExport,
   isSupportedBunVersion,
 } from "./lib/desktop-preflight.mjs";
-import { resolveMainAppDir } from "./lib/app-dir.mjs";
+import { resolveElectrobunDir, resolveMainAppDir } from "./lib/app-dir.mjs";
 
 const ROOT = process.cwd();
 // --app=<name> selects which app to build (default: "app" → packages/app)
 const appArgMatch = process.argv.find((a) => a.startsWith("--app="));
 const appName = appArgMatch ? appArgMatch.split("=")[1] : "app";
 const APP_DIR = resolveMainAppDir(ROOT, appName);
-const CANONICAL_ELECTROBUN_DIR = path.join(
-  ROOT,
-  "eliza",
-  "packages",
-  "app-core",
-  "platforms",
-  "electrobun",
-);
 const LEGACY_ELECTROBUN_DIR = path.join(APP_DIR, "electrobun");
-const ELECTROBUN_DIR = fs.existsSync(CANONICAL_ELECTROBUN_DIR)
-  ? CANONICAL_ELECTROBUN_DIR
-  : LEGACY_ELECTROBUN_DIR;
+const ELECTROBUN_DIR = resolveElectrobunDir(ROOT);
 const STAGE_MACOS_RELEASE_SCRIPT = path.join(
   ELECTROBUN_DIR,
   "scripts",
@@ -712,7 +702,10 @@ function packageDesktopBuild() {
   }
 
   if (stageMacosReleaseApp && process.platform === "darwin") {
-    run("bash", [STAGE_MACOS_RELEASE_SCRIPT], {
+    run("bash", [
+      STAGE_MACOS_RELEASE_SCRIPT,
+      path.join(ELECTROBUN_DIR, "artifacts"),
+    ], {
       cwd: ROOT,
       env: {
         ...packageEnv,

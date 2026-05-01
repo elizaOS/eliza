@@ -5,7 +5,7 @@
  * Usage:
  *   ELEVENLABS_API_KEY=sk_... node scripts/generate-onboarding-voicelines.mjs
  *
- * Output: apps/app/public/audio/onboarding/{characterId}-{lang}.mp3
+ * Output: packages/app/public/audio/onboarding/{characterId}-{lang}.mp3
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -17,7 +17,7 @@ if (!API_KEY) {
   process.exit(1);
 }
 
-const OUTPUT_DIR = resolve("apps/app/public/audio/onboarding");
+const OUTPUT_DIR = resolve("packages/app/public/audio/onboarding");
 mkdirSync(OUTPUT_DIR, { recursive: true });
 
 // Voice preset ID → ElevenLabs voice ID (from PREMADE_VOICES in voice/types.ts)

@@ -1,27 +1,63 @@
 import { useCallback, useEffect, useState } from "react";
 
 /**
- * Global open/close state for the Secrets Manager modal.
+ * Global open/close state for the Vault modal.
  *
  * Backed by `window.dispatchEvent` rather than a React context so any
  * code path (renderer keydown, bun-side menu accelerator dispatched
  * via `subscribeDesktopBridgeEvent`, an inline Settings launcher
  * button) can trigger open/close without context plumbing through the
  * tree.
+ *
+ * The dispatch contract carries an optional initial tab plus optional
+ * focus targets so cross-tab jumps (e.g. Routing rule chip → Secrets
+ * tab pre-expanded on a key) can be parameterized through the same
+ * event.
  */
 
-const EVENT_NAME = "milady:secrets-manager-toggle";
-let currentOpen = false;
-const listeners = new Set<() => void>();
+export type VaultTab = "overview" | "secrets" | "logins" | "routing";
 
-interface ToggleDetail {
-  readonly action: "open" | "close" | "toggle";
+export const VAULT_TABS: readonly VaultTab[] = [
+  "overview",
+  "secrets",
+  "logins",
+  "routing",
+] as const;
+
+const EVENT_NAME = "milady:secrets-manager-toggle";
+
+interface OpenIntent {
+  readonly action: "open";
+  readonly tab?: VaultTab;
+  readonly focusKey?: string;
+  readonly focusProfileId?: string;
 }
 
-export function dispatchSecretsManagerOpen(): void {
+interface CloseIntent {
+  readonly action: "close";
+}
+
+interface ToggleIntent {
+  readonly action: "toggle";
+  readonly tab?: VaultTab;
+}
+
+type ToggleDetail = OpenIntent | CloseIntent | ToggleIntent;
+
+export interface SecretsManagerOpenOptions {
+  readonly tab?: VaultTab;
+  readonly focusKey?: string;
+  readonly focusProfileId?: string;
+}
+
+export function dispatchSecretsManagerOpen(
+  options: SecretsManagerOpenOptions = {},
+): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(
-    new CustomEvent<ToggleDetail>(EVENT_NAME, { detail: { action: "open" } }),
+    new CustomEvent<ToggleDetail>(EVENT_NAME, {
+      detail: { action: "open", ...options },
+    }),
   );
 }
 
@@ -32,18 +68,26 @@ export function dispatchSecretsManagerClose(): void {
   );
 }
 
-export function dispatchSecretsManagerToggle(): void {
+export function dispatchSecretsManagerToggle(tab?: VaultTab): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(
-    new CustomEvent<ToggleDetail>(EVENT_NAME, { detail: { action: "toggle" } }),
+    new CustomEvent<ToggleDetail>(EVENT_NAME, {
+      detail: tab ? { action: "toggle", tab } : { action: "toggle" },
+    }),
   );
 }
 
-function setGlobalOpen(next: boolean | ((prev: boolean) => boolean)): void {
-  const resolved = typeof next === "function" ? next(currentOpen) : next;
-  if (resolved === currentOpen) return;
-  currentOpen = resolved;
-  for (const listener of listeners) listener();
+export interface SecretsManagerModalState {
+  readonly isOpen: boolean;
+  readonly initialTab: VaultTab | null;
+  readonly focusKey: string | null;
+  readonly focusProfileId: string | null;
+  readonly open: () => void;
+  readonly close: () => void;
+  readonly toggle: () => void;
+  readonly setOpen: (next: boolean) => void;
+  readonly openOnTab: (options: SecretsManagerOpenOptions) => void;
+  readonly clearFocus: () => void;
 }
 
 /**
@@ -51,41 +95,71 @@ function setGlobalOpen(next: boolean | ((prev: boolean) => boolean)): void {
  * (it must mount its content based on this flag) and for the inline
  * launcher row (so it can optionally show "Manage…" disabled while
  * the modal is open).
+ *
+ * `initialTab` / `focusKey` / `focusProfileId` carry the parameters of
+ * the most recent open dispatch. The modal consumes them on mount and
+ * is expected to call `clearFocus()` once the focus has been applied so
+ * subsequent opens (e.g. via the keyboard shortcut) start fresh.
  */
-export function useSecretsManagerModalState(): {
-  readonly isOpen: boolean;
-  readonly open: () => void;
-  readonly close: () => void;
-  readonly toggle: () => void;
-  readonly setOpen: (next: boolean) => void;
-} {
-  const [isOpen, setIsOpen] = useState(currentOpen);
+export function useSecretsManagerModalState(): SecretsManagerModalState {
+  const [isOpen, setIsOpen] = useState(false);
+  const [initialTab, setInitialTab] = useState<VaultTab | null>(null);
+  const [focusKey, setFocusKey] = useState<string | null>(null);
+  const [focusProfileId, setFocusProfileId] = useState<string | null>(null);
 
   useEffect(() => {
-    const sync = () => setIsOpen(currentOpen);
-    listeners.add(sync);
-    if (typeof window === "undefined") {
-      return () => {
-        listeners.delete(sync);
-      };
-    }
+    if (typeof window === "undefined") return;
     const onToggle = (event: Event) => {
       const detail = (event as CustomEvent<ToggleDetail>).detail;
       if (!detail) return;
-      if (detail.action === "open") setGlobalOpen(true);
-      else if (detail.action === "close") setGlobalOpen(false);
-      else setGlobalOpen((prev) => !prev);
+      if (detail.action === "open") {
+        setIsOpen(true);
+        setInitialTab(detail.tab ?? null);
+        setFocusKey(detail.focusKey ?? null);
+        setFocusProfileId(detail.focusProfileId ?? null);
+        return;
+      }
+      if (detail.action === "close") {
+        setIsOpen(false);
+        return;
+      }
+      // toggle
+      setIsOpen((prev) => {
+        if (!prev && detail.tab) setInitialTab(detail.tab);
+        return !prev;
+      });
     };
     window.addEventListener(EVENT_NAME, onToggle);
     return () => {
-      listeners.delete(sync);
       window.removeEventListener(EVENT_NAME, onToggle);
     };
   }, []);
 
-  const open = useCallback(() => setGlobalOpen(true), []);
-  const close = useCallback(() => setGlobalOpen(false), []);
-  const toggle = useCallback(() => setGlobalOpen((prev) => !prev), []);
-  const setOpen = useCallback((next: boolean) => setGlobalOpen(next), []);
-  return { isOpen, open, close, toggle, setOpen };
+  const open = useCallback(() => setIsOpen(true), []);
+  const close = useCallback(() => setIsOpen(false), []);
+  const toggle = useCallback(() => setIsOpen((prev) => !prev), []);
+  const setOpen = useCallback((next: boolean) => setIsOpen(next), []);
+  const openOnTab = useCallback((options: SecretsManagerOpenOptions) => {
+    setIsOpen(true);
+    setInitialTab(options.tab ?? null);
+    setFocusKey(options.focusKey ?? null);
+    setFocusProfileId(options.focusProfileId ?? null);
+  }, []);
+  const clearFocus = useCallback(() => {
+    setInitialTab(null);
+    setFocusKey(null);
+    setFocusProfileId(null);
+  }, []);
+  return {
+    isOpen,
+    initialTab,
+    focusKey,
+    focusProfileId,
+    open,
+    close,
+    toggle,
+    setOpen,
+    openOnTab,
+    clearFocus,
+  };
 }

@@ -53,6 +53,7 @@ import { CapabilitiesSection } from "../settings/CapabilitiesSection";
 import { PermissionsSection } from "../settings/PermissionsSection";
 import { ProviderSwitcher } from "../settings/ProviderSwitcher";
 import { SecretsManagerSection } from "../settings/SecretsManagerSection";
+import { WalletKeysSection } from "../settings/WalletKeysSection";
 import { SecuritySettingsSection } from "../settings/SecuritySettingsSection";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { ConfigPageView } from "./ConfigPageView";
@@ -172,11 +173,11 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
   {
     id: "secrets",
     label: "settings.sections.secrets.label",
-    defaultLabel: "Secrets storage",
+    defaultLabel: "Vault",
     icon: KeyRound,
     description: "settings.sections.secrets.desc",
     defaultDescription:
-      "Where Milady stores your API keys: locally, in 1Password, in Bitwarden, or in Proton Pass.",
+      "Backends, secrets, saved logins, and per-context routing.",
   },
   {
     id: "security",
@@ -1047,7 +1048,10 @@ export function SettingsView({
           bodyClassName="p-4 sm:p-5"
           ref={registerContentItem("wallet-rpc")}
         >
-          <ConfigPageView embedded />
+          <div className="space-y-6">
+            <WalletKeysSection />
+            <ConfigPageView embedded />
+          </div>
         </SettingsSection>
       )}
 
@@ -1070,11 +1074,11 @@ export function SettingsView({
         <SettingsSection
           id="secrets"
           title={t("settings.sections.secrets.label", {
-            defaultValue: "Secrets storage",
+            defaultValue: "Vault",
           })}
           description={t("settings.sections.secrets.desc", {
             defaultValue:
-              "Where Milady stores your API keys: locally, in 1Password, in Bitwarden, or in Proton Pass.",
+              "Backends, secrets, saved logins, and per-context routing.",
           })}
           ref={registerContentItem("secrets")}
         >

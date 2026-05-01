@@ -91,8 +91,8 @@ function main() {
   console.log(`[clean] repo root: ${root}${deep ? " (deep)" : ""}\n`);
 
   rmPath("dist", path.join(root, "dist"));
-  rmPath("apps/app/dist", path.join(root, "apps", "app", "dist"));
-  rmPath("apps/app/.vite", path.join(root, "apps", "app", ".vite"));
+  rmPath("packages/app/dist", path.join(root, "apps", "app", "dist"));
+  rmPath("packages/app/.vite", path.join(root, "apps", "app", ".vite"));
   rmPath(
     "packages/homepage/dist",
     path.join(root, "packages", "homepage", "dist"),
@@ -115,41 +115,41 @@ function main() {
   rmNodeModulesCaches();
 
   rmPath(
-    "apps/app/test-results",
+    "packages/app/test-results",
     path.join(root, "apps", "app", "test-results"),
   );
   rmPath(
-    "apps/app/playwright-report",
+    "packages/app/playwright-report",
     path.join(root, "apps", "app", "playwright-report"),
   );
 
   if (deep) {
     rmPath(
-      "apps/app/electrobun/build",
+      "packages/app/electrobun/build",
       path.join(root, "apps", "app", "electrobun", "build"),
     );
     rmPath(
-      "apps/app/electrobun/artifacts",
+      "packages/app/electrobun/artifacts",
       path.join(root, "apps", "app", "electrobun", "artifacts"),
     );
     rmFile(
-      "apps/app/electrobun/src/preload.js (regenerate: cd apps/app/electrobun && bun run build:preload)",
+      "packages/app/electrobun/src/preload.js (regenerate: cd packages/app/electrobun && bun run build:preload)",
       path.join(root, "apps", "app", "electrobun", "src", "preload.js"),
     );
     rmPath(
-      "apps/app/electron/app-build",
+      "packages/app/electron/app-build",
       path.join(root, "apps", "app", "electron", "app-build"),
     );
     rmPath(
-      "apps/app/electron/eliza-dist",
+      "packages/app/electron/eliza-dist",
       path.join(root, "apps", "app", "electron", "eliza-dist"),
     );
     rmPath(
-      "apps/app/electron/tsc-out",
+      "packages/app/electron/tsc-out",
       path.join(root, "apps", "app", "electron", "tsc-out"),
     );
     rmPath(
-      "apps/app/electron/build",
+      "packages/app/electron/build",
       path.join(root, "apps", "app", "electron", "build"),
     );
     rmPath("dist-electron", path.join(root, "dist-electron"));
