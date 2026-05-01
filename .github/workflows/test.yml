@@ -107,6 +107,11 @@ jobs:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
       TURBO_REMOTE_ONLY: true
+      # Disable pytest-xprocess globally. Several plugins declare it as a dev
+      # dep but never use it; its session-finalizer leaves orphan child
+      # processes that hold turbo's stdio pipes open after the test passes,
+      # so the job hangs until the 60m wall-clock timeout fires.
+      PYTEST_ADDOPTS: "-p no:xprocess"
     steps:
       - uses: actions/checkout@v6
         with:
@@ -127,6 +132,7 @@ jobs:
           no-vision-deps: "true"
 
       - name: Run plugin tests
+        timeout-minutes: 35
         run: bun run test:plugins
 
   desktop-contract:
