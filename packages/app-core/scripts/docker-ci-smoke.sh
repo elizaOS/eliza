@@ -361,6 +361,7 @@ log "Starting container smoke boot"
   -e ELIZA_CONFIG_DIR=/tmp/milady-smoke/config \
   -e MILADY_WORKSPACE_DIR=/tmp/milady-smoke/workspace \
   -e ELIZA_WORKSPACE_DIR=/tmp/milady-smoke/workspace \
+  -e MILADY_VAULT_PASSPHRASE=docker-smoke-vault-passphrase \
   -e PGLITE_DATA_DIR=/tmp/milady-smoke/pglite \
   -e ELIZA_DISABLE_LOCAL_EMBEDDINGS=1 \
   -e ELIZA_API_BIND=0.0.0.0 \
