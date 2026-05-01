@@ -52,8 +52,8 @@
   "dependencies": {
     "@elizaos/agent": "workspace:*",
     "@elizaos/app-core": "workspace:*",
-    "@elizaos/ui": "workspace:*",
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "workspace:*",
+    "@elizaos/ui": "workspace:*"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",

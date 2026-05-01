@@ -413,7 +413,6 @@ export function normalizeTrajectoryMetadata(
 
 const DEFAULT_TRUNCATE_LIMIT = 500;
 
-/** @internal Exported for testing. */
 export function truncateField(
   value: string,
   limit = DEFAULT_TRUNCATE_LIMIT,
@@ -423,7 +422,6 @@ export function truncateField(
   return `${value.slice(0, limit)}\n[...truncated ${removed} chars...]\n${value.slice(-limit)}`;
 }
 
-/** @internal Exported for testing. */
 export function truncateRecord(
   obj: Record<string, unknown>,
   limit = DEFAULT_TRUNCATE_LIMIT,
@@ -461,7 +459,6 @@ export function capScriptForPersistence(script: string): {
 // Insight extraction
 // ---------------------------------------------------------------------------
 
-/** @internal Exported for testing. */
 export function extractInsightsFromResponse(
   response: string,
   purpose: string,
@@ -505,7 +502,6 @@ export function extractInsightsFromResponse(
 // Observation extraction
 // ---------------------------------------------------------------------------
 
-/** @internal Exported for testing. */
 export function shouldRunObservationExtraction(
   runtime: IAgentRuntime,
 ): boolean {
@@ -569,7 +565,6 @@ Do NOT include observations about the conversation itself, only about the user.
 Recent exchanges:
 `;
 
-/** @internal Exported for testing. */
 export function pushChatExchange(
   runtime: IAgentRuntime,
   exchange: BufferedExchange,
@@ -600,7 +595,6 @@ export function pushChatExchange(
   );
 }
 
-/** @internal Exported for testing. */
 export async function flushObservationBuffer(
   runtime: IAgentRuntime,
 ): Promise<string[]> {
@@ -755,7 +749,6 @@ export async function executeRawSql(
   return db.execute(raw(sqlText));
 }
 
-/** @internal Exported for testing. */
 export function extractRows(result: unknown): unknown[] {
   if (Array.isArray(result)) return result;
   const record = asRecord(result);
@@ -763,7 +756,6 @@ export function extractRows(result: unknown): unknown[] {
   return Array.isArray(record.rows) ? record.rows : [];
 }
 
-/** @internal Exported for testing. */
 export async function computeBySource(
   runtime: IAgentRuntime,
 ): Promise<Record<string, number>> {
@@ -1669,7 +1661,6 @@ export async function saveTrajectory(
 /**
  * Read orchestrator trajectory context from the runtime, if set.
  */
-/** @internal Exported for testing. */
 export function readOrchestratorTrajectoryContext(runtime: unknown):
   | {
       source: "orchestrator";

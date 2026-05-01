@@ -45,6 +45,7 @@
   },
   "dependencies": {
     "@capacitor/core": "8.3.1",
+    "@elizaos/agent": "workspace:*",
     "@elizaos/app-core": "workspace:*",
     "@elizaos/capacitor-appblocker": "workspace:*",
     "@elizaos/capacitor-mobile-signals": "workspace:*",
@@ -55,6 +56,7 @@
     "@elizaos/plugin-signal": "workspace:*",
     "@elizaos/plugin-telegram": "workspace:*",
     "@elizaos/plugin-whatsapp": "workspace:*",
+    "@elizaos/scenario-schema": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "drizzle-orm": "^0.45.1",
