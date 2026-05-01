@@ -280,6 +280,29 @@ describe("connector blocker actions", () => {
     expect(trigger?.instructions).toContain(`roomId: ${roomId}`);
   });
 
+  it("does not assume Telegram when the target platform is missing", async () => {
+    const message = makeMemory({
+      agentId: runtime.agentId,
+      text: "Mute crypto signals for six hours.",
+    });
+
+    const result = await chatThreadControlAction.handler?.(
+      runtime,
+      message,
+      undefined,
+      {
+        parameters: {
+          operation: "mute_chat",
+          chatName: "crypto signals",
+          durationMinutes: 360,
+        },
+      },
+    );
+
+    expect(result?.success).toBe(false);
+    expect(result?.text).toContain("platform");
+  });
+
   it("schedules an X DM reply as a real trigger task", async () => {
     const message = makeMemory({
       agentId: runtime.agentId,

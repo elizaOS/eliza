@@ -283,4 +283,40 @@ describe("LifeOps calendar feed fallback", () => {
     expect(aggregate).toHaveBeenCalledOnce();
     expect(result.calendarId).toBe("primary");
   });
+
+  it("surfaces local cache delete failures after deleting the remote calendar event", async () => {
+    const service = new LifeOpsService(runtime());
+    const writeGrant = grant({
+      capabilities: ["google.calendar.read", "google.calendar.write"],
+    });
+    vi.spyOn(service, "requireGoogleCalendarWriteGrant").mockResolvedValue(
+      writeGrant,
+    );
+    const remoteDelete = vi
+      .spyOn(service.googleManagedClient, "deleteCalendarEvent")
+      .mockResolvedValue(undefined);
+    vi.spyOn(
+      service.repository,
+      "deleteCalendarEventByExternalId",
+    ).mockRejectedValue(new Error("cache delete failed"));
+
+    await expect(
+      service.deleteCalendarEvent(
+        new URL("http://localhost/api/lifeops/calendar/events/event-1"),
+        {
+          mode: "cloud_managed",
+          side: "owner",
+          calendarId: "primary",
+          eventId: "external-1",
+        },
+      ),
+    ).rejects.toThrow("cache delete failed");
+
+    expect(remoteDelete).toHaveBeenCalledWith({
+      side: "owner",
+      grantId: "cloud-1",
+      calendarId: "primary",
+      eventId: "external-1",
+    });
+  });
 });

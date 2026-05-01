@@ -268,7 +268,9 @@ function formatResult(result: CrossChannelSearchResult): string {
 // Action
 // ---------------------------------------------------------------------------
 
-export const searchAcrossChannelsAction: Action = {
+export const searchAcrossChannelsAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: ACTION_NAME,
   similes: [
     "CROSS_CHANNEL_SEARCH",
@@ -283,6 +285,7 @@ export const searchAcrossChannelsAction: Action = {
     "timestamp. Connectors without native search emit typed unsupported " +
     "markers (no fabricated results). Owner only.",
   descriptionCompressed: "Cross-channel search with citations. Owner only.",
+  suppressPostActionContinuation: true,
 
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
 

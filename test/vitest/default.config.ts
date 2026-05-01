@@ -414,8 +414,8 @@ export default defineConfig({
       "eliza/packages/elizaos/templates/**",
       // Skills tests use their own package-level runner.
       "eliza/packages/skills/test/**",
-      // Homepage tests need jsdom environment (run via apps/homepage vitest config).
-      "apps/homepage/**",
+      // Homepage tests need jsdom environment (run via packages/homepage vitest config).
+      "packages/homepage/**",
       // Requires the built plugin-training dist from `bun run build`.
       "**/training-service.import-ollama.test.ts",
     ],

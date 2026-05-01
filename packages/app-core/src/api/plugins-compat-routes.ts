@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import {
   type AdvancedCapabilityPluginId,
   applyPluginRuntimeMutation,
+  discoverPluginsFromManifest,
   findPrimaryEnvKey,
   isAdvancedCapabilityPluginId,
   loadElizaConfig,
@@ -979,10 +980,8 @@ export function buildPluginListResponse(runtime: AgentRuntime | null): {
   const config = loadElizaConfig();
   const configRecord = config as Record<string, unknown>;
   const loadedNames = resolveLoadedPluginNames(runtime);
-  // Source of truth: registry under packages/app-core/src/registry/data/.
-  // The legacy adapter projects RegistryEntry[] back to the manifest shape
-  // this route's transformation pipeline still expects. Once that pipeline
-  // is rewritten to consume RegistryEntry directly, drop the adapter.
+  // Primary source: registry entries. Workspace plugin discovery fills gaps
+  // for local first-party plugin packages that have not been registered yet.
   const registry = loadRegistry();
   const manifestRoot = resolvePluginManifestPath()
     ? path.dirname(resolvePluginManifestPath() ?? "")
@@ -1070,6 +1069,52 @@ export function buildPluginListResponse(runtime: AgentRuntime | null): {
       group: registryEntry?.render.group,
       groupOrder: registryEntry?.render.groupOrder,
       visible: registryEntry?.render.visible ?? true,
+    });
+  }
+
+  for (const entry of discoverPluginsFromManifest()) {
+    const pluginId = normalizePluginId(entry.id);
+    const category = normalizePluginCategory(entry.category);
+    if (category === "app" || plugins.has(pluginId)) {
+      continue;
+    }
+
+    const active = isPluginLoaded(pluginId, entry.npmName, loadedNames);
+    const persistedEnabled = resolvePersistedPluginEnabled(
+      pluginId,
+      category,
+      entry.npmName,
+      configEntries,
+      configRecord,
+    );
+
+    plugins.set(pluginId, {
+      id: pluginId,
+      name: entry.name,
+      description: entry.description,
+      tags: entry.tags ?? [],
+      enabled: resolveCompatPluginEnabledForList(active, persistedEnabled),
+      configured: entry.configured,
+      envKey: entry.envKey,
+      category,
+      source: entry.source,
+      configKeys: entry.configKeys,
+      parameters: entry.parameters,
+      validationErrors: entry.validationErrors,
+      validationWarnings: entry.validationWarnings,
+      npmName: entry.npmName,
+      version:
+        resolveInstalledPackageVersion(entry.npmName) ??
+        entry.version ??
+        undefined,
+      pluginDeps: entry.pluginDeps,
+      isActive: active,
+      configUiHints: entry.configUiHints,
+      icon: entry.icon ?? null,
+      homepage: entry.homepage,
+      repository: entry.repository,
+      setupGuideUrl: entry.setupGuideUrl,
+      visible: true,
     });
   }
 

@@ -52,6 +52,7 @@ vi.mock("@elizaos/app-core/state", () => ({ useApp: useAppMock }));
 vi.mock("@elizaos/app-core/utils", () => ({
   openExternalUrl: openExternalUrlMock,
 }));
+vi.mock("react", async () => vi.importActual("react"));
 vi.mock("@elizaos/app-core/events", () => ({
   APP_RESUME_EVENT: "app-resume",
 }));

@@ -1,27 +1,18 @@
 import type http from "node:http";
 import { Readable } from "node:stream";
 import { describe, expect, it } from "vitest";
-import {
-  type CloudRouteDependencies,
-  type CloudRouteState,
-  handleCloudRoute,
-} from "./cloud-routes";
 
-function testRouteDependencies(): CloudRouteDependencies {
-  return {
-    applyCanonicalOnboardingConfig: (config, patch) => {
-      Object.assign(config, patch);
-    },
-    createIntegrationTelemetrySpan: () => ({
-      failure: () => {},
-      success: () => {},
-    }),
-    handleAutonomousCloudRoute: async () => false,
-    normalizeCloudSiteUrl: (url) => url ?? "https://www.elizacloud.ai",
-    saveElizaConfig: () => {},
-    validateCloudBaseUrl: async () => null,
-  };
-}
+import { type CloudRouteState, handleCloudRoute } from "./cloud-routes";
+
+const testCloudRouteServices: CloudRouteState["services"] = {
+  applyCanonicalOnboardingConfig: (
+    config: Record<string, unknown>,
+    patch: Record<string, unknown>,
+  ) => {
+    Object.assign(config, patch);
+  },
+  saveElizaConfig: () => {},
+};
 
 function jsonRequest(body: unknown): http.IncomingMessage {
   return Readable.from([JSON.stringify(body)]) as http.IncomingMessage;
@@ -117,8 +108,8 @@ describe("cloud-routes", () => {
           llmText: { backend: "elizacloud", transport: "cloud-proxy" },
         },
       } as CloudRouteState["config"],
-      dependencies: testRouteDependencies(),
       runtime: runtime as CloudRouteState["runtime"],
+      services: testCloudRouteServices,
     };
     const req = jsonRequest({
       apiKey: "new-key",

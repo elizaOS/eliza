@@ -62,6 +62,10 @@ interface Harness {
   fetch: ReturnType<typeof vi.fn>;
   pickPort: (start: number) => Promise<number>;
   sleep: (ms: number) => Promise<void>;
+  isProcessAlive: (pid: number) => boolean;
+  readProcessCommand: (pid: number) => Promise<string | null>;
+  killPid: (pid: number, signal: NodeJS.Signals) => void;
+  preflightBinary: (binary: string) => Promise<void>;
   children: FakeChild[];
   deps: N8nSidecarDeps;
 }
@@ -80,18 +84,34 @@ function makeHarness(overrides: Partial<Harness> = {}): Harness {
   });
   const pickPortFn: Harness["pickPort"] = vi.fn(async (start: number) => start);
   const sleepFn: Harness["sleep"] = vi.fn(async (_ms: number) => undefined);
+  const isProcessAliveFn: Harness["isProcessAlive"] = vi.fn(() => false);
+  const readProcessCommandFn: Harness["readProcessCommand"] = vi.fn(
+    async () => null,
+  );
+  const killPidFn: Harness["killPid"] = vi.fn();
+  const preflightBinaryFn: Harness["preflightBinary"] = vi.fn(
+    async () => undefined,
+  );
 
   return {
     spawn: overrides.spawn ?? spawnFn,
     fetch: overrides.fetch ?? fetchFn,
     pickPort: overrides.pickPort ?? pickPortFn,
     sleep: overrides.sleep ?? sleepFn,
+    isProcessAlive: overrides.isProcessAlive ?? isProcessAliveFn,
+    readProcessCommand: overrides.readProcessCommand ?? readProcessCommandFn,
+    killPid: overrides.killPid ?? killPidFn,
+    preflightBinary: overrides.preflightBinary ?? preflightBinaryFn,
     children,
     deps: {
       spawn: (overrides.spawn ?? spawnFn) as unknown as N8nSidecarDeps["spawn"],
       fetch: (overrides.fetch ?? fetchFn) as unknown as N8nSidecarDeps["fetch"],
       pickPort: overrides.pickPort ?? pickPortFn,
       sleep: overrides.sleep ?? sleepFn,
+      isProcessAlive: overrides.isProcessAlive ?? isProcessAliveFn,
+      readProcessCommand: overrides.readProcessCommand ?? readProcessCommandFn,
+      killPid: overrides.killPid ?? killPidFn,
+      preflightBinary: overrides.preflightBinary ?? preflightBinaryFn,
     },
   };
 }

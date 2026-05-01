@@ -1191,20 +1191,13 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
             eventId: externalEventId,
           });
         }
-        // Best-effort: drop the local cached row so subsequent feed reads
-        // don't show a phantom event. Ignore failures here — the source of
-        // truth (Google) has already accepted the delete.
-        try {
-          await this.repository.deleteCalendarEventByExternalId(
-            this.agentId(),
-            "google",
-            calendarId ?? "primary",
-            externalEventId,
-            grant.side,
-          );
-        } catch {
-          // intentionally swallowed: local cache mirror, not authoritative
-        }
+        await this.repository.deleteCalendarEventByExternalId(
+          this.agentId(),
+          "google",
+          calendarId ?? "primary",
+          externalEventId,
+          grant.side,
+        );
         await this.clearGoogleGrantAuthFailure(grant);
         await this.recordCalendarEventAudit(
           externalEventId,

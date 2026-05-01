@@ -77,6 +77,20 @@ describe("LifeOps provider mock coverage contract", () => {
     }
   });
 
+  it("documents every env var emitted by the real mock runner", async () => {
+    const documentedEnvVars = new Set(
+      LIFEOPS_PROVIDER_MOCK_COVERAGE.flatMap((entry) => entry.envVars),
+    );
+    const mocks = await startMocks({ envs: MOCK_ENVIRONMENTS });
+    try {
+      expect(Object.keys(mocks.envVars).sort()).toEqual(
+        [...documentedEnvVars].sort(),
+      );
+    } finally {
+      await mocks.stop();
+    }
+  });
+
   it("documents non-HTTP seams and known provider gaps", () => {
     for (const entry of LIFEOPS_PROVIDER_MOCK_COVERAGE) {
       expect(entry.surfaces.length).toBeGreaterThan(0);
@@ -108,6 +122,9 @@ describe("LifeOps provider mock coverage contract", () => {
     expect(readme).toContain("## Provider coverage and remaining gaps");
     for (const entry of LIFEOPS_PROVIDER_MOCK_COVERAGE) {
       expect(readme).toContain(`\`${entry.id}\``);
+      for (const surface of entry.surfaces) {
+        expect(readme).toContain(surface);
+      }
       for (const gap of entry.knownGaps) {
         expect(readme).toContain(gap);
       }

@@ -28,7 +28,7 @@ const SEARCH_DIRS = [
   "eliza/packages/app-core/src",
   "eliza/packages/ui/src",
   "apps/app/src",
-  "apps/homepage/src",
+  "packages/homepage/src",
 ];
 
 /**

@@ -10,7 +10,7 @@ import type {
 } from "../contracts/service-routing.js";
 import type { RouteRequestContext } from "./route-helpers.js";
 
-type AuthModule = typeof import("../auth/index");
+type AuthModule = typeof import("../auth/index.js");
 
 export type SubscriptionAuthApi = Pick<
   AuthModule,

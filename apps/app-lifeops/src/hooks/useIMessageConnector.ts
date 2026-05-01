@@ -2,13 +2,7 @@ import { client } from "@elizaos/app-core/api";
 import type { LifeOpsIMessageConnectorStatus } from "@elizaos/shared";
 import { useCallback, useEffect, useState } from "react";
 import type { FullDiskAccessProbeResult } from "../lifeops/fda-probe.js";
-
-function formatError(cause: unknown, fallback: string): string {
-  if (cause instanceof Error && cause.message.trim().length > 0) {
-    return cause.message.trim();
-  }
-  return fallback;
-}
+import { formatConnectorError } from "./connector-error.js";
 
 function isMacHostPlatform(
   platform: LifeOpsIMessageConnectorStatus["hostPlatform"] | null | undefined,
@@ -47,7 +41,12 @@ export function useIMessageConnector() {
       setError(null);
       await refreshSupportState(nextStatus);
     } catch (cause) {
-      setError(formatError(cause, "iMessage connector status failed to load."));
+      setError(
+        formatConnectorError(
+          cause,
+          "iMessage connector status failed to load.",
+        ),
+      );
     } finally {
       setLoading(false);
     }
