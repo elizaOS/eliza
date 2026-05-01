@@ -74,24 +74,10 @@ const libMacWindowEffectsDylib = path.join(
 );
 
 export function createElectrobunConfig(): ElectrobunConfig {
-  const appName =
-    (process.env.ELIZA_APP_NAME ?? process.env.ELIZA_APP_NAME ?? "").trim() ||
-    "elizaOS";
-  const appId =
-    (process.env.ELIZA_APP_ID ?? process.env.ELIZA_APP_ID ?? "").trim() ||
-    "ai.elizaos.app";
-  const urlScheme =
-    (
-      process.env.ELIZA_URL_SCHEME ??
-      process.env.ELIZA_URL_SCHEME ??
-      ""
-    ).trim() || "elizaos";
-  const releaseUrl =
-    (
-      process.env.ELIZA_RELEASE_URL ??
-      process.env.ELIZA_RELEASE_URL ??
-      ""
-    ).trim() || "";
+  const appName = (process.env.ELIZA_APP_NAME ?? "").trim() || "elizaOS";
+  const appId = (process.env.ELIZA_APP_ID ?? "").trim() || "ai.elizaos.app";
+  const urlScheme = (process.env.ELIZA_URL_SCHEME ?? "").trim() || "elizaos";
+  const releaseUrl = (process.env.ELIZA_RELEASE_URL ?? "").trim() || "";
   const runtimeDistDir =
     (process.env.ELIZA_RUNTIME_DIST_DIR ?? "").trim() || "eliza-dist";
   // Note: All paths relative to electrobun.config.ts location
@@ -176,6 +162,7 @@ export function createElectrobunConfig(): ElectrobunConfig {
         [repoPackageJsonPath]: `${runtimeDistDir}/package.json`,
         "assets/appIcon.png": "assets/appIcon.png",
         "assets/appIcon.ico": "assets/appIcon.ico",
+        "assets/brand-config.json": "brand-config.json",
         ...(process.platform === "darwin" &&
         fs.existsSync(libMacWindowEffectsDylib)
           ? { "src/libMacWindowEffects.dylib": "libMacWindowEffects.dylib" }

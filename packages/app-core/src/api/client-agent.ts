@@ -286,6 +286,7 @@ declare module "./client-base" {
     }>;
     getAuthStatus(): Promise<{
       required: boolean;
+      authenticated?: boolean;
       loginRequired?: boolean;
       bootstrapRequired?: boolean;
       localAccess?: boolean;

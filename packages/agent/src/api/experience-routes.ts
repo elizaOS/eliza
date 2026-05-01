@@ -1,11 +1,64 @@
 import type { AgentRuntime, UUID } from "@elizaos/core";
-import type { ExperienceService } from "../../../typescript/src/features/advanced-capabilities/experience/service.ts";
-import {
-  type Experience,
-  type ExperienceQuery,
-  ExperienceType,
-  OutcomeType,
-} from "../../../typescript/src/features/advanced-capabilities/experience/types.ts";
+
+// These enums and types are defined in @elizaos/core's advanced-capabilities
+// experience module but not re-exported from the compiled dist bundle (tsdown
+// tree-shakes them). Inlined here so the packaged desktop build works without
+// a cross-package source import.
+enum ExperienceType {
+  SUCCESS = "success",
+  FAILURE = "failure",
+  DISCOVERY = "discovery",
+  CORRECTION = "correction",
+  LEARNING = "learning",
+  HYPOTHESIS = "hypothesis",
+  VALIDATION = "validation",
+  WARNING = "warning",
+}
+
+enum OutcomeType {
+  POSITIVE = "positive",
+  NEGATIVE = "negative",
+  NEUTRAL = "neutral",
+  MIXED = "mixed",
+}
+
+interface Experience {
+  id: UUID;
+  entityId: UUID;
+  type: ExperienceType;
+  outcome: OutcomeType;
+  context: string;
+  summary: string;
+  actionName?: string;
+  sourceMessageId?: UUID;
+  roomId?: UUID;
+  worldId?: UUID;
+  metadata?: Record<string, unknown>;
+  tags?: string[];
+  confidence?: number;
+  createdAt?: number;
+}
+
+interface ExperienceQuery {
+  entityId?: UUID;
+  type?: ExperienceType;
+  outcome?: OutcomeType;
+  actionName?: string;
+  roomId?: UUID;
+  worldId?: UUID;
+  tags?: string[];
+  limit?: number;
+  offset?: number;
+  startDate?: number;
+  endDate?: number;
+}
+
+interface ExperienceService {
+  createExperience(experience: Omit<Experience, "id">): Promise<Experience>;
+  getExperiences(query: ExperienceQuery): Promise<Experience[]>;
+  getExperienceById(id: UUID): Promise<Experience | null>;
+  deleteExperience(id: UUID): Promise<boolean>;
+}
 import type { RouteRequestContext } from "./route-helpers.js";
 
 const EXPERIENCE_ROUTE_PREFIXES = [
