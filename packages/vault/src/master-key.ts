@@ -1,5 +1,4 @@
 import { scryptSync } from "node:crypto";
-import { Entry } from "@napi-rs/keyring";
 import { generateMasterKey, KEY_BYTES } from "./crypto.js";
 
 /**
@@ -222,7 +221,18 @@ export function osKeychainMasterKey(opts: OsKeychainOptions = {}): MasterKeyReso
   const account = opts.account ?? "vault.masterKey";
   return {
     async load() {
-      let entry: Entry;
+      let Entry: typeof import("@napi-rs/keyring").Entry;
+      try {
+        ({ Entry } = await import("@napi-rs/keyring"));
+      } catch (err) {
+        throw new MasterKeyUnavailableError(
+          `OS keychain binding unavailable (${service}/${account}): ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+
+      let entry: InstanceType<typeof Entry>;
       try {
         entry = new Entry(service, account);
       } catch (err) {
