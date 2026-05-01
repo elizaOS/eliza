@@ -151,7 +151,23 @@ function isSurfaceFile(rootId, relPath) {
 
   if (
     rootId === "main" &&
-    relPath.startsWith("packages/app/test/ui-smoke/") &&
+    relPath.startsWith("apps/app/test/ui-smoke/") &&
+    TEST_FILE_PATTERN.test(relPath)
+  ) {
+    return true;
+  }
+
+  if (
+    rootId === "main" &&
+    relPath.startsWith("apps/app/test/electrobun-packaged/") &&
+    TEST_FILE_PATTERN.test(relPath)
+  ) {
+    return true;
+  }
+
+  if (
+    rootId === "main" &&
+    relPath.startsWith("apps/homepage/test/e2e/") &&
     TEST_FILE_PATTERN.test(relPath)
   ) {
     return true;

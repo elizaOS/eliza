@@ -351,7 +351,7 @@ async function postChatPromptWithRetries(
   );
 }
 
-describeIf(LIVE)(
+describeIf(LIVE && BOOT_LOCAL_WORKSPACE_PLUGINS.length > 0)(
   "Live: plugin lifecycle — local workspace matrix",
   () => {
     let rt: Runtime;
