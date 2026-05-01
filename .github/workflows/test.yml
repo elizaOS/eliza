@@ -67,9 +67,6 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
-      - name: Build
-        run: bun run build
-
       - name: Run server tests
         run: bun run test:server
 
@@ -98,9 +95,6 @@ jobs:
           install-command: bun install --ignore-scripts --no-frozen-lockfile
           skip-avatar-clone: "true"
           no-vision-deps: "true"
-
-      - name: Build
-        run: bun run build
 
       - name: Run client tests
         run: bun run test:client
@@ -131,9 +125,6 @@ jobs:
           install-command: bun install --ignore-scripts --no-frozen-lockfile
           skip-avatar-clone: "true"
           no-vision-deps: "true"
-
-      - name: Build
-        run: bun run build
 
       - name: Run plugin tests
         run: bun run test:plugins
@@ -203,10 +194,6 @@ jobs:
           install-command: bun install --ignore-scripts --no-frozen-lockfile
           skip-avatar-clone: "true"
           no-vision-deps: "true"
-
-      - name: Build
-        if: steps.cloud.outputs.skip != 'true'
-        run: bun run build
 
       - name: Run Cloud tests
         if: steps.cloud.outputs.skip != 'true'
