@@ -11,7 +11,15 @@ declare module "@elizaos/capacitor-canvas" {
 }
 
 declare module "@elizaos/capacitor-contacts" {
-  export * from "../../../native-plugins/contacts/src/index";
+  export { Contacts } from "../../../native-plugins/contacts/src/index";
+  export type {
+    ContactSummary,
+    ListContactsOptions,
+    CreateContactOptions,
+    ImportVCardOptions,
+    ImportedContactSummary,
+    ContactsPlugin,
+  } from "../../../native-plugins/contacts/src/definitions";
 }
 
 declare module "@elizaos/capacitor-gateway" {
@@ -38,7 +46,30 @@ declare module "@elizaos/capacitor-mobile-signals" {
 }
 
 declare module "@elizaos/capacitor-phone" {
-  export * from "../../../native-plugins/phone/src/index";
+  export { Phone } from "../../../native-plugins/phone/src/index";
+  export type {
+    PlaceCallOptions,
+    PhoneStatus,
+    CallLogType,
+    CallLogEntry,
+    ListRecentCallsOptions,
+    SaveCallTranscriptOptions,
+    PhonePlugin,
+  } from "../../../native-plugins/phone/src/definitions";
+}
+
+declare module "@elizaos/capacitor-wifi" {
+  export { WiFi } from "../../../native-plugins/wifi/src/index";
+  export type {
+    WiFiNetwork,
+    ListNetworksOptions,
+    ConnectOptions,
+    WifiStateResult,
+    ConnectedNetworkResult,
+    ListNetworksResult,
+    ConnectResult,
+    WiFiPlugin,
+  } from "../../../native-plugins/wifi/src/definitions";
 }
 
 declare module "@elizaos/capacitor-screencapture" {

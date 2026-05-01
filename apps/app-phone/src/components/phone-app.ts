@@ -17,6 +17,7 @@ export const phoneApp: OverlayApp = {
   description: "Dialer, recent calls, and contact calling for Android",
   category: "system",
   icon: null,
+  androidOnly: true,
   Component: PhoneAppView,
 };
 

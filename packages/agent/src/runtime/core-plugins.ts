@@ -32,6 +32,26 @@ export const DESKTOP_ONLY_PLUGINS: readonly string[] = ["agent-orchestrator"];
  */
 export const MOBILE_CORE_PLUGINS: readonly string[] = ["@elizaos/plugin-sql"];
 
+/**
+ * Android-only overlay app plugins. Used when `MILADY_PLATFORM=android`,
+ * appended to `MOBILE_CORE_PLUGINS` in `collectPluginNames`. Each one is a
+ * runtime-app plugin (the `/plugin` subpath of the matching overlay app)
+ * that exposes the Android system surface — WiFi, Contacts, Phone — to
+ * the agent as actions. The overlay UIs themselves register at app boot
+ * via `@elizaos/app-{wifi,contacts,phone}/register` (see apps/app/src/main.tsx),
+ * gated on `Capacitor.getPlatform() === "android"` so non-Android hosts
+ * are no-ops.
+ *
+ * iOS does not get these because the underlying capacitor-{wifi,contacts,
+ * phone} native plugins have Android-only Kotlin sources. A separate iOS
+ * tier would require Swift implementations that don't exist yet.
+ */
+export const ANDROID_CORE_PLUGINS: readonly string[] = [
+  "@elizaos/app-wifi",
+  "@elizaos/app-contacts",
+  "@elizaos/app-phone",
+];
+
 /** Core plugins that should always be loaded. collectPluginNames() seeds from this list only. */
 export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-sql", // database adapter — required

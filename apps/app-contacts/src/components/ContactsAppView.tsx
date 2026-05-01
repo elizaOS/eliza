@@ -84,10 +84,16 @@ function matchesQuery(contact: ContactSummary, q: string): boolean {
   if (q.length === 0) return true;
   const needle = q.toLowerCase();
   if (contact.displayName.toLowerCase().includes(needle)) return true;
-  if (contact.phoneNumbers.some((p) => p.toLowerCase().includes(needle))) {
+  if (
+    contact.phoneNumbers.some((p: string) => p.toLowerCase().includes(needle))
+  ) {
     return true;
   }
-  if (contact.emailAddresses.some((e) => e.toLowerCase().includes(needle))) {
+  if (
+    contact.emailAddresses.some((e: string) =>
+      e.toLowerCase().includes(needle),
+    )
+  ) {
     return true;
   }
   return false;

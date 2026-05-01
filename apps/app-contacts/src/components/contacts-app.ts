@@ -17,6 +17,7 @@ export const contactsApp: OverlayApp = {
   description: "Read and create entries in the Android address book",
   category: "system",
   icon: null,
+  androidOnly: true,
   Component: ContactsAppView,
 };
 
