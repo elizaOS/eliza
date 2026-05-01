@@ -29,6 +29,7 @@ import {
   getAgentSourceAliases,
   getAppCoreSourceAliases,
   getElizaCoreRolesEntry,
+  getElizaWorkspaceRoot,
   getOptionalInstalledPackageAliases,
   getOptionalPluginSdkAliases,
   getSharedSourceAliases,
@@ -37,13 +38,21 @@ import {
   type ModuleAlias,
 } from "./workspace-aliases";
 
-const elizaWorkspaceRoot = path.join(repoRoot, "eliza");
+const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
 const disabledElizaWorkspaceRoot = path.join(repoRoot, ".eliza.ci-disabled");
 const hiddenElizaWorkspaceGlob =
   fs.existsSync(elizaWorkspaceRoot) && fs.existsSync(disabledElizaWorkspaceRoot)
     ? ".eliza.ci-disabled/**"
     : undefined;
 const isCiReal = process.env.MILADY_CI_REAL === "1";
+const elizaWorkspacePattern = (relativePath: string) =>
+  path
+    .relative(
+      repoRoot,
+      path.join(elizaWorkspaceRoot, ...relativePath.split("/")),
+    )
+    .split(path.sep)
+    .join("/");
 const ciExcludedRealPaths = [
   // ComputerUseService.loadConfig unconditionally calls setBrowserRuntimeOptions({
   // headless: false}), overriding the module-level CI headless detection from
@@ -52,21 +61,41 @@ const ciExcludedRealPaths = [
   // eliza/plugins/plugin-computeruse/src/services/computer-use-service.ts to
   // only call setBrowserRuntimeOptions when COMPUTER_USE_BROWSER_HEADLESS is
   // explicitly set.
-  "eliza/plugins/plugin-computeruse/src/__tests__/computeruse.real.test.ts",
+  elizaWorkspacePattern(
+    "plugins/plugin-computeruse/src/__tests__/computeruse.real.test.ts",
+  ),
   // These surfaces are covered by dedicated workflows or upstream package
   // suites instead of Milady's required PR real-test lane.
-  "eliza/packages/app-core/test/app/onboarding-companion.live.e2e.test.ts",
-  "eliza/packages/benchmarks/app-eval/evaluate.real.test.ts",
-  "eliza/apps/app-form/src/tests/toon-integration.live.test.ts",
-  "eliza/apps/app-lifeops/test/lifeops-life-chat.real.test.ts",
-  "eliza/apps/app-lifeops/test/lifeops-llm-extraction.live.test.ts",
-  "eliza/packages/agent/src/providers/media-provider.real.test.ts",
-  "eliza/packages/agent/src/actions/life-param-extractor-real.test.ts",
-  "eliza/plugins/plugin-evm/typescript/__tests__/integration/rpc-providers.live.test.ts",
-  "eliza/plugins/plugin-evm/typescript/__tests__/integration/transfer.live.test.ts",
-  "eliza/plugins/plugin-shell/typescript/__tests__/shell.real.test.ts",
+  elizaWorkspacePattern(
+    "packages/app-core/test/app/onboarding-companion.live.e2e.test.ts",
+  ),
+  elizaWorkspacePattern("packages/benchmarks/app-eval/evaluate.real.test.ts"),
+  elizaWorkspacePattern(
+    "apps/app-form/src/tests/toon-integration.live.test.ts",
+  ),
+  elizaWorkspacePattern("apps/app-lifeops/test/lifeops-life-chat.real.test.ts"),
+  elizaWorkspacePattern(
+    "apps/app-lifeops/test/lifeops-llm-extraction.live.test.ts",
+  ),
+  elizaWorkspacePattern(
+    "packages/agent/src/providers/media-provider.real.test.ts",
+  ),
+  elizaWorkspacePattern(
+    "packages/agent/src/actions/life-param-extractor-real.test.ts",
+  ),
+  elizaWorkspacePattern(
+    "plugins/plugin-evm/typescript/__tests__/integration/rpc-providers.live.test.ts",
+  ),
+  elizaWorkspacePattern(
+    "plugins/plugin-evm/typescript/__tests__/integration/transfer.live.test.ts",
+  ),
+  elizaWorkspacePattern(
+    "plugins/plugin-shell/typescript/__tests__/shell.real.test.ts",
+  ),
   // plugin-openrouter sdk nested workspace deps don't resolve in this CI lane.
-  "eliza/plugins/plugin-openrouter/typescript/__tests__/models.live.test.ts",
+  elizaWorkspacePattern(
+    "plugins/plugin-openrouter/typescript/__tests__/models.live.test.ts",
+  ),
 ];
 const liveSetupFile = [
   path.join(
@@ -92,8 +121,7 @@ const appCoreSourceRoot = getAppCoreSourceRoot(repoRoot);
 const sharedSourceRoot = getSharedSourceRoot(repoRoot);
 const uiSourceRoot = getUiSourceRoot(repoRoot);
 const appCompanionSourceRoot = path.join(
-  repoRoot,
-  "eliza",
+  elizaWorkspaceRoot,
   "apps",
   "app-companion",
   "src",
@@ -106,533 +134,490 @@ process.env.MILADY_LIVE_TEST = "1";
 process.env.ELIZA_LIVE_TEST = "1";
 
 const realResolveAlias: ModuleAlias[] = [
-      ...getOptionalPluginSdkAliases(repoRoot),
-      {
-        find: "@elizaos/core/roles",
-        replacement: elizaCoreRolesEntry,
-      },
-      ...(elizaCoreEntry
-        ? [
-            {
-              find: "@elizaos/core",
-              replacement: elizaCoreEntry,
-            },
-          ]
-        : []),
-      ...getAgentSourceAliases(autonomousSourceRoot, {
-        includeMiladyAlias: true,
-      }),
-      ...getAppCoreSourceAliases(appCoreSourceRoot),
-      ...getUiSourceAliases(uiSourceRoot),
-      ...getWorkspaceAppAliases(repoRoot, [
-        "app-lifeops",
-        "app-knowledge",
-        "app-task-coordinator",
-        "app-vincent",
-      ]),
-      {
-        find: /^@elizaos\/app-companion\/(.*)/,
-        replacement: path.join(appCompanionSourceRoot, "$1"),
-      },
-      {
-        find: "@elizaos/app-companion/plugin",
-        replacement: path.join(appCompanionSourceRoot, "plugin.ts"),
-      },
-      {
-        find: "@elizaos/app-companion",
-        replacement: path.join(appCompanionSourceRoot, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/app-steward\/routes\/(.*)/,
-        replacement: path.join(
-          repoRoot,
-          "eliza",
-          "apps",
-          "app-steward",
+  ...getOptionalPluginSdkAliases(repoRoot),
+  {
+    find: "@elizaos/core/roles",
+    replacement: elizaCoreRolesEntry,
+  },
+  ...(elizaCoreEntry
+    ? [
+        {
+          find: "@elizaos/core",
+          replacement: elizaCoreEntry,
+        },
+      ]
+    : []),
+  ...getAgentSourceAliases(autonomousSourceRoot, {
+    includeMiladyAlias: true,
+  }),
+  ...getAppCoreSourceAliases(appCoreSourceRoot),
+  ...getUiSourceAliases(uiSourceRoot),
+  ...getWorkspaceAppAliases(repoRoot, [
+    "app-lifeops",
+    "app-knowledge",
+    "app-task-coordinator",
+    "app-vincent",
+  ]),
+  {
+    find: /^@elizaos\/app-companion\/(.*)/,
+    replacement: path.join(appCompanionSourceRoot, "$1"),
+  },
+  {
+    find: "@elizaos/app-companion/plugin",
+    replacement: path.join(appCompanionSourceRoot, "plugin.ts"),
+  },
+  {
+    find: "@elizaos/app-companion",
+    replacement: path.join(appCompanionSourceRoot, "index.ts"),
+  },
+  {
+    find: /^@elizaos\/app-steward\/routes\/(.*)/,
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "apps",
+      "app-steward",
+      "src",
+      "routes",
+      "$1.ts",
+    ),
+  },
+  {
+    find: /^@elizaos\/app-steward\/api\/(.*)/,
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "apps",
+      "app-steward",
+      "src",
+      "api",
+      "$1.ts",
+    ),
+  },
+  {
+    find: /^@elizaos\/app-steward\/(.*)/,
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "apps",
+      "app-steward",
+      "src",
+      "$1",
+    ),
+  },
+  {
+    find: "@elizaos/app-steward",
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "apps",
+      "app-steward",
+      "src",
+      "index.ts",
+    ),
+  },
+  {
+    find: "@elizaos/app-training/routes/training",
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "apps",
+      "app-training",
+      "src",
+      "routes",
+      "training-routes.ts",
+    ),
+  },
+  {
+    find: "@elizaos/app-training/routes/trajectory",
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "apps",
+      "app-training",
+      "src",
+      "routes",
+      "trajectory-routes.ts",
+    ),
+  },
+  {
+    find: /^@elizaos\/app-training\/services\/(.*)/,
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "apps",
+      "app-training",
+      "src",
+      "services",
+      "$1.ts",
+    ),
+  },
+  {
+    find: "@elizaos/app-training/services",
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "apps",
+      "app-training",
+      "src",
+      "services",
+      "index.ts",
+    ),
+  },
+  {
+    find: /^@elizaos\/app-training\/core\/(.*)/,
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "apps",
+      "app-training",
+      "src",
+      "core",
+      "$1.ts",
+    ),
+  },
+  {
+    find: /^@elizaos\/app-training\/(.*)/,
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "apps",
+      "app-training",
+      "src",
+      "$1",
+    ),
+  },
+  {
+    find: "@elizaos/app-training",
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "apps",
+      "app-training",
+      "src",
+      "index.ts",
+    ),
+  },
+  {
+    find: "@elizaos/app-knowledge/routes",
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "apps",
+      "app-knowledge",
+      "src",
+      "routes.ts",
+    ),
+  },
+  {
+    find: "@elizaos/app-knowledge/service-loader",
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "apps",
+      "app-knowledge",
+      "src",
+      "service-loader.ts",
+    ),
+  },
+  {
+    find: /^@elizaos\/app-knowledge\/(.*)/,
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "apps",
+      "app-knowledge",
+      "src",
+      "$1",
+    ),
+  },
+  {
+    find: "@elizaos/app-knowledge",
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "apps",
+      "app-knowledge",
+      "src",
+      "index.ts",
+    ),
+  },
+  {
+    find: /^@elizaos\/app-form\/(.*)/,
+    replacement: path.join(elizaWorkspaceRoot, "apps", "app-form", "src", "$1"),
+  },
+  {
+    find: "@elizaos/app-form",
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "apps",
+      "app-form",
+      "src",
+      "index.ts",
+    ),
+  },
+  ...getSharedSourceAliases(sharedSourceRoot, {
+    includeConfigAlias: true,
+    includeMiladyAlias: true,
+  }),
+  // P0 auth subsystem reads tables/types from plugin-sql; map subpaths to
+  // source so vitest's resolver doesn't fall through to the dist `main`.
+  // Subpaths first (Vite alias matching is order-sensitive).
+  {
+    find: "@elizaos/plugin-sql/schema",
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "plugins",
+      "plugin-sql",
+      "typescript",
+      "schema",
+      "index.ts",
+    ),
+  },
+  {
+    find: "@elizaos/plugin-sql/types",
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "plugins",
+      "plugin-sql",
+      "typescript",
+      "types.ts",
+    ),
+  },
+  // Bare-package alias to source so the runtime migrator sees the same
+  // `Plugin.schema` namespace the auth-store imports from. Without this
+  // the dist build would ship the pre-P0 schema and `auth_identities`
+  // would never be created at runtime in tests.
+  {
+    find: /^@elizaos\/plugin-sql$/,
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "plugins",
+      "plugin-sql",
+      "typescript",
+      "index.ts",
+    ),
+  },
+  ...getOptionalInstalledPackageAliases(repoRoot, [
+    {
+      find: "@elizaos/plugin-agent-orchestrator",
+      packageName: "@elizaos/plugin-agent-orchestrator",
+      options: {
+        fallbackPath: path.join(
+          elizaWorkspaceRoot,
+          "plugins",
+          "plugin-agent-orchestrator",
           "src",
-          "routes",
-          "$1.ts",
+          "index",
         ),
       },
-      {
-        find: /^@elizaos\/app-steward\/api\/(.*)/,
-        replacement: path.join(
-          repoRoot,
-          "eliza",
-          "apps",
-          "app-steward",
+    },
+    {
+      find: "@elizaos/plugin-coding-agent",
+      packageName: "@elizaos/plugin-agent-orchestrator",
+      options: {
+        fallbackPath: path.join(
+          elizaWorkspaceRoot,
+          "plugins",
+          "plugin-agent-orchestrator",
           "src",
-          "api",
-          "$1.ts",
+          "index",
         ),
       },
-      {
-        find: /^@elizaos\/app-steward\/(.*)/,
-        replacement: path.join(
-          repoRoot,
-          "eliza",
-          "apps",
-          "app-steward",
+    },
+    {
+      find: "@elizaos/plugin-agent-skills",
+      packageName: "@elizaos/plugin-agent-skills",
+      options: {
+        fallbackPath: path.join(
+          elizaWorkspaceRoot,
+          "plugins",
+          "plugin-agent-skills",
+          "typescript",
           "src",
-          "$1",
+          "index",
         ),
       },
-      {
-        find: "@elizaos/app-steward",
-        replacement: path.join(
-          repoRoot,
-          "eliza",
-          "apps",
-          "app-steward",
+    },
+    {
+      find: "@elizaos/plugin-commands",
+      packageName: "@elizaos/plugin-commands",
+      options: {
+        fallbackPath: path.join(
+          elizaWorkspaceRoot,
+          "plugins",
+          "plugin-commands",
+          "typescript",
           "src",
-          "index.ts",
+          "index",
         ),
       },
-      {
-        find: "@elizaos/app-training/routes/training",
-        replacement: path.join(
-          repoRoot,
-          "eliza",
-          "apps",
-          "app-training",
+    },
+    {
+      find: "@elizaos/plugin-cron",
+      packageName: "@elizaos/plugin-cron",
+      options: {
+        fallbackPath: path.join(
+          elizaWorkspaceRoot,
+          "plugins",
+          "plugin-cron",
+          "typescript",
           "src",
-          "routes",
-          "training-routes.ts",
+          "index",
         ),
       },
-      {
-        find: "@elizaos/app-training/routes/trajectory",
-        replacement: path.join(
-          repoRoot,
-          "eliza",
-          "apps",
-          "app-training",
-          "src",
-          "routes",
-          "trajectory-routes.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/app-training\/services\/(.*)/,
-        replacement: path.join(
-          repoRoot,
-          "eliza",
-          "apps",
-          "app-training",
-          "src",
-          "services",
-          "$1.ts",
-        ),
-      },
-      {
-        find: "@elizaos/app-training/services",
-        replacement: path.join(
-          repoRoot,
-          "eliza",
-          "apps",
-          "app-training",
-          "src",
-          "services",
-          "index.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/app-training\/core\/(.*)/,
-        replacement: path.join(
-          repoRoot,
-          "eliza",
-          "apps",
-          "app-training",
-          "src",
-          "core",
-          "$1.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/app-training\/(.*)/,
-        replacement: path.join(
-          repoRoot,
-          "eliza",
-          "apps",
-          "app-training",
-          "src",
-          "$1",
-        ),
-      },
-      {
-        find: "@elizaos/app-training",
-        replacement: path.join(
-          repoRoot,
-          "eliza",
-          "apps",
-          "app-training",
-          "src",
-          "index.ts",
-        ),
-      },
-      {
-        find: "@elizaos/app-knowledge/routes",
-        replacement: path.join(
-          repoRoot,
-          "eliza",
-          "apps",
-          "app-knowledge",
-          "src",
-          "routes.ts",
-        ),
-      },
-      {
-        find: "@elizaos/app-knowledge/service-loader",
-        replacement: path.join(
-          repoRoot,
-          "eliza",
-          "apps",
-          "app-knowledge",
-          "src",
-          "service-loader.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/app-knowledge\/(.*)/,
-        replacement: path.join(
-          repoRoot,
-          "eliza",
-          "apps",
-          "app-knowledge",
-          "src",
-          "$1",
-        ),
-      },
-      {
-        find: "@elizaos/app-knowledge",
-        replacement: path.join(
-          repoRoot,
-          "eliza",
-          "apps",
-          "app-knowledge",
-          "src",
-          "index.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/app-form\/(.*)/,
-        replacement: path.join(
-          repoRoot,
-          "eliza",
-          "apps",
-          "app-form",
-          "src",
-          "$1",
-        ),
-      },
-      {
-        find: "@elizaos/app-form",
-        replacement: path.join(
-          repoRoot,
-          "eliza",
-          "apps",
-          "app-form",
-          "src",
-          "index.ts",
-        ),
-      },
-      ...getSharedSourceAliases(sharedSourceRoot, {
-        includeConfigAlias: true,
-        includeMiladyAlias: true,
-      }),
-      // P0 auth subsystem reads tables/types from plugin-sql; map subpaths to
-      // source so vitest's resolver doesn't fall through to the dist `main`.
-      // Subpaths first (Vite alias matching is order-sensitive).
-      {
-        find: "@elizaos/plugin-sql/schema",
-        replacement: path.join(
-          repoRoot,
-          "eliza",
+    },
+    {
+      find: "@elizaos/plugin-sql",
+      packageName: "@elizaos/plugin-sql",
+      options: {
+        fallbackPath: path.join(
+          elizaWorkspaceRoot,
           "plugins",
           "plugin-sql",
           "typescript",
-          "schema",
-          "index.ts",
+          "src",
+          "index",
         ),
       },
-      {
-        find: "@elizaos/plugin-sql/types",
-        replacement: path.join(
-          repoRoot,
-          "eliza",
+    },
+    {
+      find: "@elizaos/plugin-local-embedding",
+      packageName: "@elizaos/plugin-local-embedding",
+      options: {
+        fallbackPath: path.join(
+          elizaWorkspaceRoot,
           "plugins",
-          "plugin-sql",
-          "typescript",
-          "types.ts",
+          "plugin-local-embedding",
+          "src",
+          "index",
         ),
       },
-      // Bare-package alias to source so the runtime migrator sees the same
-      // `Plugin.schema` namespace the auth-store imports from. Without this
-      // the dist build would ship the pre-P0 schema and `auth_identities`
-      // would never be created at runtime in tests.
-      {
-        find: /^@elizaos\/plugin-sql$/,
-        replacement: path.join(
-          repoRoot,
-          "eliza",
+    },
+    {
+      find: "@elizaos/plugin-discord",
+      packageName: "@elizaos/plugin-discord",
+      options: {
+        fallbackPath: path.join(
+          elizaWorkspaceRoot,
           "plugins",
-          "plugin-sql",
+          "plugin-discord",
           "typescript",
-          "index.ts",
+          "src",
+          "index",
         ),
       },
-      ...getOptionalInstalledPackageAliases(repoRoot, [
-        {
-          find: "@elizaos/plugin-agent-orchestrator",
-          packageName: "@elizaos/plugin-agent-orchestrator",
-          options: {
-            fallbackPath: path.join(
-              repoRoot,
-              "eliza",
-              "plugins",
-              "plugin-agent-orchestrator",
-              "src",
-              "index",
-            ),
-          },
-        },
-        {
-          find: "@elizaos/plugin-coding-agent",
-          packageName: "@elizaos/plugin-agent-orchestrator",
-          options: {
-            fallbackPath: path.join(
-              repoRoot,
-              "eliza",
-              "plugins",
-              "plugin-agent-orchestrator",
-              "src",
-              "index",
-            ),
-          },
-        },
-        {
-          find: "@elizaos/plugin-agent-skills",
-          packageName: "@elizaos/plugin-agent-skills",
-          options: {
-            fallbackPath: path.join(
-              repoRoot,
-              "eliza",
-              "plugins",
-              "plugin-agent-skills",
-              "typescript",
-              "src",
-              "index",
-            ),
-          },
-        },
-        {
-          find: "@elizaos/plugin-commands",
-          packageName: "@elizaos/plugin-commands",
-          options: {
-            fallbackPath: path.join(
-              repoRoot,
-              "eliza",
-              "plugins",
-              "plugin-commands",
-              "typescript",
-              "src",
-              "index",
-            ),
-          },
-        },
-        {
-          find: "@elizaos/plugin-cron",
-          packageName: "@elizaos/plugin-cron",
-          options: {
-            fallbackPath: path.join(
-              repoRoot,
-              "eliza",
-              "plugins",
-              "plugin-cron",
-              "typescript",
-              "src",
-              "index",
-            ),
-          },
-        },
-        {
-          find: "@elizaos/plugin-sql",
-          packageName: "@elizaos/plugin-sql",
-          options: {
-            fallbackPath: path.join(
-              repoRoot,
-              "eliza",
-              "plugins",
-              "plugin-sql",
-              "typescript",
-              "src",
-              "index",
-            ),
-          },
-        },
-        {
-          find: "@elizaos/plugin-local-embedding",
-          packageName: "@elizaos/plugin-local-embedding",
-          options: {
-            fallbackPath: path.join(
-              repoRoot,
-              "eliza",
-              "plugins",
-              "plugin-local-embedding",
-              "src",
-              "index",
-            ),
-          },
-        },
-        {
-          find: "@elizaos/plugin-discord",
-          packageName: "@elizaos/plugin-discord",
-          options: {
-            fallbackPath: path.join(
-              repoRoot,
-              "eliza",
-              "plugins",
-              "plugin-discord",
-              "typescript",
-              "src",
-              "index",
-            ),
-          },
-        },
-        {
-          find: "@elizaos/plugin-telegram/account-auth-service",
-          packageName: "@elizaos/plugin-telegram",
-          options: {
-            fallbackPath: path.join(
-              repoRoot,
-              "eliza",
-              "plugins",
-              "plugin-telegram",
-              "src",
-              "account-auth-service",
-            ),
-          },
-        },
-        {
-          find: "@elizaos/plugin-telegram",
-          packageName: "@elizaos/plugin-telegram",
-          options: {
-            fallbackPath: path.join(
-              repoRoot,
-              "eliza",
-              "plugins",
-              "plugin-telegram",
-              "src",
-              "index",
-            ),
-          },
-        },
-        {
-          find: "@elizaos/plugin-openai",
-          packageName: "@elizaos/plugin-openai",
-          options: {
-            entryKind: "node",
-            fallbackPath: path.join(
-              repoRoot,
-              "eliza",
-              "plugins",
-              "plugin-openai",
-              "typescript",
-              "index.node",
-            ),
-          },
-        },
-        {
-          find: "@elizaos/plugin-anthropic",
-          packageName: "@elizaos/plugin-anthropic",
-          options: {
-            entryKind: "node",
-            fallbackPath: path.join(
-              repoRoot,
-              "eliza",
-              "plugins",
-              "plugin-anthropic",
-              "typescript",
-              "index.node",
-            ),
-          },
-        },
-        {
-          find: "@elizaos/plugin-google-genai",
-          packageName: "@elizaos/plugin-google-genai",
-          options: {
-            entryKind: "node",
-            fallbackPath: path.join(
-              repoRoot,
-              "eliza",
-              "plugins",
-              "plugin-google-genai",
-              "typescript",
-              "index.node",
-            ),
-          },
-        },
-        {
-          find: "@elizaos/plugin-groq",
-          packageName: "@elizaos/plugin-groq",
-          options: {
-            entryKind: "node",
-            fallbackPath: path.join(
-              repoRoot,
-              "eliza",
-              "plugins",
-              "plugin-groq",
-              "typescript",
-              "index.node",
-            ),
-          },
-        },
-        {
-          find: "@elizaos/plugin-ollama",
-          packageName: "@elizaos/plugin-ollama",
-          options: {
-            entryKind: "node",
-            fallbackPath: path.join(
-              repoRoot,
-              "eliza",
-              "plugins",
-              "plugin-ollama",
-              "typescript",
-              "index.node",
-            ),
-          },
-        },
-        {
-          find: "@elizaos/plugin-openrouter",
-          packageName: "@elizaos/plugin-openrouter",
-          options: {
-            entryKind: "node",
-            fallbackPath: path.join(
-              repoRoot,
-              "eliza",
-              "plugins",
-              "plugin-openrouter",
-              "typescript",
-              "index.node",
-            ),
-          },
-        },
-        {
-          find: "@elizaos/plugin-elizacloud",
-          packageName: "@elizaos/plugin-elizacloud",
-          options: {
-            entryKind: "node",
-            fallbackPath: path.join(
-              repoRoot,
-              "eliza",
-              "plugins",
-              "plugin-elizacloud",
-              "typescript",
-              "index.node",
-            ),
-          },
-        },
-      ]),
+    },
+    {
+      find: "@elizaos/plugin-telegram/account-auth-service",
+      packageName: "@elizaos/plugin-telegram",
+      options: {
+        fallbackPath: path.join(
+          elizaWorkspaceRoot,
+          "plugins",
+          "plugin-telegram",
+          "src",
+          "account-auth-service",
+        ),
+      },
+    },
+    {
+      find: "@elizaos/plugin-telegram",
+      packageName: "@elizaos/plugin-telegram",
+      options: {
+        fallbackPath: path.join(
+          elizaWorkspaceRoot,
+          "plugins",
+          "plugin-telegram",
+          "src",
+          "index",
+        ),
+      },
+    },
+    {
+      find: "@elizaos/plugin-openai",
+      packageName: "@elizaos/plugin-openai",
+      options: {
+        entryKind: "node",
+        fallbackPath: path.join(
+          elizaWorkspaceRoot,
+          "plugins",
+          "plugin-openai",
+          "typescript",
+          "index.node",
+        ),
+      },
+    },
+    {
+      find: "@elizaos/plugin-anthropic",
+      packageName: "@elizaos/plugin-anthropic",
+      options: {
+        entryKind: "node",
+        fallbackPath: path.join(
+          elizaWorkspaceRoot,
+          "plugins",
+          "plugin-anthropic",
+          "typescript",
+          "index.node",
+        ),
+      },
+    },
+    {
+      find: "@elizaos/plugin-google-genai",
+      packageName: "@elizaos/plugin-google-genai",
+      options: {
+        entryKind: "node",
+        fallbackPath: path.join(
+          elizaWorkspaceRoot,
+          "plugins",
+          "plugin-google-genai",
+          "typescript",
+          "index.node",
+        ),
+      },
+    },
+    {
+      find: "@elizaos/plugin-groq",
+      packageName: "@elizaos/plugin-groq",
+      options: {
+        entryKind: "node",
+        fallbackPath: path.join(
+          elizaWorkspaceRoot,
+          "plugins",
+          "plugin-groq",
+          "typescript",
+          "index.node",
+        ),
+      },
+    },
+    {
+      find: "@elizaos/plugin-ollama",
+      packageName: "@elizaos/plugin-ollama",
+      options: {
+        entryKind: "node",
+        fallbackPath: path.join(
+          elizaWorkspaceRoot,
+          "plugins",
+          "plugin-ollama",
+          "typescript",
+          "index.node",
+        ),
+      },
+    },
+    {
+      find: "@elizaos/plugin-openrouter",
+      packageName: "@elizaos/plugin-openrouter",
+      options: {
+        entryKind: "node",
+        fallbackPath: path.join(
+          elizaWorkspaceRoot,
+          "plugins",
+          "plugin-openrouter",
+          "typescript",
+          "index.node",
+        ),
+      },
+    },
+    {
+      find: "@elizaos/plugin-elizacloud",
+      packageName: "@elizaos/plugin-elizacloud",
+      options: {
+        entryKind: "node",
+        fallbackPath: path.join(
+          elizaWorkspaceRoot,
+          "plugins",
+          "plugin-elizacloud",
+          "typescript",
+          "index.node",
+        ),
+      },
+    },
+  ]),
 ];
 
 export default defineConfig({
@@ -657,7 +642,12 @@ export default defineConfig({
     execArgv: ["--max-old-space-size=4096"],
     setupFiles: [
       ...(liveSetupFile ? [liveSetupFile] : []),
-      path.join(repoRoot, "eliza", "test", "vitest", "fail-on-silent-skip.setup.ts"),
+      path.join(
+        elizaWorkspaceRoot,
+        "test",
+        "vitest",
+        "fail-on-silent-skip.setup.ts",
+      ),
     ],
     include: [
       "**/*.live.test.ts",
@@ -676,10 +666,12 @@ export default defineConfig({
       ...(hiddenElizaWorkspaceGlob ? [hiddenElizaWorkspaceGlob] : []),
       // The default real/live lane only uses public chains. Local Anvil coverage
       // stays out of bun run test until it is replaced with public-chain tests.
-      "eliza/apps/app-steward/test/anvil-contracts.real.e2e.test.ts",
-      "eliza/packages/app-core/platforms/electrobun/**",
+      elizaWorkspacePattern(
+        "apps/app-steward/test/anvil-contracts.real.e2e.test.ts",
+      ),
+      elizaWorkspacePattern("packages/app-core/platforms/electrobun/**"),
       "apps/chrome-extension/**",
-      "eliza/cloud/**",
+      elizaWorkspacePattern("cloud/**"),
       ...(isCiReal ? ciExcludedRealPaths : []),
     ],
     server: {
