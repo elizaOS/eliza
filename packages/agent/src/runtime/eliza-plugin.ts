@@ -8,6 +8,7 @@
 
 import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
 import { AgentEventService } from "@elizaos/core";
+import { browserAutofillLoginAction } from "../actions/browser-autofill-login.js";
 import { browserSessionAction } from "../actions/browser-session.js";
 import {
   disconnectConnectorAction,
@@ -282,6 +283,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       webSearchAction,
       extractPageAction,
       browserSessionAction,
+      browserAutofillLoginAction,
       launchpadLaunchAction,
       readChannelAction,
       searchConversationsAction,
