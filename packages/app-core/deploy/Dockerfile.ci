@@ -26,8 +26,7 @@ ARG AGENT_DIR
 ARG APP_DIR
 
 RUN node "${APP_CORE_DIR}/scripts/relink-workspace-packages-to-dist.mjs" \
-  @elizaos/agent \
-  @elizaos/app-core
+  @elizaos/agent
 
 RUN node "${APP_CORE_DIR}/scripts/link-docker-local-app-packages.mjs"
 
