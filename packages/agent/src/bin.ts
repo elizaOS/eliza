@@ -23,6 +23,17 @@ import { registerAospLlamaLoader as __miladyAospLlamaLoader } from "./runtime/ao
 // which is enough for resolution but not for inclusion in some Bun.build
 // configurations). Mirror the `__miladyAospLlamaLoader` pattern.
 import { ensureAospLocalInferenceHandlers as __miladyAospLocalInferenceBootstrap } from "./runtime/aosp-local-inference-bootstrap.js";
+// Static import so `Bun.build` pulls @elizaos/app-{wifi,contacts,phone}'s
+// `/plugin` subpath into the mobile bundle. Each plugin imports from
+// `@elizaos/agent` (the barrel that re-exports `runtime/eliza.ts`), so
+// statically importing them HERE — after the aosp-* imports have already
+// dragged eliza.ts through evaluation via their own deps — sidesteps the
+// init cycle that would otherwise leave the plugins' named exports
+// undefined. The imported modules are also Object.assign'd into
+// STATIC_ELIZA_PLUGINS so plugin-resolver.ts picks them up before falling
+// through to a runtime `import("@elizaos/app-*/plugin")` that has no
+// node_modules tree to resolve on-device.
+import "./runtime/android-app-plugins.js";
 
 (
   globalThis as { __miladyAospLlamaLoader?: typeof __miladyAospLlamaLoader }
