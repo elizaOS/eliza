@@ -17,15 +17,29 @@ import type {
   BrowserWorkspaceTab,
   NavigateBrowserWorkspaceTabRequest,
   OpenBrowserWorkspaceTabRequest,
-} from "@elizaos/agent";
+} from "@elizaos/agent/services/browser-workspace-types";
 import type { RPCSchema } from "electrobun/bun";
-import type { ExistingElizaInstallInfo } from "../../../src/types/index.js";
 
 // ============================================================================
 // Shared Types
 // ============================================================================
 
 // -- Desktop --
+export type ExistingElizaInstallSource =
+  | "config-path-env"
+  | "state-dir-env"
+  | "default-state-dir";
+
+export interface ExistingElizaInstallInfo {
+  detected: boolean;
+  stateDir: string;
+  configPath: string;
+  configExists: boolean;
+  stateDirExists: boolean;
+  hasStateEntries: boolean;
+  source: ExistingElizaInstallSource;
+}
+
 export interface TrayMenuItem {
   id: string;
   label?: string;

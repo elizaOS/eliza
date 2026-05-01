@@ -77,9 +77,12 @@ export interface BugReportBundleResult {
   startupStatusPath: string | null;
 }
 
-import type { ExistingElizaInstallInfo } from "../rpc-schema";
+import type {
+  ExistingElizaInstallInfo,
+  ExistingElizaInstallSource,
+} from "../rpc-schema";
 
-export type { ExistingElizaInstallInfo };
+export type { ExistingElizaInstallInfo, ExistingElizaInstallSource };
 
 // Subprocess type from Bun.spawn
 type BunSubprocess = ReturnType<typeof Bun.spawn>;

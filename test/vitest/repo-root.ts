@@ -1,4 +1,3 @@
-import { resolveRepoRoot } from "../../../scripts/lib/repo-root.mjs";
+import { resolveRepoRootFromImportMeta } from "../../packages/app-core/scripts/lib/repo-root.mjs";
 
-/** Milady checkout root (contains `apps/`, `eliza/`, `package.json`). */
-export const repoRoot = resolveRepoRoot(import.meta.url, 3);
+export const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);

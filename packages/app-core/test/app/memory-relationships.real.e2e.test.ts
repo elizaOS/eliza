@@ -53,7 +53,8 @@ const REPO_ROOT = path.resolve(
   "..",
   "..",
 );
-const APP_DIST_DIR = path.join(REPO_ROOT, "apps/app", "dist");
+const APP_DIR = path.join(REPO_ROOT, "packages", "app");
+const APP_DIST_DIR = path.join(APP_DIR, "dist");
 const READY_TIMEOUT_MS = 120_000;
 
 type MemoryStatsResponse = {
@@ -642,7 +643,7 @@ async function ensureUiDistReady(): Promise<void> {
 
   const logs: string[] = [];
   const child = spawn("bun", ["scripts/build.mjs"], {
-    cwd: path.join(REPO_ROOT, "apps/app"),
+    cwd: APP_DIR,
     env: {
       ...process.env,
       FORCE_COLOR: "0",
@@ -656,7 +657,7 @@ async function ensureUiDistReady(): Promise<void> {
   const exited = await waitForChildExit(child, 300_000);
   if (!exited || child.exitCode !== 0) {
     throw new Error(
-      `apps/app renderer build failed.\n${logs.join("").slice(-8_000)}`,
+      `packages/app renderer build failed.\n${logs.join("").slice(-8_000)}`,
     );
   }
 }

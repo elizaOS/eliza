@@ -91,7 +91,7 @@ export function formatOrchestratorDesktopDevBanner(p) {
         "unset ELIZA_DESKTOP_RENDERER_BUILD or omit --force-renderer for default skip-when-fresh",
     },
     {
-      setting: "Initial vite build (apps/app/dist)",
+      setting: "Initial vite build (packages/app/dist)",
       effective: ranInitialViteBuild ? "ran" : "skipped",
       source: rendererSource,
       change: rendererChange,

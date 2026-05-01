@@ -10,16 +10,16 @@ import { findNonWorkspaceDependencySpecs } from "./release-check";
 describe("release-check pack dry-run guard", () => {
   it("treats broad publish roots as pack hotspots", () => {
     const hotspots = findLocalPackHotspots(
-      ["dist", "apps/app/dist", "dist/node_modules"],
-      (candidate) => candidate === "dist" || candidate === "apps/app/dist",
+      ["dist", "packages/app/dist", "dist/node_modules"],
+      (candidate) => candidate === "dist" || candidate === "packages/app/dist",
     );
 
-    expect(hotspots).toEqual(["dist", "apps/app/dist"]);
+    expect(hotspots).toEqual(["dist", "packages/app/dist"]);
   });
 
   it("skips the exact pack dry-run in CI when hotspot artifacts are present", () => {
     expect(
-      shouldSkipExactPackDryRun(["dist", "apps/app/dist"], { CI: "true" }),
+      shouldSkipExactPackDryRun(["dist", "packages/app/dist"], { CI: "true" }),
     ).toBe(true);
   });
 
@@ -182,10 +182,12 @@ describe("agent packaged runtime dependencies", () => {
       '"@elizaos/agent/services/app-session-gate"',
     );
     expect(companionEmoteAction).toContain('"@elizaos/agent/security/access"');
-    expect(appBlockerEngine).toContain('"@elizaos/capacitor-appblocker"');
+    expect(appBlockerEngine).toContain(
+      '"@elizaos/app-core/bridge/native-plugins"',
+    );
     expect(companionPlugin).not.toContain('"@elizaos/agent"');
     expect(companionEmoteAction).not.toContain('"@elizaos/agent"');
-    expect(appBlockerEngine).not.toContain('"@elizaos/app-core"');
+    expect(appBlockerEngine).not.toContain('"@elizaos/agent"');
   });
 
   it("keeps agent API startup on agent-owned transaction helpers", () => {

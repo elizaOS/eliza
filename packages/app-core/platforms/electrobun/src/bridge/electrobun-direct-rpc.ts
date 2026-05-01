@@ -37,6 +37,35 @@ type BootConfigStore = {
   current: BootConfig;
 };
 
+function readRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object") {
+    throw new Error("Electrobun RPC params must be an object");
+  }
+  return value as Record<string, unknown>;
+}
+
+function readRequiredString(
+  record: Record<string, unknown>,
+  key: string,
+): string {
+  const value = record[key];
+  if (typeof value !== "string") {
+    throw new Error(`Electrobun RPC param "${key}" must be a string`);
+  }
+  return value;
+}
+
+function readRequiredNumber(
+  record: Record<string, unknown>,
+  key: string,
+): number {
+  const value = record[key];
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`Electrobun RPC param "${key}" must be a finite number`);
+  }
+  return value;
+}
+
 // Electrobun's native layer sets these globals before preloads run.
 // __electrobun must exist before Electroview.init() tries to write to it.
 // If the built-in preload hasn't fired yet (rare edge case), stub it.
@@ -113,18 +142,23 @@ const rpc = Electroview.defineRPC({
   maxRequestTime: 600_000,
   handlers: {
     requests: {
-      browserWorkspaceRendererEvaluate: (params: {
-        id: string;
-        script: string;
-        timeoutMs: number;
-      }) =>
+      browserWorkspaceRendererEvaluate: async (params: unknown) => {
+        const record = readRecord(params);
+        const id = readRequiredString(record, "id");
+        const script = readRequiredString(record, "script");
+        const timeoutMs = readRequiredNumber(record, "timeoutMs");
         getBrowserTabsRendererImpl().evaluate(
-          params.id,
-          params.script,
-          params.timeoutMs,
-        ),
-      browserWorkspaceRendererGetTabRect: (params: { id: string }) =>
-        getBrowserTabsRendererImpl().getTabRect(params.id),
+          id,
+          script,
+          timeoutMs,
+        );
+      },
+      browserWorkspaceRendererGetTabRect: async (params: unknown) => {
+        const record = readRecord(params);
+        return getBrowserTabsRendererImpl().getTabRect(
+          readRequiredString(record, "id"),
+        );
+      },
     },
     messages: {
       "*": handleWildcardMessage,
@@ -192,7 +226,7 @@ declare global {
   interface Window {
     __ELIZA_API_BASE__: string;
     __ELIZA_API_TOKEN__: string;
-    __ELIZA_ELECTROBUN_RPC__: typeof electrobunRpc;
+    __ELIZA_ELECTROBUN_RPC__?: typeof electrobunRpc;
   }
 }
 

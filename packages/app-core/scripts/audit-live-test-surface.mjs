@@ -151,7 +151,7 @@ function isSurfaceFile(rootId, relPath) {
 
   if (
     rootId === "main" &&
-    relPath.startsWith("apps/app/test/ui-smoke/") &&
+    relPath.startsWith("packages/app/test/ui-smoke/") &&
     TEST_FILE_PATTERN.test(relPath)
   ) {
     return true;

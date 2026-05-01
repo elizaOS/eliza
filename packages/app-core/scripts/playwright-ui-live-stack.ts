@@ -13,10 +13,12 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { WebSocket, WebSocketServer } from "ws";
 import { buildOnboardingRuntimeConfig } from "../src/onboarding-config";
 import { selectLiveProvider } from "../test/helpers/live-provider";
+import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { viteRendererBuildNeeded } from "./lib/vite-renderer-dist-stale.mjs";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
-const APP_DIST_DIR = path.join(REPO_ROOT, "apps", "app", "dist");
+const APP_DIR = resolveMainAppDir(REPO_ROOT, "app");
+const APP_DIST_DIR = path.join(APP_DIR, "dist");
 const UI_SMOKE_STUB_SCRIPT = path.join(
   import.meta.dirname,
   "playwright-ui-smoke-api-stub.mjs",
@@ -381,10 +383,7 @@ async function ensureUiDistReady(): Promise<void> {
 
   try {
     await access(distIndex);
-    needsBuild = viteRendererBuildNeeded(
-      path.join(REPO_ROOT, "apps", "app"),
-      REPO_ROOT,
-    );
+    needsBuild = viteRendererBuildNeeded(APP_DIR, REPO_ROOT);
   } catch {
     needsBuild = true;
   }
@@ -395,7 +394,7 @@ async function ensureUiDistReady(): Promise<void> {
 
   const logs: string[] = [];
   const child = spawn("bun", ["scripts/build.mjs"], {
-    cwd: path.join(REPO_ROOT, "apps", "app"),
+    cwd: APP_DIR,
     env: {
       ...process.env,
       FORCE_COLOR: "0",
@@ -409,7 +408,7 @@ async function ensureUiDistReady(): Promise<void> {
   const exited = await waitForChildExit(child, 300_000);
   if (!exited || child.exitCode !== 0) {
     throw new Error(
-      `apps/app renderer build failed.\n${logs.join("").slice(-8_000)}`,
+      `packages/app renderer build failed.\n${logs.join("").slice(-8_000)}`,
     );
   }
 }

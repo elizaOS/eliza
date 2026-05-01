@@ -39,6 +39,14 @@ type WorkspacePackageManifest = {
   exports?: Record<string, unknown>;
 };
 
+export function getElizaWorkspaceRoot(repoRoot: string): string {
+  const nestedElizaRoot = path.join(repoRoot, "eliza");
+  return existsSync(path.join(nestedElizaRoot, "package.json")) &&
+    existsSync(path.join(nestedElizaRoot, "packages"))
+    ? nestedElizaRoot
+    : repoRoot;
+}
+
 function escapeRegExp(value: string): string {
   return value.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -204,9 +212,9 @@ export function getOptionalInstalledPackageAliases(
 }
 
 export function getElizaCoreRolesEntry(repoRoot: string): string {
+  const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
   const elizaCoreRolesSource = path.join(
-    repoRoot,
-    "eliza",
+    elizaWorkspaceRoot,
     "packages",
     "typescript",
     "src",
@@ -216,8 +224,7 @@ export function getElizaCoreRolesEntry(repoRoot: string): string {
   return existsSync(elizaCoreRolesSource)
     ? elizaCoreRolesSource
     : path.join(
-        repoRoot,
-        "eliza",
+        elizaWorkspaceRoot,
         "packages",
         "app-core",
         "scripts",
@@ -227,9 +234,9 @@ export function getElizaCoreRolesEntry(repoRoot: string): string {
 }
 
 export function getAppCoreBridgeStubPath(repoRoot: string): string {
+  const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
   return path.join(
-    repoRoot,
-    "eliza",
+    elizaWorkspaceRoot,
     "packages",
     "app-core",
     "test",
@@ -239,9 +246,9 @@ export function getAppCoreBridgeStubPath(repoRoot: string): string {
 }
 
 export function getAppCorePluginFallbackPath(repoRoot: string): string {
+  const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
   return path.join(
-    repoRoot,
-    "eliza",
+    elizaWorkspaceRoot,
     "packages",
     "app-core",
     "test",
@@ -251,9 +258,9 @@ export function getAppCorePluginFallbackPath(repoRoot: string): string {
 }
 
 export function getAppCoreModuleFallbackPath(repoRoot: string): string {
+  const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
   return path.join(
-    repoRoot,
-    "eliza",
+    elizaWorkspaceRoot,
     "packages",
     "app-core",
     "test",
@@ -401,8 +408,9 @@ export function getWorkspaceAppAliases(
   repoRoot: string,
   appNames: string[],
 ): ModuleAlias[] {
+  const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
   return appNames.flatMap((appName) => {
-    const appRoot = path.join(repoRoot, "eliza", "apps", appName);
+    const appRoot = path.join(elizaWorkspaceRoot, "apps", appName);
     const appSourceRoot = path.join(appRoot, "src");
     const appEntry = path.join(appSourceRoot, "index.ts");
 
@@ -423,8 +431,9 @@ export function getWorkspacePluginAliases(
   repoRoot: string,
   pluginNames: string[],
 ): ModuleAlias[] {
+  const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
   return pluginNames.flatMap((pluginName) => {
-    const pluginRoot = path.join(repoRoot, "eliza", "plugins", pluginName);
+    const pluginRoot = path.join(elizaWorkspaceRoot, "plugins", pluginName);
     const pluginSourceRoot = path.join(pluginRoot, "src");
     const pluginEntry = path.join(pluginSourceRoot, "index.ts");
 
