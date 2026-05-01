@@ -265,11 +265,6 @@ if [[ -f "$WHATSAPP_PLUGIN_TS_DIR/package.json" ]]; then
   popd >/dev/null
 fi
 
-log "Building app-core workspace"
-pushd "$APP_CORE_DIR" >/dev/null
-"$BUN_BIN" run build:dist
-popd >/dev/null
-
 log "Building agent workspace"
 pushd "$AGENT_DIR" >/dev/null
 "$BUN_BIN" run build:docker-dist
