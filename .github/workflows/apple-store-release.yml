@@ -161,7 +161,7 @@ jobs:
           node -e "
             const fs = require('fs');
             const v = process.env.RELEASE_VERSION;
-            for (const f of ['package.json', 'apps/app/package.json']) {
+            for (const f of ['package.json', 'packages/app/package.json']) {
               const pkg = JSON.parse(fs.readFileSync(f, 'utf8'));
               pkg.version = v;
               fs.writeFileSync(f, JSON.stringify(pkg, null, 2) + '\n');
@@ -169,7 +169,7 @@ jobs:
           "
 
       - name: Build web assets
-        working-directory: apps/app
+        working-directory: packages/app
         run: bun run build
 
       - name: Validate iOS secrets
@@ -198,7 +198,7 @@ jobs:
           LANG: en_US.UTF-8
 
       - name: Sync Capacitor iOS
-        working-directory: apps/app
+        working-directory: packages/app
         run: bun run cap:sync:ios
         env:
           LANG: en_US.UTF-8
@@ -209,7 +209,7 @@ jobs:
           LANG: en_US.UTF-8
 
       - name: Update Xcode project version
-        working-directory: apps/app/ios/App/App.xcodeproj
+        working-directory: packages/app/ios/App/App.xcodeproj
         run: |
           VERSION="${{ needs.prepare.outputs.version }}"
           BUILD="${{ needs.prepare.outputs.build_number }}"
@@ -217,7 +217,7 @@ jobs:
           sed -i '' "s/CURRENT_PROJECT_VERSION = .*/CURRENT_PROJECT_VERSION = $BUILD;/" project.pbxproj
 
       - name: Install CocoaPods
-        working-directory: apps/app/ios/App
+        working-directory: packages/app/ios/App
         run: pod install
 
       - name: Setup Ruby
@@ -225,10 +225,10 @@ jobs:
         with:
           ruby-version: "4.0.3"
           bundler-cache: true
-          working-directory: apps/app/ios
+          working-directory: packages/app/ios
 
       - name: Resolve app identifiers
-        working-directory: apps/app
+        working-directory: packages/app
         run: |
           # Read the runtime bundle id straight from pbxproj (the overlay step
           # has already rewritten it to the elizaOS-specific id).
@@ -245,13 +245,13 @@ jobs:
           echo "Resolved: APP_IDENTIFIER=$APP_ID, APP_IDENTIFIER_EXTRA=$APP_ID_EXTRA"
 
       - name: Build and upload
-        working-directory: apps/app/ios
+        working-directory: packages/app/ios
         env:
           APP_IDENTIFIER: ${{ env.APP_IDENTIFIER }}
           APP_IDENTIFIER_EXTRA: ${{ env.APP_IDENTIFIER_EXTRA }}
         run: |
           if [[ ! -f fastlane/Fastfile ]]; then
-            echo "::error::fastlane/Fastfile missing at apps/app/ios/. cap:sync:ios or run-mobile-build.mjs should have copied it."
+            echo "::error::fastlane/Fastfile missing at packages/app/ios/. cap:sync:ios or run-mobile-build.mjs should have copied it."
             ls -la fastlane/ || true
             exit 1
           fi
@@ -266,7 +266,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ios-ipa
-          path: apps/app/ios/build/Eliza.ipa
+          path: packages/app/ios/build/Eliza.ipa
           retention-days: 90
           if-no-files-found: error
 
@@ -314,7 +314,7 @@ jobs:
           node -e "
             const fs = require('fs');
             const v = process.env.RELEASE_VERSION;
-            for (const f of ['package.json', 'apps/app/package.json', 'packages/app-core/platforms/electrobun/package.json']) {
+            for (const f of ['package.json', 'packages/app/package.json', 'packages/app-core/platforms/electrobun/package.json']) {
               try {
                 const pkg = JSON.parse(fs.readFileSync(f, 'utf8'));
                 pkg.version = v;
@@ -334,7 +334,7 @@ jobs:
           node --import tsx scripts/write-build-info.ts
 
       - name: Build renderer
-        working-directory: apps/app
+        working-directory: packages/app
         run: |
           bun install --ignore-scripts
           if [ -f node_modules/bun/install.js ]; then (cd node_modules/bun && node install.js); fi
@@ -343,7 +343,7 @@ jobs:
       - name: Stage renderer
         run: |
           rm -rf packages/app-core/platforms/electrobun/renderer
-          cp -r apps/app/dist packages/app-core/platforms/electrobun/renderer
+          cp -r packages/app/dist packages/app-core/platforms/electrobun/renderer
 
       - name: Build native macOS effects
         working-directory: packages/app-core/platforms/electrobun

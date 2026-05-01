@@ -42,7 +42,7 @@ describe("static asset manifest", () => {
     fs.writeFileSync(path.join(homepagePublic, "hero.png"), "ok");
 
     expect(buildStaticAssetManifest(root)).toEqual({
-      app: ["apps/app/public/logo.png"],
+      app: ["packages/app/public/logo.png"],
       homepage: ["packages/homepage/public/hero.png"],
     });
   });

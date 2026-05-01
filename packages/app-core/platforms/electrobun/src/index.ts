@@ -836,12 +836,22 @@ async function startRendererServer(): Promise<string> {
       : (resolveApiToken(process.env) ?? "");
 
   // Inject the API base into index.html so it's available before React mounts.
+  // Two surfaces both must be set: `__ELIZA_API_BASE__` (legacy global the
+  // appClient reads) and `__ELIZA_APP_BOOT_CONFIG__.apiBase` (typed boot
+  // config the SettingsView reads). Without the second one, the same renderer
+  // loaded via a regular browser at this static-server's origin falls back to
+  // `pageOrigin` for apiBase and every /api/* call returns SPA HTML.
   function injectApiBaseIntoHtml(html: string): string {
     if (!initialApiBase) {
       return html;
     }
-    const script = `<script>window.__ELIZA_API_BASE__=${JSON.stringify(initialApiBase)};${initialApiToken ? `Object.defineProperty(window,"__ELIZA_API_TOKEN__",{value:${JSON.stringify(initialApiToken)},configurable:true,writable:true,enumerable:false});` : ""}</script>`;
-    // Inject before </head> if present, otherwise before <body>
+    const baseLiteral = JSON.stringify(initialApiBase);
+    const tokenLiteral = initialApiToken ? JSON.stringify(initialApiToken) : "";
+    const tokenInject = tokenLiteral
+      ? `Object.defineProperty(window,"__ELIZA_API_TOKEN__",{value:${tokenLiteral},configurable:true,writable:true,enumerable:false});`
+      : "";
+    const bootConfigInject = `(function(){var k=Symbol.for("elizaos.app.boot-config"),w=window,prev=w.__ELIZAOS_APP_BOOT_CONFIG__||w.__ELIZA_APP_BOOT_CONFIG__||(w[k]&&w[k].current)||{},next=Object.assign({},prev,{apiBase:${baseLiteral}${tokenLiteral ? `,apiToken:${tokenLiteral}` : ""}});w.__ELIZAOS_APP_BOOT_CONFIG__=next;w.__ELIZA_APP_BOOT_CONFIG__=next;w[k]={current:next};})();`;
+    const script = `<script>window.__ELIZA_API_BASE__=${baseLiteral};${tokenInject}${bootConfigInject}</script>`;
     if (html.includes("</head>")) {
       return html.replace("</head>", `${script}</head>`);
     }
@@ -888,10 +898,55 @@ async function startRendererServer(): Promise<string> {
   Bun.serve({
     port,
     hostname: "127.0.0.1",
-    fetch(req) {
+    async fetch(req) {
+      const url = new URL(req.url);
+      const pathname = url.pathname;
+
+      // Proxy /api/*, /ws, /music-player to the agent port. Mirrors the Vite
+      // dev-server proxy in apps/app/vite.config.ts so the renderer can rely
+      // on same-origin /api fetches whether it's loaded via Vite (watch mode)
+      // or this static server (non-watch dev:desktop). Without this, every
+      // /api/* call returned SPA HTML and Settings sat on "Loading…" forever.
+      if (
+        initialApiBase &&
+        (pathname.startsWith("/api/") ||
+          pathname === "/ws" ||
+          pathname.startsWith("/music-player"))
+      ) {
+        const target = new URL(pathname + url.search, initialApiBase);
+        const headers = new Headers(req.headers);
+        headers.set("host", target.host);
+        try {
+          const upstream = await fetch(target, {
+            method: req.method,
+            headers,
+            body: req.body,
+            // @ts-expect-error Bun fetch supports duplex for streaming bodies
+            duplex: "half",
+            redirect: "manual",
+          });
+          return new Response(upstream.body, {
+            status: upstream.status,
+            statusText: upstream.statusText,
+            headers: upstream.headers,
+          });
+        } catch (err) {
+          return new Response(
+            JSON.stringify({
+              error: "API server unavailable",
+              detail: err instanceof Error ? err.message : String(err),
+            }),
+            {
+              status: 502,
+              headers: { "Content-Type": "application/json" },
+            },
+          );
+        }
+      }
+
       const { filePath, isGzipped, mimeExt } = resolveRendererAsset({
         rendererDir,
-        urlPath: new URL(req.url).pathname,
+        urlPath: pathname,
         existsSync: fs.existsSync,
         statSync: fs.statSync,
       });
@@ -913,10 +968,7 @@ async function startRendererServer(): Promise<string> {
         const headers: Record<string, string> = {
           "Content-Type": mimeTypes[mimeExt] ?? "application/octet-stream",
           "Access-Control-Allow-Origin": "*",
-          "Cache-Control": resolveRendererCacheControl(
-            new URL(req.url).pathname,
-            mimeExt,
-          ),
+          "Cache-Control": resolveRendererCacheControl(pathname, mimeExt),
         };
 
         if (isGzipped) {

@@ -510,12 +510,26 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
         }
         const requestId = nextWalletReq++;
         walletPending.set(requestId, { resolve: resolve, reject: reject });
+        // Include the page's origin/hostname so the host can show a
+        // "<domain> wants to ..." consent dialog without an extra eval
+        // round-trip.
+        let originValue;
+        let hostnameValue;
+        try {
+          originValue = location.origin;
+          hostnameValue = location.hostname;
+        } catch (_e) {
+          originValue = "";
+          hostnameValue = "";
+        }
         window.__electrobunSendToHost({
           type: "__elizaWalletRequest",
           requestId: requestId,
           protocol: protocol,
           method: method,
           params: params,
+          origin: originValue,
+          hostname: hostnameValue,
         });
       });
 
@@ -722,15 +736,25 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
       window.phantom = phantomNs;
     } catch (_err) {}
 
-    // Announce the providers — EIP-6963 for EVM, wallet-standard for SOL.
+    // Announce the provider per EIP-6963 (https://eips.ethereum.org/EIPS/eip-6963).
+    // Keys:
+    //   uuid — stable per-installation identifier; we use a fixed value
+    //     because dApps key wallet selection on it. Changing this would
+    //     make every dApp forget the user's previous choice.
+    //   rdns — reverse-DNS namespace for the wallet brand.
+    //   icon — data URI; the SVG below is a 24x24 monochrome "M" mark in
+    //     the brand purple (#6f5cff). Inline so we don't depend on
+    //     network availability for wallet-picker rendering.
+    const MILADY_WALLET_ICON =
+      "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIj48cmVjdCB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHJ4PSI2IiBmaWxsPSIjNmY1Y2ZmIi8+PHRleHQgeD0iNTAlIiB5PSI2OCUiIGZvbnQtZmFtaWx5PSItYXBwbGUtc3lzdGVtLEJsaW5rTWFjU3lzdGVtRm9udCxzYW5zLXNlcmlmIiBmb250LXNpemU9IjE2IiBmb250LXdlaWdodD0iNzAwIiBmaWxsPSIjZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5NPC90ZXh0Pjwvc3ZnPg==";
     const announceEthereum = () => {
       try {
         const detail = Object.freeze({
           info: Object.freeze({
-            name: "Eliza Wallet",
-            uuid: "eliza-wallet-bridge",
-            icon: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=",
-            rdns: "ai.elizaos.wallet",
+            name: "Milady",
+            uuid: "ai.milady.wallet:1",
+            icon: MILADY_WALLET_ICON,
+            rdns: "ai.milady.wallet",
           }),
           provider: ethereum,
         });
@@ -739,6 +763,205 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
     };
     window.addEventListener("eip6963:requestProvider", announceEthereum);
     setTimeout(announceEthereum, 0);
+  }
+
+  // ── Vault autofill shim ─────────────────────────────────────────────
+  // Detect login forms on each tab page, ask the host to look up saved
+  // credentials for the current domain, and (with user consent) fill the
+  // username/password inputs. Mirrors the wallet shim's request/reply
+  // pattern: tab→host via __electrobunSendToHost; host→tab via
+  // tag.executeJavascript("window.__elizaVaultReply(...)").
+  //
+  // The host (BrowserWorkspaceView) is responsible for showing a consent
+  // prompt before returning credentials. The tab never autofills without
+  // a host response carrying explicit field values.
+  if (typeof window !== "undefined" && !window.__elizaVaultInstalled) {
+    window.__elizaVaultInstalled = true;
+
+    const vaultPending = new Map();
+    let nextVaultReq = 1;
+
+    window.__elizaVaultReply = (requestId, payload) => {
+      const entry = vaultPending.get(requestId);
+      if (!entry) return;
+      vaultPending.delete(requestId);
+      try {
+        if (payload && typeof payload === "object" && payload.error) {
+          entry.reject(new Error(String(payload.error)));
+          return;
+        }
+        entry.resolve(payload && typeof payload === "object" ? payload : null);
+      } catch (_e) {
+        // Listener errors must not bubble up into the tab page.
+      }
+    };
+
+    function cssSelectorFor(el) {
+      if (!el || el.nodeType !== 1) return null;
+      if (el.id) {
+        // Document.querySelector('#…') only works when the id is a valid
+        // selector token. For complex ids fall through to the structural
+        // path so we never produce an unparsable selector.
+        if (/^[A-Za-z][A-Za-z0-9_-]*$/.test(el.id)) {
+          return "#" + el.id;
+        }
+      }
+      const parts = [];
+      let node = el;
+      let depth = 0;
+      while (node && node.nodeType === 1 && depth < 6) {
+        let part = node.tagName.toLowerCase();
+        const parent = node.parentElement;
+        if (parent) {
+          const sameTag = Array.from(parent.children).filter(
+            (c) => c.tagName === node.tagName,
+          );
+          if (sameTag.length > 1) {
+            const idx = sameTag.indexOf(node) + 1;
+            part += ":nth-of-type(" + idx + ")";
+          }
+        }
+        parts.unshift(part);
+        if (parent === document.body || !parent) break;
+        node = parent;
+        depth += 1;
+      }
+      return parts.join(" > ");
+    }
+
+    function findPrecedingTextInput(passwordInput) {
+      // Walk previous form-field siblings/ancestors looking for a text
+      // or email input that's likely the username.
+      const root = passwordInput.form || document.body;
+      const candidates = root.querySelectorAll(
+        'input[type="text"], input[type="email"], input:not([type])',
+      );
+      let lastBefore = null;
+      for (const el of candidates) {
+        if (
+          el.compareDocumentPosition(passwordInput) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+        ) {
+          lastBefore = el;
+        }
+      }
+      return lastBefore;
+    }
+
+    function setNativeInputValue(input, value) {
+      // React (and other VDOM frameworks) overrides the value setter on
+      // HTMLInputElement.prototype to track changes. Calling the prototype
+      // setter directly bypasses that, then dispatching input + change
+      // events re-notifies the framework so controlled inputs see the
+      // update.
+      const proto = Object.getPrototypeOf(input);
+      const desc = Object.getOwnPropertyDescriptor(proto, "value");
+      if (desc && typeof desc.set === "function") {
+        desc.set.call(input, value);
+      } else {
+        input.value = value;
+      }
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+
+    function fillFields(fields) {
+      if (!fields || typeof fields !== "object") return;
+      for (const selector of Object.keys(fields)) {
+        const value = fields[selector];
+        if (typeof value !== "string" || value.length === 0) continue;
+        let target = null;
+        try {
+          target = document.querySelector(selector);
+        } catch (_e) {
+          target = null;
+        }
+        if (!target) continue;
+        setNativeInputValue(target, value);
+      }
+    }
+
+    const callHost = (domain, url, fieldHints) =>
+      new Promise((resolve, reject) => {
+        if (typeof window.__electrobunSendToHost !== "function") {
+          reject(
+            new Error("Vault autofill bridge unavailable: not in an Eliza tab."),
+          );
+          return;
+        }
+        const requestId = nextVaultReq++;
+        vaultPending.set(requestId, { resolve: resolve, reject: reject });
+        window.__electrobunSendToHost({
+          type: "__elizaVaultAutofillRequest",
+          requestId: requestId,
+          domain: domain,
+          url: url,
+          fieldHints: fieldHints,
+        });
+      });
+
+    function scanLoginForms() {
+      const passwords = document.querySelectorAll(
+        'input[type="password"]:not([data-eliza-vault-scanned])',
+      );
+      for (const pw of passwords) {
+        pw.setAttribute("data-eliza-vault-scanned", "1");
+        const form = pw.form;
+        const userInput =
+          (form &&
+            form.querySelector(
+              'input[type="email"], input[name*="user" i], input[name*="email" i], input[name*="login" i]',
+            )) ||
+          findPrecedingTextInput(pw);
+        const fieldHints = [];
+        const pwSelector = cssSelectorFor(pw);
+        if (userInput) {
+          const userSelector = cssSelectorFor(userInput);
+          if (userSelector) {
+            fieldHints.push({ kind: "username", selector: userSelector });
+          }
+        }
+        if (pwSelector) {
+          fieldHints.push({ kind: "password", selector: pwSelector });
+        }
+        if (fieldHints.length === 0) continue;
+        callHost(location.hostname, location.href, fieldHints)
+          .then((payload) => {
+            if (payload && payload.fields) fillFields(payload.fields);
+          })
+          .catch(() => {
+            // User denied, no match, or bridge unavailable. Leave fields
+            // alone so the user can type credentials manually.
+          });
+      }
+    }
+
+    let scanTimer = null;
+    function ensureVaultScan() {
+      if (scanTimer) clearTimeout(scanTimer);
+      scanTimer = setTimeout(() => {
+        scanTimer = null;
+        scanLoginForms();
+      }, 250);
+    }
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("pageshow", ensureVaultScan);
+    }
+    if (typeof MutationObserver === "function" && document.documentElement) {
+      const obs = new MutationObserver(ensureVaultScan);
+      obs.observe(document.documentElement, {
+        childList: true,
+        subtree: true,
+      });
+    }
+    if (document && document.readyState !== "loading") {
+      ensureVaultScan();
+    } else if (typeof document !== "undefined") {
+      document.addEventListener("DOMContentLoaded", () => ensureVaultScan(), {
+        once: true,
+      });
+    }
   }
 })();
 `;

@@ -240,3 +240,184 @@ describe("BROWSER_TAB_PRELOAD_SCRIPT — wallet shims", () => {
     await expect(promise).rejects.toThrow(/user rejected/);
   });
 });
+
+describe("BROWSER_TAB_PRELOAD_SCRIPT — vault autofill shim", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    document.documentElement
+      .querySelectorAll("[data-eliza-cursor]")
+      .forEach((node) => {
+        node.remove();
+      });
+    delete (window as unknown as { __elizaTabKit?: unknown }).__elizaTabKit;
+    delete (window as unknown as { __elizaWalletInstalled?: boolean })
+      .__elizaWalletInstalled;
+    delete (window as unknown as { ethereum?: unknown }).ethereum;
+    delete (window as unknown as { solana?: unknown }).solana;
+    delete (window as unknown as { phantom?: unknown }).phantom;
+    delete (window as unknown as { __elizaVaultInstalled?: boolean })
+      .__elizaVaultInstalled;
+    delete (
+      window as unknown as { __electrobunSendToHost?: (p: unknown) => void }
+    ).__electrobunSendToHost;
+  });
+
+  function installPreload(): void {
+    // biome-ignore lint/security/noGlobalEval: test executes the generated preload script in the jsdom global realm.
+    globalThis.eval(BROWSER_TAB_PRELOAD_SCRIPT);
+  }
+
+  function flushTasks(): Promise<void> {
+    // The preload schedules a 250ms scan. JSDOM has fake/no-fake-timers
+    // disabled here, so we yield + wait for real time to elapse.
+    return new Promise((resolve) => setTimeout(resolve, 300));
+  }
+
+  it("emits __elizaVaultAutofillRequest when a login form is detected", async () => {
+    const captured: Record<string, unknown>[] = [];
+    (
+      window as unknown as { __electrobunSendToHost: (p: unknown) => void }
+    ).__electrobunSendToHost = (payload) => {
+      captured.push(payload as Record<string, unknown>);
+    };
+
+    // Build a login form before installing the preload — the preload's
+    // scan runs on install so the form must be in the DOM first.
+    const form = document.createElement("form");
+    const userInput = document.createElement("input");
+    userInput.type = "email";
+    userInput.id = "username";
+    userInput.name = "user";
+    const pwInput = document.createElement("input");
+    pwInput.type = "password";
+    pwInput.id = "password";
+    form.appendChild(userInput);
+    form.appendChild(pwInput);
+    document.body.appendChild(form);
+
+    installPreload();
+    await flushTasks();
+
+    const vaultRequests = captured.filter(
+      (p) => p.type === "__elizaVaultAutofillRequest",
+    );
+    expect(vaultRequests.length).toBeGreaterThanOrEqual(1);
+    const req = vaultRequests[0] as {
+      requestId: number;
+      domain: string;
+      url: string;
+      fieldHints: Array<{ kind: string; selector: string }>;
+    };
+    expect(typeof req.requestId).toBe("number");
+    expect(typeof req.domain).toBe("string");
+    expect(req.fieldHints.length).toBe(2);
+    const kinds = req.fieldHints.map((h) => h.kind).sort();
+    expect(kinds).toEqual(["password", "username"]);
+    // Selectors must resolve back to the original inputs.
+    for (const hint of req.fieldHints) {
+      const el = document.querySelector(hint.selector);
+      expect(el).toBeTruthy();
+    }
+  });
+
+  it("fills inputs with native setter + dispatches input/change on host reply", async () => {
+    const captured: Record<string, unknown>[] = [];
+    (
+      window as unknown as { __electrobunSendToHost: (p: unknown) => void }
+    ).__electrobunSendToHost = (payload) => {
+      captured.push(payload as Record<string, unknown>);
+    };
+
+    const form = document.createElement("form");
+    const userInput = document.createElement("input");
+    userInput.type = "email";
+    userInput.id = "user-eml";
+    userInput.name = "email";
+    const pwInput = document.createElement("input");
+    pwInput.type = "password";
+    pwInput.id = "user-pw";
+    form.appendChild(userInput);
+    form.appendChild(pwInput);
+    document.body.appendChild(form);
+
+    const inputEvents: string[] = [];
+    const changeEvents: string[] = [];
+    userInput.addEventListener("input", () => inputEvents.push("user"));
+    userInput.addEventListener("change", () => changeEvents.push("user"));
+    pwInput.addEventListener("input", () => inputEvents.push("pw"));
+    pwInput.addEventListener("change", () => changeEvents.push("pw"));
+
+    installPreload();
+    await flushTasks();
+
+    const req = captured.find(
+      (p) => p.type === "__elizaVaultAutofillRequest",
+    ) as {
+      requestId: number;
+      fieldHints: Array<{ kind: string; selector: string }>;
+    };
+    expect(req).toBeTruthy();
+
+    const userSel =
+      req.fieldHints.find((h) => h.kind === "username")?.selector ?? "";
+    const pwSel =
+      req.fieldHints.find((h) => h.kind === "password")?.selector ?? "";
+    expect(userSel).toBeTruthy();
+    expect(pwSel).toBeTruthy();
+    // Selectors must locate the original elements.
+    expect(document.querySelector(userSel)).toBe(userInput);
+    expect(document.querySelector(pwSel)).toBe(pwInput);
+
+    (
+      window as unknown as {
+        __elizaVaultReply: (id: number, p: unknown) => void;
+      }
+    ).__elizaVaultReply(req.requestId, {
+      fields: {
+        [userSel]: "alice@example.com",
+        [pwSel]: "hunter2",
+      },
+    });
+    // Reply schedules a microtask before fillFields runs (Promise then),
+    // so wait once for it to flush.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(userInput.value).toBe("alice@example.com");
+    expect(pwInput.value).toBe("hunter2");
+    expect(inputEvents).toContain("user");
+    expect(inputEvents).toContain("pw");
+    expect(changeEvents).toContain("user");
+    expect(changeEvents).toContain("pw");
+  });
+
+  it("does nothing when the host replies with an empty fields map", async () => {
+    const captured: Record<string, unknown>[] = [];
+    (
+      window as unknown as { __electrobunSendToHost: (p: unknown) => void }
+    ).__electrobunSendToHost = (payload) => {
+      captured.push(payload as Record<string, unknown>);
+    };
+
+    const pwInput = document.createElement("input");
+    pwInput.type = "password";
+    pwInput.id = "lonely-pw";
+    document.body.appendChild(pwInput);
+
+    installPreload();
+    await flushTasks();
+
+    const req = captured.find(
+      (p) => p.type === "__elizaVaultAutofillRequest",
+    ) as { requestId: number };
+    expect(req).toBeTruthy();
+
+    (
+      window as unknown as {
+        __elizaVaultReply: (id: number, p: unknown) => void;
+      }
+    ).__elizaVaultReply(req.requestId, { fields: {} });
+
+    expect(pwInput.value).toBe("");
+  });
+});

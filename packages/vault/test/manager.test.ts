@@ -3,8 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { generateMasterKey } from "../src/crypto.js";
+import type { ExecFn } from "../src/external-credentials.js";
 import { inMemoryMasterKey } from "../src/master-key.js";
 import { createManager, DEFAULT_PREFERENCES } from "../src/manager.js";
+import { setSavedLogin } from "../src/credentials.js";
 import { createVault } from "../src/vault.js";
 
 describe("manager — preferences", () => {
@@ -233,5 +235,136 @@ describe("manager — backend detection", () => {
         expect(s.detail).toBeDefined();
       }
     }
+  });
+
+  it("authMode is null for every backend when CLI is unavailable", async () => {
+    // CI machines usually don't have `op` or `bw` installed. Whatever
+    // the host detection returns, an unavailable backend must not claim
+    // a desktop-app authMode (which would lie about working secrets
+    // routing).
+    const m = newManager();
+    const statuses = await m.detectBackends();
+    for (const s of statuses) {
+      if (s.id === "in-house") continue;
+      if (!s.available) {
+        expect(s.authMode).toBe(null);
+      } else if (s.signedIn === false) {
+        expect(s.authMode).toBe(null);
+      } else if (s.id === "1password") {
+        // 1Password has two auth modes; either is acceptable when signed in.
+        expect(["desktop-app", "session-token"]).toContain(s.authMode);
+      }
+    }
+  });
+});
+
+describe("manager — listAllSavedLogins", () => {
+  let workDir: string;
+  beforeEach(async () => {
+    workDir = await fs.mkdtemp(join(tmpdir(), "milady-mgr-list-"));
+  });
+  afterEach(async () => {
+    await fs.rm(workDir, { recursive: true, force: true });
+  });
+
+  function execStub(
+    handler: (cmd: string, args: readonly string[]) => string,
+  ): ExecFn {
+    return async (cmd, args) => ({ stdout: handler(cmd, args), stderr: "" });
+  }
+
+  it("returns in-house entries when no external backend is signed in", async () => {
+    const v = createVault({
+      workDir,
+      masterKey: inMemoryMasterKey(generateMasterKey()),
+    });
+    const m = createManager({
+      vault: v,
+      // The 1Password and Bitwarden CLIs may exist on the dev machine
+      // (passing isCommandAvailable inside detectBackends), so detection
+      // can land on signedIn=true via desktop integration. The STUB
+      // drives the actual list call. To assert "in-house only, no
+      // failures," seed empty sessions so the list adapters succeed
+      // with [] rather than throw BackendNotSignedInError.
+      exec: execStub(() => "[]"),
+    });
+    await v.set("pm.1password.session", "stub-token", { sensitive: true });
+    await v.set("pm.bitwarden.session", "stub-token", { sensitive: true });
+    // NB: usernames containing `.` (e.g. "alice@example.com" → URL-encoded
+    // "alice%40example.com" — still has dots) hit a pre-existing bug in
+    // `parseLoginKey` that splits on the last dot. We use a dot-free
+    // username here so the assertion isn't tangled with that orthogonal
+    // issue; the unified shape is what's under test.
+    await setSavedLogin(m.vault, {
+      domain: "github.com",
+      username: "alice",
+      password: "p1",
+    });
+
+    const out = await m.listAllSavedLogins();
+    expect(out.failures).toEqual([]);
+    expect(out.logins).toHaveLength(1);
+    expect(out.logins[0]).toMatchObject({
+      source: "in-house",
+      identifier: "github.com:alice",
+      username: "alice",
+      domain: "github.com",
+      title: "alice",
+    });
+  });
+
+  it("revealSavedLogin in-house round-trips username + password", async () => {
+    const m = createManager({
+      vault: createVault({
+        workDir,
+        masterKey: inMemoryMasterKey(generateMasterKey()),
+      }),
+      exec: execStub(() => "[]"),
+    });
+    await setSavedLogin(m.vault, {
+      domain: "github.com",
+      username: "alice",
+      password: "hunter2",
+    });
+    const out = await m.revealSavedLogin("in-house", "github.com:alice");
+    expect(out.password).toBe("hunter2");
+    expect(out.username).toBe("alice");
+    expect(out.domain).toBe("github.com");
+  });
+
+  it("revealSavedLogin throws on malformed in-house identifier", async () => {
+    const m = createManager({
+      vault: createVault({
+        workDir,
+        masterKey: inMemoryMasterKey(generateMasterKey()),
+      }),
+      exec: execStub(() => "[]"),
+    });
+    await expect(
+      m.revealSavedLogin("in-house", "no-colon"),
+    ).rejects.toBeInstanceOf(TypeError);
+  });
+
+  it("filters by domain across in-house entries (case-insensitive)", async () => {
+    const m = createManager({
+      vault: createVault({
+        workDir,
+        masterKey: inMemoryMasterKey(generateMasterKey()),
+      }),
+      exec: execStub(() => "[]"),
+    });
+    await setSavedLogin(m.vault, {
+      domain: "github.com",
+      username: "u1",
+      password: "p1",
+    });
+    await setSavedLogin(m.vault, {
+      domain: "gitlab.com",
+      username: "u2",
+      password: "p2",
+    });
+    const out = await m.listAllSavedLogins({ domain: "GitHub.com" });
+    expect(out.logins).toHaveLength(1);
+    expect(out.logins[0]?.domain).toBe("github.com");
   });
 });

@@ -3,7 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ARTIFACTS_DIR="${1:-apps/app/electrobun/artifacts}"
+ARTIFACTS_DIR="${1:-$(cd "$SCRIPT_DIR/.." && pwd)/artifacts}"
 SKIP_SIGNATURE_CHECK="${ELECTROBUN_SKIP_CODESIGN:-0}"
 REAL_XCRUN="${ELECTROBUN_REAL_XCRUN:-/usr/bin/xcrun}"
 NOTARY_POLL_ATTEMPTS="${ELECTROBUN_NOTARY_POLL_ATTEMPTS:-45}"

@@ -50,10 +50,45 @@ export type {
   BackendId,
   BackendStatus,
   CreateManagerOptions,
+  ListAllSavedLoginsOptions,
   ManagerPreferences,
   ManagerSetOptions,
   SecretsManager,
+  UnifiedLoginListEntry,
+  UnifiedLoginListResult,
+  UnifiedLoginReveal,
 } from "./manager.js";
+
+export {
+  BackendNotSignedInError,
+  defaultExecFn,
+  listBitwardenLogins,
+  listOnePasswordLogins,
+  revealBitwardenLogin,
+  revealOnePasswordLogin,
+} from "./external-credentials.js";
+export type {
+  ExecFn,
+  ExternalLoginListEntry,
+  ExternalLoginReveal,
+  ExternalLoginSource,
+} from "./external-credentials.js";
+
+export {
+  BACKEND_INSTALL_SPECS,
+  buildInstallCommand,
+  currentPlatform,
+  detectPackageManagers,
+  resetInstallerCache,
+  resolveRunnableMethods,
+} from "./install.js";
+export type {
+  BackendInstallSpec,
+  InstallMethod,
+  InstallMethodKind,
+  PackageManagerAvailability,
+  SupportedPlatform,
+} from "./install.js";
 
 export type {
   AuditRecord,
@@ -62,3 +97,46 @@ export type {
   VaultLogger,
   VaultStats,
 } from "./types.js";
+
+export {
+  deleteSavedLogin,
+  getAutofillAllowed,
+  getSavedLogin,
+  listSavedLogins,
+  setAutofillAllowed,
+  setSavedLogin,
+} from "./credentials.js";
+export type { SavedLogin, SavedLoginSummary } from "./credentials.js";
+
+export {
+  categorizeKey,
+  inferProviderId,
+  listVaultInventory,
+  META_PREFIX,
+  profileStorageKey,
+  PROFILE_SEGMENT,
+  readEntryMeta,
+  removeEntryMeta,
+  ROUTING_KEY,
+  setEntryMeta,
+} from "./inventory.js";
+export type {
+  VaultEntryCategory,
+  VaultEntryMeta,
+  VaultEntryMetaRecord,
+  VaultEntryMetaUpdate,
+  VaultEntryProfile,
+} from "./inventory.js";
+
+export {
+  readRoutingConfig,
+  resolveActiveValue,
+  writeRoutingConfig,
+} from "./profiles.js";
+export type {
+  ResolutionContext,
+  RoutingConfig,
+  RoutingRule,
+  RoutingScope,
+  RoutingScopeKind,
+} from "./profiles.js";

@@ -14,7 +14,7 @@ The **desktop dev stack** is not a single binary. `bun run dev:desktop` and `bun
 
 | Command | What starts | Typical use |
 |---------|-------------|-------------|
-| `bun run dev:desktop` | API (unless `--no-api`) + Electrobun; **skips** `vite build` when `apps/app/dist` is fresher than sources | Fast iteration against **built** renderer assets |
+| `bun run dev:desktop` | API (unless `--no-api`) + Electrobun; **skips** `vite build` when `packages/app/dist` is fresher than sources | Fast iteration against **built** renderer assets |
 | `bun run dev:desktop:watch` | Same orchestrator with **`MILADY_DESKTOP_VITE_WATCH=1`** — **Vite dev server** + HMR | Desktop UI workflow |
 | `bun run dev` / `bun run dev:web:ui` | Browser dashboard stack only (API + Vite) | Headless-friendly dashboard iteration |
 
@@ -72,7 +72,7 @@ If the preferred port is already bound, the orchestrator tries **preferred + 1**
 
 **Why pre-allocate in the parent (not only inside the API process):** Vite reads `vite.config.ts` once at startup; the proxy’s **`target`** must match the API port **before** the first request. If only the API shifted ports after bind, the UI would still proxy to the old default until someone restarted Vite. Resolving ports **once** in `dev-platform.mjs` keeps **orchestrator logs, env, proxy, and Electrobun** on the same numbers.
 
-**Packaged desktop (`local` embedded agent):** the Electrobun main process calls **`findFirstAvailableLoopbackPort`** (`apps/app/electrobun/src/native/loopback-port.ts`) from the preferred **`MILADY_PORT`** (default **2138**), passes that to the **`entry.js start`** child, and after a healthy start updates **`process.env.MILADY_PORT` / `MILADY_API_PORT` / `ELIZA_PORT`** in the shell. **Why we stopped default `lsof` + SIGKILL:** a second Milady (or any app) on the same default port is valid when state dirs differ; killing PIDs from the shell is surprising and can terminate unrelated work. **Opt-in reclaim:** **`MILADY_AGENT_RECLAIM_STALE_PORT=1`** runs the old **“free this port first”** behavior for developers who want single-instance takeover.
+**Packaged desktop (`local` embedded agent):** the Electrobun main process calls **`findFirstAvailableLoopbackPort`** (`packages/app/electrobun/src/native/loopback-port.ts`) from the preferred **`MILADY_PORT`** (default **2138**), passes that to the **`entry.js start`** child, and after a healthy start updates **`process.env.MILADY_PORT` / `MILADY_API_PORT` / `ELIZA_PORT`** in the shell. **Why we stopped default `lsof` + SIGKILL:** a second Milady (or any app) on the same default port is valid when state dirs differ; killing PIDs from the shell is surprising and can terminate unrelated work. **Opt-in reclaim:** **`MILADY_AGENT_RECLAIM_STALE_PORT=1`** runs the old **“free this port first”** behavior for developers who want single-instance takeover.
 
 **Detached windows:** when the embedded API port is finalized or changes, **`injectApiBase`** runs for the main window and **all** `SurfaceWindowManager` windows (**why:** chat/settings/etc. must not keep polling a stale `http://127.0.0.1:…`).
 
@@ -80,15 +80,15 @@ If the preferred port is already bound, the orchestrator tries **preferred + 1**
 
 ## macOS: frameless window chrome (native dylib)
 
-On **macOS**, Electrobun only copies **`libMacWindowEffects.dylib`** into the dev bundle when that file exists (see `apps/app/electrobun/electrobun.config.ts`). Without it, **traffic-light layout, drag regions, and inner-edge resize** can be missing or wrong — easy to mistake for a generic Electrobun bug.
+On **macOS**, Electrobun only copies **`libMacWindowEffects.dylib`** into the dev bundle when that file exists (see `packages/app/electrobun/electrobun.config.ts`). Without it, **traffic-light layout, drag regions, and inner-edge resize** can be missing or wrong — easy to mistake for a generic Electrobun bug.
 
 After cloning the repo, or whenever you change `native/macos/window-effects.mm`, build the dylib from the Electrobun package:
 
 ```bash
-cd apps/app/electrobun && bun run build:native-effects
+cd packages/app/electrobun && bun run build:native-effects
 ```
 
-More detail: [Electrobun shell package](https://github.com/milady-ai/milady/tree/main/apps/app/electrobun) (README: *macOS window chrome*), and [Electrobun macOS window chrome](../guides/electrobun-mac-window-chrome.md).
+More detail: [Electrobun shell package](https://github.com/milady-ai/milady/tree/main/packages/app/electrobun) (README: *macOS window chrome*), and [Electrobun macOS window chrome](../guides/electrobun-mac-window-chrome.md).
 
 ## macOS: Local Network permission (gateway discovery)
 
@@ -98,7 +98,7 @@ Milady’s pinned **Electrobun** config types (as of the version in this repo) d
 
 ## Why `vite build` is sometimes skipped
 
-Before starting services, the script checks `viteRendererBuildNeeded()` (`scripts/lib/vite-renderer-dist-stale.mjs`): compare `apps/app/dist/index.html` mtime against `apps/app/src`, `vite.config.ts`, shared packages (`eliza/packages/ui`, `eliza/packages/app-core`), etc.
+Before starting services, the script checks `viteRendererBuildNeeded()` (`scripts/lib/vite-renderer-dist-stale.mjs`): compare `packages/app/dist/index.html` mtime against `packages/app/src`, `vite.config.ts`, shared packages (`eliza/packages/ui`, `eliza/packages/app-core`), etc.
 
 **Why mtime, not a full dependency graph?** It is a **cheap, local-first** heuristic so restarts do not pay 10–30s for a redundant production build when sources did not change. Override when you need a clean bundle.
 
@@ -173,15 +173,15 @@ Browser smoke tests target the **same renderer URL** Electrobun loads in watch m
 
 **Why Playwright:** the app already ships Playwright for renderer and packaged checks, so the browser smoke flows now use the same supported stack instead of a separate TestCafe toolchain. This removes the vulnerable `replicator` dependency entirely and keeps the UI E2E surface on one runner.
 
-**Dependency:** Playwright lives in **`@miladyai/app`** and the smoke specs live in `apps/app/test/ui-smoke/`. A normal root `bun install` still hoists workspace packages; these browser checks are opt-in via `test:ui:playwright*`.
+**Dependency:** Playwright lives in **`@miladyai/app`** and the smoke specs live in `packages/app/test/ui-smoke/`. A normal root `bun install` still hoists workspace packages; these browser checks are opt-in via `test:ui:playwright*`.
 
-**Browser runtime:** the suite uses Playwright Chromium. Install the browser once with `cd apps/app && bunx playwright install chromium` if it is not already present on the machine.
+**Browser runtime:** the suite uses Playwright Chromium. Install the browser once with `cd packages/app && bunx playwright install chromium` if it is not already present on the machine.
 
 | Command | Purpose |
 |---------|---------|
-| `bun run test:ui:playwright` | Run [`apps/app/test/ui-smoke/ui-smoke.spec.ts`](../../apps/app/test/ui-smoke/ui-smoke.spec.ts); auto-starts the Vite renderer on **:2138** when needed. |
-| `bun run test:ui:playwright:settings-chat` | Run [`apps/app/test/ui-smoke/settings-chat-companion.spec.ts`](../../apps/app/test/ui-smoke/settings-chat-companion.spec.ts) for companion media settings persistence. |
-| `bun run test:ui:playwright:packaged` | Run [`apps/app/test/ui-smoke/packaged-hash.spec.ts`](../../apps/app/test/ui-smoke/packaged-hash.spec.ts) against `apps/app/dist/index.html`; skips if `dist` is missing. |
+| `bun run test:ui:playwright` | Run [`packages/app/test/ui-smoke/ui-smoke.spec.ts`](../../packages/app/test/ui-smoke/ui-smoke.spec.ts); auto-starts the Vite renderer on **:2138** when needed. |
+| `bun run test:ui:playwright:settings-chat` | Run [`packages/app/test/ui-smoke/settings-chat-companion.spec.ts`](../../packages/app/test/ui-smoke/settings-chat-companion.spec.ts) for companion media settings persistence. |
+| `bun run test:ui:playwright:packaged` | Run [`packages/app/test/ui-smoke/packaged-hash.spec.ts`](../../packages/app/test/ui-smoke/packaged-hash.spec.ts) against `packages/app/dist/index.html`; skips if `dist` is missing. |
 
 **Full test matrix:** `bun run test` does **not** run Playwright UI smoke by default. Set **`MILADY_TEST_UI_PLAYWRIGHT=1`** to append the UI suite to `test/scripts/test-parallel.mjs` (serial, after Vitest e2e). `MILADY_TEST_UI_TESTCAFE=1` is still accepted as a legacy alias.
 
@@ -200,13 +200,13 @@ Browser smoke tests target the **same renderer URL** Electrobun loads in watch m
 | `scripts/desktop-stack-status.mjs` | CLI entry for agents (`--json`) |
 | `eliza/packages/app-core/src/api/dev-stack.ts` | Payload for `GET /api/dev/stack` |
 | `eliza/packages/app-core/src/api/dev-console-log.ts` | Safe tail read for `GET /api/dev/console-log` |
-| `apps/app/electrobun/src/index.ts` | `resolveRendererUrl()`; starts screenshot dev server when enabled |
-| `apps/app/electrobun/src/screenshot-dev-server.ts` | Loopback PNG server (proxied as `/api/dev/cursor-screenshot`) |
-| `apps/app/playwright.ui-smoke.config.ts` | Playwright config for renderer smoke specs |
-| `apps/app/playwright.ui-packaged.config.ts` | Playwright config for packaged `file://` smoke |
-| `apps/app/test/ui-smoke/ui-smoke.spec.ts` | Main UI traversal + `TAB_PATHS` parity (e.g. `/apps` disabled) |
-| `apps/app/test/ui-smoke/settings-chat-companion.spec.ts` | Companion media settings persistence |
-| `apps/app/test/ui-smoke/packaged-hash.spec.ts` | `file://` + hash routing parity |
+| `packages/app/electrobun/src/index.ts` | `resolveRendererUrl()`; starts screenshot dev server when enabled |
+| `packages/app/electrobun/src/screenshot-dev-server.ts` | Loopback PNG server (proxied as `/api/dev/cursor-screenshot`) |
+| `packages/app/playwright.ui-smoke.config.ts` | Playwright config for renderer smoke specs |
+| `packages/app/playwright.ui-packaged.config.ts` | Playwright config for packaged `file://` smoke |
+| `packages/app/test/ui-smoke/ui-smoke.spec.ts` | Main UI traversal + `TAB_PATHS` parity (e.g. `/apps` disabled) |
+| `packages/app/test/ui-smoke/settings-chat-companion.spec.ts` | Companion media settings persistence |
+| `packages/app/test/ui-smoke/packaged-hash.spec.ts` | `file://` + hash routing parity |
 
 ## See also
 

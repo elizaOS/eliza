@@ -81,6 +81,8 @@
     "./runtime": "./src/runtime/index.ts",
     "./runtime/*": "./src/runtime/*.ts",
     "./runtime/eliza": "./src/runtime/eliza.ts",
+    "./runtime/operations": "./src/runtime/operations/index.ts",
+    "./runtime/operations/*": "./src/runtime/operations/*.ts",
     "./runtime/restart": "./src/runtime/restart.ts",
     "./security": "./src/security/index.ts",
     "./security/*": "./src/security/*.ts",

@@ -24,40 +24,69 @@ enum OutcomeType {
 
 interface Experience {
   id: UUID;
-  entityId: UUID;
+  agentId: UUID;
   type: ExperienceType;
   outcome: OutcomeType;
   context: string;
-  summary: string;
-  actionName?: string;
-  sourceMessageId?: UUID;
-  roomId?: UUID;
-  worldId?: UUID;
-  metadata?: Record<string, unknown>;
-  tags?: string[];
-  confidence?: number;
+  action: string;
+  result: string;
+  learning: string;
+  tags: string[];
+  domain: string;
+  keywords: string[];
+  associatedEntityIds: UUID[];
+  relatedExperiences?: UUID[];
+  supersedes?: UUID;
+  mergedExperienceIds?: UUID[];
+  confidence: number;
+  importance: number;
   createdAt?: number;
+  updatedAt: number;
+  lastAccessedAt?: number;
+  accessCount: number;
+  previousBelief?: string;
+  correctedBelief?: string;
+  embedding?: number[];
+  memoryIds?: UUID[];
+  sourceMessageIds?: UUID[];
+  sourceRoomId?: UUID;
+  sourceTriggerMessageId?: UUID;
+  sourceTrajectoryId?: string;
+  sourceTrajectoryStepId?: string;
+  extractionMethod?: string;
+  extractionReason?: string;
 }
 
 interface ExperienceQuery {
-  entityId?: UUID;
-  type?: ExperienceType;
-  outcome?: OutcomeType;
-  actionName?: string;
-  roomId?: UUID;
-  worldId?: UUID;
+  query?: string;
+  type?: ExperienceType | ExperienceType[];
+  outcome?: OutcomeType | OutcomeType[];
+  domain?: string | string[];
   tags?: string[];
+  minImportance?: number;
+  minConfidence?: number;
+  timeRange?: {
+    start?: number;
+    end?: number;
+  };
   limit?: number;
-  offset?: number;
-  startDate?: number;
-  endDate?: number;
+  includeRelated?: boolean;
 }
 
 interface ExperienceService {
-  createExperience(experience: Omit<Experience, "id">): Promise<Experience>;
-  getExperiences(query: ExperienceQuery): Promise<Experience[]>;
-  getExperienceById(id: UUID): Promise<Experience | null>;
+  recordExperience(experienceData: Partial<Experience>): Promise<Experience>;
+  listExperiences(query?: ExperienceQuery): Promise<Experience[]>;
+  getExperience(id: UUID): Promise<Experience | null>;
+  updateExperience(
+    id: UUID,
+    updates: Partial<Experience>,
+  ): Promise<Experience | null>;
   deleteExperience(id: UUID): Promise<boolean>;
+  getExperienceGraph(query?: ExperienceQuery): Promise<unknown>;
+  consolidateDuplicateExperiences(options?: {
+    deleteDuplicates?: boolean;
+    limit?: number;
+  }): Promise<unknown>;
 }
 import type { RouteRequestContext } from "./route-helpers.js";
 
@@ -70,28 +99,7 @@ const EXPERIENCE_LIST_MAX_LIMIT = 200;
 
 type ExperienceMutationBody = Record<string, unknown>;
 
-type ExperienceMutationInput = Partial<
-  Pick<
-    Experience,
-    | "type"
-    | "outcome"
-    | "context"
-    | "action"
-    | "result"
-    | "learning"
-    | "domain"
-    | "tags"
-    | "keywords"
-    | "associatedEntityIds"
-    | "confidence"
-    | "importance"
-    | "relatedExperiences"
-    | "mergedExperienceIds"
-    | "supersedes"
-    | "previousBelief"
-    | "correctedBelief"
-  >
->;
+type ExperienceMutationInput = Partial<Experience>;
 
 type ExperienceResponse = Omit<Experience, "embedding"> & {
   embeddingDimensions?: number;
@@ -102,10 +110,30 @@ export interface ExperienceRouteContext extends RouteRequestContext {
   url: URL;
 }
 
+function isExperienceService(service: unknown): service is ExperienceService {
+  if (!service || typeof service !== "object") {
+    return false;
+  }
+  const candidate = service as Record<string, unknown>;
+  const requiredMethods = [
+    "recordExperience",
+    "listExperiences",
+    "getExperience",
+    "updateExperience",
+    "deleteExperience",
+    "getExperienceGraph",
+    "consolidateDuplicateExperiences",
+  ];
+  return requiredMethods.every(
+    (method) => typeof candidate[method] === "function",
+  );
+}
+
 function getExperienceService(
   runtime: AgentRuntime | null,
 ): ExperienceService | null {
-  return runtime?.getService("EXPERIENCE") as ExperienceService | null;
+  const service = runtime?.getService("EXPERIENCE");
+  return isExperienceService(service) ? service : null;
 }
 
 function matchExperiencePath(pathname: string): {

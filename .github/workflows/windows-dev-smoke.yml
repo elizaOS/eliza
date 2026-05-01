@@ -6,7 +6,7 @@ on:
     paths:
       - "packages/app-core/scripts/**"
       - "packages/app-core/platforms/electrobun/**"
-      - "apps/app/**"
+      - "packages/app/**"
       - "package.json"
       - "bun.lock"
   schedule:

@@ -15,6 +15,10 @@ import {
   resolveAdvancedCapabilitiesEnabled,
   saveElizaConfig,
 } from "@elizaos/agent";
+import {
+  isVaultRef,
+  parseVaultRef,
+} from "@elizaos/agent/runtime/operations/vault-bridge";
 import { type AgentRuntime, logger } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared";
 import { VaultMissError } from "@elizaos/vault";
@@ -1617,11 +1621,30 @@ export async function handlePluginsCompatRoutes(
       }
     }
     const config = loadElizaConfig();
-    const value =
+    const fallbackValue =
       process.env[key] ??
       (config.env as Record<string, string> | undefined)?.[key] ??
       null;
-    sendJsonResponse(res, 200, { ok: true, value });
+    // The legacy fallback may itself be a `vault://KEY` sentinel — in that
+    // case the real value is back in the vault. Resolve it once. If the
+    // vault still misses, return null rather than the sentinel string.
+    if (typeof fallbackValue === "string" && isVaultRef(fallbackValue)) {
+      const innerKey = parseVaultRef(fallbackValue);
+      if (innerKey) {
+        try {
+          const inner = await sharedVault().get(innerKey);
+          if (inner) {
+            sendJsonResponse(res, 200, { ok: true, value: inner });
+            return true;
+          }
+        } catch {
+          // fall through to null
+        }
+      }
+      sendJsonResponse(res, 200, { ok: true, value: null });
+      return true;
+    }
+    sendJsonResponse(res, 200, { ok: true, value: fallbackValue });
     return true;
   }
 
