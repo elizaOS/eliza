@@ -15,7 +15,7 @@
  *   4. Overlay native       — permissions, services, entitlements, Podfile
  *   5. Platform patches     — Gradle template, SPM compat, xcconfig
  *   5b. Stage Android agent — bun + musl + libstdc++ + libgcc + bundle
- *                             into apps/app/android/app/src/main/assets/agent/
+ *                             into packages/app/android/app/src/main/assets/agent/
  *                             (Android targets only; see
  *                             scripts/lib/stage-android-agent.mjs and
  *                             docs/agent-on-mobile.md).
@@ -27,6 +27,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 import { stageAndroidAgentRuntime } from "./lib/stage-android-agent.mjs";
 
@@ -34,7 +35,7 @@ import { stageAndroidAgentRuntime } from "./lib/stage-android-agent.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
-const appDir = path.join(repoRoot, "apps", "app");
+const appDir = resolveMainAppDir(repoRoot, "app");
 const iosDir = path.join(appDir, "ios", "App");
 const androidDir = path.join(appDir, "android");
 const miladyOsVendorDir = path.join(

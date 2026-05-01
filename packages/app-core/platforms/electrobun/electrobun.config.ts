@@ -9,9 +9,19 @@ function hasElectrobunWorkspaceRoot(candidateDir: string): boolean {
   return (
     fs.existsSync(path.join(candidateDir, "bun.lock")) &&
     fs.existsSync(path.join(candidateDir, "package.json")) &&
-    fs.existsSync(path.join(candidateDir, "apps/app/package.json")) &&
+    (fs.existsSync(path.join(candidateDir, "packages/app/package.json")) ||
+      fs.existsSync(path.join(candidateDir, "apps/app/package.json"))) &&
     (fs.existsSync(
-      path.join(candidateDir, "apps/app/electrobun/package.json"),
+      path.join(candidateDir, "packages/app/electrobun/package.json"),
+    ) ||
+      fs.existsSync(
+        path.join(candidateDir, "apps/app/electrobun/package.json"),
+      ) ||
+      fs.existsSync(
+        path.join(
+          candidateDir,
+          "packages/app-core/platforms/electrobun/package.json",
+        ),
     ) ||
       fs.existsSync(
         path.join(
@@ -41,7 +51,9 @@ function findMiladyRepoRoot(startDir: string): string {
 const repoRoot = findMiladyRepoRoot(electrobunDir);
 const rendererDistDir = path.relative(
   electrobunDir,
-  path.join(repoRoot, "apps/app/dist"),
+  fs.existsSync(path.join(repoRoot, "packages/app/package.json"))
+    ? path.join(repoRoot, "packages/app/dist")
+    : path.join(repoRoot, "apps/app/dist"),
 );
 const runtimeBundleDistDir = path.relative(
   electrobunDir,

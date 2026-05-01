@@ -9,7 +9,7 @@
  *
  * ## Startup phases
  * 1. **Renderer production build** — Runs `vite build` only when `viteRendererBuildNeeded()`
- *    says `apps/app/dist` is missing or older than sources (cheap mtime heuristic). Override:
+ *    says `packages/app/dist` is missing or older than sources (cheap mtime heuristic). Override:
  *    `--force-renderer` or `ELIZA_DESKTOP_RENDERER_BUILD=always`. **Why skip:** redundant
  *    production builds on every restart are slow; watch mode users get HMR from `vite dev`.
  * 2. **Root bundle** — `tsdown` at repo root if `dist/entry.js` missing (Electrobun eliza-dist).
@@ -19,7 +19,7 @@
  *      Stale dep chunks: `--vite-force` or `ELIZA_VITE_FORCE=1` / `ELIZA_VITE_FORCE=1` (passes `vite --force`).
  *    - **Watch + Rollup** — `--rollup-watch` or `ELIZA_DESKTOP_VITE_BUILD_WATCH=1` with
  *      `ELIZA_DESKTOP_VITE_WATCH=1`: legacy `vite build --watch` (slow on large graphs).
- *    - **Electrobun** — `bun run dev` in `apps/app/electrobun`.
+ *    - **Electrobun** — `bun run dev` in `packages/app-core/platforms/electrobun`.
  *
  * ## Port allocation (`launch()`) — WHY
  * Before spawning API / Vite / Electrobun, `allocateFirstFreeLoopbackPort()` from
@@ -73,6 +73,7 @@ import {
 } from "@elizaos/shared/runtime-env";
 import chalk from "chalk";
 import { allocateFirstFreeLoopbackPort } from "./lib/allocate-loopback-port.mjs";
+import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { createApiSupervisor } from "./lib/api-supervisor.mjs";
 import { signalSpawnedProcessTree } from "./lib/kill-process-tree.mjs";
 import { killUiListenPort } from "./lib/kill-ui-listen-port.mjs";
@@ -91,27 +92,7 @@ const isMiladyMonorepo =
 const bundleRoot = isMiladyMonorepo ? miladyRoot : elizaRoot;
 
 function resolveRendererAppDir() {
-  const miladyApp = path.join(miladyRoot, "apps", "app");
-  const elizaApp = path.join(elizaRoot, "apps", "app");
-  if (isMiladyMonorepo && existsSync(path.join(miladyApp, "package.json"))) {
-    return miladyApp;
-  }
-
-  const cwd = process.cwd();
-  const cwdNorm = path.resolve(cwd);
-  const elizaNorm = path.resolve(elizaRoot);
-  if (cwdNorm === elizaNorm || cwdNorm.startsWith(`${elizaNorm}${path.sep}`)) {
-    if (existsSync(path.join(elizaApp, "package.json"))) {
-      return elizaApp;
-    }
-  }
-  if (existsSync(path.join(miladyApp, "package.json"))) {
-    return miladyApp;
-  }
-  if (existsSync(path.join(elizaApp, "package.json"))) {
-    return elizaApp;
-  }
-  return miladyApp;
+  return resolveMainAppDir(bundleRoot, "app");
 }
 
 function resolveElectrobunDir() {
@@ -140,11 +121,15 @@ const devServerEntry = isMiladyMonorepo
 
 const appDir = resolveRendererAppDir();
 const electrobunDir = resolveElectrobunDir();
-const defaultElizaNamespace = appDir
-  .replace(/\\/g, "/")
-  .includes("/eliza/apps/app")
-  ? "eliza"
-  : "milady";
+const defaultElizaNamespace =
+  isMiladyMonorepo &&
+  path
+    .resolve(appDir)
+    .startsWith(`${path.resolve(miladyRoot, "eliza")}${path.sep}`)
+    ? "eliza"
+    : isMiladyMonorepo
+      ? "milady"
+      : "eliza";
 
 const BUN_EXECUTABLE = process.versions?.bun ? process.execPath : "bun";
 

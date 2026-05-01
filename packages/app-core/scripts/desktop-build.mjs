@@ -10,12 +10,13 @@ import {
   hasElectrobunViewExport,
   isSupportedBunVersion,
 } from "./lib/desktop-preflight.mjs";
+import { resolveMainAppDir } from "./lib/app-dir.mjs";
 
 const ROOT = process.cwd();
-// --app=<name> selects which app to build (default: "app" → apps/app)
+// --app=<name> selects which app to build (default: "app" → packages/app)
 const appArgMatch = process.argv.find((a) => a.startsWith("--app="));
 const appName = appArgMatch ? appArgMatch.split("=")[1] : "app";
-const APP_DIR = path.join(ROOT, "apps", appName);
+const APP_DIR = resolveMainAppDir(ROOT, appName);
 const CANONICAL_ELECTROBUN_DIR = path.join(
   ROOT,
   "eliza",

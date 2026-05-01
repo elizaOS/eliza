@@ -28,6 +28,7 @@ import * as JSON5Module from "json5";
 import { createApiSupervisor } from "./lib/api-supervisor.mjs";
 import { getBunVersionAdvisory } from "./lib/bun-version-guard.mjs";
 import { capacitorPluginsBuildNeeded } from "./lib/capacitor-plugin-build-needed.mjs";
+import { relativeAppDir, resolveMainAppDir } from "./lib/app-dir.mjs";
 import { coerceBoolean } from "./lib/dev-ui-onchain.mjs";
 import { buildVisionDepsFailureMessage } from "./lib/dev-ui-vision.mjs";
 import { signalSpawnedProcessTree } from "./lib/kill-process-tree.mjs";
@@ -43,9 +44,24 @@ if (existsSync(_worktreeEnvPath)) {
 }
 
 function resolveCapacitorPluginNamesPath(devCwd) {
+  const rootPackagesApp = path.join(
+    devCwd,
+    "packages",
+    "app",
+    "scripts",
+    "capacitor-plugin-names.mjs",
+  );
   const rootAppsApp = path.join(
     devCwd,
     "apps",
+    "app",
+    "scripts",
+    "capacitor-plugin-names.mjs",
+  );
+  const nestedElizaPackagesApp = path.join(
+    devCwd,
+    "eliza",
+    "packages",
     "app",
     "scripts",
     "capacitor-plugin-names.mjs",
@@ -64,14 +80,20 @@ function resolveCapacitorPluginNamesPath(devCwd) {
   if (existsSync(rootAppsApp) && elizaSubmodulePresent) {
     return rootAppsApp;
   }
+  if (existsSync(nestedElizaPackagesApp)) {
+    return nestedElizaPackagesApp;
+  }
   if (existsSync(nestedElizaAppsApp)) {
     return nestedElizaAppsApp;
+  }
+  if (existsSync(rootPackagesApp)) {
+    return rootPackagesApp;
   }
   if (existsSync(rootAppsApp)) {
     return rootAppsApp;
   }
   throw new Error(
-    `[dev-ui] capacitor-plugin-names.mjs not found. Tried:\n  ${rootAppsApp}\n  ${nestedElizaAppsApp}`,
+    `[dev-ui] capacitor-plugin-names.mjs not found. Tried:\n  ${rootPackagesApp}\n  ${rootAppsApp}\n  ${nestedElizaPackagesApp}\n  ${nestedElizaAppsApp}`,
   );
 }
 
@@ -116,8 +138,9 @@ syncElizaEnvAliases();
 
 const API_PORT = resolveDesktopApiPort(process.env);
 const JSON5 = JSON5Module.default ?? JSON5Module;
+const cwd = process.cwd();
 
-// --app=<name> selects which app to serve (default: "app" → apps/app)
+// --app=<name> selects which app to serve (default: "app" → packages/app)
 const appArgMatch = process.argv.find((a) => a.startsWith("--app="));
 const appName = appArgMatch ? appArgMatch.split("=")[1] : "app";
 const APP_UI_PORTS = {
@@ -125,7 +148,7 @@ const APP_UI_PORTS = {
   home: Number(process.env.ELIZA_HOME_PORT) || 2142,
 };
 const UI_PORT = APP_UI_PORTS[appName] ?? 2138;
-const appDir = `apps/${appName}`;
+const appDir = relativeAppDir(cwd, resolveMainAppDir(cwd, appName));
 
 function getCliName() {
   const nameArgMatch = process.argv.find((a) => a.startsWith("--name="));
@@ -165,7 +188,6 @@ const logPrefix = `[${cliName}]`;
 const bunAdvisory = getBunVersionAdvisory();
 if (bunAdvisory) console.warn(`${logPrefix} ${bunAdvisory}`);
 
-const cwd = process.cwd();
 const visionDepsScriptPath = fileURLToPath(
   new URL("./ensure-vision-deps.mjs", import.meta.url),
 );
