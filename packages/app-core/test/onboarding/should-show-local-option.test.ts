@@ -81,4 +81,49 @@ describe("shouldShowLocalOption", () => {
     ).resolves.toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  // The Android APK uses the local on-device agent unconditionally (the
+  // picker is bypassed by `preSeedAndroidLocalRuntimeIfFresh` + RuntimeGate's
+  // Android branch). On that platform `shouldShowLocalOption` is **not** a
+  // gate on whether to offer the local option — it always is — but a
+  // *readiness* signal that `RuntimeGate`'s Android splash polls so it
+  // knows when to call `finishAsLocal()` and hand control to chat.
+  describe("Android readiness signal (not a visibility gate)", () => {
+    it("transitions from false → true once the on-device agent comes online", async () => {
+      fetchMock
+        .mockRejectedValueOnce(new Error("ECONNREFUSED"))
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({ ready: true, agentState: "running" }),
+            {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            },
+          ),
+        );
+
+      // Before the agent is up, the readiness signal is `false`.
+      await expect(
+        shouldShowLocalOption({
+          isDesktop: false,
+          isDev: false,
+          isAndroid: true,
+        }),
+      ).resolves.toBe(false);
+
+      // The negative cache TTL is 3 s; clear it so a re-probe actually fires.
+      clearLocalAgentProbeCache();
+
+      // Once the agent answers `/api/health`, readiness flips to `true`.
+      await expect(
+        shouldShowLocalOption({
+          isDesktop: false,
+          isDev: false,
+          isAndroid: true,
+        }),
+      ).resolves.toBe(true);
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+  });
 });

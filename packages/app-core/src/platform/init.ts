@@ -31,6 +31,28 @@ export function isDesktopPlatform(): boolean {
   return platform === "electrobun";
 }
 
+/**
+ * True when the APK is running on the AOSP MiladyOS variant (the system
+ * app on a Milady-branded device), as opposed to the same APK installed
+ * on a stock Android phone from Play Store.
+ *
+ * Detection: `MainActivity.applyMiladyOSUserAgentSuffix` appends
+ * `MiladyOS/<tag>` to the WebView user-agent when `ro.miladyos.product`
+ * is set by the AOSP product makefile (vendor/milady/milady_common.mk).
+ * Stock Android leaves the user-agent untouched.
+ *
+ * Used by `RuntimeGate` and the Android boot pre-seed to decide whether
+ * the "Choose your setup" picker is bypassed (MiladyOS — the device IS
+ * the agent) or rendered (vanilla APK — the user picks Cloud / Remote /
+ * Local).
+ */
+export function isMiladyOS(): boolean {
+  if (!isAndroid) return false;
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent ?? "";
+  return /\bMiladyOS\//.test(ua);
+}
+
 /** True when the runtime can spin up a local agent — desktop or dev server. */
 export function canRunLocal(): boolean {
   return isDesktopPlatform() || Boolean(import.meta.env.DEV);
