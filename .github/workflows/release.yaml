@@ -115,6 +115,7 @@ jobs:
             "plugins/plugin-ollama/typescript",
             "plugins/plugin-local-ai/typescript",
             "plugins/plugin-pdf/typescript",
+            "plugins/plugin-whatsapp/typescript",
           ];
 
           if (!Array.isArray(pkg.workspaces)) {
@@ -539,6 +540,15 @@ jobs:
 
           echo "WASM builds complete"
 
+      - name: Build connector plugin artifacts
+        env:
+          SKIP_PYTHON_BUILD: "1"
+        run: |
+          if [ -f "plugins/plugin-whatsapp/typescript/package.json" ]; then
+            echo "Building @elizaos/plugin-whatsapp artifacts..."
+            (cd plugins/plugin-whatsapp/typescript && bun run build)
+          fi
+
       - name: Build packages
         env:
           SKIP_PYTHON_BUILD: "1"
@@ -571,6 +581,7 @@ jobs:
             packages/shared/dist/package.json \
             packages/skills/dist/index.js \
             packages/typescript/dist/index.node.js \
+            plugins/plugin-whatsapp/typescript/dist/src/index.d.ts \
             packages/ui/dist/package.json; do
             if [ ! -f "${artifact}" ]; then
               echo "❌ Missing publish artifact: ${artifact}"

@@ -296,13 +296,20 @@ function stripSrcPrefix(sourcePath) {
 }
 
 function replaceSourceExtension(relPath, nextExt) {
-  if (relPath.includes("*")) {
-    return relPath.endsWith(nextExt) ? relPath : `${relPath}${nextExt}`;
-  }
-
   const declarationExtMatch = relPath.match(/\.d\.(ts|mts|cts)$/);
   if (declarationExtMatch) {
     return `${relPath.slice(0, -declarationExtMatch[0].length)}${nextExt}`;
+  }
+
+  const sourceExtMatch = relPath.match(
+    /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/,
+  );
+  if (sourceExtMatch) {
+    return `${relPath.slice(0, -sourceExtMatch[0].length)}${nextExt}`;
+  }
+
+  if (relPath.includes("*")) {
+    return relPath.endsWith(nextExt) ? relPath : `${relPath}${nextExt}`;
   }
 
   const ext = path.posix.extname(relPath);

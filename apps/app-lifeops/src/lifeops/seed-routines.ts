@@ -8,6 +8,10 @@
  */
 
 import type { CreateLifeOpsDefinitionRequest } from "../contracts/index.js";
+import {
+  REMINDER_ACTIVITY_GATE_METADATA_KEY,
+  REMINDER_URGENCY_METADATA_KEY,
+} from "./service-constants.js";
 
 export interface RoutineSeedTemplate {
   /** Stable key used to deduplicate across seeding offers. */
@@ -18,7 +22,7 @@ export interface RoutineSeedTemplate {
   /** Partial request — the caller supplies agent/domain/tz fields. */
   request: Pick<
     CreateLifeOpsDefinitionRequest,
-    "kind" | "title" | "cadence" | "priority" | "originalIntent"
+    "kind" | "title" | "cadence" | "priority" | "originalIntent" | "metadata"
   >;
 }
 
@@ -88,6 +92,10 @@ export const ROUTINE_SEED_TEMPLATES: RoutineSeedTemplate[] = [
       priority: 2,
       originalIntent:
         "high-priority stretch twice daily in the afternoon and evening",
+      metadata: {
+        [REMINDER_ACTIVITY_GATE_METADATA_KEY]: "active_on_computer",
+        [REMINDER_URGENCY_METADATA_KEY]: "high",
+      },
     },
   },
   {

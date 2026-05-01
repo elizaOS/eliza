@@ -30,6 +30,21 @@ vi.mock("@elizaos/agent/config/config", () => ({
   }),
 }));
 
+vi.mock("@elizaos/agent", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@elizaos/agent")>();
+  return {
+    ...actual,
+    loadElizaConfig: () => ({
+      ui: { assistant: { name: "Milady" } },
+      agents: { defaults: { adminEntityId: "admin-entity-id" } },
+    }),
+    toWorkbenchTask: (...args: unknown[]) => toWorkbenchTaskMock(...args),
+    listTriggerTasks: (...args: unknown[]) => listTriggerTasksMock(...args),
+    taskToTriggerSummary: (...args: unknown[]) =>
+      taskToTriggerSummaryMock(...args),
+  };
+});
+
 vi.mock("@elizaos/agent/api/workbench-helpers", async (importOriginal) => {
   const actual =
     await importOriginal<

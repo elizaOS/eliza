@@ -316,6 +316,7 @@ export function withDefinitions<TBase extends Constructor<LifeOpsServiceBase>>(
           timezone: effectiveTimezone,
           source: "seed",
           metadata: {
+            ...(template.request.metadata ?? {}),
             seedKey,
           },
         });

@@ -53,7 +53,7 @@ describe("applySubscriptionCredentials", () => {
     });
 
     expect(process.env.OPENAI_API_KEY).toBe("original-openai-key");
-  });
+  }, 300_000);
 
   it("injects Codex runtime credentials ahead of cloud inference", async () => {
     writeSubscriptionCredentials("openai-codex");

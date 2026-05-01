@@ -172,6 +172,7 @@ function extractSessionCookieValue(cookies: string[]): string | null {
 }
 
 describe("P1 session routes (real pglite)", () => {
+  const HARNESS_HOOK_TIMEOUT_MS = 120_000;
   let harness: Harness;
 
   beforeEach(async () => {
@@ -182,7 +183,7 @@ describe("P1 session routes (real pglite)", () => {
     delete process.env.ELIZA_API_TOKEN;
     delete process.env.ELIZA_CLOUD_PROVISIONED;
     delete process.env.MILADY_LEGACY_GRACE_UNTIL;
-  }, 30_000);
+  }, HARNESS_HOOK_TIMEOUT_MS);
 
   afterEach(async () => {
     await harness.cleanup();

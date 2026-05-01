@@ -45,7 +45,7 @@ apps/app/test
 apps/app/.eliza
 apps/web/
 !apps/web/package.json
-apps/homepage
+packages/homepage
 apps/home
 apps/landing
 apps/chrome-extension

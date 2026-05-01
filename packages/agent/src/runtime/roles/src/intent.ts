@@ -10,7 +10,7 @@ import {
   getValidationKeywordTerms,
 } from "@elizaos/shared";
 
-import type { RoleName } from "./types";
+import type { RoleName } from "./types.js";
 
 const ROLE_INTENT_KEYWORDS = getValidationKeywordTerms(
   "action.updateRole.intent",

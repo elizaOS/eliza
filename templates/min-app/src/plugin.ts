@@ -36,4 +36,4 @@ const plugin: Plugin = {
 };
 
 export default plugin;
-export { plugin, helloAction };
+export { helloAction, plugin };
