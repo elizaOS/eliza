@@ -280,14 +280,22 @@ describe("manager — listAllSavedLogins", () => {
   }
 
   it("returns in-house entries when no external backend is signed in", async () => {
+    const v = createVault({
+      workDir,
+      masterKey: inMemoryMasterKey(generateMasterKey()),
+    });
     const m = createManager({
-      vault: createVault({
-        workDir,
-        masterKey: inMemoryMasterKey(generateMasterKey()),
-      }),
-      // exec is irrelevant here — no external backend is reachable in CI.
+      vault: v,
+      // The 1Password and Bitwarden CLIs may exist on the dev machine
+      // (passing isCommandAvailable inside detectBackends), so detection
+      // can land on signedIn=true via desktop integration. The STUB
+      // drives the actual list call. To assert "in-house only, no
+      // failures," seed empty sessions so the list adapters succeed
+      // with [] rather than throw BackendNotSignedInError.
       exec: execStub(() => "[]"),
     });
+    await v.set("pm.1password.session", "stub-token", { sensitive: true });
+    await v.set("pm.bitwarden.session", "stub-token", { sensitive: true });
     // NB: usernames containing `.` (e.g. "alice@example.com" → URL-encoded
     // "alice%40example.com" — still has dots) hit a pre-existing bug in
     // `parseLoginKey` that splits on the last dot. We use a dot-free

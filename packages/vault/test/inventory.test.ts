@@ -36,6 +36,12 @@ describe("inventory — categorization heuristics", () => {
     expect(categorizeKey("SOLANA_PRIVATE_KEY")).toBe("wallet");
     expect(categorizeKey("MY_MNEMONIC")).toBe("wallet");
     expect(categorizeKey("BACKUP_SEED_PHRASE")).toBe("wallet");
+    // Phase 3 unified storage shape
+    expect(categorizeKey("wallet.dizzy.evm.privateKey")).toBe("wallet");
+    expect(categorizeKey("wallet.casper.solana.privateKey")).toBe("wallet");
+    // Legacy per-agent shape
+    expect(categorizeKey("agent.dizzy.wallet.evm")).toBe("wallet");
+    expect(categorizeKey("agent.casper.wallet.solana")).toBe("wallet");
   });
 
   it("classifies saved-login records as credential", () => {
