@@ -70,9 +70,9 @@
   },
   "devDependencies": {
     "@storybook/react": "^10.3.5",
-    "@storybook/test": "^10.3.5",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "storybook": "^10.3.5",
     "typescript": "^6.0.0",
     "vitest": "^4.0.18"
   },

@@ -9,16 +9,13 @@ const packageRoot = path.resolve(
   "..",
 );
 const require = createRequire(import.meta.url);
-const repoRoot = path.resolve(packageRoot, "..", "..", "..");
 const storybookBin = path.join(
   packageRoot,
   "node_modules",
   ".bin",
   process.platform === "win32" ? "storybook.cmd" : "storybook",
 );
-const playwrightPackage = require(
-  path.join(repoRoot, "apps", "app", "node_modules", "@playwright", "test"),
-);
+const playwrightPackage = require("@playwright/test");
 const { chromium } = playwrightPackage;
 const storybookHost = "127.0.0.1";
 const storybookPort = Number.parseInt(

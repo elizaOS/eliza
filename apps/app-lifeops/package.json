@@ -45,6 +45,7 @@
   },
   "dependencies": {
     "@capacitor/core": "8.3.1",
+    "@elizaos/agent": "workspace:*",
     "@elizaos/app-core": "workspace:*",
     "@elizaos/capacitor-appblocker": "workspace:*",
     "@elizaos/capacitor-mobile-signals": "workspace:*",
@@ -62,6 +63,9 @@
     "react-plaid-link": "^4.0.1",
     "sharp": "^0.34.5",
     "telegram": "2.26.22"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.3.3"
   },
   "peerDependencies": {
     "react": "*"
