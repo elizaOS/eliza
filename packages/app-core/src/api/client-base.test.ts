@@ -1,44 +1,29 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+// @vitest-environment jsdom
 
-vi.mock("../config/boot-config", () => {
-  let _config: Record<string, unknown> = {};
-  return {
-    getBootConfig: () => _config,
-    setBootConfig: (c: Record<string, unknown>) => {
-      _config = { ..._config, ...c };
-    },
-  };
-});
-
-vi.mock("../utils/eliza-globals", () => ({
-  setElizaApiToken: vi.fn(),
-  clearElizaApiToken: vi.fn(),
-  getElizaApiToken: vi.fn(() => null),
-  setElizaApiBase: vi.fn(),
-  clearElizaApiBase: vi.fn(),
-  getElizaApiBase: vi.fn(() => ""),
-}));
-
-import { getBootConfig, setBootConfig } from "../config/boot-config";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  DEFAULT_BOOT_CONFIG,
+  getBootConfig,
+  setBootConfig,
+} from "../config/boot-config";
 import {
   clearElizaApiToken,
-  setElizaApiToken,
+  getElizaApiToken,
 } from "../utils/eliza-globals";
-
-// ElizaClient is a class with constructor side effects; import after mocks.
-const { ElizaClient } = await import("./client-base");
+import { ElizaClient } from "./client-base";
 
 describe("ElizaClient.setToken", () => {
   let client: InstanceType<typeof ElizaClient>;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    setBootConfig({});
+    clearElizaApiToken();
+    setBootConfig(DEFAULT_BOOT_CONFIG);
     client = new ElizaClient();
   });
 
   afterEach(() => {
-    vi.clearAllMocks();
+    clearElizaApiToken();
+    setBootConfig(DEFAULT_BOOT_CONFIG);
   });
 
   it("writes apiToken to bootConfig", () => {
@@ -48,7 +33,7 @@ describe("ElizaClient.setToken", () => {
 
   it("calls setElizaApiToken with the trimmed token", () => {
     client.setToken("  spaced  ");
-    expect(setElizaApiToken).toHaveBeenCalledWith("spaced");
+    expect(getElizaApiToken()).toBe("spaced");
   });
 
   it("clears apiToken from bootConfig when null", () => {
@@ -58,18 +43,20 @@ describe("ElizaClient.setToken", () => {
   });
 
   it("calls clearElizaApiToken when token is null", () => {
+    client.setToken("my-token");
     client.setToken(null);
-    expect(clearElizaApiToken).toHaveBeenCalled();
+    expect(getElizaApiToken()).toBeUndefined();
   });
 
   it("calls clearElizaApiToken when token is empty string", () => {
+    client.setToken("my-token");
     client.setToken("");
-    expect(clearElizaApiToken).toHaveBeenCalled();
+    expect(getElizaApiToken()).toBeUndefined();
   });
 
   it("trims whitespace from token", () => {
     client.setToken("  hello  ");
     expect(getBootConfig().apiToken).toBe("hello");
-    expect(setElizaApiToken).toHaveBeenCalledWith("hello");
+    expect(getElizaApiToken()).toBe("hello");
   });
 });
