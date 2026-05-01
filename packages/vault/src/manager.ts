@@ -533,12 +533,18 @@ async function detectOnePassword(vault: Vault): Promise<BackendStatus> {
     };
   }
 
-  // Step 1: probe `op whoami` with no session token. When the user has
-  // 1Password 8 desktop app installed and CLI integration enabled, the
-  // CLI authenticates via the desktop app and `whoami` returns 0
-  // without any session being passed. This is the smoothest path —
-  // sessions don't expire, no master-password prompt, no stored token.
-  if (await isOnePasswordDesktopActive()) {
+  // 1Password 8's CLI refuses to pick a default account when more than
+  // one is registered. `op whoami` with no flags exits 1 ("account is
+  // not signed in") even when desktop integration is fully active and
+  // every concrete `op vault list --account=<sh>` succeeds. Probe the
+  // registered accounts once and pass --account=<sh> to disambiguate.
+  const account = await readDefaultOpAccount();
+
+  // Step 1: probe `op whoami --account=<sh>` with no session token. When
+  // the user has 1Password 8 desktop app installed and CLI integration
+  // enabled, the CLI authenticates via the desktop app and `whoami`
+  // returns 0 without any session being passed.
+  if (await isOnePasswordDesktopActive(account)) {
     return {
       id: "1password",
       label: "1Password",
@@ -562,8 +568,11 @@ async function detectOnePassword(vault: Vault): Promise<BackendStatus> {
         "`op` is installed but not signed in. Enable 1Password desktop app integration (Settings → Developer → Integrate with 1Password CLI) or use the Sign-in button.",
     };
   }
+  const accountArg = account ? [`--account=${account}`] : [];
   try {
-    await exec("op", ["whoami", `--session=${session}`], { timeout: 3000 });
+    await exec("op", [...accountArg, "whoami", `--session=${session}`], {
+      timeout: 3000,
+    });
     return {
       id: "1password",
       label: "1Password",
@@ -583,15 +592,45 @@ async function detectOnePassword(vault: Vault): Promise<BackendStatus> {
   }
 }
 
-/**
- * True when `op whoami` (no session) succeeds — i.e. 1Password desktop
- * app integration is active. Failures are silent: any exit code, any
- * stderr text means desktop-app auth isn't available and the caller
- * should fall through to the session-token path.
- */
-async function isOnePasswordDesktopActive(): Promise<boolean> {
+/** Read the first registered 1Password account shorthand, or null. */
+async function readDefaultOpAccount(): Promise<string | null> {
   try {
-    await exec("op", ["whoami"], { timeout: 3000 });
+    const { stdout } = await exec(
+      "op",
+      ["account", "list", "--format=json"],
+      { timeout: 3000, encoding: "utf8" },
+    );
+    const accounts = JSON.parse(stdout) as Array<{
+      shorthand?: string;
+      url?: string;
+    }>;
+    for (const a of accounts) {
+      if (typeof a.shorthand === "string" && a.shorthand.length > 0) {
+        return a.shorthand;
+      }
+      if (typeof a.url === "string") {
+        const sub = a.url.split(".")[0];
+        if (sub) return sub;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * True when `op whoami --account=<sh>` (no session) succeeds — i.e.
+ * 1Password desktop app integration is active. Failures are silent: any
+ * exit code, any stderr text means desktop-app auth isn't available and
+ * the caller should fall through to the session-token path.
+ */
+async function isOnePasswordDesktopActive(
+  account: string | null,
+): Promise<boolean> {
+  const args = account ? [`--account=${account}`, "whoami"] : ["whoami"];
+  try {
+    await exec("op", args, { timeout: 3000 });
     return true;
   } catch {
     return false;
