@@ -20,8 +20,6 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it, vi } from "vitest";
-import { repoRoot } from "../../../test/vitest/repo-root";
-import { getElizaWorkspaceRoot } from "../../../test/vitest/workspace-aliases";
 
 vi.mock(
   "@elizaos/scenario-schema",
@@ -76,7 +74,7 @@ type TsScenario = {
   finalChecks?: ScenarioFinalCheck[];
 };
 
-const ELIZA_ROOT = getElizaWorkspaceRoot(repoRoot);
+const ELIZA_ROOT = path.resolve(import.meta.dirname, "../../..");
 const ELIZA_SCENARIO_ROOT = path.join(ELIZA_ROOT, "test", "scenarios");
 const EXECUTIVE_ASSISTANT_SCENARIO_DIR = path.join(
   ELIZA_SCENARIO_ROOT,

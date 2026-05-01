@@ -14,10 +14,8 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { repoRoot } from "../../../test/vitest/repo-root";
-import { getElizaWorkspaceRoot } from "../../../test/vitest/workspace-aliases";
 
-const ELIZA_ROOT = getElizaWorkspaceRoot(repoRoot);
+const ELIZA_ROOT = path.resolve(import.meta.dirname, "../../..");
 
 async function readRepoFile(relativePath: string): Promise<string> {
   return readFile(path.join(ELIZA_ROOT, relativePath), "utf8");
