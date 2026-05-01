@@ -311,7 +311,7 @@ export function runEnsureAvatars({
     const message = err instanceof Error ? err.message : String(err);
     logError(`${TAG} Failed to clone avatar assets: ${message}`);
     logError(
-      `${TAG} You can manually clone: git clone ${AVATARS_REPO} /tmp/avatars && cp -r /tmp/avatars/vrms/ apps/app/public/vrms/ && cp -r /tmp/avatars/animations/ apps/app/public/animations/`,
+      `${TAG} You can manually clone: git clone ${AVATARS_REPO} /tmp/avatars && cp -r /tmp/avatars/vrms/ packages/app/public/vrms/ && cp -r /tmp/avatars/animations/ packages/app/public/animations/`,
     );
     return { cloned: false, reason: "clone-failed", error: message };
   } finally {

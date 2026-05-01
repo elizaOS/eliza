@@ -249,7 +249,7 @@ function buildPayload(release, allReleases = [], canaryRelease = null) {
           ? ""
           : buildRawGitHubAssetBase({
               releaseTag: tagName,
-              assetRoot: "apps/app/public",
+              assetRoot: "packages/app/public",
             }),
       homepageAssetBaseUrl:
         tagName === "unavailable"

@@ -118,6 +118,7 @@
     "./services/plugin-installer": "./src/services/plugin-installer.ts",
     "./services/account-pool": "./src/services/account-pool.ts",
     "./services/account-usage": "./src/services/account-usage.ts",
+    "./services/vault-mirror": "./src/services/vault-mirror.ts",
     "./services/steward-credentials": "./src/services/steward-credentials.ts",
     "./services/steward-sidecar": "./src/services/steward-sidecar.ts",
     "./services/steward-sidecar/*": "./src/services/steward-sidecar/*.ts",

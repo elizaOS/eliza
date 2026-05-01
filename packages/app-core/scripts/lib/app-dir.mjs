@@ -66,8 +66,6 @@ export function resolveElectrobunDir(repoRoot) {
       "platforms",
       "electrobun",
     ),
-    path.join(repoRoot, "packages", "app", "electrobun"),
-    path.join(repoRoot, "apps", "app", "electrobun"),
   ];
   const match = candidates.find((candidate) =>
     fs.existsSync(path.join(candidate, "electrobun.config.ts")),

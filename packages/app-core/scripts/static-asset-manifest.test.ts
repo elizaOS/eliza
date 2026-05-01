@@ -27,7 +27,7 @@ afterEach(() => {
 describe("static asset manifest", () => {
   it("excludes hidden and system files from the manifest", () => {
     const root = makeTempRoot();
-    const appPublic = path.join(root, "apps", "app", "public");
+    const appPublic = path.join(root, "packages", "app", "public");
     const homepagePublic = path.join(root, "packages", "homepage", "public");
 
     fs.mkdirSync(path.join(appPublic, ".ignored-dir"), { recursive: true });

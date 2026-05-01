@@ -12,16 +12,10 @@ function hasElectrobunWorkspaceRoot(candidateDir: string): boolean {
     (fs.existsSync(path.join(candidateDir, "packages/app/package.json")) ||
       fs.existsSync(path.join(candidateDir, "apps/app/package.json"))) &&
     (fs.existsSync(
-      path.join(candidateDir, "packages/app/electrobun/package.json"),
-    ) ||
-      fs.existsSync(
-        path.join(candidateDir, "apps/app/electrobun/package.json"),
-      ) ||
-      fs.existsSync(
-        path.join(
-          candidateDir,
-          "packages/app-core/platforms/electrobun/package.json",
-        ),
+      path.join(
+        candidateDir,
+        "packages/app-core/platforms/electrobun/package.json",
+      ),
     ) ||
       fs.existsSync(
         path.join(

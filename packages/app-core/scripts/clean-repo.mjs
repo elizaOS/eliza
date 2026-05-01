@@ -52,11 +52,11 @@ function rmFile(label, abs) {
 function rmNodeModulesCaches() {
   const bases = [
     root,
-    path.join(root, "apps", "app"),
+    path.join(root, "packages", "app"),
     path.join(root, "apps", "homepage"),
     path.join(root, "packages", "ui"),
     path.join(root, "packages", "app-core"),
-    path.join(root, "apps", "app", "electrobun"),
+    path.join(root, "packages", "app-core", "platforms", "electrobun"),
   ];
   for (const base of bases) {
     const c = path.join(base, "node_modules", ".cache");
@@ -91,8 +91,8 @@ function main() {
   console.log(`[clean] repo root: ${root}${deep ? " (deep)" : ""}\n`);
 
   rmPath("dist", path.join(root, "dist"));
-  rmPath("packages/app/dist", path.join(root, "apps", "app", "dist"));
-  rmPath("packages/app/.vite", path.join(root, "apps", "app", ".vite"));
+  rmPath("packages/app/dist", path.join(root, "packages", "app", "dist"));
+  rmPath("packages/app/.vite", path.join(root, "packages", "app", ".vite"));
   rmPath(
     "packages/homepage/dist",
     path.join(root, "packages", "homepage", "dist"),
@@ -116,41 +116,47 @@ function main() {
 
   rmPath(
     "packages/app/test-results",
-    path.join(root, "apps", "app", "test-results"),
+    path.join(root, "packages", "app", "test-results"),
   );
   rmPath(
     "packages/app/playwright-report",
-    path.join(root, "apps", "app", "playwright-report"),
+    path.join(root, "packages", "app", "playwright-report"),
   );
 
   if (deep) {
     rmPath(
-      "packages/app/electrobun/build",
-      path.join(root, "apps", "app", "electrobun", "build"),
+      "packages/app-core/platforms/electrobun/build",
+      path.join(
+        root,
+        "packages",
+        "app-core",
+        "platforms",
+        "electrobun",
+        "build",
+      ),
     );
     rmPath(
-      "packages/app/electrobun/artifacts",
-      path.join(root, "apps", "app", "electrobun", "artifacts"),
+      "packages/app-core/platforms/electrobun/artifacts",
+      path.join(
+        root,
+        "packages",
+        "app-core",
+        "platforms",
+        "electrobun",
+        "artifacts",
+      ),
     );
     rmFile(
-      "packages/app/electrobun/src/preload.js (regenerate: cd packages/app/electrobun && bun run build:preload)",
-      path.join(root, "apps", "app", "electrobun", "src", "preload.js"),
-    );
-    rmPath(
-      "packages/app/electron/app-build",
-      path.join(root, "apps", "app", "electron", "app-build"),
-    );
-    rmPath(
-      "packages/app/electron/eliza-dist",
-      path.join(root, "apps", "app", "electron", "eliza-dist"),
-    );
-    rmPath(
-      "packages/app/electron/tsc-out",
-      path.join(root, "apps", "app", "electron", "tsc-out"),
-    );
-    rmPath(
-      "packages/app/electron/build",
-      path.join(root, "apps", "app", "electron", "build"),
+      "packages/app-core/platforms/electrobun/src/preload.js (regenerate: bun run build:preload)",
+      path.join(
+        root,
+        "packages",
+        "app-core",
+        "platforms",
+        "electrobun",
+        "src",
+        "preload.js",
+      ),
     );
     rmPath("dist-electron", path.join(root, "dist-electron"));
   }

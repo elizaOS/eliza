@@ -302,7 +302,7 @@ fi
 # ─────────────────────────────────────────────────────────────────────────────
 hdr "Step 4: Build Vite UI"
 
-log "Building Vite UI (apps/app)..."
+log "Building Vite UI (packages/app)..."
 run "cd packages/app && bun run build:web 2>&1 | tail -20 && cd ${REPO_ROOT}"
 
 if ! $DRY_RUN && [[ ! -d "packages/app/dist" ]]; then
