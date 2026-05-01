@@ -103,6 +103,17 @@ export default defineConfig({
         find: /^react-dom\/(.*)$/,
         replacement: path.join(reactDomRoot, "$1"),
       },
+      {
+        find: /^@capacitor\/core$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages",
+          "app-core",
+          "test",
+          "stubs",
+          "capacitor-core.ts",
+        ),
+      },
       { find: /^telegram\/sessions$/, replacement: telegramSessionsEntry },
       ...(Array.isArray(baseConfig.resolve?.alias)
         ? baseConfig.resolve.alias
