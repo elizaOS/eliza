@@ -79,6 +79,15 @@ describe("external-credentials — 1Password", () => {
       args[0] === "account" && args[1] === "list",
     stdout: "[]",
   };
+  /** Account-list responder for tests that exercise the desktop-integration
+   * path. Provides one registered shorthand so the desktop probe can run. */
+  const accountListMy = {
+    match: (_cmd: string, args: readonly string[]) =>
+      args[0] === "account" && args[1] === "list",
+    stdout: JSON.stringify([
+      { shorthand: "my", url: "my.1password.com", account_uuid: "abc" },
+    ]),
+  };
   /**
    * `whoamiFails` / `whoamiOk` model the desktop-integration probe.
    * The probe runs `op vault list --format=json` rather than `whoami`
@@ -98,27 +107,26 @@ describe("external-credentials — 1Password", () => {
 
   it("throws BackendNotSignedInError when no session is stored", async () => {
     const calls: ExecCall[] = [];
-    // Desktop-app probe fails (CLI not integrated), then session lookup
-    // hits the empty vault and throws.
+    // Empty account list → desktop-integration probe is skipped (no
+    // shorthand to disambiguate against), session lookup hits the empty
+    // vault and raises.
     const exec = fakeExec([accountListEmpty, whoamiFails], calls);
     await expect(listOnePasswordLogins(vault, exec)).rejects.toBeInstanceOf(
       BackendNotSignedInError,
     );
-    // Two calls: account list probe (returns []), then desktop-app
-    // whoami probe (no --account flag because no accounts were found).
-    // Session lookup happens against the vault and raises.
-    expect(calls).toHaveLength(2);
+    // One call: just the account list probe. The vault probe is skipped
+    // because no account is registered.
+    expect(calls).toHaveLength(1);
     expect(calls[0]?.args).toEqual(["account", "list", "--format=json"]);
-    expect(calls[1]?.args).toEqual(["whoami"]);
   });
 
   it("uses 1Password desktop-app integration when whoami succeeds without session", async () => {
-    // No session stored. Desktop-app probe succeeds → list call must
-    // omit any `--session=...` flag.
+    // No session stored, but a 1P account IS registered → desktop probe
+    // runs with --account=my and succeeds; list call must omit --session.
     const calls: ExecCall[] = [];
     const exec = fakeExec(
       [
-        accountListEmpty,
+        accountListMy,
         whoamiOk,
         {
           match: (_cmd, args) => args.includes("list"),
@@ -263,9 +271,9 @@ describe("external-credentials — 1Password", () => {
     );
     const out = await listOnePasswordLogins(vault, exec);
     expect(out).toEqual([]);
-    // Critically: we never invoke `op item get` for an empty list.
-    // account list + whoami probe + item list = 3 calls; no enrichment.
-    expect(calls).toHaveLength(3);
+    // No account registered → desktop probe is skipped. Calls:
+    // account list + item list (with stored session) = 2.
+    expect(calls).toHaveLength(2);
     expect(calls.filter((c) => c.args.includes("get"))).toHaveLength(0);
   });
 
@@ -324,7 +332,7 @@ describe("external-credentials — 1Password", () => {
   });
 
   it("reveal uses desktop-app integration when whoami succeeds", async () => {
-    // No session stored.
+    // No session stored, but account is registered → desktop probe runs.
     const itemJson = JSON.stringify({
       id: "abc111",
       title: "GitHub",
@@ -336,7 +344,7 @@ describe("external-credentials — 1Password", () => {
     const calls: ExecCall[] = [];
     const exec = fakeExec(
       [
-        accountListEmpty,
+        accountListMy,
         whoamiOk,
         {
           match: (_cmd, args) => args.includes("get") && args.includes("abc111"),
