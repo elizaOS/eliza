@@ -57,8 +57,96 @@ jobs:
       packages: write
       issues: write
       id-token: write
+      actions: read
 
     steps:
+      - name: Wait for other workflow runs before alpha publish
+        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          BRANCH: ${{ github.ref_name }}
+          RUN_ID: ${{ github.run_id }}
+          MAX_WAIT_SECONDS: "7200"
+          POLL_SECONDS: "30"
+        run: |
+          set -euo pipefail
+
+          echo "Waiting for all other workflow runs for ${SHA} to complete successfully before publishing alpha."
+          sleep 30
+
+          started_at="$(date +%s)"
+          while true; do
+            runs_json="$(gh api \
+              -H "Accept: application/vnd.github+json" \
+              "/repos/${REPO}/actions/runs?head_sha=${SHA}&branch=${BRANCH}&event=push&per_page=100")"
+
+            other_runs="$(jq --argjson run_id "${RUN_ID}" '
+              [
+                .workflow_runs[]
+                | select(.id != $run_id)
+                | {
+                    id,
+                    name,
+                    status,
+                    conclusion,
+                    html_url
+                  }
+              ]
+            ' <<< "${runs_json}")"
+
+            echo "Observed peer workflow runs:"
+            jq -r '.[] | "- \(.name): \(.status) / \(.conclusion // "pending") \(.html_url)"' <<< "${other_runs}"
+
+            failed_runs="$(jq '
+              [
+                .[]
+                | select(.status == "completed")
+                | select(.conclusion != "success")
+              ]
+            ' <<< "${other_runs}")"
+
+            if [[ "$(jq 'length' <<< "${failed_runs}")" -gt 0 ]]; then
+              echo "::error::At least one peer workflow run failed, was cancelled, or did not conclude successfully."
+              jq -r '.[] | "::error::\(.name) concluded \(.conclusion) - \(.html_url)"' <<< "${failed_runs}"
+              exit 1
+            fi
+
+            pending_runs="$(jq '[.[] | select(.status != "completed")]' <<< "${other_runs}")"
+            if [[ "$(jq 'length' <<< "${pending_runs}")" -eq 0 ]]; then
+              echo "All peer workflow runs completed successfully."
+              break
+            fi
+
+            elapsed="$(( $(date +%s) - started_at ))"
+            if [[ "${elapsed}" -ge "${MAX_WAIT_SECONDS}" ]]; then
+              echo "::error::Timed out waiting for peer workflow runs after ${elapsed}s."
+              jq -r '.[] | select(.status != "completed") | "::error::Still waiting on \(.name): \(.status) - \(.html_url)"' <<< "${pending_runs}"
+              exit 1
+            fi
+
+            echo "Waiting ${POLL_SECONDS}s for peer workflows to finish..."
+            sleep "${POLL_SECONDS}"
+          done
+
+      - name: Verify develop still points at this commit
+        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          remote_sha="$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${REPO}/git/ref/heads/develop" \
+            --jq '.object.sha')"
+          if [[ "${remote_sha}" != "${SHA}" ]]; then
+            echo "::error::develop advanced to ${remote_sha}; refusing to publish stale alpha for ${SHA}."
+            exit 1
+          fi
+
       - name: Checkout code
         uses: actions/checkout@v6
         with:
