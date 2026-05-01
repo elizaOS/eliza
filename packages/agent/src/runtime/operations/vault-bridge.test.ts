@@ -8,8 +8,8 @@ import {
   persistProviderApiKey,
   resolveConfigEnvForProcess,
   resolveProviderApiKey,
-  VaultResolveError,
   type VaultLike,
+  VaultResolveError,
   vaultKeyForProviderApiKey,
 } from "./vault-bridge.js";
 

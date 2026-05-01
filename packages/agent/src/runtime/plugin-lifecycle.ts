@@ -11,10 +11,7 @@ import type {
   ServiceClass,
   ServiceTypeName,
 } from "@elizaos/core";
-import {
-  resolveActionContexts,
-  resolveProviderContexts,
-} from "@elizaos/core";
+import { resolveActionContexts, resolveProviderContexts } from "@elizaos/core";
 
 /** elizaOS runtime plugin lifecycle bookkeeping (not exported from @elizaos/core). */
 type ElizaPluginOwnership = {
