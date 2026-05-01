@@ -11,13 +11,13 @@
  */
 
 import { hasRoleAccess } from "@elizaos/agent";
+import { Phone } from "@elizaos/capacitor-phone";
 import type {
   Action,
   HandlerOptions,
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { Phone } from "@elizaos/capacitor-phone";
 
 interface PlaceCallParams {
   phoneNumber?: string;

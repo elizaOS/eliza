@@ -6,10 +6,10 @@
  * available on device).
  */
 
-export { appPhonePlugin, default } from "./plugin";
+export { PhoneAppView } from "./components/PhoneAppView";
 export {
   PHONE_APP_NAME,
   phoneApp,
   registerPhoneApp,
 } from "./components/phone-app";
-export { PhoneAppView } from "./components/PhoneAppView";
+export { appPhonePlugin, default } from "./plugin";

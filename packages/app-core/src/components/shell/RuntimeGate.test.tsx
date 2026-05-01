@@ -65,6 +65,7 @@ vi.mock("../../platform/init", () => ({
   isDesktopPlatform: vi.fn(() => false),
   isAndroid: false,
   isIOS: false,
+  isMiladyOS: vi.fn(() => false),
   isNative: false,
   canRunLocal: vi.fn(() => false),
 }));

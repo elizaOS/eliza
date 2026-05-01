@@ -32,12 +32,6 @@
       "@elizaos/ui": ["./packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["./packages/ui/src/*"],
       "@elizaos/shared": ["./packages/shared/src/index.ts"],
-      "@elizaos/capacitor-phone": [
-        "./packages/native-plugins/phone/src/index.ts"
-      ],
-      "@elizaos/capacitor-contacts": [
-        "./packages/native-plugins/contacts/src/index.ts"
-      ],
       "react": ["./packages/app-core/node_modules/@types/react/index.d.ts"],
       "react/jsx-runtime": [
         "./packages/app-core/node_modules/@types/react/jsx-runtime.d.ts"
@@ -57,8 +51,7 @@
     "src/**/*.tsx",
     "src/**/*.d.ts",
     "../../packages/agent/src/external-modules.d.ts",
-    "../../packages/app-core/src/ambient-modules.d.ts",
-    "../../packages/app-core/src/platform/capacitor-plugin-modules.d.ts"
+    "../../packages/app-core/src/ambient-modules.d.ts"
   ],
   "exclude": [
     "src/**/*.stories.ts",

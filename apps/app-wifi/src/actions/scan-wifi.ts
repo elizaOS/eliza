@@ -10,13 +10,13 @@
  */
 
 import { hasRoleAccess } from "@elizaos/agent";
+import { WiFi } from "@elizaos/capacitor-wifi";
 import type {
   Action,
   HandlerOptions,
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { WiFi } from "@elizaos/capacitor-wifi";
 
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;

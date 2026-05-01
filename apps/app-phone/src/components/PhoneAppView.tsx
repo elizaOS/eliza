@@ -17,11 +17,8 @@
  */
 
 import type { OverlayAppContext } from "@elizaos/app-core";
+import type { CallLogEntry, CallLogType } from "@elizaos/capacitor-phone";
 import { Phone } from "@elizaos/capacitor-phone";
-import type {
-  CallLogEntry,
-  CallLogType,
-} from "@elizaos/capacitor-phone";
 import { Button, Tabs, TabsContent, TabsList, TabsTrigger } from "@elizaos/ui";
 import {
   ArrowLeft,
@@ -34,13 +31,7 @@ import {
   User as UserIcon,
   Voicemail,
 } from "lucide-react";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 interface ContactRow {
   id: string;
@@ -134,12 +125,17 @@ interface ContactsModule {
 /**
  * Lazily import `@elizaos/capacitor-contacts`. Soft-fails so the Phone app
  * still mounts on devices where contacts is not compiled in.
+ *
+ * The dynamic specifier is built at runtime so TypeScript does not require the
+ * package's type declarations during typecheck, and Vite skips static analysis
+ * via the inline ignore comment.
  */
 async function loadContactsModule(): Promise<ContactsModule | null> {
+  const specifier = "@elizaos/capacitor-contacts";
   try {
     const mod = (await import(
-      /* @vite-ignore */ "@elizaos/capacitor-contacts"
-    )) as ContactsModule;
+      /* @vite-ignore */ specifier
+    )) as unknown as ContactsModule;
     if (mod && typeof mod.Contacts?.listContacts === "function") {
       return mod;
     }
@@ -259,25 +255,22 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
     setDialed((prev) => prev.slice(0, -1));
   }, []);
 
-  const placeCall = useCallback(
-    async (number: string) => {
-      const normalized = normalizeNumber(number);
-      if (!normalized) {
-        setCallError("Enter a number to call.");
-        return;
-      }
-      setCalling(true);
-      setCallError(null);
-      try {
-        await Phone.placeCall({ number: normalized });
-      } catch (err) {
-        setCallError(err instanceof Error ? err.message : String(err));
-      } finally {
-        setCalling(false);
-      }
-    },
-    [],
-  );
+  const placeCall = useCallback(async (number: string) => {
+    const normalized = normalizeNumber(number);
+    if (!normalized) {
+      setCallError("Enter a number to call.");
+      return;
+    }
+    setCalling(true);
+    setCallError(null);
+    try {
+      await Phone.placeCall({ number: normalized });
+    } catch (err) {
+      setCallError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCalling(false);
+    }
+  }, []);
 
   const onDialerCall = useCallback(() => {
     void placeCall(dialed);
@@ -363,8 +356,8 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
         >
           <div className="flex h-full flex-col items-center justify-between px-4 py-6">
             <div className="flex w-full max-w-sm flex-col items-center gap-3 pt-2">
-              <div
-                className="min-h-[3rem] w-full select-text rounded-xl border border-border bg-bg-accent px-4 py-3 text-center font-mono text-2xl text-txt"
+              <output
+                className="block min-h-[3rem] w-full select-text rounded-xl border border-border bg-bg-accent px-4 py-3 text-center font-mono text-2xl text-txt"
                 aria-live="polite"
                 aria-label={t("phone.dialer.display", {
                   defaultValue: "Number being dialed",
@@ -377,7 +370,7 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
                     })}
                   </span>
                 )}
-              </div>
+              </output>
               {callError ? (
                 <p className="w-full text-center text-sm text-danger">
                   {callError}
@@ -497,8 +490,7 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
             {!contactsAvailable ? (
               <p className="py-8 text-center text-sm text-muted">
                 {t("phone.contacts.unavailable", {
-                  defaultValue:
-                    "Contacts are not available on this device.",
+                  defaultValue: "Contacts are not available on this device.",
                 })}
               </p>
             ) : null}
@@ -530,10 +522,7 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
                       className="flex w-full items-center gap-3 rounded-xl border border-transparent bg-bg-accent/40 px-3 py-2.5 text-left transition hover:border-border hover:bg-bg-accent active:scale-[0.99] disabled:opacity-50"
                     >
                       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-bg-accent">
-                        <UserIcon
-                          className="h-4 w-4 text-muted"
-                          aria-hidden
-                        />
+                        <UserIcon className="h-4 w-4 text-muted" aria-hidden />
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-semibold text-txt">
