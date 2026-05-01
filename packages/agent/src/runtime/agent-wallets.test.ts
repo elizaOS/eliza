@@ -222,8 +222,8 @@ describe("agent-wallets", () => {
     });
 
     test("stores supplied values verbatim", async () => {
-      const fakeKey = "0x" + "a".repeat(64);
-      const fakeAddr = "0x" + "b".repeat(40);
+      const fakeKey = `0x${"a".repeat(64)}`;
+      const fakeAddr = `0x${"b".repeat(40)}`;
       const desc = await setAgentWallet(
         testVault.vault,
         "alice",

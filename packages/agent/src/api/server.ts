@@ -230,11 +230,6 @@ import { handleSubscriptionRoutes } from "./subscription-routes.js";
 import { handleTelegramAccountRoute } from "./telegram-account-routes.js";
 import { handleTriggerRoutes } from "./trigger-routes.js";
 import { handleTtsRoutes } from "./tts-routes.js";
-import {
-  normalizeJsonRpcUrl,
-  probeJsonRpcEndpoint,
-  TxService,
-} from "./tx-service.js";
 import { handleUpdateRoutes } from "./update-routes.js";
 import {
   // Balance/import/generate helpers moved to @elizaos/app-steward plugin routes.
