@@ -199,10 +199,15 @@ describe("agent packaged runtime dependencies", () => {
       new URL("../../agent/src/api/registry-service.ts", import.meta.url),
       "utf8",
     );
+    const apiIndex = readFileSync(
+      new URL("../../agent/src/api/index.ts", import.meta.url),
+      "utf8",
+    );
 
-    expect(server).toContain('from "./tx-service.js"');
+    expect(apiIndex).toContain('from "./tx-service.js"');
     expect(registryService).toContain('from "./tx-service.js"');
     expect(server).not.toContain("@elizaos/app-steward/api/tx-service");
+    expect(apiIndex).not.toContain("@elizaos/app-steward/api/tx-service");
     expect(registryService).not.toContain(
       "@elizaos/app-steward/api/tx-service",
     );

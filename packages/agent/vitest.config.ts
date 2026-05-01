@@ -1,11 +1,45 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+import baseConfig from "../../test/vitest/default.config";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(here, "../..");
+const baseAliases = Array.isArray(baseConfig.resolve?.alias)
+  ? baseConfig.resolve.alias
+  : [];
 
 export default defineConfig({
+  ...baseConfig,
+  root: here,
+  resolve: {
+    ...baseConfig.resolve,
+    alias: [
+      ...baseAliases,
+      {
+        find: /^@elizaos\/plugin-cli$/,
+        replacement: path.join(
+          repoRoot,
+          "plugins",
+          "plugin-cli",
+          "typescript",
+          "src",
+          "index.ts",
+        ),
+      },
+    ],
+  },
   test: {
+    ...baseConfig.test,
     environment: "node",
     setupFiles: ["test/setup.ts"],
     testTimeout: 120_000,
     hookTimeout: 120_000,
+    server: {
+      deps: {
+        inline: [/@elizaos\//],
+      },
+    },
     include: ["src/**/*.test.{ts,tsx}", "test/**/*.test.{ts,tsx}"],
     exclude: [
       "dist/**",
