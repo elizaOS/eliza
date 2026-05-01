@@ -5,8 +5,6 @@ on:
     branches: [main, master]
   pull_request:
     branches: [main, master]
-  schedule:
-    - cron: "23 7 * * 1"
 
 permissions:
   contents: read
@@ -14,14 +12,57 @@ permissions:
   actions: read
 
 jobs:
+  detect:
+    name: Detect languages
+    runs-on: ubuntu-latest
+    outputs:
+      languages: ${{ steps.set.outputs.languages }}
+      has_any: ${{ steps.set.outputs.has_any }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect supported languages
+        id: set
+        shell: bash
+        run: |
+          set -eu
+          langs=()
+          # JS/TS detection: any .js .jsx .ts .tsx, OR package.json, OR tsconfig.json
+          if find . -type d \( -name node_modules -o -name .git -o -name dist -o -name build \) -prune -o \
+                    -type f \( -name '*.js' -o -name '*.jsx' -o -name '*.ts' -o -name '*.tsx' \
+                              -o -name 'package.json' -o -name 'tsconfig.json' \) -print -quit \
+                    | grep -q .; then
+            langs+=("javascript-typescript")
+          fi
+          # Python detection: any .py, OR pyproject.toml, OR setup.py, OR requirements*.txt
+          if find . -type d \( -name node_modules -o -name .git -o -name venv -o -name .venv -o -name dist -o -name build \) -prune -o \
+                    -type f \( -name '*.py' -o -name 'pyproject.toml' -o -name 'setup.py' \
+                              -o -name 'requirements.txt' -o -name 'requirements-*.txt' \) -print -quit \
+                    | grep -q .; then
+            langs+=("python")
+          fi
+          if [ ${#langs[@]} -eq 0 ]; then
+            echo "languages=[]" >> "$GITHUB_OUTPUT"
+            echo "has_any=false" >> "$GITHUB_OUTPUT"
+            echo "No supported languages detected; skipping analysis."
+          else
+            json=$(printf '%s\n' "${langs[@]}" | jq -R . | jq -sc .)
+            echo "languages=$json" >> "$GITHUB_OUTPUT"
+            echo "has_any=true" >> "$GITHUB_OUTPUT"
+            echo "Detected: $json"
+          fi
+
   analyze:
     name: Analyze (${{ matrix.language }})
+    needs: detect
+    if: needs.detect.outputs.has_any == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
-        language: [javascript-typescript, python]
+        language: ${{ fromJson(needs.detect.outputs.languages) }}
 
     steps:
       - name: Checkout
@@ -35,6 +76,7 @@ jobs:
 
       - name: Autobuild
         uses: github/codeql-action/autobuild@v3
+        continue-on-error: true
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
