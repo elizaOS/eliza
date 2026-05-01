@@ -12,7 +12,6 @@ import {
 
 export interface BlockRuleTestHarness {
   runtime: IAgentRuntime;
-  pgClient: PGlite;
   execute: (statement: string) => Promise<unknown>;
   close: () => Promise<void>;
 }
@@ -140,7 +139,6 @@ export async function createBlockRuleHarness(
 
   return {
     runtime,
-    pgClient,
     execute: (statement: string) => db.execute(sql.raw(statement)),
     close: async () => {
       tasks.clear();
