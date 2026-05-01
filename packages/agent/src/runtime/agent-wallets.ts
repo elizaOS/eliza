@@ -18,7 +18,7 @@
  * up — see `runtime/eliza.ts`.
  */
 
-import type { Vault } from "@elizaos/vault";
+import { removeEntryMeta, setEntryMeta, type Vault } from "@elizaos/vault";
 import { deriveEvmAddress, generateWalletForChain } from "../api/wallet.js";
 import type { WalletChain } from "../contracts/wallet.js";
 
@@ -229,9 +229,17 @@ export async function setAgentWallet(
     privateKey,
     lastModified: Date.now(),
   };
-  await vault.set(walletKey(agentId, chain), JSON.stringify(stored), {
+  const key = walletKey(agentId, chain);
+  await vault.set(key, JSON.stringify(stored), {
     sensitive: true,
     ...(caller ? { caller } : {}),
+  });
+  // Surface per-agent wallets in Settings → Vault → Secrets under the
+  // "Wallet" group. Without explicit meta, the inventory categorizer
+  // falls back to "plugin" for the `agent.<id>.wallet.<chain>` shape.
+  await setEntryMeta(vault, key, {
+    category: "wallet",
+    label: `agent ${agentId} (${chain})`,
   });
   return {
     agentId,
@@ -295,7 +303,9 @@ export async function removeAgentWallet(
   agentId: string,
   chain: WalletChain,
 ): Promise<void> {
-  await vault.remove(walletKey(agentId, chain));
+  const key = walletKey(agentId, chain);
+  await vault.remove(key);
+  await removeEntryMeta(vault, key);
 }
 
 /**
