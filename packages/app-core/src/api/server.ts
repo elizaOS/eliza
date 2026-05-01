@@ -873,8 +873,9 @@ async function handleCompatRoute(
     if (await handleSecretsInventoryRoute(req, res, url.pathname, method)) {
       return true;
     }
-    if (await handleSecretsManagerRoute(req, res, url.pathname, method))
+    if (await handleSecretsManagerRoute(req, res, url.pathname, method)) {
       return true;
+    }
   }
 
   // Handle all /api/cloud/* routes (except compat and billing which have
