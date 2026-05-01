@@ -10,12 +10,12 @@
  */
 
 import { Button, type OverlayAppContext } from "@elizaos/app-core";
-import { WiFi } from "@elizaos/capacitor-wifi";
 import type {
   ConnectResult,
   WiFiNetwork,
   WifiStateResult,
 } from "@elizaos/capacitor-wifi";
+import { WiFi } from "@elizaos/capacitor-wifi";
 import {
   ChevronLeft,
   Lock,
@@ -48,7 +48,11 @@ function signalBars(rssi: number): number {
 function SignalBars({ rssi }: SignalBarsProps) {
   const bars = signalBars(rssi);
   return (
-    <div className="flex items-end gap-0.5" aria-label={`Signal ${bars} of 4`}>
+    <div
+      role="img"
+      aria-label={`Signal ${bars} of 4`}
+      className="flex items-end gap-0.5"
+    >
       {[0, 1, 2, 3].map((i) => (
         <div
           key={i}

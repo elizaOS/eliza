@@ -37,11 +37,15 @@ const listContactsAction: Action = {
       | { limit?: number }
       | undefined;
 
-    const requested = Number.isFinite(params?.limit) ? Number(params?.limit) : DEFAULT_LIMIT;
+    const requested = Number.isFinite(params?.limit)
+      ? Number(params?.limit)
+      : DEFAULT_LIMIT;
     const limit = Math.max(1, Math.min(MAX_LIMIT, Math.trunc(requested)));
 
     const { contacts } = await Contacts.listContacts({ limit });
-    const names = contacts.map((c) => c.displayName).filter((name) => name.length > 0);
+    const names = contacts
+      .map((c) => c.displayName)
+      .filter((name) => name.length > 0);
 
     return {
       text: names.length === 0 ? "No contacts found." : names.join(", "),

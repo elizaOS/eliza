@@ -32,6 +32,19 @@ export function isDesktopPlatform(): boolean {
 }
 
 /**
+ * Pure UA inspector. Exported only so tests can pin the regex contract
+ * without having to mock the platform module.
+ *
+ * Returns `true` only when `ua` contains a `MiladyOS/<tag>` token at a
+ * word boundary. Substrings like `MiladyOSlike/...` or `NotMiladyOS...`
+ * must not match — the regex requires the slash to follow `MiladyOS`
+ * directly.
+ */
+export function userAgentHasMiladyOSMarker(ua: string): boolean {
+  return /\bMiladyOS\//.test(ua);
+}
+
+/**
  * True when the APK is running on the AOSP MiladyOS variant (the system
  * app on a Milady-branded device), as opposed to the same APK installed
  * on a stock Android phone from Play Store.
@@ -49,8 +62,7 @@ export function isDesktopPlatform(): boolean {
 export function isMiladyOS(): boolean {
   if (!isAndroid) return false;
   if (typeof navigator === "undefined") return false;
-  const ua = navigator.userAgent ?? "";
-  return /\bMiladyOS\//.test(ua);
+  return userAgentHasMiladyOSMarker(navigator.userAgent ?? "");
 }
 
 /** True when the runtime can spin up a local agent — desktop or dev server. */

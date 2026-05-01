@@ -1,14 +1,20 @@
 // @vitest-environment jsdom
 
 /**
- * Pre-seed contract for the Android APK.
+ * Pre-seed contract for the MiladyOS APK boot flow.
  *
- * The Android build bypasses the RuntimeGate "Choose your setup" picker
- * entirely — `apps/app/src/main.tsx` calls
- * `preSeedAndroidLocalRuntimeIfFresh()` before React mounts, which writes
- * the persisted runtime mode + active server so `StartupShell` (and
- * RuntimeGate's Android branch) treat the device as already-onboarded for
- * the local on-device agent.
+ * The AOSP MiladyOS variant bypasses the RuntimeGate "Choose your setup"
+ * picker entirely — `apps/app/src/main.tsx` calls
+ * `preSeedAndroidLocalRuntimeIfFresh()` before React mounts (gated on
+ * `isMiladyOS()`), which writes the persisted runtime mode + active
+ * server so `StartupShell` (and RuntimeGate's MiladyOS branch) treat the
+ * device as already-onboarded for the local on-device agent.
+ *
+ * The same APK installed on a stock Android phone never enters this
+ * branch — it falls through to the picker and a deliberate user choice
+ * is required. The tests below exercise the helper in isolation; the
+ * `isMiladyOS()` gate is covered separately by `is-milady-os.test.ts`
+ * and the `RuntimeGate.test.tsx` mocks.
  *
  * These tests pin the two invariants:
  *   1. On a clean install (no persisted state at all), the helper writes
@@ -25,13 +31,11 @@ import {
   ANDROID_LOCAL_AGENT_LABEL,
   ANDROID_LOCAL_AGENT_SERVER_ID,
   MOBILE_RUNTIME_MODE_STORAGE_KEY,
-  preSeedAndroidLocalRuntimeIfFresh,
   readPersistedMobileRuntimeMode,
 } from "../../src/onboarding/mobile-runtime-mode";
-import {
-  loadPersistedActiveServer,
-  savePersistedActiveServer,
-} from "../../src/state/persistence";
+import { preSeedAndroidLocalRuntimeIfFresh } from "../../src/onboarding/pre-seed-local-runtime";
+
+const ACTIVE_SERVER_STORAGE_KEY = "elizaos:active-server";
 
 // Node 25's experimental global `localStorage` shadows jsdom's; install an
 // in-memory shim so the helpers under test see a real Storage.
@@ -62,12 +66,34 @@ function installMemoryLocalStorage(): Storage {
     configurable: true,
     writable: true,
   });
-  Object.defineProperty(window, "localStorage", {
-    value: storage,
-    configurable: true,
-    writable: true,
-  });
+  if (typeof window !== "undefined") {
+    Object.defineProperty(window, "localStorage", {
+      value: storage,
+      configurable: true,
+      writable: true,
+    });
+  }
   return storage;
+}
+
+interface PersistedActiveServer {
+  id: string;
+  kind: "remote" | "cloud" | "local";
+  label: string;
+  apiBase?: string;
+}
+
+function readActiveServer(storage: Storage): PersistedActiveServer | null {
+  const raw = storage.getItem(ACTIVE_SERVER_STORAGE_KEY);
+  if (!raw) return null;
+  return JSON.parse(raw) as PersistedActiveServer;
+}
+
+function writeActiveServer(
+  storage: Storage,
+  server: PersistedActiveServer,
+): void {
+  storage.setItem(ACTIVE_SERVER_STORAGE_KEY, JSON.stringify(server));
 }
 
 describe("preSeedAndroidLocalRuntimeIfFresh", () => {
@@ -84,7 +110,7 @@ describe("preSeedAndroidLocalRuntimeIfFresh", () => {
 
   it("writes the persisted runtime mode + active server on a clean install", () => {
     expect(readPersistedMobileRuntimeMode()).toBeNull();
-    expect(loadPersistedActiveServer()).toBeNull();
+    expect(readActiveServer(storage)).toBeNull();
 
     const wrote = preSeedAndroidLocalRuntimeIfFresh();
 
@@ -92,7 +118,7 @@ describe("preSeedAndroidLocalRuntimeIfFresh", () => {
     expect(storage.getItem(MOBILE_RUNTIME_MODE_STORAGE_KEY)).toBe("local");
     expect(readPersistedMobileRuntimeMode()).toBe("local");
 
-    const server = loadPersistedActiveServer();
+    const server = readActiveServer(storage);
     expect(server).not.toBeNull();
     expect(server).toMatchObject({
       id: ANDROID_LOCAL_AGENT_SERVER_ID,
@@ -108,14 +134,12 @@ describe("preSeedAndroidLocalRuntimeIfFresh", () => {
     const wrote = preSeedAndroidLocalRuntimeIfFresh();
 
     expect(wrote).toBe(false);
-    // Mode is unchanged.
     expect(storage.getItem(MOBILE_RUNTIME_MODE_STORAGE_KEY)).toBe("cloud");
-    // No active server was written either.
-    expect(loadPersistedActiveServer()).toBeNull();
+    expect(readActiveServer(storage)).toBeNull();
   });
 
   it("is a no-op when an active server is already persisted", () => {
-    savePersistedActiveServer({
+    writeActiveServer(storage, {
       id: "remote:https://my-mac.local",
       kind: "remote",
       label: "my-mac",
@@ -125,17 +149,15 @@ describe("preSeedAndroidLocalRuntimeIfFresh", () => {
     const wrote = preSeedAndroidLocalRuntimeIfFresh();
 
     expect(wrote).toBe(false);
-    // The user's prior choice is intact.
-    const server = loadPersistedActiveServer();
+    const server = readActiveServer(storage);
     expect(server?.id).toBe("remote:https://my-mac.local");
     expect(server?.apiBase).toBe("https://my-mac.local");
-    // And no runtime mode was written under the user.
     expect(readPersistedMobileRuntimeMode()).toBeNull();
   });
 
   it("is a no-op when both a runtime mode and an active server already exist", () => {
     storage.setItem(MOBILE_RUNTIME_MODE_STORAGE_KEY, "cloud");
-    savePersistedActiveServer({
+    writeActiveServer(storage, {
       id: "cloud:foo",
       kind: "cloud",
       label: "Eliza Cloud",
@@ -146,16 +168,14 @@ describe("preSeedAndroidLocalRuntimeIfFresh", () => {
 
     expect(wrote).toBe(false);
     expect(storage.getItem(MOBILE_RUNTIME_MODE_STORAGE_KEY)).toBe("cloud");
-    expect(loadPersistedActiveServer()?.kind).toBe("cloud");
+    expect(readActiveServer(storage)?.kind).toBe("cloud");
   });
 
   it("is idempotent — a second call after a successful seed is a no-op", () => {
     expect(preSeedAndroidLocalRuntimeIfFresh()).toBe(true);
     expect(preSeedAndroidLocalRuntimeIfFresh()).toBe(false);
 
-    // The seeded values are unchanged after the second call.
     expect(readPersistedMobileRuntimeMode()).toBe("local");
-    const server = loadPersistedActiveServer();
-    expect(server?.id).toBe(ANDROID_LOCAL_AGENT_SERVER_ID);
+    expect(readActiveServer(storage)?.id).toBe(ANDROID_LOCAL_AGENT_SERVER_ID);
   });
 });

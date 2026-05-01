@@ -7,10 +7,10 @@
  * the app does not appear in the catalog where it cannot function.
  */
 
-export { appWifiPlugin, default } from "./plugin";
+export { WifiAppView } from "./components/WifiAppView";
 export {
+  registerWifiApp,
   WIFI_APP_NAME,
   wifiApp,
-  registerWifiApp,
 } from "./components/wifi-app";
-export { WifiAppView } from "./components/WifiAppView";
+export { appWifiPlugin, default } from "./plugin";

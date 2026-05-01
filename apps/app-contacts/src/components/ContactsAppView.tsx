@@ -14,8 +14,8 @@
 
 import type { OverlayAppContext } from "@elizaos/app-core";
 import {
-  Contacts,
   type ContactSummary,
+  Contacts,
   type CreateContactOptions,
 } from "@elizaos/capacitor-contacts";
 import { Button, Input } from "@elizaos/ui";
@@ -34,8 +34,10 @@ import {
 import {
   type ChangeEvent,
   type FormEvent,
+  type ReactElement,
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -65,6 +67,17 @@ function getInitials(name: string): string {
   const first = parts[0]?.charAt(0) ?? "";
   const last = parts[parts.length - 1]?.charAt(0) ?? "";
   return `${first}${last}`.toUpperCase() || "?";
+}
+
+function dedupePreservingOrder(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    if (seen.has(value)) continue;
+    seen.add(value);
+    result.push(value);
+  }
+  return result;
 }
 
 function matchesQuery(contact: ContactSummary, q: string): boolean {
@@ -238,7 +251,9 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
               disabled={loading}
               aria-label={t("actions.refresh", { defaultValue: "Refresh" })}
             >
-              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+              <RefreshCw
+                className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
+              />
             </Button>
             <Button
               variant="ghost"
@@ -260,9 +275,13 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder={t("contacts.search", { defaultValue: "Search contacts" })}
+              placeholder={t("contacts.search", {
+                defaultValue: "Search contacts",
+              })}
               className="pl-9"
-              aria-label={t("contacts.search", { defaultValue: "Search contacts" })}
+              aria-label={t("contacts.search", {
+                defaultValue: "Search contacts",
+              })}
             />
           </div>
         </div>
@@ -357,7 +376,9 @@ function ContactList({
   if (contacts.length === 0) {
     return (
       <div className="px-4 py-10 text-center text-sm text-muted">
-        {t("contacts.noMatches", { defaultValue: "No contacts match your search." })}
+        {t("contacts.noMatches", {
+          defaultValue: "No contacts match your search.",
+        })}
       </div>
     );
   }
@@ -379,13 +400,16 @@ function ContactList({
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
                   <span className="truncate text-sm font-medium text-txt">
-                    {contact.displayName || t("contacts.unnamed", { defaultValue: "Unnamed" })}
+                    {contact.displayName ||
+                      t("contacts.unnamed", { defaultValue: "Unnamed" })}
                   </span>
                   {contact.starred && (
                     <Star
                       className="h-3.5 w-3.5 shrink-0 text-amber-400"
                       fill="currentColor"
-                      aria-label={t("contacts.starred", { defaultValue: "Starred" })}
+                      aria-label={t("contacts.starred", {
+                        defaultValue: "Starred",
+                      })}
                     />
                   )}
                 </div>
@@ -476,7 +500,7 @@ function ContactFieldGroup({
 }: {
   label: string;
   items: string[];
-  renderItem: (value: string) => JSX.Element;
+  renderItem: (value: string) => ReactElement;
   emptyLabel: string;
 }) {
   return (
@@ -488,8 +512,8 @@ function ContactFieldGroup({
         <p className="mt-2 text-sm text-muted">{emptyLabel}</p>
       ) : (
         <ul className="mt-2 flex flex-col gap-2">
-          {items.map((value, index) => (
-            <li key={`${value}-${index}`}>{renderItem(value)}</li>
+          {dedupePreservingOrder(items).map((value) => (
+            <li key={value}>{renderItem(value)}</li>
           ))}
         </ul>
       )}
@@ -513,17 +537,24 @@ function NewContactForm({
   t: TFn;
 }) {
   const canSubmit = form.displayName.trim().length > 0 && !submitting;
+  const nameId = useId();
+  const phoneId = useId();
+  const emailId = useId();
 
   return (
     <form
       onSubmit={onSubmit}
       className="mx-auto flex max-w-md flex-col gap-4 px-4 py-6"
     >
-      <label className="flex flex-col gap-1.5">
-        <span className="text-xs font-semibold uppercase tracking-wide text-muted">
+      <div className="flex flex-col gap-1.5">
+        <label
+          htmlFor={nameId}
+          className="text-xs font-semibold uppercase tracking-wide text-muted"
+        >
           {t("contacts.form.name", { defaultValue: "Name" })}
-        </span>
+        </label>
         <Input
+          id={nameId}
           value={form.displayName}
           onChange={(e) => onChange({ ...form, displayName: e.target.value })}
           placeholder={t("contacts.form.namePlaceholder", {
@@ -532,33 +563,41 @@ function NewContactForm({
           required
           autoFocus
         />
-      </label>
+      </div>
 
-      <label className="flex flex-col gap-1.5">
-        <span className="text-xs font-semibold uppercase tracking-wide text-muted">
+      <div className="flex flex-col gap-1.5">
+        <label
+          htmlFor={phoneId}
+          className="text-xs font-semibold uppercase tracking-wide text-muted"
+        >
           {t("contacts.form.phone", { defaultValue: "Phone" })}
-        </span>
+        </label>
         <Input
+          id={phoneId}
           type="tel"
           inputMode="tel"
           value={form.phoneNumber}
           onChange={(e) => onChange({ ...form, phoneNumber: e.target.value })}
           placeholder="+1 555 123 4567"
         />
-      </label>
+      </div>
 
-      <label className="flex flex-col gap-1.5">
-        <span className="text-xs font-semibold uppercase tracking-wide text-muted">
+      <div className="flex flex-col gap-1.5">
+        <label
+          htmlFor={emailId}
+          className="text-xs font-semibold uppercase tracking-wide text-muted"
+        >
           {t("contacts.form.email", { defaultValue: "Email" })}
-        </span>
+        </label>
         <Input
+          id={emailId}
           type="email"
           inputMode="email"
           value={form.emailAddress}
           onChange={(e) => onChange({ ...form, emailAddress: e.target.value })}
           placeholder="name@example.com"
         />
-      </label>
+      </div>
 
       <div className="mt-2 flex items-center justify-end gap-2">
         <Button

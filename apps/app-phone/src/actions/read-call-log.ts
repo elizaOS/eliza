@@ -8,13 +8,13 @@
  */
 
 import { hasRoleAccess } from "@elizaos/agent";
+import { Phone } from "@elizaos/capacitor-phone";
 import type {
   Action,
   HandlerOptions,
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { Phone } from "@elizaos/capacitor-phone";
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 50;
