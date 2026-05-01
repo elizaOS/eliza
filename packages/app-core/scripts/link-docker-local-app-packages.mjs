@@ -26,6 +26,7 @@ const localPackages = [
   "eliza/packages/app-core",
   "eliza/packages/shared",
   "eliza/packages/skills",
+  "eliza/packages/vault",
   "eliza/plugins/plugin-agent-skills/typescript",
   "eliza/plugins/plugin-browser-bridge",
   "eliza/plugins/plugin-local-embedding/typescript",
