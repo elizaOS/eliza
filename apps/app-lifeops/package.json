@@ -65,7 +65,7 @@
     "telegram": "2.26.22"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.3.3"
+    "@electric-sql/pglite": "^0.4.0"
   },
   "peerDependencies": {
     "react": "*"
