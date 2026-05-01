@@ -529,6 +529,74 @@ function stageDesktopBuild() {
   }
 }
 
+function embedWindowsIcons() {
+  const buildDir = path.join(ELECTROBUN_DIR, "build");
+  const iconPath = path.join(ELECTROBUN_DIR, "assets", "appIcon.ico");
+  if (!fs.existsSync(iconPath)) {
+    console.log("[desktop-build] No appIcon.ico found, skipping icon embed");
+    return;
+  }
+  // Find the build output directory (e.g. dev-win-x64/elizaOS-dev/bin)
+  let binDir;
+  for (const variant of fs.readdirSync(buildDir)) {
+    const variantDir = path.join(buildDir, variant);
+    if (!fs.statSync(variantDir).isDirectory()) continue;
+    for (const app of fs.readdirSync(variantDir)) {
+      const candidate = path.join(variantDir, app, "bin");
+      if (fs.existsSync(path.join(candidate, "launcher.exe"))) {
+        binDir = candidate;
+        break;
+      }
+    }
+    if (binDir) break;
+  }
+  if (!binDir) {
+    console.log("[desktop-build] Could not find launcher.exe in build output");
+    return;
+  }
+  // Find rcedit-x64.exe in node_modules (cross-platform, no shell deps).
+  let rceditBin;
+  for (const base of [ELECTROBUN_DIR, ROOT]) {
+    const rceditDir = path.join(base, "node_modules", "rcedit", "bin");
+    const candidate = path.join(rceditDir, "rcedit-x64.exe");
+    if (fs.existsSync(candidate)) {
+      rceditBin = candidate;
+      break;
+    }
+    // Also check bun's flat cache layout
+    try {
+      for (const entry of fs.readdirSync(path.join(base, "node_modules", ".bun"))) {
+        if (!entry.startsWith("rcedit@")) continue;
+        const nested = path.join(base, "node_modules", ".bun", entry, "node_modules", "rcedit", "bin", "rcedit-x64.exe");
+        if (fs.existsSync(nested)) { rceditBin = nested; break; }
+      }
+    } catch {}
+    if (rceditBin) break;
+  }
+  if (!rceditBin) {
+    console.log("[desktop-build] rcedit-x64.exe not found — install rcedit as a devDep to embed Windows icons");
+    return;
+  }
+  // Embed into all executables — CEF helper processes create the visible
+  // windows on Windows, so they need the icon too for it to show in the
+  // title bar and taskbar.
+  const exeFiles = fs.readdirSync(binDir).filter((f) => f.endsWith(".exe"));
+  for (const exe of exeFiles) {
+    const exePath = path.join(binDir, exe);
+    if (!fs.existsSync(exePath)) continue;
+    const result = spawnSync(rceditBin, [exePath, "--set-icon", iconPath], {
+      stdio: "pipe",
+      encoding: "utf-8",
+      timeout: 15000,
+    });
+    if (result.status === 0) {
+      console.log(`[desktop-build] Embedded icon into ${exe}`);
+    } else {
+      console.log(`[desktop-build] Warning: failed to embed icon into ${exe}: ${result.stderr || result.error}`);
+    }
+  }
+}
+
 function mirrorTreePreservingSymlinks(src, dst) {
   const srcStat = fs.lstatSync(src);
   if (srcStat.isSymbolicLink()) {
@@ -623,6 +691,13 @@ function packageDesktopBuild() {
 
   mirrorCanonicalToLegacy("build");
   mirrorCanonicalToLegacy("artifacts");
+
+  // Electrobun's built-in rcedit call references a CI-local D:\ path that
+  // doesn't exist on developer machines. Re-embed the icon from a locally
+  // resolved rcedit as a post-build repair step.
+  if (process.platform === "win32") {
+    embedWindowsIcons();
+  }
 
   if (
     process.platform === "darwin" &&

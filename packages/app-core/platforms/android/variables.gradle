@@ -1,4 +1,5 @@
 ext {
+    mavenCentralMirrorUrl = 'https://maven-central.storage-download.googleapis.com/maven2/'
     minSdkVersion = 26
     compileSdkVersion = 36
     targetSdkVersion = 35

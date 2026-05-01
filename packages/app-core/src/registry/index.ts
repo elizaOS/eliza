@@ -38,10 +38,15 @@ export function loadRegistry(): LoadedRegistry {
   const raws: { file: string; data: unknown }[] = [];
   for (const kind of ["apps", "plugins", "connectors"] as const) {
     const kindDir = join(entriesDir, kind);
-    // Fail loud if a kind directory is missing — the registry is the source
-    // for /api/plugins and /api/catalog/apps; silently dropping a kind would
-    // surface as an empty catalog at runtime instead of a clear bundle bug.
-    const entries = readdirSync(kindDir);
+    let entries: string[];
+    try {
+      entries = readdirSync(kindDir);
+    } catch {
+      // In packaged desktop builds the registry entries may not be bundled.
+      // Log and continue rather than crashing the agent subprocess.
+      console.warn(`[registry] ${kind} directory missing: ${kindDir}`);
+      continue;
+    }
     for (const filename of entries) {
       if (!filename.endsWith(".json")) continue;
       const file = join(kindDir, filename);

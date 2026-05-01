@@ -14,7 +14,7 @@ import type {
 import {
   resolveActionContexts,
   resolveProviderContexts,
-} from "../../../typescript/src/utils/context-catalog.ts";
+} from "@elizaos/core";
 
 /** elizaOS runtime plugin lifecycle bookkeeping (not exported from @elizaos/core). */
 type ElizaPluginOwnership = {

@@ -137,7 +137,7 @@ import { handleN8nRoutes } from "./n8n-routes";
 import { handleOnboardingCompatRoute } from "./onboarding-compat-routes";
 import { handlePluginsCompatRoutes } from "./plugins-compat-routes";
 import { handleSecretsManagerRoute } from "./secrets-manager-routes";
-import { getCorsAllowedPorts, isAllowedLocalOrigin } from "./server-cors";
+import { getCorsAllowedPorts, isAllowedOrigin } from "./server-cors";
 import { isCloudProvisioned as _isCloudProvisioned } from "./server-onboarding-compat";
 import { handleWalletMarketOverviewRoute } from "./wallet-market-overview-route";
 
@@ -1170,7 +1170,7 @@ export function patchHttpCreateServerForCompat(
       }
       const allowOrigin = (() => {
         if (originHeader !== "") {
-          return isAllowedLocalOrigin(originHeader, corsAllowedPorts)
+          return isAllowedOrigin(originHeader, corsAllowedPorts)
             ? originHeader
             : null;
         }
@@ -1178,7 +1178,7 @@ export function patchHttpCreateServerForCompat(
         if (!ref) return null;
         try {
           const u = new URL(ref);
-          return isAllowedLocalOrigin(ref, corsAllowedPorts) ? u.origin : null;
+          return isAllowedOrigin(ref, corsAllowedPorts) ? u.origin : null;
         } catch {
           return null;
         }

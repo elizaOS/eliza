@@ -114,6 +114,7 @@ import { SkillsView } from "./components/pages/SkillsView";
 import { TasksPageView } from "./components/pages/TasksPageView";
 import { TrajectoriesView } from "./components/pages/TrajectoriesView";
 import { FineTuningView } from "./components/training/injected";
+import { fetchWithCsrf } from "./api/csrf-client";
 
 // True lazy boundaries: these views are only imported here, so Rollup can
 // honour the split into separate chunks.
@@ -595,7 +596,7 @@ export function App() {
     if (backendConnection?.state !== "connected") return;
 
     const report = () => {
-      void fetch("/api/apps/overlay-presence", {
+      void fetchWithCsrf("/api/apps/overlay-presence", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ appName: activeOverlayApp }),
@@ -608,7 +609,7 @@ export function App() {
     const intervalId = window.setInterval(report, 25_000);
     return () => {
       window.clearInterval(intervalId);
-      void fetch("/api/apps/overlay-presence", {
+      void fetchWithCsrf("/api/apps/overlay-presence", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ appName: null }),
@@ -1157,7 +1158,15 @@ export function App() {
 
   return (
     <BugReportProvider value={bugReport}>
-      <div className="flex flex-col h-screen w-screen overflow-hidden">
+      <div
+        className="flex flex-col h-screen w-screen overflow-hidden"
+        style={{
+          paddingTop: "var(--safe-area-top, env(safe-area-inset-top, 0px))",
+          paddingBottom: "var(--safe-area-bottom, env(safe-area-inset-bottom, 0px))",
+          paddingLeft: "var(--safe-area-left, env(safe-area-inset-left, 0px))",
+          paddingRight: "var(--safe-area-right, env(safe-area-inset-right, 0px))",
+        }}
+      >
         <ConnectionFailedBanner />
         <SystemWarningBanner />
         {shellContent}

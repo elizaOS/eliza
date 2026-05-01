@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import type http from "node:http";
 import { loadElizaConfig } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
-import { ensureRouteAuthorized, getCompatApiToken, tokenMatches } from "./auth";
+import { ensureRouteAuthorized, getCompatApiToken, getProvidedApiToken, tokenMatches } from "./auth";
 import {
   type CompatRuntimeState,
   getCompatDrizzleDb,
@@ -158,6 +158,14 @@ export async function handleAuthPairingCompatRoutes(
     const bootstrapRequired = isCloudProvisioned();
     const tokenRequired = Boolean(getCompatApiToken());
     const loginRequired = !localAccess && !tokenRequired && !bootstrapRequired;
+    // Did this request already authenticate? Surfaced as a separate
+    // `authenticated` field so the client can short-circuit pairing without
+    // overloading the existing `required` semantics.
+    const providedToken = getProvidedApiToken(req);
+    const configuredToken = getCompatApiToken();
+    const authenticated = Boolean(
+      providedToken && configuredToken && tokenMatches(configuredToken, providedToken),
+    );
     const required =
       !localAccess &&
       (tokenRequired ||
@@ -170,6 +178,7 @@ export async function handleAuthPairingCompatRoutes(
     }
     sendJsonResponse(res, 200, {
       required,
+      authenticated,
       loginRequired,
       bootstrapRequired: required && bootstrapRequired && !tokenRequired,
       localAccess,

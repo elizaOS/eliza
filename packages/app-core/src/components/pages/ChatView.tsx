@@ -41,6 +41,7 @@ import {
   useChatVoiceController,
   useGameModalMessages,
 } from "./chat-view-hooks";
+import { fetchWithCsrf } from "../../api/csrf-client";
 
 export { __resetCompanionSpeechMemoryForTests } from "./chat-view-hooks";
 
@@ -204,7 +205,7 @@ export function ChatView({
   const [codingAgentsAvailable, setCodingAgentsAvailable] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/coding-agents/preflight", { signal: controller.signal })
+    fetchWithCsrf("/api/coding-agents/preflight", { signal: controller.signal })
       .then((r) => r.json())
       .then((data: { installed?: unknown[]; available?: boolean }) => {
         setCodingAgentsAvailable(
