@@ -303,6 +303,11 @@ describe("aosp-llama-adapter / dlopen symbol manifest", () => {
       "milady_llama_context_params_set_n_threads_batch",
       "milady_llama_context_params_set_embeddings",
       "milady_llama_context_params_set_pooling_type",
+      // n_batch / n_ubatch let the adapter chunk decode rounds so the
+      // GGML compute graph doesn't blow up on long planner prompts.
+      // Default n_batch=512 (ELIZA_LLAMA_N_BATCH); ubatch tracks batch.
+      "milady_llama_context_params_set_n_batch",
+      "milady_llama_context_params_set_n_ubatch",
       // type_k / type_v drive the apothic/llama.cpp-1bit-turboquant fork's
       // KV-cache compression path. TBQ3_0 (43) / TBQ4_0 (44) are the
       // fork's quant types; F16 (1) is the upstream default.
@@ -326,8 +331,6 @@ describe("aosp-llama-adapter / dlopen symbol manifest", () => {
       "milady_llama_model_params_set_use_mlock",
       "milady_llama_model_params_set_vocab_only",
       "milady_llama_model_params_set_check_tensors",
-      "milady_llama_context_params_set_n_batch",
-      "milady_llama_context_params_set_n_ubatch",
       "milady_llama_context_params_set_offload_kqv",
       // set_flash_attn is gone from the shim entirely (b8198 changed
       // flash_attn to flash_attn_type, an enum, not a bool).
@@ -445,9 +448,12 @@ describe("aosp-llama-adapter / context_params override invocations", () => {
     expect(poolingCall).toBeDefined();
     expect(poolingCall?.args[1]).toBe(1);
 
-    // n_ctx defaults to 4096 when LoadOptions doesn't override.
+    // n_ctx defaults to 16384 when LoadOptions doesn't override —
+    // Llama-3.2-1B (the AOSP default) has a 128k native context, but
+    // we cap at 16k to keep the KV-cache footprint sane on emulated
+    // cuttlefish CPUs and small phones.
     const nCtxCall = setterCalls.find((c) => c.name === "set_n_ctx");
-    expect(nCtxCall?.args[1]).toBe(4096);
+    expect(nCtxCall?.args[1]).toBe(16384);
 
     // embeddings=true so the first embed() call doesn't pay alloc tax.
     const embeddingsCall = setterCalls.find((c) => c.name === "set_embeddings");
