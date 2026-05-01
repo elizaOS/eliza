@@ -70,9 +70,11 @@ function parseAgentWalletKey(
   const parts = key.split(".");
   if (parts.length !== 4) return null;
   if (parts[0] !== PREFIX || parts[2] !== SEGMENT) return null;
+  const encodedAgentId = parts[1];
+  if (!encodedAgentId) return null;
   const chain = parts[3];
   if (chain !== "evm" && chain !== "solana") return null;
-  return { agentId: decodeAgentSegment(parts[1]!), chain };
+  return { agentId: decodeAgentSegment(encodedAgentId), chain };
 }
 
 function parseStored(raw: string): StoredAgentWallet {

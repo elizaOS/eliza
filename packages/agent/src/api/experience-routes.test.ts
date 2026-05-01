@@ -8,7 +8,47 @@ interface RecordedResponse {
   body: unknown;
 }
 
-function makeExperience(id: string): any {
+interface TestExperience {
+  id: UUID;
+  agentId: UUID;
+  type: string;
+  outcome: string;
+  context: string;
+  action: string;
+  result: string;
+  learning: string;
+  domain: string;
+  tags: string[];
+  keywords: string[];
+  associatedEntityIds: string[];
+  confidence: number;
+  importance: number;
+  createdAt: number;
+  updatedAt: number;
+  accessCount: number;
+  lastAccessedAt: number;
+  embedding: number[];
+}
+
+interface TestExperienceService {
+  recordExperience(
+    experienceData: Partial<TestExperience>,
+  ): Promise<TestExperience>;
+  listExperiences(query?: Record<string, unknown>): Promise<TestExperience[]>;
+  getExperience(id: UUID): Promise<TestExperience | null>;
+  updateExperience(
+    id: UUID,
+    updates: Partial<TestExperience>,
+  ): Promise<TestExperience | null>;
+  deleteExperience(id: UUID): Promise<boolean>;
+  getExperienceGraph(query?: Record<string, unknown>): Promise<unknown>;
+  consolidateDuplicateExperiences(options?: {
+    deleteDuplicates?: boolean;
+    limit?: number;
+  }): Promise<unknown>;
+}
+
+function makeExperience(id: string): TestExperience {
   return {
     id: id as UUID,
     agentId: "agent-001" as UUID,
@@ -32,11 +72,26 @@ function makeExperience(id: string): any {
   };
 }
 
+function makeExperienceService(
+  overrides: Partial<TestExperienceService>,
+): TestExperienceService {
+  return {
+    recordExperience: async () => makeExperience("exp-created"),
+    listExperiences: async () => [],
+    getExperience: async () => null,
+    updateExperience: async () => null,
+    deleteExperience: async () => false,
+    getExperienceGraph: async () => ({ nodes: [], links: [] }),
+    consolidateDuplicateExperiences: async () => ({ merged: 0, deleted: 0 }),
+    ...overrides,
+  };
+}
+
 function makeContext(options: {
   method: string;
   path: string;
   body?: Record<string, unknown>;
-  service?: Record<string, unknown> | null;
+  service?: Partial<TestExperienceService> | null;
 }): {
   recorded: RecordedResponse;
   ctx: Parameters<typeof handleExperienceRoutes>[0];
@@ -49,10 +104,14 @@ function makeContext(options: {
   const res = {
     statusCode: 200,
   } as unknown as http.ServerResponse;
+  const service =
+    options.service === undefined || options.service === null
+      ? null
+      : makeExperienceService(options.service);
   const runtime = options.service
     ? ({
         getService: vi.fn((serviceName: string) =>
-          serviceName === "EXPERIENCE" ? options.service : null,
+          serviceName === "EXPERIENCE" ? service : null,
         ),
       } as unknown as AgentRuntime)
     : null;
