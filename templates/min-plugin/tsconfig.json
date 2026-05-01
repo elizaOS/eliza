@@ -3,7 +3,7 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": ["ES2023"],
+    "lib": ["ES2023", "DOM"],
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -12,7 +12,11 @@
     "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "noEmit": true,
-    "types": ["node", "vitest/globals"]
+    "types": ["node", "vitest/globals"],
+    "paths": {
+      "@elizaos/core": ["../../packages/typescript/src/index.node.ts"],
+      "@elizaos/core/*": ["../../packages/typescript/src/*"]
+    }
   },
   "include": ["src/**/*.ts", "tests/**/*.ts"]
 }
