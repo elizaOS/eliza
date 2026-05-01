@@ -144,6 +144,11 @@ playwright-report/
 **/test-report*.json
 **/.nyc_output/
 
+# Local git worktrees of the cloud submodule (parallel CI/test branches)
+/cloud-ci-playwright/
+/cloud-develop-playwright-ci/
+/cloud-develop-fix/
+
 # Archive files
 *.zip
 *.tar
