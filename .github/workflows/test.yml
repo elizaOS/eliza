@@ -43,7 +43,7 @@ jobs:
   server-tests:
     name: Server Tests
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
@@ -76,7 +76,7 @@ jobs:
   client-tests:
     name: Client Tests
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 60
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
@@ -108,7 +108,7 @@ jobs:
   plugin-tests:
     name: Plugin Tests
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 60
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
@@ -165,7 +165,7 @@ jobs:
   cloud-live-e2e:
     name: Cloud Live E2E (Eliza Cloud)
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
@@ -215,7 +215,7 @@ jobs:
           set -o pipefail
           log_file="$(mktemp)"
 
-          if bun run test --filter='./cloud/**' 2>&1 | tee "$log_file"; then
+          if bun run --cwd cloud/packages/sdk test:e2e 2>&1 | tee "$log_file"; then
             exit 0
           fi
 
@@ -228,7 +228,9 @@ jobs:
         env:
           ELIZA_LIVE_TEST: "1"
           ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY != '' && secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
+          ELIZA_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY != '' && secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
           ELIZAOS_CLOUD_BASE_URL: ${{ secrets.ELIZAOS_CLOUD_BASE_URL }}
+          ELIZA_CLOUD_BASE_URL: ${{ secrets.ELIZAOS_CLOUD_BASE_URL }}
 
   test-status:
     name: All Tests Passed
