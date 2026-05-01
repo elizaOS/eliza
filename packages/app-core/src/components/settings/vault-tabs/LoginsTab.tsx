@@ -7,7 +7,7 @@
  */
 
 import { Button, Input, Label } from "@elizaos/ui";
-import { ExternalLink, Loader2, Plus, Trash2 } from "lucide-react";
+import { Bot, ExternalLink, Loader2, Plus, Trash2 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import type {
   SavedLoginSource,
@@ -53,6 +53,38 @@ export function LoginsTab() {
   const [addPassword, setAddPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [filter, setFilter] = useState("");
+  // Per-domain "agent may autofill without prompting" map. Backed by
+  // `creds.<domain>.:autoallow` in the vault — the same flag the
+  // user-driven autofill consent path uses, and the only authorization
+  // the BROWSER_AUTOFILL_LOGIN agent action will accept.
+  const [autoallowMap, setAutoallowMap] = useState<Record<string, boolean>>(
+    {},
+  );
+
+  const loadAutoallowFor = useCallback(
+    async (domains: ReadonlyArray<string>) => {
+      const next: Record<string, boolean> = {};
+      // Single-flight: one fetch per unique domain. Domains are usually
+      // <50 in a saved-logins list, well under any rate concern.
+      const unique = Array.from(new Set(domains.filter(Boolean)));
+      const responses = await Promise.all(
+        unique.map(async (d) => {
+          const res = await fetch(
+            `/api/secrets/logins/${encodeURIComponent(d)}/autoallow`,
+          );
+          if (!res.ok) return [d, false] as const;
+          const json = (await res.json()) as {
+            ok: boolean;
+            allowed: boolean;
+          };
+          return [d, json.allowed] as const;
+        }),
+      );
+      for (const [d, allowed] of responses) next[d] = allowed;
+      setAutoallowMap(next);
+    },
+    [],
+  );
 
   const load = useCallback(async () => {
     setError(null);
@@ -66,12 +98,37 @@ export function LoginsTab() {
       };
       setLogins(json.logins);
       setFailures(json.failures ?? []);
+      const domains = json.logins
+        .map((l) => l.domain)
+        .filter((d): d is string => typeof d === "string" && d.length > 0);
+      await loadAutoallowFor(domains);
     } catch (err) {
       setError(err instanceof Error ? err.message : "load failed");
       setLogins([]);
       setFailures([]);
     }
-  }, []);
+  }, [loadAutoallowFor]);
+
+  const onToggleAutoallow = useCallback(
+    async (domain: string, next: boolean) => {
+      // Optimistic update — UI feels instant, falls back to the real
+      // value on error.
+      setAutoallowMap((prev) => ({ ...prev, [domain]: next }));
+      const res = await fetch(
+        `/api/secrets/logins/${encodeURIComponent(domain)}/autoallow`,
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ allowed: next }),
+        },
+      );
+      if (!res.ok) {
+        setError(`HTTP ${res.status} (autoallow update failed)`);
+        setAutoallowMap((prev) => ({ ...prev, [domain]: !next }));
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     void load();
@@ -318,6 +375,15 @@ export function LoginsTab() {
                   {login.username || "—"} · {relativeAge(login.updatedAt)}
                 </p>
               </div>
+              {login.domain ? (
+                <AgentAutoallowToggle
+                  domain={login.domain}
+                  allowed={autoallowMap[login.domain] === true}
+                  onChange={(next) =>
+                    void onToggleAutoallow(login.domain ?? "", next)
+                  }
+                />
+              ) : null}
               {login.source === "in-house" ? (
                 <Button
                   variant="ghost"
@@ -336,6 +402,36 @@ export function LoginsTab() {
         </ul>
       )}
     </section>
+  );
+}
+
+function AgentAutoallowToggle({
+  domain,
+  allowed,
+  onChange,
+}: {
+  domain: string;
+  allowed: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  const label = allowed
+    ? `Agent autofill enabled for ${domain}. Click to disable.`
+    : `Allow the agent to autofill ${domain} without prompting.`;
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className={`h-7 w-7 shrink-0 rounded-md p-0 ${
+        allowed ? "text-accent hover:text-accent" : "text-muted hover:text-txt"
+      }`}
+      aria-label={label}
+      title={label}
+      onClick={() => onChange(!allowed)}
+      data-testid={`agent-autoallow-toggle-${domain}`}
+      data-allowed={allowed ? "1" : "0"}
+    >
+      <Bot className="h-3.5 w-3.5" aria-hidden />
+    </Button>
   );
 }
 
