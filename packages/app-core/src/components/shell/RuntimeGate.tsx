@@ -473,7 +473,7 @@ export function RuntimeGate() {
     completeOnboarding();
   }, [completeOnboarding, setState, startupCoordinator]);
 
-  // Auto-pick the on-device agent on Android. The picker is bypassed by
+  // Auto-pick the on-device agent on MiladyOS. The picker is bypassed by
   // default — the only legitimate way to see it is `?runtime=picker`, set
   // by Settings ▸ Runtime when the user explicitly wants to switch
   // runtimes. As soon as the on-device agent's `/api/health` responds we
@@ -485,11 +485,15 @@ export function RuntimeGate() {
   // important effect of this call is the `completeOnboarding()` /
   // `ONBOARDING_COMPLETE` dispatch that flips the startup coordinator out
   // of `onboarding-required`.
+  //
+  // The vanilla Android APK (no MiladyOS user-agent suffix) does not enter
+  // this branch — it renders the chooser tiles like iOS / web and waits for
+  // a user choice.
   useEffect(() => {
-    if (!androidAutoLocal) return;
+    if (!miladyOSAutoLocal) return;
     if (!showLocalOption) return;
     finishAsLocal();
-  }, [androidAutoLocal, finishAsLocal, showLocalOption]);
+  }, [miladyOSAutoLocal, finishAsLocal, showLocalOption]);
 
   const finishAsRemoteGateway = useCallback(
     (gateway: GatewayDiscoveryEndpoint) => {
@@ -686,16 +690,17 @@ export function RuntimeGate() {
     setCloudStage("loading");
   }, []);
 
-  // ── Render: Android local-only splash ─────────────────────────────
-  // Android APK never shows the picker tiles. Render the same yellow
-  // "INITIALIZING AGENT…" bar that surrounds the rest of the startup flow
-  // and let the probe-poll + auto-pick effect upstream call
+  // ── Render: MiladyOS local-only splash ────────────────────────────
+  // MiladyOS never shows the picker tiles — the device IS the agent. Render
+  // the same yellow "INITIALIZING AGENT…" bar that surrounds the rest of the
+  // startup flow and let the probe-poll + auto-pick effect upstream call
   // `finishAsLocal()` once the on-device agent answers `/api/health`.
   // Settings ▸ Runtime opens this component with `?runtime=picker` to
-  // bypass this branch and render the chooser.
-  if (androidAutoLocal) {
+  // bypass this branch and render the chooser. The vanilla Android APK
+  // never enters this branch and falls through to the chooser below.
+  if (miladyOSAutoLocal) {
     return (
-      <AndroidLocalSplash
+      <MiladyOSLocalSplash
         message={t("runtimegate.startingLocalAgent", {
           defaultValue: "INITIALIZING AGENT...",
         })}
@@ -1299,16 +1304,16 @@ function ChoiceCard({
 }
 
 /**
- * Android-only "starting your local agent" splash. Matches the yellow
+ * MiladyOS-only "starting your local agent" splash. Matches the yellow
  * segmented-bar style of `StartupShell`'s loading screens so the transition
  * from auth/agent handshake → onboarding → chat reads as one continuous
  * boot. The auto-pick effect in `RuntimeGate` calls `finishAsLocal()` as
  * soon as the probe succeeds, at which point this component unmounts.
  */
-function AndroidLocalSplash({ message }: { message: string }) {
+function MiladyOSLocalSplash({ message }: { message: string }) {
   return (
     <div
-      data-testid="runtime-gate-android-local-splash"
+      data-testid="runtime-gate-miladyos-local-splash"
       className="relative flex h-full w-full items-center justify-center overflow-hidden bg-[#ffe600] text-black"
     >
       <img
