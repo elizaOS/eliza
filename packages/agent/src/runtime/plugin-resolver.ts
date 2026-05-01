@@ -67,6 +67,7 @@ const RUNTIME_APP_PLUGIN_SUBPATHS = new Set([
   "@elizaos/app-shopify",
   "@elizaos/app-steward",
   "@elizaos/app-vincent",
+  "@elizaos/app-wifi",
 ]);
 
 // ---------------------------------------------------------------------------
