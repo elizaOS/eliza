@@ -371,8 +371,15 @@ async function isOnePasswordDesktopActiveWithExec(
   exec: ExecFn,
   accountArg: readonly string[],
 ): Promise<boolean> {
+  // `op whoami` is special — even with desktop integration active, it
+  // refuses to run without a session token. A real vault query (e.g.
+  // `op vault list --format=json`) IS handled by desktop session
+  // delegation. Probe with that instead.
+  if (accountArg.length === 0) return false;
   try {
-    await exec("op", [...accountArg, "whoami"], { timeoutMs: 3000 });
+    await exec("op", [...accountArg, "vault", "list", "--format=json"], {
+      timeoutMs: 3000,
+    });
     return true;
   } catch {
     return false;
