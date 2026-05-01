@@ -38,6 +38,13 @@ import {
   BROWSER_TAB_PRELOAD_SCRIPT,
   setBrowserTabsRendererImpl,
 } from "../../utils/browser-tabs-renderer-registry";
+import {
+  decodeBase64ForPreview,
+  decodeSignableMessage,
+  formatAddressForDisplay,
+  formatWeiForDisplay,
+  truncateMessageForDisplay,
+} from "./browser-wallet-consent-format";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { CollapsibleSidebarSection } from "../shared/CollapsibleSidebarSection";
 import {
@@ -389,6 +396,12 @@ export function BrowserWorkspaceView(): JSX.Element {
   const browserWalletStateRef = useRef<BrowserWorkspaceWalletState | null>(
     null,
   );
+  // Per-session "the user already allowed this domain to read accounts"
+  // set. EIP-1193 dApps poll `eth_accounts` after connect; without this
+  // the consent modal would re-prompt on every poll. Cleared when the
+  // workspace unmounts (i.e. app restart). A persistent vault-backed
+  // version is a follow-up — see Phase 2 brief.
+  const walletConnectAllowedDomainsRef = useRef<Set<string>>(new Set());
   // Ref-mirror of the selected tab id so the register callback (which is
   // memoized on handleTabHostMessage only) can read the current selection
   // without a fresh closure each render.
@@ -752,6 +765,12 @@ export function BrowserWorkspaceView(): JSX.Element {
   browserWalletStateRef.current = browserWalletState;
   selectedTabIdRef.current = selectedTabId;
 
+  // Wallet-action consent (eth_sendTransaction, personal_sign, eth_sign,
+  // first-time eth_requestAccounts). Must be declared before
+  // handleTabWalletRequest references it.
+  const { confirm: walletActionConfirm, modalProps: walletActionModalProps } =
+    useConfirm();
+
   const handleTabWalletRequest = useCallback(
     async (req: {
       tabId: string;
@@ -759,6 +778,7 @@ export function BrowserWorkspaceView(): JSX.Element {
       protocol: "evm" | "solana";
       method: string;
       params: unknown;
+      hostname: string;
     }): Promise<void> => {
       const tag = electrobunWebviewRefs.current.get(req.tabId);
       const reply = (payload: { result?: unknown; error?: string }): void => {
@@ -772,17 +792,46 @@ export function BrowserWorkspaceView(): JSX.Element {
         reply({ error: "Wallet state not yet loaded." });
         return;
       }
+      const domain = (req.hostname || "this site").trim();
       try {
         const evmAddress = walletState.evmAddress;
         const solanaAddress = walletState.solanaAddress;
         if (req.protocol === "evm") {
           switch (req.method) {
-            case "eth_requestAccounts":
-            case "eth_accounts": {
+            case "eth_requestAccounts": {
               if (!evmAddress) {
                 reply({
                   error: walletState.reason ?? "No EVM wallet connected.",
                 });
+                return;
+              }
+              const allowed =
+                walletConnectAllowedDomainsRef.current.has(domain) ||
+                (await walletActionConfirm({
+                  title: `Connect Milady wallet to ${domain}`,
+                  message: `${domain} is requesting your wallet address. Allow it to read ${formatAddressForDisplay(evmAddress)}?`,
+                  confirmLabel: "Connect",
+                  cancelLabel: "Reject",
+                }));
+              if (!allowed) {
+                reply({ error: "User rejected wallet connection." });
+                return;
+              }
+              walletConnectAllowedDomainsRef.current.add(domain);
+              reply({ result: [evmAddress] });
+              return;
+            }
+            case "eth_accounts": {
+              if (!evmAddress) {
+                reply({ result: [] });
+                return;
+              }
+              // Per EIP-1193, eth_accounts returns the list of accounts
+              // the dApp is already authorized to use; an unauthorized
+              // dApp must see [], not a prompt. We honour that here so
+              // we don't block silent polls behind a consent dialog.
+              if (!walletConnectAllowedDomainsRef.current.has(domain)) {
+                reply({ result: [] });
                 return;
               }
               reply({ result: [evmAddress] });
@@ -838,6 +887,16 @@ export function BrowserWorkspaceView(): JSX.Element {
                 });
                 return;
               }
+              const allowed = await walletActionConfirm({
+                title: `${domain} wants to sign a message`,
+                message: `Message preview:\n\n${truncateMessageForDisplay(decodeSignableMessage(message))}\n\nAllow signing?`,
+                confirmLabel: "Sign",
+                cancelLabel: "Reject",
+              });
+              if (!allowed) {
+                reply({ error: "User rejected message signing." });
+                return;
+              }
               const result = await client.signBrowserWalletMessage(message);
               reply({ result: result.signature });
               return;
@@ -869,10 +928,21 @@ export function BrowserWorkspaceView(): JSX.Element {
                     ? BigInt(tx.value).toString()
                     : tx.value
                   : "0";
+              const to = typeof tx.to === "string" ? tx.to : "";
+              const allowed = await walletActionConfirm({
+                title: `${domain} wants to send a transaction`,
+                message: `From: ${formatAddressForDisplay(evmAddress ?? "")}\nTo: ${formatAddressForDisplay(to)}\nValue: ${formatWeiForDisplay(value)}\nChain: ${chainId}\n\nAllow this transaction?`,
+                confirmLabel: "Send",
+                cancelLabel: "Reject",
+              });
+              if (!allowed) {
+                reply({ error: "User rejected transaction." });
+                return;
+              }
               const result = await client.sendBrowserWalletTransaction({
                 broadcast: true,
                 chainId,
-                to: typeof tx.to === "string" ? tx.to : "",
+                to,
                 value,
                 data: typeof tx.data === "string" ? tx.data : undefined,
                 description:
@@ -899,6 +969,19 @@ export function BrowserWorkspaceView(): JSX.Element {
                 });
                 return;
               }
+              const allowed =
+                walletConnectAllowedDomainsRef.current.has(domain) ||
+                (await walletActionConfirm({
+                  title: `Connect Milady Solana wallet to ${domain}`,
+                  message: `${domain} is requesting your Solana address. Allow it to read ${formatAddressForDisplay(solanaAddress)}?`,
+                  confirmLabel: "Connect",
+                  cancelLabel: "Reject",
+                }));
+              if (!allowed) {
+                reply({ error: "User rejected wallet connection." });
+                return;
+              }
+              walletConnectAllowedDomainsRef.current.add(domain);
               reply({ result: { publicKey: solanaAddress } });
               return;
             }
@@ -923,6 +1006,21 @@ export function BrowserWorkspaceView(): JSX.Element {
                       | string
                       | undefined)
                   : undefined;
+              const previewSource =
+                message ??
+                (messageBase64
+                  ? decodeBase64ForPreview(messageBase64)
+                  : "(no message preview available)");
+              const allowed = await walletActionConfirm({
+                title: `${domain} wants to sign a Solana message`,
+                message: `Message preview:\n\n${truncateMessageForDisplay(previewSource)}\n\nAllow signing?`,
+                confirmLabel: "Sign",
+                cancelLabel: "Reject",
+              });
+              if (!allowed) {
+                reply({ error: "User rejected message signing." });
+                return;
+              }
               const result = await client.signBrowserSolanaMessage({
                 ...(messageBase64 ? { messageBase64 } : {}),
                 ...(message ? { message } : {}),
@@ -952,9 +1050,20 @@ export function BrowserWorkspaceView(): JSX.Element {
                 });
                 return;
               }
+              const willBroadcast = req.method === "signAndSendTransaction";
+              const allowed = await walletActionConfirm({
+                title: `${domain} wants to ${willBroadcast ? "send" : "sign"} a Solana transaction`,
+                message: `From: ${formatAddressForDisplay(solanaAddress ?? "")}\n${willBroadcast ? "Will broadcast on submit." : "Returns the signed bytes to the dApp; the dApp may broadcast."}\n\nAllow?`,
+                confirmLabel: willBroadcast ? "Send" : "Sign",
+                cancelLabel: "Reject",
+              });
+              if (!allowed) {
+                reply({ error: "User rejected transaction." });
+                return;
+              }
               const result = await client.sendBrowserSolanaTransaction({
                 transactionBase64,
-                broadcast: req.method === "signAndSendTransaction",
+                broadcast: willBroadcast,
               });
               reply({ result });
               return;
@@ -970,7 +1079,7 @@ export function BrowserWorkspaceView(): JSX.Element {
         reply({ error: message });
       }
     },
-    [loadBrowserWalletState],
+    [loadBrowserWalletState, walletActionConfirm],
   );
 
   // ── Vault autofill ────────────────────────────────────────────────
@@ -1097,6 +1206,8 @@ export function BrowserWorkspaceView(): JSX.Element {
             protocol?: "evm" | "solana";
             method?: string;
             params?: unknown;
+            origin?: string;
+            hostname?: string;
             domain?: string;
             url?: string;
             fieldHints?: Array<{
@@ -1143,6 +1254,8 @@ export function BrowserWorkspaceView(): JSX.Element {
           protocol: detail.protocol,
           method: detail.method,
           params: detail.params,
+          hostname:
+            typeof detail.hostname === "string" ? detail.hostname : "",
         });
         return;
       }
@@ -2448,6 +2561,7 @@ export function BrowserWorkspaceView(): JSX.Element {
         pageScopedChatPaneProps={browserPageScopedChatPaneProps}
       />
       <ConfirmDialog {...vaultAutofillModalProps} />
+      <ConfirmDialog {...walletActionModalProps} />
     </>
   );
 }

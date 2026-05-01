@@ -510,12 +510,26 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
         }
         const requestId = nextWalletReq++;
         walletPending.set(requestId, { resolve: resolve, reject: reject });
+        // Include the page's origin/hostname so the host can show a
+        // "<domain> wants to ..." consent dialog without an extra eval
+        // round-trip.
+        let originValue;
+        let hostnameValue;
+        try {
+          originValue = location.origin;
+          hostnameValue = location.hostname;
+        } catch (_e) {
+          originValue = "";
+          hostnameValue = "";
+        }
         window.__electrobunSendToHost({
           type: "__elizaWalletRequest",
           requestId: requestId,
           protocol: protocol,
           method: method,
           params: params,
+          origin: originValue,
+          hostname: hostnameValue,
         });
       });
 
@@ -722,15 +736,25 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
       window.phantom = phantomNs;
     } catch (_err) {}
 
-    // Announce the providers — EIP-6963 for EVM, wallet-standard for SOL.
+    // Announce the provider per EIP-6963 (https://eips.ethereum.org/EIPS/eip-6963).
+    // Keys:
+    //   uuid — stable per-installation identifier; we use a fixed value
+    //     because dApps key wallet selection on it. Changing this would
+    //     make every dApp forget the user's previous choice.
+    //   rdns — reverse-DNS namespace for the wallet brand.
+    //   icon — data URI; the SVG below is a 24x24 monochrome "M" mark in
+    //     the brand purple (#6f5cff). Inline so we don't depend on
+    //     network availability for wallet-picker rendering.
+    const MILADY_WALLET_ICON =
+      "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIj48cmVjdCB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHJ4PSI2IiBmaWxsPSIjNmY1Y2ZmIi8+PHRleHQgeD0iNTAlIiB5PSI2OCUiIGZvbnQtZmFtaWx5PSItYXBwbGUtc3lzdGVtLEJsaW5rTWFjU3lzdGVtRm9udCxzYW5zLXNlcmlmIiBmb250LXNpemU9IjE2IiBmb250LXdlaWdodD0iNzAwIiBmaWxsPSIjZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5NPC90ZXh0Pjwvc3ZnPg==";
     const announceEthereum = () => {
       try {
         const detail = Object.freeze({
           info: Object.freeze({
-            name: "Eliza Wallet",
-            uuid: "eliza-wallet-bridge",
-            icon: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=",
-            rdns: "ai.elizaos.wallet",
+            name: "Milady",
+            uuid: "ai.milady.wallet:1",
+            icon: MILADY_WALLET_ICON,
+            rdns: "ai.milady.wallet",
           }),
           provider: ethereum,
         });
