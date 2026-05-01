@@ -1,9 +1,13 @@
+export const LIFEOPS_SIMULATOR_CHANNELS = [
+  "discord",
+  "telegram",
+  "signal",
+  "whatsapp",
+  "imessage",
+] as const;
+
 export type LifeOpsSimulatorChannel =
-  | "discord"
-  | "telegram"
-  | "signal"
-  | "whatsapp"
-  | "imessage";
+  (typeof LIFEOPS_SIMULATOR_CHANNELS)[number];
 
 export interface LifeOpsSimulatorPerson {
   key: string;
@@ -67,6 +71,27 @@ export const LIFEOPS_SIMULATOR_OWNER = {
   homeEmail: "owner.home@example.test",
   phone: "+15550000000",
   timezone: "America/Los_Angeles",
+} as const;
+
+export const LIFEOPS_SIMULATOR_OWNER_IDENTITIES = {
+  telegram: {
+    id: "lifeops-simulator-owner",
+    username: "mocked_lifeops_owner",
+    firstName: "Eliza",
+  },
+  signal: {
+    uuid: "lifeops-simulator-signal-owner",
+    deviceName: "LifeOps Simulator Signal",
+  },
+  discord: {
+    id: "lifeops-simulator-owner",
+    username: "mocked_owner",
+    discriminator: "0001",
+  },
+  whatsapp: {
+    businessAccountId: "lifeops-simulator-whatsapp",
+    phoneNumberId: "lifeops-simulator-whatsapp-phone",
+  },
 } as const;
 
 export const LIFEOPS_SIMULATOR_PEOPLE: LifeOpsSimulatorPerson[] = [
@@ -352,4 +377,83 @@ export function lifeOpsSimulatorSummary() {
       ...new Set(LIFEOPS_SIMULATOR_CHANNEL_MESSAGES.map((m) => m.channel)),
     ],
   };
+}
+
+export function assertLifeOpsSimulatorFixtureIntegrity(): void {
+  const peopleByKey = new Map<string, LifeOpsSimulatorPerson>();
+  const simulatorChannels = new Set<LifeOpsSimulatorChannel>(
+    LIFEOPS_SIMULATOR_CHANNELS,
+  );
+  for (const person of LIFEOPS_SIMULATOR_PEOPLE) {
+    if (peopleByKey.has(person.key)) {
+      throw new Error(`Duplicate LifeOps simulator person key: ${person.key}`);
+    }
+    peopleByKey.set(person.key, person);
+  }
+
+  const requirePerson = (key: string, owner: string) => {
+    if (!peopleByKey.has(key)) {
+      throw new Error(
+        `${owner} references unknown LifeOps simulator person: ${key}`,
+      );
+    }
+  };
+
+  for (const email of LIFEOPS_SIMULATOR_EMAILS) {
+    requirePerson(email.fromPersonKey, `email ${email.id}`);
+  }
+
+  for (const event of LIFEOPS_SIMULATOR_CALENDAR_EVENTS) {
+    for (const key of event.attendeePersonKeys) {
+      requirePerson(key, `calendar event ${event.id}`);
+    }
+  }
+
+  for (const message of LIFEOPS_SIMULATOR_CHANNEL_MESSAGES) {
+    if (!simulatorChannels.has(message.channel)) {
+      throw new Error(
+        `LifeOps simulator message references unknown channel: ${message.id}`,
+      );
+    }
+    requirePerson(message.fromPersonKey, `message ${message.id}`);
+    if (!message.threadId.trim()) {
+      throw new Error(
+        `LifeOps simulator message has empty threadId: ${message.id}`,
+      );
+    }
+    if (!message.text.trim()) {
+      throw new Error(
+        `LifeOps simulator message has empty text: ${message.id}`,
+      );
+    }
+    if (message.outgoing === true) {
+      throw new Error(
+        `LifeOps simulator passive message cannot be outgoing: ${message.id}`,
+      );
+    }
+  }
+
+  for (const reminder of LIFEOPS_SIMULATOR_REMINDERS) {
+    if (!simulatorChannels.has(reminder.channel)) {
+      throw new Error(
+        `Reminder ${reminder.id} references unknown channel: ${reminder.channel}`,
+      );
+    }
+  }
+
+  for (const channel of LIFEOPS_SIMULATOR_CHANNELS) {
+    const messages = LIFEOPS_SIMULATOR_CHANNEL_MESSAGES.filter(
+      (message) => message.channel === channel,
+    );
+    if (!messages.some((message) => message.threadType === "dm")) {
+      throw new Error(
+        `LifeOps simulator channel lacks a DM fixture: ${channel}`,
+      );
+    }
+    if (!messages.some((message) => message.threadType === "group")) {
+      throw new Error(
+        `LifeOps simulator channel lacks a group fixture: ${channel}`,
+      );
+    }
+  }
 }

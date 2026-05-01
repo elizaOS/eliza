@@ -692,7 +692,7 @@ export const lifeInboxMessages = pgTable(
     isUnread: boolean("is_unread").notNull().default(true),
     deepLink: text("deep_link"),
     sourceRefJson: text("source_ref_json").notNull().default("{}"),
-    chatType: text("chat_type").notNull().default("dm"),
+    chatType: text("chat_type").notNull().default("channel"),
     participantCount: integer("participant_count"),
     gmailAccountId: text("gmail_account_id"),
     gmailAccountEmail: text("gmail_account_email"),

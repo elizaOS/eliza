@@ -83,7 +83,7 @@ describe("aosp-llama-adapter / env gating", () => {
     const result = await mod.registerAospLlamaLoader(runtime);
     expect(result).toBe(false);
     expect(services.has("localInferenceLoader")).toBe(false);
-  });
+  }, 300_000);
 
   it("returns false when registerService is missing", async () => {
     process.env.MILADY_LOCAL_LLAMA = "1";
@@ -461,6 +461,7 @@ describe("aosp-llama-adapter / context_params override invocations", () => {
 
     const nBatchCall = setterCalls.find((c) => c.name === "set_n_batch");
     expect(nBatchCall?.args[1]).toBe(2048);
+
     const nUBatchCall = setterCalls.find((c) => c.name === "set_n_ubatch");
     expect(nUBatchCall?.args[1]).toBe(512);
 

@@ -197,6 +197,6 @@ export function attachFakeSubscriptionComputerUse(
     if (serviceType === "computeruse") {
       return svc as unknown as T;
     }
-    return previousGetService(serviceType);
+    return previousGetService(serviceType) as T | null;
   }) as AgentRuntime["getService"];
 }

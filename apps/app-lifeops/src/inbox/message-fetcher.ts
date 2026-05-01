@@ -17,17 +17,6 @@ import type { InboundMessage } from "./types.js";
  */
 const PUBLIC_CHANNEL_PARTICIPANT_THRESHOLD = 15;
 
-const DEFAULT_SOURCES = [
-  "discord",
-  "telegram",
-  "signal",
-  "imessage",
-  "whatsapp",
-  "wechat",
-  "slack",
-  "sms",
-] as const;
-
 const MAX_ROOMS_SCANNED = 200;
 const THREAD_CONTEXT_LIMIT = 5;
 const SNIPPET_MAX_LENGTH = 200;
@@ -52,7 +41,7 @@ export interface XDmInboxSource {
 export async function fetchChatMessages(
   runtime: IAgentRuntime,
   opts: {
-    /** Only scan these sources (default: all chat connectors). */
+    /** Only scan these sources. Defaults to all connector-tagged chat rooms. */
     sources?: string[];
     /** Only return messages newer than this ISO timestamp. */
     sinceIso?: string;
@@ -61,10 +50,8 @@ export async function fetchChatMessages(
   },
 ): Promise<InboundMessage[]> {
   const limit = opts.limit ?? 200;
-  const sourceTags = expandConnectorSourceFilter(
-    opts.sources ?? DEFAULT_SOURCES,
-  );
-  const sinceMs = opts.sinceIso ? Date.parse(opts.sinceIso) : 0;
+  const sourceTags = buildSourceFilter(opts.sources);
+  const sinceMs = parseOptionalTimestamp(opts.sinceIso, "sinceIso");
 
   const allRoomIds = await runtime.getRoomsForParticipant(runtime.agentId);
   if (allRoomIds.length === 0) return [];
@@ -75,7 +62,7 @@ export async function fetchChatMessages(
   for (const room of rooms) {
     if (!room) continue;
     const roomSource = extractRoomSource(room);
-    if (roomSource && sourceTags.has(roomSource)) {
+    if (sourceMatchesFilter(roomSource, sourceTags)) {
       sourceRooms.push(room);
     }
   }
@@ -91,12 +78,21 @@ export async function fetchChatMessages(
 
   const filtered = memories.filter((m) => {
     if (m.entityId === runtime.agentId) return false;
-    if (sinceMs > 0 && (m.createdAt ?? 0) < sinceMs) return false;
     const src = extractMemorySource(m);
-    return src !== null && sourceTags.has(src);
+    if (!sourceMatchesFilter(src, sourceTags)) return false;
+    const createdAt = parseRequiredTimestamp(
+      m.createdAt,
+      "chat memory createdAt",
+    );
+    if (sinceMs > 0 && createdAt < sinceMs) return false;
+    return true;
   });
 
-  filtered.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+  filtered.sort(
+    (a, b) =>
+      parseRequiredTimestamp(b.createdAt, "chat memory createdAt") -
+      parseRequiredTimestamp(a.createdAt, "chat memory createdAt"),
+  );
 
   const roomMap = new Map<string, Room>();
   for (const room of sourceRooms) {
@@ -120,9 +116,10 @@ export async function fetchChatMessages(
 
   const messagesByRoom = new Map<string, typeof filtered>();
   for (const m of filtered) {
-    const arr = messagesByRoom.get(m.roomId) ?? [];
+    const roomId = requireNonEmptyString(m.roomId, "chat memory roomId");
+    const arr = messagesByRoom.get(roomId) ?? [];
     arr.push(m);
-    messagesByRoom.set(m.roomId, arr);
+    messagesByRoom.set(roomId, arr);
   }
 
   // Fetch participant counts per room exactly once. Used to classify DMs,
@@ -137,29 +134,37 @@ export async function fetchChatMessages(
 
   const results: InboundMessage[] = [];
   for (const memory of filtered.slice(0, limit)) {
-    const room = roomMap.get(memory.roomId);
+    const memoryId = requireNonEmptyString(memory.id, "chat memory id");
+    const roomId = requireNonEmptyString(memory.roomId, "chat memory roomId");
+    const createdAt = parseRequiredTimestamp(
+      memory.createdAt,
+      "chat memory createdAt",
+    );
+    const room = roomMap.get(roomId);
     const source = normalizeConnectorSource(extractMemorySource(memory) ?? "");
+    if (!source) continue;
     const text = extractText(memory);
     if (!text) continue;
 
     const senderName = extractSenderName(memory) ?? "Unknown";
-    const participantCount = participantCountByRoom.get(memory.roomId);
+    const participantCount = participantCountByRoom.get(roomId);
     const chatType = classifyChatType(room, participantCount);
     const channelType = chatType === "dm" ? "dm" : "group";
     const channelName = resolveChannelName(source, room?.name, senderName);
     const world = room?.worldId ? worldMap.get(room.worldId) : undefined;
-    const deepLink = await buildDeepLink(runtime, source, {
-      roomId: memory.roomId,
-      messageId: memory.id,
+    const deepLink = buildDeepLink(source, {
+      messageId: memoryId,
       roomMeta: metadataForRoom(room),
       worldMeta: metadataForWorld(world),
     });
 
-    const roomMessages = messagesByRoom.get(memory.roomId) ?? [];
+    const roomMessages = messagesByRoom.get(roomId) ?? [];
     const threadMessages = roomMessages
       .filter(
         (m) =>
-          m.id !== memory.id && (m.createdAt ?? 0) <= (memory.createdAt ?? 0),
+          m.id !== memoryId &&
+          parseRequiredTimestamp(m.createdAt, "chat memory createdAt") <=
+            createdAt,
       )
       .slice(0, THREAD_CONTEXT_LIMIT)
       .map((m) => {
@@ -168,21 +173,19 @@ export async function fetchChatMessages(
       });
 
     results.push({
-      id:
-        memory.id ??
-        `${source}:${memory.roomId}:${memory.createdAt ?? Date.now()}:${results.length}`,
+      id: memoryId,
       source,
-      roomId: memory.roomId,
+      roomId,
       entityId: memory.entityId,
       senderName,
       channelName,
       channelType,
       text,
       snippet: text.slice(0, SNIPPET_MAX_LENGTH),
-      timestamp: memory.createdAt ?? Date.now(),
+      timestamp: createdAt,
       deepLink: deepLink ?? undefined,
       threadMessages: threadMessages.length > 0 ? threadMessages : undefined,
-      threadId: memory.roomId,
+      threadId: roomId,
       chatType,
       participantCount,
     });
@@ -219,23 +222,29 @@ export async function fetchGmailMessages(
   );
   if (triageFeed.messages.length === 0) return [];
 
-  const sinceMs = opts.sinceIso ? Date.parse(opts.sinceIso) : 0;
+  const sinceMs = parseOptionalTimestamp(opts.sinceIso, "sinceIso");
 
   const results: InboundMessage[] = [];
   for (const msg of triageFeed.messages.slice(0, limit)) {
-    const receivedMs = Date.parse(String(msg.receivedAt));
+    const messageId = requireNonEmptyString(msg.id, "Gmail message id");
+    const externalId = requireNonEmptyString(
+      msg.externalId,
+      "Gmail external message id",
+    );
+    const receivedMs = parseRequiredTimestamp(
+      msg.receivedAt,
+      "Gmail receivedAt",
+    );
     if (sinceMs > 0 && receivedMs < sinceMs) continue;
 
     const from = msg.from || msg.fromEmail || "Unknown sender";
     const gmailAccountSegment = encodeURIComponent(msg.accountEmail ?? "0");
     const gmailLink =
       msg.htmlLink ??
-      (msg.externalId
-        ? `https://mail.google.com/mail/u/${gmailAccountSegment}/#inbox/${msg.externalId}`
-        : undefined);
+      `https://mail.google.com/mail/u/${gmailAccountSegment}/#inbox/${externalId}`;
 
     results.push({
-      id: msg.id || `gmail-${Date.now()}-${results.length}`,
+      id: messageId,
       source: "gmail",
       senderName: from,
       senderEmail: msg.fromEmail ?? undefined,
@@ -245,7 +254,7 @@ export async function fetchGmailMessages(
       snippet: (msg.snippet || msg.subject || "").slice(0, SNIPPET_MAX_LENGTH),
       timestamp: receivedMs,
       deepLink: gmailLink ?? undefined,
-      gmailMessageId: msg.externalId || msg.id,
+      gmailMessageId: externalId,
       gmailIsImportant: msg.isImportant ?? false,
       gmailLikelyReplyNeeded: msg.likelyReplyNeeded ?? false,
       threadId: msg.threadId,
@@ -271,12 +280,12 @@ export async function fetchXDmMessages(
   const limit = opts.limit ?? 50;
   await source.syncXDms({ limit });
   const dms = await source.getXDms({ limit });
-  const sinceMs = opts.sinceIso ? Date.parse(opts.sinceIso) : 0;
+  const sinceMs = parseOptionalTimestamp(opts.sinceIso, "sinceIso");
   const results: InboundMessage[] = [];
 
   for (const dm of dms) {
     if (!dm.isInbound) continue;
-    const receivedMs = Date.parse(dm.receivedAt);
+    const receivedMs = parseRequiredTimestamp(dm.receivedAt, "X DM receivedAt");
     if (sinceMs > 0 && receivedMs < sinceMs) continue;
     const sender = dm.senderHandle ? `@${dm.senderHandle}` : dm.senderId;
     const metadata = dm.metadata ?? {};
@@ -305,7 +314,7 @@ export async function fetchXDmMessages(
       channelType: isGroup ? "group" : "dm",
       text: dm.text,
       snippet: dm.text.slice(0, SNIPPET_MAX_LENGTH),
-      timestamp: Number.isFinite(receivedMs) ? receivedMs : Date.now(),
+      timestamp: receivedMs,
       threadId: dm.conversationId,
       chatType: isGroup ? "group" : "dm",
       participantCount: xParticipantCount,
@@ -330,9 +339,12 @@ export async function fetchAllMessages(
     gmailGrantId?: string;
   },
 ): Promise<InboundMessage[]> {
+  const requestedSources = opts.sources
+    ? buildSourceFilter(opts.sources)
+    : null;
   const includeGmail =
     opts.includeGmail !== false &&
-    (!opts.sources || opts.sources.includes("gmail"));
+    sourceMatchesFilter("gmail", requestedSources);
   const gmailMessagesPromise = includeGmail
     ? opts.gmailSource
       ? fetchGmailMessages(opts.gmailSource, {
@@ -347,19 +359,27 @@ export async function fetchAllMessages(
         )
     : Promise.resolve([]);
   const xDmMessagesPromise =
-    opts.xDmSource && (!opts.sources || opts.sources.includes("x_dm"))
+    opts.xDmSource && sourceMatchesFilter("x_dm", requestedSources)
       ? fetchXDmMessages(opts.xDmSource, {
           sinceIso: opts.sinceIso,
           limit: opts.limit,
         })
       : Promise.resolve([]);
+  const chatSources = opts.sources?.filter((source) => {
+    const normalized = normalizeConnectorSource(source);
+    return normalized !== "gmail" && normalized !== "x_dm";
+  });
+  const chatMessagesPromise =
+    chatSources && chatSources.length === 0
+      ? Promise.resolve([])
+      : fetchChatMessages(runtime, {
+          sources: chatSources,
+          sinceIso: opts.sinceIso,
+          limit: opts.limit,
+        });
 
   const [chatMessages, gmailMessages, xDmMessages] = await Promise.all([
-    fetchChatMessages(runtime, {
-      sources: opts.sources?.filter((s) => s !== "gmail" && s !== "x_dm"),
-      sinceIso: opts.sinceIso,
-      limit: opts.limit,
-    }),
+    chatMessagesPromise,
     gmailMessagesPromise,
     xDmMessagesPromise,
   ]);
@@ -369,12 +389,69 @@ export async function fetchAllMessages(
   return opts.limit ? combined.slice(0, opts.limit) : combined;
 }
 
+function parseOptionalTimestamp(
+  value: string | undefined,
+  label: string,
+): number {
+  if (!value) return 0;
+  return parseRequiredTimestamp(value, label);
+}
+
+function parseRequiredTimestamp(value: unknown, label: string): number {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Date.parse(value)
+        : Number.NaN;
+  if (Number.isFinite(parsed)) {
+    return parsed;
+  }
+  throw new Error(`[InboxMessageFetcher] invalid ${label}`);
+}
+
+function requireNonEmptyString(value: unknown, label: string): string {
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value;
+  }
+  throw new Error(`[InboxMessageFetcher] missing ${label}`);
+}
+
 function extractMemorySource(memory: Memory): string | null {
   const content = memory.content as { source?: unknown } | undefined;
   const source = content?.source;
   if (typeof source !== "string") return null;
   const trimmed = source.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function buildSourceFilter(
+  sources: readonly string[] | undefined,
+): Set<string> | null {
+  if (!sources) return null;
+  const expanded = expandConnectorSourceFilter(sources);
+  for (const source of sources) {
+    const raw = source.trim().toLowerCase();
+    if (!raw) continue;
+    expanded.add(raw);
+    const normalized = normalizeConnectorSource(raw);
+    if (normalized) {
+      expanded.add(normalized);
+    }
+  }
+  return expanded;
+}
+
+function sourceMatchesFilter(
+  source: string | null,
+  sourceTags: ReadonlySet<string> | null,
+): source is string {
+  if (!source) return false;
+  if (!sourceTags) return true;
+  const raw = source.trim().toLowerCase();
+  if (!raw) return false;
+  const normalized = normalizeConnectorSource(raw);
+  return sourceTags.has(raw) || (!!normalized && sourceTags.has(normalized));
 }
 
 function extractText(memory: Memory): string {

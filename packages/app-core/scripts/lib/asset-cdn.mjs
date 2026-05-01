@@ -3,7 +3,7 @@ import process from "node:process";
 export const ELIZA_GITHUB_REPOSITORY = "elizaos/eliza";
 const CDN_ORIGIN = "https://cdn.jsdelivr.net/gh";
 const RAW_GITHUB_ORIGIN = "https://raw.githubusercontent.com";
-const HOMEPAGE_ASSET_ROOT = "apps/homepage/public";
+const HOMEPAGE_ASSET_ROOT = "packages/homepage/public";
 
 function normalizeReleaseTag(value) {
   const normalized = value?.trim();

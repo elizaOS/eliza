@@ -1,14 +1,20 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   crossChannelSendAction,
   dispatchCrossChannelSend,
 } from "../src/actions/cross-channel-send.js";
 
 const SAME_ID = "00000000-0000-0000-0000-000000000001";
+const ORIGINAL_ENV = { ...process.env };
 
 beforeEach(() => {
   vi.clearAllMocks();
+});
+
+afterEach(() => {
+  process.env = { ...ORIGINAL_ENV };
+  vi.restoreAllMocks();
 });
 
 function makeRuntime() {
@@ -102,6 +108,29 @@ describe("crossChannelSendAction", () => {
     const r = result as { success: boolean; values?: { error?: string } };
     expect(r.success).toBe(false);
     expect(r.values?.error).toBe("MISSING_CHANNEL");
+  });
+
+  test("does not surface malformed planner text as a fallback response", async () => {
+    const runtime = {
+      ...makeRuntime(),
+      useModel: vi.fn().mockResolvedValue("Sure, I can send that."),
+    };
+
+    const result = await runCrossChannelAction(
+      runtime,
+      makeMessage(),
+      undefined,
+      { parameters: {} },
+    );
+
+    const r = result as {
+      success: boolean;
+      text: string;
+      values?: { error?: string };
+    };
+    expect(r.success).toBe(false);
+    expect(r.values?.error).toBe("MISSING_CHANNEL");
+    expect(r.text).not.toContain("Sure, I can send that.");
   });
 });
 
@@ -279,6 +308,150 @@ describe("dispatchCrossChannelSend", () => {
     expect(result.data?.subject).toBe("hello");
   });
 
+  test("sms dispatcher posts the exact Twilio SMS request", async () => {
+    process.env.TWILIO_ACCOUNT_SID = "ACtest";
+    process.env.TWILIO_AUTH_TOKEN = "token";
+    process.env.TWILIO_PHONE_NUMBER = "+15550000000";
+    process.env.MILADY_MOCK_TWILIO_BASE = "https://twilio.test";
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ sid: "SM123" }), {
+        status: 201,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const result = await dispatchCrossChannelSend({
+      runtime: fakeRuntime,
+      service: {} as DispatchService,
+      channel: "sms",
+      target: "+15551234567",
+      body: "sms-body",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.values?.channel).toBe("sms");
+    expect(result.values?.sid).toBe("SM123");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(
+      "https://twilio.test/2010-04-01/Accounts/ACtest/Messages.json",
+    );
+    const body = new URLSearchParams(String(init.body));
+    expect(body.get("To")).toBe("+15551234567");
+    expect(body.get("From")).toBe("+15550000000");
+    expect(body.get("Body")).toBe("sms-body");
+  });
+
+  test("twilio_voice dispatcher posts TwiML to the Twilio calls endpoint", async () => {
+    process.env.TWILIO_ACCOUNT_SID = "ACvoice";
+    process.env.TWILIO_AUTH_TOKEN = "token";
+    process.env.TWILIO_PHONE_NUMBER = "+15550000000";
+    process.env.MILADY_MOCK_TWILIO_BASE = "https://twilio.test";
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ sid: "CA123" }), {
+        status: 201,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const result = await dispatchCrossChannelSend({
+      runtime: fakeRuntime,
+      service: {} as DispatchService,
+      channel: "twilio_voice",
+      target: "+15557654321",
+      body: "voice body",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.values?.channel).toBe("twilio_voice");
+    expect(result.values?.sid).toBe("CA123");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(
+      "https://twilio.test/2010-04-01/Accounts/ACvoice/Calls.json",
+    );
+    const body = new URLSearchParams(String(init.body));
+    expect(body.get("To")).toBe("+15557654321");
+    expect(body.get("From")).toBe("+15550000000");
+    expect(body.get("Twiml")).toBe(
+      "<Response><Say>voice body</Say></Response>",
+    );
+  });
+
+  test("notifications dispatcher publishes a titled ntfy push", async () => {
+    process.env.NTFY_BASE_URL = "https://ntfy.test";
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ id: "ntfy-1", time: 1_777_777_777 }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const result = await dispatchCrossChannelSend({
+      runtime: fakeRuntime,
+      service: {} as DispatchService,
+      channel: "notifications",
+      target: "owner-topic",
+      body: "push body",
+      subject: "Heads up",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.values?.channel).toBe("notifications");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://ntfy.test/owner-topic");
+    expect(init.body).toBe("push body");
+    const headers = init.headers as Record<string, string>;
+    expect(headers.Title).toBe("Heads up");
+    expect(headers.Priority).toBe("3");
+    const data = result.data as { result?: { messageId?: string } };
+    expect(data.result?.messageId).toBe("ntfy-1");
+  });
+
+  test("calendly dispatcher creates a single-use booking link for the event type", async () => {
+    process.env.ELIZA_CALENDLY_TOKEN = "cal-token";
+    process.env.MILADY_MOCK_CALENDLY_BASE = "https://calendly.test";
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          resource: {
+            booking_url: "https://calendly.com/d/abc",
+            owner: "https://api.calendly.com/event_types/et1",
+            owner_type: "EventType",
+            expires_at: "2026-05-01T00:00:00.000Z",
+          },
+        }),
+        {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+
+    const result = await dispatchCrossChannelSend({
+      runtime: fakeRuntime,
+      service: {} as DispatchService,
+      channel: "calendly",
+      target: "https://api.calendly.com/event_types/et1",
+      body: "ignored by calendly dispatcher",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("https://calendly.com/d/abc");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://calendly.test/scheduling_links");
+    const headers = init.headers as Record<string, string>;
+    expect(headers.Authorization).toBe("Bearer cal-token");
+    expect(JSON.parse(String(init.body))).toEqual({
+      max_event_count: 1,
+      owner: "https://api.calendly.com/event_types/et1",
+      owner_type: "EventType",
+    });
+    expect(result.values?.bookingUrl).toBe("https://calendly.com/d/abc");
+  });
+
   test("imessage dispatcher surfaces a failure when the service method is missing", async () => {
     const result = await dispatchCrossChannelSend({
       runtime: fakeRuntime,
@@ -421,5 +594,61 @@ describe("dispatchCrossChannelSend", () => {
     expect(result.success).toBe(true);
     expect(result.values?.success).toBe(true);
     expect(result.values?.channel).toBe("x_dm");
+  });
+
+  test("x_dm dispatcher forwards conversation targets to the conversation send path", async () => {
+    const captured: unknown[] = [];
+    const fakeService = {
+      sendXConversationMessage: async (req: unknown) => {
+        captured.push(req);
+        return { ok: true, status: 201 };
+      },
+    };
+
+    const result = await dispatchCrossChannelSend({
+      runtime: fakeRuntime,
+      service: fakeService as DispatchService,
+      channel: "x_dm",
+      target: "conversation:conv-123",
+      body: "conversation reply",
+    });
+
+    expect(result.success).toBe(true);
+    expect(captured).toEqual([
+      {
+        conversationId: "conv-123",
+        text: "conversation reply",
+        confirmSend: true,
+        side: "owner",
+      },
+    ]);
+  });
+
+  test("x_dm dispatcher creates a DM group for comma-separated participant targets", async () => {
+    const captured: unknown[] = [];
+    const fakeService = {
+      createXDirectMessageGroup: async (req: unknown) => {
+        captured.push(req);
+        return { ok: true, status: 201 };
+      },
+    };
+
+    const result = await dispatchCrossChannelSend({
+      runtime: fakeRuntime,
+      service: fakeService as DispatchService,
+      channel: "x_dm",
+      target: "12345, 67890",
+      body: "group dm",
+    });
+
+    expect(result.success).toBe(true);
+    expect(captured).toEqual([
+      {
+        participantIds: ["12345", "67890"],
+        text: "group dm",
+        confirmSend: true,
+        side: "owner",
+      },
+    ]);
   });
 });

@@ -280,7 +280,7 @@ export async function main({ cwd = repoRoot, env = process.env } = {}) {
     validateGroup(manifest.homepage, {
       repository,
       releaseTag: effectiveRef,
-      assetRoot: "apps/homepage/public",
+      assetRoot: "packages/homepage/public",
       retryPolicy,
     }),
   ]);

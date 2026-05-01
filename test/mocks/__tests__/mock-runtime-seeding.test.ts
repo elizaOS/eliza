@@ -1,11 +1,18 @@
+import { fetchChatMessages } from "@elizaos/app-lifeops/inbox/message-fetcher";
 import { readLifeOpsOwnerProfile } from "@elizaos/app-lifeops/lifeops/owner-profile";
 import { LifeOpsService } from "@elizaos/app-lifeops/lifeops/service";
 import { afterEach, describe, expect, it } from "vitest";
+import {
+  assertLifeOpsSimulatorFixtureIntegrity,
+  LIFEOPS_SIMULATOR_CHANNEL_MESSAGES,
+  LIFEOPS_SIMULATOR_CHANNELS,
+  LIFEOPS_SIMULATOR_OWNER,
+  LIFEOPS_SIMULATOR_OWNER_IDENTITIES,
+} from "../fixtures/lifeops-simulator.ts";
 import { createMockedTestRuntime } from "../helpers/mock-runtime.ts";
 import { seedTestUserProfile } from "../helpers/seed-test-user-profile.ts";
 
 const INTERNAL_URL = new URL("http://127.0.0.1:31337");
-const SEEDED_OWNER_NAME = "Eliza Test Owner";
 
 async function withLoadTestUserProfileFlag<T>(
   value: "1" | undefined,
@@ -39,6 +46,82 @@ describe("mock runtime seeding", () => {
         await cleanup();
       }
     }
+  });
+
+  it("keeps the LifeOps simulator fixture complete for every passive chat channel", () => {
+    expect(() => assertLifeOpsSimulatorFixtureIntegrity()).not.toThrow();
+
+    for (const channel of LIFEOPS_SIMULATOR_CHANNELS) {
+      const messages = LIFEOPS_SIMULATOR_CHANNEL_MESSAGES.filter(
+        (message) => message.channel === channel,
+      );
+      expect(messages.some((message) => message.threadType === "dm")).toBe(
+        true,
+      );
+      expect(messages.some((message) => message.threadType === "group")).toBe(
+        true,
+      );
+    }
+  });
+
+  it("seeds LifeOps simulator passive chat as muted inbox data, not active agent chat", async () => {
+    const mocked = await createMockedTestRuntime({
+      envs: ["browser-workspace"],
+      seedGoogle: false,
+      seedX: false,
+      seedBenchmarkFixtures: false,
+      seedLifeOpsSimulator: true,
+    });
+    cleanups.push(mocked.cleanup);
+
+    expect(mocked.simulator?.passiveChatMemoryIds).toHaveLength(
+      LIFEOPS_SIMULATOR_CHANNEL_MESSAGES.length,
+    );
+
+    for (const memoryId of mocked.simulator?.passiveChatMemoryIds ?? []) {
+      const memory = await mocked.runtime.getMemoryById(memoryId);
+      expect(memory).toBeTruthy();
+      if (!memory) continue;
+
+      const content = memory.content as {
+        simulator?: { ingestMode?: string; handledByAgent?: boolean };
+      };
+      expect(content.simulator).toMatchObject({
+        ingestMode: "passive",
+        handledByAgent: false,
+      });
+      await expect(
+        mocked.runtime.getParticipantUserState(
+          memory.roomId,
+          mocked.runtime.agentId,
+        ),
+      ).resolves.toBe("MUTED");
+    }
+
+    const passiveMessages = await fetchChatMessages(mocked.runtime, {
+      sources: [...LIFEOPS_SIMULATOR_CHANNELS],
+      limit: 50,
+    });
+    expect(passiveMessages.map((message) => message.senderName)).toEqual(
+      expect.arrayContaining([
+        "Alice Nguyen",
+        "Bob Martinez",
+        "Priya Shah",
+        "Marco Alvarez",
+      ]),
+    );
+
+    const service = new LifeOpsService(mocked.runtime);
+    const whatsapp = service.pullWhatsAppRecent(10);
+    expect(whatsapp.messages.map((message) => message.metadata)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          contactName: "Priya Shah",
+          phoneNumberId:
+            LIFEOPS_SIMULATOR_OWNER_IDENTITIES.whatsapp.phoneNumberId,
+        }),
+      ]),
+    );
   });
 
   it("seeds a connected Google grant with canonical capabilities and an empty calendar by default", async () => {
@@ -154,7 +237,7 @@ describe("mock runtime seeding", () => {
         service.listDefinitions(),
       ]);
 
-      expect(profile.name).not.toBe(SEEDED_OWNER_NAME);
+      expect(profile.name).not.toBe(LIFEOPS_SIMULATOR_OWNER.name);
       expect(definitions.map((entry) => entry.definition.title)).not.toContain(
         "Invisalign",
       );
@@ -171,7 +254,7 @@ describe("mock runtime seeding", () => {
 
       const service = new LifeOpsService(mocked.runtime);
       const profile = await readLifeOpsOwnerProfile(mocked.runtime);
-      expect(profile.name).toBe(SEEDED_OWNER_NAME);
+      expect(profile.name).toBe(LIFEOPS_SIMULATOR_OWNER.name);
       expect(profile.location).toBe("Test City, CA");
 
       const definitions = await service.listDefinitions();

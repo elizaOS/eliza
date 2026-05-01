@@ -13,7 +13,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { hasAdminAccess } from "../../../security/access.js";
-import type { RoleName, RolesWorldMetadata } from "./types";
+import type { RoleName, RolesWorldMetadata } from "./types.js";
 import {
   getEntityRole,
   getLiveEntityMetadataFromMessage,
@@ -21,7 +21,7 @@ import {
   normalizeRole,
   resolveCanonicalOwnerId,
   resolveEntityRole,
-} from "./utils";
+} from "./utils.js";
 
 export const rolesProvider: Provider = {
   name: "roles",

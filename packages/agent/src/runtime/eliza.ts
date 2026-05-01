@@ -93,9 +93,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import * as pluginAgentSkills from "@elizaos/plugin-agent-skills";
-import * as pluginAnthropic from "@elizaos/plugin-anthropic";
 import * as pluginBrowserBridge from "@elizaos/plugin-browser-bridge";
-import * as pluginLocalEmbedding from "@elizaos/plugin-local-embedding";
 import * as pluginPdf from "@elizaos/plugin-pdf";
 import * as pluginSql from "@elizaos/plugin-sql";
 import {
@@ -160,12 +158,22 @@ import {
   createPgliteInitError,
   getPgliteErrorCode,
   PGLITE_ERROR_CODES,
-} from "./pglite-error-compat";
+} from "./pglite-error-compat.js";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle.js";
 import rolesPlugin from "./roles.js";
 import { shouldEnableTrajectoryLoggingByDefault } from "./trajectory-persistence.js";
 
 const require = createRequire(import.meta.url);
+// plugin-local-embedding is needed when local embeddings are enabled, but
+// Docker no-embedding smokes must still boot if a published package advertises
+// a missing dist entry.
+let pluginLocalEmbedding: typeof import("@elizaos/plugin-local-embedding") | null =
+  null;
+try {
+  pluginLocalEmbedding = await import("@elizaos/plugin-local-embedding");
+} catch {
+  pluginLocalEmbedding = null;
+}
 // Agent orchestrator ships as the standalone @elizaos/plugin-agent-orchestrator package.
 // Use top-level dynamic import because the package is ESM-only and fails under
 // createRequire() in bun runtime; the await is resolved before module consumers read the binding.
@@ -216,6 +224,15 @@ try {
   pluginOllama = require("@elizaos/plugin-ollama");
 } catch {
   pluginOllama = null;
+}
+// Keep plugin-anthropic behind a guarded runtime require too. Some published
+// alpha builds advertise dist/node/index.node.js without shipping that entry,
+// which breaks no-credential Docker startup smokes before provider selection.
+let pluginAnthropic: unknown = null;
+try {
+  pluginAnthropic = require("@elizaos/plugin-anthropic");
+} catch {
+  pluginAnthropic = null;
 }
 // Keep plugin-openai behind a guarded runtime require too. Some published
 // alpha builds advertise dist/node/index.node.js without shipping that entry,
@@ -310,7 +327,9 @@ function registerSignalShutdownHandlers(context: SignalShutdownContext): void {
 // so plugin-resolver.ts can read it without importing this module directly.
 Object.assign(STATIC_ELIZA_PLUGINS, {
   "@elizaos/plugin-sql": pluginSql,
-  "@elizaos/plugin-local-embedding": pluginLocalEmbedding,
+  ...(pluginLocalEmbedding
+    ? { "@elizaos/plugin-local-embedding": pluginLocalEmbedding }
+    : {}),
   // secrets (SECRETS service): now built-in core capability (ENABLE_SECRETS_MANAGER)
   ...(pluginAgentOrchestrator
     ? { "agent-orchestrator": pluginAgentOrchestrator }
@@ -322,7 +341,9 @@ Object.assign(STATIC_ELIZA_PLUGINS, {
   ...(pluginCommands ? { "@elizaos/plugin-commands": pluginCommands } : {}),
   "@elizaos/plugin-pdf": pluginPdf,
   ...(pluginOpenai ? { "@elizaos/plugin-openai": pluginOpenai } : {}),
-  "@elizaos/plugin-anthropic": pluginAnthropic,
+  ...(pluginAnthropic
+    ? { "@elizaos/plugin-anthropic": pluginAnthropic }
+    : {}),
   ...(pluginOllama ? { "@elizaos/plugin-ollama": pluginOllama } : {}),
   ...(pluginElizacloud
     ? { "@elizaos/plugin-elizacloud": pluginElizacloud }

@@ -22,13 +22,13 @@ import type {
   DisconnectLifeOpsGoogleConnectorRequest,
   DisconnectLifeOpsHealthConnectorRequest,
   DisconnectLifeOpsMessagingConnectorRequest,
-  GetLifeOpsHealthSummaryRequest,
   GetLifeOpsCalendarFeedRequest,
   GetLifeOpsGmailRecommendationsRequest,
   GetLifeOpsGmailSearchRequest,
   GetLifeOpsGmailSpamReviewRequest,
   GetLifeOpsGmailTriageRequest,
   GetLifeOpsGmailUnrespondedRequest,
+  GetLifeOpsHealthSummaryRequest,
   GetLifeOpsIMessageMessagesRequest,
   GetLifeOpsInboxRequest,
   IngestLifeOpsGmailEventRequest,
@@ -69,9 +69,9 @@ import {
   LIFEOPS_CONNECTOR_MODES,
   LIFEOPS_CONNECTOR_SIDES,
   LIFEOPS_GMAIL_SPAM_REVIEW_STATUSES,
+  LIFEOPS_HEALTH_CONNECTOR_PROVIDERS,
   LIFEOPS_INBOX_CACHE_MODES,
   LIFEOPS_INBOX_CHANNELS,
-  LIFEOPS_HEALTH_CONNECTOR_PROVIDERS,
   LIFEOPS_OWNER_BROWSER_ACCESS_SOURCES,
   LIFEOPS_SCREEN_TIME_RANGES,
   type LifeOpsGmailSpamReviewStatus,
@@ -83,6 +83,7 @@ import {
   saveLifeOpsAppState,
 } from "../lifeops/app-state.js";
 import { probeFullDiskAccess } from "../lifeops/fda-probe.js";
+import type { AddPaymentSourceRequest } from "../lifeops/payment-types.js";
 import {
   LIFEOPS_SCHEDULE_STATE_SCOPES,
   type SyncLifeOpsScheduleObservationsRequest,
@@ -190,6 +191,8 @@ const LIFEOPS_RATE_LIMITS = {
   default: { maxRequests: 60, windowMs: 60_000 },
 } satisfies Record<string, RateLimitConfig>;
 
+type LifeOpsRateLimitOperation = keyof typeof LIFEOPS_RATE_LIMITS;
+
 const ACTIVITY_SIGNALS_DEFAULT_LIMIT = 200;
 const ACTIVITY_SIGNALS_MAX_LIMIT = 500;
 const MS_PER_DAY = 86_400_000;
@@ -203,55 +206,11 @@ const MAX_SCREEN_TIME_WINDOW_MS = MAX_SCREEN_TIME_WINDOW_DAYS * MS_PER_DAY;
  */
 function rateLimitRequest(
   ctx: LifeOpsRouteContext,
-  operation: string,
+  operation: LifeOpsRateLimitOperation,
 ): boolean {
   const agentId = String(ctx.state.runtime?.agentId ?? "unknown");
   const limitKey = `${agentId}:${operation}`;
-  let config: RateLimitConfig;
-  switch (operation) {
-    case "google_api_read":
-      config = LIFEOPS_RATE_LIMITS.google_api_read;
-      break;
-    case "google_api_write":
-      config = LIFEOPS_RATE_LIMITS.google_api_write;
-      break;
-    case "reminders_process":
-      config = LIFEOPS_RATE_LIMITS.reminders_process;
-      break;
-    case "task_create":
-      config = LIFEOPS_RATE_LIMITS.task_create;
-      break;
-    case "task_update":
-      config = LIFEOPS_RATE_LIMITS.task_update;
-      break;
-    case "gmail_draft":
-      config = LIFEOPS_RATE_LIMITS.gmail_draft;
-      break;
-    case "gmail_send":
-      config = LIFEOPS_RATE_LIMITS.gmail_send;
-      break;
-    case "calendar_create":
-      config = LIFEOPS_RATE_LIMITS.calendar_create;
-      break;
-    case "calendar_update":
-      config = LIFEOPS_RATE_LIMITS.calendar_update;
-      break;
-    case "calendar_delete":
-      config = LIFEOPS_RATE_LIMITS.calendar_delete;
-      break;
-    case "oauth_init":
-      config = LIFEOPS_RATE_LIMITS.oauth_init;
-      break;
-    case "connector_write":
-      config = LIFEOPS_RATE_LIMITS.connector_write;
-      break;
-    case "outbound_message":
-      config = LIFEOPS_RATE_LIMITS.outbound_message;
-      break;
-    default:
-      config = LIFEOPS_RATE_LIMITS.default;
-      break;
-  }
+  const config = LIFEOPS_RATE_LIMITS[operation];
   const { allowed, retryAfterMs } = checkRateLimit(limitKey, config);
   if (!allowed) {
     ctx.res.writeHead(429, {
@@ -280,6 +239,21 @@ function decodeMatchedPathComponent(
 ): string | null {
   const raw = match?.[index];
   return raw ? ctx.decodePathComponent(raw, res, label) : null;
+}
+
+function parseRouteInput<T>(
+  ctx: LifeOpsRouteContext,
+  parser: () => T | null,
+): T | null {
+  try {
+    return parser();
+  } catch (error) {
+    if (error instanceof LifeOpsServiceError) {
+      ctx.error(ctx.res, error.message, error.status);
+      return null;
+    }
+    throw error;
+  }
 }
 
 function parsePositiveIntegerQuery(
@@ -411,7 +385,26 @@ function parseOptionalHealthConnectorProvider(
   return normalized ? parseHealthConnectorProvider(normalized) : null;
 }
 
-function parseDateOnlyQuery(value: string | null, field: string): string | null {
+function parseHealthConnectorProviderPath(
+  ctx: LifeOpsRouteContext,
+  match: RegExpMatchArray,
+): LifeOpsHealthConnectorProvider | null {
+  return parseRouteInput(ctx, () => {
+    const provider = decodeMatchedPathComponent(
+      ctx,
+      match,
+      1,
+      ctx.res,
+      "provider",
+    );
+    return provider ? parseHealthConnectorProvider(provider) : null;
+  });
+}
+
+function parseDateOnlyQuery(
+  value: string | null,
+  field: string,
+): string | null {
   const normalized = value?.trim();
   if (!normalized) {
     return null;
@@ -745,6 +738,26 @@ async function runRoute(
     });
     throw error;
   }
+}
+
+function parseConnectorRefreshDetailFromQuery(
+  ctx: LifeOpsRouteContext,
+  defaults: {
+    side: LifeOpsConnectorSide;
+    mode: LifeOpsConnectorMode;
+  },
+): {
+  side: LifeOpsConnectorSide;
+  mode: LifeOpsConnectorMode;
+} | null {
+  return parseRouteInput(ctx, () => ({
+    side:
+      parseConnectorSideQuery(ctx.url.searchParams.get("side")) ??
+      defaults.side,
+    mode:
+      parseConnectorModeQuery(ctx.url.searchParams.get("mode")) ??
+      defaults.mode,
+  }));
 }
 
 function escapeHtml(value: string): string {
@@ -1581,30 +1594,17 @@ export async function handleLifeOpsRoutes(
     method === "GET" &&
     pathname === "/api/lifeops/connectors/google/success"
   ) {
-    const rawSide = url.searchParams.get("side");
-    const rawMode = url.searchParams.get("mode");
-    if (rawSide !== null && rawSide !== "owner" && rawSide !== "agent") {
-      ctx.error(res, "side must be one of: owner, agent", 400);
-      return true;
-    }
-    if (
-      rawMode !== null &&
-      rawMode !== "local" &&
-      rawMode !== "remote" &&
-      rawMode !== "cloud_managed"
-    ) {
-      ctx.error(res, "mode must be one of: local, remote, cloud_managed", 400);
-      return true;
-    }
+    const refreshDetail = parseConnectorRefreshDetailFromQuery(ctx, {
+      side: "owner",
+      mode: "cloud_managed",
+    });
+    if (!refreshDetail) return true;
     writeHtml(
       res,
       200,
       "Google Connected",
       "Google access is now available in Eliza. You can close this window.",
-      {
-        side: (rawSide ?? "owner") as LifeOpsConnectorSide,
-        mode: (rawMode ?? "cloud_managed") as LifeOpsConnectorMode,
-      },
+      refreshDetail,
     );
     return true;
   }
@@ -1623,7 +1623,10 @@ export async function handleLifeOpsRoutes(
     });
   }
 
-  if (method === "GET" && pathname === "/api/lifeops/connectors/health/status") {
+  if (
+    method === "GET" &&
+    pathname === "/api/lifeops/connectors/health/status"
+  ) {
     if (rateLimitRequest(ctx, "default")) return true;
     return runRoute(ctx, async (service) => {
       json(
@@ -1642,10 +1645,8 @@ export async function handleLifeOpsRoutes(
   );
   if (method === "GET" && healthStatusMatch) {
     if (rateLimitRequest(ctx, "default")) return true;
-    const provider = parseHealthConnectorProvider(
-      decodeMatchedPathComponent(ctx, healthStatusMatch, 1, res, "provider") ??
-        "",
-    );
+    const provider = parseHealthConnectorProviderPath(ctx, healthStatusMatch);
+    if (!provider) return true;
     return runRoute(ctx, async (service) => {
       json(
         res,
@@ -1664,10 +1665,8 @@ export async function handleLifeOpsRoutes(
   );
   if (method === "POST" && healthStartMatch) {
     if (rateLimitRequest(ctx, "oauth_init")) return true;
-    const provider = parseHealthConnectorProvider(
-      decodeMatchedPathComponent(ctx, healthStartMatch, 1, res, "provider") ??
-        "",
-    );
+    const provider = parseHealthConnectorProviderPath(ctx, healthStartMatch);
+    if (!provider) return true;
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
@@ -1689,10 +1688,8 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/connectors\/health\/([^/]+)\/callback$/,
   );
   if (method === "GET" && healthCallbackMatch) {
-    const provider = parseHealthConnectorProvider(
-      decodeMatchedPathComponent(ctx, healthCallbackMatch, 1, res, "provider") ??
-        "",
-    );
+    const provider = parseHealthConnectorProviderPath(ctx, healthCallbackMatch);
+    if (!provider) return true;
     const service = getService(ctx);
     if (!service) return true;
     try {
@@ -1723,10 +1720,8 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/connectors\/health\/([^/]+)\/success$/,
   );
   if (method === "GET" && healthSuccessMatch) {
-    const provider = parseHealthConnectorProvider(
-      decodeMatchedPathComponent(ctx, healthSuccessMatch, 1, res, "provider") ??
-        "",
-    );
+    const provider = parseHealthConnectorProviderPath(ctx, healthSuccessMatch);
+    if (!provider) return true;
     writeHtml(
       res,
       200,
@@ -1741,24 +1736,26 @@ export async function handleLifeOpsRoutes(
   );
   if (method === "POST" && healthDisconnectMatch) {
     if (rateLimitRequest(ctx, "connector_write")) return true;
-    const provider = parseHealthConnectorProvider(
-      decodeMatchedPathComponent(
-        ctx,
-        healthDisconnectMatch,
-        1,
-        res,
-        "provider",
-      ) ?? "",
+    const provider = parseHealthConnectorProviderPath(
+      ctx,
+      healthDisconnectMatch,
     );
+    if (!provider) return true;
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
       json(
         res,
-        await service.disconnectHealthConnector({
-          ...(body as Omit<DisconnectLifeOpsHealthConnectorRequest, "provider">),
-          provider,
-        }, url),
+        await service.disconnectHealthConnector(
+          {
+            ...(body as Omit<
+              DisconnectLifeOpsHealthConnectorRequest,
+              "provider"
+            >),
+            provider,
+          },
+          url,
+        ),
       );
     });
   }
@@ -1784,10 +1781,14 @@ export async function handleLifeOpsRoutes(
         ),
         mode: parseConnectorModeQuery(url.searchParams.get("mode")),
         side: parseConnectorSideQuery(url.searchParams.get("side")),
-        days: parsePositiveIntegerQuery(url.searchParams.get("days"), "days", {
-          max: 31,
-        }) ?? undefined,
-        startDate: parseDateOnlyQuery(url.searchParams.get("startDate"), "startDate"),
+        days:
+          parsePositiveIntegerQuery(url.searchParams.get("days"), "days", {
+            max: 31,
+          }) ?? undefined,
+        startDate: parseDateOnlyQuery(
+          url.searchParams.get("startDate"),
+          "startDate",
+        ),
         endDate: parseDateOnlyQuery(url.searchParams.get("endDate"), "endDate"),
         forceSync: url.searchParams.get("forceSync") === "true",
       };
@@ -1808,23 +1809,16 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "GET" && pathname === "/api/lifeops/connectors/x/success") {
-    const rawSide = url.searchParams.get("side");
-    const rawMode = url.searchParams.get("mode");
     const connected = url.searchParams.get("twitter_connected") === "true";
     const error =
       url.searchParams.get("twitter_error_detail") ??
       url.searchParams.get("twitter_error");
-    if (rawSide !== null && rawSide !== "owner" && rawSide !== "agent") {
-      ctx.error(res, "side must be one of: owner, agent", 400);
-      return true;
-    }
     if (
-      rawMode !== null &&
-      rawMode !== "local" &&
-      rawMode !== "remote" &&
-      rawMode !== "cloud_managed"
+      !parseConnectorRefreshDetailFromQuery(ctx, {
+        side: "owner",
+        mode: "cloud_managed",
+      })
     ) {
-      ctx.error(res, "mode must be one of: local, remote, cloud_managed", 400);
       return true;
     }
     writeHtml(
@@ -2730,20 +2724,10 @@ export async function handleLifeOpsRoutes(
 
   if (method === "POST" && pathname === "/api/lifeops/money/sources") {
     if (rateLimitRequest(ctx, "connector_write")) return true;
-    const body = await readJsonBody<{
-      kind: string;
-      label: string;
-      institution?: string | null;
-      accountMask?: string | null;
-    }>(req, res);
+    const body = await readJsonBody<AddPaymentSourceRequest>(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
-      const source = await service.addPaymentSource({
-        kind: body.kind as never,
-        label: body.label,
-        institution: body.institution ?? null,
-        accountMask: body.accountMask ?? null,
-      });
+      const source = await service.addPaymentSource(body);
       json(res, { source: sanitizePaymentSourceForClient(source) }, 201);
     });
   }

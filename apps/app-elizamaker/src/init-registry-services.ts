@@ -19,7 +19,7 @@ import {
   normalizeJsonRpcUrl,
   probeJsonRpcEndpoint,
   TxService,
-} from "@elizaos/app-steward/api/tx-service";
+} from "@elizaos/agent/api/tx-service";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { DropService } from "./drop-service.js";

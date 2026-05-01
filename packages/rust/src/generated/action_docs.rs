@@ -2750,18 +2750,6 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       "descriptionCompressed": "Add music to a playlist after confirmed:true. If the track is not already in the library, the configured music fetch service must resolve it first. Creates t..."
     },
     {
-      "name": "APP_CREATE",
-      "description": "Multi-turn create-an-app flow: searches existing apps, asks the user new/edit/cancel, then dispatches a coding agent and verifies the output.",
-      "parameters": [],
-      "similes": [
-        "CREATE_APP",
-        "BUILD_APP",
-        "MAKE_APP",
-        "SCAFFOLD_APP"
-      ],
-      "descriptionCompressed": "Multi-turn create-an-app flow: searches existing apps, asks the user new/edit/cancel, then dispatches a coding agent and verifies the output."
-    },
-    {
       "name": "BLUEBUBBLES_SEND_REACTION",
       "description": "Add or remove a reaction on a message via BlueBubbles",
       "parameters": [],

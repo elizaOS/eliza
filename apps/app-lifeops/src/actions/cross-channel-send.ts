@@ -290,13 +290,7 @@ async function resolveCrossChannelSendPlanWithLlm(args: {
       parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
       parseJSONObjectFromText(rawResponse);
     if (!parsed) {
-      const fallbackResponse = rawResponse.trim();
-      return fallbackResponse.length > 0
-        ? {
-            shouldAct: false,
-            response: fallbackResponse,
-          }
-        : {};
+      return {};
     }
     return {
       channel: normalizePlannerResponse(parsed.channel),
