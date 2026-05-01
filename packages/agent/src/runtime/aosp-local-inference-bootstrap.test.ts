@@ -101,8 +101,9 @@ describe("ensureAospLocalInferenceHandlers", () => {
     expect(runtime.registrations).toHaveLength(0);
   });
 
-  it("registers TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING handlers when the AOSP loader registers", async () => {
+  it("registers TEXT_SMALL + TEXT_LARGE by default; TEXT_EMBEDDING only when MILADY_AOSP_EMBEDDING=1", async () => {
     process.env.MILADY_LOCAL_LLAMA = "1";
+    delete process.env.MILADY_AOSP_EMBEDDING;
 
     adapterMock.registerAospLlamaLoader.mockImplementation(
       async (rt: { registerService: (n: string, i: unknown) => void }) => {
@@ -127,31 +128,48 @@ describe("ensureAospLocalInferenceHandlers", () => {
     const { ensureAospLocalInferenceHandlers } = await import(
       "./aosp-local-inference-bootstrap.js"
     );
-    const runtime = makeRuntime();
 
-    const ok = await ensureAospLocalInferenceHandlers(
-      runtime as Parameters<typeof ensureAospLocalInferenceHandlers>[0],
+    // Default: embedding gated off. TEXT_SMALL + TEXT_LARGE only.
+    const runtimeDefault = makeRuntime();
+    const okDefault = await ensureAospLocalInferenceHandlers(
+      runtimeDefault as Parameters<typeof ensureAospLocalInferenceHandlers>[0],
     );
-
-    expect(ok).toBe(true);
-    expect(adapterMock.registerAospLlamaLoader).toHaveBeenCalledTimes(1);
-
-    const aospRegs = runtime.registrations.filter(
+    expect(okDefault).toBe(true);
+    const defaultRegs = runtimeDefault.registrations.filter(
       (r) => r.provider === "milady-aosp-llama",
     );
-    // TEXT_SMALL + TEXT_LARGE + TEXT_EMBEDDING register together. Earlier
-    // builds gated TEXT_EMBEDDING behind MILADY_AOSP_EMBEDDING=1 because
-    // the embed path triggered a llama_decode batch_inp assert; that's
-    // fixed by resetting `llama_set_embeddings` on every decode path in
-    // `aosp-llama-adapter.ts`, so the gate is gone.
-    expect(aospRegs).toHaveLength(3);
-    for (const reg of aospRegs) {
-      // Priority 0 = same band as cloud. Tie-breaks live in routing-policy
-      // (the smoke regression for "No handler found" was -1 → 0).
+    // TEXT_EMBEDDING is gated behind MILADY_AOSP_EMBEDDING=1: on cvd's
+    // 4 GB ceiling, the single-context loader can't safely swap weights
+    // between chat + embedding modes (a chat turn fires multiple
+    // planner → embed → evaluator alternations and cumulative
+    // allocations push past ceiling). Default-off keeps chat reliable.
+    expect(defaultRegs).toHaveLength(2);
+    for (const reg of defaultRegs) {
       expect(reg.priority).toBe(0);
     }
-    const types = aospRegs.map((r) => r.modelType).sort();
-    expect(types).toEqual(["TEXT_EMBEDDING", "TEXT_LARGE", "TEXT_SMALL"]);
+    expect(defaultRegs.map((r) => r.modelType).sort()).toEqual([
+      "TEXT_LARGE",
+      "TEXT_SMALL",
+    ]);
+
+    // Opt-in: TEXT_EMBEDDING also registers.
+    adapterMock.registerAospLlamaLoader.mockClear();
+    process.env.MILADY_AOSP_EMBEDDING = "1";
+    const runtimeOptIn = makeRuntime();
+    const okOptIn = await ensureAospLocalInferenceHandlers(
+      runtimeOptIn as Parameters<typeof ensureAospLocalInferenceHandlers>[0],
+    );
+    expect(okOptIn).toBe(true);
+    const optInRegs = runtimeOptIn.registrations.filter(
+      (r) => r.provider === "milady-aosp-llama",
+    );
+    expect(optInRegs).toHaveLength(3);
+    expect(optInRegs.map((r) => r.modelType).sort()).toEqual([
+      "TEXT_EMBEDDING",
+      "TEXT_LARGE",
+      "TEXT_SMALL",
+    ]);
+    delete process.env.MILADY_AOSP_EMBEDDING;
   });
 
   it("returns false and registers no handlers when the AOSP loader fails to register", async () => {
