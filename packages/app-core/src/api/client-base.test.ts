@@ -6,10 +6,7 @@ import {
   getBootConfig,
   setBootConfig,
 } from "../config/boot-config";
-import {
-  clearElizaApiToken,
-  getElizaApiToken,
-} from "../utils/eliza-globals";
+import { clearElizaApiToken, getElizaApiToken } from "../utils/eliza-globals";
 import { ElizaClient } from "./client-base";
 
 describe("ElizaClient.setToken", () => {
