@@ -154,6 +154,12 @@ const workspacePluginSourceAliases = getWorkspacePluginAliases(repoRoot, [
   "plugin-agent-skills",
   "plugin-browser-bridge",
 ]);
+const pluginPdfSrc = path.join(
+  elizaWorkspaceRoot,
+  "plugins",
+  "plugin-pdf",
+  "typescript",
+);
 // Fall back to a stub when an optional plugin tarball has a broken entry point.
 const unresolvedPluginStubs = workspacePluginPackageNames
   .filter((name) => !resolvedPluginNames.has(name))
@@ -304,6 +310,14 @@ const vitestResolveAlias: ModuleAlias[] = [
       "scenario-schema",
       "index.js",
     ),
+  },
+  {
+    find: /^@elizaos\/plugin-pdf$/,
+    replacement: path.join(pluginPdfSrc, "index.node.ts"),
+  },
+  {
+    find: /^@elizaos\/plugin-pdf\/(.+)$/,
+    replacement: path.join(pluginPdfSrc, "$1"),
   },
   ...workspacePluginSourceAliases,
   ...getOptionalPluginSdkAliases(repoRoot),
