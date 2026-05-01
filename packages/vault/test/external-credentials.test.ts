@@ -79,16 +79,21 @@ describe("external-credentials — 1Password", () => {
       args[0] === "account" && args[1] === "list",
     stdout: "[]",
   };
+  /**
+   * `whoamiFails` / `whoamiOk` model the desktop-integration probe.
+   * The probe runs `op vault list --format=json` rather than `whoami`
+   * because `op whoami` always demands a session token even when
+   * desktop integration is active for vault queries.
+   */
   const whoamiFails = {
     match: (_cmd: string, args: readonly string[]) =>
-      args.includes("whoami"),
+      args.includes("vault") && args.includes("list"),
     throws: new Error("not signed in"),
   };
   const whoamiOk = {
     match: (_cmd: string, args: readonly string[]) =>
-      args.includes("whoami"),
-    stdout:
-      '{"user_uuid":"u","account_uuid":"a","url":"my.1password.com","email":"x@y","user_type":"REGULAR"}',
+      args.includes("vault") && args.includes("list"),
+    stdout: "[]",
   };
 
   it("throws BackendNotSignedInError when no session is stored", async () => {

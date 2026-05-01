@@ -620,17 +620,22 @@ async function readDefaultOpAccount(): Promise<string | null> {
 }
 
 /**
- * True when `op whoami --account=<sh>` (no session) succeeds — i.e.
- * 1Password desktop app integration is active. Failures are silent: any
- * exit code, any stderr text means desktop-app auth isn't available and
- * the caller should fall through to the session-token path.
+ * True when a real vault query succeeds without a session token — i.e.
+ * 1Password desktop app integration is active. `op whoami` is unusable
+ * here: even with desktop integration active it exits 1 demanding a
+ * session token. A vault list query IS handled by desktop session
+ * delegation, so probe with that instead. Requires a known account.
  */
 async function isOnePasswordDesktopActive(
   account: string | null,
 ): Promise<boolean> {
-  const args = account ? [`--account=${account}`, "whoami"] : ["whoami"];
+  if (!account) return false;
   try {
-    await exec("op", args, { timeout: 3000 });
+    await exec(
+      "op",
+      [`--account=${account}`, "vault", "list", "--format=json"],
+      { timeout: 3000 },
+    );
     return true;
   } catch {
     return false;
