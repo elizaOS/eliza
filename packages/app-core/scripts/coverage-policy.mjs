@@ -23,7 +23,9 @@ export const coverageDocReferences = Object.freeze([
 export const coverageSurfaceGlobs = Object.freeze({
   "eliza/packages/agent": ["eliza/packages/agent/src/**/*.ts"],
   "eliza/packages/app-core": ["eliza/packages/app-core/src/**/*.ts"],
-  "apps/app/electrobun": ["apps/app/electrobun/src/**/*.ts"],
+  "eliza/packages/app-core/platforms/electrobun": [
+    "eliza/packages/app-core/platforms/electrobun/src/**/*.ts",
+  ],
   "eliza/packages/shared": ["eliza/packages/shared/src/**/*.ts"],
 });
 

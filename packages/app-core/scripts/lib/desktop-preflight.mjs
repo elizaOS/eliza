@@ -86,7 +86,7 @@ export function buildWindowsRepairSteps() {
   return [
     "Repair steps (Windows):",
     "1. Stop all Bun/Electrobun/Eliza processes.",
-    "2. Delete apps/app/electrobun/node_modules.",
+    "2. Delete packages/app-core/platforms/electrobun/node_modules.",
     "3. Delete node_modules/.bun from the repo root.",
     "4. From repo root, run: bun install",
     "5. Retry: bun run start:desktop",

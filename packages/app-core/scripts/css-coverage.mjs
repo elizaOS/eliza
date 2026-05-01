@@ -12,22 +12,23 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 
-const ROOT = resolve(import.meta.dirname, "..");
+const ROOT = resolveRepoRootFromImportMeta(import.meta.url);
 
 const CSS_FILES = [
-  "eliza/packages/app-core/src/styles/styles.css",
-  "eliza/packages/app-core/src/styles/base.css",
-  "eliza/packages/app-core/src/styles/brand-gold.css",
-  "eliza/packages/app-core/src/styles/electrobun-mac-window-drag.css",
-  "eliza/packages/app-core/src/styles/xterm.css",
+  "packages/app-core/src/styles/styles.css",
+  "packages/app-core/src/styles/base.css",
+  "packages/app-core/src/styles/brand-gold.css",
+  "packages/app-core/src/styles/electrobun-mac-window-drag.css",
+  "packages/app-core/src/styles/xterm.css",
 ];
 
 // Directories to search for selector usage
 const SEARCH_DIRS = [
-  "eliza/packages/app-core/src",
-  "eliza/packages/ui/src",
-  "apps/app/src",
+  "packages/app-core/src",
+  "packages/ui/src",
+  "packages/app/src",
   "packages/homepage/src",
 ];
 

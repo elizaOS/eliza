@@ -327,14 +327,14 @@ class ManagerImpl implements SecretsManager {
       const result = await safeListExternal("1password", () =>
         listOnePasswordLogins(this.vault, this.execFn),
       );
-      if (result.ok) externalEntries.push(...result.entries);
+      if (result.ok === true) externalEntries.push(...result.entries);
       else failures.push({ source: "1password", message: result.message });
     }
     if (bitwardenReady) {
       const result = await safeListExternal("bitwarden", () =>
         listBitwardenLogins(this.vault, this.execFn),
       );
-      if (result.ok) externalEntries.push(...result.entries);
+      if (result.ok === true) externalEntries.push(...result.entries);
       else failures.push({ source: "bitwarden", message: result.message });
     }
 

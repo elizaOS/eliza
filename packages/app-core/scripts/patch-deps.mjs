@@ -422,6 +422,7 @@ patchJsdomCanvasAutoload();
  */
 for (const viteCacheDir of [
   resolve(root, "node_modules", ".vite"),
+  resolve(root, "packages/app", "node_modules", ".vite"),
   resolve(root, "apps/app", "node_modules", ".vite"),
 ]) {
   if (!existsSync(viteCacheDir)) continue;
