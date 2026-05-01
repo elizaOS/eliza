@@ -138,14 +138,30 @@ export async function handleSecretsInventoryRoute(
     return true;
   }
 
-  // Top-level inventory list.
+  // Top-level inventory list. Optional `?category=<value>` narrows the
+  // response to entries whose computed category matches — used by the
+  // Settings -> Wallet & RPC section so it can pull wallet keys without
+  // re-implementing the listing logic. Unknown / malformed categories
+  // get a 400 instead of silently returning the full list.
   if (pathname === "/api/secrets/inventory") {
     if (method !== "GET") {
       sendJsonError(res, 405, "method not allowed");
       return true;
     }
+    const url = new URL(req.url ?? "", "http://localhost");
+    const categoryParam = url.searchParams.get("category");
+    if (
+      categoryParam !== null &&
+      !CATEGORY_VALUES.has(categoryParam as VaultEntryCategory)
+    ) {
+      sendJsonError(res, 400, "`category` must be a known VaultEntryCategory");
+      return true;
+    }
     const vault = sharedVault();
-    const entries = await listVaultInventory(vault);
+    const all = await listVaultInventory(vault);
+    const entries = categoryParam
+      ? all.filter((e) => e.category === categoryParam)
+      : all;
     sendJson(res, 200, { ok: true, entries: entries as VaultEntryMeta[] });
     return true;
   }

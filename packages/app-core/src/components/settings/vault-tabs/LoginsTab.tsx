@@ -66,18 +66,22 @@ export function LoginsTab() {
       const next: Record<string, boolean> = {};
       // Single-flight: one fetch per unique domain. Domains are usually
       // <50 in a saved-logins list, well under any rate concern.
+      // Per-domain failures default to false (never autoallow on a
+      // missing read) and are not surfaced to the error banner — the
+      // toggle row falls back to "off" silently rather than blocking
+      // the rest of the UI.
       const unique = Array.from(new Set(domains.filter(Boolean)));
       const responses = await Promise.all(
-        unique.map(async (d) => {
+        unique.map(async (d): Promise<readonly [string, boolean]> => {
           const res = await fetch(
             `/api/secrets/logins/${encodeURIComponent(d)}/autoallow`,
           );
           if (!res.ok) return [d, false] as const;
           const json = (await res.json()) as {
-            ok: boolean;
-            allowed: boolean;
+            ok?: boolean;
+            allowed?: boolean;
           };
-          return [d, json.allowed] as const;
+          return [d, json?.allowed === true] as const;
         }),
       );
       for (const [d, allowed] of responses) next[d] = allowed;
@@ -101,7 +105,14 @@ export function LoginsTab() {
       const domains = json.logins
         .map((l) => l.domain)
         .filter((d): d is string => typeof d === "string" && d.length > 0);
-      await loadAutoallowFor(domains);
+      // Best-effort: a transient 404 / 500 on the autoallow fetch
+      // shouldn't blank out the logins list. Any failure here means
+      // the toggles default to "off" until the next refresh.
+      try {
+        await loadAutoallowFor(domains);
+      } catch {
+        setAutoallowMap({});
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "load failed");
       setLogins([]);

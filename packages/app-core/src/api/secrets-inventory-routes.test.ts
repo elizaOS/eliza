@@ -92,6 +92,38 @@ describe("secrets-inventory routes", () => {
     expect(text).not.toContain("NEVERLEAK");
   });
 
+  it("GET /api/secrets/inventory?category=wallet narrows the response", async () => {
+    harness = await startHarness();
+    await vault.set("OPENROUTER_API_KEY", "sk-or-NEVERLEAK", {
+      sensitive: true,
+    });
+    await vault.set("EVM_PRIVATE_KEY", "0xNEVERLEAK", { sensitive: true });
+    await vault.set("SOLANA_PRIVATE_KEY", "solNEVERLEAK", {
+      sensitive: true,
+    });
+
+    const res = await fetch(
+      `${harness.baseUrl}/api/secrets/inventory?category=wallet`,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { entries: VaultEntryMeta[] };
+    expect(body.entries.map((e) => e.key).sort()).toEqual([
+      "EVM_PRIVATE_KEY",
+      "SOLANA_PRIVATE_KEY",
+    ]);
+    for (const entry of body.entries) {
+      expect(entry.category).toBe("wallet");
+    }
+  });
+
+  it("GET /api/secrets/inventory?category=garbage 400s", async () => {
+    harness = await startHarness();
+    const res = await fetch(
+      `${harness.baseUrl}/api/secrets/inventory?category=garbage`,
+    );
+    expect(res.status).toBe(400);
+  });
+
   it("PUT /api/secrets/inventory/:key upserts value + meta", async () => {
     harness = await startHarness();
     const res = await fetch(
