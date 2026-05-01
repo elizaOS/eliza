@@ -60,8 +60,10 @@ type GlobalWithLastFailedPluginNames = typeof globalThis & {
 
 const RUNTIME_APP_PLUGIN_SUBPATHS = new Set([
   "@elizaos/app-companion",
+  "@elizaos/app-contacts",
   "@elizaos/app-elizamaker",
   "@elizaos/app-lifeops",
+  "@elizaos/app-phone",
   "@elizaos/app-shopify",
   "@elizaos/app-steward",
   "@elizaos/app-vincent",

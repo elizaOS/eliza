@@ -4,15 +4,26 @@ import android.Manifest;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
 import android.webkit.WebSettings;
 
 import androidx.core.content.ContextCompat;
 
 import com.getcapacitor.BridgeActivity;
 
+import java.lang.reflect.Method;
+
 public class MainActivity extends BridgeActivity {
 
+    private static final String TAG = "MiladyMainActivity";
     private static final int REQUEST_NOTIFICATION_PERMISSION = 1001;
+
+    // Set by the AOSP product config (vendor/milady/milady_common.mk) on
+    // every MiladyOS image; absent on stock Android. Reading it is the
+    // signal that this APK is running as the system app on a Milady
+    // device, vs. installed on a vanilla phone where Eliza Cloud / Remote
+    // / Local must remain user-selectable in the RuntimeGate picker.
+    private static final String MILADYOS_PRODUCT_PROP = "ro.miladyos.product";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -31,6 +42,7 @@ public class MainActivity extends BridgeActivity {
         if (getBridge() != null && getBridge().getWebView() != null) {
             WebSettings settings = getBridge().getWebView().getSettings();
             settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+            applyMiladyOSUserAgentSuffix(settings);
         }
 
         // Android 13+ requires explicit POST_NOTIFICATIONS permission for the
@@ -57,6 +69,45 @@ public class MainActivity extends BridgeActivity {
             GatewayConnectionService.stop(this);
         }
         super.onDestroy();
+    }
+
+    /**
+     * Append `MiladyOS/<tag>` to the WebView's user-agent string when the
+     * AOSP-set system property `ro.miladyos.product` is present. The web
+     * layer (`platform/init.ts → isMiladyOS()`) sniffs this suffix to
+     * decide whether the RuntimeGate "Choose your setup" picker is
+     * bypassed (MiladyOS) or rendered (vanilla Android APK).
+     *
+     * `android.os.SystemProperties` is hidden API but accessible via
+     * reflection from the system app; on stock Android it returns "" and
+     * we leave the user-agent untouched, preserving the picker.
+     */
+    private void applyMiladyOSUserAgentSuffix(WebSettings settings) {
+        String tag = readSystemProperty(MILADYOS_PRODUCT_PROP);
+        if (tag == null || tag.isEmpty()) {
+            return;
+        }
+        String currentUa = settings.getUserAgentString();
+        String marker = "MiladyOS/" + tag;
+        if (currentUa != null && currentUa.contains(marker)) {
+            return;
+        }
+        String newUa = (currentUa == null || currentUa.isEmpty())
+            ? marker
+            : currentUa + " " + marker;
+        settings.setUserAgentString(newUa);
+    }
+
+    private static String readSystemProperty(String key) {
+        try {
+            Class<?> spClass = Class.forName("android.os.SystemProperties");
+            Method get = spClass.getMethod("get", String.class);
+            Object result = get.invoke(null, key);
+            return result instanceof String ? (String) result : "";
+        } catch (ReflectiveOperationException | SecurityException e) {
+            Log.w(TAG, "SystemProperties.get failed for " + key, e);
+            return "";
+        }
     }
 
     /**
