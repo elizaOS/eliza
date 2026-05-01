@@ -3,6 +3,8 @@ import path from "node:path";
 
 export const APP_PUBLIC_REPO_PREFIX = "packages/app/public";
 export const HOMEPAGE_PUBLIC_REPO_PREFIX = "packages/homepage/public";
+export const WRAPPER_APP_PUBLIC_REPO_PREFIX = "apps/app/public";
+export const WRAPPER_HOMEPAGE_PUBLIC_REPO_PREFIX = "apps/homepage/public";
 export const STATIC_ASSET_MANIFEST_REPO_PATH =
   "scripts/generated/static-asset-manifest.json";
 export const IGNORED_STATIC_ASSET_BASENAMES = new Set([
@@ -72,10 +74,31 @@ function listPublicFiles(rootDir, repoPrefix) {
     .sort();
 }
 
+function resolvePublicRepoPrefix(rootDir, innerPrefix, wrapperPrefix) {
+  if (fs.existsSync(path.join(rootDir, wrapperPrefix))) {
+    return wrapperPrefix;
+  }
+  return innerPrefix;
+}
+
 export function buildStaticAssetManifest(rootDir) {
   return {
-    app: listPublicFiles(rootDir, APP_PUBLIC_REPO_PREFIX),
-    homepage: listPublicFiles(rootDir, HOMEPAGE_PUBLIC_REPO_PREFIX),
+    app: listPublicFiles(
+      rootDir,
+      resolvePublicRepoPrefix(
+        rootDir,
+        APP_PUBLIC_REPO_PREFIX,
+        WRAPPER_APP_PUBLIC_REPO_PREFIX,
+      ),
+    ),
+    homepage: listPublicFiles(
+      rootDir,
+      resolvePublicRepoPrefix(
+        rootDir,
+        HOMEPAGE_PUBLIC_REPO_PREFIX,
+        WRAPPER_HOMEPAGE_PUBLIC_REPO_PREFIX,
+      ),
+    ),
   };
 }
 
