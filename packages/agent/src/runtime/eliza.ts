@@ -168,8 +168,9 @@ const require = createRequire(import.meta.url);
 // plugin-local-embedding is needed when local embeddings are enabled, but
 // Docker no-embedding smokes must still boot if a published package advertises
 // a missing dist entry.
-let pluginLocalEmbedding: typeof import("@elizaos/plugin-local-embedding") | null =
-  null;
+let pluginLocalEmbedding:
+  | typeof import("@elizaos/plugin-local-embedding")
+  | null = null;
 try {
   pluginLocalEmbedding = await import("@elizaos/plugin-local-embedding");
 } catch {
@@ -342,9 +343,7 @@ Object.assign(STATIC_ELIZA_PLUGINS, {
   ...(pluginCommands ? { "@elizaos/plugin-commands": pluginCommands } : {}),
   "@elizaos/plugin-pdf": pluginPdf,
   ...(pluginOpenai ? { "@elizaos/plugin-openai": pluginOpenai } : {}),
-  ...(pluginAnthropic
-    ? { "@elizaos/plugin-anthropic": pluginAnthropic }
-    : {}),
+  ...(pluginAnthropic ? { "@elizaos/plugin-anthropic": pluginAnthropic } : {}),
   ...(pluginOllama ? { "@elizaos/plugin-ollama": pluginOllama } : {}),
   ...(pluginElizacloud
     ? { "@elizaos/plugin-elizacloud": pluginElizacloud }

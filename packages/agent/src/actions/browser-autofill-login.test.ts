@@ -10,10 +10,7 @@
  */
 
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
-import {
-  setAutofillAllowed,
-  setSavedLogin,
-} from "@elizaos/vault";
+import { setAutofillAllowed, setSavedLogin } from "@elizaos/vault";
 import { createTestVault, type TestVault } from "@elizaos/vault/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -243,9 +240,7 @@ describe("browserAutofillLoginAction", () => {
       undefined,
       {
         parameters: { domain: "github.com", submit: true },
-      } as unknown as Parameters<
-        typeof browserAutofillLoginAction.handler
-      >[3],
+      } as unknown as Parameters<typeof browserAutofillLoginAction.handler>[3],
     );
     const call = mockEvalTab.mock.calls[0]?.[0];
     expect(call?.script).toContain("const SUBMIT = true");

@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { createTestVault, type TestVault } from "@elizaos/vault/testing";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
   __test__,
   ensureAgentWallets,

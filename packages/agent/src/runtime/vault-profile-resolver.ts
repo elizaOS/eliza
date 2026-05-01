@@ -98,5 +98,9 @@ export async function applyVaultProfilesForAgent(
     );
   }
 
-  return { overridden, skipped: Object.freeze(skipped), failed: Object.freeze(failed) };
+  return {
+    overridden,
+    skipped: Object.freeze(skipped),
+    failed: Object.freeze(failed),
+  };
 }

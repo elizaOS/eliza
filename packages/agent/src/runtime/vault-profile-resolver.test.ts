@@ -1,10 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createTestVault, type TestVault } from "@elizaos/vault/testing";
 import {
   profileStorageKey,
   setEntryMeta,
   writeRoutingConfig,
 } from "@elizaos/vault";
+import { createTestVault, type TestVault } from "@elizaos/vault/testing";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { applyVaultProfilesForAgent } from "./vault-profile-resolver.js";
 
 describe("vault-profile-resolver", () => {
@@ -38,12 +38,20 @@ describe("vault-profile-resolver", () => {
   });
 
   it("writes the active profile value to process.env when profiles are configured", async () => {
-    await testVault.vault.set(profileStorageKey(SCRATCH_KEY, "default"), "sk-default", {
-      sensitive: true,
-    });
-    await testVault.vault.set(profileStorageKey(SCRATCH_KEY, "work"), "sk-work", {
-      sensitive: true,
-    });
+    await testVault.vault.set(
+      profileStorageKey(SCRATCH_KEY, "default"),
+      "sk-default",
+      {
+        sensitive: true,
+      },
+    );
+    await testVault.vault.set(
+      profileStorageKey(SCRATCH_KEY, "work"),
+      "sk-work",
+      {
+        sensitive: true,
+      },
+    );
     await setEntryMeta(testVault.vault, SCRATCH_KEY, {
       profiles: [
         { id: "default", label: "Default" },
@@ -58,12 +66,20 @@ describe("vault-profile-resolver", () => {
   });
 
   it("respects per-agent routing rules (different agents → different profiles)", async () => {
-    await testVault.vault.set(profileStorageKey(SCRATCH_KEY, "work"), "sk-work", {
-      sensitive: true,
-    });
-    await testVault.vault.set(profileStorageKey(SCRATCH_KEY, "personal"), "sk-personal", {
-      sensitive: true,
-    });
+    await testVault.vault.set(
+      profileStorageKey(SCRATCH_KEY, "work"),
+      "sk-work",
+      {
+        sensitive: true,
+      },
+    );
+    await testVault.vault.set(
+      profileStorageKey(SCRATCH_KEY, "personal"),
+      "sk-personal",
+      {
+        sensitive: true,
+      },
+    );
     await setEntryMeta(testVault.vault, SCRATCH_KEY, {
       profiles: [
         { id: "work", label: "Work" },
@@ -90,9 +106,13 @@ describe("vault-profile-resolver", () => {
   });
 
   it("opt-out via MILADY_DISABLE_VAULT_PROFILE_RESOLVER=1", async () => {
-    await testVault.vault.set(profileStorageKey(SCRATCH_KEY, "default"), "sk-default", {
-      sensitive: true,
-    });
+    await testVault.vault.set(
+      profileStorageKey(SCRATCH_KEY, "default"),
+      "sk-default",
+      {
+        sensitive: true,
+      },
+    );
     await setEntryMeta(testVault.vault, SCRATCH_KEY, {
       profiles: [{ id: "default", label: "Default" }],
       activeProfile: "default",
