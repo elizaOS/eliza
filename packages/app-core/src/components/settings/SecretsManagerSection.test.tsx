@@ -302,27 +302,55 @@ describe("SavedLoginsPanel", () => {
   });
 
   it("submits the add form and refreshes the list", async () => {
-    fetchMock
-      .mockResolvedValueOnce(
-        jsonResponse(200, { ok: true, logins: [], failures: [] }),
-      )
-      .mockResolvedValueOnce(jsonResponse(200, { ok: true }))
-      .mockResolvedValueOnce(
-        jsonResponse(200, {
-          ok: true,
-          logins: [
-            {
-              source: "in-house",
-              identifier: "github.com:alice",
-              domain: "github.com",
-              username: "alice",
-              title: "alice",
-              updatedAt: Date.now(),
-            },
-          ],
-          failures: [],
-        }),
-      );
+    // After the user saves, the panel re-fetches the logins and then
+    // issues one autoallow GET per listed domain. Mock the autoallow
+    // route too so the per-domain fetches resolve cleanly — without it
+    // the test still passes (the panel swallows autoallow failures) but
+    // the call-shape assertions become harder to read.
+    fetchMock.mockImplementation(async (input, init) => {
+      const path = typeof input === "string" ? input : String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (
+        method === "GET" &&
+        path.startsWith("/api/secrets/logins/") &&
+        path.endsWith("/autoallow")
+      ) {
+        return jsonResponse(200, { ok: true, allowed: false });
+      }
+      if (method === "POST" && path === "/api/secrets/logins") {
+        return jsonResponse(200, { ok: true });
+      }
+      if (method === "GET" && path === "/api/secrets/logins") {
+        // Mutating: first call returns empty, every subsequent call
+        // returns the just-saved entry.
+        const calls = fetchMock.mock.calls.filter(
+          (c) =>
+            (typeof c[0] === "string" ? c[0] : "") === "/api/secrets/logins" &&
+            ((c[1] as RequestInit | undefined)?.method ?? "GET")
+              .toUpperCase() === "GET",
+        );
+        // The current call is already in the list; >1 means this is
+        // the post-save refresh.
+        if (calls.length > 1) {
+          return jsonResponse(200, {
+            ok: true,
+            logins: [
+              {
+                source: "in-house",
+                identifier: "github.com:alice",
+                domain: "github.com",
+                username: "alice",
+                title: "alice",
+                updatedAt: Date.now(),
+              },
+            ],
+            failures: [],
+          });
+        }
+        return jsonResponse(200, { ok: true, logins: [], failures: [] });
+      }
+      throw new Error(`Unhandled fetch in test: ${method} ${path}`);
+    });
 
     render(<SavedLoginsPanel />);
     await waitFor(() => {
@@ -353,11 +381,16 @@ describe("SavedLoginsPanel", () => {
       // domain shown in a parenthetical "(github.com)".
       expect(screen.getByText("(github.com)")).toBeTruthy();
     });
-    // First call: initial GET. Second: POST. Third: refresh GET.
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-    const postCall = fetchMock.mock.calls[1];
-    expect(postCall?.[0]).toBe("/api/secrets/logins");
-    expect((postCall?.[1] as RequestInit | undefined)?.method).toBe("POST");
+    // The POST is the only mutation we care about — assert it directly
+    // rather than counting total calls (the panel also issues per-domain
+    // autoallow GETs after the refresh).
+    const postCall = fetchMock.mock.calls.find(
+      (c) =>
+        (typeof c[0] === "string" ? c[0] : "") === "/api/secrets/logins" &&
+        ((c[1] as RequestInit | undefined)?.method ?? "").toUpperCase() ===
+          "POST",
+    );
+    expect(postCall).toBeDefined();
     const body = JSON.parse(
       String((postCall?.[1] as RequestInit | undefined)?.body ?? "{}"),
     ) as { domain: string; username: string; password: string };

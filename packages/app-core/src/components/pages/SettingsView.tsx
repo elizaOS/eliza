@@ -53,6 +53,7 @@ import { CapabilitiesSection } from "../settings/CapabilitiesSection";
 import { PermissionsSection } from "../settings/PermissionsSection";
 import { ProviderSwitcher } from "../settings/ProviderSwitcher";
 import { SecretsManagerSection } from "../settings/SecretsManagerSection";
+import { WalletKeysSection } from "../settings/WalletKeysSection";
 import { SecuritySettingsSection } from "../settings/SecuritySettingsSection";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { ConfigPageView } from "./ConfigPageView";
@@ -1047,7 +1048,10 @@ export function SettingsView({
           bodyClassName="p-4 sm:p-5"
           ref={registerContentItem("wallet-rpc")}
         >
-          <ConfigPageView embedded />
+          <div className="space-y-6">
+            <WalletKeysSection />
+            <ConfigPageView embedded />
+          </div>
         </SettingsSection>
       )}
 
