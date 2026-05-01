@@ -17,6 +17,7 @@ export const wifiApp: OverlayApp = {
   description: "Scan, inspect, and connect to nearby Wi-Fi networks",
   category: "system",
   icon: null,
+  androidOnly: true,
   Component: WifiAppView,
 };
 
