@@ -1,5 +1,16 @@
 declare module "@elizaos/capacitor-appblocker" {
-  export * from "../../../native-plugins/appblocker/src/index";
+  export type {
+    AppBlockerPermissionResult,
+    AppBlockerPermissionStatus,
+    AppBlockerPlugin,
+    AppBlockerStatus,
+    BlockAppsOptions,
+    BlockAppsResult,
+    InstalledApp,
+    SelectAppsResult,
+    UnblockAppsResult,
+  } from "../../../native-plugins/appblocker/src/definitions";
+  export { AppBlocker } from "../../../native-plugins/appblocker/src/index";
 }
 
 declare module "@elizaos/capacitor-camera" {
