@@ -65,20 +65,28 @@ describe("external-credentials — 1Password", () => {
   });
 
   /**
-   * 1Password call helpers: every `op` invocation now starts with a
-   * `whoami` probe to detect desktop-app integration. These responders
-   * model the two paths:
-   *   - `whoamiFails` → desktop-app inactive; CLI falls back to stored session
-   *   - `whoamiOk`    → desktop-app active; no `--session=` flag is passed
+   * 1Password call helpers. Every `op` invocation now begins with:
+   *   1. `op account list --format=json` → pick the first account's
+   *      shorthand to disambiguate. Empty array means no account; we
+   *      drop the --account flag.
+   *   2. `op [--account=<sh>] whoami` → desktop-integration probe.
+   *
+   * `whoamiFails` / `whoamiOk` match either form (with or without the
+   * --account flag) so individual cases pick which side to test.
    */
+  const accountListEmpty = {
+    match: (_cmd: string, args: readonly string[]) =>
+      args[0] === "account" && args[1] === "list",
+    stdout: "[]",
+  };
   const whoamiFails = {
     match: (_cmd: string, args: readonly string[]) =>
-      args.length === 1 && args[0] === "whoami",
+      args.includes("whoami"),
     throws: new Error("not signed in"),
   };
   const whoamiOk = {
     match: (_cmd: string, args: readonly string[]) =>
-      args.length === 1 && args[0] === "whoami",
+      args.includes("whoami"),
     stdout:
       '{"user_uuid":"u","account_uuid":"a","url":"my.1password.com","email":"x@y","user_type":"REGULAR"}',
   };
@@ -87,14 +95,16 @@ describe("external-credentials — 1Password", () => {
     const calls: ExecCall[] = [];
     // Desktop-app probe fails (CLI not integrated), then session lookup
     // hits the empty vault and throws.
-    const exec = fakeExec([whoamiFails], calls);
+    const exec = fakeExec([accountListEmpty, whoamiFails], calls);
     await expect(listOnePasswordLogins(vault, exec)).rejects.toBeInstanceOf(
       BackendNotSignedInError,
     );
-    // Exactly one call: the desktop-app whoami probe. The session
-    // lookup happens against the vault (no exec call) and raises.
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.args).toEqual(["whoami"]);
+    // Two calls: account list probe (returns []), then desktop-app
+    // whoami probe (no --account flag because no accounts were found).
+    // Session lookup happens against the vault and raises.
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.args).toEqual(["account", "list", "--format=json"]);
+    expect(calls[1]?.args).toEqual(["whoami"]);
   });
 
   it("uses 1Password desktop-app integration when whoami succeeds without session", async () => {
@@ -103,6 +113,7 @@ describe("external-credentials — 1Password", () => {
     const calls: ExecCall[] = [];
     const exec = fakeExec(
       [
+        accountListEmpty,
         whoamiOk,
         {
           match: (_cmd, args) => args.includes("list"),
@@ -122,7 +133,9 @@ describe("external-credentials — 1Password", () => {
     );
     const out = await listOnePasswordLogins(vault, exec);
     expect(out).toHaveLength(1);
-    const listCall = calls.find((c) => c.args.includes("list"));
+    const listCall = calls.find(
+      (c) => c.args.includes("item") && c.args.includes("list"),
+    );
     expect(
       listCall?.args.some((a) => a.startsWith("--session=")),
       "desktop-app path must NOT pass --session",
@@ -157,9 +170,11 @@ describe("external-credentials — 1Password", () => {
     const calls: ExecCall[] = [];
     const exec = fakeExec(
       [
+        accountListEmpty,
         whoamiFails,
         {
-          match: (_cmd, args) => args.includes("list"),
+          match: (_cmd, args) =>
+            args.includes("item") && args.includes("list"),
           stdout: listJson,
         },
       ],
@@ -185,7 +200,9 @@ describe("external-credentials — 1Password", () => {
       domain: "example.slack.com",
     });
     // Session token must be passed via --session=, not BW_SESSION env.
-    const listCall = calls.find((c) => c.args.includes("list"));
+    const listCall = calls.find(
+      (c) => c.args.includes("item") && c.args.includes("list"),
+    );
     expect(listCall?.args).toContain("--session=TOKEN-OP");
     // No password field is included in any list response. The JSON
     // serialization mentions "1password" (the source id) but never carries
@@ -199,6 +216,7 @@ describe("external-credentials — 1Password", () => {
     const calls: ExecCall[] = [];
     const exec = fakeExec(
       [
+        accountListEmpty,
         whoamiFails,
         {
           match: (_cmd, args) => args.includes("list"),
@@ -232,6 +250,7 @@ describe("external-credentials — 1Password", () => {
     const calls: ExecCall[] = [];
     const exec = fakeExec(
       [
+        accountListEmpty,
         whoamiFails,
         { match: (_cmd, args) => args.includes("list"), stdout: "[]" },
       ],
@@ -239,9 +258,9 @@ describe("external-credentials — 1Password", () => {
     );
     const out = await listOnePasswordLogins(vault, exec);
     expect(out).toEqual([]);
-    // Critically: we never invoke `op item get -` for an empty list.
-    // The whoami probe + the list call = 2 calls; no enrichment.
-    expect(calls).toHaveLength(2);
+    // Critically: we never invoke `op item get` for an empty list.
+    // account list + whoami probe + item list = 3 calls; no enrichment.
+    expect(calls).toHaveLength(3);
     expect(calls.filter((c) => c.args.includes("get"))).toHaveLength(0);
   });
 
@@ -250,6 +269,7 @@ describe("external-credentials — 1Password", () => {
     const calls: ExecCall[] = [];
     const exec = fakeExec(
       [
+        accountListEmpty,
         whoamiFails,
         { match: (_cmd, args) => args.includes("list"), stdout: "not-json" },
       ],
@@ -274,6 +294,7 @@ describe("external-credentials — 1Password", () => {
     const calls: ExecCall[] = [];
     const exec = fakeExec(
       [
+        accountListEmpty,
         whoamiFails,
         {
           match: (_cmd, args) => args.includes("get") && args.includes("abc111"),
@@ -310,6 +331,7 @@ describe("external-credentials — 1Password", () => {
     const calls: ExecCall[] = [];
     const exec = fakeExec(
       [
+        accountListEmpty,
         whoamiOk,
         {
           match: (_cmd, args) => args.includes("get") && args.includes("abc111"),

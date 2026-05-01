@@ -314,30 +314,65 @@ async function readSessionToken(
 }
 
 /**
- * Resolve the `--session=...` args for an `op` invocation.
+ * Resolve op-invocation args (account + session) for one CLI call.
  *
- * When 1Password 8 desktop app integration is active, `op whoami` (with
- * no session) returns 0 and we don't pass any session flag — the CLI
- * authenticates against the running desktop app. When desktop integration
- * isn't available, we fall back to the stored session token; missing token
- * raises `BackendNotSignedInError` exactly like the legacy path.
+ * 1Password 8's `op` CLI refuses to pick a default account when more than
+ * one is registered — `op whoami` exits 1 with "account is not signed in"
+ * even when the desktop app integration is fully active. The fix: probe
+ * `op account list` once, pick the first registered account's shorthand,
+ * and pass `--account=<shorthand>` on every subsequent call. Then desktop
+ * integration triggers the normal Touch ID flow and the session-token
+ * fallback is only used when no account is registered at all.
  *
- * Returns `[]` for desktop-app, `["--session=<token>"]` for session-token.
+ * Returns `["--account=<sh>"]` for desktop-app and
+ * `["--account=<sh>", "--session=<token>"]` for session-token.
  */
 async function readOnePasswordSessionArgs(
   vault: Vault,
   exec: ExecFn,
 ): Promise<readonly string[]> {
-  if (await isOnePasswordDesktopActiveWithExec(exec)) {
-    return [];
+  const account = await readDefaultOpAccount(exec);
+  const accountArg = account ? [`--account=${account}`] : [];
+  if (await isOnePasswordDesktopActiveWithExec(exec, accountArg)) {
+    return accountArg;
   }
   const session = await readSessionToken(vault, "1password");
-  return [`--session=${session}`];
+  return [...accountArg, `--session=${session}`];
 }
 
-async function isOnePasswordDesktopActiveWithExec(exec: ExecFn): Promise<boolean> {
+async function readDefaultOpAccount(exec: ExecFn): Promise<string | null> {
   try {
-    await exec("op", ["whoami"], { timeoutMs: 3000 });
+    const out = await exec("op", ["account", "list", "--format=json"], {
+      timeoutMs: 3000,
+    });
+    const accounts = parseJsonArray<{
+      readonly shorthand?: string;
+      readonly url?: string;
+      readonly account_uuid?: string;
+    }>(out.stdout);
+    for (const a of accounts) {
+      if (typeof a.shorthand === "string" && a.shorthand.length > 0) {
+        return a.shorthand;
+      }
+      // Fall back to the URL hostname as the shorthand 1Password generates
+      // (e.g. "my" for my.1password.com) when shorthand is absent.
+      if (typeof a.url === "string") {
+        const sub = a.url.split(".")[0];
+        if (sub) return sub;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function isOnePasswordDesktopActiveWithExec(
+  exec: ExecFn,
+  accountArg: readonly string[],
+): Promise<boolean> {
+  try {
+    await exec("op", [...accountArg, "whoami"], { timeoutMs: 3000 });
     return true;
   } catch {
     return false;
