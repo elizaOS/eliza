@@ -55,6 +55,9 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/ui": "workspace:*"
   },
+  "peerDependencies": {
+    "react": "*"
+  },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {}

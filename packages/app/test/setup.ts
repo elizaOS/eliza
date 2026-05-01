@@ -58,7 +58,6 @@ interface ElectrobunTestWindow {
   __electrobunWindowId?: number;
   __electrobunWebviewId?: number;
   __ELIZA_ELECTROBUN_RPC__?: unknown;
-  __ELIZA_ELECTROBUN_RPC__?: unknown;
 }
 
 function isInjectedElectrobunRuntime(): boolean {
@@ -75,7 +74,7 @@ function createBridgeMock(extraExports: Record<string, unknown> = {}) {
   function getElectrobunRendererRpc() {
     if (typeof window === "undefined") return null;
     const w = window as ElectrobunTestWindow;
-    return w.__ELIZA_ELECTROBUN_RPC__ ?? w.__ELIZA_ELECTROBUN_RPC__ ?? null;
+    return w.__ELIZA_ELECTROBUN_RPC__ ?? null;
   }
 
   return {

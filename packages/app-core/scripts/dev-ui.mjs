@@ -26,9 +26,9 @@ import {
 } from "@elizaos/shared/runtime-env";
 import * as JSON5Module from "json5";
 import { createApiSupervisor } from "./lib/api-supervisor.mjs";
+import { relativeAppDir, resolveMainAppDir } from "./lib/app-dir.mjs";
 import { getBunVersionAdvisory } from "./lib/bun-version-guard.mjs";
 import { capacitorPluginsBuildNeeded } from "./lib/capacitor-plugin-build-needed.mjs";
-import { relativeAppDir, resolveMainAppDir } from "./lib/app-dir.mjs";
 import { coerceBoolean } from "./lib/dev-ui-onchain.mjs";
 import { buildVisionDepsFailureMessage } from "./lib/dev-ui-vision.mjs";
 import { signalSpawnedProcessTree } from "./lib/kill-process-tree.mjs";
@@ -399,6 +399,34 @@ function readPluginStealthFlag(entries, ids) {
   }
 
   return null;
+}
+
+function formatRelativeImportPath(relativePath) {
+  const normalized = relativePath.split(path.sep).join("/");
+  return normalized.startsWith("./") ? normalized : `./${normalized}`;
+}
+
+function resolveStealthImportPath(devCwd, candidatePaths) {
+  for (const candidatePath of candidatePaths) {
+    if (existsSync(path.join(devCwd, candidatePath))) {
+      return formatRelativeImportPath(candidatePath);
+    }
+  }
+  return null;
+}
+
+function addStealthImport(imports, label, candidatePaths) {
+  const resolvedPath = resolveStealthImportPath(cwd, candidatePaths);
+  if (resolvedPath) {
+    imports.push(resolvedPath);
+    return;
+  }
+
+  console.warn(
+    `  ${green(logPrefix)} ${orange(
+      `${label} stealth requested but no preload file was found. Tried: ${candidatePaths.join(", ")}`,
+    )}`,
+  );
 }
 
 function resolveStealthImportFlags() {
@@ -891,15 +919,26 @@ if (uiOnly) {
   // via env vars or plugin config in eliza.json.
   const stealth = resolveStealthImportFlags();
   const nodeStealthImports = [];
-  if (stealth.openai) nodeStealthImports.push("./openai-codex-stealth.mjs");
-  if (stealth.claude) nodeStealthImports.push("./claude-code-stealth.mjs");
+  if (stealth.openai) {
+    addStealthImport(nodeStealthImports, "OpenAI Codex", [
+      "packages/app-core/scripts/openai-codex-stealth.mjs",
+      "eliza/packages/app-core/scripts/openai-codex-stealth.mjs",
+      "openai-codex-stealth.mjs",
+    ]);
+  }
+  if (stealth.claude) {
+    addStealthImport(nodeStealthImports, "Claude Code", [
+      "packages/agent/src/auth/claude-code-stealth-preload.ts",
+      "eliza/packages/agent/src/auth/claude-code-stealth-preload.ts",
+      "packages/app-core/scripts/claude-code-stealth.mjs",
+      "eliza/packages/app-core/scripts/claude-code-stealth.mjs",
+      "claude-code-stealth.mjs",
+    ]);
+  }
 
-  const resolvedStealthImports = nodeStealthImports.filter((filePath) =>
-    existsSync(path.join(cwd, filePath)),
-  );
-  if (resolvedStealthImports.length > 0) {
+  if (nodeStealthImports.length > 0) {
     console.log(
-      `  ${green(logPrefix)} ${dim(`Stealth imports enabled: ${resolvedStealthImports.join(", ")}`)}`,
+      `  ${green(logPrefix)} ${dim(`Stealth imports enabled: ${nodeStealthImports.join(", ")}`)}`,
     );
   }
 
@@ -909,18 +948,15 @@ if (uiOnly) {
     ? [
         "bun",
         "--no-install",
-        ...resolvedStealthImports.flatMap((filePath) => [
-          "--preload",
-          filePath,
-        ]),
+        ...nodeStealthImports.flatMap((filePath) => ["--preload", filePath]),
         "--watch",
         devServerEntry,
       ]
     : [
         "node",
-        ...resolvedStealthImports.flatMap((filePath) => ["--import", filePath]),
         "--import",
         "tsx",
+        ...nodeStealthImports.flatMap((filePath) => ["--import", filePath]),
         "--watch",
         devServerEntry,
       ];

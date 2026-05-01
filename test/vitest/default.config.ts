@@ -15,6 +15,7 @@
  * eliza/packages/examples, eliza/packages/templates, eliza/packages/benchmarks.
  */
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { defineConfig } from "vitest/config";
 import {
@@ -61,11 +62,35 @@ const uiSourceRoot = getUiSourceRoot(repoRoot);
 const packageManifest: RootPackageManifest = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"),
 );
-const workspaceReactDir = path.join(repoRoot, "node_modules", "react");
-const workspaceReactDomDir = path.join(repoRoot, "node_modules", "react-dom");
-const workspaceReactTestRendererDir = path.join(
-  repoRoot,
-  "node_modules",
+
+function resolveInstalledPackageRoot(packageName: string): string {
+  const manifestCandidates = [
+    path.join(repoRoot, "package.json"),
+    path.join(elizaWorkspaceRoot, "package.json"),
+    path.join(elizaWorkspaceRoot, "packages", "app", "package.json"),
+    path.join(elizaWorkspaceRoot, "packages", "app-core", "package.json"),
+    path.join(elizaWorkspaceRoot, "packages", "ui", "package.json"),
+  ];
+
+  for (const manifestPath of manifestCandidates) {
+    if (!fs.existsSync(manifestPath)) continue;
+
+    try {
+      const requireFromManifest = createRequire(manifestPath);
+      return path.dirname(
+        requireFromManifest.resolve(`${packageName}/package.json`),
+      );
+    } catch {
+      // Try the next workspace manifest.
+    }
+  }
+
+  return path.join(repoRoot, "node_modules", packageName);
+}
+
+const workspaceReactDir = resolveInstalledPackageRoot("react");
+const workspaceReactDomDir = resolveInstalledPackageRoot("react-dom");
+const workspaceReactTestRendererDir = resolveInstalledPackageRoot(
   "react-test-renderer",
 );
 const workspaceReactEntry = path.join(workspaceReactDir, "index.js");
@@ -124,6 +149,16 @@ const elizaPluginAliases = workspacePluginPackageNames.flatMap(
 
     return aliases;
   },
+);
+const workspacePluginSourceAliases = getWorkspacePluginAliases(repoRoot, [
+  "plugin-agent-skills",
+  "plugin-browser-bridge",
+]);
+const pluginPdfSrc = path.join(
+  elizaWorkspaceRoot,
+  "plugins",
+  "plugin-pdf",
+  "typescript",
 );
 // Fall back to a stub when an optional plugin tarball has a broken entry point.
 const unresolvedPluginStubs = workspacePluginPackageNames
@@ -267,6 +302,24 @@ const vitestResolveAlias: ModuleAlias[] = [
       "index.ts",
     ),
   },
+  {
+    find: "@elizaos/scenario-schema",
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "packages",
+      "scenario-schema",
+      "index.js",
+    ),
+  },
+  {
+    find: /^@elizaos\/plugin-pdf$/,
+    replacement: path.join(pluginPdfSrc, "index.node.ts"),
+  },
+  {
+    find: /^@elizaos\/plugin-pdf\/(.+)$/,
+    replacement: path.join(pluginPdfSrc, "$1"),
+  },
+  ...workspacePluginSourceAliases,
   ...getOptionalPluginSdkAliases(repoRoot),
   // Keep the roles shim here so Vitest resolves it when the local eliza checkout is absent.
   {
@@ -303,7 +356,6 @@ const vitestResolveAlias: ModuleAlias[] = [
     "app-lifeops",
     "app-knowledge",
   ]),
-  ...getWorkspacePluginAliases(repoRoot, ["plugin-browser-bridge"]),
   ...getSharedSourceAliases(sharedSourceRoot, {
     includeMiladyAlias: true,
   }),
@@ -377,7 +429,9 @@ export default defineConfig({
       "apps/chrome-extension/**/*.test.tsx",
       "eliza/test/helpers/**/*.test.ts",
     ],
-    setupFiles: [path.join(elizaWorkspaceRoot, "packages/app-core/test/setup.ts")],
+    setupFiles: [
+      path.join(elizaWorkspaceRoot, "packages/app-core/test/setup.ts"),
+    ],
     exclude: [
       "dist/**",
       "**/node_modules/**",

@@ -191,18 +191,18 @@ describe("agent packaged runtime dependencies", () => {
   });
 
   it("keeps agent API exports on agent-owned transaction helpers", () => {
-    const agentApiIndex = readFileSync(
-      new URL("../../agent/src/api/index.ts", import.meta.url),
-      "utf8",
-    );
     const registryService = readFileSync(
       new URL("../../agent/src/api/registry-service.ts", import.meta.url),
       "utf8",
     );
+    const apiIndex = readFileSync(
+      new URL("../../agent/src/api/index.ts", import.meta.url),
+      "utf8",
+    );
 
-    expect(agentApiIndex).toContain('from "./tx-service.js"');
+    expect(apiIndex).toContain('from "./tx-service.js"');
     expect(registryService).toContain('from "./tx-service.js"');
-    expect(agentApiIndex).not.toContain("@elizaos/app-steward/api/tx-service");
+    expect(apiIndex).not.toContain("@elizaos/app-steward/api/tx-service");
     expect(registryService).not.toContain(
       "@elizaos/app-steward/api/tx-service",
     );

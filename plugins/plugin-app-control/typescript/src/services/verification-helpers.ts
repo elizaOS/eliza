@@ -29,11 +29,18 @@ export type PackageManager = "bun" | "pnpm" | "npm";
  * Falls back to `npm` when no lockfile is present.
  */
 export function detectPackageManager(workdir: string): PackageManager {
-	if (existsSync(path.join(workdir, "bun.lock"))) return "bun";
-	if (existsSync(path.join(workdir, "bun.lockb"))) return "bun";
-	if (existsSync(path.join(workdir, "pnpm-lock.yaml"))) return "pnpm";
-	if (existsSync(path.join(workdir, "package-lock.json"))) return "npm";
-	if (existsSync(path.join(workdir, "yarn.lock"))) return "npm"; // best fallback
+	let current = path.resolve(workdir);
+	while (true) {
+		if (existsSync(path.join(current, "bun.lock"))) return "bun";
+		if (existsSync(path.join(current, "bun.lockb"))) return "bun";
+		if (existsSync(path.join(current, "pnpm-lock.yaml"))) return "pnpm";
+		if (existsSync(path.join(current, "package-lock.json"))) return "npm";
+		if (existsSync(path.join(current, "yarn.lock"))) return "npm"; // best fallback
+
+		const parent = path.dirname(current);
+		if (parent === current) break;
+		current = parent;
+	}
 	return "npm";
 }
 

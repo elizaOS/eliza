@@ -7,13 +7,13 @@ on:
         description: "Generate code comments (T/F)"
         required: true
         default: "T"
-        type: string
+        type: choice
         options: [T, F]
       readme:
         description: "Generate README documentation (T/F)"
         required: true
         default: "T"
-        type: string
+        type: choice
         options: [T, F]
       pull_number:
         description: "Pull Request Number (if not provided, scans root_directory) - PR must be merged to develop branch. DONT provide if `README documentation` is T from above"

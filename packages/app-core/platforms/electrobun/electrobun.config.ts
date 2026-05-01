@@ -5,62 +5,57 @@ import type { ElectrobunConfig } from "electrobun/bun";
 
 const electrobunDir = path.dirname(fileURLToPath(import.meta.url));
 
-function hasOuterElizaElectrobunCheckout(candidateDir: string): boolean {
+export function hasElectrobunWorkspaceRoot(candidateDir: string): boolean {
   return (
     fs.existsSync(path.join(candidateDir, "bun.lock")) &&
     fs.existsSync(path.join(candidateDir, "package.json")) &&
-    fs.existsSync(path.join(candidateDir, "apps/app/package.json")) &&
-    fs.existsSync(
-      path.join(
-        candidateDir,
-        "eliza/packages/app-core/platforms/electrobun/package.json",
-      ),
-    )
-  );
-}
-
-function hasStandaloneElizaElectrobunCheckout(candidateDir: string): boolean {
-  return (
-    fs.existsSync(path.join(candidateDir, "bun.lock")) &&
-    fs.existsSync(path.join(candidateDir, "package.json")) &&
-    fs.existsSync(path.join(candidateDir, "packages/app/package.json")) &&
-    fs.existsSync(
+    (fs.existsSync(path.join(candidateDir, "packages/app/package.json")) ||
+      fs.existsSync(path.join(candidateDir, "apps/app/package.json"))) &&
+    (fs.existsSync(
       path.join(
         candidateDir,
         "packages/app-core/platforms/electrobun/package.json",
       ),
-    )
+    ) ||
+      fs.existsSync(
+        path.join(
+          candidateDir,
+          "eliza/packages/app-core/platforms/electrobun/package.json",
+        ),
+      ))
   );
 }
 
-function hasElectrobunWorkspaceRoot(candidateDir: string): boolean {
-  return (
-    hasOuterElizaElectrobunCheckout(candidateDir) ||
-    hasStandaloneElizaElectrobunCheckout(candidateDir)
+function hasOuterElizaElectrobunCheckout(candidateDir: string): boolean {
+  return fs.existsSync(
+    path.join(
+      candidateDir,
+      "eliza",
+      "packages",
+      "app-core",
+      "platforms",
+      "electrobun",
+      "package.json",
+    ),
   );
 }
 
-export function resolveElectrobunRepoRoot(startDir: string): string {
-  const configuredRoot = (
-    process.env.ELIZA_ELECTROBUN_REPO_ROOT ?? ""
-  ).trim();
-  if (configuredRoot) {
-    const repoRoot = path.resolve(configuredRoot);
-    if (!hasElectrobunWorkspaceRoot(repoRoot)) {
-      throw new Error(
-        `ELIZA_ELECTROBUN_REPO_ROOT does not point at an Electrobun workspace root: ${repoRoot}`,
-      );
-    }
-    return repoRoot;
-  }
-
+export function findMiladyRepoRoot(startDir: string): string {
   let current = path.resolve(startDir);
+  const matches: string[] = [];
   while (true) {
     if (hasElectrobunWorkspaceRoot(current)) {
-      return current;
+      matches.push(current);
     }
     const parent = path.dirname(current);
     if (parent === current) {
+      const outerWrapperRoot = matches.find(hasOuterElizaElectrobunCheckout);
+      if (outerWrapperRoot) {
+        return outerWrapperRoot;
+      }
+      if (matches[0]) {
+        return matches[0];
+      }
       throw new Error(
         `Could not locate monorepo root from Electrobun config at ${startDir}`,
       );
@@ -69,11 +64,22 @@ export function resolveElectrobunRepoRoot(startDir: string): string {
   }
 }
 
-function findMiladyRepoRoot(startDir: string): string {
-  return resolveElectrobunRepoRoot(startDir);
+export function resolveElectrobunRepoRoot(startDir: string): string {
+  const override = (process.env.ELIZA_ELECTROBUN_REPO_ROOT ?? "").trim();
+  if (override) {
+    const resolved = path.resolve(override);
+    if (!hasElectrobunWorkspaceRoot(resolved)) {
+      throw new Error(
+        `ELIZA_ELECTROBUN_REPO_ROOT does not point at an Electrobun workspace root: ${resolved}`,
+      );
+    }
+    return resolved;
+  }
+
+  return findMiladyRepoRoot(startDir);
 }
 
-const repoRoot = findMiladyRepoRoot(electrobunDir);
+const repoRoot = resolveElectrobunRepoRoot(electrobunDir);
 const rendererDistDir = path.relative(
   electrobunDir,
   fs.existsSync(path.join(repoRoot, "packages/app/package.json"))

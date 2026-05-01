@@ -19,10 +19,15 @@ const pluginSqlSrc = path.join(
   monorepoRoot,
   "plugins/plugin-sql/typescript",
 );
+const pluginAgentSkillsSrc = path.join(
+  monorepoRoot,
+  "plugins/plugin-agent-skills/typescript/src",
+);
 const pluginEdgeTtsSrc = path.join(
   monorepoRoot,
   "plugins/plugin-edge-tts/typescript",
 );
+const pluginPdfSrc = path.join(monorepoRoot, "plugins/plugin-pdf/typescript");
 const reactPkg = path.join(fileDir, "node_modules/react");
 const reactDomPkg = path.join(fileDir, "node_modules/react-dom");
 const includeLiveE2e =
@@ -87,6 +92,22 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-sql\/(.+)$/,
         replacement: path.join(pluginSqlSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/plugin-agent-skills$/,
+        replacement: path.join(pluginAgentSkillsSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-agent-skills\/(.+)$/,
+        replacement: path.join(pluginAgentSkillsSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/plugin-pdf$/,
+        replacement: path.join(pluginPdfSrc, "index.node.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-pdf\/(.+)$/,
+        replacement: path.join(pluginPdfSrc, "$1"),
       },
       {
         find: /^@elizaos\/plugin-edge-tts\/node$/,

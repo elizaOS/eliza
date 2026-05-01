@@ -38,8 +38,8 @@ type TsScenario = {
   finalChecks?: ScenarioFinalCheck[];
 };
 
-const REPO_ROOT = path.resolve(import.meta.dirname, "../../../..");
-const ELIZA_SCENARIO_ROOT = path.join(REPO_ROOT, "eliza", "test", "scenarios");
+const ELIZA_ROOT = path.resolve(import.meta.dirname, "../../..");
+const ELIZA_SCENARIO_ROOT = path.join(ELIZA_ROOT, "test", "scenarios");
 
 const BLOCKER_SCENARIOS = [
   {

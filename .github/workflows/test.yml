@@ -107,6 +107,12 @@ jobs:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
       TURBO_REMOTE_ONLY: true
+      # Several plugins declare pytest-xprocess as a dev dep but none use it.
+      # Its pytest_terminal_summary hook was the last thing to print before
+      # plugin-tests hung for 33 minutes in run 25234887145, so disable it
+      # globally as a precaution. Safe: `-p no:NAME` is a no-op when NAME
+      # isn't installed.
+      PYTEST_ADDOPTS: "-p no:xprocess"
     steps:
       - uses: actions/checkout@v6
         with:
@@ -127,6 +133,7 @@ jobs:
           no-vision-deps: "true"
 
       - name: Run plugin tests
+        timeout-minutes: 35
         run: bun run test:plugins
 
   desktop-contract:
