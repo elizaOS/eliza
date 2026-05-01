@@ -195,7 +195,7 @@ jobs:
 
       - name: Upload debug APK
         if: ${{ hashFiles('packages/app/android/app/build/outputs/apk/debug/app-debug.apk') != '' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: android-debug-apk
           path: packages/app/android/app/build/outputs/apk/debug/app-debug.apk
