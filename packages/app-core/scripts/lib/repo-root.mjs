@@ -5,7 +5,8 @@ import { fileURLToPath } from "node:url";
 function looksLikeElizaSubrepoRoot(dir) {
   return (
     existsSync(path.join(dir, "package.json")) &&
-    existsSync(path.join(dir, "apps", "app", "package.json")) &&
+    (existsSync(path.join(dir, "packages", "app", "package.json")) ||
+      existsSync(path.join(dir, "apps", "app", "package.json"))) &&
     existsSync(path.join(dir, "eliza", "packages", "app-core", "package.json"))
   );
 }

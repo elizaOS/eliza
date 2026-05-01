@@ -45,7 +45,7 @@ const uiPkgRoot = path.join(elizaRoot, "packages/ui");
 const capacitorCoreEntry = _require.resolve("@capacitor/core");
 const patheEntry = _require.resolve("pathe");
 // Other Capacitor packages imported by eliza/packages/app-core sources.
-// Resolved here (apps/app scope) so Rollup can find them when bundling
+// Resolved here (packages/app scope) so Rollup can find them when bundling
 // files from within the eliza submodule tree where bun may not hoist them.
 function tryResolve(id: string): string | undefined {
   try {
@@ -408,7 +408,7 @@ function resolveElizaCoreBundlePath(): string {
   const bunBrowser = findElizaCoreBundleInBunStore("browser");
   if (bunBrowser) {
     console.warn(
-      `[eliza][vite] @elizaos/core not resolvable from apps/app${pkgDir ? ` (pkgDir=${pkgDir} has no dist/)` : ""}; using bun cache build at ${bunBrowser}. ` +
+      `[eliza][vite] @elizaos/core not resolvable from packages/app${pkgDir ? ` (pkgDir=${pkgDir} has no dist/)` : ""}; using bun cache build at ${bunBrowser}. ` +
         "Run `bun run build` in your eliza checkout or ELIZA_SKIP_LOCAL_ELIZA=1 bun install to align versions.",
     );
     return bunBrowser;
@@ -416,12 +416,12 @@ function resolveElizaCoreBundlePath(): string {
   const bunNode = findElizaCoreBundleInBunStore("node");
   if (bunNode) {
     console.warn(
-      `[eliza][vite] @elizaos/core not resolvable from apps/app${pkgDir ? ` (pkgDir=${pkgDir})` : ""}; using bun cache node bundle at ${bunNode}.`,
+      `[eliza][vite] @elizaos/core not resolvable from packages/app${pkgDir ? ` (pkgDir=${pkgDir})` : ""}; using bun cache node bundle at ${bunNode}.`,
     );
     return bunNode;
   }
   throw new Error(
-    `[eliza][vite] @elizaos/core has no built artifacts${pkgDir ? ` under ${pkgDir}` : " (not resolvable from apps/app)"} and none in node_modules/.bun. ` +
+    `[eliza][vite] @elizaos/core has no built artifacts${pkgDir ? ` under ${pkgDir}` : " (not resolvable from packages/app)"} and none in node_modules/.bun. ` +
       "Expected src/index.browser.ts, dist/browser/index.browser.js, dist/index.browser.js, dist/node/index.node.js, or dist/index.node.js. " +
       "Build your local eliza workspace or run `ELIZA_SKIP_LOCAL_ELIZA=1 bun install`.",
   );

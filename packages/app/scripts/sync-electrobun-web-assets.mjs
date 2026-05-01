@@ -20,7 +20,7 @@ async function ensureDirExists(dir) {
 if (!(await ensureDirExists(sourceDir))) {
   console.error(`${LOG_PREFIX} Web build output not found: ${sourceDir}`);
   console.error(
-    `${LOG_PREFIX} Run \`bun run build\` from apps/app before syncing Electrobun assets.`,
+    `${LOG_PREFIX} Run \`bun run build\` from packages/app before syncing Electrobun assets.`,
   );
   process.exit(1);
 }
