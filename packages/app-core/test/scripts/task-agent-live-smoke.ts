@@ -344,6 +344,44 @@ function codexHasStoredAuth(): boolean {
   }
 }
 
+function codexNonInteractiveAuthWorks(): boolean {
+  if (!codexHasStoredAuth()) {
+    return false;
+  }
+
+  const workdir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "codex-live-preflight-"),
+  );
+  try {
+    const output = execFileSync(
+      "codex",
+      [
+        "exec",
+        "--cd",
+        workdir,
+        "--sandbox",
+        "workspace-write",
+        "--skip-git-repo-check",
+        "--color",
+        "never",
+        "-c",
+        'approval_policy="never"',
+        "Reply with exactly CODEX_LIVE_PREFLIGHT_OK.",
+      ],
+      {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: 60_000,
+      },
+    );
+    return output.includes("CODEX_LIVE_PREFLIGHT_OK");
+  } catch {
+    return false;
+  } finally {
+    fs.rmSync(workdir, { recursive: true, force: true });
+  }
+}
+
 function claudeHasDeterministicAuth(): boolean {
   if (process.env.ANTHROPIC_API_KEY?.trim()) {
     return true;
@@ -384,7 +422,7 @@ function isFrameworkAuthenticated(framework: Framework): boolean {
     }
 
     if (codexHasStoredAuth()) {
-      return true;
+      return codexNonInteractiveAuthWorks();
     }
 
     const output = execFileSync("codex", ["login", "status"], {
@@ -392,7 +430,7 @@ function isFrameworkAuthenticated(framework: Framework): boolean {
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 5_000,
     });
-    return /\blogged in\b/i.test(output);
+    return /\blogged in\b/i.test(output) && codexNonInteractiveAuthWorks();
   } catch (error) {
     const detail =
       error instanceof Error
@@ -406,7 +444,7 @@ function isFrameworkAuthenticated(framework: Framework): boolean {
         detail,
       ) &&
       framework === "codex" &&
-      codexHasStoredAuth()
+      codexNonInteractiveAuthWorks()
     );
   }
 }
