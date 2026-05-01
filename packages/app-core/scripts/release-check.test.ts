@@ -190,9 +190,9 @@ describe("agent packaged runtime dependencies", () => {
     expect(appBlockerEngine).not.toContain('"@elizaos/agent"');
   });
 
-  it("keeps agent API startup on agent-owned transaction helpers", () => {
-    const server = readFileSync(
-      new URL("../../agent/src/api/server.ts", import.meta.url),
+  it("keeps agent API exports on agent-owned transaction helpers", () => {
+    const agentApiIndex = readFileSync(
+      new URL("../../agent/src/api/index.ts", import.meta.url),
       "utf8",
     );
     const registryService = readFileSync(
@@ -200,9 +200,9 @@ describe("agent packaged runtime dependencies", () => {
       "utf8",
     );
 
-    expect(server).toContain('from "./tx-service.js"');
+    expect(agentApiIndex).toContain('from "./tx-service.js"');
     expect(registryService).toContain('from "./tx-service.js"');
-    expect(server).not.toContain("@elizaos/app-steward/api/tx-service");
+    expect(agentApiIndex).not.toContain("@elizaos/app-steward/api/tx-service");
     expect(registryService).not.toContain(
       "@elizaos/app-steward/api/tx-service",
     );

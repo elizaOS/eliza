@@ -78,7 +78,10 @@ export function WalletKeysSection() {
     try {
       const res = await fetch("/api/secrets/inventory?category=wallet");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = (await res.json()) as { entries: VaultEntryMeta[] };
+      const json = (await res.json()) as { entries?: unknown };
+      if (!Array.isArray(json.entries)) {
+        throw new Error("Invalid wallet inventory response");
+      }
       setEntries(json.entries);
     } catch (err) {
       setError(err instanceof Error ? err.message : "load failed");

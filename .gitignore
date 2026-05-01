@@ -354,6 +354,7 @@ packages/elizaos/examples/
 # Local workspaces / sandboxes
 /swe-bench-workspace/
 /3DAvatarChatbot/
+/tmp-live/
 
 # Handoff notes (local only, do not commit)
 *handoff*.md

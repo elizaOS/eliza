@@ -63,7 +63,7 @@
     "migrate:generate": "turbo run migrate:generate --filter=./packages/plugin-sql",
     "test": "node scripts/run-all-tests.mjs",
     "test:all": "node scripts/run-all-tests.mjs",
-    "test:plugins": "bun run build:core && turbo run test --concurrency 3 --filter='./plugins/*'",
+    "test:plugins": "bun run build:core && turbo run test --concurrency 3 --filter='./plugins/*' --filter='!@elizaos/plugin-agent-orchestrator' && turbo run test --concurrency 1 --filter='@elizaos/plugin-agent-orchestrator'",
     "test:client": "bun run build:core && TEST_PACKAGE_FILTER='\\((packages/app|packages/ui|apps/app-lifeops|apps/app-companion|apps/app-training)\\)' TEST_SCRIPT_FILTER='^test$' node scripts/run-all-tests.mjs",
     "test:core": "turbo run test --filter=./packages/typescript",
     "test:server": "bun run build:core && TEST_PACKAGE_FILTER='\\((packages/agent|packages/app-core|packages/shared|packages/typescript|packages/confidant|packages/elizaos|packages/schemas|packages/skills|packages/interop|packages/scenario-runner)\\)' TEST_SCRIPT_FILTER='^test$' node scripts/run-all-tests.mjs",

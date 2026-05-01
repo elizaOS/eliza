@@ -47,7 +47,7 @@ import {
   PTYService,
   sendToAgentAction,
   spawnAgentAction,
-} from "@elizaos/plugin-agent-orchestrator";
+} from "../../../../plugins/plugin-agent-orchestrator/src/index.ts";
 import {
   type AppStructuredProofClaim,
   parseStructuredProofDirective,
@@ -587,8 +587,12 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
 
   const firstFileName = `FIRST_${agentType.toUpperCase()}.txt`;
   const secondFileName = `SECOND_${agentType.toUpperCase()}.txt`;
+  const firstDoneFileName = `FIRST_${agentType.toUpperCase()}.done`;
+  const secondDoneFileName = `SECOND_${agentType.toUpperCase()}.done`;
   const firstFilePath = path.join(workdir, firstFileName);
   const secondFilePath = path.join(workdir, secondFileName);
+  const firstDoneFilePath = path.join(workdir, firstDoneFileName);
+  const secondDoneFilePath = path.join(workdir, secondDoneFileName);
   const firstSentinel = `LIVE_REUSE_${agentType.toUpperCase()}_FIRST_DONE`;
   const secondSentinel = `LIVE_REUSE_${agentType.toUpperCase()}_SECOND_DONE`;
 
@@ -601,8 +605,9 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
       createMessage({
         agentType,
         workdir,
+        keepAliveAfterComplete: true,
         task:
-          `Create a file named ${firstFileName} in the current directory containing exactly "${agentType}-first". ` +
+          `Use your shell tool to write exactly "${agentType}-first" to ${firstFilePath} and exactly "${firstSentinel}" to ${firstDoneFilePath}. ` +
           `Then print exactly "${firstSentinel}". Do not ask follow-up questions.`,
       }) as never,
       undefined,
@@ -645,6 +650,9 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
         if (!fs.existsSync(firstFilePath)) return false;
         const fileText = fs.readFileSync(firstFilePath, "utf8").trim();
         if (fileText !== `${agentType}-first`) return false;
+        if (!fs.existsSync(firstDoneFilePath)) return false;
+        const doneText = fs.readFileSync(firstDoneFilePath, "utf8").trim();
+        if (doneText !== firstSentinel) return false;
         const output = cleanForChat(await service.getSessionOutput(sessionId));
         return (
           output.includes(firstSentinel) ||
@@ -661,7 +669,7 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
       createMessage({
         sessionId,
         task:
-          `Now create a second file named ${secondFileName} containing exactly "${agentType}-second". ` +
+          `Use your shell tool to write exactly "${agentType}-second" to ${secondFilePath} and exactly "${secondSentinel}" to ${secondDoneFilePath}. ` +
           `Then print exactly "${secondSentinel}". Stay available for more work afterward and do not ask follow-up questions.`,
       }) as never,
       undefined,
@@ -675,6 +683,9 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
         if (!fs.existsSync(secondFilePath)) return false;
         const fileText = fs.readFileSync(secondFilePath, "utf8").trim();
         if (fileText !== `${agentType}-second`) return false;
+        if (!fs.existsSync(secondDoneFilePath)) return false;
+        const doneText = fs.readFileSync(secondDoneFilePath, "utf8").trim();
+        if (doneText !== secondSentinel) return false;
         const output = cleanForChat(await service.getSessionOutput(sessionId));
         return (
           output.includes(secondSentinel) ||

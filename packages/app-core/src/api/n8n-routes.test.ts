@@ -1068,7 +1068,6 @@ describe("n8n POST /api/n8n/workflows/generate", () => {
     // Argument shapes
     expect(generateWorkflowDraft).toHaveBeenCalledWith(
       "create a hello workflow",
-      undefined,
     );
     expect(deployWorkflow).toHaveBeenCalledWith(draft, "agent-abc");
     expect(getWorkflow).toHaveBeenCalledWith("wf-123");

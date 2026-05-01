@@ -349,6 +349,14 @@ function tryResolveElizaCorePkgDir(): string | null {
 }
 
 function resolveElizaCoreSourceBrowserPath(): string | null {
+  const workspaceSourceBrowserEntry = path.join(
+    elizaRoot,
+    "packages/typescript/src/index.browser.ts",
+  );
+  if (fs.existsSync(workspaceSourceBrowserEntry)) {
+    return workspaceSourceBrowserEntry;
+  }
+
   const pkgDir = tryResolveElizaCorePkgDir();
   if (!pkgDir) return null;
   const sourceBrowserEntry = path.join(pkgDir, "src/index.browser.ts");
@@ -1192,6 +1200,8 @@ function nativeModuleStubPlugin(): Plugin {
         AgentEventService: "function(){}",
         AutonomyService: "function(){}",
         createBasicCapabilitiesPlugin: "function(){return{name:'stub'}}",
+        resolveStateDir: "function(){return '/.milady'}",
+        runPluginMigrations: "async function(){}",
       };
       // Check which are actually missing from the existing export block
       const needed = Object.keys(missingExports).filter((n) => {

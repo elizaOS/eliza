@@ -1,7 +1,7 @@
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("./lifeops/service.js", () => ({
+vi.mock("../lifeops/service.js", () => ({
   LifeOpsService: class LifeOpsService {},
   LifeOpsServiceError: class LifeOpsServiceError extends Error {
     status: number;

@@ -1,44 +1,32 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+// @vitest-environment jsdom
 
-vi.mock("../config/boot-config", () => {
-  let _config: Record<string, unknown> = {};
-  return {
-    getBootConfig: () => _config,
-    setBootConfig: (c: Record<string, unknown>) => {
-      _config = { ..._config, ...c };
-    },
-  };
-});
-
-vi.mock("../utils/eliza-globals", () => ({
-  setElizaApiToken: vi.fn(),
-  clearElizaApiToken: vi.fn(),
-  getElizaApiToken: vi.fn(() => null),
-  setElizaApiBase: vi.fn(),
-  clearElizaApiBase: vi.fn(),
-  getElizaApiBase: vi.fn(() => ""),
-}));
-
-import { getBootConfig, setBootConfig } from "../config/boot-config";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  clearElizaApiToken,
-  setElizaApiToken,
-} from "../utils/eliza-globals";
+  DEFAULT_BOOT_CONFIG,
+  getBootConfig,
+  setBootConfig,
+} from "../config/boot-config";
+import type { ElizaWindow } from "../utils/eliza-globals";
+import { ElizaClient } from "./client-base";
 
-// ElizaClient is a class with constructor side effects; import after mocks.
-const { ElizaClient } = await import("./client-base");
+function resetRuntimeConfig(): void {
+  setBootConfig({ ...DEFAULT_BOOT_CONFIG });
+  const elizaWindow = window as ElizaWindow;
+  delete elizaWindow.__ELIZAOS_API_TOKEN__;
+  delete elizaWindow.__ELIZA_API_TOKEN__;
+  delete elizaWindow.__MILADY_API_TOKEN__;
+}
 
 describe("ElizaClient.setToken", () => {
-  let client: InstanceType<typeof ElizaClient>;
+  let client: ElizaClient;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    setBootConfig({});
+    resetRuntimeConfig();
     client = new ElizaClient();
   });
 
   afterEach(() => {
-    vi.clearAllMocks();
+    resetRuntimeConfig();
   });
 
   it("writes apiToken to bootConfig", () => {
@@ -48,7 +36,9 @@ describe("ElizaClient.setToken", () => {
 
   it("calls setElizaApiToken with the trimmed token", () => {
     client.setToken("  spaced  ");
-    expect(setElizaApiToken).toHaveBeenCalledWith("spaced");
+    const elizaWindow = window as ElizaWindow;
+    expect(elizaWindow.__ELIZAOS_API_TOKEN__).toBe("spaced");
+    expect(elizaWindow.__ELIZA_API_TOKEN__).toBe("spaced");
   });
 
   it("clears apiToken from bootConfig when null", () => {
@@ -58,18 +48,26 @@ describe("ElizaClient.setToken", () => {
   });
 
   it("calls clearElizaApiToken when token is null", () => {
+    client.setToken("my-token");
     client.setToken(null);
-    expect(clearElizaApiToken).toHaveBeenCalled();
+    const elizaWindow = window as ElizaWindow;
+    expect(elizaWindow.__ELIZAOS_API_TOKEN__).toBeUndefined();
+    expect(elizaWindow.__ELIZA_API_TOKEN__).toBeUndefined();
   });
 
   it("calls clearElizaApiToken when token is empty string", () => {
+    client.setToken("my-token");
     client.setToken("");
-    expect(clearElizaApiToken).toHaveBeenCalled();
+    const elizaWindow = window as ElizaWindow;
+    expect(elizaWindow.__ELIZAOS_API_TOKEN__).toBeUndefined();
+    expect(elizaWindow.__ELIZA_API_TOKEN__).toBeUndefined();
   });
 
   it("trims whitespace from token", () => {
     client.setToken("  hello  ");
+    const elizaWindow = window as ElizaWindow;
     expect(getBootConfig().apiToken).toBe("hello");
-    expect(setElizaApiToken).toHaveBeenCalledWith("hello");
+    expect(elizaWindow.__ELIZAOS_API_TOKEN__).toBe("hello");
+    expect(elizaWindow.__ELIZA_API_TOKEN__).toBe("hello");
   });
 });
