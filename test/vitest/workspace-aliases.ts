@@ -434,18 +434,31 @@ export function getWorkspacePluginAliases(
   const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
   return pluginNames.flatMap((pluginName) => {
     const pluginRoot = path.join(elizaWorkspaceRoot, "plugins", pluginName);
-    const pluginSourceRoot = path.join(pluginRoot, "src");
-    const pluginEntry = path.join(pluginSourceRoot, "index.ts");
+    const candidates = [
+      {
+        packageRoot: pluginRoot,
+        sourceRoot: path.join(pluginRoot, "src"),
+      },
+      {
+        packageRoot: path.join(pluginRoot, "typescript"),
+        sourceRoot: path.join(pluginRoot, "typescript", "src"),
+      },
+    ];
 
-    if (!existsSync(pluginEntry)) {
-      return [];
+    for (const { packageRoot, sourceRoot } of candidates) {
+      const pluginEntry = path.join(sourceRoot, "index.ts");
+      if (!existsSync(pluginEntry)) {
+        continue;
+      }
+
+      return [
+        ...getWorkspacePackageExportAliases(pluginName, packageRoot),
+        ...getPackageSourceAliases(pluginName, sourceRoot, {
+          rootReplacement: pluginEntry,
+        }),
+      ];
     }
 
-    return [
-      ...getWorkspacePackageExportAliases(pluginName, pluginRoot),
-      ...getPackageSourceAliases(pluginName, pluginSourceRoot, {
-        rootReplacement: pluginEntry,
-      }),
-    ];
+    return [];
   });
 }

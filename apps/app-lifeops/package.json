@@ -65,7 +65,10 @@
     "telegram": "2.26.22"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.4.0"
+    "@electric-sql/pglite": "^0.4.0",
+    "@elizaos/scenario-schema": "workspace:*",
+    "@types/jsdom": "^28.0.0",
+    "jsdom": "^29.0.0"
   },
   "peerDependencies": {
     "react": "*"
