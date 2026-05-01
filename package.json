@@ -130,7 +130,7 @@
     "has-ansi": "6.0.2",
     "ai": "6.0.172",
     "@ai-sdk/provider": "3.0.10",
-    "@ai-sdk/provider-utils": "4.0.25",
+    "@ai-sdk/provider-utils": "4.0.26",
     "@ai-sdk/openai": "3.0.55",
     "pg-native": "npm:empty-npm-package@1.0.0",
     "libpq": "npm:empty-npm-package@1.0.0",
