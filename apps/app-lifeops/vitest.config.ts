@@ -2,19 +2,18 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
-import baseConfig from "../../../test/vitest/default.config";
+import baseConfig from "../../test/vitest/default.config";
+import { repoRoot } from "../../test/vitest/repo-root";
+import { getElizaWorkspaceRoot } from "../../test/vitest/workspace-aliases";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(here, "..", "..", "..");
-const elizaRoot = path.resolve(here, "..", "..");
+const elizaRoot = getElizaWorkspaceRoot(repoRoot);
 const packageRootFromRepo = path
   .relative(repoRoot, here)
   .split(path.sep)
   .join("/");
-const appCoreTestSetup = path.resolve(
-  here,
-  "..",
-  "..",
+const appCoreTestSetup = path.join(
+  elizaRoot,
   "packages",
   "app-core",
   "test",
@@ -23,6 +22,7 @@ const appCoreTestSetup = path.resolve(
 function resolveNodePackageRoot(packageName: string): string {
   const directCandidates = [
     path.join(here, "node_modules", packageName),
+    path.join(elizaRoot, "node_modules", packageName),
     path.join(repoRoot, "node_modules", packageName),
   ];
   for (const candidate of directCandidates) {

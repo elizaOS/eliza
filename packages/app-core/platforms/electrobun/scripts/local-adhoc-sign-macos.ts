@@ -7,6 +7,7 @@ import path from "node:path";
 
 type ExecFileSyncFn = typeof execFileSync;
 type SpawnSyncFn = typeof spawnSync;
+type EntitlementValue = boolean | string | string[];
 
 function escapePlistString(value: string): string {
   return value
@@ -17,15 +18,21 @@ function escapePlistString(value: string): string {
     .replaceAll("'", "&apos;");
 }
 
-function renderPlistValue(value: boolean | string): string {
+function renderPlistValue(value: EntitlementValue): string {
   if (typeof value === "boolean") {
     return value ? "<true/>" : "<false/>";
+  }
+  if (Array.isArray(value)) {
+    const entries = value
+      .map((item) => `    <string>${escapePlistString(item)}</string>`)
+      .join("\n");
+    return `<array>\n${entries}\n  </array>`;
   }
   return `<string>${escapePlistString(value)}</string>`;
 }
 
 export function createEntitlementsPlist(
-  entitlements: Record<string, boolean | string>,
+  entitlements: Record<string, EntitlementValue>,
 ): string {
   const entries = Object.entries(entitlements)
     .sort(([left], [right]) => left.localeCompare(right))
@@ -123,7 +130,7 @@ export function collectMacCodeSignTargets(appBundlePath: string): string[] {
 
 export function signLocalAppBundle(args: {
   appBundlePath: string;
-  entitlements: Record<string, boolean | string>;
+  entitlements: Record<string, EntitlementValue>;
   expectedIdentifier: string;
   execFile?: ExecFileSyncFn;
   spawnFile?: SpawnSyncFn;
@@ -188,9 +195,13 @@ async function main(): Promise<void> {
   }
 
   const electrobunConfig = (await import("../electrobun.config")).default;
+  const entitlements = electrobunConfig.build?.mac?.entitlements;
+  if (!entitlements) {
+    throw new Error("[local-sign] missing macOS entitlements in Electrobun config");
+  }
   signLocalAppBundle({
     appBundlePath,
-    entitlements: electrobunConfig.build.mac.entitlements,
+    entitlements,
     expectedIdentifier: electrobunConfig.app.identifier,
   });
   console.log(`[local-sign] signed ${path.resolve(appBundlePath)}`);

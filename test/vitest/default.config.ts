@@ -36,6 +36,7 @@ import {
   getAppCorePluginFallbackPath,
   getAppCoreSourceAliases,
   getElizaCoreRolesEntry,
+  getElizaWorkspaceRoot,
   getOptionalInstalledPackageAliases,
   getOptionalPluginSdkAliases,
   getSharedSourceAliases,
@@ -50,6 +51,7 @@ interface RootPackageManifest {
   devDependencies?: Record<string, string>;
 }
 
+const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
 const elizaCoreEntry = getElizaCoreEntry(repoRoot);
 const elizaCoreRolesEntry = getElizaCoreRolesEntry(repoRoot);
 const autonomousSourceRoot = getAutonomousSourceRoot(repoRoot);
@@ -128,15 +130,7 @@ const unresolvedPluginStubs = workspacePluginPackageNames
   .filter((name) => !resolvedPluginNames.has(name))
   .map((name) => ({
     find: name,
-    replacement: path.join(
-      repoRoot,
-      "eliza",
-      "packages",
-      "app-core",
-      "test",
-      "stubs",
-      "plugin-fallback-module.mjs",
-    ),
+    replacement: getAppCorePluginFallbackPath(repoRoot),
   }));
 const isCI = process.env.CI === "true" || process.env.GITHUB_ACTIONS === "true";
 const isWindows = process.platform === "win32";
@@ -214,13 +208,16 @@ const vitestResolveAlias: ModuleAlias[] = [
     // load with "Cannot find package".
     find: /^@elizaos\/plugin-sql$/,
     replacement: path.join(
-      repoRoot,
-      "eliza/plugins/plugin-sql/typescript/index.node.ts",
+      elizaWorkspaceRoot,
+      "plugins/plugin-sql/typescript/index.node.ts",
     ),
   },
   {
     find: /^@elizaos\/plugin-sql\/(.+)$/,
-    replacement: path.join(repoRoot, "eliza/plugins/plugin-sql/typescript/$1"),
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "plugins/plugin-sql/typescript/$1",
+    ),
   },
   {
     // App-core tests mock this plugin, but Vitest still has to resolve the specifier.
@@ -230,8 +227,7 @@ const vitestResolveAlias: ModuleAlias[] = [
   {
     find: "@elizaos/capacitor-llama",
     replacement: path.join(
-      repoRoot,
-      "eliza",
+      elizaWorkspaceRoot,
       "packages",
       "native-plugins",
       "llama",
@@ -243,8 +239,7 @@ const vitestResolveAlias: ModuleAlias[] = [
     // Transitively imported via app-lifeops; resolve to source so subpath imports work.
     find: "@elizaos/plugin-telegram/account-auth-service",
     replacement: path.join(
-      repoRoot,
-      "eliza",
+      elizaWorkspaceRoot,
       "plugins",
       "plugin-telegram",
       "src",
@@ -254,8 +249,7 @@ const vitestResolveAlias: ModuleAlias[] = [
   {
     find: "@elizaos/plugin-sql/schema",
     replacement: path.join(
-      repoRoot,
-      "eliza",
+      elizaWorkspaceRoot,
       "plugins",
       "plugin-sql",
       "typescript",
@@ -266,8 +260,7 @@ const vitestResolveAlias: ModuleAlias[] = [
   {
     find: "@elizaos/plugin-telegram",
     replacement: path.join(
-      repoRoot,
-      "eliza",
+      elizaWorkspaceRoot,
       "plugins",
       "plugin-telegram",
       "src",
@@ -384,7 +377,7 @@ export default defineConfig({
       "apps/chrome-extension/**/*.test.tsx",
       "eliza/test/helpers/**/*.test.ts",
     ],
-    setupFiles: [path.join(repoRoot, "eliza/packages/app-core/test/setup.ts")],
+    setupFiles: [path.join(elizaWorkspaceRoot, "packages/app-core/test/setup.ts")],
     exclude: [
       "dist/**",
       "**/node_modules/**",

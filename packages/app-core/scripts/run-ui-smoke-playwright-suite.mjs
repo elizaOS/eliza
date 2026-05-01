@@ -3,6 +3,7 @@ import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveMainAppDir } from "./lib/app-dir.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const candidateRoots = [
@@ -11,14 +12,11 @@ const candidateRoots = [
 ];
 const repoRoot =
   candidateRoots.find((candidate) =>
-    fs.existsSync(
-      path.join(candidate, "apps", "app", "scripts", "run-ui-playwright.mjs"),
-    ),
+    fs.existsSync(path.join(resolveMainAppDir(candidate, "app"), "package.json")),
   ) ?? path.resolve(here, "..");
+const appDir = resolveMainAppDir(repoRoot, "app");
 const uiPlaywrightRunner = path.join(
-  repoRoot,
-  "apps",
-  "app",
+  appDir,
   "scripts",
   "run-ui-playwright.mjs",
 );

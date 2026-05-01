@@ -30,7 +30,7 @@ const runs = [
     cmd: nodeCmd,
     args: [path.join(".", "node_modules", ".bin", "vitest"), "run"],
     vitest: true,
-    cwd: "apps/app",
+    cwd: "packages/app",
     reportFile: path.join(os.tmpdir(), "eliza-vitest-app-unit-report.json"),
   },
   {

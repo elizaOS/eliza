@@ -5,17 +5,18 @@ import baseConfig from "./default.config";
 import { repoRoot } from "./repo-root";
 import {
   getElizaCoreRolesEntry,
+  getElizaWorkspaceRoot,
   getOptionalResolvedAliases,
   getWorkspacePluginAliases,
   type ModuleAlias,
 } from "./workspace-aliases";
 
+const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
 const elizaCoreEntry = getElizaCoreEntry(repoRoot);
 
-// Alias @elizaos/core to the submodule source only when its dependencies are installed.
+// Alias @elizaos/core to workspace source only when its dependencies are installed.
 const elizaCoreSource = path.join(
-  repoRoot,
-  "eliza",
+  elizaWorkspaceRoot,
   "packages",
   "typescript",
   "src",
@@ -24,7 +25,7 @@ const elizaCoreSource = path.join(
 const useLocalElizaCore =
   existsSync(elizaCoreSource) &&
   existsSync(
-    path.join(repoRoot, "eliza", "packages", "typescript", "node_modules"),
+    path.join(elizaWorkspaceRoot, "packages", "typescript", "node_modules"),
   );
 
 // Keep the roles shim here too; the base config owns a separate alias array.
@@ -37,8 +38,7 @@ const unitAliasEntries: ModuleAlias[] = [
     {
       find: "@elizaos/plugin-telegram/account-auth-service",
       replacement: path.join(
-        repoRoot,
-        "eliza",
+        elizaWorkspaceRoot,
         "plugins",
         "plugin-telegram",
         "src",
@@ -48,8 +48,7 @@ const unitAliasEntries: ModuleAlias[] = [
     {
       find: "@elizaos/plugin-anthropic",
       replacement: path.join(
-        repoRoot,
-        "eliza",
+        elizaWorkspaceRoot,
         "plugins",
         "plugin-anthropic",
         "typescript",
@@ -59,8 +58,7 @@ const unitAliasEntries: ModuleAlias[] = [
     {
       find: "@elizaos/plugin-cli",
       replacement: path.join(
-        repoRoot,
-        "eliza",
+        elizaWorkspaceRoot,
         "plugins",
         "plugin-cli",
         "typescript",
@@ -82,8 +80,7 @@ const unitAliasEntries: ModuleAlias[] = [
           {
             find: "@elizaos/core/testing",
             replacement: path.join(
-              repoRoot,
-              "eliza",
+              elizaWorkspaceRoot,
               "packages",
               "typescript",
               "src",

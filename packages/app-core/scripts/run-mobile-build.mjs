@@ -1746,7 +1746,7 @@ async function buildAndroidSystem() {
   // AOSP product builds set MILADY_GRADLE_AOSP_BUILD=true upstream so
   // gradle bakes BuildConfig.AOSP_BUILD=true into the privileged APK.
   // The Capacitor APK path leaves it false; both share the same gradle
-  // because the apps/app/android/ tree is regenerated each run.
+  // because the packages/app/android/ tree is regenerated each run.
   const gradleArgs = [":app:assembleRelease"];
   if (
     process.env.MILADY_GRADLE_AOSP_BUILD === "true" ||

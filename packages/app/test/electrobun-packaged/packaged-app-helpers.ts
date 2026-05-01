@@ -13,15 +13,17 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../../..");
 const electrobunArtifactsDir = path.join(
   repoRoot,
-  "apps",
-  "app",
+  "packages",
+  "app-core",
+  "platforms",
   "electrobun",
   "artifacts",
 );
 const electrobunBuildDir = path.join(
   repoRoot,
-  "apps",
-  "app",
+  "packages",
+  "app-core",
+  "platforms",
   "electrobun",
   "build",
 );

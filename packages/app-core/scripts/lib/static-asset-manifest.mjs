@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-export const APP_PUBLIC_REPO_PREFIX = "apps/app/public";
+export const APP_PUBLIC_REPO_PREFIX = "packages/app/public";
 export const HOMEPAGE_PUBLIC_REPO_PREFIX = "packages/homepage/public";
 export const STATIC_ASSET_MANIFEST_REPO_PATH =
   "scripts/generated/static-asset-manifest.json";

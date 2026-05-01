@@ -20,7 +20,7 @@ import {
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const upstreamAppsDir = path.resolve(here, "../../../../../apps");
-const rendererPublicDir = path.resolve(upstreamAppsDir, "app/public");
+const rendererPublicDir = path.resolve(here, "../../../../app/public");
 
 function makeCatalogCandidate(
   name: string,

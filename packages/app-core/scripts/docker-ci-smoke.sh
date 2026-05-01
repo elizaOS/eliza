@@ -102,17 +102,21 @@ cd "$REPO_ROOT"
 [[ -f package.json ]] || fail "Run from the repo root"
 if [[ -d packages/app-core ]]; then
   # Inside the eliza repo (canonical layout): app-core at packages/,
-  # the app entry point at apps/app/.
+  # the app entry point at packages/app/.
   APP_CORE_DIR="packages/app-core"
   PACKAGES_DIR="packages"
-  APP_DIR="apps/app"
+  APP_DIR="packages/app"
   PLUGINS_DIR="plugins"
 elif [[ -d eliza/packages/app-core ]]; then
   # Inside the milady outer repo where eliza is a submodule: app-core
-  # is nested under eliza/, but the app remains at apps/app/.
+  # is nested under eliza/, while the host app can live in apps/app.
   APP_CORE_DIR="eliza/packages/app-core"
   PACKAGES_DIR="eliza/packages"
-  APP_DIR="apps/app"
+  if [[ -d apps/app ]]; then
+    APP_DIR="apps/app"
+  else
+    APP_DIR="eliza/packages/app"
+  fi
   PLUGINS_DIR="eliza/plugins"
 else
   fail "packages/app-core not found"

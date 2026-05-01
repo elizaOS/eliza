@@ -197,9 +197,9 @@
     {
       "name": "app-ui-smoke",
       "globs": [
-        "apps/app/test/ui-smoke/**",
-        "apps/app/playwright.ui-smoke.config.ts",
-        "apps/app/scripts/run-ui-playwright.mjs",
+        "packages/app/test/ui-smoke/**",
+        "packages/app/playwright.ui-smoke.config.ts",
+        "packages/app/scripts/run-ui-playwright.mjs",
         "eliza/packages/app-core/scripts/run-ui-smoke-playwright-suite.mjs",
         "eliza/packages/app-core/scripts/playwright-ui-live-stack.ts"
       ],
@@ -211,9 +211,9 @@
     {
       "name": "electrobun",
       "globs": [
-        "apps/app/electrobun/**",
-        "apps/app/playwright.electrobun.packaged.config.ts",
-        "apps/app/test/electrobun-packaged/**"
+        "packages/app/electrobun/**",
+        "packages/app/playwright.electrobun.packaged.config.ts",
+        "packages/app/test/electrobun-packaged/**"
       ],
       "workflowSuites": {
         "pr": ["vitest-real", "desktop-contract"],
