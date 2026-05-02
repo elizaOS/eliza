@@ -111,7 +111,7 @@ You can now:
         }
       }
     } catch (error) {
-      logger.error("Failed to authenticate:", error);
+      logger.error("Failed to authenticate:", error instanceof Error ? error.message : String(error));
       
       if (callback) {
         callback({

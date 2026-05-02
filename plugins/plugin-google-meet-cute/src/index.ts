@@ -88,7 +88,7 @@ export const googleMeetPlugin: Plugin = {
     } catch (error) {
       logger.error(
         "Google Meet plugin configuration validation failed:",
-        error,
+        error instanceof Error ? error.message : String(error),
       );
       throw new Error(
         `Invalid Google Meet plugin configuration: ${error instanceof Error ? error.message : String(error)}`,

@@ -34,7 +34,7 @@ export const meetingProvider: Provider = {
       
       return { text };
     } catch (error) {
-      logger.error("Error in meeting provider:", error);
+      logger.error("Error in meeting provider:", error instanceof Error ? error.message : String(error));
       return { text: "Error retrieving meeting information" };
     }
   }

@@ -16,22 +16,24 @@ export class GoogleAuthService extends Service {
   constructor(runtime: IAgentRuntime) {
     super(runtime);
     
-    const clientId = runtime.getSetting("GOOGLE_CLIENT_ID");
-    const clientSecret = runtime.getSetting("GOOGLE_CLIENT_SECRET");
-    const redirectUri = runtime.getSetting("GOOGLE_REDIRECT_URI") || "http://localhost:3000/oauth2callback";
-    
+    const clientId = runtime.getSetting("GOOGLE_CLIENT_ID") as string | undefined;
+    const clientSecret = runtime.getSetting("GOOGLE_CLIENT_SECRET") as string | undefined;
+    const redirectUri =
+      (runtime.getSetting("GOOGLE_REDIRECT_URI") as string | undefined) ||
+      "http://localhost:3000/oauth2callback";
+
     if (!clientId || !clientSecret) {
       throw new Error("Google OAuth2 credentials not configured. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET");
     }
-    
+
     this.oauth2Client = new OAuth2Client(
       clientId,
       clientSecret,
       redirectUri
     );
-    
+
     // Check if we have a refresh token
-    const refreshToken = runtime.getSetting("GOOGLE_REFRESH_TOKEN");
+    const refreshToken = runtime.getSetting("GOOGLE_REFRESH_TOKEN") as string | undefined;
     if (refreshToken) {
       this.oauth2Client.setCredentials({
         refresh_token: refreshToken
@@ -103,14 +105,16 @@ export class GoogleAuthService extends Service {
           }
         }
       } catch (error) {
-        logger.error("OAuth callback error:", error);
+        logger.error("OAuth callback error:", error instanceof Error ? error.message : String(error));
         res.writeHead(500, { 'Content-Type': 'text/html' });
         res.end('<h1>Authentication failed!</h1><p>Check the logs for details.</p>');
         server.close();
       }
     });
     
-    const redirectUri = this.runtime.getSetting("GOOGLE_REDIRECT_URI") || "http://localhost:3000/oauth2callback";
+    const redirectUri =
+      (this.runtime.getSetting("GOOGLE_REDIRECT_URI") as string | undefined) ||
+      "http://localhost:3000/oauth2callback";
     const port = new URL(redirectUri).port || "3000";
     server.listen(parseInt(port));
     
