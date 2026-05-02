@@ -499,34 +499,46 @@ if (-not $launcher) {
   # Attempt 1: direct Start-Process invocation
   $installerProcess = Start-Process -FilePath $installer.FullName -ArgumentList $installerArgs -WorkingDirectory (Split-Path -Parent $installer.FullName) -PassThru -Wait
   if ($installerProcess.ExitCode -ne 0) {
-    Write-Host "Inno Setup installer attempt 1 failed with exit code $($installerProcess.ExitCode)."
+    Write-Host "Inno Setup installer attempt 1 exited with code $($installerProcess.ExitCode)."
     if (Test-Path $installerLogPath) {
       Write-Host "--- Inno Setup log (attempt 1) ---"
       Get-Content $installerLogPath -Tail 100 | ForEach-Object { Write-Host $_ }
       Write-Host "--- end Inno Setup log ---"
     }
 
-    # Attempt 2: retry via cmd /c — workaround for Windows Server 2025 headless
-    # runners where Start-Process cannot allocate a console subsystem for the
-    # Inno Setup decompressor, causing exit code -1.
-    Write-Host "Retrying installer via cmd /c (headless fallback)..."
-    Remove-Item $installerRoot -Recurse -Force -ErrorAction SilentlyContinue
-    New-Item -ItemType Directory -Force -Path $installerRoot | Out-Null
-    Remove-Item $installerLogPath -Force -ErrorAction SilentlyContinue
+    # On Windows Server 2025 headless runners, Inno Setup can return bogus
+    # exit codes (5, -1) even when the install actually succeeded. Check if
+    # launcher.exe exists before wiping and retrying.
+    $attempt1Launcher = Find-Launcher $installerRoot
+    if ($attempt1Launcher) {
+      Write-Host "Installer reported failure but launcher.exe exists at $attempt1Launcher — treating as success (headless runner quirk)."
+    } else {
+      # Attempt 2: retry via cmd /c — workaround for Windows Server 2025 headless
+      # runners where Start-Process cannot allocate a console subsystem for the
+      # Inno Setup decompressor.
+      Write-Host "Retrying installer via cmd /c (headless fallback)..."
+      Remove-Item $installerRoot -Recurse -Force -ErrorAction SilentlyContinue
+      New-Item -ItemType Directory -Force -Path $installerRoot | Out-Null
+      Remove-Item $installerLogPath -Force -ErrorAction SilentlyContinue
 
-    $cmdArgs = @($installerArgs | ForEach-Object { "`"$_`"" }) -join " "
-    $cmdLine = "`"$($installer.FullName)`" $cmdArgs"
-    $cmdProcess = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", $cmdLine -WorkingDirectory (Split-Path -Parent $installer.FullName) -PassThru -Wait
-    if ($cmdProcess.ExitCode -ne 0) {
-      Write-Host "Inno Setup installer attempt 2 (cmd /c) failed with exit code $($cmdProcess.ExitCode)."
-      if (Test-Path $installerLogPath) {
-        Write-Host "--- Inno Setup log (attempt 2) ---"
-        Get-Content $installerLogPath -Tail 100 | ForEach-Object { Write-Host $_ }
-        Write-Host "--- end Inno Setup log ---"
-      } else {
-        Write-Host "Inno Setup log not found at $installerLogPath"
+      $cmdArgs = @($installerArgs | ForEach-Object { "`"$_`"" }) -join " "
+      $cmdLine = "`"$($installer.FullName)`" $cmdArgs"
+      $cmdProcess = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", $cmdLine -WorkingDirectory (Split-Path -Parent $installer.FullName) -PassThru -Wait
+
+      $attempt2Launcher = Find-Launcher $installerRoot
+      if ($attempt2Launcher) {
+        Write-Host "cmd /c attempt reported exit code $($cmdProcess.ExitCode) but launcher.exe exists — treating as success."
+      } elseif ($cmdProcess.ExitCode -ne 0) {
+        Write-Host "Inno Setup installer attempt 2 (cmd /c) failed with exit code $($cmdProcess.ExitCode)."
+        if (Test-Path $installerLogPath) {
+          Write-Host "--- Inno Setup log (attempt 2) ---"
+          Get-Content $installerLogPath -Tail 100 | ForEach-Object { Write-Host $_ }
+          Write-Host "--- end Inno Setup log ---"
+        } else {
+          Write-Host "Inno Setup log not found at $installerLogPath"
+        }
+        throw "Windows installer exited with code $($cmdProcess.ExitCode) (both direct and cmd /c attempts failed)"
       }
-      throw "Windows installer exited with code $($cmdProcess.ExitCode) (both direct and cmd /c attempts failed)"
     }
   }
 
