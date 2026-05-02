@@ -40,8 +40,7 @@ export interface GitHubCredentials {
 export type GitHubCredentialMetadata = Omit<GitHubCredentials, "token">;
 
 function resolveStateDir(): string {
-  const explicit =
-    process.env.ELIZA_STATE_DIR?.trim() || process.env.ELIZA_STATE_DIR?.trim();
+  const explicit = process.env.ELIZA_STATE_DIR?.trim();
   if (explicit) return path.resolve(explicit);
   const home =
     process.env.HOME?.trim() ||

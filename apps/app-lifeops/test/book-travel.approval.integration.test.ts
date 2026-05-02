@@ -416,14 +416,12 @@ function installApprovalResolutionModelStub(requestId: string, reason: string) {
 beforeAll(async () => {
   envBackup = saveEnv(
     "ELIZA_STATE_DIR",
-    "ELIZA_STATE_DIR",
     "DUFFEL_API_KEY",
     "ELIZA_DUFFEL_DIRECT",
   );
   stateDir = await fs.promises.mkdtemp(
     path.join(os.tmpdir(), "book-travel-approval-"),
   );
-  process.env.ELIZA_STATE_DIR = stateDir;
   process.env.ELIZA_STATE_DIR = stateDir;
   process.env.DUFFEL_API_KEY = "duffel-test-key";
   process.env.ELIZA_DUFFEL_DIRECT = "1";

@@ -65,11 +65,7 @@ export interface Confidant {
 }
 
 export function createConfidant(opts: ConfidantOptions = {}): Confidant {
-  const root = process.env.ELIZA_STATE_DIR
-    ? process.env.ELIZA_STATE_DIR
-    : process.env.ELIZA_STATE_DIR
-      ? process.env.ELIZA_STATE_DIR
-      : join(homedir(), ".eliza");
+  const root = process.env.ELIZA_STATE_DIR ?? join(homedir(), ".eliza");
   const storePath = opts.storePath ?? join(root, "confidant.json");
   const auditPath = opts.auditLogPath ?? join(root, "audit", "confidant.jsonl");
   const masterKeyResolver =

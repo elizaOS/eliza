@@ -32,8 +32,7 @@ const RESET_PROOF_FILENAME = "RESET_PROOF.txt";
 
 /** Resolve the eliza state dir without importing service modules. */
 function resolveElizaStateDir(): string {
-  const explicit =
-    process.env.ELIZA_STATE_DIR?.trim() || process.env.ELIZA_STATE_DIR?.trim();
+  const explicit = process.env.ELIZA_STATE_DIR?.trim();
   if (explicit) return path.resolve(explicit);
   const home =
     process.env.HOME?.trim() ||

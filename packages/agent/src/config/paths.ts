@@ -2,11 +2,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const STATE_DIR_OVERRIDE_KEYS = ["ELIZA_STATE_DIR", "ELIZA_STATE_DIR"] as const;
-const CONFIG_PATH_OVERRIDE_KEYS = [
-  "ELIZA_CONFIG_PATH",
-  "ELIZA_CONFIG_PATH",
-] as const;
+const STATE_DIR_OVERRIDE_KEYS = ["ELIZA_STATE_DIR"] as const;
+const CONFIG_PATH_OVERRIDE_KEYS = ["ELIZA_CONFIG_PATH"] as const;
 
 function readEnvOverride(
   env: NodeJS.ProcessEnv,
@@ -151,7 +148,7 @@ const STEWARD_CREDENTIALS_FILENAME = "steward-credentials.json";
 
 /**
  * Canonical path to the persisted Steward credentials file.
- * Honors `ELIZA_STATE_DIR` / `ELIZA_STATE_DIR` / `ELIZA_NAMESPACE`; falls back
+ * Honors `ELIZA_STATE_DIR` / `ELIZA_NAMESPACE`; falls back
  * to `~/.<namespace>/steward-credentials.json` (default namespace = `eliza`).
  */
 export function resolveStewardCredentialsPath(

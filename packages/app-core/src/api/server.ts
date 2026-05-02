@@ -213,16 +213,12 @@ function resolveCompatConfigPaths(): {
   elizaConfigPath?: string;
   appConfigPath?: string;
 } {
-  const sharedStateDir =
-    process.env.ELIZA_STATE_DIR?.trim() || process.env.ELIZA_STATE_DIR?.trim();
-  const appConfigPath =
-    process.env.ELIZA_CONFIG_PATH?.trim() ||
-    (sharedStateDir ? path.join(sharedStateDir, "eliza.json") : undefined);
-  const elizaConfigPath =
+  const sharedStateDir = process.env.ELIZA_STATE_DIR?.trim();
+  const configPath =
     process.env.ELIZA_CONFIG_PATH?.trim() ||
     (sharedStateDir ? path.join(sharedStateDir, "eliza.json") : undefined);
 
-  return { elizaConfigPath, appConfigPath };
+  return { elizaConfigPath: configPath, appConfigPath: configPath };
 }
 
 export function syncCompatConfigFiles(): void {

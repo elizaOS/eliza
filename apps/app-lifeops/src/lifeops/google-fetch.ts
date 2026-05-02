@@ -10,8 +10,7 @@ const TIMEOUT_MS = 10_000;
  * Used in tests to point all Google API traffic at a Mockoon environment.
  */
 export function rewriteGoogleUrlForMock(url: string): string {
-  const mockBase =
-    process.env.ELIZA_MOCK_GOOGLE_BASE ?? process.env.ELIZA_MOCK_GOOGLE_BASE;
+  const mockBase = process.env.ELIZA_MOCK_GOOGLE_BASE;
   if (!mockBase) return url;
   const mockUrl = new URL(mockBase);
   if (

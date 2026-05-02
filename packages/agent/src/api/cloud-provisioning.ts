@@ -3,10 +3,7 @@ function hasValue(value: string | undefined): boolean {
 }
 
 function hasCompatApiToken(): boolean {
-  return (
-    hasValue(process.env.ELIZA_API_TOKEN) ||
-    hasValue(process.env.ELIZA_API_TOKEN)
-  );
+  return hasValue(process.env.ELIZA_API_TOKEN);
 }
 
 function hasCloudApiKeyProvisioning(): boolean {

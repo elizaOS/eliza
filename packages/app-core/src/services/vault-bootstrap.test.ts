@@ -42,15 +42,11 @@ function createSandbox(): Sandbox {
   const configEnvPath = path.join(stateDir, "config.env");
   const prevEnv: Record<string, string | undefined> = {
     ELIZA_STATE_DIR: process.env.ELIZA_STATE_DIR,
-    ELIZA_STATE_DIR: process.env.ELIZA_STATE_DIR,
-    ELIZA_CONFIG_PATH: process.env.ELIZA_CONFIG_PATH,
     ELIZA_CONFIG_PATH: process.env.ELIZA_CONFIG_PATH,
     ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE,
   };
   const clearedSensitive = snapshotAndClearSensitiveProcessEnv();
   process.env.ELIZA_STATE_DIR = stateDir;
-  process.env.ELIZA_STATE_DIR = stateDir;
-  process.env.ELIZA_CONFIG_PATH = configPath;
   process.env.ELIZA_CONFIG_PATH = configPath;
   process.env.ELIZA_NAMESPACE = "eliza";
   return {

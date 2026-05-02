@@ -17,9 +17,7 @@ import path from "node:path";
 // src/utils/state-dir.ts: ELIZA_STATE_DIR > ELIZA_STATE_DIR > ~/.eliza.
 function resolveStateDir(): string {
   return (
-    process.env.ELIZA_STATE_DIR?.trim() ||
-    process.env.ELIZA_STATE_DIR?.trim() ||
-    path.join(homedir(), ".eliza")
+    process.env.ELIZA_STATE_DIR?.trim() || path.join(homedir(), ".eliza")
   );
 }
 

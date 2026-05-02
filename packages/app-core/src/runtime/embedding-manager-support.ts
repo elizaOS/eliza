@@ -58,10 +58,8 @@ export const DEFAULT_MODELS_DIR = path.join(os.homedir(), ".eliza", "models");
 
 const EMBEDDING_META_DIR =
   process.env.ELIZA_EMBEDDING_META_DIR ??
-  process.env.ELIZA_EMBEDDING_META_DIR ??
   path.join(os.homedir(), ".eliza", "state");
 export const EMBEDDING_META_PATH =
-  process.env.ELIZA_EMBEDDING_META_PATH ??
   process.env.ELIZA_EMBEDDING_META_PATH ??
   path.join(EMBEDDING_META_DIR, "embedding-meta.json");
 

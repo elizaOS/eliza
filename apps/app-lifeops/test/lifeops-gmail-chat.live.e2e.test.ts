@@ -219,7 +219,6 @@ async function startLiveServer(): Promise<StartedLiveServer> {
   const envBackup = saveEnv(
     ...Object.keys(LIVE_PROVIDER?.env ?? {}),
     "ELIZA_STATE_DIR",
-    "ELIZA_STATE_DIR",
     "ELIZA_GOOGLE_OAUTH_DESKTOP_CLIENT_ID",
     "PGLITE_DATA_DIR",
   );
@@ -227,7 +226,6 @@ async function startLiveServer(): Promise<StartedLiveServer> {
   for (const [key, value] of Object.entries(LIVE_PROVIDER?.env ?? {})) {
     process.env[key] = value;
   }
-  process.env.ELIZA_STATE_DIR = stateDir;
   process.env.ELIZA_STATE_DIR = stateDir;
   process.env.ELIZA_GOOGLE_OAUTH_DESKTOP_CLIENT_ID = GOOGLE_CLIENT_ID;
 

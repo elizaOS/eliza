@@ -81,7 +81,6 @@ function isStewardConfigured(): boolean {
   const url = process.env.STEWARD_API_URL?.trim();
   const agentId =
     process.env.STEWARD_AGENT_ID?.trim() ||
-    process.env.ELIZA_STEWARD_AGENT_ID?.trim() ||
     process.env.ELIZA_STEWARD_AGENT_ID?.trim();
   return Boolean(url && agentId);
 }

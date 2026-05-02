@@ -104,9 +104,7 @@ const TELEGRAM_ACCOUNT_AUTH_STATUSES = new Set<TelegramAccountAuthStatus>([
 
 function resolveStateDir(): string {
   return (
-    process.env.ELIZA_STATE_DIR?.trim() ||
-    process.env.ELIZA_STATE_DIR?.trim() ||
-    path.join(os.homedir(), ".eliza")
+    process.env.ELIZA_STATE_DIR?.trim() || path.join(os.homedir(), ".eliza")
   );
 }
 

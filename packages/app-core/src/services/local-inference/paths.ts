@@ -17,8 +17,7 @@ import os from "node:os";
 import path from "node:path";
 
 export function localInferenceRoot(): string {
-  const stateDir =
-    process.env.ELIZA_STATE_DIR?.trim() || process.env.ELIZA_STATE_DIR?.trim();
+  const stateDir = process.env.ELIZA_STATE_DIR?.trim();
   const base = stateDir || path.join(os.homedir(), ".eliza");
   return path.join(base, "local-inference");
 }

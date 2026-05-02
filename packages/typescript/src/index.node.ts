@@ -140,7 +140,7 @@ export * from "./utils/environment";
 export * from "./utils/prompt-compression";
 // Export Node-specific utilities
 export * from "./utils/server-health";
-// Eliza state-dir resolution (ELIZA_STATE_DIR → ELIZA_STATE_DIR → ~/.eliza)
+// Eliza state-dir resolution (ELIZA_STATE_DIR → ~/.eliza)
 export * from "./utils/state-dir";
 // Export streaming utilities
 export * from "./utils/streaming";
