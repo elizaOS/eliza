@@ -52,7 +52,7 @@ async function graphApiRequest<T>(
   options: RequestInit = {},
 ): Promise<T> {
   const url = new URL(endpoint.startsWith("http") ? endpoint : `${GRAPH_API_BASE}${endpoint}`);
-  if (!options.method === "GET") {
+  if (options.method === "GET") {
     url.searchParams.set("access_token", accessToken);
   }
 

@@ -133,7 +133,7 @@ const editMessage: Action = {
 			// Get the channel
 			let channel: TextChannel | null = null;
 
-			if (!editParams.channelRef === "current") {
+			if (editParams.channelRef === "current") {
 				const channelId = message.content.channelId as string;
 				if (channelId) {
 					channel = discordService.client.channels.cache.get(

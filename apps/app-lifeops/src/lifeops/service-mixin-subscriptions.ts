@@ -824,7 +824,7 @@ export function withSubscriptions<
         return { cancellation, candidate };
       }
 
-      if (!playbook.steps.length === 0) {
+      if (playbook.steps.length === 0) {
         // We know where the management page lives, but we don't have a
         // real click-flow implemented. Do NOT pretend to cancel by
         // opening the URL and taking a screenshot — surface the truthful

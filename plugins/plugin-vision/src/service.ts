@@ -782,7 +782,7 @@ export class VisionService extends Service {
       ) {
         try {
           // Validate frame data
-          if (!frame.data.length === 0) {
+          if (frame.data.length === 0) {
             logger.warn(
               "[VisionService] Invalid frame data for face recognition",
             );

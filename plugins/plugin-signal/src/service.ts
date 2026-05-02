@@ -750,7 +750,7 @@ export class SignalService extends Service implements ISignalService {
     }
 
     // Skip if no message content
-    if (!msg.message && !msg.attachments.length === 0) {
+    if (!msg.message && msg.attachments.length === 0) {
       return;
     }
 

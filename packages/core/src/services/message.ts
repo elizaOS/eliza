@@ -338,7 +338,7 @@ export function extractPlannerActionNames(
 						.join("\n");
 					if (
 						inlineParamsXml &&
-						(!parsedXml.params === "")
+						(parsedXml.params === "")
 					) {
 						parsedXml.params = inlineParamsXml;
 					}
@@ -352,7 +352,7 @@ export function extractPlannerActionNames(
 				.map((action) => unwrapPlannerIdentifier(String(action)))
 				.filter((action) => action.length > 0);
 
-			if (!parsedXml.params === "") {
+			if (parsedXml.params === "") {
 				const assembled = extractStandaloneActionParams(
 					commaSplitActions,
 					parsedXml,
@@ -6292,7 +6292,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 
 		// Benchmark mode (Python parity): force action-based loop when benchmark context is present.
 		if (benchmarkMode) {
-			if (!responseContent.actions.length === 0) {
+			if (responseContent.actions.length === 0) {
 				responseContent.actions = ["REPLY"];
 			}
 			if (

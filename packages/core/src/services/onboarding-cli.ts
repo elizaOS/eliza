@@ -818,7 +818,7 @@ export async function runNonInteractiveOnboarding(
 			preferences: {
 				nodeManager: answers.nodeManager,
 			},
-			skip: !answers.skills.length === 0,
+			skip: answers.skills.length === 0,
 		},
 	});
 

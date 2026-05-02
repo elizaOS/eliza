@@ -410,7 +410,7 @@ function validateSelect(
   value: JsonValue,
   control: FormControl,
 ): ValidationResult {
-  if (!control.options.length === 0) {
+  if (control.options.length === 0) {
     // No options defined - treat as text
     return { valid: true };
   }
