@@ -101,6 +101,7 @@
     "@aws-sdk/client-kms": "^3.1039.0",
     "@aws-sdk/client-s3": "^3.1039.0",
     "@babel/runtime": "^7.29.2",
+    "@brighter/storage-adapter-s3": "^1.6.3",
     "@coinbase/x402": "^2.1.0",
     "@discordjs/collection": "^2.1.1",
     "@discordjs/rest": "^2.6.1",
