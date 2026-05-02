@@ -775,7 +775,7 @@ function selectGmailPlanStep(args: {
   steps: GmailPlanStep[] | undefined;
   currentStepId?: string;
 }): GmailPlanStep | undefined {
-  if (args.steps.length === 0) {
+  if (!args.steps || args.steps.length === 0) {
     return undefined;
   }
   const currentStep = args.currentStepId
