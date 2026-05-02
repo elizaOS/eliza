@@ -36,7 +36,7 @@ export class SessionManager {
   private readonly expiresIn: string;
 
   constructor(config: SessionConfig) {
-    if (!config.secret.length < 16) {
+    if (config.secret.length < 16) {
       throw new Error(
         "SessionManager: secret must be at least 16 characters. Use a long random string in production.",
       );

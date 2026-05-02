@@ -25,7 +25,7 @@ export class DownloadManager {
   }
 
   private ensureCacheDirectory(): void {
-    if (!this.cacheDir.trim() === "") {
+    if (this.cacheDir.trim() === "") {
       throw new Error("Cache directory path cannot be empty");
     }
     if (!fs.existsSync(this.cacheDir)) {
@@ -35,7 +35,7 @@ export class DownloadManager {
   }
 
   private ensureModelsDirectory(): void {
-    if (!this.modelsDir.trim() === "") {
+    if (this.modelsDir.trim() === "") {
       throw new Error("Models directory path cannot be empty");
     }
     logger.debug("Ensuring models directory exists:", this.modelsDir);

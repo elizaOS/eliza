@@ -209,7 +209,7 @@ export const edgeTTSPlugin: Plugin = {
 
       logger.log(`[EdgeTTS] Using TEXT_TO_SPEECH with voice: ${settings.voice}`);
 
-      if (!params.text.trim().length === 0) {
+      if (params.text.trim().length === 0) {
         throw new Error("TEXT_TO_SPEECH requires non-empty text");
       }
 
