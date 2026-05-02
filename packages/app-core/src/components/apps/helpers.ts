@@ -49,6 +49,12 @@ export const APPS_VIEW_HIDDEN_APP_NAMES = [
   "@elizaos/app-knowledge",
   "@elizaos/app-screenshare",
   "@elizaos/app-task-coordinator",
+  // Android-only system apps (declared `androidOnly: true` in their
+  // package.json elizaos.app block). They are surfaced inside the
+  // Android shell, never the desktop / web catalog.
+  "@elizaos/app-contacts",
+  "@elizaos/app-phone",
+  "@elizaos/app-wifi",
 ] as const;
 
 const APPS_VIEW_HIDDEN_APP_NAME_SET = new Set<string>(
