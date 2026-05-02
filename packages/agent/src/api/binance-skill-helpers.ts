@@ -40,6 +40,8 @@ type RuntimeActionLike = Pick<
   "name" | "similes" | "validate" | "handler"
 >;
 
+const LIFEOPS_PUBLIC_MODULE: string = "@elizaos/app-lifeops/public";
+
 let selfControlFallbackActionsPromise: Promise<{
   BLOCK_WEBSITES?: RuntimeActionLike;
   REQUEST_WEBSITE_BLOCKING_PERMISSION?: RuntimeActionLike;
@@ -56,7 +58,10 @@ async function resolveBuiltInFallbackAction(
   }
 
   if (!selfControlFallbackActionsPromise) {
-    selfControlFallbackActionsPromise = import("@elizaos/app-lifeops/public")
+    selfControlFallbackActionsPromise = import(
+      /* @vite-ignore */ LIFEOPS_PUBLIC_MODULE
+    )
+      .then((mod) => mod as Record<string, RuntimeActionLike | undefined>)
       .then((mod) => ({
         BLOCK_WEBSITES: mod.blockWebsitesAction,
         REQUEST_WEBSITE_BLOCKING_PERMISSION:
