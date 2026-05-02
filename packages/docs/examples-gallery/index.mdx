@@ -3,7 +3,7 @@ title: "Examples Gallery"
 description: "Browse all elizaOS examples by category, platform, and language"
 ---
 
-Explore our comprehensive collection of examples. Every example demonstrates real-world usage patterns and is available in multiple languages.
+Explore our comprehensive collection of examples. Each demonstrates real-world usage patterns; `packages/examples/` standardizes on **TypeScript** for application samples.
 
 ## Browse by Category
 
@@ -23,7 +23,7 @@ Explore our comprehensive collection of examples. Every example demonstrates rea
     React, Next.js, and vanilla HTML browser implementations
   </Card>
   <Card title="REST APIs" icon="server" href="/examples-gallery/rest-apis">
-    HTTP endpoints using 8 different web frameworks
+    HTTP endpoints with Express, Hono, and Elysia
   </Card>
   <Card title="Serverless" icon="cloud" href="/examples-gallery/serverless">
     AWS Lambda, GCP, Vercel, Cloudflare, and Supabase deployments
@@ -63,14 +63,14 @@ Explore our comprehensive collection of examples. Every example demonstrates rea
 
 ## Quick Stats
 
-| Category   | TypeScript | Python |  Rust  |  Total  |
-| ---------- | :--------: | :----: | :----: | :-----: |
-| Chat       |     ✅     |   ✅   |   ✅   |    3    |
-| REST API   |     3      |   2    |   3    |    8    |
-| Browser    |     3      |   —    |   1    |    4    |
-| Serverless |     5      |   5    |   5    |   15    |
-| Game       |     ✅     |   ✅   |   ✅   |    3    |
-| **Total**  |   **14**   | **10** | **12** | **33+** |
+| Category   | Examples (TypeScript) | Notes |
+| ---------- | :-------------------: | ----- |
+| Chat       |           1           | `examples/chat/` |
+| REST API   |           3           | Express, Hono, Elysia |
+| Browser    |           3           | HTML, React, Next.js |
+| Serverless |           5           | AWS, GCP, Vercel, Cloudflare, Supabase |
+| Game       |           3           | See games gallery |
+| **Total**  |        **15**         | Selected headline categories |
 
 ---
 
@@ -107,11 +107,11 @@ Explore our comprehensive collection of examples. Every example demonstrates rea
 
 <CardGroup cols={2}>
   <Card
-    title="Rust WASM"
-    icon="gear"
-    href="/examples/browser#react-wasm-example"
+    title="React + PGLite"
+    icon="react"
+    href="/examples/browser#react-example"
   >
-    High-performance browser agents using Rust compiled to WebAssembly.
+    Full browser agent with SQL in IndexedDB via `examples/react/`.
   </Card>
   <Card title="AI Adventure Game" icon="gamepad" href="/examples/game">
     Multi-step AI decision making with state management.
@@ -144,7 +144,7 @@ export OPENAI_API_KEY="your-key"
 4. **Run any example**
 
 ```bash
-bun run examples/chat/typescript/chat.ts
+cd examples/chat && bun run start
 ```
 
 ---
@@ -155,7 +155,7 @@ We welcome new examples! See our [contribution guide](/guides/contribute-to-core
 
 When adding examples:
 
-- Implement in all applicable languages
+- Prefer TypeScript under `packages/examples/<name>/`
 - Include a README.md with setup instructions
 - Add tests where applicable
 - Follow existing directory structure

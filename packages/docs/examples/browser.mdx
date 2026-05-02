@@ -7,12 +7,11 @@ Run AI agents entirely in the browser. No server required for basic functionalit
 
 ## Overview
 
-| Example    | Framework         | Directory              | Features                           |
-| ---------- | ----------------- | ---------------------- | ---------------------------------- |
-| HTML       | Vanilla JS        | `examples/html/`       | Zero dependencies, CRT terminal UI |
-| React      | React + Vite      | `examples/react/`      | Full React app with PGLite         |
-| React WASM | React + Rust WASM | `examples/react-wasm/` | Rust core compiled to WASM         |
-| Next.js    | Next.js 14        | `examples/next/`       | SSR + API routes                   |
+| Example | Framework    | Directory              | Features                           |
+| ------- | ------------ | ---------------------- | ---------------------------------- |
+| HTML    | Vanilla JS   | `examples/html/`       | Zero dependencies, CRT terminal UI |
+| React   | React + Vite | `examples/react/`      | Full React app with PGLite         |
+| Next.js | Next.js 14   | `examples/next/`       | SSR + API routes                   |
 
 ---
 
@@ -34,19 +33,6 @@ bun install
 bun dev
 # Visit http://localhost:5173
 ```
-  </Tab>
-  <Tab title="React WASM">
-```bash
-# Build WASM first
-cd packages/rust && ./build-wasm.sh && cd -
-
-cd examples/react-wasm
-bun install
-bun dev
-
-# Visit http://localhost:5173
-
-````
   </Tab>
   <Tab title="Next.js">
 ```bash
@@ -247,44 +233,6 @@ export default function App() {
       />
     </div>
   );
-}
-```
-
----
-
-## React WASM Example
-
-Uses the Rust implementation compiled to WebAssembly for the best performance.
-
-**Features:**
-
-- Rust core running in the browser
-- ~30% faster than pure TypeScript
-- Same API as native Rust
-- Type-safe interop
-
-```typescript
-// eliza-runtime.ts (WASM version)
-import init, { WasmAgentRuntime } from "@elizaos/core/rust";
-
-let runtime: WasmAgentRuntime | null = null;
-
-export async function getRuntime(): Promise<WasmAgentRuntime> {
-  if (runtime) return runtime;
-
-  // Initialize WASM module
-  await init();
-
-  // Create runtime with character JSON
-  runtime = await new WasmAgentRuntime(
-    JSON.stringify({
-      name: "Eliza",
-      bio: "A Rogerian psychotherapist simulation.",
-    }),
-  );
-
-  await runtime.initialize();
-  return runtime;
 }
 ```
 

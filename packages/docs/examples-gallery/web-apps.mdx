@@ -11,7 +11,6 @@ Build web applications powered by elizaOS agents.
 | ---------- | ------------ | ---------------------- | ------------------------- |
 | HTML ELIZA | Vanilla JS   | `examples/html/`       | Zero dependencies, CRT UI |
 | React      | React + Vite | `examples/react/`      | Full React app            |
-| React WASM | React + Rust | `examples/react-wasm/` | Rust WASM core            |
 | Next.js    | Next.js 14   | `examples/next/`       | SSR + API routes          |
 
 ---
@@ -155,51 +154,6 @@ function App() {
 
 ---
 
-## React WASM
-
-Uses Rust compiled to WebAssembly for maximum performance.
-
-```bash
-# Build WASM first
-cd packages/rust && ./build-wasm.sh && cd -
-
-# Run the app
-cd examples/react-wasm
-bun install
-bun dev
-```
-
-**Features:**
-
-- Rust core in the browser
-- ~30% faster than pure TypeScript
-- Same API as native Rust
-- Type-safe interop
-
-**Key code:**
-
-```typescript
-import init, { WasmAgentRuntime } from "@elizaos/core/rust";
-
-// Initialize WASM module
-await init();
-
-// Create runtime
-const runtime = await new WasmAgentRuntime(
-  JSON.stringify({
-    name: "Eliza",
-    bio: "A helpful AI assistant.",
-  }),
-);
-
-await runtime.initialize();
-
-// Use the runtime
-const response = await runtime.use_model("TEXT_LARGE", prompt);
-```
-
----
-
 ## Next.js
 
 Full-stack application with server-side rendering.
@@ -292,14 +246,14 @@ export async function POST(request: Request) {
 
 ## Comparison
 
-| Feature     | HTML |  React   | React WASM | Next.js |
-| ----------- | :--: | :------: | :--------: | :-----: |
-| Build Step  |  ❌  |    ✅    |     ✅     |   ✅    |
-| SSR         |  ❌  |    ❌    |     ❌     |   ✅    |
-| API Keys    |  ❌  | Optional |  Optional  |   ✅    |
-| TypeScript  |  ❌  |    ✅    |     ✅     |   ✅    |
-| Performance | Good |   Good   | Excellent  |  Good   |
-| Complexity  | Low  |  Medium  |    High    | Medium  |
+| Feature     | HTML | React | Next.js |
+| ----------- | :--: | :---: | :-----: |
+| Build Step  |  ❌  |  ✅   |   ✅    |
+| SSR         |  ❌  |  ❌   |   ✅    |
+| API Keys    |  ❌  | Optional | ✅ (typical) |
+| TypeScript  |  ❌  |  ✅   |   ✅    |
+| Performance | Good | Good  |  Good   |
+| Complexity  | Low  | Medium | Medium |
 
 ---
 
