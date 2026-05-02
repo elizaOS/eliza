@@ -48,6 +48,14 @@ runs:
 
         exit 1
 
+    # Steward packages are vendored without dist/ (gitignored). The frontend
+    # typecheck pulls in @stwd/react via package.json's `types: dist/index.d.ts`
+    # field, so dist/ must exist before any typecheck job runs. Cheap (~5s).
+    - name: Build Steward packages
+      shell: bash
+      working-directory: cloud/packages/steward/packages/react
+      run: bun run build
+
     - name: Validate migration journal
       shell: bash
       working-directory: cloud
