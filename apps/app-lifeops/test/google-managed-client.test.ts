@@ -153,7 +153,6 @@ describe("GoogleManagedClient URL prefixes", () => {
       expect(
         url.startsWith("https://cloud.example.test/api/v1/eliza/google/"),
       ).toBe(true);
-      expect(url).not.toContain("/eliza/google/");
     }
 
     expect(capturedUrls).toEqual([
