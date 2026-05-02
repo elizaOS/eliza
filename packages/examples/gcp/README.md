@@ -47,7 +47,7 @@ gcloud services enable artifactregistry.googleapis.com
 #### TypeScript
 
 ```bash
-cd examples/gcp/typescript
+cd examples/gcp
 npm install
 npm run build
 
@@ -118,7 +118,7 @@ bun run test-client.ts --url $SERVICE_URL
 ### TypeScript
 
 ```bash
-cd examples/gcp/typescript
+cd examples/gcp
 npm install
 npm run dev
 # Server runs at http://localhost:8080

@@ -29,7 +29,7 @@ The agent **never loses** - it will always win or draw!
 
 ```bash
 # TypeScript
-bun run examples/tic-tac-toe/typescript/game.ts
+bun run examples/tic-tac-toe/game.ts
 ```
 
 ## Architecture

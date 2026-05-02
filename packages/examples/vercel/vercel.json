@@ -7,9 +7,6 @@
   "functions": {
     "api/**/*.ts": {
       "runtime": "@vercel/edge"
-    },
-    "api/**/*.py": {
-      "runtime": "@vercel/python@4.3.1"
     }
   },
   "rewrites": [

@@ -6,7 +6,7 @@ A browser-based demo of the **full elizaOS AgentRuntime** using:
 - **@elizaos/plugin-localdb** - localStorage persistence (no SQL needed)
 - **@elizaos/plugin-eliza-classic** - Classic ELIZA pattern matching (no API keys needed)
 
-This demo mirrors the structure of `examples/chat/typescript/chat.ts` exactly, but runs in the browser.
+This demo mirrors the structure of `examples/chat/chat.ts` exactly, but runs in the browser.
 
 ## Architecture
 
@@ -62,7 +62,7 @@ The demo uses native ES module import maps to resolve the elizaOS packages to th
   {
     "imports": {
       "@elizaos/core": "../../packages/typescript/dist/browser/index.browser.js",
-      "@elizaos/plugin-eliza-classic": "../../plugins/plugin-eliza-classic/typescript/dist/browser/index.browser.js",
+      "@elizaos/plugin-eliza-classic": "../../plugins/plugin-eliza-classic/dist/browser/index.browser.js",
       "@elizaos/plugin-localdb": "../../plugins/plugin-localdb/dist/browser/index.browser.js",
       "uuid": "https://esm.sh/uuid@11"
     }
