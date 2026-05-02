@@ -64,7 +64,7 @@ function isCloudProvisionedRuntime(): boolean {
     return false;
   }
   return (
-    process.env.MILADY_CLOUD_PROVISIONED === "1" || process.env.ELIZA_CLOUD_PROVISIONED === "1"
+    process.env.ELIZA_CLOUD_PROVISIONED === "1" || process.env.ELIZA_CLOUD_PROVISIONED === "1"
   );
 }
 
@@ -145,7 +145,7 @@ function buildGatewayMessagePayload(
   const params = toJsonRecord(rpc.params);
   const sender = toJsonRecord(params?.sender);
 
-  const source = asTrimmedString(params?.source) ?? "milady_cloud_gateway";
+  const source = asTrimmedString(params?.source) ?? "eliza_cloud_gateway";
   const text = typeof params?.text === "string" ? params.text : "";
   const senderId = asTrimmedString(sender?.id) ?? `${source}:anonymous`;
   const senderUserName = asTrimmedString(sender?.username) ?? senderId;
@@ -202,7 +202,7 @@ class SessionMissingError extends Error {
 export class CloudManagedGatewayRelayService extends Service {
   static serviceType = "CLOUD_MANAGED_GATEWAY_RELAY";
   capabilityDescription =
-    "Registers a local Milady runtime with the cloud managed gateway and handles inbound relay traffic";
+    "Registers a local Eliza runtime with the cloud managed gateway and handles inbound relay traffic";
 
   private authService: CloudAuthService | null = null;
   private loopPromise: Promise<void> | null = null;
@@ -374,7 +374,7 @@ export class CloudManagedGatewayRelayService extends Service {
   }
 
   private getAgentName(): string {
-    return this.runtime.character?.name?.trim() || "Milady";
+    return this.runtime.character?.name?.trim() || "Eliza";
   }
 
   private getClient() {
@@ -416,7 +416,7 @@ export class CloudManagedGatewayRelayService extends Service {
 
   private async registerSession(): Promise<string> {
     const { status, body } = await this.requestJson<RegisterGatewayRelaySessionResponse>(
-      "/milady/gateway-relay/sessions",
+      "/eliza/gateway-relay/sessions",
       {
         method: "POST",
         json: {
@@ -439,7 +439,7 @@ export class CloudManagedGatewayRelayService extends Service {
   private async disconnectSession(sessionId: string): Promise<void> {
     try {
       await this.requestJson<{ success?: boolean }>(
-        `/milady/gateway-relay/sessions/${encodeURIComponent(sessionId)}`,
+        `/eliza/gateway-relay/sessions/${encodeURIComponent(sessionId)}`,
         {
           method: "DELETE",
           timeoutMs: 10_000,
@@ -456,7 +456,7 @@ export class CloudManagedGatewayRelayService extends Service {
 
   private async pollNextRequest(sessionId: string): Promise<GatewayRelayRequestEnvelope | null> {
     const { status, body } = await this.requestJson<PollGatewayRelayResponse>(
-      `/milady/gateway-relay/sessions/${encodeURIComponent(sessionId)}/next`,
+      `/eliza/gateway-relay/sessions/${encodeURIComponent(sessionId)}/next`,
       {
         method: "GET",
         query: { timeoutMs: POLL_TIMEOUT_MS },
@@ -481,7 +481,7 @@ export class CloudManagedGatewayRelayService extends Service {
     response: GatewayRelayResponse
   ): Promise<void> {
     const { status, body } = await this.requestJson<{ success?: boolean }>(
-      `/milady/gateway-relay/sessions/${encodeURIComponent(sessionId)}/responses`,
+      `/eliza/gateway-relay/sessions/${encodeURIComponent(sessionId)}/responses`,
       {
         method: "POST",
         json: { requestId, response },
@@ -557,7 +557,7 @@ export class CloudManagedGatewayRelayService extends Service {
     const entityId = createUniqueUuid(this.runtime, `${payload.source}:${payload.senderId}`);
     const messageServerId = createUniqueUuid(
       this.runtime,
-      `milady-cloud-gateway:${payload.source}`
+      `eliza-cloud-gateway:${payload.source}`
     );
     const messageId = createUniqueUuid(
       this.runtime,

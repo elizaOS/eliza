@@ -1,1 +1,1 @@
-ALTER TABLE "milady_sandboxes" ADD CONSTRAINT "billing_status_check" CHECK (billing_status IN ('active', 'warning', 'shutdown_pending', 'suspended'));
+ALTER TABLE "eliza_sandboxes" ADD CONSTRAINT "billing_status_check" CHECK (billing_status IN ('active', 'warning', 'shutdown_pending', 'suspended'));

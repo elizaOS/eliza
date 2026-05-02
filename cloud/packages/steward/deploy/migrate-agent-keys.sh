@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ──────────────────────────────────────────────────────────────────────────────
-# migrate-agent-keys.sh — Migrate existing Milady agent keys into Steward
+# migrate-agent-keys.sh — Migrate existing Eliza agent keys into Steward
 #
 # Reads environment variables from running agent containers on the node,
 # creates Steward agents/wallets, imports existing keys, and sets default
@@ -12,12 +12,12 @@
 # Requirements:
 #   - Steward must be running on the node (port 3200)
 #   - SSH access to the node
-#   - milady-cloud tenant must exist
+#   - eliza-cloud tenant must exist
 #
 # Optional env vars:
 #   SSH_KEY                — Path to SSH key (default: ~/.ssh/id_ed25519)
 #   STEWARD_URL            — Override Steward URL (default: http://localhost:3200)
-#   TENANT_ID              — Tenant to register agents under (default: milady-cloud)
+#   TENANT_ID              — Tenant to register agents under (default: eliza-cloud)
 #   DEFAULT_DAILY_LIMIT    — Default daily spend limit in USD (default: 100)
 # ──────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
@@ -35,7 +35,7 @@ SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519}"
 SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=10 -i ${SSH_KEY}"
 SSH_CMD="ssh ${SSH_OPTS} root@${NODE_IP}"
 STEWARD_URL="${STEWARD_URL:-http://localhost:3200}"
-TENANT_ID="${TENANT_ID:-milady-cloud}"
+TENANT_ID="${TENANT_ID:-eliza-cloud}"
 DEFAULT_DAILY_LIMIT="${DEFAULT_DAILY_LIMIT:-100}"
 
 echo "══════════════════════════════════════════════════════════════"
@@ -58,10 +58,10 @@ echo ""
 
 # ── Discover agent containers ───────────────────────────────────────────────
 echo "▸ Discovering agent containers..."
-CONTAINERS=$(${SSH_CMD} "docker ps --format '{{.Names}}' | grep '^milady-'" || true)
+CONTAINERS=$(${SSH_CMD} "docker ps --format '{{.Names}}' | grep '^eliza-'" || true)
 
 if [[ -z "${CONTAINERS}" ]]; then
-  echo "  ⚠  No milady agent containers found"
+  echo "  ⚠  No eliza agent containers found"
   exit 0
 fi
 
@@ -77,8 +77,8 @@ NEW_ENV_VARS=""
 
 # ── Process each container ──────────────────────────────────────────────────
 while IFS= read -r CONTAINER; do
-  # Extract agent UUID from container name (milady-<uuid>)
-  AGENT_UUID="${CONTAINER#milady-}"
+  # Extract agent UUID from container name (eliza-<uuid>)
+  AGENT_UUID="${CONTAINER#eliza-}"
   echo "────────────────────────────────────────────────────────────"
   echo "  Agent: ${AGENT_UUID}"
   echo "  Container: ${CONTAINER}"
@@ -87,13 +87,13 @@ while IFS= read -r CONTAINER; do
   AGENT_ENV=$(${SSH_CMD} "docker inspect ${CONTAINER} --format '{{range .Config.Env}}{{println .}}{{end}}'" 2>/dev/null || true)
 
   # Extract relevant keys
-  MILADY_API_TOKEN=$(echo "${AGENT_ENV}" | grep '^MILADY_API_TOKEN=' | cut -d= -f2- || true)
+  ELIZA_API_TOKEN=$(echo "${AGENT_ENV}" | grep '^ELIZA_API_TOKEN=' | cut -d= -f2- || true)
   EVM_PRIVATE_KEY=$(echo "${AGENT_ENV}" | grep '^EVM_PRIVATE_KEY=' | cut -d= -f2- || true)
   SOLANA_PRIVATE_KEY=$(echo "${AGENT_ENV}" | grep '^SOLANA_PRIVATE_KEY=' | cut -d= -f2- || true)
   AGENT_NAME=$(echo "${AGENT_ENV}" | grep '^AGENT_NAME=' | cut -d= -f2- || echo "agent-${AGENT_UUID:0:8}")
 
   echo "  Name: ${AGENT_NAME}"
-  echo "  Has MILADY_API_TOKEN: $([[ -n "${MILADY_API_TOKEN}" ]] && echo 'yes' || echo 'no')"
+  echo "  Has ELIZA_API_TOKEN: $([[ -n "${ELIZA_API_TOKEN}" ]] && echo 'yes' || echo 'no')"
   echo "  Has EVM_PRIVATE_KEY: $([[ -n "${EVM_PRIVATE_KEY}" ]] && echo 'yes' || echo 'no')"
   echo "  Has SOLANA_PRIVATE_KEY: $([[ -n "${SOLANA_PRIVATE_KEY}" ]] && echo 'yes' || echo 'no')"
 

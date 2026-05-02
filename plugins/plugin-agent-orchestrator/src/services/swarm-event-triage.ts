@@ -1,11 +1,11 @@
 /**
  * Event Triage — classifies coordinator events as "routine" or "creative"
- * to route them to the fast small-LLM path or the full Milaidy pipeline.
+ * to route them to the fast small-LLM path or the full Eliza pipeline.
  *
  * Tier 1 (auto-response rules at PTY worker) already handled before we get here.
  * This module splits the remaining events into:
  * - "routine": simple approvals, permissions, config prompts → small LLM (~1-2s)
- * - "creative": error recovery, design questions, task evaluation → Milaidy (~5-10s)
+ * - "creative": error recovery, design questions, task evaluation → Eliza (~5-10s)
  *
  * Pure functions — no side effects, same pattern as stall-classifier.ts.
  *

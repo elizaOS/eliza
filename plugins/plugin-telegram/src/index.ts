@@ -23,7 +23,7 @@ const telegramPlugin: Plugin = {
   routes: [...telegramSetupRoutes, ...telegramAccountRoutes],
   tests: [new TelegramTestSuite()],
   // Self-declared auto-enable: activate when the "telegram" connector is
-  // configured in milady.json / eliza.json. The hardcoded CONNECTOR_PLUGINS
+  // configured in eliza.json / eliza.json. The hardcoded CONNECTOR_PLUGINS
   // map in plugin-auto-enable.ts still serves as a fallback.
   autoEnable: {
     connectorKeys: ['telegram'],

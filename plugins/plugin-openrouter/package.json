@@ -192,7 +192,7 @@
 			}
 		}
 	},
-	"milady": {
+	"eliza": {
 		"platforms": [
 			"browser",
 			"node"

@@ -8,9 +8,9 @@ import {
 import { formatMusicDebugCommand, musicDebug } from "./musicDebug";
 
 /** Attached to ffmpeg stdout when normalize is active. */
-export const OPUS_NORMALIZE_FFMPEG = Symbol("miladyOpusNormalizeFfmpeg");
+export const OPUS_NORMALIZE_FFMPEG = Symbol("elizaOpusNormalizeFfmpeg");
 /** Upstream readable fed into ffmpeg stdin. */
-export const OPUS_NORMALIZE_INPUT = Symbol("miladyOpusNormalizeInput");
+export const OPUS_NORMALIZE_INPUT = Symbol("elizaOpusNormalizeInput");
 
 /** Ogg page sync: "OggS" */
 function isOggOpusPrefix(buf: Buffer): boolean {
@@ -35,7 +35,7 @@ function isWebmPrefix(buf: Buffer): boolean {
 }
 
 function isBroadcastNormalizeEnabled(): boolean {
-  const v = process.env.MILADY_MUSIC_BROADCAST_NORMALIZE?.trim().toLowerCase();
+  const v = process.env.ELIZA_MUSIC_BROADCAST_NORMALIZE?.trim().toLowerCase();
   if (v === "0" || v === "false" || v === "no" || v === "off") {
     return false;
   }
@@ -177,7 +177,7 @@ function spawnFfmpegRealtimeRelay(
  * milliseconds of wall time, leaving HTTP subscribers with a data burst they can't
  * decode as a live stream and causing `[StreamCore] Track stream ended` immediately.
  *
- * Disable with `MILADY_MUSIC_BROADCAST_NORMALIZE=0` if you need raw passthrough
+ * Disable with `ELIZA_MUSIC_BROADCAST_NORMALIZE=0` if you need raw passthrough
  * (only useful for Discord-only setups where the voiceManager controls pacing).
  */
 export function normalizeOpusBroadcastStream(source: Readable): Readable {

@@ -8,6 +8,7 @@ import type {
   LifeOpsReminderPreferenceSetting,
   LifeOpsReminderUrgency,
   LifeOpsTaskDefinition,
+  SnoozeLifeOpsOccurrenceRequest,
 } from "../contracts/index.js";
 import {
   LIFEOPS_ACTIVITY_SIGNAL_SOURCES,
@@ -18,6 +19,7 @@ import {
 } from "../contracts/index.js";
 import {
   REMINDER_ACTIVITY_GATE_METADATA_KEY,
+  REMINDER_ACTIVITY_GATES,
   REMINDER_ESCALATION_DELAYS,
   REMINDER_INTENSITY_CANONICAL_ALIASES,
   REMINDER_INTENSITY_METADATA_KEY,
@@ -54,7 +56,7 @@ export function normalizeReminderIntensityInput(
   value: unknown,
   field: string,
 ): LifeOpsReminderIntensity {
-  const intensity = requireNonEmptyString(value, field);
+  const intensity = requireNonEmptyString(value, field).toLowerCase();
   const canonical = REMINDER_INTENSITY_CANONICAL_ALIASES[intensity];
   if (!canonical) {
     fail(
@@ -197,7 +199,7 @@ export type ReminderChannelRankingWeights = {
 
 const DEFAULT_REMINDER_CHANNEL_RANKING_WEIGHTS: ReminderChannelRankingWeights =
   {
-    inAppAnchor: 10_000,
+    inAppAnchor: 450,
     activePlatform: 1_200,
     primaryPlatform: 900,
     secondaryPlatform: 650,
@@ -210,12 +212,89 @@ const DEFAULT_REMINDER_CHANNEL_RANKING_WEIGHTS: ReminderChannelRankingWeights =
     recencyMax: 120,
   };
 
-function resolveReminderChannelRankingWeights(
-  overrides: Partial<ReminderChannelRankingWeights> | undefined,
-): ReminderChannelRankingWeights {
-  return overrides
-    ? { ...DEFAULT_REMINDER_CHANNEL_RANKING_WEIGHTS, ...overrides }
-    : DEFAULT_REMINDER_CHANNEL_RANKING_WEIGHTS;
+export type ReminderInterruptionBudget =
+  | "low"
+  | "normal"
+  | "elevated"
+  | "urgent";
+
+export type ReminderEscalationRoutingPolicy = {
+  includeInApp: boolean;
+  interruptionBudget: ReminderInterruptionBudget;
+  weights: ReminderChannelRankingWeights;
+  reason: string;
+};
+
+export function resolveReminderEscalationRoutingPolicy(args: {
+  activityProfile: ReminderActivityProfileSnapshot | null;
+  urgency?: LifeOpsReminderUrgency;
+  includeInApp?: boolean;
+  weights?: Partial<ReminderChannelRankingWeights>;
+}): ReminderEscalationRoutingPolicy {
+  const urgency = args.urgency ?? "medium";
+  const screenContextUsable =
+    args.activityProfile?.screenContextAvailable === true &&
+    args.activityProfile.screenContextStale !== true &&
+    (args.activityProfile.screenContextConfidence ?? 1) >= 0.5;
+  const screenBusy =
+    screenContextUsable && args.activityProfile?.screenContextBusy === true;
+  const attentionBusy =
+    screenBusy ||
+    args.activityProfile?.calendarBusy === true ||
+    args.activityProfile?.dndActive === true;
+  const ownerActive = args.activityProfile?.isCurrentlyActive === true;
+  const activeChannel = mapPlatformToReminderChannel(
+    ownerActive ? args.activityProfile?.lastSeenPlatform : null,
+  );
+  const interruptionBudget: ReminderInterruptionBudget =
+    urgency === "critical"
+      ? "urgent"
+      : urgency === "high"
+        ? "elevated"
+        : attentionBusy
+          ? "low"
+          : "normal";
+  const urgencyWeight =
+    urgency === "critical" ? 350 : urgency === "high" ? 220 : 0;
+  const busyInAppBias = attentionBusy && urgency !== "critical" ? 450 : 0;
+  const inactiveInAppPenalty = ownerActive ? 0 : -250;
+  const activeInAppBias =
+    activeChannel === "in_app" || activeChannel === null ? 250 : 0;
+  const weights: ReminderChannelRankingWeights = {
+    ...DEFAULT_REMINDER_CHANNEL_RANKING_WEIGHTS,
+    inAppAnchor: Math.max(
+      50,
+      DEFAULT_REMINDER_CHANNEL_RANKING_WEIGHTS.inAppAnchor +
+        busyInAppBias +
+        inactiveInAppPenalty +
+        activeInAppBias,
+    ),
+    preferredContactChannel:
+      DEFAULT_REMINDER_CHANNEL_RANKING_WEIGHTS.preferredContactChannel +
+      urgencyWeight,
+    lastResponseChannel:
+      DEFAULT_REMINDER_CHANNEL_RANKING_WEIGHTS.lastResponseChannel +
+      Math.round(urgencyWeight * 0.7),
+    policyChannel:
+      DEFAULT_REMINDER_CHANNEL_RANKING_WEIGHTS.policyChannel +
+      Math.round(urgencyWeight * 0.4),
+    ...args.weights,
+  };
+  return {
+    includeInApp: args.includeInApp !== false,
+    interruptionBudget,
+    weights,
+    reason:
+      args.activityProfile?.dndActive === true
+        ? "do_not_disturb"
+        : args.activityProfile?.calendarBusy === true
+          ? "calendar_busy"
+          : screenBusy
+            ? "screen_context_busy"
+            : ownerActive
+              ? "owner_currently_active"
+              : "owner_recent_channel_history",
+  };
 }
 
 function addReminderChannelScore(
@@ -254,11 +333,24 @@ export function rankReminderEscalationChannels(args: {
   ownerContactHints: Record<string, ReminderEscalationRoutingHint>;
   ownerContactSources: readonly string[];
   policyChannels: readonly string[];
+  policyChannelWeightAdjustments?: Partial<
+    Record<LifeOpsReminderChannel, number>
+  >;
   includeInApp?: boolean;
+  urgency?: LifeOpsReminderUrgency;
+  routingPolicy?: ReminderEscalationRoutingPolicy;
   now?: Date | number;
   weights?: Partial<ReminderChannelRankingWeights>;
 }): LifeOpsReminderChannel[] {
-  const weights = resolveReminderChannelRankingWeights(args.weights);
+  const routingPolicy =
+    args.routingPolicy ??
+    resolveReminderEscalationRoutingPolicy({
+      activityProfile: args.activityProfile,
+      urgency: args.urgency,
+      includeInApp: args.includeInApp,
+      weights: args.weights,
+    });
+  const weights = routingPolicy.weights;
   const nowMs =
     args.now instanceof Date
       ? args.now.getTime()
@@ -267,7 +359,7 @@ export function rankReminderEscalationChannels(args: {
         : Date.now();
   const scores = new Map<LifeOpsReminderChannel, number>();
   const evidenceOrder = new Map<LifeOpsReminderChannel, number>();
-  if (args.includeInApp !== false) {
+  if (routingPolicy.includeInApp) {
     addReminderChannelScore(
       scores,
       "in_app",
@@ -339,16 +431,20 @@ export function rankReminderEscalationChannels(args: {
     );
   }
   for (const channel of args.policyChannels) {
+    const reminderChannel = mapPlatformToReminderChannel(channel);
     addReminderChannelScore(
       scores,
-      mapPlatformToReminderChannel(channel),
-      weights.policyChannel,
+      reminderChannel,
+      weights.policyChannel +
+        (reminderChannel
+          ? (args.policyChannelWeightAdjustments?.[reminderChannel] ?? 0)
+          : 0),
       evidenceOrder,
     );
   }
 
   return [...scores.keys()]
-    .filter((channel) => args.includeInApp !== false || channel !== "in_app")
+    .filter((channel) => routingPolicy.includeInApp || channel !== "in_app")
     .sort((left, right) => {
       const scoreDelta = (scores.get(right) ?? 0) - (scores.get(left) ?? 0);
       if (scoreDelta !== 0) {
@@ -376,7 +472,6 @@ export function shouldEscalateImmediately(
   return (
     outcome === "blocked_connector" ||
     outcome === "blocked_policy" ||
-    outcome === "blocked_quiet_hours" ||
     outcome === "blocked_urgency"
   );
 }
@@ -402,7 +497,9 @@ export function readReminderActivityGate(
   definition: Pick<LifeOpsTaskDefinition, "metadata"> | null,
 ): ReminderActivityGate | null {
   const value = definition?.metadata?.[REMINDER_ACTIVITY_GATE_METADATA_KEY];
-  return value === "active_on_computer" ? value : null;
+  return REMINDER_ACTIVITY_GATES.includes(value as ReminderActivityGate)
+    ? (value as ReminderActivityGate)
+    : null;
 }
 
 function isActivelyUsingComputer(
@@ -432,7 +529,7 @@ export function shouldDeferReminderUntilComputerActive(args: {
   if (args.channel !== "in_app") {
     return false;
   }
-  if (args.urgency === "high" || args.urgency === "critical") {
+  if (args.urgency === "critical") {
     return false;
   }
   if (readReminderActivityGate(args.definition) !== "active_on_computer") {
@@ -447,18 +544,31 @@ export type ReminderOwnerResponseResolution =
   | "skipped"
   | "snoozed";
 
-export type ReminderOwnerResponseDecision = "explicit_resolution" | "unrelated";
+export type ReminderOwnerResponseDecision =
+  | "explicit_resolution"
+  | "needs_clarification"
+  | "unrelated";
+
+export type ReminderOwnerResponseContext = {
+  title?: string | null;
+  attemptedAt?: string | null;
+  respondedAt?: string | number | Date | null;
+  channel?: LifeOpsReminderChannel | null;
+  allowStandaloneResolution?: boolean;
+};
 
 export type ReminderOwnerResponseClassification = {
   decision: ReminderOwnerResponseDecision;
   resolution: ReminderOwnerResponseResolution | null;
+  snoozeRequest: SnoozeLifeOpsOccurrenceRequest | null;
   confidence: number;
   reason: string;
 };
 
 const SNOOZE_RESPONSE_PATTERNS = [
+  /^\s*\d{1,3}\s*(m|min|mins|minute|minutes|h|hr|hrs|hour|hours)\s*$/i,
   /\b(snooze|remind me later|later|not now|in a bit)\b/i,
-  /\b(remind me|ping me|nudge me)\s+(in|at|after|tomorrow)\b/i,
+  /\b(remind me|ping me|nudge me)\s+(in|at|after|tomorrow|tonight)\b/i,
 ];
 
 const SKIP_RESPONSE_PATTERNS = [
@@ -481,46 +591,344 @@ function matchesAnyPattern(
   return patterns.some((pattern) => pattern.test(value));
 }
 
+const TITLE_STOP_WORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "for",
+  "me",
+  "my",
+  "of",
+  "the",
+  "this",
+  "to",
+]);
+
+function tokenizeReminderText(value: string): string[] {
+  return value
+    .toLowerCase()
+    .split(/[^a-z0-9]+/u)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 2 && !TITLE_STOP_WORDS.has(token));
+}
+
+function responseReferencesReminder(
+  text: string,
+  context?: ReminderOwnerResponseContext,
+): boolean {
+  const lower = text.toLowerCase();
+  if (/\b(this|that|the)\s+reminder\b/u.test(lower)) {
+    return true;
+  }
+  if (/\b(reminder|nudge|ping)\b/u.test(lower)) {
+    return true;
+  }
+  const titleTokens = tokenizeReminderText(context?.title ?? "");
+  if (titleTokens.length === 0) {
+    return false;
+  }
+  const responseTokens = new Set(tokenizeReminderText(text));
+  const matchingTokenCount = titleTokens.filter((token) =>
+    responseTokens.has(token),
+  ).length;
+  if (titleTokens.length === 1) {
+    return matchingTokenCount === 1 && titleTokens[0].length >= 4;
+  }
+  if (titleTokens.length === 2) {
+    return matchingTokenCount === 2;
+  }
+  return matchingTokenCount >= 2;
+}
+
+function resolveResponseTimestampMs(
+  value: ReminderOwnerResponseContext["respondedAt"],
+): number | null {
+  if (value instanceof Date) {
+    return value.getTime();
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function isPromptAdjacentResponse(
+  context?: ReminderOwnerResponseContext,
+): boolean {
+  if (!context) {
+    return true;
+  }
+  if (!context.attemptedAt || !context.respondedAt) {
+    return false;
+  }
+  const attemptedMs = Date.parse(context.attemptedAt);
+  const respondedMs = resolveResponseTimestampMs(context.respondedAt);
+  if (!Number.isFinite(attemptedMs) || respondedMs === null) {
+    return false;
+  }
+  const deltaMs = respondedMs - attemptedMs;
+  return deltaMs >= 0 && deltaMs <= 10 * 60_000;
+}
+
+function normalizeStandaloneResponse(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[.!]+$/u, "")
+    .replace(/\s+/gu, " ");
+}
+
+function isStandaloneResolutionResponse(value: string): boolean {
+  const normalized = normalizeStandaloneResponse(value);
+  if (
+    /^\d{1,3}\s*(m|min|mins|minute|minutes|h|hr|hrs|hour|hours)$/iu.test(
+      normalized,
+    )
+  ) {
+    return true;
+  }
+  if (
+    /^(remind me|ping me|nudge me)\s+(at|after|tomorrow)\b/iu.test(normalized)
+  ) {
+    return true;
+  }
+  return (
+    normalized === "done" ||
+    normalized === "finished" ||
+    normalized === "completed" ||
+    normalized === "complete" ||
+    normalized === "did it" ||
+    normalized === "handled" ||
+    normalized === "all set" ||
+    normalized === "skip" ||
+    normalized === "dismiss" ||
+    normalized === "cancel this" ||
+    normalized === "ack" ||
+    normalized === "acknowledged" ||
+    normalized === "got it" ||
+    normalized === "roger" ||
+    normalized === "copy" ||
+    normalized === "seen" ||
+    normalized === "ok" ||
+    normalized === "okay" ||
+    normalized === "yep" ||
+    normalized === "yes" ||
+    normalized === "snooze" ||
+    normalized === "later" ||
+    normalized === "not now" ||
+    normalized === "in a bit" ||
+    normalized === "remind me later"
+  );
+}
+
+function isResponseBoundToReminder(
+  text: string,
+  context?: ReminderOwnerResponseContext,
+): boolean {
+  if (!context) {
+    return true;
+  }
+  if (responseReferencesReminder(text, context)) {
+    return true;
+  }
+  if (context.allowStandaloneResolution === false) {
+    return false;
+  }
+  return (
+    isPromptAdjacentResponse(context) && isStandaloneResolutionResponse(text)
+  );
+}
+
+function toSnoozeMinutes(value: string, unit: string): number | null {
+  const amount = Number.parseInt(value, 10);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return null;
+  }
+  const normalizedUnit = unit.toLowerCase();
+  if (
+    normalizedUnit === "h" ||
+    normalizedUnit === "hr" ||
+    normalizedUnit === "hrs" ||
+    normalizedUnit === "hour" ||
+    normalizedUnit === "hours"
+  ) {
+    return amount * 60;
+  }
+  return amount;
+}
+
+export function parseReminderSnoozeRequestFromText(text: string): {
+  request: SnoozeLifeOpsOccurrenceRequest | null;
+  needsClarification: boolean;
+  reason: string;
+} {
+  const cleaned = text.trim().toLowerCase();
+  if (/\btomorrow\s+morning\b/u.test(cleaned)) {
+    return {
+      request: { preset: "tomorrow_morning" },
+      needsClarification: false,
+      reason: "snooze_tomorrow_morning",
+    };
+  }
+  if (/\btonight\b/u.test(cleaned)) {
+    return {
+      request: { preset: "tonight" },
+      needsClarification: false,
+      reason: "snooze_tonight",
+    };
+  }
+  const durationMatch = cleaned.match(
+    /\b(?:in|after|for)?\s*(\d{1,3})\s*(m|min|mins|minute|minutes|h|hr|hrs|hour|hours)\b/u,
+  );
+  if (durationMatch) {
+    const minutes = toSnoozeMinutes(
+      durationMatch[1] ?? "",
+      durationMatch[2] ?? "",
+    );
+    if (minutes !== null) {
+      if (minutes === 15) {
+        return {
+          request: { preset: "15m" },
+          needsClarification: false,
+          reason: "snooze_15m",
+        };
+      }
+      if (minutes === 30) {
+        return {
+          request: { preset: "30m" },
+          needsClarification: false,
+          reason: "snooze_30m",
+        };
+      }
+      if (minutes === 60) {
+        return {
+          request: { preset: "1h" },
+          needsClarification: false,
+          reason: "snooze_1h",
+        };
+      }
+      return {
+        request: { minutes },
+        needsClarification: false,
+        reason: "snooze_duration",
+      };
+    }
+  }
+  const vagueSnooze =
+    /\b(snooze|later|not now|in a bit|some other time)\b/u.test(cleaned) ||
+    /\b(remind me|ping me|nudge me)\s+(at|after|tomorrow)\b/u.test(cleaned);
+  return {
+    request: null,
+    needsClarification: vagueSnooze,
+    reason: vagueSnooze ? "snooze_needs_duration" : "no_snooze_request",
+  };
+}
+
 export function classifyReminderOwnerResponseText(
   text: string,
+  context?: ReminderOwnerResponseContext,
 ): ReminderOwnerResponseClassification {
   const cleaned = text.trim();
   if (cleaned.length === 0) {
     return {
       decision: "unrelated",
       resolution: null,
+      snoozeRequest: null,
       confidence: 0,
       reason: "empty_response",
     };
   }
   if (matchesAnyPattern(cleaned, SNOOZE_RESPONSE_PATTERNS)) {
+    if (!isResponseBoundToReminder(cleaned, context)) {
+      return {
+        decision: "unrelated",
+        resolution: null,
+        snoozeRequest: null,
+        confidence: 0.35,
+        reason: "snooze_language_not_bound_to_reminder",
+      };
+    }
+    const snooze = parseReminderSnoozeRequestFromText(cleaned);
+    if (snooze.request) {
+      return {
+        decision: "explicit_resolution",
+        resolution: "snoozed",
+        snoozeRequest: snooze.request,
+        confidence: 0.86,
+        reason: snooze.reason,
+      };
+    }
+    if (snooze.needsClarification) {
+      return {
+        decision: "needs_clarification",
+        resolution: null,
+        snoozeRequest: null,
+        confidence: 0.68,
+        reason: snooze.reason,
+      };
+    }
     return {
-      decision: "explicit_resolution",
-      resolution: "snoozed",
-      confidence: 0.82,
-      reason: "snooze_language",
+      decision: "needs_clarification",
+      resolution: null,
+      snoozeRequest: null,
+      confidence: 0.62,
+      reason: "snooze_needs_duration",
     };
   }
   if (matchesAnyPattern(cleaned, SKIP_RESPONSE_PATTERNS)) {
+    if (!isResponseBoundToReminder(cleaned, context)) {
+      return {
+        decision: "unrelated",
+        resolution: null,
+        snoozeRequest: null,
+        confidence: 0.35,
+        reason: "skip_language_not_bound_to_reminder",
+      };
+    }
     return {
       decision: "explicit_resolution",
       resolution: "skipped",
+      snoozeRequest: null,
       confidence: 0.82,
       reason: "skip_language",
     };
   }
   if (matchesAnyPattern(cleaned, COMPLETE_RESPONSE_PATTERNS)) {
+    if (!isResponseBoundToReminder(cleaned, context)) {
+      return {
+        decision: "unrelated",
+        resolution: null,
+        snoozeRequest: null,
+        confidence: 0.35,
+        reason: "completion_language_not_bound_to_reminder",
+      };
+    }
     return {
       decision: "explicit_resolution",
       resolution: "completed",
+      snoozeRequest: null,
       confidence: 0.86,
       reason: "completion_language",
     };
   }
   if (matchesAnyPattern(cleaned, ACKNOWLEDGE_RESPONSE_PATTERNS)) {
+    if (!isResponseBoundToReminder(cleaned, context)) {
+      return {
+        decision: "unrelated",
+        resolution: null,
+        snoozeRequest: null,
+        confidence: 0.3,
+        reason: "acknowledgement_language_not_bound_to_reminder",
+      };
+    }
     return {
       decision: "explicit_resolution",
       resolution: "acknowledged",
+      snoozeRequest: null,
       confidence: 0.74,
       reason: "acknowledgement_language",
     };
@@ -528,6 +936,7 @@ export function classifyReminderOwnerResponseText(
   return {
     decision: "unrelated",
     resolution: null,
+    snoozeRequest: null,
     confidence: 0.4,
     reason: "no_explicit_reminder_resolution",
   };
@@ -593,6 +1002,16 @@ export function resolveReminderEscalationDelayMinutes(
     return Math.max(1, Math.round(base * 0.6));
   }
   return base;
+}
+
+export function resolveReminderReviewDelayMinutes(
+  urgency: LifeOpsReminderUrgency,
+  lifecycle: ReminderAttemptLifecycle,
+): number | null {
+  const delays = REMINDER_ESCALATION_DELAYS[urgency];
+  return lifecycle === "escalation"
+    ? delays.repeatMinutes
+    : delays.initialMinutes;
 }
 
 export function readReminderPreferenceSettingFromMetadata(

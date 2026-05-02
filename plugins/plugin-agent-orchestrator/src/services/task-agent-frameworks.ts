@@ -1,7 +1,7 @@
 /**
  * Task-agent framework discovery and preference resolution.
  *
- * Detects installed CLIs, available auth, and Milady subscription preferences so
+ * Detects installed CLIs, available auth, and Eliza subscription preferences so
  * the orchestrator can choose the best framework when the caller does not
  * specify one explicitly.
  *
@@ -424,24 +424,24 @@ function extractOauthAccessToken(value: unknown): string | undefined {
   return;
 }
 
-function resolveMiladyConfigPath(): string {
+function resolveElizaConfigPath(): string {
   const explicit =
-    process.env.MILADY_CONFIG_PATH?.trim() ||
+    process.env.ELIZA_CONFIG_PATH?.trim() ||
     process.env.ELIZA_CONFIG_PATH?.trim();
   if (explicit) return explicit;
 
   const stateDir =
-    process.env.MILADY_STATE_DIR?.trim() ||
     process.env.ELIZA_STATE_DIR?.trim() ||
-    path.join(getUserHomeDir(), ".milady");
+    process.env.ELIZA_STATE_DIR?.trim() ||
+    path.join(getUserHomeDir(), ".eliza");
   const namespace = process.env.ELIZA_NAMESPACE?.trim();
   const filename =
-    !namespace || namespace === "milady" ? "milady.json" : `${namespace}.json`;
+    !namespace || namespace === "eliza" ? "eliza.json" : `${namespace}.json`;
   return path.join(stateDir, filename);
 }
 
 function readConfiguredSubscriptionProvider(): string | undefined {
-  const config = readJsonFile(resolveMiladyConfigPath());
+  const config = readJsonFile(resolveElizaConfigPath());
   if (!config || typeof config !== "object" || Array.isArray(config)) return;
   const agents = (config as Record<string, unknown>).agents;
   if (!agents || typeof agents !== "object" || Array.isArray(agents)) return;
@@ -509,7 +509,7 @@ function hasGeminiCredential(runtime?: IAgentRuntime): boolean {
 }
 
 /**
- * Check whether milady has a paired Eliza Cloud API key. Used to mark
+ * Check whether eliza has a paired Eliza Cloud API key. Used to mark
  * Anthropic/OpenAI-backed task agents as auth-ready when LLM provider is
  * "cloud" — they'll route through the cloud proxy at spawn time.
  */

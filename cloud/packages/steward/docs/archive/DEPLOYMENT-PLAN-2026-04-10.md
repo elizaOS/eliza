@@ -25,10 +25,10 @@
    - Optionally run migrations
    - Restart steward + steward-proxy services
    - Health check after restart
-   - Works for both `milady` (89.167.63.246) and core-1 through core-6
+   - Works for both `eliza` (89.167.63.246) and core-1 through core-6
 
 3. **Create `scripts/deploy-all.sh`** — deploy to all 7 nodes
-   - Deploy to milady (primary) first, verify health
+   - Deploy to eliza (primary) first, verify health
    - Then parallel deploy to core-1 through core-6
    - Summary at the end
 
@@ -84,7 +84,7 @@
    - Get API key from resend.com
    - Test sending from `login@steward.fi`
 
-4. **Update prod env on milady (89.167.63.246):**
+4. **Update prod env on eliza (89.167.63.246):**
    ```bash
    # Add to /opt/steward/.env:
    REDIS_URL=redis://localhost:6379
@@ -100,7 +100,7 @@
    PASSKEY_ORIGIN=https://steward.fi
    ```
 
-5. **Run deploy script** to milady first (canary), verify, then all nodes
+5. **Run deploy script** to eliza first (canary), verify, then all nodes
 
 ### Worker N — Fix Docker Workflow (GHCR)
 **Branch:** `fix/docker-workflow`
@@ -142,16 +142,16 @@
 
 ---
 
-## Wave 4: Milady Integration (The Big One)
+## Wave 4: Eliza Integration (The Big One)
 
-### Worker Q — Milady Auth Integration
-**Repo:** `milady-ai/milady` (or `elizaOS/cloud`)
+### Worker Q — Eliza Auth Integration
+**Repo:** `eliza-ai/eliza` (or `elizaOS/cloud`)
 **Branch:** `feat/steward-auth`
 
 **Tasks:**
-1. Add `@stwd/react` to milady frontend
-2. Wire `<StewardLogin />` into milady's login flow
-3. Create steward tenant per milady organization
+1. Add `@stwd/react` to eliza frontend
+2. Wire `<StewardLogin />` into eliza's login flow
+3. Create steward tenant per eliza organization
 4. User wallet provisioning on login
 5. Session management through steward JWTs
 6. Replace/supplement existing elizacloud OAuth
@@ -187,7 +187,7 @@ Wave 3:                        │
                                │
                                ├──> Wave 4 (parallel)
 Wave 4:                        │
-  Worker Q (milady auth)     ──┘
+  Worker Q (eliza auth)     ──┘
   Worker R (cloud containers)
 ```
 
@@ -200,4 +200,4 @@ Wave 4:                        │
 | Wave 3 | 1-2 sessions | Wave 2 deployed |
 | Wave 4 | 2-3 sessions | Waves 1-3 complete |
 
-**Total: ~5-7 sessions to full production with milady integration**
+**Total: ~5-7 sessions to full production with eliza integration**

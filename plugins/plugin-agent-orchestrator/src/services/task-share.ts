@@ -31,21 +31,21 @@ const URL_RE = /\bhttps?:\/\/[^\s<>"'`]+/gi;
 
 function resolveConfigPath(): string {
   const explicit =
-    process.env.MILADY_CONFIG_PATH?.trim() ||
+    process.env.ELIZA_CONFIG_PATH?.trim() ||
     process.env.ELIZA_CONFIG_PATH?.trim();
   if (explicit) return explicit;
 
   const stateDir =
-    process.env.MILADY_STATE_DIR?.trim() ||
     process.env.ELIZA_STATE_DIR?.trim() ||
-    path.join(os.homedir(), ".milady");
+    process.env.ELIZA_STATE_DIR?.trim() ||
+    path.join(os.homedir(), ".eliza");
   const namespace = process.env.ELIZA_NAMESPACE?.trim();
   const filename =
-    !namespace || namespace === "milady" ? "milady.json" : `${namespace}.json`;
+    !namespace || namespace === "eliza" ? "eliza.json" : `${namespace}.json`;
   return path.join(stateDir, filename);
 }
 
-function readMiladyConfig(): Record<string, unknown> | null {
+function readElizaConfig(): Record<string, unknown> | null {
   try {
     const raw = readFileSync(resolveConfigPath(), "utf8");
     const parsed = JSON.parse(raw) as unknown;
@@ -58,7 +58,7 @@ function readMiladyConfig(): Record<string, unknown> | null {
 }
 
 function detectShareCapabilities(): string[] {
-  const config = readMiladyConfig();
+  const config = readElizaConfig();
   const capabilities: string[] = [];
   const gateway =
     config && typeof config.gateway === "object" && config.gateway

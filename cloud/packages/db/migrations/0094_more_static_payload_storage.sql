@@ -40,9 +40,9 @@ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'agent_sandbox_backups') THEN
     ALTER TABLE "agent_sandbox_backups" ADD COLUMN IF NOT EXISTS "state_data_storage" text DEFAULT 'inline' NOT NULL;
     ALTER TABLE "agent_sandbox_backups" ADD COLUMN IF NOT EXISTS "state_data_key" text;
-  ELSIF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'milady_sandbox_backups') THEN
-    ALTER TABLE "milady_sandbox_backups" ADD COLUMN IF NOT EXISTS "state_data_storage" text DEFAULT 'inline' NOT NULL;
-    ALTER TABLE "milady_sandbox_backups" ADD COLUMN IF NOT EXISTS "state_data_key" text;
+  ELSIF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'eliza_sandbox_backups') THEN
+    ALTER TABLE "eliza_sandbox_backups" ADD COLUMN IF NOT EXISTS "state_data_storage" text DEFAULT 'inline' NOT NULL;
+    ALTER TABLE "eliza_sandbox_backups" ADD COLUMN IF NOT EXISTS "state_data_key" text;
   END IF;
 END $$;
 

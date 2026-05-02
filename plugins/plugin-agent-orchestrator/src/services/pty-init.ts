@@ -140,7 +140,7 @@ export interface InitContext {
 //
 // Task completion is now signaled authoritatively by the agent's own hook
 // system, routed through pty-service.handleHookEvent. The jsonl-based
-// completion watcher in the milady package provides a defense-in-depth
+// completion watcher in the eliza package provides a defense-in-depth
 // ground-truth signal. `session_ready` is still emitted for consumers that
 // want to know when the PTY prompt is visible, but it is not a completion
 // signal.

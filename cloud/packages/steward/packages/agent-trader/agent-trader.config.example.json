@@ -10,7 +10,7 @@
   "dryRun": false,
   "agents": [
     {
-      "agentId": "agent-milady-trader",
+      "agentId": "agent-eliza-trader",
       "tokenAddress": "0x0000000000000000000000000000000000000001",
       "strategy": "rebalance",
       "chainId": 8453,

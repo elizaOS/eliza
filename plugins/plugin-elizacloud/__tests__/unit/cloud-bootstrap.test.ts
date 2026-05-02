@@ -127,13 +127,13 @@ describe("CloudBootstrapServiceImpl", () => {
 
   it("start() returns a working service instance and logs trust anchor", async () => {
     process.env.ELIZA_CLOUD_ISSUER = "https://cloud.eliza.how";
-    process.env.ELIZA_CLOUD_CONTAINER_ID = "milady-1";
+    process.env.ELIZA_CLOUD_CONTAINER_ID = "eliza-1";
     const runtime = fakeRuntime();
     const svc = (await CloudBootstrapServiceImpl.start(
       runtime as unknown as Parameters<typeof CloudBootstrapServiceImpl.start>[0]
     )) as CloudBootstrapServiceImpl;
     expect(svc.getExpectedIssuer()).toBe("https://cloud.eliza.how");
-    expect(svc.getExpectedContainerId()).toBe("milady-1");
+    expect(svc.getExpectedContainerId()).toBe("eliza-1");
     await svc.stop();
   });
 });

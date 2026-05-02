@@ -1,8 +1,8 @@
 import type { Character } from "@elizaos/core";
 
 export const mockCharacter: Character = {
-  name: "Milady SQL Test Agent",
-  username: "milady_sql_test",
+  name: "Eliza SQL Test Agent",
+  username: "eliza_sql_test",
   system: "You are a deterministic agent used for plugin-sql integration tests.",
   templates: {},
   bio: ["A test agent used to validate the real SQL adapter integration surface."],

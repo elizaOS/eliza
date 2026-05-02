@@ -3,7 +3,7 @@
  *
  * An elizaOS plugin that provides YouTube streaming capability via RTMP ingest.
  * Exports both the Plugin object (for elizaOS runtime) and a
- * `createYoutubeDestination()` factory (for the Milady streaming pipeline).
+ * `createYoutubeDestination()` factory (for the Eliza streaming pipeline).
  */
 
 import type { IAgentRuntime } from "@elizaos/core";

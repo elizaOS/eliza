@@ -59,7 +59,7 @@
   "engines": {
     "node": ">=20"
   },
-  "milady": {
+  "eliza": {
     "platforms": [
       "node"
     ],

@@ -2,7 +2,7 @@
 
 A different pattern from `apps/edad/`: instead of creating a character on Eliza Cloud and redirecting users to `cloud/chat/<characterId>`, this variant **keeps the chat UI on the app's own domain** and proxies `/v1/messages` calls to Eliza Cloud with the app + affiliate code attached as headers.
 
-Shipped live at **https://milady.nubs.site/apps/edad/** by RemilioNubilio.
+Shipped live at **https://eliza.nubs.site/apps/edad/** by RemilioNubilio.
 
 ## Why this pattern exists
 

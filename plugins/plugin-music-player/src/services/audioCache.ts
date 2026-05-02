@@ -924,7 +924,7 @@ export class AudioCacheService {
               `   Format: ${format} (${format === "flac" ? "lossless" : "lossy"})\n` +
               `   Size: ${(stats.size / 1024 / 1024).toFixed(2)}MB (${stats.size.toLocaleString()} bytes)\n` +
               `   ⚠️  Could not determine duration (metadata missing — file is still on disk; playback/cache return is unaffected).\n` +
-              `   Hint: set MILADY_MUSIC_DEBUG=1 to log ffprobe details.`,
+              `   Hint: set ELIZA_MUSIC_DEBUG=1 to log ffprobe details.`,
           );
           musicDebug("cache: no duration after probe", {
             path: cacheFilePath,

@@ -29,19 +29,19 @@
 - Landing page (web/src/app/page.tsx) copy review — make it sell
 - Ensure code examples use @stwd/sdk everywhere
 
-### Worker 3: Milady/Waifu Integration + API Hardening
+### Worker 3: Eliza/Waifu Integration + API Hardening
 **Priority: MEDIUM-HIGH** — demonstrates real-world use
-- Review milady-cloud codebase for Steward integration points
-- Build lightweight Steward plugin/hook for milady agent framework
+- Review eliza-cloud codebase for Steward integration points
+- Build lightweight Steward plugin/hook for eliza agent framework
 - Or: document the integration path clearly in submission
 - API hardening: error messages, edge cases, rate limiting
 - Ensure waifu.fun tenant demo data is compelling
 - Verify balance endpoint, batch creation, all new endpoints
-- Redeploy API to milady VPS with @stwd/* package names
+- Redeploy API to eliza VPS with @stwd/* package names
 
 ### Worker 4: Deploy & E2E Verification
 **Priority: HIGH** — nothing matters if prod is broken
-- Rsync latest code to milady VPS (excluding .env)
+- Rsync latest code to eliza VPS (excluding .env)
 - Restart steward-api service
 - Verify all API endpoints respond correctly
 - Redeploy web to Vercel
@@ -63,7 +63,7 @@
 - Waifu bridge: `packages/api/src/services/waifu-bridge.ts` (148 lines)
 
 ## Deployment
-- API: milady VPS (89.167.63.246), systemd `steward-api.service`, port 3200
+- API: eliza VPS (89.167.63.246), systemd `steward-api.service`, port 3200
 - Web: Vercel, deploy from `web/` directory
 - Tunnel: cloudflared `api.steward.fi` → localhost:3200
 - Auth: `X-Steward-Tenant` + `X-Steward-Key` headers

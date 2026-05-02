@@ -276,7 +276,7 @@ export class WechatChannel {
 
   private resolveAccounts(): ResolvedWechatAccount[] {
     const accounts: ResolvedWechatAccount[] = [];
-    const rawPort = Number(process.env.MILADY_WECHAT_WEBHOOK_PORT);
+    const rawPort = Number(process.env.ELIZA_WECHAT_WEBHOOK_PORT);
     const envPort =
       Number.isFinite(rawPort) && rawPort > 0 ? rawPort : undefined;
     const defaultPort = envPort ?? this.config.webhookPort ?? 18790;

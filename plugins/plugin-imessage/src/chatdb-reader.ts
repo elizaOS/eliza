@@ -3,7 +3,7 @@
  *
  * iMessage stores every message in a SQLite database at
  * `~/Library/Messages/chat.db`. Reading it requires Full Disk Access on
- * whichever process hosts the plugin (the Milady agent, typically). This
+ * whichever process hosts the plugin (the Eliza agent, typically). This
  * module opens that file read-only and exposes a single `fetchNewMessages`
  * method the polling loop uses to walk forward by ROWID.
  *
@@ -50,8 +50,8 @@ export function createFullDiskAccessAction(): IMessagePermissionAction {
     url: MACOS_FULL_DISK_ACCESS_SETTINGS_URL,
     instructions: [
       "Open System Settings > Privacy & Security > Full Disk Access.",
-      "Enable Milady. If you run Milady from a terminal, enable that terminal app too.",
-      "Quit and relaunch Milady after changing Full Disk Access.",
+      "Enable Eliza. If you run Eliza from a terminal, enable that terminal app too.",
+      "Quit and relaunch Eliza after changing Full Disk Access.",
     ],
   };
 }

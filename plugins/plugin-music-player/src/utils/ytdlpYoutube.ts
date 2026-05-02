@@ -76,7 +76,7 @@ export function getYtdlpEjsFailureHint(stderr: string): string {
   }
   return (
     "\n\nYouTube JS challenge (EJS): yt-dlp needs a JavaScript runtime for some formats. " +
-    "Milady adds `--js-runtimes` for Bun or Node when the API process uses them. " +
+    "Eliza adds `--js-runtimes` for Bun or Node when the API process uses them. " +
     "If errors persist, install Deno or set YTDLP_JS_RUNTIMES (see https://github.com/yt-dlp/yt-dlp/wiki/EJS)."
   );
 }

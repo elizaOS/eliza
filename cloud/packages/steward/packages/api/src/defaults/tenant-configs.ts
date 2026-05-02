@@ -118,9 +118,9 @@ const CHATBOT_TEMPLATE: PolicyTemplate = {
 
 // ─── Default Configs ──────────────────────────────────────────────────────────
 
-export const MILADY_CLOUD_CONFIG: TenantControlPlaneConfig = {
-  tenantId: "milady-cloud",
-  displayName: "Milady Cloud",
+export const ELIZA_CLOUD_CONFIG: TenantControlPlaneConfig = {
+  tenantId: "eliza-cloud",
+  displayName: "Eliza Cloud",
   policyExposure: {
     "spending-limit": "visible",
     "approved-addresses": "hidden",
@@ -184,9 +184,9 @@ export const MILADY_CLOUD_CONFIG: TenantControlPlaneConfig = {
   },
 };
 
-export const MILADY_DESKTOP_CONFIG: TenantControlPlaneConfig = {
-  tenantId: "milady-desktop",
-  displayName: "Milady Desktop",
+export const ELIZA_DESKTOP_CONFIG: TenantControlPlaneConfig = {
+  tenantId: "eliza-desktop",
+  displayName: "Eliza Desktop",
   policyExposure: {
     "spending-limit": "visible",
     "approved-addresses": "visible",
@@ -308,7 +308,7 @@ export const ELIZA_CLOUD_CONFIG: TenantControlPlaneConfig = {
 
 /** All default configs, keyed by tenant ID */
 export const DEFAULT_TENANT_CONFIGS: Record<string, TenantControlPlaneConfig> = {
-  "milady-cloud": MILADY_CLOUD_CONFIG,
-  "milady-desktop": MILADY_DESKTOP_CONFIG,
+  "eliza-cloud": ELIZA_CLOUD_CONFIG,
+  "eliza-desktop": ELIZA_DESKTOP_CONFIG,
   "eliza-cloud": ELIZA_CLOUD_CONFIG,
 };

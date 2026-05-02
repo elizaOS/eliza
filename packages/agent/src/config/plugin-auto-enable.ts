@@ -461,7 +461,7 @@ export function applyPluginAutoEnable(
     );
   }
 
-  if (env.MILADY_AGENT_WALLET_AUTO_ENABLE !== "0") {
+  if (env.ELIZA_AGENT_WALLET_AUTO_ENABLE !== "0") {
     const solanaKeyReason =
       typeof env.SOLANA_PRIVATE_KEY === "string" &&
       env.SOLANA_PRIVATE_KEY.trim().length > 0

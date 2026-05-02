@@ -112,8 +112,8 @@ export type SwarmEventListener = (event: SwarmEvent) => void;
 
 /**
  * Callback injected by server.ts to route coordinator events through
- * Milaidy's full ElizaOS pipeline (conversation memory, personality, actions).
- * Returns a CoordinationLLMResponse parsed from Milaidy's natural language
+ * Eliza's full ElizaOS pipeline (conversation memory, personality, actions).
+ * Returns a CoordinationLLMResponse parsed from Eliza's natural language
  * response, or null if no actionable JSON block was found.
  */
 export type AgentDecisionCallback = (
@@ -365,7 +365,7 @@ export class SwarmCoordinator implements SwarmCoordinatorContext {
   /** Callback to relay coordinator events to WebSocket clients. */
   private wsBroadcast: WsBroadcastCallback | null = null;
 
-  /** Callback to route coordinator events through Milaidy's full pipeline. */
+  /** Callback to route coordinator events through Eliza's full pipeline. */
   private agentDecisionCb: AgentDecisionCallback | null = null;
 
   /** Callback fired when all swarm tasks complete, for synthesis. */
@@ -515,11 +515,11 @@ export class SwarmCoordinator implements SwarmCoordinatorContext {
     return this._swarmContext;
   }
 
-  /** Inject a callback (from server.ts) to route events through Milaidy's pipeline. */
+  /** Inject a callback (from server.ts) to route events through Eliza's pipeline. */
   setAgentDecisionCallback(cb: AgentDecisionCallback): void {
     this.agentDecisionCb = cb;
     this.log(
-      "Agent decision callback wired, events will route through Milaidy",
+      "Agent decision callback wired, events will route through Eliza",
     );
   }
 
@@ -1540,7 +1540,7 @@ export class SwarmCoordinator implements SwarmCoordinatorContext {
       .sort((left, right) => right.lastActivityAt - left.lastActivityAt)[0];
 
     return [
-      "Resume an existing Milady coordinator task thread.",
+      "Resume an existing Eliza coordinator task thread.",
       "",
       `Thread: ${thread.title}`,
       `Original request: ${thread.originalRequest}`,
@@ -2083,7 +2083,7 @@ export class SwarmCoordinator implements SwarmCoordinatorContext {
         ? `a fresh ${recoveryFramework} session`
         : `a ${recoveryFramework} recovery session`;
     return [
-      `Continue an in-progress task after the previous session terminated unexpectedly. Milady started ${recoveryMode} for recovery.`,
+      `Continue an in-progress task after the previous session terminated unexpectedly. Eliza started ${recoveryMode} for recovery.`,
       "",
       "Original task:",
       taskCtx.originalTask,
@@ -2146,12 +2146,12 @@ export class SwarmCoordinator implements SwarmCoordinatorContext {
 
     if (failoverResult) {
       this.sendChatMessage(
-        `"${taskCtx.label}" ran into a ${taskCtx.agentType} quota/credit failure. Milady is continuing the same task on ${failoverResult.replacementFramework}.`,
+        `"${taskCtx.label}" ran into a ${taskCtx.agentType} quota/credit failure. Eliza is continuing the same task on ${failoverResult.replacementFramework}.`,
         "coding-agent",
       );
     } else {
       this.sendChatMessage(
-        `"${taskCtx.label}" ran into a ${taskCtx.agentType} quota/credit failure. Milady will prefer another task-agent framework until ${taskCtx.agentType} is healthy again.`,
+        `"${taskCtx.label}" ran into a ${taskCtx.agentType} quota/credit failure. Eliza will prefer another task-agent framework until ${taskCtx.agentType} is healthy again.`,
         "coding-agent",
       );
     }
@@ -3053,7 +3053,7 @@ export class SwarmCoordinator implements SwarmCoordinatorContext {
         });
         const loginParts = [
           recoveryResult?.status === "recovering"
-            ? `"${taskCtx.label}" needs provider authentication, and Milady has started the recovery flow. It will continue automatically when sign-in completes.`
+            ? `"${taskCtx.label}" needs provider authentication, and Eliza has started the recovery flow. It will continue automatically when sign-in completes.`
             : `"${taskCtx.label}" needs a provider login before it can continue.`,
           recoveryResult?.instructions?.trim() ||
             loginEvent.instructions?.trim() ||
@@ -3276,7 +3276,7 @@ export class SwarmCoordinator implements SwarmCoordinatorContext {
       });
       if (taskCtx) {
         this.sendChatMessage(
-          `"${taskCtx.label}" was approved. Milady is continuing the task now.`,
+          `"${taskCtx.label}" was approved. Eliza is continuing the task now.`,
           "coding-agent",
         );
       }

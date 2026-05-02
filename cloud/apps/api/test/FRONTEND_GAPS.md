@@ -133,9 +133,9 @@ For each `/api/*` path referenced anywhere in the frontend code (frontend app, h
   - callers: `eliza/cloud/packages/sdk/src/public-routes.ts`
 - `/api/v1/market/trades`
   - callers: `eliza/cloud/packages/sdk/src/public-routes.ts`
-- `/api/v1/milady`
+- `/api/v1/eliza`
   - callers: `apps/homepage/src/lib/cloud-api.ts`
-- `/api/v1/milady/agents`
+- `/api/v1/eliza/agents`
   - callers: `apps/homepage/src/lib/cloud-api.ts`
 - `/api/v1/needs-credits`
   - callers: `eliza/cloud/packages/sdk/src/client.test.ts`

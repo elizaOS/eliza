@@ -1,7 +1,7 @@
-# Claude / Codex sub-agent ↔ Milady runtime bridge — design doc
+# Claude / Codex sub-agent ↔ Eliza runtime bridge — design doc
 
-> **Audience:** the Claude Code / Codex CLI sub-agent that the Milady orchestrator
-> spawns inside a coding task. NOT the Milady framework agent itself.
+> **Audience:** the Claude Code / Codex CLI sub-agent that the Eliza orchestrator
+> spawns inside a coding task. NOT the Eliza framework agent itself.
 > See `agent-skill-build-monetized-app.md` for the framework-agent skill.
 >
 > **Status:** design only. The runtime surface this skill would document does
@@ -10,9 +10,9 @@
 
 ## What this skill is for
 
-When the Milady orchestrator spawns a Claude Code or Codex sub-agent to do
+When the Eliza orchestrator spawns a Claude Code or Codex sub-agent to do
 coding work, that sub-agent runs inside a `claude` / `codex` CLI process in a
-separate worktree. It is disconnected from the parent Milady runtime by
+separate worktree. It is disconnected from the parent Eliza runtime by
 default — it can only see files in its workdir, and the only outgoing channel
 is the telemetry hook the orchestrator installed in `~/.claude/settings.json`
 (which is fire-and-forget, intended for state events, not bidirectional
@@ -40,7 +40,7 @@ The orchestrator currently injects three things into a sub-agent's workspace:
 1. **`CLAUDE.md`** at the workspace root — written by `buildSwarmMemoryInstructions()`
    in `coding-task-handlers.ts`. Contains: agent label, agent's task, sibling
    tasks (when in a swarm), coordination rules. Does NOT currently include
-   any pointers back to the parent Milady runtime.
+   any pointers back to the parent Eliza runtime.
 
 2. **HTTP telemetry hooks** in `~/.claude/settings.json` — written by
    `pty-service.ts` around line 666. Points the sub-agent's lifecycle hooks
@@ -53,9 +53,9 @@ The orchestrator currently injects three things into a sub-agent's workspace:
    (`ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `GITHUB_TOKEN`, etc.) propagate;
    everything else is stripped to prevent secret leakage. This is correct.
 
-## What needs to be added (Milady side)
+## What needs to be added (Eliza side)
 
-A small read-only HTTP surface on the parent Milady runtime that sub-agents
+A small read-only HTTP surface on the parent Eliza runtime that sub-agents
 can curl to fetch parent-state. Endpoints, all behind loopback-only auth (so
 non-bot processes can't fingerprint the parent):
 
@@ -80,7 +80,7 @@ After the bridge endpoints exist, extend the orchestrator's CLAUDE.md
 template to include:
 
 ```markdown
-## Parent Milady runtime — quick reference
+## Parent Eliza runtime — quick reference
 
 You can read parent-runtime state via these loopback endpoints:
 
@@ -108,10 +108,10 @@ substitution.
 ## What the bundled SKILL.md becomes
 
 After the bridge is live, this becomes a real bundled skill at
-`eliza/packages/skills/skills/claude-subagent-milady-bridge/SKILL.md`. Per-skill
+`eliza/packages/skills/skills/claude-subagent-eliza-bridge/SKILL.md`. Per-skill
 audience-targeting matters here:
 
-- The Milady framework agent loads bundled skills via `AgentSkillsService`
+- The Eliza framework agent loads bundled skills via `AgentSkillsService`
   at runtime startup. It uses skills like `coding-agent`, `eliza-cloud`,
   `build-monetized-app` to decide what to do.
 - The sub-agent (Claude Code, Codex) does NOT load `@elizaos/skills`. It
@@ -119,8 +119,8 @@ audience-targeting matters here:
 
 So the SKILL.md needs to live in two places:
 
-1. **`eliza/packages/skills/skills/claude-subagent-milady-bridge/SKILL.md`** —
-   tells the Milady framework agent: "when spawning a Claude Code sub-agent
+1. **`eliza/packages/skills/skills/claude-subagent-eliza-bridge/SKILL.md`** —
+   tells the Eliza framework agent: "when spawning a Claude Code sub-agent
    for a task that needs parent context, ensure the bridge endpoints are
    reachable and document them in the injected CLAUDE.md".
 2. **The orchestrator's CLAUDE.md template** — already covered above. This
@@ -161,7 +161,7 @@ If/when you want to build this:
 2. **Extend the orchestrator's CLAUDE.md template** in `coding-task-handlers.ts`'s
    `buildSwarmMemoryInstructions()` (or its successor) to include the bridge
    reference block above.
-3. **Add the bundled skill** at `eliza/packages/skills/skills/claude-subagent-milady-bridge/SKILL.md`
+3. **Add the bundled skill** at `eliza/packages/skills/skills/claude-subagent-eliza-bridge/SKILL.md`
    following the same convention as `eliza-cloud` and `build-monetized-app`.
 4. **Verify live** — spawn a coding sub-agent, have it curl the bridge,
    confirm the response shape matches the spec. Capture the trace in the PR

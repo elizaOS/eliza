@@ -11,7 +11,12 @@ import {
 } from "@elizaos/ui";
 import { AlertCircle, CheckCircle2, ChevronRight } from "lucide-react";
 import { type ReactNode, type RefCallback, useState } from "react";
-import { type CloudCompatAgent, client, type PluginInfo } from "../../api";
+import {
+  type CloudCompatAgent,
+  type CloudOAuthConnectionRole,
+  client,
+  type PluginInfo,
+} from "../../api";
 import { useApp } from "../../state";
 import {
   ConnectorModeSelector,
@@ -100,6 +105,48 @@ interface ConnectorPluginCardProps
   plugin: PluginInfo;
 }
 
+type CloudOAuthConnectorCopy = {
+  platform: "slack" | "twitter";
+  connectionRole: CloudOAuthConnectionRole;
+  buttonLabel: string;
+  connectedHint: string;
+  disconnectedHint: string;
+  successNotice: string;
+};
+
+const CLOUD_OAUTH_CONNECTORS: Record<string, CloudOAuthConnectorCopy> = {
+  slack: {
+    platform: "slack",
+    connectionRole: "agent",
+    buttonLabel: "Use Slack OAuth",
+    connectedHint:
+      "Connect Slack with Eliza Cloud OAuth. Cloud stores the workspace token and the Slack plugin remains the runtime surface for messages and actions.",
+    disconnectedHint:
+      "Connect Eliza Cloud first to use Slack OAuth instead of local Socket Mode tokens.",
+    successNotice: "Finish Slack OAuth in your browser, then return here.",
+  },
+  twitter: {
+    platform: "twitter",
+    connectionRole: "agent",
+    buttonLabel: "Use X/Twitter OAuth",
+    connectedHint:
+      "Connect X/Twitter with Eliza Cloud OAuth so agent posts, mentions, replies, and DMs use the plugin through cloud-held tokens.",
+    disconnectedHint:
+      "Connect Eliza Cloud first to use X/Twitter OAuth instead of local developer tokens.",
+    successNotice: "Finish X/Twitter OAuth in your browser, then return here.",
+  },
+};
+
+function getCloudOAuthConnector(
+  pluginId: string,
+  selectedMode: string,
+): CloudOAuthConnectorCopy | null {
+  if (selectedMode !== "oauth") {
+    return null;
+  }
+  return CLOUD_OAUTH_CONNECTORS[pluginId] ?? null;
+}
+
 function groupVisiblePlugins(visiblePlugins: PluginInfo[]) {
   const groupMap = new Map<string, PluginInfo[]>();
   const groupOrder: string[] = [];
@@ -167,6 +214,7 @@ function ConnectorPluginCard({
   const { elizaCloudConnected, setActionNotice, setState, setTab } = useApp();
   const connectorMode = useConnectorMode(plugin.id, { elizaCloudConnected });
   const [managedDiscordBusy, setManagedDiscordBusy] = useState(false);
+  const [cloudOAuthBusy, setCloudOAuthBusy] = useState(false);
   const [managedDiscordAgents, setManagedDiscordAgents] = useState<
     CloudCompatAgent[]
   >([]);
@@ -174,6 +222,23 @@ function ConnectorPluginCard({
     useState(false);
   const [managedDiscordSelectedAgentId, setManagedDiscordSelectedAgentId] =
     useState<string | null>(null);
+  const selectedCloudOAuthConnector = getCloudOAuthConnector(
+    plugin.id,
+    connectorMode.selectedMode,
+  );
+  const cloudOAuthConnector =
+    selectedCloudOAuthConnector ??
+    (!elizaCloudConnected ? (CLOUD_OAUTH_CONNECTORS[plugin.id] ?? null) : null);
+  const isCloudOAuthMode = Boolean(selectedCloudOAuthConnector);
+  const isDiscordManagedMode =
+    plugin.id === "discord" && connectorMode.selectedMode === "managed";
+  const isTelegramCloudGatewayMode =
+    plugin.id === "telegram" && connectorMode.selectedMode === "cloud-bot";
+  const showTelegramCloudGatewayNotice =
+    isTelegramCloudGatewayMode ||
+    (!elizaCloudConnected && plugin.id === "telegram");
+  const cloudBackedConnectorMode =
+    elizaCloudConnected && (isCloudOAuthMode || isDiscordManagedMode);
   const hasParams =
     (plugin.parameters?.length ?? 0) > 0 && plugin.id !== "__ui-showcase__";
   const isExpanded = connectorExpandedIds.has(plugin.id);
@@ -190,7 +255,10 @@ function ConnectorPluginCard({
   // Plugins that only expose optional knobs (e.g. plugin-imessage, whose
   // parameters are all advanced overrides) should flip to Ready as soon as
   // they're enabled, not force the user to fill in every optional field.
-  const allParamsSet = !hasParams || requiredSetCount === requiredParams.length;
+  const allParamsSet =
+    cloudBackedConnectorMode ||
+    !hasParams ||
+    requiredSetCount === requiredParams.length;
   const isToggleBusy = togglingPlugins.has(plugin.id);
   const toggleDisabled =
     isToggleBusy || (hasPluginToggleInFlight && !isToggleBusy);
@@ -393,6 +461,56 @@ function ConnectorPluginCard({
       setManagedDiscordBusy(false);
     }
   };
+  const handleOpenCloudOAuthConnector = async () => {
+    if (!cloudOAuthConnector || cloudOAuthBusy) {
+      return;
+    }
+
+    if (!elizaCloudConnected) {
+      setState("cloudDashboardView", "billing");
+      setTab("settings");
+      setActionNotice(
+        t("pluginsview.CloudOauthRequiresCloud", {
+          defaultValue:
+            "Connect Eliza Cloud first, then you can use OAuth for this connector.",
+        }),
+        "info",
+        5000,
+      );
+      return;
+    }
+
+    setCloudOAuthBusy(true);
+    try {
+      const redirectUrl =
+        typeof window !== "undefined" ? window.location.href : undefined;
+      const oauthResponse =
+        cloudOAuthConnector.platform === "twitter"
+          ? await client.initiateCloudTwitterOauth({
+              redirectUrl,
+              connectionRole: cloudOAuthConnector.connectionRole,
+            })
+          : await client.initiateCloudOauth(cloudOAuthConnector.platform, {
+              redirectUrl,
+              connectionRole: cloudOAuthConnector.connectionRole,
+            });
+
+      await handleOpenPluginExternalUrl(oauthResponse.authUrl);
+      setActionNotice(cloudOAuthConnector.successNotice, "info", 5000);
+    } catch (error) {
+      setActionNotice(
+        error instanceof Error
+          ? error.message
+          : t("pluginsview.CloudOauthSetupFailed", {
+              defaultValue: "Failed to start OAuth setup.",
+            }),
+        "error",
+        4200,
+      );
+    } finally {
+      setCloudOAuthBusy(false);
+    }
+  };
 
   const BrandIcon = getBrandIcon(plugin.id);
   const connectorHeaderMedia = (
@@ -507,7 +625,8 @@ function ConnectorPluginCard({
   const showPluginConfig =
     hasParams &&
     setupPanelPluginId === plugin.id &&
-    !(plugin.id === "discord" && connectorMode.selectedMode === "managed");
+    !isDiscordManagedMode &&
+    !isCloudOAuthMode;
 
   return (
     <div key={plugin.id} data-testid={`connector-section-${plugin.id}`}>
@@ -623,6 +742,70 @@ function ConnectorPluginCard({
               ) : null}
             </PagePanel.Notice>
           )}
+
+        {cloudOAuthConnector ? (
+          <PagePanel.Notice
+            tone="default"
+            className="mb-4"
+            actions={
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 rounded-[var(--radius-lg)] px-4 text-xs-tight font-semibold"
+                onClick={() => {
+                  void handleOpenCloudOAuthConnector();
+                }}
+                disabled={cloudOAuthBusy}
+              >
+                {cloudOAuthBusy
+                  ? "..."
+                  : elizaCloudConnected
+                    ? cloudOAuthConnector.buttonLabel
+                    : t("pluginsview.OpenElizaCloud", {
+                        defaultValue: "Open Eliza Cloud",
+                      })}
+              </Button>
+            }
+          >
+            {elizaCloudConnected
+              ? cloudOAuthConnector.connectedHint
+              : cloudOAuthConnector.disconnectedHint}
+          </PagePanel.Notice>
+        ) : null}
+
+        {showTelegramCloudGatewayNotice ? (
+          <PagePanel.Notice
+            tone="default"
+            className="mb-4"
+            actions={
+              elizaCloudConnected ? undefined : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 rounded-[var(--radius-lg)] px-4 text-xs-tight font-semibold"
+                  onClick={() => {
+                    setState("cloudDashboardView", "billing");
+                    setTab("settings");
+                  }}
+                >
+                  {t("pluginsview.OpenElizaCloud", {
+                    defaultValue: "Open Eliza Cloud",
+                  })}
+                </Button>
+              )
+            }
+          >
+            {elizaCloudConnected
+              ? t("pluginsview.TelegramCloudGatewayHint", {
+                  defaultValue:
+                    "Telegram does not support bot-install OAuth for bidirectional chats. Use a BotFather token here; Eliza Cloud can host the webhook gateway and route updates to this app.",
+                })
+              : t("pluginsview.TelegramCloudGatewayHintDisconnected", {
+                  defaultValue:
+                    "Telegram does not support bot-install OAuth for bidirectional chats. Connect Eliza Cloud to host the webhook gateway, then use a BotFather token here.",
+                })}
+          </PagePanel.Notice>
+        ) : null}
 
         {pluginLinks.length > 0 && (
           <div className="mb-4 flex flex-wrap gap-2">

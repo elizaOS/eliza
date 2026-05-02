@@ -203,7 +203,7 @@ Ethereum · Base · Polygon · Arbitrum · BSC · Base Sepolia · BSC Testnet ·
 
 ## Building With
 
-[ElizaOS](https://elizaos.ai) · [Milady](https://milady.gg) · [Babylon](https://babylon.market) · [Hyperscape](https://hyperscape.ai) · [Strata Reserve](https://stratareserve.co)
+[ElizaOS](https://elizaos.ai) · [Eliza](https://eliza.gg) · [Babylon](https://babylon.market) · [Hyperscape](https://hyperscape.ai) · [Strata Reserve](https://stratareserve.co)
 
 ---
 

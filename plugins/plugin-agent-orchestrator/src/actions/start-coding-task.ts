@@ -733,7 +733,7 @@ export const startCodingTaskAction: BackgroundAction = {
     {
       name: "maxRetries",
       description:
-        "Optional override for MILADY_APP_VERIFICATION_MAX_RETRIES (default 3). " +
+        "Optional override for ELIZA_APP_VERIFICATION_MAX_RETRIES (default 3). " +
         "Caps how many times the orchestrator will replay the failure prompt to the child " +
         "before escalating to the user.",
       required: false,

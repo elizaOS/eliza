@@ -38,4 +38,7 @@ export default defineConfig({
   preview: {
     port: 4444,
   },
+  build: {
+    chunkSizeWarningLimit: 1200,
+  },
 });

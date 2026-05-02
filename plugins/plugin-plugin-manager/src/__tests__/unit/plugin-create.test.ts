@@ -22,7 +22,7 @@ function makeMessage(text: string, roomId = "room-1"): Memory {
 
 describe("PLUGIN create dispatch", () => {
   it("passes verifier policy through CREATE_TASK parameters with canonical completion proof", async () => {
-    const repoRoot = await mkdtemp(path.join(tmpdir(), "milady-plugin-create-"));
+    const repoRoot = await mkdtemp(path.join(tmpdir(), "eliza-plugin-create-"));
     try {
       const templateDir = path.join(repoRoot, "eliza/templates/min-plugin");
       await mkdir(templateDir, { recursive: true });

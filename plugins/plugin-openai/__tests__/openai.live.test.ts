@@ -125,7 +125,7 @@ describe.skipIf(!OPENAI_API_KEY)("OpenAI plugin live", () => {
     }
 
     const response = await handler(runtime, {
-      text: "Milady live embedding smoke test",
+      text: "Eliza live embedding smoke test",
     });
 
     expect(Array.isArray(response)).toBe(true);

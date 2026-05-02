@@ -9,7 +9,6 @@
  * returns an empty list.
  */
 
-import { hasRoleAccess } from "@elizaos/agent";
 import { WiFi } from "@elizaos/capacitor-wifi";
 import type {
   Action,
@@ -17,6 +16,7 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
+import { hasRoleAccess } from "@elizaos/shared/eliza-core-roles";
 
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;

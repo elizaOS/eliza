@@ -1,8 +1,8 @@
--- Migration: Add Milady Sandboxes tables
+-- Migration: Add Eliza Sandboxes tables
 -- Tracks per-agent Vercel Sandbox allocations and rolling state backups
--- for Milady cloud agents.
+-- for Eliza cloud agents.
 
-CREATE TABLE IF NOT EXISTS "milady_sandboxes" (
+CREATE TABLE IF NOT EXISTS "eliza_sandboxes" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 
   -- Ownership
@@ -44,16 +44,16 @@ CREATE TABLE IF NOT EXISTS "milady_sandboxes" (
   "updated_at" timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS "milady_sandboxes_organization_idx" ON "milady_sandboxes" ("organization_id");
-CREATE INDEX IF NOT EXISTS "milady_sandboxes_user_idx" ON "milady_sandboxes" ("user_id");
-CREATE INDEX IF NOT EXISTS "milady_sandboxes_status_idx" ON "milady_sandboxes" ("status");
-CREATE INDEX IF NOT EXISTS "milady_sandboxes_character_idx" ON "milady_sandboxes" ("character_id");
-CREATE INDEX IF NOT EXISTS "milady_sandboxes_sandbox_id_idx" ON "milady_sandboxes" ("sandbox_id");
+CREATE INDEX IF NOT EXISTS "eliza_sandboxes_organization_idx" ON "eliza_sandboxes" ("organization_id");
+CREATE INDEX IF NOT EXISTS "eliza_sandboxes_user_idx" ON "eliza_sandboxes" ("user_id");
+CREATE INDEX IF NOT EXISTS "eliza_sandboxes_status_idx" ON "eliza_sandboxes" ("status");
+CREATE INDEX IF NOT EXISTS "eliza_sandboxes_character_idx" ON "eliza_sandboxes" ("character_id");
+CREATE INDEX IF NOT EXISTS "eliza_sandboxes_sandbox_id_idx" ON "eliza_sandboxes" ("sandbox_id");
 
 
-CREATE TABLE IF NOT EXISTS "milady_sandbox_backups" (
+CREATE TABLE IF NOT EXISTS "eliza_sandbox_backups" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  "sandbox_record_id" uuid NOT NULL REFERENCES "milady_sandboxes"("id") ON DELETE CASCADE,
+  "sandbox_record_id" uuid NOT NULL REFERENCES "eliza_sandboxes"("id") ON DELETE CASCADE,
   "snapshot_type" text NOT NULL,
   "state_data" jsonb NOT NULL,
   "vercel_snapshot_id" text,
@@ -61,5 +61,5 @@ CREATE TABLE IF NOT EXISTS "milady_sandbox_backups" (
   "created_at" timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS "milady_sandbox_backups_sandbox_idx" ON "milady_sandbox_backups" ("sandbox_record_id");
-CREATE INDEX IF NOT EXISTS "milady_sandbox_backups_created_at_idx" ON "milady_sandbox_backups" ("created_at");
+CREATE INDEX IF NOT EXISTS "eliza_sandbox_backups_sandbox_idx" ON "eliza_sandbox_backups" ("sandbox_record_id");
+CREATE INDEX IF NOT EXISTS "eliza_sandbox_backups_created_at_idx" ON "eliza_sandbox_backups" ("created_at");

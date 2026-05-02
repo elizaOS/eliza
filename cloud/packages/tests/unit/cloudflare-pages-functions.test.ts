@@ -51,10 +51,10 @@ describe("Cloudflare Pages Functions proxy", () => {
 
   it("honors API_UPSTREAM overrides and trims trailing slashes", () => {
     expect(
-      resolveApiWorkerTarget("https://staging.elizacloud.ai/api/v1/milady/agents", {
+      resolveApiWorkerTarget("https://staging.elizacloud.ai/api/v1/eliza/agents", {
         API_UPSTREAM: "https://api-staging.elizacloud.ai/",
       }),
-    ).toBe("https://api-staging.elizacloud.ai/api/v1/milady/agents");
+    ).toBe("https://api-staging.elizacloud.ai/api/v1/eliza/agents");
   });
 
   it("routes same-origin /steward traffic through the same Worker upstream", async () => {

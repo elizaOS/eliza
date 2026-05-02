@@ -36,7 +36,7 @@
     "@biomejs/biome": "^2.3.11",
     "vitest": "^3.2.4"
   },
-  "milady": {
+  "eliza": {
     "platforms": [
       "node"
     ],

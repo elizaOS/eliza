@@ -2,7 +2,7 @@
  * DiscordOwnerPairingService
  *
  * Implements the connector side of the owner-pairing flow for Discord:
- *   - `/milady-pair <code>` slash command: relays a 6-digit pair code to the
+ *   - `/eliza-pair <code>` slash command: relays a 6-digit pair code to the
  *     backend `verifyOwnerBindFromConnector` service and reports the result.
  *   - `sendOwnerLoginDmLink({ externalId, link })`: called by the backend's
  *     `/api/auth/login/owner/dm-link/request` handler to DM a login link to
@@ -13,7 +13,7 @@
  *     whether a binding succeeds.
  *   - Fail closed: if the backend service is unreachable, we reply with an
  *     explicit error message and do NOT silently succeed.
- *   - Per-user rate limit on `/milady-pair` invocations: 5 attempts per minute.
+ *   - Per-user rate limit on `/eliza-pair` invocations: 5 attempts per minute.
  *   - DM-link sender never pre-fetches or auto-redeems the link.
  *   - Webhook signature verification: Discord slash-command payloads are
  *     verified by discord.js before reaching this handler (the library handles
@@ -132,11 +132,11 @@ function resolveVerifyService(
 }
 
 /**
- * Handler for the `/milady-pair <code>` slash command.
+ * Handler for the `/eliza-pair <code>` slash command.
  * Called by the Discord slash-command dispatcher after it has already
  * applied cooldown and role checks. Exported for unit testing.
  */
-export async function handleMiladyPairCommand(
+export async function handleElizaPairCommand(
 	interaction: ChatInputCommandInteraction,
 	runtime: IAgentRuntime,
 ): Promise<void> {
@@ -150,7 +150,7 @@ export async function handleMiladyPairCommand(
 	if (isRateLimited(userId)) {
 		logger.warn(
 			{ src: "plugin:discord:owner-pairing", userId },
-			"Rate limit hit for /milady-pair",
+			"Rate limit hit for /eliza-pair",
 		);
 		await auditEmit(
 			runtime,
@@ -172,7 +172,7 @@ export async function handleMiladyPairCommand(
 	if (!rawCode?.trim()) {
 		await interaction.reply({
 			content:
-				"Usage: `/milady-pair <code>` — enter the 6-digit code shown in the Milady dashboard.",
+				"Usage: `/eliza-pair <code>` — enter the 6-digit code shown in the Eliza dashboard.",
 			ephemeral: true,
 		});
 		return;
@@ -182,7 +182,7 @@ export async function handleMiladyPairCommand(
 	if (!isValidPairCode(code)) {
 		await interaction.reply({
 			content:
-				"The pairing code must be exactly 6 digits. Check the Milady dashboard and try again.",
+				"The pairing code must be exactly 6 digits. Check the Eliza dashboard and try again.",
 			ephemeral: true,
 		});
 		return;
@@ -202,7 +202,7 @@ export async function handleMiladyPairCommand(
 		);
 		await interaction.reply({
 			content:
-				"Milady could not reach the pairing service right now. Please try again in a moment.",
+				"Eliza could not reach the pairing service right now. Please try again in a moment.",
 			ephemeral: true,
 		});
 		return;
@@ -249,7 +249,7 @@ export async function handleMiladyPairCommand(
 			displayHandle,
 		});
 		await interaction.reply({
-			content: "Paired with Milady. You can now log in via Discord.",
+			content: "Paired with Eliza. You can now log in via Discord.",
 			ephemeral: true,
 		});
 	} else {
@@ -266,7 +266,7 @@ export async function handleMiladyPairCommand(
 		});
 		await interaction.reply({
 			content:
-				"Pair code invalid or expired. Check the Milady dashboard for a fresh code.",
+				"Pair code invalid or expired. Check the Eliza dashboard for a fresh code.",
 			ephemeral: true,
 		});
 	}
@@ -299,7 +299,7 @@ export class DiscordOwnerPairingServiceImpl
 {
 	static serviceType = DISCORD_OWNER_PAIRING_SERVICE_TYPE;
 	capabilityDescription =
-		"Handles Discord-side owner pairing (slash-command code verification) and DM login-link delivery for Milady remote auth";
+		"Handles Discord-side owner pairing (slash-command code verification) and DM login-link delivery for Eliza remote auth";
 
 	static async start(runtime: IAgentRuntime): Promise<Service> {
 		const service = new DiscordOwnerPairingServiceImpl(runtime);
@@ -310,7 +310,7 @@ export class DiscordOwnerPairingServiceImpl
 					src: "plugin:discord:owner-pairing",
 					agentId: runtime.agentId,
 				},
-				"DiscordOwnerPairingService started; /milady-pair command registered",
+				"DiscordOwnerPairingService started; /eliza-pair command registered",
 			);
 		} else {
 			logger.info(
@@ -318,7 +318,7 @@ export class DiscordOwnerPairingServiceImpl
 					src: "plugin:discord:owner-pairing",
 					agentId: runtime.agentId,
 				},
-				"DiscordOwnerPairingService started without /milady-pair because OWNER_BIND_VERIFY is not registered",
+				"DiscordOwnerPairingService started without /eliza-pair because OWNER_BIND_VERIFY is not registered",
 			);
 		}
 		return service;
@@ -330,26 +330,26 @@ export class DiscordOwnerPairingServiceImpl
 	}
 
 	/**
-	 * Registers the /milady-pair slash command with the Discord plugin's
+	 * Registers the /eliza-pair slash command with the Discord plugin's
 	 * slash-command dispatcher. Calling this multiple times is idempotent
 	 * because `addCommand` overwrites existing entries by name.
 	 */
 	private registerPairCommand(runtime: IAgentRuntime): void {
 		addCommand({
-			name: "milady-pair",
+			name: "eliza-pair",
 			description:
-				"Pair your Discord account with Milady using the 6-digit code from the dashboard",
+				"Pair your Discord account with Eliza using the 6-digit code from the dashboard",
 			ephemeral: true,
 			options: [
 				{
 					name: "code",
-					description: "6-digit pairing code from the Milady dashboard",
+					description: "6-digit pairing code from the Eliza dashboard",
 					type: "string",
 					required: true,
 				},
 			],
 			execute: async (interaction) => {
-				await handleMiladyPairCommand(interaction, runtime);
+				await handleElizaPairCommand(interaction, runtime);
 			},
 		});
 	}
@@ -391,7 +391,7 @@ export class DiscordOwnerPairingServiceImpl
 		}
 
 		const message =
-			`Click to log in to Milady: ${link}\n\n` +
+			`Click to log in to Eliza: ${link}\n\n` +
 			"_This link expires in 5 minutes. Do not share it._";
 
 		try {

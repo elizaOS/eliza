@@ -7,7 +7,6 @@
  * at the plugin level; web/iOS fallback returns an empty list.
  */
 
-import { hasRoleAccess } from "@elizaos/agent";
 import { Phone } from "@elizaos/capacitor-phone";
 import type {
   Action,
@@ -15,6 +14,7 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
+import { hasRoleAccess } from "@elizaos/shared/eliza-core-roles";
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 50;

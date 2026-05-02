@@ -3,10 +3,10 @@ import { authIdentityTable } from "./authIdentity";
 
 /**
  * Connector-owner binding. Lets an external connector account (Discord,
- * Telegram, WeChat, Matrix) prove ownership of a local Milady identity.
+ * Telegram, WeChat, Matrix) prove ownership of a local Eliza identity.
  *
  * Uniqueness is enforced on `(connector, external_id, instance_id)` so the same
- * Discord account can own multiple Milady instances (one binding per
+ * Discord account can own multiple Eliza instances (one binding per
  * (connector, external) pair *per instance*) without cross-talk.
  */
 export const authOwnerBindingTable = pgTable(
@@ -19,7 +19,7 @@ export const authOwnerBindingTable = pgTable(
     connector: text("connector").notNull(),
     externalId: text("external_id").notNull(),
     displayHandle: text("display_handle").notNull(),
-    /** Stable per-instance id; populated from MILADY_INSTANCE_ID or generated once at boot. */
+    /** Stable per-instance id; populated from ELIZA_INSTANCE_ID or generated once at boot. */
     instanceId: text("instance_id").notNull(),
     verifiedAt: bigint("verified_at", { mode: "number" }).notNull(),
     /** Hashed pairing code (sha256 hex) — never store the plaintext. */

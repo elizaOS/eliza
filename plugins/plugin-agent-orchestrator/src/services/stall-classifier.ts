@@ -34,7 +34,7 @@ export interface StallClassifierContext {
     get(id: string): { startedAt?: string | Date } | null | undefined;
   } | null;
   metricsTracker: AgentMetricsTracker;
-  /** Write debug snapshots to ~/.milady/debug/ on stall (default: false) */
+  /** Write debug snapshots to ~/.eliza/debug/ on stall (default: false) */
   debugSnapshots?: boolean;
   /** Most recent text input sent into the session, used to ignore echoed prompts. */
   lastSentInput?: string;
@@ -145,7 +145,7 @@ export function buildStallClassificationPrompt(
   output: string,
 ): string {
   return (
-    `You are Milady, an AI orchestrator managing task-agent sessions. ` +
+    `You are Eliza, an AI orchestrator managing task-agent sessions. ` +
     `A ${agentType} task agent (session: ${sessionId}) appears to have stalled — ` +
     `it has stopped producing output while in a busy state.\n\n` +
     `Here is the recent terminal output:\n` +
@@ -183,7 +183,7 @@ export function buildStallClassificationPrompt(
 }
 
 /**
- * Write a debug snapshot to ~/.milady/debug/ for offline stall analysis.
+ * Write a debug snapshot to ~/.eliza/debug/ for offline stall analysis.
  */
 export async function writeStallSnapshot(
   sessionId: string,
@@ -198,7 +198,7 @@ export async function writeStallSnapshot(
     const fs = await import("node:fs");
     const os = await import("node:os");
     const path = await import("node:path");
-    const snapshotDir = path.join(os.homedir(), ".milady", "debug");
+    const snapshotDir = path.join(os.homedir(), ".eliza", "debug");
     fs.mkdirSync(snapshotDir, { recursive: true });
     const ourBuffer = buffers.get(sessionId);
     const ourTail = ourBuffer
@@ -357,7 +357,7 @@ export async function classifyStallOutput(
     //
     // Task completion is signaled authoritatively by the agent's own hook
     // system (routed through pty-service.handleHookEvent) and by the
-    // jsonl-based completion watcher in the milady package. The stall
+    // jsonl-based completion watcher in the eliza package. The stall
     // classifier is still useful for detecting waiting_for_input and error
     // states, which is why we don't short-circuit those paths.
     let mappedState: StallClassification["state"];
@@ -429,7 +429,7 @@ export function buildCombinedClassifyDecidePrompt(
       : "";
 
   return (
-    `You are Milady, an AI orchestrator managing task-agent sessions. ` +
+    `You are Eliza, an AI orchestrator managing task-agent sessions. ` +
     `A ${agentType} task agent (session: ${sessionId}) appears to have stalled — ` +
     `it has stopped producing output while in a busy state.\n\n` +
     `Original task: "${taskContext.originalTask}"\n` +
@@ -586,7 +586,7 @@ export async function classifyAndDecideForCoordinator(
     // Same downgrade rationale as classifyStallOutput: the LLM's task_complete
     // guess from buffer text is unreliable on long multi-step tasks. Authoritative
     // completion comes from the agent's hook system (pty-service.handleHookEvent)
-    // and the jsonl-based completion watcher in the milady package.
+    // and the jsonl-based completion watcher in the eliza package.
     let mappedState: StallClassification["state"];
     if (parsed.state === "tool_running" || parsed.state === "task_complete") {
       mappedState = "still_working";

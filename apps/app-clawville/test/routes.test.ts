@@ -101,7 +101,6 @@ describe("ClawVille app routes", () => {
       'localStorage.setItem("clawville-embed-mode", "eliza")',
     );
     expect(captured.body).toContain("clawville-eliza-session-id");
-    expect(captured.body).not.toContain("clawville-eliza-session-id");
     expect(captured.body).not.toContain("spectator-banner");
   });
 

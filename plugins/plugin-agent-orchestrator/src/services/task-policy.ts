@@ -167,7 +167,7 @@ async function resolveSenderRole(
   runtime: IAgentRuntime,
   message: Memory,
 ): Promise<RoleCheckResult | null> {
-  if (process.env.MILADY_SKIP_LOCAL_PLUGIN_ROLES !== "1") {
+  if (process.env.ELIZA_SKIP_LOCAL_PLUGIN_ROLES !== "1") {
     for (const candidate of LOCAL_ROLES_MODULE_CANDIDATES) {
       if (!fs.existsSync(candidate)) {
         continue;
@@ -192,9 +192,9 @@ async function resolveSenderRole(
   }
 
   // Try well-known package specifiers that export checkSenderRole.
-  // Prefer the @elizaos/core barrel; @miladyai/plugin-roles is a legacy
-  // milady-specific package fallback.
-  const PACKAGE_SPECIFIERS = ["@elizaos/core", "@miladyai/plugin-roles"];
+  // Prefer the @elizaos/core barrel; @elizaai/plugin-roles is a legacy
+  // eliza-specific package fallback.
+  const PACKAGE_SPECIFIERS = ["@elizaos/core", "@elizaai/plugin-roles"];
   for (const specifier of PACKAGE_SPECIFIERS) {
     try {
       const rolesModule = (await import(specifier)) as {

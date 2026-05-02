@@ -1,8 +1,8 @@
-# What your output looks like after Milady's synthesis layer
+# What your output looks like after Eliza's synthesis layer
 
 ## The synthesis pass
 
-When the SwarmCoordinator's `swarmCompleteCb` fires (all sub-agent tasks have terminal status), Milady runs a synthesis pass that:
+When the SwarmCoordinator's `swarmCompleteCb` fires (all sub-agent tasks have terminal status), Eliza runs a synthesis pass that:
 
 1. Reads each agent's session jsonl (your last `end_turn` text + the task's `completionSummary`)
 2. Pulls each agent's `Shared decisions` (every `DECISION:` you emitted)
@@ -10,7 +10,7 @@ When the SwarmCoordinator's `swarmCompleteCb` fires (all sub-agent tasks have te
 4. Generates a single user-facing message per swarm
 5. Posts that message back to the originating channel
 
-The user sees the synthesis. They do NOT see your raw output — that lives in the swarm-history JSONL, viewable from the Milady dashboard.
+The user sees the synthesis. They do NOT see your raw output — that lives in the swarm-history JSONL, viewable from the Eliza dashboard.
 
 ## What the synthesizer reads from you
 
@@ -55,7 +55,7 @@ Reading agent-home/data/apps/edad/index.html
 Editing 12 lines
 Running typecheck
 ✓ pass
-Built /apps/council/. Open at https://milady.nubs.site/apps/council/.
+Built /apps/council/. Open at https://eliza.nubs.site/apps/council/.
 Three personas seeded by default; 4-round debate.
 Encryption uses WebCrypto AES-GCM in a sarin-wrap-style envelope.
 DECISION: chose WebCrypto over wasm-cryptl because cryptl has no browser bundle.
@@ -64,7 +64,7 @@ DECISION: chose WebCrypto over wasm-cryptl because cryptl has no browser bundle.
 What the human sees (after synthesis):
 
 ```
-council app live at https://milady.nubs.site/apps/council/. seeded 3 default
+council app live at https://eliza.nubs.site/apps/council/. seeded 3 default
 personas, 4-round debate by default. transcripts encrypted client-side with
 webcrypto AES-GCM (chose this over real cryptl since cryptl has no browser
 bundle yet — sarin-wrap-shaped envelope so a future cryptl-wasm decrypts).
@@ -81,4 +81,4 @@ The synthesizer condensed multi-line output to two sentences, kept all the load-
 
 ## What you cannot influence
 
-The synthesizer's tone is set by Milady's character (which varies per deployment — every Milady has a custom character file). You cannot dictate the tone of the user-facing message. You CAN dictate the FACTS by being precise in your output and DECISIONs.
+The synthesizer's tone is set by Eliza's character (which varies per deployment — every Eliza has a custom character file). You cannot dictate the tone of the user-facing message. You CAN dictate the FACTS by being precise in your output and DECISIONs.

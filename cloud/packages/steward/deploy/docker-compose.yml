@@ -1,5 +1,5 @@
 # ──────────────────────────────────────────────────────────────────────────────
-# Steward – Docker Compose for Milady node deployment
+# Steward – Docker Compose for Eliza node deployment
 #
 # Services:
 #   - steward:       API server (port 3200) — agent management, vault, policies
@@ -17,7 +17,7 @@ services:
     container_name: steward
     restart: unless-stopped
     networks:
-      - milady-isolated
+      - eliza-isolated
     ports:
       - "3200:3200"
     environment:
@@ -52,7 +52,7 @@ services:
     container_name: steward-proxy
     restart: unless-stopped
     networks:
-      - milady-isolated
+      - eliza-isolated
     ports:
       - "8080:8080"
     environment:
@@ -78,7 +78,7 @@ services:
     container_name: steward-db
     restart: unless-stopped
     networks:
-      - milady-isolated
+      - eliza-isolated
     environment:
       POSTGRES_USER: steward
       POSTGRES_PASSWORD: steward
@@ -100,5 +100,5 @@ volumes:
 
 # ── Networks ─────────────────────────────────────────────────────────────────
 networks:
-  milady-isolated:
+  eliza-isolated:
     external: true

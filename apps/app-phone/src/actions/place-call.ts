@@ -10,7 +10,6 @@
  * Phone overlay app is the active session.
  */
 
-import { hasRoleAccess } from "@elizaos/agent";
 import { Phone } from "@elizaos/capacitor-phone";
 import type {
   Action,
@@ -18,6 +17,7 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
+import { hasRoleAccess } from "@elizaos/shared/eliza-core-roles";
 
 interface PlaceCallParams {
   phoneNumber?: string;

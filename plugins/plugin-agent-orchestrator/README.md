@@ -2,14 +2,14 @@
 
 Orchestrate CLI task agents (Claude Code, Codex, Gemini CLI, Aider, Pi) via PTY sessions and git workspaces for open-ended background work.
 
-Built for [Milady](https://github.com/milady-ai/milady). The plugin registers elizaOS-compatible actions and services so any Eliza agent can delegate substantial work to sub-agents while continuing the user conversation. The full experience, including live xterm views, PTY output streaming, and swarm monitoring, is available through the Milady frontend and server.
+Built for [Eliza](https://github.com/eliza-ai/eliza). The plugin registers elizaOS-compatible actions and services so any Eliza agent can delegate substantial work to sub-agents while continuing the user conversation. The full experience, including live xterm views, PTY output streaming, and swarm monitoring, is available through the Eliza frontend and server.
 
 ## Features
 
 - **Open-ended task delegation**: Use task agents for anything beyond a simple reply, including coding, research, drafting, debugging, repo work, and multi-step execution
 - **PTY session management**: Spawn, control, and monitor task agents running in pseudo-terminals
 - **Current task status**: Surface active sessions, coordinator task state, and pending confirmations so the main agent can keep the user updated
-- **Subscription-aware framework preference**: Prefer Claude Code or Codex when Milady knows the user is logged in with Anthropic or OpenAI-backed subscriptions
+- **Subscription-aware framework preference**: Prefer Claude Code or Codex when Eliza knows the user is logged in with Anthropic or OpenAI-backed subscriptions
 - **Git workspace provisioning**: Clone repos, create worktrees, manage branches, commits, pushes, and pull requests
 - **Multi-agent support**: Claude Code, Codex, Gemini CLI, Aider, Pi, or generic shell flows through the same orchestration surface
 
@@ -52,7 +52,7 @@ The following peer dependencies will be installed automatically:
 ```typescript
 import taskAgentPlugin from "@elizaos/plugin-agent-orchestrator";
 
-// Add to your Milady or elizaOS agent configuration
+// Add to your Eliza or elizaOS agent configuration
 const agent = {
   plugins: [taskAgentPlugin],
   // ... other config
@@ -165,7 +165,7 @@ const pr = await workspaceService.createPR(workspace.id, {
 
 ## Configuration
 
-Configure via runtime settings and Milady config:
+Configure via runtime settings and Eliza config:
 
 ```typescript
 // PTY Service config
@@ -177,7 +177,7 @@ runtime.setSetting("PTY_SERVICE_CONFIG", {
 
 // Workspace Service config
 runtime.setSetting("CODING_WORKSPACE_CONFIG", {
-  baseDir: "~/.milady/workspaces",
+  baseDir: "~/.eliza/workspaces",
   credentials: {
     github: { token: process.env.GITHUB_TOKEN },
   },
@@ -191,7 +191,7 @@ runtime.setSetting("PARALLAX_DEFAULT_AGENT_TYPE", "codex");
 runtime.setSetting("PARALLAX_AGENT_SELECTION_STRATEGY", "heuristic");
 ```
 
-To bias the preferred framework toward the user's paid subscription, Milady can store a provider hint in `~/.milady/milady.json`:
+To bias the preferred framework toward the user's paid subscription, Eliza can store a provider hint in `~/.eliza/eliza.json`:
 
 ```json
 {
@@ -219,7 +219,7 @@ Run the opt-in live smoke tests against real Claude Code and Codex sessions:
 bun run test:live
 ```
 
-The live suite creates temporary workspaces, asks the real CLIs to complete small file-writing and browser-backed tasks, and verifies both task execution and task-status visibility. It also has Claude Code and Codex create a simple counter app, emit `APP_CREATE_DONE`, pass parent-side typecheck/lint/test verification, and register the generated app through the unified `APP` `load_from_directory` mode. Set `MILADY_LIVE_CODEX_MODEL` or `MILADY_LIVE_CLAUDE_MODEL` to pin a live-test model when needed. If Codex reports that its configured model requires a newer CLI, the counter-app smoke attempts one `npm install -g --prefix <active-codex-prefix> @openai/codex@latest` update through the npm binary colocated with `codex`, then retries once. If Claude Code reports logged-in status but `claude -p` returns 401, the smoke emits `AUTH_REQUIRED` with a `claude setup-token` instruction instead of surfacing a raw provider failure.
+The live suite creates temporary workspaces, asks the real CLIs to complete small file-writing and browser-backed tasks, and verifies both task execution and task-status visibility. It also has Claude Code and Codex create a simple counter app, emit `APP_CREATE_DONE`, pass parent-side typecheck/lint/test verification, and register the generated app through the unified `APP` `load_from_directory` mode. Set `ELIZA_LIVE_CODEX_MODEL` or `ELIZA_LIVE_CLAUDE_MODEL` to pin a live-test model when needed. If Codex reports that its configured model requires a newer CLI, the counter-app smoke attempts one `npm install -g --prefix <active-codex-prefix> @openai/codex@latest` update through the npm binary colocated with `codex`, then retries once. If Claude Code reports logged-in status but `claude -p` returns 401, the smoke emits `AUTH_REQUIRED` with a `claude setup-token` instruction instead of surfacing a raw provider failure.
 
 ## Dependencies
 

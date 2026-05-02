@@ -13,9 +13,9 @@ const config = {
   webhookPort: Number(process.env.WAIFU_WEBHOOK_PORT ?? "4210"),
   webhookSecret: process.env.WAIFU_WEBHOOK_SECRET ?? "waifu-webhook-secret",
   webhookPath: process.env.WAIFU_WEBHOOK_PATH ?? "/steward-events",
-  agentId: process.env.WAIFU_AGENT_ID ?? "milady-trader",
-  agentName: process.env.WAIFU_AGENT_NAME ?? "Milady Trader",
-  platformId: process.env.WAIFU_PLATFORM_ID ?? "waifu.fun:milady-trader",
+  agentId: process.env.WAIFU_AGENT_ID ?? "eliza-trader",
+  agentName: process.env.WAIFU_AGENT_NAME ?? "Eliza Trader",
+  platformId: process.env.WAIFU_PLATFORM_ID ?? "waifu.fun:eliza-trader",
 };
 
 type TenantPayload = {
@@ -421,7 +421,7 @@ async function main() {
         queueId: mediumPending.queueId,
         value: mediumTxValue,
         to: mediumPending.transaction.request.to,
-        summary: "milady-trader exceeded the auto-approve threshold and needs waifu.fun approval",
+        summary: "eliza-trader exceeded the auto-approve threshold and needs waifu.fun approval",
         policyResults: mediumPending.transaction.policyResults,
       },
     });

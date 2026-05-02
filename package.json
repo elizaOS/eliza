@@ -115,7 +115,7 @@
     "typedoc-plugin-markdown": "4.11.0",
     "typedoc": "0.28.19",
     "zod": "^4.3.6",
-    "drizzle-orm": "^0.45.1",
+    "drizzle-orm": "0.45.2",
     "@electric-sql/pglite": "^0.4.5"
   },
   "overrides": {
@@ -138,7 +138,7 @@
     "@uniswap/v3-sdk": "3.30.0",
     "@uniswap/v2-sdk": "4.20.0",
     "@uniswap/v4-sdk": "2.0.0",
-    "drizzle-orm": "^0.45.1",
+    "drizzle-orm": "0.45.2",
     "@electric-sql/pglite": "^0.4.5",
     "rimraf": "^6.0.1"
   },
@@ -193,6 +193,7 @@
     "tailwind-merge": "^3.0.0",
     "@elizaos/plugin-agent-orchestrator": "workspace:*",
     "@elizaos/plugin-anthropic": "workspace:*",
+    "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-groq": "workspace:*",
     "@elizaos/plugin-local-embedding": "workspace:*",
     "@elizaos/plugin-local-ai": "workspace:*",

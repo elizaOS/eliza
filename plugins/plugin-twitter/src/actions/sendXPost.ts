@@ -39,7 +39,7 @@ export const sendXPostAction: Action = {
     [
       {
         name: "{{user1}}",
-        content: { text: "Post: shipped Milady today" },
+        content: { text: "Post: shipped Eliza today" },
       },
       {
         name: "{{agent}}",

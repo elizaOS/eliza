@@ -1,6 +1,6 @@
-# @milady/plugin-claude-code-workbench
+# @eliza/plugin-claude-code-workbench
 
-Claude Code companion plugin for Milady/ElizaOS.
+Claude Code companion plugin for Eliza/ElizaOS.
 
 This plugin provides an allowlisted, policy-controlled workflow runner for this repository so agents can execute common quality/build/test/review tasks safely.
 

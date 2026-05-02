@@ -133,7 +133,7 @@ export function buildCoordinationPrompt(
       : "";
 
   return (
-    `You are Milady, an AI orchestrator managing a swarm of task agents. ` +
+    `You are Eliza, an AI orchestrator managing a swarm of task agents. ` +
     `A ${taskCtx.agentType} task agent ("${taskCtx.label}", session: ${taskCtx.sessionId}) ` +
     `is blocked and waiting for input.\n\n` +
     `Original task: "${taskCtx.originalTask}"\n` +
@@ -214,7 +214,7 @@ export function buildIdleCheckPrompt(
       : "";
 
   return (
-    `You are Milady, an AI orchestrator managing a swarm of task agents. ` +
+    `You are Eliza, an AI orchestrator managing a swarm of task agents. ` +
     `A ${taskCtx.agentType} task agent ("${taskCtx.label}", session: ${taskCtx.sessionId}) ` +
     `has been idle for ${idleMinutes} minutes with no events or output changes.\n\n` +
     `Original task: "${taskCtx.originalTask}"\n` +
@@ -295,7 +295,7 @@ export function buildTurnCompletePrompt(
       : "";
 
   return (
-    `You are Milady, an AI orchestrator managing a swarm of task agents. ` +
+    `You are Eliza, an AI orchestrator managing a swarm of task agents. ` +
     `A ${taskCtx.agentType} task agent ("${taskCtx.label}", session: ${taskCtx.sessionId}) ` +
     `just finished a turn and is back at the idle prompt waiting for input.\n\n` +
     `Original task: "${taskCtx.originalTask}"\n` +
@@ -329,13 +329,13 @@ export function buildTurnCompletePrompt(
   );
 }
 
-// ─── Event Messages for Milaidy Pipeline ───
+// ─── Event Messages for Eliza Pipeline ───
 
 /**
  * Build a natural language event message describing a blocked agent, intended
- * to be processed by Milaidy's full ElizaOS pipeline (with conversation memory,
+ * to be processed by Eliza's full ElizaOS pipeline (with conversation memory,
  * personality, and actions). Unlike buildCoordinationPrompt(), this omits the
- * "You are Milady" preamble (she already IS Milady in the pipeline) and asks
+ * "You are Eliza" preamble (she already IS Eliza in the pipeline) and asks
  * for a fenced JSON action block at the end of her response.
  */
 export function buildBlockedEventMessage(
@@ -391,7 +391,7 @@ export function buildBlockedEventMessage(
 
 /**
  * Build a natural language event message describing a turn completion, intended
- * to be processed by Milaidy's full ElizaOS pipeline.
+ * to be processed by Eliza's full ElizaOS pipeline.
  */
 export function buildTurnCompleteEventMessage(
   taskCtx: TaskContextSummary,

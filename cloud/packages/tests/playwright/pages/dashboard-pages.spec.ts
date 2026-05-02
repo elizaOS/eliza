@@ -10,7 +10,7 @@ import {
   trackBadApiResponses,
 } from "../fixtures/page-helpers";
 
-// @milady-live-audit allow-route-fixtures
+// @eliza-live-audit allow-route-fixtures
 // Dashboard page smoke tests isolate route rendering from dashboard service data setup.
 
 const TEST_ID = "00000000-0000-4000-8000-000000000000";

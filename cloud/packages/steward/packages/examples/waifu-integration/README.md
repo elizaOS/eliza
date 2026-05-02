@@ -10,7 +10,7 @@ This example shows how a platform such as `waifu.fun` can use Steward as the wal
 
 - Registering a multi-tenant platform with Steward
 - Authenticating with `X-Steward-Tenant` and `X-Steward-Key`
-- Creating a wallet for a new waifu character (`milady-trader`)
+- Creating a wallet for a new waifu character (`eliza-trader`)
 - Applying default guardrails:
   - `spending-limit`: `0.1 ETH` per tx, `1 ETH` per day
   - `approved-addresses`: Uniswap Universal Router on Base, Base USDC, and the demo wallet itself for an executable self-transfer path
@@ -40,9 +40,9 @@ export STEWARD_API_KEY=waifu-demo-secret
 export STEWARD_TENANT_NAME=waifu.fun
 export WAIFU_WEBHOOK_PORT=4210
 export WAIFU_WEBHOOK_SECRET=waifu-webhook-secret
-export WAIFU_AGENT_ID=milady-trader
-export WAIFU_AGENT_NAME="Milady Trader"
-export WAIFU_PLATFORM_ID=waifu.fun:milady-trader
+export WAIFU_AGENT_ID=eliza-trader
+export WAIFU_AGENT_NAME="Eliza Trader"
+export WAIFU_PLATFORM_ID=waifu.fun:eliza-trader
 ```
 
 ## How To Run
@@ -71,7 +71,7 @@ You should see console output for tenant registration, wallet creation, policy i
 ## Adapting This For Your Platform
 
 - Replace the tenant defaults with your own platform slug, secret management, and public webhook URL.
-- Swap the demo `milady-trader` agent metadata for your own agent/user identifiers.
+- Swap the demo `eliza-trader` agent metadata for your own agent/user identifiers.
 - Replace the self-transfer demo destination with your real allowlisted contracts and calldata.
 - Extend the webhook handler to create an approval task in your own UI, queue, or moderation workflow.
 - Call Steward’s approve or reject endpoints from your backend once a human or rules engine has decided.

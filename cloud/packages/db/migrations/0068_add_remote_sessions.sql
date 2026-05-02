@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS "remote_sessions" (
     ON DELETE cascade,
   CONSTRAINT "remote_sessions_agent_id_fkey"
     FOREIGN KEY ("agent_id")
-    REFERENCES "milady_sandboxes"("id")
+    REFERENCES "eliza_sandboxes"("id")
     ON DELETE cascade
 );
 

@@ -405,7 +405,7 @@ import _route_v1_mcps_p_mcpId_publish_route from "../v1/mcps/[mcpId]/publish/rou
 import _route_v1_mcps_p_mcpId_route from "../v1/mcps/[mcpId]/route";
 import _route_v1_mcps_route from "../v1/mcps/route";
 import _route_v1_messages_route from "../v1/messages/route";
-import _route_v1_milady_agents_route from "../v1/milady/agents/route";
+import _route_v1_eliza_agents_route from "../v1/eliza/agents/route";
 import _route_v1_models_status_route from "../v1/models/status/route";
 import _route_v1_models_splat_model_route from "../v1/models/[...model]/route";
 import _route_v1_models_route from "../v1/models/route";
@@ -1076,7 +1076,7 @@ export function mountRoutes(app: Hono<AppEnv>): void {
   app.route("/api/v1/mcps/:mcpId", _route_v1_mcps_p_mcpId_route);
   app.route("/api/v1/mcps", _route_v1_mcps_route);
   app.route("/api/v1/messages", _route_v1_messages_route);
-  app.route("/api/v1/milady/agents", _route_v1_milady_agents_route);
+  app.route("/api/v1/eliza/agents", _route_v1_eliza_agents_route);
   app.route("/api/v1/models/status", _route_v1_models_status_route);
   app.route("/api/v1/models/:*{.+}", _route_v1_models_splat_model_route);
   app.route("/api/v1/models", _route_v1_models_route);

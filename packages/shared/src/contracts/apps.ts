@@ -302,6 +302,21 @@ export const ELIZA_CURATED_APP_DEFINITIONS: readonly ElizaCuratedAppDefinition[]
       aliases: [],
     },
     {
+      slug: "contacts",
+      canonicalName: "@elizaos/app-contacts",
+      aliases: [],
+    },
+    {
+      slug: "phone",
+      canonicalName: "@elizaos/app-phone",
+      aliases: [],
+    },
+    {
+      slug: "wifi",
+      canonicalName: "@elizaos/app-wifi",
+      aliases: [],
+    },
+    {
       slug: "hyperscape",
       canonicalName: "@hyperscape/plugin-hyperscape",
       aliases: ["@elizaos/app-hyperscape"],

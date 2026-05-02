@@ -2,7 +2,7 @@
  * Sub-agent bridge routes — read-only HTTP endpoints exposing parent state.
  *
  * Spawned coding sub-agents (Claude Code, Codex) live in sealed PTY workspaces
- * with no direct access to the parent Milady runtime's memory, character, or
+ * with no direct access to the parent Eliza runtime's memory, character, or
  * room context. These routes give them a constrained read channel so they can
  * resolve pronouns ("the user's dad") and align with parent context the
  * orchestrator's task brief didn't surface.

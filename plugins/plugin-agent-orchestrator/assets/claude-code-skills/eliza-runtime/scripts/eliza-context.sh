@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Print the orchestration context for the current Milady sub-agent session.
+# Print the orchestration context for the current Eliza sub-agent session.
 #
-# Usage: bash scripts/milady-context.sh
+# Usage: bash scripts/eliza-context.sh
 #
 # Output is `key=value` lines, grep/sed-friendly, parseable from prose.
 #
-# Detection covers all three Milady spawn variants:
+# Detection covers all three Eliza spawn variants:
 #   - swarm     (multi-agent CREATE_TASK; CLAUDE.md present, hooks installed)
 #   - repo      (single-agent CREATE_TASK in a real repo; CLAUDE.md absent, hooks installed)
 #   - scratch   (SPAWN_AGENT in a scratch workspace; CLAUDE.md absent, hooks NOT installed)
@@ -18,14 +18,14 @@
 set -u
 
 session_id="${PARALLAX_SESSION_ID:-}"
-hook_port="${MILADY_HOOK_PORT:-2138}"
+hook_port="${ELIZA_HOOK_PORT:-2138}"
 workdir="$PWD"
 agent_user="$USER"
 model="${ANTHROPIC_MODEL:-unset}"
 small_model="${ANTHROPIC_SMALL_FAST_MODEL:-unset}"
 github_token_set="$([ -n "${GITHUB_TOKEN:-}" ] && echo yes || echo no)"
 
-# Detect Milady-injected files in this workspace.
+# Detect Eliza-injected files in this workspace.
 claude_md_present="no"
 claude_settings_present="no"
 hook_url_in_settings="no"
@@ -87,7 +87,7 @@ github_token_set=$github_token_set
 KV
 
 if [ -z "$session_id" ]; then
-    echo "advice=PARALLAX_SESSION_ID is unset — milady-runtime skill does not apply to this session." >&2
+    echo "advice=PARALLAX_SESSION_ID is unset — eliza-runtime skill does not apply to this session." >&2
     exit 1
 fi
 
@@ -97,7 +97,7 @@ advice=variant=scratch — HTTP hooks are NOT installed for scratch tasks.
        Your durable channel back to the parent is stdout.
        Use plain `DECISION: ...` lines in your output (the orchestrator
        tails PTY output and captures them via grep). The
-       `scripts/milady-decision.sh` helper still works (echoes to stdout
+       `scripts/eliza-decision.sh` helper still works (echoes to stdout
        AND best-efforts the HTTP POST), but only the stdout half lands.
 ADVICE
 fi

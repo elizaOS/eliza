@@ -27,7 +27,7 @@ import type {
 import { clearTaskAgentFrameworkStateCache } from "../services/task-agent-frameworks.js";
 
 // ---------------------------------------------------------------------------
-// Fixture: tmp HOME + tmp MILADY_STATE_DIR so file-system side effects
+// Fixture: tmp HOME + tmp ELIZA_STATE_DIR so file-system side effects
 // (~/.claude.json trust seed, .claude/settings.json, .gitignore) land in a
 // throwaway tree, and `safeGetSetting`'s config-file probe finds nothing —
 // which forces resolution through `runtime.getSetting(...)`.
@@ -40,9 +40,9 @@ interface SpawnFixture {
   previous: {
     HOME: string | undefined;
     USERPROFILE: string | undefined;
-    MILADY_STATE_DIR: string | undefined;
     ELIZA_STATE_DIR: string | undefined;
-    MILADY_CONFIG_PATH: string | undefined;
+    ELIZA_STATE_DIR: string | undefined;
+    ELIZA_CONFIG_PATH: string | undefined;
     ELIZA_CONFIG_PATH: string | undefined;
     ELIZA_NAMESPACE: string | undefined;
     PARALLAX_CLAUDE_MODEL_POWERFUL: string | undefined;
@@ -55,7 +55,7 @@ interface SpawnFixture {
 function setupFixture(): SpawnFixture {
   const tmpRoot = mkdtempSync(path.join(os.tmpdir(), "orch-spawn-prefs-"));
   const homeDir = path.join(tmpRoot, "home");
-  const stateDir = path.join(tmpRoot, ".milady");
+  const stateDir = path.join(tmpRoot, ".eliza");
   const workdir = path.join(tmpRoot, "workdir");
   mkdirSync(homeDir, { recursive: true });
   mkdirSync(stateDir, { recursive: true });
@@ -64,9 +64,9 @@ function setupFixture(): SpawnFixture {
   const previous = {
     HOME: process.env.HOME,
     USERPROFILE: process.env.USERPROFILE,
-    MILADY_STATE_DIR: process.env.MILADY_STATE_DIR,
     ELIZA_STATE_DIR: process.env.ELIZA_STATE_DIR,
-    MILADY_CONFIG_PATH: process.env.MILADY_CONFIG_PATH,
+    ELIZA_STATE_DIR: process.env.ELIZA_STATE_DIR,
+    ELIZA_CONFIG_PATH: process.env.ELIZA_CONFIG_PATH,
     ELIZA_CONFIG_PATH: process.env.ELIZA_CONFIG_PATH,
     ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE,
     PARALLAX_CLAUDE_MODEL_POWERFUL: process.env.PARALLAX_CLAUDE_MODEL_POWERFUL,
@@ -77,9 +77,9 @@ function setupFixture(): SpawnFixture {
 
   process.env.HOME = homeDir;
   process.env.USERPROFILE = homeDir;
-  process.env.MILADY_STATE_DIR = stateDir;
   process.env.ELIZA_STATE_DIR = stateDir;
-  delete process.env.MILADY_CONFIG_PATH;
+  process.env.ELIZA_STATE_DIR = stateDir;
+  delete process.env.ELIZA_CONFIG_PATH;
   delete process.env.ELIZA_CONFIG_PATH;
   delete process.env.ELIZA_NAMESPACE;
   // Process-env model overrides must not leak into runtime.getSetting fallbacks.
@@ -359,7 +359,7 @@ describe("PTYService.spawnSession — model preferences wiring", () => {
       service.getMemoryFilePath("claude"),
     );
     const memory = readFileSync(memoryPath, "utf8");
-    expect(memory).toContain("# Parent Milady Runtime");
+    expect(memory).toContain("# Parent Eliza Runtime");
     expect(memory).toContain(
       `http://127.0.0.1:31337/api/coding-agents/${sessionInfo.id}/parent-context`,
     );
@@ -391,7 +391,7 @@ describe("PTYService.spawnSession — model preferences wiring", () => {
     // a per-session CODEX_HOME/config.toml instead of adapter CLI flags.
     expect(manager.lastSpawnConfig?.adapterConfig?.approvalPreset).toBeUndefined();
     const codexHome = manager.lastSpawnConfig?.env?.CODEX_HOME;
-    expect(codexHome).toContain("milady-codex-");
+    expect(codexHome).toContain("eliza-codex-");
     if (!codexHome) throw new Error("expected Codex home to be configured");
     const configToml = readFileSync(path.join(codexHome, "config.toml"), "utf8");
     expect(configToml).toContain('approval_policy = "never"');

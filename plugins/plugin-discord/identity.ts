@@ -8,7 +8,7 @@ import {
 
 const CANONICAL_OWNER_SETTING_KEYS = [
 	"ELIZA_ADMIN_ENTITY_ID",
-	"MILADY_ADMIN_ENTITY_ID",
+	"ELIZA_ADMIN_ENTITY_ID",
 ] as const;
 const DISCORD_SNOWFLAKE_PATTERN = /^\d{15,20}$/;
 
@@ -54,7 +54,7 @@ function readUserIdFromOwnerLike(value: unknown): string | null {
 	);
 }
 
-export function resolveMiladyOwnerEntityId(runtime: IAgentRuntime): string {
+export function resolveElizaOwnerEntityId(runtime: IAgentRuntime): string {
 	const configuredOwnerId = getCanonicalOwnerId(runtime);
 	if (configuredOwnerId) {
 		return configuredOwnerId;
@@ -71,7 +71,7 @@ export function resolveDiscordRuntimeEntityId(
 ): string {
 	for (const ownerUserId of ownerDiscordUserIds) {
 		if (ownerUserId === userId) {
-			return resolveMiladyOwnerEntityId(runtime);
+			return resolveElizaOwnerEntityId(runtime);
 		}
 	}
 	return createUniqueUuid(runtime, userId);
@@ -147,7 +147,7 @@ export function buildDiscordWorldMetadata(
 	runtime: IAgentRuntime,
 	guildOwnerId: string | undefined,
 ): Metadata | undefined {
-	const ownerId = resolveMiladyOwnerEntityId(runtime);
+	const ownerId = resolveElizaOwnerEntityId(runtime);
 	const roles: Record<string, Role> = {
 		[ownerId]: Role.OWNER,
 	};

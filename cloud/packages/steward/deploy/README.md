@@ -74,9 +74,9 @@ dcd logs -f steward-api
 
 ---
 
-## Bare Metal: Systemd (Milady VPS Nodes)
+## Bare Metal: Systemd (Eliza VPS Nodes)
 
-The current production deployment on milady-core-1 through milady-core-6 uses systemd + bare Bun for faster iteration.
+The current production deployment on eliza-core-1 through eliza-core-6 uses systemd + bare Bun for faster iteration.
 
 ### Prerequisites
 

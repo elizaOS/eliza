@@ -77,7 +77,7 @@ export const retakePlugin: Plugin = {
     startRetakeStreamAction,
     stopRetakeStreamAction,
     getRetakeStreamStatusAction,
-    // Note: PLAY_EMOTE is registered by milady-plugin (src/actions/emote.ts)
+    // Note: PLAY_EMOTE is registered by eliza-plugin (src/actions/emote.ts)
     // — do NOT duplicate here as conflicting registrations cause the action to fail.
   ],
 

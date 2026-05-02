@@ -52,13 +52,13 @@
     "pluginParameters": {
       "LOCAL_STORAGE_PATH": {
         "type": "string",
-        "description": "Filesystem root for attachment storage. Defaults to ${MILADY_STATE_DIR ?? ~/.milady}/attachments.",
+        "description": "Filesystem root for attachment storage. Defaults to ${ELIZA_STATE_DIR ?? ~/.eliza}/attachments.",
         "required": false,
         "sensitive": false
       }
     }
   },
-  "milady": {
+  "eliza": {
     "platforms": [
       "node"
     ],

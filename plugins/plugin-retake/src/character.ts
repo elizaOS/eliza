@@ -356,7 +356,7 @@ export const RETAKE_MESSAGE_EXAMPLES: Array<
     {
       user: "{{user1}}",
       content: {
-        text: "hey milady! wave at me",
+        text: "hey eliza! wave at me",
         source: "retake",
         channelType: "GROUP",
       },

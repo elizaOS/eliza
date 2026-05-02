@@ -158,7 +158,6 @@ const pluginPdfSrc = path.join(
   elizaWorkspaceRoot,
   "plugins",
   "plugin-pdf",
-  "typescript",
 );
 // Fall back to a stub when an optional plugin tarball has a broken entry point.
 const unresolvedPluginStubs = workspacePluginPackageNames

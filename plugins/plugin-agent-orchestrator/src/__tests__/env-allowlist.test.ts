@@ -25,7 +25,7 @@ const TOUCHED_KEYS = [
   "GITHUB_TOKEN",
   "ANTHROPIC_API_KEY",
   "OPENAI_API_KEY",
-  "MILADY_TEST_SECRET",
+  "ELIZA_TEST_SECRET",
 ];
 
 beforeEach(() => {
@@ -66,10 +66,10 @@ describe("buildSanitizedBaseEnv", () => {
   it("strips secret-looking vars that are not on the allowlist", () => {
     process.env.ANTHROPIC_API_KEY = "sk-ant-should-not-leak";
     process.env.OPENAI_API_KEY = "sk-should-not-leak";
-    process.env.MILADY_TEST_SECRET = "should-not-leak";
+    process.env.ELIZA_TEST_SECRET = "should-not-leak";
     const env = buildSanitizedBaseEnv();
     expect(env.ANTHROPIC_API_KEY).toBeUndefined();
     expect(env.OPENAI_API_KEY).toBeUndefined();
-    expect(env.MILADY_TEST_SECRET).toBeUndefined();
+    expect(env.ELIZA_TEST_SECRET).toBeUndefined();
   });
 });

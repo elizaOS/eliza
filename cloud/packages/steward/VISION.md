@@ -77,7 +77,7 @@ Same API surface. Same guarantees. Write the integration once.
 - Webhook system with HMAC-signed delivery
 
 ### Next
-- Milady Cloud integration (replace Privy as auth + wallet layer)
+- Eliza Cloud integration (replace Privy as auth + wallet layer)
 - Dashboard self-service (tenant creation, policy configuration, API key management)
 - Production hardening (security audit, token store persistence, monitoring)
 - Babylon integration

@@ -12,7 +12,7 @@
       "required": false,
       "sensitive": false,
       "label": "Storage Path",
-      "help": "Filesystem root for attachment storage. Defaults to ${MILADY_STATE_DIR ?? ~/.milady}/attachments.",
+      "help": "Filesystem root for attachment storage. Defaults to ${ELIZA_STATE_DIR ?? ~/.eliza}/attachments.",
       "advanced": false
     }
   },

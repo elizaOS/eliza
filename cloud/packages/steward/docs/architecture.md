@@ -169,7 +169,7 @@ Even if an attacker gains read access to the database, they cannot decrypt keys 
 
 ### Platform Routes
 
-`packages/api/src/routes/platform.ts` mounts a separate route group that accepts `X-Steward-Platform-Key` instead of tenant credentials. Platform routes can read/write across tenants — intended for multi-tenant operators (e.g., Milady Cloud) that need to provision new tenants or inspect aggregate data. This key must be kept highly confidential.
+`packages/api/src/routes/platform.ts` mounts a separate route group that accepts `X-Steward-Platform-Key` instead of tenant credentials. Platform routes can read/write across tenants — intended for multi-tenant operators (e.g., Eliza Cloud) that need to provision new tenants or inspect aggregate data. This key must be kept highly confidential.
 
 ## User Identity Model
 
@@ -192,7 +192,7 @@ tenants (varchar slug)
 
 **Key design decisions:**
 
-- **Users can belong to multiple tenants.** `userTenants` is a many-to-many join table with a `(userId, tenantId)` unique constraint. A user on Milady Cloud can be a member of both the `milady` and `babylon` tenants.
+- **Users can belong to multiple tenants.** `userTenants` is a many-to-many join table with a `(userId, tenantId)` unique constraint. A user on Eliza Cloud can be a member of both the `eliza` and `babylon` tenants.
 
 - **Personal tenant provisioning.** On first sign-in (email/passkey/SIWE), Steward auto-creates a `personal-{userId}` tenant for the user, giving them an isolated namespace.
 

@@ -56,7 +56,7 @@ docker compose exec api bun packages/db/src/migrate.ts
 psql $DATABASE_URL -f packages/db/drizzle/migration-auth-tables.sql
 ```
 
-**Or use Milady Cloud** (Steward hosted infrastructure).
+**Or use Eliza Cloud** (Steward hosted infrastructure).
 
 ### Step 2: Create a Tenant
 
@@ -351,7 +351,7 @@ Once you've migrated, you get:
 
 ## Migration Checklist
 
-- [ ] Deploy Steward (self-hosted or Milady Cloud)
+- [ ] Deploy Steward (self-hosted or Eliza Cloud)
 - [ ] Create tenant (replaces Privy App ID)
 - [ ] Run database migrations (including `migration-auth-tables.sql`)
 - [ ] Replace `@privy-io/react-auth` with `@stwd/sdk` + `@stwd/react`

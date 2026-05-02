@@ -176,8 +176,8 @@ export class CodingWorkspaceService {
     this.runtime = runtime;
     this.serviceConfig = {
       baseDir:
-        config.baseDir ?? path.join(os.homedir(), ".milady", "workspaces"),
-      branchPrefix: config.branchPrefix ?? "milady",
+        config.baseDir ?? path.join(os.homedir(), ".eliza", "workspaces"),
+      branchPrefix: config.branchPrefix ?? "eliza",
       debug: config.debug ?? false,
       workspaceTtlMs: config.workspaceTtlMs ?? 24 * 60 * 60 * 1000,
     };
@@ -296,7 +296,7 @@ export class CodingWorkspaceService {
       baseBranch,
       execution: {
         id: executionId,
-        patternName: options.execution?.patternName ?? "milady-coding",
+        patternName: options.execution?.patternName ?? "eliza-coding",
       },
       task: {
         id: taskId,

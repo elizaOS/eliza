@@ -248,7 +248,7 @@ export async function queryPastExperience(
     const slowPathDeadline = Date.now() + SLOW_PATH_BUDGET_MS;
 
     // Scan each trajectory for insights. Prefer pre-extracted insights from
-    // metadata (populated at write time by milaidy's trajectory-persistence)
+    // metadata (populated at write time by eliza's trajectory-persistence)
     // to avoid loading full trajectory details with their large prompt/response
     // payloads. Fall back to getTrajectoryDetail for older trajectories that
     // predate the metadata insight extraction.

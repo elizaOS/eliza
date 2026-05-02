@@ -223,7 +223,7 @@
       "idx": 31,
       "version": "7",
       "when": 1770518468000,
-      "tag": "0030_add_milaidy_sandboxes",
+      "tag": "0030_add_eliza_sandboxes",
       "breakpoints": true
     },
     {
@@ -398,14 +398,14 @@
       "idx": 56,
       "version": "7",
       "when": 1773570000000,
-      "tag": "0052_add_milady_pairing_tokens",
+      "tag": "0052_add_eliza_pairing_tokens",
       "breakpoints": true
     },
     {
       "idx": 57,
       "version": "7",
       "when": 1773868800000,
-      "tag": "0053_add_milady_billing_columns",
+      "tag": "0053_add_eliza_billing_columns",
       "breakpoints": true
     },
     {
@@ -419,7 +419,7 @@
       "idx": 59,
       "version": "7",
       "when": 1774300100000,
-      "tag": "0057_update_milady_hourly_rate_default",
+      "tag": "0057_update_eliza_hourly_rate_default",
       "breakpoints": true
     },
     {

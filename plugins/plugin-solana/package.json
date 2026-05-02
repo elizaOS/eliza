@@ -134,7 +134,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "milady": {
+  "eliza": {
     "platforms": [
       "node"
     ],

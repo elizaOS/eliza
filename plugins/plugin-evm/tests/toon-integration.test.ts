@@ -6,9 +6,9 @@ import { config } from "dotenv";
 config({ path: resolve(import.meta.dir, "../../../../.env") });
 
 const runToonLiveTest =
-	process.env.MILADY_LIVE_TOON_TEST === "1" ||
 	process.env.ELIZA_LIVE_TOON_TEST === "1" ||
-	process.env.MILADY_LIVE_TEST === "1" ||
+	process.env.ELIZA_LIVE_TOON_TEST === "1" ||
+	process.env.ELIZA_LIVE_TEST === "1" ||
 	process.env.ELIZA_LIVE_TEST === "1";
 
 let callLLM: (prompt: string) => Promise<string>;

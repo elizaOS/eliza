@@ -1,5 +1,5 @@
 /**
- * Read settings from the eliza/milady config file's env section.
+ * Read settings from the eliza/eliza config file's env section.
  *
  * runtime.getSetting() checks character.settings but NOT the config's env
  * section which is where the UI writes settings. This reads the config
@@ -15,11 +15,11 @@ import * as path from "node:path";
 function readConfig(): Record<string, unknown> | undefined {
   try {
     const configPath = path.join(
-      process.env.MILADY_STATE_DIR ??
+      process.env.ELIZA_STATE_DIR ??
         process.env.ELIZA_STATE_DIR ??
-        path.join(os.homedir(), ".milady"),
-      process.env.ELIZA_NAMESPACE === "milady" || !process.env.ELIZA_NAMESPACE
-        ? "milady.json"
+        path.join(os.homedir(), ".eliza"),
+      process.env.ELIZA_NAMESPACE === "eliza" || !process.env.ELIZA_NAMESPACE
+        ? "eliza.json"
         : `${process.env.ELIZA_NAMESPACE}.json`,
     );
     const raw = readFileSync(configPath, "utf-8");
@@ -44,7 +44,7 @@ export function readConfigCloudKey(key: string): string | undefined {
 
 /**
  * Read the `agents.defaults.orchestrator.codexSubscriptionRestrictedToCodexFramework`
- * flag from Milady's config. Returns false when the flag is unset or the
+ * flag from Eliza's config. Returns false when the flag is unset or the
  * config file is missing/malformed.
  *
  * When true, Codex (ChatGPT Plus/Pro) subscription tokens are only usable when

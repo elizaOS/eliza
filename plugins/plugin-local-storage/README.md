@@ -14,7 +14,7 @@ The root directory is resolved in this order:
 
 1. `runtime.getSetting("LOCAL_STORAGE_PATH")`
 2. `process.env.LOCAL_STORAGE_PATH`
-3. `${MILADY_STATE_DIR ?? `${os.homedir()}/.milady`}/attachments`
+3. `${ELIZA_STATE_DIR ?? `${os.homedir()}/.eliza`}/attachments`
 
 The directory is created on `start()` if missing.
 

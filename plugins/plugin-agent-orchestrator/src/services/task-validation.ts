@@ -109,9 +109,9 @@ function parseValidationResponse(raw: string): ValidationResponse | null {
 
 function getValidationRootDir(): string {
   const stateDir =
-    process.env.MILADY_STATE_DIR?.trim() ||
     process.env.ELIZA_STATE_DIR?.trim() ||
-    path.join(homedir(), ".milady");
+    process.env.ELIZA_STATE_DIR?.trim() ||
+    path.join(homedir(), ".eliza");
   return path.join(stateDir, "task-validation");
 }
 
@@ -146,7 +146,7 @@ type ValidationScreenshotCapture =
 
 function resolveLoopbackApiBase(): string {
   const port =
-    process.env.MILADY_API_PORT?.trim() ||
+    process.env.ELIZA_API_PORT?.trim() ||
     process.env.ELIZA_PORT?.trim() ||
     "31337";
   return `http://127.0.0.1:${port}`;
@@ -161,8 +161,8 @@ async function captureValidationScreenshot(
   try {
     const token =
       process.env.ELIZA_API_TOKEN?.trim() ||
-      process.env.MILADY_API_TOKEN?.trim() ||
-      process.env.MILADY_API_AUTH_TOKEN?.trim();
+      process.env.ELIZA_API_TOKEN?.trim() ||
+      process.env.ELIZA_API_AUTH_TOKEN?.trim();
     const response = await fetch(
       `${resolveLoopbackApiBase()}/api/dev/cursor-screenshot`,
       {

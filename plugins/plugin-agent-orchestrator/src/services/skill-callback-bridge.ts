@@ -11,7 +11,7 @@
  * the same session via `ptyService.sendToSession`.
  *
  * Default-on per the Hermes-style project direction. Disable by setting
- * `MILADY_ENABLE_CHILD_SKILL_CALLBACK=0`.
+ * `ELIZA_ENABLE_CHILD_SKILL_CALLBACK=0`.
  *
  * @module services/skill-callback-bridge
  */
@@ -55,9 +55,9 @@ function getLogger(runtime: IAgentRuntime): Logger | Console {
 
 function isCallbackEnabled(runtime: IAgentRuntime): boolean {
   const raw =
-    (runtime.getSetting("MILADY_ENABLE_CHILD_SKILL_CALLBACK") as
+    (runtime.getSetting("ELIZA_ENABLE_CHILD_SKILL_CALLBACK") as
       | string
-      | undefined) ?? process.env.MILADY_ENABLE_CHILD_SKILL_CALLBACK;
+      | undefined) ?? process.env.ELIZA_ENABLE_CHILD_SKILL_CALLBACK;
   if (raw === undefined || raw === null || raw === "") return true;
   const normalized = String(raw).trim().toLowerCase();
   return normalized !== "0" && normalized !== "false" && normalized !== "no";
@@ -202,7 +202,7 @@ export function installSkillCallbackBridge(deps: BridgeDeps): () => void {
 
   if (!isCallbackEnabled(runtime)) {
     log.debug?.(
-      `${LOG_PREFIX} disabled via MILADY_ENABLE_CHILD_SKILL_CALLBACK=0`,
+      `${LOG_PREFIX} disabled via ELIZA_ENABLE_CHILD_SKILL_CALLBACK=0`,
     );
     return () => undefined;
   }

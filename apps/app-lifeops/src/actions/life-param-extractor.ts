@@ -13,6 +13,10 @@
 
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import {
+  LIFEOPS_REMINDER_INTENSITIES,
+  type LifeOpsReminderIntensity,
+} from "../contracts/index.js";
 import { recentConversationTexts } from "./life-recent-context.js";
 import { resolveContextWindow } from "./lifeops-extraction-config.js";
 import { normalizeExplicitTimeZoneToken } from "./timezone-normalization.js";
@@ -383,13 +387,14 @@ export async function extractTaskParamsWithLlm(args: {
 
 // ── Reminder intensity extractor ─────────────────────
 
-/** Valid LifeOpsReminderIntensity values (mirrors shared/contracts/lifeops). */
-const VALID_REMINDER_INTENSITIES = new Set([
-  "minimal",
-  "normal",
-  "persistent",
-  "high_priority_only",
-]);
+const VALID_REMINDER_INTENSITIES: ReadonlySet<LifeOpsReminderIntensity> =
+  new Set(LIFEOPS_REMINDER_INTENSITIES);
+
+function isLifeOpsReminderIntensity(
+  value: string,
+): value is LifeOpsReminderIntensity {
+  return VALID_REMINDER_INTENSITIES.has(value as LifeOpsReminderIntensity);
+}
 
 export interface ExtractedReminderIntensityPlan {
   intensity:
@@ -408,12 +413,9 @@ function parseReminderIntensityPlan(
   raw: string,
 ): ExtractedReminderIntensityPlan | null {
   const normalized = raw.trim().toLowerCase();
-  if (VALID_REMINDER_INTENSITIES.has(normalized)) {
+  if (isLifeOpsReminderIntensity(normalized)) {
     return {
-      intensity: normalized as Exclude<
-        ExtractedReminderIntensityPlan["intensity"],
-        "unknown"
-      >,
+      intensity: normalized,
     };
   }
 
@@ -422,14 +424,11 @@ function parseReminderIntensityPlan(
     return null;
   }
   const parsedIntensity = parsed.intensity.trim().toLowerCase();
-  if (!VALID_REMINDER_INTENSITIES.has(parsedIntensity)) {
+  if (!isLifeOpsReminderIntensity(parsedIntensity)) {
     return null;
   }
   return {
-    intensity: parsedIntensity as Exclude<
-      ExtractedReminderIntensityPlan["intensity"],
-      "unknown"
-    >,
+    intensity: parsedIntensity,
   };
 }
 

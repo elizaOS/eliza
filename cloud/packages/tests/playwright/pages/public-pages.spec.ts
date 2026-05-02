@@ -5,7 +5,7 @@ import {
   strictSmokeTestPage,
 } from "../fixtures/page-helpers";
 
-// @milady-live-audit allow-route-fixtures
+// @eliza-live-audit allow-route-fixtures
 // Public page smoke tests isolate route rendering from invite and public agent data setup.
 
 async function mockValidInvite(page: Page): Promise<void> {

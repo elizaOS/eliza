@@ -61,7 +61,7 @@
 
 ### Worker 1: `steward-agent-trader` — Autonomous Trading Service
 
-**What:** New Node.js service that runs alongside waifu-worker on milady VPS. This is the brain that decides when agents trade.
+**What:** New Node.js service that runs alongside waifu-worker on eliza VPS. This is the brain that decides when agents trade.
 
 **Path:** `/opt/waifu-core/apps/agent-trader/` (or standalone at `/opt/steward-trader/`)
 

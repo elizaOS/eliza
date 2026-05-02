@@ -50,6 +50,9 @@ async function startAction() {
 
   await runCommandWithRuntime(defaultRuntime, async () => {
     const { startEliza } = await import("../../runtime/eliza");
+    const { ensureAuthPairingCodeForRemoteAccess } = await import(
+      "../../api/auth-pairing-compat-routes"
+    );
     // Use serverOnly mode: starts API server, no interactive chat loop
     await startEliza({
       serverOnly: true,
@@ -63,6 +66,7 @@ async function startAction() {
     });
 
     const port = String(resolveServerOnlyPort(process.env));
+    const pairing = ensureAuthPairingCodeForRemoteAccess();
     console.log("");
     console.log("╭──────────────────────────────────────────╮");
     console.log("│  Server is running.                      │");
@@ -72,6 +76,9 @@ async function startAction() {
       console.log(
         `│  Connection key: ${("*".repeat(Math.max(0, connectionKey.length - 4)) + connectionKey.slice(-4)).padEnd(22)}│`,
       );
+    }
+    if (pairing) {
+      console.log(`│  Pairing code: ${pairing.code.padEnd(24)}│`);
     }
     console.log("╰──────────────────────────────────────────╯");
     console.log("");

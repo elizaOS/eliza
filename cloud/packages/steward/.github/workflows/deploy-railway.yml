@@ -1,7 +1,7 @@
 # Deploy to Railway
 # Triggers:
 #   1. Manual dispatch (workflow_dispatch) with image tag input
-#   2. Reusable workflow (workflow_call) from other repos (e.g. milady)
+#   2. Reusable workflow (workflow_call) from other repos (e.g. eliza)
 #   3. Automatically after Docker workflow completes on develop/tags
 name: Deploy Railway
 
@@ -19,7 +19,7 @@ on:
         type: boolean
         default: false
 
-  # Reusable workflow (callable from milady or other repos)
+  # Reusable workflow (callable from eliza or other repos)
   workflow_call:
     inputs:
       image_tag:

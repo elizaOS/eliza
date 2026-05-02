@@ -127,14 +127,14 @@ const TASK_COMPLETE_STOP_DELAY_MS = 5_000;
  */
 const COMMON_LOCK_PREFIX = `# Operating mode
 
-You are an autonomous Milady sub-agent — there is no interactive human in this session. If you cannot do something, surface a \`DECISION: cannot continue because <reason>\` line on stdout (the orchestrator tails for those) and stop; do not ask a user to run a command for you.`;
+You are an autonomous Eliza sub-agent — there is no interactive human in this session. If you cannot do something, surface a \`DECISION: cannot continue because <reason>\` line on stdout (the orchestrator tails for those) and stop; do not ask a user to run a command for you.`;
 
 const TOOL_DISCOVERY_HINTS: Record<CodingAgentType, string> = {
   claude: CLAUDE_SKILL_ESSENTIALS,
   gemini:
     "Your tool list is defined in `.gemini/settings.json`. Use `run_shell_command` for shell, `read_file`/`write_file` for I/O. Read settings before assuming a tool is missing.",
   codex:
-    "Your tool list is the OpenAI Codex runtime's built-in set (`exec_command`, `apply_patch`, `read_file`, etc.). Session approval settings are injected by the Milady runtime before startup.",
+    "Your tool list is the OpenAI Codex runtime's built-in set (`exec_command`, `apply_patch`, `read_file`, etc.). Session approval settings are injected by the Eliza runtime before startup.",
   aider:
     "Your tools are aider's slash commands (`/run`, `/edit`, `/add`, etc.); see `.aider.conf.yml` if present for any overrides.",
   hermes: "",
@@ -166,7 +166,7 @@ function buildParentRuntimeBridgeMemory(
   port: string,
 ): string {
   const base = `http://127.0.0.1:${port}/api/coding-agents/${encodeURIComponent(sessionId)}`;
-  return `# Parent Milady Runtime
+  return `# Parent Eliza Runtime
 
 You can read parent-runtime state via these loopback endpoints:
 
@@ -287,7 +287,7 @@ async function prepareCodexHome(
   preset: ApprovalPreset,
   credentials?: AgentCredentials,
 ): Promise<string> {
-  const codexHome = await mkdtemp(join(tmpdir(), `milady-codex-${sessionId}-`));
+  const codexHome = await mkdtemp(join(tmpdir(), `eliza-codex-${sessionId}-`));
   await mkdir(codexHome, { recursive: true });
   await writeCodexAuthFile(codexHome, credentials);
   await writeFile(
@@ -548,7 +548,7 @@ export class PTYService {
     const service = new PTYService(runtime, config ?? {});
     await service.initialize();
 
-    // Install bundled Claude Code skills (e.g. milady-runtime) into
+    // Install bundled Claude Code skills (e.g. eliza-runtime) into
     // ~/.claude/skills/ so spawned sub-agents see them on first use.
     // Skip-if-exists semantics — never stomps user customizations.
     try {
@@ -1208,7 +1208,7 @@ export class PTYService {
 
   /**
    * Default agent type when strategy is "fixed".
-   * Precedence: config file (`milady.json` env section, written by the UI)
+   * Precedence: config file (`eliza.json` env section, written by the UI)
    * > runtime/env setting > "claude" fallback.
    */
   get defaultAgentType(): AdapterType {
@@ -1632,7 +1632,7 @@ export class PTYService {
       if (resumed) {
         return {
           launched: true,
-          instructions: `${agentType} authentication is already valid. Milady resumed the blocked session.`,
+          instructions: `${agentType} authentication is already valid. Eliza resumed the blocked session.`,
           recoveryStarted: true,
           status: "recovered",
           recoveryTarget: "same_session",
@@ -1646,7 +1646,7 @@ export class PTYService {
       if (replacement) {
         return {
           launched: true,
-          instructions: `${agentType} authentication is already valid. Milady restarted the task on a fresh session.`,
+          instructions: `${agentType} authentication is already valid. Eliza restarted the task on a fresh session.`,
           recoveryStarted: true,
           status: "recovered",
           recoveryTarget: "replacement_session",
@@ -1657,7 +1657,7 @@ export class PTYService {
 
       return {
         launched: false,
-        instructions: `${agentType} authentication is valid, but Milady could not resume the task automatically.`,
+        instructions: `${agentType} authentication is valid, but Eliza could not resume the task automatically.`,
         recoveryStarted: false,
         status: "failed",
       };

@@ -1,9 +1,9 @@
-# The telemetry hooks Milady wires into your `~/.claude/settings.json`
+# The telemetry hooks Eliza wires into your `~/.claude/settings.json`
 
 When the orchestrator spawns you, it patches `<workdir>/.claude/settings.json` to install HTTP hooks that fire on Claude Code lifecycle events. The hook URL is:
 
 ```
-http://localhost:${MILADY_HOOK_PORT:-2138}/api/coding-agents/hooks
+http://localhost:${ELIZA_HOOK_PORT:-2138}/api/coding-agents/hooks
 ```
 
 The endpoint accepts POSTs with `{event, sessionId, data}` shape. The orchestrator's PTY service is the consumer.
@@ -31,7 +31,7 @@ For events Claude Code doesn't fire automatically, you can POST directly. These 
 The structured form of `DECISION: ...` in stdout. Use when you want the decision recorded out-of-band:
 
 ```bash
-curl --max-time 3 -X POST "http://localhost:${MILADY_HOOK_PORT:-2138}/api/coding-agents/hooks" \
+curl --max-time 3 -X POST "http://localhost:${ELIZA_HOOK_PORT:-2138}/api/coding-agents/hooks" \
   -H "content-type: application/json" \
   -d "{
     \"event\":\"decision\",
@@ -40,7 +40,7 @@ curl --max-time 3 -X POST "http://localhost:${MILADY_HOOK_PORT:-2138}/api/coding
   }"
 ```
 
-Or use the `scripts/milady-decision.sh` helper.
+Or use the `scripts/eliza-decision.sh` helper.
 
 ## Events the orchestrator does NOT support
 
@@ -73,7 +73,7 @@ If the output shows hooks pointing at `localhost:2138/api/coding-agents/hooks`, 
 |---|---|
 | Hook POST returns connection refused | Parent's API server is down or restarting. The orchestrator's primary capture is your stdout — your work isn't lost; just out-of-band events for that window are. |
 | Hook POST returns 401 | The orchestrator may have rotated the per-session token. Don't loop-retry; rely on stdout. |
-| Hook events never reach parent (verified via dashboard) | `MILADY_HOOK_PORT` mismatch. Fall back to default 2138 and check `~/.claude/settings.json` for the actual configured URL. |
+| Hook events never reach parent (verified via dashboard) | `ELIZA_HOOK_PORT` mismatch. Fall back to default 2138 and check `~/.claude/settings.json` for the actual configured URL. |
 
 ## What this is NOT
 

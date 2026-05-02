@@ -153,8 +153,8 @@ jobs:
     environment: ${{ needs.determine-env.outputs.environment }}
     timeout-minutes: 45
     env:
-      DEPLOY_VPS_HOST: ${{ secrets.AGENT_VPS_HOST || secrets.MILADY_VPS_HOST }}
-      DEPLOY_VPS_SSH_KEY: ${{ secrets.AGENT_VPS_SSH_KEY || secrets.MILADY_VPS_SSH_KEY }}
+      DEPLOY_VPS_HOST: ${{ secrets.AGENT_VPS_HOST || secrets.ELIZA_VPS_HOST }}
+      DEPLOY_VPS_SSH_KEY: ${{ secrets.AGENT_VPS_SSH_KEY || secrets.ELIZA_VPS_SSH_KEY }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
@@ -187,7 +187,7 @@ jobs:
       - name: Prepare SSH access
         run: |
           if [ -z "$DEPLOY_VPS_HOST" ] || [ -z "$DEPLOY_VPS_SSH_KEY" ]; then
-            echo "::error::Missing VPS deploy secrets. Configure AGENT_VPS_HOST/AGENT_VPS_SSH_KEY or MILADY_VPS_HOST/MILADY_VPS_SSH_KEY for the GitHub environment."
+            echo "::error::Missing VPS deploy secrets. Configure AGENT_VPS_HOST/AGENT_VPS_SSH_KEY or ELIZA_VPS_HOST/ELIZA_VPS_SSH_KEY for the GitHub environment."
             exit 1
           fi
 

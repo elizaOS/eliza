@@ -13,9 +13,9 @@ export const tailscaleEnvSchema = z.object({
           .split(',')
           .map((tag) => tag.trim())
           .filter((tag) => tag.length > 0);
-      return ['tag:milady-tunnel'];
+      return ['tag:eliza-tunnel'];
     })
-    .default(['tag:milady-tunnel']),
+    .default(['tag:eliza-tunnel']),
   TAILSCALE_FUNNEL: z
     .union([z.string(), z.boolean()])
     .optional()

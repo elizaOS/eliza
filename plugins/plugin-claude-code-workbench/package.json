@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-claude-code-workbench",
-  "description": "Claude Code companion workflow plugin for Milady/ElizaOS",
+  "description": "Claude Code companion workflow plugin for Eliza/ElizaOS",
   "version": "0.1.0",
   "type": "module",
   "main": "dist/index.js",
@@ -14,9 +14,9 @@
     "elizaos",
     "claude-code",
     "workflow",
-    "milady"
+    "eliza"
   ],
-  "homepage": "https://github.com/milady-ai/milady",
+  "homepage": "https://github.com/eliza-ai/eliza",
   "exports": {
     "./package.json": "./package.json",
     ".": {

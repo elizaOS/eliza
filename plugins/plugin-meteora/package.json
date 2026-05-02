@@ -22,7 +22,7 @@
     "lint:fix": "bunx @biomejs/biome check --write ./src",
     "format": "bunx @biomejs/biome format --write ./src",
     "format:check": "bunx @biomejs/biome format ./src",
-    "test": "../cli/dist/index.js test",
+    "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
   },

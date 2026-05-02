@@ -1,8 +1,8 @@
 import { logger } from "@elizaos/core";
 
-/** Set `MILADY_MUSIC_DEBUG=1` for verbose music-player / cache / stream logs. */
+/** Set `ELIZA_MUSIC_DEBUG=1` for verbose music-player / cache / stream logs. */
 export function isMusicDebugEnabled(): boolean {
-  const v = process.env.MILADY_MUSIC_DEBUG?.trim().toLowerCase();
+  const v = process.env.ELIZA_MUSIC_DEBUG?.trim().toLowerCase();
   return v === "1" || v === "true" || v === "yes";
 }
 
@@ -54,9 +54,9 @@ export function musicDebug(
   }
   if (meta && Object.keys(meta).length > 0) {
     logger.debug(
-      `[milady][music] ${message} ${JSON.stringify(sanitizeMeta(meta))}`,
+      `[eliza][music] ${message} ${JSON.stringify(sanitizeMeta(meta))}`,
     );
   } else {
-    logger.debug(`[milady][music] ${message}`);
+    logger.debug(`[eliza][music] ${message}`);
   }
 }

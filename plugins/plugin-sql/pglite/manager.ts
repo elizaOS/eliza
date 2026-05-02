@@ -164,7 +164,7 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
   private createActiveLockError(dataDir: string, cause: unknown): Error {
     return createPgliteInitError(
       PGLITE_ERROR_CODES.ACTIVE_LOCK,
-      `PGlite data dir is already in use at ${dataDir}. Close the other Milady or Eliza process, or point PGLITE_DATA_DIR at a different directory before retrying.`,
+      `PGlite data dir is already in use at ${dataDir}. Close the other Eliza or Eliza process, or point PGLITE_DATA_DIR at a different directory before retrying.`,
       { cause, dataDir }
     );
   }
@@ -178,7 +178,7 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
     );
     return createPgliteInitError(
       PGLITE_ERROR_CODES.MANUAL_RESET_REQUIRED,
-      `PGlite initialization failed for ${dataDir}: ${errorText}. Stop Milady, then rename or delete only this directory before retrying: ${dataDir}`,
+      `PGlite initialization failed for ${dataDir}: ${errorText}. Stop Eliza, then rename or delete only this directory before retrying: ${dataDir}`,
       { cause: corruptCause, dataDir }
     );
   }

@@ -73,11 +73,11 @@ The plugin provides actions for basic music control:
 
 `PLAY_AUDIO` and related actions use a small **`ProgressiveMessage`** helper (`src/utils/progressiveMessage.ts`) that mirrors the API from `@elizaos/plugin-discord`: call **`update(text)`** for transient status, **`complete(text)`** / **`fail(text)`** for the final line.
 
-**Contract:** Every method invokes the standard elizaOS **`HandlerCallback`** with `{ text, source }` — no Milady-specific fields.
+**Contract:** Every method invokes the standard elizaOS **`HandlerCallback`** with `{ text, source }` — no Eliza-specific fields.
 
-**Why it works in the Milady dashboard:** The API chat path treats **repeated action callbacks** as **replace-in-place** for the suffix after the model’s streamed text (SSE snapshot), so “Searching…” becomes “Now playing…” in the **same** bubble instead of concatenating every update. **Why that matters:** Discord edits one message; without server-side replace semantics, the web UI would show one long glued status string.
+**Why it works in the Eliza dashboard:** The API chat path treats **repeated action callbacks** as **replace-in-place** for the suffix after the model’s streamed text (SSE snapshot), so “Searching…” becomes “Now playing…” in the **same** bubble instead of concatenating every update. **Why that matters:** Discord edits one message; without server-side replace semantics, the web UI would show one long glued status string.
 
-**Docs:** In the Milady monorepo see [`docs/runtime/action-callback-streaming.md`](../../docs/runtime/action-callback-streaming.md).
+**Docs:** In the Eliza monorepo see [`docs/runtime/action-callback-streaming.md`](../../docs/runtime/action-callback-streaming.md).
 
 ### Service API
 

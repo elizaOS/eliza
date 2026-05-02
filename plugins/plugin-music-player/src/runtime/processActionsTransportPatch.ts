@@ -13,7 +13,7 @@ const INTENT_ACTION: Record<PlaybackTransportKind, string> = {
 };
 
 type RuntimeWithPatch = IAgentRuntime & {
-  __miladyMusicTransportPatch?: boolean;
+  __elizaMusicTransportPatch?: boolean;
   processActions?: (
     message: unknown,
     responses: unknown,
@@ -32,10 +32,10 @@ export function installProcessActionsTransportPatch(
   runtime: IAgentRuntime,
 ): void {
   const r = runtime as RuntimeWithPatch;
-  if (r.__miladyMusicTransportPatch) return;
+  if (r.__elizaMusicTransportPatch) return;
   if (typeof r.processActions !== "function") return;
 
-  r.__miladyMusicTransportPatch = true;
+  r.__elizaMusicTransportPatch = true;
   const original = r.processActions.bind(r);
 
   r.processActions = async (message, responses, state, callback, opts) => {

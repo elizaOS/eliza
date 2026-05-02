@@ -50,13 +50,13 @@ export interface CustomValidatorResult {
 }
 
 /**
- * Resolve `MILADY_APP_VERIFICATION_MAX_RETRIES`. Per-task `maxRetries`
+ * Resolve `ELIZA_APP_VERIFICATION_MAX_RETRIES`. Per-task `maxRetries`
  * override wins; otherwise the env var; otherwise the documented default
  * of 3. A negative value falls through to the next source.
  */
 export function getMaxRetries(taskOverride?: number): number {
   if (typeof taskOverride === "number" && taskOverride >= 0) return taskOverride;
-  const env = process.env.MILADY_APP_VERIFICATION_MAX_RETRIES;
+  const env = process.env.ELIZA_APP_VERIFICATION_MAX_RETRIES;
   const parsed = env ? Number.parseInt(env, 10) : Number.NaN;
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 3;
 }

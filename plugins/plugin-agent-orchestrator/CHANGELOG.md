@@ -5,7 +5,7 @@
 ### Fixed
 
 - **Framework state preflight mapping**: `computeTaskAgentFrameworkState` was comparing `result.adapter` (a human-readable display name like "Claude Code") against lowercase IDs (`"claude"`), so `preflightByAdapter` ended up empty and every framework reported `installed: false`. The selector then fell through to "no installed framework" and recommended Claude as a hardcoded fallback regardless of the user's actual setup. Now maps display names back to canonical IDs via case-insensitive substring match.
-- **`PARALLAX_DEFAULT_AGENT_TYPE` not honored after UI changes**: `safeGetSetting` only read from `runtime.getSetting()` (in-memory character settings), so changing the default agent in the settings UI did nothing until restart. Now reads the milady config file first via `readConfigEnvKey` and falls back to runtime settings.
+- **`PARALLAX_DEFAULT_AGENT_TYPE` not honored after UI changes**: `safeGetSetting` only read from `runtime.getSetting()` (in-memory character settings), so changing the default agent in the settings UI did nothing until restart. Now reads the eliza config file first via `readConfigEnvKey` and falls back to runtime settings.
 - **Eliza Cloud auth-readiness for task agents**: When `PARALLAX_LLM_PROVIDER=cloud` and a `cloud.apiKey` is paired, Claude/Codex/Aider are now treated as fully auth-ready in the framework selector — they route through the cloud proxy at spawn time. (Gemini is intentionally excluded since Eliza Cloud does not proxy Google.)
 
 ### Dependencies
@@ -19,7 +19,7 @@
 - **Eliza Cloud proxy support**: When `PARALLAX_LLM_PROVIDER=cloud`, coding agents route LLM calls through Eliza Cloud using the paired `cloud.apiKey`. Claude Code gets `ANTHROPIC_BASE_URL`, Codex gets `OPENAI_BASE_URL`, Aider gets both `ANTHROPIC_API_BASE` and `OPENAI_API_BASE`. Base URLs auto-configured per SDK requirements.
 - **Auth trigger API**: `POST /api/coding-agents/auth/:agent` triggers CLI authentication flows. Claude opens browser OAuth, Codex requests device code, Gemini returns manual instructions. Validates agent type and returns 400 for unsupported values.
 - **Claude API key auto-response**: Pushed auto-response rule handles the "Do you want to use this API key?" prompt during startup when API key or cloud mode is active.
-- **Config-env utilities**: `readConfigCloudKey()` reads from the cloud section of milady.json. Both `readConfigEnvKey` and `readConfigCloudKey` used for live settings without restart.
+- **Config-env utilities**: `readConfigCloudKey()` reads from the cloud section of eliza.json. Both `readConfigEnvKey` and `readConfigCloudKey` used for live settings without restart.
 - **Shared `buildAgentCredentials` helper**: Centralizes credential building across `spawn-agent.ts` and `start-coding-task.ts`. Validates that cloud `apiKey` is paired before use; throws a clear error if missing. Documents that Eliza Cloud does not proxy Google/Gemini (`googleKey: undefined` in cloud mode).
 - **Config-env tests**: 7 tests covering env and cloud key reading, missing files, non-string values.
 
@@ -38,7 +38,7 @@
 ### Added
 
 - **Task-agent framework discovery**: Provider and API surfaces now report the currently available task-agent frameworks, their auth readiness, and the preferred default across Claude Code, Codex, Gemini CLI, Aider, and Pi.
-- **Subscription-aware framework preference**: Milady config can now bias framework selection toward the user's Anthropic or OpenAI-backed subscription login so Claude Code and Codex use the user's existing paid access when available.
+- **Subscription-aware framework preference**: Eliza config can now bias framework selection toward the user's Anthropic or OpenAI-backed subscription login so Claude Code and Codex use the user's existing paid access when available.
 - **Current task status in action/API responses**: `LIST_AGENTS`, `/api/coding-agents/settings`, and `/api/coding-agents/coordinator/status` now expose preferred framework information and richer current-task status details.
 - **Opt-in live CLI smoke tests**: Added live e2e coverage for real Claude Code and Codex runs, plus a dedicated `bun run test:live` script.
 
@@ -56,10 +56,10 @@
 
 ### Added
 
-- **Local coding directory**: When `PARALLAX_CODING_DIRECTORY` is set (e.g. `~/Projects`), scratch tasks create named subdirs like `~/Projects/todo-app/` instead of `~/.milady/workspaces/{uuid}`. Labels are sanitized to safe directory names with collision avoidance.
+- **Local coding directory**: When `PARALLAX_CODING_DIRECTORY` is set (e.g. `~/Projects`), scratch tasks create named subdirs like `~/Projects/todo-app/` instead of `~/.eliza/workspaces/{uuid}`. Labels are sanitized to safe directory names with collision avoidance.
 - **Save prompt before cleanup**: When `pending_decision` retention is active, a chat message prompts the user to keep, delete, or promote scratch workspaces. TTL message is computed from the configured decision TTL instead of hardcoded.
 - **Scratch decision callback**: `setScratchDecisionCallback` on workspace service allows external wiring (e.g. swarm coordinator → chat) for save prompts.
-- **Shared config-env utility**: `readConfigEnvKey()` extracted into `services/config-env.ts` — reads the milady.json env section directly so settings take effect without restart.
+- **Shared config-env utility**: `readConfigEnvKey()` extracted into `services/config-env.ts` — reads the eliza.json env section directly so settings take effect without restart.
 
 ### Fixed
 
@@ -85,7 +85,7 @@
 
 - **Turn-complete coalescing (500ms)**: Rapid turn-complete events within 500ms are debounced — only the last one triggers an LLM assessment. Prevents duplicate coordinator calls when Claude Code emits multiple task_complete signals.
 - **Completion retry with exponential backoff**: Unregistered session events now retry at 2s→4s→8s→16s (max 30s total) instead of being discarded after a hard 2s timeout.
-- **Persistent swarm history**: JSONL log at `~/.milady/swarm-history.jsonl` records task registrations, completions, and key decisions. Survives process restarts. `getLastUsedRepoAsync()` checks disk history when in-memory state is empty.
+- **Persistent swarm history**: JSONL log at `~/.eliza/swarm-history.jsonl` records task registrations, completions, and key decisions. Survives process restarts. `getLastUsedRepoAsync()` checks disk history when in-memory state is empty.
 - **Session event queue**: `SessionEventQueue` class for per-session async serialization (staged for future integration into decision loop).
 - **Repo fallback chain**: When no repo is provided, checks coordinator memory → disk history → workspace service for the most recently used repo.
 - **Stale session filter**: Events from PTY sessions created before the coordinator's startup are silently ignored.
@@ -272,7 +272,7 @@
 
 ### Features
 
-- **3-tier event triage**: Classifies coordinator events as routine (auto-resolved), creative (full Milaidy pipeline), or ambiguous (LLM fallback) using heuristic + LLM classification.
+- **3-tier event triage**: Classifies coordinator events as routine (auto-resolved), creative (full Eliza pipeline), or ambiguous (LLM fallback) using heuristic + LLM classification.
 - **Startup grace period**: `tool_running` events during the first 10 seconds after task registration are suppressed from chat notifications to avoid noisy startup status lines.
 
 ## 0.2.0

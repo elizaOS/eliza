@@ -8,6 +8,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { client } from "../../api";
 import type { BootstrapExchangeResult } from "../../api/client-agent";
 import { BootstrapStep } from "./BootstrapStep";
 
@@ -15,6 +16,7 @@ import { BootstrapStep } from "./BootstrapStep";
 vi.mock("../../api", () => ({
   client: {
     postBootstrapExchange: vi.fn(),
+    setToken: vi.fn(),
   },
 }));
 
@@ -108,6 +110,7 @@ describe("BootstrapStep", () => {
     await waitFor(() => {
       expect(exchangeFn).toHaveBeenCalledWith("my-token-123");
       expect(sessionStorage.getItem("eliza_session")).toBe("sess-abc");
+      expect(client.setToken).toHaveBeenCalledWith("sess-abc");
       expect(onAdvance).toHaveBeenCalledOnce();
     });
   });
@@ -205,6 +208,7 @@ describe("BootstrapStep", () => {
       await waitFor(() => {
         expect(exchangeFn).toHaveBeenCalledWith("hash-token-xyz");
         expect(sessionStorage.getItem("eliza_session")).toBe("sess-auto");
+        expect(client.setToken).toHaveBeenCalledWith("sess-auto");
         expect(onAdvance).toHaveBeenCalledOnce();
       });
     });

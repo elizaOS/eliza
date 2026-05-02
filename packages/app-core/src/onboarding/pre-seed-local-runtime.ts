@@ -1,11 +1,11 @@
 /**
- * Pre-seed helper for the MiladyOS APK boot flow.
+ * Pre-seed helper for the ElizaOS APK boot flow.
  *
- * On the AOSP MiladyOS variant the device IS the on-device agent — there
+ * On the AOSP ElizaOS variant the device IS the on-device agent — there
  * is no choice for the user to make. `apps/app/src/main.tsx` calls
  * `preSeedAndroidLocalRuntimeIfFresh()` before React mounts, which writes
  * the persisted runtime mode + active server so `StartupShell` (and the
- * `RuntimeGate` MiladyOS branch) treat the device as already-onboarded
+ * `RuntimeGate` ElizaOS branch) treat the device as already-onboarded
  * for the local agent.
  *
  * Implementation note: this file deliberately does NOT import from

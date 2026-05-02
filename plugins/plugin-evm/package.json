@@ -56,7 +56,7 @@
     "test:unit": "vitest run --config ./vitest.config.ts __tests__/unit",
     "test:integration": "vitest run --config ./vitest.config.ts __tests__/integration",
     "test:toon": "bun test tests/toon-integration.test.ts",
-    "test:live": "node ../../../packages/app-core/scripts/run-with-env.mjs MILADY_LIVE_TEST=1 ELIZA_LIVE_TEST=1 MILADY_LIVE_EVM_RPC_TEST=1 -- vitest run --config ../../../test/vitest/real.config.ts __tests__/integration/rpc-providers.live.test.ts __tests__/integration/transfer.live.test.ts --passWithNoTests",
+    "test:live": "node ../../../packages/app-core/scripts/run-with-env.mjs ELIZA_LIVE_TEST=1 ELIZA_LIVE_TEST=1 ELIZA_LIVE_EVM_RPC_TEST=1 -- vitest run --config ../../../test/vitest/real.config.ts __tests__/integration/rpc-providers.live.test.ts __tests__/integration/transfer.live.test.ts --passWithNoTests",
     "test:watch": "vitest --config ./vitest.config.ts"
   },
   "publishConfig": {
@@ -148,7 +148,7 @@
       }
     }
   },
-  "milady": {
+  "eliza": {
     "platforms": [
       "node"
     ],
