@@ -3,16 +3,15 @@ title: "AWS Examples"
 description: "Deploy elizaOS to AWS Lambda with API Gateway"
 ---
 
-Deploy AI agents as serverless AWS Lambda functions.
+Deploy AI agents as serverless AWS Lambda functions (TypeScript).
 
 ## Quick Start
 
 ```bash
 cd examples/aws
 export OPENAI_API_KEY="your-key"
-
-# TypeScript
-cd typescript && bun run build
+bun install
+sam build
 sam deploy --guided --parameter-overrides OpenAIApiKey=$OPENAI_API_KEY
 ```
 
@@ -25,13 +24,11 @@ sam deploy --guided --parameter-overrides OpenAIApiKey=$OPENAI_API_KEY
 └──────────────┘     └─────────────────┘     └────────────────┘
 ```
 
-## Available Implementations
+## Implementation
 
-| Language   | Directory                  | Runtime        |
-| ---------- | -------------------------- | -------------- |
-| TypeScript | `examples/aws/typescript/` | Node.js 20     |
-| Python     | `examples/aws/python/`     | Python 3.11    |
-| Rust       | `examples/aws/rust/`       | Custom Runtime |
+| Language   | Location            | Runtime    |
+| ---------- | ------------------- | ---------- |
+| TypeScript | `examples/aws/`     | Node.js 20 |
 
 ## TypeScript Handler
 
@@ -64,8 +61,9 @@ export const handler: APIGatewayProxyHandler = async (event) => {
 ## Testing Locally
 
 ```bash
-cd examples/aws/typescript
-bun run start  # Starts local server on port 3000
+cd examples/aws
+bun install
+bun run start # Local HTTP server
 curl -X POST http://localhost:3000/chat \
   -H "Content-Type: application/json" \
   -d '{"message": "Hello!"}'
@@ -87,6 +85,3 @@ curl -X POST http://localhost:3000/chat \
 - Requests: $0.002
 - Duration: $0.17
 - **Total: ~$0.20/month**
-
-
-

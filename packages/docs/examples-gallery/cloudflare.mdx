@@ -14,11 +14,9 @@ wrangler deploy
 
 ## Available Implementations
 
-| Language   | Directory                            | Features       |
-| ---------- | ------------------------------------ | -------------- |
-| TypeScript | `examples/cloudflare/src/`           | Workers        |
-| Python     | `examples/cloudflare/python-worker/` | Python Workers |
-| Rust       | `examples/cloudflare/rust-worker/`   | WASM Workers   |
+| Language   | Directory                    | Features |
+| ---------- | ---------------------------- | -------- |
+| TypeScript | `examples/cloudflare/src/`   | Workers  |
 
 ## Worker
 
@@ -100,27 +98,6 @@ curl -X POST http://localhost:8787 \
 ```bash
 wrangler secret put OPENAI_API_KEY
 # Enter your API key when prompted
-```
-
-## Rust Worker
-
-For maximum performance, use the Rust WASM worker:
-
-```rust
-// rust-worker/src/lib.rs
-use worker::*;
-use elizaos::{AgentRuntime, RuntimeOptions};
-
-#[event(fetch)]
-async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
-    let runtime = get_runtime(&env).await?;
-    let body: serde_json::Value = req.json().await?;
-    let message = body["message"].as_str().unwrap_or("");
-
-    let response = runtime.use_model("TEXT_LARGE", message).await?;
-
-    Response::from_json(&serde_json::json!({ "response": response }))
-}
 ```
 
 ## Benefits
