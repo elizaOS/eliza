@@ -21,22 +21,17 @@ import {
 } from "../src/services/training-trigger.js";
 
 let stateDir: string;
-let prevState: string | undefined;
 let prevElizaState: string | undefined;
 
 beforeEach(() => {
   stateDir = mkdtempSync(join(tmpdir(), "training-trigger-"));
-  prevState = process.env.ELIZA_STATE_DIR;
   prevElizaState = process.env.ELIZA_STATE_DIR;
   process.env.ELIZA_STATE_DIR = stateDir;
-  delete process.env.ELIZA_STATE_DIR;
 });
 
 afterEach(() => {
-  if (prevState === undefined) delete process.env.ELIZA_STATE_DIR;
-  else process.env.ELIZA_STATE_DIR = prevState;
-  if (prevElizaState !== undefined)
-    process.env.ELIZA_STATE_DIR = prevElizaState;
+  if (prevElizaState === undefined) delete process.env.ELIZA_STATE_DIR;
+  else process.env.ELIZA_STATE_DIR = prevElizaState;
   rmSync(stateDir, { recursive: true, force: true });
 });
 
