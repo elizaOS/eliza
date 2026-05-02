@@ -161,7 +161,7 @@ export const searchContactsAction: Action = {
 			responseText = `I found ${contactDetails.length} contact${contactDetails.length !== 1 ? "s" : ""} matching your criteria.`;
 		} else {
 			// Group by category if searching all
-			if (criteria.categories.length === 0) {
+			if (!criteria.categories || criteria.categories.length === 0) {
 				const grouped: Record<string, typeof contactDetails> = {};
 				for (const item of contactDetails) {
 					for (const cat of item.contact.categories) {
