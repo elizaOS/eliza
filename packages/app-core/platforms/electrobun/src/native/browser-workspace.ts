@@ -301,7 +301,7 @@ export class BrowserWorkspaceManager {
 
   async snapshotTab(options: { id: string }): Promise<{ data: string } | null> {
     const tab = this.getTab(options.id);
-    if (!tab || !tab.visible) return null;
+    if (!tab?.visible) return null;
     if (!this.rendererCaller) return null;
 
     const tabRect = await this.rendererCaller.getTabRect({ id: tab.id });

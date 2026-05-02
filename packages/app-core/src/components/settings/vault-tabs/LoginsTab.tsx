@@ -57,9 +57,7 @@ export function LoginsTab() {
   // `creds.<domain>.:autoallow` in the vault — the same flag the
   // user-driven autofill consent path uses, and the only authorization
   // the BROWSER_AUTOFILL_LOGIN agent action will accept.
-  const [autoallowMap, setAutoallowMap] = useState<Record<string, boolean>>(
-    {},
-  );
+  const [autoallowMap, setAutoallowMap] = useState<Record<string, boolean>>({});
 
   const loadAutoallowFor = useCallback(
     async (domains: ReadonlyArray<string>) => {

@@ -15,8 +15,9 @@
 			"!packages/app-core/test/contracts/lib/openzeppelin-contracts",
 			"!packages/benchmarks/evm/metrics",
 			"!packages/benchmarks/openclaw-benchmark/.archived",
-			"!packages/benchmarks/solana/solana-gym-env/metrics",
+      "!packages/benchmarks/solana/solana-gym-env/metrics",
 			"!packages/benchmarks/solana/solana-gym-env/voyager/skill_runner/_test_bad.ts",
+      "!packages/app-core/platforms/electrobun/src/preload.js",
 			"!packages/examples/app/electron/backend/renderer/assets",
       "!packages/app-core/src/styles"
     ]

@@ -85,10 +85,7 @@ export async function hydrateWalletKeysFromNodePlatformSecureStore(): Promise<vo
     const cur = process.env[envKey];
     if (typeof cur === "string" && cur.trim()) continue;
     if (await vault.has(envKey as string)) {
-      const value = await vault.reveal(
-        envKey as string,
-        "wallet-hydrate-boot",
-      );
+      const value = await vault.reveal(envKey as string, "wallet-hydrate-boot");
       process.env[envKey] = value;
       continue;
     }
@@ -99,9 +96,8 @@ export async function hydrateWalletKeysFromNodePlatformSecureStore(): Promise<vo
   //      that the vault did not have. ──────────────────────────────
   if (missingWalletKeys.length > 0) {
     try {
-      const migrated = await migrateOsStoreWalletKeysIntoVault(
-        missingWalletKeys,
-      );
+      const migrated =
+        await migrateOsStoreWalletKeysIntoVault(missingWalletKeys);
       if (migrated.length > 0) {
         logger.info(
           `[wallet][vault] migrated ${migrated.length} key(s) from OS keystore: ${migrated.join(", ")}`,

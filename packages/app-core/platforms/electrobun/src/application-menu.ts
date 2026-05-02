@@ -242,9 +242,7 @@ function buildDesktopMenu(isMac: boolean): ApplicationMenuItem {
         // Same accelerator the renderer-side keydown listener watches
         // for. ⌘⌥⌃V on Mac, Ctrl+Alt+Shift+V elsewhere — distinctive
         // enough to avoid conflicts with the OS or other apps.
-        accelerator: isMac
-          ? "Command+Option+Control+V"
-          : "Ctrl+Alt+Shift+V",
+        accelerator: isMac ? "Command+Option+Control+V" : "Ctrl+Alt+Shift+V",
       },
       { type: "separator" },
       { label: `Show ${appName}`, action: "show" },

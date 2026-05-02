@@ -2,7 +2,12 @@ import crypto from "node:crypto";
 import type http from "node:http";
 import { loadElizaConfig } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
-import { ensureRouteAuthorized, getCompatApiToken, getProvidedApiToken, tokenMatches } from "./auth";
+import {
+  ensureRouteAuthorized,
+  getCompatApiToken,
+  getProvidedApiToken,
+  tokenMatches,
+} from "./auth";
 import {
   type CompatRuntimeState,
   getCompatDrizzleDb,
@@ -164,7 +169,9 @@ export async function handleAuthPairingCompatRoutes(
     const providedToken = getProvidedApiToken(req);
     const configuredToken = getCompatApiToken();
     const authenticated = Boolean(
-      providedToken && configuredToken && tokenMatches(configuredToken, providedToken),
+      providedToken &&
+        configuredToken &&
+        tokenMatches(configuredToken, providedToken),
     );
     const required =
       !localAccess &&
