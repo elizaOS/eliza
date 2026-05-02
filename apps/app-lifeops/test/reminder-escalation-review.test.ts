@@ -195,4 +195,138 @@ describe("reminder escalation review", () => {
     );
     expect(service.dispatchReminderAttempt).not.toHaveBeenCalled();
   });
+
+  it("does not resolve vague snooze language without a concrete snooze time", async () => {
+    const plan = makePlan();
+    const attempt = makeAttempt();
+    const { service } = createHarness({
+      decision: "needs_clarification",
+      resolution: null,
+      snoozeRequest: null,
+      respondedAt: addMinutes(baseAt, 2),
+      responseText: "remind me later",
+      confidence: 0.68,
+      reason: "snooze_needs_duration",
+    });
+
+    await service.dispatchDueReminderEscalation(dispatchArgs(plan, attempt));
+
+    expect(service.markReminderReviewObservedResponse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        attempt,
+        decision: "needs_clarification",
+      }),
+    );
+    expect(service.dispatchReminderAttempt).toHaveBeenCalled();
+    expect(
+      service.resolveReminderReviewFromOwnerResponse,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("snoozes the occurrence when the owner gives a concrete snooze duration", async () => {
+    const service = Object.create(LifeOpsService.prototype) as LifeOpsService &
+      Record<string, unknown>;
+    const attempt = makeAttempt();
+    service.repository = {
+      updateReminderAttemptOutcome: vi.fn(async () => undefined),
+    };
+    service.snoozeOccurrence = vi.fn(async () => ({ id: "occurrence-1" }));
+    service.resolveReminderEscalation = vi.fn(async () => undefined);
+
+    await service.resolveReminderReviewFromOwnerResponse({
+      ownerType: "occurrence",
+      ownerId: "occurrence-1",
+      attempt,
+      reviewedAt: addMinutes(baseAt, 8),
+      resolution: "snoozed",
+      responseText: "remind me in 30 minutes",
+      respondedAt: addMinutes(baseAt, 2),
+      snoozeRequest: { preset: "30m" },
+      confidence: 0.86,
+      reason: "snooze_30m",
+    });
+
+    expect(
+      service.repository.updateReminderAttemptOutcome,
+    ).toHaveBeenCalledWith(
+      attempt.id,
+      attempt.outcome,
+      expect.objectContaining({
+        reminderReviewStatus: "resolved",
+        reminderReviewDecision: "snoozed",
+      }),
+    );
+    expect(service.snoozeOccurrence).toHaveBeenCalledWith(
+      "occurrence-1",
+      { preset: "30m" },
+      new Date(addMinutes(baseAt, 2)),
+    );
+  });
+
+  it("processes due review jobs independent of the overview window", async () => {
+    const plan = makePlan();
+    const attempt = makeAttempt();
+    const service = Object.create(LifeOpsService.prototype) as LifeOpsService &
+      Record<string, unknown>;
+    const escalationAttempt: LifeOpsReminderAttempt = {
+      ...attempt,
+      id: "attempt-2",
+      channel: "discord",
+      stepIndex: 2,
+      scheduledFor: addMinutes(baseAt, 7),
+      attemptedAt: addMinutes(baseAt, 8),
+      deliveryMetadata: { [REMINDER_LIFECYCLE_METADATA_KEY]: "escalation" },
+    };
+    service.agentId = vi.fn(() => "agent-1");
+    service.repository = {
+      listDueReminderReviewAttempts: vi.fn(async () => [attempt]),
+      getReminderPlan: vi.fn(async () => plan),
+      getOccurrenceView: vi.fn(async () => ({
+        id: "occurrence-1",
+        definitionId: "definition-1",
+        subjectType: "owner",
+        title: "Stretch",
+        dueAt: null,
+        priority: 2,
+        metadata: {},
+        state: "visible",
+        relevanceStartAt: baseAt.toISOString(),
+        snoozedUntil: null,
+      })),
+      getDefinition: vi.fn(async () => ({
+        id: "definition-1",
+        kind: "habit",
+        metadata: {},
+      })),
+    };
+    service.getReminderPreference = vi.fn(async () => ({
+      effective: { intensity: "normal" },
+    }));
+    service.dispatchDueReminderEscalation = vi.fn(
+      async () => escalationAttempt,
+    );
+
+    await expect(
+      service.processDueReminderReviewJobs({
+        now: new Date(addMinutes(baseAt, 8)),
+        limit: 5,
+        attempts: [],
+        policies: [],
+        activityProfile: null,
+        timezone: "UTC",
+        defaultIntensity: "normal",
+      }),
+    ).resolves.toEqual([escalationAttempt]);
+
+    expect(
+      service.repository.listDueReminderReviewAttempts,
+    ).toHaveBeenCalledWith("agent-1", addMinutes(baseAt, 8), 5);
+    expect(service.dispatchDueReminderEscalation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ownerType: "occurrence",
+        ownerId: "occurrence-1",
+        attempts: expect.arrayContaining([attempt]),
+      }),
+    );
+  });
 });

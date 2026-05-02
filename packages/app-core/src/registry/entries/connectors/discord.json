@@ -1,7 +1,7 @@
 {
   "id": "discord",
   "name": "Discord",
-  "description": "A Discord plugin for ElizaOS, enabling integration with Discord servers for interaction, voice, and message management.",
+  "description": "Discord connector for elizaOS servers, voice, and message management with Eliza Cloud OAuth gateway or local bot-token setup.",
   "npmName": "@elizaos/plugin-discord",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
@@ -98,7 +98,7 @@
   "kind": "connector",
   "subtype": "messaging",
   "auth": {
-    "kind": "token",
+    "kind": "oauth",
     "credentialKeys": ["DISCORD_API_TOKEN"]
   }
 }

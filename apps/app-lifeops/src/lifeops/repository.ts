@@ -91,6 +91,10 @@ import type {
 } from "./schedule-sync-contracts.js";
 import { lifeOpsSchema } from "./schema.js";
 import {
+  REMINDER_REVIEW_AT_METADATA_KEY,
+  REMINDER_REVIEW_STATUS_METADATA_KEY,
+} from "./service-constants.js";
+import {
   executeRawSql,
   parseJsonArray,
   parseJsonRecord,
@@ -5062,6 +5066,51 @@ export class LifeOpsRepository {
         ORDER BY scheduled_for ASC, step_index ASC, attempted_at ASC`,
     );
     return rows.map(parseReminderAttempt);
+  }
+
+  async listDueReminderReviewAttempts(
+    agentId: string,
+    nowIso: string,
+    limit = 50,
+  ): Promise<LifeOpsReminderAttempt[]> {
+    const normalizedLimit = Math.max(1, Math.min(500, Math.trunc(limit)));
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_reminder_attempts
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND attempted_at IS NOT NULL
+          AND outcome IN ('delivered', 'delivered_read', 'delivered_unread')
+          AND delivery_metadata_json LIKE ${sqlQuote(`%"${REMINDER_REVIEW_AT_METADATA_KEY}"%`)}
+        ORDER BY attempted_at ASC
+        LIMIT ${sqlInteger(normalizedLimit * 4)}`,
+    );
+    return rows
+      .map(parseReminderAttempt)
+      .filter((attempt) => {
+        const reviewAt =
+          attempt.deliveryMetadata[REMINDER_REVIEW_AT_METADATA_KEY];
+        if (typeof reviewAt !== "string" || reviewAt > nowIso) {
+          return false;
+        }
+        const status =
+          attempt.deliveryMetadata[REMINDER_REVIEW_STATUS_METADATA_KEY];
+        return status !== "resolved" && status !== "escalated";
+      })
+      .sort((left, right) => {
+        const leftReviewAt = String(
+          left.deliveryMetadata[REMINDER_REVIEW_AT_METADATA_KEY] ?? "",
+        );
+        const rightReviewAt = String(
+          right.deliveryMetadata[REMINDER_REVIEW_AT_METADATA_KEY] ?? "",
+        );
+        const reviewDelta = leftReviewAt.localeCompare(rightReviewAt);
+        if (reviewDelta !== 0) {
+          return reviewDelta;
+        }
+        return (left.attemptedAt ?? "").localeCompare(right.attemptedAt ?? "");
+      })
+      .slice(0, normalizedLimit);
   }
 
   async updateReminderAttemptOutcome(
