@@ -18,6 +18,7 @@
     "test:coverage": "bun test --coverage"
   },
   "dependencies": {
+    "@elizaos/cloud-routing": "workspace:*",
     "@elizaos/core": "^1.0.0",
     "axios": "^1.6.0"
   },
