@@ -46,6 +46,12 @@ export function shouldForceMainWindowCef(
   return parseEnabledFlag(trimToNull(env.ELIZA_DESKTOP_FORCE_CEF));
 }
 
+export function shouldUseHeadlessDesktopSmoke(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return parseEnabledFlag(trimToNull(env.ELIZA_DESKTOP_HEADLESS_SMOKE));
+}
+
 export function resolveMainWindowPartition(
   env: NodeJS.ProcessEnv = process.env,
 ): string | null {

@@ -22,9 +22,9 @@
       "outputs": ["dist/**"]
     },
     "@elizaos/core#build": {
-      "dependsOn": [],
+      "dependsOn": ["@elizaos/schemas#build"],
       "env": ["LOG_LEVEL"],
-      "outputs": ["dist/**"],
+      "outputs": ["dist/**", "src/types/generated/**"],
       "inputs": ["src/**", "build.ts", "tsconfig.declarations.json"]
     },
     "@elizaos/client#build": {
@@ -90,7 +90,8 @@
       "outputs": []
     },
     "@elizaos/schemas#build": {
-      "outputs": []
+      "outputs": ["../typescript/src/types/generated/**", "../core/src/types/generated/**"],
+      "inputs": ["eliza/**", "buf.yaml", "buf.gen.yaml"]
     },
     "lint": {
       "outputs": []
