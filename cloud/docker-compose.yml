@@ -5,16 +5,9 @@
 # offload paths offline. The S3-compatible API is provided by self-hosted
 # Supabase Storage; the storage-api container speaks S3 at /storage/v1/s3.
 #
-# Setup: copy cloud/.env.example to cloud/.env and uncomment the
-#   "Local Supabase Storage" section. docker compose auto-loads cloud/.env.
 # Start: docker compose up -d storage
 # Stop:  docker compose down
 # Wipe:  docker compose down -v
-#
-# All secret-looking values are sourced from env vars and fail fast (compose
-# refuses to start) if you haven't populated them. The defaults documented in
-# cloud/.env.example are the well-known Supabase self-hosted dev keys —
-# they're fine for localhost, NEVER use them on a publicly reachable host.
 
 services:
   storage_db:
@@ -23,7 +16,7 @@ services:
     environment:
       POSTGRES_DB: storage
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${LOCAL_STORAGE_DB_PASSWORD:?set in cloud/.env (see cloud/.env.example "Local Supabase Storage" section)}
+      POSTGRES_PASSWORD: postgres
     ports:
       - "54322:5432"
     volumes:
@@ -43,13 +36,13 @@ services:
     ports:
       - "54321:5000"
     environment:
-      ANON_KEY: ${LOCAL_STORAGE_ANON_KEY:?set in cloud/.env (see cloud/.env.example "Local Supabase Storage" section)}
-      SERVICE_KEY: ${LOCAL_STORAGE_SERVICE_KEY:?set in cloud/.env (see cloud/.env.example "Local Supabase Storage" section)}
-      AUTH_JWT_SECRET: ${LOCAL_STORAGE_JWT_SECRET:?set in cloud/.env (see cloud/.env.example "Local Supabase Storage" section)}
+      ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIn0.jbWg5J-NKTeVMzQS9Tjj0VfHN1oaA_yt2P9hM1Q8d_o
+      SERVICE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIiwiaXNzIjoic3VwYWJhc2UifQ.h4y7lP4sStTvqAkdKfp5EpzWi5VHBhfJ0tHKk5cdZqM
+      AUTH_JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
       AUTH_JWT_ALGORITHM: HS256
-      DATABASE_URL: postgres://postgres:${LOCAL_STORAGE_DB_PASSWORD:?set in cloud/.env}@storage_db:5432/storage
+      DATABASE_URL: postgres://postgres:postgres@storage_db:5432/storage
       DB_INSTALL_ROLES: "true"
-      PGRST_JWT_SECRET: ${LOCAL_STORAGE_JWT_SECRET:?set in cloud/.env}
+      PGRST_JWT_SECRET: super-secret-jwt-token-with-at-least-32-characters-long
       POSTGREST_URL: http://storage_db:5432
       FILE_SIZE_LIMIT: "524288000"
       STORAGE_BACKEND: file
