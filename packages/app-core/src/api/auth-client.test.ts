@@ -1,18 +1,23 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { authMe } from "./auth-client";
-import { fetchWithCsrf } from "./csrf-client";
 
-vi.mock("./csrf-client", () => ({
-  fetchWithCsrf: vi.fn(),
-}));
+type FetchMock = ReturnType<typeof vi.fn<typeof fetch>>;
 
 describe("authMe", () => {
+  const originalFetch = globalThis.fetch;
+  let fetchMock: FetchMock;
+
+  beforeEach(() => {
+    fetchMock = vi.fn<typeof fetch>();
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+  });
+
   afterEach(() => {
-    vi.resetAllMocks();
+    globalThis.fetch = originalFetch;
   });
 
   it("reports network failures as server unavailable", async () => {
-    vi.mocked(fetchWithCsrf).mockRejectedValue(new Error("connection refused"));
+    fetchMock.mockRejectedValue(new Error("connection refused"));
 
     await expect(authMe()).resolves.toEqual({
       ok: false,
@@ -21,7 +26,7 @@ describe("authMe", () => {
   });
 
   it("reports non-auth HTTP failures as server unavailable", async () => {
-    vi.mocked(fetchWithCsrf).mockResolvedValue(
+    fetchMock.mockResolvedValue(
       new Response(JSON.stringify({ error: "boom" }), { status: 500 }),
     );
 
@@ -32,7 +37,7 @@ describe("authMe", () => {
   });
 
   it("keeps 401 responses as unauthenticated auth failures", async () => {
-    vi.mocked(fetchWithCsrf).mockResolvedValue(
+    fetchMock.mockResolvedValue(
       new Response(
         JSON.stringify({
           reason: "remote_auth_required",
