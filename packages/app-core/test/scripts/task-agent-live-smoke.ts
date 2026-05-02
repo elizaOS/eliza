@@ -18,7 +18,7 @@
  *   What works (in priority order):
  *     1. ANTHROPIC_API_KEY env / runtime setting — bypasses OAuth entirely.
  *        spawn-agent forwards this. This is the recommended path for CI.
- *     2. A configured account-pool shim (multi-account Milady setups). The
+ *     2. A configured account-pool shim (multi-account Eliza setups). The
  *        shim picks a fresh token per spawn.
  *     3. CLAUDE_CODE_OAUTH_TOKEN env / runtime setting — forwarded by the
  *        spawn-agent fallback added in plugin-agent-orchestrator commit
@@ -47,7 +47,7 @@ import {
   PTYService,
   sendToAgentAction,
   spawnAgentAction,
-} from "@elizaos/plugin-agent-orchestrator";
+} from "../../../../plugins/plugin-agent-orchestrator/src/index.ts";
 import {
   type AppStructuredProofClaim,
   parseStructuredProofDirective,
@@ -63,7 +63,7 @@ import { createTestRuntime } from "../helpers/pglite-runtime";
 type Framework = "claude" | "codex";
 type Mode = "sequential" | "web" | "counter-app";
 
-const KEEP_ARTIFACTS = process.env.MILADY_KEEP_LIVE_ARTIFACTS === "1";
+const KEEP_ARTIFACTS = process.env.ELIZA_KEEP_LIVE_ARTIFACTS === "1";
 const COUNTER_AGENT_TIMEOUT_MS = 10 * 60_000;
 const CODEX_UPDATE_TIMEOUT_MS = 5 * 60_000;
 const CAPTURE_LIMIT = 16 * 1024 * 1024;
@@ -344,6 +344,44 @@ function codexHasStoredAuth(): boolean {
   }
 }
 
+function codexNonInteractiveAuthWorks(): boolean {
+  if (!codexHasStoredAuth()) {
+    return false;
+  }
+
+  const workdir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "codex-live-preflight-"),
+  );
+  try {
+    const output = execFileSync(
+      "codex",
+      [
+        "exec",
+        "--cd",
+        workdir,
+        "--sandbox",
+        "workspace-write",
+        "--skip-git-repo-check",
+        "--color",
+        "never",
+        "-c",
+        'approval_policy="never"',
+        "Reply with exactly CODEX_LIVE_PREFLIGHT_OK.",
+      ],
+      {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: 60_000,
+      },
+    );
+    return output.includes("CODEX_LIVE_PREFLIGHT_OK");
+  } catch {
+    return false;
+  } finally {
+    fs.rmSync(workdir, { recursive: true, force: true });
+  }
+}
+
 function claudeHasDeterministicAuth(): boolean {
   if (process.env.ANTHROPIC_API_KEY?.trim()) {
     return true;
@@ -384,7 +422,7 @@ function isFrameworkAuthenticated(framework: Framework): boolean {
     }
 
     if (codexHasStoredAuth()) {
-      return true;
+      return codexNonInteractiveAuthWorks();
     }
 
     const output = execFileSync("codex", ["login", "status"], {
@@ -392,7 +430,7 @@ function isFrameworkAuthenticated(framework: Framework): boolean {
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 5_000,
     });
-    return /\blogged in\b/i.test(output);
+    return /\blogged in\b/i.test(output) && codexNonInteractiveAuthWorks();
   } catch (error) {
     const detail =
       error instanceof Error
@@ -406,7 +444,7 @@ function isFrameworkAuthenticated(framework: Framework): boolean {
         detail,
       ) &&
       framework === "codex" &&
-      codexHasStoredAuth()
+      codexNonInteractiveAuthWorks()
     );
   }
 }
@@ -480,7 +518,7 @@ function createWorkdir(agentType: Framework, label: string): string {
 }
 
 function createCounterWorkdir(agentType: Framework): string {
-  const baseDir = path.join(os.tmpdir(), "milady-live");
+  const baseDir = path.join(os.tmpdir(), "eliza-live");
   fs.mkdirSync(baseDir, { recursive: true });
   return fs.mkdtempSync(
     path.join(baseDir, `agent-orchestrator-${agentType}-counter-app-`),
@@ -587,8 +625,12 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
 
   const firstFileName = `FIRST_${agentType.toUpperCase()}.txt`;
   const secondFileName = `SECOND_${agentType.toUpperCase()}.txt`;
+  const firstDoneFileName = `FIRST_${agentType.toUpperCase()}.done`;
+  const secondDoneFileName = `SECOND_${agentType.toUpperCase()}.done`;
   const firstFilePath = path.join(workdir, firstFileName);
   const secondFilePath = path.join(workdir, secondFileName);
+  const firstDoneFilePath = path.join(workdir, firstDoneFileName);
+  const secondDoneFilePath = path.join(workdir, secondDoneFileName);
   const firstSentinel = `LIVE_REUSE_${agentType.toUpperCase()}_FIRST_DONE`;
   const secondSentinel = `LIVE_REUSE_${agentType.toUpperCase()}_SECOND_DONE`;
 
@@ -601,8 +643,9 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
       createMessage({
         agentType,
         workdir,
+        keepAliveAfterComplete: true,
         task:
-          `Create a file named ${firstFileName} in the current directory containing exactly "${agentType}-first". ` +
+          `Use your shell tool to write exactly "${agentType}-first" to ${firstFilePath} and exactly "${firstSentinel}" to ${firstDoneFilePath}. ` +
           `Then print exactly "${firstSentinel}". Do not ask follow-up questions.`,
       }) as never,
       undefined,
@@ -645,6 +688,9 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
         if (!fs.existsSync(firstFilePath)) return false;
         const fileText = fs.readFileSync(firstFilePath, "utf8").trim();
         if (fileText !== `${agentType}-first`) return false;
+        if (!fs.existsSync(firstDoneFilePath)) return false;
+        const doneText = fs.readFileSync(firstDoneFilePath, "utf8").trim();
+        if (doneText !== firstSentinel) return false;
         const output = cleanForChat(await service.getSessionOutput(sessionId));
         return (
           output.includes(firstSentinel) ||
@@ -661,7 +707,7 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
       createMessage({
         sessionId,
         task:
-          `Now create a second file named ${secondFileName} containing exactly "${agentType}-second". ` +
+          `Use your shell tool to write exactly "${agentType}-second" to ${secondFilePath} and exactly "${secondSentinel}" to ${secondDoneFilePath}. ` +
           `Then print exactly "${secondSentinel}". Stay available for more work afterward and do not ask follow-up questions.`,
       }) as never,
       undefined,
@@ -675,6 +721,9 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
         if (!fs.existsSync(secondFilePath)) return false;
         const fileText = fs.readFileSync(secondFilePath, "utf8").trim();
         if (fileText !== `${agentType}-second`) return false;
+        if (!fs.existsSync(secondDoneFilePath)) return false;
+        const doneText = fs.readFileSync(secondDoneFilePath, "utf8").trim();
+        if (doneText !== secondSentinel) return false;
         const output = cleanForChat(await service.getSessionOutput(sessionId));
         return (
           output.includes(secondSentinel) ||
@@ -717,7 +766,7 @@ async function runWebSmoke(agentType: Framework): Promise<void> {
   const reference = await startReferenceServer(`<!doctype html>
 <html>
   <body>
-    <h1>Milady Benchmark Ready</h1>
+    <h1>Eliza Benchmark Ready</h1>
     <p>Task agents stay reusable.</p>
     <p>Codex and Claude Code should both handle research and serving tasks.</p>
   </body>
@@ -734,7 +783,7 @@ async function runWebSmoke(agentType: Framework): Promise<void> {
         workdir,
         task:
           `Open the reference page at ${reference.url} and read it using your web or browser tools. ` +
-          `Create an index.html in the current directory that includes the exact phrases "Milady Benchmark Ready" and "Task agents stay reusable." ` +
+          `Create an index.html in the current directory that includes the exact phrases "Eliza Benchmark Ready" and "Task agents stay reusable." ` +
           `Then start a local HTTP server in the background from the current directory with ` +
           `"python3 -m http.server ${agentPort} >/tmp/${serveSentinel}.log 2>&1 & echo $! > server.pid", ` +
           `print exactly "${serveSentinel}", and keep the server available until I stop you. ` +
@@ -780,7 +829,7 @@ async function runWebSmoke(agentType: Framework): Promise<void> {
         );
         if (!html) return false;
         return (
-          html.includes("Milady Benchmark Ready") &&
+          html.includes("Eliza Benchmark Ready") &&
           html.includes("Task agents stay reusable.") &&
           (cleanForChat(await service.getSessionOutput(sessionId)).includes(
             serveSentinel,
@@ -837,7 +886,7 @@ function createCounterAppPrompt(input: {
     "tests/counter.test.ts",
   ];
   return [
-    "Create a complete, minimal Milady Eliza app for a browser counter.",
+    "Create a complete, minimal Eliza Eliza app for a browser counter.",
     "",
     `Agent framework under test: ${input.agentType}.`,
     `Create the app package at exactly: ${input.appDir}`,
@@ -886,7 +935,7 @@ async function runCounterAgentCli(
 ): Promise<string> {
   const env = liveCommandEnv();
   if (agentType === "claude") {
-    const model = process.env.MILADY_LIVE_CLAUDE_MODEL?.trim();
+    const model = process.env.ELIZA_LIVE_CLAUDE_MODEL?.trim();
     const args = [
       "-p",
       "--dangerously-skip-permissions",
@@ -903,7 +952,7 @@ async function runCounterAgentCli(
     return result.output;
   }
 
-  const model = process.env.MILADY_LIVE_CODEX_MODEL?.trim();
+  const model = process.env.ELIZA_LIVE_CODEX_MODEL?.trim();
   const args = [
     "exec",
     "--cd",
@@ -1105,14 +1154,14 @@ function assertCounterAppDisk(input: {
 async function runCounterAppSmoke(agentType: Framework): Promise<void> {
   const workdir = createCounterWorkdir(agentType);
   const appSlug = `counter-live-${agentType}`;
-  const appName = `@milady/${appSlug}`;
+  const appName = `@eliza/${appSlug}`;
   const displayName =
     agentType === "codex" ? "Live Counter Codex" : "Live Counter Claude";
   const appDir = path.join(workdir, appSlug);
   const stateDir = path.join(workdir, ".state");
-  const previousStateDir = process.env.MILADY_STATE_DIR;
+  const previousStateDir = process.env.ELIZA_STATE_DIR;
   const previousElizaStateDir = process.env.ELIZA_STATE_DIR;
-  process.env.MILADY_STATE_DIR = stateDir;
+  process.env.ELIZA_STATE_DIR = stateDir;
   process.env.ELIZA_STATE_DIR = stateDir;
   const { runtime, cleanup } = await createRuntime({ SERVER_PORT: "31337" });
   const appRegistry = await AppRegistryService.start(
@@ -1207,9 +1256,9 @@ async function runCounterAppSmoke(agentType: Framework): Promise<void> {
     await appRegistry.stop();
     await cleanup();
     if (previousStateDir !== undefined) {
-      process.env.MILADY_STATE_DIR = previousStateDir;
+      process.env.ELIZA_STATE_DIR = previousStateDir;
     } else {
-      delete process.env.MILADY_STATE_DIR;
+      delete process.env.ELIZA_STATE_DIR;
     }
     if (previousElizaStateDir !== undefined) {
       process.env.ELIZA_STATE_DIR = previousElizaStateDir;

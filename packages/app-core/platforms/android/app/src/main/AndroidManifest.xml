@@ -35,7 +35,7 @@
             android:foregroundServiceType="dataSync" />
 
         <service
-            android:name=".MiladyAgentService"
+            android:name=".ElizaAgentService"
             android:exported="false"
             android:foregroundServiceType="specialUse">
             <property

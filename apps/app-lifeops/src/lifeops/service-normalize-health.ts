@@ -1,4 +1,5 @@
 import type { LifeOpsHealthSignal } from "../contracts/index.js";
+import { LIFEOPS_HEALTH_SIGNAL_SOURCES } from "../contracts/index.js";
 import {
   fail,
   normalizeOptionalBoolean,
@@ -37,8 +38,11 @@ export function normalizeHealthSignal(
   const permissions =
     normalizeOptionalRecord(record.permissions, `${field}.permissions`) ?? {};
   const source = normalizeOptionalString(record.source) ?? "healthkit";
-  if (source !== "healthkit" && source !== "health_connect") {
-    fail(400, `${field}.source must be healthkit or health_connect`);
+  if (!(LIFEOPS_HEALTH_SIGNAL_SOURCES as readonly string[]).includes(source)) {
+    fail(
+      400,
+      `${field}.source must be one of: ${LIFEOPS_HEALTH_SIGNAL_SOURCES.join(", ")}`,
+    );
   }
   const warnings = Array.isArray(record.warnings)
     ? record.warnings.map((warning, index) =>
@@ -46,7 +50,7 @@ export function normalizeHealthSignal(
       )
     : [];
   return {
-    source,
+    source: source as LifeOpsHealthSignal["source"],
     permissions: {
       sleep:
         normalizeOptionalBoolean(

@@ -1,30 +1,29 @@
 import type http from "node:http";
 import {
-  type ConversationMetadata,
-  type ConversationScope,
   extractConversationMetadataFromRoom,
   isAutomationConversationMetadata,
-  listTriggerTasks,
+} from "@elizaos/agent/api/conversation-metadata";
+import type {
+  ConversationMetadata,
+  ConversationScope,
+} from "@elizaos/agent/api/server-types";
+import { toWorkbenchTask } from "@elizaos/agent/api/workbench-helpers";
+import {
   loadElizaConfig,
-  type TriggerSummary,
+} from "@elizaos/agent/config/config";
+import {
+  listTriggerTasks,
   taskToTriggerSummary,
-  toWorkbenchTask,
-} from "@elizaos/agent";
-import { LifeOpsService } from "@elizaos/app-lifeops/lifeops/service";
+} from "@elizaos/agent/triggers/runtime";
+import type { TriggerSummary } from "@elizaos/agent/triggers/types";
 import {
   type AgentRuntime,
-  logger,
   type Room,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import type {
-  LifeOpsDiscordConnectorStatus,
-  LifeOpsGoogleConnectorStatus,
-  LifeOpsSignalConnectorStatus,
-  LifeOpsTelegramConnectorStatus,
-} from "@elizaos/shared";
 import { ensureRouteAuthorized } from "./auth";
+import { listAutomationNodeContributors } from "./automation-node-contributors";
 import type { N8nStatusResponse, N8nWorkflow } from "./client-types-chat";
 import type {
   AutomationItem,
@@ -73,6 +72,150 @@ const BLOCKED_AUTOMATION_PROVIDER_NODES = new Set([
   "recent-conversations",
   "relevant-conversations",
 ]);
+
+interface StaticAutomationNodeSpec {
+  id: string;
+  label: string;
+  description: string;
+  class: AutomationNodeDescriptor["class"];
+  backingCapability: string;
+  actionNames: string[];
+  pluginNames: string[];
+  ownerScoped: boolean;
+  enabledWithoutRuntimeCapability: boolean;
+  disabledReason: string;
+}
+
+const STATIC_AUTOMATION_NODE_SPECS: StaticAutomationNodeSpec[] = [
+  {
+    id: "crypto:evm.swap",
+    label: "EVM swap",
+    description:
+      "EVM token swap automation backed by a loaded EVM runtime action.",
+    class: "action",
+    backingCapability: "SWAP",
+    actionNames: ["SWAP", "SWAP_TOKENS", "SWAP_TOKEN"],
+    pluginNames: ["evm", "plugin-evm", "@elizaos/plugin-evm"],
+    ownerScoped: true,
+    enabledWithoutRuntimeCapability: false,
+    disabledReason: "Load the EVM plugin with swap support.",
+  },
+  {
+    id: "crypto:evm.bridge",
+    label: "EVM bridge",
+    description:
+      "EVM cross-chain bridge automation backed by a loaded EVM runtime action.",
+    class: "action",
+    backingCapability: "CROSS_CHAIN_TRANSFER",
+    actionNames: ["CROSS_CHAIN_TRANSFER", "BRIDGE", "BRIDGE_TOKENS"],
+    pluginNames: ["evm", "plugin-evm", "@elizaos/plugin-evm"],
+    ownerScoped: true,
+    enabledWithoutRuntimeCapability: false,
+    disabledReason: "Load the EVM plugin with bridge support.",
+  },
+  {
+    id: "crypto:solana.swap",
+    label: "Solana swap",
+    description:
+      "Solana token swap automation backed by a loaded Solana runtime action.",
+    class: "action",
+    backingCapability: "SWAP_SOLANA",
+    actionNames: [
+      "SWAP_SOLANA",
+      "SWAP_SOL",
+      "SWAP_TOKENS_SOLANA",
+      "TOKEN_SWAP_SOLANA",
+      "TRADE_TOKENS_SOLANA",
+      "EXCHANGE_TOKENS_SOLANA",
+    ],
+    pluginNames: [
+      "chain_solana",
+      "solana",
+      "plugin-solana",
+      "@elizaos/plugin-solana",
+    ],
+    ownerScoped: true,
+    enabledWithoutRuntimeCapability: false,
+    disabledReason: "Load the Solana plugin with swap support.",
+  },
+  {
+    id: "crypto:hyperliquid.action",
+    label: "Hyperliquid action",
+    description:
+      "Hyperliquid automation entry point backed by a loaded Hyperliquid runtime plugin.",
+    class: "action",
+    backingCapability: "HYPERLIQUID_ACTION",
+    actionNames: [
+      "HYPERLIQUID_ACTION",
+      "HYPERLIQUID_ORDER",
+      "HYPERLIQUID_TRADE",
+    ],
+    pluginNames: [
+      "hyperliquid",
+      "plugin-hyperliquid",
+      "@elizaos/plugin-hyperliquid",
+    ],
+    ownerScoped: true,
+    enabledWithoutRuntimeCapability: false,
+    disabledReason: "Load the Hyperliquid runtime plugin.",
+  },
+  {
+    id: "crypto:polymarket.action",
+    label: "Polymarket action",
+    description:
+      "Polymarket automation entry point backed by a loaded Polymarket runtime plugin.",
+    class: "action",
+    backingCapability: "POLYMARKET_ACTION",
+    actionNames: ["POLYMARKET_ACTION", "POLYMARKET_ORDER", "POLYMARKET_TRADE"],
+    pluginNames: [
+      "polymarket",
+      "plugin-polymarket",
+      "@elizaos/plugin-polymarket",
+    ],
+    ownerScoped: true,
+    enabledWithoutRuntimeCapability: false,
+    disabledReason: "Load the Polymarket runtime plugin.",
+  },
+  {
+    id: "trigger:order.schedule",
+    label: "Order schedule",
+    description:
+      "Schedule order-intent workflows; venue execution still requires a loaded trading action.",
+    class: "trigger",
+    backingCapability: "ORDER_SCHEDULE",
+    actionNames: [],
+    pluginNames: [],
+    ownerScoped: false,
+    enabledWithoutRuntimeCapability: true,
+    disabledReason: "Automation schedules are unavailable.",
+  },
+  {
+    id: "trigger:order.event",
+    label: "Order event",
+    description:
+      "React to order lifecycle events emitted by a loaded trading venue plugin.",
+    class: "trigger",
+    backingCapability: "ORDER_EVENT",
+    actionNames: [
+      "ORDER_EVENT",
+      "ORDER_FILLED",
+      "ORDER_UPDATED",
+      "HYPERLIQUID_ACTION",
+      "POLYMARKET_ACTION",
+    ],
+    pluginNames: [
+      "hyperliquid",
+      "plugin-hyperliquid",
+      "@elizaos/plugin-hyperliquid",
+      "polymarket",
+      "plugin-polymarket",
+      "@elizaos/plugin-polymarket",
+    ],
+    ownerScoped: false,
+    enabledWithoutRuntimeCapability: false,
+    disabledReason: "Load an order-event-capable runtime plugin.",
+  },
+];
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -601,109 +744,64 @@ async function buildAutomationListResponse(
   };
 }
 
-async function resolveGoogleStatus(
-  lifeOps: LifeOpsService,
-): Promise<LifeOpsGoogleConnectorStatus | null> {
-  try {
-    return await lifeOps.getGoogleConnectorStatus(
-      new URL("http://127.0.0.1/api/lifeops/connectors/google/status"),
-      undefined,
-      "owner",
-    );
-  } catch (error) {
-    logger.warn(
-      `[automations] Failed to resolve Google connector status: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-    return null;
-  }
+function normalizeCapabilityName(value: string): string {
+  return value.trim().toLowerCase();
 }
 
-async function resolveTelegramStatus(
-  lifeOps: LifeOpsService,
-): Promise<LifeOpsTelegramConnectorStatus | null> {
-  try {
-    return await lifeOps.getTelegramConnectorStatus("owner");
-  } catch (error) {
-    logger.warn(
-      `[automations] Failed to resolve Telegram connector status: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-    return null;
+function getRuntimeActionCapabilityNames(runtime: AgentRuntime): Set<string> {
+  const names = new Set<string>();
+  for (const action of runtime.actions) {
+    names.add(normalizeCapabilityName(action.name));
+    for (const simile of action.similes ?? []) {
+      names.add(normalizeCapabilityName(simile));
+    }
   }
+  return names;
 }
 
-async function resolveSignalStatus(
-  lifeOps: LifeOpsService,
-): Promise<LifeOpsSignalConnectorStatus | null> {
-  try {
-    return await lifeOps.getSignalConnectorStatus("owner");
-  } catch (error) {
-    logger.warn(
-      `[automations] Failed to resolve Signal connector status: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-    return null;
-  }
+function getRuntimePluginNames(runtime: AgentRuntime): Set<string> {
+  return new Set(
+    (runtime.plugins ?? [])
+      .map((plugin) => normalizeCapabilityName(plugin.name))
+      .filter((name) => name.length > 0),
+  );
 }
 
-async function resolveDiscordStatus(
-  lifeOps: LifeOpsService,
-): Promise<LifeOpsDiscordConnectorStatus | null> {
-  try {
-    return await lifeOps.getDiscordConnectorStatus("owner");
-  } catch (error) {
-    logger.warn(
-      `[automations] Failed to resolve Discord connector status: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-    return null;
+function hasMatchingRuntimeCapability(
+  spec: StaticAutomationNodeSpec,
+  actionNames: Set<string>,
+  pluginNames: Set<string>,
+): boolean {
+  if (spec.enabledWithoutRuntimeCapability) {
+    return true;
   }
+  return (
+    spec.actionNames.some((name) =>
+      actionNames.has(normalizeCapabilityName(name)),
+    ) ||
+    spec.pluginNames.some((name) =>
+      pluginNames.has(normalizeCapabilityName(name)),
+    )
+  );
 }
 
-function buildLifeOpsNode(
-  id: string,
-  label: string,
-  description: string,
-  enabled: boolean,
-  disabledReason: string,
+function buildStaticAutomationNode(
+  spec: StaticAutomationNodeSpec,
+  actionNames: Set<string>,
+  pluginNames: Set<string>,
 ): AutomationNodeDescriptor {
+  const enabled = hasMatchingRuntimeCapability(spec, actionNames, pluginNames);
   return {
-    id,
-    label,
-    description,
-    class: "integration",
-    source: "lifeops",
-    backingCapability: id,
-    ownerScoped: true,
-    requiresSetup: true,
-    availability: enabled ? "enabled" : "disabled",
-    ...(enabled ? {} : { disabledReason }),
-  };
-}
-
-function buildLifeOpsEventNode(
-  eventKind: string,
-  label: string,
-  description: string,
-  enabled: boolean,
-  disabledReason: string,
-): AutomationNodeDescriptor {
-  return {
-    id: `event:${eventKind}`,
-    label,
-    description,
-    class: "trigger",
-    source: "lifeops_event",
-    backingCapability: eventKind,
-    ownerScoped: true,
+    id: spec.id,
+    label: spec.label,
+    description: spec.description,
+    class: spec.class,
+    source: "static_catalog",
+    backingCapability: spec.backingCapability,
+    ownerScoped: spec.ownerScoped,
     requiresSetup: !enabled,
     availability: enabled ? "enabled" : "disabled",
-    ...(enabled ? {} : { disabledReason }),
+    ...(enabled ? {} : { disabledReason: spec.disabledReason }),
   };
 }
 
@@ -718,14 +816,6 @@ async function buildAutomationNodeCatalog(
   const config = loadElizaConfig();
   const agentName = resolveAgentName(runtime, config);
   const adminEntityId = resolveAdminEntityId(config, agentName);
-  const lifeOps = new LifeOpsService(runtime, { ownerEntityId: adminEntityId });
-  const [googleStatus, telegramStatus, signalStatus, discordStatus] =
-    await Promise.all([
-      resolveGoogleStatus(lifeOps),
-      resolveTelegramStatus(lifeOps),
-      resolveSignalStatus(lifeOps),
-      resolveDiscordStatus(lifeOps),
-    ]);
 
   const runtimeActionNodes: AutomationNodeDescriptor[] = runtime.actions
     .slice()
@@ -761,87 +851,27 @@ async function buildAutomationNodeCatalog(
       availability: "enabled",
     }));
 
-  const googleCapabilities = new Set(googleStatus?.grantedCapabilities ?? []);
-  const githubToken = runtime.getSetting("GITHUB_TOKEN");
-  const githubConnected =
-    typeof githubToken === "string" && githubToken.trim().length > 0;
-
-  const lifeOpsNodes: AutomationNodeDescriptor[] = [
-    buildLifeOpsNode(
-      "lifeops:gmail",
-      "Gmail",
-      "Owner-scoped Gmail triage, drafting, and send operations.",
-      Boolean(
-        googleStatus?.connected &&
-          [...googleCapabilities].some((capability) =>
-            capability.includes("gmail"),
-          ),
-      ),
-      "Connect the owner Google account with Gmail access.",
+  const runtimeActionCapabilityNames = getRuntimeActionCapabilityNames(runtime);
+  const runtimePluginNames = getRuntimePluginNames(runtime);
+  const staticAutomationNodes = STATIC_AUTOMATION_NODE_SPECS.map((spec) =>
+    buildStaticAutomationNode(
+      spec,
+      runtimeActionCapabilityNames,
+      runtimePluginNames,
     ),
-    buildLifeOpsNode(
-      "lifeops:calendar",
-      "Calendar",
-      "Owner-scoped calendar reading and event creation.",
-      Boolean(
-        googleStatus?.connected &&
-          [...googleCapabilities].some((capability) =>
-            capability.includes("calendar"),
-          ),
-      ),
-      "Connect the owner Google account with Calendar access.",
-    ),
-    buildLifeOpsNode(
-      "lifeops:telegram",
-      "Telegram",
-      "Owner-scoped Telegram account messaging.",
-      Boolean(telegramStatus?.connected),
-      "Connect the owner Telegram account.",
-    ),
-    buildLifeOpsNode(
-      "lifeops:signal",
-      "Signal",
-      "Owner-scoped Signal messaging.",
-      Boolean(signalStatus?.connected),
-      "Pair the owner Signal account.",
-    ),
-    buildLifeOpsNode(
-      "lifeops:discord",
-      "Discord",
-      "Owner-scoped Discord messaging through the active owner session.",
-      Boolean(discordStatus?.connected && discordStatus.available),
-      "Connect the owner Discord session.",
-    ),
-    buildLifeOpsNode(
-      "lifeops:github",
-      "GitHub",
-      "Owner-scoped GitHub access for repositories, issues, and pull requests.",
-      githubConnected,
-      "Link the owner GitHub account.",
-    ),
-  ];
-
-  const calendarConnected = Boolean(
-    googleStatus?.connected &&
-      [...googleCapabilities].some((capability) =>
-        capability.includes("calendar"),
-      ),
   );
-  const lifeOpsEventNodes: AutomationNodeDescriptor[] = [
-    buildLifeOpsEventNode(
-      "calendar.event.ended",
-      "Calendar event ended",
-      "Fires a workflow after a synced calendar event's end time has passed.",
-      calendarConnected,
-      "Connect the owner Google account with Calendar access.",
+  const contributorNodeGroups = await Promise.all(
+    listAutomationNodeContributors().map((contributor) =>
+      contributor({ runtime, config, agentName, adminEntityId }),
     ),
-  ];
+  );
+  const contributorNodes = contributorNodeGroups.flat();
 
   const nodes = [
     ...runtimeActionNodes,
     ...runtimeProviderNodes,
-    ...lifeOpsNodes,
-    ...lifeOpsEventNodes,
+    ...staticAutomationNodes,
+    ...contributorNodes,
   ].sort((left, right) => {
     if (left.class !== right.class) {
       return left.class.localeCompare(right.class);

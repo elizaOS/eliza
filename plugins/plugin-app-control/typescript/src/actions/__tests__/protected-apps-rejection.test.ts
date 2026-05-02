@@ -4,7 +4,7 @@
  * Integration test for the protected-apps gate inside the
  * `APP load_from_directory` flow:
  *
- *   - When `MILADY_PROTECTED_APPS` lists a name, a discovered app whose
+ *   - When `ELIZA_PROTECTED_APPS` lists a name, a discovered app whose
  *     package.json declares that name is NOT registered.
  *   - When the repo's `eliza/apps/<name>/` exists, a discovered app
  *     colliding on the basename or suffix is NOT registered.
@@ -28,17 +28,17 @@ let repoRoot: string;
 let originalProtectedEnv: string | undefined;
 
 beforeEach(async () => {
-	scanRoot = await mkdtemp(path.join(tmpdir(), "milady-app-protect-scan-"));
-	repoRoot = await mkdtemp(path.join(tmpdir(), "milady-app-protect-repo-"));
-	originalProtectedEnv = process.env.MILADY_PROTECTED_APPS;
-	delete process.env.MILADY_PROTECTED_APPS;
+	scanRoot = await mkdtemp(path.join(tmpdir(), "eliza-app-protect-scan-"));
+	repoRoot = await mkdtemp(path.join(tmpdir(), "eliza-app-protect-repo-"));
+	originalProtectedEnv = process.env.ELIZA_PROTECTED_APPS;
+	delete process.env.ELIZA_PROTECTED_APPS;
 });
 
 afterEach(async () => {
 	if (originalProtectedEnv === undefined) {
-		delete process.env.MILADY_PROTECTED_APPS;
+		delete process.env.ELIZA_PROTECTED_APPS;
 	} else {
-		process.env.MILADY_PROTECTED_APPS = originalProtectedEnv;
+		process.env.ELIZA_PROTECTED_APPS = originalProtectedEnv;
 	}
 	await rm(scanRoot, { recursive: true, force: true });
 	await rm(repoRoot, { recursive: true, force: true });
@@ -92,8 +92,8 @@ function makeRegistry(): RegistrySpy {
 }
 
 describe("APP load_from_directory — protected-apps gate", () => {
-	it("rejects an app whose package name is listed in MILADY_PROTECTED_APPS and registers the rest", async () => {
-		process.env.MILADY_PROTECTED_APPS = "@elizaos/app-companion,custom-locked";
+	it("rejects an app whose package name is listed in ELIZA_PROTECTED_APPS and registers the rest", async () => {
+		process.env.ELIZA_PROTECTED_APPS = "@elizaos/app-companion,custom-locked";
 
 		// Protected by exact env match (scoped name).
 		await writeAppManifest(path.join(scanRoot, "app-companion"), {
@@ -201,7 +201,7 @@ describe("APP load_from_directory — protected-apps gate", () => {
 	});
 
 	it("rejects on alias collision with the protected set", async () => {
-		process.env.MILADY_PROTECTED_APPS = "companion";
+		process.env.ELIZA_PROTECTED_APPS = "companion";
 
 		await writeAppManifest(path.join(scanRoot, "app-foo"), {
 			name: "@me/app-foo",

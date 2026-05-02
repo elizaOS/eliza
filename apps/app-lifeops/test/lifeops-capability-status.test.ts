@@ -218,7 +218,7 @@ function stubCapabilityDependencies(
     connected: true,
     grantedCapabilities: ["x.read", "x.write"],
     grantedScopes: ["tweet.read", "tweet.write"],
-    identity: { username: "milady" },
+    identity: { username: "eliza" },
     hasCredentials: true,
     feedRead: true,
     feedWrite: true,

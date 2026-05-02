@@ -42,7 +42,7 @@ async function pickSmallestGguf(): Promise<InstalledModel | null> {
 function runChild(script: string, modelPath: string): Promise<ChildResult> {
   return new Promise((resolve, reject) => {
     const child = spawn("bun", ["-e", script], {
-      env: { ...process.env, MILADY_E2E_MODEL_PATH: modelPath },
+      env: { ...process.env, ELIZA_E2E_MODEL_PATH: modelPath },
       stdio: ["ignore", "pipe", "pipe"],
     });
     let stdout = "";
@@ -87,7 +87,7 @@ const ENGINE_MODULE = path.resolve(__dirname, "engine.ts");
 
 const CHILD_SCRIPT = `
 import { LocalInferenceEngine } from ${JSON.stringify(ENGINE_MODULE)};
-const modelPath = process.env.MILADY_E2E_MODEL_PATH;
+const modelPath = process.env.ELIZA_E2E_MODEL_PATH;
 const engine = new LocalInferenceEngine();
 try {
   await engine.load(modelPath);
@@ -126,7 +126,7 @@ describe("LocalInferenceEngine e2e (real GGUF, real inference)", () => {
     );
     if (!pick) {
       console.warn(
-        "[engine.e2e] No local GGUF found. Install an LM Studio / Jan / Ollama model, or run a real Milady download, to exercise this path.",
+        "[engine.e2e] No local GGUF found. Install an LM Studio / Jan / Ollama model, or run a real Eliza download, to exercise this path.",
       );
       return;
     }

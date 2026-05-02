@@ -263,10 +263,7 @@ export interface LifeOpsSocialMessageChannel {
   replied: number;
 }
 
-export type LifeOpsSocialHabitDataSourceState =
-  | "live"
-  | "partial"
-  | "unwired";
+export type LifeOpsSocialHabitDataSourceState = "live" | "partial" | "unwired";
 
 export interface LifeOpsSocialHabitDataSource {
   id: string;
@@ -301,8 +298,7 @@ export interface LifeOpsScreenTimeWindow {
   until: string;
 }
 
-export interface LifeOpsScreenTimeHistoryPoint
-  extends LifeOpsScreenTimeWindow {
+export interface LifeOpsScreenTimeHistoryPoint extends LifeOpsScreenTimeWindow {
   date: string;
   label: string;
   totalSeconds: number;
@@ -333,8 +329,7 @@ export interface LifeOpsScreenTimeMetrics {
   deltas: LifeOpsScreenTimeDeltaMetrics | null;
 }
 
-export interface LifeOpsScreenTimeTargetBucket
-  extends LifeOpsScreenTimeBucket {
+export interface LifeOpsScreenTimeTargetBucket extends LifeOpsScreenTimeBucket {
   source: LifeOpsScreenTimeSource;
   identifier: string;
 }

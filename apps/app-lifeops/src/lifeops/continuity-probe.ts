@@ -1,7 +1,7 @@
 /**
  * Continuity / paired-iPhone presence probe for macOS hosts.
  *
- * When the Milady iOS app is not installed, the owner's iPhone is still
+ * When the Eliza iOS app is not installed, the owner's iPhone is still
  * visible to the Mac via:
  *   - `xcrun devicectl list devices --json-output -` — developer-tools
  *     device list that includes paired iPhones with current connection

@@ -11,11 +11,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         UNUserNotificationCenter.current().delegate = self
 
         // APNs registration is gated on a build-time Info.plist flag
-        // (MILADY_APNS_ENABLED=1). When the flag is absent the app boots
+        // (ELIZA_APNS_ENABLED=1). When the flag is absent the app boots
         // without requesting push permission — required because APNs
         // registration needs provisioning-profile entitlements that aren't
         // enabled on the default signing identity.
-        let apnsEnabled = Bundle.main.object(forInfoDictionaryKey: "MILADY_APNS_ENABLED") as? String == "1"
+        let apnsEnabled = Bundle.main.object(forInfoDictionaryKey: "ELIZA_APNS_ENABLED") as? String == "1"
         if apnsEnabled {
             registerForPushNotifications(application: application)
         }
@@ -35,11 +35,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             options: [.alert, .sound, .badge]
         ) { granted, error in
             if let error = error {
-                NSLog("[MiladyCompanion] APNs authorization error: %@", error.localizedDescription)
+                NSLog("[ElizaCompanion] APNs authorization error: %@", error.localizedDescription)
                 return
             }
             guard granted else {
-                NSLog("[MiladyCompanion] APNs authorization denied")
+                NSLog("[ElizaCompanion] APNs authorization denied")
                 return
             }
             DispatchQueue.main.async {
@@ -53,9 +53,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
     ) {
         let tokenHex = deviceToken.map { String(format: "%02x", $0) }.joined()
-        NSLog("[MiladyCompanion] APNs device token registered (%d bytes)", deviceToken.count)
+        NSLog("[ElizaCompanion] APNs device token registered (%d bytes)", deviceToken.count)
         NotificationCenter.default.post(
-            name: Notification.Name("MiladyCompanionApnsToken"),
+            name: Notification.Name("ElizaCompanionApnsToken"),
             object: nil,
             userInfo: ["tokenHex": tokenHex]
         )
@@ -72,7 +72,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         _ application: UIApplication,
         didFailToRegisterForRemoteNotificationsWithError error: Error
     ) {
-        NSLog("[MiladyCompanion] APNs registration failed: %@", error.localizedDescription)
+        NSLog("[ElizaCompanion] APNs registration failed: %@", error.localizedDescription)
         NotificationCenter.default.post(
             name: .capacitorDidFailToRegisterForRemoteNotifications,
             object: error,

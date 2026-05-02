@@ -7,7 +7,7 @@
     "dev": "vite",
     "preview": "vite preview",
     "design-review": "node --import tsx test/design-review/run-design-review.ts",
-    "lint": "bunx @biomejs/biome check src scripts vite.config.ts vitest.e2e.config.ts playwright.ui-smoke.config.ts playwright.ui-packaged.config.ts playwright.electrobun.packaged.config.ts playwright.web-views.config.ts package.json capacitor.config.ts",
+    "lint": "bunx @biomejs/biome check src scripts vite.config.ts vitest.config.ts vitest.e2e.config.ts playwright.ui-smoke.config.ts playwright.ui-packaged.config.ts playwright.electrobun.packaged.config.ts playwright.web-views.config.ts package.json capacitor.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --config vitest.config.ts",
     "test:ui": "vitest run --config vitest.config.ts",
@@ -28,9 +28,17 @@
     "build:web": "vite build"
   },
   "dependencies": {
+    "@elizaos/app-2004scape": "workspace:*",
+    "@elizaos/app-babylon": "workspace:*",
     "@elizaos/app-companion": "workspace:*",
+    "@elizaos/app-defense-of-the-agents": "workspace:*",
+    "@elizaos/app-hyperscape": "workspace:*",
     "@elizaos/app-lifeops": "workspace:*",
+    "@elizaos/app-scape": "workspace:*",
     "@elizaos/app-shopify": "workspace:*",
+    "@elizaos/app-steward": "workspace:*",
+    "@elizaos/app-task-coordinator": "workspace:*",
+    "@elizaos/app-training": "workspace:*",
     "@elizaos/app-vincent": "workspace:*",
     "@capacitor/android": "8.3.1",
     "@capacitor/app": "8.1.0",
@@ -80,6 +88,7 @@
     "tailwindcss": "^4.1.18",
     "typescript": "^6.0.0",
     "vite": "^8.0.0",
-    "vitest": "^4.0.0"
+    "vitest": "^4.0.0",
+    "ws": "^8.18.3"
   }
 }

@@ -142,6 +142,8 @@ export interface PluginIndex {
 }
 
 type PackageJsonLike = {
+  name?: unknown;
+  version?: unknown;
   description?: unknown;
   homepage?: unknown;
   repository?:
@@ -193,6 +195,14 @@ type PluginPackageMetadata = {
   configKeys?: string[];
   pluginParameters?: Record<string, NormalizedPluginParameter>;
   configUiHints?: Record<string, Record<string, unknown>>;
+};
+
+type WorkspacePluginPackage = {
+  id: string;
+  dirName: string;
+  npmName: string;
+  packageRoot: string;
+  version?: string;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -330,6 +340,163 @@ function extractPluginPackageMetadata(
       normalizeConfigUiHints(pkg.agentConfig?.configUiHints) ??
       normalizeConfigUiHints(pkg.elizaos?.configUiHints),
   };
+}
+
+function readJsonFile<T>(filePath: string): T | null {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf-8")) as T;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeWorkspacePluginPackageName(name: string): string {
+  return name.endsWith("-root") ? name.slice(0, -5) : name;
+}
+
+function workspacePluginIdFromPackageName(npmName: string): string | null {
+  const normalized = normalizeWorkspacePluginPackageName(npmName);
+  if (!normalized.startsWith("@elizaos/plugin-")) {
+    return null;
+  }
+  return normalized.slice("@elizaos/plugin-".length);
+}
+
+function discoverWorkspacePluginPackages(
+  packageRoot: string,
+): WorkspacePluginPackage[] {
+  const scanRoots = [
+    path.join(packageRoot, "plugins"),
+    path.join(packageRoot, "packages"),
+  ];
+  const discovered: WorkspacePluginPackage[] = [];
+  const seen = new Set<string>();
+
+  for (const scanRoot of scanRoots) {
+    if (!fs.existsSync(scanRoot)) {
+      continue;
+    }
+
+    for (const dirName of fs.readdirSync(scanRoot).sort()) {
+      const rootDir = path.join(scanRoot, dirName);
+      if (!fs.statSync(rootDir).isDirectory()) {
+        continue;
+      }
+
+      const candidates = [
+        path.join(rootDir, "typescript", "package.json"),
+        path.join(rootDir, "package.json"),
+      ];
+      for (const packageJsonPath of candidates) {
+        if (!fs.existsSync(packageJsonPath)) {
+          continue;
+        }
+
+        const pkg = readJsonFile<PackageJsonLike>(packageJsonPath);
+        const rawName = typeof pkg?.name === "string" ? pkg.name : null;
+        if (!rawName) {
+          continue;
+        }
+
+        const npmName = normalizeWorkspacePluginPackageName(rawName);
+        const id = workspacePluginIdFromPackageName(npmName);
+        if (!id || seen.has(npmName)) {
+          break;
+        }
+
+        seen.add(npmName);
+        discovered.push({
+          id,
+          dirName,
+          npmName,
+          packageRoot: path.dirname(packageJsonPath),
+          version: typeof pkg?.version === "string" ? pkg.version : undefined,
+        });
+        break;
+      }
+    }
+  }
+
+  return discovered;
+}
+
+function mergeWorkspacePluginEntries(
+  entries: PluginEntry[],
+  packageRoot: string,
+): PluginEntry[] {
+  const seenIds = new Set(entries.map((entry) => entry.id));
+  const seenPackages = new Set(
+    entries.flatMap((entry) => (entry.npmName ? [entry.npmName] : [])),
+  );
+  const merged = [...entries];
+
+  for (const plugin of discoverWorkspacePluginPackages(packageRoot)) {
+    if (seenIds.has(plugin.id) || seenPackages.has(plugin.npmName)) {
+      continue;
+    }
+
+    const category = categorizePlugin(plugin.id);
+    const bundledMeta = readBundledPluginPackageMetadata(
+      packageRoot,
+      plugin.dirName,
+      plugin.npmName,
+    );
+    const configKeys = bundledMeta.configKeys ?? [];
+    const envKey = findPrimaryEnvKey(configKeys);
+    const parameters = bundledMeta.pluginParameters
+      ? buildParamDefs(bundledMeta.pluginParameters)
+      : [];
+    const paramInfos: PluginParamInfo[] = parameters.map((pd) => ({
+      key: pd.key,
+      required: pd.required,
+      sensitive: pd.sensitive,
+      type: pd.type,
+      description: pd.description,
+      default: pd.default,
+    }));
+    const validation = validatePluginConfig(
+      plugin.id,
+      category,
+      envKey,
+      configKeys,
+      undefined,
+      paramInfos,
+    );
+
+    merged.push({
+      id: plugin.id,
+      name: formatPluginName(plugin.id),
+      description: resolvePluginDescription(
+        plugin.id,
+        formatPluginName(plugin.id),
+        category,
+        bundledMeta.description,
+      ),
+      tags: resolvePluginTags(plugin.id, category, bundledMeta.tags),
+      enabled: false,
+      configured: validation.errors.length === 0,
+      envKey,
+      category,
+      source: "bundled",
+      configKeys,
+      parameters,
+      validationErrors: validation.errors,
+      validationWarnings: validation.warnings,
+      npmName: plugin.npmName,
+      version: plugin.version,
+      icon: bundledMeta.icon ?? null,
+      homepage: bundledMeta.homepage,
+      repository:
+        bundledMeta.repository ??
+        deriveElizaRepositoryUrl(plugin.npmName, plugin.dirName),
+      setupGuideUrl: resolvePluginSetupGuideUrl(plugin.id),
+    });
+
+    seenIds.add(plugin.id);
+    seenPackages.add(plugin.npmName);
+  }
+
+  return merged.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export function maskValue(value: string): string {
@@ -858,102 +1025,108 @@ export function discoverPluginsFromManifest(): PluginEntry[] {
       // Keys that are auto-injected by infrastructure and should never be
       // exposed as user-facing "config keys" or parameter definitions.
       const HIDDEN_KEYS = new Set(["VERCEL_OIDC_TOKEN"]);
-      const entries = index.plugins
-        .map((p) => {
-          const inferredCategory = categorizePlugin(p.id);
-          const category =
-            inferredCategory === "feature"
-              ? (p.category ?? inferredCategory)
-              : inferredCategory;
-          const bundledMeta = readBundledPluginPackageMetadata(
-            packageRoot,
-            p.dirName,
-            p.npmName,
-          );
-          const resolvedConfigKeys =
-            p.configKeys.length > 0
-              ? p.configKeys
-              : (bundledMeta.configKeys ?? []);
-          const filteredConfigKeys = resolvedConfigKeys.filter(
-            (k) => !HIDDEN_KEYS.has(k),
-          );
-          const envKey = p.envKey ?? findPrimaryEnvKey(filteredConfigKeys);
-          const resolvedPluginParameters = p.pluginParameters
-            ? Object.keys(p.pluginParameters).length > 0
-              ? p.pluginParameters
-              : bundledMeta.pluginParameters
-            : bundledMeta.pluginParameters;
-          const filteredParams = resolvedPluginParameters
-            ? Object.fromEntries(
-                Object.entries(resolvedPluginParameters).filter(
-                  ([k]) => !HIDDEN_KEYS.has(k),
-                ),
-              )
-            : undefined;
-          const parameters = filteredParams
-            ? buildParamDefs(filteredParams)
-            : [];
-          const paramInfos: PluginParamInfo[] = parameters.map((pd) => ({
-            key: pd.key,
-            required: pd.required,
-            sensitive: pd.sensitive,
-            type: pd.type,
-            description: pd.description,
-            default: pd.default,
-          }));
-          const validation = validatePluginConfig(
-            p.id,
-            category,
-            envKey,
-            filteredConfigKeys,
-            undefined,
-            paramInfos,
-          );
-          const configured = validation.errors.length === 0;
+      const entries = mergeWorkspacePluginEntries(
+        index.plugins
+          .map((p) => {
+            const inferredCategory = categorizePlugin(p.id);
+            const category =
+              inferredCategory === "feature"
+                ? (p.category ?? inferredCategory)
+                : inferredCategory;
+            const bundledMeta = readBundledPluginPackageMetadata(
+              packageRoot,
+              p.dirName,
+              p.npmName,
+            );
+            const resolvedConfigKeys =
+              p.configKeys.length > 0
+                ? p.configKeys
+                : (bundledMeta.configKeys ?? []);
+            const filteredConfigKeys = resolvedConfigKeys.filter(
+              (k) => !HIDDEN_KEYS.has(k),
+            );
+            const envKey = p.envKey ?? findPrimaryEnvKey(filteredConfigKeys);
+            const resolvedPluginParameters = p.pluginParameters
+              ? Object.keys(p.pluginParameters).length > 0
+                ? p.pluginParameters
+                : bundledMeta.pluginParameters
+              : bundledMeta.pluginParameters;
+            const filteredParams = resolvedPluginParameters
+              ? Object.fromEntries(
+                  Object.entries(resolvedPluginParameters).filter(
+                    ([k]) => !HIDDEN_KEYS.has(k),
+                  ),
+                )
+              : undefined;
+            const parameters = filteredParams
+              ? buildParamDefs(filteredParams)
+              : [];
+            const paramInfos: PluginParamInfo[] = parameters.map((pd) => ({
+              key: pd.key,
+              required: pd.required,
+              sensitive: pd.sensitive,
+              type: pd.type,
+              description: pd.description,
+              default: pd.default,
+            }));
+            const validation = validatePluginConfig(
+              p.id,
+              category,
+              envKey,
+              filteredConfigKeys,
+              undefined,
+              paramInfos,
+            );
+            const configured = validation.errors.length === 0;
 
-          const description = resolvePluginDescription(
-            p.id,
-            p.name,
-            category,
-            p.description || bundledMeta.description,
-          );
-          const tags = resolvePluginTags(
-            p.id,
-            category,
-            p.tags,
-            bundledMeta.tags,
-          );
+            const description = resolvePluginDescription(
+              p.id,
+              p.name,
+              category,
+              p.description || bundledMeta.description,
+            );
+            const tags = resolvePluginTags(
+              p.id,
+              category,
+              p.tags,
+              bundledMeta.tags,
+            );
 
-          return {
-            id: p.id,
-            name: p.name,
-            description,
-            tags,
-            enabled: false,
-            configured,
-            envKey,
-            category,
-            source: "bundled" as const,
-            configKeys: filteredConfigKeys,
-            parameters,
-            validationErrors: validation.errors,
-            validationWarnings: validation.warnings,
-            npmName: p.npmName,
-            version: p.version,
-            pluginDeps: p.pluginDeps,
-            ...((p.configUiHints ?? bundledMeta.configUiHints)
-              ? { configUiHints: p.configUiHints ?? bundledMeta.configUiHints }
-              : {}),
-            icon: p.logoUrl ?? p.icon ?? bundledMeta.icon ?? null,
-            homepage: p.homepage ?? bundledMeta.homepage,
-            repository:
-              p.repository ??
-              bundledMeta.repository ??
-              deriveElizaRepositoryUrl(p.npmName, p.dirName),
-            setupGuideUrl: p.setupGuideUrl ?? resolvePluginSetupGuideUrl(p.id),
-          };
-        })
-        .sort((a, b) => a.name.localeCompare(b.name));
+            return {
+              id: p.id,
+              name: p.name,
+              description,
+              tags,
+              enabled: false,
+              configured,
+              envKey,
+              category,
+              source: "bundled" as const,
+              configKeys: filteredConfigKeys,
+              parameters,
+              validationErrors: validation.errors,
+              validationWarnings: validation.warnings,
+              npmName: p.npmName,
+              version: p.version,
+              pluginDeps: p.pluginDeps,
+              ...((p.configUiHints ?? bundledMeta.configUiHints)
+                ? {
+                    configUiHints: p.configUiHints ?? bundledMeta.configUiHints,
+                  }
+                : {}),
+              icon: p.logoUrl ?? p.icon ?? bundledMeta.icon ?? null,
+              homepage: p.homepage ?? bundledMeta.homepage,
+              repository:
+                p.repository ??
+                bundledMeta.repository ??
+                deriveElizaRepositoryUrl(p.npmName, p.dirName),
+              setupGuideUrl:
+                p.setupGuideUrl ?? resolvePluginSetupGuideUrl(p.id),
+            };
+          })
+          .sort((a, b) => a.name.localeCompare(b.name)),
+        packageRoot,
+      );
 
       applyWhatsAppQrOverride(entries, resolveDefaultAgentWorkspaceDir());
       applySignalQrOverride(
@@ -974,7 +1147,7 @@ export function discoverPluginsFromManifest(): PluginEntry[] {
   logger.debug(
     "[eliza-api] plugins.json not found — run `npm run generate:plugins`",
   );
-  return [];
+  return mergeWorkspacePluginEntries([], packageRoot);
 }
 
 export function categorizePlugin(

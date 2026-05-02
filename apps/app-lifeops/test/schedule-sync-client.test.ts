@@ -144,7 +144,7 @@ describe("LifeOpsScheduleSyncClient", () => {
     });
 
     expect(requests[0]?.url).toBe(
-      "https://cloud.example.test/api/v1/milady/agents/agent-123/lifeops/schedule/observations",
+      "https://cloud.example.test/api/v1/eliza/agents/agent-123/lifeops/schedule/observations",
     );
     expect(
       (requests[0]?.init?.headers as Record<string, string>)?.["X-API-Key"],

@@ -38,7 +38,7 @@ platform :ios do
         provisioningProfiles: match_profile_mapping("AppStore")
       },
       output_directory: "build",
-      output_name: "Milady.ipa",
+      output_name: "Eliza.ipa",
       clean: true,
       include_bitcode: false
     )
@@ -51,7 +51,7 @@ platform :ios do
     if ENV["APP_STORE_APP_ID"].to_s.strip.empty?
       UI.important(
         "APP_STORE_APP_ID not set. Skipping TestFlight upload — the signed " \
-        "IPA is still produced at build/Milady.ipa. Set the App Store " \
+        "IPA is still produced at build/Eliza.ipa. Set the App Store " \
         "Connect numeric app id (e.g. 6502835663) as a repo secret to " \
         "enable TestFlight delivery."
       )

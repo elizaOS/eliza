@@ -12,8 +12,8 @@ const createBrowserSession = vi.fn(
   }),
 );
 
-vi.mock("@elizaos/agent", () => ({
-  hasAdminAccess: vi.fn(async () => true),
+vi.mock("@elizaos/agent/security/access", () => ({
+  hasOwnerAccess: vi.fn(async () => true),
 }));
 
 vi.mock("./lifeops/service.js", () => ({

@@ -16,6 +16,15 @@ import type { MessageExampleContent } from "@elizaos/shared";
 import type { ConfigUiHint } from "../types";
 
 export type {
+  BrowserBridgeCompanionPackageStatus,
+  BrowserBridgeCompanionStatus,
+  BrowserBridgePageContext,
+  BrowserBridgeSettings,
+  BrowserBridgeTabSummary,
+  SyncBrowserBridgeStateRequest,
+  UpdateBrowserBridgeSettingsRequest,
+} from "@elizaos/plugin-browser-bridge/contracts";
+export type {
   CompleteLifeOpsBrowserSessionRequest as CompleteBrowserBridgeSessionRequest,
   CompleteLifeOpsOccurrenceRequest,
   ConfirmLifeOpsBrowserSessionRequest as ConfirmBrowserBridgeSessionRequest,
@@ -51,16 +60,7 @@ export type {
   StartLifeOpsGoogleConnectorResponse,
   UpdateLifeOpsDefinitionRequest,
   UpdateLifeOpsGoalRequest,
-} from "@elizaos/app-lifeops/contracts";
-export type {
-  BrowserBridgeCompanionPackageStatus,
-  BrowserBridgeCompanionStatus,
-  BrowserBridgePageContext,
-  BrowserBridgeSettings,
-  BrowserBridgeTabSummary,
-  SyncBrowserBridgeStateRequest,
-  UpdateBrowserBridgeSettingsRequest,
-} from "@elizaos/plugin-browser-bridge/contracts";
+} from "@elizaos/shared";
 
 export interface SecretInfo {
   key: string;
@@ -410,6 +410,7 @@ export interface PluginMutationResult {
   loadedPackages?: string[];
   unloadedPackages?: string[];
   reloadedPackages?: string[];
+  vaultMirrorFailures?: string[];
   message?: string;
   error?: string;
 }
@@ -556,7 +557,7 @@ export interface AutomationNodeDescriptor {
   label: string;
   description: string;
   class: AutomationNodeClass;
-  source: "runtime_action" | "runtime_provider" | "lifeops" | "lifeops_event";
+  source: string;
   backingCapability: string;
   ownerScoped: boolean;
   requiresSetup: boolean;

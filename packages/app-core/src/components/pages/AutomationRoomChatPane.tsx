@@ -242,7 +242,7 @@ export function AutomationRoomChatPane({
     textarea.style.overflowY = textarea.scrollHeight > 150 ? "auto" : "hidden";
   }, [composerRef, input]);
 
-  // ── milady:automations:workflow-generating listener ──────────────────────
+  // ── eliza:automations:workflow-generating listener ──────────────────────
   useEffect(() => {
     const paneWorkflowId = metadata?.workflowId ?? null;
 
@@ -262,16 +262,16 @@ export function AutomationRoomChatPane({
       );
     };
 
-    window.addEventListener("milady:automations:workflow-generating", handler);
+    window.addEventListener("eliza:automations:workflow-generating", handler);
     return () => {
       window.removeEventListener(
-        "milady:automations:workflow-generating",
+        "eliza:automations:workflow-generating",
         handler,
       );
     };
   }, [metadata?.workflowId, t]);
 
-  // ── milady:automations:seed-composer listener ───────────────────────────
+  // ── eliza:automations:seed-composer listener ───────────────────────────
   useEffect(() => {
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<{ text: string; select?: boolean }>)
@@ -287,13 +287,13 @@ export function AutomationRoomChatPane({
         }
       });
     };
-    window.addEventListener("milady:automations:seed-composer", handler);
+    window.addEventListener("eliza:automations:seed-composer", handler);
     return () => {
-      window.removeEventListener("milady:automations:seed-composer", handler);
+      window.removeEventListener("eliza:automations:seed-composer", handler);
     };
   }, [composerRef]);
 
-  // ── milady:chat:tool-call generic listener ───────────────────────────────
+  // ── eliza:chat:tool-call generic listener ───────────────────────────────
   useEffect(() => {
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<ChatToolCallDetail>).detail;
@@ -313,9 +313,9 @@ export function AutomationRoomChatPane({
       setActiveToolCall(label);
     };
 
-    window.addEventListener("milady:chat:tool-call", handler);
+    window.addEventListener("eliza:chat:tool-call", handler);
     return () => {
-      window.removeEventListener("milady:chat:tool-call", handler);
+      window.removeEventListener("eliza:chat:tool-call", handler);
     };
   }, [conversationId, t]);
 

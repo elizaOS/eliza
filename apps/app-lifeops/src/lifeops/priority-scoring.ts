@@ -83,10 +83,7 @@ function contentHash(text: string): string {
   return (h >>> 0).toString(36);
 }
 
-function cacheKey(
-  message: LifeOpsInboxMessage,
-  modelId: string,
-): string {
+function cacheKey(message: LifeOpsInboxMessage, modelId: string): string {
   const text = `${message.subject ?? ""}|${message.snippet ?? ""}`;
   return `${modelId}::${message.id}::${contentHash(text)}`;
 }
@@ -252,9 +249,10 @@ export async function scoreInboxMessages(
   if (typeof runtime.useModel !== "function") {
     return messages.map(() => null);
   }
-  const modelId = opts.model && opts.model.trim().length > 0
-    ? opts.model.trim()
-    : "default-text-small";
+  const modelId =
+    opts.model && opts.model.trim().length > 0
+      ? opts.model.trim()
+      : "default-text-small";
 
   const results: Array<PriorityScore | null> = new Array(messages.length).fill(
     null,

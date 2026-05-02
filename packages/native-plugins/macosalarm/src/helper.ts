@@ -8,7 +8,7 @@ import type {
   MacosAlarmHelperResponse,
 } from "./types";
 
-const HELPER_ENV_OVERRIDE = "MILADY_MACOSALARM_HELPER_BIN";
+const HELPER_ENV_OVERRIDE = "ELIZA_MACOSALARM_HELPER_BIN";
 
 export interface HelperSpawn {
   (

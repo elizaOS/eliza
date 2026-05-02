@@ -304,7 +304,7 @@ async function requestAutoPairFromTab(
     return {
       ok: false,
       status: result.status,
-      error: result.error ?? "Auto-pair failed in the Milady tab.",
+      error: result.error ?? "Auto-pair failed in the Eliza tab.",
     };
   } catch (error) {
     return {
@@ -339,7 +339,7 @@ async function attemptAutoPair(
       ]),
     ];
     let lastErrorMessage =
-      "Open Milady in this browser, then reopen the popup to auto-pair.";
+      "Open Eliza in this browser, then reopen the popup to auto-pair.";
 
     for (const apiBaseUrl of candidateApiBaseUrls) {
       for (const tabId of tabsForApiBaseUrl(openTabs, apiBaseUrl)) {

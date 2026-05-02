@@ -3,7 +3,7 @@
  * selects and executes actions in response to natural language input.
  *
  * NO MOCKS. Uses a real PGlite database and a real LLM provider.
- * All tests are gated on MILADY_LIVE_TEST=1 / ELIZA_LIVE_TEST=1 plus
+ * All tests are gated on ELIZA_LIVE_TEST=1 / ELIZA_LIVE_TEST=1 plus
  * a configured LLM API key.
  *
  * Dogfoods the ActionSpy / ConversationHarness helpers (which were previously
@@ -30,8 +30,8 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect } from "vitest";
-import { itIf } from "../../../../../test/helpers/conditional-tests.ts";
-import { selectLiveProvider } from "../../../../../test/helpers/live-provider";
+import { itIf } from "../../../../../eliza/test/helpers/conditional-tests.ts";
+import { selectLiveProvider } from "../../../../../eliza/test/helpers/live-provider";
 import {
   expectActionCalled,
   expectActionNotCalled,
@@ -44,7 +44,7 @@ import { createRealTestRuntime } from "../helpers/real-runtime.ts";
 // ---------------------------------------------------------------------------
 
 const liveModelTestsEnabled =
-  process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
+  process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const selectedLiveProvider = liveModelTestsEnabled
   ? selectLiveProvider()
   : null;
@@ -84,9 +84,8 @@ describe("Action Invocation E2E", () => {
   // environment-dependent (Twilio, Calendly, X, Google Calendar, native
   // app/website blockers, etc.). Default behavior is to warn loudly and
   // skip — CI environments cannot configure all third-party credentials.
-  // Set MILADY_REQUIRE_ALL_CONNECTORS=1 in dev to surface gaps as failures.
-  const strictConnectorMode =
-    process.env.MILADY_REQUIRE_ALL_CONNECTORS === "1";
+  // Set ELIZA_REQUIRE_ALL_CONNECTORS=1 in dev to surface gaps as failures.
+  const strictConnectorMode = process.env.ELIZA_REQUIRE_ALL_CONNECTORS === "1";
 
   function reportMissingCapability(message: string): void {
     console.warn(message);
@@ -284,7 +283,8 @@ describe("Action Invocation E2E", () => {
       .catch(() => null);
     const googleCapabilities = new Set(googleStatus?.grantedCapabilities ?? []);
     googleCalendarWritable = Boolean(
-      googleStatus?.connected && googleCapabilities.has("google.calendar.write"),
+      googleStatus?.connected &&
+        googleCapabilities.has("google.calendar.write"),
     );
 
     logger.info(
@@ -386,11 +386,15 @@ describe("Action Invocation E2E", () => {
       async () => {
         if (!requireAction("MODIFY_CHARACTER")) return;
         await withHarness(async (h) => {
-          await sendUntilExpectedAction(h, ["MODIFY_CHARACTER"], [
-            "Change your personality to be more casual and funny.",
-            "Use the modify character action to make your response style more casual and funny.",
-            "Update your character preferences: respond in a more casual, funny style from now on.",
-          ]);
+          await sendUntilExpectedAction(
+            h,
+            ["MODIFY_CHARACTER"],
+            [
+              "Change your personality to be more casual and funny.",
+              "Use the modify character action to make your response style more casual and funny.",
+              "Update your character preferences: respond in a more casual, funny style from now on.",
+            ],
+          );
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
@@ -401,11 +405,15 @@ describe("Action Invocation E2E", () => {
       async () => {
         if (!requireAction("LIFE")) return;
         await withHarness(async (h) => {
-          await sendUntilExpectedAction(h, ["LIFE"], [
-            "Add a todo: pick up dry cleaning tomorrow.",
-            "Use the Life action to create a todo to pick up dry cleaning tomorrow.",
-            "Create a LifeOps todo item named pick up dry cleaning due tomorrow.",
-          ]);
+          await sendUntilExpectedAction(
+            h,
+            ["LIFE"],
+            [
+              "Add a todo: pick up dry cleaning tomorrow.",
+              "Use the Life action to create a todo to pick up dry cleaning tomorrow.",
+              "Create a LifeOps todo item named pick up dry cleaning due tomorrow.",
+            ],
+          );
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
@@ -416,11 +424,15 @@ describe("Action Invocation E2E", () => {
       async () => {
         if (!requireAction("LIFE")) return;
         await withHarness(async (h) => {
-          await sendUntilExpectedAction(h, ["LIFE"], [
-            "Set a goal to save $5,000 by the end of the year.",
-            "Use the Life action to create a goal to save $5,000 by the end of the year.",
-            "Create a LifeOps goal named save $5,000 by the end of the year.",
-          ]);
+          await sendUntilExpectedAction(
+            h,
+            ["LIFE"],
+            [
+              "Set a goal to save $5,000 by the end of the year.",
+              "Use the Life action to create a goal to save $5,000 by the end of the year.",
+              "Create a LifeOps goal named save $5,000 by the end of the year.",
+            ],
+          );
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
@@ -836,10 +848,7 @@ describe("Action Invocation E2E", () => {
         if (!requireAction("INTENT_SYNC")) return;
         await withHarness(async (h) => {
           await h.send("Broadcast a reminder to all my devices.");
-          expectAnySelectedAction(h, [
-            "INTENT_SYNC",
-            "PUBLISH_DEVICE_INTENT",
-          ]);
+          expectAnySelectedAction(h, ["INTENT_SYNC", "PUBLISH_DEVICE_INTENT"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
@@ -1106,11 +1115,15 @@ describe("Action Invocation E2E", () => {
       async () => {
         if (!requireAction("LIFE")) return;
         await withHarness(async (h) => {
-          await sendUntilExpectedAction(h, ["LIFE"], [
-            "Create a todo to call my mom.",
-            "Use the Life action to create a todo to call my mom.",
-            "Create a LifeOps todo item named call my mom.",
-          ]);
+          await sendUntilExpectedAction(
+            h,
+            ["LIFE"],
+            [
+              "Create a todo to call my mom.",
+              "Use the Life action to create a todo to call my mom.",
+              "Create a LifeOps todo item named call my mom.",
+            ],
+          );
           const callsBeforeSecond = h.spy.getCalls().length;
 
           await sendUntilExpectedAction(

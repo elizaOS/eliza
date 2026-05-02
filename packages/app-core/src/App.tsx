@@ -37,6 +37,7 @@ import { CustomActionEditor } from "./components/custom-actions/CustomActionEdit
 import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
 import { ChatView } from "./components/pages/ChatView";
 import type { PageScope } from "./components/pages/page-scoped-conversations";
+import { SecretsManagerModalRoot } from "./components/settings/SecretsManagerSection";
 import { BugReportModal } from "./components/shell/BugReportModal";
 import { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanner";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
@@ -57,6 +58,7 @@ import {
 } from "./hooks";
 import { useActivityEvents } from "./hooks/useActivityEvents";
 import { useAuthStatus } from "./hooks/useAuthStatus";
+import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
 import {
   APPS_ENABLED,
   isAndroidPhoneSurfaceEnabled,
@@ -69,7 +71,7 @@ import type { FlaminaGuideTopic } from "./state/types";
 const CHAT_MOBILE_BREAKPOINT_PX = 820;
 const MOBILE_NAV_PADDING_CLASS =
   "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px))]";
-const WALLET_CHAT_PREFILL_EVENT = "milady:chat:prefill";
+const WALLET_CHAT_PREFILL_EVENT = "eliza:chat:prefill";
 type MobileChatSurface = "left" | "center" | "right";
 
 type ExtractComponent<TValue> =
@@ -112,6 +114,7 @@ import { SkillsView } from "./components/pages/SkillsView";
 import { TasksPageView } from "./components/pages/TasksPageView";
 import { TrajectoriesView } from "./components/pages/TrajectoriesView";
 import { FineTuningView } from "./components/training/injected";
+import { fetchWithCsrf } from "./api/csrf-client";
 
 // True lazy boundaries: these views are only imported here, so Rollup can
 // honour the split into separate chunks.
@@ -132,7 +135,7 @@ const ConnectorsPageView = lazyNamedView(
   "ConnectorsPageView",
 );
 const ContactsPageView = lazyNamedView(
-  () => import("./components/pages/MiladyOsAppsView"),
+  () => import("./components/pages/ElizaOsAppsView"),
   "ContactsPageView",
 );
 const DesktopWorkspaceSection = lazyNamedView(
@@ -140,11 +143,11 @@ const DesktopWorkspaceSection = lazyNamedView(
   "DesktopWorkspaceSection",
 );
 const MessagesPageView = lazyNamedView(
-  () => import("./components/pages/MiladyOsAppsView"),
+  () => import("./components/pages/ElizaOsAppsView"),
   "MessagesPageView",
 );
 const PhonePageView = lazyNamedView(
-  () => import("./components/pages/MiladyOsAppsView"),
+  () => import("./components/pages/ElizaOsAppsView"),
   "PhonePageView",
 );
 const SettingsView = lazyNamedView(
@@ -586,13 +589,14 @@ export function App() {
   const contextMenu = useContextMenu();
 
   useStreamPopoutNavigation(setTab);
+  useSecretsManagerShortcut();
 
   useEffect(() => {
     if (startupCoordinator.phase !== "ready") return;
     if (backendConnection?.state !== "connected") return;
 
     const report = () => {
-      void fetch("/api/apps/overlay-presence", {
+      void fetchWithCsrf("/api/apps/overlay-presence", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ appName: activeOverlayApp }),
@@ -605,7 +609,7 @@ export function App() {
     const intervalId = window.setInterval(report, 25_000);
     return () => {
       window.clearInterval(intervalId);
-      void fetch("/api/apps/overlay-presence", {
+      void fetchWithCsrf("/api/apps/overlay-presence", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ appName: null }),
@@ -1154,7 +1158,15 @@ export function App() {
 
   return (
     <BugReportProvider value={bugReport}>
-      <div className="flex flex-col h-screen w-screen overflow-hidden">
+      <div
+        className="flex flex-col h-screen w-screen overflow-hidden"
+        style={{
+          paddingTop: "var(--safe-area-top, env(safe-area-inset-top, 0px))",
+          paddingBottom: "var(--safe-area-bottom, env(safe-area-inset-bottom, 0px))",
+          paddingLeft: "var(--safe-area-left, env(safe-area-inset-left, 0px))",
+          paddingRight: "var(--safe-area-right, env(safe-area-inset-right, 0px))",
+        }}
+      >
         <ConnectionFailedBanner />
         <SystemWarningBanner />
         {shellContent}
@@ -1182,6 +1194,7 @@ export function App() {
         onSave={contextMenu.confirmSaveCommand}
         onClose={contextMenu.closeSaveCommandModal}
       />
+      <SecretsManagerModalRoot />
       <CustomActionEditor
         open={customActionsEditorOpen}
         action={editingAction}

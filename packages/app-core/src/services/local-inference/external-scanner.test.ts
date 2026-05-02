@@ -15,7 +15,7 @@ describe("scanExternalModels", () => {
   let origHome: string | undefined;
 
   beforeEach(async () => {
-    tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "milady-scan-home-"));
+    tmpHome = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-scan-home-"));
     origHome = process.env.HOME;
     process.env.HOME = tmpHome;
   });

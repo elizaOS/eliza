@@ -9,14 +9,14 @@ import { describeIf } from "../../../packages/app-core/test/helpers/conditional-
 import { req } from "../../../packages/app-core/test/helpers/http";
 
 const LIVE_TESTS_ENABLED =
-  process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
+  process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
 const CI_ENABLED = /^(1|true)$/i.test(process.env.CI ?? "");
 const HEADLESS_DESKTOP_SMOKE =
-  process.env.MILADY_DESKTOP_HEADLESS_SMOKE === "1";
+  process.env.ELIZA_DESKTOP_HEADLESS_SMOKE === "1";
 const WATCH_DESKTOP_SUPPORTED =
   process.platform === "darwin" &&
-  (!CI_ENABLED || process.env.MILADY_LIVE_DESKTOP_WATCH_TEST === "1");
+  (!CI_ENABLED || process.env.ELIZA_LIVE_DESKTOP_WATCH_TEST === "1");
 const DESKTOP_STACK_TEST_TIMEOUT_MS =
   process.platform === "win32" ? 480_000 : 300_000;
 

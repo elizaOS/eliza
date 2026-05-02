@@ -65,7 +65,7 @@ export * from "./utils/buffer";
 export * from "./utils/environment";
 
 export function resolveStateDir(): string {
-	return "/.milady";
+	return "/.eliza";
 }
 
 export async function runPluginMigrations(): Promise<void> {}

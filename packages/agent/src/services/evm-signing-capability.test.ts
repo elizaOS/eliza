@@ -58,7 +58,7 @@ describe("resolveEvmSigningCapability", () => {
 
   it("returns cloud-view-only when only a cloud address is persisted", () => {
     const cap = resolveEvmSigningCapability(
-      env({ MILADY_CLOUD_EVM_ADDRESS: "0xabc" }),
+      env({ ELIZA_CLOUD_EVM_ADDRESS: "0xabc" }),
     );
     expect(cap.kind).toBe("cloud-view-only");
     expect(cap.canSign).toBe(false);
@@ -96,7 +96,7 @@ describe("evmAutoEnableReasonFromCapability", () => {
   it("returns null for cloud-view-only (no signer wired)", () => {
     expect(
       evmAutoEnableReasonFromCapability(
-        env({ MILADY_CLOUD_EVM_ADDRESS: "0xabc" }),
+        env({ ELIZA_CLOUD_EVM_ADDRESS: "0xabc" }),
       ),
     ).toBeNull();
   });

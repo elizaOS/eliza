@@ -3,7 +3,6 @@ import {
   getAppHeroMonogram,
   getAppHeroThemeKey,
 } from "@elizaos/shared";
-import { resolveApiUrl, resolveAppAssetUrl } from "../../utils/asset-url";
 import {
   Bot,
   Briefcase,
@@ -15,6 +14,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { type CSSProperties, useState } from "react";
+import { resolveApiUrl, resolveAppAssetUrl } from "../../utils/asset-url";
 
 export interface AppIdentitySource {
   name: string;

@@ -128,10 +128,7 @@
     }
   ],
   "trajectory": "trajectories/881deb30-9549-4583-a841-8270c65f2a17",
-  "related_apps": [
-    "libreoffice_calc",
-    "os"
-  ],
+  "related_apps": ["libreoffice_calc", "os"],
   "evaluator": {
     "postconfig": [
       {
@@ -155,10 +152,7 @@
         "/home/user/Documents/Fundings/supported_rate.xlsx",
         "/home/user/Documents/Fundings/supported_rate-Sheet1.csv"
       ],
-      "dest": [
-        "supported_rate.xlsx",
-        "supported_rate-Sheet1.csv"
-      ],
+      "dest": ["supported_rate.xlsx", "supported_rate-Sheet1.csv"],
       "multi": true
     },
     "expected": {
@@ -167,10 +161,7 @@
         "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/881deb30-9549-4583-a841-8270c65f2a17/supported_rate_gt.xlsx",
         "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/881deb30-9549-4583-a841-8270c65f2a17/supported_rate_gt.csv"
       ],
-      "dest": [
-        "supported_rate-gt.xlsx",
-        "supported_rate-gt-Sheet1.csv"
-      ],
+      "dest": ["supported_rate-gt.xlsx", "supported_rate-gt-Sheet1.csv"],
       "multi": true
     },
     "options": {

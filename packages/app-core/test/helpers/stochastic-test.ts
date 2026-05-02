@@ -11,15 +11,15 @@
  * distribution + a "weak" focus list of tests below the acceptance bar.
  *
  * Tuning knobs (env vars):
- *   - `MILADY_STOCHASTIC_RUNS`   override N at runtime (default: per-call)
- *   - `MILADY_STOCHASTIC_MIN_PASS` override minPass (default: per-call)
- *   - `MILADY_STOCHASTIC_REPORT_DIR` override report directory
- *     (default: `<repo root>/.milady`)
+ *   - `ELIZA_STOCHASTIC_RUNS`   override N at runtime (default: per-call)
+ *   - `ELIZA_STOCHASTIC_MIN_PASS` override minPass (default: per-call)
+ *   - `ELIZA_STOCHASTIC_REPORT_DIR` override report directory
+ *     (default: `<repo root>/.eliza`)
  */
 
-import { test } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { test } from "vitest";
 
 export interface StochasticOptions {
   /** Number of runs per invocation. Default 3. */
@@ -75,11 +75,11 @@ function resolveRepoRoot(start: string): string {
 }
 
 function resolveReportDir(): string {
-  const override = process.env.MILADY_STOCHASTIC_REPORT_DIR;
+  const override = process.env.ELIZA_STOCHASTIC_REPORT_DIR;
   if (override && override.trim().length > 0) {
     return override;
   }
-  return path.join(resolveRepoRoot(process.cwd()), ".milady");
+  return path.join(resolveRepoRoot(process.cwd()), ".eliza");
 }
 
 function reportFilePath(): string {
@@ -118,9 +118,9 @@ export function stochasticTest(
   fn: () => Promise<void> | void,
   options: StochasticOptions = {},
 ): void {
-  const runs = envInt("MILADY_STOCHASTIC_RUNS") ?? options.runs ?? DEFAULT_RUNS;
+  const runs = envInt("ELIZA_STOCHASTIC_RUNS") ?? options.runs ?? DEFAULT_RUNS;
   const rawMinPass =
-    envInt("MILADY_STOCHASTIC_MIN_PASS") ?? options.minPass ?? DEFAULT_MIN_PASS;
+    envInt("ELIZA_STOCHASTIC_MIN_PASS") ?? options.minPass ?? DEFAULT_MIN_PASS;
   const minPass = Math.max(1, Math.min(runs, rawMinPass));
   const perRunTimeoutMs = options.perRunTimeoutMs ?? DEFAULT_PER_RUN_TIMEOUT_MS;
   const totalTimeoutMs = perRunTimeoutMs * runs + 5_000;
@@ -141,7 +141,8 @@ export function stochasticTest(
       }
       const durationMs = Date.now() - startedAt;
       const failed = runs - passed;
-      const file = (ctx.task.file as { name?: string } | undefined)?.name ?? "<unknown>";
+      const file =
+        (ctx.task.file as { name?: string } | undefined)?.name ?? "<unknown>";
       appendResult({
         file,
         name,

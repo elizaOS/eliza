@@ -18,51 +18,69 @@ describe("googleApiFetch Gmail write guard", () => {
     await expect(
       googleApiFetch(
         "https://gmail.googleapis.com/gmail/v1/users/me/messages/batchModify",
-        { method: "POST" },
-      ),
+        { method: "POST" }
+      )
     ).rejects.toBeInstanceOf(GoogleApiError);
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
   it("allows real Gmail writes only when explicitly confirmed", async () => {
-    process.env.MILADY_ALLOW_REAL_GMAIL_WRITES = "1";
+    process.env.ELIZA_ALLOW_REAL_GMAIL_WRITES = "1";
     globalThis.fetch = vi.fn(
-      async () => new Response("{}", { status: 200 }),
+      async () => new Response("{}", { status: 200 })
     ) as unknown as typeof fetch;
 
     await expect(
       googleApiFetch(
         "https://gmail.googleapis.com/gmail/v1/users/me/messages/batchModify",
-        { method: "POST" },
-      ),
+        { method: "POST" }
+      )
     ).resolves.toBeInstanceOf(Response);
     expect(globalThis.fetch).toHaveBeenCalledOnce();
   });
 
   it("allows guarded writes when Google traffic is routed to loopback mock", async () => {
-    process.env.MILADY_MOCK_GOOGLE_BASE = "http://127.0.0.1:4321";
+    process.env.ELIZA_MOCK_GOOGLE_BASE = "http://127.0.0.1:4321";
     globalThis.fetch = vi.fn(
-      async () => new Response("{}", { status: 200 }),
+      async () => new Response("{}", { status: 200 })
     ) as unknown as typeof fetch;
 
     await expect(
       googleApiFetch(
         "https://gmail.googleapis.com/gmail/v1/users/me/messages/batchModify",
-        { method: "POST" },
-      ),
+        { method: "POST" }
+      )
     ).resolves.toBeInstanceOf(Response);
     expect(globalThis.fetch).toHaveBeenCalledWith(
       "http://127.0.0.1:4321/gmail/v1/users/me/messages/batchModify",
-      expect.objectContaining({ method: "POST" }),
+      expect.objectContaining({ method: "POST" })
+    );
+  });
+
+  it("honors the ELIZA Google mock base alias used by shared mock fixtures", async () => {
+    process.env.ELIZA_MOCK_GOOGLE_BASE = "http://127.0.0.1:4322";
+    globalThis.fetch = vi.fn(
+      async () => new Response("{}", { status: 200 })
+    ) as unknown as typeof fetch;
+
+    await expect(
+      googleApiFetch(
+        "https://gmail.googleapis.com/gmail/v1/users/me/messages/batchModify",
+        { method: "POST" }
+      )
+    ).resolves.toBeInstanceOf(Response);
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "http://127.0.0.1:4322/gmail/v1/users/me/messages/batchModify",
+      expect.objectContaining({ method: "POST" })
     );
   });
 
   it("rejects non-loopback Google mock bases", () => {
-    process.env.MILADY_MOCK_GOOGLE_BASE = "https://mock.example.com";
+    process.env.ELIZA_MOCK_GOOGLE_BASE = "https://mock.example.com";
     expect(() =>
       rewriteGoogleUrlForMock(
-        "https://gmail.googleapis.com/gmail/v1/users/me/messages",
-      ),
+        "https://gmail.googleapis.com/gmail/v1/users/me/messages"
+      )
     ).toThrow(GoogleApiError);
   });
 });

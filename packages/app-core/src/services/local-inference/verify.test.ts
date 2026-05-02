@@ -23,7 +23,7 @@ function makeModel(overrides: Partial<InstalledModel>): InstalledModel {
     sizeBytes: 0,
     installedAt: new Date().toISOString(),
     lastUsedAt: null,
-    source: "milady-download",
+    source: "eliza-download",
     ...overrides,
   };
 }
@@ -32,7 +32,7 @@ describe("verify", () => {
   let tmp: string;
 
   beforeEach(async () => {
-    tmp = await fs.mkdtemp(path.join(os.tmpdir(), "milady-verify-"));
+    tmp = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-verify-"));
   });
 
   afterEach(async () => {

@@ -16,9 +16,7 @@
       }
     }
   ],
-  "related_apps": [
-    "os"
-  ],
+  "related_apps": ["os"],
   "evaluator": {
     "func": "check_include_exclude",
     "result": {
@@ -28,12 +26,8 @@
     "expected": {
       "type": "rule",
       "rules": {
-        "include": [
-          "spotify"
-        ],
-        "exclude": [
-          "not found"
-        ]
+        "include": ["spotify"],
+        "exclude": ["not found"]
       }
     }
   },

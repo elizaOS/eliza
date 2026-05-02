@@ -9,7 +9,7 @@
  *   3. Main-chat awareness: a populated source conversation surfaces in the
  *      provider; a blank or agent-only-initiated source is correctly ignored.
  *
- * Live tests gated on MILADY_LIVE_TEST=1 / ELIZA_LIVE_TEST=1 plus a configured
+ * Live tests gated on ELIZA_LIVE_TEST=1 / ELIZA_LIVE_TEST=1 plus a configured
  * LLM API key. NODE_ENV is temporarily overridden to enable trajectory
  * persistence (the runtime disables it under NODE_ENV=test by default).
  */
@@ -25,11 +25,16 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import { afterAll, beforeAll, describe, expect } from "vitest";
+import { itIf } from "../../../../../eliza/test/helpers/conditional-tests.ts";
+import { selectLiveProvider } from "../../../../../eliza/test/helpers/live-provider";
 import { pageScopedContextProvider } from "../../../agent/src/providers/page-scoped-context.js";
 import { trajectoriesPlugin } from "../../../typescript/src/features/trajectories/index.js";
-import { afterAll, beforeAll, describe, expect } from "vitest";
-import { itIf } from "../../../../../test/helpers/conditional-tests.ts";
-import { selectLiveProvider } from "../../../../../test/helpers/live-provider";
+import {
+  buildPageScopedRoutingMetadata,
+  PAGE_SCOPE_VERSION,
+  type PageScope,
+} from "../../src/components/pages/page-scoped-conversations.js";
 import { ConversationHarness } from "../helpers/conversation-harness.js";
 import { createRealTestRuntime } from "../helpers/real-runtime.ts";
 import {
@@ -38,14 +43,9 @@ import {
   loadLatestTrajectoryForScope,
   stampPageScopedRoomMetadata,
 } from "../helpers/trajectory-assertions.js";
-import {
-  buildPageScopedRoutingMetadata,
-  PAGE_SCOPE_VERSION,
-  type PageScope,
-} from "../../src/components/pages/page-scoped-conversations.js";
 
 const liveModelTestsEnabled =
-  process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
+  process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const selectedLiveProvider = liveModelTestsEnabled
   ? selectLiveProvider()
   : null;
@@ -55,7 +55,10 @@ function buildTestRoutingMetadata(
   scope: PageScope,
   options: { sourceConversationId?: string; pageId?: string } = {},
 ): Partial<MessageMetadata> {
-  return buildPageScopedRoutingMetadata(scope, options) as Partial<MessageMetadata>;
+  return buildPageScopedRoutingMetadata(
+    scope,
+    options,
+  ) as Partial<MessageMetadata>;
 }
 
 interface ScopeCase {
@@ -74,7 +77,8 @@ const SCOPE_CASES: ScopeCase[] = [
   },
   {
     scope: "page-automations",
-    prompt: "What can I do here? Describe the automation builder at a high level.",
+    prompt:
+      "What can I do here? Describe the automation builder at a high level.",
   },
   {
     scope: "page-apps",
@@ -130,9 +134,14 @@ describe("Page-scoped chat — provider + trajectory metadata", () => {
           userName: "PageTester",
         });
         await harness.setup();
-        await stampPageScopedRoomMetadata(runtime, harness.roomId, scopeCase.scope, {
-          conversationId: `e2e-${scopeCase.scope}`,
-        });
+        await stampPageScopedRoomMetadata(
+          runtime,
+          harness.roomId,
+          scopeCase.scope,
+          {
+            conversationId: `e2e-${scopeCase.scope}`,
+          },
+        );
 
         try {
           const turn = await harness.send(scopeCase.prompt, {
@@ -212,7 +221,9 @@ describe("Page-scoped chat — provider + trajectory metadata", () => {
       });
       await sourceHarness.setup();
       const sourceConversationId = `e2e-source-${Date.now()}`;
-      const sourceRoomId = stringToUuid(`web-conv-${sourceConversationId}`) as UUID;
+      const sourceRoomId = stringToUuid(
+        `web-conv-${sourceConversationId}`,
+      ) as UUID;
 
       // Wire up the source room so getMemories can read from it.
       await runtime.ensureConnection({
@@ -289,7 +300,10 @@ describe("Page-scoped chat — provider + trajectory metadata", () => {
             (entry as { providerName?: string }).providerName ===
             "page-scoped-context",
         );
-        expect(pageAccess, "expected page-scoped-context to be accessed").toBeDefined();
+        expect(
+          pageAccess,
+          "expected page-scoped-context to be accessed",
+        ).toBeDefined();
       } finally {
         await pageHarness.cleanup();
         await sourceHarness.cleanup();

@@ -13,12 +13,11 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
-
 import {
   CAPACITOR_PLUGIN_NAMES,
   NATIVE_PLUGINS_ROOT,
 } from "../../app/scripts/capacitor-plugin-names.mjs";
+import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = resolveRepoRootFromImportMeta(import.meta.url);
@@ -53,11 +52,11 @@ function rmFile(label, abs) {
 function rmNodeModulesCaches() {
   const bases = [
     root,
-    path.join(root, "apps", "app"),
+    path.join(root, "packages", "app"),
     path.join(root, "apps", "homepage"),
     path.join(root, "packages", "ui"),
     path.join(root, "packages", "app-core"),
-    path.join(root, "apps", "app", "electrobun"),
+    path.join(root, "packages", "app-core", "platforms", "electrobun"),
   ];
   for (const base of bases) {
     const c = path.join(base, "node_modules", ".cache");
@@ -92,10 +91,16 @@ function main() {
   console.log(`[clean] repo root: ${root}${deep ? " (deep)" : ""}\n`);
 
   rmPath("dist", path.join(root, "dist"));
-  rmPath("apps/app/dist", path.join(root, "apps", "app", "dist"));
-  rmPath("apps/app/.vite", path.join(root, "apps", "app", ".vite"));
-  rmPath("apps/homepage/dist", path.join(root, "apps", "homepage", "dist"));
-  rmPath("apps/homepage/.vite", path.join(root, "apps", "homepage", ".vite"));
+  rmPath("packages/app/dist", path.join(root, "packages", "app", "dist"));
+  rmPath("packages/app/.vite", path.join(root, "packages", "app", ".vite"));
+  rmPath(
+    "packages/homepage/dist",
+    path.join(root, "packages", "homepage", "dist"),
+  );
+  rmPath(
+    "packages/homepage/.vite",
+    path.join(root, "packages", "homepage", ".vite"),
+  );
 
   rmPath(
     "eliza/packages/app-core/dist",
@@ -110,42 +115,48 @@ function main() {
   rmNodeModulesCaches();
 
   rmPath(
-    "apps/app/test-results",
-    path.join(root, "apps", "app", "test-results"),
+    "packages/app/test-results",
+    path.join(root, "packages", "app", "test-results"),
   );
   rmPath(
-    "apps/app/playwright-report",
-    path.join(root, "apps", "app", "playwright-report"),
+    "packages/app/playwright-report",
+    path.join(root, "packages", "app", "playwright-report"),
   );
 
   if (deep) {
     rmPath(
-      "apps/app/electrobun/build",
-      path.join(root, "apps", "app", "electrobun", "build"),
+      "packages/app-core/platforms/electrobun/build",
+      path.join(
+        root,
+        "packages",
+        "app-core",
+        "platforms",
+        "electrobun",
+        "build",
+      ),
     );
     rmPath(
-      "apps/app/electrobun/artifacts",
-      path.join(root, "apps", "app", "electrobun", "artifacts"),
+      "packages/app-core/platforms/electrobun/artifacts",
+      path.join(
+        root,
+        "packages",
+        "app-core",
+        "platforms",
+        "electrobun",
+        "artifacts",
+      ),
     );
     rmFile(
-      "apps/app/electrobun/src/preload.js (regenerate: cd apps/app/electrobun && bun run build:preload)",
-      path.join(root, "apps", "app", "electrobun", "src", "preload.js"),
-    );
-    rmPath(
-      "apps/app/electron/app-build",
-      path.join(root, "apps", "app", "electron", "app-build"),
-    );
-    rmPath(
-      "apps/app/electron/eliza-dist",
-      path.join(root, "apps", "app", "electron", "eliza-dist"),
-    );
-    rmPath(
-      "apps/app/electron/tsc-out",
-      path.join(root, "apps", "app", "electron", "tsc-out"),
-    );
-    rmPath(
-      "apps/app/electron/build",
-      path.join(root, "apps", "app", "electron", "build"),
+      "packages/app-core/platforms/electrobun/src/preload.js (regenerate: bun run build:preload)",
+      path.join(
+        root,
+        "packages",
+        "app-core",
+        "platforms",
+        "electrobun",
+        "src",
+        "preload.js",
+      ),
     );
     rmPath("dist-electron", path.join(root, "dist-electron"));
   }

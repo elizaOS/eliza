@@ -15,14 +15,10 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { DropService, RegistryService, TxService } from "@elizaos/agent";
 import { ethers } from "ethers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
-import {
-  DropService,
-  RegistryService,
-  TxService,
-} from "@elizaos/agent";
+import { describeIf } from "../../../../eliza/test/helpers/conditional-tests.ts";
 import { type AnvilInstance, startAnvil } from "./anvil-helper";
 import { type DeployedContracts, deployContracts } from "./contract-deployer";
 
@@ -53,8 +49,8 @@ function hasContractArtifacts(): boolean {
     [
       path.join(
         APP_CORE_CONTRACTS_OUT_DIR,
-        "MockMiladyAgentRegistry.sol",
-        "MockMiladyAgentRegistry.json",
+        "MockElizaAgentRegistry.sol",
+        "MockElizaAgentRegistry.json",
       ),
       path.join(
         APP_CORE_CONTRACTS_OUT_DIR,
@@ -65,8 +61,8 @@ function hasContractArtifacts(): boolean {
     [
       path.join(
         APP_CORE_CONTRACTS_OUT_DIR,
-        "MockMiladyCollection.sol",
-        "MockMiladyCollection.json",
+        "MockElizaCollection.sol",
+        "MockElizaCollection.json",
       ),
       path.join(
         APP_CORE_CONTRACTS_OUT_DIR,
@@ -82,7 +78,7 @@ function hasContractArtifacts(): boolean {
 }
 
 const describeAnvil = describeIf(
-  process.env.MILADY_LIVE_BROWSER_SUITE === "1" &&
+  process.env.ELIZA_LIVE_BROWSER_SUITE === "1" &&
     hasAnvilBinary() &&
     hasContractArtifacts(),
 );
@@ -325,7 +321,7 @@ describeAnvil("Anvil Contract E2E Tests", () => {
       expect(owner.toLowerCase()).toBe(TEST_ADDRESS.toLowerCase());
 
       const uri = await collectionContract.tokenURI(1);
-      expect(["ipfs://QmMiladyMetadata"]).toContain(uri);
+      expect(["ipfs://QmElizaMetadata"]).toContain(uri);
     });
   });
 
@@ -380,7 +376,7 @@ describeAnvil("Anvil Contract E2E Tests", () => {
       );
 
       const uri = await collectionContract.tokenURI(2);
-      expect(["ipfs://QmShinyMiladyMetadata"]).toContain(uri);
+      expect(["ipfs://QmShinyElizaMetadata"]).toContain(uri);
     });
   });
 

@@ -5,7 +5,7 @@
  * any local-inference wiring — that lives in the `@elizaos/app-core`
  * runtime wrapper (`ensure-local-inference-handler.ts`), which the mobile
  * agent bundle does NOT import. As a result, on AOSP the runtime boots
- * with `MILADY_LOCAL_LLAMA=1` set but no TEXT_SMALL / TEXT_LARGE /
+ * with `ELIZA_LOCAL_LLAMA=1` set but no TEXT_SMALL / TEXT_LARGE /
  * TEXT_EMBEDDING handler registered, and chat fails with
  *   "No handler found for delegate type: TEXT_SMALL"
  *
@@ -22,13 +22,13 @@
  * and CI even when the bundler can inline the cycle. Keeping the AOSP
  * registration here avoids the cycle entirely.
  *
- * Activation: only fires when `MILADY_LOCAL_LLAMA === "1"`, which is
- * the AOSP build flag set by `MiladyAgentService.java` before
+ * Activation: only fires when `ELIZA_LOCAL_LLAMA === "1"`, which is
+ * the AOSP build flag set by `ElizaAgentService.java` before
  * `Runtime.exec`'ing the bun process. On every other build the call is
  * a logged no-op.
  */
 
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import {
   type AgentRuntime,
@@ -41,7 +41,7 @@ import {
 import { registerAospLlamaLoader } from "./aosp-llama-adapter.js";
 
 const SERVICE_NAME = "localInferenceLoader";
-const PROVIDER = "milady-aosp-llama";
+const PROVIDER = "eliza-aosp-llama";
 
 /**
  * Same priority band as cloud / direct provider plugins. Routing-policy
@@ -152,14 +152,14 @@ async function callRegisterAndCaptureLoader(
 
 /**
  * Resolve the bundled chat / embedding GGUF paths shipped under
- * `$MILADY_STATE_DIR/local-inference/models/`. Both files are staged by
- * the AOSP build (`scripts/miladyos/stage-default-models.mjs`) and
- * extracted by `MiladyAgentService.extractAssetsIfNeeded` before bun
+ * `$ELIZA_STATE_DIR/local-inference/models/`. Both files are staged by
+ * the AOSP build (`scripts/elizaos/stage-default-models.mjs`) and
+ * extracted by `ElizaAgentService.extractAssetsIfNeeded` before bun
  * starts. We pick the role from the sibling `manifest.json` so a future
  * model swap doesn't need a code change.
  */
 interface BundledModelManifestEntry {
-  // The build-time staging script (`scripts/miladyos/stage-default-models.mjs`)
+  // The build-time staging script (`scripts/elizaos/stage-default-models.mjs`)
   // writes `ggufFile` (the on-disk filename relative to the models dir).
   // Older manifests used `filename`; we read both for forward-compat.
   ggufFile?: string;
@@ -197,13 +197,13 @@ function readBundledModelManifest(modelsDir: string): {
 }
 
 function resolveStateDir(): string {
-  const explicit = process.env.MILADY_STATE_DIR ?? process.env.ELIZA_STATE_DIR;
+  const explicit = process.env.ELIZA_STATE_DIR ?? process.env.ELIZA_STATE_DIR;
   if (explicit?.trim()) return explicit;
-  // On AOSP we expect MILADY_STATE_DIR to be set by MiladyAgentService.
-  // Fall back to $HOME/.milady so dev / non-Android exercise paths still
+  // On AOSP we expect ELIZA_STATE_DIR to be set by ElizaAgentService.
+  // Fall back to $HOME/.eliza so dev / non-Android exercise paths still
   // resolve.
   const home = process.env.HOME ?? process.cwd();
-  return path.join(home, ".milady");
+  return path.join(home, ".eliza");
 }
 
 function resolveBundledModelsDir(): string {
@@ -278,7 +278,7 @@ function makeLoaderLifecycle(loader: AospLoader): {
     const target = role === "chat" ? resolved.chat : resolved.embedding;
     if (!target) {
       throw new Error(
-        `[aosp-local-inference] No bundled ${role} model found under ${modelsDir}. Stage one via scripts/miladyos/stage-default-models.mjs and rebuild the APK.`,
+        `[aosp-local-inference] No bundled ${role} model found under ${modelsDir}. Stage one via scripts/elizaos/stage-default-models.mjs and rebuild the APK.`,
       );
     }
     inflight = (async () => {
@@ -350,7 +350,7 @@ function makeEmbeddingHandler(
  *
  * Returns true when handlers were registered, false on every other path
  * (env opt-in not set, runtime missing `registerModel`, FFI dlopen
- * failure). All failures are logged at `error` because `MILADY_LOCAL_LLAMA=1`
+ * failure). All failures are logged at `error` because `ELIZA_LOCAL_LLAMA=1`
  * is an explicit operator opt-in — silent fall-through to "No handler"
  * crashes is unacceptable.
  */
@@ -361,9 +361,9 @@ export async function ensureAospLocalInferenceHandlers(
   // sometimes hides early bootstrap output behind the pino transport,
   // and we need a visible signal that the post-startEliza hook ran.
   console.log("[aosp-local-inference] bootstrap entered");
-  if (process.env.MILADY_LOCAL_LLAMA?.trim() !== "1") {
+  if (process.env.ELIZA_LOCAL_LLAMA?.trim() !== "1") {
     console.log(
-      "[aosp-local-inference] MILADY_LOCAL_LLAMA != '1', returning early",
+      "[aosp-local-inference] ELIZA_LOCAL_LLAMA != '1', returning early",
     );
     return false;
   }
@@ -408,38 +408,20 @@ export async function ensureAospLocalInferenceHandlers(
   }
 
   const lifecycle = makeLoaderLifecycle(loader);
-  // TEXT_EMBEDDING wiring is gated behind MILADY_AOSP_EMBEDDING=1
-  // because the single-context loader has to swap weights between
-  // the chat model and the embedding model on every embed() →
-  // generate() boundary, and on cuttlefish CPU each swap allocates
-  // ~1.3 GB (770 MB weights + 512 MB KV cache + 290 MB compute
-  // buffer). A typical chat turn fires multiple alternating calls
-  // (planner → relationship-extraction embedding → action evaluator
-  // → ...), and the cumulative GC pressure pushes bun's heap past
-  // the cvd 4 GB ceiling and trips a SIGSEGV mid-request.
-  //
-  // Default-off means the runtime logs a one-line warning that no
-  // TEXT_EMBEDDING handler is registered and downstream code that
-  // would normally embed simply skips the work — chat itself works,
-  // which is the primary AOSP smoke contract. Real-device builds
-  // with more headroom can opt back in via the env knob.
-  //
-  // Long-term fix: hold two ctx pointers (one chat, one embedding),
-  // swap the active pointer instead of re-allocating. That work is
-  // tracked separately; the env opt-out stays as the safe default
-  // until it lands.
-  const enableEmbedding =
-    process.env.MILADY_AOSP_EMBEDDING?.trim() === "1";
+  // TEXT_EMBEDDING is wired unconditionally now that the adapter resets
+  // the llama.cpp embeddings flag on both decode paths (chat + embed) —
+  // the previous `ELIZA_AOSP_EMBEDDING=1` opt-in existed only because
+  // the shared-context flag bled across calls and caused
+  //   GGML_ASSERT((!batch_inp.token && batch_inp.embd) ||
+  //               (batch_inp.token && !batch_inp.embd))
+  // inside llama_decode, crashing the bun process mid-request. With the
+  // explicit pre-decode `llama_set_embeddings` call in both `generate()`
+  // and `embed()`, the assert can no longer fire from cross-mode bleed.
   const slots: Array<(typeof ModelType)[keyof typeof ModelType]> = [
     ModelType.TEXT_SMALL,
     ModelType.TEXT_LARGE,
-    ...(enableEmbedding ? [ModelType.TEXT_EMBEDDING] : []),
+    ModelType.TEXT_EMBEDDING,
   ];
-  if (!enableEmbedding) {
-    logger.info(
-      "[aosp-local-inference] TEXT_EMBEDDING handler NOT registered (set MILADY_AOSP_EMBEDDING=1 to enable; default-off avoids OOM during chat-mode swap on cvd CPU)",
-    );
-  }
   for (const modelType of slots) {
     const handler =
       modelType === ModelType.TEXT_EMBEDDING
@@ -468,7 +450,7 @@ export async function ensureAospLocalInferenceHandlers(
   });
 
   console.log(
-    `[aosp-local-inference] registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE${enableEmbedding ? " / TEXT_EMBEDDING" : ""} (priority ${LOCAL_INFERENCE_PRIORITY})`,
+    `[aosp-local-inference] registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING (priority ${LOCAL_INFERENCE_PRIORITY})`,
   );
   logger.info(
     `[aosp-local-inference] Registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING at priority ${LOCAL_INFERENCE_PRIORITY}`,

@@ -48,7 +48,7 @@ export interface ActionSpyCall {
 }
 
 /**
- * Backwards-compatible alias for callers that used the older milady-side
+ * Backwards-compatible alias for callers that used the older eliza-side
  * `SpiedAction` shape. Prefer `ActionSpyCall` in new code.
  */
 export type SpiedAction = ActionSpyCall;
@@ -203,7 +203,7 @@ export class ActionSpy {
     this.waiters = [];
   }
 
-  /** Alias for `reset()` retained for callers that used the milady API. */
+  /** Alias for `reset()` retained for callers that used the eliza API. */
   clear(): void {
     this.reset();
   }
@@ -215,7 +215,7 @@ export class ActionSpy {
     );
   }
 
-  /** Alias for `getCalls()` retained for callers that used the milady API. */
+  /** Alias for `getCalls()` retained for callers that used the eliza API. */
   getActions(): ActionSpyCall[] {
     return this.getCalls();
   }
@@ -228,7 +228,7 @@ export class ActionSpy {
     return [...this.completed];
   }
 
-  /** Alias for `getCompletedCalls()` for milady-API compatibility. */
+  /** Alias for `getCompletedCalls()` for eliza-API compatibility. */
   getCompletedActions(): ActionSpyCall[] {
     return this.getCompletedCalls();
   }

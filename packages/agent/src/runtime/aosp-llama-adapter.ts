@@ -6,7 +6,7 @@
  *   tag: main-b8198-b2b5273
  *   sha: b2b5273e8b275bb96362fe844a5202632eb3e52b
  * — the matching libllama.so is compiled by the AOSP build pipeline
- * against this same SHA via `scripts/miladyos/compile-libllama.mjs`).
+ * against this same SHA via `scripts/elizaos/compile-libllama.mjs`).
  *
  * Why this fork (was stock llama.cpp b4500 before):
  *   apothic's fork adds two GGML quant types (TBQ3_0 = 43, TBQ4_0 = 44)
@@ -47,28 +47,28 @@
  *       llama_sampler_accept / llama_sampler_free
  *     - llama_get_model / llama_n_ctx / llama_model_n_embd
  *     - llama_set_embeddings / llama_get_embeddings_seq / llama_get_embeddings
- *   libmilady-llama-shim.so (dlopen'd second; NEEDED libllama.so):
- *     - milady_llama_model_params_default / *_free + per-field setters
- *     - milady_llama_model_load_from_file
- *     - milady_llama_context_params_default / *_free + per-field setters
- *     - milady_llama_init_from_model
- *     - milady_llama_sampler_chain_params_default / *_free
- *     - milady_llama_sampler_chain_init
- *     - milady_llama_batch_get_one / milady_llama_batch_free
- *     - milady_llama_decode
+ *   libeliza-llama-shim.so (dlopen'd second; NEEDED libllama.so):
+ *     - eliza_llama_model_params_default / *_free + per-field setters
+ *     - eliza_llama_model_load_from_file
+ *     - eliza_llama_context_params_default / *_free + per-field setters
+ *     - eliza_llama_init_from_model
+ *     - eliza_llama_sampler_chain_params_default / *_free
+ *     - eliza_llama_sampler_chain_init
+ *     - eliza_llama_batch_get_one / eliza_llama_batch_free
+ *     - eliza_llama_decode
  *
- * Struct-by-value handled via libmilady-llama-shim.so (NEEDED-links
+ * Struct-by-value handled via libeliza-llama-shim.so (NEEDED-links
  * libllama.so, ships in the same per-ABI asset dir). bun:ffi cannot pass
  * llama.cpp's by-value param structs (model_params, context_params,
  * sampler_chain_params) directly. The shim — built by
- * `scripts/miladyos/compile-libllama.mjs` from
- * `scripts/miladyos/llama-shim/milady_llama_shim.c` — exposes a
- * pointer-style API: `milady_llama_model_params_default()` returns a
+ * `scripts/elizaos/compile-libllama.mjs` from
+ * `scripts/elizaos/llama-shim/eliza_llama_shim.c` — exposes a
+ * pointer-style API: `eliza_llama_model_params_default()` returns a
  * malloc'd pointer initialized via `llama_model_default_params()`, then
  * field-by-field setters override the few values the adapter cares about
  * (n_gpu_layers, use_mmap, use_mlock, n_threads, n_ctx, etc.) before the
- * pointer is handed to `milady_llama_model_load_from_file()` /
- * `milady_llama_init_from_model()` / `milady_llama_sampler_chain_init()`,
+ * pointer is handed to `eliza_llama_model_load_from_file()` /
+ * `eliza_llama_init_from_model()` / `eliza_llama_sampler_chain_init()`,
  * each of which dereferences once into the real struct-by-value entry
  * point. This restores the canonical defaults — most importantly
  * model_params.use_mmap = true (was clobbered to false by the previous
@@ -76,7 +76,7 @@
  * weights files into RAM on phones).
  *
  * Wired in via `ensure-local-inference-handler.ts`:
- *   - Trigger: `MILADY_LOCAL_LLAMA=1` in the AOSP agent process env.
+ *   - Trigger: `ELIZA_LOCAL_LLAMA=1` in the AOSP agent process env.
  *   - Slot:    `localInferenceLoader` runtime service (LocalInferenceLoader contract).
  *   - Selection precedence: this loader is registered BEFORE the Capacitor
  *     adapter so AOSP builds always pick the in-process FFI path.
@@ -95,7 +95,7 @@ import { logger } from "@elizaos/core";
  * Vite for the web shell) the static specifier is unresolvable; even when
  * Bun.build dynamic-imports this module, the symbol is only valid inside a
  * Bun runtime. We therefore import it lazily and fail loudly on non-Bun
- * processes that explicitly opted into `MILADY_LOCAL_LLAMA=1`.
+ * processes that explicitly opted into `ELIZA_LOCAL_LLAMA=1`.
  */
 type FFITypeEnum = {
   void: number;
@@ -209,7 +209,7 @@ interface LlamaSymbols {
   // `llama_decode` consumes it the same way — neither is callable directly
   // through bun:ffi (struct-aggregate ABI lowering is not synthesised).
   // Use the pointer-style wrappers on `ShimSymbols`
-  // (`milady_llama_batch_get_one` / `milady_llama_decode`) instead.
+  // (`eliza_llama_batch_get_one` / `eliza_llama_decode`) instead.
 
   llama_sampler_chain_add: (chain: Pointer, sampler: Pointer) => void;
   llama_sampler_init_temp: (t: number) => Pointer;
@@ -222,7 +222,7 @@ interface LlamaSymbols {
 }
 
 /**
- * Strongly-typed view of the libmilady-llama-shim.so exports. The shim is
+ * Strongly-typed view of the libeliza-llama-shim.so exports. The shim is
  * a thin C wrapper that converts llama.cpp's struct-by-value entry points
  * (which bun:ffi cannot call directly) into pointer-style equivalents.
  *
@@ -238,34 +238,34 @@ interface LlamaSymbols {
  * silently widen the surface a future refactor might rely on. Setters
  * for fields whose llama.cpp defaults are correct for AOSP CPU
  * (`use_mmap=true`, `use_mlock=false`, `vocab_only=false`,
- * `check_tensors=false`, `n_batch`/`n_ubatch` left at upstream values,
- * `offload_kqv`/`flash_attn` not relevant on phone CPU, `no_perf` cosmetic)
- * are intentionally not bound. Adding one is a one-line edit here +
- * one-line edit in `dlopenShim` if a future LoadOptions field needs it.
+ * `check_tensors=false`, `offload_kqv`/`flash_attn` not relevant on phone
+ * CPU, `no_perf` cosmetic) are intentionally not bound. Adding one is a
+ * one-line edit here + one-line edit in `dlopenShim` if a future LoadOptions
+ * field needs it.
  */
 interface ShimSymbols {
   // model_params
-  milady_llama_model_params_default: () => Pointer;
-  milady_llama_model_params_free: (p: Pointer) => void;
-  milady_llama_model_params_set_n_gpu_layers: (p: Pointer, v: number) => void;
-  milady_llama_model_load_from_file: (
+  eliza_llama_model_params_default: () => Pointer;
+  eliza_llama_model_params_free: (p: Pointer) => void;
+  eliza_llama_model_params_set_n_gpu_layers: (p: Pointer, v: number) => void;
+  eliza_llama_model_load_from_file: (
     path: Pointer,
     params: Pointer,
   ) => Pointer;
 
   // context_params
-  milady_llama_context_params_default: () => Pointer;
-  milady_llama_context_params_free: (p: Pointer) => void;
-  milady_llama_context_params_set_n_ctx: (p: Pointer, v: number) => void;
-  milady_llama_context_params_set_n_batch: (p: Pointer, v: number) => void;
-  milady_llama_context_params_set_n_ubatch: (p: Pointer, v: number) => void;
-  milady_llama_context_params_set_n_threads: (p: Pointer, v: number) => void;
-  milady_llama_context_params_set_n_threads_batch: (
+  eliza_llama_context_params_default: () => Pointer;
+  eliza_llama_context_params_free: (p: Pointer) => void;
+  eliza_llama_context_params_set_n_ctx: (p: Pointer, v: number) => void;
+  eliza_llama_context_params_set_n_batch: (p: Pointer, v: number) => void;
+  eliza_llama_context_params_set_n_ubatch: (p: Pointer, v: number) => void;
+  eliza_llama_context_params_set_n_threads: (p: Pointer, v: number) => void;
+  eliza_llama_context_params_set_n_threads_batch: (
     p: Pointer,
     v: number,
   ) => void;
-  milady_llama_context_params_set_embeddings: (p: Pointer, v: boolean) => void;
-  milady_llama_context_params_set_pooling_type: (p: Pointer, v: number) => void;
+  eliza_llama_context_params_set_embeddings: (p: Pointer, v: boolean) => void;
+  eliza_llama_context_params_set_pooling_type: (p: Pointer, v: number) => void;
   /**
    * type_k / type_v: ggml_type enum values for the K and V cache slots.
    * TBQ3_0 = 43 and TBQ4_0 = 44 are the apothic/llama.cpp-1bit-turboquant
@@ -275,14 +275,14 @@ interface ShimSymbols {
    * ggml/src/ggml-cpu/quants.c — this is the actual switch that turns on
    * the memory win on phones.
    */
-  milady_llama_context_params_set_type_k: (p: Pointer, v: number) => void;
-  milady_llama_context_params_set_type_v: (p: Pointer, v: number) => void;
-  milady_llama_init_from_model: (model: Pointer, params: Pointer) => Pointer;
+  eliza_llama_context_params_set_type_k: (p: Pointer, v: number) => void;
+  eliza_llama_context_params_set_type_v: (p: Pointer, v: number) => void;
+  eliza_llama_init_from_model: (model: Pointer, params: Pointer) => Pointer;
 
   // sampler_chain_params
-  milady_llama_sampler_chain_params_default: () => Pointer;
-  milady_llama_sampler_chain_params_free: (p: Pointer) => void;
-  milady_llama_sampler_chain_init: (params: Pointer) => Pointer;
+  eliza_llama_sampler_chain_params_default: () => Pointer;
+  eliza_llama_sampler_chain_params_free: (p: Pointer) => void;
+  eliza_llama_sampler_chain_init: (params: Pointer) => Pointer;
 
   /**
    * Pointer-style wrappers around llama.cpp's struct-by-value batch API.
@@ -293,12 +293,12 @@ interface ShimSymbols {
    * pointers / split-register lowering that bun:ffi doesn't synthesise),
    * so we wrap both. The shim version of `_get_one` malloc's a heap
    * `llama_batch *`, the matching `_free` releases that heap struct
-   * (NOT the token buffer the caller owns), and `milady_llama_decode`
+   * (NOT the token buffer the caller owns), and `eliza_llama_decode`
    * dereferences the pointer before delegating to real `llama_decode`.
    */
-  milady_llama_batch_get_one: (tokens: Pointer, n_tokens: number) => Pointer;
-  milady_llama_batch_free: (batch: Pointer) => void;
-  milady_llama_decode: (ctx: Pointer, batch: Pointer) => number;
+  eliza_llama_batch_get_one: (tokens: Pointer, n_tokens: number) => Pointer;
+  eliza_llama_batch_free: (batch: Pointer) => void;
+  eliza_llama_decode: (ctx: Pointer, batch: Pointer) => number;
 }
 
 interface RuntimeWithRegisterService {
@@ -322,7 +322,7 @@ export interface AospLlamaLoadOptions {
    *   - Bonsai-by-filename → { k: "tbq4_0", v: "tbq3_0" }
    *   - everything else    → undefined (let llama.cpp keep its fp16 default)
    * Env overrides:
-   *   MILADY_LLAMA_CACHE_TYPE_K, MILADY_LLAMA_CACHE_TYPE_V (e.g. "tbq4_0").
+   *   ELIZA_LLAMA_CACHE_TYPE_K, ELIZA_LLAMA_CACHE_TYPE_V (e.g. "tbq4_0").
    */
   kvCacheType?: { k?: KvCacheTypeName; v?: KvCacheTypeName };
 }
@@ -353,7 +353,6 @@ interface AospLoader {
  * mean-pool fallback path. By forcing MEAN at init we collapse two code
  * paths into one and remove the OOB risk entirely.
  */
-const LLAMA_POOLING_TYPE_NONE = 0;
 const LLAMA_POOLING_TYPE_MEAN = 1;
 
 /**
@@ -363,7 +362,7 @@ const LLAMA_POOLING_TYPE_MEAN = 1;
  * Bonsai-8B-1bit GGUF model.
  *
  * Verified against
- *   ~/.cache/milady-android-agent/llama-cpp-main-b8198-b2b5273/ggml/include/ggml.h
+ *   ~/.cache/eliza-android-agent/llama-cpp-main-b8198-b2b5273/ggml/include/ggml.h
  * (lines 420-435 — Q1_0 = 42 sits next to TBQ3_0 = 43, TBQ4_0 = 44).
  */
 const GGML_TYPE_F16 = 1;
@@ -443,7 +442,7 @@ export function readEnvKvCacheType(
 /**
  * Resolve the KV-cache type to use for a given load. Precedence:
  *   1. Explicit `LoadOptions.kvCacheType.{k,v}` (highest priority).
- *   2. `MILADY_LLAMA_CACHE_TYPE_K` / `MILADY_LLAMA_CACHE_TYPE_V` env vars.
+ *   2. `ELIZA_LLAMA_CACHE_TYPE_K` / `ELIZA_LLAMA_CACHE_TYPE_V` env vars.
  *   3. Auto-detection: Bonsai-by-filename → `{ k: "tbq4_0", v: "tbq3_0" }`
  *      (matches the model card recommendation).
  *   4. Otherwise undefined — the shim leaves the cache at llama.cpp's fp16
@@ -462,8 +461,8 @@ export function resolveKvCacheType(
 ): { k?: KvCacheTypeName; v?: KvCacheTypeName } | undefined {
   const explicitK = override?.k;
   const explicitV = override?.v;
-  const envK = readEnvKvCacheType("MILADY_LLAMA_CACHE_TYPE_K", env);
-  const envV = readEnvKvCacheType("MILADY_LLAMA_CACHE_TYPE_V", env);
+  const envK = readEnvKvCacheType("ELIZA_LLAMA_CACHE_TYPE_K", env);
+  const envV = readEnvKvCacheType("ELIZA_LLAMA_CACHE_TYPE_V", env);
   // Auto-detection only kicks in when neither an explicit override nor an
   // env override is set. Catalog blurb references this contract directly —
   // change here = update catalog.ts blurb in the same commit.
@@ -479,7 +478,7 @@ export function resolveKvCacheType(
 const SERVICE_NAME = "localInferenceLoader";
 
 function isAospEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.MILADY_LOCAL_LLAMA?.trim() === "1";
+  return env.ELIZA_LOCAL_LLAMA?.trim() === "1";
 }
 
 /**
@@ -499,7 +498,7 @@ function readEnvInt(name: string, fallback: number): number {
 /**
  * Resolve the n_threads to pass to llama.cpp. Precedence:
  *   1. Explicit `LoadOptions.maxThreads` (highest priority).
- *   2. `MILADY_LLAMA_THREADS` env var (set by MiladyAgentService.java
+ *   2. `ELIZA_LLAMA_THREADS` env var (set by ElizaAgentService.java
  *      to `Runtime.availableProcessors()` on AOSP).
  *   3. `os.cpus().length` from the JS runtime.
  *   4. Final fallback: 4 (cuttlefish baseline).
@@ -520,7 +519,7 @@ export function resolveThreads(
   if (explicit !== undefined && Number.isFinite(explicit) && explicit > 0) {
     return Math.floor(explicit);
   }
-  const raw = env.MILADY_LLAMA_THREADS?.trim();
+  const raw = env.ELIZA_LLAMA_THREADS?.trim();
   if (raw) {
     const parsed = Number.parseInt(raw, 10);
     if (Number.isFinite(parsed) && parsed > 0) return parsed;
@@ -555,7 +554,7 @@ export function resolveLibllamaPath(
 }
 
 /**
- * Resolve the libmilady-llama-shim.so path for the current ABI. Lives in
+ * Resolve the libeliza-llama-shim.so path for the current ABI. Lives in
  * the same per-ABI dir as libllama.so; the dynamic linker resolves the
  * shim's NEEDED libllama.so via LD_LIBRARY_PATH.
  *
@@ -565,7 +564,7 @@ export function resolveLlamaShimPath(
   arch: NodeJS.Architecture = process.arch,
   cwd: string = process.cwd(),
 ): string {
-  return path.join(resolveAbiDir(arch, cwd), "libmilady-llama-shim.so");
+  return path.join(resolveAbiDir(arch, cwd), "libeliza-llama-shim.so");
 }
 
 function resolveAbiDir(arch: NodeJS.Architecture, cwd: string): string {
@@ -653,81 +652,81 @@ function dlopenLlama(ffi: BunFFIModule, libPath: string): LlamaSymbols {
 }
 
 /**
- * dlopen libmilady-llama-shim.so and bind the pointer-style wrappers
+ * dlopen libeliza-llama-shim.so and bind the pointer-style wrappers
  * around llama.cpp's struct-by-value entry points. The shim NEEDED-links
  * libllama.so, so libllama.so MUST already be loaded (via the earlier
  * `dlopenLlama` call) or resolvable through LD_LIBRARY_PATH before this
- * runs. On Android both conditions are satisfied — MiladyAgentService.java
+ * runs. On Android both conditions are satisfied — ElizaAgentService.java
  * sets LD_LIBRARY_PATH to the per-ABI asset dir, and we always dlopen
  * libllama.so first.
  */
 function dlopenShim(ffi: BunFFIModule, shimPath: string): ShimSymbols {
   const T = ffi.FFIType;
   const handle = ffi.dlopen(shimPath, {
-    milady_llama_model_params_default: { args: [], returns: T.ptr },
-    milady_llama_model_params_free: { args: [T.ptr], returns: T.void },
-    milady_llama_model_params_set_n_gpu_layers: {
+    eliza_llama_model_params_default: { args: [], returns: T.ptr },
+    eliza_llama_model_params_free: { args: [T.ptr], returns: T.void },
+    eliza_llama_model_params_set_n_gpu_layers: {
       args: [T.ptr, T.i32],
       returns: T.void,
     },
-    milady_llama_model_load_from_file: {
+    eliza_llama_model_load_from_file: {
       args: [T.ptr, T.ptr],
       returns: T.ptr,
     },
 
-    milady_llama_context_params_default: { args: [], returns: T.ptr },
-    milady_llama_context_params_free: { args: [T.ptr], returns: T.void },
-    milady_llama_context_params_set_n_ctx: {
+    eliza_llama_context_params_default: { args: [], returns: T.ptr },
+    eliza_llama_context_params_free: { args: [T.ptr], returns: T.void },
+    eliza_llama_context_params_set_n_ctx: {
       args: [T.ptr, T.u32],
       returns: T.void,
     },
-    milady_llama_context_params_set_n_batch: {
+    eliza_llama_context_params_set_n_batch: {
       args: [T.ptr, T.u32],
       returns: T.void,
     },
-    milady_llama_context_params_set_n_ubatch: {
+    eliza_llama_context_params_set_n_ubatch: {
       args: [T.ptr, T.u32],
       returns: T.void,
     },
-    milady_llama_context_params_set_n_threads: {
+    eliza_llama_context_params_set_n_threads: {
       args: [T.ptr, T.i32],
       returns: T.void,
     },
-    milady_llama_context_params_set_n_threads_batch: {
+    eliza_llama_context_params_set_n_threads_batch: {
       args: [T.ptr, T.i32],
       returns: T.void,
     },
-    milady_llama_context_params_set_embeddings: {
+    eliza_llama_context_params_set_embeddings: {
       args: [T.ptr, T.bool],
       returns: T.void,
     },
-    milady_llama_context_params_set_pooling_type: {
+    eliza_llama_context_params_set_pooling_type: {
       args: [T.ptr, T.i32],
       returns: T.void,
     },
-    milady_llama_context_params_set_type_k: {
+    eliza_llama_context_params_set_type_k: {
       args: [T.ptr, T.i32],
       returns: T.void,
     },
-    milady_llama_context_params_set_type_v: {
+    eliza_llama_context_params_set_type_v: {
       args: [T.ptr, T.i32],
       returns: T.void,
     },
-    milady_llama_init_from_model: { args: [T.ptr, T.ptr], returns: T.ptr },
+    eliza_llama_init_from_model: { args: [T.ptr, T.ptr], returns: T.ptr },
 
-    milady_llama_sampler_chain_params_default: { args: [], returns: T.ptr },
-    milady_llama_sampler_chain_params_free: {
+    eliza_llama_sampler_chain_params_default: { args: [], returns: T.ptr },
+    eliza_llama_sampler_chain_params_free: {
       args: [T.ptr],
       returns: T.void,
     },
-    milady_llama_sampler_chain_init: { args: [T.ptr], returns: T.ptr },
+    eliza_llama_sampler_chain_init: { args: [T.ptr], returns: T.ptr },
 
-    milady_llama_batch_get_one: {
+    eliza_llama_batch_get_one: {
       args: [T.ptr, T.i32],
       returns: T.ptr,
     },
-    milady_llama_batch_free: { args: [T.ptr], returns: T.void },
-    milady_llama_decode: { args: [T.ptr, T.ptr], returns: T.i32 },
+    eliza_llama_batch_free: { args: [T.ptr], returns: T.void },
+    eliza_llama_decode: { args: [T.ptr, T.ptr], returns: T.i32 },
   });
   /* Deliberate boundary cast: bun:ffi.dlopen returns weakly-typed callable map */
   return handle.symbols as unknown as ShimSymbols;
@@ -796,7 +795,7 @@ class AospLlamaAdapter implements AospLoader {
     // override lets builders push higher on real-device hardware where
     // RAM permits.
     const contextSize =
-      args.contextSize ?? readEnvInt("MILADY_LLAMA_N_CTX", 16384);
+      args.contextSize ?? readEnvInt("ELIZA_LLAMA_N_CTX", 16384);
     // n_threads via the precedence chain. Never pass 0 — see
     // resolveThreads docblock for why "auto-detect" is dangerous on
     // Android.
@@ -810,24 +809,24 @@ class AospLlamaAdapter implements AospLoader {
     // are at the pinned tag) all land correctly. We pin n_gpu_layers=0
     // explicitly when the caller opts out of GPU so the value is
     // self-documenting in logs even though it matches the AOSP default.
-    const modelParamsPtr = this.shim.milady_llama_model_params_default();
+    const modelParamsPtr = this.shim.eliza_llama_model_params_default();
     if (!modelParamsPtr) {
       throw new Error(
-        "[aosp-llama] milady_llama_model_params_default returned NULL (malloc failure?)",
+        "[aosp-llama] eliza_llama_model_params_default returned NULL (malloc failure?)",
       );
     }
     let modelPtr: Pointer = 0;
     try {
       if (!useGpu) {
-        this.shim.milady_llama_model_params_set_n_gpu_layers(modelParamsPtr, 0);
+        this.shim.eliza_llama_model_params_set_n_gpu_layers(modelParamsPtr, 0);
       }
       const pathBuf = encodeCString(args.modelPath);
-      modelPtr = this.shim.milady_llama_model_load_from_file(
+      modelPtr = this.shim.eliza_llama_model_load_from_file(
         this.ffi.ptr(pathBuf),
         modelParamsPtr,
       );
     } finally {
-      this.shim.milady_llama_model_params_free(modelParamsPtr);
+      this.shim.eliza_llama_model_params_free(modelParamsPtr);
     }
     if (!modelPtr) {
       throw new Error(
@@ -835,11 +834,11 @@ class AospLlamaAdapter implements AospLoader {
       );
     }
 
-    const ctxParamsPtr = this.shim.milady_llama_context_params_default();
+    const ctxParamsPtr = this.shim.eliza_llama_context_params_default();
     if (!ctxParamsPtr) {
       this.sym.llama_model_free(modelPtr);
       throw new Error(
-        "[aosp-llama] milady_llama_context_params_default returned NULL (malloc failure?)",
+        "[aosp-llama] eliza_llama_context_params_default returned NULL (malloc failure?)",
       );
     }
     let ctxPtr: Pointer = 0;
@@ -861,7 +860,7 @@ class AospLlamaAdapter implements AospLoader {
       //     less than the input token count for output-pruning models —
       //     we'd read OOB on the mean-pool fallback. By forcing MEAN at
       //     init we collapse the embed() path to a single read.
-      this.shim.milady_llama_context_params_set_n_ctx(
+      this.shim.eliza_llama_context_params_set_n_ctx(
         ctxParamsPtr,
         contextSize,
       );
@@ -876,26 +875,26 @@ class AospLlamaAdapter implements AospLoader {
       // for ~30 s and triggered repeated probe failures.
       // n_ubatch = 512: matches the chunk size, upstream default for
       // phone CPU cache.
-      const nBatchParam = readEnvInt("MILADY_LLAMA_N_BATCH", 512);
-      const nUBatchParam = readEnvInt("MILADY_LLAMA_N_UBATCH", 512);
-      this.shim.milady_llama_context_params_set_n_batch(
+      const nBatchParam = readEnvInt("ELIZA_LLAMA_N_BATCH", 512);
+      const nUBatchParam = readEnvInt("ELIZA_LLAMA_N_UBATCH", 512);
+      this.shim.eliza_llama_context_params_set_n_batch(
         ctxParamsPtr,
         nBatchParam,
       );
-      this.shim.milady_llama_context_params_set_n_ubatch(
+      this.shim.eliza_llama_context_params_set_n_ubatch(
         ctxParamsPtr,
         nUBatchParam,
       );
-      this.shim.milady_llama_context_params_set_n_threads(
+      this.shim.eliza_llama_context_params_set_n_threads(
         ctxParamsPtr,
         maxThreads,
       );
-      this.shim.milady_llama_context_params_set_n_threads_batch(
+      this.shim.eliza_llama_context_params_set_n_threads_batch(
         ctxParamsPtr,
         maxThreads,
       );
-      this.shim.milady_llama_context_params_set_embeddings(ctxParamsPtr, true);
-      this.shim.milady_llama_context_params_set_pooling_type(
+      this.shim.eliza_llama_context_params_set_embeddings(ctxParamsPtr, true);
+      this.shim.eliza_llama_context_params_set_pooling_type(
         ctxParamsPtr,
         LLAMA_POOLING_TYPE_MEAN,
       );
@@ -906,20 +905,20 @@ class AospLlamaAdapter implements AospLoader {
       // understands TBQ3_0 / TBQ4_0 — using these against stock llama.cpp
       // would crash inside type_traits lookup.
       if (kvCacheType?.k !== undefined) {
-        this.shim.milady_llama_context_params_set_type_k(
+        this.shim.eliza_llama_context_params_set_type_k(
           ctxParamsPtr,
           kvCacheTypeNameToEnum(kvCacheType.k),
         );
       }
       if (kvCacheType?.v !== undefined) {
-        this.shim.milady_llama_context_params_set_type_v(
+        this.shim.eliza_llama_context_params_set_type_v(
           ctxParamsPtr,
           kvCacheTypeNameToEnum(kvCacheType.v),
         );
       }
-      ctxPtr = this.shim.milady_llama_init_from_model(modelPtr, ctxParamsPtr);
+      ctxPtr = this.shim.eliza_llama_init_from_model(modelPtr, ctxParamsPtr);
     } finally {
-      this.shim.milady_llama_context_params_free(ctxParamsPtr);
+      this.shim.eliza_llama_context_params_free(ctxParamsPtr);
     }
     if (!ctxPtr) {
       this.sym.llama_model_free(modelPtr);
@@ -934,7 +933,7 @@ class AospLlamaAdapter implements AospLoader {
     this.nCtx = this.sym.llama_n_ctx(ctxPtr);
     this.loadedPath = args.modelPath;
     this.hasDecoded = false;
-    const nBatchEffective = readEnvInt("MILADY_LLAMA_N_BATCH", 512);
+    const nBatchEffective = readEnvInt("ELIZA_LLAMA_N_BATCH", 512);
     logger.info(
       `[aosp-llama] Loaded ${args.modelPath} (n_ctx=${this.nCtx}, n_batch=${nBatchEffective}, n_threads=${maxThreads}, gpu=${useGpu}, kv_k=${kvCacheType?.k ?? "f16"}, kv_v=${kvCacheType?.v ?? "f16"})`,
     );
@@ -1027,17 +1026,17 @@ class AospLlamaAdapter implements AospLoader {
     // shim materializes it with llama.cpp's default and we don't
     // override.
     const samplerParamsPtr =
-      this.shim.milady_llama_sampler_chain_params_default();
+      this.shim.eliza_llama_sampler_chain_params_default();
     if (!samplerParamsPtr) {
       throw new Error(
-        "[aosp-llama] milady_llama_sampler_chain_params_default returned NULL (malloc failure?)",
+        "[aosp-llama] eliza_llama_sampler_chain_params_default returned NULL (malloc failure?)",
       );
     }
     let chain: Pointer = 0;
     try {
-      chain = this.shim.milady_llama_sampler_chain_init(samplerParamsPtr);
+      chain = this.shim.eliza_llama_sampler_chain_init(samplerParamsPtr);
     } finally {
-      this.shim.milady_llama_sampler_chain_params_free(samplerParamsPtr);
+      this.shim.eliza_llama_sampler_chain_params_free(samplerParamsPtr);
     }
     if (!chain) {
       throw new Error("[aosp-llama] llama_sampler_chain_init returned NULL");
@@ -1090,8 +1089,8 @@ class AospLlamaAdapter implements AospLoader {
       // llama_decode through the shim. See ShimSymbols comment.
       // Decode chunk size is bounded by n_batch (set in loadModel).
       // Reading it here mirrors the parameter that loadModel committed
-      // to via milady_llama_context_params_set_n_batch.
-      const nBatch = readEnvInt("MILADY_LLAMA_N_BATCH", 2048);
+      // to via eliza_llama_context_params_set_n_batch.
+      const nBatch = readEnvInt("ELIZA_LLAMA_N_BATCH", 2048);
       const maxOutputReserve = args.maxTokens ?? 512;
       // Reserve maxOutputReserve + n_batch (one ubatch slack) + an
       // empirical 25 % safety margin. llama.cpp's Flash-Attention sliding
@@ -1118,21 +1117,21 @@ class AospLlamaAdapter implements AospLoader {
       for (let offset = 0; offset < promptLen; offset += nBatch) {
         const chunkLen = Math.min(nBatch, promptLen - offset);
         const chunk = promptTokens.subarray(offset, offset + chunkLen);
-        const promptBatchPtr = this.shim.milady_llama_batch_get_one(
+        const promptBatchPtr = this.shim.eliza_llama_batch_get_one(
           this.ffi.ptr(chunk),
           chunkLen,
         );
         if (!promptBatchPtr) {
           throw new Error(
-            "[aosp-llama] milady_llama_batch_get_one returned NULL (malloc failure?)",
+            "[aosp-llama] eliza_llama_batch_get_one returned NULL (malloc failure?)",
           );
         }
         const chunkStart = Date.now();
         let decodeRc: number;
         try {
-          decodeRc = this.shim.milady_llama_decode(ctx, promptBatchPtr);
+          decodeRc = this.shim.eliza_llama_decode(ctx, promptBatchPtr);
         } finally {
-          this.shim.milady_llama_batch_free(promptBatchPtr);
+          this.shim.eliza_llama_batch_free(promptBatchPtr);
         }
         if (decodeRc !== 0) {
           throw new Error(
@@ -1211,20 +1210,20 @@ class AospLlamaAdapter implements AospLoader {
         }
 
         singleToken[0] = next;
-        const stepBatchPtr = this.shim.milady_llama_batch_get_one(
+        const stepBatchPtr = this.shim.eliza_llama_batch_get_one(
           this.ffi.ptr(singleToken),
           1,
         );
         if (!stepBatchPtr) {
           throw new Error(
-            "[aosp-llama] milady_llama_batch_get_one returned NULL (malloc failure?)",
+            "[aosp-llama] eliza_llama_batch_get_one returned NULL (malloc failure?)",
           );
         }
         let stepRc: number;
         try {
-          stepRc = this.shim.milady_llama_decode(ctx, stepBatchPtr);
+          stepRc = this.shim.eliza_llama_decode(ctx, stepBatchPtr);
         } finally {
-          this.shim.milady_llama_batch_free(stepBatchPtr);
+          this.shim.eliza_llama_batch_free(stepBatchPtr);
         }
         if (stepRc !== 0) {
           throw new Error(
@@ -1357,22 +1356,22 @@ class AospLlamaAdapter implements AospLoader {
     this.sym.llama_set_embeddings(ctx, true);
     try {
       // bun:ffi struct-by-value workaround: route through the shim's
-      // pointer-style wrappers. See ShimSymbols.milady_llama_batch_get_one
-      // / milady_llama_decode for the rationale.
-      const batchPtr = this.shim.milady_llama_batch_get_one(
+      // pointer-style wrappers. See ShimSymbols.eliza_llama_batch_get_one
+      // / eliza_llama_decode for the rationale.
+      const batchPtr = this.shim.eliza_llama_batch_get_one(
         this.ffi.ptr(tokens),
         written,
       );
       if (!batchPtr) {
         throw new Error(
-          "[aosp-llama] milady_llama_batch_get_one returned NULL (malloc failure?)",
+          "[aosp-llama] eliza_llama_batch_get_one returned NULL (malloc failure?)",
         );
       }
       let decodeRc: number;
       try {
-        decodeRc = this.shim.milady_llama_decode(ctx, batchPtr);
+        decodeRc = this.shim.eliza_llama_decode(ctx, batchPtr);
       } finally {
-        this.shim.milady_llama_batch_free(batchPtr);
+        this.shim.eliza_llama_batch_free(batchPtr);
       }
       if (decodeRc !== 0) {
         throw new Error(
@@ -1417,9 +1416,9 @@ let cachedAdapter: AospLlamaAdapter | null = null;
 
 /**
  * Build (or return cached) AOSP loader. Returns null if the env opt-in is not
- * set, libllama.so / libmilady-llama-shim.so cannot be located, or `bun:ffi`
+ * set, libllama.so / libeliza-llama-shim.so cannot be located, or `bun:ffi`
  * is unavailable. Each failure is logged once. Failures while
- * `MILADY_LOCAL_LLAMA=1` is set are elevated to `error` because the user
+ * `ELIZA_LOCAL_LLAMA=1` is set are elevated to `error` because the user
  * explicitly opted in.
  */
 async function buildAdapter(): Promise<AospLlamaAdapter | null> {
@@ -1440,14 +1439,14 @@ async function buildAdapter(): Promise<AospLlamaAdapter | null> {
   }
   if (!existsSync(libPath)) {
     logger.error(
-      `[aosp-llama] MILADY_LOCAL_LLAMA=1 but libllama.so missing at ${libPath}`,
+      `[aosp-llama] ELIZA_LOCAL_LLAMA=1 but libllama.so missing at ${libPath}`,
     );
     return null;
   }
   if (!existsSync(shimPath)) {
     logger.error(
-      `[aosp-llama] MILADY_LOCAL_LLAMA=1 but libmilady-llama-shim.so missing at ${shimPath}. ` +
-        `Re-run scripts/miladyos/compile-libllama.mjs to produce the bun:ffi struct-by-value shim.`,
+      `[aosp-llama] ELIZA_LOCAL_LLAMA=1 but libeliza-llama-shim.so missing at ${shimPath}. ` +
+        `Re-run scripts/elizaos/compile-libllama.mjs to produce the bun:ffi struct-by-value shim.`,
     );
     return null;
   }
@@ -1455,7 +1454,7 @@ async function buildAdapter(): Promise<AospLlamaAdapter | null> {
   const ffiResult = await loadBunFfi();
   if (ffiResult.ok === false) {
     logger.error(
-      `[aosp-llama] MILADY_LOCAL_LLAMA=1 but bun:ffi is unavailable on this runtime: ${ffiResult.error.message}`,
+      `[aosp-llama] ELIZA_LOCAL_LLAMA=1 but bun:ffi is unavailable on this runtime: ${ffiResult.error.message}`,
     );
     return null;
   }
@@ -1493,7 +1492,7 @@ async function buildAdapter(): Promise<AospLlamaAdapter | null> {
 
 /**
  * Register the AOSP llama.cpp FFI loader on the runtime. No-op on non-AOSP
- * builds (when `MILADY_LOCAL_LLAMA !== "1"`). Returns true on successful
+ * builds (when `ELIZA_LOCAL_LLAMA !== "1"`). Returns true on successful
  * registration so the caller can confirm precedence.
  */
 export async function registerAospLlamaLoader(
@@ -1520,7 +1519,7 @@ export async function registerAospLlamaLoader(
     embed: (a: { input: string }) => adapter.embed(a),
   });
   logger.info(
-    "[aosp-llama] Registered native libllama.so loader (MILADY_LOCAL_LLAMA=1)",
+    "[aosp-llama] Registered native libllama.so loader (ELIZA_LOCAL_LLAMA=1)",
   );
   return true;
 }

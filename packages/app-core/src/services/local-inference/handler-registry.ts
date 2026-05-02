@@ -158,7 +158,7 @@ class HandlerRegistry {
   }
 }
 
-const PATCH_MARK = Symbol.for("milady.local-inference.registerModel.patched");
+const PATCH_MARK = Symbol.for("eliza.local-inference.registerModel.patched");
 let prototypePatched = false;
 
 /**

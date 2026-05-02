@@ -61,7 +61,7 @@ jobs:
           driver-opts: |
             env.BUILDKIT_STEP_LOG_MAX_SIZE=10485760
             env.BUILDKIT_STEP_LOG_MAX_SPEED=10485760
-          config-inline: |
+          buildkitd-config-inline: |
             [worker.oci]
               max-parallelism = 2
             [worker.containerd]

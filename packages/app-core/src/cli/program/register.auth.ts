@@ -1,8 +1,8 @@
 /**
- * `milady auth` subcommand.
+ * `eliza auth` subcommand.
  *
  * Currently exposes:
- *   - `milady auth reset` — loopback-only recovery path.
+ *   - `eliza auth reset` — loopback-only recovery path.
  *
  * The reset command revokes every active session and immediately rejects
  * the legacy static API token. It does NOT touch identities or password
@@ -30,16 +30,16 @@ const defaultRuntime = { error: console.error, exit: process.exit };
 
 const RESET_PROOF_FILENAME = "RESET_PROOF.txt";
 
-/** Resolve the milady state dir without importing service modules. */
-function resolveMiladyStateDir(): string {
+/** Resolve the eliza state dir without importing service modules. */
+function resolveElizaStateDir(): string {
   const explicit =
-    process.env.MILADY_STATE_DIR?.trim() || process.env.ELIZA_STATE_DIR?.trim();
+    process.env.ELIZA_STATE_DIR?.trim() || process.env.ELIZA_STATE_DIR?.trim();
   if (explicit) return path.resolve(explicit);
   const home =
     process.env.HOME?.trim() ||
     process.env.USERPROFILE?.trim() ||
     process.cwd();
-  return path.join(home, ".milady");
+  return path.join(home, ".eliza");
 }
 
 interface RuntimeAdapter {
@@ -73,7 +73,7 @@ async function openAuthStoreFromCli(): Promise<{
   const { createDatabaseAdapter, DatabaseMigrationService, plugin } = sql;
   const { AuthStore } = await import("../../services/auth-store");
 
-  const stateDir = resolveMiladyStateDir();
+  const stateDir = resolveElizaStateDir();
   const dataDir = path.join(stateDir, "db");
   await fs.mkdir(dataDir, { recursive: true, mode: 0o700 });
 
@@ -163,7 +163,7 @@ export interface RunResetResult {
 /**
  * Test-callable entry point. Real CLI action wraps this in commander glue.
  */
-export async function runMiladyAuthReset(
+export async function runElizaAuthReset(
   params: RunResetParams = {},
 ): Promise<RunResetResult> {
   const log = params.log ?? ((line: string) => console.log(line));
@@ -178,10 +178,10 @@ export async function runMiladyAuthReset(
   }
 
   const challenge = params.challenge ?? crypto.randomBytes(32).toString("hex");
-  const stateDir = resolveMiladyStateDir();
+  const stateDir = resolveElizaStateDir();
   const proofPath = path.join(stateDir, "auth", RESET_PROOF_FILENAME);
 
-  log(theme.heading("Milady auth reset"));
+  log(theme.heading("Eliza auth reset"));
   log(theme.muted("This revokes every active session and retires the legacy"));
   log(theme.muted("static API token immediately. Identities and password"));
   log(theme.muted("hashes are NOT touched — log in afterwards as usual."));
@@ -248,7 +248,7 @@ export async function runMiladyAuthReset(
   await markLegacyBearerInvalidated(store, {
     actorIdentityId: null,
     ip: null,
-    userAgent: "milady-cli auth reset",
+    userAgent: "eliza-cli auth reset",
   });
 
   const { appendAuditEvent } = await import("../../api/auth/index");
@@ -256,7 +256,7 @@ export async function runMiladyAuthReset(
     {
       actorIdentityId: null,
       ip: null,
-      userAgent: "milady-cli auth reset",
+      userAgent: "eliza-cli auth reset",
       action: "auth.reset.cli",
       outcome: "success",
       metadata: { revoked },
@@ -276,7 +276,7 @@ export async function runMiladyAuthReset(
 }
 
 export function registerAuthCommand(program: Command) {
-  const auth = program.command("auth").description("Manage Milady auth state");
+  const auth = program.command("auth").description("Manage Eliza auth state");
 
   auth
     .command("reset")
@@ -285,7 +285,7 @@ export function registerAuthCommand(program: Command) {
     )
     .action(async () => {
       await runCommandWithRuntime(defaultRuntime, async () => {
-        const result = await runMiladyAuthReset();
+        const result = await runElizaAuthReset();
         if (!result.ok) {
           console.error(theme.error(result.message ?? "auth reset failed"));
           process.exitCode = 1;

@@ -17,7 +17,7 @@
  */
 
 /**
- * Connector name (as stored in `milady.json` connectors block) →
+ * Connector name (as stored in `eliza.json` connectors block) →
  * the n8n credential type ids it owns. Disconnecting this connector should
  * purge the credential cache for every credType in this list.
  */

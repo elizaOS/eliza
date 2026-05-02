@@ -33,8 +33,7 @@
  * imports will resolve to the published file directly.
  */
 
-import { createUniqueUuid } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { createUniqueUuid, logger } from "@elizaos/core";
 
 // ../../../private/tmp/rolesbundle/src/roles.ts
 var DEFAULT_SERVER_ROLE = "NONE";
@@ -42,7 +41,7 @@ var ROLE_RANK = {
   GUEST: 0,
   USER: 1,
   ADMIN: 2,
-  OWNER: 3
+  OWNER: 3,
 };
 var CONNECTOR_ADMINS_SETTING_KEY = "ELIZA_ROLES_CONNECTOR_ADMINS_JSON";
 var CANONICAL_OWNER_SETTING_KEY = "ELIZA_ADMIN_ENTITY_ID";
@@ -50,14 +49,19 @@ var OWNER_CONTACTS_SETTING_KEY = "ELIZA_OWNER_CONTACTS_JSON";
 var CONNECTOR_ID_FIELDS = ["userId", "id", "username", "userName"];
 var CONNECTOR_STABLE_ID_FIELDS = ["userId", "id"];
 function asStringArray(value) {
-  if (!Array.isArray(value))
-    return [];
-  return value.filter((entry) => typeof entry === "string").map((entry) => entry.trim()).filter(Boolean);
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((entry) => typeof entry === "string")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
 }
 function normalizeConnectorAdminWhitelist(whitelist) {
-  if (!whitelist || typeof whitelist !== "object")
-    return {};
-  return Object.fromEntries(Object.entries(whitelist).map(([connector, values]) => [connector, asStringArray(values)]).filter(([, values]) => values.length > 0));
+  if (!whitelist || typeof whitelist !== "object") return {};
+  return Object.fromEntries(
+    Object.entries(whitelist)
+      .map(([connector, values]) => [connector, asStringArray(values)])
+      .filter(([, values]) => values.length > 0),
+  );
 }
 function normalizeRoleGrantSource(raw) {
   if (raw === "owner" || raw === "manual" || raw === "connector_admin") {
@@ -94,9 +98,17 @@ function parseOwnerContactEntityIds(raw) {
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       return [];
     }
-    return Object.values(parsed).map((entry) => entry && typeof entry.entityId === "string" ? entry.entityId.trim() : "").filter((entityId) => entityId.length > 0);
+    return Object.values(parsed)
+      .map((entry) =>
+        entry && typeof entry.entityId === "string"
+          ? entry.entityId.trim()
+          : "",
+      )
+      .filter((entityId) => entityId.length > 0);
   } catch (error) {
-    logger.warn(`[roles] Failed to parse owner contacts from runtime settings: ${formatError(error)}`);
+    logger.warn(
+      `[roles] Failed to parse owner contacts from runtime settings: ${formatError(error)}`,
+    );
     return [];
   }
 }
@@ -104,7 +116,9 @@ function getMemoryMetadata(message) {
   return asRecord(message.metadata);
 }
 function getMessageSource(message) {
-  return typeof message.content?.source === "string" ? message.content.source : undefined;
+  return typeof message.content?.source === "string"
+    ? message.content.source
+    : undefined;
 }
 function getConnectorMetadataFromMemory(message) {
   const memoryMetadata = getMemoryMetadata(message);
@@ -121,13 +135,16 @@ function getConnectorMetadataFromMemory(message) {
     if (typeof fromId !== "string" || fromId.trim().length === 0) {
       return;
     }
-    const entityName = typeof memoryMetadata?.entityName === "string" ? memoryMetadata.entityName : undefined;
+    const entityName =
+      typeof memoryMetadata?.entityName === "string"
+        ? memoryMetadata.entityName
+        : undefined;
     return {
       discord: {
         userId: fromId,
         id: fromId,
-        ...entityName ? { name: entityName, username: entityName } : {}
-      }
+        ...(entityName ? { name: entityName, username: entityName } : {}),
+      },
     };
   }
   return;
@@ -140,7 +157,9 @@ async function getEntityMetadata(runtime, entityId) {
     const entity = await runtime.getEntityById(entityId);
     return asRecord(entity?.metadata);
   } catch (error) {
-    logger.warn(`[roles] Failed to look up entity ${entityId}: ${formatError(error)}`);
+    logger.warn(
+      `[roles] Failed to look up entity ${entityId}: ${formatError(error)}`,
+    );
     return;
   }
 }
@@ -160,12 +179,18 @@ async function getUserServerRole(runtime, entityId, serverId) {
 }
 async function findWorldsForOwner(runtime, entityId) {
   if (!entityId) {
-    logger.error({ src: "core:roles", agentId: runtime.agentId }, "User ID is required to find server");
+    logger.error(
+      { src: "core:roles", agentId: runtime.agentId },
+      "User ID is required to find server",
+    );
     return null;
   }
   const worlds = await runtime.getAllWorlds();
   if (!worlds || worlds.length === 0) {
-    logger.debug({ src: "core:roles", agentId: runtime.agentId }, "No worlds found for agent");
+    logger.debug(
+      { src: "core:roles", agentId: runtime.agentId },
+      "No worlds found for agent",
+    );
     return null;
   }
   const ownerWorlds = [];
@@ -179,10 +204,16 @@ async function findWorldsForOwner(runtime, entityId) {
   return ownerWorlds.length ? ownerWorlds : null;
 }
 function getConfiguredOwnerEntityIds(runtime) {
-  const configuredAdminEntityId = getRuntimeSettingString(runtime, CANONICAL_OWNER_SETTING_KEY);
-  const ownerContactsRaw = getRuntimeSettingString(runtime, OWNER_CONTACTS_SETTING_KEY);
+  const configuredAdminEntityId = getRuntimeSettingString(
+    runtime,
+    CANONICAL_OWNER_SETTING_KEY,
+  );
+  const ownerContactsRaw = getRuntimeSettingString(
+    runtime,
+    OWNER_CONTACTS_SETTING_KEY,
+  );
   const ownerContactEntityIds = parseOwnerContactEntityIds(ownerContactsRaw);
-  const deduped = new Set;
+  const deduped = new Set();
   if (configuredAdminEntityId) {
     deduped.add(configuredAdminEntityId);
   }
@@ -200,7 +231,9 @@ function resolveCanonicalOwnerId(runtime, metadata) {
     return configuredOwnerIds[0] ?? null;
   }
   const worldOwnerId = metadata?.ownership?.ownerId;
-  return typeof worldOwnerId === "string" && worldOwnerId.length > 0 ? worldOwnerId : null;
+  return typeof worldOwnerId === "string" && worldOwnerId.length > 0
+    ? worldOwnerId
+    : null;
 }
 function resolveOwnershipCandidateIds(runtime, metadata) {
   const configuredOwnerIds = getConfiguredOwnerEntityIds(runtime);
@@ -211,8 +244,7 @@ function resolveOwnershipCandidateIds(runtime, metadata) {
   return ownerId ? [ownerId] : [];
 }
 function connectorIdentityMatches(left, right) {
-  if (!left || !right)
-    return false;
+  if (!left || !right) return false;
   for (const [connector, leftRaw] of Object.entries(left)) {
     const leftConnector = asRecord(leftRaw);
     const rightConnector = asRecord(right[connector]);
@@ -222,7 +254,11 @@ function connectorIdentityMatches(left, right) {
     for (const field of CONNECTOR_STABLE_ID_FIELDS) {
       const leftValue = leftConnector[field];
       const rightValue = rightConnector[field];
-      if (typeof leftValue === "string" && leftValue.length > 0 && leftValue === rightValue) {
+      if (
+        typeof leftValue === "string" &&
+        leftValue.length > 0 &&
+        leftValue === rightValue
+      ) {
         return true;
       }
     }
@@ -240,24 +276,32 @@ async function getConfirmedLinkedEntityIds(runtime, entityId) {
   try {
     const relationships = await runtime.getRelationships({
       entityIds: [entityId],
-      tags: ["identity_link"]
+      tags: ["identity_link"],
     });
-    const linkedIds = new Set;
+    const linkedIds = new Set();
     for (const relationship of relationships) {
       const metadata = asRecord(relationship.metadata);
       if (metadata?.status !== "confirmed") {
         continue;
       }
-      if (relationship.sourceEntityId === entityId && typeof relationship.targetEntityId === "string") {
+      if (
+        relationship.sourceEntityId === entityId &&
+        typeof relationship.targetEntityId === "string"
+      ) {
         linkedIds.add(relationship.targetEntityId);
       }
-      if (relationship.targetEntityId === entityId && typeof relationship.sourceEntityId === "string") {
+      if (
+        relationship.targetEntityId === entityId &&
+        typeof relationship.sourceEntityId === "string"
+      ) {
         linkedIds.add(relationship.sourceEntityId);
       }
     }
     return [...linkedIds];
   } catch (error) {
-    logger.warn(`[roles] Failed to load identity links for ${entityId}: ${formatError(error)}`);
+    logger.warn(
+      `[roles] Failed to load identity links for ${entityId}: ${formatError(error)}`,
+    );
     return [];
   }
 }
@@ -266,7 +310,8 @@ async function resolveOwnershipRole(runtime, metadata, entityId, options) {
   if (ownerIds.length === 0) {
     return null;
   }
-  const senderMetadata = options?.liveEntityMetadata ?? await getEntityMetadata(runtime, entityId);
+  const senderMetadata =
+    options?.liveEntityMetadata ?? (await getEntityMetadata(runtime, entityId));
   for (const ownerId of ownerIds) {
     if (ownerId === entityId) {
       return "OWNER";
@@ -288,7 +333,12 @@ function resolveWorldIdFromMessageMetadata(runtime, message) {
   const source = getMessageSource(message);
   const metadata = getMemoryMetadata(message);
   if (source === "discord") {
-    const serverId = typeof metadata?.discordServerId === "string" ? metadata.discordServerId : typeof metadata?.discordChannelId === "string" ? metadata.discordChannelId : null;
+    const serverId =
+      typeof metadata?.discordServerId === "string"
+        ? metadata.discordServerId
+        : typeof metadata?.discordChannelId === "string"
+          ? metadata.discordChannelId
+          : null;
     if (!serverId) {
       return null;
     }
@@ -316,13 +366,14 @@ function getConnectorAdminWhitelist(runtime) {
     const parsed = JSON.parse(raw);
     return normalizeConnectorAdminWhitelist(parsed);
   } catch (error) {
-    logger.warn(`[roles] Failed to parse ${CONNECTOR_ADMINS_SETTING_KEY}: ${formatError(error)}`);
+    logger.warn(
+      `[roles] Failed to parse ${CONNECTOR_ADMINS_SETTING_KEY}: ${formatError(error)}`,
+    );
     return {};
   }
 }
 function matchEntityToConnectorAdminWhitelist(entityMetadata, whitelist) {
-  if (!entityMetadata || typeof entityMetadata !== "object")
-    return null;
+  if (!entityMetadata || typeof entityMetadata !== "object") return null;
   const normalizedWhitelist = normalizeConnectorAdminWhitelist(whitelist);
   for (const [connector, platformIds] of Object.entries(normalizedWhitelist)) {
     const connectorMeta = asRecord(entityMetadata[connector]);
@@ -340,13 +391,11 @@ function matchEntityToConnectorAdminWhitelist(entityMetadata, whitelist) {
 }
 function normalizeRole(raw) {
   const upper = (raw ?? "").toUpperCase();
-  if (upper === "OWNER" || upper === "ADMIN" || upper === "USER")
-    return upper;
+  if (upper === "OWNER" || upper === "ADMIN" || upper === "USER") return upper;
   return "GUEST";
 }
 function getEntityRole(metadata, entityId) {
-  if (!metadata?.roles)
-    return "GUEST";
+  if (!metadata?.roles) return "GUEST";
   return normalizeRole(metadata.roles[entityId]);
 }
 function getStoredRoleSource(metadata, entityId) {
@@ -364,16 +413,32 @@ async function resolveStoredRoleSource(runtime, metadata, entityId, options) {
   if (storedRole === "OWNER") {
     return "owner";
   }
-  const entityMetadata = options?.liveEntityId === entityId ? options.liveEntityMetadata ?? undefined : undefined;
-  const matchedWhitelist = matchEntityToConnectorAdminWhitelist(entityMetadata ?? await getEntityMetadata(runtime, entityId), getConnectorAdminWhitelist(runtime));
+  const entityMetadata =
+    options?.liveEntityId === entityId
+      ? (options.liveEntityMetadata ?? undefined)
+      : undefined;
+  const matchedWhitelist = matchEntityToConnectorAdminWhitelist(
+    entityMetadata ?? (await getEntityMetadata(runtime, entityId)),
+    getConnectorAdminWhitelist(runtime),
+  );
   if (storedRole === "ADMIN" && matchedWhitelist) {
     return "connector_admin";
   }
   return "manual";
 }
-async function resolveExplicitGrantedRole(runtime, metadata, entityId, options) {
+async function resolveExplicitGrantedRole(
+  runtime,
+  metadata,
+  entityId,
+  options,
+) {
   const directRole = getEntityRole(metadata, entityId);
-  const directSource = await resolveStoredRoleSource(runtime, metadata, entityId, options);
+  const directSource = await resolveStoredRoleSource(
+    runtime,
+    metadata,
+    entityId,
+    options,
+  );
   if (directRole !== "GUEST" && directSource === "manual") {
     return { role: directRole, source: "manual" };
   }
@@ -384,7 +449,11 @@ async function resolveExplicitGrantedRole(runtime, metadata, entityId, options) 
     if (linkedRole === "GUEST") {
       continue;
     }
-    const linkedSource = await resolveStoredRoleSource(runtime, metadata, linkedEntityId);
+    const linkedSource = await resolveStoredRoleSource(
+      runtime,
+      metadata,
+      linkedEntityId,
+    );
     if (linkedSource !== "manual") {
       continue;
     }
@@ -399,13 +468,26 @@ function getLiveEntityMetadataFromMessage(message) {
 }
 async function resolveEntityRole(runtime, _world, metadata, entityId, options) {
   const explicitRole = getEntityRole(metadata, entityId);
-  const explicitSource = await resolveStoredRoleSource(runtime, metadata, entityId, options);
-  const ownershipRole = await resolveOwnershipRole(runtime, metadata, entityId, options);
+  const explicitSource = await resolveStoredRoleSource(
+    runtime,
+    metadata,
+    entityId,
+    options,
+  );
+  const ownershipRole = await resolveOwnershipRole(
+    runtime,
+    metadata,
+    entityId,
+    options,
+  );
   if (ownershipRole === "OWNER") {
     return "OWNER";
   }
   const whitelist = getConnectorAdminWhitelist(runtime);
-  const liveMatched = matchEntityToConnectorAdminWhitelist(options?.liveEntityMetadata ?? undefined, whitelist);
+  const liveMatched = matchEntityToConnectorAdminWhitelist(
+    options?.liveEntityMetadata ?? undefined,
+    whitelist,
+  );
   if (explicitRole !== "GUEST") {
     if (explicitRole === "OWNER") {
       return hasConfiguredCanonicalOwner(runtime) ? "GUEST" : "OWNER";
@@ -418,7 +500,10 @@ async function resolveEntityRole(runtime, _world, metadata, entityId, options) {
         return "ADMIN";
       }
       const entityMetadata2 = await getEntityMetadata(runtime, entityId);
-      const matched2 = matchEntityToConnectorAdminWhitelist(entityMetadata2, whitelist);
+      const matched2 = matchEntityToConnectorAdminWhitelist(
+        entityMetadata2,
+        whitelist,
+      );
       if (matched2) {
         return "ADMIN";
       }
@@ -433,7 +518,10 @@ async function resolveEntityRole(runtime, _world, metadata, entityId, options) {
     return "ADMIN";
   }
   const entityMetadata = await getEntityMetadata(runtime, entityId);
-  const matched = matchEntityToConnectorAdminWhitelist(entityMetadata, whitelist);
+  const matched = matchEntityToConnectorAdminWhitelist(
+    entityMetadata,
+    whitelist,
+  );
   if (!matched) {
     return explicitRole;
   }
@@ -441,16 +529,26 @@ async function resolveEntityRole(runtime, _world, metadata, entityId, options) {
 }
 async function checkSenderPrivateAccess(runtime, message) {
   const resolved = await resolveWorldForMessage(runtime, message);
-  if (!resolved)
-    return null;
+  if (!resolved) return null;
   const { world, metadata } = resolved;
   const entityId = message.entityId;
   const options = {
     liveEntityMetadata: getLiveEntityMetadataFromMessage(message),
-    liveEntityId: entityId
+    liveEntityId: entityId,
   };
-  const role = await resolveEntityRole(runtime, world, metadata, entityId, options);
-  const ownershipRole = await resolveOwnershipRole(runtime, metadata, entityId, options);
+  const role = await resolveEntityRole(
+    runtime,
+    world,
+    metadata,
+    entityId,
+    options,
+  );
+  const ownershipRole = await resolveOwnershipRole(
+    runtime,
+    metadata,
+    entityId,
+    options,
+  );
   if (ownershipRole === "OWNER") {
     return {
       entityId,
@@ -460,10 +558,15 @@ async function checkSenderPrivateAccess(runtime, message) {
       canManageRoles: true,
       hasPrivateAccess: true,
       accessRole: "OWNER",
-      accessSource: "owner"
+      accessSource: "owner",
     };
   }
-  const explicitAccess = await resolveExplicitGrantedRole(runtime, metadata, entityId, options);
+  const explicitAccess = await resolveExplicitGrantedRole(
+    runtime,
+    metadata,
+    entityId,
+    options,
+  );
   return {
     entityId,
     role,
@@ -472,33 +575,28 @@ async function checkSenderPrivateAccess(runtime, message) {
     canManageRoles: role === "OWNER" || role === "ADMIN",
     hasPrivateAccess: explicitAccess !== null,
     accessRole: explicitAccess?.role ?? null,
-    accessSource: explicitAccess?.source ?? null
+    accessSource: explicitAccess?.source ?? null,
   };
 }
 function canModifyRole(actorRole, targetCurrentRole, newRole) {
-  if (targetCurrentRole === newRole)
-    return false;
+  if (targetCurrentRole === newRole) return false;
   const actorRank = ROLE_RANK[actorRole];
   const targetRank = ROLE_RANK[targetCurrentRole];
-  if (actorRole === "OWNER")
-    return true;
+  if (actorRole === "OWNER") return true;
   if (actorRole === "ADMIN") {
-    if (targetRank >= actorRank)
-      return false;
-    if (newRole === "OWNER")
-      return false;
+    if (targetRank >= actorRank) return false;
+    if (newRole === "OWNER") return false;
     return true;
   }
   return false;
 }
 async function resolveWorldForMessage(runtime, message) {
   const room = await runtime.getRoom(message.roomId);
-  const worldId = room?.worldId ?? resolveWorldIdFromMessageMetadata(runtime, message);
-  if (!worldId)
-    return null;
+  const worldId =
+    room?.worldId ?? resolveWorldIdFromMessageMetadata(runtime, message);
+  if (!worldId) return null;
   const world = await runtime.getWorld(worldId);
-  if (!world)
-    return null;
+  if (!world) return null;
   const metadata = world.metadata ?? {};
   return { world, metadata };
 }
@@ -512,29 +610,32 @@ async function resolveCanonicalOwnerIdForMessage(runtime, message) {
 }
 async function checkSenderRole(runtime, message) {
   const resolved = await resolveWorldForMessage(runtime, message);
-  if (!resolved)
-    return null;
+  if (!resolved) return null;
   const { world, metadata } = resolved;
   const entityId = message.entityId;
   const role = await resolveEntityRole(runtime, world, metadata, entityId, {
     liveEntityMetadata: getLiveEntityMetadataFromMessage(message),
-    liveEntityId: entityId
+    liveEntityId: entityId,
   });
   return {
     entityId,
     role,
     isOwner: role === "OWNER",
     isAdmin: role === "OWNER" || role === "ADMIN",
-    canManageRoles: role === "OWNER" || role === "ADMIN"
+    canManageRoles: role === "OWNER" || role === "ADMIN",
   };
 }
-async function setEntityRole(runtime, message, targetEntityId, newRole, source = "manual") {
+async function setEntityRole(
+  runtime,
+  message,
+  targetEntityId,
+  newRole,
+  source = "manual",
+) {
   const resolved = await resolveWorldForMessage(runtime, message);
-  if (!resolved)
-    throw new Error("Cannot resolve world for role assignment");
+  if (!resolved) throw new Error("Cannot resolve world for role assignment");
   const { world, metadata } = resolved;
-  if (!metadata.roles)
-    metadata.roles = {};
+  if (!metadata.roles) metadata.roles = {};
   metadata.roleSources ??= {};
   metadata.roles[targetEntityId] = newRole;
   if (newRole === "GUEST") {
@@ -546,24 +647,25 @@ async function setEntityRole(runtime, message, targetEntityId, newRole, source =
   await runtime.updateWorld(world);
   return { ...metadata.roles };
 }
+
 export {
-  setEntityRole,
-  setConnectorAdminWhitelist,
-  resolveWorldForMessage,
-  resolveEntityRole,
-  resolveCanonicalOwnerIdForMessage,
-  resolveCanonicalOwnerId,
-  normalizeRole,
-  matchEntityToConnectorAdminWhitelist,
-  hasConfiguredCanonicalOwner,
-  getUserServerRole,
-  getLiveEntityMetadataFromMessage,
-  getEntityRole,
-  getConnectorAdminWhitelist,
-  getConfiguredOwnerEntityIds,
-  findWorldsForOwner,
-  checkSenderRole,
-  checkSenderPrivateAccess,
   canModifyRole,
-  ROLE_RANK
+  checkSenderPrivateAccess,
+  checkSenderRole,
+  findWorldsForOwner,
+  getConfiguredOwnerEntityIds,
+  getConnectorAdminWhitelist,
+  getEntityRole,
+  getLiveEntityMetadataFromMessage,
+  getUserServerRole,
+  hasConfiguredCanonicalOwner,
+  matchEntityToConnectorAdminWhitelist,
+  normalizeRole,
+  ROLE_RANK,
+  resolveCanonicalOwnerId,
+  resolveCanonicalOwnerIdForMessage,
+  resolveEntityRole,
+  resolveWorldForMessage,
+  setConnectorAdminWhitelist,
+  setEntityRole,
 };

@@ -7,7 +7,7 @@ const DEFAULT_PAGE_SIDEBAR_WIDTH = 240;
 const DEFAULT_PAGE_SIDEBAR_MIN_WIDTH = 200;
 const DEFAULT_PAGE_SIDEBAR_MAX_WIDTH = 520;
 const SIDEBAR_SYNC_STORAGE_PREFIX = "elizaos:ui:sidebar:";
-const PAGE_SIDEBAR_WIDTH_STORAGE_PREFIX = "milady:page-sidebar:";
+const PAGE_SIDEBAR_WIDTH_STORAGE_PREFIX = "eliza:page-sidebar:";
 
 const PAGE_SIDEBAR_ROOT_CLASS =
   "!mt-0 !h-full !bg-none !bg-transparent !rounded-none !border-0 !border-r !border-r-border/30 !shadow-none !backdrop-blur-none !ring-0";
@@ -134,7 +134,7 @@ export const AppPageSidebar = React.forwardRef<
   const resolvedSyncId =
     syncId ??
     (desktopDefaultVariant && collapsible
-      ? `milady:page-sidebar:${contentIdentity ?? testId ?? "default"}`
+      ? `eliza:page-sidebar:${contentIdentity ?? testId ?? "default"}`
       : undefined);
   const [internalCollapsed, setInternalCollapsed] = useState<boolean>(() =>
     readStoredSidebarCollapsed(resolvedSyncId, defaultCollapsed),

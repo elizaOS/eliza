@@ -6,10 +6,10 @@ import {
   emptyStore,
   readStore,
   removeSecret,
+  STORE_VERSION,
+  StoreFormatError,
   setPermissions,
   setSecret,
-  StoreFormatError,
-  STORE_VERSION,
   writeStore,
 } from "../src/store.js";
 
@@ -40,8 +40,13 @@ describe("store", () => {
     });
     await writeStore(path, data);
     const stat = await fs.stat(path);
-    // mask off file-type bits
-    expect(stat.mode & 0o777).toBe(0o600);
+    // POSIX mode bits are not honoured on Windows — fs.stat returns 0o666
+    // for any writable file regardless of how the file was created. Skip
+    // the mode assertion on win32 and only verify the round-trip.
+    if (process.platform !== "win32") {
+      // mask off file-type bits
+      expect(stat.mode & 0o777).toBe(0o600);
+    }
     const round = await readStore(path);
     expect(round.secrets["llm.openrouter.apiKey"]).toMatchObject({
       kind: "literal",
@@ -62,7 +67,11 @@ describe("store", () => {
     await fs.mkdir(dir, { recursive: true });
     await fs.writeFile(
       path,
-      JSON.stringify({ version: STORE_VERSION + 1, secrets: {}, permissions: {} }),
+      JSON.stringify({
+        version: STORE_VERSION + 1,
+        secrets: {},
+        permissions: {},
+      }),
     );
     await expect(readStore(path)).rejects.toThrow(StoreFormatError);
   });

@@ -9,9 +9,11 @@ import { getBootConfig, setBootConfig } from "../config/boot-config";
 import { stripAssistantStageDirections } from "../utils/assistant-text";
 import {
   clearElizaApiBase,
+  clearElizaApiToken,
   getElizaApiBase,
   getElizaApiToken,
   setElizaApiBase,
+  setElizaApiToken,
 } from "../utils/eliza-globals";
 import { mergeStreamingText } from "../utils/streaming-text";
 import type {
@@ -151,9 +153,17 @@ export class ElizaClient {
 
   setToken(token: string | null): void {
     this._token = token?.trim() || null;
-    // Update boot config so other consumers see the new token.
+    // Boot config is the canonical source. fetchWithCsrf and authBase read here.
     const config = getBootConfig();
     setBootConfig({ ...config, apiToken: this._token ?? undefined });
+    // Mirror to window globals for the Capacitor agent web fallback
+    // (native-plugins/agent/src/web.ts) and any direct readers via
+    // getElizaApiToken(). Parallels setBaseUrl()'s window-global mirror.
+    if (this._token) {
+      setElizaApiToken(this._token);
+    } else {
+      clearElizaApiToken();
+    }
   }
 
   getBaseUrl(): string {

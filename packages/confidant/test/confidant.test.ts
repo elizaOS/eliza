@@ -2,20 +2,16 @@ import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { EnvLegacyBackend } from "../src/backends/env-legacy.js";
+import { createConfidant } from "../src/confidant.js";
+import { generateMasterKey } from "../src/crypto/envelope.js";
+import { inMemoryMasterKey } from "../src/crypto/master-key.js";
+import { PermissionDeniedError } from "../src/policy/grants.js";
 import {
   __resetSecretSchemaForTests,
   defineSecretSchema,
 } from "../src/secret-schema.js";
-import { generateMasterKey } from "../src/crypto/envelope.js";
-import { inMemoryMasterKey } from "../src/crypto/master-key.js";
-import { createConfidant } from "../src/confidant.js";
-import { EnvLegacyBackend } from "../src/backends/env-legacy.js";
-import { PermissionDeniedError } from "../src/policy/grants.js";
-import {
-  emptyStore,
-  setPermissions,
-  writeStore,
-} from "../src/store.js";
+import { emptyStore, setPermissions, writeStore } from "../src/store.js";
 
 describe("Confidant", () => {
   let dir: string;
@@ -192,9 +188,7 @@ describe("Confidant", () => {
     await writeStore(
       storePath,
       setPermissions(emptyStore(), "weather-bot", {
-        grants: [
-          { pattern: "llm.openrouter.*", mode: "prompt", grantedAt: 1 },
-        ],
+        grants: [{ pattern: "llm.openrouter.*", mode: "prompt", grantedAt: 1 }],
       }),
     );
     const c = makeConfidant();
@@ -209,9 +203,7 @@ describe("Confidant", () => {
     await writeStore(
       storePath,
       setPermissions(emptyStore(), "weather-bot", {
-        grants: [
-          { pattern: "llm.openrouter.*", mode: "prompt", grantedAt: 1 },
-        ],
+        grants: [{ pattern: "llm.openrouter.*", mode: "prompt", grantedAt: 1 }],
       }),
     );
     let prompts = 0;
@@ -240,7 +232,10 @@ describe("Confidant", () => {
     const scoped = c.scopeFor("weather-bot");
     await expect(scoped.resolve("llm.openrouter.apiKey")).rejects.toThrow();
     const log = await fs.readFile(auditPath, "utf8");
-    const lines = log.trim().split("\n").map((l) => JSON.parse(l));
+    const lines = log
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatchObject({
       skill: "weather-bot",
@@ -262,7 +257,10 @@ describe("Confidant", () => {
     const scoped = c.scopeFor("@elizaos/plugin-openrouter");
     await scoped.resolve("llm.openrouter.apiKey");
     const log = await fs.readFile(auditPath, "utf8");
-    const lines = log.trim().split("\n").map((l) => JSON.parse(l));
+    const lines = log
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
     expect(lines.at(-1)).toMatchObject({
       skill: "@elizaos/plugin-openrouter",
       secret: "llm.openrouter.apiKey",

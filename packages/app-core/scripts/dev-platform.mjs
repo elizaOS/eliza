@@ -9,7 +9,7 @@
  *
  * ## Startup phases
  * 1. **Renderer production build** — Runs `vite build` only when `viteRendererBuildNeeded()`
- *    says `apps/app/dist` is missing or older than sources (cheap mtime heuristic). Override:
+ *    says `packages/app/dist` is missing or older than sources (cheap mtime heuristic). Override:
  *    `--force-renderer` or `ELIZA_DESKTOP_RENDERER_BUILD=always`. **Why skip:** redundant
  *    production builds on every restart are slow; watch mode users get HMR from `vite dev`.
  * 2. **Root bundle** — `tsdown` at repo root if `dist/entry.js` missing (Electrobun eliza-dist).
@@ -19,7 +19,7 @@
  *      Stale dep chunks: `--vite-force` or `ELIZA_VITE_FORCE=1` / `ELIZA_VITE_FORCE=1` (passes `vite --force`).
  *    - **Watch + Rollup** — `--rollup-watch` or `ELIZA_DESKTOP_VITE_BUILD_WATCH=1` with
  *      `ELIZA_DESKTOP_VITE_WATCH=1`: legacy `vite build --watch` (slow on large graphs).
- *    - **Electrobun** — `bun run dev` in `apps/app/electrobun`.
+ *    - **Electrobun** — `bun run dev` in `packages/app-core/platforms/electrobun`.
  *
  * ## Port allocation (`launch()`) — WHY
  * Before spawning API / Vite / Electrobun, `allocateFirstFreeLoopbackPort()` from
@@ -73,6 +73,8 @@ import {
 } from "@elizaos/shared/runtime-env";
 import chalk from "chalk";
 import { allocateFirstFreeLoopbackPort } from "./lib/allocate-loopback-port.mjs";
+import { resolveMainAppDir } from "./lib/app-dir.mjs";
+import { createApiSupervisor } from "./lib/api-supervisor.mjs";
 import { signalSpawnedProcessTree } from "./lib/kill-process-tree.mjs";
 import { killUiListenPort } from "./lib/kill-ui-listen-port.mjs";
 import { extendNodePathEnv } from "./lib/node-path-env.mjs";
@@ -81,42 +83,22 @@ import { viteRendererBuildNeeded } from "./lib/vite-renderer-dist-stale.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaRoot = path.resolve(here, "../../..");
-const miladyRoot = path.resolve(here, "../../../..");
-const isMiladyMonorepo =
-  existsSync(path.join(miladyRoot, "package.json")) &&
+const elizaRoot = path.resolve(here, "../../../..");
+const isElizaMonorepo =
+  existsSync(path.join(elizaRoot, "package.json")) &&
   existsSync(
-    path.join(miladyRoot, "eliza", "packages", "app-core", "package.json"),
+    path.join(elizaRoot, "eliza", "packages", "app-core", "package.json"),
   );
-const bundleRoot = isMiladyMonorepo ? miladyRoot : elizaRoot;
+const bundleRoot = isElizaMonorepo ? elizaRoot : elizaRoot;
 
 function resolveRendererAppDir() {
-  const miladyApp = path.join(miladyRoot, "apps", "app");
-  const elizaApp = path.join(elizaRoot, "apps", "app");
-  if (isMiladyMonorepo && existsSync(path.join(miladyApp, "package.json"))) {
-    return miladyApp;
-  }
-
-  const cwd = process.cwd();
-  const cwdNorm = path.resolve(cwd);
-  const elizaNorm = path.resolve(elizaRoot);
-  if (cwdNorm === elizaNorm || cwdNorm.startsWith(`${elizaNorm}${path.sep}`)) {
-    if (existsSync(path.join(elizaApp, "package.json"))) {
-      return elizaApp;
-    }
-  }
-  if (existsSync(path.join(miladyApp, "package.json"))) {
-    return miladyApp;
-  }
-  if (existsSync(path.join(elizaApp, "package.json"))) {
-    return elizaApp;
-  }
-  return miladyApp;
+  return resolveMainAppDir(bundleRoot, "app");
 }
 
 function resolveElectrobunDir() {
-  if (isMiladyMonorepo) {
+  if (isElizaMonorepo) {
     return path.join(
-      miladyRoot,
+      elizaRoot,
       "eliza",
       "packages",
       "app-core",
@@ -133,17 +115,21 @@ function resolveElectrobunDir() {
   );
 }
 
-const devServerEntry = isMiladyMonorepo
+const devServerEntry = isElizaMonorepo
   ? "eliza/packages/app-core/src/runtime/dev-server.ts"
   : "packages/app-core/src/runtime/dev-server.ts";
 
 const appDir = resolveRendererAppDir();
 const electrobunDir = resolveElectrobunDir();
-const defaultElizaNamespace = appDir
-  .replace(/\\/g, "/")
-  .includes("/eliza/apps/app")
-  ? "eliza"
-  : "milady";
+const defaultElizaNamespace =
+  isElizaMonorepo &&
+  path
+    .resolve(appDir)
+    .startsWith(`${path.resolve(elizaRoot, "eliza")}${path.sep}`)
+    ? "eliza"
+    : isElizaMonorepo
+      ? "eliza"
+      : "eliza";
 
 const BUN_EXECUTABLE = process.versions?.bun ? process.execPath : "bun";
 
@@ -194,19 +180,19 @@ const forceRenderer =
   process.env.ELIZA_DESKTOP_RENDERER_BUILD === "1";
 const viteWatch =
   process.env.ELIZA_DESKTOP_VITE_WATCH === "1" ||
-  process.env.MILADY_DESKTOP_VITE_WATCH === "1";
+  process.env.ELIZA_DESKTOP_VITE_WATCH === "1";
 const viteDepForceCli = process.argv.includes("--vite-force");
 const viteDepForce =
   viteDepForceCli ||
   process.env.ELIZA_VITE_FORCE === "1" ||
-  process.env.MILADY_VITE_FORCE === "1";
+  process.env.ELIZA_VITE_FORCE === "1";
 const viteRollupWatchCli = process.argv.includes("--rollup-watch");
 /** Legacy: Rollup `vite build --watch` (tens of seconds per edit on large graphs). */
 const viteRollupWatch =
   viteWatch &&
   (viteRollupWatchCli ||
     process.env.ELIZA_DESKTOP_VITE_BUILD_WATCH === "1" ||
-    process.env.MILADY_DESKTOP_VITE_BUILD_WATCH === "1");
+    process.env.ELIZA_DESKTOP_VITE_BUILD_WATCH === "1");
 /** Default when VITE_WATCH: Vite dev server + Electrobun ELIZA_RENDERER_URL (fast HMR). */
 const viteDevServer = viteWatch && !viteRollupWatch;
 /** On by default for `dev:desktop` / `dev:desktop:watch`; set to 0/false/no/off to disable. */
@@ -450,16 +436,6 @@ const children = [];
 /** First Ctrl-C starts graceful shutdown; second exits immediately (pipes keep the process alive until then). */
 let shuttingDown = false;
 
-// Track API restart attempts so we don't hot-loop on a crashing API. When
-// /api/restart, the agent's RESTART action, or any other in-process bounce
-// fires `process.exit(0)`/`process.exit(75)`, the supervisor below re-spawns
-// the API. If it exits again within API_RESTART_BACKOFF_WINDOW_MS, that counts
-// toward the streak. Mirrors the supervisor in dev-ui.mjs.
-const API_RESTART_BACKOFF_WINDOW_MS = 10_000;
-const API_RESTART_BACKOFF_LIMIT = 5;
-let apiRestartStreak = 0;
-let lastApiExitAt = 0;
-
 const namesForLog = [];
 if (!skipApi) namesForLog.push("api");
 if (viteDevServer) namesForLog.push("vite");
@@ -659,9 +635,7 @@ async function launch() {
     ELIZA_PORT: String(uiDevPort),
     ELIZA_UI_PORT: String(uiDevPort),
     ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? defaultElizaNamespace,
-    ...(rendererUrlForShell
-      ? { ELIZA_RENDERER_URL: rendererUrlForShell }
-      : {}),
+    ...(rendererUrlForShell ? { ELIZA_RENDERER_URL: rendererUrlForShell } : {}),
     ELIZA_DESKTOP_API_BASE: `http://127.0.0.1:${apiPort}`,
     ...screenshotEnvApi,
     ...(desktopDevLogPath
@@ -669,68 +643,44 @@ async function launch() {
       : {}),
   };
 
-  function spawnApi() {
-    const child = spawn(BUN_EXECUTABLE, ["--watch", devServerEntry], {
-      cwd: bundleRoot,
-      env: extendNodePathEnv(
-        { ...process.env, ...apiEnv, FORCE_COLOR: "1" },
-        bundleRoot,
-      ),
-      stdio: ["ignore", "pipe", "pipe"],
-      ...(process.platform !== "win32" ? { detached: true } : {}),
-    });
-    if (child.stdout) prefixStream("api", child.stdout);
-    if (child.stderr) prefixStream("api", child.stderr);
-    child.on("exit", (code, signal) => {
-      const reason = signal ? `signal ${signal}` : `exit ${code}`;
-      console.log(`[api] stopped (${reason})`);
-
-      // Drop this child from `children` so shutdown doesn't try to signal a dead PID.
+  const apiSupervisor = createApiSupervisor({
+    spawnChild: () =>
+      spawn(BUN_EXECUTABLE, ["--watch", devServerEntry], {
+        cwd: bundleRoot,
+        env: extendNodePathEnv(
+          { ...process.env, ...apiEnv, FORCE_COLOR: "1" },
+          bundleRoot,
+        ),
+        stdio: ["ignore", "pipe", "pipe"],
+        ...(process.platform !== "win32" ? { detached: true } : {}),
+      }),
+    onSpawn: (child) => {
+      if (child.stdout) prefixStream("api", child.stdout);
+      if (child.stderr) prefixStream("api", child.stderr);
+      children.push(child);
+      child.on("exit", (code, signal) => {
+        const reason = signal ? `signal ${signal}` : `exit ${code}`;
+        console.log(`[api] stopped (${reason})`);
+      });
+    },
+    onExit: (child) => {
       const idx = children.indexOf(child);
       if (idx !== -1) children.splice(idx, 1);
-
-      if (shuttingDown) return;
-
-      const now = Date.now();
-      if (now - lastApiExitAt < API_RESTART_BACKOFF_WINDOW_MS) {
-        apiRestartStreak += 1;
-      } else {
-        apiRestartStreak = 1;
-      }
-      lastApiExitAt = now;
-
-      if (apiRestartStreak > API_RESTART_BACKOFF_LIMIT) {
-        console.error(
-          `\n[eliza] API exited with code ${code} ${apiRestartStreak} times in ${
-            API_RESTART_BACKOFF_WINDOW_MS / 1000
-          }s — giving up. Fix the underlying issue and restart the dev process.`,
-        );
-        shutdownDesktopDev({
-          exitCode: code ?? 1,
-          message:
-            "\n[eliza] API restart backoff exceeded — stopping Vite/Electrobun and closing dev session.",
-        });
-        return;
-      }
-
-      // The agent's RESTART action and `/api/restart` both bounce the
-      // server with `process.exit(0)` (and the CLI runner uses 75 as the
-      // dedicated restart exit code). Bun's `--watch` reload also exits
-      // cleanly. Treat any non-shutdown exit as "please restart me" and
-      // re-spawn — that's what the renderer is already polling for.
-      console.log(
-        `\n[eliza] API exited with code ${code} — relaunching (attempt ${apiRestartStreak}/${API_RESTART_BACKOFF_LIMIT})…`,
-      );
-      setTimeout(() => {
-        if (!shuttingDown) spawnApi();
-      }, 400);
-    });
-    children.push(child);
-    return child;
-  }
+    },
+    onGiveUp: (code) => {
+      shutdownDesktopDev({
+        exitCode: code ?? 1,
+        message:
+          "\n[eliza] API restart backoff exceeded — stopping Vite/Electrobun and closing dev session.",
+      });
+    },
+    isShuttingDown: () => shuttingDown,
+    log: (message) => console.log(`\n[eliza] ${message}`),
+    warn: (message) => console.error(`\n[eliza] ${message}`),
+  });
 
   if (!skipApi) {
-    spawnApi();
+    apiSupervisor.start();
     await waitForPort(Number(apiPort));
     await waitForApiRoute(Number(apiPort), "/api/status");
   }

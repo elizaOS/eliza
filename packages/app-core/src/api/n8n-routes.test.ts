@@ -1090,7 +1090,7 @@ describe("n8n POST /api/n8n/workflows/generate", () => {
       missingCredentials: [
         {
           credType: "gmailOAuth2",
-          authUrl: "milady://settings/connectors/gmail",
+          authUrl: "eliza://settings/connectors/gmail",
         },
       ],
     };

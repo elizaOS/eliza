@@ -76,7 +76,7 @@ export async function probeFullDiskAccess(overrides?: {
           checkedAt,
           chatDbPath,
           reason:
-            "Full Disk Access is required to read chat.db. Grant it to the app running Milady, such as Milady.app, Terminal, iTerm, or Cursor, then relaunch.",
+            "Full Disk Access is required to read chat.db. Grant it to the app running Eliza, such as Eliza.app, Terminal, iTerm, or Cursor, then relaunch.",
         };
       }
       return {

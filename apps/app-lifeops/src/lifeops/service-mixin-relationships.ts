@@ -14,9 +14,9 @@ function isoNow(): string {
 }
 
 /** @internal */
-export function withRelationships<TBase extends Constructor<LifeOpsServiceBase>>(
-  Base: TBase,
-) {
+export function withRelationships<
+  TBase extends Constructor<LifeOpsServiceBase>,
+>(Base: TBase) {
   class LifeOpsRelationshipsServiceMixin extends Base {
     async upsertRelationship(
       input: Omit<
@@ -39,7 +39,8 @@ export function withRelationships<TBase extends Constructor<LifeOpsServiceBase>>
         notes: input.notes ?? "",
         tags: input.tags ?? [],
         relationshipType: input.relationshipType,
-        lastContactedAt: input.lastContactedAt ?? existing?.lastContactedAt ?? null,
+        lastContactedAt:
+          input.lastContactedAt ?? existing?.lastContactedAt ?? null,
         metadata: input.metadata ?? {},
         createdAt: existing?.createdAt ?? now,
         updatedAt: now,
@@ -148,11 +149,7 @@ export function withRelationships<TBase extends Constructor<LifeOpsServiceBase>>
 
     async snoozeFollowUp(id: string, newDueAt: string): Promise<void> {
       await this.repository.updateFollowUpDueAt(this.agentId(), id, newDueAt);
-      await this.repository.updateFollowUpStatus(
-        this.agentId(),
-        id,
-        "snoozed",
-      );
+      await this.repository.updateFollowUpStatus(this.agentId(), id, "snoozed");
     }
 
     async listFollowUps(opts?: {

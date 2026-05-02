@@ -51,7 +51,6 @@ import {
 } from "./compat-route-shared";
 import { sendJson as sendJsonResponse } from "./response";
 
-export { resolveWalletExportRejection } from "@elizaos/app-steward/routes/server-wallet-trade";
 export {
   type CompatRuntimeState,
   DATABASE_UNAVAILABLE_MESSAGE,
@@ -89,6 +88,7 @@ export {
   isSafeResetStateDir,
   resolveCorsOrigin,
 } from "./server-startup";
+export { resolveWalletExportRejection } from "./server-wallet-trade";
 export {
   AGENT_EVENT_ALLOWED_STREAMS,
   CONFIG_WRITE_ALLOWED_TOP_KEYS,
@@ -136,7 +136,9 @@ import { handleLocalInferenceCompatRoutes } from "./local-inference-compat-route
 import { handleN8nRoutes } from "./n8n-routes";
 import { handleOnboardingCompatRoute } from "./onboarding-compat-routes";
 import { handlePluginsCompatRoutes } from "./plugins-compat-routes";
-import { getCorsAllowedPorts, isAllowedLocalOrigin } from "./server-cors";
+import { handleSecretsInventoryRoute } from "./secrets-inventory-routes";
+import { handleSecretsManagerRoute } from "./secrets-manager-routes";
+import { getCorsAllowedPorts, isAllowedOrigin } from "./server-cors";
 import { isCloudProvisioned as _isCloudProvisioned } from "./server-onboarding-compat";
 import { handleWalletMarketOverviewRoute } from "./wallet-market-overview-route";
 
@@ -155,9 +157,9 @@ const lazyEnsureTTS = () =>
     (m) => m.ensureTextToSpeechHandler,
   );
 
-import { hydrateWalletKeysFromNodePlatformSecureStore } from "@elizaos/app-steward/security/hydrate-wallet-keys-from-platform-store";
-import { deleteWalletSecretsFromOsStore } from "@elizaos/app-steward/security/wallet-os-store-actions";
 import { getStartupEmbeddingAugmentation } from "../runtime/startup-overlay.js";
+import { hydrateWalletKeysFromNodePlatformSecureStore } from "../security/hydrate-wallet-keys-from-platform-store";
+import { deleteWalletSecretsFromOsStore } from "../security/wallet-os-store-actions";
 import { clearCloudSecrets, getCloudSecret } from "./cloud-secrets";
 
 // ---------------------------------------------------------------------------
@@ -866,6 +868,15 @@ async function handleCompatRoute(
 
   // Public cached market overview for wallet empty states and cloud feeds.
   if (await handleWalletMarketOverviewRoute(req, res)) return true;
+  if (url.pathname.startsWith("/api/secrets/")) {
+    if (!(await ensureRouteAuthorized(req, res, state))) return true;
+    if (await handleSecretsInventoryRoute(req, res, url.pathname, method)) {
+      return true;
+    }
+    if (await handleSecretsManagerRoute(req, res, url.pathname, method)) {
+      return true;
+    }
+  }
 
   // Handle all /api/cloud/* routes (except compat and billing which have
   // their own handlers above) through handleCloudRoute. This is
@@ -937,9 +948,11 @@ async function handleCompatRoute(
     ) {
       // Include apiKey: null so the upstream state.config does not restore the
       // just-cleared key when it merges and re-saves during the loopback.
-      // Include serviceRouting: { llmText: null } so the upstream's in-memory
-      // serviceRouting (derived from legacy cloud.enabled=true at load time) is
-      // cleared — without it, the loopback save re-persists the cloud-proxy route.
+      // Include serviceRouting with EVERY service that was routed at elizacloud
+      // nulled — without this, tts/media/embeddings/rpc keep pointing at
+      // `cloud-proxy → elizacloud` after disconnect, producing silent 401s for
+      // months until the user notices their voice/image/embedding features
+      // stopped working.
       // Also include linkedAccounts.elizacloud.status="unlinked" so the
       // upstream's in-memory state.config (which still has the old "linked"
       // status from load time) does not overwrite the canonical unlinked
@@ -947,7 +960,13 @@ async function handleCompatRoute(
       // of the auto-reconnect bug after restart.
       const disconnectPatch = {
         cloud: { enabled: false, apiKey: null },
-        serviceRouting: { llmText: null },
+        serviceRouting: {
+          llmText: null,
+          tts: null,
+          media: null,
+          embeddings: null,
+          rpc: null,
+        },
         linkedAccounts: {
           elizacloud: { status: "unlinked", source: "api-key" },
         },
@@ -1107,7 +1126,7 @@ async function handleCompatRoute(
   return handleDatabaseRowsCompatRoute(req, res, state);
 }
 
-export async function handleMiladyCompatRoute(
+export async function handleElizaCompatRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   state: CompatRuntimeState,
@@ -1156,7 +1175,7 @@ export function patchHttpCreateServerForCompat(
       }
       const allowOrigin = (() => {
         if (originHeader !== "") {
-          return isAllowedLocalOrigin(originHeader, corsAllowedPorts)
+          return isAllowedOrigin(originHeader, corsAllowedPorts)
             ? originHeader
             : null;
         }
@@ -1164,7 +1183,7 @@ export function patchHttpCreateServerForCompat(
         if (!ref) return null;
         try {
           const u = new URL(ref);
-          return isAllowedLocalOrigin(ref, corsAllowedPorts) ? u.origin : null;
+          return isAllowedOrigin(ref, corsAllowedPorts) ? u.origin : null;
         } catch {
           return null;
         }
@@ -1184,7 +1203,7 @@ export function patchHttpCreateServerForCompat(
         );
         res.setHeader(
           "Access-Control-Allow-Headers",
-          "Content-Type, Authorization, X-API-Token, X-Api-Key, X-ElizaOS-Client-Id, X-ElizaOS-UI-Language, X-ElizaOS-Token, X-Eliza-Export-Token, X-Eliza-Terminal-Token, X-Milady-CSRF",
+          "Content-Type, Authorization, X-API-Token, X-Api-Key, X-ElizaOS-Client-Id, X-ElizaOS-UI-Language, X-ElizaOS-Token, X-Eliza-Export-Token, X-Eliza-Terminal-Token, X-Eliza-CSRF",
         );
         res.setHeader("Access-Control-Allow-Credentials", "true");
       }
@@ -1214,10 +1233,13 @@ export function patchHttpCreateServerForCompat(
             return;
           }
         } catch (err) {
-          logger.error({
-            error: err instanceof Error ? err.message : String(err),
-            stack: err instanceof Error ? err.stack : undefined,
-          }, "[CompatApiServer] Unhandled compat route error");
+          logger.error(
+            {
+              error: err instanceof Error ? err.message : String(err),
+              stack: err instanceof Error ? err.stack : undefined,
+            },
+            "[CompatApiServer] Unhandled compat route error",
+          );
           if (!res.headersSent) {
             res.statusCode = 500;
             res.setHeader("content-type", "application/json; charset=utf-8");
@@ -1228,10 +1250,13 @@ export function patchHttpCreateServerForCompat(
       }
 
       Promise.resolve(listener(req, res)).catch((err) => {
-        logger.error({
-          error: err instanceof Error ? err.message : String(err),
-          stack: err instanceof Error ? err.stack : undefined,
-        }, "[CompatApiServer] Upstream listener error");
+        logger.error(
+          {
+            error: err instanceof Error ? err.message : String(err),
+            stack: err instanceof Error ? err.stack : undefined,
+          },
+          "[CompatApiServer] Upstream listener error",
+        );
         if (!res.headersSent) {
           res.statusCode = 500;
           res.setHeader("content-type", "application/json; charset=utf-8");

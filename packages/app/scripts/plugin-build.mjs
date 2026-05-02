@@ -14,7 +14,7 @@ const scriptFile = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(scriptFile);
 const _appDir = path.resolve(__dirname, "..");
 const verbosePluginBuild =
-  process.env.MILADY_VERBOSE_PLUGIN_BUILD === "1" ||
+  process.env.ELIZA_VERBOSE_PLUGIN_BUILD === "1" ||
   process.env.ELIZA_VERBOSE_PLUGIN_BUILD === "1";
 
 // Only these values in a plugin's `platforms` array are treated as build-host
@@ -24,7 +24,7 @@ export const OS_PLATFORMS = new Set(["darwin", "linux", "win32"]);
 
 /**
  * Decide whether a plugin should be built on the current host, based on the
- * `milady.platforms` / `elizaos.platforms` allowlist in its package.json, or
+ * `eliza.platforms` / `elizaos.platforms` allowlist in its package.json, or
  * by detecting Capacitor mobile plugins via their peer dependency.
  *
  * Rules (in order):
@@ -39,7 +39,7 @@ export const OS_PLATFORMS = new Set(["darwin", "linux", "win32"]);
  */
 export function shouldBuildPluginForHost(pkg, hostPlatform) {
   const platforms =
-    (pkg && typeof pkg === "object" && pkg.milady?.platforms) ??
+    (pkg && typeof pkg === "object" && pkg.eliza?.platforms) ??
     (pkg && typeof pkg === "object" && pkg.elizaos?.platforms);
   if (Array.isArray(platforms) && platforms.length > 0) {
     const isPureOsAllowlist = platforms.every((p) => OS_PLATFORMS.has(p));
@@ -121,7 +121,7 @@ async function main() {
     if (shouldBuildPluginForHost(pkg, process.platform)) {
       return true;
     }
-    const platforms = pkg?.milady?.platforms ?? pkg?.elizaos?.platforms;
+    const platforms = pkg?.eliza?.platforms ?? pkg?.elizaos?.platforms;
     logVerbose(
       `[plugin:${name}] skipping — declares platforms=${JSON.stringify(
         platforms,

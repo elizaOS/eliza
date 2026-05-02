@@ -3,11 +3,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ARTIFACTS_DIR="${1:-apps/app/electrobun/artifacts}"
+ARTIFACTS_DIR="${1:-$(cd "$SCRIPT_DIR/.." && pwd)/artifacts}"
 SKIP_SIGNATURE_CHECK="${ELECTROBUN_SKIP_CODESIGN:-0}"
 REAL_XCRUN="${ELECTROBUN_REAL_XCRUN:-/usr/bin/xcrun}"
-NOTARY_POLL_ATTEMPTS="${ELECTROBUN_NOTARY_POLL_ATTEMPTS:-45}"
-NOTARY_POLL_DELAY_SECONDS="${ELECTROBUN_NOTARY_POLL_DELAY_SECONDS:-20}"
+NOTARY_WAIT_TIMEOUT="${ELECTROBUN_NOTARY_WAIT_TIMEOUT:-30m}"
 
 if [[ "$(uname)" != "Darwin" ]]; then
   echo "stage-macos-release-artifacts: macOS only"
@@ -19,7 +18,7 @@ if [[ ! -d "$ARTIFACTS_DIR" ]]; then
   exit 1
 fi
 
-TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/milady-macos-artifacts.XXXXXX")"
+TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/eliza-macos-artifacts.XXXXXX")"
 EXTRACT_DIR="$TMP_ROOT/extracted"
 DMG_STAGING_DIR="$TMP_ROOT/dmg-staging"
 TEMP_DMG_PATH=""
@@ -75,76 +74,6 @@ for key in ("id", "submissionId", "uuid", "notarizationId"):
         print(value)
         break
 PY
-}
-
-parse_notary_status() {
-  local output_path="$1"
-  /usr/bin/python3 - "$output_path" <<'PY'
-import json
-import pathlib
-import sys
-
-raw = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
-
-try:
-    payload = json.loads(raw)
-except json.JSONDecodeError:
-    sys.exit(1)
-
-status = payload.get("status") or payload.get("message") or ""
-if status:
-    print(status)
-PY
-}
-
-wait_for_notary_acceptance() {
-  local submission_id="$1"
-  local attempt status_output_path status_text normalized_status
-
-  for ((attempt = 1; attempt <= NOTARY_POLL_ATTEMPTS; attempt += 1)); do
-    status_output_path="$TMP_ROOT/notary-info-$attempt.json"
-
-    if "$REAL_XCRUN" notarytool info \
-      --apple-id "$ELECTROBUN_APPLEID" \
-      --password "$ELECTROBUN_APPLEIDPASS" \
-      --team-id "$ELECTROBUN_TEAMID" \
-      --output-format json \
-      "$submission_id" >"$status_output_path" 2>&1; then
-      status_text="$(parse_notary_status "$status_output_path" || true)"
-      if [[ -z "$status_text" ]]; then
-        echo "Notary status ($attempt/$NOTARY_POLL_ATTEMPTS): unknown"
-        sed -n '1,40p' "$status_output_path" >&2 || true
-      else
-        echo "Notary status ($attempt/$NOTARY_POLL_ATTEMPTS): $status_text"
-      fi
-
-      normalized_status="$(printf '%s' "$status_text" | tr '[:upper:]' '[:lower:]')"
-      case "$normalized_status" in
-        accepted)
-          return 0
-          ;;
-        invalid|rejected)
-          echo "stage-macos-release-artifacts: notarization failed for submission $submission_id" >&2
-          "$REAL_XCRUN" notarytool log \
-            --apple-id "$ELECTROBUN_APPLEID" \
-            --password "$ELECTROBUN_APPLEIDPASS" \
-            --team-id "$ELECTROBUN_TEAMID" \
-            "$submission_id" || true
-          return 1
-          ;;
-      esac
-    else
-      echo "stage-macos-release-artifacts: notary status request failed (attempt $attempt/$NOTARY_POLL_ATTEMPTS); retrying..." >&2
-      sed -n '1,40p' "$status_output_path" >&2 || true
-    fi
-
-    if [[ "$attempt" -lt "$NOTARY_POLL_ATTEMPTS" ]]; then
-      sleep "$NOTARY_POLL_DELAY_SECONDS"
-    fi
-  done
-
-  echo "stage-macos-release-artifacts: timed out waiting for notarization approval for submission $submission_id" >&2
-  return 1
 }
 
 TARBALL_PATH="$(find -L "$ARTIFACTS_DIR" -maxdepth 1 -type f -name "*-macos-*.app.tar.zst" | sort | head -1)"
@@ -278,7 +207,26 @@ if [[ "$SKIP_SIGNATURE_CHECK" != "1" && -n "${ELECTROBUN_APPLEID:-}" && -n "${EL
     exit 1
   fi
   echo "Notary submission id: $NOTARY_SUBMISSION_ID"
-  wait_for_notary_acceptance "$NOTARY_SUBMISSION_ID"
+
+  NOTARY_WAIT_OUTPUT_PATH="$TMP_ROOT/notary-wait.json"
+  if ! "$REAL_XCRUN" notarytool wait \
+    --apple-id "$ELECTROBUN_APPLEID" \
+    --password "$ELECTROBUN_APPLEIDPASS" \
+    --team-id "$ELECTROBUN_TEAMID" \
+    --timeout "$NOTARY_WAIT_TIMEOUT" \
+    --output-format json \
+    "$NOTARY_SUBMISSION_ID" >"$NOTARY_WAIT_OUTPUT_PATH"; then
+    echo "stage-macos-release-artifacts: notarization wait failed for submission $NOTARY_SUBMISSION_ID" >&2
+    sed -n '1,80p' "$NOTARY_WAIT_OUTPUT_PATH" >&2 || true
+    "$REAL_XCRUN" notarytool log \
+      --apple-id "$ELECTROBUN_APPLEID" \
+      --password "$ELECTROBUN_APPLEIDPASS" \
+      --team-id "$ELECTROBUN_TEAMID" \
+      "$NOTARY_SUBMISSION_ID" >&2 || true
+    exit 1
+  fi
+  echo "Notarization accepted for submission $NOTARY_SUBMISSION_ID"
+
   # Apple can lag several minutes before the notarization ticket becomes
   # visible to stapler, especially on Intel runners.
   retry_command 8 20 xcrun stapler staple "$TEMP_DMG_PATH"

@@ -1,7 +1,7 @@
 /**
  * Static file serving for the built React dashboard (production mode).
  *
- * Extracted from server.ts — serves apps/app/dist/ with SPA fallback,
+ * Extracted from server.ts — serves packages/app/dist/ with SPA fallback,
  * caching, and API-base injection for reverse-proxy deployments.
  */
 
@@ -66,7 +66,9 @@ export function resolveUiDir(): string | null {
   const thisDir = path.dirname(fileURLToPath(import.meta.url));
   const packageRoot = findOwnPackageRoot(thisDir);
   const candidates = [
+    path.resolve("packages/app/dist"),
     path.resolve("apps/app/dist"),
+    path.resolve(packageRoot, "packages", "app", "dist"),
     path.resolve(packageRoot, "apps", "app", "dist"),
   ];
 
@@ -132,7 +134,7 @@ function getCachedFile(filePath: string, mtimeMs: number): Buffer {
 // ---------------------------------------------------------------------------
 
 /**
- * Serve built dashboard assets from apps/app/dist with SPA fallback.
+ * Serve built dashboard assets from packages/app/dist with SPA fallback.
  * Returns true when the request is handled.
  */
 export function injectApiBaseIntoHtml(

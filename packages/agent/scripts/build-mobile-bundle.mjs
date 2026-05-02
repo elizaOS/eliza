@@ -44,7 +44,12 @@ import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const agentRoot = path.resolve(here, "..");
-const repoRoot = path.resolve(agentRoot, "..", "..", "..");
+// agentRoot = repoRoot/packages/agent → two parents up is the repo root.
+// (Earlier versions assumed eliza's outer-repo layout where agent
+// lived at eliza/packages/agent/, requiring three `..`s. That hop is
+// the source of every "could not locate @electric-sql/pglite/dist" or
+// "agent-bundle.js not found" error in CI.)
+const repoRoot = path.resolve(agentRoot, "..", "..");
 const outDir = path.join(agentRoot, "dist-mobile");
 const stubsDir = path.join(here, "mobile-stubs");
 const entry = path.join(agentRoot, "src", "bin.ts");
@@ -102,17 +107,17 @@ console.log("[build-mobile] pglite dist:", pgliteDist);
 
 // Native deps without an Android prebuild — replace at bundle time with
 // throw-on-call shims. Bun.build's `--external` would leave bare-name imports
-// in the output; `MILADY_PLATFORM=android` would then fail at runtime when
+// in the output; `ELIZA_PLATFORM=android` would then fail at runtime when
 // the mobile bun process can't resolve the missing package. A plugin onResolve
 // that maps the bare specifier to the stub path keeps the resolution pure.
 //
-// AOSP runtime uses bun:ffi against libllama.so + libmilady-llama-shim.so
+// AOSP runtime uses bun:ffi against libllama.so + libeliza-llama-shim.so
 // directly. node-llama-cpp stays stubbed unconditionally — un-stubbing pulls
 // in unresolvable per-platform prebuild packages (e.g.
 // `@node-llama-cpp/win-x64-cuda-ext`) that the agent's transitive imports
 // reference but the AOSP target cannot install. The static import of
 // `runtime/aosp-llama-adapter.ts` from `bin.ts` registers the runtime loader
-// when `MILADY_LOCAL_LLAMA=1`. The Capacitor APK build also keeps the stub
+// when `ELIZA_LOCAL_LLAMA=1`. The Capacitor APK build also keeps the stub
 // because its on-device inference goes through llama-cpp-capacitor in the
 // WebView, not node-llama-cpp.
 const nativeStubs = {
@@ -162,7 +167,7 @@ const optionalPluginStubs = {
 const stubAliases = { ...nativeStubs, ...optionalPluginStubs };
 
 const stubResolverPlugin = {
-  name: "milady-mobile-stubs",
+  name: "eliza-mobile-stubs",
   setup(build) {
     const aliasNames = Object.keys(stubAliases);
     const filter = new RegExp(
@@ -205,10 +210,14 @@ const corePackages = [
   "@elizaos/plugin-sql",
 ];
 
+// Inside the eliza repo the source trees live directly under the repo
+// root: `packages/typescript/`, `packages/shared/`, and
+// `plugins/plugin-sql/`. The earlier `eliza/` prefix here was a leftover
+// from eliza's outer-repo layout where this whole tree was nested under
+// `eliza/`.
 const dedupeTargets = {
   "@elizaos/core": path.resolve(
     repoRoot,
-    "eliza",
     "packages",
     "typescript",
     "src",
@@ -216,7 +225,6 @@ const dedupeTargets = {
   ),
   "@elizaos/shared": path.resolve(
     repoRoot,
-    "eliza",
     "packages",
     "shared",
     "src",
@@ -229,7 +237,6 @@ const dedupeTargets = {
   // runtime uses keeps the adapter and the runtime in lockstep.
   "@elizaos/plugin-sql": path.resolve(
     repoRoot,
-    "eliza",
     "plugins",
     "plugin-sql",
     "typescript",
@@ -247,7 +254,7 @@ for (const [pkg, target] of Object.entries(dedupeTargets)) {
 }
 
 const dedupePlugin = {
-  name: "milady-mobile-core-dedupe",
+  name: "eliza-mobile-core-dedupe",
   setup(build) {
     const filter = new RegExp(
       "^(?:" +
@@ -275,7 +282,7 @@ const buildResult = await Bun.build({
   // to keep stack traces readable. Re-enable selectively if APK size matters.
   minify: false,
   define: {
-    "process.env.MILADY_PLATFORM": JSON.stringify("android"),
+    "process.env.ELIZA_PLATFORM": JSON.stringify("android"),
     // Disable the `isDirectRun` self-invocation guard in the agent's
     // `runtime/eliza.ts`. After bundling, `import.meta.url` and
     // `process.argv[1]` both resolve to the same bundle path, so the guard
@@ -284,7 +291,7 @@ const buildResult = await Bun.build({
     // port and the second one's stdin-driven chat REPL exits on EOF, taking
     // the whole process down. Defining the marker as `false` flattens the
     // branch at build time.
-    "process.env.MILADY_DISABLE_DIRECT_RUN": JSON.stringify("1"),
+    "process.env.ELIZA_DISABLE_DIRECT_RUN": JSON.stringify("1"),
   },
   plugins: [dedupePlugin, stubResolverPlugin],
 });
@@ -374,7 +381,7 @@ const manifest = {
     "All listed plugins are bundled via static imports in",
     "  eliza/packages/agent/src/runtime/eliza.ts (STATIC_ELIZA_PLUGINS).",
     "The mobile runtime substitutes MOBILE_CORE_PLUGINS for CORE_PLUGINS",
-    "when MILADY_PLATFORM=android.",
+    "when ELIZA_PLATFORM=android.",
   ],
 };
 await writeFile(

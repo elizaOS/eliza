@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
+  __internal,
   callExternalAction,
   callUserAction,
-  __internal,
 } from "../src/actions/twilio-call.js";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -12,9 +12,7 @@ function makeMessage() {
     entityId: "00000000-0000-0000-0000-000000000001",
     roomId: "00000000-0000-0000-0000-000000000002",
     content: { text: "call", ownerAccess: true },
-  } as unknown as Parameters<
-    NonNullable<typeof callUserAction.handler>
-  >[1];
+  } as unknown as Parameters<NonNullable<typeof callUserAction.handler>>[1];
 }
 
 function makeMessageWithText(text: string) {
@@ -22,9 +20,7 @@ function makeMessageWithText(text: string) {
     entityId: "00000000-0000-0000-0000-000000000001",
     roomId: "00000000-0000-0000-0000-000000000002",
     content: { text, ownerAccess: true },
-  } as unknown as Parameters<
-    NonNullable<typeof callUserAction.handler>
-  >[1];
+  } as unknown as Parameters<NonNullable<typeof callUserAction.handler>>[1];
 }
 
 function makeRuntime(settings: Record<string, string> = {}) {
@@ -32,17 +28,15 @@ function makeRuntime(settings: Record<string, string> = {}) {
     agentId: "00000000-0000-0000-0000-000000000003",
     getSetting: (key: string) => settings[key],
     character: { settings: { OWNER: "test" } },
-  } as unknown as Parameters<
-    NonNullable<typeof callUserAction.handler>
-  >[0];
+  } as unknown as Parameters<NonNullable<typeof callUserAction.handler>>[0];
 }
 
 beforeEach(() => {
   for (const key of Object.keys(process.env)) {
     if (
       key.startsWith("TWILIO_") ||
-      key.startsWith("MILADY_E2E_TWILIO") ||
-      key === "MILADY_DEVICE_BUS_URL"
+      key.startsWith("ELIZA_E2E_TWILIO") ||
+      key === "ELIZA_DEVICE_BUS_URL"
     ) {
       delete process.env[key];
     }
@@ -57,7 +51,7 @@ afterEach(() => {
 describe("readExternalAllowList", () => {
   test("parses comma/space separated env, includes owner number", () => {
     process.env.TWILIO_CALL_EXTERNAL_ALLOWLIST = "+15551112222, +15553334444";
-    process.env.MILADY_E2E_TWILIO_RECIPIENT = "+15559876543";
+    process.env.ELIZA_E2E_TWILIO_RECIPIENT = "+15559876543";
     const list = __internal.readExternalAllowList(undefined);
     expect(list).toContain("+15551112222");
     expect(list).toContain("+15553334444");
@@ -72,7 +66,7 @@ describe("readExternalAllowList", () => {
 
 describe("CALL_USER confirmation gate", () => {
   test("without confirmed=true returns requiresConfirmation and does not dial", async () => {
-    process.env.MILADY_E2E_TWILIO_RECIPIENT = "+15559876543";
+    process.env.ELIZA_E2E_TWILIO_RECIPIENT = "+15559876543";
     const fetchSpy = vi.spyOn(globalThis, "fetch");
     const result = await callUserAction.handler!(
       makeRuntime(),

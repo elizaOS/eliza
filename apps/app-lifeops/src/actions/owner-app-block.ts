@@ -55,7 +55,7 @@ export const ownerAppBlockAction: Action & {
     "SHIELD_APPS",
   ],
   description:
-    "Admin/owner-only. Manage native phone-app blocking via Family Controls (iPhone) or Usage Access (Android). " +
+    "Owner-only. Manage native phone-app blocking via Family Controls (iPhone) or Usage Access (Android). " +
     "Subactions: block (start blocking a set of apps — requires packageNames on Android or previously selected appTokens on iPhone; optional durationMinutes), " +
     "unblock (remove the active app block), " +
     "status (report whether an app block is active and when it ends). " +
@@ -63,7 +63,7 @@ export const ownerAppBlockAction: Action & {
     "Do NOT use it for screen-time analytics (OWNER_SCREEN_TIME) or remote desktop sessions (OWNER_REMOTE_DESKTOP). " +
     "Do not pair this action with a speculative REPLY; it provides its own final reply.",
   descriptionCompressed:
-    "Admin: block/unblock phone apps + check status (Family Controls / Usage Access).",
+    "Owner: block/unblock phone apps + check status (Family Controls / Usage Access).",
   suppressPostActionContinuation: true,
 
   validate: async (runtime, message) => {

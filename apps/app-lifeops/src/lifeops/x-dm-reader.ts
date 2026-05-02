@@ -27,10 +27,10 @@
 import { logger } from "@elizaos/core";
 import {
   readXDms,
-  XReadError,
   type XRawDm,
-  type XReadPageOptions,
+  XReadError,
   type XReaderCredentials,
+  type XReadPageOptions,
 } from "./x-reader.js";
 
 // ---------------------------------------------------------------------------
@@ -193,11 +193,9 @@ export interface XDmPullResult {
  * @param options.cursor Pagination cursor from a previous pull's `nextCursor`.
  * @param options.env    Override for process.env (useful in tests).
  */
-export async function pullXInboundDms(options: {
-  limit?: number;
-  cursor?: string;
-  env?: NodeJS.ProcessEnv;
-} = {}): Promise<XDmPullResult> {
+export async function pullXInboundDms(
+  options: { limit?: number; cursor?: string; env?: NodeJS.ProcessEnv } = {},
+): Promise<XDmPullResult> {
   const syncedAt = new Date().toISOString();
   const credentials = readXDmCredentialsFromEnv(options.env ?? process.env);
 

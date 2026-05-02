@@ -11,15 +11,15 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../../test/helpers/real-runtime";
-import { appLifeOpsPlugin } from "../src/plugin.js";
+} from "../../../../eliza/test/helpers/real-runtime";
+import { intentSyncAction } from "../src/actions/intent-sync.js";
 import {
   acknowledgeIntent,
   broadcastIntent,
   pruneExpiredIntents,
   receivePendingIntents,
 } from "../src/lifeops/intent-sync.js";
-import { intentSyncAction } from "../src/actions/intent-sync.js";
+import { appLifeOpsPlugin } from "../src/plugin.js";
 
 const AGENT_ID = "lifeops-intent-sync-agent";
 
@@ -275,9 +275,9 @@ describe("intent-sync — real PGLite", () => {
     // kind was invalid); a descriptive error code is set for downstream
     // consumers.
     expect((result as unknown as { success?: boolean }).success).toBe(false);
-    expect((result as unknown as { values?: { success?: boolean } }).values?.success).toBe(
-      false,
-    );
+    expect(
+      (result as unknown as { values?: { success?: boolean } }).values?.success,
+    ).toBe(false);
     expect(
       (result as unknown as { data?: { error?: string } }).data?.error,
     ).toBe("UNKNOWN_KIND");

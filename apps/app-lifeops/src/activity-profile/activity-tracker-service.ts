@@ -65,7 +65,7 @@ export class ActivityTrackerService extends Service {
 
   private async startCollector(): Promise<void> {
     if (
-      process.env.MILADY_DISABLE_ACTIVITY_TRACKER === "1" ||
+      process.env.ELIZA_DISABLE_ACTIVITY_TRACKER === "1" ||
       process.env.ELIZA_DISABLE_ACTIVITY_TRACKER === "1"
     ) {
       this.mode = "disabled-config";

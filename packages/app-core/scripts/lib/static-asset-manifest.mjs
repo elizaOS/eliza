@@ -1,8 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 
-export const APP_PUBLIC_REPO_PREFIX = "apps/app/public";
-export const HOMEPAGE_PUBLIC_REPO_PREFIX = "apps/homepage/public";
+export const APP_PUBLIC_REPO_PREFIX = "packages/app/public";
+export const HOMEPAGE_PUBLIC_REPO_PREFIX = "packages/homepage/public";
+export const WRAPPER_APP_PUBLIC_REPO_PREFIX = "apps/app/public";
+export const WRAPPER_HOMEPAGE_PUBLIC_REPO_PREFIX = "apps/homepage/public";
 export const STATIC_ASSET_MANIFEST_REPO_PATH =
   "scripts/generated/static-asset-manifest.json";
 export const IGNORED_STATIC_ASSET_BASENAMES = new Set([
@@ -35,9 +37,9 @@ export const APP_DIST_BOOTSTRAP_ASSETS = [
   "vrm-decoders/draco/draco_decoder.js",
   "vrm-decoders/draco/draco_decoder.wasm",
   "vrm-decoders/draco/draco_wasm_wrapper.js",
-  "vrms/backgrounds/eliza-1.png",
-  "vrms/eliza-1.vrm.gz",
-  "vrms/previews/eliza-1.png",
+  "vrms/backgrounds/milady-1.png",
+  "vrms/milady-1.vrm.gz",
+  "vrms/previews/milady-1.png",
 ];
 
 function listFilesRecursive(dir) {
@@ -72,10 +74,31 @@ function listPublicFiles(rootDir, repoPrefix) {
     .sort();
 }
 
+function resolvePublicRepoPrefix(rootDir, innerPrefix, wrapperPrefix) {
+  if (fs.existsSync(path.join(rootDir, wrapperPrefix))) {
+    return wrapperPrefix;
+  }
+  return innerPrefix;
+}
+
 export function buildStaticAssetManifest(rootDir) {
   return {
-    app: listPublicFiles(rootDir, APP_PUBLIC_REPO_PREFIX),
-    homepage: listPublicFiles(rootDir, HOMEPAGE_PUBLIC_REPO_PREFIX),
+    app: listPublicFiles(
+      rootDir,
+      resolvePublicRepoPrefix(
+        rootDir,
+        APP_PUBLIC_REPO_PREFIX,
+        WRAPPER_APP_PUBLIC_REPO_PREFIX,
+      ),
+    ),
+    homepage: listPublicFiles(
+      rootDir,
+      resolvePublicRepoPrefix(
+        rootDir,
+        HOMEPAGE_PUBLIC_REPO_PREFIX,
+        WRAPPER_HOMEPAGE_PUBLIC_REPO_PREFIX,
+      ),
+    ),
   };
 }
 

@@ -398,7 +398,7 @@ function ExternalInstalledSummary({
       <header>
         <h3
           className="text-[10px] font-medium uppercase tracking-wider text-muted"
-          title="Milady can load these models without re-downloading."
+          title="Eliza can load these models without re-downloading."
         >
           Discovered from other tools
         </h3>

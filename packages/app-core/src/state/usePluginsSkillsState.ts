@@ -22,6 +22,43 @@ import { confirmDesktopAction } from "../utils";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
+/**
+ * Priority-ordered patterns for picking the *primary* sensitive credential
+ * field on a plugin. Order matters: when multiple sensitive params exist
+ * (e.g. a GitHub App with both `GITHUB_API_TOKEN` and
+ * `GITHUB_APP_PRIVATE_KEY`) we want the most-typical request credential
+ * picked, not a webhook secret or signing key.
+ */
+const SENSITIVE_FIELD_PRIORITY: ReadonlyArray<RegExp> = [
+  /api[_-]?key$/i,
+  /api[_-]?token$/i,
+  /[_-]token$/i,
+  /auth[_-]?token$/i,
+  /bot[_-]?token$/i,
+  /access[_-]?token$/i,
+  /secret[_-]?key$/i,
+  /private[_-]?key$/i,
+  /client[_-]?secret$/i,
+];
+
+/**
+ * Pick the primary sensitive credential parameter from a plugin's
+ * declared parameter list. Walks the priority list in order and returns
+ * the first sensitive param whose key matches. Falls back to the first
+ * sensitive parameter if none match (explicit contract: documented and
+ * tested).
+ */
+export function pickPrimaryCredentialParam<
+  P extends { key: string; sensitive: boolean },
+>(params: readonly P[]): P | undefined {
+  const sensitive = params.filter((p) => p.sensitive);
+  for (const pattern of SENSITIVE_FIELD_PRIORITY) {
+    const found = sensitive.find((p) => pattern.test(p.key));
+    if (found) return found;
+  }
+  return sensitive[0];
+}
+
 interface PluginsSkillsStateParams {
   setActionNotice: (
     text: string,
@@ -232,6 +269,7 @@ export function usePluginsSkillsState({
       setPluginSaving((prev) => new Set([...prev, pluginId]));
       try {
         const result = await client.updatePlugin(pluginId, { config });
+        const vaultMirrorFailures = result.vaultMirrorFailures ?? [];
 
         // Check if this is an AI provider plugin
         const plugin = plugins.find((p) => p.id === pluginId);
@@ -243,10 +281,22 @@ export function usePluginsSkillsState({
         if (isAiProvider) {
           const providerId =
             normalizeOnboardingProviderId(pluginId) ?? pluginId;
-          const providerApiKey = Object.values(config).find(
-            (value): value is string =>
-              typeof value === "string" && value.trim().length > 0,
-          );
+          // Identify the primary credential field by its STRUCTURE, not
+          // by iterating values. The plugin's parameter metadata
+          // declares which fields are sensitive; the picker walks a
+          // priority-ordered list of common credential name patterns
+          // (API_KEY, *_TOKEN, *_PRIVATE_KEY, etc.) and falls back to
+          // the first sensitive param. This closes the bug where typing
+          // a model field before the API-key field allowed the model
+          // slug to be picked up by `Object.values(config).find()` and
+          // overwrite the actual key, and handles connectors whose
+          // primary credential is a token/private key, not an API key.
+          const apiKeyParam = plugin
+            ? pickPrimaryCredentialParam(plugin.parameters)
+            : undefined;
+          const providerApiKey = apiKeyParam
+            ? config[apiKeyParam.key]
+            : undefined;
           try {
             await client.switchProvider(providerId, providerApiKey);
           } catch (err) {
@@ -266,16 +316,22 @@ export function usePluginsSkillsState({
         }
 
         await loadPlugins();
-        setActionNotice(
-          isAiProvider
-            ? providerSwitchError
-              ? `Provider settings saved, but activating ${plugin?.name ?? pluginId} failed: ${providerSwitchError.message}`
-              : "Provider settings saved. Restarting agent..."
-            : result.requiresRestart
-              ? "Plugin settings saved. Agent restarted."
-              : "Plugin settings saved without a full agent restart.",
-          isAiProvider && providerSwitchError ? "error" : "success",
-        );
+        const notice =
+          vaultMirrorFailures.length > 0
+            ? `Plugin settings saved, but vault storage failed for ${vaultMirrorFailures.join(", ")}.`
+            : isAiProvider
+              ? providerSwitchError
+                ? `Provider settings saved, but activating ${plugin?.name ?? pluginId} failed: ${providerSwitchError.message}`
+                : "Provider settings saved. Restarting agent..."
+              : result.requiresRestart
+                ? "Plugin settings saved. Agent restarted."
+                : "Plugin settings saved without a full agent restart.";
+        const noticeTone =
+          (isAiProvider && providerSwitchError) ||
+          vaultMirrorFailures.length > 0
+            ? "error"
+            : "success";
+        setActionNotice(notice, noticeTone);
         setPluginSaveSuccess((prev) => new Set([...prev, pluginId]));
         setTimeout(() => {
           setPluginSaveSuccess((prev) => {

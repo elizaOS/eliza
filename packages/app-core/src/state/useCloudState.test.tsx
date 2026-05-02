@@ -11,7 +11,7 @@ const {
   isElectrobunRuntimeMock,
   openExternalUrlMock,
   setBootConfigMock,
-  yieldMiladyHttpAfterNativeMessageBoxMock,
+  yieldElizaHttpAfterNativeMessageBoxMock,
 } = vi.hoisted(() => ({
   clientMock: {
     getBaseUrl: vi.fn(() => "http://127.0.0.1:31337"),
@@ -29,7 +29,7 @@ const {
   isElectrobunRuntimeMock: vi.fn(() => false),
   openExternalUrlMock: vi.fn(),
   setBootConfigMock: vi.fn(),
-  yieldMiladyHttpAfterNativeMessageBoxMock: vi.fn(),
+  yieldElizaHttpAfterNativeMessageBoxMock: vi.fn(),
 }));
 
 vi.mock("../api", () => ({
@@ -61,8 +61,8 @@ vi.mock("../utils", () => ({
     reason !== "api_key_present_not_authenticated" &&
     reason !== "api_key_present_runtime_not_started",
   openExternalUrl: openExternalUrlMock,
-  yieldMiladyHttpAfterNativeMessageBox:
-    yieldMiladyHttpAfterNativeMessageBoxMock,
+  yieldElizaHttpAfterNativeMessageBox:
+    yieldElizaHttpAfterNativeMessageBoxMock,
 }));
 
 import { useCloudState } from "./useCloudState";

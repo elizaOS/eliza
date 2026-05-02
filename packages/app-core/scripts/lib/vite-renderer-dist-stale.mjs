@@ -1,5 +1,5 @@
 /**
- * Returns true when `apps/app` needs a production `vite build` before Electrobun dev.
+ * Returns true when the main app needs a production `vite build` before Electrobun dev.
  *
  * Uses **mtime** of `dist/index.html` vs. app sources, shared packages, and key config files.
  * **Why not always build:** A full Vite production compile is expensive; skipping when dist
@@ -68,7 +68,7 @@ function maxMtimeAcrossDirs(dirs) {
 }
 
 /**
- * @param {string} appDir absolute path to apps/app
+ * @param {string} appDir absolute path to packages/app
  * @param {string} repoRoot absolute path to repo root
  */
 export function viteRendererBuildNeeded(appDir, repoRoot) {

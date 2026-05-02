@@ -112,9 +112,9 @@ class Mind2WebRunner:
         start_time = time.time()
 
         if self.config.model_provider == "eliza":
-            from milady_adapter.mind2web import MiladyMind2WebAgent
+            from eliza_adapter.mind2web import ElizaMind2WebAgent
 
-            agent = MiladyMind2WebAgent(self.config)
+            agent = ElizaMind2WebAgent(self.config)
         else:
             agent = create_mind2web_agent(self.config)
 

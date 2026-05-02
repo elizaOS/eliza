@@ -12,15 +12,15 @@ describe("loadElizaConfig", () => {
   let configPath: string;
 
   beforeEach(async () => {
-    stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "milady-config-"));
-    configPath = path.join(stateDir, "milady.json");
+    stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-config-"));
+    configPath = path.join(stateDir, "eliza.json");
     process.env = {
       ...originalEnv,
-      MILADY_STATE_DIR: stateDir,
-      MILADY_CONFIG_PATH: configPath,
+      ELIZA_STATE_DIR: stateDir,
+      ELIZA_CONFIG_PATH: configPath,
     };
     delete process.env.WALLET_SOURCE_EVM;
-    delete process.env.MILADY_CLOUD_EVM_ADDRESS;
+    delete process.env.ELIZA_CLOUD_EVM_ADDRESS;
   });
 
   afterEach(async () => {
@@ -43,7 +43,7 @@ describe("loadElizaConfig", () => {
       path.join(stateDir, "config.env"),
       `${[
         "WALLET_SOURCE_EVM=cloud",
-        "MILADY_CLOUD_EVM_ADDRESS=0x1234567890abcdef1234567890abcdef12345678",
+        "ELIZA_CLOUD_EVM_ADDRESS=0x1234567890abcdef1234567890abcdef12345678",
       ].join("\n")}\n`,
       "utf8",
     );
@@ -52,18 +52,18 @@ describe("loadElizaConfig", () => {
 
     // config.env values from file should be in process.env
     expect(process.env.WALLET_SOURCE_EVM).toBe("cloud");
-    expect(process.env.MILADY_CLOUD_EVM_ADDRESS).toBe(
+    expect(process.env.ELIZA_CLOUD_EVM_ADDRESS).toBe(
       "0x1234567890abcdef1234567890abcdef12345678",
     );
 
     // Security: config.env secrets should NOT be merged into config.env
-    // (they're process-env-only to avoid serializing sensitive values to milady.json)
+    // (they're process-env-only to avoid serializing sensitive values to eliza.json)
     expect(
       (config.env as Record<string, string | undefined>).WALLET_SOURCE_EVM,
     ).toBe("local"); // from config file, not overridden by config.env
     expect(
       (config.env as Record<string, string | undefined>)
-        .MILADY_CLOUD_EVM_ADDRESS,
+        .ELIZA_CLOUD_EVM_ADDRESS,
     ).toBeUndefined(); // NOT in config, only in process.env
   });
 });

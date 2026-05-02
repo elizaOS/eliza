@@ -278,7 +278,24 @@ async function installGameRoutes(page: Page, fixture: GameFixture) {
   });
 
   await page.route("**/api/apps/runs/*", async (route) => {
-    if (route.request().method() !== "GET") {
+    const method = route.request().method();
+    if (method === "PATCH") {
+      run = {
+        ...run,
+        viewerAttachment: "attached",
+      };
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: true,
+          message: `${fixture.displayName} attached.`,
+          run,
+        }),
+      });
+      return;
+    }
+    if (method !== "GET") {
       await route.fallback();
       return;
     }
@@ -313,6 +330,12 @@ for (const fixture of FIXTURES) {
     const api = await installGameRoutes(page, fixture);
 
     await openAppPath(page, `/apps/${fixture.slug}`);
+    const launchButton = page.getByRole("button", {
+      name: `Launch ${fixture.displayName}`,
+    });
+    await expect(launchButton).toBeVisible({ timeout: 60_000 });
+    await launchButton.click();
+
     await expect(page.getByTestId("game-view-iframe")).toBeVisible({
       timeout: 60_000,
     });

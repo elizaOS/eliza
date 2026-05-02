@@ -42,8 +42,6 @@ export function createPackagedWindowsAppEnv(args: {
     ...env,
     ELIZA_DESKTOP_TEST_API_BASE: args.apiBase,
     ELIZA_DESKTOP_TEST_PARTITION: "persist:bootstrap-isolated",
-    ELIZA_DESKTOP_TEST_API_BASE: args.apiBase,
-    ELIZA_DESKTOP_TEST_PARTITION: "persist:bootstrap-isolated",
     ELIZA_DISABLE_LOCAL_EMBEDDINGS: "1",
     ELECTROBUN_CONSOLE: "1",
     // Redirect both Windows profile roots so the packaged shell and the

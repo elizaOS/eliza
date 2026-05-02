@@ -4,8 +4,7 @@
   "system_prompt_template": "voyager/prompts/basic_system_prompt.txt",
   "package_json": "voyager/environments/basic_package.json",
   "timeout": 4000,
-  "reward_config": {
-  },
+  "reward_config": {},
   "metrics": {
     "track_swap_programs": true,
     "track_instruction_types": true,

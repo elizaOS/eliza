@@ -21,6 +21,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 // Extracted modules — re-exported for backward compatibility
 // ---------------------------------------------------------------------------
 import { runFirstTimeSetup } from "./first-time-setup.js";
+import { resolveConfigEnvForProcess } from "./operations/vault-bridge.js";
 import { resolvePlugins } from "./plugin-resolver.js";
 import {
   CUSTOM_PLUGINS_DIRNAME as CUSTOM_RUNTIME_PLUGINS_DIRNAME,
@@ -93,12 +94,11 @@ import {
   type UUID,
 } from "@elizaos/core";
 import * as pluginAgentSkills from "@elizaos/plugin-agent-skills";
-import * as pluginAnthropic from "@elizaos/plugin-anthropic";
 import * as pluginBrowserBridge from "@elizaos/plugin-browser-bridge";
-import * as pluginLocalEmbedding from "@elizaos/plugin-local-embedding";
 import * as pluginPdf from "@elizaos/plugin-pdf";
 import * as pluginSql from "@elizaos/plugin-sql";
 import {
+  formatError,
   getDefaultStylePreset,
   getOnboardingProviderOption,
   isElizaSettingsDebugEnabled,
@@ -159,12 +159,23 @@ import {
   createPgliteInitError,
   getPgliteErrorCode,
   PGLITE_ERROR_CODES,
-} from "./pglite-error-compat";
+} from "./pglite-error-compat.js";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle.js";
 import rolesPlugin from "./roles.js";
 import { shouldEnableTrajectoryLoggingByDefault } from "./trajectory-persistence.js";
 
 const require = createRequire(import.meta.url);
+// plugin-local-embedding is needed when local embeddings are enabled, but
+// Docker no-embedding smokes must still boot if a published package advertises
+// a missing dist entry.
+let pluginLocalEmbedding:
+  | typeof import("@elizaos/plugin-local-embedding")
+  | null = null;
+try {
+  pluginLocalEmbedding = await import("@elizaos/plugin-local-embedding");
+} catch {
+  pluginLocalEmbedding = null;
+}
 // Agent orchestrator ships as the standalone @elizaos/plugin-agent-orchestrator package.
 // Use top-level dynamic import because the package is ESM-only and fails under
 // createRequire() in bun runtime; the await is resolved before module consumers read the binding.
@@ -192,12 +203,6 @@ try {
 } catch {
   pluginCommands = null;
 }
-// plugin-plugin-manager, plugin-secrets-manager, and plugin-trust are now
-// built-in core capabilities in @elizaos/core. Enable via character settings:
-// ENABLE_PLUGIN_MANAGER, ENABLE_SECRETS_MANAGER, ENABLE_TRUST.
-// Keep plugin-cron behind a guarded runtime require for the same reason. Some
-// published alpha builds resolve through package.json but are missing the
-// shipped dist/index.js entry, which breaks CLI bootstrap before help/version.
 let pluginCron: unknown = null;
 try {
   pluginCron = require("@elizaos/plugin-cron");
@@ -222,6 +227,15 @@ try {
 } catch {
   pluginOllama = null;
 }
+// Keep plugin-anthropic behind a guarded runtime require too. Some published
+// alpha builds advertise dist/node/index.node.js without shipping that entry,
+// which breaks no-credential Docker startup smokes before provider selection.
+let pluginAnthropic: unknown = null;
+try {
+  pluginAnthropic = require("@elizaos/plugin-anthropic");
+} catch {
+  pluginAnthropic = null;
+}
 // Keep plugin-openai behind a guarded runtime require too. Some published
 // alpha builds advertise dist/node/index.node.js without shipping that entry,
 // which breaks CLI bootstrap and validation in published-only CI.
@@ -231,8 +245,7 @@ try {
 } catch {
   pluginOpenai = null;
 }
-// plugin-personality is now built into @elizaos/core advanced-capabilities.
-// Enabled when advancedCapabilities: true.
+// Personality is bundled in @elizaos/core advanced capabilities (advancedCapabilities).
 
 type SignalShutdownContext = {
   getRuntime: () => AgentRuntime;
@@ -316,8 +329,10 @@ function registerSignalShutdownHandlers(context: SignalShutdownContext): void {
 // so plugin-resolver.ts can read it without importing this module directly.
 Object.assign(STATIC_ELIZA_PLUGINS, {
   "@elizaos/plugin-sql": pluginSql,
-  "@elizaos/plugin-local-embedding": pluginLocalEmbedding,
-  // secrets-manager: now built-in core capability (ENABLE_SECRETS_MANAGER)
+  ...(pluginLocalEmbedding
+    ? { "@elizaos/plugin-local-embedding": pluginLocalEmbedding }
+    : {}),
+  // secrets (SECRETS service): now built-in core capability (ENABLE_SECRETS_MANAGER)
   ...(pluginAgentOrchestrator
     ? { "agent-orchestrator": pluginAgentOrchestrator }
     : {}),
@@ -328,7 +343,7 @@ Object.assign(STATIC_ELIZA_PLUGINS, {
   ...(pluginCommands ? { "@elizaos/plugin-commands": pluginCommands } : {}),
   "@elizaos/plugin-pdf": pluginPdf,
   ...(pluginOpenai ? { "@elizaos/plugin-openai": pluginOpenai } : {}),
-  "@elizaos/plugin-anthropic": pluginAnthropic,
+  ...(pluginAnthropic ? { "@elizaos/plugin-anthropic": pluginAnthropic } : {}),
   ...(pluginOllama ? { "@elizaos/plugin-ollama": pluginOllama } : {}),
   ...(pluginElizacloud
     ? { "@elizaos/plugin-elizacloud": pluginElizacloud }
@@ -538,11 +553,6 @@ export function configureLocalEmbeddingPlugin(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/** Extract a human-readable error message from an unknown thrown value. */
-function formatError(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
 
 function trimEnvString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -2972,7 +2982,53 @@ export async function startEliza(
   // 2d. Propagate database config into process.env for plugin-sql
   applyDatabaseConfigToEnv(config);
 
-  // 2e. Propagate arbitrary env vars from config.env into process.env.
+  // 2e. Boot-time vault hydration. Migrate plaintext sensitive values from
+  // eliza.json + config.env + sensitive process.env keys into the OS-keychain
+  // vault, then resolve any vault://KEY sentinels in `config.env` so the
+  // legacy hydration loop below sees real values.
+  {
+    const { runVaultBootstrap } = await import(
+      "@elizaos/app-core/services/vault-bootstrap"
+    );
+    const { sharedVault } = await import(
+      "@elizaos/app-core/services/vault-mirror"
+    );
+    const bootResult = await runVaultBootstrap();
+    logger.info(
+      `[vault-bootstrap] migrated=${bootResult.migrated} already-hydrated=${bootResult.alreadyHydrated} failed=${bootResult.failed.length}`,
+    );
+
+    const { resolved, missing } = await resolveConfigEnvForProcess(
+      config.env as Record<string, unknown> | undefined,
+      sharedVault(),
+    );
+    if (missing.length > 0) {
+      logger.warn(
+        `[vault-bootstrap] sentinel(s) without vault entry: ${missing.join(", ")}`,
+      );
+    }
+    if (
+      config.env &&
+      typeof config.env === "object" &&
+      !Array.isArray(config.env)
+    ) {
+      for (const [key, value] of Object.entries(resolved)) {
+        (config.env as Record<string, unknown>)[key] = value;
+      }
+    }
+    const varsBag = (config.env as Record<string, unknown> | undefined)?.vars;
+    if (varsBag && typeof varsBag === "object" && !Array.isArray(varsBag)) {
+      const varsResult = await resolveConfigEnvForProcess(
+        varsBag as Record<string, unknown>,
+        sharedVault(),
+      );
+      for (const [key, value] of Object.entries(varsResult.resolved)) {
+        (varsBag as Record<string, unknown>)[key] = value;
+      }
+    }
+  }
+
+  // 2f. Propagate arbitrary env vars from config.env into process.env.
   // Eliza stores user-defined env vars (plugin settings, API URLs, etc.)
   // in config.env; elizaOS plugins read them via process.env / getSetting.
   // Skip ELIZAOS_CLOUD_* — applyCloudConfigToEnv() owns those; otherwise a
@@ -3121,6 +3177,59 @@ export async function startEliza(
 
   // 5. Create the Eliza bridge plugin (workspace context + session keys + compaction)
   const agentId = character.name?.toLowerCase().replace(/\s+/g, "-") ?? "main";
+
+  // 5-pre0. Apply per-agent vault profile overrides to process.env.
+  //
+  // Vault keys with multiple named profiles (work / personal / throwaway)
+  // resolve the active profile for THIS agent through the vault's
+  // routing layer, then write the resolved value into process.env so
+  // the synchronous runtime.getSetting fast path picks it up. Idempotent;
+  // safe to run multiple times. Opt-out via
+  // ELIZA_DISABLE_VAULT_PROFILE_RESOLVER=1.
+  if (process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER !== "1") {
+    try {
+      const { sharedVault } = await import(
+        "@elizaos/app-core/services/vault-mirror"
+      );
+      const { applyVaultProfilesForAgent } = await import(
+        "./vault-profile-resolver.js"
+      );
+      await applyVaultProfilesForAgent(sharedVault(), agentId);
+    } catch (err) {
+      logger.warn(
+        `[vault-profile-resolver] boot-time apply failed agent="${agentId}": ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  // 5-pre. Ensure each agent has its own EVM + Solana keypair in the vault.
+  // The runtime-wide EVM_PRIVATE_KEY / SOLANA_PRIVATE_KEY (process.env) is
+  // the *user* wallet; per-agent wallets live inside the encrypted vault and
+  // are surfaced separately in the in-app browser. Idempotent — existing
+  // wallets are preserved. Opt-out via ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP=1.
+  if (process.env.ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP !== "1") {
+    try {
+      const { sharedVault } = await import(
+        "@elizaos/app-core/services/vault-mirror"
+      );
+      const { ensureAgentWallets } = await import("./agent-wallets.js");
+      const descriptors = await ensureAgentWallets(
+        sharedVault(),
+        agentId,
+        "agent-bootstrap",
+      );
+      const summary = descriptors
+        .map((d) => `${d.chain}:${d.address}`)
+        .join(" ");
+      logger.info(
+        `[agent-wallets] agent="${agentId}" wallets ready (${summary})`,
+      );
+    } catch (err) {
+      logger.warn(
+        `[agent-wallets] failed to ensure wallets for agent="${agentId}": ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
 
   // 5a. If cloud is configured and no local GitHub token, try fetching from cloud
   await autoFetchCloudGithubToken(config.cloud?.agentId?.trim() || agentId);
@@ -3925,7 +4034,7 @@ export async function startEliza(
           // per-session timeout (up to ~5s). runtime.stop() awaits every
           // service.stop() sequentially, so a single idle PTY session
           // turns a provider switch into a multi-second block. During
-          // that window server.ts's providerSwitchInProgress flag +
+          // that window the runtime-operations active-op slot +
           // agentState === "restarting" guard reject further clicks,
           // which is why flipping through providers rapidly feels stuck.
           //
@@ -4510,14 +4619,14 @@ export async function startInCloudMode(
 }
 
 const isDirectRun = (() => {
-  // Mobile (bundled) builds set MILADY_DISABLE_DIRECT_RUN=1 via Bun's
+  // Mobile (bundled) builds set ELIZA_DISABLE_DIRECT_RUN=1 via Bun's
   // `--define`. After bundling, `import.meta.url` and `process.argv[1]`
   // collapse to the same bundle path, so this check spuriously matches and
   // the runtime self-invokes a SECOND `startEliza()` alongside the CLI's
   // primary one. The second invocation lacks `{ serverOnly: true }` and
   // drops into the readline chat loop, which closes on stdin EOF and tears
   // the whole process down.
-  if (process.env.MILADY_DISABLE_DIRECT_RUN === "1") return false;
+  if (process.env.ELIZA_DISABLE_DIRECT_RUN === "1") return false;
   const scriptArg = process.argv[1];
   if (!scriptArg) return false;
   const normalised = path.resolve(scriptArg);

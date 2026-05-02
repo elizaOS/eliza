@@ -6,7 +6,7 @@
  * utterances to the same subaction / operation as their English counterparts.
  *
  * Runs against a real AgentRuntime with a real LLM provider. Skips unless
- * `MILADY_LIVE_TEST=1` (or `ELIZA_LIVE_TEST=1`) is set AND at least one
+ * `ELIZA_LIVE_TEST=1` (or `ELIZA_LIVE_TEST=1`) is set AND at least one
  * provider API key is available — same gating as `lifeops-llm-extraction.live.test.ts`.
  *
  * WHY: Earlier heuristic routers used English-only regex. A Spanish user asking
@@ -26,14 +26,14 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect } from "vitest";
+import { selectLiveProvider } from "../../../../eliza/test/helpers/live-provider";
+import { stochasticTest } from "../../../packages/app-core/test/helpers/stochastic-test";
+import { extractCalendarPlanWithLlm } from "../src/actions/calendar.js";
+import { extractLifeOperationWithLlm } from "../src/actions/life.extractor.js";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
 } from "./helpers/runtime.js";
-import { selectLiveProvider } from "../../../../test/helpers/live-provider";
-import { stochasticTest } from "../../../packages/app-core/test/helpers/stochastic-test";
-import { extractCalendarPlanWithLlm } from "../src/actions/calendar.js";
-import { extractLifeOperationWithLlm } from "../src/actions/life.extractor.js";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
 try {
@@ -44,13 +44,12 @@ try {
 }
 
 const LIVE_ENABLED =
-  process.env.MILADY_LIVE_TEST === "1" ||
-  process.env.ELIZA_LIVE_TEST === "1";
+  process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const provider = LIVE_ENABLED ? selectLiveProvider() : null;
 
 if (!LIVE_ENABLED || !provider) {
   const reasons = [
-    !LIVE_ENABLED ? "set MILADY_LIVE_TEST=1" : null,
+    !LIVE_ENABLED ? "set ELIZA_LIVE_TEST=1" : null,
     !provider ? "provide a provider API key" : null,
   ]
     .filter(Boolean)
@@ -234,7 +233,10 @@ describeIfLive("Multilingual action-routing (live LLM)", () => {
               `CALENDAR planner picked ${plan.subaction ?? "null"} for "${text}" (expected ${row.expectedSubaction})`,
             ).toBe(row.expectedSubaction);
           },
-          { perRunTimeoutMs: TEST_TIMEOUT, label: `calendar/${row.label}/${lang}` },
+          {
+            perRunTimeoutMs: TEST_TIMEOUT,
+            label: `calendar/${row.label}/${lang}`,
+          },
         );
       }
     }

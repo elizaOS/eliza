@@ -3,90 +3,66 @@ import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CompatRuntimeState } from "../../src/api/compat-route-shared";
 
-const {
-  toWorkbenchTaskMock,
-  listTriggerTasksMock,
-  taskToTriggerSummaryMock,
-  handleN8nRoutesMock,
-  getGoogleConnectorStatusMock,
-  getTelegramConnectorStatusMock,
-  getSignalConnectorStatusMock,
-  getDiscordConnectorStatusMock,
-} = vi.hoisted(() => ({
-  toWorkbenchTaskMock: vi.fn(),
-  listTriggerTasksMock: vi.fn(),
-  taskToTriggerSummaryMock: vi.fn(),
-  handleN8nRoutesMock: vi.fn(),
-  getGoogleConnectorStatusMock: vi.fn(),
-  getTelegramConnectorStatusMock: vi.fn(),
-  getSignalConnectorStatusMock: vi.fn(),
-  getDiscordConnectorStatusMock: vi.fn(),
-}));
+type AutomationsCompatRoutesModule = typeof import("../../src/api/automations-compat-routes");
 
-vi.mock("@elizaos/agent/config/config", () => ({
+const toWorkbenchTaskMock = vi.fn();
+const listTriggerTasksMock = vi.fn();
+const taskToTriggerSummaryMock = vi.fn();
+const handleN8nRoutesMock = vi.fn();
+const ensureRouteAuthorizedMock = vi.fn();
+
+vi.doMock("@elizaos/agent/config/config", () => ({
   loadElizaConfig: () => ({
-    ui: { assistant: { name: "Milady" } },
+    ui: { assistant: { name: "Eliza" } },
     agents: { defaults: { adminEntityId: "admin-entity-id" } },
   }),
 }));
 
-vi.mock("@elizaos/agent/api/workbench-helpers", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@elizaos/agent/api/workbench-helpers")
-    >();
-  return {
-    ...actual,
-    toWorkbenchTask: (...args: unknown[]) => toWorkbenchTaskMock(...args),
-  };
-});
+vi.doMock("@elizaos/agent/api/workbench-helpers", () => ({
+  WORKBENCH_TASK_TAG: "workbench-task",
+  WORKBENCH_TODO_TAG: "workbench-todo",
+  toWorkbenchTask: (...args: unknown[]) => toWorkbenchTaskMock(...args),
+}));
 
-vi.mock("@elizaos/agent/triggers/runtime", () => ({
+vi.doMock("@elizaos/agent/triggers/runtime", () => ({
   listTriggerTasks: (...args: unknown[]) => listTriggerTasksMock(...args),
   taskToTriggerSummary: (...args: unknown[]) =>
     taskToTriggerSummaryMock(...args),
 }));
 
-vi.mock("@elizaos/app-lifeops/lifeops/service", () => ({
-  LifeOpsService: class {
-    getGoogleConnectorStatus(
-      ...args: Parameters<typeof getGoogleConnectorStatusMock>
-    ) {
-      return getGoogleConnectorStatusMock(...args);
-    }
-
-    getTelegramConnectorStatus(
-      ...args: Parameters<typeof getTelegramConnectorStatusMock>
-    ) {
-      return getTelegramConnectorStatusMock(...args);
-    }
-
-    getSignalConnectorStatus(
-      ...args: Parameters<typeof getSignalConnectorStatusMock>
-    ) {
-      return getSignalConnectorStatusMock(...args);
-    }
-
-    getDiscordConnectorStatus(
-      ...args: Parameters<typeof getDiscordConnectorStatusMock>
-    ) {
-      return getDiscordConnectorStatusMock(...args);
-    }
-  },
-}));
-
-vi.mock("../../src/api/n8n-routes", () => ({
+vi.doMock("../../src/api/n8n-routes", () => ({
   handleN8nRoutes: (...args: unknown[]) => handleN8nRoutesMock(...args),
 }));
 
-import { handleAutomationsCompatRoutes } from "../../src/api/automations-compat-routes";
+vi.doMock("../../src/api/auth", () => ({
+  ensureRouteAuthorized: (...args: unknown[]) =>
+    ensureRouteAuthorizedMock(...args),
+}));
+
+import {
+  clearAutomationNodeContributorsForTests,
+  registerAutomationNodeContributor,
+} from "../../src/api/automation-node-contributors";
 
 interface Harness {
   baseUrl: string;
   dispose: () => Promise<void>;
 }
 
+let automationsCompatRoutesImport:
+  | Promise<AutomationsCompatRoutesModule>
+  | undefined;
+
+function importAutomationsCompatRoutes(): Promise<AutomationsCompatRoutesModule> {
+  automationsCompatRoutesImport ??= import(
+    "../../src/api/automations-compat-routes"
+  );
+  return automationsCompatRoutesImport;
+}
+
 async function startApiHarness(state: CompatRuntimeState): Promise<Harness> {
+  const { handleAutomationsCompatRoutes } =
+    await importAutomationsCompatRoutes();
   const server = http.createServer(async (req, res) => {
     try {
       const handled = await handleAutomationsCompatRoutes(req, res, state);
@@ -118,7 +94,7 @@ async function startApiHarness(state: CompatRuntimeState): Promise<Harness> {
 
 function buildRuntimeStub() {
   return {
-    character: { name: "Milady" },
+    character: { name: "Eliza" },
     actions: [
       { name: "CODE_TASK", description: "Run a coding agent task." },
       { name: "SEND_MESSAGE", description: "Send a message." },
@@ -236,14 +212,37 @@ function buildRuntimeWithDuplicateSystemTasks() {
   };
 }
 
+function buildRuntimeWithCryptoAutomationCapabilities() {
+  const runtime = buildRuntimeStub();
+  return {
+    ...runtime,
+    actions: [
+      ...runtime.actions,
+      {
+        name: "HYPERLIQUID_ACTION",
+        description: "Manage Hyperliquid automation intents.",
+      },
+      {
+        name: "POLYMARKET_ACTION",
+        description: "Manage Polymarket automation intents.",
+      },
+    ],
+    plugins: [{ name: "evm" }, { name: "chain_solana" }],
+  };
+}
+
 describe("automations compat routes", () => {
   let harness: Harness;
 
   beforeEach(() => {
     vi.clearAllMocks();
     delete process.env.ELIZA_API_TOKEN;
+    delete process.env.EVM_PRIVATE_KEY;
+    delete process.env.SOLANA_PRIVATE_KEY;
+    delete process.env.POLYMARKET_PRIVATE_KEY;
 
     toWorkbenchTaskMock.mockImplementation((task) => task);
+    ensureRouteAuthorizedMock.mockResolvedValue(true);
     listTriggerTasksMock.mockResolvedValue([
       {
         id: "trigger-1",
@@ -336,19 +335,38 @@ describe("automations compat routes", () => {
       },
     );
 
-    getGoogleConnectorStatusMock.mockResolvedValue({
-      connected: true,
-      grantedCapabilities: ["gmail.read", "calendar.events"],
-    });
-    getTelegramConnectorStatusMock.mockResolvedValue({ connected: false });
-    getSignalConnectorStatusMock.mockResolvedValue({ connected: true });
-    getDiscordConnectorStatusMock.mockResolvedValue({
-      connected: false,
-      available: false,
-    });
+    registerAutomationNodeContributor("test-lifeops", () => [
+      {
+        id: "lifeops:gmail",
+        label: "Gmail",
+        description: "Owner-scoped Gmail triage, drafting, and send operations.",
+        class: "integration",
+        source: "lifeops",
+        backingCapability: "lifeops:gmail",
+        ownerScoped: true,
+        requiresSetup: true,
+        availability: "enabled",
+      },
+      {
+        id: "lifeops:telegram",
+        label: "Telegram",
+        description: "Owner-scoped Telegram account messaging.",
+        class: "integration",
+        source: "lifeops",
+        backingCapability: "lifeops:telegram",
+        ownerScoped: true,
+        requiresSetup: true,
+        availability: "disabled",
+        disabledReason: "Connect the owner Telegram account.",
+      },
+    ]);
   });
 
   afterEach(async () => {
+    delete process.env.EVM_PRIVATE_KEY;
+    delete process.env.SOLANA_PRIVATE_KEY;
+    delete process.env.POLYMARKET_PRIVATE_KEY;
+    clearAutomationNodeContributorsForTests();
     await harness?.dispose?.();
   });
 
@@ -527,5 +545,122 @@ describe("automations compat routes", () => {
         disabledReason: "Connect the owner Telegram account.",
       }),
     );
+    expect(body.nodes).toContainEqual(
+      expect.objectContaining({
+        id: "crypto:evm.swap",
+        class: "action",
+        source: "static_catalog",
+        ownerScoped: true,
+        availability: "disabled",
+        disabledReason: "Load the EVM plugin with swap support.",
+      }),
+    );
+    expect(body.nodes).toContainEqual(
+      expect.objectContaining({
+        id: "crypto:evm.bridge",
+        class: "action",
+        source: "static_catalog",
+        ownerScoped: true,
+        availability: "disabled",
+        disabledReason: "Load the EVM plugin with bridge support.",
+      }),
+    );
+    expect(body.nodes).toContainEqual(
+      expect.objectContaining({
+        id: "crypto:solana.swap",
+        class: "action",
+        source: "static_catalog",
+        ownerScoped: true,
+        availability: "disabled",
+        disabledReason: "Load the Solana plugin with swap support.",
+      }),
+    );
+    expect(body.nodes).toContainEqual(
+      expect.objectContaining({
+        id: "crypto:hyperliquid.action",
+        class: "action",
+        source: "static_catalog",
+        ownerScoped: true,
+        availability: "disabled",
+        disabledReason: "Load the Hyperliquid runtime plugin.",
+      }),
+    );
+    expect(body.nodes).toContainEqual(
+      expect.objectContaining({
+        id: "crypto:polymarket.action",
+        class: "action",
+        source: "static_catalog",
+        ownerScoped: true,
+        availability: "disabled",
+        disabledReason: "Load the Polymarket runtime plugin.",
+      }),
+    );
+    expect(body.nodes).toContainEqual(
+      expect.objectContaining({
+        id: "trigger:order.schedule",
+        class: "trigger",
+        source: "static_catalog",
+        ownerScoped: false,
+        availability: "enabled",
+      }),
+    );
+    expect(body.nodes).toContainEqual(
+      expect.objectContaining({
+        id: "trigger:order.event",
+        class: "trigger",
+        source: "static_catalog",
+        ownerScoped: false,
+        availability: "disabled",
+        disabledReason: "Load an order-event-capable runtime plugin.",
+      }),
+    );
+  });
+
+  it("enables crypto automation descriptors only when matching capabilities are loaded", async () => {
+    harness = await startApiHarness({
+      current: buildRuntimeWithCryptoAutomationCapabilities() as never,
+      pendingAgentName: null,
+      pendingRestartReasons: [],
+    });
+
+    const response = await fetch(`${harness.baseUrl}/api/automations/nodes`);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      nodes: Array<{ id: string; availability: string }>;
+    };
+
+    for (const id of [
+      "crypto:evm.swap",
+      "crypto:evm.bridge",
+      "crypto:solana.swap",
+      "crypto:hyperliquid.action",
+      "crypto:polymarket.action",
+      "trigger:order.event",
+    ]) {
+      expect(body.nodes).toContainEqual(
+        expect.objectContaining({ id, availability: "enabled" }),
+      );
+    }
+  });
+
+  it("does not leak crypto secrets in the automation node catalog", async () => {
+    process.env.EVM_PRIVATE_KEY = "0x" + "11".repeat(32);
+    process.env.SOLANA_PRIVATE_KEY = "solana-secret-test-key";
+    process.env.POLYMARKET_PRIVATE_KEY = "polymarket-secret-test-key";
+
+    harness = await startApiHarness({
+      current: buildRuntimeStub() as never,
+      pendingAgentName: null,
+      pendingRestartReasons: [],
+    });
+
+    const response = await fetch(`${harness.baseUrl}/api/automations/nodes`);
+    expect(response.status).toBe(200);
+    const payload = await response.text();
+
+    expect(payload).not.toContain(process.env.EVM_PRIVATE_KEY);
+    expect(payload).not.toContain(process.env.SOLANA_PRIVATE_KEY);
+    expect(payload).not.toContain(process.env.POLYMARKET_PRIVATE_KEY);
+    expect(payload).not.toContain("ghp_test_token");
   });
 });

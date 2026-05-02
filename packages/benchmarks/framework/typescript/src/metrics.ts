@@ -4,7 +4,7 @@
  * Provides high-resolution timing, memory monitoring, and statistical
  * aggregation for benchmark measurements.
  */
-import { cpus, totalmem, platform, arch, release } from "node:os";
+import { arch, cpus, platform, release, totalmem } from "node:os";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -166,8 +166,7 @@ export class PipelineTimer {
   getBreakdown(): PipelineBreakdown {
     const avg = (arr: number[]): number =>
       arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
-    const total = (arr: number[]): number =>
-      arr.reduce((a, b) => a + b, 0);
+    const total = (arr: number[]): number => arr.reduce((a, b) => a + b, 0);
 
     const modelTimeTotal = total(this.timings.model_call);
 
@@ -242,7 +241,8 @@ export function computeThroughputStats(
   totalTimeMs: number,
 ): ThroughputStats {
   return {
-    messages_per_second: totalTimeMs > 0 ? (totalMessages / totalTimeMs) * 1000 : 0,
+    messages_per_second:
+      totalTimeMs > 0 ? (totalMessages / totalTimeMs) * 1000 : 0,
     total_messages: totalMessages,
     total_time_ms: totalTimeMs,
   };
@@ -270,15 +270,33 @@ export function formatDuration(ms: number): string {
   return `${(ms / 1000).toFixed(2)}s`;
 }
 
-export function printScenarioResult(scenarioId: string, result: ScenarioResult, realLlm: boolean = false): void {
+export function printScenarioResult(
+  scenarioId: string,
+  result: ScenarioResult,
+  realLlm: boolean = false,
+): void {
   console.log(`\n  ${scenarioId}`);
-  console.log(`    Iterations: ${result.iterations} (warmup: ${result.warmup})`);
-  console.log(`    Latency:  avg=${formatDuration(result.latency.avg_ms)}  median=${formatDuration(result.latency.median_ms)}  p95=${formatDuration(result.latency.p95_ms)}  p99=${formatDuration(result.latency.p99_ms)}`);
-  console.log(`    Range:    min=${formatDuration(result.latency.min_ms)}  max=${formatDuration(result.latency.max_ms)}  stddev=${formatDuration(result.latency.stddev_ms)}`);
-  console.log(`    Throughput: ${result.throughput.messages_per_second.toFixed(1)} msg/s (${result.throughput.total_messages} messages in ${formatDuration(result.throughput.total_time_ms)})`);
-  console.log(`    Memory:   start=${result.resources.memory_rss_start_mb.toFixed(1)}MB  peak=${result.resources.memory_rss_peak_mb.toFixed(1)}MB  delta=${result.resources.memory_delta_mb.toFixed(1)}MB`);
-  console.log(`    Pipeline: state=${formatDuration(result.pipeline.compose_state_avg_ms)}  model=${formatDuration(result.pipeline.model_call_avg_ms)}  actions=${formatDuration(result.pipeline.action_dispatch_avg_ms)}  memory=${formatDuration(result.pipeline.memory_create_avg_ms)}`);
+  console.log(
+    `    Iterations: ${result.iterations} (warmup: ${result.warmup})`,
+  );
+  console.log(
+    `    Latency:  avg=${formatDuration(result.latency.avg_ms)}  median=${formatDuration(result.latency.median_ms)}  p95=${formatDuration(result.latency.p95_ms)}  p99=${formatDuration(result.latency.p99_ms)}`,
+  );
+  console.log(
+    `    Range:    min=${formatDuration(result.latency.min_ms)}  max=${formatDuration(result.latency.max_ms)}  stddev=${formatDuration(result.latency.stddev_ms)}`,
+  );
+  console.log(
+    `    Throughput: ${result.throughput.messages_per_second.toFixed(1)} msg/s (${result.throughput.total_messages} messages in ${formatDuration(result.throughput.total_time_ms)})`,
+  );
+  console.log(
+    `    Memory:   start=${result.resources.memory_rss_start_mb.toFixed(1)}MB  peak=${result.resources.memory_rss_peak_mb.toFixed(1)}MB  delta=${result.resources.memory_delta_mb.toFixed(1)}MB`,
+  );
+  console.log(
+    `    Pipeline: state=${formatDuration(result.pipeline.compose_state_avg_ms)}  model=${formatDuration(result.pipeline.model_call_avg_ms)}  actions=${formatDuration(result.pipeline.action_dispatch_avg_ms)}  memory=${formatDuration(result.pipeline.memory_create_avg_ms)}`,
+  );
   if (realLlm && result.pipeline.model_time_total_ms > 0) {
-    console.log(`    Timing:   model_total=${formatDuration(result.pipeline.model_time_total_ms)}  framework_total=${formatDuration(result.pipeline.framework_time_total_ms)}`);
+    console.log(
+      `    Timing:   model_total=${formatDuration(result.pipeline.model_time_total_ms)}  framework_total=${formatDuration(result.pipeline.framework_time_total_ms)}`,
+    );
   }
 }

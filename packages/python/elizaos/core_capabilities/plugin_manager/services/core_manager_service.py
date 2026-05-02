@@ -42,7 +42,7 @@ _VALID_BRANCH = re.compile(r"^[a-zA-Z0-9][\w./-]*$")
 
 def _resolve_state_dir() -> Path:
     """Resolve the state directory, respecting env overrides."""
-    for var in ("MILADY_STATE_DIR", "ELIZA_STATE_DIR"):
+    for var in ("ELIZA_STATE_DIR", "ELIZA_STATE_DIR"):
         val = os.environ.get(var)
         if val:
             return Path(val)
@@ -264,7 +264,7 @@ class CoreManagerService(Service):
             raw = self._upstream_file_path().read_text()
             data = json.loads(raw)
             if (
-                data.get("$schema") != "milaidy-upstream-v1"
+                data.get("$schema") != "eliza-upstream-v1"
                 or not isinstance(data.get("gitUrl"), str)
                 or not isinstance(data.get("branch"), str)
                 or not isinstance(data.get("commitHash"), str)
@@ -273,7 +273,7 @@ class CoreManagerService(Service):
             ):
                 return None
             return UpstreamMetadata(
-                schema="milaidy-upstream-v1",
+                schema="eliza-upstream-v1",
                 source=data.get("source", "github:elizaos/eliza"),
                 git_url=data["gitUrl"],
                 branch=data["branch"],
@@ -347,7 +347,7 @@ class CoreManagerService(Service):
                 from datetime import datetime
 
                 metadata = UpstreamMetadata(
-                    schema="milaidy-upstream-v1",
+                    schema="eliza-upstream-v1",
                     source="github:elizaos/eliza",
                     git_url=_CORE_GIT_URL,
                     branch=_CORE_BRANCH,

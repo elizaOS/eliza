@@ -1,7 +1,7 @@
 name: Quality (Extended)
 
 # Additional quality gates layered on top of `ci.yaml`. These are the
-# milady-derived checks that have no equivalent job in the canonical
+# eliza-derived checks that have no equivalent job in the canonical
 # eliza CI: the homepage build (so PRs that touch packages/homepage
 # don't first regress on `develop` push) and a workspace-level
 # typecheck/biome format gate.
@@ -57,6 +57,7 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 

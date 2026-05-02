@@ -7,7 +7,7 @@
  * Refinement budget: the first three auto-refinements are applied directly to
  * the active skill (provenance.refinedCount increments, derivedFromTrajectory
  * + createdAt update). After that, additional proposed refinements are staged
- * under `~/.milady/skills/curated/proposed/<name>/SKILL.md` so the user can
+ * under `~/.eliza/skills/curated/proposed/<name>/SKILL.md` so the user can
  * review them via the Settings → Learned Skills panel.
  *
  * Triggers when:

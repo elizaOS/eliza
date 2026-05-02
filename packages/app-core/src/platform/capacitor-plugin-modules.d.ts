@@ -1,5 +1,16 @@
 declare module "@elizaos/capacitor-appblocker" {
-  export * from "../../../native-plugins/appblocker/src/index";
+  export type {
+    AppBlockerPermissionResult,
+    AppBlockerPermissionStatus,
+    AppBlockerPlugin,
+    AppBlockerStatus,
+    BlockAppsOptions,
+    BlockAppsResult,
+    InstalledApp,
+    SelectAppsResult,
+    UnblockAppsResult,
+  } from "../../../native-plugins/appblocker/src/definitions";
+  export { AppBlocker } from "../../../native-plugins/appblocker/src/index";
 }
 
 declare module "@elizaos/capacitor-camera" {
@@ -35,7 +46,6 @@ declare module "@elizaos/capacitor-messages" {
 }
 
 declare module "@elizaos/capacitor-mobile-signals" {
-  export { MobileSignals } from "../../../native-plugins/mobile-signals/src/index";
   export type {
     MobileSignalsHealthSnapshot,
     MobileSignalsPermissionStatus,
@@ -43,6 +53,7 @@ declare module "@elizaos/capacitor-mobile-signals" {
     MobileSignalsSignal,
     MobileSignalsSnapshot,
   } from "../../../native-plugins/mobile-signals/src/definitions";
+  export { MobileSignals } from "../../../native-plugins/mobile-signals/src/index";
 }
 
 declare module "@elizaos/capacitor-phone" {

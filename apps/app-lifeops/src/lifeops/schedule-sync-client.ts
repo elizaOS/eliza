@@ -200,7 +200,7 @@ export class LifeOpsScheduleSyncClient {
       ).toString();
     }
     return new URL(
-      `milady/agents/${encodeURIComponent(config.agentId)}/lifeops/schedule/${normalizedPath}`,
+      `eliza/agents/${encodeURIComponent(config.agentId)}/lifeops/schedule/${normalizedPath}`,
       `${config.apiBaseUrl.replace(/\/+$/, "")}/`,
     ).toString();
   }

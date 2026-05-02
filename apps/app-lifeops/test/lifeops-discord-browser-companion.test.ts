@@ -10,15 +10,15 @@ import { createLifeOpsChatTestRuntime } from "./helpers/lifeops-chat-runtime.js"
 let previousDiscordDesktopCdpPort: string | undefined;
 
 beforeEach(() => {
-  previousDiscordDesktopCdpPort = process.env.MILADY_DISCORD_DESKTOP_CDP_PORT;
-  process.env.MILADY_DISCORD_DESKTOP_CDP_PORT = "1";
+  previousDiscordDesktopCdpPort = process.env.ELIZA_DISCORD_DESKTOP_CDP_PORT;
+  process.env.ELIZA_DISCORD_DESKTOP_CDP_PORT = "1";
 });
 
 afterEach(() => {
   if (previousDiscordDesktopCdpPort === undefined) {
-    delete process.env.MILADY_DISCORD_DESKTOP_CDP_PORT;
+    delete process.env.ELIZA_DISCORD_DESKTOP_CDP_PORT;
   } else {
-    process.env.MILADY_DISCORD_DESKTOP_CDP_PORT = previousDiscordDesktopCdpPort;
+    process.env.ELIZA_DISCORD_DESKTOP_CDP_PORT = previousDiscordDesktopCdpPort;
   }
 });
 

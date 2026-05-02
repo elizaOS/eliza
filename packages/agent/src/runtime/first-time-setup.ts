@@ -19,7 +19,7 @@
  * @module first-time-setup
  */
 
-import { getStylePresets } from "@elizaos/shared";
+import { formatError, getStylePresets } from "@elizaos/shared";
 import { persistConfigEnv } from "../api/config-env.js";
 import {
   CLOUD_EVM_ADDRESS_ENV_KEY,
@@ -42,12 +42,8 @@ import { pickRandomNames } from "./onboarding-names.js";
 // Helpers (private)
 // ---------------------------------------------------------------------------
 
-function formatError(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
-
 type FirstTimeSetupCloudResult =
-  import("./cloud-onboarding").CloudOnboardingResult;
+  import("./cloud-onboarding.js").CloudOnboardingResult;
 const DEFAULT_ONBOARDING_AGENT_NAME = getStylePresets()[0]?.name ?? "Eliza";
 
 export function applyFirstTimeSetupTopology(
@@ -338,7 +334,7 @@ export async function runFirstTimeSetup(
   // Present the user with a choice of where to run their agent. Cloud mode
   // skips the local AI provider, wallet, and GitHub steps.
   let cloudOnboardingResult:
-    | import("./cloud-onboarding").CloudOnboardingResult
+    | import("./cloud-onboarding.js").CloudOnboardingResult
     | null = null;
   let isCloudMode = false;
 

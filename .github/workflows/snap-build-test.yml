@@ -121,7 +121,7 @@ jobs:
           elizaos-app --help 2>&1 | head -20 || echo "Help check completed (exit $?)"
 
       - name: Upload snap artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: snap-${{ matrix.arch }}
           path: ${{ steps.snapcraft.outputs.snap }}

@@ -1,5 +1,5 @@
 /**
- * Milady-flavoured Capacitor llama.cpp adapter contract.
+ * Eliza-flavoured Capacitor llama.cpp adapter contract.
  *
  * This mirrors the `LocalInferenceLoader` interface in @elizaos/app-core so
  * `ActiveModelCoordinator` can swap between the desktop engine

@@ -1,11 +1,10 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { executeRawSql, sqlQuote } from "../../lifeops/sql.js";
-import { BlockRuleReader, BlockRuleWriter } from "./block-rule-service.js";
 import type { BlockRule } from "./block-rule-schema.js";
+import { BlockRuleReader, BlockRuleWriter } from "./block-rule-service.js";
 
-export const BLOCK_RULE_RECONCILE_TASK_NAME =
-  "BLOCK_RULE_RECONCILE" as const;
+export const BLOCK_RULE_RECONCILE_TASK_NAME = "BLOCK_RULE_RECONCILE" as const;
 export const BLOCK_RULE_RECONCILE_TASK_TAGS = [
   "queue",
   "website-blocker",

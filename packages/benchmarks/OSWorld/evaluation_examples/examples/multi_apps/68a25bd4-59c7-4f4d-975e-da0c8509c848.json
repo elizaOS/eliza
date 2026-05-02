@@ -18,20 +18,13 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "google-chrome",
-          "--remote-debugging-port=1337"
-        ]
+        "command": ["google-chrome", "--remote-debugging-port=1337"]
       }
     },
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "socat",
-          "tcp-listen:9222,fork",
-          "tcp:localhost:1337"
-        ]
+        "command": ["socat", "tcp-listen:9222,fork", "tcp:localhost:1337"]
       }
     },
     {
@@ -42,15 +35,9 @@
     }
   ],
   "trajectory": "trajectories/68a25bd4-59c7-4f4d-975e-da0c8509c848",
-  "related_apps": [
-    "libreoffice_calc",
-    "chrome"
-  ],
+  "related_apps": ["libreoffice_calc", "chrome"],
   "evaluator": {
-    "func": [
-      "compare_pdfs",
-      "compare_docx_files"
-    ],
+    "func": ["compare_pdfs", "compare_docx_files"],
     "expected": [
       {
         "type": "cloud_file",

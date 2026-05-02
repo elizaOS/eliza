@@ -30,7 +30,6 @@ import {
 } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 import {
   patchAutonomousElizaOnboardingPresets,
   patchBrokenElizaCoreRuntimeDists,
@@ -44,6 +43,7 @@ import {
   pruneNestedElizaPluginCoreCopies,
   warnStaleBunCache,
 } from "./lib/patch-bun-exports.mjs";
+import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolveRepoRootFromImportMeta(import.meta.url);
@@ -89,7 +89,9 @@ warnStaleBunCache(root);
     }
   }
   if (removedCount > 0) {
-    console.log(`[patch-deps] Removed ${removedCount} @types entries from Bun cache (prevents runtime .d.ts parse errors)`);
+    console.log(
+      `[patch-deps] Removed ${removedCount} @types entries from Bun cache (prevents runtime .d.ts parse errors)`,
+    );
   }
 }
 
@@ -420,6 +422,7 @@ patchJsdomCanvasAutoload();
  */
 for (const viteCacheDir of [
   resolve(root, "node_modules", ".vite"),
+  resolve(root, "packages/app", "node_modules", ".vite"),
   resolve(root, "apps/app", "node_modules", ".vite"),
 ]) {
   if (!existsSync(viteCacheDir)) continue;
@@ -438,11 +441,17 @@ for (const viteCacheDir of [
 function patchLlamaCppCapacitorGradle() {
   const relPath = "android/build.gradle";
   const replacements = [
-    ['namespace "ai.annadata.plugin.capacitor"', 'namespace = "ai.annadata.plugin.capacitor"'],
+    [
+      'namespace "ai.annadata.plugin.capacitor"',
+      'namespace = "ai.annadata.plugin.capacitor"',
+    ],
     ['version "3.22.1"', 'version = "3.22.1"'],
     ['ndkVersion "29.0.13113456"', 'ndkVersion = "29.0.13113456"'],
-    ['abortOnError false', 'abortOnError = false'],
-    ["getDefaultProguardFile('proguard-android.txt')", "getDefaultProguardFile('proguard-android-optimize.txt')"],
+    ["abortOnError false", "abortOnError = false"],
+    [
+      "getDefaultProguardFile('proguard-android.txt')",
+      "getDefaultProguardFile('proguard-android-optimize.txt')",
+    ],
   ];
   const searchDirs = collectInstalledPackageDirs("llama-cpp-capacitor", {
     includeGlobalBunCache: true,

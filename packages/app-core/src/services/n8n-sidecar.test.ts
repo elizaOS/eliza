@@ -62,6 +62,10 @@ interface Harness {
   fetch: ReturnType<typeof vi.fn>;
   pickPort: (start: number) => Promise<number>;
   sleep: (ms: number) => Promise<void>;
+  isProcessAlive: (pid: number) => boolean;
+  readProcessCommand: (pid: number) => Promise<string | null>;
+  killPid: (pid: number, signal: NodeJS.Signals) => void;
+  preflightBinary: (binary: string) => Promise<void>;
   children: FakeChild[];
   deps: N8nSidecarDeps;
 }
@@ -80,18 +84,34 @@ function makeHarness(overrides: Partial<Harness> = {}): Harness {
   });
   const pickPortFn: Harness["pickPort"] = vi.fn(async (start: number) => start);
   const sleepFn: Harness["sleep"] = vi.fn(async (_ms: number) => undefined);
+  const isProcessAliveFn: Harness["isProcessAlive"] = vi.fn(() => false);
+  const readProcessCommandFn: Harness["readProcessCommand"] = vi.fn(
+    async () => null,
+  );
+  const killPidFn: Harness["killPid"] = vi.fn();
+  const preflightBinaryFn: Harness["preflightBinary"] = vi.fn(
+    async () => undefined,
+  );
 
   return {
     spawn: overrides.spawn ?? spawnFn,
     fetch: overrides.fetch ?? fetchFn,
     pickPort: overrides.pickPort ?? pickPortFn,
     sleep: overrides.sleep ?? sleepFn,
+    isProcessAlive: overrides.isProcessAlive ?? isProcessAliveFn,
+    readProcessCommand: overrides.readProcessCommand ?? readProcessCommandFn,
+    killPid: overrides.killPid ?? killPidFn,
+    preflightBinary: overrides.preflightBinary ?? preflightBinaryFn,
     children,
     deps: {
       spawn: (overrides.spawn ?? spawnFn) as unknown as N8nSidecarDeps["spawn"],
       fetch: (overrides.fetch ?? fetchFn) as unknown as N8nSidecarDeps["fetch"],
       pickPort: overrides.pickPort ?? pickPortFn,
       sleep: overrides.sleep ?? sleepFn,
+      isProcessAlive: overrides.isProcessAlive ?? isProcessAliveFn,
+      readProcessCommand: overrides.readProcessCommand ?? readProcessCommandFn,
+      killPid: overrides.killPid ?? killPidFn,
+      preflightBinary: overrides.preflightBinary ?? preflightBinaryFn,
     },
   };
 }
@@ -104,7 +124,7 @@ function baseConfig(over: Partial<N8nSidecarConfig> = {}): N8nSidecarConfig {
     maxRetries: 2,
     backoffBaseMs: 5,
     startPort: 5678,
-    stateDir: "/tmp/milady-n8n-test",
+    stateDir: "/tmp/eliza-n8n-test",
     version: "1.70.0",
     ...over,
   };
@@ -169,12 +189,12 @@ describe("N8nSidecar", () => {
         cwd: string;
         env: NodeJS.ProcessEnv;
       };
-      expect(spawnOptions.cwd).toBe("/tmp/milady-n8n-test");
+      expect(spawnOptions.cwd).toBe("/tmp/eliza-n8n-test");
       expect(spawnOptions.env.NPM_CONFIG_CACHE).toBe(
-        "/tmp/milady-n8n-test/.npm-cache",
+        "/tmp/eliza-n8n-test/.npm-cache",
       );
       expect(spawnOptions.env.npm_config_cache).toBe(
-        "/tmp/milady-n8n-test/.npm-cache",
+        "/tmp/eliza-n8n-test/.npm-cache",
       );
 
       await sidecar.stop();
@@ -208,7 +228,7 @@ describe("N8nSidecar", () => {
 
     it("reuses a reachable n8n instance when the preferred port is already occupied", async () => {
       const stateDir = await fs.mkdtemp(
-        path.join(os.tmpdir(), "milady-n8n-existing-"),
+        path.join(os.tmpdir(), "eliza-n8n-existing-"),
       );
       await fs.writeFile(path.join(stateDir, "api-key"), "cached_key_abc");
 
@@ -547,7 +567,7 @@ describe("N8nSidecar", () => {
 
   describe("orphan reaping (Bug 2)", () => {
     async function makeStateDir(): Promise<string> {
-      const dir = await fs.mkdtemp(path.join(os.tmpdir(), "milady-n8n-"));
+      const dir = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-n8n-"));
       return dir;
     }
 
@@ -732,7 +752,7 @@ describe("N8nSidecar", () => {
   describe("API key persistence (Bug 6)", () => {
     it("reuses a cached api key when /rest/api-keys accepts it", async () => {
       const stateDir = await fs.mkdtemp(
-        path.join(os.tmpdir(), "milady-n8n-key-"),
+        path.join(os.tmpdir(), "eliza-n8n-key-"),
       );
       await fs.writeFile(path.join(stateDir, "api-key"), "cached_key_abc");
 
@@ -787,7 +807,7 @@ describe("N8nSidecar", () => {
 
     it("re-provisions and persists a new key when the cached key is rejected", async () => {
       const stateDir = await fs.mkdtemp(
-        path.join(os.tmpdir(), "milady-n8n-key-"),
+        path.join(os.tmpdir(), "eliza-n8n-key-"),
       );
       await fs.writeFile(path.join(stateDir, "api-key"), "stale_key");
 

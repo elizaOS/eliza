@@ -45,11 +45,11 @@ function makeRuntime(opts: MakeRuntimeOpts = {}) {
   const unregisterTaskWorker =
     opts.unregisterTaskWorker === null
       ? undefined
-      : opts.unregisterTaskWorker ??
+      : (opts.unregisterTaskWorker ??
         vi.fn((name: string) => {
           unregisterCalls.push(name);
           return true;
-        });
+        }));
 
   const runtime = {
     agentId: AGENT_ID,
@@ -59,7 +59,14 @@ function makeRuntime(opts: MakeRuntimeOpts = {}) {
     logger: { warn, info: vi.fn(), error: vi.fn(), debug: vi.fn() },
   } as unknown as IAgentRuntime;
 
-  return { runtime, getTasks, deleteTask, unregisterTaskWorker, warn, unregisterCalls };
+  return {
+    runtime,
+    getTasks,
+    deleteTask,
+    unregisterTaskWorker,
+    warn,
+    unregisterCalls,
+  };
 }
 
 describe("appLifeOpsPlugin.dispose", () => {

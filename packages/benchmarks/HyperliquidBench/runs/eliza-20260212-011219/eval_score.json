@@ -19,18 +19,14 @@
     {
       "name": "account",
       "weight": 1.0,
-      "uniqueSignatures": [
-        "account.usdClassTransfer.toPerp"
-      ],
+      "uniqueSignatures": ["account.usdClassTransfer.toPerp"],
       "uniqueCount": 1,
       "contribution": 1.0
     },
     {
       "name": "risk",
       "weight": 1.0,
-      "uniqueSignatures": [
-        "risk.setLeverage.BTC"
-      ],
+      "uniqueSignatures": ["risk.setLeverage.BTC"],
       "uniqueCount": 1,
       "contribution": 1.0
     }

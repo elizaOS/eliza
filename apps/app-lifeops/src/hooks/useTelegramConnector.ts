@@ -6,13 +6,7 @@ import type {
   VerifyLifeOpsTelegramConnectorResponse,
 } from "@elizaos/shared";
 import { useCallback, useEffect, useState } from "react";
-
-function formatError(cause: unknown, fallback: string): string {
-  if (cause instanceof Error && cause.message.trim().length > 0) {
-    return cause.message.trim();
-  }
-  return fallback;
-}
+import { formatConnectorError } from "./connector-error.js";
 
 export interface UseTelegramConnectorOptions {
   side?: LifeOpsConnectorSide;
@@ -41,7 +35,12 @@ export function useTelegramConnector(
       setAuthState(nextStatus.authState);
       setError(nextStatus.authError ?? null);
     } catch (cause) {
-      setError(formatError(cause, "Telegram connector status failed to load."));
+      setError(
+        formatConnectorError(
+          cause,
+          "Telegram connector status failed to load.",
+        ),
+      );
     } finally {
       setLoading(false);
     }
@@ -60,7 +59,10 @@ export function useTelegramConnector(
       } catch (cause) {
         if (cancelled) return;
         setError(
-          formatError(cause, "Telegram connector status failed to load."),
+          formatConnectorError(
+            cause,
+            "Telegram connector status failed to load.",
+          ),
         );
       } finally {
         if (!cancelled) setLoading(false);
@@ -83,7 +85,7 @@ export function useTelegramConnector(
         }
         void refresh();
       } catch (cause) {
-        setError(formatError(cause, "Telegram auth failed to start."));
+        setError(formatConnectorError(cause, "Telegram auth failed to start."));
       } finally {
         setActionPending(false);
       }
@@ -103,7 +105,9 @@ export function useTelegramConnector(
         }
         void refresh();
       } catch (cause) {
-        setError(formatError(cause, "Telegram code submission failed."));
+        setError(
+          formatConnectorError(cause, "Telegram code submission failed."),
+        );
       } finally {
         setActionPending(false);
       }
@@ -123,7 +127,9 @@ export function useTelegramConnector(
         }
         void refresh();
       } catch (cause) {
-        setError(formatError(cause, "Telegram password submission failed."));
+        setError(
+          formatConnectorError(cause, "Telegram password submission failed."),
+        );
       } finally {
         setActionPending(false);
       }
@@ -139,7 +145,9 @@ export function useTelegramConnector(
       setVerification(null);
       void refresh();
     } catch (cause) {
-      setError(formatError(cause, "Telegram auth cancellation failed."));
+      setError(
+        formatConnectorError(cause, "Telegram auth cancellation failed."),
+      );
     } finally {
       setActionPending(false);
     }
@@ -157,7 +165,9 @@ export function useTelegramConnector(
       setError(null);
       setVerification(null);
     } catch (cause) {
-      setError(formatError(cause, "Telegram connector disconnect failed."));
+      setError(
+        formatConnectorError(cause, "Telegram connector disconnect failed."),
+      );
     } finally {
       setActionPending(false);
     }
@@ -170,7 +180,7 @@ export function useTelegramConnector(
       const result = await client.verifyTelegramConnector({ side });
       setVerification(result);
     } catch (cause) {
-      setError(formatError(cause, "Telegram verification failed."));
+      setError(formatConnectorError(cause, "Telegram verification failed."));
     } finally {
       setVerifyPending(false);
     }

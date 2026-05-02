@@ -11,8 +11,8 @@ import {
 } from "@elizaos/core";
 import { broadcastIntent } from "../lifeops/intent-sync.js";
 
-const DEVICE_BUS_URL_ENV = "MILADY_DEVICE_BUS_URL";
-const DEVICE_BUS_TOKEN_ENV = "MILADY_DEVICE_BUS_TOKEN";
+const DEVICE_BUS_URL_ENV = "ELIZA_DEVICE_BUS_URL";
+const DEVICE_BUS_TOKEN_ENV = "ELIZA_DEVICE_BUS_TOKEN";
 
 function buildIntentResultText(
   action: string,

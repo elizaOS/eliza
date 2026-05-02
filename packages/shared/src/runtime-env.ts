@@ -351,7 +351,7 @@ export function syncResolvedApiPort(
 }
 
 /**
- * `MILADY_PLATFORM` values that the agent runtime treats as a mobile (Android /
+ * `ELIZA_PLATFORM` values that the agent runtime treats as a mobile (Android /
  * iOS) embedding. On these platforms many host capabilities the agent normally
  * relies on (spawning subprocesses for n8n / signal-cli / sandbox engines,
  * `/usr/bin/open`, AppleScript, lsof, ffmpeg, etc.) either don't exist or
@@ -362,18 +362,14 @@ export function syncResolvedApiPort(
  */
 const MOBILE_PLATFORM_VALUES = new Set(["android", "ios"]);
 
-export function isMobilePlatform(
-  env: RuntimeEnvRecord = process.env,
-): boolean {
-  const raw = env.MILADY_PLATFORM?.trim().toLowerCase();
+export function isMobilePlatform(env: RuntimeEnvRecord = process.env): boolean {
+  const raw = env.ELIZA_PLATFORM?.trim().toLowerCase();
   if (!raw) return false;
   return MOBILE_PLATFORM_VALUES.has(raw);
 }
 
-export function isAndroidMobile(
-  env: RuntimeEnvRecord = process.env,
-): boolean {
-  return env.MILADY_PLATFORM?.trim().toLowerCase() === "android";
+export function isAndroidMobile(env: RuntimeEnvRecord = process.env): boolean {
+  return env.ELIZA_PLATFORM?.trim().toLowerCase() === "android";
 }
 
 export function resolveElizaRuntimeEnv(

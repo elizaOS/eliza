@@ -5,6 +5,7 @@ import type { IAgentRuntime } from "../../../../types/runtime.ts";
 import type { State } from "../../../../types/state.ts";
 import { requireProviderSpec } from "../generated/specs/spec-helpers";
 import type { ExperienceService } from "../service";
+import { formatExperienceForPrompt } from "../utils/experienceFormatter.ts";
 
 /**
  * Simple experience provider that injects relevant experiences into context
@@ -37,13 +38,26 @@ export const experienceProvider: Provider = {
 			return { text: "", data: {}, values: {} };
 		}
 
-		// Find relevant experiences using semantic search
-		const relevantExperiences = await experienceService.queryExperiences({
+		const semanticExperiences = await experienceService.queryExperiences({
 			query: messageText,
 			limit: 5,
 			minConfidence: 0.6,
 			minImportance: 0.5,
+			includeRelated: true,
 		});
+		const topExperiences = await experienceService.listExperiences({
+			limit: 3,
+			minConfidence: 0.7,
+			minImportance: 0.7,
+		});
+		const relevantExperiences = [
+			...new Map(
+				[...semanticExperiences, ...topExperiences].map((experience) => [
+					experience.id,
+					experience,
+				]),
+			).values(),
+		].slice(0, 7);
 
 		if (relevantExperiences.length === 0) {
 			return { text: "", data: {}, values: {} };
@@ -51,10 +65,8 @@ export const experienceProvider: Provider = {
 
 		// Format experiences for context injection
 		const experienceText = relevantExperiences
-			.map((exp, index) => {
-				return `Experience ${index + 1}: In ${exp.domain} context, when ${exp.context}, I learned: ${exp.learning}`;
-			})
-			.join("\n");
+			.map((experience, index) => formatExperienceForPrompt(experience, index))
+			.join("\n\n");
 
 		const contextText = `[RELEVANT EXPERIENCES]\n${experienceText}\n[/RELEVANT EXPERIENCES]`;
 

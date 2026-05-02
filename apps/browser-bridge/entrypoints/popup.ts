@@ -209,9 +209,9 @@ async function refresh(refs: FormRefs): Promise<void> {
   }
   if (!response.state.config && !autoPairAttempted) {
     autoPairAttempted = true;
-    refs.statusTitle.textContent = "Looking for Milady in this browser";
+    refs.statusTitle.textContent = "Looking for Eliza in this browser";
     refs.statusDetail.textContent =
-      "Searching open tabs for a live Milady app so this browser can connect itself.";
+      "Searching open tabs for a live Eliza app so this browser can connect itself.";
     const autoPairResponse = await sendMessage({
       type: "browser-bridge:auto-pair",
     });
@@ -250,7 +250,7 @@ document.addEventListener("DOMContentLoaded", () => {
       : null;
     refs.statusDetail.textContent =
       model?.primaryAction === "sync"
-        ? "Syncing this browser with Milady…"
+        ? "Syncing this browser with Eliza…"
         : "Trying to auto-connect this browser…";
     autoPairAttempted = true;
     const response =
@@ -314,7 +314,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   refs.syncButton.addEventListener("click", async () => {
-    refs.statusDetail.textContent = "Syncing this browser with Milady…";
+    refs.statusDetail.textContent = "Syncing this browser with Eliza…";
     const response = await sendMessage({ type: "browser-bridge:sync-now" });
     if (!response.ok || !response.state) {
       refs.statusDetail.textContent = response.error;

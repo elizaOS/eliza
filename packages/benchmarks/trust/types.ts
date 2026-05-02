@@ -1,7 +1,7 @@
 /**
  * Trust Security Benchmark Types
  *
- * Defines the interfaces for adversarial testing of trust plugin
+ * Defines the interfaces for adversarial testing of runtime trust /
  * security detection capabilities.
  */
 
@@ -60,10 +60,14 @@ export interface TrustBenchmarkHandler {
   name: string;
 
   /** Analyze a message for prompt injection */
-  detectInjection(message: string): Promise<{ detected: boolean; confidence: number }>;
+  detectInjection(
+    message: string,
+  ): Promise<{ detected: boolean; confidence: number }>;
 
   /** Analyze a message for social engineering */
-  detectSocialEngineering(message: string): Promise<{ detected: boolean; confidence: number }>;
+  detectSocialEngineering(
+    message: string,
+  ): Promise<{ detected: boolean; confidence: number }>;
 
   /** Check if a username is impersonating an existing user */
   detectImpersonation(
@@ -72,5 +76,7 @@ export interface TrustBenchmarkHandler {
   ): Promise<{ detected: boolean; confidence: number }>;
 
   /** Analyze a message for credential theft */
-  detectCredentialTheft(message: string): Promise<{ detected: boolean; confidence: number }>;
+  detectCredentialTheft(
+    message: string,
+  ): Promise<{ detected: boolean; confidence: number }>;
 }

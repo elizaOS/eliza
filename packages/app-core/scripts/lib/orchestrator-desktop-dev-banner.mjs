@@ -91,7 +91,7 @@ export function formatOrchestratorDesktopDevBanner(p) {
         "unset ELIZA_DESKTOP_RENDERER_BUILD or omit --force-renderer for default skip-when-fresh",
     },
     {
-      setting: "Initial vite build (apps/app/dist)",
+      setting: "Initial vite build (packages/app/dist)",
       effective: ranInitialViteBuild ? "ran" : "skipped",
       source: rendererSource,
       change: rendererChange,
@@ -241,8 +241,7 @@ export function formatOrchestratorDesktopDevBanner(p) {
       source: desktopDevLogPath
         ? "derived — orchestrator sets path + passes to children"
         : "default (disabled)",
-      change:
-        "orchestrator writes .eliza/desktop-dev-console.log when enabled",
+      change: "orchestrator writes .eliza/desktop-dev-console.log when enabled",
     },
     {
       setting: "Children spawned",
@@ -254,9 +253,9 @@ export function formatOrchestratorDesktopDevBanner(p) {
       setting: "ELIZA_NAMESPACE (Vite child env)",
       effective: elizaNamespace,
       source: elizaNamespaceUnset
-        ? "default (milady)"
+        ? "default (eliza)"
         : `env set — ELIZA_NAMESPACE=${elizaNamespace}`,
-      change: "export ELIZA_NAMESPACE=<ns> or unset for milady",
+      change: "export ELIZA_NAMESPACE=<ns> or unset for eliza",
     },
     {
       setting: "ELECTROBUN_SKIP_CODESIGN",

@@ -1,8 +1,7 @@
 {
   "id": "trust",
   "name": "Trust",
-  "description": "Primitives for agents to trust humans and each other",
-  "npmName": "@elizaos/plugin-trust",
+  "description": "Trust scoring, security signals, and permission helpers built into the elizaOS runtime (enable via enableTrust).",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
   "tags": ["trust", "permissions", "security", "rbac"],

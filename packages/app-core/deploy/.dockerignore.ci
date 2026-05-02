@@ -1,6 +1,6 @@
 # CI / production dockerignore for `eliza/packages/app-core/deploy/Dockerfile.ci`.
 # Copy to the repo root as `.dockerignore` before `docker build` (context is `.`).
-# Pre-built `dist/` and `apps/app/dist/` are expected in the build context.
+# Pre-built `dist/` and `packages/app/dist/` are expected in the build context.
 
 .git
 .git/**
@@ -17,8 +17,24 @@
 .env.*.local
 node_modules/.cache
 packages/**/node_modules
+!packages/agent/node_modules/
+!packages/agent/node_modules/**
 apps/**/node_modules
+!apps/app-elizamaker/node_modules/
+!apps/app-elizamaker/node_modules/**
+!apps/app-lifeops/node_modules/
+!apps/app-lifeops/node_modules/**
+!apps/app-steward/node_modules/
+!apps/app-steward/node_modules/**
 eliza/**/node_modules
+!eliza/apps/app-elizamaker/node_modules/
+!eliza/apps/app-elizamaker/node_modules/**
+!eliza/apps/app-lifeops/node_modules/
+!eliza/apps/app-lifeops/node_modules/**
+!eliza/apps/app-steward/node_modules/
+!eliza/apps/app-steward/node_modules/**
+!eliza/packages/agent/node_modules/
+!eliza/packages/agent/node_modules/**
 eliza/packages/app-core/deploy/**/node_modules
 eliza/.turbo
 eliza/packages/rust
@@ -70,14 +86,14 @@ eliza/plugins/*/python
 eliza/plugins/*/.git
 eliza/plugins/*/.eliza
 eliza/plugins/*/.elizadb-test
-apps/app/android
-apps/app/ios
-apps/app/electrobun
-apps/app/.vite
-apps/app/screenshots
-apps/app/test-results
-apps/app/test
-apps/app/.eliza
+packages/app/android
+packages/app/ios
+packages/app/electrobun
+packages/app/.vite
+packages/app/screenshots
+packages/app/test-results
+packages/app/test
+packages/app/.eliza
 apps/homepage
 apps/home
 apps/landing

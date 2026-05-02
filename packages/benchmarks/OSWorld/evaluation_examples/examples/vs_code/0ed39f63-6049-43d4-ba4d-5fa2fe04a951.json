@@ -18,10 +18,7 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "code",
-          "/home/user/Desktop/vscode_replace_text.txt"
-        ]
+        "command": ["code", "/home/user/Desktop/vscode_replace_text.txt"]
       }
     },
     {
@@ -32,9 +29,7 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "vscode"
-  ],
+  "related_apps": ["vscode"],
   "evaluator": {
     "postconfig": [
       {

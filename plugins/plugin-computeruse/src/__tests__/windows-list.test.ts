@@ -20,7 +20,7 @@ import {
 } from "../platform/windows-list.js";
 
 const sampleWindows = [
-  { id: "101", title: "Docs - Milady", app: "Chrome" },
+  { id: "101", title: "Docs - Eliza", app: "Chrome" },
   { id: "202", title: "Terminal", app: "iTerm2" },
   { id: "303", title: "Settings", app: "System Settings" },
 ];

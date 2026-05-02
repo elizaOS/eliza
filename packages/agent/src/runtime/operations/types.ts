@@ -3,29 +3,17 @@
  * lifecycle action against the live runtime (provider switch, plugin
  * enable/disable, config reload, full restart).
  *
- * Design invariants (see docs/architecture/runtime-operations.md once written):
+ * Design invariants:
  *
- *   1. Single queue. One operation runs at a time, full-stop. New requests
- *      while an op is running return 409 with the active op's id.
+ *   1. Single queue. One operation runs at a time. New requests while an op
+ *      is running return 409 with the active op's id.
  *   2. Tiered execution. The use case classifies an intent into a reload
- *      tier (hot / warm / cold). Most provider switches collapse to hot
- *      or warm; only plugin allowlist changes go cold.
- *   3. Health-gated promotion. A new runtime (cold) or a re-initialised
- *      plugin (warm) only "wins" after health checks pass; failure rolls
- *      back to the previous configuration.
+ *      tier (hot / warm / cold).
+ *   3. Health-gated promotion. A new/re-initialised runtime only "wins"
+ *      after health checks pass.
  *   4. Append-only phase log. Each phase mutation is a new entry — never
- *      patched in place. This is the substrate for an event-log WS later.
- *   5. Idempotency keys de-dupe retries. Same key in within the retention
- *      window returns the existing operation record.
- *
- * This module exports types only. Implementations live in sibling files:
- *   - manager.ts     — RuntimeOperationManager (the use case)
- *   - repository.ts  — RuntimeOperationRepository (filesystem-backed)
- *   - classifier.ts  — classifyOperation(intent) → ReloadTier
- *   - health.ts      — HealthCheck registry + runner
- *   - reload-hot.ts  — env-var swap + plugin notify
- *   - reload-warm.ts — per-plugin reinit (Phase 2)
- *   - reload-cold.ts — full runtime swap (delegates to existing handleRestart)
+ *      patched in place (except `updateLastPhase`, for running→succeeded).
+ *   5. Idempotency keys de-dupe retries within the retention window.
  */
 
 import type { AgentRuntime } from "@elizaos/core";
@@ -37,7 +25,14 @@ import type { AgentRuntime } from "@elizaos/core";
 export interface ProviderSwitchIntent {
   kind: "provider-switch";
   provider: string;
-  apiKey?: string;
+  /**
+   * Vault key that resolves to the provider's API key (e.g.
+   * `"providers.openai.api-key"`). The actual secret never travels through
+   * the intent — only this stable identifier — so persisted operation
+   * records cannot leak credentials. Resolved at apply-env time via
+   * `SecretsManager.get(apiKeyRef)`.
+   */
+  apiKeyRef?: string;
   primaryModel?: string;
 }
 
@@ -110,15 +105,29 @@ export type PhaseStatus =
   | "failed"
   | "skipped";
 
+export type PhaseName =
+  | "validate"
+  | "cold-restart"
+  | "apply-env"
+  | "notify-plugins"
+  | "health-check";
+
+export type OperationErrorCode =
+  | "abandoned"
+  | "no-strategy-for-tier"
+  | "no-runtime"
+  | "strategy-failed"
+  | "vault-resolve-failed"
+  | "health-check-failed";
+
 export interface OperationError {
   message: string;
-  code?: string;
+  code?: OperationErrorCode;
   cause?: string;
 }
 
 export interface OperationPhase {
-  /** Stable phase name — e.g. "validate", "persist-config", "health-check". */
-  name: string;
+  name: PhaseName;
   status: PhaseStatus;
   startedAt?: number;
   finishedAt?: number;
@@ -236,6 +245,12 @@ export interface ReloadStrategy {
 export interface StartOperationRequest {
   intent: OperationIntent;
   idempotencyKey?: string;
+  /**
+   * Runs after the idempotency and active-operation gates pass, but before
+   * the operation is persisted and scheduled. Use for accepted-only side
+   * effects that must complete before the strategy can run.
+   */
+  prepare?: () => Promise<OperationIntent | undefined>;
 }
 
 export type StartOperationOutcome =

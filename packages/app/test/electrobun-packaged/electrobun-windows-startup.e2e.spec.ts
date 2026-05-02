@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
-import { startLiveApiServer, type TestApiServer } from "./live-api";
+import { type MockApiServer, startMockApiServer } from "./mock-api";
 import {
   PackagedDesktopHarness,
   resolvePackagedLauncher,
@@ -20,11 +20,11 @@ test("packaged Windows app bootstraps the renderer against the external API over
   const launcherPath = await resolvePackagedLauncher(extractDir);
   test.skip(!launcherPath, "Windows packaged launcher is required");
 
-  let api: TestApiServer | null = null;
+  let api: MockApiServer | null = null;
   let harness: PackagedDesktopHarness | null = null;
 
   try {
-    api = await startLiveApiServer({ onboardingComplete: true, port: 0 });
+    api = await startMockApiServer({ onboardingComplete: true, port: 0 });
     harness = new PackagedDesktopHarness({
       tempRoot,
       launcherPath,

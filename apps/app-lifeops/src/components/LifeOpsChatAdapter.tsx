@@ -52,7 +52,7 @@ function formatChatDateTime(iso: string | null | undefined): string | null {
 
 export function postToChat(text: string, options?: { select?: boolean }): void {
   window.dispatchEvent(
-    new CustomEvent<PrefillChatDetail>("milady:chat:prefill", {
+    new CustomEvent<PrefillChatDetail>("eliza:chat:prefill", {
       detail: { text, select: options?.select ?? false },
     }),
   );
@@ -194,9 +194,9 @@ export function useLifeOpsChatAdapter(selection: LifeOpsSelection): {
       });
     };
 
-    window.addEventListener("milady:chat:prefill", handler);
+    window.addEventListener("eliza:chat:prefill", handler);
     return () => {
-      window.removeEventListener("milady:chat:prefill", handler);
+      window.removeEventListener("eliza:chat:prefill", handler);
     };
   }, [setChatInput]);
 

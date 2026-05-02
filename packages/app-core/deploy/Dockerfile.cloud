@@ -16,7 +16,7 @@ ARG VERSION=""
 ARG VERSION_CLEAN=""
 ARG REVISION=""
 # CDN base URL baked into the Vite bundle at build time.
-# Format: https://cdn.jsdelivr.net/gh/{org}/{repo}@{tag}/apps/app/public/
+# Format: https://cdn.jsdelivr.net/gh/{org}/{repo}@{tag}/packages/app/public/
 # Leave empty for local/dev builds (assets served from origin).
 ARG VITE_ASSET_BASE_URL=""
 
@@ -33,7 +33,7 @@ COPY eliza/packages/shared/package.json ./eliza/packages/shared/package.json
 COPY eliza/packages/ui/package.json ./eliza/packages/ui/package.json
 COPY eliza/plugins/plugin-sql/typescript/package.json ./eliza/plugins/plugin-sql/typescript/package.json
 COPY eliza/plugins/plugin-elizacloud/typescript/package.json ./eliza/plugins/plugin-elizacloud/typescript/package.json
-COPY apps/app/package.json ./apps/app/package.json
+COPY packages/app/package.json ./packages/app/package.json
 COPY eliza/packages/app-core/platforms/electrobun/package.json ./eliza/packages/app-core/platforms/electrobun/package.json
 COPY eliza/packages/app-core/deploy/cloud-agent-template/package.json ./eliza/packages/app-core/deploy/cloud-agent-template/package.json
 
@@ -51,7 +51,7 @@ const KEEP = [
   "eliza/packages/ui",
   "eliza/packages/app-core/platforms/electrobun",
   "eliza/packages/app-core/deploy/cloud-agent-template",
-  "apps/app",
+  "packages/app",
 ];
 const ALLOW = new Set([
   "@elizaos/agent",
@@ -141,7 +141,7 @@ root.workspaces = KEEP;
 writeJson("package.json", root);
 [
   "package.json",
-  "apps/app/package.json",
+  "packages/app/package.json",
   "eliza/packages/agent/package.json",
   "eliza/packages/app-core/package.json",
   "eliza/packages/shared/package.json",
@@ -169,7 +169,7 @@ ENV VITE_ASSET_BASE_URL=${VITE_ASSET_BASE_URL}
 
 COPY --from=deps /src/node_modules ./node_modules
 COPY dist ./dist
-COPY apps/app/dist ./apps/app/dist
+COPY packages/app/dist ./packages/app/dist
 COPY eliza/packages/agent ./eliza/packages/agent
 COPY eliza/packages/app-core ./eliza/packages/app-core
 COPY eliza/packages/shared ./eliza/packages/shared
@@ -177,7 +177,7 @@ COPY ${APP_ENTRYPOINT} package.json plugins.json ./
 COPY eliza/packages/app-core/scripts/docker-entrypoint.sh ./scripts/docker-entrypoint.sh
 
 RUN set -eux; \
-  mkdir -p /runtime/node_modules /runtime/apps/app /runtime/scripts; \
+  mkdir -p /runtime/node_modules /runtime/packages/app /runtime/scripts; \
   # Keep bun's symlink structure intact — cp -rL breaks transitive dep resolution.
   cp -a node_modules/. /runtime/node_modules/; \
   # Overlay workspace packages with full source (not just the symlinked dist).
@@ -191,7 +191,7 @@ RUN set -eux; \
     rm -rf "$target/dist" "$target/test" "$target/tests" "$target/__tests__" 2>/dev/null || true; \
   done; \
   cp -a dist /runtime/dist; \
-  cp -a apps/app/dist /runtime/apps/app/dist; \
+  cp -a packages/app/dist /runtime/packages/app/dist; \
   cp -a eliza/packages/app-core/scripts/docker-entrypoint.sh /runtime/scripts/docker-entrypoint.sh; \
   cp -a "${APP_ENTRYPOINT}" package.json plugins.json /runtime/; \
   sed -i 's/const stats = service.getCatalogStats();/const stats = typeof service.getCatalogStats === "function" ? service.getCatalogStats() : { loaded: 0, total: 0, storageType: "unknown" };/g' /runtime/node_modules/@elizaos/plugin-agent-skills/dist/index.js 2>/dev/null || true; \

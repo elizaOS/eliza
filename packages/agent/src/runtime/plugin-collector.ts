@@ -171,7 +171,7 @@ export const OPTIONAL_PLUGIN_MAP: Readonly<Record<string, string>> = {
   bluebubbles: "@elizaos/plugin-bluebubbles",
   discordLocal: "@elizaos/plugin-discord-local",
   x402: "@elizaos/plugin-x402",
-  // plugin-manager, secrets-manager, trust: now built-in core capabilities
+  // plugin-manager, secrets (SECRETS), trust: now built-in core capabilities
   // Enable via ENABLE_PLUGIN_MANAGER, ENABLE_SECRETS_MANAGER, ENABLE_TRUST
   "streaming-base": "@elizaos/plugin-streaming-base",
   "twitch-streaming": "@elizaos/plugin-twitch-streaming",
@@ -236,7 +236,7 @@ export function collectPluginNames(
   );
   const isCloudContainer = process.env.ELIZA_CLOUD_PROVISIONED === "1";
   const cloudExplicitlyDisabled = config.cloud?.enabled === false;
-  // `MILADY_LOCAL_LLAMA=1` is the AOSP / on-device signal that the in-process
+  // `ELIZA_LOCAL_LLAMA=1` is the AOSP / on-device signal that the in-process
   // llama.cpp loader is wired up and should be available as a routable
   // provider. It does NOT mean "strip every other provider": subscription
   // accounts (anthropic-subscription, openai-codex) and API-key cloud
@@ -245,7 +245,7 @@ export function collectPluginNames(
   // ensure-local-inference-handler.ts), so cloud/direct providers win when
   // the user has them configured, and local fills in otherwise.
   // TODO(local-only-mode): introduce a separate explicit opt-in flag (e.g.
-  // `MILADY_LOCAL_ONLY=1`) for users who want all-cloud-providers stripped.
+  // `ELIZA_LOCAL_ONLY=1`) for users who want all-cloud-providers stripped.
   const localOnlyInference =
     legacyLocalOnlyInference ||
     (cloudExplicitlyDisabled &&
@@ -301,7 +301,7 @@ export function collectPluginNames(
 
   // Allow-list entries are additive (extra plugins), not exclusive.
   const allowList = config.plugins?.allow;
-  // On mobile (MILADY_PLATFORM=android|ios) the desktop core list pulls in
+  // On mobile (ELIZA_PLATFORM=android|ios) the desktop core list pulls in
   // ~10 plugins that depend on subprocesses (n8n, signal-cli), platform
   // launchers (/usr/bin/open, osascript, xdg-open), or PTY tooling — all
   // unavailable in the app sandbox. Substitute the curated mobile-safe set.

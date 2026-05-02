@@ -1,8 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_CONFIG, type AppConfig } from "../types";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   __shutdownForTests,
   getHistory,
@@ -10,6 +9,7 @@ import {
   resetConversation,
   sendMessage,
 } from "../runtimeManager";
+import { type AppConfig, DEFAULT_CONFIG } from "../types";
 
 async function makeTempDir(prefix: string): Promise<string> {
   return await mkdtemp(join(tmpdir(), prefix));
@@ -68,4 +68,3 @@ describe("capacitor backend runtimeManager", () => {
     expect(last.text.trim().length).toBeGreaterThan(0);
   });
 });
-

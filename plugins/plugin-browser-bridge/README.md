@@ -39,7 +39,7 @@ Use that flag only for throwaway or explicitly approved migration runs.
 
 ## Integration
 
-Milady loads `browserBridgePlugin` as a core runtime plugin so the Browser
+Eliza loads `browserBridgePlugin` as a core runtime plugin so the Browser
 Workspace UI, agent actions, and companion extension use the same API surface.
 
 ```ts

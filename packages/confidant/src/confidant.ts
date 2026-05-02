@@ -1,10 +1,5 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { decrypt, encrypt } from "./crypto/envelope.js";
-import {
-  type MasterKeyResolver,
-  osKeyringMasterKey,
-} from "./crypto/master-key.js";
 import { EnvLegacyBackend } from "./backends/env-legacy.js";
 import { KeyringBackend } from "./backends/keyring.js";
 import {
@@ -12,19 +7,23 @@ import {
   BackendNotConfiguredError,
   type VaultBackend,
 } from "./backends/types.js";
+import { decrypt, encrypt } from "./crypto/envelope.js";
+import {
+  type MasterKeyResolver,
+  osKeyringMasterKey,
+} from "./crypto/master-key.js";
 import { assertSecretId } from "./identifiers.js";
 import { AuditLog } from "./policy/audit.js";
 import { decide, PermissionDeniedError } from "./policy/grants.js";
 import { parseReference } from "./references.js";
-import { lookupSchema } from "./secret-schema.js";
 import type { ScopedConfidant } from "./scoped.js";
+import { lookupSchema } from "./secret-schema.js";
 import {
-  emptyStore,
   readStore,
   removeSecret,
-  setSecret,
   type StoreData,
   type StoreEntry,
+  setSecret,
   writeStore,
 } from "./store.js";
 import type {
@@ -38,9 +37,9 @@ import type {
 } from "./types.js";
 
 export interface ConfidantOptions {
-  /** Path to the local store. Default: `~/.milady/confidant.json`. */
+  /** Path to the local store. Default: `~/.eliza/confidant.json`. */
   readonly storePath?: string;
-  /** Path to the audit log. Default: `~/.milady/audit/confidant.jsonl`. */
+  /** Path to the audit log. Default: `~/.eliza/audit/confidant.jsonl`. */
   readonly auditLogPath?: string;
   /** Master key resolver. Default: macOS keychain on darwin, else throws. */
   readonly masterKey?: MasterKeyResolver;
@@ -66,11 +65,11 @@ export interface Confidant {
 }
 
 export function createConfidant(opts: ConfidantOptions = {}): Confidant {
-  const root = process.env.MILADY_STATE_DIR
-    ? process.env.MILADY_STATE_DIR
+  const root = process.env.ELIZA_STATE_DIR
+    ? process.env.ELIZA_STATE_DIR
     : process.env.ELIZA_STATE_DIR
       ? process.env.ELIZA_STATE_DIR
-      : join(homedir(), ".milady");
+      : join(homedir(), ".eliza");
   const storePath = opts.storePath ?? join(root, "confidant.json");
   const auditPath = opts.auditLogPath ?? join(root, "audit", "confidant.jsonl");
   const masterKeyResolver =
@@ -210,13 +209,13 @@ class ConfidantImpl implements Confidant {
     if (!skillId || typeof skillId !== "string") {
       throw new TypeError("scopeFor: skillId must be a non-empty string");
     }
-    const self = this;
+
     return {
       resolve: async (id) =>
-        (await self.resolveInternal({ id, skillId })).value,
+        (await this.resolveInternal({ id, skillId })).value,
       lazyResolve: (id) => () =>
-        self.resolveInternal({ id, skillId }).then((d) => d.value),
-      has: async (id) => self.has(id),
+        this.resolveInternal({ id, skillId }).then((d) => d.value),
+      has: async (id) => this.has(id),
     };
   }
 

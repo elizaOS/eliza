@@ -1,6 +1,4 @@
-import {
-  DatabaseSync,
-} from "@elizaos/agent";
+import { DatabaseSync } from "@elizaos/agent";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   __internal,
@@ -104,8 +102,8 @@ function makeRuntime(initial: readonly string[] = []) {
 }
 
 beforeEach(() => {
-  delete process.env.MILADY_DEVICE_BUS_URL;
-  delete process.env.MILADY_DEVICE_BUS_TOKEN;
+  delete process.env.ELIZA_DEVICE_BUS_URL;
+  delete process.env.ELIZA_DEVICE_BUS_TOKEN;
 });
 
 afterEach(() => {
@@ -138,7 +136,7 @@ describe("autofill-whitelist helpers", () => {
 
 describe("REQUEST_FIELD_FILL — whitelist invariant", () => {
   test("refuses non-whitelisted domain without dispatching", async () => {
-    process.env.MILADY_DEVICE_BUS_URL = "https://example.test";
+    process.env.ELIZA_DEVICE_BUS_URL = "https://example.test";
     const fetchSpy = vi.spyOn(globalThis, "fetch");
     const result = await requestFieldFillAction.handler!(
       makeRuntime(),
@@ -191,7 +189,7 @@ describe("REQUEST_FIELD_FILL — whitelist invariant", () => {
   });
 
   test("whitelisted domain dispatches via device bus", async () => {
-    process.env.MILADY_DEVICE_BUS_URL = "https://example.test";
+    process.env.ELIZA_DEVICE_BUS_URL = "https://example.test";
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(

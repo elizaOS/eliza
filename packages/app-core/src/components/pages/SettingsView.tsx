@@ -54,6 +54,8 @@ import { AppsManagementSection } from "../settings/AppsManagementSection";
 import { CapabilitiesSection } from "../settings/CapabilitiesSection";
 import { PermissionsSection } from "../settings/PermissionsSection";
 import { ProviderSwitcher } from "../settings/ProviderSwitcher";
+import { SecretsManagerSection } from "../settings/SecretsManagerSection";
+import { WalletKeysSection } from "../settings/WalletKeysSection";
 import { SecuritySettingsSection } from "../settings/SecuritySettingsSection";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { ConfigPageView } from "./ConfigPageView";
@@ -61,8 +63,8 @@ import { ReleaseCenterView } from "./ReleaseCenterView";
 import { IdentitySettingsSection } from "./settings/IdentitySettingsSection";
 import { RuntimeSettingsSection } from "./settings/RuntimeSettingsSection";
 
-const SETTINGS_SIDEBAR_WIDTH_KEY = "milady:settings:sidebar:width";
-const SETTINGS_SIDEBAR_COLLAPSED_KEY = "milady:settings:sidebar:collapsed";
+const SETTINGS_SIDEBAR_WIDTH_KEY = "eliza:settings:sidebar:width";
+const SETTINGS_SIDEBAR_COLLAPSED_KEY = "eliza:settings:sidebar:collapsed";
 const SETTINGS_SIDEBAR_DEFAULT_WIDTH = 240;
 const SETTINGS_SIDEBAR_MIN_WIDTH = 200;
 const SETTINGS_SIDEBAR_MAX_WIDTH = 520;
@@ -179,6 +181,15 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     icon: Shield,
     description: "settings.sections.permissions.desc",
     defaultDescription: "Browser and device access.",
+  },
+  {
+    id: "secrets",
+    label: "settings.sections.secrets.label",
+    defaultLabel: "Vault",
+    icon: KeyRound,
+    description: "settings.sections.secrets.desc",
+    defaultDescription:
+      "Backends, secrets, saved logins, and per-context routing.",
   },
   {
     id: "security",
@@ -742,7 +753,7 @@ export function SettingsView({
   }, [loadPlugins]);
 
   // Deep-link target: another component (e.g. AutomationsView's missing-creds
-  // banner, or apps/app/src/main.tsx parsing milady://settings/connectors/<x>)
+  // banner, or apps/app/src/main.tsx parsing eliza://settings/connectors/<x>)
   // dispatches SETTINGS_FOCUS_CONNECTOR_EVENT with the canonical provider id.
   // We focus the Integrations section, then scroll the matching panel wrapper
   // (`[data-connector="<provider>"]`) into view and briefly flash it.
@@ -784,7 +795,8 @@ export function SettingsView({
     }
 
     function handle(event: Event) {
-      const detail = (event as CustomEvent<SettingsFocusConnectorDetail>).detail;
+      const detail = (event as CustomEvent<SettingsFocusConnectorDetail>)
+        .detail;
       if (!detail?.provider) return;
       // Consume the stash here too — the dispatcher always writes it before
       // firing the event, but if we're already mounted the event path wins
@@ -1072,7 +1084,10 @@ export function SettingsView({
           bodyClassName="p-4 sm:p-5"
           ref={registerContentItem("wallet-rpc")}
         >
-          <ConfigPageView embedded />
+          <div className="space-y-6">
+            <WalletKeysSection />
+            <ConfigPageView embedded />
+          </div>
         </SettingsSection>
       )}
 
@@ -1088,6 +1103,22 @@ export function SettingsView({
           ref={registerContentItem("permissions")}
         >
           <PermissionsSection />
+        </SettingsSection>
+      )}
+
+      {visibleSectionIds.has("secrets") && (
+        <SettingsSection
+          id="secrets"
+          title={t("settings.sections.secrets.label", {
+            defaultValue: "Vault",
+          })}
+          description={t("settings.sections.secrets.desc", {
+            defaultValue:
+              "Backends, secrets, saved logins, and per-context routing.",
+          })}
+          ref={registerContentItem("secrets")}
+        >
+          <SecretsManagerSection />
         </SettingsSection>
       )}
 

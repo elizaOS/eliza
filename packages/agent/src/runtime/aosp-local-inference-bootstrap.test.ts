@@ -3,9 +3,9 @@
  * bundle invokes after `startEliza()` returns.
  *
  * Coverage:
- *   1. Env gating — non-AOSP processes are no-ops (`MILADY_LOCAL_LLAMA !== "1"`).
+ *   1. Env gating — non-AOSP processes are no-ops (`ELIZA_LOCAL_LLAMA !== "1"`).
  *   2. Successful registration path registers TEXT_SMALL / TEXT_LARGE /
- *      TEXT_EMBEDDING handlers under the `milady-aosp-llama` provider id
+ *      TEXT_EMBEDDING handlers under the `eliza-aosp-llama` provider id
  *      at priority 0 (same band as cloud, lets the runtime's getModel()
  *      find handlers without a router installed).
  *   3. Failure path — when the AOSP llama loader can't register (no
@@ -77,7 +77,7 @@ beforeEach(() => {
   adapterMock.registerAospLlamaLoader.mockReset();
   for (const key of Object.keys(process.env)) delete process.env[key];
   Object.assign(process.env, ORIGINAL_ENV);
-  delete process.env.MILADY_LOCAL_LLAMA;
+  delete process.env.ELIZA_LOCAL_LLAMA;
 });
 
 afterEach(() => {
@@ -86,7 +86,7 @@ afterEach(() => {
 });
 
 describe("ensureAospLocalInferenceHandlers", () => {
-  it("no-ops when MILADY_LOCAL_LLAMA is not '1'", async () => {
+  it("no-ops when ELIZA_LOCAL_LLAMA is not '1'", async () => {
     const { ensureAospLocalInferenceHandlers } = await import(
       "./aosp-local-inference-bootstrap.js"
     );
@@ -101,9 +101,8 @@ describe("ensureAospLocalInferenceHandlers", () => {
     expect(runtime.registrations).toHaveLength(0);
   });
 
-  it("registers TEXT_SMALL + TEXT_LARGE by default; TEXT_EMBEDDING only when MILADY_AOSP_EMBEDDING=1", async () => {
-    process.env.MILADY_LOCAL_LLAMA = "1";
-    delete process.env.MILADY_AOSP_EMBEDDING;
+  it("registers TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING handlers when the AOSP loader registers", async () => {
+    process.env.ELIZA_LOCAL_LLAMA = "1";
 
     adapterMock.registerAospLlamaLoader.mockImplementation(
       async (rt: { registerService: (n: string, i: unknown) => void }) => {
@@ -128,52 +127,35 @@ describe("ensureAospLocalInferenceHandlers", () => {
     const { ensureAospLocalInferenceHandlers } = await import(
       "./aosp-local-inference-bootstrap.js"
     );
+    const runtime = makeRuntime();
 
-    // Default: embedding gated off. TEXT_SMALL + TEXT_LARGE only.
-    const runtimeDefault = makeRuntime();
-    const okDefault = await ensureAospLocalInferenceHandlers(
-      runtimeDefault as Parameters<typeof ensureAospLocalInferenceHandlers>[0],
+    const ok = await ensureAospLocalInferenceHandlers(
+      runtime as Parameters<typeof ensureAospLocalInferenceHandlers>[0],
     );
-    expect(okDefault).toBe(true);
-    const defaultRegs = runtimeDefault.registrations.filter(
-      (r) => r.provider === "milady-aosp-llama",
+
+    expect(ok).toBe(true);
+    expect(adapterMock.registerAospLlamaLoader).toHaveBeenCalledTimes(1);
+
+    const aospRegs = runtime.registrations.filter(
+      (r) => r.provider === "eliza-aosp-llama",
     );
-    // TEXT_EMBEDDING is gated behind MILADY_AOSP_EMBEDDING=1: on cvd's
-    // 4 GB ceiling, the single-context loader can't safely swap weights
-    // between chat + embedding modes (a chat turn fires multiple
-    // planner → embed → evaluator alternations and cumulative
-    // allocations push past ceiling). Default-off keeps chat reliable.
-    expect(defaultRegs).toHaveLength(2);
-    for (const reg of defaultRegs) {
+    // TEXT_SMALL + TEXT_LARGE + TEXT_EMBEDDING register together. Earlier
+    // builds gated TEXT_EMBEDDING behind ELIZA_AOSP_EMBEDDING=1 because
+    // the embed path triggered a llama_decode batch_inp assert; that's
+    // fixed by resetting `llama_set_embeddings` on every decode path in
+    // `aosp-llama-adapter.ts`, so the gate is gone.
+    expect(aospRegs).toHaveLength(3);
+    for (const reg of aospRegs) {
+      // Priority 0 = same band as cloud. Tie-breaks live in routing-policy
+      // (the smoke regression for "No handler found" was -1 → 0).
       expect(reg.priority).toBe(0);
     }
-    expect(defaultRegs.map((r) => r.modelType).sort()).toEqual([
-      "TEXT_LARGE",
-      "TEXT_SMALL",
-    ]);
-
-    // Opt-in: TEXT_EMBEDDING also registers.
-    adapterMock.registerAospLlamaLoader.mockClear();
-    process.env.MILADY_AOSP_EMBEDDING = "1";
-    const runtimeOptIn = makeRuntime();
-    const okOptIn = await ensureAospLocalInferenceHandlers(
-      runtimeOptIn as Parameters<typeof ensureAospLocalInferenceHandlers>[0],
-    );
-    expect(okOptIn).toBe(true);
-    const optInRegs = runtimeOptIn.registrations.filter(
-      (r) => r.provider === "milady-aosp-llama",
-    );
-    expect(optInRegs).toHaveLength(3);
-    expect(optInRegs.map((r) => r.modelType).sort()).toEqual([
-      "TEXT_EMBEDDING",
-      "TEXT_LARGE",
-      "TEXT_SMALL",
-    ]);
-    delete process.env.MILADY_AOSP_EMBEDDING;
+    const types = aospRegs.map((r) => r.modelType).sort();
+    expect(types).toEqual(["TEXT_EMBEDDING", "TEXT_LARGE", "TEXT_SMALL"]);
   });
 
   it("returns false and registers no handlers when the AOSP loader fails to register", async () => {
-    process.env.MILADY_LOCAL_LLAMA = "1";
+    process.env.ELIZA_LOCAL_LLAMA = "1";
     adapterMock.registerAospLlamaLoader.mockResolvedValue(false);
 
     const { ensureAospLocalInferenceHandlers } = await import(
@@ -193,12 +175,12 @@ describe("ensureAospLocalInferenceHandlers", () => {
 });
 
 describe("cli/index.ts serve command", () => {
-  it("invokes ensureAospLocalInferenceHandlers after startEliza when MILADY_LOCAL_LLAMA=1", async () => {
+  it("invokes ensureAospLocalInferenceHandlers after startEliza when ELIZA_LOCAL_LLAMA=1", async () => {
     // The bin.ts AOSP entry point routes through `runAutonomousCli('serve')`,
     // which awaits `startEliza({ serverOnly: true })` and then must wire the
     // local-inference handlers. We verify the chain by mocking startEliza
     // and the bootstrap module, then driving the CLI.
-    process.env.MILADY_LOCAL_LLAMA = "1";
+    process.env.ELIZA_LOCAL_LLAMA = "1";
 
     const startElizaMock = vi.fn();
     const bootstrapMock = vi.fn();
@@ -222,8 +204,8 @@ describe("cli/index.ts serve command", () => {
     expect(bootstrapMock).toHaveBeenCalledWith(fakeRuntime);
   });
 
-  it("does NOT invoke ensureAospLocalInferenceHandlers when MILADY_LOCAL_LLAMA is unset", async () => {
-    delete process.env.MILADY_LOCAL_LLAMA;
+  it("does NOT invoke ensureAospLocalInferenceHandlers when ELIZA_LOCAL_LLAMA is unset", async () => {
+    delete process.env.ELIZA_LOCAL_LLAMA;
 
     const startElizaMock = vi.fn();
     const bootstrapMock = vi.fn();

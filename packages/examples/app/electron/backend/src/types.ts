@@ -118,4 +118,3 @@ export function getEffectiveMode(config: AppConfig): ProviderMode {
   if (config.mode === "elizaClassic") return "elizaClassic";
   return hasValidCredentials(config) ? config.mode : "elizaClassic";
 }
-

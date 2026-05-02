@@ -169,27 +169,26 @@ export const ELIZA_ENV_TO_SECRET_ID: Readonly<Record<string, SecretId>> = {
  * providers with multiple env vars (Google, OpenAI), this maps to the
  * primary credential.
  */
-export const ELIZA_PROVIDER_TO_SECRET_ID: Readonly<Record<string, SecretId>> =
-  {
-    // LLM providers (primary key only)
-    anthropic: "llm.anthropic.apiKey",
-    openai: "llm.openai.apiKey",
-    openrouter: "llm.openrouter.apiKey",
-    google: "llm.google.apiKey",
-    "google-genai": "llm.google.apiKey",
-    groq: "llm.groq.apiKey",
-    xai: "llm.xai.apiKey",
-    deepseek: "llm.deepseek.apiKey",
-    mistral: "llm.mistral.apiKey",
-    together: "llm.together.apiKey",
-    zai: "llm.zai.apiKey",
-    elizacloud: "service.elizacloud.apiKey",
-    ollama: "llm.ollama.apiKey",
-    "vercel-ai-gateway": "llm.vercelAiGateway.apiKey",
-    // Subscription tokens — device-bound by OAuth contract.
-    "anthropic-subscription": "subscription.anthropic.accessToken",
-    "openai-codex": "subscription.openai.accessToken",
-  } as const;
+export const ELIZA_PROVIDER_TO_SECRET_ID: Readonly<Record<string, SecretId>> = {
+  // LLM providers (primary key only)
+  anthropic: "llm.anthropic.apiKey",
+  openai: "llm.openai.apiKey",
+  openrouter: "llm.openrouter.apiKey",
+  google: "llm.google.apiKey",
+  "google-genai": "llm.google.apiKey",
+  groq: "llm.groq.apiKey",
+  xai: "llm.xai.apiKey",
+  deepseek: "llm.deepseek.apiKey",
+  mistral: "llm.mistral.apiKey",
+  together: "llm.together.apiKey",
+  zai: "llm.zai.apiKey",
+  elizacloud: "service.elizacloud.apiKey",
+  ollama: "llm.ollama.apiKey",
+  "vercel-ai-gateway": "llm.vercelAiGateway.apiKey",
+  // Subscription tokens — device-bound by OAuth contract.
+  "anthropic-subscription": "subscription.anthropic.accessToken",
+  "openai-codex": "subscription.openai.accessToken",
+} as const;
 
 /**
  * Provider ids whose access token is device-bound. A future CloudBackend

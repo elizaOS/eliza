@@ -7,9 +7,9 @@
  * no passwords are passed on the command line.
  */
 
-import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { type ChildProcess, execFile, spawn } from "node:child_process";
+import { randomInt, randomUUID } from "node:crypto";
 import { promisify } from "node:util";
-import { randomUUID, randomInt } from "node:crypto";
 import { logger } from "@elizaos/core";
 
 const execFileAsync = promisify(execFile);
@@ -70,7 +70,7 @@ const DEFAULT_VNC_PORT = 5900;
 const DEFAULT_SESSION_MINUTES = 60;
 
 function isMockRemoteDesktopEnabled(): boolean {
-  const explicit = process.env.MILADY_TEST_REMOTE_DESKTOP_BACKEND?.trim();
+  const explicit = process.env.ELIZA_TEST_REMOTE_DESKTOP_BACKEND?.trim();
   if (explicit) {
     const normalized = explicit.toLowerCase();
     return (
@@ -91,9 +91,7 @@ function isMockRemoteDesktopEnabled(): boolean {
 function resolveConfig(
   config?: RemoteDesktopConfig,
   env: NodeJS.ProcessEnv = process.env,
-): Required<
-  Pick<RemoteDesktopConfig, "vncPort" | "sessionDurationMinutes">
-> & {
+): Required<Pick<RemoteDesktopConfig, "vncPort" | "sessionDurationMinutes">> & {
   preferredBackend?: RemoteDesktopBackend;
   tailscaleNodeName?: string;
   ngrokAuthToken?: string;
@@ -101,9 +99,11 @@ function resolveConfig(
   return {
     preferredBackend: config?.preferredBackend,
     tailscaleNodeName:
-      config?.tailscaleNodeName ?? (env.ELIZA_TAILSCALE_NODE?.trim() || undefined),
+      config?.tailscaleNodeName ??
+      (env.ELIZA_TAILSCALE_NODE?.trim() || undefined),
     ngrokAuthToken:
-      config?.ngrokAuthToken ?? (env.ELIZA_NGROK_AUTH_TOKEN?.trim() || undefined),
+      config?.ngrokAuthToken ??
+      (env.ELIZA_NGROK_AUTH_TOKEN?.trim() || undefined),
     vncPort: config?.vncPort ?? DEFAULT_VNC_PORT,
     sessionDurationMinutes:
       config?.sessionDurationMinutes ?? DEFAULT_SESSION_MINUTES,
@@ -121,11 +121,9 @@ interface TailscaleState {
 
 async function probeTailscale(): Promise<TailscaleState> {
   try {
-    const { stdout } = await execFileAsync(
-      "tailscale",
-      ["status", "--json"],
-      { timeout: 3_000 },
-    );
+    const { stdout } = await execFileAsync("tailscale", ["status", "--json"], {
+      timeout: 3_000,
+    });
     const parsed = JSON.parse(stdout) as {
       BackendState?: string;
       Self?: { HostName?: string; DNSName?: string };
@@ -361,10 +359,7 @@ async function startNgrokVncSession(args: {
     child.once("error", (err) => {
       clearTimeout(timer);
       reject(
-        new RemoteDesktopError(
-          `ngrok failed: ${err.message}`,
-          "ngrok-vnc",
-        ),
+        new RemoteDesktopError(`ngrok failed: ${err.message}`, "ngrok-vnc"),
       );
     });
     child.once("exit", (code) => {
@@ -491,8 +486,7 @@ export async function startRemoteSession(
 
     return activeSession;
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : String(error);
+    const message = error instanceof Error ? error.message : String(error);
     const failed: RemoteDesktopSession = {
       ...initialSession,
       status: "failed",

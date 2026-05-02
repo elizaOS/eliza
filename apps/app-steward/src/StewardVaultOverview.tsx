@@ -7,7 +7,7 @@ import type {
   StewardWebhookEvent,
   StewardWebhookEventsResponse,
   StewardWebhookEventType,
-} from "@miladyai/shared/contracts/wallet";
+} from "@elizaai/shared/contracts/wallet";
 import { Copy, RefreshCw, Shield } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getChainName, truncateAddress } from "./chain-utils";

@@ -12,4 +12,4 @@ const plugin: Plugin = {
 };
 
 export default plugin;
-export { plugin, helloAction, infoProvider };
+export { helloAction, infoProvider, plugin };

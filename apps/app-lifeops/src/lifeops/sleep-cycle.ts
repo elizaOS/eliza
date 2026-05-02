@@ -6,6 +6,7 @@ import type {
   LifeOpsSleepCycleEvidence,
   LifeOpsSleepCycleType,
 } from "@elizaos/shared";
+import { LIFEOPS_HEALTH_SIGNAL_SOURCES } from "@elizaos/shared";
 import {
   buildUtcDateFromLocalParts,
   getLocalDateKey,
@@ -110,7 +111,10 @@ function isNullableNumber(value: unknown): value is number | null {
 
 function isHealthSignal(value: unknown): value is LifeOpsHealthSignal {
   if (!isRecord(value)) return false;
-  if (value.source !== "healthkit" && value.source !== "health_connect") {
+  if (
+    typeof value.source !== "string" ||
+    !(LIFEOPS_HEALTH_SIGNAL_SOURCES as readonly string[]).includes(value.source)
+  ) {
     return false;
   }
   const permissions = value.permissions;

@@ -53,16 +53,19 @@ type ConnectorCatalog = {
   scenarios: ConnectorCatalogScenario[];
 };
 
+type ScenarioCheckContext = {
+  actionsCalled: unknown[];
+  turns?: unknown[];
+  approvalRequests?: unknown[];
+  connectorDispatches?: unknown[];
+  memoryWrites?: unknown[];
+  stateTransitions?: unknown[];
+};
+
 type ScenarioFinalCheck = {
   type?: string;
-  predicate?: (ctx: {
-    actionsCalled: unknown[];
-    turns?: unknown[];
-    approvalRequests?: unknown[];
-    connectorDispatches?: unknown[];
-    memoryWrites?: unknown[];
-    stateTransitions?: unknown[];
-  }) => Promise<unknown> | unknown;
+  name?: string;
+  predicate?: (ctx: ScenarioCheckContext) => Promise<unknown> | unknown;
   [key: string]: unknown;
 };
 
@@ -90,8 +93,8 @@ type TsScenario = {
   finalChecks?: ScenarioFinalCheck[];
 };
 
-const REPO_ROOT = path.resolve(import.meta.dirname, "../../../..");
-const ELIZA_SCENARIO_ROOT = path.join(REPO_ROOT, "eliza", "test", "scenarios");
+const ELIZA_ROOT = path.resolve(import.meta.dirname, "../../..");
+const ELIZA_SCENARIO_ROOT = path.join(ELIZA_ROOT, "test", "scenarios");
 const CONNECTOR_SCENARIO_DIR = path.join(
   ELIZA_SCENARIO_ROOT,
   "connector-certification",
@@ -103,8 +106,7 @@ const CONNECTOR_CATALOG_PATH = path.join(
   "lifeops-connector-certification.json",
 );
 const SHARED_LIFEOPS_CONTRACT_PATH = path.join(
-  REPO_ROOT,
-  "eliza",
+  ELIZA_ROOT,
   "packages",
   "shared",
   "src",
@@ -112,8 +114,7 @@ const SHARED_LIFEOPS_CONTRACT_PATH = path.join(
   "lifeops.ts",
 );
 const SHARED_LIFEOPS_EXTENSIONS_CONTRACT_PATH = path.join(
-  REPO_ROOT,
-  "eliza",
+  ELIZA_ROOT,
   "packages",
   "shared",
   "src",
@@ -121,8 +122,7 @@ const SHARED_LIFEOPS_EXTENSIONS_CONTRACT_PATH = path.join(
   "lifeops-extensions.ts",
 );
 const SHARED_LIFEOPS_DEGRADATION_CONTRACT_PATH = path.join(
-  REPO_ROOT,
-  "eliza",
+  ELIZA_ROOT,
   "packages",
   "shared",
   "src",
@@ -320,6 +320,55 @@ describe("LifeOps connector-certification fixture invariants (shape-only + sourc
         counts.rubric + turnRubricCount,
         `${entry.id} must include at least one rubric assertion (judgeRubric final check or responseJudge on a turn)`,
       ).toBeGreaterThan(0);
+    }
+  });
+
+  it("requires catalog-declared final checks for every certification scenario", async () => {
+    const catalog = await loadCatalog();
+
+    for (const entry of catalog.scenarios) {
+      const scenario = await loadScenario(entry.id);
+      const finalCheckTypes = listFinalCheckTypes(scenario.finalChecks);
+
+      for (const finalCheckType of entry.requiredFinalCheckTypes ?? []) {
+        expect(
+          finalCheckTypes.has(finalCheckType),
+          `${entry.id} must include catalog-required final check type "${finalCheckType}"`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it("requires custom certification predicates to fail closed on bogus context", async () => {
+    const catalog = await loadCatalog();
+    const bogusContext: ScenarioCheckContext = {
+      actionsCalled: [{ actionName: "WRONG_ACTION", parameters: {} }],
+      turns: [{ responseText: "", actionsCalled: [] }],
+      approvalRequests: [],
+      connectorDispatches: [],
+      memoryWrites: [],
+      stateTransitions: [],
+    };
+
+    for (const entry of catalog.scenarios) {
+      const scenario = await loadScenario(entry.id);
+      const customChecks = (scenario.finalChecks ?? []).filter(
+        (check) =>
+          check.type === "custom" && typeof check.predicate === "function",
+      );
+
+      expect(
+        customChecks.length,
+        `${entry.id} must include at least one executable custom predicate`,
+      ).toBeGreaterThan(0);
+
+      for (const check of customChecks) {
+        const result = await check.predicate?.(bogusContext);
+        expect(
+          typeof result === "string" && result.trim().length > 0,
+          `${entry.id}:${check.name ?? "custom"} should reject bogus context`,
+        ).toBe(true);
+      }
     }
   });
 

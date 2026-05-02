@@ -168,9 +168,12 @@ export function LifeOpsResizableSidebar({
         {children}
       </div>
       <div
-        role="separator"
+        role="slider"
         aria-orientation="vertical"
         aria-label="Resize sidebar"
+        aria-valuemin={minWidth}
+        aria-valuemax={maxWidth}
+        aria-valuenow={width}
         tabIndex={0}
         onPointerDown={handleDown}
         onKeyDown={handleKey}

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveMainAppDir } from "./lib/app-dir.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const candidateRoots = [
@@ -11,14 +12,11 @@ const candidateRoots = [
 ];
 const repoRoot =
   candidateRoots.find((candidate) =>
-    fs.existsSync(
-      path.join(candidate, "apps", "app", "scripts", "run-ui-playwright.mjs"),
-    ),
+    fs.existsSync(path.join(resolveMainAppDir(candidate, "app"), "package.json")),
   ) ?? path.resolve(here, "..");
+const appDir = resolveMainAppDir(repoRoot, "app");
 const uiPlaywrightRunner = path.join(
-  repoRoot,
-  "apps",
-  "app",
+  appDir,
   "scripts",
   "run-ui-playwright.mjs",
 );
@@ -35,6 +33,7 @@ const specFiles = [
   "test/ui-smoke/apps-session-direct-b.spec.ts",
   "test/ui-smoke/browser-workspace.spec.ts",
   "test/ui-smoke/cloud-wallet-import.spec.ts",
+  "test/ui-smoke/connectors.spec.ts",
   "test/ui-smoke/ui-smoke.spec.ts",
 ];
 
@@ -64,32 +63,27 @@ const env = { ...process.env };
 delete env.CI;
 env.ELIZA_UI_SMOKE_FORCE_STUB = env.ELIZA_UI_SMOKE_FORCE_STUB || "1";
 
-if (!env.MILADY_UI_SMOKE_API_PORT) {
+if (!env.ELIZA_UI_SMOKE_API_PORT) {
   const apiPort = await getFreePort();
-  env.MILADY_UI_SMOKE_API_PORT = String(apiPort);
+  env.ELIZA_UI_SMOKE_API_PORT = String(apiPort);
 }
 env.ELIZA_UI_SMOKE_API_PORT =
-  env.ELIZA_UI_SMOKE_API_PORT || env.MILADY_UI_SMOKE_API_PORT;
-env.MILADY_API_PORT = env.MILADY_API_PORT || env.MILADY_UI_SMOKE_API_PORT;
-env.ELIZA_API_PORT = env.ELIZA_API_PORT || env.MILADY_UI_SMOKE_API_PORT;
+  env.ELIZA_UI_SMOKE_API_PORT || env.ELIZA_UI_SMOKE_API_PORT;
+env.ELIZA_API_PORT = env.ELIZA_API_PORT || env.ELIZA_UI_SMOKE_API_PORT;
+env.ELIZA_API_PORT = env.ELIZA_API_PORT || env.ELIZA_UI_SMOKE_API_PORT;
 
-if (!env.MILADY_UI_SMOKE_PORT) {
+if (!env.ELIZA_UI_SMOKE_PORT) {
   const uiPort = await getFreePort();
-  env.MILADY_UI_SMOKE_PORT = String(uiPort);
+  env.ELIZA_UI_SMOKE_PORT = String(uiPort);
 }
-env.ELIZA_UI_SMOKE_PORT = env.ELIZA_UI_SMOKE_PORT || env.MILADY_UI_SMOKE_PORT;
-env.MILADY_PORT = env.MILADY_PORT || env.MILADY_UI_SMOKE_PORT;
-env.ELIZA_PORT = env.ELIZA_PORT || env.MILADY_UI_SMOKE_PORT;
+env.ELIZA_UI_SMOKE_PORT = env.ELIZA_UI_SMOKE_PORT || env.ELIZA_UI_SMOKE_PORT;
+env.ELIZA_PORT = env.ELIZA_PORT || env.ELIZA_UI_SMOKE_PORT;
+env.ELIZA_PORT = env.ELIZA_PORT || env.ELIZA_UI_SMOKE_PORT;
 
 for (const spec of specFiles) {
   const result = spawnSync(
     nodeCmd,
-    [
-      uiPlaywrightRunner,
-      "--config",
-      "playwright.ui-smoke.config.ts",
-      spec,
-    ],
+    [uiPlaywrightRunner, "--config", "playwright.ui-smoke.config.ts", spec],
     {
       cwd: repoRoot,
       env,

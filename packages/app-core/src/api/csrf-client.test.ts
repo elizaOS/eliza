@@ -4,21 +4,17 @@
  * Unit tests for the CSRF client helpers.
  *
  * Key invariants:
- *   - GET / HEAD / OPTIONS never attach x-milady-csrf.
- *   - POST / PUT / DELETE / PATCH attach x-milady-csrf when cookie is present.
+ *   - GET / HEAD / OPTIONS never attach x-eliza-csrf.
+ *   - POST / PUT / DELETE / PATCH attach x-eliza-csrf when cookie is present.
  *   - `credentials: "include"` is always set.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-// We import the constant from the sessions module so the test is in sync.
+import { DEFAULT_BOOT_CONFIG, setBootConfig } from "../config/boot-config";
 import { CSRF_COOKIE_NAME, CSRF_HEADER_NAME } from "./auth/sessions";
 import { fetchWithCsrf, readCsrfTokenFromCookie } from "./csrf-client";
-
-// ── readCsrfTokenFromCookie ───────────────────────────────────────────────────
-
 describe("readCsrfTokenFromCookie", () => {
   afterEach(() => {
-    // Remove the test cookie by setting Max-Age=0.
     document.cookie = `${CSRF_COOKIE_NAME}=; Max-Age=0; path=/`;
   });
 
@@ -39,20 +35,19 @@ describe("readCsrfTokenFromCookie", () => {
   });
 });
 
-// ── fetchWithCsrf ─────────────────────────────────────────────────────────────
-
 describe("fetchWithCsrf", () => {
   let fetchMock: ReturnType<typeof vi.fn<typeof fetch>>;
 
   beforeEach(() => {
     fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock);
-    // Plant a CSRF cookie for mutation-method tests.
+    setBootConfig(DEFAULT_BOOT_CONFIG);
     document.cookie = `${CSRF_COOKIE_NAME}=csrf-test-value; path=/`;
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+    setBootConfig(DEFAULT_BOOT_CONFIG);
     document.cookie = `${CSRF_COOKIE_NAME}=; Max-Age=0; path=/`;
   });
 
@@ -66,7 +61,7 @@ describe("fetchWithCsrf", () => {
     "GET",
     "HEAD",
     "OPTIONS",
-  ] as const)("%s does not attach x-milady-csrf", async (method) => {
+  ] as const)("%s does not attach x-eliza-csrf", async (method) => {
     await fetchWithCsrf("/api/test", { method });
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const headers = new Headers(init.headers);
@@ -78,15 +73,14 @@ describe("fetchWithCsrf", () => {
     "PUT",
     "DELETE",
     "PATCH",
-  ] as const)("%s attaches x-milady-csrf when cookie present", async (method) => {
+  ] as const)("%s attaches x-eliza-csrf when cookie present", async (method) => {
     await fetchWithCsrf("/api/test", { method });
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const headers = new Headers(init.headers);
     expect(headers.get(CSRF_HEADER_NAME)).toBe("csrf-test-value");
   });
 
-  it("POST does not attach x-milady-csrf when cookie absent", async () => {
-    // Remove the cookie.
+  it("POST does not attach x-eliza-csrf when cookie absent", async () => {
     document.cookie = `${CSRF_COOKIE_NAME}=; Max-Age=0; path=/`;
     await fetchWithCsrf("/api/test", { method: "POST" });
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
@@ -95,11 +89,59 @@ describe("fetchWithCsrf", () => {
   });
 
   it("defaults to GET when no method supplied", async () => {
-    // No method in init — treated as GET, no CSRF.
     await fetchWithCsrf("/api/test", {});
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const headers = new Headers(init.headers);
     expect(headers.has(CSRF_HEADER_NAME)).toBe(false);
     expect(init.credentials).toBe("include");
+  });
+});
+
+describe("fetchWithCsrf — bearer token", () => {
+  let fetchMock: ReturnType<typeof vi.fn<typeof fetch>>;
+
+  beforeEach(() => {
+    fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock);
+    setBootConfig(DEFAULT_BOOT_CONFIG);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    setBootConfig(DEFAULT_BOOT_CONFIG);
+  });
+
+  it("attaches Authorization: Bearer when apiToken is set", async () => {
+    setBootConfig({ ...DEFAULT_BOOT_CONFIG, apiToken: "my-secret-token" });
+    await fetchWithCsrf("/api/test");
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const headers = new Headers(init.headers);
+    expect(headers.get("Authorization")).toBe("Bearer my-secret-token");
+  });
+
+  it("does not overwrite an explicit Authorization header", async () => {
+    setBootConfig({ ...DEFAULT_BOOT_CONFIG, apiToken: "my-secret-token" });
+    await fetchWithCsrf("/api/test", {
+      headers: { Authorization: "Bearer explicit-token" },
+    });
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const headers = new Headers(init.headers);
+    expect(headers.get("Authorization")).toBe("Bearer explicit-token");
+  });
+
+  it("does not attach Authorization when apiToken is absent", async () => {
+    setBootConfig(DEFAULT_BOOT_CONFIG);
+    await fetchWithCsrf("/api/test");
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const headers = new Headers(init.headers);
+    expect(headers.has("Authorization")).toBe(false);
+  });
+
+  it("trims whitespace from apiToken", async () => {
+    setBootConfig({ ...DEFAULT_BOOT_CONFIG, apiToken: "  spaced-token  " });
+    await fetchWithCsrf("/api/test");
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const headers = new Headers(init.headers);
+    expect(headers.get("Authorization")).toBe("Bearer spaced-token");
   });
 });

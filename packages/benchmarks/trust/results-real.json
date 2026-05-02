@@ -1,5 +1,5 @@
 {
-  "handler_name": "elizaos-trust-plugin",
+  "handler_name": "elizaos-trust-runtime",
   "overall_f1": 0.72321307919134,
   "false_positive_rate": 0.08571428571428572,
   "total_tests": 165,

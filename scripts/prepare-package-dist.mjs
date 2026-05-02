@@ -32,7 +32,7 @@ const packageJsonPath = path.join(packageDir, "package.json");
 const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
 const workspaceVersions = collectWorkspaceVersions(repoRoot);
 const skipLocalUpstreams =
-  process.env.MILADY_SKIP_LOCAL_UPSTREAMS === "1" ||
+  process.env.ELIZA_SKIP_LOCAL_UPSTREAMS === "1" ||
   process.env.ELIZA_SKIP_LOCAL_UPSTREAMS === "1";
 const OPTIONAL_PLUGIN_FALLBACK_VERSIONS = new Map([
   ["@elizaos/plugin-sql", "alpha"],
@@ -296,13 +296,20 @@ function stripSrcPrefix(sourcePath) {
 }
 
 function replaceSourceExtension(relPath, nextExt) {
-  if (relPath.includes("*")) {
-    return relPath.endsWith(nextExt) ? relPath : `${relPath}${nextExt}`;
-  }
-
   const declarationExtMatch = relPath.match(/\.d\.(ts|mts|cts)$/);
   if (declarationExtMatch) {
     return `${relPath.slice(0, -declarationExtMatch[0].length)}${nextExt}`;
+  }
+
+  const sourceExtMatch = relPath.match(
+    /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/,
+  );
+  if (sourceExtMatch) {
+    return `${relPath.slice(0, -sourceExtMatch[0].length)}${nextExt}`;
+  }
+
+  if (relPath.includes("*")) {
+    return relPath.endsWith(nextExt) ? relPath : `${relPath}${nextExt}`;
   }
 
   const ext = path.posix.extname(relPath);

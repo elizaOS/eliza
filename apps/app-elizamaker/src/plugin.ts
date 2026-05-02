@@ -8,6 +8,7 @@ import {
 import type { AgentRuntime, Plugin, Route } from "@elizaos/core";
 import { handleDropRoutes } from "./drop-routes.js";
 import { getElizaMakerDropService } from "./drop-service-registry.js";
+import { initializeRegistryAndDropServices } from "./init-registry-services.js";
 import { readOGCode } from "./og-tracker.js";
 
 function json(res: http.ServerResponse, data: unknown, status = 200): void {
@@ -100,6 +101,12 @@ export const elizaMakerPlugin: Plugin = {
   description:
     "ElizaMaker ERC-8041 drop, mint, whitelist, and Merkle proof routes.",
   routes: elizaMakerRoutes,
+  init: async (_config, runtime) => {
+    // Bootstrap RegistryService + DropService asynchronously so that plugin
+    // registration does not block on outbound RPC probes. Mirrors the
+    // pre-extraction startDeferredStartupWork timing in server.ts.
+    void initializeRegistryAndDropServices(runtime);
+  },
 };
 
 export default elizaMakerPlugin;

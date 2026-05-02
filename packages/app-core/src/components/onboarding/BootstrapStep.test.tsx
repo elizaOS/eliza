@@ -107,7 +107,7 @@ describe("BootstrapStep", () => {
 
     await waitFor(() => {
       expect(exchangeFn).toHaveBeenCalledWith("my-token-123");
-      expect(sessionStorage.getItem("milady_session")).toBe("sess-abc");
+      expect(sessionStorage.getItem("eliza_session")).toBe("sess-abc");
       expect(onAdvance).toHaveBeenCalledOnce();
     });
   });
@@ -126,7 +126,7 @@ describe("BootstrapStep", () => {
 
     await waitFor(() => {
       expect(onAdvance).not.toHaveBeenCalled();
-      expect(sessionStorage.getItem("milady_session")).toBeNull();
+      expect(sessionStorage.getItem("eliza_session")).toBeNull();
     });
 
     // Error message should mention single-use nature.
@@ -173,7 +173,7 @@ describe("BootstrapStep", () => {
 
     await waitFor(() => {
       expect(onAdvance).not.toHaveBeenCalled();
-      expect(sessionStorage.getItem("milady_session")).toBeNull();
+      expect(sessionStorage.getItem("eliza_session")).toBeNull();
     });
 
     expect(screen.getByText(/network error|fetch failed/i)).toBeTruthy();
@@ -204,7 +204,7 @@ describe("BootstrapStep", () => {
 
       await waitFor(() => {
         expect(exchangeFn).toHaveBeenCalledWith("hash-token-xyz");
-        expect(sessionStorage.getItem("milady_session")).toBe("sess-auto");
+        expect(sessionStorage.getItem("eliza_session")).toBe("sess-auto");
         expect(onAdvance).toHaveBeenCalledOnce();
       });
     });
@@ -229,13 +229,13 @@ describe("BootstrapStep", () => {
       window.history.replaceState(null, "", "/#bootstrap=tok");
 
       // Pending exchange — never resolves during this render
-      const exchangeFn = vi.fn(() => new Promise<BootstrapExchangeResult>(() => {}));
+      const exchangeFn = vi.fn(
+        () => new Promise<BootstrapExchangeResult>(() => {}),
+      );
 
       render(<BootstrapStep onAdvance={() => {}} exchangeFn={exchangeFn} />);
 
-      expect(
-        screen.getByRole("button", { name: /verifying/i }),
-      ).toBeTruthy();
+      expect(screen.getByRole("button", { name: /verifying/i })).toBeTruthy();
     });
 
     it("falls through to the manual paste form when the hash has no token", () => {
@@ -246,9 +246,7 @@ describe("BootstrapStep", () => {
       render(<BootstrapStep onAdvance={() => {}} exchangeFn={exchangeFn} />);
 
       expect(exchangeFn).not.toHaveBeenCalled();
-      expect(
-        screen.getByRole("button", { name: /activate/i }),
-      ).toBeTruthy();
+      expect(screen.getByRole("button", { name: /activate/i })).toBeTruthy();
     });
 
     it("surfaces a 401 from auto-exchange without advancing", async () => {

@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { fn } from "@storybook/test";
+import { fn } from "storybook/test";
 import { ConfirmDialog, PromptDialog } from "../components/ui/confirm-dialog";
 
 const meta = {

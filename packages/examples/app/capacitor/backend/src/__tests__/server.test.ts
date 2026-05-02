@@ -1,12 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
+import type { Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AddressInfo } from "node:net";
-import type { Server } from "node:http";
-import { DEFAULT_CONFIG } from "../types";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { __shutdownForTests } from "../runtimeManager";
 import { createApiServer } from "../server";
+import { DEFAULT_CONFIG } from "../types";
 
 async function makeTempDir(prefix: string): Promise<string> {
   return await mkdtemp(join(tmpdir(), prefix));
@@ -82,4 +82,3 @@ describe("capacitor backend HTTP API", () => {
     expect(histBody.history.some((m) => m.role === "assistant")).toBe(true);
   });
 });
-

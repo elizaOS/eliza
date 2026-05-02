@@ -1,12 +1,12 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
+import { describeIf } from "../../../../eliza/test/helpers/conditional-tests.ts";
 import { req } from "../../../packages/app-core/test/helpers/http.ts";
 import { startLiveRuntimeServer } from "../../../packages/app-core/test/helpers/live-runtime-server.ts";
 import type { RuntimeHarness } from "../../../packages/app-core/test/live-agent/helpers/runtime-harness.ts";
 
 const LIVE =
-  process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
+  process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 
 async function waitForVincentRoute(runtime: RuntimeHarness): Promise<void> {
   const deadline = Date.now() + 30_000;

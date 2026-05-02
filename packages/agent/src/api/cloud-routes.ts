@@ -14,7 +14,7 @@ import type {
 } from "../cloud/bridge-client.js";
 import {
   getOrCreateClientAddressKey,
-  MILADY_CLOUD_CLIENT_ADDRESS_KEY_ENV,
+  ELIZA_CLOUD_CLIENT_ADDRESS_KEY_ENV,
   persistCloudWalletCache,
   provisionCloudWallets,
 } from "../cloud/cloud-wallet.js";
@@ -136,9 +136,9 @@ const CLOUD_LOGIN_POLL_TIMEOUT_MS = 10_000;
 const CONFIG_ENV_FILENAME = "config.env";
 const CONFIG_ENV_BAK_SUFFIX = ".bak";
 const CLOUD_WALLET_ROLLBACK_ENV_KEYS = [
-  MILADY_CLOUD_CLIENT_ADDRESS_KEY_ENV,
-  "MILADY_CLOUD_EVM_ADDRESS",
-  "MILADY_CLOUD_SOLANA_ADDRESS",
+  ELIZA_CLOUD_CLIENT_ADDRESS_KEY_ENV,
+  "ELIZA_CLOUD_EVM_ADDRESS",
+  "ELIZA_CLOUD_SOLANA_ADDRESS",
   "ENABLE_EVM_PLUGIN",
   "WALLET_SOURCE_EVM",
   "WALLET_SOURCE_SOLANA",
@@ -656,18 +656,18 @@ export async function handleCloudRoute(
           saveConfigOrThrow(state);
 
           if (descriptors.evm?.walletAddress) {
-            process.env.MILADY_CLOUD_EVM_ADDRESS =
+            process.env.ELIZA_CLOUD_EVM_ADDRESS =
               descriptors.evm.walletAddress;
             await persistConfigEnv(
-              "MILADY_CLOUD_EVM_ADDRESS",
+              "ELIZA_CLOUD_EVM_ADDRESS",
               descriptors.evm.walletAddress,
             );
           }
           if (descriptors.solana?.walletAddress) {
-            process.env.MILADY_CLOUD_SOLANA_ADDRESS =
+            process.env.ELIZA_CLOUD_SOLANA_ADDRESS =
               descriptors.solana.walletAddress;
             await persistConfigEnv(
-              "MILADY_CLOUD_SOLANA_ADDRESS",
+              "ELIZA_CLOUD_SOLANA_ADDRESS",
               descriptors.solana.walletAddress,
             );
           }

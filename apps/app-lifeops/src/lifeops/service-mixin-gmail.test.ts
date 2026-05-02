@@ -1,15 +1,15 @@
+import { describe, expect, it, vi } from "vitest";
 import type {
   LifeOpsConnectorGrant,
   LifeOpsGmailMessageSummary,
 } from "../contracts/index.js";
-import { describe, expect, it, vi } from "vitest";
 import { LifeOpsService } from "./service.js";
 import { LifeOpsServiceError } from "./service-types.js";
 
 function runtime(overrides: Record<string, unknown> = {}) {
   return {
     agentId: "agent-gmail-service",
-    character: { name: "Milady" },
+    character: { name: "Eliza" },
     ...overrides,
   } as unknown as ConstructorParameters<typeof LifeOpsService>[0];
 }

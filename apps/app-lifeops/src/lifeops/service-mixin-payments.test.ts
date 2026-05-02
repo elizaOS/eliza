@@ -57,7 +57,7 @@ describe("payment metadata token encryption", () => {
   it("round-trips payment tokens without storing plaintext in metadata", () => {
     const env = {
       ELIZA_TOKEN_ENCRYPTION_KEY: crypto.randomBytes(32).toString("base64"),
-      ELIZA_OAUTH_DIR: "/tmp/milady-payment-token-test",
+      ELIZA_OAUTH_DIR: "/tmp/eliza-payment-token-test",
     } as NodeJS.ProcessEnv;
 
     const encrypted = encryptPaymentMetadataToken("plaid-access-secret", env);
@@ -71,7 +71,7 @@ describe("payment metadata token encryption", () => {
   it("keeps legacy plaintext token reads working for existing payment sources", () => {
     const env = {
       ELIZA_TOKEN_ENCRYPTION_KEY: crypto.randomBytes(32).toString("base64"),
-      ELIZA_OAUTH_DIR: "/tmp/milady-payment-token-test",
+      ELIZA_OAUTH_DIR: "/tmp/eliza-payment-token-test",
     } as NodeJS.ProcessEnv;
 
     expect(
@@ -82,7 +82,7 @@ describe("payment metadata token encryption", () => {
   it("rejects malformed token metadata instead of treating it as empty", () => {
     const env = {
       ELIZA_TOKEN_ENCRYPTION_KEY: crypto.randomBytes(32).toString("base64"),
-      ELIZA_OAUTH_DIR: "/tmp/milady-payment-token-test",
+      ELIZA_OAUTH_DIR: "/tmp/eliza-payment-token-test",
     } as NodeJS.ProcessEnv;
 
     expect(() =>

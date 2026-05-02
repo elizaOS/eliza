@@ -94,10 +94,7 @@
     }
   ],
   "trajectory": "trajectories/788b3701-3ec9-4b67-b679-418bfa726c22",
-  "related_apps": [
-    "chrome",
-    "os"
-  ],
+  "related_apps": ["chrome", "os"],
   "evaluator": {
     "func": "diff_text_file",
     "result": {

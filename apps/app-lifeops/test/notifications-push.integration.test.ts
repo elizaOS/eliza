@@ -19,7 +19,7 @@
  *
  * To run locally:
  *   NTFY_BASE_URL=https://ntfy.sh \
- *   NTFY_DEFAULT_TOPIC=milady-test \
+ *   NTFY_DEFAULT_TOPIC=eliza-test \
  *     bunx vitest run apps/app-lifeops/test/notifications-push.integration.test.ts
  *
  * Do NOT enable this suite in CI by injecting NTFY_BASE_URL — it publishes
@@ -32,8 +32,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   NtfyConfigError,
   readNtfyConfigFromEnv,
-  sendPush,
   type SendPushRequest,
+  sendPush,
 } from "../src/lifeops/notifications-push.js";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -71,10 +71,10 @@ describe("readNtfyConfigFromEnv", () => {
     expect(config.defaultTopic).toBe("my-alerts");
   });
 
-  it("falls back to 'milady' when NTFY_DEFAULT_TOPIC is not set", () => {
+  it("falls back to 'eliza' when NTFY_DEFAULT_TOPIC is not set", () => {
     process.env.NTFY_BASE_URL = "https://ntfy.sh";
     const config = readNtfyConfigFromEnv();
-    expect(config.defaultTopic).toBe("milady");
+    expect(config.defaultTopic).toBe("eliza");
   });
 });
 
@@ -84,9 +84,9 @@ describe("readNtfyConfigFromEnv", () => {
 
 describe("sendPush — config error", () => {
   it("throws NtfyConfigError when no config passed and env is empty", async () => {
-    await expect(
-      sendPush({ title: "Test", message: "Hello" }),
-    ).rejects.toThrow(NtfyConfigError);
+    await expect(sendPush({ title: "Test", message: "Hello" })).rejects.toThrow(
+      NtfyConfigError,
+    );
   });
 });
 
@@ -98,9 +98,9 @@ describe("sendPush — network error handling", () => {
     );
     process.env.NTFY_BASE_URL = "https://ntfy.example.invalid";
 
-    await expect(
-      sendPush({ title: "Test", message: "Hello" }),
-    ).rejects.toThrow("Failed to fetch");
+    await expect(sendPush({ title: "Test", message: "Hello" })).rejects.toThrow(
+      "Failed to fetch",
+    );
   });
 
   it("throws Error on non-OK HTTP response", async () => {
@@ -114,9 +114,9 @@ describe("sendPush — network error handling", () => {
     );
     process.env.NTFY_BASE_URL = "https://ntfy.example.invalid";
 
-    await expect(
-      sendPush({ title: "Test", message: "Hello" }),
-    ).rejects.toThrow("403");
+    await expect(sendPush({ title: "Test", message: "Hello" })).rejects.toThrow(
+      "403",
+    );
   });
 
   it("returns messageId and deliveredAt on success", async () => {
@@ -177,14 +177,14 @@ describe("sendPush — network error handling", () => {
       message: "Board meeting starts in 10 minutes.",
       priority: 5,
       tags: ["calendar", "alarm_clock"],
-      click: "milady://meeting/board-123",
+      click: "eliza://meeting/board-123",
     });
 
     expect(capturedInit?.headers).toMatchObject({
       Title: "Meeting ladder",
       Priority: "5",
       Tags: "calendar,alarm_clock",
-      Click: "milady://meeting/board-123",
+      Click: "eliza://meeting/board-123",
     });
   });
 });
@@ -199,14 +199,15 @@ describe.skipIf(!LIVE_BASE_URL)("sendPush — live Ntfy", () => {
   it("publishes a notification and returns a messageId", async () => {
     const request: SendPushRequest = {
       title: "LifeOps integration test",
-      message: "This is a test push from the notifications-push integration test suite.",
+      message:
+        "This is a test push from the notifications-push integration test suite.",
       priority: 3,
       tags: ["white_check_mark"],
     };
 
     const result = await sendPush(request, {
       baseUrl: LIVE_BASE_URL!.replace(/\/$/, ""),
-      defaultTopic: ORIGINAL_ENV.NTFY_DEFAULT_TOPIC ?? "milady-test",
+      defaultTopic: ORIGINAL_ENV.NTFY_DEFAULT_TOPIC ?? "eliza-test",
     });
 
     expect(typeof result.messageId).toBe("string");

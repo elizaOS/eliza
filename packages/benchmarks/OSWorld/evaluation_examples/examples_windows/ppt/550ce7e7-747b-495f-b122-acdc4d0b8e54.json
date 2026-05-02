@@ -39,9 +39,7 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "ppt"
-  ],
+  "related_apps": ["ppt"],
   "evaluator": {
     "postconfig": [
       {

@@ -81,16 +81,16 @@ let tempDir: string;
 let originalStateDir: string | undefined;
 
 beforeEach(async () => {
-  tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "milady-github-routes-"));
-  originalStateDir = process.env.MILADY_STATE_DIR;
-  process.env.MILADY_STATE_DIR = tempDir;
+  tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-github-routes-"));
+  originalStateDir = process.env.ELIZA_STATE_DIR;
+  process.env.ELIZA_STATE_DIR = tempDir;
 });
 
 afterEach(async () => {
   if (originalStateDir === undefined) {
-    delete process.env.MILADY_STATE_DIR;
+    delete process.env.ELIZA_STATE_DIR;
   } else {
-    process.env.MILADY_STATE_DIR = originalStateDir;
+    process.env.ELIZA_STATE_DIR = originalStateDir;
   }
   await fs.rm(tempDir, { recursive: true, force: true });
 });

@@ -7,11 +7,7 @@
     {
       "type": "command",
       "parameters": {
-        "command": [
-          "mkdir",
-          "-p",
-          "/home/user/Desktop/tetris"
-        ]
+        "command": ["mkdir", "-p", "/home/user/Desktop/tetris"]
       }
     },
     {
@@ -40,18 +36,12 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "code",
-          "/home/user/Desktop/tetris"
-        ]
+        "command": ["code", "/home/user/Desktop/tetris"]
       }
     }
   ],
   "trajectory": "trajectories/9219480b-3aed-47fc-8bac-d2cffc5849f7",
-  "related_apps": [
-    "vs_code",
-    "os"
-  ],
+  "related_apps": ["vs_code", "os"],
   "evaluator": {
     "postconfig": [],
     "func": "check_python_file_by_test_suite",
@@ -63,12 +53,7 @@
         "/home/user/Desktop/tetris/settings.py",
         "/home/user/Desktop/tetris/tetris.py"
       ],
-      "dest": [
-        "block.py",
-        "main.py",
-        "settings.py",
-        "tetris.py"
-      ],
+      "dest": ["block.py", "main.py", "settings.py", "tetris.py"],
       "multi": true
     },
     "expected": {

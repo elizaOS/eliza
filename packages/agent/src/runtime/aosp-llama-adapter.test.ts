@@ -1,6 +1,6 @@
 /**
  * Unit tests for the AOSP llama.cpp FFI adapter. The full inference loop
- * requires a real `libllama.so` + `libmilady-llama-shim.so` and is
+ * requires a real `libllama.so` + `libeliza-llama-shim.so` and is
  * exercised by integration tests on a real AOSP build. Here we cover:
  *
  *   1. Env gating — non-AOSP processes are no-ops.
@@ -8,7 +8,7 @@
  *   3. Failure modes when the .so is missing while the user opted in.
  *   4. The dlopen symbol manifests match the post-b4500 llama.h surface
  *      (sampler chain + embedding helpers) AND the
- *      libmilady-llama-shim.so surface (struct-by-value workaround,
+ *      libeliza-llama-shim.so surface (struct-by-value workaround,
  *      malloc'd-pointer + per-field setter pattern). This is the
  *      regression test that catches "the binary ships with stale symbols
  *      and dlsym returns NULL at first call". See b3490 → b4500 pin bump
@@ -71,8 +71,8 @@ afterEach(() => {
 });
 
 describe("aosp-llama-adapter / env gating", () => {
-  it("returns false when MILADY_LOCAL_LLAMA is unset", async () => {
-    delete process.env.MILADY_LOCAL_LLAMA;
+  it("returns false when ELIZA_LOCAL_LLAMA is unset", async () => {
+    delete process.env.ELIZA_LOCAL_LLAMA;
     const mod = await import("./aosp-llama-adapter");
     const services = new Map<string, unknown>();
     const runtime = {
@@ -83,10 +83,10 @@ describe("aosp-llama-adapter / env gating", () => {
     const result = await mod.registerAospLlamaLoader(runtime);
     expect(result).toBe(false);
     expect(services.has("localInferenceLoader")).toBe(false);
-  });
+  }, 300_000);
 
   it("returns false when registerService is missing", async () => {
-    process.env.MILADY_LOCAL_LLAMA = "1";
+    process.env.ELIZA_LOCAL_LLAMA = "1";
     const mod = await import("./aosp-llama-adapter");
     const result = await mod.registerAospLlamaLoader({});
     expect(result).toBe(false);
@@ -118,10 +118,10 @@ describe("aosp-llama-adapter / resolveLlamaShimPath", () => {
   it("resolves the shim alongside libllama.so in the per-ABI dir", async () => {
     const { resolveLlamaShimPath } = await import("./aosp-llama-adapter");
     expect(resolveLlamaShimPath("arm64", "/data/data/app/agent")).toBe(
-      "/data/data/app/agent/arm64-v8a/libmilady-llama-shim.so",
+      "/data/data/app/agent/arm64-v8a/libeliza-llama-shim.so",
     );
     expect(resolveLlamaShimPath("x64", "/data/data/app/agent")).toBe(
-      "/data/data/app/agent/x86_64/libmilady-llama-shim.so",
+      "/data/data/app/agent/x86_64/libeliza-llama-shim.so",
     );
   });
 
@@ -134,8 +134,8 @@ describe("aosp-llama-adapter / resolveLlamaShimPath", () => {
 });
 
 describe("aosp-llama-adapter / missing libllama.so", () => {
-  it("logs and returns false when MILADY_LOCAL_LLAMA=1 but the .so is absent", async () => {
-    process.env.MILADY_LOCAL_LLAMA = "1";
+  it("logs and returns false when ELIZA_LOCAL_LLAMA=1 but the .so is absent", async () => {
+    process.env.ELIZA_LOCAL_LLAMA = "1";
     const mod = await import("./aosp-llama-adapter");
     mod.__resetForTests();
     const services = new Map<string, unknown>();
@@ -163,8 +163,8 @@ describe("aosp-llama-adapter / dlopen symbol manifest", () => {
    * We intercept `node:fs.existsSync` so the adapter's libllama.so guard
    * passes, then assert the symbol map handed to dlopen.
    */
-  it("dlopens libllama.so first then libmilady-llama-shim.so with the right symbol manifests", async () => {
-    process.env.MILADY_LOCAL_LLAMA = "1";
+  it("dlopens libllama.so first then libeliza-llama-shim.so with the right symbol manifests", async () => {
+    process.env.ELIZA_LOCAL_LLAMA = "1";
 
     vi.doMock("node:fs", () => ({
       existsSync: () => true,
@@ -182,7 +182,7 @@ describe("aosp-llama-adapter / dlopen symbol manifest", () => {
     const result = await mod.registerAospLlamaLoader(runtime);
     expect(result).toBe(true);
     // Two dlopen calls: libllama.so first (its symbols populate the
-    // global namespace), then libmilady-llama-shim.so (NEEDED libllama.so).
+    // global namespace), then libeliza-llama-shim.so (NEEDED libllama.so).
     expect(dlopenSpy).toHaveBeenCalledTimes(2);
 
     // The registered loader implements the embed() surface from
@@ -199,7 +199,7 @@ describe("aosp-llama-adapter / dlopen symbol manifest", () => {
     const firstCall = dlopenSpy.mock.calls[0];
     const secondCall = dlopenSpy.mock.calls[1];
     expect(firstCall?.[0]).toMatch(/libllama\.so$/);
-    expect(secondCall?.[0]).toMatch(/libmilady-llama-shim\.so$/);
+    expect(secondCall?.[0]).toMatch(/libeliza-llama-shim\.so$/);
 
     const llamaSymbols = firstCall?.[1] as Record<string, unknown> | undefined;
     const shimSymbols = secondCall?.[1] as Record<string, unknown> | undefined;
@@ -237,7 +237,7 @@ describe("aosp-llama-adapter / dlopen symbol manifest", () => {
 
     // bun:ffi cannot pass struct-by-value arguments. These six symbols are
     // the struct-by-value entry points in llama.h b4500; they MUST be bound
-    // through libmilady-llama-shim.so, NOT directly here. If a future
+    // through libeliza-llama-shim.so, NOT directly here. If a future
     // refactor adds them back to the libllama dlopen call, the wrapper
     // would silently fall back to passing zeroed buffers and clobber the
     // canonical defaults — exactly the bug this commit fixes.
@@ -264,23 +264,23 @@ describe("aosp-llama-adapter / dlopen symbol manifest", () => {
       expect(llamaSymbols).toHaveProperty(sym);
     }
 
-    // libmilady-llama-shim.so: pointer-style wrappers around the
+    // libeliza-llama-shim.so: pointer-style wrappers around the
     // struct-by-value entry points + per-field setters. Each *_default()
     // returns a malloc'd pointer; *_free() releases it; setters mutate
     // fields before the pointer is handed to the load/init/chain-init
     // wrapper.
     const shimDefaultsAndFrees = [
-      "milady_llama_model_params_default",
-      "milady_llama_model_params_free",
-      "milady_llama_context_params_default",
-      "milady_llama_context_params_free",
-      "milady_llama_sampler_chain_params_default",
-      "milady_llama_sampler_chain_params_free",
+      "eliza_llama_model_params_default",
+      "eliza_llama_model_params_free",
+      "eliza_llama_context_params_default",
+      "eliza_llama_context_params_free",
+      "eliza_llama_sampler_chain_params_default",
+      "eliza_llama_sampler_chain_params_free",
     ];
     const shimWrappers = [
-      "milady_llama_model_load_from_file",
-      "milady_llama_init_from_model",
-      "milady_llama_sampler_chain_init",
+      "eliza_llama_model_load_from_file",
+      "eliza_llama_init_from_model",
+      "eliza_llama_sampler_chain_init",
     ];
     const shimSetters = [
       // model_params: only n_gpu_layers is wired today (when LoadOptions
@@ -289,30 +289,32 @@ describe("aosp-llama-adapter / dlopen symbol manifest", () => {
       // check_tensors — are intentionally left at llama.cpp's canonical
       // defaults (use_mmap=true, the rest false), which are correct for
       // the AOSP CPU path.
-      "milady_llama_model_params_set_n_gpu_layers",
-      // context_params: the four fields loadModel actually overrides.
+      "eliza_llama_model_params_set_n_gpu_layers",
+      // context_params: the fields loadModel actually overrides.
       // n_ctx caps the context window so we don't OOM on phones.
+      // n_batch / n_ubatch bound decode graph size so long prompts are
+      // chunked without allocating the entire context window at once.
       // n_threads / n_threads_batch are bound to LoadOptions.maxThreads
       // (verified on context_params, NOT model_params, against b4500
       // llama.h:319-320). embeddings=true pre-allocates the buffer so
       // the first embed() call doesn't pay an allocation tax.
       // pooling_type=MEAN gives llama_get_embeddings_seq exactly n_embd
       // floats and removes the OOB-risk fallback.
-      "milady_llama_context_params_set_n_ctx",
-      "milady_llama_context_params_set_n_threads",
-      "milady_llama_context_params_set_n_threads_batch",
-      "milady_llama_context_params_set_embeddings",
-      "milady_llama_context_params_set_pooling_type",
+      "eliza_llama_context_params_set_n_ctx",
       // n_batch / n_ubatch let the adapter chunk decode rounds so the
       // GGML compute graph doesn't blow up on long planner prompts.
       // Default n_batch=512 (ELIZA_LLAMA_N_BATCH); ubatch tracks batch.
-      "milady_llama_context_params_set_n_batch",
-      "milady_llama_context_params_set_n_ubatch",
+      "eliza_llama_context_params_set_n_batch",
+      "eliza_llama_context_params_set_n_ubatch",
+      "eliza_llama_context_params_set_n_threads",
+      "eliza_llama_context_params_set_n_threads_batch",
+      "eliza_llama_context_params_set_embeddings",
+      "eliza_llama_context_params_set_pooling_type",
       // type_k / type_v drive the apothic/llama.cpp-1bit-turboquant fork's
       // KV-cache compression path. TBQ3_0 (43) / TBQ4_0 (44) are the
       // fork's quant types; F16 (1) is the upstream default.
-      "milady_llama_context_params_set_type_k",
-      "milady_llama_context_params_set_type_v",
+      "eliza_llama_context_params_set_type_k",
+      "eliza_llama_context_params_set_type_v",
     ];
     for (const sym of [
       ...shimDefaultsAndFrees,
@@ -327,15 +329,15 @@ describe("aosp-llama-adapter / dlopen symbol manifest", () => {
     // If a future LoadOptions field needs one of these, add the binding
     // and add it to `shimSetters` above.
     const shimSettersThatMustNotBeHere = [
-      "milady_llama_model_params_set_use_mmap",
-      "milady_llama_model_params_set_use_mlock",
-      "milady_llama_model_params_set_vocab_only",
-      "milady_llama_model_params_set_check_tensors",
-      "milady_llama_context_params_set_offload_kqv",
+      "eliza_llama_model_params_set_use_mmap",
+      "eliza_llama_model_params_set_use_mlock",
+      "eliza_llama_model_params_set_vocab_only",
+      "eliza_llama_model_params_set_check_tensors",
+      "eliza_llama_context_params_set_offload_kqv",
       // set_flash_attn is gone from the shim entirely (b8198 changed
       // flash_attn to flash_attn_type, an enum, not a bool).
-      "milady_llama_context_params_set_flash_attn",
-      "milady_llama_sampler_chain_params_set_no_perf",
+      "eliza_llama_context_params_set_flash_attn",
+      "eliza_llama_sampler_chain_params_set_no_perf",
     ];
     for (const sym of shimSettersThatMustNotBeHere) {
       expect(shimSymbols).not.toHaveProperty(sym);
@@ -349,13 +351,13 @@ describe("aosp-llama-adapter / context_params override invocations", () => {
   /**
    * Regression for the F1 fix: AOSP must pin pooling_type=MEAN, n_ctx,
    * n_threads, n_threads_batch, and embeddings=true on the context_params
-   * pointer BEFORE handing it to milady_llama_init_from_model. Without
+   * pointer BEFORE handing it to eliza_llama_init_from_model. Without
    * these the adapter ran at upstream defaults — under-using phone CPU
    * cores and leaving embeddings to read from a NONE-pooled buffer
    * (read-OOB risk).
    */
   it("calls the wired context_params setters before init_from_model", async () => {
-    process.env.MILADY_LOCAL_LLAMA = "1";
+    process.env.ELIZA_LOCAL_LLAMA = "1";
 
     const setterCalls: { name: string; args: unknown[] }[] = [];
     const initOrder: string[] = [];
@@ -366,38 +368,46 @@ describe("aosp-llama-adapter / context_params override invocations", () => {
       llama_n_ctx: () => 4096,
     };
     const shimSymbols: Record<string, (...args: unknown[]) => unknown> = {
-      milady_llama_model_params_default: () => 1,
-      milady_llama_model_load_from_file: () => 2,
-      milady_llama_model_params_free: () => undefined,
-      milady_llama_context_params_default: () => {
+      eliza_llama_model_params_default: () => 1,
+      eliza_llama_model_load_from_file: () => 2,
+      eliza_llama_model_params_free: () => undefined,
+      eliza_llama_context_params_default: () => {
         initOrder.push("ctx_params_default");
         return 3;
       },
-      milady_llama_context_params_set_n_ctx: (...args: unknown[]) => {
+      eliza_llama_context_params_set_n_ctx: (...args: unknown[]) => {
         setterCalls.push({ name: "set_n_ctx", args });
         initOrder.push("set_n_ctx");
       },
-      milady_llama_context_params_set_n_threads: (...args: unknown[]) => {
+      eliza_llama_context_params_set_n_batch: (...args: unknown[]) => {
+        setterCalls.push({ name: "set_n_batch", args });
+        initOrder.push("set_n_batch");
+      },
+      eliza_llama_context_params_set_n_ubatch: (...args: unknown[]) => {
+        setterCalls.push({ name: "set_n_ubatch", args });
+        initOrder.push("set_n_ubatch");
+      },
+      eliza_llama_context_params_set_n_threads: (...args: unknown[]) => {
         setterCalls.push({ name: "set_n_threads", args });
         initOrder.push("set_n_threads");
       },
-      milady_llama_context_params_set_n_threads_batch: (...args: unknown[]) => {
+      eliza_llama_context_params_set_n_threads_batch: (...args: unknown[]) => {
         setterCalls.push({ name: "set_n_threads_batch", args });
         initOrder.push("set_n_threads_batch");
       },
-      milady_llama_context_params_set_embeddings: (...args: unknown[]) => {
+      eliza_llama_context_params_set_embeddings: (...args: unknown[]) => {
         setterCalls.push({ name: "set_embeddings", args });
         initOrder.push("set_embeddings");
       },
-      milady_llama_context_params_set_pooling_type: (...args: unknown[]) => {
+      eliza_llama_context_params_set_pooling_type: (...args: unknown[]) => {
         setterCalls.push({ name: "set_pooling_type", args });
         initOrder.push("set_pooling_type");
       },
-      milady_llama_init_from_model: () => {
+      eliza_llama_init_from_model: () => {
         initOrder.push("init_from_model");
         return 4;
       },
-      milady_llama_context_params_free: () => {
+      eliza_llama_context_params_free: () => {
         initOrder.push("ctx_params_free");
         return undefined;
       },
@@ -416,7 +426,7 @@ describe("aosp-llama-adapter / context_params override invocations", () => {
         cstring: 7,
       },
       dlopen: (libPath: string) => {
-        const isShim = libPath.endsWith("libmilady-llama-shim.so");
+        const isShim = libPath.endsWith("libeliza-llama-shim.so");
         const table = isShim ? shimSymbols : llamaSymbols;
         const symbols = new Proxy(table, {
           get: (target: typeof table, prop: string) =>
@@ -455,6 +465,15 @@ describe("aosp-llama-adapter / context_params override invocations", () => {
     const nCtxCall = setterCalls.find((c) => c.name === "set_n_ctx");
     expect(nCtxCall?.args[1]).toBe(16384);
 
+    // n_batch / n_ubatch default to 512 each — small enough that each
+    // llama_decode chunk yields the event loop frequently enough for
+    // the service watchdog's HTTP probe to wake the listener.
+    const nBatchCall = setterCalls.find((c) => c.name === "set_n_batch");
+    expect(nBatchCall?.args[1]).toBe(512);
+
+    const nUBatchCall = setterCalls.find((c) => c.name === "set_n_ubatch");
+    expect(nUBatchCall?.args[1]).toBe(512);
+
     // embeddings=true so the first embed() call doesn't pay alloc tax.
     const embeddingsCall = setterCalls.find((c) => c.name === "set_embeddings");
     expect(embeddingsCall?.args[1]).toBe(true);
@@ -478,9 +497,9 @@ describe("aosp-llama-adapter / context_params override invocations", () => {
     vi.doUnmock("bun:ffi");
   });
 
-  it("threads MILADY_LLAMA_THREADS env into n_threads / n_threads_batch", async () => {
-    process.env.MILADY_LOCAL_LLAMA = "1";
-    process.env.MILADY_LLAMA_THREADS = "6";
+  it("threads ELIZA_LLAMA_THREADS env into n_threads / n_threads_batch", async () => {
+    process.env.ELIZA_LOCAL_LLAMA = "1";
+    process.env.ELIZA_LLAMA_THREADS = "6";
 
     const captured: { name: string; args: unknown[] }[] = [];
     const llamaSymbols: Record<string, (...args: unknown[]) => unknown> = {
@@ -489,18 +508,18 @@ describe("aosp-llama-adapter / context_params override invocations", () => {
       llama_n_ctx: () => 4096,
     };
     const shimSymbols: Record<string, (...args: unknown[]) => unknown> = {
-      milady_llama_model_params_default: () => 1,
-      milady_llama_model_load_from_file: () => 2,
-      milady_llama_model_params_free: () => undefined,
-      milady_llama_context_params_default: () => 3,
-      milady_llama_context_params_set_n_threads: (...args: unknown[]) => {
+      eliza_llama_model_params_default: () => 1,
+      eliza_llama_model_load_from_file: () => 2,
+      eliza_llama_model_params_free: () => undefined,
+      eliza_llama_context_params_default: () => 3,
+      eliza_llama_context_params_set_n_threads: (...args: unknown[]) => {
         captured.push({ name: "n_threads", args });
       },
-      milady_llama_context_params_set_n_threads_batch: (...args: unknown[]) => {
+      eliza_llama_context_params_set_n_threads_batch: (...args: unknown[]) => {
         captured.push({ name: "n_threads_batch", args });
       },
-      milady_llama_init_from_model: () => 4,
-      milady_llama_context_params_free: () => undefined,
+      eliza_llama_init_from_model: () => 4,
+      eliza_llama_context_params_free: () => undefined,
     };
 
     vi.doMock("node:fs", () => ({ existsSync: () => true }));
@@ -516,7 +535,7 @@ describe("aosp-llama-adapter / context_params override invocations", () => {
         cstring: 7,
       },
       dlopen: (libPath: string) => {
-        const isShim = libPath.endsWith("libmilady-llama-shim.so");
+        const isShim = libPath.endsWith("libeliza-llama-shim.so");
         const table = isShim ? shimSymbols : llamaSymbols;
         const symbols = new Proxy(table, {
           get: (target: typeof table, prop: string) =>
@@ -548,7 +567,7 @@ describe("aosp-llama-adapter / context_params override invocations", () => {
     expect(nThreads?.args[1]).toBe(6);
     expect(nThreadsBatch?.args[1]).toBe(6);
 
-    delete process.env.MILADY_LLAMA_THREADS;
+    delete process.env.ELIZA_LLAMA_THREADS;
     vi.doUnmock("node:fs");
     vi.doUnmock("bun:ffi");
   });
@@ -564,7 +583,7 @@ describe("aosp-llama-adapter / embed pooling contract", () => {
    * violation (someone disabled pooling externally) and must surface.
    */
   it("rejects when llama_get_embeddings_seq returns NULL after decode", async () => {
-    process.env.MILADY_LOCAL_LLAMA = "1";
+    process.env.ELIZA_LOCAL_LLAMA = "1";
 
     const llamaSymbols: Record<string, (...args: unknown[]) => unknown> = {
       llama_backend_init: () => 0,
@@ -582,15 +601,15 @@ describe("aosp-llama-adapter / embed pooling contract", () => {
       llama_get_embeddings_seq: () => 0,
     };
     const shimSymbols: Record<string, (...args: unknown[]) => unknown> = {
-      milady_llama_model_params_default: () => 1,
-      milady_llama_model_load_from_file: () => 2,
-      milady_llama_model_params_free: () => undefined,
-      milady_llama_context_params_default: () => 3,
-      milady_llama_init_from_model: () => 4,
-      milady_llama_context_params_free: () => undefined,
-      milady_llama_batch_get_one: () => 99,
-      milady_llama_batch_free: () => undefined,
-      milady_llama_decode: () => 0,
+      eliza_llama_model_params_default: () => 1,
+      eliza_llama_model_load_from_file: () => 2,
+      eliza_llama_model_params_free: () => undefined,
+      eliza_llama_context_params_default: () => 3,
+      eliza_llama_init_from_model: () => 4,
+      eliza_llama_context_params_free: () => undefined,
+      eliza_llama_batch_get_one: () => 99,
+      eliza_llama_batch_free: () => undefined,
+      eliza_llama_decode: () => 0,
     };
 
     vi.doMock("node:fs", () => ({ existsSync: () => true }));
@@ -606,7 +625,7 @@ describe("aosp-llama-adapter / embed pooling contract", () => {
         cstring: 7,
       },
       dlopen: (libPath: string) => {
-        const isShim = libPath.endsWith("libmilady-llama-shim.so");
+        const isShim = libPath.endsWith("libeliza-llama-shim.so");
         const table = isShim ? shimSymbols : llamaSymbols;
         const symbols = new Proxy(table, {
           get: (target: typeof table, prop: string) =>
@@ -648,8 +667,8 @@ describe("aosp-llama-adapter / shim integration with loadModel", () => {
   /**
    * Regression for the bun:ffi struct-by-value workaround: loadModel must
    * (1) materialize a model_params pointer via the shim,
-   * (2) hand that exact pointer to milady_llama_model_load_from_file,
-   * (3) free it via milady_llama_model_params_free after the load returns,
+   * (2) hand that exact pointer to eliza_llama_model_load_from_file,
+   * (3) free it via eliza_llama_model_params_free after the load returns,
    * and the same for context_params. This proves no leak and no pointer
    * drift, which together prove the bun:ffi struct-by-value workaround
    * is wired correctly.
@@ -657,7 +676,7 @@ describe("aosp-llama-adapter / shim integration with loadModel", () => {
    * We replace the bun:ffi mock with a pair of recording symbol stubs.
    */
   it("calls model/context params default + load + free in order", async () => {
-    process.env.MILADY_LOCAL_LLAMA = "1";
+    process.env.ELIZA_LOCAL_LLAMA = "1";
 
     const callLog: string[] = [];
     // Synthetic pointers: 1=model-params, 2=model handle, 3=ctx-params,
@@ -671,26 +690,26 @@ describe("aosp-llama-adapter / shim integration with loadModel", () => {
       llama_n_ctx: () => 4096,
     };
     const shimSymbols: Record<string, (...args: unknown[]) => unknown> = {
-      milady_llama_model_params_default: () => {
+      eliza_llama_model_params_default: () => {
         callLog.push("model_params_default");
         return 1;
       },
-      milady_llama_model_load_from_file: (_path: unknown, params: unknown) => {
+      eliza_llama_model_load_from_file: (_path: unknown, params: unknown) => {
         callLog.push(`load_from_file(params=${params})`);
         return 2;
       },
-      milady_llama_model_params_free: (params: unknown) => {
+      eliza_llama_model_params_free: (params: unknown) => {
         callLog.push(`model_params_free(${params})`);
       },
-      milady_llama_context_params_default: () => {
+      eliza_llama_context_params_default: () => {
         callLog.push("context_params_default");
         return 3;
       },
-      milady_llama_init_from_model: (_model: unknown, params: unknown) => {
+      eliza_llama_init_from_model: (_model: unknown, params: unknown) => {
         callLog.push(`init_from_model(params=${params})`);
         return 4;
       },
-      milady_llama_context_params_free: (params: unknown) => {
+      eliza_llama_context_params_free: (params: unknown) => {
         callLog.push(`context_params_free(${params})`);
       },
     };
@@ -711,7 +730,7 @@ describe("aosp-llama-adapter / shim integration with loadModel", () => {
         cstring: 7,
       },
       dlopen: (libPath: string) => {
-        const isShim = libPath.endsWith("libmilady-llama-shim.so");
+        const isShim = libPath.endsWith("libeliza-llama-shim.so");
         const table = isShim ? shimSymbols : llamaSymbols;
         const symbols = new Proxy(table, {
           get: (target: typeof table, prop: string) =>
@@ -779,10 +798,10 @@ describe("aosp-llama-adapter / TBQ KV-cache wiring", () => {
    *
    *   1. Auto-detect Bonsai by filename (any model basename that contains
    *      "bonsai" — case-insensitive).
-   *   2. Forward the resolved enum values to milady_llama_context_params_
+   *   2. Forward the resolved enum values to eliza_llama_context_params_
    *      set_type_k / set_type_v BEFORE init_from_model.
    *   3. Honour explicit LoadOptions.kvCacheType overrides.
-   *   4. Honour MILADY_LLAMA_CACHE_TYPE_K / _V env overrides.
+   *   4. Honour ELIZA_LLAMA_CACHE_TYPE_K / _V env overrides.
    *   5. Skip the setters entirely for non-Bonsai models with no override —
    *      that keeps the fp16 default which is the safe choice for any
    *      stock GGUF.
@@ -833,8 +852,8 @@ describe("aosp-llama-adapter / TBQ KV-cache wiring", () => {
     const { resolveKvCacheType } = await import("./aosp-llama-adapter");
     expect(
       resolveKvCacheType("/tmp/models/Bonsai-8B.gguf", undefined, {
-        MILADY_LLAMA_CACHE_TYPE_K: "f16",
-        MILADY_LLAMA_CACHE_TYPE_V: "tbq4_0",
+        ELIZA_LLAMA_CACHE_TYPE_K: "f16",
+        ELIZA_LLAMA_CACHE_TYPE_V: "tbq4_0",
       }),
     ).toEqual({ k: "f16", v: "tbq4_0" });
   });
@@ -845,7 +864,7 @@ describe("aosp-llama-adapter / TBQ KV-cache wiring", () => {
       resolveKvCacheType(
         "/tmp/models/Bonsai-8B.gguf",
         { k: "tbq3_0" },
-        { MILADY_LLAMA_CACHE_TYPE_K: "f16" },
+        { ELIZA_LLAMA_CACHE_TYPE_K: "f16" },
       ),
     ).toEqual({ k: "tbq3_0", v: "tbq3_0" });
   });
@@ -854,15 +873,15 @@ describe("aosp-llama-adapter / TBQ KV-cache wiring", () => {
     const { resolveKvCacheType } = await import("./aosp-llama-adapter");
     expect(
       resolveKvCacheType("/tmp/models/Llama-3-8B.gguf", undefined, {
-        MILADY_LLAMA_CACHE_TYPE_K: "garbage",
+        ELIZA_LLAMA_CACHE_TYPE_K: "garbage",
       }),
     ).toBeUndefined();
   });
 
   it("forwards tbq4_0/tbq3_0 to set_type_k/set_type_v before init_from_model on Bonsai loads", async () => {
-    process.env.MILADY_LOCAL_LLAMA = "1";
-    delete process.env.MILADY_LLAMA_CACHE_TYPE_K;
-    delete process.env.MILADY_LLAMA_CACHE_TYPE_V;
+    process.env.ELIZA_LOCAL_LLAMA = "1";
+    delete process.env.ELIZA_LLAMA_CACHE_TYPE_K;
+    delete process.env.ELIZA_LLAMA_CACHE_TYPE_V;
 
     const setterCalls: { name: string; args: unknown[] }[] = [];
     const initOrder: string[] = [];
@@ -873,23 +892,23 @@ describe("aosp-llama-adapter / TBQ KV-cache wiring", () => {
       llama_n_ctx: () => 4096,
     };
     const shimSymbols: Record<string, (...args: unknown[]) => unknown> = {
-      milady_llama_model_params_default: () => 1,
-      milady_llama_model_load_from_file: () => 2,
-      milady_llama_model_params_free: () => undefined,
-      milady_llama_context_params_default: () => 3,
-      milady_llama_context_params_set_type_k: (...args: unknown[]) => {
+      eliza_llama_model_params_default: () => 1,
+      eliza_llama_model_load_from_file: () => 2,
+      eliza_llama_model_params_free: () => undefined,
+      eliza_llama_context_params_default: () => 3,
+      eliza_llama_context_params_set_type_k: (...args: unknown[]) => {
         setterCalls.push({ name: "set_type_k", args });
         initOrder.push("set_type_k");
       },
-      milady_llama_context_params_set_type_v: (...args: unknown[]) => {
+      eliza_llama_context_params_set_type_v: (...args: unknown[]) => {
         setterCalls.push({ name: "set_type_v", args });
         initOrder.push("set_type_v");
       },
-      milady_llama_init_from_model: () => {
+      eliza_llama_init_from_model: () => {
         initOrder.push("init_from_model");
         return 4;
       },
-      milady_llama_context_params_free: () => undefined,
+      eliza_llama_context_params_free: () => undefined,
     };
 
     vi.doMock("node:fs", () => ({ existsSync: () => true }));
@@ -905,7 +924,7 @@ describe("aosp-llama-adapter / TBQ KV-cache wiring", () => {
         cstring: 7,
       },
       dlopen: (libPath: string) => {
-        const isShim = libPath.endsWith("libmilady-llama-shim.so");
+        const isShim = libPath.endsWith("libeliza-llama-shim.so");
         const table = isShim ? shimSymbols : llamaSymbols;
         const symbols = new Proxy(table, {
           get: (target: typeof table, prop: string) =>
@@ -933,7 +952,7 @@ describe("aosp-llama-adapter / TBQ KV-cache wiring", () => {
     await loader.loadModel({ modelPath: "/tmp/models/Bonsai-8B.gguf" });
 
     // tbq4_0 = 44, tbq3_0 = 43 — verified against
-    //   ~/.cache/milady-android-agent/llama-cpp-main-b8198-b2b5273/
+    //   ~/.cache/eliza-android-agent/llama-cpp-main-b8198-b2b5273/
     //     ggml/include/ggml.h:434
     const k = setterCalls.find((c) => c.name === "set_type_k");
     const v = setterCalls.find((c) => c.name === "set_type_v");
@@ -955,9 +974,9 @@ describe("aosp-llama-adapter / TBQ KV-cache wiring", () => {
   });
 
   it("does NOT call set_type_k/set_type_v on non-Bonsai loads with no override", async () => {
-    process.env.MILADY_LOCAL_LLAMA = "1";
-    delete process.env.MILADY_LLAMA_CACHE_TYPE_K;
-    delete process.env.MILADY_LLAMA_CACHE_TYPE_V;
+    process.env.ELIZA_LOCAL_LLAMA = "1";
+    delete process.env.ELIZA_LLAMA_CACHE_TYPE_K;
+    delete process.env.ELIZA_LLAMA_CACHE_TYPE_V;
 
     let setTypeKCalled = false;
     let setTypeVCalled = false;
@@ -968,18 +987,18 @@ describe("aosp-llama-adapter / TBQ KV-cache wiring", () => {
       llama_n_ctx: () => 4096,
     };
     const shimSymbols: Record<string, (...args: unknown[]) => unknown> = {
-      milady_llama_model_params_default: () => 1,
-      milady_llama_model_load_from_file: () => 2,
-      milady_llama_model_params_free: () => undefined,
-      milady_llama_context_params_default: () => 3,
-      milady_llama_context_params_set_type_k: () => {
+      eliza_llama_model_params_default: () => 1,
+      eliza_llama_model_load_from_file: () => 2,
+      eliza_llama_model_params_free: () => undefined,
+      eliza_llama_context_params_default: () => 3,
+      eliza_llama_context_params_set_type_k: () => {
         setTypeKCalled = true;
       },
-      milady_llama_context_params_set_type_v: () => {
+      eliza_llama_context_params_set_type_v: () => {
         setTypeVCalled = true;
       },
-      milady_llama_init_from_model: () => 4,
-      milady_llama_context_params_free: () => undefined,
+      eliza_llama_init_from_model: () => 4,
+      eliza_llama_context_params_free: () => undefined,
     };
 
     vi.doMock("node:fs", () => ({ existsSync: () => true }));
@@ -995,7 +1014,7 @@ describe("aosp-llama-adapter / TBQ KV-cache wiring", () => {
         cstring: 7,
       },
       dlopen: (libPath: string) => {
-        const isShim = libPath.endsWith("libmilady-llama-shim.so");
+        const isShim = libPath.endsWith("libeliza-llama-shim.so");
         const table = isShim ? shimSymbols : llamaSymbols;
         const symbols = new Proxy(table, {
           get: (target: typeof table, prop: string) =>
@@ -1059,7 +1078,7 @@ describe("aosp-llama-adapter / embeddings flag reset", () => {
         cstring: 7,
       },
       dlopen: (libPath: string) => {
-        const isShim = libPath.endsWith("libmilady-llama-shim.so");
+        const isShim = libPath.endsWith("libeliza-llama-shim.so");
         const table = isShim ? shimSymbols : llamaSymbols;
         const symbols = new Proxy(table, {
           get: (target: typeof table, prop: string) =>
@@ -1075,7 +1094,7 @@ describe("aosp-llama-adapter / embeddings flag reset", () => {
   }
 
   it("generate() sets embeddings=false before the first llama_decode", async () => {
-    process.env.MILADY_LOCAL_LLAMA = "1";
+    process.env.ELIZA_LOCAL_LLAMA = "1";
 
     const callOrder: string[] = [];
     const setEmbeddingsCalls: { value: unknown }[] = [];
@@ -1088,8 +1107,7 @@ describe("aosp-llama-adapter / embeddings flag reset", () => {
         setEmbeddingsCalls.push({ value: args[1] });
         callOrder.push(`set_embeddings(${args[1]})`);
       },
-      llama_tokenize: (..._args: unknown[]) =>
-        _args[4] === 0 ? -3 : 3, // negative on probe, positive on fill
+      llama_tokenize: (..._args: unknown[]) => (_args[4] === 0 ? -3 : 3), // negative on probe, positive on fill
       // Force the EOG path on the first sampled token so we don't loop.
       llama_sampler_sample: () => 999,
       llama_vocab_is_eog: () => true,
@@ -1103,18 +1121,18 @@ describe("aosp-llama-adapter / embeddings flag reset", () => {
       llama_token_to_piece: () => 0,
     };
     const shimSymbols: Record<string, (...args: unknown[]) => unknown> = {
-      milady_llama_model_params_default: () => 1,
-      milady_llama_model_load_from_file: () => 2,
-      milady_llama_model_params_free: () => undefined,
-      milady_llama_context_params_default: () => 3,
-      milady_llama_init_from_model: () => 4,
-      milady_llama_context_params_free: () => undefined,
-      milady_llama_sampler_chain_params_default: () => 5,
-      milady_llama_sampler_chain_params_free: () => undefined,
-      milady_llama_sampler_chain_init: () => 6,
-      milady_llama_batch_get_one: () => 99,
-      milady_llama_batch_free: () => undefined,
-      milady_llama_decode: () => {
+      eliza_llama_model_params_default: () => 1,
+      eliza_llama_model_load_from_file: () => 2,
+      eliza_llama_model_params_free: () => undefined,
+      eliza_llama_context_params_default: () => 3,
+      eliza_llama_init_from_model: () => 4,
+      eliza_llama_context_params_free: () => undefined,
+      eliza_llama_sampler_chain_params_default: () => 5,
+      eliza_llama_sampler_chain_params_free: () => undefined,
+      eliza_llama_sampler_chain_init: () => 6,
+      eliza_llama_batch_get_one: () => 99,
+      eliza_llama_batch_free: () => undefined,
+      eliza_llama_decode: () => {
         callOrder.push("llama_decode");
         return 0;
       },
@@ -1158,7 +1176,7 @@ describe("aosp-llama-adapter / embeddings flag reset", () => {
   });
 
   it("embed() sets embeddings=true before the embed llama_decode and resets to false in finally", async () => {
-    process.env.MILADY_LOCAL_LLAMA = "1";
+    process.env.ELIZA_LOCAL_LLAMA = "1";
 
     const callOrder: string[] = [];
 
@@ -1170,20 +1188,19 @@ describe("aosp-llama-adapter / embeddings flag reset", () => {
       llama_set_embeddings: (...args: unknown[]) => {
         callOrder.push(`set_embeddings(${args[1]})`);
       },
-      llama_tokenize: (..._args: unknown[]) =>
-        _args[4] === 0 ? -3 : 3,
+      llama_tokenize: (..._args: unknown[]) => (_args[4] === 0 ? -3 : 3),
       llama_get_embeddings_seq: () => 1, // non-NULL
     };
     const shimSymbols: Record<string, (...args: unknown[]) => unknown> = {
-      milady_llama_model_params_default: () => 1,
-      milady_llama_model_load_from_file: () => 2,
-      milady_llama_model_params_free: () => undefined,
-      milady_llama_context_params_default: () => 3,
-      milady_llama_init_from_model: () => 4,
-      milady_llama_context_params_free: () => undefined,
-      milady_llama_batch_get_one: () => 99,
-      milady_llama_batch_free: () => undefined,
-      milady_llama_decode: () => {
+      eliza_llama_model_params_default: () => 1,
+      eliza_llama_model_load_from_file: () => 2,
+      eliza_llama_model_params_free: () => undefined,
+      eliza_llama_context_params_default: () => 3,
+      eliza_llama_init_from_model: () => 4,
+      eliza_llama_context_params_free: () => undefined,
+      eliza_llama_batch_get_one: () => 99,
+      eliza_llama_batch_free: () => undefined,
+      eliza_llama_decode: () => {
         callOrder.push("llama_decode");
         return 0;
       },

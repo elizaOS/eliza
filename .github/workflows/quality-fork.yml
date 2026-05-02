@@ -66,6 +66,17 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --ignore-scripts --no-frozen-lockfile
 
+      # @elizaos/core's package.json points "main"/"types" at dist/ files
+      # that don't exist until the build runs. Plugins that resolve core
+      # via node_modules (rather than the root tsconfig path mapping) fail
+      # typecheck without this. turbo.json declares `typecheck` depends on
+      # `@elizaos/core#build`, but downstream packages with broken src
+      # references can fail before turbo schedules the core build, so we
+      # build it explicitly here.
+      - name: Build @elizaos/core dist
+        working-directory: packages/typescript
+        run: bun run build
+
       - name: Run typecheck
         run: bun run typecheck
 

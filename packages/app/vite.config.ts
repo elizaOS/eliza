@@ -45,7 +45,7 @@ const uiPkgRoot = path.join(elizaRoot, "packages/ui");
 const capacitorCoreEntry = _require.resolve("@capacitor/core");
 const patheEntry = _require.resolve("pathe");
 // Other Capacitor packages imported by eliza/packages/app-core sources.
-// Resolved here (apps/app scope) so Rollup can find them when bundling
+// Resolved here (packages/app scope) so Rollup can find them when bundling
 // files from within the eliza submodule tree where bun may not hoist them.
 function tryResolve(id: string): string | undefined {
   try {
@@ -163,7 +163,7 @@ const NATIVE_PLUGIN_ALIAS_ENTRIES = CAPACITOR_PLUGIN_NAMES.map((name) => ({
   replacement: path.join(nativePluginsRoot, `${name}/src/index.ts`),
 }));
 const CAPACITOR_BUILD_TARGET =
-  process.env.MILADY_CAPACITOR_BUILD_TARGET ??
+  process.env.ELIZA_CAPACITOR_BUILD_TARGET ??
   process.env.ELIZA_CAPACITOR_BUILD_TARGET ??
   "";
 const IS_CAPACITOR_MOBILE_BUILD =
@@ -349,6 +349,14 @@ function tryResolveElizaCorePkgDir(): string | null {
 }
 
 function resolveElizaCoreSourceBrowserPath(): string | null {
+  const workspaceSourceBrowserEntry = path.join(
+    elizaRoot,
+    "packages/typescript/src/index.browser.ts",
+  );
+  if (fs.existsSync(workspaceSourceBrowserEntry)) {
+    return workspaceSourceBrowserEntry;
+  }
+
   const pkgDir = tryResolveElizaCorePkgDir();
   if (!pkgDir) return null;
   const sourceBrowserEntry = path.join(pkgDir, "src/index.browser.ts");
@@ -408,7 +416,7 @@ function resolveElizaCoreBundlePath(): string {
   const bunBrowser = findElizaCoreBundleInBunStore("browser");
   if (bunBrowser) {
     console.warn(
-      `[eliza][vite] @elizaos/core not resolvable from apps/app${pkgDir ? ` (pkgDir=${pkgDir} has no dist/)` : ""}; using bun cache build at ${bunBrowser}. ` +
+      `[eliza][vite] @elizaos/core not resolvable from packages/app${pkgDir ? ` (pkgDir=${pkgDir} has no dist/)` : ""}; using bun cache build at ${bunBrowser}. ` +
         "Run `bun run build` in your eliza checkout or ELIZA_SKIP_LOCAL_ELIZA=1 bun install to align versions.",
     );
     return bunBrowser;
@@ -416,12 +424,12 @@ function resolveElizaCoreBundlePath(): string {
   const bunNode = findElizaCoreBundleInBunStore("node");
   if (bunNode) {
     console.warn(
-      `[eliza][vite] @elizaos/core not resolvable from apps/app${pkgDir ? ` (pkgDir=${pkgDir})` : ""}; using bun cache node bundle at ${bunNode}.`,
+      `[eliza][vite] @elizaos/core not resolvable from packages/app${pkgDir ? ` (pkgDir=${pkgDir})` : ""}; using bun cache node bundle at ${bunNode}.`,
     );
     return bunNode;
   }
   throw new Error(
-    `[eliza][vite] @elizaos/core has no built artifacts${pkgDir ? ` under ${pkgDir}` : " (not resolvable from apps/app)"} and none in node_modules/.bun. ` +
+    `[eliza][vite] @elizaos/core has no built artifacts${pkgDir ? ` under ${pkgDir}` : " (not resolvable from packages/app)"} and none in node_modules/.bun. ` +
       "Expected src/index.browser.ts, dist/browser/index.browser.js, dist/index.browser.js, dist/node/index.node.js, or dist/index.node.js. " +
       "Build your local eliza workspace or run `ELIZA_SKIP_LOCAL_ELIZA=1 bun install`.",
   );
@@ -658,7 +666,7 @@ function desktopCorsPlugin(): Plugin {
         );
         res.setHeader(
           "Access-Control-Allow-Headers",
-          "Content-Type, Authorization, X-Milady-Token, X-Api-Key, X-Milady-Export-Token, X-Milady-Client-Id, X-Milady-Terminal-Token, X-Milady-UI-Language",
+          "Content-Type, Authorization, X-Eliza-Token, X-Api-Key, X-Eliza-Export-Token, X-Eliza-Client-Id, X-Eliza-Terminal-Token, X-Eliza-UI-Language",
         );
 
         if (req.method === "OPTIONS") {
@@ -1182,7 +1190,7 @@ function nativeModuleStubPlugin(): Plugin {
         /\(\(\)\s*=>\s*\{\s*throw\s+new\s+Error\(\s*"Cannot require module "\s*\+\s*"node:async_hooks"\s*\)\s*;\s*\}\)\(\)/g,
         "(function(){function A(){} A.prototype.getStore=function(){return undefined};A.prototype.run=function(s,fn){return fn.apply(void 0,[].slice.call(arguments,2))};A.prototype.enterWith=function(){};A.prototype.disable=function(){};return{AsyncLocalStorage:A}})()",
       );
-      // Names that downstream plugins (plugin-secrets-manager, agent runtime)
+      // Names that downstream plugins and the agent runtime
       // import from @elizaos/core but that are missing from the browser entry.
       const missingExports: Record<string, string> = {
         resolveSecretKeyAlias: "function(k){return k}",
@@ -1192,6 +1200,8 @@ function nativeModuleStubPlugin(): Plugin {
         AgentEventService: "function(){}",
         AutonomyService: "function(){}",
         createBasicCapabilitiesPlugin: "function(){return{name:'stub'}}",
+        resolveStateDir: "function(){return '/.eliza'}",
+        runPluginMigrations: "async function(){}",
       };
       // Check which are actually missing from the existing export block
       const needed = Object.keys(missingExports).filter((n) => {
@@ -1203,7 +1213,7 @@ function nativeModuleStubPlugin(): Plugin {
       });
       if (needed.length === 0 && patched === code) return null;
       // Use unique prefixed names to avoid collisions with minified vars
-      const prefix = "__milady_stub_";
+      const prefix = "__eliza_stub_";
       const stubs = needed
         .map((n) => `var ${prefix}${n} = ${missingExports[n]};`)
         .join("\n");
@@ -1629,7 +1639,7 @@ export default defineConfig({
             replacement: path.resolve(elizaRoot, "packages/agent/src/$1"),
           },
           // @elizaos/core — force ALL copies (including nested ones in plugins
-          // like plugin-secrets-manager that ship their own older core) to the
+          // that bundle their own older core) to the
           // main workspace copy's browser entry.  The browser entry has all
           // needed exports and avoids pulling in createRequire/node:fs/etc.
           {
@@ -1730,7 +1740,7 @@ export default defineConfig({
       // Contains native-only pty-state-capture / pty-console imports; skip pre-bundling.
       "@elizaos/plugin-agent-orchestrator",
       "pty-console",
-      // @elizaos/plugin-secrets-manager is now built into @elizaos/core features
+      // Built-in secrets live in @elizaos/core features; Vite must not externalize them as a separate package.
       // Node-only HTTP client — crashes in browser, stub via nativeModuleStubPlugin
       "undici",
       // Browser automation is server-only and pulls in proxy-agent/httpUtil.

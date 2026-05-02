@@ -31,7 +31,7 @@ const COMMON_HOMEBREW_PATHS = [
   "/home/linuxbrew/.linuxbrew/bin/brew",
 ];
 const SIGNAL_CLI_AUTO_INSTALL_ENV = "SIGNAL_CLI_AUTO_INSTALL";
-const MILADY_SIGNAL_CLI_AUTO_INSTALL_ENV = "MILADY_SIGNAL_CLI_AUTO_INSTALL";
+const ELIZA_SIGNAL_CLI_AUTO_INSTALL_ENV = "ELIZA_SIGNAL_CLI_AUTO_INSTALL";
 
 type ExecFileAsync = (
   file: string,
@@ -182,7 +182,7 @@ async function resolveExecutablePath(
 }
 
 function autoInstallSignalCliEnabled(env: NodeJS.ProcessEnv): boolean {
-  const raw = env[MILADY_SIGNAL_CLI_AUTO_INSTALL_ENV] ?? env[SIGNAL_CLI_AUTO_INSTALL_ENV];
+  const raw = env[ELIZA_SIGNAL_CLI_AUTO_INSTALL_ENV] ?? env[SIGNAL_CLI_AUTO_INSTALL_ENV];
   if (typeof raw !== "string") {
     return true;
   }
@@ -279,13 +279,13 @@ export async function resolveSignalCliExecutable(
 
 export function signalCliInstallInstructions(platform: NodeJS.Platform): string {
   if (platform === "darwin") {
-    return "Milady can auto-install the default Signal CLI on macOS when Homebrew is available (`brew install signal-cli`). Fallback: install signal-cli from https://github.com/AsamK/signal-cli/releases and set SIGNAL_CLI_PATH to its bin/signal-cli executable.";
+    return "Eliza can auto-install the default Signal CLI on macOS when Homebrew is available (`brew install signal-cli`). Fallback: install signal-cli from https://github.com/AsamK/signal-cli/releases and set SIGNAL_CLI_PATH to its bin/signal-cli executable.";
   }
   if (platform === "linux") {
-    return "Milady can auto-install the default Signal CLI on Linux when Homebrew/Linuxbrew is available (`brew install signal-cli`). Fallback: install the latest signal-cli Linux release from https://github.com/AsamK/signal-cli/releases, ensure Java Runtime 25+ is installed, and set SIGNAL_CLI_PATH to its bin/signal-cli executable.";
+    return "Eliza can auto-install the default Signal CLI on Linux when Homebrew/Linuxbrew is available (`brew install signal-cli`). Fallback: install the latest signal-cli Linux release from https://github.com/AsamK/signal-cli/releases, ensure Java Runtime 25+ is installed, and set SIGNAL_CLI_PATH to its bin/signal-cli executable.";
   }
   if (platform === "win32") {
-    return "On Windows, install the latest signal-cli release from https://github.com/AsamK/signal-cli/releases, ensure Java Runtime 25+ is installed, and set SIGNAL_CLI_PATH to signal-cli.bat or signal-cli.exe. Milady does not auto-run a Windows package manager.";
+    return "On Windows, install the latest signal-cli release from https://github.com/AsamK/signal-cli/releases, ensure Java Runtime 25+ is installed, and set SIGNAL_CLI_PATH to signal-cli.bat or signal-cli.exe. Eliza does not auto-run a Windows package manager.";
   }
   return "Install signal-cli from https://github.com/AsamK/signal-cli/releases for your platform, ensure Java Runtime 25+ is installed, and set SIGNAL_CLI_PATH to the signal-cli executable.";
 }

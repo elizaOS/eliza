@@ -1,13 +1,20 @@
-export type { TrainingServiceLike, TrainingServiceWithRuntime } from "./training-service-like.js";
-export { TrainingService } from "./training-service.js";
-export { detectAvailableBackends, clearBackendCache, type BackendAvailability } from "./training-backend-check.js";
 export {
+  type BackendAvailability,
+  clearBackendCache,
+  detectAvailableBackends,
+} from "./training-backend-check.js";
+export { TrainingService } from "./training-service.js";
+export type {
+  TrainingServiceLike,
+  TrainingServiceWithRuntime,
+} from "./training-service-like.js";
+export {
+  type BootstrapOptimizationOptions,
   bootstrapOptimizationFromAccumulatedTrajectories,
-  TrainingTriggerService,
+  type RegisteredTrainingTriggerEntry,
   registerTrainingTriggerService,
   TRAINING_TRIGGER_SERVICE,
-  type BootstrapOptimizationOptions,
-  type RegisteredTrainingTriggerEntry,
+  TrainingTriggerService,
   type TrainingTriggerServiceOptions,
   type TriggerStatusSnapshot,
 } from "./training-trigger.js";

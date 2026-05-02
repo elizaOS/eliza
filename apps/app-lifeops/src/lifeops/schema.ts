@@ -64,9 +64,7 @@ export const lifeTaskDefinitions = pgTable(
     domain: text("domain").notNull().default("user_lifeops"),
     subjectType: text("subject_type").notNull().default("owner"),
     subjectId: text("subject_id").notNull(),
-    visibilityScope: text("visibility_scope")
-      .notNull()
-      .default("owner_agent_admin"),
+    visibilityScope: text("visibility_scope").notNull().default("owner_only"),
     contextPolicy: text("context_policy").notNull().default("explicit_only"),
     kind: text("kind").notNull(),
     title: text("title").notNull(),
@@ -106,9 +104,7 @@ export const lifeTaskOccurrences = pgTable(
     domain: text("domain").notNull().default("user_lifeops"),
     subjectType: text("subject_type").notNull().default("owner"),
     subjectId: text("subject_id").notNull(),
-    visibilityScope: text("visibility_scope")
-      .notNull()
-      .default("owner_agent_admin"),
+    visibilityScope: text("visibility_scope").notNull().default("owner_only"),
     contextPolicy: text("context_policy").notNull().default("explicit_only"),
     definitionId: text("definition_id").notNull(),
     occurrenceKey: text("occurrence_key").notNull(),
@@ -155,9 +151,7 @@ export const lifeGoalDefinitions = pgTable(
     domain: text("domain").notNull().default("user_lifeops"),
     subjectType: text("subject_type").notNull().default("owner"),
     subjectId: text("subject_id").notNull(),
-    visibilityScope: text("visibility_scope")
-      .notNull()
-      .default("owner_agent_admin"),
+    visibilityScope: text("visibility_scope").notNull().default("owner_only"),
     contextPolicy: text("context_policy").notNull().default("explicit_only"),
     title: text("title").notNull(),
     description: text("description").notNull().default(""),
@@ -419,6 +413,133 @@ export const lifeActivitySignals = pgTable(
   (t) => [index("idx_life_activity_signals_agent").on(t.agentId, t.observedAt)],
 );
 
+export const lifeHealthMetricSamples = pgTable(
+  "life_health_metric_samples",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    provider: text("provider").notNull(),
+    grantId: text("grant_id").notNull(),
+    metric: text("metric").notNull(),
+    value: real("value").notNull(),
+    unit: text("unit").notNull(),
+    startAt: text("start_at").notNull(),
+    endAt: text("end_at").notNull(),
+    localDate: text("local_date").notNull(),
+    sourceExternalId: text("source_external_id").notNull(),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    unique().on(
+      t.agentId,
+      t.provider,
+      t.grantId,
+      t.metric,
+      t.startAt,
+      t.sourceExternalId,
+    ),
+    index("idx_life_health_metric_samples_agent_date").on(
+      t.agentId,
+      t.provider,
+      t.localDate,
+    ),
+  ],
+);
+
+export const lifeHealthWorkouts = pgTable(
+  "life_health_workouts",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    provider: text("provider").notNull(),
+    grantId: text("grant_id").notNull(),
+    sourceExternalId: text("source_external_id").notNull(),
+    workoutType: text("workout_type").notNull(),
+    title: text("title").notNull().default(""),
+    startAt: text("start_at").notNull(),
+    endAt: text("end_at"),
+    durationSeconds: integer("duration_seconds").notNull().default(0),
+    distanceMeters: real("distance_meters"),
+    calories: real("calories"),
+    averageHeartRate: real("average_heart_rate"),
+    maxHeartRate: real("max_heart_rate"),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    unique().on(t.agentId, t.provider, t.grantId, t.sourceExternalId),
+    index("idx_life_health_workouts_agent_start").on(
+      t.agentId,
+      t.provider,
+      t.startAt,
+    ),
+  ],
+);
+
+export const lifeHealthSyncStates = pgTable(
+  "life_health_sync_states",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    provider: text("provider").notNull(),
+    grantId: text("grant_id").notNull(),
+    cursor: text("cursor"),
+    lastSyncedAt: text("last_synced_at"),
+    lastSyncStartedAt: text("last_sync_started_at"),
+    lastSyncError: text("last_sync_error"),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [unique().on(t.agentId, t.provider, t.grantId)],
+);
+
+export const lifeHealthSleepEpisodes = pgTable(
+  "life_health_sleep_episodes",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    provider: text("provider").notNull(),
+    grantId: text("grant_id").notNull(),
+    sourceExternalId: text("source_external_id").notNull(),
+    localDate: text("local_date").notNull(),
+    timezone: text("timezone"),
+    startAt: text("start_at").notNull(),
+    endAt: text("end_at").notNull(),
+    isMainSleep: boolean("is_main_sleep").notNull().default(false),
+    sleepType: text("sleep_type"),
+    durationSeconds: integer("duration_seconds").notNull().default(0),
+    timeInBedSeconds: integer("time_in_bed_seconds"),
+    efficiency: real("efficiency"),
+    latencySeconds: integer("latency_seconds"),
+    awakeSeconds: integer("awake_seconds"),
+    lightSleepSeconds: integer("light_sleep_seconds"),
+    deepSleepSeconds: integer("deep_sleep_seconds"),
+    remSleepSeconds: integer("rem_sleep_seconds"),
+    sleepScore: real("sleep_score"),
+    readinessScore: real("readiness_score"),
+    averageHeartRate: real("average_heart_rate"),
+    lowestHeartRate: real("lowest_heart_rate"),
+    averageHrvMs: real("average_hrv_ms"),
+    respiratoryRate: real("respiratory_rate"),
+    bloodOxygenPercent: real("blood_oxygen_percent"),
+    stageSamplesJson: text("stage_samples_json").notNull().default("[]"),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    unique().on(t.agentId, t.provider, t.grantId, t.sourceExternalId),
+    index("idx_life_health_sleep_episodes_agent_date").on(
+      t.agentId,
+      t.provider,
+      t.localDate,
+    ),
+  ],
+);
+
 export const lifeChannelPolicies = pgTable(
   "life_channel_policies",
   {
@@ -571,7 +692,7 @@ export const lifeInboxMessages = pgTable(
     isUnread: boolean("is_unread").notNull().default(true),
     deepLink: text("deep_link"),
     sourceRefJson: text("source_ref_json").notNull().default("{}"),
-    chatType: text("chat_type").notNull().default("dm"),
+    chatType: text("chat_type").notNull().default("channel"),
     participantCount: integer("participant_count"),
     gmailAccountId: text("gmail_account_id"),
     gmailAccountEmail: text("gmail_account_email"),
@@ -649,9 +770,7 @@ export const lifeWorkflowDefinitions = pgTable(
     domain: text("domain").notNull().default("user_lifeops"),
     subjectType: text("subject_type").notNull().default("owner"),
     subjectId: text("subject_id").notNull(),
-    visibilityScope: text("visibility_scope")
-      .notNull()
-      .default("owner_agent_admin"),
+    visibilityScope: text("visibility_scope").notNull().default("owner_only"),
     contextPolicy: text("context_policy").notNull().default("explicit_only"),
     title: text("title").notNull(),
     triggerType: text("trigger_type").notNull(),
@@ -719,9 +838,7 @@ export const lifeWorkflowBrowserSessions = pgTable(
     domain: text("domain").notNull().default("user_lifeops"),
     subjectType: text("subject_type").notNull().default("owner"),
     subjectId: text("subject_id").notNull(),
-    visibilityScope: text("visibility_scope")
-      .notNull()
-      .default("owner_agent_admin"),
+    visibilityScope: text("visibility_scope").notNull().default("owner_only"),
     contextPolicy: text("context_policy").notNull().default("explicit_only"),
     workflowId: text("workflow_id"),
     browser: text("browser"),
@@ -1332,6 +1449,10 @@ export const lifeOpsSchema = {
   lifePaymentSources,
   lifePaymentTransactions,
   lifeActivitySignals,
+  lifeHealthMetricSamples,
+  lifeHealthWorkouts,
+  lifeHealthSyncStates,
+  lifeHealthSleepEpisodes,
   lifeChannelPolicies,
   lifeWebsiteAccessGrants,
   lifeCalendarEvents,

@@ -6,17 +6,32 @@ import ts from "typescript";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
-const generatedDir = path.join(
-  repoRoot,
-  "eliza",
-  "packages",
-  "typescript",
-  "src",
-  "types",
-  "generated",
-  "eliza",
-  "v1",
-);
+const generatedDirCandidates = [
+  path.join(
+    repoRoot,
+    "packages",
+    "typescript",
+    "src",
+    "types",
+    "generated",
+    "eliza",
+    "v1",
+  ),
+  path.join(
+    repoRoot,
+    "eliza",
+    "packages",
+    "typescript",
+    "src",
+    "types",
+    "generated",
+    "eliza",
+    "v1",
+  ),
+];
+const generatedDir =
+  generatedDirCandidates.find((candidate) => fs.existsSync(candidate)) ??
+  generatedDirCandidates[0];
 
 if (!fs.existsSync(generatedDir)) {
   throw new Error(
@@ -40,9 +55,7 @@ for (const file of files) {
   const inputPath = path.join(generatedDir, file);
   const outputPath = inputPath.replace(/\.ts$/, ".js");
   const inputStat = fs.statSync(inputPath);
-  const outputStat = fs.existsSync(outputPath)
-    ? fs.statSync(outputPath)
-    : null;
+  const outputStat = fs.existsSync(outputPath) ? fs.statSync(outputPath) : null;
 
   if (outputStat && outputStat.mtimeMs >= inputStat.mtimeMs) {
     continue;

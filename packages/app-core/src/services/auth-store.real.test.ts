@@ -32,7 +32,7 @@ interface AdapterWithDb {
 }
 
 async function open(): Promise<Harness> {
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "milady-auth-store-"));
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-auth-store-"));
   const adapter = createDatabaseAdapter(
     { dataDir },
     "00000000-0000-0000-0000-000000000001" as `${string}-${string}-${string}-${string}-${string}`,
@@ -224,7 +224,7 @@ describe("AuthStore (real pglite)", () => {
       connector: "discord",
       externalId: "111",
       displayHandle: "frank",
-      instanceId: "milady-A",
+      instanceId: "eliza-A",
       verifiedAt: 2,
     });
     await expect(
@@ -234,7 +234,7 @@ describe("AuthStore (real pglite)", () => {
         connector: "discord",
         externalId: "111",
         displayHandle: "frank-dup",
-        instanceId: "milady-A",
+        instanceId: "eliza-A",
         verifiedAt: 3,
       }),
     ).rejects.toThrow();

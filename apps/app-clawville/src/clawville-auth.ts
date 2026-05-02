@@ -48,10 +48,10 @@ export interface ClawvilleConfig {
   apiBaseUrl: string;
   /** Base URL of ClawVille's web viewer (default: https://clawville.world/game) */
   viewerUrl: string;
-  /** Milady runtime agent ID — becomes the stable `milady:<id>` key in ClawVille */
-  miladyAgentId: string | undefined;
+  /** Eliza runtime agent ID — becomes the stable `eliza:<id>` key in ClawVille */
+  elizaAgentId: string | undefined;
   /** Character display name — used as the in-game pet name on first spawn */
-  miladyCharacterName: string | undefined;
+  elizaCharacterName: string | undefined;
   /** Previously-stored ClawVille sessionId (populated after first connect) */
   storedSessionId: string | undefined;
   /** Previously-stored ClawVille bot UUID (opaque primary key from openclaw_bots) */
@@ -72,8 +72,8 @@ export function resolveClawvilleConfig(
     viewerUrl: (
       resolveSettingLike(runtime, "CLAWVILLE_VIEWER_URL") ?? DEFAULT_VIEWER_URL
     ).replace(/\/+$/, ""),
-    miladyAgentId: rt?.agentId,
-    miladyCharacterName: rt?.character?.name,
+    elizaAgentId: rt?.agentId,
+    elizaCharacterName: rt?.character?.name,
     storedSessionId: resolveSettingLike(runtime, "CLAWVILLE_SESSION_ID"),
     storedUuid: resolveSettingLike(runtime, "CLAWVILLE_BOT_UUID"),
     storedWalletAddress: resolveSettingLike(
@@ -130,16 +130,16 @@ export interface ClawvilleConnectResponse {
 export async function clawvilleConnect(
   config: ClawvilleConfig,
 ): Promise<ClawvilleConnectResponse> {
-  if (!config.miladyAgentId) {
+  if (!config.elizaAgentId) {
     throw new Error(
-      "ClawVille plugin: runtime.agentId is missing; cannot derive a Milady identity.",
+      "ClawVille plugin: runtime.agentId is missing; cannot derive a Eliza identity.",
     );
   }
 
   const url = new URL("/api/agent/connect", config.apiBaseUrl);
-  const characterName = config.miladyCharacterName ?? "Milady Agent";
+  const characterName = config.elizaCharacterName ?? "Eliza Agent";
   const body = {
-    miladyAgentId: config.miladyAgentId,
+    elizaAgentId: config.elizaAgentId,
     agentName: characterName,
     characterName,
     name: characterName,

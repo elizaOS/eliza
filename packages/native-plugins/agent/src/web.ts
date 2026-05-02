@@ -23,7 +23,7 @@ interface ElizaWindow extends Window {
  * which the runtime mirrors into `window.__ELIZA_API_BASE__`. From this
  * plugin's perspective there is no special case — it simply HTTP-POSTs
  * to `${apiBase}/api/agent/start|stop|status`, which is exactly the same
- * surface Phase B's `MiladyAgentService` exposes. The web fallback path
+ * surface Phase B's `ElizaAgentService` exposes. The web fallback path
  * therefore works unchanged for both remote and on-device agents.
  */
 export class AgentWeb extends WebPlugin implements AgentPlugin {

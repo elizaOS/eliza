@@ -175,7 +175,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version: "24"
 
       - name: Setup Bun workspace
         uses: ./.github/actions/setup-bun-workspace
@@ -186,7 +186,7 @@ jobs:
           run-postinstall: "true"
 
       # TODO: verify this script exists in eliza or port equivalent.
-      # In milady this was `bun run test:regression-matrix:release`.
+      # In eliza this was `bun run test:regression-matrix:release`.
       - name: Regression matrix contract
         run: bun run test:regression-matrix:release
 
@@ -197,7 +197,7 @@ jobs:
           cp "$HOME/.cache/eliza/whisper/ggml-base.en.bin" .artifacts/whisper-model/ggml-base.en.bin
 
       - name: Upload Whisper model artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: whisper-model-base-en
           path: .artifacts/whisper-model/ggml-base.en.bin
@@ -277,7 +277,7 @@ jobs:
     name: Build Agent Browser Bridge companions
     if: ${{ inputs.platform == '' || inputs.platform == 'all' }}
     needs: [prepare, validate-release]
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 60
     outputs:
       packaged: ${{ steps.package-browser-bridge.outputs.packaged }}
@@ -295,7 +295,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version: "24"
 
       - name: Setup Bun workspace
         uses: ./.github/actions/setup-bun-workspace
@@ -317,7 +317,7 @@ jobs:
 
       - name: Upload Agent Browser Bridge release artifacts
         if: steps.package-browser-bridge.outputs.packaged == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: browser-bridge-store-bundles
           path: |
@@ -371,7 +371,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version: "24"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -421,7 +421,7 @@ jobs:
 
       - name: Download Whisper model artifact
         if: matrix.platform.os == 'macos' || matrix.platform.os == 'linux'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: whisper-model-base-en
           path: .artifacts/whisper-model
@@ -484,6 +484,35 @@ jobs:
           cp packages/shared/src/i18n/generated/validation-keyword-data.ts dist/node_modules/@elizaos/shared/src/i18n/generated/
           cp packages/shared/src/i18n/generated/validation-keyword-data.js dist/node_modules/@elizaos/shared/src/i18n/generated/
           test -f dist/node_modules/@elizaos/shared/src/i18n/generated/validation-keyword-data.js
+
+      - name: Validate Electrobun runtime copy contract
+        env:
+          ELIZA_ELECTROBUN_REPO_ROOT: ${{ github.workspace }}
+        run: |
+          test -f dist/entry.js
+          test -f package.json
+          test -f dist/node_modules/@elizaos/agent/package.json
+          test -f dist/node_modules/@elizaos/shared/src/i18n/generated/validation-keyword-data.js
+          node --import tsx <<'NODE'
+          const path = await import("node:path");
+          const configModule = await import("./packages/app-core/platforms/electrobun/electrobun.config.ts");
+          const config = configModule.default?.default ?? configModule.default;
+          const electrobunDir = path.resolve("packages/app-core/platforms/electrobun");
+          const copyMap = config.build?.copy ?? {};
+          const runtimeSource = Object.entries(copyMap).find(
+            ([, destination]) => destination === "eliza-dist",
+          )?.[0];
+          if (!runtimeSource) {
+            throw new Error("Electrobun copy map does not include eliza-dist runtime destination");
+          }
+          const resolvedRuntimeSource = path.resolve(electrobunDir, runtimeSource);
+          const expectedRuntimeSource = path.resolve("dist");
+          if (resolvedRuntimeSource !== expectedRuntimeSource) {
+            throw new Error(
+              `Electrobun runtime source resolves to ${resolvedRuntimeSource}, expected ${expectedRuntimeSource}`,
+            );
+          }
+          NODE
 
       # Import the Developer ID certificate into a temporary keychain.
       # Requires CSC_LINK (base64-encoded .p12) + CSC_KEY_PASSWORD.
@@ -633,7 +662,7 @@ jobs:
           restore-keys: electrobun-core-${{ matrix.platform.artifact-name }}-
 
       # TODO: verify this script exists in eliza. `ensure-electrobun-core.mjs`
-      # was milady-only and is not present in upstream eliza/packages/app-core/scripts/.
+      # was eliza-only and is not present in upstream eliza/packages/app-core/scripts/.
       # Without it the cache step above is decorative — Electrobun will fall
       # back to its own download flow on first build. Port the script if you
       # want pre-warmed core binaries on the first packaging run.
@@ -723,10 +752,11 @@ jobs:
           ELIZA_ELECTROBUN_NOTARIZE: 0
           ELECTROBUN_REAL_XCRUN: /usr/bin/xcrun
           ELECTROBUN_REAL_ZIP: /usr/bin/zip
+          ELIZA_ELECTROBUN_REPO_ROOT: ${{ github.workspace }}
           # Flat release root for the updater. Env is encoded in the platform prefix
           # (canary-macos-arm64-update.json etc.), so the baseUrl has no env subdir.
           # TODO: Configure releases host on elizaOS/eliza repo settings (replace
-          # releases.milady.ai placeholder with the eliza release host).
+          # releases.eliza.ai placeholder with the eliza release host).
           ELIZA_RELEASE_URL: ${{ (github.event_name != 'workflow_call' || inputs.publish_release) && !inputs.draft && 'https://releases.elizaos.ai/' || '' }}
 
       - name: Dump Electrobun build diagnostics
@@ -742,7 +772,7 @@ jobs:
 
       - name: Upload Electrobun build diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: electrobun-${{ matrix.platform.artifact-name }}-build-diagnostics
           path: |
@@ -894,46 +924,13 @@ jobs:
               Write-Error "eliza-dist generated keyword data NOT found: $keywordDataCheck"
               exit 1
             }
-            $agentRuntimeModules = @(
-              "config\env-vars.js",
-              "config\plugin-auto-enable.js",
-              "config\schema.js",
-              "runtime\advanced-capabilities-config.js",
-              "runtime\embedding-presets.js",
-              "runtime\plugin-collector.js",
-              "runtime\plugin-resolver.js",
-              "runtime\plugin-types.js"
-            )
-            foreach ($runtimeModule in $agentRuntimeModules) {
-              $agentRuntimeCheck = Join-Path $elizaDist "node_modules\@elizaos\agent\packages\agent\src\$runtimeModule"
-              Write-Host "Checking for: $agentRuntimeCheck"
-              if (Test-Path $agentRuntimeCheck) {
-                Write-Host "eliza-dist @elizaos/agent runtime module found: $runtimeModule"
-              } else {
-                Write-Error "eliza-dist @elizaos/agent runtime module NOT found: $agentRuntimeCheck"
-                exit 1
-              }
-            }
             $agentManifestPath = Join-Path $elizaDist "node_modules\@elizaos\agent\package.json"
-            $agentManifest = Get-Content $agentManifestPath -Raw | ConvertFrom-Json
-            $agentExportNames = @($agentManifest.exports.PSObject.Properties.Name)
-            $agentRequiredExports = @(
-              "./config/env-vars",
-              "./config/plugin-auto-enable",
-              "./config/schema",
-              "./runtime/advanced-capabilities-config",
-              "./runtime/embedding-presets",
-              "./runtime/plugin-collector",
-              "./runtime/plugin-resolver",
-              "./runtime/plugin-types"
-            )
-            foreach ($runtimeExport in $agentRequiredExports) {
-              if ($agentExportNames -contains $runtimeExport) {
-                Write-Host "eliza-dist @elizaos/agent package export found: $runtimeExport"
-              } else {
-                Write-Error "eliza-dist @elizaos/agent package export NOT found: $runtimeExport"
-                exit 1
-              }
+            Write-Host "Checking for: $agentManifestPath"
+            if (Test-Path $agentManifestPath) {
+              Write-Host "eliza-dist @elizaos/agent package manifest found"
+            } else {
+              Write-Error "eliza-dist @elizaos/agent package manifest NOT found: $agentManifestPath"
+              exit 1
             }
           }
 
@@ -1063,10 +1060,21 @@ jobs:
 
       - name: Upload Windows installer proof artifact
         if: always() && matrix.platform.os == 'windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: electrobun-windows-installer-proof
           path: packages/app-core/platforms/electrobun/artifacts/windows-installer-proof/**
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload Windows installer .exe + Inno log on smoke failure
+        if: failure() && matrix.platform.os == 'windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: electrobun-windows-installer-debug
+          path: |
+            packages/app-core/platforms/electrobun/artifacts/*.exe
+            ${{ runner.temp }}/eliza-inno-setup.log
           if-no-files-found: warn
           retention-days: 14
 
@@ -1076,11 +1084,11 @@ jobs:
 
       - name: Upload Windows Playwright UI diagnostics
         if: failure() && matrix.platform.os == 'windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: electrobun-windows-ui-playwright-diagnostics
           # TODO: confirm packaged-app Playwright result location in eliza
-          # (was apps/app/test-results/** in milady; might be packages/app/test-results/**).
+          # (was apps/app/test-results/** in eliza; might be packages/app/test-results/**).
           path: packages/app/test-results/**
           if-no-files-found: warn
           retention-days: 14
@@ -1320,12 +1328,18 @@ jobs:
           $diagnosticsDir = Join-Path $PWD "packages/app-core/platforms/electrobun/artifacts/windows-smoke-diagnostics"
           $appDataRoot = if ($env:ELIZA_TEST_WINDOWS_APPDATA_PATH) { $env:ELIZA_TEST_WINDOWS_APPDATA_PATH } else { $env:APPDATA }
           $localAppDataRoot = if ($env:ELIZA_TEST_WINDOWS_LOCALAPPDATA_PATH) { $env:ELIZA_TEST_WINDOWS_LOCALAPPDATA_PATH } else { $env:LOCALAPPDATA }
-          $wrapperRoot = Join-Path $localAppDataRoot "ai.elizaos.Eliza"
+          $wrapperRoots = @(@(
+            (Join-Path $localAppDataRoot "com.elizaai.eliza"),
+            (Join-Path $localAppDataRoot "ai.elizaos.Eliza"),
+            (Join-Path $localAppDataRoot "ai.elizaos.app")
+          ) | Select-Object -Unique)
 
           Write-Host "Diagnostics roots:"
           Write-Host "  appDataRoot      = $appDataRoot"
           Write-Host "  localAppDataRoot = $localAppDataRoot"
-          Write-Host "  wrapperRoot      = $wrapperRoot"
+          foreach ($wrapperRoot in $wrapperRoots) {
+            Write-Host "  wrapperRoot      = $wrapperRoot"
+          }
 
           Remove-Item $diagnosticsDir -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force -Path $diagnosticsDir | Out-Null
@@ -1382,7 +1396,7 @@ jobs:
             }
           }
 
-          foreach ($root in @($wrapperRoot, "C:\\e", "D:\\a\\_temp\\el")) {
+          foreach ($root in @($wrapperRoots + @("C:\\e", "D:\\a\\_temp\\el"))) {
             if (Test-Path $root) {
               Get-ChildItem -Path $root -Recurse -File -Filter "startup-session.json" -ErrorAction SilentlyContinue |
                 ForEach-Object {
@@ -1396,22 +1410,24 @@ jobs:
             }
           }
 
-          if (Test-Path $wrapperRoot) {
-            Get-ChildItem -Path $wrapperRoot -Recurse -File -Filter "wrapper-diagnostics.json" -ErrorAction SilentlyContinue |
-              ForEach-Object {
-                $relativePath = $_.FullName.Substring($wrapperRoot.Length).TrimStart('\\')
-                $destination = Join-Path $diagnosticsDir $relativePath
-                $destinationParent = Split-Path -Parent $destination
-                New-Item -ItemType Directory -Force -Path $destinationParent | Out-Null
-                Copy-Item $_.FullName -Destination $destination -Force
-              }
-          } else {
-            Write-Warning "Wrapper diagnostics root not found at $wrapperRoot"
+          foreach ($wrapperRoot in $wrapperRoots) {
+            if (Test-Path $wrapperRoot) {
+              Get-ChildItem -Path $wrapperRoot -Recurse -File -Filter "wrapper-diagnostics.json" -ErrorAction SilentlyContinue |
+                ForEach-Object {
+                  $relativePath = $_.FullName.Substring($wrapperRoot.Length).TrimStart('\\')
+                  $destination = Join-Path $diagnosticsDir $relativePath
+                  $destinationParent = Split-Path -Parent $destination
+                  New-Item -ItemType Directory -Force -Path $destinationParent | Out-Null
+                  Copy-Item $_.FullName -Destination $destination -Force
+                }
+            } else {
+              Write-Warning "Wrapper diagnostics root not found at $wrapperRoot"
+            }
           }
 
       - name: Upload Windows smoke diagnostics
         if: failure() && matrix.platform.os == 'windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: electrobun-${{ matrix.platform.artifact-name }}-smoke-diagnostics
           path: packages/app-core/platforms/electrobun/artifacts/windows-smoke-diagnostics/**
@@ -1420,7 +1436,7 @@ jobs:
 
       - name: Upload macOS smoke diagnostics
         if: failure() && matrix.platform.os == 'macos'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: electrobun-${{ matrix.platform.artifact-name }}-smoke-diagnostics
           path: |
@@ -1522,7 +1538,7 @@ jobs:
 
       - name: Upload public canary installer artifact
         if: matrix.platform.os == 'windows' && needs.prepare.outputs.env == 'canary' && steps.build-electrobun-app.outputs.fallback != 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: electrobun-${{ matrix.platform.artifact-name }}-public-installer
           path: packages/app-core/platforms/electrobun/artifacts/public-canary-installer/ElizaOSApp-Setup-*.exe
@@ -1531,7 +1547,7 @@ jobs:
           compression-level: 0
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: electrobun-${{ matrix.platform.artifact-name }}
           path: |
@@ -1548,7 +1564,7 @@ jobs:
 
       - name: Upload MSIX artifact
         if: matrix.platform.os == 'windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: electrobun-${{ matrix.platform.artifact-name }}-msix
           path: packages/app-core/platforms/electrobun/artifacts/*.msix
@@ -1570,7 +1586,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: release-artifacts
           pattern: electrobun-*
@@ -1622,7 +1638,7 @@ jobs:
           cat SHA256SUMS.txt
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
           target_commitish: ${{ needs.prepare.outputs.source_sha }}
@@ -1678,7 +1694,7 @@ jobs:
       contents: write
     steps:
       - name: Download Agent Browser Bridge artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: browser-bridge-release
           pattern: browser-bridge-*

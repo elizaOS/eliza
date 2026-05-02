@@ -1,5 +1,11 @@
 import type http from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type {
+  LifeOpsHealthConnectorStatus,
+  LifeOpsHealthSummaryResponse,
+  StartLifeOpsHealthConnectorResponse,
+} from "../contracts/index.js";
+import { LIFEOPS_HEALTH_CONNECTOR_PROVIDERS } from "../contracts/index.js";
 import { LifeOpsService } from "../lifeops/service.js";
 import {
   handleLifeOpsRoutes,
@@ -1124,7 +1130,178 @@ describe("LifeOps route validation", () => {
     );
   });
 
+  it("routes health connector status requests to the service", async () => {
+    const status = healthConnectorStatus();
+    const getHealthDataConnectorStatus = vi
+      .spyOn(LifeOpsService.prototype, "getHealthDataConnectorStatus")
+      .mockResolvedValue(status);
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/connectors/health/strava/status?mode=local&side=owner",
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).not.toHaveBeenCalled();
+    expect(getHealthDataConnectorStatus).toHaveBeenCalledWith(
+      "strava",
+      expect.any(URL),
+      "local",
+      "owner",
+    );
+    expect(json).toHaveBeenCalledWith(context.res, status);
+  });
+
+  it("rejects unknown health connector providers before service dispatch", async () => {
+    const getHealthDataConnectorStatus = vi.spyOn(
+      LifeOpsService.prototype,
+      "getHealthDataConnectorStatus",
+    );
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/connectors/health/not-a-provider/status",
+      {
+        state: {
+          runtime: {
+            agentId: "00000000-0000-0000-0000-000000000201",
+          } as LifeOpsRouteContext["state"]["runtime"],
+          adminEntityId: null,
+        },
+      },
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      `provider must be one of: ${LIFEOPS_HEALTH_CONNECTOR_PROVIDERS.join(", ")}`,
+      400,
+    );
+    expect(getHealthDataConnectorStatus).not.toHaveBeenCalled();
+    expect(json).not.toHaveBeenCalled();
+  });
+
+  it("routes health connector OAuth starts with the provider from the path", async () => {
+    const startResponse: StartLifeOpsHealthConnectorResponse = {
+      provider: "fitbit",
+      side: "owner",
+      mode: "local",
+      requestedCapabilities: ["health.activity.read"],
+      redirectUri:
+        "http://127.0.0.1:31337/api/lifeops/connectors/health/fitbit/callback",
+      authUrl: "https://www.fitbit.com/oauth2/authorize?state=test",
+    };
+    const startHealthConnector = vi
+      .spyOn(LifeOpsService.prototype, "startHealthConnector")
+      .mockResolvedValue(startResponse);
+    const readJsonBody = vi.fn(async () => ({
+      side: "owner",
+      mode: "local",
+      capabilities: ["health.activity.read"],
+    }));
+    const { context, error, json } = createContext(
+      "POST",
+      "/api/lifeops/connectors/health/fitbit/start",
+      { readJsonBody },
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).not.toHaveBeenCalled();
+    expect(startHealthConnector).toHaveBeenCalledWith(
+      {
+        provider: "fitbit",
+        side: "owner",
+        mode: "local",
+        capabilities: ["health.activity.read"],
+      },
+      expect.any(URL),
+    );
+    expect(json).toHaveBeenCalledWith(context.res, startResponse, 201);
+  });
+
+  it("routes health sync requests to the service", async () => {
+    const summary = healthSummaryResponse();
+    const syncHealthConnectors = vi
+      .spyOn(LifeOpsService.prototype, "syncHealthConnectors")
+      .mockResolvedValue(summary);
+    const body = {
+      provider: "strava" as const,
+      side: "owner" as const,
+      days: 7,
+    };
+    const readJsonBody = vi.fn(async () => body);
+    const { context, error, json } = createContext(
+      "POST",
+      "/api/lifeops/health/sync",
+      { readJsonBody },
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).not.toHaveBeenCalled();
+    expect(syncHealthConnectors).toHaveBeenCalledWith(body);
+    expect(json).toHaveBeenCalledWith(context.res, summary);
+  });
+
+  it("rejects health summary windows over the route maximum", async () => {
+    const getHealthSummary = vi.spyOn(
+      LifeOpsService.prototype,
+      "getHealthSummary",
+    );
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/health/summary?days=32",
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "days must be less than or equal to 31",
+      400,
+    );
+    expect(getHealthSummary).not.toHaveBeenCalled();
+    expect(json).not.toHaveBeenCalled();
+  });
+
   // Browser companion + package routes moved to
   // `@elizaos/plugin-browser-bridge` (Phase 3). Tests for those routes now
   // live alongside the plugin package.
 });
+
+function healthConnectorStatus(
+  overrides: Partial<LifeOpsHealthConnectorStatus> = {},
+): LifeOpsHealthConnectorStatus {
+  return {
+    provider: "strava",
+    side: "owner",
+    mode: "local",
+    defaultMode: "local",
+    availableModes: ["local"],
+    executionTarget: "local",
+    sourceOfTruth: "local_storage",
+    configured: true,
+    connected: false,
+    reason: "disconnected",
+    identity: null,
+    grantedCapabilities: [],
+    grantedScopes: [],
+    expiresAt: null,
+    hasRefreshToken: false,
+    lastSyncAt: null,
+    grant: null,
+    ...overrides,
+  };
+}
+
+function healthSummaryResponse(): LifeOpsHealthSummaryResponse {
+  return {
+    providers: [healthConnectorStatus()],
+    summaries: [],
+    samples: [],
+    workouts: [],
+    sleepEpisodes: [],
+    syncedAt: "2026-04-20T12:00:00.000Z",
+  };
+}

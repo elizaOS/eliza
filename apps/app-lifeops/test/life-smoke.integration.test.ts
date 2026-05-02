@@ -19,7 +19,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createRealTestRuntime } from "../../../../test/helpers/real-runtime";
+import { createRealTestRuntime } from "../../../../eliza/test/helpers/real-runtime";
 import { lifeAction } from "../src/actions/life.js";
 import { appLifeOpsPlugin } from "../src/plugin.js";
 
@@ -29,11 +29,11 @@ let isolatedStateDir: string;
 let isolatedConfigPath: string;
 
 const isolatedEnvKeys = [
-  "MILADY_STATE_DIR",
   "ELIZA_STATE_DIR",
-  "MILADY_CONFIG_PATH",
+  "ELIZA_STATE_DIR",
   "ELIZA_CONFIG_PATH",
-  "MILADY_PERSIST_CONFIG_PATH",
+  "ELIZA_CONFIG_PATH",
+  "ELIZA_PERSIST_CONFIG_PATH",
   "ELIZA_PERSIST_CONFIG_PATH",
   "ELIZAOS_CLOUD_API_KEY",
   "ELIZAOS_CLOUD_BASE_URL",
@@ -43,7 +43,7 @@ const previousEnv = new Map<string, string | undefined>();
 
 function setIsolatedLifeSmokeEnv(): void {
   isolatedStateDir = mkdtempSync(join(tmpdir(), "life-smoke-state-"));
-  isolatedConfigPath = join(isolatedStateDir, "milady.json");
+  isolatedConfigPath = join(isolatedStateDir, "eliza.json");
   writeFileSync(
     isolatedConfigPath,
     JSON.stringify({ logging: { level: "error" } }),
@@ -54,9 +54,9 @@ function setIsolatedLifeSmokeEnv(): void {
     previousEnv.set(key, process.env[key]);
   }
 
-  process.env.MILADY_STATE_DIR = isolatedStateDir;
-  process.env.MILADY_CONFIG_PATH = isolatedConfigPath;
-  process.env.MILADY_PERSIST_CONFIG_PATH = isolatedConfigPath;
+  process.env.ELIZA_STATE_DIR = isolatedStateDir;
+  process.env.ELIZA_CONFIG_PATH = isolatedConfigPath;
+  process.env.ELIZA_PERSIST_CONFIG_PATH = isolatedConfigPath;
   delete process.env.ELIZA_STATE_DIR;
   delete process.env.ELIZA_CONFIG_PATH;
   delete process.env.ELIZA_PERSIST_CONFIG_PATH;
@@ -186,8 +186,8 @@ describe("LIFE action smoke tests -- BRD acceptance criteria", () => {
     });
     expect(overviewResult).toMatchObject({ success: true });
     const occurrences =
-      ((overviewResult?.data as { occurrences?: Array<{ id: string }> })
-        ?.occurrences ?? []);
+      (overviewResult?.data as { occurrences?: Array<{ id: string }> })
+        ?.occurrences ?? [];
     expect(occurrences.length).toBeGreaterThan(0);
     const targetOccurrenceId = occurrences[0]?.id;
     expect(typeof targetOccurrenceId).toBe("string");
@@ -283,7 +283,6 @@ describe("LIFE action smoke tests -- BRD acceptance criteria", () => {
 
     expect(result).toMatchObject({ success: false });
   }, 60_000);
-
 });
 
 describe("LIFE action -- robustness scenarios", () => {

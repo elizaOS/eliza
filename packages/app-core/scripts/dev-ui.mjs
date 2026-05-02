@@ -9,7 +9,7 @@
  * doesn't flood the terminal with ECONNREFUSED errors.
  *
  * Usage:
- *   node eliza/packages/app-core/scripts/dev-ui.mjs            # from Milady repo root — API + UI
+ *   node eliza/packages/app-core/scripts/dev-ui.mjs            # from Eliza repo root — API + UI
  *   node packages/app-core/scripts/dev-ui.mjs                  # from eliza repo root — same
  *   node …/dev-ui.mjs --ui-only                                # Vite only (API assumed running)
  */
@@ -25,6 +25,8 @@ import {
   resolveDesktopUiPort,
 } from "@elizaos/shared/runtime-env";
 import * as JSON5Module from "json5";
+import { createApiSupervisor } from "./lib/api-supervisor.mjs";
+import { relativeAppDir, resolveMainAppDir } from "./lib/app-dir.mjs";
 import { getBunVersionAdvisory } from "./lib/bun-version-guard.mjs";
 import { capacitorPluginsBuildNeeded } from "./lib/capacitor-plugin-build-needed.mjs";
 import { coerceBoolean } from "./lib/dev-ui-onchain.mjs";
@@ -42,9 +44,24 @@ if (existsSync(_worktreeEnvPath)) {
 }
 
 function resolveCapacitorPluginNamesPath(devCwd) {
+  const rootPackagesApp = path.join(
+    devCwd,
+    "packages",
+    "app",
+    "scripts",
+    "capacitor-plugin-names.mjs",
+  );
   const rootAppsApp = path.join(
     devCwd,
     "apps",
+    "app",
+    "scripts",
+    "capacitor-plugin-names.mjs",
+  );
+  const nestedElizaPackagesApp = path.join(
+    devCwd,
+    "eliza",
+    "packages",
     "app",
     "scripts",
     "capacitor-plugin-names.mjs",
@@ -63,20 +80,26 @@ function resolveCapacitorPluginNamesPath(devCwd) {
   if (existsSync(rootAppsApp) && elizaSubmodulePresent) {
     return rootAppsApp;
   }
+  if (existsSync(nestedElizaPackagesApp)) {
+    return nestedElizaPackagesApp;
+  }
   if (existsSync(nestedElizaAppsApp)) {
     return nestedElizaAppsApp;
+  }
+  if (existsSync(rootPackagesApp)) {
+    return rootPackagesApp;
   }
   if (existsSync(rootAppsApp)) {
     return rootAppsApp;
   }
   throw new Error(
-    `[dev-ui] capacitor-plugin-names.mjs not found. Tried:\n  ${rootAppsApp}\n  ${nestedElizaAppsApp}`,
+    `[dev-ui] capacitor-plugin-names.mjs not found. Tried:\n  ${rootPackagesApp}\n  ${rootAppsApp}\n  ${nestedElizaPackagesApp}\n  ${nestedElizaAppsApp}`,
   );
 }
 
-/** Relative to `cwd` for `spawn(..., { cwd })` — Milady monorepo vs eliza repo root. */
+/** Relative to `cwd` for `spawn(..., { cwd })` — Eliza monorepo vs eliza repo root. */
 function resolveDevServerEntryRelativePath(devCwd) {
-  const miladyMonorepoEntry = path.join(
+  const elizaMonorepoEntry = path.join(
     devCwd,
     "eliza",
     "packages",
@@ -85,7 +108,7 @@ function resolveDevServerEntryRelativePath(devCwd) {
     "runtime",
     "dev-server.ts",
   );
-  if (existsSync(miladyMonorepoEntry)) {
+  if (existsSync(elizaMonorepoEntry)) {
     return "eliza/packages/app-core/src/runtime/dev-server.ts";
   }
   const elizaRepoEntry = path.join(
@@ -100,7 +123,7 @@ function resolveDevServerEntryRelativePath(devCwd) {
     return "packages/app-core/src/runtime/dev-server.ts";
   }
   throw new Error(
-    `[dev-ui] dev-server.ts not found under ${devCwd}. Expected eliza/packages/app-core/... (Milady-style checkout) or packages/app-core/... (eliza repo root).`,
+    `[dev-ui] dev-server.ts not found under ${devCwd}. Expected eliza/packages/app-core/... (Eliza-style checkout) or packages/app-core/... (eliza repo root).`,
   );
 }
 
@@ -115,8 +138,9 @@ syncElizaEnvAliases();
 
 const API_PORT = resolveDesktopApiPort(process.env);
 const JSON5 = JSON5Module.default ?? JSON5Module;
+const cwd = process.cwd();
 
-// --app=<name> selects which app to serve (default: "app" → apps/app)
+// --app=<name> selects which app to serve (default: "app" → packages/app)
 const appArgMatch = process.argv.find((a) => a.startsWith("--app="));
 const appName = appArgMatch ? appArgMatch.split("=")[1] : "app";
 const APP_UI_PORTS = {
@@ -124,7 +148,7 @@ const APP_UI_PORTS = {
   home: Number(process.env.ELIZA_HOME_PORT) || 2142,
 };
 const UI_PORT = APP_UI_PORTS[appName] ?? 2138;
-const appDir = `apps/${appName}`;
+const appDir = relativeAppDir(cwd, resolveMainAppDir(cwd, appName));
 
 function getCliName() {
   const nameArgMatch = process.argv.find((a) => a.startsWith("--name="));
@@ -164,7 +188,6 @@ const logPrefix = `[${cliName}]`;
 const bunAdvisory = getBunVersionAdvisory();
 if (bunAdvisory) console.warn(`${logPrefix} ${bunAdvisory}`);
 
-const cwd = process.cwd();
 const visionDepsScriptPath = fileURLToPath(
   new URL("./ensure-vision-deps.mjs", import.meta.url),
 );
@@ -176,11 +199,11 @@ const devLogLevel =
 const quietApiLogs = process.env.ELIZA_DEV_QUIET_LOGS === "1";
 const verboseApiLogs = process.env.ELIZA_DEV_VERBOSE_LOGS !== "0";
 const DEV_TEST_MOCK_ENV_KEYS = [
-  "MILADY_MOCK_GOOGLE_BASE",
-  "MILADY_MOCK_TWILIO_BASE",
-  "MILADY_MOCK_WHATSAPP_BASE",
-  "MILADY_MOCK_X_BASE",
-  "MILADY_MOCK_CALENDLY_BASE",
+  "ELIZA_MOCK_GOOGLE_BASE",
+  "ELIZA_MOCK_TWILIO_BASE",
+  "ELIZA_MOCK_WHATSAPP_BASE",
+  "ELIZA_MOCK_X_BASE",
+  "ELIZA_MOCK_CALENDLY_BASE",
 ];
 let warnedAboutStrippedDevMocks = false;
 
@@ -198,7 +221,7 @@ function createDevChildEnv(baseEnv) {
   }
   if (!warnedAboutStrippedDevMocks && strippedKeys.length > 0) {
     warnedAboutStrippedDevMocks = true;
-    const cleanupHint = strippedKeys.includes("MILADY_MOCK_GOOGLE_BASE")
+    const cleanupHint = strippedKeys.includes("ELIZA_MOCK_GOOGLE_BASE")
       ? " If cached mock Google events already landed in LifeOps, disconnect and reconnect Google once in the app to resync real data."
       : "";
     console.warn(
@@ -376,6 +399,34 @@ function readPluginStealthFlag(entries, ids) {
   }
 
   return null;
+}
+
+function formatRelativeImportPath(relativePath) {
+  const normalized = relativePath.split(path.sep).join("/");
+  return normalized.startsWith("./") ? normalized : `./${normalized}`;
+}
+
+function resolveStealthImportPath(devCwd, candidatePaths) {
+  for (const candidatePath of candidatePaths) {
+    if (existsSync(path.join(devCwd, candidatePath))) {
+      return formatRelativeImportPath(candidatePath);
+    }
+  }
+  return null;
+}
+
+function addStealthImport(imports, label, candidatePaths) {
+  const resolvedPath = resolveStealthImportPath(cwd, candidatePaths);
+  if (resolvedPath) {
+    imports.push(resolvedPath);
+    return;
+  }
+
+  console.warn(
+    `  ${green(logPrefix)} ${orange(
+      `${label} stealth requested but no preload file was found. Tried: ${candidatePaths.join(", ")}`,
+    )}`,
+  );
 }
 
 function resolveStealthImportFlags() {
@@ -713,15 +764,6 @@ if (!uiOnly) {
 let apiProcess = null;
 let viteProcess = null;
 let shuttingDown = false;
-// Track API restart attempts so we don't hot-loop on a crashing API. When
-// /api/restart, the agent's RESTART action, or any other in-process bounce
-// fires `process.exit(0)`/`process.exit(75)`, the supervisor below re-spawns
-// the API. If it exits again within RESTART_BACKOFF_WINDOW_MS, that counts
-// toward the streak.
-const RESTART_BACKOFF_WINDOW_MS = 10_000;
-const RESTART_BACKOFF_LIMIT = 5;
-let apiRestartStreak = 0;
-let lastApiExitAt = 0;
 
 function terminateChild(proc, signal = "SIGTERM") {
   if (!proc) return;
@@ -877,15 +919,26 @@ if (uiOnly) {
   // via env vars or plugin config in eliza.json.
   const stealth = resolveStealthImportFlags();
   const nodeStealthImports = [];
-  if (stealth.openai) nodeStealthImports.push("./openai-codex-stealth.mjs");
-  if (stealth.claude) nodeStealthImports.push("./claude-code-stealth.mjs");
+  if (stealth.openai) {
+    addStealthImport(nodeStealthImports, "OpenAI Codex", [
+      "packages/app-core/scripts/openai-codex-stealth.mjs",
+      "eliza/packages/app-core/scripts/openai-codex-stealth.mjs",
+      "openai-codex-stealth.mjs",
+    ]);
+  }
+  if (stealth.claude) {
+    addStealthImport(nodeStealthImports, "Claude Code", [
+      "packages/agent/src/auth/claude-code-stealth-preload.ts",
+      "eliza/packages/agent/src/auth/claude-code-stealth-preload.ts",
+      "packages/app-core/scripts/claude-code-stealth.mjs",
+      "eliza/packages/app-core/scripts/claude-code-stealth.mjs",
+      "claude-code-stealth.mjs",
+    ]);
+  }
 
-  const resolvedStealthImports = nodeStealthImports.filter((filePath) =>
-    existsSync(path.join(cwd, filePath)),
-  );
-  if (resolvedStealthImports.length > 0) {
+  if (nodeStealthImports.length > 0) {
     console.log(
-      `  ${green(logPrefix)} ${dim(`Stealth imports enabled: ${resolvedStealthImports.join(", ")}`)}`,
+      `  ${green(logPrefix)} ${dim(`Stealth imports enabled: ${nodeStealthImports.join(", ")}`)}`,
     );
   }
 
@@ -895,18 +948,15 @@ if (uiOnly) {
     ? [
         "bun",
         "--no-install",
-        ...resolvedStealthImports.flatMap((filePath) => [
-          "--preload",
-          filePath,
-        ]),
+        ...nodeStealthImports.flatMap((filePath) => ["--preload", filePath]),
         "--watch",
         devServerEntry,
       ]
     : [
         "node",
-        ...resolvedStealthImports.flatMap((filePath) => ["--import", filePath]),
         "--import",
         "tsx",
+        ...nodeStealthImports.flatMap((filePath) => ["--import", filePath]),
         "--watch",
         devServerEntry,
       ];
@@ -926,71 +976,46 @@ if (uiOnly) {
     cwd,
   );
 
-  function startApi() {
-    apiProcess = spawn(apiCmd[0], apiCmd.slice(1), {
-      cwd,
-      env: apiSpawnEnv,
-      stdio: ["inherit", "pipe", "pipe"],
-    });
-
-    apiProcess.on("error", (err) => {
-      console.error(
-        `  ${green(logPrefix)} Failed to start API server: ${err.message}`,
-      );
-      cleanup(1);
-    });
-
-    if (quietApiLogs) {
-      apiProcess.stderr.on("data", createErrorFilter(process.stderr));
-      apiProcess.stdout.on("data", () => {});
-    } else if (verboseApiLogs) {
-      apiProcess.stderr.on("data", (data) => {
-        process.stderr.write(data);
-      });
-      apiProcess.stdout.on("data", (data) => {
-        process.stdout.write(data);
-      });
-    } else {
-      apiProcess.stderr.on("data", createStartupFilter(process.stderr));
-      apiProcess.stdout.on("data", createStartupFilter(process.stdout));
-    }
-
-    apiProcess.on("exit", (code) => {
-      if (shuttingDown) return;
-      const now = Date.now();
-      if (now - lastApiExitAt < RESTART_BACKOFF_WINDOW_MS) {
-        apiRestartStreak += 1;
-      } else {
-        apiRestartStreak = 1;
-      }
-      lastApiExitAt = now;
-      apiProcess = null;
-
-      if (apiRestartStreak > RESTART_BACKOFF_LIMIT) {
+  const apiSupervisor = createApiSupervisor({
+    spawnChild: () =>
+      spawn(apiCmd[0], apiCmd.slice(1), {
+        cwd,
+        env: apiSpawnEnv,
+        stdio: ["inherit", "pipe", "pipe"],
+      }),
+    onSpawn: (child) => {
+      apiProcess = child;
+      child.on("error", (err) => {
         console.error(
-          `\n  ${green(logPrefix)} API exited with code ${code} ${apiRestartStreak} times in ${
-            RESTART_BACKOFF_WINDOW_MS / 1000
-          }s — giving up. Fix the underlying issue and restart the dev process.`,
+          `  ${green(logPrefix)} Failed to start API server: ${err.message}`,
         );
-        cleanup(code ?? 1);
-        return;
+        cleanup(1);
+      });
+      if (quietApiLogs) {
+        child.stderr.on("data", createErrorFilter(process.stderr));
+        child.stdout.on("data", () => {});
+      } else if (verboseApiLogs) {
+        child.stderr.on("data", (data) => {
+          process.stderr.write(data);
+        });
+        child.stdout.on("data", (data) => {
+          process.stdout.write(data);
+        });
+      } else {
+        child.stderr.on("data", createStartupFilter(process.stderr));
+        child.stdout.on("data", createStartupFilter(process.stdout));
       }
+    },
+    onExit: () => {
+      apiProcess = null;
+    },
+    onGiveUp: (code) => cleanup(code ?? 1),
+    isShuttingDown: () => shuttingDown,
+    log: (message) => console.log(`\n  ${green(logPrefix)} ${message}`),
+    warn: (message) => console.error(`\n  ${green(logPrefix)} ${message}`),
+  });
 
-      // The agent's RESTART action and `/api/restart` both bounce the
-      // server with `process.exit(0)` (and the CLI runner uses 75 as the
-      // dedicated restart exit code). Bun's `--watch` reload also exits
-      // cleanly. Treat any non-shutdown exit as "please restart me" and
-      // re-spawn — that's what the renderer is already polling for.
-      console.log(
-        `\n  ${green(logPrefix)} API exited with code ${code} — relaunching (attempt ${apiRestartStreak}/${RESTART_BACKOFF_LIMIT})…`,
-      );
-      setTimeout(() => {
-        if (!shuttingDown) startApi();
-      }, 400);
-    });
-  }
-
-  startApi();
+  apiSupervisor.start();
 
   const startTime = Date.now();
   let phase = "port";

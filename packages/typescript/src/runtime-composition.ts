@@ -2,7 +2,7 @@
  * Runtime composition: building blocks for creating elizaOS runtimes.
  *
  * This module provides a small, composable API so hosts (daemon, cloud, serverless,
- * milaidy, etc.) can set up runtimes without duplicating adapter creation, plugin
+ * eliza, etc.) can set up runtimes without duplicating adapter creation, plugin
  * resolution, or settings merge logic.
  *
  * **WHY a composition layer:** Different hosts need different flows (e.g. cloud may
@@ -272,7 +272,7 @@ export async function loadCharacters(
 export interface CreateRuntimesOptions {
 	/** Override: use this adapter for all characters (skip adapter discovery). WHY: Cloud/custom hosts may manage their own adapter pool. */
 	adapter?: IDatabaseAdapter;
-	/** Extra plugins to include for all characters (merged with character.plugins). WHY: Hosts like milaidy add their own plugin without putting it in every character file. */
+	/** Extra plugins to include for all characters (merged with character.plugins). WHY: Hosts like eliza add their own plugin without putting it in every character file. */
 	sharedPlugins?: Plugin[];
 	/** Run provisioning after init: migrations once per unique adapter, then ensureAgentInfrastructure + ensureEmbeddingDimension per runtime. Default false. WHY: Daemons need it once at boot; serverless/ephemeral usually skip. */
 	provision?: boolean;

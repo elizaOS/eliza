@@ -299,7 +299,7 @@ async function fetchCoinGeckoMarkets(): Promise<CoinGeckoMarketRecord[]> {
       method: "GET",
       headers: {
         accept: "application/json",
-        "user-agent": "Milady Wallet Market Feed/1.0",
+        "user-agent": "Eliza Wallet Market Feed/1.0",
       },
     },
     MARKET_OVERVIEW_FETCH_TIMEOUT_MS,
@@ -333,7 +333,7 @@ async function fetchPolymarketMarkets(): Promise<PolymarketMarketRecord[]> {
       method: "GET",
       headers: {
         accept: "application/json",
-        "user-agent": "Milady Wallet Market Feed/1.0",
+        "user-agent": "Eliza Wallet Market Feed/1.0",
       },
     },
     MARKET_OVERVIEW_FETCH_TIMEOUT_MS,
@@ -471,7 +471,7 @@ async function fetchCloudWalletMarketOverview(
       method: "GET",
       headers: {
         accept: "application/json",
-        "user-agent": "Milady Wallet Market Feed/1.0",
+        "user-agent": "Eliza Wallet Market Feed/1.0",
         ...(clientAddress !== "unknown"
           ? { "x-forwarded-for": clientAddress }
           : {}),

@@ -16,4 +16,3 @@ if (import.meta.main) {
     await close();
   }
 }
-

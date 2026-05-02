@@ -165,7 +165,7 @@ const NODE_CLASS_ORDER = [
   "flow-control",
 ] as const;
 
-const PAGE_CHAT_PREFILL_EVENT = "milady:chat:prefill";
+const PAGE_CHAT_PREFILL_EVENT = "eliza:chat:prefill";
 const DESCRIBE_WORKFLOW_PROMPT = "Describe your workflow";
 const DESCRIBE_AUTOMATION_PROMPT = "What should happen?";
 const WORKFLOW_PROMPT_PLACEHOLDER =
@@ -173,14 +173,14 @@ const WORKFLOW_PROMPT_PLACEHOLDER =
 const AUTOMATION_PROMPT_PLACEHOLDER =
   "e.g. Every morning summarize my inbox, or when a GitHub issue opens, triage it";
 const AUTOMATIONS_OVERVIEW_VISIBILITY_EVENT =
-  "milady:automations:overview-visibility";
+  "eliza:automations:overview-visibility";
 
 interface AutomationsOverviewVisibilityDetail {
   visible: boolean;
 }
 
 type AutomationsOverviewWindow = Window & {
-  __miladyAutomationsOverviewVisible?: boolean;
+  __elizaAutomationsOverviewVisible?: boolean;
 };
 
 function createWorkflowDraftId(): string {
@@ -762,9 +762,9 @@ function useAutomationsViewController() {
         setFilter(detail.filter);
       }
     };
-    window.addEventListener("milady:automations:setFilter", handler);
+    window.addEventListener("eliza:automations:setFilter", handler);
     return () =>
-      window.removeEventListener("milady:automations:setFilter", handler);
+      window.removeEventListener("eliza:automations:setFilter", handler);
   }, []);
 
   const allItems = automationItems;
@@ -4013,7 +4013,7 @@ function AutomationsSidebarChat({
   useEffect(() => {
     const overviewWindow = window as AutomationsOverviewWindow;
     setOverviewVisible(
-      Boolean(overviewWindow.__miladyAutomationsOverviewVisible),
+      Boolean(overviewWindow.__elizaAutomationsOverviewVisible),
     );
 
     const handleOverviewVisibility = (event: Event): void => {
@@ -4236,7 +4236,7 @@ function AutomationsLayout() {
   }, [setSelectedItemId, setSelectedItemKind, showDashboard]);
 
   useEffect(() => {
-    (window as AutomationsOverviewWindow).__miladyAutomationsOverviewVisible =
+    (window as AutomationsOverviewWindow).__elizaAutomationsOverviewVisible =
       showDashboard;
     window.dispatchEvent(
       new CustomEvent<AutomationsOverviewVisibilityDetail>(

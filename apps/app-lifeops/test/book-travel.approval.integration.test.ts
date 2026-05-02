@@ -2,12 +2,10 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import {
-  resolveOAuthDir,
-} from "@elizaos/agent";
+import { resolveOAuthDir } from "@elizaos/agent";
 import type { ActionResult, AgentRuntime, Memory, UUID } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { saveEnv } from "../../../../test/helpers/test-utils";
+import { saveEnv } from "../../../../eliza/test/helpers/test-utils";
 import {
   approveRequestAction,
   rejectRequestAction,
@@ -418,17 +416,17 @@ function installApprovalResolutionModelStub(requestId: string, reason: string) {
 beforeAll(async () => {
   envBackup = saveEnv(
     "ELIZA_STATE_DIR",
-    "MILADY_STATE_DIR",
+    "ELIZA_STATE_DIR",
     "DUFFEL_API_KEY",
-    "MILADY_DUFFEL_DIRECT",
+    "ELIZA_DUFFEL_DIRECT",
   );
   stateDir = await fs.promises.mkdtemp(
     path.join(os.tmpdir(), "book-travel-approval-"),
   );
   process.env.ELIZA_STATE_DIR = stateDir;
-  process.env.MILADY_STATE_DIR = stateDir;
+  process.env.ELIZA_STATE_DIR = stateDir;
   process.env.DUFFEL_API_KEY = "duffel-test-key";
-  process.env.MILADY_DUFFEL_DIRECT = "1";
+  process.env.ELIZA_DUFFEL_DIRECT = "1";
 
   testRuntime = await createLifeOpsTestRuntime({
     characterName: "book-travel-test-agent",

@@ -1,5 +1,9 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
-import { openAppPath, seedAppStorage } from "./helpers";
+import {
+  installDefaultAppRoutes,
+  openAppPath,
+  seedAppStorage,
+} from "./helpers";
 
 const MAC_CHROME_USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36";
@@ -52,6 +56,7 @@ async function clickLocatorAtVerticalFraction(
 test.beforeEach(async ({ page }) => {
   await seedElectrobunRuntime(page);
   await seedAppStorage(page);
+  await installDefaultAppRoutes(page);
 });
 
 test("desktop titlebar keeps navigation clickable and title area draggable", async ({

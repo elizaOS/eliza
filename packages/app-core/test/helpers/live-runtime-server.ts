@@ -100,8 +100,12 @@ export async function startLiveRuntimeServer(
       break;
     }
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2_000);
     try {
-      const response = await fetch(`http://127.0.0.1:${port}/api/health`);
+      const response = await fetch(`http://127.0.0.1:${port}/api/health`, {
+        signal: controller.signal,
+      });
       if (response.ok) {
         const data = (await response.json()) as {
           ready?: boolean;
@@ -114,6 +118,8 @@ export async function startLiveRuntimeServer(
       }
     } catch {
       /* not ready */
+    } finally {
+      clearTimeout(timeout);
     }
     await sleep(1_000);
   }

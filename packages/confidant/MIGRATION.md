@@ -3,7 +3,7 @@
 This guide walks through adopting Confidant in an existing Eliza-based
 host app. Each phase is independently shippable, ends with deletion of
 the legacy code it replaced, and corresponds to a phase in §9 of the
-Milady-side architecture doc (`docs/architecture/confidant.md`).
+Eliza-side architecture doc (`docs/architecture/confidant.md`).
 
 Confidant covers **every credential the elizaOS plugin catalog uses**
 — LLM providers, TTS / voice, messaging connectors, wallets, blockchain
@@ -103,7 +103,7 @@ goes through Confidant's `set(id, value)` method, not the legacy
 ### Exit criterion
 
 ```ts
-await fs.readFile(miladyJsonPath, "utf8");
+await fs.readFile(elizaJsonPath, "utf8");
 // no longer contains env.* or env.vars.* blocks for credentials
 const stored = await confidant.list();
 expect(stored).toContain("llm.openrouter.apiKey");
@@ -198,7 +198,7 @@ at use time.
 A user with `op` CLI signed in can configure
 `llm.openrouter.apiKey` as `op://Personal/OpenRouter/api-key`,
 restart the app, and resolves succeed transparently — the secret never
-touches `~/.milady/confidant.json`.
+touches `~/.eliza/confidant.json`.
 
 ---
 
@@ -292,12 +292,12 @@ These patterns appear during migration and should be avoided:
 
 ## When something breaks
 
-The audit log at `~/.milady/audit/confidant.jsonl` records every
+The audit log at `~/.eliza/audit/confidant.jsonl` records every
 resolve attempt with skill id, secret id, source, granted/denied.
 Filter for failures:
 
 ```bash
-jq -c 'select(.granted == false)' ~/.milady/audit/confidant.jsonl
+jq -c 'select(.granted == false)' ~/.eliza/audit/confidant.jsonl
 ```
 
 Every failure has a structured `reason` you can match against the

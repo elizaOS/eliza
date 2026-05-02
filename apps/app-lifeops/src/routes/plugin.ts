@@ -5,7 +5,8 @@ import {
   sendJson as httpSendJson,
   sendJsonError as httpSendJsonError,
 } from "@elizaos/agent/api/http-helpers";
-import type { AgentRuntime, Plugin, Route } from "@elizaos/core";
+import type { AgentRuntime, Plugin, Route, UUID } from "@elizaos/core";
+import { resolveCanonicalOwnerId } from "@elizaos/core";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 import { handleLifeOpsRoutes } from "./lifeops-routes.js";
 import { handleSleepRoutes } from "./sleep-routes.js";
@@ -58,6 +59,11 @@ function requestBaseUrl(req: http.IncomingMessage): string {
   return `${protocol}://${host}`;
 }
 
+function routeOwnerEntityId(runtime: AgentRuntime | null): UUID | null {
+  const ownerId = runtime ? resolveCanonicalOwnerId(runtime) : null;
+  return typeof ownerId === "string" ? (ownerId as UUID) : null;
+}
+
 function buildLifeOpsContext(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -73,7 +79,7 @@ function buildLifeOpsContext(
     url,
     state: {
       runtime,
-      adminEntityId: null,
+      adminEntityId: routeOwnerEntityId(runtime),
     },
     json,
     error,
@@ -127,15 +133,24 @@ function buildCloudProxyConfig(
   };
 }
 
-// ---------------------------------------------------------------------------
-// All static LifeOps routes (exact-path matches)
-// ---------------------------------------------------------------------------
+type HttpRouteType = Exclude<Route["type"], "STATIC">;
 
-const LIFEOPS_STATIC_ROUTES: Array<{
-  type: string;
+interface PrivateRouteSpec {
+  type: HttpRouteType;
   path: string;
-  public?: boolean;
-}> = [
+  public?: false;
+}
+
+interface PublicRouteSpec {
+  type: HttpRouteType;
+  path: string;
+  public: true;
+  name: string;
+}
+
+type RouteSpec = PrivateRouteSpec | PublicRouteSpec;
+
+const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "GET", path: "/api/lifeops/app-state" },
   { type: "PUT", path: "/api/lifeops/app-state" },
   { type: "GET", path: "/api/lifeops/capabilities" },
@@ -165,13 +180,24 @@ const LIFEOPS_STATIC_ROUTES: Array<{
     type: "GET",
     path: "/api/lifeops/connectors/google/callback",
     public: true,
+    name: "lifeops.google.callback",
   },
-  { type: "GET", path: "/api/lifeops/connectors/google/success", public: true },
+  {
+    type: "GET",
+    path: "/api/lifeops/connectors/google/success",
+    public: true,
+    name: "lifeops.google.success",
+  },
   { type: "GET", path: "/api/lifeops/connectors/google/accounts" },
   { type: "POST", path: "/api/lifeops/connectors/google/disconnect" },
   { type: "GET", path: "/api/lifeops/connectors/x/status" },
   { type: "POST", path: "/api/lifeops/connectors/x/start" },
-  { type: "GET", path: "/api/lifeops/connectors/x/success", public: true },
+  {
+    type: "GET",
+    path: "/api/lifeops/connectors/x/success",
+    public: true,
+    name: "lifeops.x.success",
+  },
   { type: "POST", path: "/api/lifeops/connectors/x/disconnect" },
   { type: "POST", path: "/api/lifeops/connectors/x" },
   { type: "POST", path: "/api/lifeops/x/posts" },
@@ -234,6 +260,9 @@ const LIFEOPS_STATIC_ROUTES: Array<{
   { type: "GET", path: "/api/lifeops/screen-time/history" },
   { type: "GET", path: "/api/lifeops/social/summary" },
   { type: "GET", path: "/api/lifeops/overview" },
+  { type: "GET", path: "/api/lifeops/connectors/health/status" },
+  { type: "POST", path: "/api/lifeops/health/sync" },
+  { type: "GET", path: "/api/lifeops/health/summary" },
   { type: "GET", path: "/api/lifeops/money/dashboard" },
   { type: "GET", path: "/api/lifeops/money/sources" },
   { type: "POST", path: "/api/lifeops/money/sources" },
@@ -265,11 +294,31 @@ const LIFEOPS_STATIC_ROUTES: Array<{
   { type: "POST", path: "/api/lifeops/features/toggle" },
 ];
 
-// ---------------------------------------------------------------------------
-// Dynamic LifeOps routes (param-based matches)
-// ---------------------------------------------------------------------------
-
-const LIFEOPS_DYNAMIC_ROUTES: Array<{ type: string; path: string }> = [
+const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
+  {
+    type: "GET",
+    path: "/api/lifeops/connectors/health/:provider/status",
+  },
+  {
+    type: "POST",
+    path: "/api/lifeops/connectors/health/:provider/start",
+  },
+  {
+    type: "GET",
+    path: "/api/lifeops/connectors/health/:provider/callback",
+    public: true,
+    name: "lifeops.health.callback",
+  },
+  {
+    type: "GET",
+    path: "/api/lifeops/connectors/health/:provider/success",
+    public: true,
+    name: "lifeops.health.success",
+  },
+  {
+    type: "POST",
+    path: "/api/lifeops/connectors/health/:provider/disconnect",
+  },
   // /api/lifeops/money/sources/:sourceId
   { type: "DELETE", path: "/api/lifeops/money/sources/:sourceId" },
   // /api/lifeops/calendar/events/:eventId
@@ -310,7 +359,7 @@ const LIFEOPS_DYNAMIC_ROUTES: Array<{ type: string; path: string }> = [
 // Sleep routes (history / regularity / baseline)
 // ---------------------------------------------------------------------------
 
-const LIFEOPS_SLEEP_ROUTES: Array<{ type: string; path: string }> = [
+const LIFEOPS_SLEEP_ROUTES: RouteSpec[] = [
   { type: "GET", path: "/api/lifeops/sleep/history" },
   { type: "GET", path: "/api/lifeops/sleep/regularity" },
   { type: "GET", path: "/api/lifeops/sleep/baseline" },
@@ -320,7 +369,7 @@ const LIFEOPS_SLEEP_ROUTES: Array<{ type: string; path: string }> = [
 // Website-blocker routes
 // ---------------------------------------------------------------------------
 
-const WEBSITE_BLOCKER_ROUTES: Array<{ type: string; path: string }> = [
+const WEBSITE_BLOCKER_ROUTES: RouteSpec[] = [
   { type: "GET", path: "/api/website-blocker" },
   { type: "GET", path: "/api/website-blocker/status" },
   { type: "POST", path: "/api/website-blocker" },
@@ -328,12 +377,12 @@ const WEBSITE_BLOCKER_ROUTES: Array<{ type: string; path: string }> = [
   { type: "DELETE", path: "/api/website-blocker" },
 ];
 
-const CLOUD_FEATURE_ROUTES: Array<{ type: string; path: string }> = [
+const CLOUD_FEATURE_ROUTES: RouteSpec[] = [
   { type: "GET", path: "/api/cloud/features" },
   { type: "POST", path: "/api/cloud/features/sync" },
 ];
 
-const TRAVEL_PROVIDER_RELAY_ROUTES: Array<{ type: string; path: string }> = [
+const TRAVEL_PROVIDER_RELAY_ROUTES: RouteSpec[] = [
   { type: "GET", path: "/api/cloud/travel-providers/:provider/:providerPath*" },
   {
     type: "POST",
@@ -353,6 +402,30 @@ interface CloudProxyConfigLike {
     baseUrl?: string;
     serviceKey?: string;
   };
+}
+
+function buildRawRoutes(
+  specs: readonly RouteSpec[],
+  handler: PluginRouteHandler,
+): Route[] {
+  return specs.map((spec): Route => {
+    if (spec.public) {
+      return {
+        type: spec.type,
+        path: spec.path,
+        rawPath: true,
+        public: true,
+        name: spec.name,
+        handler,
+      };
+    }
+    return {
+      type: spec.type,
+      path: spec.path,
+      rawPath: true,
+      handler,
+    };
+  });
 }
 
 function lifeOpsRouteHandler(): PluginRouteHandler {
@@ -455,65 +528,15 @@ function travelProviderRelayRouteHandler(): PluginRouteHandler {
 }
 
 const lifeOpsPluginRoutes: Route[] = [
-  ...CLOUD_FEATURE_ROUTES.map(
-    (r) =>
-      ({
-        type: r.type as Route["type"],
-        path: r.path,
-        rawPath: true as const,
-        handler: cloudFeaturesRouteHandler(),
-      }) as Route,
+  ...buildRawRoutes(CLOUD_FEATURE_ROUTES, cloudFeaturesRouteHandler()),
+  ...buildRawRoutes(
+    TRAVEL_PROVIDER_RELAY_ROUTES,
+    travelProviderRelayRouteHandler(),
   ),
-  ...TRAVEL_PROVIDER_RELAY_ROUTES.map(
-    (r) =>
-      ({
-        type: r.type as Route["type"],
-        path: r.path,
-        rawPath: true as const,
-        handler: travelProviderRelayRouteHandler(),
-      }) as Route,
-  ),
-  // Static LifeOps routes
-  ...LIFEOPS_STATIC_ROUTES.map(
-    (r) =>
-      ({
-        type: r.type as Route["type"],
-        path: r.path,
-        rawPath: true as const,
-        ...(r.public ? ({ public: true } as const) : {}),
-        handler: lifeOpsRouteHandler(),
-      }) as Route,
-  ),
-  // Dynamic LifeOps routes
-  ...LIFEOPS_DYNAMIC_ROUTES.map(
-    (r) =>
-      ({
-        type: r.type as Route["type"],
-        path: r.path,
-        rawPath: true as const,
-        handler: lifeOpsRouteHandler(),
-      }) as Route,
-  ),
-  // Sleep routes (history / regularity / baseline)
-  ...LIFEOPS_SLEEP_ROUTES.map(
-    (r) =>
-      ({
-        type: r.type as Route["type"],
-        path: r.path,
-        rawPath: true as const,
-        handler: sleepRouteHandler(),
-      }) as Route,
-  ),
-  // Website blocker routes
-  ...WEBSITE_BLOCKER_ROUTES.map(
-    (r) =>
-      ({
-        type: r.type as Route["type"],
-        path: r.path,
-        rawPath: true as const,
-        handler: websiteBlockerRouteHandler(),
-      }) as Route,
-  ),
+  ...buildRawRoutes(LIFEOPS_STATIC_ROUTES, lifeOpsRouteHandler()),
+  ...buildRawRoutes(LIFEOPS_DYNAMIC_ROUTES, lifeOpsRouteHandler()),
+  ...buildRawRoutes(LIFEOPS_SLEEP_ROUTES, sleepRouteHandler()),
+  ...buildRawRoutes(WEBSITE_BLOCKER_ROUTES, websiteBlockerRouteHandler()),
 ];
 
 // ---------------------------------------------------------------------------

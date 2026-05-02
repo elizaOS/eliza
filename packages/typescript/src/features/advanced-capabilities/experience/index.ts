@@ -3,6 +3,7 @@
  */
 
 export { recordExperienceAction } from "./actions/record-experience.ts";
+export { searchExperiencesAction } from "./actions/search-experiences.ts";
 export { experienceEvaluator } from "./evaluators/experienceEvaluator.ts";
 export { experienceProvider } from "./providers/experienceProvider.ts";
 // ExperienceService is lazy-loaded in advancedServices (advanced-capabilities/index.ts)

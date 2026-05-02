@@ -5,6 +5,8 @@
  * Expects the target version in the RELEASE_VERSION environment variable.
  */
 import fs from "node:fs";
+import path from "node:path";
+import { resolveElectrobunDir, resolveMainAppDir } from "./lib/app-dir.mjs";
 
 const version = process.env.RELEASE_VERSION;
 if (!version) {
@@ -12,10 +14,13 @@ if (!version) {
   process.exit(1);
 }
 
+const appDir = resolveMainAppDir(process.cwd(), "app");
+const electrobunDir = resolveElectrobunDir(process.cwd());
+
 for (const file of [
   "package.json",
-  "apps/app/package.json",
-  "apps/app/electrobun/package.json",
+  path.join(appDir, "package.json"),
+  path.join(electrobunDir, "package.json"),
 ]) {
   try {
     const pkg = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -26,7 +31,7 @@ for (const file of [
   }
 }
 
-const cfgPath = "apps/app/electrobun/electrobun.config.ts";
+const cfgPath = path.join(electrobunDir, "electrobun.config.ts");
 let cfg = fs.readFileSync(cfgPath, "utf8");
 cfg = cfg.replace(/version:\s*"[^"]+"/, `version: "${version}"`);
 fs.writeFileSync(cfgPath, cfg);

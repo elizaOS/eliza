@@ -12,7 +12,7 @@
 export const DESKTOP_ONLY_PLUGINS: readonly string[] = ["agent-orchestrator"];
 
 /**
- * Mobile-safe core plugins. Used when `MILADY_PLATFORM=android` (or `ios`).
+ * Mobile-safe core plugins. Used when `ELIZA_PLATFORM=android` (or `ios`).
  *
  * Phones cannot host the n8n sidecar, the Signal CLI, the swarm orchestrator,
  * the sandbox engine, the desktop launch hooks, or the autonomous PTY tools.
@@ -60,7 +60,7 @@ export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/app-companion", // VRM companion emotes; actions gated until app session is active
   // @elizaos/plugin-agent-orchestrator — opt-in via ELIZA_AGENT_ORCHESTRATOR (Eliza app enables by default)
   "@elizaos/plugin-cron", // scheduled jobs and automation
-  "@elizaos/plugin-app-control", // launch, close, and list running Milady apps from agent chat
+  "@elizaos/plugin-app-control", // launch, close, and list running Eliza apps from agent chat
   "@elizaos/plugin-shell", // shell command execution
   "@elizaos/plugin-agent-skills", // skill execution and marketplace runtime
   "@elizaos/plugin-commands", // slash command handling (skills auto-register as /commands)
@@ -69,7 +69,7 @@ export const CORE_PLUGINS: readonly string[] = [
   // Built-in runtime capabilities (no longer external plugins):
   // - experience, form, clipboard, personality: advanced capabilities (advancedCapabilities: true)
   // - trust: core capability (enableTrust: true)
-  // - secrets-manager: core capability (enableSecretsManager: true)
+  // - secrets (SECRETS): core capability (enableSecretsManager: true)
   // - plugin-manager: core capability (enablePluginManager: true)
   // - knowledge, relationships, trajectories: native features
 ];
@@ -79,7 +79,7 @@ export const CORE_PLUGINS: readonly string[] = [
  * Not loaded by default — require explicit configuration or have platform dependencies.
  */
 export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
-  // plugin-manager, secrets-manager, trust: now built-in core capabilities
+  // plugin-manager, secrets (SECRETS), trust: now built-in core capabilities
   // Enable via character settings: ENABLE_PLUGIN_MANAGER, ENABLE_SECRETS_MANAGER, ENABLE_TRUST
   // "@elizaos/app-lifeops" — moved to CORE_PLUGINS above
   "@elizaos/plugin-pdf", // PDF processing (published bundle broken in alpha.15)

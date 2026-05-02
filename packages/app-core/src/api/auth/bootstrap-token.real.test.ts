@@ -55,10 +55,10 @@ function jwksJson(keys: JWK[]): string {
 
 async function open(): Promise<Harness> {
   const dataDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "milady-bootstrap-token-"),
+    path.join(os.tmpdir(), "eliza-bootstrap-token-"),
   );
   const stateDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "milady-bootstrap-state-"),
+    path.join(os.tmpdir(), "eliza-bootstrap-state-"),
   );
   const adapter = createDatabaseAdapter(
     { dataDir },
@@ -144,7 +144,7 @@ function envFor(harness: Harness): NodeJS.ProcessEnv {
   return {
     ELIZA_CLOUD_ISSUER: ISSUER,
     ELIZA_CLOUD_CONTAINER_ID: CONTAINER_ID,
-    MILADY_STATE_DIR: harness.stateDir,
+    ELIZA_STATE_DIR: harness.stateDir,
   };
 }
 

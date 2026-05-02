@@ -10,7 +10,7 @@ import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 
-@CapacitorPlugin(name = "MiladyContacts")
+@CapacitorPlugin(name = "ElizaContacts")
 class ContactsPlugin : Plugin() {
     @PluginMethod
     fun listContacts(call: PluginCall) {

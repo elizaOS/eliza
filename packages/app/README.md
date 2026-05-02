@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="../ui/public/pfp.jpg" alt="elizaOS" width="120" />
+  <img src="public/android-chrome-192x192.png" alt="elizaOS" width="120" />
 </p>
 
 <h1 align="center">elizaOS</h1>
@@ -91,7 +91,7 @@ bun run build
 ### Run the App (Desktop)
 
 ```bash
-cd apps/app
+cd packages/app
 bun install
 bun run build:desktop
 bun run dev:desktop
@@ -100,7 +100,7 @@ bun run dev:desktop
 ### Dev Server
 
 ```bash
-cd apps/app
+cd packages/app
 bun run dev
 ```
 

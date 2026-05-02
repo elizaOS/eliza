@@ -1,19 +1,11 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import type {
-  AgentRuntime,
-  ChannelType,
-  Memory,
-  UUID,
-} from "@elizaos/core";
+import { listTriggerTasks, readTriggerConfig } from "@elizaos/agent";
+import type { AgentRuntime, ChannelType, Memory, UUID } from "@elizaos/core";
 import { stringToUuid } from "@elizaos/core";
-import { createLifeOpsChatTestRuntime } from "./helpers/lifeops-chat-runtime.js";
-import { crossPlatformGatewayAction } from "../src/actions/cross-platform-gateway.js";
+import { beforeEach, describe, expect, it } from "vitest";
 import { chatThreadControlAction } from "../src/actions/chat-thread-control.js";
+import { crossPlatformGatewayAction } from "../src/actions/cross-platform-gateway.js";
 import { scheduleXDmReplyAction } from "../src/actions/schedule-x-dm-reply.js";
-import {
-  listTriggerTasks,
-  readTriggerConfig,
-} from "@elizaos/agent";
+import { createLifeOpsChatTestRuntime } from "./helpers/lifeops-chat-runtime.js";
 
 type RuntimeWithMaps = AgentRuntime & {
   createRoomParticipants(entityIds: UUID[], roomId: UUID): Promise<UUID[]>;
@@ -39,8 +31,8 @@ function makeMemory(args: {
     agentId: args.agentId,
     entityId: (args.entityId ?? args.agentId) as UUID,
     roomId:
-      (args.roomId ??
-        (stringToUuid(`connector-blockers-room:${args.agentId}`) as UUID)),
+      args.roomId ??
+      (stringToUuid(`connector-blockers-room:${args.agentId}`) as UUID),
     createdAt: Date.now(),
     content: {
       text: args.text,
@@ -53,7 +45,9 @@ function createRuntime(agentId: string): RuntimeWithMaps {
   const runtime = createLifeOpsChatTestRuntime({
     agentId,
     useModel: async () => {
-      throw new Error("useModel should not be called in connector blocker tests");
+      throw new Error(
+        "useModel should not be called in connector blocker tests",
+      );
     },
     handleTurn: async () => ({ text: "ok" }),
   }) as RuntimeWithMaps;
@@ -174,13 +168,18 @@ describe("connector blocker actions", () => {
       text: "Create a group chat with the agent and Alice on Discord.",
     });
 
-    const result = await crossPlatformGatewayAction.handler?.(runtime, message, undefined, {
-      parameters: {
-        subaction: "create_group_chat",
-        platform: "discord",
-        participants: ["Alice"],
+    const result = await crossPlatformGatewayAction.handler?.(
+      runtime,
+      message,
+      undefined,
+      {
+        parameters: {
+          subaction: "create_group_chat",
+          platform: "discord",
+          participants: ["Alice"],
+        },
       },
-    });
+    );
 
     expect(result?.success).toBe(true);
     const data = result?.data as {
@@ -202,13 +201,19 @@ describe("connector blocker actions", () => {
       text: "Negotiate my lease renewal and sign it for me.",
     });
 
-    const result = await crossPlatformGatewayAction.handler?.(runtime, message, undefined, {
-      parameters: {
-        subaction: "escalate_to_user",
-        reason: "Lease renewal requires the owner to negotiate and sign directly.",
-        title: "Owner action needed",
+    const result = await crossPlatformGatewayAction.handler?.(
+      runtime,
+      message,
+      undefined,
+      {
+        parameters: {
+          subaction: "escalate_to_user",
+          reason:
+            "Lease renewal requires the owner to negotiate and sign directly.",
+          title: "Owner action needed",
+        },
       },
-    });
+    );
 
     expect(result?.success).toBe(true);
     const rows = await runtime.adapter.db.execute({
@@ -248,14 +253,19 @@ describe("connector blocker actions", () => {
       agentId: runtime.agentId,
       text: "Mute the crypto signals Telegram group for 24 hours.",
     });
-    const result = await chatThreadControlAction.handler?.(runtime, message, undefined, {
-      parameters: {
-        operation: "mute_chat",
-        platform: "telegram",
-        chatName: "crypto signals",
-        durationMinutes: 24 * 60,
+    const result = await chatThreadControlAction.handler?.(
+      runtime,
+      message,
+      undefined,
+      {
+        parameters: {
+          operation: "mute_chat",
+          platform: "telegram",
+          chatName: "crypto signals",
+          durationMinutes: 24 * 60,
+        },
       },
-    });
+    );
 
     expect(result?.success).toBe(true);
     expect(await runtime.getParticipantUserState(roomId, runtime.agentId)).toBe(
@@ -268,6 +278,29 @@ describe("connector blocker actions", () => {
     const trigger = task ? readTriggerConfig(task) : null;
     expect(trigger?.instructions).toContain("operation: unmute_chat");
     expect(trigger?.instructions).toContain(`roomId: ${roomId}`);
+  });
+
+  it("does not assume Telegram when the target platform is missing", async () => {
+    const message = makeMemory({
+      agentId: runtime.agentId,
+      text: "Mute crypto signals for six hours.",
+    });
+
+    const result = await chatThreadControlAction.handler?.(
+      runtime,
+      message,
+      undefined,
+      {
+        parameters: {
+          operation: "mute_chat",
+          chatName: "crypto signals",
+          durationMinutes: 360,
+        },
+      },
+    );
+
+    expect(result?.success).toBe(false);
+    expect(result?.text).toContain("platform");
   });
 
   it("schedules an X DM reply as a real trigger task", async () => {
