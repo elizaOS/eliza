@@ -58,6 +58,7 @@
     "access": "public"
   },
   "devDependencies": {
+    "@elizaos/app-steward": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@solana/web3.js": "^1.95.5",
     "@types/node": "^20.0.0",
