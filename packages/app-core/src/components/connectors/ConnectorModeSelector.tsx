@@ -203,15 +203,16 @@ export function getDefaultConnectorModeId(
   connectorId: string,
   modes: ConnectorMode[],
 ): string {
-  const preferredDefaults: Record<string, string> = {
-    discord: "managed",
-    slack: "oauth",
-    telegram: "bot",
-    twitter: "oauth",
+  const preferredDefaults: Record<string, string[]> = {
+    discord: ["managed", "bot"],
+    slack: ["oauth", "socket"],
+    telegram: ["bot"],
+    twitter: ["oauth", "local-oauth"],
   };
-  const preferred = preferredDefaults[connectorId];
-  if (preferred && modes.some((mode) => mode.id === preferred)) {
-    return preferred;
+  for (const preferred of preferredDefaults[connectorId] ?? []) {
+    if (modes.some((mode) => mode.id === preferred)) {
+      return preferred;
+    }
   }
   return modes[0]?.id ?? "";
 }

@@ -21,7 +21,7 @@ describe("ConnectorModeSelector", () => {
     cleanup();
   });
 
-  it("prefers OAuth-capable modes when Eliza Cloud is connected", () => {
+  it("prefers OAuth-capable modes when Eliza Cloud is connected and falls back sanely", () => {
     expect(
       getDefaultConnectorModeId(
         "discord",
@@ -44,6 +44,12 @@ describe("ConnectorModeSelector", () => {
       getDefaultConnectorModeId(
         "telegram",
         getConnectorModes("telegram", { elizaCloudConnected: true }),
+      ),
+    ).toBe("bot");
+    expect(
+      getDefaultConnectorModeId(
+        "discord",
+        getConnectorModes("discord", { elizaCloudConnected: false }),
       ),
     ).toBe("bot");
   });
