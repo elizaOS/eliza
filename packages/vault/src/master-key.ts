@@ -177,6 +177,21 @@ export function defaultMasterKey(opts: OsKeychainOptions = {}): MasterKeyResolve
   const keychain = osKeychainMasterKey(opts);
   return {
     async load() {
+      // Skip the OS keychain on hosts where @napi-rs/keyring is known to
+      // segfault the process instead of throwing a catchable JS error:
+      // headless Linux with no D-Bus session (libsecret can't reach the
+      // Secret Service and aborts at the C level). The defensive try/catch
+      // around keychain.load() can't help once the native crash fires.
+      const keychainUnsafe =
+        process.env.MILADY_VAULT_DISABLE_KEYCHAIN === "1" ||
+        (process.platform === "linux" && !process.env.DBUS_SESSION_BUS_ADDRESS);
+      if (keychainUnsafe) {
+        const passphrase = passphraseMasterKeyFromEnv(opts.service);
+        if (passphrase) return passphrase.load();
+        throw new MasterKeyUnavailableError(
+          `vault: OS keychain is unsafe on this host (headless Linux with no D-Bus session, or MILADY_VAULT_DISABLE_KEYCHAIN=1). Set MILADY_VAULT_PASSPHRASE (≥${PASSPHRASE_MIN_LENGTH} chars) to enable a passphrase-derived master key.`,
+        );
+      }
       try {
         return await keychain.load();
       } catch (keychainErr) {
