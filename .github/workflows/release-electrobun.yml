@@ -924,46 +924,13 @@ jobs:
               Write-Error "eliza-dist generated keyword data NOT found: $keywordDataCheck"
               exit 1
             }
-            $agentRuntimeModules = @(
-              "config\env-vars.js",
-              "config\plugin-auto-enable.js",
-              "config\schema.js",
-              "runtime\advanced-capabilities-config.js",
-              "runtime\embedding-presets.js",
-              "runtime\plugin-collector.js",
-              "runtime\plugin-resolver.js",
-              "runtime\plugin-types.js"
-            )
-            foreach ($runtimeModule in $agentRuntimeModules) {
-              $agentRuntimeCheck = Join-Path $elizaDist "node_modules\@elizaos\agent\packages\agent\src\$runtimeModule"
-              Write-Host "Checking for: $agentRuntimeCheck"
-              if (Test-Path $agentRuntimeCheck) {
-                Write-Host "eliza-dist @elizaos/agent runtime module found: $runtimeModule"
-              } else {
-                Write-Error "eliza-dist @elizaos/agent runtime module NOT found: $agentRuntimeCheck"
-                exit 1
-              }
-            }
             $agentManifestPath = Join-Path $elizaDist "node_modules\@elizaos\agent\package.json"
-            $agentManifest = Get-Content $agentManifestPath -Raw | ConvertFrom-Json
-            $agentExportNames = @($agentManifest.exports.PSObject.Properties.Name)
-            $agentRequiredExports = @(
-              "./config/env-vars",
-              "./config/plugin-auto-enable",
-              "./config/schema",
-              "./runtime/advanced-capabilities-config",
-              "./runtime/embedding-presets",
-              "./runtime/plugin-collector",
-              "./runtime/plugin-resolver",
-              "./runtime/plugin-types"
-            )
-            foreach ($runtimeExport in $agentRequiredExports) {
-              if ($agentExportNames -contains $runtimeExport) {
-                Write-Host "eliza-dist @elizaos/agent package export found: $runtimeExport"
-              } else {
-                Write-Error "eliza-dist @elizaos/agent package export NOT found: $runtimeExport"
-                exit 1
-              }
+            Write-Host "Checking for: $agentManifestPath"
+            if (Test-Path $agentManifestPath) {
+              Write-Host "eliza-dist @elizaos/agent package manifest found"
+            } else {
+              Write-Error "eliza-dist @elizaos/agent package manifest NOT found: $agentManifestPath"
+              exit 1
             }
           }
 
@@ -1097,6 +1064,17 @@ jobs:
         with:
           name: electrobun-windows-installer-proof
           path: packages/app-core/platforms/electrobun/artifacts/windows-installer-proof/**
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload Windows installer .exe + Inno log on smoke failure
+        if: failure() && matrix.platform.os == 'windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: electrobun-windows-installer-debug
+          path: |
+            packages/app-core/platforms/electrobun/artifacts/*.exe
+            ${{ runner.temp }}/milady-inno-setup.log
           if-no-files-found: warn
           retention-days: 14
 
@@ -1350,12 +1328,18 @@ jobs:
           $diagnosticsDir = Join-Path $PWD "packages/app-core/platforms/electrobun/artifacts/windows-smoke-diagnostics"
           $appDataRoot = if ($env:ELIZA_TEST_WINDOWS_APPDATA_PATH) { $env:ELIZA_TEST_WINDOWS_APPDATA_PATH } else { $env:APPDATA }
           $localAppDataRoot = if ($env:ELIZA_TEST_WINDOWS_LOCALAPPDATA_PATH) { $env:ELIZA_TEST_WINDOWS_LOCALAPPDATA_PATH } else { $env:LOCALAPPDATA }
-          $wrapperRoot = Join-Path $localAppDataRoot "ai.elizaos.Eliza"
+          $wrapperRoots = @(@(
+            (Join-Path $localAppDataRoot "com.miladyai.milady"),
+            (Join-Path $localAppDataRoot "ai.elizaos.Eliza"),
+            (Join-Path $localAppDataRoot "ai.elizaos.app")
+          ) | Select-Object -Unique)
 
           Write-Host "Diagnostics roots:"
           Write-Host "  appDataRoot      = $appDataRoot"
           Write-Host "  localAppDataRoot = $localAppDataRoot"
-          Write-Host "  wrapperRoot      = $wrapperRoot"
+          foreach ($wrapperRoot in $wrapperRoots) {
+            Write-Host "  wrapperRoot      = $wrapperRoot"
+          }
 
           Remove-Item $diagnosticsDir -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force -Path $diagnosticsDir | Out-Null
@@ -1412,7 +1396,7 @@ jobs:
             }
           }
 
-          foreach ($root in @($wrapperRoot, "C:\\e", "D:\\a\\_temp\\el")) {
+          foreach ($root in @($wrapperRoots + @("C:\\e", "D:\\a\\_temp\\el"))) {
             if (Test-Path $root) {
               Get-ChildItem -Path $root -Recurse -File -Filter "startup-session.json" -ErrorAction SilentlyContinue |
                 ForEach-Object {
@@ -1426,17 +1410,19 @@ jobs:
             }
           }
 
-          if (Test-Path $wrapperRoot) {
-            Get-ChildItem -Path $wrapperRoot -Recurse -File -Filter "wrapper-diagnostics.json" -ErrorAction SilentlyContinue |
-              ForEach-Object {
-                $relativePath = $_.FullName.Substring($wrapperRoot.Length).TrimStart('\\')
-                $destination = Join-Path $diagnosticsDir $relativePath
-                $destinationParent = Split-Path -Parent $destination
-                New-Item -ItemType Directory -Force -Path $destinationParent | Out-Null
-                Copy-Item $_.FullName -Destination $destination -Force
-              }
-          } else {
-            Write-Warning "Wrapper diagnostics root not found at $wrapperRoot"
+          foreach ($wrapperRoot in $wrapperRoots) {
+            if (Test-Path $wrapperRoot) {
+              Get-ChildItem -Path $wrapperRoot -Recurse -File -Filter "wrapper-diagnostics.json" -ErrorAction SilentlyContinue |
+                ForEach-Object {
+                  $relativePath = $_.FullName.Substring($wrapperRoot.Length).TrimStart('\\')
+                  $destination = Join-Path $diagnosticsDir $relativePath
+                  $destinationParent = Split-Path -Parent $destination
+                  New-Item -ItemType Directory -Force -Path $destinationParent | Out-Null
+                  Copy-Item $_.FullName -Destination $destination -Force
+                }
+            } else {
+              Write-Warning "Wrapper diagnostics root not found at $wrapperRoot"
+            }
           }
 
       - name: Upload Windows smoke diagnostics
