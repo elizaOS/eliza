@@ -39,7 +39,9 @@ function createMessage(): Memory {
     entityId: "entity-id",
     roomId: "room-id",
     agentId: "test-agent",
-    content: { text: "Transfer 0.1 ETH to 0x1111111111111111111111111111111111111111" },
+    content: {
+      text: "Transfer 0.1 ETH to 0x1111111111111111111111111111111111111111",
+    },
   } as unknown as Memory;
 }
 

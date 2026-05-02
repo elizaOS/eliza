@@ -64,20 +64,11 @@
   "navigation": [
     {
       "group": "Get Started",
-      "pages": [
-        "introduction",
-        "quickstart"
-      ]
+      "pages": ["introduction", "quickstart"]
     },
     {
       "group": "Authentication",
-      "pages": [
-        "auth/overview",
-        "auth/passkeys",
-        "auth/email",
-        "auth/oauth",
-        "auth/cross-tenant"
-      ]
+      "pages": ["auth/overview", "auth/passkeys", "auth/email", "auth/oauth", "auth/cross-tenant"]
     },
     {
       "group": "Concepts",

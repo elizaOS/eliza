@@ -251,7 +251,7 @@ export const LpManagementAgentAction: Action = {
     let params = message?.content as unknown as LpActionParams;
 
     // If no structured params, try to parse from text
-    if (!params || !params.intent) {
+    if (!params?.intent) {
       const text = message.content?.text || "";
       const parsedIntent = parseIntentFromMessage(text);
       if (parsedIntent) {
@@ -380,7 +380,10 @@ export const LpManagementAgentAction: Action = {
           });
 
           if (!wd_result.success) {
-            return { success: false, text: `Withdrawal failed: ${wd_result.error}` };
+            return {
+              success: false,
+              text: `Withdrawal failed: ${wd_result.error}`,
+            };
           }
 
           return {
@@ -417,7 +420,9 @@ export const LpManagementAgentAction: Action = {
             newConfig.maxSlippageBps = pref_maxSlippageBps;
             updateSummary += `- Max Slippage: **${pref_maxSlippageBps / 100}%**\n`;
           }
-          await profileService.updateProfile(userId, { autoRebalanceConfig: newConfig });
+          await profileService.updateProfile(userId, {
+            autoRebalanceConfig: newConfig,
+          });
           return { success: true, text: updateSummary };
         }
 
@@ -454,7 +459,10 @@ export const LpManagementAgentAction: Action = {
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error(`[LpManagementAgentAction] Error: ${errorMessage}`);
-      return { success: false, text: `An unexpected error occurred: ${errorMessage}` };
+      return {
+        success: false,
+        text: `An unexpected error occurred: ${errorMessage}`,
+      };
     }
   },
 };

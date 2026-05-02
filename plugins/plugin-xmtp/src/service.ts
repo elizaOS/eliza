@@ -36,7 +36,7 @@ export class XmtpService extends Service {
 
     const service = new XmtpService(runtime);
 
-    await service.setupClient()
+    await service.setupClient();
 
     await service.setupMessageHandler();
 
@@ -46,7 +46,7 @@ export class XmtpService extends Service {
   static async stop(_runtime: IAgentRuntime): Promise<void> {}
 
   stop(): Promise<void> {
-   return Promise.resolve();
+    return Promise.resolve();
   }
 
   private async setupClient() {
@@ -64,7 +64,10 @@ export class XmtpService extends Service {
 
     this.client = client;
 
-    logger.success("XMTP client created successfully with inboxId: ", this.client.inboxId);
+    logger.success(
+      "XMTP client created successfully with inboxId: ",
+      this.client.inboxId,
+    );
   }
 
   private async setupMessageHandler() {
@@ -90,11 +93,11 @@ export class XmtpService extends Service {
       logger.success(
         `Received message: ${message.content as string} by ${
           message.senderInboxId
-        }`
+        }`,
       );
 
       const conversation = await this.client.conversations.getConversationById(
-        message.conversationId
+        message.conversationId,
       );
 
       if (!conversation) {
@@ -112,7 +115,7 @@ export class XmtpService extends Service {
 
   private async processMessage(
     message: DecodedMessage<any>,
-    conversation: Conversation
+    conversation: Conversation,
   ) {
     try {
       const text = message?.content ?? "";
@@ -144,12 +147,12 @@ export class XmtpService extends Service {
         entityId,
         agentId: this.runtime.agentId,
         roomId,
-        content
+        content,
       };
 
       const callback: HandlerCallback = async (
         content: Content,
-        _files?: string[]
+        _files?: string[],
       ) => {
         try {
           if (!content.text) return [];
@@ -166,7 +169,7 @@ export class XmtpService extends Service {
               text: content.text,
               inReplyTo: messageId,
               channelType: ChannelType.DM,
-            }
+            },
           };
 
           await this.runtime.createMemory(responseMemory, "messages");

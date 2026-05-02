@@ -22,7 +22,7 @@ export const senderContextProvider: Provider = {
 
     const nostrService = runtime.getService<NostrService>(NOSTR_SERVICE_NAME);
 
-    if (!nostrService || !nostrService.isConnected()) {
+    if (!nostrService?.isConnected()) {
       return {
         data: { connected: false },
         values: { connected: false },

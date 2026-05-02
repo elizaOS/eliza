@@ -36,7 +36,11 @@ function runCommand(cmd: string, args: string[]): Promise<SpawnResult> {
     child.stderr?.on('data', (chunk: Buffer) => err.push(chunk));
     child.on('error', reject);
     child.on('exit', (code) =>
-      resolve({ code, stdout: Buffer.concat(out).toString('utf8'), stderr: Buffer.concat(err).toString('utf8') }),
+      resolve({
+        code,
+        stdout: Buffer.concat(out).toString('utf8'),
+        stderr: Buffer.concat(err).toString('utf8'),
+      }),
     );
   });
 }
@@ -122,7 +126,9 @@ export class LocalTailscaleService extends Service implements ITunnelService {
     if (this.useFunnel) {
       const result = await runCommand('tailscale', ['funnel', String(port)]);
       if (result.code !== 0) {
-        throw new Error(`tailscale funnel exited with code ${result.code}: ${result.stderr.trim()}`);
+        throw new Error(
+          `tailscale funnel exited with code ${result.code}: ${result.stderr.trim()}`,
+        );
       }
     } else {
       const result = await runCommand('tailscale', [
@@ -138,7 +144,9 @@ export class LocalTailscaleService extends Service implements ITunnelService {
 
     const dnsName = await this.fetchSelfDnsName();
     if (!dnsName) {
-      throw new Error('tailscale serve started but no DNSName resolved from `tailscale status --json`');
+      throw new Error(
+        'tailscale serve started but no DNSName resolved from `tailscale status --json`',
+      );
     }
     this.tunnelUrl = this.useFunnel ? `https://${dnsName}` : `https://${dnsName}`;
     this.tunnelPort = port;

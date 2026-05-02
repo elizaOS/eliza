@@ -16,6 +16,11 @@ export default defineConfig({
     'http',
     '@elizaos/core',
     'zod',
-    'ethers'
+    'ethers',
+    'viem',
+    'viem/accounts',
+    'viem/chains',
+    'clanker-sdk',
+    'clanker-sdk/v4',
   ],
 });

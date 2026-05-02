@@ -11,12 +11,6 @@ import { sendFlexMessage, sendLocation, sendMessage } from "./actions/index.js";
 import { chatContextProvider, userContextProvider } from "./providers/index.js";
 import { LineService } from "./service.js";
 
-// Re-export types and service
-export * from "./types.js";
-export { LineService };
-export { sendMessage, sendFlexMessage, sendLocation };
-export { chatContextProvider, userContextProvider };
-
 // Account management exports
 export {
   DEFAULT_ACCOUNT_ID,
@@ -38,7 +32,6 @@ export {
   resolveLineSecret,
   resolveLineToken,
 } from "./accounts.js";
-
 // Messaging utilities exports
 export {
   buildLineDeepLink,
@@ -66,6 +59,16 @@ export {
   stripMarkdown,
   truncateText,
 } from "./messaging.js";
+// Re-export types and service
+export * from "./types.js";
+export {
+  chatContextProvider,
+  LineService,
+  sendFlexMessage,
+  sendLocation,
+  sendMessage,
+  userContextProvider,
+};
 
 /**
  * LINE plugin for ElizaOS agents.

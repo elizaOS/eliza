@@ -32,12 +32,19 @@ describe("WalletProvider managed RPC fallback", () => {
         })
       )
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: "0xde0b6b3a7640000" }), {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-          },
-        })
+        new Response(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            result: "0xde0b6b3a7640000",
+          }),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+            },
+          }
+        )
       );
 
     vi.stubGlobal("fetch", fetchMock);

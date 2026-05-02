@@ -7,4 +7,5 @@ import {
   toolSelectionArgumentTemplate,
   toolSelectionNameTemplate,
 } from "../generated/prompts/typescript/prompts.js";
-export { toolSelectionNameTemplate, toolSelectionArgumentTemplate };
+
+export { toolSelectionArgumentTemplate, toolSelectionNameTemplate };

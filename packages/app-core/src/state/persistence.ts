@@ -1,4 +1,5 @@
 import type { ConversationMode } from "../api/client";
+import { fetchWithCsrf } from "../api/csrf-client";
 import { getBootConfig } from "../config/boot-config-store";
 import {
   DEFAULT_UI_LANGUAGE,
@@ -18,7 +19,6 @@ import type {
 } from "./types";
 import type { UiShellMode, UiTheme } from "./ui-preferences";
 import { normalizeAvatarIndex } from "./vrm";
-import { fetchWithCsrf } from "../api/csrf-client";
 
 /* ── Shared localStorage helper ──────────────────────────────────────── */
 

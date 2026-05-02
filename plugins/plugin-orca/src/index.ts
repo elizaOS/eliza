@@ -1,7 +1,7 @@
 import type { Plugin } from '@elizaos/core';
-import { positionProvider } from './providers/orca/positionProvider';
-import { managePositionActionRetriggerEvaluator } from './evaluators/orca/repositionEvaluator';
-import { managePositions } from './actions/orca/managePositions';
+import { positionProvider } from './providers/positionProvider';
+import { managePositionActionRetriggerEvaluator } from './evaluators/repositionEvaluator';
+import { managePositions } from './actions/managePositions';
 
 export const orcaPlugin: Plugin = {
   name: 'Orca LP Plugin',

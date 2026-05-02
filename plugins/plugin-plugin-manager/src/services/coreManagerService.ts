@@ -11,8 +11,8 @@ const execAsync = promisify(exec);
 const CORE_GIT_URL = "https://github.com/elizaos/eliza.git";
 const CORE_BRANCH = "develop";
 const CORE_PACKAGE_NAME = "@elizaos/core";
-const DEFAULT_CORE_PATHS = ["../packages/core/src/index.node.ts"];
-const DEFAULT_CORE_SUBPATHS = ["../packages/core/src/*"];
+const _DEFAULT_CORE_PATHS = ["../packages/core/src/index.node.ts"];
+const _DEFAULT_CORE_SUBPATHS = ["../packages/core/src/*"];
 
 const VALID_GIT_URL = /^https:\/\/[a-zA-Z0-9][\w./-]*\.git$/;
 const VALID_BRANCH = /^[a-zA-Z0-9][\w./-]*$/;
@@ -153,7 +153,7 @@ export class CoreManagerService extends Service {
   private async resolveInstalledCoreVersion(): Promise<string> {
     try {
       const entry = await getRegistryEntry(CORE_PACKAGE_NAME);
-      const npmVersion = entry?.npm.v2Version ?? entry?.npm.v1Version ?? entry?.npm.package; // Fallback to package if versions are null, though unlikely correct
+      const _npmVersion = entry?.npm.v2Version ?? entry?.npm.v1Version ?? entry?.npm.package; // Fallback to package if versions are null, though unlikely correct
       if (entry && (entry.npm.v2Version || entry.npm.v1Version)) {
         return (entry.npm.v2Version || entry.npm.v1Version)!;
       }
@@ -264,7 +264,9 @@ export class CoreManagerService extends Service {
 
   private async runCoreInstallAndBuild(monorepoDir: string): Promise<void> {
     await execAsync("pnpm install", { cwd: monorepoDir });
-    await execAsync(`pnpm --filter ${CORE_PACKAGE_NAME} build`, { cwd: monorepoDir });
+    await execAsync(`pnpm --filter ${CORE_PACKAGE_NAME} build`, {
+      cwd: monorepoDir,
+    });
   }
 
   private async ensureEjectedCoreExists(): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -273,7 +275,10 @@ export class CoreManagerService extends Service {
       return { ok: false, error: `${CORE_PACKAGE_NAME} is not ejected` };
     }
     if (!this.isWithinEjectedCoreDir(monorepoDir)) {
-      return { ok: false, error: `Refusing to use core checkout outside ${this.coreBaseDir()}` };
+      return {
+        ok: false,
+        error: `Refusing to use core checkout outside ${this.coreBaseDir()}`,
+      };
     }
     return { ok: true };
   }
@@ -359,7 +364,11 @@ export class CoreManagerService extends Service {
         await this.writeTsconfigCorePaths(distPath);
 
         logger.success(`Successfully ejected ${CORE_PACKAGE_NAME} to ${monorepoDir}`);
-        return { success: true, ejectedPath: monorepoDir, upstreamCommit: commitHash };
+        return {
+          success: true,
+          ejectedPath: monorepoDir,
+          upstreamCommit: commitHash,
+        };
       } catch (err) {
         logger.error(`Failed to eject core: ${err}`);
         await fs.remove(monorepoDir);
@@ -513,7 +522,11 @@ export class CoreManagerService extends Service {
     return this.serialise(async () => {
       const monorepoDir = this.coreMonorepoDir();
       if (!(await fs.pathExists(monorepoDir))) {
-        return { success: false, removedPath: "", error: `${CORE_PACKAGE_NAME} is not ejected` };
+        return {
+          success: false,
+          removedPath: "",
+          error: `${CORE_PACKAGE_NAME} is not ejected`,
+        };
       }
 
       if (!this.isWithinEjectedCoreDir(monorepoDir)) {

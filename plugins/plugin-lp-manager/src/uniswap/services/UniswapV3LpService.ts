@@ -232,16 +232,32 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
       // Get token info
       const [symbol0, decimals0, symbol1, decimals1] = await Promise.all([
         client
-          .readContract({ address: token0 as Address, abi: ERC20_ABI, functionName: "symbol" })
+          .readContract({
+            address: token0 as Address,
+            abi: ERC20_ABI,
+            functionName: "symbol",
+          })
           .catch(() => "UNKNOWN"),
         client
-          .readContract({ address: token0 as Address, abi: ERC20_ABI, functionName: "decimals" })
+          .readContract({
+            address: token0 as Address,
+            abi: ERC20_ABI,
+            functionName: "decimals",
+          })
           .catch(() => 18),
         client
-          .readContract({ address: token1 as Address, abi: ERC20_ABI, functionName: "symbol" })
+          .readContract({
+            address: token1 as Address,
+            abi: ERC20_ABI,
+            functionName: "symbol",
+          })
           .catch(() => "UNKNOWN"),
         client
-          .readContract({ address: token1 as Address, abi: ERC20_ABI, functionName: "decimals" })
+          .readContract({
+            address: token1 as Address,
+            abi: ERC20_ABI,
+            functionName: "decimals",
+          })
           .catch(() => 18),
       ]);
 
@@ -394,7 +410,10 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
     }
 
     if (!params.tokenId) {
-      return { success: false, error: "Position token ID required for Uniswap V3" };
+      return {
+        success: false,
+        error: "Position token ID required for Uniswap V3",
+      };
     }
 
     try {
@@ -453,7 +472,9 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
       });
 
       const collectHash = await walletClient.writeContract(collectRequest);
-      const receipt = await publicClient.waitForTransactionReceipt({ hash: collectHash });
+      const receipt = await publicClient.waitForTransactionReceipt({
+        hash: collectHash,
+      });
 
       // If removing all liquidity, burn the NFT
       if (params.percentageToRemove === 100 || !params.percentageToRemove) {
@@ -552,16 +573,32 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
       // Get token info
       const [symbol0, decimals0, symbol1, decimals1] = await Promise.all([
         client
-          .readContract({ address: position.token0, abi: ERC20_ABI, functionName: "symbol" })
+          .readContract({
+            address: position.token0,
+            abi: ERC20_ABI,
+            functionName: "symbol",
+          })
           .catch(() => "UNKNOWN"),
         client
-          .readContract({ address: position.token0, abi: ERC20_ABI, functionName: "decimals" })
+          .readContract({
+            address: position.token0,
+            abi: ERC20_ABI,
+            functionName: "decimals",
+          })
           .catch(() => 18),
         client
-          .readContract({ address: position.token1, abi: ERC20_ABI, functionName: "symbol" })
+          .readContract({
+            address: position.token1,
+            abi: ERC20_ABI,
+            functionName: "symbol",
+          })
           .catch(() => "UNKNOWN"),
         client
-          .readContract({ address: position.token1, abi: ERC20_ABI, functionName: "decimals" })
+          .readContract({
+            address: position.token1,
+            abi: ERC20_ABI,
+            functionName: "decimals",
+          })
           .catch(() => 18),
       ]);
 

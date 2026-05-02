@@ -13,7 +13,7 @@ export const aerodromePlugin: Plugin = {
   },
 };
 
-export { AerodromeLpService };
 export * from "./types.ts";
+export { AerodromeLpService };
 
 export default aerodromePlugin;

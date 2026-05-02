@@ -61,7 +61,7 @@ export const sendDm: Action = {
   ): Promise<ActionResult> => {
     const nostrService = runtime.getService<NostrService>(NOSTR_SERVICE_NAME);
 
-    if (!nostrService || !nostrService.isConnected()) {
+    if (!nostrService?.isConnected()) {
       if (callback) {
         callback({ text: "Nostr service is not available.", source: "nostr" });
       }
@@ -94,7 +94,7 @@ export const sendDm: Action = {
       }
     }
 
-    if (!dmInfo || !dmInfo.text) {
+    if (!dmInfo?.text) {
       if (callback) {
         callback({
           text: "I couldn't understand what message you want me to send. Please try again.",

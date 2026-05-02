@@ -7,5 +7,12 @@ export default defineConfig({
   splitting: false,
   sourcemap: true,
   clean: true,
-  external: ['@elizaos/core'],
+  external: [
+    '@elizaos/core',
+    '@solana/web3.js',
+    '@solana/spl-token',
+    '@orca-so/whirlpools',
+    '@orca-so/whirlpools-client',
+    '@orca-so/whirlpools-core',
+  ],
 });

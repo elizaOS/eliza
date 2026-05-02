@@ -4,7 +4,8 @@ import { Connection, Keypair } from "@solana/web3.js";
 
 export class RaydiumSdkService extends Service {
   public static readonly serviceType = "RaydiumSdkService";
-  public readonly capabilityDescription = "Provides a shared and initialized Raydium SDK V2 instance.";
+  public readonly capabilityDescription =
+    "Provides a shared and initialized Raydium SDK V2 instance.";
 
   private _sdk: Raydium | null = null;
   private _connection: Connection | null = null;
@@ -24,29 +25,37 @@ export class RaydiumSdkService extends Service {
   }
 
   static async stop(runtime: IAgentRuntime): Promise<void> {
-    const service = runtime.getService(RaydiumSdkService.serviceType) as RaydiumSdkService;
+    const service = runtime.getService(
+      RaydiumSdkService.serviceType,
+    ) as RaydiumSdkService;
     if (service) {
-        await service.stop();
+      await service.stop();
     }
   }
 
   public get sdk(): Raydium {
     if (!this._sdk || !this.isInitialized) {
-      throw new Error("RaydiumSdkService has not been initialized. Call load() first.");
+      throw new Error(
+        "RaydiumSdkService has not been initialized. Call load() first.",
+      );
     }
     return this._sdk;
   }
 
   public get owner(): Keypair {
     if (!this._owner || !this.isInitialized) {
-        throw new Error("RaydiumSdkService has not been initialized. Call load() first.");
+      throw new Error(
+        "RaydiumSdkService has not been initialized. Call load() first.",
+      );
     }
     return this._owner;
   }
 
   public get connection(): Connection {
     if (!this._connection || !this.isInitialized) {
-        throw new Error("RaydiumSdkService has not been initialized. Call load() first.");
+      throw new Error(
+        "RaydiumSdkService has not been initialized. Call load() first.",
+      );
     }
     return this._connection;
   }
@@ -66,43 +75,46 @@ export class RaydiumSdkService extends Service {
       logger.warn("Raydium SDK Service already initialized.");
       return;
     }
-    
+
     logger.info("Initializing Raydium SDK Service...");
-    
+
     // Try multiple RPC URL settings (Helius first, then general Solana RPC)
-    const rpcUrl = this.runtime.getSetting('HELIUS_RPC_URL') || 
-                   this.runtime.getSetting('SOLANA_RPC_URL') || 
-                   this.runtime.getSetting('RPC_URL') ||
-                   'https://api.mainnet-beta.solana.com';
-    
+    const rpcUrl =
+      this.runtime.getSetting("HELIUS_RPC_URL") ||
+      this.runtime.getSetting("SOLANA_RPC_URL") ||
+      this.runtime.getSetting("RPC_URL") ||
+      "https://api.mainnet-beta.solana.com";
+
     // Determine cluster from RPC URL
-    const cluster = rpcUrl.includes('devnet') ? 'devnet' : 'mainnet';
-    
+    const cluster = rpcUrl.includes("devnet") ? "devnet" : "mainnet";
+
     logger.info(`Using RPC URL: ${rpcUrl}`);
     logger.info(`Using cluster: ${cluster}`);
-    
-    this._connection = new Connection(rpcUrl, 'confirmed');
+
+    this._connection = new Connection(rpcUrl, "confirmed");
     this._owner = owner;
 
     try {
       this._sdk = await Raydium.load({
         owner,
         connection: this._connection,
-        cluster: cluster as 'mainnet' | 'devnet',
+        cluster: cluster as "mainnet" | "devnet",
         disableFeatureCheck: true,
         disableLoadToken: false,
-        blockhashCommitment: 'finalized',
+        blockhashCommitment: "finalized",
       });
 
       // Force load the token accounts for the owner
       await this._sdk.account.fetchWalletTokenAccounts();
 
       // Add a small delay to allow for RPC propagation
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
       this.isInitialized = true;
       this.lastTokenFetch = Date.now();
-      logger.info("Raydium SDK Service initialized successfully and token accounts loaded.");
+      logger.info(
+        "Raydium SDK Service initialized successfully and token accounts loaded.",
+      );
     } catch (error) {
       logger.error("Failed to initialize Raydium SDK:", error);
       throw error;
@@ -110,11 +122,13 @@ export class RaydiumSdkService extends Service {
   }
 
   async start(): Promise<void> {
-    // For the RaydiumSdkService, initialization is deferred to the load() method 
+    // For the RaydiumSdkService, initialization is deferred to the load() method
     // so the owner can be provided. This start() method is called by the runtime
     // during service registration, but the actual SDK initialization happens when
     // load() is called with a wallet keypair.
-    logger.info("RaydiumSdkService registered - SDK will be initialized when load() is called");
+    logger.info(
+      "RaydiumSdkService registered - SDK will be initialized when load() is called",
+    );
   }
 
   async stop(): Promise<void> {
@@ -122,4 +136,4 @@ export class RaydiumSdkService extends Service {
     this.isInitialized = false;
     logger.info("Raydium SDK Service stopped.");
   }
-} 
+}

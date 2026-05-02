@@ -174,8 +174,6 @@ Provide a vivid, personal interpretation of this ${signName} Ascendant. Cover:
 Keep it to 2-3 paragraphs. Be specific and insightful.${feedbackSection}`;
 }
 
-export type { BirthData, NatalChart, PlanetPosition, ChartAspect, SignPosition, FeedbackEntry };
-
 export {
   calculateAspects,
   calculateNatalChart,
@@ -197,3 +195,4 @@ export {
   SIGN_ORDER,
   signDisplayName,
 } from "./zodiac.js";
+export type { BirthData, ChartAspect, FeedbackEntry, NatalChart, PlanetPosition, SignPosition };

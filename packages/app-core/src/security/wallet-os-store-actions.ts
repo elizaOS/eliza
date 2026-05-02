@@ -15,8 +15,8 @@
  * when the user has `ELIZA_WALLET_OS_STORE=1` enabled.
  */
 
-import { setEntryMeta } from "@elizaos/vault";
 import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent";
+import { setEntryMeta } from "@elizaos/vault";
 import { sharedVault } from "../services/vault-mirror";
 import { deriveAgentVaultId } from "./agent-vault-id";
 import type { SecureStoreSecretKind } from "./platform-secure-store";

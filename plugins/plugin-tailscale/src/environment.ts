@@ -54,7 +54,8 @@ function readSetting(runtime: IAgentRuntime, key: string): string | undefined {
 
 export async function validateTailscaleConfig(runtime: IAgentRuntime): Promise<TailscaleConfig> {
   const config = {
-    TAILSCALE_AUTH_KEY: readSetting(runtime, 'TAILSCALE_AUTH_KEY') ?? process.env.TAILSCALE_AUTH_KEY,
+    TAILSCALE_AUTH_KEY:
+      readSetting(runtime, 'TAILSCALE_AUTH_KEY') ?? process.env.TAILSCALE_AUTH_KEY,
     TAILSCALE_TAGS: readSetting(runtime, 'TAILSCALE_TAGS') ?? process.env.TAILSCALE_TAGS,
     TAILSCALE_FUNNEL: readSetting(runtime, 'TAILSCALE_FUNNEL') ?? process.env.TAILSCALE_FUNNEL,
     TAILSCALE_DEFAULT_PORT:

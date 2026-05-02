@@ -39,10 +39,10 @@ import type http from "node:http";
 import {
   listVaultInventory,
   profileStorageKey,
+  ROUTING_KEY,
   readEntryMeta,
   readRoutingConfig,
   removeEntryMeta,
-  ROUTING_KEY,
   setEntryMeta,
   type VaultEntryCategory,
   type VaultEntryMeta,
@@ -56,7 +56,7 @@ import { sendJson, sendJsonError } from "./response";
 
 // ── Public dispatcher ──────────────────────────────────────────────
 
-const KEY_RE = /^[A-Za-z0-9_.\-]+$/;
+const KEY_RE = /^[A-Za-z0-9_.-]+$/;
 const PROFILE_ID_RE = /^[A-Za-z0-9_-]+$/;
 const CATEGORY_VALUES: ReadonlySet<VaultEntryCategory> = new Set([
   "provider",
@@ -111,7 +111,10 @@ export async function handleSecretsInventoryRoute(
         return true;
       }
       const vault = sharedVault();
-      await writeRoutingConfig(vault, config as Parameters<typeof writeRoutingConfig>[1]);
+      await writeRoutingConfig(
+        vault,
+        config as Parameters<typeof writeRoutingConfig>[1],
+      );
       const saved = await readRoutingConfig(vault);
       sendJson(res, 200, { ok: true, config: saved });
       return true;
@@ -295,7 +298,10 @@ async function handleKeyRoute(
       sendJsonError(res, 400, "`category` must be a known VaultEntryCategory");
       return true;
     }
-    await vault.set(key, v.value, { sensitive: true, caller: "inventory-routes" });
+    await vault.set(key, v.value, {
+      sensitive: true,
+      caller: "inventory-routes",
+    });
     // Build a writable update so we can conditionally include only the
     // user-supplied fields. The setEntryMeta payload type is readonly;
     // we materialize a mutable record locally and cast at the call site.
@@ -467,8 +473,8 @@ async function handleSingleProfileRoute(
     if (await vault.has(profileKey)) await vault.remove(profileKey);
     const activeProfile =
       meta?.activeProfile === profileId
-        ? profiles[0]?.id ?? null
-        : meta?.activeProfile ?? null;
+        ? (profiles[0]?.id ?? null)
+        : (meta?.activeProfile ?? null);
     await setEntryMeta(vault, key, {
       profiles: profiles.length > 0 ? profiles : null,
       activeProfile: activeProfile === null ? null : activeProfile,
@@ -545,7 +551,9 @@ async function migrateKeyToProfiles(key: string): Promise<MigrationResult> {
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
-async function readJsonBody(req: http.IncomingMessage): Promise<unknown | null> {
+async function readJsonBody(
+  req: http.IncomingMessage,
+): Promise<unknown | null> {
   let body = "";
   for await (const chunk of req) body += chunk;
   if (!body) return {};

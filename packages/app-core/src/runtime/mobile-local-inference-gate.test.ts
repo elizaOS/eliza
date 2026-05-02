@@ -39,9 +39,9 @@ describe("shouldEnableMobileLocalInference", () => {
     expect(
       shouldEnableMobileLocalInference({ ELIZA_DEVICE_BRIDGE_ENABLED: "0" }),
     ).toBe(false);
-    expect(
-      shouldEnableMobileLocalInference({ ELIZA_LOCAL_LLAMA: "yes" }),
-    ).toBe(false);
+    expect(shouldEnableMobileLocalInference({ ELIZA_LOCAL_LLAMA: "yes" })).toBe(
+      false,
+    );
   });
 
   it("trims whitespace before comparing", () => {

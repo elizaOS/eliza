@@ -29,25 +29,25 @@ import type { ChatRoom, Message, MessageRole } from "./types.js";
 // ============================================================================
 
 interface CLIOptions {
-  help: boolean;
-  version: boolean;
-  json: boolean;
-  stream: boolean;
-  file: string | null;
-  cwd: string | null;
-  message: string | null;
-  interactive: boolean;
+	help: boolean;
+	version: boolean;
+	json: boolean;
+	stream: boolean;
+	file: string | null;
+	cwd: string | null;
+	message: string | null;
+	interactive: boolean;
 }
 
 interface CLIResult {
-  success: boolean;
-  response?: string;
-  error?: string;
-  timing?: {
-    startedAt: number;
-    completedAt: number;
-    durationMs: number;
-  };
+	success: boolean;
+	response?: string;
+	error?: string;
+	timing?: {
+		startedAt: number;
+		completedAt: number;
+		durationMs: number;
+	};
 }
 
 // ============================================================================
@@ -90,84 +90,84 @@ Environment Variables:
 // ============================================================================
 
 function parseArgs(args: string[]): CLIOptions {
-  const options: CLIOptions = {
-    help: false,
-    version: false,
-    json: false,
-    stream: false,
-    file: null,
-    cwd: null,
-    message: null,
-    interactive: false,
-  };
+	const options: CLIOptions = {
+		help: false,
+		version: false,
+		json: false,
+		stream: false,
+		file: null,
+		cwd: null,
+		message: null,
+		interactive: false,
+	};
 
-  let i = 0;
-  const positionalArgs: string[] = [];
+	let i = 0;
+	const positionalArgs: string[] = [];
 
-  while (i < args.length) {
-    const arg = args[i];
+	while (i < args.length) {
+		const arg = args[i];
 
-    switch (arg) {
-      case "-h":
-      case "--help":
-        options.help = true;
-        break;
+		switch (arg) {
+			case "-h":
+			case "--help":
+				options.help = true;
+				break;
 
-      case "-v":
-      case "--version":
-        options.version = true;
-        break;
+			case "-v":
+			case "--version":
+				options.version = true;
+				break;
 
-      case "-j":
-      case "--json":
-        options.json = true;
-        break;
+			case "-j":
+			case "--json":
+				options.json = true;
+				break;
 
-      case "-s":
-      case "--stream":
-        options.stream = true;
-        break;
+			case "-s":
+			case "--stream":
+				options.stream = true;
+				break;
 
-      case "-i":
-      case "--interactive":
-        options.interactive = true;
-        break;
+			case "-i":
+			case "--interactive":
+				options.interactive = true;
+				break;
 
-      case "-f":
-      case "--file":
-        i++;
-        if (i >= args.length) {
-          throw new Error("--file requires a path argument");
-        }
-        options.file = args[i];
-        break;
+			case "-f":
+			case "--file":
+				i++;
+				if (i >= args.length) {
+					throw new Error("--file requires a path argument");
+				}
+				options.file = args[i];
+				break;
 
-      case "-c":
-      case "--cwd":
-        i++;
-        if (i >= args.length) {
-          throw new Error("--cwd requires a path argument");
-        }
-        options.cwd = args[i];
-        break;
+			case "-c":
+			case "--cwd":
+				i++;
+				if (i >= args.length) {
+					throw new Error("--cwd requires a path argument");
+				}
+				options.cwd = args[i];
+				break;
 
-      default:
-        if (arg.startsWith("-")) {
-          throw new Error(`Unknown option: ${arg}`);
-        }
-        positionalArgs.push(arg);
-        break;
-    }
+			default:
+				if (arg.startsWith("-")) {
+					throw new Error(`Unknown option: ${arg}`);
+				}
+				positionalArgs.push(arg);
+				break;
+		}
 
-    i++;
-  }
+		i++;
+	}
 
-  // Join positional args as the message
-  if (positionalArgs.length > 0) {
-    options.message = positionalArgs.join(" ");
-  }
+	// Join positional args as the message
+	if (positionalArgs.length > 0) {
+		options.message = positionalArgs.join(" ");
+	}
 
-  return options;
+	return options;
 }
 
 // ============================================================================
@@ -175,106 +175,106 @@ function parseArgs(args: string[]): CLIOptions {
 // ============================================================================
 
 async function readStdin(): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let data = "";
-    const rl = readline.createInterface({
-      input: process.stdin,
-      terminal: false,
-    });
+	return new Promise((resolve, reject) => {
+		let data = "";
+		const rl = readline.createInterface({
+			input: process.stdin,
+			terminal: false,
+		});
 
-    rl.on("line", (line) => {
-      data += `${line}\n`;
-    });
+		rl.on("line", (line) => {
+			data += `${line}\n`;
+		});
 
-    rl.on("close", () => {
-      resolve(data.trim());
-    });
+		rl.on("close", () => {
+			resolve(data.trim());
+		});
 
-    rl.on("error", reject);
+		rl.on("error", reject);
 
-    // Timeout after 100ms if no data (means no piped input)
-    setTimeout(() => {
-      if (data === "") {
-        rl.close();
-      }
-    }, 100);
-  });
+		// Timeout after 100ms if no data (means no piped input)
+		setTimeout(() => {
+			if (data === "") {
+				rl.close();
+			}
+		}, 100);
+	});
 }
 
 async function getMessage(options: CLIOptions): Promise<string | null> {
-  // Message from arguments
-  if (options.message) {
-    return options.message;
-  }
+	// Message from arguments
+	if (options.message) {
+		return options.message;
+	}
 
-  // Message from file
-  if (options.file) {
-    const content = await fs.readFile(options.file, "utf-8");
-    return content.trim();
-  }
+	// Message from file
+	if (options.file) {
+		const content = await fs.readFile(options.file, "utf-8");
+		return content.trim();
+	}
 
-  // Message from stdin (only if not a TTY)
-  if (!process.stdin.isTTY) {
-    const stdinContent = await readStdin();
-    if (stdinContent) {
-      return stdinContent;
-    }
-  }
+	// Message from stdin (only if not a TTY)
+	if (!process.stdin.isTTY) {
+		const stdinContent = await readStdin();
+		if (stdinContent) {
+			return stdinContent;
+		}
+	}
 
-  return null;
+	return null;
 }
 
 function createDefaultSessionState(): SessionState {
-  const identity = ensureSessionIdentity();
-  const room: ChatRoom = {
-    id: "default-main-room",
-    name: "Main",
-    messages: [],
-    createdAt: new Date(),
-    taskIds: [],
-    elizaRoomId: getMainRoomElizaId(identity),
-  };
+	const identity = ensureSessionIdentity();
+	const room: ChatRoom = {
+		id: "default-main-room",
+		name: "Main",
+		messages: [],
+		createdAt: new Date(),
+		taskIds: [],
+		elizaRoomId: getMainRoomElizaId(identity),
+	};
 
-  return {
-    rooms: [room],
-    currentRoomId: room.id,
-    currentTaskId: null,
-    cwd: getCwd(),
-    identity,
-  };
+	return {
+		rooms: [room],
+		currentRoomId: room.id,
+		currentTaskId: null,
+		cwd: getCwd(),
+		identity,
+	};
 }
 
 function getCurrentRoomFromSession(session: SessionState): ChatRoom {
-  const byId = session.rooms.find((r) => r.id === session.currentRoomId);
-  if (byId) return byId;
-  const fallback = session.rooms[0];
-  if (!fallback) {
-    // Should never happen (we always create at least one room).
-    throw new Error("Session has no rooms");
-  }
-  session.currentRoomId = fallback.id;
-  return fallback;
+	const byId = session.rooms.find((r) => r.id === session.currentRoomId);
+	if (byId) return byId;
+	const fallback = session.rooms[0];
+	if (!fallback) {
+		// Should never happen (we always create at least one room).
+		throw new Error("Session has no rooms");
+	}
+	session.currentRoomId = fallback.id;
+	return fallback;
 }
 
 function appendSessionMessage(
-  session: SessionState,
-  room: ChatRoom,
-  role: MessageRole,
-  content: string,
+	session: SessionState,
+	room: ChatRoom,
+	role: MessageRole,
+	content: string,
 ): void {
-  const message: Message = {
-    id: uuidv4(),
-    role,
-    content,
-    timestamp: new Date(),
-    roomId: room.id,
-  };
+	const message: Message = {
+		id: uuidv4(),
+		role,
+		content,
+		timestamp: new Date(),
+		roomId: room.id,
+	};
 
-  // Mutate in place (session is not shared across callers).
-  room.messages.push(message);
+	// Mutate in place (session is not shared across callers).
+	room.messages.push(message);
 
-  // Ensure the room in the session references the updated messages array.
-  session.rooms = session.rooms.map((r) => (r.id === room.id ? room : r));
+	// Ensure the room in the session references the updated messages array.
+	session.rooms = session.rooms.map((r) => (r.id === room.id ? room : r));
 }
 
 // ============================================================================
@@ -282,91 +282,91 @@ function appendSessionMessage(
 // ============================================================================
 
 async function runCLI(options: CLIOptions): Promise<CLIResult> {
-  const startedAt = Date.now();
+	const startedAt = Date.now();
 
-  // Set working directory if specified
-  if (options.cwd) {
-    const result = await setCwd(options.cwd);
-    if (!result.success) {
-      return {
-        success: false,
-        error: `Failed to set working directory: ${result.error}`,
-      };
-    }
-    // In CLI mode, treat --cwd as the project root for session persistence.
-    process.chdir(result.path);
-  }
+	// Set working directory if specified
+	if (options.cwd) {
+		const result = await setCwd(options.cwd);
+		if (!result.success) {
+			return {
+				success: false,
+				error: `Failed to set working directory: ${result.error}`,
+			};
+		}
+		// In CLI mode, treat --cwd as the project root for session persistence.
+		process.chdir(result.path);
+	}
 
-  // Get message
-  const message = await getMessage(options);
-  if (!message) {
-    return {
-      success: false,
-      error: "No message provided. Use --help for usage information.",
-    };
-  }
+	// Get message
+	const message = await getMessage(options);
+	if (!message) {
+		return {
+			success: false,
+			error: "No message provided. Use --help for usage information.",
+		};
+	}
 
-  // Initialize agent
-  let runtime: Awaited<ReturnType<typeof initializeAgent>> | undefined;
+	// Initialize agent
+	let runtime: Awaited<ReturnType<typeof initializeAgent>> | undefined;
 
-  try {
-    runtime = await initializeAgent();
+	try {
+		runtime = await initializeAgent();
 
-    const agentClient = getAgentClient();
-    agentClient.setRuntime(runtime);
+		const agentClient = getAgentClient();
+		agentClient.setRuntime(runtime);
 
-    const session = (await loadSession()) ?? createDefaultSessionState();
-    const room = getCurrentRoomFromSession(session);
+		const session = (await loadSession()) ?? createDefaultSessionState();
+		const room = getCurrentRoomFromSession(session);
 
-    appendSessionMessage(session, room, "user", message);
+		appendSessionMessage(session, room, "user", message);
 
-    const shouldStream = options.stream && !options.json;
-    let didPrintStreaming = false;
+		const shouldStream = options.stream && !options.json;
+		let didPrintStreaming = false;
 
-    // Send message and get response
-    const response = await agentClient.sendMessage({
-      room,
-      text: message,
-      identity: session.identity,
-      onDelta: shouldStream
-        ? (delta) => {
-            // Write deltas directly for real-time streaming.
-            process.stdout.write(delta);
-            didPrintStreaming = true;
-          }
-        : undefined,
-    });
+		// Send message and get response
+		const response = await agentClient.sendMessage({
+			room,
+			text: message,
+			identity: session.identity,
+			onDelta: shouldStream
+				? (delta) => {
+						// Write deltas directly for real-time streaming.
+						process.stdout.write(delta);
+						didPrintStreaming = true;
+					}
+				: undefined,
+		});
 
-    if (didPrintStreaming) {
-      process.stdout.write("\n");
-    }
+		if (didPrintStreaming) {
+			process.stdout.write("\n");
+		}
 
-    appendSessionMessage(session, room, "assistant", response);
+		appendSessionMessage(session, room, "assistant", response);
 
-    // Update session CWD and persist best-effort (so TUI + CLI share history).
-    session.cwd = getCwd();
-    try {
-      await saveSession(session);
-    } catch {
-      // Ignore session save errors in CLI mode
-    }
+		// Update session CWD and persist best-effort (so TUI + CLI share history).
+		session.cwd = getCwd();
+		try {
+			await saveSession(session);
+		} catch {
+			// Ignore session save errors in CLI mode
+		}
 
-    const completedAt = Date.now();
+		const completedAt = Date.now();
 
-    return {
-      success: true,
-      response,
-      timing: {
-        startedAt,
-        completedAt,
-        durationMs: completedAt - startedAt,
-      },
-    };
-  } finally {
-    if (runtime) {
-      await shutdownAgent(runtime);
-    }
-  }
+		return {
+			success: true,
+			response,
+			timing: {
+				startedAt,
+				completedAt,
+				durationMs: completedAt - startedAt,
+			},
+		};
+	} finally {
+		if (runtime) {
+			await shutdownAgent(runtime);
+		}
+	}
 }
 
 // ============================================================================
@@ -374,16 +374,16 @@ async function runCLI(options: CLIOptions): Promise<CLIResult> {
 // ============================================================================
 
 function formatOutput(result: CLIResult, options: CLIOptions): void {
-  if (options.json) {
-    console.log(JSON.stringify(result, null, 2));
-    return;
-  }
+	if (options.json) {
+		console.log(JSON.stringify(result, null, 2));
+		return;
+	}
 
-  if (result.success) {
-    console.log(result.response);
-  } else {
-    console.error(`Error: ${result.error}`);
-  }
+	if (result.success) {
+		console.log(result.response);
+	} else {
+		console.error(`Error: ${result.error}`);
+	}
 }
 
 // ============================================================================
@@ -391,60 +391,60 @@ function formatOutput(result: CLIResult, options: CLIOptions): void {
 // ============================================================================
 
 export async function main(
-  args: string[] = process.argv.slice(2),
+	args: string[] = process.argv.slice(2),
 ): Promise<number> {
-  loadEnv();
+	loadEnv();
 
-  // Suppress logs in CLI mode
-  process.env.LOG_LEVEL = "fatal";
+	// Suppress logs in CLI mode
+	process.env.LOG_LEVEL = "fatal";
 
-  const options = parseArgs(args);
+	const options = parseArgs(args);
 
-  // Handle help
-  if (options.help) {
-    console.log(HELP_TEXT);
-    return 0;
-  }
+	// Handle help
+	if (options.help) {
+		console.log(HELP_TEXT);
+		return 0;
+	}
 
-  // Handle version
-  if (options.version) {
-    console.log(`eliza-code v${VERSION}`);
-    return 0;
-  }
+	// Handle version
+	if (options.version) {
+		console.log(`eliza-code v${VERSION}`);
+		return 0;
+	}
 
-  // If interactive mode is requested, return special code to indicate TUI should run
-  if (options.interactive) {
-    return -1; // Special code: run TUI
-  }
+	// If interactive mode is requested, return special code to indicate TUI should run
+	if (options.interactive) {
+		return -1; // Special code: run TUI
+	}
 
-  // Check for API key
-  try {
-    const provider = resolveModelProvider(process.env);
-    if (provider === "anthropic" && !process.env.ANTHROPIC_API_KEY?.trim()) {
-      console.error(
-        "Error: ANTHROPIC_API_KEY environment variable is required (ELIZA_CODE_PROVIDER=anthropic)",
-      );
-      console.error("Set it in your environment or in a .env file");
-      return 1;
-    }
-    if (provider === "openai" && !process.env.OPENAI_API_KEY?.trim()) {
-      console.error(
-        "Error: OPENAI_API_KEY environment variable is required (ELIZA_CODE_PROVIDER=openai)",
-      );
-      console.error("Set it in your environment or in a .env file");
-      return 1;
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`Error: ${message}`);
-    return 1;
-  }
+	// Check for API key
+	try {
+		const provider = resolveModelProvider(process.env);
+		if (provider === "anthropic" && !process.env.ANTHROPIC_API_KEY?.trim()) {
+			console.error(
+				"Error: ANTHROPIC_API_KEY environment variable is required (ELIZA_CODE_PROVIDER=anthropic)",
+			);
+			console.error("Set it in your environment or in a .env file");
+			return 1;
+		}
+		if (provider === "openai" && !process.env.OPENAI_API_KEY?.trim()) {
+			console.error(
+				"Error: OPENAI_API_KEY environment variable is required (ELIZA_CODE_PROVIDER=openai)",
+			);
+			console.error("Set it in your environment or in a .env file");
+			return 1;
+		}
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		console.error(`Error: ${message}`);
+		return 1;
+	}
 
-  // Run CLI
-  const result = await runCLI(options);
-  formatOutput(result, options);
+	// Run CLI
+	const result = await runCLI(options);
+	formatOutput(result, options);
 
-  return result.success ? 0 : 1;
+	return result.success ? 0 : 1;
 }
 
 // ============================================================================
@@ -452,10 +452,10 @@ export async function main(
 // ============================================================================
 
 export {
-  parseArgs,
-  getMessage,
-  runCLI,
-  formatOutput,
-  type CLIOptions,
-  type CLIResult,
+	parseArgs,
+	getMessage,
+	runCLI,
+	formatOutput,
+	type CLIOptions,
+	type CLIResult,
 };

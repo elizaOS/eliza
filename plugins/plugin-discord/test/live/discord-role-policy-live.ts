@@ -4,23 +4,23 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+	type AgentRuntime,
 	asUUID,
 	ChannelType,
 	createUniqueUuid,
-	setConnectorAdminWhitelist,
-	type AgentRuntime,
 	type Entity,
 	type IAgentRuntime,
 	type Memory,
 	type Room,
+	setConnectorAdminWhitelist,
 	type World,
 } from "@elizaos/core";
-import { createTestRuntime } from "../helpers/pglite-runtime.ts";
 import {
-  PTYService,
-  sendToAgentAction,
-  startCodingTaskAction,
+	PTYService,
+	sendToAgentAction,
+	startCodingTaskAction,
 } from "@elizaos/plugin-agent-orchestrator";
+import { createTestRuntime } from "../helpers/pglite-runtime.ts";
 
 type DiscordConfig = {
 	env?: {
@@ -78,7 +78,9 @@ async function waitFor(
 
 function loadDiscordToken(): string {
 	const configPath = path.join(os.homedir(), ".milady", "milady.json");
-	const parsed = JSON.parse(fs.readFileSync(configPath, "utf8")) as DiscordConfig;
+	const parsed = JSON.parse(
+		fs.readFileSync(configPath, "utf8"),
+	) as DiscordConfig;
 	const fromConfig =
 		parsed.env?.DISCORD_API_TOKEN?.trim() ??
 		parsed.plugins?.entries?.discord?.config?.DISCORD_API_TOKEN?.trim();
@@ -95,10 +97,7 @@ function loadDiscordToken(): string {
 	return fromEnv;
 }
 
-async function discordRequest<T>(
-	token: string,
-	pathname: string,
-): Promise<T> {
+async function discordRequest<T>(token: string, pathname: string): Promise<T> {
 	const response = await fetch(`https://discord.com/api/v10${pathname}`, {
 		headers: {
 			Authorization: `Bot ${token}`,
@@ -179,7 +178,10 @@ async function cleanup(): Promise<void> {
 
 async function main(): Promise<void> {
 	const token = loadDiscordToken();
-	const guilds = await discordRequest<DiscordGuild[]>(token, "/users/@me/guilds");
+	const guilds = await discordRequest<DiscordGuild[]>(
+		token,
+		"/users/@me/guilds",
+	);
 	const cozyGuild = guilds.find((guild) => guild.name === "Cozy Devs");
 	assert.ok(cozyGuild, "Expected the bot to be installed in Cozy Devs");
 
@@ -347,7 +349,10 @@ async function main(): Promise<void> {
 		typeof allowedCreate.data.agents[0].sessionId === "string"
 			? allowedCreate.data.agents[0].sessionId
 			: "";
-	assert.ok(allowedSessionId, "Expected allowed Discord create path to return a session");
+	assert.ok(
+		allowedSessionId,
+		"Expected allowed Discord create path to return a session",
+	);
 	sessionsToStop.add(allowedSessionId);
 
 	const deniedCreate = await startCodingTaskAction.handler(

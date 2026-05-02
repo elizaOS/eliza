@@ -13,49 +13,49 @@ import { getAgentManager } from "./agent";
 
 /** Default guild/room id when no Discord guild exists (desktop / web-only). */
 export const DEFAULT_DESKTOP_MUSIC_GUILD_ID =
-  getBrandConfig().desktopMusicGuildId;
+	getBrandConfig().desktopMusicGuildId;
 
 export class MusicPlayerManager {
-  getDesktopPlaybackUrls(params?: {
-    guildId?: string;
-  }): MusicPlayerDesktopPlaybackUrls {
-    const env = process.env as Record<string, string | undefined>;
-    const livePort = getAgentManager().getPort();
-    const fromEmbedded =
-      typeof livePort === "number" && livePort > 0
-        ? `http://127.0.0.1:${livePort}`
-        : null;
-    const apiBase = fromEmbedded ?? resolveInitialApiBase(env);
-    if (!apiBase) {
-      return {
-        ok: false,
-        reason:
-          "Could not resolve agent API base (check ELIZA_API_PORT / embedded agent)",
-      };
-    }
+	getDesktopPlaybackUrls(params?: {
+		guildId?: string;
+	}): MusicPlayerDesktopPlaybackUrls {
+		const env = process.env as Record<string, string | undefined>;
+		const livePort = getAgentManager().getPort();
+		const fromEmbedded =
+			typeof livePort === "number" && livePort > 0
+				? `http://127.0.0.1:${livePort}`
+				: null;
+		const apiBase = fromEmbedded ?? resolveInitialApiBase(env);
+		if (!apiBase) {
+			return {
+				ok: false,
+				reason:
+					"Could not resolve agent API base (check ELIZA_API_PORT / embedded agent)",
+			};
+		}
 
-    const guildId = params?.guildId?.trim() || DEFAULT_DESKTOP_MUSIC_GUILD_ID;
-    const g = encodeURIComponent(guildId);
-    const base = apiBase.replace(/\/$/, "");
+		const guildId = params?.guildId?.trim() || DEFAULT_DESKTOP_MUSIC_GUILD_ID;
+		const g = encodeURIComponent(guildId);
+		const base = apiBase.replace(/\/$/, "");
 
-    return {
-      ok: true,
-      apiBase: base,
-      guildId,
-      streamUrl: `${base}/music-player/stream?guildId=${g}`,
-      nowPlayingUrl: `${base}/music-player/now-playing?guildId=${g}`,
-      queueUrl: `${base}/music-player/queue?guildId=${g}`,
-    };
-  }
+		return {
+			ok: true,
+			apiBase: base,
+			guildId,
+			streamUrl: `${base}/music-player/stream?guildId=${g}`,
+			nowPlayingUrl: `${base}/music-player/now-playing?guildId=${g}`,
+			queueUrl: `${base}/music-player/queue?guildId=${g}`,
+		};
+	}
 
-  dispose(): void {}
+	dispose(): void {}
 }
 
 let musicPlayerManager: MusicPlayerManager | null = null;
 
 export function getMusicPlayerManager(): MusicPlayerManager {
-  if (!musicPlayerManager) {
-    musicPlayerManager = new MusicPlayerManager();
-  }
-  return musicPlayerManager;
+	if (!musicPlayerManager) {
+		musicPlayerManager = new MusicPlayerManager();
+	}
+	return musicPlayerManager;
 }

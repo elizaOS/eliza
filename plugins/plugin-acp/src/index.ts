@@ -12,10 +12,10 @@ import { logger } from "@elizaos/core";
 
 // Service
 import {
-	ACP_SERVICE_TYPE,
-	ACPService,
-	type ServeAcpGatewayOptions,
-	serveAcpGateway,
+  ACP_SERVICE_TYPE,
+  ACPService,
+  type ServeAcpGatewayOptions,
+  serveAcpGateway,
 } from "./service.js";
 
 // Client utilities
@@ -24,10 +24,10 @@ export { createAcpClient, runAcpClientInteractive } from "./client.js";
 export { getAvailableCommands } from "./commands.js";
 // Event mapper utilities
 export {
-	extractAttachmentsFromPrompt,
-	extractTextFromPrompt,
-	formatToolTitle,
-	inferToolKind,
+  extractAttachmentsFromPrompt,
+  extractTextFromPrompt,
+  formatToolTitle,
+  inferToolKind,
 } from "./event-mapper.js";
 export type { GatewayClientOptions } from "./gateway-client.js";
 // Gateway client
@@ -36,38 +36,37 @@ export { createGatewayClient, GatewayClient } from "./gateway-client.js";
 // Meta utilities
 export { readBool, readNumber, readString } from "./meta.js";
 export type {
-	AcpSessionStore,
-	PersistentSessionStoreOptions,
+  AcpSessionStore,
+  PersistentSessionStoreOptions,
 } from "./session.js";
 // Session management
 export {
-	createInMemorySessionStore,
-	createPersistentSessionStore,
-	createSessionEntry,
-	defaultAcpSessionStore,
-	getSessionEntry,
-	listSessionKeys,
-	loadSessionStore,
-	resolveDefaultSessionStorePath,
-	// Re-exported from @elizaos/core for convenience
-	type SessionEntry,
-	upsertSessionEntry,
+  createInMemorySessionStore,
+  createPersistentSessionStore,
+  createSessionEntry,
+  defaultAcpSessionStore,
+  getSessionEntry,
+  listSessionKeys,
+  loadSessionStore,
+  resolveDefaultSessionStorePath,
+  // Re-exported from @elizaos/core for convenience
+  type SessionEntry,
+  upsertSessionEntry,
 } from "./session.js";
 // Session mapper utilities
 export {
-	parseSessionMeta,
-	resetSessionIfNeeded,
-	resolveSessionKey,
+  parseSessionMeta,
+  resetSessionIfNeeded,
+  resolveSessionKey,
 } from "./session-mapper.js";
 
 // Translator (AcpGatewayAgent)
 export { AcpGatewayAgent } from "./translator.js";
 // Types
 export * from "./types.js";
-
-// Service exports
-export { ACPService, ACP_SERVICE_TYPE, serveAcpGateway };
 export type { ServeAcpGatewayOptions };
+// Service exports
+export { ACP_SERVICE_TYPE, ACPService, serveAcpGateway };
 
 // CLI self-registration - importing this module triggers CLI command registration
 import "./cli/index.js";
@@ -106,39 +105,39 @@ import "./cli/index.js";
  * ```
  */
 export const acpPlugin: Plugin = {
-	name: "acp",
-	description:
-		"Agent Client Protocol (ACP) plugin - enables IDE integration and gateway bridging via the ACP protocol",
+  name: "acp",
+  description:
+    "Agent Client Protocol (ACP) plugin - enables IDE integration and gateway bridging via the ACP protocol",
 
-	providers: [],
-	actions: [],
-	services: [ACPService],
-	routes: [],
+  providers: [],
+  actions: [],
+  services: [ACPService],
+  routes: [],
 
-	async init(
-		_config: Record<string, string>,
-		_runtime: IAgentRuntime,
-	): Promise<void> {
-		try {
-			const gatewayUrl = process.env.ACP_GATEWAY_URL;
+  async init(
+    _config: Record<string, string>,
+    _runtime: IAgentRuntime,
+  ): Promise<void> {
+    try {
+      const gatewayUrl = process.env.ACP_GATEWAY_URL;
 
-			if (gatewayUrl) {
-				logger.info("[ACPPlugin] Gateway URL configured:", gatewayUrl);
-			} else {
-				logger.debug(
-					"[ACPPlugin] No gateway URL configured - service will use defaults when started",
-				);
-			}
+      if (gatewayUrl) {
+        logger.info("[ACPPlugin] Gateway URL configured:", gatewayUrl);
+      } else {
+        logger.debug(
+          "[ACPPlugin] No gateway URL configured - service will use defaults when started",
+        );
+      }
 
-			logger.info("[ACPPlugin] Plugin initialized");
-		} catch (error) {
-			logger.error(
-				"[ACPPlugin] Error initializing:",
-				error instanceof Error ? error.message : String(error),
-			);
-			throw error;
-		}
-	},
+      logger.info("[ACPPlugin] Plugin initialized");
+    } catch (error) {
+      logger.error(
+        "[ACPPlugin] Error initializing:",
+        error instanceof Error ? error.message : String(error),
+      );
+      throw error;
+    }
+  },
 };
 
 export default acpPlugin;
@@ -147,32 +146,32 @@ export default acpPlugin;
  * Helper function to get the ACPService from runtime
  */
 export function getACPService(runtime: IAgentRuntime): ACPService | null {
-	return runtime.getService<ACPService>(ACP_SERVICE_TYPE);
+  return runtime.getService<ACPService>(ACP_SERVICE_TYPE);
 }
 
 /**
  * Helper function to start the ACP server via the service
  */
 export function startAcpServer(
-	runtime: IAgentRuntime,
-	opts: {
-		gatewayUrl?: string;
-		gatewayToken?: string;
-		gatewayPassword?: string;
-		defaultSessionKey?: string;
-		defaultSessionLabel?: string;
-		requireExistingSession?: boolean;
-		resetSession?: boolean;
-		prefixCwd?: boolean;
-		verbose?: boolean;
-	} = {},
+  runtime: IAgentRuntime,
+  opts: {
+    gatewayUrl?: string;
+    gatewayToken?: string;
+    gatewayPassword?: string;
+    defaultSessionKey?: string;
+    defaultSessionLabel?: string;
+    requireExistingSession?: boolean;
+    resetSession?: boolean;
+    prefixCwd?: boolean;
+    verbose?: boolean;
+  } = {},
 ): boolean {
-	const service = getACPService(runtime);
-	if (!service) {
-		logger.error("[ACP] Service not available");
-		return false;
-	}
+  const service = getACPService(runtime);
+  if (!service) {
+    logger.error("[ACP] Service not available");
+    return false;
+  }
 
-	service.startServer(opts);
-	return true;
+  service.startServer(opts);
+  return true;
 }

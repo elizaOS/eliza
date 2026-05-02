@@ -14,15 +14,10 @@ import { DEFAULT_NOSTR_RELAYS } from "./types.js";
 
 // Export types
 export * from "./types.js";
-
 // Export service
-export { NostrService };
-
 // Export actions
-export { sendDm, publishProfile };
-
 // Export providers
-export { identityContextProvider, senderContextProvider };
+export { identityContextProvider, NostrService, publishProfile, sendDm, senderContextProvider };
 
 /**
  * Nostr plugin definition

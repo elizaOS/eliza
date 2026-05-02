@@ -69,7 +69,10 @@ function detectPlatformForCatalog(): string {
   const cap = (globalThis as CapacitorGlobal).Capacitor;
   const fromCap = cap?.getPlatform?.();
   if (fromCap) return fromCap;
-  if (typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent)) {
+  if (
+    typeof navigator !== "undefined" &&
+    /Android/i.test(navigator.userAgent)
+  ) {
     return "android";
   }
   return "web";

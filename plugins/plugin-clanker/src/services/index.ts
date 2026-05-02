@@ -1,1 +1,1 @@
-export { ClankerService } from './clanker.service';
+export { ClankerService } from "./clanker.service";

@@ -51,7 +51,14 @@ export async function runList({ runtime, callback }: ListInput): Promise<ActionR
   return {
     success: true,
     text,
-    values: { mode: "list", loadedCount: all.length, installedCount: installed.length },
-    data: { loaded: all.map((p) => ({ name: p.name, status: p.status })), installed },
+    values: {
+      mode: "list",
+      loadedCount: all.length,
+      installedCount: installed.length,
+    },
+    data: {
+      loaded: all.map((p) => ({ name: p.name, status: p.status })),
+      installed,
+    },
   };
 }

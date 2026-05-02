@@ -1,42 +1,48 @@
-import type { IAgentRuntime, TextEmbeddingParams } from '@elizaos/core';
-import { logger, ModelType, VECTOR_DIMS } from '@elizaos/core';
-import { createOpenAI } from '@ai-sdk/openai';
-import { embed, type LanguageModelUsage } from 'ai';
+import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
+import { logger, ModelType, VECTOR_DIMS } from "@elizaos/core";
+import { createOpenAI } from "@ai-sdk/openai";
+import { embed, type LanguageModelUsage } from "ai";
 import {
   getApiKey,
   getEmbeddingBaseURL,
   getEmbeddingInputType,
   getEmbeddingModel,
   getSetting,
-} from '../utils/config';
-import { emitModelUsageEvent } from '../utils/events';
+} from "../utils/config";
+import { emitModelUsageEvent } from "../utils/events";
 
 /** NIM embed routes are case-sensitive; docs use lowercase org (e.g. baai/bge-m3). */
 function normalizeEmbeddingModelId(model: string): string {
-  const i = model.indexOf('/');
+  const i = model.indexOf("/");
   if (i <= 0) return model;
   return `${model.slice(0, i).toLowerCase()}${model.slice(i)}`;
 }
 
 function isEmbeddingDebug(runtime: IAgentRuntime): boolean {
-  const v = getSetting(runtime, 'NVIDIA_EMBEDDING_DEBUG');
+  const v = getSetting(runtime, "NVIDIA_EMBEDDING_DEBUG");
   if (!v) return false;
   const s = v.toLowerCase();
-  return s === '1' || s === 'true' || s === 'yes';
+  return s === "1" || s === "true" || s === "yes";
 }
 
 /** Safe log line: no API key, truncate long input previews. */
-function summarizeEmbeddingBody(body: Record<string, unknown>): Record<string, unknown> {
+function summarizeEmbeddingBody(
+  body: Record<string, unknown>,
+): Record<string, unknown> {
   const input = body.input;
   const preview =
-    typeof input === 'string'
-      ? { kind: 'string', length: input.length, preview: input.slice(0, 120) }
+    typeof input === "string"
+      ? { kind: "string", length: input.length, preview: input.slice(0, 120) }
       : Array.isArray(input)
         ? {
-            kind: 'array',
+            kind: "array",
             length: input.length,
-            firstLen: typeof input[0] === 'string' ? input[0].length : undefined,
-            preview: typeof input[0] === 'string' ? String(input[0]).slice(0, 120) : undefined,
+            firstLen:
+              typeof input[0] === "string" ? input[0].length : undefined,
+            preview:
+              typeof input[0] === "string"
+                ? String(input[0]).slice(0, 120)
+                : undefined,
           }
         : { kind: typeof input };
   return {
@@ -51,7 +57,7 @@ function summarizeEmbeddingBody(body: Record<string, unknown>): Record<string, u
 
 function collectNimHeaders(headers: Headers): Record<string, string> {
   const out: Record<string, string> = {};
-  const want = ['nvcf-reqid', 'nvcf-status', 'x-request-id', 'nv-request-id'];
+  const want = ["nvcf-reqid", "nvcf-status", "x-request-id", "nv-request-id"];
   headers.forEach((value, key) => {
     if (want.includes(key.toLowerCase())) {
       out[key] = value;
@@ -63,16 +69,16 @@ function collectNimHeaders(headers: Headers): Record<string, string> {
 function embeddingFetchHeaders(apiKey: string): Record<string, string> {
   return {
     Authorization: `Bearer ${apiKey}`,
-    'Content-Type': 'application/json',
-    Accept: 'application/json',
-    'User-Agent': 'elizaOS-plugin-nvidiacloud (https://elizaos.ai)',
+    "Content-Type": "application/json",
+    Accept: "application/json",
+    "User-Agent": "elizaOS-plugin-nvidiacloud (https://elizaos.ai)",
   };
 }
 
 function languageModelUsage(
   inputTokens: number,
   outputTokens: number,
-  totalTokens: number
+  totalTokens: number,
 ): LanguageModelUsage {
   return {
     inputTokens,
@@ -95,7 +101,7 @@ type EmbedAttempt = { name: string; body: Record<string, unknown> };
 function buildEmbeddingAttempts(
   model: string,
   text: string,
-  inputType: 'passage' | 'query' | undefined
+  inputType: "passage" | "query" | undefined,
 ): EmbedAttempt[] {
   // NVIDIA embedding models are OpenAI-like, not OpenAI-identical. Some require
   // `input_type`, and older endpoints differ on string vs array input shapes.
@@ -103,38 +109,43 @@ function buildEmbeddingAttempts(
   if (inputType) {
     return [
       {
-        name: 'nv-embed-string',
+        name: "nv-embed-string",
         body: {
           model,
           input: text,
           input_type: inputType,
-          encoding_format: 'float',
-          truncate: 'NONE',
+          encoding_format: "float",
+          truncate: "NONE",
         },
       },
       {
-        name: 'nv-embed-array',
+        name: "nv-embed-array",
         body: {
           model,
           input: [text],
           input_type: inputType,
-          encoding_format: 'float',
-          truncate: 'NONE',
+          encoding_format: "float",
+          truncate: "NONE",
         },
       },
     ];
   }
   return [
     {
-      name: 'string+float+truncate',
-      body: { model, input: text, encoding_format: 'float', truncate: 'NONE' },
+      name: "string+float+truncate",
+      body: { model, input: text, encoding_format: "float", truncate: "NONE" },
     },
     {
-      name: 'array+float+truncate',
-      body: { model, input: [text], encoding_format: 'float', truncate: 'NONE' },
+      name: "array+float+truncate",
+      body: {
+        model,
+        input: [text],
+        encoding_format: "float",
+        truncate: "NONE",
+      },
     },
-    { name: 'array-only', body: { model, input: [text] } },
-    { name: 'string-only', body: { model, input: text } },
+    { name: "array-only", body: { model, input: [text] } },
+    { name: "string-only", body: { model, input: text } },
   ];
 }
 
@@ -148,23 +159,25 @@ function parseEmbeddingResponse(textBody: string): {
       usage?: { prompt_tokens?: number; total_tokens?: number };
     };
   } catch {
-    throw new Error(`NVIDIA embeddings: invalid JSON in response (${textBody.slice(0, 200)})`);
+    throw new Error(
+      `NVIDIA embeddings: invalid JSON in response (${textBody.slice(0, 200)})`,
+    );
   }
 }
 
 export async function handleTextEmbedding(
   runtime: IAgentRuntime,
-  params: TextEmbeddingParams | string | null
+  params: TextEmbeddingParams | string | null,
 ): Promise<number[]> {
   const embeddingDimension = Number.parseInt(
-    getSetting(runtime, 'NVIDIA_EMBEDDING_DIMENSIONS') ??
-      getSetting(runtime, 'EMBEDDING_DIMENSIONS') ??
-      '1024',
-    10
+    getSetting(runtime, "NVIDIA_EMBEDDING_DIMENSIONS") ??
+      getSetting(runtime, "EMBEDDING_DIMENSIONS") ??
+      "1024",
+    10,
   ) as (typeof VECTOR_DIMS)[keyof typeof VECTOR_DIMS];
 
   if (!Object.values(VECTOR_DIMS).includes(embeddingDimension)) {
-    const errorMsg = `Invalid embedding dimension: ${embeddingDimension}. Must be one of: ${Object.values(VECTOR_DIMS).join(', ')}`;
+    const errorMsg = `Invalid embedding dimension: ${embeddingDimension}. Must be one of: ${Object.values(VECTOR_DIMS).join(", ")}`;
     logger.error(errorMsg);
     throw new Error(errorMsg);
   }
@@ -176,19 +189,24 @@ export async function handleTextEmbedding(
   }
 
   let text: string;
-  if (typeof params === 'string') {
+  if (typeof params === "string") {
     text = params;
-  } else if (typeof params === 'object' && params && 'text' in params && params.text) {
+  } else if (
+    typeof params === "object" &&
+    params &&
+    "text" in params &&
+    params.text
+  ) {
     text = params.text;
   } else {
-    logger.warn('Invalid input format for embedding');
+    logger.warn("Invalid input format for embedding");
     const fallbackVector = Array(embeddingDimension).fill(0);
     fallbackVector[0] = 0.2;
     return fallbackVector;
   }
 
   if (!text.trim()) {
-    logger.warn('Empty text for embedding');
+    logger.warn("Empty text for embedding");
     const fallbackVector = Array(embeddingDimension).fill(0);
     fallbackVector[0] = 0.3;
     return fallbackVector;
@@ -196,7 +214,7 @@ export async function handleTextEmbedding(
 
   const apiKey = getApiKey(runtime);
   if (!apiKey) {
-    throw new Error('NVIDIA_API_KEY (or NVIDIA_CLOUD_API_KEY) is not set');
+    throw new Error("NVIDIA_API_KEY (or NVIDIA_CLOUD_API_KEY) is not set");
   }
 
   const baseURL = getEmbeddingBaseURL(runtime);
@@ -207,18 +225,23 @@ export async function handleTextEmbedding(
   const attempts = buildEmbeddingAttempts(model, text, inputType);
 
   logger.debug(
-    `[NVIDIA NIM] embeddings → ${embedUrl} model=${model} inputChars=${text.length} attempts=${attempts.length}`
+    `[NVIDIA NIM] embeddings → ${embedUrl} model=${model} inputChars=${text.length} attempts=${attempts.length}`,
   );
   if (embedDebug) {
     logger.debug(
-      { attempts: attempts.map((a) => ({ name: a.name, body: summarizeEmbeddingBody(a.body) })) },
-      '[NVIDIA NIM] EMBEDDING_DEBUG bodies'
+      {
+        attempts: attempts.map((a) => ({
+          name: a.name,
+          body: summarizeEmbeddingBody(a.body),
+        })),
+      },
+      "[NVIDIA NIM] EMBEDDING_DEBUG bodies",
     );
   }
 
   let lastStatus = 0;
-  let lastStatusText = '';
-  let lastBody = '';
+  let lastStatusText = "";
+  let lastBody = "";
   let lastHeaders: Record<string, string> = {};
 
   if (!inputType) {
@@ -235,29 +258,34 @@ export async function handleTextEmbedding(
         value: text,
       });
       if (!Array.isArray(embedding) || embedding.length === 0) {
-        throw new Error('AI SDK embed returned empty embedding');
+        throw new Error("AI SDK embed returned empty embedding");
       }
       if (embedding.length !== embeddingDimension) {
         throw new Error(
-          `Embedding length ${embedding.length} does not match NVIDIA_EMBEDDING_DIMENSIONS=${embeddingDimension}`
+          `Embedding length ${embedding.length} does not match NVIDIA_EMBEDDING_DIMENSIONS=${embeddingDimension}`,
         );
       }
       if (usage) {
         const u = usage as Record<string, number | undefined>;
-        const inputTokens = Number(u.inputTokens ?? u.promptTokens ?? u.tokens ?? 0);
+        const inputTokens = Number(
+          u.inputTokens ?? u.promptTokens ?? u.tokens ?? 0,
+        );
         const outputTokens = Number(u.outputTokens ?? 0);
         const totalTokens = Number(u.totalTokens ?? inputTokens + outputTokens);
         emitModelUsageEvent(
           runtime,
           ModelType.TEXT_EMBEDDING,
-          languageModelUsage(inputTokens, outputTokens, totalTokens)
+          languageModelUsage(inputTokens, outputTokens, totalTokens),
         );
       }
-      logger.debug('[NVIDIA NIM] embeddings OK via AI SDK embed()');
+      logger.debug("[NVIDIA NIM] embeddings OK via AI SDK embed()");
       return embedding;
     } catch (aiErr: unknown) {
       const msg = aiErr instanceof Error ? aiErr.message : String(aiErr);
-      logger.warn({ error: msg }, '[NVIDIA NIM] AI SDK embed() failed, falling back to raw HTTP');
+      logger.warn(
+        { error: msg },
+        "[NVIDIA NIM] AI SDK embed() failed, falling back to raw HTTP",
+      );
     }
   }
 
@@ -265,12 +293,12 @@ export async function handleTextEmbedding(
     if (embedDebug) {
       logger.debug(
         { attempt: name, body: summarizeEmbeddingBody(body) },
-        '[NVIDIA NIM] embeddings request'
+        "[NVIDIA NIM] embeddings request",
       );
     }
     try {
       const response = await fetch(embedUrl, {
-        method: 'POST',
+        method: "POST",
         headers: embeddingFetchHeaders(apiKey),
         body: JSON.stringify(body),
       });
@@ -286,29 +314,33 @@ export async function handleTextEmbedding(
         const embedding = data?.data?.[0]?.embedding;
         if (!Array.isArray(embedding)) {
           logger.error(
-            { attempt: name, sample: responseText.slice(0, 400), headers: lastHeaders },
-            '[NVIDIA NIM] embeddings: OK but unexpected JSON shape'
+            {
+              attempt: name,
+              sample: responseText.slice(0, 400),
+              headers: lastHeaders,
+            },
+            "[NVIDIA NIM] embeddings: OK but unexpected JSON shape",
           );
-          throw new Error('API returned invalid embedding structure');
+          throw new Error("API returned invalid embedding structure");
         }
         if (embedding.length !== embeddingDimension) {
           const errorMsg = `Embedding length ${embedding.length} does not match configured dimension ${embeddingDimension} (set NVIDIA_EMBEDDING_DIMENSIONS)`;
           logger.error(
             { attempt: name, ...lastHeaders, errorMsg },
-            '[NVIDIA NIM] embeddings dimension mismatch'
+            "[NVIDIA NIM] embeddings dimension mismatch",
           );
           throw new Error(errorMsg);
         }
-        if (name !== 'string+float+truncate' && name !== 'nv-embed-string') {
+        if (name !== "string+float+truncate" && name !== "nv-embed-string") {
           logger.info(
-            `[NVIDIA NIM] embeddings succeeded with attempt "${name}" (consider setting this shape as default)`
+            `[NVIDIA NIM] embeddings succeeded with attempt "${name}" (consider setting this shape as default)`,
           );
         }
         if (data.usage) {
           const usage = languageModelUsage(
             data.usage.prompt_tokens ?? 0,
             0,
-            data.usage.total_tokens ?? data.usage.prompt_tokens ?? 0
+            data.usage.total_tokens ?? data.usage.prompt_tokens ?? 0,
           );
           emitModelUsageEvent(runtime, ModelType.TEXT_EMBEDDING, usage);
         }
@@ -323,7 +355,7 @@ export async function handleTextEmbedding(
           nimHeaders: lastHeaders,
           bodyPreview: responseText.slice(0, 500),
         },
-        '[NVIDIA NIM] embeddings attempt failed'
+        "[NVIDIA NIM] embeddings attempt failed",
       );
 
       const retryable =
@@ -336,18 +368,18 @@ export async function handleTextEmbedding(
         break;
       }
     } catch (e: unknown) {
-      if (e instanceof Error && e.message.includes('invalid JSON')) {
+      if (e instanceof Error && e.message.includes("invalid JSON")) {
         throw e;
       }
       const msg = e instanceof Error ? e.message : String(e);
       logger.warn(
         { attempt: name, error: msg },
-        '[NVIDIA NIM] embeddings fetch error (will try next shape if any)'
+        "[NVIDIA NIM] embeddings fetch error (will try next shape if any)",
       );
     }
   }
 
-  const reqId = lastHeaders['nvcf-reqid'] ?? lastHeaders['NVCF-REQID'] ?? 'n/a';
+  const reqId = lastHeaders["nvcf-reqid"] ?? lastHeaders["NVCF-REQID"] ?? "n/a";
   logger.error(
     {
       url: embedUrl,
@@ -357,15 +389,15 @@ export async function handleTextEmbedding(
       nimHeaders: lastHeaders,
       responsePreview: lastBody.slice(0, 800),
       hint: embedDebug
-        ? 'NVIDIA_EMBEDDING_DEBUG already on — check model id and NVIDIA_EMBEDDING_DIMENSIONS vs model output size.'
-        : 'Set NVIDIA_EMBEDDING_DEBUG=1 for full attempt bodies in logs.',
+        ? "NVIDIA_EMBEDDING_DEBUG already on — check model id and NVIDIA_EMBEDDING_DIMENSIONS vs model output size."
+        : "Set NVIDIA_EMBEDDING_DEBUG=1 for full attempt bodies in logs.",
       buildHint:
-        'Default embed model is nvidia/nv-embedqa-e5-v5 (passage for memory). Enable it on https://build.nvidia.com; if bge-m3 500s for your key, keep this default or set NVIDIA_EMBEDDING_MODEL explicitly from the model page.',
+        "Default embed model is nvidia/nv-embedqa-e5-v5 (passage for memory). Enable it on https://build.nvidia.com; if bge-m3 500s for your key, keep this default or set NVIDIA_EMBEDDING_MODEL explicitly from the model page.",
     },
-    '[NVIDIA NIM] embeddings failed after all attempts'
+    "[NVIDIA NIM] embeddings failed after all attempts",
   );
   throw new Error(
     `NVIDIA embeddings error: ${lastStatus} ${lastStatusText} (NVCF-REQID=${reqId}). ` +
-      'Chat may work while embeddings return 500 if this model is not enabled for your API key on NVIDIA Build, quotas are exhausted, or the embed fleet is down — try another NVIDIA_EMBEDDING_MODEL or contact NVIDIA support with NVCF-REQID.'
+      "Chat may work while embeddings return 500 if this model is not enabled for your API key on NVIDIA Build, quotas are exhausted, or the embed fleet is down — try another NVIDIA_EMBEDDING_MODEL or contact NVIDIA support with NVCF-REQID.",
   );
 }

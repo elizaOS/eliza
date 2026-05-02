@@ -102,9 +102,7 @@ describe("ensureLocalInferenceHandler", () => {
     // TEXT_SMALL + TEXT_LARGE + TEXT_EMBEDDING — the device-bridge
     // loader exposes `embed` so the embedding handler is wired in too.
     expect(
-      runtime.registrations.filter(
-        (r) => r.provider === "eliza-device-bridge",
-      ),
+      runtime.registrations.filter((r) => r.provider === "eliza-device-bridge"),
     ).toHaveLength(3);
     expect(runtime.getService("localInferenceLoader")).toBeTruthy();
   });
@@ -119,9 +117,7 @@ describe("ensureLocalInferenceHandler", () => {
     );
 
     expect(
-      runtime.registrations.filter(
-        (r) => r.provider === "eliza-device-bridge",
-      ),
+      runtime.registrations.filter((r) => r.provider === "eliza-device-bridge"),
     ).toHaveLength(3);
   });
 

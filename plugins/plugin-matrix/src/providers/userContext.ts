@@ -31,7 +31,7 @@ export const userContextProvider: Provider = {
 
     const matrixService = runtime.getService(MATRIX_SERVICE_NAME) as MatrixService | undefined;
 
-    if (!matrixService || !matrixService.isConnected()) {
+    if (!matrixService?.isConnected()) {
       return {
         data: {},
         values: {},

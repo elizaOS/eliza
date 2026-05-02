@@ -3,11 +3,31 @@
 import type { FormControlOption, FormDefinition } from "../types";
 
 const SATISFACTION_OPTIONS: FormControlOption[] = [
-  { value: "5", label: "Deeply meaningful", description: "This reading really spoke to me" },
-  { value: "4", label: "Very helpful", description: "I gained useful insights" },
-  { value: "3", label: "Somewhat helpful", description: "Some parts resonated, others didn't" },
-  { value: "2", label: "Not very helpful", description: "It didn't quite connect for me" },
-  { value: "1", label: "Not helpful at all", description: "I didn't find it meaningful" },
+  {
+    value: "5",
+    label: "Deeply meaningful",
+    description: "This reading really spoke to me",
+  },
+  {
+    value: "4",
+    label: "Very helpful",
+    description: "I gained useful insights",
+  },
+  {
+    value: "3",
+    label: "Somewhat helpful",
+    description: "Some parts resonated, others didn't",
+  },
+  {
+    value: "2",
+    label: "Not very helpful",
+    description: "It didn't quite connect for me",
+  },
+  {
+    value: "1",
+    label: "Not helpful at all",
+    description: "I didn't find it meaningful",
+  },
 ];
 
 /**

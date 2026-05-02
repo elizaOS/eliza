@@ -25,7 +25,9 @@ async function build() {
     console.error("Node build failed:", nodeResult.logs);
     throw new Error("Node build failed");
   }
-  console.log(`Node build complete in ${((Date.now() - nodeStart) / 1000).toFixed(2)}s`);
+  console.log(
+    `Node build complete in ${((Date.now() - nodeStart) / 1000).toFixed(2)}s`,
+  );
 
   const browserStart = Date.now();
   console.log("Building @elizaos/plugin-google-genai for Browser...");
@@ -42,7 +44,9 @@ async function build() {
     console.error("Browser build failed:", browserResult.logs);
     throw new Error("Browser build failed");
   }
-  console.log(`Browser build complete in ${((Date.now() - browserStart) / 1000).toFixed(2)}s`);
+  console.log(
+    `Browser build complete in ${((Date.now() - browserStart) / 1000).toFixed(2)}s`,
+  );
 
   const cjsStart = Date.now();
   console.log("Building @elizaos/plugin-google-genai for Node (CJS)...");
@@ -61,11 +65,16 @@ async function build() {
   }
   try {
     const { rename } = await import("node:fs/promises");
-    await rename(join(distDir, "cjs", "index.node.js"), join(distDir, "cjs", "index.node.cjs"));
+    await rename(
+      join(distDir, "cjs", "index.node.js"),
+      join(distDir, "cjs", "index.node.cjs"),
+    );
   } catch (e) {
     console.warn("CJS rename step warning:", e);
   }
-  console.log(`CJS build complete in ${((Date.now() - cjsStart) / 1000).toFixed(2)}s`);
+  console.log(
+    `CJS build complete in ${((Date.now() - cjsStart) / 1000).toFixed(2)}s`,
+  );
 
   const dtsStart = Date.now();
   console.log("Generating TypeScript declarations...");
@@ -108,8 +117,12 @@ export { default } from "./index.node";
 `;
   await writeFile(cjsIndexDtsPath, cjsAlias, "utf8");
 
-  console.log(`Declarations generated in ${((Date.now() - dtsStart) / 1000).toFixed(2)}s`);
-  console.log(`All builds completed in ${((Date.now() - totalStart) / 1000).toFixed(2)}s`);
+  console.log(
+    `Declarations generated in ${((Date.now() - dtsStart) / 1000).toFixed(2)}s`,
+  );
+  console.log(
+    `All builds completed in ${((Date.now() - totalStart) / 1000).toFixed(2)}s`,
+  );
 }
 
 build().catch((err) => {

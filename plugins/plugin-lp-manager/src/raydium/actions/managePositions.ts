@@ -146,7 +146,7 @@ async function extractFetchedPositions(
   const raydiumProvider = providers.find(
     (p: any) => p.name === "degen-lp-raydium-position-provider"
   );
-  if (!raydiumProvider || !raydiumProvider.data) {
+  if (!raydiumProvider?.data) {
     throw new Error("No Raydium position data found");
   }
   return JSON.parse(raydiumProvider.data);

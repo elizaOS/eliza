@@ -8,7 +8,8 @@
     "!packages/steward",
     "packages/services/*",
     "services/*",
-    "packages/steward/packages/*"
+    "packages/steward/packages/*",
+    "examples/*"
   ],
   "scripts": {
     "postinstall": "find node_modules -path '*/thread-stream/test' -type d -exec rm -rf {} + 2>/dev/null || true; find node_modules -path '*/thread-stream/bench.js' -delete 2>/dev/null || true; find node_modules -path '*/thread-stream/LICENSE' -delete 2>/dev/null || true; find node_modules -path '*/thread-stream/README.md' -delete 2>/dev/null || true; node packages/scripts/postinstall.mjs",

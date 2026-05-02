@@ -1,4 +1,8 @@
-import type { IAgentRuntime, ModelTypeName, ObjectGenerationParams } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  ModelTypeName,
+  ObjectGenerationParams,
+} from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
   createGoogleGenAI,
@@ -13,7 +17,7 @@ async function generateObjectByModelType(
   runtime: IAgentRuntime,
   params: ObjectGenerationParams,
   modelType: string,
-  getModelFn: (runtime: IAgentRuntime) => string
+  getModelFn: (runtime: IAgentRuntime) => string,
 ): Promise<Record<string, string | number | boolean | null>> {
   const genAI = createGoogleGenAI(runtime);
   if (!genAI) {
@@ -56,12 +60,18 @@ async function generateObjectByModelType(
     });
 
     try {
-      return JSON.parse(text) as Record<string, string | number | boolean | null>;
+      return JSON.parse(text) as Record<
+        string,
+        string | number | boolean | null
+      >;
     } catch {
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         try {
-          return JSON.parse(jsonMatch[0]) as Record<string, string | number | boolean | null>;
+          return JSON.parse(jsonMatch[0]) as Record<
+            string,
+            string | number | boolean | null
+          >;
         } catch {
           throw new Error("Failed to parse JSON from response");
         }
@@ -70,7 +80,7 @@ async function generateObjectByModelType(
     }
   } catch (error) {
     logger.error(
-      `[generateObject] Error: ${error instanceof Error ? error.message : String(error)}`
+      `[generateObject] Error: ${error instanceof Error ? error.message : String(error)}`,
     );
     throw error;
   }
@@ -78,14 +88,24 @@ async function generateObjectByModelType(
 
 export async function handleObjectSmall(
   runtime: IAgentRuntime,
-  params: ObjectGenerationParams
+  params: ObjectGenerationParams,
 ): Promise<Record<string, string | number | boolean | null>> {
-  return generateObjectByModelType(runtime, params, "OBJECT_SMALL", getSmallModel);
+  return generateObjectByModelType(
+    runtime,
+    params,
+    "OBJECT_SMALL",
+    getSmallModel,
+  );
 }
 
 export async function handleObjectLarge(
   runtime: IAgentRuntime,
-  params: ObjectGenerationParams
+  params: ObjectGenerationParams,
 ): Promise<Record<string, string | number | boolean | null>> {
-  return generateObjectByModelType(runtime, params, "OBJECT_LARGE", getLargeModel);
+  return generateObjectByModelType(
+    runtime,
+    params,
+    "OBJECT_LARGE",
+    getLargeModel,
+  );
 }

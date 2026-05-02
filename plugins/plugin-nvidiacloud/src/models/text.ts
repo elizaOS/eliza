@@ -1,16 +1,16 @@
-import type { GenerateTextParams, IAgentRuntime } from '@elizaos/core';
-import { logger, ModelType } from '@elizaos/core';
-import { generateText, streamText } from 'ai';
-import type { LanguageModel } from 'ai';
-import { createNvidiaOpenAI } from '../providers/nvidia';
+import type { GenerateTextParams, IAgentRuntime } from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
+import { generateText, streamText } from "ai";
+import type { LanguageModel } from "ai";
+import { createNvidiaOpenAI } from "../providers/nvidia";
 import {
   getDefaultLargeMaxOutputTokens,
   getDefaultSmallMaxOutputTokens,
   getLargeModel,
   getSmallModel,
   getTextTimeoutMs,
-} from '../utils/config';
-import { emitModelUsageEvent } from '../utils/events';
+} from "../utils/config";
+import { emitModelUsageEvent } from "../utils/events";
 
 type TextParams = GenerateTextParams & {
   stream?: boolean;
@@ -20,11 +20,13 @@ type TextParams = GenerateTextParams & {
 function buildParams(
   runtime: IAgentRuntime,
   modelType: typeof ModelType.TEXT_SMALL | typeof ModelType.TEXT_LARGE,
-  params: TextParams
+  params: TextParams,
 ) {
   const { prompt } = params;
   // NVIDIA rejects `stop: []`; omit the field unless callers provide real values.
-  const stopSequences = params.stopSequences?.filter((sequence) => sequence.length > 0);
+  const stopSequences = params.stopSequences?.filter(
+    (sequence) => sequence.length > 0,
+  );
   const temperature = params.temperature ?? 0.7;
   const frequencyPenalty = params.frequencyPenalty ?? 0;
   const presencePenalty = params.presencePenalty ?? 0;
@@ -33,14 +35,18 @@ function buildParams(
       ? getDefaultSmallMaxOutputTokens(runtime)
       : getDefaultLargeMaxOutputTokens(runtime);
   const resolvedMaxOutput =
-    (params as { maxOutputTokens?: number; maxTokens?: number }).maxOutputTokens ??
+    (params as { maxOutputTokens?: number; maxTokens?: number })
+      .maxOutputTokens ??
     (params as { maxTokens?: number }).maxTokens ??
     defaultMaxOutput;
 
   const client = createNvidiaOpenAI(runtime);
   const modelName =
-    modelType === ModelType.TEXT_SMALL ? getSmallModel(runtime) : getLargeModel(runtime);
-  const modelLabel = modelType === ModelType.TEXT_SMALL ? 'TEXT_SMALL' : 'TEXT_LARGE';
+    modelType === ModelType.TEXT_SMALL
+      ? getSmallModel(runtime)
+      : getLargeModel(runtime);
+  const modelLabel =
+    modelType === ModelType.TEXT_SMALL ? "TEXT_SMALL" : "TEXT_LARGE";
 
   const generateParams: Parameters<typeof generateText>[0] = {
     model: client.chat(modelName) as LanguageModel,
@@ -53,31 +59,42 @@ function buildParams(
   if (stopSequences && stopSequences.length > 0) {
     generateParams.stopSequences = stopSequences;
   }
-  (generateParams as { maxOutputTokens: number }).maxOutputTokens = resolvedMaxOutput;
+  (generateParams as { maxOutputTokens: number }).maxOutputTokens =
+    resolvedMaxOutput;
   // WHY set an abort signal here: a stalled NIM request should not hold the
   // ElizaOS message loop open indefinitely.
-  (generateParams as { abortSignal: AbortSignal }).abortSignal = AbortSignal.timeout(
-    getTextTimeoutMs(runtime)
-  );
+  (generateParams as { abortSignal: AbortSignal }).abortSignal =
+    AbortSignal.timeout(getTextTimeoutMs(runtime));
 
   return { generateParams, modelName, modelLabel };
 }
 
-export async function handleTextSmall(runtime: IAgentRuntime, params: TextParams): Promise<string> {
+export async function handleTextSmall(
+  runtime: IAgentRuntime,
+  params: TextParams,
+): Promise<string> {
   return generateWithModel(runtime, ModelType.TEXT_SMALL, params);
 }
 
-export async function handleTextLarge(runtime: IAgentRuntime, params: TextParams): Promise<string> {
+export async function handleTextLarge(
+  runtime: IAgentRuntime,
+  params: TextParams,
+): Promise<string> {
   return generateWithModel(runtime, ModelType.TEXT_LARGE, params);
 }
 
 async function generateWithModel(
   runtime: IAgentRuntime,
   modelType: typeof ModelType.TEXT_SMALL | typeof ModelType.TEXT_LARGE,
-  params: TextParams
+  params: TextParams,
 ): Promise<string> {
-  const { generateParams, modelName, modelLabel } = buildParams(runtime, modelType, params);
-  const wantStream = params.stream === true || typeof params.onStreamChunk === 'function';
+  const { generateParams, modelName, modelLabel } = buildParams(
+    runtime,
+    modelType,
+    params,
+  );
+  const wantStream =
+    params.stream === true || typeof params.onStreamChunk === "function";
 
   logger.debug(`[NVIDIA NIM] ${modelLabel}: ${modelName}`);
 
@@ -109,9 +126,10 @@ async function generateWithModel(
         model: modelName,
         modelType: modelLabel,
         timeoutMs: getTextTimeoutMs(runtime),
-        maxOutputTokens: (generateParams as { maxOutputTokens: number }).maxOutputTokens,
+        maxOutputTokens: (generateParams as { maxOutputTokens: number })
+          .maxOutputTokens,
       },
-      '[NVIDIA NIM] text generation failed'
+      "[NVIDIA NIM] text generation failed",
     );
     throw error;
   }

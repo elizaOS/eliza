@@ -1,67 +1,67 @@
 {
-  "name": "@elizaos/plugin-cli",
-  "version": "2.0.0-alpha.9",
-  "description": "CLI framework plugin for ElizaOS agents - provides command registration, execution, and utilities",
-  "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "default": "./dist/index.js"
-    }
-  },
-  "files": [
-    "dist"
-  ],
-  "scripts": {
-    "build": "tsc",
-    "build:watch": "tsc --watch",
-    "dev": "tsc --watch",
-    "test": "vitest run",
-    "lint": "bunx @biomejs/biome check --write --unsafe .",
-    "lint:check": "bunx @biomejs/biome check .",
-    "format": "bunx @biomejs/biome format --write .",
-    "format:check": "bunx @biomejs/biome format .",
-    "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@elizaos/core": "workspace:*",
-    "commander": "^12.1.0"
-  },
-  "devDependencies": {
-    "@biomejs/biome": "^2.3.11",
-    "strip-literal": "^3.1.0",
-    "typescript": "^6.0.0",
-    "vitest": "^4.0.18"
-  },
-  "keywords": [
-    "elizaos",
-    "plugin",
-    "cli",
-    "command-line",
-    "terminal"
-  ],
-  "license": "MIT",
-  "publishConfig": {
-    "access": "public"
-  },
-  "agentConfig": {
-    "pluginType": "elizaos:plugin:1.0.0",
-    "pluginParameters": {
-      "CLI_NAME": {
-        "type": "string",
-        "description": "CLI command name",
-        "required": false,
-        "sensitive": false
-      },
-      "CLI_VERSION": {
-        "type": "string",
-        "description": "CLI version string",
-        "required": false,
-        "sensitive": false
-      }
-    }
-  }
+	"name": "@elizaos/plugin-cli",
+	"version": "2.0.0-alpha.9",
+	"description": "CLI framework plugin for ElizaOS agents - provides command registration, execution, and utilities",
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"default": "./dist/index.js"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsc",
+		"build:watch": "tsc --watch",
+		"dev": "tsc --watch",
+		"test": "vitest run",
+		"lint": "bunx @biomejs/biome check --write --unsafe .",
+		"lint:check": "bunx @biomejs/biome check .",
+		"format": "bunx @biomejs/biome format --write .",
+		"format:check": "bunx @biomejs/biome format .",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@elizaos/core": "workspace:*",
+		"commander": "^12.1.0"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.3.11",
+		"strip-literal": "^3.1.0",
+		"typescript": "^6.0.0",
+		"vitest": "^4.0.18"
+	},
+	"keywords": [
+		"elizaos",
+		"plugin",
+		"cli",
+		"command-line",
+		"terminal"
+	],
+	"license": "MIT",
+	"publishConfig": {
+		"access": "public"
+	},
+	"agentConfig": {
+		"pluginType": "elizaos:plugin:1.0.0",
+		"pluginParameters": {
+			"CLI_NAME": {
+				"type": "string",
+				"description": "CLI command name",
+				"required": false,
+				"sensitive": false
+			},
+			"CLI_VERSION": {
+				"type": "string",
+				"description": "CLI version string",
+				"required": false,
+				"sensitive": false
+			}
+		}
+	}
 }

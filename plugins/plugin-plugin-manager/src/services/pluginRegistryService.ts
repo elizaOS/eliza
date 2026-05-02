@@ -76,7 +76,11 @@ export interface RegistryPlugin {
     v1CoreRange: string | null;
     v2CoreRange: string | null;
   };
-  git: { v0Branch: string | null; v1Branch: string | null; v2Branch: string | null };
+  git: {
+    v0Branch: string | null;
+    v1Branch: string | null;
+    v2Branch: string | null;
+  };
   supports: { v0: boolean; v1: boolean; v2: boolean };
   // App/Viewer extensions
   viewer?: {
@@ -120,7 +124,10 @@ export interface CloneResult {
 // In-memory cache
 // ---------------------------------------------------------------------------
 
-let registryCache: { plugins: Map<string, RegistryPlugin>; timestamp: number } | null = null;
+let registryCache: {
+  plugins: Map<string, RegistryPlugin>;
+  timestamp: number;
+} | null = null;
 
 export function resetRegistryCache(): void {
   registryCache = null;
@@ -543,7 +550,10 @@ export async function clonePlugin(pluginName: string): Promise<CloneResult> {
 
   const plugin = resolvePlugin(await loadRegistry(), pluginName);
   if (!plugin) {
-    return { success: false, error: `Plugin "${pluginName}" not found in registry` };
+    return {
+      success: false,
+      error: `Plugin "${pluginName}" not found in registry`,
+    };
   }
 
   const pathMod = await import("node:path");
@@ -579,7 +589,13 @@ export async function clonePlugin(pluginName: string): Promise<CloneResult> {
     logger.warn(`[registry] No package.json at repo root for ${plugin.name}`);
   }
 
-  return { success: true, pluginName: plugin.name, localPath: cloneDir, hasTests, dependencies };
+  return {
+    success: true,
+    pluginName: plugin.name,
+    localPath: cloneDir,
+    hasTests,
+    dependencies,
+  };
 }
 
 // ---------------------------------------------------------------------------

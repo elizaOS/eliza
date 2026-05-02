@@ -1,9 +1,9 @@
-import { logger } from "./logger";
 import {
   ElizaIntent,
   type ReceiveIntentPayload,
   type ReceiveIntentResult,
 } from "./eliza-intent";
+import { logger } from "./logger";
 
 /**
  * Intent bridge — single entry point used by UI layers to forward an

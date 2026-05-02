@@ -7,7 +7,9 @@ import type {
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 
-const _globalThis = globalThis as typeof globalThis & { AI_SDK_LOG_WARNINGS?: boolean };
+const _globalThis = globalThis as typeof globalThis & {
+  AI_SDK_LOG_WARNINGS?: boolean;
+};
 _globalThis.AI_SDK_LOG_WARNINGS ??= false;
 
 import { handleTextEmbedding } from "./models/embedding";

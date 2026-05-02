@@ -5,12 +5,13 @@ import { createGoogleGenAI, getEmbeddingModel } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 import { countTokens } from "../utils/tokenization";
 
-const TEXT_EMBEDDING_MODEL_TYPE = ((ElizaCore as { ModelType?: Record<string, string> }).ModelType
-  ?.TEXT_EMBEDDING ?? "TEXT_EMBEDDING") as string;
+const TEXT_EMBEDDING_MODEL_TYPE = ((
+  ElizaCore as { ModelType?: Record<string, string> }
+).ModelType?.TEXT_EMBEDDING ?? "TEXT_EMBEDDING") as string;
 
 export async function handleTextEmbedding(
   runtime: IAgentRuntime,
-  params: TextEmbeddingParams | string | null
+  params: TextEmbeddingParams | string | null,
 ): Promise<number[]> {
   const genAI = createGoogleGenAI(runtime);
   if (!genAI) {
@@ -40,7 +41,7 @@ export async function handleTextEmbedding(
   const maxChars = 8_192 * 4;
   if (text.length > maxChars) {
     logger.warn(
-      `[Google GenAI] Embedding input too long (~${Math.ceil(text.length / 4)} tokens), truncating to ~8192 tokens`
+      `[Google GenAI] Embedding input too long (~${Math.ceil(text.length / 4)} tokens), truncating to ~8192 tokens`,
     );
     text = text.slice(0, maxChars);
   }
@@ -65,7 +66,7 @@ export async function handleTextEmbedding(
     return embedding;
   } catch (error) {
     logger.error(
-      `Error generating embedding: ${error instanceof Error ? error.message : String(error)}`
+      `Error generating embedding: ${error instanceof Error ? error.message : String(error)}`,
     );
     return Array(768).fill(0) as number[];
   }

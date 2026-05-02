@@ -22,7 +22,7 @@ export const spaceStateProvider: Provider = {
 
     const gchatService = runtime.getService<GoogleChatService>(GOOGLE_CHAT_SERVICE_NAME);
 
-    if (!gchatService || !gchatService.isConnected()) {
+    if (!gchatService?.isConnected()) {
       return {
         data: { connected: false },
         values: { connected: false },

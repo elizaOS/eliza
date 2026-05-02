@@ -8,7 +8,9 @@ const hasApiKey = !!process.env.GOOGLE_GENERATIVE_AI_API_KEY;
 describe("Google GenAI Integration", () => {
   beforeAll(() => {
     if (!hasApiKey) {
-      console.log("Skipping integration tests: GOOGLE_GENERATIVE_AI_API_KEY not set");
+      console.log(
+        "Skipping integration tests: GOOGLE_GENERATIVE_AI_API_KEY not set",
+      );
     }
   });
 
@@ -84,7 +86,8 @@ describe("Google GenAI Integration", () => {
 
       const response = await genAI.models.generateContent({
         model: "gemini-2.0-flash-001",
-        contents: 'Create a JSON object with a "greeting" field that says "hello".',
+        contents:
+          'Create a JSON object with a "greeting" field that says "hello".',
         config: {
           responseMimeType: "application/json",
         },

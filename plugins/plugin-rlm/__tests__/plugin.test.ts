@@ -2,7 +2,7 @@
  * Unit tests for the RLM plugin.
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 describe("RLM Plugin", () => {
   describe("Plugin Definition", () => {
@@ -257,7 +257,9 @@ describe("Boundary Conditions", () => {
 
     it("should handle invalid maxIterations (NaN)", async () => {
       const { configFromEnv, DEFAULT_CONFIG } = await import("../client");
-      const config = configFromEnv({ ELIZA_RLM_MAX_ITERATIONS: "not_a_number" });
+      const config = configFromEnv({
+        ELIZA_RLM_MAX_ITERATIONS: "not_a_number",
+      });
       expect(config.maxIterations).toBe(DEFAULT_CONFIG.maxIterations);
     });
 
@@ -416,7 +418,10 @@ describe("Config Validation", () => {
 
   it("should reject retryMaxDelay less than retryBaseDelay", async () => {
     const { validateConfig } = await import("../types");
-    const errors = validateConfig({ retryBaseDelay: 5000, retryMaxDelay: 1000 });
+    const errors = validateConfig({
+      retryBaseDelay: 5000,
+      retryMaxDelay: 1000,
+    });
     expect(errors.length).toBeGreaterThan(0);
     expect(errors[0]).toContain("retryMaxDelay");
   });
@@ -436,7 +441,9 @@ describe("Error Handling", () => {
       const { RLMClient } = await import("../client");
 
       // Should not throw
-      const client = new RLMClient({ pythonPath: "/nonexistent/path/to/python" });
+      const client = new RLMClient({
+        pythonPath: "/nonexistent/path/to/python",
+      });
       expect(client).toBeDefined();
     });
 

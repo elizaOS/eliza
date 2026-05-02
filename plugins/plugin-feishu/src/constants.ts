@@ -7,8 +7,8 @@ export const FEISHU_SERVICE_NAME = "feishu";
  * Default API domains for Feishu and Lark.
  */
 export const FEISHU_DOMAINS = {
-  feishu: "https://open.feishu.cn",
-  lark: "https://open.larksuite.com",
+	feishu: "https://open.feishu.cn",
+	lark: "https://open.larksuite.com",
 } as const;
 
 /**

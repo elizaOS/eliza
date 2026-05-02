@@ -1,17 +1,11 @@
-import mineflayer, { type Bot } from "mineflayer";
-import { pathfinder, Movements, goals } from "mineflayer-pathfinder";
 import minecraftData from "minecraft-data";
+import mineflayer, { type Bot } from "mineflayer";
+import { goals, Movements, pathfinder } from "mineflayer-pathfinder";
 import { Vec3 } from "vec3";
-import { WebSocketServer, type WebSocket } from "ws";
+import { type WebSocket, WebSocketServer } from "ws";
 import { z } from "zod";
 
-type JsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | { [key: string]: JsonValue }
-  | JsonValue[];
+type JsonValue = null | boolean | number | string | { [key: string]: JsonValue } | JsonValue[];
 
 type JsonObject = { [key: string]: JsonValue };
 
@@ -46,7 +40,7 @@ const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
     z.string(),
     z.array(jsonValueSchema),
     z.record(z.string(), jsonValueSchema),
-  ]),
+  ])
 );
 
 const requestSchema = z.object({
@@ -76,11 +70,21 @@ function send(ws: WebSocket, response: BridgeResponse): void {
 }
 
 function ok(request: BridgeRequest, data?: JsonObject): BridgeResponse {
-  return { type: request.type, requestId: request.requestId, success: true, data };
+  return {
+    type: request.type,
+    requestId: request.requestId,
+    success: true,
+    data,
+  };
 }
 
 function fail(request: BridgeRequest, error: string): BridgeResponse {
-  return { type: request.type, requestId: request.requestId, success: false, error };
+  return {
+    type: request.type,
+    requestId: request.requestId,
+    success: false,
+    error,
+  };
 }
 
 function getBot(botId: string | undefined): BotEntry | undefined {
@@ -131,7 +135,7 @@ function serializeBotState(bot: Bot): JsonObject {
   const biomeId = biomeObj && typeof biomeObj.id === "number" ? biomeObj.id : null;
   const biomeNameFromBlock = biomeObj && typeof biomeObj.name === "string" ? biomeObj.name : null;
   const biomeNameFromData =
-    biomeId !== null && mcData.biomes && mcData.biomes[biomeId] && typeof mcData.biomes[biomeId].name === "string"
+    biomeId && mcData.biomes?.[biomeId] && typeof mcData.biomes[biomeId].name === "string"
       ? mcData.biomes[biomeId].name
       : null;
   const biomeName = biomeNameFromBlock ?? biomeNameFromData;
@@ -219,7 +223,7 @@ wss.on("connection", (ws) => {
           requestId: "parse-error",
           success: false,
           error: message,
-        } satisfies BridgeResponse),
+        } satisfies BridgeResponse)
       );
       return;
     }
@@ -232,23 +236,20 @@ wss.on("connection", (ws) => {
 
       if (request.type === "createBot") {
         const data = request.data ?? {};
-        const host = typeof data.host === "string" ? data.host : process.env.MC_HOST ?? "127.0.0.1";
+        const host =
+          typeof data.host === "string" ? data.host : (process.env.MC_HOST ?? "127.0.0.1");
         const serverPort =
-          typeof data.port === "number"
-            ? data.port
-            : requireNumber(process.env.MC_PORT, 25565);
+          typeof data.port === "number" ? data.port : requireNumber(process.env.MC_PORT, 25565);
         const username =
           typeof data.username === "string"
             ? data.username
-            : process.env.MC_USERNAME ?? "ElizaBot";
-        const auth = typeof data.auth === "string" ? data.auth : process.env.MC_AUTH ?? "offline";
+            : (process.env.MC_USERNAME ?? "ElizaBot");
+        const auth = typeof data.auth === "string" ? data.auth : (process.env.MC_AUTH ?? "offline");
         // Mineflayer can auto-detect version when it connects, but if the connection fails
         // very early (e.g. closed port) some downstream code can crash when version is undefined.
         // Use a safe default to keep error handling reliable.
         const version =
-          typeof data.version === "string"
-            ? data.version
-            : process.env.MC_VERSION ?? "1.20.4";
+          typeof data.version === "string" ? data.version : (process.env.MC_VERSION ?? "1.20.4");
 
         const botId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
@@ -371,7 +372,10 @@ wss.on("connection", (ws) => {
             return;
           }
           const range = typeof data.range === "number" ? data.range : 0;
-          const goal = range > 0 ? new goals.GoalNear(vec.x, vec.y, vec.z, range) : new goals.GoalBlock(vec.x, vec.y, vec.z);
+          const goal =
+            range > 0
+              ? new goals.GoalNear(vec.x, vec.y, vec.z, range)
+              : new goals.GoalBlock(vec.x, vec.y, vec.z);
           await bot.pathfinder.goto(goal);
           send(ws, ok(request, { ok: true }));
           return;
@@ -479,7 +483,9 @@ wss.on("connection", (ws) => {
         case "scan": {
           const radius = typeof data.radius === "number" ? data.radius : 16;
           const max = typeof data.maxResults === "number" ? data.maxResults : 64;
-          const blockNames = Array.isArray(data.blocks) ? data.blocks.filter((b) => typeof b === "string") : [];
+          const blockNames = Array.isArray(data.blocks)
+            ? data.blocks.filter((b) => typeof b === "string")
+            : [];
 
           const mcData = minecraftData(bot.version);
           const ids = blockNames
@@ -488,8 +494,16 @@ wss.on("connection", (ws) => {
 
           const positions =
             ids.length > 0
-              ? bot.findBlocks({ matching: ids, maxDistance: radius, count: max })
-              : bot.findBlocks({ matching: (b) => b.type !== 0, maxDistance: radius, count: max });
+              ? bot.findBlocks({
+                  matching: ids,
+                  maxDistance: radius,
+                  count: max,
+                })
+              : bot.findBlocks({
+                  matching: (b) => b.type !== 0,
+                  maxDistance: radius,
+                  count: max,
+                });
 
           const found = positions
             .map((p) => bot.blockAt(p))
@@ -517,4 +531,3 @@ wss.on("connection", (ws) => {
     // no-op; bots are long-lived until destroyed
   });
 });
-

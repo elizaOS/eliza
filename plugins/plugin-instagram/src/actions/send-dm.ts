@@ -104,7 +104,7 @@ export const sendDmAction: Action = {
     callback?: HandlerCallback
   ) {
     const service = runtime.getService(INSTAGRAM_SERVICE_NAME) as InstagramService;
-    if (!service || !service.getIsRunning()) {
+    if (!service?.getIsRunning()) {
       if (callback) {
         await callback({
           text: "Instagram service is not running",

@@ -90,7 +90,7 @@ export const sendMessage: Action = {
   ): Promise<ActionResult> => {
     const lineService = runtime.getService(LINE_SERVICE_NAME) as unknown as LineService | undefined;
 
-    if (!lineService || !lineService.isConnected()) {
+    if (!lineService?.isConnected()) {
       if (callback) {
         callback({ text: "LINE service is not available.", source: "line" });
       }
@@ -122,7 +122,7 @@ export const sendMessage: Action = {
       }
     }
 
-    if (!msgInfo || !msgInfo.text) {
+    if (!msgInfo?.text) {
       if (callback) {
         callback({
           text: "I couldn't understand what message you want me to send. Please try again.",

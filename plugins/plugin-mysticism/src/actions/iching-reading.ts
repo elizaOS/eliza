@@ -122,7 +122,10 @@ export const ichingReadingAction: Action = {
     const service = runtime.getService<MysticismService>("MYSTICISM");
     if (!service) {
       logger.error("ICHING_READING handler: MysticismService not available");
-      return { success: false, text: "The mysticism service is not available." };
+      return {
+        success: false,
+        text: "The mysticism service is not available.",
+      };
     }
 
     const entityId = message.entityId;
@@ -199,7 +202,9 @@ export const ichingReadingAction: Action = {
     [
       {
         name: "{{user1}}",
-        content: { text: "I'd like to cast a hexagram about a decision I'm facing" },
+        content: {
+          text: "I'd like to cast a hexagram about a decision I'm facing",
+        },
       },
       {
         name: "{{agentName}}",
@@ -212,7 +217,9 @@ export const ichingReadingAction: Action = {
     [
       {
         name: "{{user1}}",
-        content: { text: "What does the Book of Changes say about my relationship?" },
+        content: {
+          text: "What does the Book of Changes say about my relationship?",
+        },
       },
       {
         name: "{{agentName}}",

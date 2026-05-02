@@ -90,9 +90,7 @@ function matchesQuery(contact: ContactSummary, q: string): boolean {
     return true;
   }
   if (
-    contact.emailAddresses.some((e: string) =>
-      e.toLowerCase().includes(needle),
-    )
+    contact.emailAddresses.some((e: string) => e.toLowerCase().includes(needle))
   ) {
     return true;
   }

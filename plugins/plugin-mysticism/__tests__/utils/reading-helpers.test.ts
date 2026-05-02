@@ -179,7 +179,7 @@ describe("getCurrentElement", () => {
         });
       }
 
-      const updated = service.getSession(ENTITY, ROOM)!;
+      const _updated = service.getSession(ENTITY, ROOM)!;
       // revealedLines should now equal changingLines.length (or more),
       // which means revealed > changingLines.length (synthesis)
       // Actually the engine increments revealedLines by 1 per feedback.

@@ -13,7 +13,7 @@ export const pancakeswapPlugin: Plugin = {
   },
 };
 
-export { PancakeSwapV3LpService };
 export * from "./types.ts";
+export { PancakeSwapV3LpService };
 
 export default pancakeswapPlugin;

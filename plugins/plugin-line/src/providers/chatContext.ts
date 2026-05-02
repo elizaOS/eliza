@@ -23,7 +23,7 @@ export const chatContextProvider: Provider = {
 
     const lineService = runtime.getService(LINE_SERVICE_NAME) as unknown as LineService | undefined;
 
-    if (!lineService || !lineService.isConnected()) {
+    if (!lineService?.isConnected()) {
       return {
         data: { connected: false },
         values: { connected: false },

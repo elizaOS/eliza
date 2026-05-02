@@ -40,7 +40,7 @@ export const skillsSummaryProvider: Provider = {
 		_message: Memory,
 		_state: State,
 	): Promise<ProviderResult> => {
-const service = runtime.getService<AgentSkillsService>(
+		const service = runtime.getService<AgentSkillsService>(
 			"AGENT_SKILLS_SERVICE",
 		);
 		if (!service) return { text: "" };
@@ -113,7 +113,8 @@ ${xml}${scanSection}
 export const skillInstructionsProvider: Provider = {
 	name: "agent_skill_instructions",
 	description: "High-res instructions from the most relevant skill",
-	descriptionCompressed: "Full instructions from most relevant skill (high-res).",
+	descriptionCompressed:
+		"Full instructions from most relevant skill (high-res).",
 	position: 5,
 
 	dynamic: true,
@@ -122,7 +123,7 @@ export const skillInstructionsProvider: Provider = {
 		message: Memory,
 		state: State,
 	): Promise<ProviderResult> => {
-const service = runtime.getService<AgentSkillsService>(
+		const service = runtime.getService<AgentSkillsService>(
 			"AGENT_SKILLS_SERVICE",
 		);
 		if (!service) return { text: "" };
@@ -397,4 +398,3 @@ function groupByCategory(
 
 	return categories;
 }
-

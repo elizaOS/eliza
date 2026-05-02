@@ -18,8 +18,8 @@ import type {
 } from "./types";
 import { DEFAULT_CONFIG, ENV_VARS, validateConfig } from "./types";
 
+export type { MetricsCallback, RLMMetrics };
 export { DEFAULT_CONFIG };
-export type { RLMMetrics, MetricsCallback };
 
 interface Logger {
   info: (message: string, ...args: unknown[]) => void;
@@ -204,7 +204,7 @@ export class RLMClient {
         this.pendingRequests.delete(response.id);
         pending.resolve(response);
       }
-    } catch (error) {
+    } catch (_error) {
       this.logger.error(`Failed to parse RLM server message: ${line}`);
     }
   }

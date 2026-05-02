@@ -90,9 +90,9 @@ describe("@elizaos/plugin-ollama", () => {
     it("has tests array with test suites", () => {
       const { default: plugin } = mod;
       expect(Array.isArray(plugin.tests)).toBe(true);
-      expect(plugin.tests!.length).toBeGreaterThan(0);
+      expect(plugin.tests?.length).toBeGreaterThan(0);
 
-      const suite = plugin.tests![0];
+      const suite = plugin.tests?.[0];
       expect(typeof suite.name).toBe("string");
       expect(suite.name).toBe("ollama_plugin_tests");
       expect(Array.isArray(suite.tests)).toBe(true);

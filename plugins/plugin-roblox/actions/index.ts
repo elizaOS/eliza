@@ -5,4 +5,4 @@ import sendGameMessage from "./sendGameMessage";
 
 export const robloxActions: Action[] = [sendGameMessage, executeGameAction, getPlayerInfo];
 
-export { sendGameMessage, executeGameAction, getPlayerInfo };
+export { executeGameAction, getPlayerInfo, sendGameMessage };

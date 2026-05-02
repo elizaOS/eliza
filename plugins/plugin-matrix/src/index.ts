@@ -19,7 +19,7 @@ import { listRooms } from "./actions/listRooms.js";
 import { sendMessage } from "./actions/sendMessage.js";
 import { sendReaction } from "./actions/sendReaction.js";
 
-export { sendMessage, sendReaction, listRooms, joinRoom };
+export { joinRoom, listRooms, sendMessage, sendReaction };
 
 // Providers
 import { roomStateProvider } from "./providers/roomState.js";

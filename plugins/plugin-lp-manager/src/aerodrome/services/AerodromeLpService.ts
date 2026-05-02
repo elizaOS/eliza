@@ -180,16 +180,32 @@ export class AerodromeLpService extends Service implements IEvmLpService {
 
       const [symbol0, decimals0, symbol1, decimals1] = await Promise.all([
         client
-          .readContract({ address: token0 as Address, abi: ERC20_ABI, functionName: "symbol" })
+          .readContract({
+            address: token0 as Address,
+            abi: ERC20_ABI,
+            functionName: "symbol",
+          })
           .catch(() => "UNKNOWN"),
         client
-          .readContract({ address: token0 as Address, abi: ERC20_ABI, functionName: "decimals" })
+          .readContract({
+            address: token0 as Address,
+            abi: ERC20_ABI,
+            functionName: "decimals",
+          })
           .catch(() => 18),
         client
-          .readContract({ address: token1 as Address, abi: ERC20_ABI, functionName: "symbol" })
+          .readContract({
+            address: token1 as Address,
+            abi: ERC20_ABI,
+            functionName: "symbol",
+          })
           .catch(() => "UNKNOWN"),
         client
-          .readContract({ address: token1 as Address, abi: ERC20_ABI, functionName: "decimals" })
+          .readContract({
+            address: token1 as Address,
+            abi: ERC20_ABI,
+            functionName: "decimals",
+          })
           .catch(() => 18),
       ]);
 

@@ -123,7 +123,10 @@ function readingRoute<T extends { entityId: string }>(
       try {
         const service = runtime.getService<MysticismService>("MYSTICISM");
         if (!service) {
-          res.status(503).json({ success: false, error: "Mysticism service is not available" });
+          res.status(503).json({
+            success: false,
+            error: "Mysticism service is not available",
+          });
           return;
         }
 
@@ -210,7 +213,10 @@ export function createReadingRoutes(): Route[] {
         try {
           const service = runtime.getService<MysticismService>("MYSTICISM");
           if (!service) {
-            res.status(503).json({ success: false, error: "Mysticism service is not available" });
+            res.status(503).json({
+              success: false,
+              error: "Mysticism service is not available",
+            });
             return;
           }
 
@@ -243,7 +249,10 @@ export function createReadingRoutes(): Route[] {
           });
         } catch (error) {
           logger.error("[ReadingRoutes] Status check error:", String(error));
-          res.status(500).json({ success: false, error: "Failed to retrieve reading status" });
+          res.status(500).json({
+            success: false,
+            error: "Failed to retrieve reading status",
+          });
         }
       },
     },

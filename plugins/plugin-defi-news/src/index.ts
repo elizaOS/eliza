@@ -1,10 +1,10 @@
-import type { Plugin } from '@elizaos/core';
+import type { Plugin } from "@elizaos/core";
 
 // Services
-import { NewsDataService } from './services/newsDataService';
+import { NewsDataService } from "./services/newsDataService";
 
 // Providers
-import { defiNewsProvider } from './providers/defiNewsProvider';
+import { defiNewsProvider } from "./providers/defiNewsProvider";
 
 /**
  * DeFi News Plugin
@@ -32,9 +32,9 @@ import { defiNewsProvider } from './providers/defiNewsProvider';
  * @version 2.0.0
  */
 export const defiNewsPlugin: Plugin = {
-  name: 'defi-news',
+  name: "defi-news",
   description:
-    'DeFi News plugin that provides comprehensive market context including global DeFi/crypto statistics, token data, and real-world crypto news from CoinGecko and Brave New Coin RSS feed',
+    "DeFi News plugin that provides comprehensive market context including global DeFi/crypto statistics, token data, and real-world crypto news from CoinGecko and Brave New Coin RSS feed",
   evaluators: [],
   providers: [defiNewsProvider],
   actions: [],
@@ -44,14 +44,13 @@ export const defiNewsPlugin: Plugin = {
 export default defiNewsPlugin;
 
 // Export types for external use
-export * from './interfaces/types';
+export * from "./interfaces/types";
 
 // Export services for direct access if needed
-export { NewsDataService } from './services/newsDataService';
+export { NewsDataService } from "./services/newsDataService";
 
 // Export providers
-export { defiNewsProvider } from './providers/defiNewsProvider';
+export { defiNewsProvider } from "./providers/defiNewsProvider";
 
 // Export utilities
-export * from './utils/formatters';
-
+export * from "./utils/formatters";

@@ -140,7 +140,10 @@ export const tarotReadingAction: Action = {
     const service = runtime.getService<MysticismService>("MYSTICISM");
     if (!service) {
       logger.error("TAROT_READING handler: MysticismService not available");
-      return { success: false, text: "The mysticism service is not available." };
+      return {
+        success: false,
+        text: "The mysticism service is not available.",
+      };
     }
 
     const entityId = message.entityId;

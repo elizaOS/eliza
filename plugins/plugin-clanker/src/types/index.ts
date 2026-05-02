@@ -1,15 +1,15 @@
-import { BigNumberish } from 'ethers';
-import { z } from 'zod';
+import { BigNumberish } from "ethers";
+import { z } from "zod";
 
 // Configuration schema
 export const ClankerConfigSchema = z.object({
-  WALLET_PRIVATE_KEY: z.string().min(1, 'Private key is required'),
-  BASE_RPC_URL: z.string().min(1, 'Base RPC URL is required'),
-  CLANKER_API_URL: z.string().default('https://api.clanker.com'),
+  WALLET_PRIVATE_KEY: z.string().min(1, "Private key is required"),
+  BASE_RPC_URL: z.string().min(1, "Base RPC URL is required"),
+  CLANKER_API_URL: z.string().default("https://api.clanker.com"),
   DEFAULT_SLIPPAGE: z.number().default(0.05), // 5%
-  MAX_GAS_PRICE: z.string().default('100000000000'), // 100 gwei
+  MAX_GAS_PRICE: z.string().default("100000000000"), // 100 gwei
   RETRY_ATTEMPTS: z.number().default(3),
-  NETWORK: z.enum(['base', 'base-sepolia']).default('base'),
+  NETWORK: z.enum(["base", "base-sepolia"]).default("base"),
 });
 
 export type ClankerConfig = z.infer<typeof ClankerConfigSchema>;
@@ -41,13 +41,13 @@ export interface PoolConfig {
 }
 
 export interface StaticFeeConfig {
-  type: 'static';
+  type: "static";
   clankerFee: number; // in bps
   pairedFee: number; // in bps
 }
 
 export interface DynamicFeeConfig {
-  type: 'dynamic';
+  type: "dynamic";
   // Dynamic fee configuration would be defined here
   // Based on Clanker's dynamic fee presets
 }
@@ -58,7 +58,7 @@ export interface RewardRecipient {
   recipient: string;
   admin: string;
   bps: number; // basis points, sum must be 10000 (100%)
-  token: 'Both' | 'Paired' | 'Clanker';
+  token: "Both" | "Paired" | "Clanker";
 }
 
 export interface RewardsConfig {
@@ -208,14 +208,14 @@ export interface ErrorResponse {
 }
 
 export enum ErrorCode {
-  VALIDATION_ERROR = 'VALIDATION_ERROR',
-  NETWORK_ERROR = 'NETWORK_ERROR',
-  PROTOCOL_ERROR = 'PROTOCOL_ERROR',
-  SECURITY_ERROR = 'SECURITY_ERROR',
-  INSUFFICIENT_BALANCE = 'INSUFFICIENT_BALANCE',
-  SLIPPAGE_EXCEEDED = 'SLIPPAGE_EXCEEDED',
-  TRANSACTION_FAILED = 'TRANSACTION_FAILED',
-  UNAUTHORIZED = 'UNAUTHORIZED',
+  VALIDATION_ERROR = "VALIDATION_ERROR",
+  NETWORK_ERROR = "NETWORK_ERROR",
+  PROTOCOL_ERROR = "PROTOCOL_ERROR",
+  SECURITY_ERROR = "SECURITY_ERROR",
+  INSUFFICIENT_BALANCE = "INSUFFICIENT_BALANCE",
+  SLIPPAGE_EXCEEDED = "SLIPPAGE_EXCEEDED",
+  TRANSACTION_FAILED = "TRANSACTION_FAILED",
+  UNAUTHORIZED = "UNAUTHORIZED",
 }
 
 // Action parameter schemas
@@ -256,7 +256,7 @@ export const TokenDeploySchema = z.object({
             tickLower: z.number(),
             tickUpper: z.number(),
             positionBps: z.number(),
-          })
+          }),
         )
         .optional(),
     })
@@ -264,12 +264,12 @@ export const TokenDeploySchema = z.object({
   fees: z
     .union([
       z.object({
-        type: z.literal('static'),
+        type: z.literal("static"),
         clankerFee: z.number(),
         pairedFee: z.number(),
       }),
       z.object({
-        type: z.literal('dynamic'),
+        type: z.literal("dynamic"),
       }),
     ])
     .optional(),
@@ -280,8 +280,8 @@ export const TokenDeploySchema = z.object({
           recipient: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
           admin: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
           bps: z.number().min(0).max(10000),
-          token: z.enum(['Both', 'Paired', 'Clanker']),
-        })
+          token: z.enum(["Both", "Paired", "Clanker"]),
+        }),
       ),
     })
     .optional(),
@@ -331,7 +331,7 @@ export const LiquiditySchema = z.object({
 // Transaction monitoring
 export interface TransactionStatus {
   hash: string;
-  status: 'pending' | 'confirmed' | 'failed';
+  status: "pending" | "confirmed" | "failed";
   confirmations: number;
   error?: string;
 }
@@ -362,11 +362,11 @@ export const POOL_POSITIONS = {
 
 export const FEE_CONFIGS = {
   StaticBasic: {
-    type: 'static' as const,
+    type: "static" as const,
     clankerFee: 100, // 1%
     pairedFee: 100, // 1%
   },
   DynamicBasic: {
-    type: 'dynamic' as const,
+    type: "dynamic" as const,
   },
 };

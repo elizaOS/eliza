@@ -42,21 +42,21 @@ import {
   useRef,
   useState,
 } from "react";
+import { isMiladyOS } from "../../platform/init";
 import {
   consumePendingFocusProvider,
   SETTINGS_FOCUS_CONNECTOR_EVENT,
   type SettingsFocusConnectorDetail,
   useApp,
 } from "../../state";
-import { isMiladyOS } from "../../platform/init";
 import { AppearanceSettingsSection } from "../settings/AppearanceSettingsSection";
 import { AppsManagementSection } from "../settings/AppsManagementSection";
 import { CapabilitiesSection } from "../settings/CapabilitiesSection";
 import { PermissionsSection } from "../settings/PermissionsSection";
 import { ProviderSwitcher } from "../settings/ProviderSwitcher";
 import { SecretsManagerSection } from "../settings/SecretsManagerSection";
-import { WalletKeysSection } from "../settings/WalletKeysSection";
 import { SecuritySettingsSection } from "../settings/SecuritySettingsSection";
+import { WalletKeysSection } from "../settings/WalletKeysSection";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { ConfigPageView } from "./ConfigPageView";
 import { ReleaseCenterView } from "./ReleaseCenterView";

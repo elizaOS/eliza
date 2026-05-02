@@ -3,7 +3,6 @@
     "outDir": "dist",
     "rootDir": "src",
     "ignoreDeprecations": "6.0",
-    "baseUrl": "../..",
     "lib": ["ESNext"],
     "target": "ESNext",
     "module": "Preserve",
@@ -17,10 +16,6 @@
     "resolveJsonModule": true,
     "moduleDetection": "force",
     "allowArbitraryExtensions": true,
-    "paths": {
-      "@elizaos/core": ["packages/core/src"],
-      "@elizaos/core/*": ["packages/core/src/*"]
-    },
     "types": ["node", "bun-types"]
   },
   "include": ["src/**/*.ts"]

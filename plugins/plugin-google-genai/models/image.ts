@@ -1,13 +1,18 @@
 import type { IAgentRuntime, ImageDescriptionParams } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { ImageDescriptionResponse } from "../types";
-import { createGoogleGenAI, getImageModel, getSafetySettings } from "../utils/config";
+import {
+  createGoogleGenAI,
+  getImageModel,
+  getSafetySettings,
+} from "../utils/config";
 
-const crossFetch = typeof globalThis.fetch === "function" ? globalThis.fetch : fetch;
+const crossFetch =
+  typeof globalThis.fetch === "function" ? globalThis.fetch : fetch;
 
 export async function handleImageDescription(
   runtime: IAgentRuntime,
-  params: ImageDescriptionParams | string
+  params: ImageDescriptionParams | string,
 ): Promise<ImageDescriptionResponse> {
   const genAI = createGoogleGenAI(runtime);
   if (!genAI) {
@@ -21,11 +26,13 @@ export async function handleImageDescription(
 
   if (typeof params === "string") {
     imageUrl = params;
-    promptText = "Please analyze this image and provide a title and detailed description.";
+    promptText =
+      "Please analyze this image and provide a title and detailed description.";
   } else {
     imageUrl = params.imageUrl;
     promptText =
-      params.prompt || "Please analyze this image and provide a title and detailed description.";
+      params.prompt ||
+      "Please analyze this image and provide a title and detailed description.";
   }
 
   try {
@@ -36,7 +43,8 @@ export async function handleImageDescription(
 
     const imageData = await imageResponse.arrayBuffer();
     const base64Image = Buffer.from(imageData).toString("base64");
-    const contentType = imageResponse.headers.get("content-type") || "image/jpeg";
+    const contentType =
+      imageResponse.headers.get("content-type") || "image/jpeg";
 
     const response = await genAI.models.generateContent({
       model: modelName,
@@ -66,8 +74,14 @@ export async function handleImageDescription(
     const responseText = response.text || "";
 
     try {
-      const jsonResponse = JSON.parse(responseText) as { title?: string; description?: string };
-      if (typeof jsonResponse.title === "string" && typeof jsonResponse.description === "string") {
+      const jsonResponse = JSON.parse(responseText) as {
+        title?: string;
+        description?: string;
+      };
+      if (
+        typeof jsonResponse.title === "string" &&
+        typeof jsonResponse.description === "string"
+      ) {
         return {
           title: jsonResponse.title,
           description: jsonResponse.description,

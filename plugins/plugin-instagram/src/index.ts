@@ -12,9 +12,9 @@ const instagramPlugin: Plugin = {
   services: [InstagramService],
 };
 
-export { InstagramService };
 export { postCommentAction, sendDmAction } from "./actions";
 export * from "./constants";
 export { userStateProvider } from "./providers";
 export * from "./types";
+export { InstagramService };
 export default instagramPlugin;

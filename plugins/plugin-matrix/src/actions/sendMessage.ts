@@ -57,9 +57,12 @@ export const sendMessage: Action = {
   ): Promise<ActionResult | undefined> => {
     const matrixService = runtime.getService(MATRIX_SERVICE_NAME) as MatrixService | undefined;
 
-    if (!matrixService || !matrixService.isConnected()) {
+    if (!matrixService?.isConnected()) {
       if (callback) {
-        await callback({ text: "Matrix service is not available.", source: "matrix" });
+        await callback({
+          text: "Matrix service is not available.",
+          source: "matrix",
+        });
       }
       return { success: false, error: "Matrix service not available" };
     }
@@ -92,7 +95,7 @@ export const sendMessage: Action = {
       }
     }
 
-    if (!messageInfo || !messageInfo.text) {
+    if (!messageInfo?.text) {
       if (callback) {
         await callback({
           text: "I couldn't understand what message you want me to send. Please try again.",

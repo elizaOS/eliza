@@ -107,7 +107,11 @@ function rankMatches(
       if (intentTokens.has(token)) score += 1;
     }
     if (score > 0) {
-      ranked.push({ name: candidate.name, description: candidate.description, score });
+      ranked.push({
+        name: candidate.name,
+        description: candidate.description,
+        score,
+      });
     }
   }
   ranked.sort((a, b) => b.score - a.score);
@@ -365,7 +369,10 @@ async function dispatchCodingAgent({
 
   const agents = readTaskAgents(result);
   if (agents.length === 0) {
-    return { dispatched: false, reason: "CREATE_TASK did not return a tracked task status" };
+    return {
+      dispatched: false,
+      reason: "CREATE_TASK did not return a tracked task status",
+    };
   }
 
   return { dispatched: true, agents };
@@ -675,7 +682,11 @@ export async function runCreate({
     if (normalized === "cancel") {
       const text = "Canceled. No plugin changes made.";
       await callback?.({ text });
-      return { success: true, text, values: { mode: "create", subMode: "cancel" } };
+      return {
+        success: true,
+        text,
+        values: { mode: "create", subMode: "cancel" },
+      };
     }
 
     if (normalized === "new") {

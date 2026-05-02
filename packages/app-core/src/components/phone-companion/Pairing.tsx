@@ -7,8 +7,8 @@ import type React from "react";
 import { useCallback, useState } from "react";
 import {
   decodePairingPayload,
-  logger,
   ElizaIntent,
+  logger,
   type PairingPayload,
 } from "../../services/phone-companion";
 

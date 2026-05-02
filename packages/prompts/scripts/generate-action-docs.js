@@ -693,7 +693,6 @@ export const allEvaluatorDocs: readonly EvaluatorDoc[] = allEvaluatorsSpec.evalu
   }
 }
 
-
 function main() {
   const actionsSpec = loadSpecs(
     ACTIONS_SPECS_DIR,

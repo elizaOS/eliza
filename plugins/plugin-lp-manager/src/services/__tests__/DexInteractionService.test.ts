@@ -91,7 +91,11 @@ describe("DexInteractionService", () => {
     userId: testUserId,
     vaultPublicKey: testUserKeypair.publicKey.toBase58(),
     encryptedSecretKey: "dummyEncryptedKey",
-    autoRebalanceConfig: { enabled: false, minGainThresholdPercent: 1, maxSlippageBps: 50 },
+    autoRebalanceConfig: {
+      enabled: false,
+      minGainThresholdPercent: 1,
+      maxSlippageBps: 50,
+    },
     version: 1,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -196,7 +200,9 @@ describe("DexInteractionService", () => {
       decimals: 6,
       symbol: "ORCA-LP",
     };
-    const expectedResult: TransactionResult & { lpTokensReceived?: TokenBalance } = {
+    const expectedResult: TransactionResult & {
+      lpTokensReceived?: TokenBalance;
+    } = {
       success: true,
       transactionId: "txAddOrca",
       lpTokensReceived: expectedLpTokens,
@@ -226,7 +232,10 @@ describe("DexInteractionService", () => {
 
     it("should throw if DEX service not found for addLiquidity", async () => {
       await expect(
-        dexInteractionService.addLiquidity({ ...addParams, dexName: "unknown" })
+        dexInteractionService.addLiquidity({
+          ...addParams,
+          dexName: "unknown",
+        })
       ).rejects.toThrow(/No service registered for DEX 'unknown'/);
     });
   });
@@ -240,7 +249,9 @@ describe("DexInteractionService", () => {
       slippageBps: 30,
     };
     const expectedTokens: TokenBalance[] = [{ address: "SOL", balance: "100", decimals: 9 }];
-    const expectedResult: TransactionResult & { tokensReceived?: TokenBalance[] } = {
+    const expectedResult: TransactionResult & {
+      tokensReceived?: TokenBalance[];
+    } = {
       success: true,
       transactionId: "txRemoveRaydium",
       tokensReceived: expectedTokens,
@@ -267,7 +278,10 @@ describe("DexInteractionService", () => {
 
     it("should throw if DEX service not found for removeLiquidity", async () => {
       await expect(
-        dexInteractionService.removeLiquidity({ ...removeParams, dexName: "unknown" })
+        dexInteractionService.removeLiquidity({
+          ...removeParams,
+          dexName: "unknown",
+        })
       ).rejects.toThrow(/No service registered for DEX 'unknown'/);
     });
   });
@@ -277,7 +291,11 @@ describe("DexInteractionService", () => {
 
     it("should get LP position from the correct DEX service", async () => {
       const poolId = "orcaPoolPos";
-      const expectedPosition = { poolId, dex: "orca", valueUsd: 100 } as LpPositionDetails;
+      const expectedPosition = {
+        poolId,
+        dex: "orca",
+        valueUsd: 100,
+      } as LpPositionDetails;
       (mockOrcaService.getLpPositionDetails as Mock).mockResolvedValue(expectedPosition);
 
       const position = await dexInteractionService.getLpPosition(testUserId, poolId, "orca");

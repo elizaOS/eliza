@@ -53,7 +53,11 @@ export const allEvaluatorsSpec = {
 
 export const coreActionDocs: readonly ActionDoc[] = coreActionsSpec.actions;
 export const allActionDocs: readonly ActionDoc[] = allActionsSpec.actions;
-export const coreProviderDocs: readonly ProviderDoc[] = coreProvidersSpec.providers;
-export const allProviderDocs: readonly ProviderDoc[] = allProvidersSpec.providers;
-export const coreEvaluatorDocs: readonly EvaluatorDoc[] = coreEvaluatorsSpec.evaluators;
-export const allEvaluatorDocs: readonly EvaluatorDoc[] = allEvaluatorsSpec.evaluators;
+export const coreProviderDocs: readonly ProviderDoc[] =
+  coreProvidersSpec.providers;
+export const allProviderDocs: readonly ProviderDoc[] =
+  allProvidersSpec.providers;
+export const coreEvaluatorDocs: readonly EvaluatorDoc[] =
+  coreEvaluatorsSpec.evaluators;
+export const allEvaluatorDocs: readonly EvaluatorDoc[] =
+  allEvaluatorsSpec.evaluators;

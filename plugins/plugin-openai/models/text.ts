@@ -168,7 +168,9 @@ async function generateTextByModelType(
                 ? { promptCacheKey: promptCacheOptions.promptCacheKey }
                 : {}),
               ...(promptCacheOptions.promptCacheRetention
-                ? { promptCacheRetention: promptCacheOptions.promptCacheRetention }
+                ? {
+                    promptCacheRetention: promptCacheOptions.promptCacheRetention,
+                  }
                 : {}),
             },
           },

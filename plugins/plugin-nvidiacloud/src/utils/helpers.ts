@@ -1,5 +1,5 @@
-import { logger } from '@elizaos/core';
-import { JSONParseError } from 'ai';
+import { logger } from "@elizaos/core";
+import { JSONParseError } from "ai";
 
 export function getJsonRepairFunction(): (params: {
   text: string;
@@ -8,20 +8,23 @@ export function getJsonRepairFunction(): (params: {
   return async ({ text, error }: { text: string; error: unknown }) => {
     try {
       if (error instanceof JSONParseError) {
-        const cleanedText = text.replace(/```json\n|\n```|```/g, '');
+        const cleanedText = text.replace(/```json\n|\n```|```/g, "");
         JSON.parse(cleanedText);
         return cleanedText;
       }
       return null;
     } catch (jsonError: unknown) {
-      const message = jsonError instanceof Error ? jsonError.message : String(jsonError);
+      const message =
+        jsonError instanceof Error ? jsonError.message : String(jsonError);
       logger.warn(`Failed to repair JSON text: ${message}`);
       return null;
     }
   };
 }
 
-export async function handleObjectGenerationError(error: unknown): Promise<Record<string, unknown>> {
+export async function handleObjectGenerationError(
+  error: unknown,
+): Promise<Record<string, unknown>> {
   if (error instanceof JSONParseError) {
     logger.error(`[generateObject] Failed to parse JSON: ${error.message}`);
     const repairFunction = getJsonRepairFunction();
@@ -33,17 +36,21 @@ export async function handleObjectGenerationError(error: unknown): Promise<Recor
     if (repairedJsonString) {
       try {
         const repairedObject = JSON.parse(repairedJsonString);
-        logger.log('[generateObject] Successfully repaired JSON.');
+        logger.log("[generateObject] Successfully repaired JSON.");
         return repairedObject;
       } catch (repairParseError: unknown) {
         const message =
-          repairParseError instanceof Error ? repairParseError.message : String(repairParseError);
-        logger.error(`[generateObject] Failed to parse repaired JSON: ${message}`);
+          repairParseError instanceof Error
+            ? repairParseError.message
+            : String(repairParseError);
+        logger.error(
+          `[generateObject] Failed to parse repaired JSON: ${message}`,
+        );
         if (repairParseError instanceof Error) throw repairParseError;
         throw Object.assign(new Error(message), { cause: repairParseError });
       }
     } else {
-      logger.error('[generateObject] JSON repair failed.');
+      logger.error("[generateObject] JSON repair failed.");
       throw error;
     }
   } else {

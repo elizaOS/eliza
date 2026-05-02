@@ -31,25 +31,33 @@ describe("SayAloudAction", () => {
     describe("speech triggers", () => {
       it("validates 'say aloud' trigger", async () => {
         runtime = await createTestRuntime();
-        const memory = createTestMemory({ content: { text: "say aloud hello world" } });
+        const memory = createTestMemory({
+          content: { text: "say aloud hello world" },
+        });
         expect(await sayAloudAction.validate?.(runtime, memory)).toBe(true);
       });
 
       it("validates 'speak' trigger", async () => {
         runtime = await createTestRuntime();
-        const memory = createTestMemory({ content: { text: "speak this text" } });
+        const memory = createTestMemory({
+          content: { text: "speak this text" },
+        });
         expect(await sayAloudAction.validate?.(runtime, memory)).toBe(true);
       });
 
       it("validates 'read aloud' trigger", async () => {
         runtime = await createTestRuntime();
-        const memory = createTestMemory({ content: { text: "read aloud this message" } });
+        const memory = createTestMemory({
+          content: { text: "read aloud this message" },
+        });
         expect(await sayAloudAction.validate?.(runtime, memory)).toBe(true);
       });
 
       it("validates 'voice' trigger", async () => {
         runtime = await createTestRuntime();
-        const memory = createTestMemory({ content: { text: "voice command test" } });
+        const memory = createTestMemory({
+          content: { text: "voice command test" },
+        });
         expect(await sayAloudAction.validate?.(runtime, memory)).toBe(true);
       });
 
@@ -67,25 +75,33 @@ describe("SayAloudAction", () => {
     describe("vocalization patterns", () => {
       it("validates 'can you say' pattern", async () => {
         runtime = await createTestRuntime();
-        const memory = createTestMemory({ content: { text: "can you say hello" } });
+        const memory = createTestMemory({
+          content: { text: "can you say hello" },
+        });
         expect(await sayAloudAction.validate?.(runtime, memory)).toBe(true);
       });
 
       it("validates 'please say' pattern", async () => {
         runtime = await createTestRuntime();
-        const memory = createTestMemory({ content: { text: "please say goodbye" } });
+        const memory = createTestMemory({
+          content: { text: "please say goodbye" },
+        });
         expect(await sayAloudAction.validate?.(runtime, memory)).toBe(true);
       });
 
       it("validates 'i want to hear' pattern", async () => {
         runtime = await createTestRuntime();
-        const memory = createTestMemory({ content: { text: "i want to hear a story" } });
+        const memory = createTestMemory({
+          content: { text: "i want to hear a story" },
+        });
         expect(await sayAloudAction.validate?.(runtime, memory)).toBe(true);
       });
 
       it("validates 'let me hear' pattern", async () => {
         runtime = await createTestRuntime();
-        const memory = createTestMemory({ content: { text: "let me hear that" } });
+        const memory = createTestMemory({
+          content: { text: "let me hear that" },
+        });
         expect(await sayAloudAction.validate?.(runtime, memory)).toBe(true);
       });
     });
@@ -93,19 +109,25 @@ describe("SayAloudAction", () => {
     describe("quoted patterns", () => {
       it("validates say with double quotes", async () => {
         runtime = await createTestRuntime();
-        const memory = createTestMemory({ content: { text: 'say "hello world"' } });
+        const memory = createTestMemory({
+          content: { text: 'say "hello world"' },
+        });
         expect(await sayAloudAction.validate?.(runtime, memory)).toBe(true);
       });
 
       it("validates say with single quotes", async () => {
         runtime = await createTestRuntime();
-        const memory = createTestMemory({ content: { text: "say 'hello world'" } });
+        const memory = createTestMemory({
+          content: { text: "say 'hello world'" },
+        });
         expect(await sayAloudAction.validate?.(runtime, memory)).toBe(true);
       });
 
       it("validates speak with quotes", async () => {
         runtime = await createTestRuntime();
-        const memory = createTestMemory({ content: { text: 'speak "test message"' } });
+        const memory = createTestMemory({
+          content: { text: 'speak "test message"' },
+        });
         expect(await sayAloudAction.validate?.(runtime, memory)).toBe(true);
       });
     });
@@ -113,13 +135,17 @@ describe("SayAloudAction", () => {
     describe("rejection", () => {
       it("rejects normal conversation", async () => {
         runtime = await createTestRuntime();
-        const memory = createTestMemory({ content: { text: "hello how are you" } });
+        const memory = createTestMemory({
+          content: { text: "hello how are you" },
+        });
         expect(await sayAloudAction.validate?.(runtime, memory)).toBe(false);
       });
 
       it("rejects questions without triggers", async () => {
         runtime = await createTestRuntime();
-        const memory = createTestMemory({ content: { text: "what is the weather today" } });
+        const memory = createTestMemory({
+          content: { text: "what is the weather today" },
+        });
         expect(await sayAloudAction.validate?.(runtime, memory)).toBe(false);
       });
 
@@ -133,13 +159,17 @@ describe("SayAloudAction", () => {
     describe("case insensitivity", () => {
       it("validates uppercase triggers", async () => {
         runtime = await createTestRuntime();
-        const memory = createTestMemory({ content: { text: "SAY ALOUD hello" } });
+        const memory = createTestMemory({
+          content: { text: "SAY ALOUD hello" },
+        });
         expect(await sayAloudAction.validate?.(runtime, memory)).toBe(true);
       });
 
       it("validates mixed case triggers", async () => {
         runtime = await createTestRuntime();
-        const memory = createTestMemory({ content: { text: "Say Aloud hello" } });
+        const memory = createTestMemory({
+          content: { text: "Say Aloud hello" },
+        });
         expect(await sayAloudAction.validate?.(runtime, memory)).toBe(true);
       });
     });

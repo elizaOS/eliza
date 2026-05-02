@@ -5,31 +5,31 @@
  */
 
 export const FFIType = {
-  ptr: 0,
-  bool: 1,
-  f64: 2,
-  i32: 3,
-  cstring: 4,
+	ptr: 0,
+	bool: 1,
+	f64: 2,
+	i32: 3,
+	cstring: 4,
 } as const;
 
 export type Pointer = number;
 
 export function dlopen(
-  _path: string,
-  _symbols: Record<string, unknown>,
+	_path: string,
+	_symbols: Record<string, unknown>,
 ): { symbols: Record<string, (...args: unknown[]) => unknown>; close(): void } {
-  return {
-    symbols: new Proxy(
-      {},
-      {
-        get:
-          (_target, _name) =>
-          (..._args: unknown[]) => {
-            // All FFI functions return false/null in test environment
-            return false;
-          },
-      },
-    ),
-    close() {},
-  };
+	return {
+		symbols: new Proxy(
+			{},
+			{
+				get:
+					(_target, _name) =>
+					(..._args: unknown[]) => {
+						// All FFI functions return false/null in test environment
+						return false;
+					},
+			},
+		),
+		close() {},
+	};
 }

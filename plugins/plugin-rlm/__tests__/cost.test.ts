@@ -2,14 +2,14 @@
  * Tests for the RLM cost estimation module.
  */
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   DEFAULT_PRICING,
-  MODEL_PRICING,
   detectStrategy,
   estimateCost,
   estimateTokenCount,
+  MODEL_PRICING,
   setModelPricing,
 } from "../cost";
 

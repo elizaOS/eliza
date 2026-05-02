@@ -55,9 +55,12 @@ export const joinRoom: Action = {
   ): Promise<ActionResult | undefined> => {
     const matrixService = runtime.getService(MATRIX_SERVICE_NAME) as MatrixService | undefined;
 
-    if (!matrixService || !matrixService.isConnected()) {
+    if (!matrixService?.isConnected()) {
       if (callback) {
-        await callback({ text: "Matrix service is not available.", source: "matrix" });
+        await callback({
+          text: "Matrix service is not available.",
+          source: "matrix",
+        });
       }
       return { success: false, error: "Matrix service not available" };
     }

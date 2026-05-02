@@ -6,7 +6,7 @@ export default defineConfig({
   dts: true,
   clean: true,
   sourcemap: true,
-  external: ['@elizaos/core'],
+  external: ['@elizaos/core', 'socket.io-client', 'uuid'],
   treeshake: true,
   splitting: false,
   outExtension({ format }) {

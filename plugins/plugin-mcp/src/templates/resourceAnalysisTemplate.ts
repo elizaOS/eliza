@@ -4,4 +4,5 @@
  * DO NOT EDIT - Generated from ../generated/prompts/typescript/prompts.ts
  */
 import { resourceAnalysisTemplate } from "../generated/prompts/typescript/prompts.js";
+
 export { resourceAnalysisTemplate };

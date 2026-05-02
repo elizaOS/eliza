@@ -279,7 +279,7 @@ export class DexInteractionService extends Service implements IDexInteractionSer
       throw new Error(`No service registered for DEX '${dexName}'`);
     }
     const profile = await this.userLpProfileService.getProfile(userId);
-    if (!profile || !profile.vaultPublicKey) {
+    if (!profile?.vaultPublicKey) {
       throw new Error(`User profile or vault public key not found for user ${userId}.`);
     }
     return service.getLpPositionDetails(profile.vaultPublicKey, poolIdOrPositionIdentifier);

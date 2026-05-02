@@ -61,8 +61,7 @@ vi.mock("../utils", () => ({
     reason !== "api_key_present_not_authenticated" &&
     reason !== "api_key_present_runtime_not_started",
   openExternalUrl: openExternalUrlMock,
-  yieldElizaHttpAfterNativeMessageBox:
-    yieldElizaHttpAfterNativeMessageBoxMock,
+  yieldElizaHttpAfterNativeMessageBox: yieldElizaHttpAfterNativeMessageBoxMock,
 }));
 
 import { useCloudState } from "./useCloudState";

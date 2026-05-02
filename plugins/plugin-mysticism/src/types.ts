@@ -164,7 +164,10 @@ export interface ZodiacSign {
   element: "fire" | "earth" | "air" | "water";
   modality: "cardinal" | "fixed" | "mutable";
   rulingPlanet: string;
-  dateRange: { start: { month: number; day: number }; end: { month: number; day: number } };
+  dateRange: {
+    start: { month: number; day: number };
+    end: { month: number; day: number };
+  };
   traits: string[];
   shadow: string[];
   keywords: string[];
