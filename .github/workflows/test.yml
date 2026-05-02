@@ -64,6 +64,7 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
@@ -93,6 +94,7 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
@@ -123,6 +125,7 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
@@ -152,6 +155,7 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
 
       - name: Run Electrobun contract tests
         working-directory: packages/app-core/platforms/electrobun
@@ -196,6 +200,7 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
