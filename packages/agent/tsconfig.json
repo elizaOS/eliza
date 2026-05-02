@@ -34,6 +34,12 @@
       "@elizaos/capacitor-wifi": [
         "../native-plugins/wifi/src/index.ts"
       ],
+      "@elizaos/capacitor-contacts": [
+        "../native-plugins/contacts/src/index.ts"
+      ],
+      "@elizaos/capacitor-phone": [
+        "../native-plugins/phone/src/index.ts"
+      ],
       "@elizaos/app-lifeops": ["../../apps/app-lifeops/src/index.ts"],
       "@elizaos/app-lifeops/*": ["../../apps/app-lifeops/src/*"],
       "@elizaos/app-elizamaker": ["../../apps/app-elizamaker/src/index.ts"],
