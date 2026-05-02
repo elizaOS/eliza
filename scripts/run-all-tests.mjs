@@ -352,10 +352,9 @@ function runScript(cwd, scriptName, label) {
         ...process.env,
         NODE_NO_WARNINGS: process.env.NODE_NO_WARNINGS || "1",
         ELIZA_LIVE_TEST: process.env.ELIZA_LIVE_TEST || "1",
-        ELIZA_LIVE_TEST: process.env.ELIZA_LIVE_TEST || "1",
         PWD: cwd,
       },
-      stdio: ["inherit", "pipe", "pipe"],
+      stdio: ["ignore", "pipe", "pipe"],
     });
     let capturedOutput = "";
 
