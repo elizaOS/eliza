@@ -18,7 +18,7 @@
   },
   "scripts": {
     "clean": "rm -rf dist",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc --noEmit -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --config ./vitest.config.ts",
     "lint": "bunx @biomejs/biome check src",
