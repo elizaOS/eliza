@@ -5082,6 +5082,9 @@ export class LifeOpsRepository {
           AND attempted_at IS NOT NULL
           AND outcome IN ('delivered', 'delivered_read', 'delivered_unread')
           AND delivery_metadata_json LIKE ${sqlQuote(`%"${REMINDER_REVIEW_AT_METADATA_KEY}"%`)}
+          AND delivery_metadata_json NOT LIKE ${sqlQuote(`%"${REMINDER_REVIEW_STATUS_METADATA_KEY}":"resolved"%`)}
+          AND delivery_metadata_json NOT LIKE ${sqlQuote(`%"${REMINDER_REVIEW_STATUS_METADATA_KEY}":"escalated"%`)}
+          AND delivery_metadata_json NOT LIKE ${sqlQuote(`%"${REMINDER_REVIEW_STATUS_METADATA_KEY}":"clarification_requested"%`)}
         ORDER BY attempted_at ASC
         LIMIT ${sqlInteger(normalizedLimit * 4)}`,
     );
@@ -5095,7 +5098,11 @@ export class LifeOpsRepository {
         }
         const status =
           attempt.deliveryMetadata[REMINDER_REVIEW_STATUS_METADATA_KEY];
-        return status !== "resolved" && status !== "escalated";
+        return (
+          status !== "resolved" &&
+          status !== "escalated" &&
+          status !== "clarification_requested"
+        );
       })
       .sort((left, right) => {
         const leftReviewAt = String(

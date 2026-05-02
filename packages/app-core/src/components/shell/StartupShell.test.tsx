@@ -54,18 +54,27 @@ vi.mock("./StartupFailureView", () => ({
 
 import { StartupShell } from "./StartupShell";
 
-function mockAppForPhase(phase: string) {
+function mockAppForPhase(
+  phase: string,
+  overrides: Partial<ReturnType<typeof useAppMock>> = {},
+) {
+  const coordinatorState =
+    phase === "onboarding-required"
+      ? { phase, serverReachable: true }
+      : { phase };
   useAppMock.mockReturnValue({
     startupCoordinator: {
       phase,
-      state: { phase },
+      state: coordinatorState,
       dispatch: vi.fn(),
     },
     startupError: null,
+    onboardingCloudProvisionedContainer: false,
     retryStartup: vi.fn(),
     setActionNotice: vi.fn(),
     setState: vi.fn(),
     t: (key: string) => key,
+    ...overrides,
   });
 }
 
@@ -82,6 +91,19 @@ describe("StartupShell auth states", () => {
 
     expect(screen.getByTestId("pairing-view")).toBeDefined();
     expect(screen.queryByText(/^Sign in$/i)).toBeNull();
+    expect(screen.queryByTestId("runtime-gate")).toBeNull();
+  });
+
+  it("renders bootstrap for cloud-provisioned auth instead of pairing", () => {
+    window.sessionStorage.clear();
+    mockAppForPhase("onboarding-required", {
+      onboardingCloudProvisionedContainer: true,
+    });
+
+    render(<StartupShell />);
+
+    expect(screen.getByTestId("bootstrap-step")).toBeDefined();
+    expect(screen.queryByTestId("pairing-view")).toBeNull();
     expect(screen.queryByTestId("runtime-gate")).toBeNull();
   });
 });

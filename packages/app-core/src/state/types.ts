@@ -631,6 +631,7 @@ export interface AppState {
   onboardingFeatureComputerUse: boolean;
   /** Which feature is currently mid-OAuth flow, or null. */
   onboardingFeatureOAuthPending: string | null;
+  onboardingCloudProvisionedContainer: boolean;
 
   // Command palette
   commandPaletteOpen: boolean;

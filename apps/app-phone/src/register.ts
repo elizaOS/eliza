@@ -1,16 +1,16 @@
 /**
- * Side-effect entry point — registers the Phone overlay app on Android only.
+ * Side-effect entry point — registers the Phone overlay app on MiladyOS only.
  *
- * Web and iOS register a no-op so importing `@elizaos/app-phone/register`
- * never throws on those platforms.
+ * Stock Android, web, iOS, and desktop register a no-op so importing
+ * `@elizaos/app-phone/register` never throws on those platforms.
  *
  * Usage:
  *   import "@elizaos/app-phone/register";
  */
 
-import { Capacitor } from "@capacitor/core";
+import { isMiladyOS } from "@elizaos/app-core";
 import { registerPhoneApp } from "./components/phone-app";
 
-if (Capacitor.getPlatform() === "android") {
+if (isMiladyOS()) {
   registerPhoneApp();
 }

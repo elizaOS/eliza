@@ -21,13 +21,13 @@ describe("ConnectorModeSelector", () => {
     cleanup();
   });
 
-  it("prefers OAuth-capable modes when Eliza Cloud is connected and falls back sanely", () => {
+  it("prefers explicit safe defaults when Eliza Cloud is connected and falls back sanely", () => {
     expect(
       getDefaultConnectorModeId(
         "discord",
         getConnectorModes("discord", { elizaCloudConnected: true }),
       ),
-    ).toBe("managed");
+    ).toBe("bot");
     expect(
       getDefaultConnectorModeId(
         "slack",

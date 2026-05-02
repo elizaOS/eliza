@@ -330,10 +330,7 @@ export async function authMe(): Promise<AuthMeResult> {
     };
   }
 
-  return {
-    ok: false,
-    status: res.status === 503 ? 503 : 401,
-  };
+  return { ok: false, status: 503 };
 }
 
 /**

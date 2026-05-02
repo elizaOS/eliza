@@ -204,7 +204,7 @@ export function getDefaultConnectorModeId(
   modes: ConnectorMode[],
 ): string {
   const preferredDefaults: Record<string, string[]> = {
-    discord: ["managed", "bot"],
+    discord: ["bot"],
     slack: ["oauth", "socket"],
     telegram: ["bot"],
     twitter: ["oauth", "local-oauth"],
