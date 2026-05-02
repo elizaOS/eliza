@@ -64,7 +64,7 @@ describe("DexScreener Actions - Edge Cases", () => {
 
       expect(callback).toHaveBeenCalledWith({
         text: 'Please provide a search query. Example: "Search for PEPE"',
-        action: "dexscreener_search",
+        action: "DEXSCREENER_SEARCH",
       });
     });
 
@@ -149,7 +149,7 @@ describe("DexScreener Actions - Edge Cases", () => {
 
       expect(callback).toHaveBeenCalledWith({
         text: 'Please provide a token address. Example: "Get token info for 0x..."',
-        action: "dexscreener_token_info",
+        action: "DEXSCREENER_TOKEN_INFO",
       });
     });
 
@@ -217,7 +217,7 @@ describe("DexScreener Actions - Edge Cases", () => {
 
       expect(callback).toHaveBeenCalledWith({
         text: expect.stringContaining("Liq: N/A"),
-        action: "dexscreener_token_info",
+        action: "DEXSCREENER_TOKEN_INFO",
         data: mockPairs,
       });
     });
@@ -308,7 +308,7 @@ describe("DexScreener Actions - Edge Cases", () => {
 
       expect(callback).toHaveBeenCalledWith({
         text: expect.stringContaining("Created: Unknown"),
-        action: "dexscreener_new_pairs",
+        action: "DEXSCREENER_NEW_PAIRS",
         data: mockPairs,
       });
     });
@@ -398,7 +398,8 @@ describe("DexScreener Actions - Edge Cases", () => {
           quoteToken: { symbol: "USDT" },
           dexId: "pancakeswap",
           priceUsd: "1",
-          // Missing volume, liquidity, priceChange, txns
+          volume: { h24: 0 },
+          // Missing liquidity, priceChange, txns
         },
       ];
 
@@ -421,7 +422,7 @@ describe("DexScreener Actions - Edge Cases", () => {
 
       expect(callback).toHaveBeenCalledWith({
         text: expect.stringContaining("TEST/USDT"),
-        action: "dexscreener_chain_pairs",
+        action: "DEXSCREENER_CHAIN_PAIRS",
         data: mockPairs,
       });
     });

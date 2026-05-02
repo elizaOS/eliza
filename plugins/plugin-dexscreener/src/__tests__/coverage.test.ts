@@ -102,12 +102,12 @@ describe("DexScreener Actions - Additional Coverage", () => {
       expect(mockService.getTopBoostedTokens).toHaveBeenCalled();
       expect(callback).toHaveBeenCalledWith({
         text: expect.stringContaining("Top Boosted Tokens"),
-        action: "dexscreener_boosted_tokens",
+        action: "DEXSCREENER_BOOSTED_TOKENS",
         data: mockTokens,
       });
       expect(callback).toHaveBeenCalledWith({
         text: expect.stringContaining("0x123"),
-        action: "dexscreener_boosted_tokens",
+        action: "DEXSCREENER_BOOSTED_TOKENS",
         data: mockTokens,
       });
     });
@@ -143,7 +143,7 @@ describe("DexScreener Actions - Additional Coverage", () => {
       expect(mockService.getLatestBoostedTokens).toHaveBeenCalled();
       expect(callback).toHaveBeenCalledWith({
         text: expect.stringContaining("Latest Boosted Tokens"),
-        action: "dexscreener_boosted_tokens",
+        action: "DEXSCREENER_BOOSTED_TOKENS",
         data: mockTokens,
       });
     });
@@ -168,7 +168,7 @@ describe("DexScreener Actions - Additional Coverage", () => {
 
       expect(callback).toHaveBeenCalledWith({
         text: "No boosted tokens found",
-        action: "dexscreener_boosted_tokens",
+        action: "DEXSCREENER_BOOSTED_TOKENS",
       });
     });
 
@@ -192,7 +192,7 @@ describe("DexScreener Actions - Additional Coverage", () => {
 
       expect(callback).toHaveBeenCalledWith({
         text: "Failed to get boosted tokens: API Error",
-        action: "dexscreener_boosted_tokens",
+        action: "DEXSCREENER_BOOSTED_TOKENS",
       });
     });
 
@@ -264,12 +264,12 @@ describe("DexScreener Actions - Additional Coverage", () => {
       expect(mockService.getLatestTokenProfiles).toHaveBeenCalled();
       expect(callback).toHaveBeenCalledWith({
         text: expect.stringContaining("Latest Token Profiles"),
-        action: "dexscreener_token_profiles",
+        action: "DEXSCREENER_TOKEN_PROFILES",
         data: mockProfiles,
       });
       expect(callback).toHaveBeenCalledWith({
         text: expect.stringContaining("Website"),
-        action: "dexscreener_token_profiles",
+        action: "DEXSCREENER_TOKEN_PROFILES",
         data: mockProfiles,
       });
     });
@@ -303,7 +303,7 @@ describe("DexScreener Actions - Additional Coverage", () => {
 
       expect(callback).toHaveBeenCalledWith({
         text: expect.stringContaining("No description"),
-        action: "dexscreener_token_profiles",
+        action: "DEXSCREENER_TOKEN_PROFILES",
         data: mockProfiles,
       });
     });
@@ -328,7 +328,7 @@ describe("DexScreener Actions - Additional Coverage", () => {
 
       expect(callback).toHaveBeenCalledWith({
         text: "No token profiles found",
-        action: "dexscreener_token_profiles",
+        action: "DEXSCREENER_TOKEN_PROFILES",
       });
     });
 
@@ -352,7 +352,7 @@ describe("DexScreener Actions - Additional Coverage", () => {
 
       expect(callback).toHaveBeenCalledWith({
         text: "Failed to get token profiles: Network Error",
-        action: "dexscreener_token_profiles",
+        action: "DEXSCREENER_TOKEN_PROFILES",
       });
     });
 
@@ -401,7 +401,7 @@ describe("DexScreener Actions - Additional Coverage", () => {
 
       expect(callback).toHaveBeenCalledWith({
         text: expect.stringContaining("No links"),
-        action: "dexscreener_token_profiles",
+        action: "DEXSCREENER_TOKEN_PROFILES",
         data: mockProfiles,
       });
     });

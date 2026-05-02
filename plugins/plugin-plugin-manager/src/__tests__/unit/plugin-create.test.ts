@@ -99,7 +99,7 @@ describe("PLUGIN create dispatch", () => {
         service: "app-verification",
         method: "verifyPlugin",
         params: {
-          workdir: path.join(repoRoot, "eliza/plugins/plugin-push-notifications"),
+          workdir: path.join(repoRoot, "eliza/plugins/plugin-push-notifications/typescript"),
           pluginName: "plugin-push-notifications",
           profile: "full",
         },

@@ -128,7 +128,7 @@ describe("DexScreener Actions - Full Coverage", () => {
       expect(mockService.search).toHaveBeenCalledWith({ query: "PEPE" });
       expect(callback).toHaveBeenCalledWith({
         text: expect.stringContaining('Search Results for "PEPE"'),
-        action: "dexscreener_search",
+        action: "DEXSCREENER_SEARCH",
         data: mockPairs,
       });
     });
@@ -215,12 +215,12 @@ describe("DexScreener Actions - Full Coverage", () => {
 
       expect(callback).toHaveBeenCalledWith({
         text: expect.stringContaining("Test Token (TEST)"),
-        action: "dexscreener_token_info",
+        action: "DEXSCREENER_TOKEN_INFO",
         data: mockPairs,
       });
       expect(callback).toHaveBeenCalledWith({
-        text: expect.stringContaining("Market Cap: N/A"),
-        action: "dexscreener_token_info",
+        text: expect.stringContaining("Market Cap:** N/A"),
+        action: "DEXSCREENER_TOKEN_INFO",
         data: mockPairs,
       });
     });
@@ -247,7 +247,7 @@ describe("DexScreener Actions - Full Coverage", () => {
 
       expect(callback).toHaveBeenCalledWith({
         text: "Failed to get token info: Network error",
-        action: "dexscreener_token_info",
+        action: "DEXSCREENER_TOKEN_INFO",
       });
     });
 
@@ -273,7 +273,7 @@ describe("DexScreener Actions - Full Coverage", () => {
 
       expect(callback).toHaveBeenCalledWith({
         text: "No pairs found for token 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-        action: "dexscreener_token_info",
+        action: "DEXSCREENER_TOKEN_INFO",
       });
     });
   });
@@ -343,7 +343,7 @@ describe("DexScreener Actions - Full Coverage", () => {
       });
       expect(callback).toHaveBeenCalledWith({
         text: expect.stringContaining("Trending Tokens (1h)"),
-        action: "dexscreener_trending",
+        action: "DEXSCREENER_TRENDING",
         data: mockPairs,
       });
     });
@@ -368,7 +368,7 @@ describe("DexScreener Actions - Full Coverage", () => {
 
       expect(callback).toHaveBeenCalledWith({
         text: "Failed to get trending tokens: Service unavailable",
-        action: "dexscreener_trending",
+        action: "DEXSCREENER_TRENDING",
       });
     });
   });
@@ -433,7 +433,7 @@ describe("DexScreener Actions - Full Coverage", () => {
       });
       expect(callback).toHaveBeenCalledWith({
         text: expect.stringContaining("🆕"),
-        action: "dexscreener_new_pairs",
+        action: "DEXSCREENER_NEW_PAIRS",
         data: mockPairs,
       });
     });
@@ -458,7 +458,7 @@ describe("DexScreener Actions - Full Coverage", () => {
 
       expect(callback).toHaveBeenCalledWith({
         text: "Failed to get new pairs: Rate limited",
-        action: "dexscreener_new_pairs",
+        action: "DEXSCREENER_NEW_PAIRS",
       });
     });
   });
@@ -559,7 +559,7 @@ describe("DexScreener Actions - Full Coverage", () => {
 
       expect(callback).toHaveBeenCalledWith({
         text: "Failed to get ethereum pairs: Invalid chain",
-        action: "dexscreener_chain_pairs",
+        action: "DEXSCREENER_CHAIN_PAIRS",
       });
     });
 
@@ -597,7 +597,7 @@ describe("DexScreener Actions - Full Coverage", () => {
 
       expect(callback).toHaveBeenCalledWith({
         text: expect.stringContaining("Top Ethereum Pairs by liquidity"),
-        action: "dexscreener_chain_pairs",
+        action: "DEXSCREENER_CHAIN_PAIRS",
         data: mockPairs,
       });
     });
