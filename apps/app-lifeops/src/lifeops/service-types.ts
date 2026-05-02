@@ -45,6 +45,21 @@ export type ReminderActivityProfileSnapshot = {
   nextMealLabel: string | null;
   nextMealWindowStartAt: string | null;
   nextMealWindowEndAt: string | null;
+  hasCalendarData?: boolean;
+  avgWeekdayMeetings?: number | null;
+  hasOpenActivityCycle?: boolean;
+  currentActivityCycleStartedAt?: number | null;
+  screenContextFocus?:
+    | "work"
+    | "leisure"
+    | "transition"
+    | "idle"
+    | "unknown"
+    | null;
+  screenContextBusy?: boolean;
+  screenContextAvailable?: boolean;
+  screenContextStale?: boolean;
+  screenContextConfidence?: number | null;
 };
 
 export type RuntimeOwnerContactResolution = {

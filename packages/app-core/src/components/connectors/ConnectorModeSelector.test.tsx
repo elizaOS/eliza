@@ -21,13 +21,25 @@ describe("ConnectorModeSelector", () => {
     cleanup();
   });
 
-  it("keeps developer credentials as the default Discord and Telegram mode", () => {
+  it("prefers OAuth-capable modes when Eliza Cloud is connected", () => {
     expect(
       getDefaultConnectorModeId(
         "discord",
         getConnectorModes("discord", { elizaCloudConnected: true }),
       ),
-    ).toBe("bot");
+    ).toBe("managed");
+    expect(
+      getDefaultConnectorModeId(
+        "slack",
+        getConnectorModes("slack", { elizaCloudConnected: true }),
+      ),
+    ).toBe("oauth");
+    expect(
+      getDefaultConnectorModeId(
+        "twitter",
+        getConnectorModes("twitter", { elizaCloudConnected: true }),
+      ),
+    ).toBe("oauth");
     expect(
       getDefaultConnectorModeId(
         "telegram",
@@ -46,10 +58,36 @@ describe("ConnectorModeSelector", () => {
       getConnectorModes("discord", { elizaCloudConnected: true }).map(
         (mode) => mode.id,
       ),
-    ).toEqual(["local", "bot", "managed"]);
+    ).toEqual(["managed", "local", "bot"]);
+  });
+
+  it("exposes Slack and X/Twitter OAuth when Eliza Cloud is connected", () => {
+    expect(
+      getConnectorModes("slack", { elizaCloudConnected: false }).map(
+        (mode) => mode.id,
+      ),
+    ).toEqual(["socket"]);
+    expect(
+      getConnectorModes("slack", { elizaCloudConnected: true }).map(
+        (mode) => mode.id,
+      ),
+    ).toEqual(["oauth", "socket"]);
+    expect(
+      getConnectorModes("twitter", { elizaCloudConnected: false }).map(
+        (mode) => mode.id,
+      ),
+    ).toEqual(["local-oauth", "developer"]);
+    expect(
+      getConnectorModes("twitter", { elizaCloudConnected: true }).map(
+        (mode) => mode.id,
+      ),
+    ).toEqual(["oauth", "local-oauth", "developer"]);
   });
 
   it("routes account-style setup modes to their dedicated setup panels", () => {
+    expect(modeToSetupPluginId("slack", "oauth")).toBe("slack");
+    expect(modeToSetupPluginId("twitter", "local-oauth")).toBe("twitter");
+    expect(modeToSetupPluginId("telegram", "cloud-bot")).toBe("telegram");
     expect(modeToSetupPluginId("telegram", "bot")).toBe("telegram");
     expect(modeToSetupPluginId("telegram", "account")).toBe("telegramaccount");
     expect(modeToSetupPluginId("discord", "local")).toBe("discordlocal");
@@ -74,6 +112,8 @@ describe("ConnectorModeSelector", () => {
       screen
         .getByTestId("connector-mode-discord-managed")
         .getAttribute("title"),
-    ).toBe("Use a shared gateway bot via Eliza Cloud OAuth");
+    ).toBe(
+      "Invite the shared Eliza Cloud Discord gateway, nickname it to your agent, and route messages down to this app.",
+    );
   });
 });

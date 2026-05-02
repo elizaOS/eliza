@@ -240,6 +240,11 @@ export const lifeReminderAttempts = pgTable(
       t.ownerType,
       t.ownerId,
     ),
+    index("idx_life_reminder_attempts_review_scan").on(
+      t.agentId,
+      t.outcome,
+      t.attemptedAt,
+    ),
   ],
 );
 

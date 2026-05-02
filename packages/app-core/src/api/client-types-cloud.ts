@@ -341,6 +341,13 @@ export interface CloudOAuthInitiateResponse {
   };
 }
 
+export interface CloudTwitterOAuthInitiateResponse
+  extends CloudOAuthInitiateResponse {
+  oauthToken?: string;
+  flow?: "oauth1a" | "oauth2";
+  connectionRole?: CloudOAuthConnectionRole;
+}
+
 export interface CloudCompatJob {
   jobId: string;
   type: string;

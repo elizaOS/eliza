@@ -769,9 +769,12 @@ async function handleCompatRoute(
   const method = (req.method ?? "GET").toUpperCase();
   const url = new URL(req.url ?? "/", "http://localhost");
 
-  // Eliza Cloud thin-client proxy (compat agents, jobs, …) — was missing from the
-  // compat wrapper, so the dashboard saw 404 on `/api/cloud/compat/agents`.
-  if (url.pathname.startsWith("/api/cloud/compat/")) {
+  // Eliza Cloud thin-client proxy (compat agents, jobs, OAuth, …). Keep this
+  // before the local /api/cloud handler so /api/cloud/v1/* forwards to Cloud.
+  if (
+    url.pathname.startsWith("/api/cloud/compat/") ||
+    url.pathname.startsWith("/api/cloud/v1/")
+  ) {
     if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }

@@ -14,8 +14,10 @@ import {
 } from "../src/lifeops/service-helpers-misc.js";
 import {
   classifyReminderOwnerResponseText,
+  parseReminderSnoozeRequestFromText,
   rankReminderEscalationChannels,
   resolveReminderDeliveryUrgency,
+  resolveReminderEscalationRoutingPolicy,
   shouldDeferReminderUntilComputerActive,
 } from "../src/lifeops/service-helpers-reminder.js";
 import type { ReminderActivityProfileSnapshot } from "../src/lifeops/service-types.js";
@@ -150,7 +152,7 @@ describe("shouldDeferReminderUntilComputerActive", () => {
 });
 
 describe("rankReminderEscalationChannels", () => {
-  it("starts in app and uses observed or configured channels only", () => {
+  it("prioritizes observed active channels instead of globally anchoring in-app", () => {
     const channels = rankReminderEscalationChannels({
       activityProfile: buildActivityProfile({
         primaryPlatform: "telegram",
@@ -163,9 +165,9 @@ describe("rankReminderEscalationChannels", () => {
     });
 
     expect(channels.slice(0, 4)).toEqual([
-      "in_app",
       "telegram",
       "discord",
+      "in_app",
       "sms",
     ]);
   });
@@ -179,6 +181,29 @@ describe("rankReminderEscalationChannels", () => {
     });
 
     expect(channels).toEqual(["in_app"]);
+  });
+
+  it("uses a routing policy that keeps busy-screen nudges low-cost", () => {
+    const routingPolicy = resolveReminderEscalationRoutingPolicy({
+      activityProfile: buildActivityProfile({
+        screenContextBusy: true,
+        lastSeenPlatform: "desktop_app",
+      }),
+      urgency: "medium",
+    });
+    const channels = rankReminderEscalationChannels({
+      activityProfile: buildActivityProfile({
+        screenContextBusy: true,
+        lastSeenPlatform: "desktop_app",
+      }),
+      ownerContactHints: {},
+      ownerContactSources: [],
+      policyChannels: ["sms"],
+      routingPolicy,
+    });
+
+    expect(routingPolicy.interruptionBudget).toBe("low");
+    expect(channels[0]).toBe("in_app");
   });
 });
 
@@ -197,6 +222,65 @@ describe("classifyReminderOwnerResponseText", () => {
         resolution: null,
       },
     );
+  });
+
+  it("does not bind generic acknowledgement to unrelated conversation", () => {
+    expect(
+      classifyReminderOwnerResponseText("yes, book the calendar thing", {
+        title: "Stretch",
+        attemptedAt: "2026-04-29T17:00:00.000Z",
+        respondedAt: "2026-04-29T17:03:00.000Z",
+        channel: "in_app",
+      }),
+    ).toMatchObject({
+      decision: "unrelated",
+      resolution: null,
+    });
+  });
+
+  it("accepts prompt-adjacent standalone completion", () => {
+    expect(
+      classifyReminderOwnerResponseText("done", {
+        title: "Stretch",
+        attemptedAt: "2026-04-29T17:00:00.000Z",
+        respondedAt: "2026-04-29T17:03:00.000Z",
+        channel: "in_app",
+      }),
+    ).toMatchObject({
+      decision: "explicit_resolution",
+      resolution: "completed",
+    });
+  });
+
+  it("asks for clarification on vague snooze language", () => {
+    expect(
+      classifyReminderOwnerResponseText("remind me later", {
+        title: "Stretch",
+        attemptedAt: "2026-04-29T17:00:00.000Z",
+        respondedAt: "2026-04-29T17:03:00.000Z",
+        channel: "in_app",
+      }),
+    ).toMatchObject({
+      decision: "needs_clarification",
+      resolution: null,
+    });
+  });
+});
+
+describe("parseReminderSnoozeRequestFromText", () => {
+  it("extracts concrete snooze durations", () => {
+    expect(parseReminderSnoozeRequestFromText("snooze for 30 minutes")).toEqual(
+      {
+        request: { preset: "30m" },
+        needsClarification: false,
+        reason: "snooze_30m",
+      },
+    );
+    expect(parseReminderSnoozeRequestFromText("remind me in 2 hours")).toEqual({
+      request: { minutes: 120 },
+      needsClarification: false,
+      reason: "snooze_duration",
+    });
   });
 });
 

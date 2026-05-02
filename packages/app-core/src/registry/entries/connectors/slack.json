@@ -1,7 +1,7 @@
 {
   "id": "slack",
   "name": "Slack",
-  "description": "Slack integration plugin for ElizaOS agents with Socket Mode support",
+  "description": "Slack connector for elizaOS agents with Eliza Cloud OAuth and local Socket Mode support.",
   "npmName": "@elizaos/plugin-slack",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
@@ -82,7 +82,7 @@
   "kind": "connector",
   "subtype": "messaging",
   "auth": {
-    "kind": "token",
+    "kind": "oauth",
     "credentialKeys": ["SLACK_APP_TOKEN"]
   }
 }
