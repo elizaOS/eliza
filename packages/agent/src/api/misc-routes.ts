@@ -1,6 +1,5 @@
 import crypto from "node:crypto";
 import type http from "node:http";
-import { EMOTE_BY_ID, EMOTE_CATALOG } from "@elizaos/app-companion/emotes";
 import { type AgentRuntime, ModelType } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.js";
@@ -36,6 +35,39 @@ type TerminalRunRequestBody = {
   clientId?: unknown;
   terminalToken?: string;
 };
+
+type CompanionEmote = {
+  id: string;
+  path: string;
+  duration?: number;
+  loop?: boolean;
+  [key: string]: unknown;
+};
+
+const COMPANION_EMOTES_MODULE: string = "@elizaos/app-companion/emotes";
+let companionEmotesPromise: Promise<{
+  catalog: CompanionEmote[];
+  byId: Map<string, CompanionEmote>;
+}> | null = null;
+
+async function loadCompanionEmotes(): Promise<{
+  catalog: CompanionEmote[];
+  byId: Map<string, CompanionEmote>;
+}> {
+  companionEmotesPromise ??= import(/* @vite-ignore */ COMPANION_EMOTES_MODULE)
+    .then((loaded) => {
+      const catalog = Array.isArray(loaded.EMOTE_CATALOG)
+        ? (loaded.EMOTE_CATALOG as CompanionEmote[])
+        : [];
+      const byId =
+        loaded.EMOTE_BY_ID instanceof Map
+          ? (loaded.EMOTE_BY_ID as Map<string, CompanionEmote>)
+          : new Map(catalog.map((emote) => [emote.id, emote]));
+      return { catalog, byId };
+    })
+    .catch(() => ({ catalog: [], byId: new Map<string, CompanionEmote>() }));
+  return companionEmotesPromise;
+}
 
 function toTerminalRunRequestBody(
   body: Record<string, unknown>,
@@ -193,7 +225,8 @@ export async function handleMiscRoutes(
 
   // ── GET /api/emotes ──────────────────────────────────────────────────
   if (method === "GET" && pathname === "/api/emotes") {
-    json(res, { emotes: EMOTE_CATALOG });
+    const emotes = await loadCompanionEmotes();
+    json(res, { emotes: emotes.catalog });
     return true;
   }
 
@@ -201,7 +234,8 @@ export async function handleMiscRoutes(
   if (method === "POST" && pathname === "/api/emote") {
     const body = await readJsonBody<{ emoteId?: string }>(req, res);
     if (!body) return true;
-    const emote = body.emoteId ? EMOTE_BY_ID.get(body.emoteId) : undefined;
+    const emotes = await loadCompanionEmotes();
+    const emote = body.emoteId ? emotes.byId.get(body.emoteId) : undefined;
     if (!emote) {
       error(res, `Unknown emote: ${body.emoteId ?? "(none)"}`);
       return true;
