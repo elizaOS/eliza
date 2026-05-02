@@ -63,7 +63,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --ignore-scripts --frozen-lockfile
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -93,7 +93,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --ignore-scripts --frozen-lockfile
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -131,7 +131,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --ignore-scripts --frozen-lockfile
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -172,7 +172,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --ignore-scripts --frozen-lockfile
           install-native-deps: "false"
 
       - name: Run Electrobun contract tests
@@ -217,7 +217,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --ignore-scripts --frozen-lockfile
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
