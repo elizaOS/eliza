@@ -625,6 +625,15 @@ function isWalletBridgeImportFailure(err: unknown): boolean {
   return err.message.includes('Unknown file extension ".css"');
 }
 
+type StewardWalletCoreRoutesHandler = (
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  state: unknown,
+) => Promise<boolean>;
+
+const STEWARD_WALLET_CORE_ROUTES_MODULE: string =
+  "@elizaos/app-steward/routes/wallet-core-routes";
+
 // ---------------------------------------------------------------------------
 // Static UI serving — extracted to static-file-server.ts
 // ---------------------------------------------------------------------------
@@ -1893,18 +1902,12 @@ async function handleRequest(
   // so the API server exposes them without requiring plugin registration.
   // ═══════════════════════════════════════════════════════════════════════
   if (pathname.startsWith("/api/wallet/")) {
-    let stewardWalletCoreRoutes:
-      | ((
-          req: http.IncomingMessage,
-          res: http.ServerResponse,
-          state: unknown,
-        ) => Promise<boolean>)
-      | null = null;
+    let stewardWalletCoreRoutes: StewardWalletCoreRoutesHandler | null = null;
     try {
-      const { handleWalletCoreRoutes } = await import(
-        "@elizaos/app-steward/routes/wallet-core-routes"
-      );
-      stewardWalletCoreRoutes = handleWalletCoreRoutes;
+      const loaded = (await import(
+        /* @vite-ignore */ STEWARD_WALLET_CORE_ROUTES_MODULE
+      )) as { handleWalletCoreRoutes?: StewardWalletCoreRoutesHandler };
+      stewardWalletCoreRoutes = loaded.handleWalletCoreRoutes ?? null;
     } catch (err) {
       if (isWalletBridgeImportFailure(err)) {
         logger.debug(
