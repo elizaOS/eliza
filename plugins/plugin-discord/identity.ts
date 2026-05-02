@@ -6,9 +6,7 @@ import {
 	stringToUuid,
 } from "@elizaos/core";
 
-const CANONICAL_OWNER_SETTING_KEYS = [
-	"ELIZA_ADMIN_ENTITY_ID",
-] as const;
+const CANONICAL_OWNER_SETTING_KEYS = ["ELIZA_ADMIN_ENTITY_ID"] as const;
 const DISCORD_SNOWFLAKE_PATTERN = /^\d{15,20}$/;
 
 function getCanonicalOwnerId(runtime: IAgentRuntime): string | undefined {

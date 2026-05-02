@@ -164,10 +164,7 @@ describe("Discord /eliza-pair slash command", () => {
 
 		// 6th attempt must be blocked by the rate limiter.
 		const blockedInteraction = makePairInteraction("555", "eve", "111111");
-		await handleElizaPairCommand(
-			blockedInteraction as never,
-			runtime as never,
-		);
+		await handleElizaPairCommand(blockedInteraction as never, runtime as never);
 
 		const blockedReply = (blockedInteraction.reply as ReturnType<typeof vi.fn>)
 			.mock.calls[0][0] as { content: string };

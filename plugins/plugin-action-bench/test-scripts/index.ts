@@ -20,18 +20,20 @@ if (verbose) {
 // Display configuration
 console.log("🔧 Benchmark Configuration:");
 console.log(`   Server: ${config.server.url}`);
-console.log(`   Categories: Typewriter=${config.categories.typewriter}, Math=${config.categories.multiverseMath}, Relational=${config.categories.relationalData}`);
+console.log(
+  `   Categories: Typewriter=${config.categories.typewriter}, Math=${config.categories.multiverseMath}, Relational=${config.categories.relationalData}`,
+);
 console.log(`   Runs per prompt: ${config.test.runsPerPrompt}`);
 console.log(`   Verbose: ${config.output.verbose}`);
 console.log(`   Save results: ${config.output.saveResults}`);
 
 async function main() {
   const runner = new BenchmarkRunner(verbose);
-  
+
   try {
     // Initialize connection
     await runner.initialize();
-    
+
     // Run tests based on command
     switch (command) {
       case "typewriter":
@@ -50,7 +52,6 @@ async function main() {
         await runner.runAll();
         break;
     }
-    
   } catch (error) {
     console.error("❌ Benchmark failed:", error);
     process.exit(1);
@@ -97,7 +98,7 @@ if (args.includes("--help") || args.includes("-h")) {
 }
 
 // Run the main function
-main().catch(error => {
+main().catch((error) => {
   console.error("Fatal error:", error);
   process.exit(1);
 });

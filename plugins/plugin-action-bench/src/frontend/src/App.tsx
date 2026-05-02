@@ -1,5 +1,5 @@
-import Header from './components/Header'
-import TestSelector from './components/TestSelector'
+import Header from "./components/Header";
+import TestSelector from "./components/TestSelector";
 
 function App() {
   return (
@@ -7,7 +7,7 @@ function App() {
       <Header />
       <TestSelector />
     </div>
-  )
+  );
 }
 
-export default App
+export default App;

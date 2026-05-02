@@ -1,10 +1,10 @@
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from "vitest";
 
 describe("@elizaos/plugin-telegram", () => {
-  let mod: typeof import('../src/index.ts');
+  let mod: typeof import("../src/index.ts");
 
   beforeAll(async () => {
-    mod = await import('../src/index.ts');
+    mod = await import("../src/index.ts");
   }, 120_000);
 
   it("exports the plugin as default", () => {
