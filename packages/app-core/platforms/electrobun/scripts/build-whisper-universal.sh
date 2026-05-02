@@ -14,7 +14,33 @@ set -euo pipefail
 
 MODEL="${1:-base.en}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WHISPER_CPP_DIR="$(cd "$SCRIPT_DIR/../../../.." && pwd)/node_modules/whisper-node/lib/whisper.cpp"
+
+resolve_whisper_dir() {
+  local candidates=()
+
+  if [ -n "${MILADY_WHISPER_CPP_DIR:-}" ]; then
+    candidates+=("$MILADY_WHISPER_CPP_DIR")
+  fi
+
+  candidates+=(
+    "$PWD/node_modules/whisper-node/lib/whisper.cpp"
+    "$(cd "$SCRIPT_DIR/../../../../../.." && pwd)/node_modules/whisper-node/lib/whisper.cpp"
+    "$(cd "$SCRIPT_DIR/../../../../.." && pwd)/node_modules/whisper-node/lib/whisper.cpp"
+    "$(cd "$SCRIPT_DIR/../../../.." && pwd)/node_modules/whisper-node/lib/whisper.cpp"
+  )
+
+  for candidate in "${candidates[@]}"; do
+    if [ -d "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  printf '%s\n' "${candidates[0]}"
+  return 1
+}
+
+WHISPER_CPP_DIR="$(resolve_whisper_dir || true)"
 WHISPER_MODEL_DIR="$WHISPER_CPP_DIR/models"
 WHISPER_MODEL_FILENAME="ggml-${MODEL}.bin"
 WHISPER_MODEL_PATH="$WHISPER_MODEL_DIR/$WHISPER_MODEL_FILENAME"
@@ -55,6 +81,7 @@ NODE
 
 if [ ! -d "$WHISPER_CPP_DIR" ]; then
   echo "[whisper-universal] whisper.cpp directory not found at $WHISPER_CPP_DIR"
+  echo "[whisper-universal] Checked \$PWD and the Milady/eliza workspace node_modules paths."
   echo "[whisper-universal] Run 'bun install' first."
   exit 1
 fi
