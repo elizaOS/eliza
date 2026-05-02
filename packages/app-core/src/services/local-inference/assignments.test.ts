@@ -14,23 +14,15 @@ import type { InstalledModel } from "./types";
 
 describe("assignments", () => {
   let tmpRoot: string;
-  let originalStateDir: string | undefined;
   let originalElizaStateDir: string | undefined;
 
   beforeEach(async () => {
     tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-assign-"));
-    originalStateDir = process.env.ELIZA_STATE_DIR;
     originalElizaStateDir = process.env.ELIZA_STATE_DIR;
     process.env.ELIZA_STATE_DIR = tmpRoot;
-    delete process.env.ELIZA_STATE_DIR;
   });
 
   afterEach(async () => {
-    if (originalStateDir === undefined) {
-      delete process.env.ELIZA_STATE_DIR;
-    } else {
-      process.env.ELIZA_STATE_DIR = originalStateDir;
-    }
     if (originalElizaStateDir === undefined) {
       delete process.env.ELIZA_STATE_DIR;
     } else {

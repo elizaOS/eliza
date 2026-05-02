@@ -69,7 +69,6 @@ async function startApiHarness(): Promise<Harness> {
 describe("secrets-manager routes", () => {
   let harness: Harness | null;
   let workDir: string | null;
-  let originalStateDir: string | undefined;
   let originalElizaStateDir: string | undefined;
 
   beforeEach(async () => {
@@ -77,9 +76,7 @@ describe("secrets-manager routes", () => {
     // Isolate vault state in a fresh tmp dir per test so preferences
     // reads/writes don't leak across cases or stomp on a real ~/.eliza.
     workDir = await fs.mkdtemp(join(tmpdir(), "eliza-secrets-routes-"));
-    originalStateDir = process.env.ELIZA_STATE_DIR;
     originalElizaStateDir = process.env.ELIZA_STATE_DIR;
-    process.env.ELIZA_STATE_DIR = workDir;
     process.env.ELIZA_STATE_DIR = workDir;
     // Inject a test vault with an in-memory master key so route tests
     // never touch the OS keychain. Linux CI runners without a reachable
@@ -97,8 +94,6 @@ describe("secrets-manager routes", () => {
   afterEach(async () => {
     await harness?.dispose();
     if (workDir) await fs.rm(workDir, { recursive: true, force: true });
-    if (originalStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
-    else process.env.ELIZA_STATE_DIR = originalStateDir;
     if (originalElizaStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
     else process.env.ELIZA_STATE_DIR = originalElizaStateDir;
     _resetSharedVaultForTesting(null);
