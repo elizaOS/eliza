@@ -1,9 +1,11 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import { Readable } from "node:stream";
+import { logger } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   _resetAuthPairingStateForTests,
+  ensureAuthPairingCodeForRemoteAccess,
   handleAuthPairingCompatRoutes,
 } from "./auth-pairing-compat-routes";
 import type { CompatRuntimeState } from "./compat-route-shared";
@@ -125,6 +127,58 @@ describe("auth pairing compat routes", () => {
     ).toBe(true);
     expect(pairRes.status()).toBe(200);
     expect(pairRes.body()).toEqual({ token: "pairing-test-token" });
+  });
+
+  it("can pre-generate and log the pairing code before a remote client probes auth status", async () => {
+    vi.spyOn(crypto, "randomInt").mockReturnValue(0);
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+
+    expect(ensureAuthPairingCodeForRemoteAccess()).toMatchObject({
+      code: "AAAA-AAAA-AAAA",
+    });
+    expect(warn).toHaveBeenCalledWith(
+      "[api] Pairing code for remote devices: AAAA-AAAA-AAAA (valid for 10 minutes)",
+    );
+
+    const pairRes = fakeRes();
+    await handleAuthPairingCompatRoutes(
+      fakeReq({
+        method: "POST",
+        pathname: "/api/auth/pair",
+        body: { code: "aaaa aaaa aaaa" },
+      }),
+      pairRes.res,
+      STATE,
+    );
+
+    expect(pairRes.status()).toBe(200);
+    expect(pairRes.body()).toEqual({ token: "pairing-test-token" });
+  });
+
+  it("routes cloud-provisioned containers to bootstrap instead of pairing even with an API token", async () => {
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+    vi.spyOn(crypto, "randomInt").mockReturnValue(0);
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+
+    expect(ensureAuthPairingCodeForRemoteAccess()).toBeNull();
+    expect(warn).not.toHaveBeenCalled();
+
+    const statusRes = fakeRes();
+    await handleAuthPairingCompatRoutes(
+      fakeReq({ method: "GET", pathname: "/api/auth/status" }),
+      statusRes.res,
+      STATE,
+    );
+
+    expect(statusRes.status()).toBe(200);
+    expect(statusRes.body()).toMatchObject({
+      required: true,
+      authenticated: false,
+      bootstrapRequired: true,
+      loginRequired: false,
+      pairingEnabled: false,
+      expiresAt: null,
+    });
   });
 
   it("disables pairing when ELIZA_PAIRING_DISABLED=1", async () => {

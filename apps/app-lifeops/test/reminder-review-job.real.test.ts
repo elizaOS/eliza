@@ -181,4 +181,73 @@ describe("reminder review jobs real scenarios", () => {
       await runtimeHandle.cleanup();
     }
   }, 30_000);
+
+  it("keeps observed-but-open review statuses due and excludes only closed statuses", async () => {
+    const runtimeHandle = await createRealTestRuntime({
+      characterName: "lifeops-reminder-review-status-agent",
+    });
+    try {
+      const runtime = runtimeHandle.runtime;
+      await LifeOpsRepository.bootstrapSchema(runtime);
+      const repository = new LifeOpsRepository(runtime);
+      const plan = createLifeOpsReminderPlan({
+        agentId: String(runtime.agentId),
+        ownerType: "definition",
+        ownerId: "definition-status",
+        steps: [{ channel: "in_app", offsetMinutes: 0, label: "In app" }],
+        mutePolicy: {},
+        quietHours: {
+          timezone: "UTC",
+          startMinute: 0,
+          endMinute: 0,
+        },
+      });
+      await repository.createReminderPlan(plan);
+      const statuses = [
+        "unrelated",
+        "needs_clarification",
+        "no_response",
+        "resolved",
+        "escalated",
+        "clarification_requested",
+      ];
+      for (const status of statuses) {
+        await repository.createReminderAttempt(
+          createLifeOpsReminderAttempt({
+            agentId: String(runtime.agentId),
+            planId: plan.id,
+            ownerType: "occurrence",
+            ownerId: `occurrence-${status}`,
+            occurrenceId: `occurrence-${status}`,
+            channel: "in_app",
+            stepIndex: 0,
+            scheduledFor: baseAt.toISOString(),
+            attemptedAt: baseAt.toISOString(),
+            outcome: "delivered",
+            connectorRef: "system:in_app",
+            deliveryMetadata: {
+              title: status,
+              [REMINDER_LIFECYCLE_METADATA_KEY]: "plan",
+              [REMINDER_REVIEW_AT_METADATA_KEY]: addMinutes(baseAt, 7),
+              [REMINDER_REVIEW_STATUS_METADATA_KEY]: status,
+            },
+          }),
+        );
+      }
+
+      const due = await repository.listDueReminderReviewAttempts(
+        String(runtime.agentId),
+        addMinutes(baseAt, 8),
+        10,
+      );
+
+      expect(due.map((attempt) => attempt.ownerId).sort()).toEqual([
+        "occurrence-needs_clarification",
+        "occurrence-no_response",
+        "occurrence-unrelated",
+      ]);
+    } finally {
+      await runtimeHandle.cleanup();
+    }
+  }, 30_000);
 });

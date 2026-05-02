@@ -1,80 +1,52 @@
 ---
 title: "Game Examples"
-description: "AI-powered games built with elizaOS"
+description: "AI-powered games built with elizaOS (TypeScript)"
 ---
 
-Build games where AI agents make strategic decisions.
+Build games where AI agents make strategic decisions. `packages/examples/` ships TypeScript game demos.
 
-## Adventure Game
+## Text adventure
 
-A text-based dungeon crawler where an AI agent explores, fights, and collects treasure.
-
-| Language   | Location                                |
-| ---------- | --------------------------------------- |
-| TypeScript | `examples/typescript/adventure-game.ts` |
-| Python     | `examples/game/python/game.py`          |
-| Rust       | `examples/game/rust/game/src/main.rs`   |
-
-### Quick Start
+AI-driven dungeon crawl (`examples/text-adventure/game.ts`).
 
 ```bash
-export OPENAI_API_KEY="your-key"
-LOG_LEVEL=fatal bun run examples/typescript/adventure-game.ts
+cd examples/text-adventure
+cp .env.example .env  # add OPENAI_API_KEY
+bun install
+LOG_LEVEL=fatal bun run game.ts
 ```
 
-### Features
+**Features:** multi-room world, combat, inventory, AI-chosen actions via `ModelType.TEXT_SMALL`.
 
-- **7 dungeon rooms** with unique descriptions
-- **Combat system** against goblins, skeletons, and a dragon
-- **Inventory management** for torch, sword, key, and potions
-- **AI decision making** for strategic choices
-- **Win condition**: Defeat the dragon and claim the treasure
+---
 
-### Gameplay
+## Tic-tac-toe
 
-```
-╔══════════════════════════════════════════════════════════════════╗
-║                    🏰 DUNGEON ADVENTURE 🏰                        ║
-╠══════════════════════════════════════════════════════════════════╣
-║ Location: Great Hall                                              ║
-║ Description: A vast hall with crumbling pillars.                 ║
-║ Exits: north, south, east, west                                   ║
-║ Enemies: goblin (30 HP)                                          ║
-║ Items: none                                                       ║
-╠══════════════════════════════════════════════════════════════════╣
-║ Inventory: torch                                                  ║
-║ Health: 100/100                                                   ║
-╚══════════════════════════════════════════════════════════════════╝
+Play or benchmark an agent (`examples/tic-tac-toe/game.ts`).
 
-AI Decision: attack
-Result: You strike the goblin for 10 damage! It retaliates for 10 damage.
-Your health: 90/100 | Goblin health: 20/30
-```
-
-### AI Integration
-
-```typescript
-// The AI analyzes the game state and chooses an action
-const decision = await runtime.useModel(ModelType.TEXT_SMALL, {
-  prompt: `
-Current Location: ${room.name}
-Enemies present: ${room.enemies?.length ? "YES" : "NO"}
-Health: ${state.health}%
-Has sword: ${state.inventory.includes("sword")}
-
-Choose ONE action: move north, attack, take item, use potion
-
-Your choice:`,
-  maxTokens: 20,
-  temperature: 0.3,
-});
+```bash
+cd examples/tic-tac-toe
+bun install
+bun run game.ts --human
 ```
 
 ---
 
-## Extending Games
+## Game of life
 
-### Add New Rooms
+Multi-agent cellular simulation (`examples/game-of-life/game.ts`).
+
+```bash
+cd examples/game-of-life
+bun install
+bun run game.ts
+```
+
+---
+
+## Extending games
+
+### Add rooms (text adventure pattern)
 
 ```typescript
 const rooms = {
@@ -87,22 +59,7 @@ const rooms = {
 };
 ```
 
-### Add New Items
-
-```typescript
-const items = {
-  golden_idol: {
-    name: "Golden Idol",
-    description: "An ancient artifact of immense value.",
-    use: (state) => {
-      state.score += 1000;
-      return "The idol glows with ancient power!";
-    },
-  },
-};
-```
-
-### Add New Enemies
+### Add enemies
 
 ```typescript
 const enemies = {
@@ -118,7 +75,7 @@ const enemies = {
 
 ---
 
-## Game Ideas
+## Game ideas
 
 <CardGroup cols={2}>
   <Card title="RPG Character" icon="user">
@@ -151,6 +108,3 @@ const enemies = {
     Build custom game plugins
   </Card>
 </CardGroup>
-
-
-

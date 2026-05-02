@@ -308,6 +308,45 @@ describe("reminder escalation review", () => {
     );
   });
 
+  it("defers high-priority activity-gated escalation until computer activity resumes", async () => {
+    const plan = makePlan();
+    const attempt = makeAttempt();
+    const { service } = createHarness({
+      decision: "no_response",
+      resolution: null,
+      respondedAt: null,
+      responseText: null,
+      confidence: 0,
+      reason: "no_owner_response",
+    });
+
+    await expect(
+      service.dispatchDueReminderEscalation({
+        ...dispatchArgs(plan, attempt),
+        activityProfile: {
+          primaryPlatform: "mobile_app",
+          secondaryPlatform: null,
+          lastSeenPlatform: "mobile_app",
+          isCurrentlyActive: true,
+          lastSeenAt: baseAt.getTime(),
+          circadianState: "awake",
+          stateConfidence: 0.9,
+          lastSleepEndedAt: null,
+          nextMealLabel: null,
+          nextMealWindowStartAt: null,
+          nextMealWindowEndAt: null,
+        },
+        definition: {
+          kind: "habit",
+          metadata: { reminderActivityGate: "active_on_computer" },
+        },
+      }),
+    ).resolves.toBeNull();
+
+    expect(service.dispatchReminderAttempt).not.toHaveBeenCalled();
+    expect(service.markReminderReviewEscalated).not.toHaveBeenCalled();
+  });
+
   it("snoozes the occurrence when the owner gives a concrete snooze duration", async () => {
     const service = Object.create(LifeOpsService.prototype) as LifeOpsService &
       Record<string, unknown>;
@@ -387,6 +426,103 @@ describe("reminder escalation review", () => {
       decision: "unrelated",
       resolution: null,
     });
+  });
+
+  it("binds a standalone acknowledgement to only the latest prompt in a room", async () => {
+    const service = Object.create(LifeOpsService.prototype) as LifeOpsService &
+      Record<string, unknown>;
+    const olderAttempt = {
+      ...makeAttempt(),
+      id: "attempt-older",
+      deliveryMetadata: {
+        ...makeAttempt().deliveryMetadata,
+        title: "Stretch",
+        routeEndpoint: "room-reminder",
+      },
+    };
+    const newerAttempt = {
+      ...makeAttempt(),
+      id: "attempt-newer",
+      ownerId: "occurrence-2",
+      attemptedAt: addMinutes(baseAt, 1),
+      scheduledFor: addMinutes(baseAt, 1),
+      deliveryMetadata: {
+        ...makeAttempt().deliveryMetadata,
+        title: "Drink water",
+        routeEndpoint: "room-reminder",
+      },
+    };
+    service.agentId = vi.fn(() => "agent-1");
+    service.ownerEntityId = vi.fn(() => "owner-1");
+    service.ownerRoutingEntityId = vi.fn(async () => "owner-1");
+    service.runtime = {
+      getRoomsForParticipants: vi.fn(async () => ["room-reminder"]),
+      getMemoriesByRoomIds: vi.fn(async () => [
+        {
+          entityId: "owner-1",
+          roomId: "room-reminder",
+          createdAt: new Date(addMinutes(baseAt, 2)).getTime(),
+          content: { text: "done" },
+        },
+      ]),
+    };
+
+    await expect(
+      service.reviewOwnerResponseAfterReminderAttempt({
+        subjectType: "owner",
+        attempt: olderAttempt,
+        competingAttempts: [olderAttempt, newerAttempt],
+        now: new Date(addMinutes(baseAt, 8)),
+      }),
+    ).resolves.toMatchObject({
+      decision: "unrelated",
+      resolution: null,
+    });
+    await expect(
+      service.reviewOwnerResponseAfterReminderAttempt({
+        subjectType: "owner",
+        attempt: newerAttempt,
+        competingAttempts: [olderAttempt, newerAttempt],
+        now: new Date(addMinutes(baseAt, 8)),
+      }),
+    ).resolves.toMatchObject({
+      decision: "explicit_resolution",
+      resolution: "completed",
+      responseText: "done",
+    });
+  });
+
+  it("keeps the review open when concrete snooze rescheduling fails", async () => {
+    const service = Object.create(LifeOpsService.prototype) as LifeOpsService &
+      Record<string, unknown>;
+    const attempt = makeAttempt();
+    service.repository = {
+      updateReminderAttemptOutcome: vi.fn(async () => undefined),
+    };
+    service.snoozeOccurrence = vi.fn(async () => {
+      throw new Error("occurrence cannot be snoozed");
+    });
+    service.resolveReminderEscalation = vi.fn(async () => undefined);
+
+    await expect(
+      service.resolveReminderReviewFromOwnerResponse({
+        ownerType: "occurrence",
+        ownerId: "occurrence-1",
+        attempt,
+        reviewedAt: addMinutes(baseAt, 8),
+        resolution: "snoozed",
+        responseText: "remind me in 30 minutes",
+        respondedAt: addMinutes(baseAt, 2),
+        snoozeRequest: { preset: "30m" },
+        confidence: 0.86,
+        reason: "snooze_30m",
+      }),
+    ).rejects.toThrow("occurrence cannot be snoozed");
+
+    expect(
+      service.repository.updateReminderAttemptOutcome,
+    ).not.toHaveBeenCalled();
+    expect(service.resolveReminderEscalation).not.toHaveBeenCalled();
   });
 
   it("processes due review jobs independent of the overview window", async () => {
@@ -496,6 +632,46 @@ describe("reminder escalation review", () => {
         limit: 3,
         attempts: [],
       }),
+    );
+  });
+
+  it("returns due review callbacks even when later overview materialization fails", async () => {
+    const service = Object.create(LifeOpsService.prototype) as LifeOpsService &
+      Record<string, unknown>;
+    const reviewAttempt = makeAttempt();
+    service.agentId = vi.fn(() => "agent-1");
+    service.ownerEntityId = vi.fn(() => "owner-1");
+    service.withReminderProcessingLock = vi.fn(async (callback) => callback());
+    service.buildReminderPreferenceResponse = vi.fn(() => ({
+      effective: { intensity: "normal" },
+    }));
+    service.readReminderActivityProfileSnapshot = vi.fn(async () => null);
+    service.processDueReminderReviewJobs = vi.fn(async () => [reviewAttempt]);
+    service.logLifeOpsWarn = vi.fn();
+    service.repository = {
+      listChannelPolicies: vi.fn(async () => []),
+      listReminderAttempts: vi.fn(async () => []),
+      listActiveDefinitions: vi.fn(async () => []),
+      listOccurrenceViewsForOverview: vi.fn(async () => {
+        throw new Error("overview failed");
+      }),
+    };
+
+    await expect(
+      service.processReminders({
+        now: addMinutes(baseAt, 8),
+        limit: 3,
+      }),
+    ).resolves.toMatchObject({
+      now: addMinutes(baseAt, 8),
+      attempts: [reviewAttempt],
+    });
+
+    expect(service.processDueReminderReviewJobs).toHaveBeenCalled();
+    expect(service.logLifeOpsWarn).toHaveBeenCalledWith(
+      "reminder_processing",
+      expect.stringContaining("due review callbacks ran"),
+      expect.objectContaining({ error: "overview failed" }),
     );
   });
 });

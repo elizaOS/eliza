@@ -9,11 +9,9 @@ This directory contains A2A (Agent-to-Agent) server implementations that expose 
 
 ## Available Examples
 
-| Framework                   | Language   | Directory     |
-| --------------------------- | ---------- | ------------- |
-| [Express.js](./typescript/) | TypeScript | `typescript/` |
-| [FastAPI](./python/)        | Python     | `python/`     |
-| [Axum](./rust/)             | Rust       | `rust/`       |
+| Framework     | Language   | Directory |
+| ------------- | ---------- | --------- |
+| Express.js    | TypeScript | `.`       |
 
 ## What is A2A?
 
@@ -90,29 +88,10 @@ curl -X POST http://localhost:3000/chat/stream \
 
 ## Quick Start
 
-### TypeScript
-
 ```bash
-cd typescript
+cd examples/a2a
 bun install
 bun run start
-```
-
-### Python
-
-```bash
-cd python
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-python server.py
-```
-
-### Rust
-
-```bash
-cd rust
-cargo run --release
 ```
 
 ## Configuration
@@ -140,17 +119,9 @@ Optional configuration:
 
 ## Testing
 
-Each implementation includes a test client:
-
 ```bash
-# TypeScript
-cd typescript && bun run test
-
-# Python
-cd python && python test_runner.py
-
-# Rust
-cd rust && cargo test
+cd examples/a2a
+bun run test
 ```
 
 ## Agent-to-Agent Communication Example

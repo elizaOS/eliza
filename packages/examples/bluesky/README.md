@@ -77,7 +77,7 @@ bun run build
 #### TypeScript
 
 ```bash
-cd examples/bluesky/typescript
+cd examples/bluesky
 bun install
 bun run start
 ```

@@ -30,7 +30,8 @@ export type RuntimeMessageTarget = Parameters<
   IAgentRuntime["sendMessageToTarget"]
 >[0];
 export type ReminderAttemptLifecycle = "plan" | "escalation";
-export type ReminderActivityProfileSnapshot = {
+
+export type LifeOpsAttentionContext = {
   primaryPlatform: string | null;
   secondaryPlatform: string | null;
   lastSeenPlatform: string | null;
@@ -45,6 +46,8 @@ export type ReminderActivityProfileSnapshot = {
   nextMealLabel: string | null;
   nextMealWindowStartAt: string | null;
   nextMealWindowEndAt: string | null;
+  calendarBusy?: boolean;
+  dndActive?: boolean;
   hasCalendarData?: boolean;
   avgWeekdayMeetings?: number | null;
   hasOpenActivityCycle?: boolean;
@@ -61,6 +64,8 @@ export type ReminderActivityProfileSnapshot = {
   screenContextStale?: boolean;
   screenContextConfidence?: number | null;
 };
+
+export type ReminderActivityProfileSnapshot = LifeOpsAttentionContext;
 
 export type RuntimeOwnerContactResolution = {
   sourceOfTruth: "config" | "relationships" | "config+relationships";

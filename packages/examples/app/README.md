@@ -31,13 +31,3 @@ Path: `examples/app/electron/`
 
 See `examples/app/electron/README.md`.
 
-## Tauri
-
-Path: `examples/app/tauri/`
-
-- Frontend: Vite + React
-- Backend agent: Rust `elizaos::AgentRuntime` in native layer (Tauri commands)
-- Storage: simple app-level `chat_history.json` in app data dir
-
-See `examples/app/tauri/README.md`.
-

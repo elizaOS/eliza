@@ -41,7 +41,7 @@ Start with `X_DRY_RUN=true` until you’ve verified everything.
 bun install
 bun run build
 
-cd examples/twitter-xai/typescript
+cd examples/twitter-xai
 bun install
 bun run start
 ```

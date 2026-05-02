@@ -31,7 +31,7 @@ An autonomous liquidity position (LP) management agent for DeFi. This agent moni
 ### 1. Install Dependencies
 
 ```bash
-cd examples/lp-manager/typescript
+cd examples/lp-manager
 bun install
 ```
 
@@ -174,7 +174,7 @@ For concentrated liquidity positions (Raydium CLMM, Orca Whirlpools, Uniswap V3)
 ## Architecture
 
 ```
-examples/lp-manager/typescript/
+examples/lp-manager/
 ├── src/
 │   ├── agent.ts              # Main agent entry point
 │   ├── character.ts          # Agent personality and settings

@@ -7,13 +7,13 @@ Deploy elizaOS agents as serverless functions with automatic scaling.
 
 ## Platforms
 
-| Platform                          | Languages            | Cold Start | Free Tier        |
-| --------------------------------- | -------------------- | ---------- | ---------------- |
-| [AWS Lambda](#aws-lambda)         | TS, Python, Rust     | 2-5s       | 1M requests      |
-| [GCP Cloud Functions](#gcp)       | TS, Python, Rust     | 2-5s       | 2M invocations   |
-| [Vercel Edge](#vercel)            | TS, Python           | <50ms      | 100K requests    |
-| [Cloudflare Workers](#cloudflare) | TS, Python, Rust     | <10ms      | 100K requests    |
-| [Supabase Edge](#supabase)        | TS (Deno), Rust WASM | <100ms     | 500K invocations |
+| Platform                          | Languages | Cold Start | Free Tier        |
+| --------------------------------- | --------- | ---------- | ---------------- |
+| [AWS Lambda](#aws-lambda)         | TypeScript | 2-5s       | 1M requests      |
+| [GCP Cloud Functions](#gcp)       | TypeScript | 2-5s       | 2M invocations   |
+| [Vercel Edge](#vercel)            | TypeScript | <50ms      | 100K requests    |
+| [Cloudflare Workers](#cloudflare) | TypeScript | <10ms      | 100K requests    |
+| [Supabase Edge](#supabase)        | TypeScript (Deno), optional WASM | <100ms | 500K invocations |
 
 ---
 
@@ -26,6 +26,8 @@ Deploy with SAM (Serverless Application Model).
 ```bash
 cd examples/aws
 export OPENAI_API_KEY="your-key"
+bun install
+sam build
 sam deploy --guided
 ```
 
@@ -241,7 +243,7 @@ serve(async (req) => {
 | ----------- | ----- | ---- | ------ | ------------ | -------- |
 | Cold Start  | 2-5s  | 2-5s | <50ms  | <10ms        | <100ms   |
 | Max Timeout | 15min | 9min | 30s    | 30s          | 60s      |
-| Languages   | All   | All  | TS, Py | TS, Py, Rust | TS, Rust |
+| Languages   | TypeScript | TypeScript | TypeScript | TypeScript | TS (+ optional WASM) |
 | Free Tier   | 1M    | 2M   | 100K   | 100K         | 500K     |
 
 ---

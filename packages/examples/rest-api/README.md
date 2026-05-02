@@ -1,6 +1,6 @@
 # elizaOS REST API Examples
 
-This directory contains REST API examples for elizaOS using various web frameworks across TypeScript, Python, and Rust.
+This directory contains REST API examples for elizaOS using TypeScript web frameworks.
 
 All examples use the **canonical elizaOS implementation pattern**:
 
@@ -57,14 +57,9 @@ await runtime.messageService?.handleMessage(runtime, messageMemory, async (conte
 
 | Framework             | Language   | Directory  | Full Runtime |
 | --------------------- | ---------- | ---------- | ------------ |
-| [Express](./express/) | TypeScript | `express/` | ✅ Yes       |
-| [Hono](./hono/)       | TypeScript | `hono/`    | ✅ Yes       |
-| [Elysia](./elysia/)   | TypeScript | `elysia/`  | ✅ Yes       |
-| [FastAPI](./fastapi/) | Python     | `fastapi/` | ✅ Yes       |
-| [Flask](./flask/)     | Python     | `flask/`   | ✅ Yes       |
-| [Actix Web](./actix/) | Rust       | `actix/`   | ✅ Yes       |
-| [Axum](./axum/)       | Rust       | `axum/`    | ✅ Yes       |
-| [Rocket](./rocket/)   | Rust       | `rocket/`  | ✅ Yes       |
+| [Express](./express/) | TypeScript | `express/` | Yes          |
+| [Hono](./hono/)       | TypeScript | `hono/`    | Yes          |
+| [Elysia](./elysia/)   | TypeScript | `elysia/`  | Yes          |
 
 ## Common API
 
@@ -124,23 +119,6 @@ curl -X POST http://localhost:3000/chat/stream \
 cd express  # or hono, elysia
 bun install
 OPENAI_API_KEY=your-key bun run start
-```
-
-### Python (FastAPI, Flask)
-
-```bash
-cd fastapi  # or flask
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-OPENAI_API_KEY=your-key python server.py
-```
-
-### Rust (Actix, Axum, Rocket)
-
-```bash
-cd actix  # or axum, rocket
-OPENAI_API_KEY=your-key cargo run --release
 ```
 
 ## Environment Variables

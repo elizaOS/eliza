@@ -4,13 +4,11 @@ Deploy elizaOS agents as serverless functions on Cloudflare Workers.
 
 ## Available Workers
 
-| Worker            | Language   | Full Runtime | Notes                                                  |
-| ----------------- | ---------- | ------------ | ------------------------------------------------------ |
-| TypeScript        | TypeScript | ✅ Yes       | Recommended - uses full elizaOS runtime                |
-| Python (Pyodide)  | Python     | ⚠️ Limited  | Uses direct API calls due to Pyodide constraints       |
-| Rust (WASM)       | Rust       | ⚠️ Limited  | Uses direct API calls due to WASM constraints          |
+| Worker     | Language   | Full Runtime | Notes                                   |
+| ---------- | ---------- | ------------ | --------------------------------------- |
+| TypeScript | TypeScript | Yes          | Uses full elizaOS runtime (recommended) |
 
-## TypeScript Worker (Recommended)
+## TypeScript Worker
 
 The TypeScript worker uses the **canonical elizaOS implementation pattern**:
 
@@ -87,20 +85,9 @@ OPENAI_API_KEY = "your-key"  # Use wrangler secret put OPENAI_API_KEY
 
 ## Limitations
 
-### TypeScript Worker
 - No persistent storage (PGLite not available in Workers)
 - Runtime is initialized per-request
 - For persistent state, use Cloudflare Durable Objects
-
-### Python Worker (Pyodide)
-- Cannot import the full `elizaos` package
-- Uses direct OpenAI API calls
-- For full Python runtime, deploy to a traditional server
-
-### Rust Worker (WASM)
-- WASM build may not support all runtime features
-- Uses direct OpenAI API calls
-- For full Rust runtime, deploy to a traditional server
 
 ## Production Recommendations
 

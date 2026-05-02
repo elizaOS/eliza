@@ -1,14 +1,20 @@
 {
   "compilerOptions": {
-    "target": "ESNext",
+    "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "esModuleInterop": true,
+    "lib": ["ES2022"],
     "strict": true,
+    "esModuleInterop": true,
     "skipLibCheck": true,
+    "outDir": "./dist",
+    "rootDir": ".",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
     "noEmit": true,
-    "resolveJsonModule": true
+    "types": ["node"]
   },
-  "include": ["test-client.ts"],
-  "exclude": ["node_modules", "typescript", "python", "rust"]
+  "include": ["*.ts"],
+  "exclude": ["node_modules", "dist"]
 }

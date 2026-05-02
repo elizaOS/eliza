@@ -22,87 +22,34 @@ All handlers use the full **elizaOS runtime** with OpenAI as the LLM provider, p
 
 - [AWS CLI](https://aws.amazon.com/cli/) configured with credentials
 - [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html)
-- [Bun](https://bun.sh/) or [Node.js 20+](https://nodejs.org/) (for TypeScript)
-- [Python 3.11+](https://www.python.org/) (for Python)
-- [Rust + Cargo Lambda](https://www.cargo-lambda.info/) (for Rust)
+- [Bun](https://bun.sh/) or [Node.js 20+](https://nodejs.org/)
 - OpenAI API key
 
 ## Quick Start
 
 ### 1. Set Environment Variables
 
-Create a `.env` file in the project root (`/home/shaw/eliza/.env`):
-
-```bash
-OPENAI_API_KEY=your-openai-api-key
-```
-
-Or export directly:
-
 ```bash
 export OPENAI_API_KEY="your-openai-api-key"
 export AWS_REGION="us-east-1"  # or your preferred region
 ```
 
-### 2. Test Locally First
-
-Before deploying, test locally to verify everything works. Each language has a self-contained test that loads the `.env` file from the project root automatically:
-
-#### TypeScript
+### 2. Test Locally
 
 ```bash
-cd examples/aws/typescript
-bun run test:full                # Run automated tests with elizaOS runtime
-bun run start                    # Start local HTTP server on port 3000
+cd examples/aws
+bun install
+bun run test                # Automated tests
+bun run start               # Local HTTP server on port 3000
 ```
 
-#### Python
+### 3. Deploy
 
 ```bash
-cd examples/aws/python
-pip install -e ../../../packages/python -e ../../../plugins/plugin-openai/python
-python3 handler.py               # Runs automated tests with elizaOS runtime
-```
-
-#### Rust
-
-```bash
-cd examples/aws/rust
-cargo run --bin test_local       # Run automated tests with elizaOS runtime
-```
-
-#### Test the Local Server (TypeScript)
-
-```bash
-# In another terminal, test the API
-curl -X POST http://localhost:3000/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Hello!"}'
-```
-
-### 3. Deploy (Choose Your Language)
-
-#### TypeScript
-
-```bash
-cd examples/aws/typescript
-bun run build
+cd examples/aws
+bun install
+sam build
 sam deploy --guided --parameter-overrides OpenAIApiKey=$OPENAI_API_KEY
-```
-
-#### Python
-
-```bash
-cd examples/aws/python
-sam deploy --guided --parameter-overrides RuntimeLanguage=python OpenAIApiKey=$OPENAI_API_KEY
-```
-
-#### Rust
-
-```bash
-cd examples/aws/rust
-cargo lambda build --release
-sam deploy --guided --parameter-overrides RuntimeLanguage=rust OpenAIApiKey=$OPENAI_API_KEY
 ```
 
 ### 4. Test Your Deployment
@@ -110,38 +57,29 @@ sam deploy --guided --parameter-overrides RuntimeLanguage=rust OpenAIApiKey=$OPE
 After deployment, SAM outputs your API endpoint URL. Test it:
 
 ```bash
-# Using curl
-curl -X POST https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/chat \
-  -H "Content-Type: application/json" \
+curl -X POST https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/prod/chat \
+  -H 'Content-Type: application/json' \
   -d '{"message": "Hello, Eliza!"}'
 
-# Using the test client
 cd examples/aws
-npm install
-npx ts-node test-client.ts --endpoint https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/chat
+bun install
+bun run test-client.ts --endpoint https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/prod/chat
 ```
 
 ## Project Structure
 
 ```
 examples/aws/
-├── README.md                 # This file
-├── template.yaml             # SAM template (shared infrastructure)
-├── test-client.ts            # Interactive test client
-├── package.json              # Test client dependencies
-├── typescript/
-│   ├── handler.ts            # Lambda handler (elizaOS runtime)
-│   ├── package.json
-│   └── tsconfig.json
-├── python/
-│   ├── handler.py            # Lambda handler (elizaOS runtime)
-│   └── requirements.txt
-└── rust/
-    ├── Cargo.toml
-    └── src/
-        ├── lib.rs            # Lambda handler library (elizaOS runtime)
-        ├── main.rs           # Lambda entry point
-        └── test_local.rs     # Local test runner
+├── README.md
+├── template.yaml
+├── handler.ts
+├── server-local.ts
+├── test-local.ts
+├── test-client.ts
+├── package.json
+├── tsconfig.json
+├── events/
+└── scripts/
 ```
 
 ## API Reference
@@ -179,7 +117,7 @@ Health check endpoint.
 ```json
 {
   "status": "healthy",
-  "runtime": "elizaos-typescript|elizaos-python|elizaos-rust",
+  "runtime": "elizaos-typescript",
   "version": "2.0.0-alpha"
 }
 ```
@@ -205,10 +143,6 @@ aws cloudformation deploy \
   --parameter-overrides OpenAIApiKey=$OPENAI_API_KEY \
   --capabilities CAPABILITY_IAM
 ```
-
-### Option 3: Terraform
-
-See `terraform/` directory for Terraform configuration.
 
 ## Configuration
 
@@ -260,8 +194,6 @@ Recommended memory settings:
 | Runtime    | Memory | Timeout |
 | ---------- | ------ | ------- |
 | TypeScript | 512 MB | 30s     |
-| Python     | 512 MB | 30s     |
-| Rust       | 256 MB | 30s     |
 
 ## Monitoring
 
@@ -303,14 +235,8 @@ Example (512 MB, 2s avg duration, 10K requests/month):
 Ensure all dependencies are bundled:
 
 ```bash
-# TypeScript
 bun run build
-
-# Python
-pip install -r requirements.txt -t ./
-
-# Rust
-cargo lambda build --release
+sam build
 ```
 
 ### Timeout Errors

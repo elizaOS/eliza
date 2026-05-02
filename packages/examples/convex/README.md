@@ -210,4 +210,4 @@ Because messages are stored in Convex tables, any client using the Convex React 
 - [Convex Documentation](https://docs.convex.dev/)
 - [Convex HTTP Actions](https://docs.convex.dev/functions/http-actions)
 - [Convex Node.js Actions](https://docs.convex.dev/functions/actions)
-- [Chat Example](../chat/typescript/) — CLI chat using the same `messageService.handleMessage` pattern
+- [Chat Example](../chat/) — CLI chat using the same `messageService.handleMessage` pattern

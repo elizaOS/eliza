@@ -19,6 +19,7 @@ import {
 } from "../contracts/index.js";
 import {
   REMINDER_ACTIVITY_GATE_METADATA_KEY,
+  REMINDER_ACTIVITY_GATES,
   REMINDER_ESCALATION_DELAYS,
   REMINDER_INTENSITY_CANONICAL_ALIASES,
   REMINDER_INTENSITY_METADATA_KEY,
@@ -55,7 +56,7 @@ export function normalizeReminderIntensityInput(
   value: unknown,
   field: string,
 ): LifeOpsReminderIntensity {
-  const intensity = requireNonEmptyString(value, field);
+  const intensity = requireNonEmptyString(value, field).toLowerCase();
   const canonical = REMINDER_INTENSITY_CANONICAL_ALIASES[intensity];
   if (!canonical) {
     fail(
@@ -237,6 +238,10 @@ export function resolveReminderEscalationRoutingPolicy(args: {
     (args.activityProfile.screenContextConfidence ?? 1) >= 0.5;
   const screenBusy =
     screenContextUsable && args.activityProfile?.screenContextBusy === true;
+  const attentionBusy =
+    screenBusy ||
+    args.activityProfile?.calendarBusy === true ||
+    args.activityProfile?.dndActive === true;
   const ownerActive = args.activityProfile?.isCurrentlyActive === true;
   const activeChannel = mapPlatformToReminderChannel(
     ownerActive ? args.activityProfile?.lastSeenPlatform : null,
@@ -246,12 +251,12 @@ export function resolveReminderEscalationRoutingPolicy(args: {
       ? "urgent"
       : urgency === "high"
         ? "elevated"
-        : screenBusy
+        : attentionBusy
           ? "low"
           : "normal";
   const urgencyWeight =
     urgency === "critical" ? 350 : urgency === "high" ? 220 : 0;
-  const busyInAppBias = screenBusy && urgency !== "critical" ? 450 : 0;
+  const busyInAppBias = attentionBusy && urgency !== "critical" ? 450 : 0;
   const inactiveInAppPenalty = ownerActive ? 0 : -250;
   const activeInAppBias =
     activeChannel === "in_app" || activeChannel === null ? 250 : 0;
@@ -279,11 +284,16 @@ export function resolveReminderEscalationRoutingPolicy(args: {
     includeInApp: args.includeInApp !== false,
     interruptionBudget,
     weights,
-    reason: screenBusy
-      ? "screen_context_busy"
-      : ownerActive
-        ? "owner_currently_active"
-        : "owner_recent_channel_history",
+    reason:
+      args.activityProfile?.dndActive === true
+        ? "do_not_disturb"
+        : args.activityProfile?.calendarBusy === true
+          ? "calendar_busy"
+          : screenBusy
+            ? "screen_context_busy"
+            : ownerActive
+              ? "owner_currently_active"
+              : "owner_recent_channel_history",
   };
 }
 
@@ -323,6 +333,9 @@ export function rankReminderEscalationChannels(args: {
   ownerContactHints: Record<string, ReminderEscalationRoutingHint>;
   ownerContactSources: readonly string[];
   policyChannels: readonly string[];
+  policyChannelWeightAdjustments?: Partial<
+    Record<LifeOpsReminderChannel, number>
+  >;
   includeInApp?: boolean;
   urgency?: LifeOpsReminderUrgency;
   routingPolicy?: ReminderEscalationRoutingPolicy;
@@ -418,10 +431,14 @@ export function rankReminderEscalationChannels(args: {
     );
   }
   for (const channel of args.policyChannels) {
+    const reminderChannel = mapPlatformToReminderChannel(channel);
     addReminderChannelScore(
       scores,
-      mapPlatformToReminderChannel(channel),
-      weights.policyChannel,
+      reminderChannel,
+      weights.policyChannel +
+        (reminderChannel
+          ? (args.policyChannelWeightAdjustments?.[reminderChannel] ?? 0)
+          : 0),
       evidenceOrder,
     );
   }
@@ -455,7 +472,6 @@ export function shouldEscalateImmediately(
   return (
     outcome === "blocked_connector" ||
     outcome === "blocked_policy" ||
-    outcome === "blocked_quiet_hours" ||
     outcome === "blocked_urgency"
   );
 }
@@ -481,7 +497,9 @@ export function readReminderActivityGate(
   definition: Pick<LifeOpsTaskDefinition, "metadata"> | null,
 ): ReminderActivityGate | null {
   const value = definition?.metadata?.[REMINDER_ACTIVITY_GATE_METADATA_KEY];
-  return value === "active_on_computer" ? value : null;
+  return REMINDER_ACTIVITY_GATES.includes(value as ReminderActivityGate)
+    ? (value as ReminderActivityGate)
+    : null;
 }
 
 function isActivelyUsingComputer(
@@ -984,6 +1002,16 @@ export function resolveReminderEscalationDelayMinutes(
     return Math.max(1, Math.round(base * 0.6));
   }
   return base;
+}
+
+export function resolveReminderReviewDelayMinutes(
+  urgency: LifeOpsReminderUrgency,
+  lifecycle: ReminderAttemptLifecycle,
+): number | null {
+  const delays = REMINDER_ESCALATION_DELAYS[urgency];
+  return lifecycle === "escalation"
+    ? delays.repeatMinutes
+    : delays.initialMinutes;
 }
 
 export function readReminderPreferenceSettingFromMetadata(
