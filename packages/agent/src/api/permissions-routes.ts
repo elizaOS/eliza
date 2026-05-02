@@ -1,8 +1,3 @@
-import {
-  getSelfControlPermissionState,
-  openSelfControlPermissionLocation,
-  requestSelfControlPermission,
-} from "@elizaos/app-lifeops/selfcontrol";
 import type { AgentRuntime } from "@elizaos/core";
 import type { PermissionState } from "@elizaos/shared";
 import type { AutonomousConfigLike } from "../types/config-like.js";
@@ -19,8 +14,47 @@ interface PermissionAutonomousConfigLike extends AutonomousConfigLike {
 
 const WEBSITE_BLOCKING_PERMISSION_ID = "website-blocking";
 
+type SelfControlApi = {
+  getSelfControlPermissionState: () => Promise<PermissionState>;
+  requestSelfControlPermission: () => Promise<PermissionState>;
+  openSelfControlPermissionLocation: () => Promise<boolean>;
+};
+
+const SELFCONTROL_MODULE: string = "@elizaos/app-lifeops/selfcontrol";
+
+async function loadSelfControlApi(): Promise<SelfControlApi | null> {
+  try {
+    const loaded = (await import(
+      /* @vite-ignore */ SELFCONTROL_MODULE
+    )) as Partial<SelfControlApi>;
+    if (
+      typeof loaded.getSelfControlPermissionState !== "function" ||
+      typeof loaded.requestSelfControlPermission !== "function" ||
+      typeof loaded.openSelfControlPermissionLocation !== "function"
+    ) {
+      return null;
+    }
+    return loaded as SelfControlApi;
+  } catch {
+    return null;
+  }
+}
+
+function unavailableWebsiteBlockingPermission(): PermissionState {
+  return {
+    id: WEBSITE_BLOCKING_PERMISSION_ID,
+    status: "not-applicable",
+    lastChecked: Date.now(),
+    canRequest: false,
+    reason: "Website blocking is available when the LifeOps app is installed.",
+  };
+}
+
 async function getWebsiteBlockingPermissionState(): Promise<PermissionState> {
-  return await getSelfControlPermissionState();
+  const selfControl = await loadSelfControlApi();
+  return selfControl
+    ? await selfControl.getSelfControlPermissionState()
+    : unavailableWebsiteBlockingPermission();
 }
 
 export interface PermissionRouteState {
@@ -127,7 +161,13 @@ export async function handlePermissionRoutes(
   ) {
     const permId = pathname.split("/")[3];
     if (permId === WEBSITE_BLOCKING_PERMISSION_ID) {
-      json(res, await requestSelfControlPermission());
+      const selfControl = await loadSelfControlApi();
+      json(
+        res,
+        selfControl
+          ? await selfControl.requestSelfControlPermission()
+          : unavailableWebsiteBlockingPermission(),
+      );
       return true;
     }
     json(res, {
@@ -144,7 +184,10 @@ export async function handlePermissionRoutes(
     const permId = pathname.split("/")[3];
     if (permId === WEBSITE_BLOCKING_PERMISSION_ID) {
       try {
-        const opened = await openSelfControlPermissionLocation();
+        const selfControl = await loadSelfControlApi();
+        const opened = selfControl
+          ? await selfControl.openSelfControlPermissionLocation()
+          : false;
         json(res, {
           opened,
           id: WEBSITE_BLOCKING_PERMISSION_ID,
