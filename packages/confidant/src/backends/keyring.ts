@@ -1,4 +1,5 @@
 import type { Entry as EntryType } from "@napi-rs/keyring";
+import { isKeychainUnsafe, KEYCHAIN_UNSAFE_MESSAGE } from "../keychain-host.js";
 import { parseReference } from "../references.js";
 import type { VaultReference } from "../types.js";
 import {
@@ -80,19 +81,13 @@ export class KeyringBackend implements VaultBackend {
 /**
  * Lazy-loads `@napi-rs/keyring` and returns the `Entry` constructor.
  * Throws BackendNotConfiguredError on hosts where the native binding
- * is known to crash the process (headless Linux without D-Bus). The
- * top-level import was changed to type-only so merely importing this
- * module does not initialize the native binding.
+ * is known to crash the process (headless Linux without a reachable
+ * D-Bus session). The top-level import was changed to type-only so
+ * merely importing this module does not initialize the native binding.
  */
 async function loadEntryClass(): Promise<typeof EntryType> {
-  if (
-    process.env.CONFIDANT_DISABLE_KEYCHAIN === "1" ||
-    (process.platform === "linux" && !process.env.DBUS_SESSION_BUS_ADDRESS)
-  ) {
-    throw new BackendNotConfiguredError(
-      "keyring",
-      "OS keychain unsafe on this host (headless Linux without DBUS_SESSION_BUS_ADDRESS, or *_DISABLE_KEYCHAIN=1). On Linux, ensure libsecret + a Secret Service agent is running, or use a different backend.",
-    );
+  if (isKeychainUnsafe()) {
+    throw new BackendNotConfiguredError("keyring", KEYCHAIN_UNSAFE_MESSAGE);
   }
   const mod = await import("@napi-rs/keyring");
   return mod.Entry;

@@ -1,4 +1,5 @@
 import type { Entry as EntryType } from "@napi-rs/keyring";
+import { isKeychainUnsafe, KEYCHAIN_UNSAFE_MESSAGE } from "../keychain-host.js";
 import { generateMasterKey, KEY_BYTES } from "./envelope.js";
 
 /**
@@ -68,14 +69,12 @@ export function osKeyringMasterKey(
 
 async function loadOrCreateKeychainEntry(opts: KeyringMasterKeyOptions): Promise<Buffer> {
   // Dodge headless-Linux native segfaults from libsecret. The OS keychain
-  // backend is unsafe on hosts without a D-Bus session because the native
-  // binding crashes the process before throwing a catchable JS error.
-  if (
-    process.env.CONFIDANT_DISABLE_KEYCHAIN === "1" ||
-    (process.platform === "linux" && !process.env.DBUS_SESSION_BUS_ADDRESS)
-  ) {
+  // backend is unsafe on hosts without a reachable D-Bus session because
+  // the native binding crashes the process before throwing a catchable
+  // JS error.
+  if (isKeychainUnsafe()) {
     throw new MasterKeyUnavailableError(
-      `OS keychain unsafe on this host (headless Linux without DBUS_SESSION_BUS_ADDRESS, or *_DISABLE_KEYCHAIN=1). Supply an inMemoryMasterKey or set up a Secret Service agent.`,
+      `${KEYCHAIN_UNSAFE_MESSAGE} Supply an inMemoryMasterKey instead.`,
     );
   }
 
