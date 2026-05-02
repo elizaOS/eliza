@@ -32,7 +32,6 @@ function fixOneFile(full) {
     ".tsx",
     ".mts",
     ".cts",
-    ".json",
     ".mjs",
     ".js",
     ".md",
@@ -43,13 +42,18 @@ function fixOneFile(full) {
   let s = fs.readFileSync(full, "utf8");
   const orig = s;
   s = s.replace(PATH_FIX_RE, "");
-  if (full.endsWith(`${path.sep}package.json`)) {
-    s = s.replace(/"\.\/typescript\//g, '"./');
-    s = s.replace(/'\.\/typescript\//g, "'./");
-    s = s.replace(/cd typescript && /g, "");
-    s = s.replace(/\bcd typescript\b(;|\s|$)/g, "$1");
-  }
   if (s !== orig) fs.writeFileSync(full, s);
+}
+
+/** Strip `typescript/` path segment fixes + cd typescript (package.json only). */
+function fixPackageJsonScripts(pkgPath) {
+  let s = fs.readFileSync(pkgPath, "utf8");
+  const orig = s;
+  s = s.replace(/"\.\/typescript\//g, '"./');
+  s = s.replace(/'\.\/typescript\//g, "'./");
+  s = s.replace(/cd typescript && /g, "");
+  s = s.replace(/\bcd typescript\b(;|\s|$)/g, "$1");
+  if (s !== orig) fs.writeFileSync(pkgPath, s);
 }
 
 function hoist(pluginRoot) {
@@ -107,6 +111,7 @@ function hoist(pluginRoot) {
     `${JSON.stringify(innerPkg, null, indent)}\n`,
   );
 
+  fixPackageJsonScripts(rootPkgPath);
   walkFix(pluginRoot);
   console.log(`hoisted  ${path.relative(ROOT, pluginRoot)}`);
 }
