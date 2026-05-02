@@ -32,8 +32,7 @@ function resolveStateDirFromEnv(env: NodeJS.ProcessEnv = process.env): string {
 		return resolveUserPath(override);
 	}
 
-	const namespace =
-		env.ELIZA_NAMESPACE?.trim() || "eliza";
+	const namespace = env.ELIZA_NAMESPACE?.trim() || "eliza";
 	return path.join(os.homedir(), `.${namespace}`);
 }
 

@@ -63,9 +63,7 @@ function isCloudProvisionedRuntime(): boolean {
   if (typeof process === "undefined") {
     return false;
   }
-  return (
-    process.env.ELIZA_CLOUD_PROVISIONED === "1"
-  );
+  return process.env.ELIZA_CLOUD_PROVISIONED === "1";
 }
 
 function isNodeHost(): boolean {
@@ -555,10 +553,7 @@ export class CloudManagedGatewayRelayService extends Service {
       buildWorldKey(payload.source, payload.transportMetadata, payload.roomKey)
     );
     const entityId = createUniqueUuid(this.runtime, `${payload.source}:${payload.senderId}`);
-    const messageServerId = createUniqueUuid(
-      this.runtime,
-      `eliza-cloud-gateway:${payload.source}`
-    );
+    const messageServerId = createUniqueUuid(this.runtime, `eliza-cloud-gateway:${payload.source}`);
     const messageId = createUniqueUuid(
       this.runtime,
       `${payload.source}:${payload.roomKey}:${String(rpc.id ?? Date.now())}:inbound`

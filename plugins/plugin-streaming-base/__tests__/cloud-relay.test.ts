@@ -238,9 +238,7 @@ describe("createCloudRelayDestination", () => {
       }) as never,
     });
 
-    await expect(dest.getCredentials()).rejects.toThrow(
-      /malformed response/,
-    );
+    await expect(dest.getCredentials()).rejects.toThrow(/malformed response/);
   });
 });
 

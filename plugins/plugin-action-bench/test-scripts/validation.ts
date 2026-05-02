@@ -9,7 +9,7 @@ import { ElizaResponse, TestPrompt } from "./types";
  */
 export function validateResponse(
   response: ElizaResponse,
-  prompt: TestPrompt
+  prompt: TestPrompt,
 ): { success: boolean; matchedPatterns: string[]; error?: string } {
   if (!response || !response.text) {
     return {
@@ -21,7 +21,7 @@ export function validateResponse(
 
   const responseText = response.text.toLowerCase();
   const matchedPatterns: string[] = [];
-  
+
   // Check for expected patterns
   for (const pattern of prompt.expectedPatterns) {
     if (isPatternMatch(responseText, pattern.toLowerCase())) {
@@ -31,13 +31,15 @@ export function validateResponse(
 
   // Check for expected actions if specified
   if (prompt.expectedActions && prompt.expectedActions.length > 0) {
-    const responseActions = (response.actions || []).map(a => a.toLowerCase());
-    const expectedActions = prompt.expectedActions.map(a => a.toLowerCase());
-    
-    const missingActions = expectedActions.filter(
-      action => !responseActions.includes(action)
+    const responseActions = (response.actions || []).map((a) =>
+      a.toLowerCase(),
     );
-    
+    const expectedActions = prompt.expectedActions.map((a) => a.toLowerCase());
+
+    const missingActions = expectedActions.filter(
+      (action) => !responseActions.includes(action),
+    );
+
     if (missingActions.length > 0) {
       return {
         success: false,
@@ -48,7 +50,8 @@ export function validateResponse(
   }
 
   // Determine success
-  const success = matchedPatterns.length > 0 || 
+  const success =
+    matchedPatterns.length > 0 ||
     (prompt.expectedPatterns.length === 0 && !prompt.expectedActions);
 
   return {
@@ -71,7 +74,7 @@ function isPatternMatch(text: string, pattern: string): boolean {
   if (pattern.includes("*")) {
     const regexPattern = pattern
       .split("*")
-      .map(part => escapeRegex(part))
+      .map((part) => escapeRegex(part))
       .join(".*");
     const regex = new RegExp(regexPattern, "i");
     return regex.test(text);
@@ -111,15 +114,17 @@ export function extractNumbers(text: string): number[] {
  */
 export function validateTypewriterResponse(
   response: ElizaResponse,
-  expectedText: string
+  expectedText: string,
 ): boolean {
   const responseText = response.text.toLowerCase();
   const expected = expectedText.toLowerCase();
-  
+
   // Check if the typed text appears in the response
-  return responseText.includes(expected) || 
+  return (
+    responseText.includes(expected) ||
     responseText.includes(`typed: ${expected}`) ||
-    responseText.includes(`text: ${expected}`);
+    responseText.includes(`text: ${expected}`)
+  );
 }
 
 /**
@@ -128,10 +133,10 @@ export function validateTypewriterResponse(
 export function validateMathResponse(
   response: ElizaResponse,
   operation: string,
-  expectedRange?: { min: number; max: number }
+  expectedRange?: { min: number; max: number },
 ): { success: boolean; value?: number; error?: string } {
   const numbers = extractNumbers(response.text);
-  
+
   if (numbers.length === 0) {
     return {
       success: false,
@@ -141,15 +146,16 @@ export function validateMathResponse(
 
   // Get the likely result (usually the last number mentioned)
   const result = numbers[numbers.length - 1];
-  
+
   // Check if result is in expected range
   if (expectedRange) {
     const inRange = result >= expectedRange.min && result <= expectedRange.max;
     return {
       success: inRange,
       value: result,
-      error: inRange ? undefined : 
-        `Result ${result} outside expected range [${expectedRange.min}, ${expectedRange.max}]`,
+      error: inRange
+        ? undefined
+        : `Result ${result} outside expected range [${expectedRange.min}, ${expectedRange.max}]`,
     };
   }
 
@@ -166,7 +172,7 @@ export function validateMathResponse(
 export function validateRelationalResponse(
   response: ElizaResponse,
   expectedEntities?: string[],
-  expectedRelationships?: string[]
+  expectedRelationships?: string[],
 ): { success: boolean; found: string[]; missing: string[] } {
   const responseText = response.text.toLowerCase();
   const found: string[] = [];
@@ -206,7 +212,7 @@ export function validateRelationalResponse(
  */
 export function validateAbsence(
   response: ElizaResponse,
-  forbiddenPatterns: string[]
+  forbiddenPatterns: string[],
 ): { success: boolean; foundForbidden: string[] } {
   const responseText = response.text.toLowerCase();
   const foundForbidden: string[] = [];
@@ -228,7 +234,7 @@ export function validateAbsence(
  */
 export function validateResponseTime(
   responseTime: number,
-  maxTime: number
+  maxTime: number,
 ): boolean {
   return responseTime <= maxTime;
 }
@@ -237,7 +243,9 @@ export function validateResponseTime(
  * Create a composite validator from multiple validation functions
  */
 export function createCompositeValidator(
-  validators: Array<(response: ElizaResponse) => { success: boolean; error?: string }>
+  validators: Array<
+    (response: ElizaResponse) => { success: boolean; error?: string }
+  >,
 ): (response: ElizaResponse) => { success: boolean; errors: string[] } {
   return (response: ElizaResponse) => {
     const errors: string[] = [];

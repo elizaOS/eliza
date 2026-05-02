@@ -185,8 +185,7 @@ export function parseVitestOutput(output: string): VitestSummary {
  * Resolve the root state directory honoring Eliza/Eliza env overrides.
  */
 export function getStateDir(): string {
-	const fromEnv =
-		process.env.ELIZA_STATE_DIR?.trim();
+	const fromEnv = process.env.ELIZA_STATE_DIR?.trim();
 	return fromEnv && fromEnv.length > 0
 		? fromEnv
 		: path.join(homedir(), ".eliza");

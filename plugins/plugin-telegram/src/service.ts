@@ -28,9 +28,7 @@ import {
   type TelegramWorldPayload,
 } from './types';
 
-const CANONICAL_OWNER_SETTING_KEYS = [
-  'ELIZA_ADMIN_ENTITY_ID',
-] as const;
+const CANONICAL_OWNER_SETTING_KEYS = ['ELIZA_ADMIN_ENTITY_ID'] as const;
 
 type MiddlewareNext = () => Promise<void>;
 

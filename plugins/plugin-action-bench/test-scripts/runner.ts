@@ -5,7 +5,13 @@
 import { ElizaSocketClient } from "./socket-client";
 import { TestPrompt, TestResult, TestSession, ElizaResponse } from "./types";
 import { validateResponse } from "./validation";
-import { calculateMetrics, formatMetrics, generateHistogram, checkThresholds, generateSummaryReport } from "./performance-metrics";
+import {
+  calculateMetrics,
+  formatMetrics,
+  generateHistogram,
+  checkThresholds,
+  generateSummaryReport,
+} from "./performance-metrics";
 import { config } from "./config";
 import { typewriterPrompts } from "./prompts/typewriter";
 import { multiverseMathPrompts } from "./prompts/multiverse-math";
@@ -33,15 +39,17 @@ export class BenchmarkRunner {
    */
   async initialize(): Promise<void> {
     console.log("🚀 Initializing benchmark runner...");
-    
+
     try {
       await this.client.connect();
       await this.client.waitForConnection();
       console.log("✅ Connected to ELIZA server");
-      
+
       // Run warmup prompts
       if (config.test.warmupPrompts > 0) {
-        console.log(`🔥 Running ${config.test.warmupPrompts} warmup prompts...`);
+        console.log(
+          `🔥 Running ${config.test.warmupPrompts} warmup prompts...`,
+        );
         await this.runWarmup();
       }
     } catch (error) {
@@ -54,13 +62,13 @@ export class BenchmarkRunner {
    * Run warmup prompts to prime the system
    */
   private async runWarmup(): Promise<void> {
-    const warmupPrompts = [
-      "hello",
-      "what can you do",
-      "help",
-    ];
+    const warmupPrompts = ["hello", "what can you do", "help"];
 
-    for (let i = 0; i < config.test.warmupPrompts && i < warmupPrompts.length; i++) {
+    for (
+      let i = 0;
+      i < config.test.warmupPrompts && i < warmupPrompts.length;
+      i++
+    ) {
       try {
         await this.client.sendMessage(warmupPrompts[i], 3000);
         await this.delay(config.test.delayBetweenPrompts);
@@ -78,10 +86,26 @@ export class BenchmarkRunner {
     console.log("STARTING BENCHMARK TESTS");
     console.log("=".repeat(60) + "\n");
 
-    const categories: Array<{ name: string; prompts: TestPrompt[]; enabled: boolean }> = [
-      { name: "Typewriter", prompts: typewriterPrompts, enabled: config.categories.typewriter },
-      { name: "Multiverse Math", prompts: multiverseMathPrompts, enabled: config.categories.multiverseMath },
-      { name: "Relational Data", prompts: relationalDataPrompts, enabled: config.categories.relationalData },
+    const categories: Array<{
+      name: string;
+      prompts: TestPrompt[];
+      enabled: boolean;
+    }> = [
+      {
+        name: "Typewriter",
+        prompts: typewriterPrompts,
+        enabled: config.categories.typewriter,
+      },
+      {
+        name: "Multiverse Math",
+        prompts: multiverseMathPrompts,
+        enabled: config.categories.multiverseMath,
+      },
+      {
+        name: "Relational Data",
+        prompts: relationalDataPrompts,
+        enabled: config.categories.relationalData,
+      },
     ];
 
     const allMetrics = [];
@@ -101,11 +125,11 @@ export class BenchmarkRunner {
 
       // Display results
       console.log(formatMetrics(metrics));
-      
+
       if (this.verbose) {
         const responseTimes = results
-          .filter(r => r.success)
-          .map(r => r.responseTime);
+          .filter((r) => r.success)
+          .map((r) => r.responseTime);
         console.log(generateHistogram(responseTimes));
       }
 
@@ -113,7 +137,7 @@ export class BenchmarkRunner {
       const thresholdCheck = checkThresholds(metrics, config.thresholds);
       if (!thresholdCheck.passed) {
         console.log("⚠️  Threshold violations:");
-        thresholdCheck.failures.forEach(f => console.log(`   - ${f}`));
+        thresholdCheck.failures.forEach((f) => console.log(`   - ${f}`));
       } else {
         console.log("✅ All thresholds passed");
       }
@@ -142,7 +166,7 @@ export class BenchmarkRunner {
 
     for (const prompt of prompts) {
       console.log(`\n🧪 Testing: "${prompt.prompt}" (${prompt.id})`);
-      
+
       // Run setup prompts if needed
       if (prompt.setup && prompt.setup.length > 0) {
         console.log("   📋 Running setup prompts...");
@@ -156,18 +180,22 @@ export class BenchmarkRunner {
       const promptResults = await this.runSinglePrompt(
         prompt,
         config.test.runsPerPrompt,
-        true
+        true,
       );
-      
+
       results.push(...promptResults);
 
       // Display summary for this prompt
-      const successCount = promptResults.filter(r => r.success).length;
-      const avgTime = promptResults.reduce((sum, r) => sum + r.responseTime, 0) / promptResults.length;
-      
-      console.log(`   ✓ Success rate: ${successCount}/${promptResults.length} (${(successCount/promptResults.length*100).toFixed(1)}%)`);
+      const successCount = promptResults.filter((r) => r.success).length;
+      const avgTime =
+        promptResults.reduce((sum, r) => sum + r.responseTime, 0) /
+        promptResults.length;
+
+      console.log(
+        `   ✓ Success rate: ${successCount}/${promptResults.length} (${((successCount / promptResults.length) * 100).toFixed(1)}%)`,
+      );
       console.log(`   ⏱️  Avg response time: ${avgTime.toFixed(2)}ms`);
-      
+
       if (!promptResults[0].success && this.verbose) {
         console.log(`   ❌ Error: ${promptResults[0].error}`);
       }
@@ -182,22 +210,22 @@ export class BenchmarkRunner {
   private async runSinglePrompt(
     prompt: TestPrompt,
     runs: number,
-    collectResults: boolean
+    collectResults: boolean,
   ): Promise<TestResult[]> {
     const results: TestResult[] = [];
 
     for (let i = 0; i < runs; i++) {
       const startTime = Date.now();
-      
+
       try {
         const response = await this.client.sendMessage(
           prompt.prompt,
-          prompt.timeout || config.test.defaultTimeout
+          prompt.timeout || config.test.defaultTimeout,
         );
-        
+
         const responseTime = Date.now() - startTime;
         const validation = validateResponse(response, prompt);
-        
+
         const result: TestResult = {
           promptId: prompt.id,
           prompt: prompt.prompt,
@@ -215,12 +243,13 @@ export class BenchmarkRunner {
         }
 
         if (this.verbose && i === 0) {
-          console.log(`   📝 Response: "${response.text.substring(0, 100)}${response.text.length > 100 ? '...' : ''}"`);
+          console.log(
+            `   📝 Response: "${response.text.substring(0, 100)}${response.text.length > 100 ? "..." : ""}"`,
+          );
           if (response.actions && response.actions.length > 0) {
             console.log(`   🎯 Actions: ${response.actions.join(", ")}`);
           }
         }
-
       } catch (error: any) {
         const result: TestResult = {
           promptId: prompt.id,
@@ -257,7 +286,7 @@ export class BenchmarkRunner {
    */
   private async saveResults(): Promise<void> {
     const resultsDir = path.resolve(config.output.resultsDir);
-    
+
     // Create results directory if it doesn't exist
     if (!fs.existsSync(resultsDir)) {
       fs.mkdirSync(resultsDir, { recursive: true });
@@ -286,7 +315,7 @@ export class BenchmarkRunner {
    * Utility to add delay
    */
   private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**
@@ -297,7 +326,7 @@ export class BenchmarkRunner {
     const results = await this.runCategory(typewriterPrompts);
     const metrics = calculateMetrics(results, "Typewriter");
     console.log(formatMetrics(metrics));
-    
+
     if (config.output.saveResults) {
       this.session.metrics = [metrics];
       await this.saveResults();
@@ -309,7 +338,7 @@ export class BenchmarkRunner {
     const results = await this.runCategory(multiverseMathPrompts);
     const metrics = calculateMetrics(results, "Multiverse Math");
     console.log(formatMetrics(metrics));
-    
+
     if (config.output.saveResults) {
       this.session.metrics = [metrics];
       await this.saveResults();
@@ -321,7 +350,7 @@ export class BenchmarkRunner {
     const results = await this.runCategory(relationalDataPrompts);
     const metrics = calculateMetrics(results, "Relational Data");
     console.log(formatMetrics(metrics));
-    
+
     if (config.output.saveResults) {
       this.session.metrics = [metrics];
       await this.saveResults();

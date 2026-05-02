@@ -56,7 +56,6 @@ export class ElizaSocketClient extends EventEmitter {
           this.emit("disconnected", { code, reason });
           this.handleReconnect();
         });
-
       } catch (error) {
         reject(error);
       }
@@ -79,7 +78,7 @@ export class ElizaSocketClient extends EventEmitter {
       };
 
       const timeoutMs = timeout || config.test.defaultTimeout;
-      
+
       // Set up response listener
       const responseHandler = (response: ElizaResponse) => {
         if (this.responseTimeout) {
@@ -158,9 +157,11 @@ export class ElizaSocketClient extends EventEmitter {
 
     this.reconnectAttempts++;
     console.log(`[Socket] Reconnecting... (attempt ${this.reconnectAttempts})`);
-    
-    await new Promise(resolve => setTimeout(resolve, config.server.reconnectDelay));
-    
+
+    await new Promise((resolve) =>
+      setTimeout(resolve, config.server.reconnectDelay),
+    );
+
     try {
       await this.connect();
     } catch (error) {

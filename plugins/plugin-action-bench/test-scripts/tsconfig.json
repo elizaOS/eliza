@@ -17,12 +17,6 @@
     "sourceMap": true,
     "types": ["node"]
   },
-  "include": [
-    "**/*.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "test-results"
-  ]
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", "dist", "test-results"]
 }

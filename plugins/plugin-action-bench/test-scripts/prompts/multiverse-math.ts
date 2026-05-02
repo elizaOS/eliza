@@ -47,7 +47,11 @@ export const multiverseMathPrompts: TestPrompt[] = [
     id: "math-dimension-fibonacci",
     category: "multiverse-math",
     prompt: "switch to fibonacci dimension",
-    expectedPatterns: ["fibonacci", "dimension*fibonacci", "selected*fibonacci"],
+    expectedPatterns: [
+      "fibonacci",
+      "dimension*fibonacci",
+      "selected*fibonacci",
+    ],
     expectedActions: ["SELECT_DIMENSION"],
   },
 
@@ -57,14 +61,25 @@ export const multiverseMathPrompts: TestPrompt[] = [
     category: "multiverse-math",
     prompt: "add 5 and 3",
     expectedPatterns: ["8", "5 + 3", "result*8"],
-    expectedActions: ["INPUT_5", "TRANSFER_TO_INPUT", "INPUT_3", "MULTIVERSE_ADD"],
+    expectedActions: [
+      "INPUT_5",
+      "TRANSFER_TO_INPUT",
+      "INPUT_3",
+      "MULTIVERSE_ADD",
+    ],
   },
   {
     id: "math-add-prime",
     category: "multiverse-math",
     prompt: "in prime dimension, add 5 and 3",
     expectedPatterns: ["11", "prime", "nearest prime"],
-    expectedActions: ["SELECT_DIMENSION", "INPUT_5", "TRANSFER_TO_INPUT", "INPUT_3", "MULTIVERSE_ADD"],
+    expectedActions: [
+      "SELECT_DIMENSION",
+      "INPUT_5",
+      "TRANSFER_TO_INPUT",
+      "INPUT_3",
+      "MULTIVERSE_ADD",
+    ],
     setup: [
       {
         id: "math-add-prime-setup",
@@ -72,7 +87,7 @@ export const multiverseMathPrompts: TestPrompt[] = [
         prompt: "set dimension to prime",
         expectedPatterns: ["prime"],
         expectedActions: ["SELECT_DIMENSION"],
-      }
+      },
     ],
   },
   {
@@ -80,7 +95,13 @@ export const multiverseMathPrompts: TestPrompt[] = [
     category: "multiverse-math",
     prompt: "add 5 and 3 with quantum entanglement",
     expectedPatterns: ["*10*", "quantum", "entanglement"],
-    expectedActions: ["SELECT_DIMENSION", "INPUT_5", "TRANSFER_TO_INPUT", "INPUT_3", "MULTIVERSE_ADD"],
+    expectedActions: [
+      "SELECT_DIMENSION",
+      "INPUT_5",
+      "TRANSFER_TO_INPUT",
+      "INPUT_3",
+      "MULTIVERSE_ADD",
+    ],
     setup: [
       {
         id: "math-add-quantum-setup",
@@ -88,7 +109,7 @@ export const multiverseMathPrompts: TestPrompt[] = [
         prompt: "set dimension to quantum",
         expectedPatterns: ["quantum"],
         expectedActions: ["SELECT_DIMENSION"],
-      }
+      },
     ],
   },
 
@@ -98,14 +119,27 @@ export const multiverseMathPrompts: TestPrompt[] = [
     category: "multiverse-math",
     prompt: "subtract 3 from 10",
     expectedPatterns: ["7", "10 - 3", "result*7"],
-    expectedActions: ["INPUT_1", "INPUT_0", "TRANSFER_TO_INPUT", "INPUT_3", "MULTIVERSE_SUBTRACT"],
+    expectedActions: [
+      "INPUT_1",
+      "INPUT_0",
+      "TRANSFER_TO_INPUT",
+      "INPUT_3",
+      "MULTIVERSE_SUBTRACT",
+    ],
   },
   {
     id: "math-subtract-absolute",
     category: "multiverse-math",
     prompt: "in absolute dimension, subtract 10 from 3",
     expectedPatterns: ["7", "absolute", "no negative"],
-    expectedActions: ["SELECT_DIMENSION", "INPUT_3", "TRANSFER_TO_INPUT", "INPUT_1", "INPUT_0", "MULTIVERSE_SUBTRACT"],
+    expectedActions: [
+      "SELECT_DIMENSION",
+      "INPUT_3",
+      "TRANSFER_TO_INPUT",
+      "INPUT_1",
+      "INPUT_0",
+      "MULTIVERSE_SUBTRACT",
+    ],
     setup: [
       {
         id: "math-subtract-absolute-setup",
@@ -113,7 +147,7 @@ export const multiverseMathPrompts: TestPrompt[] = [
         prompt: "set dimension to absolute",
         expectedPatterns: ["absolute"],
         expectedActions: ["SELECT_DIMENSION"],
-      }
+      },
     ],
   },
   {
@@ -121,7 +155,13 @@ export const multiverseMathPrompts: TestPrompt[] = [
     category: "multiverse-math",
     prompt: "subtract 5 from 8 in mirror dimension",
     expectedPatterns: ["-3", "mirror", "reflect"],
-    expectedActions: ["SELECT_DIMENSION", "INPUT_8", "TRANSFER_TO_INPUT", "INPUT_5", "MULTIVERSE_SUBTRACT"],
+    expectedActions: [
+      "SELECT_DIMENSION",
+      "INPUT_8",
+      "TRANSFER_TO_INPUT",
+      "INPUT_5",
+      "MULTIVERSE_SUBTRACT",
+    ],
     setup: [
       {
         id: "math-subtract-mirror-setup",
@@ -129,7 +169,7 @@ export const multiverseMathPrompts: TestPrompt[] = [
         prompt: "set dimension to mirror",
         expectedPatterns: ["mirror"],
         expectedActions: ["SELECT_DIMENSION"],
-      }
+      },
     ],
   },
 
@@ -139,14 +179,25 @@ export const multiverseMathPrompts: TestPrompt[] = [
     category: "multiverse-math",
     prompt: "multiply 7 by 8",
     expectedPatterns: ["56", "7 * 8", "7 × 8", "result*56"],
-    expectedActions: ["INPUT_7", "TRANSFER_TO_INPUT", "INPUT_8", "MULTIVERSE_MULTIPLY"],
+    expectedActions: [
+      "INPUT_7",
+      "TRANSFER_TO_INPUT",
+      "INPUT_8",
+      "MULTIVERSE_MULTIPLY",
+    ],
   },
   {
     id: "math-multiply-fibonacci",
     category: "multiverse-math",
     prompt: "multiply 7 by 8 in fibonacci dimension",
     expectedPatterns: ["55", "fibonacci", "nearest fibonacci"],
-    expectedActions: ["SELECT_DIMENSION", "INPUT_7", "TRANSFER_TO_INPUT", "INPUT_8", "MULTIVERSE_MULTIPLY"],
+    expectedActions: [
+      "SELECT_DIMENSION",
+      "INPUT_7",
+      "TRANSFER_TO_INPUT",
+      "INPUT_8",
+      "MULTIVERSE_MULTIPLY",
+    ],
     setup: [
       {
         id: "math-multiply-fibonacci-setup",
@@ -154,7 +205,7 @@ export const multiverseMathPrompts: TestPrompt[] = [
         prompt: "set dimension to fibonacci",
         expectedPatterns: ["fibonacci"],
         expectedActions: ["SELECT_DIMENSION"],
-      }
+      },
     ],
   },
   {
@@ -162,7 +213,13 @@ export const multiverseMathPrompts: TestPrompt[] = [
     category: "multiverse-math",
     prompt: "in exponential dimension, multiply 2 by 3",
     expectedPatterns: ["8", "exponential", "2^3"],
-    expectedActions: ["SELECT_DIMENSION", "INPUT_2", "TRANSFER_TO_INPUT", "INPUT_3", "MULTIVERSE_MULTIPLY"],
+    expectedActions: [
+      "SELECT_DIMENSION",
+      "INPUT_2",
+      "TRANSFER_TO_INPUT",
+      "INPUT_3",
+      "MULTIVERSE_MULTIPLY",
+    ],
     setup: [
       {
         id: "math-multiply-exponential-setup",
@@ -170,7 +227,7 @@ export const multiverseMathPrompts: TestPrompt[] = [
         prompt: "set dimension to exponential",
         expectedPatterns: ["exponential"],
         expectedActions: ["SELECT_DIMENSION"],
-      }
+      },
     ],
   },
 
@@ -180,21 +237,40 @@ export const multiverseMathPrompts: TestPrompt[] = [
     category: "multiverse-math",
     prompt: "divide 10 by 2",
     expectedPatterns: ["5", "10 / 2", "10 ÷ 2", "result*5"],
-    expectedActions: ["INPUT_1", "INPUT_0", "TRANSFER_TO_INPUT", "INPUT_2", "MULTIVERSE_DIVIDE"],
+    expectedActions: [
+      "INPUT_1",
+      "INPUT_0",
+      "TRANSFER_TO_INPUT",
+      "INPUT_2",
+      "MULTIVERSE_DIVIDE",
+    ],
   },
   {
     id: "math-divide-by-zero-safe",
     category: "multiverse-math",
     prompt: "divide 10 by 0",
     expectedPatterns: ["10", "safe", "division by zero"],
-    expectedActions: ["INPUT_1", "INPUT_0", "TRANSFER_TO_INPUT", "INPUT_0", "MULTIVERSE_DIVIDE"],
+    expectedActions: [
+      "INPUT_1",
+      "INPUT_0",
+      "TRANSFER_TO_INPUT",
+      "INPUT_0",
+      "MULTIVERSE_DIVIDE",
+    ],
   },
   {
     id: "math-divide-by-zero-infinite",
     category: "multiverse-math",
     prompt: "in infinite dimension, divide 10 by 0",
     expectedPatterns: ["9990", "portal", "infinite"],
-    expectedActions: ["SELECT_DIMENSION", "INPUT_1", "INPUT_0", "TRANSFER_TO_INPUT", "INPUT_0", "MULTIVERSE_DIVIDE"],
+    expectedActions: [
+      "SELECT_DIMENSION",
+      "INPUT_1",
+      "INPUT_0",
+      "TRANSFER_TO_INPUT",
+      "INPUT_0",
+      "MULTIVERSE_DIVIDE",
+    ],
     setup: [
       {
         id: "math-divide-infinite-setup",
@@ -202,7 +278,7 @@ export const multiverseMathPrompts: TestPrompt[] = [
         prompt: "set dimension to infinite",
         expectedPatterns: ["infinite"],
         expectedActions: ["SELECT_DIMENSION"],
-      }
+      },
     ],
   },
   {
@@ -210,7 +286,14 @@ export const multiverseMathPrompts: TestPrompt[] = [
     category: "multiverse-math",
     prompt: "divide 10 by 3 in golden dimension",
     expectedPatterns: ["*2*", "golden", "phi", "φ"],
-    expectedActions: ["SELECT_DIMENSION", "INPUT_1", "INPUT_0", "TRANSFER_TO_INPUT", "INPUT_3", "MULTIVERSE_DIVIDE"],
+    expectedActions: [
+      "SELECT_DIMENSION",
+      "INPUT_1",
+      "INPUT_0",
+      "TRANSFER_TO_INPUT",
+      "INPUT_3",
+      "MULTIVERSE_DIVIDE",
+    ],
     setup: [
       {
         id: "math-divide-golden-setup",
@@ -218,7 +301,7 @@ export const multiverseMathPrompts: TestPrompt[] = [
         prompt: "set dimension to golden",
         expectedPatterns: ["golden"],
         expectedActions: ["SELECT_DIMENSION"],
-      }
+      },
     ],
   },
 
@@ -228,14 +311,27 @@ export const multiverseMathPrompts: TestPrompt[] = [
     category: "multiverse-math",
     prompt: "calculate 10 modulo 3",
     expectedPatterns: ["1", "10 % 3", "10 mod 3", "result*1"],
-    expectedActions: ["INPUT_1", "INPUT_0", "TRANSFER_TO_INPUT", "INPUT_3", "MULTIVERSE_MODULO"],
+    expectedActions: [
+      "INPUT_1",
+      "INPUT_0",
+      "TRANSFER_TO_INPUT",
+      "INPUT_3",
+      "MULTIVERSE_MODULO",
+    ],
   },
   {
     id: "math-modulo-cyclical",
     category: "multiverse-math",
     prompt: "in cyclical dimension, calculate 10 modulo 3",
     expectedPatterns: ["1", "cyclical", "cycle"],
-    expectedActions: ["SELECT_DIMENSION", "INPUT_1", "INPUT_0", "TRANSFER_TO_INPUT", "INPUT_3", "MULTIVERSE_MODULO"],
+    expectedActions: [
+      "SELECT_DIMENSION",
+      "INPUT_1",
+      "INPUT_0",
+      "TRANSFER_TO_INPUT",
+      "INPUT_3",
+      "MULTIVERSE_MODULO",
+    ],
     setup: [
       {
         id: "math-modulo-cyclical-setup",
@@ -243,7 +339,7 @@ export const multiverseMathPrompts: TestPrompt[] = [
         prompt: "set dimension to cyclical",
         expectedPatterns: ["cyclical"],
         expectedActions: ["SELECT_DIMENSION"],
-      }
+      },
     ],
   },
 
@@ -253,14 +349,24 @@ export const multiverseMathPrompts: TestPrompt[] = [
     category: "multiverse-math",
     prompt: "calculate 2 to the power of 3",
     expectedPatterns: ["8", "2^3", "2 ^ 3", "result*8"],
-    expectedActions: ["INPUT_2", "TRANSFER_TO_INPUT", "INPUT_3", "MULTIVERSE_POWER"],
+    expectedActions: [
+      "INPUT_2",
+      "TRANSFER_TO_INPUT",
+      "INPUT_3",
+      "MULTIVERSE_POWER",
+    ],
   },
   {
     id: "math-power-large",
     category: "multiverse-math",
     prompt: "calculate 3 to the power of 4",
     expectedPatterns: ["81", "3^4", "3 ^ 4", "result*81"],
-    expectedActions: ["INPUT_3", "TRANSFER_TO_INPUT", "INPUT_4", "MULTIVERSE_POWER"],
+    expectedActions: [
+      "INPUT_3",
+      "TRANSFER_TO_INPUT",
+      "INPUT_4",
+      "MULTIVERSE_POWER",
+    ],
   },
 
   // Square root tests
@@ -285,7 +391,14 @@ export const multiverseMathPrompts: TestPrompt[] = [
     category: "multiverse-math",
     prompt: "add 5 and 3, store it, then recall",
     expectedPatterns: ["8", "stored", "recalled"],
-    expectedActions: ["INPUT_5", "TRANSFER_TO_INPUT", "INPUT_3", "MULTIVERSE_ADD", "MATH_STORE", "MATH_RECALL"],
+    expectedActions: [
+      "INPUT_5",
+      "TRANSFER_TO_INPUT",
+      "INPUT_3",
+      "MULTIVERSE_ADD",
+      "MATH_STORE",
+      "MATH_RECALL",
+    ],
   },
   {
     id: "math-clear",
@@ -302,20 +415,37 @@ export const multiverseMathPrompts: TestPrompt[] = [
     prompt: "add 10 and 5, then multiply by 2, then divide by 3",
     expectedPatterns: ["10", "15", "30", "10"],
     expectedActions: [
-      "INPUT_1", "INPUT_0", "TRANSFER_TO_INPUT", "INPUT_5", "MULTIVERSE_ADD",
-      "TRANSFER_TO_INPUT", "INPUT_2", "MULTIVERSE_MULTIPLY",
-      "TRANSFER_TO_INPUT", "INPUT_3", "MULTIVERSE_DIVIDE"
+      "INPUT_1",
+      "INPUT_0",
+      "TRANSFER_TO_INPUT",
+      "INPUT_5",
+      "MULTIVERSE_ADD",
+      "TRANSFER_TO_INPUT",
+      "INPUT_2",
+      "MULTIVERSE_MULTIPLY",
+      "TRANSFER_TO_INPUT",
+      "INPUT_3",
+      "MULTIVERSE_DIVIDE",
     ],
     timeout: 8000,
   },
   {
     id: "math-dimension-switching",
     category: "multiverse-math",
-    prompt: "add 10 and 5 in prime dimension, then divide by 3 in golden dimension",
+    prompt:
+      "add 10 and 5 in prime dimension, then divide by 3 in golden dimension",
     expectedPatterns: ["17", "prime", "golden", "phi"],
     expectedActions: [
-      "SELECT_DIMENSION", "INPUT_1", "INPUT_0", "TRANSFER_TO_INPUT", "INPUT_5", "MULTIVERSE_ADD",
-      "SELECT_DIMENSION", "TRANSFER_TO_INPUT", "INPUT_3", "MULTIVERSE_DIVIDE"
+      "SELECT_DIMENSION",
+      "INPUT_1",
+      "INPUT_0",
+      "TRANSFER_TO_INPUT",
+      "INPUT_5",
+      "MULTIVERSE_ADD",
+      "SELECT_DIMENSION",
+      "TRANSFER_TO_INPUT",
+      "INPUT_3",
+      "MULTIVERSE_DIVIDE",
     ],
     timeout: 10000,
   },

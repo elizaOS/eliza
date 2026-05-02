@@ -49,7 +49,7 @@ export const relationalDataPrompts: TestPrompt[] = [
         prompt: "create person Alice",
         expectedPatterns: ["alice"],
         expectedActions: ["CREATE_ENTITY"],
-      }
+      },
     ],
   },
   {
@@ -65,7 +65,7 @@ export const relationalDataPrompts: TestPrompt[] = [
         prompt: "create company TechCorp",
         expectedPatterns: ["techcorp"],
         expectedActions: ["CREATE_ENTITY"],
-      }
+      },
     ],
   },
 
@@ -83,7 +83,7 @@ export const relationalDataPrompts: TestPrompt[] = [
         prompt: "create person Alice",
         expectedPatterns: ["alice"],
         expectedActions: ["CREATE_ENTITY"],
-      }
+      },
     ],
   },
   {
@@ -106,7 +106,7 @@ export const relationalDataPrompts: TestPrompt[] = [
         prompt: "select John",
         expectedPatterns: ["john", "selected"],
         expectedActions: ["SELECT_ENTITY"],
-      }
+      },
     ],
   },
   {
@@ -122,7 +122,7 @@ export const relationalDataPrompts: TestPrompt[] = [
         prompt: "create person Mike and select Mike",
         expectedPatterns: ["mike"],
         expectedActions: ["CREATE_ENTITY", "SELECT_ENTITY"],
-      }
+      },
     ],
   },
 
@@ -147,7 +147,7 @@ export const relationalDataPrompts: TestPrompt[] = [
         prompt: "create company TechCorp",
         expectedPatterns: ["techcorp"],
         expectedActions: ["CREATE_ENTITY"],
-      }
+      },
     ],
   },
   {
@@ -170,7 +170,7 @@ export const relationalDataPrompts: TestPrompt[] = [
         prompt: "create person Carol",
         expectedPatterns: ["carol"],
         expectedActions: ["CREATE_ENTITY"],
-      }
+      },
     ],
   },
   {
@@ -193,7 +193,7 @@ export const relationalDataPrompts: TestPrompt[] = [
         prompt: "create product Laptop",
         expectedPatterns: ["laptop"],
         expectedActions: ["CREATE_ENTITY"],
-      }
+      },
     ],
   },
   {
@@ -218,7 +218,7 @@ export const relationalDataPrompts: TestPrompt[] = [
         prompt: "create person Alice, person Bob, and company TechCorp",
         expectedPatterns: ["alice", "bob", "techcorp"],
         expectedActions: ["CREATE_ENTITY", "CREATE_ENTITY", "CREATE_ENTITY"],
-      }
+      },
     ],
   },
   {
@@ -241,7 +241,7 @@ export const relationalDataPrompts: TestPrompt[] = [
         prompt: "create person Grace and set role to developer",
         expectedPatterns: ["grace", "developer"],
         expectedActions: ["CREATE_ENTITY", "SELECT_ENTITY", "SET_ATTRIBUTE"],
-      }
+      },
     ],
   },
   {
@@ -254,10 +254,15 @@ export const relationalDataPrompts: TestPrompt[] = [
       {
         id: "relational-query-rel-setup",
         category: "relational-data",
-        prompt: "create person Henry, company StartupCo, and employment between them",
+        prompt:
+          "create person Henry, company StartupCo, and employment between them",
         expectedPatterns: ["henry", "startupco", "employment"],
-        expectedActions: ["CREATE_ENTITY", "CREATE_ENTITY", "CREATE_RELATIONSHIP"],
-      }
+        expectedActions: [
+          "CREATE_ENTITY",
+          "CREATE_ENTITY",
+          "CREATE_RELATIONSHIP",
+        ],
+      },
     ],
   },
 
@@ -282,7 +287,7 @@ export const relationalDataPrompts: TestPrompt[] = [
         prompt: "create employment between Alice and TechCorp",
         expectedPatterns: ["employment"],
         expectedActions: ["CREATE_RELATIONSHIP"],
-      }
+      },
     ],
   },
   {
@@ -305,7 +310,7 @@ export const relationalDataPrompts: TestPrompt[] = [
         prompt: "make Ian and Jack friends, make Jack and Kate siblings",
         expectedPatterns: ["friend", "sibling"],
         expectedActions: ["CREATE_RELATIONSHIP", "CREATE_RELATIONSHIP"],
-      }
+      },
     ],
   },
 
@@ -322,8 +327,14 @@ export const relationalDataPrompts: TestPrompt[] = [
         category: "relational-data",
         prompt: "create 3 persons and 2 companies with relationships",
         expectedPatterns: ["person", "company"],
-        expectedActions: ["CREATE_ENTITY", "CREATE_ENTITY", "CREATE_ENTITY", "CREATE_ENTITY", "CREATE_ENTITY"],
-      }
+        expectedActions: [
+          "CREATE_ENTITY",
+          "CREATE_ENTITY",
+          "CREATE_ENTITY",
+          "CREATE_ENTITY",
+          "CREATE_ENTITY",
+        ],
+      },
     ],
   },
 
@@ -341,7 +352,7 @@ export const relationalDataPrompts: TestPrompt[] = [
         prompt: "create person Laura",
         expectedPatterns: ["laura"],
         expectedActions: ["CREATE_ENTITY"],
-      }
+      },
     ],
   },
   {
@@ -364,7 +375,7 @@ export const relationalDataPrompts: TestPrompt[] = [
         prompt: "make Mark and Nancy friends",
         expectedPatterns: ["friend"],
         expectedActions: ["CREATE_RELATIONSHIP"],
-      }
+      },
     ],
   },
 
@@ -383,23 +394,49 @@ export const relationalDataPrompts: TestPrompt[] = [
     category: "relational-data",
     prompt: "create an org with CEO Oliver managing Peter and Quinn",
     expectedPatterns: ["oliver", "peter", "quinn", "management", "ceo"],
-    expectedActions: ["CREATE_ENTITY", "CREATE_ENTITY", "CREATE_ENTITY", "SET_ATTRIBUTE", "CREATE_RELATIONSHIP", "CREATE_RELATIONSHIP"],
+    expectedActions: [
+      "CREATE_ENTITY",
+      "CREATE_ENTITY",
+      "CREATE_ENTITY",
+      "SET_ATTRIBUTE",
+      "CREATE_RELATIONSHIP",
+      "CREATE_RELATIONSHIP",
+    ],
   },
   {
     id: "relational-complex-family-tree",
     category: "relational-data",
     prompt: "create family with parent Robert and children Sarah and Tom",
     expectedPatterns: ["robert", "sarah", "tom", "parent", "child"],
-    expectedActions: ["CREATE_ENTITY", "CREATE_ENTITY", "CREATE_ENTITY", "CREATE_RELATIONSHIP", "CREATE_RELATIONSHIP"],
+    expectedActions: [
+      "CREATE_ENTITY",
+      "CREATE_ENTITY",
+      "CREATE_ENTITY",
+      "CREATE_RELATIONSHIP",
+      "CREATE_RELATIONSHIP",
+    ],
   },
   {
     id: "relational-complex-product-ownership",
     category: "relational-data",
-    prompt: "create company BigCorp that owns products Widget and Gadget, with Uma managing Widget",
-    expectedPatterns: ["bigcorp", "widget", "gadget", "uma", "ownership", "management"],
+    prompt:
+      "create company BigCorp that owns products Widget and Gadget, with Uma managing Widget",
+    expectedPatterns: [
+      "bigcorp",
+      "widget",
+      "gadget",
+      "uma",
+      "ownership",
+      "management",
+    ],
     expectedActions: [
-      "CREATE_ENTITY", "CREATE_ENTITY", "CREATE_ENTITY", "CREATE_ENTITY",
-      "CREATE_RELATIONSHIP", "CREATE_RELATIONSHIP", "CREATE_RELATIONSHIP"
+      "CREATE_ENTITY",
+      "CREATE_ENTITY",
+      "CREATE_ENTITY",
+      "CREATE_ENTITY",
+      "CREATE_RELATIONSHIP",
+      "CREATE_RELATIONSHIP",
+      "CREATE_RELATIONSHIP",
     ],
     timeout: 10000,
   },
