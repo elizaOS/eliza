@@ -12,7 +12,7 @@ const cloud = new ElizaCloudClient({
 });
 ```
 
-`ELIZAOS_CLOUD_API_KEY` is provided by the Eliza runtime. Do not invent your own key.
+`ELIZAOS_CLOUD_API_KEY` is provided by the Milady runtime. Do not invent your own key.
 
 ## 1. Register the app
 
