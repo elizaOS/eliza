@@ -81,10 +81,16 @@ describe("secrets-manager routes", () => {
     originalElizaStateDir = process.env.ELIZA_STATE_DIR;
     process.env.MILADY_STATE_DIR = workDir;
     process.env.ELIZA_STATE_DIR = workDir;
-    // The manager now wraps `sharedVault()`, which itself caches across
-    // tests. Drop both so the next call constructs a fresh `Vault`
-    // pointed at the per-test tmp dir.
-    _resetSharedVaultForTesting(null);
+    // Inject a test vault with an in-memory master key so route tests
+    // never touch the OS keychain. Linux CI runners without a reachable
+    // D-Bus session refuse the keychain by design (see
+    // packages/vault/src/master-key.ts:isKeychainUnsafe), and these are
+    // route tests, not OS-keychain integration tests.
+    const testVault = createVault({
+      workDir,
+      masterKey: inMemoryMasterKey(generateMasterKey()),
+    });
+    _resetSharedVaultForTesting(testVault);
     _resetSecretsManagerForTesting();
   });
 
