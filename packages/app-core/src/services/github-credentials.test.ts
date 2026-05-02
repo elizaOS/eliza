@@ -34,7 +34,6 @@ import {
 } from "./github-credentials";
 
 let tempDir: string;
-let originalStateDir: string | undefined;
 let originalElizaStateDir: string | undefined;
 let originalToken: string | undefined;
 
@@ -42,20 +41,13 @@ beforeEach(async () => {
   tempDir = await fs.mkdtemp(
     path.join(os.tmpdir(), "eliza-github-credentials-"),
   );
-  originalStateDir = process.env.ELIZA_STATE_DIR;
   originalElizaStateDir = process.env.ELIZA_STATE_DIR;
   originalToken = process.env.GITHUB_TOKEN;
   process.env.ELIZA_STATE_DIR = tempDir;
-  delete process.env.ELIZA_STATE_DIR;
   delete process.env.GITHUB_TOKEN;
 });
 
 afterEach(async () => {
-  if (originalStateDir === undefined) {
-    delete process.env.ELIZA_STATE_DIR;
-  } else {
-    process.env.ELIZA_STATE_DIR = originalStateDir;
-  }
   if (originalElizaStateDir === undefined) {
     delete process.env.ELIZA_STATE_DIR;
   } else {

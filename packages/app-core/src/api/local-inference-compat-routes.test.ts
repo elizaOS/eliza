@@ -71,7 +71,6 @@ describe("local-inference-compat-routes e2e", () => {
   let origHfHubCache: string | undefined;
   let origElizaStateDir: string | undefined;
   let origOllamaModels: string | undefined;
-  let origStateDir: string | undefined;
   let origToken: string | undefined;
 
   beforeEach(async () => {
@@ -81,13 +80,11 @@ describe("local-inference-compat-routes e2e", () => {
     origHfHubCache = process.env.HF_HUB_CACHE;
     origElizaStateDir = process.env.ELIZA_STATE_DIR;
     origOllamaModels = process.env.OLLAMA_MODELS;
-    origStateDir = process.env.ELIZA_STATE_DIR;
     origToken = process.env.ELIZA_API_TOKEN;
     process.env.HOME = tmpState;
     delete process.env.HF_HOME;
     delete process.env.HF_HUB_CACHE;
     delete process.env.OLLAMA_MODELS;
-    process.env.ELIZA_STATE_DIR = tmpState;
     process.env.ELIZA_STATE_DIR = tmpState;
     // No auth token set so loopback requests don't need one — matches the
     // dev default we verified earlier against the real running server.
@@ -107,8 +104,6 @@ describe("local-inference-compat-routes e2e", () => {
     else process.env.ELIZA_STATE_DIR = origElizaStateDir;
     if (origOllamaModels === undefined) delete process.env.OLLAMA_MODELS;
     else process.env.OLLAMA_MODELS = origOllamaModels;
-    if (origStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
-    else process.env.ELIZA_STATE_DIR = origStateDir;
     if (origToken === undefined) delete process.env.ELIZA_API_TOKEN;
     else process.env.ELIZA_API_TOKEN = origToken;
     await fs.rm(tmpState, { recursive: true, force: true });
