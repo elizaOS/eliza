@@ -33,6 +33,10 @@ jobs:
 
       - name: Run Claude Code
         id: claude
+        # Don't fail the workflow when the Anthropic API is unavailable
+        # (low credit balance, rate limit, transient outage). @claude is a
+        # best-effort assistant; an unavailable run must not turn the CI red.
+        continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}

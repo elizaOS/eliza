@@ -58,6 +58,11 @@ jobs:
 
       - name: Check and Fix Dead Links with Claude
         id: claude-fix-links
+        # Don't fail docs CI when the Anthropic API is unavailable (low
+        # credit balance, rate limit, transient outage). The fix pass is
+        # best-effort; downstream "Check for Changes" steps already handle
+        # the no-op path.
+        continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -123,6 +128,11 @@ jobs:
 
       - name: Check and Fix Quality Issues with Claude
         id: claude-fix-quality
+        # Don't fail docs CI when the Anthropic API is unavailable (low
+        # credit balance, rate limit, transient outage). The fix pass is
+        # best-effort; downstream "Check for Changes" steps already handle
+        # the no-op path.
+        continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
