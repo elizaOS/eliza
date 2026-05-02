@@ -1,0 +1,50 @@
+# ─── Dependencies ──────────────────────────────────────────────────────────────
+node_modules/
+.pnp
+.pnp.js
+
+# ─── Build outputs ─────────────────────────────────────────────────────────────
+dist/
+build/
+out/
+.next/
+.turbo/
+*.tsbuildinfo
+
+# ─── Environment ───────────────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# ─── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+bun-error.log*
+
+# ─── Editor / OS ───────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ─── Testing ───────────────────────────────────────────────────────────────────
+coverage/
+.nyc_output/
+
+# ─── Deployment ────────────────────────────────────────────────────────────────
+.vercel
+.wrangler/
+
+# ─── Docker ────────────────────────────────────────────────────────────────────
+# (docker-compose.yml is committed; override files are not)
+docker-compose.override.yml
+
+# ─── Misc ──────────────────────────────────────────────────────────────────────
+*.tgz
+*.tar.gz

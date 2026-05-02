@@ -1,0 +1,30 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023", "WebWorker", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "types": ["@cloudflare/workers-types", "node", "bun-types"],
+    "jsx": "react-jsx",
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "strict": true,
+    "resolveJsonModule": true,
+    "ignoreDeprecations": "6.0",
+    "baseUrl": ".",
+    "paths": {
+      "@/api-app/*": ["./src/*"],
+      "@/api-queue/*": ["./src/queue/*"],
+      "@/lib/*": ["../../packages/lib/*"],
+      "@/db/*": ["../../packages/db/*"],
+      "@/types/*": ["../../packages/types/*"],
+      "@/api/*": ["./*"],
+      "@/*": ["../../*"]
+    }
+  },
+  "include": ["./**/*.ts", "./**/*.tsx", "../../packages/db/**/*.ts", "../../packages/types/**/*"],
+  "exclude": ["node_modules", "../../node_modules"]
+}

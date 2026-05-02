@@ -7,8 +7,6 @@
     "plugin-*"
   ],
   "scripts": {
-    "status": "git submodule status --recursive",
-    "sync:submodules": "git submodule sync --recursive && git submodule update --init --recursive",
     "publish:next": "node ../scripts/publish-local-plugins-next.mjs"
   }
 }

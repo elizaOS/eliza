@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: srv-beta
+  namespace: eliza-agents
+  labels:
+    eliza.ai/managed-by: server-operator
+    eliza.ai/server: srv-beta
+    eliza.ai/tier: dedicated
+    eliza.ai/project: beta
+spec:
+  template:
+    metadata:
+      labels:
+        eliza.ai/server: srv-beta
+        eliza.ai/tier: dedicated
+        eliza.ai/project: beta

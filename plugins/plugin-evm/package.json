@@ -1,0 +1,160 @@
+{
+  "name": "@elizaos/plugin-evm",
+  "version": "2.0.0-alpha.8",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-evm.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./rust": {
+      "import": "../rust/pkg/elizaos_plugin_evm.js",
+      "default": "../rust/pkg/elizaos_plugin_evm.js"
+    }
+  },
+  "files": [
+    "dist",
+    "../rust/pkg"
+  ],
+  "sideEffects": false,
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@lifi/data-types": "5.15.5",
+    "@lifi/sdk": "^3.7.9",
+    "@lifi/types": "^17.18.0",
+    "viem": "^2.21.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.3.11",
+    "@types/node": "^25.0.3",
+    "dotenv": "^17.2.3",
+    "typescript": "^6.0.0"
+  },
+  "scripts": {
+    "build:prompts": "node ../../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./generated/prompts --target all",
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts",
+    "dev": "bun run build.ts --watch",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun run test:vitest && bun run test:toon",
+    "test:vitest": "vitest run --config ./vitest.config.ts",
+    "test:unit": "vitest run --config ./vitest.config.ts __tests__/unit",
+    "test:integration": "vitest run --config ./vitest.config.ts __tests__/integration",
+    "test:toon": "bun test tests/toon-integration.test.ts",
+    "test:live": "node ../../../packages/app-core/scripts/run-with-env.mjs MILADY_LIVE_TEST=1 ELIZA_LIVE_TEST=1 MILADY_LIVE_EVM_RPC_TEST=1 -- vitest run --config ../../../test/vitest/real.config.ts __tests__/integration/rpc-providers.live.test.ts __tests__/integration/transfer.live.test.ts --passWithNoTests",
+    "test:watch": "vitest --config ./vitest.config.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "EVM_PRIVATE_KEY": {
+        "type": "string",
+        "description": "Hex-encoded private key (starting with 0x) used by the WalletProvider to sign transactions.",
+        "required": true,
+        "sensitive": true
+      },
+      "EVM_RPC_PROVIDER": {
+        "type": "string",
+        "description": "Preferred RPC provider: 'alchemy', 'infura', 'ankr', or 'elizacloud'. If set, this provider is used first for all chains it supports, with fallback to others.",
+        "required": false,
+        "sensitive": false
+      },
+      "ALCHEMY_API_KEY": {
+        "type": "string",
+        "description": "Alchemy API key for RPC access. Supports Ethereum, Polygon, Arbitrum, Optimism, Base, Avalanche, BSC, and many more chains.",
+        "required": false,
+        "sensitive": true
+      },
+      "INFURA_API_KEY": {
+        "type": "string",
+        "description": "Infura API key for RPC access. Supports Ethereum, Polygon, Arbitrum, Optimism, Base, Avalanche, Linea, and more.",
+        "required": false,
+        "sensitive": true
+      },
+      "ANKR_API_KEY": {
+        "type": "string",
+        "description": "Ankr premium API key for RPC access. Supports the broadest range of EVM chains.",
+        "required": false,
+        "sensitive": true
+      },
+      "ETHEREUM_PROVIDER_ETHEREUM": {
+        "type": "string",
+        "description": "Custom RPC URL for Ethereum mainnet (overrides provider-based RPC). For other chains, set ETHEREUM_PROVIDER_<CHAINNAME> (or EVM_PROVIDER_<CHAINNAME>) in your .env.",
+        "required": false,
+        "sensitive": false
+      },
+      "ETHEREUM_PROVIDER_BASE": {
+        "type": "string",
+        "description": "Custom RPC URL for Base mainnet (overrides provider-based RPC).",
+        "required": false,
+        "sensitive": false
+      },
+      "ETHEREUM_PROVIDER_ARBITRUM": {
+        "type": "string",
+        "description": "Custom RPC URL for Arbitrum One (overrides provider-based RPC).",
+        "required": false,
+        "sensitive": false
+      },
+      "ETHEREUM_PROVIDER_OPTIMISM": {
+        "type": "string",
+        "description": "Custom RPC URL for Optimism mainnet (overrides provider-based RPC).",
+        "required": false,
+        "sensitive": false
+      },
+      "TEE_MODE": {
+        "type": "string",
+        "description": "Controls whether Trusted Execution Environment (TEE) mode is enabled.",
+        "required": false,
+        "default": "OFF",
+        "sensitive": false
+      },
+      "WALLET_SECRET_SALT": {
+        "type": "string",
+        "description": "Salt value for TEE-derived wallet keypair.",
+        "required": false,
+        "sensitive": true
+      },
+      "SEPOLIA_RPC_URL": {
+        "type": "string",
+        "description": "RPC endpoint URL for Sepolia testnet.",
+        "required": false,
+        "default": "https://ethereum-sepolia-rpc.publicnode.com",
+        "sensitive": false
+      },
+      "BASE_SEPOLIA_RPC_URL": {
+        "type": "string",
+        "description": "RPC endpoint URL for Base Sepolia testnet.",
+        "required": false,
+        "default": "https://sepolia.base.org",
+        "sensitive": false
+      }
+    }
+  },
+  "milady": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Default export (Node.js)"
+    }
+  }
+}

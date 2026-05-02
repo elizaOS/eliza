@@ -1,0 +1,8 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "steps": {
+    "install": {
+      "commands": ["bash packages/scripts/prepare-steward-workspaces.sh", "..."]
+    }
+  }
+}

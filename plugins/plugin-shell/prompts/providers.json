@@ -1,0 +1,10 @@
+{
+  "version": "1.0.0",
+  "providers": [
+    {
+      "name": "SHELL_HISTORY",
+      "description": "Provides recent shell command history, current working directory, and file operations within the restricted environment",
+      "dynamic": true
+    }
+  ]
+}

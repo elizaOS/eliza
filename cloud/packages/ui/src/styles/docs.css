@@ -1,0 +1,634 @@
+/* Docs styling for the React-only docs system. Hand-tuned to support the
+   class names used by content MDX files (docs-hero, docs-quickstart-card,
+   status-badge, etc.) plus sidebar/article layout. */
+
+.docs-shell {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  min-height: 100vh;
+  color: rgb(229 229 229);
+  background: rgb(8 8 10);
+}
+
+@media (max-width: 900px) {
+  .docs-shell {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ─────────────────────────  Sidebar  ───────────────────────── */
+
+.docs-sidebar {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  overflow-y: auto;
+  padding: 1.5rem 1rem 2rem;
+  border-right: 1px solid rgb(255 255 255 / 0.06);
+  background: rgb(10 10 12);
+}
+
+.docs-sidebar-brand {
+  display: block;
+  margin-bottom: 1.5rem;
+  padding: 0 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: rgb(255 255 255 / 0.95);
+  text-decoration: none;
+}
+
+.docs-sidebar nav {
+  display: block;
+}
+
+.docs-nav-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.docs-nav-list .docs-nav-list {
+  margin-top: 0.25rem;
+  padding-left: 0.5rem;
+  border-left: 1px solid rgb(255 255 255 / 0.06);
+}
+
+.docs-nav-separator {
+  margin: 1rem 0 0.25rem;
+  padding: 0 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgb(255 255 255 / 0.4);
+}
+
+.docs-nav-section {
+  margin: 0.25rem 0;
+}
+
+.docs-nav-section-title {
+  display: block;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: rgb(255 255 255 / 0.85);
+  text-decoration: none;
+  border-radius: 4px;
+}
+
+.docs-nav-section-title:hover,
+.docs-nav-section-title.active {
+  color: rgb(255 255 255);
+  background: rgb(255 255 255 / 0.04);
+}
+
+.docs-nav-link {
+  display: block;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.85rem;
+  color: rgb(255 255 255 / 0.65);
+  text-decoration: none;
+  border-radius: 4px;
+}
+
+.docs-nav-link:hover {
+  color: rgb(255 255 255);
+  background: rgb(255 255 255 / 0.04);
+}
+
+.docs-nav-link.active {
+  color: rgb(255 88 0);
+  background: rgb(255 88 0 / 0.08);
+}
+
+/* ─────────────────────────  Main content  ───────────────────────── */
+
+.docs-main {
+  min-width: 0;
+  padding: 2rem clamp(1rem, 4vw, 3rem) 4rem;
+}
+
+.docs-article {
+  max-width: 920px;
+  margin: 0 auto;
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+
+.docs-article h1 {
+  margin: 0 0 0.75rem;
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: rgb(255 255 255);
+}
+
+.docs-article h2 {
+  margin: 2.5rem 0 0.75rem;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: rgb(255 255 255);
+  border-bottom: 1px solid rgb(255 255 255 / 0.08);
+  padding-bottom: 0.4rem;
+}
+
+.docs-article h3 {
+  margin: 2rem 0 0.5rem;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: rgb(255 255 255);
+}
+
+.docs-article h4 {
+  margin: 1.5rem 0 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: rgb(255 255 255 / 0.95);
+}
+
+.docs-article p {
+  margin: 0.75rem 0;
+  color: rgb(255 255 255 / 0.8);
+}
+
+.docs-article a {
+  color: rgb(255 138 80);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+.docs-article a:hover {
+  color: rgb(255 168 110);
+}
+
+.docs-article ul,
+.docs-article ol {
+  margin: 0.75rem 0;
+  padding-left: 1.5rem;
+  color: rgb(255 255 255 / 0.8);
+}
+
+.docs-article li {
+  margin: 0.25rem 0;
+}
+
+.docs-article code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+  background: rgb(255 255 255 / 0.07);
+  color: rgb(255 200 160);
+}
+
+.docs-article pre {
+  margin: 1rem 0;
+  padding: 1rem;
+  overflow-x: auto;
+  border-radius: 6px;
+  background: rgb(15 15 18);
+  border: 1px solid rgb(255 255 255 / 0.06);
+}
+
+.docs-article pre code {
+  padding: 0;
+  background: transparent;
+  color: rgb(229 229 229);
+  font-size: 0.85rem;
+  line-height: 1.55;
+}
+
+.docs-article blockquote {
+  margin: 1rem 0;
+  padding: 0.5rem 1rem;
+  border-left: 3px solid rgb(255 88 0 / 0.6);
+  background: rgb(255 88 0 / 0.04);
+  color: rgb(255 255 255 / 0.85);
+}
+
+.docs-article table {
+  width: 100%;
+  margin: 1rem 0;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.docs-article th,
+.docs-article td {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid rgb(255 255 255 / 0.08);
+}
+
+.docs-article th {
+  font-weight: 600;
+  color: rgb(255 255 255 / 0.95);
+  background: rgb(255 255 255 / 0.03);
+}
+
+.docs-article hr {
+  margin: 2rem 0;
+  border: 0;
+  border-top: 1px solid rgb(255 255 255 / 0.08);
+}
+
+/* ─────────────────────────  Callout  ───────────────────────── */
+
+.docs-callout {
+  display: flex;
+  gap: 0.75rem;
+  margin: 1rem 0;
+  padding: 0.85rem 1rem;
+  border-radius: 6px;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  background: rgb(255 255 255 / 0.03);
+}
+
+.docs-callout-emoji {
+  flex-shrink: 0;
+  font-size: 1.1rem;
+  line-height: 1.4;
+}
+
+.docs-callout-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.docs-callout-body > :first-child { margin-top: 0; }
+.docs-callout-body > :last-child { margin-bottom: 0; }
+
+.docs-callout-info {
+  border-color: rgb(80 140 240 / 0.4);
+  background: rgb(80 140 240 / 0.06);
+}
+
+.docs-callout-warning {
+  border-color: rgb(240 180 60 / 0.4);
+  background: rgb(240 180 60 / 0.06);
+}
+
+.docs-callout-error {
+  border-color: rgb(240 80 80 / 0.4);
+  background: rgb(240 80 80 / 0.06);
+}
+
+/* ─────────────────────────  Cards  ───────────────────────── */
+
+.docs-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.docs-card {
+  display: block;
+  padding: 1rem;
+  border-radius: 6px;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  background: rgb(255 255 255 / 0.02);
+  color: rgb(255 255 255 / 0.9);
+  text-decoration: none;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.docs-card:hover {
+  border-color: rgb(255 88 0 / 0.5);
+  background: rgb(255 88 0 / 0.04);
+}
+
+.docs-card-icon {
+  margin-bottom: 0.5rem;
+  font-size: 1.25rem;
+}
+
+.docs-card-title {
+  font-weight: 600;
+  color: rgb(255 255 255);
+  margin-bottom: 0.25rem;
+}
+
+.docs-card-desc {
+  font-size: 0.85rem;
+  color: rgb(255 255 255 / 0.65);
+  line-height: 1.5;
+}
+
+/* ─────────────────────────  Steps  ───────────────────────── */
+
+.docs-steps {
+  counter-reset: docs-step;
+  margin: 1rem 0;
+  padding-left: 2rem;
+  border-left: 2px solid rgb(255 255 255 / 0.08);
+}
+
+.docs-steps h3 {
+  position: relative;
+  counter-increment: docs-step;
+}
+
+.docs-steps h3::before {
+  content: counter(docs-step);
+  position: absolute;
+  left: -3rem;
+  top: 0.05em;
+  display: inline-flex;
+  width: 1.75rem;
+  height: 1.75rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgb(255 88 0 / 0.4);
+  background: rgb(255 88 0 / 0.08);
+  color: rgb(255 138 80);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+/* ─────────────────────────  Tabs  ───────────────────────── */
+
+.docs-tabs {
+  margin: 1rem 0;
+}
+
+.docs-tabs-list {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid rgb(255 255 255 / 0.1);
+  margin-bottom: 0.5rem;
+}
+
+.docs-tab-trigger {
+  padding: 0.5rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: rgb(255 255 255 / 0.6);
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+}
+
+.docs-tab-trigger:hover {
+  color: rgb(255 255 255);
+}
+
+.docs-tab-trigger.active {
+  color: rgb(255 88 0);
+  border-bottom-color: rgb(255 88 0);
+}
+
+.docs-tabs-content > :first-child { margin-top: 0; }
+
+/* ─────────────────────────  Hero (docs landing page)  ───────────────────────── */
+
+.docs-hero {
+  position: relative;
+  margin: 0 0 2rem;
+  padding: 4rem 2rem;
+  border-radius: 8px;
+  overflow: hidden;
+  background: radial-gradient(
+      circle at 30% 20%,
+      rgb(255 88 0 / 0.15),
+      transparent 60%
+    ),
+    radial-gradient(circle at 70% 80%, rgb(11 53 241 / 0.12), transparent 60%),
+    rgb(15 15 18);
+  border: 1px solid rgb(255 255 255 / 0.08);
+}
+
+.docs-hero-content {
+  max-width: 700px;
+}
+
+.docs-hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.65rem;
+  margin-bottom: 1rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgb(255 255 255 / 0.7);
+  border: 1px solid rgb(255 255 255 / 0.15);
+  border-radius: 999px;
+}
+
+.docs-hero-badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgb(80 220 130);
+  box-shadow: 0 0 0 3px rgb(80 220 130 / 0.2);
+}
+
+.docs-hero-title {
+  margin: 0 0 1rem;
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: rgb(255 255 255);
+}
+
+.docs-hero-title-line {
+  display: block;
+}
+
+.docs-hero-title strong {
+  color: rgb(255 138 80);
+  font-weight: 700;
+}
+
+.docs-hero-description {
+  margin: 0 0 1.5rem;
+  font-size: 1.05rem;
+  color: rgb(255 255 255 / 0.75);
+  line-height: 1.6;
+}
+
+.docs-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.docs-hero-btn-primary,
+.docs-hero-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.65rem 1.1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+  border-radius: 6px;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.docs-hero-btn-primary {
+  color: rgb(15 15 18);
+  background: rgb(255 138 80);
+  border: 1px solid rgb(255 138 80);
+}
+
+.docs-hero-btn-primary:hover {
+  background: rgb(255 168 110);
+  border-color: rgb(255 168 110);
+}
+
+.docs-hero-btn-secondary {
+  color: rgb(255 255 255);
+  background: transparent;
+  border: 1px solid rgb(255 255 255 / 0.18);
+}
+
+.docs-hero-btn-secondary:hover {
+  background: rgb(255 255 255 / 0.06);
+  border-color: rgb(255 255 255 / 0.3);
+}
+
+/* ─────────────────────────  Quickstart-style cards  ───────────────────────── */
+
+.docs-section {
+  margin: 2.5rem 0;
+}
+
+.docs-quickstart-card {
+  position: relative;
+  display: block;
+  padding: 1.25rem;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.02);
+  border: 1px solid rgb(255 255 255 / 0.08);
+  color: rgb(255 255 255);
+  text-decoration: none;
+  overflow: hidden;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.docs-quickstart-card:hover {
+  border-color: var(--card-accent-color, rgb(255 88 0));
+  transform: translateY(-2px);
+}
+
+.docs-quickstart-card .corner-tl,
+.docs-quickstart-card .corner-tr,
+.docs-quickstart-card .corner-bl,
+.docs-quickstart-card .corner-br {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--card-accent-color, rgb(255 88 0));
+  opacity: 0.7;
+}
+
+.corner-tl { top: 6px; left: 6px; border-right: 0; border-bottom: 0; }
+.corner-tr { top: 6px; right: 6px; border-left: 0; border-bottom: 0; }
+.corner-bl { bottom: 6px; left: 6px; border-right: 0; border-top: 0; }
+.corner-br { bottom: 6px; right: 6px; border-left: 0; border-top: 0; }
+
+.docs-quickstart-icon {
+  font-size: 1.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.docs-quickstart-title {
+  font-weight: 600;
+  font-size: 1rem;
+  color: rgb(255 255 255);
+  margin-bottom: 0.25rem;
+}
+
+.docs-quickstart-desc {
+  font-size: 0.85rem;
+  color: rgb(255 255 255 / 0.65);
+  line-height: 1.5;
+}
+
+.docs-quickstart-arrow {
+  position: absolute;
+  bottom: 1rem;
+  right: 1rem;
+  color: var(--card-accent-color, rgb(255 88 0));
+  opacity: 0.85;
+  transition: transform 0.15s ease;
+}
+
+.docs-quickstart-card:hover .docs-quickstart-arrow {
+  transform: translateX(3px);
+}
+
+/* ─────────────────────────  Status badges  ───────────────────────── */
+
+.status-badge {
+  display: inline-block;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 4px;
+  vertical-align: middle;
+  margin-left: 0.5rem;
+}
+
+.status-stable {
+  color: rgb(80 220 130);
+  background: rgb(80 220 130 / 0.1);
+  border: 1px solid rgb(80 220 130 / 0.3);
+}
+
+.status-beta {
+  color: rgb(240 180 60);
+  background: rgb(240 180 60 / 0.1);
+  border: 1px solid rgb(240 180 60 / 0.3);
+}
+
+.status-deprecated {
+  color: rgb(240 80 80);
+  background: rgb(240 80 80 / 0.1);
+  border: 1px solid rgb(240 80 80 / 0.3);
+}
+
+/* ─────────────────────────  Loading / 404 states  ───────────────────────── */
+
+.docs-loading {
+  padding: 3rem 0;
+  text-align: center;
+  color: rgb(255 255 255 / 0.5);
+}
+
+.docs-notfound,
+.docs-error {
+  padding: 3rem 0;
+  color: rgb(255 255 255 / 0.7);
+}
+
+.docs-notfound h1,
+.docs-error h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.5rem;
+  color: rgb(255 255 255);
+}
+
+.docs-error pre {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  border-radius: 4px;
+  background: rgb(240 80 80 / 0.08);
+  border: 1px solid rgb(240 80 80 / 0.3);
+  color: rgb(255 200 200);
+  white-space: pre-wrap;
+  font-size: 0.85rem;
+}
