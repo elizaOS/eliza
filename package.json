@@ -21,7 +21,7 @@
     "dev:web:ui": "node packages/app-core/scripts/rt.mjs packages/app-core/scripts/dev-ui.mjs --name=eliza --app=app",
     "dev:ui": "node packages/app-core/scripts/rt.mjs packages/app-core/scripts/dev-ui.mjs --name=eliza --app=app --ui-only",
     "dev:desktop": "ELIZA_NAMESPACE=eliza bun packages/app-core/scripts/dev-platform.mjs",
-    "dev:desktop:watch": "ELIZA_NAMESPACE=eliza MILADY_DESKTOP_VITE_WATCH=1 bun packages/app-core/scripts/dev-platform.mjs",
+    "dev:desktop:watch": "ELIZA_NAMESPACE=eliza ELIZA_DESKTOP_VITE_WATCH=1 bun packages/app-core/scripts/dev-platform.mjs",
     "dev:harness": "bun scripts/dev-harness.mjs",
     "dev:agent": "bun run --cwd packages/agent dev",
     "harness": "bun run --cwd packages/agent start",

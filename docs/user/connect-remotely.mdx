@@ -1,7 +1,7 @@
 ---
 title: "Connect Remotely"
 sidebarTitle: "Connect Remotely"
-description: "Connect Milady to a LAN, VPS, Tailscale, or Eliza Cloud backend."
+description: "Connect Eliza to a LAN, VPS, Tailscale, or Eliza Cloud backend."
 ---
 
 Use remote access when the runtime should live somewhere other than the current device.
@@ -34,7 +34,7 @@ Then enter the URL or sign in.
 
 ## If you host your own remote backend
 
-1. Install Milady on the remote machine.
+1. Install Eliza on the remote machine.
 2. Start the runtime there.
 3. If it is reachable outside localhost, set a strong API token.
 4. Prefer HTTPS, Tailscale, or another private network path.
@@ -42,12 +42,12 @@ Then enter the URL or sign in.
 Minimal example:
 
 ```bash
-MILADY_API_BIND=0.0.0.0 \
-MILADY_API_TOKEN="$(openssl rand -hex 32)" \
-milady start
+ELIZA_API_BIND=0.0.0.0 \
+ELIZA_API_TOKEN="$(openssl rand -hex 32)" \
+eliza start
 ```
 
-Use the `MILADY_API_TOKEN` value as the access token when you connect from another device.
+Use the `ELIZA_API_TOKEN` value as the access token when you connect from another device.
 
 ## Use a phone as a LifeOps sensor
 
@@ -57,7 +57,7 @@ or Eliza Cloud.
 
 For a local Mac agent:
 
-1. Start Milady on the Mac with `MILADY_API_BIND=0.0.0.0` and a strong `MILADY_API_TOKEN`.
+1. Start Eliza on the Mac with `ELIZA_API_BIND=0.0.0.0` and a strong `ELIZA_API_TOKEN`.
 2. Connect the iOS or Android app to the Mac's LAN or tailnet URL.
 3. In LifeOps setup, open `Device Data`.
 4. Tap `Enable` to request Health permissions where the OS allows it.
@@ -69,7 +69,7 @@ Connect, and Android usage summaries to the LifeOps API on the backend
 
 Android app usage requires the system Usage Access screen. iOS Screen Time
 requires Apple FamilyControls and DeviceActivity entitlements; when Apple only
-allows opening the app's Settings screen, Milady opens that supported settings
+allows opening the app's Settings screen, Eliza opens that supported settings
 target and shows the remaining blocker in `Device Data`.
 
 ## Provider routing on remote backends
@@ -78,7 +78,7 @@ A remote backend often owns provider routing. If provider changes on the client 
 
 ## Common problems
 
-### Milady will not connect
+### Eliza will not connect
 
 Check:
 

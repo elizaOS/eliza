@@ -1,10 +1,10 @@
 ---
 title: Apps Overview
 sidebarTitle: Overview
-description: Milady ships as a cross-platform suite for desktop, mobile, and web dashboard workflows.
+description: Eliza ships as a cross-platform suite for desktop, mobile, and web dashboard workflows.
 ---
 
-Milady is available across all primary platforms. Each app connects to the same agent runtime, giving you a consistent experience whether you're at your desk or on your phone.
+Eliza is available across all primary platforms. Each app connects to the same agent runtime, giving you a consistent experience whether you're at your desk or on your phone.
 
 ## Available Apps
 
@@ -48,7 +48,7 @@ All apps share a common connection pattern:
 
 ## Standalone Apps vs. Plugin Apps
 
-Milady has two distinct types of "apps" — understanding the difference prevents confusion.
+Eliza has two distinct types of "apps" — understanding the difference prevents confusion.
 
 ### Standalone Apps (Platforms)
 

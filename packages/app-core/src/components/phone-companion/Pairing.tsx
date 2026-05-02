@@ -7,8 +7,8 @@ import type React from "react";
 import { useCallback, useState } from "react";
 import {
   decodePairingPayload,
+  ElizaIntent,
   logger,
-  MiladyIntent,
   type PairingPayload,
 } from "../../services/phone-companion";
 
@@ -77,7 +77,7 @@ export function Pairing({
         return;
       }
       logger.info("[Pairing] manual code submit", { length: trimmed.length });
-      const nativeStatus = await MiladyIntent.getPairingStatus();
+      const nativeStatus = await ElizaIntent.getPairingStatus();
       if (nativeStatus.paired && nativeStatus.agentUrl !== null) {
         // Native pairing layer has already stored a full payload. Only the
         // ingress URL is carried on the status object; the session token is
@@ -106,12 +106,12 @@ export function Pairing({
         <button type="button" onClick={onBack} style={styles.back}>
           Back
         </button>
-        <h1 style={styles.title}>Pair with Milady</h1>
+        <h1 style={styles.title}>Pair with Eliza</h1>
       </header>
 
       <section style={styles.section}>
         <p style={styles.hint}>
-          Scan the QR code shown in the Milady desktop app, or enter the 6-digit
+          Scan the QR code shown in the Eliza desktop app, or enter the 6-digit
           code manually.
         </p>
         <button

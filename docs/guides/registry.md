@@ -1,6 +1,6 @@
 ---
 title: Plugin Registry Guide
-description: How to discover, configure, submit, and maintain plugins in the Milady/elizaOS plugin registry.
+description: How to discover, configure, submit, and maintain plugins in the Eliza/elizaOS plugin registry.
 ---
 
 # Plugin Registry Guide
@@ -27,7 +27,7 @@ The plugin registry is:
 - **Metadata** including name, description, category, and configuration
 - **Discovery system** for finding and loading plugins
 
-Milady ships with a bundled `plugins.json` containing 90+ plugins from the elizaOS ecosystem.
+Eliza ships with a bundled `plugins.json` containing 90+ plugins from the elizaOS ecosystem.
 
 ---
 
@@ -36,33 +36,33 @@ Milady ships with a bundled `plugins.json` containing 90+ plugins from the eliza
 ### List Available Plugins
 
 ```bash
-milady plugins list
+eliza plugins list
 ```
 
 ### Search Plugins
 
 ```bash
-milady plugins list --search telegram
+eliza plugins list --search telegram
 ```
 
 ### View Plugin Details
 
 ```bash
-milady plugins info telegram
+eliza plugins info telegram
 ```
 
 ### Browse by Category
 
 ```bash
-milady plugins list --category connector
-milady plugins list --category model
-milady plugins list --category tool
+eliza plugins list --category connector
+eliza plugins list --category model
+eliza plugins list --category tool
 ```
 
 ### Programmatic Access
 
 ```typescript
-import pluginIndex from "miladyai/plugins.json";
+import pluginIndex from "elizaai/plugins.json";
 
 // List all plugins
 for (const plugin of pluginIndex.plugins) {
@@ -86,7 +86,7 @@ Most plugins are npm packages:
 bun add @elizaos/plugin-telegram
 ```
 
-### Configure in milady.json
+### Configure in eliza.json
 
 ```json
 {
@@ -111,7 +111,7 @@ OPENAI_API_KEY=sk-...
 
 ### Auto-Enable Based on Credentials
 
-Milady can auto-enable plugins when their required credentials are present:
+Eliza can auto-enable plugins when their required credentials are present:
 
 ```json
 {
@@ -412,10 +412,10 @@ This scans `node_modules/@elizaos/plugin-*` and generates an updated index.
 
 ```bash
 # List model plugins
-milady plugins list --category model
+eliza plugins list --category model
 
 # Check OpenAI plugin info
-milady plugins info openai
+eliza plugins info openai
 
 # Install and configure
 bun add @elizaos/plugin-openai
@@ -425,7 +425,7 @@ echo "OPENAI_API_KEY=sk-..." >> .env
 ### Adding Multiple Connectors
 
 ```json
-// milady.json
+// eliza.json
 {
   "plugins": [
     "@elizaos/plugin-telegram",
@@ -449,7 +449,7 @@ SLACK_BOT_TOKEN=...
 bun add elizaos-plugin-custom-feature
 
 # Add to config
-# milady.json
+# eliza.json
 {
   "plugins": [
     "@elizaos/plugin-openai",
@@ -476,7 +476,7 @@ bun add elizaos-plugin-custom-feature
 2. Ensure installable packages resolve from npm or your internal registry.
 3. Ensure required env keys for each plugin are documented in the manifest.
 4. For on-chain registry operations, set `EVM_PRIVATE_KEY` and configure `mainnetRpc`, `registryAddress`, and `collectionAddress` in agent config.
-5. Verify the plugin install directory is writable: `ls -ld ~/.milady/plugins/installed/`.
+5. Verify the plugin install directory is writable: `ls -ld ~/.eliza/plugins/installed/`.
 
 ### Failure Modes
 
@@ -509,8 +509,8 @@ bun add elizaos-plugin-custom-feature
 
 ### Recovery Procedures
 
-1. **Stale plugin state:** Delete `~/.milady/plugins/installed/<plugin-name>/` and remove the entry from `milady.json` under `plugins.installs`, then re-install.
-2. **Registry metadata out of sync:** Run `milady plugin sync` or manually update `plugins.json` from the upstream registry.
+1. **Stale plugin state:** Delete `~/.eliza/plugins/installed/<plugin-name>/` and remove the entry from `eliza.json` under `plugins.installs`, then re-install.
+2. **Registry metadata out of sync:** Run `eliza plugin sync` or manually update `plugins.json` from the upstream registry.
 3. **On-chain tx stuck:** Check the pending transaction on a block explorer. If stuck, the agent will retry with higher gas on next attempt. Manual speed-up via wallet is safe — the agent re-reads nonce on next call.
 
 ### Verification Commands

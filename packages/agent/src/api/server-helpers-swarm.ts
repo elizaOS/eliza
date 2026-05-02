@@ -326,8 +326,8 @@ async function readAgentFinalAssistantMessage(
   try {
     // claude-code persists each session under a project directory whose name
     // is the workdir with both "/" and "." replaced by "-" (so a hidden
-    // path like /home/u/.milady/workspaces/<id> becomes
-    // -home-u--milady-workspaces-<id>).
+    // path like /home/u/.eliza/workspaces/<id> becomes
+    // -home-u--eliza-workspaces-<id>).
     const sanitized = workdir.replace(/[/.]/g, "-");
     const projectDir = path.join(
       os.homedir(),

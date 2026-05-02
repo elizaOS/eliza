@@ -1,10 +1,10 @@
 ---
 title: "Proveedores de Modelos"
 sidebarTitle: "Proveedores de Modelos"
-description: "Backends de inferencia compatibles y cómo encajan en el modelo de enrutamiento server-target-first de Milady."
+description: "Backends de inferencia compatibles y cómo encajan en el modelo de enrutamiento server-target-first de Eliza."
 ---
 
-Milady soporta **19 backends de inferencia** de forma nativa. Los plugins de proveedores siguen proporcionando las implementaciones concretas de modelos, pero el backend activo se selecciona a través del enrutamiento canónico del runtime en el servidor conectado, no mediante toggles ad hoc de variables de entorno en el cliente.
+Eliza soporta **19 backends de inferencia** de forma nativa. Los plugins de proveedores siguen proporcionando las implementaciones concretas de modelos, pero el backend activo se selecciona a través del enrutamiento canónico del runtime en el servidor conectado, no mediante toggles ad hoc de variables de entorno en el cliente.
 
 ---
 
@@ -12,10 +12,10 @@ Milady soporta **19 backends de inferencia** de forma nativa. Los plugins de pro
 ## Referencia de Proveedores
 </div>
 
-La tabla a continuación es la lista completa de plugins de proveedores compatibles, obtenida del catálogo de proveedores de Milady.
+La tabla a continuación es la lista completa de plugins de proveedores compatibles, obtenida del catálogo de proveedores de Eliza.
 
 <Note>
-Los proveedores marcados como **incluidos** están preinstalados con cada lanzamiento de Milady y se cargan instantáneamente. Los proveedores marcados como **bajo demanda** se instalan automáticamente la primera vez que se necesitan — no se requiere instalación manual de plugins. Todos los proveedores se habilitan automáticamente cuando se detecta su clave API o configuración.
+Los proveedores marcados como **incluidos** están preinstalados con cada lanzamiento de Eliza y se cargan instantáneamente. Los proveedores marcados como **bajo demanda** se instalan automáticamente la primera vez que se necesitan — no se requiere instalación manual de plugins. Todos los proveedores se habilitan automáticamente cuando se detecta su clave API o configuración.
 </Note>
 
 | Proveedor | Paquete del Plugin | Variable(s) de Entorno | Instalación | Notas |
@@ -38,7 +38,7 @@ Los proveedores marcados como **incluidos** están preinstalados con cada lanzam
 | [Cohere](https://cohere.com) | `@elizaos/plugin-cohere` | `COHERE_API_KEY` | Bajo demanda | Modelos Command R+ y de embeddings. |
 | [Perplexity](https://perplexity.ai) | `@elizaos/plugin-perplexity` | `PERPLEXITY_API_KEY` | Bajo demanda | Generación aumentada por búsqueda. |
 | [Zai](https://homunculuslabs.com) | `@homunculuslabs/plugin-zai` | `ZAI_API_KEY` | Bajo demanda | Modelos Zai de Homunculus Labs. |
-| [Eliza Cloud](https://elizacloud.ai) | `@elizaos/plugin-elizacloud` | `ELIZAOS_CLOUD_API_KEY` | Incluido | Ruta de inferencia gestionada en la nube. Se puede seleccionar independientemente de dónde se ejecute Milady. |
+| [Eliza Cloud](https://elizacloud.ai) | `@elizaos/plugin-elizacloud` | `ELIZAOS_CLOUD_API_KEY` | Incluido | Ruta de inferencia gestionada en la nube. Se puede seleccionar independientemente de dónde se ejecute Eliza. |
 
 ---
 
@@ -46,7 +46,7 @@ Los proveedores marcados como **incluidos** están preinstalados con cada lanzam
 ## Cómo Funciona la Selección de Proveedores
 </div>
 
-Milady utiliza un modelo **server-target-first**:
+Eliza utiliza un modelo **server-target-first**:
 
 1. Elige qué servidor usar: local, Eliza Cloud o un backend remoto.
 2. Vincula las cuentas que el servidor pueda necesitar, como Eliza Cloud u OpenAI.
@@ -68,7 +68,7 @@ Los plugins de proveedores siguen habilitándose automáticamente desde el entor
 ### Configuración explícita de plugins
 </div>
 
-También puedes habilitar proveedores manualmente en `~/.milady/milady.json` bajo la clave `plugins`:
+También puedes habilitar proveedores manualmente en `~/.eliza/eliza.json` bajo la clave `plugins`:
 
 ```json5
 {
@@ -121,7 +121,7 @@ Los proveedores también pueden activarse a través de perfiles de autenticació
 ### Opción 1: Archivo de entorno (recomendado)
 </div>
 
-Crea o edita `~/.milady/.env`:
+Crea o edita `~/.eliza/.env`:
 
 ```bash
 # Primary provider
@@ -137,7 +137,7 @@ GROQ_API_KEY=gsk_...
 ### Opción 2: Archivo de configuración
 </div>
 
-Agrega las claves directamente en `~/.milady/milady.json`:
+Agrega las claves directamente en `~/.eliza/eliza.json`:
 
 ```json5
 {
@@ -153,13 +153,13 @@ Agrega las claves directamente en `~/.milady/milady.json`:
 </div>
 
 ```bash
-milady configure
+eliza configure
 ```
 
 Esto te guía a través de la configuración de las variables de entorno comunes, incluyendo tu proveedor de modelos preferido.
 
 <Warning>
-Al usar el enfoque de archivo de configuración, tus claves API se almacenan en texto plano en `milady.json`. El enfoque de archivo `.env` mantiene los secretos separados de la configuración y es más fácil de excluir del control de versiones.
+Al usar el enfoque de archivo de configuración, tus claves API se almacenan en texto plano en `eliza.json`. El enfoque de archivo `.env` mantiene los secretos separados de la configuración y es más fácil de excluir del control de versiones.
 </Warning>
 
 ---
@@ -169,15 +169,15 @@ Al usar el enfoque de archivo de configuración, tus claves API se almacenan en 
 </div>
 
 ```bash
-milady models             # list configured model providers and their status
-milady configure          # show provider status and env variable guide (read-only)
+eliza models             # list configured model providers and their status
+eliza configure          # show provider status and env variable guide (read-only)
 ```
 
 <div id="setting-the-default-model">
 ### Configurar el modelo predeterminado
 </div>
 
-En `~/.milady/milady.json`, especifica el modelo usando el formato `provider/model`:
+En `~/.eliza/eliza.json`, especifica el modelo usando el formato `provider/model`:
 
 ```json5
 {
@@ -203,7 +203,7 @@ O cambia durante la sesión usando el comando de chat `/model`:
 ## Modelos de Respaldo
 </div>
 
-Milady soporta una cadena de respaldo ordenada. Si el modelo principal falla (límite de tasa, interrupción, problema de facturación), el siguiente modelo en la lista se intenta automáticamente.
+Eliza soporta una cadena de respaldo ordenada. Si el modelo principal falla (límite de tasa, interrupción, problema de facturación), el siguiente modelo en la lista se intenta automáticamente.
 
 ```json5
 {
@@ -234,7 +234,7 @@ Puedes tener múltiples proveedores activos simultáneamente. Cada proveedor cuy
 Una configuración común:
 
 ```bash
-# ~/.milady/.env
+# ~/.eliza/.env
 
 # Primary — high-quality reasoning
 ANTHROPIC_API_KEY=sk-ant-api03-...
@@ -291,13 +291,13 @@ Ollama te permite ejecutar modelos localmente sin clave API y con total privacid
     ```
   </Step>
   <Step title="Configurar la URL base">
-    Agrega a `~/.milady/.env`:
+    Agrega a `~/.eliza/.env`:
     ```bash
     OLLAMA_BASE_URL=http://127.0.0.1:11434
     ```
   </Step>
   <Step title="Seleccionar el modelo">
-    En `~/.milady/milady.json`:
+    En `~/.eliza/eliza.json`:
     ```json5
     {
       agents: {

@@ -1,6 +1,6 @@
 # Depot CI — operating guide
 
-Milady uses [Depot](https://depot.dev) in two complementary roles:
+Eliza uses [Depot](https://depot.dev) in two complementary roles:
 
 1. **Docker image builds** (`.github/workflows/build-docker.yml`) — offloaded to
    Depot via `depot/build-push-action@v1`. Gives us a persistent cross-build
@@ -11,7 +11,7 @@ Milady uses [Depot](https://depot.dev) in two complementary roles:
    We **selectively** keep mirrors for compute-heavy workflows and **delete**
    mirrors for fast/auth-sensitive ones to avoid paying 2× CI cost.
 
-Depot project ID: **`m89t0f0p08`** (`miladyAI`). Stored at `depot.json`.
+Depot project ID: **`m89t0f0p08`** (`elizaAI`). Stored at `depot.json`.
 
 ---
 
@@ -31,14 +31,14 @@ Depot project ID: **`m89t0f0p08`** (`miladyAI`). Stored at `depot.json`.
 
 Add these in **GitHub → Settings → Secrets and variables → Actions**:
 
-- `DEPOT_TOKEN` — project-scoped token for `milady-ai/milady` → project `m89t0f0p08`.
-  Mint at <https://depot.dev/orgs/.../settings/api-tokens> with scope **project: miladyAI**.
+- `DEPOT_TOKEN` — project-scoped token for `eliza-ai/eliza` → project `m89t0f0p08`.
+  Mint at <https://depot.dev/orgs/.../settings/api-tokens> with scope **project: elizaAI**.
 
 Rotate the token any time the Depot dashboard flags it as compromised or when
 someone with access leaves. After rotating:
 
 ```bash
-gh secret set DEPOT_TOKEN --repo milady-ai/milady --body "<new-token>"
+gh secret set DEPOT_TOKEN --repo eliza-ai/eliza --body "<new-token>"
 ```
 
 ---
@@ -56,10 +56,10 @@ the Depot step before falling back:
 
 ```bash
 # Disable
-gh variable set DEPOT_ENABLED --repo milady-ai/milady --body "false"
+gh variable set DEPOT_ENABLED --repo eliza-ai/eliza --body "false"
 
 # Re-enable
-gh variable delete DEPOT_ENABLED --repo milady-ai/milady
+gh variable delete DEPOT_ENABLED --repo eliza-ai/eliza
 ```
 
 Or via the GitHub UI: **Settings → Secrets and variables → Actions → Variables → New repository variable**, name `DEPOT_ENABLED`, value `false`.

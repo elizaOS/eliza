@@ -60,8 +60,8 @@ class RingBuffer {
 const COST_PER_MILLION_TOKENS: Partial<
   Record<string, { input: number; output: number }>
 > = {
-  "milady-local-inference": { input: 0, output: 0 },
-  "milady-device-bridge": { input: 0, output: 0 },
+  "eliza-local-inference": { input: 0, output: 0 },
+  "eliza-device-bridge": { input: 0, output: 0 },
   "capacitor-llama": { input: 0, output: 0 },
   "anthropic-subscription": { input: 0.1, output: 0.1 },
   "openai-codex": { input: 0.1, output: 0.1 },
@@ -187,12 +187,12 @@ class PolicyEngine {
       case "prefer-local": {
         const local = eligible.find(
           (c) =>
-            c.provider === "milady-local-inference" ||
+            c.provider === "eliza-local-inference" ||
             c.provider === "capacitor-llama",
         );
         if (local) return local;
         const bridge = eligible.find(
-          (c) => c.provider === "milady-device-bridge",
+          (c) => c.provider === "eliza-device-bridge",
         );
         if (bridge) return bridge;
         return eligible[0] ?? null;

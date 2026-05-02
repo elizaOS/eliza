@@ -1,20 +1,20 @@
 ---
 title: Referencia de la API REST
 sidebarTitle: Referencia de la API
-description: Referencia completa de todos los endpoints de la API REST de Milady, organizados por grupo de recursos.
+description: Referencia completa de todos los endpoints de la API REST de Eliza, organizados por grupo de recursos.
 ---
 
-El servidor de la API de Milady se ejecuta en el puerto **31337** por defecto (`MILADY_API_PORT`). Todos los endpoints tienen el prefijo `/api/`. La autenticación es obligatoria cuando se establece `MILADY_API_TOKEN`.
+El servidor de la API de Eliza se ejecuta en el puerto **31337** por defecto (`ELIZA_API_PORT`). Todos los endpoints tienen el prefijo `/api/`. La autenticación es obligatoria cuando se establece `ELIZA_API_TOKEN`.
 
 <Warning>
-Cuando `MILADY_API_TOKEN` está configurado, incluya el token como token `Bearer` en el encabezado `Authorization`, o utilice el flujo de emparejamiento para obtenerlo.
+Cuando `ELIZA_API_TOKEN` está configurado, incluya el token como token `Bearer` en el encabezado `Authorization`, o utilice el flujo de emparejamiento para obtenerlo.
 </Warning>
 
 <div id="quick-start">
 ## Inicio rápido
 </div>
 
-Estos ejemplos asumen que la API se ejecuta en `localhost:31337`. Reemplace `YOUR_TOKEN` con el valor de `MILADY_API_TOKEN` o el token recibido del flujo de emparejamiento.
+Estos ejemplos asumen que la API se ejecuta en `localhost:31337`. Reemplace `YOUR_TOKEN` con el valor de `ELIZA_API_TOKEN` o el token recibido del flujo de emparejamiento.
 
 <div id="check-agent-status">
 ### Verificar el estado del agente
@@ -26,7 +26,7 @@ curl http://localhost:31337/api/status
 
 ```json
 {
-  "name": "Milady",
+  "name": "Eliza",
   "status": "running",
   "model": "claude-sonnet-4-6",
   "uptime": 3600
@@ -103,7 +103,7 @@ curl -X POST http://localhost:31337/api/knowledge/documents \
   -H "Content-Type: application/json" \
   -d '{
     "title": "Company FAQ",
-    "content": "Q: What is Milady?\nA: A personal AI assistant built on elizaOS."
+    "content": "Q: What is Eliza?\nA: A personal AI assistant built on elizaOS."
   }'
 ```
 
@@ -112,7 +112,7 @@ curl -X POST http://localhost:31337/api/knowledge/documents \
 </div>
 
 ```bash
-curl "http://localhost:31337/api/knowledge/search?q=what+is+milady&limit=5" \
+curl "http://localhost:31337/api/knowledge/search?q=what+is+eliza&limit=5" \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
@@ -179,7 +179,7 @@ Ejemplo de respuesta de `GET /api/status`:
 
 ```json
 {
-  "name": "Milady",
+  "name": "Eliza",
   "status": "running",
   "model": "anthropic/claude-sonnet-4-6",
   "uptime": 3600,
@@ -328,7 +328,7 @@ La bandeja de entrada agrega mensajes de todas las plataformas conectadas (iMess
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| `GET` | `/api/config` | Obtener la configuración actual de milady.json |
+| `GET` | `/api/config` | Obtener la configuración actual de eliza.json |
 | `PUT` | `/api/config` | Actualizar campos de configuración |
 | `GET` | `/api/config/schema` | Obtener el esquema de configuración para renderizado de la interfaz |
 
@@ -564,7 +564,7 @@ La bandeja de entrada agrega mensajes de todas las plataformas conectadas (iMess
 | `POST` | `/api/cloud/agents/:id/provision` | Aprovisionar un agente en la nube |
 | `POST` | `/api/cloud/agents/:id/shutdown` | Apagar y eliminar un agente en la nube |
 | `POST` | `/api/cloud/agents/:id/connect` | Conectarse a un agente existente en la nube |
-| `POST` | `/api/cloud/v1/milady/agents/:id/pairing-token` | Generar un token de emparejamiento para abrir la interfaz Web de un agente en la nube en una nueva pestaña. Devuelve `{ success, data: { token, redirectUrl, expiresIn } }` |
+| `POST` | `/api/cloud/v1/eliza/agents/:id/pairing-token` | Generar un token de emparejamiento para abrir la interfaz Web de un agente en la nube en una nueva pestaña. Devuelve `{ success, data: { token, redirectUrl, expiresIn } }` |
 
 <Info>
 Las rutas bajo `/api/cloud/v1/` se reenvían como `/api/v1/` al backend en la nube, a diferencia del mapeo heredado `/api/cloud/compat/*`. Se aceptan tanto `Authorization: Bearer` como `X-Api-Key` para la autenticación.

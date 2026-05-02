@@ -19,9 +19,9 @@ Node résout cela en remontant depuis le **répertoire du fichier importateur**.
 | Point d'entrée | Emplacement du fichier importateur | Remonte depuis | Atteint le `node_modules` racine ? |
 |---|---|---|---|
 | `bun run dev` | `src/runtime/eliza.ts` | `src/runtime/` | Généralement oui (2 niveaux) |
-| `milady start` (CLI) | `dist/runtime/eliza.js` | `dist/runtime/` | Généralement oui (2 niveaux) |
-| Electrobun dev | `milady-dist/eliza.js` | `apps/app/electrobun/milady-dist/` | **Non** — entre dans `apps/` |
-| Electrobun empaqueté | `app.asar.unpacked/milady-dist/eliza.js` | Dans le bundle `.app` | **Non** — système de fichiers différent |
+| `eliza start` (CLI) | `dist/runtime/eliza.js` | `dist/runtime/` | Généralement oui (2 niveaux) |
+| Electrobun dev | `eliza-dist/eliza.js` | `apps/app/electrobun/eliza-dist/` | **Non** — entre dans `apps/` |
+| Electrobun empaqueté | `app.asar.unpacked/eliza-dist/eliza.js` | Dans le bundle `.app` | **Non** — système de fichiers différent |
 
 Dans les cas Electrobun (et parfois le cas dist compilé selon le comportement du bundler), la remontée n'atteint jamais la racine du repo où les packages `@elizaos/plugin-*` sont installés. L'import échoue avec "Cannot find module".
 
@@ -57,7 +57,7 @@ const rootModules = path.join(cwd, "node_modules");
 env.NODE_PATH = ...;
 ```
 
-**Pourquoi ici :** L'exécuteur CLI lance un processus enfant qui exécute `milady.mjs` → `dist/entry.js` → `dist/eliza.js`. Définir `NODE_PATH` dans l'env de l'enfant assure que l'enfant résout depuis la racine même si `dist/` n'a pas son propre `node_modules`.
+**Pourquoi ici :** L'exécuteur CLI lance un processus enfant qui exécute `eliza.mjs` → `dist/entry.js` → `dist/eliza.js`. Définir `NODE_PATH` dans l'env de l'enfant assure que l'enfant résout depuis la racine même si `dist/` n'a pas son propre `node_modules`.
 
 <div id="3-appsappelectrobunscrnativeagentts-electrobun-native-runtime">
 ### 3. `eliza/packages/app-core/platforms/electrobun/src/native/agent.ts` (runtime natif Electrobun)
@@ -68,7 +68,7 @@ env.NODE_PATH = ...;
 // Packaged: use ASAR node_modules
 ```
 
-**Pourquoi ici :** Le runtime natif Electrobun charge `milady-dist/eliza.js` via `dynamicImport()`. En mode dev, `__dirname` est profond dans `apps/app/electrobun/build/src/native/` — nous remontons pour trouver le premier répertoire `node_modules` (la racine du monorepo). En mode empaqueté, nous utilisons le `node_modules` de l'ASAR à la place.
+**Pourquoi ici :** Le runtime natif Electrobun charge `eliza-dist/eliza.js` via `dynamicImport()`. En mode dev, `__dirname` est profond dans `apps/app/electrobun/build/src/native/` — nous remontons pour trouver le premier répertoire `node_modules` (la racine du monorepo). En mode empaqueté, nous utilisons le `node_modules` de l'ASAR à la place.
 
 <div id="why-not-just-use-the-bundler">
 ## Pourquoi ne pas simplement utiliser le bundler ?
@@ -80,7 +80,7 @@ tsdown avec `noExternal: [/.*/]` inline la plupart des dépendances, mais les pa
 ## App empaquetée : no-op
 </div>
 
-Dans le `.app` empaqueté, `eliza.js` vit à `app.asar.unpacked/milady-dist/eliza.js`. Deux niveaux au-dessus c'est `Contents/Resources/` — pas de `node_modules` là. La vérification `existsSync` dans `eliza.ts` retourne false, donc le code NODE_PATH est entièrement ignoré. L'app empaquetée copie plutôt les packages runtime dans `milady-dist/node_modules` pendant le build bureau (`copy-runtime-node-modules.ts` pour Electrobun) et `agent.ts` définit ce répertoire `node_modules` empaqueté sur `NODE_PATH`.
+Dans le `.app` empaqueté, `eliza.js` vit à `app.asar.unpacked/eliza-dist/eliza.js`. Deux niveaux au-dessus c'est `Contents/Resources/` — pas de `node_modules` là. La vérification `existsSync` dans `eliza.ts` retourne false, donc le code NODE_PATH est entièrement ignoré. L'app empaquetée copie plutôt les packages runtime dans `eliza-dist/node_modules` pendant le build bureau (`copy-runtime-node-modules.ts` pour Electrobun) et `agent.ts` définit ce répertoire `node_modules` empaqueté sur `NODE_PATH`.
 
 <div id="bun-and-published-package-exports">
 ## Bun et les exports de packages publiés
@@ -106,7 +106,7 @@ Le tarball npm publié pour **`2.0.0-alpha.12`** contient des sorties JavaScript
 
 **Pourquoi Bun erreur :** Quand le runtime charge le plugin, Bun build/transpile ce fichier d'entrée et échoue avec des erreurs comme *`openrouterPlugin` is not declared in this file* — les symboles sont exportés mais jamais définis. Le build CommonJS (`dist/cjs/index.node.cjs`) est incomplet de la même manière (les getters d'export référencent un chunk `import_plugin` manquant).
 
-**Pourquoi nous ne patchons pas le dist en postinstall :** La release cassée manque le corps entier du plugin, pas un seul identifiant incorrect (contraste avec `@elizaos/plugin-pdf`, où un petit string replace corrige un mauvais alias d'export). Reconstruire le plugin depuis les sources dans Milady forkerait upstream et serait fragile. Quand vous n'utilisez pas le checkout workspace local, préférez l'artefact **`2.0.0-alpha.13`** connu comme fonctionnel.
+**Pourquoi nous ne patchons pas le dist en postinstall :** La release cassée manque le corps entier du plugin, pas un seul identifiant incorrect (contraste avec `@elizaos/plugin-pdf`, où un petit string replace corrige un mauvais alias d'export). Reconstruire le plugin depuis les sources dans Eliza forkerait upstream et serait fragile. Quand vous n'utilisez pas le checkout workspace local, préférez l'artefact **`2.0.0-alpha.13`** connu comme fonctionnel.
 
 <div id="maintainer-notes">
 ### Notes pour les mainteneurs
@@ -125,4 +125,4 @@ Les plugins optionnels (et certains packages adjacents au core) peuvent se retro
 
 **Pourquoi nous enregistrons la provenance :** `collectPluginNames()` remplit optionnellement une carte **`PluginLoadReasons`** (première source gagne par package). `resolvePlugins()` la transmet ; les échecs optionnels bénins sont résumés comme **`Optional plugins not installed: … (added by: …)`**. Cela répond "que dois-je changer ?" — éditer la config, désactiver l'env, installer le package, ou ajouter un checkout du plugin — au lieu de poursuivre une fausse hypothèse "eliza est cassé".
 
-**Browser / stagehand :** `@elizaos/plugin-browser` attend un arbre **stagehand-server** qui **n'est pas** dans le tarball npm. Milady découvre `plugins/plugin-browser/stagehand-server` en **remontant les parents** depuis le runtime pour que les checkouts Milady plats et les layouts de **sous-module `eliza/`** résolvent. Voir **[Diagnostics développeur et espace de travail](/fr/guides/developer-diagnostics-and-workspace)**.
+**Browser / stagehand :** `@elizaos/plugin-browser` attend un arbre **stagehand-server** qui **n'est pas** dans le tarball npm. Eliza découvre `plugins/plugin-browser/stagehand-server` en **remontant les parents** depuis le runtime pour que les checkouts Eliza plats et les layouts de **sous-module `eliza/`** résolvent. Voir **[Diagnostics développeur et espace de travail](/fr/guides/developer-diagnostics-and-workspace)**.

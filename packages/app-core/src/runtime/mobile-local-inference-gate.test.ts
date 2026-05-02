@@ -3,7 +3,7 @@ import { shouldEnableMobileLocalInference } from "./mobile-local-inference-gate"
 
 afterEach(() => {
   delete process.env.ELIZA_DEVICE_BRIDGE_ENABLED;
-  delete process.env.MILADY_LOCAL_LLAMA;
+  delete process.env.ELIZA_LOCAL_LLAMA;
 });
 
 describe("shouldEnableMobileLocalInference", () => {
@@ -17,8 +17,8 @@ describe("shouldEnableMobileLocalInference", () => {
     ).toBe(true);
   });
 
-  it("returns true when MILADY_LOCAL_LLAMA=1 (AOSP-only sub-task 2 path)", () => {
-    expect(shouldEnableMobileLocalInference({ MILADY_LOCAL_LLAMA: "1" })).toBe(
+  it("returns true when ELIZA_LOCAL_LLAMA=1 (AOSP-only sub-task 2 path)", () => {
+    expect(shouldEnableMobileLocalInference({ ELIZA_LOCAL_LLAMA: "1" })).toBe(
       true,
     );
   });
@@ -27,7 +27,7 @@ describe("shouldEnableMobileLocalInference", () => {
     expect(
       shouldEnableMobileLocalInference({
         ELIZA_DEVICE_BRIDGE_ENABLED: "1",
-        MILADY_LOCAL_LLAMA: "1",
+        ELIZA_LOCAL_LLAMA: "1",
       }),
     ).toBe(true);
   });
@@ -39,9 +39,9 @@ describe("shouldEnableMobileLocalInference", () => {
     expect(
       shouldEnableMobileLocalInference({ ELIZA_DEVICE_BRIDGE_ENABLED: "0" }),
     ).toBe(false);
-    expect(
-      shouldEnableMobileLocalInference({ MILADY_LOCAL_LLAMA: "yes" }),
-    ).toBe(false);
+    expect(shouldEnableMobileLocalInference({ ELIZA_LOCAL_LLAMA: "yes" })).toBe(
+      false,
+    );
   });
 
   it("trims whitespace before comparing", () => {
@@ -49,7 +49,7 @@ describe("shouldEnableMobileLocalInference", () => {
       shouldEnableMobileLocalInference({ ELIZA_DEVICE_BRIDGE_ENABLED: " 1 " }),
     ).toBe(true);
     expect(
-      shouldEnableMobileLocalInference({ MILADY_LOCAL_LLAMA: "\t1\n" }),
+      shouldEnableMobileLocalInference({ ELIZA_LOCAL_LLAMA: "\t1\n" }),
     ).toBe(true);
   });
 

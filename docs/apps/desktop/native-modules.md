@@ -1,12 +1,12 @@
 ---
 title: "Native Modules"
 sidebarTitle: "Native Modules"
-description: "Electrobun RPC-based native module system that gives the Milady desktop app access to platform capabilities."
+description: "Electrobun RPC-based native module system that gives the Eliza desktop app access to platform capabilities."
 ---
 
-The Milady desktop app exposes platform capabilities to the web renderer through a set of **native modules** running in the Electrobun Bun host. Each module is initialized in `initializeNativeModules()`, and Bun-side request handlers are wired through `registerRpcHandlers()`.
+The Eliza desktop app exposes platform capabilities to the web renderer through a set of **native modules** running in the Electrobun Bun host. Each module is initialized in `initializeNativeModules()`, and Bun-side request handlers are wired through `registerRpcHandlers()`.
 
-Renderer code talks to the host through `window.__MILADY_ELECTROBUN_RPC__`:
+Renderer code talks to the host through `window.__ELIZA_ELECTROBUN_RPC__`:
 
 - `request.<method>(params)` for request/response calls into Bun
 - `onMessage(name, listener)` / `offMessage(name, listener)` for Bun push events
@@ -19,9 +19,9 @@ The source of truth still keeps legacy channel-style aliases in `rpc-schema.ts` 
 
 Examples:
 
-- `agent:start` → `window.__MILADY_ELECTROBUN_RPC__.request.agentStart()`
-- `desktop:registerShortcut` → `window.__MILADY_ELECTROBUN_RPC__.request.desktopRegisterShortcut(...)`
-- `agent:status` push event → `window.__MILADY_ELECTROBUN_RPC__.onMessage("agentStatusUpdate", ...)`
+- `agent:start` → `window.__ELIZA_ELECTROBUN_RPC__.request.agentStart()`
+- `desktop:registerShortcut` → `window.__ELIZA_ELECTROBUN_RPC__.request.desktopRegisterShortcut(...)`
+- `agent:status` push event → `window.__ELIZA_ELECTROBUN_RPC__.onMessage("agentStatusUpdate", ...)`
 
 **Direction** describes the communication model:
 
@@ -29,7 +29,7 @@ Examples:
 - **message** — Bun pushes an event to the renderer
 
 ```typescript
-const rpc = window.__MILADY_ELECTROBUN_RPC__;
+const rpc = window.__ELIZA_ELECTROBUN_RPC__;
 
 // Request: call a native module and await its response
 const status = await rpc.request.agentStart();
@@ -199,7 +199,7 @@ The largest native module. Wraps desktop system APIs for the tray, global shortc
 
 **Class**: `GatewayDiscovery` | **Channels**: 4 invoke, 1 event
 
-Scans the local network for `_milady._tcp` services using mDNS/Bonjour and surfaces discovered gateway instances to the renderer.
+Scans the local network for `_eliza._tcp` services using mDNS/Bonjour and surfaces discovered gateway instances to the renderer.
 
 | Channel | Direction | Description |
 |---|---|---|
@@ -403,7 +403,7 @@ Checks and requests OS-level permissions for accessibility, screen recording, mi
 ## Usage Example
 
 ```typescript
-const rpc = window.__MILADY_ELECTROBUN_RPC__;
+const rpc = window.__ELIZA_ELECTROBUN_RPC__;
 
 // Register a global shortcut from the renderer
 await rpc.request.desktopRegisterShortcut({
@@ -439,5 +439,5 @@ The renderer usually should not call this global directly. Prefer the shared app
 ## Related
 
 - [Desktop App](/apps/desktop) — overview of the desktop application architecture
-- [Deep Linking](/apps/desktop/deep-linking) — `milady://` URL protocol handled via the Canvas module
+- [Deep Linking](/apps/desktop/deep-linking) — `eliza://` URL protocol handled via the Canvas module
 - [Capacitor Plugins](/apps/mobile/capacitor-plugins) — equivalent native plugin system for iOS and Android

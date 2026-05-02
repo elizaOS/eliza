@@ -4,7 +4,7 @@ sidebarTitle: "Schemas"
 description: "Complete schema reference for plugin manifests, actions, providers, evaluators, services, routes, and model handlers."
 ---
 
-This page documents the TypeScript interfaces and JSON schemas for every plugin primitive in Milady/elizaOS.
+This page documents the TypeScript interfaces and JSON schemas for every plugin primitive in Eliza/elizaOS.
 
 ## Plugin Interface
 

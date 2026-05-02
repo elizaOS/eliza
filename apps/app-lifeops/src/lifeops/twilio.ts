@@ -92,11 +92,7 @@ export function readTwilioCredentialsFromEnv(
 }
 
 function getTwilioBaseUrl(): string {
-  return (
-    process.env.MILADY_MOCK_TWILIO_BASE ??
-    process.env.ELIZA_MOCK_TWILIO_BASE ??
-    "https://api.twilio.com"
-  );
+  return process.env.ELIZA_MOCK_TWILIO_BASE ?? "https://api.twilio.com";
 }
 
 /** Maximum number of retries for transient (5xx / network) failures. */

@@ -370,7 +370,7 @@ async function handleSendTransaction(
     const nextState = await ctx.loadWalletState();
     ctx.postWalletReady(ctx.sourceTab, nextState);
     // eth_sendTransaction expects the tx hash string; `sendTransaction`
-    // (Milady flavor) returns the full result.
+    // (Eliza flavor) returns the full result.
     return {
       ok: true,
       result:

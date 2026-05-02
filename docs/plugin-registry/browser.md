@@ -1,10 +1,10 @@
 ---
 title: "Browser Plugin"
 sidebarTitle: "Browser"
-description: "Browser automation plugin for Milady — web scraping, form submission, screenshot capture, and JavaScript execution."
+description: "Browser automation plugin for Eliza — web scraping, form submission, screenshot capture, and JavaScript execution."
 ---
 
-The Browser plugin gives Milady agents the ability to control a headless web browser — navigating pages, extracting content, filling forms, capturing screenshots, and executing JavaScript.
+The Browser plugin gives Eliza agents the ability to control a headless web browser — navigating pages, extracting content, filling forms, capturing screenshots, and executing JavaScript.
 
 **Package:** `@elizaos/plugin-browser`
 
@@ -15,7 +15,7 @@ The Browser plugin uses a headless browser (via stagehand-server and Puppeteer/C
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-browser
+eliza plugins install @elizaos/plugin-browser
 ```
 
 The plugin requires a running stagehand-server instance for browser automation.
@@ -33,7 +33,7 @@ The plugin requires a running stagehand-server instance for browser automation.
 Or set in environment:
 
 ```bash
-export MILADY_FEATURE_BROWSER=true
+export ELIZA_FEATURE_BROWSER=true
 ```
 
 ## Configuration

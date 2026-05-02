@@ -4,7 +4,7 @@ sidebarTitle: "Local Models"
 description: "Download and run AI models locally for offline inference."
 ---
 
-Milady can download and run AI models locally for vision, text generation, text-to-speech, speech-to-text, and embedding tasks. Models are downloaded from HuggingFace or pulled via Ollama, cached on disk, and available for offline use.
+Eliza can download and run AI models locally for vision, text generation, text-to-speech, speech-to-text, and embedding tasks. Models are downloaded from HuggingFace or pulled via Ollama, cached on disk, and available for offline use.
 
 ## Model Types
 
@@ -63,13 +63,13 @@ Milady can download and run AI models locally for vision, text generation, text-
 
 ## Storage
 
-Models are cached at `~/.cache/milady/models/`. A `manifest.json` file tracks all downloaded models:
+Models are cached at `~/.cache/eliza/models/`. A `manifest.json` file tracks all downloaded models:
 
 ```json
 {
   "Salesforce/blip-image-captioning-base": {
     "downloadedAt": "2026-01-15T10:00:00.000Z",
-    "path": "/Users/name/.cache/milady/models/Salesforce_blip-image-captioning-base"
+    "path": "/Users/name/.cache/eliza/models/Salesforce_blip-image-captioning-base"
   },
   "ollama/llama3.2:1b": {
     "downloadedAt": "2026-01-15T10:00:00.000Z",
@@ -93,7 +93,7 @@ For models with an Ollama tag (e.g., `ollama/llama3.2:1b`), the manager calls `P
 Local models are managed through the dashboard or the CLI:
 
 ```bash
-milady models              # show model provider status and local models
+eliza models              # show model provider status and local models
 ```
 
 Models can also be managed through the REST API endpoints at `/api/models`.
@@ -104,4 +104,4 @@ Models can also be managed through the REST API endpoints at `/api/models`.
 - [Local AI Plugin](/plugin-registry/llm/local-ai) — embedded GGUF inference without an Ollama server
 - [Ollama Plugin](/plugin-registry/llm/ollama) — local inference via a running Ollama server
 - [Environment variables](/cli/environment) — `OLLAMA_API_ENDPOINT`, `LOCAL_EMBEDDING_*`
-- [`milady models`](/cli/models) — check configured providers
+- [`eliza models`](/cli/models) — check configured providers

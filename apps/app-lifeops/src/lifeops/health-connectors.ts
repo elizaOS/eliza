@@ -154,8 +154,8 @@ function authHeader(token: StoredHealthConnectorToken): string {
 function providerMockBase(
   provider: StoredHealthConnectorToken["provider"],
 ): string | null {
-  const key = `MILADY_MOCK_${provider.toUpperCase()}_BASE`;
-  const value = process.env[key] ?? process.env.MILADY_MOCK_HEALTH_BASE;
+  const key = `ELIZA_MOCK_${provider.toUpperCase()}_BASE`;
+  const value = process.env[key] ?? process.env.ELIZA_MOCK_HEALTH_BASE;
   if (!value) {
     return null;
   }

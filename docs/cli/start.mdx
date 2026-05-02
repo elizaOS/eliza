@@ -1,11 +1,11 @@
 ---
-title: "milady start"
-description: "Start the Milady API server (embedded elizaOS runtime, server-only mode)."
+title: "eliza start"
+description: "Start the Eliza API server (embedded elizaOS runtime, server-only mode)."
 ---
 
-# `milady start`
+# `eliza start`
 
-Starts the HTTP + WebSocket API without an interactive REPL. Use this for local development, desktop shells, and headless deployments. `milady run` is an alias for this command.
+Starts the HTTP + WebSocket API without an interactive REPL. Use this for local development, desktop shells, and headless deployments. `eliza run` is an alias for this command.
 
 ## Options
 
@@ -16,7 +16,7 @@ Starts the HTTP + WebSocket API without an interactive REPL. Use this for local 
 ## Behavior
 
 - Loads the configured agent runtime and plugins.
-- Binds to the server-only port (default **2138**, override with `MILADY_PORT` or `ELIZA_PORT`).
+- Binds to the server-only port (default **2138**, override with `ELIZA_PORT` or `ELIZA_PORT`).
 - May print a **connection key** when binding on a non-loopback address and no token is set.
 - Shuts down cleanly on `SIGINT` or `SIGTERM`.
 
@@ -29,16 +29,16 @@ Starts the HTTP + WebSocket API without an interactive REPL. Use this for local 
 | `--profile <name>` | Load a named CLI profile (applies profile-specific env vars) |
 | `--no-color` | Disable ANSI color output |
 
-Run `milady start --help` for the full flag list in your build.
+Run `eliza start --help` for the full flag list in your build.
 
 ## Examples
 
 ```bash
 # Start the server with default settings
-milady start
-milady start --connection-key
-milady start --connection-key my-secret-key
-MILADY_PORT=3000 milady start
+eliza start
+eliza start --connection-key
+eliza start --connection-key my-secret-key
+ELIZA_PORT=3000 eliza start
 ```
 
 ## Related

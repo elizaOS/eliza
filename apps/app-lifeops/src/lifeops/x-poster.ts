@@ -24,11 +24,7 @@ export interface XPostResult {
 }
 
 function getXBaseUrl(): string {
-  return (
-    process.env.MILADY_MOCK_X_BASE ??
-    process.env.ELIZA_MOCK_X_BASE ??
-    "https://api.twitter.com"
-  );
+  return process.env.ELIZA_MOCK_X_BASE ?? "https://api.twitter.com";
 }
 
 function getXPostUrl(): string {

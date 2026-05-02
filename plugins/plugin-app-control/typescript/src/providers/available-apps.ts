@@ -20,7 +20,7 @@ const MAX_LISTED = 30;
 export const availableAppsProvider: Provider = {
 	name: "available_apps",
 	description:
-		"Installed Milady apps with running-run counts; use this to pick targets for APP launch / relaunch / list / create.",
+		"Installed Eliza apps with running-run counts; use this to pick targets for APP launch / relaunch / list / create.",
 	descriptionCompressed: "Installed apps + running counts for APP action.",
 	position: -8,
 	dynamic: true,

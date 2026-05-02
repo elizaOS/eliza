@@ -4,7 +4,7 @@ sidebarTitle: "Cloud"
 description: "Endpoints de la API REST para autenticación, estado de conexión, saldo de créditos y gestión de agentes en Eliza Cloud."
 ---
 
-La API de la nube conecta el agente local Milady a Eliza Cloud para inferencia alojada en la nube, créditos y gestión remota de agentes. El inicio de sesión utiliza un flujo estilo OAuth basado en navegador con sondeo para la finalización de la sesión.
+La API de la nube conecta el agente local Eliza a Eliza Cloud para inferencia alojada en la nube, créditos y gestión remota de agentes. El inicio de sesión utiliza un flujo estilo OAuth basado en navegador con sondeo para la finalización de la sesión.
 
 Se espera que la facturación permanezca dentro de la aplicación siempre que Eliza Cloud exponga los endpoints de facturación necesarios. Los valores de `topUpUrl` devueltos por `/api/cloud/status` y `/api/cloud/credits` deben tratarse como un respaldo alojado, no como la experiencia de usuario principal.
 
@@ -161,7 +161,7 @@ Obtiene el saldo de créditos en la nube. Devuelve un saldo `null` cuando no est
 
 </div>
 
-Estos endpoints actúan como proxy de las APIs de facturación autenticadas de Eliza Cloud a través del backend local de Milady para que la aplicación de escritorio pueda mantener la facturación, los métodos de pago y las recargas dentro de la aplicación. Requieren un inicio de sesión activo en Eliza Cloud porque el servidor local reenvía la clave API de la nube guardada.
+Estos endpoints actúan como proxy de las APIs de facturación autenticadas de Eliza Cloud a través del backend local de Eliza para que la aplicación de escritorio pueda mantener la facturación, los métodos de pago y las recargas dentro de la aplicación. Requieren un inicio de sesión activo en Eliza Cloud porque el servidor local reenvía la clave API de la nube guardada.
 
 Use `topUpUrl` solo como un respaldo alojado si Eliza Cloud no devuelve un flujo de pago integrado o una cotización crypto que la aplicación pueda renderizar directamente.
 
@@ -229,7 +229,7 @@ Crea una sesión de pago de facturación.
 }
 ```
 
-Milady prefiere el pago integrado cuando Eliza Cloud lo soporta, pero la integración actual de facturación en la nube aún puede devolver una URL de pago alojada.
+Eliza prefiere el pago integrado cuando Eliza Cloud lo soporta, pero la integración actual de facturación en la nube aún puede devolver una URL de pago alojada.
 
 <div id="post-apicloudbillingcryptoquote">
 
@@ -322,7 +322,7 @@ Crea un nuevo agente en la nube. Requiere una conexión activa a la nube.
 ```json
 {
   "agentName": "My Cloud Agent",
-  "agentConfig": { "character": "milady" },
+  "agentConfig": { "character": "eliza" },
   "environmentVars": { "OPENAI_API_KEY": "<OPENAI_API_KEY>" }
 }
 ```

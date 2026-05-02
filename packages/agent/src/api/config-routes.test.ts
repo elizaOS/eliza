@@ -71,12 +71,10 @@ describe("handleConfigRoutes — POST /api/config/reload", () => {
   const originalEnv = { ...process.env };
 
   beforeEach(async () => {
-    stateDir = await fs.mkdtemp(
-      path.join(os.tmpdir(), "milady-config-reload-"),
-    );
-    configPath = path.join(stateDir, "milady.json");
-    process.env.MILADY_STATE_DIR = stateDir;
-    process.env.MILADY_CONFIG_PATH = configPath;
+    stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-config-reload-"));
+    configPath = path.join(stateDir, "eliza.json");
+    process.env.ELIZA_STATE_DIR = stateDir;
+    process.env.ELIZA_CONFIG_PATH = configPath;
   });
 
   afterEach(async () => {
@@ -85,7 +83,7 @@ describe("handleConfigRoutes — POST /api/config/reload", () => {
     vi.restoreAllMocks();
   });
 
-  it("returns 400 with a parse error when milady.json is malformed", async () => {
+  it("returns 400 with a parse error when eliza.json is malformed", async () => {
     await fs.writeFile(configPath, "{ this is not json", "utf8");
     const config = { ui: { assistant: { name: "Old" } } } as ElizaConfig;
     const { ctx, errorCalls, jsonCalls } = makeStubCtx({

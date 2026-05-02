@@ -214,9 +214,9 @@ class TauBenchRunner:
 
             # Create agent (mock, real ElizaOS, or eliza TS agent)
             if self.config.model_provider == "eliza":
-                from milady_adapter.tau_bench import MiladyTauAgent
+                from eliza_adapter.tau_bench import ElizaTauAgent
 
-                agent = MiladyTauAgent(
+                agent = ElizaTauAgent(
                     executor=executor,
                     max_turns=self.config.max_turns_per_task,
                 )

@@ -1,21 +1,21 @@
 ---
 title: "Linear Plugin"
 sidebarTitle: "Linear"
-description: "Linear project management integration for Milady — create, update, and query issues and projects through agent chat."
+description: "Linear project management integration for Eliza — create, update, and query issues and projects through agent chat."
 ---
 
-The Linear plugin lets Milady agents interact with Linear for issue tracking and project management.
+The Linear plugin lets Eliza agents interact with Linear for issue tracking and project management.
 
 **Package:** `@elizaos/plugin-linear`
 
 ## Overview
 
-This plugin connects Milady to the Linear API, enabling agents to create issues, update statuses, query projects and teams, and manage workflows through natural language. Useful for development teams that track work in Linear and want their agent to participate in issue management.
+This plugin connects Eliza to the Linear API, enabling agents to create issues, update statuses, query projects and teams, and manage workflows through natural language. Useful for development teams that track work in Linear and want their agent to participate in issue management.
 
 ## Installation
 
 ```bash
-milady plugins install linear
+eliza plugins install linear
 ```
 
 ## Auto-Enable

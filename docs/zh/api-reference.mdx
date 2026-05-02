@@ -1,20 +1,20 @@
 ---
 title: REST API 参考
 sidebarTitle: API 参考
-description: Milady REST API 所有端点的完整参考，按资源分组整理。
+description: Eliza REST API 所有端点的完整参考，按资源分组整理。
 ---
 
-Milady API 服务器默认运行在端口 **31337**（`MILADY_API_PORT`）。所有端点均以 `/api/` 为前缀。当设置了 `MILADY_API_TOKEN` 时，需要进行身份验证。
+Eliza API 服务器默认运行在端口 **31337**（`ELIZA_API_PORT`）。所有端点均以 `/api/` 为前缀。当设置了 `ELIZA_API_TOKEN` 时，需要进行身份验证。
 
 <Warning>
-当配置了 `MILADY_API_TOKEN` 时，请在 `Authorization` 头中以 `Bearer` 令牌的形式包含该令牌，或使用配对流程获取令牌。
+当配置了 `ELIZA_API_TOKEN` 时，请在 `Authorization` 头中以 `Bearer` 令牌的形式包含该令牌，或使用配对流程获取令牌。
 </Warning>
 
 <div id="quick-start">
 ## 快速开始
 </div>
 
-以下示例假设 API 运行在 `localhost:31337`。请将 `YOUR_TOKEN` 替换为 `MILADY_API_TOKEN` 的值或通过配对流程获取的令牌。
+以下示例假设 API 运行在 `localhost:31337`。请将 `YOUR_TOKEN` 替换为 `ELIZA_API_TOKEN` 的值或通过配对流程获取的令牌。
 
 <div id="check-agent-status">
 ### 检查代理状态
@@ -26,7 +26,7 @@ curl http://localhost:31337/api/status
 
 ```json
 {
-  "name": "Milady",
+  "name": "Eliza",
   "status": "running",
   "model": "claude-sonnet-4-6",
   "uptime": 3600
@@ -103,7 +103,7 @@ curl -X POST http://localhost:31337/api/knowledge/documents \
   -H "Content-Type: application/json" \
   -d '{
     "title": "Company FAQ",
-    "content": "Q: What is Milady?\nA: A personal AI assistant built on elizaOS."
+    "content": "Q: What is Eliza?\nA: A personal AI assistant built on elizaOS."
   }'
 ```
 
@@ -112,7 +112,7 @@ curl -X POST http://localhost:31337/api/knowledge/documents \
 </div>
 
 ```bash
-curl "http://localhost:31337/api/knowledge/search?q=what+is+milady&limit=5" \
+curl "http://localhost:31337/api/knowledge/search?q=what+is+eliza&limit=5" \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
@@ -179,7 +179,7 @@ curl -X POST http://localhost:31337/api/agent/autonomy \
 
 ```json
 {
-  "name": "Milady",
+  "name": "Eliza",
   "status": "running",
   "model": "anthropic/claude-sonnet-4-6",
   "uptime": 3600,
@@ -328,7 +328,7 @@ curl -X POST http://localhost:31337/api/agent/autonomy \
 
 | 方法 | 路径 | 描述 |
 |--------|------|-------------|
-| `GET` | `/api/config` | 获取当前 milady.json 配置 |
+| `GET` | `/api/config` | 获取当前 eliza.json 配置 |
 | `PUT` | `/api/config` | 更新配置字段 |
 | `GET` | `/api/config/schema` | 获取用于 UI 渲染的配置架构 |
 
@@ -564,7 +564,7 @@ curl -X POST http://localhost:31337/api/agent/autonomy \
 | `POST` | `/api/cloud/agents/:id/provision` | 预配云代理 |
 | `POST` | `/api/cloud/agents/:id/shutdown` | 关闭并删除云代理 |
 | `POST` | `/api/cloud/agents/:id/connect` | 连接到现有云代理 |
-| `POST` | `/api/cloud/v1/milady/agents/:id/pairing-token` | 生成配对令牌，用于在新标签页中打开云代理的 Web UI。返回 `{ success, data: { token, redirectUrl, expiresIn } }` |
+| `POST` | `/api/cloud/v1/eliza/agents/:id/pairing-token` | 生成配对令牌，用于在新标签页中打开云代理的 Web UI。返回 `{ success, data: { token, redirectUrl, expiresIn } }` |
 
 <Info>
 `/api/cloud/v1/` 下的路由将作为 `/api/v1/` 转发到云后端，与旧版 `/api/cloud/compat/*` 映射不同。认证同时支持 `Authorization: Bearer` 和 `X-Api-Key` 头部。

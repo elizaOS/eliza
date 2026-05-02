@@ -1,7 +1,7 @@
 ---
 title: "Commands Plugin"
 sidebarTitle: "Commands"
-description: "Chat command system for Milady — /help, /status, /reset, and other slash commands for Eliza agents."
+description: "Chat command system for Eliza — /help, /status, /reset, and other slash commands for Eliza agents."
 ---
 
 The Commands plugin provides a slash-command system for Eliza agents, enabling users to interact with agents through structured commands like `/help`, `/status`, and `/reset`.

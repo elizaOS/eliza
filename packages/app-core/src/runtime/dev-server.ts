@@ -55,9 +55,7 @@ try {
 console.log(`${getLogPrefix()} dotenv loaded (${Date.now() - SCRIPT_START}ms)`);
 
 const port = resolveDesktopApiPort(process.env);
-const hadUserApiTokenInEnv = !!(
-  process.env.ELIZA_API_TOKEN?.trim() || process.env.ELIZA_API_TOKEN?.trim()
-);
+const hadUserApiTokenInEnv = !!process.env.ELIZA_API_TOKEN?.trim();
 
 /** The currently active runtime — swapped on restart. */
 let currentRuntime: AgentRuntime | null = null;

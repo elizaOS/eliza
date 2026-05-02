@@ -61,7 +61,7 @@ function findSample(
 
 describe("syncHealthConnectorData", () => {
   beforeEach(() => {
-    process.env.MILADY_MOCK_HEALTH_BASE = "http://127.0.0.1:9876";
+    process.env.ELIZA_MOCK_HEALTH_BASE = "http://127.0.0.1:9876";
   });
 
   afterEach(() => {
@@ -451,7 +451,7 @@ describe("syncHealthConnectorData", () => {
   });
 
   it("refuses non-loopback mock connector bases", async () => {
-    process.env.MILADY_MOCK_HEALTH_BASE = "https://mock.example.test";
+    process.env.ELIZA_MOCK_HEALTH_BASE = "https://mock.example.test";
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 

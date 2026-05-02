@@ -312,7 +312,7 @@ describe("dispatchCrossChannelSend", () => {
     process.env.TWILIO_ACCOUNT_SID = "ACtest";
     process.env.TWILIO_AUTH_TOKEN = "token";
     process.env.TWILIO_PHONE_NUMBER = "+15550000000";
-    process.env.MILADY_MOCK_TWILIO_BASE = "https://twilio.test";
+    process.env.ELIZA_MOCK_TWILIO_BASE = "https://twilio.test";
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ sid: "SM123" }), {
         status: 201,
@@ -346,7 +346,7 @@ describe("dispatchCrossChannelSend", () => {
     process.env.TWILIO_ACCOUNT_SID = "ACvoice";
     process.env.TWILIO_AUTH_TOKEN = "token";
     process.env.TWILIO_PHONE_NUMBER = "+15550000000";
-    process.env.MILADY_MOCK_TWILIO_BASE = "https://twilio.test";
+    process.env.ELIZA_MOCK_TWILIO_BASE = "https://twilio.test";
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ sid: "CA123" }), {
         status: 201,
@@ -411,7 +411,7 @@ describe("dispatchCrossChannelSend", () => {
 
   test("calendly dispatcher creates a single-use booking link for the event type", async () => {
     process.env.ELIZA_CALENDLY_TOKEN = "cal-token";
-    process.env.MILADY_MOCK_CALENDLY_BASE = "https://calendly.test";
+    process.env.ELIZA_MOCK_CALENDLY_BASE = "https://calendly.test";
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({

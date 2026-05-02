@@ -1,7 +1,7 @@
 ---
 title: Trajectories
 sidebarTitle: Trajectories
-description: View and analyze LLM call history for your Milady agent — inspect prompts, responses, token usage, and latency.
+description: View and analyze LLM call history for your Eliza agent — inspect prompts, responses, token usage, and latency.
 ---
 
 The Trajectories tab provides a detailed viewer for your agent's LLM call history. Every call the agent makes to a language model is recorded as a trajectory, giving you full visibility into prompts, responses, token usage, and performance.

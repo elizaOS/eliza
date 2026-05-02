@@ -182,25 +182,25 @@ function envVarsFor(
   const out: Record<string, string> = {};
   if (envs.includes("google")) {
     out.ELIZA_MOCK_GOOGLE_BASE = baseUrls.google;
-    out.MILADY_MOCK_GOOGLE_BASE = baseUrls.google;
+    out.ELIZA_MOCK_GOOGLE_BASE = baseUrls.google;
     out.ELIZA_BLOCK_REAL_GMAIL_WRITES = "1";
   }
   if (envs.includes("twilio")) {
     out.ELIZA_MOCK_TWILIO_BASE = baseUrls.twilio;
-    out.MILADY_MOCK_TWILIO_BASE = baseUrls.twilio;
+    out.ELIZA_MOCK_TWILIO_BASE = baseUrls.twilio;
   }
   if (envs.includes("whatsapp"))
     out.ELIZA_MOCK_WHATSAPP_BASE = baseUrls.whatsapp;
   if (envs.includes("whatsapp"))
-    out.MILADY_MOCK_WHATSAPP_BASE = baseUrls.whatsapp;
+    out.ELIZA_MOCK_WHATSAPP_BASE = baseUrls.whatsapp;
   if (envs.includes("x-twitter")) {
     out.ELIZA_MOCK_X_BASE = baseUrls["x-twitter"];
-    out.MILADY_MOCK_X_BASE = baseUrls["x-twitter"];
+    out.ELIZA_MOCK_X_BASE = baseUrls["x-twitter"];
   }
   if (envs.includes("calendly"))
     out.ELIZA_MOCK_CALENDLY_BASE = baseUrls.calendly;
   if (envs.includes("calendly"))
-    out.MILADY_MOCK_CALENDLY_BASE = baseUrls.calendly;
+    out.ELIZA_MOCK_CALENDLY_BASE = baseUrls.calendly;
   if (envs.includes("cloud-managed"))
     out.ELIZA_CLOUD_BASE_URL = baseUrls["cloud-managed"];
   if (envs.includes("signal")) {
@@ -211,7 +211,7 @@ function envVarsFor(
     out.ELIZA_BROWSER_WORKSPACE_URL = baseUrls["browser-workspace"];
     out.ELIZA_BROWSER_WORKSPACE_TOKEN = MOCK_BROWSER_WORKSPACE_TOKEN;
     out.ELIZA_DISABLE_DISCORD_DESKTOP_CDP = "1";
-    out.MILADY_DISABLE_DISCORD_DESKTOP_CDP = "1";
+    out.ELIZA_DISABLE_DISCORD_DESKTOP_CDP = "1";
   }
   if (envs.includes("bluebubbles")) {
     out.ELIZA_IMESSAGE_BACKEND = "bluebubbles";

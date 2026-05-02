@@ -4,7 +4,7 @@ title: Diagnósticos para desarrolladores y herramientas de workspace
 
 # Diagnósticos para desarrolladores y herramientas de workspace (POR QUÉs)
 
-Esta guía es para **personas que compilan Milady desde el código fuente** — editores, agentes y mantenedores. Explica **por qué** existen ciertos comportamientos recientes orientados al desarrollador para que puedas depurar más rápido sin confundir ruido opcional con errores del producto.
+Esta guía es para **personas que compilan Eliza desde el código fuente** — editores, agentes y mantenedores. Explica **por qué** existen ciertos comportamientos recientes orientados al desarrollador para que puedas depurar más rápido sin confundir ruido opcional con errores del producto.
 
 <div id="plugin-load-reasons-optional-plugins">
 ## Razones de carga de plugins (plugins opcionales)
@@ -12,7 +12,7 @@ Esta guía es para **personas que compilan Milady desde el código fuente** — 
 
 **Problema:** Registros como `Cannot find module '@elizaos/plugin-solana'` o "browser server not found" parecían indicar que el runtime estaba roto, cuando a menudo el verdadero problema era que la **configuración o una variable de entorno** incluía un plugin en el conjunto de carga mientras el paquete o binario nativo nunca fue instalado.
 
-**Por qué rastreamos la procedencia:** `collectPluginNames()` puede registrar la **primera** fuente que añadió cada paquete (por ejemplo `plugins.allow["@elizaos/plugin-solana"]`, `env: SOLANA_PRIVATE_KEY`, `features.browser`, `CORE_PLUGINS`). `resolvePlugins()` pasa ese mapa a través de la resolución; cuando un plugin **opcional** falla por una razón benigna (módulo npm faltante, stagehand faltante), el resumen del registro incluye **`(added by: …)`** para que sepas si debes editar `milady.json`, desactivar una variable de entorno, instalar un paquete o añadir un checkout de plugin.
+**Por qué rastreamos la procedencia:** `collectPluginNames()` puede registrar la **primera** fuente que añadió cada paquete (por ejemplo `plugins.allow["@elizaos/plugin-solana"]`, `env: SOLANA_PRIVATE_KEY`, `features.browser`, `CORE_PLUGINS`). `resolvePlugins()` pasa ese mapa a través de la resolución; cuando un plugin **opcional** falla por una razón benigna (módulo npm faltante, stagehand faltante), el resumen del registro incluye **`(added by: …)`** para que sepas si debes editar `eliza.json`, desactivar una variable de entorno, instalar un paquete o añadir un checkout de plugin.
 
 **Alcance:** Esto son **diagnósticos**, no ocultar fallos. Los errores serios de resolución siguen apareciendo normalmente.
 
@@ -22,9 +22,9 @@ Esta guía es para **personas que compilan Milady desde el código fuente** — 
 ## Ruta del servidor browser / stagehand
 </div>
 
-**Problema:** `@elizaos/plugin-browser` espera un árbol binario **stagehand-server** bajo `dist/server/` dentro del paquete npm, pero el tarball publicado no lo incluye. Milady enlaza o descubre un checkout bajo `plugins/plugin-browser/stagehand-server/`.
+**Problema:** `@elizaos/plugin-browser` espera un árbol binario **stagehand-server** bajo `dist/server/` dentro del paquete npm, pero el tarball publicado no lo incluye. Eliza enlaza o descubre un checkout bajo `plugins/plugin-browser/stagehand-server/`.
 
-**Por qué se recorre hacia arriba:** El archivo del runtime vive a diferentes profundidades (`milady/packages/agent/...` vs `eliza/packages/agent/...` cuando se usa un submódulo). Una profundidad fija `../` no alcanzaba la raíz del workspace. **`findPluginBrowserStagehandDir()`** recorre los directorios padres hasta encontrar `plugins/plugin-browser/stagehand-server` con `dist/index.js` o `src/index.ts`.
+**Por qué se recorre hacia arriba:** El archivo del runtime vive a diferentes profundidades (`eliza/packages/agent/...` vs `eliza/packages/agent/...` cuando se usa un submódulo). Una profundidad fija `../` no alcanzaba la raíz del workspace. **`findPluginBrowserStagehandDir()`** recorre los directorios padres hasta encontrar `plugins/plugin-browser/stagehand-server` con `dist/index.js` o `src/index.ts`.
 
 **Nota operativa:** Si no usas automatización de navegador, la ausencia de stagehand es **esperada**; los mensajes son intencionalmente concisos a nivel de depuración para no saturar el desarrollo diario.
 

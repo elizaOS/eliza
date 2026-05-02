@@ -1,7 +1,7 @@
 {
   "id": "n8n-workflow",
   "name": "N8n Workflow",
-  "description": "Natural-language n8n workflow actions (create, activate, deactivate, delete). Milady auto-resolves N8N_HOST and N8N_API_KEY from the Eliza Cloud gateway or from the local n8n sidecar — explicit env/config values override both.",
+  "description": "Natural-language n8n workflow actions (create, activate, deactivate, delete). Eliza auto-resolves N8N_HOST and N8N_API_KEY from the Eliza Cloud gateway or from the local n8n sidecar — explicit env/config values override both.",
   "npmName": "@elizaos/plugin-n8n-workflow",
   "version": "1.2.10",
   "source": "bundled",
@@ -12,7 +12,7 @@
       "required": false,
       "sensitive": false,
       "label": "N8n Host",
-      "help": "n8n instance URL. Leave blank — Milady auto-resolves this via the Eliza Cloud n8n gateway when cloud is authenticated, or via the local n8n sidecar when it is running.",
+      "help": "n8n instance URL. Leave blank — Eliza auto-resolves this via the Eliza Cloud n8n gateway when cloud is authenticated, or via the local n8n sidecar when it is running.",
       "advanced": false
     },
     "N8N_API_KEY": {
@@ -20,7 +20,7 @@
       "required": false,
       "sensitive": true,
       "label": "N8n Api Key",
-      "help": "n8n API key. Leave blank — Milady auto-resolves this (cloud gateway token or sidecar token). Only set this to override the auto-resolved credential.",
+      "help": "n8n API key. Leave blank — Eliza auto-resolves this (cloud gateway token or sidecar token). Only set this to override the auto-resolved credential.",
       "advanced": false
     }
   },

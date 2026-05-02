@@ -4,7 +4,7 @@ sidebarTitle: "Connectors"
 description: "REST API endpoints for managing platform connectors — Telegram, Discord, WhatsApp, and other messaging integrations."
 ---
 
-The connectors API manages the agent's platform connector configurations. Connectors bridge the agent to external messaging platforms. 28 connectors are supported: Discord, Telegram, Slack, WhatsApp, Signal, iMessage, Blooio, MS Teams, Google Chat, Twitter, Farcaster, Twitch, Mattermost, WeChat, Matrix, Feishu, Nostr, Lens, BlueBubbles, Bluesky, Instagram, LINE, Zalo, Twilio, GitHub, Gmail Watch, Nextcloud Talk, and Tlon. Configuration is persisted to the Milady config file. Changes typically require a restart to take effect.
+The connectors API manages the agent's platform connector configurations. Connectors bridge the agent to external messaging platforms. 28 connectors are supported: Discord, Telegram, Slack, WhatsApp, Signal, iMessage, Blooio, MS Teams, Google Chat, Twitter, Farcaster, Twitch, Mattermost, WeChat, Matrix, Feishu, Nostr, Lens, BlueBubbles, Bluesky, Instagram, LINE, Zalo, Twilio, GitHub, Gmail Watch, Nextcloud Talk, and Tlon. Configuration is persisted to the Eliza config file. Changes typically require a restart to take effect.
 
 See the [Connectors guide](/guides/connectors) for detailed setup instructions per platform.
 
@@ -41,7 +41,7 @@ Returns all configured connectors with secrets redacted.
 
 ### POST /api/connectors
 
-Add a new connector or update an existing one. The connector config is saved to the Milady config file.
+Add a new connector or update an existing one. The connector config is saved to the Eliza config file.
 
 **Request Body**
 

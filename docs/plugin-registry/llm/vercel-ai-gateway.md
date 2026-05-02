@@ -1,17 +1,17 @@
 ---
 title: "Vercel AI Gateway Plugin"
 sidebarTitle: "Vercel AI Gateway"
-description: "Vercel AI Gateway provider for Milady — unified multi-provider access via Vercel's AI SDK with automatic fallbacks and observability."
+description: "Vercel AI Gateway provider for Eliza — unified multi-provider access via Vercel's AI SDK with automatic fallbacks and observability."
 ---
 
-The Vercel AI Gateway plugin connects Milady agents to Vercel's AI Gateway, providing unified access to multiple model providers through a single endpoint. This is useful for teams that want centralized API key management, provider fallbacks, and usage observability.
+The Vercel AI Gateway plugin connects Eliza agents to Vercel's AI Gateway, providing unified access to multiple model providers through a single endpoint. This is useful for teams that want centralized API key management, provider fallbacks, and usage observability.
 
 **Package:** `@elizaos/plugin-vercel-ai-gateway`
 
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-vercel-ai-gateway
+eliza plugins install @elizaos/plugin-vercel-ai-gateway
 ```
 
 ## Auto-Enable
@@ -39,7 +39,7 @@ export AI_GATEWAY_API_KEY=your-gateway-key
 
 Either `AI_GATEWAY_API_KEY`, `AIGATEWAY_API_KEY`, or `VERCEL_OIDC_TOKEN` activates the plugin.
 
-### milady.json Example
+### eliza.json Example
 
 ```json
 {

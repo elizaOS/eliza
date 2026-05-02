@@ -2,9 +2,9 @@
  * Authenticated fetch helper for dashboard API requests.
  *
  * Layers two auth modes onto a single call:
- *   - Cookie + CSRF (browser session): sends the `milady_session` cookie via
- *     `credentials: "include"` and mirrors the readable `milady_csrf` cookie
- *     into the `x-milady-csrf` header on state-changing requests.
+ *   - Cookie + CSRF (browser session): sends the `eliza_session` cookie via
+ *     `credentials: "include"` and mirrors the readable `eliza_csrf` cookie
+ *     into the `x-eliza-csrf` header on state-changing requests.
  *   - Bearer (machine token / self-hosted bootstrap): if `getBootConfig()`
  *     exposes an apiToken, attaches `Authorization: Bearer ...`.
  *

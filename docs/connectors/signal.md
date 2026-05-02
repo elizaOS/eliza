@@ -18,7 +18,7 @@ Connect your agent to Signal for private and group messaging via signal-cli usin
 
 The connector auto-enables when `token`/`botToken`/`apiKey` is set, OR any of `authDir`/`account`/`httpUrl`/`httpHost`/`httpPort`/`cliPath` is set, OR `accounts` contains configured entries.
 
-Configure in `~/.milady/milady.json`:
+Configure in `~/.eliza/eliza.json`:
 
 ```json
 {
@@ -49,9 +49,9 @@ signal-cli -a +1234567890 verify CODE
 signal-cli -a +1234567890 daemon --http localhost:8080
 ```
 
-### 3. Configure Milady
+### 3. Configure Eliza
 
-Add the `connectors.signal` block to `milady.json` as shown in the minimal configuration above.
+Add the `connectors.signal` block to `eliza.json` as shown in the minimal configuration above.
 
 ## Disabling
 
@@ -96,7 +96,7 @@ You do not need to set these manually — they are derived from the connector co
 
 ## Full Configuration Reference
 
-All fields are defined under `connectors.signal` in `milady.json`.
+All fields are defined under `connectors.signal` in `eliza.json`.
 
 ### Core Fields
 

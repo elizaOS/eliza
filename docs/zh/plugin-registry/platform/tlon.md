@@ -1,10 +1,10 @@
 ---
 title: "Tlon 插件"
 sidebarTitle: "Tlon"
-description: "Milady 的 Tlon 连接器 — 与 Tlon (Urbit) 消息平台的机器人集成。"
+description: "Eliza 的 Tlon 连接器 — 与 Tlon (Urbit) 消息平台的机器人集成。"
 ---
 
-Tlon 插件将 Milady 代理连接到 Tlon (Urbit)，实现通过连接的 Urbit ship 处理消息。
+Tlon 插件将 Eliza 代理连接到 Tlon (Urbit)，实现通过连接的 Urbit ship 处理消息。
 
 **Package:** `@elizaos/plugin-tlon`
 
@@ -15,7 +15,7 @@ Tlon 插件将 Milady 代理连接到 Tlon (Urbit)，实现通过连接的 Urbit
 </div>
 
 ```bash
-milady plugins install @elizaos/plugin-tlon
+eliza plugins install @elizaos/plugin-tlon
 ```
 
 <div id="setup">
@@ -35,9 +35,9 @@ milady plugins install @elizaos/plugin-tlon
 3. 从 ship 的网页界面获取访问代码（设置 → 访问密钥）
 4. 记下 ship 的 URL（例如 `http://localhost:8080`）
 
-<div id="2-configure-milady">
+<div id="2-configure-eliza">
 
-### 2. 配置 Milady
+### 2. 配置 Eliza
 
 </div>
 

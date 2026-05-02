@@ -15,8 +15,8 @@ describe("getWalletAddresses", () => {
     process.env = { ...originalEnv };
     delete process.env.WALLET_SOURCE_EVM;
     delete process.env.WALLET_SOURCE_SOLANA;
-    delete process.env.MILADY_CLOUD_EVM_ADDRESS;
-    delete process.env.MILADY_CLOUD_SOLANA_ADDRESS;
+    delete process.env.ELIZA_CLOUD_EVM_ADDRESS;
+    delete process.env.ELIZA_CLOUD_SOLANA_ADDRESS;
     delete process.env.EVM_PRIVATE_KEY;
     delete process.env.SOLANA_PRIVATE_KEY;
     delete process.env.STEWARD_EVM_ADDRESS;
@@ -30,9 +30,9 @@ describe("getWalletAddresses", () => {
   it("prefers the configured cloud wallet addresses over steward/local fallbacks", () => {
     process.env.WALLET_SOURCE_EVM = "cloud";
     process.env.WALLET_SOURCE_SOLANA = "cloud";
-    process.env.MILADY_CLOUD_EVM_ADDRESS =
+    process.env.ELIZA_CLOUD_EVM_ADDRESS =
       "0x1234567890abcdef1234567890abcdef12345678";
-    process.env.MILADY_CLOUD_SOLANA_ADDRESS =
+    process.env.ELIZA_CLOUD_SOLANA_ADDRESS =
       "8RsmpM7Ztk5H2nesQSjk8okmFTiZFk4kBUcyaygPrVxa";
     process.env.STEWARD_EVM_ADDRESS =
       "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";

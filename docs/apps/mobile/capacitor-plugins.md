@@ -1,16 +1,16 @@
 ---
 title: "Capacitor Plugins"
 sidebarTitle: "Capacitor Plugins"
-description: "Nine custom Capacitor plugins that give the Milady mobile app access to native iOS and Android capabilities."
+description: "Nine custom Capacitor plugins that give the Eliza mobile app access to native iOS and Android capabilities."
 ---
 
-The Milady mobile app ships nine custom Capacitor plugins plus the core `@capacitor/haptics` plugin. Each plugin is an independent package under `eliza/packages/native-plugins/<name>/` and must be compiled before the web app can bundle it (`bun run plugin:build` from `apps/app`). Plugins are wrapped by the plugin bridge (`src/bridge/plugin-bridge.ts`), which performs capability detection per platform and provides graceful degradation to web API fallbacks where possible.
+The Eliza mobile app ships nine custom Capacitor plugins plus the core `@capacitor/haptics` plugin. Each plugin is an independent package under `eliza/packages/native-plugins/<name>/` and must be compiled before the web app can bundle it (`bun run plugin:build` from `apps/app`). Plugins are wrapped by the plugin bridge (`src/bridge/plugin-bridge.ts`), which performs capability detection per platform and provides graceful degradation to web API fallbacks where possible.
 
 All plugins follow the same structure: a TypeScript interface describing the web-facing API, a web implementation used in browser environments, and native implementations for iOS (Swift) and Android (Kotlin). On platforms where a feature is unavailable, plugin calls are silently caught and logged by the bridge's `Proxy` wrapper.
 
 ## Plugin Bridge
 
-The bridge is the single entry point for all plugin access. It initializes at app startup, probes each plugin for availability, and exposes the results at `window.Milady.plugins` and `window.Milady.pluginCapabilities`.
+The bridge is the single entry point for all plugin access. It initializes at app startup, probes each plugin for availability, and exposes the results at `window.Eliza.plugins` and `window.Eliza.pluginCapabilities`.
 
 Use `waitForBridge()` before accessing any plugin, then check `isFeatureAvailable()` for platform-specific features before calling them:
 
@@ -20,7 +20,7 @@ import { waitForBridge, isFeatureAvailable } from "./bridge/plugin-bridge";
 await waitForBridge();
 
 if (isFeatureAvailable("gateway")) {
-  await window.Milady.plugins.gateway.startDiscovery();
+  await window.Eliza.plugins.gateway.startDiscovery();
 }
 ```
 
@@ -41,7 +41,7 @@ if (isFeatureAvailable("gateway")) {
 
 ## @elizaos/capacitor-gateway
 
-WebSocket RPC connection to a Milady gateway with mDNS/Bonjour discovery of local gateways on the same network. Handles token or password authentication, automatic reconnection, and session continuity via session keys.
+WebSocket RPC connection to a Eliza gateway with mDNS/Bonjour discovery of local gateways on the same network. Handles token or password authentication, automatic reconnection, and session continuity via session keys.
 
 ### Methods
 
@@ -214,7 +214,7 @@ Screenshots and screen recording with pause/resume support. On web, falls back t
 
 ## @elizaos/capacitor-canvas
 
-Drawing primitives, layer management, embedded web view control, JavaScript evaluation, A2UI directive injection, and `milady://` deep link interception. The canvas layer renders natively on iOS and Android and sits above the Capacitor web view.
+Drawing primitives, layer management, embedded web view control, JavaScript evaluation, A2UI directive injection, and `eliza://` deep link interception. The canvas layer renders natively on iOS and Android and sits above the Capacitor web view.
 
 ### Drawing Methods
 
@@ -265,14 +265,14 @@ Drawing primitives, layer management, embedded web view control, JavaScript eval
 | `render` | `{ canvasId: string, timestamp: number }` | Canvas render frame tick |
 | `webViewReady` | `{ canvasId: string }` | Embedded web view has finished loading |
 | `navigationError` | `{ canvasId: string, url: string, error: string }` | Web view navigation failed |
-| `deepLink` | `{ canvasId: string, url: string }` | A `milady://` deep link was intercepted in the web view |
+| `deepLink` | `{ canvasId: string, url: string }` | A `eliza://` deep link was intercepted in the web view |
 | `a2uiAction` | `{ canvasId: string, action: string, payload: unknown }` | An A2UI action was triggered from within the web view |
 
 ---
 
 ## @elizaos/capacitor-agent
 
-Agent lifecycle management. Communicates with the Milady agent process via IPC on Electrobun and via HTTP on iOS, Android, and web.
+Agent lifecycle management. Communicates with the Eliza agent process via IPC on Electrobun and via HTTP on iOS, Android, and web.
 
 ### Methods
 

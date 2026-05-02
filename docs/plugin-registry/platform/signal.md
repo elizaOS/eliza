@@ -1,17 +1,17 @@
 ---
 title: "Signal Plugin"
 sidebarTitle: "Signal"
-description: "Signal connector for Milady — private messaging via signal-cli with HTTP/JSON-RPC mode, attachments, and read receipts."
+description: "Signal connector for Eliza — private messaging via signal-cli with HTTP/JSON-RPC mode, attachments, and read receipts."
 ---
 
-The Signal plugin connects Milady agents to Signal via signal-cli running in HTTP or JSON-RPC mode, enabling private and group messaging with attachment and reaction support.
+The Signal plugin connects Eliza agents to Signal via signal-cli running in HTTP or JSON-RPC mode, enabling private and group messaging with attachment and reaction support.
 
 **Package:** `@elizaos/plugin-signal`
 
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-signal
+eliza plugins install @elizaos/plugin-signal
 ```
 
 ## Setup
@@ -31,7 +31,7 @@ signal-cli -a +1234567890 verify CODE
 signal-cli -a +1234567890 daemon --http localhost:8080
 ```
 
-### 3. Configure Milady
+### 3. Configure Eliza
 
 ```json
 {

@@ -1,10 +1,10 @@
 ---
 title: Self-Updates & Versioning
 sidebarTitle: Self-Updates
-description: How Milady checks for updates, manages release channels, detects installation methods, and performs self-upgrades.
+description: How Eliza checks for updates, manages release channels, detects installation methods, and performs self-upgrades.
 ---
 
-Milady includes a built-in update system inherited from the elizaOS framework. It checks the npm registry for new versions, notifies users of available updates, and can perform in-place upgrades across multiple installation methods. The system is implemented across three service modules: `update-checker.ts` (registry communication), `update-notifier.ts` (background notifications), and `self-updater.ts` (install-method detection and upgrade execution).
+Eliza includes a built-in update system inherited from the elizaOS framework. It checks the npm registry for new versions, notifies users of available updates, and can perform in-place upgrades across multiple installation methods. The system is implemented across three service modules: `update-checker.ts` (registry communication), `update-notifier.ts` (background notifications), and `self-updater.ts` (install-method detection and upgrade execution).
 
 ## How It Works Internally
 
@@ -12,7 +12,7 @@ The update system has three layers that work together:
 
 ### Version Resolution
 
-The current Milady version is resolved at import time via the version module, which calls `resolveMiladyVersion()`. This function checks, in order:
+The current Eliza version is resolved at import time via the version module, which calls `resolveElizaVersion()`. This function checks, in order:
 
 1. A build-time injected define or environment variable (for bundled/embedded builds)
 2. The `version` field from the nearest `package.json`
@@ -29,7 +29,7 @@ GET https://registry.npmjs.org/elizaos
 Accept: application/vnd.npm.install-v1+json
 ```
 
-Milady inherits its update system from the elizaOS framework, so the checker queries the upstream `elizaos` npm package. The `application/vnd.npm.install-v1+json` accept header requests only the abbreviated package metadata (dist-tags, versions), rather than the full document with all tarball URLs and readmes. This keeps the response small and fast.
+Eliza inherits its update system from the elizaOS framework, so the checker queries the upstream `elizaos` npm package. The `application/vnd.npm.install-v1+json` accept header requests only the abbreviated package metadata (dist-tags, versions), rather than the full document with all tarball URLs and readmes. This keeps the response small and fast.
 
 The response's `dist-tags` object maps npm dist-tag names to version strings:
 
@@ -55,7 +55,7 @@ Pre-release tags (e.g., `2.0.0-alpha.87`) are handled correctly per the semver s
 
 ## Release Channels
 
-Milady supports three release channels, each mapped to an npm dist-tag:
+Eliza supports three release channels, each mapped to an npm dist-tag:
 
 | Channel | npm Dist-Tag | Description |
 |---------|-------------|-------------|
@@ -64,15 +64,15 @@ Milady supports three release channels, each mapped to an npm dist-tag:
 | `nightly` | `nightly` | Latest development builds. May be unstable. |
 
 <Note>
-The default channel is `stable`. The channel can be overridden by the `MILADY_UPDATE_CHANNEL` environment variable or the `update.channel` field in `milady.json`.
+The default channel is `stable`. The channel can be overridden by the `ELIZA_UPDATE_CHANNEL` environment variable or the `update.channel` field in `eliza.json`.
 </Note>
 
 ### Channel Resolution Order
 
 The effective release channel is resolved by `resolveChannel()` in this priority order:
 
-1. `MILADY_UPDATE_CHANNEL` environment variable (if set to `stable`, `beta`, or `nightly`)
-2. `update.channel` field in `milady.json` configuration
+1. `ELIZA_UPDATE_CHANNEL` environment variable (if set to `stable`, `beta`, or `nightly`)
+2. `update.channel` field in `eliza.json` configuration
 3. Default: `stable`
 
 The environment variable value is trimmed and lowercased before comparison. Invalid values are ignored, falling through to the config or default.
@@ -91,7 +91,7 @@ Run eliza update to install
 The notification uses the terminal theme for coloring: the current version is dimmed, the new version is highlighted in green, and the channel suffix (for non-stable channels) is shown in parentheses.
 
 <Note>
-The update notification text says `eliza update` because Milady's update system is inherited from the elizaOS framework. Both `milady update` and `eliza update` work as CLI commands.
+The update notification text says `eliza update` because Eliza's update system is inherited from the elizaOS framework. Both `eliza update` and `eliza update` work as CLI commands.
 </Note>
 
 The background check is skipped when:
@@ -130,7 +130,7 @@ Accept: application/vnd.npm.install-v1+json
 - **On non-OK HTTP response**: Returns `null` dist-tags (treated as network failure)
 - **On missing dist-tag**: Returns an error indicating the channel has no published releases
 
-After a successful fetch, the checker persists the check metadata (`lastCheckAt`, `lastCheckVersion`) to `milady.json`. If the config file is unwritable, a warning is printed to stderr but the check result is still returned.
+After a successful fetch, the checker persists the check metadata (`lastCheckAt`, `lastCheckVersion`) to `eliza.json`. If the config file is unwritable, a warning is printed to stderr but the check result is still returned.
 
 ### Fetching All Channel Versions
 
@@ -144,16 +144,16 @@ The `fetchAllChannelVersions()` function queries the registry once and returns t
 }
 ```
 
-This is used by the `milady update status` command to display a complete version overview.
+This is used by the `eliza update status` command to display a complete version overview.
 
 ## CLI Commands
 
-### `milady update`
+### `eliza update`
 
 Check for and install updates on the current channel:
 
 ```bash
-milady update
+eliza update
 ```
 
 <Tabs>
@@ -167,32 +167,32 @@ milady update
   <Tab title="Examples">
     ```bash
     # Check and install updates on current channel
-    milady update
+    eliza update
 
     # Check only, don't install
-    milady update --check
+    eliza update --check
 
     # Switch to beta channel and update
-    milady update --channel beta
+    eliza update --channel beta
 
     # Force a fresh registry check
-    milady update --force
+    eliza update --force
     ```
   </Tab>
 </Tabs>
 
 When `--channel` is specified, the command:
 1. Validates the channel name (exits with an error if invalid)
-2. Saves the new channel to `milady.json`
+2. Saves the new channel to `eliza.json`
 3. Clears `lastCheckAt` and `lastCheckVersion` to force a fresh registry check
 4. Proceeds with the update check using the new channel
 
-### `milady update status`
+### `eliza update status`
 
 Display the current version, install method, active channel, and available versions across all channels:
 
 ```bash
-milady update status
+eliza update status
 ```
 
 Example output:
@@ -215,25 +215,25 @@ Available Versions
 
 The status command fetches live data from the npm registry (not cached) to show the most current versions across all channels.
 
-### `milady update channel [name]`
+### `eliza update channel [name]`
 
 View or change the release channel:
 
 <CodeGroup>
 ```bash View current channel
-milady update channel
+eliza update channel
 ```
 
 ```bash Switch to beta
-milady update channel beta
+eliza update channel beta
 ```
 
 ```bash Switch to nightly
-milady update channel nightly
+eliza update channel nightly
 ```
 
 ```bash Switch back to stable
-milady update channel stable
+eliza update channel stable
 ```
 </CodeGroup>
 
@@ -246,7 +246,7 @@ When switching channels, the cached `lastCheckAt` and `lastCheckVersion` are cle
 
 ## Installation Method Detection
 
-Milady automatically detects how it was installed to determine the correct update command. The `detectInstallMethod()` function works by:
+Eliza automatically detects how it was installed to determine the correct update command. The `detectInstallMethod()` function works by:
 
 1. Running `which eliza` to find the binary path (5-second timeout)
 2. Resolving symlinks via `fs.realpathSync()` to get the true filesystem location
@@ -256,10 +256,10 @@ Milady automatically detects how it was installed to determine the correct updat
 |---------------|--------------------|--------------------|
 | `npm-global` | Binary path contains `node_modules` | `npm install -g elizaos@<dist-tag>` |
 | `bun-global` | Binary path contains `/.bun/` | `bun install -g elizaos@<dist-tag>` |
-| `homebrew` | Binary path contains `/Cellar/` or `/homebrew/` | `brew upgrade milady` |
-| `snap` | Binary path contains `/snap/` | `sudo snap refresh milady --channel=<channel>` |
-| `apt` | Binary path starts with `/usr/` (no `node_modules`) | `sudo apt-get update && sudo apt-get install --only-upgrade -y milady` |
-| `flatpak` | Binary path contains `/flatpak/` or `ai.milady.Milady` | `flatpak update ai.milady.Milady` |
+| `homebrew` | Binary path contains `/Cellar/` or `/homebrew/` | `brew upgrade eliza` |
+| `snap` | Binary path contains `/snap/` | `sudo snap refresh eliza --channel=<channel>` |
+| `apt` | Binary path starts with `/usr/` (no `node_modules`) | `sudo apt-get update && sudo apt-get install --only-upgrade -y eliza` |
+| `flatpak` | Binary path contains `/flatpak/` or `ai.eliza.Eliza` | `flatpak update ai.eliza.Eliza` |
 | `local-dev` | `devDependencies` found in root `package.json` | Not supported -- use `git pull` |
 | `unknown` | Fallback when no heuristic matches | `npm install -g elizaos@<dist-tag>` (fallback) |
 
@@ -271,7 +271,7 @@ For Snap installations, the channel mapping differs slightly: `nightly` maps to 
 
 ### Snap Channel Mapping
 
-| Milady Channel | Snap Channel |
+| Eliza Channel | Snap Channel |
 |---------------|-------------|
 | `stable` | `stable` |
 | `beta` | `beta` |
@@ -287,13 +287,13 @@ elizaos@beta       (beta channel)
 elizaos@nightly    (nightly channel)
 ```
 
-For Homebrew, the command is simply `brew upgrade milady` (Homebrew manages version resolution internally). The `apt` case wraps the update in `sh -c` since it requires two sequential commands.
+For Homebrew, the command is simply `brew upgrade eliza` (Homebrew manages version resolution internally). The `apt` case wraps the update in `sh -c` since it requires two sequential commands.
 
 For `local-dev` installs, `buildUpdateCommand()` returns `null` and the CLI prints a message directing the user to use `git pull` instead.
 
 ## Update Process
 
-When `milady update` runs (without `--check`), the following steps occur:
+When `eliza update` runs (without `--check`), the following steps occur:
 
 <Steps>
   <Step title="Resolve Channel">
@@ -306,7 +306,7 @@ When `milady update` runs (without `--check`), the following steps occur:
     Compare the current version against the registry version using semver. If the current version is equal or newer, report "already up to date" and exit.
   </Step>
   <Step title="Detect Install Method">
-    Resolve the binary path and determine which package manager or system was used to install Milady.
+    Resolve the binary path and determine which package manager or system was used to install Eliza.
   </Step>
   <Step title="Build Update Command">
     Construct the appropriate install/upgrade command for the detected method. For local-dev installs, print a hint and exit.
@@ -315,7 +315,7 @@ When `milady update` runs (without `--check`), the following steps occur:
     Spawn the update command as a child process. stdin is inherited (for sudo password prompts), stdout is inherited (for progress output), and stderr is piped to both a buffer and the parent stderr.
   </Step>
   <Step title="Verify Installation">
-    Run `milady --version` (10-second timeout) and parse the output with a regex that extracts semver strings including pre-release tags. Report the version transition.
+    Run `eliza --version` (10-second timeout) and parse the output with a regex that extracts semver strings including pre-release tags. Report the version transition.
   </Step>
   <Step title="Save Metadata">
     The check metadata (`lastCheckAt`, `lastCheckVersion`) was already saved during the registry check step.
@@ -329,74 +329,74 @@ After the update command completes, the updater verifies the installation by run
 If the version cannot be read (e.g., the binary is missing or corrupted), the command reports success for the update itself but warns that it could not verify the new version.
 
 <Warning>
-After a successful update, you must restart the running Milady process for the new version to take effect. The update command modifies the installed binary but does not restart the currently running instance.
+After a successful update, you must restart the running Eliza process for the new version to take effect. The update command modifies the installed binary but does not restart the currently running instance.
 </Warning>
 
 ## What Gets Updated
 
-The `milady update` command updates the CLI package itself, which includes:
+The `eliza update` command updates the CLI package itself, which includes:
 
 | Component | Updated? | Notes |
 |-----------|----------|-------|
-| CLI binary (`milady`) | Yes | The entry point script and all compiled TypeScript |
+| CLI binary (`eliza`) | Yes | The entry point script and all compiled TypeScript |
 | Runtime (`src/runtime/`) | Yes | Bundled into the package |
 | API server (`src/api/`) | Yes | Bundled into the package |
 | Built-in services | Yes | Update checker, plugin installer, etc. |
 | Bundled core plugins | No | Core plugins are separate npm packages resolved at runtime |
-| User-installed plugins | No | Installed independently in `~/.milady/plugins/` |
-| Configuration (`milady.json`) | No | Preserved across updates |
-| Database (PGLite data) | No | Preserved in `~/.milady/workspace/` |
+| User-installed plugins | No | Installed independently in `~/.eliza/plugins/` |
+| Configuration (`eliza.json`) | No | Preserved across updates |
+| Database (PGLite data) | No | Preserved in `~/.eliza/workspace/` |
 | Workspace files | No | Agent workspace is independent of the CLI version |
 
-Core elizaOS plugins (`@elizaos/plugin-*`) are resolved from `node_modules` at runtime. When you update Milady and the new version specifies different plugin versions in its `dependencies`, those plugins are updated as part of the npm/bun install process.
+Core elizaOS plugins (`@elizaos/plugin-*`) are resolved from `node_modules` at runtime. When you update Eliza and the new version specifies different plugin versions in its `dependencies`, those plugins are updated as part of the npm/bun install process.
 
 ## Version Pinning
 
-To pin Milady to a specific version and prevent automatic updates:
+To pin Eliza to a specific version and prevent automatic updates:
 
 ```bash
 # Install a specific version
-npm install -g miladyai@2.0.0-alpha.26
+npm install -g elizaai@2.0.0-alpha.26
 
-# Disable automatic update checks by editing milady.json
+# Disable automatic update checks by editing eliza.json
 # Set "update": { "checkOnStart": false } in your config file
-$EDITOR "$(milady config path)"
+$EDITOR "$(eliza config path)"
 ```
 
 For package-manager-specific pinning:
 
 ```bash
 # npm: exact version
-npm install -g miladyai@2.0.0
+npm install -g elizaai@2.0.0
 
 # bun: exact version
-bun install -g miladyai@2.0.0
+bun install -g elizaai@2.0.0
 ```
 
 <Note>
-The npm package name for end-user installation is `miladyai`, while the update checker queries the upstream `elizaos` package for version comparisons.
+The npm package name for end-user installation is `elizaai`, while the update checker queries the upstream `elizaos` package for version comparisons.
 </Note>
 
-The `--force` flag on `milady update` bypasses the interval cache but still respects the configured channel. It does not bypass version pinning at the package manager level.
+The `--force` flag on `eliza update` bypasses the interval cache but still respects the configured channel. It does not bypass version pinning at the package manager level.
 
 ## Rollback
 
-Milady does not have a built-in rollback command, but you can revert to a previous version using your package manager:
+Eliza does not have a built-in rollback command, but you can revert to a previous version using your package manager:
 
 ```bash
 # npm: install a specific older version
-npm install -g miladyai@2.0.0-alpha.25
+npm install -g elizaai@2.0.0-alpha.25
 
 # bun: install a specific older version
-bun install -g miladyai@2.0.0-alpha.25
+bun install -g elizaai@2.0.0-alpha.25
 
 # Verify the rollback
-milady --version
+eliza --version
 ```
 
 Your configuration, database, and workspace files are preserved across version changes. However, be aware that:
 
-- **Database migrations** may have run forward during the newer version. Downgrading could leave the database in an incompatible state. Milady's PGLite recovery mechanism will attempt to reset and rebuild the database if it detects corruption.
+- **Database migrations** may have run forward during the newer version. Downgrading could leave the database in an incompatible state. Eliza's PGLite recovery mechanism will attempt to reset and rebuild the database if it detects corruption.
 - **Config schema changes** are forward-compatible (unknown fields produce warnings but don't prevent startup), but a much older version may not understand newer config sections.
 
 ## Update Notifications
@@ -433,8 +433,8 @@ Notifications can be suppressed through multiple mechanisms:
 In environments without internet access:
 
 - The background update check times out after 8 seconds and returns `{ updateAvailable: false }` with an error message. No notification is shown.
-- `milady update --check` reports the network error and exits with code 1.
-- `milady update` reports the error and exits with code 1.
+- `eliza update --check` reports the network error and exits with code 1.
+- `eliza update` reports the error and exits with code 1.
 - The check interval cache is **not** updated on failure, so the next startup will try again.
 
 For fully air-gapped deployments, disable the update check entirely:
@@ -450,7 +450,7 @@ For fully air-gapped deployments, disable the update check entirely:
 Or set via the CLI (open config in your editor):
 
 ```bash
-$EDITOR "$(milady config path)"
+$EDITOR "$(eliza config path)"
 # Set "update": { "checkOnStart": false }
 ```
 
@@ -458,15 +458,15 @@ To perform offline updates, download the package tarball on a connected machine 
 
 ```bash
 # On a connected machine
-npm pack miladyai@2.0.0
+npm pack elizaai@2.0.0
 
-# Transfer miladyai-2.0.0.tgz to the air-gapped machine, then:
-npm install -g ./miladyai-2.0.0.tgz
+# Transfer elizaai-2.0.0.tgz to the air-gapped machine, then:
+npm install -g ./elizaai-2.0.0.tgz
 ```
 
 ## Configuration Reference
 
-All update-related settings are stored in the `update` section of `milady.json`:
+All update-related settings are stored in the `update` section of `eliza.json`:
 
 ```json
 {
@@ -496,16 +496,16 @@ Set `checkOnStart: false` to disable all automatic update checking, useful for l
 
 | Variable | Description |
 |----------|-------------|
-| `MILADY_UPDATE_CHANNEL` | Override the release channel (`stable`, `beta`, `nightly`). Takes priority over config. |
+| `ELIZA_UPDATE_CHANNEL` | Override the release channel (`stable`, `beta`, `nightly`). Takes priority over config. |
 | `CI` | When set, suppresses the background update notification on startup. |
 
 ## Breaking Change Handling
 
-When a new Milady version introduces breaking changes:
+When a new Eliza version introduces breaking changes:
 
-- **Database schema** -- Milady sets `ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS=true` by default, allowing the migration system to drop and recreate tables that have changed between plugin versions. This prevents the runtime from stalling on schema mismatches.
+- **Database schema** -- Eliza sets `ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS=true` by default, allowing the migration system to drop and recreate tables that have changed between plugin versions. This prevents the runtime from stalling on schema mismatches.
 - **PGLite corruption** -- If the local database becomes incompatible after an update, the `isRecoverablePgliteInitError()` detection backs up the corrupt data directory (to `<dir>.corrupt-<timestamp>`) and creates a fresh database. This means conversation history may be lost, but the agent will start successfully.
-- **Config file** -- The config schema is forward-compatible. Unknown fields produce warnings but do not prevent startup. The config file tracks which Milady version last wrote it.
+- **Config file** -- The config schema is forward-compatible. Unknown fields produce warnings but do not prevent startup. The config file tracks which Eliza version last wrote it.
 - **Plugin API** -- Version skew between `@elizaos/core` and plugins is detected by `version-compat.ts`, which checks for missing exports and produces diagnostic messages.
 
 ## Plugin Version Compatibility

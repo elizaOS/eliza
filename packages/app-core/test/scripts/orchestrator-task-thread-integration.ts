@@ -79,7 +79,7 @@ async function main(): Promise<void> {
   );
 
   workdir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "milady-task-thread-integration-"),
+    path.join(os.tmpdir(), "eliza-task-thread-integration-"),
   );
   const outputFile = path.join(workdir, "integration-output.txt");
   const sentinel = `REAL_PTY_DB_TEST_${Date.now()}`;
@@ -89,7 +89,7 @@ async function main(): Promise<void> {
     originalRequest:
       "Create a local artifact that proves PTY output and task state are persisted.",
     metadata: {
-      repo: "https://github.com/example/milady",
+      repo: "https://github.com/example/eliza",
       source: "task-thread-integration-script",
     },
   });

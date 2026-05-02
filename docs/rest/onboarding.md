@@ -14,8 +14,8 @@ already own provider routing and runtime state.
 
 When the agent is running as a cloud-provisioned container, onboarding is bypassed automatically. The bypass activates only when **both** conditions are met:
 
-1. `MILADY_CLOUD_PROVISIONED=1` (or `ELIZA_CLOUD_PROVISIONED=1`) is set
-2. `MILADY_API_TOKEN` (or `ELIZA_API_TOKEN`) is configured
+1. `ELIZA_CLOUD_PROVISIONED=1` (or `ELIZA_CLOUD_PROVISIONED=1`) is set
+2. `ELIZA_API_TOKEN` (or `ELIZA_API_TOKEN`) is configured
 
 When cloud provisioned, `GET /api/onboarding/status` returns `{ "complete": true }` so the frontend skips the setup wizard and goes directly to chat. A container with only the cloud flag but no API token falls through to the normal onboarding flow.
 
@@ -141,7 +141,7 @@ and `largeModel` are rejected. Callers must send canonical
 | `topics` | string[] | No | Topics the agent knows about |
 | `postExamples` | string[] | No | Example social media posts |
 | `messageExamples` | array | No | Example message conversations |
-| `theme` | string | No | UI theme — `milady`, `qt314`, `web2000`, `programmer`, `haxor`, or `psycho` |
+| `theme` | string | No | UI theme — `eliza`, `qt314`, `web2000`, `programmer`, `haxor`, or `psycho` |
 | `deploymentTarget` | object | No | Canonical hosting target — `{ runtime: "local" \| "cloud" \| "remote", provider?, remoteApiBase?, remoteAccessToken? }` |
 | `linkedAccounts` | object | No | Canonical linked-account map — records what providers or cloud accounts are available |
 | `serviceRouting` | object | No | Canonical per-capability routing — e.g. `llmText`, `tts`, `media`, `embeddings`, `rpc` |
@@ -161,7 +161,7 @@ and `largeModel` are rejected. Callers must send canonical
 
 ```json
 {
-  "name": "Milady",
+  "name": "Eliza",
   "bio": ["A helpful AI assistant"],
   "deploymentTarget": {
     "runtime": "cloud",

@@ -1,10 +1,10 @@
 ---
 title: "Gmail Watch 插件"
 sidebarTitle: "Gmail Watch"
-description: "Milady 的 Gmail Watch 连接器 — 监控 Gmail 收件箱并响应传入邮件。"
+description: "Eliza 的 Gmail Watch 连接器 — 监控 Gmail 收件箱并响应传入邮件。"
 ---
 
-Gmail Watch 插件将 Milady 代理连接到 Gmail，实现传入邮件监控和自动回复。
+Gmail Watch 插件将 Eliza 代理连接到 Gmail，实现传入邮件监控和自动回复。
 
 **Package:** `@elizaos/plugin-gmail-watch`
 
@@ -15,7 +15,7 @@ Gmail Watch 插件将 Milady 代理连接到 Gmail，实现传入邮件监控和
 </div>
 
 ```bash
-milady plugins install @elizaos/plugin-gmail-watch
+eliza plugins install @elizaos/plugin-gmail-watch
 ```
 
 <div id="setup">
@@ -30,7 +30,7 @@ milady plugins install @elizaos/plugin-gmail-watch
 
 </div>
 
-Gmail Watch 插件通过 Milady 配置中的 `features.gmailWatch` 标志激活：
+Gmail Watch 插件通过 Eliza 配置中的 `features.gmailWatch` 标志激活：
 
 ```json
 {

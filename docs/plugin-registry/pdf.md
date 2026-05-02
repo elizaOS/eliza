@@ -4,7 +4,7 @@ sidebarTitle: "PDF"
 description: "Core Node.js plugin for elizaOS that provides essential services and actions for PDF processing"
 ---
 
-PDF processing capabilities for Milady agents.
+PDF processing capabilities for Eliza agents.
 
 **Package:** `@elizaos/plugin-pdf`
 
@@ -15,7 +15,7 @@ The PDF plugin provides elizaOS agents with the ability to process and extract c
 ## Installation
 
 ```bash
-milady plugins install pdf
+eliza plugins install pdf
 ```
 
 ## Configuration

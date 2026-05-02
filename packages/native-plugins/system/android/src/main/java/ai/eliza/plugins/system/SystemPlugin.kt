@@ -17,7 +17,7 @@ import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.ActivityCallback
 import com.getcapacitor.annotation.CapacitorPlugin
 
-@CapacitorPlugin(name = "MiladySystem")
+@CapacitorPlugin(name = "ElizaSystem")
 class SystemPlugin : Plugin() {
     private val roleMap = mapOf(
         "home" to RoleManager.ROLE_HOME,

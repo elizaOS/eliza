@@ -13,13 +13,13 @@ into the agent loader.
 - `KeyringBackend` — cross-platform via `@napi-rs/keyring` (macOS
   Keychain, Windows Credential Manager, Linux libsecret).
 - `EnvLegacyBackend` — read-only `env://VAR` migration scaffolding.
-- File-backed encrypted storage at `~/.milady/confidant.json` (mode
+- File-backed encrypted storage at `~/.eliza/confidant.json` (mode
   `0600`, atomic-rename writes, AES-256-GCM with secret id as AAD).
 - Permission policy: deny-by-default, implicit grant for the
   registering plugin, glob-pattern explicit grants with most-specific
   selection, prompt mode with optional `PromptHandler`.
 - Append-only JSONL audit log at
-  `~/.milady/audit/confidant.jsonl`. Records ids, never values.
+  `~/.eliza/audit/confidant.jsonl`. Records ids, never values.
 - Cross-platform CI matrix (`ubuntu-latest`, `macos-latest`,
   `windows-latest`) running the full vitest suite on every PR.
 

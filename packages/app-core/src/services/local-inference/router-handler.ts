@@ -36,7 +36,7 @@ import {
 } from "./routing-preferences";
 import { AGENT_MODEL_SLOTS, type AgentModelSlot } from "./types";
 
-export const ROUTER_PROVIDER = "milady-router";
+export const ROUTER_PROVIDER = "eliza-router";
 /**
  * Max safe integer keeps us at the top even if a plugin registers with
  * a very high priority. If someone deliberately wants to outrank us,
@@ -80,7 +80,7 @@ function shouldForceLocalInference(
   policy: string,
   preferredProvider: string | null,
 ): boolean {
-  return policy === "manual" && preferredProvider === "milady-local-inference";
+  return policy === "manual" && preferredProvider === "eliza-local-inference";
 }
 
 export function filterUnavailableLocalInferenceCandidates(
@@ -93,7 +93,7 @@ export function filterUnavailableLocalInferenceCandidates(
   }
 
   return candidates.filter(
-    (candidate) => candidate.provider !== "milady-local-inference",
+    (candidate) => candidate.provider !== "eliza-local-inference",
   );
 }
 
@@ -104,7 +104,7 @@ export async function filterUnavailableLocalInference(
   candidates: HandlerRegistration[],
 ): Promise<HandlerRegistration[]> {
   const hasLocalInference = candidates.some(
-    (candidate) => candidate.provider === "milady-local-inference",
+    (candidate) => candidate.provider === "eliza-local-inference",
   );
   if (!hasLocalInference) {
     return candidates;

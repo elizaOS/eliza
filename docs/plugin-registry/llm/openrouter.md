@@ -1,16 +1,16 @@
 ---
 title: "OpenRouter Plugin"
 sidebarTitle: "OpenRouter"
-description: "OpenRouter multi-provider gateway for Milady — access 200+ models from OpenAI, Anthropic, Google, Meta, and others through a single API."
+description: "OpenRouter multi-provider gateway for Eliza — access 200+ models from OpenAI, Anthropic, Google, Meta, and others through a single API."
 ---
 
-The OpenRouter plugin connects Milady agents to OpenRouter's unified inference gateway, providing access to over 200 models from all major providers through a single API key and endpoint.
+The OpenRouter plugin connects Eliza agents to OpenRouter's unified inference gateway, providing access to over 200 models from all major providers through a single API key and endpoint.
 
 **Package:** `@elizaos/plugin-openrouter`
 
-## Milady: pinned version and upstream bundle bug
+## Eliza: pinned version and upstream bundle bug
 
-In the Milady monorepo, **`@elizaos/plugin-openrouter` is pinned to `2.0.0-alpha.13`** (exact version in root `package.json`, reflected in `bun.lock`).
+In the Eliza monorepo, **`@elizaos/plugin-openrouter` is pinned to `2.0.0-alpha.13`** (exact version in root `package.json`, reflected in `bun.lock`).
 
 **Why pin**
 
@@ -27,7 +27,7 @@ After upstream publishes a fixed version, verify `dist/node/index.node.js` conta
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-openrouter
+eliza plugins install @elizaos/plugin-openrouter
 ```
 
 ## Auto-Enable
@@ -60,7 +60,7 @@ export OPENROUTER_API_KEY=sk-or-...
 | `OPENROUTER_AUTO_CLEANUP_IMAGES` | No | Automatically clean up generated images |
 | `OPENROUTER_TOOL_EXECUTION_MAX_STEPS` | No | Maximum tool execution steps |
 
-### milady.json Example
+### eliza.json Example
 
 ```json
 {

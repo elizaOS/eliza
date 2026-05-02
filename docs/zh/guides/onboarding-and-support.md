@@ -87,5 +87,5 @@ bun run dev
 ## 6. 反馈入口
 
 - 应用内：在 Cloud 登录错误或引导错误处点击“报告问题”。
-- GitHub：<https://github.com/milady-ai/milady/issues>
+- GitHub：<https://github.com/eliza-ai/eliza/issues>
 

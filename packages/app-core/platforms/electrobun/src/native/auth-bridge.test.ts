@@ -62,7 +62,7 @@ describe("auth-bridge", () => {
 
   beforeEach(() => {
     stateDir = makeStateDir();
-    env = { MILADY_STATE_DIR: stateDir } as NodeJS.ProcessEnv;
+    env = { ELIZA_STATE_DIR: stateDir } as NodeJS.ProcessEnv;
   });
 
   afterEach(() => {
@@ -295,8 +295,8 @@ describe("auth-bridge", () => {
 
       expect(touched).toEqual(["http://127.0.0.1:31337"]);
       expect(calls).toHaveLength(2);
-      const sessionCookie = calls.find((c) => c.name === "milady_session");
-      const csrfCookie = calls.find((c) => c.name === "milady_csrf");
+      const sessionCookie = calls.find((c) => c.name === "eliza_session");
+      const csrfCookie = calls.find((c) => c.name === "eliza_csrf");
       expect(sessionCookie).toMatchObject({
         value: "sid",
         path: "/",

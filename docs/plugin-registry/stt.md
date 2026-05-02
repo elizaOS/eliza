@@ -1,23 +1,23 @@
 ---
 title: "Speech-to-Text Plugin"
 sidebarTitle: "Speech-to-Text"
-description: "Speech-to-text plugin for Milady — transcribe audio input into text for voice-enabled agent interactions."
+description: "Speech-to-text plugin for Eliza — transcribe audio input into text for voice-enabled agent interactions."
 ---
 
 <Warning>
-This plugin is not yet available in the Milady plugin registry. For speech-to-text, check available provider plugins that include STT support.
+This plugin is not yet available in the Eliza plugin registry. For speech-to-text, check available provider plugins that include STT support.
 </Warning>
 
-The Speech-to-Text (STT) plugin enables Milady agents to transcribe audio input into text, powering voice-based interactions.
+The Speech-to-Text (STT) plugin enables Eliza agents to transcribe audio input into text, powering voice-based interactions.
 
-> **On-demand plugin.** This plugin is resolved from the remote elizaOS plugin registry and auto-installs when configured. It is not included in Milady's bundled `plugins.json` index.
+> **On-demand plugin.** This plugin is resolved from the remote elizaOS plugin registry and auto-installs when configured. It is not included in Eliza's bundled `plugins.json` index.
 
 **Package:** `@elizaos/plugin-stt`
 
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-stt
+eliza plugins install @elizaos/plugin-stt
 ```
 
 ## Enable via Features

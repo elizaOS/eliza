@@ -1,10 +1,10 @@
 ---
 title: "Runtime principal"
 sidebarTitle: "Core"
-description: "Classe AgentRuntime, paramètres du constructeur, enregistrement des plugins et cascade de configuration Milady."
+description: "Classe AgentRuntime, paramètres du constructeur, enregistrement des plugins et cascade de configuration Eliza."
 ---
 
-La classe `AgentRuntime` de `@elizaos/core` est l'objet central qui gère l'enregistrement des plugins, le traitement des messages, l'assemblage du contexte des fournisseurs et le cycle de vie des services. Milady l'enveloppe avec une logique d'amorçage supplémentaire dans `src/runtime/eliza.ts`.
+La classe `AgentRuntime` de `@elizaos/core` est l'objet central qui gère l'enregistrement des plugins, le traitement des messages, l'assemblage du contexte des fournisseurs et le cycle de vie des services. Eliza l'enveloppe avec une logique d'amorçage supplémentaire dans `src/runtime/eliza.ts`.
 
 <div id="agentruntime-constructor">
 ## Constructeur AgentRuntime
@@ -14,7 +14,7 @@ La classe `AgentRuntime` de `@elizaos/core` est l'objet central qui gère l'enre
 const runtime = new AgentRuntime({
   character,
   actionPlanning: true,
-  plugins: [miladyPlugin, ...resolvedPlugins],
+  plugins: [elizaPlugin, ...resolvedPlugins],
   logLevel: "error",
   // sandboxMode and sandboxAuditHandler are only included when sandbox is active
   ...(isSandboxActive && {
@@ -25,7 +25,7 @@ const runtime = new AgentRuntime({
     VALIDATION_LEVEL: "fast",
     MODEL_PROVIDER: "anthropic/claude-sonnet-4.6",
     BUNDLED_SKILLS_DIRS: "/path/to/skills",
-    WORKSPACE_SKILLS_DIR: "~/.milady/workspace/skills",
+    WORKSPACE_SKILLS_DIR: "~/.eliza/workspace/skills",
     SKILLS_ALLOWLIST: "skill-a,skill-b",
     SKILLS_DENYLIST: "skill-x",
   },
@@ -39,8 +39,8 @@ const runtime = new AgentRuntime({
 | Paramètre | Type | Description |
 |---|---|---|
 | `character` | `Character` | L'identité, la personnalité et les secrets de l'agent. Construit par `buildCharacterFromConfig()`. |
-| `actionPlanning` | `boolean` | Active le sous-système de planification d'actions. Milady le définit à `true`. |
-| `plugins` | `Plugin[]` | Tableau ordonné de plugins. Le plugin Milady vient en premier, puis les plugins résolus. |
+| `actionPlanning` | `boolean` | Active le sous-système de planification d'actions. Eliza le définit à `true`. |
+| `plugins` | `Plugin[]` | Tableau ordonné de plugins. Le plugin Eliza vient en premier, puis les plugins résolus. |
 | `logLevel` | `string` | Verbosité des logs : `"trace"`, `"debug"`, `"info"`, `"warn"`, `"error"`, `"fatal"`. Résolu depuis `config.logging.level`. |
 | `sandboxMode` | `boolean` | Active le remplacement de tokens sandbox pour la journalisation d'audit. Inclus dans le constructeur uniquement quand `isSandboxActive` est vrai (c.-à-d., `agents.defaults.sandbox.mode != "off"`). Quand le sandbox est désactivé, ce paramètre n'est pas passé. |
 | `sandboxAuditHandler` | `function` | Callback pour les événements d'audit fetch du sandbox. Reçoit `{ direction, url, tokenIds }`. |
@@ -65,7 +65,7 @@ const runtime = new AgentRuntime({
 ## Enregistrement des plugins
 </div>
 
-Milady enregistre les plugins en deux phases :
+Eliza enregistre les plugins en deux phases :
 
 <div id="phase-1-pre-registration-sequential">
 ### Phase 1 : Pré-enregistrement (séquentiel)
@@ -256,7 +256,7 @@ Les valeurs de configuration cascadent depuis plusieurs sources dans cet ordre d
 ```
 process.env (priorité la plus haute)
   ↓
-milady.json (fichier de configuration)
+eliza.json (fichier de configuration)
   ↓
 Objet settings d'AgentRuntime
   ↓

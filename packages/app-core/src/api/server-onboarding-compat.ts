@@ -32,8 +32,7 @@ import { resolveProviderCredential } from "./credential-resolver";
 
 /** Resolve the API token using app-first priority. */
 function getCompatApiToken(): string | null {
-  const token =
-    process.env.ELIZA_API_TOKEN?.trim() ?? process.env.ELIZA_API_TOKEN?.trim();
+  const token = process.env.ELIZA_API_TOKEN?.trim();
   return token ? token : null;
 }
 

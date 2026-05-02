@@ -41,7 +41,7 @@ function formatTabLine(
 export const lifeOpsBrowserProvider: Provider = {
   name: "lifeops_browser",
   description:
-    "Owner-only context for the user's real Chrome and Safari browsers connected through Agent Browser Bridge. Separate from Milady Desktop Browser.",
+    "Owner-only context for the user's real Chrome and Safari browsers connected through Agent Browser Bridge. Separate from Eliza Desktop Browser.",
   descriptionCompressed: "Owner: real Chrome/Safari browser context.",
   dynamic: true,
   position: 13,
@@ -71,7 +71,7 @@ export const lifeOpsBrowserProvider: Provider = {
     );
     const lines = [
       "## Agent Browser Bridge",
-      "This is the user's real browser profile connected through Agent Browser Bridge, not Milady Desktop Browser.",
+      "This is the user's real browser profile connected through Agent Browser Bridge, not Eliza Desktop Browser.",
       formatSettingsLine(settings),
       `Companions: ${companions.length}. Active sessions: ${activeSessions.length}.`,
     ];

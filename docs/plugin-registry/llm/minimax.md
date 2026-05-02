@@ -1,30 +1,30 @@
 ---
 title: "MiniMax Plugin"
 sidebarTitle: "MiniMax"
-description: "MiniMax model provider for Milady — access MiniMax's language and multimodal models."
+description: "MiniMax model provider for Eliza — access MiniMax's language and multimodal models."
 ---
 
 <Warning>
-This plugin is not yet available in the Milady plugin registry. To use MiniMax models today, configure them through the [OpenRouter plugin](/plugin-registry/llm/openrouter) using the appropriate model ID.
+This plugin is not yet available in the Eliza plugin registry. To use MiniMax models today, configure them through the [OpenRouter plugin](/plugin-registry/llm/openrouter) using the appropriate model ID.
 </Warning>
 
-The MiniMax plugin connects Milady agents to MiniMax's language models, providing access to their text generation and multimodal capabilities.
+The MiniMax plugin connects Eliza agents to MiniMax's language models, providing access to their text generation and multimodal capabilities.
 
-> **On-demand plugin.** This plugin is resolved from the remote elizaOS plugin registry and auto-installs when its API key is detected. It is not included in Milady's bundled `plugins.json` index.
+> **On-demand plugin.** This plugin is resolved from the remote elizaOS plugin registry and auto-installs when its API key is detected. It is not included in Eliza's bundled `plugins.json` index.
 
 **Package:** `@elizaos/plugin-minimax`
 
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-minimax
+eliza plugins install @elizaos/plugin-minimax
 ```
 
 ## Configuration
 
 MiniMax does not have an env-var auto-enable trigger. Enable it explicitly in your config:
 
-### milady.json Example
+### eliza.json Example
 
 ```json
 {

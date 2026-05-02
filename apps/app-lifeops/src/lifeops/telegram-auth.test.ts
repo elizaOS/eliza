@@ -175,7 +175,7 @@ const LEGACY_TOKEN = {
 
 beforeEach(() => {
   vi.resetModules();
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "milady-telegram-auth-"));
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-telegram-auth-"));
   originalEnv = {};
   for (const key of ENV_KEYS) {
     originalEnv[key] = process.env[key];

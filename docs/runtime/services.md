@@ -88,31 +88,31 @@ These services are available but not loaded by default — enable via admin pane
 
 Secrets are handled by **`@elizaos/core`** (not a standalone npm plugin). Enable with `enableSecretsManager: true` or `ENABLE_SECRETS_MANAGER` on the character/settings; the runtime registers the `SECRETS` service and related actions/providers early so secrets exist before connectors and other plugins initialize.
 
-Secrets are encrypted at rest (AES-256-GCM), audited (key names only), and scoped per agent. Use **Agent → Settings → Secrets**, `milady config path`, the `secrets` section of config, environment variables at startup, or `runtime.getSetting()` from plugins (`runtime.getSetting` merges DB-stored secrets, character `settings.secrets`, `process.env`, and global secrets under `~/.milady/secrets`, in that priority order for resolution).
+Secrets are encrypted at rest (AES-256-GCM), audited (key names only), and scoped per agent. Use **Agent → Settings → Secrets**, `eliza config path`, the `secrets` section of config, environment variables at startup, or `runtime.getSetting()` from plugins (`runtime.getSetting` merges DB-stored secrets, character `settings.secrets`, `process.env`, and global secrets under `~/.eliza/secrets`, in that priority order for resolution).
 
 Audit lines use the `[SECRETS]` / service logging channel — values are never logged.
 
 ## Trajectory Logger Service
 
-The trajectory logger is treated specially during startup. Milady waits for it to become available with a 3-second timeout before enabling it:
+The trajectory logger is treated specially during startup. Eliza waits for it to become available with a 3-second timeout before enabling it:
 
 ```typescript
 await waitForTrajectoriesService(runtime, "post-init", 3000);
 ensureTrajectoryLoggerEnabled(runtime, "post-init");
 ```
 
-The service supports `isEnabled()` and `setEnabled(enabled: boolean)` methods. Milady enables it by default after initialization.
+The service supports `isEnabled()` and `setEnabled(enabled: boolean)` methods. Eliza enables it by default after initialization.
 
 ## Skills Service
 
-`@elizaos/plugin-agent-skills` loads and manages the skill catalog. Milady asynchronously warms up this service after startup:
+`@elizaos/plugin-agent-skills` loads and manages the skill catalog. Eliza asynchronously warms up this service after startup:
 
 ```typescript
 const svc = runtime.getService("AGENT_SKILLS_SERVICE") as {
   getCatalogStats?: () => { loaded: number; total: number; storageType: string };
 };
 const stats = svc?.getCatalogStats?.();
-logger.info(`[milady] Skills: ${stats.loaded}/${stats.total} loaded`);
+logger.info(`[eliza] Skills: ${stats.loaded}/${stats.total} loaded`);
 ```
 
 Skills are discovered from multiple directories in precedence order:

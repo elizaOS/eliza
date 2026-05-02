@@ -1,9 +1,9 @@
 ---
-title: "milady plugins"
+title: "eliza plugins"
 description: "List, install, search, and manage plugins from the CLI."
 ---
 
-# `milady plugins`
+# `eliza plugins`
 
 Manage the plugin lifecycle — browse the registry, install or remove plugins, and inspect what's currently loaded.
 
@@ -11,45 +11,45 @@ Manage the plugin lifecycle — browse the registry, install or remove plugins, 
 
 | Subcommand | Purpose |
 |------------|---------|
-| `milady plugins list` | Browse available plugins in the registry |
-| `milady plugins installed` | Show plugins currently installed |
-| `milady plugins install <name>` | Install a plugin by name or package |
-| `milady plugins uninstall <name>` | Remove an installed plugin |
-| `milady plugins search <query>` | Search registry plugins by keyword |
+| `eliza plugins list` | Browse available plugins in the registry |
+| `eliza plugins installed` | Show plugins currently installed |
+| `eliza plugins install <name>` | Install a plugin by name or package |
+| `eliza plugins uninstall <name>` | Remove an installed plugin |
+| `eliza plugins search <query>` | Search registry plugins by keyword |
 
 ## Subcommands
 
 | Subcommand | Description |
 |------------|-------------|
-| `milady plugins list` | Browse registry plugins (default limit: 30) |
-| `milady plugins installed` | Show currently installed plugins |
-| `milady plugins install <name>` | Install a plugin from the registry |
-| `milady plugins uninstall <name>` | Remove an installed plugin |
-| `milady plugins search <query>` | Search plugins by keyword |
-| `milady plugins info <name>` | Show detailed plugin information |
-| `milady plugins config <name>` | Show or edit plugin configuration |
-| `milady plugins refresh` | Force cache refresh from remote registry |
+| `eliza plugins list` | Browse registry plugins (default limit: 30) |
+| `eliza plugins installed` | Show currently installed plugins |
+| `eliza plugins install <name>` | Install a plugin from the registry |
+| `eliza plugins uninstall <name>` | Remove an installed plugin |
+| `eliza plugins search <query>` | Search plugins by keyword |
+| `eliza plugins info <name>` | Show detailed plugin information |
+| `eliza plugins config <name>` | Show or edit plugin configuration |
+| `eliza plugins refresh` | Force cache refresh from remote registry |
 
 ## Subcommands
 
 | Command | Description |
 |---------|-------------|
-| `milady plugins list` | List plugins from the remote registry |
-| `milady plugins search <query>` | Search registry plugins by keyword |
-| `milady plugins info <name>` | Show detailed info about a specific plugin |
-| `milady plugins install <name>` | Install a plugin from the registry |
-| `milady plugins uninstall <name>` | Remove an installed plugin |
-| `milady plugins installed` | List plugins installed from the registry |
-| `milady plugins refresh` | Force-refresh the registry cache |
-| `milady plugins config <name>` | View or edit a plugin's configuration |
-| `milady plugins test` | Validate custom drop-in plugins |
-| `milady plugins add-path <path>` | Register an additional plugin search directory |
-| `milady plugins paths` | List all plugin search directories |
-| `milady plugins open [name]` | Open a plugin directory in your editor |
+| `eliza plugins list` | List plugins from the remote registry |
+| `eliza plugins search <query>` | Search registry plugins by keyword |
+| `eliza plugins info <name>` | Show detailed info about a specific plugin |
+| `eliza plugins install <name>` | Install a plugin from the registry |
+| `eliza plugins uninstall <name>` | Remove an installed plugin |
+| `eliza plugins installed` | List plugins installed from the registry |
+| `eliza plugins refresh` | Force-refresh the registry cache |
+| `eliza plugins config <name>` | View or edit a plugin's configuration |
+| `eliza plugins test` | Validate custom drop-in plugins |
+| `eliza plugins add-path <path>` | Register an additional plugin search directory |
+| `eliza plugins paths` | List all plugin search directories |
+| `eliza plugins open [name]` | Open a plugin directory in your editor |
 
 ## Subcommands
 
-### `milady plugins list`
+### `eliza plugins list`
 
 List all plugins from the registry. Shows install status and basic metadata.
 
@@ -59,12 +59,12 @@ List all plugins from the registry. Shows install status and basic metadata.
 | `-l, --limit <number>` | Max results to show (default: 30) |
 
 ```bash
-milady plugins list
-milady plugins installed
-milady plugins install @elizaos/plugin-openai
-milady plugins install discord
-milady plugins uninstall discord
-milady plugins search "image generation"
+eliza plugins list
+eliza plugins installed
+eliza plugins install @elizaos/plugin-openai
+eliza plugins install discord
+eliza plugins uninstall discord
+eliza plugins search "image generation"
 ```
 
 Short plugin names (e.g. `discord`) resolve to `@elizaos/plugin-discord` automatically. Full package names also work.

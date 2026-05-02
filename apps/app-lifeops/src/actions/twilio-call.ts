@@ -307,7 +307,7 @@ export const twilioCallAction: Action = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const OWNER_NUMBER_ENV_KEYS = [
-  "MILADY_E2E_TWILIO_RECIPIENT",
+  "ELIZA_E2E_TWILIO_RECIPIENT",
   "TWILIO_OWNER_NUMBER",
 ] as const;
 const EXTERNAL_ALLOWLIST_ENV_KEY = "TWILIO_CALL_EXTERNAL_ALLOWLIST";

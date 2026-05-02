@@ -1,15 +1,15 @@
 ---
 title: "Create a Plugin"
 sidebarTitle: "Create a Plugin"
-description: "Step-by-step tutorial for building a Milady plugin from scratch — scaffolding, actions, providers, testing, and local development."
+description: "Step-by-step tutorial for building a Eliza plugin from scratch — scaffolding, actions, providers, testing, and local development."
 ---
 
-This tutorial walks you through creating a complete plugin from scratch. By the end you will have a working plugin with an action, a provider, and a background service running inside the Milady runtime.
+This tutorial walks you through creating a complete plugin from scratch. By the end you will have a working plugin with an action, a provider, and a background service running inside the Eliza runtime.
 
 ## Prerequisites
 
 - Node.js 22 or later
-- A working Milady installation (`milady start` runs without errors)
+- A working Eliza installation (`eliza start` runs without errors)
 
 ## Step 1: Scaffold the Project
 
@@ -257,7 +257,7 @@ describe("weather-plugin", () => {
 | Option | Best for | How it works |
 |--------|----------|--------------|
 | **A: Local Plugin** | Active development and testing | Auto-discovered from the project's `plugins/` directory |
-| **B: Config-Based** | Persistent installations with explicit control | Referenced by path in `milady.json` |
+| **B: Config-Based** | Persistent installations with explicit control | Referenced by path in `eliza.json` |
 | **C: Character File** | Per-agent plugin sets | Listed in the character definition, loaded at agent start |
 
 ### Option A: Local Plugin (Development)
@@ -265,18 +265,18 @@ describe("weather-plugin", () => {
 Place the plugin directory inside the project:
 
 ```
-milady-project/
+eliza-project/
 └── plugins/
     └── weather-plugin/
         ├── package.json
         └── src/index.ts
 ```
 
-Milady automatically discovers plugins in the `plugins/` directory.
+Eliza automatically discovers plugins in the `plugins/` directory.
 
 ### Option B: Config-Based Loading
 
-Add to `milady.json`:
+Add to `eliza.json`:
 
 ```json
 {
@@ -314,8 +314,8 @@ cd my-plugin && bun run build
 # Run tests
 bun test
 
-# Start Milady with the plugin loaded
-milady start
+# Start Eliza with the plugin loaded
+eliza start
 ```
 
 Check the logs for `[weather-plugin] Initialized` to confirm the plugin loaded.
@@ -398,16 +398,16 @@ interface PluginConfigUiHint {
 
 ## How Plugin Discovery Works
 
-When Milady starts, it discovers plugins from multiple sources in this order:
+When Eliza starts, it discovers plugins from multiple sources in this order:
 
-1. **Milady plugin** — Built-in workspace context and session management
+1. **Eliza plugin** — Built-in workspace context and session management
 2. **Core plugins** — Always loaded (`@elizaos/plugin-sql`, `@elizaos/plugin-local-embedding`, etc.)
 3. **Connector plugins** — Auto-enabled when channel config exists (e.g., `telegram` config → `@elizaos/plugin-telegram`)
 4. **Provider plugins** — Auto-enabled when API key env var is set (e.g., `ANTHROPIC_API_KEY` → `@elizaos/plugin-anthropic`)
-5. **Feature plugins** — Enabled via feature flags in `milady.json` (e.g., `features.browser: true` → `@elizaos/plugin-browser`)
-6. **Ejected plugins** — Git-cloned upstream plugins in `~/.milady/plugins/ejected/` (take priority over npm versions)
-7. **User-installed plugins** — Installed via `milady plugins install`
-8. **Custom plugins** — Dropped into `~/.milady/plugins/custom/`
+5. **Feature plugins** — Enabled via feature flags in `eliza.json` (e.g., `features.browser: true` → `@elizaos/plugin-browser`)
+6. **Ejected plugins** — Git-cloned upstream plugins in `~/.eliza/plugins/ejected/` (take priority over npm versions)
+7. **User-installed plugins** — Installed via `eliza plugins install`
+8. **Custom plugins** — Dropped into `~/.eliza/plugins/custom/`
 
 ### Auto-Enable by Environment Variable
 
@@ -423,7 +423,7 @@ Set an API key and the corresponding plugin loads automatically:
 
 ### Auto-Enable by Connector Config
 
-Configure a channel in `milady.json` and the connector plugin loads:
+Configure a channel in `eliza.json` and the connector plugin loads:
 
 ```json
 {
@@ -438,7 +438,7 @@ This auto-loads `@elizaos/plugin-telegram` and `@elizaos/plugin-discord`.
 
 ### Disabling Auto-Enabled Plugins
 
-Override in `milady.json`:
+Override in `eliza.json`:
 
 ```json
 {

@@ -159,7 +159,7 @@ Envía un mensaje y obtiene la respuesta del agente de forma síncrona (sin stre
 ```json
 {
   "text": "Here's what I think...",
-  "agentName": "Milady"
+  "agentName": "Eliza"
 }
 ```
 
@@ -202,7 +202,7 @@ Cuando un campo `fullText` está presente, es autoritativo y el cliente debe ree
 
 Evento final:
 ```
-data: {"type":"done","fullText":"Here's what I think...","agentName":"Milady"}
+data: {"type":"done","fullText":"Here's what I think...","agentName":"Eliza"}
 ```
 
 El título de la conversación se genera automáticamente en segundo plano si aún es `"New Chat"`, y se emite un evento WebSocket `conversation-updated`. Si la generación de título por IA falla, el título recurre a las primeras cinco palabras del mensaje del usuario.
@@ -226,7 +226,7 @@ Genera un mensaje de saludo para una nueva conversación. Selecciona un `postExa
 ```json
 {
   "text": "gm. ready to go viral today or what.",
-  "agentName": "Milady",
+  "agentName": "Eliza",
   "generated": true
 }
 ```

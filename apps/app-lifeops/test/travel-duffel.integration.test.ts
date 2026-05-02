@@ -18,7 +18,7 @@
  * against the Duffel test environment.
  *
  * To run locally:
- *   DUFFEL_API_KEY=duffel_test_xxx MILADY_DUFFEL_DIRECT=1 \
+ *   DUFFEL_API_KEY=duffel_test_xxx ELIZA_DUFFEL_DIRECT=1 \
  *     bunx vitest run apps/app-lifeops/test/travel-duffel.integration.test.ts
  *
  * Use a Duffel TEST-mode key (prefix `duffel_test_`). Do NOT wire a live
@@ -47,11 +47,11 @@ const ORIGINAL_ENV = { ...process.env };
 
 beforeEach(() => {
   delete process.env.DUFFEL_API_KEY;
-  delete process.env.MILADY_DUFFEL_DIRECT;
+  delete process.env.ELIZA_DUFFEL_DIRECT;
   // Force direct mode for the existing fetch-mocking tests below; the
   // cloud-relay path is exercised in duffel-cloud-relay.test.ts at the
   // route layer.
-  process.env.MILADY_DUFFEL_DIRECT = "1";
+  process.env.ELIZA_DUFFEL_DIRECT = "1";
 });
 
 afterEach(() => {
@@ -64,7 +64,7 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("readDuffelConfigFromEnv (direct mode)", () => {
-  it("throws DuffelConfigError when MILADY_DUFFEL_DIRECT=1 but DUFFEL_API_KEY is absent", () => {
+  it("throws DuffelConfigError when ELIZA_DUFFEL_DIRECT=1 but DUFFEL_API_KEY is absent", () => {
     delete process.env.DUFFEL_API_KEY;
     expect(() => readDuffelConfigFromEnv()).toThrow(DuffelConfigError);
     expect(() => readDuffelConfigFromEnv()).toThrow(/DUFFEL_API_KEY/);
@@ -86,8 +86,8 @@ describe("readDuffelConfigFromEnv (direct mode)", () => {
 });
 
 describe("readDuffelConfigFromEnv (cloud mode default)", () => {
-  it("returns cloud-mode config when MILADY_DUFFEL_DIRECT is unset", () => {
-    delete process.env.MILADY_DUFFEL_DIRECT;
+  it("returns cloud-mode config when ELIZA_DUFFEL_DIRECT is unset", () => {
+    delete process.env.ELIZA_DUFFEL_DIRECT;
     delete process.env.DUFFEL_API_KEY;
     const config = readDuffelConfigFromEnv();
     expect(config.mode).toBe("cloud");
@@ -95,11 +95,11 @@ describe("readDuffelConfigFromEnv (cloud mode default)", () => {
     expect(config.cloudRelayBaseUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
   });
 
-  it("honours MILADY_API_PORT for the local relay base URL", () => {
-    delete process.env.MILADY_DUFFEL_DIRECT;
+  it("honours ELIZA_API_PORT for the local relay base URL", () => {
+    delete process.env.ELIZA_DUFFEL_DIRECT;
     delete process.env.DUFFEL_API_KEY;
     const config = readDuffelConfigFromEnv({
-      MILADY_API_PORT: "31999",
+      ELIZA_API_PORT: "31999",
     } as NodeJS.ProcessEnv);
     expect(config.mode).toBe("cloud");
     expect(config.cloudRelayBaseUrl).toBe("http://127.0.0.1:31999");

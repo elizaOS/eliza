@@ -37,22 +37,18 @@ function snapshotAndClearSensitiveProcessEnv(): Record<string, string> {
 }
 
 function createSandbox(): Sandbox {
-  const stateDir = mkdtempSync(path.join(tmpdir(), "milady-vault-boot-"));
-  const configPath = path.join(stateDir, "milady.json");
+  const stateDir = mkdtempSync(path.join(tmpdir(), "eliza-vault-boot-"));
+  const configPath = path.join(stateDir, "eliza.json");
   const configEnvPath = path.join(stateDir, "config.env");
   const prevEnv: Record<string, string | undefined> = {
-    MILADY_STATE_DIR: process.env.MILADY_STATE_DIR,
     ELIZA_STATE_DIR: process.env.ELIZA_STATE_DIR,
-    MILADY_CONFIG_PATH: process.env.MILADY_CONFIG_PATH,
     ELIZA_CONFIG_PATH: process.env.ELIZA_CONFIG_PATH,
     ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE,
   };
   const clearedSensitive = snapshotAndClearSensitiveProcessEnv();
-  process.env.MILADY_STATE_DIR = stateDir;
   process.env.ELIZA_STATE_DIR = stateDir;
-  process.env.MILADY_CONFIG_PATH = configPath;
   process.env.ELIZA_CONFIG_PATH = configPath;
-  process.env.ELIZA_NAMESPACE = "milady";
+  process.env.ELIZA_NAMESPACE = "eliza";
   return {
     stateDir,
     configPath,
@@ -65,7 +61,7 @@ function createSandbox(): Sandbox {
         else process.env[k] = v;
       }
       // Also drop any sensitive keys that got planted by loadElizaConfig
-      // during the test — they came from our test's milady.json.
+      // during the test — they came from our test's eliza.json.
       for (const key of Object.keys(process.env)) {
         if (
           /(?:_API_KEY|_SECRET|_TOKEN|_PASSWORD|_PRIVATE_KEY|_SIGNING_|ENCRYPTION_)/i.test(
@@ -84,7 +80,7 @@ function createSandbox(): Sandbox {
   };
 }
 
-function writeMiladyJson(configPath: string, body: unknown): void {
+function writeElizaJson(configPath: string, body: unknown): void {
   writeFileSync(configPath, JSON.stringify(body, null, 2), {
     encoding: "utf8",
     mode: 0o600,
@@ -137,7 +133,7 @@ describe("runVaultBootstrap", () => {
     testVault = await createTestVault();
     _resetSharedVaultForTesting(testVault.vault);
 
-    writeMiladyJson(sandbox.configPath, {
+    writeElizaJson(sandbox.configPath, {
       env: { OPENAI_API_KEY: "sk-plain-openai", LOG_LEVEL: "info" },
       plugins: {
         entries: {
@@ -190,7 +186,7 @@ describe("runVaultBootstrap", () => {
     testVault = await createTestVault();
     _resetSharedVaultForTesting(testVault.vault);
 
-    writeMiladyJson(sandbox.configPath, {
+    writeElizaJson(sandbox.configPath, {
       env: { OPENAI_API_KEY: "sk-plain" },
     });
 
@@ -217,7 +213,7 @@ describe("runVaultBootstrap", () => {
     );
     _resetSharedVaultForTesting(failing);
 
-    writeMiladyJson(sandbox.configPath, {
+    writeElizaJson(sandbox.configPath, {
       env: {
         OPENAI_API_KEY: "sk-ok",
         GROQ_API_KEY: "sk-fail",
@@ -279,7 +275,7 @@ describe("runVaultBootstrap", () => {
       sensitive: true,
     });
 
-    writeMiladyJson(sandbox.configPath, {
+    writeElizaJson(sandbox.configPath, {
       env: { OPENAI_API_KEY: "vault://OPENAI_API_KEY" },
     });
 
@@ -297,12 +293,12 @@ describe("runVaultBootstrap", () => {
     expect(await testVault.vault.get("OPENAI_API_KEY")).toBe("sk-pre-existing");
   });
 
-  it("non-sensitive keys are left alone in milady.json", async () => {
+  it("non-sensitive keys are left alone in eliza.json", async () => {
     sandbox = createSandbox();
     testVault = await createTestVault();
     _resetSharedVaultForTesting(testVault.vault);
 
-    writeMiladyJson(sandbox.configPath, {
+    writeElizaJson(sandbox.configPath, {
       env: { LOG_LEVEL: "debug", PORT: "31337" },
     });
 

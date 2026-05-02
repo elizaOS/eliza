@@ -1,10 +1,10 @@
 ---
 title: "In-Memory DB Plugin"
 sidebarTitle: "In-Memory DB"
-description: "Pure in-memory, ephemeral database storage for Milady — no persistence, completely ephemeral."
+description: "Pure in-memory, ephemeral database storage for Eliza — no persistence, completely ephemeral."
 ---
 
-The In-Memory DB plugin provides a pure in-memory database adapter for Milady agents. All data is ephemeral and lost when the process exits.
+The In-Memory DB plugin provides a pure in-memory database adapter for Eliza agents. All data is ephemeral and lost when the process exits.
 
 **Package:** `@elizaos/plugin-inmemorydb`
 
@@ -17,7 +17,7 @@ This plugin implements the elizaOS database adapter interface entirely in memory
 ## Installation
 
 ```bash
-milady plugins install inmemorydb
+eliza plugins install inmemorydb
 ```
 
 ## Configuration

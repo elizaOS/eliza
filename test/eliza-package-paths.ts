@@ -1,5 +1,5 @@
 if (
-  process.env.MILADY_SKIP_LOCAL_UPSTREAMS === "1" &&
+  process.env.ELIZA_SKIP_LOCAL_UPSTREAMS === "1" &&
   process.env.ELIZA_SKIP_LOCAL_UPSTREAMS !== "1"
 ) {
   process.env.ELIZA_SKIP_LOCAL_UPSTREAMS = "1";

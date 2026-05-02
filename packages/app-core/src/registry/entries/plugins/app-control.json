@@ -1,7 +1,7 @@
 {
   "id": "app-control",
   "name": "App Control",
-  "description": "Launch, close, and list running Milady apps from agent chat. Backed by the /api/apps/* HTTP surface.",
+  "description": "Launch, close, and list running Eliza apps from agent chat. Backed by the /api/apps/* HTTP surface.",
   "npmName": "@elizaos/plugin-app-control",
   "version": "2.0.0-alpha.1",
   "source": "bundled",

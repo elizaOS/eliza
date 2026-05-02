@@ -1,4 +1,5 @@
-import { Entry } from "@napi-rs/keyring";
+import type { Entry as EntryType } from "@napi-rs/keyring";
+import { isKeychainUnsafe, KEYCHAIN_UNSAFE_MESSAGE } from "../keychain-host.js";
 import { generateMasterKey, KEY_BYTES } from "./envelope.js";
 
 /**
@@ -61,13 +62,38 @@ export function osKeyringMasterKey(
   opts: KeyringMasterKeyOptions,
 ): MasterKeyResolver {
   return {
-    load: async () => loadOrCreateKeychainEntry(opts),
+    load: async () => await loadOrCreateKeychainEntry(opts),
     describe: () => `keyring://${opts.service}/${opts.account}`,
   };
 }
 
-function loadOrCreateKeychainEntry(opts: KeyringMasterKeyOptions): Buffer {
-  let entry: Entry;
+async function loadOrCreateKeychainEntry(
+  opts: KeyringMasterKeyOptions,
+): Promise<Buffer> {
+  // Dodge headless-Linux native segfaults from libsecret. The OS keychain
+  // backend is unsafe on hosts without a reachable D-Bus session because
+  // the native binding crashes the process before throwing a catchable
+  // JS error.
+  if (isKeychainUnsafe()) {
+    throw new MasterKeyUnavailableError(
+      `${KEYCHAIN_UNSAFE_MESSAGE} Supply an inMemoryMasterKey instead.`,
+    );
+  }
+
+  // Lazy-load the native binding so just importing this module doesn't
+  // initialize @napi-rs/keyring on hosts where it would crash.
+  let Entry: typeof import("@napi-rs/keyring").Entry;
+  try {
+    ({ Entry } = await import("@napi-rs/keyring"));
+  } catch (err) {
+    throw new MasterKeyUnavailableError(
+      `OS keychain binding unavailable for ${opts.service}/${opts.account}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+
+  let entry: EntryType;
   try {
     entry = new Entry(opts.service, opts.account);
   } catch (err) {

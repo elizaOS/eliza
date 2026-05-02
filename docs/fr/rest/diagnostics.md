@@ -24,7 +24,7 @@ Obtenir les entrées de journal mises en mémoire tampon avec filtrage optionnel
 
 | Paramètre | Type | Requis | Description |
 |-----------|------|--------|-------------|
-| `source` | string | Non | Filtrer par source du journal (par ex., `"milady-api"`, `"runtime"`) |
+| `source` | string | Non | Filtrer par source du journal (par ex., `"eliza-api"`, `"runtime"`) |
 | `level` | string | Non | Filtrer par niveau de journal (par ex., `"info"`, `"warn"`, `"error"`, `"debug"`) |
 | `tag` | string | Non | Filtrer par étiquette |
 | `since` | number | Non | Horodatage en millisecondes Unix — ne renvoie que les entrées à partir de ce moment |
@@ -37,12 +37,12 @@ Obtenir les entrées de journal mises en mémoire tampon avec filtrage optionnel
     {
       "timestamp": 1718000000000,
       "level": "info",
-      "source": "milady-api",
+      "source": "eliza-api",
       "tags": ["startup"],
       "message": "API server started on port 31337"
     }
   ],
-  "sources": ["milady-api", "runtime", "plugin-anthropic"],
+  "sources": ["eliza-api", "runtime", "plugin-anthropic"],
   "tags": ["startup", "auth", "knowledge"]
 }
 ```
@@ -146,7 +146,7 @@ data: {"type":"entry","entry":{"type":"policy_decision","severity":"warn",...}}
 
 </div>
 
-Vérifier le statut du relais de l'extension navigateur et le chemin de l'extension. Utilisé pour déterminer si l'extension navigateur Milady est connectée et chargeable.
+Vérifier le statut du relais de l'extension navigateur et le chemin de l'extension. Utilisé pour déterminer si l'extension navigateur Eliza est connectée et chargeable.
 
 **Réponse**
 

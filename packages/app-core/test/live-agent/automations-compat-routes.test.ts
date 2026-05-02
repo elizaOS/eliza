@@ -13,7 +13,7 @@ const ensureRouteAuthorizedMock = vi.fn();
 
 vi.doMock("@elizaos/agent/config/config", () => ({
   loadElizaConfig: () => ({
-    ui: { assistant: { name: "Milady" } },
+    ui: { assistant: { name: "Eliza" } },
     agents: { defaults: { adminEntityId: "admin-entity-id" } },
   }),
 }));
@@ -94,7 +94,7 @@ async function startApiHarness(state: CompatRuntimeState): Promise<Harness> {
 
 function buildRuntimeStub() {
   return {
-    character: { name: "Milady" },
+    character: { name: "Eliza" },
     actions: [
       { name: "CODE_TASK", description: "Run a coding agent task." },
       { name: "SEND_MESSAGE", description: "Send a message." },

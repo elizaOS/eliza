@@ -30,7 +30,7 @@ export function readNtfyConfigFromEnv(
   }
   return {
     baseUrl: baseUrl.replace(/\/$/, ""),
-    defaultTopic: defaultTopic ?? "milady",
+    defaultTopic: defaultTopic ?? "eliza",
   };
 }
 

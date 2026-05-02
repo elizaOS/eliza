@@ -193,7 +193,7 @@ export function ApiKeyConfig({
         plugin-list time and produces warnings like "OpenRouter key
         should start with sk-or-" when a saved value doesn't match
         — we just route those into the form so users with a
-        previously-corrupted milady.json see the issue without
+        previously-corrupted eliza.json see the issue without
         having to edit the field first.
       */}
       {(selectedProvider.validationErrors?.length ||

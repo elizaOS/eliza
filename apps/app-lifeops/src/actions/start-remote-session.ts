@@ -1,7 +1,7 @@
 /**
  * START_REMOTE_SESSION — control-plane action for T9a.
  *
- * Requires owner access. If MILADY_REMOTE_LOCAL_MODE=1, the pairing code is
+ * Requires owner access. If ELIZA_REMOTE_LOCAL_MODE=1, the pairing code is
  * not required (but `confirmed: true` still is). Otherwise, a valid 6-digit
  * pairing code issued via the cloud pair endpoint must be provided.
  *
@@ -42,7 +42,7 @@ export const startRemoteSessionAction: Action = {
   name: ACTION_NAME,
   similes: ["OPEN_REMOTE_SESSION", "BEGIN_REMOTE_SESSION", "REMOTE_START"],
   description:
-    "Open a remote-control session. Requires confirmed: true. If running in local mode (MILADY_REMOTE_LOCAL_MODE=1) no pairing code is needed; otherwise a valid 6-digit pairing code is required. Use this only to start a remote session, not for local screenshots, Finder/Desktop tasks, or browser/file automation on this Mac — those belong to LIFEOPS_COMPUTER_USE.",
+    "Open a remote-control session. Requires confirmed: true. If running in local mode (ELIZA_REMOTE_LOCAL_MODE=1) no pairing code is needed; otherwise a valid 6-digit pairing code is required. Use this only to start a remote session, not for local screenshots, Finder/Desktop tasks, or browser/file automation on this Mac — those belong to LIFEOPS_COMPUTER_USE.",
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
     hasOwnerAccess(runtime, message),
@@ -51,7 +51,7 @@ export const startRemoteSessionAction: Action = {
     {
       name: "pairingCode",
       description:
-        "6-digit one-time pairing code. Required unless MILADY_REMOTE_LOCAL_MODE=1.",
+        "6-digit one-time pairing code. Required unless ELIZA_REMOTE_LOCAL_MODE=1.",
       required: false,
       schema: { type: "string" as const },
     },

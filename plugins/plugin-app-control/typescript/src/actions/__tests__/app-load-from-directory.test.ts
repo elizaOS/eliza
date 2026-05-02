@@ -29,16 +29,16 @@ let scanRoot: string;
 let originalProtectedEnv: string | undefined;
 
 beforeEach(async () => {
-	scanRoot = await mkdtemp(path.join(tmpdir(), "milady-app-load-dir-"));
-	originalProtectedEnv = process.env.MILADY_PROTECTED_APPS;
-	delete process.env.MILADY_PROTECTED_APPS;
+	scanRoot = await mkdtemp(path.join(tmpdir(), "eliza-app-load-dir-"));
+	originalProtectedEnv = process.env.ELIZA_PROTECTED_APPS;
+	delete process.env.ELIZA_PROTECTED_APPS;
 });
 
 afterEach(async () => {
 	if (originalProtectedEnv === undefined) {
-		delete process.env.MILADY_PROTECTED_APPS;
+		delete process.env.ELIZA_PROTECTED_APPS;
 	} else {
-		process.env.MILADY_PROTECTED_APPS = originalProtectedEnv;
+		process.env.ELIZA_PROTECTED_APPS = originalProtectedEnv;
 	}
 	await rm(scanRoot, { recursive: true, force: true });
 });

@@ -201,7 +201,7 @@ function browserAccessTitle(access: LifeOpsOwnerBrowserAccessStatus): string {
     return "Discord Desktop App";
   }
   if (access.source === "desktop_browser") {
-    return "Milady Desktop Browser";
+    return "Eliza Desktop Browser";
   }
   const browserLabel = access.browser === "safari" ? "Safari" : "Chrome";
   const profileLabel = access.profileLabel?.trim() || "Default profile";
@@ -275,7 +275,7 @@ function browserAccessSourceLabel(
     return "your browser";
   }
   return access.source === "desktop_browser"
-    ? "Milady Desktop Browser"
+    ? "Eliza Desktop Browser"
     : access.source === "discord_desktop"
       ? "Discord Desktop"
       : "Your Browser";
@@ -304,7 +304,7 @@ function browserAccessActionLabel(
     case "log_in":
       return "Log In to Discord";
     case "open_desktop_browser":
-      return "Open Milady Desktop";
+      return "Open Eliza Desktop";
     case "relaunch_discord":
       return "Relaunch Discord";
     default:
@@ -369,21 +369,21 @@ function browserAccessMessage(access: LifeOpsOwnerBrowserAccessStatus): string {
   }
 
   if (access.nextAction === "open_desktop_browser") {
-    return "Open Milady Desktop to use its built-in browser for your Discord session.";
+    return "Open Eliza Desktop to use its built-in browser for your Discord session.";
   }
   if (access.authState === "logged_out") {
-    return "Discord is open in Milady Desktop Browser, but that session still needs you to log in.";
+    return "Discord is open in Eliza Desktop Browser, but that session still needs you to log in.";
   }
   if (access.tabState === "missing") {
-    return "Milady Desktop Browser is available, but Discord is not open there yet.";
+    return "Eliza Desktop Browser is available, but Discord is not open there yet.";
   }
   if (
     access.authState === "logged_in" &&
     access.tabState !== "dm_inbox_visible"
   ) {
-    return "Milady Desktop Browser sees your Discord session, but not the DM inbox yet.";
+    return "Eliza Desktop Browser sees your Discord session, but not the DM inbox yet.";
   }
-  return "Milady Desktop Browser is ready for Discord.";
+  return "Eliza Desktop Browser is ready for Discord.";
 }
 
 function focusBrowserSetupPanel(): boolean {
@@ -624,7 +624,7 @@ export function DiscordConnectorCard() {
               preferredAccess?.nextAction === "open_extension_popup"
             ? "Connect Your Browser"
             : preferredAccess?.nextAction === "open_desktop_browser"
-              ? "Open Milady Desktop"
+              ? "Open Eliza Desktop"
               : !available
                 ? "Browser access unavailable"
                 : isConnected
@@ -656,7 +656,7 @@ export function DiscordConnectorCard() {
       await discord.refresh();
       setTab("browser");
       setActionNotice(
-        "Opened Discord in Milady Desktop Browser.",
+        "Opened Discord in Eliza Desktop Browser.",
         "success",
         3200,
       );
@@ -664,7 +664,7 @@ export function DiscordConnectorCard() {
       setActionNotice(
         cause instanceof Error && cause.message.trim().length > 0
           ? cause.message.trim()
-          : "Milady Desktop Browser could not open Discord.",
+          : "Eliza Desktop Browser could not open Discord.",
         "error",
         4200,
       );
@@ -773,8 +773,8 @@ export function DiscordConnectorCard() {
           className="h-8 w-8 rounded-xl p-0"
           disabled={busy}
           onClick={() => void handleOpenDesktopDiscord()}
-          title="Open in Milady Desktop Browser"
-          aria-label="Open in Milady Desktop Browser"
+          title="Open in Eliza Desktop Browser"
+          aria-label="Open in Eliza Desktop Browser"
         >
           <ExternalLink className="h-3.5 w-3.5" aria-hidden />
         </Button>
@@ -1273,9 +1273,9 @@ function formatIMessageSendMode(
 function formatIMessageDiagnostic(code: string): string {
   switch (code) {
     case "full_disk_access_required":
-      return "Full Disk Access is required before Milady can read incoming Messages history.";
+      return "Full Disk Access is required before Eliza can read incoming Messages history.";
     case "chat_db_unavailable":
-      return "Milady could not open Messages chat.db for incoming message reads.";
+      return "Eliza could not open Messages chat.db for incoming message reads.";
     case "native_bridge_not_connected":
       return "The native Messages bridge is loaded but not connected yet.";
     case "bluebubbles_private_api_disabled":
@@ -1365,7 +1365,7 @@ export function IMessageConnectorCard() {
       setActionNotice(
         cause instanceof Error && cause.message.trim().length > 0
           ? cause.message.trim()
-          : "Milady could not open Full Disk Access settings.",
+          : "Eliza could not open Full Disk Access settings.",
         "error",
         5000,
       );
@@ -1384,8 +1384,8 @@ export function IMessageConnectorCard() {
           {isConnected
             ? bridgeLabel === "Messages.app"
               ? nativeReadDegraded
-                ? "Milady can send through Messages.app now. Grant Full Disk Access to let it read incoming iMessages from chat.db."
-                : "Milady is using the native Mac Messages bridge for iMessage send and receive."
+                ? "Eliza can send through Messages.app now. Grant Full Disk Access to let it read incoming iMessages from chat.db."
+                : "Eliza is using the native Mac Messages bridge for iMessage send and receive."
               : bridgeLabel === "BlueBubbles"
                 ? status?.sendMode === "private-api"
                   ? "LifeOps is using the Mac-side BlueBubbles bridge with Private API enabled."
@@ -1394,7 +1394,7 @@ export function IMessageConnectorCard() {
             : iosRuntime
               ? "iMessage access must run through a paired Mac or a remote Mac backend that has iMessage configured."
               : runningOnMacHost
-                ? "Milady could not load the native Messages bridge. Refresh after enabling the iMessage connector or restarting the agent."
+                ? "Eliza could not load the native Messages bridge. Refresh after enabling the iMessage connector or restarting the agent."
                 : "iMessage bridging requires a Mac host running Messages.app."}
         </div>
         {showFullDiskAccessControls ? (
@@ -1412,7 +1412,7 @@ export function IMessageConnectorCard() {
         ) : null}
         {showFullDiskAccessControls ? (
           <div className="rounded-xl border border-border/40 bg-card/18 px-3 py-2 text-xs text-muted">
-            Full Disk Access is still blocked for the process running Milady, so
+            Full Disk Access is still blocked for the process running Eliza, so
             reading `~/Library/Messages/chat.db` may stay limited until you
             allow it in System Settings → Privacy & Security → Full Disk Access.
           </div>

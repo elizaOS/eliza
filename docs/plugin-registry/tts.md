@@ -1,10 +1,10 @@
 ---
 title: "Text-to-Speech Plugin"
 sidebarTitle: "TTS"
-description: "Text-to-speech plugin for Milady — ElevenLabs, OpenAI TTS, and Edge TTS voice synthesis."
+description: "Text-to-speech plugin for Eliza — ElevenLabs, OpenAI TTS, and Edge TTS voice synthesis."
 ---
 
-The Text-to-Speech (TTS) plugin enables Milady agents to synthesize speech from text, providing voice responses through ElevenLabs, OpenAI TTS, or Microsoft Edge TTS.
+The Text-to-Speech (TTS) plugin enables Eliza agents to synthesize speech from text, providing voice responses through ElevenLabs, OpenAI TTS, or Microsoft Edge TTS.
 
 **Package:** `@elizaos/plugin-tts`
 
@@ -15,7 +15,7 @@ The TTS plugin registers a `TEXT_TO_SPEECH` model handler and actions that allow
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-tts
+eliza plugins install @elizaos/plugin-tts
 ```
 
 ## Enable via Features
@@ -88,9 +88,9 @@ Requires `OPENAI_API_KEY`.
 
 Microsoft Edge TTS is free and requires no API key. Synthesis is performed through **Microsoft’s Edge TTS cloud** (`node-edge-tts` talks to Microsoft’s service). Quality is lower than ElevenLabs but suitable for development.
 
-**Milady default:** When `@elizaos/plugin-agent-orchestrator` is loaded, Milady **automatically** adds `@elizaos/plugin-edge-tts` so swarm / PTY paths that call `TEXT_TO_SPEECH` have a handler. That means a default install with the orchestrator can make **outbound calls to Microsoft** whenever those code paths run TTS—even if you never enabled “TTS” in features.
+**Eliza default:** When `@elizaos/plugin-agent-orchestrator` is loaded, Eliza **automatically** adds `@elizaos/plugin-edge-tts` so swarm / PTY paths that call `TEXT_TO_SPEECH` have a handler. That means a default install with the orchestrator can make **outbound calls to Microsoft** whenever those code paths run TTS—even if you never enabled “TTS” in features.
 
-**Opt out of auto-load:** set `MILADY_DISABLE_EDGE_TTS=1` (or `ELIZA_DISABLE_EDGE_TTS=1`) in the environment or `~/.milady/.env`, or disable the plugin entry: `plugins.entries["edge-tts"].enabled: false`. See [Environment variables](/cli/environment#runtime-behavior) (`MILADY_DISABLE_EDGE_TTS`).
+**Opt out of auto-load:** set `ELIZA_DISABLE_EDGE_TTS=1` (or `ELIZA_DISABLE_EDGE_TTS=1`) in the environment or `~/.eliza/.env`, or disable the plugin entry: `plugins.entries["edge-tts"].enabled: false`. See [Environment variables](/cli/environment#runtime-behavior) (`ELIZA_DISABLE_EDGE_TTS`).
 
 ```json
 {
@@ -162,7 +162,7 @@ After the plugin is loaded:
 
 > "Read this article to me"
 
-> "Say the following in a cheerful voice: Welcome to Milady!"
+> "Say the following in a cheerful voice: Welcome to Eliza!"
 
 > "Generate an audio file from this text"
 

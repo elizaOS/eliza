@@ -9,7 +9,7 @@ export type LinkedAccountSource =
   | "subscription";
 
 /**
- * Legacy "is this provider linked" flag stored in `milady.json` under
+ * Legacy "is this provider linked" flag stored in `eliza.json` under
  * `linkedAccounts.{providerId}` (e.g. `linkedAccounts.elizacloud`).
  *
  * Predates the multi-account credential system. Kept for the

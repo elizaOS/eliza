@@ -913,9 +913,9 @@ function isLoopbackUrl(value: string | undefined): boolean {
 }
 
 async function deleteMockGmailDrafts(): Promise<string | undefined> {
-  const baseUrl = process.env.MILADY_MOCK_GOOGLE_BASE;
+  const baseUrl = process.env.ELIZA_MOCK_GOOGLE_BASE;
   if (!isLoopbackUrl(baseUrl)) {
-    return "gmailDeleteDrafts cleanup requires MILADY_MOCK_GOOGLE_BASE to point at the loopback Google mock";
+    return "gmailDeleteDrafts cleanup requires ELIZA_MOCK_GOOGLE_BASE to point at the loopback Google mock";
   }
   const response = await fetch(`${baseUrl}/gmail/v1/users/me/drafts`);
   if (!response.ok) {

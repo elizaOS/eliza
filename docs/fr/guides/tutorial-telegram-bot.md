@@ -1,17 +1,17 @@
 ---
 title: "Tutoriel : Bot Telegram"
 sidebarTitle: "Configuration du bot Telegram"
-description: "Apprenez à créer et configurer un bot Telegram avec Milady en quelques minutes"
+description: "Apprenez à créer et configurer un bot Telegram avec Eliza en quelques minutes"
 ---
 
 <div id="tutorial-telegram-bot">
 # Tutoriel : Bot Telegram
 </div>
 
-Démarrez avec l'intégration du bot Telegram de Milady. Ce tutoriel vous guide à travers la création de votre premier bot, sa configuration et ses tests de bout en bout.
+Démarrez avec l'intégration du bot Telegram de Eliza. Ce tutoriel vous guide à travers la création de votre premier bot, sa configuration et ses tests de bout en bout.
 
 <Info>
-  Ce tutoriel suppose que vous avez installé Milady. Si ce n'est pas encore fait, consultez le [Guide d'installation](/fr/installation).
+  Ce tutoriel suppose que vous avez installé Eliza. Si ce n'est pas encore fait, consultez le [Guide d'installation](/fr/installation).
 </Info>
 
 <div id="prerequisites">
@@ -21,14 +21,14 @@ Démarrez avec l'intégration du bot Telegram de Milady. Ce tutoriel vous guide 
 Avant de commencer, assurez-vous d'avoir :
 
 - Un compte Telegram
-- Milady installé et en cours d'exécution (`bun run dev`)
-- Accès au tableau de bord Milady (par défaut : http://localhost:2138)
+- Eliza installé et en cours d'exécution (`bun run dev`)
+- Accès au tableau de bord Eliza (par défaut : http://localhost:2138)
 
 <div id="quick-setup-via-dashboard">
 ## Configuration rapide via le tableau de bord
 </div>
 
-Le moyen le plus rapide de configurer le connecteur Telegram est via le tableau de bord Milady :
+Le moyen le plus rapide de configurer le connecteur Telegram est via le tableau de bord Eliza :
 
 1. Ouvrez **http://localhost:2138** dans votre navigateur
 2. Accédez à **Connectors** dans la barre de navigation supérieure
@@ -129,11 +129,11 @@ Cliquez sur **Advanced** pour développer les paramètres supplémentaires :
 - **API Root** — Point de terminaison personnalisé de l'API Bot Telegram (par défaut : `https://api.telegram.org`). Nécessaire uniquement si vous utilisez un [serveur d'API Bot local](https://core.telegram.org/bots/api#using-a-local-bot-api-server) ou un proxy.
 - **Test Chat ID** — Identifiant de conversation utilisé par la suite de tests automatisés. Non nécessaire pour la production.
 
-<div id="configuration-via-miladyjson">
-## Configuration via milady.json
+<div id="configuration-via-elizajson">
+## Configuration via eliza.json
 </div>
 
-Vous pouvez également configurer le connecteur Telegram directement dans `~/.milady/milady.json` :
+Vous pouvez également configurer le connecteur Telegram directement dans `~/.eliza/eliza.json` :
 
 ```json
 {
@@ -149,7 +149,7 @@ Ou utilisez un fichier `.env` à la racine de votre projet :
 TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklmNOpqrsTUVwxyzABC-defGHI
 ```
 
-Puis démarrez Milady :
+Puis démarrez Eliza :
 
 ```bash
 bun run dev
@@ -198,10 +198,10 @@ bun run dev
     **Solutions :**
     1. Vérifiez que le connecteur est activé (**ON**) dans le tableau de bord
     2. Vérifiez que Test Connection affiche "Connected as @yourbotname"
-    3. Recherchez les messages d'erreur dans le terminal où Milady s'exécute
+    3. Recherchez les messages d'erreur dans le terminal où Eliza s'exécute
     4. Si l'accès aux conversations est restreint, vérifiez que votre identifiant de conversation est dans la liste autorisée
     5. Assurez-vous d'avoir envoyé `/start` au bot en premier
-    6. Essayez de redémarrer Milady — le connecteur pourrait avoir besoin d'un redémarrage
+    6. Essayez de redémarrer Eliza — le connecteur pourrait avoir besoin d'un redémarrage
   </Accordion>
 
   <Accordion title="Le bot répond lentement">
@@ -210,7 +210,7 @@ bun run dev
     **Solutions :**
     1. Vérifiez votre connexion internet
     2. Surveillez les ressources système — la RAM ou le CPU pourrait être saturé
-    3. Vérifiez les journaux de Milady pour les erreurs ou les processus bloqués
+    3. Vérifiez les journaux de Eliza pour les erreurs ou les processus bloqués
     4. Pour la production, envisagez le mode webhook au lieu du polling
   </Accordion>
 
@@ -218,7 +218,7 @@ bun run dev
     **Problème :** Les journaux affichent "409: Conflict: terminated by other getUpdates request"
 
     **Solutions :**
-    1. Assurez-vous qu'une seule instance de Milady est en cours d'exécution
+    1. Assurez-vous qu'une seule instance de Eliza est en cours d'exécution
     2. Recherchez les processus de bot obsolètes : `tasklist | grep bun` (Windows) ou `ps aux | grep bun` (Linux/Mac)
     3. Attendez 30 secondes et redémarrez — Telegram a besoin de temps pour libérer le slot de polling
   </Accordion>
@@ -236,5 +236,5 @@ bun run dev
 ## Besoin d'aide ?
 </div>
 
-- Rejoignez la [Communauté Discord de Milady](https://discord.gg/milady)
-- Signalez les problèmes sur [GitHub](https://github.com/milady-ai/milady/issues)
+- Rejoignez la [Communauté Discord de Eliza](https://discord.gg/eliza)
+- Signalez les problèmes sur [GitHub](https://github.com/eliza-ai/eliza/issues)

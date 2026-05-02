@@ -1,9 +1,9 @@
 ---
 title: Plugin Setup Guide
-description: Comprehensive setup instructions for Milady connector, AI provider, and streaming plugins.
+description: Comprehensive setup instructions for Eliza connector, AI provider, and streaming plugins.
 ---
 
-# Plugin Setup Guide — Milady AI
+# Plugin Setup Guide — Eliza AI
 
 Comprehensive setup instructions for all connector, AI provider, and streaming plugins.
 When users ask how to set up a plugin, use this guide: give them the exact env var names,
@@ -182,7 +182,7 @@ Twitter/X integration is bundled with the **xAI** provider plugin (`@elizaos/plu
 - `X_ENABLE_REPLIES` — `true` to reply to @mentions
 - `X_ENABLE_ACTIONS` — `true` to enable like/retweet/quote actions
 
-**Connector config alternative** — set these under `connectors.twitter` in `milady.json`:
+**Connector config alternative** — set these under `connectors.twitter` in `eliza.json`:
 - `apiKey`, `apiSecretKey`, `accessToken`, `accessTokenSecret` — OAuth credentials
 - `postEnable`, `postIntervalMin`, `postIntervalMax`, `dryRun` — posting behavior
 - `searchEnable`, `autoRespondMentions`, `pollInterval` — engagement settings
@@ -290,8 +290,8 @@ Twitter/X integration is bundled with the **xAI** provider plugin (`@elizaos/plu
 - `features.groups` — Enable group chat support (default: false)
 **Setup steps:**
 1. Get API key from your WeChat proxy service
-2. Configure `connectors.wechat` in milady.json with `apiKey` and `proxyUrl`
-3. Start Milady — scan the QR code displayed in terminal with WeChat
+2. Configure `connectors.wechat` in eliza.json with `apiKey` and `proxyUrl`
+3. Start Eliza — scan the QR code displayed in terminal with WeChat
 **Tips:** WeChat uses a third-party proxy service, not an official API. Only use a proxy you trust — it sees all message traffic. Multi-account supported via `accounts` map. Package: `@elizaos/plugin-wechat`.
 
 ### GitHub

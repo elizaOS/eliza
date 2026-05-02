@@ -4,8 +4,8 @@
  * Unit tests for the CSRF client helpers.
  *
  * Key invariants:
- *   - GET / HEAD / OPTIONS never attach x-milady-csrf.
- *   - POST / PUT / DELETE / PATCH attach x-milady-csrf when cookie is present.
+ *   - GET / HEAD / OPTIONS never attach x-eliza-csrf.
+ *   - POST / PUT / DELETE / PATCH attach x-eliza-csrf when cookie is present.
  *   - `credentials: "include"` is always set.
  */
 
@@ -62,7 +62,7 @@ describe("fetchWithCsrf", () => {
     "GET",
     "HEAD",
     "OPTIONS",
-  ] as const)("%s does not attach x-milady-csrf", async (method) => {
+  ] as const)("%s does not attach x-eliza-csrf", async (method) => {
     await fetchWithCsrf("/api/test", { method });
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const headers = new Headers(init.headers);
@@ -74,14 +74,14 @@ describe("fetchWithCsrf", () => {
     "PUT",
     "DELETE",
     "PATCH",
-  ] as const)("%s attaches x-milady-csrf when cookie present", async (method) => {
+  ] as const)("%s attaches x-eliza-csrf when cookie present", async (method) => {
     await fetchWithCsrf("/api/test", { method });
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const headers = new Headers(init.headers);
     expect(headers.get(CSRF_HEADER_NAME)).toBe("csrf-test-value");
   });
 
-  it("POST does not attach x-milady-csrf when cookie absent", async () => {
+  it("POST does not attach x-eliza-csrf when cookie absent", async () => {
     document.cookie = `${CSRF_COOKIE_NAME}=; Max-Age=0; path=/`;
     await fetchWithCsrf("/api/test", { method: "POST" });
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];

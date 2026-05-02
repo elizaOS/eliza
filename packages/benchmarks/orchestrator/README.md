@@ -99,7 +99,7 @@ New orchestrator-centric benchmark IDs:
 - `swe_bench_orchestrated`
 - `gaia_orchestrated`
 - `orchestrator_lifecycle`
-- `milaidy_replay`
+- `eliza_replay`
 
 Code matrix example:
 
@@ -135,10 +135,10 @@ Replay scoring example (from normalized Eliza capture artifacts):
 
 ```bash
 /opt/miniconda3/bin/python -m benchmarks.orchestrator run \
-  --benchmarks milaidy_replay \
+  --benchmarks eliza_replay \
   --provider openai \
   --model gpt-4o-mini \
-  --extra '{"per_benchmark":{"milaidy_replay":{"capture_path":"/path/to/replays","capture_glob":"*.replay.json"}}}'
+  --extra '{"per_benchmark":{"eliza_replay":{"capture_path":"/path/to/replays","capture_glob":"*.replay.json"}}}'
 ```
 
 `capture_path` is required and must point to a file or directory of normalized `*.replay.json` artifacts.

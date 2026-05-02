@@ -4,13 +4,13 @@ title: Developer diagnostics and workspace tooling
 
 # Developer diagnostics and workspace tooling (WHYs)
 
-This guide is for **people building Milady from source** — editors, agents, and maintainers. It explains **why** recent developer-facing behavior exists so you can debug faster without mistaking optional noise for product bugs.
+This guide is for **people building Eliza from source** — editors, agents, and maintainers. It explains **why** recent developer-facing behavior exists so you can debug faster without mistaking optional noise for product bugs.
 
 ## Plugin load reasons (optional plugins)
 
 **Problem:** Logs like `Cannot find module '@elizaos/plugin-solana'` or “browser server not found” looked like the runtime was broken, when often the real issue was **config or env** pulling a plugin into the load set while the package or native binary was never installed.
 
-**Why we trace provenance:** `collectPluginNames()` can record the **first** source that added each package (for example `plugins.allow["@elizaos/plugin-solana"]`, `env: SOLANA_PRIVATE_KEY`, `features.browser`, `CORE_PLUGINS`). `resolvePlugins()` passes that map through resolution; when an **optional** plugin fails for a benign reason (missing npm module, missing stagehand), the summary log includes **`(added by: …)`** so you know whether to edit `milady.json`, unset an env var, install a package, or add a plugin checkout.
+**Why we trace provenance:** `collectPluginNames()` can record the **first** source that added each package (for example `plugins.allow["@elizaos/plugin-solana"]`, `env: SOLANA_PRIVATE_KEY`, `features.browser`, `CORE_PLUGINS`). `resolvePlugins()` passes that map through resolution; when an **optional** plugin fails for a benign reason (missing npm module, missing stagehand), the summary log includes **`(added by: …)`** so you know whether to edit `eliza.json`, unset an env var, install a package, or add a plugin checkout.
 
 **Scope:** This is **diagnostics**, not hiding failures. Serious resolution errors still surface normally.
 
@@ -18,9 +18,9 @@ This guide is for **people building Milady from source** — editors, agents, an
 
 ## Browser / stagehand server path
 
-**Problem:** `@elizaos/plugin-browser` expects a **stagehand-server** binary tree under `dist/server/` inside the npm package, but the published tarball does not ship it. Milady links or discovers a checkout under `plugins/plugin-browser/stagehand-server/`.
+**Problem:** `@elizaos/plugin-browser` expects a **stagehand-server** binary tree under `dist/server/` inside the npm package, but the published tarball does not ship it. Eliza links or discovers a checkout under `plugins/plugin-browser/stagehand-server/`.
 
-**Why parent walk:** The runtime file lives at different depths (`milady/packages/agent/...` vs `eliza/packages/agent/...` when using a submodule). A fixed `../` depth missed the workspace root. **`findPluginBrowserStagehandDir()`** walks parents until it finds `plugins/plugin-browser/stagehand-server` with `dist/index.js` or `src/index.ts`.
+**Why parent walk:** The runtime file lives at different depths (`eliza/packages/agent/...` vs `eliza/packages/agent/...` when using a submodule). A fixed `../` depth missed the workspace root. **`findPluginBrowserStagehandDir()`** walks parents until it finds `plugins/plugin-browser/stagehand-server` with `dist/index.js` or `src/index.ts`.
 
 **Operational note:** If you do not use browser automation, absence of stagehand is **expected**; messages are intentionally concise at debug level so daily dev is not spammed.
 

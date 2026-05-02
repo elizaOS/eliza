@@ -1,10 +1,10 @@
 ---
 title: "Plugin de Tlon"
 sidebarTitle: "Tlon"
-description: "Conector de Tlon para Milady — integración de bot con la plataforma de mensajería Tlon (Urbit)."
+description: "Conector de Tlon para Eliza — integración de bot con la plataforma de mensajería Tlon (Urbit)."
 ---
 
-El plugin de Tlon conecta agentes de Milady a Tlon (Urbit), permitiendo el manejo de mensajes a través de un ship Urbit conectado.
+El plugin de Tlon conecta agentes de Eliza a Tlon (Urbit), permitiendo el manejo de mensajes a través de un ship Urbit conectado.
 
 **Package:** `@elizaos/plugin-tlon`
 
@@ -15,7 +15,7 @@ El plugin de Tlon conecta agentes de Milady a Tlon (Urbit), permitiendo el manej
 </div>
 
 ```bash
-milady plugins install @elizaos/plugin-tlon
+eliza plugins install @elizaos/plugin-tlon
 ```
 
 <div id="setup">
@@ -35,9 +35,9 @@ milady plugins install @elizaos/plugin-tlon
 3. Obtén el código de acceso desde la interfaz web de tu ship (Configuración → Clave de Acceso)
 4. Anota la URL del ship (por ejemplo, `http://localhost:8080`)
 
-<div id="2-configure-milady">
+<div id="2-configure-eliza">
 
-### 2. Configura Milady
+### 2. Configura Eliza
 
 </div>
 

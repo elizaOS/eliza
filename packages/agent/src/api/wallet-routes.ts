@@ -603,7 +603,6 @@ export async function handleWalletRoutes(
         const agentId =
           process.env.STEWARD_AGENT_ID?.trim() ||
           process.env.ELIZA_STEWARD_AGENT_ID?.trim() ||
-          process.env.ELIZA_STEWARD_AGENT_ID?.trim() ||
           null;
 
         if (!agentId) {
@@ -1019,9 +1018,9 @@ export async function handleWalletRoutes(
       config.cloud = cloudConfig as typeof config.cloud;
 
       if (descriptors.evm?.walletAddress) {
-        process.env.MILADY_CLOUD_EVM_ADDRESS = descriptors.evm.walletAddress;
+        process.env.ELIZA_CLOUD_EVM_ADDRESS = descriptors.evm.walletAddress;
         await persistConfigEnv(
-          "MILADY_CLOUD_EVM_ADDRESS",
+          "ELIZA_CLOUD_EVM_ADDRESS",
           descriptors.evm.walletAddress,
         );
         process.env.ENABLE_EVM_PLUGIN = "1";
@@ -1032,10 +1031,10 @@ export async function handleWalletRoutes(
       }
 
       if (descriptors.solana?.walletAddress) {
-        process.env.MILADY_CLOUD_SOLANA_ADDRESS =
+        process.env.ELIZA_CLOUD_SOLANA_ADDRESS =
           descriptors.solana.walletAddress;
         await persistConfigEnv(
-          "MILADY_CLOUD_SOLANA_ADDRESS",
+          "ELIZA_CLOUD_SOLANA_ADDRESS",
           descriptors.solana.walletAddress,
         );
         process.env.WALLET_SOURCE_SOLANA = "cloud";

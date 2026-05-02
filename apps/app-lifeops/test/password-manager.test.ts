@@ -144,8 +144,8 @@ function makeMessage() {
 beforeEach(() => {
   execFileBehaviors.length = 0;
   clearPasswordManagerBackendCache();
-  delete process.env.MILADY_TEST_PASSWORD_MANAGER_BACKEND;
-  delete process.env.MILADY_BENCHMARK_USE_MOCKS;
+  delete process.env.ELIZA_TEST_PASSWORD_MANAGER_BACKEND;
+  delete process.env.ELIZA_BENCHMARK_USE_MOCKS;
   vi.clearAllMocks();
 });
 
@@ -169,7 +169,7 @@ describe("detectPasswordManagerBackend", () => {
   });
 
   test("does not enable fixture backend from benchmark mock mode", async () => {
-    process.env.MILADY_BENCHMARK_USE_MOCKS = "1";
+    process.env.ELIZA_BENCHMARK_USE_MOCKS = "1";
 
     const backend = await detectPasswordManagerBackend();
 
@@ -177,7 +177,7 @@ describe("detectPasswordManagerBackend", () => {
   });
 
   test("enables fixture backend only from explicit password-manager test env", async () => {
-    process.env.MILADY_TEST_PASSWORD_MANAGER_BACKEND = "fixture";
+    process.env.ELIZA_TEST_PASSWORD_MANAGER_BACKEND = "fixture";
 
     const backend = await detectPasswordManagerBackend();
 

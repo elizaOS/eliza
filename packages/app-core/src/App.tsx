@@ -72,7 +72,7 @@ import type { FlaminaGuideTopic } from "./state/types";
 const CHAT_MOBILE_BREAKPOINT_PX = 820;
 const MOBILE_NAV_PADDING_CLASS =
   "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px))]";
-const WALLET_CHAT_PREFILL_EVENT = "milady:chat:prefill";
+const WALLET_CHAT_PREFILL_EVENT = "eliza:chat:prefill";
 type MobileChatSurface = "left" | "center" | "right";
 
 type ExtractComponent<TValue> =
@@ -136,7 +136,7 @@ const ConnectorsPageView = lazyNamedView(
   "ConnectorsPageView",
 );
 const ContactsPageView = lazyNamedView(
-  () => import("./components/pages/MiladyOsAppsView"),
+  () => import("./components/pages/ElizaOsAppsView"),
   "ContactsPageView",
 );
 const DesktopWorkspaceSection = lazyNamedView(
@@ -144,11 +144,11 @@ const DesktopWorkspaceSection = lazyNamedView(
   "DesktopWorkspaceSection",
 );
 const MessagesPageView = lazyNamedView(
-  () => import("./components/pages/MiladyOsAppsView"),
+  () => import("./components/pages/ElizaOsAppsView"),
   "MessagesPageView",
 );
 const PhonePageView = lazyNamedView(
-  () => import("./components/pages/MiladyOsAppsView"),
+  () => import("./components/pages/ElizaOsAppsView"),
   "PhonePageView",
 );
 const SettingsView = lazyNamedView(

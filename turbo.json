@@ -7,7 +7,14 @@
       "outputs": ["dist/**"]
     },
     "@elizaos/agent#build": {
-      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build", "@elizaos/plugin-pdf#build"],
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/shared#build",
+        "@elizaos/plugin-pdf#build",
+        "@elizaos/capacitor-contacts#build",
+        "@elizaos/capacitor-phone#build",
+        "@elizaos/capacitor-wifi#build"
+      ],
       "env": ["LOG_LEVEL"],
       "outputs": ["dist/**"]
     },

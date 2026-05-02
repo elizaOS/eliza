@@ -49,8 +49,8 @@ const FIELD_PURPOSES = [
 type FieldPurpose = (typeof FIELD_PURPOSES)[number];
 
 const WHITELIST_CACHE_KEY = "eliza:lifeops-autofill-whitelist";
-const DEVICE_BUS_URL_ENV = "MILADY_DEVICE_BUS_URL";
-const DEVICE_BUS_TOKEN_ENV = "MILADY_DEVICE_BUS_TOKEN";
+const DEVICE_BUS_URL_ENV = "ELIZA_DEVICE_BUS_URL";
+const DEVICE_BUS_TOKEN_ENV = "ELIZA_DEVICE_BUS_TOKEN";
 
 interface RuntimeCacheLike {
   getCache<T>(key: string): Promise<T | null | undefined>;

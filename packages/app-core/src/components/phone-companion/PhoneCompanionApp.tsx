@@ -4,8 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   apnsEnabled,
   agentUrl as configuredAgentUrl,
+  ElizaIntent,
   logger,
-  MiladyIntent,
   type PairingPayload,
   type RegisterPushHandle,
   registerPush,
@@ -18,7 +18,7 @@ import { RemoteSession } from "./RemoteSession";
 
 /**
  * The phone-companion surface — three-view Capacitor app that pairs with a
- * Milady desktop agent (QR handshake), mirrors chat, and serves as the
+ * Eliza desktop agent (QR handshake), mirrors chat, and serves as the
  * remote-session viewer for the paired Mac. Formerly shipped as
  * `apps/app-ios-companion`; now rendered inside the main iOS bundle.
  */
@@ -35,7 +35,7 @@ export function PhoneCompanionApp(): React.JSX.Element {
     async (payload: PairingPayload) => {
       if (!Capacitor.isNativePlatform()) return;
       try {
-        await MiladyIntent.setPairingStatus({
+        await ElizaIntent.setPairingStatus({
           deviceId: payload.agentId,
           agentUrl: payload.ingressUrl,
         });
@@ -53,7 +53,7 @@ export function PhoneCompanionApp(): React.JSX.Element {
       apnsEnabled: apnsEnabled(),
       hasConfiguredAgentUrl: configuredAgentUrl() !== null,
     });
-    MiladyIntent.getPairingStatus().then((status) => {
+    ElizaIntent.getPairingStatus().then((status) => {
       if (status.paired && status.agentUrl !== null) {
         setAgentUrl(status.agentUrl);
       }

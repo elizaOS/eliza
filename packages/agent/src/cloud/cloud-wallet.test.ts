@@ -22,8 +22,8 @@ import { ElizaCloudClient } from "./bridge-client";
 import {
   __resetCloudWalletModuleForTests,
   CloudWalletFlagDisabledError,
+  ELIZA_CLOUD_CLIENT_ADDRESS_KEY_ENV,
   getOrCreateClientAddressKey,
-  MILADY_CLOUD_CLIENT_ADDRESS_KEY_ENV,
   persistCloudWalletCache,
   provisionCloudWallets,
   provisionCloudWalletsBestEffort,
@@ -50,10 +50,10 @@ beforeAll(async () => {
     const requestUrl = new URL(req.url ?? "/", "http://127.0.0.1");
     const chain = requestUrl.searchParams.get("chain") ?? "any";
 
-    // GET /api/v1/milady/agents/:agentId/wallet
+    // GET /api/v1/eliza/agents/:agentId/wallet
     if (
       req.method === "GET" &&
-      requestUrl.pathname.includes("/milady/agents/") &&
+      requestUrl.pathname.includes("/eliza/agents/") &&
       requestUrl.pathname.endsWith("/wallet")
     ) {
       getAgentCallsByChain[chain] = (getAgentCallsByChain[chain] ?? 0) + 1;
@@ -169,7 +169,7 @@ describe("getOrCreateClientAddressKey", () => {
   let tmpStateDir: string;
 
   beforeEach(async () => {
-    tmpStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "milady-ccak-"));
+    tmpStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-ccak-"));
   });
 
   afterEach(async () => {
@@ -177,14 +177,14 @@ describe("getOrCreateClientAddressKey", () => {
   });
 
   it("mints a fresh key and persists it to process.env AND config.env on disk", async () => {
-    expect(process.env[MILADY_CLOUD_CLIENT_ADDRESS_KEY_ENV]).toBeUndefined();
+    expect(process.env[ELIZA_CLOUD_CLIENT_ADDRESS_KEY_ENV]).toBeUndefined();
 
     const result = await getOrCreateClientAddressKey({ stateDir: tmpStateDir });
 
     expect(result.minted).toBe(true);
     expect(result.privateKey).toMatch(/^0x[0-9a-f]{64}$/);
     expect(result.address).toMatch(/^0x[0-9a-fA-F]{40}$/);
-    expect(process.env[MILADY_CLOUD_CLIENT_ADDRESS_KEY_ENV]).toBe(
+    expect(process.env[ELIZA_CLOUD_CLIENT_ADDRESS_KEY_ENV]).toBe(
       result.privateKey,
     );
 
@@ -198,7 +198,7 @@ describe("getOrCreateClientAddressKey", () => {
       "utf8",
     );
     expect(contents).toContain(
-      `${MILADY_CLOUD_CLIENT_ADDRESS_KEY_ENV}=${result.privateKey}`,
+      `${ELIZA_CLOUD_CLIENT_ADDRESS_KEY_ENV}=${result.privateKey}`,
     );
   });
 
@@ -228,7 +228,7 @@ describe("getOrCreateClientAddressKey", () => {
   });
 
   it("rejects malformed env values", async () => {
-    process.env[MILADY_CLOUD_CLIENT_ADDRESS_KEY_ENV] = "not-hex";
+    process.env[ELIZA_CLOUD_CLIENT_ADDRESS_KEY_ENV] = "not-hex";
     await expect(
       getOrCreateClientAddressKey({ stateDir: tmpStateDir }),
     ).rejects.toThrow(/Malformed/);

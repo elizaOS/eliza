@@ -10,8 +10,7 @@ const TIMEOUT_MS = 10_000;
  * Used in tests to point all Google API traffic at a Mockoon environment.
  */
 export function rewriteGoogleUrlForMock(url: string): string {
-  const mockBase =
-    process.env.MILADY_MOCK_GOOGLE_BASE ?? process.env.ELIZA_MOCK_GOOGLE_BASE;
+  const mockBase = process.env.ELIZA_MOCK_GOOGLE_BASE;
   if (!mockBase) return url;
   const mockUrl = new URL(mockBase);
   if (
@@ -55,7 +54,7 @@ function guardRealGmailWrite(
   if (!isGoogleGmailWrite(method, originalUrl)) {
     return;
   }
-  if (process.env.MILADY_ALLOW_REAL_GMAIL_WRITES === "1") {
+  if (process.env.ELIZA_ALLOW_REAL_GMAIL_WRITES === "1") {
     return;
   }
   if (targetUrl !== originalUrl) {
@@ -63,7 +62,7 @@ function guardRealGmailWrite(
   }
   throw new GoogleApiError(
     409,
-    "Real Gmail writes require MILADY_ALLOW_REAL_GMAIL_WRITES=1. Point MILADY_MOCK_GOOGLE_BASE or ELIZA_MOCK_GOOGLE_BASE at a loopback mock for tests or set the allow env var for an explicitly confirmed real write."
+    "Real Gmail writes require ELIZA_ALLOW_REAL_GMAIL_WRITES=1. Point ELIZA_MOCK_GOOGLE_BASE or ELIZA_MOCK_GOOGLE_BASE at a loopback mock for tests or set the allow env var for an explicitly confirmed real write."
   );
 }
 

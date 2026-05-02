@@ -184,7 +184,7 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
     label: "Phone",
     tabs: ["phone", "messages", "contacts"],
     icon: Phone,
-    description: "MiladyOS dialer, SMS, and contact book",
+    description: "ElizaOS dialer, SMS, and contact book",
   },
   {
     label: "Apps",

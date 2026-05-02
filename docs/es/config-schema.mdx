@@ -1,11 +1,11 @@
 ---
 title: Referencia del esquema de configuración
 sidebarTitle: Esquema de configuración
-description: Referencia completa del archivo de configuración milady.json, organizada por sección con todos los campos documentados.
+description: Referencia completa del archivo de configuración eliza.json, organizada por sección con todos los campos documentados.
 ---
 
-Milady se configura a través de un archivo `milady.json` almacenado en el directorio
-de estado (predeterminado: `~/.milady/milady.json`). Todas las secciones son opcionales; Milady
+Eliza se configura a través de un archivo `eliza.json` almacenado en el directorio
+de estado (predeterminado: `~/.eliza/eliza.json`). Todas las secciones son opcionales; Eliza
 usa valores predeterminados razonables cuando se omiten los campos.
 
 El enrutamiento canónico en tiempo de ejecución se persiste de forma separada de los campos
@@ -23,7 +23,7 @@ La configuración se valida contra esquemas Zod al momento de la carga. Los camp
 ## Estructura de nivel superior
 </div>
 
-El tipo `MiladyConfig` define cada sección disponible en `milady.json`. A continuación se muestra la lista completa de claves de nivel superior:
+El tipo `ElizaConfig` define cada sección disponible en `eliza.json`. A continuación se muestra la lista completa de claves de nivel superior:
 
 | Sección | Tipo | Descripción |
 |---------|------|-------------|
@@ -67,7 +67,7 @@ El tipo `MiladyConfig` define cada sección disponible en `milady.json`. A conti
 | [`x402`](#x402) | `X402Config` | Protocolo de pago HTTP x402 |
 | [`media`](#media) | `MediaConfig` | Proveedores de generación de medios (imagen, video, audio, visión) |
 | [`mcp`](#mcp) | `object` | Definiciones de servidores MCP (Model Context Protocol) |
-| [`registry`](#registry) | `object` | Registro de agentes ERC-8004 y configuración de NFT MiladyMaker |
+| [`registry`](#registry) | `object` | Registro de agentes ERC-8004 y configuración de NFT ElizaMaker |
 | [`features`](#features) | `Record<string, boolean \| object>` | Indicadores de características para auto-habilitación de plugins |
 | [`customActions`](#customactions) | `CustomActionDef[]` | Acciones personalizadas definidas por el usuario |
 
@@ -135,7 +135,7 @@ Estos tres campos definen la topología activa en tiempo de ejecución:
   deploymentTarget: {
     runtime: "remote",
     provider: "remote",
-    remoteApiBase: "https://milady.example.com",
+    remoteApiBase: "https://eliza.example.com",
   },
   linkedAccounts: {
     elizacloud: {
@@ -163,7 +163,7 @@ Metadatos sobre el propio archivo de configuración.
 
 | Campo | Tipo | Predeterminado | Descripción |
 |-------|------|---------|-------------|
-| `lastTouchedVersion` | `string` | -- | Última versión de Milady que escribió esta configuración |
+| `lastTouchedVersion` | `string` | -- | Última versión de Eliza que escribió esta configuración |
 | `lastTouchedAt` | `string` | -- | Marca de tiempo ISO de la última escritura de la configuración |
 
 ---
@@ -223,7 +223,7 @@ Seguimiento del estado del asistente de incorporación.
 | Campo | Tipo | Predeterminado | Descripción |
 |-------|------|---------|-------------|
 | `lastRunAt` | `string` | -- | Marca de tiempo ISO de la última ejecución del asistente |
-| `lastRunVersion` | `string` | -- | Versión de Milady de la última ejecución del asistente |
+| `lastRunVersion` | `string` | -- | Versión de Eliza de la última ejecución del asistente |
 | `lastRunCommit` | `string` | -- | Commit de Git de la última ejecución del asistente |
 | `lastRunCommand` | `string` | -- | Comando usado en la última ejecución del asistente |
 | `lastRunMode` | `"local" \| "remote"` | -- | Si el asistente se ejecutó local o remotamente |
@@ -320,7 +320,7 @@ Automatización del navegador y configuración del Chrome DevTools Protocol (CDP
 | `cdpUrl` | `string` | -- | URL base del endpoint CDP (para navegadores remotos) |
 | `remoteCdpTimeoutMs` | `number` | `1500` | Tiempo de espera HTTP para CDP remoto (ms) |
 | `remoteCdpHandshakeTimeoutMs` | `number` | `max(remoteCdpTimeoutMs * 2, 2000)` | Tiempo de espera del handshake WebSocket para CDP remoto (ms) |
-| `color` | `string` | `#FF4500` | Color de acento para el perfil de navegador de Milady (hex) |
+| `color` | `string` | `#FF4500` | Color de acento para el perfil de navegador de Eliza (hex) |
 | `executablePath` | `string` | -- | Anular la ruta del ejecutable del navegador (todas las plataformas) |
 | `headless` | `boolean` | `false` | Iniciar Chrome en modo headless |
 | `noSandbox` | `boolean` | `false` | Pasar `--no-sandbox` a Chrome (contenedores Linux) |
@@ -337,7 +337,7 @@ Automatización del navegador y configuración del Chrome DevTools Protocol (CDP
 |-------|------|---------|-------------|
 | `cdpPort` | `number` | -- | Puerto CDP para este perfil (asignado una vez, persistido) |
 | `cdpUrl` | `string` | -- | URL CDP para este perfil (para Chrome remoto) |
-| `driver` | `"milady" \| "extension"` | `"milady"` | Controlador del perfil |
+| `driver` | `"eliza" \| "extension"` | `"eliza"` | Controlador del perfil |
 | `color` | `string` | -- | Color del perfil (hex, asignado automáticamente al crearlo) |
 
 ---
@@ -350,8 +350,8 @@ Configuración de apariencia de la interfaz de usuario.
 
 | Campo | Tipo | Predeterminado | Descripción |
 |-------|------|---------|-------------|
-| `seamColor` | `string` | -- | Color de acento para la interfaz de Milady (hex) |
-| `theme` | `"milady" \| "qt314" \| "web2000" \| "programmer" \| "haxor" \| "psycho"` | -- | Tema de interfaz preferido del usuario (establecido durante la incorporación) |
+| `seamColor` | `string` | -- | Color de acento para la interfaz de Eliza (hex) |
+| `theme` | `"eliza" \| "qt314" \| "web2000" \| "programmer" \| "haxor" \| "psycho"` | -- | Tema de interfaz preferido del usuario (establecido durante la incorporación) |
 | `assistant.name` | `string` | -- | Nombre para mostrar del asistente en las superficies de la interfaz |
 | `assistant.avatar` | `string` | -- | Emoji de avatar, texto corto o URL de imagen/URI de datos |
 
@@ -1240,7 +1240,7 @@ Configuración de descubrimiento de red (mDNS y DNS-SD de área amplia).
 | Campo | Tipo | Predeterminado | Descripción |
 |-------|------|---------|-------------|
 | `wideArea.enabled` | `boolean` | -- | Habilitar descubrimiento DNS-SD de área amplia |
-| `wideArea.domain` | `string` | -- | Dominio DNS-SD unicast (ej. `"milady.internal"`) |
+| `wideArea.domain` | `string` | -- | Dominio DNS-SD unicast (ej. `"eliza.internal"`) |
 | `mdns.mode` | `"off" \| "minimal" \| "full"` | `"minimal"` | Modo de difusión mDNS (`off` = deshabilitado, `minimal` = omitir cliPath/sshPort, `full` = incluir todo) |
 
 ---
@@ -1306,7 +1306,7 @@ Configuración del servidor Gateway: puerto, dirección de enlace, TLS, autentic
 | Campo | Tipo | Predeterminado | Descripción |
 |-------|------|---------|-------------|
 | `enabled` | `boolean` | -- | Servir la interfaz de control (predeterminado: `/`) |
-| `basePath` | `string` | -- | Prefijo de ruta base (ej. `"/milady"`) |
+| `basePath` | `string` | -- | Prefijo de ruta base (ej. `"/eliza"`) |
 | `root` | `string` | -- | Raíz del sistema de archivos para activos de la interfaz de control (predeterminado: `dist/control-ui`) |
 | `allowedOrigins` | `string[]` | -- | Orígenes de navegador permitidos para conexiones WebSocket |
 | `allowInsecureAuth` | `boolean` | `false` | Permitir autenticación solo por token sobre HTTP inseguro |
@@ -1467,7 +1467,7 @@ Proveedor de base de datos y configuración de conexión.
 
 | Campo | Tipo | Predeterminado | Descripción |
 |-------|------|---------|-------------|
-| `dataDir` | `string` | `~/.milady/workspace/.eliza/.elizadb` | Directorio de datos de PGLite |
+| `dataDir` | `string` | `~/.eliza/workspace/.eliza/.elizadb` | Directorio de datos de PGLite |
 
 <div id="database.postgres">
 ### `database.postgres`
@@ -1669,13 +1669,13 @@ Definiciones de servidores MCP (Model Context Protocol).
 ## `registry`
 </div>
 
-Registro de agentes ERC-8004 y configuración de la colección NFT MiladyMaker.
+Registro de agentes ERC-8004 y configuración de la colección NFT ElizaMaker.
 
 | Campo | Tipo | Predeterminado | Descripción |
 |-------|------|---------|-------------|
 | `mainnetRpc` | `string` | -- | URL RPC de mainnet de Ethereum (o Anvil local) |
-| `registryAddress` | `string` | -- | Dirección del contrato MiladyAgentRegistry |
-| `collectionAddress` | `string` | -- | Dirección del contrato de la colección MiladyMaker |
+| `registryAddress` | `string` | -- | Dirección del contrato ElizaAgentRegistry |
+| `collectionAddress` | `string` | -- | Dirección del contrato de la colección ElizaMaker |
 
 ---
 

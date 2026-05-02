@@ -1,7 +1,7 @@
 ---
 title: "Action Catalog"
 sidebarTitle: "Action Catalog"
-description: "Complete reference of all 151 actions available across Milady plugins."
+description: "Complete reference of all 151 actions available across Eliza plugins."
 ---
 
 # Action Catalog

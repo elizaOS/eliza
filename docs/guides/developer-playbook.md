@@ -1,8 +1,8 @@
 ---
 title: Developer Playbook
 sidebarTitle: Dev Playbook
-summary: Practical workflows and quality gates for shipping reliable, review-ready changes to Milady.
-description: Practical workflows, checklists, and quality gates for contributing to Milady reliably.
+summary: Practical workflows and quality gates for shipping reliable, review-ready changes to Eliza.
+description: Practical workflows, checklists, and quality gates for contributing to Eliza reliably.
 ---
 
 This playbook is the practical "how we build" companion to the contribution policy docs.

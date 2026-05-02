@@ -426,9 +426,9 @@ async function requireMockGmailMessage(
 }
 
 async function seedGmailInbox(seed: GmailInboxSeed): Promise<string | undefined> {
-  const baseUrl = process.env.MILADY_MOCK_GOOGLE_BASE;
+  const baseUrl = process.env.ELIZA_MOCK_GOOGLE_BASE;
   if (typeof baseUrl !== "string" || !isLoopbackUrl(baseUrl)) {
-    return "gmailInbox seed requires MILADY_MOCK_GOOGLE_BASE to point at the loopback Google mock";
+    return "gmailInbox seed requires ELIZA_MOCK_GOOGLE_BASE to point at the loopback Google mock";
   }
   const mockBaseUrl = baseUrl;
 

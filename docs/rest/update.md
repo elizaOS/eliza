@@ -4,7 +4,7 @@ sidebarTitle: "Update"
 description: "REST API endpoints for checking for updates and switching release channels."
 ---
 
-The update API lets you check for new Milady versions and switch between release channels (stable, beta, nightly). It reports the current version, installation method, and available updates across all channels.
+The update API lets you check for new Eliza versions and switch between release channels (stable, beta, nightly). It reports the current version, installation method, and available updates across all channels.
 
 ## Endpoints
 
@@ -53,7 +53,7 @@ Returns the current version, whether an update is available, and the latest vers
 |-------|------|-------------|
 | `currentVersion` | string | Currently running version |
 | `channel` | string | Active release channel (`stable`, `beta`, or `nightly`) |
-| `installMethod` | string | How Milady was installed (`npm`, `bun`, `binary`, etc.) |
+| `installMethod` | string | How Eliza was installed (`npm`, `bun`, `binary`, etc.) |
 | `updateAvailable` | boolean | Whether a newer version exists for the current channel |
 | `latestVersion` | string\|null | Latest version available for the current channel |
 | `channels` | object | Latest version for each channel |

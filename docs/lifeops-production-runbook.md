@@ -5,9 +5,9 @@ This runbook covers deployment validation, monitoring, alerting inputs, and roll
 ## Preconditions
 
 - Build and tests pass for the life-ops suites.
-- API auth is configured for any non-loopback deployment via `MILADY_API_TOKEN` or `ELIZA_API_TOKEN`.
+- API auth is configured for any non-loopback deployment via `ELIZA_API_TOKEN` or `ELIZA_API_TOKEN`.
 - Connector credentials are provided only through environment variables:
-  - Google OAuth: `MILADY_GOOGLE_OAUTH_*` or `ELIZA_GOOGLE_OAUTH_*`
+  - Google OAuth: `ELIZA_GOOGLE_OAUTH_*` or `ELIZA_GOOGLE_OAUTH_*`
   - Twilio: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`
   - X: `TWITTER_API_KEY`, `TWITTER_API_SECRET_KEY`, `TWITTER_ACCESS_TOKEN`, `TWITTER_ACCESS_TOKEN_SECRET`
 
@@ -16,17 +16,17 @@ This runbook covers deployment validation, monitoring, alerting inputs, and roll
 Run this against every deployed origin after rollout and on a recurring monitor:
 
 ```bash
-MILADY_LIFEOPS_BASE_URLS=https://app.example.com \
-MILADY_SMOKE_API_TOKEN=$MILADY_API_TOKEN \
+ELIZA_LIFEOPS_BASE_URLS=https://app.example.com \
+ELIZA_SMOKE_API_TOKEN=$ELIZA_API_TOKEN \
 node scripts/smoke-lifeops.mjs
 ```
 
 If Google Calendar is expected to be connected in the target environment, require that explicitly:
 
 ```bash
-MILADY_LIFEOPS_BASE_URLS=https://app.example.com \
-MILADY_SMOKE_API_TOKEN=$MILADY_API_TOKEN \
-MILADY_LIFEOPS_EXPECT_GOOGLE_CONNECTED=true \
+ELIZA_LIFEOPS_BASE_URLS=https://app.example.com \
+ELIZA_SMOKE_API_TOKEN=$ELIZA_API_TOKEN \
+ELIZA_LIFEOPS_EXPECT_GOOGLE_CONNECTED=true \
 node scripts/smoke-lifeops.mjs
 ```
 
@@ -36,7 +36,7 @@ The smoke check validates:
 - `GET /api/lifeops/browser/sessions`
 - `GET /api/lifeops/connectors/google/status`
 - `GET /api/lifeops/calendar/next-context?timeZone=UTC` when Google has Calendar capability
-- `GET /api/lifeops/gmail/triage?maxResults=5` when Google has Gmail triage capability or `MILADY_LIFEOPS_EXPECT_GMAIL_TRIAGE=true`
+- `GET /api/lifeops/gmail/triage?maxResults=5` when Google has Gmail triage capability or `ELIZA_LIFEOPS_EXPECT_GMAIL_TRIAGE=true`
 
 The deploy workflow also runs this automatically on the app origin in [deploy-origin-smoke.yml](../.github/workflows/deploy-origin-smoke.yml).
 
@@ -44,9 +44,9 @@ The deploy workflow also runs this automatically on the app origin in [deploy-or
 
 - Live connector tests remain env-gated and will stay skipped until real Google/Twilio credentials and callback marker files are provided.
 - `smoke-lifeops` only validates capabilities that are actually granted. A Gmail-only Google grant should not be forced through Calendar routes, and a Calendar-only grant should not be forced through Gmail routes.
-- For auth-protected deployments, `MILADY_SMOKE_API_TOKEN` or `ELIZA_SMOKE_API_TOKEN` must be populated in the deployment smoke environment.
+- For auth-protected deployments, `ELIZA_SMOKE_API_TOKEN` or `ELIZA_SMOKE_API_TOKEN` must be populated in the deployment smoke environment.
 - A green life-ops smoke run does not clear the workspace dependency audit. Use `bun run audit:deps` for the full advisory inventory and `bun run audit:deps:release` for the deployment gate.
-- As of April 4, 2026, the full audit still reports `GHSA-848j-6mx2-7j84` (`elliptic`) through `@elizaos/core` in `milady-cloud-agent`. There is no newer published `elliptic` release to force, so the release gate is currently set to `moderate+` while that upstream low-severity advisory is tracked separately.
+- As of April 4, 2026, the full audit still reports `GHSA-848j-6mx2-7j84` (`elliptic`) through `@elizaos/core` in `eliza-cloud-agent`. There is no newer published `elliptic` release to force, so the release gate is currently set to `moderate+` while that upstream low-severity advisory is tracked separately.
 
 ## Monitoring Signals
 

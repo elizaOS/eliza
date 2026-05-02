@@ -35,7 +35,7 @@ Returns the agent's current state, name, model, uptime, cloud connection status,
 ```json
 {
   "state": "running",
-  "agentName": "Milady",
+  "agentName": "Eliza",
   "model": "@elizaos/plugin-anthropic",
   "startedAt": 1718000000000,
   "uptime": 3600000,
@@ -134,7 +134,7 @@ Deep runtime introspection endpoint for advanced debugging. Returns detailed inf
   "meta": {
     "agentId": "uuid",
     "agentState": "running",
-    "agentName": "Milady",
+    "agentName": "Eliza",
     "model": "@elizaos/plugin-anthropic",
     "pluginCount": 12,
     "actionCount": 45,
@@ -223,7 +223,7 @@ Restart the server process. Sets the agent state to `restarting`, broadcasts a s
 
 ### GET /api/config
 
-Returns the full Milady configuration with secret values redacted.
+Returns the full Eliza configuration with secret values redacted.
 
 **Response**
 
@@ -233,7 +233,7 @@ The full config object — structure varies based on what has been configured. S
 
 ### GET /api/config/schema
 
-Returns the JSON schema for the Milady configuration file. Useful for building dynamic configuration UIs.
+Returns the JSON schema for the Eliza configuration file. Useful for building dynamic configuration UIs.
 
 **Response**
 

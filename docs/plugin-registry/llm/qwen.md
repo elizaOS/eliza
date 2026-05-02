@@ -1,30 +1,30 @@
 ---
 title: "Qwen Plugin"
 sidebarTitle: "Qwen"
-description: "Qwen model provider for Milady — access Alibaba Cloud's Qwen language models."
+description: "Qwen model provider for Eliza — access Alibaba Cloud's Qwen language models."
 ---
 
 <Warning>
-This plugin is not yet available in the Milady plugin registry. To use Qwen models today, configure them through the [OpenRouter plugin](/plugin-registry/llm/openrouter) using the appropriate model ID.
+This plugin is not yet available in the Eliza plugin registry. To use Qwen models today, configure them through the [OpenRouter plugin](/plugin-registry/llm/openrouter) using the appropriate model ID.
 </Warning>
 
-The Qwen plugin connects Milady agents to Alibaba Cloud's Qwen (Tongyi Qianwen) language models, providing access to multilingual models with strong Chinese and English capabilities.
+The Qwen plugin connects Eliza agents to Alibaba Cloud's Qwen (Tongyi Qianwen) language models, providing access to multilingual models with strong Chinese and English capabilities.
 
-> **On-demand plugin.** This plugin is resolved from the remote elizaOS plugin registry and auto-installs when configured. It is not included in Milady's bundled `plugins.json` index.
+> **On-demand plugin.** This plugin is resolved from the remote elizaOS plugin registry and auto-installs when configured. It is not included in Eliza's bundled `plugins.json` index.
 
 **Package:** `@elizaos/plugin-qwen`
 
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-qwen
+eliza plugins install @elizaos/plugin-qwen
 ```
 
 ## Configuration
 
 Qwen does not have an env-var auto-enable trigger. Enable it explicitly in your config:
 
-### milady.json Example
+### eliza.json Example
 
 ```json
 {

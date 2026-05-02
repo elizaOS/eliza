@@ -4,7 +4,7 @@ sidebarTitle: "Mémoire"
 description: "Persistance de la mémoire, génération d'embeddings, recherche vectorielle, types de mémoire et l'API de récupération."
 ---
 
-Le système de mémoire de Milady est soutenu par `@elizaos/plugin-sql` pour la persistance et `@elizaos/plugin-local-embedding` pour les embeddings vectoriels. Cette page couvre l'infrastructure de mémoire du point de vue du runtime.
+Le système de mémoire de Eliza est soutenu par `@elizaos/plugin-sql` pour la persistance et `@elizaos/plugin-local-embedding` pour les embeddings vectoriels. Cette page couvre l'infrastructure de mémoire du point de vue du runtime.
 
 <div id="memory-architecture">
 
@@ -36,13 +36,13 @@ Memory retrieval → injected into context
 
 </div>
 
-PGLite est une compilation WebAssembly embarquée de PostgreSQL qui s'exécute dans le processus Node.js sans nécessiter de serveur de base de données externe. Milady configure le répertoire de données via `PGLITE_DATA_DIR` :
+PGLite est une compilation WebAssembly embarquée de PostgreSQL qui s'exécute dans le processus Node.js sans nécessiter de serveur de base de données externe. Eliza configure le répertoire de données via `PGLITE_DATA_DIR` :
 
 ```
-Default: ~/.milady/workspace/.eliza/.elizadb
+Default: ~/.eliza/workspace/.eliza/.elizadb
 ```
 
-Le répertoire est créé au démarrage s'il n'existe pas. Après `adapter.init()`, Milady effectue une vérification de santé :
+Le répertoire est créé au démarrage s'il n'existe pas. Après `adapter.init()`, Eliza effectue une vérification de santé :
 
 ```typescript
 const files = await fs.readdir(pgliteDataDir);
@@ -57,7 +57,7 @@ if (files.length === 0) {
 
 </div>
 
-Si l'initialisation de PGLite échoue avec une erreur récupérable (abandon WASM ou erreur de schéma de migrations), Milady sauvegarde le répertoire de données existant et réessaie :
+Si l'initialisation de PGLite échoue avec une erreur récupérable (abandon WASM ou erreur de schéma de migrations), Eliza sauvegarde le répertoire de données existant et réessaie :
 
 ```typescript
 // Back up: <dataDir>.corrupt-<timestamp>
@@ -91,7 +91,7 @@ Pour les déploiements en production ou partagés, définissez `database.provide
 ```
 nomic-embed-text-v1.5.Q5_K_M.gguf
 Dimensions: 768
-Model directory: ~/.milady/models/
+Model directory: ~/.eliza/models/
 ```
 
 <div id="environment-variables">
@@ -110,7 +110,7 @@ Le plugin d'embedding lit la configuration à partir des variables d'environneme
 | `LOCAL_EMBEDDING_CONTEXT_SIZE` | auto | Taille de la fenêtre de contexte |
 | `LOCAL_EMBEDDING_GPU_LAYERS` | `"auto"` (Apple Silicon) / `"0"` (autres) | Accélération GPU |
 | `LOCAL_EMBEDDING_USE_MMAP` | `"false"` (Apple Silicon) / `"true"` (autres) | Chargement du modèle en mémoire mappée |
-| `MODELS_DIR` | `~/.milady/models` | Répertoire de stockage des modèles |
+| `MODELS_DIR` | `~/.eliza/models` | Répertoire de stockage des modèles |
 
 <div id="memory-config">
 
@@ -134,7 +134,7 @@ export type MemoryConfig = {
 
 </div>
 
-Le backend par défaut utilise la mémoire centrale d'elizaOS via `plugin-sql`. Il se configure dans `milady.json` :
+Le backend par défaut utilise la mémoire centrale d'elizaOS via `plugin-sql`. Il se configure dans `eliza.json` :
 
 ```json
 {
@@ -166,7 +166,7 @@ Le backend Quantum Memory Daemon prend en charge l'indexation de chemins de fich
       ],
       "sessions": {
         "enabled": true,
-        "exportDir": "~/.milady/sessions",
+        "exportDir": "~/.eliza/sessions",
         "retentionDays": 30
       },
       "update": {
@@ -203,7 +203,7 @@ Le backend Quantum Memory Daemon prend en charge l'indexation de chemins de fich
         "provider": "local",
         "store": {
           "driver": "sqlite",
-          "path": "~/.milady/memory-search.db",
+          "path": "~/.eliza/memory-search.db",
           "vector": {
             "enabled": true,
             "extensionPath": null
@@ -305,7 +305,7 @@ Indexer des répertoires supplémentaires ou des fichiers Markdown en complémen
 
 </div>
 
-Lorsque le contexte approche des limites de tokens, Milady peut élaguer les anciens résultats d'outils :
+Lorsque le contexte approche des limites de tokens, Eliza peut élaguer les anciens résultats d'outils :
 
 ```json
 {

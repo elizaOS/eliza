@@ -17,7 +17,7 @@ describe("vault-profile-resolver", () => {
     testVault = await createTestVault();
     previousEnv[SCRATCH_KEY] = process.env[SCRATCH_KEY];
     delete process.env[SCRATCH_KEY];
-    delete process.env.MILADY_DISABLE_VAULT_PROFILE_RESOLVER;
+    delete process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER;
   });
   afterEach(async () => {
     await testVault.dispose();
@@ -105,7 +105,7 @@ describe("vault-profile-resolver", () => {
     expect(process.env[SCRATCH_KEY]).toBe("sk-work");
   });
 
-  it("opt-out via MILADY_DISABLE_VAULT_PROFILE_RESOLVER=1", async () => {
+  it("opt-out via ELIZA_DISABLE_VAULT_PROFILE_RESOLVER=1", async () => {
     await testVault.vault.set(
       profileStorageKey(SCRATCH_KEY, "default"),
       "sk-default",
@@ -117,11 +117,11 @@ describe("vault-profile-resolver", () => {
       profiles: [{ id: "default", label: "Default" }],
       activeProfile: "default",
     });
-    process.env.MILADY_DISABLE_VAULT_PROFILE_RESOLVER = "1";
+    process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER = "1";
     const result = await applyVaultProfilesForAgent(testVault.vault, "agent-A");
     expect(result.overridden).toBe(0);
     expect(process.env[SCRATCH_KEY]).toBeUndefined();
-    delete process.env.MILADY_DISABLE_VAULT_PROFILE_RESOLVER;
+    delete process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER;
   });
 
   it("reports failed when the active profile blob is missing AND no bare value", async () => {

@@ -29,7 +29,7 @@ export function itWithout(envVarOrVars: string | string[]) {
 /** Skips unless the live-test gate is enabled. */
 export function skipWithoutLive(): void {
   if (!isLiveTestEnabled()) {
-    test.skip("MILADY_LIVE_TEST=1 or ELIZA_LIVE_TEST=1 not set");
+    test.skip("ELIZA_LIVE_TEST=1 or ELIZA_LIVE_TEST=1 not set");
   }
 }
 

@@ -1,10 +1,10 @@
 ---
 title: "S3 Storage Plugin"
 sidebarTitle: "S3 Storage"
-description: "S3-compatible object storage plugin for Milady — saving files, media, and generated artifacts."
+description: "S3-compatible object storage plugin for Eliza — saving files, media, and generated artifacts."
 ---
 
-The S3 Storage plugin enables Milady agents to store and retrieve files, media, and generated artifacts using any S3-compatible object storage service.
+The S3 Storage plugin enables Eliza agents to store and retrieve files, media, and generated artifacts using any S3-compatible object storage service.
 
 **Package:** `@elizaos/plugin-s3-storage`
 
@@ -15,7 +15,7 @@ This plugin provides an S3-backed storage layer for agent-generated content. It 
 ## Installation
 
 ```bash
-milady plugins install s3-storage
+eliza plugins install s3-storage
 ```
 
 ## Auto-Enable
@@ -37,7 +37,7 @@ Auto-enables when `S3_ACCESS_KEY_ID` is set.
 ```bash
 export S3_ACCESS_KEY_ID=minioadmin
 export S3_SECRET_ACCESS_KEY=minioadmin
-export S3_BUCKET=milady-storage
+export S3_BUCKET=eliza-storage
 export S3_ENDPOINT=http://localhost:9000
 ```
 
@@ -46,6 +46,6 @@ export S3_ENDPOINT=http://localhost:9000
 ```bash
 export S3_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
 export S3_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
-export S3_BUCKET=my-milady-bucket
+export S3_BUCKET=my-eliza-bucket
 export S3_REGION=us-west-2
 ```

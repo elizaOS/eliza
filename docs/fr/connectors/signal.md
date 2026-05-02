@@ -32,7 +32,7 @@ Le connecteur Signal est un plugin externe elizaOS qui relie votre agent à Sign
 
 </div>
 
-Dans `~/.milady/milady.json` :
+Dans `~/.eliza/eliza.json` :
 
 ```json
 {
@@ -75,13 +75,13 @@ signal-cli -a +1234567890 verify CODE
 signal-cli -a +1234567890 daemon --http localhost:8080
 ```
 
-<div id="3-configure-milady">
+<div id="3-configure-eliza">
 
-### 3. Configurer Milady
+### 3. Configurer Eliza
 
 </div>
 
-Ajoutez le bloc `connectors.signal` à `milady.json` comme indiqué dans la configuration minimale ci-dessus.
+Ajoutez le bloc `connectors.signal` à `eliza.json` comme indiqué dans la configuration minimale ci-dessus.
 
 <div id="disabling">
 
@@ -140,7 +140,7 @@ Vous n'avez pas besoin de les définir manuellement — elles sont dérivées de
 
 </div>
 
-Tous les champs sont définis sous `connectors.signal` dans `milady.json`.
+Tous les champs sont définis sous `connectors.signal` dans `eliza.json`.
 
 <div id="core-fields">
 

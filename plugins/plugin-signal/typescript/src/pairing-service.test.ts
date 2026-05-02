@@ -148,7 +148,7 @@ describe("resolveSignalCliExecutable", () => {
 
     await expect(
       resolveSignalCliExecutable({
-        env: { MILADY_SIGNAL_CLI_AUTO_INSTALL: "0" },
+        env: { ELIZA_SIGNAL_CLI_AUTO_INSTALL: "0" },
         execFile,
         existsSync: () => false,
         platform: "darwin",

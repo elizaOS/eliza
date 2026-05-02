@@ -14,7 +14,7 @@
  *
  * Behavioral coverage of the scenarios — i.e. that they actually pass when
  * executed — lives in CI under `bun run test:scenarios`, which runs
- * `milady-scenarios run plugins/plugin-app-control/typescript/test/scenarios`
+ * `eliza-scenarios run plugins/plugin-app-control/typescript/test/scenarios`
  * with a live LLM. This contract test guards the file shape so a scenario
  * that compiles but has nothing useful in it doesn't sneak through.
  */

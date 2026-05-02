@@ -4,7 +4,7 @@ sidebarTitle: "Skills"
 description: "Markdown-based extensions that teach the agent how to perform specific tasks."
 ---
 
-Skills are markdown-based extensions that teach the Milady agent how to perform specific tasks. Each skill is a folder containing a `SKILL.md` file with YAML frontmatter and instructional content that gets injected into the agent's context at runtime.
+Skills are markdown-based extensions that teach the Eliza agent how to perform specific tasks. Each skill is a folder containing a `SKILL.md` file with YAML frontmatter and instructional content that gets injected into the agent's context at runtime.
 
 ---
 
@@ -27,7 +27,7 @@ Skills can include:
 | Complexity | Low -- documentation-focused | High -- full programmatic control |
 | Runtime | Injected into agent prompts | Runs as executable code |
 | Use case | Task instructions, workflows | Actions, services, API integrations |
-| Installation | Drop a folder or install from marketplace | `milady plugins install` |
+| Installation | Drop a folder or install from marketplace | `eliza plugins install` |
 
 Use skills when you want to teach the agent a procedure. Use plugins when you need executable logic, background services, or API routes.
 
@@ -83,13 +83,13 @@ The YAML frontmatter between `---` delimiters is parsed to extract skill metadat
 | `command-tool` | string | No | Tool used for command execution (e.g., `bash`). |
 | `metadata` | object | No | Arbitrary additional data (JSON object). |
 
-**Parsing behavior:** The frontmatter parser extracts `name` and `description` from simple `key: value` lines. If the frontmatter is missing or malformed, Milady falls back to reading the first markdown heading as the skill name and the first non-heading paragraph as the description.
+**Parsing behavior:** The frontmatter parser extracts `name` and `description` from simple `key: value` lines. If the frontmatter is missing or malformed, Eliza falls back to reading the first markdown heading as the skill name and the first non-heading paragraph as the description.
 
 ---
 
 ## Skill Locations
 
-Milady discovers skills from multiple directories. Skills found in later (higher-precedence) directories override earlier ones with the same name.
+Eliza discovers skills from multiple directories. Skills found in later (higher-precedence) directories override earlier ones with the same name.
 
 ### 1. Bundled Skills (lowest precedence)
 
@@ -97,7 +97,7 @@ Shipped with the `@elizaos/plugin-agent-skills` package. These are automatically
 
 ### 2. Extra Directories
 
-Additional directories configured in `~/.milady/milady.json`:
+Additional directories configured in `~/.eliza/eliza.json`:
 
 ```json
 {
@@ -117,21 +117,21 @@ Additional directories configured in `~/.milady/milady.json`:
 Global user-level skills stored at:
 
 ```
-~/.milady/skills/
+~/.eliza/skills/
 ├── my-custom-skill/
 │   └── SKILL.md
 └── team-shared-skill/
     └── SKILL.md
 ```
 
-The catalog file is also stored here at `~/.milady/skills/catalog.json`.
+The catalog file is also stored here at `~/.eliza/skills/catalog.json`.
 
 ### 4. Workspace Skills
 
 Project-local skills in the agent's workspace directory:
 
 ```
-~/.milady/workspace/skills/
+~/.eliza/workspace/skills/
 ├── project-specific-skill/
 │   └── SKILL.md
 └── override-bundled-skill/
@@ -143,7 +143,7 @@ Project-local skills in the agent's workspace directory:
 Skills installed from the marketplace are placed under:
 
 ```
-~/.milady/workspace/skills/.marketplace/
+~/.eliza/workspace/skills/.marketplace/
 ├── content-marketer/
 │   ├── SKILL.md
 │   └── .scan-results.json
@@ -152,7 +152,7 @@ Skills installed from the marketplace are placed under:
     └── .scan-results.json
 ```
 
-Install records are tracked in `~/.milady/workspace/skills/.cache/marketplace-installs.json`.
+Install records are tracked in `~/.eliza/workspace/skills/.cache/marketplace-installs.json`.
 
 ---
 
@@ -162,7 +162,7 @@ When two skills share the same name, the higher-precedence source wins. The full
 
 1. **Bundled skills** -- from `@elizaos/plugin-agent-skills`
 2. **Extra directories** -- from `skills.load.extraDirs` config
-3. **Managed skills** -- from `~/.milady/skills/`
+3. **Managed skills** -- from `~/.eliza/skills/`
 4. **Workspace skills** -- from `{workspace}/skills/`
 5. **Marketplace skills** -- from `{workspace}/skills/.marketplace/`
 
@@ -176,7 +176,7 @@ Whether a skill is active is determined by this cascade (highest priority first)
 4. **`skills.allowBundled`** -- config allow list (whitelist mode: only listed skills load)
 5. **Default** -- enabled
 
-Configuration example in `~/.milady/milady.json`:
+Configuration example in `~/.eliza/eliza.json`:
 
 ```json
 {
@@ -206,12 +206,12 @@ The marketplace URL is resolved from environment variables in this order:
 3. `SKILLS_MARKETPLACE_URL`
 4. Default: `https://clawhub.ai`
 
-If no registry is configured, Milady automatically sets `SKILLS_REGISTRY=https://clawhub.ai` at startup.
+If no registry is configured, Eliza automatically sets `SKILLS_REGISTRY=https://clawhub.ai` at startup.
 
 For the legacy SkillsMP marketplace, set the `SKILLSMP_API_KEY` environment variable:
 
 ```bash
-export MILADY_SKILLSMP_API_KEY="your-api-key"
+export ELIZA_SKILLSMP_API_KEY="your-api-key"
 ```
 
 ### Searching the Marketplace
@@ -358,7 +358,7 @@ Scan results are persisted as `.scan-results.json` inside the skill directory:
   },
   "findings": [],
   "manifestFindings": [],
-  "skillPath": "/Users/you/.milady/workspace/skills/.marketplace/my-skill"
+  "skillPath": "/Users/you/.eliza/workspace/skills/.marketplace/my-skill"
 }
 ```
 
@@ -386,9 +386,9 @@ The skill catalog provides a local, cached index of all available skills from th
 
 The catalog client checks these paths in order:
 
-1. `MILADY_SKILLS_CATALOG` environment variable (if set, used exclusively)
+1. `ELIZA_SKILLS_CATALOG` environment variable (if set, used exclusively)
 2. `skills/.cache/catalog.json` relative to the package root (walks up to 5 parent directories)
-3. `~/.milady/skills/catalog.json` (home directory fallback)
+3. `~/.eliza/skills/catalog.json` (home directory fallback)
 
 ### Catalog Entry Shape
 
@@ -472,13 +472,13 @@ my-skill/
 For a workspace-local skill:
 
 ```bash
-mkdir -p ~/.milady/workspace/skills/my-tool
+mkdir -p ~/.eliza/workspace/skills/my-tool
 ```
 
 For a globally available skill:
 
 ```bash
-mkdir -p ~/.milady/skills/my-tool
+mkdir -p ~/.eliza/skills/my-tool
 ```
 
 ### Step 2: Write SKILL.md
@@ -617,7 +617,7 @@ When asked to review a PR:
 User: "Review PR #42"
 Agent: Fetches diff, analyzes changes, posts review comment
 
-User: "Review the latest PR on milady-ai/milady"
+User: "Review the latest PR on eliza-ai/eliza"
 Agent: Finds latest PR, reviews it
 ```
 
@@ -657,7 +657,7 @@ Skills are discovered from multiple locations. When duplicate names exist, highe
 
 1. **Marketplace skills** (`{workspace}/skills/.marketplace/`) -- highest
 2. **Workspace skills** (`{workspace}/skills/`)
-3. **Managed skills** (`~/.milady/skills/`)
+3. **Managed skills** (`~/.eliza/skills/`)
 4. **Extra directories** (from `skills.load.extraDirs` config)
 5. **Bundled skills** (from `@elizaos/plugin-agent-skills`) -- lowest
 
@@ -784,12 +784,12 @@ apt install my-tool   # Linux
 
 | Variable | Description |
 |----------|-------------|
-| `MILADY_SKILLS_CATALOG` | Override the catalog file path |
+| `ELIZA_SKILLS_CATALOG` | Override the catalog file path |
 | `SKILLS_REGISTRY` | Marketplace registry URL (default: `https://clawhub.ai`) |
 | `CLAWHUB_REGISTRY` | Alternative to `SKILLS_REGISTRY` |
 | `SKILLS_MARKETPLACE_URL` | Alternative to `SKILLS_REGISTRY` |
 | `SKILLSMP_API_KEY` | API key for the legacy SkillsMP marketplace |
-| `MILADY_STATE_DIR` | Override the base state directory (default: `~/.milady`) |
+| `ELIZA_STATE_DIR` | Override the base state directory (default: `~/.eliza`) |
 | `BUNDLED_SKILLS_DIRS` | Set by runtime -- path to bundled skills |
 | `WORKSPACE_SKILLS_DIR` | Set by runtime -- path to workspace skills |
 | `EXTRA_SKILLS_DIRS` | Set by runtime -- comma-separated extra skill directories |
@@ -805,7 +805,7 @@ apt install my-tool   # Linux
 1. Verify the skills plugin is loaded: `GET /api/skills` should return a non-empty list.
 2. For marketplace installs, confirm registry connectivity: `GET /api/skills/marketplace/config` should show `configured: true` or a reachable default registry.
 3. For catalog browsing, confirm the catalog file exists at one of the expected paths (see [Catalog File Locations](#catalog-file-locations) above).
-4. Ensure `~/.milady/workspace/skills/` is writable for marketplace and workspace skill installs.
+4. Ensure `~/.eliza/workspace/skills/` is writable for marketplace and workspace skill installs.
 5. For legacy SkillsMP marketplace, set `SKILLSMP_API_KEY` in the environment.
 
 ### Failure Modes
@@ -841,8 +841,8 @@ apt install my-tool   # Linux
 
 ### Recovery Procedures
 
-1. **Corrupted marketplace install:** Delete `~/.milady/workspace/skills/.marketplace/<skill-id>/` and remove its entry from `~/.milady/workspace/skills/.cache/marketplace-installs.json`, then re-install.
-2. **Catalog file missing:** Re-install or update `@elizaos/plugin-agent-skills` to restore the bundled catalog. Alternatively, copy a known-good `catalog.json` to `~/.milady/skills/catalog.json`.
+1. **Corrupted marketplace install:** Delete `~/.eliza/workspace/skills/.marketplace/<skill-id>/` and remove its entry from `~/.eliza/workspace/skills/.cache/marketplace-installs.json`, then re-install.
+2. **Catalog file missing:** Re-install or update `@elizaos/plugin-agent-skills` to restore the bundled catalog. Alternatively, copy a known-good `catalog.json` to `~/.eliza/skills/catalog.json`.
 3. **Skill override conflict:** If a workspace skill unexpectedly overrides a bundled skill, rename the workspace skill directory or move it to a different location. Higher-precedence sources always win.
 
 ### Verification Commands

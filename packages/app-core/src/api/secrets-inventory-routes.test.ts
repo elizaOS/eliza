@@ -65,7 +65,7 @@ describe("secrets-inventory routes", () => {
 
   beforeEach(async () => {
     harness = null;
-    workDir = await fs.mkdtemp(join(tmpdir(), "milady-inv-routes-"));
+    workDir = await fs.mkdtemp(join(tmpdir(), "eliza-inv-routes-"));
     vault = createVault({
       workDir,
       masterKey: inMemoryMasterKey(generateMasterKey()),

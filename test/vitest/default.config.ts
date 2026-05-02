@@ -182,7 +182,7 @@ const vitestInlineDeps = [
   "react",
   "react-dom",
   "react-test-renderer",
-  /^@miladyai\/shared/,
+  /^@elizaai\/shared/,
   /^@elizaos\/plugin-/,
   /^@elizaos\/shared/,
   "zod",
@@ -357,7 +357,7 @@ const vitestResolveAlias: ModuleAlias[] = [
     "app-knowledge",
   ]),
   ...getSharedSourceAliases(sharedSourceRoot, {
-    includeMiladyAlias: true,
+    includeElizaAlias: true,
   }),
   ...getUiSourceAliases(uiSourceRoot),
 ];

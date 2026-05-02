@@ -17,7 +17,7 @@ const AGENT_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" as UUID;
 function makeRuntime(overrides: Partial<AgentRuntime>): AgentRuntime {
   return {
     agentId: AGENT_ID,
-    character: { name: "Milady" },
+    character: { name: "Eliza" },
     ensureConnection: vi.fn(async () => {}),
     ...overrides,
   } as unknown as AgentRuntime;
@@ -46,7 +46,7 @@ function makeContext(params: {
       pathname: params.pathname,
       url,
       runtime: params.runtime,
-      agentName: "Milady",
+      agentName: "Eliza",
       json: (_res, data, status = 200) => {
         capture.status = status;
         capture.body = data;

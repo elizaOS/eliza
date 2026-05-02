@@ -586,7 +586,7 @@ export async function handleLocalInferenceCompatRoutes(
           sendJsonErrorResponse(
             res,
             409,
-            "Model was discovered from another tool; Milady will not delete files it does not own",
+            "Model was discovered from another tool; Eliza will not delete files it does not own",
           );
         } else {
           sendJsonErrorResponse(res, 404, "Model not installed");

@@ -7,9 +7,9 @@
  */
 
 interface ViteEnv {
-  VITE_MILADY_AGENT_URL?: string;
-  VITE_MILADY_APNS_ENABLED?: string;
-  VITE_MILADY_LOG_LEVEL?: string;
+  VITE_ELIZA_AGENT_URL?: string;
+  VITE_ELIZA_APNS_ENABLED?: string;
+  VITE_ELIZA_LOG_LEVEL?: string;
   MODE?: string;
 }
 
@@ -19,12 +19,12 @@ function readEnv(): ViteEnv {
 }
 
 export function agentUrl(): string | null {
-  const raw = readEnv().VITE_MILADY_AGENT_URL?.trim();
+  const raw = readEnv().VITE_ELIZA_AGENT_URL?.trim();
   return raw && raw.length > 0 ? raw : null;
 }
 
 export function apnsEnabled(): boolean {
-  return readEnv().VITE_MILADY_APNS_ENABLED === "1";
+  return readEnv().VITE_ELIZA_APNS_ENABLED === "1";
 }
 
 export function isDev(): boolean {

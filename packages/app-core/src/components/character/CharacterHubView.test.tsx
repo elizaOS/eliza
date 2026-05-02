@@ -163,7 +163,7 @@ const experience: ExperienceRecord = {
 const character = {
   bio: [],
   messageExamples: [],
-  name: "Milady",
+  name: "Eliza",
   postExamples: [],
   style: {
     all: [],
@@ -216,7 +216,7 @@ describe("CharacterHubView experience tab", () => {
     });
     clientMock.fetch.mockResolvedValue({ skills: [] });
     clientMock.updateCharacter.mockResolvedValue({
-      agentName: "Milady",
+      agentName: "Eliza",
       character,
       ok: true,
     });

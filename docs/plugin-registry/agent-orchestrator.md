@@ -1,16 +1,16 @@
 ---
 title: "Agent Orchestrator Plugin"
 sidebarTitle: "Agent Orchestrator"
-description: "Task-agent orchestration plugin for Milady — spawn and manage open-ended CLI task agents via PTY."
+description: "Task-agent orchestration plugin for Eliza — spawn and manage open-ended CLI task agents via PTY."
 ---
 
-The Agent Orchestrator plugin enables Milady to spawn and manage open-ended CLI task agents through PTY sessions, allowing agents to delegate complex tasks to specialized child agents.
+The Agent Orchestrator plugin enables Eliza to spawn and manage open-ended CLI task agents through PTY sessions, allowing agents to delegate complex tasks to specialized child agents.
 
 **Package:** `@elizaos/core` (core plugin — always loaded)
 
 ## Overview
 
-The Agent Orchestrator provides the backbone for multi-agent task delegation within Milady. It manages the lifecycle of spawned task agents, routing work to dedicated CLI processes via PTY and collecting their results. This enables an agent to break down complex, open-ended tasks and dispatch them to purpose-built sub-agents that run in parallel or in sequence.
+The Agent Orchestrator provides the backbone for multi-agent task delegation within Eliza. It manages the lifecycle of spawned task agents, routing work to dedicated CLI processes via PTY and collecting their results. This enables an agent to break down complex, open-ended tasks and dispatch them to purpose-built sub-agents that run in parallel or in sequence.
 
 ## Installation
 

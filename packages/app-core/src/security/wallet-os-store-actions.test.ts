@@ -41,7 +41,7 @@ describe("wallet-os-store-actions (vault-unified)", () => {
   const originalEnv: Record<string, string | undefined> = {};
 
   beforeEach(async () => {
-    workDir = await fs.mkdtemp(join(tmpdir(), "milady-wallet-store-"));
+    workDir = await fs.mkdtemp(join(tmpdir(), "eliza-wallet-store-"));
     vault = createVault({
       workDir,
       masterKey: inMemoryMasterKey(generateMasterKey()),

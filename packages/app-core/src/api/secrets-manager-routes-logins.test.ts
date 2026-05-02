@@ -82,7 +82,7 @@ describe("secrets-manager logins routes", () => {
 
   beforeEach(async () => {
     harness = null;
-    workDir = await fs.mkdtemp(join(tmpdir(), "milady-logins-routes-"));
+    workDir = await fs.mkdtemp(join(tmpdir(), "eliza-logins-routes-"));
     // Inject a test vault under the shared singleton AND wire the
     // manager around the same vault with a stub exec so external
     // backend probes never reach the real OS or the user's `op`/`bw`.

@@ -24,7 +24,7 @@ export const VAULT_TABS: readonly VaultTab[] = [
   "routing",
 ] as const;
 
-const EVENT_NAME = "milady:secrets-manager-toggle";
+const EVENT_NAME = "eliza:secrets-manager-toggle";
 
 interface OpenIntent {
   readonly action: "open";

@@ -2,7 +2,7 @@ import { client, type RegistryAppInfo } from "../../api";
 import { isHiddenFromAppsView } from "./helpers";
 import { getInternalToolApps } from "./internal-tool-apps";
 import {
-  getAllOverlayApps,
+  getAvailableOverlayApps,
   overlayAppToRegistryInfo,
 } from "./overlay-app-registry";
 
@@ -23,7 +23,11 @@ export async function loadMergedCatalogApps({
   const installedApps =
     installedAppsResult.status === "fulfilled" ? installedAppsResult.value : [];
   const staticApps = [...getInternalToolApps(), ...catalogApps];
-  const overlayApps = getAllOverlayApps()
+  // `getAvailableOverlayApps()` drops `androidOnly: true` apps off Android
+  // so the WiFi / Contacts / Phone tiles never appear on iOS, desktop, or
+  // web — those builds have no Capacitor native bridge to satisfy the
+  // app's actions.
+  const overlayApps = getAvailableOverlayApps()
     .filter(
       (app) => !staticApps.some((candidate) => candidate.name === app.name),
     )

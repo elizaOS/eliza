@@ -1,0 +1,40 @@
+{
+  "name": "@elizaos/app-phone",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Phone overlay app for the Milady Android build — dialer, call log, and contact-driven calls backed by @elizaos/capacitor-phone.",
+  "main": "./src/index.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": "./src/index.ts",
+    "./ui": "./src/ui.ts",
+    "./plugin": "./src/plugin.ts",
+    "./register": "./src/register.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "bunx @biomejs/biome check src",
+    "test": "bunx vitest run --config ./vitest.config.ts"
+  },
+  "dependencies": {
+    "@elizaos/app-core": "workspace:*",
+    "@elizaos/capacitor-phone": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*",
+    "@elizaos/ui": "workspace:*",
+    "lucide-react": "^1.0.0"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "elizaos": {
+    "app": {
+      "displayName": "Phone",
+      "category": "system",
+      "androidOnly": true,
+      "heroImage": "assets/hero.png"
+    }
+  }
+}

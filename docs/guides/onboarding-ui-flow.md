@@ -1,8 +1,8 @@
 ---
 title: Onboarding UI flow
 sidebarTitle: Onboarding UI
-summary: How Milady moves from the startup chooser into the four-step onboarding wizard, and how that maps to canonical server and routing state.
-description: Architecture of Milady’s chooser-first startup and in-app onboarding wizard, including server selection, hosting vs provider separation, and the pure connection flow helpers.
+summary: How Eliza moves from the startup chooser into the four-step onboarding wizard, and how that maps to canonical server and routing state.
+description: Architecture of Eliza’s chooser-first startup and in-app onboarding wizard, including server selection, hosting vs provider separation, and the pure connection flow helpers.
 ---
 
 # Onboarding UI: chooser first, provider second
@@ -11,7 +11,7 @@ This guide describes the **in-app onboarding UI flow** and its relationship to t
 
 ## Current shape
 
-Milady now has two layers before the first chat:
+Eliza now has two layers before the first chat:
 
 1. **Startup chooser**
    The user chooses which server to use:
@@ -95,7 +95,7 @@ Relevant files:
 
 Inside the nested flow, the user is answering:
 
-- should Milady start a local server?
+- should Eliza start a local server?
 - should it connect to a remote or discovered server?
 - should it use Eliza Cloud as the server target?
 

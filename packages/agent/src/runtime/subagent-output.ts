@@ -8,8 +8,8 @@
  * message from the Claude Code session jsonl. This module reads that and
  * provides Discord-safe chunking.
  *
- * Path encoding mirrors Claude Code: `/home/milady/.milady/workspaces/abc`
- * becomes `-home-milady--milady-workspaces-abc` (every `/` and `.` maps to
+ * Path encoding mirrors Claude Code: `/home/eliza/.eliza/workspaces/abc`
+ * becomes `-home-eliza--eliza-workspaces-abc` (every `/` and `.` maps to
  * `-`; the sequence `/.` produces `--`).
  *
  * @module runtime/subagent-output

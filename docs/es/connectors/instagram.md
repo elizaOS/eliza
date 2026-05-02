@@ -24,7 +24,7 @@ El conector de Instagram es un plugin de elizaOS que conecta tu agente a Instagr
 |-------|-------|
 | Paquete | `@elizaos/plugin-instagram` |
 | Clave de configuración | `connectors.instagram` |
-| Instalación | `milady plugins install @elizaos/plugin-instagram` |
+| Instalación | `eliza plugins install @elizaos/plugin-instagram` |
 
 <div id="setup-requirements">
 

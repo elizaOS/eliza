@@ -265,8 +265,8 @@ async function resetTheAppFromApplicationMenu(): Promise<void> {
     });
 
   const autoConfirm =
-    process.env.MILADY_DESKTOP_TEST_AUTO_CONFIRM_DIALOGS === "1" ||
-    process.env.MILADY_DESKTOP_TEST_AUTO_CONFIRM_RESET === "1";
+    process.env.ELIZA_DESKTOP_TEST_AUTO_CONFIRM_DIALOGS === "1" ||
+    process.env.ELIZA_DESKTOP_TEST_AUTO_CONFIRM_RESET === "1";
   const response = autoConfirm
     ? 0
     : await Utils.showMessageBox({
@@ -1767,7 +1767,7 @@ async function setupUpdater(): Promise<void> {
         // show the modal. The keyboard accelerator
         // (⌘⌥⌃V on Mac / Ctrl+Alt+Shift+V on Win/Linux) flows
         // through this same path; the renderer's `keydown` listener
-        // also dispatches the same toggle directly when a Milady
+        // also dispatches the same toggle directly when a Eliza
         // window is already focused.
         void restoreWindow();
         sendToActiveRenderer("openSecretsManager", {});

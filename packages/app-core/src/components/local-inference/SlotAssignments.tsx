@@ -88,7 +88,7 @@ export function SlotAssignments({
         Local model assignments
       </h3>
       <p className="text-xs text-muted-foreground">
-        Milady defaults both text routes to the largest installed local model so
+        Eliza defaults both text routes to the largest installed local model so
         only one model has to stay in memory. Override a slot only when you
         explicitly want a different local model.
       </p>

@@ -25,22 +25,16 @@ import type { SkillFrontmatter } from "../src/types.js";
 
 function withCuratedTempDir<T>(callback: (stateDir: string) => T): T {
   const stateDir = mkdtempSync(join(tmpdir(), "skills-curated-"));
-  const previousState = process.env.MILADY_STATE_DIR;
-  const previousElizaState = process.env.ELIZA_STATE_DIR;
-  process.env.MILADY_STATE_DIR = stateDir;
-  // Clear so MILADY_STATE_DIR wins.
-  delete process.env.ELIZA_STATE_DIR;
+  const previousState = process.env.ELIZA_STATE_DIR;
+  process.env.ELIZA_STATE_DIR = stateDir;
   clearSkillsDirCache();
   try {
     return callback(stateDir);
   } finally {
     if (previousState === undefined) {
-      delete process.env.MILADY_STATE_DIR;
+      delete process.env.ELIZA_STATE_DIR;
     } else {
-      process.env.MILADY_STATE_DIR = previousState;
-    }
-    if (previousElizaState !== undefined) {
-      process.env.ELIZA_STATE_DIR = previousElizaState;
+      process.env.ELIZA_STATE_DIR = previousState;
     }
     clearSkillsDirCache();
     rmSync(stateDir, { recursive: true, force: true });
@@ -116,7 +110,7 @@ describe("serializeSkillFile", () => {
 });
 
 describe("curated namespace", () => {
-  it("exposes active and proposed dirs under MILADY_STATE_DIR", () => {
+  it("exposes active and proposed dirs under ELIZA_STATE_DIR", () => {
     withCuratedTempDir((stateDir) => {
       assert.strictEqual(
         getCuratedActiveDir(),

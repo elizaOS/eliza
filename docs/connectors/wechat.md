@@ -5,14 +5,14 @@ Connect your agent to WeChat for personal and group messaging via a third-party 
 > **Status:** The `@elizaos/plugin-wechat` package is not currently available in the plugin registry. This page documents the planned connector interface. Check the [plugin registry](/plugins/registry) for availability updates.
 
 <Warning>
-This connector is **not included** in the bundled plugin registry (`plugins.json`). It is a Milady-specific plugin that must be installed separately. Run `bun run setup:upstreams` to make it available from the local checkout.
+This connector is **not included** in the bundled plugin registry (`plugins.json`). It is a Eliza-specific plugin that must be installed separately. Run `bun run setup:upstreams` to make it available from the local checkout.
 </Warning>
 
 <Warning>
 The `@elizaos/plugin-wechat` package is not included in the bundled plugin registry (`plugins.json`). It may be available as an upstream elizaOS plugin. Install it manually from npm if available.
 </Warning>
 
-> **Availability:** `@elizaos/plugin-wechat` is a Milady-local plugin that is **not** included in the bundled `plugins.json` registry. It ships as a CI stub and requires the full plugin package to be available locally or via npm.
+> **Availability:** `@elizaos/plugin-wechat` is a Eliza-local plugin that is **not** included in the bundled `plugins.json` registry. It ships as a CI stub and requires the full plugin package to be available locally or via npm.
 
 ## Overview
 
@@ -29,7 +29,7 @@ The WeChat connector is a plugin that bridges your agent to WeChat via a user-su
 |------|----------|-------------|
 | `WECHAT_API_KEY` | Yes | Proxy service API key |
 
-Additional configuration is done via the `connectors.wechat` config in `~/.milady/milady.json`:
+Additional configuration is done via the `connectors.wechat` config in `~/.eliza/eliza.json`:
 
 | Config Field | Type | Default | Description |
 |------|------|---------|-------------|
@@ -43,7 +43,7 @@ Additional configuration is done via the `connectors.wechat` config in `~/.milad
 
 The connector auto-enables when `apiKey` is truthy at the top level, or an `accounts` entry has a truthy `apiKey`.
 
-Configure in `~/.milady/milady.json`:
+Configure in `~/.eliza/eliza.json`:
 
 ```json
 {
@@ -76,7 +76,7 @@ To explicitly disable the connector even when an API key is present:
 
 1. Obtain an API key and proxy service URL.
 2. Add the credentials to `connectors.wechat` in your config.
-3. Start Milady -- on first start, the plugin displays a QR code in the terminal.
+3. Start Eliza -- on first start, the plugin displays a QR code in the terminal.
 4. Scan the QR code with WeChat on your phone to link the session.
 5. Sessions persist automatically -- subsequent starts reuse the existing session unless it has expired.
 

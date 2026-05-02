@@ -23,7 +23,7 @@ Connect your agent to Microsoft Teams for DMs, team channels, and threaded conve
 
 The connector auto-enables when `botToken`, `token`, or `apiKey` is truthy in the connector config. The `appId`/`appPassword`/`tenantId` fields alone do not trigger auto-enable -- you must include one of the trigger fields or add the plugin to `plugins.allow`.
 
-Configure in `~/.milady/milady.json`:
+Configure in `~/.eliza/eliza.json`:
 
 ```json
 {
@@ -71,9 +71,9 @@ To disable:
 
 1. Register an Azure Bot in the [Azure Portal](https://portal.azure.com).
 2. Note the **App ID**, **App Password** (client secret), and **Tenant ID**.
-3. Configure the bot's messaging endpoint to point to your Milady instance.
+3. Configure the bot's messaging endpoint to point to your Eliza instance.
 4. Add the bot to Microsoft Teams via the Teams admin center.
-5. Add the credentials to your Milady config.
+5. Add the credentials to your Eliza config.
 6. Start your agent.
 
 ## Features
@@ -96,7 +96,7 @@ When the connector is loaded, the runtime can consume the following secrets from
 
 ## Full Configuration Reference
 
-All fields are defined under `connectors.msteams` in `milady.json`.
+All fields are defined under `connectors.msteams` in `eliza.json`.
 
 ### Core Fields
 

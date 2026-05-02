@@ -34,7 +34,7 @@ Rules:
 `scripts/disable-local-eliza-workspace.mjs` can run in rewrite-only mode (default), where it rewrites workspace dependency specifiers without renaming `eliza/` away.
 
 - Rewrite-only mode is compatible with source-present command paths.
-- Rename-away mode (`MILADY_DISABLE_LOCAL_UPSTREAMS_RENAME=1`) is not compatible with source-present command paths.
+- Rename-away mode (`ELIZA_DISABLE_LOCAL_UPSTREAMS_RENAME=1`) is not compatible with source-present command paths.
 
 ## Required Invariants
 

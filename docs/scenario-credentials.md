@@ -4,8 +4,8 @@ This document is the operator-facing playbook for provisioning every external te
 
 - Account identifiers (which test user / bot / workspace / API app to create)
 - Required permissions and scopes
-- How to capture credentials into the `milady-e2e` 1Password vault
-- The exact `MILADY_E2E_*` env-var names the `CredentialBroker` in `@elizaos/scenario-runner` resolves
+- How to capture credentials into the `eliza-e2e` 1Password vault
+- The exact `ELIZA_E2E_*` env-var names the `CredentialBroker` in `@elizaos/scenario-runner` resolves
 - Rotation schedule and the GitHub Actions rotation workflow
 - Per-integration side-effect isolation and cleanup contract
 
@@ -28,24 +28,24 @@ requires: {
 **Env-var prefix derivation rule:**
 
 ```
-service:tag  →  MILADY_E2E_<SERVICE>_<TAG>_*
+service:tag  →  ELIZA_E2E_<SERVICE>_<TAG>_*
 ```
 
 with `-` and `:` replaced by `_`, and the whole prefix upper-cased. The suffix varies per service (token, secret, ID, etc.) and is specified in each section below.
 
-All scenario-matrix env vars MUST start with `MILADY_E2E_`. Anything else in the environment is treated as untrusted by the broker and is NOT forwarded into the runtime.
+All scenario-matrix env vars MUST start with `ELIZA_E2E_`. Anything else in the environment is treated as untrusted by the broker and is NOT forwarded into the runtime.
 
 ---
 
-## Central vault — `milady-e2e` (1Password)
+## Central vault — `eliza-e2e` (1Password)
 
-Everything below lives in a 1Password vault named `milady-e2e`. Access control:
+Everything below lives in a 1Password vault named `eliza-e2e`. Access control:
 
 | Role            | People             | What they can do                                  |
 | --------------- | ------------------ | ------------------------------------------------- |
 | Owner           | 1 engineering lead | Rotate, revoke, add new items                     |
 | Operator        | 2–3 ops-on-call    | Read any item, add rotation entries               |
-| Service Account | `milady-e2e-ci`    | Read-only API access used by CI rotation workflow |
+| Service Account | `eliza-e2e-ci`    | Read-only API access used by CI rotation workflow |
 
 The 1Password CLI (`op`) is the canonical surface; never copy credentials to other vaults or to local `.env` files that aren't `.gitignore`d.
 
@@ -53,7 +53,7 @@ The 1Password CLI (`op`) is the canonical surface; never copy credentials to oth
 
 ```bash
 # One-time: sign in
-op signin --account milady.1password.com
+op signin --account eliza.1password.com
 
 # Fetch all scenario-matrix creds into a local .env file
 bun run scenarios:creds:pull     # implemented in scripts/scenario-creds-pull.mjs (T11)
@@ -63,7 +63,7 @@ This writes `.env.scenarios` at the repo root. The file is in `.gitignore`. The 
 
 ### Pushing credentials to GitHub Actions secrets
 
-A GitHub Actions workflow at `.github/workflows/rotate-e2e-secrets.yml` runs monthly (cron `0 4 1 * *`) and whenever `rotate-e2e-secrets` label is applied to an issue. It uses the `milady-e2e-ci` service account to read the vault and then updates every `MILADY_E2E_*` GitHub Actions secret via the `gh` CLI. See `.github/workflows/rotate-e2e-secrets.yml`.
+A GitHub Actions workflow at `.github/workflows/rotate-e2e-secrets.yml` runs monthly (cron `0 4 1 * *`) and whenever `rotate-e2e-secrets` label is applied to an issue. It uses the `eliza-e2e-ci` service account to read the vault and then updates every `ELIZA_E2E_*` GitHub Actions secret via the `gh` CLI. See `.github/workflows/rotate-e2e-secrets.yml`.
 
 ---
 
@@ -73,9 +73,9 @@ A GitHub Actions workflow at `.github/workflows/rotate-e2e-secrets.yml` runs mon
 
 **What to create**
 
-- Apple Developer Program membership under the `Milady E2E` organization (separate from the production Apple ID).
-- App Group `group.com.milady.e2e` for the iOS companion app bundle + BlueBubbles server.
-- Provisioning profile for `com.milady.e2e.companion` with `Push Notifications` capability.
+- Apple Developer Program membership under the `Eliza E2E` organization (separate from the production Apple ID).
+- App Group `group.com.eliza.e2e` for the iOS companion app bundle + BlueBubbles server.
+- Provisioning profile for `com.eliza.e2e.companion` with `Push Notifications` capability.
 - APNs key (`.p8`) with development + production permission.
 
 **Scopes / capabilities**
@@ -86,17 +86,17 @@ A GitHub Actions workflow at `.github/workflows/rotate-e2e-secrets.yml` runs mon
 
 **1Password items**
 
-- `milady-e2e / apple / team-id` — Team ID
-- `milady-e2e / apple / apns-key.p8` — APNs key (file attachment)
-- `milady-e2e / apple / apns-key-id` — APNs key ID
-- `milady-e2e / apple / apns-topic` — `com.milady.e2e.companion.voip`
+- `eliza-e2e / apple / team-id` — Team ID
+- `eliza-e2e / apple / apns-key.p8` — APNs key (file attachment)
+- `eliza-e2e / apple / apns-key-id` — APNs key ID
+- `eliza-e2e / apple / apns-topic` — `com.eliza.e2e.companion.voip`
 
 **Env vars**
 
-- `MILADY_E2E_APPLE_TEAM_ID`
-- `MILADY_E2E_APPLE_APNS_KEY_ID`
-- `MILADY_E2E_APPLE_APNS_KEY_P8` (base64-encoded PEM)
-- `MILADY_E2E_APPLE_APNS_TOPIC`
+- `ELIZA_E2E_APPLE_TEAM_ID`
+- `ELIZA_E2E_APPLE_APNS_KEY_ID`
+- `ELIZA_E2E_APPLE_APNS_KEY_P8` (base64-encoded PEM)
+- `ELIZA_E2E_APPLE_APNS_TOPIC`
 
 **Rotation** — annual, or after any staffing change on the Apple Developer account.
 
@@ -109,27 +109,27 @@ A GitHub Actions workflow at `.github/workflows/rotate-e2e-secrets.yml` runs mon
 **What to create**
 
 - Dedicated Mac mini (or Mac Studio) on the engineering LAN running macOS 14+.
-- Dedicated Apple ID `milady-e2e-imessage@<domain>` logged into iMessage on that Mac.
+- Dedicated Apple ID `eliza-e2e-imessage@<domain>` logged into iMessage on that Mac.
 - BlueBubbles server installed and bound to `127.0.0.1` behind a Tailscale ingress (not exposed to the public internet).
 - A dedicated test-only recipient directory: a second Apple ID on another device is the only allowed outbound target.
 
 **1Password items**
 
-- `milady-e2e / bluebubbles / server-url` — e.g. `http://bluebubbles-e2e.tail-scope.ts.net`
-- `milady-e2e / bluebubbles / password` — server password
-- `milady-e2e / bluebubbles / recipient-handle` — iMessage handle of the paired test recipient
+- `eliza-e2e / bluebubbles / server-url` — e.g. `http://bluebubbles-e2e.tail-scope.ts.net`
+- `eliza-e2e / bluebubbles / password` — server password
+- `eliza-e2e / bluebubbles / recipient-handle` — iMessage handle of the paired test recipient
 
 **Env vars**
 
-- `MILADY_E2E_BLUEBUBBLES_SERVER_URL`
-- `MILADY_E2E_BLUEBUBBLES_PASSWORD`
-- `MILADY_E2E_BLUEBUBBLES_RECIPIENT_HANDLE`
+- `ELIZA_E2E_BLUEBUBBLES_SERVER_URL`
+- `ELIZA_E2E_BLUEBUBBLES_PASSWORD`
+- `ELIZA_E2E_BLUEBUBBLES_RECIPIENT_HANDLE`
 
 **Rotation** — password every 30 days; Apple ID password every 90 days.
 
 **Side-effect isolation**
 
-- Scenarios MUST set recipient equal to `MILADY_E2E_BLUEBUBBLES_RECIPIENT_HANDLE`. The runner's iMessage send path rejects any other recipient.
+- Scenarios MUST set recipient equal to `ELIZA_E2E_BLUEBUBBLES_RECIPIENT_HANDLE`. The runner's iMessage send path rejects any other recipient.
 - All sent messages are prefixed with `[e2e-<runId>]` for easier audit.
 
 **Cleanup** — orphan sweeper (see §Orphan sweeper) deletes iMessage threads with `[e2e-` prefix older than 24h on the paired device. Because deletion is Apple-controlled, on-device cleanup is a "best effort" archive operation.
@@ -140,7 +140,7 @@ A GitHub Actions workflow at `.github/workflows/rotate-e2e-secrets.yml` runs mon
 
 **What to create**
 
-- Calendly Standard tier account for `milady-e2e-host@<domain>`.
+- Calendly Standard tier account for `eliza-e2e-host@<domain>`.
 - One event type named `E2E 30-min Sync` (30 minutes, single slot).
 - Personal access token (Developer API) scoped to that account.
 
@@ -150,15 +150,15 @@ A GitHub Actions workflow at `.github/workflows/rotate-e2e-secrets.yml` runs mon
 
 **1Password items**
 
-- `milady-e2e / calendly / access-token`
-- `milady-e2e / calendly / host-uri` — `https://calendly.com/milady-e2e-host`
-- `milady-e2e / calendly / event-type-uri`
+- `eliza-e2e / calendly / access-token`
+- `eliza-e2e / calendly / host-uri` — `https://calendly.com/eliza-e2e-host`
+- `eliza-e2e / calendly / event-type-uri`
 
 **Env vars**
 
-- `MILADY_E2E_CALENDLY_ACCESS_TOKEN`
-- `MILADY_E2E_CALENDLY_HOST_URI`
-- `MILADY_E2E_CALENDLY_EVENT_TYPE_URI`
+- `ELIZA_E2E_CALENDLY_ACCESS_TOKEN`
+- `ELIZA_E2E_CALENDLY_HOST_URI`
+- `ELIZA_E2E_CALENDLY_EVENT_TYPE_URI`
 
 **Rotation** — token every 60 days.
 
@@ -170,10 +170,10 @@ A GitHub Actions workflow at `.github/workflows/rotate-e2e-secrets.yml` runs mon
 
 **What to create**
 
-- Developer Application `Milady E2E` → Bot user.
-- A test guild `milady-e2e-guild` with a small number of channels: `#dm-relay-tests`, `#group-tests`, `#bot-commands`.
+- Developer Application `Eliza E2E` → Bot user.
+- A test guild `eliza-e2e-guild` with a small number of channels: `#dm-relay-tests`, `#group-tests`, `#bot-commands`.
 - Invite the bot with permissions `Send Messages, Read Message History, Manage Messages` (latter is needed for cleanup).
-- A second user account `milady-e2e-user` (personal Discord account with 2FA) used to simulate human DMs to the bot.
+- A second user account `eliza-e2e-user` (personal Discord account with 2FA) used to simulate human DMs to the bot.
 
 **Scopes**
 
@@ -182,28 +182,28 @@ A GitHub Actions workflow at `.github/workflows/rotate-e2e-secrets.yml` runs mon
 
 **1Password items**
 
-- `milady-e2e / discord / bot-token`
-- `milady-e2e / discord / client-id`
-- `milady-e2e / discord / client-secret`
-- `milady-e2e / discord / qa-guild-id` — already present in the repo's `discord-*-live.ts` as `DISCORD_QA_GUILD_ID="1051457140637827122"`; use a new test guild in its place
-- `milady-e2e / discord / qa-channel-id`
-- `milady-e2e / discord / user-relay-token` — OAuth refresh token for `milady-e2e-user`
+- `eliza-e2e / discord / bot-token`
+- `eliza-e2e / discord / client-id`
+- `eliza-e2e / discord / client-secret`
+- `eliza-e2e / discord / qa-guild-id` — already present in the repo's `discord-*-live.ts` as `DISCORD_QA_GUILD_ID="1051457140637827122"`; use a new test guild in its place
+- `eliza-e2e / discord / qa-channel-id`
+- `eliza-e2e / discord / user-relay-token` — OAuth refresh token for `eliza-e2e-user`
 
-**Env vars** (the matrix intentionally uses new `MILADY_E2E_*` prefixes rather than the existing `DISCORD_BOT_TOKEN` to keep scenario-matrix creds isolated from production)
+**Env vars** (the matrix intentionally uses new `ELIZA_E2E_*` prefixes rather than the existing `DISCORD_BOT_TOKEN` to keep scenario-matrix creds isolated from production)
 
-- `MILADY_E2E_DISCORD_BOT_TOKEN`
-- `MILADY_E2E_DISCORD_CLIENT_ID`
-- `MILADY_E2E_DISCORD_CLIENT_SECRET`
-- `MILADY_E2E_DISCORD_QA_GUILD_ID`
-- `MILADY_E2E_DISCORD_QA_CHANNEL_ID`
-- `MILADY_E2E_DISCORD_USER_RELAY_TOKEN`
+- `ELIZA_E2E_DISCORD_BOT_TOKEN`
+- `ELIZA_E2E_DISCORD_CLIENT_ID`
+- `ELIZA_E2E_DISCORD_CLIENT_SECRET`
+- `ELIZA_E2E_DISCORD_QA_GUILD_ID`
+- `ELIZA_E2E_DISCORD_QA_CHANNEL_ID`
+- `ELIZA_E2E_DISCORD_USER_RELAY_TOKEN`
 
 **Rotation** — bot token quarterly; OAuth refresh token whenever Discord invalidates it.
 
 **Side-effect isolation**
 
 - Bot only writes to the test guild.
-- DM simulation uses `milady-e2e-user` only — scenarios MUST NOT invoke arbitrary Discord user IDs.
+- DM simulation uses `eliza-e2e-user` only — scenarios MUST NOT invoke arbitrary Discord user IDs.
 
 **Cleanup** — orphan sweeper deletes messages authored by the bot older than 24h.
 
@@ -213,12 +213,12 @@ A GitHub Actions workflow at `.github/workflows/rotate-e2e-secrets.yml` runs mon
 
 **What to create**
 
-- A Google Workspace `milady-e2e.test` domain (any `.test` TLD or `.milady-e2e.dev` if a real TLD is needed for deliverability testing).
+- A Google Workspace `eliza-e2e.test` domain (any `.test` TLD or `.eliza-e2e.dev` if a real TLD is needed for deliverability testing).
 - Two mailboxes:
-  - `test-owner@milady-e2e.test` (the user being simulated)
-  - `test-agent@milady-e2e.test` (the agent's own Gmail account)
+  - `test-owner@eliza-e2e.test` (the user being simulated)
+  - `test-agent@eliza-e2e.test` (the agent's own Gmail account)
 - Admin-enabled Gmail API access, Calendar API access, People API access.
-- A GCP project `milady-e2e-gcp` with OAuth consent screen configured (Internal, since Workspace-internal).
+- A GCP project `eliza-e2e-gcp` with OAuth consent screen configured (Internal, since Workspace-internal).
 - OAuth client of type `Desktop app` for each mailbox. Use the Gmail send/modify/readonly scopes.
 
 **Scopes**
@@ -230,21 +230,21 @@ A GitHub Actions workflow at `.github/workflows/rotate-e2e-secrets.yml` runs mon
 
 **1Password items** (one pair per mailbox)
 
-- `milady-e2e / gmail / test-owner / client-id`
-- `milady-e2e / gmail / test-owner / client-secret`
-- `milady-e2e / gmail / test-owner / refresh-token`
+- `eliza-e2e / gmail / test-owner / client-id`
+- `eliza-e2e / gmail / test-owner / client-secret`
+- `eliza-e2e / gmail / test-owner / refresh-token`
 - (same three for `test-agent`)
 
 **Env vars**
 
-- `MILADY_E2E_GMAIL_TESTOWNER_CLIENT_ID`
-- `MILADY_E2E_GMAIL_TESTOWNER_CLIENT_SECRET`
-- `MILADY_E2E_GMAIL_TESTOWNER_REFRESH_TOKEN`
-- `MILADY_E2E_GMAIL_TESTOWNER_ADDRESS` — `test-owner@milady-e2e.test`
-- `MILADY_E2E_GMAIL_TESTAGENT_CLIENT_ID`
-- `MILADY_E2E_GMAIL_TESTAGENT_CLIENT_SECRET`
-- `MILADY_E2E_GMAIL_TESTAGENT_REFRESH_TOKEN`
-- `MILADY_E2E_GMAIL_TESTAGENT_ADDRESS` — `test-agent@milady-e2e.test`
+- `ELIZA_E2E_GMAIL_TESTOWNER_CLIENT_ID`
+- `ELIZA_E2E_GMAIL_TESTOWNER_CLIENT_SECRET`
+- `ELIZA_E2E_GMAIL_TESTOWNER_REFRESH_TOKEN`
+- `ELIZA_E2E_GMAIL_TESTOWNER_ADDRESS` — `test-owner@eliza-e2e.test`
+- `ELIZA_E2E_GMAIL_TESTAGENT_CLIENT_ID`
+- `ELIZA_E2E_GMAIL_TESTAGENT_CLIENT_SECRET`
+- `ELIZA_E2E_GMAIL_TESTAGENT_REFRESH_TOKEN`
+- `ELIZA_E2E_GMAIL_TESTAGENT_ADDRESS` — `test-agent@eliza-e2e.test`
 
 Same pattern for Calendar/Contacts — the refresh token carries all the scopes.
 
@@ -252,13 +252,13 @@ Same pattern for Calendar/Contacts — the refresh token carries all the scopes.
 
 **Side-effect isolation**
 
-- All drafts and sent mail tagged with a Gmail label `milady-e2e` + run-specific label `milady-e2e-<runId>`.
+- All drafts and sent mail tagged with a Gmail label `eliza-e2e` + run-specific label `eliza-e2e-<runId>`.
 - Scenarios that send email may only send to `test-owner` or `test-agent` or a configured allowlist (no external recipients).
 - Calendar events prefixed with `[e2e]` in the summary.
 - Real Gmail scenarios default to read-only. Write scenarios require an explicit allow flag, recipient allowlist, run label/header, and a working Gmail sweeper.
 - Real owner mailbox captures must not be committed. Exporters should write raw data only to ignored local paths and emit redacted/synthetic fixtures after validation.
 
-**Cleanup** — orphan sweeper deletes drafts with the `milady-e2e` label older than 24h and removes the per-run label.
+**Cleanup** — orphan sweeper deletes drafts with the `eliza-e2e` label older than 24h and removes the per-run label.
 
 ---
 
@@ -266,24 +266,24 @@ Same pattern for Calendar/Contacts — the refresh token carries all the scopes.
 
 **What to create**
 
-- Two accounts: `milady-e2e-user` and `milady-e2e-agent`.
-- A dedicated test organization `milady-e2e-org`. Both accounts are members.
-- A template repository `milady-e2e-org/e2e-scratch` with a CI-friendly structure (issue templates, CODEOWNERS pointing at both accounts).
-- Fine-grained PATs for each account restricted to `milady-e2e-org`, scoped `issues:write`, `pull_requests:write`, `contents:write`, `metadata:read`.
+- Two accounts: `eliza-e2e-user` and `eliza-e2e-agent`.
+- A dedicated test organization `eliza-e2e-org`. Both accounts are members.
+- A template repository `eliza-e2e-org/e2e-scratch` with a CI-friendly structure (issue templates, CODEOWNERS pointing at both accounts).
+- Fine-grained PATs for each account restricted to `eliza-e2e-org`, scoped `issues:write`, `pull_requests:write`, `contents:write`, `metadata:read`.
 
 **1Password items**
 
-- `milady-e2e / github / user-pat`
-- `milady-e2e / github / agent-pat`
-- `milady-e2e / github / org-name` — `milady-e2e-org`
-- `milady-e2e / github / template-repo` — `milady-e2e-org/e2e-scratch`
+- `eliza-e2e / github / user-pat`
+- `eliza-e2e / github / agent-pat`
+- `eliza-e2e / github / org-name` — `eliza-e2e-org`
+- `eliza-e2e / github / template-repo` — `eliza-e2e-org/e2e-scratch`
 
 **Env vars**
 
-- `MILADY_E2E_GITHUB_USER_PAT`
-- `MILADY_E2E_GITHUB_AGENT_PAT`
-- `MILADY_E2E_GITHUB_ORG` — `milady-e2e-org`
-- `MILADY_E2E_GITHUB_TEMPLATE_REPO` — `milady-e2e-org/e2e-scratch`
+- `ELIZA_E2E_GITHUB_USER_PAT`
+- `ELIZA_E2E_GITHUB_AGENT_PAT`
+- `ELIZA_E2E_GITHUB_ORG` — `eliza-e2e-org`
+- `ELIZA_E2E_GITHUB_TEMPLATE_REPO` — `eliza-e2e-org/e2e-scratch`
 
 **Rotation** — PATs every 90 days (GitHub enforces max 1-year expiry on fine-grained PATs).
 
@@ -300,23 +300,23 @@ Same pattern for Calendar/Contacts — the refresh token carries all the scopes.
 
 **What to create**
 
-- A second 1Password vault called `milady-e2e-autofill` (distinct from the credential vault).
+- A second 1Password vault called `eliza-e2e-autofill` (distinct from the credential vault).
 - Pre-seeded items for the allow-listed autofill sites used by scenarios (GitHub, Gmail, Stripe dashboard in test mode, Figma, Notion — one dummy login each).
-- A 1Password Service Account `milady-e2e-ci-autofill` with read-only access.
+- A 1Password Service Account `eliza-e2e-ci-autofill` with read-only access.
 
 **Scopes**
 
-- Vault read on `milady-e2e-autofill` only.
+- Vault read on `eliza-e2e-autofill` only.
 
 **1Password items**
 
-- `milady-e2e / 1password-autofill / service-account-token`
-- `milady-e2e / 1password-autofill / vault-id`
+- `eliza-e2e / 1password-autofill / service-account-token`
+- `eliza-e2e / 1password-autofill / vault-id`
 
 **Env vars**
 
-- `MILADY_E2E_ONEPASS_SA_TOKEN`
-- `MILADY_E2E_ONEPASS_VAULT_ID`
+- `ELIZA_E2E_ONEPASS_SA_TOKEN`
+- `ELIZA_E2E_ONEPASS_VAULT_ID`
 
 **Rotation** — service-account token every 90 days.
 
@@ -340,20 +340,20 @@ Same pattern for Calendar/Contacts — the refresh token carries all the scopes.
 
 **1Password items**
 
-- `milady-e2e / signal / phone-number`
-- `milady-e2e / signal / registration-lock-pin`
-- `milady-e2e / signal / data-dir-archive` — tar.gz of `~/.signal-cli/e2e` snapshot
-- `milady-e2e / signal / recipient-phone-number`
+- `eliza-e2e / signal / phone-number`
+- `eliza-e2e / signal / registration-lock-pin`
+- `eliza-e2e / signal / data-dir-archive` — tar.gz of `~/.signal-cli/e2e` snapshot
+- `eliza-e2e / signal / recipient-phone-number`
 
 **Env vars**
 
-- `MILADY_E2E_SIGNAL_PHONE_NUMBER`
-- `MILADY_E2E_SIGNAL_RECIPIENT_PHONE_NUMBER`
-- `MILADY_E2E_SIGNAL_DATA_DIR` — path on runner, e.g. `/var/milady/signal-cli`
+- `ELIZA_E2E_SIGNAL_PHONE_NUMBER`
+- `ELIZA_E2E_SIGNAL_RECIPIENT_PHONE_NUMBER`
+- `ELIZA_E2E_SIGNAL_DATA_DIR` — path on runner, e.g. `/var/eliza/signal-cli`
 
 **Rotation** — re-verify phone number yearly or after any signal-cli data loss. PIN every 180 days.
 
-**Side-effect isolation** — scenarios send only to `MILADY_E2E_SIGNAL_RECIPIENT_PHONE_NUMBER`. Any other recipient is rejected by the scenario-runner's Signal adapter.
+**Side-effect isolation** — scenarios send only to `ELIZA_E2E_SIGNAL_RECIPIENT_PHONE_NUMBER`. Any other recipient is rejected by the scenario-runner's Signal adapter.
 
 **Cleanup** — sweeper deletes signal-cli local message history older than 24h.
 
@@ -363,28 +363,28 @@ Same pattern for Calendar/Contacts — the refresh token carries all the scopes.
 
 **What to create**
 
-- Bot via BotFather: `MiladyE2EBot` — token captured.
+- Bot via BotFather: `ElizaE2EBot` — token captured.
 - MTProto userbot account on a dedicated phone number (needed for reading DMs the way the `service-mixin-telegram.ts` code path does).
-- App ID + hash via https://my.telegram.org → `milady-e2e-telegram` app.
+- App ID + hash via https://my.telegram.org → `eliza-e2e-telegram` app.
 
 **Scopes** — Telegram uses access hashes; no OAuth scopes.
 
 **1Password items**
 
-- `milady-e2e / telegram / bot-token`
-- `milady-e2e / telegram / app-id`
-- `milady-e2e / telegram / app-hash`
-- `milady-e2e / telegram / userbot-phone-number`
-- `milady-e2e / telegram / userbot-session-string`
+- `eliza-e2e / telegram / bot-token`
+- `eliza-e2e / telegram / app-id`
+- `eliza-e2e / telegram / app-hash`
+- `eliza-e2e / telegram / userbot-phone-number`
+- `eliza-e2e / telegram / userbot-session-string`
 
 **Env vars**
 
-- `MILADY_E2E_TELEGRAM_BOT_TOKEN`
-- `MILADY_E2E_TELEGRAM_APP_ID`
-- `MILADY_E2E_TELEGRAM_APP_HASH`
-- `MILADY_E2E_TELEGRAM_USERBOT_PHONE_NUMBER`
-- `MILADY_E2E_TELEGRAM_USERBOT_SESSION_STRING`
-- `MILADY_E2E_TELEGRAM_CHAT_ID` — the pinned test chat ID
+- `ELIZA_E2E_TELEGRAM_BOT_TOKEN`
+- `ELIZA_E2E_TELEGRAM_APP_ID`
+- `ELIZA_E2E_TELEGRAM_APP_HASH`
+- `ELIZA_E2E_TELEGRAM_USERBOT_PHONE_NUMBER`
+- `ELIZA_E2E_TELEGRAM_USERBOT_SESSION_STRING`
+- `ELIZA_E2E_TELEGRAM_CHAT_ID` — the pinned test chat ID
 
 **Rotation** — session string every 90 days (telegram invalidates stale sessions).
 
@@ -398,13 +398,13 @@ Same pattern for Calendar/Contacts — the refresh token carries all the scopes.
 
 **What to create**
 
-- A Twilio trial or paid account under the `milady-e2e` workspace.
+- A Twilio trial or paid account under the `eliza-e2e` workspace.
 - Two phone numbers:
-  - `MILADY_E2E_TWILIO_SMS_FROM` — for SMS-only scenarios
-  - `MILADY_E2E_TWILIO_VOICE_FROM` — for voice scenarios
+  - `ELIZA_E2E_TWILIO_SMS_FROM` — for SMS-only scenarios
+  - `ELIZA_E2E_TWILIO_VOICE_FROM` — for voice scenarios
 - An API Key + Secret (NOT the account SID token — keys are rotatable).
 - Messaging Service SID for SMS routing (cleaner than raw from-number).
-- A dedicated paired recipient phone number (in the same country for delivery reliability) stored as `MILADY_E2E_TWILIO_RECIPIENT`.
+- A dedicated paired recipient phone number (in the same country for delivery reliability) stored as `ELIZA_E2E_TWILIO_RECIPIENT`.
 
 **Scopes** — Twilio uses API key permissions.
 
@@ -413,29 +413,29 @@ Same pattern for Calendar/Contacts — the refresh token carries all the scopes.
 
 **1Password items**
 
-- `milady-e2e / twilio / account-sid`
-- `milady-e2e / twilio / api-key-sid`
-- `milady-e2e / twilio / api-key-secret`
-- `milady-e2e / twilio / sms-from-number`
-- `milady-e2e / twilio / voice-from-number`
-- `milady-e2e / twilio / messaging-service-sid`
-- `milady-e2e / twilio / recipient-number`
+- `eliza-e2e / twilio / account-sid`
+- `eliza-e2e / twilio / api-key-sid`
+- `eliza-e2e / twilio / api-key-secret`
+- `eliza-e2e / twilio / sms-from-number`
+- `eliza-e2e / twilio / voice-from-number`
+- `eliza-e2e / twilio / messaging-service-sid`
+- `eliza-e2e / twilio / recipient-number`
 
 **Env vars**
 
-- `MILADY_E2E_TWILIO_ACCOUNT_SID`
-- `MILADY_E2E_TWILIO_API_KEY_SID`
-- `MILADY_E2E_TWILIO_API_KEY_SECRET`
-- `MILADY_E2E_TWILIO_SMS_FROM`
-- `MILADY_E2E_TWILIO_VOICE_FROM`
-- `MILADY_E2E_TWILIO_MESSAGING_SERVICE_SID`
-- `MILADY_E2E_TWILIO_RECIPIENT`
+- `ELIZA_E2E_TWILIO_ACCOUNT_SID`
+- `ELIZA_E2E_TWILIO_API_KEY_SID`
+- `ELIZA_E2E_TWILIO_API_KEY_SECRET`
+- `ELIZA_E2E_TWILIO_SMS_FROM`
+- `ELIZA_E2E_TWILIO_VOICE_FROM`
+- `ELIZA_E2E_TWILIO_MESSAGING_SERVICE_SID`
+- `ELIZA_E2E_TWILIO_RECIPIENT`
 
 **Rotation** — API key every 30 days. Numbers never rotate.
 
 **Side-effect isolation**
 
-- Scenarios must send SMS/voice only to `MILADY_E2E_TWILIO_RECIPIENT`. Any other destination number causes the scenario-runner's Twilio adapter to throw `DisallowedRecipientError` BEFORE contacting Twilio, so we never pay for a rogue message.
+- Scenarios must send SMS/voice only to `ELIZA_E2E_TWILIO_RECIPIENT`. Any other destination number causes the scenario-runner's Twilio adapter to throw `DisallowedRecipientError` BEFORE contacting Twilio, so we never pay for a rogue message.
 - Daily cost alarm in Twilio set at $5/day.
 
 **Cleanup** — Twilio auto-purges delivered SMS after 30 days; no scenario-level cleanup needed. Call recordings deleted by sweeper after 24h.
@@ -446,10 +446,10 @@ Same pattern for Calendar/Contacts — the refresh token carries all the scopes.
 
 **What to create**
 
-- Developer account under an X Premium handle `@milady_e2e`.
-- X API v2 app `Milady E2E`, Essential access minimum.
+- Developer account under an X Premium handle `@eliza_e2e`.
+- X API v2 app `Eliza E2E`, Essential access minimum.
 - OAuth 2.0 PKCE client for user-context operations (DM read/send requires user auth).
-- A second X account `@milady_e2e_friend` as the paired recipient.
+- A second X account `@eliza_e2e_friend` as the paired recipient.
 
 **Scopes**
 
@@ -457,25 +457,25 @@ Same pattern for Calendar/Contacts — the refresh token carries all the scopes.
 
 **1Password items**
 
-- `milady-e2e / twitter / client-id`
-- `milady-e2e / twitter / client-secret`
-- `milady-e2e / twitter / user-refresh-token` — for `@milady_e2e`
-- `milady-e2e / twitter / friend-refresh-token` — for `@milady_e2e_friend` (used by tests to simulate inbound DMs)
+- `eliza-e2e / twitter / client-id`
+- `eliza-e2e / twitter / client-secret`
+- `eliza-e2e / twitter / user-refresh-token` — for `@eliza_e2e`
+- `eliza-e2e / twitter / friend-refresh-token` — for `@eliza_e2e_friend` (used by tests to simulate inbound DMs)
 
 **Env vars**
 
-- `MILADY_E2E_TWITTER_CLIENT_ID`
-- `MILADY_E2E_TWITTER_CLIENT_SECRET`
-- `MILADY_E2E_TWITTER_USER_REFRESH_TOKEN`
-- `MILADY_E2E_TWITTER_FRIEND_REFRESH_TOKEN`
-- `MILADY_E2E_TWITTER_USER_HANDLE` — `milady_e2e`
-- `MILADY_E2E_TWITTER_FRIEND_HANDLE` — `milady_e2e_friend`
+- `ELIZA_E2E_TWITTER_CLIENT_ID`
+- `ELIZA_E2E_TWITTER_CLIENT_SECRET`
+- `ELIZA_E2E_TWITTER_USER_REFRESH_TOKEN`
+- `ELIZA_E2E_TWITTER_FRIEND_REFRESH_TOKEN`
+- `ELIZA_E2E_TWITTER_USER_HANDLE` — `eliza_e2e`
+- `ELIZA_E2E_TWITTER_FRIEND_HANDLE` — `eliza_e2e_friend`
 
 **Rotation** — refresh tokens every 90 days; client secrets every 180 days.
 
 **Side-effect isolation**
 
-- DM scenarios only message `@milady_e2e_friend`.
+- DM scenarios only message `@eliza_e2e_friend`.
 - Any post creation must include the string `e2e-<runId>`; scenarios MUST NOT post to a live audience. Feed-summarization scenarios use only read endpoints.
 
 **Cleanup** — sweeper deletes posts containing `e2e-` older than 24h.
@@ -486,31 +486,31 @@ Same pattern for Calendar/Contacts — the refresh token carries all the scopes.
 
 **What to create**
 
-- Meta Business Suite account for `milady-e2e`.
+- Meta Business Suite account for `eliza-e2e`.
 - A WhatsApp Business phone number (via Twilio or Meta directly).
 - App + permanent access token — scopes `whatsapp_business_messaging`, `whatsapp_business_management`.
 - A paired recipient phone number (real WhatsApp account).
 
 **1Password items**
 
-- `milady-e2e / whatsapp / access-token`
-- `milady-e2e / whatsapp / phone-number-id`
-- `milady-e2e / whatsapp / business-account-id`
-- `milady-e2e / whatsapp / webhook-verify-token`
-- `milady-e2e / whatsapp / recipient-phone-number`
+- `eliza-e2e / whatsapp / access-token`
+- `eliza-e2e / whatsapp / phone-number-id`
+- `eliza-e2e / whatsapp / business-account-id`
+- `eliza-e2e / whatsapp / webhook-verify-token`
+- `eliza-e2e / whatsapp / recipient-phone-number`
 
 **Env vars** (overlap with existing plugin-whatsapp envs, but matrix uses its own namespace)
 
-- `MILADY_E2E_WHATSAPP_ACCESS_TOKEN`
-- `MILADY_E2E_WHATSAPP_PHONE_NUMBER_ID`
-- `MILADY_E2E_WHATSAPP_BUSINESS_ACCOUNT_ID`
-- `MILADY_E2E_WHATSAPP_WEBHOOK_VERIFY_TOKEN`
-- `MILADY_E2E_WHATSAPP_RECIPIENT_PHONE_NUMBER`
-- `MILADY_E2E_WHATSAPP_API_VERSION` — defaults `v24.0`
+- `ELIZA_E2E_WHATSAPP_ACCESS_TOKEN`
+- `ELIZA_E2E_WHATSAPP_PHONE_NUMBER_ID`
+- `ELIZA_E2E_WHATSAPP_BUSINESS_ACCOUNT_ID`
+- `ELIZA_E2E_WHATSAPP_WEBHOOK_VERIFY_TOKEN`
+- `ELIZA_E2E_WHATSAPP_RECIPIENT_PHONE_NUMBER`
+- `ELIZA_E2E_WHATSAPP_API_VERSION` — defaults `v24.0`
 
 **Rotation** — access token every 90 days.
 
-**Side-effect isolation** — outbound messages only to `MILADY_E2E_WHATSAPP_RECIPIENT_PHONE_NUMBER`.
+**Side-effect isolation** — outbound messages only to `ELIZA_E2E_WHATSAPP_RECIPIENT_PHONE_NUMBER`.
 
 **Cleanup** — no sweeper; WhatsApp retention is at the API level.
 
@@ -520,19 +520,19 @@ Same pattern for Calendar/Contacts — the refresh token carries all the scopes.
 
 **What to create**
 
-- A `milady-e2e` organization on Eliza Cloud.
+- A `eliza-e2e` organization on Eliza Cloud.
 - An API key scoped to inference + app deployment, with a `$50/month` spending cap.
 - Separate rate-limit bucket from production.
 
 **1Password items**
 
-- `milady-e2e / elizacloud / api-key`
-- `milady-e2e / elizacloud / base-url` — usually `https://api.elizaos.cloud`
+- `eliza-e2e / elizacloud / api-key`
+- `eliza-e2e / elizacloud / base-url` — usually `https://api.elizaos.cloud`
 
 **Env vars**
 
-- `MILADY_E2E_ELIZACLOUD_API_KEY`
-- `MILADY_E2E_ELIZACLOUD_BASE_URL`
+- `ELIZA_E2E_ELIZACLOUD_API_KEY`
+- `ELIZA_E2E_ELIZACLOUD_BASE_URL`
 
 **Rotation** — API key every 90 days.
 
@@ -544,15 +544,15 @@ The runner selects the cheapest available provider from its fallback chain. Prov
 
 **1Password items**
 
-- `milady-e2e / llm / groq-api-key`
-- `milady-e2e / llm / openai-api-key`
-- `milady-e2e / llm / anthropic-api-key`
+- `eliza-e2e / llm / groq-api-key`
+- `eliza-e2e / llm / openai-api-key`
+- `eliza-e2e / llm / anthropic-api-key`
 
 **Vault secrets (GitHub Actions secret names)**
 
-- `MILADY_E2E_GROQ_API_KEY`
-- `MILADY_E2E_OPENAI_API_KEY`
-- `MILADY_E2E_ANTHROPIC_API_KEY`
+- `ELIZA_E2E_GROQ_API_KEY`
+- `ELIZA_E2E_OPENAI_API_KEY`
+- `ELIZA_E2E_ANTHROPIC_API_KEY`
 
 **Env vars exposed to the runner** (upstream-scoped; set from the vault secrets in `scenario-matrix.yml`):
 
@@ -605,7 +605,7 @@ Sweeper responsibilities per integration:
 
 | Integration | What the sweeper deletes                                         |
 | ----------- | ---------------------------------------------------------------- |
-| Gmail       | Drafts + labels matching `milady-e2e-*` older than 24h           |
+| Gmail       | Drafts + labels matching `eliza-e2e-*` older than 24h           |
 | Calendar    | Events with summary prefix `[e2e]` older than 24h                |
 | Discord     | Bot-authored messages older than 24h in test guild               |
 | Telegram    | Bot messages older than 24h                                      |
@@ -630,30 +630,30 @@ Sweeper reports counts to the workflow's `GITHUB_STEP_SUMMARY`. Non-zero exit if
 ELIZA_E2E_GROQ_API_KEY=...
 
 # Gmail
-MILADY_E2E_GMAIL_TESTOWNER_CLIENT_ID=...
-MILADY_E2E_GMAIL_TESTOWNER_CLIENT_SECRET=...
-MILADY_E2E_GMAIL_TESTOWNER_REFRESH_TOKEN=...
-MILADY_E2E_GMAIL_TESTOWNER_ADDRESS=test-owner@milady-e2e.test
-MILADY_E2E_GMAIL_TESTAGENT_CLIENT_ID=...
-MILADY_E2E_GMAIL_TESTAGENT_CLIENT_SECRET=...
-MILADY_E2E_GMAIL_TESTAGENT_REFRESH_TOKEN=...
-MILADY_E2E_GMAIL_TESTAGENT_ADDRESS=test-agent@milady-e2e.test
+ELIZA_E2E_GMAIL_TESTOWNER_CLIENT_ID=...
+ELIZA_E2E_GMAIL_TESTOWNER_CLIENT_SECRET=...
+ELIZA_E2E_GMAIL_TESTOWNER_REFRESH_TOKEN=...
+ELIZA_E2E_GMAIL_TESTOWNER_ADDRESS=test-owner@eliza-e2e.test
+ELIZA_E2E_GMAIL_TESTAGENT_CLIENT_ID=...
+ELIZA_E2E_GMAIL_TESTAGENT_CLIENT_SECRET=...
+ELIZA_E2E_GMAIL_TESTAGENT_REFRESH_TOKEN=...
+ELIZA_E2E_GMAIL_TESTAGENT_ADDRESS=test-agent@eliza-e2e.test
 
 # Twilio
-MILADY_E2E_TWILIO_ACCOUNT_SID=...
-MILADY_E2E_TWILIO_API_KEY_SID=...
-MILADY_E2E_TWILIO_API_KEY_SECRET=...
-MILADY_E2E_TWILIO_SMS_FROM=+15551234567
-MILADY_E2E_TWILIO_VOICE_FROM=+15551234568
-MILADY_E2E_TWILIO_RECIPIENT=+15559876543
-MILADY_E2E_TWILIO_MESSAGING_SERVICE_SID=...
+ELIZA_E2E_TWILIO_ACCOUNT_SID=...
+ELIZA_E2E_TWILIO_API_KEY_SID=...
+ELIZA_E2E_TWILIO_API_KEY_SECRET=...
+ELIZA_E2E_TWILIO_SMS_FROM=+15551234567
+ELIZA_E2E_TWILIO_VOICE_FROM=+15551234568
+ELIZA_E2E_TWILIO_RECIPIENT=+15559876543
+ELIZA_E2E_TWILIO_MESSAGING_SERVICE_SID=...
 
 # Discord
-MILADY_E2E_DISCORD_BOT_TOKEN=...
-MILADY_E2E_DISCORD_CLIENT_ID=...
-MILADY_E2E_DISCORD_CLIENT_SECRET=...
-MILADY_E2E_DISCORD_QA_GUILD_ID=...
-MILADY_E2E_DISCORD_QA_CHANNEL_ID=...
+ELIZA_E2E_DISCORD_BOT_TOKEN=...
+ELIZA_E2E_DISCORD_CLIENT_ID=...
+ELIZA_E2E_DISCORD_CLIENT_SECRET=...
+ELIZA_E2E_DISCORD_QA_GUILD_ID=...
+ELIZA_E2E_DISCORD_QA_CHANNEL_ID=...
 
 # (and so on for each integration used by the scenarios you want to run)
 ```
@@ -664,9 +664,9 @@ Run `bun run scenarios:creds:pull` to have `op` fill this file from the vault.
 
 ## Adding a new credential
 
-1. Add the item to the `milady-e2e` vault in 1Password, respecting the naming convention (`milady-e2e / <service> / <item>`).
+1. Add the item to the `eliza-e2e` vault in 1Password, respecting the naming convention (`eliza-e2e / <service> / <item>`).
 2. Document it in this file — add the service section or extend an existing one.
-3. Add the new `MILADY_E2E_*` env var to the rotation workflow's secret list at `.github/workflows/rotate-e2e-secrets.yml`.
+3. Add the new `ELIZA_E2E_*` env var to the rotation workflow's secret list at `.github/workflows/rotate-e2e-secrets.yml`.
 4. If the new integration needs cleanup, add a sweeper handler at `scripts/sweeper/<service>.ts` and wire into `.github/workflows/e2e-orphan-sweeper.yml`.
 5. Update `@elizaos/scenario-runner`'s `CredentialBroker` tests to include the new resolution case.
 6. Update `scripts/scenario-creds-pull.mjs` so `bun run scenarios:creds:pull` picks up the new vars.
@@ -677,6 +677,6 @@ Run `bun run scenarios:creds:pull` to have `op` fill this file from the vault.
 
 1. Revoke the credential at the provider (delete token / rotate key / retire phone number).
 2. Remove the vault item.
-3. Remove the GitHub Actions secret (`gh secret delete MILADY_E2E_…`).
+3. Remove the GitHub Actions secret (`gh secret delete ELIZA_E2E_…`).
 4. Remove references from this doc and from the sweeper/rotation workflows.
 5. Update any scenario `requires.credentials[]` that mentioned the identifier — or mark those scenarios `skip: retired-credential`.

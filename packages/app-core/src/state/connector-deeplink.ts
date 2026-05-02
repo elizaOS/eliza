@@ -4,7 +4,7 @@
  * Lets any caller ask SettingsView to scroll a specific connector panel into
  * view. Used by:
  *   - AutomationsView's missing-credentials banner ("Connect Gmail →" button)
- *   - The `milady://settings/connectors/<provider>` external URL handler
+ *   - The `eliza://settings/connectors/<provider>` external URL handler
  *     in apps/app/src/main.tsx
  *
  * Consumer side: SettingsView listens for SETTINGS_FOCUS_CONNECTOR_EVENT and
@@ -17,7 +17,7 @@
 
 export { prettyCredName, providerFromCredType } from "@elizaos/shared";
 
-export const SETTINGS_FOCUS_CONNECTOR_EVENT = "milady:settings:focus-connector";
+export const SETTINGS_FOCUS_CONNECTOR_EVENT = "eliza:settings:focus-connector";
 
 export interface SettingsFocusConnectorDetail {
   /** Canonical provider id matching `data-connector="..."` on a panel wrapper. */

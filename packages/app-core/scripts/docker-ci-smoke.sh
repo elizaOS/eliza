@@ -108,7 +108,7 @@ if [[ -d packages/app-core ]]; then
   APP_DIR="packages/app"
   PLUGINS_DIR="plugins"
 elif [[ -d eliza/packages/app-core ]]; then
-  # Inside the milady outer repo where eliza is a submodule: app-core
+  # Inside the eliza outer repo where eliza is a submodule: app-core
   # is nested under eliza/, while the host app can live in apps/app.
   APP_CORE_DIR="eliza/packages/app-core"
   PACKAGES_DIR="eliza/packages"
@@ -200,8 +200,8 @@ trap cleanup EXIT
 
 log "Installing dependencies"
 node "$APP_CORE_SCRIPTS_DIR/init-submodules.mjs"
-MILADY_SKIP_LOCAL_UPSTREAMS=1 ELIZA_SKIP_LOCAL_UPSTREAMS=1 node "$APP_CORE_SCRIPTS_DIR/disable-local-eliza-workspace.mjs"
-MILADY_SKIP_LOCAL_UPSTREAMS=1 ELIZA_SKIP_LOCAL_UPSTREAMS=1 "$BUN_BIN" install --ignore-scripts --no-frozen-lockfile
+ELIZA_SKIP_LOCAL_UPSTREAMS=1 ELIZA_SKIP_LOCAL_UPSTREAMS=1 node "$APP_CORE_SCRIPTS_DIR/disable-local-eliza-workspace.mjs"
+ELIZA_SKIP_LOCAL_UPSTREAMS=1 ELIZA_SKIP_LOCAL_UPSTREAMS=1 "$BUN_BIN" install --ignore-scripts --no-frozen-lockfile
 # --ignore-scripts avoids running the full repo postinstall during the package
 # install, but build tools still need their platform binaries materialized.
 node node_modules/esbuild/install.js 2>/dev/null || true
@@ -210,7 +210,7 @@ if [[ -d "$REPO_ROOT/.eliza.ci-disabled" && ! -d "$REPO_ROOT/eliza" ]]; then
   log "Restoring eliza/ from .eliza.ci-disabled for downstream build steps"
   mv "$REPO_ROOT/.eliza.ci-disabled" "$REPO_ROOT/eliza"
 fi
-export MILADY_SKIP_LOCAL_UPSTREAMS=1
+export ELIZA_SKIP_LOCAL_UPSTREAMS=1
 export ELIZA_SKIP_LOCAL_UPSTREAMS=1
 
 log "Installing published-workspace fallback dependencies"
@@ -351,18 +351,18 @@ log "Starting container smoke boot"
   --name "$CONTAINER_NAME" \
   -e PORT="$CONTAINER_PORT" \
   -e APP_PORT="$CONTAINER_PORT" \
-  -e MILADY_API_PORT="$CONTAINER_PORT" \
+  -e ELIZA_API_PORT="$CONTAINER_PORT" \
   -e ELIZA_API_PORT="$CONTAINER_PORT" \
   -e ELIZA_PORT="$CONTAINER_PORT" \
   -e APP_API_BIND=0.0.0.0 \
-  -e MILADY_STATE_DIR=/tmp/milady-smoke/state \
-  -e ELIZA_STATE_DIR=/tmp/milady-smoke/state \
-  -e MILADY_CONFIG_DIR=/tmp/milady-smoke/config \
-  -e ELIZA_CONFIG_DIR=/tmp/milady-smoke/config \
-  -e MILADY_WORKSPACE_DIR=/tmp/milady-smoke/workspace \
-  -e ELIZA_WORKSPACE_DIR=/tmp/milady-smoke/workspace \
-  -e MILADY_VAULT_PASSPHRASE=docker-smoke-vault-passphrase \
-  -e PGLITE_DATA_DIR=/tmp/milady-smoke/pglite \
+  -e ELIZA_STATE_DIR=/tmp/eliza-smoke/state \
+  -e ELIZA_STATE_DIR=/tmp/eliza-smoke/state \
+  -e ELIZA_CONFIG_DIR=/tmp/eliza-smoke/config \
+  -e ELIZA_CONFIG_DIR=/tmp/eliza-smoke/config \
+  -e ELIZA_WORKSPACE_DIR=/tmp/eliza-smoke/workspace \
+  -e ELIZA_WORKSPACE_DIR=/tmp/eliza-smoke/workspace \
+  -e ELIZA_VAULT_PASSPHRASE=docker-smoke-vault-passphrase \
+  -e PGLITE_DATA_DIR=/tmp/eliza-smoke/pglite \
   -e ELIZA_DISABLE_LOCAL_EMBEDDINGS=1 \
   -e ELIZA_API_BIND=0.0.0.0 \
   -p "${SMOKE_PORT}:${CONTAINER_PORT}" \
@@ -408,15 +408,15 @@ while (( SECONDS < deadline )); do
     timeout 10 "$DOCKER_BIN" logs --tail 80 "$CONTAINER_NAME" || true
   fi
 
-  if probe_ok "$health_url" /tmp/milady-docker-health.txt; then
+  if probe_ok "$health_url" /tmp/eliza-docker-health.txt; then
     log "Health probe succeeded: $health_url"
-    cat /tmp/milady-docker-health.txt
+    cat /tmp/eliza-docker-health.txt
     exit 0
   fi
 
-  if probe_ok "$status_url" /tmp/milady-docker-status.txt; then
+  if probe_ok "$status_url" /tmp/eliza-docker-status.txt; then
     log "Status probe succeeded: $status_url"
-    cat /tmp/milady-docker-status.txt
+    cat /tmp/eliza-docker-status.txt
     exit 0
   fi
 

@@ -1,20 +1,20 @@
 ---
 title: Référence de l'API REST
 sidebarTitle: Référence API
-description: Référence complète de tous les points de terminaison de l'API REST Milady, organisés par groupe de ressources.
+description: Référence complète de tous les points de terminaison de l'API REST Eliza, organisés par groupe de ressources.
 ---
 
-Le serveur API Milady fonctionne sur le port **31337** par défaut (`MILADY_API_PORT`). Tous les points de terminaison sont préfixés par `/api/`. L'authentification est requise lorsque `MILADY_API_TOKEN` est défini.
+Le serveur API Eliza fonctionne sur le port **31337** par défaut (`ELIZA_API_PORT`). Tous les points de terminaison sont préfixés par `/api/`. L'authentification est requise lorsque `ELIZA_API_TOKEN` est défini.
 
 <Warning>
-Lorsque `MILADY_API_TOKEN` est configuré, incluez le jeton en tant que jeton `Bearer` dans l'en-tête `Authorization`, ou utilisez le flux d'appairage pour l'obtenir.
+Lorsque `ELIZA_API_TOKEN` est configuré, incluez le jeton en tant que jeton `Bearer` dans l'en-tête `Authorization`, ou utilisez le flux d'appairage pour l'obtenir.
 </Warning>
 
 <div id="quick-start">
 ## Démarrage rapide
 </div>
 
-Ces exemples supposent que l'API fonctionne sur `localhost:31337`. Remplacez `YOUR_TOKEN` par la valeur de `MILADY_API_TOKEN` ou le jeton reçu lors du flux d'appairage.
+Ces exemples supposent que l'API fonctionne sur `localhost:31337`. Remplacez `YOUR_TOKEN` par la valeur de `ELIZA_API_TOKEN` ou le jeton reçu lors du flux d'appairage.
 
 <div id="check-agent-status">
 ### Vérifier le statut de l'agent
@@ -26,7 +26,7 @@ curl http://localhost:31337/api/status
 
 ```json
 {
-  "name": "Milady",
+  "name": "Eliza",
   "status": "running",
   "model": "claude-sonnet-4-6",
   "uptime": 3600
@@ -103,7 +103,7 @@ curl -X POST http://localhost:31337/api/knowledge/documents \
   -H "Content-Type: application/json" \
   -d '{
     "title": "Company FAQ",
-    "content": "Q: What is Milady?\nA: A personal AI assistant built on elizaOS."
+    "content": "Q: What is Eliza?\nA: A personal AI assistant built on elizaOS."
   }'
 ```
 
@@ -112,7 +112,7 @@ curl -X POST http://localhost:31337/api/knowledge/documents \
 </div>
 
 ```bash
-curl "http://localhost:31337/api/knowledge/search?q=what+is+milady&limit=5" \
+curl "http://localhost:31337/api/knowledge/search?q=what+is+eliza&limit=5" \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
@@ -179,7 +179,7 @@ Exemple de réponse de `GET /api/status` :
 
 ```json
 {
-  "name": "Milady",
+  "name": "Eliza",
   "status": "running",
   "model": "anthropic/claude-sonnet-4-6",
   "uptime": 3600,
@@ -328,7 +328,7 @@ La boîte de réception agrège les messages de toutes les plateformes connecté
 
 | Méthode | Chemin | Description |
 |---------|--------|-------------|
-| `GET` | `/api/config` | Obtenir la configuration actuelle de milady.json |
+| `GET` | `/api/config` | Obtenir la configuration actuelle de eliza.json |
 | `PUT` | `/api/config` | Mettre à jour les champs de configuration |
 | `GET` | `/api/config/schema` | Obtenir le schéma de configuration pour le rendu de l'interface |
 
@@ -564,7 +564,7 @@ La boîte de réception agrège les messages de toutes les plateformes connecté
 | `POST` | `/api/cloud/agents/:id/provision` | Provisionner un agent cloud |
 | `POST` | `/api/cloud/agents/:id/shutdown` | Arrêter et supprimer un agent cloud |
 | `POST` | `/api/cloud/agents/:id/connect` | Se connecter à un agent cloud existant |
-| `POST` | `/api/cloud/v1/milady/agents/:id/pairing-token` | Générer un jeton d'appairage pour ouvrir l'interface Web d'un agent cloud dans un nouvel onglet. Retourne `{ success, data: { token, redirectUrl, expiresIn } }` |
+| `POST` | `/api/cloud/v1/eliza/agents/:id/pairing-token` | Générer un jeton d'appairage pour ouvrir l'interface Web d'un agent cloud dans un nouvel onglet. Retourne `{ success, data: { token, redirectUrl, expiresIn } }` |
 
 <Info>
 Les routes sous `/api/cloud/v1/` sont transmises en tant que `/api/v1/` vers le backend cloud, distinctes du mappage hérité `/api/cloud/compat/*`. Les en-têtes `Authorization: Bearer` et `X-Api-Key` sont acceptés pour l'authentification.

@@ -1,10 +1,10 @@
 ---
 title: "TEE Plugin"
 sidebarTitle: "TEE"
-description: "Trusted Execution Environment plugin for Milady — secure key derivation and remote attestation."
+description: "Trusted Execution Environment plugin for Eliza — secure key derivation and remote attestation."
 ---
 
-The TEE plugin provides secure key derivation and remote attestation capabilities within Trusted Execution Environments for Milady agents.
+The TEE plugin provides secure key derivation and remote attestation capabilities within Trusted Execution Environments for Eliza agents.
 
 **Package:** `@elizaos/plugin-tee`
 
@@ -18,7 +18,7 @@ This plugin enables agents to operate within a Trusted Execution Environment, pr
 ## Installation
 
 ```bash
-milady plugins install tee
+eliza plugins install tee
 ```
 
 ## Auto-Enable

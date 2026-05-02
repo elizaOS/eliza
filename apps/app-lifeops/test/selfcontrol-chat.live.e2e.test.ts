@@ -16,7 +16,7 @@ import { selectLiveProvider } from "../../../packages/app-core/test/helpers/live
 import { stochasticTest } from "../../../packages/app-core/test/helpers/stochastic-test";
 
 const LIVE_TESTS_ENABLED =
-  process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
+  process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
 const ENV_PATH = path.join(REPO_ROOT, ".env");
 

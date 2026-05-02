@@ -14,7 +14,7 @@ The BlueBubbles connector is an elizaOS plugin that bridges your agent to iMessa
 | Config key | `connectors.bluebubbles` |
 | Auto-enable trigger | `serverUrl` AND `password` are both truthy in connector config |
 
-These can be set as environment variables or under the `connectors.bluebubbles` config in `~/.milady/milady.json`:
+These can be set as environment variables or under the `connectors.bluebubbles` config in `~/.eliza/eliza.json`:
 
 ```json
 {
@@ -59,7 +59,7 @@ To disable:
 
 ## Full Configuration Reference
 
-All fields are defined under `connectors.bluebubbles` in `milady.json`.
+All fields are defined under `connectors.bluebubbles` in `eliza.json`.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|

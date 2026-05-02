@@ -9,8 +9,8 @@
  * required CI real suite stays focused on repo-supported non-mock integration
  * coverage.
  *
- * `bun run test:ci:real` sets `MILADY_CI_REAL=1`, which additionally excludes
- * upstream-only or credential-gated real tests that Milady does not provision
+ * `bun run test:ci:real` sets `ELIZA_CI_REAL=1`, which additionally excludes
+ * upstream-only or credential-gated real tests that Eliza does not provision
  * in its required PR workflow.
  */
 
@@ -44,7 +44,7 @@ const hiddenElizaWorkspaceGlob =
   fs.existsSync(elizaWorkspaceRoot) && fs.existsSync(disabledElizaWorkspaceRoot)
     ? ".eliza.ci-disabled/**"
     : undefined;
-const isCiReal = process.env.MILADY_CI_REAL === "1";
+const isCiReal = process.env.ELIZA_CI_REAL === "1";
 const elizaWorkspacePattern = (relativePath: string) =>
   path
     .relative(
@@ -65,7 +65,7 @@ const ciExcludedRealPaths = [
     "plugins/plugin-computeruse/src/__tests__/computeruse.real.test.ts",
   ),
   // These surfaces are covered by dedicated workflows or upstream package
-  // suites instead of Milady's required PR real-test lane.
+  // suites instead of Eliza's required PR real-test lane.
   elizaWorkspacePattern(
     "packages/app-core/test/app/onboarding-companion.live.e2e.test.ts",
   ),
@@ -127,10 +127,10 @@ const appCompanionSourceRoot = path.join(
   "src",
 );
 const liveRetryCount =
-  process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1"
+  process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1"
     ? 1
     : 0;
-process.env.MILADY_LIVE_TEST = "1";
+process.env.ELIZA_LIVE_TEST = "1";
 process.env.ELIZA_LIVE_TEST = "1";
 
 const realResolveAlias: ModuleAlias[] = [
@@ -148,7 +148,7 @@ const realResolveAlias: ModuleAlias[] = [
       ]
     : []),
   ...getAgentSourceAliases(autonomousSourceRoot, {
-    includeMiladyAlias: true,
+    includeElizaAlias: true,
   }),
   ...getAppCoreSourceAliases(appCoreSourceRoot),
   ...getUiSourceAliases(uiSourceRoot),
@@ -343,7 +343,7 @@ const realResolveAlias: ModuleAlias[] = [
   },
   ...getSharedSourceAliases(sharedSourceRoot, {
     includeConfigAlias: true,
-    includeMiladyAlias: true,
+    includeElizaAlias: true,
   }),
   // P0 auth subsystem reads tables/types from plugin-sql; map subpaths to
   // source so vitest's resolver doesn't fall through to the dist `main`.
@@ -680,7 +680,7 @@ export default defineConfig({
           "@elizaos/core",
           "@elizaos/agent",
           "@elizaos/app-core",
-          /^@miladyai\/shared/,
+          /^@elizaai\/shared/,
           /^@elizaos\/plugin-/,
           "zod",
         ],

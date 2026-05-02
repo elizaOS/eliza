@@ -10,7 +10,7 @@ describe("registerBundledModels", () => {
   let originalStateDir: string | undefined;
 
   beforeEach(async () => {
-    tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "milady-bundled-"));
+    tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-bundled-"));
     originalStateDir = process.env.ELIZA_STATE_DIR;
     process.env.ELIZA_STATE_DIR = tmpRoot;
   });
@@ -76,7 +76,7 @@ describe("registerBundledModels", () => {
     const entry = installed.find((m) => m.id === "smol-test");
     expect(entry).toBeDefined();
     expect(entry?.path).toBe(ggufPath);
-    expect(entry?.source).toBe("milady-download");
+    expect(entry?.source).toBe("eliza-download");
     expect(entry?.sizeBytes).toBe(2048);
     expect(entry?.sha256).toBe("abcd");
   });

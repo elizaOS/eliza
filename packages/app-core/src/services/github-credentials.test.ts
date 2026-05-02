@@ -14,7 +14,7 @@
  * - applySavedTokenToEnv leaves an existing env var untouched
  * - applySavedTokenToEnv reports correctly when no credential is saved
  *
- * Each test points the resolver at a unique tmp dir via MILADY_STATE_DIR
+ * Each test points the resolver at a unique tmp dir via ELIZA_STATE_DIR
  * so concurrent test runs never share on-disk state.
  */
 
@@ -34,28 +34,20 @@ import {
 } from "./github-credentials";
 
 let tempDir: string;
-let originalStateDir: string | undefined;
 let originalElizaStateDir: string | undefined;
 let originalToken: string | undefined;
 
 beforeEach(async () => {
   tempDir = await fs.mkdtemp(
-    path.join(os.tmpdir(), "milady-github-credentials-"),
+    path.join(os.tmpdir(), "eliza-github-credentials-"),
   );
-  originalStateDir = process.env.MILADY_STATE_DIR;
   originalElizaStateDir = process.env.ELIZA_STATE_DIR;
   originalToken = process.env.GITHUB_TOKEN;
-  process.env.MILADY_STATE_DIR = tempDir;
-  delete process.env.ELIZA_STATE_DIR;
+  process.env.ELIZA_STATE_DIR = tempDir;
   delete process.env.GITHUB_TOKEN;
 });
 
 afterEach(async () => {
-  if (originalStateDir === undefined) {
-    delete process.env.MILADY_STATE_DIR;
-  } else {
-    process.env.MILADY_STATE_DIR = originalStateDir;
-  }
   if (originalElizaStateDir === undefined) {
     delete process.env.ELIZA_STATE_DIR;
   } else {
@@ -70,7 +62,7 @@ afterEach(async () => {
 });
 
 describe("github-credentials state-dir resolution", () => {
-  it("resolves under MILADY_STATE_DIR when set", () => {
+  it("resolves under ELIZA_STATE_DIR when set", () => {
     expect(_resolveStateDirForTests()).toBe(tempDir);
     expect(getCredentialFilePath()).toBe(
       path.join(tempDir, "credentials", "github.json"),

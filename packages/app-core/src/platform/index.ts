@@ -50,6 +50,7 @@ export {
   isAndroid,
   isDesktopPlatform,
   isIOS,
+  isMiladyOS,
   isNative,
   isPopoutWindow,
   isWebPlatform,

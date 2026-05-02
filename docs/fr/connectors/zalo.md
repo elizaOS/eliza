@@ -24,7 +24,7 @@ Le connecteur Zalo est un plugin elizaOS qui relie votre agent à la plateforme 
 |-------|--------|
 | Package | `@elizaos/plugin-zalo` |
 | Clé de configuration | `connectors.zalo` |
-| Installation | `milady plugins install @elizaos/plugin-zalo` |
+| Installation | `eliza plugins install @elizaos/plugin-zalo` |
 
 <div id="setup-requirements">
 

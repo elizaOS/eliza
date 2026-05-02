@@ -83,7 +83,7 @@ Returns parsed learning entries from the agent's `LEARNINGS.md` file along with 
   ],
   "merkleRoot": "0xdef456...",
   "totalEntries": 1,
-  "source": "/home/user/.milady/LEARNINGS.md"
+  "source": "/home/user/.eliza/LEARNINGS.md"
 }
 ```
 
@@ -94,6 +94,6 @@ Returns parsed learning entries from the agent's `LEARNINGS.md` file along with 
 | `totalEntries` | number | Total number of parsed entries |
 | `source` | string \| null | File path the learnings were read from, or `null` if no file was found |
 
-The endpoint searches for `LEARNINGS.md` in two locations (in order): the Milady state directory (`~/.milady/LEARNINGS.md`) and the current working directory.
+The endpoint searches for `LEARNINGS.md` in two locations (in order): the Eliza state directory (`~/.eliza/LEARNINGS.md`) and the current working directory.
 
 **Fallback behavior:** When the learnings file is not found or the `@elizaos/plugin-bnb-identity` plugin is not installed, the response returns an empty `entries` array, `totalEntries: 0`, `source: null`, and a default `merkleRoot`.

@@ -1,10 +1,10 @@
 ---
 title: "Core Runtime"
 sidebarTitle: "Core"
-description: "AgentRuntime class, constructor parameters, plugin registration, and the Milady configuration cascade."
+description: "AgentRuntime class, constructor parameters, plugin registration, and the Eliza configuration cascade."
 ---
 
-The `AgentRuntime` class from `@elizaos/core` is the central object that manages plugin registration, message processing, provider context assembly, and service lifecycle. Milady wraps it with additional bootstrap logic in `eliza/packages/agent/src/runtime/eliza.ts`.
+The `AgentRuntime` class from `@elizaos/core` is the central object that manages plugin registration, message processing, provider context assembly, and service lifecycle. Eliza wraps it with additional bootstrap logic in `eliza/packages/agent/src/runtime/eliza.ts`.
 
 ## AgentRuntime Constructor
 
@@ -23,7 +23,7 @@ const runtime = new AgentRuntime({
     VALIDATION_LEVEL: "fast",
     MODEL_PROVIDER: "anthropic/claude-sonnet-4.6",
     BUNDLED_SKILLS_DIRS: "/path/to/skills",
-    WORKSPACE_SKILLS_DIR: "~/.milady/workspace/skills",
+    WORKSPACE_SKILLS_DIR: "~/.eliza/workspace/skills",
     SKILLS_ALLOWLIST: "skill-a,skill-b",
     SKILLS_DENYLIST: "skill-x",
   },
@@ -35,8 +35,8 @@ const runtime = new AgentRuntime({
 | Parameter | Type | Description |
 |---|---|---|
 | `character` | `Character` | The agent's identity, personality, and secrets. Built by `buildCharacterFromConfig()`. |
-| `actionPlanning` | `boolean` | Enable the action planning subsystem. Milady sets this to `true`. |
-| `plugins` | `Plugin[]` | Ordered array of plugins. Milady plugin comes first, then resolved plugins. |
+| `actionPlanning` | `boolean` | Enable the action planning subsystem. Eliza sets this to `true`. |
+| `plugins` | `Plugin[]` | Ordered array of plugins. Eliza plugin comes first, then resolved plugins. |
 | `logLevel` | `string` | Log verbosity: `"trace"`, `"debug"`, `"info"`, `"warn"`, `"error"`, `"fatal"`. Resolved from `config.logging.level`. |
 | `sandboxMode` | `boolean` | Enable sandbox token replacement for audit logging. Only spread-included in the constructor when `isSandboxActive` is true (i.e., `agents.defaults.sandbox.mode != "off"`). When sandbox is off, this parameter is not passed at all. |
 | `sandboxAuditHandler` | `function` | Callback for sandbox fetch audit events. Receives `{ direction, url, tokenIds }`. |
@@ -57,7 +57,7 @@ const runtime = new AgentRuntime({
 
 ## Plugin Registration
 
-Milady registers plugins in two phases:
+Eliza registers plugins in two phases:
 
 ### Phase 1: Pre-registration (sequential)
 
@@ -147,7 +147,7 @@ for (const [featureName, enabled] of Object.entries(config.features ?? {})) {
 
 ## Channel to Plugin Mapping
 
-> **Note:** Not all plugins in this map are bundled with Milady. `twitter` (`@elizaos/plugin-twitter`) and `lens` (`@elizaos/plugin-lens`) are upstream elizaOS plugins that must be installed manually. `wechat` (added by Milady's `app-core`) is experimental. See the [connectors availability table](/guides/connectors#supported-platforms).
+> **Note:** Not all plugins in this map are bundled with Eliza. `twitter` (`@elizaos/plugin-twitter`) and `lens` (`@elizaos/plugin-lens`) are upstream elizaOS plugins that must be installed manually. `wechat` (added by Eliza's `app-core`) is experimental. See the [connectors availability table](/guides/connectors#supported-platforms).
 
 ```typescript
 const CHANNEL_PLUGIN_MAP = {
@@ -231,7 +231,7 @@ Config values cascade from multiple sources in this priority order:
 ```
 process.env (highest priority)
   ↓
-milady.json (config file)
+eliza.json (config file)
   ↓
 AgentRuntime settings object
   ↓

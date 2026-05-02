@@ -8,7 +8,7 @@
     "access": "public"
   },
   "bin": {
-    "milady-scenarios": "./bin/milady-scenarios"
+    "eliza-scenarios": "./bin/eliza-scenarios"
   },
   "exports": {
     ".": "./src/index.ts",

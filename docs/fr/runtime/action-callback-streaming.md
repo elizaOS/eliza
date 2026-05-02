@@ -1,13 +1,13 @@
 ---
 title: Callbacks d'action et streaming SSE
-description: Pourquoi Milady remplace (au lieu de concaténer) le texte des callbacks d'action dans le chat du tableau de bord, et comment cela correspond aux messages progressifs à la Discord.
+description: Pourquoi Eliza remplace (au lieu de concaténer) le texte des callbacks d'action dans le chat du tableau de bord, et comment cela correspond aux messages progressifs à la Discord.
 ---
 
 <div id="action-callbacks-and-sse-streaming">
 # Callbacks d'action et streaming SSE
 </div>
 
-Le chat du tableau de bord de Milady utilise les **Server-Sent Events (SSE)** pour streamer la réponse de l'assistant. Deux types de texte différents arrivent sur le même flux :
+Le chat du tableau de bord de Eliza utilise les **Server-Sent Events (SSE)** pour streamer la réponse de l'assistant. Deux types de texte différents arrivent sur le même flux :
 
 1. **Tokens LLM** — la réponse streamée du modèle (`onStreamChunk`).
 2. **Callbacks d'action** — texte renvoyé par `HandlerCallback` pendant l'exécution d'une action (par ex. `PLAY_AUDIO`, flux de portefeuille, fallbacks de compétences Binance).
@@ -34,8 +34,8 @@ C'est correct pour les **deltas de tokens** qui prolongent la même réponse, ma
 
 ---
 
-<div id="the-milady-behavior">
-## Le comportement de Milady
+<div id="the-eliza-behavior">
+## Le comportement de Eliza
 </div>
 
 Dans `generateChatResponse` (`eliza/packages/agent/src/api/chat-routes.ts`) :
@@ -68,9 +68,9 @@ await callback({ text: "🔍 Searching…", source: message.content.source });
 await callback({ text: "Now playing: **Track**", source: message.content.source });
 ```
 
-Pas de champs supplémentaires, pas d'API spécifiques à Milady, pas d'attachement au runtime. Les helpers comme `ProgressiveMessage` dans `plugin-music-player` restent une fine couche au-dessus de `callback`.
+Pas de champs supplémentaires, pas d'API spécifiques à Eliza, pas d'attachement au runtime. Les helpers comme `ProgressiveMessage` dans `plugin-music-player` restent une fine couche au-dessus de `callback`.
 
-**Pourquoi préserver le contrat :** Discord et les autres connecteurs dépendent déjà de cette API ; le rôle de Milady est d'interpréter correctement les callbacks répétés dans le chemin du **chat API**, pas de bifurquer la surface du plugin.
+**Pourquoi préserver le contrat :** Discord et les autres connecteurs dépendent déjà de cette API ; le rôle de Eliza est d'interpréter correctement les callbacks répétés dans le chemin du **chat API**, pas de bifurquer la surface du plugin.
 
 ---
 

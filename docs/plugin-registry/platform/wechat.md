@@ -1,16 +1,16 @@
 ---
 title: "WeChat Plugin"
 sidebarTitle: "WeChat"
-description: "The @elizaos/plugin-wechat package is not currently available in the Milady plugin registry."
+description: "The @elizaos/plugin-wechat package is not currently available in the Eliza plugin registry."
 ---
 
 <Warning>
 The WeChat plugin is maintained locally in this repository under `packages/plugin-wechat/` and is not published to the elizaOS plugin registry. It is available as a workspace dependency.
 </Warning>
 
-The WeChat plugin connects Milady agents to WeChat via a user-supplied proxy service, enabling text messaging and optional image and group chat support from personal WeChat accounts.
+The WeChat plugin connects Eliza agents to WeChat via a user-supplied proxy service, enabling text messaging and optional image and group chat support from personal WeChat accounts.
 
-> **Availability:** `@elizaos/plugin-wechat` is a Milady-local plugin that is **not** included in the bundled `plugins.json` registry. It ships as a CI stub and requires the full plugin package to be available locally or via npm.
+> **Availability:** `@elizaos/plugin-wechat` is a Eliza-local plugin that is **not** included in the bundled `plugins.json` registry. It ships as a CI stub and requires the full plugin package to be available locally or via npm.
 
 **Package:** `@elizaos/plugin-wechat`
 
@@ -25,7 +25,7 @@ Unlike most connectors which use official platform APIs, the WeChat connector re
 ## Installation (unavailable)
 
 <Warning>
-The WeChat plugin is **experimental** and not yet included in the Milady bundled plugin registry. Full integration is in progress.
+The WeChat plugin is **experimental** and not yet included in the Eliza bundled plugin registry. Full integration is in progress.
 </Warning>
 
 The WeChat plugin (`@elizaos/plugin-wechat`) is not yet available in the bundled registry. Check the [changelog](/changelog) for availability updates.
@@ -36,7 +36,7 @@ The WeChat plugin (`@elizaos/plugin-wechat`) is not yet available in the bundled
 
 Get an API key from your WeChat proxy service provider.
 
-### 2. Configure Milady
+### 2. Configure Eliza
 
 ```json
 {

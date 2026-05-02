@@ -58,7 +58,7 @@ type DiscordMember = {
   roles?: string[];
 };
 
-const KEEP_ARTIFACTS = process.env.MILADY_KEEP_LIVE_ARTIFACTS === "1";
+const KEEP_ARTIFACTS = process.env.ELIZA_KEEP_LIVE_ARTIFACTS === "1";
 
 async function waitFor(
   predicate: () => Promise<boolean>,
@@ -77,7 +77,7 @@ async function waitFor(
 }
 
 function loadDiscordToken(): string {
-  const configPath = path.join(os.homedir(), ".milady", "milady.json");
+  const configPath = path.join(os.homedir(), ".eliza", "eliza.json");
   const parsed = JSON.parse(
     fs.readFileSync(configPath, "utf8"),
   ) as DiscordConfig;
@@ -91,7 +91,7 @@ function loadDiscordToken(): string {
   const fromEnv = process.env.DISCORD_BOT_TOKEN?.trim();
   if (!fromEnv) {
     throw new Error(
-      "DISCORD_BOT_TOKEN is not configured in the environment or ~/.milady/milady.json",
+      "DISCORD_BOT_TOKEN is not configured in the environment or ~/.eliza/eliza.json",
     );
   }
   return fromEnv;
@@ -301,7 +301,7 @@ async function main(): Promise<void> {
   await runtime.ensureParticipantInRoom(allowedEntity.id, room.id);
   await runtime.ensureParticipantInRoom(deniedEntity.id, room.id);
 
-  workdir = fs.mkdtempSync(path.join(os.tmpdir(), "milady-discord-role-live-"));
+  workdir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-discord-role-live-"));
   const firstFile = path.join(workdir, "discord-owner-proof.txt");
   const secondFile = path.join(workdir, "discord-owner-followup.txt");
   const firstSentinel = `DISCORD_OWNER_CREATE_${Date.now()}`;

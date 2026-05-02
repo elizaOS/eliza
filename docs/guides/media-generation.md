@@ -4,15 +4,15 @@ sidebarTitle: Media Generation
 description: Generate images, videos, and audio, or analyze images using AI providers like FAL, OpenAI, Google, xAI, and Eliza Cloud.
 ---
 
-Milady includes a media generation abstraction layer that provides a unified interface for creating images, videos, and audio, as well as analyzing images with AI vision. Multiple provider backends are supported, with Eliza Cloud as the default (no API key required).
+Eliza includes a media generation abstraction layer that provides a unified interface for creating images, videos, and audio, as well as analyzing images with AI vision. Multiple provider backends are supported, with Eliza Cloud as the default (no API key required).
 
 ## Architecture Overview
 
 The media system is organized into three components:
 
 1. **Provider abstraction** (`src/providers/media-provider.ts`) -- Defines unified interfaces (`ImageGenerationProvider`, `VideoGenerationProvider`, `AudioGenerationProvider`, `VisionAnalysisProvider`) and concrete implementations for each backend. A factory function for each media type selects the appropriate provider based on your configuration.
-2. **Actions** (`src/actions/media.ts`) -- Four built-in agent actions (`GENERATE_IMAGE`, `GENERATE_VIDEO`, `GENERATE_AUDIO`, `ANALYZE_IMAGE`) that expose media capabilities to the agent during conversations. Each action reads the current `milady.json` configuration, instantiates the correct provider, and returns results as message attachments.
-3. **Configuration** (`milady.json`) -- The `media` section controls which provider is used for each media type, whether to use Eliza Cloud or your own API keys, and provider-specific settings like model names and base URLs.
+2. **Actions** (`src/actions/media.ts`) -- Four built-in agent actions (`GENERATE_IMAGE`, `GENERATE_VIDEO`, `GENERATE_AUDIO`, `ANALYZE_IMAGE`) that expose media capabilities to the agent during conversations. Each action reads the current `eliza.json` configuration, instantiates the correct provider, and returns results as message attachments.
+3. **Configuration** (`eliza.json`) -- The `media` section controls which provider is used for each media type, whether to use Eliza Cloud or your own API keys, and provider-specific settings like model names and base URLs.
 
 ```
 User message: "Draw me a sunset over mountains"
@@ -21,7 +21,7 @@ User message: "Draw me a sunset over mountains"
   Agent selects GENERATE_IMAGE action
        |
        v
-  loadMiladyConfig() → reads media.image settings
+  loadElizaConfig() → reads media.image settings
        |
        v
   createImageProvider() → selects provider (e.g., FAL, OpenAI, or Cloud)
@@ -184,7 +184,7 @@ Analyzes an image using AI vision. Accepts either an image URL or base64-encoded
 
 ## Configuration
 
-Media providers are configured in the `media` section of `milady.json`. Each media type (image, video, audio, vision) is configured independently, so you can use different providers for different capabilities.
+Media providers are configured in the `media` section of `eliza.json`. Each media type (image, video, audio, vision) is configured independently, so you can use different providers for different capabilities.
 
 ```json
 {
@@ -236,7 +236,7 @@ If the selected provider's API key is missing or the provider is not recognized,
 
 ### Eliza Cloud Configuration
 
-Eliza Cloud settings are in the `cloud` section of `milady.json`:
+Eliza Cloud settings are in the `cloud` section of `eliza.json`:
 
 ```json
 {
@@ -524,7 +524,7 @@ Google Veo video generation uses a long-running operation model. If the video is
 
 ### Recovery Procedures
 
-1. **Provider credential rotation:** Update the API key in `milady.json` under `media.<type>.<provider>.apiKey` and restart the agent. No cache or state needs clearing — provider instances are created fresh per request.
+1. **Provider credential rotation:** Update the API key in `eliza.json` under `media.<type>.<provider>.apiKey` and restart the agent. No cache or state needs clearing — provider instances are created fresh per request.
 2. **Stuck on Eliza Cloud fallback:** If the agent unexpectedly uses Cloud instead of your own-key provider, check: (a) `mode` is `"own-key"`, (b) `provider` is a recognized name, and (c) the API key is at the correct nested path. Fix the config and restart.
 3. **Ollama model corruption:** Delete the model with `ollama rm <model>` and re-pull with `ollama pull <model>`. Ensure `autoDownload: true` is set to prevent future missing-model errors.
 

@@ -4,7 +4,7 @@ sidebarTitle: "Secrets"
 description: "REST API endpoints for managing API keys and secrets used by plugins and providers."
 ---
 
-The secrets API manages API keys and credentials for AI providers, blockchain RPCs, and third-party services. Secrets are stored in the Milady config file and synced to `process.env` at runtime. Values are returned in redacted form — the UI can display which keys are set without exposing their contents.
+The secrets API manages API keys and credentials for AI providers, blockchain RPCs, and third-party services. Secrets are stored in the Eliza config file and synced to `process.env` at runtime. Values are returned in redacted form — the UI can display which keys are set without exposing their contents.
 
 ## Endpoints
 

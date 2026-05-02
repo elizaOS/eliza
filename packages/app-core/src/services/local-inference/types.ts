@@ -2,7 +2,7 @@
  * Local inference model-management types.
  *
  * Shared across the service layer, API routes, and renderer.
- * The catalog is Milady-curated; installed models are tracked locally in a
+ * The catalog is Eliza-curated; installed models are tracked locally in a
  * JSON registry under the state dir.
  */
 
@@ -11,7 +11,7 @@ export type ModelBucket = "small" | "mid" | "large" | "xl";
 export type ModelCategory = "chat" | "code" | "tools" | "tiny" | "reasoning";
 
 export interface CatalogModel {
-  /** Stable Milady id — used as the primary key. */
+  /** Stable Eliza id — used as the primary key. */
   id: string;
   displayName: string;
   /** HuggingFace repo slug, e.g. "bartowski/Llama-3.2-3B-Instruct-GGUF". */
@@ -77,11 +77,11 @@ export interface InstalledModel {
   installedAt: string;
   /** ISO timestamp of last activation (null if never loaded). */
   lastUsedAt: string | null;
-  /** Where we got this model from. Determines whether Milady owns the file. */
-  source: "milady-download" | "external-scan";
+  /** Where we got this model from. Determines whether Eliza owns the file. */
+  source: "eliza-download" | "external-scan";
   /**
    * When source === "external-scan", which tool the file belonged to.
-   * Prevents Milady from deleting files other apps own.
+   * Prevents Eliza from deleting files other apps own.
    */
   externalOrigin?:
     | "lm-studio"
@@ -137,7 +137,7 @@ export interface DownloadEvent {
 }
 
 /**
- * Agent model-type slots Milady lets the user wire to local models. These
+ * Agent model-type slots Eliza lets the user wire to local models. These
  * match the `ModelType` enum in `@elizaos/core` — kept as string literals
  * here so the types file stays framework-free.
  */

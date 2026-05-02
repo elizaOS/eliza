@@ -2,12 +2,12 @@
 title: Electrobun macOS window chrome
 sidebarTitle: macOS window chrome
 summary: Why the main window uses native drag/resize overlays above WKWebView, how depth scales per screen, and where each layer lives.
-description: Architecture of Milady’s macOS Electrobun frameless window — native strips vs CSS, cursor ownership, and contributor file map.
+description: Architecture of Eliza’s macOS Electrobun frameless window — native strips vs CSS, cursor ownership, and contributor file map.
 ---
 
 # Electrobun macOS window chrome
 
-The **main** Milady desktop window on macOS uses `titleBarStyle: "hiddenInset"`: traffic lights are inset, there is no classic title bar, and the **WKWebView** fills most of the client area. This guide explains **how** we make that window draggable and resizable, and **why** the solution is split across native code, Electrobun main-process TypeScript, and a small CSS file.
+The **main** Eliza desktop window on macOS uses `titleBarStyle: "hiddenInset"`: traffic lights are inset, there is no classic title bar, and the **WKWebView** fills most of the client area. This guide explains **how** we make that window draggable and resizable, and **why** the solution is split across native code, Electrobun main-process TypeScript, and a small CSS file.
 
 ## The core problem
 
@@ -32,7 +32,7 @@ The **main** Milady desktop window on macOS uses `titleBarStyle: "hiddenInset"`:
 
 ### Right, bottom, and bottom-right — resize
 
-- Three **`MiladyResizeStripView`** instances (identifiers `MiladyResizeStripRight`, `MiladyResizeStripBottom`, `MiladyResizeStripCorner`) are **invisible** views placed along the **inner** right and bottom edges and the **bottom-right** corner.
+- Three **`ElizaResizeStripView`** instances (identifiers `ElizaResizeStripRight`, `ElizaResizeStripBottom`, `ElizaResizeStripCorner`) are **invisible** views placed along the **inner** right and bottom edges and the **bottom-right** corner.
 - **Cursor:** each view implements **`resetCursorRects`** and **`addCursorRect:cursor:`** so **AppKit** applies the correct resize cursor while the pointer is over that view — **without** competing with WebKit for the page body.
 - **Resize:** **`mouseDown:`** runs a small **modal loop** (`nextEventMatchingMask:` for drag + up) that adjusts **`[window setFrame:display:]`** for east / south / south-east, clamped to **`minSize`** / **`maxSize`**.
 - **Why not rely on the system frame resize alone:** with a full-bleed web view, the **interior** edges are not the same as the window’s outer resize border; users expect to grab a **thick** inner chrome band. The overlays define that band explicitly.
@@ -49,7 +49,7 @@ The same **depth** (in points) is used for:
 - The **top** drag strip height, and  
 - The **right / bottom / corner** resize overlays.
 
-**Why not a single constant (e.g. 26pt):** on **1x** vs **2x** displays and very **wide** desktops, a fixed value is either a fat obstruction or a too-narrow hit target. When the host passes **`height ≤ 0`**, **`miladyChromeDepthPoints`** derives thickness from **`window.screen`** (`backingScaleFactor`, visible width hints) and clamps to a sane range. The host can still pass a **positive** value to pin depth (debugging or product override).
+**Why not a single constant (e.g. 26pt):** on **1x** vs **2x** displays and very **wide** desktops, a fixed value is either a fat obstruction or a too-narrow hit target. When the host passes **`height ≤ 0`**, **`elizaChromeDepthPoints`** derives thickness from **`window.screen`** (`backingScaleFactor`, visible width hints) and clamps to a sane range. The host can still pass a **positive** value to pin depth (debugging or product override).
 
 **Why `move` as well as `resize` in TS:** moving the window to another display updates **`window.screen`**; **resize** alone might not fire, so **`win.on("move", alignChrome)`** keeps native geometry in sync.
 
@@ -61,8 +61,8 @@ The same **depth** (in points) is used for:
 | **Dylib build** | `apps/app/electrobun/scripts/build-macos-effects.sh` → `libMacWindowEffects.dylib` | Ships native code consumed via Bun FFI | Keeps Objective-C++ out of the main TS bundle; rebuild after changing `.mm`. |
 | **FFI + types** | `apps/app/electrobun/src/native/mac-window-effects.ts` | `setNativeDragRegion`, `enableVibrancy`, etc. | Thin typed bridge; JSDoc describes `height` semantics (`0` = auto from screen). |
 | **Electrobun main** | `apps/app/electrobun/src/index.ts` | `applyMacOSWindowEffects`, `alignChrome` on resize/move/dom-ready | **Re-entrants** native layout whenever the web view or window geometry changes. |
-| **CSS** | `eliza/packages/app-core/src/styles/electrobun-mac-window-drag.css` | `-webkit-app-region: drag` / `no-drag` when `html.milady-electrobun-frameless` | Helps **Chromium** and documents intent; **not** the source of truth for WKWebView resize cursors. |
-| **Class toggle** | `apps/app/src/main.tsx` | Adds `milady-electrobun-frameless` on macOS Electrobun main shell | Gates CSS; skipped for **detached** shells where a normal window chrome may apply. |
+| **CSS** | `eliza/packages/app-core/src/styles/electrobun-mac-window-drag.css` | `-webkit-app-region: drag` / `no-drag` when `html.eliza-electrobun-frameless` | Helps **Chromium** and documents intent; **not** the source of truth for WKWebView resize cursors. |
+| **Class toggle** | `apps/app/src/main.tsx` | Adds `eliza-electrobun-frameless` on macOS Electrobun main shell | Gates CSS; skipped for **detached** shells where a normal window chrome may apply. |
 
 ## Related window flags
 
@@ -70,7 +70,7 @@ The same **depth** (in points) is used for:
 
 ## Changing behavior safely
 
-- **Thickness / auto depth:** adjust **`miladyChromeDepthPoints`** or the host constant **`MAC_NATIVE_DRAG_REGION_HEIGHT`** in `index.ts` (`0` = auto).
+- **Thickness / auto depth:** adjust **`elizaChromeDepthPoints`** or the host constant **`MAC_NATIVE_DRAG_REGION_HEIGHT`** in `index.ts` (`0` = auto).
 - **Drag strip horizontal inset:** **`MAC_NATIVE_DRAG_REGION_X`** (traffic-light clearance).
 - **After editing `.mm`:** from `apps/app/electrobun`, run `bun run build:native-effects` (wraps `scripts/build-macos-effects.sh`).
 

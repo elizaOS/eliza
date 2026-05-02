@@ -1,17 +1,17 @@
 ---
 title: "Nostr Plugin"
 sidebarTitle: "Nostr"
-description: "Nostr connector for Milady — relay-based social posting and encrypted direct messages."
+description: "Nostr connector for Eliza — relay-based social posting and encrypted direct messages."
 ---
 
-The Nostr plugin connects Milady agents to the Nostr network, enabling note publishing, relay connectivity, and NIP-04 encrypted direct messages.
+The Nostr plugin connects Eliza agents to the Nostr network, enabling note publishing, relay connectivity, and NIP-04 encrypted direct messages.
 
 **Package:** `@elizaos/plugin-nostr`
 
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-nostr
+eliza plugins install @elizaos/plugin-nostr
 ```
 
 ## Setup
@@ -20,7 +20,7 @@ milady plugins install @elizaos/plugin-nostr
 
 Use any Nostr client or key generation tool to create a keypair. You need the private key (nsec or hex format).
 
-### 2. Configure Milady
+### 2. Configure Eliza
 
 ```json
 {

@@ -1,17 +1,17 @@
 ---
 title: "Configuration Templates"
 sidebarTitle: "Config Templates"
-description: "Ready-to-use milady.json templates for common deployment scenarios"
+description: "Ready-to-use eliza.json templates for common deployment scenarios"
 ---
 
 ## Overview
 
 <Warning>
-**These templates use a simplified, illustrative configuration format for readability.** The actual Milady configuration file (`~/.milady/milady.json`) uses a different schema. In particular:
+**These templates use a simplified, illustrative configuration format for readability.** The actual Eliza configuration file (`~/.eliza/eliza.json`) uses a different schema. In particular:
 - Model providers are configured via the `env` section (e.g., `"OPENAI_API_KEY": "..."`) or environment variables, not a `modelProvider` object.
 - Connectors are configured under `connectors.<name>` as objects (not arrays).
 - There is no `system`, `handlers`, `monitoring`, `scaling`, `cache`, `backup`, or `security` top-level section in the actual config schema.
-- Use `milady configure` or the dashboard Settings page to configure your agent correctly.
+- Use `eliza configure` or the dashboard Settings page to configure your agent correctly.
 
 See the [Configuration Reference](/configuration) and [Config Schema](/config-schema) for the actual config format.
 </Warning>
@@ -22,9 +22,9 @@ This guide provides 8 illustrative configuration templates for different use cas
 **Important**: Replace all placeholder values before running:
 - `<YOUR_API_KEY>` placeholders with your actual API keys
 - Bot tokens and credentials with your real values
-- Keep secrets in the `env` section or in `~/.milady/.env` — the config file is written with mode `0o600` for safety
+- Keep secrets in the `env` section or in `~/.eliza/.env` — the config file is written with mode `0o600` for safety
 
-Never commit real API keys to version control. Use `~/.milady/.env` for secrets when possible.
+Never commit real API keys to version control. Use `~/.eliza/.env` for secrets when possible.
 </Warning>
 
 ## 1. Minimal Setup
@@ -33,7 +33,7 @@ The simplest configuration — one provider, one agent, no connectors.
 
 ```json5
 {
-  // Minimal Milady configuration
+  // Minimal Eliza configuration
   // Perfect for: Learning, prototyping, single-model deployments
   
   modelProvider: {
@@ -64,7 +64,7 @@ The simplest configuration — one provider, one agent, no connectors.
 ```
 
 **Use this template if you:**
-- Are just getting started with Milady
+- Are just getting started with Eliza
 - Want to test a single provider via the web dashboard
 - Don't need connectors or advanced features
 
@@ -530,7 +530,7 @@ Production deployment with PostgreSQL, monitoring, multiple connectors, and clou
     otel: {
       enabled: true,
       endpoint: "<YOUR_OTEL_ENDPOINT>",
-      serviceName: "milady-prod",
+      serviceName: "eliza-prod",
       traces: true,
       metrics: true,
     },
@@ -604,10 +604,10 @@ See [Platform Connectors](/guides/connectors) for all 28 supported platforms.
 
 ### API Keys
 
-Use `~/.milady/.env` for secrets (recommended) or the `env` section in `milady.json`:
+Use `~/.eliza/.env` for secrets (recommended) or the `env` section in `eliza.json`:
 
 ```bash
-# ~/.milady/.env
+# ~/.eliza/.env
 ANTHROPIC_API_KEY=sk-ant-...
 OPENAI_API_KEY=sk-...
 BRAVE_API_KEY=BSA...
@@ -626,20 +626,20 @@ modelProvider: {
 
 ### Test Your Setup
 
-After editing `~/.milady/milady.json`, verify your configuration:
+After editing `~/.eliza/eliza.json`, verify your configuration:
 
 ```bash
-# Start Milady and check for startup errors
-milady
+# Start Eliza and check for startup errors
+eliza
 
 # Check model provider status
-milady models
+eliza models
 
 # Check installed plugins
-milady plugins installed
+eliza plugins installed
 
 # Run the built-in diagnostics
-milady doctor
+eliza doctor
 ```
 
 ### Development Mode
@@ -662,9 +662,9 @@ bun run check
 ## Next Steps
 
 1. **Choose a template** that matches your use case
-2. **Adapt the concepts** to the actual `milady.json` config format (see [Configuration](/configuration) and [Config Schema](/config-schema))
+2. **Adapt the concepts** to the actual `eliza.json` config format (see [Configuration](/configuration) and [Config Schema](/config-schema))
 3. **Replace all placeholder values** with your actual credentials
-4. **Test locally** with `milady` and `milady models`
+4. **Test locally** with `eliza` and `eliza models`
 5. **Deploy** using your hosting platform's deployment process
 
 See the [Configuration Reference](/configuration) for complete option documentation.

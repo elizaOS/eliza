@@ -39,7 +39,7 @@ if (
 }
 
 const liveTestsEnabled =
-  env.MILADY_LIVE_TEST === "1" || env.ELIZA_LIVE_TEST === "1";
+  env.ELIZA_LIVE_TEST === "1" || env.ELIZA_LIVE_TEST === "1";
 if (liveTestsEnabled && env.LOCAL_EMBEDDING_FORCE_CPU == null) {
   env.LOCAL_EMBEDDING_FORCE_CPU = "1";
 }

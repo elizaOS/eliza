@@ -265,7 +265,7 @@ export async function handleConfigRoutes(
   }
 
   // ── POST /api/config/reload ──────────────────────────────────────────────
-  // Re-read milady.json from disk and apply hot-reloadable fields to the
+  // Re-read eliza.json from disk and apply hot-reloadable fields to the
   // running runtime. Returns the list of fields applied and any fields that
   // still require a full restart (plugin list, provider/model registry,
   // database adapter).

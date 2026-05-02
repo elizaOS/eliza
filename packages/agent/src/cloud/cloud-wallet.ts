@@ -5,7 +5,7 @@
  * is off so no cloud code paths run in legacy builds.
  *
  * Responsibilities:
- *   1. Generate + persist MILADY_CLOUD_CLIENT_ADDRESS_KEY (the local secp256k1
+ *   1. Generate + persist ELIZA_CLOUD_CLIENT_ADDRESS_KEY (the local secp256k1
  *      key whose address ties this install to cloud-custodied wallets).
  *   2. Provision EVM + Solana cloud wallets for an agent, guarded by a
  *      single-flight mutex keyed on (agentId, chainType) to prevent duplicate
@@ -24,8 +24,8 @@ import type {
   CloudWalletProvider,
 } from "./bridge-client.js";
 
-export const MILADY_CLOUD_CLIENT_ADDRESS_KEY_ENV =
-  "MILADY_CLOUD_CLIENT_ADDRESS_KEY";
+export const ELIZA_CLOUD_CLIENT_ADDRESS_KEY_ENV =
+  "ELIZA_CLOUD_CLIENT_ADDRESS_KEY";
 
 export class CloudWalletFlagDisabledError extends Error {
   constructor() {
@@ -48,7 +48,7 @@ function normalizePrivateKey(raw: string): `0x${string}` {
   const hex = trimmed.startsWith("0x") ? trimmed.slice(2) : trimmed;
   if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
     throw new Error(
-      `Malformed ${MILADY_CLOUD_CLIENT_ADDRESS_KEY_ENV}: expected 32-byte hex`,
+      `Malformed ${ELIZA_CLOUD_CLIENT_ADDRESS_KEY_ENV}: expected 32-byte hex`,
     );
   }
   return `0x${hex.toLowerCase()}`;
@@ -79,12 +79,12 @@ export interface CloudWalletProvisionBridge {
  * Read or mint the local client-address secp256k1 key.
  *
  * Priority:
- *   1. process.env[MILADY_CLOUD_CLIENT_ADDRESS_KEY] — respected as-is.
+ *   1. process.env[ELIZA_CLOUD_CLIENT_ADDRESS_KEY] — respected as-is.
  *   2. Generate a fresh key, write to `process.env` AND disk (`config.env`)
  *      so it survives restart.
  *
  * The key is in `BLOCKED_STARTUP_ENV_KEYS` so it never syncs into
- * `milady.json` — `config.env` is the designated disk home for it.
+ * `eliza.json` — `config.env` is the designated disk home for it.
  */
 export async function getOrCreateClientAddressKey(
   opts: GetOrCreateKeyOptions = {},
@@ -95,7 +95,7 @@ export async function getOrCreateClientAddressKey(
 }> {
   ensureFlag();
 
-  const existing = process.env[MILADY_CLOUD_CLIENT_ADDRESS_KEY_ENV];
+  const existing = process.env[ELIZA_CLOUD_CLIENT_ADDRESS_KEY_ENV];
   if (existing && existing.trim().length > 0) {
     const privateKey = normalizePrivateKey(existing);
     const account = privateKeyToAccount(privateKey);
@@ -105,8 +105,8 @@ export async function getOrCreateClientAddressKey(
   const privateKey = generatePrivateKey();
   const account = privateKeyToAccount(privateKey);
 
-  process.env[MILADY_CLOUD_CLIENT_ADDRESS_KEY_ENV] = privateKey;
-  await persistConfigEnv(MILADY_CLOUD_CLIENT_ADDRESS_KEY_ENV, privateKey, {
+  process.env[ELIZA_CLOUD_CLIENT_ADDRESS_KEY_ENV] = privateKey;
+  await persistConfigEnv(ELIZA_CLOUD_CLIENT_ADDRESS_KEY_ENV, privateKey, {
     stateDir: opts.stateDir,
   });
 
@@ -337,5 +337,5 @@ export function persistCloudWalletCache(
 /** @internal — exposed for tests to reset state between cases. */
 export function __resetCloudWalletModuleForTests(): void {
   inflight.clear();
-  delete process.env[MILADY_CLOUD_CLIENT_ADDRESS_KEY_ENV];
+  delete process.env[ELIZA_CLOUD_CLIENT_ADDRESS_KEY_ENV];
 }

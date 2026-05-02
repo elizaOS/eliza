@@ -182,7 +182,7 @@ describe("PageScopedChatPane", () => {
 
     act(() => {
       window.dispatchEvent(
-        new CustomEvent("milady:chat:prefill", {
+        new CustomEvent("eliza:chat:prefill", {
           detail: {
             text: "Draft a reply to this message",
             select: true,

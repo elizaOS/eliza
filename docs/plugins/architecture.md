@@ -1,10 +1,10 @@
 ---
 title: "Plugin Architecture"
 sidebarTitle: "Architecture"
-description: "Deep dive into Milady's plugin system — registration lifecycle, hook points, auto-enable mechanism, and dependency resolution."
+description: "Deep dive into Eliza's plugin system — registration lifecycle, hook points, auto-enable mechanism, and dependency resolution."
 ---
 
-The Milady plugin system is built on elizaOS core. Every capability beyond the base runtime — model providers, platform connectors, DeFi integrations, scheduling, and custom features — is delivered as a plugin.
+The Eliza plugin system is built on elizaOS core. Every capability beyond the base runtime — model providers, platform connectors, DeFi integrations, scheduling, and custom features — is delivered as a plugin.
 
 > **Path convention:** Paths like `packages/agent/` and `packages/app-core/` below refer to directories inside the `eliza/` git submodule.
 
@@ -28,7 +28,7 @@ export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-local-embedding",   // local embeddings — required for memory
   "@elizaos/app-companion",            // VRM companion emotes
   "@elizaos/plugin-cron",              // scheduled jobs and automation
-  "@elizaos/plugin-app-control",       // launch, close, list running Milady apps
+  "@elizaos/plugin-app-control",       // launch, close, list running Eliza apps
   "@elizaos/plugin-shell",             // shell command execution
   "@elizaos/plugin-agent-skills",      // skill execution and marketplace runtime
   "@elizaos/plugin-commands",          // slash command handling
@@ -125,7 +125,7 @@ interface Plugin {
 
 ## Auto-Enable Mechanism
 
-Plugins are automatically enabled when their required configuration is detected. This logic lives in `packages/agent/src/config/plugin-auto-enable.ts` (extended by `packages/app-core/src/config/plugin-auto-enable.ts` for Milady-specific connectors like WeChat) and runs before runtime initialization.
+Plugins are automatically enabled when their required configuration is detected. This logic lives in `packages/agent/src/config/plugin-auto-enable.ts` (extended by `packages/app-core/src/config/plugin-auto-enable.ts` for Eliza-specific connectors like WeChat) and runs before runtime initialization.
 
 ### Trigger Sources
 
@@ -162,7 +162,7 @@ const AUTH_PROVIDER_PLUGINS = {
 };
 ```
 
-> **Note:** Upstream plugins (DeepSeek, Together, Mistral, Cohere, Perplexity, Google Antigravity, Zai) are not included in the bundled `plugins.json`. Setting their env var will attempt to resolve them from the upstream elizaOS registry at runtime. Install them explicitly with `milady plugins install <package>` if auto-resolution fails.
+> **Note:** Upstream plugins (DeepSeek, Together, Mistral, Cohere, Perplexity, Google Antigravity, Zai) are not included in the bundled `plugins.json`. Setting their env var will attempt to resolve them from the upstream elizaOS registry at runtime. Install them explicitly with `eliza plugins install <package>` if auto-resolution fails.
 
 **Connector configuration** — Connector blocks with a `botToken`, `token`, or `apiKey` field auto-enable the corresponding connector plugin:
 
@@ -185,13 +185,13 @@ const CONNECTOR_PLUGINS = {
   nostr:       "@elizaos/plugin-nostr",           // bundled
   blooio:      "@elizaos/plugin-blooio",          // bundled (feature category)
   twitch:      "@elizaos/plugin-twitch",          // bundled
-  wechat:      "@elizaos/plugin-wechat",          // upstream (Milady-specific, not in plugins.json)
+  wechat:      "@elizaos/plugin-wechat",          // upstream (Eliza-specific, not in plugins.json)
 };
 ```
 
-> **Note:** The upstream `packages/agent` defines all `@elizaos/*` connectors. Milady's `packages/app-core` extends this map with the `wechat` entry. Connectors marked "upstream" are not in the bundled `plugins.json` — they resolve from the upstream elizaOS registry at runtime. Install them explicitly if auto-resolution fails.
+> **Note:** The upstream `packages/agent` defines all `@elizaos/*` connectors. Eliza's `packages/app-core` extends this map with the `wechat` entry. Connectors marked "upstream" are not in the bundled `plugins.json` — they resolve from the upstream elizaOS registry at runtime. Install them explicitly if auto-resolution fails.
 
-**Feature flags** — The `features` section of `milady.json` auto-enables feature plugins. A feature can be enabled with `features.<name>: true` or `features.<name>.enabled: true`:
+**Feature flags** — The `features` section of `eliza.json` auto-enables feature plugins. A feature can be enabled with `features.<name>: true` or `features.<name>.enabled: true`:
 
 ```json
 {

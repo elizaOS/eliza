@@ -371,7 +371,7 @@ export default scenario({
   ],
 
   cleanup: [
-    { type: "gmailDeleteDrafts", account: "test-owner", tag: "milady-e2e" },
+    { type: "gmailDeleteDrafts", account: "test-owner", tag: "eliza-e2e" },
   ],
 });
 ```
@@ -469,7 +469,7 @@ New package: `eliza/packages/scenario-runner/`
 - `src/final-checks/` (one file per check type)
 - `src/cleanup.ts`
 - `src/reporter.ts`
-- `src/cli.ts` — `milady scenarios run`
+- `src/cli.ts` — `eliza scenarios run`
 
 New top-level directory: `test/scenarios/` (workspace root).
 
@@ -803,9 +803,9 @@ Real services + dedicated test accounts per the user's choice. Details:
 
 | Service | Account identifier | Purpose | Owner |
 |---|---|---|---|
-| Gmail | `milady-e2e-owner@…` and `milady-e2e-agent@…` | Owner's mailbox + agent mailbox | Eng |
+| Gmail | `eliza-e2e-owner@…` and `eliza-e2e-agent@…` | Owner's mailbox + agent mailbox | Eng |
 | Google Workspace | Same domain | Calendar, Contacts | Eng |
-| GitHub | `milady-e2e-user` + `milady-e2e-agent` | Repo ops | Eng |
+| GitHub | `eliza-e2e-user` + `eliza-e2e-agent` | Repo ops | Eng |
 | Discord | Test user + test bot app | DMs + server ops | Eng |
 | Telegram | Test phone number + test bot | DMs + bot | Eng |
 | Twitter/X | Test handle + test API app | Feed + DMs | Eng |
@@ -819,15 +819,15 @@ Real services + dedicated test accounts per the user's choice. Details:
 
 ### 7.2 Credential storage & rotation
 
-- **Source of truth:** 1Password vault `milady-e2e`. All creds as items with `MILADY_E2E_<SERVICE>_<FIELD>` tags.
-- **CI access:** GitHub Actions secrets `MILADY_E2E_*`, pushed via 1Password CLI in a monthly rotation workflow.
+- **Source of truth:** 1Password vault `eliza-e2e`. All creds as items with `ELIZA_E2E_<SERVICE>_<FIELD>` tags.
+- **CI access:** GitHub Actions secrets `ELIZA_E2E_*`, pushed via 1Password CLI in a monthly rotation workflow.
 - **Local dev:** `bun run scenarios:creds:pull` uses `op` to fetch into `.env.scenarios`. `.gitignore`d.
 - **Runner:** `CredentialBroker` (§3.2) resolves `"gmail:test-agent"` → env var lookup → real creds.
-- **Redaction:** Scenario reports scrub anything matching `MILADY_E2E_*` values before upload.
+- **Redaction:** Scenario reports scrub anything matching `ELIZA_E2E_*` values before upload.
 
 ### 7.3 Side-effect isolation
 
-- **Gmail:** Labels applied to anything the agent sends (`milady-e2e`). Cleanup sweep deletes labeled items after each run.
+- **Gmail:** Labels applied to anything the agent sends (`eliza-e2e`). Cleanup sweep deletes labeled items after each run.
 - **Calendar:** Events created with prefix `[e2e]` + unique run ID. Sweep deletes at run end.
 - **Twilio:** Rate-limited sandbox number + per-scenario recipient whitelist (only other test numbers).
 - **iMessage:** Via BlueBubbles to a dedicated test Apple ID on a dedicated Mac mini. Recipients limited to paired test numbers.
@@ -931,7 +931,7 @@ interface ScenarioReport {
 Reports aggregate into `ScenarioMatrixReport` per shard, then into a PR-level summary posted as a comment:
 
 ```
-Milady Scenario Matrix
+Eliza Scenario Matrix
   ✅ 176 passed  ⚠️ 3 flaky-passed  ❌ 2 failed  ⏭️ 0 skipped
   Duration: 44m 12s
   LLM cost: $0.38 (Groq 98%, OpenAI 2%)
@@ -956,7 +956,7 @@ Chose milestone gating over big-bang. Each milestone is independently shippable 
 
 ### Milestone 0 — Decision & inventory (Week 0)
 - This document reviewed & approved.
-- Create `milady-e2e` 1Password vault + all accounts in §7.1.
+- Create `eliza-e2e` 1Password vault + all accounts in §7.1.
 - Fill out unknowns in §12.
 
 ### Milestone 1 — Unified runner (Week 1–3)

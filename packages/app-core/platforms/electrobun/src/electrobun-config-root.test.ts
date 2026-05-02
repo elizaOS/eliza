@@ -57,7 +57,7 @@ afterEach(() => {
 });
 
 describe("Electrobun config repo root resolution", () => {
-  it("prefers the outer Milady wrapper root over the nested eliza checkout", async () => {
+  it("prefers the outer Eliza wrapper root over the nested eliza checkout", async () => {
     const outerRoot = makeTempRoot();
     const nestedElizaRoot = path.join(outerRoot, "eliza");
     const electrobunDir = path.join(
@@ -74,10 +74,10 @@ describe("Electrobun config repo root resolution", () => {
       electrobunPath: "eliza/packages/app-core/platforms/electrobun",
     });
 
-    const { findMiladyRepoRoot } = await loadConfigModule(outerRoot);
+    const { findElizaRepoRoot } = await loadConfigModule(outerRoot);
     delete process.env.ELIZA_ELECTROBUN_REPO_ROOT;
 
-    expect(findMiladyRepoRoot(electrobunDir)).toBe(outerRoot);
+    expect(findElizaRepoRoot(electrobunDir)).toBe(outerRoot);
   });
 
   it("uses the explicit release root override when CI provides one", async () => {

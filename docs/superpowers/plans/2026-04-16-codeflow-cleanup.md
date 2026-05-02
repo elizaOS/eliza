@@ -12,7 +12,7 @@
 
 ## Scope
 
-### In scope (Milady-owned, this repo)
+### In scope (Eliza-owned, this repo)
 - `apps/**`, `docs/**`, `scripts/**`, `packages/**` (top-level only — not `eliza/packages/**`)
 - `.github/**`, `.depot/**`, `README.md`, `AGENTS.md`, `CLAUDE.md`
 - Repo-root scanner config files
@@ -33,7 +33,7 @@
 - [x] **Step P1: Confirm baseline branch is clean**
 
 ```bash
-cd /Users/home/milady
+cd /Users/home/eliza
 git fetch origin
 git status -uno
 ```
@@ -127,7 +127,7 @@ git checkout -b chore/codeflow-noise-reduction
 CodeFlow honors a `.codeflowignore` at the repo root (similar to `.gitignore`). Create it to exclude documentation, lockfiles, generated artifacts, agent-definition prose, CI workflow YAML, and test runners from secret/XSS/SQL scanning.
 
 **Files:**
-- Create: `/Users/home/milady/.codeflowignore`
+- Create: `/Users/home/eliza/.codeflowignore`
 
 - [x] **Step 1.2.1: Write `.codeflowignore`**
 
@@ -490,7 +490,7 @@ Verified via grep across apps/ and packages/ (excluding dist/)."
 grep -rln "function getFreePort\|const getFreePort\|async function getFreePort" apps/ scripts/ packages/ 2>/dev/null | grep -v dist/ | grep -v node_modules | sort
 ```
 
-Expected exactly these 3 Milady-owned paths (additional hits in `eliza/**` are out of scope — submodule):
+Expected exactly these 3 Eliza-owned paths (additional hits in `eliza/**` are out of scope — submodule):
 
 1. `apps/app/scripts/run-ui-playwright.mjs`
 2. `apps/app/test/design-review/run-design-review.ts`
@@ -504,7 +504,7 @@ Read `apps/app/scripts/run-ui-playwright.mjs` lines 20-35 (the area around the g
 
 - [x] **Step 2.3.3: Create shared helper**
 
-Create `/Users/home/milady/apps/app/test/utils/get-free-port.ts`:
+Create `/Users/home/eliza/apps/app/test/utils/get-free-port.ts`:
 
 ```ts
 import { createServer } from "node:net";
@@ -535,7 +535,7 @@ export async function getFreePort(): Promise<number> {
 
 - [x] **Step 2.3.4: Write a unit test for the helper**
 
-Create `/Users/home/milady/apps/app/test/utils/get-free-port.test.ts`:
+Create `/Users/home/eliza/apps/app/test/utils/get-free-port.test.ts`:
 
 ```ts
 import { createServer } from "node:net";
@@ -705,10 +705,10 @@ git checkout -b chore/codeflow-diagram-xss-hardening
 - [x] **Step 3.2.1: Add deps**
 
 ```bash
-cd /Users/home/milady/apps/homepage
+cd /Users/home/eliza/apps/homepage
 bun add dompurify
 bun add -d @types/dompurify
-cd /Users/home/milady
+cd /Users/home/eliza
 ```
 
 Expected: `dompurify` appears in `apps/homepage/package.json` dependencies; `@types/dompurify` in devDependencies; `bun.lock` updates.
@@ -717,7 +717,7 @@ Expected: `dompurify` appears in `apps/homepage/package.json` dependencies; `@ty
 
 - [x] **Step 3.3.1: Edit `Diagram.tsx`**
 
-Modify `/Users/home/milady/apps/homepage/src/components/docs/Diagram.tsx`:
+Modify `/Users/home/eliza/apps/homepage/src/components/docs/Diagram.tsx`:
 
 Add import at top (line 1 area):
 
@@ -847,10 +847,10 @@ Expected output includes line 3:
 
 If the repo is public: add badges. If still pre-public: convert to a tracked GitHub issue and delete the comment.
 
-**If public path:** Replace the TODO line with a real badge block. Use these three (adjust repo slug if different from `milady-ai/milady`):
+**If public path:** Replace the TODO line with a real badge block. Use these three (adjust repo slug if different from `eliza-ai/eliza`):
 
 ```markdown
-[![CI](https://github.com/milady-ai/milady/actions/workflows/ci.yml/badge.svg)](https://github.com/milady-ai/milady/actions/workflows/ci.yml)
+[![CI](https://github.com/eliza-ai/eliza/actions/workflows/ci.yml/badge.svg)](https://github.com/eliza-ai/eliza/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ```
 
@@ -998,7 +998,7 @@ Record the new HIGH / MEDIUM / LOW / unused-function / circular-dep numbers. Tar
 
 - [x] **Step 5.2.2: Write residual-risk doc**
 
-Create `/Users/home/milady/docs/security/codeflow-residual-risk.md`:
+Create `/Users/home/eliza/docs/security/codeflow-residual-risk.md`:
 
 ```markdown
 # CodeFlow Residual Findings
@@ -1214,10 +1214,10 @@ Each PR is independently revertable. If a merged PR regresses production:
 
 | PR | Title | Status |
 |---|---|---|
-| 1 | chore: reduce CodeFlow scanner noise + sanitize doc placeholders | Open — https://github.com/milady-ai/milady/pull/1925 |
-| 2 | chore: fix main.tsx format, remove dead isWebPlatform, consolidate getFreePort | Open — https://github.com/milady-ai/milady/pull/1926 |
-| 3 | fix(docs): DOMPurify Mermaid SVG output in Diagram.tsx | Open — https://github.com/milady-ai/milady/pull/1928 |
-| 4 | chore: resolve TODO/FIXME comments flagged by CodeFlow | Open — https://github.com/milady-ai/milady/pull/1929 |
+| 1 | chore: reduce CodeFlow scanner noise + sanitize doc placeholders | Open — https://github.com/eliza-ai/eliza/pull/1925 |
+| 2 | chore: fix main.tsx format, remove dead isWebPlatform, consolidate getFreePort | Open — https://github.com/eliza-ai/eliza/pull/1926 |
+| 3 | fix(docs): DOMPurify Mermaid SVG output in Diagram.tsx | Open — https://github.com/eliza-ai/eliza/pull/1928 |
+| 4 | chore: resolve TODO/FIXME comments flagged by CodeFlow | Open — https://github.com/eliza-ai/eliza/pull/1929 |
 | 5 | chore: CodeFlow close-out + residual-risk documentation | This PR |
 
 ### Baseline CodeFlow numbers (2026-04-16 run)

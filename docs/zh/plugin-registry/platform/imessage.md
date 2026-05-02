@@ -1,10 +1,10 @@
 ---
 title: "iMessage 插件"
 sidebarTitle: "iMessage"
-description: "Milady 的 iMessage 连接器 — macOS 原生消息传递，支持 iMessage 和短信、数据库访问及远程主机连接。"
+description: "Eliza 的 iMessage 连接器 — macOS 原生消息传递，支持 iMessage 和短信、数据库访问及远程主机连接。"
 ---
 
-iMessage 插件将 Milady 代理连接到 macOS 上的 iMessage，支持 iMessage 和短信对话，具有可配置的服务选择和附件处理功能。
+iMessage 插件将 Eliza 代理连接到 macOS 上的 iMessage，支持 iMessage 和短信对话，具有可配置的服务选择和附件处理功能。
 
 **包：** `@elizaos/plugin-imessage`
 
@@ -13,7 +13,7 @@ iMessage 插件将 Milady 代理连接到 macOS 上的 iMessage，支持 iMessag
 </div>
 
 ```bash
-milady plugins install @elizaos/plugin-imessage
+eliza plugins install @elizaos/plugin-imessage
 ```
 
 <div id="setup">
@@ -25,10 +25,10 @@ milady plugins install @elizaos/plugin-imessage
 </div>
 
 - 已配置并登录 iMessage 的 macOS
-- 已向运行 Milady 的终端或应用程序授予完全磁盘访问权限（用于访问聊天数据库）
+- 已向运行 Eliza 的终端或应用程序授予完全磁盘访问权限（用于访问聊天数据库）
 
-<div id="2-configure-milady">
-### 2. 配置 Milady
+<div id="2-configure-eliza">
+### 2. 配置 Eliza
 </div>
 
 ```json
@@ -95,7 +95,7 @@ milady plugins install @elizaos/plugin-imessage
 如果消息检索失败，请确保已授予完全磁盘访问权限：
 
 1. 打开 **系统设置 → 隐私与安全 → 完全磁盘访问**
-2. 添加终端应用程序或 Milady 进程
+2. 添加终端应用程序或 Eliza 进程
 
 <div id="database-path">
 ### 数据库路径

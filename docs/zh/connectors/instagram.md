@@ -24,7 +24,7 @@ Instagram 连接器是一个 elizaOS 插件，将你的代理桥接到 Instagram
 |------|----|
 | 包 | `@elizaos/plugin-instagram` |
 | 配置键 | `connectors.instagram` |
-| 安装 | `milady plugins install @elizaos/plugin-instagram` |
+| 安装 | `eliza plugins install @elizaos/plugin-instagram` |
 
 <div id="setup-requirements">
 

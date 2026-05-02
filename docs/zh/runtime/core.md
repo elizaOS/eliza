@@ -1,10 +1,10 @@
 ---
 title: "核心运行时"
 sidebarTitle: "Core"
-description: "AgentRuntime 类、构造函数参数、插件注册以及 Milady 配置级联。"
+description: "AgentRuntime 类、构造函数参数、插件注册以及 Eliza 配置级联。"
 ---
 
-`@elizaos/core` 中的 `AgentRuntime` 类是管理插件注册、消息处理、提供者上下文组装和服务生命周期的核心对象。Milady 在 `src/runtime/eliza.ts` 中用额外的引导逻辑对其进行了封装。
+`@elizaos/core` 中的 `AgentRuntime` 类是管理插件注册、消息处理、提供者上下文组装和服务生命周期的核心对象。Eliza 在 `src/runtime/eliza.ts` 中用额外的引导逻辑对其进行了封装。
 
 <div id="agentruntime-constructor">
 ## AgentRuntime 构造函数
@@ -14,7 +14,7 @@ description: "AgentRuntime 类、构造函数参数、插件注册以及 Milady 
 const runtime = new AgentRuntime({
   character,
   actionPlanning: true,
-  plugins: [miladyPlugin, ...resolvedPlugins],
+  plugins: [elizaPlugin, ...resolvedPlugins],
   logLevel: "error",
   // sandboxMode and sandboxAuditHandler are only included when sandbox is active
   ...(isSandboxActive && {
@@ -25,7 +25,7 @@ const runtime = new AgentRuntime({
     VALIDATION_LEVEL: "fast",
     MODEL_PROVIDER: "anthropic/claude-sonnet-4.6",
     BUNDLED_SKILLS_DIRS: "/path/to/skills",
-    WORKSPACE_SKILLS_DIR: "~/.milady/workspace/skills",
+    WORKSPACE_SKILLS_DIR: "~/.eliza/workspace/skills",
     SKILLS_ALLOWLIST: "skill-a,skill-b",
     SKILLS_DENYLIST: "skill-x",
   },
@@ -39,8 +39,8 @@ const runtime = new AgentRuntime({
 | 参数 | 类型 | 描述 |
 |---|---|---|
 | `character` | `Character` | 代理的身份、个性和密钥。由 `buildCharacterFromConfig()` 构建。 |
-| `actionPlanning` | `boolean` | 启用操作规划子系统。Milady 将其设为 `true`。 |
-| `plugins` | `Plugin[]` | 有序的插件数组。Milady 插件排在第一位，然后是已解析的插件。 |
+| `actionPlanning` | `boolean` | 启用操作规划子系统。Eliza 将其设为 `true`。 |
+| `plugins` | `Plugin[]` | 有序的插件数组。Eliza 插件排在第一位，然后是已解析的插件。 |
 | `logLevel` | `string` | 日志详细程度：`"trace"`、`"debug"`、`"info"`、`"warn"`、`"error"`、`"fatal"`。从 `config.logging.level` 解析。 |
 | `sandboxMode` | `boolean` | 启用沙箱令牌替换以进行审计日志记录。仅在 `isSandboxActive` 为真时（即 `agents.defaults.sandbox.mode != "off"`）在构造函数中包含。当沙箱关闭时，不传递此参数。 |
 | `sandboxAuditHandler` | `function` | 沙箱 fetch 审计事件的回调。接收 `{ direction, url, tokenIds }`。 |
@@ -65,7 +65,7 @@ const runtime = new AgentRuntime({
 ## 插件注册
 </div>
 
-Milady 分两个阶段注册插件：
+Eliza 分两个阶段注册插件：
 
 <div id="phase-1-pre-registration-sequential">
 ### 阶段 1：预注册（顺序）
@@ -256,7 +256,7 @@ runtime.getConversationLength = runtime.getConversationLength.bind(runtime);
 ```
 process.env（最高优先级）
   ↓
-milady.json（配置文件）
+eliza.json（配置文件）
   ↓
 AgentRuntime settings 对象
   ↓

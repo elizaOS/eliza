@@ -8,7 +8,7 @@ description: "Database layer — SQLite adapter, schema, migrations, query inter
 SQL/database support is a built-in runtime capability, not a standalone installable plugin. The runtime handles database connections automatically.
 </Warning>
 
-The SQL plugin is the database layer for Milady agents. It provides persistent storage for conversation memory, entity data, knowledge embeddings, and agent state.
+The SQL plugin is the database layer for Eliza agents. It provides persistent storage for conversation memory, entity data, knowledge embeddings, and agent state.
 
 > **Core plugin.** This is a foundational runtime plugin that is always loaded. It is not listed in the bundled `plugins.json` index because it is not user-installable — it ships as part of the elizaOS core.
 
@@ -16,14 +16,14 @@ The SQL plugin is the database layer for Milady agents. It provides persistent s
 
 ## Overview
 
-The SQL plugin implements the `IDatabaseAdapter` interface from elizaOS core. Milady defaults to **PGLite** (embedded PostgreSQL) for local state, with optional external PostgreSQL for production. It is the first core plugin loaded because all other plugins depend on persistent storage.
+The SQL plugin implements the `IDatabaseAdapter` interface from elizaOS core. Eliza defaults to **PGLite** (embedded PostgreSQL) for local state, with optional external PostgreSQL for production. It is the first core plugin loaded because all other plugins depend on persistent storage.
 
 ## Database Location
 
 The default PGLite database is stored at:
 
 ```
-~/.milady/workspace/.eliza/.elizadb
+~/.eliza/workspace/.eliza/.elizadb
 ```
 
 Override via config:
@@ -33,7 +33,7 @@ Override via config:
   database: {
     provider: "pglite",
     pglite: {
-      dataDir: "~/.milady/workspace/.eliza/.elizadb",
+      dataDir: "~/.eliza/workspace/.eliza/.elizadb",
     },
   },
 }
@@ -60,7 +60,7 @@ The SQL plugin manages the following tables:
 Memories are stored with:
 
 - `content` — The memory text and metadata
-- `embedding` — Vector embedding (384 dimensions by default — Milady caps `EMBEDDING_DIMENSION` to 384)
+- `embedding` — Vector embedding (384 dimensions by default — Eliza caps `EMBEDDING_DIMENSION` to 384)
 - `type` — `message`, `knowledge`, `reflection`, `fact`, etc.
 - `roomId` — The room this memory belongs to
 - `entityId` — The entity (user/agent) associated with the memory
@@ -91,7 +91,7 @@ For production deployments, the SQL plugin supports external PostgreSQL:
   database: {
     provider: "postgres",
     postgres: {
-      connectionString: "postgresql://user:password@host:5432/milady",
+      connectionString: "postgresql://user:password@host:5432/eliza",
       ssl: true,
     },
   },
@@ -112,7 +112,7 @@ This means:
 To inspect the current schema version:
 
 ```bash
-milady doctor
+eliza doctor
 ```
 
 ## Runtime API
@@ -161,7 +161,7 @@ await runtime.setComponent(userId, "userPreferences", {
 | `database.type` | `sqlite` or `postgres` | `sqlite` |
 | `database.url` | PostgreSQL connection URL | — |
 | `database.path` | Custom SQLite file path | Auto-resolved |
-| `database.vectorDimensions` | Embedding vector size | `384` (Milady caps `EMBEDDING_DIMENSION` to 384) |
+| `database.vectorDimensions` | Embedding vector size | `384` (Eliza caps `EMBEDDING_DIMENSION` to 384) |
 
 ## Related
 

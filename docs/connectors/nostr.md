@@ -65,9 +65,9 @@ The `"token": "placeholder"` value is not used for authentication — it only tr
 ## Setup
 
 1. Generate a Nostr keypair if you don't have one (many Nostr clients can do this, or use tools like `nip06`).
-2. Add the private key to your Milady config under `env.NOSTR_PRIVATE_KEY`.
+2. Add the private key to your Eliza config under `env.NOSTR_PRIVATE_KEY`.
 3. Optionally configure relay URLs. If none are specified, the plugin uses sensible defaults.
-4. Start Milady -- the plugin connects to relays and begins listening for messages.
+4. Start Eliza -- the plugin connects to relays and begins listening for messages.
 
 ## Features
 

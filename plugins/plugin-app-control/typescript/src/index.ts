@@ -1,7 +1,7 @@
 /**
  * @module plugin-app-control
- * @description elizaOS plugin that lets the Milady agent launch, close, list,
- * relaunch, load-from-directory, and create Milady apps.
+ * @description elizaOS plugin that lets the Eliza agent launch, close, list,
+ * relaunch, load-from-directory, and create Eliza apps.
  *
  * Surface:
  * - One unified `APP` action (sub-modes: launch / relaunch / list /
@@ -51,7 +51,7 @@ export { appAction, availableAppsProvider, createAppAction };
 export const appControlPlugin: Plugin = {
 	name: "app-control",
 	description:
-		"Launch, close, list, relaunch, load, and create Milady apps from agent chat. Backed by the Milady dashboard /api/apps/* HTTP surface.",
+		"Launch, close, list, relaunch, load, and create Eliza apps from agent chat. Backed by the Eliza dashboard /api/apps/* HTTP surface.",
 	actions: [appAction],
 	providers: [availableAppsProvider],
 	services: [

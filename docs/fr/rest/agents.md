@@ -4,7 +4,7 @@ sidebarTitle: "Agents"
 description: "Points de terminaison de l'API REST pour le cycle de vie des agents, l'administration et le transfert (export/import)."
 ---
 
-Tous les points de terminaison des agents nécessitent que le runtime de l'agent soit initialisé. Le serveur API s'exécute sur le port **31337** par défaut et tous les chemins sont préfixés par `/api/`. Lorsque `MILADY_API_TOKEN` est défini, incluez-le comme jeton `Bearer` dans l'en-tête `Authorization`.
+Tous les points de terminaison des agents nécessitent que le runtime de l'agent soit initialisé. Le serveur API s'exécute sur le port **31337** par défaut et tous les chemins sont préfixés par `/api/`. Lorsque `ELIZA_API_TOKEN` est défini, incluez-le comme jeton `Bearer` dans l'en-tête `Authorization`.
 
 <div id="endpoints">
 
@@ -42,7 +42,7 @@ Démarrer l'agent et activer le fonctionnement autonome. Définit l'état de l'a
   "ok": true,
   "status": {
     "state": "running",
-    "agentName": "Milady",
+    "agentName": "Eliza",
     "model": "@elizaos/plugin-anthropic",
     "uptime": 0,
     "startedAt": 1718000000000
@@ -67,7 +67,7 @@ Arrêter l'agent et désactiver l'autonomie. Définit l'état de l'agent sur `st
   "ok": true,
   "status": {
     "state": "stopped",
-    "agentName": "Milady"
+    "agentName": "Eliza"
   }
 }
 ```
@@ -89,7 +89,7 @@ Mettre l'agent en pause tout en conservant le temps d'activité intact. Désacti
   "ok": true,
   "status": {
     "state": "paused",
-    "agentName": "Milady",
+    "agentName": "Eliza",
     "model": "@elizaos/plugin-anthropic",
     "uptime": 34200000,
     "startedAt": 1718000000000
@@ -114,7 +114,7 @@ Reprendre un agent en pause et réactiver l'autonomie. Le premier tick se décle
   "ok": true,
   "status": {
     "state": "running",
-    "agentName": "Milady",
+    "agentName": "Eliza",
     "model": "@elizaos/plugin-anthropic",
     "uptime": 34200000,
     "startedAt": 1718000000000
@@ -140,7 +140,7 @@ Redémarrer le runtime de l'agent. Retourne `409` si un redémarrage est déjà 
   "pendingRestart": false,
   "status": {
     "state": "running",
-    "agentName": "Milady",
+    "agentName": "Eliza",
     "startedAt": 1718000000000
   }
 }
@@ -154,7 +154,7 @@ Redémarrer le runtime de l'agent. Retourne `409` si un redémarrage est déjà 
 
 </div>
 
-Effacer la configuration, l'espace de travail (mémoire), les jetons OAuth et revenir à l'état d'intégration. Arrête le runtime, supprime le répertoire d'état `~/.milady/` (avec des vérifications de sécurité pour empêcher la suppression de chemins système) et réinitialise tout l'état du serveur.
+Effacer la configuration, l'espace de travail (mémoire), les jetons OAuth et revenir à l'état d'intégration. Arrête le runtime, supprime le répertoire d'état `~/.eliza/` (avec des vérifications de sécurité pour empêcher la suppression de chemins système) et réinitialise tout l'état du serveur.
 
 **Réponse**
 
@@ -240,7 +240,7 @@ Obtenir un résumé structuré de l'état actuel de l'agent, de ses capacités, 
 {
   "generatedAt": "2026-04-09T12:00:00.000Z",
   "state": "running",
-  "agentName": "Milady",
+  "agentName": "Eliza",
   "model": "anthropic/claude-sonnet-4.6",
   "provider": "anthropic",
   "automationMode": "connectors-only",

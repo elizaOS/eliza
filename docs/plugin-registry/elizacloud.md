@@ -1,21 +1,21 @@
 ---
 title: "Eliza Cloud Plugin"
 sidebarTitle: "Eliza Cloud"
-description: "Connect Milady to elizaOS Cloud for managed hosting, app registration, user auth, billing, and deployment."
+description: "Connect Eliza to elizaOS Cloud for managed hosting, app registration, user auth, billing, and deployment."
 ---
 
-The Eliza Cloud plugin connects Milady agents to the elizaOS Cloud platform for managed backend services.
+The Eliza Cloud plugin connects Eliza agents to the elizaOS Cloud platform for managed backend services.
 
 **Package:** `@elizaos/plugin-elizacloud`
 
 ## Overview
 
-This plugin integrates Milady with elizaOS Cloud, providing access to cloud-hosted APIs, app registration, user authentication and redirect flows, usage tracking, billing, app domains, creator monetization, and Docker container deployments for server-side workloads. When enabled, Milady can use Cloud as its default managed backend.
+This plugin integrates Eliza with elizaOS Cloud, providing access to cloud-hosted APIs, app registration, user authentication and redirect flows, usage tracking, billing, app domains, creator monetization, and Docker container deployments for server-side workloads. When enabled, Eliza can use Cloud as its default managed backend.
 
 ## Installation
 
 ```bash
-milady plugins install elizacloud
+eliza plugins install elizacloud
 ```
 
 ## Auto-Enable

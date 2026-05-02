@@ -1,10 +1,10 @@
 ---
 title: "Plugin de DeepSeek"
 sidebarTitle: "DeepSeek"
-description: "Proveedor de modelos DeepSeek para Milady — modelos DeepSeek-V3 y DeepSeek-R1 de razonamiento."
+description: "Proveedor de modelos DeepSeek para Eliza — modelos DeepSeek-V3 y DeepSeek-R1 de razonamiento."
 ---
 
-El plugin de DeepSeek conecta los agentes de Milady con la API de DeepSeek, proporcionando acceso a los modelos DeepSeek-V3 (propósito general) y DeepSeek-R1 (enfocado en razonamiento) a precios competitivos.
+El plugin de DeepSeek conecta los agentes de Eliza con la API de DeepSeek, proporcionando acceso a los modelos DeepSeek-V3 (propósito general) y DeepSeek-R1 (enfocado en razonamiento) a precios competitivos.
 
 **Package:** `@elizaos/plugin-deepseek`
 
@@ -15,7 +15,7 @@ El plugin de DeepSeek conecta los agentes de Milady con la API de DeepSeek, prop
 </div>
 
 ```bash
-milady plugins install @elizaos/plugin-deepseek
+eliza plugins install @elizaos/plugin-deepseek
 ```
 
 <div id="auto-enable">
@@ -41,9 +41,9 @@ export DEEPSEEK_API_KEY=sk-...
 | `DEEPSEEK_API_KEY` | Sí | Clave API de DeepSeek desde [platform.deepseek.com](https://platform.deepseek.com) |
 | `DEEPSEEK_API_URL` | No | URL base personalizada (predeterminado: `https://api.deepseek.com`) |
 
-<div id="miladyjson-example">
+<div id="elizajson-example">
 
-### Ejemplo de milady.json
+### Ejemplo de eliza.json
 
 </div>
 

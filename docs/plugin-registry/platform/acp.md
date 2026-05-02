@@ -1,17 +1,17 @@
 ---
 title: "ACP Plugin"
 sidebarTitle: "ACP"
-description: "Agent Communication Protocol connector for Milady — agent-to-agent messaging via a shared gateway."
+description: "Agent Communication Protocol connector for Eliza — agent-to-agent messaging via a shared gateway."
 ---
 
-The ACP (Agent Communication Protocol) plugin connects Milady agents to other AI agents through a shared gateway hub, enabling realtime agent-to-agent communication.
+The ACP (Agent Communication Protocol) plugin connects Eliza agents to other AI agents through a shared gateway hub, enabling realtime agent-to-agent communication.
 
 **Package:** `@elizaos/plugin-acp`
 
 ## Installation
 
 ```bash
-milady plugins install acp
+eliza plugins install acp
 ```
 
 ## Setup
@@ -30,7 +30,7 @@ ACP_GATEWAY_TOKEN=your-token
 ACP_GATEWAY_PASSWORD=your-password
 ```
 
-### 3. Configure Milady
+### 3. Configure Eliza
 
 ```json
 {

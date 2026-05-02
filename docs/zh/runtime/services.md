@@ -104,7 +104,7 @@ const status = runtime.getServiceRegistrationStatus("trajectories");
 
 密钥由 **`@elizaos/core`** 提供（不再作为独立 npm 插件）。在角色或设置中启用 `enableSecretsManager: true` 或 `ENABLE_SECRETS_MANAGER`；运行时会注册 `SECRETS` 服务及相应 actions/providers，并在连接器与其他插件之前完成初始化。
 
-密钥在静态存储时加密（AES-256-GCM），访问会记录审计（仅键名），并按代理隔离。可通过 **Agent → Settings → Secrets**、`milady config path`、配置文件中的 `secrets` 段、启动环境变量，或插件内 `runtime.getSetting()` 使用（解析顺序通常为：数据库中的密钥、角色 `settings.secrets`、`process.env`、`~/.milady/secrets` 下的全局密钥）。
+密钥在静态存储时加密（AES-256-GCM），访问会记录审计（仅键名），并按代理隔离。可通过 **Agent → Settings → Secrets**、`eliza config path`、配置文件中的 `secrets` 段、启动环境变量，或插件内 `runtime.getSetting()` 使用（解析顺序通常为：数据库中的密钥、角色 `settings.secrets`、`process.env`、`~/.eliza/secrets` 下的全局密钥）。
 
 审计日志仅通过 `SECRETS` 服务记录键名，从不记录明文值。
 
@@ -114,14 +114,14 @@ const status = runtime.getServiceRegistrationStatus("trajectories");
 
 </div>
 
-轨迹日志记录器在启动时被特殊处理。Milady 在启用它之前会等待其可用，超时时间为 3 秒：
+轨迹日志记录器在启动时被特殊处理。Eliza 在启用它之前会等待其可用，超时时间为 3 秒：
 
 ```typescript
 await waitForTrajectoriesService(runtime, "post-init", 3000);
 ensureTrajectoryLoggerEnabled(runtime, "post-init");
 ```
 
-该服务支持 `isEnabled()` 和 `setEnabled(enabled: boolean)` 方法。Milady 在初始化后默认启用它。
+该服务支持 `isEnabled()` 和 `setEnabled(enabled: boolean)` 方法。Eliza 在初始化后默认启用它。
 
 <div id="skills-service">
 
@@ -129,14 +129,14 @@ ensureTrajectoryLoggerEnabled(runtime, "post-init");
 
 </div>
 
-`@elizaos/plugin-agent-skills` 加载和管理技能目录。Milady 在启动后异步预热此服务：
+`@elizaos/plugin-agent-skills` 加载和管理技能目录。Eliza 在启动后异步预热此服务：
 
 ```typescript
 const svc = runtime.getService("AGENT_SKILLS_SERVICE") as {
   getCatalogStats?: () => { loaded: number; total: number; storageType: string };
 };
 const stats = svc?.getCatalogStats?.();
-logger.info(`[milady] Skills: ${stats.loaded}/${stats.total} loaded`);
+logger.info(`[eliza] Skills: ${stats.loaded}/${stats.total} loaded`);
 ```
 
 技能按优先级顺序从多个目录中发现：
@@ -170,7 +170,7 @@ const sandboxManager = new SandboxManager({
   mode: "standard",
   image: dockerSettings?.image ?? undefined,  // no default image — must be configured
   browser: dockerSettings?.browser ?? undefined,
-  containerPrefix: "milady-sandbox-",
+  containerPrefix: "eliza-sandbox-",
   network: "bridge",
   memory: "512m",
   cpus: 0.5,

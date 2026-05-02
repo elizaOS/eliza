@@ -11,13 +11,13 @@ Work has advanced well past the original handoff. Multi-calendar support now cov
 **Phase 1 done:**
 - App-side calendar discovery, include preferences, merged feed aggregation, settings UI, and calendar-origin labels are implemented in `eliza/apps/app-lifeops`.
 - Action-layer calendar reads explicitly bypass the feed toggle so agent actions still see every authorized calendar.
-- Cloud-managed Google now exposes a real calendar-list route at `eliza/cloud/app/api/v1/milady/google/calendar/calendars/route.ts`, and the managed app client consumes it via `google-managed-client.ts`.
+- Cloud-managed Google now exposes a real calendar-list route at `eliza/cloud/app/api/v1/eliza/google/calendar/calendars/route.ts`, and the managed app client consumes it via `google-managed-client.ts`.
 - The merged default feed no longer assumes `primary` for cloud-managed users when discoverable calendars exist, which fixes secondary calendars such as Quinn being invisible.
 - Verification completed:
   - `bun run --cwd eliza/apps/app-lifeops test -- service-mixin-calendar.test.ts`
   - `bunx turbo run typecheck --filter=@elizaos/app-lifeops`
   - `bun run --cwd eliza/cloud check-types`
-  - `bun test --preload ./packages/tests/load-env.ts packages/tests/unit/milady-google-multi-account.test.ts packages/tests/unit/milady-google-calendar-calendars-route.test.ts` (from `eliza/cloud`)
+  - `bun test --preload ./packages/tests/load-env.ts packages/tests/unit/eliza-google-multi-account.test.ts packages/tests/unit/eliza-google-calendar-calendars-route.test.ts` (from `eliza/cloud`)
   - `bun run build`
   - `bun run desktop:preflight`
 
@@ -70,7 +70,7 @@ Additionally, the calendar widget and feed only query `calendarId: "primary"` â€
 - [x] `listCalendars` method on `LifeOpsCalendarService` in [eliza/apps/app-lifeops/src/lifeops/service-mixin-calendar.ts](eliza/apps/app-lifeops/src/lifeops/service-mixin-calendar.ts)
 - [x] Expose `GET /api/lifeops/calendar/calendars` route in [eliza/apps/app-lifeops/src/routes/lifeops-routes.ts](eliza/apps/app-lifeops/src/routes/lifeops-routes.ts) returning `{ calendars: LifeOpsCalendarSummary[] }`
 - [x] Add `getLifeOpsCalendars()` to client in [eliza/packages/app-core/src/api/client-lifeops.ts](eliza/packages/app-core/src/api/client-lifeops.ts)
-- [x] Add cloud-managed calendar discovery route in `eliza/cloud/app/api/v1/milady/google/calendar/calendars/route.ts` and wire `googleManagedClient.listCalendars(...)`
+- [x] Add cloud-managed calendar discovery route in `eliza/cloud/app/api/v1/eliza/google/calendar/calendars/route.ts` and wire `googleManagedClient.listCalendars(...)`
 
 ### 1.2 Backend â€” persist per-calendar include state
 
@@ -185,7 +185,7 @@ Additionally, the calendar widget and feed only query `calendarId: "primary"` â€
   - Reads the last briefing timestamp from local state (so we don't re-greet every time the window refocuses).
   - If `now - lastBriefingAt > 6 hours` OR `never`, fire the briefing.
   - Otherwise skip silently.
-- [ ] Local state key: `milady.lifeops.lastBriefingAt` in whatever local-state system the desktop already uses (check existing patterns first â€” do not add a new persistence layer).
+- [ ] Local state key: `eliza.lifeops.lastBriefingAt` in whatever local-state system the desktop already uses (check existing patterns first â€” do not add a new persistence layer).
 
 ### 3.2 Wire briefing into chat
 
