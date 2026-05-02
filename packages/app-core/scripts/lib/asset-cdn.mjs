@@ -116,9 +116,3 @@ export function resolveElizaAssetBaseUrls({
       }),
   };
 }
-
-// Eliza scripts still import the repo-local alias while the shared helper
-// remains named for the upstream elizaOS package.
-export function resolveElizaAssetBaseUrls(options = {}) {
-  return resolveElizaAssetBaseUrls(options);
-}

@@ -9,7 +9,8 @@ import { buildRawGitHubAssetBase } from "./lib/asset-cdn.mjs";
 
 const REPOSITORY = "elizaos/eliza";
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.resolve(SCRIPT_DIR, "..");
+// SCRIPT_DIR is packages/app-core/scripts; the repo root is three levels up.
+const REPO_ROOT = path.resolve(SCRIPT_DIR, "..", "..", "..");
 const OUTPUT_PATH = path.resolve(
   REPO_ROOT,
   "packages/homepage/src/generated/release-data.ts",
