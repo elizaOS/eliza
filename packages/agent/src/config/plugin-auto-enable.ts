@@ -125,7 +125,6 @@ const FEATURE_PLUGINS: Record<string, string> = {
   browser: "@elizaos/plugin-browser",
   cua: "@elizaos/plugin-cua",
   obsidian: "@elizaos/plugin-obsidian",
-  cron: "@elizaos/plugin-cron",
   shell: "@elizaos/plugin-shell",
   executeCode: "@elizaos/plugin-executecode",
   imageGen: "@elizaos/plugin-image-generation",

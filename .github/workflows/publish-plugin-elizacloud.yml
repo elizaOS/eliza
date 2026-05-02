@@ -1,5 +1,5 @@
-# Publishes @elizaos/plugin-elizacloud (npm), PyPI, and crates.io when the
-# version in plugins/plugin-elizacloud/typescript/package.json changes.
+# Publishes @elizaos/plugin-elizacloud (npm) when the version in
+# plugins/plugin-elizacloud/typescript/package.json changes.
 name: Publish @elizaos/plugin-elizacloud
 
 on:
@@ -88,48 +88,3 @@ jobs:
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-  publish_pypi:
-    needs: verify_version
-    if: needs.verify_version.outputs.should_publish == 'true'
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.14"
-
-      - name: Install build tools
-        run: |
-          python -m pip install --upgrade pip
-          pip install build twine
-
-      - name: Build Python package
-        working-directory: plugins/plugin-elizacloud/python
-        run: python -m build
-
-      - name: Publish to PyPI
-        working-directory: plugins/plugin-elizacloud/python
-        run: twine upload dist/* --username __token__ --password ${{ secrets.PYPI_TOKEN }}
-
-  publish_crates:
-    needs: verify_version
-    if: needs.verify_version.outputs.should_publish == 'true'
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Check and test Rust crate
-        working-directory: plugins/plugin-elizacloud/rust
-        run: |
-          cargo check --all-features
-          cargo test --all-features
-
-      - name: Publish to crates.io
-        working-directory: plugins/plugin-elizacloud/rust
-        run: cargo publish --token "${CRATES_IO_TOKEN}"
-        env:
-          CRATES_IO_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}

@@ -1,0 +1,7 @@
+node_modules
+dist
+.env
+.elizadb-test
+.elizadb
+.turbo
+data

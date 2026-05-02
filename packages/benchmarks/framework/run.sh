@@ -1,16 +1,10 @@
 #!/usr/bin/env bash
 #
-# Eliza Framework Benchmark Orchestrator
-#
-# Builds and runs all three runtime benchmarks sequentially,
-# then generates a comparison report.
+# Eliza Framework Benchmark Orchestrator (TypeScript runtime).
 #
 # Usage:
 #   ./run.sh              # Run default scenarios
 #   ./run.sh --all        # Run all scenarios
-#   ./run.sh --ts-only    # Run only TypeScript
-#   ./run.sh --py-only    # Run only Python
-#   ./run.sh --rs-only    # Run only Rust
 #   ./run.sh --compare    # Only run comparison (no benchmarks)
 #
 
@@ -35,18 +29,16 @@ err()  { echo -e "${RED}[ERROR]${NC} $*"; }
 
 # ─── Flags ───────────────────────────────────────────────────────────────────
 
-RUN_TS=true
-RUN_PY=true
-RUN_RS=true
 COMPARE_ONLY=false
 BENCH_ARGS=""
 
 for arg in "$@"; do
   case "$arg" in
-    --ts-only)  RUN_PY=false; RUN_RS=false ;;
-    --py-only)  RUN_TS=false; RUN_RS=false ;;
-    --rs-only)  RUN_TS=false; RUN_PY=false ;;
-    --compare)  COMPARE_ONLY=true; RUN_TS=false; RUN_PY=false; RUN_RS=false ;;
+    --ts-only|--py-only|--rs-only)
+      err "Multi-runtime flags are obsolete; only the TypeScript benchmark runs."
+      exit 1
+      ;;
+    --compare)  COMPARE_ONLY=true ;;
     --all)      BENCH_ARGS="--all" ;;
     --scenarios=*) BENCH_ARGS="$arg" ;;
   esac
@@ -56,7 +48,7 @@ mkdir -p "${RESULTS_DIR}"
 
 # ─── TypeScript Benchmark ────────────────────────────────────────────────────
 
-if $RUN_TS && ! $COMPARE_ONLY; then
+if ! $COMPARE_ONLY; then
   info "═══ TypeScript Benchmark ═══"
 
   TS_DIR="${SCRIPT_DIR}/typescript"
@@ -85,78 +77,6 @@ if $RUN_TS && ! $COMPARE_ONLY; then
     warn "TypeScript benchmark failed (see errors above)"
   fi
   cd "${SCRIPT_DIR}"
-  echo
-fi
-
-# ─── Python Benchmark ────────────────────────────────────────────────────────
-
-if $RUN_PY && ! $COMPARE_ONLY; then
-  info "═══ Python Benchmark ═══"
-
-  PY_DIR="${SCRIPT_DIR}/python"
-  PY_OUTPUT="${RESULTS_DIR}/python-${TIMESTAMP}.json"
-
-  # Check for Python
-  if command -v python3 &>/dev/null; then
-    PYTHON=python3
-  elif command -v python &>/dev/null; then
-    PYTHON=python
-  else
-    warn "Python not found, skipping Python benchmark"
-    RUN_PY=false
-  fi
-
-  if $RUN_PY; then
-    # Install dependencies if needed
-    if ! $PYTHON -c "import elizaos" 2>/dev/null; then
-      info "Installing Python dependencies..."
-      cd "${PY_DIR}"
-      $PYTHON -m pip install -e "${SCRIPT_DIR}/../../packages/python" 2>/dev/null || true
-      $PYTHON -m pip install psutil 2>/dev/null || true
-      cd "${SCRIPT_DIR}"
-    fi
-
-    info "Running Python benchmark..."
-    cd "${PY_DIR}"
-    if $PYTHON -m src.bench ${BENCH_ARGS} --output="${PY_OUTPUT}"; then
-      ok "Python benchmark complete: ${PY_OUTPUT}"
-    else
-      warn "Python benchmark failed (see errors above)"
-    fi
-    cd "${SCRIPT_DIR}"
-  fi
-  echo
-fi
-
-# ─── Rust Benchmark ──────────────────────────────────────────────────────────
-
-if $RUN_RS && ! $COMPARE_ONLY; then
-  info "═══ Rust Benchmark ═══"
-
-  RS_DIR="${SCRIPT_DIR}/rust"
-  RS_OUTPUT="${RESULTS_DIR}/rust-${TIMESTAMP}.json"
-
-  # Check for Cargo
-  if ! command -v cargo &>/dev/null; then
-    warn "Cargo not found, skipping Rust benchmark"
-    RUN_RS=false
-  fi
-
-  if $RUN_RS; then
-    info "Building Rust benchmark (release mode)..."
-    cd "${RS_DIR}"
-    if cargo build --release 2>&1; then
-      info "Running Rust benchmark..."
-      if ./target/release/bench ${BENCH_ARGS} --output="${RS_OUTPUT}"; then
-        ok "Rust benchmark complete: ${RS_OUTPUT}"
-      else
-        warn "Rust benchmark failed (see errors above)"
-      fi
-    else
-      warn "Rust build failed (see errors above)"
-    fi
-    cd "${SCRIPT_DIR}"
-  fi
   echo
 fi
 

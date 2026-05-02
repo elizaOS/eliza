@@ -1,0 +1,77 @@
+{
+  "name": "@elizaos/plugin-youtube-streaming",
+  "description": "YouTube RTMP streaming destination plugin for elizaOS agents",
+  "version": "2.0.0-alpha.1",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "packageType": "plugin",
+  "platform": "node",
+  "license": "MIT",
+  "keywords": [
+    "elizaos",
+    "elizaos-plugin",
+    "streaming",
+    "rtmp"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-youtube-streaming.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@elizaos/core": "alpha",
+    "@elizaos/plugin-streaming-base": "alpha"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@typescript-eslint/eslint-plugin": "^8.22.0",
+    "@typescript-eslint/parser": "^8.22.0",
+    "eslint": "^9.17.0",
+    "prettier": "3.5.3",
+    "tsup": "8.4.0",
+    "typescript": "^5.8.3",
+    "vitest": "1.6.1"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "echo 'no tests yet' && exit 0",
+    "lint": "eslint ./src --fix && prettier --write ./src",
+    "lint:check": "eslint ./src",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo node_modules tsconfig.tsbuildinfo",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "YOUTUBE_STREAM_KEY": {
+        "type": "string",
+        "description": "YouTube stream key for RTMP ingest",
+        "required": true
+      },
+      "YOUTUBE_RTMP_URL": {
+        "type": "string",
+        "description": "YouTube RTMP ingest URL (default: rtmp://a.rtmp.youtube.com/live2)",
+        "required": false
+      }
+    }
+  }
+}

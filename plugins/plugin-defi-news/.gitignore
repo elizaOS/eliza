@@ -1,0 +1,48 @@
+# Dependencies
+node_modules
+
+# Build artifacts
+dist
+.turbo
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# Coverage reports
+coverage
+.nyc_output
+
+# Cache
+cache/
+.cache/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode
+.idea
+.zed
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Test artifacts
+test-results/
+playwright-report/
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+

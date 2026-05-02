@@ -121,7 +121,6 @@
     "**/types/index.ts",
     "**/managers/index.ts",
     "**/packages/interop/**",
-    "**/packages/rust/pkg-node/**",
     "**/streaming-context.browser.ts",
     "**/testing/index.ts",
     "**/utils/node.ts",

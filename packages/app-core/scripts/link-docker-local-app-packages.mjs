@@ -32,7 +32,6 @@ const localPackages = [
   "eliza/plugins/plugin-local-embedding/typescript",
   "eliza/plugins/plugin-pdf/typescript",
   "eliza/packages/native-plugins/activity-tracker",
-  "eliza/plugins/plugin-cron/typescript",
   "eliza/plugins/plugin-sql/typescript",
   "eliza/plugins/plugin-telegram",
 ];
