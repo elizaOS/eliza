@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ElizaLogo } from "@/components/brand/eliza-logo";
-import { releaseData } from "@/generated/release-data";
+import {
+  releaseData,
+  type ReleaseDataDownload,
+} from "@/generated/release-data";
 
 type OS = "macos-arm" | "macos-intel" | "windows" | "linux" | "unknown";
 
@@ -71,10 +74,8 @@ const FALLBACK_LINUX_BUTTONS: DownloadButton[] = [
   },
 ];
 
-type GeneratedDownload = (typeof releaseData)["release"]["downloads"][number];
-
 function buildButtonFromGenerated(
-  d: GeneratedDownload,
+  d: ReleaseDataDownload,
 ): DownloadButton | null {
   const sublabel = d.note ? `${d.note} · ${d.sizeLabel}` : d.sizeLabel;
   switch (d.id) {
@@ -98,7 +99,7 @@ function buildButtonFromGenerated(
   }
 }
 
-function partitionGeneratedDownloads(downloads: readonly GeneratedDownload[]) {
+function partitionGeneratedDownloads(downloads: readonly ReleaseDataDownload[]) {
   const mac: DownloadButton[] = [];
   const windows: DownloadButton[] = [];
   const linux: DownloadButton[] = [];

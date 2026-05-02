@@ -230,6 +230,20 @@ jobs:
       version: ${{ needs.prepare.outputs.version }}
     secrets: inherit
 
+  deploy-homepage:
+    name: Homepage
+    needs: [prepare, publish-packages, publish-android, publish-apple]
+    # Deploy after the artifact-producing jobs so the homepage's release-data
+    # fetch (which queries the GitHub Releases API) sees the new assets.
+    if: |
+      always() &&
+      needs.prepare.outputs.deploy_homepage == 'true' &&
+      needs.prepare.result == 'success'
+    uses: ./.github/workflows/deploy-homepage.yml
+    with:
+      ref: ${{ needs.prepare.outputs.tag }}
+    secrets: inherit
+
   summary:
     name: Distribution summary
     needs:
@@ -239,6 +253,7 @@ jobs:
         publish-android,
         publish-apple,
         update-homebrew,
+        deploy-homepage,
       ]
     if: always()
     runs-on: ubuntu-24.04
@@ -254,6 +269,7 @@ jobs:
             echo "| Android | ${{ needs.publish-android.result || 'skipped' }} |"
             echo "| Apple Stores | ${{ needs.publish-apple.result || 'skipped' }} |"
             echo "| Homebrew | ${{ needs.update-homebrew.result || 'skipped' }} |"
+            echo "| Homepage | ${{ needs.deploy-homepage.result || 'skipped' }} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Require enabled distributions succeeded
@@ -273,5 +289,6 @@ jobs:
           require_result "Android" "${{ needs.prepare.outputs.publish_android }}" "${{ needs.publish-android.result }}"
           require_result "Apple Stores" "${{ needs.prepare.outputs.publish_apple }}" "${{ needs.publish-apple.result }}"
           require_result "Homebrew" "${{ needs.prepare.outputs.update_homebrew }}" "${{ needs.update-homebrew.result }}"
+          require_result "Homepage" "${{ needs.prepare.outputs.deploy_homepage }}" "${{ needs.deploy-homepage.result }}"
 
           exit "$failed"
