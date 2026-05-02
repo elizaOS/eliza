@@ -4,12 +4,11 @@
  * Balance data from Alchemy/Ankr (EVM), NodeReal/QuickNode (BSC RPC),
  * and Helius (Solana) REST APIs.
  *
- * DEX price oracle logic lives in @elizaos/app-steward.
+ * DEX price oracle logic lives in ./wallet-dex-prices.ts.
  * EVM balance + NFT fetching lives in ./wallet-evm-balance.ts
  */
 import crypto from "node:crypto";
 import fs from "node:fs";
-import { computeValueUsd } from "@elizaos/app-steward/api/wallet-dex-prices";
 import { logger } from "@elizaos/core";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { ethers } from "ethers";
@@ -23,6 +22,7 @@ import type {
   WalletImportResult,
   WalletKeys,
 } from "../contracts/wallet.js";
+import { computeValueUsd } from "./wallet-dex-prices.js";
 
 type StewardAgentPayload = {
   walletAddress?: string;
@@ -80,7 +80,7 @@ export {
   fetchDexPrices,
   fetchDexScreenerPrices,
   WRAPPED_NATIVE,
-} from "@elizaos/app-steward/api/wallet-dex-prices";
+} from "./wallet-dex-prices.js";
 
 export {
   type AnkrTokenAsset,
