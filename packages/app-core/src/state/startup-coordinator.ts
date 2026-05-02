@@ -325,6 +325,29 @@ export function createMobilePolicy(): PlatformPolicy {
   };
 }
 
+/**
+ * MiladyOS variant — the bundled APK runs the on-device agent on
+ * loopback. Cold-boot timing observed on cuttlefish: ~30s PGlite
+ * migration + ~30s agent registration + plugin load before
+ * `/api/auth/status` is reachable. The vanilla `createMobilePolicy`
+ * 15s `backendTimeoutMs` dead-ends the splash on a "Backend Timeout"
+ * card before the agent finishes booting; bumping the budget to 3
+ * minutes lets the natural poll loop pick it up.
+ *
+ * Also flips `supportsLocalRuntime` and `defaultTarget` because the
+ * device IS the agent — there is no "cloud-managed" default to fall
+ * back to on a Milady-branded handset.
+ */
+export function createMiladyOSPolicy(): PlatformPolicy {
+  return {
+    supportsLocalRuntime: true,
+    backendTimeoutMs: 180_000,
+    agentReadyTimeoutMs: 300_000,
+    probeForExistingInstall: true,
+    defaultTarget: "embedded-local",
+  };
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────
 
 /** Map a restored server-target hint to a RuntimeTarget. */
