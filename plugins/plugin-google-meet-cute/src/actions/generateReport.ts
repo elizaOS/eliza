@@ -128,16 +128,17 @@ ${report.actionItems.map(item => `- ${item.description} (Priority: ${item.priori
       }
       
       // Save report to file if output directory is configured
-      const outputDir = runtime.getSetting("REPORT_OUTPUT_DIR") || "./meeting-reports";
+      const outputDir =
+        (runtime.getSetting("REPORT_OUTPUT_DIR") as string | undefined) || "./meeting-reports";
       try {
         await fs.mkdir(outputDir, { recursive: true });
         const filename = `meeting-report-${Date.now()}.md`;
         const filepath = path.join(outputDir, filename);
         await fs.writeFile(filepath, reportContent);
-        
+
         reportContent += `\n\n📄 Report saved to: ${filepath}`;
       } catch (error) {
-        logger.warn("Failed to save report to file:", error);
+        logger.warn("Failed to save report to file:", error instanceof Error ? error.message : String(error));
       }
       
       const response = `✅ Meeting report generated successfully!
@@ -156,7 +157,7 @@ Note: To get actual transcript and recording data, ensure the meeting has ended 
         });
       }
     } catch (error) {
-      logger.error("Failed to generate report:", error);
+      logger.error("Failed to generate report:", error instanceof Error ? error.message : String(error));
       
       if (callback) {
         callback({

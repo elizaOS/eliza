@@ -112,7 +112,7 @@ ${meeting.participants.length > 0 ? '\n**Active Participants:**\n' + meeting.par
         });
       }
     } catch (error) {
-      logger.error("Failed to get meeting info:", error);
+      logger.error("Failed to get meeting info:", error instanceof Error ? error.message : String(error));
       
       if (callback) {
         callback({

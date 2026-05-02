@@ -104,7 +104,7 @@ You can share this link with participants to join the meeting.`;
         });
       }
     } catch (error) {
-      logger.error("Failed to create meeting:", error);
+      logger.error("Failed to create meeting:", error instanceof Error ? error.message : String(error));
       
       if (callback) {
         callback({

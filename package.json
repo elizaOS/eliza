@@ -62,7 +62,18 @@
     "test:server": "bun run build:core && TEST_PACKAGE_FILTER='\\((packages/agent|packages/app-core|packages/shared|packages/typescript|packages/vault|packages/elizaos|packages/schemas|packages/skills|packages/interop|packages/scenario-runner)\\)' TEST_SCRIPT_FILTER='^test$' node scripts/run-all-tests.mjs",
     "browser-bridge:package:release": "cd apps/browser-bridge && bun run package:release",
     "test:browser-bridge": "cd apps/browser-bridge && bun run test:ci",
-    "test:browser-bridge:safari": "cd apps/browser-bridge && bun run test:smoke:safari"
+    "test:browser-bridge:safari": "cd apps/browser-bridge && bun run test:smoke:safari",
+    "dev:cloud": "bun run --cwd cloud dev",
+    "dev:cloud:api": "bun run --cwd cloud dev:api",
+    "dev:cloud:web": "bun run --cwd cloud dev:web",
+    "dev:cloud:full": "bun run --cwd cloud dev:full",
+    "build:cloud": "bun run --cwd cloud build",
+    "test:cloud": "bun run --cwd cloud test",
+    "typecheck:cloud": "bun run --cwd cloud typecheck",
+    "verify:cloud": "bun run --cwd cloud verify",
+    "db:cloud:generate": "bun run --cwd cloud db:generate",
+    "db:cloud:migrate": "bun run --cwd cloud db:migrate",
+    "db:cloud:studio": "bun run --cwd cloud db:studio"
   },
   "packageManager": "bun@1.3.5",
   "workspaces": [

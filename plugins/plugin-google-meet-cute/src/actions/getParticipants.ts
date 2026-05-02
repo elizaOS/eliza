@@ -109,7 +109,7 @@ ${currentMeeting.participants.length === 0 ?
         });
       }
     } catch (error) {
-      logger.error("Failed to get participants:", error);
+      logger.error("Failed to get participants:", error instanceof Error ? error.message : String(error));
       
       if (callback) {
         callback({

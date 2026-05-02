@@ -86,7 +86,7 @@ export class GoogleMeetAPIService extends Service {
 
       return this.currentMeeting;
     } catch (error) {
-      logger.error("Failed to create meeting:", error);
+      logger.error("Failed to create meeting:", error instanceof Error ? error.message : String(error));
       throw error;
     }
   }
@@ -100,7 +100,7 @@ export class GoogleMeetAPIService extends Service {
       const [space] = await this.spacesClient.getSpace({ name: spaceName });
       return space;
     } catch (error) {
-      logger.error(`Failed to get meeting space ${spaceName}:`, error);
+      logger.error(`Failed to get meeting space ${spaceName}:`, error instanceof Error ? error.message : String(error));
       throw error;
     }
   }
@@ -116,7 +116,7 @@ export class GoogleMeetAPIService extends Service {
       });
       return conference;
     } catch (error) {
-      logger.error(`Failed to get conference ${conferenceRecordName}:`, error);
+      logger.error(`Failed to get conference ${conferenceRecordName}:`, error instanceof Error ? error.message : String(error));
       throw error;
     }
   }
@@ -169,7 +169,7 @@ export class GoogleMeetAPIService extends Service {
       
       return participants;
     } catch (error) {
-      logger.error(`Failed to list participants for ${conferenceRecordName}:`, error);
+      logger.error(`Failed to list participants for ${conferenceRecordName}:`, error instanceof Error ? error.message : String(error));
       throw error;
     }
   }
@@ -202,7 +202,7 @@ export class GoogleMeetAPIService extends Service {
 
       return fullTranscript;
     } catch (error) {
-      logger.error(`Failed to get transcript ${transcriptName}:`, error);
+      logger.error(`Failed to get transcript ${transcriptName}:`, error instanceof Error ? error.message : String(error));
       throw error;
     }
   }
@@ -224,7 +224,7 @@ export class GoogleMeetAPIService extends Service {
 
       return recordings;
     } catch (error) {
-      logger.error(`Failed to list recordings for ${conferenceRecordName}:`, error);
+      logger.error(`Failed to list recordings for ${conferenceRecordName}:`, error instanceof Error ? error.message : String(error));
       throw error;
     }
   }
@@ -241,7 +241,7 @@ export class GoogleMeetAPIService extends Service {
       
       return recording?.driveDestination?.exportUri || null;
     } catch (error) {
-      logger.error(`Failed to get recording ${recordingName}:`, error);
+      logger.error(`Failed to get recording ${recordingName}:`, error instanceof Error ? error.message : String(error));
       return null;
     }
   }
@@ -261,7 +261,7 @@ export class GoogleMeetAPIService extends Service {
         this.currentMeeting.endTime = new Date();
       }
     } catch (error) {
-      logger.error(`Failed to end meeting ${spaceName}:`, error);
+      logger.error(`Failed to end meeting ${spaceName}:`, error instanceof Error ? error.message : String(error));
       throw error;
     }
   }
