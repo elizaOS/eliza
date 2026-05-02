@@ -4,8 +4,7 @@
   "packageManager": "bun@1.3.9",
   "workspaces": [
     "app-*",
-    "plugin-*",
-    "plugin-*/typescript"
+    "plugin-*"
   ],
   "scripts": {
     "status": "git submodule status --recursive",

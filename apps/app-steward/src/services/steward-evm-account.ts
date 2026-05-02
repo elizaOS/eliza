@@ -435,7 +435,9 @@ function extractAgentIdFromJwt(token: string): string | null {
   try {
     const parts = token.split(".");
     if (parts.length !== 3) return null;
-    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString());
+    const payloadB64 = parts[1];
+    if (!payloadB64) return null;
+    const payload = JSON.parse(Buffer.from(payloadB64, "base64url").toString());
     return payload.agentId || payload.sub || null;
   } catch {
     return null;

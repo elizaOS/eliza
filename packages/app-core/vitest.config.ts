@@ -15,19 +15,13 @@ const appTaskCoordinatorSrc = path.join(
   "apps/app-task-coordinator/src",
 );
 const appCompanionSrc = path.join(monorepoRoot, "apps/app-companion/src");
-const pluginSqlSrc = path.join(
-  monorepoRoot,
-  "plugins/plugin-sql/typescript",
-);
+const pluginSqlSrc = path.join(monorepoRoot, "plugins/plugin-sql");
 const pluginAgentSkillsSrc = path.join(
   monorepoRoot,
-  "plugins/plugin-agent-skills/typescript/src",
+  "plugins/plugin-agent-skills/src",
 );
-const pluginEdgeTtsSrc = path.join(
-  monorepoRoot,
-  "plugins/plugin-edge-tts/typescript",
-);
-const pluginPdfSrc = path.join(monorepoRoot, "plugins/plugin-pdf/typescript");
+const pluginEdgeTtsSrc = path.join(monorepoRoot, "plugins/plugin-edge-tts");
+const pluginPdfSrc = path.join(monorepoRoot, "plugins/plugin-pdf");
 const reactPkg = path.join(fileDir, "node_modules/react");
 const reactDomPkg = path.join(fileDir, "node_modules/react-dom");
 const includeLiveE2e = process.env.ELIZA_INCLUDE_LIVE_E2E === "1";

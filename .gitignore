@@ -251,7 +251,6 @@ vitest.config.ts
 !apps/app-training/vitest.config.ts
 !packages/agent/vitest.config.ts
 !packages/app/vitest.config.ts
-!packages/confidant/vitest.config.ts
 !packages/shared/vitest.config.ts
 !packages/cloud-routing/vitest.config.ts
 !plugins/plugin-agent-wallet/vitest.config.ts

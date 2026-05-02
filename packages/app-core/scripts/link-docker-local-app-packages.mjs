@@ -27,12 +27,12 @@ const localPackages = [
   "eliza/packages/shared",
   "eliza/packages/skills",
   "eliza/packages/vault",
-  "eliza/plugins/plugin-agent-skills/typescript",
+  "eliza/plugins/plugin-agent-skills",
   "eliza/plugins/plugin-browser-bridge",
-  "eliza/plugins/plugin-local-embedding/typescript",
-  "eliza/plugins/plugin-pdf/typescript",
+  "eliza/plugins/plugin-local-embedding",
+  "eliza/plugins/plugin-pdf",
   "eliza/packages/native-plugins/activity-tracker",
-  "eliza/plugins/plugin-sql/typescript",
+  "eliza/plugins/plugin-sql",
   "eliza/plugins/plugin-telegram",
 ];
 

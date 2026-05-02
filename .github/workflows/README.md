@@ -10,7 +10,6 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 | `pr.yaml` | PR opened/edited | PR title validation |
 | `release.yaml` | Push to develop/main, Release | NPM package releases |
 | `claude.yml` | @claude mentions | Interactive Claude assistance |
-| `confidant-ci.yaml` | Push/PR | Confidant package CI |
 | `claude-code-review.yml` | PR opened | Automated code review |
 | `claude-security-review.yml` | PR opened | Security-focused review |
 | `codeql.yml` | Push/PR to main, Weekly | Static security analysis |
