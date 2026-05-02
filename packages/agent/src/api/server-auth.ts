@@ -405,9 +405,7 @@ export function resolveWalletExportRejection(
     };
   }
 
-  const expected =
-    process.env.ELIZA_WALLET_EXPORT_TOKEN?.trim() ||
-    process.env.ELIZA_WALLET_EXPORT_TOKEN?.trim();
+  const expected = process.env.ELIZA_WALLET_EXPORT_TOKEN?.trim();
   if (!expected) {
     return {
       status: 403,
