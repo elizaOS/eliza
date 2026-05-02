@@ -1,0 +1,64 @@
+{
+  "uuid": "00000000-0000-4000-8000-00000whatsapp",
+  "lastMigration": 33,
+  "name": "WhatsApp",
+  "endpointPrefix": "",
+  "latency": 0,
+  "port": 3002,
+  "hostname": "127.0.0.1",
+  "routes": [
+    {
+      "uuid": "00000001-0000-4000-8000-00000whatsapp",
+      "type": "http",
+      "documentation": "POST send message",
+      "method": "post",
+      "endpoint": ":version/:phoneId/messages",
+      "responses": [
+        {
+          "uuid": "00000002-0000-4000-8000-00000whatsapp",
+          "body": "{\"messaging_product\":\"whatsapp\",\"contacts\":[{\"input\":\"{{body 'to'}}\",\"wa_id\":\"{{body 'to'}}\"}],\"messages\":[{\"id\":\"wamid.{{faker 'string.alphanumeric' length=20}}\"}]}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    }
+  ],
+  "rootChildren": [
+    { "type": "route", "uuid": "00000001-0000-4000-8000-00000whatsapp" }
+  ],
+  "folders": [],
+  "data": [],
+  "callbacks": [],
+  "proxyMode": false,
+  "proxyHost": "",
+  "proxyRemovePrefix": false,
+  "tlsOptions": {
+    "enabled": false,
+    "type": "CERT",
+    "pfxPath": "",
+    "certPath": "",
+    "keyPath": "",
+    "caPath": "",
+    "passphrase": ""
+  },
+  "cors": true,
+  "headers": [],
+  "proxyReqHeaders": [],
+  "proxyResHeaders": []
+}

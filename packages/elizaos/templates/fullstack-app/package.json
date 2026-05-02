@@ -1,0 +1,34 @@
+{
+  "name": "__PROJECT_SLUG__",
+  "version": "0.1.0",
+  "private": true,
+  "description": "__APP_NAME__ workspace built on elizaOS",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "bun@1.3.5",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "apps/*",
+    "eliza/packages/native-plugins/*",
+    "eliza/packages/app-core/platforms/electrobun",
+    "eliza/apps/*",
+    "eliza/plugins/*",
+    "eliza/plugins/plugin-*/typescript",
+    "eliza/packages/*"
+  ],
+  "scripts": {
+    "build": "bun run --cwd apps/app build",
+    "build:desktop": "node eliza/packages/app-core/scripts/desktop-build.mjs build --variant=base",
+    "build:ios": "bun run --cwd apps/app build:ios",
+    "build:android": "bun run --cwd apps/app build:android",
+    "dev": "node eliza/packages/app-core/scripts/rt.mjs eliza/packages/app-core/scripts/dev-ui.mjs --name=__PROJECT_SLUG__",
+    "dev:ui": "node eliza/packages/app-core/scripts/rt.mjs eliza/packages/app-core/scripts/dev-ui.mjs --name=__PROJECT_SLUG__ --ui-only",
+    "dev:desktop": "bun eliza/packages/app-core/scripts/dev-platform.mjs",
+    "test": "bun run --cwd apps/app test",
+    "typecheck": "bun run --cwd apps/app typecheck",
+    "lint": "bun run --cwd apps/app lint",
+    "verify": "bun run typecheck && bun run lint"
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "name": "@elizaos/app-wifi",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Wi-Fi overlay app for the Eliza Android build — scan, inspect, and connect to nearby networks via @elizaos/capacitor-wifi.",
+  "main": "./src/index.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": "./src/index.ts",
+    "./ui": "./src/ui.ts",
+    "./plugin": "./src/plugin.ts",
+    "./register": "./src/register.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "bunx @biomejs/biome check src",
+    "test": "bunx vitest run --config ./vitest.config.ts"
+  },
+  "dependencies": {
+    "@elizaos/app-core": "workspace:*",
+    "@elizaos/capacitor-wifi": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*",
+    "@elizaos/ui": "workspace:*",
+    "lucide-react": "^1.0.0"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "elizaos": {
+    "app": {
+      "displayName": "WiFi",
+      "category": "system",
+      "androidOnly": true,
+      "heroImage": "assets/hero.png"
+    }
+  }
+}

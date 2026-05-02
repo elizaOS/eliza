@@ -1,0 +1,20 @@
+{
+  "kind": "app",
+  "app": {
+    "displayName": "'scape",
+    "category": "game",
+    "launchType": "connect",
+    "launchUrl": "https://scape-client-2sqyc.kinsta.page",
+    "capabilities": ["autonomous", "game", "journal", "operator-steering"],
+    "runtimePlugin": "@elizaos/app-scape",
+    "viewer": {
+      "url": "/api/apps/scape/viewer",
+      "sandbox": "allow-scripts allow-same-origin allow-popups allow-forms",
+      "embedParams": { "embedded": "true" }
+    },
+    "session": {
+      "mode": "spectate-and-steer",
+      "features": ["commands", "telemetry", "suggestions"]
+    }
+  }
+}

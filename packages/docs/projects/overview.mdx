@@ -1,0 +1,431 @@
+---
+title: "Overview"
+description: "Understanding and building with elizaOS projects"
+---
+
+<Info>
+  **Projects** are the primary deployable unit in elizaOS. Each project contains
+  one or more agents, and plugins can be managed either at the agent level or
+  shared across the project. A project is container template that you develop
+  locally and ship to production.
+</Info>
+
+## What is a Project?
+
+A project in elizaOS is your **development workspace and deployment unit**. It's where you:
+
+- Configure and run one or more agents
+- Develop and test plugins
+- Manage environment settings
+- Build complete AI applications
+
+Projects can include a fully customizable chat interface for user interaction, or run as headless services connecting to platforms like Discord or X. The framework is flexible enough to support both frontend applications and background services.
+
+<Note>
+  Think of a project as a TypeScript application that orchestrates agents. Each
+  agent can have unique plugins, creating specialized capabilities within your
+  application.
+</Note>
+
+## Development Pattern
+
+The elizaOS development workflow centers around projects:
+
+<Steps>
+  <Step title="Create a project">
+    Initialize your development workspace with `elizaos create --type project`
+  </Step>
+  <Step title="Configure agents">
+    Define agent personalities and select plugins
+  </Step>
+  <Step title="Develop features">
+    Build custom plugins and actions within the project context
+  </Step>
+  <Step title="Test locally">
+    Run and test using `elizaos start` without needing the full monorepo
+  </Step>
+  <Step title="Deploy to production">
+    Ship the complete project as your production application
+  </Step>
+</Steps>
+
+This pattern gives you access to all elizaOS core features without managing the entire framework codebase.
+
+## Project Structure
+
+<CodeGroup>
+```bash Standard Project
+my-project/
+├── src/                 # Source code (you edit these)
+│   ├── index.ts         # Project entry point
+│   ├── character.ts     # Default Eliza character
+│   ├── __tests__/       # Test files (E2E and component)
+│   ├── frontend/        # Frontend components (if using web UI)
+│   └── plugins/         # Custom plugins (optional)
+├── .env                 # Environment variables
+├── package.json         # Dependencies
+├── tsconfig.json        # TypeScript config
+├── bun.lock            # Lock file
+│
+├── dist/                # 🔨 Built/compiled output
+├── node_modules/        # 📦 Installed dependencies  
+├── .eliza/              # 💾 Local runtime data
+└── scripts/             # 🛠️ Utility scripts
+```
+
+```bash Multi-Agent Project
+multi-agent-project/
+├── src/                 # Source code
+│   ├── index.ts         # Project orchestration
+│   ├── agents/
+│   │   ├── eliza.ts     # Eliza agent config
+│   │   ├── spartan.ts   # Spartan agent config
+│   │   ├── billy.ts     # Billy agent config
+│   │   └── bobby.ts     # Bobby agent config
+│   ├── __tests__/       # Test files (E2E and component)
+│   ├── frontend/        # Frontend components (if using web UI)
+│   └── plugins/         # Shared custom plugins
+├── .env                 # Shared environment
+├── package.json
+├── tsconfig.json
+│
+├── dist/                # 🔨 Built output
+├── node_modules/        # 📦 Dependencies
+├── .eliza/              # 💾 Runtime data
+└── scripts/             # 🛠️ Utilities
+```
+
+</CodeGroup>
+
+<AccordionGroup>
+  <Accordion title="src/ - Your main development workspace">
+    **Your code lives here:** This is your main entry point area to build your agents and logic.
+    
+    You can organize this however works for your project - there are some common patterns, but it's flexible. All your TypeScript source code and configurations go here.
+    
+    This is committed to version control and where you'll spend most of your dev time.
+  </Accordion>
+
+  <Accordion title="dist/ - Compiled JavaScript output">
+    **Created by:** `elizaos start` or `elizaos dev` (automatic), or manually with `bun run build`
+    
+    Contains the compiled JavaScript files from your TypeScript source. This is what actually runs when you start your project.
+    - Safe to delete (will be regenerated automatically)
+    - Not committed to version control
+  </Accordion>
+  
+  <Accordion title="node_modules/ - Installed dependencies">
+    **Created by:** `bun install` or `npm install`
+    
+    Contains all the packages your project depends on, including elizaOS core and plugins.
+    - Safe to delete (reinstall with `bun install`)
+    - Not committed to version control
+    - Managed by your package manager
+  </Accordion>
+  
+  <Accordion title=".eliza/ - Local runtime data">
+    **Created by:** Running your agent
+    
+    Stores local runtime data including:
+    - PGLite database files (if using local DB)
+    - Cache files
+    - Temporary agent state
+    - Plugin data storage
+    
+    Safe to delete to reset your local development state.
+  </Accordion>
+  
+  <Accordion title="scripts/ - Utility scripts">
+    **Created by:** Project template or manually
+    
+    Contains helpful scripts for development:
+    - Test utilities
+    - Database migrations
+    - Deployment scripts
+    - Custom build steps
+    - Is committed to version control, but generally not used much during dev process
+    
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+  **Clean Slate:** Run `rm -rf node_modules dist .eliza` to completely reset
+  your project's generated files. Then `bun install` and your next `elizaos
+  start` will rebuild automatically.
+</Note>
+
+## Project Definition
+
+Projects are flexible containers you can design to fit your use case. The default entry point for every project is `src/index.ts`, where you define your agents, their character files, and any custom plugins or services. You might configure a single agent with specialized plugins, or coordinate multiple agents with distinct personalities and capabilities.
+
+Build your project structure to match your needs and goals, whether that's organizing agents by function, separating character configurations, or creating shared utilities. The elizaOS runtime will orchestrate everything once you define your project configuration.
+
+<CodeGroup>
+```typescript src/index.ts (Single Agent)
+import { Project, ProjectAgent, IAgentRuntime } from '@elizaos/core';
+import { character } from './character';
+
+export const projectAgent: ProjectAgent = {
+  character,
+  init: async (runtime: IAgentRuntime) => {
+    console.log(`Initializing ${character.name}`);
+    // Optional: Setup knowledge base, connections, etc.
+  },
+  // plugins: [customPlugin], // Project-specific plugins
+};
+
+const project: Project = {
+agents: [projectAgent],
+};
+
+export default project;
+```
+
+```typescript src/index.ts (Multi-Agent)
+import { Project, ProjectAgent } from "@elizaos/core";
+import { eliza, spartan, billy, bobby } from "./agents";
+
+const elizaAgent: ProjectAgent = {
+  character: eliza,
+  init: async (runtime) => {
+    await setupElizaKnowledge(runtime);
+  },
+};
+
+const spartanAgent: ProjectAgent = {
+  character: spartan,
+  init: async (runtime) => {
+    await initializeSpartanProtocols(runtime);
+  },
+};
+
+const billyAgent: ProjectAgent = {
+  character: billy,
+  init: async (runtime) => {
+    await connectBillySystems(runtime);
+  },
+};
+
+const bobbyAgent: ProjectAgent = {
+  character: bobby,
+  init: async (runtime) => {
+    await setupBobbyCapabilities(runtime);
+  },
+};
+
+const project: Project = {
+  agents: [elizaAgent, spartanAgent, billyAgent, bobbyAgent],
+};
+
+export default project;
+```
+
+</CodeGroup>
+
+## Environment Configuration
+
+Projects come with `.env` files for API keys and configuration, plus `.env.example` with additional variables you can copy. Define these at the project level to start, then you can define them at the agent level in multi-agent projects using the `secrets` array in your character `.ts`/`.json` object.
+
+```bash .env
+# Model Providers
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Platform Integrations
+DISCORD_API_TOKEN=...
+TELEGRAM_BOT_TOKEN=...
+X_API_KEY=...
+
+# Database
+DATABASE_URL=postgresql://localhost/eliza
+PGLITE_DIR=./tmp/pglite
+
+# Settings
+LOG_LEVEL=info
+NODE_ENV=production
+```
+
+<Tip>
+  For detailed information about server security, authentication, and UI
+  configuration environment variables, see the [Environment
+  Variables](/projects/environment-variables) documentation.
+</Tip>
+
+## Running Projects Locally
+
+Start your project with the elizaOS CLI:
+
+```bash
+# Start your project
+elizaos start
+
+# Development mode with hot reload
+elizaos dev
+
+# Start with specific character
+elizaos start --character ./custom-character.ts
+```
+
+<Tip>
+  See the [CLI Reference](/cli-reference/overview) for all available options and
+  flags.
+</Tip>
+
+## Advanced Project Examples
+
+Explore these real-world projects showcasing different elizaOS capabilities:
+
+<CardGroup cols={2}>
+  <Card title="Spartan" icon="github" href="https://github.com/elizaos/spartan">
+    **Onchain Trading Agent** Advanced capabilities for blockchain trading: -
+    Multi-modal reasoning across data types - Strategic decision-making
+    framework - Long-term memory with retrieval strategies - Complex action
+    chaining - Advanced prompt engineering
+  </Card>
+
+<Card title="The Org" icon="github" href="https://github.com/elizaos/the-org">
+  **Business Profiles Swarm** Swarm of business profiles who collaborate and
+  work together: - Executive, department, and operational layers - Inter-agent
+  communication protocols - Specialized role-based expertise - Coordinated
+  decision-making - Shared knowledge management
+</Card>
+
+<Card
+  title="3D Hyperfy Starter"
+  icon="github"
+  href="https://github.com/elizaOS/eliza-3d-hyperfy-starter"
+>
+  **3D World Integration** Agent that connects to 3D virtual worlds: - WebSocket
+  connection to Hyperfy worlds - Voice chat support (ElevenLabs/OpenAI) - Screen
+  perception capabilities - 3D MMO development prototyping - Real-time
+  interaction in virtual spaces
+</Card>
+
+  <Card
+    title="Next.js Starter"
+    icon="github"
+    href="https://github.com/elizaOS/eliza-nextjs-starter"
+  >
+    **Web Application Template** Production-ready web interface for agents: -
+    Real-time chat with Socket.IO - Document management system - Automatic API
+    proxying - Debug panel for development - Ready for Vercel/Netlify deployment
+  </Card>
+</CardGroup>
+
+<Info>
+  **Want more inspiration?** Check out [What You Can Build](/what-you-can-build)
+  to see other agents you can create: trading bots, content creators, business
+  automation, virtual NPCs, and more.
+</Info>
+
+## Testing Projects
+
+Projects include comprehensive testing capabilities:
+
+```bash
+# Run all tests
+elizaos test
+
+# Component tests only
+elizaos test --type component
+
+# End-to-end tests
+elizaos test --type e2e
+
+# Filter by test name
+elizaos test --name "character configuration"
+```
+
+<Tip>
+  See the [Test a Project](/guides/test-a-project) guide for comprehensive
+  testing strategies.
+</Tip>
+
+## Deployment Options
+
+Projects come ready to be deployed out of the box. They include Dockerfiles so you can deploy using containers, or you can easily push your project to GitHub and use a managed cloud service.
+
+See the [Deploy a Project](/guides/deploy-a-project) guide for detailed instructions on all deployment methods.
+
+## FAQ
+
+<AccordionGroup>
+  <Accordion title="What's the difference between an agent, a plugin, and a project?">
+    **Agent**: A single AI personality with specific capabilities defined by its character configuration and plugins.
+    
+    **Plugin**: A reusable module that adds specific capabilities (like X integration, web search, or trading features) to agents.
+    
+    **Project**: The container application that runs one or more agents. It's your development workspace and what you deploy to production.
+    
+    **Key relationships:**
+    - A project **has one or many** agents
+    - Agents **import/use** plugins via their character configuration
+    - Plugins are **reusable across** projects and agents
+    - You can't have a project within a project or a project within a plugin
+    - Projects are the top-level containers for agents and plugins
+    - Plugin configuration can be defined at the project level (API keys in project `.env`) or agent-specific (in the character's `secrets` array)
+    
+    Think of it this way: Agents are the "who" (personalities), Plugins are the "what" (capabilities), Projects are the "where" (application container).
+  </Accordion>
+  
+  <Accordion title="Can I develop plugins within a project?">
+    Yes! You can create custom plugins in your project's `src/plugins/` directory and test them locally.
+    
+    You can also develop a standalone plugin with `elizaos create --type plugin`. If you run `elizaos dev` from that plugin directory, it will spin up with a test agent. But ultimately, everyone will want to add that plugin to a project at some point.
+    
+    See the [Create a Plugin](/guides/create-a-plugin) guide for details.
+  </Accordion>
+  
+  <Accordion title="Do I need the entire elizaOS monorepo to develop?">
+    No! That's the beauty of projects. When you create a project with `elizaos create`, you get a standalone workspace with just what you need. The CLI and core packages provide all the framework functionality without the monorepo complexity.
+  </Accordion>
+  
+  <Accordion title="How do agents communicate in multi-agent projects?">
+    Agents in the same project can communicate through:
+    - Shared memory systems
+    - Message passing via the runtime
+    - Event-driven coordination
+    - Shared service instances
+    
+    See the [Add Multiple Agents](/guides/add-multiple-agents) guide for patterns.
+  </Accordion>
+  
+  <Accordion title="Can different agents use different model providers?">
+    Yes! Each agent can configure its own model provider through settings:
+    ```typescript
+    settings: {
+      modelProvider: 'anthropic', // or 'openai', 'llama', etc.
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="What's the best way to deploy my project?">
+    It depends on what you're comfortable with. We support managed cloud, Docker, bare metal, whatever you like.
+    
+    See the [Deploy a Project](/guides/deploy-a-project) guide for detailed information on all deployment options.
+  </Accordion>
+</AccordionGroup>
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="play" href="/quickstart">
+    Get started in under 5 minutes
+  </Card>
+
+<Card
+  title="Customize an Agent"
+  icon="palette"
+  href="/guides/customize-an-agent"
+>
+  Learn to configure agent personalities
+</Card>
+
+<Card title="CLI Reference" icon="terminal" href="/cli-reference/overview">
+  Complete command reference
+</Card>
+
+  <Card title="REST Reference" icon="code" href="/rest-reference">
+    REST API documentation
+  </Card>
+</CardGroup>

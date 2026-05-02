@@ -1,0 +1,141 @@
+name: Docker CI Smoke
+
+on:
+  pull_request:
+    branches: [develop]
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  docker-ci-smoke:
+    name: Build production Docker image (+ smoke boot)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      BUN_VERSION: "1.3.13"
+      DOCKER_IMAGE: elizaos/agent:docker-smoke
+      SMOKE_TIMEOUT_SEC: "420"
+      SMOKE_PORT: "32138"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          show-progress: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Cache Bun install
+        uses: actions/cache@v5
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-${{ runner.os }}-
+
+      - name: Free disk space for Docker smoke
+        run: |
+          df -h
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
+          docker system prune -af --volumes || true
+          df -h
+
+      - name: Run Docker CI smoke path
+        timeout-minutes: 45
+        # Run the smoke script in its own process group so a wedged docker
+        # child cannot outlive the wrapper timeout and keep the step active.
+        run: |
+          set -euo pipefail
+
+          stop_smoke() {
+            if [[ -n "${smoke_pid:-}" ]] && kill -0 "$smoke_pid" 2>/dev/null; then
+              kill -TERM "-$smoke_pid" 2>/dev/null || kill -TERM "$smoke_pid" 2>/dev/null || true
+              sleep 10
+              kill -KILL "-$smoke_pid" 2>/dev/null || kill -KILL "$smoke_pid" 2>/dev/null || true
+            fi
+          }
+
+          trap 'stop_smoke; exit 130' INT
+          trap 'stop_smoke; exit 143' TERM
+
+          mkdir -p .tmp/qa
+          smoke_log=".tmp/qa/docker-ci-smoke-step.log"
+          setsid bash packages/app-core/scripts/docker-ci-smoke.sh --tag gha-${{ github.run_id }} > >(tee "$smoke_log") 2> >(tee -a "$smoke_log" >&2) &
+          smoke_pid=$!
+          deadline=$((SECONDS + 40 * 60))
+
+          while kill -0 "$smoke_pid" 2>/dev/null; do
+            if (( SECONDS >= deadline )); then
+              echo "::error::Docker CI smoke path exceeded 40 minutes"
+              kill -TERM "-$smoke_pid" 2>/dev/null || kill -TERM "$smoke_pid" 2>/dev/null || true
+              sleep 15
+              kill -KILL "-$smoke_pid" 2>/dev/null || kill -KILL "$smoke_pid" 2>/dev/null || true
+              wait "$smoke_pid" || true
+              exit 124
+            fi
+            sleep 10
+          done
+
+          set +e
+          wait "$smoke_pid"
+          smoke_status=$?
+          set -e
+          if (( smoke_status != 0 )); then
+            echo "::group::Docker CI smoke step tail"
+            tail -n 240 "$smoke_log" || true
+            echo "::endgroup::"
+            echo "::error::Docker CI smoke failed with exit code ${smoke_status}; see the step tail and uploaded .tmp/qa artifacts."
+            exit "$smoke_status"
+          fi
+
+      # Inline log capture runs on failure (not cancelled).
+      - name: Dump container log + inspect (inline)
+        if: failure()
+        timeout-minutes: 2
+        run: |
+          echo "::group::Docker containers"
+          timeout 15 docker ps -a || echo "(docker ps timed out)"
+          echo "::endgroup::"
+          timeout 15 docker ps -a --format '{{.Names}}' > /tmp/eliza-docker-containers.txt || true
+          for C in $(grep '^eliza-docker-smoke-' /tmp/eliza-docker-containers.txt || true); do
+            echo "::group::docker logs $C"
+            timeout 30 docker logs "$C" 2>&1 || echo "(docker logs timed out)"
+            echo "::endgroup::"
+            echo "::group::docker inspect $C (state)"
+            timeout 15 docker inspect "$C" --format '{{json .State}}' 2>&1 | python3 -m json.tool || true
+            echo "::endgroup::"
+          done
+
+      - name: Upload container logs + inspect
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: docker-ci-smoke-artifacts-${{ github.run_id }}
+          path: |
+            .tmp/qa/docker-ci-smoke-*
+            /tmp/eliza-docker-*.txt
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Summarize Docker smoke result
+        if: always()
+        run: |
+          echo "## Docker CI Smoke" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Production Dockerfile: \`packages/app-core/deploy/Dockerfile.ci\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Script: \`packages/app-core/scripts/docker-ci-smoke.sh\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Trigger: \`${{ github.event_name }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Ref: \`${{ github.ref }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Smoke endpoints: \`/api/health\` then fallback \`/api/status\`" >> "$GITHUB_STEP_SUMMARY"

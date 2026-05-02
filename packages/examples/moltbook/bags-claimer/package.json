@@ -1,0 +1,12 @@
+{
+  "name": "bags-claimer",
+  "type": "module",
+  "scripts": {
+    "start": "bun run claimer.ts",
+    "claim": "bun run claimer.ts --once"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.98.4",
+    "bs58": "^6.0.0"
+  }
+}

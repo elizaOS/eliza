@@ -1,0 +1,521 @@
+/**
+ * WS5 — Background-job pipeline parity (PRD lines 418-433).
+ *
+ * Single shared LLM planner entry-point for every LifeOps background job.
+ * Mirrors the chat planner pattern used in `actions/inbox.ts` (`resolveSubactionPlan`)
+ * and `actions/life.ts`: structured JSON model output, no English keyword
+ * routing, no regex, multilingual-safe.
+ *
+ * Every job calls `planJob({...})` to get a typed `{action, payload,
+ * requiresApproval, reason}` decision. Sensitive actions
+ * (requiresApproval=true) are then enqueued via the WS6 approval queue
+ * (`approval-queue.types.ts`) instead of being executed directly.
+ *
+ * --------------------------------------------------------------------------
+ * Background-job inventory (search results for brief|followup|reminder|
+ * escalation|digest|watchdog|nudge|sweep|cron|schedule under
+ * `eliza/apps/app-lifeops/src/lifeops/` and adjacent job dirs).
+ *
+ * Real registered task workers (runtime.registerTaskWorker callsites):
+ *
+ *   1. LIFEOPS_SCHEDULER
+ *      - file: lifeops/runtime.ts (registerLifeOpsTaskWorker)
+ *      - exec: executeLifeOpsSchedulerTask -> service.processScheduledWork
+ *      - downstream:
+ *          a. service-mixin-reminders.ts processReminders         (PRD: meeting reminder ladder, draft aging sweeper)
+ *          b. service-mixin-workflows.ts runDueWorkflows          (PRD: travel conflict detector, event asset sweeper)
+ *          c. service-mixin-reminders.ts syncWebsiteAccessState   (enforcement window sweep)
+ *
+ *   2. PROACTIVE_AGENT
+ *      - file: activity-profile/proactive-worker.ts (registerProactiveTaskWorker)
+ *      - exec: executeProactiveTask
+ *      - downstream:
+ *          a. planGm                                              (PRD: daily brief builder — morning)
+ *          b. planGn                                              (PRD: evening closeout)
+ *          c. planNudges                                          (PRD: meeting reminder ladder)
+ *          d. planDowntimeNudges                                  (PRD: pending-decision nudger / decision nudger)
+ *          e. planGoalCheckIns                                    (PRD: relationship/goal overdue detector)
+ *          f. planSeedingOffer                                    (onboarding seed)
+ *          g. classifyCalendarEventsForProactivePlanning           (already LLM-routed)
+ *
+ *   3. FOLLOWUP_TRACKER_RECONCILE
+ *      - file: followup/followup-tracker.ts (registerFollowupTrackerWorker)
+ *      - exec: reconcileFollowupsOnce -> computeOverdueFollowups
+ *      - downstream: writeOverdueDigestMemory                     (PRD: follow-up watchdog, relationship-overdue-detector)
+ *
+ *   4. WEBSITE_BLOCKER_UNBLOCK_TASK_NAME
+ *      - file: website-blocker/service.ts                          (out of EA scope; kept for completeness)
+ *
+ *   5. BLOCK_RULE_RECONCILE_TASK_NAME
+ *      - file: website-blocker/chat-integration/block-rule-reconciler.ts
+ *
+ * Other background entry points / sweeps that flow through the workers above:
+ *
+ *   - Dossier service: dossier/service.ts                          (on-demand by chat + brief builder)
+ *   - Activity profile rebuilds: activity-profile/service.ts       (driven by PROACTIVE_AGENT)
+ *   - Reminder enforcement windows: lifeops/enforcement-windows.ts (driven by reminders mixin)
+ *
+ * Mapping to PRD §"Background Jobs And Cron Handlers" (lines 418-433):
+ *
+ *   PRD job                                  | Job key (this module)
+ *   -----------------------------------------+--------------------------------
+ *   Inbox ingest per connector               | inbox_ingest          (event-driven)
+ *   Daily brief builder                      | daily_brief           (proactive_gm)
+ *   Evening closeout                         | evening_closeout      (proactive_gn)
+ *   Follow-up watchdog                       | followup_watchdog     (followup_tracker)
+ *   Decision nudger                          | decision_nudger       (proactive downtime)
+ *   Meeting reminder ladder                  | meeting_reminder      (proactive nudges + reminders)
+ *   Travel conflict detector                 | travel_conflict       (workflows)
+ *   Event asset sweeper                      | event_asset_sweep     (workflows)
+ *   Draft aging sweeper                      | draft_aging_sweep     (reminders)
+ *   Remote stuck-agent escalator             | remote_stuck_escalate (browser/computer-use)
+ *   Pending-decision nudger                  | pending_decision      (proactive downtime)
+ *   Missed-commitment repair                 | missed_commitment     (followup_tracker)
+ *   Unsent-draft resurfacer                  | unsent_draft          (reminders)
+ *   Relationship-overdue detector            | relationship_overdue  (followup_tracker)
+ *   Deadline escalator                       | deadline_escalate     (reminders)
+ *   Travel-ops rechecker                     | travel_ops            (workflows)
+ *
+ * --------------------------------------------------------------------------
+ */
+
+import type { IAgentRuntime } from "@elizaos/core";
+import { logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import type {
+  ApprovalAction,
+  ApprovalChannel,
+  ApprovalPayload,
+} from "./approval-queue.types.js";
+import type { TravelBookingPayloadFields } from "./travel-booking.types.js";
+
+// ---------------------------------------------------------------------------
+// Job kinds — closed enum aligned to PRD §"Background Jobs And Cron Handlers"
+// ---------------------------------------------------------------------------
+
+/** Background-job kinds the planner knows about. Keep in sync with the
+ *  inventory comment above. Adding a new kind requires updating the
+ *  contract test (`background-job-parity.contract.test.ts`). */
+export type BackgroundJobKind =
+  | "inbox_ingest"
+  | "daily_brief"
+  | "evening_closeout"
+  | "followup_watchdog"
+  | "decision_nudger"
+  | "meeting_reminder"
+  | "travel_conflict"
+  | "event_asset_sweep"
+  | "draft_aging_sweep"
+  | "remote_stuck_escalate"
+  | "pending_decision"
+  | "missed_commitment"
+  | "unsent_draft"
+  | "relationship_overdue"
+  | "deadline_escalate"
+  | "travel_ops";
+
+/**
+ * Result of `planJob`. `action` is null when the planner decided no action is
+ * warranted right now (e.g. the GM window already fired). Callers MUST
+ * inspect `requiresApproval` and route through the WS6 approval queue when
+ * true — they MUST NOT execute sensitive actions directly.
+ */
+export interface TypedJobPlan {
+  /** Closed-enum action selected by the planner, or null for noop. */
+  readonly action: ApprovalAction | null;
+  /** Action-specific payload. Null when `action` is null. */
+  readonly payload: ApprovalPayload | null;
+  /** When true, the caller MUST enqueue this in the approval queue
+   *  (WS6) instead of executing directly. */
+  readonly requiresApproval: boolean;
+  /** Channel through which the action will be carried out. */
+  readonly channel: ApprovalChannel;
+  /** Human-readable justification from the planner. Always non-empty. */
+  readonly reason: string;
+}
+
+/**
+ * Context passed into the planner by a background job. Jobs assemble this
+ * from their own runtime context (overdue digest, fired-actions log, etc.)
+ * and let the LLM decide what to do.
+ */
+export interface BackgroundJobContext {
+  readonly jobKind: BackgroundJobKind;
+  readonly subjectUserId: string;
+  /** Free-form structured snapshot of the job state (occurrences, calendar
+   *  events, overdue contacts, ...). The planner reads this verbatim. */
+  readonly snapshot: Readonly<Record<string, unknown>>;
+  /** Channels enabled for this owner. Limits the planner's choices. */
+  readonly availableChannels: ReadonlyArray<ApprovalChannel>;
+  /** Reason the job ran — cron tick, event-driven trigger, etc. */
+  readonly trigger: string;
+}
+
+const SENSITIVE_ACTIONS: ReadonlySet<ApprovalAction> = new Set<ApprovalAction>([
+  "send_message",
+  "send_email",
+  "schedule_event",
+  "modify_event",
+  "cancel_event",
+  "book_travel",
+  "make_call",
+  "execute_workflow",
+  "spend_money",
+]);
+
+const ALL_ACTIONS: ReadonlyArray<ApprovalAction | "noop"> = [
+  "send_message",
+  "send_email",
+  "schedule_event",
+  "modify_event",
+  "cancel_event",
+  "book_travel",
+  "make_call",
+  "execute_workflow",
+  "spend_money",
+  "noop",
+];
+
+const ALL_CHANNELS: ReadonlyArray<ApprovalChannel> = [
+  "telegram",
+  "discord",
+  "slack",
+  "imessage",
+  "sms",
+  "x_dm",
+  "email",
+  "google_calendar",
+  "browser",
+  "phone",
+  "internal",
+];
+
+/**
+ * Error raised when the planner is unavailable or returned unparsable
+ * output. We surface this loudly — the caller MUST decide whether to skip
+ * this tick or escalate. We never silently fall back to a default action.
+ */
+export class BackgroundPlannerError extends Error {
+  public readonly jobKind: BackgroundJobKind;
+  public readonly cause?: unknown;
+
+  constructor(jobKind: BackgroundJobKind, message: string, cause?: unknown) {
+    super(`[BackgroundPlanner:${jobKind}] ${message}`);
+    this.name = "BackgroundPlannerError";
+    this.jobKind = jobKind;
+    this.cause = cause;
+  }
+}
+
+function isApprovalAction(value: unknown): value is ApprovalAction {
+  return (
+    typeof value === "string" && SENSITIVE_ACTIONS.has(value as ApprovalAction)
+  );
+}
+
+function isApprovalChannel(value: unknown): value is ApprovalChannel {
+  return (
+    typeof value === "string" &&
+    (ALL_CHANNELS as ReadonlyArray<string>).includes(value)
+  );
+}
+
+function buildPrompt(jobContext: BackgroundJobContext): string {
+  return [
+    `Plan the BACKGROUND JOB action for job kind: ${jobContext.jobKind}.`,
+    "You are routing a background tick for an executive assistant.",
+    "Decide whether the assistant should take an action right now, and if so",
+    "which action and through which channel. The assistant MUST NOT execute",
+    "sensitive actions directly — anything that contacts a person, modifies a",
+    "calendar, books travel, makes a call, runs a workflow, or spends money",
+    "returns requiresApproval=true so the user can confirm.",
+    "",
+    "Return ONLY valid JSON with exactly these fields:",
+    `{"action":${ALL_ACTIONS.map((a) => `"${a}"`).join("|")},`,
+    `"channel":${ALL_CHANNELS.map((c) => `"${c}"`).join("|")},`,
+    `"requiresApproval":true|false,`,
+    `"reason":"short justification",`,
+    `"payload":{...action-specific fields, or empty object when action=noop}}`,
+    "",
+    "Rules:",
+    "- Choose action=noop when no action is warranted this tick (e.g. nothing overdue).",
+    "- requiresApproval=true for any action that touches a person or external system.",
+    "- requiresApproval=false ONLY when action=noop or the action is purely internal (logging, internal workflow with no side effects).",
+    "- The reason must explain WHY this tick warrants the chosen action, in any language.",
+    "",
+    `Job trigger: ${jobContext.trigger}`,
+    `Subject user: ${jobContext.subjectUserId}`,
+    `Available channels: ${JSON.stringify(jobContext.availableChannels)}`,
+    `Snapshot: ${JSON.stringify(jobContext.snapshot)}`,
+  ].join("\n");
+}
+
+function emptyPayloadFor(_action: ApprovalAction): ApprovalPayload | null {
+  // Sensitive payloads are required to be fully formed — we do not invent
+  // recipients or amounts. If the planner returned a sensitive action with
+  // no usable payload, the caller will see payload=null and skip the tick.
+  return null;
+}
+
+function coercePayload(
+  action: ApprovalAction,
+  rawPayload: unknown,
+): ApprovalPayload | null {
+  if (
+    !rawPayload ||
+    typeof rawPayload !== "object" ||
+    Array.isArray(rawPayload)
+  ) {
+    return emptyPayloadFor(action);
+  }
+  const record = rawPayload as Record<string, unknown>;
+
+  switch (action) {
+    case "send_message": {
+      const recipient =
+        typeof record.recipient === "string" ? record.recipient : null;
+      const body = typeof record.body === "string" ? record.body : null;
+      if (!recipient || !body) return null;
+      return {
+        action,
+        recipient,
+        body,
+        replyToMessageId:
+          typeof record.replyToMessageId === "string"
+            ? record.replyToMessageId
+            : null,
+      };
+    }
+    case "send_email": {
+      const subject =
+        typeof record.subject === "string" ? record.subject : null;
+      const body = typeof record.body === "string" ? record.body : null;
+      const to = Array.isArray(record.to)
+        ? record.to.filter((v): v is string => typeof v === "string")
+        : [];
+      if (!subject || !body || to.length === 0) return null;
+      return {
+        action,
+        to,
+        cc: Array.isArray(record.cc)
+          ? record.cc.filter((v): v is string => typeof v === "string")
+          : [],
+        bcc: Array.isArray(record.bcc)
+          ? record.bcc.filter((v): v is string => typeof v === "string")
+          : [],
+        subject,
+        body,
+        threadId: typeof record.threadId === "string" ? record.threadId : null,
+      };
+    }
+    case "execute_workflow": {
+      const workflowId =
+        typeof record.workflowId === "string" ? record.workflowId : null;
+      if (!workflowId) return null;
+      const inputRaw = record.input;
+      const input: Record<string, string | number | boolean> = {};
+      if (
+        inputRaw &&
+        typeof inputRaw === "object" &&
+        !Array.isArray(inputRaw)
+      ) {
+        for (const [k, v] of Object.entries(
+          inputRaw as Record<string, unknown>,
+        )) {
+          if (
+            typeof v === "string" ||
+            typeof v === "number" ||
+            typeof v === "boolean"
+          ) {
+            input[k] = v;
+          }
+        }
+      }
+      return { action, workflowId, input };
+    }
+    case "book_travel": {
+      const provider =
+        typeof record.provider === "string" ? record.provider : null;
+      const itineraryRef =
+        typeof record.itineraryRef === "string" ? record.itineraryRef : null;
+      const totalCents =
+        typeof record.totalCents === "number" &&
+        Number.isFinite(record.totalCents)
+          ? Math.round(record.totalCents)
+          : null;
+      const currency =
+        typeof record.currency === "string" ? record.currency : null;
+      const kind =
+        record.kind === "flight" ||
+        record.kind === "hotel" ||
+        record.kind === "ground"
+          ? record.kind
+          : null;
+      const search =
+        record.search &&
+        typeof record.search === "object" &&
+        !Array.isArray(record.search)
+          ? record.search
+          : null;
+      const passengers = Array.isArray(record.passengers)
+        ? record.passengers.filter(
+            (value): value is Record<string, unknown> =>
+              Boolean(value) &&
+              typeof value === "object" &&
+              !Array.isArray(value),
+          )
+        : [];
+      const calendarSync =
+        record.calendarSync &&
+        typeof record.calendarSync === "object" &&
+        !Array.isArray(record.calendarSync)
+          ? record.calendarSync
+          : null;
+      if (
+        !provider ||
+        !itineraryRef ||
+        totalCents === null ||
+        !currency ||
+        !kind
+      ) {
+        return null;
+      }
+      return {
+        action,
+        kind,
+        provider,
+        itineraryRef,
+        totalCents,
+        currency,
+        offerId: typeof record.offerId === "string" ? record.offerId : null,
+        offerRequestId:
+          typeof record.offerRequestId === "string"
+            ? record.offerRequestId
+            : null,
+        orderType:
+          record.orderType === "hold" || record.orderType === "instant"
+            ? record.orderType
+            : null,
+        // Planner output is shaped by the LLM; downstream booking flow
+        // re-validates each field before any real Duffel call. Cast through
+        // unknown to satisfy the closed TravelBookingPayloadFields shapes.
+        search: search as TravelBookingPayloadFields["search"],
+        passengers:
+          passengers as unknown as TravelBookingPayloadFields["passengers"],
+        calendarSync:
+          calendarSync as unknown as TravelBookingPayloadFields["calendarSync"],
+        summary: typeof record.summary === "string" ? record.summary : null,
+      };
+    }
+    default:
+      // For schedule/modify/cancel/book/call/spend the upstream caller has
+      // not yet wired structured payload extraction. We surface null so the
+      // caller can either request approval with a synthesized message or
+      // skip this tick. We never fabricate recipients or amounts.
+      return null;
+  }
+}
+
+/**
+ * Plan a background-job action via the same LLM pipeline used by chat
+ * actions. Returns a typed plan; throws `BackgroundPlannerError` on hard
+ * planner failure (model unavailable, unparsable output). Callers MUST
+ * route sensitive actions through the WS6 approval queue.
+ */
+export async function planJob(
+  runtime: IAgentRuntime,
+  jobContext: BackgroundJobContext,
+): Promise<TypedJobPlan> {
+  if (typeof runtime.useModel !== "function") {
+    throw new BackgroundPlannerError(
+      jobContext.jobKind,
+      "runtime.useModel is unavailable; background job cannot run",
+    );
+  }
+
+  const prompt = buildPrompt(jobContext);
+  // biome-ignore lint/correctness/useHookAtTopLevel: runtime.useModel is an elizaOS model API, not a React hook.
+  const result = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
+  const raw = typeof result === "string" ? result : "";
+  const parsed = parseJSONObjectFromText(raw) as Record<string, unknown> | null;
+
+  if (!parsed) {
+    throw new BackgroundPlannerError(
+      jobContext.jobKind,
+      `planner returned unparsable output: ${raw.slice(0, 200)}`,
+    );
+  }
+
+  const rawAction = parsed.action;
+  const rawChannel = parsed.channel;
+  const reason =
+    typeof parsed.reason === "string" && parsed.reason.trim().length > 0
+      ? parsed.reason.trim()
+      : null;
+
+  if (!reason) {
+    throw new BackgroundPlannerError(
+      jobContext.jobKind,
+      "planner output missing required `reason` field",
+    );
+  }
+
+  const channel: ApprovalChannel = isApprovalChannel(rawChannel)
+    ? rawChannel
+    : "internal";
+
+  if (rawAction === "noop" || rawAction === null || rawAction === undefined) {
+    logger.debug(`[BackgroundPlanner:${jobContext.jobKind}] noop — ${reason}`);
+    return {
+      action: null,
+      payload: null,
+      requiresApproval: false,
+      channel,
+      reason,
+    };
+  }
+
+  if (!isApprovalAction(rawAction)) {
+    throw new BackgroundPlannerError(
+      jobContext.jobKind,
+      `planner returned unknown action: ${String(rawAction)}`,
+    );
+  }
+
+  const payload = coercePayload(rawAction, parsed.payload);
+  const requiresApproval =
+    parsed.requiresApproval === false
+      ? false
+      : SENSITIVE_ACTIONS.has(rawAction);
+
+  logger.info(
+    `[BackgroundPlanner:${jobContext.jobKind}] action=${rawAction} channel=${channel} requiresApproval=${requiresApproval} — ${reason}`,
+  );
+
+  return {
+    action: rawAction,
+    payload,
+    requiresApproval,
+    channel,
+    reason,
+  };
+}
+
+/** Test-only helper: list all PRD job kinds the planner knows about. */
+export const KNOWN_JOB_KINDS: ReadonlyArray<BackgroundJobKind> = [
+  "inbox_ingest",
+  "daily_brief",
+  "evening_closeout",
+  "followup_watchdog",
+  "decision_nudger",
+  "meeting_reminder",
+  "travel_conflict",
+  "event_asset_sweep",
+  "draft_aging_sweep",
+  "remote_stuck_escalate",
+  "pending_decision",
+  "missed_commitment",
+  "unsent_draft",
+  "relationship_overdue",
+  "deadline_escalate",
+  "travel_ops",
+];

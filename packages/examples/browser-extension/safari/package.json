@@ -1,0 +1,11 @@
+{
+  "name": "@elizaos/example-browser-extension-safari",
+  "version": "1.0.0",
+  "description": "Safari extension wrapper for Chat with Webpage - see README.md for build instructions",
+  "private": true,
+  "scripts": {
+    "convert": "xcrun safari-web-extension-converter ../chrome --project-location . --app-name 'Chat with Webpage' --bundle-identifier com.elizaos.chatwithwebpage --swift --force",
+    "build": "if [ \"$(uname)\" = \"Darwin\" ]; then npm run convert && echo 'Now open the Xcode project in safari/Chat with Webpage/'; else echo 'Safari extension build skipped - requires macOS with Xcode'; fi",
+    "info": "echo 'See README.md for detailed Safari extension build instructions'"
+  }
+}

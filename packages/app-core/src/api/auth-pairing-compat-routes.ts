@@ -1,0 +1,290 @@
+import crypto from "node:crypto";
+import type http from "node:http";
+import { loadElizaConfig } from "@elizaos/agent";
+import { logger } from "@elizaos/core";
+import {
+  ensureRouteAuthorized,
+  getCompatApiToken,
+  getProvidedApiToken,
+  tokenMatches,
+} from "./auth";
+import { findActiveSession, parseSessionCookie } from "./auth/sessions";
+import {
+  type CompatRuntimeState,
+  getCompatDrizzleDb,
+  hasCompatPersistedOnboardingState,
+  isTrustedLocalRequest,
+  readCompatJsonBody,
+} from "./compat-route-shared";
+import {
+  sendJsonError as sendJsonErrorResponse,
+  sendJson as sendJsonResponse,
+} from "./response";
+import { isCloudProvisioned } from "./server-onboarding-compat";
+
+// ---------------------------------------------------------------------------
+// Pairing state & helpers
+// ---------------------------------------------------------------------------
+
+const PAIRING_TTL_MS = 10 * 60 * 1000;
+const PAIRING_WINDOW_MS = 10 * 60 * 1000;
+const PAIRING_MAX_ATTEMPTS = 5;
+const PAIRING_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+let pairingCode: string | null = null;
+let pairingExpiresAt = 0;
+const pairingAttempts = new Map<string, { count: number; resetAt: number }>();
+
+// Periodic sweep to prevent unbounded memory growth
+const PAIRING_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
+const pairingSweepTimer = setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of pairingAttempts) {
+    if (now > entry.resetAt) {
+      pairingAttempts.delete(key);
+    }
+  }
+}, PAIRING_SWEEP_INTERVAL_MS);
+if (typeof pairingSweepTimer === "object" && "unref" in pairingSweepTimer) {
+  pairingSweepTimer.unref();
+}
+
+export function _resetAuthPairingStateForTests(): void {
+  pairingCode = null;
+  pairingExpiresAt = 0;
+  pairingAttempts.clear();
+}
+
+function pairingEnabled(): boolean {
+  return (
+    Boolean(getCompatApiToken()) &&
+    process.env.ELIZA_PAIRING_DISABLED !== "1" &&
+    !isCloudProvisioned()
+  );
+}
+
+function normalizePairingCode(code: string): string {
+  return code.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+}
+
+function generatePairingCode(): string {
+  let raw = "";
+  for (let i = 0; i < 12; i += 1) {
+    raw += PAIRING_ALPHABET[crypto.randomInt(0, PAIRING_ALPHABET.length)];
+  }
+  return `${raw.slice(0, 4)}-${raw.slice(4, 8)}-${raw.slice(8, 12)}`;
+}
+
+function ensurePairingCode(): string | null {
+  if (!pairingEnabled()) {
+    return null;
+  }
+
+  const now = Date.now();
+  if (!pairingCode || now > pairingExpiresAt) {
+    pairingCode = generatePairingCode();
+    pairingExpiresAt = now + PAIRING_TTL_MS;
+    logger.warn(
+      `[api] Pairing code for remote devices: ${pairingCode} (valid for 10 minutes)`,
+    );
+  }
+
+  return pairingCode;
+}
+
+export function ensureAuthPairingCodeForRemoteAccess(): {
+  code: string;
+  expiresAt: number;
+} | null {
+  const code = ensurePairingCode();
+  return code ? { code, expiresAt: pairingExpiresAt } : null;
+}
+
+async function requestHasActiveSession(
+  req: http.IncomingMessage,
+  store: import("../services/auth-store").AuthStore,
+): Promise<boolean> {
+  const cookieSessionId = parseSessionCookie(req);
+  if (cookieSessionId) {
+    const session = await findActiveSession(store, cookieSessionId).catch(
+      () => null,
+    );
+    if (session) return true;
+  }
+
+  const bearer = getProvidedApiToken(req);
+  if (bearer) {
+    const session = await findActiveSession(store, bearer).catch(() => null);
+    if (session) return true;
+  }
+
+  return false;
+}
+
+function rateLimitPairing(ip: string | null): boolean {
+  const key = ip ?? "unknown";
+  const now = Date.now();
+  const current = pairingAttempts.get(key);
+
+  if (!current || now > current.resetAt) {
+    pairingAttempts.set(key, { count: 1, resetAt: now + PAIRING_WINDOW_MS });
+    return true;
+  }
+
+  if (current.count >= PAIRING_MAX_ATTEMPTS) {
+    return false;
+  }
+
+  current.count += 1;
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Route handler
+// ---------------------------------------------------------------------------
+
+/**
+ * Auth / pairing routes:
+ *
+ * - `GET  /api/onboarding/status`
+ * - `GET  /api/auth/status`
+ * - `POST /api/auth/pair`
+ */
+export async function handleAuthPairingCompatRoutes(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  state: CompatRuntimeState,
+): Promise<boolean> {
+  const method = (req.method ?? "GET").toUpperCase();
+  const url = new URL(req.url ?? "/", "http://localhost");
+
+  // ── GET /api/onboarding/status ──────────────────────────────────────
+  // Cloud-provisioned containers used to skip auth here entirely. That
+  // bypass is gone: callers now need a trusted local request, a valid
+  // cookie session, an allowed legacy bearer, or a bootstrap exchange.
+  if (method === "GET" && url.pathname === "/api/onboarding/status") {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
+      return true;
+    }
+    const config = loadElizaConfig();
+    sendJsonResponse(res, 200, {
+      complete: hasCompatPersistedOnboardingState(config),
+      // Metadata only — no auth implication. The client uses this to decide
+      // whether to show the bootstrap-token wizard step. Auth is enforced by
+      // the exchange endpoint itself; this flag never grants access.
+      cloudProvisioned: isCloudProvisioned(),
+    });
+    return true;
+  }
+
+  // ── GET /api/auth/status ────────────────────────────────────────────
+  // This is a public probe so unauthenticated clients can decide whether
+  // to show pairing UI. The response leaks no secrets — only whether auth
+  // is configured and whether pairing is currently open.
+  if (method === "GET" && url.pathname === "/api/auth/status") {
+    const localAccess = isTrustedLocalRequest(req);
+    const db = getCompatDrizzleDb(state);
+    let passwordConfigured = false;
+    let sessionAuthenticated = false;
+    if (db) {
+      const { AuthStore } = await import("../services/auth-store");
+      const store = new AuthStore(
+        db as ConstructorParameters<typeof AuthStore>[0],
+      );
+      const owner = (await store.listIdentitiesByKind("owner"))[0];
+      passwordConfigured = Boolean(owner?.passwordHash);
+      sessionAuthenticated = await requestHasActiveSession(req, store);
+    }
+    const cloudProvisioned = isCloudProvisioned();
+    const tokenRequired = Boolean(getCompatApiToken());
+    const loginRequired = !localAccess && !tokenRequired && !cloudProvisioned;
+    // Did this request already authenticate? Surfaced as a separate
+    // `authenticated` field so the client can short-circuit pairing without
+    // overloading the existing `required` semantics.
+    const providedToken = getProvidedApiToken(req);
+    const configuredToken = getCompatApiToken();
+    const staticTokenAuthenticated =
+      !cloudProvisioned &&
+      Boolean(
+        providedToken &&
+          configuredToken &&
+          tokenMatches(configuredToken, providedToken),
+      );
+    const authenticated = sessionAuthenticated || staticTokenAuthenticated;
+    const required =
+      !localAccess &&
+      !authenticated &&
+      (tokenRequired ||
+        passwordConfigured ||
+        cloudProvisioned ||
+        loginRequired);
+    const enabled = pairingEnabled();
+    if (enabled) {
+      ensurePairingCode();
+    }
+    sendJsonResponse(res, 200, {
+      required,
+      authenticated,
+      loginRequired,
+      bootstrapRequired: required && cloudProvisioned,
+      localAccess,
+      passwordConfigured,
+      pairingEnabled: enabled,
+      expiresAt: enabled ? pairingExpiresAt : null,
+    });
+    return true;
+  }
+
+  // ── POST /api/auth/pair ─────────────────────────────────────────────
+  if (method === "POST" && url.pathname === "/api/auth/pair") {
+    const body = await readCompatJsonBody(req, res);
+    if (body == null) {
+      return true;
+    }
+
+    const token = getCompatApiToken();
+    if (!token) {
+      sendJsonErrorResponse(res, 400, "Pairing not enabled");
+      return true;
+    }
+    if (!pairingEnabled()) {
+      sendJsonErrorResponse(res, 403, "Pairing disabled");
+      return true;
+    }
+    const remoteAddress = req.socket.remoteAddress;
+    if (!remoteAddress) {
+      sendJsonErrorResponse(res, 403, "Cannot determine client address");
+      return true;
+    }
+    if (!rateLimitPairing(remoteAddress)) {
+      sendJsonErrorResponse(res, 429, "Too many attempts. Try again later.");
+      return true;
+    }
+
+    const provided = normalizePairingCode(
+      typeof body.code === "string" ? body.code : "",
+    );
+    const current = ensurePairingCode();
+    if (!current || Date.now() > pairingExpiresAt) {
+      ensurePairingCode();
+      sendJsonErrorResponse(
+        res,
+        410,
+        "Pairing code expired. Check server logs for a new code.",
+      );
+      return true;
+    }
+
+    if (!tokenMatches(normalizePairingCode(current), provided)) {
+      sendJsonErrorResponse(res, 403, "Invalid pairing code");
+      return true;
+    }
+
+    pairingCode = null;
+    pairingExpiresAt = 0;
+    sendJsonResponse(res, 200, { token });
+    return true;
+  }
+
+  return false;
+}

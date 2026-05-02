@@ -1,0 +1,55 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "elizaos-app"
+version = "2.0.0a7"
+description = "Dynamic loader for elizaOS App — personal AI assistant built on elizaOS"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+authors = [
+    { name = "elizaos", email = "dev@app.elizaos.ai" },
+]
+keywords = [
+    "ai",
+    "assistant",
+    "agent",
+    "elizaos",
+    "elizaos-app",
+    "llm",
+    "cli",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://app.elizaos.ai"
+Repository = "https://github.com/elizaos/elizaos-app"
+Documentation = "https://docs.app.elizaos.ai"
+Issues = "https://github.com/elizaos/elizaos-app/issues"
+
+[project.scripts]
+elizaos-app = "elizaos_app.cli:main"
+
+
+[tool.hatch.build.targets.wheel]
+packages = ["elizaos_app"]

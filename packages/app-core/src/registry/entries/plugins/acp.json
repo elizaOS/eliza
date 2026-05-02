@@ -1,0 +1,154 @@
+{
+  "id": "acp",
+  "name": "Acp",
+  "description": "Agent Communication Protocol connector for linking agents through an ACP gateway.",
+  "npmName": "@elizaos/plugin-acp",
+  "version": "2.0.0-alpha.4",
+  "source": "bundled",
+  "tags": ["connector", "agents", "gateway", "realtime", "acp"],
+  "config": {
+    "ACP_VERBOSE": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Verbose",
+      "help": "Enable verbose logging",
+      "advanced": true
+    },
+    "ACP_AGENT_ID": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Agent Id",
+      "help": "Agent identifier",
+      "advanced": false
+    },
+    "ACP_PREFIX_CWD": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Prefix Cwd",
+      "help": "Prefix current working directory",
+      "advanced": false
+    },
+    "ACP_CLIENT_MODE": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Client Mode",
+      "help": "Operating mode",
+      "advanced": false
+    },
+    "ACP_CLIENT_NAME": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Client Name",
+      "help": "Display name",
+      "advanced": false
+    },
+    "ACP_GATEWAY_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "label": "Gateway Url",
+      "help": "URL for Acp Gateway",
+      "advanced": false
+    },
+    "ACP_GATEWAY_TOKEN": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Gateway Token",
+      "help": "Authentication token for Acp Gateway",
+      "advanced": false
+    },
+    "ACP_RESET_SESSION": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Reset Session",
+      "help": "Reset session on start",
+      "advanced": false
+    },
+    "ACP_CLIENT_VERSION": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Client Version",
+      "help": "Version identifier",
+      "advanced": false
+    },
+    "ACP_GATEWAY_PASSWORD": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Gateway Password",
+      "help": "Password for Acp Gateway",
+      "advanced": false
+    },
+    "ACP_PERSIST_SESSIONS": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Persist Sessions",
+      "help": "Persist sessions to disk",
+      "advanced": false
+    },
+    "ACP_REQUIRE_EXISTING": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Require Existing",
+      "help": "Require existing session",
+      "advanced": false
+    },
+    "ACP_SESSION_STORE_PATH": {
+      "type": "file-path",
+      "required": false,
+      "sensitive": false,
+      "label": "Session Store Path",
+      "help": "Directory or file path",
+      "advanced": false
+    },
+    "ACP_CLIENT_DISPLAY_NAME": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Client Display Name",
+      "help": "Display name",
+      "advanced": false
+    },
+    "ACP_DEFAULT_SESSION_KEY": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Default Session Key",
+      "help": "Session identifier",
+      "advanced": false
+    },
+    "ACP_DEFAULT_SESSION_LABEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Default Session Label",
+      "help": "Session identifier",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Construction",
+    "group": "feature-other",
+    "groupOrder": 12,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#acp-agent-communication-protocol"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "other"
+}

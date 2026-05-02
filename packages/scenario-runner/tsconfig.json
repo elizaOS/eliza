@@ -1,0 +1,45 @@
+{
+  "compilerOptions": {
+    "target": "es2023",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "paths": {
+      "@elizaos/plugin-agent-skills": [
+        "../../plugins/plugin-agent-skills/typescript/src/index.ts"
+      ],
+      "@elizaos/plugin-agent-orchestrator": [
+        "../../plugins/plugin-agent-orchestrator/src/index.ts"
+      ],
+      "@elizaos/plugin-local-embedding": [
+        "../../plugins/plugin-local-embedding/typescript/src/index.ts"
+      ],
+      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/typescript/index.ts"],
+      "@elizaos/plugin-telegram": [
+        "../../plugins/plugin-telegram/src/index.ts"
+      ],
+      "@elizaos/plugin-telegram/account-auth-service": [
+        "../../plugins/plugin-telegram/src/account-auth-service.ts"
+      ],
+      "@elizaos/capacitor-appblocker": [
+        "../native-plugins/appblocker/src/index.ts"
+      ],
+      "@elizaos/capacitor-mobile-signals": [
+        "../native-plugins/mobile-signals/src/index.ts"
+      ],
+      "@elizaos/app-core/components/pages/PageScopedChatPane": [
+        "../app-core/src/components/pages/PageScopedChatPane.tsx"
+      ]
+    }
+  },
+  "include": ["src/**/*.ts", "../../apps/app-companion/src/ambient-modules.d.ts"]
+}

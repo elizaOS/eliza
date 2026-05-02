@@ -1,0 +1,212 @@
+// ipc.proto - Inter-Process Communication types for cross-language plugin interop
+syntax = "proto3";
+
+package eliza.v1;
+
+import "eliza/v1/components.proto";
+import "eliza/v1/memory.proto";
+import "eliza/v1/plugin.proto";
+import "eliza/v1/service.proto";
+import "eliza/v1/state.proto";
+import "google/protobuf/struct.proto";
+
+// Interop protocol enumeration
+enum InteropProtocol {
+  INTEROP_PROTOCOL_UNSPECIFIED = 0;
+  INTEROP_PROTOCOL_WASM = 1;
+  INTEROP_PROTOCOL_FFI = 2;
+  INTEROP_PROTOCOL_IPC = 3;
+  INTEROP_PROTOCOL_NATIVE = 4;
+}
+
+// Plugin language enumeration
+enum PluginLanguage {
+  PLUGIN_LANGUAGE_UNSPECIFIED = 0;
+  PLUGIN_LANGUAGE_TYPESCRIPT = 1;
+  PLUGIN_LANGUAGE_RUST = 2;
+  PLUGIN_LANGUAGE_PYTHON = 3;
+}
+
+// Plugin interop configuration
+message PluginInteropConfig {
+  InteropProtocol protocol = 1;
+  optional string wasm_path = 2;
+  optional string shared_lib_path = 3;
+  optional string ipc_command = 4;
+  optional int32 ipc_port = 5;
+  optional string cwd = 6;
+}
+
+// Cross-language plugin manifest
+message CrossLanguagePluginManifest {
+  string name = 1;
+  string description = 2;
+  string version = 3;
+  PluginLanguage language = 4;
+  optional PluginInteropConfig interop = 5;
+  map<string, string> config = 6;
+  repeated string dependencies = 7;
+  repeated ActionManifest actions = 8;
+  repeated ProviderManifest providers = 9;
+  repeated EvaluatorManifest evaluators = 10;
+  repeated ServiceManifest services = 11;
+  repeated RouteManifest routes = 12;
+  map<string, EventHandlerList> events = 13;
+}
+
+// Base IPC message
+message IPCMessage {
+  string type = 1;
+  string id = 2;
+}
+
+// Action invocation request
+message ActionInvokeRequest {
+  string type = 1; // "action.invoke"
+  string id = 2;
+  string action = 3;
+  Memory memory = 4;
+  optional State state = 5;
+  google.protobuf.Struct options = 6;
+}
+
+// Action result response
+message ActionResultResponse {
+  string type = 1; // "action.result"
+  string id = 2;
+  ActionResult result = 3;
+}
+
+// Action validation request
+message ActionValidateRequest {
+  string type = 1; // "action.validate"
+  string id = 2;
+  string action = 3;
+  Memory memory = 4;
+  optional State state = 5;
+}
+
+// Validation result response
+message ValidationResponse {
+  string type = 1; // "validate.result"
+  string id = 2;
+  bool valid = 3;
+}
+
+// Provider get request
+message ProviderGetRequest {
+  string type = 1; // "provider.get"
+  string id = 2;
+  string provider = 3;
+  Memory memory = 4;
+  State state = 5;
+}
+
+// Provider result response
+message ProviderResultResponse {
+  string type = 1; // "provider.result"
+  string id = 2;
+  ProviderResult result = 3;
+}
+
+// Evaluator invocation request
+message EvaluatorInvokeRequest {
+  string type = 1; // "evaluator.invoke"
+  string id = 2;
+  string evaluator = 3;
+  Memory memory = 4;
+  optional State state = 5;
+}
+
+// Service start request
+message ServiceStartRequest {
+  string type = 1; // "service.start"
+  string id = 2;
+  string service = 3;
+}
+
+// Service stop request
+message ServiceStopRequest {
+  string type = 1; // "service.stop"
+  string id = 2;
+  string service = 3;
+}
+
+// Service response
+message ServiceResponse {
+  string type = 1; // "service.response"
+  string id = 2;
+  bool success = 3;
+  optional string error = 4;
+}
+
+// Route handler request
+message RouteHandlerRequest {
+  string type = 1; // "route.handle"
+  string id = 2;
+  string path = 3;
+  string method = 4;
+  google.protobuf.Struct body = 5;
+  map<string, string> params = 6;
+  map<string, string> query = 7;
+  map<string, string> headers = 8;
+}
+
+// Route handler response
+message RouteHandlerResponse {
+  string type = 1; // "route.response"
+  string id = 2;
+  int32 status = 3;
+  map<string, string> headers = 4;
+  google.protobuf.Value body = 5;
+}
+
+// Plugin initialization request
+message PluginInitRequest {
+  string type = 1; // "plugin.init"
+  string id = 2;
+  map<string, string> config = 3;
+}
+
+// Plugin initialization response
+message PluginInitResponse {
+  string type = 1; // "plugin.init.result"
+  string id = 2;
+  bool success = 3;
+  optional string error = 4;
+}
+
+// Error response
+message ErrorResponse {
+  string type = 1; // "error"
+  string id = 2;
+  string error = 3;
+  google.protobuf.Struct details = 4;
+}
+
+// Union of all IPC request types
+message IPCRequest {
+  oneof request {
+    ActionInvokeRequest action_invoke = 1;
+    ActionValidateRequest action_validate = 2;
+    ProviderGetRequest provider_get = 3;
+    EvaluatorInvokeRequest evaluator_invoke = 4;
+    ServiceStartRequest service_start = 5;
+    ServiceStopRequest service_stop = 6;
+    RouteHandlerRequest route_handle = 7;
+    PluginInitRequest plugin_init = 8;
+  }
+}
+
+// Union of all IPC response types
+message IPCResponse {
+  oneof response {
+    ActionResultResponse action_result = 1;
+    ValidationResponse validation = 2;
+    ProviderResultResponse provider_result = 3;
+    ServiceResponse service = 4;
+    RouteHandlerResponse route = 5;
+    PluginInitResponse plugin_init = 6;
+    ErrorResponse error = 7;
+  }
+}

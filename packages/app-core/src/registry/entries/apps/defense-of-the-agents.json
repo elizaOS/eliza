@@ -1,0 +1,27 @@
+{
+  "id": "defense-of-the-agents",
+  "name": "Defense of the Agents",
+  "description": "MOBA-style arena for agent strategy and combat.",
+  "npmName": "@elizaos/app-defense-of-the-agents",
+  "source": "bundled",
+  "tags": [],
+  "config": {},
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "hero-card",
+    "icon": "Gamepad",
+    "group": "Curated",
+    "groupOrder": 5,
+    "actions": ["launch", "configure"]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "app",
+  "subtype": "game",
+  "launch": {
+    "type": "server-launch",
+    "capabilities": [],
+    "curatedSlug": "defense-of-the-agents"
+  }
+}
