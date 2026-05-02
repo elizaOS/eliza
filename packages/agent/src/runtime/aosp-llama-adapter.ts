@@ -248,10 +248,7 @@ interface ShimSymbols {
   eliza_llama_model_params_default: () => Pointer;
   eliza_llama_model_params_free: (p: Pointer) => void;
   eliza_llama_model_params_set_n_gpu_layers: (p: Pointer, v: number) => void;
-  eliza_llama_model_load_from_file: (
-    path: Pointer,
-    params: Pointer,
-  ) => Pointer;
+  eliza_llama_model_load_from_file: (path: Pointer, params: Pointer) => Pointer;
 
   // context_params
   eliza_llama_context_params_default: () => Pointer;
@@ -860,10 +857,7 @@ class AospLlamaAdapter implements AospLoader {
       //     less than the input token count for output-pruning models —
       //     we'd read OOB on the mean-pool fallback. By forcing MEAN at
       //     init we collapse the embed() path to a single read.
-      this.shim.eliza_llama_context_params_set_n_ctx(
-        ctxParamsPtr,
-        contextSize,
-      );
+      this.shim.eliza_llama_context_params_set_n_ctx(ctxParamsPtr, contextSize);
       // n_batch = 512 (AOSP default): the per-decode token cap. We chunk
       // longer prompts in the decode loop. Smaller chunks = more frequent
       // event-loop yields, so the service watchdog's HTTP probe doesn't
@@ -1247,8 +1241,7 @@ class AospLlamaAdapter implements AospLoader {
         const now = Date.now();
         if (now - lastTokRateLog > 10_000) {
           const elapsedMs = now - decodeStart;
-          const tokPerSec =
-            elapsedMs > 0 ? ((i + 1) * 1000) / elapsedMs : 0;
+          const tokPerSec = elapsedMs > 0 ? ((i + 1) * 1000) / elapsedMs : 0;
           logger.info(
             `[aosp-llama] gen progress: ${i + 1}/${maxTokens} tokens, ${elapsedMs}ms (${tokPerSec.toFixed(1)} tok/s)`,
           );

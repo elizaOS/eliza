@@ -21,9 +21,9 @@
  * `ResolveMessage: Cannot find module`.
  */
 
-import * as appWifiPlugin from "@elizaos/app-wifi/plugin";
 import * as appContactsPlugin from "@elizaos/app-contacts/plugin";
 import * as appPhonePlugin from "@elizaos/app-phone/plugin";
+import * as appWifiPlugin from "@elizaos/app-wifi/plugin";
 import { STATIC_ELIZA_PLUGINS } from "./plugin-types.js";
 
 Object.assign(STATIC_ELIZA_PLUGINS, {

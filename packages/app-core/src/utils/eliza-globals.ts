@@ -3,8 +3,6 @@ export type ElizaWindow = Window & {
   __ELIZA_API_TOKEN__?: string;
   __ELIZAOS_API_BASE__?: string;
   __ELIZAOS_API_TOKEN__?: string;
-  __ELIZA_API_BASE__?: string;
-  __ELIZA_API_TOKEN__?: string;
 };
 
 function getElizaWindow(): ElizaWindow | null {
