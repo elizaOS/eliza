@@ -182,7 +182,7 @@ export class NodeAutoscaler {
         "Cannot provision a node: HCLOUD_TOKEN is not set.",
       );
     }
-    if (!bootstrap.controlPlanePublicKey.trim().length === 0) {
+    if (bootstrap.controlPlanePublicKey.trim().length === 0) {
       throw new HetznerCloudError(
         "invalid_input",
         "controlPlanePublicKey is required to provision a node",

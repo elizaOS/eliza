@@ -331,7 +331,7 @@ export class AgentGatewayRouterService {
       };
     }
 
-    if (!owner.organization_id !== args.organizationId) {
+    if (owner.organization_id !== args.organizationId) {
       return {
         reason: "owner_org_mismatch",
       };
@@ -578,7 +578,7 @@ export class AgentGatewayRouterService {
       };
     }
 
-    if (!owner.organization_id !== args.organizationId) {
+    if (owner.organization_id !== args.organizationId) {
       return {
         handled: false,
         reason: "owner_org_mismatch",
@@ -667,7 +667,7 @@ export class AgentGatewayRouterService {
       };
     }
 
-    if (!owner.organization_id !== args.organizationId) {
+    if (owner.organization_id !== args.organizationId) {
       return {
         handled: false,
         reason: "owner_org_mismatch",
