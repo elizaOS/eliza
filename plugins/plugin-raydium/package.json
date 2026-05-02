@@ -23,9 +23,9 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "clean": "rm -rf dist",
-    "lint": "prettier --write ./src",
-    "format": "prettier --write ./src",
-    "format:check": "prettier --check ./src",
+    "lint": "bunx @biomejs/biome format --write ./src",
+    "format": "bunx @biomejs/biome format --write ./src",
+    "format:check": "bunx @biomejs/biome format ./src",
     "test": "elizaos test"
   },
   "publishConfig": {
