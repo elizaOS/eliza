@@ -21,11 +21,6 @@
  * @module actions/settings-actions
  */
 
-import {
-  loadTrainingConfig,
-  saveTrainingConfig,
-  type TrainingConfig,
-} from "@elizaos/app-training/core/training-config";
 import type {
   Action,
   ActionExample,
@@ -56,6 +51,25 @@ const PROVIDER_API_KEY_MAX_LENGTH = 512;
 
 const CAPABILITY_KEYS = ["wallet", "browser", "computerUse"] as const;
 type CapabilityKey = (typeof CAPABILITY_KEYS)[number];
+
+const TRAINING_CONFIG_MODULE = "@elizaos/app-training/core/training-config";
+
+interface TrainingConfig {
+  autoTrain: boolean;
+  triggerThreshold: number;
+  triggerCooldownHours: number;
+  backends?: string[];
+  perTaskOverrides?: Record<string, unknown>;
+}
+
+interface TrainingConfigModule {
+  loadTrainingConfig: () => TrainingConfig;
+  saveTrainingConfig: (config: TrainingConfig) => void;
+}
+
+async function loadTrainingConfigModule(): Promise<TrainingConfigModule> {
+  return import(TRAINING_CONFIG_MODULE) as Promise<TrainingConfigModule>;
+}
 
 function denyPermission() {
   return {
@@ -643,6 +657,8 @@ export const toggleAutoTrainingAction: Action = {
 
     let next: TrainingConfig;
     try {
+      const { loadTrainingConfig, saveTrainingConfig } =
+        await loadTrainingConfigModule();
       const current = loadTrainingConfig();
       next = {
         ...current,
