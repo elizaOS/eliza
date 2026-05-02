@@ -336,10 +336,7 @@ export function extractPlannerActionNames(
 								`<${entry.name.toUpperCase()}>${entry.paramsXml}</${entry.name.toUpperCase()}>`,
 						)
 						.join("\n");
-					if (
-						inlineParamsXml &&
-						(parsedXml.params === "")
-					) {
+					if (inlineParamsXml && parsedXml.params === "") {
 						parsedXml.params = inlineParamsXml;
 					}
 
