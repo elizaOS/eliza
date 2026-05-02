@@ -1,0 +1,44 @@
+{
+  "name": "@elizaos/cloud-routing",
+  "version": "2.0.0-alpha.0",
+  "description": "Cloud-default, local-override routing helper for Eliza Cloud-integrated plugins.",
+  "type": "module",
+  "main": "src/index.ts",
+  "module": "src/index.ts",
+  "types": "src/index.ts",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/eliza.git",
+    "directory": "eliza/packages/cloud-routing"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --config ./vitest.config.ts",
+    "lint": "bunx @biomejs/biome check src",
+    "lint:fix": "bunx @biomejs/biome check --write src",
+    "format": "bunx @biomejs/biome format src",
+    "format:fix": "bunx @biomejs/biome format --write src"
+  },
+  "publishConfig": {
+    "access": "public",
+    "directory": "dist"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.13",
+    "@types/node": "^25.0.3",
+    "typescript": "^6.0.0",
+    "vitest": "^4.0.0"
+  },
+  "peerDependencies": {
+    "zod": "^4"
+  }
+}
