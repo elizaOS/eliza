@@ -79,7 +79,7 @@ export async function handleImageGeneration(
 
   const data = (await response.json()) as OpenAIImageGenerationResponse;
 
-  if (!data.data.length === 0) {
+  if (data.data.length === 0) {
     throw new Error("OpenAI API returned no images");
   }
 

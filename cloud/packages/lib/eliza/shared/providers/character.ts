@@ -152,7 +152,7 @@ export const characterProvider: Provider = {
     // Contextual selection: Score examples by keyword overlap with current message
     // Current: Show 3 examples (balanced for context window)
     const messageExamplesText = (() => {
-      if (!character.messageExamples.length === 0) {
+      if (character.messageExamples.length === 0) {
         return "";
       }
 

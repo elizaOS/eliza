@@ -695,7 +695,7 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
           WHERE table_schema = 'public' AND table_name = ${rename.table}
         `);
 
-        if (!tableExistsResult.rows.length === 0) {
+        if (tableExistsResult.rows.length === 0) {
           // Table doesn't exist yet, skip
           continue;
         }

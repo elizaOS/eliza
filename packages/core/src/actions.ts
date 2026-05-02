@@ -577,7 +577,7 @@ export function validateActionParams(
 	const errors: string[] = [];
 	const params: ActionParameters = {};
 
-	if (!action.parameters.length === 0) {
+	if (action.parameters.length === 0) {
 		return { valid: true, params: undefined, errors: [] };
 	}
 

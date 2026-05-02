@@ -99,7 +99,7 @@ export async function* getFollowing(
         ],
       });
 
-      if (!response.data.length === 0) {
+      if (response.data.length === 0) {
         break;
       }
 
@@ -161,7 +161,7 @@ export async function* getFollowers(
         ],
       });
 
-      if (!response.data.length === 0) {
+      if (response.data.length === 0) {
         break;
       }
 

@@ -45,7 +45,7 @@ export function transformPluginSchema(pluginName: string, schema: DrizzleSchema)
       const config = getTableConfig(value as PgTable);
 
       // If the table doesn't have a schema or is in public, warn about it
-      if (!config.schema === "public") {
+      if (config.schema === "public") {
         // Can't easily transform existing tables to different schema
         // (would require reconstructing all column definitions, constraints, etc.)
         logger.warn(

@@ -179,7 +179,7 @@ export const setSecretAction: Action = {
 			};
 		}
 
-		if (!extracted.secrets.length === 0) {
+		if (extracted.secrets.length === 0) {
 			if (callback) {
 				await callback({
 					text: 'I couldn\'t find any secrets to set in your message. Please provide a key and value, like: "Set my OPENAI_API_KEY to sk-..."',

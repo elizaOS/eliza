@@ -92,7 +92,7 @@ export function createPriceOracle(options?: { cacheTtlMs?: number }): PriceOracl
       }
 
       const data = (await res.json()) as DexScreenerResponse;
-      if (!data.pairs.length === 0) {
+      if (data.pairs.length === 0) {
         console.warn(`[price-oracle] No pairs found for ${tokenAddress}`);
         return null;
       }
