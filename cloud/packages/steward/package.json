@@ -1,0 +1,36 @@
+{
+  "name": "steward",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "packages/examples/*",
+    "web"
+  ],
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "bunx @biomejs/biome check packages web scripts package.json turbo.json",
+    "lint:fix": "bunx @biomejs/biome check --write packages web scripts package.json turbo.json",
+    "format": "bunx @biomejs/biome format --write packages web scripts package.json turbo.json",
+    "format:check": "bunx @biomejs/biome format packages web scripts package.json turbo.json",
+    "typecheck": "bunx turbo run build --filter='./packages/*' && bunx tsc --noEmit --project web/tsconfig.json",
+    "verify": "bun run lint && bun run typecheck && bun run test",
+    "test": "turbo test && bun run test:e2e:all",
+    "test:e2e:auth": "bun run scripts/e2e-auth-test.ts",
+    "test:e2e:integration": "bun run scripts/e2e-integration-test.ts",
+    "test:e2e:smoke": "bun run scripts/run-e2e-smoke.ts",
+    "test:e2e:all": "bun run test:e2e:smoke && bun run test:e2e:auth && bun run test:e2e:integration",
+    "seed": "bun packages/seed/src/index.ts",
+    "start:local": "bun run scripts/start-local.ts"
+  },
+  "packageManager": "bun@1.3.9",
+  "devDependencies": {
+    "turbo": "^2.5.0",
+    "typescript": "^5.8.0"
+  },
+  "dependencies": {
+    "ioredis": "^5.10.1",
+    "jose": "^6.2.1",
+    "siwe": "^3.0.0"
+  }
+}

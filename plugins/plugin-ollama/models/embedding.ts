@@ -1,0 +1,60 @@
+import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { type EmbeddingModel, embed } from "ai";
+import { createOllama } from "ollama-ai-provider";
+
+import { getBaseURL, getEmbeddingModel } from "../utils/config";
+import { ensureModelAvailable } from "./availability";
+
+export async function handleTextEmbedding(
+  runtime: IAgentRuntime,
+  params: TextEmbeddingParams | string | null
+): Promise<number[]> {
+  try {
+    const baseURL = getBaseURL(runtime);
+    const customFetch = runtime.fetch ?? undefined;
+    const ollama = createOllama({
+      fetch: customFetch,
+      baseURL,
+    });
+
+    const modelName = getEmbeddingModel(runtime);
+    logger.log(`[Ollama] Using TEXT_EMBEDDING model: ${modelName}`);
+    await ensureModelAvailable(modelName, baseURL, customFetch);
+
+    let text =
+      typeof params === "string"
+        ? params
+        : params
+          ? (params as TextEmbeddingParams).text || ""
+          : "";
+
+    // Truncate to stay within embedding model token limits (~4 chars per token)
+    const maxChars = 8_000 * 4;
+    if (text.length > maxChars) {
+      logger.warn(
+        `[Ollama] Embedding input too long (~${Math.ceil(text.length / 4)} tokens), truncating to ~8000 tokens`
+      );
+      text = text.slice(0, maxChars);
+    }
+
+    const embeddingText = text || "test";
+
+    try {
+      const embedParams = {
+        // ollama-ai-provider still exposes older AI SDK model interfaces.
+        model: ollama.embedding(modelName) as unknown as EmbeddingModel,
+        value: embeddingText,
+      };
+
+      const { embedding } = await embed(embedParams);
+      return embedding;
+    } catch (embeddingError) {
+      logger.error({ error: embeddingError }, "Error generating embedding");
+      return Array(1536).fill(0);
+    }
+  } catch (error) {
+    logger.error({ error }, "Error in TEXT_EMBEDDING model");
+    return Array(1536).fill(0);
+  }
+}

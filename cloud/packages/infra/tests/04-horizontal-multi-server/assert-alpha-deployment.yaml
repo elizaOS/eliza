@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: srv-alpha
+  namespace: eliza-agents
+  labels:
+    eliza.ai/managed-by: server-operator
+    eliza.ai/server: srv-alpha
+    eliza.ai/tier: shared
+    eliza.ai/project: alpha
+spec:
+  template:
+    metadata:
+      labels:
+        eliza.ai/server: srv-alpha
+        eliza.ai/tier: shared
+        eliza.ai/project: alpha

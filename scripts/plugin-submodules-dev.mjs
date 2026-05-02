@@ -3,12 +3,11 @@
 /**
  * plugin-submodules-dev.mjs
  *
- * Git submodule plugins (plugins/*) are optional for local development.
- * When linked into this monorepo, their local @elizaos/* dependencies should
- * resolve through workspace:* like the rest of the source graph.
+ * Selected plugins under plugins/* are vendored in-tree; this script only
+ * adjusts workspaces and self-deps for local development (sql, ollama, local-ai).
  *
  *   DEV (default — no flag, or `--dev`):
- *     1. `git submodule update --init` for each configured path
+ *     1. `git submodule update --init` for each configured path (no-op when trees exist)
  *     2. Append `plugins/...` entries to root package.json workspaces
  *     3. Remove self-dependencies on the package name (e.g. @elizaos/plugin-sql → itself)
  *        so bun does not hit a workspace dependency loop

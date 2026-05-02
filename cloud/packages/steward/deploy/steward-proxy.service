@@ -1,0 +1,53 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# steward-proxy.service — Systemd unit for Steward Proxy Gateway
+#
+# Runs the credential injection proxy on port 8080.
+# Agents send LLM API calls here; the proxy authenticates via JWT,
+# decrypts + injects stored credentials, and forwards to real APIs.
+#
+# Requires steward.service to be running first (proxy needs DB access).
+#
+# Logs:
+#   journalctl -u steward-proxy -f
+# ──────────────────────────────────────────────────────────────────────────────
+
+[Unit]
+Description=Steward Proxy Gateway
+Documentation=https://github.com/Steward-Fi/steward
+After=network-online.target steward.service
+Wants=network-online.target
+Requires=steward.service
+
+[Service]
+Type=simple
+User=steward
+Group=steward
+WorkingDirectory=/opt/steward
+
+EnvironmentFile=/etc/steward/env
+
+ExecStart=/home/steward/.bun/bin/bun run packages/proxy/src/index.ts
+
+Restart=on-failure
+RestartSec=5s
+StartLimitIntervalSec=120s
+StartLimitBurst=5
+
+LimitNOFILE=65536
+LimitNPROC=4096
+
+TimeoutStopSec=30s
+KillMode=mixed
+KillSignal=SIGTERM
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/steward /tmp
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=steward-proxy
+
+[Install]
+WantedBy=multi-user.target

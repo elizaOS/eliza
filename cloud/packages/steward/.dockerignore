@@ -1,0 +1,14 @@
+.git
+.turbo
+node_modules
+dist
+coverage
+.env
+.env.*
+!.env.example
+README.md
+REDESIGN-BRIEF.md
+web
+packages/dashboard
+packages/sdk/src/__tests__
+packages/sdk/dist

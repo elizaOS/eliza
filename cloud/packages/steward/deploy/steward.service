@@ -1,0 +1,73 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# steward.service — Systemd unit for Steward API
+#
+# Runs the Steward REST API on port 3200.
+# Companion unit: steward-proxy.service (port 8080)
+#
+# Install:
+#   sudo cp deploy/steward.service /etc/systemd/system/steward.service
+#   sudo cp deploy/steward-proxy.service /etc/systemd/system/steward-proxy.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now steward steward-proxy
+#
+# Environment:
+#   Variables are loaded from /etc/steward/env
+#   sudo mkdir -p /etc/steward
+#   sudo cp .env.example /etc/steward/env
+#   sudo $EDITOR /etc/steward/env
+#   sudo chmod 600 /etc/steward/env
+#
+# Logs:
+#   journalctl -u steward -f
+# ──────────────────────────────────────────────────────────────────────────────
+
+[Unit]
+Description=Steward API Server
+Documentation=https://github.com/Steward-Fi/steward
+After=network-online.target
+Wants=network-online.target
+# Recommended: also start steward-proxy after this
+# (steward-proxy.service has its own After= reference)
+
+[Service]
+Type=simple
+User=steward
+Group=steward
+WorkingDirectory=/opt/steward
+
+# Environment loaded from file — contains secrets, not checked into git
+EnvironmentFile=/etc/steward/env
+
+# Bun executable — adjust path if bun is installed elsewhere
+# Check with: which bun   or   /home/steward/.bun/bin/bun --version
+ExecStart=/home/steward/.bun/bin/bun run packages/api/src/index.ts
+
+# Restart policy — back off exponentially to avoid thundering herd on DB issues
+Restart=on-failure
+RestartSec=5s
+StartLimitIntervalSec=120s
+StartLimitBurst=5
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Graceful shutdown — give the API 30s to drain in-flight requests
+TimeoutStopSec=30s
+KillMode=mixed
+KillSignal=SIGTERM
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+# Allow writing to /opt/steward and /var/log/steward if used
+ReadWritePaths=/opt/steward /tmp
+
+# Logging — output goes to journald automatically
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=steward
+
+[Install]
+WantedBy=multi-user.target
