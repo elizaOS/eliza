@@ -25,7 +25,14 @@ function biomeFormat(filePaths) {
   if (filePaths.length === 0) return;
   const result = spawnSync(
     "bunx",
-    ["--bun", "@biomejs/biome", "format", "--write", ...filePaths],
+    [
+      "--bun",
+      "@biomejs/biome",
+      "format",
+      "--write",
+      "--no-errors-on-unmatched",
+      ...filePaths,
+    ],
     { stdio: "inherit", shell: false },
   );
   if (result.status !== 0) {

@@ -8,6 +8,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import type { LifeOpsGoogleCapability } from "../contracts/index.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import { hasLifeOpsAccess, INTERNAL_URL } from "./lifeops-google-helpers.js";
 
@@ -57,7 +58,7 @@ type ConnectorActionParams = {
   profileId?: string;
   profileLabel?: string;
   redirectUrl?: string;
-  capabilities?: string[];
+  capabilities?: LifeOpsGoogleCapability[];
 };
 
 type GmailTriageResult = Awaited<ReturnType<LifeOpsService["getGmailTriage"]>>;
@@ -240,6 +241,7 @@ async function dispatchGoogle(
         {
           side,
           mode: params.mode,
+          capabilities: params.capabilities,
           redirectUrl: params.redirectUrl,
         },
         INTERNAL_URL,
@@ -559,6 +561,21 @@ async function dispatchTelegram(
   const side = normalizeSide(params.side) ?? "owner";
   switch (subaction) {
     case "connect": {
+      if (side === "agent") {
+        const status = await service.getTelegramConnectorStatus(side);
+        return {
+          success: status.connected,
+          text: status.connected
+            ? "Agent Telegram is connected through @elizaos/plugin-telegram."
+            : "Agent Telegram is managed by @elizaos/plugin-telegram. Configure and enable the Telegram bot connector, then check status again.",
+          data: {
+            actionName: ACTION_NAME,
+            connector: "telegram",
+            subaction,
+            status,
+          },
+        };
+      }
       if (!params.phone) {
         return missingParamResult("telegram", subaction, ["phone"]);
       }
@@ -635,6 +652,21 @@ async function dispatchSignal(
   const side = normalizeSide(params.side) ?? "owner";
   switch (subaction) {
     case "connect": {
+      if (side === "agent") {
+        const status = await service.getSignalConnectorStatus(side);
+        return {
+          success: status.connected,
+          text: status.connected
+            ? "Agent Signal is connected through @elizaos/plugin-signal."
+            : "Agent Signal is managed by @elizaos/plugin-signal. Configure and enable the Signal plugin, then check status again.",
+          data: {
+            actionName: ACTION_NAME,
+            connector: "signal",
+            subaction,
+            status,
+          },
+        };
+      }
       const response = await service.startSignalPairing(side);
       return {
         success: true,
@@ -720,8 +752,13 @@ async function dispatchDiscord(
     case "connect": {
       const status = await service.authorizeDiscordConnector(side);
       return {
-        success: true,
-        text: `Discord browser connector authorized (side=${side}).`,
+        success: side === "agent" ? status.connected : true,
+        text:
+          side === "agent"
+            ? status.connected
+              ? "Agent Discord is connected through @elizaos/plugin-discord."
+              : "Agent Discord is managed by @elizaos/plugin-discord. Configure and enable the Discord bot connector, then check status again."
+            : `Discord browser connector authorized (side=${side}).`,
         data: {
           actionName: ACTION_NAME,
           connector: "discord",

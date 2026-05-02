@@ -159,6 +159,44 @@ function signalStatusDegradations(args: {
   return degradations;
 }
 
+function signalAgentPluginDegradations(args: {
+  connected: boolean;
+  inboundReady: boolean;
+  sendReady: boolean;
+}): LifeOpsConnectorDegradation[] {
+  if (!args.connected) {
+    return [
+      {
+        axis: "transport-offline",
+        code: "signal_plugin_unavailable",
+        message:
+          "Agent-side Signal is served by @elizaos/plugin-signal. Configure and enable the Signal plugin; LifeOps will not create a separate agent Signal device.",
+        retryable: true,
+      },
+    ];
+  }
+  const degradations: LifeOpsConnectorDegradation[] = [];
+  if (!args.inboundReady) {
+    degradations.push({
+      axis: "transport-offline",
+      code: "signal_plugin_inbound_unavailable",
+      message:
+        "Agent-side Signal is connected, but the plugin does not expose an inbound read path.",
+      retryable: true,
+    });
+  }
+  if (!args.sendReady) {
+    degradations.push({
+      axis: "delivery-degraded",
+      code: "signal_plugin_send_unavailable",
+      message:
+        "Agent-side Signal is connected, but the plugin does not expose a send path.",
+      retryable: true,
+    });
+  }
+  return degradations;
+}
+
 function setSignalRuntimeEnv(
   authDir: string | null,
   phoneNumber: string | null,
@@ -323,6 +361,37 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<LifeOpsSignalConnectorStatus> {
       const resolvedSide =
         normalizeOptionalConnectorSide(side, "side") ?? "owner";
+      if (resolvedSide === "agent") {
+        const signalService = getSignalService(this.runtime);
+        const inboundReady = signalServiceCanRead(signalService);
+        const sendReady = signalServiceCanSend(signalService);
+        const connected =
+          signalServiceConnected(signalService) || inboundReady || sendReady;
+        const capabilities = signalReadyCapabilities({
+          granted: FULL_SIGNAL_CAPABILITIES,
+          inboundReady,
+          sendReady,
+        });
+        const phoneNumber = signalService?.getAccountNumber?.() ?? null;
+        const degradations = signalAgentPluginDegradations({
+          connected,
+          inboundReady,
+          sendReady,
+        });
+        return {
+          provider: "signal",
+          side: resolvedSide,
+          connected,
+          inbound: connected && capabilities.includes("signal.read"),
+          reason: connected ? "connected" : "disconnected",
+          identity: phoneNumber ? { phoneNumber } : null,
+          grantedCapabilities: capabilities,
+          pairing: null,
+          grant: null,
+          ...(degradations.length > 0 ? { degradations } : {}),
+        };
+      }
+
       let grant = await this.repository.getConnectorGrant(
         this.agentId(),
         "signal",
@@ -436,6 +505,12 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<StartLifeOpsSignalPairingResponse> {
       const resolvedSide =
         normalizeOptionalConnectorSide(side, "side") ?? "owner";
+      if (resolvedSide === "agent") {
+        fail(
+          409,
+          "Agent-side Signal is managed by @elizaos/plugin-signal. Configure the Signal plugin instead of pairing a LifeOps Signal device.",
+        );
+      }
       const session = startSignalPairingFlow(this.agentId(), resolvedSide);
 
       const grant = createLifeOpsConnectorGrant({
@@ -487,6 +562,12 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<LifeOpsSignalConnectorStatus> {
       const resolvedSide =
         normalizeOptionalConnectorSide(side, "side") ?? "owner";
+      if (resolvedSide === "agent") {
+        fail(
+          409,
+          "Agent-side Signal is owned by @elizaos/plugin-signal. Disable or reconfigure the Signal plugin instead of deleting a LifeOps grant.",
+        );
+      }
       const grant = await this.repository.getConnectorGrant(
         this.agentId(),
         "signal",
@@ -614,6 +695,27 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
       }
       if (!text) {
         fail(400, "text is required");
+      }
+
+      if (normalizedSide === "agent") {
+        const signalService = getSignalService(this.runtime);
+        if (!signalServiceCanSend(signalService)) {
+          fail(503, "Agent-side Signal plugin send service is not available.");
+        }
+        const result = await signalService.sendMessage(recipient, text);
+        if (
+          typeof result.timestamp !== "number" ||
+          !Number.isFinite(result.timestamp)
+        ) {
+          fail(502, "Signal send did not return a timestamp.");
+        }
+        return {
+          provider: "signal",
+          side: normalizedSide,
+          recipient,
+          ok: true,
+          timestamp: result.timestamp,
+        };
       }
 
       const status = await this.getSignalConnectorStatus(normalizedSide);

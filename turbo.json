@@ -27,6 +27,10 @@
       "outputs": ["dist/**"],
       "inputs": ["src/**", "build.ts", "tsconfig.declarations.json"]
     },
+    "@elizaos/electrobun#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["build/**"]
+    },
     "@elizaos/rust#build": {
       "dependsOn": [],
       "outputs": ["pkg/**", "target/release/**"],
@@ -76,7 +80,23 @@
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
+    "@elizaos/plugin-agent-skills-root#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-app-control-root#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-edge-tts-root#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
     "@elizaos/plugin-local-ai-root#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-local-embedding-root#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
@@ -92,6 +112,14 @@
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
+    "@elizaos/plugin-pdf-root#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-plugin-manager-root#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
     "@elizaos/plugin-shell-root#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
@@ -102,6 +130,14 @@
     },
     "@elizaos/plugin-sql-root#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-whatsapp-root#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/native-activity-tracker#build": {
+      "dependsOn": [],
       "outputs": []
     },
     "@elizaos/schemas#build": {

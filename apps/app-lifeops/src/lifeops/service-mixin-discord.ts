@@ -7,6 +7,7 @@ import type {
 } from "@elizaos/plugin-browser-bridge";
 import type {
   LifeOpsBrowserSession,
+  LifeOpsConnectorDegradation,
   LifeOpsConnectorGrant,
   LifeOpsConnectorSide,
   LifeOpsDiscordCapability,
@@ -48,6 +49,79 @@ const DISCORD_CONNECTOR_SESSION_TITLE = "Open Discord for LifeOps";
 const DISCORD_CHANNEL_URL_RE = /\/channels\/([^/?#]+)\/([^/?#]+)/;
 const DISCORD_SEND_SETTLE_MS = 1_500;
 const FULL_DISCORD_CAPABILITIES = [...LIFEOPS_DISCORD_CAPABILITIES];
+
+type DiscordPluginServiceLike = {
+  isReady?: () => boolean;
+  client?: {
+    isReady?: () => boolean;
+    user?: {
+      id?: string;
+      username?: string;
+      displayName?: string;
+      globalName?: string;
+      discriminator?: string | null;
+    } | null;
+  } | null;
+};
+
+function getDiscordPluginService(
+  runtime: Constructor<LifeOpsServiceBase>["prototype"]["runtime"],
+): DiscordPluginServiceLike | null {
+  const service = runtime.getService?.("discord") as
+    | DiscordPluginServiceLike
+    | null
+    | undefined;
+  return service && typeof service === "object" ? service : null;
+}
+
+function discordPluginConnected(
+  service: DiscordPluginServiceLike | null,
+): boolean {
+  try {
+    if (typeof service?.isReady === "function") {
+      return service.isReady();
+    }
+    if (typeof service?.client?.isReady === "function") {
+      return service.client.isReady();
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
+function discordPluginIdentity(
+  service: DiscordPluginServiceLike | null,
+): LifeOpsDiscordConnectorStatus["identity"] {
+  const user = service?.client?.user;
+  if (!user?.id && !user?.username) {
+    return null;
+  }
+  return {
+    ...(user.id ? { id: user.id } : {}),
+    ...(user.username || user.globalName || user.displayName
+      ? { username: user.username ?? user.globalName ?? user.displayName }
+      : {}),
+    ...(user.discriminator ? { discriminator: user.discriminator } : {}),
+  };
+}
+
+function discordAgentPluginDegradations(
+  connected: boolean,
+): LifeOpsConnectorDegradation[] {
+  if (connected) {
+    return [];
+  }
+  return [
+    {
+      axis: "transport-offline",
+      code: "discord_plugin_unavailable",
+      message:
+        "Agent-side Discord is served by @elizaos/plugin-discord. Configure and enable the Discord bot connector; LifeOps will not open a separate agent browser session.",
+      retryable: true,
+    },
+  ];
+}
 
 function normalizeDiscordCapabilities(
   capabilities: readonly string[] | null | undefined
@@ -779,6 +853,29 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<LifeOpsDiscordConnectorStatus> {
       const normalizedSide =
         normalizeOptionalConnectorSide(side, "side") ?? "owner";
+      if (normalizedSide === "agent") {
+        const pluginService = getDiscordPluginService(this.runtime);
+        const connected = discordPluginConnected(pluginService);
+        const degradations = discordAgentPluginDegradations(connected);
+        return {
+          provider: "discord",
+          side: normalizedSide,
+          available: connected,
+          connected,
+          reason: connected ? "connected" : "disconnected",
+          identity: discordPluginIdentity(pluginService),
+          dmInbox: emptyDiscordDmInboxProbe(),
+          grantedCapabilities: connected ? FULL_DISCORD_CAPABILITIES : [],
+          lastError: connected
+            ? null
+            : "Discord plugin is not connected for the agent side.",
+          tabId: null,
+          browserAccess: [],
+          grant: null,
+          ...(degradations.length > 0 ? { degradations } : {}),
+        };
+      }
+
       const grant = await this.repository.getConnectorGrant(
         this.agentId(),
         "discord",
@@ -940,6 +1037,10 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<LifeOpsDiscordConnectorStatus> {
       const normalizedSide =
         normalizeOptionalConnectorSide(side, "side") ?? "owner";
+      if (normalizedSide === "agent") {
+        return this.getDiscordConnectorStatus(normalizedSide);
+      }
+
       const existing = await this.repository.getConnectorGrant(
         this.agentId(),
         "discord",
@@ -1281,6 +1382,12 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
     }): Promise<DiscordMessageSearchResult[]> {
       const normalizedSide =
         normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
+      if (normalizedSide === "agent") {
+        fail(
+          409,
+          "Agent-side Discord search is owned by @elizaos/plugin-discord. LifeOps does not open a separate agent browser session for search.",
+        );
+      }
       const grant = await this.repository.getConnectorGrant(
         this.agentId(),
         "discord",
@@ -1480,6 +1587,12 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<LifeOpsDiscordConnectorStatus> {
       const normalizedSide =
         normalizeOptionalConnectorSide(side, "side") ?? "owner";
+      if (normalizedSide === "agent") {
+        fail(
+          409,
+          "Agent-side Discord is owned by @elizaos/plugin-discord. Disable or reconfigure the Discord bot connector instead of deleting a LifeOps grant.",
+        );
+      }
       const grant = await this.repository.getConnectorGrant(
         this.agentId(),
         "discord",

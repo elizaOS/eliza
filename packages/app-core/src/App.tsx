@@ -43,6 +43,7 @@ import { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanne
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
 import { Header } from "./components/shell/Header";
 import { ShellOverlays } from "./components/shell/ShellOverlays";
+import { StartupFailureView } from "./components/shell/StartupFailureView";
 import { StartupShell } from "./components/shell/StartupShell";
 import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
 import {
@@ -552,6 +553,7 @@ export function App() {
   const {
     startupError,
     startupCoordinator,
+    retryStartup,
     tab,
     setTab,
     setState,
@@ -1129,22 +1131,29 @@ export function App() {
   // "loading" phase: wait (fall through to the coordinator's own "ready" render).
   // "unauthenticated": render LoginView.
   // "authenticated": proceed to the main shell.
-  // "server_unavailable": treat as unauthenticated (fail closed).
+  // "server_unavailable": show a retryable startup failure.
   if (isCoordinatorReady && !isPopout) {
-    if (
-      authState.phase === "unauthenticated" ||
-      authState.phase === "server_unavailable"
-    ) {
+    if (authState.phase === "server_unavailable") {
       return (
         <BugReportProvider value={bugReport}>
-          <LoginView
-            onLoginSuccess={refetchAuth}
-            reason={
-              authState.phase === "unauthenticated"
-                ? authState.reason
-                : undefined
-            }
+          <StartupFailureView
+            error={{
+              reason: "backend-unreachable",
+              phase: "starting-backend",
+              message: "Backend became unavailable after startup.",
+              detail:
+                "The auth probe could not reach /api/auth/me. If this is local development, start the local agent API with `bun run dev` or `bun run dev:desktop`, then retry.",
+            }}
+            onRetry={retryStartup}
           />
+          <BugReportModal />
+        </BugReportProvider>
+      );
+    }
+    if (authState.phase === "unauthenticated") {
+      return (
+        <BugReportProvider value={bugReport}>
+          <LoginView onLoginSuccess={refetchAuth} reason={authState.reason} />
           <BugReportModal />
         </BugReportProvider>
       );

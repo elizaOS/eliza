@@ -52,17 +52,14 @@ function fakeFetch(
   const method = (init?.method ?? "GET").toUpperCase();
   // Match by exact pathname, then by leading prefix that maps to a parametrized route.
   let handler: RouteHandler | undefined = routes.get(`${method} ${urlPath}`);
-    if (!handler) {
-      for (const [pattern, h] of routes.entries()) {
-        const [hMethod, hPath] = pattern.split(" ");
-        if (hMethod !== method) continue;
-        if (
-          hPath?.endsWith("*") &&
-          urlPath.startsWith(hPath.slice(0, -1))
-        ) {
-          handler = h;
-          break;
-        }
+  if (!handler) {
+    for (const [pattern, h] of routes.entries()) {
+      const [hMethod, hPath] = pattern.split(" ");
+      if (hMethod !== method) continue;
+      if (hPath?.endsWith("*") && urlPath.startsWith(hPath.slice(0, -1))) {
+        handler = h;
+        break;
+      }
     }
   }
   if (!handler) {

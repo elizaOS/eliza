@@ -1,4 +1,4 @@
-import { capacitorLlama } from "./index";
+import { capacitorLlama } from "./capacitor-llama-adapter";
 import type { LlamaAdapter } from "./definitions";
 
 let cachedAdapter: LlamaAdapter | null = null;
