@@ -1,6 +1,6 @@
 export { DeriveKeyProvider, RemoteAttestationProvider } from "./base";
 export { PhalaDeriveKeyProvider, phalaDeriveKeyProvider } from "./deriveKey";
 export {
-	PhalaRemoteAttestationProvider,
-	phalaRemoteAttestationProvider,
+  PhalaRemoteAttestationProvider,
+  phalaRemoteAttestationProvider,
 } from "./remoteAttestation";

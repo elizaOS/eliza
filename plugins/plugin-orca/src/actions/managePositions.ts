@@ -9,7 +9,7 @@ import {
   parseJSONObjectFromText,
   settings,
   State,
-} from '@elizaos/core';
+} from "@elizaos/core";
 import {
   Connection as SolanaRpc,
   Keypair as KeyPairSigner,
@@ -17,19 +17,23 @@ import {
   Connection as SolanaRpcApi,
   PublicKey,
   Connection,
-} from '@solana/web3.js';
-import { getMint } from '@solana/spl-token';
-import { fetchPosition, fetchWhirlpool, getPositionAddress } from '@orca-so/whirlpools-client';
-import { sqrtPriceToPrice } from '@orca-so/whirlpools-core';
-import { sendTransaction } from '../utils/sendTransaction';
+} from "@solana/web3.js";
+import { getMint } from "@solana/spl-token";
+import {
+  fetchPosition,
+  fetchWhirlpool,
+  getPositionAddress,
+} from "@orca-so/whirlpools-client";
+import { sqrtPriceToPrice } from "@orca-so/whirlpools-core";
+import { sendTransaction } from "../utils/sendTransaction";
 import {
   closePositionInstructions,
   IncreaseLiquidityQuoteParam,
   openPositionInstructions,
   setDefaultFunder,
   setDefaultSlippageToleranceBps,
-} from '@orca-so/whirlpools';
-import { loadWallet } from '../utils/loadWallet';
+} from "@orca-so/whirlpools";
+import { loadWallet } from "../utils/loadWallet";
 
 interface FetchedPosition {
   whirlpoolAddress: string;
@@ -51,15 +55,25 @@ interface ManagePositionsInput {
 }
 
 export const managePositions: typeof actions = {
-  name: 'manage_positions',
-  similes: ['AUTOMATE_REBALANCING', 'AUTOMATE_POSITIONS', 'START_MANAGING_POSITIONS'],
+  name: "manage_positions",
+  similes: [
+    "AUTOMATE_REBALANCING",
+    "AUTOMATE_POSITIONS",
+    "START_MANAGING_POSITIONS",
+  ],
   description:
-    'Automatically manage positions by rebalancing them when they drift too far from the pool price',
+    "Automatically manage positions by rebalancing them when they drift too far from the pool price",
 
-  validate: async (runtime: AgentRuntime, message: Memory): Promise<boolean> => {
-    const config = await extractAndValidateConfiguration(message.content.text, runtime);
+  validate: async (
+    runtime: AgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
+    const config = await extractAndValidateConfiguration(
+      message.content.text,
+      runtime,
+    );
     if (!config) {
-      elizaLogger.warn('Validation failed: No valid configuration provided.');
+      elizaLogger.warn("Validation failed: No valid configuration provided.");
       return false;
     }
     return true;
@@ -70,28 +84,41 @@ export const managePositions: typeof actions = {
     message: Memory,
     state: State,
     params: { [key: string]: unknown },
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ) => {
-    elizaLogger.log('Start managing positions');
+    elizaLogger.log("Start managing positions");
     if (!state) {
       state = (await runtime.composeState(message)) as State;
     } else {
       state = await runtime.updateRecentMessageState(state);
     }
-    const { repositionThresholdBps, slippageToleranceBps }: ManagePositionsInput =
-      await extractAndValidateConfiguration(message.content.text, runtime);
-    const fetchedPositions = await extractFetchedPositions(state.providers, runtime);
-    elizaLogger.log(
-      `Validated configuration: repositionThresholdBps=${repositionThresholdBps}, slippageTolerance=${slippageToleranceBps}`
+    const {
+      repositionThresholdBps,
+      slippageToleranceBps,
+    }: ManagePositionsInput = await extractAndValidateConfiguration(
+      message.content.text,
+      runtime,
     );
-    elizaLogger.log('Fetched positions:', fetchedPositions);
+    const fetchedPositions = await extractFetchedPositions(
+      state.providers,
+      runtime,
+    );
+    elizaLogger.log(
+      `Validated configuration: repositionThresholdBps=${repositionThresholdBps}, slippageTolerance=${slippageToleranceBps}`,
+    );
+    elizaLogger.log("Fetched positions:", fetchedPositions);
 
     const { signer: wallet } = await loadWallet(runtime, true);
     const rpc = createSolanaRpc(settings.SOLANA_RPC_URL!);
     setDefaultSlippageToleranceBps(slippageToleranceBps);
     setDefaultFunder(wallet);
 
-    await handleRepositioning(fetchedPositions, repositionThresholdBps, rpc, wallet);
+    await handleRepositioning(
+      fetchedPositions,
+      repositionThresholdBps,
+      rpc,
+      wallet,
+    );
 
     return true;
   },
@@ -100,7 +127,7 @@ export const managePositions: typeof actions = {
 
 async function extractFetchedPositions(
   text: string,
-  runtime: AgentRuntime
+  runtime: AgentRuntime,
 ): Promise<FetchedPosition[]> {
   const prompt = `Given this message: "${text}", extract the available data and return a JSON object with the following structure:
         [
@@ -120,29 +147,35 @@ async function extractFetchedPositions(
     modelClass: ModelTypes.LARGE,
   });
 
-  const fetchedPositions = parseJSONObjectFromText(content) as FetchedPosition[];
+  const fetchedPositions = parseJSONObjectFromText(
+    content,
+  ) as FetchedPosition[];
   return fetchedPositions;
 }
 
-function validateManagePositionsInput(obj: Record<string, any>): ManagePositionsInput {
+function validateManagePositionsInput(
+  obj: Record<string, any>,
+): ManagePositionsInput {
   if (
-    typeof obj.repositionThresholdBps !== 'number' ||
+    typeof obj.repositionThresholdBps !== "number" ||
     !Number.isInteger(obj.repositionThresholdBps) ||
-    typeof obj.intervalSeconds !== 'number' ||
+    typeof obj.intervalSeconds !== "number" ||
     !Number.isInteger(obj.intervalSeconds) ||
-    typeof obj.slippageToleranceBps !== 'number' ||
+    typeof obj.slippageToleranceBps !== "number" ||
     !Number.isInteger(obj.slippageToleranceBps)
   ) {
-    throw new Error('Invalid input: Object does not match the ManagePositionsInput type.');
+    throw new Error(
+      "Invalid input: Object does not match the ManagePositionsInput type.",
+    );
   }
   return obj as ManagePositionsInput;
 }
 
 export async function extractAndValidateConfiguration(
   text: string,
-  runtime: AgentRuntime
+  runtime: AgentRuntime,
 ): Promise<ManagePositionsInput | null> {
-  elizaLogger.log('Extracting and validating configuration from text:', text);
+  elizaLogger.log("Extracting and validating configuration from text:", text);
 
   const prompt = `Given this message: "${text}". Extract the reposition threshold value, time interval, and slippage tolerance.
         The threshold value and the slippage tolerance can be given in percentages or bps. You will always respond with the reposition threshold in bps.
@@ -165,7 +198,7 @@ export async function extractAndValidateConfiguration(
     const configuration = parseJSONObjectFromText(content);
     return validateManagePositionsInput(configuration);
   } catch (error) {
-    elizaLogger.warn('Invalid configuration detected:', error);
+    elizaLogger.warn("Invalid configuration detected:", error);
     return null;
   }
 }
@@ -174,7 +207,7 @@ function calculatePriceBounds(
   sqrtPrice: bigint,
   decimalsA: number,
   decimalsB: number,
-  positionWidthBps: number
+  positionWidthBps: number,
 ): NewPriceBounds {
   const currentPrice = sqrtPriceToPrice(sqrtPrice, decimalsA, decimalsB);
   const newLowerPrice = currentPrice * (1 - positionWidthBps / 10000);
@@ -187,14 +220,19 @@ async function handleRepositioning(
   fetchedPositions: FetchedPosition[],
   repositionThresholdBps: number,
   rpc: Connection,
-  wallet: KeyPairSigner
+  wallet: KeyPairSigner,
 ) {
   return await Promise.all(
     fetchedPositions.map(async (position) => {
       const { inRange, distanceCenterPositionFromPoolPriceBps } = position;
-      if (!inRange || distanceCenterPositionFromPoolPriceBps > repositionThresholdBps) {
+      if (
+        !inRange ||
+        distanceCenterPositionFromPoolPriceBps > repositionThresholdBps
+      ) {
         const positionMintAddress = address(position.positionMint);
-        const positionAddress = (await getPositionAddress(positionMintAddress))[0];
+        const positionAddress = (
+          await getPositionAddress(positionMintAddress)
+        )[0];
         let positionData = await fetchPosition(rpc, positionAddress);
         const whirlpoolAddress = positionData.data.whirlpool;
         let whirlpool = await fetchWhirlpool(rpc, whirlpoolAddress);
@@ -204,7 +242,7 @@ async function handleRepositioning(
           whirlpool.data.sqrtPrice,
           mintA.decimals,
           mintB.decimals,
-          position.positionWidthBps
+          position.positionWidthBps,
         );
         let newLowerPrice = newPriceBounds.newLowerPrice;
         let newUpperPrice = newPriceBounds.newUpperPrice;
@@ -215,10 +253,8 @@ async function handleRepositioning(
         let closeTxId;
         while (!closeSuccess) {
           try {
-            const { instructions: closeInstructions, quote } = await closePositionInstructions(
-              rpc,
-              positionMintAddress
-            );
+            const { instructions: closeInstructions, quote } =
+              await closePositionInstructions(rpc, positionMintAddress);
             closeTxId = await sendTransaction(rpc, closeInstructions, wallet);
             closeSuccess = closeTxId ? true : false;
 
@@ -231,7 +267,7 @@ async function handleRepositioning(
               whirlpool.data.sqrtPrice,
               mintA.decimals,
               mintB.decimals,
-              position.positionWidthBps
+              position.positionWidthBps,
             );
             newLowerPrice = newPriceBounds.newLowerPrice;
             newUpperPrice = newPriceBounds.newUpperPrice;
@@ -239,29 +275,33 @@ async function handleRepositioning(
             let openTxId;
             while (!openSuccess) {
               try {
-                const { instructions: openInstructions, positionMint: newPositionMint } =
-                  await openPositionInstructions(
-                    rpc,
-                    whirlpoolAddress,
-                    increaseLiquidityQuoteParam,
-                    newLowerPrice,
-                    newUpperPrice
-                  );
+                const {
+                  instructions: openInstructions,
+                  positionMint: newPositionMint,
+                } = await openPositionInstructions(
+                  rpc,
+                  whirlpoolAddress,
+                  increaseLiquidityQuoteParam,
+                  newLowerPrice,
+                  newUpperPrice,
+                );
                 openTxId = await sendTransaction(rpc, openInstructions, wallet);
                 openSuccess = openTxId ? true : false;
 
-                elizaLogger.log(`Successfully reopened position with mint: ${newPositionMint}`);
+                elizaLogger.log(
+                  `Successfully reopened position with mint: ${newPositionMint}`,
+                );
                 return { positionMintAddress, closeTxId, openTxId };
               } catch (openError) {
                 elizaLogger.warn(
-                  `Open position failed for ${positionMintAddress}, retrying. Error: ${openError}`
+                  `Open position failed for ${positionMintAddress}, retrying. Error: ${openError}`,
                 );
                 whirlpool = await fetchWhirlpool(rpc, whirlpoolAddress);
                 const newPriceBounds: NewPriceBounds = calculatePriceBounds(
                   whirlpool.data.sqrtPrice,
                   mintA.decimals,
                   mintB.decimals,
-                  position.positionWidthBps
+                  position.positionWidthBps,
                 );
                 newLowerPrice = newPriceBounds.newLowerPrice;
                 newUpperPrice = newPriceBounds.newUpperPrice;
@@ -269,24 +309,26 @@ async function handleRepositioning(
             }
           } catch (closeError) {
             elizaLogger.warn(
-              `Close position failed for ${positionMintAddress}, retrying after fetching new prices. Error: ${closeError}`
+              `Close position failed for ${positionMintAddress}, retrying after fetching new prices. Error: ${closeError}`,
             );
             whirlpool = await fetchWhirlpool(rpc, whirlpoolAddress);
             const newPriceBounds: NewPriceBounds = calculatePriceBounds(
               whirlpool.data.sqrtPrice,
               mintA.decimals,
               mintB.decimals,
-              position.positionWidthBps
+              position.positionWidthBps,
             );
             newLowerPrice = newPriceBounds.newLowerPrice;
             newUpperPrice = newPriceBounds.newUpperPrice;
           }
         }
       } else {
-        elizaLogger.log(`Position ${address(position.positionMint)} is in range, skipping.`);
+        elizaLogger.log(
+          `Position ${address(position.positionMint)} is in range, skipping.`,
+        );
         return null;
       }
-    })
+    }),
   );
 }
 

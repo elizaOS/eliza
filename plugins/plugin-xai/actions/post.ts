@@ -1,14 +1,14 @@
 import {
-	type Action,
-	type ActionExample,
-	type ActionResult,
-	type HandlerCallback,
-	type HandlerOptions,
-	type IAgentRuntime,
-	logger,
-	type Memory,
-	ModelType,
-	type State,
+  type Action,
+  type ActionExample,
+  type ActionResult,
+  type HandlerCallback,
+  type HandlerOptions,
+  type IAgentRuntime,
+  logger,
+  type Memory,
+  ModelType,
+  type State,
 } from "@elizaos/core";
 import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { XService } from "../services/x.service";
@@ -17,109 +17,109 @@ import { sendPost } from "../utils";
 const spec = requireActionSpec("POST");
 
 export const postAction: Action = {
-	name: spec.name,
-	similes: spec.similes ? [...spec.similes] : [],
-	description: spec.description,
+  name: spec.name,
+  similes: spec.similes ? [...spec.similes] : [],
+  description: spec.description,
 
-	validate: async (
-		runtime: any,
-		message: any,
-		state?: any,
-		options?: any,
-	): Promise<boolean> => {
-		const __avTextRaw =
-			typeof message?.content?.text === "string" ? message.content.text : "";
-		const __avText = __avTextRaw.toLowerCase();
-		const __avKeywords = ["post"];
-		const __avKeywordOk =
-			__avKeywords.length > 0 &&
-			__avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
-		const __avRegex = new RegExp("\\b(?:post)\\b", "i");
-		const __avRegexOk = __avRegex.test(__avText);
-		const __avSource = String(
-			message?.content?.source ?? message?.source ?? "",
-		);
-		const __avExpectedSource = "";
-		const __avSourceOk = __avExpectedSource
-			? __avSource === __avExpectedSource
-			: Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
-		const __avOptions = options && typeof options === "object" ? options : {};
-		const __avInputOk =
-			__avText.trim().length > 0 ||
-			Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-			Boolean(message?.content && typeof message.content === "object");
+  validate: async (
+    runtime: any,
+    message: any,
+    state?: any,
+    options?: any,
+  ): Promise<boolean> => {
+    const __avTextRaw =
+      typeof message?.content?.text === "string" ? message.content.text : "";
+    const __avText = __avTextRaw.toLowerCase();
+    const __avKeywords = ["post"];
+    const __avKeywordOk =
+      __avKeywords.length > 0 &&
+      __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
+    const __avRegex = new RegExp("\\b(?:post)\\b", "i");
+    const __avRegexOk = __avRegex.test(__avText);
+    const __avSource = String(
+      message?.content?.source ?? message?.source ?? "",
+    );
+    const __avExpectedSource = "";
+    const __avSourceOk = __avExpectedSource
+      ? __avSource === __avExpectedSource
+      : Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
+    const __avOptions = options && typeof options === "object" ? options : {};
+    const __avInputOk =
+      __avText.trim().length > 0 ||
+      Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
+      Boolean(message?.content && typeof message.content === "object");
 
-		if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
-			return false;
-		}
+    if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
+      return false;
+    }
 
-		const __avLegacyValidate = async (
-			runtime: IAgentRuntime,
-		): Promise<boolean> => {
-			const service = runtime.getService("x");
-			return !!service;
-		};
-		try {
-			return Boolean(
-				await (__avLegacyValidate as any)(runtime, message, state, options),
-			);
-		} catch {
-			return false;
-		}
-	},
+    const __avLegacyValidate = async (
+      runtime: IAgentRuntime,
+    ): Promise<boolean> => {
+      const service = runtime.getService("x");
+      return !!service;
+    };
+    try {
+      return Boolean(
+        await (__avLegacyValidate as any)(runtime, message, state, options),
+      );
+    } catch {
+      return false;
+    }
+  },
 
-	handler: async (
-		runtime: IAgentRuntime,
-		message: Memory,
-		_state?: State,
-		_options?: HandlerOptions,
-		callback?: HandlerCallback,
-		_responses?: Memory[],
-	): Promise<ActionResult> => {
-		logger.info("Executing POST action");
+  handler: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    _state?: State,
+    _options?: HandlerOptions,
+    callback?: HandlerCallback,
+    _responses?: Memory[],
+  ): Promise<ActionResult> => {
+    logger.info("Executing POST action");
 
-		const xService = runtime.getService("x") as XService;
-		if (!xService?.xClient?.client) {
-			throw new Error("X service not available");
-		}
+    const xService = runtime.getService("x") as XService;
+    if (!xService?.xClient?.client) {
+      throw new Error("X service not available");
+    }
 
-		const clientBase = xService.xClient.client;
-		if (!clientBase.profile) {
-			throw new Error("X client not initialized - no profile");
-		}
-		const _client = clientBase.xClient;
+    const clientBase = xService.xClient.client;
+    if (!clientBase.profile) {
+      throw new Error("X client not initialized - no profile");
+    }
+    const _client = clientBase.xClient;
 
-		let text = message.content?.text?.trim();
-		if (!text) {
-			if (callback) {
-				callback({
-					text: "I need something to post! Please provide the text.",
-					action: "POST",
-				});
-			}
-			return { success: false, error: "No text provided" };
-		}
+    let text = message.content?.text?.trim();
+    if (!text) {
+      if (callback) {
+        callback({
+          text: "I need something to post! Please provide the text.",
+          action: "POST",
+        });
+      }
+      return { success: false, error: "No text provided" };
+    }
 
-		if (text.length > 280) {
-			const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
-			let truncated = "";
-			for (const sentence of sentences) {
-				if ((truncated + sentence).length <= 280) {
-					truncated += sentence;
-				} else {
-					break;
-				}
-			}
-			text = truncated.trim() || `${text.substring(0, 277)}...`;
-		}
+    if (text.length > 280) {
+      const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+      let truncated = "";
+      for (const sentence of sentences) {
+        if ((truncated + sentence).length <= 280) {
+          truncated += sentence;
+        } else {
+          break;
+        }
+      }
+      text = truncated.trim() || `${text.substring(0, 277)}...`;
+    }
 
-		let finalText = text;
-		if (
-			text.length < 50 ||
-			text.toLowerCase().includes("post") ||
-			text.toLowerCase().includes("post")
-		) {
-			const prompt = `You are ${runtime.character.name}.
+    let finalText = text;
+    if (
+      text.length < 50 ||
+      text.toLowerCase().includes("post") ||
+      text.toLowerCase().includes("post")
+    ) {
+      const prompt = `You are ${runtime.character.name}.
 ${runtime.character.bio || ""}
 
 Generate a post based on: ${text}
@@ -136,52 +136,52 @@ Topics: ${runtime.character.topics?.join(", ") || "technology, AI"}
 
 Post:`;
 
-			const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-				prompt,
-				maxTokens: 100,
-				temperature: 0.9,
-			});
+      const response = await runtime.useModel(ModelType.TEXT_SMALL, {
+        prompt,
+        maxTokens: 100,
+        temperature: 0.9,
+      });
 
-			finalText = String(response).trim();
-		}
+      finalText = String(response).trim();
+    }
 
-		const result = await sendPost(clientBase, finalText);
+    const result = await sendPost(clientBase, finalText);
 
-		if (result) {
-			const postId =
-				result.id ||
-				result.data?.id ||
-				result.data?.data?.id ||
-				Date.now().toString();
-			const postUrl = `https://x.com/${clientBase.profile.username}/status/${postId}`;
+    if (result) {
+      const postId =
+        result.id ||
+        result.data?.id ||
+        result.data?.data?.id ||
+        Date.now().toString();
+      const postUrl = `https://x.com/${clientBase.profile.username}/status/${postId}`;
 
-			logger.info(`Posted: ${postId}`);
+      logger.info(`Posted: ${postId}`);
 
-			await runtime.createMemory(
-				{
-					entityId: runtime.agentId,
-					content: {
-						text: finalText,
-						url: postUrl,
-						source: "x",
-						action: "POST",
-					},
-					roomId: message.roomId,
-				},
-				"messages",
-			);
+      await runtime.createMemory(
+        {
+          entityId: runtime.agentId,
+          content: {
+            text: finalText,
+            url: postUrl,
+            source: "x",
+            action: "POST",
+          },
+          roomId: message.roomId,
+        },
+        "messages",
+      );
 
-			if (callback) {
-				await callback({
-					text: `Posted: "${finalText}"\n\n${postUrl}`,
-					metadata: { postId, postUrl },
-				});
-			}
-			return { success: true, text: `Posted: ${postUrl}` };
-		} else {
-			throw new Error("Failed to post - no response data");
-		}
-	},
+      if (callback) {
+        await callback({
+          text: `Posted: "${finalText}"\n\n${postUrl}`,
+          metadata: { postId, postUrl },
+        });
+      }
+      return { success: true, text: `Posted: ${postUrl}` };
+    } else {
+      throw new Error("Failed to post - no response data");
+    }
+  },
 
-	examples: (spec.examples ?? []) as ActionExample[][],
+  examples: (spec.examples ?? []) as ActionExample[][],
 };

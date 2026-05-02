@@ -14,7 +14,7 @@ export class RaydiumSdkService extends Service {
   private lastTokenFetch = 0;
   private readonly TOKEN_FETCH_INTERVAL = 60000; // 1 minute
 
-  constructor(runtime: IAgentRuntime) {
+  constructor(runtime?: IAgentRuntime) {
     super(runtime);
   }
 

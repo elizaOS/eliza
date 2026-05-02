@@ -34,36 +34,36 @@ import type { XApiErrorRaw } from "./errors";
  * @property {boolean} [can_dm] - Indicates if direct messages are enabled for the user.
  */
 export interface XUserRaw {
-	created_at?: string;
-	description?: string;
-	entities?: {
-		url?: {
-			urls?: {
-				expanded_url?: string;
-			}[];
-		};
-	};
-	favourites_count?: number;
-	followers_count?: number;
-	friends_count?: number;
-	media_count?: number;
-	statuses_count?: number;
-	id_str?: string;
-	listed_count?: number;
-	name?: string;
-	location: string;
-	geo_enabled?: boolean;
-	pinned_tweet_ids_str?: string[];
-	profile_background_color?: string;
-	profile_banner_url?: string;
-	profile_image_url_https?: string;
-	protected?: boolean;
-	screen_name?: string;
-	verified?: boolean;
-	has_custom_timelines?: boolean;
-	has_extended_profile?: boolean;
-	url?: string;
-	can_dm?: boolean;
+  created_at?: string;
+  description?: string;
+  entities?: {
+    url?: {
+      urls?: {
+        expanded_url?: string;
+      }[];
+    };
+  };
+  favourites_count?: number;
+  followers_count?: number;
+  friends_count?: number;
+  media_count?: number;
+  statuses_count?: number;
+  id_str?: string;
+  listed_count?: number;
+  name?: string;
+  location: string;
+  geo_enabled?: boolean;
+  pinned_tweet_ids_str?: string[];
+  profile_background_color?: string;
+  profile_banner_url?: string;
+  profile_image_url_https?: string;
+  protected?: boolean;
+  screen_name?: string;
+  verified?: boolean;
+  has_custom_timelines?: boolean;
+  has_extended_profile?: boolean;
+  url?: string;
+  can_dm?: boolean;
 }
 
 /**
@@ -98,86 +98,86 @@ export interface XUserRaw {
  * @property {boolean} [canDm] - Indicates if the user can receive direct messages.
  */
 export interface Profile {
-	avatar?: string;
-	banner?: string;
-	biography?: string;
-	birthday?: string;
-	followersCount?: number;
-	followingCount?: number;
-	friendsCount?: number;
-	mediaCount?: number;
-	statusesCount?: number;
-	isPrivate?: boolean;
-	isVerified?: boolean;
-	isBlueVerified?: boolean;
-	joined?: Date;
-	likesCount?: number;
-	listedCount?: number;
-	location: string;
-	name?: string;
-	pinnedPostIds?: string[];
-	postsCount?: number;
-	url?: string;
-	userId?: string;
-	username?: string;
-	website?: string;
-	canDm?: boolean;
+  avatar?: string;
+  banner?: string;
+  biography?: string;
+  birthday?: string;
+  followersCount?: number;
+  followingCount?: number;
+  friendsCount?: number;
+  mediaCount?: number;
+  statusesCount?: number;
+  isPrivate?: boolean;
+  isVerified?: boolean;
+  isBlueVerified?: boolean;
+  joined?: Date;
+  likesCount?: number;
+  listedCount?: number;
+  location: string;
+  name?: string;
+  pinnedPostIds?: string[];
+  postsCount?: number;
+  url?: string;
+  userId?: string;
+  username?: string;
+  website?: string;
+  canDm?: boolean;
 }
 
 export interface UserRaw {
-	data: {
-		user: {
-			result: {
-				rest_id?: string;
-				is_blue_verified?: boolean;
-				legacy: XUserRaw;
-			};
-		};
-	};
-	errors?: XApiErrorRaw[];
+  data: {
+    user: {
+      result: {
+        rest_id?: string;
+        is_blue_verified?: boolean;
+        legacy: XUserRaw;
+      };
+    };
+  };
+  errors?: XApiErrorRaw[];
 }
 
 function getAvatarOriginalSizeUrl(avatarUrl: string | undefined) {
-	return avatarUrl ? avatarUrl.replace("_normal", "") : undefined;
+  return avatarUrl ? avatarUrl.replace("_normal", "") : undefined;
 }
 
 export function parseProfile(
-	user: XUserRaw,
-	isBlueVerified?: boolean,
+  user: XUserRaw,
+  isBlueVerified?: boolean,
 ): Profile {
-	const profile: Profile = {
-		avatar: getAvatarOriginalSizeUrl(user.profile_image_url_https),
-		banner: user.profile_banner_url,
-		biography: user.description,
-		followersCount: user.followers_count,
-		followingCount: user.friends_count,
-		friendsCount: user.friends_count,
-		mediaCount: user.media_count,
-		isPrivate: user.protected ?? false,
-		isVerified: user.verified,
-		likesCount: user.favourites_count,
-		listedCount: user.listed_count,
-		location: user.location,
-		name: user.name,
-		pinnedPostIds: user.pinned_tweet_ids_str,
-		postsCount: user.statuses_count,
-		url: `https://x.com/${user.screen_name}`,
-		userId: user.id_str,
-		username: user.screen_name,
-		isBlueVerified: isBlueVerified ?? false,
-		canDm: user.can_dm,
-	};
+  const profile: Profile = {
+    avatar: getAvatarOriginalSizeUrl(user.profile_image_url_https),
+    banner: user.profile_banner_url,
+    biography: user.description,
+    followersCount: user.followers_count,
+    followingCount: user.friends_count,
+    friendsCount: user.friends_count,
+    mediaCount: user.media_count,
+    isPrivate: user.protected ?? false,
+    isVerified: user.verified,
+    likesCount: user.favourites_count,
+    listedCount: user.listed_count,
+    location: user.location,
+    name: user.name,
+    pinnedPostIds: user.pinned_tweet_ids_str,
+    postsCount: user.statuses_count,
+    url: `https://x.com/${user.screen_name}`,
+    userId: user.id_str,
+    username: user.screen_name,
+    isBlueVerified: isBlueVerified ?? false,
+    canDm: user.can_dm,
+  };
 
-	if (user.created_at != null) {
-		profile.joined = new Date(Date.parse(user.created_at));
-	}
+  if (user.created_at != null) {
+    profile.joined = new Date(Date.parse(user.created_at));
+  }
 
-	const urls = user.entities?.url?.urls;
-	if (urls?.length != null && urls?.length > 0) {
-		profile.website = urls[0].expanded_url;
-	}
+  const urls = user.entities?.url?.urls;
+  if (urls?.length != null && urls?.length > 0) {
+    profile.website = urls[0].expanded_url;
+  }
 
-	return profile;
+  return profile;
 }
 
 import type { UserV2 } from "twitter-api-v2";
@@ -186,156 +186,156 @@ import type { UserV2 } from "twitter-api-v2";
  * Convert X API v2 user data to Profile format
  */
 function parseV2Profile(user: UserV2): Profile {
-	const profile: Profile = {
-		avatar: getAvatarOriginalSizeUrl(user.profile_image_url),
-		biography: user.description,
-		followersCount: user.public_metrics?.followers_count,
-		followingCount: user.public_metrics?.following_count,
-		friendsCount: user.public_metrics?.following_count,
-		postsCount: user.public_metrics?.tweet_count,
-		isPrivate: user.protected ?? false,
-		isVerified: user.verified ?? false,
-		likesCount: user.public_metrics?.like_count,
-		listedCount: user.public_metrics?.listed_count,
-		location: user.location || "",
-		name: user.name,
-		pinnedPostIds: user.pinned_tweet_id ? [user.pinned_tweet_id] : [],
-		url: `https://x.com/${user.username}`,
-		userId: user.id,
-		username: user.username,
-		isBlueVerified: user.verified_type === "blue",
-	};
+  const profile: Profile = {
+    avatar: getAvatarOriginalSizeUrl(user.profile_image_url),
+    biography: user.description,
+    followersCount: user.public_metrics?.followers_count,
+    followingCount: user.public_metrics?.following_count,
+    friendsCount: user.public_metrics?.following_count,
+    postsCount: user.public_metrics?.tweet_count,
+    isPrivate: user.protected ?? false,
+    isVerified: user.verified ?? false,
+    likesCount: user.public_metrics?.like_count,
+    listedCount: user.public_metrics?.listed_count,
+    location: user.location || "",
+    name: user.name,
+    pinnedPostIds: user.pinned_tweet_id ? [user.pinned_tweet_id] : [],
+    url: `https://x.com/${user.username}`,
+    userId: user.id,
+    username: user.username,
+    isBlueVerified: user.verified_type === "blue",
+  };
 
-	if (user.created_at) {
-		profile.joined = new Date(user.created_at);
-	}
+  if (user.created_at) {
+    profile.joined = new Date(user.created_at);
+  }
 
-	if (user.entities?.url?.urls && user.entities.url.urls.length > 0) {
-		profile.website = user.entities.url.urls[0]?.expanded_url;
-	}
+  if (user.entities?.url?.urls && user.entities.url.urls.length > 0) {
+    profile.website = user.entities.url.urls[0]?.expanded_url;
+  }
 
-	return profile;
+  return profile;
 }
 
 export async function getProfile(
-	username: string,
-	auth: XAuth,
+  username: string,
+  auth: XAuth,
 ): Promise<RequestApiResult<Profile>> {
-	if (!auth) {
-		return {
-			success: false,
-			err: new Error("Not authenticated"),
-		};
-	}
+  if (!auth) {
+    return {
+      success: false,
+      err: new Error("Not authenticated"),
+    };
+  }
 
-	try {
-		const client = await auth.getV2Client();
-		const user = await client.v2.userByUsername(username, {
-			"user.fields": [
-				"id",
-				"name",
-				"username",
-				"created_at",
-				"description",
-				"entities",
-				"location",
-				"pinned_tweet_id",
-				"profile_image_url",
-				"protected",
-				"public_metrics",
-				"url",
-				"verified",
-				"verified_type",
-			],
-		});
+  try {
+    const client = await auth.getV2Client();
+    const user = await client.v2.userByUsername(username, {
+      "user.fields": [
+        "id",
+        "name",
+        "username",
+        "created_at",
+        "description",
+        "entities",
+        "location",
+        "pinned_tweet_id",
+        "profile_image_url",
+        "protected",
+        "public_metrics",
+        "url",
+        "verified",
+        "verified_type",
+      ],
+    });
 
-		if (!user.data) {
-			return {
-				success: false,
-				err: new Error(`User ${username} not found`),
-			};
-		}
+    if (!user.data) {
+      return {
+        success: false,
+        err: new Error(`User ${username} not found`),
+      };
+    }
 
-		return {
-			success: true,
-			value: parseV2Profile(user.data),
-		};
-	} catch (error) {
-		return {
-			success: false,
-			err: new Error(
-				error instanceof Error ? error.message : "Failed to fetch profile",
-			),
-		};
-	}
+    return {
+      success: true,
+      value: parseV2Profile(user.data),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      err: new Error(
+        error instanceof Error ? error.message : "Failed to fetch profile",
+      ),
+    };
+  }
 }
 
 const idCache = new Map<string, string>();
 
 export async function getScreenNameByUserId(
-	userId: string,
-	auth: XAuth,
+  userId: string,
+  auth: XAuth,
 ): Promise<RequestApiResult<string>> {
-	if (!auth) {
-		return {
-			success: false,
-			err: new Error("Not authenticated"),
-		};
-	}
+  if (!auth) {
+    return {
+      success: false,
+      err: new Error("Not authenticated"),
+    };
+  }
 
-	try {
-		const client = await auth.getV2Client();
-		const user = await client.v2.user(userId, {
-			"user.fields": ["username"],
-		});
+  try {
+    const client = await auth.getV2Client();
+    const user = await client.v2.user(userId, {
+      "user.fields": ["username"],
+    });
 
-		if (!user.data || !user.data.username) {
-			return {
-				success: false,
-				err: new Error(`User with ID ${userId} not found`),
-			};
-		}
+    if (!user.data || !user.data.username) {
+      return {
+        success: false,
+        err: new Error(`User with ID ${userId} not found`),
+      };
+    }
 
-		return {
-			success: true,
-			value: user.data.username,
-		};
-	} catch (error) {
-		return {
-			success: false,
-			err: new Error(
-				error instanceof Error ? error.message : "Failed to fetch user",
-			),
-		};
-	}
+    return {
+      success: true,
+      value: user.data.username,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      err: new Error(
+        error instanceof Error ? error.message : "Failed to fetch user",
+      ),
+    };
+  }
 }
 
 export async function getEntityIdByScreenName(
-	screenName: string,
-	auth: XAuth,
+  screenName: string,
+  auth: XAuth,
 ): Promise<RequestApiResult<string>> {
-	const cached = idCache.get(screenName);
-	if (cached != null) {
-		return { success: true, value: cached };
-	}
+  const cached = idCache.get(screenName);
+  if (cached != null) {
+    return { success: true, value: cached };
+  }
 
-	const profileRes = await getProfile(screenName, auth);
-	if (!profileRes.success) {
-		return { success: false, err: profileRes.err };
-	}
+  const profileRes = await getProfile(screenName, auth);
+  if (!profileRes.success) {
+    return { success: false, err: profileRes.err };
+  }
 
-	const profile = profileRes.value;
-	if (profile.userId != null) {
-		idCache.set(screenName, profile.userId);
+  const profile = profileRes.value;
+  if (profile.userId != null) {
+    idCache.set(screenName, profile.userId);
 
-		return {
-			success: true,
-			value: profile.userId,
-		};
-	}
+    return {
+      success: true,
+      value: profile.userId,
+    };
+  }
 
-	return {
-		success: false,
-		err: new Error("User ID is undefined."),
-	};
+  return {
+    success: false,
+    err: new Error("User ID is undefined."),
+  };
 }

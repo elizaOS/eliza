@@ -1,4 +1,4 @@
-import { elizaLogger } from '@elizaos/core';
+import { elizaLogger } from "@elizaos/core";
 import {
   Transaction,
   TransactionMessage,
@@ -7,13 +7,13 @@ import {
   Connection,
   ComputeBudgetProgram,
   Keypair,
-} from '@solana/web3.js';
+} from "@solana/web3.js";
 
 // For more information: https://orca-so.github.io/whirlpools/Whirlpools%20SDKs/Whirlpools/Send%20Transaction
 export async function sendTransaction(
   connection: Connection,
   instructions: Array<any>,
-  wallet: Keypair
+  wallet: Keypair,
 ): Promise<string> {
   const latestBlockhash = await connection.getLatestBlockhash();
 
@@ -29,18 +29,25 @@ export async function sendTransaction(
   simulatedTx.sign([wallet]);
   const simulation = await connection.simulateTransaction(simulatedTx);
   const computeUnits = simulation.value.unitsConsumed || 200_000;
-  const safeComputeUnits = Math.ceil(Math.max(computeUnits * 1.3, computeUnits + 100_000));
+  const safeComputeUnits = Math.ceil(
+    Math.max(computeUnits * 1.3, computeUnits + 100_000),
+  );
 
   // Get prioritization fee
-  const recentPrioritizationFees = await connection.getRecentPrioritizationFees();
+  const recentPrioritizationFees =
+    await connection.getRecentPrioritizationFees();
   const prioritizationFee = recentPrioritizationFees
     .map((fee) => fee.prioritizationFee)
-    .sort((a, b) => a - b)[Math.ceil(0.95 * recentPrioritizationFees.length) - 1];
+    .sort((a, b) => a - b)[
+    Math.ceil(0.95 * recentPrioritizationFees.length) - 1
+  ];
 
   // Add compute budget instructions
   const computeBudgetInstructions = [
     ComputeBudgetProgram.setComputeUnitLimit({ units: safeComputeUnits }),
-    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: prioritizationFee }),
+    ComputeBudgetProgram.setComputeUnitPrice({
+      microLamports: prioritizationFee,
+    }),
   ];
 
   // Create final transaction
@@ -71,7 +78,9 @@ export async function sendTransaction(
         elizaLogger.log(`Transaction confirmed: ${signature}`);
         return signature;
       } else {
-        throw new Error(`Transaction failed: ${statuses.value[0].err.toString()}`);
+        throw new Error(
+          `Transaction failed: ${statuses.value[0].err.toString()}`,
+        );
       }
     }
 
@@ -82,5 +91,5 @@ export async function sendTransaction(
     }
   }
 
-  throw new Error('Transaction timeout');
+  throw new Error("Transaction timeout");
 }

@@ -9,8 +9,32 @@ import type {
 } from "@elizaos/core";
 
 type TypewriterLetter =
-  | "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "k" | "l" | "m"
-  | "n" | "o" | "p" | "q" | "r" | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z";
+  | "a"
+  | "b"
+  | "c"
+  | "d"
+  | "e"
+  | "f"
+  | "g"
+  | "h"
+  | "i"
+  | "j"
+  | "k"
+  | "l"
+  | "m"
+  | "n"
+  | "o"
+  | "p"
+  | "q"
+  | "r"
+  | "s"
+  | "t"
+  | "u"
+  | "v"
+  | "w"
+  | "x"
+  | "y"
+  | "z";
 
 function createLetterAction(letter: TypewriterLetter): Action {
   const upper = letter.toUpperCase();
@@ -19,7 +43,11 @@ function createLetterAction(letter: TypewriterLetter): Action {
     name: `TYPE_${upper}`,
     similes: [`TYPE_${upper}`, `TYPE_${letter}`],
     description: `Type the letter '${letter}' and append it to the accumulating typed text for benchmarking action chaining.`,
-    validate: async (_runtime: IAgentRuntime, _message: Memory, _state?: State) => {
+    validate: async (
+      _runtime: IAgentRuntime,
+      _message: Memory,
+      _state?: State,
+    ) => {
       return true;
     },
     handler: async (
@@ -27,7 +55,7 @@ function createLetterAction(letter: TypewriterLetter): Action {
       message: Memory,
       state?: State,
       _options?: Record<string, unknown>,
-      callback?: HandlerCallback
+      callback?: HandlerCallback,
     ): Promise<ActionResult> => {
       const current = state?.values?.typedText ?? "";
       const next = `${current}${letter}`;
@@ -73,5 +101,3 @@ function createLetterAction(letter: TypewriterLetter): Action {
 export const typewriterActions: Action[] = (
   "abcdefghijklmnopqrstuvwxyz".split("") as TypewriterLetter[]
 ).map(createLetterAction);
-
-

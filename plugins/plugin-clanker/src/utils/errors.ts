@@ -103,6 +103,9 @@ export function validateAddress(address: string): boolean {
 }
 
 export function validateAmount(amount: string): boolean {
+  if (!amount || !/^\d+$/.test(amount)) {
+    return false;
+  }
   try {
     const num = BigInt(amount);
     return num >= 0n;

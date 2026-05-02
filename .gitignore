@@ -230,30 +230,16 @@ standalone.ts
 .claude/cache/
 
 # Proto-generated files (regenerated from schemas/)
-<<<<<<< HEAD
 packages/core/src/types/generated/
-=======
 packages/typescript/src/types/generated/
 packages/python/elizaos/types/generated/
 packages/rust/src/types/generated/
 packages/rust/.cargo-tools/
->>>>>>> cae8e5a09b1872cece13fc44ac5232a30c095974
 
 # i18n keyword codegen (regenerated from keywords/*.keywords.json)
 packages/shared/src/i18n/generated/
 packages/typescript/src/i18n/generated/
 
-# Vitest config files (if not needed in repo)
-vitest.config.ts
-!apps/app-companion/vitest.config.ts
-!apps/app-defense-of-the-agents/vitest.config.ts
-!apps/app-lifeops/vitest.config.ts
-!apps/app-training/vitest.config.ts
-!packages/agent/vitest.config.ts
-!packages/app/vitest.config.ts
-!packages/shared/vitest.config.ts
-!packages/cloud-routing/vitest.config.ts
-!plugins/plugin-agent-wallet/vitest.config.ts
 tsconfig.test.json
 
 # Migration status docs (temporary)

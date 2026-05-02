@@ -53,22 +53,23 @@ function generateId(prefix: string): string {
 const createEntityAction: Action = {
   name: "CREATE_ENTITY",
   similes: ["NEW_ENTITY", "ADD_ENTITY", "MAKE_ENTITY"],
-  description: "Create a new entity with a type and name. Entities are the nodes in our relational graph.",
+  description:
+    "Create a new entity with a type and name. Entities are the nodes in our relational graph.",
   validate: async () => true,
   handler: async (
     _runtime: IAgentRuntime,
     message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const relState = getRelationalState(state);
     const content = message.content.text?.toLowerCase() || "";
-    
+
     // Parse entity type and name from message
     let entityType = "generic";
     let entityName = "unnamed";
-    
+
     // Common entity types
     if (content.includes("person")) entityType = "person";
     else if (content.includes("company")) entityType = "company";
@@ -78,15 +79,16 @@ const createEntityAction: Action = {
     else if (content.includes("department")) entityType = "department";
     else if (content.includes("task")) entityType = "task";
     else if (content.includes("document")) entityType = "document";
-    
+
     // Extract name (simple pattern matching)
-    const nameMatch = content.match(/named?\s+["']?([^"']+)["']?/i) ||
-                     content.match(/called\s+["']?([^"']+)["']?/i) ||
-                     content.match(/:\s*["']?([^"']+)["']?/i);
+    const nameMatch =
+      content.match(/named?\s+["']?([^"']+)["']?/i) ||
+      content.match(/called\s+["']?([^"']+)["']?/i) ||
+      content.match(/:\s*["']?([^"']+)["']?/i);
     if (nameMatch) {
       entityName = nameMatch[1].trim();
     }
-    
+
     const entityId = generateId("entity");
     const entity: Entity = {
       id: entityId,
@@ -95,12 +97,12 @@ const createEntityAction: Action = {
       attributes: {},
       created: new Date().toISOString(),
     };
-    
+
     relState.entities[entityId] = entity;
     relState.currentEntity = entityId;
-    
+
     const text = `Created entity: ${entityName} (${entityType}) with ID: ${entityId}`;
-    
+
     if (callback) {
       await callback({ text, source: message.content.source });
     }
@@ -142,8 +144,13 @@ const createEntityAction: Action = {
 const createRelationshipAction: Action = {
   name: "CREATE_RELATIONSHIP",
   similes: ["LINK", "CONNECT", "RELATE"],
-  description: "Create a relationship between two entities. Relationships are the edges in our relational graph.",
-  validate: async (_runtime: IAgentRuntime, _message: Memory, state?: State) => {
+  description:
+    "Create a relationship between two entities. Relationships are the edges in our relational graph.",
+  validate: async (
+    _runtime: IAgentRuntime,
+    _message: Memory,
+    state?: State,
+  ) => {
     const relState = getRelationalState(state);
     return Object.keys(relState.entities).length >= 2;
   },
@@ -152,11 +159,11 @@ const createRelationshipAction: Action = {
     message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const relState = getRelationalState(state);
     const entities = Object.values(relState.entities);
-    
+
     if (entities.length < 2) {
       return {
         success: false,
@@ -164,36 +171,43 @@ const createRelationshipAction: Action = {
         values: state?.values || {},
       };
     }
-    
+
     const content = message.content.text?.toLowerCase() || "";
-    
+
     // Parse relationship type
     let relationType = "related_to";
-    if (content.includes("parent") || content.includes("child")) relationType = "parent_child";
+    if (content.includes("parent") || content.includes("child"))
+      relationType = "parent_child";
     else if (content.includes("sibling")) relationType = "sibling";
     else if (content.includes("friend")) relationType = "friend";
-    else if (content.includes("employee") || content.includes("works")) relationType = "employment";
-    else if (content.includes("owns") || content.includes("owner")) relationType = "ownership";
-    else if (content.includes("manages") || content.includes("reports")) relationType = "management";
+    else if (content.includes("employee") || content.includes("works"))
+      relationType = "employment";
+    else if (content.includes("owns") || content.includes("owner"))
+      relationType = "ownership";
+    else if (content.includes("manages") || content.includes("reports"))
+      relationType = "management";
     else if (content.includes("partner")) relationType = "partnership";
     else if (content.includes("member")) relationType = "membership";
     else if (content.includes("located")) relationType = "location";
     else if (content.includes("assigned")) relationType = "assignment";
-    
+
     // Use the most recent two entities or current + previous
     let fromEntity: Entity;
     let toEntity: Entity;
-    
+
     if (relState.currentEntity && relState.entities[relState.currentEntity]) {
       fromEntity = relState.entities[relState.currentEntity];
       // Find the most recent entity that isn't the current one
-      toEntity = entities.filter(e => e.id !== relState.currentEntity)[entities.length - 2] || entities[0];
+      toEntity =
+        entities.filter((e) => e.id !== relState.currentEntity)[
+          entities.length - 2
+        ] || entities[0];
     } else {
       // Use the two most recent entities
       fromEntity = entities[entities.length - 1];
       toEntity = entities[entities.length - 2];
     }
-    
+
     const relationshipId = generateId("rel");
     const relationship: Relationship = {
       id: relationshipId,
@@ -203,11 +217,11 @@ const createRelationshipAction: Action = {
       properties: {},
       created: new Date().toISOString(),
     };
-    
+
     relState.relationships[relationshipId] = relationship;
-    
+
     const text = `Created ${relationType} relationship: ${fromEntity.name} → ${toEntity.name}`;
-    
+
     if (callback) {
       await callback({ text, source: message.content.source });
     }
@@ -250,20 +264,28 @@ const createRelationshipAction: Action = {
 const setAttributeAction: Action = {
   name: "SET_ATTRIBUTE",
   similes: ["ADD_ATTRIBUTE", "SET_PROPERTY", "UPDATE_ATTRIBUTE"],
-  description: "Set an attribute on the current entity. Attributes store additional data on entities.",
-  validate: async (_runtime: IAgentRuntime, _message: Memory, state?: State) => {
+  description:
+    "Set an attribute on the current entity. Attributes store additional data on entities.",
+  validate: async (
+    _runtime: IAgentRuntime,
+    _message: Memory,
+    state?: State,
+  ) => {
     const relState = getRelationalState(state);
-    return relState.currentEntity !== null && relState.entities[relState.currentEntity] !== undefined;
+    return (
+      relState.currentEntity !== null &&
+      relState.entities[relState.currentEntity] !== undefined
+    );
   },
   handler: async (
     _runtime: IAgentRuntime,
     message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const relState = getRelationalState(state);
-    
+
     if (!relState.currentEntity || !relState.entities[relState.currentEntity]) {
       return {
         success: false,
@@ -271,14 +293,14 @@ const setAttributeAction: Action = {
         values: state?.values || {},
       };
     }
-    
+
     const entity = relState.entities[relState.currentEntity];
     const content = message.content.text || "";
-    
+
     // Parse attribute key and value
     let key = "property";
     let value: any = "value";
-    
+
     // Common attributes
     const ageMatch = content.match(/age[:\s]+(\d+)/i);
     const emailMatch = content.match(/email[:\s]+([^\s]+)/i);
@@ -288,7 +310,7 @@ const setAttributeAction: Action = {
     const departmentMatch = content.match(/department[:\s]+([^\s]+)/i);
     const salaryMatch = content.match(/salary[:\s]+(\d+)/i);
     const locationMatch = content.match(/location[:\s]+([^\s]+)/i);
-    
+
     if (ageMatch) {
       key = "age";
       value = parseInt(ageMatch[1]);
@@ -324,11 +346,11 @@ const setAttributeAction: Action = {
         if (!isNaN(numValue)) value = numValue;
       }
     }
-    
+
     entity.attributes[key] = value;
-    
+
     const text = `Set attribute on ${entity.name}: ${key} = ${value}`;
-    
+
     if (callback) {
       await callback({ text, source: message.content.source });
     }
@@ -371,26 +393,27 @@ const setAttributeAction: Action = {
 const queryRelationshipsAction: Action = {
   name: "QUERY_RELATIONSHIPS",
   similes: ["FIND_RELATIONSHIPS", "GET_CONNECTIONS", "SHOW_LINKS"],
-  description: "Query relationships of a specific type or for a specific entity.",
+  description:
+    "Query relationships of a specific type or for a specific entity.",
   validate: async () => true,
   handler: async (
     _runtime: IAgentRuntime,
     message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const relState = getRelationalState(state);
     const content = message.content.text?.toLowerCase() || "";
-    
+
     let results: any[] = [];
     let queryDescription = "";
-    
+
     // Query by relationship type
     if (content.includes("parent")) {
       results = Object.values(relState.relationships)
-        .filter(r => r.type === "parent_child")
-        .map(r => ({
+        .filter((r) => r.type === "parent_child")
+        .map((r) => ({
           type: r.type,
           from: relState.entities[r.fromEntity]?.name || r.fromEntity,
           to: relState.entities[r.toEntity]?.name || r.toEntity,
@@ -398,36 +421,40 @@ const queryRelationshipsAction: Action = {
       queryDescription = "parent-child relationships";
     } else if (content.includes("sibling")) {
       results = Object.values(relState.relationships)
-        .filter(r => r.type === "sibling")
-        .map(r => ({
+        .filter((r) => r.type === "sibling")
+        .map((r) => ({
           type: r.type,
           from: relState.entities[r.fromEntity]?.name || r.fromEntity,
           to: relState.entities[r.toEntity]?.name || r.toEntity,
         }));
       queryDescription = "sibling relationships";
     } else if (content.includes("all")) {
-      results = Object.values(relState.relationships)
-        .map(r => ({
-          type: r.type,
-          from: relState.entities[r.fromEntity]?.name || r.fromEntity,
-          to: relState.entities[r.toEntity]?.name || r.toEntity,
-        }));
+      results = Object.values(relState.relationships).map((r) => ({
+        type: r.type,
+        from: relState.entities[r.fromEntity]?.name || r.fromEntity,
+        to: relState.entities[r.toEntity]?.name || r.toEntity,
+      }));
       queryDescription = "all relationships";
     } else if (relState.currentEntity) {
       // Query relationships for current entity
       results = Object.values(relState.relationships)
-        .filter(r => r.fromEntity === relState.currentEntity || r.toEntity === relState.currentEntity)
-        .map(r => ({
+        .filter(
+          (r) =>
+            r.fromEntity === relState.currentEntity ||
+            r.toEntity === relState.currentEntity,
+        )
+        .map((r) => ({
           type: r.type,
           from: relState.entities[r.fromEntity]?.name || r.fromEntity,
           to: relState.entities[r.toEntity]?.name || r.toEntity,
-          direction: r.fromEntity === relState.currentEntity ? "outgoing" : "incoming",
+          direction:
+            r.fromEntity === relState.currentEntity ? "outgoing" : "incoming",
         }));
       queryDescription = `relationships for ${relState.entities[relState.currentEntity]?.name}`;
     }
-    
+
     const text = `Found ${results.length} ${queryDescription}`;
-    
+
     if (callback) {
       await callback({ text, source: message.content.source });
     }
@@ -476,23 +503,29 @@ const queryEntitiesAction: Action = {
     message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const relState = getRelationalState(state);
     const content = message.content.text?.toLowerCase() || "";
-    
+
     let results: Entity[] = [];
     let queryDescription = "";
-    
+
     // Query by entity type
     if (content.includes("person")) {
-      results = Object.values(relState.entities).filter(e => e.type === "person");
+      results = Object.values(relState.entities).filter(
+        (e) => e.type === "person",
+      );
       queryDescription = "person entities";
     } else if (content.includes("company")) {
-      results = Object.values(relState.entities).filter(e => e.type === "company");
+      results = Object.values(relState.entities).filter(
+        (e) => e.type === "company",
+      );
       queryDescription = "company entities";
     } else if (content.includes("product")) {
-      results = Object.values(relState.entities).filter(e => e.type === "product");
+      results = Object.values(relState.entities).filter(
+        (e) => e.type === "product",
+      );
       queryDescription = "product entities";
     } else if (content.includes("all")) {
       results = Object.values(relState.entities);
@@ -502,7 +535,7 @@ const queryEntitiesAction: Action = {
       const ageMatch = content.match(/age\s*[><=]+\s*(\d+)/);
       if (ageMatch) {
         const age = parseInt(ageMatch[1]);
-        results = Object.values(relState.entities).filter(e => {
+        results = Object.values(relState.entities).filter((e) => {
           const entityAge = e.attributes.age;
           if (typeof entityAge !== "number") return false;
           if (content.includes(">")) return entityAge > age;
@@ -516,16 +549,16 @@ const queryEntitiesAction: Action = {
         queryDescription = "all entities";
       }
     }
-    
-    const resultSummary = results.map(e => ({
+
+    const resultSummary = results.map((e) => ({
       id: e.id,
       name: e.name,
       type: e.type,
       attributes: e.attributes,
     }));
-    
+
     const text = `Found ${results.length} ${queryDescription}`;
-    
+
     if (callback) {
       await callback({ text, source: message.content.source });
     }
@@ -568,7 +601,11 @@ const selectEntityAction: Action = {
   name: "SELECT_ENTITY",
   similes: ["CHOOSE_ENTITY", "FOCUS_ENTITY", "SET_CURRENT_ENTITY"],
   description: "Select an entity as the current entity for operations.",
-  validate: async (_runtime: IAgentRuntime, _message: Memory, state?: State) => {
+  validate: async (
+    _runtime: IAgentRuntime,
+    _message: Memory,
+    state?: State,
+  ) => {
     const relState = getRelationalState(state);
     return Object.keys(relState.entities).length > 0;
   },
@@ -577,11 +614,11 @@ const selectEntityAction: Action = {
     message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const relState = getRelationalState(state);
     const content = message.content.text || "";
-    
+
     if (Object.keys(relState.entities).length === 0) {
       return {
         success: false,
@@ -589,27 +626,27 @@ const selectEntityAction: Action = {
         values: state?.values || {},
       };
     }
-    
+
     // Try to find entity by name
     let selectedEntity: Entity | undefined;
-    
+
     for (const entity of Object.values(relState.entities)) {
       if (content.toLowerCase().includes(entity.name.toLowerCase())) {
         selectedEntity = entity;
         break;
       }
     }
-    
+
     // If no match by name, select the most recent entity
     if (!selectedEntity) {
       const entities = Object.values(relState.entities);
       selectedEntity = entities[entities.length - 1];
     }
-    
+
     relState.currentEntity = selectedEntity.id;
-    
+
     const text = `Selected entity: ${selectedEntity.name} (${selectedEntity.type})`;
-    
+
     if (callback) {
       await callback({ text, source: message.content.source });
     }
@@ -650,19 +687,26 @@ const deleteEntityAction: Action = {
   name: "DELETE_ENTITY",
   similes: ["REMOVE_ENTITY", "DESTROY_ENTITY"],
   description: "Delete the current entity and all its relationships.",
-  validate: async (_runtime: IAgentRuntime, _message: Memory, state?: State) => {
+  validate: async (
+    _runtime: IAgentRuntime,
+    _message: Memory,
+    state?: State,
+  ) => {
     const relState = getRelationalState(state);
-    return relState.currentEntity !== null && relState.entities[relState.currentEntity] !== undefined;
+    return (
+      relState.currentEntity !== null &&
+      relState.entities[relState.currentEntity] !== undefined
+    );
   },
   handler: async (
     _runtime: IAgentRuntime,
     message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const relState = getRelationalState(state);
-    
+
     if (!relState.currentEntity || !relState.entities[relState.currentEntity]) {
       return {
         success: false,
@@ -670,29 +714,32 @@ const deleteEntityAction: Action = {
         values: state?.values || {},
       };
     }
-    
+
     const entity = relState.entities[relState.currentEntity];
     const entityName = entity.name;
-    
+
     // Delete the entity
     delete relState.entities[relState.currentEntity];
-    
+
     // Delete all relationships involving this entity
     const relationshipsToDelete: string[] = [];
     for (const [relId, rel] of Object.entries(relState.relationships)) {
-      if (rel.fromEntity === relState.currentEntity || rel.toEntity === relState.currentEntity) {
+      if (
+        rel.fromEntity === relState.currentEntity ||
+        rel.toEntity === relState.currentEntity
+      ) {
         relationshipsToDelete.push(relId);
       }
     }
-    
+
     for (const relId of relationshipsToDelete) {
       delete relState.relationships[relId];
     }
-    
+
     relState.currentEntity = null;
-    
+
     const text = `Deleted entity: ${entityName} and ${relationshipsToDelete.length} relationships`;
-    
+
     if (callback) {
       await callback({ text, source: message.content.source });
     }
@@ -743,43 +790,45 @@ const countStatisticsAction: Action = {
     message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const relState = getRelationalState(state);
-    
+
     // Calculate statistics
     const totalEntities = Object.keys(relState.entities).length;
     const totalRelationships = Object.keys(relState.relationships).length;
-    
+
     // Count entities by type
     const entityTypes: Record<string, number> = {};
     for (const entity of Object.values(relState.entities)) {
       entityTypes[entity.type] = (entityTypes[entity.type] || 0) + 1;
     }
-    
+
     // Count relationships by type
     const relationshipTypes: Record<string, number> = {};
     for (const rel of Object.values(relState.relationships)) {
       relationshipTypes[rel.type] = (relationshipTypes[rel.type] || 0) + 1;
     }
-    
+
     // Count total attributes
     let totalAttributes = 0;
     for (const entity of Object.values(relState.entities)) {
       totalAttributes += Object.keys(entity.attributes).length;
     }
-    
+
     const stats = {
       totalEntities,
       totalRelationships,
       totalAttributes,
       entityTypes,
       relationshipTypes,
-      currentEntity: relState.currentEntity ? relState.entities[relState.currentEntity]?.name : "none",
+      currentEntity: relState.currentEntity
+        ? relState.entities[relState.currentEntity]?.name
+        : "none",
     };
-    
+
     const text = `Graph statistics: ${totalEntities} entities, ${totalRelationships} relationships, ${totalAttributes} attributes`;
-    
+
     if (callback) {
       await callback({ text, source: message.content.source });
     }
@@ -826,10 +875,10 @@ const clearGraphAction: Action = {
     message: Memory,
     _state?: State,
     _options?: Record<string, unknown>,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const text = "Cleared all entities and relationships";
-    
+
     if (callback) {
       await callback({ text, source: message.content.source });
     }
@@ -870,8 +919,13 @@ const clearGraphAction: Action = {
 const findPathAction: Action = {
   name: "FIND_PATH",
   similes: ["PATH", "ROUTE", "CONNECTION_PATH"],
-  description: "Find the shortest path between two entities in the relationship graph.",
-  validate: async (_runtime: IAgentRuntime, _message: Memory, state?: State) => {
+  description:
+    "Find the shortest path between two entities in the relationship graph.",
+  validate: async (
+    _runtime: IAgentRuntime,
+    _message: Memory,
+    state?: State,
+  ) => {
     const relState = getRelationalState(state);
     return Object.keys(relState.entities).length >= 2;
   },
@@ -880,10 +934,10 @@ const findPathAction: Action = {
     message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const relState = getRelationalState(state);
-    
+
     if (Object.keys(relState.entities).length < 2) {
       return {
         success: false,
@@ -891,39 +945,41 @@ const findPathAction: Action = {
         values: state?.values || {},
       };
     }
-    
+
     // Simple BFS path finding
     const entities = Object.values(relState.entities);
     const start = entities[0];
     const end = entities[entities.length - 1];
-    
+
     // Build adjacency list
     const adjacency: Record<string, Set<string>> = {};
     for (const entity of entities) {
       adjacency[entity.id] = new Set();
     }
-    
+
     for (const rel of Object.values(relState.relationships)) {
       adjacency[rel.fromEntity]?.add(rel.toEntity);
       adjacency[rel.toEntity]?.add(rel.fromEntity); // Treat as undirected for path finding
     }
-    
+
     // BFS to find shortest path
-    const queue: Array<{ node: string; path: string[] }> = [{ node: start.id, path: [start.id] }];
+    const queue: Array<{ node: string; path: string[] }> = [
+      { node: start.id, path: [start.id] },
+    ];
     const visited = new Set<string>();
     let foundPath: string[] = [];
-    
+
     while (queue.length > 0) {
       const current = queue.shift()!;
-      
+
       if (current.node === end.id) {
         foundPath = current.path;
         break;
       }
-      
+
       if (visited.has(current.node)) continue;
       visited.add(current.node);
-      
+
       for (const neighbor of adjacency[current.node] || []) {
         if (!visited.has(neighbor)) {
           queue.push({
@@ -933,12 +989,13 @@ const findPathAction: Action = {
         }
       }
     }
-    
-    const pathNames = foundPath.map(id => relState.entities[id]?.name || id);
-    const text = foundPath.length > 0
-      ? `Found path: ${pathNames.join(" → ")}`
-      : `No path found between ${start.name} and ${end.name}`;
-    
+
+    const pathNames = foundPath.map((id) => relState.entities[id]?.name || id);
+    const text =
+      foundPath.length > 0
+        ? `Found path: ${pathNames.join(" → ")}`
+        : `No path found between ${start.name} and ${end.name}`;
+
     if (callback) {
       await callback({ text, source: message.content.source });
     }

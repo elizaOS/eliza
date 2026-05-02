@@ -12,119 +12,119 @@
 const externalDeps = ["@elizaos/core", "zod"];
 
 async function build(): Promise<void> {
-	const totalStart = Date.now();
+  const totalStart = Date.now();
 
-	// Node ESM build
-	const nodeStart = Date.now();
-	console.log("🔨 Building @elizaos/plugin-x for Node (ESM)...");
+  // Node ESM build
+  const nodeStart = Date.now();
+  console.log("🔨 Building @elizaos/plugin-x for Node (ESM)...");
 
-	const nodeResult = await Bun.build({
-		entrypoints: ["index.node.ts"],
-		outdir: "dist/node",
-		target: "node",
-		format: "esm",
-		sourcemap: "external",
-		minify: false,
-		external: externalDeps,
-	});
+  const nodeResult = await Bun.build({
+    entrypoints: ["index.node.ts"],
+    outdir: "dist/node",
+    target: "node",
+    format: "esm",
+    sourcemap: "external",
+    minify: false,
+    external: externalDeps,
+  });
 
-	if (!nodeResult.success) {
-		console.error("Node ESM build failed:", nodeResult.logs);
-		throw new Error("Node ESM build failed");
-	}
+  if (!nodeResult.success) {
+    console.error("Node ESM build failed:", nodeResult.logs);
+    throw new Error("Node ESM build failed");
+  }
 
-	console.log(
-		`✅ Node ESM build complete in ${((Date.now() - nodeStart) / 1000).toFixed(2)}s`,
-	);
+  console.log(
+    `✅ Node ESM build complete in ${((Date.now() - nodeStart) / 1000).toFixed(2)}s`,
+  );
 
-	// Browser ESM build
-	const browserStart = Date.now();
-	console.log("🌐 Building @elizaos/plugin-x for Browser...");
+  // Browser ESM build
+  const browserStart = Date.now();
+  console.log("🌐 Building @elizaos/plugin-x for Browser...");
 
-	const browserResult = await Bun.build({
-		entrypoints: ["index.browser.ts"],
-		outdir: "dist/browser",
-		target: "browser",
-		format: "esm",
-		sourcemap: "external",
-		minify: true,
-		external: externalDeps,
-	});
+  const browserResult = await Bun.build({
+    entrypoints: ["index.browser.ts"],
+    outdir: "dist/browser",
+    target: "browser",
+    format: "esm",
+    sourcemap: "external",
+    minify: true,
+    external: externalDeps,
+  });
 
-	if (!browserResult.success) {
-		console.error("Browser build failed:", browserResult.logs);
-		throw new Error("Browser build failed");
-	}
+  if (!browserResult.success) {
+    console.error("Browser build failed:", browserResult.logs);
+    throw new Error("Browser build failed");
+  }
 
-	console.log(
-		`✅ Browser build complete in ${((Date.now() - browserStart) / 1000).toFixed(2)}s`,
-	);
+  console.log(
+    `✅ Browser build complete in ${((Date.now() - browserStart) / 1000).toFixed(2)}s`,
+  );
 
-	// Node CJS build
-	const cjsStart = Date.now();
-	console.log("🧱 Building @elizaos/plugin-x for Node (CJS)...");
+  // Node CJS build
+  const cjsStart = Date.now();
+  console.log("🧱 Building @elizaos/plugin-x for Node (CJS)...");
 
-	const cjsResult = await Bun.build({
-		entrypoints: ["index.node.ts"],
-		outdir: "dist/cjs",
-		target: "node",
-		format: "cjs",
-		sourcemap: "external",
-		minify: false,
-		external: externalDeps,
-	});
+  const cjsResult = await Bun.build({
+    entrypoints: ["index.node.ts"],
+    outdir: "dist/cjs",
+    target: "node",
+    format: "cjs",
+    sourcemap: "external",
+    minify: false,
+    external: externalDeps,
+  });
 
-	if (!cjsResult.success) {
-		console.error("Node CJS build failed:", cjsResult.logs);
-		throw new Error("Node CJS build failed");
-	}
+  if (!cjsResult.success) {
+    console.error("Node CJS build failed:", cjsResult.logs);
+    throw new Error("Node CJS build failed");
+  }
 
-	// Rename .js to .cjs for correct module resolution
-	const { rename, access } = await import("node:fs/promises");
-	try {
-		await access("dist/cjs/index.node.js");
-		await rename("dist/cjs/index.node.js", "dist/cjs/index.node.cjs");
-	} catch {
-		console.warn("CJS rename step warning: file may not exist");
-	}
+  // Rename .js to .cjs for correct module resolution
+  const { rename, access } = await import("node:fs/promises");
+  try {
+    await access("dist/cjs/index.node.js");
+    await rename("dist/cjs/index.node.js", "dist/cjs/index.node.cjs");
+  } catch {
+    console.warn("CJS rename step warning: file may not exist");
+  }
 
-	console.log(
-		`✅ Node CJS build complete in ${((Date.now() - cjsStart) / 1000).toFixed(2)}s`,
-	);
+  console.log(
+    `✅ Node CJS build complete in ${((Date.now() - cjsStart) / 1000).toFixed(2)}s`,
+  );
 
-	// TypeScript declarations
-	const dtsStart = Date.now();
-	console.log("📝 Generating TypeScript declarations...");
+  // TypeScript declarations
+  const dtsStart = Date.now();
+  console.log("📝 Generating TypeScript declarations...");
 
-	const { mkdir, writeFile } = await import("node:fs/promises");
-	const { $ } = await import("bun");
+  const { mkdir, writeFile } = await import("node:fs/promises");
+  const { $ } = await import("bun");
 
-	await $`tsc --project tsconfig.build.json`;
+  await $`tsc --project tsconfig.build.json`;
 
-	// Create output directories
-	await mkdir("dist", { recursive: true });
-	await mkdir("dist/node", { recursive: true });
-	await mkdir("dist/browser", { recursive: true });
-	await mkdir("dist/cjs", { recursive: true });
+  // Create output directories
+  await mkdir("dist", { recursive: true });
+  await mkdir("dist/node", { recursive: true });
+  await mkdir("dist/browser", { recursive: true });
+  await mkdir("dist/cjs", { recursive: true });
 
-	// Create re-export declaration files for each entry point
-	const reexportDeclaration = `export * from '../index';
+  // Create re-export declaration files for each entry point
+  const reexportDeclaration = `export * from '../index';
 export { default } from '../index';
 `;
 
-	await writeFile("dist/node/index.d.ts", reexportDeclaration);
-	await writeFile("dist/browser/index.d.ts", reexportDeclaration);
-	await writeFile("dist/cjs/index.d.ts", reexportDeclaration);
+  await writeFile("dist/node/index.d.ts", reexportDeclaration);
+  await writeFile("dist/browser/index.d.ts", reexportDeclaration);
+  await writeFile("dist/cjs/index.d.ts", reexportDeclaration);
 
-	console.log(
-		`✅ Declarations generated in ${((Date.now() - dtsStart) / 1000).toFixed(2)}s`,
-	);
+  console.log(
+    `✅ Declarations generated in ${((Date.now() - dtsStart) / 1000).toFixed(2)}s`,
+  );
 
-	const totalTime = ((Date.now() - totalStart) / 1000).toFixed(2);
-	console.log(`🎉 All builds finished in ${totalTime}s`);
+  const totalTime = ((Date.now() - totalStart) / 1000).toFixed(2);
+  console.log(`🎉 All builds finished in ${totalTime}s`);
 }
 
 build().catch((err) => {
-	console.error("Build failed:", err);
-	process.exit(1);
+  console.error("Build failed:", err);
+  process.exit(1);
 });

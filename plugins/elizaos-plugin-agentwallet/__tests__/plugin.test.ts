@@ -88,6 +88,7 @@ jest.mock('agentwallet-sdk', () => ({
   })),
   SwapModule: jest.fn().mockImplementation(() => mockSwapModuleInstance),
   UnifiedBridge: jest.fn().mockImplementation(() => mockUnifiedBridgeInstance),
+  BridgeModule: jest.fn().mockImplementation(() => mockUnifiedBridgeInstance),
   createX402Client: jest.fn().mockReturnValue(mockX402ClientInstance),
   createBridge: jest.fn(),
 }));
@@ -238,13 +239,13 @@ describe('Action handlers', () => {
 // ── Provider tests ────────────────────────────────────────────────────────────
 describe('Wallet provider', () => {
   it('returns wallet state as formatted string', async () => {
-    const result = await walletProvider.get(mockRuntime, mockMessage(''), undefined);
+    const result = await walletProvider.get(mockRuntime, mockMessage(''), {} as any);
     expect(result).toContain('0xMockContractAddress');
     expect(result).toContain('ETH');
   });
 
   it('returns config error when no private key', async () => {
-    const result = await walletProvider.get(mockRuntimeNoKey, mockMessage(''), undefined);
+    const result = await walletProvider.get(mockRuntimeNoKey, mockMessage(''), {} as any);
     expect(result).toContain('not configured');
   });
 });

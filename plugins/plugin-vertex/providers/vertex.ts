@@ -2,6 +2,7 @@ import { createVertex } from "@ai-sdk/google-vertex";
 import { createVertexAnthropic } from "@ai-sdk/google-vertex/anthropic";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import type { LanguageModel } from "ai";
 
 type ModelProvider = "anthropic" | "google";
 
@@ -51,7 +52,7 @@ export function createGoogleClient(runtime: IAgentRuntime) {
   return createVertex({ project, location });
 }
 
-export function createModelForName(runtime: IAgentRuntime, modelName: string) {
+export function createModelForName(runtime: IAgentRuntime, modelName: string): LanguageModel {
   const provider = detectProvider(modelName);
   if (provider === "google") {
     return createGoogleClient(runtime)(modelName);

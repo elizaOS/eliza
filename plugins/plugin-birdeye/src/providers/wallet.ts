@@ -1,7 +1,7 @@
-import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { extractChain } from "../utils";
-import { BIRDEYE_SERVICE_NAME } from "../constants";
-import { BirdeyeService } from "../service";
+import type { IAgentRuntime, Memory, Provider, State } from '@elizaos/core';
+import { extractChain } from '../utils';
+import { BIRDEYE_SERVICE_NAME } from '../constants';
+import { BirdeyeService } from '../service';
 
 /**
  * Provider for Birdeye trending coins
@@ -24,92 +24,88 @@ import { BirdeyeService } from "../service";
  * @returns {Object} Object containing data, values, and text related to actions
  */
 export const tradePortfolioProvider: Provider = {
-	name: "BIRDEYE_TRADE_PORTFOLIO",
-	description: "A list of your trades",
-	dynamic: true,
-	//position: -1,
-	get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
-		try {
-			//runtime.logger.debug('birdeye:provider - get portfolio');
+    name: 'BIRDEYE_TRADE_PORTFOLIO',
+    description: 'A list of your trades',
+    dynamic: true,
+    //position: -1,
+    get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
+        try {
+            //runtime.logger.debug('birdeye:provider - get portfolio');
 
-			// Get all sentiments
-			//const chains = ['solana', 'base'];
+            // Get all sentiments
+            //const chains = ['solana', 'base'];
 
-			const walletAddr = runtime.getSetting("BIRDEYE_WALLET_ADDR");
+            const walletAddr = runtime.getSetting('BIRDEYE_WALLET_ADDR');
 
-			// Guard against undefined wallet address
-			if (!walletAddr) {
-				runtime.logger?.error("BIRDEYE_WALLET_ADDR setting is not configured");
-				return {
-					values: {},
-					text: "Wallet address is not configured. Please set BIRDEYE_WALLET_ADDR.",
-					data: {},
-				};
-			}
+            // Guard against undefined wallet address
+            if (!walletAddr) {
+                runtime.logger?.error('BIRDEYE_WALLET_ADDR setting is not configured');
+                return {
+                    values: {},
+                    text: 'Wallet address is not configured. Please set BIRDEYE_WALLET_ADDR.',
+                    data: {},
+                };
+            }
 
-			// Get explicit chain setting if provided
-			const explicitChain = runtime.getSetting("BIRDEYE_CHAIN");
-			const chain = extractChain(walletAddr, explicitChain);
+            // Get explicit chain setting if provided
+            const explicitChain = runtime.getSetting('BIRDEYE_CHAIN');
+            const chain = extractChain(walletAddr, explicitChain);
 
-			// Guard against Birdeye service being unavailable
-			const beService = runtime.getService(
-				BIRDEYE_SERVICE_NAME,
-			) as BirdeyeService;
-			if (
-				!beService ||
-				typeof beService.fetchWalletTokenList !== "function" ||
-				typeof beService.fetchWalletTxList !== "function"
-			) {
-				runtime.logger?.error(
-					"Birdeye service is unavailable or missing required methods",
-				);
-				return {
-					values: {},
-					text: "Birdeye trade history service is currently unavailable. Please try again later.",
-					data: {},
-				};
-			}
+            // Guard against Birdeye service being unavailable
+            const beService = runtime.getService(BIRDEYE_SERVICE_NAME) as BirdeyeService;
+            if (
+                !beService ||
+                typeof beService.fetchWalletTokenList !== 'function' ||
+                typeof beService.fetchWalletTxList !== 'function'
+            ) {
+                runtime.logger?.error('Birdeye service is unavailable or missing required methods');
+                return {
+                    values: {},
+                    text: 'Birdeye trade history service is currently unavailable. Please try again later.',
+                    data: {},
+                };
+            }
 
-			// if this is too slow, enable a task...
-			const [portfolio, trades] = await Promise.all([
-				beService.fetchWalletTokenList(chain, walletAddr, {
-					notOlderThan: 30 * 1000,
-				}),
-				beService.fetchWalletTxList(chain, walletAddr, {
-					notOlderThan: 30 * 1000,
-				}),
-			]);
+            // if this is too slow, enable a task...
+            const [portfolio, trades] = await Promise.all([
+                beService.fetchWalletTokenList(chain, walletAddr, {
+                    notOlderThan: 30 * 1000,
+                }),
+                beService.fetchWalletTxList(chain, walletAddr, {
+                    notOlderThan: 30 * 1000,
+                }),
+            ]);
 
-			// Guard against missing portfolio data
-			if (!portfolio?.wallet) {
-				runtime.logger?.warn("birdeye:provider - no portfolio data found");
-				return {
-					values: {},
-					text: "No portfolio data available.",
-					data: {},
-				};
-			}
+            // Guard against missing portfolio data
+            if (!portfolio?.wallet) {
+                runtime.logger?.warn('birdeye:provider - no portfolio data found');
+                return {
+                    values: {},
+                    text: 'No portfolio data available.',
+                    data: {},
+                };
+            }
 
-			/*
+            /*
       wallet: "3nMBmufBUBVnk28sTp3NsrSJsdVGTyLZYmsqpMFaUT9J",
       totalUsd: 87.17431256926011,
       items: [] tokens
       */
-			//console.log('birdeye:provider - got portfolio', portfolio);
+            //console.log('birdeye:provider - got portfolio', portfolio);
 
-			//runtime.logger.debug('birdeye:provider - got trades', trades.length);
-			//console.log('birdeye:provider - trades', trades)
-			if (!trades?.length) {
-				runtime.logger?.warn("birdeye:provider - no birdeye trade data found");
-				return {
-					values: {},
-					text: "No trade history found for this wallet.",
-					data: {},
-				};
-			}
+            //runtime.logger.debug('birdeye:provider - got trades', trades.length);
+            //console.log('birdeye:provider - trades', trades)
+            if (!trades?.length) {
+                runtime.logger?.warn('birdeye:provider - no birdeye trade data found');
+                return {
+                    values: {},
+                    text: 'No trade history found for this wallet.',
+                    data: {},
+                };
+            }
 
-			// trades
-			/*
+            // trades
+            /*
         }, {
           to: "11111111111111111111111111111111",
           fee: 11727,
@@ -133,53 +129,52 @@ export const tradePortfolioProvider: Provider = {
         }
       */
 
-			//runtime.logger.debug('birdeye:provider - birdeye token data', tokens)
+            //runtime.logger.debug('birdeye:provider - birdeye token data', tokens)
 
-			let promptInjection = `\nYour trades for ${portfolio.wallet} (value: $${portfolio.totalUsd || 0}usd):\n`;
+            let promptInjection = `\nYour trades for ${portfolio.wallet} (value: $${portfolio.totalUsd || 0}usd):\n`;
 
-			const historyStrings = [];
+            const historyStrings = [];
 
-			// TODO: Trade detail processing is disabled - the current balance change data structure
-			// is incomplete/inconsistent from the API. Re-enable once Birdeye API provides
-			// reliable balance change information in transaction responses.
+            // TODO: Trade detail processing is disabled - the current balance change data structure
+            // is incomplete/inconsistent from the API. Re-enable once Birdeye API provides
+            // reliable balance change information in transaction responses.
 
-			promptInjection += `${historyStrings.join("\n")}\n`;
+            promptInjection += `${historyStrings.join('\n')}\n`;
 
-			//console.log('birdeye:provider - cmc token text', latestTxt)
+            //console.log('birdeye:provider - cmc token text', latestTxt)
 
-			const data = {
-				portfolio,
-				trades,
-			};
+            const data = {
+                portfolio,
+                trades,
+            };
 
-			const values = {};
+            const values = {};
 
-			// Combine all text sections
-			const text = `${promptInjection}\n`;
+            // Combine all text sections
+            const text = `${promptInjection}\n`;
 
-			return {
-				data,
-				values,
-				text,
-			};
-		} catch (error) {
-			const errorMessage =
-				error instanceof Error ? error.message : String(error);
-			runtime.logger?.error(`Error fetching trade portfolio: ${errorMessage}`);
+            return {
+                data,
+                values,
+                text,
+            };
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            runtime.logger?.error(`Error fetching trade portfolio: ${errorMessage}`);
 
-			// If it's a configuration/validation error (from extractChain), show it to the user
-			const isConfigError =
-				errorMessage.includes("BIRDEYE_CHAIN") ||
-				errorMessage.includes("address") ||
-				errorMessage.includes("Invalid");
+            // If it's a configuration/validation error (from extractChain), show it to the user
+            const isConfigError =
+                errorMessage.includes('BIRDEYE_CHAIN') ||
+                errorMessage.includes('address') ||
+                errorMessage.includes('Invalid');
 
-			return {
-				values: {},
-				text: isConfigError
-					? errorMessage
-					: "Unable to fetch trade history at this time. Please try again later.",
-				data: {},
-			};
-		}
-	},
+            return {
+                values: {},
+                text: isConfigError
+                    ? errorMessage
+                    : 'Unable to fetch trade history at this time. Please try again later.',
+                data: {},
+            };
+        }
+    },
 };
