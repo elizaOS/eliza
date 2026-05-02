@@ -1,4 +1,5 @@
 import { Service, IAgentRuntime } from "@elizaos/core";
+import { cloudServiceApisBaseUrl, toRuntimeSettings } from "@elizaos/cloud-routing";
 import axios, { AxiosInstance } from "axios";
 import {
   DexScreenerPair,
@@ -29,23 +30,41 @@ export class DexScreenerService extends Service {
   static async start(runtime: IAgentRuntime): Promise<Service> {
     const service = new DexScreenerService(runtime);
 
-    // Initialize configuration
+    const customBase = String(runtime.getSetting("DEXSCREENER_API_URL") ?? "").trim();
+    const delayRaw = runtime.getSetting("DEXSCREENER_RATE_LIMIT_DELAY");
+    const delayParsed = Number.parseInt(
+      typeof delayRaw === "number" ? String(delayRaw) : String(delayRaw ?? "100"),
+      10,
+    );
+    const rateLimitDelay = Number.isFinite(delayParsed) ? delayParsed : 100;
+
+    let apiUrl: string;
+    const authHeaders: Record<string, string> = {};
+
+    if (customBase.length > 0) {
+      apiUrl = customBase.replace(/\/+$/, "");
+    } else {
+      const cloud = cloudServiceApisBaseUrl(toRuntimeSettings(runtime), "dexscreener");
+      if (cloud !== null) {
+        apiUrl = cloud.baseUrl;
+        Object.assign(authHeaders, cloud.headers);
+      } else {
+        apiUrl = "https://api.dexscreener.com";
+      }
+    }
+
     service.dexConfig = {
-      apiUrl:
-        runtime.getSetting("DEXSCREENER_API_URL") ||
-        "https://api.dexscreener.com",
-      rateLimitDelay: parseInt(
-        runtime.getSetting("DEXSCREENER_RATE_LIMIT_DELAY") || "100"
-      ),
+      apiUrl,
+      rateLimitDelay,
     };
 
-    // Initialize API client
     service.api = axios.create({
-      baseURL: service.dexConfig.apiUrl,
+      baseURL: apiUrl,
       timeout: 10000,
       headers: {
         Accept: "application/json",
         "User-Agent": "ElizaOS-DexScreener-Plugin/1.0",
+        ...authHeaders,
       },
     });
 

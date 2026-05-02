@@ -1,7 +1,7 @@
 import type { IAgentRuntime, Plugin, ServiceTypeName } from '@elizaos/core';
 import { parseBooleanFromText } from '@elizaos/core';
 
-import { resolveCloudRoute } from '@elizaos/cloud-routing';
+import { resolveCloudRoute, toRuntimeSettings } from '@elizaos/cloud-routing';
 import { BIRDEYE_SERVICE_NAME } from './constants';
 
 import { tokenSearchAddressAction } from "./actions/token-search-address";
@@ -10,7 +10,7 @@ import { walletSearchAddressAction } from "./actions/wallet-search-address";
 
 import Birdeye from './tasks/birdeye';
 
-import { BIRDEYE_ROUTE_SPEC, BirdeyeService, toCloudRoutingSettings } from './service';
+import { BIRDEYE_ROUTE_SPEC, BirdeyeService } from './service';
 
 import { agentPortfolioProvider } from "./providers/agent-portfolio-provider";
 import { trendingProvider } from './providers/trending';
@@ -49,7 +49,7 @@ export const birdeyePlugin: Plugin = {
       })
     });
 
-    const birdeyeRoute = resolveCloudRoute(toCloudRoutingSettings(runtime), BIRDEYE_ROUTE_SPEC);
+    const birdeyeRoute = resolveCloudRoute(toRuntimeSettings(runtime), BIRDEYE_ROUTE_SPEC);
     if (birdeyeRoute.source === 'disabled') {
       runtime.logger.log(
         'birdeye: no BIRDEYE_API_KEY and Eliza Cloud not connected, skipping plugin-birdeye init',

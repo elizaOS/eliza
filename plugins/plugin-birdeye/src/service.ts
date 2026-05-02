@@ -1,5 +1,5 @@
 import { type IAgentRuntime, Service } from '@elizaos/core';
-import { resolveCloudRoute, type RouteSpec, type RuntimeSettings } from '@elizaos/cloud-routing';
+import { resolveCloudRoute, toRuntimeSettings, type RouteSpec } from '@elizaos/cloud-routing';
 import { BIRDEYE_SERVICE_NAME } from './constants';
 import type { BirdeyeSupportedChain, IToken, GetCacheTimedOptions } from "./types/shared";
 import { extractChain } from './utils';
@@ -11,18 +11,6 @@ export const BIRDEYE_ROUTE_SPEC: RouteSpec = {
   upstreamBaseUrl: 'https://public-api.birdeye.so',
   localKeyAuth: { kind: 'header', headerName: 'X-API-KEY' },
 };
-
-/** Narrow runtime settings for `@elizaos/cloud-routing` without duplicate `IAgentRuntime` types in DTS. */
-export function toCloudRoutingSettings(runtime: IAgentRuntime): RuntimeSettings {
-  return {
-    getSetting: (key: string) => {
-      const v = runtime.getSetting(key);
-      if (v === null || v === undefined) return v;
-      if (typeof v === "string" || typeof v === "boolean" || typeof v === "number") return v;
-      return String(v);
-    },
-  };
-}
 
 // Cache defaults for backwards compatibility
 const CACHE_DEFAULTS = {
@@ -50,7 +38,7 @@ export class BirdeyeService extends Service {
     if (!this.runtime) {
       throw new Error("BirdeyeService requires a runtime");
     }
-    const route = resolveCloudRoute(toCloudRoutingSettings(this.runtime), BIRDEYE_ROUTE_SPEC);
+    const route = resolveCloudRoute(toRuntimeSettings(this.runtime), BIRDEYE_ROUTE_SPEC);
     if (route.source === 'disabled') {
       throw new Error(
         'BirdeyeService requires BIRDEYE_API_KEY or Eliza Cloud (ELIZAOS_CLOUD_API_KEY + ELIZAOS_CLOUD_ENABLED).',
