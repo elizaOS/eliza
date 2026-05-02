@@ -1,25 +1,15 @@
 /**
- * Side-effect entry point — registers the Contacts overlay app on Android only.
+ * Side-effect entry point — registers the Contacts overlay app on MiladyOS only.
  *
- * Other platforms (web, iOS, desktop) get a no-op so the same import is safe
- * everywhere. Web/iOS callers will simply not see Contacts in the apps catalog.
+ * Stock Android, web, iOS, and desktop get a no-op so the same import is safe
+ * everywhere. Non-MiladyOS callers will simply not see Contacts in the apps catalog.
  *
  *   import "@elizaos/app-contacts/register";
  */
 
+import { isMiladyOS } from "@elizaos/app-core";
 import { registerContactsApp } from "./components/contacts-app";
 
-type CapacitorGlobal = {
-  Capacitor?: {
-    getPlatform?: () => string;
-  };
-};
-
-function getCapacitorPlatform(): string | undefined {
-  const cap = (globalThis as CapacitorGlobal).Capacitor;
-  return cap?.getPlatform?.();
-}
-
-if (getCapacitorPlatform() === "android") {
+if (isMiladyOS()) {
   registerContactsApp();
 }

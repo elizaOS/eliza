@@ -231,7 +231,12 @@ export function resolveReminderEscalationRoutingPolicy(args: {
   weights?: Partial<ReminderChannelRankingWeights>;
 }): ReminderEscalationRoutingPolicy {
   const urgency = args.urgency ?? "medium";
-  const screenBusy = args.activityProfile?.screenContextBusy === true;
+  const screenContextUsable =
+    args.activityProfile?.screenContextAvailable === true &&
+    args.activityProfile.screenContextStale !== true &&
+    (args.activityProfile.screenContextConfidence ?? 1) >= 0.5;
+  const screenBusy =
+    screenContextUsable && args.activityProfile?.screenContextBusy === true;
   const ownerActive = args.activityProfile?.isCurrentlyActive === true;
   const activeChannel = mapPlatformToReminderChannel(
     ownerActive ? args.activityProfile?.lastSeenPlatform : null,
@@ -506,7 +511,7 @@ export function shouldDeferReminderUntilComputerActive(args: {
   if (args.channel !== "in_app") {
     return false;
   }
-  if (args.urgency === "high" || args.urgency === "critical") {
+  if (args.urgency === "critical") {
     return false;
   }
   if (readReminderActivityGate(args.definition) !== "active_on_computer") {
@@ -531,6 +536,7 @@ export type ReminderOwnerResponseContext = {
   attemptedAt?: string | null;
   respondedAt?: string | number | Date | null;
   channel?: LifeOpsReminderChannel | null;
+  allowStandaloneResolution?: boolean;
 };
 
 export type ReminderOwnerResponseClassification = {
@@ -542,6 +548,7 @@ export type ReminderOwnerResponseClassification = {
 };
 
 const SNOOZE_RESPONSE_PATTERNS = [
+  /^\s*\d{1,3}\s*(m|min|mins|minute|minutes|h|hr|hrs|hour|hours)\s*$/i,
   /\b(snooze|remind me later|later|not now|in a bit)\b/i,
   /\b(remind me|ping me|nudge me)\s+(in|at|after|tomorrow|tonight)\b/i,
 ];
@@ -603,7 +610,16 @@ function responseReferencesReminder(
     return false;
   }
   const responseTokens = new Set(tokenizeReminderText(text));
-  return titleTokens.some((token) => responseTokens.has(token));
+  const matchingTokenCount = titleTokens.filter((token) =>
+    responseTokens.has(token),
+  ).length;
+  if (titleTokens.length === 1) {
+    return matchingTokenCount === 1 && titleTokens[0].length >= 4;
+  }
+  if (titleTokens.length === 2) {
+    return matchingTokenCount === 2;
+  }
+  return matchingTokenCount >= 2;
 }
 
 function resolveResponseTimestampMs(
@@ -650,6 +666,18 @@ function normalizeStandaloneResponse(value: string): string {
 
 function isStandaloneResolutionResponse(value: string): boolean {
   const normalized = normalizeStandaloneResponse(value);
+  if (
+    /^\d{1,3}\s*(m|min|mins|minute|minutes|h|hr|hrs|hour|hours)$/iu.test(
+      normalized,
+    )
+  ) {
+    return true;
+  }
+  if (
+    /^(remind me|ping me|nudge me)\s+(at|after|tomorrow)\b/iu.test(normalized)
+  ) {
+    return true;
+  }
   return (
     normalized === "done" ||
     normalized === "finished" ||
@@ -671,6 +699,7 @@ function isStandaloneResolutionResponse(value: string): boolean {
     normalized === "okay" ||
     normalized === "yep" ||
     normalized === "yes" ||
+    normalized === "snooze" ||
     normalized === "later" ||
     normalized === "not now" ||
     normalized === "in a bit" ||
@@ -687,6 +716,9 @@ function isResponseBoundToReminder(
   }
   if (responseReferencesReminder(text, context)) {
     return true;
+  }
+  if (context.allowStandaloneResolution === false) {
+    return false;
   }
   return (
     isPromptAdjacentResponse(context) && isStandaloneResolutionResponse(text)
@@ -768,9 +800,9 @@ export function parseReminderSnoozeRequestFromText(text: string): {
       };
     }
   }
-  const vagueSnooze = /\b(later|not now|in a bit|some other time)\b/u.test(
-    cleaned,
-  );
+  const vagueSnooze =
+    /\b(snooze|later|not now|in a bit|some other time)\b/u.test(cleaned) ||
+    /\b(remind me|ping me|nudge me)\s+(at|after|tomorrow)\b/u.test(cleaned);
   return {
     request: null,
     needsClarification: vagueSnooze,
@@ -822,11 +854,11 @@ export function classifyReminderOwnerResponseText(
       };
     }
     return {
-      decision: "explicit_resolution",
-      resolution: "snoozed",
-      snoozeRequest: { minutes: 30 },
-      confidence: 0.72,
-      reason: "snooze_language",
+      decision: "needs_clarification",
+      resolution: null,
+      snoozeRequest: null,
+      confidence: 0.62,
+      reason: "snooze_needs_duration",
     };
   }
   if (matchesAnyPattern(cleaned, SKIP_RESPONSE_PATTERNS)) {

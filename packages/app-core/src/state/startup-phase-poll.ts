@@ -182,6 +182,14 @@ export async function runPollingBackend(
       latestAuth = auth;
       if (cancelled.current) return;
       if (auth.required && !auth.authenticated && !client.hasToken()) {
+        if (auth.bootstrapRequired) {
+          deps.setAuthRequired(false);
+          deps.setOnboardingCloudProvisionedContainer(true);
+          deps.setOnboardingComplete(false);
+          deps.setOnboardingLoading(false);
+          dispatch({ type: "BACKEND_REACHED", onboardingComplete: false });
+          return;
+        }
         deps.setAuthRequired(true);
         deps.setPairingEnabled(auth.pairingEnabled);
         deps.setPairingExpiresAt(auth.expiresAt);

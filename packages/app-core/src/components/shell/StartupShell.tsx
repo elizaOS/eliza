@@ -76,6 +76,7 @@ export function StartupShell() {
   const {
     startupCoordinator,
     startupError,
+    onboardingCloudProvisionedContainer,
     retryStartup,
     setActionNotice,
     setState,
@@ -251,7 +252,10 @@ export function StartupShell() {
   // Onboarding — cloud-provisioned containers must exchange their bootstrap
   // token before reaching RuntimeGate. All other containers go straight through.
   if (phase === "onboarding-required") {
-    if (showBootstrap) {
+    if (
+      showBootstrap ||
+      (onboardingCloudProvisionedContainer && needsBootstrapSession())
+    ) {
       return (
         <BootstrapGateShell>
           <BootstrapStep onAdvance={handleBootstrapAdvance} />

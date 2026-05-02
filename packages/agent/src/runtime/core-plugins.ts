@@ -33,20 +33,20 @@ export const DESKTOP_ONLY_PLUGINS: readonly string[] = ["agent-orchestrator"];
 export const MOBILE_CORE_PLUGINS: readonly string[] = ["@elizaos/plugin-sql"];
 
 /**
- * Android-only overlay app plugins. Used when `MILADY_PLATFORM=android`,
+ * MiladyOS-only overlay app plugins. Used when the runtime is the custom
+ * Android OS build (`ELIZA_PLATFORM=android` plus `ELIZA_LOCAL_LLAMA=1`),
  * appended to `MOBILE_CORE_PLUGINS` in `collectPluginNames`. Each one is a
  * runtime-app plugin (the `/plugin` subpath of the matching overlay app)
- * that exposes the Android system surface — WiFi, Contacts, Phone — to
- * the agent as actions. The overlay UIs themselves register at app boot
- * via `@elizaos/app-{wifi,contacts,phone}/register` (see apps/app/src/main.tsx),
- * gated on `Capacitor.getPlatform() === "android"` so non-Android hosts
- * are no-ops.
+ * that exposes privileged system surfaces — WiFi, Contacts, Phone — to the
+ * agent as actions. The overlay UIs themselves register at app boot via
+ * `@elizaos/app-{wifi,contacts,phone}/register`, gated on `isMiladyOS()` so
+ * stock Android, iOS, web, and desktop are no-ops.
  *
- * iOS does not get these because the underlying capacitor-{wifi,contacts,
- * phone} native plugins have Android-only Kotlin sources. A separate iOS
- * tier would require Swift implementations that don't exist yet.
+ * Stock Android does not get these because Play Store style builds should not
+ * expose privileged OS-control surfaces merely because `Capacitor` reports
+ * `android`.
  */
-export const ANDROID_CORE_PLUGINS: readonly string[] = [
+export const MILADYOS_ANDROID_CORE_PLUGINS: readonly string[] = [
   "@elizaos/app-wifi",
   "@elizaos/app-contacts",
   "@elizaos/app-phone",

@@ -107,4 +107,31 @@ describe("runPollingBackend auth gates", () => {
     expect(deps.setPairingExpiresAt).toHaveBeenCalledWith(expiresAt);
     expect(events).toEqual([{ type: "BACKEND_AUTH_REQUIRED" }]);
   });
+
+  it("routes cloud bootstrap auth to bootstrap onboarding instead of pairing", async () => {
+    vi.spyOn(client, "hasToken").mockReturnValue(false);
+    vi.spyOn(client, "getAuthStatus").mockResolvedValue({
+      required: true,
+      authenticated: false,
+      loginRequired: false,
+      bootstrapRequired: true,
+      localAccess: false,
+      passwordConfigured: false,
+      pairingEnabled: false,
+      expiresAt: null,
+    });
+
+    const deps = createDeps();
+    const events = await runOnce(deps);
+
+    expect(deps.setAuthRequired).toHaveBeenCalledWith(false);
+    expect(deps.setOnboardingCloudProvisionedContainer).toHaveBeenCalledWith(
+      true,
+    );
+    expect(deps.setOnboardingComplete).toHaveBeenCalledWith(false);
+    expect(deps.setPairingEnabled).not.toHaveBeenCalled();
+    expect(events).toEqual([
+      { type: "BACKEND_REACHED", onboardingComplete: false },
+    ]);
+  });
 });
