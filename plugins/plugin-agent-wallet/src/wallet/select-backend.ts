@@ -16,15 +16,31 @@ function readMode(runtime: IAgentRuntime): WalletBackendMode {
 	return "auto";
 }
 
+function preferStewardInAuto(): boolean {
+	if (process.env.MILADY_WALLET_STEWARD_AUTO === "1") {
+		return true;
+	}
+	return process.env.ELIZA_CLOUD_PROVISIONED === "1";
+}
+
 /**
- * Resolves the active backend. Phase 1 will implement the full desktop/cloud/mobile matrix from the spec;
- * today `auto` always prefers **local** so desktop dev keeps working without Steward.
+ * Resolves the active wallet backend.
+ *
+ * - `local` — env keys only ({@link LocalEoaBackend}).
+ * - `steward` — Steward API signing ({@link StewardBackend}).
+ * - `auto` — Steward when cloud-provisioned or `MILADY_WALLET_STEWARD_AUTO=1`, otherwise local.
  */
 export async function resolveWalletBackend(
 	runtime: IAgentRuntime,
 ): Promise<WalletBackend> {
 	const mode = readMode(runtime);
 	if (mode === "steward") {
+		return StewardBackend.create(runtime);
+	}
+	if (mode === "local") {
+		return LocalEoaBackend.create(runtime);
+	}
+	if (preferStewardInAuto()) {
 		return StewardBackend.create(runtime);
 	}
 	return LocalEoaBackend.create(runtime);

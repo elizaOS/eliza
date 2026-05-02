@@ -18,8 +18,8 @@
     "baseUrl": "../../..",
     "ignoreDeprecations": "6.0",
     "paths": {
-      "@elizaos/core": ["packages/core/dist/node"],
-      "@elizaos/core/*": ["packages/core/dist/*"]
+      "@elizaos/core": ["packages/typescript/dist/node"],
+      "@elizaos/core/*": ["packages/typescript/dist/*"]
     }
   },
   "include": ["./**/*.ts"],

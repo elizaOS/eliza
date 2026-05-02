@@ -48,38 +48,6 @@ import {
   resolveWalletRpcReadiness,
 } from "./wallet-rpc.js";
 
-// Rate limiter for wallet export.
-// In test/CI mode the limit is relaxed to avoid blocking E2E suites.
-const IS_TEST = process.env.NODE_ENV === "test" || !!process.env.VITEST;
-const WALLET_EXPORT_MAX_ATTEMPTS = IS_TEST ? 500 : 5;
-const WALLET_EXPORT_WINDOW_MS = 15 * 60_000;
-const walletExportAttempts = new Map<
-  string,
-  { count: number; resetAt: number }
->();
-
-function rateLimitWalletExport(req: http.IncomingMessage): boolean {
-  const key = req.socket?.remoteAddress ?? "unknown";
-  const now = Date.now();
-  // Lazy sweep
-  if (walletExportAttempts.size > 50) {
-    for (const [k, v] of walletExportAttempts) {
-      if (now > v.resetAt) walletExportAttempts.delete(k);
-    }
-  }
-  const current = walletExportAttempts.get(key);
-  if (!current || now > current.resetAt) {
-    walletExportAttempts.set(key, {
-      count: 1,
-      resetAt: now + WALLET_EXPORT_WINDOW_MS,
-    });
-    return true;
-  }
-  if (current.count >= WALLET_EXPORT_MAX_ATTEMPTS) return false;
-  current.count += 1;
-  return true;
-}
-
 const WALLET_CONFIG_COMPAT_KEYS = new Set([
   "ALCHEMY_API_KEY",
   "INFURA_API_KEY",
@@ -399,7 +367,6 @@ export async function handleWalletRoutes(
     pathname,
     config,
     saveConfig,
-    resolveWalletExportRejection,
     readJsonBody,
     json,
     error,

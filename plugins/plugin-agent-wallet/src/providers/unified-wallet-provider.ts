@@ -29,12 +29,16 @@ export const unifiedWalletProvider: Provider = {
 		try {
 			const w = svc.getWalletBackend();
 			const { evm, solana } = w.getAddresses();
+			const evmLine = evm ? `- EVM: ${evm}` : "- EVM: (not configured)";
+			const solLine = solana
+				? `- Solana: ${solana.toBase58()}`
+				: "- Solana: (not configured)";
 			return {
-				text: `## Wallet\n- EVM: ${evm}\n- Solana: ${solana.toBase58()}`,
+				text: `## Wallet\n${evmLine}\n${solLine}`,
 				values: {
-					walletReady: true,
-					evmAddress: evm,
-					solanaAddress: solana.toBase58(),
+					walletReady: evm !== null || solana !== null,
+					evmAddress: evm ?? null,
+					solanaAddress: solana?.toBase58() ?? null,
 					backendKind: w.kind,
 				},
 			};
