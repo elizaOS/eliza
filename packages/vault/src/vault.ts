@@ -108,7 +108,6 @@ export function createVault(opts: CreateVaultOptions = {}): Vault {
   const root =
     opts.workDir ??
     process.env.ELIZA_STATE_DIR ??
-    process.env.ELIZA_STATE_DIR ??
     join(homedir(), `.${process.env.ELIZA_NAMESPACE?.trim() || "eliza"}`);
   const storePath = join(root, "vault.json");
   const auditPath = join(root, "audit", "vault.jsonl");

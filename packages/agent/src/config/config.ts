@@ -22,9 +22,7 @@ import type { ElizaConfig } from "./types.js";
 export * from "./types.js";
 
 function resolveConfigWritePath(env: NodeJS.ProcessEnv = process.env): string {
-  const persistPath =
-    env.ELIZA_PERSIST_CONFIG_PATH?.trim() ??
-    env.ELIZA_PERSIST_CONFIG_PATH?.trim();
+  const persistPath = env.ELIZA_PERSIST_CONFIG_PATH?.trim();
   return persistPath ? resolveUserPath(persistPath) : resolveConfigPath();
 }
 

@@ -163,9 +163,7 @@ const NATIVE_PLUGIN_ALIAS_ENTRIES = CAPACITOR_PLUGIN_NAMES.map((name) => ({
   replacement: path.join(nativePluginsRoot, `${name}/src/index.ts`),
 }));
 const CAPACITOR_BUILD_TARGET =
-  process.env.ELIZA_CAPACITOR_BUILD_TARGET ??
-  process.env.ELIZA_CAPACITOR_BUILD_TARGET ??
-  "";
+  process.env.ELIZA_CAPACITOR_BUILD_TARGET ?? "";
 const IS_CAPACITOR_MOBILE_BUILD =
   CAPACITOR_BUILD_TARGET === "ios" || CAPACITOR_BUILD_TARGET === "android";
 

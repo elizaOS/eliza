@@ -197,7 +197,7 @@ function readBundledModelManifest(modelsDir: string): {
 }
 
 function resolveStateDir(): string {
-  const explicit = process.env.ELIZA_STATE_DIR ?? process.env.ELIZA_STATE_DIR;
+  const explicit = process.env.ELIZA_STATE_DIR;
   if (explicit?.trim()) return explicit;
   // On AOSP we expect ELIZA_STATE_DIR to be set by ElizaAgentService.
   // Fall back to $HOME/.eliza so dev / non-Android exercise paths still

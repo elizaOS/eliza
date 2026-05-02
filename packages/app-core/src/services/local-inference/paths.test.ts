@@ -11,10 +11,8 @@ import {
 
 describe("paths", () => {
   let originalElizaStateDir: string | undefined;
-  let originalElizaStateDir: string | undefined;
 
   beforeEach(() => {
-    originalElizaStateDir = process.env.ELIZA_STATE_DIR;
     originalElizaStateDir = process.env.ELIZA_STATE_DIR;
   });
 
@@ -24,16 +22,10 @@ describe("paths", () => {
     } else {
       process.env.ELIZA_STATE_DIR = originalElizaStateDir;
     }
-    if (originalElizaStateDir === undefined) {
-      delete process.env.ELIZA_STATE_DIR;
-    } else {
-      process.env.ELIZA_STATE_DIR = originalElizaStateDir;
-    }
   });
 
   it("uses ELIZA_STATE_DIR when set", () => {
     process.env.ELIZA_STATE_DIR = "/eliza/state";
-    delete process.env.ELIZA_STATE_DIR;
     expect(localInferenceRoot()).toBe(
       path.join("/eliza/state", "local-inference"),
     );
@@ -48,27 +40,7 @@ describe("paths", () => {
     );
   });
 
-  it("uses ELIZA_STATE_DIR when ELIZA_STATE_DIR is unset", () => {
-    delete process.env.ELIZA_STATE_DIR;
-    process.env.ELIZA_STATE_DIR = "/custom/state";
-    expect(localInferenceRoot()).toBe(
-      path.join("/custom/state", "local-inference"),
-    );
-    expect(elizaModelsDir()).toBe(
-      path.join("/custom/state", "local-inference", "models"),
-    );
-  });
-
-  it("ELIZA_STATE_DIR wins over ELIZA_STATE_DIR when both set", () => {
-    process.env.ELIZA_STATE_DIR = "/eliza/state";
-    process.env.ELIZA_STATE_DIR = "/eliza/state";
-    expect(localInferenceRoot()).toBe(
-      path.join("/eliza/state", "local-inference"),
-    );
-  });
-
-  it("falls back to ~/.eliza/local-inference when both unset", () => {
-    delete process.env.ELIZA_STATE_DIR;
+  it("falls back to ~/.eliza/local-inference when ELIZA_STATE_DIR is unset", () => {
     delete process.env.ELIZA_STATE_DIR;
     expect(localInferenceRoot()).toBe(
       path.join(os.homedir(), ".eliza", "local-inference"),
@@ -76,7 +48,6 @@ describe("paths", () => {
   });
 
   it("isWithinElizaRoot rejects the root itself and external paths", () => {
-    delete process.env.ELIZA_STATE_DIR;
     process.env.ELIZA_STATE_DIR = "/state";
     const root = path.join("/state", "local-inference");
     expect(isWithinElizaRoot(root)).toBe(false);

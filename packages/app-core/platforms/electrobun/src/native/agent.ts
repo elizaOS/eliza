@@ -963,12 +963,7 @@ function shouldAutoRecoverPgliteFailure(line: string): boolean {
  * to restore the old “take over default port” behavior.
  */
 async function maybeReclaimPortWithSigkill(port: number): Promise<void> {
-  const raw = (
-    process.env.ELIZA_AGENT_RECLAIM_STALE_PORT ??
-    process.env.ELIZA_AGENT_RECLAIM_STALE_PORT
-  )
-    ?.trim()
-    .toLowerCase();
+  const raw = process.env.ELIZA_AGENT_RECLAIM_STALE_PORT?.trim().toLowerCase();
   if (raw !== "1" && raw !== "true" && raw !== "yes") {
     return;
   }

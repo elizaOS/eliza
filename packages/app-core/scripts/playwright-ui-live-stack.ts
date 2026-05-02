@@ -24,14 +24,8 @@ const UI_SMOKE_STUB_SCRIPT = path.join(
   "playwright-ui-smoke-api-stub.mjs",
 );
 const READY_TIMEOUT_MS = 180_000;
-const API_PORT = Number(
-  process.env.ELIZA_UI_SMOKE_API_PORT ??
-    process.env.ELIZA_UI_SMOKE_API_PORT ??
-    "31337",
-);
-const UI_PORT = Number(
-  process.env.ELIZA_UI_SMOKE_PORT ?? process.env.ELIZA_UI_SMOKE_PORT ?? "2138",
-);
+const API_PORT = Number(process.env.ELIZA_UI_SMOKE_API_PORT ?? "31337");
+const UI_PORT = Number(process.env.ELIZA_UI_SMOKE_PORT ?? "2138");
 const LIVE_PROVIDER = selectLiveProvider();
 const FORCE_STUB_STACK =
   process.env.ELIZA_UI_SMOKE_FORCE_STUB === "1" || process.env.CI === "true";
@@ -509,7 +503,6 @@ async function startStubStack(): Promise<StartedStack> {
     port: UI_PORT,
   });
   process.env.ELIZA_API_PORT = String(API_PORT);
-  process.env.ELIZA_API_PORT = String(API_PORT);
 
   return {
     apiBase,
@@ -584,7 +577,6 @@ async function startRealStack(): Promise<StartedStack> {
     apiBase,
     port: UI_PORT,
   });
-  process.env.ELIZA_API_PORT = String(API_PORT);
   process.env.ELIZA_API_PORT = String(API_PORT);
 
   return {
