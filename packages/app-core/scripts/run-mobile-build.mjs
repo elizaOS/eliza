@@ -2,7 +2,7 @@
 /**
  * Mobile build orchestrator for elizaOS apps.
  *
- * Builds an iOS or Android app from any elizaOS host app (Milady, etc.).
+ * Builds an iOS or Android app from any elizaOS host app (Eliza, etc.).
  * Reads app identity from the host's app.config.ts so web, desktop, and
  * native builds share one canonical app contract.
  *
@@ -15,7 +15,7 @@
  *   4. Overlay native       — permissions, services, entitlements, Podfile
  *   5. Platform patches     — Gradle template, SPM compat, xcconfig
  *   5b. Stage Android agent — bun + musl + libstdc++ + libgcc + bundle
- *                             into apps/app/android/app/src/main/assets/agent/
+ *                             into packages/app/android/app/src/main/assets/agent/
  *                             (Android targets only; see
  *                             scripts/lib/stage-android-agent.mjs and
  *                             docs/agent-on-mobile.md).
@@ -27,6 +27,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 import { stageAndroidAgentRuntime } from "./lib/stage-android-agent.mjs";
 
@@ -34,30 +35,21 @@ import { stageAndroidAgentRuntime } from "./lib/stage-android-agent.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
-const appDir = path.join(repoRoot, "apps", "app");
+const appCoreRoot = path.resolve(__dirname, "..");
+const packagesRoot = path.resolve(appCoreRoot, "..");
+const appDir = resolveMainAppDir(repoRoot, "app");
 const iosDir = path.join(appDir, "ios", "App");
 const androidDir = path.join(appDir, "android");
-const miladyOsVendorDir = path.join(
+const elizaOsVendorDir = path.join(
   repoRoot,
   "os",
   "android",
   "vendor",
-  "milady",
-);
-const miladyOsApkDir = path.join(miladyOsVendorDir, "apps", "Milady");
-const platformsDir = path.join(
-  repoRoot,
   "eliza",
-  "packages",
-  "app-core",
-  "platforms",
 );
-const nativePluginsDir = path.join(
-  repoRoot,
-  "eliza",
-  "packages",
-  "native-plugins",
-);
+const elizaOsApkDir = path.join(elizaOsVendorDir, "apps", "Eliza");
+const platformsDir = path.join(appCoreRoot, "platforms");
+const nativePluginsDir = path.join(packagesRoot, "native-plugins");
 const androidAgentSpikeDir = path.join(
   repoRoot,
   "scripts",
@@ -218,7 +210,7 @@ function templateFilePriority(platform, relPath) {
     path.join("App", "Podfile"),
     path.join("App", "App.xcodeproj", "project.pbxproj"),
     path.join("App", "App", "Base.lproj", "LaunchScreen.storyboard"),
-    path.join("App", "App", "MiladyIntentPlugin.swift"),
+    path.join("App", "App", "ElizaIntentPlugin.swift"),
     path.join("App", "App", "PrivacyInfo.xcprivacy"),
     path.join(
       "App",
@@ -341,7 +333,7 @@ export function applyIosAppIdentity({
   appId = APP.appId,
   appName = APP.appName,
   appGroup = `group.${appId}`,
-  developmentTeam = process.env.MILADY_IOS_DEVELOPMENT_TEAM ??
+  developmentTeam = process.env.ELIZA_IOS_DEVELOPMENT_TEAM ??
     process.env.ELIZA_IOS_DEVELOPMENT_TEAM ??
     null,
   log = console.log,
@@ -360,10 +352,10 @@ export function applyIosAppIdentity({
       "PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app;",
       `PRODUCT_BUNDLE_IDENTIFIER = ${appId};`,
     );
-    const displayNameSetting = `MILADY_DISPLAY_NAME = ${escapeXcodeBuildSetting(appName)};`;
-    if (project.includes("MILADY_DISPLAY_NAME = ")) {
+    const displayNameSetting = `ELIZA_DISPLAY_NAME = ${escapeXcodeBuildSetting(appName)};`;
+    if (project.includes("ELIZA_DISPLAY_NAME = ")) {
       project = project.replace(
-        /MILADY_DISPLAY_NAME = .*?;/g,
+        /ELIZA_DISPLAY_NAME = .*?;/g,
         displayNameSetting,
       );
     } else {
@@ -485,12 +477,12 @@ const ANDROID_PERMISSIONS = [
   "POST_NOTIFICATIONS",
   "WAKE_LOCK",
   // PACKAGE_USAGE_STATS is granted via the privapp-permissions whitelist;
-  // MANAGE_APP_OPS_MODES is what MiladyBootReceiver actually needs to
+  // MANAGE_APP_OPS_MODES is what ElizaBootReceiver actually needs to
   // reflectively flip the GET_USAGE_STATS appop to ALLOWED at boot.
   // Without MANAGE_APP_OPS_MODES the receiver throws SecurityException
   // and PACKAGE_USAGE_STATS stays appop-default-denied, which breaks
-  // priv-app usage-stats access. See vendor/milady/permissions/
-  // privapp-permissions-com.miladyai.milady.xml.
+  // priv-app usage-stats access. See vendor/eliza/permissions/
+  // privapp-permissions-com.elizaai.eliza.xml.
   "PACKAGE_USAGE_STATS",
   "MANAGE_APP_OPS_MODES",
 ];
@@ -516,15 +508,15 @@ function appendMissingGradleDependency(content, notation) {
  * Inject `buildFeatures { buildConfig true }` and the `AOSP_BUILD`
  * buildConfigField into the app-level build.gradle.
  *
- * Why: `MiladyAgentService` reads `BuildConfig.AOSP_BUILD` to decide whether
- * to export `MILADY_LOCAL_LLAMA=1` to the spawned bun process (see
+ * Why: `ElizaAgentService` reads `BuildConfig.AOSP_BUILD` to decide whether
+ * to export `ELIZA_LOCAL_LLAMA=1` to the spawned bun process (see
  * eliza/packages/agent/src/runtime/aosp-llama-adapter.ts). AGP 8+ defaults
  * `buildFeatures.buildConfig` to false, so without the flag flip the
  * BuildConfig.java is never generated and the Java service refuses to
  * compile. The boolean field defaults to false, so the Capacitor APK build
  * keeps DeviceBridge inference; the AOSP build flow flips it to true via
- * the `-PmiladyAospBuild=true` gradle property documented in
- * scripts/miladyos/build-aosp.mjs and SETUP_AOSP.md.
+ * the `-PelizaAospBuild=true` gradle property documented in
+ * scripts/elizaos/build-aosp.mjs and SETUP_AOSP.md.
  */
 function injectBuildConfigAospField(content) {
   let next = content;
@@ -542,7 +534,7 @@ function injectBuildConfigAospField(content) {
   if (!/buildConfigField\s+["']boolean["'],\s*["']AOSP_BUILD["']/.test(next)) {
     next = next.replace(
       /defaultConfig\s*\{/,
-      `defaultConfig {\n        buildConfigField "boolean", "AOSP_BUILD", "\${project.findProperty('miladyAospBuild') ?: 'false'}"\n`,
+      `defaultConfig {\n        buildConfigField "boolean", "AOSP_BUILD", "\${project.findProperty('elizaAospBuild') ?: 'false'}"\n`,
     );
   }
   return next;
@@ -669,7 +661,7 @@ function removeApplicationComponentBlock(xml, componentName) {
   return xml.replace(componentRe, "\n");
 }
 
-function ensureMiladyOsActivityFilters(xml) {
+function ensureElizaOsActivityFilters(xml) {
   if (xml.includes("android.intent.category.HOME")) {
     return xml;
   }
@@ -742,20 +734,20 @@ function overlayAndroid() {
     for (const file of [
       "GatewayConnectionService.java",
       "MainActivity.java",
-      "MiladyAgentService.java",
-      "MiladyAssistActivity.java",
-      "MiladyBootReceiver.java",
-      "MiladyBrowserActivity.java",
-      "MiladyCalendarActivity.java",
-      "MiladyCameraActivity.java",
-      "MiladyClockActivity.java",
-      "MiladyContactsActivity.java",
-      "MiladyDialActivity.java",
-      "MiladyInCallService.java",
-      "MiladyMmsReceiver.java",
-      "MiladyRespondViaMessageService.java",
-      "MiladySmsComposeActivity.java",
-      "MiladySmsReceiver.java",
+      "ElizaAgentService.java",
+      "ElizaAssistActivity.java",
+      "ElizaBootReceiver.java",
+      "ElizaBrowserActivity.java",
+      "ElizaCalendarActivity.java",
+      "ElizaCameraActivity.java",
+      "ElizaClockActivity.java",
+      "ElizaContactsActivity.java",
+      "ElizaDialActivity.java",
+      "ElizaInCallService.java",
+      "ElizaMmsReceiver.java",
+      "ElizaRespondViaMessageService.java",
+      "ElizaSmsComposeActivity.java",
+      "ElizaSmsReceiver.java",
     ]) {
       const src = path.join(srcJava, file);
       if (!fs.existsSync(src)) continue;
@@ -813,7 +805,7 @@ function overlayAndroid() {
       "android.hardware.telephony",
       '    <uses-feature android:name="android.hardware.telephony" android:required="false" />',
     );
-    xml = ensureMiladyOsActivityFilters(xml);
+    xml = ensureElizaOsActivityFilters(xml);
     const gatewayServiceName = `${androidPackage}.GatewayConnectionService`;
     const gatewayServicePattern =
       /\n\s*<service\b[^>]*android:name="[^"]*GatewayConnectionService"[^>]*\/>\s*/g;
@@ -828,15 +820,15 @@ function overlayAndroid() {
     );
     dirty = true;
 
-    // MiladyAgentService — special-use foreground service that owns the
+    // ElizaAgentService — special-use foreground service that owns the
     // local Eliza agent process. Nested <property> tag carries the Android
     // 14+ specialUse subtype. Pattern matches both self-closing and
     // explicit-close forms so re-runs collapse cleanly.
-    const agentServiceName = `${androidPackage}.MiladyAgentService`;
+    const agentServiceName = `${androidPackage}.ElizaAgentService`;
     const agentServiceSelfClosingPattern =
-      /\n\s*<service\b[^>]*android:name="[^"]*MiladyAgentService"[^>]*\/>\s*/g;
+      /\n\s*<service\b[^>]*android:name="[^"]*ElizaAgentService"[^>]*\/>\s*/g;
     const agentServicePairedPattern =
-      /\n\s*<service\b[^>]*android:name="[^"]*MiladyAgentService"[\s\S]*?<\/service>\s*/g;
+      /\n\s*<service\b[^>]*android:name="[^"]*ElizaAgentService"[\s\S]*?<\/service>\s*/g;
     const withoutAgentServiceSelfClose = xml.replace(
       agentServiceSelfClosingPattern,
       "\n",
@@ -859,19 +851,19 @@ function overlayAndroid() {
     );
     dirty = true;
     for (const component of [
-      "MiladyDialActivity",
-      "MiladyAssistActivity",
-      "MiladyInCallService",
-      "MiladySmsReceiver",
-      "MiladyMmsReceiver",
-      "MiladyRespondViaMessageService",
-      "MiladySmsComposeActivity",
-      "MiladyBootReceiver",
-      "MiladyBrowserActivity",
-      "MiladyContactsActivity",
-      "MiladyCameraActivity",
-      "MiladyClockActivity",
-      "MiladyCalendarActivity",
+      "ElizaDialActivity",
+      "ElizaAssistActivity",
+      "ElizaInCallService",
+      "ElizaSmsReceiver",
+      "ElizaMmsReceiver",
+      "ElizaRespondViaMessageService",
+      "ElizaSmsComposeActivity",
+      "ElizaBootReceiver",
+      "ElizaBrowserActivity",
+      "ElizaContactsActivity",
+      "ElizaCameraActivity",
+      "ElizaClockActivity",
+      "ElizaCalendarActivity",
     ]) {
       const nextXml = removeApplicationComponentBlock(
         xml,
@@ -884,10 +876,10 @@ function overlayAndroid() {
     }
     xml = appendMissingApplicationBlock(
       xml,
-      `${androidPackage}.MiladyDialActivity`,
+      `${androidPackage}.ElizaDialActivity`,
       `
         <activity
-            android:name="${androidPackage}.MiladyDialActivity"
+            android:name="${androidPackage}.ElizaDialActivity"
             android:exported="true"
             android:theme="@style/AppTheme.NoActionBar">
             <intent-filter>
@@ -903,10 +895,10 @@ function overlayAndroid() {
     );
     xml = appendMissingApplicationBlock(
       xml,
-      `${androidPackage}.MiladyAssistActivity`,
+      `${androidPackage}.ElizaAssistActivity`,
       `
         <activity
-            android:name="${androidPackage}.MiladyAssistActivity"
+            android:name="${androidPackage}.ElizaAssistActivity"
             android:exported="true"
             android:theme="@style/AppTheme.NoActionBar">
             <intent-filter>
@@ -917,10 +909,10 @@ function overlayAndroid() {
     );
     xml = appendMissingApplicationBlock(
       xml,
-      `${androidPackage}.MiladyInCallService`,
+      `${androidPackage}.ElizaInCallService`,
       `
         <service
-            android:name="${androidPackage}.MiladyInCallService"
+            android:name="${androidPackage}.ElizaInCallService"
             android:exported="true"
             android:permission="android.permission.BIND_INCALL_SERVICE">
             <meta-data
@@ -936,10 +928,10 @@ function overlayAndroid() {
     );
     xml = appendMissingApplicationBlock(
       xml,
-      `${androidPackage}.MiladySmsReceiver`,
+      `${androidPackage}.ElizaSmsReceiver`,
       `
         <receiver
-            android:name="${androidPackage}.MiladySmsReceiver"
+            android:name="${androidPackage}.ElizaSmsReceiver"
             android:exported="true"
             android:permission="android.permission.BROADCAST_SMS">
             <intent-filter>
@@ -949,10 +941,10 @@ function overlayAndroid() {
     );
     xml = appendMissingApplicationBlock(
       xml,
-      `${androidPackage}.MiladyMmsReceiver`,
+      `${androidPackage}.ElizaMmsReceiver`,
       `
         <receiver
-            android:name="${androidPackage}.MiladyMmsReceiver"
+            android:name="${androidPackage}.ElizaMmsReceiver"
             android:exported="true"
             android:permission="android.permission.BROADCAST_WAP_PUSH">
             <intent-filter>
@@ -963,10 +955,10 @@ function overlayAndroid() {
     );
     xml = appendMissingApplicationBlock(
       xml,
-      `${androidPackage}.MiladyRespondViaMessageService`,
+      `${androidPackage}.ElizaRespondViaMessageService`,
       `
         <service
-            android:name="${androidPackage}.MiladyRespondViaMessageService"
+            android:name="${androidPackage}.ElizaRespondViaMessageService"
             android:exported="true"
             android:permission="android.permission.SEND_RESPOND_VIA_MESSAGE">
             <intent-filter>
@@ -980,10 +972,10 @@ function overlayAndroid() {
     );
     xml = appendMissingApplicationBlock(
       xml,
-      `${androidPackage}.MiladySmsComposeActivity`,
+      `${androidPackage}.ElizaSmsComposeActivity`,
       `
         <activity
-            android:name="${androidPackage}.MiladySmsComposeActivity"
+            android:name="${androidPackage}.ElizaSmsComposeActivity"
             android:exported="true"
             android:theme="@style/AppTheme.NoActionBar">
             <intent-filter>
@@ -998,10 +990,10 @@ function overlayAndroid() {
     );
     xml = appendMissingApplicationBlock(
       xml,
-      `${androidPackage}.MiladyBootReceiver`,
+      `${androidPackage}.ElizaBootReceiver`,
       `
         <receiver
-            android:name="${androidPackage}.MiladyBootReceiver"
+            android:name="${androidPackage}.ElizaBootReceiver"
             android:directBootAware="true"
             android:exported="false">
             <intent-filter>
@@ -1013,10 +1005,10 @@ function overlayAndroid() {
     // Browser: replaces stripped Browser2 as the only http(s) handler.
     xml = appendMissingApplicationBlock(
       xml,
-      `${androidPackage}.MiladyBrowserActivity`,
+      `${androidPackage}.ElizaBrowserActivity`,
       `
         <activity
-            android:name="${androidPackage}.MiladyBrowserActivity"
+            android:name="${androidPackage}.ElizaBrowserActivity"
             android:exported="true"
             android:theme="@style/AppTheme.NoActionBar">
             <intent-filter>
@@ -1035,10 +1027,10 @@ function overlayAndroid() {
     // Contacts: replaces stripped Contacts. Handles content://contacts.
     xml = appendMissingApplicationBlock(
       xml,
-      `${androidPackage}.MiladyContactsActivity`,
+      `${androidPackage}.ElizaContactsActivity`,
       `
         <activity
-            android:name="${androidPackage}.MiladyContactsActivity"
+            android:name="${androidPackage}.ElizaContactsActivity"
             android:exported="true"
             android:label="Contacts"
             android:theme="@style/AppTheme.NoActionBar">
@@ -1064,10 +1056,10 @@ function overlayAndroid() {
     // Camera: replaces stripped Camera2. STILL_IMAGE_CAMERA + IMAGE_CAPTURE.
     xml = appendMissingApplicationBlock(
       xml,
-      `${androidPackage}.MiladyCameraActivity`,
+      `${androidPackage}.ElizaCameraActivity`,
       `
         <activity
-            android:name="${androidPackage}.MiladyCameraActivity"
+            android:name="${androidPackage}.ElizaCameraActivity"
             android:exported="true"
             android:label="Camera"
             android:theme="@style/AppTheme.NoActionBar">
@@ -1092,10 +1084,10 @@ function overlayAndroid() {
     // Clock: replaces stripped DeskClock. SET_ALARM is critical.
     xml = appendMissingApplicationBlock(
       xml,
-      `${androidPackage}.MiladyClockActivity`,
+      `${androidPackage}.ElizaClockActivity`,
       `
         <activity
-            android:name="${androidPackage}.MiladyClockActivity"
+            android:name="${androidPackage}.ElizaClockActivity"
             android:exported="true"
             android:label="Clock"
             android:theme="@style/AppTheme.NoActionBar">
@@ -1128,10 +1120,10 @@ function overlayAndroid() {
     // Calendar: replaces stripped Calendar.
     xml = appendMissingApplicationBlock(
       xml,
-      `${androidPackage}.MiladyCalendarActivity`,
+      `${androidPackage}.ElizaCalendarActivity`,
       `
         <activity
-            android:name="${androidPackage}.MiladyCalendarActivity"
+            android:name="${androidPackage}.ElizaCalendarActivity"
             android:exported="true"
             android:label="Calendar"
             android:theme="@style/AppTheme.NoActionBar">
@@ -1192,9 +1184,9 @@ function overlayAndroid() {
   }
 
   // Copy ProGuard rules, rewriting the elizaOS default package to match the
-  // app's actual namespace. Without this rewrite, R8 may strip Milady-only
+  // app's actual namespace. Without this rewrite, R8 may strip Eliza-only
   // manifest-referenced classes (Dial/Assist/InCall/Boot) when the app is
-  // namespaced as e.g. com.miladyai.milady.
+  // namespaced as e.g. com.elizaai.eliza.
   const srcPro = path.join(
     platformsDir,
     "android",
@@ -1314,7 +1306,7 @@ function overlayIos() {
         replaceOrInsertPlistString(
           plist,
           "CFBundleDisplayName",
-          "$(MILADY_DISPLAY_NAME)",
+          "$(ELIZA_DISPLAY_NAME)",
         ),
         "NSBonjourServices",
         IOS_BONJOUR_SERVICES,
@@ -1584,8 +1576,8 @@ export function resolveIosBuildTarget({
   appDirValue = appDir,
 } = {}) {
   const explicitDestination =
-    env.MILADY_IOS_BUILD_DESTINATION ?? env.ELIZA_IOS_BUILD_DESTINATION;
-  const explicitSdk = env.MILADY_IOS_BUILD_SDK ?? env.ELIZA_IOS_BUILD_SDK;
+    env.ELIZA_IOS_BUILD_DESTINATION ?? env.ELIZA_IOS_BUILD_DESTINATION;
+  const explicitSdk = env.ELIZA_IOS_BUILD_SDK ?? env.ELIZA_IOS_BUILD_SDK;
 
   if (explicitDestination || explicitSdk) {
     return {
@@ -1652,17 +1644,17 @@ async function buildAndroid() {
   };
 
   // Mirror the AOSP gradle property forwarding from buildAndroidSystem so
-  // a developer iterating with `bun run build:android` under MILADY_AOSP_BUILD=1
+  // a developer iterating with `bun run build:android` under ELIZA_AOSP_BUILD=1
   // gets BuildConfig.AOSP_BUILD=true in the debug APK as well.
   const gradleArgs = [
     ":elizaos-capacitor-websiteblocker:testDebugUnitTest",
     ":app:assembleDebug",
   ];
   if (
-    process.env.MILADY_GRADLE_AOSP_BUILD === "true" ||
-    process.env.MILADY_GRADLE_AOSP_BUILD === "1"
+    process.env.ELIZA_GRADLE_AOSP_BUILD === "true" ||
+    process.env.ELIZA_GRADLE_AOSP_BUILD === "1"
   ) {
-    gradleArgs.unshift("-PmiladyAospBuild=true");
+    gradleArgs.unshift("-PelizaAospBuild=true");
   }
   await run("./gradlew", gradleArgs, {
     cwd: androidDir,
@@ -1702,13 +1694,13 @@ function stageAndroidSystemApk() {
   const apk = findAndroidSystemApk();
   if (!apk) {
     throw new Error(
-      "No release APK found at app/build/outputs/apk/release/. Run :app:assembleRelease before staging the MiladyOS prebuilt — debug APKs are not accepted.",
+      "No release APK found at app/build/outputs/apk/release/. Run :app:assembleRelease before staging the ElizaOS prebuilt — debug APKs are not accepted.",
     );
   }
-  fs.mkdirSync(miladyOsApkDir, { recursive: true });
-  const target = path.join(miladyOsApkDir, "Milady.apk");
+  fs.mkdirSync(elizaOsApkDir, { recursive: true });
+  const target = path.join(elizaOsApkDir, "Eliza.apk");
   fs.copyFileSync(apk, target);
-  console.log(`[mobile-build] Staged MiladyOS APK at ${target}.`);
+  console.log(`[mobile-build] Staged ElizaOS APK at ${target}.`);
 }
 
 async function buildAndroidSystem() {
@@ -1742,16 +1734,16 @@ async function buildAndroidSystem() {
     ]),
   };
 
-  // AOSP product builds set MILADY_GRADLE_AOSP_BUILD=true upstream so
+  // AOSP product builds set ELIZA_GRADLE_AOSP_BUILD=true upstream so
   // gradle bakes BuildConfig.AOSP_BUILD=true into the privileged APK.
   // The Capacitor APK path leaves it false; both share the same gradle
-  // because the apps/app/android/ tree is regenerated each run.
+  // because the packages/app/android/ tree is regenerated each run.
   const gradleArgs = [":app:assembleRelease"];
   if (
-    process.env.MILADY_GRADLE_AOSP_BUILD === "true" ||
-    process.env.MILADY_GRADLE_AOSP_BUILD === "1"
+    process.env.ELIZA_GRADLE_AOSP_BUILD === "true" ||
+    process.env.ELIZA_GRADLE_AOSP_BUILD === "1"
   ) {
-    gradleArgs.unshift("-PmiladyAospBuild=true");
+    gradleArgs.unshift("-PelizaAospBuild=true");
   }
   await run("./gradlew", gradleArgs, {
     cwd: androidDir,
@@ -1765,10 +1757,7 @@ async function buildIos() {
     throw new Error("iOS builds require macOS and Xcode.");
 
   const cocoapodsScript = path.join(
-    repoRoot,
-    "eliza",
-    "packages",
-    "app-core",
+    appCoreRoot,
     "scripts",
     "prepare-ios-cocoapods.sh",
   );

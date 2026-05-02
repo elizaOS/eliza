@@ -6,6 +6,6 @@ export * from "./definitions";
 
 const loadWeb = () => import("./web").then((m) => new m.ContactsWeb());
 
-export const Contacts = registerPlugin<ContactsPlugin>("MiladyContacts", {
+export const Contacts = registerPlugin<ContactsPlugin>("ElizaContacts", {
   web: loadWeb,
 });

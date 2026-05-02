@@ -39,7 +39,7 @@
   },
   "author": "elizaOS",
   "license": "MIT",
-  "milady": {
+  "eliza": {
     "platforms": [
       "darwin"
     ],

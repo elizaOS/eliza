@@ -12,7 +12,6 @@ import {
 
 export interface BlockRuleTestHarness {
   runtime: IAgentRuntime;
-  pgClient: PGlite;
   execute: (statement: string) => Promise<unknown>;
   close: () => Promise<void>;
 }
@@ -24,7 +23,7 @@ const BOOTSTRAP_STATEMENTS = [
     domain TEXT NOT NULL DEFAULT 'user_lifeops',
     subject_type TEXT NOT NULL DEFAULT 'owner',
     subject_id TEXT NOT NULL,
-    visibility_scope TEXT NOT NULL DEFAULT 'owner_agent_admin',
+    visibility_scope TEXT NOT NULL DEFAULT 'owner_only',
     context_policy TEXT NOT NULL DEFAULT 'explicit_only',
     kind TEXT NOT NULL,
     title TEXT NOT NULL,
@@ -140,7 +139,6 @@ export async function createBlockRuleHarness(
 
   return {
     runtime,
-    pgClient,
     execute: (statement: string) => db.execute(sql.raw(statement)),
     close: async () => {
       tasks.clear();

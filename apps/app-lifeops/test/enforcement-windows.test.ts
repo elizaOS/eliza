@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_MORNING_WINDOW,
   DEFAULT_NIGHT_WINDOW,
+  type EnforcementWindow,
   getCurrentEnforcementWindow,
   isWithinEnforcementWindow,
   minutesPastWindowStart,
-  type EnforcementWindow,
 } from "../src/lifeops/enforcement-windows.js";
 
 /**

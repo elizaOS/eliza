@@ -9,7 +9,7 @@ const getApiBaseMock = vi.fn();
 const saveStewardCredentialsMock = vi.fn();
 const COLD_NATIVE_IMPORT_TIMEOUT_MS = 45_000;
 
-vi.mock("@elizaos/app-steward/services/steward-sidecar", () => ({
+vi.mock("@elizaos/app-core/services/steward-sidecar", () => ({
   createDesktopStewardSidecar: vi.fn(() => ({
     start: startMock,
     stop: stopMock,
@@ -20,7 +20,7 @@ vi.mock("@elizaos/app-steward/services/steward-sidecar", () => ({
   })),
 }));
 
-vi.mock("@elizaos/app-steward/services/steward-credentials", () => ({
+vi.mock("@elizaos/app-core/services/steward-credentials", () => ({
   saveStewardCredentials: saveStewardCredentialsMock,
 }));
 
@@ -67,8 +67,8 @@ describe("native steward bootstrap", () => {
         error: null,
         restartCount: 0,
         walletAddress: "0x1234567890abcdef1234567890abcdef12345678",
-        agentId: "milady-wallet",
-        tenantId: "milady-desktop",
+        agentId: "eliza-wallet",
+        tenantId: "eliza-desktop",
         startedAt: Date.now(),
       });
       getStatusMock.mockReturnValue({
@@ -83,9 +83,9 @@ describe("native steward bootstrap", () => {
         startedAt: null,
       });
       getCredentialsMock.mockReturnValue({
-        tenantId: "milady-desktop",
+        tenantId: "eliza-desktop",
         tenantApiKey: "tenant-key",
-        agentId: "milady-wallet",
+        agentId: "eliza-wallet",
         agentToken: "agent-token",
         walletAddress: "0x1234567890abcdef1234567890abcdef12345678",
         masterPassword: "",
@@ -97,18 +97,18 @@ describe("native steward bootstrap", () => {
       expect(process.env.STEWARD_API_URL).toBe("http://127.0.0.1:3200");
       expect(process.env.STEWARD_AGENT_TOKEN).toBe("agent-token");
       expect(process.env.STEWARD_API_KEY).toBe("tenant-key");
-      expect(process.env.STEWARD_TENANT_ID).toBe("milady-desktop");
-      expect(process.env.STEWARD_AGENT_ID).toBe("milady-wallet");
+      expect(process.env.STEWARD_TENANT_ID).toBe("eliza-desktop");
+      expect(process.env.STEWARD_AGENT_ID).toBe("eliza-wallet");
       expect(saveStewardCredentialsMock).toHaveBeenCalledWith({
         apiUrl: "http://127.0.0.1:3200",
-        tenantId: "milady-desktop",
-        agentId: "milady-wallet",
+        tenantId: "eliza-desktop",
+        agentId: "eliza-wallet",
         apiKey: "tenant-key",
         agentToken: "agent-token",
         walletAddresses: {
           evm: "0x1234567890abcdef1234567890abcdef12345678",
         },
-        agentName: "milady-wallet",
+        agentName: "eliza-wallet",
       });
     },
     COLD_NATIVE_IMPORT_TIMEOUT_MS,

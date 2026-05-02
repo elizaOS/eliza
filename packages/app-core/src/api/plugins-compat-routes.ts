@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import {
   type AdvancedCapabilityPluginId,
   applyPluginRuntimeMutation,
+  discoverPluginsFromManifest,
   findPrimaryEnvKey,
   isAdvancedCapabilityPluginId,
   loadElizaConfig,
@@ -14,14 +15,24 @@ import {
   resolveAdvancedCapabilitiesEnabled,
   saveElizaConfig,
 } from "@elizaos/agent";
+import {
+  isVaultRef,
+  parseVaultRef,
+} from "@elizaos/agent/runtime/operations/vault-bridge";
 import { type AgentRuntime, logger } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared";
+import { VaultMissError } from "@elizaos/vault";
 import { CONNECTOR_ENV_MAP } from "../config/env-vars";
 import {
   CONNECTOR_PLUGINS,
   STREAMING_PLUGINS,
 } from "../config/plugin-auto-enable";
 import { entriesToLegacyManifest, loadRegistry } from "../registry";
+import {
+  _resetSharedVaultForTesting,
+  mirrorPluginSensitiveToVault,
+  sharedVault,
+} from "../services/vault-mirror";
 import {
   ensureCompatSensitiveRouteAuthorized,
   ensureRouteAuthorized,
@@ -234,6 +245,11 @@ let _lastDriftWarningFingerprint = "";
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+// Re-exported so existing call sites keep working. The implementations
+// live in services/vault-mirror.ts so unit tests can import them
+// without dragging in the @elizaos/agent runtime through this file.
+export { _resetSharedVaultForTesting, mirrorPluginSensitiveToVault };
 
 function maskValue(value: string): string {
   if (value.length <= 8) return "****";
@@ -968,10 +984,8 @@ export function buildPluginListResponse(runtime: AgentRuntime | null): {
   const config = loadElizaConfig();
   const configRecord = config as Record<string, unknown>;
   const loadedNames = resolveLoadedPluginNames(runtime);
-  // Source of truth: registry under packages/app-core/src/registry/data/.
-  // The legacy adapter projects RegistryEntry[] back to the manifest shape
-  // this route's transformation pipeline still expects. Once that pipeline
-  // is rewritten to consume RegistryEntry directly, drop the adapter.
+  // Primary source: registry entries. Workspace plugin discovery fills gaps
+  // for local first-party plugin packages that have not been registered yet.
   const registry = loadRegistry();
   const manifestRoot = resolvePluginManifestPath()
     ? path.dirname(resolvePluginManifestPath() ?? "")
@@ -1059,6 +1073,52 @@ export function buildPluginListResponse(runtime: AgentRuntime | null): {
       group: registryEntry?.render.group,
       groupOrder: registryEntry?.render.groupOrder,
       visible: registryEntry?.render.visible ?? true,
+    });
+  }
+
+  for (const entry of discoverPluginsFromManifest()) {
+    const pluginId = normalizePluginId(entry.id);
+    const category = normalizePluginCategory(entry.category);
+    if (category === "app" || plugins.has(pluginId)) {
+      continue;
+    }
+
+    const active = isPluginLoaded(pluginId, entry.npmName, loadedNames);
+    const persistedEnabled = resolvePersistedPluginEnabled(
+      pluginId,
+      category,
+      entry.npmName,
+      configEntries,
+      configRecord,
+    );
+
+    plugins.set(pluginId, {
+      id: pluginId,
+      name: entry.name,
+      description: entry.description,
+      tags: entry.tags ?? [],
+      enabled: resolveCompatPluginEnabledForList(active, persistedEnabled),
+      configured: entry.configured,
+      envKey: entry.envKey,
+      category,
+      source: entry.source,
+      configKeys: entry.configKeys,
+      parameters: entry.parameters,
+      validationErrors: entry.validationErrors,
+      validationWarnings: entry.validationWarnings,
+      npmName: entry.npmName,
+      version:
+        resolveInstalledPackageVersion(entry.npmName) ??
+        entry.version ??
+        undefined,
+      pluginDeps: entry.pluginDeps,
+      isActive: active,
+      configUiHints: entry.configUiHints,
+      icon: entry.icon ?? null,
+      homepage: entry.homepage,
+      repository: entry.repository,
+      setupGuideUrl: entry.setupGuideUrl,
+      visible: true,
     });
   }
 
@@ -1426,6 +1486,26 @@ export async function handlePluginsCompatRoutes(
       result.payload.loadedPackages = runtimeApply.loadedPackages;
       result.payload.unloadedPackages = runtimeApply.unloadedPackages;
       result.payload.reloadedPackages = runtimeApply.reloadedPackages;
+
+      // Write-through mirror to @elizaos/vault. Sensitive fields the
+      // user just saved are copied into the vault (encrypted at rest
+      // via the OS-keychain master key). The legacy `config.env.X` /
+      // `config.env.vars.X` writes still happen above — vault is a
+      // SHADOW of those for now. The runtime continues to read from
+      // process.env via the legacy hydration path; vault becomes the
+      // canonical source in a follow-up PR.
+      //
+      // Failure mode: if vault.set throws for some keys (OS keychain
+      // locked, file ENOSPC, missing master key, etc.), the save is
+      // NOT rolled back — legacy storage already succeeded above. We
+      // surface the failed keys back to the UI under
+      // `vaultMirrorFailures` so the user knows the vault mirror
+      // didn't take, instead of silently swallowing the error and
+      // showing a green "Saved" toast over an empty vault.
+      const mirrorResult = await mirrorPluginSensitiveToVault(plugin, body);
+      if (mirrorResult.failures.length > 0) {
+        result.payload.vaultMirrorFailures = mirrorResult.failures;
+      }
       const diagnostics = buildPluginDriftDiagnostics(state.current);
       if (diagnostics.summary.withDrift > 0) {
         result.payload.diagnostics = diagnostics;
@@ -1518,12 +1598,53 @@ export async function handlePluginsCompatRoutes(
     if (SENSITIVE_KEY_PREFIXES.some((prefix) => upperKey.startsWith(prefix))) {
       if (!ensureCompatSensitiveRouteAuthorized(req, res)) return true;
     }
+    // Prefer the vault: post-write-through wiring means the user's
+    // actual saved value lives there. Fall back to env/config only when
+    // the vault has no entry; vault/keychain failures surface instead
+    // of pretending the legacy value is canonical.
+    try {
+      const vaultValue = await sharedVault().reveal(
+        key,
+        `plugins:${decodeURIComponent(revealMatch[1])}:reveal`,
+      );
+      sendJsonResponse(res, 200, { ok: true, value: vaultValue });
+      return true;
+    } catch (err) {
+      if (!(err instanceof VaultMissError)) {
+        logger.warn(
+          `[api/plugins] Vault reveal failed for ${key}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+        sendJsonErrorResponse(res, 500, "Vault reveal failed");
+        return true;
+      }
+    }
     const config = loadElizaConfig();
-    const value =
+    const fallbackValue =
       process.env[key] ??
       (config.env as Record<string, string> | undefined)?.[key] ??
       null;
-    sendJsonResponse(res, 200, { ok: true, value });
+    // The legacy fallback may itself be a `vault://KEY` sentinel — in that
+    // case the real value is back in the vault. Resolve it once. If the
+    // vault still misses, return null rather than the sentinel string.
+    if (typeof fallbackValue === "string" && isVaultRef(fallbackValue)) {
+      const innerKey = parseVaultRef(fallbackValue);
+      if (innerKey) {
+        try {
+          const inner = await sharedVault().get(innerKey);
+          if (inner) {
+            sendJsonResponse(res, 200, { ok: true, value: inner });
+            return true;
+          }
+        } catch {
+          // fall through to null
+        }
+      }
+      sendJsonResponse(res, 200, { ok: true, value: null });
+      return true;
+    }
+    sendJsonResponse(res, 200, { ok: true, value: fallbackValue });
     return true;
   }
 

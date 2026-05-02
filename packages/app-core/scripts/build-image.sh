@@ -27,11 +27,11 @@
 #   - Image name:   eliza/agent:{tag}
 #
 # What this does:
-#   1. Patches apps/app/vite.config.ts to resolve @elizaos/* from node_modules
+#   1. Patches packages/app/vite.config.ts to resolve @elizaos/* from node_modules
 #      (the committed config points to Shaw's local ../eliza/ submodule)
 #   2. Runs bun install --ignore-scripts
 #   3. Runs npx tsdown to compile TypeScript → dist/
-#   4. Builds the Vite UI → apps/app/dist/
+#   4. Builds the Vite UI → packages/app/dist/
 #   5. Reverts the vite.config.ts patch (temp backup restore)
 #   6. Runs docker build with the canonical container Dockerfile
 #   7. Tags the image as eliza/agent:{tag}
@@ -99,12 +99,12 @@ sedi() {
 }
 
 # ── Verify we're in the eliza repo root ─────────────────────────────────
-# Look for canonical markers: package.json with "elizaos" name and apps/app/vite.config.ts
+# Look for canonical markers: package.json with "elizaos" name and packages/app/vite.config.ts
 if [[ ! -f "package.json" ]] || ! grep -q '"elizaos"' package.json 2>/dev/null; then
   die "Not in eliza repo root. Run from $(git rev-parse --show-toplevel)"
 fi
-if [[ ! -f "apps/app/vite.config.ts" ]]; then
-  die "apps/app/vite.config.ts not found. Are you in the right directory?"
+if [[ ! -f "packages/app/vite.config.ts" ]]; then
+  die "packages/app/vite.config.ts not found. Are you in the right directory?"
 fi
 
 REPO_ROOT="$(pwd)"
@@ -159,7 +159,7 @@ run() {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Step 1: Patch apps/app/vite.config.ts
+# Step 1: Patch packages/app/vite.config.ts
 #
 # The committed config has:
 #   elizaRoot = path.resolve(appRoot, "../eliza")  ← Shaw's local submodule
@@ -180,11 +180,11 @@ log "Applying node_modules resolution patch..."
 VITE_CONFIG_BACKUP=""
 if ! $DRY_RUN; then
   VITE_CONFIG_BACKUP="$(mktemp)"
-  cp apps/app/vite.config.ts "$VITE_CONFIG_BACKUP"
+  cp packages/app/vite.config.ts "$VITE_CONFIG_BACKUP"
 fi
 
 patch_vite() {
-  local file="apps/app/vite.config.ts"
+  local file="packages/app/vite.config.ts"
 
   # 1. elizaRoot: "../eliza" → "node_modules/@elizaos"
   #    This is the root cause — Shaw's local eliza checkout path → npm installed path
@@ -214,16 +214,16 @@ patch_vite() {
 }
 
 if $DRY_RUN; then
-  warn "[dry-run] Would patch apps/app/vite.config.ts (elizaRoot → node_modules, packages/ prefix removal)"
+  warn "[dry-run] Would patch packages/app/vite.config.ts (elizaRoot → node_modules, packages/ prefix removal)"
 else
   patch_vite
   # Quick sanity check: make sure "../eliza" is gone
-  if grep -q '"../eliza"' apps/app/vite.config.ts; then
+  if grep -q '"../eliza"' packages/app/vite.config.ts; then
     die "vite config patch failed — '../eliza' still present in vite.config.ts"
   fi
   ok "vite.config.ts patched"
   # Show what changed
-  git diff apps/app/vite.config.ts | grep '^[+-]' | grep -v '^---\|^+++' | head -20 || true
+  git diff packages/app/vite.config.ts | grep '^[+-]' | grep -v '^---\|^+++' | head -20 || true
 fi
 
 # Set up cleanup trap: always revert the vite config patch, even on error
@@ -242,7 +242,7 @@ cleanup() {
   fi
   if [[ -n "$VITE_CONFIG_BACKUP" ]] && [[ -f "$VITE_CONFIG_BACKUP" ]] && ! $DRY_RUN; then
     log "Reverting vite.config.ts patch..."
-    cp "$VITE_CONFIG_BACKUP" apps/app/vite.config.ts 2>/dev/null || warn "Could not restore vite.config.ts from backup"
+    cp "$VITE_CONFIG_BACKUP" packages/app/vite.config.ts 2>/dev/null || warn "Could not restore vite.config.ts from backup"
     rm -f "$VITE_CONFIG_BACKUP" 2>/dev/null || true
   fi
   if [[ $exit_code -ne 0 ]]; then
@@ -271,7 +271,7 @@ run "SKIP_AVATAR_CLONE=1 ELIZA_NO_VISION_DEPS=1 bun run postinstall 2>&1 | tail 
 ok "Postinstall patches complete"
 
 hdr "Step 2c: Build Capacitor plugins"
-run "cd apps/app && bun scripts/plugin-build.mjs && cd ${REPO_ROOT}"
+run "cd packages/app && bun scripts/plugin-build.mjs && cd ${REPO_ROOT}"
 ok "Capacitor plugins built"
 
 hdr "Step 2d: Build workspace packages"
@@ -297,16 +297,16 @@ fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Step 4: Build Vite UI
-# apps/app/dist/ is the compiled React frontend served by the agent
+# packages/app/dist/ is the compiled React frontend served by the agent
 # Must use the patched vite.config.ts (done in Step 1)
 # ─────────────────────────────────────────────────────────────────────────────
 hdr "Step 4: Build Vite UI"
 
-log "Building Vite UI (apps/app)..."
-run "cd apps/app && bun run build:web 2>&1 | tail -20 && cd ${REPO_ROOT}"
+log "Building Vite UI (packages/app)..."
+run "cd packages/app && bun run build:web 2>&1 | tail -20 && cd ${REPO_ROOT}"
 
-if ! $DRY_RUN && [[ ! -d "apps/app/dist" ]]; then
-  die "apps/app/dist not found after vite build — check vite output above"
+if ! $DRY_RUN && [[ ! -d "packages/app/dist" ]]; then
+  die "packages/app/dist not found after vite build — check vite output above"
 fi
 ok "Vite UI built"
 
@@ -317,7 +317,7 @@ ok "Vite UI built"
 hdr "Step 5: Revert vite.config.ts"
 
 if ! $DRY_RUN; then
-  cp "$VITE_CONFIG_BACKUP" apps/app/vite.config.ts
+  cp "$VITE_CONFIG_BACKUP" packages/app/vite.config.ts
   ok "vite.config.ts restored to original state"
 else
   warn "[dry-run] Would revert vite.config.ts"
@@ -371,9 +371,9 @@ if $REMOTE; then
   run "tar \
     --exclude='./node_modules' \
     --exclude='./.git' \
-    --exclude='./apps/app/node_modules' \
+    --exclude='./packages/app/node_modules' \
     --exclude='./apps/home/node_modules' \
-    --exclude='./apps/homepage/node_modules' \
+    --exclude='./packages/homepage/node_modules' \
     --exclude='./apps/ui/node_modules' \
     --exclude='./deploy/node_modules' \
     --exclude='./coverage' \

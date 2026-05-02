@@ -59,7 +59,7 @@
   "resources": {
     "homepage": "https://github.com/elizaos-plugins/plugin-telegram#readme",
     "repository": "https://github.com/elizaos-plugins/plugin-telegram",
-    "setupGuideUrl": "https://docs.milady.ai/guides/tutorial-telegram-bot"
+    "setupGuideUrl": "https://docs.eliza.ai/guides/tutorial-telegram-bot"
   },
   "dependsOn": [],
   "kind": "connector",

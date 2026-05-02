@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/ui",
-  "version": "2.0.0-alpha.494",
+  "version": "2.0.0-alpha.530",
   "description": "Shared UI primitives, composites, and layout utilities for elizaOS apps.",
   "type": "module",
   "license": "MIT",
@@ -69,8 +69,10 @@
     "tailwind-merge": "^3.0.0"
   },
   "devDependencies": {
+    "@storybook/react": "^10.3.5",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "storybook": "^10.3.5",
     "typescript": "^6.0.0",
     "vitest": "^4.0.18"
   },

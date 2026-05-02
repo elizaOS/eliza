@@ -3,21 +3,21 @@
  *
  * The cuttlefish/AOSP toolchain (build-aosp, sync-to-aosp, validate,
  * boot-validate, e2e-validate, …) was originally written assuming a
- * single brand: "milady" / "Milady" / "com.miladyai.milady". To support
- * whitelabeling (e.g. ElizaOS as the default, MiladyOS as a downstream
+ * single brand: "eliza" / "Eliza" / "com.elizaai.eliza". To support
+ * whitelabeling (e.g. ElizaOS as the default, ElizaOS as a downstream
  * brand), every brand-coupled string is centralised here.
  *
  * Brand config schema:
  *   {
- *     "brand":               "milady",                  // lowercase token; vendor/<X> dir, init.<X>.rc, milady_*.mk filename prefix
- *     "appName":             "Milady",                  // PascalCase; APK module name, vendor/<X>/apps/<APP_NAME>/<APP_NAME>.apk
- *     "distroName":          "MiladyOS",                // brand display name for log messages
- *     "packageName":         "com.miladyai.milady",     // APK Java package id
- *     "classPrefix":         "Milady",                  // Java class name prefix (MiladyDialActivity, MiladySmsReceiver, …)
- *     "productName":         "milady_cf_x86_64_phone",  // Cuttlefish product name (used for lunch target + product makefile filename)
- *     "lunchTarget":         "milady_cf_x86_64_phone-trunk_staging-userdebug",
- *     "envPrefix":           "MILADY",                  // env var prefix (MILADY_PIXEL_CODENAME, MILADY_AOSP_BUILD, …)
- *     "vendorDir":            "os/android/vendor/milady" // optional override of source vendor dir relative to repo root
+ *     "brand":               "eliza",                  // lowercase token; vendor/<X> dir, init.<X>.rc, eliza_*.mk filename prefix
+ *     "appName":             "Eliza",                  // PascalCase; APK module name, vendor/<X>/apps/<APP_NAME>/<APP_NAME>.apk
+ *     "distroName":          "ElizaOS",                // brand display name for log messages
+ *     "packageName":         "com.elizaai.eliza",     // APK Java package id
+ *     "classPrefix":         "Eliza",                  // Java class name prefix (ElizaDialActivity, ElizaSmsReceiver, …)
+ *     "productName":         "eliza_cf_x86_64_phone",  // Cuttlefish product name (used for lunch target + product makefile filename)
+ *     "lunchTarget":         "eliza_cf_x86_64_phone-trunk_staging-userdebug",
+ *     "envPrefix":           "ELIZA",                  // env var prefix (ELIZA_PIXEL_CODENAME, ELIZA_AOSP_BUILD, …)
+ *     "vendorDir":            "os/android/vendor/eliza" // optional override of source vendor dir relative to repo root
  *     "buildAndroidSystemCmd": ["bun", "run", "build:android:system"]  // command to rebuild the privileged APK
  *   }
  *
@@ -120,7 +120,7 @@ export function loadBrandConfig(configPath) {
     parsed.cuttlefishMakefile ?? `${parsed.productName}.mk`;
   // System property prefix used by init.<brand>.rc and the boot
   // validator. Defaults to distroName lowercased (e.g. ElizaOS →
-  // "elizaos", MiladyOS → "miladyos") so `ro.<propertyPrefix>.product`
+  // "elizaos", ElizaOS → "elizaos") so `ro.<propertyPrefix>.product`
   // matches what the AOSP build sets via PRODUCT_PROPERTY_OVERRIDES.
   parsed.propertyPrefix =
     parsed.propertyPrefix ?? parsed.distroName.toLowerCase();

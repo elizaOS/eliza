@@ -1137,7 +1137,7 @@ export class N8nSidecar {
    *
    * Credentials are persisted to `{stateDir}/owner.json` (mode-600) so the
    * same login works on every subsequent boot; we never re-generate. Password
-   * is random per install — there's no user-facing n8n UI flow in Milady, so
+   * is random per install — there's no user-facing n8n UI flow in Eliza, so
    * storing it here is safe for a local single-user sidecar.
    */
   private async provisionApiKey(host: string): Promise<string | null> {
@@ -1163,7 +1163,7 @@ export class N8nSidecar {
         return null;
       }
 
-      const label = "milady-sidecar";
+      const label = "eliza-sidecar";
       const createKey = async (): Promise<Response> =>
         this.deps.fetch(`${host}/rest/api-keys`, {
           method: "POST",
@@ -1249,7 +1249,7 @@ export class N8nSidecar {
         return {
           email: parsed.email,
           firstName:
-            typeof parsed.firstName === "string" ? parsed.firstName : "Milady",
+            typeof parsed.firstName === "string" ? parsed.firstName : "Eliza",
           lastName:
             typeof parsed.lastName === "string" ? parsed.lastName : "Local",
           password: parsed.password,
@@ -1261,8 +1261,8 @@ export class N8nSidecar {
 
     const password = this.generateRandomPassword();
     const creds = {
-      email: "milady@milady.local",
-      firstName: "Milady",
+      email: "eliza@eliza.local",
+      firstName: "Eliza",
       lastName: "Local",
       password,
     };

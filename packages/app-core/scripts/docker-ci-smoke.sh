@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 
 # Smoke-test the production Docker build path used by .github/workflows/build-docker.yml.
 #
@@ -30,7 +30,21 @@ log() {
   printf '[docker-ci-smoke] %s\n' "$*"
 }
 
+on_error() {
+  local status=$?
+  local line="${BASH_LINENO[0]:-0}"
+  local command="${BASH_COMMAND:-unknown}"
+  if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+    printf '::error file=packages/app-core/scripts/docker-ci-smoke.sh,line=%s::docker-ci-smoke command failed with exit code %s: %s\n' "$line" "$status" "$command" >&2
+  fi
+}
+
+trap on_error ERR
+
 fail() {
+  if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+    printf '::error::docker-ci-smoke: %s\n' "$*" >&2
+  fi
   printf '[docker-ci-smoke] ERROR: %s\n' "$*" >&2
   exit 1
 }
@@ -87,13 +101,23 @@ cd "$REPO_ROOT"
 
 [[ -f package.json ]] || fail "Run from the repo root"
 if [[ -d packages/app-core ]]; then
+  # Inside the eliza repo (canonical layout): app-core at packages/,
+  # the app entry point at packages/app/.
   APP_CORE_DIR="packages/app-core"
   PACKAGES_DIR="packages"
   APP_DIR="packages/app"
+  PLUGINS_DIR="plugins"
 elif [[ -d eliza/packages/app-core ]]; then
+  # Inside the eliza outer repo where eliza is a submodule: app-core
+  # is nested under eliza/, while the host app can live in apps/app.
   APP_CORE_DIR="eliza/packages/app-core"
   PACKAGES_DIR="eliza/packages"
-  APP_DIR="apps/app"
+  if [[ -d apps/app ]]; then
+    APP_DIR="apps/app"
+  else
+    APP_DIR="eliza/packages/app"
+  fi
+  PLUGINS_DIR="eliza/plugins"
 else
   fail "packages/app-core not found"
 fi
@@ -110,8 +134,8 @@ load_env_file "$APP_CORE_DIR/deploy/deploy.defaults.env"
 load_env_file "deploy/deploy.env"
 
 APP_IMAGE="${APP_IMAGE:-eliza/agent}"
-APP_ENTRYPOINT="${APP_ENTRYPOINT:-$AGENT_DIR/dist/bin.js}"
-APP_CMD_START="${APP_CMD_START:-node ${APP_ENTRYPOINT} start}"
+APP_ENTRYPOINT="${APP_ENTRYPOINT:-$AGENT_DIR/dist/packages/agent/src/bin.js}"
+APP_CMD_START="${APP_CMD_START:-node --import tsx ${APP_ENTRYPOINT} start}"
 APP_PORT="${APP_PORT:-2138}"
 APP_API_BIND="${APP_API_BIND:-127.0.0.1}"
 OCI_SOURCE="${OCI_SOURCE:-}"
@@ -176,13 +200,17 @@ trap cleanup EXIT
 
 log "Installing dependencies"
 node "$APP_CORE_SCRIPTS_DIR/init-submodules.mjs"
-MILADY_SKIP_LOCAL_UPSTREAMS=1 ELIZA_SKIP_LOCAL_UPSTREAMS=1 node "$APP_CORE_SCRIPTS_DIR/disable-local-eliza-workspace.mjs"
-MILADY_SKIP_LOCAL_UPSTREAMS=1 ELIZA_SKIP_LOCAL_UPSTREAMS=1 "$BUN_BIN" install --ignore-scripts --no-frozen-lockfile
+ELIZA_SKIP_LOCAL_UPSTREAMS=1 ELIZA_SKIP_LOCAL_UPSTREAMS=1 node "$APP_CORE_SCRIPTS_DIR/disable-local-eliza-workspace.mjs"
+ELIZA_SKIP_LOCAL_UPSTREAMS=1 ELIZA_SKIP_LOCAL_UPSTREAMS=1 "$BUN_BIN" install --ignore-scripts --no-frozen-lockfile
+# --ignore-scripts avoids running the full repo postinstall during the package
+# install, but build tools still need their platform binaries materialized.
+node node_modules/esbuild/install.js 2>/dev/null || true
+node node_modules/bun/install.js 2>/dev/null || true
 if [[ -d "$REPO_ROOT/.eliza.ci-disabled" && ! -d "$REPO_ROOT/eliza" ]]; then
   log "Restoring eliza/ from .eliza.ci-disabled for downstream build steps"
   mv "$REPO_ROOT/.eliza.ci-disabled" "$REPO_ROOT/eliza"
 fi
-export MILADY_SKIP_LOCAL_UPSTREAMS=1
+export ELIZA_SKIP_LOCAL_UPSTREAMS=1
 export ELIZA_SKIP_LOCAL_UPSTREAMS=1
 
 log "Installing published-workspace fallback dependencies"
@@ -209,25 +237,38 @@ if [[ ! -f "$TYPESCRIPT_DIR/src/types/generated/eliza/v1/agent_pb.ts" ]]; then
   popd >/dev/null
 fi
 
+if [[ -f "$TYPESCRIPT_DIR/package.json" ]]; then
+  log "Building @elizaos/core source artifacts"
+  pushd "$TYPESCRIPT_DIR" >/dev/null
+  "$BUN_BIN" run build.ts --node-only
+  popd >/dev/null
+  node scripts/prepare-package-dist.mjs "$TYPESCRIPT_DIR"
+  CORE_NODE_MODULE="node_modules/@elizaos/core"
+  rm -rf "$CORE_NODE_MODULE"
+  mkdir -p "$(dirname "$CORE_NODE_MODULE")"
+  ln -s "../../$TYPESCRIPT_DIR" "$CORE_NODE_MODULE"
+  node scripts/patch-nested-core-dist.mjs || true
+else
+  log "No local @elizaos/core source package found at $TYPESCRIPT_DIR; using installed package"
+fi
+
 log "Building Capacitor plugins"
 pushd "$APP_DIR" >/dev/null
 "$BUN_BIN" scripts/plugin-build.mjs
 popd >/dev/null
 
+WHATSAPP_PLUGIN_TS_DIR="$PLUGINS_DIR/plugin-whatsapp/typescript"
+if [[ -f "$WHATSAPP_PLUGIN_TS_DIR/package.json" ]]; then
+  log "Building @elizaos/plugin-whatsapp workspace artifacts"
+  pushd "$WHATSAPP_PLUGIN_TS_DIR" >/dev/null
+  "$BUN_BIN" run build
+  popd >/dev/null
+fi
+
 log "Building agent workspace"
 pushd "$AGENT_DIR" >/dev/null
 "$BUN_BIN" run build:docker-dist
 popd >/dev/null
-
-if [[ "$APP_CORE_DIR" == "packages/app-core" || "${MILADY_SKIP_LOCAL_UPSTREAMS:-0}" != "1" ]]; then
-  log "Building @elizaos/core source artifacts"
-  pushd "$TYPESCRIPT_DIR" >/dev/null
-  "$BUN_BIN" run build.ts --node-only
-  popd >/dev/null
-  node scripts/patch-nested-core-dist.mjs || true
-else
-  log "Skipping @elizaos/core source build in published-only mode"
-fi
 
 if [[ -f tsdown.config.ts || -f tsdown.config.mts || -f tsdown.config.js || -f tsdown.config.mjs ]]; then
   log "Building runtime dist"
@@ -243,6 +284,13 @@ pushd "$APP_DIR" >/dev/null
 NODE_ENV=production "$BUN_BIN" run build:web
 popd >/dev/null
 
+if [[ -n "${CORE_NODE_MODULE:-}" && -f "$TYPESCRIPT_DIR/dist/package.json" ]]; then
+  log "Relinking @elizaos/core to built dist for Docker runtime"
+  rm -rf "$CORE_NODE_MODULE"
+  mkdir -p "$(dirname "$CORE_NODE_MODULE")"
+  ln -s "../../$TYPESCRIPT_DIR/dist" "$CORE_NODE_MODULE"
+fi
+
 log "Preparing CI dockerignore"
 cp "$APP_CORE_DIR/deploy/.dockerignore.ci" .dockerignore
 
@@ -252,7 +300,16 @@ const fs = require('fs');
 const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 const agentDir = process.env.AGENT_DIR;
 if (!pkg.workspaces) pkg.workspaces = [];
-if (!pkg.workspaces.includes(agentDir)) {
+const coversAgentDir = (workspace) => {
+  const target = agentDir.replace(/\/+$/, '');
+  const pattern = String(workspace).replace(/\/+$/, '');
+  if (pattern === target) return true;
+  if (!pattern.endsWith('/*')) return false;
+  const base = pattern.slice(0, -2);
+  if (!target.startsWith(base + '/')) return false;
+  return !target.slice(base.length + 1).includes('/');
+};
+if (!pkg.workspaces.some(coversAgentDir)) {
   pkg.workspaces.push(agentDir);
 }
 fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
@@ -294,17 +351,18 @@ log "Starting container smoke boot"
   --name "$CONTAINER_NAME" \
   -e PORT="$CONTAINER_PORT" \
   -e APP_PORT="$CONTAINER_PORT" \
-  -e MILADY_API_PORT="$CONTAINER_PORT" \
+  -e ELIZA_API_PORT="$CONTAINER_PORT" \
   -e ELIZA_API_PORT="$CONTAINER_PORT" \
   -e ELIZA_PORT="$CONTAINER_PORT" \
   -e APP_API_BIND=0.0.0.0 \
-  -e MILADY_STATE_DIR=/tmp/milady-smoke/state \
-  -e ELIZA_STATE_DIR=/tmp/milady-smoke/state \
-  -e MILADY_CONFIG_DIR=/tmp/milady-smoke/config \
-  -e ELIZA_CONFIG_DIR=/tmp/milady-smoke/config \
-  -e MILADY_WORKSPACE_DIR=/tmp/milady-smoke/workspace \
-  -e ELIZA_WORKSPACE_DIR=/tmp/milady-smoke/workspace \
-  -e PGLITE_DATA_DIR=/tmp/milady-smoke/pglite \
+  -e ELIZA_STATE_DIR=/tmp/eliza-smoke/state \
+  -e ELIZA_STATE_DIR=/tmp/eliza-smoke/state \
+  -e ELIZA_CONFIG_DIR=/tmp/eliza-smoke/config \
+  -e ELIZA_CONFIG_DIR=/tmp/eliza-smoke/config \
+  -e ELIZA_WORKSPACE_DIR=/tmp/eliza-smoke/workspace \
+  -e ELIZA_WORKSPACE_DIR=/tmp/eliza-smoke/workspace \
+  -e ELIZA_VAULT_PASSPHRASE=docker-smoke-vault-passphrase \
+  -e PGLITE_DATA_DIR=/tmp/eliza-smoke/pglite \
   -e ELIZA_DISABLE_LOCAL_EMBEDDINGS=1 \
   -e ELIZA_API_BIND=0.0.0.0 \
   -p "${SMOKE_PORT}:${CONTAINER_PORT}" \
@@ -350,15 +408,15 @@ while (( SECONDS < deadline )); do
     timeout 10 "$DOCKER_BIN" logs --tail 80 "$CONTAINER_NAME" || true
   fi
 
-  if probe_ok "$health_url" /tmp/milady-docker-health.txt; then
+  if probe_ok "$health_url" /tmp/eliza-docker-health.txt; then
     log "Health probe succeeded: $health_url"
-    cat /tmp/milady-docker-health.txt
+    cat /tmp/eliza-docker-health.txt
     exit 0
   fi
 
-  if probe_ok "$status_url" /tmp/milady-docker-status.txt; then
+  if probe_ok "$status_url" /tmp/eliza-docker-status.txt; then
     log "Status probe succeeded: $status_url"
-    cat /tmp/milady-docker-status.txt
+    cat /tmp/eliza-docker-status.txt
     exit 0
   fi
 

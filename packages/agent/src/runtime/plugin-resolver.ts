@@ -17,6 +17,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { logger, type Plugin } from "@elizaos/core";
+import { formatError } from "@elizaos/shared";
 
 import { type ElizaConfig, saveElizaConfig } from "../config/config.js";
 import { resolveStateDir, resolveUserPath } from "../config/paths.js";
@@ -73,10 +74,6 @@ const RUNTIME_APP_PLUGIN_SUBPATHS = new Set([
 // ---------------------------------------------------------------------------
 // Helpers (private)
 // ---------------------------------------------------------------------------
-
-function formatError(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
 
 /** Missing npm package, Bun resolve, or browser stagehand — expected when optional plugins are allow-listed but not installed. */
 function isBenignOptionalPluginFailure(msg: string): boolean {

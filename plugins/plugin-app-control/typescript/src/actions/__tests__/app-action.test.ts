@@ -179,7 +179,7 @@ describe("APP action validate (multi-turn)", () => {
 
 describe("APP create dispatch", () => {
 	it("passes verifier policy through CREATE_TASK parameters with canonical completion proof", async () => {
-		const repoRoot = await mkdtemp(path.join(tmpdir(), "milady-app-create-"));
+		const repoRoot = await mkdtemp(path.join(tmpdir(), "eliza-app-create-"));
 		try {
 			const templateDir = path.join(repoRoot, "eliza/templates/min-app");
 			await mkdir(templateDir, { recursive: true });
@@ -276,7 +276,7 @@ describe("APP create dispatch", () => {
 	});
 
 	it("edit-N choice locates the installed app's source dir and dispatches CREATE_TASK", async () => {
-		const repoRoot = await mkdtemp(path.join(tmpdir(), "milady-app-edit-"));
+		const repoRoot = await mkdtemp(path.join(tmpdir(), "eliza-app-edit-"));
 		try {
 			const installedApp = {
 				name: "@me/app-notes",

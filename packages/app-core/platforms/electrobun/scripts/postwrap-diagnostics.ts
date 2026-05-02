@@ -356,9 +356,15 @@ export function main(
   }
 
   if (shouldApplyLocalAdhocSigning(env)) {
+    const entitlements = electrobunConfig.build?.mac?.entitlements;
+    if (!entitlements) {
+      throw new Error(
+        "[postwrap-diagnostics] missing macOS entitlements in Electrobun config",
+      );
+    }
     signLocalAppBundle({
       appBundlePath: wrapperBundlePath,
-      entitlements: electrobunConfig.build.mac.entitlements,
+      entitlements,
       expectedIdentifier: electrobunConfig.app.identifier,
     });
     console.log(

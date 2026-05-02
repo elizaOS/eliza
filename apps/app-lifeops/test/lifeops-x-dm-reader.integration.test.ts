@@ -13,13 +13,17 @@
  * No live credentials required for the majority of this suite — a mock server
  * covers the API call path.
  */
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { itIf } from "../../../../test/helpers/conditional-tests.ts";
 import {
-  X_DM_INBOUND_CAPABILITY,
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { itIf } from "../../../../eliza/test/helpers/conditional-tests.ts";
+import {
   pullXInboundDms,
   readXDmCredentialsFromEnv,
+  X_DM_INBOUND_CAPABILITY,
   type XDmCapabilityDescriptor,
 } from "../src/lifeops/x-dm-reader.js";
 
@@ -78,12 +82,10 @@ async function startMockXApi(
   response: ReturnType<typeof makeDmEventsResponse>,
   statusCode = 200,
 ): Promise<MockServer> {
-  const server = createServer(
-    (_req: IncomingMessage, res: ServerResponse) => {
-      res.writeHead(statusCode, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(response));
-    },
-  );
+  const server = createServer((_req: IncomingMessage, res: ServerResponse) => {
+    res.writeHead(statusCode, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(response));
+  });
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
@@ -117,11 +119,11 @@ function withMockXBaseUrl(
   baseUrl: string,
   fn: () => Promise<void>,
 ): Promise<void> {
-  const prev = process.env.MILADY_MOCK_X_BASE;
-  process.env.MILADY_MOCK_X_BASE = baseUrl;
+  const prev = process.env.ELIZA_MOCK_X_BASE;
+  process.env.ELIZA_MOCK_X_BASE = baseUrl;
   return fn().finally(() => {
-    if (prev === undefined) delete process.env.MILADY_MOCK_X_BASE;
-    else process.env.MILADY_MOCK_X_BASE = prev;
+    if (prev === undefined) delete process.env.ELIZA_MOCK_X_BASE;
+    else process.env.ELIZA_MOCK_X_BASE = prev;
   });
 }
 
@@ -247,7 +249,7 @@ describe("pullXInboundDms (mock server)", () => {
       TWITTER_ACCESS_TOKEN: process.env.TWITTER_ACCESS_TOKEN,
       TWITTER_ACCESS_TOKEN_SECRET: process.env.TWITTER_ACCESS_TOKEN_SECRET,
       TWITTER_USER_ID: process.env.TWITTER_USER_ID,
-      MILADY_MOCK_X_BASE: process.env.MILADY_MOCK_X_BASE,
+      ELIZA_MOCK_X_BASE: process.env.ELIZA_MOCK_X_BASE,
     };
   });
 
@@ -388,7 +390,11 @@ describe("pullXInboundDms (mock server)", () => {
 
   it("returns empty inbound + hasCredentials: true on rate-limit response", async () => {
     mock = await startMockXApi(
-      { data: [], includes: { users: [] }, meta: { result_count: 0, next_token: null } },
+      {
+        data: [],
+        includes: { users: [] },
+        meta: { result_count: 0, next_token: null },
+      },
       429,
     );
 

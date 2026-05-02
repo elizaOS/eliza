@@ -445,7 +445,7 @@ describe("pageScopedContextProvider", () => {
     expect(result.text).toContain("RPC providers");
     expect(result.text).toContain("Token inventory");
     expect(result.text).toContain("24h activity: 1 swap");
-    expect(result.text).toContain("Vincent: connected");
+    expect(result.text).toContain("Vincent delegated trading: connected");
   });
 
   it("includes a substantive main-chat tail when sourceConversationId points to one", async () => {

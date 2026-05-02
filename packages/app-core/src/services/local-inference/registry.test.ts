@@ -4,9 +4,9 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   listInstalledModels,
-  removeMiladyModel,
-  touchMiladyModel,
-  upsertMiladyModel,
+  removeElizaModel,
+  touchElizaModel,
+  upsertElizaModel,
 } from "./registry";
 import type { InstalledModel } from "./types";
 
@@ -15,7 +15,7 @@ describe("registry", () => {
   let originalStateDir: string | undefined;
 
   beforeEach(async () => {
-    tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "milady-registry-"));
+    tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-registry-"));
     originalStateDir = process.env.ELIZA_STATE_DIR;
     process.env.ELIZA_STATE_DIR = tmpRoot;
   });
@@ -48,38 +48,38 @@ describe("registry", () => {
       sizeBytes: 100,
       installedAt: new Date().toISOString(),
       lastUsedAt: null,
-      source: "milady-download",
+      source: "eliza-download",
       ...extra,
     };
   }
 
   it("upsert then list returns the model", async () => {
     const file = await makeFile("a.gguf");
-    await upsertMiladyModel(makeOwned("a", file));
+    await upsertElizaModel(makeOwned("a", file));
     const list = await listInstalledModels();
     expect(list.some((m) => m.id === "a")).toBe(true);
   });
 
-  it("rejects upsert of a file outside the milady root", async () => {
+  it("rejects upsert of a file outside the eliza root", async () => {
     await expect(
-      upsertMiladyModel(makeOwned("a", "/etc/passwd")),
+      upsertElizaModel(makeOwned("a", "/etc/passwd")),
     ).rejects.toThrow(/under the local-inference root/);
   });
 
-  it("rejects upsert of non-milady-download source", async () => {
+  it("rejects upsert of non-eliza-download source", async () => {
     const file = await makeFile("x.gguf");
     await expect(
-      upsertMiladyModel({
+      upsertElizaModel({
         ...makeOwned("x", file),
         source: "external-scan",
       }),
-    ).rejects.toThrow(/only accepts Milady-owned models/);
+    ).rejects.toThrow(/only accepts Eliza-owned models/);
   });
 
   it("upsert of same id replaces the entry", async () => {
     const file = await makeFile("rep.gguf");
-    await upsertMiladyModel(makeOwned("rep", file));
-    await upsertMiladyModel(makeOwned("rep", file, { displayName: "renamed" }));
+    await upsertElizaModel(makeOwned("rep", file));
+    await upsertElizaModel(makeOwned("rep", file, { displayName: "renamed" }));
     const list = await listInstalledModels();
     const entry = list.find((m) => m.id === "rep");
     expect(entry?.displayName).toBe("renamed");
@@ -87,27 +87,27 @@ describe("registry", () => {
     expect(list.filter((m) => m.id === "rep").length).toBe(1);
   });
 
-  it("touchMiladyModel updates lastUsedAt", async () => {
+  it("touchElizaModel updates lastUsedAt", async () => {
     const file = await makeFile("t.gguf");
-    await upsertMiladyModel(makeOwned("t", file));
-    await touchMiladyModel("t");
+    await upsertElizaModel(makeOwned("t", file));
+    await touchElizaModel("t");
     const list = await listInstalledModels();
     const entry = list.find((m) => m.id === "t");
     expect(entry?.lastUsedAt).not.toBeNull();
   });
 
-  it("removeMiladyModel deletes the file and the registry entry", async () => {
+  it("removeElizaModel deletes the file and the registry entry", async () => {
     const file = await makeFile("rm.gguf");
-    await upsertMiladyModel(makeOwned("rm", file));
-    const result = await removeMiladyModel("rm");
+    await upsertElizaModel(makeOwned("rm", file));
+    const result = await removeElizaModel("rm");
     expect(result.removed).toBe(true);
     const list = await listInstalledModels();
     expect(list.some((m) => m.id === "rm")).toBe(false);
     await expect(fs.stat(file)).rejects.toThrow();
   });
 
-  it("removeMiladyModel returns not-found for unknown ids", async () => {
-    const result = await removeMiladyModel("unknown");
+  it("removeElizaModel returns not-found for unknown ids", async () => {
+    const result = await removeElizaModel("unknown");
     expect(result).toEqual({ removed: false, reason: "not-found" });
   });
 });

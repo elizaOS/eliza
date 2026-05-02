@@ -82,7 +82,7 @@ describe("handleCloudRoute cloud wallet binding", () => {
   beforeEach(async () => {
     stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "cloud-wallet-bind-"));
     process.env = { ...ORIGINAL_ENV };
-    process.env.MILADY_STATE_DIR = stateDir;
+    process.env.ELIZA_STATE_DIR = stateDir;
     process.env.ENABLE_CLOUD_WALLET = "1";
     vi.clearAllMocks();
   });
@@ -129,7 +129,7 @@ describe("handleCloudRoute cloud wallet binding", () => {
             createAgent: async () => ({}),
             deleteAgent: async () => undefined,
           }) as never,
-        connect: async () => ({ agentName: "Milady" }),
+        connect: async () => ({ agentName: "Eliza" }),
         disconnect: async () => undefined,
         getStatus: () => "connected",
         getActiveAgentId: () => "agent-123",
@@ -181,10 +181,10 @@ describe("handleCloudRoute cloud wallet binding", () => {
 
     const rawEnv = await fs.readFile(path.join(stateDir, "config.env"), "utf8");
     expect(rawEnv).toContain(
-      "MILADY_CLOUD_EVM_ADDRESS=0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+      "ELIZA_CLOUD_EVM_ADDRESS=0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
     );
     expect(rawEnv).toContain(
-      "MILADY_CLOUD_SOLANA_ADDRESS=So11111111111111111111111111111111111111112",
+      "ELIZA_CLOUD_SOLANA_ADDRESS=So11111111111111111111111111111111111111112",
     );
     expect(rawEnv).toContain("ENABLE_EVM_PLUGIN=1");
     expect(rawEnv).toContain("WALLET_SOURCE_EVM=cloud");
@@ -260,7 +260,7 @@ describe("handleCloudRoute cloud wallet binding", () => {
             createAgent: async () => ({}),
             deleteAgent: async () => undefined,
           }) as never,
-        connect: async () => ({ agentName: "Milady" }),
+        connect: async () => ({ agentName: "Eliza" }),
         disconnect: async () => undefined,
         getStatus: () => "connected",
         getActiveAgentId: () => "agent-123",
@@ -306,7 +306,7 @@ describe("handleCloudRoute cloud wallet binding", () => {
     });
     expect(restartRuntime).not.toHaveBeenCalled();
     expect(await fs.readFile(configEnvPath, "utf8")).toBe("EXISTING=1\n");
-    expect(process.env.MILADY_CLOUD_EVM_ADDRESS).toBeUndefined();
+    expect(process.env.ELIZA_CLOUD_EVM_ADDRESS).toBeUndefined();
     expect(process.env.ENABLE_EVM_PLUGIN).toBeUndefined();
     expect(process.env.WALLET_SOURCE_EVM).toBeUndefined();
 
@@ -396,8 +396,8 @@ describe("handleCloudRoute cloud wallet binding", () => {
 
     // process.env should NOT contain cloud-wallet env vars from the
     // failed attempt.
-    expect(process.env.MILADY_CLOUD_EVM_ADDRESS).toBeUndefined();
-    expect(process.env.MILADY_CLOUD_SOLANA_ADDRESS).toBeUndefined();
+    expect(process.env.ELIZA_CLOUD_EVM_ADDRESS).toBeUndefined();
+    expect(process.env.ELIZA_CLOUD_SOLANA_ADDRESS).toBeUndefined();
     expect(process.env.WALLET_SOURCE_EVM).toBeUndefined();
     expect(process.env.WALLET_SOURCE_SOLANA).toBeUndefined();
 

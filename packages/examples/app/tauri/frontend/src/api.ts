@@ -17,7 +17,9 @@ export async function sendChat(
   config: AppConfig,
   text: string,
 ): Promise<{ responseText: string; effectiveMode: ProviderMode }> {
-  const result = await invoke<[string, ProviderMode]>("chat_send", { config, text });
+  const result = await invoke<[string, ProviderMode]>("chat_send", {
+    config,
+    text,
+  });
   return { responseText: result[0], effectiveMode: result[1] };
 }
-

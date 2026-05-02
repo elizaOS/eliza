@@ -1,14 +1,14 @@
-import {
-  type AppBlockerPermissionResult,
-  type AppBlockerPluginLike,
-  type AppBlockerStatus,
-  type BlockAppsOptions,
-  type BlockAppsResult,
-  getAppBlockerPlugin,
-  type InstalledApp,
-  type SelectAppsResult,
-  type UnblockAppsResult,
+import type {
+  AppBlockerPermissionResult,
+  AppBlockerPluginLike,
+  AppBlockerStatus,
+  BlockAppsOptions,
+  BlockAppsResult,
+  InstalledApp,
+  SelectAppsResult,
+  UnblockAppsResult,
 } from "@elizaos/app-core/bridge/native-plugins";
+import { getAppBlockerPlugin } from "@elizaos/app-core/bridge/native-plugins";
 
 const STATUS_CACHE_TTL_MS = 5_000;
 let statusCache: { expiresAt: number; value: AppBlockerStatus } | null = null;

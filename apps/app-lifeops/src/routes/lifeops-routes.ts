@@ -20,6 +20,7 @@ import type {
   CreateLifeOpsWorkflowRequest,
   CreateLifeOpsXPostRequest,
   DisconnectLifeOpsGoogleConnectorRequest,
+  DisconnectLifeOpsHealthConnectorRequest,
   DisconnectLifeOpsMessagingConnectorRequest,
   GetLifeOpsCalendarFeedRequest,
   GetLifeOpsGmailRecommendationsRequest,
@@ -27,12 +28,14 @@ import type {
   GetLifeOpsGmailSpamReviewRequest,
   GetLifeOpsGmailTriageRequest,
   GetLifeOpsGmailUnrespondedRequest,
+  GetLifeOpsHealthSummaryRequest,
   GetLifeOpsIMessageMessagesRequest,
   GetLifeOpsInboxRequest,
   IngestLifeOpsGmailEventRequest,
   LifeOpsCalendarEventUpdate,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
+  LifeOpsHealthConnectorProvider,
   LifeOpsInboxChannel,
   ListLifeOpsCalendarsRequest,
   ManageLifeOpsGmailMessagesRequest,
@@ -49,9 +52,11 @@ import type {
   SnoozeLifeOpsOccurrenceRequest,
   StartLifeOpsDiscordConnectorRequest,
   StartLifeOpsGoogleConnectorRequest,
+  StartLifeOpsHealthConnectorRequest,
   StartLifeOpsSignalPairingRequest,
   StartLifeOpsTelegramAuthRequest,
   SubmitLifeOpsTelegramAuthRequest,
+  SyncLifeOpsHealthConnectorRequest,
   UpdateLifeOpsDefinitionRequest,
   UpdateLifeOpsGmailSpamReviewItemRequest,
   UpdateLifeOpsGoalRequest,
@@ -64,6 +69,7 @@ import {
   LIFEOPS_CONNECTOR_MODES,
   LIFEOPS_CONNECTOR_SIDES,
   LIFEOPS_GMAIL_SPAM_REVIEW_STATUSES,
+  LIFEOPS_HEALTH_CONNECTOR_PROVIDERS,
   LIFEOPS_INBOX_CACHE_MODES,
   LIFEOPS_INBOX_CHANNELS,
   LIFEOPS_OWNER_BROWSER_ACCESS_SOURCES,
@@ -77,6 +83,7 @@ import {
   saveLifeOpsAppState,
 } from "../lifeops/app-state.js";
 import { probeFullDiskAccess } from "../lifeops/fda-probe.js";
+import type { AddPaymentSourceRequest } from "../lifeops/payment-types.js";
 import {
   LIFEOPS_SCHEDULE_STATE_SCOPES,
   type SyncLifeOpsScheduleObservationsRequest,
@@ -110,7 +117,7 @@ export interface LifeOpsRouteContext {
 
 /**
  * Ensure the request has the runtime context required to act on behalf of
- * the configured admin entity. Returns `false` (and writes a 503) when the
+ * the configured owner entity. Returns `false` (and writes a 503) when the
  * agent runtime is not available — this is the per-request analogue of an
  * auth guard. The framework-level token check
  * (`route.public !== true && !isAuthorized()` in
@@ -131,7 +138,7 @@ function getService(ctx: LifeOpsRouteContext): LifeOpsService | null {
     return null;
   }
   // `runtime` is non-null after the guard above. The service derives the
-  // owner/admin entity from `ctx.state.adminEntityId` when present,
+  // owner entity from `ctx.state.adminEntityId` when present,
   // otherwise from `defaultOwnerEntityId(runtime)` (a stable per-agent UUID
   // derived from `agentId`). That keeps tenant scoping intact even when the
   // route dispatcher does not surface an explicit admin entity.
@@ -184,6 +191,8 @@ const LIFEOPS_RATE_LIMITS = {
   default: { maxRequests: 60, windowMs: 60_000 },
 } satisfies Record<string, RateLimitConfig>;
 
+type LifeOpsRateLimitOperation = keyof typeof LIFEOPS_RATE_LIMITS;
+
 const ACTIVITY_SIGNALS_DEFAULT_LIMIT = 200;
 const ACTIVITY_SIGNALS_MAX_LIMIT = 500;
 const MS_PER_DAY = 86_400_000;
@@ -197,55 +206,11 @@ const MAX_SCREEN_TIME_WINDOW_MS = MAX_SCREEN_TIME_WINDOW_DAYS * MS_PER_DAY;
  */
 function rateLimitRequest(
   ctx: LifeOpsRouteContext,
-  operation: string,
+  operation: LifeOpsRateLimitOperation,
 ): boolean {
   const agentId = String(ctx.state.runtime?.agentId ?? "unknown");
   const limitKey = `${agentId}:${operation}`;
-  let config: RateLimitConfig;
-  switch (operation) {
-    case "google_api_read":
-      config = LIFEOPS_RATE_LIMITS.google_api_read;
-      break;
-    case "google_api_write":
-      config = LIFEOPS_RATE_LIMITS.google_api_write;
-      break;
-    case "reminders_process":
-      config = LIFEOPS_RATE_LIMITS.reminders_process;
-      break;
-    case "task_create":
-      config = LIFEOPS_RATE_LIMITS.task_create;
-      break;
-    case "task_update":
-      config = LIFEOPS_RATE_LIMITS.task_update;
-      break;
-    case "gmail_draft":
-      config = LIFEOPS_RATE_LIMITS.gmail_draft;
-      break;
-    case "gmail_send":
-      config = LIFEOPS_RATE_LIMITS.gmail_send;
-      break;
-    case "calendar_create":
-      config = LIFEOPS_RATE_LIMITS.calendar_create;
-      break;
-    case "calendar_update":
-      config = LIFEOPS_RATE_LIMITS.calendar_update;
-      break;
-    case "calendar_delete":
-      config = LIFEOPS_RATE_LIMITS.calendar_delete;
-      break;
-    case "oauth_init":
-      config = LIFEOPS_RATE_LIMITS.oauth_init;
-      break;
-    case "connector_write":
-      config = LIFEOPS_RATE_LIMITS.connector_write;
-      break;
-    case "outbound_message":
-      config = LIFEOPS_RATE_LIMITS.outbound_message;
-      break;
-    default:
-      config = LIFEOPS_RATE_LIMITS.default;
-      break;
-  }
+  const config = LIFEOPS_RATE_LIMITS[operation];
   const { allowed, retryAfterMs } = checkRateLimit(limitKey, config);
   if (!allowed) {
     ctx.res.writeHead(429, {
@@ -274,6 +239,21 @@ function decodeMatchedPathComponent(
 ): string | null {
   const raw = match?.[index];
   return raw ? ctx.decodePathComponent(raw, res, label) : null;
+}
+
+function parseRouteInput<T>(
+  ctx: LifeOpsRouteContext,
+  parser: () => T | null,
+): T | null {
+  try {
+    return parser();
+  } catch (error) {
+    if (error instanceof LifeOpsServiceError) {
+      ctx.error(ctx.res, error.message, error.status);
+      return null;
+    }
+    throw error;
+  }
 }
 
 function parsePositiveIntegerQuery(
@@ -383,6 +363,56 @@ function parseConnectorSideFromRequest(
     );
   }
   return bodySide ?? querySide;
+}
+
+function parseHealthConnectorProvider(
+  value: string,
+): LifeOpsHealthConnectorProvider {
+  const normalized = value.trim().toLowerCase();
+  if (!isOneOf(normalized, LIFEOPS_HEALTH_CONNECTOR_PROVIDERS)) {
+    throw new LifeOpsServiceError(
+      400,
+      `provider must be one of: ${LIFEOPS_HEALTH_CONNECTOR_PROVIDERS.join(", ")}`,
+    );
+  }
+  return normalized;
+}
+
+function parseOptionalHealthConnectorProvider(
+  value: string | null,
+): LifeOpsHealthConnectorProvider | null {
+  const normalized = value?.trim();
+  return normalized ? parseHealthConnectorProvider(normalized) : null;
+}
+
+function parseHealthConnectorProviderPath(
+  ctx: LifeOpsRouteContext,
+  match: RegExpMatchArray,
+): LifeOpsHealthConnectorProvider | null {
+  return parseRouteInput(ctx, () => {
+    const provider = decodeMatchedPathComponent(
+      ctx,
+      match,
+      1,
+      ctx.res,
+      "provider",
+    );
+    return provider ? parseHealthConnectorProvider(provider) : null;
+  });
+}
+
+function parseDateOnlyQuery(
+  value: string | null,
+  field: string,
+): string | null {
+  const normalized = value?.trim();
+  if (!normalized) {
+    return null;
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    throw new LifeOpsServiceError(400, `${field} must be a YYYY-MM-DD date`);
+  }
+  return normalized;
 }
 
 function parseDiscordConnectorSourceInput(
@@ -570,7 +600,9 @@ function parseScreenTimeSourceQuery(
   return normalized;
 }
 
-function parseScreenTimeIdentifierQuery(value: string | null): string | undefined {
+function parseScreenTimeIdentifierQuery(
+  value: string | null,
+): string | undefined {
   const normalized = value?.trim();
   return normalized && normalized.length > 0 ? normalized : undefined;
 }
@@ -594,7 +626,10 @@ function parseRequiredIsoQuery(url: URL, field: string): string {
   if (!value) {
     throw new LifeOpsServiceError(400, `${field} is required`);
   }
-  if (!ISO_INSTANT_QUERY_RE.test(value) || !Number.isFinite(Date.parse(value))) {
+  if (
+    !ISO_INSTANT_QUERY_RE.test(value) ||
+    !Number.isFinite(Date.parse(value))
+  ) {
     throw new LifeOpsServiceError(400, `${field} must be a valid ISO string`);
   }
   return value;
@@ -703,6 +738,26 @@ async function runRoute(
     });
     throw error;
   }
+}
+
+function parseConnectorRefreshDetailFromQuery(
+  ctx: LifeOpsRouteContext,
+  defaults: {
+    side: LifeOpsConnectorSide;
+    mode: LifeOpsConnectorMode;
+  },
+): {
+  side: LifeOpsConnectorSide;
+  mode: LifeOpsConnectorMode;
+} | null {
+  return parseRouteInput(ctx, () => ({
+    side:
+      parseConnectorSideQuery(ctx.url.searchParams.get("side")) ??
+      defaults.side,
+    mode:
+      parseConnectorModeQuery(ctx.url.searchParams.get("mode")) ??
+      defaults.mode,
+  }));
 }
 
 function escapeHtml(value: string): string {
@@ -839,8 +894,9 @@ export async function handleLifeOpsRoutes(
     if (!body) {
       return true;
     }
-    const { isLifeOpsFeatureKey } =
-      await import("../lifeops/feature-flags.types.js");
+    const { isLifeOpsFeatureKey } = await import(
+      "../lifeops/feature-flags.types.js"
+    );
     if (!isLifeOpsFeatureKey(body.featureKey)) {
       ctx.error(res, "featureKey must be a known LifeOpsFeatureKey", 400);
       return true;
@@ -849,8 +905,9 @@ export async function handleLifeOpsRoutes(
       ctx.error(res, "enabled must be a boolean", 400);
       return true;
     }
-    const { createFeatureFlagService } =
-      await import("../lifeops/feature-flags.js");
+    const { createFeatureFlagService } = await import(
+      "../lifeops/feature-flags.js"
+    );
     const service = createFeatureFlagService(runtime);
     const next = body.enabled
       ? await service.enable(body.featureKey, "local", null)
@@ -1537,30 +1594,17 @@ export async function handleLifeOpsRoutes(
     method === "GET" &&
     pathname === "/api/lifeops/connectors/google/success"
   ) {
-    const rawSide = url.searchParams.get("side");
-    const rawMode = url.searchParams.get("mode");
-    if (rawSide !== null && rawSide !== "owner" && rawSide !== "agent") {
-      ctx.error(res, "side must be one of: owner, agent", 400);
-      return true;
-    }
-    if (
-      rawMode !== null &&
-      rawMode !== "local" &&
-      rawMode !== "remote" &&
-      rawMode !== "cloud_managed"
-    ) {
-      ctx.error(res, "mode must be one of: local, remote, cloud_managed", 400);
-      return true;
-    }
+    const refreshDetail = parseConnectorRefreshDetailFromQuery(ctx, {
+      side: "owner",
+      mode: "cloud_managed",
+    });
+    if (!refreshDetail) return true;
     writeHtml(
       res,
       200,
       "Google Connected",
       "Google access is now available in Eliza. You can close this window.",
-      {
-        side: (rawSide ?? "owner") as LifeOpsConnectorSide,
-        mode: (rawMode ?? "cloud_managed") as LifeOpsConnectorMode,
-      },
+      refreshDetail,
     );
     return true;
   }
@@ -1579,6 +1623,179 @@ export async function handleLifeOpsRoutes(
     });
   }
 
+  if (
+    method === "GET" &&
+    pathname === "/api/lifeops/connectors/health/status"
+  ) {
+    if (rateLimitRequest(ctx, "default")) return true;
+    return runRoute(ctx, async (service) => {
+      json(
+        res,
+        await service.getHealthDataConnectorStatuses(
+          url,
+          parseConnectorModeQuery(url.searchParams.get("mode")),
+          parseConnectorSideQuery(url.searchParams.get("side")),
+        ),
+      );
+    });
+  }
+
+  const healthStatusMatch = pathname.match(
+    /^\/api\/lifeops\/connectors\/health\/([^/]+)\/status$/,
+  );
+  if (method === "GET" && healthStatusMatch) {
+    if (rateLimitRequest(ctx, "default")) return true;
+    const provider = parseHealthConnectorProviderPath(ctx, healthStatusMatch);
+    if (!provider) return true;
+    return runRoute(ctx, async (service) => {
+      json(
+        res,
+        await service.getHealthDataConnectorStatus(
+          provider,
+          url,
+          parseConnectorModeQuery(url.searchParams.get("mode")),
+          parseConnectorSideQuery(url.searchParams.get("side")),
+        ),
+      );
+    });
+  }
+
+  const healthStartMatch = pathname.match(
+    /^\/api\/lifeops\/connectors\/health\/([^/]+)\/start$/,
+  );
+  if (method === "POST" && healthStartMatch) {
+    if (rateLimitRequest(ctx, "oauth_init")) return true;
+    const provider = parseHealthConnectorProviderPath(ctx, healthStartMatch);
+    if (!provider) return true;
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(
+        res,
+        await service.startHealthConnector(
+          {
+            ...(body as Omit<StartLifeOpsHealthConnectorRequest, "provider">),
+            provider,
+          },
+          url,
+        ),
+        201,
+      );
+    });
+  }
+
+  const healthCallbackMatch = pathname.match(
+    /^\/api\/lifeops\/connectors\/health\/([^/]+)\/callback$/,
+  );
+  if (method === "GET" && healthCallbackMatch) {
+    const provider = parseHealthConnectorProviderPath(ctx, healthCallbackMatch);
+    if (!provider) return true;
+    const service = getService(ctx);
+    if (!service) return true;
+    try {
+      const status = await service.completeHealthConnectorCallback(url);
+      if (status.provider !== provider) {
+        throw new LifeOpsServiceError(
+          409,
+          "Health connector callback provider did not match the request path.",
+        );
+      }
+      writeHtml(
+        res,
+        200,
+        `${provider} Connected`,
+        `${provider} health data is now available in Eliza. You can close this window.`,
+      );
+      return true;
+    } catch (error) {
+      if (error instanceof LifeOpsServiceError) {
+        writeHtml(res, error.status, "Health Connection Failed", error.message);
+        return true;
+      }
+      throw error;
+    }
+  }
+
+  const healthSuccessMatch = pathname.match(
+    /^\/api\/lifeops\/connectors\/health\/([^/]+)\/success$/,
+  );
+  if (method === "GET" && healthSuccessMatch) {
+    const provider = parseHealthConnectorProviderPath(ctx, healthSuccessMatch);
+    if (!provider) return true;
+    writeHtml(
+      res,
+      200,
+      `${provider} Connected`,
+      `${provider} health data is now available in Eliza. You can close this window.`,
+    );
+    return true;
+  }
+
+  const healthDisconnectMatch = pathname.match(
+    /^\/api\/lifeops\/connectors\/health\/([^/]+)\/disconnect$/,
+  );
+  if (method === "POST" && healthDisconnectMatch) {
+    if (rateLimitRequest(ctx, "connector_write")) return true;
+    const provider = parseHealthConnectorProviderPath(
+      ctx,
+      healthDisconnectMatch,
+    );
+    if (!provider) return true;
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(
+        res,
+        await service.disconnectHealthConnector(
+          {
+            ...(body as Omit<
+              DisconnectLifeOpsHealthConnectorRequest,
+              "provider"
+            >),
+            provider,
+          },
+          url,
+        ),
+      );
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/health/sync") {
+    if (rateLimitRequest(ctx, "connector_write")) return true;
+    const body = await readJsonBody<SyncLifeOpsHealthConnectorRequest>(
+      req,
+      res,
+    );
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.syncHealthConnectors(body));
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/lifeops/health/summary") {
+    if (rateLimitRequest(ctx, "default")) return true;
+    return runRoute(ctx, async (service) => {
+      const request: GetLifeOpsHealthSummaryRequest = {
+        provider: parseOptionalHealthConnectorProvider(
+          url.searchParams.get("provider"),
+        ),
+        mode: parseConnectorModeQuery(url.searchParams.get("mode")),
+        side: parseConnectorSideQuery(url.searchParams.get("side")),
+        days:
+          parsePositiveIntegerQuery(url.searchParams.get("days"), "days", {
+            max: 31,
+          }) ?? undefined,
+        startDate: parseDateOnlyQuery(
+          url.searchParams.get("startDate"),
+          "startDate",
+        ),
+        endDate: parseDateOnlyQuery(url.searchParams.get("endDate"), "endDate"),
+        forceSync: url.searchParams.get("forceSync") === "true",
+      };
+      json(res, await service.getHealthSummary(request));
+    });
+  }
+
   if (method === "GET" && pathname === "/api/lifeops/connectors/x/status") {
     return runRoute(ctx, async (service) => {
       json(
@@ -1592,23 +1809,16 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "GET" && pathname === "/api/lifeops/connectors/x/success") {
-    const rawSide = url.searchParams.get("side");
-    const rawMode = url.searchParams.get("mode");
     const connected = url.searchParams.get("twitter_connected") === "true";
     const error =
       url.searchParams.get("twitter_error_detail") ??
       url.searchParams.get("twitter_error");
-    if (rawSide !== null && rawSide !== "owner" && rawSide !== "agent") {
-      ctx.error(res, "side must be one of: owner, agent", 400);
-      return true;
-    }
     if (
-      rawMode !== null &&
-      rawMode !== "local" &&
-      rawMode !== "remote" &&
-      rawMode !== "cloud_managed"
+      !parseConnectorRefreshDetailFromQuery(ctx, {
+        side: "owner",
+        mode: "cloud_managed",
+      })
     ) {
-      ctx.error(res, "mode must be one of: local, remote, cloud_managed", 400);
       return true;
     }
     writeHtml(
@@ -2514,20 +2724,10 @@ export async function handleLifeOpsRoutes(
 
   if (method === "POST" && pathname === "/api/lifeops/money/sources") {
     if (rateLimitRequest(ctx, "connector_write")) return true;
-    const body = await readJsonBody<{
-      kind: string;
-      label: string;
-      institution?: string | null;
-      accountMask?: string | null;
-    }>(req, res);
+    const body = await readJsonBody<AddPaymentSourceRequest>(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
-      const source = await service.addPaymentSource({
-        kind: body.kind as never,
-        label: body.label,
-        institution: body.institution ?? null,
-        accountMask: body.accountMask ?? null,
-      });
+      const source = await service.addPaymentSource(body);
       json(res, { source: sanitizePaymentSourceForClient(source) }, 201);
     });
   }

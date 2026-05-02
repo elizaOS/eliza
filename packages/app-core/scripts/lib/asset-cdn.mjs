@@ -3,7 +3,7 @@ import process from "node:process";
 export const ELIZA_GITHUB_REPOSITORY = "elizaos/eliza";
 const CDN_ORIGIN = "https://cdn.jsdelivr.net/gh";
 const RAW_GITHUB_ORIGIN = "https://raw.githubusercontent.com";
-const HOMEPAGE_ASSET_ROOT = "apps/homepage/public";
+const HOMEPAGE_ASSET_ROOT = "packages/homepage/public";
 
 function normalizeReleaseTag(value) {
   const normalized = value?.trim();
@@ -105,7 +105,7 @@ export function resolveElizaAssetBaseUrls({
       buildJsDelivrAssetBase({
         repository,
         releaseTag,
-        assetRoot: "apps/app/public",
+        assetRoot: "packages/app/public",
       }),
     homepageAssetBaseUrl:
       explicitHomepageBase ||
@@ -117,8 +117,8 @@ export function resolveElizaAssetBaseUrls({
   };
 }
 
-// Milady scripts still import the repo-local alias while the shared helper
+// Eliza scripts still import the repo-local alias while the shared helper
 // remains named for the upstream elizaOS package.
-export function resolveMiladyAssetBaseUrls(options = {}) {
+export function resolveElizaAssetBaseUrls(options = {}) {
   return resolveElizaAssetBaseUrls(options);
 }

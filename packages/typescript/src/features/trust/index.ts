@@ -90,7 +90,7 @@ async function ensureAdminRoleOnInit(runtime: IAgentRuntime): Promise<void> {
 		if (!world) {
 			logger.debug(
 				{ worldId, adminEntityId },
-				"[TrustPlugin] WORLD_ID not found; skipping admin role bootstrap",
+				"[Trust] WORLD_ID not found; skipping admin role bootstrap",
 			);
 			return;
 		}
@@ -112,12 +112,12 @@ async function ensureAdminRoleOnInit(runtime: IAgentRuntime): Promise<void> {
 		await runtime.updateWorld(world);
 		logger.info(
 			{ adminEntityId, worldId },
-			"[TrustPlugin] Bootstrapped admin role for app user",
+			"[Trust] Bootstrapped admin role for app user",
 		);
 	} catch (error) {
 		logger.warn(
 			{ error, adminEntityId, worldId },
-			"[TrustPlugin] Failed to bootstrap admin role on init",
+			"[Trust] Failed to bootstrap admin role on init",
 		);
 	}
 }
@@ -156,7 +156,7 @@ const trustPlugin: Plugin = {
 	async init(_config: Record<string, string>, runtime: IAgentRuntime) {
 		await ensureAdminRoleOnInit(runtime);
 		logger.info(
-			"[TrustPlugin] Initializing trust plugin. Services will be started by the runtime.",
+			"[Trust] Initializing trust capability. Services will be started by the runtime.",
 		);
 	},
 };

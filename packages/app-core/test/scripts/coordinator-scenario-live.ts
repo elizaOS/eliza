@@ -54,7 +54,7 @@ try {
   ] as CoordinatorEvalChannel[];
 
   const result = await runCoordinatorLiveScenarios({
-    baseUrl: process.env.MILADY_BASE_URL,
+    baseUrl: process.env.ELIZA_BASE_URL,
     batchId,
     profile,
     outputRoot,

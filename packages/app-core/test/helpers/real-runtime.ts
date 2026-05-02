@@ -310,11 +310,14 @@ export async function createRealTestRuntime(
     }
 
     await runtime.initialize();
-    runtime.registerSendHandler("client_chat", async (_rt, _target, _content) => {
-      // Benchmarks and integration tests do not have a real in-app transport.
-      // Register a no-op handler so inbox digests and proactive reminders can
-      // exercise their normal delivery path without crashing the runtime.
-    });
+    runtime.registerSendHandler(
+      "client_chat",
+      async (_rt, _target, _content) => {
+        // Benchmarks and integration tests do not have a real in-app transport.
+        // Register a no-op handler so inbox digests and proactive reminders can
+        // exercise their normal delivery path without crashing the runtime.
+      },
+    );
 
     const cleanup = async () => {
       try {

@@ -14,7 +14,6 @@ import {
 
 interface Harness {
   runtime: IAgentRuntime;
-  pgClient: PGlite;
   close: () => Promise<void>;
 }
 
@@ -42,7 +41,6 @@ async function createHarness(): Promise<Harness> {
   } as unknown as IAgentRuntime;
   return {
     runtime,
-    pgClient,
     close: async () => {
       await pgClient.close();
     },

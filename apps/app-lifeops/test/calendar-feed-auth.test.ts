@@ -35,14 +35,18 @@ class StubBase {
 
 const CalendarService = withCalendar(StubBase as never);
 type CalendarServiceInstance = StubBase & {
-  getCalendarFeed: (requestUrl: URL, request: Record<string, unknown>) => Promise<unknown>;
+  getCalendarFeed: (
+    requestUrl: URL,
+    request: Record<string, unknown>,
+  ) => Promise<unknown>;
   requireGoogleCalendarGrant: ReturnType<typeof vi.fn>;
   syncGoogleCalendarFeed: ReturnType<typeof vi.fn>;
 };
 
 describe("calendar feed auth failures", () => {
   test("does not return cached events after Google sync returns 401", async () => {
-    const ServiceCtor = CalendarService as unknown as new () => CalendarServiceInstance;
+    const ServiceCtor =
+      CalendarService as unknown as new () => CalendarServiceInstance;
     const service = new ServiceCtor();
     service.requireGoogleCalendarGrant = vi.fn(async () => ({
       id: "grant-1",
@@ -54,7 +58,10 @@ describe("calendar feed auth failures", () => {
       capabilities: ["google.calendar.read"],
     }));
     service.syncGoogleCalendarFeed = vi.fn(async () => {
-      throw new LifeOpsServiceError(401, "Google Calendar requires reauthorization.");
+      throw new LifeOpsServiceError(
+        401,
+        "Google Calendar requires reauthorization.",
+      );
     });
 
     await expect(

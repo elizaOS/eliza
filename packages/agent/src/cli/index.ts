@@ -52,7 +52,7 @@ export async function runAutonomousCli(
     const { startEliza } = await import("../runtime/index.js");
     const runtime = await startEliza({ serverOnly: true });
     console.log(
-      `[cli] startEliza returned: runtime=${runtime ? "present" : "null"}, MILADY_LOCAL_LLAMA=${process.env.MILADY_LOCAL_LLAMA ?? "(unset)"}`,
+      `[cli] startEliza returned: runtime=${runtime ? "present" : "null"}, ELIZA_LOCAL_LLAMA=${process.env.ELIZA_LOCAL_LLAMA ?? "(unset)"}`,
     );
     // AOSP-only post-boot wiring. The upstream `startEliza` does not
     // register local-inference handlers — that lives in the
@@ -61,8 +61,8 @@ export async function runAutonomousCli(
     // agent` workspace cycle). Bootstrapping the AOSP llama loader
     // and ModelType handlers here keeps the registration in the
     // agent package and out of the bundler's cycle path. No-op when
-    // `MILADY_LOCAL_LLAMA !== "1"`.
-    if (runtime && process.env.MILADY_LOCAL_LLAMA?.trim() === "1") {
+    // `ELIZA_LOCAL_LLAMA !== "1"`.
+    if (runtime && process.env.ELIZA_LOCAL_LLAMA?.trim() === "1") {
       console.log("[cli] importing aosp-local-inference-bootstrap…");
       const { ensureAospLocalInferenceHandlers } = await import(
         "../runtime/aosp-local-inference-bootstrap.js"

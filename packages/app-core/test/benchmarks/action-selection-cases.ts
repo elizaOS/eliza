@@ -380,7 +380,8 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   },
   {
     id: "sched-propose-times",
-    userMessage: "propose three times for a 30 minute sync with Marco next week",
+    userMessage:
+      "propose three times for a 30 minute sync with Marco next week",
     expectedAction: "OWNER_CALENDAR",
     acceptableActions: [
       "PROPOSE",
@@ -450,7 +451,8 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   },
   {
     id: "approval-reject-request",
-    userMessage: "reject that pending approval request and say it needs changes",
+    userMessage:
+      "reject that pending approval request and say it needs changes",
     expectedAction: "REJECT_REQUEST",
     tags: ["approval", "standard"],
   },

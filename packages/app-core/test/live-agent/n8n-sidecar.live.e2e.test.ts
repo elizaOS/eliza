@@ -16,7 +16,7 @@
  * The LLM step at the end (gated on a live provider) proves the agent can
  * actually reach the sidecar through the API server the UI talks to.
  *
- * Gated on MILADY_LIVE_TEST=1 / ELIZA_LIVE_TEST=1. The live provider is
+ * Gated on ELIZA_LIVE_TEST=1 / ELIZA_LIVE_TEST=1. The live provider is
  * optional — the sidecar mechanics run on any environment, the chat step
  * only runs if a provider key is configured.
  */
@@ -30,13 +30,13 @@ import { afterAll, beforeAll, describe, expect } from "vitest";
 import {
   describeIf,
   itIf,
-} from "../../../../../test/helpers/conditional-tests.ts";
+} from "../../../../../eliza/test/helpers/conditional-tests.ts";
 import {
   buildIsolatedLiveProviderEnv,
   isLiveTestEnabled,
   LIVE_PROVIDER_ENV_KEYS,
   selectLiveProvider,
-} from "../../../../../test/helpers/live-provider";
+} from "../../../../../eliza/test/helpers/live-provider";
 import {
   disposeN8nSidecar,
   getN8nSidecar,
@@ -100,7 +100,7 @@ async function waitForReady(
 }
 
 describeIf(CAN_RUN)("Live: n8n sidecar end-to-end", () => {
-  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "milady-n8n-e2e-"));
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-n8n-e2e-"));
   let sidecar: N8nSidecar;
   let port: number;
   let host: string;
@@ -160,7 +160,7 @@ describeIf(CAN_RUN)("Live: n8n sidecar end-to-end", () => {
       const ownerJson = JSON.parse(
         await fs.promises.readFile(ownerJsonPath, "utf-8"),
       ) as { email?: unknown; password?: unknown };
-      expect(ownerJson.email).toBe("milady@milady.local");
+      expect(ownerJson.email).toBe("eliza@eliza.local");
       expect(typeof ownerJson.password).toBe("string");
       expect(String(ownerJson.password).length).toBeGreaterThan(40);
     },
@@ -176,7 +176,10 @@ describeIf(CAN_RUN)("Live: n8n sidecar end-to-end", () => {
         headers: { "X-N8N-API-KEY": apiKey, Accept: "application/json" },
       });
       expect(res.status).toBe(200);
-      const body = (await res.json()) as { data?: unknown; nextCursor?: unknown };
+      const body = (await res.json()) as {
+        data?: unknown;
+        nextCursor?: unknown;
+      };
       expect(body.data).toBeInstanceOf(Array);
     },
     30_000,
@@ -201,7 +204,7 @@ describeIf(CAN_RUN)("Live: n8n sidecar end-to-end", () => {
     "creates + lists a workflow through the public API",
     async () => {
       const minimalWorkflow = {
-        name: `milady-e2e-${Date.now()}`,
+        name: `eliza-e2e-${Date.now()}`,
         nodes: [
           {
             parameters: {},
@@ -317,13 +320,16 @@ describeIf(CAN_RUN)("Live: n8n sidecar end-to-end", () => {
         try {
           const { ModelType } = await import("@elizaos/core");
           const model = rt.runtime.getModel(ModelType.TEXT_SMALL);
-          expect(model, "live provider must register a TEXT_SMALL model").toBeTypeOf(
-            "function",
-          );
-          const out = (await (model as unknown as (
-            runtime: unknown,
-            params: { prompt: string; maxTokens: number },
-          ) => Promise<unknown>)(rt.runtime, {
+          expect(
+            model,
+            "live provider must register a TEXT_SMALL model",
+          ).toBeTypeOf("function");
+          const out = (await (
+            model as unknown as (
+              runtime: unknown,
+              params: { prompt: string; maxTokens: number },
+            ) => Promise<unknown>
+          )(rt.runtime, {
             prompt:
               "Answer in one short sentence: in n8n, what's the difference " +
               "between the internal /rest/* API and the public /api/v1/* API?",
@@ -333,7 +339,7 @@ describeIf(CAN_RUN)("Live: n8n sidecar end-to-end", () => {
             typeof out === "string"
               ? out
               : typeof (out as { text?: unknown })?.text === "string"
-                ? ((out as { text: string }).text)
+                ? (out as { text: string }).text
                 : JSON.stringify(out);
           expect(text.length).toBeGreaterThan(10);
         } finally {

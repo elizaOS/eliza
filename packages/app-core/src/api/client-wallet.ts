@@ -4,10 +4,6 @@
  */
 
 import type {
-  BrowserWorkspaceSolanaMessageSignatureResult,
-  BrowserWorkspaceSolanaTransactionResult,
-  BrowserWorkspaceWalletMessageSignatureResult,
-  BrowserWorkspaceWalletTransactionResult,
   BscTradeExecuteRequest,
   BscTradeExecuteResponse,
   BscTradePreflightResponse,
@@ -16,19 +12,6 @@ import type {
   BscTradeTxStatusResponse,
   BscTransferExecuteRequest,
   BscTransferExecuteResponse,
-  StewardApprovalActionResponse,
-  StewardBalanceResponse,
-  StewardHistoryResponse,
-  StewardPendingResponse,
-  StewardSignRequest,
-  StewardSignResponse,
-  StewardStatusResponse,
-  StewardTokenBalancesResponse,
-  StewardWalletAddressesResponse,
-  StewardWebhookEventsResponse,
-  StewardWebhookEventType,
-} from "@elizaos/app-steward";
-import type {
   DropStatus,
   MintResult,
   VerificationResult,
@@ -42,6 +25,12 @@ import type {
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
 } from "@elizaos/shared";
+import type {
+  BrowserWorkspaceSolanaMessageSignatureResult,
+  BrowserWorkspaceSolanaTransactionResult,
+  BrowserWorkspaceWalletMessageSignatureResult,
+  BrowserWorkspaceWalletTransactionResult,
+} from "../components/pages/browser-workspace-wallet";
 import { ElizaClient } from "./client-base";
 import type {
   ApplyProductionWalletDefaultsResponse,
@@ -52,6 +41,19 @@ import type {
   WalletExportResult,
   WhitelistStatus,
 } from "./client-types";
+import type {
+  StewardApprovalActionResponse,
+  StewardBalanceResponse,
+  StewardHistoryResponse,
+  StewardPendingResponse,
+  StewardSignRequest,
+  StewardSignResponse,
+  StewardStatusResponse,
+  StewardTokenBalancesResponse,
+  StewardWalletAddressesResponse,
+  StewardWebhookEventsResponse,
+  StewardWebhookEventType,
+} from "./client-types-steward";
 
 // ---------------------------------------------------------------------------
 // Declaration merging

@@ -15,6 +15,11 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  configureLocalEmbeddingPlugin,
+  extractPlugin,
+  type TestPluginModule,
+} from "@elizaos/agent";
+import {
   AgentRuntime,
   ChannelType,
   createCharacter,
@@ -26,15 +31,10 @@ import {
 } from "@elizaos/core";
 import dotenv from "dotenv";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { USER_PREFS_TABLE } from "../../../typescript/src/features/advanced-capabilities/personality/types.ts";
 import { describeIf } from "../helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../helpers/live-provider";
-import { USER_PREFS_TABLE } from "../../../typescript/src/features/advanced-capabilities/personality/types.ts";
 import { withTimeout } from "../helpers/test-utils";
-import {
-  configureLocalEmbeddingPlugin,
-  extractPlugin,
-  type TestPluginModule,
-} from "@elizaos/agent";
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(testDir, "..");
@@ -42,7 +42,7 @@ dotenv.config({ path: path.resolve(packageRoot, ".env") });
 dotenv.config({ path: path.resolve(packageRoot, "..", "..", ".env") });
 
 const liveModelTestsEnabled =
-  process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
+  process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const selectedLiveProvider = liveModelTestsEnabled
   ? selectLiveProvider()
   : null;

@@ -9,7 +9,7 @@ describe("shouldStartTelegramStandaloneBot", () => {
   it("requires passive LifeOps connector mode to be disabled", () => {
     expect(
       shouldStartTelegramStandaloneBot({
-        MILADY_TELEGRAM_STANDALONE_BOT: "1",
+        ELIZA_TELEGRAM_STANDALONE_BOT: "1",
       }),
     ).toBe(false);
   });
@@ -17,8 +17,8 @@ describe("shouldStartTelegramStandaloneBot", () => {
   it("allows explicit standalone mode after passive connectors are disabled", () => {
     expect(
       shouldStartTelegramStandaloneBot({
-        MILADY_LIFEOPS_PASSIVE_CONNECTORS: "0",
-        MILADY_TELEGRAM_STANDALONE_BOT: "1",
+        ELIZA_LIFEOPS_PASSIVE_CONNECTORS: "0",
+        ELIZA_TELEGRAM_STANDALONE_BOT: "1",
       }),
     ).toBe(true);
   });

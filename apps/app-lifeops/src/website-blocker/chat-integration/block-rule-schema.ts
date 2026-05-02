@@ -84,7 +84,9 @@ function toStringArray(value: unknown): string[] {
       return entry;
     });
   }
-  throw new BlockRuleRowError("life_block_rules.websites is neither string nor array");
+  throw new BlockRuleRowError(
+    "life_block_rules.websites is neither string nor array",
+  );
 }
 
 function toNumberOrNull(value: unknown, field: string): number | null {

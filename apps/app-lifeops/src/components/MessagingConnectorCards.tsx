@@ -47,6 +47,14 @@ const MACOS_FULL_DISK_ACCESS_SETTINGS_URL =
   "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles";
 const LIFEOPS_BROWSER_SETUP_ID = "lifeops-browser-setup";
 
+type ConnectorStatusVariant = "ok" | "muted" | "warning";
+
+const CONNECTOR_STATUS_DOT_CLASS: Record<ConnectorStatusVariant, string> = {
+  ok: "bg-emerald-500",
+  muted: "bg-muted/40",
+  warning: "bg-amber-500",
+};
+
 function ConnectorCardShell({
   icon,
   platform,
@@ -57,16 +65,9 @@ function ConnectorCardShell({
   icon: ReactNode;
   platform: string;
   status: string;
-  statusVariant: "ok" | "muted" | "warning";
+  statusVariant: ConnectorStatusVariant;
   children: React.ReactNode;
 }) {
-  const dotColor =
-    statusVariant === "ok"
-      ? "bg-emerald-500"
-      : statusVariant === "warning"
-        ? "bg-amber-500"
-        : "bg-muted/40";
-
   return (
     <div className="space-y-2 rounded-2xl border border-border/20 bg-card/14 px-3 py-3">
       <div className="flex items-center justify-between gap-3">
@@ -74,7 +75,7 @@ function ConnectorCardShell({
           {icon}
           <span className="text-sm font-medium text-txt">{platform}</span>
           <span
-            className={`inline-block h-1.5 w-1.5 rounded-full ${dotColor}`}
+            className={`inline-block h-1.5 w-1.5 rounded-full ${CONNECTOR_STATUS_DOT_CLASS[statusVariant]}`}
             title={status}
             aria-label={status}
             role="img"
@@ -90,7 +91,7 @@ function AccessPips({
   items,
   label,
 }: {
-  items: Array<"ok" | "warning" | "muted">;
+  items: ConnectorStatusVariant[];
   label: string;
 }) {
   const dots = items.length > 0 ? items : ["muted" as const];
@@ -105,11 +106,7 @@ function AccessPips({
       {slots.slice(0, dots.slice(0, 6).length).map((slot, slotIndex) => {
         const tone = dots[slotIndex];
         const color =
-          tone === "ok"
-            ? "bg-emerald-500"
-            : tone === "warning"
-              ? "bg-amber-500"
-              : "bg-muted/45";
+          tone === "muted" ? "bg-muted/45" : CONNECTOR_STATUS_DOT_CLASS[tone];
         return (
           <span key={slot} className={`h-1.5 w-1.5 rounded-full ${color}`} />
         );
@@ -204,7 +201,7 @@ function browserAccessTitle(access: LifeOpsOwnerBrowserAccessStatus): string {
     return "Discord Desktop App";
   }
   if (access.source === "desktop_browser") {
-    return "Milady Desktop Browser";
+    return "Eliza Desktop Browser";
   }
   const browserLabel = access.browser === "safari" ? "Safari" : "Chrome";
   const profileLabel = access.profileLabel?.trim() || "Default profile";
@@ -278,7 +275,7 @@ function browserAccessSourceLabel(
     return "your browser";
   }
   return access.source === "desktop_browser"
-    ? "Milady Desktop Browser"
+    ? "Eliza Desktop Browser"
     : access.source === "discord_desktop"
       ? "Discord Desktop"
       : "Your Browser";
@@ -307,7 +304,7 @@ function browserAccessActionLabel(
     case "log_in":
       return "Log In to Discord";
     case "open_desktop_browser":
-      return "Open Milady Desktop";
+      return "Open Eliza Desktop";
     case "relaunch_discord":
       return "Relaunch Discord";
     default:
@@ -372,21 +369,21 @@ function browserAccessMessage(access: LifeOpsOwnerBrowserAccessStatus): string {
   }
 
   if (access.nextAction === "open_desktop_browser") {
-    return "Open Milady Desktop to use its built-in browser for your Discord session.";
+    return "Open Eliza Desktop to use its built-in browser for your Discord session.";
   }
   if (access.authState === "logged_out") {
-    return "Discord is open in Milady Desktop Browser, but that session still needs you to log in.";
+    return "Discord is open in Eliza Desktop Browser, but that session still needs you to log in.";
   }
   if (access.tabState === "missing") {
-    return "Milady Desktop Browser is available, but Discord is not open there yet.";
+    return "Eliza Desktop Browser is available, but Discord is not open there yet.";
   }
   if (
     access.authState === "logged_in" &&
     access.tabState !== "dm_inbox_visible"
   ) {
-    return "Milady Desktop Browser sees your Discord session, but not the DM inbox yet.";
+    return "Eliza Desktop Browser sees your Discord session, but not the DM inbox yet.";
   }
-  return "Milady Desktop Browser is ready for Discord.";
+  return "Eliza Desktop Browser is ready for Discord.";
 }
 
 function focusBrowserSetupPanel(): boolean {
@@ -430,6 +427,10 @@ function browserAccessActionIcon(
 export function SignalConnectorCard() {
   const signal = useSignalConnector();
   const isConnected = signal.status?.connected === true;
+  const inboundReady = signal.status?.inbound === true;
+  const sendReady =
+    signal.status?.grantedCapabilities.includes("signal.send") === true;
+  const fullyReady = isConnected && inboundReady && sendReady;
   const pairingState = signal.pairingStatus?.state ?? null;
   const isPairing =
     !isConnected &&
@@ -437,15 +438,31 @@ export function SignalConnectorCard() {
       pairingState === "waiting_for_scan" ||
       pairingState === "linking");
   const busy = signal.actionPending || signal.loading;
+  const statusLabel = isConnected
+    ? fullyReady
+      ? "Connected"
+      : inboundReady
+        ? "Connected, send limited"
+        : sendReady
+          ? "Connected, inbound off"
+          : "Connected, capabilities missing"
+    : isPairing
+      ? "Pairing..."
+      : signal.error
+        ? "Needs attention"
+        : "Not connected";
+  const statusVariant: ConnectorStatusVariant = fullyReady
+    ? "ok"
+    : isConnected || isPairing || signal.error
+      ? "warning"
+      : "muted";
 
   return (
     <ConnectorCardShell
       icon={<SignalIcon className="h-5 w-5 shrink-0 text-muted" />}
       platform="Signal"
-      status={
-        isConnected ? "Connected" : isPairing ? "Pairing..." : "Not connected"
-      }
-      statusVariant={isConnected ? "ok" : "muted"}
+      status={statusLabel}
+      statusVariant={statusVariant}
     >
       {!isConnected && !isPairing ? (
         <Button
@@ -501,6 +518,22 @@ export function SignalConnectorCard() {
               {signal.status.identity.phoneNumber}
             </div>
           ) : null}
+          <details className="rounded-2xl bg-bg/24 px-3 py-2">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+              <span className="text-xs font-semibold text-txt">Access</span>
+              <AccessPips
+                items={[
+                  inboundReady ? "ok" : "warning",
+                  sendReady ? "ok" : "warning",
+                ]}
+                label={`Signal inbound ${inboundReady ? "ready" : "not ready"}, send ${sendReady ? "ready" : "not ready"}`}
+              />
+            </summary>
+            <div className="mt-2 rounded-xl border border-border/40 bg-card/18 px-3 py-2 text-xs text-muted">
+              <div>Inbound: {inboundReady ? "ready" : "not ready"}</div>
+              <div>Send: {sendReady ? "ready" : "not ready"}</div>
+            </div>
+          </details>
           <Button
             size="sm"
             variant="outline"
@@ -573,8 +606,12 @@ export function DiscordConnectorCard() {
   const authPending =
     discord.status?.reason === "auth_pending" ||
     preferredAccess?.authState === "logged_out";
+  const preferredActionLabel = browserAccessActionLabel(
+    preferredAccess?.nextAction,
+  );
   const showConnectButton =
-    (available || canRelaunchDiscord) && (!isConnected || !dmInboxVisible);
+    (available || canRelaunchDiscord || Boolean(preferredActionLabel)) &&
+    (!isConnected || !dmInboxVisible);
   const statusLabel = dmInboxVisible
     ? `Connected • ${visibleDmCount} DM${visibleDmCount === 1 ? "" : "s"} visible`
     : authPending
@@ -587,7 +624,7 @@ export function DiscordConnectorCard() {
               preferredAccess?.nextAction === "open_extension_popup"
             ? "Connect Your Browser"
             : preferredAccess?.nextAction === "open_desktop_browser"
-              ? "Open Milady Desktop"
+              ? "Open Eliza Desktop"
               : !available
                 ? "Browser access unavailable"
                 : isConnected
@@ -595,11 +632,11 @@ export function DiscordConnectorCard() {
                   : pairing
                     ? `Opening Discord in ${browserAccessSourceLabel(preferredAccess)}…`
                     : "Not connected";
-  const statusVariant: "ok" | "muted" | "warning" = isConnected
+  const statusVariant: ConnectorStatusVariant = isConnected
     ? dmInboxVisible
       ? "ok"
       : "warning"
-    : pairing || authPending
+    : pairing || authPending || preferredActionLabel
       ? "warning"
       : "muted";
   const browserAccessTones = browserAccess.map((access) =>
@@ -619,7 +656,7 @@ export function DiscordConnectorCard() {
       await discord.refresh();
       setTab("browser");
       setActionNotice(
-        "Opened Discord in Milady Desktop Browser.",
+        "Opened Discord in Eliza Desktop Browser.",
         "success",
         3200,
       );
@@ -627,7 +664,7 @@ export function DiscordConnectorCard() {
       setActionNotice(
         cause instanceof Error && cause.message.trim().length > 0
           ? cause.message.trim()
-          : "Milady Desktop Browser could not open Discord.",
+          : "Eliza Desktop Browser could not open Discord.",
         "error",
         4200,
       );
@@ -678,6 +715,27 @@ export function DiscordConnectorCard() {
     },
     [discord, handleOpenDesktopDiscord, setActionNotice, setTab],
   );
+  const mainActionLabel =
+    preferredActionLabel ??
+    (authPending
+      ? "Open Discord Login"
+      : isConnected
+        ? "Show Discord DMs"
+        : pairing
+          ? "Open Discord"
+          : "Connect Discord");
+  const handlePrimaryAction = useCallback(async () => {
+    if (preferredAccess && preferredActionLabel) {
+      await handleBrowserAccessAction(preferredAccess);
+      return;
+    }
+    await discord.connect(preferredAccess?.source);
+  }, [
+    discord,
+    handleBrowserAccessAction,
+    preferredAccess,
+    preferredActionLabel,
+  ]);
 
   return (
     <ConnectorCardShell
@@ -690,28 +748,10 @@ export function DiscordConnectorCard() {
         <Button
           size="sm"
           className="h-8 w-8 rounded-xl p-0"
-          disabled={busy || (!available && !canRelaunchDiscord)}
-          onClick={() => void discord.connect(preferredAccess?.source)}
-          title={
-            browserAccessActionLabel(preferredAccess?.nextAction) ??
-            (authPending
-              ? "Open Discord Login"
-              : isConnected
-                ? "Show Discord DMs"
-                : pairing
-                  ? "Open Discord"
-                  : "Connect Discord")
-          }
-          aria-label={
-            browserAccessActionLabel(preferredAccess?.nextAction) ??
-            (authPending
-              ? "Open Discord Login"
-              : isConnected
-                ? "Show Discord DMs"
-                : pairing
-                  ? "Open Discord"
-                  : "Connect Discord")
-          }
+          disabled={busy}
+          onClick={() => void handlePrimaryAction()}
+          title={mainActionLabel}
+          aria-label={mainActionLabel}
         >
           {preferredAccess?.nextAction === "relaunch_discord" ? (
             <RefreshCw className="h-3.5 w-3.5" aria-hidden />
@@ -733,8 +773,8 @@ export function DiscordConnectorCard() {
           className="h-8 w-8 rounded-xl p-0"
           disabled={busy}
           onClick={() => void handleOpenDesktopDiscord()}
-          title="Open in Milady Desktop Browser"
-          aria-label="Open in Milady Desktop Browser"
+          title="Open in Eliza Desktop Browser"
+          aria-label="Open in Eliza Desktop Browser"
         >
           <ExternalLink className="h-3.5 w-3.5" aria-hidden />
         </Button>
@@ -925,7 +965,7 @@ export function TelegramConnectorCard() {
           : authState === "error"
             ? "Retry Telegram login"
             : "Not connected";
-  const statusVariant: "ok" | "muted" | "warning" = isConnected
+  const statusVariant: ConnectorStatusVariant = isConnected
     ? "ok"
     : showCodeStep || showPasswordStep || authState === "error"
       ? "warning"
@@ -1078,18 +1118,46 @@ export function TelegramConnectorCard() {
 export function WhatsAppConnectorCard() {
   const whatsapp = useWhatsAppConnector();
   const [pairingOpen, setPairingOpen] = useState(false);
-  const isConnected = whatsapp.status?.connected === true;
+  const status = whatsapp.status;
+  const inboundReady = status?.inboundReady === true;
+  const outboundReady = status?.outboundReady === true;
+  const fullyReady = inboundReady && outboundReady;
+  const anyDirectionReady = inboundReady || outboundReady;
+  const hasDegradations = Boolean(status?.degradations?.length);
+  const localAuthNeedsRepair = status?.localAuthRegistered === false;
+  const localAuthUnavailable =
+    status?.localAuthAvailable === true && status.serviceConnected !== true;
+  const isConnected = status?.connected === true;
   const busy = whatsapp.loading;
-  const statusLabel = busy
-    ? "Checking..."
-    : isConnected
-      ? "Configured"
-      : pairingOpen
-        ? "Pairing"
-        : "Needs setup";
-  const statusVariant: "ok" | "muted" | "warning" = isConnected
+  let statusLabel: string;
+  if (busy && !status) {
+    statusLabel = "Checking...";
+  } else if (fullyReady) {
+    statusLabel =
+      status?.transport === "cloudapi"
+        ? "Inbound + outbound"
+        : "Local session ready";
+  } else if (outboundReady) {
+    statusLabel = "Outbound only";
+  } else if (inboundReady) {
+    statusLabel = "Inbound only";
+  } else if (localAuthNeedsRepair) {
+    statusLabel = "Re-pair required";
+  } else if (localAuthUnavailable) {
+    statusLabel = "Local session offline";
+  } else if (pairingOpen) {
+    statusLabel = "Pairing";
+  } else {
+    statusLabel = "Needs setup";
+  }
+  const statusVariant: ConnectorStatusVariant = fullyReady
     ? "ok"
-    : busy || pairingOpen
+    : anyDirectionReady ||
+        hasDegradations ||
+        localAuthNeedsRepair ||
+        localAuthUnavailable ||
+        busy ||
+        pairingOpen
       ? "warning"
       : "muted";
 
@@ -1101,11 +1169,46 @@ export function WhatsAppConnectorCard() {
       statusVariant={statusVariant}
     >
       <div className="space-y-2">
-        {whatsapp.status?.phoneNumberId ? (
+        {status?.phoneNumberId ? (
           <div className="flex items-center gap-1.5 text-xs text-muted">
             <Phone className="h-3.5 w-3.5" />
-            Phone number ID: {whatsapp.status.phoneNumberId}
+            Phone number ID: {status.phoneNumberId}
           </div>
+        ) : null}
+        {status ? (
+          <details className="rounded-2xl bg-bg/24 px-3 py-2">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+              <span className="text-xs font-semibold text-txt">
+                {status.transport === "cloudapi"
+                  ? "Cloud API"
+                  : status.transport === "baileys"
+                    ? "Local session"
+                    : "Transport"}
+              </span>
+              <AccessPips
+                items={[
+                  inboundReady ? "ok" : "warning",
+                  outboundReady ? "ok" : "warning",
+                ]}
+                label={`WhatsApp inbound ${inboundReady ? "ready" : "not ready"}, outbound ${outboundReady ? "ready" : "not ready"}`}
+              />
+            </summary>
+            <div className="mt-2 space-y-1 rounded-xl border border-border/40 bg-card/18 px-3 py-2 text-xs text-muted">
+              <div>Inbound: {inboundReady ? "ready" : "not ready"}</div>
+              <div>Outbound: {outboundReady ? "ready" : "not ready"}</div>
+              {status.serviceConnected !== undefined ? (
+                <div>
+                  Runtime:{" "}
+                  {status.serviceConnected ? "connected" : "not connected"}
+                </div>
+              ) : null}
+              {status.degradations?.map((degradation) => (
+                <div key={degradation.code} className="text-danger">
+                  {degradation.message}
+                </div>
+              ))}
+            </div>
+          </details>
         ) : null}
         <div className="flex items-center gap-2">
           {!isConnected ? (
@@ -1170,9 +1273,9 @@ function formatIMessageSendMode(
 function formatIMessageDiagnostic(code: string): string {
   switch (code) {
     case "full_disk_access_required":
-      return "Full Disk Access is required before Milady can read incoming Messages history.";
+      return "Full Disk Access is required before Eliza can read incoming Messages history.";
     case "chat_db_unavailable":
-      return "Milady could not open Messages chat.db for incoming message reads.";
+      return "Eliza could not open Messages chat.db for incoming message reads.";
     case "native_bridge_not_connected":
       return "The native Messages bridge is loaded but not connected yet.";
     case "bluebubbles_private_api_disabled":
@@ -1227,7 +1330,7 @@ export function IMessageConnectorCard() {
             ? `Connected via ${bridgeLabel}`
             : "Connected"
         : "Not connected";
-  const statusVariant: "ok" | "muted" | "warning" = isDegraded
+  const statusVariant: ConnectorStatusVariant = isDegraded
     ? "warning"
     : showFullDiskAccessControls
       ? "warning"
@@ -1236,7 +1339,7 @@ export function IMessageConnectorCard() {
         : busy && !status
           ? "warning"
           : "muted";
-  const bridgePips: Array<"ok" | "warning" | "muted"> = [
+  const bridgePips: ConnectorStatusVariant[] = [
     isConnected ? "ok" : "muted",
     status?.privateApiEnabled === false || status?.helperConnected === false
       ? "warning"
@@ -1262,7 +1365,7 @@ export function IMessageConnectorCard() {
       setActionNotice(
         cause instanceof Error && cause.message.trim().length > 0
           ? cause.message.trim()
-          : "Milady could not open Full Disk Access settings.",
+          : "Eliza could not open Full Disk Access settings.",
         "error",
         5000,
       );
@@ -1281,8 +1384,8 @@ export function IMessageConnectorCard() {
           {isConnected
             ? bridgeLabel === "Messages.app"
               ? nativeReadDegraded
-                ? "Milady can send through Messages.app now. Grant Full Disk Access to let it read incoming iMessages from chat.db."
-                : "Milady is using the native Mac Messages bridge for iMessage send and receive."
+                ? "Eliza can send through Messages.app now. Grant Full Disk Access to let it read incoming iMessages from chat.db."
+                : "Eliza is using the native Mac Messages bridge for iMessage send and receive."
               : bridgeLabel === "BlueBubbles"
                 ? status?.sendMode === "private-api"
                   ? "LifeOps is using the Mac-side BlueBubbles bridge with Private API enabled."
@@ -1291,7 +1394,7 @@ export function IMessageConnectorCard() {
             : iosRuntime
               ? "iMessage access must run through a paired Mac or a remote Mac backend that has iMessage configured."
               : runningOnMacHost
-                ? "Milady could not load the native Messages bridge. Refresh after enabling the iMessage connector or restarting the agent."
+                ? "Eliza could not load the native Messages bridge. Refresh after enabling the iMessage connector or restarting the agent."
                 : "iMessage bridging requires a Mac host running Messages.app."}
         </div>
         {showFullDiskAccessControls ? (
@@ -1309,7 +1412,7 @@ export function IMessageConnectorCard() {
         ) : null}
         {showFullDiskAccessControls ? (
           <div className="rounded-xl border border-border/40 bg-card/18 px-3 py-2 text-xs text-muted">
-            Full Disk Access is still blocked for the process running Milady, so
+            Full Disk Access is still blocked for the process running Eliza, so
             reading `~/Library/Messages/chat.db` may stay limited until you
             allow it in System Settings → Privacy & Security → Full Disk Access.
           </div>

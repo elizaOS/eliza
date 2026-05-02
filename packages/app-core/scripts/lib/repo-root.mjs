@@ -5,10 +5,9 @@ import { fileURLToPath } from "node:url";
 function looksLikeElizaSubrepoRoot(dir) {
   return (
     existsSync(path.join(dir, "package.json")) &&
-    existsSync(path.join(dir, "apps", "app", "package.json")) &&
-    existsSync(
-      path.join(dir, "eliza", "packages", "app-core", "package.json"),
-    )
+    (existsSync(path.join(dir, "packages", "app", "package.json")) ||
+      existsSync(path.join(dir, "apps", "app", "package.json"))) &&
+    existsSync(path.join(dir, "eliza", "packages", "app-core", "package.json"))
   );
 }
 
@@ -19,7 +18,7 @@ function looksLikeFlatMonorepoRoot(dir) {
     existsSync(path.join(dir, "packages", "agent", "package.json"));
   if (!flat) return false;
   // When the elizaOS workspace is bundled as the `eliza/` subrepo of a
-  // consumer like Milady, the inner `eliza/` directory itself satisfies the
+  // consumer like Eliza, the inner `eliza/` directory itself satisfies the
   // flat-monorepo shape. Resolving repoRoot to the inner directory would
   // then cause `scripts/<name>` step paths in run-repo-setup.mjs to look
   // under `eliza/scripts/…` instead of the consumer's own `scripts/…`.

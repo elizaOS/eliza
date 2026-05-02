@@ -4,9 +4,9 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_FILE="$ROOT_DIR/docker-compose.yml"
 EXTRA_COMPOSE_FILE="$ROOT_DIR/docker-compose.extra.yml"
-IMAGE_NAME="${MILADY_IMAGE:-milady:local}"
-EXTRA_MOUNTS="${MILADY_EXTRA_MOUNTS:-}"
-HOME_VOLUME_NAME="${MILADY_HOME_VOLUME:-}"
+IMAGE_NAME="${ELIZA_IMAGE:-eliza:local}"
+EXTRA_MOUNTS="${ELIZA_EXTRA_MOUNTS:-}"
+HOME_VOLUME_NAME="${ELIZA_HOME_VOLUME:-}"
 
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -21,34 +21,34 @@ if ! docker compose version >/dev/null 2>&1; then
   exit 1
 fi
 
-MILADY_CONFIG_DIR="${MILADY_CONFIG_DIR:-$HOME/.milady}"
-MILADY_WORKSPACE_DIR="${MILADY_WORKSPACE_DIR:-$HOME/.milady/workspace}"
+ELIZA_CONFIG_DIR="${ELIZA_CONFIG_DIR:-$HOME/.eliza}"
+ELIZA_WORKSPACE_DIR="${ELIZA_WORKSPACE_DIR:-$HOME/.eliza/workspace}"
 
-mkdir -p "$MILADY_CONFIG_DIR"
-mkdir -p "$MILADY_WORKSPACE_DIR"
+mkdir -p "$ELIZA_CONFIG_DIR"
+mkdir -p "$ELIZA_WORKSPACE_DIR"
 
-export MILADY_CONFIG_DIR
-export MILADY_WORKSPACE_DIR
-export MILADY_GATEWAY_PORT="${MILADY_GATEWAY_PORT:-18789}"
-export MILADY_BRIDGE_PORT="${MILADY_BRIDGE_PORT:-18790}"
-export MILADY_GATEWAY_BIND="${MILADY_GATEWAY_BIND:-lan}"
-export MILADY_IMAGE="$IMAGE_NAME"
-export MILADY_DOCKER_APT_PACKAGES="${MILADY_DOCKER_APT_PACKAGES:-}"
-export MILADY_EXTRA_MOUNTS="$EXTRA_MOUNTS"
-export MILADY_HOME_VOLUME="$HOME_VOLUME_NAME"
+export ELIZA_CONFIG_DIR
+export ELIZA_WORKSPACE_DIR
+export ELIZA_GATEWAY_PORT="${ELIZA_GATEWAY_PORT:-18789}"
+export ELIZA_BRIDGE_PORT="${ELIZA_BRIDGE_PORT:-18790}"
+export ELIZA_GATEWAY_BIND="${ELIZA_GATEWAY_BIND:-lan}"
+export ELIZA_IMAGE="$IMAGE_NAME"
+export ELIZA_DOCKER_APT_PACKAGES="${ELIZA_DOCKER_APT_PACKAGES:-}"
+export ELIZA_EXTRA_MOUNTS="$EXTRA_MOUNTS"
+export ELIZA_HOME_VOLUME="$HOME_VOLUME_NAME"
 
-if [[ -z "${MILADY_GATEWAY_TOKEN:-}" ]]; then
+if [[ -z "${ELIZA_GATEWAY_TOKEN:-}" ]]; then
   if command -v openssl >/dev/null 2>&1; then
-    MILADY_GATEWAY_TOKEN="$(openssl rand -hex 32)"
+    ELIZA_GATEWAY_TOKEN="$(openssl rand -hex 32)"
   else
-    MILADY_GATEWAY_TOKEN="$(python3 - <<'PY'
+    ELIZA_GATEWAY_TOKEN="$(python3 - <<'PY'
 import secrets
 print(secrets.token_hex(32))
 PY
 )"
   fi
 fi
-export MILADY_GATEWAY_TOKEN
+export ELIZA_GATEWAY_TOKEN
 
 COMPOSE_FILES=("$COMPOSE_FILE")
 COMPOSE_ARGS=()
@@ -61,14 +61,14 @@ write_extra_compose() {
 
   cat >"$EXTRA_COMPOSE_FILE" <<'YAML'
 services:
-  milady-gateway:
+  eliza-gateway:
     volumes:
 YAML
 
   if [[ -n "$home_volume" ]]; then
     printf '      - %s:/home/node\n' "$home_volume" >>"$EXTRA_COMPOSE_FILE"
-    printf '      - %s:/home/node/.milady\n' "$MILADY_CONFIG_DIR" >>"$EXTRA_COMPOSE_FILE"
-    printf '      - %s:/home/node/.milady/workspace\n' "$MILADY_WORKSPACE_DIR" >>"$EXTRA_COMPOSE_FILE"
+    printf '      - %s:/home/node/.eliza\n' "$ELIZA_CONFIG_DIR" >>"$EXTRA_COMPOSE_FILE"
+    printf '      - %s:/home/node/.eliza/workspace\n' "$ELIZA_WORKSPACE_DIR" >>"$EXTRA_COMPOSE_FILE"
   fi
 
   for mount in "${mounts[@]}"; do
@@ -76,14 +76,14 @@ YAML
   done
 
   cat >>"$EXTRA_COMPOSE_FILE" <<'YAML'
-  milady-cli:
+  eliza-cli:
     volumes:
 YAML
 
   if [[ -n "$home_volume" ]]; then
     printf '      - %s:/home/node\n' "$home_volume" >>"$EXTRA_COMPOSE_FILE"
-    printf '      - %s:/home/node/.milady\n' "$MILADY_CONFIG_DIR" >>"$EXTRA_COMPOSE_FILE"
-    printf '      - %s:/home/node/.milady/workspace\n' "$MILADY_WORKSPACE_DIR" >>"$EXTRA_COMPOSE_FILE"
+    printf '      - %s:/home/node/.eliza\n' "$ELIZA_CONFIG_DIR" >>"$EXTRA_COMPOSE_FILE"
+    printf '      - %s:/home/node/.eliza/workspace\n' "$ELIZA_WORKSPACE_DIR" >>"$EXTRA_COMPOSE_FILE"
   fi
 
   for mount in "${mounts[@]}"; do
@@ -159,20 +159,20 @@ upsert_env() {
 }
 
 upsert_env "$ENV_FILE" \
-  MILADY_CONFIG_DIR \
-  MILADY_WORKSPACE_DIR \
-  MILADY_GATEWAY_PORT \
-  MILADY_BRIDGE_PORT \
-  MILADY_GATEWAY_BIND \
-  MILADY_GATEWAY_TOKEN \
-  MILADY_IMAGE \
-  MILADY_EXTRA_MOUNTS \
-  MILADY_HOME_VOLUME \
-  MILADY_DOCKER_APT_PACKAGES
+  ELIZA_CONFIG_DIR \
+  ELIZA_WORKSPACE_DIR \
+  ELIZA_GATEWAY_PORT \
+  ELIZA_BRIDGE_PORT \
+  ELIZA_GATEWAY_BIND \
+  ELIZA_GATEWAY_TOKEN \
+  ELIZA_IMAGE \
+  ELIZA_EXTRA_MOUNTS \
+  ELIZA_HOME_VOLUME \
+  ELIZA_DOCKER_APT_PACKAGES
 
 echo "==> Building Docker image: $IMAGE_NAME"
 docker build \
-  --build-arg "MILADY_DOCKER_APT_PACKAGES=${MILADY_DOCKER_APT_PACKAGES}" \
+  --build-arg "ELIZA_DOCKER_APT_PACKAGES=${ELIZA_DOCKER_APT_PACKAGES}" \
   -t "$IMAGE_NAME" \
   -f "$ROOT_DIR/Dockerfile" \
   "$ROOT_DIR"
@@ -182,33 +182,33 @@ echo "==> Onboarding (interactive)"
 echo "When prompted:"
 echo "  - Gateway bind: lan"
 echo "  - Gateway auth: token"
-echo "  - Gateway token: $MILADY_GATEWAY_TOKEN"
+echo "  - Gateway token: $ELIZA_GATEWAY_TOKEN"
 echo "  - Tailscale exposure: Off"
 echo "  - Install Gateway daemon: No"
 echo ""
-docker compose "${COMPOSE_ARGS[@]}" run --rm milady-cli setup
+docker compose "${COMPOSE_ARGS[@]}" run --rm eliza-cli setup
 
 echo ""
 echo "==> Provider setup (optional)"
 echo "WhatsApp (QR):"
-echo "  ${COMPOSE_HINT} run --rm milady-cli channels login"
+echo "  ${COMPOSE_HINT} run --rm eliza-cli channels login"
 echo "Telegram (bot token):"
-echo "  ${COMPOSE_HINT} run --rm milady-cli channels add --channel telegram --token <token>"
+echo "  ${COMPOSE_HINT} run --rm eliza-cli channels add --channel telegram --token <token>"
 echo "Discord (bot token):"
-echo "  ${COMPOSE_HINT} run --rm milady-cli channels add --channel discord --token <token>"
-echo "Docs: https://docs.milady.ai/channels"
+echo "  ${COMPOSE_HINT} run --rm eliza-cli channels add --channel discord --token <token>"
+echo "Docs: https://docs.eliza.ai/channels"
 
 echo ""
 echo "==> Starting gateway"
-docker compose "${COMPOSE_ARGS[@]}" up -d milady-gateway
+docker compose "${COMPOSE_ARGS[@]}" up -d eliza-gateway
 
 echo ""
 echo "Gateway running with host port mapping."
 echo "Access from tailnet devices via the host's tailnet IP."
-echo "Config: $MILADY_CONFIG_DIR"
-echo "Workspace: $MILADY_WORKSPACE_DIR"
-echo "Token: $MILADY_GATEWAY_TOKEN"
+echo "Config: $ELIZA_CONFIG_DIR"
+echo "Workspace: $ELIZA_WORKSPACE_DIR"
+echo "Token: $ELIZA_GATEWAY_TOKEN"
 echo ""
 echo "Commands:"
-echo "  ${COMPOSE_HINT} logs -f milady-gateway"
-echo "  ${COMPOSE_HINT} exec milady-gateway node dist/index.js health --token \"$MILADY_GATEWAY_TOKEN\""
+echo "  ${COMPOSE_HINT} logs -f eliza-gateway"
+echo "  ${COMPOSE_HINT} exec eliza-gateway node dist/index.js health --token \"$ELIZA_GATEWAY_TOKEN\""

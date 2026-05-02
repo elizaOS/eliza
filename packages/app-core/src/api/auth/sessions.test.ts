@@ -50,7 +50,7 @@ interface Harness {
 }
 
 async function open(): Promise<Harness> {
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "milady-sessions-"));
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-sessions-"));
   const adapter = createDatabaseAdapter(
     { dataDir },
     "00000000-0000-0000-0000-000000000001" as `${string}-${string}-${string}-${string}-${string}`,
@@ -167,10 +167,10 @@ describe("sessions: cookie serialize/parse", () => {
 
   it("parseCookieHeader handles multi-cookie, whitespace, percent-encoded", () => {
     const map = parseCookieHeader(
-      "milady_session=abc%3Ddef; milady_csrf=xyz; foo=bar",
+      "eliza_session=abc%3Ddef; eliza_csrf=xyz; foo=bar",
     );
-    expect(map.get("milady_session")).toBe("abc=def");
-    expect(map.get("milady_csrf")).toBe("xyz");
+    expect(map.get("eliza_session")).toBe("abc=def");
+    expect(map.get("eliza_csrf")).toBe("xyz");
     expect(map.get("foo")).toBe("bar");
   });
 

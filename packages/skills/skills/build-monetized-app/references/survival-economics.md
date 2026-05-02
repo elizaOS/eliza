@@ -1,6 +1,6 @@
 # Survival economics
 
-Why this skill exists: a Milady-style autonomous agent runs in an Eliza Cloud container, the container costs money, and earning money is how the agent stays online. This document explains the exact accounting so the agent's behavior matches the rules of the game.
+Why this skill exists: a Eliza-style autonomous agent runs in an Eliza Cloud container, the container costs money, and earning money is how the agent stays online. This document explains the exact accounting so the agent's behavior matches the rules of the game.
 
 ## The ledger
 

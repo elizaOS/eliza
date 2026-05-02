@@ -9,7 +9,7 @@ import { __testing, persistConfigEnv, readConfigEnv } from "./config-env.js";
 const { BAK_SUFFIX, CONFIG_ENV_FILENAME } = __testing;
 
 async function mkTmpStateDir(): Promise<string> {
-  return await fs.mkdtemp(path.join(os.tmpdir(), "milady-config-env-"));
+  return await fs.mkdtemp(path.join(os.tmpdir(), "eliza-config-env-"));
 }
 
 describe("persistConfigEnv", () => {
@@ -49,7 +49,7 @@ describe("persistConfigEnv", () => {
 
   it("preserves unrelated entries, comments, and blank lines", async () => {
     const preamble = `${[
-      "# managed by milady",
+      "# managed by eliza",
       "",
       "EXISTING_A=one",
       "# another comment",
@@ -62,7 +62,7 @@ describe("persistConfigEnv", () => {
     await persistConfigEnv("NEW_KEY", "fresh", { stateDir });
 
     const raw = await fs.readFile(filePath, "utf8");
-    expect(raw).toContain("# managed by milady");
+    expect(raw).toContain("# managed by eliza");
     expect(raw).toContain("# another comment");
     expect(raw).toContain("EXISTING_A=updated");
     expect(raw).toContain("EXISTING_B=two");

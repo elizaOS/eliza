@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  buildMainMenuResetApiCandidates,
   type FetchLike,
   type MainMenuResetPostConfirmDeps,
-  buildMainMenuResetApiCandidates,
   pickReachableMenuResetApiBase,
   pollMenuResetAgentStatusJson,
   runMainMenuResetAfterApiBaseResolved,
@@ -16,10 +16,7 @@ describe("buildMainMenuResetApiCandidates", () => {
       embeddedPort: 31337,
       configuredBase: "http://127.0.0.1:9999",
     });
-    expect(result).toEqual([
-      "http://127.0.0.1:31337",
-      "http://127.0.0.1:9999",
-    ]);
+    expect(result).toEqual(["http://127.0.0.1:31337", "http://127.0.0.1:9999"]);
   });
 
   it("skips embedded when port is null", () => {
@@ -127,14 +124,14 @@ describe("pollMenuResetAgentStatusJson", () => {
   it("returns immediately when agent is already running", async () => {
     const fetchImpl: FetchLike = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ state: "running", agentName: "Milady" }),
+      json: async () => ({ state: "running", agentName: "Eliza" }),
     });
     const result = await pollMenuResetAgentStatusJson({
       apiBase: "http://127.0.0.1:31337",
       fetchImpl,
       buildHeaders,
     });
-    expect(result).toEqual({ state: "running", agentName: "Milady" });
+    expect(result).toEqual({ state: "running", agentName: "Eliza" });
   });
 
   it("polls until agent reaches running state", async () => {
@@ -144,16 +141,16 @@ describe("pollMenuResetAgentStatusJson", () => {
       if (callCount < 3) {
         return {
           ok: true,
-          json: async () => ({ state: "starting", agentName: "Milady" }),
+          json: async () => ({ state: "starting", agentName: "Eliza" }),
         };
       }
       return {
         ok: true,
-        json: async () => ({ state: "running", agentName: "Milady" }),
+        json: async () => ({ state: "running", agentName: "Eliza" }),
       };
     });
     const sleep = vi.fn().mockResolvedValue(undefined);
-    let time = 0;
+    const time = 0;
     const now = () => time;
 
     const result = await pollMenuResetAgentStatusJson({
@@ -172,7 +169,7 @@ describe("pollMenuResetAgentStatusJson", () => {
   it("returns error state after timeout", async () => {
     const fetchImpl: FetchLike = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ state: "starting", agentName: "Milady" }),
+      json: async () => ({ state: "starting", agentName: "Eliza" }),
     });
     let time = 0;
     const sleep = vi.fn().mockImplementation(async () => {
@@ -203,7 +200,7 @@ describe("runMainMenuResetAfterApiBaseResolved", () => {
       apiBase: "http://127.0.0.1:31337",
       fetchImpl: vi.fn().mockResolvedValue({
         ok: true,
-        json: async () => ({ state: "running", agentName: "Milady" }),
+        json: async () => ({ state: "running", agentName: "Eliza" }),
       }),
       buildHeaders: () => ({}),
       useEmbeddedRestart: true,
@@ -226,7 +223,7 @@ describe("runMainMenuResetAfterApiBaseResolved", () => {
       .mockResolvedValueOnce({
         // poll status
         ok: true,
-        json: async () => ({ state: "running", agentName: "Milady" }),
+        json: async () => ({ state: "running", agentName: "Eliza" }),
       } as Response)
       .mockResolvedValueOnce({
         // onboarding check
@@ -256,7 +253,7 @@ describe("runMainMenuResetAfterApiBaseResolved", () => {
       .mockResolvedValueOnce({ ok: true } as Response)
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ state: "running", agentName: "Milady" }),
+        json: async () => ({ state: "running", agentName: "Eliza" }),
       } as Response)
       .mockResolvedValueOnce({
         ok: true,
@@ -293,7 +290,7 @@ describe("runMainMenuResetAfterApiBaseResolved", () => {
         if (url.endsWith("/api/status")) {
           return {
             ok: true,
-            json: async () => ({ state: "running", agentName: "Milady" }),
+            json: async () => ({ state: "running", agentName: "Eliza" }),
           };
         }
         if (url.endsWith("/api/onboarding/status")) {

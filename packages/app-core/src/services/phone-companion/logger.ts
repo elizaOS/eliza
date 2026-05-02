@@ -19,7 +19,7 @@ function envLevel(): LogLevel {
   const raw =
     typeof import.meta !== "undefined"
       ? (import.meta as { env?: Record<string, string> }).env
-          ?.VITE_MILADY_LOG_LEVEL
+          ?.VITE_ELIZA_LOG_LEVEL
       : undefined;
   if (raw === "debug" || raw === "info" || raw === "warn" || raw === "error") {
     return raw;
@@ -35,7 +35,7 @@ function emit(
   context?: Record<string, unknown>,
 ): void {
   if (LEVEL_ORDER[level] < LEVEL_ORDER[currentLevel]) return;
-  const line = `[MiladyCompanion] ${message}`;
+  const line = `[ElizaCompanion] ${message}`;
   const host = globalThis.console;
   if (level === "error") {
     host.error(line, context ?? {});

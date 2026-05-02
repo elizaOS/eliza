@@ -18,11 +18,11 @@
  * flows, this file is not it.
  */
 import { describe, expect, test } from "vitest";
+import { runScenario } from "../../../packages/scenario-runner/src/executor.ts";
+import type { ScenarioDefinition } from "../../../packages/scenario-runner/src/types.ts";
 import browserPortalConnectorScenario from "../../../test/scenarios/connector-certification/connector.browser-portal.certify-core.scenario";
 import collectIdCopyScenario from "../../../test/scenarios/executive-assistant/ea.docs.collect-id-copy-for-workflow.scenario";
 import portalUploadScenario from "../../../test/scenarios/executive-assistant/ea.docs.portal-upload-from-chat.scenario";
-import { runScenario } from "../../../packages/scenario-runner/src/executor.ts";
-import type { ScenarioDefinition } from "../../../packages/scenario-runner/src/types.ts";
 import { createBrowserPortalScenarioRuntime } from "./helpers/browser-portal-scenario-fixture.js";
 
 const FIXTURE_UNSUPPORTED_FINAL_CHECK_TYPES = new Set([

@@ -1,4 +1,3 @@
-import { createVectorBrowserRenderer, THREE } from "@elizaos/app-companion";
 import {
   Button,
   Input,
@@ -23,7 +22,9 @@ import {
   useRef,
   useState,
 } from "react";
+import type * as Three from "three";
 import { client, type QueryResult, type TableInfo } from "../../api";
+import { getBootConfig } from "../../config/boot-config";
 import { useApp } from "../../state";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { MemoryDetailPanel } from "./MemoryDetailPanel";
@@ -40,6 +41,19 @@ import {
   toVectorGraph2DScreenY,
   type ViewMode,
 } from "./vector-browser-utils";
+
+type VectorBrowserRuntime = {
+  THREE: typeof Three;
+  createVectorBrowserRenderer: () => Promise<Three.WebGLRenderer>;
+};
+
+function resolveVectorBrowserRuntime(): VectorBrowserRuntime {
+  const runtime = getBootConfig().companionVectorBrowser;
+  if (!runtime) {
+    throw new Error("Vector browser runtime is not registered in boot config.");
+  }
+  return runtime as VectorBrowserRuntime;
+}
 
 // ── Graph sub-component ────────────────────────────────────────────────
 
@@ -289,18 +303,18 @@ function VectorGraph({
 export function VectorGraph3D({
   memories,
   onSelect,
-  createRenderer = createVectorBrowserRenderer,
+  createRenderer,
 }: {
   memories: MemoryRecord[];
   onSelect: (mem: MemoryRecord) => void;
-  createRenderer?: () => Promise<THREE.WebGLRenderer>;
+  createRenderer?: () => Promise<Three.WebGLRenderer>;
 }) {
   const { t } = useApp();
   const containerRef = useRef<HTMLDivElement>(null);
-  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-  const sceneRef = useRef<THREE.Scene | null>(null);
-  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const spheresRef = useRef<THREE.Mesh[]>([]);
+  const rendererRef = useRef<Three.WebGLRenderer | null>(null);
+  const sceneRef = useRef<Three.Scene | null>(null);
+  const cameraRef = useRef<Three.PerspectiveCamera | null>(null);
+  const spheresRef = useRef<Three.Mesh[]>([]);
   const animationRef = useRef<number>(0);
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(
@@ -310,6 +324,10 @@ export function VectorGraph3D({
   const isDraggingRef = useRef(false);
   const mouseDownPosRef = useRef<{ x: number; y: number } | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
+  const vectorRuntime = useMemo(resolveVectorBrowserRuntime, []);
+  const THREE = vectorRuntime.THREE;
+  const resolvedCreateRenderer =
+    createRenderer ?? vectorRuntime.createVectorBrowserRenderer;
 
   const withEmbeddings = useMemo(
     () => memories.filter(hasEmbedding),
@@ -366,9 +384,9 @@ export function VectorGraph3D({
       camera.position.set(0, 0, 5);
       cameraRef.current = camera;
 
-      let renderer: THREE.WebGLRenderer;
+      let renderer: Three.WebGLRenderer;
       try {
-        renderer = await createRenderer();
+        renderer = await resolvedCreateRenderer();
       } catch {
         if (!cancelled) {
           setRendererUnavailable(true);
@@ -385,10 +403,10 @@ export function VectorGraph3D({
       const raycaster = new THREE.Raycaster();
       const pointer = new THREE.Vector2();
       const geometry = new THREE.SphereGeometry(0.06, 16, 16);
-      const spheres: THREE.Mesh[] = [];
-      let gridHelper: THREE.GridHelper | null = null;
-      let axisGeom: THREE.BufferGeometry | null = null;
-      let axisMat: THREE.LineBasicMaterial | null = null;
+      const spheres: Three.Mesh[] = [];
+      let gridHelper: Three.GridHelper | null = null;
+      let axisGeom: Three.BufferGeometry | null = null;
+      let axisMat: Three.LineBasicMaterial | null = null;
       let onMouseDown: ((e: MouseEvent) => void) | null = null;
       let onMouseUp: (() => void) | null = null;
       let onMouseMove: ((e: MouseEvent) => void) | null = null;
@@ -613,7 +631,7 @@ export function VectorGraph3D({
           setHoveredIdx(idx);
           setTooltipPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
           spheres.forEach((s, i) => {
-            const mat = s.material as THREE.MeshBasicMaterial;
+            const mat = s.material as Three.MeshBasicMaterial;
             mat.opacity = i === idx ? 1 : 0.5;
             s.scale.setScalar(i === idx ? 1.5 : 1);
           });
@@ -621,7 +639,7 @@ export function VectorGraph3D({
           setHoveredIdx(null);
           setTooltipPos(null);
           spheres.forEach((s) => {
-            const mat = s.material as THREE.MeshBasicMaterial;
+            const mat = s.material as Three.MeshBasicMaterial;
             mat.opacity = 0.85;
             s.scale.setScalar(1);
           });
@@ -710,7 +728,14 @@ export function VectorGraph3D({
       cleanupRef.current?.();
       cleanupRef.current = null;
     };
-  }, [createRenderer, points3D, withEmbeddings, typeColors, onSelect]);
+  }, [
+    THREE,
+    resolvedCreateRenderer,
+    points3D,
+    withEmbeddings,
+    typeColors,
+    onSelect,
+  ]);
 
   if (withEmbeddings.length < 2) {
     return (

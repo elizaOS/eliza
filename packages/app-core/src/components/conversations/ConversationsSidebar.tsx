@@ -172,7 +172,7 @@ export function ConversationsSidebar({
   const [hiddenConversationIds, setHiddenConversationIds] = useState<
     Set<string>
   >(() => new Set());
-  const CHAT_SIDEBAR_WIDTH_KEY = "milady:chat:conversations-sidebar:width";
+  const CHAT_SIDEBAR_WIDTH_KEY = "eliza:chat:conversations-sidebar:width";
   const CHAT_SIDEBAR_DEFAULT_WIDTH = 240;
   const CHAT_SIDEBAR_MIN_WIDTH = 200;
   const CHAT_SIDEBAR_MAX_WIDTH = 520;

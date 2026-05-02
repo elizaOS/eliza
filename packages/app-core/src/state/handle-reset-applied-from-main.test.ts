@@ -12,7 +12,7 @@ describe("parseAgentStatusFromMainMenuResetPayload", () => {
     const result = parseAgentStatusFromMainMenuResetPayload({
       agentStatus: {
         state: "running",
-        agentName: "Milady",
+        agentName: "Eliza",
         model: "gpt-4",
         startedAt: 1000,
         uptime: 500,
@@ -20,7 +20,7 @@ describe("parseAgentStatusFromMainMenuResetPayload", () => {
     });
     expect(result).toEqual({
       state: "running",
-      agentName: "Milady",
+      agentName: "Eliza",
       model: "gpt-4",
       startedAt: 1000,
       uptime: 500,
@@ -53,7 +53,7 @@ describe("parseAgentStatusFromMainMenuResetPayload", () => {
   it("returns null when agentStatus has invalid state", () => {
     expect(
       parseAgentStatusFromMainMenuResetPayload({
-        agentStatus: { state: "bogus", agentName: "Milady" },
+        agentStatus: { state: "bogus", agentName: "Eliza" },
       }),
     ).toBeNull();
   });
@@ -94,7 +94,7 @@ describe("handleResetAppliedFromMainCore", () => {
     const deps = makeDeps();
     await handleResetAppliedFromMainCore(
       {
-        agentStatus: { state: "running", agentName: "Milady" },
+        agentStatus: { state: "running", agentName: "Eliza" },
       },
       deps,
     );
@@ -129,7 +129,7 @@ describe("handleResetAppliedFromMainCore", () => {
         .mockRejectedValue(new Error("DB wipe failed")),
     });
     await handleResetAppliedFromMainCore(
-      { agentStatus: { state: "running", agentName: "Milady" } },
+      { agentStatus: { state: "running", agentName: "Eliza" } },
       deps,
     );
 
@@ -163,7 +163,7 @@ describe("handleResetAppliedFromMainCore", () => {
       completeResetLocalState: vi.fn().mockRejectedValue(new Error("boom")),
     });
     await handleResetAppliedFromMainCore(
-      { agentStatus: { state: "running", agentName: "Milady" } },
+      { agentStatus: { state: "running", agentName: "Eliza" } },
       deps,
     );
     expect(deps.finishLifecycleAction).toHaveBeenCalled();

@@ -25,19 +25,12 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "code",
-          "-g",
-          "/home/user/Desktop/doc_proc/"
-        ]
+        "command": ["code", "-g", "/home/user/Desktop/doc_proc/"]
       }
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "vs_code",
-    "libreoffice_writer"
-  ],
+  "related_apps": ["vs_code", "libreoffice_writer"],
   "evaluator": {
     "func": "compare_docx_files",
     "result": {

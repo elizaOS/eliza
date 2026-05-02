@@ -1464,7 +1464,7 @@ export function BrowserBridgeSetupPanel() {
         show: true,
       });
       setTab("browser");
-      setActionNotice("Opened Milady Desktop Browser.", "success", 3000);
+      setActionNotice("Opened Eliza Desktop Browser.", "success", 3000);
       setError(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -1817,7 +1817,7 @@ export function BrowserBridgeSetupPanel() {
                     onClick={() => void openDesktopBrowser()}
                   >
                     <Monitor className="mr-1.5 h-3 w-3" />
-                    Open Milady Desktop Browser
+                    Open Eliza Desktop Browser
                   </Button>
                 </div>
               ) : null}

@@ -5,18 +5,18 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { stochasticTest } from "../../../packages/app-core/test/helpers/stochastic-test";
 import { describeIf } from "../../../packages/app-core/test/helpers/conditional-tests.ts";
-import { selectLiveProvider } from "../../../packages/app-core/test/helpers/live-provider";
 import {
   createConversation,
   postConversationMessage,
   req,
 } from "../../../packages/app-core/test/helpers/http";
 import { createLiveRuntimeChildEnv } from "../../../packages/app-core/test/helpers/live-child-env.ts";
+import { selectLiveProvider } from "../../../packages/app-core/test/helpers/live-provider";
+import { stochasticTest } from "../../../packages/app-core/test/helpers/stochastic-test";
 
 const LIVE_TESTS_ENABLED =
-  process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
+  process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
 const ENV_PATH = path.join(REPO_ROOT, ".env");
 

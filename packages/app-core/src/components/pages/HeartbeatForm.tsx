@@ -234,7 +234,7 @@ export function HeartbeatForm({
               t={t}
               onGoToWorkflows={() => {
                 window.dispatchEvent(
-                  new CustomEvent("milady:automations:setFilter", {
+                  new CustomEvent("eliza:automations:setFilter", {
                     detail: { filter: "workflows" },
                   }),
                 );

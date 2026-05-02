@@ -144,6 +144,11 @@ playwright-report/
 **/test-report*.json
 **/.nyc_output/
 
+# Local git worktrees of the cloud submodule (parallel CI/test branches)
+/cloud-ci-playwright/
+/cloud-develop-playwright-ci/
+/cloud-develop-fix/
+
 # Archive files
 *.zip
 *.tar
@@ -240,6 +245,10 @@ vitest.config.ts
 !apps/app-defense-of-the-agents/vitest.config.ts
 !apps/app-lifeops/vitest.config.ts
 !apps/app-training/vitest.config.ts
+!packages/agent/vitest.config.ts
+!packages/app/vitest.config.ts
+!packages/confidant/vitest.config.ts
+!packages/shared/vitest.config.ts
 tsconfig.test.json
 
 # Migration status docs (temporary)
@@ -350,6 +359,7 @@ packages/elizaos/examples/
 # Local workspaces / sandboxes
 /swe-bench-workspace/
 /3DAvatarChatbot/
+/tmp-live/
 
 # Handoff notes (local only, do not commit)
 *handoff*.md

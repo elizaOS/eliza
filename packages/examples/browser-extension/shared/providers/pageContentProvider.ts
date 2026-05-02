@@ -22,7 +22,7 @@ const PAGE_CONTENT_CACHE_KEY = "currentPageContent";
  */
 export async function setPageContent(
   runtime: IAgentRuntime,
-  content: PageContent | null
+  content: PageContent | null,
 ): Promise<void> {
   await runtime.setCache(PAGE_CONTENT_CACHE_KEY, content);
 }
@@ -31,7 +31,7 @@ export async function setPageContent(
  * Get page content from the runtime cache
  */
 export async function getPageContent(
-  runtime: IAgentRuntime
+  runtime: IAgentRuntime,
 ): Promise<PageContent | null> {
   return (await runtime.getCache(PAGE_CONTENT_CACHE_KEY)) as PageContent | null;
 }
@@ -52,7 +52,7 @@ export const pageContentProvider: Provider = {
   get: async (
     runtime: IAgentRuntime,
     _message: Memory,
-    _state?: State
+    _state?: State,
   ): Promise<ProviderResult> => {
     const pageContent = await getPageContent(runtime);
 
@@ -70,7 +70,8 @@ export const pageContentProvider: Provider = {
     const maxContentLength = 12000;
     const truncatedContent =
       pageContent.content.length > maxContentLength
-        ? pageContent.content.slice(0, maxContentLength) + "\n\n[Content truncated...]"
+        ? pageContent.content.slice(0, maxContentLength) +
+          "\n\n[Content truncated...]"
         : pageContent.content;
 
     const contextText = `# Current Webpage Context

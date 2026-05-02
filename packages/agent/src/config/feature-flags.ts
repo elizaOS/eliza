@@ -1,5 +1,5 @@
 /**
- * Centralised readers for Milady feature flags that gate unreleased or
+ * Centralised readers for Eliza feature flags that gate unreleased or
  * in-progress integrations. Keep this module dependency-free so it can be
  * imported from any layer (api, runtime, cloud) without cycles.
  *

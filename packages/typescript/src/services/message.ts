@@ -6447,6 +6447,20 @@ Output ONLY the continuation, starting immediately after the last character abov
 		responseId: UUID,
 		stage: string,
 	): Promise<StrategyResult> {
+		// Short-circuit when no LLM provider is configured at all. The fallback
+		// model loop below would just throw `NoModelProviderConfiguredError` for
+		// every model type and surface a misleading generic failure to the user.
+		// Instead, render an actionable hint directly. See elizaOS/eliza#7203.
+		if (!hasTextGenerationHandler(runtime)) {
+			return this.buildNoModelProviderReply(
+				runtime,
+				message,
+				state,
+				responseId,
+				stage,
+			);
+		}
+
 		const recentMessages =
 			typeof state.values?.recentMessages === "string" &&
 			state.values.recentMessages.trim().length > 0
@@ -6515,6 +6529,22 @@ Output ONLY the continuation, starting immediately after the last character abov
 					break;
 				}
 			} catch (error) {
+				// If the runtime reports no LLM provider is configured at all,
+				// no further model attempts will succeed. Surface the actionable
+				// hint instead of the generic transient-failure message. See
+				// elizaOS/eliza#7203.
+				if (
+					error instanceof Error &&
+					error.name === "NoModelProviderConfiguredError"
+				) {
+					return this.buildNoModelProviderReply(
+						runtime,
+						message,
+						state,
+						responseId,
+						stage,
+					);
+				}
 				runtime.logger.warn(
 					{
 						src: "service:message",
@@ -6541,6 +6571,57 @@ Output ONLY the continuation, starting immediately after the last character abov
 
 		const responseContent: Content = {
 			thought: `Handle a temporary reply failure during ${stage}.`,
+			actions: ["REPLY"],
+			providers: [],
+			text: replyText,
+			simple: true,
+			responseId,
+		};
+
+		const responseMessages: Memory[] = [
+			{
+				id: responseId,
+				entityId: runtime.agentId,
+				agentId: runtime.agentId,
+				content: responseContent,
+				roomId: message.roomId,
+				createdAt: Date.now(),
+			},
+		];
+
+		return {
+			responseContent,
+			responseMessages,
+			state,
+			mode: "simple",
+		};
+	}
+
+	/**
+	 * Render the no-LLM-provider hint as a chat reply. Used when `useModel`
+	 * throws `NoModelProviderConfiguredError`, which means no provider plugin
+	 * is registered and no fallback model call will ever succeed. The user
+	 * sees an actionable message instead of a generic transient-failure
+	 * template. See elizaOS/eliza#7203.
+	 */
+	private buildNoModelProviderReply(
+		runtime: IAgentRuntime,
+		message: Memory,
+		state: State,
+		responseId: UUID,
+		stage: string,
+	): StrategyResult {
+		const replyText =
+			runtime.character.templates?.noModelProviderReply ||
+			"This agent has no LLM provider configured. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or OPENROUTER_API_KEY in your environment, or sign in to Eliza Cloud (ELIZAOS_CLOUD_API_KEY).";
+
+		runtime.logger.warn(
+			{ src: "service:message", stage },
+			"No LLM provider configured; rendering setup hint reply",
+		);
+
+		const responseContent: Content = {
+			thought: `No LLM provider configured during ${stage}.`,
 			actions: ["REPLY"],
 			providers: [],
 			text: replyText,

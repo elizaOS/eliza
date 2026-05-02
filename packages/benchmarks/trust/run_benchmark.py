@@ -60,7 +60,7 @@ def _create_handler(
     Handlers:
     - oracle: Ground truth (perfect score, validates benchmark framework)
     - random: Coin flip baseline (validates benchmark discriminates)
-    - real: Pattern-based detection via trust plugin's SecurityModule
+    - real: Heuristic + runtime SecurityModuleService prompt-injection checks
     - eliza: LLM-based detection via a full ElizaOS AgentRuntime (requires
              OPENAI_API_KEY and elizaos + elizaos-plugin-openai packages)
     """
@@ -105,7 +105,7 @@ Examples:
 Handler descriptions:
   oracle  Ground truth oracle — validates benchmark framework (should score 100%%)
   random  Coin flip baseline — validates benchmark discriminates good from bad
-  real    Pattern-based detection using the trust plugin's SecurityModule
+  real    Heuristic detection + Python SecurityModuleService (runtime)
   eliza   LLM-based detection using a full ElizaOS agent with OpenAI
         """,
     )

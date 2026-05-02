@@ -2,22 +2,23 @@
 /**
  * Full production build with maximal safe parallelism:
  * 1. tsdown (root dist) ∥ Capacitor plugin-build
- * 2. vite build (apps/app)
+ * 2. vite build (packages/app)
  * 3. write-build-info (dist metadata)
  *
- * Requires prior `bun install` / postinstall (see apps/app/scripts/build.mjs).
+ * Requires prior `bun install` / postinstall (see packages/app/scripts/build.mjs).
  */
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { resolveElizaAssetBaseUrls } from "./lib/asset-cdn.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 // When invoked from eliza root via `bun run build`, __dirname is
 // eliza/packages/app-core/scripts — walk up to the eliza repo root.
 const rootDir = path.resolve(scriptDir, "..", "..", "..", "..");
-const appDir = path.join(rootDir, "apps", "app");
+const appDir = resolveMainAppDir(rootDir, "app");
 
 /** Real Node binary — when the script is started via `bun run`, process.execPath is Bun. */
 function resolveNodeExec() {

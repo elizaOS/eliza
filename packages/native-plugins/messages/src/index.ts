@@ -6,6 +6,6 @@ export * from "./definitions";
 
 const loadWeb = () => import("./web").then((m) => new m.MessagesWeb());
 
-export const Messages = registerPlugin<MessagesPlugin>("MiladyMessages", {
+export const Messages = registerPlugin<MessagesPlugin>("ElizaMessages", {
   web: loadWeb,
 });

@@ -42,10 +42,10 @@ function isFalsyEnv(value: string | undefined): boolean {
 }
 
 function isMockComputerUseEnabled(): boolean {
-  const explicit = process.env.MILADY_TEST_COMPUTERUSE_BACKEND;
+  const explicit = process.env.ELIZA_TEST_COMPUTERUSE_BACKEND;
   if (isFalsyEnv(explicit)) return false;
   if (isTruthyEnv(explicit)) return true;
-  return process.env.MILADY_BENCHMARK_USE_MOCKS === "1";
+  return process.env.ELIZA_BENCHMARK_USE_MOCKS === "1";
 }
 
 function getComputerUseService(

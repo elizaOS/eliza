@@ -129,7 +129,7 @@ export interface TriageExample {
   classification: TriageClassification;
   ownerAction: OwnerAction;
   ownerClassification: TriageClassification | null;
-  contextJson: Record<string, unknown> | null;
+  contextJson: Record<string, unknown>;
   createdAt: string;
 }
 

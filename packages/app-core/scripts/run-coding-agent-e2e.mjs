@@ -26,14 +26,14 @@ const result = spawnSync(
   "node",
   [
     "eliza/packages/app-core/scripts/run-with-env.mjs",
-    "MILADY_LIVE_TEST=1",
+    "ELIZA_LIVE_TEST=1",
     "ELIZA_LIVE_TEST=1",
     "--",
     "bunx",
     "vitest",
     "run",
     "--config",
-    "test/vitest/live-e2e.config.ts",
+    "eliza/test/vitest/live-e2e.config.ts",
     ...requiredTests,
   ],
   {

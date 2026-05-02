@@ -81,12 +81,12 @@ describe("applyPrivacyFilter", () => {
 
   let prevSecret: string | undefined;
   beforeEach(() => {
-    prevSecret = process.env.MILADY_TEST_API_KEY;
-    process.env.MILADY_TEST_API_KEY = "supersecret-value-1234567890";
+    prevSecret = process.env.ELIZA_TEST_API_KEY;
+    process.env.ELIZA_TEST_API_KEY = "supersecret-value-1234567890";
   });
   afterEach(() => {
-    if (prevSecret === undefined) delete process.env.MILADY_TEST_API_KEY;
-    else process.env.MILADY_TEST_API_KEY = prevSecret;
+    if (prevSecret === undefined) delete process.env.ELIZA_TEST_API_KEY;
+    else process.env.ELIZA_TEST_API_KEY = prevSecret;
   });
 
   it("redacts environment-variable secret values when they appear inline", () => {
@@ -96,15 +96,14 @@ describe("applyPrivacyFilter", () => {
         {
           llmCalls: [
             {
-              userPrompt:
-                "I leaked supersecret-value-1234567890 by accident",
+              userPrompt: "I leaked supersecret-value-1234567890 by accident",
             },
           ],
         },
       ],
     };
     const result = applyPrivacyFilter([trajectory], {
-      envKeySnapshot: ["MILADY_TEST_API_KEY"],
+      envKeySnapshot: ["ELIZA_TEST_API_KEY"],
     });
     const call = result.trajectories[0]?.steps?.[0]?.llmCalls?.[0];
     expect(call?.userPrompt).toContain("<REDACTED:env-secret>");
@@ -149,9 +148,9 @@ describe("applyPrivacyFilter", () => {
     const out = result.trajectories[0];
     expect(out?.metadata).toEqual(trajectory.metadata);
     // Sanity: the filter did still run on LLM text.
-    expect(
-      out?.steps?.[0]?.llmCalls?.[0]?.userPrompt,
-    ).toContain("<REDACTED:openai-key>");
+    expect(out?.steps?.[0]?.llmCalls?.[0]?.userPrompt).toContain(
+      "<REDACTED:openai-key>",
+    );
   });
 
   it("preserves automation-scope metadata too (parity with page-scopes)", () => {

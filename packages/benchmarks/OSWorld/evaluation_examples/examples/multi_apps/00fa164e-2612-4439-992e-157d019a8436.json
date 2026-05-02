@@ -7,11 +7,7 @@
     {
       "type": "command",
       "parameters": {
-        "command": [
-          "mkdir",
-          "-p",
-          "/home/user/Documents/awesome-desktop/"
-        ]
+        "command": ["mkdir", "-p", "/home/user/Documents/awesome-desktop/"]
       }
     },
     {
@@ -37,11 +33,7 @@
     }
   ],
   "trajectory": "trajectories/00fa164e-2612-4439-992e-157d019a8436",
-  "related_apps": [
-    "libreoffice_writer",
-    "libreoffice_calc",
-    "os"
-  ],
+  "related_apps": ["libreoffice_writer", "libreoffice_calc", "os"],
   "evaluator": {
     "postconfig": [
       {

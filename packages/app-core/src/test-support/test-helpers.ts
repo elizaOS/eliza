@@ -356,7 +356,7 @@ export function resolveFeishuPluginImportSpecifier(): string | null {
 }
 
 const WECHAT_PLUGIN_PACKAGE_NAME = "@elizaos/plugin-wechat";
-const WECHAT_PLUGIN_LEGACY_PACKAGE_NAME = "@miladyai/plugin-wechat";
+const WECHAT_PLUGIN_LEGACY_PACKAGE_NAME = "@elizaai/plugin-wechat";
 const WECHAT_PLUGIN_LOCAL_ENTRY_CANDIDATES = [
   "src/index.ts",
   "dist/index.js",

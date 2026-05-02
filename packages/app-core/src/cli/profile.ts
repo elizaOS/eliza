@@ -110,7 +110,7 @@ export function applyCliProfileEnv(params: {
 
   // Convenience only: fill defaults, never override explicit env values.
   env.ELIZA_PROFILE = profile;
-  const namespace = env.ELIZA_NAMESPACE?.trim() || "milady";
+  const namespace = env.ELIZA_NAMESPACE?.trim() || "eliza";
   env.ELIZA_NAMESPACE = namespace;
 
   if (!env.ELIZA_STATE_DIR?.trim()) {

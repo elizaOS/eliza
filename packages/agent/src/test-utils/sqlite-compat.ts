@@ -196,7 +196,7 @@ class BunCliDatabaseSyncCompat implements SqliteDatabaseCompat {
   constructor(filename: string) {
     this.deleteOnClose = filename === ":memory:";
     this.filename = this.deleteOnClose
-      ? join(tmpdir(), `milady-sqlite-${process.pid}-${randomUUID()}.sqlite`)
+      ? join(tmpdir(), `eliza-sqlite-${process.pid}-${randomUUID()}.sqlite`)
       : filename;
   }
 

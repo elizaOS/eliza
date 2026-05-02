@@ -55,11 +55,7 @@
     {
       "type": "execute",
       "parameters": {
-        "command": [
-          "python",
-          "-c",
-          "import pyautogui; pyautogui.press('f11');"
-        ]
+        "command": ["python", "-c", "import pyautogui; pyautogui.press('f11');"]
       }
     },
     {
@@ -74,18 +70,13 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "vlc"
-  ],
+  "related_apps": ["vlc"],
   "evaluator": {
     "postconfig": [
       {
         "type": "launch",
         "parameters": {
-          "command": [
-            "pkill",
-            "vlc"
-          ]
+          "command": ["pkill", "vlc"]
         }
       },
       {

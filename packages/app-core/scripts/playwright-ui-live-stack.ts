@@ -1,39 +1,40 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import {
   createServer,
   type IncomingMessage,
   type Server,
   type ServerResponse,
 } from "node:http";
-import { existsSync } from "node:fs";
-import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { WebSocket, WebSocketServer } from "ws";
-import { viteRendererBuildNeeded } from "./lib/vite-renderer-dist-stale.mjs";
 import { buildOnboardingRuntimeConfig } from "../src/onboarding-config";
 import { selectLiveProvider } from "../test/helpers/live-provider";
+import { resolveMainAppDir } from "./lib/app-dir.mjs";
+import { viteRendererBuildNeeded } from "./lib/vite-renderer-dist-stale.mjs";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
-const APP_DIST_DIR = path.join(REPO_ROOT, "apps", "app", "dist");
+const APP_DIR = resolveMainAppDir(REPO_ROOT, "app");
+const APP_DIST_DIR = path.join(APP_DIR, "dist");
 const UI_SMOKE_STUB_SCRIPT = path.join(
   import.meta.dirname,
   "playwright-ui-smoke-api-stub.mjs",
 );
 const READY_TIMEOUT_MS = 180_000;
 const API_PORT = Number(
-  process.env.MILADY_UI_SMOKE_API_PORT ??
+  process.env.ELIZA_UI_SMOKE_API_PORT ??
     process.env.ELIZA_UI_SMOKE_API_PORT ??
     "31337",
 );
 const UI_PORT = Number(
-  process.env.MILADY_UI_SMOKE_PORT ?? process.env.ELIZA_UI_SMOKE_PORT ?? "2138",
+  process.env.ELIZA_UI_SMOKE_PORT ?? process.env.ELIZA_UI_SMOKE_PORT ?? "2138",
 );
 const LIVE_PROVIDER = selectLiveProvider();
 const FORCE_STUB_STACK =
-  process.env.ELIZA_UI_SMOKE_FORCE_STUB === "1" ||
-  process.env.CI === "true";
+  process.env.ELIZA_UI_SMOKE_FORCE_STUB === "1" || process.env.CI === "true";
 
 type StartedStack = {
   apiBase: string;
@@ -156,7 +157,9 @@ async function proxyUiRequest(args: {
   }
 
   args.response.writeHead(200, {
-    "Content-Type": contentTypeFor(filePath ?? path.join(APP_DIST_DIR, "index.html")),
+    "Content-Type": contentTypeFor(
+      filePath ?? path.join(APP_DIST_DIR, "index.html"),
+    ),
   });
   args.response.end(body);
 }
@@ -380,10 +383,7 @@ async function ensureUiDistReady(): Promise<void> {
 
   try {
     await access(distIndex);
-    needsBuild = viteRendererBuildNeeded(
-      path.join(REPO_ROOT, "apps", "app"),
-      REPO_ROOT,
-    );
+    needsBuild = viteRendererBuildNeeded(APP_DIR, REPO_ROOT);
   } catch {
     needsBuild = true;
   }
@@ -394,7 +394,7 @@ async function ensureUiDistReady(): Promise<void> {
 
   const logs: string[] = [];
   const child = spawn("bun", ["scripts/build.mjs"], {
-    cwd: path.join(REPO_ROOT, "apps", "app"),
+    cwd: APP_DIR,
     env: {
       ...process.env,
       FORCE_COLOR: "0",
@@ -408,7 +408,7 @@ async function ensureUiDistReady(): Promise<void> {
   const exited = await waitForChildExit(child, 300_000);
   if (!exited || child.exitCode !== 0) {
     throw new Error(
-      `apps/app renderer build failed.\n${logs.join("").slice(-8_000)}`,
+      `packages/app renderer build failed.\n${logs.join("").slice(-8_000)}`,
     );
   }
 }
@@ -475,7 +475,9 @@ async function submitOnboarding(apiBase: string): Promise<void> {
 }
 
 async function startStubStack(): Promise<StartedStack> {
-  const stateDir = await mkdtemp(path.join(os.tmpdir(), "eliza-ui-smoke-stub-"));
+  const stateDir = await mkdtemp(
+    path.join(os.tmpdir(), "eliza-ui-smoke-stub-"),
+  );
   const apiBase = `http://127.0.0.1:${API_PORT}`;
   const apiChild = spawn("node", [UI_SMOKE_STUB_SCRIPT], {
     cwd: REPO_ROOT,
@@ -483,7 +485,7 @@ async function startStubStack(): Promise<StartedStack> {
       ...process.env,
       FORCE_COLOR: "0",
       ELIZA_UI_SMOKE_API_PORT: String(API_PORT),
-      MILADY_UI_SMOKE_API_PORT: String(API_PORT),
+      ELIZA_UI_SMOKE_API_PORT: String(API_PORT),
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -507,7 +509,7 @@ async function startStubStack(): Promise<StartedStack> {
     port: UI_PORT,
   });
   process.env.ELIZA_API_PORT = String(API_PORT);
-  process.env.MILADY_API_PORT = String(API_PORT);
+  process.env.ELIZA_API_PORT = String(API_PORT);
 
   return {
     apiBase,
@@ -525,7 +527,9 @@ async function startRealStack(): Promise<StartedStack> {
     return startStubStack();
   }
 
-  const stateDir = await mkdtemp(path.join(os.tmpdir(), "eliza-ui-smoke-live-"));
+  const stateDir = await mkdtemp(
+    path.join(os.tmpdir(), "eliza-ui-smoke-live-"),
+  );
   const apiBase = `http://127.0.0.1:${API_PORT}`;
   const apiChild = spawn(
     "node",
@@ -543,8 +547,8 @@ async function startRealStack(): Promise<StartedStack> {
         ELIZA_HOME_PORT: String(UI_PORT),
         ELIZA_PORT: String(API_PORT),
         ELIZA_STATE_DIR: stateDir,
-        MILADY_API_PORT: String(API_PORT),
-        MILADY_STATE_DIR: stateDir,
+        ELIZA_API_PORT: String(API_PORT),
+        ELIZA_STATE_DIR: stateDir,
       },
       stdio: ["ignore", "pipe", "pipe"],
     },
@@ -581,7 +585,7 @@ async function startRealStack(): Promise<StartedStack> {
     port: UI_PORT,
   });
   process.env.ELIZA_API_PORT = String(API_PORT);
-  process.env.MILADY_API_PORT = String(API_PORT);
+  process.env.ELIZA_API_PORT = String(API_PORT);
 
   return {
     apiBase,
@@ -652,7 +656,7 @@ try {
 } catch (error) {
   console.error(
     `[ui-smoke] failed to start live stack: ${
-      error instanceof Error ? error.stack ?? error.message : String(error)
+      error instanceof Error ? (error.stack ?? error.message) : String(error)
     }`,
   );
   await stopRealStack(stack);

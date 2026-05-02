@@ -132,7 +132,7 @@ jobs:
     if: needs.check-commits.outputs.has_new_commits == 'true'
     # TODO: eliza does not currently expose a `workflow_call`-able desktop
     # release pipeline. Wire this to the eliza equivalent once it lands;
-    # in the meantime we run the existing build-electron matrix inline.
+    # in the meantime this verifies the renderer package on each desktop OS.
     strategy:
       fail-fast: false
       matrix:
@@ -248,7 +248,7 @@ jobs:
           git push origin "$TAG"
 
       - name: Create GitHub pre-release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.build-and-test.outputs.nightly_tag }}
           name: "Nightly ${{ needs.build-and-test.outputs.nightly_version }}"

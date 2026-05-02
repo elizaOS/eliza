@@ -25,7 +25,7 @@ const VALID_BRANCH = /^[a-zA-Z0-9][\w./-]*$/;
 const CORE_MANAGER_SERVICE_TYPE = "core_manager" as ServiceTypeName;
 
 export interface UpstreamMetadata {
-	$schema: "milaidy-upstream-v1";
+	$schema: "eliza-upstream-v1";
 	source: string;
 	gitUrl: string;
 	branch: string;
@@ -194,7 +194,7 @@ export class CoreManagerService extends Service {
 			const raw = await fs.readFile(this.upstreamFilePath(), "utf-8");
 			const parsed = JSON.parse(raw) as Partial<UpstreamMetadata>;
 			if (
-				parsed.$schema !== "milaidy-upstream-v1" ||
+				parsed.$schema !== "eliza-upstream-v1" ||
 				typeof parsed.gitUrl !== "string" ||
 				typeof parsed.branch !== "string" ||
 				typeof parsed.commitHash !== "string" ||
@@ -205,7 +205,7 @@ export class CoreManagerService extends Service {
 			}
 
 			return {
-				$schema: "milaidy-upstream-v1",
+				$schema: "eliza-upstream-v1",
 				source:
 					typeof parsed.source === "string"
 						? parsed.source
@@ -377,7 +377,7 @@ export class CoreManagerService extends Service {
 					monorepoDir,
 				);
 				const metadata: UpstreamMetadata = {
-					$schema: "milaidy-upstream-v1",
+					$schema: "eliza-upstream-v1",
 					source: "github:elizaos/eliza",
 					gitUrl: CORE_GIT_URL,
 					branch: CORE_BRANCH,

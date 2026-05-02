@@ -86,7 +86,7 @@ describe("ElizaClient iMessage bridge methods", () => {
     const client = new ElizaClient({ baseUrl: "http://127.0.0.1:31337" });
     const result = await client.sendIMessage({
       to: "+15551112222",
-      text: "hello from milady",
+      text: "hello from eliza",
       mediaUrl: "/tmp/image.png",
     });
 
@@ -99,7 +99,7 @@ describe("ElizaClient iMessage bridge methods", () => {
     expect(init.method).toBe("POST");
     expect(JSON.parse(String(init.body))).toEqual({
       to: "+15551112222",
-      text: "hello from milady",
+      text: "hello from eliza",
       attachmentPaths: ["/tmp/image.png"],
     });
   });

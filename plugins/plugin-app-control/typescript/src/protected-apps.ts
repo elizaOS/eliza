@@ -7,7 +7,7 @@
  *
  * The protected set is the union of two sources:
  *
- *   1. `MILADY_PROTECTED_APPS` — comma-separated names the operator has
+ *   1. `ELIZA_PROTECTED_APPS` — comma-separated names the operator has
  *      explicitly locked.
  *   2. First-party apps shipped in this repo under `eliza/apps/` — every
  *      subdirectory there is implicitly protected so a malicious or careless
@@ -30,7 +30,7 @@ import path from "node:path";
 
 export interface ProtectedAppsResolution {
 	/**
-	 * Raw, trimmed, non-empty contributions from `MILADY_PROTECTED_APPS`.
+	 * Raw, trimmed, non-empty contributions from `ELIZA_PROTECTED_APPS`.
 	 * Surfaced as a diagnostic field so the rejection log entry can attribute
 	 * a refusal to env vs. first-party-dir; not used at the lookup hot path.
 	 */
@@ -94,7 +94,7 @@ async function listFirstPartyApps(repoRoot: string): Promise<string[]> {
 export async function resolveProtectedApps(
 	repoRoot: string,
 ): Promise<ProtectedAppsResolution> {
-	const fromEnv = splitEnvList(process.env.MILADY_PROTECTED_APPS);
+	const fromEnv = splitEnvList(process.env.ELIZA_PROTECTED_APPS);
 	const fromFirstPartyDir = await listFirstPartyApps(repoRoot);
 
 	const set = new Set<string>();

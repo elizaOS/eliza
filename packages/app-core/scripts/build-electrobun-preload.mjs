@@ -13,6 +13,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { resolveElectrobunDir } from "./lib/app-dir.mjs";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
@@ -28,8 +29,7 @@ function isElectrobunDir(dir) {
 const ELECTROBUN_DIR =
   [
     process.cwd(),
-    path.join(repoRoot, "apps", "app", "electrobun"),
-    path.join(repoRoot, "eliza", "packages", "app-core", "platforms", "electrobun"),
+    resolveElectrobunDir(repoRoot),
   ].find(isElectrobunDir) ??
   (() => {
     throw new Error("Could not resolve Electrobun workspace directory");

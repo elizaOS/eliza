@@ -25,19 +25,6 @@ const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 
 import os from "node:os";
 import path from "node:path";
-// Discord local routes extracted to @elizaos/plugin-discord (setup-routes.ts)
-import { DropService, setElizaMakerDropService } from "@elizaos/app-elizamaker";
-import { handleKnowledgeRoutes } from "@elizaos/app-knowledge/routes";
-import {
-  normalizeJsonRpcUrl,
-  probeJsonRpcEndpoint,
-  TxService,
-} from "@elizaos/app-steward/api/tx-service";
-import {
-  ensurePrivyWalletsForCustomUser,
-  isPrivyWalletProvisioningEnabled,
-} from "@elizaos/app-steward/services/privy-wallets";
-import { wireCoordinatorBridgesWhenReady } from "@elizaos/app-task-coordinator/api/coordinator-wiring";
 // Phase 2 extraction: LifeOps routes → app-lifeops/src/routes/plugin.ts (lifeopsPlugin)
 // import { handleWalletTradeExecuteRoute } from "./wallet-trade-routes.js";
 // import {
@@ -46,10 +33,7 @@ import { wireCoordinatorBridgesWhenReady } from "@elizaos/app-task-coordinator/a
 //   updateWalletTradeLedgerEntryStatus,
 // } from "./wallet-trading-profile.js";
 // Phase 2 extraction: Website-blocker routes → app-lifeops/src/routes/plugin.ts (lifeopsPlugin)
-import {
-  handleTrainingRoutes,
-  handleTrajectoryRoute,
-} from "@elizaos/app-training/routes";
+import { setActiveTrainingService } from "@elizaos/app-training/services/training-service-registry";
 import {
   type AgentRuntime,
   type IAgentRuntime,
@@ -107,7 +91,6 @@ import {
   queryAuditFeed,
   subscribeAuditFeed,
 } from "../security/audit-log.js";
-import { isLoopbackHost } from "../security/network-policy.js";
 import {
   AgentExportError,
   estimateExportSize,
@@ -194,6 +177,8 @@ import { ConnectorHealthMonitor } from "./connector-health.js";
 import { handleConnectorRoutes } from "./connector-routes.js";
 import { extractConversationMetadataFromRoom } from "./conversation-metadata.js";
 import { handleConversationRoutes } from "./conversation-routes.js";
+// Discord local routes extracted to @elizaos/plugin-discord (setup-routes.ts)
+import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.js";
 import { handleCuratedSkillsRoutes } from "./curated-skills-routes.js";
 import { handleDatabaseRoute } from "./database.js";
 import { handleDiagnosticsRoutes } from "./diagnostics-routes.js";
@@ -407,12 +392,11 @@ function requirePluginManager(runtime: AgentRuntime | null): PluginManagerLike {
 }
 
 /**
- * The upstream plugin-plugin-manager has its own registry client that only
- * fetches from GitHub and scans a `plugins/` dir for `elizaos.plugin.json`.
- * Workspace-vendored plugins (under `packages/plugin-*`) are invisible to it.
- * Wrap `installPlugin` so that when the upstream returns "not found in the
- * registry" we retry using our own registry-client (which discovers workspace
- * packages and node_modules symlinks).
+ * The runtime plugin manager's registry client only fetches from GitHub and
+ * scans a `plugins/` dir for `elizaos.plugin.json`. Workspace-vendored plugins
+ * (under `packages/plugin-*`) are invisible to it. Wrap `installPlugin` so that
+ * when it returns "not found in the registry" we retry using our own
+ * registry-client (which discovers workspace packages and node_modules symlinks).
  */
 function wrapPluginManagerWithLocalFallback(
   pm: PluginManagerLike,
@@ -469,7 +453,6 @@ function requireCoreManager(runtime: AgentRuntime | null): CoreManagerLike {
   return service;
 }
 
-const OG_FILENAME = ".og";
 const DELETED_CONVERSATIONS_FILENAME = "deleted-conversations.v1.json";
 const MAX_DELETED_CONVERSATION_IDS = 5000;
 
@@ -525,19 +508,8 @@ function _persistDeletedConversationIdsToState(ids: Set<string>): void {
   fs.renameSync(tmpFilePath, filePath);
 }
 
-function initializeOGCodeInState(): void {
-  const dir = resolveStateDir();
-  const filePath = path.join(dir, OG_FILENAME);
-  if (fs.existsSync(filePath)) return;
-
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  }
-  fs.writeFileSync(filePath, crypto.randomUUID(), {
-    encoding: "utf-8",
-    mode: 0o600,
-  });
-}
+// initializeOGCodeInState moved into elizaMakerPlugin.init() via
+// initializeRegistryAndDropServices in @elizaos/app-elizamaker.
 
 // resolveAppUserName, patchTouchesProviderSelection, resolveConversationGreetingText
 // moved to server-helpers.ts; imported in the consolidated import at the top
@@ -1056,9 +1028,6 @@ const rateLimitPairing = _rateLimitPairing;
 const getPairingExpiresAt = _getPairingExpiresAt;
 const clearPairing = _clearPairing;
 
-/** Guard against concurrent provider switch requests (P0 §3). */
-let providerSwitchInProgress = false;
-
 /**
  * Lazy per-process runtime operation manager. Constructed on first
  * request because it needs the per-server `state` reference + the
@@ -1216,7 +1185,6 @@ async function handleRequest(
         : undefined,
     });
   const isAuthProtectedPath = isAuthProtectedRoute(pathname);
-  const _registryService = state.registryService;
 
   const canonicalizeRestartReason = (reason: string): string => {
     if (
@@ -1377,30 +1345,27 @@ async function handleRequest(
   };
 
   // ── POST /api/provider/switch (extracted to provider-switch-routes.ts) ──
-  const runtimeOperationManager = getOrCreateRuntimeOperationManager(
-    state,
-    restartRuntime,
-  );
-  if (
-    await handleProviderSwitchRoutes({
-      req,
-      res,
-      method,
-      pathname,
-      state,
-      json,
-      error,
-      readJsonBody,
-      saveElizaConfig,
-      scheduleRuntimeRestart,
-      providerSwitchInProgress,
-      setProviderSwitchInProgress: (v: boolean) => {
-        providerSwitchInProgress = v;
-      },
-      runtimeOperationManager,
-    })
-  ) {
-    return;
+  if (method === "POST" && pathname === "/api/provider/switch") {
+    if (
+      await handleProviderSwitchRoutes({
+        req,
+        res,
+        method,
+        pathname,
+        state,
+        json,
+        error,
+        readJsonBody,
+        saveElizaConfig,
+        scheduleRuntimeRestart,
+        runtimeOperationManager: getOrCreateRuntimeOperationManager(
+          state,
+          restartRuntime,
+        ),
+      })
+    ) {
+      return;
+    }
   }
 
   if (
@@ -1569,41 +1534,12 @@ async function handleRequest(
     return;
   }
 
-  if (pathname.startsWith("/api/training")) {
-    if (!state.trainingService) {
-      error(res, "Training service is not available", 503);
-      return;
-    }
-    const trainingHandled = await handleTrainingRoutes({
-      req,
-      res,
-      method,
-      pathname,
-      runtime: state.runtime,
-      trainingService: state.trainingService,
-      readJsonBody,
-      json,
-      error,
-      isLoopbackHost,
-    });
-    if (trainingHandled) return;
-  }
+  // Training routes (/api/training/*) and trajectory routes
+  // (/api/trajectories/*) are now provided by the @elizaos/app-training
+  // plugin via the runtime route registry.
 
-  // ── Knowledge routes (/api/knowledge/*) ─────────────────────────────────
-  if (pathname.startsWith("/api/knowledge")) {
-    const knowledgeHandled = await handleKnowledgeRoutes({
-      req,
-      res,
-      method,
-      pathname,
-      url,
-      runtime: state.runtime,
-      readJsonBody,
-      json,
-      error,
-    });
-    if (knowledgeHandled) return;
-  }
+  // Knowledge routes (/api/knowledge/*) are now provided by the
+  // @elizaos/app-knowledge plugin via the runtime route registry.
 
   if (
     pathname.startsWith("/api/memory") ||
@@ -2033,10 +1969,6 @@ async function handleRequest(
         getGlobalAwarenessRegistry: coerce<
           AgentStatusRouteArg["deps"]["getGlobalAwarenessRegistry"]
         >(getGlobalAwarenessRegistry),
-        isPrivyWalletProvisioningEnabled,
-        ensurePrivyWalletsForCustomUser: coerce<
-          AgentStatusRouteArg["deps"]["ensurePrivyWalletsForCustomUser"]
-        >(ensurePrivyWalletsForCustomUser),
         RegistryService,
       },
     })
@@ -2089,11 +2021,12 @@ async function handleRequest(
         const credStore = runtime.getService("n8n_credential_store") as {
           delete?: (userId: string, credType: string) => Promise<void>;
         } | null;
-        if (!credStore?.delete) return;
+        const deleteCred = credStore?.delete;
+        if (!deleteCred) return;
         const userId = runtime.agentId;
         await Promise.all(
           credTypes.map((credType) =>
-            credStore.delete?.(userId, credType).catch(() => {
+            deleteCred(userId, credType).catch(() => {
               /* per-credType failure shouldn't block siblings */
             }),
           ),
@@ -2508,21 +2441,8 @@ async function handleRequest(
     if (handled) return;
   }
 
-  // ── Trajectory management API ──────────────────────────────────────────
-  if (pathname.startsWith("/api/trajectories")) {
-    if (!state.runtime) {
-      sendJsonError(res, "Agent runtime not started yet", 503);
-      return;
-    }
-    const handled = await handleTrajectoryRoute(
-      req,
-      res,
-      state.runtime,
-      pathname,
-      method,
-    );
-    if (handled) return;
-  }
+  // Trajectory routes (/api/trajectories/*) are now provided by the
+  // @elizaos/app-training plugin via the runtime route registry.
 
   // ── Coding Agent API (/api/coding-agents/*, /api/workspace/*, /api/issues/*) ──
   if (
@@ -3100,8 +3020,6 @@ export async function startApiServer(opts?: {
     sandboxManager: null,
     appManager: new AppManager(),
     trainingService: null,
-    registryService: null,
-    dropService: null,
     shareIngestQueue: [],
     broadcastStatus: null,
     broadcastWs: null,
@@ -3127,6 +3045,7 @@ export async function startApiServer(opts?: {
   };
   if (trainingServiceCtor) {
     state.trainingService = new trainingServiceCtor(trainingServiceOptions);
+    setActiveTrainingService(state.trainingService);
   } else {
     logger.info(
       "[eliza-api] Training service package unavailable; training routes will be disabled",
@@ -3538,76 +3457,10 @@ export async function startApiServer(opts?: {
       }
     })();
 
-    void (async () => {
-      initializeOGCodeInState();
-
-      // Get EVM private key from runtime secrets (preferred) or config.env (fallback)
-      const runtime = state.runtime;
-      const evmKey =
-        (runtime?.getSetting?.("EVM_PRIVATE_KEY") as string | undefined) ??
-        (state.config.env as Record<string, string> | undefined)
-          ?.EVM_PRIVATE_KEY;
-      const registryConfig = state.config.registry;
-      if (
-        !evmKey ||
-        !registryConfig?.registryAddress ||
-        !registryConfig.mainnetRpc
-      ) {
-        return;
-      }
-
-      try {
-        const registryRpcUrl = normalizeJsonRpcUrl(registryConfig.mainnetRpc);
-        const registryRpcProbe = await probeJsonRpcEndpoint(registryRpcUrl);
-        if (!registryRpcProbe.ok) {
-          addLog(
-            "warn",
-            `ERC-8004 registry service disabled: RPC unavailable (${registryRpcProbe.reason ?? "unknown error"})`,
-            "system",
-            ["system"],
-          );
-          logger.warn(
-            {
-              reason: registryRpcProbe.reason,
-            },
-            "ERC-8004 registry service disabled because mainnetRpc is unavailable",
-          );
-          return;
-        }
-
-        const txService = new TxService(registryRpcUrl, evmKey);
-        state.registryService = new RegistryService(
-          txService,
-          registryConfig.registryAddress,
-        );
-
-        if (registryConfig.collectionAddress) {
-          const dropEnabled = state.config.features?.dropEnabled === true;
-          state.dropService = new DropService(
-            txService,
-            registryConfig.collectionAddress,
-            dropEnabled,
-          );
-          setElizaMakerDropService(state.dropService);
-        } else {
-          state.dropService = null;
-          setElizaMakerDropService(null);
-        }
-
-        addLog(
-          "info",
-          `ERC-8004 registry service initialised (${registryConfig.registryAddress})`,
-          "system",
-          ["system"],
-        );
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        addLog("warn", `ERC-8004 registry service disabled: ${msg}`, "system", [
-          "system",
-        ]);
-        logger.warn({ err }, "Failed to initialize ERC-8004 registry service");
-      }
-    })();
+    // ERC-8004 RegistryService + DropService construction has moved into
+    // elizaMakerPlugin.init() in @elizaos/app-elizamaker. The plugin reads
+    // the live services via getElizaMakerRegistryService() /
+    // getElizaMakerDropService() in this package.
 
     // ── Connector health monitoring ──────────────────────────────────────────
     if (state.runtime && state.config.connectors) {

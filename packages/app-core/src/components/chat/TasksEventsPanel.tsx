@@ -60,7 +60,7 @@ export function TasksEventsPanel({
   const visibility = useChatSidebarVisibility();
   const [editOpen, setEditOpen] = useState(false);
 
-  const WIDGETS_WIDTH_KEY = "milady:chat:widgets-bar:width";
+  const WIDGETS_WIDTH_KEY = "eliza:chat:widgets-bar:width";
   const WIDGETS_DEFAULT_WIDTH = 320;
   const WIDGETS_MIN_WIDTH = 240;
   const WIDGETS_MAX_WIDTH = 560;

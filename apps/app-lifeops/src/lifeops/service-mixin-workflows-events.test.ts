@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { describe, expect, it } from "vitest";
 import { matchesCalendarEventEndedFilters } from "./service-mixin-workflows.js";
 
 function makeEvent(
@@ -57,9 +57,12 @@ describe("matchesCalendarEventEndedFilters", () => {
 
   it("matches titleIncludesAny case-insensitively", () => {
     expect(
-      matchesCalendarEventEndedFilters(makeEvent({ title: "Weekly Design Review" }), {
-        titleIncludesAny: ["design review"],
-      }),
+      matchesCalendarEventEndedFilters(
+        makeEvent({ title: "Weekly Design Review" }),
+        {
+          titleIncludesAny: ["design review"],
+        },
+      ),
     ).toBe(true);
   });
 

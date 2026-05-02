@@ -1,0 +1,68 @@
+---
+title: "eliza setup"
+description: "Interactive first-time setup — providers, keys, and baseline configuration."
+---
+
+# `eliza setup`
+
+Walks through initial provider keys, character selection, and core options when onboarding a new machine or state directory. This is the recommended first command after installing Eliza.
+
+## Options
+
+| Flag | Description |
+|------|-------------|
+| `--workspace <dir>` | Agent workspace directory |
+| `--provider <name>` | Model provider for non-interactive setup (e.g. `anthropic`, `openai`, `ollama`) |
+| `--key <value>` | API key or URL via argv (prefer `--key-stdin` to avoid shell history exposure) |
+| `--key-stdin` | Read the API key or URL from stdin |
+| `--no-wizard` | Skip the interactive model provider wizard |
+
+## When to use
+
+- Fresh install before first `eliza start`
+- Setting up a new state directory
+- Adding API keys without editing JSON by hand
+
+## What it configures
+
+1. **Runtime location** — Local, LAN, Remote, or Eliza Cloud
+2. **Character** — Name and starting personality
+3. **Provider** — Cloud API key, Ollama, or Eliza Cloud connection
+4. **Connection test** — Verifies the provider responds before finishing
+
+## Flags
+
+| Flag | Description |
+|------|-------------|
+| `--workspace <dir>` | Set the agent workspace directory. |
+| `--provider <name>` | Model provider name for non-interactive setup (e.g. `anthropic`, `openai`, `ollama`). |
+| `--key <value>` | API key or URL to store for the selected provider. Prefer `--key-stdin` to avoid shell history exposure. |
+| `--key-stdin` | Read the API key or URL from stdin instead of passing it as an argument. |
+| `--no-wizard` | Skip the interactive model provider wizard. |
+
+## Examples
+
+```bash
+# Interactive wizard
+eliza setup
+
+# Non-interactive: set Anthropic key
+eliza setup --provider anthropic --key sk-ant-...
+
+# Non-interactive via stdin (safer)
+echo "sk-ant-..." | eliza setup --provider anthropic --key-stdin
+
+# Skip wizard, just bootstrap workspace
+eliza setup --no-wizard
+
+# Custom workspace directory
+eliza setup --workspace ~/my-agent
+```
+
+After setup, a health check runs automatically (equivalent to `eliza doctor`). The wizard supports these providers: Anthropic (Claude), OpenAI (GPT), Google (Gemini), Groq, xAI (Grok), OpenRouter, Mistral, and Ollama (local, no key required).
+
+## Related
+
+- [Installation](/installation) — Download and install paths
+- [First Launch](/quickstart) — What happens on first run
+- [Model providers](/model-providers) — Supported providers and API keys

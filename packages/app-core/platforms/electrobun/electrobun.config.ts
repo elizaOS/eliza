@@ -5,13 +5,17 @@ import type { ElectrobunConfig } from "electrobun/bun";
 
 const electrobunDir = path.dirname(fileURLToPath(import.meta.url));
 
-function hasElectrobunWorkspaceRoot(candidateDir: string): boolean {
+export function hasElectrobunWorkspaceRoot(candidateDir: string): boolean {
   return (
     fs.existsSync(path.join(candidateDir, "bun.lock")) &&
     fs.existsSync(path.join(candidateDir, "package.json")) &&
-    fs.existsSync(path.join(candidateDir, "apps/app/package.json")) &&
+    (fs.existsSync(path.join(candidateDir, "packages/app/package.json")) ||
+      fs.existsSync(path.join(candidateDir, "apps/app/package.json"))) &&
     (fs.existsSync(
-      path.join(candidateDir, "apps/app/electrobun/package.json"),
+      path.join(
+        candidateDir,
+        "packages/app-core/platforms/electrobun/package.json",
+      ),
     ) ||
       fs.existsSync(
         path.join(
@@ -22,14 +26,36 @@ function hasElectrobunWorkspaceRoot(candidateDir: string): boolean {
   );
 }
 
-function findMiladyRepoRoot(startDir: string): string {
+function hasOuterElizaElectrobunCheckout(candidateDir: string): boolean {
+  return fs.existsSync(
+    path.join(
+      candidateDir,
+      "eliza",
+      "packages",
+      "app-core",
+      "platforms",
+      "electrobun",
+      "package.json",
+    ),
+  );
+}
+
+export function findElizaRepoRoot(startDir: string): string {
   let current = path.resolve(startDir);
+  const matches: string[] = [];
   while (true) {
     if (hasElectrobunWorkspaceRoot(current)) {
-      return current;
+      matches.push(current);
     }
     const parent = path.dirname(current);
     if (parent === current) {
+      const outerWrapperRoot = matches.find(hasOuterElizaElectrobunCheckout);
+      if (outerWrapperRoot) {
+        return outerWrapperRoot;
+      }
+      if (matches[0]) {
+        return matches[0];
+      }
       throw new Error(
         `Could not locate monorepo root from Electrobun config at ${startDir}`,
       );
@@ -38,10 +64,27 @@ function findMiladyRepoRoot(startDir: string): string {
   }
 }
 
-const repoRoot = findMiladyRepoRoot(electrobunDir);
+export function resolveElectrobunRepoRoot(startDir: string): string {
+  const override = (process.env.ELIZA_ELECTROBUN_REPO_ROOT ?? "").trim();
+  if (override) {
+    const resolved = path.resolve(override);
+    if (!hasElectrobunWorkspaceRoot(resolved)) {
+      throw new Error(
+        `ELIZA_ELECTROBUN_REPO_ROOT does not point at an Electrobun workspace root: ${resolved}`,
+      );
+    }
+    return resolved;
+  }
+
+  return findElizaRepoRoot(startDir);
+}
+
+const repoRoot = resolveElectrobunRepoRoot(electrobunDir);
 const rendererDistDir = path.relative(
   electrobunDir,
-  path.join(repoRoot, "apps/app/dist"),
+  fs.existsSync(path.join(repoRoot, "packages/app/package.json"))
+    ? path.join(repoRoot, "packages/app/dist")
+    : path.join(repoRoot, "apps/app/dist"),
 );
 const runtimeBundleDistDir = path.relative(
   electrobunDir,
@@ -62,29 +105,15 @@ const libMacWindowEffectsDylib = path.join(
 );
 
 export function createElectrobunConfig(): ElectrobunConfig {
-  const appName =
-    (process.env.ELIZA_APP_NAME ?? process.env.ELIZA_APP_NAME ?? "").trim() ||
-    "elizaOS";
-  const appId =
-    (process.env.ELIZA_APP_ID ?? process.env.ELIZA_APP_ID ?? "").trim() ||
-    "ai.elizaos.app";
-  const urlScheme =
-    (
-      process.env.ELIZA_URL_SCHEME ??
-      process.env.ELIZA_URL_SCHEME ??
-      ""
-    ).trim() || "elizaos";
-  const releaseUrl =
-    (
-      process.env.ELIZA_RELEASE_URL ??
-      process.env.ELIZA_RELEASE_URL ??
-      ""
-    ).trim() || "";
+  const appName = (process.env.ELIZA_APP_NAME ?? "").trim() || "elizaOS";
+  const appId = (process.env.ELIZA_APP_ID ?? "").trim() || "ai.elizaos.app";
+  const urlScheme = (process.env.ELIZA_URL_SCHEME ?? "").trim() || "elizaos";
+  const releaseUrl = (process.env.ELIZA_RELEASE_URL ?? "").trim() || "";
   const runtimeDistDir =
     (process.env.ELIZA_RUNTIME_DIST_DIR ?? "").trim() || "eliza-dist";
   // Note: All paths relative to electrobun.config.ts location
   // (eliza/packages/app-core/platforms/electrobun/)
-  // ../../../../../ goes to milady repo root where dist/, plugins.json, package.json exist
+  // ../../../../../ goes to eliza repo root where dist/, plugins.json, package.json exist
 
   return {
     app: {
@@ -164,6 +193,7 @@ export function createElectrobunConfig(): ElectrobunConfig {
         [repoPackageJsonPath]: `${runtimeDistDir}/package.json`,
         "assets/appIcon.png": "assets/appIcon.png",
         "assets/appIcon.ico": "assets/appIcon.ico",
+        "assets/brand-config.json": "brand-config.json",
         ...(process.platform === "darwin" &&
         fs.existsSync(libMacWindowEffectsDylib)
           ? { "src/libMacWindowEffects.dylib": "libMacWindowEffects.dylib" }

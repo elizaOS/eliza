@@ -7,7 +7,7 @@
  *   - session lookup with sliding-window refresh
  *   - revoke (single + all-but-current)
  *   - CSRF derive / verify (HMAC-SHA256 over `session.csrfSecret`)
- *   - cookie serialize / parse for the `milady_session` cookie
+ *   - cookie serialize / parse for the `eliza_session` cookie
  *
  * Hard rule: every helper fails closed. A malformed cookie returns null;
  * a CSRF mismatch returns false; a session lookup error propagates. We do
@@ -40,9 +40,9 @@ export const MACHINE_SESSION_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 
 // ── Cookie constants ─────────────────────────────────────────────────────────
 
-export const SESSION_COOKIE_NAME = "milady_session";
-export const CSRF_COOKIE_NAME = "milady_csrf";
-export const CSRF_HEADER_NAME = "x-milady-csrf";
+export const SESSION_COOKIE_NAME = "eliza_session";
+export const CSRF_COOKIE_NAME = "eliza_csrf";
+export const CSRF_HEADER_NAME = "x-eliza-csrf";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -97,7 +97,7 @@ function generateCsrfSecret(): string {
  * sliding window.
  *
  * Returns the persisted session and a derived CSRF token suitable for the
- * `milady_csrf` cookie.
+ * `eliza_csrf` cookie.
  */
 export async function createBrowserSession(
   store: AuthStore,
@@ -305,7 +305,7 @@ function shouldEmitSecureFlag(env: RuntimeEnvRecord): boolean {
 }
 
 /**
- * Serialize the `milady_session` cookie. The value is the opaque session id;
+ * Serialize the `eliza_session` cookie. The value is the opaque session id;
  * attributes follow plan §4.1.
  *
  * Returns the full `Set-Cookie` header value (without the leading
@@ -333,7 +333,7 @@ export function serializeSessionCookie(
 /**
  * Serialize the readable companion CSRF cookie. Same lifetime as the
  * session cookie. NOT `HttpOnly` so the SPA can mirror it into the
- * `x-milady-csrf` header.
+ * `x-eliza-csrf` header.
  */
 export function serializeCsrfCookie(
   session: { id: string; csrfSecret: string; expiresAt: number },
@@ -370,7 +370,7 @@ export function serializeSessionExpiryCookie(
   return parts.join("; ");
 }
 
-/** Companion expiry cookie for `milady_csrf`. */
+/** Companion expiry cookie for `eliza_csrf`. */
 export function serializeCsrfExpiryCookie(
   options: SerializeSessionCookieOptions = {},
 ): string {
@@ -407,7 +407,7 @@ export function parseCookieHeader(
 }
 
 /**
- * Read the milady session id from the request cookie header. Returns null
+ * Read the eliza session id from the request cookie header. Returns null
  * when the cookie is absent or empty.
  */
 export function parseSessionCookie(

@@ -23,9 +23,7 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "libreoffice_writer"
-  ],
+  "related_apps": ["libreoffice_writer"],
   "evaluator": {
     "postconfig": [
       {
@@ -64,15 +62,9 @@
         "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_writer/6f81754e-285d-4ce0-b59e-af7edb02d108/HK_train_record_Gold.docx",
         "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/libreoffice_writer/6f81754e-285d-4ce0-b59e-af7edb02d108/HK_train_record.docx"
       ],
-      "dest": [
-        "HK_train_record_Gold.docx",
-        "HK_train_record_Original.docx"
-      ],
+      "dest": ["HK_train_record_Gold.docx", "HK_train_record_Original.docx"],
       "multi": true,
-      "gives": [
-        0,
-        1
-      ]
+      "gives": [0, 1]
     }
   },
   "proxy": false,

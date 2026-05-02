@@ -1,13 +1,13 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import crypto from "node:crypto";
 import { existsSync } from "node:fs";
+import fs from "node:fs/promises";
 import {
   createServer,
   type IncomingMessage,
   type Server,
   type ServerResponse,
 } from "node:http";
-import fs from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -36,8 +36,7 @@ const CHROME_PATH =
   process.env.ELIZA_CHROME_PATH ??
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const LIVE_TESTS_ENABLED =
-  process.env.MILADY_LIVE_TEST === "1" ||
-  process.env.ELIZA_LIVE_TEST === "1";
+  process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const CHROME_AVAILABLE = existsSync(CHROME_PATH);
 const LIVE_PROVIDER =
   (LIVE_TESTS_ENABLED && selectLiveProvider("groq")) ||
@@ -46,8 +45,16 @@ const ARTIFACT_DIR = path.resolve(
   import.meta.dirname,
   "../../../../.tmp/live-memory-relationships-e2e",
 );
-const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..", "..");
-const APP_DIST_DIR = path.join(REPO_ROOT, "apps/app", "dist");
+const REPO_ROOT = path.resolve(
+  import.meta.dirname,
+  "..",
+  "..",
+  "..",
+  "..",
+  "..",
+);
+const APP_DIR = path.join(REPO_ROOT, "packages", "app");
+const APP_DIST_DIR = path.join(APP_DIR, "dist");
 const READY_TIMEOUT_MS = 120_000;
 
 type MemoryStatsResponse = {
@@ -591,7 +598,9 @@ async function proxyUiRequest(args: {
   }
 
   args.response.writeHead(200, {
-    "Content-Type": contentTypeFor(filePath ?? path.join(APP_DIST_DIR, "index.html")),
+    "Content-Type": contentTypeFor(
+      filePath ?? path.join(APP_DIST_DIR, "index.html"),
+    ),
   });
   args.response.end(body);
 }
@@ -634,7 +643,7 @@ async function ensureUiDistReady(): Promise<void> {
 
   const logs: string[] = [];
   const child = spawn("bun", ["scripts/build.mjs"], {
-    cwd: path.join(REPO_ROOT, "apps/app"),
+    cwd: APP_DIR,
     env: {
       ...process.env,
       FORCE_COLOR: "0",
@@ -648,7 +657,7 @@ async function ensureUiDistReady(): Promise<void> {
   const exited = await waitForChildExit(child, 300_000);
   if (!exited || child.exitCode !== 0) {
     throw new Error(
-      `apps/app renderer build failed.\n${logs.join("").slice(-8_000)}`,
+      `packages/app renderer build failed.\n${logs.join("").slice(-8_000)}`,
     );
   }
 }
@@ -822,7 +831,9 @@ async function startRealStack(): Promise<StartedStack> {
     throw new Error("A live provider is required to start the live stack.");
   }
 
-  const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-memory-live-"));
+  const stateDir = await fs.mkdtemp(
+    path.join(os.tmpdir(), "eliza-memory-live-"),
+  );
   const apiPort = await getFreePort();
   const uiPort = await getFreePort();
   const apiBase = `http://127.0.0.1:${apiPort}`;

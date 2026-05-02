@@ -401,16 +401,16 @@ def _command_osworld(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[s
     return args
 
 
-def _command_milaidy_replay(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+def _command_eliza_replay(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
     capture_path_raw = str(ctx.request.extra_config.get("capture_path", "")).strip()
     if not capture_path_raw:
         raise ValueError(
-            "milaidy_replay requires per_benchmark.milaidy_replay.capture_path to be set",
+            "eliza_replay requires per_benchmark.eliza_replay.capture_path to be set",
         )
     capture_path = Path(capture_path_raw).expanduser().resolve()
     if not capture_path.exists():
         raise ValueError(
-            f"milaidy_replay capture_path does not exist: {capture_path}",
+            f"eliza_replay capture_path does not exist: {capture_path}",
         )
     capture_glob = str(
         ctx.request.extra_config.get("capture_glob", "*.replay.json"),
@@ -418,18 +418,18 @@ def _command_milaidy_replay(ctx: ExecutionContext, adapter: BenchmarkAdapter) ->
     args = [
         "python",
         "-m",
-        "milady_adapter.replay_eval",
+        "eliza_adapter.replay_eval",
         "--input",
         str(capture_path),
         "--glob",
         capture_glob,
         "--output",
-        str(ctx.output_root / "milaidy-replay-results.json"),
+        str(ctx.output_root / "eliza-replay-results.json"),
     ]
     return args
 
 
-def _score_from_milaidy_replay(path: Path) -> ScoreSummary:
+def _score_from_eliza_replay(path: Path) -> ScoreSummary:
     import json
 
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -811,13 +811,13 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             },
         ),
         _make_extra_adapter(
-            adapter_id="milaidy_replay",
-            directory="milaidy-adapter",
+            adapter_id="eliza_replay",
+            directory="eliza-adapter",
             description="Replay benchmark over normalized Eliza PARALLAX captures",
-            cwd=str((benchmarks_root / "milaidy-adapter").resolve()),
-            command_builder=_command_milaidy_replay,
-            result_patterns=["milaidy-replay-results.json", "*.json"],
-            score_extractor=_score_from_milaidy_replay,
+            cwd=str((benchmarks_root / "eliza-adapter").resolve()),
+            command_builder=_command_eliza_replay,
+            result_patterns=["eliza-replay-results.json", "*.json"],
+            score_extractor=_score_from_eliza_replay,
             default_timeout_seconds=300,
             default_extra_config={
                 "capture_glob": "*.replay.json",

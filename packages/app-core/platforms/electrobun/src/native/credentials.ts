@@ -1,8 +1,8 @@
+import { Database } from "bun:sqlite";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { Database } from "bun:sqlite";
 
 export interface DetectedProvider {
   id: string;
@@ -301,8 +301,15 @@ async function scanGeminiCredentials(
     };
   }
   // Also check for gcloud application default credentials
-  const adcPath = path.join(home, ".config", "gcloud", "application_default_credentials.json");
-  const adc = readJsonFile<{ client_id?: string; refresh_token?: string }>(adcPath);
+  const adcPath = path.join(
+    home,
+    ".config",
+    "gcloud",
+    "application_default_credentials.json",
+  );
+  const adc = readJsonFile<{ client_id?: string; refresh_token?: string }>(
+    adcPath,
+  );
   if (adc?.refresh_token) {
     return {
       id: "gemini",
@@ -357,7 +364,10 @@ function deriveChromiumCookieKey(password: string): Buffer {
   return crypto.pbkdf2Sync(password, "saltysalt", 1003, 16, "sha1");
 }
 
-function decryptChromiumCookieValue(encrypted: Buffer, key: Buffer): string | null {
+function decryptChromiumCookieValue(
+  encrypted: Buffer,
+  key: Buffer,
+): string | null {
   // Chrome encrypted cookies start with 'v10' (3 bytes) then AES-128-CBC with 16 zero-byte IV
   if (encrypted.length < 4) return null;
   const version = encrypted.subarray(0, 3).toString("ascii");
@@ -410,7 +420,10 @@ export async function readChromiumCookies(
 
     try {
       // Copy the DB to a temp file to avoid locking issues with the running browser
-      const tmpDb = path.join(os.tmpdir(), `milady-cookies-${browser.name}-${Date.now()}.db`);
+      const tmpDb = path.join(
+        os.tmpdir(),
+        `eliza-cookies-${browser.name}-${Date.now()}.db`,
+      );
       fs.copyFileSync(dbPath, tmpDb);
 
       const db = new Database(tmpDb, { readonly: true });
@@ -427,7 +440,11 @@ export async function readChromiumCookies(
       db.close();
 
       // Clean up temp file
-      try { fs.unlinkSync(tmpDb); } catch { /* best effort */ }
+      try {
+        fs.unlinkSync(tmpDb);
+      } catch {
+        /* best effort */
+      }
 
       const results: BrowserCookieResult[] = [];
       for (const row of rows) {
@@ -447,7 +464,10 @@ export async function readChromiumCookies(
 
       if (results.length > 0) return results;
     } catch (err) {
-      console.warn(`[credentials] Failed to read ${browser.name} cookies:`, err);
+      console.warn(
+        `[credentials] Failed to read ${browser.name} cookies:`,
+        err,
+      );
     }
   }
 
@@ -618,18 +638,20 @@ async function scanProviderCredentialsRaw(): Promise<DetectedProvider[]> {
   const detected = new Map<string, DetectedProvider>();
 
   // File-based credentials (highest priority)
-  const [codex, claudeFile, copilot, geminiCli, ollamaLocal] = await Promise.all([
-    scanCodexCredentials(home),
-    scanClaudeFileCredentials(home),
-    scanCopilotCredentials(home),
-    scanGeminiCredentials(home),
-    scanOllamaLocal(),
-  ]);
+  const [codex, claudeFile, copilot, geminiCli, ollamaLocal] =
+    await Promise.all([
+      scanCodexCredentials(home),
+      scanClaudeFileCredentials(home),
+      scanCopilotCredentials(home),
+      scanGeminiCredentials(home),
+      scanOllamaLocal(),
+    ]);
 
   if (codex) detected.set(codex.id, codex);
   if (claudeFile) detected.set(claudeFile.id, claudeFile);
   if (copilot && !detected.has(copilot.id)) detected.set(copilot.id, copilot);
-  if (geminiCli && !detected.has(geminiCli.id)) detected.set(geminiCli.id, geminiCli);
+  if (geminiCli && !detected.has(geminiCli.id))
+    detected.set(geminiCli.id, geminiCli);
   if (ollamaLocal) detected.set(ollamaLocal.id, ollamaLocal);
 
   // Keychain (fills gaps for providers not yet found from files)

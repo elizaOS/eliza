@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type ConnectorConfigLike,
   N8N_RUNTIME_CONTEXT_PROVIDER_SERVICE_TYPE,
-  startMiladyN8nRuntimeContextProvider,
+  startElizaN8nRuntimeContextProvider,
 } from "./n8n-runtime-context-provider";
 
 const USER_ID = "00000000-0000-0000-0000-000000000001";
@@ -46,7 +46,7 @@ const GMAIL_NODE = {
   credentials: [{ name: "gmailOAuth2", required: true }],
 } as const;
 
-describe("startMiladyN8nRuntimeContextProvider", () => {
+describe("startElizaN8nRuntimeContextProvider", () => {
   let runtime: AgentRuntime;
 
   beforeEach(() => {
@@ -58,7 +58,7 @@ describe("startMiladyN8nRuntimeContextProvider", () => {
   });
 
   it("registers itself under n8n_runtime_context_provider on construction", () => {
-    startMiladyN8nRuntimeContextProvider(runtime, {
+    startElizaN8nRuntimeContextProvider(runtime, {
       getConfig: () => makeConfig(),
     });
     const instances = runtime.services.get(
@@ -74,11 +74,11 @@ describe("startMiladyN8nRuntimeContextProvider", () => {
 
   it("emits empty facts when no connector config and no credProvider injected — but still lists architecturally supported cred types", async () => {
     // Without a credProvider, the context provider can't filter by what's
-    // actually resolvable, so it falls back to MILADY_SUPPORTED_CRED_TYPES.
+    // actually resolvable, so it falls back to ELIZA_SUPPORTED_CRED_TYPES.
     // That's the right call: the LLM should still attach the credentials
     // block — failure to resolve at deploy time surfaces a clear `needs_auth`
     // error, while omitting the block silently is what we're trying to fix.
-    const handle = startMiladyN8nRuntimeContextProvider(runtime, {
+    const handle = startElizaN8nRuntimeContextProvider(runtime, {
       getConfig: () => makeConfig(),
     });
     const ctx = await handle.service.getRuntimeContext({
@@ -121,14 +121,12 @@ describe("startMiladyN8nRuntimeContextProvider", () => {
         return {
           ok: true,
           status: 200,
-          json: async () => [
-            { id: "chan-other", name: "other-text", type: 0 },
-          ],
+          json: async () => [{ id: "chan-other", name: "other-text", type: 0 }],
         } as unknown as Response;
       }
       throw new Error(`unexpected fetch ${url}`);
     });
-    const handle = startMiladyN8nRuntimeContextProvider(runtime, {
+    const handle = startElizaN8nRuntimeContextProvider(runtime, {
       getConfig: () => config,
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
@@ -150,7 +148,7 @@ describe("startMiladyN8nRuntimeContextProvider", () => {
     const config = makeConfig({
       connectors: { gmail: { email: "user@example.com" } },
     });
-    const handle = startMiladyN8nRuntimeContextProvider(runtime, {
+    const handle = startElizaN8nRuntimeContextProvider(runtime, {
       getConfig: () => config,
     });
     const ctx = await handle.service.getRuntimeContext({
@@ -172,11 +170,11 @@ describe("startMiladyN8nRuntimeContextProvider", () => {
         }
         return {
           status: "needs_auth" as const,
-          authUrl: "milady://settings/connectors/gmail",
+          authUrl: "eliza://settings/connectors/gmail",
         };
       }),
     };
-    const handle = startMiladyN8nRuntimeContextProvider(runtime, {
+    const handle = startElizaN8nRuntimeContextProvider(runtime, {
       getConfig: () => makeConfig(),
       credProvider,
     });
@@ -199,7 +197,7 @@ describe("startMiladyN8nRuntimeContextProvider", () => {
     const fetchImpl = vi.fn(async () => {
       throw new Error("network down");
     });
-    const handle = startMiladyN8nRuntimeContextProvider(runtime, {
+    const handle = startElizaN8nRuntimeContextProvider(runtime, {
       getConfig: () => config,
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
@@ -216,7 +214,7 @@ describe("startMiladyN8nRuntimeContextProvider", () => {
       connectors: { discord: { token: "discord-bot-token" } },
     });
     const fetchImpl = vi.fn();
-    const handle = startMiladyN8nRuntimeContextProvider(runtime, {
+    const handle = startElizaN8nRuntimeContextProvider(runtime, {
       getConfig: () => config,
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
@@ -247,7 +245,7 @@ describe("startMiladyN8nRuntimeContextProvider", () => {
         json: async () => [],
       } as unknown as Response;
     });
-    const handle = startMiladyN8nRuntimeContextProvider(runtime, {
+    const handle = startElizaN8nRuntimeContextProvider(runtime, {
       getConfig: () => config,
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });

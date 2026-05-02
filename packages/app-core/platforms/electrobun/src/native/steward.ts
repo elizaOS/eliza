@@ -16,12 +16,12 @@
  *   4. Stops the sidecar on app shutdown
  */
 
+import { saveStewardCredentials } from "@elizaos/app-core/services/steward-credentials";
 import {
   createDesktopStewardSidecar,
   type StewardSidecar,
   type StewardSidecarStatus,
-} from "@elizaos/app-steward/services/steward-sidecar";
-import { saveStewardCredentials } from "@elizaos/app-steward/services/steward-credentials";
+} from "@elizaos/app-core/services/steward-sidecar";
 import { getBrandConfig } from "../brand-config";
 
 // ---------------------------------------------------------------------------

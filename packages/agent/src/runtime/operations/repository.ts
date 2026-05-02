@@ -4,22 +4,28 @@
  * Storage layout:
  *   <stateDir>/runtime-operations/<id>.json   one JSON file per operation
  *
- * Atomic writes: write to <id>.json.tmp.<pid> then rename — same pattern
- * the Eliza config uses (config.ts:saveElizaConfig).
- *
  * In-memory caches are populated lazily at first access from disk and kept
  * in sync on every mutation. They make `findActive` and
  * `findByIdempotencyKey` O(1) on the hot path.
  *
- * Hydration also reaps abandoned operations: anything still `pending` or
- * `running` whose `startedAt` is older than 24h is force-marked `failed`
- * with code `"abandoned"` (the process must have died mid-flight).
+ * Hydration:
+ *   1. Reap abandoned ops — `pending`/`running` whose `startedAt` is older
+ *      than `ABANDONED_AFTER_MS` are force-marked `failed` with code
+ *      `"abandoned"` (the process died mid-flight).
+ *   2. Prune terminal ops — `succeeded`/`failed`/`rolled-back` records older
+ *      than `RETENTION_MS` or beyond the `MAX_RECORDS` cap are deleted from
+ *      disk and dropped from memory. Active ops are never pruned.
+ *
+ * Pruning also runs opportunistically after each `create` so a long-running
+ * process doesn't accumulate state between hydrations.
  */
 
-import fs from "node:fs";
+import fs from "node:fs/promises";
 import path from "node:path";
 import { logger } from "@elizaos/core";
+import { formatError } from "@elizaos/shared";
 import { resolveStateDir } from "../../config/paths.js";
+import { readJsonFile, writeJsonAtomic } from "../../utils/atomic-json.js";
 import type {
   OperationPhase,
   RuntimeOperation,
@@ -30,35 +36,63 @@ import type {
 const ABANDONED_AFTER_MS = 24 * 60 * 60 * 1000;
 const IDEMPOTENCY_RETENTION_MS = 24 * 60 * 60 * 1000;
 
+const DEFAULT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const DEFAULT_MAX_RECORDS = 200;
+
+function readEnvNumber(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+
+export interface FilesystemRuntimeOperationRepositoryOptions {
+  /** Override the retention window for terminal ops. */
+  retentionMs?: number;
+  /** Override the cap on the number of terminal ops kept. */
+  maxRecords?: number;
+}
+
+function isTerminal(op: RuntimeOperation): boolean {
+  return op.status !== "pending" && op.status !== "running";
+}
+
+/**
+ * Strip the legacy plaintext `apiKey` field that older runtime-ops records
+ * carried on `ProviderSwitchIntent` before the vault migration. Returns the
+ * sanitized op plus a boolean signalling that the on-disk file needs
+ * rewriting. The vault key is preserved (or re-derivable) by the route at
+ * the next switch — we never re-emit the plaintext.
+ */
+function stripLegacyApiKey(op: RuntimeOperation): {
+  op: RuntimeOperation;
+  changed: boolean;
+} {
+  if (op.intent.kind !== "provider-switch") return { op, changed: false };
+  const intent = op.intent as RuntimeOperation["intent"] & {
+    apiKey?: unknown;
+  };
+  if (!("apiKey" in intent)) return { op, changed: false };
+  const { apiKey: _legacy, ...sanitizedIntent } = intent;
+  void _legacy;
+  return {
+    op: { ...op, intent: sanitizedIntent as RuntimeOperation["intent"] },
+    changed: true,
+  };
+}
+
 function operationsDirFor(stateDir: string): string {
   return path.join(stateDir, "runtime-operations");
 }
 
-function ensureDir(dir: string): void {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  }
-}
-
-function readJsonFile(filePath: string): RuntimeOperation | null {
-  const raw = fs.readFileSync(filePath, "utf-8");
-  if (!raw.trim()) {
-    return null;
-  }
-  const parsed = JSON.parse(raw) as RuntimeOperation;
-  if (!parsed.id || !parsed.kind || !Array.isArray(parsed.phases)) {
+async function readOperationFile(
+  filePath: string,
+): Promise<RuntimeOperation | null> {
+  const parsed = await readJsonFile<RuntimeOperation>(filePath);
+  if (!parsed?.id || !parsed.kind || !Array.isArray(parsed.phases)) {
     return null;
   }
   return parsed;
-}
-
-function writeJsonAtomic(filePath: string, op: RuntimeOperation): void {
-  const dir = path.dirname(filePath);
-  ensureDir(dir);
-  const tmpPath = `${filePath}.tmp.${process.pid}`;
-  const content = `${JSON.stringify(op, null, 2)}\n`;
-  fs.writeFileSync(tmpPath, content, { encoding: "utf-8", mode: 0o600 });
-  fs.renameSync(tmpPath, filePath);
 }
 
 export class FilesystemRuntimeOperationRepository
@@ -68,23 +102,55 @@ export class FilesystemRuntimeOperationRepository
   private readonly byId: Map<string, RuntimeOperation> = new Map();
   private readonly byIdempotencyKey: Map<string, string> = new Map();
   private activeId: string | null = null;
-  private hydrated = false;
+  private hydration: Promise<void> | null = null;
+  private readonly retentionMs: number;
+  private readonly maxRecords: number;
 
-  constructor(stateDir: string = resolveStateDir()) {
+  constructor(
+    stateDir: string = resolveStateDir(),
+    opts: FilesystemRuntimeOperationRepositoryOptions = {},
+  ) {
     this.dir = operationsDirFor(stateDir);
+    this.retentionMs =
+      opts.retentionMs ??
+      readEnvNumber("ELIZA_RUNTIME_OPS_RETENTION_MS", DEFAULT_RETENTION_MS);
+    this.maxRecords =
+      opts.maxRecords ??
+      readEnvNumber("ELIZA_RUNTIME_OPS_MAX_RECORDS", DEFAULT_MAX_RECORDS);
   }
 
-  private hydrate(): void {
-    if (this.hydrated) return;
-    this.hydrated = true;
-    ensureDir(this.dir);
-    const entries = fs.readdirSync(this.dir);
+  private hydrate(): Promise<void> {
+    if (this.hydration) return this.hydration;
+    this.hydration = this.runHydrate();
+    return this.hydration;
+  }
+
+  private async runHydrate(): Promise<void> {
+    // mkdir is idempotent with recursive: true — no existence check needed.
+    await fs.mkdir(this.dir, { recursive: true, mode: 0o700 });
+    const entries = await fs.readdir(this.dir);
     const now = Date.now();
     for (const entry of entries) {
       if (!entry.endsWith(".json")) continue;
       const fullPath = path.join(this.dir, entry);
-      const op = readJsonFile(fullPath);
-      if (!op) continue;
+      const raw = await readOperationFile(fullPath);
+      if (!raw) continue;
+
+      // Migration: strip legacy plaintext `apiKey` from
+      // ProviderSwitchIntent records written before the vault integration.
+      // Re-persist the sanitized record so the file on disk loses the
+      // secret too — pruning + idempotency keep working untouched.
+      const stripped = stripLegacyApiKey(raw);
+      const op = stripped.op;
+      if (stripped.changed) {
+        await writeJsonAtomic(fullPath, op, {
+          trailingNewline: true,
+          skipMkdir: true,
+        });
+        logger.info(
+          `[runtime-ops] Migrated legacy plaintext apiKey out of ${op.id}`,
+        );
+      }
 
       // Reap abandoned operations: a process died with this op still "live".
       const isLive = op.status === "pending" || op.status === "running";
@@ -99,7 +165,10 @@ export class FilesystemRuntimeOperationRepository
             code: "abandoned",
           },
         };
-        writeJsonAtomic(fullPath, reaped);
+        await writeJsonAtomic(fullPath, reaped, {
+          trailingNewline: true,
+          skipMkdir: true,
+        });
         this.byId.set(reaped.id, reaped);
         if (reaped.idempotencyKey) {
           this.byIdempotencyKey.set(reaped.idempotencyKey, reaped.id);
@@ -118,14 +187,60 @@ export class FilesystemRuntimeOperationRepository
         this.activeId = op.id;
       }
     }
+    await this.pruneTerminal(now);
+  }
+
+  /**
+   * Drop terminal ops that exceed the retention window or fall outside the
+   * most-recent-N cap. Active (`pending`/`running`) ops are never touched —
+   * the abandoned-reaper in {@link runHydrate} is the only path that can
+   * transition them to terminal.
+   *
+   * Returns the number of ops removed.
+   */
+  async pruneTerminal(now: number = Date.now()): Promise<number> {
+    const terminal = Array.from(this.byId.values())
+      .filter(isTerminal)
+      .sort(
+        (a, b) => (b.finishedAt ?? b.startedAt) - (a.finishedAt ?? a.startedAt),
+      );
+
+    const toDrop: RuntimeOperation[] = [];
+    for (let i = 0; i < terminal.length; i++) {
+      const op = terminal[i];
+      const tooOld = now - (op.finishedAt ?? op.startedAt) > this.retentionMs;
+      const beyondCap = i >= this.maxRecords;
+      if (tooOld || beyondCap) toDrop.push(op);
+    }
+
+    if (toDrop.length === 0) return 0;
+
+    await Promise.all(
+      toDrop.map((op) =>
+        fs.rm(this.pathFor(op.id), { force: true }).catch((err) => {
+          logger.warn(
+            `[runtime-ops] Failed to unlink ${op.id}: ${formatError(err)}`,
+          );
+        }),
+      ),
+    );
+    for (const op of toDrop) {
+      this.byId.delete(op.id);
+      if (op.idempotencyKey) this.byIdempotencyKey.delete(op.idempotencyKey);
+    }
+    logger.debug(`[runtime-ops] Pruned ${toDrop.length} terminal op(s)`);
+    return toDrop.length;
   }
 
   private pathFor(id: string): string {
     return path.join(this.dir, `${id}.json`);
   }
 
-  private persist(op: RuntimeOperation): void {
-    writeJsonAtomic(this.pathFor(op.id), op);
+  private persist(op: RuntimeOperation): Promise<void> {
+    return writeJsonAtomic(this.pathFor(op.id), op, {
+      trailingNewline: true,
+      skipMkdir: true,
+    });
   }
 
   private syncActiveSlot(op: RuntimeOperation): void {
@@ -140,35 +255,40 @@ export class FilesystemRuntimeOperationRepository
   }
 
   async create(op: RuntimeOperation): Promise<void> {
-    this.hydrate();
+    await this.hydrate();
     if (this.byId.has(op.id)) {
       throw new Error(`[runtime-ops] Operation already exists: ${op.id}`);
     }
-    this.persist(op);
+    await this.persist(op);
     this.byId.set(op.id, op);
     if (op.idempotencyKey) {
       this.byIdempotencyKey.set(op.idempotencyKey, op.id);
     }
     this.syncActiveSlot(op);
+    void this.pruneTerminal().catch((err) => {
+      logger.warn(
+        `[runtime-ops] post-create prune failed: ${formatError(err)}`,
+      );
+    });
   }
 
   async update(
     id: string,
     patch: Partial<Omit<RuntimeOperation, "id" | "phases" | "intent" | "kind">>,
   ): Promise<void> {
-    this.hydrate();
+    await this.hydrate();
     const current = this.byId.get(id);
     if (!current) {
       throw new Error(`[runtime-ops] Operation not found: ${id}`);
     }
     const next: RuntimeOperation = { ...current, ...patch };
-    this.persist(next);
+    await this.persist(next);
     this.byId.set(id, next);
     this.syncActiveSlot(next);
   }
 
   async appendPhase(id: string, phase: OperationPhase): Promise<void> {
-    this.hydrate();
+    await this.hydrate();
     const current = this.byId.get(id);
     if (!current) {
       throw new Error(`[runtime-ops] Operation not found: ${id}`);
@@ -177,7 +297,7 @@ export class FilesystemRuntimeOperationRepository
       ...current,
       phases: [...current.phases, phase],
     };
-    this.persist(next);
+    await this.persist(next);
     this.byId.set(id, next);
   }
 
@@ -185,36 +305,31 @@ export class FilesystemRuntimeOperationRepository
     id: string,
     patch: Partial<OperationPhase>,
   ): Promise<void> {
-    this.hydrate();
+    await this.hydrate();
     const current = this.byId.get(id);
     if (!current) {
       throw new Error(`[runtime-ops] Operation not found: ${id}`);
     }
-    if (current.phases.length === 0) {
-      throw new Error(
-        `[runtime-ops] Cannot update last phase — no phases on op ${id}`,
-      );
-    }
     const last = current.phases[current.phases.length - 1];
     if (!last) {
       throw new Error(
-        `[runtime-ops] Cannot update last phase — phase array empty on ${id}`,
+        `[runtime-ops] Cannot update last phase — no phases on op ${id}`,
       );
     }
     const merged: OperationPhase = { ...last, ...patch };
     const phases = [...current.phases.slice(0, -1), merged];
     const next: RuntimeOperation = { ...current, phases };
-    this.persist(next);
+    await this.persist(next);
     this.byId.set(id, next);
   }
 
   async get(id: string): Promise<RuntimeOperation | null> {
-    this.hydrate();
+    await this.hydrate();
     return this.byId.get(id) ?? null;
   }
 
   async list(opts?: RuntimeOperationListOptions): Promise<RuntimeOperation[]> {
-    this.hydrate();
+    await this.hydrate();
     let ops = Array.from(this.byId.values());
     if (opts?.status) {
       ops = ops.filter((o) => o.status === opts.status);
@@ -229,7 +344,7 @@ export class FilesystemRuntimeOperationRepository
   }
 
   async findByIdempotencyKey(key: string): Promise<RuntimeOperation | null> {
-    this.hydrate();
+    await this.hydrate();
     const id = this.byIdempotencyKey.get(key);
     if (!id) return null;
     const op = this.byId.get(id);
@@ -241,7 +356,7 @@ export class FilesystemRuntimeOperationRepository
   }
 
   async findActive(): Promise<RuntimeOperation | null> {
-    this.hydrate();
+    await this.hydrate();
     if (!this.activeId) return null;
     const op = this.byId.get(this.activeId);
     if (!op) {

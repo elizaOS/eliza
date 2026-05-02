@@ -23,10 +23,7 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "libreoffice_calc",
-    "vs_code"
-  ],
+  "related_apps": ["libreoffice_calc", "vs_code"],
   "evaluator": {
     "func": "compare_result_files",
     "result": {

@@ -85,7 +85,12 @@
       "axis": "core",
       "providers": ["Gmail API"],
       "actions": ["GMAIL_ACTION", "INBOX"],
-      "capabilities": ["read", "draft", "send-after-approval", "degraded-auth"]
+      "capabilities": ["read", "draft", "send-after-approval", "degraded-auth"],
+      "requiredFinalCheckTypes": [
+        "draftExists",
+        "approvalRequestExists",
+        "messageDelivered"
+      ]
     },
     {
       "id": "connector.gmail.certify-missing-scope",
@@ -114,6 +119,10 @@
         "reschedule",
         "cancel",
         "conflict-repair"
+      ],
+      "requiredFinalCheckTypes": [
+        "selectedActionArguments",
+        "memoryWriteOccurred"
       ]
     },
     {
@@ -145,7 +154,8 @@
         "availability-handoff",
         "booking-reconciliation",
         "single-use-link"
-      ]
+      ],
+      "requiredFinalCheckTypes": ["selectedActionArguments"]
     },
     {
       "id": "connector.calendly.certify-disconnected",
@@ -170,7 +180,8 @@
         "send",
         "thread-context",
         "deep-link"
-      ]
+      ],
+      "requiredFinalCheckTypes": ["draftExists", "messageDelivered"]
     },
     {
       "id": "connector.discord.certify-disconnected",
@@ -195,7 +206,8 @@
         "send",
         "thread-context",
         "deep-link"
-      ]
+      ],
+      "requiredFinalCheckTypes": ["draftExists", "messageDelivered"]
     },
     {
       "id": "connector.telegram.certify-auth-expired",
@@ -214,7 +226,13 @@
       "axis": "core",
       "providers": ["X bridge"],
       "actions": ["X_READ", "INBOX"],
-      "capabilities": ["inbound-fetch", "reply-draft", "send", "thread-context"]
+      "capabilities": [
+        "inbound-fetch",
+        "reply-draft",
+        "send",
+        "thread-context"
+      ],
+      "requiredFinalCheckTypes": ["draftExists"]
     },
     {
       "id": "connector.x-dm.certify-disconnected",
@@ -239,6 +257,11 @@
         "send",
         "delivery",
         "degraded-behavior"
+      ],
+      "requiredFinalCheckTypes": [
+        "draftExists",
+        "messageDelivered",
+        "interventionRequestExists"
       ]
     },
     {
@@ -264,6 +287,11 @@
         "send",
         "delivery",
         "degraded-behavior"
+      ],
+      "requiredFinalCheckTypes": [
+        "draftExists",
+        "messageDelivered",
+        "interventionRequestExists"
       ]
     },
     {
@@ -286,7 +314,12 @@
       "axis": "core",
       "providers": ["BlueBubbles / Blooio"],
       "actions": ["INBOX", "CROSS_CHANNEL_SEND"],
-      "capabilities": ["bridge-health", "send", "delivery-state", "reconnect"]
+      "capabilities": ["bridge-health", "send", "delivery-state", "reconnect"],
+      "requiredFinalCheckTypes": [
+        "draftExists",
+        "messageDelivered",
+        "interventionRequestExists"
+      ]
     },
     {
       "id": "connector.imessage.certify-helper-disconnected",
@@ -310,7 +343,8 @@
         "delivery-state",
         "retry",
         "idempotency"
-      ]
+      ],
+      "requiredFinalCheckTypes": ["approvalRequestExists", "messageDelivered"]
     },
     {
       "id": "connector.twilio-sms.certify-retry-idempotent",
@@ -336,7 +370,8 @@
         "call-after-approval",
         "outcome-state",
         "escalation-ladder"
-      ]
+      ],
+      "requiredFinalCheckTypes": ["approvalRequestExists", "pushSent"]
     },
     {
       "id": "connector.twilio-voice.certify-retry-idempotent",
@@ -364,6 +399,11 @@
         "share",
         "provenance",
         "degraded-auth"
+      ],
+      "requiredFinalCheckTypes": [
+        "browserTaskCompleted",
+        "uploadedAssetExists",
+        "interventionRequestExists"
       ]
     },
     {
@@ -393,7 +433,8 @@
         "book",
         "sync-itinerary",
         "rebook-on-conflict"
-      ]
+      ],
+      "requiredFinalCheckTypes": ["approvalRequestExists", "messageDelivered"]
     },
     {
       "id": "connector.travel-booking.certify-hold-expired",
@@ -415,7 +456,12 @@
       "axis": "core",
       "providers": ["Desktop notification bridge", "Mobile companion"],
       "actions": ["PUBLISH_DEVICE_INTENT", "INTENT_SYNC"],
-      "capabilities": ["dispatch", "ack-sync", "suppression-after-ack"]
+      "capabilities": ["dispatch", "ack-sync", "suppression-after-ack"],
+      "requiredFinalCheckTypes": [
+        "pushSent",
+        "pushEscalationOrder",
+        "pushAcknowledgedSync"
+      ]
     },
     {
       "id": "connector.notifications.certify-transport-offline",
@@ -441,7 +487,8 @@
         "upload",
         "blocked-state-intervention",
         "credential-scoped-resume"
-      ]
+      ],
+      "requiredFinalCheckTypes": ["browserTaskCompleted", "uploadedAssetExists"]
     },
     {
       "id": "connector.browser-portal.certify-blocked-resume",

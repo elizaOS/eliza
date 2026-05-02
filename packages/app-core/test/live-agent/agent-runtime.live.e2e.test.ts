@@ -31,9 +31,11 @@ import dotenv from "dotenv";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { itIf } from "../helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../helpers/live-provider";
-import { withTimeout, sleep } from "../helpers/test-utils";
+import { sleep, withTimeout } from "../helpers/test-utils";
+
 /** Matches the table name used by @elizaos/core personality module. */
 const USER_PREFS_TABLE = "user_personality_preferences";
+
 import {
   configureLocalEmbeddingPlugin,
   ensureAgentWorkspace,
@@ -52,8 +54,7 @@ dotenv.config({ path: path.resolve(packageRoot, ".env") });
 dotenv.config({ path: path.resolve(packageRoot, "..", "..", ".env") });
 
 const liveModelTestsEnabled =
-  process.env.MILADY_LIVE_TEST === "1" ||
-  process.env.ELIZA_LIVE_TEST === "1";
+  process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const selectedLiveProvider = liveModelTestsEnabled
   ? selectLiveProvider()
   : null;

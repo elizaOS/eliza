@@ -1,5 +1,5 @@
 /**
- * Data access layer for plugin-trust schema tables.
+ * Data access layer for runtime trust schema tables.
  * Thin wrappers around Drizzle queries for security incidents,
  * trust evidence, behavioral profiles, identity links, and whistleblower reports.
  */

@@ -2,14 +2,14 @@
  * Onboarding State Machine Tests
  *
  * Tests for the onboarding state management, transitions, serialization,
- * and validation. Note: The actual onboarding implementation lives in
- * plugin-secrets-manager, but we test the core config utilities here.
+ * and validation. The onboarding implementation lives in `@elizaos/core` secrets;
+ * here we exercise the standalone config/state helpers.
  */
 
 import { describe, expect, it } from "vitest";
 
 // ============================================================================
-// Types and Utilities (mirrored from plugin-secrets-manager for testing)
+// Types and Utilities matching core onboarding structs (test doubles)
 // ============================================================================
 
 interface OnboardingSetting {

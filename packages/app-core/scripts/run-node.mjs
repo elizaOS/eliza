@@ -3,11 +3,11 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { syncElizaEnvAliases } from "./lib/sync-eliza-env-aliases.mjs";
 import {
   chooseElizaRuntime,
   resolveRuntimeExecPath,
 } from "./run-node-runtime.mjs";
-import { syncElizaEnvAliases } from "./lib/sync-eliza-env-aliases.mjs";
 
 const args = process.argv.slice(2);
 const cwd = process.cwd();
@@ -39,7 +39,7 @@ syncElizaEnvAliases();
 
 const env = { ...process.env };
 if (!env.ELIZA_NAMESPACE) {
-  env.ELIZA_NAMESPACE = "milady";
+  env.ELIZA_NAMESPACE = "eliza";
 }
 // WHY: The child runs dist/eliza.js, which dynamic-imports @elizaos/plugin-*. Node does not
 // use cwd to resolve package names for import("pkg"); we must set NODE_PATH to repo root

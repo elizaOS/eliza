@@ -269,6 +269,25 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
+  await page.route("**/api/lifeops/app-state", async (route) => {
+    const method = route.request().method();
+    if (method !== "GET" && method !== "PUT") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        enabled: true,
+        priorityScoring: {
+          enabled: true,
+          model: null,
+        },
+      }),
+    });
+  });
+
   await page.route("**/api/cloud/status", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();

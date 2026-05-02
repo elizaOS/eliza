@@ -1,7 +1,7 @@
 /**
  * Agent Browser Bridge plugin export.
  *
- * plugin-collector discovers `routes` and `schema` at runtime. Milady loads
+ * plugin-collector discovers `routes` and `schema` at runtime. Eliza loads
  * this as a core plugin so the Browser Workspace UI and browser companion
  * extension share one route surface.
  */
@@ -13,7 +13,8 @@ import {
   sendJson as httpSendJson,
   sendJsonError as httpSendJsonError,
 } from "@elizaos/agent/api/http-helpers";
-import type { AgentRuntime, Plugin, Route } from "@elizaos/core";
+import type { AgentRuntime, Plugin, Route, UUID } from "@elizaos/core";
+import { resolveCanonicalOwnerId } from "@elizaos/core";
 import { browserBridgeActions } from "./actions.ts";
 import {
   type BrowserBridgeRouteContext,
@@ -67,6 +68,11 @@ function requestBaseUrl(req: http.IncomingMessage): string {
   return `${protocol}://${host}`;
 }
 
+function routeOwnerEntityId(runtime: AgentRuntime | null): UUID | null {
+  const ownerId = runtime ? resolveCanonicalOwnerId(runtime) : null;
+  return typeof ownerId === "string" ? (ownerId as UUID) : null;
+}
+
 function buildRouteContext(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -82,7 +88,7 @@ function buildRouteContext(
     url,
     state: {
       runtime,
-      adminEntityId: null,
+      adminEntityId: routeOwnerEntityId(runtime),
     },
     json,
     error,

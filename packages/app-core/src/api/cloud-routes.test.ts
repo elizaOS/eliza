@@ -4,6 +4,16 @@ import { describe, expect, it } from "vitest";
 
 import { type CloudRouteState, handleCloudRoute } from "./cloud-routes";
 
+const testCloudRouteServices: CloudRouteState["services"] = {
+  applyCanonicalOnboardingConfig: (
+    config: Record<string, unknown>,
+    patch: Record<string, unknown>,
+  ) => {
+    Object.assign(config, patch);
+  },
+  saveElizaConfig: () => {},
+};
+
 function jsonRequest(body: unknown): http.IncomingMessage {
   return Readable.from([JSON.stringify(body)]) as http.IncomingMessage;
 }
@@ -52,6 +62,12 @@ describe("cloud-routes", () => {
         );
       },
     };
+    const cloudRelay = {
+      startRelayLoopIfReady: () => {
+        calls.push("relay-start");
+        return true;
+      },
+    };
     const runtime = {
       agentId: "agent-1",
       character: {
@@ -61,7 +77,11 @@ describe("cloud-routes", () => {
           ELIZA_CLOUD_USER_ID: "old-user",
         },
       },
-      getService: (name: string) => (name === "CLOUD_AUTH" ? cloudAuth : null),
+      getService: (name: string) => {
+        if (name === "CLOUD_AUTH") return cloudAuth;
+        if (name === "CLOUD_MANAGED_GATEWAY_RELAY") return cloudRelay;
+        return null;
+      },
       setSetting: (key: string, value: string | null) => {
         calls.push(`setting:${key}:${value ?? ""}`);
       },
@@ -89,6 +109,7 @@ describe("cloud-routes", () => {
         },
       } as CloudRouteState["config"],
       runtime: runtime as CloudRouteState["runtime"],
+      services: testCloudRouteServices,
     };
     const req = jsonRequest({
       apiKey: "new-key",
@@ -113,10 +134,58 @@ describe("cloud-routes", () => {
       ELIZAOS_CLOUD_API_KEY: "new-key",
       ELIZA_CLOUD_ORGANIZATION_ID: "new-org",
       ELIZA_CLOUD_USER_ID: "new-user",
+      ELIZAOS_CLOUD_ORG_ID: "new-org",
+      ELIZAOS_CLOUD_USER_ID: "new-user",
     });
     expect(calls).toContain("clear-auth");
     expect(calls).toContain("replace-manager:new-key");
     expect(calls).toContain("auth:new-key:new-user:new-org");
+    expect(calls).toContain("relay-start");
     expect(calls).not.toContain("init");
+  });
+
+  it("reports Cloud gateway relay status from the runtime service", async () => {
+    const state: CloudRouteState = {
+      cloudManager: null,
+      config: {} as CloudRouteState["config"],
+      runtime: {
+        getService: (name: string) =>
+          name === "CLOUD_MANAGED_GATEWAY_RELAY"
+            ? {
+                getSessionInfo: () => ({
+                  sessionId: "relay-session-1",
+                  organizationId: "org-1",
+                  userId: "user-1",
+                  agentName: "Local Eliza",
+                  platform: "local-runtime",
+                  lastSeenAt: "2026-04-29T00:00:00.000Z",
+                  status: "registered",
+                }),
+              }
+            : null,
+      } as CloudRouteState["runtime"],
+    };
+    const res = jsonResponse();
+
+    const handled = await handleCloudRoute(
+      Readable.from([]) as http.IncomingMessage,
+      res,
+      "/api/cloud/relay-status",
+      "GET",
+      state,
+    );
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body)).toEqual({
+      available: true,
+      sessionId: "relay-session-1",
+      organizationId: "org-1",
+      userId: "user-1",
+      agentName: "Local Eliza",
+      platform: "local-runtime",
+      lastSeenAt: "2026-04-29T00:00:00.000Z",
+      status: "registered",
+    });
   });
 });

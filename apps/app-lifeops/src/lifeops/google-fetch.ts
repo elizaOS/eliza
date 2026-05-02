@@ -6,11 +6,12 @@ const BASE_DELAY_MS = 1_000;
 const TIMEOUT_MS = 10_000;
 
 /**
- * Rewrite Google API hostnames to a mock base when MILADY_MOCK_GOOGLE_BASE is set.
+ * Rewrite Google API hostnames to a mock base when a Google mock base is set.
  * Used in tests to point all Google API traffic at a Mockoon environment.
  */
 export function rewriteGoogleUrlForMock(url: string): string {
-  const mockBase = process.env.MILADY_MOCK_GOOGLE_BASE;
+  const mockBase =
+    process.env.ELIZA_MOCK_GOOGLE_BASE ?? process.env.ELIZA_MOCK_GOOGLE_BASE;
   if (!mockBase) return url;
   const mockUrl = new URL(mockBase);
   if (
@@ -21,12 +22,12 @@ export function rewriteGoogleUrlForMock(url: string): string {
   ) {
     throw new GoogleApiError(
       409,
-      "MILADY_MOCK_GOOGLE_BASE must point to loopback for Gmail/Google mock tests.",
+      "Google mock base must point to loopback for Gmail/Google mock tests."
     );
   }
   return url.replace(
     /^https:\/\/(?:gmail|www|oauth2|openidconnect|sheets|docs|fitness)\.googleapis\.com|^https:\/\/accounts\.google\.com/,
-    mockUrl.toString().replace(/\/+$/, ""),
+    mockUrl.toString().replace(/\/+$/, "")
   );
 }
 
@@ -49,12 +50,12 @@ function isGoogleGmailWrite(method: string, url: string): boolean {
 function guardRealGmailWrite(
   method: string,
   originalUrl: string,
-  targetUrl: string,
+  targetUrl: string
 ): void {
   if (!isGoogleGmailWrite(method, originalUrl)) {
     return;
   }
-  if (process.env.MILADY_ALLOW_REAL_GMAIL_WRITES === "1") {
+  if (process.env.ELIZA_ALLOW_REAL_GMAIL_WRITES === "1") {
     return;
   }
   if (targetUrl !== originalUrl) {
@@ -62,7 +63,7 @@ function guardRealGmailWrite(
   }
   throw new GoogleApiError(
     409,
-    "Real Gmail writes require MILADY_ALLOW_REAL_GMAIL_WRITES=1. Point MILADY_MOCK_GOOGLE_BASE at a loopback mock for tests or set the allow env var for an explicitly confirmed real write.",
+    "Real Gmail writes require ELIZA_ALLOW_REAL_GMAIL_WRITES=1. Point ELIZA_MOCK_GOOGLE_BASE or ELIZA_MOCK_GOOGLE_BASE at a loopback mock for tests or set the allow env var for an explicitly confirmed real write."
   );
 }
 
@@ -77,7 +78,7 @@ function guardRealGmailWrite(
  */
 export async function googleApiFetch(
   url: string,
-  init?: RequestInit,
+  init?: RequestInit
 ): Promise<Response> {
   const method = init?.method ?? "GET";
   const targetUrl = rewriteGoogleUrlForMock(url);
@@ -95,7 +96,7 @@ export async function googleApiFetch(
           attempt,
           delayMs,
         },
-        `[lifeops] Google API retry ${attempt}/${MAX_RETRIES} after ${delayMs}ms`,
+        `[lifeops] Google API retry ${attempt}/${MAX_RETRIES} after ${delayMs}ms`
       );
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
@@ -137,7 +138,7 @@ export async function googleApiFetch(
           statusCode: response.status,
           attempt,
         },
-        `[lifeops] Google API transient error: ${errorMessage}`,
+        `[lifeops] Google API transient error: ${errorMessage}`
       );
     } catch (error) {
       if (error instanceof GoogleApiError) {
@@ -151,7 +152,7 @@ export async function googleApiFetch(
           method,
           attempt,
         },
-        `[lifeops] Google API network error: ${errorMsg}`,
+        `[lifeops] Google API network error: ${errorMsg}`
       );
       lastError = new GoogleApiError(0, errorMsg);
     }

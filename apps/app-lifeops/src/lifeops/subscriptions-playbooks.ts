@@ -80,7 +80,7 @@ export interface LifeOpsSubscriptionPlaybook {
   };
 }
 
-const FIXTURE_BASE_URL_ENV = "MILADY_SUBSCRIPTION_FIXTURE_BASE_URL";
+const FIXTURE_BASE_URL_ENV = "ELIZA_SUBSCRIPTION_FIXTURE_BASE_URL";
 
 /**
  * Error-code prefix used by the subscriptions mixin and action when a
@@ -215,11 +215,7 @@ export const LIFEOPS_SUBSCRIPTION_PLAYBOOKS: readonly LifeOpsSubscriptionPlayboo
     {
       key: "google_play",
       serviceName: "Google Play",
-      aliases: [
-        "google play",
-        "play store",
-        "play subscriptions",
-      ],
+      aliases: ["google play", "play store", "play subscriptions"],
       executorPreference: "agent_browser",
       cancellationCapability: { ...EXECUTABLE_PLAYBOOK_CAPABILITY },
       managementUrl: withFixtureOverride(
@@ -309,11 +305,7 @@ export const LIFEOPS_SUBSCRIPTION_PLAYBOOKS: readonly LifeOpsSubscriptionPlayboo
     {
       key: "fixture_streaming",
       serviceName: "Fixture Streaming",
-      aliases: [
-        "fixture streaming",
-        "streaming fixture",
-        "test streaming",
-      ],
+      aliases: ["fixture streaming", "streaming fixture", "test streaming"],
       executorPreference: "agent_browser",
       cancellationCapability: { ...EXECUTABLE_PLAYBOOK_CAPABILITY },
       managementUrl: withFixtureOverride(
@@ -439,7 +431,11 @@ export const LIFEOPS_SUBSCRIPTION_PLAYBOOKS: readonly LifeOpsSubscriptionPlayboo
       aliases: ["disney plus", "disneyplus", "disney+"],
       managementUrl: "https://www.disneyplus.com/account/subscription",
       auditDomains: ["disneyplus.com", "mail.disneyplus.com"],
-      auditSubjectKeywords: ["disney+", "disney plus", "your disney+ subscription"],
+      auditSubjectKeywords: [
+        "disney+",
+        "disney plus",
+        "your disney+ subscription",
+      ],
     }),
     definePlaybook({
       key: "max_hbo",
@@ -485,7 +481,8 @@ export const LIFEOPS_SUBSCRIPTION_PLAYBOOKS: readonly LifeOpsSubscriptionPlayboo
       key: "amazon_prime",
       serviceName: "Amazon Prime",
       aliases: ["amazon prime", "prime membership"],
-      managementUrl: "https://www.amazon.com/gp/help/customer/contact-us/?nodeId=G34EUPKVMYFW8N2U",
+      managementUrl:
+        "https://www.amazon.com/gp/help/customer/contact-us/?nodeId=G34EUPKVMYFW8N2U",
       auditDomains: ["amazon.com"],
       auditSubjectKeywords: ["your amazon prime", "prime membership"],
     }),
@@ -562,8 +559,7 @@ export const LIFEOPS_SUBSCRIPTION_PLAYBOOKS: readonly LifeOpsSubscriptionPlayboo
       key: "nytimes",
       serviceName: "The New York Times",
       aliases: ["nyt", "new york times", "nytimes"],
-      managementUrl:
-        "https://www.nytimes.com/subscription/manage/downgrade",
+      managementUrl: "https://www.nytimes.com/subscription/manage/downgrade",
       auditDomains: ["nytimes.com"],
       auditSubjectKeywords: ["new york times", "nyt subscription"],
       chatOnlyMarkers: ["chat with us"],
@@ -580,7 +576,8 @@ export const LIFEOPS_SUBSCRIPTION_PLAYBOOKS: readonly LifeOpsSubscriptionPlayboo
       key: "washington_post",
       serviceName: "The Washington Post",
       aliases: ["wapo", "washington post", "washingtonpost"],
-      managementUrl: "https://subscribe.washingtonpost.com/profile/subscription",
+      managementUrl:
+        "https://subscribe.washingtonpost.com/profile/subscription",
       auditDomains: ["washingtonpost.com"],
       auditSubjectKeywords: ["washington post", "wapo subscription"],
     }),
@@ -612,8 +609,7 @@ export const LIFEOPS_SUBSCRIPTION_PLAYBOOKS: readonly LifeOpsSubscriptionPlayboo
       key: "bloomberg",
       serviceName: "Bloomberg",
       aliases: ["bloomberg", "bloomberg subscription"],
-      managementUrl:
-        "https://www.bloomberg.com/account/subscriptions",
+      managementUrl: "https://www.bloomberg.com/account/subscriptions",
       auditDomains: ["bloomberg.com"],
       auditSubjectKeywords: ["bloomberg", "bloomberg subscription"],
     }),
@@ -647,8 +643,7 @@ export const LIFEOPS_SUBSCRIPTION_PLAYBOOKS: readonly LifeOpsSubscriptionPlayboo
       key: "microsoft_365",
       serviceName: "Microsoft 365",
       aliases: ["microsoft 365", "office 365", "m365"],
-      managementUrl:
-        "https://account.microsoft.com/services/",
+      managementUrl: "https://account.microsoft.com/services/",
       auditDomains: ["microsoft.com"],
       auditSubjectKeywords: ["microsoft 365", "office 365"],
     }),
@@ -661,8 +656,7 @@ export const LIFEOPS_SUBSCRIPTION_PLAYBOOKS: readonly LifeOpsSubscriptionPlayboo
         "creative cloud",
         "photoshop subscription",
       ],
-      managementUrl:
-        "https://account.adobe.com/plans",
+      managementUrl: "https://account.adobe.com/plans",
       auditDomains: ["adobe.com"],
       auditSubjectKeywords: ["adobe", "creative cloud"],
       chatOnlyMarkers: ["chat with agent"],
@@ -722,8 +716,7 @@ export const LIFEOPS_SUBSCRIPTION_PLAYBOOKS: readonly LifeOpsSubscriptionPlayboo
       key: "nintendo_switch_online",
       serviceName: "Nintendo Switch Online",
       aliases: ["nintendo switch online", "nso", "nintendo online"],
-      managementUrl:
-        "https://accounts.nintendo.com/subscription/management",
+      managementUrl: "https://accounts.nintendo.com/subscription/management",
       auditDomains: ["nintendo.com"],
       auditSubjectKeywords: ["nintendo switch online", "nso"],
     }),
@@ -740,7 +733,12 @@ export const LIFEOPS_SUBSCRIPTION_PLAYBOOKS: readonly LifeOpsSubscriptionPlayboo
     definePlaybook({
       key: "chatgpt_plus",
       serviceName: "ChatGPT Plus",
-      aliases: ["chatgpt plus", "chatgpt", "openai plus", "chatgpt subscription"],
+      aliases: [
+        "chatgpt plus",
+        "chatgpt",
+        "openai plus",
+        "chatgpt subscription",
+      ],
       managementUrl: "https://chatgpt.com/#settings/Subscription",
       auditDomains: ["openai.com", "chatgpt.com"],
       auditSubjectKeywords: ["chatgpt plus", "openai receipt", "your chatgpt"],
@@ -892,7 +890,12 @@ export const LIFEOPS_SUBSCRIPTION_PLAYBOOKS: readonly LifeOpsSubscriptionPlayboo
     definePlaybook({
       key: "audible",
       serviceName: "Audible",
-      aliases: ["audible", "audible membership", "audible plus", "audible premium plus"],
+      aliases: [
+        "audible",
+        "audible membership",
+        "audible plus",
+        "audible premium plus",
+      ],
       managementUrl: "https://www.audible.com/account/membership-details",
       auditDomains: ["audible.com", "amazon.com"],
       auditSubjectKeywords: ["audible", "audible membership"],
@@ -909,8 +912,7 @@ export const LIFEOPS_SUBSCRIPTION_PLAYBOOKS: readonly LifeOpsSubscriptionPlayboo
       key: "linkedin_premium",
       serviceName: "LinkedIn Premium",
       aliases: ["linkedin premium", "linkedin"],
-      managementUrl:
-        "https://www.linkedin.com/premium/manage/",
+      managementUrl: "https://www.linkedin.com/premium/manage/",
       auditDomains: ["linkedin.com"],
       auditSubjectKeywords: ["linkedin premium", "your linkedin premium"],
     }),
@@ -981,7 +983,11 @@ export const LIFEOPS_SUBSCRIPTION_PLAYBOOKS: readonly LifeOpsSubscriptionPlayboo
   ];
 
 function normalizeName(value: string): string {
-  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 export function listLifeOpsSubscriptionPlaybooks(): readonly LifeOpsSubscriptionPlaybook[] {

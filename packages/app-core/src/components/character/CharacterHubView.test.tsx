@@ -163,7 +163,7 @@ const experience: ExperienceRecord = {
 const character = {
   bio: [],
   messageExamples: [],
-  name: "Milady",
+  name: "Eliza",
   postExamples: [],
   style: {
     all: [],
@@ -216,7 +216,7 @@ describe("CharacterHubView experience tab", () => {
     });
     clientMock.fetch.mockResolvedValue({ skills: [] });
     clientMock.updateCharacter.mockResolvedValue({
-      agentName: "Milady",
+      agentName: "Eliza",
       character,
       ok: true,
     });
@@ -257,7 +257,8 @@ describe("CharacterHubView experience tab", () => {
     renderHub();
     await screen.findAllByText(experience.learning);
 
-    fireEvent.change(screen.getByLabelText("Learning"), {
+    const learningInput = await screen.findByDisplayValue(experience.learning);
+    fireEvent.change(learningInput, {
       target: { value: updatedLearning },
     });
     fireEvent.change(screen.getByLabelText("Importance"), {

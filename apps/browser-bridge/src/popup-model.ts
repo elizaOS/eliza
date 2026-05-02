@@ -68,10 +68,10 @@ export function derivePopupStatusModel(args: {
       badge: "Syncing",
       title: "Checking this browser",
       detail:
-        "Agent Browser Bridge is syncing tabs and permissions so Milady can see the latest browser state.",
+        "Agent Browser Bridge is syncing tabs and permissions so Eliza can see the latest browser state.",
       checklist: [
         "Keep this browser open.",
-        "If you are pairing for the first time, leave Milady open in this same profile.",
+        "If you are pairing for the first time, leave Eliza open in this same profile.",
       ],
       primaryAction: "sync",
       primaryLabel: "Syncing…",
@@ -88,7 +88,7 @@ export function derivePopupStatusModel(args: {
       detail: state.lastError,
       checklist: [
         "Try syncing this browser again.",
-        "If pairing expired, Milady will auto-connect again the next time it is open here.",
+        "If pairing expired, Eliza will auto-connect again the next time it is open here.",
       ],
       primaryAction: hasConfig ? "sync" : "auto_pair",
       primaryLabel: hasConfig
@@ -106,7 +106,7 @@ export function derivePopupStatusModel(args: {
         badge: "Control Off",
         title: "This browser is connected, but browser control is off",
         detail:
-          "Milady can see this browser profile, but it cannot open sites or focus tabs for you until Browser control is enabled.",
+          "Eliza can see this browser profile, but it cannot open sites or focus tabs for you until Browser control is enabled.",
         checklist: [
           "Turn on Browser control in Browser setup if you want automatic site opening.",
           "Keep it off only if you are willing to open and focus the target tab manually.",
@@ -121,12 +121,12 @@ export function derivePopupStatusModel(args: {
     return {
       kind: "connected",
       badge: "Connected",
-      title: "This browser is connected to Milady",
+      title: "This browser is connected to Eliza",
       detail:
-        "Milady can read and control the tabs allowed by your Browser settings in this profile.",
+        "Eliza can read and control the tabs allowed by your Browser settings in this profile.",
       checklist: [
         "Open an account-backed site in this same profile.",
-        "Use Browser settings in Milady to verify what this browser is sharing right now.",
+        "Use Browser settings in Eliza to verify what this browser is sharing right now.",
       ],
       primaryAction: "sync",
       primaryLabel: "Sync This Browser",
@@ -147,8 +147,8 @@ export function derivePopupStatusModel(args: {
         ? "Browser access is paused"
         : "This browser is paired, but Agent Browser Bridge access is off",
       detail: paused
-        ? "Milady is paired to this browser, but Browser access is paused right now."
-        : "Turn Browser access back on in Milady so enabled connectors can see this profile again.",
+        ? "Eliza is paired to this browser, but Browser access is paused right now."
+        : "Turn Browser access back on in Eliza so enabled connectors can see this profile again.",
       checklist: paused
         ? [
             "Clear Pause until in Browser setup, or wait for it to expire.",
@@ -169,9 +169,9 @@ export function derivePopupStatusModel(args: {
     return {
       kind: "needs_pairing",
       badge: "Ready",
-      title: "Milady is open in this browser profile",
+      title: "Eliza is open in this browser profile",
       detail:
-        "This browser found a live Milady app. Pairing should work automatically now.",
+        "This browser found a live Eliza app. Pairing should work automatically now.",
       checklist: [
         "Click Auto Connect This Browser.",
         "If it still fails, use Advanced Tools to import manual pairing JSON.",
@@ -187,16 +187,16 @@ export function derivePopupStatusModel(args: {
     return {
       kind: "needs_app",
       badge: "Waiting",
-      title: "Open Milady in this browser profile",
+      title: "Open Eliza in this browser profile",
       detail:
-        "Automatic connection works best when Milady is open in the same browser profile that holds your real accounts.",
+        "Automatic connection works best when Eliza is open in the same browser profile that holds your real accounts.",
       checklist: [
-        "Open Milady in this browser profile.",
-        "If you use a cloud-hosted Milady app, log in there first.",
+        "Open Eliza in this browser profile.",
+        "If you use a cloud-hosted Eliza app, log in there first.",
         "Then click Auto Connect This Browser.",
       ],
       primaryAction: "auto_pair",
-      primaryLabel: "Search for Milady Again",
+      primaryLabel: "Search for Eliza Again",
       showSync: false,
       summary,
     };
@@ -210,7 +210,7 @@ export function derivePopupStatusModel(args: {
       "The browser is paired, but Agent Browser Bridge could not confirm a healthy connection yet.",
     checklist: [
       "Try syncing this browser again.",
-      "If pairing expired, Milady will auto-connect again the next time it is open here.",
+      "If pairing expired, Eliza will auto-connect again the next time it is open here.",
     ],
     primaryAction: "sync",
     primaryLabel: "Sync This Browser",

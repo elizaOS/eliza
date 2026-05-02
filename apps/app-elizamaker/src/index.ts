@@ -5,6 +5,11 @@ export {
   getElizaMakerDropService,
   setElizaMakerDropService,
 } from "./drop-service-registry.js";
+export { initializeRegistryAndDropServices } from "./init-registry-services.js";
+export {
+  getElizaMakerRegistryService,
+  setElizaMakerRegistryService,
+} from "./registry-service-registry.js";
 export { buildWhitelistTree, generateProof } from "./merkle-tree.js";
 export { initializeOGCode } from "./og-tracker.js";
 export { default, elizaMakerPlugin } from "./plugin.js";

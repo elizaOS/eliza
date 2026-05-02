@@ -3,7 +3,13 @@
  */
 
 // Provider modes - matches VRM demo pattern
-export type ProviderMode = "elizaClassic" | "openai" | "anthropic" | "xai" | "gemini" | "groq";
+export type ProviderMode =
+  | "elizaClassic"
+  | "openai"
+  | "anthropic"
+  | "xai"
+  | "gemini"
+  | "groq";
 
 // Provider settings for API keys
 export type ProviderSettings = {
@@ -164,7 +170,7 @@ export function getEffectiveMode(config: ExtensionConfig): ProviderMode {
 // Deep merge utility for config objects
 export function deepMergeConfig(
   target: ExtensionConfig,
-  source: Partial<ExtensionConfig>
+  source: Partial<ExtensionConfig>,
 ): ExtensionConfig {
   const result: ExtensionConfig = {
     mode: source.mode ?? target.mode,

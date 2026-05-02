@@ -79,16 +79,16 @@ if (
     value.includes("playwright.ui-smoke.config.ts"),
   )
 ) {
-  if (!env.MILADY_UI_SMOKE_API_PORT) {
+  if (!env.ELIZA_UI_SMOKE_API_PORT) {
     const apiPort = await getFreePort();
-    env.MILADY_UI_SMOKE_API_PORT = String(apiPort);
-    env.MILADY_API_PORT = env.MILADY_API_PORT || String(apiPort);
+    env.ELIZA_UI_SMOKE_API_PORT = String(apiPort);
+    env.ELIZA_API_PORT = env.ELIZA_API_PORT || String(apiPort);
   }
 
-  if (!env.MILADY_UI_SMOKE_PORT) {
+  if (!env.ELIZA_UI_SMOKE_PORT) {
     const uiPort = await getFreePort();
-    env.MILADY_UI_SMOKE_PORT = String(uiPort);
-    env.MILADY_PORT = env.MILADY_PORT || String(uiPort);
+    env.ELIZA_UI_SMOKE_PORT = String(uiPort);
+    env.ELIZA_PORT = env.ELIZA_PORT || String(uiPort);
   }
 }
 

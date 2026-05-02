@@ -1,4 +1,4 @@
-//! Secrets Manager types — Rust port of the TypeScript plugin-secrets-manager types.
+//! Secrets Manager types — Rust port of the TypeScript `@elizaos/core` secrets types.
 
 use serde::{Deserialize, Serialize};
 

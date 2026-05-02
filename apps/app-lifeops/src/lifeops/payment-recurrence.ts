@@ -119,7 +119,10 @@ function detectInterval(
   }
   const intervals: number[] = [];
   for (let index = 1; index < sortedPostedAts.length; index += 1) {
-    const days = daysBetween(sortedPostedAts[index - 1], sortedPostedAts[index]);
+    const days = daysBetween(
+      sortedPostedAts[index - 1],
+      sortedPostedAts[index],
+    );
     if (Number.isFinite(days)) {
       intervals.push(days);
     }
@@ -162,7 +165,10 @@ function confidenceScore(args: {
       : 0;
   const intervalBoost = intervalConsistency * 0.1;
   const amountBoost = args.amountSimilarity * 0.1;
-  return Math.min(0.99, cadenceBoost + occurrenceBoost + intervalBoost + amountBoost);
+  return Math.min(
+    0.99,
+    cadenceBoost + occurrenceBoost + intervalBoost + amountBoost,
+  );
 }
 
 function addDaysIso(value: string, days: number): string {
@@ -202,7 +208,9 @@ export function detectRecurringCharges(
     if (!interval) {
       continue;
     }
-    const amounts = sorted.map((transaction) => Math.abs(transaction.amountUsd));
+    const amounts = sorted.map((transaction) =>
+      Math.abs(transaction.amountUsd),
+    );
     const avgAmount = mean(amounts);
     const lastAmount = amounts[amounts.length - 1] ?? 0;
     const similarity = amountSimilarity(amounts);
@@ -233,7 +241,8 @@ export function detectRecurringCharges(
     const category =
       sorted.find((transaction) => transaction.category)?.category ?? null;
     const display =
-      sorted[sorted.length - 1]?.merchantRaw?.trim() || humanizeMerchant(merchant);
+      sorted[sorted.length - 1]?.merchantRaw?.trim() ||
+      humanizeMerchant(merchant);
     charges.push({
       merchantNormalized: merchant,
       merchantDisplay: display,

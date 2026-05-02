@@ -6,7 +6,10 @@ import type {
   LifeOpsOverviewSummary,
   LifeOpsTaskDefinition,
 } from "../contracts/index.js";
-import { DEFINITION_PERFORMANCE_LAST7_DAYS, DEFINITION_PERFORMANCE_LAST30_DAYS } from "./service-constants.js";
+import {
+  DEFINITION_PERFORMANCE_LAST7_DAYS,
+  DEFINITION_PERFORMANCE_LAST30_DAYS,
+} from "./service-constants.js";
 import { getZonedDateParts } from "./time.js";
 
 export function _createEmptyOverviewSection(): LifeOpsOverviewSection {
@@ -46,7 +49,9 @@ export function summarizeOverviewSection(
   };
 }
 
-export function occurrenceAnchorIso(occurrence: LifeOpsOccurrence): string | null {
+export function occurrenceAnchorIso(
+  occurrence: LifeOpsOccurrence,
+): string | null {
   return (
     occurrence.dueAt ??
     occurrence.scheduledAt ??

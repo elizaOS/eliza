@@ -204,7 +204,9 @@ function validatePermissionEntry(
   raw: unknown,
 ): StorePermissionEntry {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new StoreFormatError(`permission entry ${skillId}: must be an object`);
+    throw new StoreFormatError(
+      `permission entry ${skillId}: must be an object`,
+    );
   }
   const entry = raw as Record<string, unknown>;
   const grantsRaw = Array.isArray(entry.grants) ? entry.grants : [];

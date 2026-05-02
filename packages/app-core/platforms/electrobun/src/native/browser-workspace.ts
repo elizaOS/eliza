@@ -53,15 +53,12 @@ export type BrowserWorkspaceRendererCaller = {
     script: string;
     timeoutMs: number;
   }) => Promise<{ ok: boolean; result?: unknown; error?: string }>;
-  getTabRect: (params: { id: string }) => Promise<
-    | {
-        x: number;
-        y: number;
-        width: number;
-        height: number;
-      }
-    | null
-  >;
+  getTabRect: (params: { id: string }) => Promise<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>;
 };
 
 function toIsoNow(): string {
@@ -90,7 +87,7 @@ function assertBrowserWorkspaceUrl(url: string): string {
 }
 
 function resolveEvalTimeoutMs(): number {
-  const raw = process.env.MILADY_BROWSER_TAB_EVAL_TIMEOUT_MS?.trim();
+  const raw = process.env.ELIZA_BROWSER_TAB_EVAL_TIMEOUT_MS?.trim();
   if (!raw) return DEFAULT_EVAL_TIMEOUT_MS;
   const parsed = Number.parseInt(raw, 10);
   if (!Number.isFinite(parsed)) return DEFAULT_EVAL_TIMEOUT_MS;
@@ -241,7 +238,8 @@ export class BrowserWorkspaceManager {
   ): Promise<BrowserWorkspaceTabSnapshot> {
     const visible = options.show === true;
     const url = assertBrowserWorkspaceUrl(options.url ?? "about:blank");
-    const title = options.title?.trim() || `${getBrandConfig().appName} Browser`;
+    const title =
+      options.title?.trim() || `${getBrandConfig().appName} Browser`;
     const partition = options.partition?.trim() || DEFAULT_PARTITION;
     const kind: BrowserWorkspaceTabKind =
       options.kind === "internal" ? "internal" : "standard";

@@ -8,7 +8,6 @@
  * - Supply tracking and status
  */
 
-import type { TxService } from "@elizaos/app-steward";
 import { logger } from "@elizaos/core";
 import type { DropStatus, MintResult } from "@elizaos/shared";
 import { ethers } from "ethers";
@@ -38,15 +37,21 @@ const COLLECTION_ABI = [
 
 const DEFAULT_CAP_HASH = ethers.id("eliza-agent");
 
+interface DropTxService {
+  readonly address: string;
+  getContract(address: string, abi: ethers.InterfaceAbi): ethers.Contract;
+  getFreshNonce(): Promise<number>;
+}
+
 // ── Service ──────────────────────────────────────────────────────────────
 
 export class DropService {
   private readonly contract: ethers.Contract;
-  private readonly txService: TxService;
+  private readonly txService: DropTxService;
   private readonly dropEnabled: boolean;
 
   constructor(
-    txService: TxService,
+    txService: DropTxService,
     collectionAddress: string,
     dropEnabled: boolean,
   ) {

@@ -1,6 +1,6 @@
 //! Plugin Manager capability — runtime plugin lifecycle management.
 //!
-//! Ports the TypeScript `plugin-plugin-manager` module, providing:
+//! Ports the TypeScript plugin-manager feature in `@elizaos/core`, providing:
 //! - Plugin status, components, metadata, and operation result types
 //! - PluginManagerService for plugin lifecycle
 //! - LOAD_PLUGIN, UNLOAD_PLUGIN, LIST_PLUGINS actions

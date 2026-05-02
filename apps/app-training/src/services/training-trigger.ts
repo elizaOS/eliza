@@ -532,7 +532,7 @@ export interface BootstrapOptimizationOptions {
  *
  * Called immediately after `registerTrainingTriggerService` during runtime
  * boot. For each high-leverage task (should_respond + action_planner):
- *   - If `MILADY_DISABLE_AUTO_BOOTSTRAP=1`, do nothing.
+ *   - If `ELIZA_DISABLE_AUTO_BOOTSTRAP=1`, do nothing.
  *   - If the OptimizedPromptService already has an artifact for the task,
  *     do nothing (the operator's previous run wins).
  *   - If the per-task trajectory counter is below the threshold, do nothing
@@ -550,7 +550,7 @@ export async function bootstrapOptimizationFromAccumulatedTrajectories(
   service: TrainingTriggerService,
   options: BootstrapOptimizationOptions = {},
 ): Promise<TrajectoryTrainingTask[]> {
-  if (process.env.MILADY_DISABLE_AUTO_BOOTSTRAP === "1") {
+  if (process.env.ELIZA_DISABLE_AUTO_BOOTSTRAP === "1") {
     return [];
   }
   const config = (options.configLoader ?? loadTrainingConfig)();
@@ -568,7 +568,8 @@ export async function bootstrapOptimizationFromAccumulatedTrajectories(
   const status = service.getStatus();
   const fired: TrajectoryTrainingTask[] = [];
   for (const task of BOOTSTRAP_TASKS) {
-    const threshold = status.perTaskThresholds[task] ?? Number.POSITIVE_INFINITY;
+    const threshold =
+      status.perTaskThresholds[task] ?? Number.POSITIVE_INFINITY;
     const count = status.counters[task] ?? 0;
     if (count < threshold) continue;
     if (optimizedPromptService?.hasOptimized(task) === true) continue;

@@ -437,7 +437,7 @@ export async function ensureDiscordTab(args: {
   const env = args.env ?? process.env;
   if (!discordBrowserWorkspaceAvailable(env)) {
     throw new Error(
-      "Discord connector requires the Milady Desktop Browser workspace.",
+      "Discord connector requires the Eliza Desktop Browser workspace.",
     );
   }
 

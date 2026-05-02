@@ -23,9 +23,7 @@
     }
   ],
   "trajectory": "trajectories/7a4e4bc8-922c-4c84-865c-25ba34136be1",
-  "related_apps": [
-    "excel"
-  ],
+  "related_apps": ["excel"],
   "evaluator": {
     "postconfig": [
       {

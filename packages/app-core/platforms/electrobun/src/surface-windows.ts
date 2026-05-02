@@ -28,10 +28,7 @@ export interface ManagedWindowFrame {
 export interface ManagedWindowLike {
   focus(): void;
   setAlwaysOnTop(flag: boolean): void;
-  on(
-    event: "close" | "focus" | "resize" | "move",
-    handler: () => void,
-  ): void;
+  on(event: "close" | "focus" | "resize" | "move", handler: () => void): void;
   /**
    * Optional — when present, used to capture window position+size for
    * per-slug bounds persistence. Mocks may omit this.
@@ -176,7 +173,7 @@ export function buildAppWindowRendererUrl(
   routePath: string,
 ): string {
   const renderer = new URL(rendererUrl);
-  const route = new URL(routePath, "http://milady.local");
+  const route = new URL(routePath, "http://eliza.local");
   const appRoute = `${route.pathname}${route.search}${route.hash}`;
   renderer.searchParams.set("appWindow", "1");
   renderer.hash = appRoute;

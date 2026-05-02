@@ -1,5 +1,6 @@
 import type {
   Action,
+  ActionExample,
   ActionResult,
   IAgentRuntime,
   Memory,
@@ -319,6 +320,9 @@ export const crossPlatformGatewayAction: Action = {
     "Create a real cross-platform group handoff room or escalate a request back to the owner when direct user action is required. " +
     "Use this for requests like 'create a group chat with Alice on Discord' or for impossible delegate requests that require the owner's negotiation or signature, such as 'negotiate my lease renewal and sign it for me'. " +
     "Do not route these through OWNER_INBOX or generic reply fallbacks.",
+  descriptionCompressed:
+    "Cross-platform group handoff room OR escalate need-owner-signature negotiation",
+
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   handler: async (runtime, message, state, options): Promise<ActionResult> => {
     const runtimeLike = runtime as RuntimeLike;
@@ -462,4 +466,79 @@ export const crossPlatformGatewayAction: Action = {
       },
     };
   },
+
+  parameters: [
+    {
+      name: "subaction",
+      description: "create_group_chat vs escalate_to_user when caller supplies it.",
+      required: false,
+      schema: {
+        type: "string" as const,
+        enum: ["create_group_chat", "escalate_to_user"],
+      },
+    },
+    {
+      name: "platform",
+      description:
+        "Target connector (discord, telegram, whatsapp, signal).",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "participants",
+      description: "Human names to invite to the shared handoff room.",
+      required: false,
+      schema: {
+        type: "array" as const,
+        items: { type: "string" as const },
+      },
+    },
+    {
+      name: "title",
+      description: "Optional room or escalation title.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "reason",
+      description:
+        "Why escalate_to_user (e.g., needs owner negotiation or signing).",
+      required: false,
+      schema: { type: "string" as const },
+    },
+  ],
+
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Create a Discord group chat handoff with Alice for the rollout.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Created a Discord group handoff room with Alice.",
+          action: "CROSS_PLATFORM_GATEWAY",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text:
+            "Negotiate my lease renewal with the landlord and sign the lease — I cannot do their part.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Escalated back to you: lease negotiation needs your signature.",
+          action: "CROSS_PLATFORM_GATEWAY",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };

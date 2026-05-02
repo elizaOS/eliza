@@ -13,7 +13,7 @@ export interface LaunchAttemptRecord {
   errorMessage?: string;
 }
 
-const KEY = "milady:apps:launch-history";
+const KEY = "eliza:apps:launch-history";
 const MAX = 20;
 
 function isDiagnostic(value: unknown): value is AppLaunchDiagnostic {

@@ -10,24 +10,15 @@ import {
   hasElectrobunViewExport,
   isSupportedBunVersion,
 } from "./lib/desktop-preflight.mjs";
+import { resolveElectrobunDir, resolveMainAppDir } from "./lib/app-dir.mjs";
 
 const ROOT = process.cwd();
-// --app=<name> selects which app to build (default: "app" → apps/app)
+// --app=<name> selects which app to build (default: "app" → packages/app)
 const appArgMatch = process.argv.find((a) => a.startsWith("--app="));
 const appName = appArgMatch ? appArgMatch.split("=")[1] : "app";
-const APP_DIR = path.join(ROOT, "apps", appName);
-const CANONICAL_ELECTROBUN_DIR = path.join(
-  ROOT,
-  "eliza",
-  "packages",
-  "app-core",
-  "platforms",
-  "electrobun",
-);
+const APP_DIR = resolveMainAppDir(ROOT, appName);
 const LEGACY_ELECTROBUN_DIR = path.join(APP_DIR, "electrobun");
-const ELECTROBUN_DIR = fs.existsSync(CANONICAL_ELECTROBUN_DIR)
-  ? CANONICAL_ELECTROBUN_DIR
-  : LEGACY_ELECTROBUN_DIR;
+const ELECTROBUN_DIR = resolveElectrobunDir(ROOT);
 const STAGE_MACOS_RELEASE_SCRIPT = path.join(
   ELECTROBUN_DIR,
   "scripts",
@@ -528,6 +519,74 @@ function stageDesktopBuild() {
   }
 }
 
+function embedWindowsIcons() {
+  const buildDir = path.join(ELECTROBUN_DIR, "build");
+  const iconPath = path.join(ELECTROBUN_DIR, "assets", "appIcon.ico");
+  if (!fs.existsSync(iconPath)) {
+    console.log("[desktop-build] No appIcon.ico found, skipping icon embed");
+    return;
+  }
+  // Find the build output directory (e.g. dev-win-x64/elizaOS-dev/bin)
+  let binDir;
+  for (const variant of fs.readdirSync(buildDir)) {
+    const variantDir = path.join(buildDir, variant);
+    if (!fs.statSync(variantDir).isDirectory()) continue;
+    for (const app of fs.readdirSync(variantDir)) {
+      const candidate = path.join(variantDir, app, "bin");
+      if (fs.existsSync(path.join(candidate, "launcher.exe"))) {
+        binDir = candidate;
+        break;
+      }
+    }
+    if (binDir) break;
+  }
+  if (!binDir) {
+    console.log("[desktop-build] Could not find launcher.exe in build output");
+    return;
+  }
+  // Find rcedit-x64.exe in node_modules (cross-platform, no shell deps).
+  let rceditBin;
+  for (const base of [ELECTROBUN_DIR, ROOT]) {
+    const rceditDir = path.join(base, "node_modules", "rcedit", "bin");
+    const candidate = path.join(rceditDir, "rcedit-x64.exe");
+    if (fs.existsSync(candidate)) {
+      rceditBin = candidate;
+      break;
+    }
+    // Also check bun's flat cache layout
+    try {
+      for (const entry of fs.readdirSync(path.join(base, "node_modules", ".bun"))) {
+        if (!entry.startsWith("rcedit@")) continue;
+        const nested = path.join(base, "node_modules", ".bun", entry, "node_modules", "rcedit", "bin", "rcedit-x64.exe");
+        if (fs.existsSync(nested)) { rceditBin = nested; break; }
+      }
+    } catch {}
+    if (rceditBin) break;
+  }
+  if (!rceditBin) {
+    console.log("[desktop-build] rcedit-x64.exe not found — install rcedit as a devDep to embed Windows icons");
+    return;
+  }
+  // Embed into all executables — CEF helper processes create the visible
+  // windows on Windows, so they need the icon too for it to show in the
+  // title bar and taskbar.
+  const exeFiles = fs.readdirSync(binDir).filter((f) => f.endsWith(".exe"));
+  for (const exe of exeFiles) {
+    const exePath = path.join(binDir, exe);
+    if (!fs.existsSync(exePath)) continue;
+    const result = spawnSync(rceditBin, [exePath, "--set-icon", iconPath], {
+      stdio: "pipe",
+      encoding: "utf-8",
+      timeout: 15000,
+    });
+    if (result.status === 0) {
+      console.log(`[desktop-build] Embedded icon into ${exe}`);
+    } else {
+      console.log(`[desktop-build] Warning: failed to embed icon into ${exe}: ${result.stderr || result.error}`);
+    }
+  }
+}
+
 function mirrorTreePreservingSymlinks(src, dst) {
   const srcStat = fs.lstatSync(src);
   if (srcStat.isSymbolicLink()) {
@@ -546,7 +605,11 @@ function mirrorTreePreservingSymlinks(src, dst) {
       fs.symlinkSync(linkTarget, dst);
     } catch {
       try {
-        fs.cpSync(src, dst, { recursive: true, force: true, dereference: true });
+        fs.cpSync(src, dst, {
+          recursive: true,
+          force: true,
+          dereference: true,
+        });
       } catch {}
     }
     return;
@@ -558,7 +621,10 @@ function mirrorTreePreservingSymlinks(src, dst) {
     }
     fs.mkdirSync(dst, { recursive: true });
     for (const entry of fs.readdirSync(src)) {
-      mirrorTreePreservingSymlinks(path.join(src, entry), path.join(dst, entry));
+      mirrorTreePreservingSymlinks(
+        path.join(src, entry),
+        path.join(dst, entry),
+      );
     }
     return;
   }
@@ -616,6 +682,13 @@ function packageDesktopBuild() {
   mirrorCanonicalToLegacy("build");
   mirrorCanonicalToLegacy("artifacts");
 
+  // Electrobun's built-in rcedit call references a CI-local D:\ path that
+  // doesn't exist on developer machines. Re-embed the icon from a locally
+  // resolved rcedit as a post-build repair step.
+  if (process.platform === "win32") {
+    embedWindowsIcons();
+  }
+
   if (
     process.platform === "darwin" &&
     packageEnv.ELECTROBUN_SKIP_CODESIGN === "1"
@@ -629,7 +702,10 @@ function packageDesktopBuild() {
   }
 
   if (stageMacosReleaseApp && process.platform === "darwin") {
-    run("bash", [STAGE_MACOS_RELEASE_SCRIPT], {
+    run("bash", [
+      STAGE_MACOS_RELEASE_SCRIPT,
+      path.join(ELECTROBUN_DIR, "artifacts"),
+    ], {
       cwd: ROOT,
       env: {
         ...packageEnv,

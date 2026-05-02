@@ -3,15 +3,15 @@ import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import {
   createOrder,
   createPayment,
-  getOffer,
-  getOrder,
-  readDuffelConfigFromEnv,
-  searchFlights,
   type DuffelOffer,
   type DuffelOrder,
   type DuffelPayment,
+  getOffer,
+  getOrder,
+  readDuffelConfigFromEnv,
   type SearchFlightsRequest,
   type SearchFlightsResult,
+  searchFlights,
 } from "./travel-adapters/duffel.js";
 import type {
   FlightBookingExecutionResult,
@@ -57,7 +57,7 @@ export interface TravelConnectorStatus {
   connected: boolean;
   adapter: "duffel" | null;
   /** "cloud" when routing through Eliza Cloud relay (default), "direct"
-   *  when MILADY_DUFFEL_DIRECT=1 + DUFFEL_API_KEY are set. null when the
+   *  when ELIZA_DUFFEL_DIRECT=1 + DUFFEL_API_KEY are set. null when the
    *  travel connector is unconfigured. */
   mode: "cloud" | "direct" | null;
   lastCheckedAt: string;
@@ -373,7 +373,11 @@ export function withTravel<TBase extends Constructor<LifeOpsServiceBase>>(
       if (calendarSync?.enabled !== false) {
         calendarEvent = await this.createCalendarEvent(requestUrl, {
           calendarId: calendarSync?.calendarId ?? "primary",
-          title: buildCalendarTitle(prepared.offer, refreshedOrder, calendarSync),
+          title: buildCalendarTitle(
+            prepared.offer,
+            refreshedOrder,
+            calendarSync,
+          ),
           description: buildCalendarDescription(
             prepared.offer,
             refreshedOrder,

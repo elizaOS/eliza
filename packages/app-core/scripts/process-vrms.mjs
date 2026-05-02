@@ -2,7 +2,7 @@
 /**
  * Process VRM avatars from characters/vrm: gzip for shipping.
  *
- * Replaces VRMs in apps/app/public/vrms and apps/app/public_src/vrms with
+ * Replaces VRMs in packages/app/public/vrms and packages/app/public_src/vrms with
  * gzipped versions of the character models.
  *
  * Note: gltf-transform optimize/meshopt/draco are intentionally NOT used because

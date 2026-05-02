@@ -12,7 +12,6 @@ import type { OnboardingOptions } from "../api";
 import { client } from "../api";
 import {
   getBackendStartupTimeoutMs,
-  isElectrobunRuntime,
   scanProviderCredentials,
 } from "../bridge";
 import type { UiLanguage } from "../i18n";
@@ -185,7 +184,7 @@ export async function runPollingBackend(
       const auth = await client.getAuthStatus();
       latestAuth = auth;
       if (cancelled.current) return;
-      if (auth.required && !client.hasToken()) {
+      if (auth.required && !auth.authenticated && !client.hasToken()) {
         if (auth.loginRequired) {
           deps.setAuthRequired(false);
           deps.setOnboardingComplete(true);
@@ -289,22 +288,12 @@ export async function runPollingBackend(
           } catch (err) {
             const ae = asApiLikeError(err);
             if (ae?.status === 401 && client.hasToken()) {
-              // On desktop, 401 is transient (port not ready / port changed).
-              // Never clear the shell-injected token or show pairing.
-              if (isElectrobunRuntime()) {
-                optErr = err;
-                await new Promise<void>((r) => {
-                  tidRef.current = setTimeout(r, 500);
-                });
-                continue;
-              }
-              client.setToken(null);
-              deps.setAuthRequired(true);
-              deps.setPairingEnabled(latestAuth.pairingEnabled);
-              deps.setPairingExpiresAt(latestAuth.expiresAt);
-              deps.setOnboardingLoading(false);
-              dispatch({ type: "BACKEND_AUTH_REQUIRED" });
-              return;
+              // Transient 401: retry. /api/auth/status is the auth gate.
+              optErr = err;
+              await new Promise<void>((r) => {
+                tidRef.current = setTimeout(r, 500);
+              });
+              continue;
             }
             if (ae?.status === 404) {
               deps.setStartupError(describeBackendFailure(err, false));
@@ -336,17 +325,7 @@ export async function runPollingBackend(
         return;
       }
       if (ae?.status === 401 && client.hasToken()) {
-        // On desktop, 401 is transient (port not ready / port changed).
-        // Never clear the shell-injected token or show pairing.
-        if (!isElectrobunRuntime()) {
-          client.setToken(null);
-          deps.setAuthRequired(true);
-          deps.setPairingEnabled(latestAuth.pairingEnabled);
-          deps.setPairingExpiresAt(latestAuth.expiresAt);
-          deps.setOnboardingLoading(false);
-          dispatch({ type: "BACKEND_AUTH_REQUIRED" });
-          return;
-        }
+        // Transient 401: retry; pairing is gated by /api/auth/status.
       }
       if (ae?.status === 404) {
         deps.setStartupError(describeBackendFailure(err, false));

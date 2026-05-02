@@ -3,11 +3,11 @@
  *
  * Lays the bun binary, the matching musl loader, libstdc++, libgcc, and the
  * launcher + agent bundle inside the APK assets tree so that
- * `MiladyAgentService` (Phase B) can copy them out to the app data dir at
+ * `ElizaAgentService` (Phase B) can copy them out to the app data dir at
  * first launch and `execve()` bun there. Without this stage the APK ships
  * with no executable runtime and the local-agent mode cannot start.
  *
- * Layout produced under `apps/app/android/app/src/main/assets/agent/`:
+ * Layout produced under `packages/app/android/app/src/main/assets/agent/`:
  *
  *   agent-bundle.js                 (ABI-independent entry point; placeholder
  *                                    until Phase D replaces it with the real
@@ -23,7 +23,7 @@
  *   arm64-v8a/libstdc++.so.6.0.33
  *   arm64-v8a/libgcc_s.so.1
  *
- * Downloads are cached under `~/.cache/milady-android-agent/<bun-version>/`
+ * Downloads are cached under `~/.cache/eliza-android-agent/<bun-version>/`
  * and the staging step is idempotent — already-staged files with the
  * matching size are left in place.
  *
@@ -46,7 +46,7 @@ const ALPINE_BRANCH = "v3.21";
 
 /**
  * Default cache dir for compile-shim.mjs's outputs. Mirrors the default
- * in `scripts/miladyos/compile-shim.mjs`. We resolve from `os.homedir()`
+ * in `scripts/elizaos/compile-shim.mjs`. We resolve from `os.homedir()`
  * directly instead of importing `compile-shim.mjs` to avoid pulling the
  * zig probe + shell-out machinery into the staging step (this module
  * runs unconditionally on every gradle build, not just AOSP).
@@ -54,7 +54,7 @@ const ALPINE_BRANCH = "v3.21";
 const SECCOMP_SHIM_CACHE_DIR = path.join(
   os.homedir(),
   ".cache",
-  "milady-android-agent",
+  "eliza-android-agent",
   "seccomp-shim",
 );
 
@@ -82,7 +82,7 @@ const APK_PACKAGES = [
 /**
  * Adapted from scripts/spike-android-agent/launch-on-device.sh. The script
  * ships *inside* the APK and is copied (with executable bit set) into the
- * app data dir by MiladyAgentService at first launch. It accepts the device
+ * app data dir by ElizaAgentService at first launch. It accepts the device
  * path, ABI-specific musl loader, and listen port as env vars so a single
  * shell file can drive both ABIs at runtime.
  */
@@ -90,7 +90,7 @@ const LAUNCH_SCRIPT = `#!/system/bin/sh
 # launch.sh — device-side launcher for the on-device Eliza agent.
 #
 # Staged into the APK by run-mobile-build.mjs and copied to the app's
-# private data dir by MiladyAgentService on first launch. Daemonises bun
+# private data dir by ElizaAgentService on first launch. Daemonises bun
 # via a setsid double-fork so the agent survives the service that kicked
 # it off; without that adb shell / Service.onCreate parents reap it.
 #
@@ -312,7 +312,7 @@ export function stageSeccompShimForAbi({
   if (!fs.existsSync(cachedWrap) || !fs.existsSync(cachedShim)) {
     log?.(
       `No compiled SIGSYS shim for ${androidAbi}; leaving the Alpine ` +
-        `loader at ${ldName} (run \`node scripts/miladyos/compile-shim.mjs\` for ` +
+        `loader at ${ldName} (run \`node scripts/elizaos/compile-shim.mjs\` for ` +
         `the AOSP path).`,
     );
     return 0;
@@ -375,13 +375,13 @@ export function stageSeccompShimForAbi({
  * Android assets tree. Idempotent — safe to run on every gradle invocation.
  *
  * Required:
- *   androidDir  Absolute path to apps/app/android/.
+ *   androidDir  Absolute path to packages/app/android/.
  *   spikeDir    Absolute path to scripts/spike-android-agent/ (source of
  *               the placeholder agent-bundle.js until Phase D wires up the
  *               real @elizaos/agent bundle).
  *
  * Optional:
- *   cacheDir    Defaults to ~/.cache/milady-android-agent/<bun-version>/.
+ *   cacheDir    Defaults to ~/.cache/eliza-android-agent/<bun-version>/.
  *   log         Defaults to console.log.
  */
 export async function stageAndroidAgentRuntime({
@@ -390,7 +390,7 @@ export async function stageAndroidAgentRuntime({
   cacheDir = path.join(
     os.homedir(),
     ".cache",
-    "milady-android-agent",
+    "eliza-android-agent",
     `bun-${BUN_VERSION}`,
   ),
   log = console.log,
@@ -423,7 +423,9 @@ export async function stageAndroidAgentRuntime({
   const jniLibsDir = path.join(androidDir, "app", "src", "main", "jniLibs");
   if (fs.existsSync(jniLibsDir)) {
     fs.rmSync(jniLibsDir, { recursive: true, force: true });
-    tlog("Removed stale jniLibs/ tree (runtime now ships under assets/agent/).");
+    tlog(
+      "Removed stale jniLibs/ tree (runtime now ships under assets/agent/).",
+    );
   }
 
   let stagedCount = 0;
@@ -467,7 +469,7 @@ export async function stageAndroidAgentRuntime({
     //   1. Stage `libsigsys-handler.so` next to bun.
     //   2. Rename the Alpine-extracted ld-musl-*.so.1 → .so.1.real.
     //   3. Stage our `loader-wrap` ELF as ld-musl-*.so.1.
-    // MiladyAgentService.java's existing findMuslLoader + ProcessBuilder
+    // ElizaAgentService.java's existing findMuslLoader + ProcessBuilder
     // spawn line then transparently picks up the wrapper, which prepends
     // libsigsys-handler.so to LD_PRELOAD before exec'ing the real loader.
     //
@@ -491,18 +493,23 @@ export async function stageAndroidAgentRuntime({
 
   // ABI-independent assets: agent-bundle.js + PGlite payload, falling back
   // to the spike's tiny stub if Phase D hasn't been built yet. Phase D
-  // produces a 33 MB real bundle in eliza/packages/agent/dist-mobile/ via
-  // `bun run --cwd eliza/packages/agent build:mobile`. PGlite at runtime
+  // produces a 33 MB real bundle in packages/agent/dist-mobile/ via
+  // `bun run --cwd packages/agent build:mobile`. PGlite at runtime
   // resolves vector.tar.gz and fuzzystrmatch.tar.gz with `new URL("../X",
   // import.meta.url)`, so those two files must land ONE DIR ABOVE the
-  // bundle on the device — MiladyAgentService extracts them into the
+  // bundle on the device — ElizaAgentService extracts them into the
   // agent root (../) while the bundle itself sits in agent root (./).
   // Mirror that by staging vector + fuzzystrmatch in the assets tree at
   // the same level as agent-bundle.js, leaving relative resolution alone.
+  //
+  // spikeDir is `<repoRoot>/scripts/spike-android-agent/`; its parent's
+  // parent is the repo root. Resolve dist-mobile relative to that.
+  // (Inside this repo there is no nested `eliza/` directory — that
+  // prefix was a leftover from eliza's outer repo layout where eliza
+  // was a submodule.)
   const distMobileDir = path.resolve(
     path.dirname(spikeDir),
     "..",
-    "eliza",
     "packages",
     "agent",
     "dist-mobile",
@@ -520,7 +527,7 @@ export async function stageAndroidAgentRuntime({
     bundleSrc = spikeServerJs;
     tlog(
       "Using spike placeholder agent-bundle.js — run `bun run --cwd " +
-        "eliza/packages/agent build:mobile` to ship the real agent.",
+        "packages/agent build:mobile` to ship the real agent.",
     );
   } else {
     throw new Error(

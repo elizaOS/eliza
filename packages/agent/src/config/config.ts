@@ -23,7 +23,7 @@ export * from "./types.js";
 
 function resolveConfigWritePath(env: NodeJS.ProcessEnv = process.env): string {
   const persistPath =
-    env.MILADY_PERSIST_CONFIG_PATH?.trim() ??
+    env.ELIZA_PERSIST_CONFIG_PATH?.trim() ??
     env.ELIZA_PERSIST_CONFIG_PATH?.trim();
   return persistPath ? resolveUserPath(persistPath) : resolveConfigPath();
 }
@@ -166,7 +166,7 @@ export function loadElizaConfig(): ElizaConfig {
   const persistedConfigEnv = readConfigEnvSync(resolveStateDir());
   // SECURITY: Do NOT merge persistedConfigEnv into resolved.env — config.env
   // is the designated escape hatch for secrets that must NOT be serialized to
-  // milady.json (e.g. MILADY_CLOUD_CLIENT_ADDRESS_KEY, WALLET_SOURCE_*).
+  // eliza.json (e.g. ELIZA_CLOUD_CLIENT_ADDRESS_KEY, WALLET_SOURCE_*).
   // Merging would create a sensitive-data boundary violation.
   // Instead, apply directly to process.env (below).
 

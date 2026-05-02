@@ -14,7 +14,7 @@ import type { EvmSigningCapabilityKind } from "@elizaos/shared";
  *                       ELIZA_CLOUD_PROVISIONED != "1")
  *   - "steward-cloud" — cloud-provisioned Steward sidecar (same creds,
  *                       ELIZA_CLOUD_PROVISIONED == "1")
- *   - "cloud-view-only" — cloud bind stored MILADY_CLOUD_EVM_ADDRESS but no
+ *   - "cloud-view-only" — cloud bind stored ELIZA_CLOUD_EVM_ADDRESS but no
  *                         signing path is wired (backend contract not yet
  *                         implemented locally). Address is visible, but no
  *                         transactions can be signed from this process.
@@ -82,7 +82,7 @@ export function resolveEvmSigningCapability(
   // Cloud bind persisted an address but no usable signing path is wired up
   // in this runtime. The UI can still show the address (view-only), but
   // plugin-evm must NOT be auto-enabled — its actions would fail at runtime.
-  const cloudAddress = env.MILADY_CLOUD_EVM_ADDRESS?.trim();
+  const cloudAddress = env.ELIZA_CLOUD_EVM_ADDRESS?.trim();
   if (cloudAddress) {
     return {
       kind: "cloud-view-only",

@@ -5,6 +5,15 @@ import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  getLifeOpsSimulatorPerson,
+  LIFEOPS_SIMULATOR_CHANNEL_MESSAGES,
+  LIFEOPS_SIMULATOR_OWNER,
+  LIFEOPS_SIMULATOR_OWNER_IDENTITIES,
+  type LifeOpsSimulatorChannelMessage,
+  lifeOpsSimulatorMessageTime,
+  lifeOpsSimulatorSummary,
+} from "../fixtures/lifeops-simulator.ts";
+import {
   GITHUB_FIXTURE_NOTIFICATIONS,
   GITHUB_FIXTURE_PULLS,
   GITHUB_FIXTURE_SEARCH_ITEMS,
@@ -20,6 +29,8 @@ import { MockHttpError } from "./mock-http-error.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ENVS_DIR = path.resolve(__dirname, "..", "environments");
+const MOCK_BROWSER_WORKSPACE_TOKEN = "mock-browser-workspace-token";
+const MOCK_BLUEBUBBLES_PASSWORD = "mock-bluebubbles-password";
 
 export const MOCK_ENVIRONMENTS = [
   "google",
@@ -76,6 +87,10 @@ interface StartedFixtureServer {
   requests: MockRequestLedgerEntry[];
   clearRequests(): void;
   stop(): Promise<void>;
+}
+
+interface MockFixtureOptions {
+  simulator?: boolean;
 }
 
 export interface MockRequestLedgerEntry {
@@ -167,31 +182,43 @@ function envVarsFor(
   const out: Record<string, string> = {};
   if (envs.includes("google")) {
     out.ELIZA_MOCK_GOOGLE_BASE = baseUrls.google;
+    out.ELIZA_MOCK_GOOGLE_BASE = baseUrls.google;
     out.ELIZA_BLOCK_REAL_GMAIL_WRITES = "1";
   }
-  if (envs.includes("twilio")) out.ELIZA_MOCK_TWILIO_BASE = baseUrls.twilio;
+  if (envs.includes("twilio")) {
+    out.ELIZA_MOCK_TWILIO_BASE = baseUrls.twilio;
+    out.ELIZA_MOCK_TWILIO_BASE = baseUrls.twilio;
+  }
   if (envs.includes("whatsapp"))
     out.ELIZA_MOCK_WHATSAPP_BASE = baseUrls.whatsapp;
-  if (envs.includes("x-twitter"))
+  if (envs.includes("whatsapp"))
+    out.ELIZA_MOCK_WHATSAPP_BASE = baseUrls.whatsapp;
+  if (envs.includes("x-twitter")) {
     out.ELIZA_MOCK_X_BASE = baseUrls["x-twitter"];
+    out.ELIZA_MOCK_X_BASE = baseUrls["x-twitter"];
+  }
+  if (envs.includes("calendly"))
+    out.ELIZA_MOCK_CALENDLY_BASE = baseUrls.calendly;
   if (envs.includes("calendly"))
     out.ELIZA_MOCK_CALENDLY_BASE = baseUrls.calendly;
   if (envs.includes("cloud-managed"))
     out.ELIZA_CLOUD_BASE_URL = baseUrls["cloud-managed"];
   if (envs.includes("signal")) {
     out.SIGNAL_HTTP_URL = baseUrls.signal;
-    out.SIGNAL_ACCOUNT_NUMBER = "+15550000000";
+    out.SIGNAL_ACCOUNT_NUMBER = LIFEOPS_SIMULATOR_OWNER.phone;
   }
   if (envs.includes("browser-workspace")) {
     out.ELIZA_BROWSER_WORKSPACE_URL = baseUrls["browser-workspace"];
-    out.ELIZA_BROWSER_WORKSPACE_TOKEN = "mock-browser-workspace-token";
+    out.ELIZA_BROWSER_WORKSPACE_TOKEN = MOCK_BROWSER_WORKSPACE_TOKEN;
+    out.ELIZA_DISABLE_DISCORD_DESKTOP_CDP = "1";
+    out.ELIZA_DISABLE_DISCORD_DESKTOP_CDP = "1";
   }
   if (envs.includes("bluebubbles")) {
     out.ELIZA_IMESSAGE_BACKEND = "bluebubbles";
     out.ELIZA_BLUEBUBBLES_URL = baseUrls.bluebubbles;
     out.BLUEBUBBLES_SERVER_URL = baseUrls.bluebubbles;
-    out.ELIZA_BLUEBUBBLES_PASSWORD = "mock-bluebubbles-password";
-    out.BLUEBUBBLES_PASSWORD = "mock-bluebubbles-password";
+    out.ELIZA_BLUEBUBBLES_PASSWORD = MOCK_BLUEBUBBLES_PASSWORD;
+    out.BLUEBUBBLES_PASSWORD = MOCK_BLUEBUBBLES_PASSWORD;
   }
   if (envs.includes("github")) {
     out.ELIZA_MOCK_GITHUB_BASE = baseUrls.github;
@@ -766,8 +793,31 @@ interface WhatsAppMockState {
   inboundMessages: WhatsAppInboundMessage[];
 }
 
-function createWhatsAppMockState(): WhatsAppMockState {
-  return { inboundMessages: [] };
+function simulatorWhatsAppMessage(
+  message: LifeOpsSimulatorChannelMessage,
+): WhatsAppInboundMessage {
+  const person = getLifeOpsSimulatorPerson(message.fromPersonKey);
+  return {
+    id: message.id,
+    from: person.whatsappNumber,
+    timestamp: String(
+      Math.floor(
+        Date.parse(lifeOpsSimulatorMessageTime(message.sentAtOffsetMs)) / 1000,
+      ),
+    ),
+    type: "text",
+    text: { body: message.text },
+  };
+}
+
+function createWhatsAppMockState(opts?: MockFixtureOptions): WhatsAppMockState {
+  return {
+    inboundMessages: opts?.simulator
+      ? LIFEOPS_SIMULATOR_CHANNEL_MESSAGES.filter(
+          (message) => message.channel === "whatsapp",
+        ).map(simulatorWhatsAppMessage)
+      : [],
+  };
 }
 
 function readNestedRecord(
@@ -953,38 +1003,68 @@ interface SignalMockState {
   receiveQueue: SignalEnvelopeMessage[];
 }
 
-function createSignalMockState(): SignalMockState {
+function simulatorSignalMessage(
+  message: LifeOpsSimulatorChannelMessage,
+): SignalEnvelopeMessage {
+  const person = getLifeOpsSimulatorPerson(message.fromPersonKey);
+  const timestamp = Date.parse(
+    lifeOpsSimulatorMessageTime(message.sentAtOffsetMs),
+  );
+  const isGroup = message.threadType === "group";
+  return {
+    envelope: {
+      source: person.signalNumber,
+      sourceNumber: person.signalNumber,
+      sourceName: isGroup ? message.threadName : `${person.name} Signal`,
+      timestamp,
+      dataMessage: {
+        timestamp,
+        message: message.text,
+        ...(isGroup
+          ? { groupInfo: { groupId: message.threadId, type: "DELIVER" } }
+          : {}),
+      },
+    },
+    account: LIFEOPS_SIMULATOR_OWNER.phone,
+  };
+}
+
+function createSignalMockState(opts?: MockFixtureOptions): SignalMockState {
   const now = Date.parse("2026-04-25T12:00:00.000Z");
   return {
-    receiveQueue: [
-      {
-        envelope: {
-          source: "+15551110001",
-          sourceNumber: "+15551110001",
-          sourceName: "Alice Signal",
-          timestamp: now,
-          dataMessage: {
-            timestamp: now,
-            message: "Signal fixture inbound message",
+    receiveQueue: opts?.simulator
+      ? LIFEOPS_SIMULATOR_CHANNEL_MESSAGES.filter(
+          (message) => message.channel === "signal",
+        ).map(simulatorSignalMessage)
+      : [
+          {
+            envelope: {
+              source: "+15551110001",
+              sourceNumber: "+15551110001",
+              sourceName: "Alice Signal",
+              timestamp: now,
+              dataMessage: {
+                timestamp: now,
+                message: "Signal fixture inbound message",
+              },
+            },
+            account: LIFEOPS_SIMULATOR_OWNER.phone,
           },
-        },
-        account: "+15550000000",
-      },
-      {
-        envelope: {
-          source: "+15551110002",
-          sourceNumber: "+15551110002",
-          sourceName: "Ops Group",
-          timestamp: now + 1_000,
-          dataMessage: {
-            timestamp: now + 1_000,
-            message: "Signal group fixture message",
-            groupInfo: { groupId: "group-signal-fixture", type: "DELIVER" },
+          {
+            envelope: {
+              source: "+15551110002",
+              sourceNumber: "+15551110002",
+              sourceName: "Ops Group",
+              timestamp: now + 1_000,
+              dataMessage: {
+                timestamp: now + 1_000,
+                message: "Signal group fixture message",
+                groupInfo: { groupId: "group-signal-fixture", type: "DELIVER" },
+              },
+            },
+            account: LIFEOPS_SIMULATOR_OWNER.phone,
           },
-        },
-        account: "+15550000000",
-      },
-    ],
+        ],
   };
 }
 
@@ -1017,7 +1097,9 @@ function signalDynamicFixture(
     const rpcMethod = readRequiredFixtureString(requestBody, "method");
     const params = readNestedRecord(requestBody.params) ?? {};
     const account =
-      typeof params.account === "string" ? params.account : "+15550000000";
+      typeof params.account === "string"
+        ? params.account
+        : LIFEOPS_SIMULATOR_OWNER.phone;
     ledgerEntry.signal = withRunId<SignalRequestLedgerMetadata>(ledgerEntry, {
       action: `rpc.${rpcMethod}`,
       account,
@@ -1033,7 +1115,10 @@ function signalDynamicFixture(
       return signalRpcResponse(requestBody, "mock-signal-cli");
     if (rpcMethod === "listAccounts") {
       return signalRpcResponse(requestBody, [
-        { number: "+15550000000", uuid: "mock-signal-account" },
+        {
+          number: LIFEOPS_SIMULATOR_OWNER.phone,
+          uuid: LIFEOPS_SIMULATOR_OWNER_IDENTITIES.signal.uuid,
+        },
       ]);
     }
     if (rpcMethod === "listContacts") {
@@ -1102,10 +1187,13 @@ interface BrowserWorkspaceTab {
 interface BrowserWorkspaceMockState {
   tabs: Map<string, BrowserWorkspaceTab>;
   nextTabId: number;
+  simulator: boolean;
 }
 
-function createBrowserWorkspaceMockState(): BrowserWorkspaceMockState {
-  return { tabs: new Map(), nextTabId: 1 };
+function createBrowserWorkspaceMockState(
+  opts?: MockFixtureOptions,
+): BrowserWorkspaceMockState {
+  return { tabs: new Map(), nextTabId: 1, simulator: Boolean(opts?.simulator) };
 }
 
 function requireBearerToken(
@@ -1118,9 +1206,16 @@ function requireBearerToken(
     : mockJsonError(401, "unauthorized");
 }
 
+function simulatorDiscordMessages(): LifeOpsSimulatorChannelMessage[] {
+  return LIFEOPS_SIMULATOR_CHANNEL_MESSAGES.filter(
+    (message) => message.channel === "discord",
+  );
+}
+
 function browserWorkspaceEvalResult(
   script: string,
   tab: BrowserWorkspaceTab,
+  state: BrowserWorkspaceMockState,
 ): JsonValue {
   if (script.includes("searchMessages")) {
     return { injected: true };
@@ -1129,6 +1224,19 @@ function browserWorkspaceEvalResult(
     script.includes("searchResultMessage") ||
     script.includes("search-result-message")
   ) {
+    if (state.simulator) {
+      return simulatorDiscordMessages().map((message) => {
+        const person = getLifeOpsSimulatorPerson(message.fromPersonKey);
+        return {
+          id: message.id,
+          content: message.text,
+          authorName: person.discordUsername,
+          channelId: message.threadId,
+          timestamp: lifeOpsSimulatorMessageTime(message.sentAtOffsetMs),
+          deliveryStatus: "unknown",
+        };
+      });
+    }
     return [
       {
         id: "123456789012345678",
@@ -1156,16 +1264,37 @@ function browserWorkspaceEvalResult(
     script.includes("probeDiscordDocumentState") ||
     script.includes("DISCORD_DM_PREVIEW_LIMIT")
   ) {
+    const previews = state.simulator
+      ? simulatorDiscordMessages().map((message, index) => {
+          const person = getLifeOpsSimulatorPerson(message.fromPersonKey);
+          return {
+            channelId: message.threadId,
+            href:
+              message.threadType === "dm"
+                ? `/channels/@me/${message.threadId}`
+                : `/channels/atlas/${message.threadId}`,
+            label:
+              message.threadType === "dm" ? person.name : message.threadName,
+            selected: index === 0,
+            unread: message.unread === true,
+            snippet: message.text,
+          };
+        })
+      : null;
     return {
       loggedIn: true,
       url: tab.url,
-      identity: { id: null, username: "mocked_owner", discriminator: "0001" },
-      rawSnippet: "mocked_owner | Direct messages",
+      identity: {
+        id: LIFEOPS_SIMULATOR_OWNER_IDENTITIES.discord.id,
+        username: LIFEOPS_SIMULATOR_OWNER_IDENTITIES.discord.username,
+        discriminator: LIFEOPS_SIMULATOR_OWNER_IDENTITIES.discord.discriminator,
+      },
+      rawSnippet: `${LIFEOPS_SIMULATOR_OWNER_IDENTITIES.discord.username} | Direct messages`,
       dmInbox: {
         visible: true,
-        count: 2,
-        selectedChannelId: "222",
-        previews: [
+        count: previews?.length ?? 2,
+        selectedChannelId: previews?.[0]?.channelId ?? "222",
+        previews: previews ?? [
           {
             channelId: "111",
             href: "/channels/@me/111",
@@ -1197,10 +1326,7 @@ function browserWorkspaceDynamicFixture(
   headers: http.IncomingHttpHeaders,
   ledgerEntry: MockRequestLedgerEntry,
 ): DynamicFixtureResponse | null {
-  const authFailure = requireBearerToken(
-    headers,
-    "mock-browser-workspace-token",
-  );
+  const authFailure = requireBearerToken(headers, MOCK_BROWSER_WORKSPACE_TOKEN);
   if (authFailure) return authFailure;
 
   if (method === "GET" && pathname === "/tabs") {
@@ -1299,7 +1425,9 @@ function browserWorkspaceDynamicFixture(
         action: "tabs.eval",
         tabId,
       });
-    return jsonFixture({ result: browserWorkspaceEvalResult(script, tab) });
+    return jsonFixture({
+      result: browserWorkspaceEvalResult(script, tab, state),
+    });
   }
 
   if (action === "snapshot" && method === "GET") {
@@ -1341,7 +1469,52 @@ interface BlueBubblesMockState {
   messages: BlueBubblesMessageFixture[];
 }
 
-function createBlueBubblesMockState(): BlueBubblesMockState {
+function simulatorBlueBubblesChat(
+  message: LifeOpsSimulatorChannelMessage,
+): BlueBubblesChatFixture {
+  const person = getLifeOpsSimulatorPerson(message.fromPersonKey);
+  return {
+    guid: message.threadId,
+    displayName: message.threadName,
+    chatIdentifier: person.phone,
+    participants: [{ address: person.phone }],
+    lastMessageAt: Date.parse(
+      lifeOpsSimulatorMessageTime(message.sentAtOffsetMs),
+    ),
+  };
+}
+
+function simulatorBlueBubblesMessage(
+  message: LifeOpsSimulatorChannelMessage,
+): BlueBubblesMessageFixture {
+  const person = getLifeOpsSimulatorPerson(message.fromPersonKey);
+  return {
+    guid: message.id,
+    text: message.text,
+    handle: { address: person.phone },
+    chatGuid: message.threadId,
+    chats: [{ guid: message.threadId }],
+    isFromMe: message.outgoing === true,
+    dateCreated: Date.parse(
+      lifeOpsSimulatorMessageTime(message.sentAtOffsetMs),
+    ),
+    isRead: message.unread !== true,
+    isDelivered: true,
+  };
+}
+
+function createBlueBubblesMockState(
+  opts?: MockFixtureOptions,
+): BlueBubblesMockState {
+  if (opts?.simulator) {
+    const messages = LIFEOPS_SIMULATOR_CHANNEL_MESSAGES.filter(
+      (message) => message.channel === "imessage",
+    );
+    return {
+      chats: messages.map(simulatorBlueBubblesChat),
+      messages: messages.map(simulatorBlueBubblesMessage),
+    };
+  }
   const chatGuid = "iMessage;-;+15551112222";
   return {
     chats: [
@@ -1381,7 +1554,7 @@ function bluebubblesDynamicFixture(
   headers: http.IncomingHttpHeaders,
   ledgerEntry: MockRequestLedgerEntry,
 ): DynamicFixtureResponse | null {
-  const authFailure = requireBearerToken(headers, "mock-bluebubbles-password");
+  const authFailure = requireBearerToken(headers, MOCK_BLUEBUBBLES_PASSWORD);
   if (authFailure) return authFailure;
 
   if (method === "GET" && pathname === "/api/v1/server/info") {
@@ -1394,7 +1567,7 @@ function bluebubblesDynamicFixture(
     return bluebubblesResponse({
       private_api: true,
       helper_connected: true,
-      detected_imessage: "owner@example.test",
+      detected_imessage: LIFEOPS_SIMULATOR_OWNER.email,
       detected_icloud: "owner@icloud.test",
     });
   }
@@ -1632,27 +1805,28 @@ type DynamicProviderState =
 
 function createDynamicProviderState(
   environmentName: string | undefined,
+  opts?: MockFixtureOptions,
 ): DynamicProviderState {
   if (environmentName === "Google APIs") {
-    return { kind: "google", state: createGoogleMockState() };
+    return { kind: "google", state: createGoogleMockState(opts) };
   }
   if (environmentName === "X (Twitter)") {
     return { kind: "x-twitter", state: createXMockState() };
   }
   if (environmentName === "WhatsApp") {
-    return { kind: "whatsapp", state: createWhatsAppMockState() };
+    return { kind: "whatsapp", state: createWhatsAppMockState(opts) };
   }
   if (environmentName === "Signal HTTP") {
-    return { kind: "signal", state: createSignalMockState() };
+    return { kind: "signal", state: createSignalMockState(opts) };
   }
   if (environmentName === "Browser Workspace") {
     return {
       kind: "browser-workspace",
-      state: createBrowserWorkspaceMockState(),
+      state: createBrowserWorkspaceMockState(opts),
     };
   }
   if (environmentName === "BlueBubbles") {
-    return { kind: "bluebubbles", state: createBlueBubblesMockState() };
+    return { kind: "bluebubbles", state: createBlueBubblesMockState(opts) };
   }
   if (environmentName === "GitHub REST") {
     return { kind: "github", state: createGitHubMockState() };
@@ -1738,11 +1912,12 @@ function dynamicProviderFixture(args: {
 
 async function startFixtureServer(
   dataPath: string,
+  opts?: MockFixtureOptions,
 ): Promise<StartedFixtureServer> {
   const environment = readEnvironment(dataPath);
   const routes = compileRoutes(environment);
   const requests: MockRequestLedgerEntry[] = [];
-  const dynamicProvider = createDynamicProviderState(environment.name);
+  const dynamicProvider = createDynamicProviderState(environment.name, opts);
   let stopped = false;
 
   const server = http.createServer(async (req, res) => {
@@ -1753,6 +1928,19 @@ async function startFixtureServer(
       if (method === "GET" && requestUrl.pathname === "/__mock/requests") {
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ requests }));
+        return;
+      }
+      if (
+        method === "GET" &&
+        requestUrl.pathname === "/__mock/lifeops/simulator"
+      ) {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            enabled: Boolean(opts?.simulator),
+            summary: opts?.simulator ? lifeOpsSimulatorSummary() : null,
+          }),
+        );
         return;
       }
       if (method === "DELETE" && requestUrl.pathname === "/__mock/requests") {
@@ -1856,6 +2044,7 @@ async function startFixtureServer(
 
 export async function startMocks(opts?: {
   envs?: readonly MockEnvironmentName[];
+  simulator?: boolean;
 }): Promise<StartedMocks> {
   const envs = opts?.envs ?? MOCK_ENVIRONMENTS;
 
@@ -1868,7 +2057,11 @@ export async function startMocks(opts?: {
   const servers: StartedFixtureServer[] = [];
   try {
     for (const dataPath of dataPaths) {
-      servers.push(await startFixtureServer(dataPath));
+      servers.push(
+        await startFixtureServer(dataPath, {
+          simulator: Boolean(opts?.simulator),
+        }),
+      );
     }
   } catch (err) {
     await Promise.allSettled(servers.map((server) => server.stop()));

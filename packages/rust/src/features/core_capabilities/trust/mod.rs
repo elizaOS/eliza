@@ -1,6 +1,6 @@
 //! Trust capability — entity trust scoring, security monitoring, and access control.
 //!
-//! Ports the TypeScript `plugin-trust` module, providing:
+//! Ports the TypeScript runtime trust module, providing:
 //! - Trust dimensions, profiles, evidence, and decisions
 //! - TrustEngineService for trust calculation
 //! - SecurityModuleService for security event tracking

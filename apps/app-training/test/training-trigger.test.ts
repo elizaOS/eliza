@@ -21,22 +21,17 @@ import {
 } from "../src/services/training-trigger.js";
 
 let stateDir: string;
-let prevState: string | undefined;
 let prevElizaState: string | undefined;
 
 beforeEach(() => {
   stateDir = mkdtempSync(join(tmpdir(), "training-trigger-"));
-  prevState = process.env.MILADY_STATE_DIR;
   prevElizaState = process.env.ELIZA_STATE_DIR;
-  process.env.MILADY_STATE_DIR = stateDir;
-  delete process.env.ELIZA_STATE_DIR;
+  process.env.ELIZA_STATE_DIR = stateDir;
 });
 
 afterEach(() => {
-  if (prevState === undefined) delete process.env.MILADY_STATE_DIR;
-  else process.env.MILADY_STATE_DIR = prevState;
-  if (prevElizaState !== undefined)
-    process.env.ELIZA_STATE_DIR = prevElizaState;
+  if (prevElizaState === undefined) delete process.env.ELIZA_STATE_DIR;
+  else process.env.ELIZA_STATE_DIR = prevElizaState;
   rmSync(stateDir, { recursive: true, force: true });
 });
 
@@ -477,11 +472,11 @@ describe("bootstrapOptimizationFromAccumulatedTrajectories", () => {
     expect(fired).toContain("should_respond");
   });
 
-  it("does nothing when MILADY_DISABLE_AUTO_BOOTSTRAP=1", async () => {
+  it("does nothing when ELIZA_DISABLE_AUTO_BOOTSTRAP=1", async () => {
     const { runtime } = makeRuntime([]);
     const service = makeServiceWithCounter(runtime, 100, 100);
-    const original = process.env.MILADY_DISABLE_AUTO_BOOTSTRAP;
-    process.env.MILADY_DISABLE_AUTO_BOOTSTRAP = "1";
+    const original = process.env.ELIZA_DISABLE_AUTO_BOOTSTRAP;
+    process.env.ELIZA_DISABLE_AUTO_BOOTSTRAP = "1";
     try {
       const result = await bootstrapOptimizationFromAccumulatedTrajectories(
         runtime,
@@ -490,9 +485,9 @@ describe("bootstrapOptimizationFromAccumulatedTrajectories", () => {
       expect(result).toEqual([]);
     } finally {
       if (original === undefined) {
-        delete process.env.MILADY_DISABLE_AUTO_BOOTSTRAP;
+        delete process.env.ELIZA_DISABLE_AUTO_BOOTSTRAP;
       } else {
-        process.env.MILADY_DISABLE_AUTO_BOOTSTRAP = original;
+        process.env.ELIZA_DISABLE_AUTO_BOOTSTRAP = original;
       }
     }
   });

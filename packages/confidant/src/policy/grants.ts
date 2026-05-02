@@ -17,7 +17,11 @@ import type { Grant, GrantMode, SecretId } from "../types.js";
  */
 
 export type PolicyDecision =
-  | { kind: "allow"; mode: Exclude<GrantMode, "deny">; pattern: string | "implicit" }
+  | {
+      kind: "allow";
+      mode: Exclude<GrantMode, "deny">;
+      pattern: string | "implicit";
+    }
   | { kind: "prompt"; pattern: string }
   | { kind: "deny"; reason: string };
 
@@ -44,7 +48,9 @@ export function decide(input: PolicyInput): PolicyDecision {
   }
 
   const allowedPatterns = input.grants
-    .filter((g) => g.mode !== "deny" && matchesPattern(g.pattern, input.secretId))
+    .filter(
+      (g) => g.mode !== "deny" && matchesPattern(g.pattern, input.secretId),
+    )
     .map((g) => g.pattern);
   const winner = selectMostSpecific(allowedPatterns, input.secretId);
   if (!winner) {

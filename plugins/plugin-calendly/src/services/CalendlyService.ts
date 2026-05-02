@@ -5,7 +5,7 @@
  *
  * Responsibilities:
  *  - Resolve the access token from `CALENDLY_ACCESS_TOKEN` (production) or
- *    `MILADY_E2E_CALENDLY_ACCESS_TOKEN` (E2E fallback).
+ *    `ELIZA_E2E_CALENDLY_ACCESS_TOKEN` (E2E fallback).
  *  - Instantiate the REST client lazily and cache the authenticated user URI.
  *  - Provide typed accessors actions use instead of the raw client.
  *
@@ -30,7 +30,7 @@ function readAccessToken(runtime: IAgentRuntime): string | undefined {
   if (typeof production === "string" && production.length > 0) {
     return production;
   }
-  const e2e = runtime.getSetting("MILADY_E2E_CALENDLY_ACCESS_TOKEN");
+  const e2e = runtime.getSetting("ELIZA_E2E_CALENDLY_ACCESS_TOKEN");
   if (typeof e2e === "string" && e2e.length > 0) {
     return e2e;
   }

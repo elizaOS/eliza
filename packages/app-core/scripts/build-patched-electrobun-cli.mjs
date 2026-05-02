@@ -14,6 +14,7 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { resolveMainAppDir } from "./lib/app-dir.mjs";
 
 function fail(message, code = 1) {
   console.error(`[build-patched-electrobun-cli] ${message}`);
@@ -33,7 +34,8 @@ function run(command, args, options = {}) {
 }
 
 function resolveElectrobunDir() {
-  const workspacePackageJson = path.resolve("apps/app/electrobun/package.json");
+  const appDir = resolveMainAppDir(process.cwd(), "app");
+  const workspacePackageJson = path.join(appDir, "package.json");
   const req = createRequire(workspacePackageJson);
   const entryPath = req.resolve("electrobun");
   let packageDir = path.dirname(entryPath);

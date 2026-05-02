@@ -14,6 +14,7 @@ import type {
   AppSessionState,
   AppViewerConfig,
 } from "../contracts/apps.js";
+import { writeJsonAtomicSync } from "../utils/atomic-json.js";
 
 const APP_RUN_STORE_VERSION = 2;
 const MAX_RECORDED_RUN_EVENTS = 20;
@@ -38,29 +39,6 @@ function _defaultStoreFile(): AppRunStoreFile {
     updatedAt: nowIso(),
     runs: [],
   };
-}
-
-function ensureParentDir(filePath: string): void {
-  const dir = path.dirname(filePath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  }
-}
-
-function atomicWrite(filePath: string, payload: AppRunStoreFile): void {
-  ensureParentDir(filePath);
-  const tmpPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
-  try {
-    fs.writeFileSync(tmpPath, JSON.stringify(payload, null, 2), {
-      encoding: "utf-8",
-      mode: 0o600,
-    });
-    fs.renameSync(tmpPath, filePath);
-  } finally {
-    if (fs.existsSync(tmpPath)) {
-      fs.rmSync(tmpPath, { force: true });
-    }
-  }
 }
 
 function normalizeAvailability(value: unknown): AppRunCapabilityAvailability {
@@ -611,7 +589,7 @@ export function writeAppRunStore(
   const normalizedRuns = [...runs].sort((a, b) =>
     b.updatedAt.localeCompare(a.updatedAt),
   );
-  atomicWrite(filePath, {
+  writeJsonAtomicSync(filePath, {
     version: APP_RUN_STORE_VERSION,
     updatedAt: nowIso(),
     runs: normalizedRuns,

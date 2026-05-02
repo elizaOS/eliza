@@ -5,13 +5,7 @@ import type {
   LifeOpsOwnerBrowserAccessSource,
 } from "@elizaos/shared/contracts/lifeops";
 import { useCallback, useEffect, useRef, useState } from "react";
-
-function formatError(cause: unknown, fallback: string): string {
-  if (cause instanceof Error && cause.message.trim().length > 0) {
-    return cause.message.trim();
-  }
-  return fallback;
-}
+import { formatConnectorError } from "./connector-error.js";
 
 export interface UseDiscordConnectorOptions {
   side?: LifeOpsConnectorSide;
@@ -43,7 +37,9 @@ export function useDiscordConnector(options: UseDiscordConnectorOptions = {}) {
       setStatus(nextStatus);
       setError(null);
     } catch (cause) {
-      setError(formatError(cause, "Discord connector status failed to load."));
+      setError(
+        formatConnectorError(cause, "Discord connector status failed to load."),
+      );
     } finally {
       setLoading(false);
     }
@@ -61,7 +57,10 @@ export function useDiscordConnector(options: UseDiscordConnectorOptions = {}) {
       } catch (cause) {
         if (cancelled) return;
         setError(
-          formatError(cause, "Discord connector status failed to load."),
+          formatConnectorError(
+            cause,
+            "Discord connector status failed to load.",
+          ),
         );
       } finally {
         if (!cancelled) setLoading(false);
@@ -89,7 +88,10 @@ export function useDiscordConnector(options: UseDiscordConnectorOptions = {}) {
             setError(null);
           } catch (cause) {
             setError(
-              formatError(cause, "Discord connector status poll failed."),
+              formatConnectorError(
+                cause,
+                "Discord connector status poll failed.",
+              ),
             );
           }
         })();
@@ -107,7 +109,9 @@ export function useDiscordConnector(options: UseDiscordConnectorOptions = {}) {
         const nextStatus = await client.startDiscordConnector({ side, source });
         setStatus(nextStatus);
       } catch (cause) {
-        setError(formatError(cause, "Discord connector failed to start."));
+        setError(
+          formatConnectorError(cause, "Discord connector failed to start."),
+        );
       } finally {
         setActionPending(false);
       }
@@ -125,7 +129,9 @@ export function useDiscordConnector(options: UseDiscordConnectorOptions = {}) {
       setStatus(nextStatus);
       setError(null);
     } catch (cause) {
-      setError(formatError(cause, "Discord connector disconnect failed."));
+      setError(
+        formatConnectorError(cause, "Discord connector disconnect failed."),
+      );
     } finally {
       setActionPending(false);
     }

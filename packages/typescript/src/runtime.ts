@@ -218,6 +218,37 @@ const XML_LIKE_PATTERN = /<[/!?A-Za-z_][^>\n]*>/;
 const JSON_OBJECT_KEY_PATTERN =
 	/(?:["'][^"'\n]+["']|[A-Za-z_][A-Za-z0-9_-]*)\s*:/;
 
+/**
+ * Thrown by `AgentRuntime.useModel` when a text-generation model is requested
+ * but no LLM provider plugin is registered for any text model type at all.
+ *
+ * This is distinct from "one provider is registered but the specific type is
+ * missing" — that case still throws the generic `No handler found for delegate
+ * type` error so legitimate misconfigurations stay loud.
+ *
+ * Surfacing this as a typed error lets the chat layer render an actionable
+ * hint instead of a generic parse-failure template. See issue elizaOS/eliza#7203.
+ */
+export class NoModelProviderConfiguredError extends Error {
+	constructor(
+		message: string = "This agent has no LLM provider configured. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or OPENROUTER_API_KEY in your environment, or sign in to Eliza Cloud (ELIZAOS_CLOUD_API_KEY).",
+	) {
+		super(message);
+		this.name = "NoModelProviderConfiguredError";
+	}
+}
+
+const TEXT_GENERATION_MODEL_KEYS: readonly string[] = [
+	ModelType.TEXT_NANO,
+	ModelType.TEXT_SMALL,
+	ModelType.TEXT_MEDIUM,
+	ModelType.TEXT_LARGE,
+	ModelType.TEXT_MEGA,
+	ModelType.RESPONSE_HANDLER,
+	ModelType.ACTION_PLANNER,
+	ModelType.TEXT_COMPLETION,
+];
+
 type StructuredResponseFormat = "XML" | "JSON" | "TOON";
 
 type StructuredResponseCandidate = {
@@ -4718,6 +4749,21 @@ export class AgentRuntime implements IAgentRuntime {
 		const resolvedModelKey = resolvedModel?.modelKey ?? requestedModelKey;
 		const handler = resolvedModel?.handler;
 		if (!handler) {
+			// If the request is for a text-generation model AND no text-generation
+			// handler is registered for ANY of the text model types, this is the
+			// "no LLM provider configured at all" state — surface a typed error
+			// so callers (chat UI, etc.) can render an actionable hint instead of
+			// a generic "No handler found for delegate type" parse-failure message.
+			// Issue: elizaOS/eliza#7203.
+			if (TEXT_GENERATION_MODEL_KEYS.includes(requestedModelKey)) {
+				const hasAnyTextHandler = TEXT_GENERATION_MODEL_KEYS.some((key) => {
+					const handlers = this.models.get(key);
+					return Array.isArray(handlers) && handlers.length > 0;
+				});
+				if (!hasAnyTextHandler) {
+					throw new NoModelProviderConfiguredError();
+				}
+			}
 			const errorMsg = `No handler found for delegate type: ${requestedModelKey}`;
 			throw new Error(errorMsg);
 		}

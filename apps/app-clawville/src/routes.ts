@@ -206,12 +206,12 @@ function buildSessionState(
 ): AppSessionState {
   if (!connectResult) {
     return {
-      sessionId: config.miladyAgentId ?? "clawville",
+      sessionId: config.elizaAgentId ?? "clawville",
       appName: APP_NAME,
       mode: "spectate-and-steer",
       status: "connecting",
       displayName: APP_DISPLAY_NAME,
-      agentId: config.miladyAgentId ?? undefined,
+      agentId: config.elizaAgentId ?? undefined,
       canSendCommands: false,
       controls: [],
       summary: "Connecting to ClawVille...",
@@ -266,19 +266,19 @@ function buildViewerShellInjection(
   agentName: string,
   sessionId: string | null,
 ): string {
-  const safeAgentName = JSON.stringify(agentName || "Milady Agent");
+  const safeAgentName = JSON.stringify(agentName || "Eliza Agent");
   const safeSessionId = JSON.stringify(sessionId ?? "");
 
-  return `<script id="milady-clawville-embedded-bootstrap">
+  return `<script id="eliza-clawville-embedded-bootstrap">
 (() => {
   const agentName = ${safeAgentName};
   const sessionId = ${safeSessionId};
 
   try {
-    localStorage.setItem("clawville-embed-mode", "milady");
-    localStorage.setItem("clawville-milady-agent-name", agentName);
+    localStorage.setItem("clawville-embed-mode", "eliza");
+    localStorage.setItem("clawville-eliza-agent-name", agentName);
     if (sessionId) {
-      localStorage.setItem("clawville-milady-session-id", sessionId);
+      localStorage.setItem("clawville-eliza-session-id", sessionId);
     }
     localStorage.setItem("landing-closed", "1");
   } catch {
@@ -300,7 +300,7 @@ function buildViewerShellInjection(
   }
 
   window.parent?.postMessage?.(
-    { type: "milady-clawville-ready", agentName, sessionId },
+    { type: "eliza-clawville-ready", agentName, sessionId },
     "*",
   );
 })();
@@ -359,7 +359,7 @@ async function buildEmbeddedViewerHtml(
 
   const absolutized = absolutizeViewerHtmlAssetUrls(html, config.viewerUrl);
   const injection = buildViewerShellInjection(
-    config.miladyCharacterName ?? "Milady Agent",
+    config.elizaCharacterName ?? "Eliza Agent",
     config.storedSessionId ?? null,
   );
 
@@ -444,8 +444,8 @@ function buildCachedConnect(
     agentId:
       typeof session?.agentId === "string"
         ? session.agentId
-        : config.miladyAgentId
-          ? `milady:${config.miladyAgentId}`
+        : config.elizaAgentId
+          ? `eliza:${config.elizaAgentId}`
           : "clawville",
     sessionId,
     uuid: config.storedUuid ?? "",
@@ -455,7 +455,7 @@ function buildCachedConnect(
         ? session.telemetry.totalSessions
         : 1,
     knowledge: [],
-    identityType: "milady",
+    identityType: "eliza",
     autonomyMode: "server-managed",
     walletAddress: config.storedWalletAddress ?? null,
   };
@@ -491,7 +491,7 @@ export async function collectLaunchDiagnostics(ctx: {
   const config = resolveClawvilleConfig(ctx.runtime);
   const diagnostics: AppLaunchDiagnostic[] = [];
 
-  if (!config.miladyAgentId) {
+  if (!config.elizaAgentId) {
     diagnostics.push({
       code: "clawville-missing-agent-id",
       severity: "error",
@@ -553,7 +553,7 @@ function sessionActivityKey(
   config: ClawvilleConfig,
   sessionId: string,
 ): string {
-  return `${config.miladyAgentId ?? "clawville"}:${sessionId}`;
+  return `${config.elizaAgentId ?? "clawville"}:${sessionId}`;
 }
 
 function readSessionActivity(

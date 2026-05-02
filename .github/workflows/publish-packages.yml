@@ -156,7 +156,7 @@ jobs:
           submodules: recursive
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.14"
 
@@ -332,7 +332,7 @@ jobs:
           elizaos-app --version || echo "Version check completed"
 
       - name: Upload .deb artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: debian-package
           path: deb-output/
@@ -412,7 +412,7 @@ jobs:
           flatpak run ai.elizaos.App --version || echo "Version check completed"
 
       - name: Upload Flatpak bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: flatpak-bundle
           path: packages/app-core/packaging/flatpak/elizaos-app.flatpak

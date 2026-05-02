@@ -56,7 +56,7 @@ public class MainActivity extends BridgeActivity {
         // Start the local Eliza agent runtime as a foreground service so it
         // survives backgrounding and Doze. The boot receiver covers the
         // cold-boot path; this is the fast path when the user opens the app.
-        MiladyAgentService.start(this);
+        ElizaAgentService.start(this);
     }
 
     @Override

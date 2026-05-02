@@ -8,7 +8,7 @@
  *   - CANCEL_CALENDLY_BOOKING
  *
  * Auth: single Calendly v2 personal access token, resolved from
- * `CALENDLY_ACCESS_TOKEN` with a `MILADY_E2E_CALENDLY_ACCESS_TOKEN` fallback
+ * `CALENDLY_ACCESS_TOKEN` with a `ELIZA_E2E_CALENDLY_ACCESS_TOKEN` fallback
  * for E2E runs.
  *
  * Webhook: POST /calendly/webhook validates the envelope and emits a
@@ -40,7 +40,7 @@ export const calendlyPlugin: Plugin = {
   actions: [listEventTypesAction, bookSlotAction, cancelBookingAction],
   routes: [calendlyWebhookRoute],
   autoEnable: {
-    envKeys: ["CALENDLY_ACCESS_TOKEN", "MILADY_E2E_CALENDLY_ACCESS_TOKEN"],
+    envKeys: ["CALENDLY_ACCESS_TOKEN", "ELIZA_E2E_CALENDLY_ACCESS_TOKEN"],
   },
 };
 

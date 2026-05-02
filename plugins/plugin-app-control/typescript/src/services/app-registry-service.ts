@@ -6,7 +6,7 @@
  * runtime restarts. On boot, re-applies the persisted entries via
  * `registerCuratedApp(...)`. Idempotent.
  *
- * Also owns the audit log writer for `~/.milady/audit/app-loads.jsonl` —
+ * Also owns the audit log writer for `~/.eliza/audit/app-loads.jsonl` —
  * every register call appends a single JSON line so security review can
  * trace exactly which agent / room / entity loaded which directory.
  */
@@ -38,7 +38,7 @@ interface PersistedShape {
 	entries: AppRegistryEntry[];
 }
 
-const STATE_DIR_KEYS = ["MILADY_STATE_DIR", "ELIZA_STATE_DIR"] as const;
+const STATE_DIR_KEYS = ["ELIZA_STATE_DIR", "ELIZA_STATE_DIR"] as const;
 const NAMESPACE_KEYS = ["ELIZA_NAMESPACE"] as const;
 
 function readEnv(

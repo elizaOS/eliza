@@ -1,12 +1,12 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { access, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import {
   createServer,
   type IncomingMessage,
   type Server,
   type ServerResponse,
 } from "node:http";
-import { existsSync } from "node:fs";
-import { access, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -24,8 +24,7 @@ import { describeIf } from "../helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../helpers/live-provider";
 
 const LIVE_TESTS_ENABLED =
-  process.env.MILADY_LIVE_TEST === "1" ||
-  process.env.ELIZA_LIVE_TEST === "1";
+  process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const LIVE_PROVIDER =
   (LIVE_TESTS_ENABLED && selectLiveProvider("openai")) ||
   (LIVE_TESTS_ENABLED ? selectLiveProvider() : null);
@@ -40,8 +39,16 @@ const LIVE_PROVIDER_LABEL = LIVE_PROVIDER
   ? LIVE_PROVIDER_LABELS[LIVE_PROVIDER.name]
   : null;
 const describeLive = describeIf(LIVE_TESTS_ENABLED && LIVE_PROVIDER !== null);
-const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..", "..");
-const APP_DIST_DIR = path.join(REPO_ROOT, "apps/app", "dist");
+const REPO_ROOT = path.resolve(
+  import.meta.dirname,
+  "..",
+  "..",
+  "..",
+  "..",
+  "..",
+);
+const APP_DIR = path.join(REPO_ROOT, "packages", "app");
+const APP_DIST_DIR = path.join(APP_DIR, "dist");
 const SCREENSHOT_DIR = path.join(REPO_ROOT, "test-results", "live-onboarding");
 const READY_TIMEOUT_MS = 120_000;
 const UI_SETTLE_MS = 4_000;
@@ -171,7 +178,9 @@ async function proxyUiRequest(args: {
   }
 
   args.response.writeHead(200, {
-    "Content-Type": contentTypeFor(filePath ?? path.join(APP_DIST_DIR, "index.html")),
+    "Content-Type": contentTypeFor(
+      filePath ?? path.join(APP_DIST_DIR, "index.html"),
+    ),
   });
   args.response.end(body);
 }
@@ -596,7 +605,7 @@ async function ensureUiDistReady(): Promise<void> {
 
   const logs: string[] = [];
   const child = spawn("bun", ["scripts/build.mjs"], {
-    cwd: path.join(REPO_ROOT, "apps/app"),
+    cwd: APP_DIR,
     env: {
       ...process.env,
       FORCE_COLOR: "0",
@@ -610,7 +619,7 @@ async function ensureUiDistReady(): Promise<void> {
   const exited = await waitForChildExit(child, 300_000);
   if (!exited || child.exitCode !== 0) {
     throw new Error(
-      `apps/app renderer build failed.\n${logs.join("").slice(-8_000)}`,
+      `packages/app renderer build failed.\n${logs.join("").slice(-8_000)}`,
     );
   }
 }

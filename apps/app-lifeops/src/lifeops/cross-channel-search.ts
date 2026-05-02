@@ -283,6 +283,28 @@ type CrossChannelNativeSearchService = GmailSearchService & {
     chatId?: string;
     limit?: number;
   }) => Promise<IMessageSearchResult[]>;
+  readSignalInbound?: (limit?: number) => Promise<
+    Array<{
+      id: string;
+      threadId?: string | null;
+      roomName?: string | null;
+      speakerName?: string | null;
+      senderNumber?: string | null;
+      createdAt: number;
+      text: string;
+    }>
+  >;
+  pullWhatsAppRecent?: (limit?: number) => {
+    count: number;
+    messages: Array<{
+      id: string;
+      from: string;
+      channelId: string;
+      timestamp: string;
+      text?: string;
+      metadata?: { contactName?: string };
+    }>;
+  };
   getCalendarFeed?: (
     requestUrl: URL,
     request: {
@@ -495,6 +517,105 @@ async function searchIMessages(
     });
   }
   return { hits, unsupported: [] };
+}
+
+async function searchSignal(
+  runtime: IAgentRuntime,
+  query: CrossChannelSearchQuery,
+): Promise<{
+  hits: CrossChannelSearchHit[];
+  unsupported: CrossChannelSearchUnsupported[];
+}> {
+  const lifeOps = getLifeOpsSearchService(runtime);
+  if (!lifeOps || typeof lifeOps.readSignalInbound !== "function") {
+    return {
+      hits: [],
+      unsupported: [
+        {
+          channel: "signal",
+          reason: "Signal passive read is not available on LifeOpsService",
+        },
+      ],
+    };
+  }
+
+  const limit = query.limit ?? DEFAULT_PER_CHANNEL_LIMIT;
+  const needle = query.query.trim().toLowerCase();
+  const messages = await lifeOps.readSignalInbound(limit + 25);
+  const hits: CrossChannelSearchHit[] = [];
+  for (const msg of messages) {
+    const timestamp = normalizeIsoFromMs(msg.createdAt);
+    if (!withinTimeWindow(timestamp, query.timeWindow)) {
+      continue;
+    }
+    if (needle && !msg.text.toLowerCase().includes(needle)) {
+      continue;
+    }
+    hits.push({
+      channel: "signal",
+      id: `signal:${msg.id}`,
+      sourceRef: msg.id,
+      timestamp,
+      speaker: msg.speakerName ?? msg.senderNumber ?? "unknown",
+      text: msg.text,
+      citation: {
+        platform: "signal",
+        label: msg.roomName ?? msg.threadId ?? "Signal",
+      },
+    });
+  }
+  return { hits: hits.slice(0, limit), unsupported: [] };
+}
+
+async function searchWhatsApp(
+  runtime: IAgentRuntime,
+  query: CrossChannelSearchQuery,
+): Promise<{
+  hits: CrossChannelSearchHit[];
+  unsupported: CrossChannelSearchUnsupported[];
+}> {
+  const lifeOps = getLifeOpsSearchService(runtime);
+  if (!lifeOps || typeof lifeOps.pullWhatsAppRecent !== "function") {
+    return {
+      hits: [],
+      unsupported: [
+        {
+          channel: "whatsapp",
+          reason: "WhatsApp passive read is not available on LifeOpsService",
+        },
+      ],
+    };
+  }
+
+  const limit = query.limit ?? DEFAULT_PER_CHANNEL_LIMIT;
+  const needle = query.query.trim().toLowerCase();
+  const recent = lifeOps.pullWhatsAppRecent(limit + 25);
+  const hits: CrossChannelSearchHit[] = [];
+  for (const msg of recent.messages) {
+    const text = msg.text?.trim();
+    if (!text) {
+      continue;
+    }
+    if (!withinTimeWindow(msg.timestamp, query.timeWindow)) {
+      continue;
+    }
+    if (needle && !text.toLowerCase().includes(needle)) {
+      continue;
+    }
+    hits.push({
+      channel: "whatsapp",
+      id: `whatsapp:${msg.id}`,
+      sourceRef: msg.id,
+      timestamp: msg.timestamp,
+      speaker: msg.metadata?.contactName ?? msg.from,
+      text,
+      citation: {
+        platform: "whatsapp",
+        label: msg.metadata?.contactName ?? msg.channelId,
+      },
+    });
+  }
+  return { hits: hits.slice(0, limit), unsupported: [] };
 }
 
 function searchableCalendarText(event: LifeOpsCalendarEvent): string {
@@ -882,7 +1003,7 @@ async function searchClusterMemories(
         {
           channel: "memory",
           reason:
-            "RelationshipsGraphService.getMemoriesForCluster not implemented yet",
+            "RelationshipsGraphService.getMemoriesForCluster is unavailable on the registered service",
         },
       ],
     };
@@ -905,14 +1026,6 @@ const CONNECTORS_WITHOUT_NATIVE_SEARCH: ReadonlyArray<{
   channel: CrossChannelSearchChannel;
   reason: string;
 }> = [
-  {
-    channel: "whatsapp",
-    reason: "WhatsApp connector does not expose search",
-  },
-  {
-    channel: "signal",
-    reason: "Signal connector does not expose search",
-  },
   {
     channel: "calendly",
     reason: "Calendly search is not available on LifeOpsService",
@@ -1038,6 +1151,44 @@ export async function runCrossChannelSearch(
           degraded.push({
             channel: "imessage",
             reason: `iMessage search failed: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          });
+        }
+      })(),
+    );
+  }
+
+  if (isChannelEnabled("signal", channels)) {
+    tasks.push(
+      (async () => {
+        try {
+          const r = await searchSignal(runtime, query);
+          allHits.push(...r.hits);
+          unsupported.push(...r.unsupported);
+        } catch (err) {
+          degraded.push({
+            channel: "signal",
+            reason: `Signal search failed: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          });
+        }
+      })(),
+    );
+  }
+
+  if (isChannelEnabled("whatsapp", channels)) {
+    tasks.push(
+      (async () => {
+        try {
+          const r = await searchWhatsApp(runtime, query);
+          allHits.push(...r.hits);
+          unsupported.push(...r.unsupported);
+        } catch (err) {
+          degraded.push({
+            channel: "whatsapp",
+            reason: `WhatsApp search failed: ${
               err instanceof Error ? err.message : String(err)
             }`,
           });

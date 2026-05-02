@@ -16,7 +16,7 @@ describe("resolveLifeOpsIMessageBridgeConfig", () => {
     loadElizaConfigMock.mockReturnValue({});
   });
 
-  it("prefers BlueBubbles config from Milady config when present", () => {
+  it("prefers BlueBubbles config from Eliza config when present", () => {
     loadElizaConfigMock.mockReturnValue({
       connectors: {
         bluebubbles: {

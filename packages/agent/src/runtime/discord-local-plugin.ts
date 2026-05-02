@@ -1323,6 +1323,12 @@ async function handleDiscordLocalStatus(
           available: false,
           connected: false,
           authenticated: false,
+          currentUser: null,
+          subscribedChannelIds: [],
+          configuredChannelIds: [],
+          scopes: [],
+          lastError: "discord-local service not registered",
+          ipcPath: null,
           reason: "discord-local service not registered",
         },
   );

@@ -15,6 +15,9 @@
     "./routes/trajectory": "./src/routes/trajectory-routes.ts",
     "./services": "./src/services/index.ts",
     "./services/training-service-like": "./src/services/training-service-like.ts",
+    "./services/training-service-registry": "./src/services/training-service-registry.ts",
+    "./setup-routes": "./src/setup-routes.ts",
+    "./register-runtime": "./src/register-runtime.ts",
     "./core": "./src/core/index.ts",
     "./core/*": "./src/core/*.ts",
     "./core/context-types": "./src/core/context-types.ts",
@@ -47,8 +50,13 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@elizaos/ui": "workspace:*",
-    "@elizaos/core": "workspace:*"
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/app-core": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/ui": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "*"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",

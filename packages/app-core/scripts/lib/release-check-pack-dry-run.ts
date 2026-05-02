@@ -3,9 +3,9 @@ import { existsSync } from "node:fs";
 const localPackHotspotPaths = [
   "dist",
   "dist/node_modules",
-  "apps/app/dist",
-  "apps/app/dist/vrms",
-  "apps/app/dist/animations",
+  "packages/app/dist",
+  "packages/app/dist/vrms",
+  "packages/app/dist/animations",
 ];
 
 export function findLocalPackHotspots(

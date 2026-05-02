@@ -1,11 +1,94 @@
 import type { AgentRuntime, UUID } from "@elizaos/core";
-import type { ExperienceService } from "../../../typescript/src/features/advanced-capabilities/experience/service.ts";
-import {
-  type Experience,
-  type ExperienceQuery,
-  ExperienceType,
-  OutcomeType,
-} from "../../../typescript/src/features/advanced-capabilities/experience/types.ts";
+
+// These enums and types are defined in @elizaos/core's advanced-capabilities
+// experience module but not re-exported from the compiled dist bundle (tsdown
+// tree-shakes them). Inlined here so the packaged desktop build works without
+// a cross-package source import.
+enum ExperienceType {
+  SUCCESS = "success",
+  FAILURE = "failure",
+  DISCOVERY = "discovery",
+  CORRECTION = "correction",
+  LEARNING = "learning",
+  HYPOTHESIS = "hypothesis",
+  VALIDATION = "validation",
+  WARNING = "warning",
+}
+
+enum OutcomeType {
+  POSITIVE = "positive",
+  NEGATIVE = "negative",
+  NEUTRAL = "neutral",
+  MIXED = "mixed",
+}
+
+interface Experience {
+  id: UUID;
+  agentId: UUID;
+  type: ExperienceType;
+  outcome: OutcomeType;
+  context: string;
+  action: string;
+  result: string;
+  learning: string;
+  tags: string[];
+  domain: string;
+  keywords: string[];
+  associatedEntityIds: UUID[];
+  relatedExperiences?: UUID[];
+  supersedes?: UUID;
+  mergedExperienceIds?: UUID[];
+  confidence: number;
+  importance: number;
+  createdAt?: number;
+  updatedAt: number;
+  lastAccessedAt?: number;
+  accessCount: number;
+  previousBelief?: string;
+  correctedBelief?: string;
+  embedding?: number[];
+  memoryIds?: UUID[];
+  sourceMessageIds?: UUID[];
+  sourceRoomId?: UUID;
+  sourceTriggerMessageId?: UUID;
+  sourceTrajectoryId?: string;
+  sourceTrajectoryStepId?: string;
+  extractionMethod?: string;
+  extractionReason?: string;
+}
+
+interface ExperienceQuery {
+  query?: string;
+  type?: ExperienceType | ExperienceType[];
+  outcome?: OutcomeType | OutcomeType[];
+  domain?: string | string[];
+  tags?: string[];
+  minImportance?: number;
+  minConfidence?: number;
+  timeRange?: {
+    start?: number;
+    end?: number;
+  };
+  limit?: number;
+  includeRelated?: boolean;
+}
+
+interface ExperienceService {
+  recordExperience(experienceData: Partial<Experience>): Promise<Experience>;
+  listExperiences(query?: ExperienceQuery): Promise<Experience[]>;
+  getExperience(id: UUID): Promise<Experience | null>;
+  updateExperience(
+    id: UUID,
+    updates: Partial<Experience>,
+  ): Promise<Experience | null>;
+  deleteExperience(id: UUID): Promise<boolean>;
+  getExperienceGraph(query?: ExperienceQuery): Promise<unknown>;
+  consolidateDuplicateExperiences(options?: {
+    deleteDuplicates?: boolean;
+    limit?: number;
+  }): Promise<unknown>;
+}
+
 import type { RouteRequestContext } from "./route-helpers.js";
 
 const EXPERIENCE_ROUTE_PREFIXES = [
@@ -17,37 +100,41 @@ const EXPERIENCE_LIST_MAX_LIMIT = 200;
 
 type ExperienceMutationBody = Record<string, unknown>;
 
-type ExperienceMutationInput = Partial<
-  Pick<
-    Experience,
-    | "type"
-    | "outcome"
-    | "context"
-    | "action"
-    | "result"
-    | "learning"
-    | "domain"
-    | "tags"
-    | "confidence"
-    | "importance"
-    | "relatedExperiences"
-    | "supersedes"
-    | "previousBelief"
-    | "correctedBelief"
-  >
->;
+type ExperienceMutationInput = Partial<Experience>;
 
-type ExperienceResponse = Omit<Experience, "embedding">;
+type ExperienceResponse = Omit<Experience, "embedding"> & {
+  embeddingDimensions?: number;
+};
 
 export interface ExperienceRouteContext extends RouteRequestContext {
   runtime: AgentRuntime | null;
   url: URL;
 }
 
+function isExperienceService(service: unknown): service is ExperienceService {
+  if (!service || typeof service !== "object") {
+    return false;
+  }
+  const candidate = service as Record<string, unknown>;
+  const requiredMethods = [
+    "recordExperience",
+    "listExperiences",
+    "getExperience",
+    "updateExperience",
+    "deleteExperience",
+    "getExperienceGraph",
+    "consolidateDuplicateExperiences",
+  ];
+  return requiredMethods.every(
+    (method) => typeof candidate[method] === "function",
+  );
+}
+
 function getExperienceService(
   runtime: AgentRuntime | null,
 ): ExperienceService | null {
-  return runtime?.getService("EXPERIENCE") as ExperienceService | null;
+  const service = runtime?.getService("EXPERIENCE");
+  return isExperienceService(service) ? service : null;
 }
 
 function matchExperiencePath(pathname: string): {
@@ -238,6 +325,21 @@ function parseExperienceMutationBody(
     parsed.tags = tags.value;
   }
 
+  const keywords = parseStringArrayField(body.keywords, "keywords");
+  if (keywords.error) return { error: keywords.error };
+  if (keywords.value !== undefined) {
+    parsed.keywords = keywords.value;
+  }
+
+  const associatedEntityIds = parseStringArrayField(
+    body.associatedEntityIds,
+    "associatedEntityIds",
+  );
+  if (associatedEntityIds.error) return { error: associatedEntityIds.error };
+  if (associatedEntityIds.value !== undefined) {
+    parsed.associatedEntityIds = associatedEntityIds.value as UUID[];
+  }
+
   const relatedExperiences = parseStringArrayField(
     body.relatedExperiences,
     "relatedExperiences",
@@ -245,6 +347,15 @@ function parseExperienceMutationBody(
   if (relatedExperiences.error) return { error: relatedExperiences.error };
   if (relatedExperiences.value !== undefined) {
     parsed.relatedExperiences = relatedExperiences.value as UUID[];
+  }
+
+  const mergedExperienceIds = parseStringArrayField(
+    body.mergedExperienceIds,
+    "mergedExperienceIds",
+  );
+  if (mergedExperienceIds.error) return { error: mergedExperienceIds.error };
+  if (mergedExperienceIds.value !== undefined) {
+    parsed.mergedExperienceIds = mergedExperienceIds.value as UUID[];
   }
 
   const confidence = parseScoreField(body.confidence, "confidence");
@@ -400,8 +511,14 @@ function toExperienceResponse(experience: Experience): ExperienceResponse {
   return {
     ...rest,
     tags: [...experience.tags],
+    keywords: [...experience.keywords],
+    associatedEntityIds: [...experience.associatedEntityIds],
+    embeddingDimensions: experience.embedding?.length,
     relatedExperiences: experience.relatedExperiences
       ? [...experience.relatedExperiences]
+      : undefined,
+    mergedExperienceIds: experience.mergedExperienceIds
+      ? [...experience.mergedExperienceIds]
       : undefined,
   };
 }
@@ -482,6 +599,49 @@ export async function handleExperienceRoutes(
     }
 
     error(res, "Method not allowed.", 405);
+    return true;
+  }
+
+  if (matchedPath.suffix === "/graph") {
+    if (method !== "GET") {
+      error(res, "Method not allowed.", 405);
+      return true;
+    }
+
+    const parsedQuery = parseExperienceQuery(url);
+    if (parsedQuery.error) {
+      error(res, parsedQuery.error, 400);
+      return true;
+    }
+
+    const graph = await experienceService.getExperienceGraph(parsedQuery.query);
+    json(res, { data: graph }, 200);
+    return true;
+  }
+
+  if (matchedPath.suffix === "/maintenance") {
+    if (method !== "POST") {
+      error(res, "Method not allowed.", 405);
+      return true;
+    }
+
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
+    if (!body) {
+      return true;
+    }
+
+    const limit =
+      typeof body.limit === "number" && Number.isFinite(body.limit)
+        ? Math.max(
+            1,
+            Math.min(EXPERIENCE_LIST_MAX_LIMIT, Math.floor(body.limit)),
+          )
+        : undefined;
+    const result = await experienceService.consolidateDuplicateExperiences({
+      deleteDuplicates: body.deleteDuplicates === true,
+      limit,
+    });
+    json(res, { data: result }, 200);
     return true;
   }
 

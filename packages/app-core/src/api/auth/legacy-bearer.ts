@@ -8,7 +8,7 @@
  * the legacy bearer is rejected.
  *
  * The grace deadline is sourced from (in order):
- *   1. `MILADY_LEGACY_GRACE_UNTIL` (unix ms timestamp). The deploy pipeline
+ *   1. `ELIZA_LEGACY_GRACE_UNTIL` (unix ms timestamp). The deploy pipeline
  *      sets this at upgrade time. Authoritative.
  *   2. The earliest `auth.legacy_token.used` audit event recorded in the DB
  *      plus 14 days. Bootstrap from observation when the env var isn't set.
@@ -26,7 +26,7 @@ import type { AuthStore } from "../../services/auth-store";
 import { appendAuditEvent } from "./audit";
 
 export const LEGACY_GRACE_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
-export const LEGACY_DEPRECATION_HEADER = "x-milady-legacy-token-deprecated";
+export const LEGACY_DEPRECATION_HEADER = "x-eliza-legacy-token-deprecated";
 export const LEGACY_USE_AUDIT_ACTION = "auth.legacy_token.used";
 export const LEGACY_REJECT_AUDIT_ACTION = "auth.legacy_token.rejected";
 export const LEGACY_INVALIDATE_AUDIT_ACTION = "auth.legacy_token.invalidated";
@@ -53,7 +53,7 @@ export function _resetLegacyBearerState(): void {
 }
 
 function parseEnvDeadline(env: RuntimeEnvRecord): number | null {
-  const raw = env.MILADY_LEGACY_GRACE_UNTIL?.trim();
+  const raw = env.ELIZA_LEGACY_GRACE_UNTIL?.trim();
   if (!raw) return null;
   const parsed = Number(raw);
   if (!Number.isFinite(parsed) || parsed <= 0) return null;

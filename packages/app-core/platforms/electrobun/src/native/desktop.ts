@@ -1919,8 +1919,8 @@ X-GNOME-Autostart-enabled=true
 
   async showMessageBox(options: MessageBoxOptions): Promise<MessageBoxResult> {
     const autoConfirm =
-      process.env.MILADY_DESKTOP_TEST_AUTO_CONFIRM_DIALOGS === "1" ||
-      process.env.MILADY_DESKTOP_TEST_AUTO_CONFIRM_RESET === "1";
+      process.env.ELIZA_DESKTOP_TEST_AUTO_CONFIRM_DIALOGS === "1" ||
+      process.env.ELIZA_DESKTOP_TEST_AUTO_CONFIRM_RESET === "1";
     if (autoConfirm) {
       return { response: options.defaultId ?? 0 };
     }

@@ -36,9 +36,7 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "os"
-  ],
+  "related_apps": ["os"],
   "evaluator": {
     "func": "check_gnome_favorite_apps",
     "result": {
@@ -49,10 +47,7 @@
     "expected": {
       "type": "rule",
       "rules": {
-        "expected": [
-          "google-chrome.desktop",
-          "thunderbird.desktop"
-        ]
+        "expected": ["google-chrome.desktop", "thunderbird.desktop"]
       }
     }
   },

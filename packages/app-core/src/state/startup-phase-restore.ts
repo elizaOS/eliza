@@ -55,7 +55,8 @@ export async function applyRestoredConnection(args: {
   const { restoredActiveServer, clientRef, startLocalRuntime } = args;
 
   if (restoredActiveServer.kind === "local") {
-    clientRef.setToken(null);
+    // Don't clear an already-set token: "local" means the agent runs
+    // on this machine, not that the dashboard is unauthenticated.
     clientRef.setBaseUrl(null);
     if (startLocalRuntime) {
       await startLocalRuntime();

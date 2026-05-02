@@ -274,13 +274,13 @@ export async function main({ cwd = repoRoot, env = process.env } = {}) {
     validateGroup(manifest.app, {
       repository,
       releaseTag: effectiveRef,
-      assetRoot: "apps/app/public",
+      assetRoot: "packages/app/public",
       retryPolicy,
     }),
     validateGroup(manifest.homepage, {
       repository,
       releaseTag: effectiveRef,
-      assetRoot: "apps/homepage/public",
+      assetRoot: "packages/homepage/public",
       retryPolicy,
     }),
   ]);

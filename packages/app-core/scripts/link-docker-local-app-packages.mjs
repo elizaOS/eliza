@@ -23,7 +23,14 @@ const localPackages = [
   "eliza/apps/app-training",
   "eliza/apps/app-shopify",
   "eliza/apps/app-vincent",
+  "eliza/packages/app-core",
+  "eliza/packages/shared",
+  "eliza/packages/skills",
+  "eliza/packages/vault",
+  "eliza/plugins/plugin-agent-skills/typescript",
   "eliza/plugins/plugin-browser-bridge",
+  "eliza/plugins/plugin-local-embedding/typescript",
+  "eliza/plugins/plugin-pdf/typescript",
   "eliza/packages/native-plugins/activity-tracker",
   "eliza/plugins/plugin-cron/typescript",
   "eliza/plugins/plugin-sql/typescript",
@@ -142,6 +149,28 @@ function pathExists(filePath) {
   }
 }
 
+function resolveLocalPackageDir(packagePath) {
+  const candidates = [packagePath];
+  if (packagePath.startsWith("eliza/")) {
+    candidates.push(packagePath.slice("eliza/".length));
+  }
+
+  for (const candidate of candidates) {
+    const packageDir = path.join(repoRoot, candidate);
+    if (fs.existsSync(path.join(packageDir, "package.json"))) {
+      return packageDir;
+    }
+  }
+
+  throw new Error(
+    `Missing local package manifest: ${candidates
+      .map((candidate) =>
+        path.relative(repoRoot, path.join(repoRoot, candidate, "package.json")),
+      )
+      .join(" or ")}`,
+  );
+}
+
 function collectScopeDirs() {
   const scopeDirs = new Set([path.join(repoRoot, "node_modules", "@elizaos")]);
   for (const workspaceDir of workspaceDirs) {
@@ -160,13 +189,8 @@ for (const scopeDir of scopeDirs) {
 }
 
 for (const packagePath of localPackages) {
-  const packageDir = path.join(repoRoot, packagePath);
+  const packageDir = resolveLocalPackageDir(packagePath);
   const packageJsonPath = path.join(packageDir, "package.json");
-  if (!fs.existsSync(packageJsonPath)) {
-    throw new Error(
-      `Missing local package manifest: ${path.relative(repoRoot, packageJsonPath)}`,
-    );
-  }
 
   let pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
   if (typeof pkg.name !== "string" || !pkg.name.startsWith("@elizaos/")) {

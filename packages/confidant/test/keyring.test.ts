@@ -1,5 +1,5 @@
-import { afterAll, describe, expect, it } from "vitest";
 import { Entry } from "@napi-rs/keyring";
+import { afterAll, describe, expect, it } from "vitest";
 import { KeyringBackend } from "../src/backends/keyring.js";
 
 /**

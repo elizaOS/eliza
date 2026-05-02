@@ -20,7 +20,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { HandlerCallback } from "@elizaos/core";
+import type { HandlerCallback, IAgentRuntime, Memory } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AppControlClient } from "../../client/api.js";
 import type {
@@ -132,16 +132,17 @@ function makeRuntime() {
 		deleteTask: async () => true,
 		getMemories: async () => [],
 		logger: {
-			// biome-ignore lint/suspicious/noExplicitAny: stub
-			info: (..._args: any[]) => {},
-			// biome-ignore lint/suspicious/noExplicitAny: stub
-			warn: (..._args: any[]) => {},
-			// biome-ignore lint/suspicious/noExplicitAny: stub
-			error: (..._args: any[]) => {},
-			// biome-ignore lint/suspicious/noExplicitAny: stub
-			debug: (..._args: any[]) => {},
+			info: (..._args: readonly unknown[]) => {},
+			warn: (..._args: readonly unknown[]) => {},
+			error: (..._args: readonly unknown[]) => {},
+			debug: (..._args: readonly unknown[]) => {},
 		},
 	};
+}
+
+function stubRuntime(): IAgentRuntime {
+	// @ts-expect-error Tests only exercise fields implemented on makeRuntime().
+	return makeRuntime();
 }
 
 function makeMessage(text: string) {
@@ -164,7 +165,7 @@ function callbackBag() {
 let tmpRepoRoot: string;
 
 beforeEach(() => {
-	tmpRepoRoot = mkdtempSync(path.join(tmpdir(), "milady-app-load-unload-"));
+	tmpRepoRoot = mkdtempSync(path.join(tmpdir(), "eliza-app-load-unload-"));
 });
 
 afterEach(() => {
@@ -175,15 +176,13 @@ describe("APP action — load + unload e2e", () => {
 	it("walks list → launch → list → relaunch → unknown → list without throwing", async () => {
 		const { client, runs, ledger } = makeMockClient();
 		const action = createAppAction({ client, repoRoot: tmpRepoRoot });
-		// biome-ignore lint/suspicious/noExplicitAny: minimal runtime stub
-		const runtime = makeRuntime() as any;
+		const runtime = stubRuntime();
 
 		// 1. mode=list
 		let bag = callbackBag();
 		let r = await action.handler(
 			runtime,
-			// biome-ignore lint/suspicious/noExplicitAny: stub
-			makeMessage("show running apps") as any,
+			makeMessage("show running apps") as Memory,
 			undefined,
 			{ mode: "list" },
 			bag.cb,
@@ -195,8 +194,7 @@ describe("APP action — load + unload e2e", () => {
 		bag = callbackBag();
 		r = await action.handler(
 			runtime,
-			// biome-ignore lint/suspicious/noExplicitAny: stub
-			makeMessage("launch the counter app") as any,
+			makeMessage("launch the counter app") as Memory,
 			undefined,
 			{ mode: "launch", name: "app-counter" },
 			bag.cb,
@@ -209,8 +207,7 @@ describe("APP action — load + unload e2e", () => {
 		bag = callbackBag();
 		r = await action.handler(
 			runtime,
-			// biome-ignore lint/suspicious/noExplicitAny: stub
-			makeMessage("show running apps") as any,
+			makeMessage("show running apps") as Memory,
 			undefined,
 			{ mode: "list" },
 			bag.cb,
@@ -221,8 +218,7 @@ describe("APP action — load + unload e2e", () => {
 		bag = callbackBag();
 		r = await action.handler(
 			runtime,
-			// biome-ignore lint/suspicious/noExplicitAny: stub
-			makeMessage("relaunch the counter app") as any,
+			makeMessage("relaunch the counter app") as Memory,
 			undefined,
 			{ mode: "relaunch", name: "app-counter" },
 			bag.cb,
@@ -238,8 +234,7 @@ describe("APP action — load + unload e2e", () => {
 		try {
 			r = await action.handler(
 				runtime,
-				// biome-ignore lint/suspicious/noExplicitAny: stub
-				makeMessage("launch the does-not-exist app") as any,
+				makeMessage("launch the does-not-exist app") as Memory,
 				undefined,
 				{ mode: "launch", name: "does-not-exist" },
 				bag.cb,
@@ -254,8 +249,7 @@ describe("APP action — load + unload e2e", () => {
 		bag = callbackBag();
 		r = await action.handler(
 			runtime,
-			// biome-ignore lint/suspicious/noExplicitAny: stub
-			makeMessage("show running apps") as any,
+			makeMessage("show running apps") as Memory,
 			undefined,
 			{ mode: "list" },
 			bag.cb,
@@ -270,12 +264,10 @@ describe("APP action — load + unload e2e", () => {
 			repoRoot: tmpRepoRoot,
 			hasOwnerAccess: async () => false,
 		});
-		// biome-ignore lint/suspicious/noExplicitAny: stub
-		const runtime = makeRuntime() as any;
+		const runtime = stubRuntime();
 		const result = await action.validate?.(
 			runtime,
-			// biome-ignore lint/suspicious/noExplicitAny: stub
-			makeMessage("launch the counter app") as any,
+			makeMessage("launch the counter app") as Memory,
 		);
 		expect(result).toBe(false);
 	});
@@ -287,12 +279,10 @@ describe("APP action — load + unload e2e", () => {
 			repoRoot: tmpRepoRoot,
 			hasOwnerAccess: async () => true,
 		});
-		// biome-ignore lint/suspicious/noExplicitAny: stub
-		const runtime = makeRuntime() as any;
+		const runtime = stubRuntime();
 		const result = await action.validate?.(
 			runtime,
-			// biome-ignore lint/suspicious/noExplicitAny: stub
-			makeMessage("launch the counter app") as any,
+			makeMessage("launch the counter app") as Memory,
 		);
 		expect(result).toBe(true);
 	});

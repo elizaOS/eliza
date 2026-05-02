@@ -2,7 +2,7 @@ import type {
   StewardStatusResponse,
   WalletConfigStatus,
   WalletEntry,
-} from "@miladyai/shared/contracts/wallet";
+} from "@elizaai/shared/contracts/wallet";
 import { describe, expect, it } from "vitest";
 import { resolveStewardUiState } from "./steward-ui-state";
 

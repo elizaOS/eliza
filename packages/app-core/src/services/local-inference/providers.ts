@@ -24,8 +24,8 @@ import { localInferenceRoot } from "./paths";
 import type { AgentModelSlot } from "./types";
 
 export type ProviderId =
-  | "milady-local-inference"
-  | "milady-device-bridge"
+  | "eliza-local-inference"
+  | "eliza-device-bridge"
   | "capacitor-llama"
   | "anthropic-subscription"
   | "openai-codex"
@@ -77,7 +77,7 @@ export function getRegisteredSlotsForProvider(providerId: string): string[] {
 // ── Built-in provider definitions ────────────────────────────────────
 
 const LOCAL_PROVIDER: ProviderDefinition = {
-  id: "milady-local-inference",
+  id: "eliza-local-inference",
   label: "Local llama.cpp",
   kind: "local",
   description:
@@ -105,7 +105,7 @@ const LOCAL_PROVIDER: ProviderDefinition = {
 };
 
 const DEVICE_BRIDGE_PROVIDER: ProviderDefinition = {
-  id: "milady-device-bridge",
+  id: "eliza-device-bridge",
   label: "Paired device bridge",
   kind: "device-bridge",
   description:
@@ -217,7 +217,7 @@ const ELIZACLOUD_PROVIDER: ProviderDefinition = {
   label: "Eliza Cloud",
   kind: "cloud-subscription",
   description:
-    "Milady-hosted inference routed through your subscription. No API key to manage.",
+    "Eliza-hosted inference routed through your subscription. No API key to manage.",
   supportedSlots: [
     "TEXT_SMALL",
     "TEXT_LARGE",

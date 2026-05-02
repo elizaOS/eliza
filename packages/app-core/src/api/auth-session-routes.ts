@@ -510,9 +510,36 @@ async function handleMe(
 
   const ctx = await ensureSessionForRequest(req, res, {
     store,
-    allowLegacyBearer: false,
+    allowLegacyBearer: true,
     allowBootstrapBearer: false,
   });
+  // Bearer-only auth: the caller presented a valid API token but has no
+  // browser session. Surface the existing owner identity if one is configured;
+  // otherwise represent the bearer as a machine identity so ownership-gated UI
+  // doesn't mistake it for an account owner.
+  if (ctx?.legacy && !ctx.session && !ctx.identity) {
+    const owner = (await store.listIdentitiesByKind("owner"))[0] ?? null;
+    sendJsonResponse(res, 200, {
+      identity: owner
+        ? {
+            id: owner.id,
+            displayName: owner.displayName,
+            kind: owner.kind,
+          }
+        : {
+            id: "bearer",
+            displayName: "API Token",
+            kind: "machine" as const,
+          },
+      session: { id: "bearer", kind: "machine" as const, expiresAt: null },
+      access: {
+        mode: "bearer" as const,
+        passwordConfigured: Boolean(owner?.passwordHash),
+        ownerConfigured: Boolean(owner),
+      },
+    });
+    return true;
+  }
   if (!ctx?.session || !ctx.identity) {
     const owner = (await store.listIdentitiesByKind("owner"))[0] ?? null;
     sendJsonResponse(res, 401, {

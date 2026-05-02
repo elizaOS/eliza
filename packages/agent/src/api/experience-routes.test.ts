@@ -1,11 +1,6 @@
 import type http from "node:http";
 import type { AgentRuntime, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import type { Experience } from "../../../typescript/src/features/advanced-capabilities/experience/types.ts";
-import {
-  ExperienceType,
-  OutcomeType,
-} from "../../../typescript/src/features/advanced-capabilities/experience/types.ts";
 import { handleExperienceRoutes } from "./experience-routes.js";
 
 interface RecordedResponse {
@@ -13,18 +8,60 @@ interface RecordedResponse {
   body: unknown;
 }
 
-function makeExperience(id: string): Experience {
+interface TestExperience {
+  id: UUID;
+  agentId: UUID;
+  type: string;
+  outcome: string;
+  context: string;
+  action: string;
+  result: string;
+  learning: string;
+  domain: string;
+  tags: string[];
+  keywords: string[];
+  associatedEntityIds: string[];
+  confidence: number;
+  importance: number;
+  createdAt: number;
+  updatedAt: number;
+  accessCount: number;
+  lastAccessedAt: number;
+  embedding: number[];
+}
+
+interface TestExperienceService {
+  recordExperience(
+    experienceData: Partial<TestExperience>,
+  ): Promise<TestExperience>;
+  listExperiences(query?: Record<string, unknown>): Promise<TestExperience[]>;
+  getExperience(id: UUID): Promise<TestExperience | null>;
+  updateExperience(
+    id: UUID,
+    updates: Partial<TestExperience>,
+  ): Promise<TestExperience | null>;
+  deleteExperience(id: UUID): Promise<boolean>;
+  getExperienceGraph(query?: Record<string, unknown>): Promise<unknown>;
+  consolidateDuplicateExperiences(options?: {
+    deleteDuplicates?: boolean;
+    limit?: number;
+  }): Promise<unknown>;
+}
+
+function makeExperience(id: string): TestExperience {
   return {
     id: id as UUID,
     agentId: "agent-001" as UUID,
-    type: ExperienceType.LEARNING,
-    outcome: OutcomeType.NEUTRAL,
+    type: "learning",
+    outcome: "neutral",
     context: "Context",
     action: "Action",
     result: "Result",
     learning: "Learning",
     domain: "general",
     tags: ["memory"],
+    keywords: ["memory"],
+    associatedEntityIds: [],
     confidence: 0.7,
     importance: 0.8,
     createdAt: 1_710_000_000_000,
@@ -35,11 +72,26 @@ function makeExperience(id: string): Experience {
   };
 }
 
+function makeExperienceService(
+  overrides: Partial<TestExperienceService>,
+): TestExperienceService {
+  return {
+    recordExperience: async () => makeExperience("exp-created"),
+    listExperiences: async () => [],
+    getExperience: async () => null,
+    updateExperience: async () => null,
+    deleteExperience: async () => false,
+    getExperienceGraph: async () => ({ nodes: [], links: [] }),
+    consolidateDuplicateExperiences: async () => ({ merged: 0, deleted: 0 }),
+    ...overrides,
+  };
+}
+
 function makeContext(options: {
   method: string;
   path: string;
   body?: Record<string, unknown>;
-  service?: Record<string, unknown> | null;
+  service?: Partial<TestExperienceService> | null;
 }): {
   recorded: RecordedResponse;
   ctx: Parameters<typeof handleExperienceRoutes>[0];
@@ -52,10 +104,14 @@ function makeContext(options: {
   const res = {
     statusCode: 200,
   } as unknown as http.ServerResponse;
+  const service =
+    options.service === undefined || options.service === null
+      ? null
+      : makeExperienceService(options.service);
   const runtime = options.service
     ? ({
         getService: vi.fn((serviceName: string) =>
-          serviceName === "EXPERIENCE" ? options.service : null,
+          serviceName === "EXPERIENCE" ? service : null,
         ),
       } as unknown as AgentRuntime)
     : null;
@@ -98,7 +154,7 @@ describe("handleExperienceRoutes", () => {
     expect(handled).toBe(true);
     expect(listExperiences).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: ExperienceType.LEARNING,
+        type: "learning",
         tags: ["memory"],
         limit: 5,
         includeRelated: true,
@@ -110,6 +166,9 @@ describe("handleExperienceRoutes", () => {
         expect.objectContaining({
           id: "exp-001",
           learning: "Learning",
+          keywords: ["memory"],
+          associatedEntityIds: [],
+          embeddingDimensions: 3,
         }),
       ],
       total: 1,
@@ -196,6 +255,77 @@ describe("handleExperienceRoutes", () => {
     expect(remove.recorded.body).toMatchObject({
       ok: true,
       id: "exp-002",
+    });
+  });
+
+  it("returns graph snapshots and runs explicit maintenance", async () => {
+    const getExperienceGraph = vi.fn(async () => ({
+      generatedAt: 1,
+      totalExperiences: 1,
+      nodes: [
+        {
+          id: "exp-001",
+          label: "Learning",
+          type: "learning",
+          outcome: "neutral",
+          domain: "general",
+          keywords: ["memory"],
+          associatedEntityIds: [],
+          confidence: 0.7,
+          importance: 0.8,
+          timeWeight: 1,
+          x: 0.5,
+          y: 0.5,
+        },
+      ],
+      links: [],
+    }));
+    const consolidateDuplicateExperiences = vi.fn(async () => ({
+      inspected: 4,
+      groups: [
+        {
+          primaryId: "exp-001",
+          duplicateIds: ["exp-002"],
+          mergedKeywords: ["memory"],
+          reason: "duplicate learning text",
+        },
+      ],
+      merged: 1,
+      deleted: 0,
+    }));
+
+    const graph = makeContext({
+      method: "GET",
+      path: "/api/character/experiences/graph?q=wallet&limit=20",
+      service: {
+        getExperienceGraph,
+      },
+    });
+    await handleExperienceRoutes(graph.ctx);
+    expect(getExperienceGraph).toHaveBeenCalledWith(
+      expect.objectContaining({ query: "wallet", limit: 20 }),
+    );
+    expect(graph.recorded.body).toMatchObject({
+      data: expect.objectContaining({
+        nodes: [expect.objectContaining({ id: "exp-001" })],
+      }),
+    });
+
+    const maintenance = makeContext({
+      method: "POST",
+      path: "/api/character/experiences/maintenance",
+      body: { deleteDuplicates: false, limit: 4 },
+      service: {
+        consolidateDuplicateExperiences,
+      },
+    });
+    await handleExperienceRoutes(maintenance.ctx);
+    expect(consolidateDuplicateExperiences).toHaveBeenCalledWith({
+      deleteDuplicates: false,
+      limit: 4,
+    });
+    expect(maintenance.recorded.body).toMatchObject({
+      data: expect.objectContaining({ merged: 1, deleted: 0 }),
     });
   });
 });

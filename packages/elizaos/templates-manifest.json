@@ -1,12 +1,12 @@
 {
   "version": "1.0.0",
-  "generatedAt": "2026-04-28T04:36:22.556Z",
+  "generatedAt": "2026-04-30T04:30:55.045Z",
   "repoUrl": "https://github.com/elizaos/eliza",
   "templates": [
     {
       "id": "fullstack-app",
       "name": "fullstack-app",
-      "description": "Create a Milady-style fullstack app workspace backed by a local eliza checkout",
+      "description": "Create a Eliza-style fullstack app workspace backed by a local eliza checkout",
       "kind": "fullstack-app",
       "version": 1,
       "languages": ["typescript"],

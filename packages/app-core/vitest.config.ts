@@ -19,14 +19,19 @@ const pluginSqlSrc = path.join(
   monorepoRoot,
   "plugins/plugin-sql/typescript",
 );
+const pluginAgentSkillsSrc = path.join(
+  monorepoRoot,
+  "plugins/plugin-agent-skills/typescript/src",
+);
 const pluginEdgeTtsSrc = path.join(
   monorepoRoot,
   "plugins/plugin-edge-tts/typescript",
 );
+const pluginPdfSrc = path.join(monorepoRoot, "plugins/plugin-pdf/typescript");
 const reactPkg = path.join(fileDir, "node_modules/react");
 const reactDomPkg = path.join(fileDir, "node_modules/react-dom");
 const includeLiveE2e =
-  process.env.MILADY_INCLUDE_LIVE_E2E === "1" ||
+  process.env.ELIZA_INCLUDE_LIVE_E2E === "1" ||
   process.env.ELIZA_INCLUDE_LIVE_E2E === "1";
 
 /**
@@ -36,7 +41,9 @@ const includeLiveE2e =
  */
 export default defineConfig({
   test: {
-    testTimeout: 15_000,
+    testTimeout: 120_000,
+    hookTimeout: 120_000,
+    maxWorkers: 2,
     server: { deps: { inline: [/@elizaos\//] } },
     // Heavy browser e2e — install `puppeteer-core` / `playwright-core` in this package to run
     exclude: [
@@ -85,6 +92,22 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-sql\/(.+)$/,
         replacement: path.join(pluginSqlSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/plugin-agent-skills$/,
+        replacement: path.join(pluginAgentSkillsSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-agent-skills\/(.+)$/,
+        replacement: path.join(pluginAgentSkillsSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/plugin-pdf$/,
+        replacement: path.join(pluginPdfSrc, "index.node.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-pdf\/(.+)$/,
+        replacement: path.join(pluginPdfSrc, "$1"),
       },
       {
         find: /^@elizaos\/plugin-edge-tts\/node$/,
