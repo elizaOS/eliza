@@ -71,9 +71,7 @@ describe("handleConfigRoutes — POST /api/config/reload", () => {
   const originalEnv = { ...process.env };
 
   beforeEach(async () => {
-    stateDir = await fs.mkdtemp(
-      path.join(os.tmpdir(), "eliza-config-reload-"),
-    );
+    stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-config-reload-"));
     configPath = path.join(stateDir, "eliza.json");
     process.env.ELIZA_STATE_DIR = stateDir;
     process.env.ELIZA_CONFIG_PATH = configPath;

@@ -13,8 +13,8 @@ import type {
   CloudWalletProvider,
 } from "../cloud/bridge-client.js";
 import {
-  getOrCreateClientAddressKey,
   ELIZA_CLOUD_CLIENT_ADDRESS_KEY_ENV,
+  getOrCreateClientAddressKey,
   persistCloudWalletCache,
   provisionCloudWallets,
 } from "../cloud/cloud-wallet.js";
@@ -656,8 +656,7 @@ export async function handleCloudRoute(
           saveConfigOrThrow(state);
 
           if (descriptors.evm?.walletAddress) {
-            process.env.ELIZA_CLOUD_EVM_ADDRESS =
-              descriptors.evm.walletAddress;
+            process.env.ELIZA_CLOUD_EVM_ADDRESS = descriptors.evm.walletAddress;
             await persistConfigEnv(
               "ELIZA_CLOUD_EVM_ADDRESS",
               descriptors.evm.walletAddress,

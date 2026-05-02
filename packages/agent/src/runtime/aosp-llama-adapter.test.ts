@@ -301,6 +301,9 @@ describe("aosp-llama-adapter / dlopen symbol manifest", () => {
       // pooling_type=MEAN gives llama_get_embeddings_seq exactly n_embd
       // floats and removes the OOB-risk fallback.
       "eliza_llama_context_params_set_n_ctx",
+      // n_batch / n_ubatch let the adapter chunk decode rounds so the
+      // GGML compute graph doesn't blow up on long planner prompts.
+      // Default n_batch=512 (ELIZA_LLAMA_N_BATCH); ubatch tracks batch.
       "eliza_llama_context_params_set_n_batch",
       "eliza_llama_context_params_set_n_ubatch",
       "eliza_llama_context_params_set_n_threads",
@@ -455,12 +458,18 @@ describe("aosp-llama-adapter / context_params override invocations", () => {
     expect(poolingCall).toBeDefined();
     expect(poolingCall?.args[1]).toBe(1);
 
-    // n_ctx defaults to 8192 when LoadOptions doesn't override.
+    // n_ctx defaults to 16384 when LoadOptions doesn't override —
+    // Llama-3.2-1B (the AOSP default) has a 128k native context, but
+    // we cap at 16k to keep the KV-cache footprint sane on emulated
+    // cuttlefish CPUs and small phones.
     const nCtxCall = setterCalls.find((c) => c.name === "set_n_ctx");
-    expect(nCtxCall?.args[1]).toBe(8192);
+    expect(nCtxCall?.args[1]).toBe(16384);
 
+    // n_batch / n_ubatch default to 512 each — small enough that each
+    // llama_decode chunk yields the event loop frequently enough for
+    // the service watchdog's HTTP probe to wake the listener.
     const nBatchCall = setterCalls.find((c) => c.name === "set_n_batch");
-    expect(nBatchCall?.args[1]).toBe(2048);
+    expect(nBatchCall?.args[1]).toBe(512);
 
     const nUBatchCall = setterCalls.find((c) => c.name === "set_n_ubatch");
     expect(nUBatchCall?.args[1]).toBe(512);

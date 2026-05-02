@@ -27,6 +27,7 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import { ensureDefaultAssignment } from "./assignments";
 import { elizaModelsDir } from "./paths";
 import { upsertElizaModel } from "./registry";
 import type { InstalledModel } from "./types";
@@ -99,6 +100,16 @@ export async function registerBundledModels(): Promise<number> {
       sha256: entry.sha256 ?? undefined,
     };
     await upsertElizaModel(installed);
+    // Auto-assign each bundled model to its appropriate slots if the
+    // user hasn't already assigned them. ensureDefaultAssignment is
+    // idempotent and slot-aware: a chat model fills TEXT_SMALL /
+    // TEXT_LARGE if empty, an embedding model fills TEXT_EMBEDDING if
+    // empty, and existing assignments are never overwritten. This is
+    // why we don't use `autoAssignAtBoot` here — that helper requires
+    // exactly one installed model and short-circuits to null when
+    // >1 model is registered (which is precisely the AOSP case:
+    // chat + embedding always ship together).
+    await ensureDefaultAssignment(entry.id);
     registered += 1;
   }
   return registered;

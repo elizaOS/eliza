@@ -39,6 +39,18 @@ export interface OverlayApp {
   /** Optional hero image shown in app cards and chat widgets. */
   readonly heroImage?: string | null;
   /**
+   * When true, the app should only appear in the catalog on Android.
+   * Apps that wrap Android-only Capacitor native plugins (WiFi, Contacts,
+   * Phone) set this so they are hidden on iOS / desktop / web — where
+   * their actions would always fail at the native bridge.
+   *
+   * The platform check is performed by `getAvailableOverlayApps()` in
+   * `overlay-app-registry.ts`; the registry itself accepts any platform's
+   * registrations so server-side rendering and tests don't have to mock
+   * Capacitor.
+   */
+  readonly androidOnly?: boolean;
+  /**
    * React component rendered as the full-screen overlay.
    * Receives context with exit callback, theme, and i18n.
    * Must handle its own resource lifecycle (load on mount, dispose on unmount).
