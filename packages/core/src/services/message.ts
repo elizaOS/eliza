@@ -6292,7 +6292,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 
 		// Benchmark mode (Python parity): force action-based loop when benchmark context is present.
 		if (benchmarkMode) {
-			if (responseContent.actions.length === 0) {
+			if (!responseContent.actions || responseContent.actions.length === 0) {
 				responseContent.actions = ["REPLY"];
 			}
 			if (
@@ -6325,7 +6325,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 			const hasStop = responseContent.actions.some(isStop);
 
 			if (hasIgnore) {
-				if (responseContent.text.trim() === "") {
+				if (!responseContent.text || responseContent.text.trim() === "") {
 					responseContent.actions = ["IGNORE"];
 				} else {
 					const filtered = responseContent.actions.filter((a) => !isIgnore(a));

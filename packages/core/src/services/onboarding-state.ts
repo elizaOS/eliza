@@ -722,7 +722,7 @@ export class OnboardingStateMachine {
 
 		switch (data.method) {
 			case "api_key":
-				if (!data.skip && (data.apiKey.trim().length === 0)) {
+				if (!data.skip && (!data.apiKey || data.apiKey.trim().length === 0)) {
 					return { valid: false, error: "API key is required" };
 				}
 				// Basic format validation
@@ -736,7 +736,7 @@ export class OnboardingStateMachine {
 				break;
 
 			case "setup_token":
-				if (data.setupToken.trim().length === 0) {
+				if (!data.setupToken || data.setupToken.trim().length === 0) {
 					return { valid: false, error: "Setup token is required" };
 				}
 				break;

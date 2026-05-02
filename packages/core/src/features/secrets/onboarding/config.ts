@@ -298,7 +298,7 @@ export function getNextSetting(
 		});
 
 		// Check visibility condition
-		const isVisible = !setting.visibleIf(config.settings);
+		const isVisible = !setting.visibleIf || !setting.visibleIf(config.settings);
 
 		if (dependenciesMet && isVisible) {
 			return [key, setting];
@@ -312,7 +312,7 @@ export function getNextSetting(
 			const depSetting = config.settings[dep];
 			return depSetting && depSetting.value !== null;
 		});
-		const isVisible = !setting.visibleIf(config.settings);
+		const isVisible = !setting.visibleIf || !setting.visibleIf(config.settings);
 
 		if (dependenciesMet && isVisible) {
 			return [key, setting];
