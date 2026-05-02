@@ -3,9 +3,9 @@ import { shouldWarmupLocalEmbeddingModel } from "./embedding-warmup-policy";
 
 const ENV_KEYS = [
   "ELIZA_DISABLE_LOCAL_EMBEDDINGS",
-  "MILADY_DISABLE_LOCAL_EMBEDDINGS",
+  "ELIZA_DISABLE_LOCAL_EMBEDDINGS",
   "ELIZA_CLOUD_EMBEDDINGS_DISABLED",
-  "MILADY_CLOUD_EMBEDDINGS_DISABLED",
+  "ELIZA_CLOUD_EMBEDDINGS_DISABLED",
   "ELIZAOS_CLOUD_USE_EMBEDDINGS",
 ] as const;
 
@@ -45,10 +45,10 @@ describe("shouldWarmupLocalEmbeddingModel", () => {
     }
   });
 
-  describe("MILADY_DISABLE_LOCAL_EMBEDDINGS mirrors ELIZA_DISABLE_LOCAL_EMBEDDINGS", () => {
+  describe("ELIZA_DISABLE_LOCAL_EMBEDDINGS mirrors ELIZA_DISABLE_LOCAL_EMBEDDINGS", () => {
     for (const value of ["1", "true", "yes"]) {
       it(`accepts ${JSON.stringify(value)}`, () => {
-        process.env.MILADY_DISABLE_LOCAL_EMBEDDINGS = value;
+        process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS = value;
         expect(shouldWarmupLocalEmbeddingModel()).toBe(false);
       });
     }
@@ -64,11 +64,11 @@ describe("shouldWarmupLocalEmbeddingModel", () => {
     }
   });
 
-  describe("MILADY_CLOUD_EMBEDDINGS_DISABLED mirrors ELIZA_CLOUD_EMBEDDINGS_DISABLED", () => {
+  describe("ELIZA_CLOUD_EMBEDDINGS_DISABLED mirrors ELIZA_CLOUD_EMBEDDINGS_DISABLED", () => {
     for (const value of ["1", "true", "yes"]) {
       it(`accepts ${JSON.stringify(value)} (overrides ELIZAOS_CLOUD_USE_EMBEDDINGS=true)`, () => {
         process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "true";
-        process.env.MILADY_CLOUD_EMBEDDINGS_DISABLED = value;
+        process.env.ELIZA_CLOUD_EMBEDDINGS_DISABLED = value;
         expect(shouldWarmupLocalEmbeddingModel()).toBe(true);
       });
     }
@@ -76,7 +76,7 @@ describe("shouldWarmupLocalEmbeddingModel", () => {
 
   it("treats unrecognized values as falsy", () => {
     process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS = "0";
-    process.env.MILADY_DISABLE_LOCAL_EMBEDDINGS = "false";
+    process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS = "false";
     expect(shouldWarmupLocalEmbeddingModel()).toBe(true);
   });
 

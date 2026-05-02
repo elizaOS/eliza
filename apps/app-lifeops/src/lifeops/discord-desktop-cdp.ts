@@ -63,7 +63,7 @@ export interface DiscordDesktopCdpStatus {
 function configuredDiscordDesktopCdpPort(
   env: NodeJS.ProcessEnv = process.env
 ): number {
-  const raw = env.MILADY_DISCORD_DESKTOP_CDP_PORT?.trim();
+  const raw = env.ELIZA_DISCORD_DESKTOP_CDP_PORT?.trim();
   if (!raw) {
     return DEFAULT_DISCORD_DESKTOP_CDP_PORT;
   }
@@ -77,7 +77,7 @@ function discordDesktopCdpDisabled(
   env: NodeJS.ProcessEnv = process.env
 ): boolean {
   return (
-    env.MILADY_DISABLE_DISCORD_DESKTOP_CDP === "1" ||
+    env.ELIZA_DISABLE_DISCORD_DESKTOP_CDP === "1" ||
     env.ELIZA_DISABLE_DISCORD_DESKTOP_CDP === "1"
   );
 }

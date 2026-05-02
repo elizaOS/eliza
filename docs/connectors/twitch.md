@@ -23,7 +23,7 @@ Connect your agent to Twitch for live chat monitoring, channel events, and audie
 
 The connector auto-enables when `accessToken`, `clientId`, or `enabled: true` is set in the connector config.
 
-Configure in `~/.milady/milady.json`:
+Configure in `~/.eliza/eliza.json`:
 
 ```json
 {
@@ -79,7 +79,7 @@ No environment variable is required to trigger auto-enable — it is driven enti
 
 ## Full Configuration Reference
 
-All fields are defined under `connectors.twitch` in `milady.json`.
+All fields are defined under `connectors.twitch` in `eliza.json`.
 
 ### Core Fields
 

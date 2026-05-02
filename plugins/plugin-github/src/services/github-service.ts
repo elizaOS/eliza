@@ -33,9 +33,9 @@ function readTokens(runtime: IAgentRuntime): TokenSources {
   };
 
   return {
-    user: setting("GITHUB_USER_PAT") ?? setting("MILADY_E2E_GITHUB_USER_PAT"),
+    user: setting("GITHUB_USER_PAT") ?? setting("ELIZA_E2E_GITHUB_USER_PAT"),
     agent:
-      setting("GITHUB_AGENT_PAT") ?? setting("MILADY_E2E_GITHUB_AGENT_PAT"),
+      setting("GITHUB_AGENT_PAT") ?? setting("ELIZA_E2E_GITHUB_AGENT_PAT"),
   };
 }
 

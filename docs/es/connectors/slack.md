@@ -30,7 +30,7 @@ El conector de Slack es un plugin externo de elizaOS que conecta tu agente a esp
 
 </div>
 
-En `~/.milady/milady.json`:
+En `~/.eliza/eliza.json`:
 
 ```json
 {

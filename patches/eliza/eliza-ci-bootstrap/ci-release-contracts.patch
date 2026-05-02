@@ -142,7 +142,7 @@ index 40eea15ff9..3d852ccb06 100755
  		npm install --ignore-scripts; \
 @@ -23 +24 @@ override_dh_auto_install:
 -	cp elizaos-app.mjs debian/elizaos-app/usr/lib/elizaos-app/
-+	cp milady.mjs debian/elizaos-app/usr/lib/elizaos-app/elizaos-app.mjs
++	cp eliza.mjs debian/elizaos-app/usr/lib/elizaos-app/elizaos-app.mjs
 @@ -36 +37 @@ override_dh_auto_install:
 -	install -m 644 packaging/debian/elizaos-app.service debian/elizaos-app/usr/lib/elizaos-app/elizaos-app.service
 +	install -m 644 debian/elizaos-app.service debian/elizaos-app/usr/lib/elizaos-app/elizaos-app.service
@@ -152,20 +152,20 @@ index 998ae35c63..f09fae624e 100644
 +++ b/packages/app-core/packaging/debian/install
 @@ -2 +1,0 @@
 -elizaos-app.mjs usr/lib/elizaos-app/
-diff --git a/packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/MiladyBootReceiver.java b/packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/MiladyBootReceiver.java
+diff --git a/packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaBootReceiver.java b/packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaBootReceiver.java
 index 8a999411b9..ef72354bef 100644
---- a/packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/MiladyBootReceiver.java
-+++ b/packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/MiladyBootReceiver.java
+--- a/packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaBootReceiver.java
++++ b/packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaBootReceiver.java
 @@ -7,6 +7,8 @@ import android.content.Intent;
  import android.os.Process;
  import android.util.Log;
  
 +import java.lang.reflect.Method;
 +
- public class MiladyBootReceiver extends BroadcastReceiver {
+ public class ElizaBootReceiver extends BroadcastReceiver {
  
-     private static final String TAG = "MiladyBootReceiver";
-@@ -32,17 +34,57 @@ public class MiladyBootReceiver extends BroadcastReceiver {
+     private static final String TAG = "ElizaBootReceiver";
+@@ -32,17 +34,57 @@ public class ElizaBootReceiver extends BroadcastReceiver {
          if (appOps == null) {
              return;
          }
@@ -343,10 +343,10 @@ index 0000000000..230f069833
 +    ).toBe(true);
 +  });
 +
-+  it("accepts the Milady smoke env flag", () => {
++  it("accepts the Eliza smoke env flag", () => {
 +    expect(
 +      shouldUseHeadlessDesktopSmoke({
-+        MILADY_DESKTOP_HEADLESS_SMOKE: "true",
++        ELIZA_DESKTOP_HEADLESS_SMOKE: "true",
 +      }),
 +    ).toBe(true);
 +  });
@@ -355,7 +355,7 @@ index 0000000000..230f069833
 +    for (const value of ["0", "false", "no", "off"]) {
 +      expect(
 +        shouldUseHeadlessDesktopSmoke({
-+          MILADY_DESKTOP_HEADLESS_SMOKE: value,
++          ELIZA_DESKTOP_HEADLESS_SMOKE: value,
 +        }),
 +      ).toBe(false);
 +    }
@@ -375,7 +375,7 @@ index bdcbdddbf3..ebfbcbb7f6 100644
 +  return parseEnabledFlag(
 +    trimToNull(
 +      env.ELIZA_DESKTOP_HEADLESS_SMOKE ??
-+        env.MILADY_DESKTOP_HEADLESS_SMOKE,
++        env.ELIZA_DESKTOP_HEADLESS_SMOKE,
 +    ),
 +  );
 +}
@@ -1389,7 +1389,7 @@ index 2da7e85664..bf48402af1 100644
 +++ b/packages/app-core/test/live-agent/action-invocation.live.e2e.test.ts
 @@ -44,7 +44,11 @@ import { createRealTestRuntime } from "../helpers/real-runtime.ts";
  const liveModelTestsEnabled =
-   process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
+   process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
  const selectedLiveProvider = liveModelTestsEnabled
 -  ? selectLiveProvider()
 +  ? (selectLiveProvider("elizacloud") ??
@@ -1430,7 +1430,7 @@ index 750bc86bc7..fca21dc429 100644
 +    vi.stubEnv("OPENAI_API_KEY", "sk_test_openai_key");
 +    vi.stubEnv("OPENAI_BASE_URL", "https://api.openai.com/v1");
 +    vi.stubEnv(
-+      "MILADY_LIVE_TEST_OPENAI_BASE_URL",
++      "ELIZA_LIVE_TEST_OPENAI_BASE_URL",
 +      "https://proxy.example.test/v1",
 +    );
 +

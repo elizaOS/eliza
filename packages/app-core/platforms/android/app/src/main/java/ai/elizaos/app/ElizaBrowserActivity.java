@@ -9,13 +9,13 @@ import android.text.TextUtils;
 /**
  * Browser entry point.
  *
- * Browser2 is stripped from MiladyOS, so without this activity any
+ * Browser2 is stripped from ElizaOS, so without this activity any
  * external app firing ACTION_VIEW on an http(s) URL would land in
- * "No activity found to handle Intent." Milady is the system browser
+ * "No activity found to handle Intent." Eliza is the system browser
  * by being the only handler for these schemes; the actual page render
- * happens inside the WebView at the milady://browse?url= deep link.
+ * happens inside the WebView at the eliza://browse?url= deep link.
  */
-public class MiladyBrowserActivity extends Activity {
+public class ElizaBrowserActivity extends Activity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {

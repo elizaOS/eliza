@@ -187,7 +187,7 @@ describe("Header", () => {
     expect(
       screen.getByTestId("desktop-window-titlebar-drag-zone"),
     ).toBeTruthy();
-    expect(screen.queryByText("Milady")).toBeNull();
+    expect(screen.queryByText("Eliza")).toBeNull();
   });
 
   it("skips the custom title bar for detached desktop shells", () => {
@@ -232,7 +232,7 @@ describe("Header", () => {
     expect(settingsNavButton).toBeTruthy();
     fireEvent.click(settingsNavButton);
     expect(setTab).toHaveBeenCalledWith("settings");
-    expect(screen.queryByText("Milady")).toBeNull();
+    expect(screen.queryByText("Eliza")).toBeNull();
     expect(screen.queryByTestId("header-language-dropdown")).toBeNull();
     expect(screen.queryByTestId("header-theme-toggle")).toBeNull();
     expect(

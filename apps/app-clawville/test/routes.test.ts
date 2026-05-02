@@ -15,7 +15,7 @@ function makeRuntime() {
   ]);
   return {
     agentId: "agent-1",
-    character: { name: "Milady" },
+    character: { name: "Eliza" },
     getSetting: (key: string) => settings.get(key),
     setSetting: vi.fn((key: string, value: string) => {
       settings.set(key, value);
@@ -82,7 +82,7 @@ afterEach(() => {
 });
 
 describe("ClawVille app routes", () => {
-  it("injects current Milady embed keys without visible host overlays", async () => {
+  it("injects current Eliza embed keys without visible host overlays", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(
@@ -98,9 +98,9 @@ describe("ClawVille app routes", () => {
 
     expect(captured.status).toBe(200);
     expect(captured.body).toContain(
-      'localStorage.setItem("clawville-embed-mode", "milady")',
+      'localStorage.setItem("clawville-embed-mode", "eliza")',
     );
-    expect(captured.body).toContain("clawville-milady-session-id");
+    expect(captured.body).toContain("clawville-eliza-session-id");
     expect(captured.body).not.toContain("clawville-eliza-session-id");
     expect(captured.body).not.toContain("spectator-banner");
   });

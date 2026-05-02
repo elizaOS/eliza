@@ -24,7 +24,7 @@ Le connecteur Nextcloud Talk est un plugin elizaOS qui relie votre agent aux sal
 |-------|--------|
 | Package | `@elizaos/plugin-nextcloud-talk` |
 | Clé de configuration | `connectors.nextcloud-talk` |
-| Installation | `milady plugins install @elizaos/plugin-nextcloud-talk` |
+| Installation | `eliza plugins install @elizaos/plugin-nextcloud-talk` |
 
 <div id="setup-requirements">
 

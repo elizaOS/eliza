@@ -6,7 +6,7 @@ server at [xrsps-typescript](https://github.com/xrsps/xrsps-typescript).
 ## What this plugin does
 
 `'scape` turns a running xRSPS instance into an autonomous-agent playground
-for the milady runtime. When you click **'scape** in the apps launcher:
+for the eliza runtime. When you click **'scape** in the apps launcher:
 
 1. The viewer iframe loads the xRSPS React client — by default the
    production 'scape deployment at
@@ -27,7 +27,7 @@ for the milady runtime. When you click **'scape** in the apps launcher:
    account using the same scrypt auth + Postgres-backed persistence
    human logins use. Override `SCAPE_BOT_SDK_URL` to
    `ws://127.0.0.1:8080/botsdk` for a local dev stack.
-3. The milady LLM runtime drives the agent via the action list (walk,
+3. The eliza LLM runtime drives the agent via the action list (walk,
    fight, chat, skill, bank, ...) every N seconds, with optional
    directed prompts from the operator UI.
 
@@ -67,7 +67,7 @@ the xRSPS server at
 | `SCAPE_AGENT_NAME`    | `scape-agent`                                   | In-game display name for the agent.              |
 | `SCAPE_AGENT_PASSWORD`| *(unset → auto-generated + persisted to disk)*  | Plaintext password for the agent's account.    |
 | `SCAPE_LOOP_INTERVAL_MS` | `15000`                                      | Autonomous LLM step interval.                    |
-| `SCAPE_MODEL_SIZE`    | `TEXT_SMALL`                                    | milady model tier for the loop.                  |
+| `SCAPE_MODEL_SIZE`    | `TEXT_SMALL`                                    | eliza model tier for the loop.                  |
 
 ## Scope by PR
 

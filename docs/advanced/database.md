@@ -1,7 +1,7 @@
 ---
 title: Database
 sidebarTitle: Database
-description: Browse your Milady agent's database — inspect tables, media files, and vector stores directly from the dashboard.
+description: Browse your Eliza agent's database — inspect tables, media files, and vector stores directly from the dashboard.
 ---
 
 The Database tab provides a built-in browser for your agent's data stores. Access it from the **Advanced** section of the dashboard at `/database`.

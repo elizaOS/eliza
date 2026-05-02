@@ -1,7 +1,7 @@
 ---
 title: 聊天
 sidebarTitle: 聊天
-description: 与 Milady 代理交互的核心消息界面——语音聊天、3D 虚拟形象、对话和自主监控。
+description: 与 Eliza 代理交互的核心消息界面——语音聊天、3D 虚拟形象、对话和自主监控。
 ---
 
 聊天标签页是仪表盘的默认着陆视图。它通过 `ChatView` 组件提供核心消息界面，采用三栏布局：左侧为对话侧边栏，中间为聊天视图，右侧为自主面板。
@@ -38,7 +38,7 @@ description: 与 Milady 代理交互的核心消息界面——语音聊天、3D
 
 - 语音配置在组件挂载时自动从代理配置加载。
 - `useVoiceChat` hook 管理麦克风开关、代理语音播放和驱动虚拟形象口型同步的说话状态。
-- 在设置或角色视图中的语音配置更改通过 `milady:voice-config-updated` 自定义 DOM 事件实时同步。
+- 在设置或角色视图中的语音配置更改通过 `eliza:voice-config-updated` 自定义 DOM 事件实时同步。
 
 <div id="vrm-3d-avatar">
 ## VRM 3D 虚拟形象

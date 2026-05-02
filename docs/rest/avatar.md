@@ -10,7 +10,7 @@ description: REST API endpoints for uploading and serving custom VRM avatars.
 POST /api/avatar/vrm
 ```
 
-Uploads a custom VRM avatar file and saves it to `~/.milady/avatars/custom.vrm`, replacing any previous upload.
+Uploads a custom VRM avatar file and saves it to `~/.eliza/avatars/custom.vrm`, replacing any previous upload.
 
 **Request:** Raw binary body containing a `.vrm` (glTF-binary) file.
 

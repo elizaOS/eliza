@@ -42,10 +42,10 @@ The connector auto-enables when `token`, `botToken`, or `apiKey` is truthy in th
 1. Go to the [Feishu Open Platform](https://open.feishu.cn/) (or [Lark Developer](https://open.larksuite.com/) for global).
 2. Create a new Custom App and note the **App ID** and **App Secret**.
 3. Under **Bot**, enable the bot capability for your app.
-4. Configure **Event Subscriptions** with a request URL pointing to your Milady instance.
+4. Configure **Event Subscriptions** with a request URL pointing to your Eliza instance.
 5. Add the required permissions: `im:message`, `im:message.group_at_msg`, `im:message.p2p_msg`.
 6. Publish the app version and have an admin approve it.
-7. Add the credentials to your Milady config.
+7. Add the credentials to your Eliza config.
 
 ## Features
 

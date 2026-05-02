@@ -30,7 +30,7 @@ POST /api/bug-report
 Submits a bug report.
 
 Submission priority:
-1. If `MILADY_BUG_REPORT_API_URL` is set, forwards the report there as structured JSON.
+1. If `ELIZA_BUG_REPORT_API_URL` is set, forwards the report there as structured JSON.
 2. Else if `GITHUB_TOKEN` is set, creates a GitHub issue on the project repository with labels `bug`, `triage`, `user-reported`.
 3. Else returns a pre-filled GitHub issue URL as a fallback.
 
@@ -58,11 +58,11 @@ Logs and startup diagnostics are HTML-stripped and basic secret-like tokens are 
 **Remote intake body example**
 ```json
 {
-  "source": "milady-desktop",
+  "source": "eliza-desktop",
   "submittedAt": "2026-03-26T23:30:00.000Z",
   "category": "startup-failure",
-  "description": "Milady startup failed: Backend Unreachable",
-  "stepsToReproduce": "1. Launch Milady\n2. Wait for startup to complete\n3. Observe the startup failure screen",
+  "description": "Eliza startup failed: Backend Unreachable",
+  "stepsToReproduce": "1. Launch Eliza\n2. Wait for startup to complete\n3. Observe the startup failure screen",
   "environment": "Windows",
   "nodeVersion": "v22.14.0",
   "logs": "reason=backend-unreachable\nphase=starting-backend\nstatus=404",
@@ -88,7 +88,7 @@ Logs and startup diagnostics are HTML-stripped and basic secret-like tokens are 
 
 **Response — with GitHub token:**
 ```json
-{ "url": "https://github.com/milady-ai/milady/issues/42" }
+{ "url": "https://github.com/eliza-ai/eliza/issues/42" }
 ```
 
 **Response — with remote intake:**
@@ -98,18 +98,18 @@ Logs and startup diagnostics are HTML-stripped and basic secret-like tokens are 
 
 **Response — without GitHub token:**
 ```json
-{ "fallback": "https://github.com/milady-ai/milady/issues/new?template=bug_report.yml" }
+{ "fallback": "https://github.com/eliza-ai/eliza/issues/new?template=bug_report.yml" }
 ```
 
 **Errors:** `400` missing required fields; `429` rate limit exceeded; `502` GitHub API error.
 
 ## Environment Variables
 
-- `MILADY_BUG_REPORT_API_URL`
+- `ELIZA_BUG_REPORT_API_URL`
   Preferred structured report intake endpoint. Intended for services like Eliza Cloud.
-- `MILADY_BUG_REPORT_API_TOKEN`
+- `ELIZA_BUG_REPORT_API_TOKEN`
   Optional bearer token sent to the remote intake endpoint.
 - `ELIZA_CLOUD_BUG_REPORT_URL`
-  Alias for `MILADY_BUG_REPORT_API_URL`
+  Alias for `ELIZA_BUG_REPORT_API_URL`
 - `ELIZA_CLOUD_BUG_REPORT_TOKEN`
-  Alias for `MILADY_BUG_REPORT_API_TOKEN`
+  Alias for `ELIZA_BUG_REPORT_API_TOKEN`

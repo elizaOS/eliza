@@ -2,7 +2,7 @@
  * End-to-end download pipeline tests.
  *
  * Spins up a real `http.Server` serving a real binary payload, points the
- * downloader at it via `MILADY_HF_BASE_URL`, and asserts the full flow:
+ * downloader at it via `ELIZA_HF_BASE_URL`, and asserts the full flow:
  * stream → .part file → atomic rename → SHA256 record → registry upsert.
  *
  * No mocks. No vi.fn. Real sockets, real bytes on disk.
@@ -109,24 +109,24 @@ describe("Downloader e2e", () => {
   let origHfBase: string | undefined;
 
   beforeEach(async () => {
-    tmpState = await fs.mkdtemp(path.join(os.tmpdir(), "milady-dl-e2e-"));
+    tmpState = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-dl-e2e-"));
     origStateDir = process.env.ELIZA_STATE_DIR;
-    origHfBase = process.env.MILADY_HF_BASE_URL;
+    origHfBase = process.env.ELIZA_HF_BASE_URL;
     process.env.ELIZA_STATE_DIR = tmpState;
   });
 
   afterEach(async () => {
     if (origStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
     else process.env.ELIZA_STATE_DIR = origStateDir;
-    if (origHfBase === undefined) delete process.env.MILADY_HF_BASE_URL;
-    else process.env.MILADY_HF_BASE_URL = origHfBase;
+    if (origHfBase === undefined) delete process.env.ELIZA_HF_BASE_URL;
+    else process.env.ELIZA_HF_BASE_URL = origHfBase;
     await fs.rm(tmpState, { recursive: true, force: true });
   });
 
   it("downloads a file end-to-end, writes it to disk, records SHA256 in the registry", async () => {
     const payload = makeGgufPayload(64 * 1024); // 64 KB of real bytes
     const upstream = await startUpstream(payload);
-    process.env.MILADY_HF_BASE_URL = upstream.baseUrl;
+    process.env.ELIZA_HF_BASE_URL = upstream.baseUrl;
 
     try {
       // Use the smallest catalog entry; swap its spec is fine — downloader
@@ -173,7 +173,7 @@ describe("Downloader e2e", () => {
       expect(entry.sha256).toBe(
         createHash("sha256").update(payload).digest("hex"),
       );
-      expect(entry.source).toBe("milady-download");
+      expect(entry.source).toBe("eliza-download");
 
       // File itself is on disk at the registered path.
       const onDisk = await fs.readFile(entry.path);
@@ -194,7 +194,7 @@ describe("Downloader e2e", () => {
       chunkBytes: 16 * 1024,
       chunkDelayMs: 20,
     });
-    process.env.MILADY_HF_BASE_URL = upstream.baseUrl;
+    process.env.ELIZA_HF_BASE_URL = upstream.baseUrl;
 
     try {
       const catalogModel = MODEL_CATALOG[0] as CatalogModel;

@@ -3,8 +3,8 @@ export type ElizaWindow = Window & {
   __ELIZA_API_TOKEN__?: string;
   __ELIZAOS_API_BASE__?: string;
   __ELIZAOS_API_TOKEN__?: string;
-  __MILADY_API_BASE__?: string;
-  __MILADY_API_TOKEN__?: string;
+  __ELIZA_API_BASE__?: string;
+  __ELIZA_API_TOKEN__?: string;
 };
 
 function getElizaWindow(): ElizaWindow | null {
@@ -22,7 +22,7 @@ function readTrimmedString(value: unknown): string | undefined {
 export function getElizaApiBase(): string | undefined {
   const elizaWindow = getElizaWindow();
   return (
-    readTrimmedString(elizaWindow?.__MILADY_API_BASE__) ??
+    readTrimmedString(elizaWindow?.__ELIZA_API_BASE__) ??
     readTrimmedString(elizaWindow?.__ELIZAOS_API_BASE__) ??
     readTrimmedString(elizaWindow?.__ELIZA_API_BASE__)
   );
@@ -31,7 +31,7 @@ export function getElizaApiBase(): string | undefined {
 export function getElizaApiToken(): string | undefined {
   const elizaWindow = getElizaWindow();
   return (
-    readTrimmedString(elizaWindow?.__MILADY_API_TOKEN__) ??
+    readTrimmedString(elizaWindow?.__ELIZA_API_TOKEN__) ??
     readTrimmedString(elizaWindow?.__ELIZAOS_API_TOKEN__) ??
     readTrimmedString(elizaWindow?.__ELIZA_API_TOKEN__)
   );

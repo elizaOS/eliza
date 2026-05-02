@@ -88,7 +88,7 @@ describe("inventory — meta read/write", () => {
   let vault: Vault;
 
   beforeEach(async () => {
-    workDir = await fs.mkdtemp(join(tmpdir(), "milady-inv-meta-"));
+    workDir = await fs.mkdtemp(join(tmpdir(), "eliza-inv-meta-"));
     vault = createVault({
       workDir,
       masterKey: inMemoryMasterKey(generateMasterKey()),
@@ -179,7 +179,7 @@ describe("inventory — listVaultInventory", () => {
   let vault: Vault;
 
   beforeEach(async () => {
-    workDir = await fs.mkdtemp(join(tmpdir(), "milady-inv-list-"));
+    workDir = await fs.mkdtemp(join(tmpdir(), "eliza-inv-list-"));
     vault = createVault({
       workDir,
       masterKey: inMemoryMasterKey(generateMasterKey()),

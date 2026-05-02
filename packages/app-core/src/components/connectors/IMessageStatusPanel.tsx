@@ -92,11 +92,11 @@ export function IMessageStatusPanel() {
             : isSendOnly
               ? t("pluginsview.IMessageSendOnly", {
                   defaultValue:
-                    "iMessage can send, but Milady cannot read local messages until Full Disk Access is granted.",
+                    "iMessage can send, but Eliza cannot read local messages until Full Disk Access is granted.",
                 })
               : t("pluginsview.IMessageNotConnected", {
                   defaultValue:
-                    "iMessage is not connected. Milady uses the native macOS Messages bridge on this machine.",
+                    "iMessage is not connected. Eliza uses the native macOS Messages bridge on this machine.",
                 })}
         </div>
         {error ? <div className="text-danger">{error}</div> : null}
@@ -119,7 +119,7 @@ export function IMessageStatusPanel() {
         <div className="text-muted">
           {t("pluginsview.IMessagePermissionHint", {
             defaultValue:
-              "iMessage reads ~/Library/Messages/chat.db directly. Full Disk Access must be granted to Milady Desktop, or to Terminal/iTerm when running Milady from a shell.",
+              "iMessage reads ~/Library/Messages/chat.db directly. Full Disk Access must be granted to Eliza Desktop, or to Terminal/iTerm when running Eliza from a shell.",
           })}
         </div>
       </div>

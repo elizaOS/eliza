@@ -4,7 +4,7 @@ sidebarTitle: "Scheduling"
 description: "Scheduling and calendar coordination plugin for ElizaOS agents"
 ---
 
-Calendar-aware scheduling and coordination for Milady agents via Google Calendar.
+Calendar-aware scheduling and coordination for Eliza agents via Google Calendar.
 
 **Package:** `@elizaos/plugin-scheduling`
 
@@ -15,7 +15,7 @@ The Scheduling plugin integrates Google Calendar with elizaOS agents, enabling t
 ## Installation
 
 ```bash
-milady plugins install scheduling
+eliza plugins install scheduling
 ```
 
 ## Auto-Enable

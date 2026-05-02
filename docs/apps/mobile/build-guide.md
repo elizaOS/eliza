@@ -1,10 +1,10 @@
 ---
 title: "Build Guide"
 sidebarTitle: "Build Guide"
-description: "Compile, sign, and distribute the Milady mobile app for iOS and Android."
+description: "Compile, sign, and distribute the Eliza mobile app for iOS and Android."
 ---
 
-The Milady mobile app (`apps/app`) is a Capacitor project that wraps the shared web UI in a native shell. Building it requires three steps: compiling the nine custom Capacitor plugins, bundling the Vite web assets, and syncing them into the native iOS or Android project. Distribution builds additionally require code signing — Apple certificates and provisioning profiles for iOS, a keystore for Android.
+The Eliza mobile app (`apps/app`) is a Capacitor project that wraps the shared web UI in a native shell. Building it requires three steps: compiling the nine custom Capacitor plugins, bundling the Vite web assets, and syncing them into the native iOS or Android project. Distribution builds additionally require code signing — Apple certificates and provisioning profiles for iOS, a keystore for Android.
 
 All build commands are invoked via `bun run` from inside the `apps/app` directory.
 
@@ -64,20 +64,20 @@ defaults; users can still change the connection mode in onboarding.
 
 ### 1. Phone build connected to this Mac
 
-Expose the Milady API on the Mac's LAN address, then build/open the iOS project with the phone pointed at that API:
+Expose the Eliza API on the Mac's LAN address, then build/open the iOS project with the phone pointed at that API:
 
 ```bash
-MILADY_API_BIND=0.0.0.0 \
-MILADY_API_TOKEN=replace-with-a-short-lived-token \
-MILADY_ALLOWED_ORIGINS=capacitor://localhost,ionic://localhost \
+ELIZA_API_BIND=0.0.0.0 \
+ELIZA_API_TOKEN=replace-with-a-short-lived-token \
+ELIZA_ALLOWED_ORIGINS=capacitor://localhost,ionic://localhost \
 bun run dev
 
-MILADY_IOS_REMOTE_API_BASE=http://192.168.1.42:31337 \
-MILADY_IOS_REMOTE_API_TOKEN=replace-with-the-same-token \
+ELIZA_IOS_REMOTE_API_BASE=http://192.168.1.42:31337 \
+ELIZA_IOS_REMOTE_API_TOKEN=replace-with-the-same-token \
 bun run dev:ios:remote-mac
 ```
 
-If `MILADY_IOS_REMOTE_API_BASE` is omitted, the helper picks the first non-loopback IPv4 address and port `31337`. Run from Xcode with an Apple development team selected to install on a physical phone.
+If `ELIZA_IOS_REMOTE_API_BASE` is omitted, the helper picks the first non-loopback IPv4 address and port `31337`. Run from Xcode with an Apple development team selected to install on a physical phone.
 
 ### 2. Phone build running in cloud
 
@@ -88,7 +88,7 @@ in the first onboarding view:
 bun run dev:ios:cloud
 ```
 
-Set `MILADY_IOS_CLOUD_BASE` or `VITE_ELIZA_CLOUD_BASE` only when targeting a non-default Eliza Cloud environment.
+Set `ELIZA_IOS_CLOUD_BASE` or `VITE_ELIZA_CLOUD_BASE` only when targeting a non-default Eliza Cloud environment.
 
 ### 3. Cloud runtime plus donated phone compute
 
@@ -99,12 +99,12 @@ ELIZA_DEVICE_BRIDGE_ENABLED=1 \
 ELIZA_DEVICE_PAIRING_TOKEN=replace-with-a-short-lived-token \
 bun run dev
 
-MILADY_IOS_DEVICE_BRIDGE_API_BASE=https://agent-or-tunnel.example.com \
-MILADY_IOS_DEVICE_BRIDGE_TOKEN=replace-with-the-same-token \
+ELIZA_IOS_DEVICE_BRIDGE_API_BASE=https://agent-or-tunnel.example.com \
+ELIZA_IOS_DEVICE_BRIDGE_TOKEN=replace-with-the-same-token \
 bun run dev:ios:cloud-hybrid
 ```
 
-`MILADY_IOS_DEVICE_BRIDGE_API_BASE` derives `wss://.../api/local-inference/device-bridge`. Use `MILADY_IOS_DEVICE_BRIDGE_URL` when the bridge lives at a different URL. The server still decides which slots use the paired device through Local models routing; the phone does not override cloud routing on its own.
+`ELIZA_IOS_DEVICE_BRIDGE_API_BASE` derives `wss://.../api/local-inference/device-bridge`. Use `ELIZA_IOS_DEVICE_BRIDGE_URL` when the bridge lives at a different URL. The server still decides which slots use the paired device through Local models routing; the phone does not override cloud routing on its own.
 
 <Warning>
 Build-time API and bridge tokens are embedded in the web bundle. Use short-lived development or TestFlight credentials, not long-lived production secrets.
@@ -118,7 +118,7 @@ Live reload lets you see web-layer changes on a physical device or simulator wit
 
 1. Find your machine's local IP address (e.g., `192.168.1.42`). On macOS, check System Settings → Wi-Fi → Details → IP Address, or run `ipconfig getifaddr en0`.
 
-2. Edit `packages/app/capacitor.config.ts` and add a `server` block pointing at the Vite dev server. This repo's Vite UI defaults to port `2138` (or `MILADY_PORT` if you override it), not Vite's stock `5173`:
+2. Edit `packages/app/capacitor.config.ts` and add a `server` block pointing at the Vite dev server. This repo's Vite UI defaults to port `2138` (or `ELIZA_PORT` if you override it), not Vite's stock `5173`:
 
 ```typescript
 const config: CapacitorConfig = {
@@ -225,7 +225,7 @@ cd packages/app/android && ./gradlew assembleRelease
 1. Generate a keystore:
 
 ```bash
-keytool -genkey -v -keystore release.keystore -alias milady -keyalg RSA -keysize 2048 -validity 10000
+keytool -genkey -v -keystore release.keystore -alias eliza -keyalg RSA -keysize 2048 -validity 10000
 ```
 
 2. Configure the keystore in `packages/app/android/app/build.gradle` under `signingConfigs`:
@@ -236,7 +236,7 @@ android {
         release {
             storeFile file("release.keystore")
             storePassword "your-store-password"
-            keyAlias "milady"
+            keyAlias "eliza"
             keyPassword "your-key-password"
         }
     }

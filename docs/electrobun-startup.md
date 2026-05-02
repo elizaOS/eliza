@@ -4,11 +4,11 @@ This doc explains how the embedded agent starts in the packaged desktop app and 
 
 ## Startup sequence
 
-1. **Electrobun main process** starts, creates the window, and resolves the renderer URL (Vite dev server via `MILADY_RENDERER_URL` or the built-in static asset server for packaged `apps/app/dist`).
-2. **`AgentManager.start()`** (in `native/agent.ts`) spawns a **child Bun process**: `bun run <milady-dist>/entry.js start` (or the equivalent path for your bundle layout). The child is **not** an in-process dynamic import of `server.js` / `eliza.js`.
-3. **Child process** boots the Milady CLI entrypoint, starts the API server, and runs the elizaOS runtime in headless mode inside that process.
+1. **Electrobun main process** starts, creates the window, and resolves the renderer URL (Vite dev server via `ELIZA_RENDERER_URL` or the built-in static asset server for packaged `apps/app/dist`).
+2. **`AgentManager.start()`** (in `native/agent.ts`) spawns a **child Bun process**: `bun run <eliza-dist>/entry.js start` (or the equivalent path for your bundle layout). The child is **not** an in-process dynamic import of `server.js` / `eliza.js`.
+3. **Child process** boots the Eliza CLI entrypoint, starts the API server, and runs the elizaOS runtime in headless mode inside that process.
 4. **Main process** health-polls `http://127.0.0.1:{port}/api/health` until the child reports ready (or times out / errors).
-5. **Main process** pushes `apiBaseUpdate` (and related RPC) to the renderer so `window.__MILADY_API_BASE__` matches the live API.
+5. **Main process** pushes `apiBaseUpdate` (and related RPC) to the renderer so `window.__ELIZA_API_BASE__` matches the live API.
 
 If the child fails to start or never becomes healthy:
 
@@ -42,9 +42,9 @@ The file and key sites in `agent.ts` include **WHY** comments that reference thi
 
 Packaged app writes a startup log to:
 
-- **macOS:** `~/Library/Application Support/Milady/milady-startup.log`
-- **Windows:** `%APPDATA%\Milady\milady-startup.log`
-- **Linux:** `~/.config/Milady/milady-startup.log`
+- **macOS:** `~/Library/Application Support/Eliza/eliza-startup.log`
+- **Windows:** `%APPDATA%\Eliza\eliza-startup.log`
+- **Linux:** `~/.config/Eliza/eliza-startup.log`
 
 Use it to debug load failures (missing modules, native binary path, etc.).
 

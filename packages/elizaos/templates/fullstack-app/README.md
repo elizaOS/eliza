@@ -1,6 +1,6 @@
 # __APP_NAME__
 
-A Milady-style fullstack app workspace built on [elizaOS](https://github.com/elizaos/eliza).
+A Eliza-style fullstack app workspace built on [elizaOS](https://github.com/elizaos/eliza).
 
 ## Layout
 

@@ -8,7 +8,7 @@ index 4fe5094b9..79a0f4796 100644
      input,
 -    max_output_tokens: params.maxTokens ?? 8192
 +    max_output_tokens: params.maxTokens ?? 8192,
-+    // Milady patch: enforce JSON output at the API layer. Without this, the
++    // Eliza patch: enforce JSON output at the API layer. Without this, the
 +    // cloud plugin ignores the caller's `schema` parameter and the model
 +    // returns prose ("I'll help you..." or markdown-fenced JSON), choking
 +    // JSON.parse downstream.
@@ -25,7 +25,7 @@ index 4fe5094b9..79a0f4796 100644
    if (!jsonText.trim()) {
      throw new Error("Object generation returned empty response");
    }
-+  // Milady patch: strip leading/trailing markdown code fences before JSON.parse.
++  // Eliza patch: strip leading/trailing markdown code fences before JSON.parse.
 +  // Models routinely wrap structured output in ```json ... ``` even when JSON
 +  // is requested. The repair function does not handle the leading backtick.
 +  jsonText = jsonText
@@ -45,7 +45,7 @@ index b496504b9..62772d917 100644
      input,
 -    max_output_tokens: params.maxTokens ?? 8192
 +    max_output_tokens: params.maxTokens ?? 8192,
-+    // Milady patch: enforce JSON output at the API layer for OBJECT_*
++    // Eliza patch: enforce JSON output at the API layer for OBJECT_*
 +    // requests. The cloud plugin otherwise ignores the caller's `schema`
 +    // parameter and the model returns prose ("I'll help you...") or
 +    // markdown-fenced JSON, breaking JSON.parse downstream.
@@ -62,7 +62,7 @@ index b496504b9..62772d917 100644
    if (!jsonText.trim()) {
      throw new Error("Object generation returned empty response");
    }
-+  // Milady patch: strip leading/trailing markdown code fences before JSON.parse.
++  // Eliza patch: strip leading/trailing markdown code fences before JSON.parse.
 +  jsonText = jsonText
 +    .replace(/^[\s]*```(?:json)?\s*\n?/i, "")
 +    .replace(/\n?```\s*$/i, "")

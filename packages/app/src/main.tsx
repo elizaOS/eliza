@@ -407,7 +407,7 @@ function handleDeepLink(url: string): void {
   if (parsed.protocol !== `${APP_URL_SCHEME}:`) return;
   const path = getDeepLinkPath(parsed);
 
-  // milady://settings/connectors/<provider> — open Settings and ask SettingsView
+  // eliza://settings/connectors/<provider> — open Settings and ask SettingsView
   // to scroll the matching connector panel into view.
   const connectorMatch = path.match(/^settings\/connectors\/([a-z0-9-]+)$/i);
   if (connectorMatch) {

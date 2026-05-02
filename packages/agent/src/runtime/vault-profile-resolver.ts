@@ -14,7 +14,7 @@
  *     resolved here (no call site has the context).
  *
  * Idempotent: re-running for the same agent overwrites with the same
- * value. Opt-out via `MILADY_DISABLE_VAULT_PROFILE_RESOLVER=1`.
+ * value. Opt-out via `ELIZA_DISABLE_VAULT_PROFILE_RESOLVER=1`.
  */
 
 import { logger } from "@elizaos/core";
@@ -39,14 +39,14 @@ export interface ResolveProfilesResult {
  * the active value for `agentId` and write it into `process.env[KEY]`.
  *
  * Keys without profiles are left alone — `process.env` already holds
- * whatever the legacy hydration path put there (config.env, milady.json,
+ * whatever the legacy hydration path put there (config.env, eliza.json,
  * direct env). This resolver is purely additive.
  */
 export async function applyVaultProfilesForAgent(
   vault: Vault,
   agentId: string,
 ): Promise<ResolveProfilesResult> {
-  if (process.env.MILADY_DISABLE_VAULT_PROFILE_RESOLVER === "1") {
+  if (process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER === "1") {
     return { overridden: 0, skipped: [], failed: [] };
   }
 

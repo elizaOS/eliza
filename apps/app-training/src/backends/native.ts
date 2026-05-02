@@ -4,7 +4,7 @@
  * Dispatches a per-task JSONL dataset (produced by `dataset-generator.ts` /
  * `trajectory-task-datasets.ts`) through one of the native optimizers
  * (`instruction-search`, `prompt-evolution`, `bootstrap-fewshot`) and writes
- * the resulting artifact into the `~/.milady/optimized-prompts/` store.
+ * the resulting artifact into the `~/.eliza/optimized-prompts/` store.
  *
  * Activation:
  *   bun run train -- --backend native --optimizer instruction-search \

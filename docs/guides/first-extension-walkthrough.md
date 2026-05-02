@@ -1,8 +1,8 @@
 ---
 title: First Extension Walkthrough
 sidebarTitle: First Extension
-summary: Build your first Milady extension safely using existing plugin docs and runtime guardrails.
-description: A practical first-extension walkthrough for developers who want to extend Milady with plugins, actions, and runtime-safe patterns.
+summary: Build your first Eliza extension safely using existing plugin docs and runtime guardrails.
+description: A practical first-extension walkthrough for developers who want to extend Eliza with plugins, actions, and runtime-safe patterns.
 ---
 
 This guide is a practical bridge between beginner docs and full plugin architecture docs.

@@ -10,8 +10,8 @@ import android.telephony.SmsMessage;
 import android.text.TextUtils;
 import android.util.Log;
 
-public class MiladySmsReceiver extends BroadcastReceiver {
-    private static final String TAG = "MiladySmsReceiver";
+public class ElizaSmsReceiver extends BroadcastReceiver {
+    private static final String TAG = "ElizaSmsReceiver";
 
     @Override
     public void onReceive(Context context, Intent intent) {

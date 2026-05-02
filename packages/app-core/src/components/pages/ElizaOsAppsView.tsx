@@ -362,16 +362,16 @@ export function PhonePageView() {
     try {
       const plugins = getPlugins();
       if (typeof plugins.phone.plugin.getStatus !== "function") {
-        throw new Error("MiladyPhone plugin is unavailable");
+        throw new Error("ElizaPhone plugin is unavailable");
       }
       if (typeof plugins.phone.plugin.listRecentCalls !== "function") {
-        throw new Error("MiladyPhone call log API is unavailable");
+        throw new Error("ElizaPhone call log API is unavailable");
       }
       if (typeof plugins.system.plugin.getStatus !== "function") {
-        throw new Error("MiladySystem plugin is unavailable");
+        throw new Error("ElizaSystem plugin is unavailable");
       }
       if (typeof plugins.contacts.plugin.listContacts !== "function") {
-        throw new Error("MiladyContacts plugin is unavailable");
+        throw new Error("ElizaContacts plugin is unavailable");
       }
       const [phone, system, recentCalls, contactResult] = await Promise.all([
         plugins.phone.plugin.getStatus(),
@@ -382,7 +382,7 @@ export function PhonePageView() {
       setStatus([
         `telecom: ${phone.hasTelecom ? "available" : "unavailable"}`,
         `default dialer: ${phone.defaultDialerPackage ?? "none"}`,
-        `milady default dialer: ${phone.isDefaultDialer ? "yes" : "no"}`,
+        `eliza default dialer: ${phone.isDefaultDialer ? "yes" : "no"}`,
         `can place calls: ${phone.canPlaceCalls ? "yes" : "no"}`,
       ]);
       setRoles(system.roles);
@@ -414,7 +414,7 @@ export function PhonePageView() {
       if (!trimmed) throw new Error("number is required");
       const plugins = getPlugins();
       if (typeof plugins.phone.plugin.placeCall !== "function") {
-        throw new Error("MiladyPhone plugin is unavailable");
+        throw new Error("ElizaPhone plugin is unavailable");
       }
       await plugins.phone.plugin.placeCall({ number: trimmed });
       setNotice("Call request handed to Android Telecom.");
@@ -433,7 +433,7 @@ export function PhonePageView() {
     try {
       const plugins = getPlugins();
       if (typeof plugins.phone.plugin.openDialer !== "function") {
-        throw new Error("MiladyPhone plugin is unavailable");
+        throw new Error("ElizaPhone plugin is unavailable");
       }
       await plugins.phone.plugin.openDialer({
         number: number.trim() || undefined,
@@ -456,7 +456,7 @@ export function PhonePageView() {
       if (!name) throw new Error("displayName is required");
       const plugins = getPlugins();
       if (typeof plugins.contacts.plugin.createContact !== "function") {
-        throw new Error("MiladyContacts plugin is unavailable");
+        throw new Error("ElizaContacts plugin is unavailable");
       }
       const result = await plugins.contacts.plugin.createContact({
         displayName: name,
@@ -483,7 +483,7 @@ export function PhonePageView() {
     try {
       const plugins = getPlugins();
       if (typeof plugins.contacts.plugin.importVCard !== "function") {
-        throw new Error("MiladyContacts import API is unavailable");
+        throw new Error("ElizaContacts import API is unavailable");
       }
       const result = await plugins.contacts.plugin.importVCard({
         vcardText: text,
@@ -516,7 +516,7 @@ export function PhonePageView() {
       if (!transcript) throw new Error("transcript is required");
       const plugins = getPlugins();
       if (typeof plugins.phone.plugin.saveCallTranscript !== "function") {
-        throw new Error("MiladyPhone transcript API is unavailable");
+        throw new Error("ElizaPhone transcript API is unavailable");
       }
       await plugins.phone.plugin.saveCallTranscript({
         callId: selectedCall.id,
@@ -542,13 +542,13 @@ export function PhonePageView() {
       }
       const plugins = getPlugins();
       if (typeof plugins.system.plugin.requestRole !== "function") {
-        throw new Error("MiladySystem role request API is unavailable");
+        throw new Error("ElizaSystem role request API is unavailable");
       }
       const result = await plugins.system.plugin.requestRole({
         role: role.role,
       });
       setNotice(
-        `${role.role} role ${result.held ? "is held by Milady" : "was not granted"}.`,
+        `${role.role} role ${result.held ? "is held by Eliza" : "was not granted"}.`,
       );
       await refresh();
     } catch (err) {
@@ -565,7 +565,7 @@ export function PhonePageView() {
     try {
       const plugins = getPlugins();
       if (typeof plugins.system.plugin.openSettings !== "function") {
-        throw new Error("MiladySystem settings API is unavailable");
+        throw new Error("ElizaSystem settings API is unavailable");
       }
       await plugins.system.plugin.openSettings();
     } catch (err) {
@@ -935,7 +935,7 @@ export function PhonePageView() {
         <div>
           <h1 className="text-lg font-semibold text-txt">Phone</h1>
           <div className="text-sm text-muted">
-            MiladyOS Android phone workspace
+            ElizaOS Android phone workspace
           </div>
         </div>
         <SecondaryButton
@@ -1049,7 +1049,7 @@ export function MessagesPageView() {
     try {
       const plugins = getPlugins();
       if (typeof plugins.messages.plugin.listMessages !== "function") {
-        throw new Error("MiladyMessages plugin is unavailable");
+        throw new Error("ElizaMessages plugin is unavailable");
       }
       const result = await plugins.messages.plugin.listMessages({ limit: 100 });
       setMessages(result.messages);
@@ -1075,7 +1075,7 @@ export function MessagesPageView() {
       if (!trimmedBody) throw new Error("body is required");
       const plugins = getPlugins();
       if (typeof plugins.messages.plugin.sendSms !== "function") {
-        throw new Error("MiladyMessages plugin is unavailable");
+        throw new Error("ElizaMessages plugin is unavailable");
       }
       const result = await plugins.messages.plugin.sendSms({
         address: trimmedAddress,
@@ -1198,7 +1198,7 @@ export function ContactsPageView() {
     try {
       const plugins = getPlugins();
       if (typeof plugins.contacts.plugin.listContacts !== "function") {
-        throw new Error("MiladyContacts plugin is unavailable");
+        throw new Error("ElizaContacts plugin is unavailable");
       }
       const result = await plugins.contacts.plugin.listContacts(listOptions);
       setContacts(result.contacts);
@@ -1224,7 +1224,7 @@ export function ContactsPageView() {
       if (!name) throw new Error("displayName is required");
       const plugins = getPlugins();
       if (typeof plugins.contacts.plugin.createContact !== "function") {
-        throw new Error("MiladyContacts plugin is unavailable");
+        throw new Error("ElizaContacts plugin is unavailable");
       }
       const result = await plugins.contacts.plugin.createContact({
         displayName: name,

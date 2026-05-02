@@ -55,12 +55,12 @@ NEW: provisionStewardFromCloud(state, cloudBaseUrl, apiKey)
   │      (existing function in steward-bridge.ts)
   │      → creates agent if missing
   │      → fetches wallet addresses
-  │      → persists to ~/.milady/steward-credentials.json
+  │      → persists to ~/.eliza/steward-credentials.json
   │      → calls applyStewardWalletAddressesToRuntimeCache()
   │
   ├── 6. Apply default policies via client.setPolicies(agentId, DEFAULT_POLICIES)
   │
-  └── 7. Persist STEWARD_* env vars to config.env in milady.json
+  └── 7. Persist STEWARD_* env vars to config.env in eliza.json
          (so they survive restart)
   │
   ▼
@@ -128,7 +128,7 @@ Key implementation details:
   from the auth session.
 
 - **Credentials persistence**: Writes to both `process.env` (for current
-  session) and `config.env` in `milady.json` (for restart survival). Uses the
+  session) and `config.env` in `eliza.json` (for restart survival). Uses the
   existing `state.saveConfig()` pattern.
 
 - **ensureStewardAgent**: Already handles agent creation, wallet address
@@ -192,7 +192,7 @@ Conservative defaults. User can adjust via PolicyControlsView immediately.
 
 **Where**: Inside `provisionStewardFromCloud()`, after env vars are set.
 
-**What**: Write to `config.env` object in milady.json:
+**What**: Write to `config.env` object in eliza.json:
 
 ```typescript
 config.env.STEWARD_API_URL = stewardApiUrl;
@@ -233,7 +233,7 @@ best-effort. User can retry by disconnecting and reconnecting, or we can add a
 call repeatedly.
 
 ### Multiple agents on same cloud account
-Current scope: one Steward agent per local Milady instance, keyed on agentId
+Current scope: one Steward agent per local Eliza instance, keyed on agentId
 from the runtime. Multiple desktop instances each get their own agent within the
 same tenant.
 
@@ -252,7 +252,7 @@ with zero code changes to the provisioning flow.
 ## Verification
 
 ### Manual test
-1. `rm -rf ~/.milady/steward-credentials.json` (clean slate)
+1. `rm -rf ~/.eliza/steward-credentials.json` (clean slate)
 2. `bun run dev`
 3. Open UI → Cloud → Login
 4. After login: wallet page shows Steward addresses within 5s
@@ -276,7 +276,7 @@ with zero code changes to the provisioning flow.
 2. **provisionStewardFromCloud()** — the orchestration function (~80 lines)
 3. **Wire into cloud-routes.ts login handler** — insert after API key save
    (~10 lines)
-4. **Config persistence** — write STEWARD_* to milady.json config.env
+4. **Config persistence** — write STEWARD_* to eliza.json config.env
 5. **Default policies** — constant + apply in provisioning
 6. **Test** — manual login flow, verify wallet + policies appear
 

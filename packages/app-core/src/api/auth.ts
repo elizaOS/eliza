@@ -152,13 +152,13 @@ const CSRF_REQUIRED_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 /**
  * Cookie-aware authorisation gate. Tries (in order):
- *   1. valid `milady_session` cookie → session in DB → authorised.
+ *   1. valid `eliza_session` cookie → session in DB → authorised.
  *   2. configured static bearer (legacy) → 14-day grace window via
  *      `decideLegacyBearer`; emits the deprecation header on success.
  *   3. open-access fallback when no token is configured.
  *
  * For cookie-bound sessions, state-changing methods (POST/PUT/PATCH/DELETE)
- * MUST present a valid `x-milady-csrf` header that matches the per-session
+ * MUST present a valid `x-eliza-csrf` header that matches the per-session
  * `csrfSecret` derivation. Reject 403 otherwise. Bearer-auth requests are
  * exempt (not cookie-bound, so no CSRF risk).
  *
@@ -289,7 +289,7 @@ export function isDevEnvironment(): boolean {
 
 // ── Cookie / session helpers ──────────────────────────────────────────────────
 
-const SESSION_COOKIE_NAME = "milady_session";
+const SESSION_COOKIE_NAME = "eliza_session";
 
 /** Cookie name used by the session model. Exported for tests + UI client. */
 export function getSessionCookieName(): string {

@@ -95,7 +95,7 @@ function createService(
 
 describe("withSignal consumer surface", () => {
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "milady-signal-"));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-signal-"));
     process.env.ELIZA_OAUTH_DIR = tmpDir;
     delete process.env.SIGNAL_AUTH_DIR;
     delete process.env.SIGNAL_ACCOUNT_NUMBER;
@@ -156,7 +156,7 @@ describe("withSignal consumer surface", () => {
           authDir: previousAuthDir,
           phoneNumber: "+15550000000",
           uuid: "signal-uuid",
-          deviceName: "Milady Mac",
+          deviceName: "Eliza Mac",
         },
         null,
         2,
@@ -216,7 +216,7 @@ describe("withSignal consumer surface", () => {
         authDir,
         phoneNumber: "+15550000000",
         uuid: "signal-uuid",
-        deviceName: "Milady Mac",
+        deviceName: "Eliza Mac",
       }),
       { encoding: "utf8", mode: 0o600 },
     );
@@ -265,7 +265,7 @@ describe("withSignal consumer surface", () => {
         authDir,
         phoneNumber: "+15550000000",
         uuid: "signal-uuid",
-        deviceName: "Milady Mac",
+        deviceName: "Eliza Mac",
       }),
       { encoding: "utf8", mode: 0o600 },
     );
@@ -485,7 +485,7 @@ describe("withSignal consumer surface", () => {
         authDir,
         phoneNumber: "+15550000000",
         uuid: "signal-uuid",
-        deviceName: "Milady Mac",
+        deviceName: "Eliza Mac",
       }),
       { encoding: "utf8", mode: 0o600 },
     );
@@ -566,7 +566,7 @@ describe("withSignal consumer surface", () => {
         authDir,
         phoneNumber: "+15550000000",
         uuid: "signal-uuid",
-        deviceName: "Milady Mac",
+        deviceName: "Eliza Mac",
       }),
       { encoding: "utf8", mode: 0o600 },
     );

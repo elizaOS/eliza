@@ -2,7 +2,7 @@
  * Cloud SSO module.
  *
  * Implements the OAuth-style redirect / code-exchange flow against the
- * Eliza Cloud control plane. The local Milady instance is the Relying
+ * Eliza Cloud control plane. The local Eliza instance is the Relying
  * Party; the cloud is the Authorization Server.
  *
  * Flow:

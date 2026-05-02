@@ -1,10 +1,10 @@
 ---
 title: "Computer Use Plugin"
 sidebarTitle: "Computer Use"
-description: "Computer use plugin for Milady — screen control, mouse/keyboard automation, desktop screenshot, and GUI interaction."
+description: "Computer use plugin for Eliza — screen control, mouse/keyboard automation, desktop screenshot, and GUI interaction."
 ---
 
-The Computer Use plugin gives Milady agents the ability to control the desktop — taking screenshots, moving the mouse, clicking, typing, and interacting with any GUI application running on the host machine.
+The Computer Use plugin gives Eliza agents the ability to control the desktop — taking screenshots, moving the mouse, clicking, typing, and interacting with any GUI application running on the host machine.
 
 **Package:** `@elizaos/plugin-computeruse`
 
@@ -15,7 +15,7 @@ Computer use enables agents to operate the computer as a human would: viewing th
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-computeruse
+eliza plugins install @elizaos/plugin-computeruse
 ```
 
 ## Enable via Features
@@ -200,7 +200,7 @@ Computer use sessions are automatically logged by the `trajectories` (a core plu
 
 ### Recovery Procedures
 
-1. **Stuck CUA session:** Kill the agent process and restart. The trajectory logger preserves the action log for debugging. Review `~/.milady/agents/{agentId}/trajectories/` for the last action sequence.
+1. **Stuck CUA session:** Kill the agent process and restart. The trajectory logger preserves the action log for debugging. Review `~/.eliza/agents/{agentId}/trajectories/` for the last action sequence.
 2. **Permission denied after OS update:** macOS and Windows may revoke automation permissions after OS updates. Re-grant Accessibility and Screen Recording permissions.
 3. **Coordinate drift after resolution change:** Restart the CUA session after any display resolution or scaling change. The plugin re-calibrates on session start.
 

@@ -24,7 +24,7 @@ export const updateOwnerNameAction: Action = {
   name: "UPDATE_OWNER_NAME",
   similes: ["SET_OWNER_NAME", "CHANGE_OWNER_NAME", "UPDATE_DISPLAY_NAME"],
   description:
-    "Update the configured owner display name. Owner-only. Persists to the milady.json `ui.ownerName` field, the same path the Relationships owner-edit field writes.",
+    "Update the configured owner display name. Owner-only. Persists to the eliza.json `ui.ownerName` field, the same path the Relationships owner-edit field writes.",
 
   validate: async (runtime, message) => {
     return hasOwnerAccess(runtime, message);

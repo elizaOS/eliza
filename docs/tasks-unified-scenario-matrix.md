@@ -32,7 +32,7 @@ T13 (cleanup + delete old runners)
 
 **Prompt:**
 
-> Create `eliza/packages/scenario-schema/` — a new workspace package that defines the canonical TypeScript-first scenario schema for the Milady scenario matrix. Read the plan at `docs/plan-unified-scenario-matrix.md` §3.1 for the full schema. Deliverables:
+> Create `eliza/packages/scenario-schema/` — a new workspace package that defines the canonical TypeScript-first scenario schema for the Eliza scenario matrix. Read the plan at `docs/plan-unified-scenario-matrix.md` §3.1 for the full schema. Deliverables:
 >
 > 1. `package.json` with name `@elizaos/scenario-schema`, version `0.0.1`, `"private": true`, workspace-compatible.
 > 2. `src/types.ts` — exported TS interfaces: `Scenario`, `Turn` (discriminated union of `MessageTurn`, `ApiTurn`, `WaitTurn`), `SeedStep`, `FinalCheck` (discriminated union, include `custom` variant with async predicate), `CleanupStep`, `ParamPredicate` (MongoDB-style operators), `MemoryPredicate`, `TrajectoryEventPredicate`, `TurnResult`, `CapturedAction` (move from convo-testing), `ScenarioReport`, `FinalCheckContext`. No `any`/`unknown`. Every field must be typed.
@@ -80,14 +80,14 @@ T13 (cleanup + delete old runners)
 >   src/judge.ts            # judgeTextWithLlm — migrate from lifeops-live-judge.ts
 >   src/reporter.ts         # ScenarioReport writer; JSON + console + optional GitHub Actions summary
 >   src/executor.ts         # runScenario(scenario, opts) — top-level entry point
->   src/cli.ts              # bin: milady-scenarios run <files…> [--tag …] [--shard N/M]
+>   src/cli.ts              # bin: eliza-scenarios run <files…> [--tag …] [--shard N/M]
 >   src/__tests__/          # unit tests for every non-trivial file
 > ```
 >
 > Behavior:
 > - `runScenario(scenario)` creates a runtime (PGLite + real LLM via `selectLiveProvider`), installs the interceptor, runs seed, iterates turns (respecting `kind`), runs final checks, runs cleanup in finally, returns `ScenarioReport`.
 > - Isolation modes: `per-scenario` (new runtime each), `shared` (reuse), `domain-shared` (reuse across same-domain scenarios). Implementation: accept an optional `sharedRuntime` argument; `executor` may pool them.
-> - CredentialBroker: static identifier format `service:tag` (e.g. `"gmail:test-agent"`). Looks up env vars following convention `MILADY_E2E_GMAIL_TESTAGENT_*`. Returns a `Credentials` object or throws `MissingCredentialsError`. Runner catches and marks scenario `skipped` with reason.
+> - CredentialBroker: static identifier format `service:tag` (e.g. `"gmail:test-agent"`). Looks up env vars following convention `ELIZA_E2E_GMAIL_TESTAGENT_*`. Returns a `Credentials` object or throws `MissingCredentialsError`. Runner catches and marks scenario `skipped` with reason.
 > - Reporter: outputs to `reports/scenarios/<runId>/<scenarioId>.json` and a human transcript to stdout. In GitHub Actions, append to `$GITHUB_STEP_SUMMARY`.
 > - All built-in final-check handlers implemented in `src/final-checks/` using `registerFinalCheck` from schema. Handlers for: `definitionCountDelta`, `reminderIntensity`, `goalCountDelta` (migrate from lifeops runner), `memoryExists`, `actionCalled`, `draftCount` (no-op for now, expects external gmail adapter), `calendarEventCount`, `reminderScheduled`, `selfControlBlockActive`, `twilioMessageSent`. For integrations whose backend isn't ready yet, the handler lives here but calls into an adapter interface that throws "not yet implemented: waiting on T7-GMAIL" — those get wired up as the integrations land.
 > - Tests: every assertion type and final-check type has at least one unit test.
@@ -117,7 +117,7 @@ T13 (cleanup + delete old runners)
 >
 > The `greeting-dynamic.convo.test.ts` uses the dynamic/LLM-driven mode. For this first port, convert it to a scripted scenario — we'll re-add dynamic mode in a later task (T4c). Capture the original dynamic semantics as a TODO comment with the task ID.
 >
-> After porting, run the new scenarios via `milady-scenarios run test/scenarios/convo/` and confirm they pass.
+> After porting, run the new scenarios via `eliza-scenarios run test/scenarios/convo/` and confirm they pass.
 >
 > Do NOT delete the original files yet — rename them to `*.ported.ts` and leave them for visual diffing; final removal happens in T13.
 
@@ -135,7 +135,7 @@ T13 (cleanup + delete old runners)
 > 3. Translate `finalChecks` to the matching `FinalCheck` variants. The `definitionCountDelta`, `reminderIntensity`, `goalCountDelta` types already exist in the schema.
 > 4. Place the resulting `.scenario.ts` under `test/scenarios/lifeops/<original-id>.scenario.ts`.
 >
-> After porting, run the matrix with `milady-scenarios run test/scenarios/lifeops/` and confirm every scenario still passes against a live runtime (provider selected via `selectLiveProvider()`). Use `MILADY_LIVE_TEST=1 MILADY_LIVE_CHAT_TEST=1 MILADY_LIVE_SCENARIO_TEST=1`.
+> After porting, run the matrix with `eliza-scenarios run test/scenarios/lifeops/` and confirm every scenario still passes against a live runtime (provider selected via `selectLiveProvider()`). Use `ELIZA_LIVE_TEST=1 ELIZA_LIVE_CHAT_TEST=1 ELIZA_LIVE_SCENARIO_TEST=1`.
 >
 > Do NOT delete the original JSON files. They become the reference fixture set loaded by `loadJsonScenario()` if anyone still wants to author in JSON. Mark them read-only via a note in `eliza/apps/app-lifeops/scenarios/README.md`.
 
@@ -143,7 +143,7 @@ T13 (cleanup + delete old runners)
 
 **Prompt:**
 
-> Produce `docs/action-catalog.md` — an exhaustive, organized reference of every registered Action in the milady runtime. Scenario authors will consult this when writing `expectedActions` and `expectedActionParams`.
+> Produce `docs/action-catalog.md` — an exhaustive, organized reference of every registered Action in the eliza runtime. Scenario authors will consult this when writing `expectedActions` and `expectedActionParams`.
 >
 > For each action, include:
 > - Name
@@ -180,7 +180,7 @@ Each of T5a through T5n corresponds to one domain folder. Each is dispatchable i
 > - Every scenario: tags include at least one of the 15 edge-case tags from §5 of the plan.
 > - Every scenario: `requires.credentials: ["gmail:test-agent"]`, `requires.plugins: ["@elizaos/plugin-gmail"]`.
 > - Every scenario: `cleanup[]` entries delete anything the scenario created (drafts, labels).
-> - Every scenario: runnable via `milady-scenarios run test/scenarios/messaging.gmail/<id>.scenario.ts`.
+> - Every scenario: runnable via `eliza-scenarios run test/scenarios/messaging.gmail/<id>.scenario.ts`.
 >
 > If the underlying Gmail actions don't yet implement the behavior needed (e.g. triage returns nothing useful), the scenario still authored BUT tagged `waiting-on:T7-gmail-triage-v2` and skipped until that task lands.
 
@@ -289,9 +289,9 @@ Each of these is a substantial subproject. Prompts reference the plan's §6.
 
 > Wire the scenario matrix into CI per `docs/plan-unified-scenario-matrix.md` §8. Two workflows:
 >
-> 1. **PR subset** — new job in `.github/workflows/test.yml` named `scenario-critical-subset`: runs `milady-scenarios run --tag critical --shards 2`. Requires `GROQ_API_KEY`. Runs on `ubuntu-latest`. Target: ≤ 15 scenarios, ≤ 15min wall time.
+> 1. **PR subset** — new job in `.github/workflows/test.yml` named `scenario-critical-subset`: runs `eliza-scenarios run --tag critical --shards 2`. Requires `GROQ_API_KEY`. Runs on `ubuntu-latest`. Target: ≤ 15 scenarios, ≤ 15min wall time.
 >
-> 2. **Full matrix on develop** — new workflow `.github/workflows/scenario-matrix.yml`: triggers on push to `develop`. 8 shards by domain folder. macOS shards on self-hosted runner (label `milady-e2e-macos`); others on `ubuntu-latest`. Post aggregated summary to `$GITHUB_STEP_SUMMARY`.
+> 2. **Full matrix on develop** — new workflow `.github/workflows/scenario-matrix.yml`: triggers on push to `develop`. 8 shards by domain folder. macOS shards on self-hosted runner (label `eliza-e2e-macos`); others on `ubuntu-latest`. Post aggregated summary to `$GITHUB_STEP_SUMMARY`.
 >
 > Update `eliza/packages/app-core/test/regression-matrix.json`: add `scenarios-critical` to PR suites and `scenarios-full` to nightly suites per the existing contract validation format.
 >
@@ -307,9 +307,9 @@ Each of these is a substantial subproject. Prompts reference the plan's §6.
 > - Step-by-step setup instructions.
 > - Required scopes/permissions.
 > - How to obtain OAuth refresh tokens / API keys.
-> - Which `MILADY_E2E_*` env vars the CredentialBroker expects (exact names).
+> - Which `ELIZA_E2E_*` env vars the CredentialBroker expects (exact names).
 > - Rotation schedule and process.
-> - How to add the creds to the `milady-e2e` 1Password vault.
+> - How to add the creds to the `eliza-e2e` 1Password vault.
 > - How to push them as GitHub Actions secrets via `op` CLI (+ the monthly rotation workflow file at `.github/workflows/rotate-e2e-secrets.yml`).
 >
 > Also implement the rotation workflow file.
@@ -318,7 +318,7 @@ Each of these is a substantial subproject. Prompts reference the plan's §6.
 
 **Prompt:**
 
-> Build the scheduled orphan sweeper per `plan-unified-scenario-matrix.md` §7.4. New workflow `.github/workflows/e2e-orphan-sweeper.yml` runs daily. Calls `milady-scenarios sweep` (new CLI command) which iterates every integration adapter and deletes items tagged `e2e-*` or labeled `milady-e2e` older than 24 hours. Reports counts to workflow summary. Fails if sweep fails (so an alert fires).
+> Build the scheduled orphan sweeper per `plan-unified-scenario-matrix.md` §7.4. New workflow `.github/workflows/e2e-orphan-sweeper.yml` runs daily. Calls `eliza-scenarios sweep` (new CLI command) which iterates every integration adapter and deletes items tagged `e2e-*` or labeled `eliza-e2e` older than 24 hours. Reports counts to workflow summary. Fails if sweep fails (so an alert fires).
 
 ### T13 — Delete old runners & finalize
 
@@ -329,7 +329,7 @@ Each of these is a substantial subproject. Prompts reference the plan's §6.
 > 1. Delete `eliza/apps/app-lifeops/test/helpers/lifeops-live-scenario-runner.ts` (1,358 lines). Its behavior now lives in `@elizaos/scenario-runner`.
 > 2. Delete `eliza/apps/app-lifeops/test/lifeops-scenarios.live.e2e.test.ts`. Replace with a one-liner that calls the new runner over `test/scenarios/lifeops/`.
 > 3. Delete `eliza/packages/app-core/test/convo-testing/` directory in full (scripted-runner, dynamic-runner, action-interceptor, assertions, etc.). All behavior is in `@elizaos/scenario-runner`.
-> 4. Remove `test:convo` from root `package.json` (or alias to `milady-scenarios run test/scenarios/convo/`).
+> 4. Remove `test:convo` from root `package.json` (or alias to `eliza-scenarios run test/scenarios/convo/`).
 > 5. Update `docs/plan-unified-scenario-matrix.md` §14 to reflect completion.
 >
 > Verify: all tests pass. No references to the deleted files remain (grep the repo).

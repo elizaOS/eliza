@@ -1,12 +1,12 @@
 ---
 title: "Security architecture"
 sidebarTitle: "Security"
-description: "Security layers, hardening measures, and review notes for the Milady codebase."
+description: "Security layers, hardening measures, and review notes for the Eliza codebase."
 ---
 
 # Security Architecture
 
-This document describes the security architecture and hardening measures implemented in the Milady codebase. It is intended for developers, auditors, and contributors who want to understand the defensive layers in place.
+This document describes the security architecture and hardening measures implemented in the Eliza codebase. It is intended for developers, auditors, and contributors who want to understand the defensive layers in place.
 
 ---
 
@@ -82,9 +82,9 @@ The `BLOCKED_ENV_KEYS` set prevents the API from writing to security-sensitive e
 - `SSL_CERT_FILE`, `SSL_CERT_DIR`, `CURL_CA_BUNDLE`, `NODE_EXTRA_CA_CERTS` — trust rogue CAs
 
 ### Privilege Escalation Tokens (blocked)
-- `MILADY_API_TOKEN` — API authentication
-- `MILADY_WALLET_EXPORT_TOKEN` — wallet private key export
-- `MILADY_TERMINAL_RUN_TOKEN` — shell command execution
+- `ELIZA_API_TOKEN` — API authentication
+- `ELIZA_WALLET_EXPORT_TOKEN` — wallet private key export
+- `ELIZA_TERMINAL_RUN_TOKEN` — shell command execution
 - `HYPERSCAPE_AUTH_TOKEN` — cloud service auth
 
 ### Sensitive Credentials (blocked)
@@ -120,7 +120,7 @@ The database API enforces read-only query execution with multiple layers:
 **File:** `src/api/server.ts` (`/api/terminal/run`)
 
 The shell execution endpoint applies multiple constraints:
-- **Token authentication** — requires `MILADY_TERMINAL_RUN_TOKEN`
+- **Token authentication** — requires `ELIZA_TERMINAL_RUN_TOKEN`
 - **Length limit** — commands are capped at a maximum character length
 - **Control character rejection** — newlines, carriage returns, and other control characters are blocked to prevent command chaining
 - **Rate limiting** — concurrent shell executions are bounded
@@ -182,16 +182,16 @@ The "Open Link in Browser" context menu option routes through the same validated
 ## Auth & Token Model
 
 ### API Token
-- `MILADY_API_TOKEN` — Required for authenticated API access when set
+- `ELIZA_API_TOKEN` — Required for authenticated API access when set
 - Token is checked on every request in the middleware chain
 
 ### Wallet Export Token
-- `MILADY_WALLET_EXPORT_TOKEN` — Required to export private keys via `/api/wallet/export`
+- `ELIZA_WALLET_EXPORT_TOKEN` — Required to export private keys via `/api/wallet/export`
 - Separate from the API token as an additional layer of defense
 - Private keys are masked in all other API responses
 
 ### Terminal Run Token
-- `MILADY_TERMINAL_RUN_TOKEN` — Required to execute shell commands via `/api/terminal/run`
+- `ELIZA_TERMINAL_RUN_TOKEN` — Required to execute shell commands via `/api/terminal/run`
 - Separate from API token to prevent accidental shell access
 
 ---

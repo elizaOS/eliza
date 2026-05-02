@@ -92,7 +92,7 @@ Set `character.settings.DISABLE_EMOTES = true` to remove the `PLAY_EMOTE` action
 ## Programmatic Access
 
 ```typescript
-import { getEmote, getEmotesByCategory, isValidEmote, EMOTE_CATALOG } from "milady/emotes/catalog";
+import { getEmote, getEmotesByCategory, isValidEmote, EMOTE_CATALOG } from "eliza/emotes/catalog";
 
 // Look up a single emote
 const emote = getEmote("dance-happy");

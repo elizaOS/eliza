@@ -99,7 +99,7 @@ export function WebsiteBlockerSettingsCard({
                 ? translate(
                     t,
                     "permissionssection.websiteBlocking.webInfo",
-                    "Hosts-file website blocking runs in the desktop app. Use Milady on macOS, Windows, or Linux to enable SelfControl-style blocking for your agent.",
+                    "Hosts-file website blocking runs in the desktop app. Use Eliza on macOS, Windows, or Linux to enable SelfControl-style blocking for your agent.",
                   )
                 : translate(
                     t,

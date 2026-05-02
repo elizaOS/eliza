@@ -2,7 +2,7 @@
  * @elizaos/capacitor-llama
  *
  * Thin adapter that maps `llama-cpp-capacitor`'s contextId-based API onto
- * Milady's `LocalInferenceLoader` contract. At most one native context lives
+ * Eliza's `LocalInferenceLoader` contract. At most one native context lives
  * at a time; switching models disposes the previous context first so we
  * never double-allocate VRAM.
  *

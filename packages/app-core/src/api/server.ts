@@ -1126,7 +1126,7 @@ async function handleCompatRoute(
   return handleDatabaseRowsCompatRoute(req, res, state);
 }
 
-export async function handleMiladyCompatRoute(
+export async function handleElizaCompatRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   state: CompatRuntimeState,
@@ -1203,7 +1203,7 @@ export function patchHttpCreateServerForCompat(
         );
         res.setHeader(
           "Access-Control-Allow-Headers",
-          "Content-Type, Authorization, X-API-Token, X-Api-Key, X-ElizaOS-Client-Id, X-ElizaOS-UI-Language, X-ElizaOS-Token, X-Eliza-Export-Token, X-Eliza-Terminal-Token, X-Milady-CSRF",
+          "Content-Type, Authorization, X-API-Token, X-Api-Key, X-ElizaOS-Client-Id, X-ElizaOS-UI-Language, X-ElizaOS-Token, X-Eliza-Export-Token, X-Eliza-Terminal-Token, X-Eliza-CSRF",
         );
         res.setHeader("Access-Control-Allow-Credentials", "true");
       }

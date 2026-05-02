@@ -179,7 +179,7 @@ describe("DeviceBridge e2e", () => {
 
   beforeEach(async () => {
     origStateDir = process.env.ELIZA_STATE_DIR;
-    process.env.ELIZA_STATE_DIR = `/tmp/milady-bridge-e2e-${Date.now()}-${Math.random()}`;
+    process.env.ELIZA_STATE_DIR = `/tmp/eliza-bridge-e2e-${Date.now()}-${Math.random()}`;
     harness = await startHarness();
   });
 

@@ -1,10 +1,10 @@
 ---
 title: "Cron Plugin"
 sidebarTitle: "Cron"
-description: "Cron scheduling plugin for Milady — recurring tasks, time-based automation, and scheduled agent actions."
+description: "Cron scheduling plugin for Eliza — recurring tasks, time-based automation, and scheduled agent actions."
 ---
 
-The Cron plugin enables Milady agents to schedule and execute recurring tasks — posting content on a schedule, polling external APIs, running maintenance jobs, and triggering autonomous agent behaviors at defined intervals.
+The Cron plugin enables Eliza agents to schedule and execute recurring tasks — posting content on a schedule, polling external APIs, running maintenance jobs, and triggering autonomous agent behaviors at defined intervals.
 
 **Package:** `@elizaos/plugin-cron` (core plugin — always loaded)
 
@@ -14,7 +14,7 @@ The Cron plugin is part of the core plugin set and is always loaded. It provides
 
 ## Configuration
 
-Schedule recurring tasks in `milady.json`:
+Schedule recurring tasks in `eliza.json`:
 
 ```json
 {

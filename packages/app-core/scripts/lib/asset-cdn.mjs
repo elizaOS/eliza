@@ -117,8 +117,8 @@ export function resolveElizaAssetBaseUrls({
   };
 }
 
-// Milady scripts still import the repo-local alias while the shared helper
+// Eliza scripts still import the repo-local alias while the shared helper
 // remains named for the upstream elizaOS package.
-export function resolveMiladyAssetBaseUrls(options = {}) {
+export function resolveElizaAssetBaseUrls(options = {}) {
   return resolveElizaAssetBaseUrls(options);
 }

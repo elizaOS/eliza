@@ -9,7 +9,7 @@ const tempRoots: string[] = [];
 
 function makeTempRoot() {
   const root = fs.mkdtempSync(
-    path.join(os.tmpdir(), "milady-static-asset-manifest-"),
+    path.join(os.tmpdir(), "eliza-static-asset-manifest-"),
   );
   tempRoots.push(root);
   return root;

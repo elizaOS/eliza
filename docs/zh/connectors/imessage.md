@@ -27,14 +27,14 @@ iMessage 连接器是一个外部 elizaOS 插件，可将你的代理桥接到 m
 </div>
 
 - 已配置并登录 iMessage 的 macOS
-- 已向运行 Milady 的终端或应用程序授予完全磁盘访问权限（用于访问 `~/Library/Messages/chat.db` 的聊天数据库）
+- 已向运行 Eliza 的终端或应用程序授予完全磁盘访问权限（用于访问 `~/Library/Messages/chat.db` 的聊天数据库）
 - 用于访问 iMessage 的 CLI 工具（例如 `imessage-exporter`）
 
 <div id="minimal-configuration">
 ## 最小配置
 </div>
 
-在 `~/.milady/milady.json` 中：
+在 `~/.eliza/eliza.json` 中：
 
 ```json
 {
@@ -77,7 +77,7 @@ iMessage 连接器是一个外部 elizaOS 插件，可将你的代理桥接到 m
 ## 完整配置参考
 </div>
 
-所有字段都定义在 `milady.json` 的 `connectors.imessage` 下。
+所有字段都定义在 `eliza.json` 的 `connectors.imessage` 下。
 
 <div id="core-fields">
 ### 核心字段
@@ -206,7 +206,7 @@ iMessage 连接器是一个外部 elizaOS 插件，可将你的代理桥接到 m
 如果消息检索失败，请确保已授予完全磁盘访问权限：
 
 1. 打开 **系统设置 > 隐私与安全 > 完全磁盘访问**
-2. 添加终端应用程序或 Milady 进程
+2. 添加终端应用程序或 Eliza 进程
 
 <div id="database-path">
 ### 数据库路径

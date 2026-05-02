@@ -127,7 +127,7 @@ describe("AppsSection", () => {
     clientMock.listApps.mockResolvedValue([
       {
         ...makeCatalogCandidate("@elizaos/app-companion", "game"),
-        displayName: "Milady Companion",
+        displayName: "Eliza Companion",
         icon: "/icons/companion.svg",
         heroImage: "/heroes/companion.png",
       },

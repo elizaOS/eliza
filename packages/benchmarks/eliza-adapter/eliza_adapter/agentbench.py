@@ -1,4 +1,4 @@
-"""AgentBench harness that routes through the milady benchmark server."""
+"""AgentBench harness that routes through the eliza benchmark server."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 
-from milady_adapter.client import MiladyClient
+from eliza_adapter.client import ElizaClient
 
 # Import AgentBench types — these live next to the benchmark runner
 from elizaos_agentbench.types import (
@@ -21,14 +21,14 @@ from elizaos_agentbench.eliza_harness import EnvironmentAdapterProtocol
 logger = logging.getLogger(__name__)
 
 
-class MiladyAgentHarness:
-    """AgentBench harness backed by the milady TypeScript agent.
+class ElizaAgentHarness:
+    """AgentBench harness backed by the eliza TypeScript agent.
 
     Drop-in replacement for ``ElizaAgentHarness`` — same ``run_task`` interface
-    but delegates to the milady benchmark HTTP server.
+    but delegates to the eliza benchmark HTTP server.
     """
 
-    def __init__(self, client: MiladyClient) -> None:
+    def __init__(self, client: ElizaClient) -> None:
         self._client = client
 
     async def run_task(
@@ -45,7 +45,7 @@ class MiladyAgentHarness:
         success = False
 
         try:
-            # Reset milady session for this task
+            # Reset eliza session for this task
             self._client.reset(task_id=task.id, benchmark="agentbench")
 
             # Reset environment
@@ -66,7 +66,7 @@ class MiladyAgentHarness:
                         f"Continue with the benchmark task. Step {step_num + 1}/{task.max_steps}"
                     )
 
-                # Send to milady
+                # Send to eliza
                 response = self._client.send_message(
                     text=prompt_text,
                     context={
@@ -142,7 +142,7 @@ class MiladyAgentHarness:
 
         except Exception as exc:
             error = str(exc)
-            logger.error("[milady-agentbench] Task %s failed: %s", task.id, exc)
+            logger.error("[eliza-agentbench] Task %s failed: %s", task.id, exc)
 
         duration_ms = (time.time() - start_time) * 1000
 
@@ -166,5 +166,5 @@ class MiladyAgentHarness:
         )
 
     async def clear_conversation(self) -> None:
-        """Reset the milady session."""
+        """Reset the eliza session."""
         self._client.reset(task_id="clear", benchmark="agentbench")

@@ -1,10 +1,10 @@
 ---
 title: "WhatsApp Plugin"
 sidebarTitle: "WhatsApp"
-description: "WhatsApp connector for Milady — personal messaging via Baileys or official WhatsApp Business Cloud API."
+description: "WhatsApp connector for Eliza — personal messaging via Baileys or official WhatsApp Business Cloud API."
 ---
 
-The WhatsApp plugin connects Milady agents to WhatsApp, supporting two authentication methods: **Baileys** (QR code scan, personal accounts) and **Cloud API** (WhatsApp Business API, official).
+The WhatsApp plugin connects Eliza agents to WhatsApp, supporting two authentication methods: **Baileys** (QR code scan, personal accounts) and **Cloud API** (WhatsApp Business API, official).
 
 **Package:** `@elizaos/plugin-whatsapp`
 
@@ -18,7 +18,7 @@ Two paths are available:
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-whatsapp
+eliza plugins install @elizaos/plugin-whatsapp
 ```
 
 ## Setup
@@ -58,7 +58,7 @@ WHATSAPP_WEBHOOK_VERIFY_TOKEN=your-webhook-verify-token
 WHATSAPP_BUSINESS_ACCOUNT_ID=your-business-account-id
 ```
 
-These can be placed in `~/.milady/.env` or the `env` section of your config file.
+These can be placed in `~/.eliza/.env` or the `env` section of your config file.
 
 ## Configuration
 

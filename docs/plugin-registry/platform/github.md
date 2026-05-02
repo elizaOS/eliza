@@ -1,10 +1,10 @@
 ---
 title: "GitHub Plugin"
 sidebarTitle: "GitHub"
-description: "GitHub connector for Milady — interact with repositories, issues, and pull requests."
+description: "GitHub connector for Eliza — interact with repositories, issues, and pull requests."
 ---
 
-The GitHub plugin connects Milady agents to GitHub, enabling interactions with repositories, issues, pull requests, and other GitHub resources.
+The GitHub plugin connects Eliza agents to GitHub, enabling interactions with repositories, issues, pull requests, and other GitHub resources.
 
 **Package:** `@elizaos/plugin-github`
 
@@ -13,7 +13,7 @@ The GitHub plugin connects Milady agents to GitHub, enabling interactions with r
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-github
+eliza plugins install @elizaos/plugin-github
 ```
 
 ## Setup
@@ -25,7 +25,7 @@ milady plugins install @elizaos/plugin-github
 3. Select the scopes needed for your use case (e.g., `repo`, `issues`, `pull_requests`)
 4. Copy the generated token
 
-### 2. Configure Milady
+### 2. Configure Eliza
 
 ```json
 {

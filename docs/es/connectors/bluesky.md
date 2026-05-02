@@ -26,7 +26,7 @@ A diferencia de los 18 conectores auto-habilitados (Discord, Telegram, etc.), Bl
 |-------|-------|
 | Paquete | `@elizaos/plugin-bluesky` |
 | Clave de configuración | `connectors.bluesky` |
-| Instalación | `milady plugins install @elizaos/plugin-bluesky` |
+| Instalación | `eliza plugins install @elizaos/plugin-bluesky` |
 
 <div id="setup-requirements">
 

@@ -16,7 +16,7 @@ The GitHub plugin is an elizaOS feature plugin that bridges your agent to the Gi
 |-------|-------|
 | Package | `@elizaos/plugin-github` |
 | Config key | `connectors.github` |
-| Install | `milady plugins install @elizaos/plugin-github` |
+| Install | `eliza plugins install @elizaos/plugin-github` |
 
 ## Setup Requirements
 
@@ -46,7 +46,7 @@ export GITHUB_REPO=YOUR_GITHUB_REPO
 
 ## Configuration Reference
 
-All fields are defined under `connectors.github` in `milady.json`.
+All fields are defined under `connectors.github` in `eliza.json`.
 
 | Field | Required | Description |
 |-------|----------|-------------|
@@ -76,7 +76,7 @@ All fields are defined under `connectors.github` in `milady.json`.
 Fine-grained tokens are scoped to specific repositories and permissions, and they expire automatically.
 
 1. Go to [github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new).
-2. Set a token name (e.g. "Milady") and expiration (90 days is reasonable).
+2. Set a token name (e.g. "Eliza") and expiration (90 days is reasonable).
 3. Under **Repository access**, select **Only select repositories** and pick the repos you want.
 4. Under **Repository permissions**, grant at minimum:
    - **Contents**: Read (Read and write if you want the agent to push code)

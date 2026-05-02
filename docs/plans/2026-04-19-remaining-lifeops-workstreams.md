@@ -197,8 +197,8 @@ Status:
 - WhatsApp: real routing gap
 
 Exact seams:
-- `eliza/cloud/packages/lib/services/milady-gateway-router.ts`
-- `eliza/cloud/packages/lib/services/milady-managed-discord.ts`
+- `eliza/cloud/packages/lib/services/eliza-gateway-router.ts`
+- `eliza/cloud/packages/lib/services/eliza-managed-discord.ts`
 - `eliza/cloud/packages/services/gateway-discord/src/server-router.ts`
 - `eliza/plugins/plugin-discord/typescript/service.ts`
 - `eliza/plugins/plugin-telegram/src/service.ts`

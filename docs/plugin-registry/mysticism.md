@@ -1,10 +1,10 @@
 ---
 title: "Mysticism Plugin"
 sidebarTitle: "Mysticism"
-description: "Mystical divination engines for Milady — Tarot, I Ching, and Astrology readings."
+description: "Mystical divination engines for Eliza — Tarot, I Ching, and Astrology readings."
 ---
 
-The Mysticism plugin equips Milady agents with divination capabilities, including Tarot card readings, I Ching consultations, and Astrology chart interpretations.
+The Mysticism plugin equips Eliza agents with divination capabilities, including Tarot card readings, I Ching consultations, and Astrology chart interpretations.
 
 **Package:** `@elizaos/plugin-mysticism`
 
@@ -21,7 +21,7 @@ Each engine produces structured readings that agents can use to respond to user 
 ## Installation
 
 ```bash
-milady plugins install mysticism
+eliza plugins install mysticism
 ```
 
 ## Configuration

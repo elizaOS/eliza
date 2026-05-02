@@ -159,7 +159,7 @@ Envoie un message et obtient la réponse de l'agent de manière synchrone (sans 
 ```json
 {
   "text": "Here's what I think...",
-  "agentName": "Milady"
+  "agentName": "Eliza"
 }
 ```
 
@@ -202,7 +202,7 @@ Lorsqu'un champ `fullText` est présent, il fait autorité et le client doit rem
 
 Événement final :
 ```
-data: {"type":"done","fullText":"Here's what I think...","agentName":"Milady"}
+data: {"type":"done","fullText":"Here's what I think...","agentName":"Eliza"}
 ```
 
 Le titre de la conversation est généré automatiquement en arrière-plan s'il est encore `"New Chat"`, et un événement WebSocket `conversation-updated` est diffusé. Si la génération de titre par IA échoue, le titre se rabat sur les cinq premiers mots du message de l'utilisateur.
@@ -226,7 +226,7 @@ Génère un message d'accueil pour une nouvelle conversation. Sélectionne un `p
 ```json
 {
   "text": "gm. ready to go viral today or what.",
-  "agentName": "Milady",
+  "agentName": "Eliza",
   "generated": true
 }
 ```

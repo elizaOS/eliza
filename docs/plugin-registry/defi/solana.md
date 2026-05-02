@@ -1,10 +1,10 @@
 ---
 title: "Solana Plugin"
 sidebarTitle: "Solana"
-description: "Solana chain connector for Milady — SOL and SPL token transfers, swaps, NFTs, and Solana DeFi protocols."
+description: "Solana chain connector for Eliza — SOL and SPL token transfers, swaps, NFTs, and Solana DeFi protocols."
 ---
 
-The Solana plugin enables Milady agents to interact with the Solana blockchain — managing SOL and SPL tokens, executing swaps via Jupiter, minting NFTs, and interacting with Solana DeFi protocols.
+The Solana plugin enables Eliza agents to interact with the Solana blockchain — managing SOL and SPL tokens, executing swaps via Jupiter, minting NFTs, and interacting with Solana DeFi protocols.
 
 **Package:** `@elizaos/plugin-solana` (community)
 
@@ -15,7 +15,7 @@ The Solana plugin provides the agent with a Solana keypair wallet and a set of o
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-solana
+eliza plugins install @elizaos/plugin-solana
 ```
 
 ## Auto-Enable

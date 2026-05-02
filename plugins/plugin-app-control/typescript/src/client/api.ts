@@ -1,12 +1,12 @@
 /**
  * @module plugin-app-control/client/api
- * @description HTTP client for the Milady dashboard `/api/apps/*` routes.
+ * @description HTTP client for the Eliza dashboard `/api/apps/*` routes.
  *
  * This plugin runs in the same process as the dashboard API. We talk to it
  * over loopback HTTP rather than reaching into the runtime service registry
  * so the plugin stays portable across the three shell variants (dev,
  * desktop, cloud). The server and port are discovered from the same
- * `resolveServerOnlyPort` helper that Milady's other in-process actions
+ * `resolveServerOnlyPort` helper that Eliza's other in-process actions
  * use.
  */
 

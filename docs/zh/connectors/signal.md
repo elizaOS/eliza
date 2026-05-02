@@ -32,7 +32,7 @@ Signal 连接器是一个外部 elizaOS 插件，通过以 HTTP 或 JSON-RPC 模
 
 </div>
 
-在 `~/.milady/milady.json` 中：
+在 `~/.eliza/eliza.json` 中：
 
 ```json
 {
@@ -75,13 +75,13 @@ signal-cli -a +1234567890 verify CODE
 signal-cli -a +1234567890 daemon --http localhost:8080
 ```
 
-<div id="3-configure-milady">
+<div id="3-configure-eliza">
 
-### 3. 配置 Milady
+### 3. 配置 Eliza
 
 </div>
 
-将 `connectors.signal` 块添加到 `milady.json` 中，如上述最小配置所示。
+将 `connectors.signal` 块添加到 `eliza.json` 中，如上述最小配置所示。
 
 <div id="disabling">
 
@@ -140,7 +140,7 @@ signal-cli -a +1234567890 daemon --http localhost:8080
 
 </div>
 
-所有字段定义在 `milady.json` 的 `connectors.signal` 下。
+所有字段定义在 `eliza.json` 的 `connectors.signal` 下。
 
 <div id="core-fields">
 

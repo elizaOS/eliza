@@ -1,6 +1,6 @@
 # Agent Self-Awareness System — Implementation Plan
 
-**Goal:** Give the Milady agent runtime perception of its own wallet, permissions, plugins, provider, connectors, cloud, and feature state via a layered lazy-load system with declarative contributor registration.
+**Goal:** Give the Eliza agent runtime perception of its own wallet, permissions, plugins, provider, connectors, cloud, and feature state via a layered lazy-load system with declarative contributor registration.
 
 **Architecture:** A new `AwarenessRegistry` collects `AwarenessContributor` implementations (one per module), composes their summaries into ~300 tokens injected every LLM turn via a new elizaOS provider, and exposes detail via a `GET_SELF_STATUS` action. Six P0 guardrails enforce sanitization, token budgets, failure isolation, event invalidation, versioned contracts, and trust boundaries.
 
@@ -915,29 +915,29 @@ git commit -m "feat(awareness): add GET_SELF_STATUS action for on-demand detail"
 
 ---
 
-### Task 6: Wire Into Milady Plugin — `src/runtime/milady-plugin.ts`
+### Task 6: Wire Into Eliza Plugin — `src/runtime/eliza-plugin.ts`
 
 **Files:**
-- Modify: `src/runtime/milady-plugin.ts`
+- Modify: `src/runtime/eliza-plugin.ts`
 
 **Step 1: Write the failing test**
 
 ```typescript
 // Add to existing plugin tests or create new test:
-// src/runtime/milady-plugin.awareness.test.ts
+// src/runtime/eliza-plugin.awareness.test.ts
 
 import { describe, expect, it } from "vitest";
-import { createMiladyPlugin } from "./milady-plugin";
+import { createElizaPlugin } from "./eliza-plugin";
 
-describe("milady plugin self-awareness integration", () => {
+describe("eliza plugin self-awareness integration", () => {
   it("registers agentSelfStatus provider", () => {
-    const plugin = createMiladyPlugin();
+    const plugin = createElizaPlugin();
     const providerNames = (plugin.providers ?? []).map((p) => p.name);
     expect(providerNames).toContain("agentSelfStatus");
   });
 
   it("registers GET_SELF_STATUS action", () => {
-    const plugin = createMiladyPlugin();
+    const plugin = createElizaPlugin();
     const actionNames = (plugin.actions ?? []).map((a) => a.name);
     expect(actionNames).toContain("GET_SELF_STATUS");
   });
@@ -946,12 +946,12 @@ describe("milady plugin self-awareness integration", () => {
 
 **Step 2: Run test to verify it fails**
 
-Run: `bunx vitest run src/runtime/milady-plugin.awareness.test.ts`
+Run: `bunx vitest run src/runtime/eliza-plugin.awareness.test.ts`
 Expected: FAIL — provider/action not registered yet
 
 **Step 3: Wire it in**
 
-In `src/runtime/milady-plugin.ts`:
+In `src/runtime/eliza-plugin.ts`:
 
 1. Import the registry, provider, action, and contributors:
 ```typescript
@@ -961,7 +961,7 @@ import { createSelfStatusProvider } from "../providers/self-status";
 import { getSelfStatusAction } from "../actions/get-self-status";
 ```
 
-2. Inside `createMiladyPlugin()`, before the return statement, create and populate the registry:
+2. Inside `createElizaPlugin()`, before the return statement, create and populate the registry:
 ```typescript
 const awarenessRegistry = new AwarenessRegistry();
 for (const contributor of builtinContributors) {
@@ -1009,14 +1009,14 @@ Note: The exact mechanism for service registration depends on elizaOS's `runtime
 
 **Step 4: Run tests to verify they pass**
 
-Run: `bunx vitest run src/runtime/milady-plugin.awareness.test.ts`
+Run: `bunx vitest run src/runtime/eliza-plugin.awareness.test.ts`
 Expected: All tests PASS
 
 **Step 5: Commit**
 
 ```bash
-git add src/runtime/milady-plugin.ts src/runtime/milady-plugin.awareness.test.ts
-git commit -m "feat(awareness): wire self-awareness into milady plugin"
+git add src/runtime/eliza-plugin.ts src/runtime/eliza-plugin.awareness.test.ts
+git commit -m "feat(awareness): wire self-awareness into eliza plugin"
 ```
 
 ---
@@ -1096,7 +1096,7 @@ import { SUMMARY_TOTAL_CHAR_LIMIT } from "../contracts/awareness";
 
 function fakeRuntime(registry: AwarenessRegistry): IAgentRuntime {
   return {
-    plugins: [{ name: "milady" }, { name: "test-plugin" }],
+    plugins: [{ name: "eliza" }, { name: "test-plugin" }],
     character: {
       settings: { model: "claude-opus-4-7" },
     },

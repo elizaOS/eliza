@@ -1,17 +1,17 @@
 ---
 title: "Twitch Plugin"
 sidebarTitle: "Twitch"
-description: "Twitch connector for Milady — channel chat messaging and interaction."
+description: "Twitch connector for Eliza — channel chat messaging and interaction."
 ---
 
-The Twitch plugin connects Milady agents to Twitch, enabling chat messaging and channel interaction.
+The Twitch plugin connects Eliza agents to Twitch, enabling chat messaging and channel interaction.
 
 **Package:** `@elizaos/plugin-twitch`
 
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-twitch
+eliza plugins install @elizaos/plugin-twitch
 ```
 
 ## Setup
@@ -23,7 +23,7 @@ milady plugins install @elizaos/plugin-twitch
 3. Note the **Client ID**
 4. Generate an **Access Token** with the required chat scopes
 
-### 2. Configure Milady
+### 2. Configure Eliza
 
 ```json
 {

@@ -1,30 +1,30 @@
 ---
 title: Beginner User Guide
 sidebarTitle: Beginner User Guide
-summary: Step-by-step onboarding for first-time Milady operators, from installation through safe daily operation.
-description: A complete beginner walkthrough for installing Milady, choosing a server target, configuring providers, and operating the runtime safely.
+summary: Step-by-step onboarding for first-time Eliza operators, from installation through safe daily operation.
+description: A complete beginner walkthrough for installing Eliza, choosing a server target, configuring providers, and operating the runtime safely.
 ---
 
-If you're brand new to running Milady yourself, this guide is for you.
+If you're brand new to running Eliza yourself, this guide is for you.
 
 <Info>
 If you only need the consumer-facing product walkthrough, use
-[milady.ai/docs](https://milady.ai/docs). This page is for people installing,
-operating, or hosting Milady via the developer docs at
-[docs.milady.ai](https://docs.milady.ai).
+[eliza.ai/docs](https://eliza.ai/docs). This page is for people installing,
+operating, or hosting Eliza via the developer docs at
+[docs.eliza.ai](https://docs.eliza.ai).
 </Info>
 
-You do **not** need to be a developer to use Milady. The core model is:
+You do **not** need to be a developer to use Eliza. The core model is:
 
-1. Milady is a client that can create or connect to a server.
+1. Eliza is a client that can create or connect to a server.
 2. The server target and the active model provider are separate choices.
 3. You control how local, connected, or cloud-assisted your setup is.
 
 ---
 
-## 1) What Milady is (plain English)
+## 1) What Eliza is (plain English)
 
-Milady is a personal AI assistant that can run from your terminal and dashboard.
+Eliza is a personal AI assistant that can run from your terminal and dashboard.
 
 You can use it for:
 
@@ -34,7 +34,7 @@ You can use it for:
 
 Main interfaces:
 
-- `milady` command (CLI)
+- `eliza` command (CLI)
 - Dashboard in browser
 - Desktop/mobile app builds (platform dependent)
 
@@ -58,49 +58,49 @@ Start simple:
 
 ---
 
-## 3) Install Milady
+## 3) Install Eliza
 
 ### macOS / Linux / WSL (recommended)
 
 ```bash
-curl -fsSL https://get.milady.ai | bash
-milady setup
+curl -fsSL https://get.eliza.ai | bash
+eliza setup
 ```
 
 ### Windows (PowerShell)
 
 ```powershell
-irm https://get.milady.ai/install.ps1 | iex
-milady setup
+irm https://get.eliza.ai/install.ps1 | iex
+eliza setup
 ```
 
 ### Bun global alternative
 
 ```bash
-bun install -g miladyai
-milady setup
+bun install -g elizaai
+eliza setup
 ```
 
-If `milady` is not found after install, restart your terminal and run `milady --version`.
+If `eliza` is not found after install, restart your terminal and run `eliza --version`.
 
 ---
 
 ## 4) First start and server selection
 
-Start Milady:
+Start Eliza:
 
 ```bash
-milady
+eliza
 ```
 
-On first launch, Milady should start with a chooser-first flow:
+On first launch, Eliza should start with a chooser-first flow:
 
 1. **Create one** to start a local server on this machine
-2. **Pick a LAN server** if Milady finds one on your network
-3. **Use Eliza Cloud** if you want a hosted Milady server
+2. **Pick a LAN server** if Eliza finds one on your network
+3. **Use Eliza Cloud** if you want a hosted Eliza server
 4. **Manually connect** if you already know the remote server URL
 
-After you choose a server, Milady checks whether that server is already
+After you choose a server, Eliza checks whether that server is already
 configured. If not, it continues setup for that server only.
 
 ### Important rule
@@ -117,12 +117,12 @@ Server target and provider target are different things:
 
 Use this exact path:
 
-1. Run `milady`
+1. Run `eliza`
 2. Choose a server target
 3. Open the dashboard for that server
 4. Send a basic prompt (e.g., "hello")
 5. Confirm a response is returned
-6. Run `milady models` and check provider status
+6. Run `eliza models` and check provider status
 
 If these work, your base install is healthy.
 
@@ -131,17 +131,17 @@ If these work, your base install is healthy.
 ## 6) Commands you'll use most
 
 ```bash
-milady                    # start interactive mode (default)
-milady start              # run server-only, headless
-milady dashboard          # open dashboard in browser
-milady configure          # configuration guidance
-milady config get <key>   # read config value
-milady models             # show model provider status
-milady plugins installed   # list installed plugins
-milady plugins list       # browse registry plugins
+eliza                    # start interactive mode (default)
+eliza start              # run server-only, headless
+eliza dashboard          # open dashboard in browser
+eliza configure          # configuration guidance
+eliza config get <key>   # read config value
+eliza models             # show model provider status
+eliza plugins installed   # list installed plugins
+eliza plugins list       # browse registry plugins
 ```
 
-Tip: Use `milady <command> --help` any time you feel stuck.
+Tip: Use `eliza <command> --help` any time you feel stuck.
 
 ---
 
@@ -149,7 +149,7 @@ Tip: Use `milady <command> --help` any time you feel stuck.
 
 ### Server target
 
-This answers **where the Milady server lives**:
+This answers **where the Eliza server lives**:
 
 - Local
 - LAN
@@ -174,11 +174,11 @@ If something feels confusing, check these in order:
 
 ## 8) Where files live on your machine
 
-Local runtime state is stored under `~/.milady/`:
+Local runtime state is stored under `~/.eliza/`:
 
-- `~/.milady/milady.json` → main configuration
-- `~/.milady/logs/` → runtime logs
-- `~/.milady/workspace/` → agent workspace files
+- `~/.eliza/eliza.json` → main configuration
+- `~/.eliza/logs/` → runtime logs
+- `~/.eliza/workspace/` → agent workspace files
 
 This is essential for backup, troubleshooting, and migration to another machine.
 
@@ -188,15 +188,15 @@ This is essential for backup, troubleshooting, and migration to another machine.
 
 ### Keep API local by default
 
-Milady binds to loopback by default (`127.0.0.1`) on port `2138`, meaning only your machine can access it. Open your dashboard at `http://localhost:2138`.
+Eliza binds to loopback by default (`127.0.0.1`) on port `2138`, meaning only your machine can access it. Open your dashboard at `http://localhost:2138`.
 
 ### If exposing to network, set a token
 
 If you bind to `0.0.0.0` or expose ports publicly, set an API token first:
 
 ```bash
-# Add to your project root .env or ~/.milady/.env
-echo "MILADY_API_TOKEN=$(openssl rand -hex 32)" >> ~/.milady/.env
+# Add to your project root .env or ~/.eliza/.env
+echo "ELIZA_API_TOKEN=$(openssl rand -hex 32)" >> ~/.eliza/.env
 ```
 
 ### Protect secrets
@@ -213,8 +213,8 @@ Typical flow:
 
 1. Connect to the server you want to use
 2. Get a key from your provider dashboard if needed
-3. Configure the provider through setup, settings, or `milady models`
-4. Verify with `milady models`
+3. Configure the provider through setup, settings, or `eliza models`
+4. Verify with `eliza models`
 5. Send a test prompt
 
 If responses fail, verify:
@@ -238,38 +238,38 @@ Start with a minimal strategy:
 Useful commands:
 
 ```bash
-milady plugins list
-milady plugins install <name>
-milady plugins uninstall <name>
+eliza plugins list
+eliza plugins install <name>
+eliza plugins uninstall <name>
 ```
 
 ---
 
 ## 12) Troubleshooting first-week issues
 
-### A) "Milady command not found"
+### A) "Eliza command not found"
 
 - Restart terminal
 - Check PATH and install method
-- Run `milady --version`
+- Run `eliza --version`
 
 ### B) "Dashboard won’t load"
 
-- Ensure Milady is running
+- Ensure Eliza is running
 - Check for port conflicts
-- Check logs in `~/.milady/logs/`
+- Check logs in `~/.eliza/logs/`
 
 ### C) "No responses"
 
-- Check provider configuration (`milady models`)
-- Check logs in `~/.milady/logs/`
+- Check provider configuration (`eliza models`)
+- Check logs in `~/.eliza/logs/`
 - Restart and retry
 
 ### D) "Plugin seems broken"
 
 - Confirm plugin is installed (`plugins list`)
 - Check provider/env dependencies for plugin
-- Restart Milady
+- Restart Eliza
 
 ---
 
@@ -278,8 +278,8 @@ milady plugins uninstall <name>
 Good routine:
 
 - Update regularly
-- Re-run `milady setup` after major updates
-- Keep backups of `~/.milady/milady.json`
+- Re-run `eliza setup` after major updates
+- Keep backups of `~/.eliza/eliza.json`
 - Review logs when behavior changes unexpectedly
 
 ---
@@ -289,7 +289,7 @@ Good routine:
 - **Provider**: the LLM backend (Anthropic/OpenAI/Ollama/etc.)
 - **Plugin**: adds capabilities/integrations
 - **Headless**: no interactive UI; service-style runtime
-- **Workspace**: local files Milady uses for agent context and tasks
+- **Workspace**: local files Eliza uses for agent context and tasks
 - **Gateway**: service layer used by dashboard and interfaces
 
 ---
@@ -379,9 +379,9 @@ This progression keeps your setup stable while your capability grows.
 
 If all of these are true, you're in great shape:
 
-- [ ] `milady` starts successfully
+- [ ] `eliza` starts successfully
 - [ ] Dashboard opens locally
 - [ ] A provider is configured and returns responses
-- [ ] You know where `~/.milady/` files live
+- [ ] You know where `~/.eliza/` files live
 
 You are now ready to move from complete beginner to regular user.

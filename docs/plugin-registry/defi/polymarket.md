@@ -10,12 +10,12 @@ Prediction markets integration for Polymarket.
 
 ## Overview
 
-The Polymarket plugin connects Milady agents to Polymarket prediction markets. Agents can browse markets, place bets, and manage positions. The plugin supports multiple languages for market interaction.
+The Polymarket plugin connects Eliza agents to Polymarket prediction markets. Agents can browse markets, place bets, and manage positions. The plugin supports multiple languages for market interaction.
 
 ## Installation
 
 ```bash
-milady plugins install polymarket
+eliza plugins install polymarket
 ```
 
 ## Auto-Enable

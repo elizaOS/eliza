@@ -155,7 +155,7 @@ export function applyCors(
     );
     res.setHeader(
       "Access-Control-Allow-Headers",
-      "Content-Type, Authorization, X-Eliza-Token, X-Api-Key, X-Eliza-Export-Token, X-Eliza-Client-Id, X-Eliza-Terminal-Token, X-Eliza-UI-Language, X-Browser-Bridge-Companion-Id, X-Eliza-Browser-Companion-Id, X-Milady-CSRF",
+      "Content-Type, Authorization, X-Eliza-Token, X-Api-Key, X-Eliza-Export-Token, X-Eliza-Client-Id, X-Eliza-Terminal-Token, X-Eliza-UI-Language, X-Browser-Bridge-Companion-Id, X-Eliza-Browser-Companion-Id, X-Eliza-CSRF",
     );
   }
 
@@ -394,10 +394,10 @@ export function isTrustedLocalRequest(req: http.IncomingMessage): boolean {
   if (isCloudProvisionedContainer()) return false;
   // On-device local agent (Android): the loopback interface is shared with
   // every other app on the device, so loopback alone is NOT a trust signal.
-  // The MiladyAgentService sets MILADY_REQUIRE_LOCAL_AUTH=1 alongside a
+  // The ElizaAgentService sets ELIZA_REQUIRE_LOCAL_AUTH=1 alongside a
   // per-boot ELIZA_API_TOKEN; with this flag the server requires bearer
   // auth on every route except /api/health (which is read-only liveness).
-  if (process.env.MILADY_REQUIRE_LOCAL_AUTH === "1") return false;
+  if (process.env.ELIZA_REQUIRE_LOCAL_AUTH === "1") return false;
   if (!isLoopbackRemoteAddress(req.socket?.remoteAddress)) return false;
   if (proxyClientHeaderBlocksLocalTrust(req.headers)) return false;
 

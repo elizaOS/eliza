@@ -4,7 +4,7 @@ sidebarTitle: "Cloud"
 description: "REST API endpoints for Eliza Cloud authentication, connection status, credit balance, and cloud agent management."
 ---
 
-The cloud API connects the local Milady agent to Eliza Cloud for cloud-hosted inference, credits, and remote agent management. Login uses a browser-based OAuth-style flow with polling for session completion.
+The cloud API connects the local Eliza agent to Eliza Cloud for cloud-hosted inference, credits, and remote agent management. Login uses a browser-based OAuth-style flow with polling for session completion.
 
 Billing is now expected to stay inside the app whenever Eliza Cloud exposes the required billing endpoints. The `topUpUrl` values returned by `/api/cloud/status` and `/api/cloud/credits` should be treated as a hosted fallback, not the primary UX.
 
@@ -137,7 +137,7 @@ Get the cloud credit balance. Returns `null` balance when not connected.
 
 ### Billing proxy endpoints
 
-These endpoints proxy authenticated Eliza Cloud billing APIs through the local Milady backend so the desktop app can keep billing, payment methods, and top-ups in-app. They require an active Eliza Cloud login because the local server forwards the saved cloud API key.
+These endpoints proxy authenticated Eliza Cloud billing APIs through the local Eliza backend so the desktop app can keep billing, payment methods, and top-ups in-app. They require an active Eliza Cloud login because the local server forwards the saved cloud API key.
 
 Use `topUpUrl` only as a hosted fallback if Eliza Cloud does not return an embedded checkout or crypto quote flow the app can render directly.
 
@@ -189,7 +189,7 @@ Create a billing checkout session.
 }
 ```
 
-Milady prefers embedded checkout when Eliza Cloud supports it, but the current cloud billing integration can still return a hosted checkout URL.
+Eliza prefers embedded checkout when Eliza Cloud supports it, but the current cloud billing integration can still return a hosted checkout URL.
 
 #### POST /api/cloud/billing/crypto/quote
 
@@ -266,7 +266,7 @@ Create a new cloud agent. Requires an active cloud connection.
 ```json
 {
   "agentName": "My Cloud Agent",
-  "agentConfig": { "character": "milady" },
+  "agentConfig": { "character": "eliza" },
   "environmentVars": { "OPENAI_API_KEY": "<OPENAI_API_KEY>" }
 }
 ```

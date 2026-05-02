@@ -4,7 +4,7 @@ This directory contains the toolchain for building a brand-customised
 Android AOSP image — Cuttlefish (virtual phone) for CI validation, and
 real device targets (Pixel codenames) for installs.
 
-The toolchain was originally written for **MiladyOS** (a single
+The toolchain was originally written for **ElizaOS** (a single
 hardcoded brand) and lifted upstream to **elizaOS** so any brand can
 build a privileged-system-app distribution by supplying a JSON brand
 config and a vendor tree.
@@ -19,25 +19,25 @@ and a corresponding **vendor tree** under `os/android/vendor/<brand>/`.
 ```jsonc
 {
   // Required
-  "brand":         "milady",                  // lowercase token; vendor/<X>, init.<X>.rc, file paths
-  "appName":       "Milady",                  // PascalCase; APK module + apk filename
-  "distroName":    "MiladyOS",                // brand display name in log messages
-  "packageName":   "com.miladyai.milady",     // APK Java package id
-  "classPrefix":   "Milady",                  // Java class prefix (MiladyDialActivity, MiladySmsReceiver, …)
-  "productName":   "milady_cf_x86_64_phone",  // Cuttlefish product name + makefile filename stem
-  "lunchTarget":   "milady_cf_x86_64_phone-trunk_staging-userdebug",
-  "envPrefix":     "MILADY",                  // env var prefix (MILADY_PIXEL_CODENAME, MILADY_AOSP_BUILD)
+  "brand":         "eliza",                  // lowercase token; vendor/<X>, init.<X>.rc, file paths
+  "appName":       "Eliza",                  // PascalCase; APK module + apk filename
+  "distroName":    "ElizaOS",                // brand display name in log messages
+  "packageName":   "com.elizaai.eliza",     // APK Java package id
+  "classPrefix":   "Eliza",                  // Java class prefix (ElizaDialActivity, ElizaSmsReceiver, …)
+  "productName":   "eliza_cf_x86_64_phone",  // Cuttlefish product name + makefile filename stem
+  "lunchTarget":   "eliza_cf_x86_64_phone-trunk_staging-userdebug",
+  "envPrefix":     "ELIZA",                  // env var prefix (ELIZA_PIXEL_CODENAME, ELIZA_AOSP_BUILD)
 
   // Optional — sensible defaults derived from `brand` if omitted
-  "vendorDir":     "os/android/vendor/milady",
-  "initRcName":    "init.milady.rc",
-  "commonMakefile":"milady_common.mk",
-  "cuttlefishMakefile":"milady_cf_x86_64_phone.mk",
+  "vendorDir":     "os/android/vendor/eliza",
+  "initRcName":    "init.eliza.rc",
+  "commonMakefile":"eliza_common.mk",
+  "cuttlefishMakefile":"eliza_cf_x86_64_phone.mk",
   "buildAndroidSystemCmd": ["bun", "run", "build:android:system"],
 
   // Optional — only needed if the brand stores assets/cache outside the defaults
   "androidAssetsDir": "apps/app/android/app/src/main/assets/agent",
-  "cacheDirName":     "milady-android-agent"
+  "cacheDirName":     "eliza-android-agent"
 }
 ```
 
@@ -95,7 +95,7 @@ to the corresponding role intents.
 | `lint-init-rc.mjs`        | Brand-agnostic Android init.rc syntax checker |
 | `compile-libllama.mjs`    | Cross-compile musl-linked libllama.so per ABI for the bundled bun runtime |
 
-### Pending ports (developer tooling, milady-only for now)
+### Pending ports (developer tooling, eliza-only for now)
 
 - `e2e-validate.mjs` — full e2e boot + interaction smoke
 - `capture-screens.mjs` — adb screencap automation

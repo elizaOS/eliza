@@ -81,12 +81,12 @@ describe("applyPrivacyFilter", () => {
 
   let prevSecret: string | undefined;
   beforeEach(() => {
-    prevSecret = process.env.MILADY_TEST_API_KEY;
-    process.env.MILADY_TEST_API_KEY = "supersecret-value-1234567890";
+    prevSecret = process.env.ELIZA_TEST_API_KEY;
+    process.env.ELIZA_TEST_API_KEY = "supersecret-value-1234567890";
   });
   afterEach(() => {
-    if (prevSecret === undefined) delete process.env.MILADY_TEST_API_KEY;
-    else process.env.MILADY_TEST_API_KEY = prevSecret;
+    if (prevSecret === undefined) delete process.env.ELIZA_TEST_API_KEY;
+    else process.env.ELIZA_TEST_API_KEY = prevSecret;
   });
 
   it("redacts environment-variable secret values when they appear inline", () => {
@@ -103,7 +103,7 @@ describe("applyPrivacyFilter", () => {
       ],
     };
     const result = applyPrivacyFilter([trajectory], {
-      envKeySnapshot: ["MILADY_TEST_API_KEY"],
+      envKeySnapshot: ["ELIZA_TEST_API_KEY"],
     });
     const call = result.trajectories[0]?.steps?.[0]?.llmCalls?.[0];
     expect(call?.userPrompt).toContain("<REDACTED:env-secret>");

@@ -157,7 +157,7 @@ export function HuggingFaceSearch({
 
       <p className="text-xs text-muted-foreground">
         Results are live HuggingFace repos tagged <code>gguf</code>, sorted by
-        downloads. Milady picks the best quant (preferring Q4_K_M) when a repo
+        downloads. Eliza picks the best quant (preferring Q4_K_M) when a repo
         has several.
       </p>
     </div>

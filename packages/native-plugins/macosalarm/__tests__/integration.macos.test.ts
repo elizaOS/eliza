@@ -14,7 +14,7 @@ import { runHelper } from "../src/helper";
 // Note: UNUserNotificationCenter requires the binary to live inside a signed
 // app bundle at runtime. Invoked as a bare CLI, it throws
 // NSInternalInconsistencyException about `bundleProxyForCurrentProcess is
-// nil`. Packaging/signing is owned by milady-devops (deferred per T8b); this
+// nil`. Packaging/signing is owned by eliza-devops (deferred per T8b); this
 // test therefore asserts the helper builds and runs, and accepts the known
 // bundle-proxy error as a documented "unbundled" signal.
 

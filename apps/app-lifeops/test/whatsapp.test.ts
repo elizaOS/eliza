@@ -331,7 +331,7 @@ describe("withWhatsApp mixin", () => {
     process.env.ELIZA_WHATSAPP_ACCESS_TOKEN = "tok-service";
     process.env.ELIZA_WHATSAPP_PHONE_NUMBER_ID = "phone-service";
     process.env.ELIZA_WHATSAPP_API_VERSION = "v21.0";
-    process.env.MILADY_MOCK_WHATSAPP_BASE = "http://127.0.0.1:7879";
+    process.env.ELIZA_MOCK_WHATSAPP_BASE = "http://127.0.0.1:7879";
     let capturedUrl = "";
     let capturedBody: unknown;
     global.fetch = vi.fn(
@@ -385,7 +385,7 @@ describe("withWhatsApp mixin", () => {
   test("sendWhatsAppMessage surfaces Cloud API delivery failures", async () => {
     process.env.ELIZA_WHATSAPP_ACCESS_TOKEN = "tok-service";
     process.env.ELIZA_WHATSAPP_PHONE_NUMBER_ID = "phone-service";
-    process.env.MILADY_MOCK_WHATSAPP_BASE = "http://127.0.0.1:7879";
+    process.env.ELIZA_MOCK_WHATSAPP_BASE = "http://127.0.0.1:7879";
     global.fetch = vi.fn(
       async () =>
         new Response(

@@ -1,7 +1,7 @@
 ---
 title: Apps
 sidebarTitle: Apps
-description: Browse, launch, and manage apps and games that integrate with your Milady agent from the in-dashboard app browser.
+description: Browse, launch, and manage apps and games that integrate with your Eliza agent from the in-dashboard app browser.
 ---
 
 The Apps tab provides a built-in app browser for discovering, launching, and managing applications that integrate with your agent. Access it from the main dashboard navigation at `/apps`.

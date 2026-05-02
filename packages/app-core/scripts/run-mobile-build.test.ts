@@ -15,7 +15,7 @@ import {
 const tempDirs: string[] = [];
 
 function makeTempDir() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "milady-mobile-build-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-mobile-build-"));
   tempDirs.push(dir);
   return dir;
 }
@@ -73,7 +73,7 @@ describe("run-mobile-build", () => {
         "ios",
         "App",
         "App",
-        "MiladyIntentPlugin.swift",
+        "ElizaIntentPlugin.swift",
       ),
       "intent-plugin\n",
     );
@@ -219,7 +219,7 @@ describe("run-mobile-build", () => {
       path.join("App", "Podfile"),
       path.join("App", "App.xcodeproj", "project.pbxproj"),
       path.join("App", "App", "Base.lproj", "LaunchScreen.storyboard"),
-      path.join("App", "App", "MiladyIntentPlugin.swift"),
+      path.join("App", "App", "ElizaIntentPlugin.swift"),
       path.join("App", "App", "PrivacyInfo.xcprivacy"),
       path.join(
         "App",
@@ -255,7 +255,7 @@ describe("run-mobile-build", () => {
     ).toBe("ios-project\n");
     expect(
       fs.readFileSync(
-        path.join(appDir, "ios", "App", "App", "MiladyIntentPlugin.swift"),
+        path.join(appDir, "ios", "App", "App", "ElizaIntentPlugin.swift"),
         "utf8",
       ),
     ).toBe("intent-plugin\n");
@@ -617,9 +617,9 @@ describe("run-mobile-build", () => {
 
     const changed = applyIosAppIdentity({
       appDirValue: appDir,
-      appId: "com.example.milady",
-      appName: "Milady",
-      appGroup: "group.com.example.milady",
+      appId: "com.example.eliza",
+      appName: "Eliza",
+      appGroup: "group.com.example.eliza",
       developmentTeam: "ABCDE12345",
       log: () => {},
     });
@@ -644,34 +644,34 @@ describe("run-mobile-build", () => {
       ]),
     );
     expect(fs.readFileSync(projectPath, "utf8")).toContain(
-      "PRODUCT_BUNDLE_IDENTIFIER = com.example.milady;",
+      "PRODUCT_BUNDLE_IDENTIFIER = com.example.eliza;",
     );
     expect(fs.readFileSync(projectPath, "utf8")).toContain(
-      "PRODUCT_BUNDLE_IDENTIFIER = com.example.milady.WebsiteBlockerContentExtension;",
+      "PRODUCT_BUNDLE_IDENTIFIER = com.example.eliza.WebsiteBlockerContentExtension;",
     );
     expect(fs.readFileSync(projectPath, "utf8")).toContain(
       "DEVELOPMENT_TEAM = ABCDE12345;",
     );
     expect(fs.readFileSync(projectPath, "utf8")).toContain(
-      'MILADY_DISPLAY_NAME = "Milady";',
+      'ELIZA_DISPLAY_NAME = "Eliza";',
     );
     expect(fs.readFileSync(appEntitlements, "utf8")).toContain(
-      "group.com.example.milady",
+      "group.com.example.eliza",
     );
     expect(fs.readFileSync(extensionEntitlements, "utf8")).toContain(
-      "group.com.example.milady",
+      "group.com.example.eliza",
     );
     expect(fs.readFileSync(extensionHandler, "utf8")).toContain(
-      "group.com.example.milady",
+      "group.com.example.eliza",
     );
     expect(fs.readFileSync(fastlaneAppfile, "utf8")).toContain(
-      'ENV["APP_IDENTIFIER"] || "com.example.milady"',
+      'ENV["APP_IDENTIFIER"] || "com.example.eliza"',
     );
     expect(fs.readFileSync(fastlaneFastfile, "utf8")).toContain(
-      'ENV["APP_IDENTIFIER_EXTRA"] || "com.example.milady.WebsiteBlockerContentExtension"',
+      'ENV["APP_IDENTIFIER_EXTRA"] || "com.example.eliza.WebsiteBlockerContentExtension"',
     );
     expect(fs.readFileSync(fastlaneMatchfile, "utf8")).toContain(
-      'ENV["APP_IDENTIFIER"] || "com.example.milady"',
+      'ENV["APP_IDENTIFIER"] || "com.example.eliza"',
     );
   });
 
@@ -705,8 +705,8 @@ describe("run-mobile-build", () => {
     expect(
       resolveIosBuildTarget({
         env: {
-          MILADY_IOS_BUILD_DESTINATION: "generic/platform=iOS Simulator",
-          MILADY_IOS_BUILD_SDK: "iphonesimulator",
+          ELIZA_IOS_BUILD_DESTINATION: "generic/platform=iOS Simulator",
+          ELIZA_IOS_BUILD_SDK: "iphonesimulator",
         },
         appDirValue: makeTempDir(),
       }),

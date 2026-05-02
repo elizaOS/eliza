@@ -14,7 +14,7 @@
  * Persistence: the pool layers rich metadata (priority, enabled, health,
  * usage) on top of WS1's credential records. The metadata is written to
  * `<ELIZA_HOME>/auth/_pool-metadata.json` atomically so it survives
- * process restarts and is independent of WS3's eventual `milady.json`
+ * process restarts and is independent of WS3's eventual `eliza.json`
  * field — when WS3 lands its CRUD API on top of `LinkedAccountsConfig`
  * we can swap `createDefaultAccountPool()`'s deps without touching the
  * pool itself.
@@ -539,7 +539,7 @@ async function deleteAccountMeta(
  * the full pool surface (or the rest of `@elizaos/app-core`).
  */
 const ANTHROPIC_POOL_SHIM_SYMBOL: unique symbol = Symbol.for(
-  "milady.account-pool.anthropic.v1",
+  "eliza.account-pool.anthropic.v1",
 );
 
 interface AnthropicPoolShim {
@@ -566,7 +566,7 @@ interface AnthropicPoolShim {
  * because the orchestrator only needs to inject the env vars and forget.
  */
 const ORCHESTRATOR_POOL_SHIM_SYMBOL: unique symbol = Symbol.for(
-  "milady.account-pool.orchestrator.v1",
+  "eliza.account-pool.orchestrator.v1",
 );
 
 interface OrchestratorPoolShim {
@@ -584,7 +584,7 @@ interface OrchestratorPoolShim {
  * a symbol so the agent package doesn't need to depend on app-core.
  */
 const SUBSCRIPTION_SELECTOR_SHIM_SYMBOL: unique symbol = Symbol.for(
-  "milady.account-pool.subscription-selector.v1",
+  "eliza.account-pool.subscription-selector.v1",
 );
 
 interface SubscriptionSelectorShim {
@@ -599,7 +599,7 @@ let cachedDefaultPool: AccountPool | null = null;
  * `account-storage` and the pool-owned metadata file. Plugins / runtime
  * resolvers should import `getDefaultAccountPool()` rather than building
  * a new pool. WS3 may later swap the default deps to read/write the
- * `LinkedAccountsConfig` field directly out of `milady.json`; consumers
+ * `LinkedAccountsConfig` field directly out of `eliza.json`; consumers
  * keep the same accessor.
  */
 export function getDefaultAccountPool(): AccountPool {

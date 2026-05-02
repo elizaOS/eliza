@@ -9,7 +9,7 @@
  * doesn't flood the terminal with ECONNREFUSED errors.
  *
  * Usage:
- *   node eliza/packages/app-core/scripts/dev-ui.mjs            # from Milady repo root — API + UI
+ *   node eliza/packages/app-core/scripts/dev-ui.mjs            # from Eliza repo root — API + UI
  *   node packages/app-core/scripts/dev-ui.mjs                  # from eliza repo root — same
  *   node …/dev-ui.mjs --ui-only                                # Vite only (API assumed running)
  */
@@ -97,9 +97,9 @@ function resolveCapacitorPluginNamesPath(devCwd) {
   );
 }
 
-/** Relative to `cwd` for `spawn(..., { cwd })` — Milady monorepo vs eliza repo root. */
+/** Relative to `cwd` for `spawn(..., { cwd })` — Eliza monorepo vs eliza repo root. */
 function resolveDevServerEntryRelativePath(devCwd) {
-  const miladyMonorepoEntry = path.join(
+  const elizaMonorepoEntry = path.join(
     devCwd,
     "eliza",
     "packages",
@@ -108,7 +108,7 @@ function resolveDevServerEntryRelativePath(devCwd) {
     "runtime",
     "dev-server.ts",
   );
-  if (existsSync(miladyMonorepoEntry)) {
+  if (existsSync(elizaMonorepoEntry)) {
     return "eliza/packages/app-core/src/runtime/dev-server.ts";
   }
   const elizaRepoEntry = path.join(
@@ -123,7 +123,7 @@ function resolveDevServerEntryRelativePath(devCwd) {
     return "packages/app-core/src/runtime/dev-server.ts";
   }
   throw new Error(
-    `[dev-ui] dev-server.ts not found under ${devCwd}. Expected eliza/packages/app-core/... (Milady-style checkout) or packages/app-core/... (eliza repo root).`,
+    `[dev-ui] dev-server.ts not found under ${devCwd}. Expected eliza/packages/app-core/... (Eliza-style checkout) or packages/app-core/... (eliza repo root).`,
   );
 }
 
@@ -199,11 +199,11 @@ const devLogLevel =
 const quietApiLogs = process.env.ELIZA_DEV_QUIET_LOGS === "1";
 const verboseApiLogs = process.env.ELIZA_DEV_VERBOSE_LOGS !== "0";
 const DEV_TEST_MOCK_ENV_KEYS = [
-  "MILADY_MOCK_GOOGLE_BASE",
-  "MILADY_MOCK_TWILIO_BASE",
-  "MILADY_MOCK_WHATSAPP_BASE",
-  "MILADY_MOCK_X_BASE",
-  "MILADY_MOCK_CALENDLY_BASE",
+  "ELIZA_MOCK_GOOGLE_BASE",
+  "ELIZA_MOCK_TWILIO_BASE",
+  "ELIZA_MOCK_WHATSAPP_BASE",
+  "ELIZA_MOCK_X_BASE",
+  "ELIZA_MOCK_CALENDLY_BASE",
 ];
 let warnedAboutStrippedDevMocks = false;
 
@@ -221,7 +221,7 @@ function createDevChildEnv(baseEnv) {
   }
   if (!warnedAboutStrippedDevMocks && strippedKeys.length > 0) {
     warnedAboutStrippedDevMocks = true;
-    const cleanupHint = strippedKeys.includes("MILADY_MOCK_GOOGLE_BASE")
+    const cleanupHint = strippedKeys.includes("ELIZA_MOCK_GOOGLE_BASE")
       ? " If cached mock Google events already landed in LifeOps, disconnect and reconnect Google once in the app to resync real data."
       : "";
     console.warn(

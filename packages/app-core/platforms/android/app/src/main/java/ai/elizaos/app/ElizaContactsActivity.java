@@ -8,10 +8,10 @@ import android.os.Bundle;
 /**
  * Contacts entry point.
  *
- * Stock AOSP Contacts is stripped. Milady owns contacts via the
+ * Stock AOSP Contacts is stripped. Eliza owns contacts via the
  * platform's ContactsContract provider (which AOSP keeps even when
  * the Contacts UI is removed), and this activity surfaces the
- * Milady contacts view for both the launcher entry and external
+ * Eliza contacts view for both the launcher entry and external
  * ACTION_VIEW intents on people:/contacts: URIs.
  *
  * Common triggers:
@@ -19,7 +19,7 @@ import android.os.Bundle;
  *   - Another app opens content://com.android.contacts/contacts/123.
  *   - User selects "Contacts" from the app drawer (LAUNCHER intent).
  */
-public class MiladyContactsActivity extends Activity {
+public class ElizaContactsActivity extends Activity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {

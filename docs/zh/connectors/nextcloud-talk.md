@@ -24,7 +24,7 @@ Nextcloud Talk 连接器是一个 elizaOS 插件，将你的代理桥接到 Next
 |------|----|
 | 包 | `@elizaos/plugin-nextcloud-talk` |
 | 配置键 | `connectors.nextcloud-talk` |
-| 安装 | `milady plugins install @elizaos/plugin-nextcloud-talk` |
+| 安装 | `eliza plugins install @elizaos/plugin-nextcloud-talk` |
 
 <div id="setup-requirements">
 

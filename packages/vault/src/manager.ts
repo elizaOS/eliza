@@ -26,7 +26,7 @@ const exec = promisify(execFile);
  *
  * Lets a user pick which backends to enable for sensitive secrets:
  *
- *   - "in-house"   → Milady's local store (OS keychain master + AES-GCM file)
+ *   - "in-house"   → Eliza's local store (OS keychain master + AES-GCM file)
  *   - "1password"  → 1Password CLI (`op`); references stored locally
  *   - "protonpass" → Proton Pass (scaffolded; vendor CLI not stable yet)
  *   - "bitwarden"  → Bitwarden CLI (`bw`); references stored locally
@@ -484,7 +484,7 @@ function normalizePreferences(prefs: ManagerPreferences): ManagerPreferences {
 function detectInHouse(): BackendStatus {
   return {
     id: "in-house",
-    label: "Milady (local, encrypted)",
+    label: "Eliza (local, encrypted)",
     available: true,
     signedIn: true,
   };

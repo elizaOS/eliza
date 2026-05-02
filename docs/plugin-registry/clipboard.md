@@ -1,10 +1,10 @@
 ---
 title: "Clipboard Plugin"
 sidebarTitle: "Clipboard"
-description: "File-based persistent notes and clipboard for Milady agents — save, recall, and manage text snippets."
+description: "File-based persistent notes and clipboard for Eliza agents — save, recall, and manage text snippets."
 ---
 
-The Clipboard plugin provides file-based memory storage for Milady agents.
+The Clipboard plugin provides file-based memory storage for Eliza agents.
 
 **Package:** `@elizaos/plugin-clipboard`
 
@@ -22,7 +22,7 @@ Key capabilities:
 ## Installation
 
 ```bash
-milady plugins install clipboard
+eliza plugins install clipboard
 ```
 
 ## Configuration

@@ -11,7 +11,7 @@ import android.provider.CalendarContract;
  *
  * AOSP Calendar is stripped. The CalendarContract provider stays,
  * so events written by other apps are still queryable; this activity
- * surfaces the Milady calendar UI for both the launcher entry and
+ * surfaces the Eliza calendar UI for both the launcher entry and
  * external ACTION_VIEW intents on event URIs.
  *
  * Common triggers:
@@ -19,7 +19,7 @@ import android.provider.CalendarContract;
  *     content://com.android.calendar/events/N.
  *   - Another app fires INSERT/EDIT on calendar events.
  */
-public class MiladyCalendarActivity extends Activity {
+public class ElizaCalendarActivity extends Activity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {

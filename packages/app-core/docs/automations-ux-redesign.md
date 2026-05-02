@@ -261,7 +261,7 @@ Defense:
 
 - Workflows are directed graphs. The graph is not decorative; it is the user's proof of what will happen.
 - A workflow needs both a visual overview and a compact linear explanation because graphs can become hard to parse.
-- n8n compatibility matters, but Milady should wrap n8n complexity in clearer product language.
+- n8n compatibility matters, but Eliza should wrap n8n complexity in clearer product language.
 
 Does it need to be there:
 
@@ -461,7 +461,7 @@ How other companies do it:
 
 - Slack exposes workflow activity and errors.
 - Zapier blocks publishing or highlights steps needing attention.
-- n8n execution logs are powerful but technical; Milady should surface repair first.
+- n8n execution logs are powerful but technical; Eliza should surface repair first.
 
 Responsive rules:
 

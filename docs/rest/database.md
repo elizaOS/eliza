@@ -29,7 +29,7 @@ Returns the current database connection status.
   "connected": true,
   "serverVersion": "16.0",
   "tableCount": 42,
-  "pgliteDataDir": "~/.milady/workspace/.eliza/.elizadb",
+  "pgliteDataDir": "~/.eliza/workspace/.eliza/.elizadb",
   "postgresHost": null
 }
 ```

@@ -145,7 +145,7 @@ describe("local JSONL counters", () => {
   let originalElizaHome: string | undefined;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "milady-usage-"));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-usage-"));
     originalElizaHome = process.env.ELIZA_HOME;
     process.env.ELIZA_HOME = tmpDir;
   });

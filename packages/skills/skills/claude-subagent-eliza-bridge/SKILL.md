@@ -1,11 +1,11 @@
 ---
-name: claude-subagent-milady-bridge
-description: "Use when spawning a Claude Code, Codex, Gemini, Aider, or other CLI task agent whose work needs parent Milady runtime context. Covers the read-only loopback bridge for character, room, memory, and active workspace state."
+name: claude-subagent-eliza-bridge
+description: "Use when spawning a Claude Code, Codex, Gemini, Aider, or other CLI task agent whose work needs parent Eliza runtime context. Covers the read-only loopback bridge for character, room, memory, and active workspace state."
 ---
 
-# Claude/Codex Sub-Agent Milady Bridge
+# Claude/Codex Sub-Agent Eliza Bridge
 
-Use this skill when a coding sub-agent needs context that lives in the parent Milady runtime rather than in the checkout.
+Use this skill when a coding sub-agent needs context that lives in the parent Eliza runtime rather than in the checkout.
 
 The orchestrator injects a parent-runtime reference into each non-shell task agent's memory file. The child can curl these loopback-only, read-only endpoints with its session id:
 

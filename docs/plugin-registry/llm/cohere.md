@@ -1,23 +1,23 @@
 ---
 title: "Cohere Plugin"
 sidebarTitle: "Cohere"
-description: "Cohere model provider for Milady — enterprise-grade language models with RAG, embeddings, and reranking."
+description: "Cohere model provider for Eliza — enterprise-grade language models with RAG, embeddings, and reranking."
 ---
 
 <Warning>
-This plugin is not yet available in the Milady plugin registry. To use Cohere models today, configure them through the [OpenRouter plugin](/plugin-registry/llm/openrouter) using the appropriate model ID.
+This plugin is not yet available in the Eliza plugin registry. To use Cohere models today, configure them through the [OpenRouter plugin](/plugin-registry/llm/openrouter) using the appropriate model ID.
 </Warning>
 
-The Cohere plugin connects Milady agents to Cohere's language models, providing access to the Command family of models optimized for enterprise use cases including retrieval-augmented generation and tool use.
+The Cohere plugin connects Eliza agents to Cohere's language models, providing access to the Command family of models optimized for enterprise use cases including retrieval-augmented generation and tool use.
 
-> **On-demand plugin.** This plugin is resolved from the remote elizaOS plugin registry and auto-installs when its API key is detected. It is not included in Milady's bundled `plugins.json` index.
+> **On-demand plugin.** This plugin is resolved from the remote elizaOS plugin registry and auto-installs when its API key is detected. It is not included in Eliza's bundled `plugins.json` index.
 
 **Package:** `@elizaos/plugin-cohere`
 
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-cohere
+eliza plugins install @elizaos/plugin-cohere
 ```
 
 ## Auto-Enable
@@ -34,7 +34,7 @@ export COHERE_API_KEY=your-cohere-api-key
 |---------------------|----------|-------------|
 | `COHERE_API_KEY` | Yes | Cohere API key from [cohere.com](https://cohere.com) |
 
-### milady.json Example
+### eliza.json Example
 
 ```json
 {

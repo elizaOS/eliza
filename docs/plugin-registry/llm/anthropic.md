@@ -1,17 +1,17 @@
 ---
 title: "Anthropic Plugin"
 sidebarTitle: "Anthropic"
-description: "Anthropic Claude model provider for Milady — Claude Opus 4.7, Sonnet 4.6, Haiku 4.5, and adaptive thinking support."
+description: "Anthropic Claude model provider for Eliza — Claude Opus 4.7, Sonnet 4.6, Haiku 4.5, and adaptive thinking support."
 ---
 
-The Anthropic plugin connects Milady agents to Anthropic's Claude API and exposes the current Claude Opus 4.7, Claude Sonnet 4.6, and Claude Haiku 4.5 models.
+The Anthropic plugin connects Eliza agents to Anthropic's Claude API and exposes the current Claude Opus 4.7, Claude Sonnet 4.6, and Claude Haiku 4.5 models.
 
 **Package:** `@elizaos/plugin-anthropic`
 
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-anthropic
+eliza plugins install @elizaos/plugin-anthropic
 ```
 
 ## Auto-Enable
@@ -33,7 +33,7 @@ export ANTHROPIC_API_KEY=sk-ant-...
 | `ANTHROPIC_EXPERIMENTAL_TELEMETRY` | No | Enable experimental telemetry features for debugging and usage analytics (default: `false`) |
 | `ANTHROPIC_BROWSER_BASE_URL` | No | Browser-only proxy endpoint base URL for Anthropic requests (no secrets in the client) |
 
-### milady.json Example
+### eliza.json Example
 
 ```json
 {

@@ -54,7 +54,7 @@ describe("external-credentials — 1Password", () => {
   let vault: Vault;
 
   beforeEach(async () => {
-    workDir = await fs.mkdtemp(join(tmpdir(), "milady-extcreds-op-"));
+    workDir = await fs.mkdtemp(join(tmpdir(), "eliza-extcreds-op-"));
     vault = createVault({
       workDir,
       masterKey: inMemoryMasterKey(generateMasterKey()),
@@ -368,7 +368,7 @@ describe("external-credentials — Bitwarden", () => {
   let vault: Vault;
 
   beforeEach(async () => {
-    workDir = await fs.mkdtemp(join(tmpdir(), "milady-extcreds-bw-"));
+    workDir = await fs.mkdtemp(join(tmpdir(), "eliza-extcreds-bw-"));
     vault = createVault({
       workDir,
       masterKey: inMemoryMasterKey(generateMasterKey()),

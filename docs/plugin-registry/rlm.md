@@ -1,10 +1,10 @@
 ---
 title: "RLM Plugin"
 sidebarTitle: "RLM"
-description: "RLM (Recursive Language Model) plugin for Milady — enables processing of arbitrary length input contexts."
+description: "RLM (Recursive Language Model) plugin for Eliza — enables processing of arbitrary length input contexts."
 ---
 
-The RLM plugin extends Milady agents with the ability to process arbitrary length input contexts using recursive language model techniques.
+The RLM plugin extends Eliza agents with the ability to process arbitrary length input contexts using recursive language model techniques.
 
 **Package:** `@elizaos/plugin-rlm`
 
@@ -17,7 +17,7 @@ The plugin breaks long inputs into manageable segments, processes each recursive
 ## Installation
 
 ```bash
-milady plugins install rlm
+eliza plugins install rlm
 ```
 
 ## Configuration

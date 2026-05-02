@@ -103,7 +103,7 @@ Does it need to be there:
 
 Alternative approaches:
 
-- Move device permissions into global Milady Settings. This is clean for platform permissions, but LifeOps still needs a source health row so users know whether device data is available to LifeOps.
+- Move device permissions into global Eliza Settings. This is clean for platform permissions, but LifeOps still needs a source health row so users know whether device data is available to LifeOps.
 
 External patterns:
 

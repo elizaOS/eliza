@@ -1,17 +1,17 @@
 ---
 title: "iMessage Plugin"
 sidebarTitle: "iMessage"
-description: "iMessage connector for Milady — macOS native messaging with iMessage and SMS support, database access, and remote host connectivity."
+description: "iMessage connector for Eliza — macOS native messaging with iMessage and SMS support, database access, and remote host connectivity."
 ---
 
-The iMessage plugin connects Milady agents to iMessage on macOS, supporting both iMessage and SMS conversations with configurable service selection and attachment handling.
+The iMessage plugin connects Eliza agents to iMessage on macOS, supporting both iMessage and SMS conversations with configurable service selection and attachment handling.
 
 **Package:** `@elizaos/plugin-imessage`
 
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-imessage
+eliza plugins install @elizaos/plugin-imessage
 ```
 
 ## Setup
@@ -19,9 +19,9 @@ milady plugins install @elizaos/plugin-imessage
 ### 1. Prerequisites
 
 - macOS with iMessage configured and signed in
-- Full Disk Access granted to the terminal or application running Milady (for chat database access)
+- Full Disk Access granted to the terminal or application running Eliza (for chat database access)
 
-### 2. Configure Milady
+### 2. Configure Eliza
 
 ```json
 {
@@ -89,7 +89,7 @@ The plugin auto-enables when the `connectors.imessage` block contains a `cliPath
 If message retrieval fails, ensure Full Disk Access is granted:
 
 1. Open **System Settings → Privacy & Security → Full Disk Access**
-2. Add the terminal application or Milady process
+2. Add the terminal application or Eliza process
 
 ### Database Path
 

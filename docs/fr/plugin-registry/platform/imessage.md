@@ -1,10 +1,10 @@
 ---
 title: "Plugin iMessage"
 sidebarTitle: "iMessage"
-description: "Connecteur iMessage pour Milady — messagerie native macOS avec prise en charge d'iMessage et SMS, accès à la base de données et connectivité avec hôte distant."
+description: "Connecteur iMessage pour Eliza — messagerie native macOS avec prise en charge d'iMessage et SMS, accès à la base de données et connectivité avec hôte distant."
 ---
 
-Le plugin iMessage connecte les agents Milady à iMessage sur macOS, prenant en charge les conversations iMessage et SMS avec sélection de service configurable et gestion des pièces jointes.
+Le plugin iMessage connecte les agents Eliza à iMessage sur macOS, prenant en charge les conversations iMessage et SMS avec sélection de service configurable et gestion des pièces jointes.
 
 **Package :** `@elizaos/plugin-imessage`
 
@@ -13,7 +13,7 @@ Le plugin iMessage connecte les agents Milady à iMessage sur macOS, prenant en 
 </div>
 
 ```bash
-milady plugins install @elizaos/plugin-imessage
+eliza plugins install @elizaos/plugin-imessage
 ```
 
 <div id="setup">
@@ -25,10 +25,10 @@ milady plugins install @elizaos/plugin-imessage
 </div>
 
 - macOS avec iMessage configuré et connecté
-- Accès complet au disque accordé au terminal ou à l'application exécutant Milady (pour l'accès à la base de données de chat)
+- Accès complet au disque accordé au terminal ou à l'application exécutant Eliza (pour l'accès à la base de données de chat)
 
-<div id="2-configure-milady">
-### 2. Configurer Milady
+<div id="2-configure-eliza">
+### 2. Configurer Eliza
 </div>
 
 ```json
@@ -95,7 +95,7 @@ Le plugin s'active automatiquement lorsque le bloc `connectors.imessage` est pr�
 Si la récupération des messages échoue, assurez-vous que l'Accès complet au disque est accordé :
 
 1. Ouvrez **Réglages Système → Confidentialité et sécurité → Accès complet au disque**
-2. Ajoutez l'application de terminal ou le processus Milady
+2. Ajoutez l'application de terminal ou le processus Eliza
 
 <div id="database-path">
 ### Chemin de la base de données

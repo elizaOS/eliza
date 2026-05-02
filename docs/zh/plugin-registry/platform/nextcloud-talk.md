@@ -1,10 +1,10 @@
 ---
 title: "Nextcloud Talk 插件"
 sidebarTitle: "Nextcloud Talk"
-description: "Milady 的 Nextcloud Talk 连接器 — 与 Nextcloud Talk 聊天的机器人集成。"
+description: "Eliza 的 Nextcloud Talk 连接器 — 与 Nextcloud Talk 聊天的机器人集成。"
 ---
 
-Nextcloud Talk 插件将 Milady 代理连接到 Nextcloud Talk，实现 Nextcloud Talk 对话中的消息处理。
+Nextcloud Talk 插件将 Eliza 代理连接到 Nextcloud Talk，实现 Nextcloud Talk 对话中的消息处理。
 
 **Package:** `@elizaos/plugin-nextcloud-talk`
 
@@ -15,7 +15,7 @@ Nextcloud Talk 插件将 Milady 代理连接到 Nextcloud Talk，实现 Nextclou
 </div>
 
 ```bash
-milady plugins install @elizaos/plugin-nextcloud-talk
+eliza plugins install @elizaos/plugin-nextcloud-talk
 ```
 
 <div id="setup">
@@ -34,9 +34,9 @@ milady plugins install @elizaos/plugin-nextcloud-talk
 2. 创建一个机器人用户或使用现有账户作为代理
 3. 记下 Nextcloud 服务器 URL 和凭据
 
-<div id="2-configure-milady">
+<div id="2-configure-eliza">
 
-### 2. 配置 Milady
+### 2. 配置 Eliza
 
 </div>
 

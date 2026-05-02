@@ -155,10 +155,10 @@ export function saveConfig(
 }
 
 function resolveLaunchCommand(cwd = process.cwd()): string {
-  const localEntry = path.join(cwd, "milady.mjs");
+  const localEntry = path.join(cwd, "eliza.mjs");
   const localPackage = path.join(cwd, "package.json");
   return fs.existsSync(localEntry) && fs.existsSync(localPackage)
-    ? "node milady.mjs start"
+    ? "node eliza.mjs start"
     : "eliza start";
 }
 

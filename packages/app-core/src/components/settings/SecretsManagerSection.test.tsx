@@ -122,7 +122,7 @@ describe("BackendRow — three external states", () => {
         {...baseRowProps}
         backend={{
           id: "in-house",
-          label: "Milady (local, encrypted)",
+          label: "Eliza (local, encrypted)",
           available: true,
           signedIn: true,
         }}

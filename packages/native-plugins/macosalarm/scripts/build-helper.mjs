@@ -15,7 +15,7 @@ const source = resolve(pkgRoot, "swift-helper", "main.swift");
 const outDir = resolve(pkgRoot, "bin");
 const outBin = resolve(outDir, "macosalarm-helper");
 const verbosePluginBuild =
-  process.env.MILADY_VERBOSE_PLUGIN_BUILD === "1" ||
+  process.env.ELIZA_VERBOSE_PLUGIN_BUILD === "1" ||
   process.env.ELIZA_VERBOSE_PLUGIN_BUILD === "1";
 
 if (process.platform !== "darwin") {

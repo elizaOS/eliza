@@ -173,13 +173,13 @@ describe("BROWSER_TAB_PRELOAD_SCRIPT — wallet shims", () => {
       window as unknown as {
         ethereum?: {
           request: (a: unknown) => Promise<unknown>;
-          isMilady: boolean;
+          isEliza: boolean;
         };
       }
     ).ethereum;
     expect(eth).toBeTruthy();
-    expect(eth?.isMilady).toBe(true);
-    if (!eth) throw new Error("Milady Ethereum provider was not installed.");
+    expect(eth?.isEliza).toBe(true);
+    if (!eth) throw new Error("Eliza Ethereum provider was not installed.");
 
     const promise = eth.request({
       method: "eth_requestAccounts",
@@ -214,15 +214,15 @@ describe("BROWSER_TAB_PRELOAD_SCRIPT — wallet shims", () => {
       window as unknown as {
         solana?: {
           isPhantom: boolean;
-          isMilady: boolean;
+          isEliza: boolean;
           connect: () => Promise<unknown>;
         };
       }
     ).solana;
     expect(sol).toBeTruthy();
     expect(sol?.isPhantom).toBe(true);
-    expect(sol?.isMilady).toBe(true);
-    if (!sol) throw new Error("Milady Solana provider was not installed.");
+    expect(sol?.isEliza).toBe(true);
+    if (!sol) throw new Error("Eliza Solana provider was not installed.");
 
     const promise = sol.connect();
     expect(captured).toMatchObject({

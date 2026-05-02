@@ -248,9 +248,9 @@ def get_llm_query_fn(provider: str):
 
         return eliza_mock_query
     elif provider == "eliza":
-        from milady_adapter.context_bench import make_milady_llm_query
+        from eliza_adapter.context_bench import make_eliza_llm_query
 
-        return make_milady_llm_query()
+        return make_eliza_llm_query()
     else:
         raise ValueError(f"Unknown provider: {provider}")
 

@@ -56,8 +56,8 @@ export const repoSetupSteps = [
 
 function resolveRepoSetupStepPath(repoRoot, step) {
   // Step paths prefixed with "scripts/" resolve to the consuming repo
-  // root (e.g. Milady's /scripts/setup-upstreams.mjs). Unprefixed names
-  // resolve to this app-core/scripts/ directory. This split lets Milady
+  // root (e.g. Eliza's /scripts/setup-upstreams.mjs). Unprefixed names
+  // resolve to this app-core/scripts/ directory. This split lets Eliza
   // override specific steps while reusing the rest of the elizaOS-provided
   // setup machinery.
   if (step.startsWith("scripts/")) {

@@ -36,11 +36,11 @@ Autonomous agents are ideal for recurring tasks like data synchronization, sched
 
 ### Via Dashboard
 
-Enabling autonomous mode for an agent is straightforward through the Milady dashboard:
+Enabling autonomous mode for an agent is straightforward through the Eliza dashboard:
 
 <Steps>
   <Step title="Navigate to Agent Settings">
-    Open your agent in the Milady dashboard and select the **Settings** tab.
+    Open your agent in the Eliza dashboard and select the **Settings** tab.
   </Step>
   <Step title="Enable Autonomy">
     Toggle the **Enable Autonomous Execution** switch to activate autonomous mode.
@@ -61,7 +61,7 @@ Enabling autonomous mode for an agent is straightforward through the Milady dash
 
 ### Via API
 
-You can also enable autonomous mode programmatically using the local Milady API:
+You can also enable autonomous mode programmatically using the local Eliza API:
 
 <CodeGroup>
 ```bash curl
@@ -96,7 +96,7 @@ curl http://localhost:31337/api/agent/autonomy
 See the [Autonomy API reference](/rest/autonomy) for full endpoint documentation.
 
 <Warning>
-Store sensitive configuration in `~/.milady/milady.json` or environment variables. Never hardcode credentials in your code.
+Store sensitive configuration in `~/.eliza/eliza.json` or environment variables. Never hardcode credentials in your code.
 </Warning>
 
 ## Trigger Types
@@ -182,7 +182,7 @@ Once triggers are one-time only. After execution, the trigger is automatically d
 
 ## Safety Controls
 
-Milady provides comprehensive safety controls to prevent runaway autonomous agents and ensure predictable resource usage.
+Eliza provides comprehensive safety controls to prevent runaway autonomous agents and ensure predictable resource usage.
 
 <Steps>
   <Step title="Max Runs Per Period">
@@ -219,7 +219,7 @@ You can limit how many times a trigger executes by setting `maxRuns` on each tri
 }
 ```
 
-The trigger system also enforces a per-creator limit on the total number of active triggers (default: 100, configurable via the `MILADY_TRIGGERS_MAX_ACTIVE` environment variable or runtime setting).
+The trigger system also enforces a per-creator limit on the total number of active triggers (default: 100, configurable via the `ELIZA_TRIGGERS_MAX_ACTIVE` environment variable or runtime setting).
 
 The autonomous state provider caps event caching at 240 events per agent to bound memory usage.
 

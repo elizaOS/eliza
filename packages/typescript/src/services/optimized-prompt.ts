@@ -3,7 +3,7 @@
  *
  * Native MIPRO/GEPA/bootstrap-fewshot optimizers (under
  * `apps/app-training/src/optimizers/`) write a JSON artifact per task into
- * `~/.milady/optimized-prompts/<task>/<timestamp>.json`. The runtime consults
+ * `~/.eliza/optimized-prompts/<task>/<timestamp>.json`. The runtime consults
  * this service before constructing the system prompt for one of the five core
  * decision tasks and substitutes the optimized prompt (plus any few-shot
  * demonstrations) when an artifact is available.

@@ -369,7 +369,7 @@ async function startMockAgentServer() {
 
     if (url.pathname === "/chat") {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      res.end("<!doctype html><title>Milady</title><h1>Milady</h1>");
+      res.end("<!doctype html><title>Eliza</title><h1>Eliza</h1>");
       return;
     }
     if (url.pathname === "/api/status") {
@@ -539,7 +539,7 @@ export async function main() {
     }
     await clickSafariPopupPrimaryButton();
     await waitForSafariPopup(
-      (state) => String(state.title ?? "").includes("connected to Milady"),
+      (state) => String(state.title ?? "").includes("connected to Eliza"),
       20_000,
     );
     console.log(`${safariAppDisplayName} Safari smoke checks passed.`);

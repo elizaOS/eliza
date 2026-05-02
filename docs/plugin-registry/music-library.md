@@ -10,12 +10,12 @@ Music metadata management with library storage and YouTube integration.
 
 ## Overview
 
-The Music Library plugin provides Milady agents with music metadata handling, library storage, playlist management, user preference tracking, analytics, and YouTube search integration. It serves as the data layer for music-related agent workflows.
+The Music Library plugin provides Eliza agents with music metadata handling, library storage, playlist management, user preference tracking, analytics, and YouTube search integration. It serves as the data layer for music-related agent workflows.
 
 ## Installation
 
 ```bash
-milady plugins install music-library
+eliza plugins install music-library
 ```
 
 ## Auto-Enable

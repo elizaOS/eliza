@@ -1,7 +1,7 @@
 ---
 title: "Minecraft Plugin"
 sidebarTitle: "Minecraft"
-description: "Minecraft automation app for driving Mineflayer bots from Milady agents"
+description: "Minecraft automation app for driving Mineflayer bots from Eliza agents"
 ---
 
 Minecraft bot automation powered by Mineflayer.
@@ -10,12 +10,12 @@ Minecraft bot automation powered by Mineflayer.
 
 ## Overview
 
-The Minecraft plugin lets Milady agents drive Mineflayer bots inside Minecraft servers. Agents can join servers, navigate the world, interact with blocks and entities, and carry out automated gameplay tasks.
+The Minecraft plugin lets Eliza agents drive Mineflayer bots inside Minecraft servers. Agents can join servers, navigate the world, interact with blocks and entities, and carry out automated gameplay tasks.
 
 ## Installation
 
 ```bash
-milady plugins install minecraft
+eliza plugins install minecraft
 ```
 
 ## Auto-Enable

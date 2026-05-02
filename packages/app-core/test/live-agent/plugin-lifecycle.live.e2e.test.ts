@@ -30,7 +30,7 @@ const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
 loadDotenv({ path: path.join(REPO_ROOT, ".env") });
 
 const LIVE =
-  process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
+  process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const FILTER_TOKENS = (process.env.ELIZA_PLUGIN_LIFECYCLE_FILTER ?? "")
   .split(",")
   .map((value) => value.trim())
@@ -546,7 +546,7 @@ describeIf(
     expect((response.data.text as string).trim().length).toBeGreaterThan(0);
     if (
       /provider issue/i.test(response.data.text as string) &&
-      process.env.MILADY_STRICT_LIVE_PROVIDER !== "1"
+      process.env.ELIZA_STRICT_LIVE_PROVIDER !== "1"
     ) {
       return;
     }

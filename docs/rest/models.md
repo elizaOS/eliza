@@ -25,7 +25,7 @@ Model lists are cached per-provider on disk:
 
 | Parameter | Value |
 |-----------|-------|
-| Cache location | `~/.milady/models-cache/<provider>.json` |
+| Cache location | `~/.eliza/models-cache/<provider>.json` |
 | Cache TTL | **24 hours** |
 | Cache format | JSON with `version`, `providerId`, `fetchedAt`, `models[]` |
 
@@ -119,4 +119,4 @@ List available AI models. Optionally filter by a specific provider or refresh th
 
 - [Model Providers](/runtime/models) — configuring model providers
 - [Environment variables](/cli/environment) — API key variables
-- [`milady models`](/cli/models) — CLI command for checking models
+- [`eliza models`](/cli/models) — CLI command for checking models

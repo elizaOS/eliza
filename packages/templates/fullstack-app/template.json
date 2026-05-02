@@ -1,7 +1,7 @@
 {
   "id": "fullstack-app",
   "name": "fullstack-app",
-  "description": "Create a Milady-style fullstack app workspace backed by a local eliza checkout",
+  "description": "Create a Eliza-style fullstack app workspace backed by a local eliza checkout",
   "kind": "fullstack-app",
   "version": 1,
   "languages": ["typescript"],

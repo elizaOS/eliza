@@ -1,7 +1,7 @@
 ---
 title: Chat
 sidebarTitle: Chat
-description: L'interface de messagerie principale pour interagir avec votre agent Milady — chat vocal, avatar 3D, conversations et surveillance autonome.
+description: L'interface de messagerie principale pour interagir avec votre agent Eliza — chat vocal, avatar 3D, conversations et surveillance autonome.
 ---
 
 L'onglet Chat est la vue d'accueil par défaut du tableau de bord. Il fournit l'interface de messagerie principale via le composant `ChatView`, avec une disposition en trois colonnes : la barre latérale des conversations à gauche, la vue de chat au centre et le panneau autonome à droite.
@@ -38,7 +38,7 @@ Chat vocal intégré alimenté par ElevenLabs ou TTS/STT du navigateur :
 
 - La configuration vocale se charge automatiquement depuis la configuration de l'agent au montage.
 - Le hook `useVoiceChat` gère le basculement du microphone, la lecture vocale de l'agent et l'état de parole qui pilote le lip-sync de l'avatar.
-- Les modifications de configuration vocale dans Paramètres ou les vues Personnage sont synchronisées en temps réel via un événement DOM personnalisé `milady:voice-config-updated`.
+- Les modifications de configuration vocale dans Paramètres ou les vues Personnage sont synchronisées en temps réel via un événement DOM personnalisé `eliza:voice-config-updated`.
 
 <div id="vrm-3d-avatar">
 ## Avatar 3D VRM

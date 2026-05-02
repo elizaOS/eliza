@@ -1,10 +1,10 @@
 ---
 title: "Rolodex Plugin"
 sidebarTitle: "Rolodex"
-description: "Entity and relationship management for Milady agents — contacts, connections, and relationship tracking."
+description: "Entity and relationship management for Eliza agents — contacts, connections, and relationship tracking."
 ---
 
-The Rolodex plugin provides entity and relationship management for Milady agents.
+The Rolodex plugin provides entity and relationship management for Eliza agents.
 
 **Package:** `@elizaos/plugin-rolodex`
 
@@ -22,7 +22,7 @@ Key capabilities:
 ## Installation
 
 ```bash
-milady plugins install rolodex
+eliza plugins install rolodex
 ```
 
 ## Configuration

@@ -4,18 +4,18 @@ sidebarTitle: "ElevenLabs"
 description: "ElevenLabs voice plugin for text-to-speech generation and conversational audio output"
 ---
 
-High-quality voice synthesis for Milady agents using the ElevenLabs API.
+High-quality voice synthesis for Eliza agents using the ElevenLabs API.
 
 **Package:** `@elizaos/plugin-elevenlabs`
 
 ## Overview
 
-The ElevenLabs plugin integrates ElevenLabs' text-to-speech API into Milady, enabling agents to generate natural-sounding speech and conversational audio. It supports multiple models, voice customization (stability, similarity boost, style), streaming latency optimization, and configurable output formats.
+The ElevenLabs plugin integrates ElevenLabs' text-to-speech API into Eliza, enabling agents to generate natural-sounding speech and conversational audio. It supports multiple models, voice customization (stability, similarity boost, style), streaming latency optimization, and configurable output formats.
 
 ## Installation
 
 ```bash
-milady plugins install elevenlabs
+eliza plugins install elevenlabs
 ```
 
 ## Auto-Enable

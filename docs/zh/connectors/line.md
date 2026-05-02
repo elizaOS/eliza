@@ -24,7 +24,7 @@ LINE 连接器是一个 elizaOS 插件，将你的代理桥接到 LINE Messaging
 |------|----|
 | 包 | `@elizaos/plugin-line` |
 | 配置键 | `connectors.line` |
-| 安装 | `milady plugins install @elizaos/plugin-line` |
+| 安装 | `eliza plugins install @elizaos/plugin-line` |
 
 <div id="setup-requirements">
 

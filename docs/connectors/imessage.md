@@ -5,7 +5,7 @@ Connect your agent to iMessage for private chats and group conversations on macO
 ## Prerequisites
 
 - macOS with iMessage configured and signed in
-- Full Disk Access granted to the terminal or application running Milady (for chat database access at `~/Library/Messages/chat.db`)
+- Full Disk Access granted to the terminal or application running Eliza (for chat database access at `~/Library/Messages/chat.db`)
 - A CLI tool for iMessage access — set the `cliPath` config field to the absolute path of the binary
 
 ## Configuration
@@ -22,7 +22,7 @@ Connect your agent to iMessage for private chats and group conversations on macO
 
 The connector auto-enables when `cliPath` is truthy in the connector config and `enabled` is not explicitly `false`.
 
-Configure in `~/.milady/milady.json`:
+Configure in `~/.eliza/eliza.json`:
 
 ```json
 {
@@ -52,7 +52,7 @@ To disable:
 ## Setup
 
 1. Ensure macOS has iMessage configured and signed in.
-2. Grant Full Disk Access to the terminal or Milady process (System Settings > Privacy & Security > Full Disk Access).
+2. Grant Full Disk Access to the terminal or Eliza process (System Settings > Privacy & Security > Full Disk Access).
 3. Install an iMessage CLI tool and note its path.
 4. Add the CLI path to `connectors.imessage.cliPath` in your config.
 5. Start your agent -- the iMessage connector will auto-enable.
@@ -85,7 +85,7 @@ To disable:
 
 ## Full Configuration Reference
 
-All fields are defined under `connectors.imessage` in `milady.json`.
+All fields are defined under `connectors.imessage` in `eliza.json`.
 
 ### Core Fields
 
@@ -198,7 +198,7 @@ Ensure SSH key-based authentication is configured between the local machine and 
 If message retrieval fails, ensure Full Disk Access is granted:
 
 1. Open **System Settings > Privacy & Security > Full Disk Access**
-2. Add the terminal application or Milady process
+2. Add the terminal application or Eliza process
 
 ### Database Path
 

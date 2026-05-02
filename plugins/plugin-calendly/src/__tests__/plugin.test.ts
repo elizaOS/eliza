@@ -31,7 +31,7 @@ describe("calendlyPlugin", () => {
 
     expect(calendlyPlugin.autoEnable?.envKeys).toEqual([
       "CALENDLY_ACCESS_TOKEN",
-      "MILADY_E2E_CALENDLY_ACCESS_TOKEN",
+      "ELIZA_E2E_CALENDLY_ACCESS_TOKEN",
     ]);
   });
 });

@@ -1,20 +1,20 @@
 ---
 title: "Plugin de OpenRouter"
 sidebarTitle: "OpenRouter"
-description: "Pasarela multi-proveedor OpenRouter para Milady — accede a más de 200 modelos de OpenAI, Anthropic, Google, Meta y otros a través de una única API."
+description: "Pasarela multi-proveedor OpenRouter para Eliza — accede a más de 200 modelos de OpenAI, Anthropic, Google, Meta y otros a través de una única API."
 ---
 
-El plugin de OpenRouter conecta los agentes de Milady con la pasarela de inferencia unificada de OpenRouter, proporcionando acceso a más de 200 modelos de todos los proveedores principales a través de una única clave API y punto de acceso.
+El plugin de OpenRouter conecta los agentes de Eliza con la pasarela de inferencia unificada de OpenRouter, proporcionando acceso a más de 200 modelos de todos los proveedores principales a través de una única clave API y punto de acceso.
 
 **Package:** `@elizaos/plugin-openrouter`
 
-<div id="milady-pinned-version-and-upstream-bundle-bug">
+<div id="eliza-pinned-version-and-upstream-bundle-bug">
 
-## Milady: versión fijada y error en el bundle upstream
+## Eliza: versión fijada y error en el bundle upstream
 
 </div>
 
-En el monorepo de Milady, **`@elizaos/plugin-openrouter` está fijado en `2.0.0-alpha.13`** (versión exacta en el `package.json` raíz, reflejado en `bun.lock`).
+En el monorepo de Eliza, **`@elizaos/plugin-openrouter` está fijado en `2.0.0-alpha.13`** (versión exacta en el `package.json` raíz, reflejado en `bun.lock`).
 
 **Por qué se fija**
 
@@ -35,7 +35,7 @@ Después de que upstream publique una versión corregida, verifica que `dist/nod
 </div>
 
 ```bash
-milady plugins install @elizaos/plugin-openrouter
+eliza plugins install @elizaos/plugin-openrouter
 ```
 
 <div id="auto-enable">
@@ -60,9 +60,9 @@ export OPENROUTER_API_KEY=sk-or-...
 |---------------------|-----------|-------------|
 | `OPENROUTER_API_KEY` | Sí | Clave API de OpenRouter desde [openrouter.ai](https://openrouter.ai) |
 
-<div id="miladyjson-example">
+<div id="elizajson-example">
 
-### Ejemplo de milady.json
+### Ejemplo de eliza.json
 
 </div>
 

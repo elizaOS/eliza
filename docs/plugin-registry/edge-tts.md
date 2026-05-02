@@ -10,12 +10,12 @@ Free text-to-speech synthesis using Microsoft Edge TTS, with no API key required
 
 ## Overview
 
-The Edge TTS plugin provides text-to-speech capabilities for Milady agents using Microsoft Edge's TTS engine. It supports a wide range of voices, adjustable speech rate, pitch, and volume. Since it leverages the Edge TTS service directly, no API key or paid subscription is needed.
+The Edge TTS plugin provides text-to-speech capabilities for Eliza agents using Microsoft Edge's TTS engine. It supports a wide range of voices, adjustable speech rate, pitch, and volume. Since it leverages the Edge TTS service directly, no API key or paid subscription is needed.
 
 ## Installation
 
 ```bash
-milady plugins install edge-tts
+eliza plugins install edge-tts
 ```
 
 ## Auto-Enable

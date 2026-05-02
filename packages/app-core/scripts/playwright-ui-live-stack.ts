@@ -25,12 +25,12 @@ const UI_SMOKE_STUB_SCRIPT = path.join(
 );
 const READY_TIMEOUT_MS = 180_000;
 const API_PORT = Number(
-  process.env.MILADY_UI_SMOKE_API_PORT ??
+  process.env.ELIZA_UI_SMOKE_API_PORT ??
     process.env.ELIZA_UI_SMOKE_API_PORT ??
     "31337",
 );
 const UI_PORT = Number(
-  process.env.MILADY_UI_SMOKE_PORT ?? process.env.ELIZA_UI_SMOKE_PORT ?? "2138",
+  process.env.ELIZA_UI_SMOKE_PORT ?? process.env.ELIZA_UI_SMOKE_PORT ?? "2138",
 );
 const LIVE_PROVIDER = selectLiveProvider();
 const FORCE_STUB_STACK =
@@ -485,7 +485,7 @@ async function startStubStack(): Promise<StartedStack> {
       ...process.env,
       FORCE_COLOR: "0",
       ELIZA_UI_SMOKE_API_PORT: String(API_PORT),
-      MILADY_UI_SMOKE_API_PORT: String(API_PORT),
+      ELIZA_UI_SMOKE_API_PORT: String(API_PORT),
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -509,7 +509,7 @@ async function startStubStack(): Promise<StartedStack> {
     port: UI_PORT,
   });
   process.env.ELIZA_API_PORT = String(API_PORT);
-  process.env.MILADY_API_PORT = String(API_PORT);
+  process.env.ELIZA_API_PORT = String(API_PORT);
 
   return {
     apiBase,
@@ -547,8 +547,8 @@ async function startRealStack(): Promise<StartedStack> {
         ELIZA_HOME_PORT: String(UI_PORT),
         ELIZA_PORT: String(API_PORT),
         ELIZA_STATE_DIR: stateDir,
-        MILADY_API_PORT: String(API_PORT),
-        MILADY_STATE_DIR: stateDir,
+        ELIZA_API_PORT: String(API_PORT),
+        ELIZA_STATE_DIR: stateDir,
       },
       stdio: ["ignore", "pipe", "pipe"],
     },
@@ -585,7 +585,7 @@ async function startRealStack(): Promise<StartedStack> {
     port: UI_PORT,
   });
   process.env.ELIZA_API_PORT = String(API_PORT);
-  process.env.MILADY_API_PORT = String(API_PORT);
+  process.env.ELIZA_API_PORT = String(API_PORT);
 
   return {
     apiBase,

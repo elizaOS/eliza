@@ -215,12 +215,12 @@ jobs:
 
       - name: Run scenario shard
         id: run
-        # TODO: scenario-runner CLI bin is still named `milady-scenarios` in
+        # TODO: scenario-runner CLI bin is still named `eliza-scenarios` in
         # packages/scenario-runner/package.json. Rename to `eliza-scenarios`
         # in a follow-up and update the command below.
         run: |
           set -f
-          bun run milady-scenarios run \
+          bun run eliza-scenarios run \
             ${{ matrix.shard.root || 'eliza/test/scenarios' }} \
             --report-dir reports/scenarios/${{ github.run_id }}-${{ matrix.shard.name }} \
             --runId "${{ github.run_id }}-${{ matrix.shard.name }}" \

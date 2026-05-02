@@ -1,11 +1,11 @@
 ---
 title: Guide de configuration des plugins
-description: Instructions complètes de configuration pour les plugins de connecteur, de fournisseur d'IA et de streaming de Milady.
+description: Instructions complètes de configuration pour les plugins de connecteur, de fournisseur d'IA et de streaming de Eliza.
 ---
 
-<div id="plugin-setup-guide--milady-ai">
+<div id="plugin-setup-guide--eliza-ai">
 
-# Guide de configuration des plugins — Milady AI
+# Guide de configuration des plugins — Eliza AI
 </div>
 
 Instructions complètes de configuration pour tous les plugins de connecteur, de fournisseur d'IA et de streaming.
@@ -245,9 +245,9 @@ où obtenir les identifiants, les champs minimum requis et des conseils pour les
 ### Qwen
 </div>
 
-**Minimum requis :** Configurer via la configuration des plugins de fournisseur dans `milady.json`
+**Minimum requis :** Configurer via la configuration des plugins de fournisseur dans `eliza.json`
 **Variables :**
-- Définissez les identifiants de modèle via le bloc de configuration `providers.qwen` dans `milady.json`
+- Définissez les identifiants de modèle via le bloc de configuration `providers.qwen` dans `eliza.json`
 **Conseils :** Modèles Qwen d'Alibaba Cloud. Configurez via la section providers de votre configuration.
 
 <div id="minimax">
@@ -255,9 +255,9 @@ où obtenir les identifiants, les champs minimum requis et des conseils pour les
 ### Minimax
 </div>
 
-**Minimum requis :** Configurer via la configuration des plugins de fournisseur dans `milady.json`
+**Minimum requis :** Configurer via la configuration des plugins de fournisseur dans `eliza.json`
 **Variables :**
-- Définissez les identifiants de modèle via le bloc de configuration `providers.minimax` dans `milady.json`
+- Définissez les identifiants de modèle via le bloc de configuration `providers.minimax` dans `eliza.json`
 **Conseils :** Minimax fournit des modèles d'IA chinois et multilingues.
 
 <div id="zai">
@@ -477,8 +477,8 @@ où obtenir les identifiants, les champs minimum requis et des conseils pour les
 - `features.groups` — Activer le support des discussions de groupe (par défaut : false)
 **Étapes de configuration :**
 1. Obtenez la clé API de votre service proxy WeChat
-2. Configurez `connectors.wechat` dans milady.json avec `apiKey` et `proxyUrl`
-3. Démarrez Milady — scannez le code QR affiché dans le terminal avec WeChat
+2. Configurez `connectors.wechat` dans eliza.json avec `apiKey` et `proxyUrl`
+3. Démarrez Eliza — scannez le code QR affiché dans le terminal avec WeChat
 **Conseils :** WeChat utilise un service proxy tiers, pas une API officielle. N'utilisez qu'un proxy de confiance — il voit tout le trafic de messages. Support multi-comptes via la carte `accounts`. Package : `@elizaos/plugin-wechat`.
 
 <div id="github">

@@ -1122,7 +1122,7 @@ export class PluginManagerService extends Service implements PluginRegistry {
 				).stdout.trim();
 
 				const metadata: UpstreamMetadata = {
-					$schema: "milaidy-upstream-v1",
+					$schema: "eliza-upstream-v1",
 					source: `github:${info.gitRepo}`,
 					gitUrl,
 					branch,

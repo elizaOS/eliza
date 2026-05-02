@@ -1,5 +1,5 @@
 /**
- * Local GitHub credential storage for the milady desktop / VPS install.
+ * Local GitHub credential storage for the eliza desktop / VPS install.
  *
  * Stores a single per-user GitHub PAT at
  * `<state-dir>/credentials/github.json` (chmod 600). The token itself is
@@ -41,13 +41,13 @@ export type GitHubCredentialMetadata = Omit<GitHubCredentials, "token">;
 
 function resolveStateDir(): string {
   const explicit =
-    process.env.MILADY_STATE_DIR?.trim() || process.env.ELIZA_STATE_DIR?.trim();
+    process.env.ELIZA_STATE_DIR?.trim() || process.env.ELIZA_STATE_DIR?.trim();
   if (explicit) return path.resolve(explicit);
   const home =
     process.env.HOME?.trim() ||
     process.env.USERPROFILE?.trim() ||
     process.cwd();
-  return path.join(home, ".milady");
+  return path.join(home, ".eliza");
 }
 
 /** Resolve the on-disk path for the credential file. */

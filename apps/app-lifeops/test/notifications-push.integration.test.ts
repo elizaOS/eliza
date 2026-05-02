@@ -19,7 +19,7 @@
  *
  * To run locally:
  *   NTFY_BASE_URL=https://ntfy.sh \
- *   NTFY_DEFAULT_TOPIC=milady-test \
+ *   NTFY_DEFAULT_TOPIC=eliza-test \
  *     bunx vitest run apps/app-lifeops/test/notifications-push.integration.test.ts
  *
  * Do NOT enable this suite in CI by injecting NTFY_BASE_URL — it publishes
@@ -71,10 +71,10 @@ describe("readNtfyConfigFromEnv", () => {
     expect(config.defaultTopic).toBe("my-alerts");
   });
 
-  it("falls back to 'milady' when NTFY_DEFAULT_TOPIC is not set", () => {
+  it("falls back to 'eliza' when NTFY_DEFAULT_TOPIC is not set", () => {
     process.env.NTFY_BASE_URL = "https://ntfy.sh";
     const config = readNtfyConfigFromEnv();
-    expect(config.defaultTopic).toBe("milady");
+    expect(config.defaultTopic).toBe("eliza");
   });
 });
 
@@ -177,14 +177,14 @@ describe("sendPush — network error handling", () => {
       message: "Board meeting starts in 10 minutes.",
       priority: 5,
       tags: ["calendar", "alarm_clock"],
-      click: "milady://meeting/board-123",
+      click: "eliza://meeting/board-123",
     });
 
     expect(capturedInit?.headers).toMatchObject({
       Title: "Meeting ladder",
       Priority: "5",
       Tags: "calendar,alarm_clock",
-      Click: "milady://meeting/board-123",
+      Click: "eliza://meeting/board-123",
     });
   });
 });
@@ -207,7 +207,7 @@ describe.skipIf(!LIVE_BASE_URL)("sendPush — live Ntfy", () => {
 
     const result = await sendPush(request, {
       baseUrl: LIVE_BASE_URL!.replace(/\/$/, ""),
-      defaultTopic: ORIGINAL_ENV.NTFY_DEFAULT_TOPIC ?? "milady-test",
+      defaultTopic: ORIGINAL_ENV.NTFY_DEFAULT_TOPIC ?? "eliza-test",
     });
 
     expect(typeof result.messageId).toBe("string");

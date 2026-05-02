@@ -23,7 +23,7 @@ function createMessage(text: string, source = "dashboard"): Memory {
 function createRuntime(service: Record<string, unknown>): IAgentRuntime {
   return {
     agentId: "agent-1" as UUID,
-    character: { name: "Milady" },
+    character: { name: "Eliza" },
     getService: vi.fn().mockImplementation((name: string) => (name === "signal" ? service : null)),
     getSetting: vi.fn(),
   } as unknown as IAgentRuntime;
@@ -175,7 +175,7 @@ describe("@elizaos/plugin-signal recent message reads", () => {
   it("reads recent messages from stored Signal room memories", async () => {
     const runtime = {
       agentId: "agent-1",
-      character: { name: "Milady" },
+      character: { name: "Eliza" },
       getSetting: vi.fn(),
       getRoomsForParticipant: vi.fn().mockResolvedValue(["signal-room", "other-room"]),
       getRoom: vi.fn().mockImplementation(async (roomId: string) => {
@@ -223,7 +223,7 @@ describe("@elizaos/plugin-signal recent message reads", () => {
       expect.objectContaining({
         id: "new",
         roomName: "Dana",
-        speakerName: "Milady",
+        speakerName: "Eliza",
         text: "Latest reply",
         isFromAgent: true,
       }),

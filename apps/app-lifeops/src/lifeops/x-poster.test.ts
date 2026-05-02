@@ -24,7 +24,7 @@ describe("x-poster strict success validation", () => {
   test("sendXDm posts to the participant DM endpoint with OAuth auth and returns ids", async () => {
     let capturedUrl = "";
     let capturedInit: RequestInit | undefined;
-    vi.stubEnv("MILADY_MOCK_X_BASE", "http://127.0.0.1:7878");
+    vi.stubEnv("ELIZA_MOCK_X_BASE", "http://127.0.0.1:7878");
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {

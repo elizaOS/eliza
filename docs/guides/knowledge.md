@@ -4,7 +4,7 @@ sidebarTitle: Knowledge
 description: Upload documents, URLs, and YouTube transcripts to build a searchable knowledge base the agent uses for Retrieval Augmented Generation.
 ---
 
-The knowledge system provides Retrieval Augmented Generation (RAG) for the Milady agent. You can upload documents, URLs, and YouTube videos to build a searchable knowledge base. When the agent responds to questions, it retrieves relevant fragments from this knowledge base to ground its answers in your specific content.
+The knowledge system provides Retrieval Augmented Generation (RAG) for the Eliza agent. You can upload documents, URLs, and YouTube videos to build a searchable knowledge base. When the agent responds to questions, it retrieves relevant fragments from this knowledge base to ground its answers in your specific content.
 
 ## Architecture Overview
 
@@ -135,7 +135,7 @@ Fetch and index content from a web URL.
 }
 ```
 
-The system fetches the URL content, detects its type, and processes it appropriately. Text content is stored directly; binary content (PDF, Word, images) is stored as base64. The User-Agent header identifies the request as `Mozilla/5.0 (compatible; Milady/1.0; +https://milady.ai)`.
+The system fetches the URL content, detects its type, and processes it appropriately. Text content is stored directly; binary content (PDF, Word, images) is stored as base64. The User-Agent header identifies the request as `Mozilla/5.0 (compatible; Eliza/1.0; +https://eliza.ai)`.
 
 #### Security: SSRF Protection
 
@@ -362,7 +362,7 @@ The modal shows:
 
 ## Character-Level Knowledge
 
-In addition to runtime uploads, Milady agents can have knowledge baked into their character definition. The character's `knowledge` array supports two source types:
+In addition to runtime uploads, Eliza agents can have knowledge baked into their character definition. The character's `knowledge` array supports two source types:
 
 - **File path** -- A path to a specific file on disk. The content is loaded, chunked, and embedded when the agent starts.
 - **Directory** -- A path to a directory. All supported files in the directory are processed. Directories can be marked as `shared: true` to share knowledge across multiple agents.
@@ -380,7 +380,7 @@ Character-level knowledge is loaded at agent startup and persists across restart
 
 ## Memory vs. Knowledge
 
-Milady maintains two distinct information systems:
+Eliza maintains two distinct information systems:
 
 | Aspect | Memory | Knowledge |
 |--------|--------|-----------|

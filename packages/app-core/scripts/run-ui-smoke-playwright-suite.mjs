@@ -63,22 +63,22 @@ const env = { ...process.env };
 delete env.CI;
 env.ELIZA_UI_SMOKE_FORCE_STUB = env.ELIZA_UI_SMOKE_FORCE_STUB || "1";
 
-if (!env.MILADY_UI_SMOKE_API_PORT) {
+if (!env.ELIZA_UI_SMOKE_API_PORT) {
   const apiPort = await getFreePort();
-  env.MILADY_UI_SMOKE_API_PORT = String(apiPort);
+  env.ELIZA_UI_SMOKE_API_PORT = String(apiPort);
 }
 env.ELIZA_UI_SMOKE_API_PORT =
-  env.ELIZA_UI_SMOKE_API_PORT || env.MILADY_UI_SMOKE_API_PORT;
-env.MILADY_API_PORT = env.MILADY_API_PORT || env.MILADY_UI_SMOKE_API_PORT;
-env.ELIZA_API_PORT = env.ELIZA_API_PORT || env.MILADY_UI_SMOKE_API_PORT;
+  env.ELIZA_UI_SMOKE_API_PORT || env.ELIZA_UI_SMOKE_API_PORT;
+env.ELIZA_API_PORT = env.ELIZA_API_PORT || env.ELIZA_UI_SMOKE_API_PORT;
+env.ELIZA_API_PORT = env.ELIZA_API_PORT || env.ELIZA_UI_SMOKE_API_PORT;
 
-if (!env.MILADY_UI_SMOKE_PORT) {
+if (!env.ELIZA_UI_SMOKE_PORT) {
   const uiPort = await getFreePort();
-  env.MILADY_UI_SMOKE_PORT = String(uiPort);
+  env.ELIZA_UI_SMOKE_PORT = String(uiPort);
 }
-env.ELIZA_UI_SMOKE_PORT = env.ELIZA_UI_SMOKE_PORT || env.MILADY_UI_SMOKE_PORT;
-env.MILADY_PORT = env.MILADY_PORT || env.MILADY_UI_SMOKE_PORT;
-env.ELIZA_PORT = env.ELIZA_PORT || env.MILADY_UI_SMOKE_PORT;
+env.ELIZA_UI_SMOKE_PORT = env.ELIZA_UI_SMOKE_PORT || env.ELIZA_UI_SMOKE_PORT;
+env.ELIZA_PORT = env.ELIZA_PORT || env.ELIZA_UI_SMOKE_PORT;
+env.ELIZA_PORT = env.ELIZA_PORT || env.ELIZA_UI_SMOKE_PORT;
 
 for (const spec of specFiles) {
   const result = spawnSync(

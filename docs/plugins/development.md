@@ -82,9 +82,9 @@ export default myPlugin;
 ### Plugin Lifecycle
 
 1. **Discovery** — Plugins are discovered from:
-   - Bundled plugins (shipped with Milady)
+   - Bundled plugins (shipped with Eliza)
    - Workspace plugins (`./plugins/`)
-   - Global plugins (`~/.milady/plugins/`)
+   - Global plugins (`~/.eliza/plugins/`)
    - npm packages (`@elizaos/plugin-*`)
    - Config-specified plugins
 
@@ -395,7 +395,7 @@ const workspaceProvider: Provider = {
   position: -10, // Run early
 
   get: async (runtime, message, state) => {
-    const workspaceDir = runtime.getSetting("WORKSPACE_DIR") || "~/.milady/workspace";
+    const workspaceDir = runtime.getSetting("WORKSPACE_DIR") || "~/.eliza/workspace";
 
     // Read key files from workspace
     const agentsMd = await readFile(path.join(workspaceDir, "AGENTS.md"));
@@ -751,9 +751,9 @@ For local plugin development without publishing:
 
 1. **Workspace discovery** — Place your plugin in:
    - `./plugins/my-plugin/` (project-local)
-   - `~/.milady/plugins/custom/my-plugin/` (global drop-in)
+   - `~/.eliza/plugins/custom/my-plugin/` (global drop-in)
 
-2. **Config-based loading** — Add to `milady.json`:
+2. **Config-based loading** — Add to `eliza.json`:
    ```json
    {
      "plugins": ["./path/to/my-plugin"]
@@ -762,7 +762,7 @@ For local plugin development without publishing:
 
 3. **Symlink for development:**
    ```bash
-   cd ~/.milady/plugins/custom
+   cd ~/.eliza/plugins/custom
    ln -s /path/to/my-plugin my-plugin
    ```
 
@@ -833,8 +833,8 @@ Indicates where a plugin was discovered:
 
 | Origin | Description |
 |--------|-------------|
-| `bundled` | Shipped with Milady |
-| `global` | From `~/.milady/plugins/` |
+| `bundled` | Shipped with Eliza |
+| `global` | From `~/.eliza/plugins/` |
 | `workspace` | From `./plugins/` |
 | `config` | Explicitly listed in config |
 | `npm` | Installed npm package |
@@ -1085,4 +1085,4 @@ const myPlugin: Plugin = {
 
 - [Skills Documentation](/plugins/skills) — Learn about markdown-based skill extensions
 - [Registry Guide](/plugins/registry) — Publishing to the plugin registry
-- [Contributing Guide](/guides/contribution-guide) — Contributing to Milady/elizaOS
+- [Contributing Guide](/guides/contribution-guide) — Contributing to Eliza/elizaOS

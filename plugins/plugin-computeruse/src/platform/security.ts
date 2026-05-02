@@ -100,7 +100,7 @@ const STRIP_EXACT_ENV = new Set([
 const STRIP_PATTERN_ENV: RegExp[] = [
   /^SUPABASE_.*(?:SERVICE_ROLE|SECRET)/i,
   /^STRIPE_.*(?:SECRET|WEBHOOK)/i,
-  /^MILADY_.*(?:SECRET|KEY|TOKEN)/i,
+  /^ELIZA_.*(?:SECRET|KEY|TOKEN)/i,
   /^ELIZA_.*(?:SECRET|KEY|TOKEN)/i,
 ];
 

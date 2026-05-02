@@ -24,7 +24,7 @@ description: "用于日志检索、代理事件、安全审计日志和浏览器
 
 | 参数 | 类型 | 必填 | 描述 |
 |------|------|------|------|
-| `source` | string | 否 | 按日志来源过滤（如 `"milady-api"`、`"runtime"`） |
+| `source` | string | 否 | 按日志来源过滤（如 `"eliza-api"`、`"runtime"`） |
 | `level` | string | 否 | 按日志级别过滤（如 `"info"`、`"warn"`、`"error"`、`"debug"`） |
 | `tag` | string | 否 | 按标签过滤 |
 | `since` | number | 否 | Unix 毫秒时间戳 — 仅返回此时间及之后的条目 |
@@ -37,12 +37,12 @@ description: "用于日志检索、代理事件、安全审计日志和浏览器
     {
       "timestamp": 1718000000000,
       "level": "info",
-      "source": "milady-api",
+      "source": "eliza-api",
       "tags": ["startup"],
       "message": "API server started on port 31337"
     }
   ],
-  "sources": ["milady-api", "runtime", "plugin-anthropic"],
+  "sources": ["eliza-api", "runtime", "plugin-anthropic"],
   "tags": ["startup", "auth", "knowledge"]
 }
 ```
@@ -146,7 +146,7 @@ data: {"type":"entry","entry":{"type":"policy_decision","severity":"warn",...}}
 
 </div>
 
-检查浏览器扩展中继状态和扩展路径。用于确定 Milady 浏览器扩展是否已连接且可加载。
+检查浏览器扩展中继状态和扩展路径。用于确定 Eliza 浏览器扩展是否已连接且可加载。
 
 **响应**
 

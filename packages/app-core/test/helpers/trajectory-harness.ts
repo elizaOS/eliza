@@ -10,7 +10,7 @@
  *   - Memory creations during the turn (via `runtime.createMemory` wrap).
  *   - Provider snapshots from `runtime.composeState` calls.
  *
- * Capture is opt-in. The default-off gate is `MILADY_DUMP_TRAJECTORIES=1`,
+ * Capture is opt-in. The default-off gate is `ELIZA_DUMP_TRAJECTORIES=1`,
  * checked in `isTrajectoryCaptureEnabled()`. Tests that want to opt-in
  * unconditionally can pass `force: true` to `RecordingHarness`.
  *
@@ -118,7 +118,7 @@ export interface RecordingHarnessOptions extends ConversationHarnessOptions {
   /** Optional scenario id for grouping. */
   scenarioId?: string;
   /**
-   * When true, capture is enabled regardless of `MILADY_DUMP_TRAJECTORIES`.
+   * When true, capture is enabled regardless of `ELIZA_DUMP_TRAJECTORIES`.
    * When false/undefined, capture follows the env flag — when off, all hooks
    * are no-ops and `dumpTrajectory()` returns an empty record.
    */
@@ -132,7 +132,7 @@ export interface RecordingHarnessOptions extends ConversationHarnessOptions {
 export function isTrajectoryCaptureEnabled(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
-  const raw = env.MILADY_DUMP_TRAJECTORIES?.trim().toLowerCase();
+  const raw = env.ELIZA_DUMP_TRAJECTORIES?.trim().toLowerCase();
   return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
 }
 

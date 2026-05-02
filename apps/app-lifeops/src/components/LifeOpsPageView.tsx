@@ -67,7 +67,7 @@ function EnablePrompt({ loading, onEnable, t }: EnablePromptProps) {
   );
 }
 
-const LIFEOPS_GITHUB_COMPLETE_PATH = "/api/v1/milady/lifeops/github-complete";
+const LIFEOPS_GITHUB_COMPLETE_PATH = "/api/v1/eliza/lifeops/github-complete";
 const LIFEOPS_GITHUB_RETURN_URL = "elizaos://lifeops";
 
 type TranslateFn = (

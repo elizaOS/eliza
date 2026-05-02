@@ -1,4 +1,4 @@
-"""HTTP client for the milady benchmark server."""
+"""HTTP client for the eliza benchmark server."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class MessageResponse:
-    """Parsed response from the milady benchmark server."""
+    """Parsed response from the eliza benchmark server."""
 
     text: str
     thought: str | None
@@ -24,8 +24,8 @@ class MessageResponse:
     params: dict[str, object]
 
 
-class MiladyClient:
-    """HTTP client for the milady benchmark server.
+class ElizaClient:
+    """HTTP client for the eliza benchmark server.
 
     All communication uses stdlib ``urllib`` so there are no extra
     dependencies to install.
@@ -100,14 +100,14 @@ class MiladyClient:
                 # Then, check the health endpoint
                 resp = self.health()
                 if resp.get("status") == "ready":
-                    logger.info("Milady benchmark server is ready")
+                    logger.info("Eliza benchmark server is ready")
                     return
                 last_err = f"Server health status not 'ready': {resp}"
             except Exception as exc:
                 last_err = str(exc)
             time.sleep(poll)
         raise TimeoutError(
-            f"Milady benchmark server not ready after {timeout}s: {last_err}"
+            f"Eliza benchmark server not ready after {timeout}s: {last_err}"
         )
 
     # ------------------------------------------------------------------
@@ -139,5 +139,5 @@ class MiladyClient:
         except urllib.error.HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")
             raise RuntimeError(
-                f"HTTP {exc.code} from milady benchmark server: {body}"
+                f"HTTP {exc.code} from eliza benchmark server: {body}"
             ) from exc

@@ -1,17 +1,17 @@
 ---
 title: "Zalo User Plugin"
 sidebarTitle: "Zalo User"
-description: "Zalo User connector for Milady — personal-account messaging on the Zalo platform."
+description: "Zalo User connector for Eliza — personal-account messaging on the Zalo platform."
 ---
 
-The Zalo User plugin connects Milady agents to Zalo via a personal account, enabling one-to-one and group messaging outside the Official Account API.
+The Zalo User plugin connects Eliza agents to Zalo via a personal account, enabling one-to-one and group messaging outside the Official Account API.
 
 **Package:** `@elizaos/plugin-zalouser`
 
 ## Installation
 
 ```bash
-milady plugins install zalouser
+eliza plugins install zalouser
 ```
 
 ## Setup
@@ -20,7 +20,7 @@ milady plugins install zalouser
 
 The Zalo User connector authenticates with a device IMEI and session cookie from your personal Zalo account.
 
-### 2. Configure Milady
+### 2. Configure Eliza
 
 Set environment variables:
 
@@ -29,7 +29,7 @@ export ZALOUSER_IMEI=YOUR_DEVICE_IMEI
 export ZALOUSER_COOKIE_PATH=/path/to/cookie
 ```
 
-Or enable the connector in `milady.json`:
+Or enable the connector in `eliza.json`:
 
 ```json
 {

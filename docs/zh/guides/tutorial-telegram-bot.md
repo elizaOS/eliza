@@ -1,17 +1,17 @@
 ---
 title: "教程：Telegram 机器人"
 sidebarTitle: "Telegram 机器人设置"
-description: "了解如何在几分钟内使用 Milady 创建和配置 Telegram 机器人"
+description: "了解如何在几分钟内使用 Eliza 创建和配置 Telegram 机器人"
 ---
 
 <div id="tutorial-telegram-bot">
 # 教程：Telegram 机器人
 </div>
 
-开始使用 Milady 的 Telegram 机器人集成。本教程将引导你完成创建第一个机器人、配置以及端到端测试的全过程。
+开始使用 Eliza 的 Telegram 机器人集成。本教程将引导你完成创建第一个机器人、配置以及端到端测试的全过程。
 
 <Info>
-  本教程假设你已经安装了 Milady。如果还没有，请查看[安装指南](/zh/installation)。
+  本教程假设你已经安装了 Eliza。如果还没有，请查看[安装指南](/zh/installation)。
 </Info>
 
 <div id="prerequisites">
@@ -21,14 +21,14 @@ description: "了解如何在几分钟内使用 Milady 创建和配置 Telegram 
 开始之前，请确保你拥有：
 
 - 一个 Telegram 账户
-- 已安装并运行的 Milady（`bun run dev`）
-- 对 Milady 控制面板的访问权限（默认：http://localhost:2138）
+- 已安装并运行的 Eliza（`bun run dev`）
+- 对 Eliza 控制面板的访问权限（默认：http://localhost:2138）
 
 <div id="quick-setup-via-dashboard">
 ## 通过控制面板快速设置
 </div>
 
-通过 Milady 控制面板设置 Telegram 连接器是最快的方式：
+通过 Eliza 控制面板设置 Telegram 连接器是最快的方式：
 
 1. 在浏览器中打开 **http://localhost:2138**
 2. 在顶部导航栏中进入 **Connectors**
@@ -129,11 +129,11 @@ description: "了解如何在几分钟内使用 Milady 创建和配置 Telegram 
 - **API Root** — 自定义 Telegram Bot API 端点（默认：`https://api.telegram.org`）。仅在你运行[本地 Bot API 服务器](https://core.telegram.org/bots/api#using-a-local-bot-api-server)或使用代理时需要。
 - **Test Chat ID** — 自动化测试套件使用的聊天 ID。生产环境不需要。
 
-<div id="configuration-via-miladyjson">
-## 通过 milady.json 配置
+<div id="configuration-via-elizajson">
+## 通过 eliza.json 配置
 </div>
 
-你也可以直接在 `~/.milady/milady.json` 中配置 Telegram 连接器：
+你也可以直接在 `~/.eliza/eliza.json` 中配置 Telegram 连接器：
 
 ```json
 {
@@ -149,7 +149,7 @@ description: "了解如何在几分钟内使用 Milady 创建和配置 Telegram 
 TELEGRAM_BOT_TOKEN=123456789:ABCdefGHIjklmNOpqrsTUVwxyzABC-defGHI
 ```
 
-然后启动 Milady：
+然后启动 Eliza：
 
 ```bash
 bun run dev
@@ -198,10 +198,10 @@ bun run dev
     **解决方案：**
     1. 确认连接器在控制面板中已切换为 **ON**
     2. 检查 Test Connection 是否显示 "Connected as @yourbotname"
-    3. 在运行 Milady 的终端中查找错误消息
+    3. 在运行 Eliza 的终端中查找错误消息
     4. 如果聊天访问受限，请确认你的聊天 ID 在允许列表中
     5. 确保你先向机器人发送了 `/start`
-    6. 尝试重启 Milady — 连接器可能需要重新启动
+    6. 尝试重启 Eliza — 连接器可能需要重新启动
   </Accordion>
 
   <Accordion title="机器人响应缓慢">
@@ -210,7 +210,7 @@ bun run dev
     **解决方案：**
     1. 检查你的网络连接
     2. 监控系统资源 — 内存或 CPU 可能已满载
-    3. 检查 Milady 日志中的错误或挂起的进程
+    3. 检查 Eliza 日志中的错误或挂起的进程
     4. 对于生产环境，考虑使用 webhook 模式而非轮询
   </Accordion>
 
@@ -218,7 +218,7 @@ bun run dev
     **问题：** 日志显示 "409: Conflict: terminated by other getUpdates request"
 
     **解决方案：**
-    1. 确保只有一个 Milady 实例在运行
+    1. 确保只有一个 Eliza 实例在运行
     2. 检查是否有残留的机器人进程：`tasklist | grep bun`（Windows）或 `ps aux | grep bun`（Linux/Mac）
     3. 等待 30 秒后重启 — Telegram 需要时间释放轮询槽位
   </Accordion>
@@ -236,5 +236,5 @@ bun run dev
 ## 需要帮助？
 </div>
 
-- 加入 [Milady Discord 社区](https://discord.gg/milady)
-- 在 [GitHub](https://github.com/milady-ai/milady/issues) 上报告问题
+- 加入 [Eliza Discord 社区](https://discord.gg/eliza)
+- 在 [GitHub](https://github.com/eliza-ai/eliza/issues) 上报告问题

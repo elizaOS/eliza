@@ -132,7 +132,7 @@ export function RoutingMatrix() {
           const modelType = SLOT_MODEL_TYPE[slot];
           const candidates = registrations
             .filter((r) => r.modelType === modelType)
-            .filter((r) => r.provider !== "milady-router")
+            .filter((r) => r.provider !== "eliza-router")
             .sort((a, b) => b.priority - a.priority);
           const policy = preferences.policy[slot] ?? DEFAULT_POLICY;
           const preferred = preferences.preferredProvider[slot] ?? "";

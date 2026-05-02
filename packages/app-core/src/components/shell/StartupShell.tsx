@@ -60,12 +60,12 @@ function phaseToStatusKey(phase: string): string {
 /**
  * Returns true when the cloud-provisioned bootstrap session has NOT yet been
  * established for this page load. After a successful exchange the UI writes
- * sessionStorage["milady_session"] as a renderer-side marker; the server-owned
+ * sessionStorage["eliza_session"] as a renderer-side marker; the server-owned
  * HttpOnly cookie remains the actual auth boundary.
  */
 function needsBootstrapSession(): boolean {
   try {
-    return !sessionStorage.getItem("milady_session");
+    return !sessionStorage.getItem("eliza_session");
   } catch {
     // sessionStorage unavailable — treat as needing bootstrap (fail closed).
     return true;

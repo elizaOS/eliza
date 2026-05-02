@@ -1,7 +1,7 @@
 ---
 title: "Providers"
 sidebarTitle: "Providers"
-description: "Provider interface, registration, context injection mechanism, and the built-in Milady providers."
+description: "Provider interface, registration, context injection mechanism, and the built-in Eliza providers."
 ---
 
 Providers are functions that inject additional text into the agent's context on every conversation turn. They allow plugins and external systems to enrich the prompt with dynamic information without modifying the system prompt template.
@@ -52,7 +52,7 @@ Character.system (base system prompt)
 
 Provider results are concatenated in registration order.
 
-## Built-in Milady Providers
+## Built-in Eliza Providers
 
 The Eliza plugin (`createElizaPlugin()`) registers the following providers:
 
@@ -72,7 +72,7 @@ Reads the agent's workspace directory and injects a summary of relevant files in
 
 ```typescript
 createWorkspaceProvider({
-  workspaceDir: "~/.milady/workspace",
+  workspaceDir: "~/.eliza/workspace",
 })
 ```
 
@@ -130,7 +130,7 @@ From `getSessionProviders()` — a set of providers for session-level context (c
 
 **Name:** `uiCatalog`
 
-Injects the Milady UI component catalog, allowing the agent to compose structured UI elements in its responses.
+Injects the Eliza UI component catalog, allowing the agent to compose structured UI elements in its responses.
 
 **Source:** `eliza/packages/agent/src/providers/ui-catalog.ts` (`uiCatalogProvider`)
 
@@ -146,7 +146,7 @@ To disable emotes entirely, set `character.settings.DISABLE_EMOTES = true`. When
 
 **Name:** `customActions`
 
-When user-defined custom actions are configured in `milady.json`, this provider injects the list:
+When user-defined custom actions are configured in `eliza.json`, this provider injects the list:
 
 ```
 ## Custom Actions
@@ -218,7 +218,7 @@ const myProvider: Provider = {
 
 ## Provider Ordering
 
-Providers registered in the Milady plugin follow this order:
+Providers registered in the Eliza plugin follow this order:
 
 ```
 1. channelProfile     (channel context)

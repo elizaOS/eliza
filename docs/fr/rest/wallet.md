@@ -497,7 +497,7 @@ Exécute un trade de jeton sur BSC. Le comportement dépend de la configuration 
 
 | En-tête | Type | Requis | Description |
 |---------|------|--------|-------------|
-| `x-milady-agent-action` | string | Non | Définissez à `1`, `true`, `yes` ou `agent` pour marquer cela comme une requête automatisée par agent. Affecte la résolution du mode de permission de trade. |
+| `x-eliza-agent-action` | string | Non | Définissez à `1`, `true`, `yes` ou `agent` pour marquer cela comme une requête automatisée par agent. Affecte la résolution du mode de permission de trade. |
 
 **Corps de la requête**
 
@@ -725,7 +725,7 @@ Transfère des jetons natifs (BNB) ou des jetons ERC-20 sur BSC.
 
 | En-tête | Type | Requis | Description |
 |---------|------|--------|-------------|
-| `x-milady-agent-action` | string | Non | Définissez à `1`, `true`, `yes` ou `agent` pour marquer cela comme une requête automatisée par agent. Affecte la résolution du mode de permission de trade. |
+| `x-eliza-agent-action` | string | Non | Définissez à `1`, `true`, `yes` ou `agent` pour marquer cela comme une requête automatisée par agent. Affecte la résolution du mode de permission de trade. |
 
 **Corps de la requête**
 

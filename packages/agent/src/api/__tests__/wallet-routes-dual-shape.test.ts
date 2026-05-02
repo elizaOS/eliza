@@ -110,7 +110,7 @@ let tmpStateDir: string;
 beforeEach(async () => {
   vi.clearAllMocks();
   tmpStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "wallet-routes-"));
-  process.env.MILADY_STATE_DIR = tmpStateDir;
+  process.env.ELIZA_STATE_DIR = tmpStateDir;
   delete process.env.ENABLE_CLOUD_WALLET;
   delete process.env.ELIZAOS_CLOUD_API_KEY;
   delete process.env.WALLET_SOURCE_EVM;
@@ -431,10 +431,10 @@ describe("POST /api/wallet/refresh-cloud", () => {
     );
     expect(configEnv).toContain("ENABLE_CLOUD_WALLET=1");
     expect(configEnv).toContain(
-      "MILADY_CLOUD_EVM_ADDRESS=0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+      "ELIZA_CLOUD_EVM_ADDRESS=0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
     );
     expect(configEnv).toContain(
-      "MILADY_CLOUD_SOLANA_ADDRESS=So11111111111111111111111111111111111111112",
+      "ELIZA_CLOUD_SOLANA_ADDRESS=So11111111111111111111111111111111111111112",
     );
     expect(configEnv).toContain("WALLET_SOURCE_EVM=cloud");
     expect(configEnv).toContain("WALLET_SOURCE_SOLANA=cloud");
@@ -515,9 +515,9 @@ describe("POST /api/wallet/refresh-cloud", () => {
       "utf8",
     );
     expect(configEnv).toContain(
-      "MILADY_CLOUD_EVM_ADDRESS=0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+      "ELIZA_CLOUD_EVM_ADDRESS=0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
     );
-    expect(configEnv).not.toContain("MILADY_CLOUD_SOLANA_ADDRESS=");
+    expect(configEnv).not.toContain("ELIZA_CLOUD_SOLANA_ADDRESS=");
     expect(configEnv).toContain("WALLET_SOURCE_EVM=cloud");
     expect(configEnv).not.toContain("WALLET_SOURCE_SOLANA=cloud");
 

@@ -298,7 +298,7 @@ export class DeviceBridgeClient {
 
 /**
  * Convenience helper for the mobile bootstrap: starts a bridge client
- * using values from the Milady config or hardcoded env.
+ * using values from the Eliza config or hardcoded env.
  *
  * The host app is expected to call this once during Capacitor bootstrap.
  * `agentUrl` and `pairingToken` come from the user's pairing flow and

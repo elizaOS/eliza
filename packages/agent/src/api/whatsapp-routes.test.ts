@@ -74,7 +74,7 @@ function makeState(config: WhatsAppRouteState["config"]): WhatsAppRouteState {
     broadcastWs: vi.fn(),
     config,
     saveConfig: vi.fn(),
-    workspaceDir: "/tmp/milady-whatsapp-route-test",
+    workspaceDir: "/tmp/eliza-whatsapp-route-test",
   };
 }
 

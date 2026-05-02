@@ -122,7 +122,7 @@ describe("startTriggerEventBridge", () => {
 
   afterEach(() => {
     delete process.env.ELIZA_TRIGGERS_ENABLED;
-    delete process.env.MILADY_LIFEOPS_PASSIVE_CONNECTORS;
+    delete process.env.ELIZA_LIFEOPS_PASSIVE_CONNECTORS;
   });
 
   it("dispatches a matching event-kind trigger exactly once", async () => {
@@ -269,7 +269,7 @@ describe("startTriggerEventBridge", () => {
   });
 
   it("dispatches connector events when passive LifeOps mode is disabled", async () => {
-    process.env.MILADY_LIFEOPS_PASSIVE_CONNECTORS = "0";
+    process.env.ELIZA_LIFEOPS_PASSIVE_CONNECTORS = "0";
     const runtime = makeRuntime();
     const trigger = makeTrigger();
     const task = makeTask(trigger);

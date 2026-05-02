@@ -2,9 +2,9 @@ import { registerPlugin, WebPlugin } from "@capacitor/core";
 import { logger } from "./logger";
 
 /**
- * Milady Intent Plugin — TypeScript facade for the native iOS bridge.
+ * Eliza Intent Plugin — TypeScript facade for the native iOS bridge.
  *
- * On a real device, method calls are routed to `MiladyIntentPlugin.swift`
+ * On a real device, method calls are routed to `ElizaIntentPlugin.swift`
  * which talks to `UNUserNotificationCenter`, the device-bus subscriber,
  * and `UserDefaults` for pairing persistence. On web (Vite dev / vitest) the fallback below is
  * used — it does not simulate success. It reports `paired: false`, logs
@@ -47,7 +47,7 @@ export interface SetPairingStatusOptions {
   agentUrl: string;
 }
 
-export interface MiladyIntentPlugin {
+export interface ElizaIntentPlugin {
   scheduleAlarm(options: ScheduleAlarmOptions): Promise<ScheduleAlarmResult>;
   receiveIntent(intent: ReceiveIntentPayload): Promise<ReceiveIntentResult>;
   getPairingStatus(): Promise<PairingStatus>;
@@ -59,22 +59,22 @@ export interface MiladyIntentPlugin {
  * pretend to be paired. This lets `bun run dev` boot without a simulator
  * while keeping developers honest about what works.
  */
-export class MiladyIntentWeb extends WebPlugin implements MiladyIntentPlugin {
+export class ElizaIntentWeb extends WebPlugin implements ElizaIntentPlugin {
   async scheduleAlarm(
     options: ScheduleAlarmOptions,
   ): Promise<ScheduleAlarmResult> {
-    logger.warn("[MiladyIntentWeb] scheduleAlarm not supported on web", {
+    logger.warn("[ElizaIntentWeb] scheduleAlarm not supported on web", {
       options,
     });
     throw this.unavailable(
-      "MiladyIntent.scheduleAlarm requires iOS native runtime (UNUserNotificationCenter).",
+      "ElizaIntent.scheduleAlarm requires iOS native runtime (UNUserNotificationCenter).",
     );
   }
 
   async receiveIntent(
     intent: ReceiveIntentPayload,
   ): Promise<ReceiveIntentResult> {
-    logger.info("[MiladyIntentWeb] receiveIntent observed (web fallback)", {
+    logger.info("[ElizaIntentWeb] receiveIntent observed (web fallback)", {
       kind: intent.kind,
       issuedAtIso: intent.issuedAtIso,
     });
@@ -85,7 +85,7 @@ export class MiladyIntentWeb extends WebPlugin implements MiladyIntentPlugin {
   }
 
   async getPairingStatus(): Promise<PairingStatus> {
-    logger.debug("[MiladyIntentWeb] getPairingStatus", {});
+    logger.debug("[ElizaIntentWeb] getPairingStatus", {});
     return {
       paired: false,
       agentUrl: null,
@@ -96,7 +96,7 @@ export class MiladyIntentWeb extends WebPlugin implements MiladyIntentPlugin {
   async setPairingStatus(
     options: SetPairingStatusOptions,
   ): Promise<{ ok: boolean }> {
-    logger.debug("[MiladyIntentWeb] setPairingStatus (no-op on web)", {
+    logger.debug("[ElizaIntentWeb] setPairingStatus (no-op on web)", {
       deviceIdLength: options.deviceId.length,
       agentUrlHost: (() => {
         try {
@@ -110,6 +110,6 @@ export class MiladyIntentWeb extends WebPlugin implements MiladyIntentPlugin {
   }
 }
 
-export const MiladyIntent = registerPlugin<MiladyIntentPlugin>("MiladyIntent", {
-  web: () => new MiladyIntentWeb(),
+export const ElizaIntent = registerPlugin<ElizaIntentPlugin>("ElizaIntent", {
+  web: () => new ElizaIntentWeb(),
 });

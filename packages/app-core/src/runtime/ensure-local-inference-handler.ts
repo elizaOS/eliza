@@ -67,10 +67,10 @@ type RuntimeWithModelRegistration = AgentRuntime & {
   ) => void;
 };
 
-const LOCAL_INFERENCE_PROVIDER = "milady-local-inference";
-const DEVICE_BRIDGE_PROVIDER = "milady-device-bridge";
+const LOCAL_INFERENCE_PROVIDER = "eliza-local-inference";
+const DEVICE_BRIDGE_PROVIDER = "eliza-device-bridge";
 const CAPACITOR_LLAMA_PROVIDER = "capacitor-llama";
-const AOSP_LLAMA_PROVIDER = "milady-aosp-llama";
+const AOSP_LLAMA_PROVIDER = "eliza-aosp-llama";
 /**
  * Same band as cloud / direct provider plugins. Tie-breaks between
  * candidates live in `routing-policy.ts`, not in this number — the
@@ -248,13 +248,13 @@ function registerDeviceBridgeLoader(runtime: AgentRuntime): void {
 
 /**
  * AOSP-only path: load `libllama.so` directly into the bun process via
- * `bun:ffi`. The adapter no-ops at runtime when `MILADY_LOCAL_LLAMA !== "1"`,
+ * `bun:ffi`. The adapter no-ops at runtime when `ELIZA_LOCAL_LLAMA !== "1"`,
  * so the dynamic import below is safe on every platform; we only attempt
  * registration when the user explicitly opted in.
  *
  * The `try`/`catch` is justified because the AOSP build can ship the .so on
  * one ABI but be invoked on another (e.g. cuttlefish_x86_64 reporting both
- * x86_64 and arm64-v8a). When `MILADY_LOCAL_LLAMA=1` is set but registration
+ * x86_64 and arm64-v8a). When `ELIZA_LOCAL_LLAMA=1` is set but registration
  * fails, the adapter logs at `error` level — we must NOT silently fall
  * through to the device-bridge or stock engine: the operator opted in and
  * deserves the failure surfaced clearly.
@@ -262,7 +262,7 @@ function registerDeviceBridgeLoader(runtime: AgentRuntime): void {
 async function tryRegisterAospLlamaLoader(
   runtime: AgentRuntime,
 ): Promise<boolean> {
-  if (process.env.MILADY_LOCAL_LLAMA?.trim() !== "1") return false;
+  if (process.env.ELIZA_LOCAL_LLAMA?.trim() !== "1") return false;
   try {
     const mod = (await import(
       "@elizaos/agent/runtime/aosp-llama-adapter"
@@ -279,7 +279,7 @@ async function tryRegisterAospLlamaLoader(
     return Boolean(result);
   } catch (err) {
     logger.error(
-      "[local-inference] AOSP llama adapter unavailable while MILADY_LOCAL_LLAMA=1:",
+      "[local-inference] AOSP llama adapter unavailable while ELIZA_LOCAL_LLAMA=1:",
       err instanceof Error ? err.message : String(err),
     );
     return false;
@@ -334,7 +334,7 @@ export async function ensureLocalInferenceHandler(
 
   // Loader precedence:
   //   1. AOSP native FFI loader when running inside the AOSP agent process
-  //      itself (MILADY_LOCAL_LLAMA=1). This is the canonical AOSP path —
+  //      itself (ELIZA_LOCAL_LLAMA=1). This is the canonical AOSP path —
   //      libllama.so is dlopen'd directly, no IPC.
   //   2. Capacitor native adapter when running on a mobile device with the
   //      Capacitor APK shell.

@@ -1,4 +1,4 @@
-"""Tau-bench agent backed by the milady benchmark server."""
+"""Tau-bench agent backed by the eliza benchmark server."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 
-from milady_adapter.client import MiladyClient
+from eliza_adapter.client import ElizaClient
 
 from elizaos_tau_bench.types import (
     ConversationTurn,
@@ -26,33 +26,33 @@ def _extract_xml_tag(text: str, tag: str) -> str | None:
     return m.group(1).strip() if m else None
 
 
-class MiladyTauAgent:
-    """Tau-bench agent that delegates to the milady TypeScript agent.
+class ElizaTauAgent:
+    """Tau-bench agent that delegates to the eliza TypeScript agent.
 
     Drop-in replacement for ``ElizaOSTauAgent`` — same ``process_task``
-    interface but routes LLM calls through the milady benchmark server.
+    interface but routes LLM calls through the eliza benchmark server.
     """
 
     def __init__(
         self,
         executor: ToolExecutor,
         max_turns: int = 15,
-        client: MiladyClient | None = None,
+        client: ElizaClient | None = None,
     ) -> None:
         self.executor = executor
         self.max_turns = max_turns
-        self._client = client or MiladyClient()
+        self._client = client or ElizaClient()
         self.conversation: list[ConversationTurn] = []
 
     async def initialize(self) -> None:
-        """Verify the milady server is reachable."""
+        """Verify the eliza server is reachable."""
         self._client.wait_until_ready(timeout=120)
 
     async def process_task(
         self,
         task: TauBenchTask,
     ) -> tuple[list[ToolCall], str, list[ConversationTurn]]:
-        """Process a Tau-bench task using milady.
+        """Process a Tau-bench task using eliza.
 
         Returns (tool_calls, final_response, conversation).
         """
@@ -122,14 +122,14 @@ class MiladyTauAgent:
             response = self._client.send_message(text=message_text, context=context)
 
             logger.info(
-                "Milady response: text_len=%d, actions=%s, params_keys=%s, has_tool_xml=%s",
+                "Eliza response: text_len=%d, actions=%s, params_keys=%s, has_tool_xml=%s",
                 len(response.text or ""),
                 response.actions,
                 list(response.params.keys()),
                 "<tool_name>" in (response.text or ""),
             )
 
-            # Check if milady wants to call a tool.
+            # Check if eliza wants to call a tool.
             # The TS runtime may strip XML from response text, so we check
             # params, text, and thought for tool call information.
             tool_name = response.params.get("tool_name")

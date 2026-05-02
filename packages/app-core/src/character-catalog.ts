@@ -30,7 +30,7 @@ export const ELIZA_CHARACTER_ASSET_COUNT = 0;
 export const DEFAULT_ELIZA_CHARACTER_ASSET: ResolvedCharacterAsset | null =
   null;
 
-export const DEFAULT_MILADY_CHARACTER_ASSET = DEFAULT_ELIZA_CHARACTER_ASSET;
+export const DEFAULT_ELIZA_CHARACTER_ASSET = DEFAULT_ELIZA_CHARACTER_ASSET;
 
 export function getCharacterAsset(id: number): ResolvedCharacterAsset | null {
   return getResolved().getAsset(id);

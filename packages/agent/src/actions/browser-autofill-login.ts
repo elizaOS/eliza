@@ -2,7 +2,7 @@
  * BROWSER_AUTOFILL_LOGIN — agent-driven browser login autofill.
  *
  * Lets the agent say "log into github.com for me" and have the saved
- * credentials filled into an open Milady browser tab without a per-call
+ * credentials filled into an open Eliza browser tab without a per-call
  * consent prompt.
  *
  * Authorization model (mirrors the user-driven autofill flow):
@@ -156,7 +156,7 @@ export const browserAutofillLoginAction: Action = {
     "SIGN_IN_TO_SITE",
   ],
   description:
-    "Autofill saved credentials into an open Milady browser tab for the requested domain. Requires the user to have pre-authorized agent autofill for the domain via Settings -> Vault -> Logins (`creds.<domain>.:autoallow = 1`).",
+    "Autofill saved credentials into an open Eliza browser tab for the requested domain. Requires the user to have pre-authorized agent autofill for the domain via Settings -> Vault -> Logins (`creds.<domain>.:autoallow = 1`).",
   validate: async (
     runtime: IAgentRuntime,
     message: Memory,

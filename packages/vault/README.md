@@ -1,11 +1,11 @@
 # @elizaos/vault
 
-Simple secrets/config vault for Milady. **One** API for sensitive
+Simple secrets/config vault for Eliza. **One** API for sensitive
 credentials and non-sensitive configuration.
 
 ## Why this exists
 
-Milady's Settings flow had four real bugs that all came from the same
+Eliza's Settings flow had four real bugs that all came from the same
 root cause — credentials and config were scattered across multiple
 writers, multiple file layouts, and a guess-which-field-is-the-key
 heuristic. The vault is the single seam those bugs disappear behind:
@@ -66,7 +66,7 @@ const manager = createManager();
 // Probe what's available on this machine:
 const statuses = await manager.detectBackends();
 //   [
-//     { id: "in-house",   available: true,  signedIn: true,  label: "Milady (local, encrypted)" },
+//     { id: "in-house",   available: true,  signedIn: true,  label: "Eliza (local, encrypted)" },
 //     { id: "1password",  available: true,  signedIn: true,  label: "1Password" },
 //     { id: "bitwarden",  available: true,  signedIn: false, label: "Bitwarden", detail: "...not signed in. Run `bw login`." },
 //     { id: "protonpass", available: false,                 label: "Proton Pass", detail: "...not installed (CLI in beta)." },
@@ -113,7 +113,7 @@ instead of silently falling back to local storage.
   key as additional authenticated data. Master key in OS keychain
   (cross-platform via `@napi-rs/keyring`: macOS Keychain, Windows
   Credential Manager, Linux libsecret).
-- **Non-sensitive values** — plaintext in `~/.milady/vault.json`
+- **Non-sensitive values** — plaintext in `~/.eliza/vault.json`
   (mode 0600). Atomic-rename writes.
 - **References** — stored as `{ source, path }`. The actual value lives
   in 1Password / Proton Pass; resolved at use time via the vendor's
@@ -129,7 +129,7 @@ separate cloud sync.
 ## Audit log
 
 Every operation appends one JSONL line to
-`~/.milady/audit/vault.jsonl`:
+`~/.eliza/audit/vault.jsonl`:
 
 ```jsonl
 {"ts":1714330000000,"action":"set","key":"openrouter.apiKey"}

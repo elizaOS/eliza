@@ -20,7 +20,7 @@ describe("profiles — resolveActiveValue", () => {
   let vault: Vault;
 
   beforeEach(async () => {
-    workDir = await fs.mkdtemp(join(tmpdir(), "milady-profiles-"));
+    workDir = await fs.mkdtemp(join(tmpdir(), "eliza-profiles-"));
     vault = createVault({
       workDir,
       masterKey: inMemoryMasterKey(generateMasterKey()),
@@ -211,7 +211,7 @@ describe("profiles — routing config persistence", () => {
   let vault: Vault;
 
   beforeEach(async () => {
-    workDir = await fs.mkdtemp(join(tmpdir(), "milady-routing-"));
+    workDir = await fs.mkdtemp(join(tmpdir(), "eliza-routing-"));
     vault = createVault({
       workDir,
       masterKey: inMemoryMasterKey(generateMasterKey()),
@@ -283,7 +283,7 @@ describe("profiles — manager.getActive integration", () => {
   let workDir: string;
 
   beforeEach(async () => {
-    workDir = await fs.mkdtemp(join(tmpdir(), "milady-mgr-prof-"));
+    workDir = await fs.mkdtemp(join(tmpdir(), "eliza-mgr-prof-"));
   });
   afterEach(async () => {
     await fs.rm(workDir, { recursive: true, force: true });

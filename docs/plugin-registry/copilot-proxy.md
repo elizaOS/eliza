@@ -1,23 +1,23 @@
 ---
 title: "Copilot Proxy Plugin"
 sidebarTitle: "Copilot Proxy"
-description: "Copilot proxy model provider for Milady — route agent inference through the Copilot API."
+description: "Copilot proxy model provider for Eliza — route agent inference through the Copilot API."
 ---
 
-The Copilot Proxy plugin adds a Copilot-backed model provider to Milady agents.
+The Copilot Proxy plugin adds a Copilot-backed model provider to Eliza agents.
 
 **Package:** `@elizaos/plugin-copilot-proxy`
 
 ## Overview
 
-This plugin registers a model provider that proxies inference requests through the Copilot API. It allows Milady agents to use Copilot as a backend for language model calls, routing requests through your Copilot API key.
+This plugin registers a model provider that proxies inference requests through the Copilot API. It allows Eliza agents to use Copilot as a backend for language model calls, routing requests through your Copilot API key.
 
 Once configured, the provider is available alongside any other model providers in the agent's runtime. Model selection and routing follow the standard elizaOS provider priority system.
 
 ## Installation
 
 ```bash
-milady plugins install copilot-proxy
+eliza plugins install copilot-proxy
 ```
 
 ## Auto-Enable

@@ -13,17 +13,17 @@ import android.util.Log;
  *
  * Receives ACTION_DIAL (open the dial pad) and ACTION_CALL (place a call
  * directly). For ACTION_DIAL we forward to the WebView which renders the
- * Milady dial pad. For ACTION_CALL with a tel: URI we invoke
+ * Eliza dial pad. For ACTION_CALL with a tel: URI we invoke
  * {@link TelecomManager#placeCall} so the framework actually originates
- * the outgoing call — without this, Milady would be a dialer UI that
+ * the outgoing call — without this, Eliza would be a dialer UI that
  * never dials anything.
  *
  * The InCallService then receives the resulting Call object and routes
  * the in-call UI back into the WebView via deep link.
  */
-public class MiladyDialActivity extends Activity {
+public class ElizaDialActivity extends Activity {
 
-    private static final String TAG = "MiladyDialActivity";
+    private static final String TAG = "ElizaDialActivity";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {

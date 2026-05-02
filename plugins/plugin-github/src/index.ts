@@ -12,7 +12,7 @@
  * Auth: two independent PATs.
  *   - GITHUB_USER_PAT   — the user acting on their own behalf
  *   - GITHUB_AGENT_PAT  — the agent acting on its own behalf
- *   E2E fallbacks: MILADY_E2E_GITHUB_USER_PAT / MILADY_E2E_GITHUB_AGENT_PAT.
+ *   E2E fallbacks: ELIZA_E2E_GITHUB_USER_PAT / ELIZA_E2E_GITHUB_AGENT_PAT.
  *
  * Each action takes an `as: "user" | "agent"` option that selects which
  * token executes the request. REVIEW_PR and GITHUB_NOTIFICATION_TRIAGE

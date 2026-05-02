@@ -1,10 +1,10 @@
 ---
 title: "Plugin Blooio"
 sidebarTitle: "Blooio"
-description: "Conector Blooio para Milady — mensajería iMessage y SMS a través del servicio puente Blooio con webhooks firmados."
+description: "Conector Blooio para Eliza — mensajería iMessage y SMS a través del servicio puente Blooio con webhooks firmados."
 ---
 
-El plugin Blooio conecta agentes de Milady a la mensajería iMessage y SMS a través del servicio Blooio. Los mensajes entrantes se entregan mediante webhooks firmados para mayor seguridad.
+El plugin Blooio conecta agentes de Eliza a la mensajería iMessage y SMS a través del servicio Blooio. Los mensajes entrantes se entregan mediante webhooks firmados para mayor seguridad.
 
 **Paquete:** `@elizaos/plugin-blooio`
 
@@ -13,7 +13,7 @@ El plugin Blooio conecta agentes de Milady a la mensajería iMessage y SMS a tra
 </div>
 
 ```bash
-milady plugins install @elizaos/plugin-blooio
+eliza plugins install @elizaos/plugin-blooio
 ```
 
 <div id="setup">
@@ -26,8 +26,8 @@ milady plugins install @elizaos/plugin-blooio
 
 Obtén una clave API de tu cuenta de Blooio.
 
-<div id="2-configure-milady">
-### 2. Configurar Milady
+<div id="2-configure-eliza">
+### 2. Configurar Eliza
 </div>
 
 ```json

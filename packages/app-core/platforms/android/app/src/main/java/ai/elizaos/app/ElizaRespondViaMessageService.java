@@ -12,9 +12,9 @@ import android.util.Log;
 import java.util.ArrayList;
 import java.util.List;
 
-public class MiladyRespondViaMessageService extends Service {
+public class ElizaRespondViaMessageService extends Service {
 
-    private static final String TAG = "MiladyRespondViaMsg";
+    private static final String TAG = "ElizaRespondViaMsg";
     private static final String ACTION_RESPOND_VIA_MESSAGE = "android.intent.action.RESPOND_VIA_MESSAGE";
 
     @Override

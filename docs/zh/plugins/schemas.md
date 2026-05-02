@@ -4,7 +4,7 @@ sidebarTitle: "模式定义"
 description: "插件清单、操作、提供者、评估器、服务、路由和模型处理器的完整模式参考。"
 ---
 
-本页记录了 Milady/elizaOS 中每个插件原语的 TypeScript 接口和 JSON 模式。
+本页记录了 Eliza/elizaOS 中每个插件原语的 TypeScript 接口和 JSON 模式。
 
 <div id="plugin-interface">
 

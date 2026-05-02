@@ -13,12 +13,12 @@ import java.util.UUID;
 /**
  * In-call service.
  *
- * The InCallService is where Milady actually owns the call lifecycle.
+ * The InCallService is where Eliza actually owns the call lifecycle.
  * The framework drives onCallAdded → state changes → onCallRemoved; for
  * each call we register a per-call {@link Call.Callback}, mint a stable
  * call id (the framework's Call object identity is process-local and
  * not stable to forward to the WebView), and surface every state change
- * as a deep link into the Milady WebView so the JS layer can render the
+ * as a deep link into the Eliza WebView so the JS layer can render the
  * in-call UI and trigger answer/decline/mute/hold/dtmf back through
  * static helpers on this class.
  *
@@ -26,9 +26,9 @@ import java.util.UUID;
  * methods so the JS layer can invoke them via the Capacitor bridge.
  * Each call is keyed by the id we minted at onCallAdded.
  */
-public class MiladyInCallService extends InCallService {
+public class ElizaInCallService extends InCallService {
 
-    private static final String TAG = "MiladyInCallService";
+    private static final String TAG = "ElizaInCallService";
 
     /** Process-wide registry of active calls keyed by stable id. */
     private static final Map<String, Call> ACTIVE_CALLS =
@@ -44,7 +44,7 @@ public class MiladyInCallService extends InCallService {
         String callId = UUID.randomUUID().toString();
         ACTIVE_CALLS.put(callId, call);
         CALL_IDS.put(call, callId);
-        call.registerCallback(new MiladyCallCallback(callId));
+        call.registerCallback(new ElizaCallCallback(callId));
         Log.i(TAG, "Call added id=" + callId + " state=" + call.getState());
         openCallSurface("added", callId, call);
     }
@@ -146,10 +146,10 @@ public class MiladyInCallService extends InCallService {
      * Without this the JS UI only sees onCallAdded/onCallRemoved and
      * misses ringing → active → on-hold → disconnected transitions.
      */
-    private final class MiladyCallCallback extends Call.Callback {
+    private final class ElizaCallCallback extends Call.Callback {
         private final String callId;
 
-        MiladyCallCallback(String callId) {
+        ElizaCallCallback(String callId) {
             this.callId = callId;
         }
 

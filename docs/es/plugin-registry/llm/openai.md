@@ -1,10 +1,10 @@
 ---
 title: "Plugin de OpenAI"
 sidebarTitle: "OpenAI"
-description: "Proveedor de modelos OpenAI para Milady — GPT-4o, o1, o3, embeddings, generación de imágenes y voz."
+description: "Proveedor de modelos OpenAI para Eliza — GPT-4o, o1, o3, embeddings, generación de imágenes y voz."
 ---
 
-El plugin de OpenAI conecta los agentes de Milady con la API de OpenAI, proporcionando acceso a GPT-4o, las familias de modelos de razonamiento o1/o3, generación de imágenes DALL-E y conversión de voz a texto con Whisper.
+El plugin de OpenAI conecta los agentes de Eliza con la API de OpenAI, proporcionando acceso a GPT-4o, las familias de modelos de razonamiento o1/o3, generación de imágenes DALL-E y conversión de voz a texto con Whisper.
 
 **Package:** `@elizaos/plugin-openai`
 
@@ -15,10 +15,10 @@ El plugin de OpenAI conecta los agentes de Milady con la API de OpenAI, proporci
 </div>
 
 ```bash
-milady plugins install @elizaos/plugin-openai
+eliza plugins install @elizaos/plugin-openai
 ```
 
-O añade a `milady.json`:
+O añade a `eliza.json`:
 
 ```json
 {
@@ -53,9 +53,9 @@ export OPENAI_API_KEY=sk-...
 | `OPENAI_ORG_ID` | No | ID de organización para seguimiento de uso |
 | `OPENAI_PROJECT_ID` | No | ID de proyecto para gestión de cuotas |
 
-<div id="miladyjson-example">
+<div id="elizajson-example">
 
-### Ejemplo de milady.json
+### Ejemplo de eliza.json
 
 </div>
 

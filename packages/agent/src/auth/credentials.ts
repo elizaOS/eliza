@@ -188,7 +188,7 @@ export async function getAccessToken(
 }
 
 function readConfiguredAnthropicSetupToken(): string | null {
-  const namespace = process.env.ELIZA_NAMESPACE?.trim() || "milady";
+  const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
   const configPath =
     process.env.ELIZA_CONFIG_PATH?.trim() ||
     path.join(
@@ -544,7 +544,7 @@ export async function applySubscriptionCredentials(config?: {
   const codexAccounts = listProviderAccounts("openai-codex");
   if (codexAccounts.length > 0) {
     const selectorSymbol = Symbol.for(
-      "milady.account-pool.subscription-selector.v1",
+      "eliza.account-pool.subscription-selector.v1",
     );
     const selector = (globalThis as Record<symbol, unknown>)[selectorSymbol] as
       | {

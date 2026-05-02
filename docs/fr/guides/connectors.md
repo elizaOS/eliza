@@ -50,7 +50,7 @@ Les connecteurs sont des passerelles de plateforme qui permettent à votre agent
 ## Plateformes prises en charge
 </div>
 
-Les connecteurs marqués **Auto** se chargent automatiquement lorsque leur configuration est présente dans `milady.json`. Les connecteurs marqués **Registry** doivent d'abord être installés avec `milady plugins install <package>`.
+Les connecteurs marqués **Auto** se chargent automatiquement lorsque leur configuration est présente dans `eliza.json`. Les connecteurs marqués **Registry** doivent d'abord être installés avec `eliza plugins install <package>`.
 
 | Plateforme | Méthode d'authentification | Support MP | Support groupe | Multi-comptes | Disponibilité |
 |----------|------------|------------|---------------|---------------|-------------|
@@ -89,7 +89,7 @@ Les connecteurs marqués **Auto** se chargent automatiquement lorsque leur confi
 ## Configuration générale
 </div>
 
-Les connecteurs sont configurés dans la section `connectors` de `milady.json`. Champs communs partagés par la plupart des connecteurs :
+Les connecteurs sont configurés dans la section `connectors` de `eliza.json`. Champs communs partagés par la plupart des connecteurs :
 
 | Champ | Type | Description |
 |-------|------|-------------|
@@ -415,7 +415,7 @@ Se connecte à iMessage via un serveur [BlueBubbles](https://bluebubbles.app) lo
 ### Prérequis d'installation
 
 - Un Mac avec iMessage connecté et le [serveur BlueBubbles](https://bluebubbles.app) installé
-- Le mot de passe du serveur et l'URL accessible depuis la machine exécutant Milady
+- Le mot de passe du serveur et l'URL accessible depuis la machine exécutant Eliza
 
 ### Configuration clé
 
@@ -709,7 +709,7 @@ Se connecte à la messagerie iMessage et SMS via le service Blooio avec des webh
 - Mode simulation pour les tests
 - Réseau social décentralisé basé sur le protocole AT
 
-**Note :** Ce connecteur est disponible depuis le registre de plugins. Installez-le avec `milady plugins install @elizaos/plugin-bluesky`.
+**Note :** Ce connecteur est disponible depuis le registre de plugins. Installez-le avec `eliza plugins install @elizaos/plugin-bluesky`.
 
 ---
 
@@ -749,7 +749,7 @@ Se connecte à la messagerie iMessage et SMS via le service Blooio avec des webh
 - Mode simulation pour les tests
 - Intervalles de publication et de sondage configurables
 
-**Note :** Ce connecteur est disponible depuis le registre de plugins. Installez-le avec `milady plugins install @elizaos/plugin-instagram`.
+**Note :** Ce connecteur est disponible depuis le registre de plugins. Installez-le avec `eliza plugins install @elizaos/plugin-instagram`.
 
 ---
 
@@ -1067,7 +1067,7 @@ que vous exploitez vous-même ou en laquelle vous avez explicitement confiance p
 - Support des discussions de groupe
 - Gestion d'événements basée sur les webhooks
 
-**Note :** Ce connecteur est disponible depuis le registre de plugins. Installez-le avec `milady plugins install @elizaos/plugin-line`.
+**Note :** Ce connecteur est disponible depuis le registre de plugins. Installez-le avec `eliza plugins install @elizaos/plugin-line`.
 
 ---
 
@@ -1107,7 +1107,7 @@ que vous exploitez vous-même ou en laquelle vous avez explicitement confiance p
 
 Une variante pour compte personnel est également disponible sous `@elizaos/plugin-zalouser` pour la messagerie individuelle en dehors du système de compte officiel.
 
-**Note :** Ce connecteur est disponible depuis le registre de plugins. Installez-le avec `milady plugins install @elizaos/plugin-zalo`.
+**Note :** Ce connecteur est disponible depuis le registre de plugins. Installez-le avec `eliza plugins install @elizaos/plugin-zalo`.
 
 ---
 
@@ -1146,7 +1146,7 @@ Une variante pour compte personnel est également disponible sous `@elizaos/plug
 - Capacités d'appels vocaux
 - Gestion des messages entrants basée sur les webhooks
 
-**Note :** Ce connecteur est disponible depuis le registre de plugins. Installez-le avec `milady plugins install @elizaos/plugin-twilio`.
+**Note :** Ce connecteur est disponible depuis le registre de plugins. Installez-le avec `eliza plugins install @elizaos/plugin-twilio`.
 
 ---
 
@@ -1185,7 +1185,7 @@ Une variante pour compte personnel est également disponible sous `@elizaos/plug
 - Workflows de pull requests (création, revue, fusion)
 - Recherche de code et accès aux fichiers
 
-**Note :** Ce connecteur est disponible depuis le registre de plugins. Installez-le avec `milady plugins install @elizaos/plugin-github`.
+**Note :** Ce connecteur est disponible depuis le registre de plugins. Installez-le avec `eliza plugins install @elizaos/plugin-github`.
 
 ---
 
@@ -1213,7 +1213,7 @@ Gmail Watch est activé via le drapeau `features.gmailWatch` ou les variables d'
 - Renouvellement automatique des abonnements de surveillance
 - Gestion des événements d'e-mails entrants
 
-**Note :** Ce connecteur est disponible depuis le registre de plugins. Installez-le avec `milady plugins install @elizaos/plugin-gmail-watch`.
+**Note :** Ce connecteur est disponible depuis le registre de plugins. Installez-le avec `eliza plugins install @elizaos/plugin-gmail-watch`.
 
 ---
 
@@ -1249,7 +1249,7 @@ Gmail Watch est activé via le drapeau `features.gmailWatch` ou les variables d'
 - Support des conversations en MP et en groupe
 - Intégration de plateforme de collaboration auto-hébergée
 
-**Note :** Ce connecteur est disponible depuis le registre de plugins. Installez-le avec `milady plugins install @elizaos/plugin-nextcloud-talk`.
+**Note :** Ce connecteur est disponible depuis le registre de plugins. Installez-le avec `eliza plugins install @elizaos/plugin-nextcloud-talk`.
 
 ---
 
@@ -1287,7 +1287,7 @@ Gmail Watch est activé via le drapeau `features.gmailWatch` ou les variables d'
 - Messagerie ship-to-ship
 - Participation aux discussions de groupe
 
-**Note :** Ce connecteur est disponible depuis le registre de plugins. Installez-le avec `milady plugins install @elizaos/plugin-tlon`.
+**Note :** Ce connecteur est disponible depuis le registre de plugins. Installez-le avec `eliza plugins install @elizaos/plugin-tlon`.
 
 ---
 
@@ -1326,7 +1326,7 @@ Gmail Watch est activé via le drapeau `features.gmailWatch` ou les variables d'
 Le cycle de vie typique d'un connecteur suit ce schéma :
 
 1. **Installer le plugin** -- Les plugins de connecteur sont installés en tant que packages `@elizaos/plugin-{platform}`
-2. **Configurer** -- Ajouter la configuration de la plateforme dans la section `connectors` de `milady.json`
+2. **Configurer** -- Ajouter la configuration de la plateforme dans la section `connectors` de `eliza.json`
 3. **Activer** -- Définir `enabled: true` dans la configuration du connecteur
 4. **Authentifier** -- Fournir les identifiants (tokens, clés) ou compléter le flux d'authentification (scan de code QR)
 5. **Exécuter** -- Le runtime démarre le connecteur, établit les connexions et commence la gestion des messages
@@ -1544,7 +1544,7 @@ Les options de `dmPolicy` sont :
 </div>
 
 1. **Session de connecteur obsolète :** Redémarrez l'agent. Les connecteurs réinitialisent leurs connexions de plateforme au démarrage. Pour les connecteurs basés sur WebSocket (Discord, Slack), cela force une nouvelle poignée de main.
-2. **Rotation de token :** Mettez à jour le token dans `milady.json` sous `connectors.<name>` et redémarrez. Ne modifiez pas les variables d'environnement dans un processus en cours d'exécution — la configuration est lue au démarrage.
+2. **Rotation de token :** Mettez à jour le token dans `eliza.json` sous `connectors.<name>` et redémarrez. Ne modifiez pas les variables d'environnement dans un processus en cours d'exécution — la configuration est lue au démarrage.
 3. **Récupération de limite de débit :** L'agent recule automatiquement sur les réponses 429. Si le connecteur est complètement bloqué, attendez que la fenêtre de limite de débit expire (typiquement 1 à 60 secondes pour Discord, variable selon la plateforme) et redémarrez.
 
 <div id="verification-commands">

@@ -1,10 +1,10 @@
 ---
 title: "Personality and Behavior"
 sidebarTitle: "Personality & Behavior"
-description: "How Milady composes agent personality from Character fields into a live system prompt, and how providers inject additional context."
+description: "How Eliza composes agent personality from Character fields into a live system prompt, and how providers inject additional context."
 ---
 
-Milady agent personality is composed from several layers at runtime. The Character fields defined in `milady.json` (see [Character Interface](./character-interface)) are the primary source, combined with context injected by providers at each conversation turn.
+Eliza agent personality is composed from several layers at runtime. The Character fields defined in `eliza.json` (see [Character Interface](./character-interface)) are the primary source, combined with context injected by providers at each conversation turn.
 
 ## How Personality Is Composed
 
@@ -32,7 +32,7 @@ You are Luna, an autonomous AI agent powered by elizaOS.
 
 ### Onboarding-Generated Prompts
 
-When a user completes onboarding, Milady writes a full agent configuration into `milady.json`. The onboarding flow (in `eliza/packages/agent/src/runtime/eliza.ts`) walks through several steps:
+When a user completes onboarding, Eliza writes a full agent configuration into `eliza.json`. The onboarding flow (in `eliza/packages/agent/src/runtime/eliza.ts`) walks through several steps:
 
 1. **Agent name** — pick from random suggestions or enter a custom name.
 2. **Style preset** — select a personality template from `STYLE_PRESETS` (defined in `eliza/packages/shared/src/onboarding-presets.ts`). The chosen template supplies `bio`, `system`, `style`, `adjectives`, `topics`, `postExamples`, and `messageExamples` in a single operation.
@@ -90,7 +90,7 @@ Each outer array is a separate conversation. Each inner array is one turn. These
 
 ## Provider Context Injection
 
-At every conversation turn, providers registered with the runtime inject additional context strings that are appended to the effective system prompt. The Milady plugin registers several providers:
+At every conversation turn, providers registered with the runtime inject additional context strings that are appended to the effective system prompt. The Eliza plugin registers several providers:
 
 ### Channel Profile Provider
 
@@ -124,7 +124,7 @@ To disable emotes entirely, set `character.settings.DISABLE_EMOTES = true`. This
 
 ### Custom Actions Provider
 
-If the user has defined custom actions in `milady.json`, the custom actions provider injects a list of available actions into the context:
+If the user has defined custom actions in `eliza.json`, the custom actions provider injects a list of available actions into the context:
 
 ```
 ## Custom Actions
@@ -138,7 +138,7 @@ When no custom actions are configured, the provider returns empty text (no token
 
 ### UI Catalog Provider
 
-`uiCatalogProvider` from `eliza/packages/agent/src/providers/ui-catalog.ts` injects the Milady UI component catalog, allowing the agent to compose structured UI responses.
+`uiCatalogProvider` from `eliza/packages/agent/src/providers/ui-catalog.ts` injects the Eliza UI component catalog, allowing the agent to compose structured UI responses.
 
 ## Session Key Provider
 
@@ -146,11 +146,11 @@ When no custom actions are configured, the provider returns empty text (no token
 
 ## Provider Registration in the Plugin
 
-All providers are registered through the Milady plugin:
+All providers are registered through the Eliza plugin:
 
 ```typescript
 return {
-  name: "milady",
+  name: "eliza",
   providers: [
     createChannelProfileProvider(),
     createWorkspaceProvider({ workspaceDir, maxCharsPerFile }),

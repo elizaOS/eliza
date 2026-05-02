@@ -6,7 +6,7 @@ description: "用于管理本地技能、技能目录和技能市场的 REST API
 
 技能 API 涵盖三个领域：**本地技能**（智能体专用的 TypeScript action 文件）、**技能目录**（社区技能的策展注册表）和**技能市场**（基于 npm 的技能包）。技能通过新的 action、provider 或 evaluator 扩展智能体。
 
-当设置了 `MILADY_API_TOKEN` 时，将其作为 `Bearer` 令牌包含在 `Authorization` 请求头中。
+当设置了 `ELIZA_API_TOKEN` 时，将其作为 `Bearer` 令牌包含在 `Authorization` 请求头中。
 
 <div id="endpoints">
 
@@ -653,7 +653,7 @@ POST /api/skills/:id/acknowledge
 
 </div>
 
-1. 确认技能目录（`~/.milady/workspace/skills/`）对运行时可读可写。
+1. 确认技能目录（`~/.eliza/workspace/skills/`）对运行时可读可写。
 2. 确认市场注册表/网络访问可用（默认：`https://clawhub.ai`）。检查 `SKILLS_REGISTRY`、`CLAWHUB_REGISTRY` 或 `SKILLS_MARKETPLACE_URL` 环境变量。
 3. 确认插件安装先决条件（`npm`/`pnpm`/`bun` 和 `git`）在运行时 PATH 中可用。
 4. 对于旧版 SkillsMP 市场，在环境中设置 `SKILLSMP_API_KEY`。
@@ -696,7 +696,7 @@ POST /api/skills/:id/acknowledge
 
 </div>
 
-1. **损坏的市场安装：** 删除 `~/.milady/workspace/skills/.marketplace/<skill-id>/` 并从 `~/.milady/workspace/skills/.cache/marketplace-installs.json` 中移除其条目，然后重新安装。
+1. **损坏的市场安装：** 删除 `~/.eliza/workspace/skills/.marketplace/<skill-id>/` 并从 `~/.eliza/workspace/skills/.cache/marketplace-installs.json` 中移除其条目，然后重新安装。
 2. **目录文件缺失：** 重新安装或更新 `@elizaos/plugin-agent-skills` 以恢复捆绑的目录。
 3. **技能覆盖冲突：** 如果工作区技能意外覆盖了捆绑技能，请重命名工作区技能目录或将其移至其他位置。
 

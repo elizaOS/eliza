@@ -1,7 +1,7 @@
 ---
 title: "Darwin vs macOS version (Electrobun WebGPU)"
 sidebarTitle: "Darwin / macOS WebGPU"
-description: "Why Node’s os.release() reports Darwin, not macOS marketing major, and how Milady maps the two so WKWebView WebGPU gating stays correct after macOS 26 (Tahoe)."
+description: "Why Node’s os.release() reports Darwin, not macOS marketing major, and how Eliza maps the two so WKWebView WebGPU gating stays correct after macOS 26 (Tahoe)."
 ---
 
 # Darwin vs macOS marketing version (Electrobun WebGPU gate)
@@ -14,7 +14,7 @@ This page explains **why** a naive formula misclassified Tahoe users, **what** m
 
 ### Symptom
 
-Logs showed a **misleading macOS major** in the WebGPU status line (e.g. treating Darwin 25 as “macOS 16”) so the message looked like the OS was too old, even on **macOS 26.x** with **`uname -r`** in the **25.x** range. Current builds use corrected Darwin→marketing mapping and clarify that **Milady still runs on WebGL** when WKWebView has no WebGPU; the line is **not** “the app is unsupported.”
+Logs showed a **misleading macOS major** in the WebGPU status line (e.g. treating Darwin 25 as “macOS 16”) so the message looked like the OS was too old, even on **macOS 26.x** with **`uname -r`** in the **25.x** range. Current builds use corrected Darwin→marketing mapping and clarify that **Eliza still runs on WebGL** when WKWebView has no WebGPU; the line is **not** “the app is unsupported.”
 
 ### Root cause
 

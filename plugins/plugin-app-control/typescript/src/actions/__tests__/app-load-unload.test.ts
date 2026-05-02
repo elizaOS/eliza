@@ -165,7 +165,7 @@ function callbackBag() {
 let tmpRepoRoot: string;
 
 beforeEach(() => {
-	tmpRepoRoot = mkdtempSync(path.join(tmpdir(), "milady-app-load-unload-"));
+	tmpRepoRoot = mkdtempSync(path.join(tmpdir(), "eliza-app-load-unload-"));
 });
 
 afterEach(() => {

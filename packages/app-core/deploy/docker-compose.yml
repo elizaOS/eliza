@@ -1,26 +1,26 @@
 services:
-  milady-gateway:
-    image: ${MILADY_IMAGE:-milady:local}
+  eliza-gateway:
+    image: ${ELIZA_IMAGE:-eliza:local}
     environment:
       HOME: /home/node
       TERM: xterm-256color
-      MILADY_GATEWAY_TOKEN: ${MILADY_GATEWAY_TOKEN}
-      MILADY_ALLOWED_ORIGINS: ${MILADY_ALLOWED_ORIGINS}
-      # Set MILADY_API_TOKEN for non-localhost deployments to require auth on API routes
-      MILADY_API_TOKEN: ${MILADY_API_TOKEN:-}
+      ELIZA_GATEWAY_TOKEN: ${ELIZA_GATEWAY_TOKEN}
+      ELIZA_ALLOWED_ORIGINS: ${ELIZA_ALLOWED_ORIGINS}
+      # Set ELIZA_API_TOKEN for non-localhost deployments to require auth on API routes
+      ELIZA_API_TOKEN: ${ELIZA_API_TOKEN:-}
       CLAUDE_AI_SESSION_KEY: ${CLAUDE_AI_SESSION_KEY}
       CLAUDE_WEB_SESSION_KEY: ${CLAUDE_WEB_SESSION_KEY}
       CLAUDE_WEB_COOKIE: ${CLAUDE_WEB_COOKIE}
     volumes:
-      - ${MILADY_CONFIG_DIR}:/home/node/.milady
-      - ${MILADY_WORKSPACE_DIR}:/home/node/.milady/workspace
+      - ${ELIZA_CONFIG_DIR}:/home/node/.eliza
+      - ${ELIZA_WORKSPACE_DIR}:/home/node/.eliza/workspace
     ports:
-      - "${MILADY_GATEWAY_PORT:-18789}:${MILADY_GATEWAY_PORT:-18789}"
-      - "${MILADY_BRIDGE_PORT:-18790}:18790"
+      - "${ELIZA_GATEWAY_PORT:-18789}:${ELIZA_GATEWAY_PORT:-18789}"
+      - "${ELIZA_BRIDGE_PORT:-18790}:18790"
     init: true
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${MILADY_GATEWAY_PORT:-18789}/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:${ELIZA_GATEWAY_PORT:-18789}/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -31,26 +31,26 @@ services:
         "dist/index.js",
         "gateway",
         "--bind",
-        "${MILADY_GATEWAY_BIND:-lan}",
+        "${ELIZA_GATEWAY_BIND:-lan}",
         "--port",
-        "${MILADY_GATEWAY_PORT:-18789}",
+        "${ELIZA_GATEWAY_PORT:-18789}",
       ]
 
-  milady-cli:
-    image: ${MILADY_IMAGE:-milady:local}
+  eliza-cli:
+    image: ${ELIZA_IMAGE:-eliza:local}
     environment:
       HOME: /home/node
       TERM: xterm-256color
-      MILADY_GATEWAY_TOKEN: ${MILADY_GATEWAY_TOKEN}
-      # Set MILADY_API_TOKEN for non-localhost deployments to require auth on API routes
-      MILADY_API_TOKEN: ${MILADY_API_TOKEN:-}
+      ELIZA_GATEWAY_TOKEN: ${ELIZA_GATEWAY_TOKEN}
+      # Set ELIZA_API_TOKEN for non-localhost deployments to require auth on API routes
+      ELIZA_API_TOKEN: ${ELIZA_API_TOKEN:-}
       BROWSER: echo
       CLAUDE_AI_SESSION_KEY: ${CLAUDE_AI_SESSION_KEY}
       CLAUDE_WEB_SESSION_KEY: ${CLAUDE_WEB_SESSION_KEY}
       CLAUDE_WEB_COOKIE: ${CLAUDE_WEB_COOKIE}
     volumes:
-      - ${MILADY_CONFIG_DIR}:/home/node/.milady
-      - ${MILADY_WORKSPACE_DIR}:/home/node/.milady/workspace
+      - ${ELIZA_CONFIG_DIR}:/home/node/.eliza
+      - ${ELIZA_WORKSPACE_DIR}:/home/node/.eliza/workspace
     stdin_open: true
     tty: true
     init: true

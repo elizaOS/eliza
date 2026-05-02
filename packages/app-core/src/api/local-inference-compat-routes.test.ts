@@ -69,17 +69,17 @@ describe("local-inference-compat-routes e2e", () => {
   let origHome: string | undefined;
   let origHfHome: string | undefined;
   let origHfHubCache: string | undefined;
-  let origMiladyStateDir: string | undefined;
+  let origElizaStateDir: string | undefined;
   let origOllamaModels: string | undefined;
   let origStateDir: string | undefined;
   let origToken: string | undefined;
 
   beforeEach(async () => {
-    tmpState = await fs.mkdtemp(path.join(os.tmpdir(), "milady-api-e2e-"));
+    tmpState = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-api-e2e-"));
     origHome = process.env.HOME;
     origHfHome = process.env.HF_HOME;
     origHfHubCache = process.env.HF_HUB_CACHE;
-    origMiladyStateDir = process.env.MILADY_STATE_DIR;
+    origElizaStateDir = process.env.ELIZA_STATE_DIR;
     origOllamaModels = process.env.OLLAMA_MODELS;
     origStateDir = process.env.ELIZA_STATE_DIR;
     origToken = process.env.ELIZA_API_TOKEN;
@@ -87,7 +87,7 @@ describe("local-inference-compat-routes e2e", () => {
     delete process.env.HF_HOME;
     delete process.env.HF_HUB_CACHE;
     delete process.env.OLLAMA_MODELS;
-    process.env.MILADY_STATE_DIR = tmpState;
+    process.env.ELIZA_STATE_DIR = tmpState;
     process.env.ELIZA_STATE_DIR = tmpState;
     // No auth token set so loopback requests don't need one — matches the
     // dev default we verified earlier against the real running server.
@@ -103,8 +103,8 @@ describe("local-inference-compat-routes e2e", () => {
     else process.env.HF_HOME = origHfHome;
     if (origHfHubCache === undefined) delete process.env.HF_HUB_CACHE;
     else process.env.HF_HUB_CACHE = origHfHubCache;
-    if (origMiladyStateDir === undefined) delete process.env.MILADY_STATE_DIR;
-    else process.env.MILADY_STATE_DIR = origMiladyStateDir;
+    if (origElizaStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
+    else process.env.ELIZA_STATE_DIR = origElizaStateDir;
     if (origOllamaModels === undefined) delete process.env.OLLAMA_MODELS;
     else process.env.OLLAMA_MODELS = origOllamaModels;
     if (origStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
@@ -267,7 +267,7 @@ describe("local-inference-compat-routes e2e", () => {
       providers: Array<{ id: string; kind: string }>;
     };
     expect(Array.isArray(body.providers)).toBe(true);
-    expect(body.providers.some((p) => p.id === "milady-local-inference")).toBe(
+    expect(body.providers.some((p) => p.id === "eliza-local-inference")).toBe(
       true,
     );
     expect(body.providers.some((p) => p.id === "anthropic")).toBe(true);

@@ -1,10 +1,10 @@
 ---
 title: "EVM Plugin"
 sidebarTitle: "EVM"
-description: "EVM chain connector for Milady — Ethereum, Base, Arbitrum, Optimism, and other EVM-compatible chains."
+description: "EVM chain connector for Eliza — Ethereum, Base, Arbitrum, Optimism, and other EVM-compatible chains."
 ---
 
-The EVM plugin enables Milady agents to interact with Ethereum and EVM-compatible chains — reading balances, sending tokens, interacting with smart contracts, executing swaps, and participating in DeFi protocols.
+The EVM plugin enables Eliza agents to interact with Ethereum and EVM-compatible chains — reading balances, sending tokens, interacting with smart contracts, executing swaps, and participating in DeFi protocols.
 
 **Package:** `@elizaos/plugin-evm` (community)
 
@@ -15,7 +15,7 @@ The EVM plugin provides the agent with an embedded wallet and a set of on-chain 
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-evm
+eliza plugins install @elizaos/plugin-evm
 ```
 
 ## Auto-Enable

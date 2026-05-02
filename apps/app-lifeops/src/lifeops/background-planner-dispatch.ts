@@ -152,7 +152,7 @@ export async function enqueueIfSensitive(
 // Test observability
 // ---------------------------------------------------------------------------
 
-const DISPATCH_LOG_KEY = Symbol.for("milady.lifeops.background-planner.log");
+const DISPATCH_LOG_KEY = Symbol.for("eliza.lifeops.background-planner.log");
 const DISPATCH_LOG_MAX_ENTRIES = 200;
 
 interface DispatchLogHolder {

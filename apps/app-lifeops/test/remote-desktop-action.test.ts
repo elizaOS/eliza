@@ -7,8 +7,8 @@ import {
 } from "../src/lifeops/remote-desktop.js";
 
 const SAME_ID = "00000000-0000-0000-0000-000000000001";
-const ORIGINAL_MOCK_ENV = process.env.MILADY_TEST_REMOTE_DESKTOP_BACKEND;
-const ORIGINAL_BENCHMARK_ENV = process.env.MILADY_BENCHMARK_USE_MOCKS;
+const ORIGINAL_MOCK_ENV = process.env.ELIZA_TEST_REMOTE_DESKTOP_BACKEND;
+const ORIGINAL_BENCHMARK_ENV = process.env.ELIZA_BENCHMARK_USE_MOCKS;
 
 function makeRuntime() {
   return { agentId: SAME_ID } as unknown as Parameters<
@@ -32,28 +32,28 @@ async function cleanupSessions(): Promise<void> {
 }
 
 beforeEach(async () => {
-  process.env.MILADY_TEST_REMOTE_DESKTOP_BACKEND = "1";
+  process.env.ELIZA_TEST_REMOTE_DESKTOP_BACKEND = "1";
   await cleanupSessions();
 });
 
 afterEach(async () => {
   await cleanupSessions();
   if (ORIGINAL_MOCK_ENV === undefined) {
-    delete process.env.MILADY_TEST_REMOTE_DESKTOP_BACKEND;
+    delete process.env.ELIZA_TEST_REMOTE_DESKTOP_BACKEND;
   } else {
-    process.env.MILADY_TEST_REMOTE_DESKTOP_BACKEND = ORIGINAL_MOCK_ENV;
+    process.env.ELIZA_TEST_REMOTE_DESKTOP_BACKEND = ORIGINAL_MOCK_ENV;
   }
   if (ORIGINAL_BENCHMARK_ENV === undefined) {
-    delete process.env.MILADY_BENCHMARK_USE_MOCKS;
+    delete process.env.ELIZA_BENCHMARK_USE_MOCKS;
   } else {
-    process.env.MILADY_BENCHMARK_USE_MOCKS = ORIGINAL_BENCHMARK_ENV;
+    process.env.ELIZA_BENCHMARK_USE_MOCKS = ORIGINAL_BENCHMARK_ENV;
   }
 });
 
 describe("remoteDesktopAction", () => {
   test("benchmark mock mode does not fabricate a remote desktop backend", async () => {
-    delete process.env.MILADY_TEST_REMOTE_DESKTOP_BACKEND;
-    process.env.MILADY_BENCHMARK_USE_MOCKS = "1";
+    delete process.env.ELIZA_TEST_REMOTE_DESKTOP_BACKEND;
+    process.env.ELIZA_BENCHMARK_USE_MOCKS = "1";
 
     const backend = await detectRemoteDesktopBackend({
       preferredBackend: "none",

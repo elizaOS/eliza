@@ -26,7 +26,7 @@ The connector auto-enables when `authDir`, `authState`, `sessionPath`, or `accou
 
 ## Minimal Configuration
 
-In `~/.milady/milady.json` (Baileys / QR code):
+In `~/.eliza/eliza.json` (Baileys / QR code):
 
 ```json
 {
@@ -75,7 +75,7 @@ To explicitly disable the connector even when auth config is present:
 ### Baileys (personal account)
 
 1. Set `authDir` in your connector config (e.g., `"./auth/whatsapp"`).
-2. Start Milady -- a QR code will be printed to the terminal.
+2. Start Eliza -- a QR code will be printed to the terminal.
 3. Scan the QR code with your phone (WhatsApp > Settings > Linked Devices > Link a Device).
 4. The session persists automatically across restarts.
 
@@ -84,7 +84,7 @@ To explicitly disable the connector even when auth config is present:
 1. Set up a WhatsApp Business Account in the [Meta Developer Dashboard](https://developers.facebook.com/).
 2. Obtain an access token and phone number ID.
 3. Set `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, and `WHATSAPP_AUTH_METHOD=cloudapi`.
-4. Configure a webhook URL pointing to your Milady instance.
+4. Configure a webhook URL pointing to your Eliza instance.
 5. Start your agent.
 
 ## Authentication Methods
@@ -116,7 +116,7 @@ The WhatsApp Business Cloud API is Meta's official API. Requires a WhatsApp Busi
 
 ## Full Configuration Reference
 
-All fields are defined under `connectors.whatsapp` in `milady.json`.
+All fields are defined under `connectors.whatsapp` in `eliza.json`.
 
 ### Core Fields
 
@@ -248,7 +248,7 @@ QR codes have a short TTL (typically around 20 seconds). The connector automatic
 If reconnection fails with a session error:
 
 1. Delete the contents of your `authDir` directory
-2. Restart Milady
+2. Restart Eliza
 3. Scan the new QR code
 
 ### `dmPolicy: "open"` Validation Error

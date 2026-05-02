@@ -8,11 +8,11 @@ Este documento explica cómo se inicia el agente embebido en la aplicación de e
 ## Secuencia de inicio
 </div>
 
-1. **Proceso principal de Electrobun** se inicia, crea la ventana y resuelve la URL del renderizador (servidor de desarrollo Vite vía `MILADY_RENDERER_URL` o el servidor de assets estáticos integrado para `apps/app/dist` empaquetado).
-2. **`AgentManager.start()`** (en `native/agent.ts`) genera un **proceso hijo de Bun**: `bun run <milady-dist>/entry.js start` (o la ruta equivalente para tu layout de bundle). El hijo **no** es un import dinámico en proceso de `server.js` / `eliza.js`.
-3. **Proceso hijo** arranca el punto de entrada CLI de Milady, inicia el servidor API y ejecuta el runtime de elizaOS en modo headless dentro de ese proceso.
+1. **Proceso principal de Electrobun** se inicia, crea la ventana y resuelve la URL del renderizador (servidor de desarrollo Vite vía `ELIZA_RENDERER_URL` o el servidor de assets estáticos integrado para `apps/app/dist` empaquetado).
+2. **`AgentManager.start()`** (en `native/agent.ts`) genera un **proceso hijo de Bun**: `bun run <eliza-dist>/entry.js start` (o la ruta equivalente para tu layout de bundle). El hijo **no** es un import dinámico en proceso de `server.js` / `eliza.js`.
+3. **Proceso hijo** arranca el punto de entrada CLI de Eliza, inicia el servidor API y ejecuta el runtime de elizaOS en modo headless dentro de ese proceso.
 4. **Proceso principal** sondea la salud en `http://127.0.0.1:{port}/api/health` hasta que el hijo reporta listo (o se agota el tiempo / hay errores).
-5. **Proceso principal** envía `apiBaseUpdate` (y RPC relacionado) al renderizador para que `window.__MILADY_API_BASE__` coincida con la API en vivo.
+5. **Proceso principal** envía `apiBaseUpdate` (y RPC relacionado) al renderizador para que `window.__ELIZA_API_BASE__` coincida con la API en vivo.
 
 Si el hijo no logra iniciar o nunca se vuelve saludable:
 
@@ -52,9 +52,9 @@ El archivo y los sitios clave en `agent.ts` incluyen comentarios **WHY** que ref
 
 La aplicación empaquetada escribe un log de inicio en:
 
-- **macOS:** `~/Library/Application Support/Milady/milady-startup.log`
-- **Windows:** `%APPDATA%\Milady\milady-startup.log`
-- **Linux:** `~/.config/Milady/milady-startup.log`
+- **macOS:** `~/Library/Application Support/Eliza/eliza-startup.log`
+- **Windows:** `%APPDATA%\Eliza\eliza-startup.log`
+- **Linux:** `~/.config/Eliza/eliza-startup.log`
 
 Úsalo para depurar fallos de carga (módulos faltantes, ruta de binario nativo, etc.).
 

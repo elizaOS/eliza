@@ -1,7 +1,7 @@
 ---
 title: "Plugin Registry"
 sidebarTitle: "Registry"
-description: "How Milady discovers, caches, and resolves plugins from the remote registry."
+description: "How Eliza discovers, caches, and resolves plugins from the remote registry."
 ---
 
 The plugin registry is the system that discovers, caches, and resolves plugins and apps for Eliza agents. It combines a bundled local index with a remote GitHub-hosted registry, using a 3-tier cache to work offline, in desktop app bundles, and in development.
@@ -25,7 +25,7 @@ The registry has two layers:
 
 ### Bundled Registry (`plugins.json`)
 
-A local JSON file shipped with Milady containing metadata for 98 plugins from the elizaOS ecosystem. Each entry includes the plugin's id, npm package name, category, environment variables, version, dependencies, and detailed parameter definitions. This file follows the `plugin-index-v1` schema.
+A local JSON file shipped with Eliza containing metadata for 98 plugins from the elizaOS ecosystem. Each entry includes the plugin's id, npm package name, category, environment variables, version, dependencies, and detailed parameter definitions. This file follows the `plugin-index-v1` schema.
 
 ```json
 {
@@ -50,7 +50,7 @@ A local JSON file shipped with Milady containing metadata for 98 plugins from th
 }
 ```
 
-The bundled `plugins.json` is used by the `milady plugins config` command to look up parameter definitions, environment keys, and UI hints for plugin configuration.
+The bundled `plugins.json` is used by the `eliza plugins config` command to look up parameter definitions, environment keys, and UI hints for plugin configuration.
 
 ### Remote Registry (GitHub)
 
@@ -79,7 +79,7 @@ The registry client (`eliza/packages/agent/src/services/registry-client.ts`) use
 
 ```
 Memory Cache  -->  File Cache  -->  Network Fetch
-  (in-process)     (~/.milady/     (GitHub raw)
+  (in-process)     (~/.eliza/     (GitHub raw)
                     cache/
                     registry.json)
 ```
@@ -90,7 +90,7 @@ An in-process `Map<string, RegistryPluginInfo>` held in module-level state. Chec
 
 ### Tier 2: File Cache
 
-A JSON file at `~/.milady/cache/registry.json` containing the serialized plugin map and a `fetchedAt` timestamp. Checked when the memory cache is empty or expired. Written asynchronously after each successful network fetch.
+A JSON file at `~/.eliza/cache/registry.json` containing the serialized plugin map and a `fetchedAt` timestamp. Checked when the memory cache is empty or expired. Written asynchronously after each successful network fetch.
 
 The file cache stores entries as `{ fetchedAt: number, plugins: Array<[string, RegistryPluginInfo]> }` and is invalidated when the TTL expires.
 
@@ -107,7 +107,7 @@ All tiers share a 1-hour TTL (`3_600_000` ms). After expiry, the next call to `g
 Call `refreshRegistry()` to clear both the memory cache and the file cache, then fetch from the network:
 
 ```typescript
-import { refreshRegistry } from "milady/services/registry-client";
+import { refreshRegistry } from "eliza/services/registry-client";
 
 const plugins = await refreshRegistry();
 ```
@@ -115,7 +115,7 @@ const plugins = await refreshRegistry();
 Or from the CLI:
 
 ```bash
-milady plugins refresh
+eliza plugins refresh
 ```
 
 ---
@@ -137,142 +137,142 @@ The CLI also normalizes user input via `normalizePluginName()`:
 Version pinning is supported with the `@` separator:
 
 ```bash
-milady plugins install twitter@1.2.3
-milady plugins install @custom/plugin-x@2.0.0
-milady plugins install twitter@next    # dist-tags work too
+eliza plugins install twitter@1.2.3
+eliza plugins install @custom/plugin-x@2.0.0
+eliza plugins install twitter@next    # dist-tags work too
 ```
 
 ---
 
 ## CLI Commands
 
-All plugin commands live under `milady plugins`. Run `milady plugins --help` for the full list.
+All plugin commands live under `eliza plugins`. Run `eliza plugins --help` for the full list.
 
-### `milady plugins list`
+### `eliza plugins list`
 
 List all plugins from the remote registry.
 
 ```bash
 # List all plugins (default limit: 30)
-milady plugins list
+eliza plugins list
 
 # Search by keyword
-milady plugins list -q telegram
+eliza plugins list -q telegram
 
 # Increase the result limit
-milady plugins list --limit 100
+eliza plugins list --limit 100
 ```
 
-### `milady plugins search <query>`
+### `eliza plugins search <query>`
 
 Search the registry by keyword with relevance scoring.
 
 ```bash
-milady plugins search "discord bot"
-milady plugins search openai --limit 5
+eliza plugins search "discord bot"
+eliza plugins search openai --limit 5
 ```
 
 Results show a match percentage based on scoring across name, description, and topics.
 
-### `milady plugins info <name>`
+### `eliza plugins info <name>`
 
 Show detailed information about a specific plugin: repository, homepage, language, stars, topics, npm versions, and supported elizaOS versions.
 
 ```bash
-milady plugins info telegram
-milady plugins info @elizaos/plugin-openai
+eliza plugins info telegram
+eliza plugins info @elizaos/plugin-openai
 ```
 
-### `milady plugins install <name>`
+### `eliza plugins install <name>`
 
-Install a plugin from the registry into `~/.milady/plugins/installed/<name>/`.
+Install a plugin from the registry into `~/.eliza/plugins/installed/<name>/`.
 
 ```bash
 # Install by shorthand (expands to @elizaos/plugin-telegram)
-milady plugins install telegram
+eliza plugins install telegram
 
 # Install a specific version
-milady plugins install telegram@1.2.3
+eliza plugins install telegram@1.2.3
 
 # Install without restarting the agent
-milady plugins install telegram --no-restart
+eliza plugins install telegram --no-restart
 ```
 
-The installer uses npm/bun to install into an isolated prefix directory. If that fails, it falls back to cloning the plugin's GitHub repository. The installation is tracked in `milady.json`.
+The installer uses npm/bun to install into an isolated prefix directory. If that fails, it falls back to cloning the plugin's GitHub repository. The installation is tracked in `eliza.json`.
 
-### `milady plugins uninstall <name>`
+### `eliza plugins uninstall <name>`
 
 Remove a user-installed plugin.
 
 ```bash
-milady plugins uninstall @elizaos/plugin-telegram
-milady plugins uninstall telegram --no-restart
+eliza plugins uninstall @elizaos/plugin-telegram
+eliza plugins uninstall telegram --no-restart
 ```
 
-### `milady plugins installed`
+### `eliza plugins installed`
 
 List all plugins that were installed from the registry (not bundled).
 
 ```bash
-milady plugins installed
+eliza plugins installed
 ```
 
-### `milady plugins refresh`
+### `eliza plugins refresh`
 
 Force-refresh the registry cache (clears memory + file cache, fetches from GitHub).
 
 ```bash
-milady plugins refresh
+eliza plugins refresh
 ```
 
-### `milady plugins config <name>`
+### `eliza plugins config <name>`
 
 Show or interactively edit a plugin's configuration parameters.
 
 ```bash
 # View current config values
-milady plugins config telegram
+eliza plugins config telegram
 
 # Interactive edit mode
-milady plugins config telegram --edit
+eliza plugins config telegram --edit
 ```
 
-In edit mode, the CLI walks through each parameter, showing current values (masking sensitive ones) and prompting for new values. Changes are saved to `milady.json`.
+In edit mode, the CLI walks through each parameter, showing current values (masking sensitive ones) and prompting for new values. Changes are saved to `eliza.json`.
 
-### `milady plugins test`
+### `eliza plugins test`
 
-Validate custom drop-in plugins in `~/.milady/plugins/custom/`. Checks that each plugin directory has a valid entry point and exports a Plugin object with `name` and `description`.
+Validate custom drop-in plugins in `~/.eliza/plugins/custom/`. Checks that each plugin directory has a valid entry point and exports a Plugin object with `name` and `description`.
 
 ```bash
-milady plugins test
+eliza plugins test
 ```
 
-### `milady plugins add-path <path>`
+### `eliza plugins add-path <path>`
 
 Register an additional plugin search directory in the config file.
 
 ```bash
-milady plugins add-path ~/my-plugins
+eliza plugins add-path ~/my-plugins
 ```
 
-### `milady plugins paths`
+### `eliza plugins paths`
 
 List all plugin search directories and their contents.
 
 ```bash
-milady plugins paths
+eliza plugins paths
 ```
 
-### `milady plugins open [name-or-path]`
+### `eliza plugins open [name-or-path]`
 
 Open a plugin directory (or the custom plugins folder) in your editor.
 
 ```bash
 # Open the custom plugins folder
-milady plugins open
+eliza plugins open
 
 # Open a specific custom plugin
-milady plugins open my-plugin
+eliza plugins open my-plugin
 ```
 
 ---
@@ -353,7 +353,7 @@ The registry has first-class support for **apps** -- launchable applications tha
 ### App-Specific Functions
 
 ```typescript
-import { listApps, getAppInfo, searchApps } from "milady/services/registry-client";
+import { listApps, getAppInfo, searchApps } from "eliza/services/registry-client";
 
 // List all registered apps, sorted by stars
 const apps = await listApps();
@@ -370,7 +370,7 @@ const results = await searchApps("game", 10);
 The registry client also discovers apps from local workspace directories. It scans:
 
 1. `plugins/` directories in workspace roots for folders starting with `app-`
-2. User-installed plugins at `~/.milady/plugins/installed/` with `kind: "app"` in their package.json
+2. User-installed plugins at `~/.eliza/plugins/installed/` with `kind: "app"` in their package.json
 
 Local app metadata is merged with remote registry data, with local values taking priority for fields like `description`, `homepage`, and `localPath`.
 
@@ -393,7 +393,7 @@ import {
   searchApps,          // Search apps
   listNonAppPlugins,   // List plugins excluding apps
   searchNonAppPlugins, // Search plugins excluding apps
-} from "milady/services/registry-client";
+} from "eliza/services/registry-client";
 ```
 
 ### Usage Example
@@ -486,7 +486,7 @@ The `plugin-` prefix is required for automatic discovery. The registry scanner r
    - README with setup instructions
 
 4. **Registry CI** validates your plugin builds, loads, and passes tests
-5. Once merged, your plugin appears in `milady plugins search` and the registry site
+5. Once merged, your plugin appears in `eliza plugins search` and the registry site
 
 ### Registry Site
 

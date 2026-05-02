@@ -2,7 +2,7 @@
 
 ## Overview
 
-Milady patches Node.js's `http.createServer` function to inject a compatibility layer around the upstream elizaOS HTTP server. This document explains why this approach was chosen, the trade-offs involved, and the long-term solution.
+Eliza patches Node.js's `http.createServer` function to inject a compatibility layer around the upstream elizaOS HTTP server. This document explains why this approach was chosen, the trade-offs involved, and the long-term solution.
 
 ## The Problem
 
@@ -13,12 +13,12 @@ The upstream `@elizaos/agent` package creates its own HTTP server internally usi
 - A custom server factory parameter
 - Event-based architecture for extensibility
 
-Milady needs to extend the upstream server to:
+Eliza needs to extend the upstream server to:
 
-1. **Intercept requests** - Handle Milady-specific compat routes (cloud auth, agent lifecycle, etc.) before they reach upstream handlers
+1. **Intercept requests** - Handle Eliza-specific compat routes (cloud auth, agent lifecycle, etc.) before they reach upstream handlers
 2. **Add CORS headers** - Enable local development (Vite, WKWebView, static loopback servers)
 3. **Attach WebSocket handlers** - Support local inference device-bridge WebSocket upgrades
-4. **Sync environment state** - Keep Milady and elizaOS environments in sync on each request
+4. **Sync environment state** - Keep Eliza and elizaOS environments in sync on each request
 
 ## The Solution: HTTP Server Patching
 
@@ -45,7 +45,7 @@ The wrapper:
 
 **Alternatives considered and rejected:**
 
-1. **Proxy server** - Run upstream on one port, proxy through Milady
+1. **Proxy server** - Run upstream on one port, proxy through Eliza
    - ❌ Adds complexity, port management, latency
    - ❌ Double network hop for all requests
 
@@ -77,10 +77,10 @@ The wrapper:
 ### Risk 2: Could conflict with other patches in the same process
 
 **Mitigations:**
-- Milady runs as the main entry point in its process
+- Eliza runs as the main entry point in its process
 - Minimal patch conflicts expected
 - Patch is applied once and restored cleanly
-- No other known patches in the Milady runtime
+- No other known patches in the Eliza runtime
 
 ### Risk 3: Node.js updates could break the patch
 
@@ -140,6 +140,6 @@ The HTTP server patching is a pragmatic workaround for upstream architectural li
 **Context:** Need to extend upstream HTTP server without forking
 **Decision:** Use HTTP server patching as pragmatic workaround
 **Consequences:**
-- Enables Milady to extend upstream without forking
+- Enables Eliza to extend upstream without forking
 - Unusual pattern requires documentation
 - Long-term: work with upstream on proper extension points

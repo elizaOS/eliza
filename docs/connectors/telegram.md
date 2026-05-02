@@ -17,7 +17,7 @@ Connect your agent to Telegram for private chats and group conversations using t
 
 The connector auto-enables when `botToken`, `token`, or `apiKey` is truthy in the connector config and `enabled` is not explicitly `false`.
 
-Configure in `~/.milady/milady.json`:
+Configure in `~/.eliza/eliza.json`:
 
 ```json
 {
@@ -65,7 +65,7 @@ When the connector is loaded, the runtime pushes the following secret from your 
 
 ## Full Configuration Reference
 
-All fields are defined under `connectors.telegram` in `milady.json`.
+All fields are defined under `connectors.telegram` in `eliza.json`.
 
 ### Core Fields
 

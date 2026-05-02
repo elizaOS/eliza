@@ -110,7 +110,7 @@ class UninstallResult:
 class UpstreamMetadata:
     """Metadata tracking the upstream source for an ejected plugin/core."""
 
-    schema: str  # "milaidy-upstream-v1"
+    schema: str  # "eliza-upstream-v1"
     source: str
     git_url: str
     branch: str

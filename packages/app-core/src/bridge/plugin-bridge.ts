@@ -333,22 +333,22 @@ export function getPlugins(): ElizaPlugins {
       hasFallback: true,
     },
     phone: {
-      plugin: wrapPlugin(getPhonePlugin(), "MiladyPhone"),
+      plugin: wrapPlugin(getPhonePlugin(), "ElizaPhone"),
       isNative: isNative,
       hasFallback: capabilities.phone.available,
     },
     contacts: {
-      plugin: wrapPlugin(getContactsPlugin(), "MiladyContacts"),
+      plugin: wrapPlugin(getContactsPlugin(), "ElizaContacts"),
       isNative: isNative,
       hasFallback: capabilities.contacts.available,
     },
     messages: {
-      plugin: wrapPlugin(getMessagesPlugin(), "MiladyMessages"),
+      plugin: wrapPlugin(getMessagesPlugin(), "ElizaMessages"),
       isNative: isNative,
       hasFallback: capabilities.messages.available,
     },
     system: {
-      plugin: wrapPlugin(getSystemPlugin(), "MiladySystem"),
+      plugin: wrapPlugin(getSystemPlugin(), "ElizaSystem"),
       isNative: isNative,
       hasFallback: capabilities.system.available,
     },

@@ -2,7 +2,7 @@
  * Routes for the curated learning loop ("Learned Skills" surface).
  *
  * The closed learning loop writes derived/refined skills under
- * ~/.milady/skills/curated/{active,proposed}. These routes power the
+ * ~/.eliza/skills/curated/{active,proposed}. These routes power the
  * Settings → Learned Skills panel so the user can review proposals, promote
  * them to active, disable, edit, or delete.
  *

@@ -200,7 +200,7 @@ export function LoginView({ onLoginSuccess, loginFn, reason }: LoginViewProps) {
               className={onboardingEyebrowClass}
               style={onboardingBodyTextShadowStyle}
             >
-              Milady
+              Eliza
             </p>
             <OnboardingStepDivider />
             <CardTitle
@@ -226,7 +226,7 @@ export function LoginView({ onLoginSuccess, loginFn, reason }: LoginViewProps) {
               role="alert"
               className="rounded-lg border border-border/60 bg-bg/50 px-4 py-3 text-sm leading-6 text-muted-foreground"
             >
-              Open Milady on the host machine via localhost, then set a remote
+              Open Eliza on the host machine via localhost, then set a remote
               password in Settings.
             </div>
           ) : (

@@ -12,7 +12,7 @@ The Nextcloud Talk connector is an elizaOS plugin that bridges your agent to Nex
 |-------|-------|
 | Package | `@elizaos/plugin-nextcloud-talk` |
 | Config key | `connectors.nextcloud-talk` |
-| Install | `milady plugins install @elizaos/plugin-nextcloud-talk` |
+| Install | `eliza plugins install @elizaos/plugin-nextcloud-talk` |
 
 ## Setup
 
@@ -22,7 +22,7 @@ The Nextcloud Talk connector is an elizaOS plugin that bridges your agent to Nex
 2. Create a bot user or use an existing account for the agent
 3. Note the Nextcloud server URL and bot credentials
 
-### 2. Configure Milady
+### 2. Configure Eliza
 
 ```json
 {
@@ -56,10 +56,10 @@ export NEXTCLOUD_BOT_SECRET=YOUR_BOT_SECRET
 Install the plugin from the registry:
 
 ```bash
-milady plugins install nextcloud-talk
+eliza plugins install nextcloud-talk
 ```
 
-Configure in `~/.milady/milady.json`:
+Configure in `~/.eliza/eliza.json`:
 
 ```json
 {
@@ -79,7 +79,7 @@ Configure in `~/.milady/milady.json`:
 
 1. Ensure your Nextcloud server has Talk enabled.
 2. Create a bot or obtain credentials for the Nextcloud instance.
-3. Install the plugin: `milady plugins install nextcloud-talk`.
+3. Install the plugin: `eliza plugins install nextcloud-talk`.
 4. Set the `NEXTCLOUD_URL` and `NEXTCLOUD_BOT_SECRET` environment variables or configure them inline.
 5. Start your agent.
 

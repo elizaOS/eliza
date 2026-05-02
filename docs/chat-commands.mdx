@@ -1,10 +1,10 @@
 ---
 title: "Chat Commands"
 sidebarTitle: "Chat Commands"
-description: "In-session commands available in Milady web chat and dashboard."
+description: "In-session commands available in Eliza web chat and dashboard."
 ---
 
-Milady supports several layers of in-session commands: slash commands for the chat interface, runtime commands controlled by configuration, custom command handlers via the hooks system, and plugin-provided commands.
+Eliza supports several layers of in-session commands: slash commands for the chat interface, runtime commands controlled by configuration, custom command handlers via the hooks system, and plugin-provided commands.
 
 ## Slash Commands
 
@@ -16,7 +16,7 @@ These commands are available in the chat input. Press `Tab` to autocomplete a co
 | `/models` | Alias for `/model` |
 | `/clear` | Clear the chat display and reset to the welcome message |
 | `/help` | Show help information |
-| `/exit` | Quit Milady |
+| `/exit` | Quit Eliza |
 | `/quit` | Alias for `/exit` |
 
 When using `/model` without an argument, a centered overlay appears showing all available models with the current selection highlighted. When a `provider/id` is provided (e.g. `/model anthropic/claude-sonnet-4.6`), the model switches immediately without opening the selector. The model selector also shows credential status for each provider when available.
@@ -27,9 +27,9 @@ Slash commands are handled within the UI layer. They do not reach the agent runt
 
 ## Runtime Command Configuration
 
-Runtime commands are capabilities that operate through the elizaOS agent runtime. They are controlled by the `commands` section in `milady.json` and can be enabled or disabled independently.
+Runtime commands are capabilities that operate through the elizaOS agent runtime. They are controlled by the `commands` section in `eliza.json` and can be enabled or disabled independently.
 
-```json milady.json
+```json eliza.json
 {
   "commands": {
     "native": "auto",
@@ -119,7 +119,7 @@ When a command event fires, the dispatcher calls specific handlers first (`comma
 
 Hooks can be registered through config or programmatically:
 
-```json milady.json
+```json eliza.json
 {
   "hooks": {
     "internal": {
@@ -190,9 +190,9 @@ export const myPlugin = {
 
 ## Web Dashboard Commands
 
-The web Control UI (opened via `milady dashboard`) provides its own command interface through the API server. Commands sent through the web chat are processed by the same elizaOS runtime, so all runtime commands, hook handlers, and plugin-provided actions are available.
+The web Control UI (opened via `eliza dashboard`) provides its own command interface through the API server. Commands sent through the web chat are processed by the same elizaOS runtime, so all runtime commands, hook handlers, and plugin-provided actions are available.
 
-The API server exposes endpoints that the web UI uses to send messages and receive responses. In production, both the UI and API are served on port `2138` (`MILADY_PORT`). In dev mode, the API runs on a separate port `31337` (`MILADY_API_PORT`) while the UI stays on `2138`. The agent restart endpoint (`POST /api/agent/restart`) is also available when `commands.restart` is enabled.
+The API server exposes endpoints that the web UI uses to send messages and receive responses. In production, both the UI and API are served on port `2138` (`ELIZA_PORT`). In dev mode, the API runs on a separate port `31337` (`ELIZA_API_PORT`) while the UI stays on `2138`. The agent restart endpoint (`POST /api/agent/restart`) is also available when `commands.restart` is enabled.
 
 ## Command Security
 

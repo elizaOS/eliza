@@ -20,7 +20,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { RuntimeEnvRecord } from "@elizaos/shared";
 import type { AuthStore } from "../../services/auth-store";
-import { resolveMiladyStateDir } from "../../services/cloud-jwks-store";
+import { resolveElizaStateDir } from "../../services/cloud-jwks-store";
 
 export const AUDIT_LOG_FILENAME = "audit.log";
 export const AUDIT_LOG_ROTATE_FILENAME = "audit.log.1";
@@ -69,14 +69,14 @@ export function redactMetadata(
 export function resolveAuditLogPath(
   env: RuntimeEnvRecord = process.env,
 ): string {
-  return path.join(resolveMiladyStateDir(env), "auth", AUDIT_LOG_FILENAME);
+  return path.join(resolveElizaStateDir(env), "auth", AUDIT_LOG_FILENAME);
 }
 
 export function resolveAuditLogRotatedPath(
   env: RuntimeEnvRecord = process.env,
 ): string {
   return path.join(
-    resolveMiladyStateDir(env),
+    resolveElizaStateDir(env),
     "auth",
     AUDIT_LOG_ROTATE_FILENAME,
   );

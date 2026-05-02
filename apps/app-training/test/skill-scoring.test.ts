@@ -23,15 +23,15 @@ let prevElizaState: string | undefined;
 
 beforeEach(() => {
   stateDir = mkdtempSync(join(tmpdir(), "skill-score-"));
-  prevState = process.env.MILADY_STATE_DIR;
+  prevState = process.env.ELIZA_STATE_DIR;
   prevElizaState = process.env.ELIZA_STATE_DIR;
-  process.env.MILADY_STATE_DIR = stateDir;
+  process.env.ELIZA_STATE_DIR = stateDir;
   delete process.env.ELIZA_STATE_DIR;
 });
 
 afterEach(() => {
-  if (prevState === undefined) delete process.env.MILADY_STATE_DIR;
-  else process.env.MILADY_STATE_DIR = prevState;
+  if (prevState === undefined) delete process.env.ELIZA_STATE_DIR;
+  else process.env.ELIZA_STATE_DIR = prevState;
   if (prevElizaState !== undefined)
     process.env.ELIZA_STATE_DIR = prevElizaState;
   rmSync(stateDir, { recursive: true, force: true });

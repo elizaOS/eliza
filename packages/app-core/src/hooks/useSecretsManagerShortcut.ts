@@ -8,7 +8,7 @@ import { dispatchSecretsManagerOpen } from "./useSecretsManagerModal";
  * Two trigger paths feed the same open action:
  *
  *   1. **Renderer-side keyboard chord** — caught by a `keydown`
- *      listener on `document`. Handles every Milady window.
+ *      listener on `document`. Handles every Eliza window.
  *      Mac default: ⌘⌥⌃V (Command + Option + Control + V)
  *      Win/Linux:   Ctrl + Alt + Shift + V
  *

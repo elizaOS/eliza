@@ -6,7 +6,7 @@ description: "Points de terminaison de l'API REST pour la gestion des skills loc
 
 L'API skills couvre trois domaines : **les skills locaux** (fichiers d'action TypeScript spécifiques à l'agent), le **catalogue de skills** (registre organisé de skills communautaires) et la **marketplace de skills** (paquets de skills basés sur npm). Les skills étendent l'agent avec de nouvelles actions, fournisseurs ou évaluateurs.
 
-Lorsque `MILADY_API_TOKEN` est défini, incluez-le comme jeton `Bearer` dans l'en-tête `Authorization`.
+Lorsque `ELIZA_API_TOKEN` est défini, incluez-le comme jeton `Bearer` dans l'en-tête `Authorization`.
 
 <div id="endpoints">
 
@@ -653,7 +653,7 @@ Acquitte les résultats de l'analyse de sécurité d'un skill. Requis avant que 
 
 </div>
 
-1. Confirmez que le répertoire des skills (`~/.milady/workspace/skills/`) est lisible et accessible en écriture par le runtime.
+1. Confirmez que le répertoire des skills (`~/.eliza/workspace/skills/`) est lisible et accessible en écriture par le runtime.
 2. Confirmez que l'accès au réseau/registre de la marketplace est disponible (par défaut : `https://clawhub.ai`). Vérifiez les variables d'environnement `SKILLS_REGISTRY`, `CLAWHUB_REGISTRY` ou `SKILLS_MARKETPLACE_URL`.
 3. Confirmez que les prérequis de l'installateur de plugins (`npm`/`pnpm`/`bun` et `git`) sont présents dans le PATH du runtime.
 4. Pour la marketplace SkillsMP héritée, définissez `SKILLSMP_API_KEY` dans l'environnement.
@@ -696,7 +696,7 @@ Acquitte les résultats de l'analyse de sécurité d'un skill. Requis avant que 
 
 </div>
 
-1. **Installation de marketplace corrompue :** Supprimez `~/.milady/workspace/skills/.marketplace/<skill-id>/` et retirez son entrée de `~/.milady/workspace/skills/.cache/marketplace-installs.json`, puis réinstallez.
+1. **Installation de marketplace corrompue :** Supprimez `~/.eliza/workspace/skills/.marketplace/<skill-id>/` et retirez son entrée de `~/.eliza/workspace/skills/.cache/marketplace-installs.json`, puis réinstallez.
 2. **Fichier du catalogue manquant :** Réinstallez ou mettez à jour `@elizaos/plugin-agent-skills` pour restaurer le catalogue intégré.
 3. **Conflit de remplacement de skill :** Si un skill de l'espace de travail remplace de manière inattendue un skill intégré, renommez le répertoire du skill de l'espace de travail ou déplacez-le vers un autre emplacement.
 

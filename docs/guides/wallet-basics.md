@@ -1,12 +1,12 @@
 ---
 title: "Wallet basics"
 sidebarTitle: "Wallet basics"
-description: "EVM and Solana wallets in Milady — create, import, balances, and quick troubleshooting."
+description: "EVM and Solana wallets in Eliza — create, import, balances, and quick troubleshooting."
 ---
 
 # Wallet basics
 
-Milady includes **EVM** and **Solana** wallet flows. This page is a short operator checklist.
+Eliza includes **EVM** and **Solana** wallet flows. This page is a short operator checklist.
 
 ## 1. First use
 

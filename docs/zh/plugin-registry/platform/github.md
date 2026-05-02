@@ -1,10 +1,10 @@
 ---
 title: "GitHub 插件"
 sidebarTitle: "GitHub"
-description: "Milady 的 GitHub 连接器 — 与仓库、issue 和 pull request 互动。"
+description: "Eliza 的 GitHub 连接器 — 与仓库、issue 和 pull request 互动。"
 ---
 
-GitHub 插件将 Milady 代理连接到 GitHub，实现与仓库、issue、pull request 和其他 GitHub 资源的互动。
+GitHub 插件将 Eliza 代理连接到 GitHub，实现与仓库、issue、pull request 和其他 GitHub 资源的互动。
 
 **Package:** `@elizaos/plugin-github`
 
@@ -15,7 +15,7 @@ GitHub 插件将 Milady 代理连接到 GitHub，实现与仓库、issue、pull 
 </div>
 
 ```bash
-milady plugins install @elizaos/plugin-github
+eliza plugins install @elizaos/plugin-github
 ```
 
 <div id="setup">
@@ -35,9 +35,9 @@ milady plugins install @elizaos/plugin-github
 3. 选择你的用例所需的权限（例如 `repo`、`issues`、`pull_requests`）
 4. 复制生成的令牌
 
-<div id="2-configure-milady">
+<div id="2-configure-eliza">
 
-### 2. 配置 Milady
+### 2. 配置 Eliza
 
 </div>
 

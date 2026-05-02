@@ -15,14 +15,14 @@ import type { InstalledModel } from "./types";
 describe("assignments", () => {
   let tmpRoot: string;
   let originalStateDir: string | undefined;
-  let originalMiladyStateDir: string | undefined;
+  let originalElizaStateDir: string | undefined;
 
   beforeEach(async () => {
-    tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "milady-assign-"));
+    tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-assign-"));
     originalStateDir = process.env.ELIZA_STATE_DIR;
-    originalMiladyStateDir = process.env.MILADY_STATE_DIR;
+    originalElizaStateDir = process.env.ELIZA_STATE_DIR;
     process.env.ELIZA_STATE_DIR = tmpRoot;
-    delete process.env.MILADY_STATE_DIR;
+    delete process.env.ELIZA_STATE_DIR;
   });
 
   afterEach(async () => {
@@ -31,10 +31,10 @@ describe("assignments", () => {
     } else {
       process.env.ELIZA_STATE_DIR = originalStateDir;
     }
-    if (originalMiladyStateDir === undefined) {
-      delete process.env.MILADY_STATE_DIR;
+    if (originalElizaStateDir === undefined) {
+      delete process.env.ELIZA_STATE_DIR;
     } else {
-      process.env.MILADY_STATE_DIR = originalMiladyStateDir;
+      process.env.ELIZA_STATE_DIR = originalElizaStateDir;
     }
     await fs.rm(tmpRoot, { recursive: true, force: true });
   });

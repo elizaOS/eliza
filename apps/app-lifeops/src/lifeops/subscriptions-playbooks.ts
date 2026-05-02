@@ -80,7 +80,7 @@ export interface LifeOpsSubscriptionPlaybook {
   };
 }
 
-const FIXTURE_BASE_URL_ENV = "MILADY_SUBSCRIPTION_FIXTURE_BASE_URL";
+const FIXTURE_BASE_URL_ENV = "ELIZA_SUBSCRIPTION_FIXTURE_BASE_URL";
 
 /**
  * Error-code prefix used by the subscriptions mixin and action when a

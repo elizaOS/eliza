@@ -3,11 +3,11 @@ requires = ["setuptools>=70.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "milady-adapter"
+name = "eliza-adapter"
 version = "0.1.0"
-description = "Benchmark adapter for the TypeScript milady agent"
+description = "Benchmark adapter for the TypeScript eliza agent"
 requires-python = ">=3.11"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["milady_adapter*"]
+include = ["eliza_adapter*"]

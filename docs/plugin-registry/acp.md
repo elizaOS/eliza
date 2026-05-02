@@ -1,21 +1,21 @@
 ---
 title: "ACP Plugin"
 sidebarTitle: "ACP"
-description: "Agent Communication Protocol connector for Milady — linking agents through an ACP gateway."
+description: "Agent Communication Protocol connector for Eliza — linking agents through an ACP gateway."
 ---
 
-The ACP plugin connects Milady agents to an Agent Communication Protocol gateway, enabling structured communication between agents across different runtimes and environments.
+The ACP plugin connects Eliza agents to an Agent Communication Protocol gateway, enabling structured communication between agents across different runtimes and environments.
 
 **Package:** `@elizaos/plugin-acp`
 
 ## Overview
 
-ACP (Agent Communication Protocol) provides a standardized way for agents to discover, message, and collaborate with other agents through a shared gateway. This plugin implements the ACP client within the elizaOS runtime, allowing Milady agents to participate in multi-agent workflows.
+ACP (Agent Communication Protocol) provides a standardized way for agents to discover, message, and collaborate with other agents through a shared gateway. This plugin implements the ACP client within the elizaOS runtime, allowing Eliza agents to participate in multi-agent workflows.
 
 ## Installation
 
 ```bash
-milady plugins install acp
+eliza plugins install acp
 ```
 
 ## Auto-Enable

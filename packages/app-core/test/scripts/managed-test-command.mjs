@@ -45,7 +45,7 @@ function resolveSavedCloudApiKey() {
   }
 
   for (const candidate of [
-    path.join(homeDir, ".milady", "milady.json"),
+    path.join(homeDir, ".eliza", "eliza.json"),
     path.join(homeDir, ".eliza", "eliza.json"),
   ]) {
     const config = readJson(candidate);
@@ -99,7 +99,7 @@ export function buildTestEnv(cwd) {
     }
   }
   env.NODE_NO_WARNINGS = env.NODE_NO_WARNINGS || "1";
-  env.MILADY_LIVE_TEST = env.MILADY_LIVE_TEST || "0";
+  env.ELIZA_LIVE_TEST = env.ELIZA_LIVE_TEST || "0";
   env.ELIZA_LIVE_TEST = "0";
   env.PWD = path.resolve(cwd);
   if (!env.ELIZAOS_CLOUD_API_KEY) {

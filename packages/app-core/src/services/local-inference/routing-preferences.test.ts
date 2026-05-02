@@ -14,7 +14,7 @@ describe("routing preferences (real file I/O)", () => {
   let origStateDir: string | undefined;
 
   beforeEach(async () => {
-    tmp = await fs.mkdtemp(path.join(os.tmpdir(), "milady-routing-prefs-"));
+    tmp = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-routing-prefs-"));
     origStateDir = process.env.ELIZA_STATE_DIR;
     process.env.ELIZA_STATE_DIR = tmp;
   });

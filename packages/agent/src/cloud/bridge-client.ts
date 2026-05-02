@@ -417,7 +417,7 @@ export class ElizaCloudClient {
       chain?: string;
     }>(
       "GET",
-      `/api/v1/milady/agents/${encodeURIComponent(agentId)}/wallet?chain=${encodeURIComponent(chain)}`,
+      `/api/v1/eliza/agents/${encodeURIComponent(agentId)}/wallet?chain=${encodeURIComponent(chain)}`,
     );
 
     if (!res.success || !res.data) {

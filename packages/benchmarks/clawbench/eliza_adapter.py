@@ -5,8 +5,8 @@ instead of the OpenClaw gateway. It translates between ClawBench's scenario form
 and eliza's benchmark API.
 
 Usage:
-    python milady_adapter.py --scenario client_escalation
-    python milady_adapter.py --scenario inbox_triage --list
+    python eliza_adapter.py --scenario client_escalation
+    python eliza_adapter.py --scenario inbox_triage --list
 """
 
 import argparse
@@ -19,9 +19,9 @@ from pathlib import Path
 
 import yaml
 
-# Add parent directory to path for milady_adapter imports
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "milaidy-adapter"))
-from milady_adapter import MiladyClient, MiladyServerManager
+# Add parent directory to path for eliza_adapter imports
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "eliza-adapter"))
+from eliza_adapter import ElizaClient, ElizaServerManager
 
 # Local imports
 from clawbench.scoring import score_episode
@@ -85,10 +85,10 @@ def build_context(scenario_config: dict, scenario: str) -> dict:
     return context
 
 
-class MiladyClawBenchRunner:
+class ElizaClawBenchRunner:
     """Run ClawBench scenarios against eliza benchmark server."""
 
-    def __init__(self, client: MiladyClient):
+    def __init__(self, client: ElizaClient):
         self.client = client
         self.tool_calls: list[dict] = []
 
@@ -177,14 +177,14 @@ def main():
 
     # Setup client
     if args.start_server:
-        mgr = MiladyServerManager()
+        mgr = ElizaServerManager()
         mgr.start()
         client = mgr.client
     else:
-        client = MiladyClient(ELIZA_URL)
+        client = ElizaClient(ELIZA_URL)
         client.wait_until_ready()
 
-    runner = MiladyClawBenchRunner(client)
+    runner = ElizaClawBenchRunner(client)
     result = runner.run_scenario(args.scenario, args.variant)
 
     if args.json:

@@ -14,38 +14,38 @@ except ImportError:
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../OSWorld")))
     from mm_agents.agent import PromptAgent
 
-from milady_adapter.client import MiladyClient
+from eliza_adapter.client import ElizaClient
 
 logger = logging.getLogger("desktopenv.agent")
 
-class MiladyOSWorldAgent(PromptAgent):
+class ElizaOSWorldAgent(PromptAgent):
     """
-    Agent that delegates decision making to a running Milady server via HTTP.
+    Agent that delegates decision making to a running Eliza server via HTTP.
     """
     def __init__(
         self,
-        milady_url: str = "http://localhost:3939",
-        model: str = "milady-agent", # Logic is handled by server, model name is for logging
+        eliza_url: str = "http://localhost:3939",
+        model: str = "eliza-agent", # Logic is handled by server, model name is for logging
         **kwargs
     ):
         super().__init__(model=model, **kwargs)
-        self.client = MiladyClient(base_url=milady_url)
-        self.milady_url = milady_url
-        print(f"Initialized MiladyOSWorldAgent connecting to {milady_url}")
+        self.client = ElizaClient(base_url=eliza_url)
+        self.eliza_url = eliza_url
+        print(f"Initialized ElizaOSWorldAgent connecting to {eliza_url}")
         
     def call_llm(self, payload: Dict[str, Any]) -> str:
         """
-        Override call_llm to send request to Milady server.
+        Override call_llm to send request to Eliza server.
         Note: PromptAgent.predict constructs the prompt and calls call_llm.
         However, PromptAgent logic is tightly coupled with specific prompt templates for GPT/Claude.
-        Milady expects high-level context, not raw chat messages formatted for GPT.
+        Eliza expects high-level context, not raw chat messages formatted for GPT.
         
         So we might want to override predict() instead.
         But let's see if we can just shim call_llm first.
         
         The payload 'messages' contains the history + current observation constructed by PromptAgent.
         """
-        # We'll ignore the specific PromptAgent prompting and just send the observation to Milady
+        # We'll ignore the specific PromptAgent prompting and just send the observation to Eliza
         # But PromptAgent.predict() has already processed the observation into the prompt.
         # This is messy.
         
@@ -56,7 +56,7 @@ class MiladyOSWorldAgent(PromptAgent):
         """
         Predict the next action(s) based on the current observation.
         """
-        # Prepare context for Milady
+        # Prepare context for Eliza
         context = {
             "benchmark": "osworld",
             "taskId": "osworld-task", # We could pass real ID if available
@@ -77,9 +77,9 @@ class MiladyOSWorldAgent(PromptAgent):
         if "accessibility_tree" in obs:
             context["observation"]["accessibility_tree"] = obs["accessibility_tree"]
 
-        # Send to Milady
+        # Send to Eliza
         try:
-            # We construct a text message describing the task to trigger Milady
+            # We construct a text message describing the task to trigger Eliza
             # The context carries the heavy data (screenshot)
             resp = self.client.send_message(
                 text=f"Task: {instruction}",
@@ -91,7 +91,7 @@ class MiladyOSWorldAgent(PromptAgent):
             # OSWorld expects a list of action dictionaries (e.g. [{'action_type': 'click', ...}])
             # OR code string if using PyAutoGUI
             
-            # We need to map Milady response to OSWorld expected format.
+            # We need to map Eliza response to OSWorld expected format.
             # This depends on self.action_space
             
             # For now, let's assume we use 'computer_13' or similar high level actions
@@ -117,19 +117,19 @@ class MiladyOSWorldAgent(PromptAgent):
             # For simplicity, let's just use the text response if it contains code blocks
             # But prompt-agent expects specific formats.
             
-            # Let's say we teach Milady to output code blocks matching OSWorld format in the system prompt.
+            # Let's say we teach Eliza to output code blocks matching OSWorld format in the system prompt.
             # BENCHMARK_MESSAGE_TEMPLATE is generic.
             
-            # If we return the text from Milady, and Milady followed instructions to output code blocks:
+            # If we return the text from Eliza, and Eliza followed instructions to output code blocks:
             # We can use PromptAgent.parse_actions(resp.text)
             
-            # But Milady is instructed to use BENCHMARK_ACTION.
+            # But Eliza is instructed to use BENCHMARK_ACTION.
             # We should construct the action list from resp.params.
             
             # Example mapping for PyAutoGUI (code based):
             if self.action_space == "pyautogui":
                 # params should have the code?
-                # If Milady used BENCHMARK_ACTION with 'command' or 'value' containing code
+                # If Eliza used BENCHMARK_ACTION with 'command' or 'value' containing code
                 code = params.get("command") or params.get("value") or params.get("arguments")
                 if code:
                     # If it's a dict/json string, try to extract code
@@ -140,6 +140,6 @@ class MiladyOSWorldAgent(PromptAgent):
             return thought, actions
 
         except Exception as e:
-            logger.error(f"Error calling Milady: {e}", exc_info=True)
+            logger.error(f"Error calling Eliza: {e}", exc_info=True)
             return "Error", []
 

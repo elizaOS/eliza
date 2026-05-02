@@ -10,12 +10,12 @@ Unified liquidity position management across Solana DEXs.
 
 ## Overview
 
-The LP Manager plugin lets Milady agents manage liquidity positions on Solana decentralized exchanges such as Raydium and Orca. It provides a single interface for creating, monitoring, and adjusting LP positions across supported protocols.
+The LP Manager plugin lets Eliza agents manage liquidity positions on Solana decentralized exchanges such as Raydium and Orca. It provides a single interface for creating, monitoring, and adjusting LP positions across supported protocols.
 
 ## Installation
 
 ```bash
-milady plugins install lp-manager
+eliza plugins install lp-manager
 ```
 
 ## Auto-Enable

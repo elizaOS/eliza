@@ -79,7 +79,7 @@ function makeRun(overrides: Partial<AppRunSummary>): AppRunSummary {
 let stateDir: string;
 
 beforeEach(() => {
-  stateDir = mkdtempSync(join(tmpdir(), "milady-app-manager-stop-test-"));
+  stateDir = mkdtempSync(join(tmpdir(), "eliza-app-manager-stop-test-"));
   stopRunMock.mockClear();
   (stopRunMock as Mock).mockImplementation(async () => {});
 });

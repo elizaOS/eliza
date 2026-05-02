@@ -1,7 +1,7 @@
 /**
  * Contract deployment fixture for e2e testing.
  *
- * Deploys MockMiladyAgentRegistry (ERC-8004) and MockMiladyCollection (ERC-8041)
+ * Deploys MockElizaAgentRegistry (ERC-8004) and MockElizaCollection (ERC-8041)
  * to the local Anvil instance.
  */
 
@@ -68,7 +68,7 @@ export interface DeployedContracts {
 }
 
 /**
- * Deploy MockMiladyAgentRegistry and MockMiladyCollection to the provided network.
+ * Deploy MockElizaAgentRegistry and MockElizaCollection to the provided network.
  *
  * @param wallet - An ethers Wallet connected to a provider
  * @returns Deployed contract addresses and instances
@@ -76,8 +76,8 @@ export interface DeployedContracts {
 export async function deployContracts(
   wallet: ethers.Wallet,
 ): Promise<DeployedContracts> {
-  const registryArtifact = loadCompiledContract(["MockMiladyAgentRegistry"]);
-  const collectionArtifact = loadCompiledContract(["MockMiladyCollection"]);
+  const registryArtifact = loadCompiledContract(["MockElizaAgentRegistry"]);
+  const collectionArtifact = loadCompiledContract(["MockElizaCollection"]);
 
   let currentNonce = await wallet.getNonce("pending");
 
@@ -125,8 +125,8 @@ export function getContractABIs(): {
   registryABI: ethers.InterfaceAbi;
   collectionABI: ethers.InterfaceAbi;
 } {
-  const registryArtifact = loadCompiledContract(["MockMiladyAgentRegistry"]);
-  const collectionArtifact = loadCompiledContract(["MockMiladyCollection"]);
+  const registryArtifact = loadCompiledContract(["MockElizaAgentRegistry"]);
+  const collectionArtifact = loadCompiledContract(["MockElizaCollection"]);
 
   return {
     registryABI: registryArtifact.abi,

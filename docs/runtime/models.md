@@ -1,10 +1,10 @@
 ---
 title: "Models"
 sidebarTitle: "Models"
-description: "Model management, provider selection, model configuration, embedding models, and the Milady model config schema."
+description: "Model management, provider selection, model configuration, embedding models, and the Eliza model config schema."
 ---
 
-Milady selects AI models from the configured provider plugins. Model selection flows from the agent config through environment variables to the loaded provider plugin, which handles the actual API calls.
+Eliza selects AI models from the configured provider plugins. Model selection flows from the agent config through environment variables to the loaded provider plugin, which handles the actual API calls.
 
 ## Model Selection Algorithm
 
@@ -87,7 +87,7 @@ These are set as `SMALL_MODEL`, `LARGE_MODEL`, `ELIZAOS_CLOUD_SMALL_MODEL`, and 
 
 ## ModelsConfig
 
-The `ModelsConfig` type in `milady.json` configures model providers and selections:
+The `ModelsConfig` type in `eliza.json` configures model providers and selections:
 
 ```typescript
 export type ModelsConfig = {
@@ -170,7 +170,7 @@ export type ModelProviderAuthMode = "api-key" | "aws-sdk" | "oauth" | "token";
 
 ## AWS Bedrock Discovery
 
-Milady supports auto-discovery of available Bedrock models:
+Eliza supports auto-discovery of available Bedrock models:
 
 ```json
 {
@@ -267,7 +267,7 @@ During first-run onboarding, users choose from these providers:
 | Ollama (local) | `OLLAMA_BASE_URL` | `http://localhost:11434` |
 
 <Note>
-DeepSeek, Mistral, and Together AI appear as onboarding provider options but were not included in earlier versions of the provider plugin map. If you selected one of these providers during onboarding and the env var is set (e.g., `DEEPSEEK_API_KEY`), the corresponding plugin will auto-load via `AUTH_PROVIDER_PLUGINS`. If you want to load one of these providers without setting an env var, add it to `plugins.allow` in `milady.json` explicitly:
+DeepSeek, Mistral, and Together AI appear as onboarding provider options but were not included in earlier versions of the provider plugin map. If you selected one of these providers during onboarding and the env var is set (e.g., `DEEPSEEK_API_KEY`), the corresponding plugin will auto-load via `AUTH_PROVIDER_PLUGINS`. If you want to load one of these providers without setting an env var, add it to `plugins.allow` in `eliza.json` explicitly:
 
 ```json
 {
@@ -286,7 +286,7 @@ For vector memory, the embedding model defaults to:
 nomic-embed-text-v1.5.Q5_K_M.gguf (768 dimensions)
 ```
 
-Configured via `embedding.*` in `milady.json`. See [Memory](/runtime/memory) for full embedding configuration.
+Configured via `embedding.*` in `eliza.json`. See [Memory](/runtime/memory) for full embedding configuration.
 
 ## Related Pages
 

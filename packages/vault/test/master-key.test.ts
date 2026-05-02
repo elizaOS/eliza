@@ -89,25 +89,25 @@ describe("passphraseMasterKey", () => {
 describe("passphraseMasterKeyFromEnv", () => {
   let prev: string | undefined;
   beforeEach(() => {
-    prev = process.env.MILADY_VAULT_PASSPHRASE;
+    prev = process.env.ELIZA_VAULT_PASSPHRASE;
   });
   afterEach(() => {
-    if (prev === undefined) delete process.env.MILADY_VAULT_PASSPHRASE;
-    else process.env.MILADY_VAULT_PASSPHRASE = prev;
+    if (prev === undefined) delete process.env.ELIZA_VAULT_PASSPHRASE;
+    else process.env.ELIZA_VAULT_PASSPHRASE = prev;
   });
 
   test("returns null when env is unset", () => {
-    delete process.env.MILADY_VAULT_PASSPHRASE;
+    delete process.env.ELIZA_VAULT_PASSPHRASE;
     expect(passphraseMasterKeyFromEnv()).toBeNull();
   });
 
   test("returns null when env is an empty string", () => {
-    process.env.MILADY_VAULT_PASSPHRASE = "";
+    process.env.ELIZA_VAULT_PASSPHRASE = "";
     expect(passphraseMasterKeyFromEnv()).toBeNull();
   });
 
   test("returns a working resolver when env is set", async () => {
-    process.env.MILADY_VAULT_PASSPHRASE = "fine-passphrase-from-env";
+    process.env.ELIZA_VAULT_PASSPHRASE = "fine-passphrase-from-env";
     const r = passphraseMasterKeyFromEnv();
     expect(r).not.toBeNull();
     if (!r) return;
@@ -116,7 +116,7 @@ describe("passphraseMasterKeyFromEnv", () => {
   });
 
   test("rejects an env passphrase below the minimum length on load", async () => {
-    process.env.MILADY_VAULT_PASSPHRASE = "tooshort";
+    process.env.ELIZA_VAULT_PASSPHRASE = "tooshort";
     // Construction throws because the passphrase fails validation up-front.
     expect(() => passphraseMasterKeyFromEnv()).toThrow(
       MasterKeyUnavailableError,
@@ -128,25 +128,25 @@ describe("defaultMasterKey — fallback chain", () => {
   let prev: string | undefined;
   let prevDisable: string | undefined;
   beforeEach(() => {
-    prev = process.env.MILADY_VAULT_PASSPHRASE;
-    prevDisable = process.env.MILADY_VAULT_DISABLE_KEYCHAIN;
+    prev = process.env.ELIZA_VAULT_PASSPHRASE;
+    prevDisable = process.env.ELIZA_VAULT_DISABLE_KEYCHAIN;
     // Force the keychain "safe" path so the existing tests below
     // exercise the keychain attempt regardless of host environment
     // (e.g. headless Linux CI without D-Bus).
-    delete process.env.MILADY_VAULT_DISABLE_KEYCHAIN;
+    delete process.env.ELIZA_VAULT_DISABLE_KEYCHAIN;
   });
   afterEach(() => {
-    if (prev === undefined) delete process.env.MILADY_VAULT_PASSPHRASE;
-    else process.env.MILADY_VAULT_PASSPHRASE = prev;
+    if (prev === undefined) delete process.env.ELIZA_VAULT_PASSPHRASE;
+    else process.env.ELIZA_VAULT_PASSPHRASE = prev;
     if (prevDisable === undefined)
-      delete process.env.MILADY_VAULT_DISABLE_KEYCHAIN;
-    else process.env.MILADY_VAULT_DISABLE_KEYCHAIN = prevDisable;
+      delete process.env.ELIZA_VAULT_DISABLE_KEYCHAIN;
+    else process.env.ELIZA_VAULT_DISABLE_KEYCHAIN = prevDisable;
   });
 
   test.skipIf(process.platform === "linux")(
     "falls back to passphrase when keychain unavailable AND env is set",
     async () => {
-      process.env.MILADY_VAULT_PASSPHRASE = "fine-fallback-passphrase";
+      process.env.ELIZA_VAULT_PASSPHRASE = "fine-fallback-passphrase";
       // Force a guaranteed-bad keychain entry: an empty service yields a
       // construction error from @napi-rs/keyring on macOS Keychain.
       // Skipped on Linux where the same input may go through the
@@ -166,7 +166,7 @@ describe("defaultMasterKey — fallback chain", () => {
   test.skipIf(process.platform !== "darwin")(
     "error message names every remediation when both fail",
     async () => {
-      delete process.env.MILADY_VAULT_PASSPHRASE;
+      delete process.env.ELIZA_VAULT_PASSPHRASE;
       const r = defaultMasterKey({ service: "" });
       await expect(r.load()).rejects.toThrow(MasterKeyUnavailableError);
       try {
@@ -174,20 +174,20 @@ describe("defaultMasterKey — fallback chain", () => {
         throw new Error("expected throw");
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        expect(msg).toMatch(/MILADY_VAULT_PASSPHRASE/);
+        expect(msg).toMatch(/ELIZA_VAULT_PASSPHRASE/);
       }
     },
   );
 
   test("describe surfaces both paths when passphrase env is set", () => {
-    process.env.MILADY_VAULT_PASSPHRASE = "fine-test-passphrase-env";
+    process.env.ELIZA_VAULT_PASSPHRASE = "fine-test-passphrase-env";
     const r = defaultMasterKey({ service: "test" });
     expect(r.describe()).toContain("keychain://");
     expect(r.describe()).toContain("passphrase://");
   });
 
   test("describe shows only keychain when passphrase env is unset", () => {
-    delete process.env.MILADY_VAULT_PASSPHRASE;
+    delete process.env.ELIZA_VAULT_PASSPHRASE;
     const r = defaultMasterKey({ service: "test" });
     expect(r.describe()).toContain("keychain://");
     expect(r.describe()).not.toContain("passphrase://");
@@ -198,36 +198,36 @@ describe("defaultMasterKey — keychain bypassed on unsafe hosts", () => {
   let prevPassphrase: string | undefined;
   let prevDisable: string | undefined;
   beforeEach(() => {
-    prevPassphrase = process.env.MILADY_VAULT_PASSPHRASE;
-    prevDisable = process.env.MILADY_VAULT_DISABLE_KEYCHAIN;
+    prevPassphrase = process.env.ELIZA_VAULT_PASSPHRASE;
+    prevDisable = process.env.ELIZA_VAULT_DISABLE_KEYCHAIN;
     // Force the keychain unsafe path on every platform so tests don't
     // depend on host D-Bus state.
-    process.env.MILADY_VAULT_DISABLE_KEYCHAIN = "1";
+    process.env.ELIZA_VAULT_DISABLE_KEYCHAIN = "1";
   });
   afterEach(() => {
     if (prevPassphrase === undefined)
-      delete process.env.MILADY_VAULT_PASSPHRASE;
-    else process.env.MILADY_VAULT_PASSPHRASE = prevPassphrase;
+      delete process.env.ELIZA_VAULT_PASSPHRASE;
+    else process.env.ELIZA_VAULT_PASSPHRASE = prevPassphrase;
     if (prevDisable === undefined)
-      delete process.env.MILADY_VAULT_DISABLE_KEYCHAIN;
-    else process.env.MILADY_VAULT_DISABLE_KEYCHAIN = prevDisable;
+      delete process.env.ELIZA_VAULT_DISABLE_KEYCHAIN;
+    else process.env.ELIZA_VAULT_DISABLE_KEYCHAIN = prevDisable;
   });
 
   test("returns passphrase-derived key when env is set", async () => {
-    process.env.MILADY_VAULT_PASSPHRASE = "fine-bypass-passphrase";
+    process.env.ELIZA_VAULT_PASSPHRASE = "fine-bypass-passphrase";
     const r = defaultMasterKey({ service: "test" });
     const k = await r.load();
     expect(k.length).toBe(KEY_BYTES);
   });
 
   test("throws keychain-unsafe error when no passphrase is configured", async () => {
-    delete process.env.MILADY_VAULT_PASSPHRASE;
+    delete process.env.ELIZA_VAULT_PASSPHRASE;
     const r = defaultMasterKey({ service: "test" });
     await expect(r.load()).rejects.toThrow(/keychain is unsafe/i);
   });
 
   test("describe reports passphrase path when bypassed and env is set", () => {
-    process.env.MILADY_VAULT_PASSPHRASE = "fine-bypass-passphrase";
+    process.env.ELIZA_VAULT_PASSPHRASE = "fine-bypass-passphrase";
     const r = defaultMasterKey({ service: "test" });
     const desc = r.describe();
     expect(desc).toContain("passphrase://test");
@@ -236,7 +236,7 @@ describe("defaultMasterKey — keychain bypassed on unsafe hosts", () => {
   });
 
   test("describe reports unavailable when bypassed and no passphrase", () => {
-    delete process.env.MILADY_VAULT_PASSPHRASE;
+    delete process.env.ELIZA_VAULT_PASSPHRASE;
     const r = defaultMasterKey({ service: "test" });
     const desc = r.describe();
     expect(desc).toContain("unavailable");
@@ -247,12 +247,12 @@ describe("defaultMasterKey — keychain bypassed on unsafe hosts", () => {
 describe("osKeychainMasterKey — public API guard", () => {
   let prev: string | undefined;
   beforeEach(() => {
-    prev = process.env.MILADY_VAULT_DISABLE_KEYCHAIN;
-    process.env.MILADY_VAULT_DISABLE_KEYCHAIN = "1";
+    prev = process.env.ELIZA_VAULT_DISABLE_KEYCHAIN;
+    process.env.ELIZA_VAULT_DISABLE_KEYCHAIN = "1";
   });
   afterEach(() => {
-    if (prev === undefined) delete process.env.MILADY_VAULT_DISABLE_KEYCHAIN;
-    else process.env.MILADY_VAULT_DISABLE_KEYCHAIN = prev;
+    if (prev === undefined) delete process.env.ELIZA_VAULT_DISABLE_KEYCHAIN;
+    else process.env.ELIZA_VAULT_DISABLE_KEYCHAIN = prev;
   });
 
   test("refuses to invoke the native binding on unsafe hosts", async () => {

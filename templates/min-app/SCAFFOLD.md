@@ -1,6 +1,6 @@
 # Scaffold instructions for coding agents
 
-You (the coding agent spawned by the Milady orchestrator) are responsible for turning this template into a working Eliza app. **Read this entire file before editing.**
+You (the coding agent spawned by the Eliza orchestrator) are responsible for turning this template into a working Eliza app. **Read this entire file before editing.**
 
 ## 1. Replace placeholders
 
@@ -54,7 +54,7 @@ Field contract (all required except `description`):
 
 Do not emit legacy fields such as `name`, `testsPassed`, or `lintClean`; the orchestrator rejects them.
 
-The orchestrator will cross-check the claims against disk and the verification log. If anything you assert does not match reality, it will retry you with a structured failure report (capped by `MILADY_APP_VERIFICATION_MAX_RETRIES`, default `3`).
+The orchestrator will cross-check the claims against disk and the verification log. If anything you assert does not match reality, it will retry you with a structured failure report (capped by `ELIZA_APP_VERIFICATION_MAX_RETRIES`, default `3`).
 
 ## Rules
 

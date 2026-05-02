@@ -1,17 +1,17 @@
 ---
 title: "Vision Plugin"
 sidebarTitle: "Vision"
-description: "Vision plugin for Milady — image understanding and visual analysis capabilities for agents."
+description: "Vision plugin for Eliza — image understanding and visual analysis capabilities for agents."
 ---
 
-The Vision plugin gives Milady agents the ability to understand and analyze images, enabling visual reasoning in conversations.
+The Vision plugin gives Eliza agents the ability to understand and analyze images, enabling visual reasoning in conversations.
 
 **Package:** `@elizaos/plugin-vision`
 
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-vision
+eliza plugins install @elizaos/plugin-vision
 ```
 
 ## Enable via Features
@@ -24,7 +24,7 @@ milady plugins install @elizaos/plugin-vision
 }
 ```
 
-**Note:** This plugin requires the `@tensorflow/tfjs-node` native addon. On systems without native build tools, set `MILADY_NO_VISION_DEPS=1` to skip installation of optional vision dependencies.
+**Note:** This plugin requires the `@tensorflow/tfjs-node` native addon. On systems without native build tools, set `ELIZA_NO_VISION_DEPS=1` to skip installation of optional vision dependencies.
 
 ## Configuration
 

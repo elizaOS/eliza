@@ -4,7 +4,7 @@ sidebarTitle: "Esquemas"
 description: "Referencia completa de esquemas para manifiestos de plugins, acciones, proveedores, evaluadores, servicios, rutas y manejadores de modelos."
 ---
 
-Esta página documenta las interfaces de TypeScript y los esquemas JSON para cada primitiva de plugin en Milady/elizaOS.
+Esta página documenta las interfaces de TypeScript y los esquemas JSON para cada primitiva de plugin en Eliza/elizaOS.
 
 <div id="plugin-interface">
 
