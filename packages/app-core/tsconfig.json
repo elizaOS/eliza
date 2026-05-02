@@ -44,8 +44,8 @@
       "@elizaos/shared/*": ["./packages/shared/src/*"],
       "@elizaos/skills": ["./packages/skills/src/index.ts"],
       "@elizaos/skills/*": ["./packages/skills/src/*"],
-      "@elizaos/core": ["./packages/typescript/src/index.ts"],
-      "@elizaos/core/*": ["./packages/typescript/src/*"],
+      "@elizaos/core": ["./packages/core/src/index.node.ts"],
+      "@elizaos/core/*": ["./packages/core/src/*"],
       "@elizaos/capacitor-*": ["./packages/native-plugins/*/src/index.ts"],
       "@elizaos/native-activity-tracker": [
         "./packages/native-plugins/activity-tracker/src/index.ts"

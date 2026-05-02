@@ -37,7 +37,9 @@ export async function sendTransaction(
   // Add compute budget instructions
   const computeBudgetInstructions = [
     ComputeBudgetProgram.setComputeUnitLimit({ units: safeComputeUnits }),
-    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: prioritizationFee }),
+    ComputeBudgetProgram.setComputeUnitPrice({
+      microLamports: prioritizationFee,
+    }),
   ];
 
   // Create final transaction

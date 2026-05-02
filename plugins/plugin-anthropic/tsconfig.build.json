@@ -16,18 +16,8 @@
 				"../../../eliza/packages/core/dist"
 			]
 		},
-		"types": [
-			"node",
-			"bun-types"
-		]
+		"types": ["node", "bun-types"]
 	},
-	"include": [
-		"**/*.ts"
-	],
-	"exclude": [
-		"build.ts",
-		"**/__tests__/**",
-		"**/*.test.ts",
-		"**/*.spec.ts"
-	]
+	"include": ["**/*.ts"],
+	"exclude": ["build.ts", "**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"]
 }

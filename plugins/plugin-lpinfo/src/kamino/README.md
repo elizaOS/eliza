@@ -5,18 +5,21 @@ This plugin provides comprehensive integration with the Kamino lending protocol 
 ## Features
 
 ### 📊 Position Tracking
+
 - **Lending Positions**: View all your active lending positions across Kamino markets
 - **Borrowing Positions**: Track your borrowing positions and interest rates
 - **Portfolio Value**: Calculate total portfolio value including lending and borrowing
 - **Multi-Wallet Support**: View positions for all Solana wallets in your account
 
 ### 🏦 Market Data
+
 - **Available Reserves**: Browse all available lending and borrowing opportunities
 - **APY Rates**: View current supply and borrow APY rates
 - **Market Overview**: Get comprehensive market statistics and TVL data
 - **Top Opportunities**: Identify the best lending opportunities by APY
 
 ### 📈 Analytics
+
 - **Market Utilization**: Track utilization rates across different markets
 - **Total Value Locked**: Monitor TVL across all Kamino markets
 - **Borrowing Activity**: View total borrowed amounts and market health
@@ -37,16 +40,19 @@ The Kamino plugin is designed to work in private messages (DMs) for security. Wh
 The plugin provides the following information through the `KAMINO_LENDING` provider:
 
 ### User Positions
+
 - **Lending Positions**: Token, amount, value, APY, and market for each position
 - **Borrowing Positions**: Token, amount, value, APY, and market for each position
 - **Total Portfolio Value**: Net value of all positions
 
 ### Available Reserves
+
 - **Top Lending Opportunities**: Highest APY lending options
 - **Reserve Details**: Supply/borrow APY, total supply/borrow, utilization rates
 - **Market Information**: Which market each reserve belongs to
 
 ### Market Overview
+
 - **Total Markets**: Number of active Kamino markets
 - **Total TVL**: Combined total value locked across all markets
 - **Total Borrowed**: Total amount borrowed across all markets
@@ -55,13 +61,16 @@ The plugin provides the following information through the `KAMINO_LENDING` provi
 ## Technical Details
 
 ### Dependencies
+
 - `@solana/web3.js`: Solana blockchain interaction
 - `@hubbleprotocol/kamino-sdk`: Official Kamino SDK for protocol interaction
 
 ### Environment Variables
+
 - `SOLANA_RPC_URL`: Solana RPC endpoint (defaults to mainnet-beta)
 
 ### Service Architecture
+
 - **KaminoService**: Handles all Kamino protocol interactions
 - **Provider**: Formats and presents data to the agent
 - **Account Integration**: Uses existing account system for wallet management
@@ -75,6 +84,7 @@ The plugin provides the following information through the `KAMINO_LENDING` provi
 ## Error Handling
 
 The plugin includes comprehensive error handling for:
+
 - Network connectivity issues
 - Invalid wallet addresses
 - Missing account data
@@ -84,6 +94,7 @@ The plugin includes comprehensive error handling for:
 ## Future Enhancements
 
 Potential future features:
+
 - Position management actions (deposit, withdraw, borrow, repay)
 - Yield optimization recommendations
 - Historical position tracking

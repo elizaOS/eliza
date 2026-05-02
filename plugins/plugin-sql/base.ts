@@ -171,7 +171,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     }
 
     if (typeof names === "object") {
-      const iterableNames = names as { [Symbol.iterator]?: () => Iterator<unknown> };
+      const iterableNames = names as {
+        [Symbol.iterator]?: () => Iterator<unknown>;
+      };
       if (typeof iterableNames[Symbol.iterator] === "function") {
         return Array.from(names as Iterable<unknown>).map(String);
       }

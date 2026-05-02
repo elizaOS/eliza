@@ -4,56 +4,62 @@ import { logger } from "@elizaos/core";
 import sharp from "sharp";
 
 export interface TestPatternConfig {
-  width: number;
-  height: number;
-  backgroundColor?: string;
-  textColor?: string;
-  fontSize?: number;
-  includeGrid?: boolean;
-  includeTimestamp?: boolean;
-  displayIndex?: number;
+	width: number;
+	height: number;
+	backgroundColor?: string;
+	textColor?: string;
+	fontSize?: number;
+	includeGrid?: boolean;
+	includeTimestamp?: boolean;
+	displayIndex?: number;
 }
 
 /**
  * Generate grid lines for the pattern
  */
-function generateGrid(width: number, height: number, spacing: number = 100): string {
-  const lines: string[] = [];
+function generateGrid(
+	width: number,
+	height: number,
+	spacing: number = 100,
+): string {
+	const lines: string[] = [];
 
-  // Vertical lines
-  for (let x = spacing; x < width; x += spacing) {
-    lines.push(
-      `<line x1="${x}" y1="0" x2="${x}" y2="${height}" stroke="#eeeeee" stroke-width="1"/>`
-    );
-  }
+	// Vertical lines
+	for (let x = spacing; x < width; x += spacing) {
+		lines.push(
+			`<line x1="${x}" y1="0" x2="${x}" y2="${height}" stroke="#eeeeee" stroke-width="1"/>`,
+		);
+	}
 
-  // Horizontal lines
-  for (let y = spacing; y < height; y += spacing) {
-    lines.push(
-      `<line x1="0" y1="${y}" x2="${width}" y2="${y}" stroke="#eeeeee" stroke-width="1"/>`
-    );
-  }
+	// Horizontal lines
+	for (let y = spacing; y < height; y += spacing) {
+		lines.push(
+			`<line x1="0" y1="${y}" x2="${width}" y2="${y}" stroke="#eeeeee" stroke-width="1"/>`,
+		);
+	}
 
-  return lines.join("\n");
+	return lines.join("\n");
 }
 
 /**
  * Generate a test pattern with numbers in each quadrant and center
  */
-export async function generateQuadrantPattern(config: TestPatternConfig): Promise<Buffer> {
-  const {
-    width,
-    height,
-    backgroundColor = "#ffffff",
-    textColor = "#000000",
-    fontSize = 48,
-    includeGrid = true,
-    includeTimestamp = true,
-    displayIndex = 0,
-  } = config;
+export async function generateQuadrantPattern(
+	config: TestPatternConfig,
+): Promise<Buffer> {
+	const {
+		width,
+		height,
+		backgroundColor = "#ffffff",
+		textColor = "#000000",
+		fontSize = 48,
+		includeGrid = true,
+		includeTimestamp = true,
+		displayIndex = 0,
+	} = config;
 
-  // Create SVG with test pattern
-  const svg = `
+	// Create SVG with test pattern
+	const svg = `
     <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
       <!-- Background -->
       <rect width="${width}" height="${height}" fill="${backgroundColor}"/>
@@ -88,35 +94,37 @@ export async function generateQuadrantPattern(config: TestPatternConfig): Promis
     </svg>
   `;
 
-  // Convert SVG to PNG
-  const buffer = await sharp(Buffer.from(svg)).png().toBuffer();
+	// Convert SVG to PNG
+	const buffer = await sharp(Buffer.from(svg)).png().toBuffer();
 
-  return buffer;
+	return buffer;
 }
 
 /**
  * Generate a complex test pattern with multiple text regions
  */
-export async function generateComplexPattern(config: TestPatternConfig): Promise<Buffer> {
-  const {
-    width,
-    height,
-    backgroundColor = "#f0f0f0",
-    textColor = "#000000",
-    fontSize = 24,
-    displayIndex = 0,
-  } = config;
+export async function generateComplexPattern(
+	config: TestPatternConfig,
+): Promise<Buffer> {
+	const {
+		width,
+		height,
+		backgroundColor = "#f0f0f0",
+		textColor = "#000000",
+		fontSize = 24,
+		displayIndex = 0,
+	} = config;
 
-  // Sample text for OCR testing
-  const sampleTexts = [
-    "The quick brown fox jumps over the lazy dog",
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-    "abcdefghijklmnopqrstuvwxyz",
-    "0123456789",
-    "!@#$%^&*()_+-=[]{}|;:,.<>?",
-  ];
+	// Sample text for OCR testing
+	const sampleTexts = [
+		"The quick brown fox jumps over the lazy dog",
+		"ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+		"abcdefghijklmnopqrstuvwxyz",
+		"0123456789",
+		"!@#$%^&*()_+-=[]{}|;:,.<>?",
+	];
 
-  const svg = `
+	const svg = `
     <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
       <!-- Background -->
       <rect width="${width}" height="${height}" fill="${backgroundColor}"/>
@@ -126,13 +134,13 @@ export async function generateComplexPattern(config: TestPatternConfig): Promise
       
       <!-- Text regions for OCR testing -->
       ${sampleTexts
-        .map(
-          (text, i) => `
+				.map(
+					(text, i) => `
         <rect x="50" y="${150 + i * 80}" width="${width - 100}" height="60" fill="white" stroke="#333" stroke-width="1"/>
         <text x="70" y="${185 + i * 80}" font-family="Arial" font-size="${fontSize}" fill="${textColor}">${text}</text>
-      `
-        )
-        .join("")}
+      `,
+				)
+				.join("")}
       
       <!-- UI Elements -->
       <rect x="50" y="${height - 200}" width="150" height="40" fill="#007bff" rx="5"/>
@@ -146,74 +154,79 @@ export async function generateComplexPattern(config: TestPatternConfig): Promise
     </svg>
   `;
 
-  const buffer = await sharp(Buffer.from(svg)).png().toBuffer();
+	const buffer = await sharp(Buffer.from(svg)).png().toBuffer();
 
-  return buffer;
+	return buffer;
 }
 
 /**
  * Save test pattern to file
  */
-export async function savePattern(buffer: Buffer, filename: string): Promise<string> {
-  const outputDir = path.join(process.cwd(), "test-patterns");
-  await fs.mkdir(outputDir, { recursive: true });
+export async function savePattern(
+	buffer: Buffer,
+	filename: string,
+): Promise<string> {
+	const outputDir = path.join(process.cwd(), "test-patterns");
+	await fs.mkdir(outputDir, { recursive: true });
 
-  const filepath = path.join(outputDir, filename);
-  await fs.writeFile(filepath, buffer);
+	const filepath = path.join(outputDir, filename);
+	await fs.writeFile(filepath, buffer);
 
-  logger.info(`[TestPatternGenerator] Saved test pattern to ${filepath}`);
-  return filepath;
+	logger.info(`[TestPatternGenerator] Saved test pattern to ${filepath}`);
+	return filepath;
 }
 
 /**
  * Generate patterns for all displays
  */
 export async function generatePatternsForAllDisplays(
-  displayCount: number
+	displayCount: number,
 ): Promise<Map<number, Buffer>> {
-  const patterns = new Map<number, Buffer>();
+	const patterns = new Map<number, Buffer>();
 
-  for (let i = 0; i < displayCount; i++) {
-    const pattern = await generateQuadrantPattern({
-      width: 1920,
-      height: 1080,
-      displayIndex: i,
-      includeTimestamp: true,
-    });
+	for (let i = 0; i < displayCount; i++) {
+		const pattern = await generateQuadrantPattern({
+			width: 1920,
+			height: 1080,
+			displayIndex: i,
+			includeTimestamp: true,
+		});
 
-    patterns.set(i, pattern);
-  }
+		patterns.set(i, pattern);
+	}
 
-  return patterns;
+	return patterns;
 }
 
 /**
  * Verify OCR results match expected quadrant numbers
  */
 export function verifyQuadrantNumbers(ocrText: string): {
-  success: boolean;
-  foundNumbers: number[];
-  missingNumbers: number[];
+	success: boolean;
+	foundNumbers: number[];
+	missingNumbers: number[];
 } {
-  const expectedNumbers = [1, 2, 3, 4, 5];
-  const foundNumbers: number[] = [];
+	const expectedNumbers = [1, 2, 3, 4, 5];
+	const foundNumbers: number[] = [];
 
-  // Extract all numbers from OCR text
-  const matches = ocrText.match(/\d+/g);
-  if (matches) {
-    matches.forEach((match) => {
-      const num = parseInt(match, 10);
-      if (expectedNumbers.includes(num) && !foundNumbers.includes(num)) {
-        foundNumbers.push(num);
-      }
-    });
-  }
+	// Extract all numbers from OCR text
+	const matches = ocrText.match(/\d+/g);
+	if (matches) {
+		matches.forEach((match) => {
+			const num = parseInt(match, 10);
+			if (expectedNumbers.includes(num) && !foundNumbers.includes(num)) {
+				foundNumbers.push(num);
+			}
+		});
+	}
 
-  const missingNumbers = expectedNumbers.filter((n) => !foundNumbers.includes(n));
+	const missingNumbers = expectedNumbers.filter(
+		(n) => !foundNumbers.includes(n),
+	);
 
-  return {
-    success: missingNumbers.length === 0,
-    foundNumbers,
-    missingNumbers,
-  };
+	return {
+		success: missingNumbers.length === 0,
+		foundNumbers,
+		missingNumbers,
+	};
 }

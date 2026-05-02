@@ -281,6 +281,17 @@ const lpManagerPlugin: Plugin = {
 
 export default lpManagerPlugin;
 
+export { AerodromeLpService, aerodromePlugin } from "./aerodrome/index.ts";
+export { orcaPlugin } from "./orca/index.ts";
+export {
+  PancakeSwapV3LpService,
+  pancakeswapPlugin,
+} from "./pancakeswp/index.ts";
+export { raydiumPlugin } from "./raydium/index.ts";
+// Export types
+export * from "./types.ts";
+// Export sub-plugins for direct use
+export { UniswapV3LpService, uniswapPlugin } from "./uniswap/index.ts";
 // Export all services and utilities
 export {
   ConcentratedLiquidityService,
@@ -290,12 +301,3 @@ export {
   VaultService,
   YieldOptimizationService,
 };
-
-export { AerodromeLpService, aerodromePlugin } from "./aerodrome/index.ts";
-export { orcaPlugin } from "./orca/index.ts";
-export { PancakeSwapV3LpService, pancakeswapPlugin } from "./pancakeswp/index.ts";
-export { raydiumPlugin } from "./raydium/index.ts";
-// Export types
-export * from "./types.ts";
-// Export sub-plugins for direct use
-export { UniswapV3LpService, uniswapPlugin } from "./uniswap/index.ts";

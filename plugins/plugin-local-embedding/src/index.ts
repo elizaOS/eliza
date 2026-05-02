@@ -116,7 +116,10 @@ function resolveEmbeddingModelSpec(
   };
 }
 
-function readMagicHeader(filePath: string): { bytesRead: number; magic: string } {
+function readMagicHeader(filePath: string): {
+  bytesRead: number;
+  magic: string;
+} {
   try {
     const fd = fs.openSync(filePath, "r");
     try {

@@ -84,7 +84,7 @@ export class McpService extends Service {
   private async initializeMcpServers(): Promise<void> {
     const mcpSettings = this.getMcpSettings();
 
-    if (!mcpSettings || !mcpSettings.servers || Object.keys(mcpSettings.servers).length === 0) {
+    if (!mcpSettings?.servers || Object.keys(mcpSettings.servers).length === 0) {
       this.mcpProvider = buildMcpProviderData([]);
       return;
     }
@@ -105,7 +105,7 @@ export class McpService extends Service {
       }
     }
 
-    if (!settings || !settings.servers) {
+    if (!settings?.servers) {
       const characterSettings = this.runtime.character.settings;
       if (
         characterSettings &&

@@ -1,5 +1,8 @@
 import { Service, IAgentRuntime } from "@elizaos/core";
-import { cloudServiceApisBaseUrl, toRuntimeSettings } from "@elizaos/cloud-routing";
+import {
+  cloudServiceApisBaseUrl,
+  toRuntimeSettings,
+} from "@elizaos/cloud-routing";
 import axios, { AxiosInstance } from "axios";
 import {
   DexScreenerPair,
@@ -30,11 +33,15 @@ export class DexScreenerService extends Service {
   static async start(runtime: IAgentRuntime): Promise<Service> {
     const service = new DexScreenerService(runtime);
 
-    const customBase = String(runtime.getSetting("DEXSCREENER_API_URL") ?? "").trim();
+    const customBase = String(
+      runtime.getSetting("DEXSCREENER_API_URL") ?? ""
+    ).trim();
     const delayRaw = runtime.getSetting("DEXSCREENER_RATE_LIMIT_DELAY");
     const delayParsed = Number.parseInt(
-      typeof delayRaw === "number" ? String(delayRaw) : String(delayRaw ?? "100"),
-      10,
+      typeof delayRaw === "number"
+        ? String(delayRaw)
+        : String(delayRaw ?? "100"),
+      10
     );
     const rateLimitDelay = Number.isFinite(delayParsed) ? delayParsed : 100;
 
@@ -44,7 +51,10 @@ export class DexScreenerService extends Service {
     if (customBase.length > 0) {
       apiUrl = customBase.replace(/\/+$/, "");
     } else {
-      const cloud = cloudServiceApisBaseUrl(toRuntimeSettings(runtime), "dexscreener");
+      const cloud = cloudServiceApisBaseUrl(
+        toRuntimeSettings(runtime),
+        "dexscreener"
+      );
       if (cloud !== null) {
         apiUrl = cloud.baseUrl;
         Object.assign(authHeaders, cloud.headers);

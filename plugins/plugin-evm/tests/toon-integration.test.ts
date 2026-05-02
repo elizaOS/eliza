@@ -1,58 +1,58 @@
-import { describe, test, expect } from "bun:test";
-import { parseKeyValueXml } from "@elizaos/core";
+import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
+import { parseKeyValueXml } from "@elizaos/core";
 import { config } from "dotenv";
 
 config({ path: resolve(import.meta.dir, "../../../../.env") });
 
 const runToonLiveTest =
-  process.env.MILADY_LIVE_TOON_TEST === "1" ||
-  process.env.ELIZA_LIVE_TOON_TEST === "1" ||
-  process.env.MILADY_LIVE_TEST === "1" ||
-  process.env.ELIZA_LIVE_TEST === "1";
+	process.env.MILADY_LIVE_TOON_TEST === "1" ||
+	process.env.ELIZA_LIVE_TOON_TEST === "1" ||
+	process.env.MILADY_LIVE_TEST === "1" ||
+	process.env.ELIZA_LIVE_TEST === "1";
 
 let callLLM: (prompt: string) => Promise<string>;
 let hasApiKey = false;
 
 try {
-  if (runToonLiveTest && process.env.ANTHROPIC_API_KEY) {
-    const { default: Anthropic } = await import("@anthropic-ai/sdk");
-    const client = new Anthropic();
-    hasApiKey = true;
-    callLLM = async (prompt: string) => {
-      const msg = await client.messages.create({
-        model: "claude-sonnet-4-6",
-        max_tokens: 256,
-        messages: [{ role: "user", content: prompt }],
-      });
-      return msg.content[0].type === "text" ? msg.content[0].text : "";
-    };
-  } else if (runToonLiveTest && process.env.OPENAI_API_KEY) {
-    const { default: OpenAI } = await import("openai");
-    const baseURL = process.env.OPENAI_BASE_URL || undefined;
-    const isGroq = baseURL?.includes("groq.com");
-    const client = new OpenAI({ baseURL });
-    hasApiKey = true;
-    callLLM = async (prompt: string) => {
-      const resp = await client.chat.completions.create({
-        model: isGroq ? "llama-3.3-70b-versatile" : "gpt-4o-mini",
-        max_tokens: 256,
-        messages: [{ role: "user", content: prompt }],
-      });
-      return resp.choices[0]?.message?.content ?? "";
-    };
-  }
+	if (runToonLiveTest && process.env.ANTHROPIC_API_KEY) {
+		const { default: Anthropic } = await import("@anthropic-ai/sdk");
+		const client = new Anthropic();
+		hasApiKey = true;
+		callLLM = async (prompt: string) => {
+			const msg = await client.messages.create({
+				model: "claude-sonnet-4-6",
+				max_tokens: 256,
+				messages: [{ role: "user", content: prompt }],
+			});
+			return msg.content[0].type === "text" ? msg.content[0].text : "";
+		};
+	} else if (runToonLiveTest && process.env.OPENAI_API_KEY) {
+		const { default: OpenAI } = await import("openai");
+		const baseURL = process.env.OPENAI_BASE_URL || undefined;
+		const isGroq = baseURL?.includes("groq.com");
+		const client = new OpenAI({ baseURL });
+		hasApiKey = true;
+		callLLM = async (prompt: string) => {
+			const resp = await client.chat.completions.create({
+				model: isGroq ? "llama-3.3-70b-versatile" : "gpt-4o-mini",
+				max_tokens: 256,
+				messages: [{ role: "user", content: prompt }],
+			});
+			return resp.choices[0]?.message?.content ?? "";
+		};
+	}
 } catch {
-  // SDK not available
+	// SDK not available
 }
 
 describe.skipIf(!runToonLiveTest || !hasApiKey)(
-  "TOON EVM transfer extraction integration",
-  () => {
-    test(
-      "extracts transfer fields from a user message",
-      async () => {
-        const prompt = `Given the recent messages and wallet information below:
+	"TOON EVM transfer extraction integration",
+	() => {
+		test(
+			"extracts transfer fields from a user message",
+			async () => {
+				const prompt = `Given the recent messages and wallet information below:
 
 User: Transfer 0.5 ETH to 0x742d35Cc6634C0532925a3b844Bc454e4438f44e on ethereum
 
@@ -74,17 +74,17 @@ data: additional calldata hex string, or empty
 
 IMPORTANT: Your response must ONLY contain the TOON document above. No preamble or explanation.`;
 
-        const raw = await callLLM(prompt);
-        const parsed = parseKeyValueXml(raw);
+				const raw = await callLLM(prompt);
+				const parsed = parseKeyValueXml(raw);
 
-        expect(parsed).not.toBeNull();
-        expect(String(parsed!.fromChain).toLowerCase()).toContain("ethereum");
-        expect(String(parsed!.amount)).toContain("0.5");
-        expect(String(parsed!.toAddress).toLowerCase()).toContain(
-          "0x742d35cc".toLowerCase(),
-        );
-      },
-      { timeout: 30_000 },
-    );
-  },
+				expect(parsed).not.toBeNull();
+				expect(String(parsed?.fromChain).toLowerCase()).toContain("ethereum");
+				expect(String(parsed?.amount)).toContain("0.5");
+				expect(String(parsed?.toAddress).toLowerCase()).toContain(
+					"0x742d35cc".toLowerCase(),
+				);
+			},
+			{ timeout: 30_000 },
+		);
+	},
 );

@@ -1,5 +1,5 @@
-import type { IAgentRuntime, Memory, Provider, State } from '@elizaos/core';
-import { NewsDataService } from '../services/newsDataService';
+import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
+import { NewsDataService } from "../services/newsDataService";
 
 /**
  * DeFi News Provider
@@ -24,38 +24,40 @@ import { NewsDataService } from '../services/newsDataService';
  * // No manual invocation needed - just add to plugin.providers array
  */
 export const defiNewsProvider: Provider = {
-  name: 'DEFI_NEWS',
+  name: "DEFI_NEWS",
   description:
-    'Provides DeFi market data, global crypto statistics, token information, and real-world crypto news',
+    "Provides DeFi market data, global crypto statistics, token information, and real-world crypto news",
   dynamic: true,
   get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
-    console.log('DEFI_NEWS provider called');
+    console.log("DEFI_NEWS provider called");
 
-    let defiNewsInfo = '';
+    let defiNewsInfo = "";
 
     try {
       // Get services - CoinGecko from analytics or similar plugin, NewsData from this plugin
-      const coinGeckoService = runtime.getService('COINGECKO_SERVICE') as any;
-      const newsDataService = runtime.getService('NEWS_DATA_SERVICE') as NewsDataService;
+      const coinGeckoService = runtime.getService("COINGECKO_SERVICE") as any;
+      const newsDataService = runtime.getService(
+        "NEWS_DATA_SERVICE",
+      ) as NewsDataService;
 
       if (!newsDataService) {
-        console.log('NewsData service not available');
+        console.log("NewsData service not available");
         return {
           data: {},
           values: {},
-          text: 'DeFi News service not available.',
+          text: "DeFi News service not available.",
         };
       }
 
-      console.log('DeFi News services found, generating report...');
+      console.log("DeFi News services found, generating report...");
 
       // Check if a specific token is mentioned in the message
-      const messageText = message.content?.text || '';
+      const messageText = message.content?.text || "";
 
       defiNewsInfo += `=== DEFI & CRYPTO MARKET REPORT ===\n\n`;
 
       // Extract symbols dynamically from the message
-      let extractedSymbols = extractSymbols(messageText, 'loose');
+      let extractedSymbols = extractSymbols(messageText, "loose");
       extractedSymbols = filterTokenSymbols(extractedSymbols);
 
       // Also check for token names (bitcoin, ethereum, etc.)
@@ -64,13 +66,13 @@ export const defiNewsProvider: Provider = {
         extractedSymbols.unshift(namedSymbol); // Add to front
       }
 
-      console.log(`Extracted symbols: ${extractedSymbols.join(', ')}`);
+      console.log(`Extracted symbols: ${extractedSymbols.join(", ")}`);
 
       // If token symbols are detected and services are available, look them up
       if (extractedSymbols.length > 0 && coinGeckoService) {
         // Try to get Birdeye service for symbol lookup
-        const birdeyeService = runtime.getService('birdeye') as any;
-        const solanaService = runtime.getService('chain_solana') as any;
+        const birdeyeService = runtime.getService("birdeye") as any;
+        const solanaService = runtime.getService("chain_solana") as any;
 
         if (birdeyeService && solanaService) {
           // Process up to 3 tokens
@@ -79,13 +81,15 @@ export const defiNewsProvider: Provider = {
 
             try {
               // Look up token by symbol across all chains
-              const options = await birdeyeService.lookupSymbolAllChains(detectedSymbol);
+              const options =
+                await birdeyeService.lookupSymbolAllChains(detectedSymbol);
               const exactOptions = options.filter(
-                (t: any) => t.symbol.toUpperCase() === detectedSymbol.toUpperCase()
+                (t: any) =>
+                  t.symbol.toUpperCase() === detectedSymbol.toUpperCase(),
               );
 
               console.log(
-                `Birdeye found ${exactOptions.length} exact matches for ${detectedSymbol}`
+                `Birdeye found ${exactOptions.length} exact matches for ${detectedSymbol}`,
               );
 
               if (exactOptions.length > 0) {
@@ -98,35 +102,45 @@ export const defiNewsProvider: Provider = {
                 // Verify it's actually a token
                 const addressType = await solanaService.getAddressType(tokenCA);
 
-                if (addressType === 'Token') {
+                if (addressType === "Token") {
                   const tokenData = await getTokenInfoByAddress(
                     coinGeckoService,
                     solanaService,
                     tokenCA,
-                    tokenOption.symbol
+                    tokenOption.symbol,
                   );
                   if (tokenData) {
                     defiNewsInfo += tokenData;
                   }
                 } else {
                   console.log(
-                    `Address ${tokenCA} is not a Token, it's a ${addressType}`
+                    `Address ${tokenCA} is not a Token, it's a ${addressType}`,
                   );
                 }
               } else {
-                console.log(`No exact matches found for ${detectedSymbol}, skipping...`);
+                console.log(
+                  `No exact matches found for ${detectedSymbol}, skipping...`,
+                );
               }
             } catch (error) {
-              console.log(`Error looking up ${detectedSymbol} via Birdeye:`, error);
+              console.log(
+                `Error looking up ${detectedSymbol} via Birdeye:`,
+                error,
+              );
             }
           }
         } else {
           // Fallback to CoinGecko ID lookup for major tokens
-          console.log('Birdeye or Solana service not available, using CoinGecko fallback');
+          console.log(
+            "Birdeye or Solana service not available, using CoinGecko fallback",
+          );
           for (const detectedSymbol of extractedSymbols.slice(0, 1)) {
             const coingeckoId = getCoinGeckoIdFromSymbol(detectedSymbol);
             if (coingeckoId) {
-              const tokenData = await getTokenInfo(coinGeckoService, coingeckoId);
+              const tokenData = await getTokenInfo(
+                coinGeckoService,
+                coingeckoId,
+              );
               defiNewsInfo += tokenData;
               break; // Only one token in fallback mode
             }
@@ -143,16 +157,17 @@ export const defiNewsProvider: Provider = {
         const globalCryptoData = await getGlobalCryptoData(coinGeckoService);
         defiNewsInfo += globalCryptoData;
       } else {
-        console.log('CoinGecko service not available, skipping market data');
-        defiNewsInfo += '⚠️ Market data unavailable (CoinGecko service not configured)\n\n';
+        console.log("CoinGecko service not available, skipping market data");
+        defiNewsInfo +=
+          "⚠️ Market data unavailable (CoinGecko service not configured)\n\n";
       }
 
       // Get latest crypto news (always available)
       const latestNews = await getLatestCryptoNews(newsDataService);
       defiNewsInfo += latestNews;
     } catch (error) {
-      console.error('Error in DeFi News provider:', error);
-      defiNewsInfo = `Error generating DeFi News report: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      console.error("Error in DeFi News provider:", error);
+      defiNewsInfo = `Error generating DeFi News report: ${error instanceof Error ? error.message : "Unknown error"}`;
     }
 
     const data = {
@@ -161,7 +176,7 @@ export const defiNewsProvider: Provider = {
 
     const values = {};
 
-    const text = defiNewsInfo + '\n';
+    const text = defiNewsInfo + "\n";
 
     return {
       data,
@@ -183,14 +198,14 @@ export const extractSymbols = (
   text: string,
   // loose mode will try to extract more symbols but may include false positives
   // strict mode will only extract symbols that are clearly formatted as a symbol using $SOL format
-  mode: 'strict' | 'loose' = 'loose'
+  mode: "strict" | "loose" = "loose",
 ): string[] => {
   if (!text?.matchAll) return [];
   const symbols = new Set<string>();
 
   // Match patterns
   const patterns =
-    mode === 'strict'
+    mode === "strict"
       ? [
           // $SYMBOL format
           /\$([A-Z0-9]{2,10})\b/gi,
@@ -229,41 +244,41 @@ export const extractSymbols = (
 function filterTokenSymbols(symbols: string[]): string[] {
   // Common words to exclude (not tokens)
   const excludeWords = new Set([
-    'THE',
-    'AND',
-    'FOR',
-    'NOT',
-    'BUT',
-    'GET',
-    'SET',
-    'CAN',
-    'ARE',
-    'WAS',
-    'HAS',
-    'HAD',
-    'HER',
-    'HIS',
-    'OUR',
-    'YOU',
-    'ALL',
-    'OUT',
-    'NEW',
-    'OLD',
-    'NOW',
-    'SEE',
-    'OWN',
-    'TWO',
-    'WAY',
-    'WHO',
-    'ITS',
-    'MAY',
-    'DAY',
-    'USE',
-    'USD',
-    'EUR',
-    'GBP',
-    'JPY',
-    'CNY', // Fiat currencies
+    "THE",
+    "AND",
+    "FOR",
+    "NOT",
+    "BUT",
+    "GET",
+    "SET",
+    "CAN",
+    "ARE",
+    "WAS",
+    "HAS",
+    "HAD",
+    "HER",
+    "HIS",
+    "OUR",
+    "YOU",
+    "ALL",
+    "OUT",
+    "NEW",
+    "OLD",
+    "NOW",
+    "SEE",
+    "OWN",
+    "TWO",
+    "WAY",
+    "WHO",
+    "ITS",
+    "MAY",
+    "DAY",
+    "USE",
+    "USD",
+    "EUR",
+    "GBP",
+    "JPY",
+    "CNY", // Fiat currencies
   ]);
 
   return symbols.filter((symbol) => {
@@ -287,17 +302,17 @@ function getSymbolFromTokenName(text: string): string | null {
   const lowerText = text.toLowerCase();
 
   const tokenNameToSymbol: Record<string, string> = {
-    bitcoin: 'BTC',
-    ethereum: 'ETH',
-    solana: 'SOL',
-    cardano: 'ADA',
-    polkadot: 'DOT',
-    avalanche: 'AVAX',
-    polygon: 'MATIC',
-    uniswap: 'UNI',
-    chainlink: 'LINK',
-    'binance coin': 'BNB',
-    ripple: 'XRP',
+    bitcoin: "BTC",
+    ethereum: "ETH",
+    solana: "SOL",
+    cardano: "ADA",
+    polkadot: "DOT",
+    avalanche: "AVAX",
+    polygon: "MATIC",
+    uniswap: "UNI",
+    chainlink: "LINK",
+    "binance coin": "BNB",
+    ripple: "XRP",
   };
 
   for (const [name, symbol] of Object.entries(tokenNameToSymbol)) {
@@ -315,19 +330,19 @@ function getSymbolFromTokenName(text: string): string | null {
  */
 function getCoinGeckoIdFromSymbol(symbol: string): string | null {
   const symbolToCoinGeckoId: Record<string, string> = {
-    BTC: 'bitcoin',
-    ETH: 'ethereum',
-    SOL: 'solana',
-    ADA: 'cardano',
-    DOT: 'polkadot',
-    AVAX: 'avalanche',
-    MATIC: 'matic-network',
-    UNI: 'uniswap',
-    LINK: 'chainlink',
-    BNB: 'binancecoin',
-    XRP: 'ripple',
-    USDC: 'usd-coin',
-    USDT: 'tether',
+    BTC: "bitcoin",
+    ETH: "ethereum",
+    SOL: "solana",
+    ADA: "cardano",
+    DOT: "polkadot",
+    AVAX: "avalanche",
+    MATIC: "matic-network",
+    UNI: "uniswap",
+    LINK: "chainlink",
+    BNB: "binancecoin",
+    XRP: "ripple",
+    USDC: "usd-coin",
+    USDT: "tether",
   };
 
   return symbolToCoinGeckoId[symbol.toUpperCase()] || null;
@@ -337,7 +352,7 @@ function getCoinGeckoIdFromSymbol(symbol: string): string | null {
  * Get global DeFi market data
  */
 async function getGlobalDefiData(coinGeckoService: any): Promise<string> {
-  let defiInfo = '📊 GLOBAL DEFI MARKET DATA:\n\n';
+  let defiInfo = "📊 GLOBAL DEFI MARKET DATA:\n\n";
 
   try {
     const defiData = await coinGeckoService.getGlobalDefiData();
@@ -349,8 +364,8 @@ async function getGlobalDefiData(coinGeckoService: any): Promise<string> {
     defiInfo += `🎯 DeFi Dominance: ${parseFloat(defiData.defi_dominance).toFixed(2)}%\n`;
     defiInfo += `👑 Top DeFi Coin: ${defiData.top_coin_name} (${defiData.top_coin_defi_dominance.toFixed(2)}% dominance)\n\n`;
   } catch (error) {
-    console.error('Error fetching global DeFi data:', error);
-    defiInfo += 'Error fetching DeFi data. Please try again later.\n\n';
+    console.error("Error fetching global DeFi data:", error);
+    defiInfo += "Error fetching DeFi data. Please try again later.\n\n";
   }
 
   return defiInfo;
@@ -360,7 +375,7 @@ async function getGlobalDefiData(coinGeckoService: any): Promise<string> {
  * Get global crypto market data
  */
 async function getGlobalCryptoData(coinGeckoService: any): Promise<string> {
-  let cryptoInfo = '🌐 GLOBAL CRYPTO MARKET DATA:\n\n';
+  let cryptoInfo = "🌐 GLOBAL CRYPTO MARKET DATA:\n\n";
 
   try {
     const cryptoData = await coinGeckoService.getGlobalCryptoData();
@@ -372,7 +387,7 @@ async function getGlobalCryptoData(coinGeckoService: any): Promise<string> {
     cryptoInfo += `📈 24h Market Cap Change: ${cryptoData.market_cap_change_percentage_24h_usd.toFixed(2)}%\n`;
 
     if (cryptoData.market_cap_percentage) {
-      cryptoInfo += '\n🏆 MARKET DOMINANCE:\n';
+      cryptoInfo += "\n🏆 MARKET DOMINANCE:\n";
       const topCoins = Object.entries(cryptoData.market_cap_percentage)
         .sort((a, b) => (b[1] as number) - (a[1] as number))
         .slice(0, 5) as [string, number][];
@@ -381,10 +396,11 @@ async function getGlobalCryptoData(coinGeckoService: any): Promise<string> {
       });
     }
 
-    cryptoInfo += '\n';
+    cryptoInfo += "\n";
   } catch (error) {
-    console.error('Error fetching global crypto data:', error);
-    cryptoInfo += 'Error fetching crypto market data. Please try again later.\n\n';
+    console.error("Error fetching global crypto data:", error);
+    cryptoInfo +=
+      "Error fetching crypto market data. Please try again later.\n\n";
   }
 
   return cryptoInfo;
@@ -393,8 +409,10 @@ async function getGlobalCryptoData(coinGeckoService: any): Promise<string> {
 /**
  * Get latest crypto news
  */
-async function getLatestCryptoNews(newsDataService: NewsDataService): Promise<string> {
-  let newsInfo = '📰 LATEST CRYPTO NEWS:\n\n';
+async function getLatestCryptoNews(
+  newsDataService: NewsDataService,
+): Promise<string> {
+  let newsInfo = "📰 LATEST CRYPTO NEWS:\n\n";
 
   try {
     const articles = await newsDataService.getLatestNews({
@@ -402,7 +420,7 @@ async function getLatestCryptoNews(newsDataService: NewsDataService): Promise<st
     });
 
     if (articles.length === 0) {
-      newsInfo += 'No recent news articles available.\n\n';
+      newsInfo += "No recent news articles available.\n\n";
       return newsInfo;
     }
 
@@ -411,7 +429,7 @@ async function getLatestCryptoNews(newsDataService: NewsDataService): Promise<st
 
       if (article.description) {
         const shortDesc = article.description.substring(0, 100);
-        newsInfo += `   ${shortDesc}${article.description.length > 100 ? '...' : ''}\n`;
+        newsInfo += `   ${shortDesc}${article.description.length > 100 ? "..." : ""}\n`;
       }
 
       if (article.pubDate) {
@@ -423,11 +441,11 @@ async function getLatestCryptoNews(newsDataService: NewsDataService): Promise<st
         newsInfo += `   🔗 ${article.link}\n`;
       }
 
-      newsInfo += '\n';
+      newsInfo += "\n";
     });
   } catch (error) {
-    console.error('Error fetching latest crypto news:', error);
-    newsInfo += 'Error fetching news. Please try again later.\n\n';
+    console.error("Error fetching latest crypto news:", error);
+    newsInfo += "Error fetching news. Please try again later.\n\n";
   }
 
   return newsInfo;
@@ -441,26 +459,30 @@ async function getTokenInfoByAddress(
   coinGeckoService: any,
   solanaService: any,
   tokenAddress: string,
-  symbol: string
+  symbol: string,
 ): Promise<string | null> {
   let tokenInfo = `📊 TOKEN INFORMATION:\n\n`;
 
   try {
     // Import PublicKey if needed
-    const { PublicKey } = await import('@solana/web3.js');
+    const { PublicKey } = await import("@solana/web3.js");
 
     // Get token symbol from Solana (for verification)
     let tokenSymbol = symbol;
     try {
-      const onChainSymbol = await solanaService.getTokenSymbol(new PublicKey(tokenAddress));
+      const onChainSymbol = await solanaService.getTokenSymbol(
+        new PublicKey(tokenAddress),
+      );
       if (onChainSymbol) {
         tokenSymbol = onChainSymbol;
       }
     } catch (error) {
-      console.log('Could not fetch on-chain symbol, using provided:', symbol);
+      console.log("Could not fetch on-chain symbol, using provided:", symbol);
     }
 
-    console.log(`Fetching CoinGecko data for ${tokenSymbol} at ${tokenAddress}`);
+    console.log(
+      `Fetching CoinGecko data for ${tokenSymbol} at ${tokenAddress}`,
+    );
 
     // Try to search CoinGecko by symbol
     let coinData = null;
@@ -470,7 +492,7 @@ async function getTokenInfoByAddress(
       // Try to find exact match by Solana platform address
       const solanaMatch = searchResults.find(
         (coin: any) =>
-          coin.platforms?.solana?.toLowerCase() === tokenAddress.toLowerCase()
+          coin.platforms?.solana?.toLowerCase() === tokenAddress.toLowerCase(),
       );
 
       if (solanaMatch) {
@@ -496,7 +518,7 @@ async function getTokenInfoByAddress(
 
     if (coinData.market_data) {
       const md = coinData.market_data;
-      tokenInfo += '💵 PRICE INFORMATION:\n';
+      tokenInfo += "💵 PRICE INFORMATION:\n";
       if (md.current_price?.usd) {
         tokenInfo += `   Current Price: $${md.current_price.usd.toLocaleString()}\n`;
       }
@@ -510,22 +532,22 @@ async function getTokenInfoByAddress(
         tokenInfo += `   Market Cap Rank: #${md.market_cap_rank}\n`;
       }
 
-      tokenInfo += '\n📈 PRICE CHANGES:\n';
+      tokenInfo += "\n📈 PRICE CHANGES:\n";
       if (md.price_change_percentage_24h !== undefined) {
-        const emoji = md.price_change_percentage_24h >= 0 ? '📈' : '📉';
+        const emoji = md.price_change_percentage_24h >= 0 ? "📈" : "📉";
         tokenInfo += `   ${emoji} 24h: ${md.price_change_percentage_24h.toFixed(2)}%\n`;
       }
       if (md.price_change_percentage_7d !== undefined) {
-        const emoji = md.price_change_percentage_7d >= 0 ? '📈' : '📉';
+        const emoji = md.price_change_percentage_7d >= 0 ? "📈" : "📉";
         tokenInfo += `   ${emoji} 7d: ${md.price_change_percentage_7d.toFixed(2)}%\n`;
       }
       if (md.price_change_percentage_30d !== undefined) {
-        const emoji = md.price_change_percentage_30d >= 0 ? '📈' : '📉';
+        const emoji = md.price_change_percentage_30d >= 0 ? "📈" : "📉";
         tokenInfo += `   ${emoji} 30d: ${md.price_change_percentage_30d.toFixed(2)}%\n`;
       }
 
       if (md.high_24h?.usd && md.low_24h?.usd) {
-        tokenInfo += '\n📊 24H RANGE:\n';
+        tokenInfo += "\n📊 24H RANGE:\n";
         tokenInfo += `   High: $${md.high_24h.usd.toLocaleString()}\n`;
         tokenInfo += `   Low: $${md.low_24h.usd.toLocaleString()}\n`;
       }
@@ -533,8 +555,12 @@ async function getTokenInfoByAddress(
 
     if (coinData.community_data) {
       const cd = coinData.community_data;
-      if (cd.twitter_followers || cd.reddit_subscribers || cd.telegram_channel_user_count) {
-        tokenInfo += '\n👥 COMMUNITY:\n';
+      if (
+        cd.twitter_followers ||
+        cd.reddit_subscribers ||
+        cd.telegram_channel_user_count
+      ) {
+        tokenInfo += "\n👥 COMMUNITY:\n";
         if (cd.twitter_followers)
           tokenInfo += `   🐦 Twitter: ${cd.twitter_followers.toLocaleString()} followers\n`;
         if (cd.reddit_subscribers)
@@ -547,15 +573,17 @@ async function getTokenInfoByAddress(
     if (coinData.developer_data) {
       const dd = coinData.developer_data;
       if (dd.stars || dd.forks) {
-        tokenInfo += '\n💻 DEVELOPER ACTIVITY:\n';
-        if (dd.stars) tokenInfo += `   ⭐ GitHub Stars: ${dd.stars.toLocaleString()}\n`;
-        if (dd.forks) tokenInfo += `   🔱 Forks: ${dd.forks.toLocaleString()}\n`;
+        tokenInfo += "\n💻 DEVELOPER ACTIVITY:\n";
+        if (dd.stars)
+          tokenInfo += `   ⭐ GitHub Stars: ${dd.stars.toLocaleString()}\n`;
+        if (dd.forks)
+          tokenInfo += `   🔱 Forks: ${dd.forks.toLocaleString()}\n`;
       }
     }
 
-    tokenInfo += '\n';
+    tokenInfo += "\n";
   } catch (error) {
-    console.error('Error fetching token info by address:', error);
+    console.error("Error fetching token info by address:", error);
     return null;
   }
 
@@ -566,7 +594,10 @@ async function getTokenInfoByAddress(
  * Get token information
  * This is a helper function that can be used for specific token queries
  */
-export async function getTokenInfo(coinGeckoService: any, tokenId: string): Promise<string> {
+export async function getTokenInfo(
+  coinGeckoService: any,
+  tokenId: string,
+): Promise<string> {
   let tokenInfo = `📊 TOKEN INFORMATION:\n\n`;
 
   try {
@@ -576,7 +607,7 @@ export async function getTokenInfo(coinGeckoService: any, tokenId: string): Prom
 
     if (tokenData.market_data) {
       const md = tokenData.market_data;
-      tokenInfo += '💵 PRICE INFORMATION:\n';
+      tokenInfo += "💵 PRICE INFORMATION:\n";
       if (md.current_price?.usd) {
         tokenInfo += `   Current Price: $${md.current_price.usd.toLocaleString()}\n`;
       }
@@ -587,17 +618,17 @@ export async function getTokenInfo(coinGeckoService: any, tokenId: string): Prom
         tokenInfo += `   24h Volume: $${(md.total_volume.usd / 1e9).toFixed(2)}B\n`;
       }
 
-      tokenInfo += '\n📈 PRICE CHANGES:\n';
+      tokenInfo += "\n📈 PRICE CHANGES:\n";
       if (md.price_change_percentage_24h !== undefined) {
-        const emoji = md.price_change_percentage_24h >= 0 ? '📈' : '📉';
+        const emoji = md.price_change_percentage_24h >= 0 ? "📈" : "📉";
         tokenInfo += `   ${emoji} 24h: ${md.price_change_percentage_24h.toFixed(2)}%\n`;
       }
       if (md.price_change_percentage_7d !== undefined) {
-        const emoji = md.price_change_percentage_7d >= 0 ? '📈' : '📉';
+        const emoji = md.price_change_percentage_7d >= 0 ? "📈" : "📉";
         tokenInfo += `   ${emoji} 7d: ${md.price_change_percentage_7d.toFixed(2)}%\n`;
       }
       if (md.price_change_percentage_30d !== undefined) {
-        const emoji = md.price_change_percentage_30d >= 0 ? '📈' : '📉';
+        const emoji = md.price_change_percentage_30d >= 0 ? "📈" : "📉";
         tokenInfo += `   ${emoji} 30d: ${md.price_change_percentage_30d.toFixed(2)}%\n`;
       }
     }
@@ -605,7 +636,7 @@ export async function getTokenInfo(coinGeckoService: any, tokenId: string): Prom
     if (tokenData.community_data) {
       const cd = tokenData.community_data;
       if (cd.twitter_followers || cd.reddit_subscribers) {
-        tokenInfo += '\n👥 COMMUNITY:\n';
+        tokenInfo += "\n👥 COMMUNITY:\n";
         if (cd.twitter_followers)
           tokenInfo += `   🐦 Twitter: ${cd.twitter_followers.toLocaleString()} followers\n`;
         if (cd.reddit_subscribers)
@@ -613,12 +644,11 @@ export async function getTokenInfo(coinGeckoService: any, tokenId: string): Prom
       }
     }
 
-    tokenInfo += '\n';
+    tokenInfo += "\n";
   } catch (error) {
-    console.error('Error fetching token info:', error);
-    tokenInfo += 'Error fetching token data. Please try again later.\n\n';
+    console.error("Error fetching token info:", error);
+    tokenInfo += "Error fetching token data. Please try again later.\n\n";
   }
 
   return tokenInfo;
 }
-

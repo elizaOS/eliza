@@ -8,11 +8,11 @@ import {
   State,
   logger,
   parseKeyValueXml,
-} from '@elizaos/core';
-import { TokenDeploySchema } from '../types';
-import { ClankerService } from '../services/clanker.service';
-import { shortenAddress } from '../utils/format';
-import { handleError } from '../utils/errors';
+} from "@elizaos/core";
+import { TokenDeploySchema } from "../types";
+import { ClankerService } from "../services/clanker.service";
+import { shortenAddress } from "../utils/format";
+import { handleError } from "../utils/errors";
 
 export function getTokenDeployXmlPrompt(userMessage: string): string {
   return `<task>Extract structured token deployment parameters from the user's message.</task>
@@ -51,36 +51,48 @@ IMPORTANT:
 </instructions>`;
 }
 
-
 export const tokenDeployAction: Action = {
-  name: 'DEPLOY_TOKEN',
-  similes: ['CREATE_TOKEN', 'LAUNCH_TOKEN', 'MINT_TOKEN'],
-  description: 'Deploy a new token on Base L2 using Clanker protocol',
+  name: "DEPLOY_TOKEN",
+  similes: ["CREATE_TOKEN", "LAUNCH_TOKEN", "MINT_TOKEN"],
+  description: "Deploy a new token on Base L2 using Clanker protocol",
 
   validate: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _state: State | undefined
+    _state: State | undefined,
   ): Promise<boolean> => {
     try {
       // Check if services are available
-      const clankerService = runtime.getService(ClankerService.serviceType) as ClankerService;
-      
+      const clankerService = runtime.getService(
+        ClankerService.serviceType,
+      ) as ClankerService;
+
       if (!clankerService) {
-        logger.warn('Required services not available for token deployment');
+        logger.warn("Required services not available for token deployment");
         return false;
       }
 
       // Extract text content
-      const text = message.content.text?.toLowerCase() || '';
+      const text = message.content.text?.toLowerCase() || "";
 
       // Check for deployment keywords
-      const deploymentKeywords = ['deploy', 'create', 'launch', 'mint', 'token'];
-      const hasDeploymentIntent = deploymentKeywords.some((keyword) => text.includes(keyword));
+      const deploymentKeywords = [
+        "deploy",
+        "create",
+        "launch",
+        "mint",
+        "token",
+      ];
+      const hasDeploymentIntent = deploymentKeywords.some((keyword) =>
+        text.includes(keyword),
+      );
 
       return hasDeploymentIntent;
     } catch (error) {
-      logger.error('Error validating token deployment action:', error instanceof Error ? error.message : String(error));
+      logger.error(
+        "Error validating token deployment action:",
+        error instanceof Error ? error.message : String(error),
+      );
       return false;
     }
   },
@@ -91,31 +103,33 @@ export const tokenDeployAction: Action = {
     _state: State | undefined,
     _options: any,
     callback?: HandlerCallback,
-    _responses?: Memory[]
+    _responses?: Memory[],
   ): Promise<ActionResult> => {
     try {
-      logger.info('Handling DEPLOY_TOKEN action');
+      logger.info("Handling DEPLOY_TOKEN action");
 
       // Get services
-      const clankerService = runtime.getService(ClankerService.serviceType) as ClankerService;
-      
+      const clankerService = runtime.getService(
+        ClankerService.serviceType,
+      ) as ClankerService;
+
       if (!clankerService) {
-        throw new Error('Required services not available');
+        throw new Error("Required services not available");
       }
 
       // Parse parameters from message
-      const text = message.content.text || '';
+      const text = message.content.text || "";
       const prompt = getTokenDeployXmlPrompt(text);
       const response = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
       const parsed = parseKeyValueXml(response);
       const params = mapXmlDeployFields(parsed);
-      
+
       // Validate parameters
       const validation = TokenDeploySchema.safeParse(params);
       if (!validation.success) {
         const errors = validation.error.issues
-          .map((e) => `${e.path.join('.')}: ${e.message}`)
-          .join(', ');
+          .map((e) => `${e.path.join(".")}: ${e.message}`)
+          .join(", ");
         throw new Error(`Invalid parameters: ${errors}`);
       }
 
@@ -149,7 +163,7 @@ export const tokenDeployAction: Action = {
       if (callback) {
         await callback({
           text: responseText,
-          actions: ['DEPLOY_TOKEN'],
+          actions: ["DEPLOY_TOKEN"],
           source: message.content.source,
         });
       }
@@ -162,7 +176,7 @@ export const tokenDeployAction: Action = {
           contractAddress: result.contractAddress,
         },
         data: {
-          actionName: 'DEPLOY_TOKEN',
+          actionName: "DEPLOY_TOKEN",
           contractAddress: result.contractAddress,
           transactionHash: result.transactionHash,
           tokenId: result.tokenId,
@@ -170,13 +184,16 @@ export const tokenDeployAction: Action = {
         },
       };
     } catch (error) {
-      logger.error('Error in DEPLOY_TOKEN action:', error instanceof Error ? error.message : String(error));
+      logger.error(
+        "Error in DEPLOY_TOKEN action:",
+        error instanceof Error ? error.message : String(error),
+      );
       const errorResponse = handleError(error);
 
       if (callback) {
         await callback({
           text: `❌ Token deployment failed: ${errorResponse.message}`,
-          actions: ['DEPLOY_TOKEN'],
+          actions: ["DEPLOY_TOKEN"],
           source: message.content.source,
         });
       }
@@ -190,7 +207,7 @@ export const tokenDeployAction: Action = {
           errorMessage: errorResponse.message,
         },
         data: {
-          actionName: 'DEPLOY_TOKEN',
+          actionName: "DEPLOY_TOKEN",
           error: error instanceof Error ? error.message : String(error),
         },
         error: error instanceof Error ? error : new Error(String(error)),
@@ -201,31 +218,31 @@ export const tokenDeployAction: Action = {
   examples: [
     [
       {
-        name: 'User',
+        name: "User",
         content: {
           text: 'Deploy a new token called "Based Token" with symbol BASE and 1 million supply',
         },
       },
       {
-        name: 'Assistant',
+        name: "Assistant",
         content: {
-          text: '✅ Token deployed successfully!\n\nToken: Based Token (BASE)\nContract: 0x1234...5678\nTotal Supply: 1,000,000,000 BASE (1B tokens)\nTransaction: 0xabcd...ef01\nView on Clanker World: https://clanker.world/clanker/0x1234...5678',
-          actions: ['DEPLOY_TOKEN'],
+          text: "✅ Token deployed successfully!\n\nToken: Based Token (BASE)\nContract: 0x1234...5678\nTotal Supply: 1,000,000,000 BASE (1B tokens)\nTransaction: 0xabcd...ef01\nView on Clanker World: https://clanker.world/clanker/0x1234...5678",
+          actions: ["DEPLOY_TOKEN"],
         },
       },
     ],
     [
       {
-        name: 'User',
+        name: "User",
         content: {
-          text: 'Create a memecoin called PEPE with 69 billion tokens',
+          text: "Create a memecoin called PEPE with 69 billion tokens",
         },
       },
       {
-        name: 'Assistant',
+        name: "Assistant",
         content: {
-          text: '✅ Token deployed successfully!\n\nToken: PEPE (PEPE)\nContract: 0x5678...1234\nTotal Supply: 1,000,000,000 PEPE (1B tokens)\nTransaction: 0xef01...abcd\nView on Clanker World: https://clanker.world/clanker/0x5678...1234',
-          actions: ['DEPLOY_TOKEN'],
+          text: "✅ Token deployed successfully!\n\nToken: PEPE (PEPE)\nContract: 0x5678...1234\nTotal Supply: 1,000,000,000 PEPE (1B tokens)\nTransaction: 0xef01...abcd\nView on Clanker World: https://clanker.world/clanker/0x5678...1234",
+          actions: ["DEPLOY_TOKEN"],
         },
       },
     ],
@@ -238,27 +255,28 @@ function mapXmlDeployFields(parsed: any): any {
   if (parsed.socialMediaUrls?.url) {
     if (Array.isArray(parsed.socialMediaUrls.url)) {
       rawUrls.push(...parsed.socialMediaUrls.url);
-    } else if (typeof parsed.socialMediaUrls.url === 'string') {
+    } else if (typeof parsed.socialMediaUrls.url === "string") {
       rawUrls.push(parsed.socialMediaUrls.url);
     }
-  } else if (typeof parsed.url === 'string') {
+  } else if (typeof parsed.url === "string") {
     rawUrls.push(parsed.url); // fallback support
   }
 
-  const socialMediaUrls =
-    rawUrls.map((url: string) => {
-      const lower = url.toLowerCase();
-      if (lower.includes('twitter.com')) return { platform: 'x', url };
-      if (lower.includes('t.me') || lower.includes('telegram')) return { platform: 'telegram', url };
-      if (lower.includes('discord.gg') || lower.includes('discord.com')) return { platform: 'discord', url };
-      if (lower.includes('github.com')) return { platform: 'github', url };
-      return { platform: 'website', url };
-    });
+  const socialMediaUrls = rawUrls.map((url: string) => {
+    const lower = url.toLowerCase();
+    if (lower.includes("twitter.com")) return { platform: "x", url };
+    if (lower.includes("t.me") || lower.includes("telegram"))
+      return { platform: "telegram", url };
+    if (lower.includes("discord.gg") || lower.includes("discord.com"))
+      return { platform: "discord", url };
+    if (lower.includes("github.com")) return { platform: "github", url };
+    return { platform: "website", url };
+  });
 
   return {
     name: parsed.name,
     symbol: parsed.symbol,
-    vanity: parsed.vanity === 'true',
+    vanity: parsed.vanity === "true",
     image: parsed.image || undefined,
     metadata: {
       description: parsed.description || undefined,

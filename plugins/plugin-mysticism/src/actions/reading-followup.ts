@@ -73,7 +73,10 @@ export const readingFollowupAction: Action = {
   ): Promise<ActionResult | undefined> => {
     const service = runtime.getService<MysticismService>("MYSTICISM");
     if (!service) {
-      return { success: false, text: "The mysticism service is not available." };
+      return {
+        success: false,
+        text: "The mysticism service is not available.",
+      };
     }
 
     const entityId = message.entityId;
@@ -139,7 +142,9 @@ export const readingFollowupAction: Action = {
     [
       {
         name: "{{user1}}",
-        content: { text: "That really resonates with me. What's the next card?" },
+        content: {
+          text: "That really resonates with me. What's the next card?",
+        },
       },
       {
         name: "{{agentName}}",
@@ -236,7 +241,10 @@ export const deepenReadingAction: Action = {
   ): Promise<ActionResult | undefined> => {
     const service = runtime.getService<MysticismService>("MYSTICISM");
     if (!service) {
-      return { success: false, text: "The mysticism service is not available." };
+      return {
+        success: false,
+        text: "The mysticism service is not available.",
+      };
     }
 
     const entityId = message.entityId;

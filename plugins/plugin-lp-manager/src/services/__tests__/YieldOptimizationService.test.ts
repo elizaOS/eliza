@@ -142,7 +142,7 @@ describe("YieldOptimizationService", () => {
   describe("calculateRebalanceCost", () => {
     it("should calculate cost when moving from an existing position (no swap needed)", async () => {
       const solPrice = 150;
-      const cost = await service["calculateRebalanceCost"](
+      const cost = await service.calculateRebalanceCost(
         currentPositionBasic,
         mockPoolHighYieldSolUsdc,
         solPrice,
@@ -159,7 +159,7 @@ describe("YieldOptimizationService", () => {
     it("should calculate cost for deploying idle assets (no swap needed if tokens match)", async () => {
       const solPrice = 120;
       const idleAssetsMatchingTarget: TokenBalance[] = [tokenA_SOL, tokenB_USDC];
-      const cost = await service["calculateRebalanceCost"](
+      const cost = await service.calculateRebalanceCost(
         null,
         mockPoolHighYieldSolUsdc,
         solPrice,
@@ -178,7 +178,7 @@ describe("YieldOptimizationService", () => {
       const idleAssetsNeedingSwap: TokenBalance[] = [
         { address: otherMint, balance: "1", decimals: 6 },
       ];
-      const cost = await service["calculateRebalanceCost"](
+      const cost = await service.calculateRebalanceCost(
         null,
         mockPoolHighYieldSolUsdc,
         solPrice,

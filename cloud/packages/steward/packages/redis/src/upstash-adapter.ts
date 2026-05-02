@@ -157,12 +157,7 @@ class UpstashPipeline implements IoredisPipelineLike {
 export function createUpstashIoredisAdapter(upstash: UpstashRedis): IoredisLike {
   return {
     // Strings
-    async set(
-      key: string,
-      value: string,
-      mode?: "PX",
-      ttlMs?: number,
-    ): Promise<string | null> {
+    async set(key: string, value: string, mode?: "PX", ttlMs?: number): Promise<string | null> {
       if (mode === "PX" && typeof ttlMs === "number") {
         return upstash.set(key, value, { px: ttlMs });
       }

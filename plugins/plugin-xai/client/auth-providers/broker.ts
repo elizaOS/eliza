@@ -13,18 +13,20 @@ import type { XAuthProvider } from "./types";
  * and user sessions, returning short-lived access tokens to the agent.
  */
 export class BrokerAuthProvider implements XAuthProvider {
-  readonly mode = "broker" as const;
+	readonly mode = "broker" as const;
 
-  constructor(private readonly runtime: IAgentRuntime) {}
+	constructor(private readonly runtime: IAgentRuntime) {}
 
-  async getAccessToken(): Promise<string> {
-    const url = getSetting(this.runtime, "X_BROKER_URL");
-    if (!url) {
-      throw new Error("X_AUTH_MODE=broker requires X_BROKER_URL (broker not implemented yet).");
-    }
-    throw new Error(
-      `X broker auth is not implemented yet. Configured X_BROKER_URL=${url}. ` +
-        "Broker auth requires implementing a contract to fetch short-lived access tokens."
-    );
-  }
+	async getAccessToken(): Promise<string> {
+		const url = getSetting(this.runtime, "X_BROKER_URL");
+		if (!url) {
+			throw new Error(
+				"X_AUTH_MODE=broker requires X_BROKER_URL (broker not implemented yet).",
+			);
+		}
+		throw new Error(
+			`X broker auth is not implemented yet. Configured X_BROKER_URL=${url}. ` +
+				"Broker auth requires implementing a contract to fetch short-lived access tokens.",
+		);
+	}
 }

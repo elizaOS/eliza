@@ -31,7 +31,9 @@ const REGISTRY_PROVIDER_KEYWORDS = buildProviderKeywords(
   ]
 );
 
-export const registryPluginsProvider: Provider & { relevanceKeywords: string[] } = {
+export const registryPluginsProvider: Provider & {
+  relevanceKeywords: string[];
+} = {
   name: "registryPlugins",
   description:
     "Provides available plugins from the ElizaOS registry (next branch), installed plugin status, and searchable plugin knowledge",

@@ -1,8 +1,8 @@
 export {
   cloudServiceApisBaseUrl,
   isCloudConnected,
+  type RuntimeSettings,
   resolveCloudRoute,
   toRuntimeSettings,
-  type RuntimeSettings,
 } from "./resolve.ts";
 export type { CloudRoute, CloudRouteSource, RouteSpec } from "./types.ts";

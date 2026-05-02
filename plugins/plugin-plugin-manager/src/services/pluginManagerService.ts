@@ -198,22 +198,22 @@ export class PluginManagerService extends Service implements PluginRegistry {
       // Track original plugin components
       if (plugin.actions) {
         for (const action of plugin.actions) {
-          state.components!.actions.add(action.name);
+          state.components?.actions.add(action.name);
         }
       }
       if (plugin.providers) {
         for (const provider of plugin.providers) {
-          state.components!.providers.add(provider.name);
+          state.components?.providers.add(provider.name);
         }
       }
       if (plugin.evaluators) {
         for (const evaluator of plugin.evaluators) {
-          state.components!.evaluators.add(evaluator.name);
+          state.components?.evaluators.add(evaluator.name);
         }
       }
       if (plugin.services) {
         for (const service of plugin.services) {
-          state.components!.services.add(service.serviceType);
+          state.components?.services.add(service.serviceType);
         }
       }
 
@@ -387,7 +387,7 @@ export class PluginManagerService extends Service implements PluginRegistry {
     if (!this.componentRegistry.has(pluginId)) {
       this.componentRegistry.set(pluginId, []);
     }
-    this.componentRegistry.get(pluginId)!.push(registration);
+    this.componentRegistry.get(pluginId)?.push(registration);
   }
 
   private async registerPluginComponents(plugin: ElizaPlugin): Promise<void> {
@@ -400,7 +400,7 @@ export class PluginManagerService extends Service implements PluginRegistry {
     if (plugin.actions) {
       for (const action of plugin.actions) {
         await this.runtime.registerAction(action);
-        pluginState.components!.actions.add(action.name);
+        pluginState.components?.actions.add(action.name);
         this.trackComponentRegistration(pluginState.id, "action", action.name);
       }
     }
@@ -409,7 +409,7 @@ export class PluginManagerService extends Service implements PluginRegistry {
     if (plugin.providers) {
       for (const provider of plugin.providers) {
         await this.runtime.registerProvider(provider);
-        pluginState.components!.providers.add(provider.name);
+        pluginState.components?.providers.add(provider.name);
         this.trackComponentRegistration(pluginState.id, "provider", provider.name);
       }
     }
@@ -418,7 +418,7 @@ export class PluginManagerService extends Service implements PluginRegistry {
     if (plugin.evaluators) {
       for (const evaluator of plugin.evaluators) {
         await this.runtime.registerEvaluator(evaluator);
-        pluginState.components!.evaluators.add(evaluator.name);
+        pluginState.components?.evaluators.add(evaluator.name);
         this.trackComponentRegistration(pluginState.id, "evaluator", evaluator.name);
       }
     }
@@ -427,8 +427,8 @@ export class PluginManagerService extends Service implements PluginRegistry {
     if (plugin.events) {
       for (const [eventName, eventHandlers] of Object.entries(plugin.events)) {
         if (!eventHandlers) continue;
-        if (!pluginState.components!.eventHandlers.has(eventName)) {
-          pluginState.components!.eventHandlers.set(eventName, new Set());
+        if (!pluginState.components?.eventHandlers.has(eventName)) {
+          pluginState.components?.eventHandlers.set(eventName, new Set());
         }
         for (const eventHandler of eventHandlers) {
           // Cast needed: Object.entries() loses correlation between event key and handler type
@@ -436,9 +436,9 @@ export class PluginManagerService extends Service implements PluginRegistry {
             eventName,
             eventHandler as (params: EventPayload) => Promise<void>
           );
-          pluginState
-            .components!.eventHandlers.get(eventName)!
-            .add(eventHandler as unknown as (params: Record<string, unknown>) => Promise<void>);
+          pluginState.components?.eventHandlers
+            .get(eventName)
+            ?.add(eventHandler as unknown as (params: Record<string, unknown>) => Promise<void>);
           this.trackComponentRegistration(pluginState.id, "eventHandler", eventName);
         }
       }
@@ -449,7 +449,7 @@ export class PluginManagerService extends Service implements PluginRegistry {
       for (const ServiceClass of plugin.services) {
         await this.runtime.registerService(ServiceClass);
         const serviceType = ServiceClass.serviceType as ServiceTypeName;
-        pluginState.components!.services.add(serviceType);
+        pluginState.components?.services.add(serviceType);
         this.trackComponentRegistration(pluginState.id, "service", serviceType);
       }
     }
@@ -685,7 +685,10 @@ export class PluginManagerService extends Service implements PluginRegistry {
     onProgress?: (progress: InstallProgress) => void
   ): Promise<InstallResult> {
     return this.serialiseInstall(async () => {
-      onProgress?.({ phase: "resolving", message: `Looking up ${pluginName} in registry...` });
+      onProgress?.({
+        phase: "resolving",
+        message: `Looking up ${pluginName} in registry...`,
+      });
 
       const info = await getRegistryEntry(pluginName);
       if (!info) {
@@ -825,7 +828,10 @@ export class PluginManagerService extends Service implements PluginRegistry {
     const pm = await detectPackageManager();
     const spec = `${packageName}@${version}`;
 
-    onProgress?.({ phase: "downloading", message: `Running ${pm} install ${spec}...` });
+    onProgress?.({
+      phase: "downloading",
+      message: `Running ${pm} install ${spec}...`,
+    });
 
     switch (pm) {
       case "bun":
@@ -838,7 +844,10 @@ export class PluginManagerService extends Service implements PluginRegistry {
         await execAsync(`npm install ${spec} --prefix "${targetDir}"`);
     }
 
-    onProgress?.({ phase: "installing-deps", message: `${pm} install complete.` });
+    onProgress?.({
+      phase: "installing-deps",
+      message: `${pm} install complete.`,
+    });
   }
 
   private async installFromGit(
@@ -854,12 +863,18 @@ export class PluginManagerService extends Service implements PluginRegistry {
     await fs.ensureDir(tempDir);
 
     try {
-      onProgress?.({ phase: "downloading", message: `Cloning ${gitUrl}#${branch}...` });
+      onProgress?.({
+        phase: "downloading",
+        message: `Cloning ${gitUrl}#${branch}...`,
+      });
       await execAsync(
         `git clone --branch "${branch}" --single-branch --depth 1 "${gitUrl}" "${tempDir}"`
       );
 
-      onProgress?.({ phase: "installing-deps", message: "Installing dependencies..." });
+      onProgress?.({
+        phase: "installing-deps",
+        message: "Installing dependencies...",
+      });
       const pm = await detectPackageManager();
       await execAsync(`${pm} install`, { cwd: tempDir });
 
@@ -901,7 +916,10 @@ export class PluginManagerService extends Service implements PluginRegistry {
       }
     );
 
-    onProgress?.({ phase: "installing-deps", message: "Installing dependencies..." });
+    onProgress?.({
+      phase: "installing-deps",
+      message: "Installing dependencies...",
+    });
     const pm = await detectPackageManager();
     await execAsync(`${pm} install`, { cwd: targetDir });
 
@@ -936,7 +954,11 @@ export class PluginManagerService extends Service implements PluginRegistry {
 
       try {
         await fs.remove(targetDir);
-        return { success: true, pluginName: canonicalName, requiresRestart: true };
+        return {
+          success: true,
+          pluginName: canonicalName,
+          requiresRestart: true,
+        };
       } catch (err) {
         return {
           success: false,
@@ -1072,7 +1094,9 @@ export class PluginManagerService extends Service implements PluginRegistry {
           lastSyncAt: null,
           localCommits: 0,
         };
-        await fs.writeJson(path.join(targetDir, ".upstream.json"), metadata, { spaces: 2 });
+        await fs.writeJson(path.join(targetDir, ".upstream.json"), metadata, {
+          spaces: 2,
+        });
 
         return {
           success: true,
@@ -1154,7 +1178,9 @@ export class PluginManagerService extends Service implements PluginRegistry {
 
       // Git fetch and merge logic
       try {
-        await execAsync(`git fetch origin ${metadata.branch}`, { cwd: targetDir });
+        await execAsync(`git fetch origin ${metadata.branch}`, {
+          cwd: targetDir,
+        });
         // Check commits
         const upstreamCount = (
           await execAsync(`git rev-list --count HEAD..origin/${metadata.branch}`, {
@@ -1164,7 +1190,9 @@ export class PluginManagerService extends Service implements PluginRegistry {
         const count = parseInt(upstreamCount, 10) || 0;
 
         if (count > 0) {
-          await execAsync(`git merge --no-edit origin/${metadata.branch}`, { cwd: targetDir });
+          await execAsync(`git merge --no-edit origin/${metadata.branch}`, {
+            cwd: targetDir,
+          });
         }
 
         const commitHash = (
@@ -1222,7 +1250,12 @@ export class PluginManagerService extends Service implements PluginRegistry {
         };
 
       await fs.remove(targetDir);
-      return { success: true, pluginName: pluginId, removedPath: targetDir, requiresRestart: true };
+      return {
+        success: true,
+        pluginName: pluginId,
+        removedPath: targetDir,
+        requiresRestart: true,
+      };
     });
   }
 

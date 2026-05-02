@@ -4,70 +4,74 @@
  */
 
 export type ActionDoc = {
-  name: string;
-  description: string;
-  similes?: readonly string[];
-  parameters?: readonly unknown[];
-  examples?: readonly (readonly unknown[])[];
+	name: string;
+	description: string;
+	similes?: readonly string[];
+	parameters?: readonly unknown[];
+	examples?: readonly (readonly unknown[])[];
 };
 
 export type ProviderDoc = {
-  name: string;
-  description: string;
-  position?: number;
-  dynamic?: boolean;
+	name: string;
+	description: string;
+	position?: number;
+	dynamic?: boolean;
 };
 
 export type EvaluatorDoc = {
-  name: string;
-  description: string;
-  similes?: readonly string[];
-  alwaysRun?: boolean;
-  examples?: readonly unknown[];
+	name: string;
+	description: string;
+	similes?: readonly string[];
+	alwaysRun?: boolean;
+	examples?: readonly unknown[];
 };
 
 export const coreActionsSpec = {
-  version: "1.0.0",
-  actions: [
-    {
-      name: "POST",
-      description: "Post content on X (formerly Twitter)",
-      similes: ["POST_TO_X", "POST", "SEND_POST", "SHARE_ON_X"],
-      parameters: [],
-    },
-  ],
+	version: "1.0.0",
+	actions: [
+		{
+			name: "POST",
+			description: "Post content on X (formerly Twitter)",
+			similes: ["POST_TO_X", "POST", "SEND_POST", "SHARE_ON_X"],
+			parameters: [],
+		},
+	],
 } as const;
 export const allActionsSpec = {
-  version: "1.0.0",
-  actions: [
-    {
-      name: "POST",
-      description: "Post content on X (formerly Twitter)",
-      similes: ["POST_TO_X", "POST", "SEND_POST", "SHARE_ON_X"],
-      parameters: [],
-    },
-  ],
+	version: "1.0.0",
+	actions: [
+		{
+			name: "POST",
+			description: "Post content on X (formerly Twitter)",
+			similes: ["POST_TO_X", "POST", "SEND_POST", "SHARE_ON_X"],
+			parameters: [],
+		},
+	],
 } as const;
 export const coreProvidersSpec = {
-  version: "1.0.0",
-  providers: [],
+	version: "1.0.0",
+	providers: [],
 } as const;
 export const allProvidersSpec = {
-  version: "1.0.0",
-  providers: [],
+	version: "1.0.0",
+	providers: [],
 } as const;
 export const coreEvaluatorsSpec = {
-  version: "1.0.0",
-  evaluators: [],
+	version: "1.0.0",
+	evaluators: [],
 } as const;
 export const allEvaluatorsSpec = {
-  version: "1.0.0",
-  evaluators: [],
+	version: "1.0.0",
+	evaluators: [],
 } as const;
 
 export const coreActionDocs: readonly ActionDoc[] = coreActionsSpec.actions;
 export const allActionDocs: readonly ActionDoc[] = allActionsSpec.actions;
-export const coreProviderDocs: readonly ProviderDoc[] = coreProvidersSpec.providers;
-export const allProviderDocs: readonly ProviderDoc[] = allProvidersSpec.providers;
-export const coreEvaluatorDocs: readonly EvaluatorDoc[] = coreEvaluatorsSpec.evaluators;
-export const allEvaluatorDocs: readonly EvaluatorDoc[] = allEvaluatorsSpec.evaluators;
+export const coreProviderDocs: readonly ProviderDoc[] =
+	coreProvidersSpec.providers;
+export const allProviderDocs: readonly ProviderDoc[] =
+	allProvidersSpec.providers;
+export const coreEvaluatorDocs: readonly EvaluatorDoc[] =
+	coreEvaluatorsSpec.evaluators;
+export const allEvaluatorDocs: readonly EvaluatorDoc[] =
+	allEvaluatorsSpec.evaluators;

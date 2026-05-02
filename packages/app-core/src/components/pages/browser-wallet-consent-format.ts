@@ -30,7 +30,10 @@ export function formatWeiForDisplay(weiDecimalString: string): string {
   // 6-digit precision is plenty for a confirm dialog; the full hex
   // value goes through unchanged downstream.
   const fractional = (remainder * 1_000_000n) / ONE_ETH_WEI;
-  const fractionalStr = fractional.toString().padStart(6, "0").replace(/0+$/, "");
+  const fractionalStr = fractional
+    .toString()
+    .padStart(6, "0")
+    .replace(/0+$/, "");
   return `${whole.toString()}.${fractionalStr || "0"} ETH`;
 }
 

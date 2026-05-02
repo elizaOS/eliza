@@ -152,7 +152,10 @@ export const mysticalKnowledgeProvider: Provider = {
       logger.error("[MysticalKnowledgeProvider] Error:", String(error));
       return {
         text: CORE_GUIDELINES,
-        values: { mysticalKnowledge: CORE_GUIDELINES, hasMysticalContext: "true" },
+        values: {
+          mysticalKnowledge: CORE_GUIDELINES,
+          hasMysticalContext: "true",
+        },
         data: { hasMysticalContext: "true" },
       };
     }

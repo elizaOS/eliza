@@ -121,4 +121,3 @@ Response format should be formatted in a valid JSON block like this:
 The "action" field should be one of the options in [Available Actions] and the "text" field should be the response you want to send. Do not including any thinking or internal reflection in the "text" field. "thought" should be a short description of what the agent is thinking about before responding, inlcuding a brief justification for the response.`;
 
 export const X_MESSAGE_HANDLER_TEMPLATE = xMessageHandlerTemplate;
-

@@ -41,6 +41,7 @@ export {
 export * from "./features/advanced-memory";
 // Export capabilities and plugin creation
 export * from "./features/basic-capabilities/index";
+export { PluginManagerService } from "./features/plugin-manager/services/pluginManagerService.ts";
 export {
 	SECRETS_SERVICE_TYPE,
 	type SecretsManagerPluginConfig,

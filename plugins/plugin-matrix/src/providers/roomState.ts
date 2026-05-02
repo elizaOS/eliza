@@ -26,7 +26,7 @@ export const roomStateProvider: Provider = {
 
     const matrixService = runtime.getService(MATRIX_SERVICE_NAME) as MatrixService | undefined;
 
-    if (!matrixService || !matrixService.isConnected()) {
+    if (!matrixService?.isConnected()) {
       return {
         data: { connected: false },
         values: { connected: false },

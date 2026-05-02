@@ -37,7 +37,9 @@ const PLUGIN_CONFIGURATION_STATUS_KEYWORDS = buildProviderKeywords(
   ]
 );
 
-export const pluginConfigurationStatusProvider: Provider & { relevanceKeywords: string[] } = {
+export const pluginConfigurationStatusProvider: Provider & {
+  relevanceKeywords: string[];
+} = {
   name: "pluginConfigurationStatus",
   description: "Provides plugin configuration status based on actual plugin config schemas",
 

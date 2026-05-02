@@ -132,8 +132,16 @@ export function setPGLiteOverride(
 // ─── Global singleton ─────────────────────────────────────────────────────────
 
 type GlobalDbHandle =
-  | { driver: "postgres-js"; client: ReturnType<typeof postgres>; db: ReturnType<typeof drizzlePostgres> }
-  | { driver: "neon-http"; client: ReturnType<typeof createNeonHttpDb>["client"]; db: ReturnType<typeof createNeonHttpDb>["db"] };
+  | {
+      driver: "postgres-js";
+      client: ReturnType<typeof postgres>;
+      db: ReturnType<typeof drizzlePostgres>;
+    }
+  | {
+      driver: "neon-http";
+      client: ReturnType<typeof createNeonHttpDb>["client"];
+      db: ReturnType<typeof createNeonHttpDb>["db"];
+    };
 
 let globalDb: GlobalDbHandle | undefined;
 

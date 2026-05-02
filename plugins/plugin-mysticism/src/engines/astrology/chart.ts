@@ -300,7 +300,7 @@ function solveKepler(M: number, e: number): number {
 /**
  * Compute heliocentric ecliptic longitude for a planet at a given Julian Day.
  */
-function heliocentricLongitude(planetId: string, jd: number): number {
+function _heliocentricLongitude(planetId: string, jd: number): number {
   const el = ORBITAL_ELEMENTS[planetId];
   if (!el) throw new Error(`No orbital elements for: ${planetId}`);
 
@@ -632,7 +632,11 @@ function houseForLongitude(longitude: number, cusps: number[]): number {
 // ---------------------------------------------------------------------------
 
 /** Traditional Sun sign date boundaries (tropical zodiac). */
-const SUN_SIGN_DATES: Array<{ sign: string; startMonth: number; startDay: number }> = [
+const SUN_SIGN_DATES: Array<{
+  sign: string;
+  startMonth: number;
+  startDay: number;
+}> = [
   { sign: "capricorn", startMonth: 1, startDay: 1 }, // Jan 1 (continued from Dec 22)
   { sign: "aquarius", startMonth: 1, startDay: 20 },
   { sign: "pisces", startMonth: 2, startDay: 19 },

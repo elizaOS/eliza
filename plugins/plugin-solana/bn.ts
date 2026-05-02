@@ -7,5 +7,5 @@ export type BigNumber = typeof BigNumberLib;
 import type { default as BigNumberType } from "bignumber.js";
 
 export function toBN(value: string | number | BigNumberType): BigNumberType {
-  return new BigNumberLib(value);
+	return new BigNumberLib(value);
 }

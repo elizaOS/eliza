@@ -18,7 +18,10 @@ export interface CloudTailscaleServiceOptions {
   /** Override fetch impl for tests. */
   fetch?: typeof fetch;
   /** Override CLI runner for tests. */
-  cliRunner?: (cmd: string, args: string[]) => Promise<{ code: number | null; stdout: string; stderr: string }>;
+  cliRunner?: (
+    cmd: string,
+    args: string[],
+  ) => Promise<{ code: number | null; stdout: string; stderr: string }>;
 }
 
 interface SpawnResult {
@@ -36,7 +39,11 @@ function defaultCliRunner(cmd: string, args: string[]): Promise<SpawnResult> {
     child.stderr?.on('data', (chunk: Buffer) => err.push(chunk));
     child.on('error', reject);
     child.on('exit', (code) =>
-      resolve({ code, stdout: Buffer.concat(out).toString('utf8'), stderr: Buffer.concat(err).toString('utf8') }),
+      resolve({
+        code,
+        stdout: Buffer.concat(out).toString('utf8'),
+        stderr: Buffer.concat(err).toString('utf8'),
+      }),
     );
   });
 }

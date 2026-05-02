@@ -283,7 +283,9 @@ describe("PostgreSQL E2E Tests", () => {
       });
 
       expect(memories.length).toBeGreaterThanOrEqual(1);
-      expect(memories[0]?.content).toEqual({ text: "Dimension fallback memory" });
+      expect(memories[0]?.content).toEqual({
+        text: "Dimension fallback memory",
+      });
     });
 
     it("should search memories by embedding", async () => {

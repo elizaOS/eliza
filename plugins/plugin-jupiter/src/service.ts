@@ -1,27 +1,27 @@
-import { Service, logger, type IAgentRuntime } from '@elizaos/core';
-import { Connection } from '@solana/web3.js';
+import { Service, logger, type IAgentRuntime } from "@elizaos/core";
+import { Connection } from "@solana/web3.js";
 
 // doesn't matter how many agents since we're coming from a single IP
 // lets respect their service
-const queues = { quotes: [], swaps: [] }
+const queues = { quotes: [], swaps: [] };
 
 async function getQuoteWithRetry(url, retries = 3, delay = 2000) {
   //console.log('quote', url)
   for (let i = 0; i < retries; i++) {
-    console.log('jupSrv - url', url)
+    console.log("jupSrv - url", url);
     const response = await fetch(url);
 
     if (!response.ok) {
       if (response.status === 429) {
         // , response.headers has no rate limit headers
-        console.log('quote 429d')
-        await new Promise(r => setTimeout(r, delay));
+        console.log("quote 429d");
+        await new Promise((r) => setTimeout(r, delay));
         delay *= 2; // exponential backoff
-        continue
+        continue;
       }
 
       const error = await response.text();
-      logger.warn('Quote request failed:', {
+      logger.warn("Quote request failed:", {
         url,
         status: response.status,
         error,
@@ -39,84 +39,89 @@ async function getQuoteWithRetry(url, retries = 3, delay = 2000) {
 
 // could include runtime for logging
 function quoteEnqueue(url) {
-  let resolveHandle = false
-  let rejectHandle = false
+  let resolveHandle = false;
+  let rejectHandle = false;
   const promise = new Promise((resolve, reject) => {
-    resolveHandle = resolve
-    rejectHandle = reject
-  })
+    resolveHandle = resolve;
+    rejectHandle = reject;
+  });
   queues.quotes.push({
     url,
     resolveHandle,
-    rejectHandle
-  })
-  return promise
+    rejectHandle,
+  });
+  return promise;
 }
 
 async function processQuoteQueue(quote) {
   try {
-    const quoteData = await getQuoteWithRetry(quote.url)
-    quote.resolveHandle(quoteData)
-  } catch(e) {
-    quote.rejectHandle(e)
+    const quoteData = await getQuoteWithRetry(quote.url);
+    quote.resolveHandle(quoteData);
+  } catch (e) {
+    quote.rejectHandle(e);
   }
 }
 
 async function checkQuoteQueues() {
   // quote process
-  let delayInMs = 1_000
+  let delayInMs = 1_000;
   if (queues.quotes.length) {
-    console.log('jup:srv -', queues.quotes.length, 'items in quote queue')
-    const nextQuote = queues.quotes.shift() // FIFO
+    console.log("jup:srv -", queues.quotes.length, "items in quote queue");
+    const nextQuote = queues.quotes.shift(); // FIFO
     // process it
-    const start = Date.now()
-    await processQuoteQueue(nextQuote)
-    const took = Date.now() - start
+    const start = Date.now();
+    await processQuoteQueue(nextQuote);
+    const took = Date.now() - start;
     // depending on how long this took, we can adjust the timer
-    delayInMs -= took
-    if (delayInMs < 0) delayInMs = 0
-    console.log('quote took', took.toLocaleString() + 'ms', 'delay now', delayInMs)
+    delayInMs -= took;
+    if (delayInMs < 0) delayInMs = 0;
+    console.log(
+      "quote took",
+      took.toLocaleString() + "ms",
+      "delay now",
+      delayInMs,
+    );
   }
 
   // free tier is 1 req/s (60req/min)
-  setTimeout(checkQuoteQueues, delayInMs)
+  setTimeout(checkQuoteQueues, delayInMs);
 }
 // start checking queues
-checkQuoteQueues()
+checkQuoteQueues();
 
 function swapEnqueue(url, payload) {
-  let resolveHandle = false
-  let rejectHandle = false
+  let resolveHandle = false;
+  let rejectHandle = false;
   const promise = new Promise((resolve, reject) => {
-    resolveHandle = resolve
-    rejectHandle = reject
-  })
+    resolveHandle = resolve;
+    rejectHandle = reject;
+  });
   queues.swaps.push({
     url,
     payload,
     resolveHandle,
-    rejectHandle
-  })
-  return promise
+    rejectHandle,
+  });
+  return promise;
 }
 
 async function getSwapWithRetry(url, payload, retries = 3, delay = 2000) {
   //console.log('swap', url)
   for (let i = 0; i < retries; i++) {
-    console.log('jupSrv - swap', payload.body)
+    console.log("jupSrv - swap", payload.body);
     const response = await fetch(url, payload);
 
     if (!response.ok) {
       if (response.status === 429) {
         // , response.headers has no rate limit headers
-        console.log('swap 429d')
-        await new Promise(r => setTimeout(r, delay));
+        console.log("swap 429d");
+        await new Promise((r) => setTimeout(r, delay));
         delay *= 2; // exponential backoff
-        continue
+        continue;
       }
 
       const error = await response.text();
-      logger.warn('Swap request failed:', {
+      logger.warn("Swap request failed:", {
         url,
         status: response.status,
         error,
@@ -134,48 +139,53 @@ async function getSwapWithRetry(url, payload, retries = 3, delay = 2000) {
 
 async function processSwapQueue(swap) {
   try {
-    const swapData = await getSwapWithRetry(swap.url, swap.payload)
-    swap.resolveHandle(swapData)
-  } catch(e) {
-    swap.rejectHandle(e)
+    const swapData = await getSwapWithRetry(swap.url, swap.payload);
+    swap.resolveHandle(swapData);
+  } catch (e) {
+    swap.rejectHandle(e);
   }
 }
 
 async function checkSwapQueues() {
   // swap process
-  let delayInMs = 1_000
+  let delayInMs = 1_000;
   if (queues.swaps.length) {
-    console.log('jup:srv -', queues.swaps.length, 'items in swap queue')
-    const nextSwap = queues.swaps.shift() // FIFO
+    console.log("jup:srv -", queues.swaps.length, "items in swap queue");
+    const nextSwap = queues.swaps.shift(); // FIFO
     // process it
-    const start = Date.now()
-    await processSwapQueue(nextSwap)
-    const took = Date.now() - start
+    const start = Date.now();
+    await processSwapQueue(nextSwap);
+    const took = Date.now() - start;
     // depending on how long this took, we can adjust the timer
-    delayInMs -= took
-    if (delayInMs < 0) delayInMs = 0
-    console.log('swap took', took.toLocaleString() + 'ms', 'delay now', delayInMs)
+    delayInMs -= took;
+    if (delayInMs < 0) delayInMs = 0;
+    console.log(
+      "swap took",
+      took.toLocaleString() + "ms",
+      "delay now",
+      delayInMs,
+    );
   }
   // free tier is 1 req/s (60req/min)
-  setTimeout(checkSwapQueues, delayInMs)
+  setTimeout(checkSwapQueues, delayInMs);
 }
 // start checking queues
-checkSwapQueues()
-
+checkSwapQueues();
 
 export class JupiterService extends Service {
   private isRunning = false;
   private registry: Record<number, any> = {};
 
-  static serviceType = 'JUPITER_SERVICE';
-  capabilityDescription = 'Provides Jupiter DEX integration for token swaps';
+  static serviceType = "JUPITER_SERVICE";
+  capabilityDescription = "Provides Jupiter DEX integration for token swaps";
 
   // Configuration constants
   private readonly CONFIRMATION_CONFIG = {
     MAX_ATTEMPTS: 12,
     INITIAL_TIMEOUT: 2000,
     MAX_TIMEOUT: 20000,
-    getDelayForAttempt: (attempt: number) => Math.min(2000 * 1.5 ** attempt, 20000),
+    getDelayForAttempt: (attempt: number) =>
+      Math.min(2000 * 1.5 ** attempt, 20000),
   };
 
   constructor(public runtime: IAgentRuntime) {
@@ -189,7 +199,11 @@ export class JupiterService extends Service {
   async registerProvider(provider: any) {
     // add to registry
     const id = Object.values(this.registry).length + 1;
-    this.runtime.logger.success('registered', provider.name, 'as Jupiter provider #' + id);
+    this.runtime.logger.success(
+      "registered",
+      provider.name,
+      "as Jupiter provider #" + id,
+    );
     this.registry[id] = provider;
     return id;
   }
@@ -207,13 +221,18 @@ export class JupiterService extends Service {
     slippageBps: number;
   }) {
     try {
-      const intAmount = parseInt(amount)
+      const intAmount = parseInt(amount);
       if (isNaN(intAmount) || intAmount <= 0) {
-        console.warn('jupiter::getQuote - Amount in', amount, 'become', intAmount)
-        return false
+        console.warn(
+          "jupiter::getQuote - Amount in",
+          amount,
+          "become",
+          intAmount,
+        );
+        return false;
       }
 
-      const key = inputMint + '_' + outputMint
+      const key = inputMint + "_" + outputMint;
       if (this.routeCache[key]) {
         //console.log('we have a route for', key, this.routeCache[key].routePlan)
       }
@@ -223,7 +242,9 @@ export class JupiterService extends Service {
       //   This ensures Jupiter only uses live and fully-initialized pools.
       // &platformFeeBps=200
       //const quoteData = await quoteEnqueue(`https://public.jupiterapi.com/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${intAmount}&slippageBps=${slippageBps}`)
-      const quoteData = await quoteEnqueue(`https://lite-api.jup.ag/swap/v1/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${intAmount}&slippageBps=${slippageBps}`)
+      const quoteData = await quoteEnqueue(
+        `https://lite-api.jup.ag/swap/v1/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${intAmount}&slippageBps=${slippageBps}`,
+      );
       // if api-key then use https://api.jup.ag/swap/v1/quote
 
       /*
@@ -239,11 +260,11 @@ export class JupiterService extends Service {
 
       const quoteData = await quoteResponse.json();
       */
-      quoteData.totalLamportsNeeded = this.estimateLamportsNeeded(quoteData)
-      this.routeCache[key] = quoteData
+      quoteData.totalLamportsNeeded = this.estimateLamportsNeeded(quoteData);
+      this.routeCache[key] = quoteData;
       return quoteData;
     } catch (error) {
-      logger.error('Error getting Jupiter quote:', error);
+      logger.error("Error getting Jupiter quote:", error);
       throw error;
     }
   }
@@ -255,12 +276,13 @@ export class JupiterService extends Service {
     // Start with base requirements
     let totalLamportsNeeded = platformFee;
 
-    const isWrappedSol = initialQuote.inputMint === "So11111111111111111111111111111111111111112";
+    const isWrappedSol =
+      initialQuote.inputMint === "So11111111111111111111111111111111111111112";
     if (isWrappedSol) {
       if (initialQuote.inAmount) {
-        const inAmount = Number(initialQuote.inAmount)
+        const inAmount = Number(initialQuote.inAmount);
         if (!isNaN(inAmount)) {
-          totalLamportsNeeded += inAmount
+          totalLamportsNeeded += inAmount;
         }
       }
     }
@@ -269,7 +291,7 @@ export class JupiterService extends Service {
     // As per your error, it's ~2,039,280 lamports
     const rentAccounts = isWrappedSol ? 2 : 1;
     const rentLamports = 2_039_280 * rentAccounts;
-    totalLamportsNeeded += rentLamports
+    totalLamportsNeeded += rentLamports;
 
     // Add buffer for transaction fees and safety
     const buffer = 100_000; // 0.0001 SOL
@@ -303,15 +325,18 @@ export class JupiterService extends Service {
       };
       //console.log('executeSwap - body', body)
       //console.log('userPublicKey', userPublicKey, 'body', body)
-      const swapData = await swapEnqueue('https://lite-api.jup.ag/swap/v1/swap', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
+      const swapData = await swapEnqueue(
+        "https://lite-api.jup.ag/swap/v1/swap",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
+      );
 
-      return swapData
+      return swapData;
     } catch (error) {
-      logger.error('Error executing Jupiter swap:', error);
+      logger.error("Error executing Jupiter swap:", error);
       throw error;
     }
   }
@@ -349,8 +374,8 @@ export class JupiterService extends Service {
   // Get token price in USDC
   async getTokenPrice(
     tokenMint: string,
-    quoteMint: string = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-    inputDecimals: number = 6
+    quoteMint: string = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    inputDecimals: number = 6,
   ): Promise<number> {
     try {
       const baseAmount = 10 ** inputDecimals;
@@ -362,7 +387,7 @@ export class JupiterService extends Service {
       });
       return Number(quote.outAmount) / 10 ** inputDecimals; // Convert using same decimals
     } catch (error) {
-      logger.error('Failed to get token price:', error);
+      logger.error("Failed to get token price:", error);
       return 0;
     }
   }
@@ -521,16 +546,16 @@ export class JupiterService extends Service {
     try {
       // Fetch token pair information from Jupiter API
       const response = await fetch(
-        `https://public.jupiterapi.com/v1/pairs/${inputMint}/${outputMint}`
+        `https://public.jupiterapi.com/v1/pairs/${inputMint}/${outputMint}`,
       );
 
       if (!response.ok) {
-        throw new Error('Failed to fetch token pair data');
+        throw new Error("Failed to fetch token pair data");
       }
 
       return await response.json();
     } catch (error) {
-      logger.error('Failed to get token pair information:', error);
+      logger.error("Failed to get token pair information:", error);
       throw error;
     }
   }
@@ -538,7 +563,7 @@ export class JupiterService extends Service {
   async getHistoricalPrices({
     inputMint,
     outputMint,
-    timeframe = '24h', // Options: 1h, 24h, 7d, 30d
+    timeframe = "24h", // Options: 1h, 24h, 7d, 30d
   }: {
     inputMint: string;
     outputMint: string;
@@ -547,16 +572,16 @@ export class JupiterService extends Service {
     try {
       // Fetch historical price data from Jupiter API
       const response = await fetch(
-        `https://public.jupiterapi.com/v1/prices/${inputMint}/${outputMint}?timeframe=${timeframe}`
+        `https://public.jupiterapi.com/v1/prices/${inputMint}/${outputMint}?timeframe=${timeframe}`,
       );
 
       if (!response.ok) {
-        throw new Error('Failed to fetch historical prices');
+        throw new Error("Failed to fetch historical prices");
       }
 
       return await response.json();
     } catch (error) {
-      logger.error('Failed to get historical prices:', error);
+      logger.error("Failed to get historical prices:", error);
       throw error;
     }
   }
@@ -579,9 +604,9 @@ export class JupiterService extends Service {
     try {
       // Common tokens to check for arbitrage
       const commonTokens = [
-        'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC
-        'So11111111111111111111111111111111111111112', // SOL
-        'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', // USDT
+        "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", // USDC
+        "So11111111111111111111111111111111111111112", // SOL
+        "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB", // USDT
       ];
 
       const paths: Array<{
@@ -637,7 +662,7 @@ export class JupiterService extends Service {
       // Sort by expected return (highest first)
       return paths.sort((a, b) => b.expectedReturn - a.expectedReturn);
     } catch (error) {
-      logger.error('Failed to find arbitrage paths:', error);
+      logger.error("Failed to find arbitrage paths:", error);
       throw error;
     }
   }
@@ -651,39 +676,39 @@ export class JupiterService extends Service {
   static async stop(runtime: IAgentRuntime) {
     const service = runtime.getService(JupiterService.serviceType);
     if (!service) {
-      throw new Error(JupiterService.serviceType + ' service not found');
+      throw new Error(JupiterService.serviceType + " service not found");
     }
     await service.stop();
   }
 
   async start(): Promise<void> {
     if (this.isRunning) {
-      logger.warn('Jupiter service is already running');
+      logger.warn("Jupiter service is already running");
       return;
     }
 
     try {
-      logger.info('Starting Jupiter service...');
+      logger.info("Starting Jupiter service...");
       this.isRunning = true;
-      logger.info('Jupiter service started successfully');
+      logger.info("Jupiter service started successfully");
     } catch (error) {
-      logger.error('Error starting Jupiter service:', error);
+      logger.error("Error starting Jupiter service:", error);
       throw error;
     }
   }
 
   async stop(): Promise<void> {
     if (!this.isRunning) {
-      logger.warn('Jupiter service is not running');
+      logger.warn("Jupiter service is not running");
       return;
     }
 
     try {
-      logger.info('Stopping Jupiter service...');
+      logger.info("Stopping Jupiter service...");
       this.isRunning = false;
-      logger.info('Jupiter service stopped successfully');
+      logger.info("Jupiter service stopped successfully");
     } catch (error) {
-      logger.error('Error stopping Jupiter service:', error);
+      logger.error("Error stopping Jupiter service:", error);
       throw error;
     }
   }
@@ -699,12 +724,12 @@ async function getCacheExp(runtime, key) {
   // if exp is in the past
   if (wrapper.exp < Date.now()) {
     // no data
-    return false
+    return false;
   }
-  return wrapper.data
+  return wrapper.data;
 }
 async function setCacheExp(runtime, key, val, ttlInSecs) {
-  const exp = Date.now() + ttlInSecs * 1_000
+  const exp = Date.now() + ttlInSecs * 1_000;
   return runtime.setCache<any>(key, {
     exp,
     data: val,

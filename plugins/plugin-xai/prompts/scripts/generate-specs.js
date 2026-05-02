@@ -25,60 +25,63 @@ const PROVIDERS_SPEC_PATH = path.join(PROMPTS_ROOT, "providers.json");
 const EVALUATORS_SPEC_PATH = path.join(PROMPTS_ROOT, "evaluators.json");
 
 function readJson(filePath) {
-  if (!fs.existsSync(filePath)) {
-    return { version: "1.0.0", actions: [], providers: [], evaluators: [] };
-  }
-  const raw = fs.readFileSync(filePath, "utf-8");
-  return JSON.parse(raw);
+	if (!fs.existsSync(filePath)) {
+		return { version: "1.0.0", actions: [], providers: [], evaluators: [] };
+	}
+	const raw = fs.readFileSync(filePath, "utf-8");
+	return JSON.parse(raw);
 }
 
 function listJsonFiles(rootDir) {
-  const out = [];
-  if (!fs.existsSync(rootDir)) {
-    return out;
-  }
-  const stack = [rootDir];
-  while (stack.length > 0) {
-    const dir = stack.pop();
-    if (!dir) break;
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        stack.push(full);
-        continue;
-      }
-      if (entry.isFile() && entry.name.endsWith(".json")) {
-        out.push(full);
-      }
-    }
-  }
-  return out.sort((a, b) => a.localeCompare(b));
+	const out = [];
+	if (!fs.existsSync(rootDir)) {
+		return out;
+	}
+	const stack = [rootDir];
+	while (stack.length > 0) {
+		const dir = stack.pop();
+		if (!dir) break;
+		const entries = fs.readdirSync(dir, { withFileTypes: true });
+		for (const entry of entries) {
+			const full = path.join(dir, entry.name);
+			if (entry.isDirectory()) {
+				stack.push(full);
+				continue;
+			}
+			if (entry.isFile() && entry.name.endsWith(".json")) {
+				out.push(full);
+			}
+		}
+	}
+	return out.sort((a, b) => a.localeCompare(b));
 }
 
 function loadSpecs(specPath, kind) {
-  if (!fs.existsSync(specPath)) {
-    return {
-      core: { version: "1.0.0", items: [] },
-      all: { version: "1.0.0", items: [] },
-    };
-  }
+	if (!fs.existsSync(specPath)) {
+		return {
+			core: { version: "1.0.0", items: [] },
+			all: { version: "1.0.0", items: [] },
+		};
+	}
 
-  const root = readJson(specPath);
-  const items = kind === "actions" ? root.actions : 
-                kind === "providers" ? root.providers : 
-                root.evaluators || [];
+	const root = readJson(specPath);
+	const items =
+		kind === "actions"
+			? root.actions
+			: kind === "providers"
+				? root.providers
+				: root.evaluators || [];
 
-  return {
-    core: {
-      version: root.version || "1.0.0",
-      items: items,
-    },
-    all: {
-      version: root.version || "1.0.0",
-      items: items,
-    },
-  };
+	return {
+		core: {
+			version: root.version || "1.0.0",
+			items: items,
+		},
+		all: {
+			version: root.version || "1.0.0",
+			items: items,
+		},
+	};
 }
 
 /**
@@ -87,66 +90,69 @@ function loadSpecs(specPath, kind) {
  * @throws {Error} If the directory path is empty or whitespace-only
  */
 function ensureDir(dir) {
-  if (!dir || dir.trim() === "") {
-    throw new Error("Directory path cannot be empty");
-  }
-  fs.mkdirSync(dir, { recursive: true });
+	if (!dir || dir.trim() === "") {
+		throw new Error("Directory path cannot be empty");
+	}
+	fs.mkdirSync(dir, { recursive: true });
 }
 
 function escapeRustRawString(content) {
-  let hashCount = 1;
-  while (content.includes(`"${"#".repeat(hashCount)}`)) {
-    hashCount++;
-  }
-  return { content, hashCount };
+	let hashCount = 1;
+	while (content.includes(`"${"#".repeat(hashCount)}`)) {
+		hashCount++;
+	}
+	return { content, hashCount };
 }
 
 function escapePythonTripleQuoted(content) {
-  return content.replace(/\\/g, "\\\\").replace(/"""/g, '\\"\\"\\"');
+	return content.replace(/\\/g, "\\\\").replace(/"""/g, '\\"\\"\\"');
 }
 
 function generateTypeScript(actionsSpec, providersSpec, evaluatorsSpec) {
-  const outDir = path.join(PLUGIN_ROOT, "typescript", "generated", "specs");
-  ensureDir(outDir);
+	const outDir = path.join(PLUGIN_ROOT, "typescript", "generated", "specs");
+	ensureDir(outDir);
 
-  const actionsJson = JSON.stringify(
-    { version: actionsSpec.core.version, actions: actionsSpec.core.items },
-    null,
-    2,
-  );
-  const actionsAllJson = JSON.stringify(
-    { version: actionsSpec.all.version, actions: actionsSpec.all.items },
-    null,
-    2,
-  );
-  const providersJson = JSON.stringify(
-    { version: providersSpec.core.version, providers: providersSpec.core.items },
-    null,
-    2,
-  );
-  const providersAllJson = JSON.stringify(
-    { version: providersSpec.all.version, providers: providersSpec.all.items },
-    null,
-    2,
-  );
-  const evaluatorsJson = JSON.stringify(
-    {
-      version: evaluatorsSpec.core.version,
-      evaluators: evaluatorsSpec.core.items,
-    },
-    null,
-    2,
-  );
-  const evaluatorsAllJson = JSON.stringify(
-    {
-      version: evaluatorsSpec.all.version,
-      evaluators: evaluatorsSpec.all.items,
-    },
-    null,
-    2,
-  );
+	const actionsJson = JSON.stringify(
+		{ version: actionsSpec.core.version, actions: actionsSpec.core.items },
+		null,
+		2,
+	);
+	const actionsAllJson = JSON.stringify(
+		{ version: actionsSpec.all.version, actions: actionsSpec.all.items },
+		null,
+		2,
+	);
+	const providersJson = JSON.stringify(
+		{
+			version: providersSpec.core.version,
+			providers: providersSpec.core.items,
+		},
+		null,
+		2,
+	);
+	const providersAllJson = JSON.stringify(
+		{ version: providersSpec.all.version, providers: providersSpec.all.items },
+		null,
+		2,
+	);
+	const evaluatorsJson = JSON.stringify(
+		{
+			version: evaluatorsSpec.core.version,
+			evaluators: evaluatorsSpec.core.items,
+		},
+		null,
+		2,
+	);
+	const evaluatorsAllJson = JSON.stringify(
+		{
+			version: evaluatorsSpec.all.version,
+			evaluators: evaluatorsSpec.all.items,
+		},
+		null,
+		2,
+	);
 
-  const content = `/**
+	const content = `/**
  * Auto-generated canonical action/provider/evaluator docs for plugin-xai.
  * DO NOT EDIT - Generated from prompts/specs/**.
  */
@@ -189,10 +195,10 @@ export const coreEvaluatorDocs: readonly EvaluatorDoc[] = coreEvaluatorsSpec.eva
 export const allEvaluatorDocs: readonly EvaluatorDoc[] = allEvaluatorsSpec.evaluators;
 `;
 
-  fs.writeFileSync(path.join(outDir, "specs.ts"), content);
-  
-  // Generate spec-helpers.ts
-  const helpersContent = `/**
+	fs.writeFileSync(path.join(outDir, "specs.ts"), content);
+
+	// Generate spec-helpers.ts
+	const helpersContent = `/**
  * Helper functions to lookup action/provider/evaluator specs by name.
  * These allow language-specific implementations to import their text content
  * (description, similes, examples) from the centralized specs.
@@ -304,57 +310,66 @@ export function requireEvaluatorSpec(name: string): EvaluatorDoc {
 // Re-export types for convenience
 export type { ActionDoc, ProviderDoc, EvaluatorDoc };
 `;
-  
-  fs.writeFileSync(path.join(outDir, "spec-helpers.ts"), helpersContent);
+
+	fs.writeFileSync(path.join(outDir, "spec-helpers.ts"), helpersContent);
 }
 
 function generatePython(actionsSpec, providersSpec, evaluatorsSpec) {
-  const outDir = path.join(PLUGIN_ROOT, "python", "elizaos_plugin_xai", "generated", "specs");
-  ensureDir(outDir);
+	const outDir = path.join(
+		PLUGIN_ROOT,
+		"python",
+		"elizaos_plugin_xai",
+		"generated",
+		"specs",
+	);
+	ensureDir(outDir);
 
-  const initPath = path.join(outDir, "__init__.py");
-  if (!fs.existsSync(initPath)) {
-    fs.writeFileSync(initPath, '"""Auto-generated module package."""\n');
-  }
+	const initPath = path.join(outDir, "__init__.py");
+	if (!fs.existsSync(initPath)) {
+		fs.writeFileSync(initPath, '"""Auto-generated module package."""\n');
+	}
 
-  const actionsJson = JSON.stringify(
-    { version: actionsSpec.core.version, actions: actionsSpec.core.items },
-    null,
-    2,
-  );
-  const actionsAllJson = JSON.stringify(
-    { version: actionsSpec.all.version, actions: actionsSpec.all.items },
-    null,
-    2,
-  );
-  const providersJson = JSON.stringify(
-    { version: providersSpec.core.version, providers: providersSpec.core.items },
-    null,
-    2,
-  );
-  const providersAllJson = JSON.stringify(
-    { version: providersSpec.all.version, providers: providersSpec.all.items },
-    null,
-    2,
-  );
-  const evaluatorsJson = JSON.stringify(
-    {
-      version: evaluatorsSpec.core.version,
-      evaluators: evaluatorsSpec.core.items,
-    },
-    null,
-    2,
-  );
-  const evaluatorsAllJson = JSON.stringify(
-    {
-      version: evaluatorsSpec.all.version,
-      evaluators: evaluatorsSpec.all.items,
-    },
-    null,
-    2,
-  );
+	const actionsJson = JSON.stringify(
+		{ version: actionsSpec.core.version, actions: actionsSpec.core.items },
+		null,
+		2,
+	);
+	const actionsAllJson = JSON.stringify(
+		{ version: actionsSpec.all.version, actions: actionsSpec.all.items },
+		null,
+		2,
+	);
+	const providersJson = JSON.stringify(
+		{
+			version: providersSpec.core.version,
+			providers: providersSpec.core.items,
+		},
+		null,
+		2,
+	);
+	const providersAllJson = JSON.stringify(
+		{ version: providersSpec.all.version, providers: providersSpec.all.items },
+		null,
+		2,
+	);
+	const evaluatorsJson = JSON.stringify(
+		{
+			version: evaluatorsSpec.core.version,
+			evaluators: evaluatorsSpec.core.items,
+		},
+		null,
+		2,
+	);
+	const evaluatorsAllJson = JSON.stringify(
+		{
+			version: evaluatorsSpec.all.version,
+			evaluators: evaluatorsSpec.all.items,
+		},
+		null,
+		2,
+	);
 
-  const content = `"""
+	const content = `"""
 Auto-generated canonical action/provider/evaluator docs for plugin-xai.
 DO NOT EDIT - Generated from prompts/specs/**.
 """
@@ -411,71 +426,74 @@ __all__ = [
 ]
 `;
 
-  fs.writeFileSync(path.join(outDir, "specs.py"), content);
+	fs.writeFileSync(path.join(outDir, "specs.py"), content);
 }
 
 function generateRust(actionsSpec, providersSpec, evaluatorsSpec) {
-  const outDir = path.join(PLUGIN_ROOT, "rust", "src", "generated", "specs");
-  ensureDir(outDir);
+	const outDir = path.join(PLUGIN_ROOT, "rust", "src", "generated", "specs");
+	ensureDir(outDir);
 
-  const actionsJson = JSON.stringify(
-    { version: actionsSpec.core.version, actions: actionsSpec.core.items },
-    null,
-    2,
-  );
-  const actionsAllJson = JSON.stringify(
-    { version: actionsSpec.all.version, actions: actionsSpec.all.items },
-    null,
-    2,
-  );
-  const providersJson = JSON.stringify(
-    { version: providersSpec.core.version, providers: providersSpec.core.items },
-    null,
-    2,
-  );
-  const providersAllJson = JSON.stringify(
-    { version: providersSpec.all.version, providers: providersSpec.all.items },
-    null,
-    2,
-  );
-  const evaluatorsJson = JSON.stringify(
-    {
-      version: evaluatorsSpec.core.version,
-      evaluators: evaluatorsSpec.core.items,
-    },
-    null,
-    2,
-  );
-  const evaluatorsAllJson = JSON.stringify(
-    {
-      version: evaluatorsSpec.all.version,
-      evaluators: evaluatorsSpec.all.items,
-    },
-    null,
-    2,
-  );
+	const actionsJson = JSON.stringify(
+		{ version: actionsSpec.core.version, actions: actionsSpec.core.items },
+		null,
+		2,
+	);
+	const actionsAllJson = JSON.stringify(
+		{ version: actionsSpec.all.version, actions: actionsSpec.all.items },
+		null,
+		2,
+	);
+	const providersJson = JSON.stringify(
+		{
+			version: providersSpec.core.version,
+			providers: providersSpec.core.items,
+		},
+		null,
+		2,
+	);
+	const providersAllJson = JSON.stringify(
+		{ version: providersSpec.all.version, providers: providersSpec.all.items },
+		null,
+		2,
+	);
+	const evaluatorsJson = JSON.stringify(
+		{
+			version: evaluatorsSpec.core.version,
+			evaluators: evaluatorsSpec.core.items,
+		},
+		null,
+		2,
+	);
+	const evaluatorsAllJson = JSON.stringify(
+		{
+			version: evaluatorsSpec.all.version,
+			evaluators: evaluatorsSpec.all.items,
+		},
+		null,
+		2,
+	);
 
-  const { content: actionsContent, hashCount: actionsHashCount } =
-    escapeRustRawString(actionsJson);
-  const { content: actionsAllContent, hashCount: actionsAllHashCount } =
-    escapeRustRawString(actionsAllJson);
-  const { content: providersContent, hashCount: providersHashCount } =
-    escapeRustRawString(providersJson);
-  const { content: providersAllContent, hashCount: providersAllHashCount } =
-    escapeRustRawString(providersAllJson);
-  const { content: evalContent, hashCount: evalHashCount } =
-    escapeRustRawString(evaluatorsJson);
-  const { content: evalAllContent, hashCount: evalAllHashCount } =
-    escapeRustRawString(evaluatorsAllJson);
+	const { content: actionsContent, hashCount: actionsHashCount } =
+		escapeRustRawString(actionsJson);
+	const { content: actionsAllContent, hashCount: actionsAllHashCount } =
+		escapeRustRawString(actionsAllJson);
+	const { content: providersContent, hashCount: providersHashCount } =
+		escapeRustRawString(providersJson);
+	const { content: providersAllContent, hashCount: providersAllHashCount } =
+		escapeRustRawString(providersAllJson);
+	const { content: evalContent, hashCount: evalHashCount } =
+		escapeRustRawString(evaluatorsJson);
+	const { content: evalAllContent, hashCount: evalAllHashCount } =
+		escapeRustRawString(evaluatorsAllJson);
 
-  const actionsDelim = "#".repeat(actionsHashCount);
-  const actionsAllDelim = "#".repeat(actionsAllHashCount);
-  const providersDelim = "#".repeat(providersHashCount);
-  const providersAllDelim = "#".repeat(providersAllHashCount);
-  const evalDelim = "#".repeat(evalHashCount);
-  const evalAllDelim = "#".repeat(evalAllHashCount);
+	const actionsDelim = "#".repeat(actionsHashCount);
+	const actionsAllDelim = "#".repeat(actionsAllHashCount);
+	const providersDelim = "#".repeat(providersHashCount);
+	const providersAllDelim = "#".repeat(providersAllHashCount);
+	const evalDelim = "#".repeat(evalHashCount);
+	const evalAllDelim = "#".repeat(evalAllHashCount);
 
-  const content = `//! Auto-generated canonical action/provider/evaluator docs for plugin-xai.
+	const content = `//! Auto-generated canonical action/provider/evaluator docs for plugin-xai.
 //! DO NOT EDIT - Generated from prompts/specs/**.
 
 pub const CORE_ACTION_DOCS_JSON: &str = r${actionsDelim}"${actionsContent}"${actionsDelim};
@@ -486,23 +504,23 @@ pub const CORE_EVALUATOR_DOCS_JSON: &str = r${evalDelim}"${evalContent}"${evalDe
 pub const ALL_EVALUATOR_DOCS_JSON: &str = r${evalAllDelim}"${evalAllContent}"${evalAllDelim};
 `;
 
-  fs.writeFileSync(path.join(outDir, "specs.rs"), content);
+	fs.writeFileSync(path.join(outDir, "specs.rs"), content);
 
-  const modPath = path.join(outDir, "mod.rs");
-  const modContent = `//! Auto-generated specs module.\n\npub mod specs;\n`;
-  fs.writeFileSync(modPath, modContent);
+	const modPath = path.join(outDir, "mod.rs");
+	const modContent = `//! Auto-generated specs module.\n\npub mod specs;\n`;
+	fs.writeFileSync(modPath, modContent);
 }
 
 function main() {
-  const actionsSpec = loadSpecs(ACTIONS_SPEC_PATH, "actions");
-  const providersSpec = loadSpecs(PROVIDERS_SPEC_PATH, "providers");
-  const evaluatorsSpec = loadSpecs(EVALUATORS_SPEC_PATH, "evaluators");
+	const actionsSpec = loadSpecs(ACTIONS_SPEC_PATH, "actions");
+	const providersSpec = loadSpecs(PROVIDERS_SPEC_PATH, "providers");
+	const evaluatorsSpec = loadSpecs(EVALUATORS_SPEC_PATH, "evaluators");
 
-  generateTypeScript(actionsSpec, providersSpec, evaluatorsSpec);
-  generatePython(actionsSpec, providersSpec, evaluatorsSpec);
-  generateRust(actionsSpec, providersSpec, evaluatorsSpec);
+	generateTypeScript(actionsSpec, providersSpec, evaluatorsSpec);
+	generatePython(actionsSpec, providersSpec, evaluatorsSpec);
+	generateRust(actionsSpec, providersSpec, evaluatorsSpec);
 
-  console.log("Generated plugin-xai action/provider/evaluator docs.");
+	console.log("Generated plugin-xai action/provider/evaluator docs.");
 }
 
 main();

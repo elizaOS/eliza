@@ -1,5 +1,5 @@
 name: Setup Test Environment
-description: Common setup for Bun-based test jobs with optional local services.
+description: Common setup for Bun-based test jobs with optional local services. Runs from cloud/ subdir.
 
 inputs:
   bun-version:
@@ -28,10 +28,12 @@ runs:
 
     - name: Prepare Steward workspaces
       shell: bash
+      working-directory: cloud
       run: bash packages/scripts/prepare-steward-workspaces.sh
 
     - name: Install dependencies
       shell: bash
+      working-directory: cloud
       run: |
         for attempt in 1 2 3; do
           if [ "$attempt" -eq 3 ]; then
@@ -48,6 +50,7 @@ runs:
 
     - name: Validate migration journal
       shell: bash
+      working-directory: cloud
       run: bun run db:check-migrations
 
     - name: Start PostgreSQL test server
@@ -77,6 +80,7 @@ runs:
     - name: Start PGlite TCP server
       if: inputs.setup-db == 'true' && inputs.db-backend == 'pglite'
       shell: bash
+      working-directory: cloud
       env:
         PGLITE_IN_MEMORY: "1"
         PGLITE_PORT: "5432"
@@ -89,6 +93,7 @@ runs:
     - name: Run database migrations
       if: inputs.setup-db == 'true'
       shell: bash
+      working-directory: cloud
       env:
         DATABASE_URL: postgresql://postgres@127.0.0.1:5432/postgres
         TEST_DATABASE_URL: postgresql://postgres@127.0.0.1:5432/postgres

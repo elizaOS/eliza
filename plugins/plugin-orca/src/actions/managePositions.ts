@@ -21,7 +21,7 @@ import {
 import { getMint } from '@solana/spl-token';
 import { fetchPosition, fetchWhirlpool, getPositionAddress } from '@orca-so/whirlpools-client';
 import { sqrtPriceToPrice } from '@orca-so/whirlpools-core';
-import { sendTransaction } from '../../utils/sendTransaction';
+import { sendTransaction } from '../utils/sendTransaction';
 import {
   closePositionInstructions,
   IncreaseLiquidityQuoteParam,
@@ -29,7 +29,7 @@ import {
   setDefaultFunder,
   setDefaultSlippageToleranceBps,
 } from '@orca-so/whirlpools';
-import { loadWallet } from '../../utils/loadWallet';
+import { loadWallet } from '../utils/loadWallet';
 
 interface FetchedPosition {
   whirlpoolAddress: string;

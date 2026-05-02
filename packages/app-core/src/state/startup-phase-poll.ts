@@ -10,10 +10,7 @@ import { logger } from "@elizaos/core";
 import { getStylePresets } from "@elizaos/shared";
 import type { OnboardingOptions } from "../api";
 import { client } from "../api";
-import {
-  getBackendStartupTimeoutMs,
-  scanProviderCredentials,
-} from "../bridge";
+import { getBackendStartupTimeoutMs, scanProviderCredentials } from "../bridge";
 import type { UiLanguage } from "../i18n";
 import type { OnboardingServerTarget } from "../onboarding/server-target";
 import {

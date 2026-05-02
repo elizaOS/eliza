@@ -1,4 +1,4 @@
-import { clankerPlugin } from './plugin';
+import { clankerPlugin } from "./plugin";
 
 // Export the plugin as default
 export default clankerPlugin;
@@ -7,17 +7,15 @@ export default clankerPlugin;
 export { clankerPlugin };
 
 // Export services for direct use if needed
-export { ClankerService } from './services';
+export { ClankerService } from "./services";
 
 // Export actions for direct use if needed
-export {
-  tokenDeployAction,
-} from './actions';
+export { tokenDeployAction } from "./actions";
 
 // Export types
-export * from './types';
+export * from "./types";
 
 // Export utilities if needed
-export * from './utils/errors';
-export * from './utils/format';
-export * from './utils/transactions';
+export * from "./utils/errors";
+export * from "./utils/format";
+export * from "./utils/transactions";

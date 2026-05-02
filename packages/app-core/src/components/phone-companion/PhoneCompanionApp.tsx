@@ -4,8 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   apnsEnabled,
   agentUrl as configuredAgentUrl,
-  logger,
   ElizaIntent,
+  logger,
   type PairingPayload,
   type RegisterPushHandle,
   registerPush,

@@ -11,7 +11,7 @@
  */
 
 import fs from "node:fs";
-import path from "path";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -32,7 +32,7 @@ function readJson(filePath) {
   return JSON.parse(raw);
 }
 
-function listJsonFiles(rootDir) {
+function _listJsonFiles(rootDir) {
   const out = [];
   if (!fs.existsSync(rootDir)) {
     return out;
@@ -65,9 +65,12 @@ function loadSpecs(specPath, kind) {
   }
 
   const root = readJson(specPath);
-  const items = kind === "actions" ? root.actions : 
-                kind === "providers" ? root.providers : 
-                root.evaluators || [];
+  const items =
+    kind === "actions"
+      ? root.actions
+      : kind === "providers"
+        ? root.providers
+        : root.evaluators || [];
 
   return {
     core: {
@@ -112,22 +115,25 @@ function generateTypeScript(actionsSpec, providersSpec, evaluatorsSpec) {
   const actionsJson = JSON.stringify(
     { version: actionsSpec.core.version, actions: actionsSpec.core.items },
     null,
-    2,
+    2
   );
   const actionsAllJson = JSON.stringify(
     { version: actionsSpec.all.version, actions: actionsSpec.all.items },
     null,
-    2,
+    2
   );
   const providersJson = JSON.stringify(
-    { version: providersSpec.core.version, providers: providersSpec.core.items },
+    {
+      version: providersSpec.core.version,
+      providers: providersSpec.core.items,
+    },
     null,
-    2,
+    2
   );
   const providersAllJson = JSON.stringify(
     { version: providersSpec.all.version, providers: providersSpec.all.items },
     null,
-    2,
+    2
   );
   const evaluatorsJson = JSON.stringify(
     {
@@ -135,7 +141,7 @@ function generateTypeScript(actionsSpec, providersSpec, evaluatorsSpec) {
       evaluators: evaluatorsSpec.core.items,
     },
     null,
-    2,
+    2
   );
   const evaluatorsAllJson = JSON.stringify(
     {
@@ -143,7 +149,7 @@ function generateTypeScript(actionsSpec, providersSpec, evaluatorsSpec) {
       evaluators: evaluatorsSpec.all.items,
     },
     null,
-    2,
+    2
   );
 
   const content = `/**
@@ -190,7 +196,7 @@ export const allEvaluatorDocs: readonly EvaluatorDoc[] = allEvaluatorsSpec.evalu
 `;
 
   fs.writeFileSync(path.join(outDir, "specs.ts"), content);
-  
+
   // Generate spec-helpers.ts
   const helpersContent = `/**
  * Helper functions to lookup action/provider/evaluator specs by name.
@@ -304,7 +310,7 @@ export function requireEvaluatorSpec(name: string): EvaluatorDoc {
 // Re-export types for convenience
 export type { ActionDoc, ProviderDoc, EvaluatorDoc };
 `;
-  
+
   fs.writeFileSync(path.join(outDir, "spec-helpers.ts"), helpersContent);
 }
 
@@ -320,22 +326,25 @@ function generatePython(actionsSpec, providersSpec, evaluatorsSpec) {
   const actionsJson = JSON.stringify(
     { version: actionsSpec.core.version, actions: actionsSpec.core.items },
     null,
-    2,
+    2
   );
   const actionsAllJson = JSON.stringify(
     { version: actionsSpec.all.version, actions: actionsSpec.all.items },
     null,
-    2,
+    2
   );
   const providersJson = JSON.stringify(
-    { version: providersSpec.core.version, providers: providersSpec.core.items },
+    {
+      version: providersSpec.core.version,
+      providers: providersSpec.core.items,
+    },
     null,
-    2,
+    2
   );
   const providersAllJson = JSON.stringify(
     { version: providersSpec.all.version, providers: providersSpec.all.items },
     null,
-    2,
+    2
   );
   const evaluatorsJson = JSON.stringify(
     {
@@ -343,7 +352,7 @@ function generatePython(actionsSpec, providersSpec, evaluatorsSpec) {
       evaluators: evaluatorsSpec.core.items,
     },
     null,
-    2,
+    2
   );
   const evaluatorsAllJson = JSON.stringify(
     {
@@ -351,7 +360,7 @@ function generatePython(actionsSpec, providersSpec, evaluatorsSpec) {
       evaluators: evaluatorsSpec.all.items,
     },
     null,
-    2,
+    2
   );
 
   const content = `"""
@@ -421,22 +430,25 @@ function generateRust(actionsSpec, providersSpec, evaluatorsSpec) {
   const actionsJson = JSON.stringify(
     { version: actionsSpec.core.version, actions: actionsSpec.core.items },
     null,
-    2,
+    2
   );
   const actionsAllJson = JSON.stringify(
     { version: actionsSpec.all.version, actions: actionsSpec.all.items },
     null,
-    2,
+    2
   );
   const providersJson = JSON.stringify(
-    { version: providersSpec.core.version, providers: providersSpec.core.items },
+    {
+      version: providersSpec.core.version,
+      providers: providersSpec.core.items,
+    },
     null,
-    2,
+    2
   );
   const providersAllJson = JSON.stringify(
     { version: providersSpec.all.version, providers: providersSpec.all.items },
     null,
-    2,
+    2
   );
   const evaluatorsJson = JSON.stringify(
     {
@@ -444,7 +456,7 @@ function generateRust(actionsSpec, providersSpec, evaluatorsSpec) {
       evaluators: evaluatorsSpec.core.items,
     },
     null,
-    2,
+    2
   );
   const evaluatorsAllJson = JSON.stringify(
     {
@@ -452,19 +464,17 @@ function generateRust(actionsSpec, providersSpec, evaluatorsSpec) {
       evaluators: evaluatorsSpec.all.items,
     },
     null,
-    2,
+    2
   );
 
-  const { content: actionsContent, hashCount: actionsHashCount } =
-    escapeRustRawString(actionsJson);
+  const { content: actionsContent, hashCount: actionsHashCount } = escapeRustRawString(actionsJson);
   const { content: actionsAllContent, hashCount: actionsAllHashCount } =
     escapeRustRawString(actionsAllJson);
   const { content: providersContent, hashCount: providersHashCount } =
     escapeRustRawString(providersJson);
   const { content: providersAllContent, hashCount: providersAllHashCount } =
     escapeRustRawString(providersAllJson);
-  const { content: evalContent, hashCount: evalHashCount } =
-    escapeRustRawString(evaluatorsJson);
+  const { content: evalContent, hashCount: evalHashCount } = escapeRustRawString(evaluatorsJson);
   const { content: evalAllContent, hashCount: evalAllHashCount } =
     escapeRustRawString(evaluatorsAllJson);
 

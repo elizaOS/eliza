@@ -1,50 +1,34 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "lib": [
-      "ES2022",
-      "DOM"
-    ],
-    "strict": false,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "noEmit": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noImplicitReturns": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUncheckedIndexedAccess": true,
-    "exactOptionalPropertyTypes": false,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "verbatimModuleSyntax": true,
-    "ignoreDeprecations": "6.0",
-    "baseUrl": "..",
-    "paths": {
-      "@elizaos/core": [
-        "../../node_modules/@elizaos/core/dist/index.d.ts"
-      ],
-      "@elizaos/core/*": [
-        "../../node_modules/@elizaos/core/dist/*"
-      ]
-    },
-    "types": [
-      "node",
-      "bun-types"
-    ]
-  },
-  "include": [
-    "./**/*.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "__tests__"
-  ]
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"lib": ["ES2022", "DOM"],
+		"strict": false,
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true,
+		"declaration": true,
+		"declarationMap": true,
+		"sourceMap": true,
+		"noEmit": true,
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+		"noImplicitReturns": true,
+		"noFallthroughCasesInSwitch": true,
+		"noUncheckedIndexedAccess": true,
+		"exactOptionalPropertyTypes": false,
+		"resolveJsonModule": true,
+		"isolatedModules": true,
+		"verbatimModuleSyntax": true,
+		"ignoreDeprecations": "6.0",
+		"baseUrl": "..",
+		"paths": {
+			"@elizaos/core": ["../../node_modules/@elizaos/core/dist/index.d.ts"],
+			"@elizaos/core/*": ["../../node_modules/@elizaos/core/dist/*"]
+		},
+		"types": ["node", "bun-types"]
+	},
+	"include": ["./**/*.ts"],
+	"exclude": ["node_modules", "dist", "__tests__"]
 }

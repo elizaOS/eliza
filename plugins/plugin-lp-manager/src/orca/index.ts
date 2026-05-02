@@ -16,7 +16,7 @@ export const orcaPlugin: Plugin = {
   },
 };
 
-export { OrcaService };
 export * from "./types.ts";
+export { OrcaService };
 
 export default orcaPlugin;

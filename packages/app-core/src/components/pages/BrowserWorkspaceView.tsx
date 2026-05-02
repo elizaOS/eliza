@@ -34,6 +34,12 @@ import {
   BROWSER_TAB_PRELOAD_SCRIPT,
   setBrowserTabsRendererImpl,
 } from "../../utils/browser-tabs-renderer-registry";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
+import { CollapsibleSidebarSection } from "../shared/CollapsibleSidebarSection";
+import {
+  AppWorkspaceChrome,
+  type AppWorkspaceChromeProps,
+} from "../workspace/AppWorkspaceChrome.js";
 import {
   decodeBase64ForPreview,
   decodeSignableMessage,
@@ -41,12 +47,6 @@ import {
   formatWeiForDisplay,
   truncateMessageForDisplay,
 } from "./browser-wallet-consent-format";
-import { AppPageSidebar } from "../shared/AppPageSidebar";
-import { CollapsibleSidebarSection } from "../shared/CollapsibleSidebarSection";
-import {
-  AppWorkspaceChrome,
-  type AppWorkspaceChromeProps,
-} from "../workspace/AppWorkspaceChrome.js";
 import {
   type BrowserWorkspaceWalletState,
   buildBrowserWorkspaceWalletState,
@@ -1254,8 +1254,7 @@ export function BrowserWorkspaceView(): JSX.Element {
           protocol: detail.protocol,
           method: detail.method,
           params: detail.params,
-          hostname:
-            typeof detail.hostname === "string" ? detail.hostname : "",
+          hostname: typeof detail.hostname === "string" ? detail.hostname : "",
         });
         return;
       }

@@ -13,7 +13,7 @@ import { describe, expect, it, vi } from "vitest";
 function createMockRuntime(settings: Record<string, string> = {}): IAgentRuntime {
   return {
     agentId: "test-agent-00000000" as UUID,
-    getSetting: vi.fn((key: string) => settings[key] ?? null),
+    getSetting: vi.fn((key: string) => settings[key]),
     getService: vi.fn(() => null),
     logger: {
       info: vi.fn(),
@@ -99,7 +99,7 @@ describe("Action – SEND_ROBLOX_MESSAGE", () => {
       ROBLOX_API_KEY: "key-abc",
       ROBLOX_UNIVERSE_ID: "12345",
     });
-    expect(await sendGameMessage.validate(rt, {} as Memory)).toBe(true);
+    expect(await sendGameMessage.validate(rt, createMockMemory("send roblox message"))).toBe(true);
   });
 
   it("validate → false when API key is missing", async () => {
@@ -136,7 +136,9 @@ describe("Action – SEND_ROBLOX_MESSAGE", () => {
     expect(result?.success).toBe(false);
     expect(result?.error).toMatch(/not found/i);
     expect(cb).toHaveBeenCalledWith(
-      expect.objectContaining({ text: expect.stringMatching(/not available/i) })
+      expect.objectContaining({
+        text: expect.stringMatching(/not available/i),
+      })
     );
   });
 
@@ -258,7 +260,9 @@ describe("Action – EXECUTE_ROBLOX_ACTION", () => {
       ROBLOX_API_KEY: "k",
       ROBLOX_UNIVERSE_ID: "1",
     });
-    expect(await executeGameAction.validate(rt, {} as Memory)).toBe(true);
+    expect(await executeGameAction.validate(rt, createMockMemory("execute roblox action"))).toBe(
+      true
+    );
   });
 
   it("validate → false when settings missing", async () => {
@@ -432,7 +436,7 @@ describe("Action – GET_ROBLOX_PLAYER", () => {
   it("validate → true when API key is set", async () => {
     const { getPlayerInfo } = await import("../actions");
     const rt = createMockRuntime({ ROBLOX_API_KEY: "key" });
-    expect(await getPlayerInfo.validate(rt, {} as Memory)).toBe(true);
+    expect(await getPlayerInfo.validate(rt, createMockMemory("get roblox player"))).toBe(true);
   });
 
   it("validate → false when API key is missing", async () => {
@@ -562,7 +566,9 @@ describe("Action – GET_ROBLOX_PLAYER", () => {
     expect(result?.success).toBe(true);
     expect(result?.text).toMatch(/not found/i);
     expect(cb).toHaveBeenCalledWith(
-      expect.objectContaining({ text: expect.stringMatching(/couldn't find/i) })
+      expect.objectContaining({
+        text: expect.stringMatching(/couldn't find/i),
+      })
     );
   });
 

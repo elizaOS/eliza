@@ -7,29 +7,35 @@
  */
 
 import {
-  type ActionDoc,
-  allActionDocs,
-  allEvaluatorDocs,
-  allProviderDocs,
-  coreActionDocs,
-  coreEvaluatorDocs,
-  coreProviderDocs,
-  type EvaluatorDoc,
-  type ProviderDoc,
+	type ActionDoc,
+	allActionDocs,
+	allEvaluatorDocs,
+	allProviderDocs,
+	coreActionDocs,
+	coreEvaluatorDocs,
+	coreProviderDocs,
+	type EvaluatorDoc,
+	type ProviderDoc,
 } from "./specs";
 
 // Build lookup maps for O(1) access
-const coreActionMap = new Map<string, ActionDoc>(coreActionDocs.map((doc) => [doc.name, doc]));
-const allActionMap = new Map<string, ActionDoc>(allActionDocs.map((doc) => [doc.name, doc]));
-const coreProviderMap = new Map<string, ProviderDoc>(
-  coreProviderDocs.map((doc) => [doc.name, doc])
+const coreActionMap = new Map<string, ActionDoc>(
+	coreActionDocs.map((doc) => [doc.name, doc]),
 );
-const allProviderMap = new Map<string, ProviderDoc>(allProviderDocs.map((doc) => [doc.name, doc]));
+const allActionMap = new Map<string, ActionDoc>(
+	allActionDocs.map((doc) => [doc.name, doc]),
+);
+const coreProviderMap = new Map<string, ProviderDoc>(
+	coreProviderDocs.map((doc) => [doc.name, doc]),
+);
+const allProviderMap = new Map<string, ProviderDoc>(
+	allProviderDocs.map((doc) => [doc.name, doc]),
+);
 const coreEvaluatorMap = new Map<string, EvaluatorDoc>(
-  coreEvaluatorDocs.map((doc) => [doc.name, doc])
+	coreEvaluatorDocs.map((doc) => [doc.name, doc]),
 );
 const allEvaluatorMap = new Map<string, EvaluatorDoc>(
-  allEvaluatorDocs.map((doc) => [doc.name, doc])
+	allEvaluatorDocs.map((doc) => [doc.name, doc]),
 );
 
 /**
@@ -38,7 +44,7 @@ const allEvaluatorMap = new Map<string, EvaluatorDoc>(
  * @returns The action spec or undefined if not found
  */
 export function getActionSpec(name: string): ActionDoc | undefined {
-  return coreActionMap.get(name) ?? allActionMap.get(name);
+	return coreActionMap.get(name) ?? allActionMap.get(name);
 }
 
 /**
@@ -48,11 +54,11 @@ export function getActionSpec(name: string): ActionDoc | undefined {
  * @throws Error if the action is not found
  */
 export function requireActionSpec(name: string): ActionDoc {
-  const spec = getActionSpec(name);
-  if (!spec) {
-    throw new Error(`Action spec not found: ${name}`);
-  }
-  return spec;
+	const spec = getActionSpec(name);
+	if (!spec) {
+		throw new Error(`Action spec not found: ${name}`);
+	}
+	return spec;
 }
 
 /**
@@ -61,7 +67,7 @@ export function requireActionSpec(name: string): ActionDoc {
  * @returns The provider spec or undefined if not found
  */
 export function getProviderSpec(name: string): ProviderDoc | undefined {
-  return coreProviderMap.get(name) ?? allProviderMap.get(name);
+	return coreProviderMap.get(name) ?? allProviderMap.get(name);
 }
 
 /**
@@ -71,11 +77,11 @@ export function getProviderSpec(name: string): ProviderDoc | undefined {
  * @throws Error if the provider is not found
  */
 export function requireProviderSpec(name: string): ProviderDoc {
-  const spec = getProviderSpec(name);
-  if (!spec) {
-    throw new Error(`Provider spec not found: ${name}`);
-  }
-  return spec;
+	const spec = getProviderSpec(name);
+	if (!spec) {
+		throw new Error(`Provider spec not found: ${name}`);
+	}
+	return spec;
 }
 
 /**
@@ -84,7 +90,7 @@ export function requireProviderSpec(name: string): ProviderDoc {
  * @returns The evaluator spec or undefined if not found
  */
 export function getEvaluatorSpec(name: string): EvaluatorDoc | undefined {
-  return coreEvaluatorMap.get(name) ?? allEvaluatorMap.get(name);
+	return coreEvaluatorMap.get(name) ?? allEvaluatorMap.get(name);
 }
 
 /**
@@ -94,11 +100,11 @@ export function getEvaluatorSpec(name: string): EvaluatorDoc | undefined {
  * @throws Error if the evaluator is not found
  */
 export function requireEvaluatorSpec(name: string): EvaluatorDoc {
-  const spec = getEvaluatorSpec(name);
-  if (!spec) {
-    throw new Error(`Evaluator spec not found: ${name}`);
-  }
-  return spec;
+	const spec = getEvaluatorSpec(name);
+	if (!spec) {
+		throw new Error(`Evaluator spec not found: ${name}`);
+	}
+	return spec;
 }
 
 // Re-export types for convenience

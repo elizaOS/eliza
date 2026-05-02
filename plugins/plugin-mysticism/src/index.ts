@@ -7,7 +7,10 @@ import { createReadingRoutes } from "./routes/readings";
 export { astrologyReadingAction } from "./actions/astrology-reading";
 export { checkPaymentAction } from "./actions/check-payment";
 export { ichingReadingAction } from "./actions/iching-reading";
-export { deepenReadingAction, readingFollowupAction } from "./actions/reading-followup";
+export {
+  deepenReadingAction,
+  readingFollowupAction,
+} from "./actions/reading-followup";
 export { requestPaymentAction } from "./actions/request-payment";
 export { tarotReadingAction } from "./actions/tarot-reading";
 export type { AstrologyReadingState } from "./engines/astrology/index";
@@ -75,7 +78,10 @@ export const mysticismPlugin: Plugin = {
         ),
       examples: [
         [
-          { name: "{{user1}}", content: { text: "Can you do a tarot reading for me?" } },
+          {
+            name: "{{user1}}",
+            content: { text: "Can you do a tarot reading for me?" },
+          },
           {
             name: "{{agentName}}",
             content: {
@@ -105,7 +111,10 @@ export const mysticismPlugin: Plugin = {
         ),
       examples: [
         [
-          { name: "{{user1}}", content: { text: "I'd like to consult the I Ching" } },
+          {
+            name: "{{user1}}",
+            content: { text: "I'd like to consult the I Ching" },
+          },
           {
             name: "{{agentName}}",
             content: {
@@ -135,7 +144,10 @@ export const mysticismPlugin: Plugin = {
         ),
       examples: [
         [
-          { name: "{{user1}}", content: { text: "Can you read my birth chart?" } },
+          {
+            name: "{{user1}}",
+            content: { text: "Can you read my birth chart?" },
+          },
           {
             name: "{{agentName}}",
             content: {
@@ -165,10 +177,15 @@ export const mysticismPlugin: Plugin = {
         ),
       examples: [
         [
-          { name: "{{user1}}", content: { text: "Yes, that resonates. What's next?" } },
+          {
+            name: "{{user1}}",
+            content: { text: "Yes, that resonates. What's next?" },
+          },
           {
             name: "{{agentName}}",
-            content: { text: "Let me reveal the next element of your reading..." },
+            content: {
+              text: "Let me reveal the next element of your reading...",
+            },
           },
         ],
       ],
@@ -193,10 +210,15 @@ export const mysticismPlugin: Plugin = {
         ),
       examples: [
         [
-          { name: "{{user1}}", content: { text: "Tell me more about that card" } },
+          {
+            name: "{{user1}}",
+            content: { text: "Tell me more about that card" },
+          },
           {
             name: "{{agentName}}",
-            content: { text: "Let me explore that element more deeply for you..." },
+            content: {
+              text: "Let me explore that element more deeply for you...",
+            },
           },
         ],
       ],

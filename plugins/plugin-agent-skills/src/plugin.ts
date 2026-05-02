@@ -10,12 +10,7 @@
  * @see https://agentskills.io
  */
 
-import type {
-	Action,
-	IAgentRuntime,
-	Plugin,
-	Provider,
-} from "@elizaos/core";
+import type { Action, IAgentRuntime, Plugin, Provider } from "@elizaos/core";
 
 import { getSkillDetailsAction } from "./actions/get-skill-details";
 import { installSkillAction } from "./actions/install-skill";

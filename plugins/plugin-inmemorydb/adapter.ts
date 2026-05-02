@@ -800,7 +800,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       targetEntityId: relationship.targetEntityId,
     });
 
-    if (!existing || !existing.id) return;
+    if (!existing?.id) return;
 
     const stored: StoredRelationship = {
       id: existing.id,
@@ -808,7 +808,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       targetEntityId: relationship.targetEntityId,
       agentId: relationship.agentId,
       tags: relationship.tags ?? existing.tags ?? [],
-      metadata: { ...(existing.metadata ?? {}), ...(relationship.metadata ?? {}) },
+      metadata: {
+        ...(existing.metadata ?? {}),
+        ...(relationship.metadata ?? {}),
+      },
       createdAt: existing.createdAt ?? new Date().toISOString(),
     };
 
@@ -884,7 +887,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   async createPairingRequest(request: PairingRequest): Promise<UUID> {
     const id = request.id ?? (crypto.randomUUID() as UUID);
-    await this.storage.set(COLLECTIONS.PAIRING_REQUESTS, id, { ...request, id });
+    await this.storage.set(COLLECTIONS.PAIRING_REQUESTS, id, {
+      ...request,
+      id,
+    });
     return id;
   }
 

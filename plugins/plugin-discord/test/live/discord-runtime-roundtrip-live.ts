@@ -1,11 +1,14 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import fs from "node:fs";
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { createConversation, postConversationMessage } from "../helpers/http.ts";
+import {
+	createConversation,
+	postConversationMessage,
+} from "../helpers/http.ts";
 
 type DiscordConfig = {
 	token?: string;
@@ -98,16 +101,17 @@ type StartedRuntime = {
 const REPO_ROOT = process.cwd();
 const QA_ROOT = path.join(REPO_ROOT, ".tmp", "qa");
 await mkdir(QA_ROOT, { recursive: true });
-const REPORT_DIR = await mkdtemp(path.join(QA_ROOT, "discord-runtime-roundtrip-"));
+const REPORT_DIR = await mkdtemp(
+	path.join(QA_ROOT, "discord-runtime-roundtrip-"),
+);
 const KEEP_ARTIFACTS = process.env.MILADY_KEEP_LIVE_ARTIFACTS === "1";
 const GUILD_NAME = process.env.DISCORD_QA_GUILD_NAME ?? "Cozy Devs";
 const GUILD_ID = process.env.DISCORD_QA_GUILD_ID ?? "1051457140637827122";
 const CHANNEL_ID = process.env.DISCORD_QA_CHANNEL_ID ?? "1472326219759620258";
-const TIMEOUT_MS =
-	Math.max(
-		60_000,
-		Number.parseInt(process.env.DISCORD_QA_TIMEOUT_MS ?? "", 10) || 10 * 60_000,
-	);
+const TIMEOUT_MS = Math.max(
+	60_000,
+	Number.parseInt(process.env.DISCORD_QA_TIMEOUT_MS ?? "", 10) || 10 * 60_000,
+);
 
 function loadBaseConfig(): MiladyConfig {
 	const configPath = path.join(os.homedir(), ".milady", "milady.json");
@@ -298,7 +302,9 @@ async function startRuntime(
 	discordApplicationId: string,
 	cloudApiKey: string,
 ): Promise<StartedRuntime> {
-	const tempRoot = await mkdtemp(path.join(os.tmpdir(), "milady-discord-runtime-"));
+	const tempRoot = await mkdtemp(
+		path.join(os.tmpdir(), "milady-discord-runtime-"),
+	);
 	const stateDir = path.join(tempRoot, "state");
 	const configPath = path.join(tempRoot, "milady.json");
 	const logPath = path.join(tempRoot, "runtime.log");
@@ -401,9 +407,13 @@ async function verifyLocalChat(runtime: StartedRuntime): Promise<{
 	const { conversationId } = await createConversation(runtime.apiPort, {
 		title: "Discord runtime live QA",
 	});
-	const response = await postConversationMessage(runtime.apiPort, conversationId, {
-		text: "Reply with the exact token LOCAL_RUNTIME_OK and nothing else.",
-	});
+	const response = await postConversationMessage(
+		runtime.apiPort,
+		conversationId,
+		{
+			text: "Reply with the exact token LOCAL_RUNTIME_OK and nothing else.",
+		},
+	);
 	if (response.status !== 200) {
 		throw new Error(
 			`Local chat smoke failed with status ${response.status}\n${JSON.stringify(response.data, null, 2)}\n${runtime.getLogTail()}`,
@@ -424,10 +434,14 @@ async function main(): Promise<void> {
 	const discordApplicationId = resolveDiscordApplicationId(baseConfig);
 	const cloudApiKey = resolveCloudApiKey(baseConfig);
 	if (!discordToken) {
-		throw new Error("No Discord bot token found in environment or ~/.milady/milady.json");
+		throw new Error(
+			"No Discord bot token found in environment or ~/.milady/milady.json",
+		);
 	}
 	if (!cloudApiKey) {
-		throw new Error("No Eliza Cloud API key found in environment or ~/.milady/milady.json");
+		throw new Error(
+			"No Eliza Cloud API key found in environment or ~/.milady/milady.json",
+		);
 	}
 
 	const runtimeConfig = buildRuntimeConfig(
@@ -469,22 +483,24 @@ async function main(): Promise<void> {
 	try {
 		console.log("[discord-runtime-roundtrip-live] resolving_discord_context");
 		const [guild, channel, botUser, health, localChat] = await Promise.all([
-			discordRequest<DiscordGuild>(
-				discordToken,
-				`/guilds/${GUILD_ID}`,
-			).catch(async () => {
-				const guilds = await discordRequest<DiscordGuild[]>(
-					discordToken,
-					"/users/@me/guilds",
-				);
-				const matched = guilds.find((entry) => entry.name === GUILD_NAME);
-				if (!matched) {
-					throw new Error(`Could not find guild ${GUILD_NAME}`);
-				}
-				return matched;
-			}),
+			discordRequest<DiscordGuild>(discordToken, `/guilds/${GUILD_ID}`).catch(
+				async () => {
+					const guilds = await discordRequest<DiscordGuild[]>(
+						discordToken,
+						"/users/@me/guilds",
+					);
+					const matched = guilds.find((entry) => entry.name === GUILD_NAME);
+					if (!matched) {
+						throw new Error(`Could not find guild ${GUILD_NAME}`);
+					}
+					return matched;
+				},
+			),
 			discordRequest<DiscordChannel>(discordToken, `/channels/${CHANNEL_ID}`),
-			discordRequest<{ id: string; username: string }>(discordToken, "/users/@me"),
+			discordRequest<{ id: string; username: string }>(
+				discordToken,
+				"/users/@me",
+			),
 			waitForJsonPredicate<HealthResponse>(
 				`http://127.0.0.1:${runtime.apiPort}/api/health`,
 				(value) => value.ready === true && value.runtime === "ok",
@@ -686,7 +702,11 @@ async function main(): Promise<void> {
 			`${JSON.stringify(report, null, 2)}\n`,
 			"utf8",
 		);
-		await writeFile(path.join(REPORT_DIR, "report.md"), `${markdown}\n`, "utf8");
+		await writeFile(
+			path.join(REPORT_DIR, "report.md"),
+			`${markdown}\n`,
+			"utf8",
+		);
 
 		console.log(
 			"[discord-runtime-roundtrip-live] REPORT",

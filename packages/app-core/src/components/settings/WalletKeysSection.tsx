@@ -285,8 +285,8 @@ export function WalletKeysSection() {
           data-testid="wallet-keys-empty"
           className="rounded-md border border-dashed border-border/50 bg-card/20 px-3 py-3 text-center text-xs text-muted"
         >
-          No wallet keys yet. Add one with the button above, or generate one
-          per agent from the Agents page.
+          No wallet keys yet. Add one with the button above, or generate one per
+          agent from the Agents page.
         </div>
       ) : (
         <ul
@@ -318,7 +318,9 @@ export function WalletKeysSection() {
                   variant="ghost"
                   size="sm"
                   className="h-7 w-7 shrink-0 rounded-md p-0 text-muted hover:text-txt"
-                  aria-label={revealed ? `Hide ${entry.key}` : `Reveal ${entry.key}`}
+                  aria-label={
+                    revealed ? `Hide ${entry.key}` : `Reveal ${entry.key}`
+                  }
                   onClick={() =>
                     revealed ? onHide(entry.key) : void onReveal(entry.key)
                   }

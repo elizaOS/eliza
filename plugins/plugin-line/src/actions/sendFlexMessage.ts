@@ -132,7 +132,7 @@ export const sendFlexMessage: Action = {
   ): Promise<ActionResult> => {
     const lineService = runtime.getService(LINE_SERVICE_NAME) as unknown as LineService | undefined;
 
-    if (!lineService || !lineService.isConnected()) {
+    if (!lineService?.isConnected()) {
       if (callback) {
         callback({ text: "LINE service is not available.", source: "line" });
       }
@@ -166,7 +166,7 @@ export const sendFlexMessage: Action = {
       }
     }
 
-    if (!flexInfo || !flexInfo.title) {
+    if (!flexInfo?.title) {
       if (callback) {
         callback({
           text: "I couldn't understand the flex message content. Please try again.",

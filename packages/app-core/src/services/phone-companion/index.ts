@@ -6,8 +6,6 @@
  * Eliza UI and the pairing / chat-mirror / remote-session flow.
  */
 
-export { agentUrl, apnsEnabled, isDev } from "./env";
-export { logger } from "./logger";
 export {
   ElizaIntent,
   type ElizaIntentPlugin,
@@ -19,6 +17,8 @@ export {
   type ScheduleAlarmResult,
   type SetPairingStatusOptions,
 } from "./eliza-intent";
+export { agentUrl, apnsEnabled, isDev } from "./env";
+export { logger } from "./logger";
 export { type NavState, useNavigation, type ViewName } from "./navigation";
 export {
   type PushIntent,

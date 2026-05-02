@@ -38,7 +38,7 @@ export const listSpaces: Action = {
   ): Promise<ActionResult> => {
     const gchatService = runtime.getService<GoogleChatService>(GOOGLE_CHAT_SERVICE_NAME);
 
-    if (!gchatService || !gchatService.isConnected()) {
+    if (!gchatService?.isConnected()) {
       if (callback) {
         callback({
           text: "Google Chat service is not available.",

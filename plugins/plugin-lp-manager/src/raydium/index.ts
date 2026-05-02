@@ -25,14 +25,16 @@ export const raydiumPlugin: Plugin = {
         name: "Raydium DEX services",
       };
       (
-        solanaService as unknown as { registerExchange: (exchange: { name: string }) => void }
+        solanaService as unknown as {
+          registerExchange: (exchange: { name: string }) => void;
+        }
       ).registerExchange(me);
       console.info("Raydium registered with Solana service");
     }
   },
 };
 
-export { RaydiumService };
 export * from "./types.ts";
+export { RaydiumService };
 
 export default raydiumPlugin;

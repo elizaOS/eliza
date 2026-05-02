@@ -41,7 +41,10 @@ function createOAuthFetch(innerFetch?: FetchWithOptionalPreconnect): typeof fetc
       const existingBeta = headers.get("anthropic-beta");
       headers.set("anthropic-beta", [existingBeta, "oauth-2025-04-20"].filter(Boolean).join(", "));
 
-      const response = await baseFetchWithExtensions(input, { ...init, headers });
+      const response = await baseFetchWithExtensions(input, {
+        ...init,
+        headers,
+      });
 
       const util5h = response.headers.get("anthropic-ratelimit-unified-5h-utilization");
       const util7d = response.headers.get("anthropic-ratelimit-unified-7d-utilization");

@@ -1,22 +1,22 @@
 {
-  "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "noEmit": false,
-    "declaration": true,
-    "declarationMap": true,
-    "allowImportingTsExtensions": false,
-    "types": ["bun-types", "node"],
-    "outDir": "../dist",
-    "skipLibCheck": true,
-    "moduleResolution": "bundler",
-    "resolvePackageJsonExports": true,
-    "resolvePackageJsonImports": true,
-    "ignoreDeprecations": "6.0",
-    "baseUrl": ".",
-    "paths": {
-      "@elizaos/core": ["../../../packages/core/dist"]
-    }
-  },
-  "include": ["**/*.ts"],
-  "exclude": ["node_modules", "__tests__", "**/*.test.ts", "**/*.spec.ts"]
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"noEmit": false,
+		"declaration": true,
+		"declarationMap": true,
+		"allowImportingTsExtensions": false,
+		"types": ["bun-types", "node"],
+		"outDir": "../dist",
+		"skipLibCheck": true,
+		"moduleResolution": "bundler",
+		"resolvePackageJsonExports": true,
+		"resolvePackageJsonImports": true,
+		"ignoreDeprecations": "6.0",
+		"baseUrl": ".",
+		"paths": {
+			"@elizaos/core": ["../../../packages/core/dist"]
+		}
+	},
+	"include": ["**/*.ts"],
+	"exclude": ["node_modules", "__tests__", "**/*.test.ts", "**/*.spec.ts"]
 }

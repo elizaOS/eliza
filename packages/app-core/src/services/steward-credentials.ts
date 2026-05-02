@@ -16,9 +16,7 @@ import path from "node:path";
 // Mirrors the canonical implementation in @elizaos/core's
 // src/utils/state-dir.ts: ELIZA_STATE_DIR > ELIZA_STATE_DIR > ~/.eliza.
 function resolveStateDir(): string {
-  return (
-    process.env.ELIZA_STATE_DIR?.trim() || path.join(homedir(), ".eliza")
-  );
+  return process.env.ELIZA_STATE_DIR?.trim() || path.join(homedir(), ".eliza");
 }
 
 export interface PersistedStewardCredentials {

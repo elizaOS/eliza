@@ -15,15 +15,22 @@ import {
 import { emitModelUsageEvent } from "../utils/events";
 import { countTokens } from "../utils/tokenization";
 
-const CORE_MODEL_TYPES = (ElizaCore as { ModelType?: Record<string, string> }).ModelType ?? {};
-const TEXT_NANO_MODEL_TYPE = (CORE_MODEL_TYPES.TEXT_NANO ?? "TEXT_NANO") as string;
-const TEXT_MEDIUM_MODEL_TYPE = (CORE_MODEL_TYPES.TEXT_MEDIUM ?? "TEXT_MEDIUM") as string;
-const TEXT_SMALL_MODEL_TYPE = (CORE_MODEL_TYPES.TEXT_SMALL ?? "TEXT_SMALL") as string;
-const TEXT_LARGE_MODEL_TYPE = (CORE_MODEL_TYPES.TEXT_LARGE ?? "TEXT_LARGE") as string;
-const TEXT_MEGA_MODEL_TYPE = (CORE_MODEL_TYPES.TEXT_MEGA ?? "TEXT_MEGA") as string;
+const CORE_MODEL_TYPES =
+  (ElizaCore as { ModelType?: Record<string, string> }).ModelType ?? {};
+const TEXT_NANO_MODEL_TYPE = (CORE_MODEL_TYPES.TEXT_NANO ??
+  "TEXT_NANO") as string;
+const TEXT_MEDIUM_MODEL_TYPE = (CORE_MODEL_TYPES.TEXT_MEDIUM ??
+  "TEXT_MEDIUM") as string;
+const TEXT_SMALL_MODEL_TYPE = (CORE_MODEL_TYPES.TEXT_SMALL ??
+  "TEXT_SMALL") as string;
+const TEXT_LARGE_MODEL_TYPE = (CORE_MODEL_TYPES.TEXT_LARGE ??
+  "TEXT_LARGE") as string;
+const TEXT_MEGA_MODEL_TYPE = (CORE_MODEL_TYPES.TEXT_MEGA ??
+  "TEXT_MEGA") as string;
 const RESPONSE_HANDLER_MODEL_TYPE = (CORE_MODEL_TYPES.RESPONSE_HANDLER ??
   "RESPONSE_HANDLER") as string;
-const ACTION_PLANNER_MODEL_TYPE = (CORE_MODEL_TYPES.ACTION_PLANNER ?? "ACTION_PLANNER") as string;
+const ACTION_PLANNER_MODEL_TYPE = (CORE_MODEL_TYPES.ACTION_PLANNER ??
+  "ACTION_PLANNER") as string;
 
 type ChatAttachment = {
   data: string | Uint8Array | URL;
@@ -53,7 +60,10 @@ function buildPromptParts(prompt: string, attachments?: ChatAttachment[]) {
       continue;
     }
 
-    if (typeof attachment.data === "string" && /^https?:\/\//i.test(attachment.data)) {
+    if (
+      typeof attachment.data === "string" &&
+      /^https?:\/\//i.test(attachment.data)
+    ) {
       parts.push({
         fileData: {
           mimeType: attachment.mediaType,
@@ -64,7 +74,9 @@ function buildPromptParts(prompt: string, attachments?: ChatAttachment[]) {
     }
 
     if (typeof attachment.data === "string") {
-      const dataUrlMatch = attachment.data.match(/^data:([^;,]+);base64,(.+)$/i);
+      const dataUrlMatch = attachment.data.match(
+        /^data:([^;,]+);base64,(.+)$/i,
+      );
       parts.push({
         inlineData: {
           mimeType: dataUrlMatch?.[1] ?? attachment.mediaType,
@@ -85,7 +97,10 @@ function buildPromptParts(prompt: string, attachments?: ChatAttachment[]) {
   return parts;
 }
 
-function getModelNameForType(runtime: IAgentRuntime, modelType: string): string {
+function getModelNameForType(
+  runtime: IAgentRuntime,
+  modelType: string,
+): string {
   switch (modelType) {
     case TEXT_NANO_MODEL_TYPE:
       return getNanoModel(runtime);
@@ -114,7 +129,7 @@ export async function handleTextSmall(
     maxTokens = 8192,
     temperature = 0.7,
     attachments,
-  }: GenerateTextParamsWithAttachments
+  }: GenerateTextParamsWithAttachments,
 ): Promise<string> {
   const genAI = createGoogleGenAI(runtime);
   if (!genAI) {
@@ -157,7 +172,9 @@ export async function handleTextSmall(
 
     return text;
   } catch (error) {
-    logger.error(`[TEXT_SMALL] Error: ${error instanceof Error ? error.message : String(error)}`);
+    logger.error(
+      `[TEXT_SMALL] Error: ${error instanceof Error ? error.message : String(error)}`,
+    );
     throw error;
   }
 }
@@ -170,7 +187,7 @@ export async function handleTextLarge(
     maxTokens = 8192,
     temperature = 0.7,
     attachments,
-  }: GenerateTextParamsWithAttachments
+  }: GenerateTextParamsWithAttachments,
 ): Promise<string> {
   const genAI = createGoogleGenAI(runtime);
   if (!genAI) {
@@ -213,42 +230,44 @@ export async function handleTextLarge(
 
     return text;
   } catch (error) {
-    logger.error(`[TEXT_LARGE] Error: ${error instanceof Error ? error.message : String(error)}`);
+    logger.error(
+      `[TEXT_LARGE] Error: ${error instanceof Error ? error.message : String(error)}`,
+    );
     throw error;
   }
 }
 
 export async function handleTextNano(
   runtime: IAgentRuntime,
-  params: GenerateTextParamsWithAttachments
+  params: GenerateTextParamsWithAttachments,
 ): Promise<string> {
   return handleTextWithType(runtime, TEXT_NANO_MODEL_TYPE, params);
 }
 
 export async function handleTextMedium(
   runtime: IAgentRuntime,
-  params: GenerateTextParamsWithAttachments
+  params: GenerateTextParamsWithAttachments,
 ): Promise<string> {
   return handleTextWithType(runtime, TEXT_MEDIUM_MODEL_TYPE, params);
 }
 
 export async function handleTextMega(
   runtime: IAgentRuntime,
-  params: GenerateTextParamsWithAttachments
+  params: GenerateTextParamsWithAttachments,
 ): Promise<string> {
   return handleTextWithType(runtime, TEXT_MEGA_MODEL_TYPE, params);
 }
 
 export async function handleResponseHandler(
   runtime: IAgentRuntime,
-  params: GenerateTextParamsWithAttachments
+  params: GenerateTextParamsWithAttachments,
 ): Promise<string> {
   return handleTextWithType(runtime, RESPONSE_HANDLER_MODEL_TYPE, params);
 }
 
 export async function handleActionPlanner(
   runtime: IAgentRuntime,
-  params: GenerateTextParamsWithAttachments
+  params: GenerateTextParamsWithAttachments,
 ): Promise<string> {
   return handleTextWithType(runtime, ACTION_PLANNER_MODEL_TYPE, params);
 }
@@ -262,7 +281,7 @@ async function handleTextWithType(
     maxTokens = 8192,
     temperature = 0.7,
     attachments,
-  }: GenerateTextParamsWithAttachments
+  }: GenerateTextParamsWithAttachments,
 ): Promise<string> {
   const genAI = createGoogleGenAI(runtime);
   if (!genAI) {
@@ -305,7 +324,9 @@ async function handleTextWithType(
 
     return text;
   } catch (error) {
-    logger.error(`[${modelType}] Error: ${error instanceof Error ? error.message : String(error)}`);
+    logger.error(
+      `[${modelType}] Error: ${error instanceof Error ? error.message : String(error)}`,
+    );
     throw error;
   }
 }

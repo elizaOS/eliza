@@ -541,7 +541,7 @@ describe("Additional service edge cases", () => {
     const created = session1.updatedAt;
 
     // Small delay to ensure different timestamps
-    const reveal = service.getNextReveal("e1", "r1");
+    const _reveal = service.getNextReveal("e1", "r1");
     const session2 = service.getSession("e1", "r1")!;
     expect(session2.updatedAt).toBeGreaterThanOrEqual(created);
   });

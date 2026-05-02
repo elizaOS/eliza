@@ -2,13 +2,12 @@
  * Tests for the RLM trajectory integration module.
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { RLMClient } from "../client";
-import { estimateCost } from "../cost";
 import type { CostEstimate } from "../cost";
-import { RLMTrajectoryIntegration, inferWithLogging } from "../trajectory-integration";
 import type { CostSummary, TrajectoryWithCosts } from "../trajectory-integration";
+import { inferWithLogging, RLMTrajectoryIntegration } from "../trajectory-integration";
 
 // ============================================================================
 // Helpers
@@ -203,7 +202,11 @@ describe("RLMTrajectoryIntegration", () => {
       const step2 = integration.startInferenceStep("traj-1");
       integration.logCost(
         step2,
-        sampleCost({ inputTokens: 200, outputTokens: 100, totalCostUsd: 0.009 }),
+        sampleCost({
+          inputTokens: 200,
+          outputTokens: 100,
+          totalCostUsd: 0.009,
+        }),
       );
 
       const summary: CostSummary = integration.getCostSummary("traj-1");

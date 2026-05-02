@@ -86,7 +86,10 @@ describe("elizacloud responses-backed text/object models", () => {
     );
 
     const request = JSON.parse(lastRequestBody) as {
-      input: Array<{ role: string; content: Array<{ type: string; text: string }> }>;
+      input: Array<{
+        role: string;
+        content: Array<{ type: string; text: string }>;
+      }>;
       temperature?: number;
     };
 
@@ -199,7 +202,10 @@ describe("elizacloud responses-backed text/object models", () => {
     );
 
     const request = JSON.parse(lastRequestBody) as {
-      input: Array<{ role: string; content: Array<{ type: string; text: string }> }>;
+      input: Array<{
+        role: string;
+        content: Array<{ type: string; text: string }>;
+      }>;
     };
 
     expect(request.input).toEqual([

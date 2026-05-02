@@ -244,16 +244,32 @@ export class PancakeSwapV3LpService extends Service implements IEvmLpService {
 
       const [symbol0, decimals0, symbol1, decimals1] = await Promise.all([
         client
-          .readContract({ address: token0 as Address, abi: ERC20_ABI, functionName: "symbol" })
+          .readContract({
+            address: token0 as Address,
+            abi: ERC20_ABI,
+            functionName: "symbol",
+          })
           .catch(() => "UNKNOWN"),
         client
-          .readContract({ address: token0 as Address, abi: ERC20_ABI, functionName: "decimals" })
+          .readContract({
+            address: token0 as Address,
+            abi: ERC20_ABI,
+            functionName: "decimals",
+          })
           .catch(() => 18),
         client
-          .readContract({ address: token1 as Address, abi: ERC20_ABI, functionName: "symbol" })
+          .readContract({
+            address: token1 as Address,
+            abi: ERC20_ABI,
+            functionName: "symbol",
+          })
           .catch(() => "UNKNOWN"),
         client
-          .readContract({ address: token1 as Address, abi: ERC20_ABI, functionName: "decimals" })
+          .readContract({
+            address: token1 as Address,
+            abi: ERC20_ABI,
+            functionName: "decimals",
+          })
           .catch(() => 18),
       ]);
 
@@ -295,7 +311,10 @@ export class PancakeSwapV3LpService extends Service implements IEvmLpService {
 
     const addresses = PANCAKESWAP_V3_ADDRESSES[params.chainId];
     if (!addresses) {
-      return { success: false, error: "PancakeSwap V3 not deployed on this chain" };
+      return {
+        success: false,
+        error: "PancakeSwap V3 not deployed on this chain",
+      };
     }
 
     try {
@@ -391,11 +410,17 @@ export class PancakeSwapV3LpService extends Service implements IEvmLpService {
 
     const addresses = PANCAKESWAP_V3_ADDRESSES[params.chainId];
     if (!addresses) {
-      return { success: false, error: "PancakeSwap V3 not deployed on this chain" };
+      return {
+        success: false,
+        error: "PancakeSwap V3 not deployed on this chain",
+      };
     }
 
     if (!params.tokenId) {
-      return { success: false, error: "Position token ID required for PancakeSwap V3" };
+      return {
+        success: false,
+        error: "Position token ID required for PancakeSwap V3",
+      };
     }
 
     try {
@@ -449,7 +474,9 @@ export class PancakeSwapV3LpService extends Service implements IEvmLpService {
       });
 
       const collectHash = await walletClient.writeContract(collectRequest);
-      const receipt = await publicClient.waitForTransactionReceipt({ hash: collectHash });
+      const receipt = await publicClient.waitForTransactionReceipt({
+        hash: collectHash,
+      });
 
       if (params.percentageToRemove === 100 || !params.percentageToRemove) {
         try {
@@ -537,16 +564,32 @@ export class PancakeSwapV3LpService extends Service implements IEvmLpService {
 
       const [symbol0, decimals0, symbol1, decimals1] = await Promise.all([
         client
-          .readContract({ address: position.token0, abi: ERC20_ABI, functionName: "symbol" })
+          .readContract({
+            address: position.token0,
+            abi: ERC20_ABI,
+            functionName: "symbol",
+          })
           .catch(() => "UNKNOWN"),
         client
-          .readContract({ address: position.token0, abi: ERC20_ABI, functionName: "decimals" })
+          .readContract({
+            address: position.token0,
+            abi: ERC20_ABI,
+            functionName: "decimals",
+          })
           .catch(() => 18),
         client
-          .readContract({ address: position.token1, abi: ERC20_ABI, functionName: "symbol" })
+          .readContract({
+            address: position.token1,
+            abi: ERC20_ABI,
+            functionName: "symbol",
+          })
           .catch(() => "UNKNOWN"),
         client
-          .readContract({ address: position.token1, abi: ERC20_ABI, functionName: "decimals" })
+          .readContract({
+            address: position.token1,
+            abi: ERC20_ABI,
+            functionName: "decimals",
+          })
           .catch(() => 18),
       ]);
 

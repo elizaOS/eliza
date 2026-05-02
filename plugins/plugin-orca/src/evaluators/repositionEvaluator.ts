@@ -6,7 +6,7 @@ import {
   State,
   HandlerCallback,
 } from '@elizaos/core';
-import { extractAndValidateConfiguration } from '../../actions/orca/managePositions';
+import { extractAndValidateConfiguration } from '../actions/managePositions';
 
 export const managePositionActionRetriggerEvaluator: Evaluator = {
   name: 'DEGEN_LP_REPOSITION_EVALUATOR',

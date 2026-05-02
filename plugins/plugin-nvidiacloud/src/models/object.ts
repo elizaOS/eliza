@@ -1,11 +1,14 @@
-import type { IAgentRuntime, ObjectGenerationParams } from '@elizaos/core';
-import { logger, ModelType } from '@elizaos/core';
-import { generateObject, jsonSchema, type LanguageModel } from 'ai';
-import type { JSONSchema7 } from 'json-schema';
-import { createNvidiaOpenAI } from '../providers/nvidia';
-import { getLargeModel, getSmallModel } from '../utils/config';
-import { emitModelUsageEvent } from '../utils/events';
-import { getJsonRepairFunction, handleObjectGenerationError } from '../utils/helpers';
+import type { IAgentRuntime, ObjectGenerationParams } from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
+import { generateObject, jsonSchema, type LanguageModel } from "ai";
+import type { JSONSchema7 } from "json-schema";
+import { createNvidiaOpenAI } from "../providers/nvidia";
+import { getLargeModel, getSmallModel } from "../utils/config";
+import { emitModelUsageEvent } from "../utils/events";
+import {
+  getJsonRepairFunction,
+  handleObjectGenerationError,
+} from "../utils/helpers";
 
 async function generateObjectWithModel(
   runtime: IAgentRuntime,
@@ -14,8 +17,11 @@ async function generateObjectWithModel(
 ): Promise<Record<string, unknown>> {
   const client = createNvidiaOpenAI(runtime);
   const modelName =
-    modelType === ModelType.OBJECT_SMALL ? getSmallModel(runtime) : getLargeModel(runtime);
-  const modelLabel = modelType === ModelType.OBJECT_SMALL ? 'OBJECT_SMALL' : 'OBJECT_LARGE';
+    modelType === ModelType.OBJECT_SMALL
+      ? getSmallModel(runtime)
+      : getLargeModel(runtime);
+  const modelLabel =
+    modelType === ModelType.OBJECT_SMALL ? "OBJECT_SMALL" : "OBJECT_LARGE";
 
   logger.log(`[NVIDIA NIM] ${modelLabel}: ${modelName}`);
   const temperature = params.temperature ?? 0.7;
@@ -23,8 +29,10 @@ async function generateObjectWithModel(
   try {
     const { object, usage } = await generateObject({
       model: client.chat(modelName) as LanguageModel,
-      ...(params.schema && { schema: jsonSchema(params.schema as JSONSchema7) }),
-      output: params.schema ? 'object' : 'no-schema',
+      ...(params.schema && {
+        schema: jsonSchema(params.schema as JSONSchema7),
+      }),
+      output: params.schema ? "object" : "no-schema",
       prompt: params.prompt,
       system: runtime.character.system ?? undefined,
       temperature,

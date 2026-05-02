@@ -6,8 +6,8 @@ import * as net from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { RLMClient } from "../client";
-import { RLMServer, createRLMServer } from "../server";
 import type { RLMServerResponse } from "../server";
+import { createRLMServer, RLMServer } from "../server";
 
 // ============================================================================
 // Helpers

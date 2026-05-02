@@ -17,13 +17,19 @@ export interface RuntimeSettings {
  * {@link RuntimeSettings} without depending on `@elizaos/core`.
  */
 export function toRuntimeSettings(runtime: {
-  getSetting(key: string): string | boolean | number | bigint | null | undefined;
+  getSetting(
+    key: string,
+  ): string | boolean | number | bigint | null | undefined;
 }): RuntimeSettings {
   return {
     getSetting(key: string): string | boolean | number | null | undefined {
       const v = runtime.getSetting(key);
       if (v === null || v === undefined) return v;
-      if (typeof v === "string" || typeof v === "boolean" || typeof v === "number") {
+      if (
+        typeof v === "string" ||
+        typeof v === "boolean" ||
+        typeof v === "number"
+      ) {
         return v;
       }
       if (typeof v === "bigint") return v.toString();
@@ -44,7 +50,8 @@ export function cloudServiceApisBaseUrl(
   const cloudApiKey = getSettingAsString(runtime, "ELIZAOS_CLOUD_API_KEY");
   if (cloudApiKey === null) return null;
   const cloudBaseRaw =
-    getSettingAsString(runtime, "ELIZAOS_CLOUD_BASE_URL") ?? CLOUD_BASE_FALLBACK;
+    getSettingAsString(runtime, "ELIZAOS_CLOUD_BASE_URL") ??
+    CLOUD_BASE_FALLBACK;
   const cloudBase = stripTrailingSlashes(cloudBaseRaw);
   const svc = service.replace(/^\/+|\/+$/g, "");
   return {

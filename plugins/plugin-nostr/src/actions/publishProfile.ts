@@ -55,7 +55,7 @@ export const publishProfile: Action = {
   ): Promise<ActionResult> => {
     const nostrService = runtime.getService<NostrService>(NOSTR_SERVICE_NAME);
 
-    if (!nostrService || !nostrService.isConnected()) {
+    if (!nostrService?.isConnected()) {
       if (callback) {
         callback({ text: "Nostr service is not available.", source: "nostr" });
       }

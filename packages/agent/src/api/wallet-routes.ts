@@ -1151,8 +1151,9 @@ export async function handleWalletRoutes(
     return true;
   }
 
-  const approvalDecision =
-    /^\/api\/wallet\/approvals\/([^/]+)\/decision$/.exec(pathname);
+  const approvalDecision = /^\/api\/wallet\/approvals\/([^/]+)\/decision$/.exec(
+    pathname,
+  );
   if (method === "POST" && approvalDecision) {
     error(
       res,

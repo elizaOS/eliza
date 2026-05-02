@@ -33,7 +33,11 @@ describe("EXECUTE_ROBLOX_ACTION parsing", () => {
       id: uuidv4() as UUID,
       entityId: uuidv4() as UUID,
       roomId: uuidv4() as UUID,
-      content: { text: "move the npc to spawn", source: "test", channelType: ChannelType.DM },
+      content: {
+        text: "move the npc to spawn",
+        source: "test",
+        channelType: ChannelType.DM,
+      },
     });
 
     await executeGameAction.handler(runtime as never, msg, undefined, {}, undefined);
@@ -54,7 +58,11 @@ describe("EXECUTE_ROBLOX_ACTION parsing", () => {
       id: uuidv4() as UUID,
       entityId: uuidv4() as UUID,
       roomId: uuidv4() as UUID,
-      content: { text: "move to (1, 2, 3)", source: "test", channelType: ChannelType.DM },
+      content: {
+        text: "move to (1, 2, 3)",
+        source: "test",
+        channelType: ChannelType.DM,
+      },
     });
 
     await executeGameAction.handler(runtime as never, msg, undefined, {}, undefined);

@@ -3,7 +3,9 @@ import type { IAgentRuntime, ObjectGenerationParams, Plugin } from "@elizaos/cor
 import { type GenerateTextParams, logger, ModelType } from "@elizaos/core";
 import { APICallError, generateObject, generateText } from "ai";
 
-const _globalThis = globalThis as typeof globalThis & { AI_SDK_LOG_WARNINGS?: boolean };
+const _globalThis = globalThis as typeof globalThis & {
+  AI_SDK_LOG_WARNINGS?: boolean;
+};
 _globalThis.AI_SDK_LOG_WARNINGS ??= false;
 const DEFAULT_SMALL_MODEL = "openai/gpt-oss-20b";
 const DEFAULT_LARGE_MODEL = "openai/gpt-oss-120b";
@@ -514,7 +516,12 @@ export const groqPlugin: Plugin = {
           Authorization: `Bearer ${typeof apiKey === "string" ? apiKey : ""}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ model, voice, input: text, response_format: responseFormat }),
+        body: JSON.stringify({
+          model,
+          voice,
+          input: text,
+          response_format: responseFormat,
+        }),
       });
 
       if (!response.ok) {

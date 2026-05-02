@@ -230,7 +230,10 @@ describe("secrets-manager logins routes", () => {
       `${harness.baseUrl}/api/secrets/logins/reveal?${params.toString()}`,
     );
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { ok: boolean; login: UnifiedLoginReveal };
+    const body = (await res.json()) as {
+      ok: boolean;
+      login: UnifiedLoginReveal;
+    };
     expect(body.login.password).toBe("hunter2");
     expect(body.login.username).toBe("alice");
     expect(body.login.source).toBe("in-house");

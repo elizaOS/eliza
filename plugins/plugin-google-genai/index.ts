@@ -30,20 +30,30 @@ import { getApiKey } from "./utils/config";
 export type { PluginConfig } from "./init";
 export * from "./types";
 
-const CORE_MODEL_TYPES = (ElizaCore as { ModelType?: Record<string, string> }).ModelType ?? {};
-const TEXT_NANO_MODEL_TYPE = (CORE_MODEL_TYPES.TEXT_NANO ?? "TEXT_NANO") as string;
-const TEXT_MEDIUM_MODEL_TYPE = (CORE_MODEL_TYPES.TEXT_MEDIUM ?? "TEXT_MEDIUM") as string;
-const TEXT_SMALL_MODEL_TYPE = (CORE_MODEL_TYPES.TEXT_SMALL ?? "TEXT_SMALL") as string;
-const TEXT_LARGE_MODEL_TYPE = (CORE_MODEL_TYPES.TEXT_LARGE ?? "TEXT_LARGE") as string;
-const TEXT_EMBEDDING_MODEL_TYPE = (CORE_MODEL_TYPES.TEXT_EMBEDDING ?? "TEXT_EMBEDDING") as string;
+const CORE_MODEL_TYPES =
+  (ElizaCore as { ModelType?: Record<string, string> }).ModelType ?? {};
+const TEXT_NANO_MODEL_TYPE = (CORE_MODEL_TYPES.TEXT_NANO ??
+  "TEXT_NANO") as string;
+const TEXT_MEDIUM_MODEL_TYPE = (CORE_MODEL_TYPES.TEXT_MEDIUM ??
+  "TEXT_MEDIUM") as string;
+const TEXT_SMALL_MODEL_TYPE = (CORE_MODEL_TYPES.TEXT_SMALL ??
+  "TEXT_SMALL") as string;
+const TEXT_LARGE_MODEL_TYPE = (CORE_MODEL_TYPES.TEXT_LARGE ??
+  "TEXT_LARGE") as string;
+const TEXT_EMBEDDING_MODEL_TYPE = (CORE_MODEL_TYPES.TEXT_EMBEDDING ??
+  "TEXT_EMBEDDING") as string;
 const IMAGE_DESCRIPTION_MODEL_TYPE = (CORE_MODEL_TYPES.IMAGE_DESCRIPTION ??
   "IMAGE_DESCRIPTION") as string;
-const OBJECT_SMALL_MODEL_TYPE = (CORE_MODEL_TYPES.OBJECT_SMALL ?? "OBJECT_SMALL") as string;
-const OBJECT_LARGE_MODEL_TYPE = (CORE_MODEL_TYPES.OBJECT_LARGE ?? "OBJECT_LARGE") as string;
-const TEXT_MEGA_MODEL_TYPE = (CORE_MODEL_TYPES.TEXT_MEGA ?? "TEXT_MEGA") as string;
+const OBJECT_SMALL_MODEL_TYPE = (CORE_MODEL_TYPES.OBJECT_SMALL ??
+  "OBJECT_SMALL") as string;
+const OBJECT_LARGE_MODEL_TYPE = (CORE_MODEL_TYPES.OBJECT_LARGE ??
+  "OBJECT_LARGE") as string;
+const TEXT_MEGA_MODEL_TYPE = (CORE_MODEL_TYPES.TEXT_MEGA ??
+  "TEXT_MEGA") as string;
 const RESPONSE_HANDLER_MODEL_TYPE = (CORE_MODEL_TYPES.RESPONSE_HANDLER ??
   "RESPONSE_HANDLER") as string;
-const ACTION_PLANNER_MODEL_TYPE = (CORE_MODEL_TYPES.ACTION_PLANNER ?? "ACTION_PLANNER") as string;
+const ACTION_PLANNER_MODEL_TYPE = (CORE_MODEL_TYPES.ACTION_PLANNER ??
+  "ACTION_PLANNER") as string;
 
 const pluginTests = [
   {
@@ -78,7 +88,7 @@ const pluginTests = [
             }
           } catch (error) {
             logger.error(
-              `Error in test_text_embedding: ${error instanceof Error ? error.message : String(error)}`
+              `Error in test_text_embedding: ${error instanceof Error ? error.message : String(error)}`,
             );
             throw error;
           }
@@ -97,7 +107,7 @@ const pluginTests = [
             logger.log("Generated with TEXT_SMALL:", text);
           } catch (error) {
             logger.error(
-              `Error in test_text_small: ${error instanceof Error ? error.message : String(error)}`
+              `Error in test_text_small: ${error instanceof Error ? error.message : String(error)}`,
             );
             throw error;
           }
@@ -113,10 +123,13 @@ const pluginTests = [
             if (text.length === 0) {
               throw new Error("Failed to generate text");
             }
-            logger.log("Generated with TEXT_LARGE:", `${text.substring(0, 100)}...`);
+            logger.log(
+              "Generated with TEXT_LARGE:",
+              `${text.substring(0, 100)}...`,
+            );
           } catch (error) {
             logger.error(
-              `Error in test_text_large: ${error instanceof Error ? error.message : String(error)}`
+              `Error in test_text_large: ${error instanceof Error ? error.message : String(error)}`,
             );
             throw error;
           }
@@ -128,7 +141,7 @@ const pluginTests = [
           try {
             const result = await runtime.useModel(
               ModelType.IMAGE_DESCRIPTION,
-              "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1c/Vitalik_Buterin_TechCrunch_London_2015_%28cropped%29.jpg/537px-Vitalik_Buterin_TechCrunch_London_2015_%28cropped%29.jpg"
+              "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1c/Vitalik_Buterin_TechCrunch_London_2015_%28cropped%29.jpg/537px-Vitalik_Buterin_TechCrunch_London_2015_%28cropped%29.jpg",
             );
 
             if (
@@ -139,11 +152,13 @@ const pluginTests = [
             ) {
               logger.log("Image description:", JSON.stringify(result));
             } else {
-              logger.error(`Invalid image description result format: ${JSON.stringify(result)}`);
+              logger.error(
+                `Invalid image description result format: ${JSON.stringify(result)}`,
+              );
             }
           } catch (error) {
             logger.error(
-              `Error in test_image_description: ${error instanceof Error ? error.message : String(error)}`
+              `Error in test_image_description: ${error instanceof Error ? error.message : String(error)}`,
             );
             throw error;
           }
@@ -175,7 +190,7 @@ const pluginTests = [
             }
           } catch (error) {
             logger.error(
-              `Error in test_object_generation: ${error instanceof Error ? error.message : String(error)}`
+              `Error in test_object_generation: ${error instanceof Error ? error.message : String(error)}`,
             );
             throw error;
           }
@@ -232,77 +247,77 @@ export const googleGenAIPlugin: Plugin = {
   models: {
     [TEXT_NANO_MODEL_TYPE]: async (
       runtime: IAgentRuntime,
-      params: GenerateTextParams
+      params: GenerateTextParams,
     ): Promise<string> => {
       return handleTextNano(runtime, params);
     },
 
     [TEXT_MEDIUM_MODEL_TYPE]: async (
       runtime: IAgentRuntime,
-      params: GenerateTextParams
+      params: GenerateTextParams,
     ): Promise<string> => {
       return handleTextMedium(runtime, params);
     },
 
     [TEXT_SMALL_MODEL_TYPE]: async (
       runtime: IAgentRuntime,
-      params: GenerateTextParams
+      params: GenerateTextParams,
     ): Promise<string> => {
       return handleTextSmall(runtime, params);
     },
 
     [TEXT_LARGE_MODEL_TYPE]: async (
       runtime: IAgentRuntime,
-      params: GenerateTextParams
+      params: GenerateTextParams,
     ): Promise<string> => {
       return handleTextLarge(runtime, params);
     },
 
     [TEXT_MEGA_MODEL_TYPE]: async (
       runtime: IAgentRuntime,
-      params: GenerateTextParams
+      params: GenerateTextParams,
     ): Promise<string> => {
       return handleTextMega(runtime, params);
     },
 
     [RESPONSE_HANDLER_MODEL_TYPE]: async (
       runtime: IAgentRuntime,
-      params: GenerateTextParams
+      params: GenerateTextParams,
     ): Promise<string> => {
       return handleResponseHandler(runtime, params);
     },
 
     [ACTION_PLANNER_MODEL_TYPE]: async (
       runtime: IAgentRuntime,
-      params: GenerateTextParams
+      params: GenerateTextParams,
     ): Promise<string> => {
       return handleActionPlanner(runtime, params);
     },
 
     [TEXT_EMBEDDING_MODEL_TYPE]: async (
       runtime: IAgentRuntime,
-      params: TextEmbeddingParams | string | null
+      params: TextEmbeddingParams | string | null,
     ): Promise<number[]> => {
       return handleTextEmbedding(runtime, params);
     },
 
     [IMAGE_DESCRIPTION_MODEL_TYPE]: async (
       runtime: IAgentRuntime,
-      params: ImageDescriptionParams | string
+      params: ImageDescriptionParams | string,
     ): Promise<{ title: string; description: string }> => {
       return handleImageDescription(runtime, params);
     },
 
     [OBJECT_SMALL_MODEL_TYPE]: async (
       runtime: IAgentRuntime,
-      params: ObjectGenerationParams
+      params: ObjectGenerationParams,
     ): Promise<Record<string, string | number | boolean | null>> => {
       return handleObjectSmall(runtime, params);
     },
 
     [OBJECT_LARGE_MODEL_TYPE]: async (
       runtime: IAgentRuntime,
-      params: ObjectGenerationParams
+      params: ObjectGenerationParams,
     ): Promise<Record<string, string | number | boolean | null>> => {
       return handleObjectLarge(runtime, params);
     },

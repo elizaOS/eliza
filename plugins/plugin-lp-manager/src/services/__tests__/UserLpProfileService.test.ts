@@ -240,9 +240,15 @@ describe("UserLpProfileService with In-Memory Storage", () => {
   describe("getAllProfilesWithAutoRebalanceEnabled", () => {
     it("should fetch all profiles and filter them correctly", async () => {
       // Create profiles with different auto-rebalance settings
-      await profileService.ensureProfile("userEnabled", "pk1", "sk1", { enabled: true });
-      await profileService.ensureProfile("userDisabled", "pk2", "sk2", { enabled: false });
-      await profileService.ensureProfile("userEnabled2", "pk3", "sk3", { enabled: true });
+      await profileService.ensureProfile("userEnabled", "pk1", "sk1", {
+        enabled: true,
+      });
+      await profileService.ensureProfile("userDisabled", "pk2", "sk2", {
+        enabled: false,
+      });
+      await profileService.ensureProfile("userEnabled2", "pk3", "sk3", {
+        enabled: true,
+      });
 
       const result = await profileService.getAllProfilesWithAutoRebalanceEnabled();
 
@@ -255,8 +261,12 @@ describe("UserLpProfileService with In-Memory Storage", () => {
     });
 
     it("should return empty array when no profiles have auto-rebalance enabled", async () => {
-      await profileService.ensureProfile("user1", "pk1", "sk1", { enabled: false });
-      await profileService.ensureProfile("user2", "pk2", "sk2", { enabled: false });
+      await profileService.ensureProfile("user1", "pk1", "sk1", {
+        enabled: false,
+      });
+      await profileService.ensureProfile("user2", "pk2", "sk2", {
+        enabled: false,
+      });
 
       const result = await profileService.getAllProfilesWithAutoRebalanceEnabled();
       expect(result).toEqual([]);

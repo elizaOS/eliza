@@ -10,7 +10,7 @@ export function emitModelUsageEvent(
     promptTokens: number;
     completionTokens: number;
     totalTokens: number;
-  }
+  },
 ): void {
   void _prompt; // Not included in ModelEventPayload
   runtime.emitEvent(MODEL_USED_EVENT, {

@@ -83,8 +83,17 @@ export function buildChartOverviewPrompt(chart: NatalChart, feedback: FeedbackEn
   const sunData = getPlanetData("sun");
   const moonData = getPlanetData("moon");
 
-  const elementCounts: Record<string, number> = { fire: 0, earth: 0, air: 0, water: 0 };
-  const modalityCounts: Record<string, number> = { cardinal: 0, fixed: 0, mutable: 0 };
+  const elementCounts: Record<string, number> = {
+    fire: 0,
+    earth: 0,
+    air: 0,
+    water: 0,
+  };
+  const modalityCounts: Record<string, number> = {
+    cardinal: 0,
+    fixed: 0,
+    mutable: 0,
+  };
 
   const positions = [
     chart.sun,

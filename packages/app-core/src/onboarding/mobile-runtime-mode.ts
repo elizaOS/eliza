@@ -83,4 +83,3 @@ export function persistMobileRuntimeModeForServerTarget(
     dispatchAppEvent(MOBILE_RUNTIME_MODE_CHANGED_EVENT, { mode });
   }
 }
-

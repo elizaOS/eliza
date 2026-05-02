@@ -112,7 +112,9 @@ export class TaskStore implements Store {
 
   async update(id: UUID, task: Partial<Task>): Promise<void> {
     return this.ctx.withRetry(async () => {
-      const dbUpdateValues: Partial<typeof taskTable.$inferInsert> & { updatedAt: Date } = {
+      const dbUpdateValues: Partial<typeof taskTable.$inferInsert> & {
+        updatedAt: Date;
+      } = {
         updatedAt: new Date(),
       };
 

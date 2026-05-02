@@ -3771,7 +3771,9 @@ export async function startEliza(
         );
         await stewardEvmPreBoot(runtime);
       } catch (err) {
-        logger.debug(`[eliza] Steward EVM pre-boot skipped: ${formatError(err)}`);
+        logger.debug(
+          `[eliza] Steward EVM pre-boot skipped: ${formatError(err)}`,
+        );
       }
     }
 

@@ -76,7 +76,7 @@ export const sendMessage: Action = {
   ): Promise<ActionResult> => {
     const gchatService = runtime.getService<GoogleChatService>(GOOGLE_CHAT_SERVICE_NAME);
 
-    if (!gchatService || !gchatService.isConnected()) {
+    if (!gchatService?.isConnected()) {
       if (callback) {
         callback({
           text: "Google Chat service is not available.",
@@ -110,7 +110,7 @@ export const sendMessage: Action = {
       }
     }
 
-    if (!messageInfo || !messageInfo.text) {
+    if (!messageInfo?.text) {
       if (callback) {
         callback({
           text: "I couldn't understand what message you want me to send. Please try again.",

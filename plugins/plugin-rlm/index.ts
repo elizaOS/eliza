@@ -11,7 +11,7 @@
  */
 
 import type { GenerateTextParams, IAgentRuntime, Plugin } from "@elizaos/core";
-import { ModelType, logger } from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
 
 import { RLMClient, stubResult } from "./client";
 import type { RLMConfig } from "./types";
@@ -237,14 +237,14 @@ export const rlmPlugin: Plugin = {
 export default rlmPlugin;
 
 // Re-export types and client
-export { RLMClient, configFromEnv, stubResult } from "./client";
+export { configFromEnv, RLMClient, stubResult } from "./client";
 export type {
   GenerateTextParams,
   RLMConfig,
+  RLMInferOptions,
   RLMMessage,
   RLMMetadata,
   RLMResult,
-  RLMInferOptions,
   RLMStatusResponse,
 } from "./types";
 export { DEFAULT_CONFIG, ENV_VARS } from "./types";

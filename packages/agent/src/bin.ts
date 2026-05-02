@@ -23,6 +23,7 @@ import { registerAospLlamaLoader as __elizaAospLlamaLoader } from "./runtime/aos
 // which is enough for resolution but not for inclusion in some Bun.build
 // configurations). Mirror the `__elizaAospLlamaLoader` pattern.
 import { ensureAospLocalInferenceHandlers as __elizaAospLocalInferenceBootstrap } from "./runtime/aosp-local-inference-bootstrap.js";
+
 // Pull @elizaos/app-{wifi,contacts,phone}'s `/plugin` subpath into the
 // mobile bundle. Each plugin imports from `@elizaos/agent` (the barrel
 // that re-exports `runtime/eliza.ts`), so importing them HERE — after the

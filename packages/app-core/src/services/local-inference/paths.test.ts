@@ -3,9 +3,9 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   downloadsStagingDir,
+  elizaModelsDir,
   isWithinElizaRoot,
   localInferenceRoot,
-  elizaModelsDir,
   registryPath,
 } from "./paths";
 

@@ -6,18 +6,18 @@
  */
 
 import {
-	type CliContext,
-	defineCliCommand,
-	registerCliCommand,
+  type CliContext,
+  defineCliCommand,
+  registerCliCommand,
 } from "@elizaos/plugin-cli";
 import { registerAcpCli } from "./register.js";
 
 // Self-register at module load
 registerCliCommand(
-	defineCliCommand(
-		"acp",
-		"Agent Client Protocol (ACP) bridge and client commands",
-		(ctx: CliContext) => registerAcpCli(ctx),
-		{ priority: 50 },
-	),
+  defineCliCommand(
+    "acp",
+    "Agent Client Protocol (ACP) bridge and client commands",
+    (ctx: CliContext) => registerAcpCli(ctx),
+    { priority: 50 },
+  ),
 );

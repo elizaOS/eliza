@@ -121,7 +121,11 @@ function extractBirthInfo(text: string): ParsedBirthInfo | null {
   return { year, month, day, hour, minute };
 }
 
-function extractLocation(text: string): { latitude: number; longitude: number; timezone: number } {
+function extractLocation(text: string): {
+  latitude: number;
+  longitude: number;
+  timezone: number;
+} {
   const coordMatch = text.match(/(-?\d+\.?\d*)\s*[,/]\s*(-?\d+\.?\d*)/);
   if (coordMatch) {
     const lat = Number.parseFloat(coordMatch[1]);
@@ -179,7 +183,11 @@ export const astrologyReadingAction: Action = {
       const existingSession = service.getSession(message.entityId, message.roomId);
       if (existingSession) {
         logger.debug(
-          { entityId: message.entityId, roomId: message.roomId, type: existingSession.type },
+          {
+            entityId: message.entityId,
+            roomId: message.roomId,
+            type: existingSession.type,
+          },
           "ASTROLOGY_READING skipped: active session exists"
         );
         return false;
@@ -204,7 +212,10 @@ export const astrologyReadingAction: Action = {
     const service = runtime.getService<MysticismService>("MYSTICISM");
     if (!service) {
       logger.error("ASTROLOGY_READING handler: MysticismService not available");
-      return { success: false, text: "The mysticism service is not available." };
+      return {
+        success: false,
+        text: "The mysticism service is not available.",
+      };
     }
 
     const text = message.content.text ?? "";
@@ -262,7 +273,11 @@ export const astrologyReadingAction: Action = {
           sunSign,
           moonSign,
           ascendant: ascSign,
-          birthData: { year: birthData.year, month: birthData.month, day: birthData.day },
+          birthData: {
+            year: birthData.year,
+            month: birthData.month,
+            day: birthData.day,
+          },
         },
       };
     } catch (err) {
@@ -276,7 +291,9 @@ export const astrologyReadingAction: Action = {
     [
       {
         name: "{{user1}}",
-        content: { text: "Can you read my birth chart? I was born March 15, 1990 at 3:30 PM" },
+        content: {
+          text: "Can you read my birth chart? I was born March 15, 1990 at 3:30 PM",
+        },
       },
       {
         name: "{{agentName}}",
@@ -287,7 +304,10 @@ export const astrologyReadingAction: Action = {
       },
     ],
     [
-      { name: "{{user1}}", content: { text: "What's my horoscope? I'm a Leo" } },
+      {
+        name: "{{user1}}",
+        content: { text: "What's my horoscope? I'm a Leo" },
+      },
       {
         name: "{{agentName}}",
         content: {

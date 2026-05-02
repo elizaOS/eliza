@@ -4,67 +4,67 @@ import { parentPort } from "node:worker_threads";
  * Worker-safe logger that sends log messages to the main thread
  */
 export const logger = {
-  info: (message: string, ...args: unknown[]) => {
-    const logMessage = {
-      type: "log",
-      level: "info",
-      message,
-      args,
-      timestamp: new Date().toISOString(),
-    };
+	info: (message: string, ...args: unknown[]) => {
+		const logMessage = {
+			type: "log",
+			level: "info",
+			message,
+			args,
+			timestamp: new Date().toISOString(),
+		};
 
-    if (parentPort) {
-      parentPort.postMessage(logMessage);
-    } else {
-      console.log(`[INFO] ${message}`, ...args);
-    }
-  },
+		if (parentPort) {
+			parentPort.postMessage(logMessage);
+		} else {
+			console.log(`[INFO] ${message}`, ...args);
+		}
+	},
 
-  warn: (message: string, ...args: unknown[]) => {
-    const logMessage = {
-      type: "log",
-      level: "warn",
-      message,
-      args,
-      timestamp: new Date().toISOString(),
-    };
+	warn: (message: string, ...args: unknown[]) => {
+		const logMessage = {
+			type: "log",
+			level: "warn",
+			message,
+			args,
+			timestamp: new Date().toISOString(),
+		};
 
-    if (parentPort) {
-      parentPort.postMessage(logMessage);
-    } else {
-      console.warn(`[WARN] ${message}`, ...args);
-    }
-  },
+		if (parentPort) {
+			parentPort.postMessage(logMessage);
+		} else {
+			console.warn(`[WARN] ${message}`, ...args);
+		}
+	},
 
-  error: (message: string, ...args: unknown[]) => {
-    const logMessage = {
-      type: "log",
-      level: "error",
-      message,
-      args,
-      timestamp: new Date().toISOString(),
-    };
+	error: (message: string, ...args: unknown[]) => {
+		const logMessage = {
+			type: "log",
+			level: "error",
+			message,
+			args,
+			timestamp: new Date().toISOString(),
+		};
 
-    if (parentPort) {
-      parentPort.postMessage(logMessage);
-    } else {
-      console.error(`[ERROR] ${message}`, ...args);
-    }
-  },
+		if (parentPort) {
+			parentPort.postMessage(logMessage);
+		} else {
+			console.error(`[ERROR] ${message}`, ...args);
+		}
+	},
 
-  debug: (message: string, ...args: unknown[]) => {
-    const logMessage = {
-      type: "log",
-      level: "debug",
-      message,
-      args,
-      timestamp: new Date().toISOString(),
-    };
+	debug: (message: string, ...args: unknown[]) => {
+		const logMessage = {
+			type: "log",
+			level: "debug",
+			message,
+			args,
+			timestamp: new Date().toISOString(),
+		};
 
-    if (parentPort) {
-      parentPort.postMessage(logMessage);
-    } else {
-      console.debug(`[DEBUG] ${message}`, ...args);
-    }
-  },
+		if (parentPort) {
+			parentPort.postMessage(logMessage);
+		} else {
+			console.debug(`[DEBUG] ${message}`, ...args);
+		}
+	},
 };

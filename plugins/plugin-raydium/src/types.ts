@@ -4,8 +4,8 @@ import {
   PoolInfo,
   TokenBalance,
   TransactionResult,
-} from '@elizaos/core';
-import { Keypair as SolanaKeypair } from '@solana/web3.js';
+} from "@elizaos/core";
+import { Keypair as SolanaKeypair } from "@solana/web3.js";
 
 // ===== Added Common LP Types =====
 export type VaultKeypair = {
@@ -64,4 +64,7 @@ export type TrackedLpPosition = {
   metadata?: Record<string, any>;
 };
 
-export type TrackedLpPositionInput = Omit<TrackedLpPosition, 'createdAt' | 'updatedAt'>;
+export type TrackedLpPositionInput = Omit<
+  TrackedLpPosition,
+  "createdAt" | "updatedAt"
+>;

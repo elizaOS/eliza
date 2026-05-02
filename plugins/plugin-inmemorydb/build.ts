@@ -3,7 +3,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { generateDts, runBuild } from "../../../eliza/build-utils";
+import { generateDts, runBuild } from "../../packages/core/build";
 
 const PLUGIN_ROOT = resolve(dirname(import.meta.path), "..");
 

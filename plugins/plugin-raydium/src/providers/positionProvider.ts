@@ -19,11 +19,18 @@ export interface FetchedPositionStatistics {
 // TODO: The 'loadWallet' function is not defined in the current workspace.
 // This is likely due to an incomplete workspace setup. This declaration
 // is a temporary workaround.
-declare function loadWallet(runtime: IAgentRuntime, a: boolean): Promise<{ address: PublicKey }>;
+declare function loadWallet(
+  runtime: IAgentRuntime,
+  a: boolean,
+): Promise<{ address: PublicKey }>;
 
 export const positionProvider: Provider = {
   name: "raydium-lp-position-provider",
-  get: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<ProviderResult> => {
+  get: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+  ): Promise<ProviderResult> => {
     if (!state) {
       state = (await runtime.composeState(message)) as State;
     } else {
@@ -33,7 +40,7 @@ export const positionProvider: Provider = {
     }
     try {
       const { address: ownerAddress } = await loadWallet(runtime, false);
-      const rpcUrl = runtime.getSetting('SOLANA_RPC_URL');
+      const rpcUrl = runtime.getSetting("SOLANA_RPC_URL");
       if (!rpcUrl) {
         throw new Error("SOLANA_RPC_URL is not set in the agent's settings.");
       }
@@ -49,7 +56,7 @@ export const positionProvider: Provider = {
 
 const fetchPositions = async (
   connection: Connection,
-  ownerAddress: PublicKey
+  ownerAddress: PublicKey,
 ): Promise<FetchedPositionStatistics[]> => {
   try {
     // TODO: The following code is commented out because it depends on the
@@ -61,29 +68,29 @@ const fetchPositions = async (
     //   connection,
     //   ownerAddress
     // );
-    
+
     // const poolsMap = new Map<string, ClmmPoolInfo>();
-    
+
     // for (const position of positions) {
     //   if (!poolsMap.has(position.poolId.toString())) {
     //     const poolInfo = await Clmm.getPool(connection, position.poolId);
     //     poolsMap.set(position.poolId.toString(), poolInfo);
     //   }
     // }
-    
+
     // const fetchedPositionsStatistics: FetchedPositionStatistics[] =
     //   await Promise.all(
     //     positions.map(async (position) => {
     //       const pool = poolsMap.get(position.poolId.toString())!;
-          
+
     //       const currentPrice = pool.currentPrice;
     //       const positionLowerPrice = pool.tickArrayLower;
     //       const positionUpperPrice = pool.tickArrayUpper;
-          
+
     //       const inRange =
     //         position.tickLower <= pool.currentTickIndex &&
     //         pool.currentTickIndex <= position.tickUpper;
-          
+
     //       const positionCenterPrice =
     //         (positionLowerPrice + positionUpperPrice) / 2;
     //       const distanceCenterPositionFromPoolPriceBps =
@@ -93,7 +100,7 @@ const fetchPositions = async (
     //         (((positionUpperPrice - positionLowerPrice) / positionCenterPrice) *
     //           10000) /
     //         2;
-          
+
     //       return {
     //         poolAddress: position.poolId,
     //         positionNftMint: position.nftMint,
@@ -103,9 +110,9 @@ const fetchPositions = async (
     //       } as FetchedPositionStatistics;
     //     })
     //   );
-    
+
     // return fetchedPositionsStatistics;
-    
+
     return []; // Return empty array as a temporary workaround
   } catch (error) {
     elizaLogger.error("Error during fetching positions:", error);

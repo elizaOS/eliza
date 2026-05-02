@@ -14,7 +14,7 @@ function getEnvValue(key: string): string | undefined {
 export function getSetting(
   runtime: IAgentRuntime,
   key: string,
-  defaultValue?: string
+  defaultValue?: string,
 ): string | undefined {
   const runtimeValue = runtime.getSetting(key);
   if (runtimeValue !== undefined) {
@@ -97,7 +97,8 @@ export function getImageModel(runtime: IAgentRuntime): string {
 
 export function getEmbeddingModel(runtime: IAgentRuntime): string {
   return (
-    getSetting(runtime, "GOOGLE_EMBEDDING_MODEL", "text-embedding-004") ?? "text-embedding-004"
+    getSetting(runtime, "GOOGLE_EMBEDDING_MODEL", "text-embedding-004") ??
+    "text-embedding-004"
   );
 }
 

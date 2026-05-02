@@ -104,7 +104,7 @@ export const sendLocation: Action = {
   ): Promise<ActionResult> => {
     const lineService = runtime.getService(LINE_SERVICE_NAME) as unknown as LineService | undefined;
 
-    if (!lineService || !lineService.isConnected()) {
+    if (!lineService?.isConnected()) {
       if (callback) {
         callback({ text: "LINE service is not available.", source: "line" });
       }

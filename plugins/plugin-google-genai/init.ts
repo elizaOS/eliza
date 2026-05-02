@@ -13,7 +13,10 @@ export interface PluginConfig {
   readonly IMAGE_MODEL?: string;
 }
 
-export function initializeGoogleGenAI(_config: PluginConfig, runtime: IAgentRuntime): void {
+export function initializeGoogleGenAI(
+  _config: PluginConfig,
+  runtime: IAgentRuntime,
+): void {
   (async () => {
     try {
       const apiKey = getApiKey(runtime);
@@ -28,10 +31,12 @@ export function initializeGoogleGenAI(_config: PluginConfig, runtime: IAgentRunt
       for await (const model of modelList) {
         models.push(model);
       }
-      logger.log(`Google AI API key validated. Available models: ${models.length}`);
+      logger.log(
+        `Google AI API key validated. Available models: ${models.length}`,
+      );
     } catch (error) {
       logger.warn(
-        `Google AI configuration error: ${error instanceof Error ? error.message : String(error)}`
+        `Google AI configuration error: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   })();

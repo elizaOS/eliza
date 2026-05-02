@@ -8,8 +8,8 @@ import {
   generateMasterKey,
   inMemoryMasterKey,
   type RoutingConfig,
-  type VaultEntryMeta,
   type Vault,
+  type VaultEntryMeta,
 } from "@elizaos/vault";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { _resetSharedVaultForTesting } from "../services/vault-mirror";
@@ -81,7 +81,9 @@ describe("secrets-inventory routes", () => {
 
   it("GET /api/secrets/inventory returns meta-only entries (no values)", async () => {
     harness = await startHarness();
-    await vault.set("OPENROUTER_API_KEY", "sk-or-NEVERLEAK", { sensitive: true });
+    await vault.set("OPENROUTER_API_KEY", "sk-or-NEVERLEAK", {
+      sensitive: true,
+    });
     await vault.set("EVM_PRIVATE_KEY", "0xNEVERLEAK", { sensitive: true });
 
     const res = await fetch(`${harness.baseUrl}/api/secrets/inventory`);
@@ -145,14 +147,11 @@ describe("secrets-inventory routes", () => {
 
   it("PUT rejects unknown category", async () => {
     harness = await startHarness();
-    const res = await fetch(
-      `${harness.baseUrl}/api/secrets/inventory/X`,
-      {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ value: "v", category: "what-is-this" }),
-      },
-    );
+    const res = await fetch(`${harness.baseUrl}/api/secrets/inventory/X`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ value: "v", category: "what-is-this" }),
+    });
     expect(res.status).toBe(400);
   });
 
@@ -196,9 +195,7 @@ describe("secrets-inventory routes", () => {
 
   it("rejects reserved keys", async () => {
     harness = await startHarness();
-    const res = await fetch(
-      `${harness.baseUrl}/api/secrets/inventory/_meta.X`,
-    );
+    const res = await fetch(`${harness.baseUrl}/api/secrets/inventory/_meta.X`);
     expect(res.status).toBe(400);
   });
 
@@ -211,7 +208,11 @@ describe("secrets-inventory routes", () => {
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id: "work", label: "Work", value: "sk-or-work" }),
+        body: JSON.stringify({
+          id: "work",
+          label: "Work",
+          value: "sk-or-work",
+        }),
       },
     );
     expect(res.status).toBe(200);

@@ -9,9 +9,9 @@ import {
   asUUID,
   ChannelType,
   type World,
-} from '@elizaos/core';
-import { v4 as uuid } from 'uuid';
-import { strict as assert } from 'node:assert';
+} from "@elizaos/core";
+import { v4 as uuid } from "uuid";
+import { strict as assert } from "node:assert";
 
 /**
  * Sets up a standard scenario environment for an E2E test.
@@ -23,27 +23,27 @@ import { strict as assert } from 'node:assert';
  * @returns A promise that resolves to an object containing the created world, user, and room.
  */
 export async function setupScenario(
-  runtime: IAgentRuntime
+  runtime: IAgentRuntime,
 ): Promise<{ user: Entity; room: Room; world: World }> {
-  assert(runtime.agentId, 'Runtime must have an agentId to run a scenario');
+  assert(runtime.agentId, "Runtime must have an agentId to run a scenario");
 
   // 1. Create a test user entity first, so we can assign ownership
   const user: Entity = {
     id: asUUID(uuid()),
-    names: ['Test User'],
+    names: ["Test User"],
     agentId: runtime.agentId,
-    metadata: { type: 'user' },
+    metadata: { type: "user" },
   };
   await runtime.createEntity(user);
-  assert(user.id, 'Created user must have an id');
+  assert(user.id, "Created user must have an id");
 
   // 2. Create a World and assign the user as the owner.
   // This is critical for providers that check for ownership.
   const world: World = {
     id: asUUID(uuid()),
     agentId: runtime.agentId,
-    name: 'E2E Test World',
-    serverId: 'e2e-test-server',
+    name: "E2E Test World",
+    serverId: "e2e-test-server",
     metadata: {
       ownership: {
         ownerId: user.id,
@@ -55,9 +55,9 @@ export async function setupScenario(
   // 3. Create a test room associated with the world
   const room: Room = {
     id: asUUID(uuid()),
-    name: 'Test DM Room',
+    name: "Test DM Room",
     type: ChannelType.DM,
-    source: 'e2e-test',
+    source: "e2e-test",
     worldId: world.id,
     serverId: world.serverId,
   };
@@ -86,11 +86,11 @@ export function sendMessageAndWaitForResponse(
   runtime: IAgentRuntime,
   room: Room,
   user: Entity,
-  text: string
+  text: string,
 ): Promise<Content> {
   return new Promise((resolve) => {
-    assert(runtime.agentId, 'Runtime must have an agentId to send a message');
-    assert(user.id, 'User must have an id to send a message');
+    assert(runtime.agentId, "Runtime must have an agentId to send a message");
+    assert(user.id, "User must have an id to send a message");
 
     // Construct the message object, simulating an incoming message from a user
     const message: Memory = {

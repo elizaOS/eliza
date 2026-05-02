@@ -326,8 +326,9 @@ describe("SavedLoginsPanel", () => {
         const calls = fetchMock.mock.calls.filter(
           (c) =>
             (typeof c[0] === "string" ? c[0] : "") === "/api/secrets/logins" &&
-            ((c[1] as RequestInit | undefined)?.method ?? "GET")
-              .toUpperCase() === "GET",
+            (
+              (c[1] as RequestInit | undefined)?.method ?? "GET"
+            ).toUpperCase() === "GET",
         );
         // The current call is already in the list; >1 means this is
         // the post-save refresh.

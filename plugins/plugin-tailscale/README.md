@@ -5,7 +5,7 @@ Tailscale-backed implementations:
 
 - **Local backend (`LocalTailscaleService`)** — drives the locally-installed
   `tailscale` CLI (`tailscale serve` for tailnet-internal HTTPS, `tailscale
-  funnel` for public Internet exposure). The user must already be authenticated
+funnel` for public Internet exposure). The user must already be authenticated
   to a tailnet.
 - **Cloud backend (`CloudTailscaleService`)** — calls
   `POST /v1/apis/tunnels/tailscale/auth-key` on Eliza Cloud to mint a scoped
@@ -25,27 +25,27 @@ Both backends register under `serviceType = "tunnel"` and implement the same
 
 The plugin reads `TAILSCALE_BACKEND` from runtime settings:
 
-| Value            | Behavior                                                                                                                                                                  |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `local`          | Always register `LocalTailscaleService`.                                                                                                                                  |
-| `cloud`          | Always register `CloudTailscaleService`.                                                                                                                                  |
+| Value            | Behavior                                                                                                                                                                     |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `local`          | Always register `LocalTailscaleService`.                                                                                                                                     |
+| `cloud`          | Always register `CloudTailscaleService`.                                                                                                                                     |
 | `auto` (default) | Register `CloudTailscaleService` when Eliza Cloud is connected (`ELIZAOS_CLOUD_API_KEY` set + `ELIZAOS_CLOUD_ENABLED=true`); otherwise fall back to `LocalTailscaleService`. |
 
 `isCloudConnected` from `@elizaos/cloud-routing` is the source of truth.
 
 ## Settings
 
-| Key                                 | Default              | Notes                                                                                                                       |
-| ----------------------------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `TAILSCALE_BACKEND`                 | `auto`               | `local` / `cloud` / `auto`.                                                                                                 |
-| `TAILSCALE_AUTH_KEY`                | —                    | Optional pre-minted auth key for the local backend. Most users authenticate via `tailscale up` once and never set this.     |
-| `TAILSCALE_TAGS`                    | `tag:milady-tunnel`  | Comma-separated list of ACL tags applied to the cloud-minted ephemeral key.                                                 |
-| `TAILSCALE_FUNNEL`                  | `false`              | When truthy, use `tailscale funnel` (public Internet) instead of `tailscale serve` (tailnet-only).                          |
-| `TAILSCALE_DEFAULT_PORT`            | `3000`               | Used when no port is extracted from the user message.                                                                       |
-| `TAILSCALE_AUTH_KEY_EXPIRY_SECONDS` | `3600`               | Expiry hint passed to the cloud auth-key minter.                                                                            |
-| `ELIZAOS_CLOUD_API_KEY`             | —                    | Required for the cloud backend.                                                                                             |
-| `ELIZAOS_CLOUD_BASE_URL`            | `https://www.elizacloud.ai/api/v1` | Cloud base URL override.                                                                                  |
-| `ELIZAOS_CLOUD_ENABLED`             | `false`              | Required (truthy) for `auto` mode to pick the cloud backend.                                                                |
+| Key                                 | Default                            | Notes                                                                                                                   |
+| ----------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `TAILSCALE_BACKEND`                 | `auto`                             | `local` / `cloud` / `auto`.                                                                                             |
+| `TAILSCALE_AUTH_KEY`                | —                                  | Optional pre-minted auth key for the local backend. Most users authenticate via `tailscale up` once and never set this. |
+| `TAILSCALE_TAGS`                    | `tag:milady-tunnel`                | Comma-separated list of ACL tags applied to the cloud-minted ephemeral key.                                             |
+| `TAILSCALE_FUNNEL`                  | `false`                            | When truthy, use `tailscale funnel` (public Internet) instead of `tailscale serve` (tailnet-only).                      |
+| `TAILSCALE_DEFAULT_PORT`            | `3000`                             | Used when no port is extracted from the user message.                                                                   |
+| `TAILSCALE_AUTH_KEY_EXPIRY_SECONDS` | `3600`                             | Expiry hint passed to the cloud auth-key minter.                                                                        |
+| `ELIZAOS_CLOUD_API_KEY`             | —                                  | Required for the cloud backend.                                                                                         |
+| `ELIZAOS_CLOUD_BASE_URL`            | `https://www.elizacloud.ai/api/v1` | Cloud base URL override.                                                                                                |
+| `ELIZAOS_CLOUD_ENABLED`             | `false`                            | Required (truthy) for `auto` mode to pick the cloud backend.                                                            |
 
 ## Actions
 

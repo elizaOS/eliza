@@ -13,7 +13,7 @@ export const uniswapPlugin: Plugin = {
   },
 };
 
-export { UniswapV3LpService };
 export * from "./types.ts";
+export { UniswapV3LpService };
 
 export default uniswapPlugin;
