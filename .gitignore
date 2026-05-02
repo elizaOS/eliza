@@ -192,6 +192,9 @@ tasks/
 
 # Development database and tool directories
 **/data/
+# But cloud's frontend uses src/lib/data/ as legitimate source — un-ignore it
+!cloud/apps/frontend/src/lib/data/
+!cloud/apps/frontend/src/lib/data/**
 **/.roo/
 **/.roomodes/
 **/.taskmaster/
