@@ -114,6 +114,32 @@ import {
   resolveStylePresetByName,
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
+
+const ELIZAMAKER_MODULE: string = "@elizaos/app-elizamaker";
+const STEWARD_EVM_BRIDGE_MODULE: string =
+  "@elizaos/app-steward/services/steward-evm-bridge";
+
+type ElizaMakerModule = {
+  initializeOGCode?: () => void;
+};
+
+type StewardEvmBridgeModule = {
+  stewardEvmPreBoot?: (runtime: AgentRuntime) => Promise<void> | void;
+  stewardEvmPostBoot?: (runtime: AgentRuntime) => Promise<void> | void;
+};
+
+async function loadElizaMakerModule(): Promise<ElizaMakerModule> {
+  return (await import(
+    /* @vite-ignore */ ELIZAMAKER_MODULE
+  )) as ElizaMakerModule;
+}
+
+async function loadStewardEvmBridgeModule(): Promise<StewardEvmBridgeModule> {
+  return (await import(
+    /* @vite-ignore */ STEWARD_EVM_BRIDGE_MODULE
+  )) as StewardEvmBridgeModule;
+}
+
 import {
   debugLogResolvedContext,
   validateRuntimeContext,
@@ -3085,8 +3111,8 @@ export async function startEliza(
 
   // 2d-iii. OG tracking code initialization
   try {
-    const { initializeOGCode } = await import("@elizaos/app-elizamaker");
-    initializeOGCode();
+    const { initializeOGCode } = await loadElizaMakerModule();
+    initializeOGCode?.();
   } catch {
     // Silent — OG tracking is non-critical
   }
@@ -3772,10 +3798,8 @@ export async function startEliza(
 
   const initializeRuntimeServices = async (): Promise<void> => {
     try {
-      const { stewardEvmPreBoot } = await import(
-        "@elizaos/app-steward/services/steward-evm-bridge"
-      );
-      await stewardEvmPreBoot(runtime);
+      const { stewardEvmPreBoot } = await loadStewardEvmBridgeModule();
+      await stewardEvmPreBoot?.(runtime);
     } catch (err) {
       logger.debug(`[eliza] Steward EVM pre-boot skipped: ${formatError(err)}`);
     }
@@ -3863,10 +3887,8 @@ export async function startEliza(
     }
 
     try {
-      const { stewardEvmPostBoot } = await import(
-        "@elizaos/app-steward/services/steward-evm-bridge"
-      );
-      await stewardEvmPostBoot(runtime);
+      const { stewardEvmPostBoot } = await loadStewardEvmBridgeModule();
+      await stewardEvmPostBoot?.(runtime);
     } catch (err) {
       logger.debug(
         `[eliza] Steward EVM post-boot skipped: ${formatError(err)}`,
@@ -4220,10 +4242,9 @@ export async function startEliza(
             // non-fatal
           }
           try {
-            const { stewardEvmPreBoot: preBootHR } = await import(
-              "@elizaos/app-steward/services/steward-evm-bridge"
-            );
-            await preBootHR(newRuntime);
+            const { stewardEvmPreBoot: preBootHR } =
+              await loadStewardEvmBridgeModule();
+            await preBootHR?.(newRuntime);
           } catch {
             // non-fatal
           }
@@ -4247,10 +4268,9 @@ export async function startEliza(
           }
 
           try {
-            const { stewardEvmPostBoot: postBootHR } = await import(
-              "@elizaos/app-steward/services/steward-evm-bridge"
-            );
-            await postBootHR(newRuntime);
+            const { stewardEvmPostBoot: postBootHR } =
+              await loadStewardEvmBridgeModule();
+            await postBootHR?.(newRuntime);
           } catch {
             // non-fatal
           }
