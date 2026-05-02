@@ -530,14 +530,15 @@ export const getPairsByChainAction: Action = {
     const pairsList = pairs
       .slice(0, 5)
       .map((pair, i) => {
+        const txnsH24 = pair.txns?.h24;
         const metric =
           sortBy === "volume"
-            ? `Vol: ${service.formatUsdValue(pair.volume.h24)}`
+            ? `Vol: ${pair.volume?.h24 != null ? service.formatUsdValue(pair.volume.h24) : "N/A"}`
             : sortBy === "liquidity"
               ? `Liq: ${pair.liquidity?.usd ? service.formatUsdValue(pair.liquidity.usd) : "N/A"}`
               : sortBy === "priceChange"
-                ? `24h: ${service.formatPriceChange(pair.priceChange.h24)}`
-                : `Trades: ${pair.txns.h24.buys + pair.txns.h24.sells}`;
+                ? `24h: ${pair.priceChange?.h24 != null ? service.formatPriceChange(pair.priceChange.h24) : "N/A"}`
+                : `Trades: ${txnsH24 ? txnsH24.buys + txnsH24.sells : "N/A"}`;
         return (
           `**${i + 1}. ${pair.baseToken.symbol}/${pair.quoteToken.symbol}** on ${pair.dexId}\n` +
           `   💰 ${service.formatPrice(pair.priceUsd || pair.priceNative)} | ${metric}`

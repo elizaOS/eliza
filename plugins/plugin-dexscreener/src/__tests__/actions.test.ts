@@ -85,7 +85,7 @@ describe("DexScreener Actions", () => {
       expect(mockService.search).toHaveBeenCalledWith({ query: "PEPE" });
       expect(callback).toHaveBeenCalledWith({
         text: expect.stringContaining('Search Results for "PEPE"'),
-        action: "dexscreener_search",
+        action: "DEXSCREENER_SEARCH",
         data: mockPairs,
       });
     });
@@ -110,7 +110,7 @@ describe("DexScreener Actions", () => {
 
       expect(callback).toHaveBeenCalledWith({
         text: 'No results found for "NONEXISTENT"',
-        action: "dexscreener_search",
+        action: "DEXSCREENER_SEARCH",
       });
     });
 
@@ -134,7 +134,7 @@ describe("DexScreener Actions", () => {
 
       expect(callback).toHaveBeenCalledWith({
         text: "Failed to search: API Error",
-        action: "dexscreener_search",
+        action: "DEXSCREENER_SEARCH",
       });
     });
   });
@@ -193,7 +193,7 @@ describe("DexScreener Actions", () => {
       });
       expect(callback).toHaveBeenCalledWith({
         text: expect.stringContaining("USD Coin (USDC)"),
-        action: "dexscreener_token_info",
+        action: "DEXSCREENER_TOKEN_INFO",
         data: mockPairs,
       });
     });
@@ -213,7 +213,7 @@ describe("DexScreener Actions", () => {
 
       expect(callback).toHaveBeenCalledWith({
         text: 'Please provide a token address. Example: "Get token info for 0x..."',
-        action: "dexscreener_token_info",
+        action: "DEXSCREENER_TOKEN_INFO",
       });
     });
   });
@@ -262,7 +262,7 @@ describe("DexScreener Actions", () => {
       });
       expect(callback).toHaveBeenCalledWith({
         text: expect.stringContaining("Trending Tokens (6h)"),
-        action: "dexscreener_trending",
+        action: "DEXSCREENER_TRENDING",
         data: mockPairs,
       });
     });
@@ -313,7 +313,7 @@ describe("DexScreener Actions", () => {
       });
       expect(callback).toHaveBeenCalledWith({
         text: expect.stringContaining("New Trading Pairs on ethereum"),
-        action: "dexscreener_new_pairs",
+        action: "DEXSCREENER_NEW_PAIRS",
         data: mockPairs,
       });
     });
@@ -370,7 +370,7 @@ describe("DexScreener Actions", () => {
       });
       expect(callback).toHaveBeenCalledWith({
         text: expect.stringContaining("Top Polygon Pairs by liquidity"),
-        action: "dexscreener_chain_pairs",
+        action: "DEXSCREENER_CHAIN_PAIRS",
         data: mockPairs,
       });
     });
@@ -390,7 +390,7 @@ describe("DexScreener Actions", () => {
 
       expect(callback).toHaveBeenCalledWith({
         text: "Please specify a blockchain. Supported: ethereum, bsc, polygon, arbitrum, optimism, base, solana, avalanche",
-        action: "dexscreener_chain_pairs",
+        action: "DEXSCREENER_CHAIN_PAIRS",
       });
     });
   });
