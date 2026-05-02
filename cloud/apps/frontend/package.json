@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@elizaos/cloud-ui": "workspace:*",
+    "@stwd/react": "workspace:*",
     "@mdx-js/rollup": "^3.1.0",
     "@tailwindcss/vite": "^4.1.18",
     "@types/mdx": "^2.0.13",

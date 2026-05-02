@@ -5,6 +5,7 @@
   "description": "Shared React UI for Eliza Cloud. Browser bundles do not depend on @elizaos/core (use local types under src/types for protocol constants).",
   "main": "src/index.ts",
   "dependencies": {
+    "@stwd/react": "workspace:*",
     "@radix-ui/react-avatar": "^1.1.11",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-label": "^2.1.8",

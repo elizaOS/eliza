@@ -78,6 +78,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Build Steward (@stwd/react dist for typecheck)
+        run: bun run --cwd packages/steward/packages/react build
+
       - name: Verify Worker
         run: bun run --cwd apps/api typecheck
 
@@ -129,6 +132,9 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Build Steward (@stwd/react dist for typecheck)
+        run: bun run --cwd packages/steward/packages/react build
 
       - name: Verify Frontend
         run: bun run --cwd apps/frontend typecheck
