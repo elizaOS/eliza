@@ -51,7 +51,7 @@
   },
   "dependencies": {
     "bs58": "^6.0.0",
-    "viem": "2.46.0",
+    "viem": "2.48.8",
     "zod": "^4.3.6"
   },
   "publishConfig": {
