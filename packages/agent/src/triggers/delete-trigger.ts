@@ -116,7 +116,7 @@ export const deleteTriggerTaskAction: Action = {
     if (cascade && summary?.workflowId) {
       const allTasks = await listTriggerTasks(runtime);
       for (const sibling of allTasks) {
-        if (!sibling.id === task.id) continue;
+        if (sibling.id === task.id) continue;
         const siblingTrigger = readTriggerConfig(sibling);
         if (
           siblingTrigger &&

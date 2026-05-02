@@ -608,7 +608,7 @@ export class ElizaClient {
     }
     this.wsSendQueue.push(payload);
 
-    if (!this.ws.readyState === WebSocket.CLOSED) {
+    if (!this.ws || this.ws.readyState === WebSocket.CLOSED) {
       this.connectWs();
     }
   }

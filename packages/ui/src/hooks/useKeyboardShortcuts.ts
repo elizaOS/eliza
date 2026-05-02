@@ -16,10 +16,10 @@ export function useKeyboardShortcuts(shortcuts: ShortcutConfig[]) {
     (event: KeyboardEvent) => {
       for (const shortcut of shortcuts) {
         const keyMatch = event.key.toLowerCase() === shortcut.key.toLowerCase();
-        const ctrlMatch = !!shortcut.ctrl === event.ctrlKey;
-        const shiftMatch = !!shortcut.shift === event.shiftKey;
-        const altMatch = !!shortcut.alt === event.altKey;
-        const metaMatch = !!shortcut.meta === event.metaKey;
+        const ctrlMatch = !shortcut.ctrl === event.ctrlKey;
+        const shiftMatch = !shortcut.shift === event.shiftKey;
+        const altMatch = !shortcut.alt === event.altKey;
+        const metaMatch = !shortcut.meta === event.metaKey;
 
         if (keyMatch && ctrlMatch && shiftMatch && altMatch && metaMatch) {
           event.preventDefault();
