@@ -150,6 +150,9 @@ export const OPTIONAL_PLUGIN_MAP: Readonly<Record<string, string>> = {
   // in packages/agent/src/config/plugin-auto-enable.ts.
   evm: "@elizaos/plugin-evm",
   solana: "@elizaos/plugin-solana",
+  /** Unified wallet (canonical actions + providers — incremental migration). */
+  agent_wallet: "@elizaos/plugin-agent-wallet",
+  "agent-wallet": "@elizaos/plugin-agent-wallet",
   browser: "@elizaos/plugin-browser",
   /** Eliza desktop browser workspace + Steward; package is `@elizaos/app-browser`. */
   "app-browser": "@elizaos/app-browser",
@@ -162,7 +165,6 @@ export const OPTIONAL_PLUGIN_MAP: Readonly<Record<string, string>> = {
   vision: "@elizaos/plugin-vision",
   elizacloud: "@elizaos/plugin-elizacloud",
   selfcontrol: "@elizaos/app-lifeops",
-  cron: "@elizaos/plugin-cron",
   cua: "@elizaos/plugin-cua",
   computeruse: "@elizaos/plugin-computeruse",
   obsidian: "@elizaos/plugin-obsidian",
