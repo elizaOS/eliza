@@ -244,6 +244,8 @@ packages/shared/src/i18n/generated/
 packages/typescript/src/i18n/generated/
 
 tsconfig.test.json
+# But cloud has a real source-tracked tsconfig.test.json — un-ignore it
+!cloud/tsconfig.test.json
 
 # Migration status docs (temporary)
 MIGRATION_*.md
