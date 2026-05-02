@@ -106,6 +106,17 @@ function sameNormalizedStringSet(
   return leftValues.every((value, index) => value === rightValues[index]);
 }
 
+function requestIncludesGmailCapabilities(
+  capabilities: readonly string[] | undefined,
+): boolean {
+  if (capabilities === undefined) {
+    return true;
+  }
+  return capabilities.some((capability) =>
+    capability.startsWith("google.gmail."),
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Google mixin
 // ---------------------------------------------------------------------------
@@ -1050,6 +1061,15 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       const requestedCapabilities = normalizeGoogleCapabilityRequest(
         request.capabilities,
       );
+      if (
+        requestedSide === "agent" &&
+        requestIncludesGmailCapabilities(requestedCapabilities)
+      ) {
+        fail(
+          409,
+          "Agent-side Gmail is managed by the Gmail elizaOS plugin (@elizaos/plugin-gmail-watch / features.gmailWatch). Configure that plugin instead of creating a separate LifeOps Google grant.",
+        );
+      }
       const cloudConfig = resolveManagedGoogleCloudConfig(this.runtime);
       const modeAvailability = resolveGoogleAvailableModes({
         requestUrl,

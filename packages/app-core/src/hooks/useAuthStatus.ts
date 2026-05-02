@@ -4,8 +4,8 @@
  * Returns a discriminated union that lets the shell decide whether to render
  * the login gate or the main dashboard.
  *
- * Fail-closed: network errors are treated as 401 so the login gate renders
- * rather than the dashboard leaking in an unknown auth state.
+ * Fail-closed: network errors are treated as server-unavailable so the app
+ * never leaks the dashboard, but also does not imply bad credentials.
  *
  * Call `refetch()` after login / logout to force a fresh check.
  */

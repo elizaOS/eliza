@@ -23,7 +23,7 @@
     "@elizaos/agent": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
-    "drizzle-orm": "^0.45.1"
+    "drizzle-orm": "0.45.2"
   },
   "devDependencies": {
     "bun-types": "^1.3.12",

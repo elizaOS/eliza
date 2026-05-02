@@ -104,7 +104,11 @@ function buildGrant(
 }
 
 class StubBase {
-  runtime = { agentId: "agent-telegram" };
+  runtime: {
+    agentId: string;
+    getService: ReturnType<typeof vi.fn>;
+    sendMessageToTarget: ReturnType<typeof vi.fn>;
+  };
   ownerEntityId = null;
   repository = {
     deleteConnectorGrant: vi.fn(),
@@ -112,6 +116,16 @@ class StubBase {
     upsertConnectorGrant: vi.fn(),
   };
   recordConnectorAudit = vi.fn(async () => undefined);
+
+  constructor(telegramService: unknown = null) {
+    this.runtime = {
+      agentId: "agent-telegram",
+      getService: vi.fn((serviceType: string) =>
+        serviceType === "telegram" ? telegramService : null,
+      ),
+      sendMessageToTarget: vi.fn(async () => undefined),
+    };
+  }
 
   agentId(): string {
     return this.runtime.agentId;
@@ -124,7 +138,12 @@ type TelegramConsumer = {
     reason: string;
     grantedCapabilities: string[];
     identity: { id?: string; username?: string } | null;
+    grant: unknown | null;
   }>;
+  startTelegramAuth: (request: {
+    side?: "owner" | "agent";
+    phone: string;
+  }) => Promise<unknown>;
   sendTelegramMessage: (request: {
     side?: "owner" | "agent";
     target: string;
@@ -151,8 +170,14 @@ type TelegramConsumer = {
 
 const Composed = withTelegram(StubBase as never);
 
-function createService(): StubBase & TelegramConsumer {
-  return new (Composed as unknown as new () => StubBase & TelegramConsumer)();
+function createService(
+  telegramService: unknown = null,
+): StubBase & TelegramConsumer {
+  return new (
+    Composed as unknown as new (
+      telegramService?: unknown,
+    ) => StubBase & TelegramConsumer
+  )(telegramService);
 }
 
 describe("withTelegram consumer surface", () => {
@@ -196,6 +221,76 @@ describe("withTelegram consumer surface", () => {
     expect(status.grantedCapabilities).toEqual(
       expect.arrayContaining(["telegram.read", "telegram.send"]),
     );
+  });
+
+  it("reports agent-side Telegram from the elizaOS plugin without creating a LifeOps grant", async () => {
+    const pluginService = {
+      messageManager: {},
+      bot: {
+        botInfo: {
+          id: 12345,
+          username: "milady_bot",
+          first_name: "Milady",
+        },
+      },
+    };
+    const service = createService(pluginService);
+    service.repository.getConnectorGrant.mockRejectedValue(
+      new Error("agent plugin status must not read LifeOps grants"),
+    );
+
+    const status = await service.getTelegramConnectorStatus("agent");
+
+    expect(status.connected).toBe(true);
+    expect(status.reason).toBe("connected");
+    expect(status.identity).toMatchObject({
+      id: "12345",
+      username: "milady_bot",
+      firstName: "Milady",
+    });
+    expect(status.grantedCapabilities).toEqual([
+      "telegram.read",
+      "telegram.send",
+    ]);
+    expect(status.grant).toBeNull();
+    expect(service.repository.getConnectorGrant).not.toHaveBeenCalled();
+    expect(service.repository.upsertConnectorGrant).not.toHaveBeenCalled();
+  });
+
+  it("sends agent-side Telegram messages through the elizaOS plugin send handler", async () => {
+    const service = createService({ messageManager: {} });
+    service.repository.getConnectorGrant.mockRejectedValue(
+      new Error("agent plugin send must not read LifeOps grants"),
+    );
+
+    await expect(
+      service.sendTelegramMessage({
+        side: "agent",
+        target: "123456",
+        message: "Plugin path",
+      }),
+    ).resolves.toEqual({ ok: true, messageId: null });
+
+    expect(service.runtime.sendMessageToTarget).toHaveBeenCalledWith(
+      { source: "telegram", channelId: "123456" },
+      { text: "Plugin path", source: "lifeops" },
+    );
+    expect(
+      telegramClientMocks.sendTelegramAccountMessage,
+    ).not.toHaveBeenCalled();
+    expect(service.repository.getConnectorGrant).not.toHaveBeenCalled();
+  });
+
+  it("does not start LifeOps phone auth for agent-side Telegram", async () => {
+    const service = createService();
+
+    await expect(
+      service.startTelegramAuth({
+        side: "agent",
+        phone: "+15551234567",
+      }),
+    ).rejects.toThrow("@elizaos/plugin-telegram");
+    expect(telegramAuthMocks.startTelegramAuth).not.toHaveBeenCalled();
   });
 
   it("adopts the only stored token for the requested side when the grant is missing", async () => {

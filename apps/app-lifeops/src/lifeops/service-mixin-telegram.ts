@@ -1,6 +1,7 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
 import {
   LIFEOPS_TELEGRAM_CAPABILITIES,
+  type LifeOpsConnectorDegradation,
   type LifeOpsConnectorSide,
   type LifeOpsTelegramCapability,
   type LifeOpsTelegramConnectorStatus,
@@ -46,6 +47,71 @@ function isLifeOpsTelegramCapability(
   );
 }
 
+const FULL_TELEGRAM_CAPABILITIES: LifeOpsTelegramCapability[] = [
+  ...LIFEOPS_TELEGRAM_CAPABILITIES,
+];
+
+type TelegramPluginServiceLike = {
+  messageManager?: unknown;
+  bot?: {
+    botInfo?: {
+      id?: number | string;
+      username?: string;
+      first_name?: string;
+      firstName?: string;
+    } | null;
+  } | null;
+};
+
+function getTelegramPluginService(
+  runtime: Constructor<LifeOpsServiceBase>["prototype"]["runtime"],
+): TelegramPluginServiceLike | null {
+  const service = runtime.getService?.("telegram") as
+    | TelegramPluginServiceLike
+    | null
+    | undefined;
+  return service && typeof service === "object" ? service : null;
+}
+
+function telegramPluginConnected(
+  service: TelegramPluginServiceLike | null,
+): boolean {
+  return Boolean(service?.messageManager);
+}
+
+function telegramPluginIdentity(
+  service: TelegramPluginServiceLike | null,
+): LifeOpsTelegramConnectorStatus["identity"] {
+  const botInfo = service?.bot?.botInfo;
+  if (!botInfo?.id && !botInfo?.username) {
+    return null;
+  }
+  return {
+    ...(botInfo.id !== undefined ? { id: String(botInfo.id) } : {}),
+    ...(botInfo.username ? { username: botInfo.username } : {}),
+    ...(botInfo.first_name || botInfo.firstName
+      ? { firstName: botInfo.first_name ?? botInfo.firstName }
+      : {}),
+  };
+}
+
+function telegramAgentPluginDegradations(
+  connected: boolean,
+): LifeOpsConnectorDegradation[] {
+  if (connected) {
+    return [];
+  }
+  return [
+    {
+      axis: "transport-offline",
+      code: "telegram_plugin_unavailable",
+      message:
+        "Agent-side Telegram is served by @elizaos/plugin-telegram. Configure and enable the Telegram bot connector; LifeOps will not create a separate agent Telegram account.",
+      retryable: true,
+    },
+  ];
+}
+
 /** @internal */
 export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
@@ -56,6 +122,27 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<LifeOpsTelegramConnectorStatus> {
       const side =
         normalizeOptionalConnectorSide(requestedSide, "side") ?? "owner";
+      if (side === "agent") {
+        const pluginService = getTelegramPluginService(this.runtime);
+        const connected = telegramPluginConnected(pluginService);
+        const degradations = telegramAgentPluginDegradations(connected);
+        return {
+          provider: "telegram",
+          side,
+          connected,
+          reason: connected ? "connected" : "disconnected",
+          identity: telegramPluginIdentity(pluginService),
+          grantedCapabilities: connected ? FULL_TELEGRAM_CAPABILITIES : [],
+          authState: connected ? "connected" : "idle",
+          authError: null,
+          phone: null,
+          managedCredentialsAvailable: false,
+          storedCredentialsAvailable: false,
+          grant: null,
+          ...(degradations.length > 0 ? { degradations } : {}),
+        };
+      }
+
       let grant = await this.repository.getConnectorGrant(
         this.agentId(),
         "telegram",
@@ -178,6 +265,12 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<StartLifeOpsTelegramAuthResponse> {
       const side =
         normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
+      if (side === "agent") {
+        fail(
+          409,
+          "Agent-side Telegram is managed by @elizaos/plugin-telegram. Configure the Telegram bot connector instead of linking a LifeOps Telegram account.",
+        );
+      }
       const phone = requireNonEmptyString(request.phone, "phone");
 
       // startTelegramAuthFlow is now async — it creates a real GramJS client.
@@ -207,6 +300,12 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<StartLifeOpsTelegramAuthResponse> {
       const side =
         normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
+      if (side === "agent") {
+        fail(
+          409,
+          "Agent-side Telegram auth is owned by @elizaos/plugin-telegram. Configure the Telegram bot connector instead of submitting LifeOps account credentials.",
+        );
+      }
 
       let resultState: StartLifeOpsTelegramAuthResponse["state"];
       let resultError: string | undefined;
@@ -267,6 +366,12 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<LifeOpsTelegramConnectorStatus> {
       const side =
         normalizeOptionalConnectorSide(requestedSide, "side") ?? "owner";
+      if (side === "agent") {
+        fail(
+          409,
+          "Agent-side Telegram is owned by @elizaos/plugin-telegram. Disable or reconfigure the Telegram bot connector instead of deleting a LifeOps grant.",
+        );
+      }
       const grant = await this.repository.getConnectorGrant(
         this.agentId(),
         "telegram",
@@ -325,6 +430,25 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
     }): Promise<{ ok: true; messageId: string | null }> {
       const side =
         normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
+      if (side === "agent") {
+        const target = requireNonEmptyString(request.target, "target");
+        const message = requireNonEmptyString(request.message, "message");
+        const status = await this.getTelegramConnectorStatus(side);
+        if (!status.connected) {
+          fail(409, "Agent-side Telegram plugin is not connected.");
+        }
+        if (!status.grantedCapabilities.includes("telegram.send")) {
+          fail(403, "Telegram plugin is missing send permission.");
+        }
+        if (typeof this.runtime.sendMessageToTarget !== "function") {
+          fail(503, "Telegram send handler is not available.");
+        }
+        await this.runtime.sendMessageToTarget(
+          { source: "telegram", channelId: target },
+          { text: message, source: "lifeops" },
+        );
+        return { ok: true, messageId: null };
+      }
       const status = await this.getTelegramConnectorStatus(side);
       if (!status.connected || !status.grant?.tokenRef) {
         fail(409, "Telegram connector is not connected.");
@@ -350,6 +474,61 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<VerifyLifeOpsTelegramConnectorResponse> {
       const side =
         normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
+      if (side === "agent") {
+        const status = await this.getTelegramConnectorStatus(side);
+        if (!status.connected) {
+          fail(409, "Agent-side Telegram plugin is not connected.");
+        }
+        let send = {
+          ok: true,
+          error: null,
+          target: request.sendTarget ?? "",
+          message: request.sendMessage ?? "",
+          messageId: null,
+        };
+        if (request.sendTarget) {
+          try {
+            const result = await this.sendTelegramMessage({
+              side,
+              target: request.sendTarget,
+              message:
+                request.sendMessage ??
+                "LifeOps Telegram connector verification ping.",
+            });
+            send = {
+              ok: true,
+              error: null,
+              target: request.sendTarget,
+              message:
+                request.sendMessage ??
+                "LifeOps Telegram connector verification ping.",
+              messageId: result.messageId,
+            };
+          } catch (error) {
+            send = {
+              ok: false,
+              error: error instanceof Error ? error.message : String(error),
+              target: request.sendTarget,
+              message:
+                request.sendMessage ??
+                "LifeOps Telegram connector verification ping.",
+              messageId: null,
+            };
+          }
+        }
+        return {
+          provider: "telegram",
+          side,
+          verifiedAt: new Date().toISOString(),
+          read: {
+            ok: true,
+            error: null,
+            dialogCount: 0,
+            dialogs: [],
+          },
+          send,
+        };
+      }
       const status = await this.getTelegramConnectorStatus(side);
       if (!status.connected || !status.grant?.tokenRef) {
         fail(409, "Telegram connector is not connected.");

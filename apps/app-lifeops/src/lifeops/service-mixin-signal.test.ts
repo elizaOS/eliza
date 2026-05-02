@@ -47,8 +47,11 @@ type SignalConsumer = {
     inbound: boolean;
     reason: string;
     grantedCapabilities: string[];
+    grant?: unknown | null;
+    identity?: { phoneNumber?: string } | null;
     degradations?: Array<{ code: string }>;
   }>;
+  startSignalPairing: (side?: "owner" | "agent") => Promise<unknown>;
   readSignalInbound: (limit?: number) => Promise<
     Array<{
       id: string;
@@ -302,6 +305,74 @@ describe("withSignal consumer surface", () => {
     expect(status.inbound).toBe(true);
     expect(status.grantedCapabilities).toEqual(["signal.read", "signal.send"]);
     expect(status.degradations).toBeUndefined();
+  });
+
+  it("reports agent-side Signal from the elizaOS plugin without creating a LifeOps grant", async () => {
+    const signalService = {
+      getAccountNumber: vi.fn(() => "+15550000000"),
+      isServiceConnected: vi.fn(() => true),
+      getRecentMessages: vi.fn(async () => []),
+      sendMessage: vi.fn(async () => ({ timestamp: 1_713_341_100_000 })),
+    };
+    const service = createService(signalService);
+    service.repository.getConnectorGrant.mockRejectedValue(
+      new Error("agent plugin status must not read LifeOps grants"),
+    );
+
+    const status = await service.getSignalConnectorStatus("agent");
+
+    expect(status.connected).toBe(true);
+    expect(status.inbound).toBe(true);
+    expect(status.identity).toEqual({ phoneNumber: "+15550000000" });
+    expect(status.grantedCapabilities).toEqual(["signal.read", "signal.send"]);
+    expect(status.grant).toBeNull();
+    expect(service.repository.getConnectorGrant).not.toHaveBeenCalled();
+    expect(service.repository.upsertConnectorGrant).not.toHaveBeenCalled();
+  });
+
+  it("sends agent-side Signal messages only through the elizaOS plugin service", async () => {
+    process.env.SIGNAL_HTTP_URL = "http://127.0.0.1:9000";
+    globalThis.fetch = vi.fn(async () => {
+      throw new Error("agent Signal send must not call signal-cli HTTP");
+    }) as unknown as typeof fetch;
+    const signalService = {
+      isServiceConnected: vi.fn(() => true),
+      sendMessage: vi.fn(async () => ({ timestamp: 1_713_341_300_000 })),
+    };
+    const service = createService(signalService);
+    service.repository.getConnectorGrant.mockRejectedValue(
+      new Error("agent plugin send must not read LifeOps grants"),
+    );
+
+    await expect(
+      service.sendSignalMessage({
+        side: "agent",
+        recipient: "+15551110004",
+        text: "Plugin path",
+      }),
+    ).resolves.toEqual({
+      provider: "signal",
+      side: "agent",
+      recipient: "+15551110004",
+      ok: true,
+      timestamp: 1_713_341_300_000,
+    });
+
+    expect(signalService.sendMessage).toHaveBeenCalledWith(
+      "+15551110004",
+      "Plugin path",
+    );
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(service.repository.getConnectorGrant).not.toHaveBeenCalled();
+  });
+
+  it("does not start LifeOps pairing for agent-side Signal", async () => {
+    const service = createService();
+
+    await expect(service.startSignalPairing("agent")).rejects.toThrow(
+      "@elizaos/plugin-signal",
+    );
+    expect(service.repository.upsertConnectorGrant).not.toHaveBeenCalled();
   });
 
   it("reads recent inbound messages from the connected Signal service", async () => {
