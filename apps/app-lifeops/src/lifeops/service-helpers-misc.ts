@@ -19,12 +19,10 @@ import {
   fail,
   normalizeEnumValue,
   normalizeFiniteNumber,
-  normalizeOptionalString,
   requireNonEmptyString,
 } from "./service-normalize.js";
 import { normalizeQuietHoursInput } from "./service-normalize-connector.js";
 import type { ReminderAttemptLifecycle } from "./service-types.js";
-import { LifeOpsServiceError } from "./service-types.js";
 import {
   addDaysToLocalDate,
   addMinutes,
@@ -389,6 +387,7 @@ export function buildActiveReminders(
         scheduledFor: scheduledFor.toISOString(),
         dueAt: occurrence.dueAt,
         state: occurrence.state,
+        metadata: occurrence.metadata,
         htmlLink: null,
         eventStartAt: null,
       });
@@ -441,6 +440,7 @@ export function buildActiveCalendarEventReminders(
         scheduledFor: scheduledFor.toISOString(),
         dueAt: event.startAt,
         state: "upcoming",
+        metadata: event.metadata,
         htmlLink: event.htmlLink,
         eventStartAt: event.startAt,
       });

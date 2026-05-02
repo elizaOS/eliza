@@ -20,11 +20,9 @@ gcloud functions deploy eliza-chat \
 
 ## Available Implementations
 
-| Language   | Directory                  | Runtime     |
-| ---------- | -------------------------- | ----------- |
-| TypeScript | `examples/gcp/typescript/` | Node.js 20  |
-| Python     | `examples/gcp/python/`     | Python 3.11 |
-| Rust       | `examples/gcp/rust/`       | Cloud Run   |
+| Language   | Directory        | Runtime    |
+| ---------- | ---------------- | ---------- |
+| TypeScript | `examples/gcp/`  | Node.js 20 |
 
 ## TypeScript Handler
 
@@ -54,8 +52,9 @@ export const elizaChat: HttpFunction = async (req, res) => {
 ## Testing Locally
 
 ```bash
-cd examples/gcp/typescript
-npm start  # Uses functions-framework
+cd examples/gcp
+bun install
+bun run dev
 curl -X POST http://localhost:8080 \
   -H "Content-Type: application/json" \
   -d '{"message": "Hello!"}'
@@ -63,18 +62,14 @@ curl -X POST http://localhost:8080 \
 
 ## Cloud Run Deployment
 
-For Rust or containerized deployments:
+The sample `Dockerfile` in `examples/gcp/` builds the TypeScript worker:
 
 ```bash
-# Build container
-docker build -t gcr.io/PROJECT/eliza-chat .
-
-# Push to registry
-docker push gcr.io/PROJECT/eliza-chat
-
-# Deploy
-gcloud run deploy eliza-chat \
-  --image gcr.io/PROJECT/eliza-chat \
+cd examples/gcp
+docker build -t gcr.io/PROJECT/eliza-worker-typescript .
+docker push gcr.io/PROJECT/eliza-worker-typescript
+gcloud run deploy eliza-worker-typescript \
+  --image gcr.io/PROJECT/eliza-worker-typescript \
   --set-env-vars OPENAI_API_KEY=$OPENAI_API_KEY
 ```
 

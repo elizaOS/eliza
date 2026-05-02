@@ -18,6 +18,9 @@ type SeedTemplatesResponse = {
   availableTemplates: SeedTemplate[];
 };
 
+const REMINDER_ACTIVITY_GATE_METADATA_KEY = "reminderActivityGate";
+const ACTIVE_ON_COMPUTER_GATE = "active_on_computer";
+
 function formatError(cause: unknown, fallback: string): string {
   if (cause instanceof Error && cause.message.trim().length > 0) {
     return cause.message.trim();
@@ -29,8 +32,10 @@ function selectStretchReminder(
   reminders: LifeOpsActiveReminderView[],
 ): LifeOpsActiveReminderView | null {
   return (
-    reminders.find((reminder) =>
-      reminder.title.toLowerCase().includes("stretch"),
+    reminders.find(
+      (reminder) =>
+        reminder.metadata?.[REMINDER_ACTIVITY_GATE_METADATA_KEY] ===
+        ACTIVE_ON_COMPUTER_GATE,
     ) ??
     reminders[0] ??
     null

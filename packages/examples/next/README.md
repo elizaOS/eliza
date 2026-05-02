@@ -16,7 +16,7 @@ Open http://localhost:3000
 
 ## How It Works
 
-The API route (`app/api/chat/route.ts`) mirrors `examples/chat/typescript/chat.ts`:
+The API route (`app/api/chat/route.ts`) mirrors `examples/chat/chat.ts`:
 
 ```typescript
 const character: Character = {

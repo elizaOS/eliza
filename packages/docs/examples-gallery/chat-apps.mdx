@@ -1,18 +1,15 @@
 ---
 title: "Chat Applications"
-description: "Interactive chat examples in TypeScript, Python, and Rust"
+description: "Interactive CLI chat example (TypeScript)"
 ---
 
-Build conversational AI agents with these chat application examples.
+Build conversational AI agents with the CLI chat example.
 
 ## Available Examples
 
-| Example   | Language   | Location                              | Description               |
-| --------- | ---------- | ------------------------------------- | ------------------------- |
-| CLI Chat  | TypeScript | `examples/chat/typescript/chat.ts`    | Interactive terminal chat |
-| CLI Chat  | Python     | `examples/chat/python/chat.py`        | Async Python chat         |
-| CLI Chat  | Rust       | `examples/chat/rust/chat/src/main.rs` | Native Rust chat          |
-| WASM Chat | TypeScript | `examples/chat/rust-wasm/chat.ts`     | Rust WASM interop         |
+| Example  | Language   | Location                   | Description               |
+| -------- | ---------- | -------------------------- | ------------------------- |
+| CLI Chat | TypeScript | `examples/chat/chat.ts`    | Interactive terminal chat |
 
 ---
 
@@ -24,11 +21,12 @@ The foundational example. Demonstrates:
 - Message handling and streaming
 - Conversation flow management
 
-<Tabs>
-  <Tab title="TypeScript">
 ```bash
-export OPENAI_API_KEY="your-key"
-bun run examples/chat/typescript/chat.ts
+cd examples/chat
+cp .env.example .env
+# Add at least one provider API key to .env
+bun install
+bun run start
 ```
 
 **Key code:**
@@ -51,55 +49,6 @@ await runtime.messageService.handleMessage(
   },
 );
 ```
-
-  </Tab>
-  <Tab title="Python">
-```bash
-pip install elizaos elizaos-plugin-openai
-export OPENAI_API_KEY="your-key"
-python examples/chat/python/chat.py
-```
-
-**Key code:**
-
-```python
-runtime = AgentRuntime(
-    character=Character(name="Eliza", bio="A helpful AI assistant."),
-    plugins=[get_openai_plugin()],
-)
-
-await runtime.initialize()
-
-result = await runtime.message_service.handle_message(runtime, message)
-print(result.response_content.text)
-```
-
-  </Tab>
-  <Tab title="Rust">
-```bash
-export OPENAI_API_KEY="your-key"
-cd examples/chat/rust/chat
-cargo run
-```
-
-**Key code:**
-
-```rust
-let runtime = AgentRuntime::new(RuntimeOptions {
-    character: Some(character),
-    plugins: vec![create_openai_plugin()?],
-    ..Default::default()
-}).await?;
-
-runtime.initialize().await?;
-
-let result = runtime.message_service()
-    .handle_message(&runtime, &mut message, None, None)
-    .await?;
-```
-
-  </Tab>
-</Tabs>
 
 ---
 
@@ -219,6 +168,3 @@ await handleMessage("How do they relate to what we discussed?");
     Build browser-based chat interfaces
   </Card>
 </CardGroup>
-
-
-

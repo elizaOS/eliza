@@ -6,11 +6,9 @@ This directory contains MCP (Model Context Protocol) server implementations that
 
 ## Available Examples
 
-| Framework                                  | Language   | Directory     |
-| ------------------------------------------ | ---------- | ------------- |
-| [@modelcontextprotocol/sdk](./typescript/) | TypeScript | `typescript/` |
-| [mcp-python](./python/)                    | Python     | `python/`     |
-| [mcp-rust](./rust/)                        | Rust       | `rust/`       |
+| Framework                    | Language   | Directory |
+| ---------------------------- | ---------- | --------- |
+| @modelcontextprotocol/sdk    | TypeScript | `.`       |
 
 ## What is MCP?
 
@@ -57,29 +55,10 @@ Get information about the agent.
 
 ## Quick Start
 
-### TypeScript
-
 ```bash
-cd typescript
+cd examples/mcp
 bun install
 OPENAI_API_KEY=your-key bun run start
-```
-
-### Python
-
-```bash
-cd python
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-OPENAI_API_KEY=your-key python server.py
-```
-
-### Rust
-
-```bash
-cd rust
-OPENAI_API_KEY=your-key cargo run --release
 ```
 
 ## Configuration
@@ -107,7 +86,7 @@ Add to your Claude Desktop config (`claude_desktop_config.json`):
     "eliza": {
       "command": "bun",
       "args": ["run", "start"],
-      "cwd": "/path/to/eliza/examples/mcp/typescript",
+      "cwd": "/path/to/eliza/examples/mcp",
       "env": {
         "OPENAI_API_KEY": "your-key"
       }
@@ -118,15 +97,7 @@ Add to your Claude Desktop config (`claude_desktop_config.json`):
 
 ## Testing
 
-Each implementation includes a test client:
-
 ```bash
-# TypeScript
-cd typescript && bun run test
-
-# Python
-cd python && python test_client.py
-
-# Rust
-cd rust && cargo test
+cd examples/mcp
+bun run test
 ```

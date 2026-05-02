@@ -166,6 +166,7 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
         // sessionStorage unavailable (e.g. private browsing on some browsers).
         // Session is still in memory for this page load; the wizard can advance.
       }
+      client.setToken(result.sessionId);
 
       setSubmitState({ phase: "success" });
       onAdvance();

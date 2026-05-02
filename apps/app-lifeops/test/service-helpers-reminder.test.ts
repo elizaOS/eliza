@@ -16,11 +16,14 @@ import {
 import {
   applyReminderIntensityToPlan,
   classifyReminderOwnerResponseText,
+  normalizeReminderIntensityInput,
   parseReminderSnoozeRequestFromText,
   rankReminderEscalationChannels,
   resolveReminderDeliveryUrgency,
   resolveReminderEscalationRoutingPolicy,
+  resolveReminderReviewDelayMinutes,
   shouldDeferReminderUntilComputerActive,
+  shouldEscalateImmediately,
 } from "../src/lifeops/service-helpers-reminder.js";
 import type { ReminderActivityProfileSnapshot } from "../src/lifeops/service-types.js";
 
@@ -251,6 +254,39 @@ describe("rankReminderEscalationChannels", () => {
 
     expect(routingPolicy.interruptionBudget).toBe("normal");
   });
+
+  it("uses shared attention signals beyond screen context", () => {
+    expect(
+      resolveReminderEscalationRoutingPolicy({
+        activityProfile: buildActivityProfile({ calendarBusy: true }),
+        urgency: "medium",
+      }),
+    ).toMatchObject({
+      interruptionBudget: "low",
+      reason: "calendar_busy",
+    });
+    expect(
+      resolveReminderEscalationRoutingPolicy({
+        activityProfile: buildActivityProfile({ dndActive: true }),
+        urgency: "medium",
+      }),
+    ).toMatchObject({
+      interruptionBudget: "low",
+      reason: "do_not_disturb",
+    });
+  });
+
+  it("lets channel policy adjust ranking without code changes", () => {
+    const channels = rankReminderEscalationChannels({
+      activityProfile: null,
+      ownerContactHints: {},
+      ownerContactSources: [],
+      policyChannels: ["sms", "discord"],
+      policyChannelWeightAdjustments: { discord: 1_000 },
+    });
+
+    expect(channels.slice(0, 2)).toEqual(["discord", "in_app"]);
+  });
 });
 
 describe("classifyReminderOwnerResponseText", () => {
@@ -446,6 +482,15 @@ describe("parseReminderSnoozeRequestFromText", () => {
 });
 
 describe("applyReminderIntensityToPlan", () => {
+  it("normalizes reminder intensity from shared policy aliases", () => {
+    expect(normalizeReminderIntensityInput("HIGH", "intensity")).toBe(
+      "persistent",
+    );
+    expect(normalizeReminderIntensityInput("paused", "intensity")).toBe(
+      "high_priority_only",
+    );
+  });
+
   it("keeps minimal reminders to the first step", () => {
     const plan = buildReminderPlan();
     const adjusted = applyReminderIntensityToPlan(plan, "minimal");
@@ -464,6 +509,19 @@ describe("applyReminderIntensityToPlan", () => {
       offsetMinutes: 70,
       label: "Discord follow-up",
     });
+  });
+});
+
+describe("reminder escalation policy", () => {
+  it("keeps quiet-hours blocks from becoming immediate cross-channel escalation", () => {
+    expect(shouldEscalateImmediately("blocked_quiet_hours")).toBe(false);
+    expect(shouldEscalateImmediately("blocked_connector")).toBe(true);
+  });
+
+  it("uses the shared delay policy for review callbacks", () => {
+    expect(resolveReminderReviewDelayMinutes("high", "plan")).toBe(7);
+    expect(resolveReminderReviewDelayMinutes("high", "escalation")).toBe(10);
+    expect(resolveReminderReviewDelayMinutes("low", "plan")).toBeNull();
   });
 });
 

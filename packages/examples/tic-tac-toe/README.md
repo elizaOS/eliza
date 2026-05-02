@@ -9,11 +9,9 @@ A tic-tac-toe game demonstrating elizaOS's ability to run agents **without an LL
 - **Custom Model Handlers**: Intercepts `TEXT_LARGE` and `TEXT_SMALL` to return optimal moves
 - **plugin-sql**: Uses PGLite in-memory database for persistence
 
-## Available Implementations
+## Implementation
 
-- [TypeScript](./typescript/) - Full implementation with interactive play
-- [Python](./python/) - Full Eliza runtime integration (message_service.handle_message)
-- [Rust](./rust/) - Full Eliza runtime integration (message_service.handle_message)
+TypeScript entry: [`game.ts`](./game.ts).
 
 ## How It Works
 
@@ -29,7 +27,7 @@ The agent **never loses** - it will always win or draw!
 
 ```bash
 # TypeScript
-bun run examples/tic-tac-toe/typescript/game.ts
+bun run examples/tic-tac-toe/game.ts
 ```
 
 ## Architecture

@@ -21,9 +21,7 @@ All handlers use the full **elizaOS runtime** with OpenAI as the LLM provider, p
 ## Prerequisites
 
 - [Vercel CLI](https://vercel.com/docs/cli) (`npm i -g vercel`)
-- [Bun](https://bun.sh/) or [Node.js 20+](https://nodejs.org/) (for TypeScript)
-- [Python 3.11+](https://www.python.org/) (for Python)
-- [Rust + wasm-pack](https://rustwasm.github.io/wasm-pack/) (for Rust)
+- [Bun](https://bun.sh/) or [Node.js 20+](https://nodejs.org/)
 - OpenAI API key
 
 ## Quick Start
@@ -61,11 +59,6 @@ The development server runs at `http://localhost:3000`.
 ```bash
 # Test the local dev server
 bun run test
-
-# Or test individual runtimes
-bun run test:ts     # TypeScript
-bun run test:py     # Python
-bun run test:rust   # Rust (local binary tests)
 ```
 
 #### Test with curl
@@ -121,26 +114,14 @@ bun run test-client.ts --endpoint https://your-app.vercel.app
 
 ```
 examples/vercel/
-├── README.md                 # This file
-├── vercel.json               # Vercel configuration
-├── package.json              # Dependencies and scripts
-├── tsconfig.json             # TypeScript configuration
-├── test-client.ts            # Interactive test client
-├── api/
-│   ├── health.ts             # Health check endpoint
-│   └── chat.ts               # Chat endpoint (Edge Function)
-├── typescript/
-│   ├── handler.ts            # Full handler (alternative structure)
-│   ├── package.json
-│   └── tsconfig.json
-├── python/
-│   ├── handler.py            # Python serverless function
-│   └── requirements.txt
-└── rust/
-    ├── Cargo.toml
-    └── src/
-        ├── lib.rs            # WASM Edge Function library
-        └── main.rs           # Local test runner
+├── README.md
+├── vercel.json
+├── package.json
+├── tsconfig.json
+├── test-client.ts
+└── api/
+    ├── health.ts
+    └── chat.ts
 ```
 
 ## API Reference
@@ -183,48 +164,14 @@ Health check endpoint.
 }
 ```
 
-## Runtime Options
+## Edge functions (TypeScript)
 
-### TypeScript (Recommended)
-
-The TypeScript version runs as a Vercel Edge Function with minimal cold start times.
+Handlers live under `api/` as Vercel Edge routes. Local workflow:
 
 ```bash
-# Local development
-cd typescript
-bun run dev
-
-# Deploy
-cd ..
-vercel deploy
-```
-
-### Python
-
-The Python version runs as a Vercel Serverless Function (not Edge, but still fast).
-
-```bash
-# Local test
-cd python
-python3 handler.py
-
-# Deploy (Python functions are automatically detected)
-cd ..
-vercel deploy
-```
-
-### Rust (WASM)
-
-The Rust version compiles to WebAssembly and runs on the Edge Runtime.
-
-```bash
-# Build WASM
-cd rust
-wasm-pack build --target web --out-dir ../api/rust/pkg
-
-# Deploy
-cd ..
-vercel deploy
+cd examples/vercel
+bun install
+vercel dev
 ```
 
 ## Configuration

@@ -28,16 +28,18 @@
       "@elizaos/capacitor-appblocker": [
         "../native-plugins/appblocker/src/index.ts"
       ],
-      "@elizaos/capacitor-contacts": [
-        "../native-plugins/contacts/src/index.ts"
-      ],
       "@elizaos/capacitor-mobile-signals": [
         "../native-plugins/mobile-signals/src/index.ts"
       ],
-      "@elizaos/capacitor-phone": ["../native-plugins/phone/src/index.ts"],
-      "@elizaos/capacitor-wifi": ["../native-plugins/wifi/src/index.ts"],
-      "@elizaos/app-contacts": ["../../apps/app-contacts/src/index.ts"],
-      "@elizaos/app-contacts/*": ["../../apps/app-contacts/src/*"],
+      "@elizaos/capacitor-wifi": [
+        "../native-plugins/wifi/src/index.ts"
+      ],
+      "@elizaos/capacitor-contacts": [
+        "../native-plugins/contacts/src/index.ts"
+      ],
+      "@elizaos/capacitor-phone": [
+        "../native-plugins/phone/src/index.ts"
+      ],
       "@elizaos/app-lifeops": ["../../apps/app-lifeops/src/index.ts"],
       "@elizaos/app-lifeops/*": ["../../apps/app-lifeops/src/*"],
       "@elizaos/app-phone": ["../../apps/app-phone/src/index.ts"],
@@ -64,6 +66,12 @@
       "@elizaos/app-knowledge/*": ["../../apps/app-knowledge/src/*"],
       "@elizaos/app-training": ["../../apps/app-training/src/index.ts"],
       "@elizaos/app-training/*": ["../../apps/app-training/src/*"],
+      "@elizaos/app-contacts": ["../../apps/app-contacts/src/index.ts"],
+      "@elizaos/app-contacts/*": ["../../apps/app-contacts/src/*"],
+      "@elizaos/app-phone": ["../../apps/app-phone/src/index.ts"],
+      "@elizaos/app-phone/*": ["../../apps/app-phone/src/*"],
+      "@elizaos/app-wifi": ["../../apps/app-wifi/src/index.ts"],
+      "@elizaos/app-wifi/*": ["../../apps/app-wifi/src/*"],
       "@elizaos/agent": ["./src/index.ts"],
       "@elizaos/agent/*": ["./src/*"],
       "@elizaos/plugin-browser-bridge": [

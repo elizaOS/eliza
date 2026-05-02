@@ -9,11 +9,9 @@ A multi-agent evolution simulation demonstrating elizaOS's ability to run autono
 - **No LLM Required**: Custom model handlers implement agent decision-making
 - **Real-time Visualization**: Watch the ecosystem evolve in your terminal
 
-## Available Implementations
+## Implementation
 
-- [TypeScript](./typescript/) - Full implementation with visual simulation
-- [Python](./python/) - Minimal canonical pipeline demo (message_service + actions, no LLM)
-- [Rust](./rust/) - Minimal canonical pipeline demo (message_service + rule-based output, no LLM)
+TypeScript entry: [`game.ts`](./game.ts) (terminal simulation, no LLM).
 
 ## How It Works
 
@@ -30,13 +28,13 @@ Watch emergent behaviors like predator-prey dynamics, population cycles, and evo
 
 ```bash
 # Standard mode
-bun run examples/game-of-life/typescript/game.ts
+bun run examples/game-of-life/game.ts
 
 # Fast mode (10x speed)
-bun run examples/game-of-life/typescript/game.ts --fast
+bun run examples/game-of-life/game.ts --fast
 
 # With statistics
-bun run examples/game-of-life/typescript/game.ts --stats
+bun run examples/game-of-life/game.ts --stats
 ```
 
 ## Architecture

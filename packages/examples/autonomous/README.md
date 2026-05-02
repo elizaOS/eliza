@@ -56,7 +56,7 @@ mkdir -p "$SHELL_ALLOWED_DIRECTORY"
 ### TypeScript
 
 ```bash
-cd examples/autonomous/typescript
+cd examples/autonomous
 bun install
 bun run start
 ```

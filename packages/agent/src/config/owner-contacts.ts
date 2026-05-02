@@ -316,7 +316,17 @@ export async function loadOwnerContactRoutingHints(
               const rightTime = Number(right.createdAt ?? 0);
               return rightTime - leftTime;
             });
-          const latest = ownerMessages[0];
+          const latest = ownerMessages.find((message) => {
+            const roomId =
+              typeof message.roomId === "string" ? message.roomId : null;
+            if (contact.roomId) {
+              return roomId === contact.roomId;
+            }
+            if (contact.channelId) {
+              return roomId === contact.channelId;
+            }
+            return false;
+          });
           if (latest?.createdAt !== undefined && latest?.createdAt !== null) {
             lastResponseAt = String(latest.createdAt);
             lastResponseChannel = source;

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Deploy elizaOS Vercel Edge Functions
+# Deploy elizaOS Vercel Edge Functions (TypeScript)
 #
 # Usage:
 #   ./scripts/deploy.sh           # Preview deployment
@@ -15,13 +15,11 @@ cd "$PROJECT_DIR"
 echo "🚀 Deploying elizaOS Vercel Edge Functions"
 echo ""
 
-# Check for Vercel CLI
 if ! command -v vercel &> /dev/null; then
     echo "❌ Vercel CLI not found. Install with: npm i -g vercel"
     exit 1
 fi
 
-# Install dependencies
 echo "📦 Installing dependencies..."
 if command -v bun &> /dev/null; then
     bun install
@@ -29,23 +27,13 @@ else
     npm install
 fi
 
-# Build TypeScript
 echo "🔨 Building TypeScript..."
 if command -v bun &> /dev/null; then
-    bun run build:ts
+    bun run build
 else
-    npx tsc
+    npx tsc --noEmit
 fi
 
-# Check for Rust/WASM build (optional)
-if [ -d "rust" ] && command -v wasm-pack &> /dev/null; then
-    echo "🦀 Building Rust WASM..."
-    cd rust
-    wasm-pack build --target web --out-dir ../api/rust/pkg
-    cd ..
-fi
-
-# Deploy
 if [ "$1" == "--prod" ]; then
     echo "🌐 Deploying to production..."
     vercel deploy --prod
@@ -56,13 +44,3 @@ fi
 
 echo ""
 echo "✅ Deployment complete!"
-
-
-
-
-
-
-
-
-
-

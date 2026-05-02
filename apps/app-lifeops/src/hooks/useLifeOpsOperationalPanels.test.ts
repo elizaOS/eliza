@@ -72,19 +72,38 @@ const { clientMock } = vi.hoisted(() => {
             {
               domain: "health",
               subjectType: "definition",
-              subjectId: "stretch-1",
+              subjectId: "unrelated-1",
               ownerType: "occurrence",
-              ownerId: "occ-1",
-              occurrenceId: "occ-1",
-              definitionId: "stretch-def",
+              ownerId: "occ-unrelated",
+              occurrenceId: "occ-unrelated",
+              definitionId: "unrelated-def",
               eventId: null,
-              title: "Stretch break",
+              title: "Stretch goal planning",
               channel: "client_chat",
               stepIndex: 0,
-              stepLabel: "Stretch now",
+              stepLabel: "Planning",
+              scheduledFor: "2026-04-20T10:30:00.000Z",
+              dueAt: null,
+              state: "upcoming",
+              metadata: {},
+            },
+            {
+              domain: "health",
+              subjectType: "definition",
+              subjectId: "stretch-1",
+              ownerType: "occurrence",
+              ownerId: "occ-2",
+              occurrenceId: "occ-2",
+              definitionId: "stretch-def",
+              eventId: null,
+              title: "Move body",
+              channel: "client_chat",
+              stepIndex: 0,
+              stepLabel: "Move now",
               scheduledFor: "2026-04-20T11:00:00.000Z",
               dueAt: null,
               state: "upcoming",
+              metadata: { reminderActivityGate: "active_on_computer" },
             },
           ],
           summary: {
@@ -211,7 +230,7 @@ const { clientMock } = vi.hoisted(() => {
       seedLifeOpsRoutines: vi.fn(async () => ({ createdIds: ["def-1"] })),
       inspectLifeOpsReminder: vi.fn(async () => ({
         ownerType: "occurrence",
-        ownerId: "occ-1",
+        ownerId: "occ-2",
         reminderPlan: null,
         attempts: [],
         audits: [],
@@ -373,7 +392,7 @@ describe("LifeOps operational hooks", () => {
     const { result } = renderHook(() => useLifeOpsStretchReminder());
 
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.stretchReminder?.title).toBe("Stretch break");
+    expect(result.current.stretchReminder?.title).toBe("Move body");
 
     await act(async () => {
       await result.current.createStretchReminder();
@@ -388,8 +407,8 @@ describe("LifeOps operational hooks", () => {
     });
     expect(clientMock.inspectLifeOpsReminder).toHaveBeenCalledWith(
       "occurrence",
-      "occ-1",
+      "occ-2",
     );
-    expect(result.current.inspection?.ownerId).toBe("occ-1");
+    expect(result.current.inspection?.ownerId).toBe("occ-2");
   });
 });

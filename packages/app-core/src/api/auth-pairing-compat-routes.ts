@@ -8,6 +8,7 @@ import {
   getProvidedApiToken,
   tokenMatches,
 } from "./auth";
+import { findActiveSession, parseSessionCookie } from "./auth/sessions";
 import {
   type CompatRuntimeState,
   getCompatDrizzleDb,
@@ -56,7 +57,9 @@ export function _resetAuthPairingStateForTests(): void {
 
 function pairingEnabled(): boolean {
   return (
-    Boolean(getCompatApiToken()) && process.env.ELIZA_PAIRING_DISABLED !== "1"
+    Boolean(getCompatApiToken()) &&
+    process.env.ELIZA_PAIRING_DISABLED !== "1" &&
+    !isCloudProvisioned()
   );
 }
 
@@ -81,10 +84,41 @@ function ensurePairingCode(): string | null {
   if (!pairingCode || now > pairingExpiresAt) {
     pairingCode = generatePairingCode();
     pairingExpiresAt = now + PAIRING_TTL_MS;
-    logger.warn(`[api] Pairing code: ${pairingCode} (valid for 10 minutes)`);
+    logger.warn(
+      `[api] Pairing code for remote devices: ${pairingCode} (valid for 10 minutes)`,
+    );
   }
 
   return pairingCode;
+}
+
+export function ensureAuthPairingCodeForRemoteAccess(): {
+  code: string;
+  expiresAt: number;
+} | null {
+  const code = ensurePairingCode();
+  return code ? { code, expiresAt: pairingExpiresAt } : null;
+}
+
+async function requestHasActiveSession(
+  req: http.IncomingMessage,
+  store: import("../services/auth-store").AuthStore,
+): Promise<boolean> {
+  const cookieSessionId = parseSessionCookie(req);
+  if (cookieSessionId) {
+    const session = await findActiveSession(store, cookieSessionId).catch(
+      () => null,
+    );
+    if (session) return true;
+  }
+
+  const bearer = getProvidedApiToken(req);
+  if (bearer) {
+    const session = await findActiveSession(store, bearer).catch(() => null);
+    if (session) return true;
+  }
+
+  return false;
 }
 
 function rateLimitPairing(ip: string | null): boolean {
@@ -151,33 +185,38 @@ export async function handleAuthPairingCompatRoutes(
     const localAccess = isTrustedLocalRequest(req);
     const db = getCompatDrizzleDb(state);
     let passwordConfigured = false;
+    let sessionAuthenticated = false;
     if (db) {
       const { AuthStore } = await import("../services/auth-store");
-      const owner = (
-        await new AuthStore(
-          db as ConstructorParameters<typeof AuthStore>[0],
-        ).listIdentitiesByKind("owner")
-      )[0];
+      const store = new AuthStore(
+        db as ConstructorParameters<typeof AuthStore>[0],
+      );
+      const owner = (await store.listIdentitiesByKind("owner"))[0];
       passwordConfigured = Boolean(owner?.passwordHash);
+      sessionAuthenticated = await requestHasActiveSession(req, store);
     }
-    const bootstrapRequired = isCloudProvisioned();
+    const cloudProvisioned = isCloudProvisioned();
     const tokenRequired = Boolean(getCompatApiToken());
-    const loginRequired = !localAccess && !tokenRequired && !bootstrapRequired;
+    const loginRequired = !localAccess && !tokenRequired && !cloudProvisioned;
     // Did this request already authenticate? Surfaced as a separate
     // `authenticated` field so the client can short-circuit pairing without
     // overloading the existing `required` semantics.
     const providedToken = getProvidedApiToken(req);
     const configuredToken = getCompatApiToken();
-    const authenticated = Boolean(
-      providedToken &&
-        configuredToken &&
-        tokenMatches(configuredToken, providedToken),
-    );
+    const staticTokenAuthenticated =
+      !cloudProvisioned &&
+      Boolean(
+        providedToken &&
+          configuredToken &&
+          tokenMatches(configuredToken, providedToken),
+      );
+    const authenticated = sessionAuthenticated || staticTokenAuthenticated;
     const required =
       !localAccess &&
+      !authenticated &&
       (tokenRequired ||
         passwordConfigured ||
-        bootstrapRequired ||
+        cloudProvisioned ||
         loginRequired);
     const enabled = pairingEnabled();
     if (enabled) {
@@ -187,7 +226,7 @@ export async function handleAuthPairingCompatRoutes(
       required,
       authenticated,
       loginRequired,
-      bootstrapRequired: required && bootstrapRequired && !tokenRequired,
+      bootstrapRequired: required && cloudProvisioned,
       localAccess,
       passwordConfigured,
       pairingEnabled: enabled,
