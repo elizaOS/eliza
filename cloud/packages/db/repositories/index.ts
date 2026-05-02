@@ -96,6 +96,7 @@ export * from "./model-pricing";
 // Core Platform Repositories
 // ============================================
 export * from "./org-rate-limit-overrides";
+export * from "./org-storage-quota";
 export * from "./organization-invites";
 export * from "./organizations";
 export * from "./provider-health";
@@ -119,3 +120,4 @@ export * from "./usage-records";
 export * from "./user-mcps";
 export * from "./user-sessions";
 export * from "./users";
+export * from "./vendor-connections";

@@ -314,7 +314,9 @@ export class N8nCredentialBridge extends Service {
   private async getUserApiKey(userId: string, organizationId: string): Promise<string | null> {
     const keys = await apiKeysService.listByOrganization(organizationId);
     const now = new Date();
-    const userKey = keys.find((k) => k.user_id === userId && k.is_active && !k.expires_at > now);
+    const userKey = keys.find(
+      (k) => k.user_id === userId && k.is_active && (!k.expires_at || k.expires_at > now),
+    );
 
     if (!userKey) {
       logger.warn("[N8nCredentialBridge] No active API key found", {
