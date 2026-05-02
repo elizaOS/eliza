@@ -28,7 +28,7 @@
     "dev:core": "bun run --cwd packages/typescript dev",
     "start:debug": "NODE_NO_WARNINGS=1 LOG_LEVEL=debug bun run --cwd packages/agent start",
     "build": "turbo run build",
-    "build:typescript": "turbo run build --filter=!@elizaos/computeruse --filter=!@elizaos/computeruse-nodejs --filter=!@elizaos/computeruse-root --filter=!@mediar-ai/workflow",
+    "build:typescript": "turbo run build",
     "build:client": "turbo run build --filter=@elizaos/client",
     "format": "turbo run format",
     "format:check": "turbo run format:check",

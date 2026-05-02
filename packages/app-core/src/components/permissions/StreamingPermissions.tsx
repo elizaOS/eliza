@@ -332,7 +332,7 @@ export function StreamingPermissionsSettingsView({
         <div className="text-xs-tight text-muted mb-3">{description}</div>
         <div className="border border-border bg-card">
           {MEDIA_PERMISSIONS.filter(
-            (def) => !def.modes.includes(mode),
+            (def) => !def.modes?.includes(mode),
           ).map((def) => {
             const status = permStates[def.id] ?? "unknown";
             const isGranted = status === "granted";
@@ -467,7 +467,7 @@ export function StreamingPermissionsOnboardingView({
 
       <div className="mb-6 space-y-2.5">
         {MEDIA_PERMISSIONS.filter(
-          (def) => !def.modes.includes(mode),
+          (def) => !def.modes?.includes(mode),
         ).map((def) => {
           const isGranted = permStates[def.id] === "granted";
           const isRequesting = requestingId === def.id;
