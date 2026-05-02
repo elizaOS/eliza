@@ -177,7 +177,7 @@ Publishing must include a compatible `@elizaos/cloud-sdk` release because the
 plugin depends on it directly.
 
 The repository also contains legacy Python and Rust package directories. The
-Milady runtime integration and npm package are the TypeScript implementation
+Eliza runtime integration and npm package are the TypeScript implementation
 documented above.
 
 ## License

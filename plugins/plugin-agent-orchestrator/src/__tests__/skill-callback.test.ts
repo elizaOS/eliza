@@ -68,7 +68,7 @@ function createRuntime(opts: RuntimeOpts = {}): IAgentRuntime {
 
   const settings: Record<string, string | undefined> = {};
   if (opts.callbackEnabled === false) {
-    settings.MILADY_ENABLE_CHILD_SKILL_CALLBACK = "0";
+    settings.ELIZA_ENABLE_CHILD_SKILL_CALLBACK = "0";
   }
 
   return {
@@ -171,7 +171,7 @@ describe("installSkillCallbackBridge", () => {
     expect(replyText).toContain("result for github-issues");
   });
 
-  it("does not dispatch when MILADY_ENABLE_CHILD_SKILL_CALLBACK=0", async () => {
+  it("does not dispatch when ELIZA_ENABLE_CHILD_SKILL_CALLBACK=0", async () => {
     const pty = createFakePty();
     const handler = vi.fn();
     const runtime = createRuntime({

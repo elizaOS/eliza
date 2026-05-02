@@ -28,7 +28,7 @@
       "type": "string",
       "required": false,
       "sensitive": false,
-      "default": "tag:milady-tunnel",
+      "default": "tag:eliza-tunnel",
       "label": "Tags",
       "help": "Comma-separated ACL tags applied to the cloud-minted ephemeral key.",
       "advanced": true
@@ -71,8 +71,8 @@
     "actions": ["enable", "configure"]
   },
   "resources": {
-    "homepage": "https://github.com/milady-ai/eliza/tree/develop/plugins/plugin-tailscale#readme",
-    "repository": "https://github.com/milady-ai/eliza"
+    "homepage": "https://github.com/eliza-ai/eliza/tree/develop/plugins/plugin-tailscale#readme",
+    "repository": "https://github.com/eliza-ai/eliza"
   },
   "dependsOn": [],
   "kind": "plugin",

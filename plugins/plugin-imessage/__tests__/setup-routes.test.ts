@@ -106,7 +106,7 @@ describe("imessage setup routes", () => {
       {
         body: {
           chatId: "iMessage;+;group-abc",
-          text: "hello from milady",
+          text: "hello from eliza",
         },
       } as RouteRequest,
       response,
@@ -115,7 +115,7 @@ describe("imessage setup routes", () => {
 
     expect(service.sendMessage).toHaveBeenCalledWith(
       "chat_id:iMessage;+;group-abc",
-      "hello from milady",
+      "hello from eliza",
       {}
     );
     expect(state.statusCode).toBe(200);

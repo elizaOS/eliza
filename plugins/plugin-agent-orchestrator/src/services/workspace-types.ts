@@ -9,9 +9,9 @@
 import type { WorkspaceStatus } from "git-workspace-service";
 
 export interface CodingWorkspaceConfig {
-  /** Base directory for workspaces (default: ~/.milady/workspaces) */
+  /** Base directory for workspaces (default: ~/.eliza/workspaces) */
   baseDir?: string;
-  /** Branch prefix (default: "milady") */
+  /** Branch prefix (default: "eliza") */
   branchPrefix?: string;
   /** Enable debug logging */
   debug?: boolean;

@@ -808,7 +808,7 @@ platform.get("/tenants/:id/agents", async (c) => {
  * Body: { expiresIn?: string }
  *
  * Generates a scoped JWT for the specified agent.
- * Used by platform operators (e.g. Milady Cloud provisioner) to mint
+ * Used by platform operators (e.g. Eliza Cloud provisioner) to mint
  * agent tokens during container provisioning without needing a tenant
  * session JWT.
  */

@@ -1,11 +1,11 @@
 /**
- * Tests for DiscordOwnerPairingService and the /milady-pair slash command.
+ * Tests for DiscordOwnerPairingService and the /eliza-pair slash command.
  *
  * These tests are unit-level: they use in-process mocks for the backend
  * OWNER_BIND_VERIFY service, the discord.js Client, and IAgentRuntime.
  * No real Discord token or network calls are made.
  *
- * We import handleMiladyPairCommand directly to avoid going through the
+ * We import handleElizaPairCommand directly to avoid going through the
  * slash-commands module-singleton, which would require vi.resetModules()
  * between tests and trigger slow discord.js re-imports.
  */
@@ -14,7 +14,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	_resetRateLimitStateForTesting,
 	DiscordOwnerPairingServiceImpl,
-	handleMiladyPairCommand,
+	handleElizaPairCommand,
 } from "../owner-pairing-service";
 
 // --------------------------------------------------------------------------
@@ -63,7 +63,7 @@ function makePairInteraction(
 		followUp: vi.fn().mockResolvedValue(undefined),
 		deferred: false,
 		replied: false,
-		commandName: "milady-pair",
+		commandName: "eliza-pair",
 		channelId: "channel-1",
 		guild: null,
 		client: {},
@@ -71,10 +71,10 @@ function makePairInteraction(
 }
 
 // --------------------------------------------------------------------------
-// /milady-pair command tests
+// /eliza-pair command tests
 // --------------------------------------------------------------------------
 
-describe("Discord /milady-pair slash command", () => {
+describe("Discord /eliza-pair slash command", () => {
 	beforeEach(() => {
 		// Clear rate-limit state between tests.
 		_resetRateLimitStateForTesting();
@@ -84,7 +84,7 @@ describe("Discord /milady-pair slash command", () => {
 		const runtime = makeRuntime();
 		const interaction = makePairInteraction("111", "alice", null);
 
-		await handleMiladyPairCommand(interaction as never, runtime as never);
+		await handleElizaPairCommand(interaction as never, runtime as never);
 
 		expect(interaction.reply).toHaveBeenCalledOnce();
 		const args = (interaction.reply as ReturnType<typeof vi.fn>).mock
@@ -103,7 +103,7 @@ describe("Discord /milady-pair slash command", () => {
 		const runtime = makeRuntime(services);
 		const interaction = makePairInteraction("222", "bob", "482193");
 
-		await handleMiladyPairCommand(interaction as never, runtime as never);
+		await handleElizaPairCommand(interaction as never, runtime as never);
 
 		expect(verifySvc.verifyOwnerBindFromConnector).toHaveBeenCalledOnce();
 		expect(verifySvc.verifyOwnerBindFromConnector).toHaveBeenCalledWith({
@@ -115,7 +115,7 @@ describe("Discord /milady-pair slash command", () => {
 
 		const replyCall = (interaction.reply as ReturnType<typeof vi.fn>).mock
 			.calls[0][0] as { content: string };
-		expect(replyCall.content).toMatch(/paired with milady/i);
+		expect(replyCall.content).toMatch(/paired with eliza/i);
 	});
 
 	it("replies with failure message when backend returns { success: false }", async () => {
@@ -128,7 +128,7 @@ describe("Discord /milady-pair slash command", () => {
 		const runtime = makeRuntime(services);
 		const interaction = makePairInteraction("333", "carol", "000000");
 
-		await handleMiladyPairCommand(interaction as never, runtime as never);
+		await handleElizaPairCommand(interaction as never, runtime as never);
 
 		const replyCall = (interaction.reply as ReturnType<typeof vi.fn>).mock
 			.calls[0][0] as { content: string };
@@ -139,7 +139,7 @@ describe("Discord /milady-pair slash command", () => {
 		const runtime = makeRuntime(); // no services registered
 		const interaction = makePairInteraction("444", "dave", "123456");
 
-		await handleMiladyPairCommand(interaction as never, runtime as never);
+		await handleElizaPairCommand(interaction as never, runtime as never);
 
 		const replyCall = (interaction.reply as ReturnType<typeof vi.fn>).mock
 			.calls[0][0] as { content: string };
@@ -158,13 +158,13 @@ describe("Discord /milady-pair slash command", () => {
 		// Fire 5 attempts — all should reach the backend.
 		for (let i = 0; i < 5; i++) {
 			const interaction = makePairInteraction("555", "eve", "111111");
-			await handleMiladyPairCommand(interaction as never, runtime as never);
+			await handleElizaPairCommand(interaction as never, runtime as never);
 		}
 		expect(verifySvc.verifyOwnerBindFromConnector).toHaveBeenCalledTimes(5);
 
 		// 6th attempt must be blocked by the rate limiter.
 		const blockedInteraction = makePairInteraction("555", "eve", "111111");
-		await handleMiladyPairCommand(
+		await handleElizaPairCommand(
 			blockedInteraction as never,
 			runtime as never,
 		);
@@ -205,7 +205,7 @@ describe("DiscordOwnerPairingService.sendOwnerLoginDmLink", () => {
 			) => DiscordOwnerPairingServiceImpl
 		)(runtime as never);
 
-		const link = "https://milady.local/auth/login?token=abc123";
+		const link = "https://eliza.local/auth/login?token=abc123";
 		await instance.sendOwnerLoginDmLink({
 			externalId: "777888999",
 			link,
@@ -216,7 +216,7 @@ describe("DiscordOwnerPairingService.sendOwnerLoginDmLink", () => {
 		const messageBody = (sendMock as ReturnType<typeof vi.fn>).mock
 			.calls[0][0] as string;
 		expect(messageBody).toContain(link);
-		expect(messageBody).toContain("Click to log in to Milady");
+		expect(messageBody).toContain("Click to log in to Eliza");
 		expect(messageBody).toContain("expires in 5 minutes");
 	});
 

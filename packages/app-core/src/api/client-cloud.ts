@@ -31,6 +31,7 @@ import type {
   CloudOAuthConnectionRole,
   CloudOAuthInitiateResponse,
   CloudStatus,
+  CloudTwitterOAuthInitiateResponse,
   SandboxBrowserEndpoints,
   SandboxPlatformStatus,
   SandboxScreenshotPayload,
@@ -200,6 +201,10 @@ declare module "./client-base" {
         connectionRole?: CloudOAuthConnectionRole;
       },
     ): Promise<CloudOAuthInitiateResponse>;
+    initiateCloudTwitterOauth(request?: {
+      redirectUrl?: string;
+      connectionRole?: CloudOAuthConnectionRole;
+    }): Promise<CloudTwitterOAuthInitiateResponse>;
     disconnectCloudOauthConnection(connectionId: string): Promise<{
       success?: boolean;
       error?: string;
@@ -658,6 +663,16 @@ ElizaClient.prototype.initiateCloudOauth = async function (
       },
     );
   }
+};
+
+ElizaClient.prototype.initiateCloudTwitterOauth = async function (
+  this: ElizaClient,
+  request,
+) {
+  return this.fetch("/api/cloud/v1/twitter/connect", {
+    method: "POST",
+    body: JSON.stringify(request ?? {}),
+  });
 };
 
 ElizaClient.prototype.disconnectCloudOauthConnection = async function (

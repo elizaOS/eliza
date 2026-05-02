@@ -4,7 +4,6 @@ import "@elizaos/capacitor-camera";
 import "@elizaos/capacitor-canvas";
 import "@elizaos/capacitor-contacts";
 import "@elizaos/capacitor-gateway";
-import "@elizaos/capacitor-llama";
 import "@elizaos/capacitor-location";
 import "@elizaos/capacitor-messages";
 import "@elizaos/capacitor-mobile-signals";

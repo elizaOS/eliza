@@ -23,7 +23,7 @@ interface LocalStorage {
  *
  *   1. `runtime.getSetting("LOCAL_STORAGE_PATH")`
  *   2. `process.env.LOCAL_STORAGE_PATH`
- *   3. `${MILADY_STATE_DIR ?? `${os.homedir()}/.milady`}/attachments`
+ *   3. `${ELIZA_STATE_DIR ?? `${os.homedir()}/.eliza`}/attachments`
  */
 function resolveStorageRoot(runtime: IAgentRuntime): string {
   const fromRuntime = runtime.getSetting("LOCAL_STORAGE_PATH");
@@ -34,7 +34,7 @@ function resolveStorageRoot(runtime: IAgentRuntime): string {
   if (typeof fromEnv === "string" && fromEnv.length > 0) {
     return path.resolve(fromEnv);
   }
-  const stateDir = process.env.MILADY_STATE_DIR ?? path.join(homedir(), ".milady");
+  const stateDir = process.env.ELIZA_STATE_DIR ?? path.join(homedir(), ".eliza");
   return path.join(stateDir, "attachments");
 }
 

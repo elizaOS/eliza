@@ -23,7 +23,7 @@ describe("shell plugin real local integration", () => {
   let runtime: IAgentRuntime;
 
   beforeEach(async () => {
-    allowedDirectory = mkdtempSync(path.join(tmpdir(), "milady-shell-live-"));
+    allowedDirectory = mkdtempSync(path.join(tmpdir(), "eliza-shell-live-"));
     previousAllowedDirectory = process.env.SHELL_ALLOWED_DIRECTORY;
     process.env.SHELL_ALLOWED_DIRECTORY = allowedDirectory;
 

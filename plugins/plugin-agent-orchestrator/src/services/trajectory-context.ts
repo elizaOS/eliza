@@ -6,7 +6,7 @@
  * (coordination decisions, stall classification, idle checks, etc.) and tag
  * them with meaningful metadata instead of the generic "action" / "runtime.useModel".
  *
- * The milaidy trajectory-persistence layer reads `runtime.__orchestratorTrajectoryCtx`
+ * The eliza trajectory-persistence layer reads `runtime.__orchestratorTrajectoryCtx`
  * in its `appendLlmCall` patch and writes the context into the trajectory record.
  *
  * @module services/trajectory-context
@@ -77,7 +77,7 @@ export function clearTrajectoryContext(runtime: RuntimeLike): void {
 
 /**
  * Read the current orchestrator trajectory context (if any).
- * Used by the trajectory logger on the milaidy side.
+ * Used by the trajectory logger on the eliza side.
  */
 export function readTrajectoryContext(
   runtime: unknown,

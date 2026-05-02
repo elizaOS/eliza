@@ -799,7 +799,7 @@ async function checkAllTasksCompleteAsync(
   });
 
   // Fire swarm complete callback for synthesis. If wired, the host
-  // (milaidy) will use this to generate a synthesized overview.
+  // (eliza) will use this to generate a synthesized overview.
   const swarmCompleteCb = ctx.getSwarmCompleteCallback();
   // When no callback is wired (first-coordinator race during plugin init)
   // or the callback throws, post the subagent's actual output if we have
@@ -2054,7 +2054,7 @@ export async function handleTurnComplete(
 
     // Turn completions always use the fast small-LLM path.
     // The assessment is a structured complete/continue/escalate decision
-    // that doesn't benefit from the full Milaidy pipeline, and routing
+    // that doesn't benefit from the full Eliza pipeline, and routing
     // through it risks hangs that block the inFlightDecisions lock.
     let decision: CoordinationLLMResponse | null = null;
     const decisionFromPipeline = false;
@@ -2243,8 +2243,8 @@ export async function handleAutonomousDecision(
       output = await fetchRecentOutput(ctx, sessionId);
     }
 
-    // Triage: route to small LLM (routine) or Milaidy pipeline (creative).
-    // Track source so we skip duplicate chat messages when Milaidy already spoke.
+    // Triage: route to small LLM (routine) or Eliza pipeline (creative).
+    // Track source so we skip duplicate chat messages when Eliza already spoke.
     const agentDecisionCb = ctx.getAgentDecisionCallback();
     let decision: CoordinationLLMResponse | null = null;
     let decisionFromPipeline = false;
@@ -2268,7 +2268,7 @@ export async function handleAutonomousDecision(
         output,
       );
     } else {
-      // Creative: try Milaidy pipeline, fall back to small LLM
+      // Creative: try Eliza pipeline, fall back to small LLM
       if (agentDecisionCb) {
         const eventMessage = buildBlockedEventMessage(
           toContextSummary(taskCtx),
@@ -2376,7 +2376,7 @@ export async function handleAutonomousDecision(
     });
 
     // Send chat message for small-LLM decisions only.
-    // When Milaidy's pipeline handled it, she already spoke via WS broadcast.
+    // When Eliza's pipeline handled it, she already spoke via WS broadcast.
     if (!decisionFromPipeline) {
       if (decision.action === "respond") {
         const actionDesc = decision.useKeys
@@ -2432,7 +2432,7 @@ export async function handleConfirmDecision(
       output = await fetchRecentOutput(ctx, sessionId);
     }
 
-    // Triage: route to small LLM (routine) or Milaidy pipeline (creative)
+    // Triage: route to small LLM (routine) or Eliza pipeline (creative)
     const agentDecisionCb = ctx.getAgentDecisionCallback();
     let decision: CoordinationLLMResponse | null = null;
     let decisionFromPipeline = false;
@@ -2456,7 +2456,7 @@ export async function handleConfirmDecision(
         output,
       );
     } else {
-      // Creative: try Milaidy pipeline, fall back to small LLM
+      // Creative: try Eliza pipeline, fall back to small LLM
       if (agentDecisionCb) {
         const eventMessage = buildBlockedEventMessage(
           toContextSummary(taskCtx),
@@ -2555,7 +2555,7 @@ export async function handleConfirmDecision(
       },
     });
 
-    // When Milaidy's pipeline made the suggestion, she already spoke via WS broadcast.
+    // When Eliza's pipeline made the suggestion, she already spoke via WS broadcast.
     // Only broadcast the pending_confirmation event for small-LLM suggestions or
     // always broadcast it (the UI needs it regardless) but skip any chat messages.
     ctx.broadcast({

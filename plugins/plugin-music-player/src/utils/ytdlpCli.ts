@@ -2,7 +2,7 @@ import { basename, dirname } from "node:path";
 
 /**
  * yt-dlp YouTube "n challenge" / EJS solving needs a JS engine. Official builds only
- * enable **deno** by default; Milady usually runs under **Bun** or **Node**, which must
+ * enable **deno** by default; Eliza usually runs under **Bun** or **Node**, which must
  * be passed explicitly via `--js-runtimes`.
  *
  * @see https://github.com/yt-dlp/yt-dlp/wiki/EJS

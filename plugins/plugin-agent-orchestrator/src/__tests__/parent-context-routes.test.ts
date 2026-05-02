@@ -45,7 +45,7 @@ function buildRuntime(overrides: Partial<IAgentRuntime> = {}): IAgentRuntime {
   const runtime = {
     agentId: "agent-parent",
     character: {
-      name: "Milady",
+      name: "Eliza",
       bio: ["local-first assistant"],
       knowledge: [{ item: { case: "path", value: "docs/context.md" } }],
     },
@@ -186,7 +186,7 @@ describe("parent runtime bridge routes", () => {
     expect(res.getJson()).toMatchObject({
       sessionId: "pty-test",
       character: {
-        name: "Milady",
+        name: "Eliza",
         bio: ["local-first assistant"],
         knowledge: ["docs/context.md"],
       },

@@ -539,7 +539,7 @@ export async function handleAgentRoutes(
       } = body;
 
       // Validate workdir: must be within workspace base dir or cwd
-      const workspaceBaseDir = path.join(os.homedir(), ".milady", "workspaces");
+      const workspaceBaseDir = path.join(os.homedir(), ".eliza", "workspaces");
       const workspaceBaseDirResolved = path.resolve(workspaceBaseDir);
       const cwdResolved = path.resolve(process.cwd());
       const workspaceBaseDirReal = await realpath(

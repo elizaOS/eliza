@@ -5,7 +5,7 @@ set -euo pipefail
 # Steward Fleet Deployer
 # Usage: ./scripts/deploy-all.sh [--migrate] [--restart]
 #
-# Deploys to milady (canary) first, then core-1 through core-6.
+# Deploys to eliza (canary) first, then core-1 through core-6.
 # Aborts if canary fails.
 # =============================================================================
 
@@ -20,11 +20,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPLOY_SCRIPT="$SCRIPT_DIR/deploy.sh"
 
 # ---------------------------------------------------------------------------
-# Nodes: milady (canary) first, then agents
+# Nodes: eliza (canary) first, then agents
 # ---------------------------------------------------------------------------
 declare -A NODES
 NODES=(
-  [milady]="89.167.63.246"
+  [eliza]="89.167.63.246"
   [core-1]="88.99.66.168"
   [core-2]="178.63.251.122"
   [core-3]="138.201.80.125"
@@ -34,7 +34,7 @@ NODES=(
 )
 
 # Ordered deploy sequence
-NODE_ORDER=(milady core-1 core-2 core-3 core-4 core-5 core-6)
+NODE_ORDER=(eliza core-1 core-2 core-3 core-4 core-5 core-6)
 
 # ---------------------------------------------------------------------------
 # Forward flags to deploy.sh
@@ -72,9 +72,9 @@ echo -e "${BOLD}========================================${RESET}"
 echo ""
 
 # ---------------------------------------------------------------------------
-# Canary: deploy to milady first (with --migrate if requested)
+# Canary: deploy to eliza first (with --migrate if requested)
 # ---------------------------------------------------------------------------
-CANARY="milady"
+CANARY="eliza"
 CANARY_IP="${NODES[$CANARY]}"
 
 echo -e "${CYAN}[fleet]${RESET} ${BOLD}Canary deploy: $CANARY ($CANARY_IP)${RESET}"

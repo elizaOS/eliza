@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Emit an explicit DECISION event to the Milady orchestrator's hook channel.
+# Emit an explicit DECISION event to the Eliza orchestrator's hook channel.
 #
-# Usage: bash scripts/milady-decision.sh "your decision text"
+# Usage: bash scripts/eliza-decision.sh "your decision text"
 #
-# Writes the same structured shape Milady's swarm-decision-loop captures
+# Writes the same structured shape Eliza's swarm-decision-loop captures
 # from your stdout. Use this when you want the decision recorded by the
 # orchestrator regardless of whether the orchestrator is currently
 # scanning your stdout (e.g. you've moved to a new turn but want the
@@ -16,21 +16,21 @@
 set -u
 
 if [ -z "${1:-}" ]; then
-    echo "usage: milady-decision.sh \"your decision text\"" >&2
+    echo "usage: eliza-decision.sh \"your decision text\"" >&2
     exit 1
 fi
 
 decision_text="$1"
 session_id="${PARALLAX_SESSION_ID:-}"
-hook_port="${MILADY_HOOK_PORT:-2138}"
+hook_port="${ELIZA_HOOK_PORT:-2138}"
 
 if [ -z "$session_id" ]; then
-    echo "milady-decision: PARALLAX_SESSION_ID unset — not a Milady session, skipping." >&2
+    echo "eliza-decision: PARALLAX_SESSION_ID unset — not a Eliza session, skipping." >&2
     exit 1
 fi
 
 # Echo it to stdout so the primary capture path also picks it up.
-# Milady's swarm-decision-loop greps for "DECISION:" prefix in raw output.
+# Eliza's swarm-decision-loop greps for "DECISION:" prefix in raw output.
 printf 'DECISION: %s\n' "$decision_text"
 
 # Best-effort hook POST — if curl is missing or the parent is unreachable,
@@ -44,5 +44,5 @@ if command -v curl >/dev/null 2>&1; then
             "$(printf '%s' "$decision_text" | python3 -c 'import sys,json;print(json.dumps(sys.stdin.read()))' 2>/dev/null \
                || printf '"%s"' "$decision_text")")" \
         >/dev/null 2>&1 \
-        || echo "milady-decision: hook POST failed (stdout echo above is the record)" >&2
+        || echo "eliza-decision: hook POST failed (stdout echo above is the record)" >&2
 fi

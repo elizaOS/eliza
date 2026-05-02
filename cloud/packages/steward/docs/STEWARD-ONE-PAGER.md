@@ -52,7 +52,7 @@ This means one Steward instance manages all sensitive credentials for all your a
 
 ## Building With
 
-ElizaLabs, Milady, Babylon, Hyperscape, Strata Reserve.
+ElizaLabs, Eliza, Babylon, Hyperscape, Strata Reserve.
 
 ---
 

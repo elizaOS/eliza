@@ -58,7 +58,7 @@ function resolveStoredPlatformKey(): string {
     return "";
   }
 
-  const credentialsPath = path.join(homeDir, ".milady", "steward-credentials.json");
+  const credentialsPath = path.join(homeDir, ".eliza", "steward-credentials.json");
   if (!existsSync(credentialsPath)) {
     return "";
   }

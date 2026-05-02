@@ -129,7 +129,7 @@ export const installSkillAction: Action = {
 			resultText +=
 				`\n\n**Security notice:** The skill has ${findingCount} security finding(s) ` +
 				`(status: ${scanStatus}). It has been installed but is **disabled** until the ` +
-				"user reviews and acknowledges the findings in the Milaidy app.";
+				"user reviews and acknowledges the findings in the Eliza app.";
 		} else {
 			resultText += " The skill passed security scanning and is ready to use.";
 		}

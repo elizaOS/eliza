@@ -75,7 +75,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "milady": {
+  "eliza": {
     "platforms": [
       "browser",
       "node"

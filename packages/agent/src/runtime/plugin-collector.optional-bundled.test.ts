@@ -6,7 +6,11 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ElizaConfig } from "../config/types.js";
-import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins.js";
+import {
+  CORE_PLUGINS,
+  ELIZAOS_ANDROID_CORE_PLUGINS,
+  OPTIONAL_CORE_PLUGINS,
+} from "./core-plugins.js";
 import { collectPluginNames } from "./plugin-collector.js";
 
 /** A sample of optional plugins to verify gating behavior. */
@@ -23,6 +27,7 @@ describe("optional core plugins (require explicit opt-in)", () => {
   const prevAnthropicKey = process.env.ANTHROPIC_API_KEY;
   const prevOllamaBaseUrl = process.env.OLLAMA_BASE_URL;
   const prevElizaLocalLlama = process.env.ELIZA_LOCAL_LLAMA;
+  const prevElizaPlatform = process.env.ELIZA_PLATFORM;
 
   beforeEach(() => {
     delete process.env.ELIZAOS_CLOUD_API_KEY;
@@ -31,6 +36,7 @@ describe("optional core plugins (require explicit opt-in)", () => {
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.OLLAMA_BASE_URL;
     delete process.env.ELIZA_LOCAL_LLAMA;
+    delete process.env.ELIZA_PLATFORM;
   });
 
   afterEach(() => {
@@ -63,6 +69,11 @@ describe("optional core plugins (require explicit opt-in)", () => {
       process.env.ELIZA_LOCAL_LLAMA = prevElizaLocalLlama;
     } else {
       delete process.env.ELIZA_LOCAL_LLAMA;
+    }
+    if (prevElizaPlatform !== undefined) {
+      process.env.ELIZA_PLATFORM = prevElizaPlatform;
+    } else {
+      delete process.env.ELIZA_PLATFORM;
     }
   });
 
@@ -224,5 +235,31 @@ describe("optional core plugins (require explicit opt-in)", () => {
     } as ElizaConfig);
 
     expect(names.has("@elizaos/plugin-anthropic")).toBe(true);
+  });
+
+  it("does not load privileged system app plugins on stock Android", () => {
+    process.env.ELIZA_PLATFORM = "android";
+    delete process.env.ELIZA_LOCAL_LLAMA;
+
+    const names = collectPluginNames({
+      plugins: {},
+    } as ElizaConfig);
+
+    for (const pluginName of ELIZAOS_ANDROID_CORE_PLUGINS) {
+      expect(names.has(pluginName)).toBe(false);
+    }
+  });
+
+  it("loads privileged system app plugins only for the ElizaOS Android runtime", () => {
+    process.env.ELIZA_PLATFORM = "android";
+    process.env.ELIZA_LOCAL_LLAMA = "1";
+
+    const names = collectPluginNames({
+      plugins: {},
+    } as ElizaConfig);
+
+    for (const pluginName of ELIZAOS_ANDROID_CORE_PLUGINS) {
+      expect(names.has(pluginName)).toBe(true);
+    }
   });
 });

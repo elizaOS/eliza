@@ -1,5 +1,6 @@
 import type {
   LifeOpsReminderChannel,
+  LifeOpsReminderPlan,
   LifeOpsReminderUrgency,
   LifeOpsTaskDefinition,
 } from "@elizaos/app-lifeops";
@@ -13,10 +14,16 @@ import {
   priorityToUrgency,
 } from "../src/lifeops/service-helpers-misc.js";
 import {
+  applyReminderIntensityToPlan,
   classifyReminderOwnerResponseText,
+  normalizeReminderIntensityInput,
+  parseReminderSnoozeRequestFromText,
   rankReminderEscalationChannels,
   resolveReminderDeliveryUrgency,
+  resolveReminderEscalationRoutingPolicy,
+  resolveReminderReviewDelayMinutes,
   shouldDeferReminderUntilComputerActive,
+  shouldEscalateImmediately,
 } from "../src/lifeops/service-helpers-reminder.js";
 import type { ReminderActivityProfileSnapshot } from "../src/lifeops/service-types.js";
 
@@ -63,6 +70,23 @@ function buildActivityProfile(
     nextMealWindowStartAt: null,
     nextMealWindowEndAt: null,
     ...overrides,
+  };
+}
+
+function buildReminderPlan(): LifeOpsReminderPlan {
+  return {
+    id: "plan-1",
+    agentId: "agent-1",
+    ownerType: "definition",
+    ownerId: "definition-1",
+    steps: [
+      { channel: "in_app", offsetMinutes: 0, label: "In app" },
+      { channel: "discord", offsetMinutes: 10, label: "Discord" },
+    ],
+    mutePolicy: {},
+    quietHours: { timezone: "UTC", startMinute: 0, endMinute: 0 },
+    createdAt: "2026-04-29T17:00:00.000Z",
+    updatedAt: "2026-04-29T17:00:00.000Z",
   };
 }
 
@@ -113,13 +137,24 @@ describe("shouldDeferReminderUntilComputerActive", () => {
     ).toBe(false);
   });
 
-  it("does not defer high-priority stretch reminders", () => {
+  it("still respects activity gates for high-priority movement reminders", () => {
     expect(
       shouldDefer(
         "in_app",
         buildActivityProfile({ isCurrentlyActive: false }),
         buildDefinition(),
         "high",
+      ),
+    ).toBe(true);
+  });
+
+  it("lets critical reminders bypass activity gates", () => {
+    expect(
+      shouldDefer(
+        "in_app",
+        buildActivityProfile({ isCurrentlyActive: false }),
+        buildDefinition(),
+        "critical",
       ),
     ).toBe(false);
   });
@@ -150,7 +185,7 @@ describe("shouldDeferReminderUntilComputerActive", () => {
 });
 
 describe("rankReminderEscalationChannels", () => {
-  it("starts in app and uses observed or configured channels only", () => {
+  it("prioritizes observed active channels instead of globally anchoring in-app", () => {
     const channels = rankReminderEscalationChannels({
       activityProfile: buildActivityProfile({
         primaryPlatform: "telegram",
@@ -163,9 +198,9 @@ describe("rankReminderEscalationChannels", () => {
     });
 
     expect(channels.slice(0, 4)).toEqual([
-      "in_app",
       "telegram",
       "discord",
+      "in_app",
       "sms",
     ]);
   });
@@ -179,6 +214,78 @@ describe("rankReminderEscalationChannels", () => {
     });
 
     expect(channels).toEqual(["in_app"]);
+  });
+
+  it("uses a routing policy that keeps busy-screen nudges low-cost", () => {
+    const routingPolicy = resolveReminderEscalationRoutingPolicy({
+      activityProfile: buildActivityProfile({
+        screenContextBusy: true,
+        screenContextAvailable: true,
+        lastSeenPlatform: "desktop_app",
+      }),
+      urgency: "medium",
+    });
+    const channels = rankReminderEscalationChannels({
+      activityProfile: buildActivityProfile({
+        screenContextBusy: true,
+        screenContextAvailable: true,
+        lastSeenPlatform: "desktop_app",
+      }),
+      ownerContactHints: {},
+      ownerContactSources: [],
+      policyChannels: ["sms"],
+      routingPolicy,
+    });
+
+    expect(routingPolicy.interruptionBudget).toBe("low");
+    expect(channels[0]).toBe("in_app");
+  });
+
+  it("ignores stale busy-screen context for interruption budgeting", () => {
+    const routingPolicy = resolveReminderEscalationRoutingPolicy({
+      activityProfile: buildActivityProfile({
+        screenContextBusy: true,
+        screenContextAvailable: true,
+        screenContextStale: true,
+        screenContextConfidence: 0.95,
+      }),
+      urgency: "medium",
+    });
+
+    expect(routingPolicy.interruptionBudget).toBe("normal");
+  });
+
+  it("uses shared attention signals beyond screen context", () => {
+    expect(
+      resolveReminderEscalationRoutingPolicy({
+        activityProfile: buildActivityProfile({ calendarBusy: true }),
+        urgency: "medium",
+      }),
+    ).toMatchObject({
+      interruptionBudget: "low",
+      reason: "calendar_busy",
+    });
+    expect(
+      resolveReminderEscalationRoutingPolicy({
+        activityProfile: buildActivityProfile({ dndActive: true }),
+        urgency: "medium",
+      }),
+    ).toMatchObject({
+      interruptionBudget: "low",
+      reason: "do_not_disturb",
+    });
+  });
+
+  it("lets channel policy adjust ranking without code changes", () => {
+    const channels = rankReminderEscalationChannels({
+      activityProfile: null,
+      ownerContactHints: {},
+      ownerContactSources: [],
+      policyChannels: ["sms", "discord"],
+      policyChannelWeightAdjustments: { discord: 1_000 },
+    });
+
+    expect(channels.slice(0, 2)).toEqual(["discord", "in_app"]);
   });
 });
 
@@ -197,6 +304,224 @@ describe("classifyReminderOwnerResponseText", () => {
         resolution: null,
       },
     );
+  });
+
+  it("does not bind generic acknowledgement to unrelated conversation", () => {
+    expect(
+      classifyReminderOwnerResponseText("yes, book the calendar thing", {
+        title: "Stretch",
+        attemptedAt: "2026-04-29T17:00:00.000Z",
+        respondedAt: "2026-04-29T17:03:00.000Z",
+        channel: "in_app",
+      }),
+    ).toMatchObject({
+      decision: "unrelated",
+      resolution: null,
+    });
+  });
+
+  it("accepts prompt-adjacent standalone completion", () => {
+    expect(
+      classifyReminderOwnerResponseText("done", {
+        title: "Stretch",
+        attemptedAt: "2026-04-29T17:00:00.000Z",
+        respondedAt: "2026-04-29T17:03:00.000Z",
+        channel: "in_app",
+      }),
+    ).toMatchObject({
+      decision: "explicit_resolution",
+      resolution: "completed",
+    });
+  });
+
+  it("does not accept stale standalone completion as task-bound", () => {
+    expect(
+      classifyReminderOwnerResponseText("done", {
+        title: "Stretch",
+        attemptedAt: "2026-04-29T17:00:00.000Z",
+        respondedAt: "2026-04-29T17:11:00.000Z",
+        channel: "in_app",
+      }),
+    ).toMatchObject({
+      decision: "unrelated",
+      resolution: null,
+    });
+  });
+
+  it("keeps explicit reminder references task-bound after the prompt window", () => {
+    expect(
+      classifyReminderOwnerResponseText("finished the stretch reminder", {
+        title: "Stretch",
+        attemptedAt: "2026-04-29T17:00:00.000Z",
+        respondedAt: "2026-04-29T17:11:00.000Z",
+        channel: "in_app",
+      }),
+    ).toMatchObject({
+      decision: "explicit_resolution",
+      resolution: "completed",
+    });
+  });
+
+  it("requires enough title evidence before binding short reminder titles", () => {
+    expect(
+      classifyReminderOwnerResponseText("done with the call", {
+        title: "Call dentist",
+        attemptedAt: "2026-04-29T17:00:00.000Z",
+        respondedAt: "2026-04-29T17:11:00.000Z",
+        channel: "in_app",
+      }),
+    ).toMatchObject({
+      decision: "unrelated",
+      resolution: null,
+    });
+    expect(
+      classifyReminderOwnerResponseText("call dentist done", {
+        title: "Call dentist",
+        attemptedAt: "2026-04-29T17:00:00.000Z",
+        respondedAt: "2026-04-29T17:11:00.000Z",
+        channel: "in_app",
+      }),
+    ).toMatchObject({
+      decision: "explicit_resolution",
+      resolution: "completed",
+    });
+  });
+
+  it("can disallow standalone replies outside the delivery thread", () => {
+    expect(
+      classifyReminderOwnerResponseText("done", {
+        title: "Stretch",
+        attemptedAt: "2026-04-29T17:00:00.000Z",
+        respondedAt: "2026-04-29T17:03:00.000Z",
+        channel: "discord",
+        allowStandaloneResolution: false,
+      }),
+    ).toMatchObject({
+      decision: "unrelated",
+      resolution: null,
+    });
+  });
+
+  it("asks for clarification on vague snooze language", () => {
+    for (const response of [
+      "snooze",
+      "remind me later",
+      "remind me after lunch",
+      "remind me at 3",
+      "remind me tomorrow",
+    ]) {
+      expect(
+        classifyReminderOwnerResponseText(response, {
+          title: "Stretch",
+          attemptedAt: "2026-04-29T17:00:00.000Z",
+          respondedAt: "2026-04-29T17:03:00.000Z",
+          channel: "in_app",
+        }),
+      ).toMatchObject({
+        decision: "needs_clarification",
+        resolution: null,
+      });
+    }
+  });
+
+  it("accepts concrete snooze replies after a clarification prompt", () => {
+    expect(
+      classifyReminderOwnerResponseText("30 minutes", {
+        title: "Stretch",
+        attemptedAt: "2026-04-29T17:00:00.000Z",
+        respondedAt: "2026-04-29T17:03:00.000Z",
+        channel: "in_app",
+      }),
+    ).toMatchObject({
+      decision: "explicit_resolution",
+      resolution: "snoozed",
+      snoozeRequest: { preset: "30m" },
+    });
+  });
+});
+
+describe("parseReminderSnoozeRequestFromText", () => {
+  it("extracts concrete snooze durations", () => {
+    expect(parseReminderSnoozeRequestFromText("snooze for 30 minutes")).toEqual(
+      {
+        request: { preset: "30m" },
+        needsClarification: false,
+        reason: "snooze_30m",
+      },
+    );
+    expect(parseReminderSnoozeRequestFromText("remind me in 2 hours")).toEqual({
+      request: { minutes: 120 },
+      needsClarification: false,
+      reason: "snooze_duration",
+    });
+    expect(parseReminderSnoozeRequestFromText("tonight")).toEqual({
+      request: { preset: "tonight" },
+      needsClarification: false,
+      reason: "snooze_tonight",
+    });
+    expect(parseReminderSnoozeRequestFromText("tomorrow morning")).toEqual({
+      request: { preset: "tomorrow_morning" },
+      needsClarification: false,
+      reason: "snooze_tomorrow_morning",
+    });
+  });
+
+  it("flags ambiguous snooze requests for clarification", () => {
+    for (const response of [
+      "snooze",
+      "remind me after lunch",
+      "remind me at 3",
+      "remind me tomorrow",
+    ]) {
+      expect(parseReminderSnoozeRequestFromText(response)).toMatchObject({
+        request: null,
+        needsClarification: true,
+      });
+    }
+  });
+});
+
+describe("applyReminderIntensityToPlan", () => {
+  it("normalizes reminder intensity from shared policy aliases", () => {
+    expect(normalizeReminderIntensityInput("HIGH", "intensity")).toBe(
+      "persistent",
+    );
+    expect(normalizeReminderIntensityInput("paused", "intensity")).toBe(
+      "high_priority_only",
+    );
+  });
+
+  it("keeps minimal reminders to the first step", () => {
+    const plan = buildReminderPlan();
+    const adjusted = applyReminderIntensityToPlan(plan, "minimal");
+
+    expect(adjusted?.steps).toEqual([plan.steps[0]]);
+  });
+
+  it("adds a gentle follow-up step for persistent reminders", () => {
+    const adjusted = applyReminderIntensityToPlan(
+      buildReminderPlan(),
+      "persistent",
+    );
+
+    expect(adjusted?.steps.at(-1)).toMatchObject({
+      channel: "in_app",
+      offsetMinutes: 70,
+      label: "Discord follow-up",
+    });
+  });
+});
+
+describe("reminder escalation policy", () => {
+  it("keeps quiet-hours blocks from becoming immediate cross-channel escalation", () => {
+    expect(shouldEscalateImmediately("blocked_quiet_hours")).toBe(false);
+    expect(shouldEscalateImmediately("blocked_connector")).toBe(true);
+  });
+
+  it("uses the shared delay policy for review callbacks", () => {
+    expect(resolveReminderReviewDelayMinutes("high", "plan")).toBe(7);
+    expect(resolveReminderReviewDelayMinutes("high", "escalation")).toBe(10);
+    expect(resolveReminderReviewDelayMinutes("low", "plan")).toBeNull();
   });
 });
 

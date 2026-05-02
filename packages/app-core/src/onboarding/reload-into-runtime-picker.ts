@@ -1,10 +1,10 @@
 /**
  * Helper for the Settings ▸ Runtime panel "Switch runtime" action.
  *
- * Clears the persisted MiladyOS runtime selection (mobile-runtime-mode +
+ * Clears the persisted ElizaOS runtime selection (mobile-runtime-mode +
  * active-server in localStorage), then navigates to the current URL with
  * `?runtime=picker` appended. The query flag is consumed by
- * `RuntimeGate.hasPickerOverride()` so the MiladyOS auto-local branch is
+ * `RuntimeGate.hasPickerOverride()` so the ElizaOS auto-local branch is
  * bypassed and the chooser tiles render — the user can then pick Cloud /
  * Remote / Local without the picker auto-completing back to local.
  *

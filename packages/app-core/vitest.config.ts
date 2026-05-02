@@ -8,7 +8,7 @@ const appCoreSrc = path.join(fileDir, "src");
 const agentSrc = path.join(monorepoRoot, "packages/agent/src");
 const uiDir = path.join(monorepoRoot, "packages/ui");
 const sharedSrc = path.join(monorepoRoot, "packages/shared/src");
-const coreSrc = path.join(monorepoRoot, "packages/typescript/src");
+const coreSrc = path.join(monorepoRoot, "packages/core/src");
 const appLifeopsSrc = path.join(monorepoRoot, "apps/app-lifeops/src");
 const appTaskCoordinatorSrc = path.join(
   monorepoRoot,

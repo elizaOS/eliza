@@ -19,6 +19,16 @@ export function getConnectorModes(
   switch (connectorId) {
     case "discord":
       return [
+        ...(cloud
+          ? [
+              {
+                id: "managed",
+                label: "OAuth Gateway",
+                description:
+                  "Invite the shared Eliza Cloud Discord gateway, nickname it to your agent, and route messages down to this app.",
+              },
+            ]
+          : []),
         {
           id: "local",
           label: "Desktop App",
@@ -30,19 +40,20 @@ export function getConnectorModes(
           description:
             "Use your own Discord bot with a token from the Developer Portal",
         },
-        ...(cloud
-          ? [
-              {
-                id: "managed",
-                label: "Managed (Eliza Cloud)",
-                description: "Use a shared gateway bot via Eliza Cloud OAuth",
-              },
-            ]
-          : []),
       ];
 
     case "telegram":
       return [
+        ...(cloud
+          ? [
+              {
+                id: "cloud-bot",
+                label: "Cloud Gateway",
+                description:
+                  "Telegram bot communication still starts with a BotFather token; Eliza Cloud can host the webhook and route it to this app.",
+              },
+            ]
+          : []),
         {
           id: "bot",
           label: "Bot Token",
@@ -53,6 +64,52 @@ export function getConnectorModes(
           label: "Personal Account",
           description:
             "Use your own Telegram account (requires app credentials from my.telegram.org)",
+        },
+      ];
+
+    case "slack":
+      return [
+        ...(cloud
+          ? [
+              {
+                id: "oauth",
+                label: "OAuth",
+                description:
+                  "Connect Slack through Eliza Cloud OAuth for workspace-scoped bidirectional access.",
+              },
+            ]
+          : []),
+        {
+          id: "socket",
+          label: "Socket Mode Tokens",
+          description:
+            "Use your own Slack app token and bot token for the local connector runtime.",
+        },
+      ];
+
+    case "twitter":
+      return [
+        ...(cloud
+          ? [
+              {
+                id: "oauth",
+                label: "OAuth",
+                description:
+                  "Connect X/Twitter through Eliza Cloud OAuth so the agent can post, read mentions, and handle DMs through cloud-held tokens.",
+              },
+            ]
+          : []),
+        {
+          id: "local-oauth",
+          label: "Local OAuth2",
+          description:
+            "Use @elizaos/plugin-twitter with TWITTER_AUTH_MODE=oauth, a client ID, and a loopback redirect URI.",
+        },
+        {
+          id: "developer",
+          label: "Developer Tokens",
+          description:
+            "Use OAuth 1.0a API keys and access tokens from the X Developer Portal.",
         },
       ];
 
@@ -120,7 +177,17 @@ export function modeToSetupPluginId(
 ): string | null {
   const map: Record<string, Record<string, string>> = {
     discord: { local: "discordlocal", bot: "discord", managed: "discord" },
-    telegram: { bot: "telegram", account: "telegramaccount" },
+    telegram: {
+      "cloud-bot": "telegram",
+      bot: "telegram",
+      account: "telegramaccount",
+    },
+    slack: { oauth: "slack", socket: "slack" },
+    twitter: {
+      oauth: "twitter",
+      "local-oauth": "twitter",
+      developer: "twitter",
+    },
     signal: { qr: "signal" },
     whatsapp: { qr: "whatsapp", business: "whatsapp" },
     imessage: {
@@ -136,13 +203,16 @@ export function getDefaultConnectorModeId(
   connectorId: string,
   modes: ConnectorMode[],
 ): string {
-  const preferredDefaults: Record<string, string> = {
-    discord: "bot",
-    telegram: "bot",
+  const preferredDefaults: Record<string, string[]> = {
+    discord: ["bot"],
+    slack: ["oauth", "socket"],
+    telegram: ["bot"],
+    twitter: ["oauth", "local-oauth"],
   };
-  const preferred = preferredDefaults[connectorId];
-  if (preferred && modes.some((mode) => mode.id === preferred)) {
-    return preferred;
+  for (const preferred of preferredDefaults[connectorId] ?? []) {
+    if (modes.some((mode) => mode.id === preferred)) {
+      return preferred;
+    }
   }
   return modes[0]?.id ?? "";
 }

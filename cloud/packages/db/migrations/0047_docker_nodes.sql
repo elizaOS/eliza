@@ -24,28 +24,28 @@ CREATE INDEX IF NOT EXISTS docker_nodes_node_id_idx ON docker_nodes(node_id);
 CREATE INDEX IF NOT EXISTS docker_nodes_status_idx ON docker_nodes(status);
 CREATE INDEX IF NOT EXISTS docker_nodes_enabled_idx ON docker_nodes(enabled);
 
--- Add docker infrastructure columns to milady_sandboxes (if table exists)
+-- Add docker infrastructure columns to eliza_sandboxes (if table exists)
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'milady_sandboxes') THEN
-    ALTER TABLE milady_sandboxes ADD COLUMN IF NOT EXISTS node_id TEXT;
-    ALTER TABLE milady_sandboxes ADD COLUMN IF NOT EXISTS container_name TEXT;
-    ALTER TABLE milady_sandboxes ADD COLUMN IF NOT EXISTS bridge_port INTEGER;
-    ALTER TABLE milady_sandboxes ADD COLUMN IF NOT EXISTS web_ui_port INTEGER;
-    ALTER TABLE milady_sandboxes ADD COLUMN IF NOT EXISTS headscale_ip TEXT;
-    ALTER TABLE milady_sandboxes ADD COLUMN IF NOT EXISTS docker_image TEXT;
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'eliza_sandboxes') THEN
+    ALTER TABLE eliza_sandboxes ADD COLUMN IF NOT EXISTS node_id TEXT;
+    ALTER TABLE eliza_sandboxes ADD COLUMN IF NOT EXISTS container_name TEXT;
+    ALTER TABLE eliza_sandboxes ADD COLUMN IF NOT EXISTS bridge_port INTEGER;
+    ALTER TABLE eliza_sandboxes ADD COLUMN IF NOT EXISTS web_ui_port INTEGER;
+    ALTER TABLE eliza_sandboxes ADD COLUMN IF NOT EXISTS headscale_ip TEXT;
+    ALTER TABLE eliza_sandboxes ADD COLUMN IF NOT EXISTS docker_image TEXT;
 
-    CREATE INDEX IF NOT EXISTS milady_sandboxes_node_id_idx ON milady_sandboxes(node_id);
+    CREATE INDEX IF NOT EXISTS eliza_sandboxes_node_id_idx ON eliza_sandboxes(node_id);
 
     -- Prevent port collisions: unique constraint on (node_id, bridge_port) for active sandboxes
     -- Note: partial unique index so stopped/deleted sandboxes don't block port reuse
-    CREATE UNIQUE INDEX IF NOT EXISTS milady_sandboxes_node_bridge_port_uniq
-      ON milady_sandboxes (node_id, bridge_port)
+    CREATE UNIQUE INDEX IF NOT EXISTS eliza_sandboxes_node_bridge_port_uniq
+      ON eliza_sandboxes (node_id, bridge_port)
       WHERE status IN ('running', 'provisioning', 'pending');
 
     -- Prevent web UI port collisions: same pattern as bridge_port
-    CREATE UNIQUE INDEX IF NOT EXISTS milady_sandboxes_node_webui_port_uniq
-      ON milady_sandboxes (node_id, web_ui_port)
+    CREATE UNIQUE INDEX IF NOT EXISTS eliza_sandboxes_node_webui_port_uniq
+      ON eliza_sandboxes (node_id, web_ui_port)
       WHERE status IN ('running', 'provisioning', 'pending');
   END IF;
 END $$;

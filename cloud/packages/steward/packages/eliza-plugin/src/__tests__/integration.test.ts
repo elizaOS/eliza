@@ -1,7 +1,7 @@
 /**
  * Integration tests for @stwd/eliza-plugin against real Steward API.
  *
- * These tests create a temporary agent on milady-cloud tenant,
+ * These tests create a temporary agent on eliza-cloud tenant,
  * exercise every plugin component, then clean up.
  *
  * Run with: npx vitest run src/__tests__/integration.test.ts
@@ -24,7 +24,7 @@ const describeLive = runLive ? describe : describe.skip;
 
 const API_URL = "https://api.steward.fi";
 const API_KEY = "stw_b1715e3d9fc4aa49b8d2641f9e0349cf";
-const TENANT_ID = "milady-cloud";
+const TENANT_ID = "eliza-cloud";
 const TEST_AGENT_ID = `eliza-integ-${Date.now()}`;
 
 // ── Helpers ─────────────────────────────────────────────────────
@@ -76,7 +76,7 @@ beforeAll(async () => {
 afterAll(async () => {
   if (!runLive) return;
   // Steward doesn't have a DELETE agent endpoint yet, so we just log.
-  console.log(`[teardown] Test agent ${TEST_AGENT_ID} left on milady-cloud (no delete API)`);
+  console.log(`[teardown] Test agent ${TEST_AGENT_ID} left on eliza-cloud (no delete API)`);
 });
 
 // ── StewardService ──────────────────────────────────────────────

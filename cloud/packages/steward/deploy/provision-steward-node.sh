@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ──────────────────────────────────────────────────────────────────────────────
-# provision-steward-node.sh — Deploy Steward on a Milady node
+# provision-steward-node.sh — Deploy Steward on a Eliza node
 #
 # Idempotent: safe to re-run. Will rebuild image and restart service.
 #
@@ -40,11 +40,11 @@ echo "  Steward Node Provisioning"
 echo "  Node: ${NODE_IP}"
 echo "══════════════════════════════════════════════════════════════"
 
-# ── Step 1: Ensure milady-isolated network exists ────────────────────────────
+# ── Step 1: Ensure eliza-isolated network exists ────────────────────────────
 echo ""
 echo "▸ Step 1: Checking Docker network..."
-${SSH_CMD} "docker network inspect milady-isolated >/dev/null 2>&1 || docker network create milady-isolated"
-echo "  ✓ milady-isolated network ready"
+${SSH_CMD} "docker network inspect eliza-isolated >/dev/null 2>&1 || docker network create eliza-isolated"
+echo "  ✓ eliza-isolated network ready"
 
 # ── Step 2: Sync source code to node ────────────────────────────────────────
 echo ""
@@ -103,9 +103,9 @@ for i in $(seq 1 30); do
   sleep 2
 done
 
-# ── Step 7: Create milady-cloud tenant (idempotent) ─────────────────────────
+# ── Step 7: Create eliza-cloud tenant (idempotent) ─────────────────────────
 echo ""
-echo "▸ Step 7: Creating milady-cloud tenant..."
+echo "▸ Step 7: Creating eliza-cloud tenant..."
 
 # Read the platform key from the running container
 PLATFORM_KEY=$(${SSH_CMD} "docker exec steward printenv STEWARD_PLATFORM_KEY 2>/dev/null || echo ''")
@@ -123,12 +123,12 @@ fi
 TENANT_RESP=$(${SSH_CMD} "curl -sf -X POST http://localhost:3200/platform/tenants \
   -H 'Content-Type: application/json' \
   -H 'X-Steward-Platform-Key: ${PLATFORM_KEY}' \
-  -d '{\"id\": \"milady-cloud\", \"name\": \"Milady Cloud\"}'" 2>&1 || true)
+  -d '{\"id\": \"eliza-cloud\", \"name\": \"Eliza Cloud\"}'" 2>&1 || true)
 
 if echo "${TENANT_RESP}" | grep -q '"ok":true'; then
-  echo "  ✓ Tenant milady-cloud created"
+  echo "  ✓ Tenant eliza-cloud created"
 elif echo "${TENANT_RESP}" | grep -qi 'already exists\|conflict\|duplicate'; then
-  echo "  ✓ Tenant milady-cloud already exists"
+  echo "  ✓ Tenant eliza-cloud already exists"
 else
   echo "  ⚠  Tenant creation response: ${TENANT_RESP}"
 fi
@@ -144,7 +144,7 @@ echo "  Platform Key:   ${PLATFORM_KEY}"
 echo ""
 echo "  Agent config (add to container env):"
 echo "    STEWARD_API_URL=http://steward:3200"
-echo "    (agents on milady-isolated network reach Steward by container name)"
+echo "    (agents on eliza-isolated network reach Steward by container name)"
 echo ""
 echo "  External access:"
 echo "    STEWARD_API_URL=http://${NODE_IP}:3200"

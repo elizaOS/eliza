@@ -53,7 +53,7 @@ function resolveNonColliding(baseDir: string, name: string): string {
  *
  * When `PARALLAX_CODING_DIRECTORY` is set (e.g. `~/Projects`), creates a
  * named subdir like `~/Projects/todo-app/` derived from the task label.
- * Otherwise falls back to `~/.milady/workspaces/{uuid}`.
+ * Otherwise falls back to `~/.eliza/workspaces/{uuid}`.
  */
 export function createScratchDir(
   runtime?: IAgentRuntime,
@@ -81,7 +81,7 @@ export function createScratchDir(
   }
 
   // Default: ephemeral UUID-based dir
-  const baseDir = path.join(os.homedir(), ".milady", "workspaces");
+  const baseDir = path.join(os.homedir(), ".eliza", "workspaces");
   const scratchId = randomUUID();
   const scratchDir = path.join(baseDir, scratchId);
   fs.mkdirSync(scratchDir, { recursive: true });

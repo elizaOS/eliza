@@ -595,7 +595,7 @@ Content-Type: application/json
 
 ## Platform Key Authentication
 
-Operators running multi-tenant deployments (e.g., Milady Cloud) can authenticate with a platform key that grants cross-tenant access:
+Operators running multi-tenant deployments (e.g., Eliza Cloud) can authenticate with a platform key that grants cross-tenant access:
 
 ```http
 GET /platform/tenants

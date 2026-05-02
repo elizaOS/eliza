@@ -21,14 +21,14 @@ CREATE INDEX "user_characters_token_address_idx"
   ON "user_characters" ("token_address")
   WHERE "token_address" IS NOT NULL;
 
--- Backfill from milady_sandboxes.agent_config JSONB where data already exists.
+-- Backfill from eliza_sandboxes.agent_config JSONB where data already exists.
 -- This extracts tokenContractAddress / chain stored during service-to-service provisioning.
 -- If legacy rows contain duplicate token linkages, keep the earliest sandbox mapping
 -- and leave later duplicates unbackfilled so the unique index remains valid.
--- Guard: only run if milady_sandboxes table exists (not present in all environments).
+-- Guard: only run if eliza_sandboxes table exists (not present in all environments).
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'milady_sandboxes') THEN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'eliza_sandboxes') THEN
     EXECUTE $backfill$
       WITH candidate_links AS (
         SELECT
@@ -51,7 +51,7 @@ BEGIN
               COALESCE(ms.agent_config->>'chain', '')
             ORDER BY ms.created_at ASC, ms.id ASC
           ) AS token_rank
-        FROM "milady_sandboxes" ms
+        FROM "eliza_sandboxes" ms
         JOIN "user_characters" uc ON uc.id = ms.character_id
         WHERE ms.agent_config->>'tokenContractAddress' IS NOT NULL
           AND ms.agent_config->>'tokenContractAddress' <> ''

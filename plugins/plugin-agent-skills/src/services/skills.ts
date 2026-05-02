@@ -2049,7 +2049,7 @@ export class AgentSkillsService extends Service {
 	 * Handle the result of a security scan after installation.
 	 *
 	 * - "blocked": Delete the skill and throw an error
-	 * - "critical"/"warning": Track scan status (skill starts disabled when consumed by Milaidy API)
+	 * - "critical"/"warning": Track scan status (skill starts disabled when consumed by Eliza API)
 	 * - "clean": No action needed
 	 *
 	 * @returns The scan report
@@ -2113,7 +2113,7 @@ export class AgentSkillsService extends Service {
 
 	/**
 	 * Set a skill's enabled/disabled state.
-	 * Updates the in-memory config entry. The Milaidy API layer handles
+	 * Updates the in-memory config entry. The Eliza API layer handles
 	 * database persistence when the user/agent toggles via the API.
 	 *
 	 * Returns false if the skill is not loaded or if enabling is blocked

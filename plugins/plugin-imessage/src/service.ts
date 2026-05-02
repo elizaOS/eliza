@@ -102,7 +102,7 @@ export class IMessageService extends Service implements IIMessageService {
   /**
    * Room keys we've already emitted a WORLD_JOINED event for in this
    * service lifetime. Not persisted — on restart every room is
-   * re-greeted, which is correct: a fresh Milady process doesn't know
+   * re-greeted, which is correct: a fresh Eliza process doesn't know
    * what previous processes already synced, and the bootstrap plugin's
    * WORLD_JOINED handler is idempotent (handleServerSync tolerates
    * already-known rooms via upsert semantics).
@@ -825,7 +825,7 @@ export class IMessageService extends Service implements IIMessageService {
 
     // Lifecycle events — WORLD_JOINED + ENTITY_JOINED fire ONCE per
     // room/entity per service lifetime. These are the architectural
-    // signals that Milady's bootstrap plugin and any other observer
+    // signals that Eliza's bootstrap plugin and any other observer
     // (trajectory logger, analytics, onboarding flows) subscribe to in
     // order to sync data, update rosters, or trigger side effects.
     // Without them, a plugin that writes Memories directly via
@@ -1149,7 +1149,7 @@ export class IMessageService extends Service implements IIMessageService {
   }
 
   /**
-   * Register a recurring heartbeat task with Milady's task system and
+   * Register a recurring heartbeat task with Eliza's task system and
    * kick off one if it isn't already queued.
    *
    * The heartbeat runs once a minute (configurable via
@@ -1158,10 +1158,10 @@ export class IMessageService extends Service implements IIMessageService {
    * (b) Contacts map still populated, (c) polling cursor is advancing
    * when expected. On failure it logs + emits
    * `IMESSAGE_HEARTBEAT_UNHEALTHY`; on success it emits
-   * `IMESSAGE_HEARTBEAT_OK`. Observers (Milady's heartbeat UI, ops
+   * `IMESSAGE_HEARTBEAT_OK`. Observers (Eliza's heartbeat UI, ops
    * dashboards, trajectory logger) subscribe to these events.
    *
-   * The task is tagged `["queue", "repeat", "imessage"]` so Milady's
+   * The task is tagged `["queue", "repeat", "imessage"]` so Eliza's
    * built-in TaskService picks it up via its standard polling loop.
    * Without `updateInterval` being set in metadata, the task fires
    * once and then deletes; with it, the task service re-schedules.

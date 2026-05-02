@@ -116,13 +116,13 @@
    - Add "Packages" table with all npm packages + links
    - Add "Self-Hosting" section: docker-compose one-liner
    - Add "Contributing" link
-   - Add "Roadmap" high-level (auth widget ✅, cross-tenant ✅, milady integration 🔜)
+   - Add "Roadmap" high-level (auth widget ✅, cross-tenant ✅, eliza integration 🔜)
    - Remove stale/outdated sections
 
 2. **Update VISION.md:**
    - Refresh from hackathon artifact to living strategic doc
    - Positioning: "high abstraction + open source + self-hostable"
-   - Day-one customers: elizaOS, milady, babylon, hyperscape
+   - Day-one customers: elizaOS, eliza, babylon, hyperscape
    - Competitive landscape table (the 6-box comparison)
 
 3. **Update docs/quickstart.md:**
@@ -162,6 +162,6 @@
 
 - Deploying develop to production (separate task)
 - Building new features
-- Milady integration
+- Eliza integration
 - Dashboard work
 - These are documented in `~/.moltbot/projects/steward/NEXT.md`

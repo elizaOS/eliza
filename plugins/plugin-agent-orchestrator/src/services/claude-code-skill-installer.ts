@@ -1,6 +1,6 @@
 /**
  * Install bundled Claude Code skills into the host's `~/.claude/skills/` so
- * sub-agents Milady spawns automatically have access to them.
+ * sub-agents Eliza spawns automatically have access to them.
  *
  * The orchestrator ships skill content under `assets/claude-code-skills/`
  * inside this package. On PTY service init, the installer copies any
@@ -9,7 +9,7 @@
  * unless the destination has been removed.
  *
  * Why "skip if exists" rather than "always overwrite":
- * - Skills are user-modifiable. If a user customized milady-runtime locally
+ * - Skills are user-modifiable. If a user customized eliza-runtime locally
  *   (added their own scripts, edited a reference), the orchestrator should
  *   not silently stomp their edits on every restart.
  * - The cost of a stale skill is that new orchestrator features the skill

@@ -1,5 +1,5 @@
 /**
- * Task Agent Plugin for Milady
+ * Task Agent Plugin for Eliza
  *
  * Provides orchestration capabilities for CLI-based task agents:
  * - PTY session management (spawn, control, monitor task agents)

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { runAutonomousCli } from "./cli/index.js";
+
 // Static import so `Bun.build` pulls the AOSP llama loader into the mobile
 // bundle. The adapter self-gates on `ELIZA_LOCAL_LLAMA=1` and no-ops on
 // every other platform/runtime, so the import is safe everywhere; we only
@@ -14,6 +15,7 @@ import { runAutonomousCli } from "./cli/index.js";
 // survived, the symbol did not). Dropping it would silently break the
 // dynamic import path on AOSP. Keep this guard pinned.
 import { registerAospLlamaLoader as __elizaAospLlamaLoader } from "./runtime/aosp-llama-adapter.js";
+
 // Static import so `Bun.build` pulls the AOSP local-inference bootstrap
 // into the mobile bundle. The bootstrap runs `ensureAospLocalInferenceHandlers`
 // after `startEliza()` returns the runtime, registering TEXT_SMALL /

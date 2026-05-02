@@ -10,7 +10,6 @@ import {
   generateMasterKey,
   inMemoryMasterKey,
   type SavedLogin,
-  type UnifiedLoginListEntry,
   type UnifiedLoginListResult,
   type UnifiedLoginReveal,
   type Vault,

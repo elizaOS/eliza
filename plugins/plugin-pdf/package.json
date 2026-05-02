@@ -62,7 +62,7 @@
 		"pluginType": "elizaos:plugin:1.0.0",
 		"pluginParameters": {}
 	},
-	"milady": {
+	"eliza": {
 		"platforms": [
 			"browser",
 			"node"

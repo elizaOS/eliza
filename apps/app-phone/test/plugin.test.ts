@@ -3,7 +3,7 @@
  *
  * This intentionally avoids importing the React UI or registering the overlay
  * app (those require a Capacitor environment). The plugin module only depends
- * on `@elizaos/agent`, `@elizaos/core`, and the capacitor-phone TS shim.
+ * on shared role helpers, `@elizaos/core`, and the capacitor-phone TS shim.
  */
 
 import { describe, expect, it } from "vitest";

@@ -65,9 +65,9 @@ export class SwarmHistory {
   constructor(stateDir?: string) {
     const dir =
       stateDir ||
-      process.env.MILADY_STATE_DIR ||
       process.env.ELIZA_STATE_DIR ||
-      path.join(os.homedir(), ".milady");
+      process.env.ELIZA_STATE_DIR ||
+      path.join(os.homedir(), ".eliza");
     this.filePath = path.join(dir, "swarm-history.jsonl");
   }
 

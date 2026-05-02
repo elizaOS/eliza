@@ -3764,7 +3764,7 @@ export async function startEliza(
   };
 
   const initializeRuntimeServices = async (): Promise<void> => {
-    if (process.env.MILADY_LEGACY_STEWARD_EVM_BRIDGE !== "0") {
+    if (process.env.ELIZA_LEGACY_STEWARD_EVM_BRIDGE !== "0") {
       try {
         const { stewardEvmPreBoot } = await import(
           "@elizaos/app-steward/services/steward-evm-bridge"
@@ -3859,7 +3859,7 @@ export async function startEliza(
       );
     }
 
-    if (process.env.MILADY_LEGACY_STEWARD_EVM_BRIDGE !== "0") {
+    if (process.env.ELIZA_LEGACY_STEWARD_EVM_BRIDGE !== "0") {
       try {
         const { stewardEvmPostBoot } = await import(
           "@elizaos/app-steward/services/steward-evm-bridge"

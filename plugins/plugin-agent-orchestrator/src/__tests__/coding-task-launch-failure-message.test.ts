@@ -10,7 +10,7 @@ describe("handleMultiAgent launch failures", () => {
     previousCodingDirectory = process.env.PARALLAX_CODING_DIRECTORY;
     process.env.PARALLAX_CODING_DIRECTORY = path.join(
       os.tmpdir(),
-      `milady-launch-failure-${process.pid}`,
+      `eliza-launch-failure-${process.pid}`,
     );
   });
 
@@ -37,8 +37,8 @@ describe("handleMultiAgent launch failures", () => {
     const runtime = {
       agentId: "agent-1",
       character: {
-        name: "Milady",
-        bio: ["Milady is terse, warm, and direct."],
+        name: "Eliza",
+        bio: ["Eliza is terse, warm, and direct."],
       },
       actions: [],
       getSetting: vi.fn(() => null),
@@ -54,7 +54,7 @@ describe("handleMultiAgent launch failures", () => {
       useModel: vi.fn(
         async (_modelType: string, params: { prompt: string }) => {
           prompts.push(params.prompt);
-          return "Milady here. I could not start the review agent because Claude Code is not installed yet.";
+          return "Eliza here. I could not start the review agent because Claude Code is not installed yet.";
         },
       ),
     };
@@ -100,13 +100,13 @@ describe("handleMultiAgent launch failures", () => {
 
     expect(result?.success).toBe(false);
     expect(result?.text).toBe(
-      "Milady here. I could not start the review agent because Claude Code is not installed yet.",
+      "Eliza here. I could not start the review agent because Claude Code is not installed yet.",
     );
     expect(callbacks).toEqual([{ text: result?.text }]);
     expect(ptyService.spawnSession).not.toHaveBeenCalled();
     expect(runtime.useModel).toHaveBeenCalledTimes(1);
-    expect(prompts[0]).toContain("You are Milady");
-    expect(prompts[0]).toContain("Milady is terse, warm, and direct.");
+    expect(prompts[0]).toContain("You are Eliza");
+    expect(prompts[0]).toContain("Eliza is terse, warm, and direct.");
     expect(prompts[0]).toContain("user: run an idagents review");
     expect(prompts[0]).toContain("START_CODING_TASK - failed");
     expect(prompts[0]).toContain(

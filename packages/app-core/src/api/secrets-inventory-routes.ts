@@ -223,7 +223,11 @@ export async function handleSecretsInventoryRoute(
     return handleProfilesRoute(req, res, method, key);
   }
   if (segment === "profile") {
-    return handleSingleProfileRoute(req, res, method, key, profileId!);
+    if (profileId === null) {
+      sendJsonError(res, 400, "missing `profileId`");
+      return true;
+    }
+    return handleSingleProfileRoute(req, res, method, key, profileId);
   }
   return handleActiveProfileRoute(req, res, method, key);
 }
@@ -451,7 +455,11 @@ async function handleSingleProfileRoute(
       });
     }
     if (typeof v.label === "string") {
-      const existing = profiles[idx]!;
+      const existing = profiles[idx];
+      if (!existing) {
+        sendJsonError(res, 404, "no such profile");
+        return true;
+      }
       profiles[idx] = { ...existing, label: v.label };
       await setEntryMeta(vault, key, { profiles });
     }

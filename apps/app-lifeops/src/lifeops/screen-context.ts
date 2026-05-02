@@ -1,4 +1,6 @@
 import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { FRAME_FILE } from "@elizaos/agent/services/browser-capture";
 import { logger } from "@elizaos/core";
 import sharp from "sharp";
@@ -408,12 +410,15 @@ export class LifeOpsScreenContextSampler {
 }
 
 export async function tryCreateVisionOcrAdapter(): Promise<LifeOpsScreenOcrAdapter | null> {
+  const localVisionOcrServiceUrl = pathToFileURL(
+    path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "../../../../plugins/plugin-vision/src/ocr-service.ts",
+    ),
+  ).href;
   const visionImportCandidates = [
     "@elizaos/plugin-vision",
-    new URL(
-      "../../../../plugins/plugin-vision/src/ocr-service.ts",
-      import.meta.url,
-    ).href,
+    localVisionOcrServiceUrl,
   ];
 
   for (const specifier of visionImportCandidates) {

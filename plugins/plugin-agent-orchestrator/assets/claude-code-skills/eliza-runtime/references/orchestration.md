@@ -1,4 +1,4 @@
-# How Milady's swarm-coordinator decides "complete" vs "continue"
+# How Eliza's swarm-coordinator decides "complete" vs "continue"
 
 When you finish a turn (your stdout goes idle for the cooldown window, typically 15s after `lastInputSentAt`), the PTY adapter emits a `task_complete` event to the orchestrator. The orchestrator then runs an LLM-backed assessment to decide what should happen next.
 
@@ -12,7 +12,7 @@ SwarmCoordinator.handleTurnComplete(sessionId)
 classifyEventTier()              ← routine vs creative
     ↓
 [routine path]                   [creative path]
-small-LLM assessor               Milaidy pipeline
+small-LLM assessor               Eliza pipeline
     ↓                             ↓
 returns one of:
   "complete"   — your work is done, run validation

@@ -38,31 +38,31 @@ Steward's edge: you can `npm install @stwd/sdk`, point at a hosted instance OR r
 
 ---
 
-## What's Needed — For Milady
+## What's Needed — For Eliza
 
-Milady currently uses Steward for **agent wallets only**. Auth is separate (ElizaCloud OAuth for cloud, pairing codes for local). The integration is through a custom bridge layer (6 files, ~2000 lines) and 14 compat HTTP endpoints.
+Eliza currently uses Steward for **agent wallets only**. Auth is separate (ElizaCloud OAuth for cloud, pairing codes for local). The integration is through a custom bridge layer (6 files, ~2000 lines) and 14 compat HTTP endpoints.
 
-### Current state in milady
-- Steward sidecar spawns alongside desktop milady (embedded PGLite)
+### Current state in eliza
+- Steward sidecar spawns alongside desktop eliza (embedded PGLite)
 - Cloud containers get STEWARD_* env vars injected at provisioning
 - Agent gets wallet auto-provisioned on first steward-status check
 - Wallet UI (InventoryView) shows balances, policies, approvals, trade panel
 - Policy CRUD works through dialog popups (just shipped on sym/ui-cleanup)
 
-### Gaps for milady
+### Gaps for eliza
 
 | Gap | Impact | Effort |
 |---|---|---|
-| **User auth through steward** | Users don't authenticate via steward. Cloud uses ElizaCloud OAuth, local uses pairing codes. Steward's auth is unused. | Large — need to wire passkey/email/SIWE into milady's login flow, replace or supplement ElizaCloud OAuth |
-| **User wallets** | Only agent wallets exist. No user-facing wallets for players/users. `provisionUserWallet` exists in steward but milady never calls it. | Medium — endpoint exists, need UI + flow |
+| **User auth through steward** | Users don't authenticate via steward. Cloud uses ElizaCloud OAuth, local uses pairing codes. Steward's auth is unused. | Large — need to wire passkey/email/SIWE into eliza's login flow, replace or supplement ElizaCloud OAuth |
+| **User wallets** | Only agent wallets exist. No user-facing wallets for players/users. `provisionUserWallet` exists in steward but eliza never calls it. | Medium — endpoint exists, need UI + flow |
 | **Sidecar reliability** | Spawning steward as child process is fragile (entry point detection, no fallback, breaks in containers/electron). | Medium — needs auto-start, graceful fallback, health monitoring |
 | **Tenant bootstrap** | Bridge tries wrong endpoint (`POST /tenants` instead of `/platform/tenants`), uses master password in client env. | Small — we partially fixed this, needs clean-up |
-| **Custom UI vs @stwd/react** | Milady rebuilt all wallet components (InventoryView, trade panel, approval queue) instead of using `@stwd/react` embeddable components. 2000+ lines of custom code. | Large to migrate, but optional. Custom UI works fine. |
-| **Proxy gateway unused** | Milady doesn't use steward's credential proxy for external API calls (OpenAI, etc.). Keys are in plaintext env vars. | Medium — wire agent's API calls through proxy |
+| **Custom UI vs @stwd/react** | Eliza rebuilt all wallet components (InventoryView, trade panel, approval queue) instead of using `@stwd/react` embeddable components. 2000+ lines of custom code. | Large to migrate, but optional. Custom UI works fine. |
+| **Proxy gateway unused** | Eliza doesn't use steward's credential proxy for external API calls (OpenAI, etc.). Keys are in plaintext env vars. | Medium — wire agent's API calls through proxy |
 
-### What to do for milady (priority order)
-1. **Fix sidecar to auto-start seamlessly** — detect embedded mode, auto-generate master password, persist to ~/.milady/steward/, no manual config
-2. **Wire user auth through steward** — passkey/email login on milady produces a steward JWT, auto-provisions user wallet
+### What to do for eliza (priority order)
+1. **Fix sidecar to auto-start seamlessly** — detect embedded mode, auto-generate master password, persist to ~/.eliza/steward/, no manual config
+2. **Wire user auth through steward** — passkey/email login on eliza produces a steward JWT, auto-provisions user wallet
 3. **Expose user wallet in UI** — "Your Wallet" section alongside "Agent Wallet"
 4. **Clean up tenant bootstrap** — use platform API properly, don't leak master password to client
 
@@ -70,7 +70,7 @@ Milady currently uses Steward for **agent wallets only**. Auth is separate (Eliz
 
 ## What's Needed — For ElizaCloud
 
-ElizaCloud needs steward as the **central auth + wallet service** replacing Privy. All products (babylon, milady cloud, hyperscape) become tenants.
+ElizaCloud needs steward as the **central auth + wallet service** replacing Privy. All products (babylon, eliza cloud, hyperscape) become tenants.
 
 ### Current state in elizacloud
 - ElizaCloud has its own auth (Privy for cloud users)
@@ -83,7 +83,7 @@ ElizaCloud needs steward as the **central auth + wallet service** replacing Priv
 | Gap | Impact | Effort |
 |---|---|---|
 | **Replace Privy for user auth** | The whole point. Steward needs to handle cloud user signup/login. Passkeys + email + social (Google, Discord). | Large — auth backend ready, need: social login providers, React auth widget (`<StewardLogin />`), session management integration |
-| **Cross-tenant user identity** | Users should be global. Sign up on babylon, same wallet on milady. Current model creates `personal-{userId}` tenant per user. Need `user_tenants` join table for multi-app identity. | Medium — DB schema change + auth flow update |
+| **Cross-tenant user identity** | Users should be global. Sign up on babylon, same wallet on eliza. Current model creates `personal-{userId}` tenant per user. Need `user_tenants` join table for multi-app identity. | Medium — DB schema change + auth flow update |
 | ~~Social login (Google, Discord)~~ | ✅ Shipped | Google + Discord OAuth complete; wire GOOGLE_CLIENT_ID / DISCORD_CLIENT_ID env vars to enable |
 | **React auth widget** | `<StewardLogin />` drop-in component. Email input, passkey button, social buttons, handles the full flow. This is what odi needs for babylon. | Medium — UI component + SDK auth methods |
 | **Production deployment** | Dockerfile just fixed but needs testing at scale. Need: proper docker-compose for hosted mode, Redis for sessions/rate-limiting, monitoring, backup strategy for encrypted keys. | Medium |
@@ -136,7 +136,7 @@ ElizaCloud needs steward as the **central auth + wallet service** replacing Priv
 - Production docker-compose
 - Per-tenant CORS
 
-**Week 5-6: Milady migration**
+**Week 5-6: Eliza migration**
 - Seamless sidecar auto-start
 - User auth through steward
 - User wallet UI

@@ -283,14 +283,15 @@ export async function authLogout(): Promise<AuthLogoutResult> {
 /**
  * GET /api/auth/me — returns the current identity + session, or 401.
  *
- * Fail closed: network errors are treated as 401 so the login gate renders.
+ * Fail closed: network errors are treated as 503 so the startup shell can
+ * show a backend failure instead of a misleading credential prompt.
  */
 export async function authMe(): Promise<AuthMeResult> {
   let res: Response;
   try {
     res = await fetchWithCsrf(`${authBase()}/api/auth/me`);
   } catch {
-    return { ok: false, status: 401 };
+    return { ok: false, status: 503 };
   }
 
   if (res.ok) {
@@ -329,10 +330,7 @@ export async function authMe(): Promise<AuthMeResult> {
     };
   }
 
-  return {
-    ok: false,
-    status: res.status === 503 ? 503 : 401,
-  };
+  return { ok: false, status: 503 };
 }
 
 /**

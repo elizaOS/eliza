@@ -187,9 +187,9 @@ describe("storage root resolution", () => {
 		}
 	});
 
-	it("derives a default path under MILADY_STATE_DIR/attachments", async () => {
+	it("derives a default path under ELIZA_STATE_DIR/attachments", async () => {
 		const stateDir = path.join(workDir, "state");
-		process.env.MILADY_STATE_DIR = stateDir;
+		process.env.ELIZA_STATE_DIR = stateDir;
 		delete process.env.LOCAL_STORAGE_PATH;
 		try {
 			const runtime: FakeRuntime = {
@@ -204,7 +204,7 @@ describe("storage root resolution", () => {
 			expect(svc.root).toBe(path.join(stateDir, "attachments"));
 			await svc.stop();
 		} finally {
-			delete process.env.MILADY_STATE_DIR;
+			delete process.env.ELIZA_STATE_DIR;
 		}
 	});
 });

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Read parent Milady runtime state via the bridge endpoints.
+# Read parent Eliza runtime state via the bridge endpoints.
 #
 # Usage:
-#   bash scripts/milady-parent.sh context          # GET parent-context
-#   bash scripts/milady-parent.sh memory [query]   # GET memory?q=<query>
-#   bash scripts/milady-parent.sh peers            # GET active-workspaces
+#   bash scripts/eliza-parent.sh context          # GET parent-context
+#   bash scripts/eliza-parent.sh memory [query]   # GET memory?q=<query>
+#   bash scripts/eliza-parent.sh peers            # GET active-workspaces
 #
 # All endpoints are read-only. The sub-agent cannot mutate parent state
 # through this helper — only inspect.
@@ -12,7 +12,7 @@
 # Endpoints come from the @elizaos/plugin-agent-orchestrator bridge routes
 # (see references/hooks.md for the API contract). They require:
 #   - PARALLAX_SESSION_ID set (this script's session is registered with the parent)
-#   - The parent's API server reachable at localhost:$MILADY_HOOK_PORT (default 2138)
+#   - The parent's API server reachable at localhost:$ELIZA_HOOK_PORT (default 2138)
 #   - The session in non-terminal state (active or tool_running) — terminated
 #     sessions return 410.
 #
@@ -26,17 +26,17 @@ CMD="${1:-help}"
 ARG="${2:-}"
 
 session_id="${PARALLAX_SESSION_ID:-}"
-hook_port="${MILADY_HOOK_PORT:-2138}"
+hook_port="${ELIZA_HOOK_PORT:-2138}"
 base="http://localhost:$hook_port/api/coding-agents/$session_id"
 
 # Help is always free; everything else needs an active session + curl.
 if [ "$CMD" != "help" ] && [ "$CMD" != "--help" ] && [ "$CMD" != "-h" ]; then
     if [ -z "$session_id" ]; then
-        echo "milady-parent: PARALLAX_SESSION_ID is not set — not a Milady session." >&2
+        echo "eliza-parent: PARALLAX_SESSION_ID is not set — not a Eliza session." >&2
         exit 1
     fi
     if ! command -v curl >/dev/null 2>&1; then
-        echo "milady-parent: curl not found in PATH — bridge endpoints unreachable." >&2
+        echo "eliza-parent: curl not found in PATH — bridge endpoints unreachable." >&2
         exit 1
     fi
 fi
@@ -54,10 +54,10 @@ call() {
         return 0
     fi
     case "$status" in
-        404) echo "milady-parent: session $session_id is unknown to the parent (404). Is the bridge installed?" >&2 ;;
-        410) echo "milady-parent: session $session_id is in terminal state (410). Parent context no longer available." >&2 ;;
-        000) echo "milady-parent: parent unreachable at $url. Bridge may not be exposed on port $hook_port." >&2 ;;
-        *)   echo "milady-parent: unexpected HTTP $status from $url. Body: $response" >&2 ;;
+        404) echo "eliza-parent: session $session_id is unknown to the parent (404). Is the bridge installed?" >&2 ;;
+        410) echo "eliza-parent: session $session_id is in terminal state (410). Parent context no longer available." >&2 ;;
+        000) echo "eliza-parent: parent unreachable at $url. Bridge may not be exposed on port $hook_port." >&2 ;;
+        *)   echo "eliza-parent: unexpected HTTP $status from $url. Body: $response" >&2 ;;
     esac
     return 1
 }
@@ -122,7 +122,7 @@ for w in d.get('workspaces', []):
         ;;
     help|--help|-h|"")
         cat <<'HELP'
-milady-parent — read parent Milady runtime state via bridge endpoints
+eliza-parent — read parent Eliza runtime state via bridge endpoints
 
   context     dump the agent's character, current room, workdir, original task
   memory [q]  read recent messages from the originating room (optional substring filter)
@@ -137,7 +137,7 @@ Notes:
 HELP
         ;;
     *)
-        echo "milady-parent: unknown command '$CMD' (try: context | memory | peers | help)" >&2
+        echo "eliza-parent: unknown command '$CMD' (try: context | memory | peers | help)" >&2
         exit 1
         ;;
 esac

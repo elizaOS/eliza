@@ -50,7 +50,7 @@ export const codingAgentExamplesProvider: Provider = {
       `Recommended default right now: ${TASK_AGENT_FRAMEWORK_LABELS[frameworkState.preferred.id]} (${frameworkState.preferred.reason}).`,
       ...(frameworkState.configuredSubscriptionProvider
         ? [
-            `Configured Milady subscription provider: ${frameworkState.configuredSubscriptionProvider}. Prefer the matching user-backed CLI first so Milady does not waste cloud chat capacity.`,
+            `Configured Eliza subscription provider: ${frameworkState.configuredSubscriptionProvider}. Prefer the matching user-backed CLI first so Eliza does not waste cloud chat capacity.`,
           ]
         : []),
       "",
@@ -105,7 +105,7 @@ export const codingAgentExamplesProvider: Provider = {
       "</actions>",
       "<params>",
       "  <CREATE_TASK>",
-      '    <agents>Research Playwright tradeoffs and browser sandboxing. Your identifier is "research". | Compare Stagehand, Playwright, and browser-use for Milady. Your identifier is "comparison". | Draft a recommendation memo in TASK_AGENTS.md using the findings. Your identifier is "writer".</agents>',
+      '    <agents>Research Playwright tradeoffs and browser sandboxing. Your identifier is "research". | Compare Stagehand, Playwright, and browser-use for Eliza. Your identifier is "comparison". | Draft a recommendation memo in TASK_AGENTS.md using the findings. Your identifier is "writer".</agents>',
       "  </CREATE_TASK>",
       "</params>",
       "",

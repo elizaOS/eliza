@@ -1,7 +1,7 @@
 /**
  * Provider that injects active workspace and task-agent context into every prompt.
  *
- * Milady needs to know what workspaces exist, which agents are running, and
+ * Eliza needs to know what workspaces exist, which agents are running, and
  * their current status without having to call LIST_AGENTS every message. This
  * provider reads from the workspace service, PTY service, and coordinator to
  * build a live context summary that's always available in the prompt.

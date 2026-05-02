@@ -148,7 +148,7 @@ async function createEntities(runtime: AgentRuntime, entityIds: UUID[]): Promise
 
 function createRuntime(extraServices: NonNullable<Plugin["services"]> = []): AgentRuntime {
   const character: Character = {
-    name: "Milady",
+    name: "Eliza",
     bio: ["Test"],
     templates: {},
     messageExamples: [],

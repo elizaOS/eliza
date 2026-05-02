@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
-import react from "@vitejs/plugin-react-swc";
+import react from "@vitejs/plugin-react";
 import {
   createLogger,
   defineConfig,
@@ -824,6 +824,7 @@ function nativeModuleStubPlugin(): Plugin {
     "@elizaos/plugin-signal",
     "@elizaos/plugin-telegram",
     "@elizaos/plugin-whatsapp",
+    "@protobufjs/inquire",
   ]);
   if (!IS_CAPACITOR_MOBILE_BUILD) {
     // Mobile-only Capacitor llama.cpp runtime. Web/Electrobun builds stub it,
@@ -873,6 +874,8 @@ function nativeModuleStubPlugin(): Plugin {
         "vm",
         "assert",
         "buffer",
+        "constants",
+        "events",
         "string_decoder",
         "querystring",
         "punycode",
@@ -1093,6 +1096,38 @@ function nativeModuleStubPlugin(): Plugin {
             "worldTable",
           ].map((name) => `export const ${name} = table;`),
           "export default table;",
+        ].join("\n");
+      }
+
+      if (strippedId === "@elizaos/plugin-sql/drizzle") {
+        return [
+          "const handler = { get: () => expr, apply: () => expr };",
+          "const expr = new Proxy(function expr() { return expr; }, handler);",
+          ...[
+            "and",
+            "asc",
+            "count",
+            "desc",
+            "eq",
+            "gt",
+            "gte",
+            "inArray",
+            "isNull",
+            "lt",
+            "lte",
+            "ne",
+            "or",
+            "sql",
+          ].map((name) => `export const ${name} = expr;`),
+          "export default expr;",
+        ].join("\n");
+      }
+
+      if (strippedId === "@protobufjs/inquire") {
+        return [
+          "function inquire() { return null; }",
+          "export { inquire };",
+          "export default inquire;",
         ].join("\n");
       }
 
@@ -1375,10 +1410,9 @@ export default defineConfig({
     desktopCorsPlugin(),
     appDevSettingsBannerPlugin(),
   ],
-  esbuild: {
-    // Override tsconfig target — some extended configs use ES2024 which older
-    // esbuild does not recognize; this avoids "Unrecognized target environment"
-    // warnings regardless of tsconfig resolution.
+  oxc: {
+    // Override tsconfig target so generated workspace configs cannot push the
+    // browser transform beyond the runtime baseline.
     target: "es2022",
   },
   resolve: {
@@ -1661,46 +1695,42 @@ export default defineConfig({
       "three/examples/jsm/loaders/FBXLoader.js",
     ],
     // Remap node: builtins to npm polyfills during dep optimization so
-    // esbuild doesn't externalize them as "browser-external:node:*".
-    esbuildOptions: {
-      // Must match build/esbuild targets: Vite's dep optimizer otherwise
-      // defaults to legacy browser targets (chrome87, safari14, …) and
-      // esbuild fails with "Transforming destructuring … is not supported yet"
-      // across modern node_modules (Radix, three, zod, etc.).
-      target: "es2022",
+    // Rolldown doesn't externalize them as browser-incompatible node:* imports.
+    rolldownOptions: {
       plugins: [
         {
           name: "workspace-jsx-in-js",
-          setup(build) {
-            const normalizedAppCoreSrcRoot = appCoreSrcRoot
-              .split(path.sep)
-              .join("/");
+          async transform(code, id) {
+            const normalizedPath = id.split("?")[0]?.split(path.sep).join("/");
+            if (
+              !id.endsWith(".js") ||
+              !normalizedPath?.startsWith(
+                `${appCoreSrcRoot.split(path.sep).join("/")}/`,
+              )
+            ) {
+              return null;
+            }
 
-            build.onLoad({ filter: /\.js$/ }, (args) => {
-              const normalizedPath = args.path.split(path.sep).join("/");
-              if (!normalizedPath.startsWith(`${normalizedAppCoreSrcRoot}/`)) {
-                return null;
-              }
-
-              return {
-                contents: fs.readFileSync(args.path, "utf8"),
-                loader: "jsx",
-              };
+            return transformWithEsbuild(code, id, {
+              loader: "jsx",
+              jsx: "automatic",
+              sourcemap: true,
             });
           },
         },
         {
           name: "node-builtins-polyfill",
-          setup(build) {
-            // Map node: builtins to their npm polyfill packages.
-            // require.resolve("events") returns the bare name on Node 22+, so
-            // we resolve via the polyfill's package.json to get an absolute path.
+          resolveId(source) {
             const polyfills: Record<string, string> = {};
             for (const [nodeId, pkg, entry] of [
               ["node:events", "events", "events.js"],
+              ["events", "events", "events.js"],
               ["node:buffer", "buffer", "index.js"],
+              ["buffer", "buffer", "index.js"],
               ["node:util", "util", "util.js"],
+              ["util", "util", "util.js"],
               ["node:process", "process", "browser.js"],
+              ["process", "process", "browser.js"],
               ["node:stream", "stream-browserify", "index.js"],
               ["stream", "stream-browserify", "index.js"],
             ] as const) {
@@ -1713,20 +1743,14 @@ export default defineConfig({
                 // polyfill not installed
               }
             }
-            for (const [nodeId, absPath] of Object.entries(polyfills)) {
-              const re = new RegExp(`^${nodeId.replace(":", "\\:")}$`);
-              build.onResolve({ filter: re }, () => ({ path: absPath }));
-            }
-            // For all OTHER node: builtins, provide empty stubs via
-            // generateNodeBuiltinStub so esbuild doesn't externalize them.
-            build.onResolve({ filter: /^node:/ }, (args) => ({
-              path: args.path,
-              namespace: "node-stub",
-            }));
-            build.onLoad({ filter: /.*/, namespace: "node-stub" }, (args) => ({
-              contents: generateNodeBuiltinStub(args.path),
-              loader: "js",
-            }));
+            const polyfill = polyfills[source];
+            if (polyfill) return polyfill;
+            if (source.startsWith("node:")) return `\0node-stub:${source}`;
+            return null;
+          },
+          load(id) {
+            if (!id.startsWith("\0node-stub:")) return null;
+            return generateNodeBuiltinStub(id.slice("\0node-stub:".length));
           },
         },
       ],
@@ -1762,7 +1786,7 @@ export default defineConfig({
     minify: desktopFastDist ? false : undefined,
     cssMinify: desktopFastDist ? false : undefined,
     reportCompressedSize: !desktopFastDist,
-    rollupOptions: {
+    rolldownOptions: {
       // Native-only deps that must not be resolved during the browser build.
       // Node built-ins (node:fs, fs, path, etc.) are NOT externalized here —
       // they are intercepted by nativeModuleStubPlugin which replaces them
@@ -1789,9 +1813,6 @@ export default defineConfig({
       output: {
         manualChunks: resolveManualChunk,
       },
-    },
-    commonjsOptions: {
-      include: [/node_modules/],
     },
   },
   server: {

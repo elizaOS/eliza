@@ -13772,8 +13772,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.milady_pairing_tokens": {
-      "name": "milady_pairing_tokens",
+    "public.eliza_pairing_tokens": {
+      "name": "eliza_pairing_tokens",
       "schema": "",
       "columns": {
         "id": {
@@ -13840,8 +13840,8 @@
         }
       },
       "indexes": {
-        "milady_pairing_tokens_token_hash_idx": {
-          "name": "milady_pairing_tokens_token_hash_idx",
+        "eliza_pairing_tokens_token_hash_idx": {
+          "name": "eliza_pairing_tokens_token_hash_idx",
           "columns": [
             {
               "expression": "token_hash",
@@ -13855,8 +13855,8 @@
           "method": "btree",
           "with": {}
         },
-        "milady_pairing_tokens_expires_at_idx": {
-          "name": "milady_pairing_tokens_expires_at_idx",
+        "eliza_pairing_tokens_expires_at_idx": {
+          "name": "eliza_pairing_tokens_expires_at_idx",
           "columns": [
             {
               "expression": "expires_at",
@@ -13870,8 +13870,8 @@
           "method": "btree",
           "with": {}
         },
-        "milady_pairing_tokens_agent_id_idx": {
-          "name": "milady_pairing_tokens_agent_id_idx",
+        "eliza_pairing_tokens_agent_id_idx": {
+          "name": "eliza_pairing_tokens_agent_id_idx",
           "columns": [
             {
               "expression": "agent_id",
@@ -13887,9 +13887,9 @@
         }
       },
       "foreignKeys": {
-        "milady_pairing_tokens_organization_id_organizations_id_fk": {
-          "name": "milady_pairing_tokens_organization_id_organizations_id_fk",
-          "tableFrom": "milady_pairing_tokens",
+        "eliza_pairing_tokens_organization_id_organizations_id_fk": {
+          "name": "eliza_pairing_tokens_organization_id_organizations_id_fk",
+          "tableFrom": "eliza_pairing_tokens",
           "tableTo": "organizations",
           "columnsFrom": [
             "organization_id"
@@ -13900,9 +13900,9 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "milady_pairing_tokens_user_id_users_id_fk": {
-          "name": "milady_pairing_tokens_user_id_users_id_fk",
-          "tableFrom": "milady_pairing_tokens",
+        "eliza_pairing_tokens_user_id_users_id_fk": {
+          "name": "eliza_pairing_tokens_user_id_users_id_fk",
+          "tableFrom": "eliza_pairing_tokens",
           "tableTo": "users",
           "columnsFrom": [
             "user_id"
@@ -13913,10 +13913,10 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "milady_pairing_tokens_agent_id_milady_sandboxes_id_fk": {
-          "name": "milady_pairing_tokens_agent_id_milady_sandboxes_id_fk",
-          "tableFrom": "milady_pairing_tokens",
-          "tableTo": "milady_sandboxes",
+        "eliza_pairing_tokens_agent_id_eliza_sandboxes_id_fk": {
+          "name": "eliza_pairing_tokens_agent_id_eliza_sandboxes_id_fk",
+          "tableFrom": "eliza_pairing_tokens",
+          "tableTo": "eliza_sandboxes",
           "columnsFrom": [
             "agent_id"
           ],
@@ -13929,8 +13929,8 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "milady_pairing_tokens_token_hash_unique": {
-          "name": "milady_pairing_tokens_token_hash_unique",
+        "eliza_pairing_tokens_token_hash_unique": {
+          "name": "eliza_pairing_tokens_token_hash_unique",
           "nullsNotDistinct": false,
           "columns": [
             "token_hash"
@@ -13941,8 +13941,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.milady_sandbox_backups": {
-      "name": "milady_sandbox_backups",
+    "public.eliza_sandbox_backups": {
+      "name": "eliza_sandbox_backups",
       "schema": "",
       "columns": {
         "id": {
@@ -13991,8 +13991,8 @@
         }
       },
       "indexes": {
-        "milady_sandbox_backups_sandbox_idx": {
-          "name": "milady_sandbox_backups_sandbox_idx",
+        "eliza_sandbox_backups_sandbox_idx": {
+          "name": "eliza_sandbox_backups_sandbox_idx",
           "columns": [
             {
               "expression": "sandbox_record_id",
@@ -14006,8 +14006,8 @@
           "method": "btree",
           "with": {}
         },
-        "milady_sandbox_backups_created_at_idx": {
-          "name": "milady_sandbox_backups_created_at_idx",
+        "eliza_sandbox_backups_created_at_idx": {
+          "name": "eliza_sandbox_backups_created_at_idx",
           "columns": [
             {
               "expression": "created_at",
@@ -14023,10 +14023,10 @@
         }
       },
       "foreignKeys": {
-        "milady_sandbox_backups_sandbox_record_id_milady_sandboxes_id_fk": {
-          "name": "milady_sandbox_backups_sandbox_record_id_milady_sandboxes_id_fk",
-          "tableFrom": "milady_sandbox_backups",
-          "tableTo": "milady_sandboxes",
+        "eliza_sandbox_backups_sandbox_record_id_eliza_sandboxes_id_fk": {
+          "name": "eliza_sandbox_backups_sandbox_record_id_eliza_sandboxes_id_fk",
+          "tableFrom": "eliza_sandbox_backups",
+          "tableTo": "eliza_sandboxes",
           "columnsFrom": [
             "sandbox_record_id"
           ],
@@ -14043,8 +14043,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.milady_sandboxes": {
-      "name": "milady_sandboxes",
+    "public.eliza_sandboxes": {
+      "name": "eliza_sandboxes",
       "schema": "",
       "columns": {
         "id": {
@@ -14269,8 +14269,8 @@
         }
       },
       "indexes": {
-        "milady_sandboxes_organization_idx": {
-          "name": "milady_sandboxes_organization_idx",
+        "eliza_sandboxes_organization_idx": {
+          "name": "eliza_sandboxes_organization_idx",
           "columns": [
             {
               "expression": "organization_id",
@@ -14284,8 +14284,8 @@
           "method": "btree",
           "with": {}
         },
-        "milady_sandboxes_user_idx": {
-          "name": "milady_sandboxes_user_idx",
+        "eliza_sandboxes_user_idx": {
+          "name": "eliza_sandboxes_user_idx",
           "columns": [
             {
               "expression": "user_id",
@@ -14299,8 +14299,8 @@
           "method": "btree",
           "with": {}
         },
-        "milady_sandboxes_status_idx": {
-          "name": "milady_sandboxes_status_idx",
+        "eliza_sandboxes_status_idx": {
+          "name": "eliza_sandboxes_status_idx",
           "columns": [
             {
               "expression": "status",
@@ -14314,8 +14314,8 @@
           "method": "btree",
           "with": {}
         },
-        "milady_sandboxes_character_idx": {
-          "name": "milady_sandboxes_character_idx",
+        "eliza_sandboxes_character_idx": {
+          "name": "eliza_sandboxes_character_idx",
           "columns": [
             {
               "expression": "character_id",
@@ -14329,8 +14329,8 @@
           "method": "btree",
           "with": {}
         },
-        "milady_sandboxes_sandbox_id_idx": {
-          "name": "milady_sandboxes_sandbox_id_idx",
+        "eliza_sandboxes_sandbox_id_idx": {
+          "name": "eliza_sandboxes_sandbox_id_idx",
           "columns": [
             {
               "expression": "sandbox_id",
@@ -14344,8 +14344,8 @@
           "method": "btree",
           "with": {}
         },
-        "milady_sandboxes_billing_status_idx": {
-          "name": "milady_sandboxes_billing_status_idx",
+        "eliza_sandboxes_billing_status_idx": {
+          "name": "eliza_sandboxes_billing_status_idx",
           "columns": [
             {
               "expression": "billing_status",
@@ -14361,9 +14361,9 @@
         }
       },
       "foreignKeys": {
-        "milady_sandboxes_organization_id_organizations_id_fk": {
-          "name": "milady_sandboxes_organization_id_organizations_id_fk",
-          "tableFrom": "milady_sandboxes",
+        "eliza_sandboxes_organization_id_organizations_id_fk": {
+          "name": "eliza_sandboxes_organization_id_organizations_id_fk",
+          "tableFrom": "eliza_sandboxes",
           "tableTo": "organizations",
           "columnsFrom": [
             "organization_id"
@@ -14374,9 +14374,9 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "milady_sandboxes_user_id_users_id_fk": {
-          "name": "milady_sandboxes_user_id_users_id_fk",
-          "tableFrom": "milady_sandboxes",
+        "eliza_sandboxes_user_id_users_id_fk": {
+          "name": "eliza_sandboxes_user_id_users_id_fk",
+          "tableFrom": "eliza_sandboxes",
           "tableTo": "users",
           "columnsFrom": [
             "user_id"
@@ -14387,9 +14387,9 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "milady_sandboxes_character_id_user_characters_id_fk": {
-          "name": "milady_sandboxes_character_id_user_characters_id_fk",
-          "tableFrom": "milady_sandboxes",
+        "eliza_sandboxes_character_id_user_characters_id_fk": {
+          "name": "eliza_sandboxes_character_id_user_characters_id_fk",
+          "tableFrom": "eliza_sandboxes",
           "tableTo": "user_characters",
           "columnsFrom": [
             "character_id"

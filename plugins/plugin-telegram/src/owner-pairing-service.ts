@@ -2,7 +2,7 @@
  * TelegramOwnerPairingService
  *
  * Implements the connector side of the owner-pairing flow for Telegram:
- *   - `/milady_pair <code>` bot command: relays a 6-digit pair code to the
+ *   - `/eliza_pair <code>` bot command: relays a 6-digit pair code to the
  *     backend `verifyOwnerBindFromConnector` service and reports the result.
  *   - `sendOwnerLoginDmLink({ externalId, link })`: called by the backend's
  *     `/api/auth/login/owner/dm-link/request` handler to DM a login link to
@@ -13,7 +13,7 @@
  *     whether a binding succeeds.
  *   - Fail closed: if the backend service is unreachable, we reply with an
  *     explicit error message and do NOT silently succeed.
- *   - Per-user rate limit on `/milady_pair` invocations: 5 attempts per minute.
+ *   - Per-user rate limit on `/eliza_pair` invocations: 5 attempts per minute.
  *   - DM-link sender never pre-fetches or auto-redeems the link.
  *
  * Telegram command naming: underscores instead of hyphens, per Telegram bot
@@ -141,10 +141,10 @@ function resolveDisplayHandle(from: {
 }
 
 /**
- * Processes a `/milady_pair <code>` command message in a Telegraf context.
+ * Processes a `/eliza_pair <code>` command message in a Telegraf context.
  * Must only be called when `ctx.from` and `ctx.message` are present.
  */
-export async function handleMiladyPairCommand(
+export async function handleElizaPairCommand(
   ctx: Context,
   runtime: IAgentRuntime,
 ): Promise<void> {
@@ -160,7 +160,7 @@ export async function handleMiladyPairCommand(
   if (isRateLimited(userId)) {
     logger.warn(
       { src: 'plugin:telegram:owner-pairing', userId },
-      'Rate limit hit for /milady_pair',
+      'Rate limit hit for /eliza_pair',
     );
     await auditEmit(
       runtime,
@@ -175,8 +175,8 @@ export async function handleMiladyPairCommand(
   }
 
   // Extract the code argument from the message text.
-  // Telegram delivers command text as: /milady_pair 123456
-  // or /milady_pair@botname 123456 in group chats.
+  // Telegram delivers command text as: /eliza_pair 123456
+  // or /eliza_pair@botname 123456 in group chats.
   const message = ctx.message;
   const rawText = message && 'text' in message ? message.text : undefined;
 
@@ -192,7 +192,7 @@ export async function handleMiladyPairCommand(
 
   if (!code?.trim()) {
     await ctx.reply(
-      'Usage: /milady\\_pair <code> — enter the 6-digit code shown in the Milady dashboard.',
+      'Usage: /eliza\\_pair <code> — enter the 6-digit code shown in the Eliza dashboard.',
     );
     return;
   }
@@ -200,7 +200,7 @@ export async function handleMiladyPairCommand(
   code = code.trim();
   if (!isValidPairCode(code)) {
     await ctx.reply(
-      'The pairing code must be exactly 6 digits. Check the Milady dashboard and try again.',
+      'The pairing code must be exactly 6 digits. Check the Eliza dashboard and try again.',
     );
     return;
   }
@@ -218,7 +218,7 @@ export async function handleMiladyPairCommand(
       { externalId: userId },
     );
     await ctx.reply(
-      'Milady could not reach the pairing service right now. Please try again in a moment.',
+      'Eliza could not reach the pairing service right now. Please try again in a moment.',
     );
     return;
   }
@@ -261,7 +261,7 @@ export async function handleMiladyPairCommand(
       externalId: userId,
       displayHandle,
     });
-    await ctx.reply('Paired with Milady. You can now log in via Telegram.');
+    await ctx.reply('Paired with Eliza. You can now log in via Telegram.');
   } else {
     logger.warn(
       {
@@ -275,7 +275,7 @@ export async function handleMiladyPairCommand(
       externalId: userId,
     });
     await ctx.reply(
-      'Pair code invalid or expired. Check the Milady dashboard for a fresh code.',
+      'Pair code invalid or expired. Check the Eliza dashboard for a fresh code.',
     );
   }
 }
@@ -306,7 +306,7 @@ export class TelegramOwnerPairingServiceImpl
 {
   static serviceType = TELEGRAM_OWNER_PAIRING_SERVICE_TYPE;
   capabilityDescription =
-    'Handles Telegram-side owner pairing (command code verification) and DM login-link delivery for Milady remote auth';
+    'Handles Telegram-side owner pairing (command code verification) and DM login-link delivery for Eliza remote auth';
 
   static async start(runtime: IAgentRuntime): Promise<Service> {
     const service = new TelegramOwnerPairingServiceImpl(runtime);
@@ -317,7 +317,7 @@ export class TelegramOwnerPairingServiceImpl
           src: 'plugin:telegram:owner-pairing',
           agentId: runtime.agentId,
         },
-        'TelegramOwnerPairingService started; /milady_pair command registered',
+        'TelegramOwnerPairingService started; /eliza_pair command registered',
       );
     } else {
       logger.info(
@@ -325,7 +325,7 @@ export class TelegramOwnerPairingServiceImpl
           src: 'plugin:telegram:owner-pairing',
           agentId: runtime.agentId,
         },
-        'TelegramOwnerPairingService started without /milady_pair because OWNER_BIND_VERIFY is not registered',
+        'TelegramOwnerPairingService started without /eliza_pair because OWNER_BIND_VERIFY is not registered',
       );
     }
     return service;
@@ -336,7 +336,7 @@ export class TelegramOwnerPairingServiceImpl
   }
 
   /**
-   * Registers the /milady_pair command with the active Telegraf bot instance
+   * Registers the /eliza_pair command with the active Telegraf bot instance
    * by looking up the TelegramService from the runtime service registry.
    * Called during `start`; it is safe to call this before or after the bot
    * has finished initialising because Telegraf accepts handler registration
@@ -349,7 +349,7 @@ export class TelegramOwnerPairingServiceImpl
     if (!telegramSvc || typeof telegramSvc !== 'object') {
       logger.warn(
         { src: 'plugin:telegram:owner-pairing', agentId: runtime.agentId },
-        'TelegramService unavailable during owner-pairing start; /milady_pair command not registered',
+        'TelegramService unavailable during owner-pairing start; /eliza_pair command not registered',
       );
       return;
     }
@@ -365,19 +365,19 @@ export class TelegramOwnerPairingServiceImpl
     ) {
       logger.warn(
         { src: 'plugin:telegram:owner-pairing', agentId: runtime.agentId },
-        'Telegraf bot instance not available — /milady_pair will not be registered',
+        'Telegraf bot instance not available — /eliza_pair will not be registered',
       );
       return;
     }
 
     const telegrafBot = bot as import('telegraf').Telegraf<Context>;
-    telegrafBot.command('milady_pair', async (ctx) => {
-      await handleMiladyPairCommand(ctx, runtime);
+    telegrafBot.command('eliza_pair', async (ctx) => {
+      await handleElizaPairCommand(ctx, runtime);
     });
 
     logger.debug(
       { src: 'plugin:telegram:owner-pairing', agentId: runtime.agentId },
-      '/milady_pair command registered with Telegraf bot',
+      '/eliza_pair command registered with Telegraf bot',
     );
   }
 
@@ -412,7 +412,7 @@ export class TelegramOwnerPairingServiceImpl
     }
 
     const message =
-      `Click to log in to Milady: ${link}\n\n` +
+      `Click to log in to Eliza: ${link}\n\n` +
       '_This link expires in 5 minutes. Do not share it._';
 
     try {

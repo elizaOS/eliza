@@ -6,7 +6,7 @@
  * 1. **Device auto-signup** (`authenticateWithDevice`) — convenience-only.
  *    Derives a hardware fingerprint and exchanges it for a free-tier API key
  *    against the cloud signup endpoint. The result is treated as opaque and
- *    is **never** trusted as inbound auth for the local Milady dashboard.
+ *    is **never** trusted as inbound auth for the local Eliza dashboard.
  *    See `docs/security/remote-auth-hardening-plan.md` §7 for the explicit
  *    demotion rationale.
  *
@@ -230,7 +230,7 @@ export function getSsoRedirectUrl(bootstrap: CloudBootstrapService, args: SsoRed
   if (args.returnTo) {
     // Forwarded through state on the cloud side is not safe (issuer-controlled);
     // we surface it as a separate hint that the local callback honours.
-    params.set("milady_return_to", args.returnTo);
+    params.set("eliza_return_to", args.returnTo);
   }
   return `${issuer}/oauth/authorize?${params.toString()}`;
 }

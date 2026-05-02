@@ -211,7 +211,7 @@ describe("getSsoRedirectUrl", () => {
     );
   });
 
-  it("forwards milady_return_to when provided", () => {
+  it("forwards eliza_return_to when provided", () => {
     const url = getSsoRedirectUrl(harness.bootstrap, {
       state: "state-abc",
       returnTo: "/onboarding/setup",
@@ -222,7 +222,7 @@ describe("getSsoRedirectUrl", () => {
       },
     });
     const parsed = new URL(url);
-    expect(parsed.searchParams.get("milady_return_to")).toBe("/onboarding/setup");
+    expect(parsed.searchParams.get("eliza_return_to")).toBe("/onboarding/setup");
   });
 
   it("prefers explicit clientId over env", () => {

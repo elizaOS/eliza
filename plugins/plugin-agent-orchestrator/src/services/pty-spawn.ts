@@ -74,7 +74,7 @@ const CODEX_ADAPTER_RULE_OVERRIDES: NonNullable<
  * subprocess's own credential-file lookup.
  */
 const ORCHESTRATOR_POOL_SHIM_SYMBOL: unique symbol = Symbol.for(
-  "milady.account-pool.orchestrator.v1",
+  "eliza.account-pool.orchestrator.v1",
 );
 
 interface OrchestratorPoolShim {

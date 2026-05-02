@@ -62,7 +62,7 @@
 - **Tx history:** Many auto-approved small trades, several queued large positions, one rejected (exceeded daily limit)
 
 ### 5. `hosting-payer` — Cloud Hosting Payment Agent
-- **Role:** Pays milady-cloud/Eliza Cloud compute bills from agent revenue
+- **Role:** Pays eliza-cloud/Eliza Cloud compute bills from agent revenue
 - **Chain:** BSC (56)
 - **Policies:**
   - spending-limit: 0.5 BNB/tx, 2 BNB/month
@@ -123,7 +123,7 @@
 - Any UI adjustments for multi-chain context
 
 ### Worker D: Deploy + Seed Prod
-- After A, B, C commit: pull, build, deploy API to milady VPS
+- After A, B, C commit: pull, build, deploy API to eliza VPS
 - Run new seed script against prod postgres
 - Deploy web to Vercel
 - Full E2E verification

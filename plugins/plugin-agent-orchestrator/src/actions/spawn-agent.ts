@@ -334,7 +334,7 @@ export const spawnAgentAction: Action = {
           | undefined) ??
         process.env.CODING_AGENT_ALLOWED_WORKDIRS ??
         "";
-      const workspaceBaseDir = path.join(os.homedir(), ".milady", "workspaces");
+      const workspaceBaseDir = path.join(os.homedir(), ".eliza", "workspaces");
       const parallaxCodingDir =
         (runtime.getSetting("PARALLAX_CODING_DIRECTORY") as
           | string

@@ -6,7 +6,6 @@
  * the Contacts app is active.
  */
 
-import { gatePluginSessionForHostedApp, hasRoleAccess } from "@elizaos/agent";
 import { Contacts } from "@elizaos/capacitor-contacts";
 import type {
   Action,
@@ -15,6 +14,7 @@ import type {
   Memory,
   Plugin,
 } from "@elizaos/core";
+import { hasRoleAccess } from "@elizaos/shared/eliza-core-roles";
 
 const CONTACTS_APP_NAME = "@elizaos/app-contacts";
 
@@ -69,16 +69,11 @@ const listContactsAction: Action = {
   ],
 };
 
-const rawContactsPlugin: Plugin = {
+export const appContactsPlugin: Plugin = {
   name: CONTACTS_APP_NAME,
   description:
     "Contacts overlay: read the device address book via the @elizaos/capacitor-contacts native plugin. Actions apply only while the Contacts app session is active.",
   actions: [listContactsAction],
 };
-
-export const appContactsPlugin: Plugin = gatePluginSessionForHostedApp(
-  rawContactsPlugin,
-  CONTACTS_APP_NAME,
-);
 
 export default appContactsPlugin;

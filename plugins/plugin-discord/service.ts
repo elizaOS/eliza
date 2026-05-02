@@ -93,7 +93,7 @@ import {
 	extractDiscordOwnerUserIds,
 	parseDiscordOwnerUserIds,
 	resolveDiscordRuntimeEntityId,
-	resolveMiladyOwnerEntityId,
+	resolveElizaOwnerEntityId,
 } from "./identity";
 import { MessageManager } from "./messages";
 import type {
@@ -191,7 +191,7 @@ export class DiscordService extends Service implements IDiscordService {
 
 	/**
 	 * Resolves owner Discord user IDs from either the explicit
-	 * MILADY_DISCORD_OWNER_USER_IDS_JSON setting or the Discord application's
+	 * ELIZA_DISCORD_OWNER_USER_IDS_JSON setting or the Discord application's
 	 * team/owner metadata, and registers them as Discord connector admins.
 	 * Called from the extracted onReady handler once the client is ready.
 	 */
@@ -199,7 +199,7 @@ export class DiscordService extends Service implements IDiscordService {
 		client: DiscordJsClient,
 	): Promise<void> {
 		const explicitSetting = this.runtime.getSetting?.(
-			"MILADY_DISCORD_OWNER_USER_IDS_JSON",
+			"ELIZA_DISCORD_OWNER_USER_IDS_JSON",
 		);
 		const hasExplicitSetting =
 			explicitSetting !== undefined &&
@@ -230,7 +230,7 @@ export class DiscordService extends Service implements IDiscordService {
 						error: error instanceof Error ? error.message : String(error),
 					},
 					"Failed to fetch Discord application — owner will not be recognized. " +
-						"Set MILADY_DISCORD_OWNER_USER_IDS_JSON to fix this.",
+						"Set ELIZA_DISCORD_OWNER_USER_IDS_JSON to fix this.",
 				);
 				application = client.application;
 			}
@@ -245,7 +245,7 @@ export class DiscordService extends Service implements IDiscordService {
 					agentId: this.runtime.agentId,
 				},
 				"No Discord owner user IDs resolved — owner will not be recognized from Discord messages. " +
-					"Set MILADY_DISCORD_OWNER_USER_IDS_JSON to fix this.",
+					"Set ELIZA_DISCORD_OWNER_USER_IDS_JSON to fix this.",
 			);
 			return;
 		}
@@ -263,7 +263,7 @@ export class DiscordService extends Service implements IDiscordService {
 				agentId: this.runtime.agentId,
 				ownerDiscordUserIds: ownerIds,
 			},
-			"Resolved Discord owner identities for canonical Milady owner mapping",
+			"Resolved Discord owner identities for canonical Eliza owner mapping",
 		);
 	}
 
@@ -473,7 +473,7 @@ export class DiscordService extends Service implements IDiscordService {
 			return directId;
 		}
 
-		if (targetEntityId === resolveMiladyOwnerEntityId(this.runtime)) {
+		if (targetEntityId === resolveElizaOwnerEntityId(this.runtime)) {
 			const knownOwnerUserId = this.ownerDiscordUserIds.values().next().value;
 			if (typeof knownOwnerUserId === "string" && knownOwnerUserId.length > 0) {
 				return knownOwnerUserId;
@@ -1215,7 +1215,7 @@ export class DiscordService extends Service implements IDiscordService {
 
 	/**
 	 * Maps a Discord snowflake user id to the runtime entity UUID, substituting
-	 * the canonical Milady owner entity when the user is a known Discord owner.
+	 * the canonical Eliza owner entity when the user is a known Discord owner.
 	 */
 	public resolveDiscordEntityId(userId: string): UUID {
 		return resolveDiscordRuntimeEntityId(

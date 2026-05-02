@@ -1,7 +1,7 @@
 /**
  * Anthropic OAuth credential store with multi-account support.
  *
- * If the host runtime has installed the `__milady_account_pool` shim on
+ * If the host runtime has installed the `__eliza_account_pool` shim on
  * `globalThis` (app-core does this when the multi-account `LinkedAccountConfig`
  * store is non-empty), token reads route through the pool: `select` picks
  * the active account, the OAuth fetch wrapper retries on 401 against a
@@ -46,7 +46,7 @@ interface AccountPoolShim {
   markRateLimited(accountId: string, untilMs: number, detail?: string): void | Promise<void>;
 }
 
-const AccountPoolShimSymbol: unique symbol = Symbol.for("milady.account-pool.anthropic.v1");
+const AccountPoolShimSymbol: unique symbol = Symbol.for("eliza.account-pool.anthropic.v1");
 
 function getAccountPoolShim(): AccountPoolShim | undefined {
   if (typeof globalThis === "undefined") return undefined;

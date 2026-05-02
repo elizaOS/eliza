@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Phone overlay app for the Milady Android build — dialer, call log, and contact-driven calls backed by @elizaos/capacitor-phone.",
+  "description": "Phone overlay app for the Eliza Android build — dialer, call log, and contact-driven calls backed by @elizaos/capacitor-phone.",
   "main": "./src/index.ts",
   "exports": {
     "./package.json": "./package.json",
@@ -18,10 +18,10 @@
     "test": "bunx vitest run --config ./vitest.config.ts"
   },
   "dependencies": {
-    "@elizaos/agent": "workspace:*",
     "@elizaos/app-core": "workspace:*",
     "@elizaos/capacitor-phone": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0"
   },

@@ -31,6 +31,7 @@ import {
   resolveDesktopApiPort,
   syncResolvedApiPort,
 } from "@elizaos/shared";
+import { ensureAuthPairingCodeForRemoteAccess } from "../api/auth-pairing-compat-routes";
 import { startApiServer } from "../api/server";
 import { formatApiDevSettingsBannerText } from "./api-dev-settings-banner.js";
 import {
@@ -438,6 +439,8 @@ async function main() {
     `${getLogPrefix()} API server ready on port ${actualPort} (${apiReady - apiStart}ms)`,
   );
 
+  const pairing = ensureAuthPairingCodeForRemoteAccess();
+
   // Print connection info
   const apiToken = resolveApiToken(process.env);
   console.log("");
@@ -450,6 +453,11 @@ async function main() {
   if (apiToken) {
     console.log(
       `${getLogPrefix()} │  Connection key: ${("*".repeat(Math.max(0, apiToken.length - 4)) + apiToken.slice(-4)).padEnd(22)}│`,
+    );
+  }
+  if (pairing) {
+    console.log(
+      `${getLogPrefix()} │  Pairing code: ${pairing.code.padEnd(24)}│`,
     );
   }
   console.log(`${getLogPrefix()} ╰──────────────────────────────────────────╯`);

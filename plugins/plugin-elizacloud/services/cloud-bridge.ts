@@ -2,7 +2,7 @@
  * CloudBridgeService — WebSocket bridge to cloud-hosted agents.
  *
  * Establishes a JSON-RPC 2.0 WebSocket connection per container, allowing
- * the local milady client to send messages to and receive events from
+ * the local eliza client to send messages to and receive events from
  * cloud-hosted ElizaOS agents. Handles reconnection with exponential
  * backoff and heartbeat keepalive.
  */

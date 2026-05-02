@@ -1,5 +1,5 @@
 /**
- * Tests for TelegramOwnerPairingService and the /milady_pair bot command.
+ * Tests for TelegramOwnerPairingService and the /eliza_pair bot command.
  *
  * These tests are unit-level: they use in-process mocks for the backend
  * OWNER_BIND_VERIFY service, the Telegraf bot instance, and IAgentRuntime.
@@ -8,7 +8,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  handleMiladyPairCommand,
+  handleElizaPairCommand,
   TelegramOwnerPairingServiceImpl,
 } from '../src/owner-pairing-service';
 
@@ -56,10 +56,10 @@ function makeTelegrafCtx(
 }
 
 // --------------------------------------------------------------------------
-// /milady_pair command tests
+// /eliza_pair command tests
 // --------------------------------------------------------------------------
 
-describe('Telegram /milady_pair command', () => {
+describe('Telegram /eliza_pair command', () => {
   // Reset module-level rate-limit state between tests by re-importing the
   // module. vitest's resetModules() approach is used to ensure a clean slate.
   beforeEach(() => {
@@ -68,9 +68,9 @@ describe('Telegram /milady_pair command', () => {
 
   it('replies with usage hint when no code argument is given', async () => {
     const runtime = makeRuntime();
-    const ctx = makeTelegrafCtx(101, 'alice', 'Alice', '/milady_pair');
+    const ctx = makeTelegrafCtx(101, 'alice', 'Alice', '/eliza_pair');
 
-    await handleMiladyPairCommand(ctx as never, runtime as never);
+    await handleElizaPairCommand(ctx as never, runtime as never);
 
     expect(ctx.reply).toHaveBeenCalledOnce();
     const msg = (ctx.reply as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
@@ -83,9 +83,9 @@ describe('Telegram /milady_pair command', () => {
     };
     const services: ServiceMap = new Map([['OWNER_BIND_VERIFY', verifySvc]]);
     const runtime = makeRuntime(services);
-    const ctx = makeTelegrafCtx(202, 'bob', 'Bob', '/milady_pair 482193');
+    const ctx = makeTelegrafCtx(202, 'bob', 'Bob', '/eliza_pair 482193');
 
-    await handleMiladyPairCommand(ctx as never, runtime as never);
+    await handleElizaPairCommand(ctx as never, runtime as never);
 
     expect(verifySvc.verifyOwnerBindFromConnector).toHaveBeenCalledOnce();
     expect(verifySvc.verifyOwnerBindFromConnector).toHaveBeenCalledWith({
@@ -96,7 +96,7 @@ describe('Telegram /milady_pair command', () => {
     });
 
     const msg = (ctx.reply as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-    expect(msg).toMatch(/paired with milady/i);
+    expect(msg).toMatch(/paired with eliza/i);
   });
 
   it('replies with failure message when backend returns { success: false }', async () => {
@@ -107,9 +107,9 @@ describe('Telegram /milady_pair command', () => {
     };
     const services: ServiceMap = new Map([['OWNER_BIND_VERIFY', verifySvc]]);
     const runtime = makeRuntime(services);
-    const ctx = makeTelegrafCtx(303, 'carol', 'Carol', '/milady_pair 000000');
+    const ctx = makeTelegrafCtx(303, 'carol', 'Carol', '/eliza_pair 000000');
 
-    await handleMiladyPairCommand(ctx as never, runtime as never);
+    await handleElizaPairCommand(ctx as never, runtime as never);
 
     const msg = (ctx.reply as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
     expect(msg).toMatch(/invalid or expired/i);
@@ -117,9 +117,9 @@ describe('Telegram /milady_pair command', () => {
 
   it('replies with error message when OWNER_BIND_VERIFY service is absent', async () => {
     const runtime = makeRuntime(); // no services
-    const ctx = makeTelegrafCtx(404, 'dave', 'Dave', '/milady_pair 123456');
+    const ctx = makeTelegrafCtx(404, 'dave', 'Dave', '/eliza_pair 123456');
 
-    await handleMiladyPairCommand(ctx as never, runtime as never);
+    await handleElizaPairCommand(ctx as never, runtime as never);
 
     const msg = (ctx.reply as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
     expect(msg).toMatch(/could not reach/i);
@@ -136,14 +136,14 @@ describe('Telegram /milady_pair command', () => {
 
     // 5 attempts — all should reach the backend.
     for (let i = 0; i < 5; i++) {
-      const ctx = makeTelegrafCtx(505, 'eve', 'Eve', '/milady_pair 111111');
-      await handleMiladyPairCommand(ctx as never, runtime as never);
+      const ctx = makeTelegrafCtx(505, 'eve', 'Eve', '/eliza_pair 111111');
+      await handleElizaPairCommand(ctx as never, runtime as never);
     }
     expect(verifySvc.verifyOwnerBindFromConnector).toHaveBeenCalledTimes(5);
 
     // 6th attempt must be blocked.
-    const blockedCtx = makeTelegrafCtx(505, 'eve', 'Eve', '/milady_pair 111111');
-    await handleMiladyPairCommand(blockedCtx as never, runtime as never);
+    const blockedCtx = makeTelegrafCtx(505, 'eve', 'Eve', '/eliza_pair 111111');
+    await handleElizaPairCommand(blockedCtx as never, runtime as never);
 
     const blockedMsg = (blockedCtx.reply as ReturnType<typeof vi.fn>).mock
       .calls[0][0] as string;
@@ -174,7 +174,7 @@ describe('TelegramOwnerPairingService.sendOwnerLoginDmLink', () => {
       runtime as never,
     );
 
-    const link = 'https://milady.local/auth/login?token=xyz987';
+    const link = 'https://eliza.local/auth/login?token=xyz987';
     await (
       instance as TelegramOwnerPairingServiceImpl
     ).sendOwnerLoginDmLink({
@@ -187,7 +187,7 @@ describe('TelegramOwnerPairingService.sendOwnerLoginDmLink', () => {
       .mock.calls[0] as [number, string, unknown];
     expect(chatId).toBe(12345678);
     expect(messageBody).toContain(link);
-    expect(messageBody).toContain('Click to log in to Milady');
+    expect(messageBody).toContain('Click to log in to Eliza');
     expect(messageBody).toContain('expires in 5 minutes');
   });
 

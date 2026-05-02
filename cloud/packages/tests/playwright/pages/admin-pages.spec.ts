@@ -8,7 +8,7 @@ import {
   trackBadApiResponses,
 } from "../fixtures/page-helpers";
 
-// @milady-live-audit allow-route-fixtures
+// @eliza-live-audit allow-route-fixtures
 // Admin page smoke tests isolate route rendering from admin service data setup.
 
 const ADMIN_PAGES = [

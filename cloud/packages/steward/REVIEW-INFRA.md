@@ -25,7 +25,7 @@ Reviewer: Sol (subagent, code review)
 
 - **[docker-compose.yml:26] Default Postgres password is `changeme`.** While it's behind env var substitution `${POSTGRES_PASSWORD:-changeme}`, the fallback is weak. Unlike `STEWARD_MASTER_PASSWORD` which uses `:?` (required), Postgres silently accepts the default. Add a comment in `.env.example` warning this must be changed, or use `:?` syntax.
 
-- **[deploy/docker-compose.yml:12] Network `milady-isolated` is `external: true`.** This means `docker compose up` will fail if the network doesn't already exist. No error guidance is provided. Add a pre-step or use `third-party: false` with a created network.
+- **[deploy/docker-compose.yml:12] Network `eliza-isolated` is `external: true`.** This means `docker compose up` will fail if the network doesn't already exist. No error guidance is provided. Add a pre-step or use `third-party: false` with a created network.
 
 - **[packages/redis, packages/webhooks, packages/shared] Accidentally publishable.** These packages have `private: null` (no `"private": true`) which means `npm publish` will succeed. They're not in the release script's `PACKAGES` list, but someone running `npm publish` in those directories would push internal packages. Either add `"private": true` to redis/webhooks (which are internal), or add them to the release pipeline if intended to be public.
 

@@ -103,7 +103,7 @@ Also look into:
 ### 5. For Platforms
 - Brief pitch for why platforms should embed this
 - Multi-tenant, webhook-driven, no per-tx rent
-- Logos/names: Eliza Cloud, waifu.fun, milady-cloud (styled as text, no actual logos needed)
+- Logos/names: Eliza Cloud, waifu.fun, eliza-cloud (styled as text, no actual logos needed)
 
 ### 6. Footer
 - GitHub, steward.fi, hackathon link

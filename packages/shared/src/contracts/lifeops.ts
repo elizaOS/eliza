@@ -1569,6 +1569,7 @@ export interface LifeOpsActiveReminderView {
   scheduledFor: string;
   dueAt: string | null;
   state: LifeOpsOccurrenceState | "upcoming";
+  metadata?: Record<string, unknown>;
   htmlLink?: string | null;
   eventStartAt?: string | null;
 }

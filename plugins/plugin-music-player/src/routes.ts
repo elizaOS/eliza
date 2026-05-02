@@ -168,7 +168,7 @@ async function streamAudioHandler(
         );
       });
     } else {
-      // Ogg Opus: matches StreamCore output after MILADY_MUSIC_BROADCAST_NORMALIZE
+      // Ogg Opus: matches StreamCore output after ELIZA_MUSIC_BROADCAST_NORMALIZE
       // (yt-dlp cache/temp files are Ogg Opus; `audio/webm` mislabeling = silent playback).
       res.setHeader("Content-Type", "audio/ogg; codecs=opus");
       res.setHeader("Cache-Control", "no-cache");

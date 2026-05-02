@@ -53,7 +53,7 @@ describe('CloudTailscaleService', () => {
         JSON.stringify({
           authKey: 'tskey-auth-xxx',
           tailnet: 'example.ts.net',
-          magicDnsName: 'milady-1234.example.ts.net',
+          magicDnsName: 'eliza-1234.example.ts.net',
         }),
         { status: 200 },
       ),
@@ -62,7 +62,7 @@ describe('CloudTailscaleService', () => {
     const service = makeService(makeRuntime());
     const url = await service.startTunnel(8080);
 
-    expect(url).toBe('https://milady-1234.example.ts.net');
+    expect(url).toBe('https://eliza-1234.example.ts.net');
     expect(service.isActive()).toBe(true);
     expect(service.getStatus().provider).toBe('tailscale');
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -71,7 +71,7 @@ describe('CloudTailscaleService', () => {
     const init = firstCall[1] as RequestInit | undefined;
     expect(String(requestUrl)).toContain('/apis/tunnels/tailscale/auth-key');
     expect(init?.method).toBe('POST');
-    expect(String(init?.body)).toContain('tag:milady-tunnel');
+    expect(String(init?.body)).toContain('tag:eliza-tunnel');
 
     expect(cliCalls).toEqual([
       { cmd: 'tailscale', args: ['up', '--auth-key=tskey-auth-xxx'] },
@@ -115,7 +115,7 @@ describe('CloudTailscaleService', () => {
         JSON.stringify({
           authKey: 'tskey-auth-xxx',
           tailnet: 'example.ts.net',
-          magicDnsName: 'milady-1234.example.ts.net',
+          magicDnsName: 'eliza-1234.example.ts.net',
         }),
         { status: 200 },
       ),
@@ -133,7 +133,7 @@ describe('CloudTailscaleService', () => {
         JSON.stringify({
           authKey: 'tskey-auth-xxx',
           tailnet: 'example.ts.net',
-          magicDnsName: 'milady-1234.example.ts.net',
+          magicDnsName: 'eliza-1234.example.ts.net',
         }),
         { status: 200 },
       ),

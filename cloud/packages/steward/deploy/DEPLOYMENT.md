@@ -4,12 +4,12 @@
 
 ## Overview
 
-Steward runs as two **systemd services** on each Milady node, built from source using Bun. It connects to a shared Neon PostgreSQL database and an optional Redis instance for rate limiting and spend tracking.
+Steward runs as two **systemd services** on each Eliza node, built from source using Bun. It connects to a shared Neon PostgreSQL database and an optional Redis instance for rate limiting and spend tracking.
 
 - `steward-api.service` — REST API on port 3200
 - `steward-proxy.service` — API proxy gateway on port 8080
 
-**Current production nodes:** milady-core-1 through milady-core-6 (all Hetzner dedicated servers).
+**Current production nodes:** eliza-core-1 through eliza-core-6 (all Hetzner dedicated servers).
 
 ---
 
@@ -17,7 +17,7 @@ Steward runs as two **systemd services** on each Milady node, built from source 
 
 ```
 ┌──────────────────────────────────────────────────────┐
-│  Milady Core Node                                     │
+│  Eliza Core Node                                     │
 │                                                       │
 │  systemd: steward-api.service                         │
 │    └─ bun run packages/api/src/index.ts               │
@@ -33,7 +33,7 @@ Steward runs as two **systemd services** on each Milady node, built from source 
 │    └─ Reach proxy at:   http://172.18.0.1:8080        │
 │       (Docker bridge gateway IP)                      │
 │                                                       │
-│  External: api.steward.fi → milady-core-1:3200        │
+│  External: api.steward.fi → eliza-core-1:3200        │
 └──────────────────────────────────────────────────────┘
 ```
 
@@ -199,14 +199,14 @@ ssh root@${NODE_IP} "curl -sf http://172.18.0.1:3200/health"
 ssh root@${NODE_IP} "curl -sf http://172.18.0.1:8080/health"
 ```
 
-### Step 6: Create milady-cloud tenant (if first time)
+### Step 6: Create eliza-cloud tenant (if first time)
 
 ```bash
 PLATFORM_KEY="<your-platform-key>"
 ssh root@${NODE_IP} "curl -sf -X POST http://localhost:3200/platform/tenants \
   -H 'Content-Type: application/json' \
   -H 'X-Steward-Platform-Key: ${PLATFORM_KEY}' \
-  -d '{\"id\": \"milady-cloud\", \"name\": \"Milady Cloud\"}'"
+  -d '{\"id\": \"eliza-cloud\", \"name\": \"Eliza Cloud\"}'"
 ```
 
 ---
@@ -216,7 +216,7 @@ ssh root@${NODE_IP} "curl -sf -X POST http://localhost:3200/platform/tenants \
 ### Quick update (source sync + restart)
 
 ```bash
-NODE_IP="88.99.66.168"  # milady-core-1
+NODE_IP="88.99.66.168"  # eliza-core-1
 
 # 1. Sync updated source
 rsync -az --delete \
@@ -258,13 +258,13 @@ done
 
 ## How Agent Provisioning Works
 
-When a new agent container is created by the Milady Cloud provisioner:
+When a new agent container is created by the Eliza Cloud provisioner:
 
 ### 1. Agent Registration
 The provisioner calls the Steward API to create an agent:
 ```
 POST /agents
-X-Steward-Tenant: milady-cloud
+X-Steward-Tenant: eliza-cloud
 X-Steward-Key: <tenant-api-key>
 Body: { "id": "<agent-uuid>", "name": "Agent Name" }
 ```
@@ -277,7 +277,7 @@ This creates:
 The provisioner gets a JWT for the agent:
 ```
 POST /agents/<agent-id>/token
-X-Steward-Tenant: milady-cloud
+X-Steward-Tenant: eliza-cloud
 X-Steward-Key: <tenant-api-key>
 ```
 Returns a 30-day JWT with `scope: "agent"`.
@@ -424,12 +424,12 @@ Note: The root `docker-compose.yml` includes a local Postgres. For Neon, use the
 
 | Node | IP | API (:3200) | Proxy (:8080) | Notes |
 |------|-----|------------|--------------|-------|
-| milady-core-1 | 88.99.66.168 | ✅ Running | ✅ Running | Primary, hosts api.steward.fi |
-| milady-core-2 | 178.63.251.122 | ✅ Running | ✅ Running | |
-| milady-core-3 | 138.201.80.125 | ✅ Running | ✅ Running | |
-| milady-core-4 | 85.10.193.52 | ✅ Running | ✅ Running | |
-| milady-core-5 | 136.243.47.243 | ✅ Running | ✅ Running | |
-| milady-core-6 | 195.201.57.227 | ✅ Running | ✅ Running | |
+| eliza-core-1 | 88.99.66.168 | ✅ Running | ✅ Running | Primary, hosts api.steward.fi |
+| eliza-core-2 | 178.63.251.122 | ✅ Running | ✅ Running | |
+| eliza-core-3 | 138.201.80.125 | ✅ Running | ✅ Running | |
+| eliza-core-4 | 85.10.193.52 | ✅ Running | ✅ Running | |
+| eliza-core-5 | 136.243.47.243 | ✅ Running | ✅ Running | |
+| eliza-core-6 | 195.201.57.227 | ✅ Running | ✅ Running | |
 
 ---
 

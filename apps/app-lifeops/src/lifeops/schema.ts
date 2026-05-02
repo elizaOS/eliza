@@ -233,12 +233,25 @@ export const lifeReminderAttempts = pgTable(
     deliveryMetadataJson: text("delivery_metadata_json")
       .notNull()
       .default("{}"),
+    reviewAt: text("review_at"),
+    reviewStatus: text("review_status"),
+    reviewClaimedAt: text("review_claimed_at"),
+    reviewClaimedBy: text("review_claimed_by"),
+    reviewAttemptCount: integer("review_attempt_count").notNull().default(0),
+    reviewNextRetryAt: text("review_next_retry_at"),
+    reviewLastError: text("review_last_error"),
   },
   (t) => [
     index("idx_life_reminder_attempts_plan").on(
       t.planId,
       t.ownerType,
       t.ownerId,
+    ),
+    index("idx_life_reminder_attempts_review_scan").on(
+      t.agentId,
+      t.outcome,
+      t.reviewStatus,
+      t.reviewAt,
     ),
   ],
 );

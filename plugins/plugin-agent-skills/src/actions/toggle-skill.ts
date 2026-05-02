@@ -115,7 +115,7 @@ export const toggleSkillAction: Action = {
 			const errorText =
 				`Cannot enable "${fuzzyMatch.name}" — it has ${findingCount} security finding(s) ` +
 				`(scan status: ${scanStatus ?? "unknown"}). ` +
-				"The user must review and acknowledge the findings in the Milaidy app before this skill can be enabled.";
+				"The user must review and acknowledge the findings in the Eliza app before this skill can be enabled.";
 			if (callback) await callback({ text: errorText });
 			return { success: false, error: new Error(errorText) };
 		}

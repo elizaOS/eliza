@@ -249,7 +249,7 @@ function getConfiguredTaskAgentAuthHosts(
   const configured = parseTaskAgentAuthStringList(
     readTaskAgentAuthSetting(runtime, env, [
       "TASK_AGENT_AUTH_TRUSTED_HOSTS",
-      "MILADY_TASK_AGENT_AUTH_TRUSTED_HOSTS",
+      "ELIZA_TASK_AGENT_AUTH_TRUSTED_HOSTS",
       "ELIZA_TASK_AGENT_AUTH_TRUSTED_HOSTS",
     ]),
   );
@@ -268,7 +268,7 @@ function getTaskAgentBrowserClickSelectors(
   const configured = parseTaskAgentAuthStringList(
     readTaskAgentAuthSetting(runtime, env, [
       `TASK_AGENT_AUTH_SELECTORS_${suffix}`,
-      `MILADY_TASK_AGENT_AUTH_SELECTORS_${suffix}`,
+      `ELIZA_TASK_AGENT_AUTH_SELECTORS_${suffix}`,
       `ELIZA_TASK_AGENT_AUTH_SELECTORS_${suffix}`,
     ]),
   );
@@ -652,7 +652,7 @@ function resolveLocalApiBaseUrl(
   const configured = parseHttpBaseUrl(
     readTaskAgentAuthSetting(runtime, env, [
       "TASK_AGENT_AUTH_API_BASE_URL",
-      "MILADY_TASK_AGENT_AUTH_API_BASE_URL",
+      "ELIZA_TASK_AGENT_AUTH_API_BASE_URL",
       "ELIZA_TASK_AGENT_AUTH_API_BASE_URL",
     ]),
   );
@@ -662,7 +662,7 @@ function resolveLocalApiBaseUrl(
   const rawPort =
     safeRuntimeSetting(runtime, "SERVER_PORT") ||
     env.SERVER_PORT?.trim() ||
-    env.MILADY_API_PORT?.trim() ||
+    env.ELIZA_API_PORT?.trim() ||
     env.ELIZA_PORT?.trim() ||
     "31337";
   return `http://127.0.0.1:${rawPort}`;

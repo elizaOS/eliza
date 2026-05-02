@@ -1,4 +1,4 @@
-// @milady-live-audit allow-route-fixtures
+// @eliza-live-audit allow-route-fixtures
 import { type APIRequestContext, expect, type Page, type Route, test } from "@playwright/test";
 import { SignJWT } from "jose";
 import { verifyMessage } from "viem";

@@ -5,7 +5,7 @@ import type { HandlerCallback } from "@elizaos/core";
  * API from @elizaos/plugin-discord.
  *
  * On Discord the upstream version edits a single message in-place. On the
- * Milady web chat, the API server's SSE handler uses snapshot/replace
+ * Eliza web chat, the API server's SSE handler uses snapshot/replace
  * semantics for action callbacks — each callback call replaces the previous
  * callback text rather than appending. This gives the same edit-in-place UX:
  * the user sees "🔍 Searching…" → "✨ Setting up…" → "Now playing: **X**"

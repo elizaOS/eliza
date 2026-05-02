@@ -757,10 +757,10 @@ export class MessageManager {
 					if (hasText && content.inReplyTo) {
 						const dedupKey = `${content.inReplyTo}::${textContent.replace(/\s+/g, " ").trim()}`;
 						const callbackDedup = message as DiscordMessage & {
-							_miladySentReplyKeys?: Set<string>;
+							_elizaSentReplyKeys?: Set<string>;
 						};
-						callbackDedup._miladySentReplyKeys ??= new Set();
-						if (callbackDedup._miladySentReplyKeys.has(dedupKey)) {
+						callbackDedup._elizaSentReplyKeys ??= new Set();
+						if (callbackDedup._elizaSentReplyKeys.has(dedupKey)) {
 							this.runtime.logger.debug(
 								{
 									src: "plugin:discord",
@@ -775,7 +775,7 @@ export class MessageManager {
 							);
 							return [];
 						}
-						callbackDedup._miladySentReplyKeys.add(dedupKey);
+						callbackDedup._elizaSentReplyKeys.add(dedupKey);
 					}
 
 					const files: AttachmentBuilder[] = [];

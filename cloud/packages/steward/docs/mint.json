@@ -89,7 +89,7 @@
         "guides/secrets",
         "guides/local-mode",
         "guides/eliza-plugin",
-        "guides/milady-cloud",
+        "guides/eliza-cloud",
         "guides/self-hosting",
         "guides/docker"
       ]

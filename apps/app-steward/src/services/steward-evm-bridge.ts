@@ -36,7 +36,7 @@ let _initialized = false;
  * doesn't auto-generate and persist a random key.
  */
 export async function stewardEvmPreBoot(runtime: IAgentRuntime): Promise<void> {
-  if (process.env.MILADY_LEGACY_STEWARD_EVM_BRIDGE === "0") {
+  if (process.env.ELIZA_LEGACY_STEWARD_EVM_BRIDGE === "0") {
     return;
   }
   if (!isStewardSigningReady()) {
@@ -83,7 +83,7 @@ export async function stewardEvmPreBoot(runtime: IAgentRuntime): Promise<void> {
 export async function stewardEvmPostBoot(
   runtime: IAgentRuntime,
 ): Promise<void> {
-  if (process.env.MILADY_LEGACY_STEWARD_EVM_BRIDGE === "0") {
+  if (process.env.ELIZA_LEGACY_STEWARD_EVM_BRIDGE === "0") {
     return;
   }
   if (!_initialized || !_stewardAccount) {

@@ -182,21 +182,21 @@ describe("runCustomValidator", () => {
 });
 
 describe("getMaxRetries", () => {
-  const ORIGINAL = process.env.MILADY_APP_VERIFICATION_MAX_RETRIES;
+  const ORIGINAL = process.env.ELIZA_APP_VERIFICATION_MAX_RETRIES;
 
   function withEnv(value: string | undefined, fn: () => void): void {
     if (value === undefined) {
-      delete process.env.MILADY_APP_VERIFICATION_MAX_RETRIES;
+      delete process.env.ELIZA_APP_VERIFICATION_MAX_RETRIES;
     } else {
-      process.env.MILADY_APP_VERIFICATION_MAX_RETRIES = value;
+      process.env.ELIZA_APP_VERIFICATION_MAX_RETRIES = value;
     }
     try {
       fn();
     } finally {
       if (ORIGINAL === undefined) {
-        delete process.env.MILADY_APP_VERIFICATION_MAX_RETRIES;
+        delete process.env.ELIZA_APP_VERIFICATION_MAX_RETRIES;
       } else {
-        process.env.MILADY_APP_VERIFICATION_MAX_RETRIES = ORIGINAL;
+        process.env.ELIZA_APP_VERIFICATION_MAX_RETRIES = ORIGINAL;
       }
     }
   }

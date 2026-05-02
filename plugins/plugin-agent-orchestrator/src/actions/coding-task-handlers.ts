@@ -329,7 +329,7 @@ async function generateLaunchFailureUserMessage(
 /**
  * Compute per-task skill recommendations, render SKILLS.md into the workspace,
  * and return the absolute manifest path so the spawned agent can find it via
- * MILADY_SKILLS_MANIFEST.
+ * ELIZA_SKILLS_MANIFEST.
  *
  * Returns null only when no installed or task-scoped skills are available —
  * a legitimate state that should not block task spawn.
@@ -626,7 +626,7 @@ export interface CodingTaskContext {
     method: string;
     params: Record<string, unknown>;
   };
-  /** Optional override for MILADY_APP_VERIFICATION_MAX_RETRIES. */
+  /** Optional override for ELIZA_APP_VERIFICATION_MAX_RETRIES. */
   maxRetries?: number;
   /** Optional verdict-fail behavior. Defaults to "retry". */
   onVerificationFail?: "retry" | "escalate";
@@ -700,7 +700,7 @@ export async function handleMultiAgent(
   // Skip the spawn callback — the LLM REPLY already says "on it" (character
   // prompt ack rule) and the task-progress-streamer delivers the final
   // result. Emitting "Launching N agents..." here duplicates the ack and
-  // spams discord. See milady nubs/full-working-state clean Discord UX fix.
+  // spams discord. See eliza nubs/full-working-state clean Discord UX fix.
 
   // Install the child→parent USE_SKILL bridge once per runtime. Idempotent —
   // subsequent task spawns are no-ops. Pass the module-level session allow-
@@ -946,7 +946,7 @@ export async function handleMultiAgent(
 
       failureStage = "spawn";
       const skillEnv: Record<string, string> | undefined = skillAwareness
-        ? { MILADY_SKILLS_MANIFEST: skillAwareness.manifestPath }
+        ? { ELIZA_SKILLS_MANIFEST: skillAwareness.manifestPath }
         : undefined;
       const session: SessionInfo = await ptyService.spawnSession({
         name: `coding-${Date.now()}-${i}`,

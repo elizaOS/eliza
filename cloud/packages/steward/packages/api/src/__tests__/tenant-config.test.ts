@@ -62,35 +62,35 @@ describe.skipIf(SKIP)("Tenant Config API", () => {
       expect(body.data.policyTemplates).toEqual([]);
     });
 
-    it("returns default config for milady-cloud tenant", async () => {
-      // This tests the default fallback — milady-cloud has built-in defaults
-      // We need a milady-cloud tenant to exist for auth to pass
+    it("returns default config for eliza-cloud tenant", async () => {
+      // This tests the default fallback — eliza-cloud has built-in defaults
+      // We need a eliza-cloud tenant to exist for auth to pass
       const db = getDb();
       const apiKeyPair = generateApiKey();
       await db
         .insert(tenants)
         .values({
-          id: "milady-cloud",
-          name: "Milady Cloud",
+          id: "eliza-cloud",
+          name: "Eliza Cloud",
           apiKeyHash: apiKeyPair.hash,
         })
         .onConflictDoNothing();
 
-      const res = await fetch(`${BASE_URL}/tenants/milady-cloud/config`, {
+      const res = await fetch(`${BASE_URL}/tenants/eliza-cloud/config`, {
         headers: {
-          "X-Steward-Tenant": "milady-cloud",
+          "X-Steward-Tenant": "eliza-cloud",
           "X-Steward-Key": apiKeyPair.key,
         },
       });
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.ok).toBe(true);
-      expect(body.data.tenantId).toBe("milady-cloud");
+      expect(body.data.tenantId).toBe("eliza-cloud");
       expect(body.data.policyTemplates.length).toBeGreaterThan(0);
       expect(body.data.policyExposure["spending-limit"]).toBe("visible");
 
       // Cleanup
-      await db.delete(tenants).where(eq(tenants.id, "milady-cloud"));
+      await db.delete(tenants).where(eq(tenants.id, "eliza-cloud"));
     });
   });
 

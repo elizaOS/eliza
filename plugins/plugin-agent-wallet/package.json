@@ -4,10 +4,10 @@
   "description": "Unified non-custodial wallet for elizaOS agents — EVM + Solana, ERC-6551 token-bound accounts, on-chain spend policies, x402 micropayments, CCTP bridge, Li.Fi swap routing, Jupiter routing, multi-DEX LP management (Raydium/Orca/Meteora on Solana, Uniswap/Aerodrome on EVM), Hyperliquid perps, Polymarket, Aave/Morpho lending, and Clanker token launches. Replaces plugin-evm + plugin-solana + plugin-raydium + plugin-orca + plugin-meteora + plugin-jupiter + plugin-lp-manager + plugin-clanker behind one canonical action+provider surface.",
   "type": "module",
   "license": "MIT",
-  "homepage": "https://github.com/milady-ai/milady/tree/main/eliza/plugins/plugin-agent-wallet",
+  "homepage": "https://github.com/eliza-ai/eliza/tree/main/eliza/plugins/plugin-agent-wallet",
   "repository": {
     "type": "git",
-    "url": "https://github.com/milady-ai/milady.git",
+    "url": "https://github.com/eliza-ai/eliza.git",
     "directory": "eliza/plugins/plugin-agent-wallet"
   },
   "main": "dist/index.js",
@@ -69,7 +69,7 @@
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {
-      "MILADY_WALLET_BACKEND": {
+      "ELIZA_WALLET_BACKEND": {
         "type": "string",
         "required": false,
         "description": "Wallet backend selection: 'local' | 'steward' | 'auto'. Default: auto (desktop=local, cloud/mobile=steward).",
@@ -90,18 +90,18 @@
       "STEWARD_API_URL": {
         "type": "string",
         "required": false,
-        "description": "Steward API base URL. Required when MILADY_WALLET_BACKEND=steward."
+        "description": "Steward API base URL. Required when ELIZA_WALLET_BACKEND=steward."
       },
       "STEWARD_AGENT_ID": {
         "type": "string",
         "required": false,
-        "description": "Steward agent identifier. Required when MILADY_WALLET_BACKEND=steward."
+        "description": "Steward agent identifier. Required when ELIZA_WALLET_BACKEND=steward."
       },
       "STEWARD_AGENT_TOKEN": {
         "type": "string",
         "required": false,
         "sensitive": true,
-        "description": "Steward agent bearer token. Required when MILADY_WALLET_BACKEND=steward."
+        "description": "Steward agent bearer token. Required when ELIZA_WALLET_BACKEND=steward."
       },
       "STEWARD_TENANT_ID": {
         "type": "string",

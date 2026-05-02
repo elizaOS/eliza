@@ -4,8 +4,8 @@
  * config flag. When set, Codex (ChatGPT Plus/Pro) subscription tokens must
  * only count toward `subscriptionReady`/`authReady` for the `codex` framework.
  *
- * We isolate the filesystem by pointing MILADY_STATE_DIR and HOME at a temp
- * directory, then writing a fake Codex auth.json + milady.json. No mocks of
+ * We isolate the filesystem by pointing ELIZA_STATE_DIR and HOME at a temp
+ * directory, then writing a fake Codex auth.json + eliza.json. No mocks of
  * the module graph — we exercise the real config readers.
  */
 
@@ -40,10 +40,10 @@ function createRuntime(
 interface FrameworkFixture {
   tmpRoot: string;
   previous: {
-    MILADY_STATE_DIR: string | undefined;
+    ELIZA_STATE_DIR: string | undefined;
     ELIZA_STATE_DIR: string | undefined;
     ELIZA_NAMESPACE: string | undefined;
-    MILADY_CONFIG_PATH: string | undefined;
+    ELIZA_CONFIG_PATH: string | undefined;
     ELIZA_CONFIG_PATH: string | undefined;
     HOME: string | undefined;
     USERPROFILE: string | undefined;
@@ -66,16 +66,16 @@ interface FrameworkFixture {
 
 function setupFixture(): FrameworkFixture {
   const tmpRoot = mkdtempSync(path.join(os.tmpdir(), "orch-frameworks-"));
-  const stateDir = path.join(tmpRoot, ".milady");
+  const stateDir = path.join(tmpRoot, ".eliza");
   const homeDir = path.join(tmpRoot, "home");
   mkdirSync(stateDir, { recursive: true });
   mkdirSync(path.join(homeDir, ".codex"), { recursive: true });
 
   const previous = {
-    MILADY_STATE_DIR: process.env.MILADY_STATE_DIR,
+    ELIZA_STATE_DIR: process.env.ELIZA_STATE_DIR,
     ELIZA_STATE_DIR: process.env.ELIZA_STATE_DIR,
     ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE,
-    MILADY_CONFIG_PATH: process.env.MILADY_CONFIG_PATH,
+    ELIZA_CONFIG_PATH: process.env.ELIZA_CONFIG_PATH,
     ELIZA_CONFIG_PATH: process.env.ELIZA_CONFIG_PATH,
     HOME: process.env.HOME,
     USERPROFILE: process.env.USERPROFILE,
@@ -95,10 +95,10 @@ function setupFixture(): FrameworkFixture {
     PARALLAX_AIDER_MODEL_FAST: process.env.PARALLAX_AIDER_MODEL_FAST,
   };
 
-  process.env.MILADY_STATE_DIR = stateDir;
+  process.env.ELIZA_STATE_DIR = stateDir;
   process.env.ELIZA_STATE_DIR = stateDir;
   delete process.env.ELIZA_NAMESPACE;
-  delete process.env.MILADY_CONFIG_PATH;
+  delete process.env.ELIZA_CONFIG_PATH;
   delete process.env.ELIZA_CONFIG_PATH;
   process.env.HOME = homeDir;
   process.env.USERPROFILE = homeDir;
@@ -141,12 +141,12 @@ function teardownFixture(fixture: FrameworkFixture): void {
   clearTaskAgentFrameworkStateCache();
 }
 
-function writeMiladyConfig(
+function writeElizaConfig(
   fixture: FrameworkFixture,
   config: Record<string, unknown>,
 ): void {
   writeFileSync(
-    path.join(fixture.tmpRoot, ".milady", "milady.json"),
+    path.join(fixture.tmpRoot, ".eliza", "eliza.json"),
     JSON.stringify(config),
     "utf8",
   );
@@ -165,7 +165,7 @@ describe("task-agent model preferences", () => {
   });
 
   it("uses central powerful defaults for Claude and Codex task agents", () => {
-    writeMiladyConfig(fixture, {});
+    writeElizaConfig(fixture, {});
 
     expect(getTaskAgentModelPrefs(createRuntime(), "claude")).toEqual({
       powerful: "claude-opus-4-7",
@@ -194,7 +194,7 @@ describe("task-agent model preferences", () => {
   });
 
   it("reads model overrides from the persisted config env section", () => {
-    writeMiladyConfig(fixture, {
+    writeElizaConfig(fixture, {
       env: {
         PARALLAX_CODEX_MODEL_POWERFUL: "gpt-config-power",
       },
@@ -219,14 +219,14 @@ describe("codexSubscriptionRestrictedToCodexFramework flag", () => {
   });
 
   it("preserves today's behavior when the flag is unset (Codex sub counted for codex)", async () => {
-    writeMiladyConfig(fixture, {});
+    writeElizaConfig(fixture, {});
     const state = await getTaskAgentFrameworkState(createRuntime());
     const codex = state.frameworks.find((f) => f.id === "codex");
     expect(codex?.subscriptionReady).toBe(true);
   });
 
   it("preserves today's behavior when the flag is explicitly false", async () => {
-    writeMiladyConfig(fixture, {
+    writeElizaConfig(fixture, {
       agents: {
         defaults: {
           orchestrator: { codexSubscriptionRestrictedToCodexFramework: false },
@@ -240,7 +240,7 @@ describe("codexSubscriptionRestrictedToCodexFramework flag", () => {
   });
 
   it("still counts Codex sub toward codex framework when flag is true", async () => {
-    writeMiladyConfig(fixture, {
+    writeElizaConfig(fixture, {
       agents: {
         defaults: {
           orchestrator: { codexSubscriptionRestrictedToCodexFramework: true },
@@ -254,7 +254,7 @@ describe("codexSubscriptionRestrictedToCodexFramework flag", () => {
   });
 
   it("does not mark claude framework as subscriptionReady via Codex sub even without the flag", async () => {
-    writeMiladyConfig(fixture, {});
+    writeElizaConfig(fixture, {});
     const state = await getTaskAgentFrameworkState(createRuntime());
     const claude = state.frameworks.find((f) => f.id === "claude");
     // Regression guard: claude's subscriptionReady is independent of Codex sub.
@@ -267,7 +267,7 @@ describe("codexSubscriptionRestrictedToCodexFramework flag", () => {
     // If it's identical (e.g. the developer has a real Claude sub in the
     // macOS keychain that satisfies claudeAuthReady regardless), skip — the
     // behavior under test is masked by an environment signal we can't clear.
-    writeMiladyConfig(fixture, {
+    writeElizaConfig(fixture, {
       agents: {
         defaults: {
           orchestrator: { codexSubscriptionRestrictedToCodexFramework: false },
@@ -281,7 +281,7 @@ describe("codexSubscriptionRestrictedToCodexFramework flag", () => {
     // Without the flag, Codex sub alone should make aider auth-ready.
     expect(aiderUnrestricted?.authReady).toBe(true);
 
-    writeMiladyConfig(fixture, {
+    writeElizaConfig(fixture, {
       agents: {
         defaults: {
           orchestrator: { codexSubscriptionRestrictedToCodexFramework: true },
@@ -303,11 +303,11 @@ describe("codexSubscriptionRestrictedToCodexFramework flag", () => {
     }
   });
 
-  it("reads the flag from agents.defaults.orchestrator in milady.json", () => {
-    writeMiladyConfig(fixture, {});
+  it("reads the flag from agents.defaults.orchestrator in eliza.json", () => {
+    writeElizaConfig(fixture, {});
     expect(readConfigCodexSubscriptionRestrictedToCodexFramework()).toBe(false);
 
-    writeMiladyConfig(fixture, {
+    writeElizaConfig(fixture, {
       agents: {
         defaults: {
           orchestrator: { codexSubscriptionRestrictedToCodexFramework: true },
@@ -316,7 +316,7 @@ describe("codexSubscriptionRestrictedToCodexFramework flag", () => {
     });
     expect(readConfigCodexSubscriptionRestrictedToCodexFramework()).toBe(true);
 
-    writeMiladyConfig(fixture, {
+    writeElizaConfig(fixture, {
       agents: {
         defaults: {
           orchestrator: { codexSubscriptionRestrictedToCodexFramework: false },
@@ -326,7 +326,7 @@ describe("codexSubscriptionRestrictedToCodexFramework flag", () => {
     expect(readConfigCodexSubscriptionRestrictedToCodexFramework()).toBe(false);
 
     // Non-boolean values don't accidentally coerce to true.
-    writeMiladyConfig(fixture, {
+    writeElizaConfig(fixture, {
       agents: {
         defaults: {
           orchestrator: {

@@ -56,11 +56,7 @@ function fakeFetch(
     for (const [pattern, h] of routes.entries()) {
       const [hMethod, hPath] = pattern.split(" ");
       if (hMethod !== method) continue;
-      if (
-        hPath &&
-        hPath.endsWith("*") &&
-        urlPath.startsWith(hPath.slice(0, -1))
-      ) {
+      if (hPath?.endsWith("*") && urlPath.startsWith(hPath.slice(0, -1))) {
         handler = h;
         break;
       }
@@ -242,14 +238,21 @@ describe("VaultInventoryPanel — add secret", () => {
     });
     // Find the password input (value field).
     const passwordInputs = document.querySelectorAll('input[type="password"]');
-    fireEvent.change(passwordInputs[0]!, { target: { value: "sk-ant-real" } });
+    const passwordInput = passwordInputs[0];
+    if (!passwordInput) {
+      throw new Error("Expected a password input for the secret value");
+    }
+    fireEvent.change(passwordInput, { target: { value: "sk-ant-real" } });
 
     fireEvent.click(screen.getByRole("button", { name: /Save secret/i }));
 
     await waitFor(() => {
       expect(putBody).toBeDefined();
     });
-    expect(JSON.parse(putBody!)).toMatchObject({
+    if (!putBody) {
+      throw new Error("Expected PUT body to be captured");
+    }
+    expect(JSON.parse(putBody)).toMatchObject({
       value: "sk-ant-real",
       label: "Anthropic",
     });
