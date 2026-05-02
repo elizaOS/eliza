@@ -52,6 +52,90 @@ function makeOccurrence(args: {
   };
 }
 
+async function seedDueStretchReview(args: {
+  runtime: AgentRuntime;
+  repository: LifeOpsRepository;
+}) {
+  const agentId = String(args.runtime.agentId);
+  const definition = createLifeOpsTaskDefinition({
+    agentId,
+    domain: "user_lifeops",
+    subjectType: "owner",
+    subjectId: agentId,
+    visibilityScope: "owner_agent_admin",
+    contextPolicy: "explicit_only",
+    kind: "habit",
+    title: "Stretch",
+    description: "Stretch twice daily.",
+    originalIntent: "Stretch twice daily with follow-up acknowledgements.",
+    timezone: "UTC",
+    status: "active",
+    priority: 2,
+    cadence: {
+      kind: "once",
+      dueAt: baseAt.toISOString(),
+      visibilityLeadMinutes: 0,
+      visibilityLagMinutes: 120,
+    },
+    windowPolicy: {},
+    progressionRule: {},
+    websiteAccess: null,
+    reminderPlanId: null,
+    goalId: null,
+    source: "test",
+    metadata: { [REMINDER_URGENCY_METADATA_KEY]: "high" },
+  });
+  await args.repository.createDefinition(definition);
+  const plan = createLifeOpsReminderPlan({
+    agentId,
+    ownerType: "definition",
+    ownerId: definition.id,
+    steps: [
+      { channel: "in_app", offsetMinutes: 0, label: "In app" },
+      { channel: "discord", offsetMinutes: 60, label: "Discord" },
+    ],
+    mutePolicy: {},
+    quietHours: {
+      timezone: "UTC",
+      startMinute: 0,
+      endMinute: 0,
+    },
+  });
+  await args.repository.createReminderPlan(plan);
+  const occurrence = makeOccurrence({
+    runtime: args.runtime,
+    definitionId: definition.id,
+  });
+  await args.repository.upsertOccurrence(occurrence);
+  const initialAttempt = createLifeOpsReminderAttempt({
+    agentId,
+    planId: plan.id,
+    ownerType: "occurrence",
+    ownerId: occurrence.id,
+    occurrenceId: occurrence.id,
+    channel: "in_app",
+    stepIndex: 0,
+    scheduledFor: baseAt.toISOString(),
+    attemptedAt: baseAt.toISOString(),
+    outcome: "delivered",
+    connectorRef: "system:in_app",
+    deliveryMetadata: {
+      title: "Stretch",
+      urgency: "high",
+      [REMINDER_LIFECYCLE_METADATA_KEY]: "plan",
+      [REMINDER_REVIEW_AT_METADATA_KEY]: addMinutes(baseAt, 7),
+    },
+  });
+  await args.repository.createReminderAttempt(initialAttempt);
+
+  return {
+    definition,
+    initialAttempt,
+    occurrence,
+    plan,
+  };
+}
+
 describe("reminder review jobs real scenarios", () => {
   it("runs a persisted due review callback and escalates without waiting for plan exhaustion", async () => {
     const runtimeHandle = await createRealTestRuntime({
@@ -62,76 +146,10 @@ describe("reminder review jobs real scenarios", () => {
       await LifeOpsRepository.bootstrapSchema(runtime);
       const repository = new LifeOpsRepository(runtime);
       const service = new LifeOpsService(runtime);
-      const definition = createLifeOpsTaskDefinition({
-        agentId: String(runtime.agentId),
-        domain: "user_lifeops",
-        subjectType: "owner",
-        subjectId: String(runtime.agentId),
-        visibilityScope: "owner_agent_admin",
-        contextPolicy: "explicit_only",
-        kind: "habit",
-        title: "Stretch",
-        description: "Stretch twice daily.",
-        originalIntent: "Stretch twice daily with follow-up acknowledgements.",
-        timezone: "UTC",
-        status: "active",
-        priority: 2,
-        cadence: {
-          kind: "once",
-          dueAt: baseAt.toISOString(),
-          visibilityLeadMinutes: 0,
-          visibilityLagMinutes: 120,
-        },
-        windowPolicy: {},
-        progressionRule: {},
-        websiteAccess: null,
-        reminderPlanId: null,
-        goalId: null,
-        source: "test",
-        metadata: { [REMINDER_URGENCY_METADATA_KEY]: "high" },
-      });
-      await repository.createDefinition(definition);
-      const plan = createLifeOpsReminderPlan({
-        agentId: String(runtime.agentId),
-        ownerType: "definition",
-        ownerId: definition.id,
-        steps: [
-          { channel: "in_app", offsetMinutes: 0, label: "In app" },
-          { channel: "discord", offsetMinutes: 60, label: "Discord" },
-        ],
-        mutePolicy: {},
-        quietHours: {
-          timezone: "UTC",
-          startMinute: 0,
-          endMinute: 0,
-        },
-      });
-      await repository.createReminderPlan(plan);
-      const occurrence = makeOccurrence({
+      const { initialAttempt, occurrence } = await seedDueStretchReview({
         runtime,
-        definitionId: definition.id,
+        repository,
       });
-      await repository.upsertOccurrence(occurrence);
-      const initialAttempt = createLifeOpsReminderAttempt({
-        agentId: String(runtime.agentId),
-        planId: plan.id,
-        ownerType: "occurrence",
-        ownerId: occurrence.id,
-        occurrenceId: occurrence.id,
-        channel: "in_app",
-        stepIndex: 0,
-        scheduledFor: baseAt.toISOString(),
-        attemptedAt: baseAt.toISOString(),
-        outcome: "delivered",
-        connectorRef: "system:in_app",
-        deliveryMetadata: {
-          title: "Stretch",
-          urgency: "high",
-          [REMINDER_LIFECYCLE_METADATA_KEY]: "plan",
-          [REMINDER_REVIEW_AT_METADATA_KEY]: addMinutes(baseAt, 7),
-        },
-      });
-      await repository.createReminderAttempt(initialAttempt);
 
       const existingAttempts = await repository.listReminderAttempts(
         String(runtime.agentId),
@@ -174,6 +192,58 @@ describe("reminder review jobs real scenarios", () => {
       const reviewedAttempt = persistedAttempts.find(
         (attempt) => attempt.id === initialAttempt.id,
       );
+      expect(reviewedAttempt?.reviewStatus).toBe("escalated");
+      expect(reviewedAttempt?.deliveryMetadata).toMatchObject({
+        [REMINDER_REVIEW_STATUS_METADATA_KEY]: "escalated",
+      });
+    } finally {
+      await runtimeHandle.cleanup();
+    }
+  }, 30_000);
+
+  it("processes due review callbacks through the scheduler entrypoint before normal deliveries", async () => {
+    const runtimeHandle = await createRealTestRuntime({
+      characterName: "lifeops-reminder-process-e2e-agent",
+    });
+    try {
+      const runtime = runtimeHandle.runtime;
+      await LifeOpsRepository.bootstrapSchema(runtime);
+      const repository = new LifeOpsRepository(runtime);
+      const service = new LifeOpsService(runtime);
+      const { initialAttempt, occurrence } = await seedDueStretchReview({
+        runtime,
+        repository,
+      });
+
+      const result = await service.processReminders({
+        now: addMinutes(baseAt, 8),
+        limit: 1,
+      });
+
+      expect(result.now).toBe(addMinutes(baseAt, 8));
+      expect(result.attempts).toHaveLength(1);
+      expect(result.attempts[0]).toMatchObject({
+        ownerType: "occurrence",
+        ownerId: occurrence.id,
+        channel: "in_app",
+        outcome: "delivered",
+      });
+      expect(result.attempts[0]?.deliveryMetadata).toMatchObject({
+        [REMINDER_LIFECYCLE_METADATA_KEY]: "escalation",
+        escalationReason: "review_due_without_acknowledgement",
+      });
+      const persistedAttempts = await repository.listReminderAttempts(
+        String(runtime.agentId),
+        {
+          ownerType: "occurrence",
+          ownerId: occurrence.id,
+        },
+      );
+      const reviewedAttempt = persistedAttempts.find(
+        (attempt) => attempt.id === initialAttempt.id,
+      );
+      expect(reviewedAttempt?.reviewAt).toBe(addMinutes(baseAt, 7));
+      expect(reviewedAttempt?.reviewStatus).toBe("escalated");
       expect(reviewedAttempt?.deliveryMetadata).toMatchObject({
         [REMINDER_REVIEW_STATUS_METADATA_KEY]: "escalated",
       });
