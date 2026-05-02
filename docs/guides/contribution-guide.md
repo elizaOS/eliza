@@ -1,13 +1,13 @@
 ---
 title: "Contributing Guide"
 sidebarTitle: "Contributing"
-description: "Set up your development environment and contribute to Milady."
+description: "Set up your development environment and contribute to Eliza."
 redirect: /guides/contributing
 ---
 
-Welcome to the Milady project. This guide covers environment setup, development workflow, and the pull request process.
+Welcome to the Eliza project. This guide covers environment setup, development workflow, and the pull request process.
 
-Before contributing, read [CONTRIBUTING.md](https://github.com/milady-ai/milady/blob/develop/CONTRIBUTING.md) in the repo root for the project's contribution philosophy. Milady is an **agents-only codebase** -- every PR is reviewed and merged by AI agents, not human maintainers. Humans contribute primarily as QA testers and bug reporters.
+Before contributing, read [CONTRIBUTING.md](https://github.com/eliza-ai/eliza/blob/develop/CONTRIBUTING.md) in the repo root for the project's contribution philosophy. Eliza is an **agents-only codebase** -- every PR is reviewed and merged by AI agents, not human maintainers. Humans contribute primarily as QA testers and bug reporters.
 
 ---
 
@@ -27,8 +27,8 @@ Bun is the project's package manager. All commands in this guide use `bun`.
 
 ```bash
 # Clone the repository
-git clone https://github.com/milady-ai/milady.git
-cd milady
+git clone https://github.com/eliza-ai/eliza.git
+cd eliza
 
 # Install dependencies (initializes submodules + runs bun install)
 ./install        # Unix / macOS
@@ -45,10 +45,10 @@ Use `./install` (or `install.cmd` on Windows) on a fresh clone. Plain `bun insta
 After building, verify the CLI works:
 
 ```bash
-bun run milady --help
+bun run eliza --help
 ```
 
-Configuration is stored at `~/.milady/milady.json` and the workspace lives at `~/.milady/workspace/`.
+Configuration is stored at `~/.eliza/eliza.json` and the workspace lives at `~/.eliza/workspace/`.
 
 ---
 
@@ -67,7 +67,7 @@ bun run dev:ui
 bun run dev:desktop
 
 # Run the CLI directly
-bun run milady start
+bun run eliza start
 ```
 
 ### Testing
@@ -91,7 +91,7 @@ bun run db:check
 bun run test:e2e
 
 # Live API smoke tests (requires API keys)
-MILADY_LIVE_TEST=1 bun run test:live:smoke
+ELIZA_LIVE_TEST=1 bun run test:live:smoke
 
 # Docker-based runtime review
 bun run test:docker:review
@@ -173,7 +173,7 @@ Always branch from `develop` and target PRs back to `develop`.
 
 2. **Make changes** with concise, action-oriented commits
    ```bash
-   git commit -m "milady: add verbose flag to send action"
+   git commit -m "eliza: add verbose flag to send action"
    ```
 
 3. **Run checks before pushing**
@@ -201,7 +201,7 @@ refactor: extract session key logic to provider
 chore: update @elizaos/core to latest
 ```
 
-Other accepted styles follow the `milady: description` pattern seen in the repo history (e.g., `milady: fix telegram reconnect on rate limit`).
+Other accepted styles follow the `eliza: description` pattern seen in the repo history (e.g., `eliza: fix telegram reconnect on rate limit`).
 
 ### The Agent Review Bot
 
@@ -267,8 +267,8 @@ Before submitting, verify:
 
 ### Product vs Code Naming
 
-- **Milady** -- Product name, headings, documentation prose
-- **milady** -- CLI binary name, package paths, config keys
+- **Eliza** -- Product name, headings, documentation prose
+- **eliza** -- CLI binary name, package paths, config keys
 
 ### File Size
 
@@ -315,7 +315,7 @@ Install the [Biome VS Code extension](https://marketplace.visualstudio.com/items
 ## Project Structure
 
 ```
-milady/
+eliza/
 ├── apps/
 │   ├── app/                 # Desktop/mobile app (Capacitor + React)
 │   │   ├── electrobun/      # Electrobun desktop wrapper
@@ -349,7 +349,7 @@ milady/
 ├── tsconfig.json            # TypeScript config
 ├── tsdown.config.ts         # Build config (tsdown bundler)
 ├── vitest.config.ts         # Vitest test config
-└── milady.mjs               # npm bin entry point
+└── eliza.mjs               # npm bin entry point
 ```
 
 ### Key Entry Points
@@ -359,8 +359,8 @@ milady/
 | `src/entry.ts` | CLI entry point |
 | `src/index.ts` | Library exports |
 | `src/runtime/eliza.ts` | elizaOS runtime initialization |
-| `src/runtime/milady-plugin.ts` | Main Milady plugin |
-| `milady.mjs` | npm bin entry (`"bin"` in package.json) |
+| `src/runtime/eliza-plugin.ts` | Main Eliza plugin |
+| `eliza.mjs` | npm bin entry (`"bin"` in package.json) |
 
 ---
 
@@ -370,7 +370,7 @@ When filing a bug report:
 
 1. **Check existing issues** to avoid duplicates
 2. **Include reproduction steps** -- what you did, what happened, what you expected
-3. **Share your environment** -- OS, Node version, Milady version (`milady --version`)
+3. **Share your environment** -- OS, Node version, Eliza version (`eliza --version`)
 4. **Attach logs** -- relevant error output
 
 An AI agent triages all incoming issues. Valid bugs are labeled and prioritized. Issues that are out of scope (aesthetic requests, feature creep) will be closed with an explanation.
@@ -379,8 +379,8 @@ An AI agent triages all incoming issues. Valid bugs are labeled and prioritized.
 
 ## Further Reading
 
-- [CONTRIBUTING.md](https://github.com/milady-ai/milady/blob/develop/CONTRIBUTING.md) -- Full contribution philosophy
-- [AGENTS.md](https://github.com/milady-ai/milady/blob/develop/AGENTS.md) -- Repository guidelines for coding agents
+- [CONTRIBUTING.md](https://github.com/eliza-ai/eliza/blob/develop/CONTRIBUTING.md) -- Full contribution philosophy
+- [AGENTS.md](https://github.com/eliza-ai/eliza/blob/develop/AGENTS.md) -- Repository guidelines for coding agents
 - [Plugin Development Guide](/plugins/development) -- Build plugins
 - [Skills Documentation](/plugins/skills) -- Create skills
 - [Local Plugin Development](/plugins/local-plugins) -- Develop plugins locally

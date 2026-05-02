@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/capacitor-phone",
   "version": "1.0.0",
-  "description": "Android phone and Telecom bridge for MiladyOS.",
+  "description": "Android phone and Telecom bridge for ElizaOS.",
   "main": "./dist/plugin.cjs.js",
   "module": "./dist/esm/index.js",
   "types": "./dist/esm/index.d.ts",

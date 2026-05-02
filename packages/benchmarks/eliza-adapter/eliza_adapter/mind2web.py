@@ -1,11 +1,11 @@
-"""Mind2Web agent backed by the milady benchmark server."""
+"""Mind2Web agent backed by the eliza benchmark server."""
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
 
-from milady_adapter.client import MiladyClient
+from eliza_adapter.client import ElizaClient
 
 from benchmarks.mind2web.types import (
     Mind2WebAction,
@@ -17,23 +17,23 @@ from benchmarks.mind2web.types import (
 logger = logging.getLogger(__name__)
 
 
-class MiladyMind2WebAgent:
-    """Mind2Web agent backed by the milady TypeScript agent.
+class ElizaMind2WebAgent:
+    """Mind2Web agent backed by the eliza TypeScript agent.
 
     Drop-in replacement for ``ElizaOSMind2WebAgent`` — same ``process_task``
-    interface but routes through the milady benchmark server.
+    interface but routes through the eliza benchmark server.
     """
 
     def __init__(
         self,
         config: Mind2WebConfig,
-        client: MiladyClient | None = None,
+        client: ElizaClient | None = None,
     ) -> None:
         self.config = config
-        self._client = client or MiladyClient()
+        self._client = client or ElizaClient()
 
     async def initialize(self) -> None:
-        """Verify the milady server is reachable."""
+        """Verify the eliza server is reachable."""
         self._client.wait_until_ready(timeout=120)
 
     async def process_task(self, task: Mind2WebTask) -> list[Mind2WebAction]:
@@ -120,7 +120,7 @@ class MiladyMind2WebAgent:
 
             if not element_id:
                 logger.warning(
-                    "Step %d: milady returned no element_id, using first positive candidate",
+                    "Step %d: eliza returned no element_id, using first positive candidate",
                     step_idx,
                 )
                 if current_step.pos_candidates:

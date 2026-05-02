@@ -1,17 +1,17 @@
 ---
 title: "Local AI Plugin"
 sidebarTitle: "Local AI"
-description: "Local AI model provider for Milady — self-hosted, OpenAI-compatible local inference with GGUF models."
+description: "Local AI model provider for Eliza — self-hosted, OpenAI-compatible local inference with GGUF models."
 ---
 
-The Local AI plugin enables Milady agents to run inference entirely on-device using GGUF model files, with no external API keys required.
+The Local AI plugin enables Eliza agents to run inference entirely on-device using GGUF model files, with no external API keys required.
 
 **Package:** `@elizaos/plugin-local-ai`
 
 ## Installation
 
 ```bash
-milady plugins install local-ai
+eliza plugins install local-ai
 ```
 
 ## Configuration
@@ -26,7 +26,7 @@ milady plugins install local-ai
 | `CACHE_DIR` | No | — | Cache directory for model assets |
 | `CUDA_VISIBLE_DEVICES` | No | — | GPU device selection for CUDA acceleration |
 
-### milady.json Example
+### eliza.json Example
 
 ```json
 {

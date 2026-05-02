@@ -22,22 +22,22 @@ Screenshots were captured against the live local UI at `http://127.0.0.1:2138/ap
 
 Artifacts:
 
-- Desktop contact sheet: `/Users/shawwalters/eliza-workspace/milady/artifacts/lifeops-ux-review-2026-04-23/contact-desktop.png`
-- Narrow contact sheet: `/Users/shawwalters/eliza-workspace/milady/artifacts/lifeops-ux-review-2026-04-23/contact-narrow.png`
-- Capture report: `/Users/shawwalters/eliza-workspace/milady/artifacts/lifeops-ux-review-2026-04-23/capture-report.json`
-- Individual screenshots: `/Users/shawwalters/eliza-workspace/milady/artifacts/lifeops-ux-review-2026-04-23/*.png`
+- Desktop contact sheet: `/Users/shawwalters/eliza-workspace/eliza/artifacts/lifeops-ux-review-2026-04-23/contact-desktop.png`
+- Narrow contact sheet: `/Users/shawwalters/eliza-workspace/eliza/artifacts/lifeops-ux-review-2026-04-23/contact-narrow.png`
+- Capture report: `/Users/shawwalters/eliza-workspace/eliza/artifacts/lifeops-ux-review-2026-04-23/capture-report.json`
+- Individual screenshots: `/Users/shawwalters/eliza-workspace/eliza/artifacts/lifeops-ux-review-2026-04-23/*.png`
 
 Verified post-fix artifacts:
 
-- Verified capture report: `/Users/shawwalters/eliza-workspace/milady/artifacts/lifeops-ux-review-2026-04-23-verified/capture-report.json`
-- Verified narrow contact sheet: `/Users/shawwalters/eliza-workspace/milady/artifacts/lifeops-ux-review-2026-04-23-verified/contact-narrow.png`
-- Verified screenshots: `/Users/shawwalters/eliza-workspace/milady/artifacts/lifeops-ux-review-2026-04-23-verified/*.png`
+- Verified capture report: `/Users/shawwalters/eliza-workspace/eliza/artifacts/lifeops-ux-review-2026-04-23-verified/capture-report.json`
+- Verified narrow contact sheet: `/Users/shawwalters/eliza-workspace/eliza/artifacts/lifeops-ux-review-2026-04-23-verified/contact-narrow.png`
+- Verified screenshots: `/Users/shawwalters/eliza-workspace/eliza/artifacts/lifeops-ux-review-2026-04-23-verified/*.png`
 
 Final narrow verification artifacts:
 
-- Final capture report: `/Users/shawwalters/eliza-workspace/milady/artifacts/lifeops-ux-review-2026-04-23-final/capture-report.json`
-- Final desktop capture report: `/Users/shawwalters/eliza-workspace/milady/artifacts/lifeops-ux-review-2026-04-23-final/capture-report-desktop.json`
-- Final screenshots: `/Users/shawwalters/eliza-workspace/milady/artifacts/lifeops-ux-review-2026-04-23-final/*.png`
+- Final capture report: `/Users/shawwalters/eliza-workspace/eliza/artifacts/lifeops-ux-review-2026-04-23-final/capture-report.json`
+- Final desktop capture report: `/Users/shawwalters/eliza-workspace/eliza/artifacts/lifeops-ux-review-2026-04-23-final/capture-report-desktop.json`
+- Final screenshots: `/Users/shawwalters/eliza-workspace/eliza/artifacts/lifeops-ux-review-2026-04-23-final/*.png`
 
 Implementation status since the initial review:
 

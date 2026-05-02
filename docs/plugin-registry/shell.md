@@ -1,10 +1,10 @@
 ---
 title: "Shell Plugin"
 sidebarTitle: "Shell"
-description: "Shell access plugin for Milady — gives agents full access to the system shell. USE AT YOUR OWN RISK."
+description: "Shell access plugin for Eliza — gives agents full access to the system shell. USE AT YOUR OWN RISK."
 ---
 
-The Shell plugin gives Milady agents direct access to the system shell, allowing them to execute arbitrary commands. **USE AT YOUR OWN RISK. THIS GIVES AI FULL ACCESS TO THE SYSTEM SHELL.**
+The Shell plugin gives Eliza agents direct access to the system shell, allowing them to execute arbitrary commands. **USE AT YOUR OWN RISK. THIS GIVES AI FULL ACCESS TO THE SYSTEM SHELL.**
 
 **Package:** `@elizaos/plugin-shell` (core plugin — always loaded)
 

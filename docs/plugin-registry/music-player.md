@@ -10,12 +10,12 @@ Music playback engine with queue management and streaming.
 
 ## Overview
 
-The Music Player plugin provides Milady agents with a full playback engine supporting queue management, cross-fading between tracks, HTTP streaming output, and audio device routing. Pair it with the Music Library plugin for a complete music experience.
+The Music Player plugin provides Eliza agents with a full playback engine supporting queue management, cross-fading between tracks, HTTP streaming output, and audio device routing. Pair it with the Music Library plugin for a complete music experience.
 
 ## Installation
 
 ```bash
-milady plugins install music-player
+eliza plugins install music-player
 ```
 
 ## Configuration

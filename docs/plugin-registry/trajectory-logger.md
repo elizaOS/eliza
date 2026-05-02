@@ -1,7 +1,7 @@
 ---
 title: "Trajectory Logger Plugin"
 sidebarTitle: "Trajectory Logger"
-description: "Trajectory logging plugin for Milady — capture agent interaction trajectories for debugging and RL training."
+description: "Trajectory logging plugin for Eliza — capture agent interaction trajectories for debugging and RL training."
 ---
 
 The Trajectory Logger plugin captures agent interaction trajectories, persisting them for debugging, analysis, and reinforcement-learning training workflows.
@@ -10,7 +10,7 @@ The Trajectory Logger plugin captures agent interaction trajectories, persisting
 
 ## Overview
 
-Every agent turn is logged as a trajectory record by default. These trajectories feed into Milady's native optimization and training pipelines (MIPRO, GEPA, bootstrap-fewshot), providing the raw data needed for prompt optimization and RL-based improvement. Trajectories are also invaluable for debugging agent behavior after the fact. Logging can be disabled when not needed.
+Every agent turn is logged as a trajectory record by default. These trajectories feed into Eliza's native optimization and training pipelines (MIPRO, GEPA, bootstrap-fewshot), providing the raw data needed for prompt optimization and RL-based improvement. Trajectories are also invaluable for debugging agent behavior after the fact. Logging can be disabled when not needed.
 
 ## Installation
 

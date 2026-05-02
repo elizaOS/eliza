@@ -9,11 +9,11 @@ import sys
 # Add millaidy-adapter to path
 sys.path.append(os.path.dirname(__file__))
 
-from milady_adapter.server_manager import MiladyServerManager
-from milady_adapter.client import MiladyClient
+from eliza_adapter.server_manager import ElizaServerManager
+from eliza_adapter.client import ElizaClient
 # We import our new adapter logic manually since we aren't using the full OSWorld suite here
 # But we can use the class we just wrote if we fix imports in it
-# For the mock, we can just use MiladyClient directly to simulate the agent loop
+# For the mock, we can just use ElizaClient directly to simulate the agent loop
 
 def create_mock_observation():
     # Create a simple black 100x100 image
@@ -37,19 +37,19 @@ def run_mock_benchmark():
     # Configure env to enable computer use plugin if needed
     env = os.environ.copy()
     
-    # Set env vars globally so MiladyServerManager picks them up
-    os.environ["MILADY_ENABLE_COMPUTERUSE"] = "true"
-    os.environ["MILADY_BENCH_PORT"] = "3939"
+    # Set env vars globally so ElizaServerManager picks them up
+    os.environ["ELIZA_ENABLE_COMPUTERUSE"] = "true"
+    os.environ["ELIZA_BENCH_PORT"] = "3939"
     os.environ["PGLITE_DATA_DIR"] = ":memory:" # Force in-memory DB for plugin-sql
-    # os.environ["MILADY_BENCH_MOCK"] = "true" # Disable mock for real test  
+    # os.environ["ELIZA_BENCH_MOCK"] = "true" # Disable mock for real test  
     # Calculate repo root from this script's location
-    # run_osworld_mock.py is in benchmarks/milady-adapter/
+    # run_osworld_mock.py is in benchmarks/eliza-adapter/
     # repo root (eliza-workspace) is ../../
     from pathlib import Path
     repo_root = Path(__file__).resolve().parent.parent.parent
     
-    logger.info(f"Starting Milady Benchmark Server from {repo_root}...")
-    mgr = MiladyServerManager(repo_root=repo_root)
+    logger.info(f"Starting Eliza Benchmark Server from {repo_root}...")
+    mgr = ElizaServerManager(repo_root=repo_root)
     
     try:
         mgr.start()
@@ -76,7 +76,7 @@ def run_mock_benchmark():
         logger.info(f"Agent response: {resp}")
         
         # Verify response contains BENCHMARK_ACTION
-        # MiladyAdapter response object has: text, thought, actions?, params?
+        # ElizaAdapter response object has: text, thought, actions?, params?
         # The client returns whatever the server sends, parsed into an object.
         # Let's verify what we get.
         

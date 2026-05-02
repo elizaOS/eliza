@@ -53,7 +53,7 @@ elizaos info --language rust
 | Template | Description | Languages |
 | --- | --- | --- |
 | `plugin` | Plugin starter workspace | TypeScript, Python, Rust |
-| `fullstack-app` | Milady-style app workspace backed by a local `eliza` checkout | TypeScript |
+| `fullstack-app` | Eliza-style app workspace backed by a local `eliza` checkout | TypeScript |
 
 ## Development
 

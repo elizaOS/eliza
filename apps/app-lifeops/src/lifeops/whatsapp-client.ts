@@ -42,7 +42,7 @@ export class WhatsAppError extends Error {
 const DEFAULT_API_VERSION = "v21.0";
 function getWhatsAppBaseUrl(): string {
   return (
-    process.env.MILADY_MOCK_WHATSAPP_BASE ??
+    process.env.ELIZA_MOCK_WHATSAPP_BASE ??
     process.env.ELIZA_MOCK_WHATSAPP_BASE ??
     "https://graph.facebook.com"
   );

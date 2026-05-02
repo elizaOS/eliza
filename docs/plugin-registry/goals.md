@@ -1,10 +1,10 @@
 ---
 title: "Goals Plugin"
 sidebarTitle: "Goals"
-description: "Goal tracking for Milady agents — define, pursue, and complete objectives across sessions."
+description: "Goal tracking for Eliza agents — define, pursue, and complete objectives across sessions."
 ---
 
-The Goals plugin gives Milady agents the ability to set and track goals.
+The Goals plugin gives Eliza agents the ability to set and track goals.
 
 **Package:** `@elizaos/plugin-goals`
 
@@ -22,7 +22,7 @@ Key capabilities:
 ## Installation
 
 ```bash
-milady plugins install goals
+eliza plugins install goals
 ```
 
 ## Configuration

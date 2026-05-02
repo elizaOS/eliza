@@ -1,17 +1,17 @@
 ---
 title: "Discord Plugin"
 sidebarTitle: "Discord"
-description: "Discord connector for Milady — bot integration, slash commands, voice support, and multi-server management."
+description: "Discord connector for Eliza — bot integration, slash commands, voice support, and multi-server management."
 ---
 
-The Discord plugin connects Milady agents to Discord as a bot, enabling message handling across servers, channels, and DMs with support for slash commands, reactions, and voice channels.
+The Discord plugin connects Eliza agents to Discord as a bot, enabling message handling across servers, channels, and DMs with support for slash commands, reactions, and voice channels.
 
 **Package:** `@elizaos/plugin-discord`
 
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-discord
+eliza plugins install @elizaos/plugin-discord
 ```
 
 ## Setup
@@ -34,7 +34,7 @@ milady plugins install @elizaos/plugin-discord
 3. Select permissions: `Send Messages`, `Read Message History`, `Add Reactions`, `Connect` (for voice)
 4. Copy the generated URL and open it to invite the bot
 
-### 3. Configure Milady
+### 3. Configure Eliza
 
 ```json
 {
@@ -96,7 +96,7 @@ Determines if agent should respond:
   - DM → always respond
   - Channel → respond if mentioned or addressed
        ↓
-Formats as Milady Memory
+Formats as Eliza Memory
        ↓
 AgentRuntime processes
        ↓

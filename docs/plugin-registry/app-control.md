@@ -1,10 +1,10 @@
 ---
 title: "App Control Plugin"
 sidebarTitle: "App Control"
-description: "Launch, close, and list running Milady apps from agent chat."
+description: "Launch, close, and list running Eliza apps from agent chat."
 ---
 
-The App Control plugin lets Milady agents manage apps through conversation.
+The App Control plugin lets Eliza agents manage apps through conversation.
 
 **Package:** `@elizaos/plugin-app-control`
 
@@ -14,7 +14,7 @@ This plugin exposes app lifecycle management to agents, backed by the `/api/apps
 
 Key capabilities:
 
-- **Launch apps** — start an installed Milady app by name.
+- **Launch apps** — start an installed Eliza app by name.
 - **Close apps** — stop a running app.
 - **List running apps** — see which apps are currently active.
 - **Chat-driven control** — manage the app lifecycle without leaving the conversation.
@@ -22,12 +22,12 @@ Key capabilities:
 ## Installation
 
 ```bash
-milady plugins install app-control
+eliza plugins install app-control
 ```
 
 ## Configuration
 
-No environment variables or configuration parameters are required. The plugin communicates with the Milady API server directly.
+No environment variables or configuration parameters are required. The plugin communicates with the Eliza API server directly.
 
 ## Usage Examples
 

@@ -4,7 +4,7 @@ sidebarTitle: "Experience"
 description: "Built-in experience learning for elizaOS - records and recalls transferable agent experiences"
 ---
 
-Record and recall transferable experiences so Milady agents learn from past interactions.
+Record and recall transferable experiences so Eliza agents learn from past interactions.
 
 **Runtime:** built-in advanced capability
 

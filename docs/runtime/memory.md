@@ -4,7 +4,7 @@ sidebarTitle: "Memory"
 description: "Memory persistence, embedding generation, vector search, memory types, and the retrieval API."
 ---
 
-Milady's memory system is backed by `@elizaos/plugin-sql` for persistence and `@elizaos/plugin-local-embedding` for vector embeddings. This page covers the memory infrastructure from the runtime perspective.
+Eliza's memory system is backed by `@elizaos/plugin-sql` for persistence and `@elizaos/plugin-local-embedding` for vector embeddings. This page covers the memory infrastructure from the runtime perspective.
 
 ## Memory Architecture
 
@@ -24,13 +24,13 @@ Memory retrieval → injected into context
 
 ### PGLite (default)
 
-PGLite is an embedded WebAssembly build of PostgreSQL that runs in the Node.js process with no external database server required. Milady configures the data directory via `PGLITE_DATA_DIR`:
+PGLite is an embedded WebAssembly build of PostgreSQL that runs in the Node.js process with no external database server required. Eliza configures the data directory via `PGLITE_DATA_DIR`:
 
 ```
-Default: ~/.milady/workspace/.eliza/.elizadb
+Default: ~/.eliza/workspace/.eliza/.elizadb
 ```
 
-The directory is created on startup if it does not exist. After `adapter.init()`, Milady performs a health check:
+The directory is created on startup if it does not exist. After `adapter.init()`, Eliza performs a health check:
 
 ```typescript
 const files = await fs.readdir(pgliteDataDir);
@@ -41,7 +41,7 @@ if (files.length === 0) {
 
 ### PGLite Corruption Recovery
 
-If PGLite initialization fails with a recoverable error (WASM abort or migrations schema error), Milady backs up the existing data directory and retries:
+If PGLite initialization fails with a recoverable error (WASM abort or migrations schema error), Eliza backs up the existing data directory and retries:
 
 ```typescript
 // Back up: <dataDir>.corrupt-<timestamp>
@@ -63,7 +63,7 @@ For production or shared deployments, set `database.provider = "postgres"`. The 
 ```
 nomic-embed-text-v1.5.Q5_K_M.gguf
 Dimensions: 768
-Model directory: ~/.milady/models/
+Model directory: ~/.eliza/models/
 ```
 
 ### Environment Variables
@@ -78,7 +78,7 @@ The embedding plugin reads configuration from environment variables set by `conf
 | `LOCAL_EMBEDDING_CONTEXT_SIZE` | auto | Context window size |
 | `LOCAL_EMBEDDING_GPU_LAYERS` | `"auto"` (Apple Silicon) / `"0"` (other) | GPU acceleration |
 | `LOCAL_EMBEDDING_USE_MMAP` | `"false"` (Apple Silicon) / `"true"` (other) | Memory-mapped model loading |
-| `MODELS_DIR` | `~/.milady/models` | Directory for model storage |
+| `MODELS_DIR` | `~/.eliza/models` | Directory for model storage |
 
 ## Memory Config
 
@@ -94,7 +94,7 @@ export type MemoryConfig = {
 
 ### Built-in Backend
 
-The default backend uses elizaOS core memory via `plugin-sql`. Configure under `milady.json`:
+The default backend uses elizaOS core memory via `plugin-sql`. Configure under `eliza.json`:
 
 ```json
 {
@@ -122,7 +122,7 @@ The Quantum Memory Daemon backend supports indexing external file paths:
       ],
       "sessions": {
         "enabled": true,
-        "exportDir": "~/.milady/sessions",
+        "exportDir": "~/.eliza/sessions",
         "retentionDays": 30
       },
       "update": {
@@ -155,7 +155,7 @@ The `MemorySearchConfig` controls vector similarity search. Set globally at `age
         "provider": "local",
         "store": {
           "driver": "sqlite",
-          "path": "~/.milady/memory-search.db",
+          "path": "~/.eliza/memory-search.db",
           "vector": {
             "enabled": true,
             "extensionPath": null
@@ -237,7 +237,7 @@ Index additional directories or Markdown files alongside memory:
 
 ## Memory Pruning and Compaction
 
-When context approaches token limits, Milady can prune old tool results:
+When context approaches token limits, Eliza can prune old tool results:
 
 ```json
 {

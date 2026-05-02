@@ -537,7 +537,7 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
     const eventListeners = { accountsChanged: new Set(), chainChanged: new Set(), connect: new Set(), disconnect: new Set() };
     const ethereum = {
       isMetaMask: false,
-      isMilady: true,
+      isEliza: true,
       _events: eventListeners,
       request: (args) => {
         if (!args || typeof args.method !== "string") {
@@ -614,7 +614,7 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
     };
     const solana = {
       isPhantom: true,
-      isMilady: true,
+      isEliza: true,
       publicKey: null,
       isConnected: false,
       connect: async function (options) {
@@ -745,16 +745,16 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
     //   icon — data URI; the SVG below is a 24x24 monochrome "M" mark in
     //     the brand purple (#6f5cff). Inline so we don't depend on
     //     network availability for wallet-picker rendering.
-    const MILADY_WALLET_ICON =
+    const ELIZA_WALLET_ICON =
       "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIj48cmVjdCB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHJ4PSI2IiBmaWxsPSIjNmY1Y2ZmIi8+PHRleHQgeD0iNTAlIiB5PSI2OCUiIGZvbnQtZmFtaWx5PSItYXBwbGUtc3lzdGVtLEJsaW5rTWFjU3lzdGVtRm9udCxzYW5zLXNlcmlmIiBmb250LXNpemU9IjE2IiBmb250LXdlaWdodD0iNzAwIiBmaWxsPSIjZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5NPC90ZXh0Pjwvc3ZnPg==";
     const announceEthereum = () => {
       try {
         const detail = Object.freeze({
           info: Object.freeze({
-            name: "Milady",
-            uuid: "ai.milady.wallet:1",
-            icon: MILADY_WALLET_ICON,
-            rdns: "ai.milady.wallet",
+            name: "Eliza",
+            uuid: "ai.eliza.wallet:1",
+            icon: ELIZA_WALLET_ICON,
+            rdns: "ai.eliza.wallet",
           }),
           provider: ethereum,
         });

@@ -261,7 +261,7 @@ function resolveHyperliquidConfig(env: NodeJS.ProcessEnv): HyperliquidConfig {
   const managedVaultConfigured =
     Boolean(managedVaultAddress) ||
     Boolean(readEnvString(env, "STEWARD_API_URL")) ||
-    readEnvString(env, "MILADY_WALLET_BACKEND") === "steward";
+    readEnvString(env, "ELIZA_WALLET_BACKEND") === "steward";
   const managedVaultReady = Boolean(managedVaultAddress);
   const rawAccount =
     readEnvString(env, "HYPERLIQUID_ACCOUNT_ADDRESS") ??

@@ -26,7 +26,7 @@ function buildLiveTestEnv(cwd) {
   return {
     ...buildTestEnv(cwd),
     ELIZA_LIVE_TEST: "1",
-    MILADY_LIVE_TEST: "1",
+    ELIZA_LIVE_TEST: "1",
   };
 }
 
@@ -149,7 +149,7 @@ const runs = [
     env: {
       ...process.env,
       ELIZA_LIVE_TEST: "1",
-      MILADY_LIVE_TEST: "1",
+      ELIZA_LIVE_TEST: "1",
     },
   },
   {

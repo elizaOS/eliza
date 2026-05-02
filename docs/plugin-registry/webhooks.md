@@ -1,17 +1,17 @@
 ---
 title: "Webhooks Plugin"
 sidebarTitle: "Webhooks"
-description: "Webhooks plugin for Milady — receive and process incoming webhook events from external services."
+description: "Webhooks plugin for Eliza — receive and process incoming webhook events from external services."
 ---
 
-The Webhooks plugin enables Milady agents to receive and process incoming webhook events from external services, allowing integrations with any platform that supports webhook callbacks.
+The Webhooks plugin enables Eliza agents to receive and process incoming webhook events from external services, allowing integrations with any platform that supports webhook callbacks.
 
 **Package:** `@elizaos/plugin-webhooks`
 
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-webhooks
+eliza plugins install @elizaos/plugin-webhooks
 ```
 
 ## Configuration

@@ -1,7 +1,7 @@
 ---
 title: "Desktop VRM, Three.js, and Spark (WHYs)"
 sidebarTitle: "VRM / Three / Spark"
-description: "Why the Electrobun desktop build can load two copies of three.js, how that breaks Gaussian splats and VRM, and what Milady does in Vite and app-core to keep one Three instance and resilient avatar loading."
+description: "Why the Electrobun desktop build can load two copies of three.js, how that breaks Gaussian splats and VRM, and what Eliza does in Vite and app-core to keep one Three instance and resilient avatar loading."
 ---
 
 # Desktop VRM, Three.js, and Spark
@@ -20,7 +20,7 @@ This page is for **contributors and reviewers**. It explains **why** the 3D comp
 
 **`THREE.ShaderChunk`** is a **singleton on the `three` module instance** you imported. **`@sparkjsdev/spark`** registers `ShaderChunk.splatDefines` on **its** `three` import. If another part of the bundle imported a **different** `three` package instance (different physical file / different pre-bundle), splat shaders compile on instance **A** while Spark registered chunks on instance **B** → missing `#include`.
 
-**Why Electrobun was prone to this:** the desktop shell can pull **`three`** from **its own** `node_modules` (e.g. an older semver) while the Milady app resolves **`three`** from the **repo root**. Vite’s dependency optimizer can then pre-bundle **examples/jsm** loaders against one graph and Spark against another unless we **force a single resolution path** and **pre-bundle JSM entrypoints together** with `three` core.
+**Why Electrobun was prone to this:** the desktop shell can pull **`three`** from **its own** `node_modules` (e.g. an older semver) while the Eliza app resolves **`three`** from the **repo root**. Vite’s dependency optimizer can then pre-bundle **examples/jsm** loaders against one graph and Spark against another unless we **force a single resolution path** and **pre-bundle JSM entrypoints together** with `three` core.
 
 ### What we do (and why)
 
@@ -45,7 +45,7 @@ This page is for **contributors and reviewers**. It explains **why** the 3D comp
 
 - **`VrmViewer`**: **`getDefaultVrmPath()`** is a **function**, not a module-level constant, so the default VRM path resolves when the viewer needs it.
 - **`VrmEngine`**: **`getDracoDecoderPath()`** lazily caches the DRACO decoder base URL.
-- **`vrm.ts`**: **`BUNDLED_VRM_FALLBACK_SLUG = "milady-1"`** when the roster is empty — **why:** shipped assets use **`milady-1`…`milady-8`**; there is **no** `default.*` on disk, so falling back to `"default"` guaranteed 404s.
+- **`vrm.ts`**: **`BUNDLED_VRM_FALLBACK_SLUG = "eliza-1"`** when the roster is empty — **why:** shipped assets use **`eliza-1`…`eliza-8`**; there is **no** `default.*` on disk, so falling back to `"default"` guaranteed 404s.
 
 ## Problem: splat world took down the avatar
 

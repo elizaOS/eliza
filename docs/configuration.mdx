@@ -1,42 +1,42 @@
 ---
 title: "Configuration"
 sidebarTitle: "Configuration"
-description: "Complete reference for the primary Milady runtime config file, environment variables, CLI commands, and all configuration sections."
+description: "Complete reference for the primary Eliza runtime config file, environment variables, CLI commands, and all configuration sections."
 ---
 
-Milady uses a primary JSON5 config file for runtime and bootstrap settings.
+Eliza uses a primary JSON5 config file for runtime and bootstrap settings.
 This page documents the config file, environment variable overrides, and the
 canonical runtime routing fields that now drive hosting and provider selection.
 
 ## Config File Location
 
-By default, Milady stores its configuration at:
+By default, Eliza stores its configuration at:
 
 ```
-~/.milady/milady.json
+~/.eliza/eliza.json
 ```
 
 <Info>
-The config directory is `~/.milady` and the config file is `milady.json` inside it. The CLI binary is `milady` and the npm package name is `miladyai`.
+The config directory is `~/.eliza` and the config file is `eliza.json` inside it. The CLI binary is `eliza` and the npm package name is `elizaai`.
 </Info>
 
 ### Overriding the Location
 
-Two environment variables control where Milady looks for configuration:
+Two environment variables control where Eliza looks for configuration:
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
-| `MILADY_STATE_DIR` | Override the entire state directory | `~/.milady` |
-| `MILADY_CONFIG_PATH` | Override the config file path directly | `~/.milady/milady.json` |
+| `ELIZA_STATE_DIR` | Override the entire state directory | `~/.eliza` |
+| `ELIZA_CONFIG_PATH` | Override the config file path directly | `~/.eliza/eliza.json` |
 
-`MILADY_CONFIG_PATH` takes precedence over `MILADY_STATE_DIR`. Both support `~` expansion for the home directory. For backwards compatibility, the legacy names `ELIZA_STATE_DIR` and `ELIZA_CONFIG_PATH` are also accepted as fallbacks.
+`ELIZA_CONFIG_PATH` takes precedence over `ELIZA_STATE_DIR`. Both support `~` expansion for the home directory. For backwards compatibility, the legacy names `ELIZA_STATE_DIR` and `ELIZA_CONFIG_PATH` are also accepted as fallbacks.
 
 ```bash
-# Use a custom state directory (config lives at /opt/milady/milady.json)
-MILADY_STATE_DIR=/opt/milady milady start
+# Use a custom state directory (config lives at /opt/eliza/eliza.json)
+ELIZA_STATE_DIR=/opt/eliza eliza start
 
 # Point to a specific config file
-MILADY_CONFIG_PATH=~/projects/bot/config.json5 milady start
+ELIZA_CONFIG_PATH=~/projects/bot/config.json5 eliza start
 ```
 
 ### Other State Directory Paths
@@ -45,13 +45,13 @@ The state directory also contains:
 
 | Path | Purpose |
 |------|---------|
-| `~/.milady/models/` | Cached model provider lists (per-provider JSON files) |
-| `~/.milady/credentials/` | OAuth credentials (overridable via `MILADY_OAUTH_DIR`) |
-| `~/.milady/credentials/oauth.json` | OAuth token storage |
+| `~/.eliza/models/` | Cached model provider lists (per-provider JSON files) |
+| `~/.eliza/credentials/` | OAuth credentials (overridable via `ELIZA_OAUTH_DIR`) |
+| `~/.eliza/credentials/oauth.json` | OAuth token storage |
 
 ## Canonical Runtime Routing
 
-Milady's saved runtime topology is no longer inferred from a single
+Eliza's saved runtime topology is no longer inferred from a single
 `connection` blob, and the root `connection` field is no longer part of the
 persisted config schema. The canonical persisted fields are:
 
@@ -137,11 +137,11 @@ Includes support up to 10 levels of nesting. Circular includes are detected and 
 
 ### Environment Variables in Config
 
-Milady loads environment variables from two sources:
+Eliza loads environment variables from two sources:
 
 <Tabs>
   <Tab title="Inline in config (env section)">
-    Set variables directly in `milady.json`. They are applied to the process environment if not already set:
+    Set variables directly in `eliza.json`. They are applied to the process environment if not already set:
 
     ```json5
     {
@@ -177,12 +177,12 @@ Milady loads environment variables from two sources:
 </Tabs>
 
 <Warning>
-The config file is written with mode `0o600` (owner read+write only) because the `env` section may contain API keys. Keep secrets in the `env` section or use a separate `~/.milady/.env` file.
+The config file is written with mode `0o600` (owner read+write only) because the `env` section may contain API keys. Keep secrets in the `env` section or use a separate `~/.eliza/.env` file.
 </Warning>
 
 ## Top-Level Structure
 
-Here is every top-level key in `MiladyConfig`:
+Here is every top-level key in `ElizaConfig`:
 
 ```json5
 {
@@ -413,7 +413,7 @@ Each custom provider can specify an authentication mode:
 
 ## Plugin Configuration
 
-Plugins extend Milady with connectors, providers, and feature capabilities.
+Plugins extend Eliza with connectors, providers, and feature capabilities.
 
 ```json5
 {
@@ -445,9 +445,9 @@ Plugins extend Milady with connectors, providers, and feature capabilities.
 
 ### Plugin Auto-Enable
 
-Milady automatically enables plugins based on your configuration. You do not need to manually add plugins to the allowlist in most cases.
+Eliza automatically enables plugins based on your configuration. You do not need to manually add plugins to the allowlist in most cases.
 
-**Connector plugins** are auto-enabled when a connector is configured with credentials. Connectors marked with * are upstream elizaOS plugins not included in the Milady bundled registry — they must be installed first (`milady plugins install <package>`):
+**Connector plugins** are auto-enabled when a connector is configured with credentials. Connectors marked with * are upstream elizaOS plugins not included in the Eliza bundled registry — they must be installed first (`eliza plugins install <package>`):
 
 | Connector | Plugin | Auto-Enable Trigger |
 |-----------|--------|---------------------|
@@ -546,7 +546,7 @@ You can always force-disable any auto-enabled plugin by setting `plugins.entries
 
 ## Connectors (Messaging Channels)
 
-Connectors integrate Milady with messaging platforms. Configure them under `connectors`:
+Connectors integrate Eliza with messaging platforms. Configure them under `connectors`:
 
 ```json5
 {
@@ -567,7 +567,7 @@ Connectors integrate Milady with messaging platforms. Configure them under `conn
     },
     whatsapp: {
       enabled: true,
-      authDir: "~/.milady/whatsapp-auth",
+      authDir: "~/.eliza/whatsapp-auth",
     },
   },
 }
@@ -759,7 +759,7 @@ The `tools` section controls tool availability, web search/fetch, exec permissio
     level: "error",            // silent | fatal | error | warn | info | debug | trace
     consoleLevel: "info",      // Independent console log level
     consoleStyle: "pretty",    // "pretty" | "compact" | "json"
-    file: "/var/log/milady.log",
+    file: "/var/log/eliza.log",
     redactSensitive: "tools",  // "off" | "tools"
     redactPatterns: ["sk-[a-zA-Z0-9]+"],
   },
@@ -767,12 +767,12 @@ The `tools` section controls tool availability, web search/fetch, exec permissio
 ```
 
 <Info>
-When no config file exists, Milady defaults to `logging.level: "error"`.
+When no config file exists, Eliza defaults to `logging.level: "error"`.
 </Info>
 
 ## Database
 
-Milady supports two database backends:
+Eliza supports two database backends:
 
 <Tabs>
   <Tab title="PGLite (default)">
@@ -783,7 +783,7 @@ Milady supports two database backends:
       database: {
         provider: "pglite",
         pglite: {
-          dataDir: "~/.milady/workspace/.eliza/.elizadb",
+          dataDir: "~/.eliza/workspace/.eliza/.elizadb",
         },
       },
     }
@@ -798,12 +798,12 @@ Milady supports two database backends:
         provider: "postgres",
         postgres: {
           // Option 1: Connection string
-          connectionString: "postgresql://user:pass@localhost:5432/milady",
+          connectionString: "postgresql://user:pass@localhost:5432/eliza",
           // Option 2: Individual fields
           host: "localhost",
           port: 5432,
-          database: "milady",
-          user: "milady",
+          database: "eliza",
+          user: "eliza",
           password: "<DB_PASSWORD>",
           ssl: true,
         },
@@ -828,7 +828,7 @@ Milady supports two database backends:
       ],
       sessions: {
         enabled: true,
-        exportDir: "~/.milady/qmd-sessions",
+        exportDir: "~/.eliza/qmd-sessions",
         retentionDays: 30,
       },
       update: {
@@ -882,7 +882,7 @@ Configure browser automation via Chrome DevTools Protocol:
     profiles: {
       chrome: {
         cdpPort: 9222,
-        driver: "milady",
+        driver: "eliza",
         color: "#FF4500",
       },
       remote: {
@@ -1072,7 +1072,7 @@ Configure Model Context Protocol (MCP) servers:
       enabled: true,
       endpoint: "https://otel.example.com",
       protocol: "http/protobuf",    // "http/protobuf" | "grpc"
-      serviceName: "milady",
+      serviceName: "eliza",
       traces: true,
       metrics: true,
       logs: true,
@@ -1096,7 +1096,7 @@ Configure Model Context Protocol (MCP) servers:
 {
   cron: {
     enabled: true,
-    store: "~/.milady/cron-store.json",
+    store: "~/.eliza/cron-store.json",
     maxConcurrentRuns: 3,
   },
 }
@@ -1112,7 +1112,7 @@ Configure Model Context Protocol (MCP) servers:
     },
     wideArea: {
       enabled: false,
-      domain: "milady.internal",
+      domain: "eliza.internal",
     },
   },
 }
@@ -1140,7 +1140,7 @@ Configure Model Context Protocol (MCP) servers:
 {
   ui: {
     seamColor: "#FF4500",
-    theme: "milady",                // milady | qt314 | web2000 | programmer | haxor | psycho
+    theme: "eliza",                // eliza | qt314 | web2000 | programmer | haxor | psycho
     assistant: {
       name: "Mila",
       avatar: "https://example.com/avatar.png",
@@ -1243,29 +1243,29 @@ Toggle CLI and chat commands:
 
 ## Environment Variables Reference
 
-Key environment variables that affect Milady behavior:
+Key environment variables that affect Eliza behavior:
 
 ### Path Overrides
 
 | Variable | Purpose |
 |----------|---------|
-| `MILADY_STATE_DIR` | Override state directory (`~/.milady`) |
-| `MILADY_CONFIG_PATH` | Override config file path directly |
-| `MILADY_OAUTH_DIR` | Override OAuth credentials directory |
+| `ELIZA_STATE_DIR` | Override state directory (`~/.eliza`) |
+| `ELIZA_CONFIG_PATH` | Override config file path directly |
+| `ELIZA_OAUTH_DIR` | Override OAuth credentials directory |
 
 ### Ports and Networking
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `MILADY_API_PORT` | `31337` | API + WebSocket port. Used in dev mode (`bun run dev`) where the API and UI run on separate ports. In production (`milady start`) the API is served on `MILADY_PORT` instead |
-| `MILADY_PORT` | `2138` | Dashboard (Web UI) port. In production this port also serves the API. In dev mode this port is the Vite dev server only |
-| `MILADY_GATEWAY_PORT` | `18789` | Gateway port |
-| `MILADY_HOME_PORT` | `2142` | Home Dashboard port |
-| `MILADY_WECHAT_WEBHOOK_PORT` | `18790` | WeChat Webhook port |
+| `ELIZA_API_PORT` | `31337` | API + WebSocket port. Used in dev mode (`bun run dev`) where the API and UI run on separate ports. In production (`eliza start`) the API is served on `ELIZA_PORT` instead |
+| `ELIZA_PORT` | `2138` | Dashboard (Web UI) port. In production this port also serves the API. In dev mode this port is the Vite dev server only |
+| `ELIZA_GATEWAY_PORT` | `18789` | Gateway port |
+| `ELIZA_HOME_PORT` | `2142` | Home Dashboard port |
+| `ELIZA_WECHAT_WEBHOOK_PORT` | `18790` | WeChat Webhook port |
 
 ```bash
 # Custom ports
-MILADY_GATEWAY_PORT=19000 MILADY_PORT=3000 milady start
+ELIZA_GATEWAY_PORT=19000 ELIZA_PORT=3000 eliza start
 ```
 
 ### Model Provider API Keys
@@ -1294,31 +1294,31 @@ See the [Model Providers](/model-providers) page for a full list of supported pr
 
 ## CLI Config Commands
 
-Milady provides CLI commands to inspect configuration without editing JSON directly:
+Eliza provides CLI commands to inspect configuration without editing JSON directly:
 
 ```bash
 # Configuration guidance (common env vars and usage)
-milady configure
+eliza configure
 
 # Read a config value (dot-notation)
-milady config get agents.defaults.model
-milady config get gateway.port
+eliza config get agents.defaults.model
+eliza config get gateway.port
 
 # Print the resolved config file path
-milady config path
+eliza config path
 
 # Display all config values grouped by section
-milady config show
-milady config show --all    # Include advanced/hidden fields
-milady config show --json   # Raw JSON output
+eliza config show
+eliza config show --all    # Include advanced/hidden fields
+eliza config show --json   # Raw JSON output
 ```
 
-To change values, edit `~/.milady/milady.json` directly (it supports JSON5 with comments).
+To change values, edit `~/.eliza/eliza.json` directly (it supports JSON5 with comments).
 
 <Tip>
-Use `milady configure` for a quick reference of common configuration options
-and environment variables. For local bootstrap, run `milady setup`, or edit
-`~/.milady/milady.json` directly.
+Use `eliza configure` for a quick reference of common configuration options
+and environment variables. For local bootstrap, run `eliza setup`, or edit
+`~/.eliza/eliza.json` directly.
 </Tip>
 
 ## Full Example

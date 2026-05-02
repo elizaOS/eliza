@@ -37,7 +37,7 @@ async function commandAvailable(
 }
 
 const STATE_DIR = mkdtempSync(path.join(tmpdir(), "app-verify-int-state-"));
-process.env.MILADY_STATE_DIR = STATE_DIR;
+process.env.ELIZA_STATE_DIR = STATE_DIR;
 
 const noopRuntime = {} as IAgentRuntime;
 

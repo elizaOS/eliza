@@ -34,15 +34,15 @@ The target users are explicitly not regular. Fixed schedules, static reminder wi
 
 LifeOps already has several pieces of the stack:
 
-- Activity profile fields already include wake and sleep summaries in [activity-profile/types.ts](/Users/shawwalters/eliza-workspace/milady/eliza/apps/app-lifeops/src/activity-profile/types.ts:72).
-- Current profile analysis already derives heuristic `typicalWakeHour`, `typicalSleepHour`, `isCurrentlySleeping`, and related fields in [activity-profile/analyzer.ts](/Users/shawwalters/eliza-workspace/milady/eliza/apps/app-lifeops/src/activity-profile/analyzer.ts:604).
-- Reminder windows already adapt from inferred wake and sleep rhythm in [lifeops/defaults.ts](/Users/shawwalters/eliza-workspace/milady/eliza/apps/app-lifeops/src/lifeops/defaults.ts:117).
-- The app already captures page, app lifecycle, desktop power, and mobile health signals in [useLifeOpsActivitySignals.ts](/Users/shawwalters/eliza-workspace/milady/eliza/apps/app-lifeops/src/hooks/useLifeOpsActivitySignals.ts:102).
-- The mobile signals plugin already exposes HealthKit sleep and biometrics in [mobile-signals definitions](/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/mobile-signals/src/definitions.ts:16).
-- The macOS native activity tracker already records foreground app focus transitions in [activity-collector.swift](/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/activity-tracker/native/macos/activity-collector.swift:79).
-- Browser focus time is captured by the canonical LifeOps browser companion in [page-extract.ts](/Users/shawwalters/eliza-workspace/milady/eliza/apps/app-lifeops/extensions/lifeops-browser/src/page-extract.ts:1) and persisted through the browser activity store.
-- Screen-time storage exists in [service-mixin-screentime.ts](/Users/shawwalters/eliza-workspace/milady/eliza/apps/app-lifeops/src/lifeops/service-mixin-screentime.ts:37).
-- Proactive GM/GN and pre-activity nudges already exist in [proactive-planner.ts](/Users/shawwalters/eliza-workspace/milady/eliza/apps/app-lifeops/src/activity-profile/proactive-planner.ts:81).
+- Activity profile fields already include wake and sleep summaries in [activity-profile/types.ts](/Users/shawwalters/eliza-workspace/eliza/eliza/apps/app-lifeops/src/activity-profile/types.ts:72).
+- Current profile analysis already derives heuristic `typicalWakeHour`, `typicalSleepHour`, `isCurrentlySleeping`, and related fields in [activity-profile/analyzer.ts](/Users/shawwalters/eliza-workspace/eliza/eliza/apps/app-lifeops/src/activity-profile/analyzer.ts:604).
+- Reminder windows already adapt from inferred wake and sleep rhythm in [lifeops/defaults.ts](/Users/shawwalters/eliza-workspace/eliza/eliza/apps/app-lifeops/src/lifeops/defaults.ts:117).
+- The app already captures page, app lifecycle, desktop power, and mobile health signals in [useLifeOpsActivitySignals.ts](/Users/shawwalters/eliza-workspace/eliza/eliza/apps/app-lifeops/src/hooks/useLifeOpsActivitySignals.ts:102).
+- The mobile signals plugin already exposes HealthKit sleep and biometrics in [mobile-signals definitions](/Users/shawwalters/eliza-workspace/eliza/eliza/packages/native-plugins/mobile-signals/src/definitions.ts:16).
+- The macOS native activity tracker already records foreground app focus transitions in [activity-collector.swift](/Users/shawwalters/eliza-workspace/eliza/eliza/packages/native-plugins/activity-tracker/native/macos/activity-collector.swift:79).
+- Browser focus time is captured by the canonical LifeOps browser companion in [page-extract.ts](/Users/shawwalters/eliza-workspace/eliza/eliza/apps/app-lifeops/extensions/lifeops-browser/src/page-extract.ts:1) and persisted through the browser activity store.
+- Screen-time storage exists in [service-mixin-screentime.ts](/Users/shawwalters/eliza-workspace/eliza/eliza/apps/app-lifeops/src/lifeops/service-mixin-screentime.ts:37).
+- Proactive GM/GN and pre-activity nudges already exist in [proactive-planner.ts](/Users/shawwalters/eliza-workspace/eliza/eliza/apps/app-lifeops/src/activity-profile/proactive-planner.ts:81).
 
 What is missing:
 
@@ -78,7 +78,7 @@ What is missing:
 - Apple Screen Time access is entitlement-gated. `FamilyControls` requires capability setup and App Store approval before submission.
 - The public `DeviceActivity` surface is privacy-preserving and report-oriented, not a general raw event feed.
 - `DeviceActivityReport` runs in a sandboxed extension and cannot make network requests or move sensitive content outside the extension address space.
-- The current repo already proves `FamilyControls` individual authorization is viable on iPhone, but also shows timed blocking is blocked on adding a `DeviceActivity` extension in [AppBlockerPlugin.swift](/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/appblocker/ios/Sources/AppBlockerPlugin/AppBlockerPlugin.swift:95).
+- The current repo already proves `FamilyControls` individual authorization is viable on iPhone, but also shows timed blocking is blocked on adding a `DeviceActivity` extension in [AppBlockerPlugin.swift](/Users/shawwalters/eliza-workspace/eliza/eliza/packages/native-plugins/appblocker/ios/Sources/AppBlockerPlugin/AppBlockerPlugin.swift:95).
 - On Mac, the repo currently relies on native local tracking, not Apple Screen Time APIs.
 
 ### Product constraints

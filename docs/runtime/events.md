@@ -1,10 +1,10 @@
 ---
 title: "Events"
 sidebarTitle: "Events"
-description: "The Milady hooks event system, lifecycle events, handler registration, and event flow."
+description: "The Eliza hooks event system, lifecycle events, handler registration, and event flow."
 ---
 
-Milady provides an event-driven hooks system that lets external code react to agent lifecycle events. Hooks are TypeScript/JavaScript modules that export handler functions, registered against named event keys.
+Eliza provides an event-driven hooks system that lets external code react to agent lifecycle events. Hooks are TypeScript/JavaScript modules that export handler functions, registered against named event keys.
 
 ## Event System Architecture
 
@@ -74,7 +74,7 @@ export type HookHandler = (event: HookEvent) => Promise<void> | void;
 A minimal handler:
 
 ```typescript
-// ~/.milady/hooks/my-hook/handler.ts
+// ~/.eliza/hooks/my-hook/handler.ts
 export default async function handler(event: HookEvent): Promise<void> {
   if (event.action === "new") {
     event.messages.push("Welcome! A new session has started.");
@@ -127,7 +127,7 @@ await triggerHook(event);
 import { loadHooks } from "../hooks/index";
 
 const result = await loadHooks({
-  workspacePath: "~/.milady/workspace",
+  workspacePath: "~/.eliza/workspace",
   bundledDir: "/path/to/bundled-hooks",
   extraDirs: [],
   internalConfig: config.hooks?.internal,
@@ -156,7 +156,7 @@ Hooks are discovered from four directory categories. Directories processed later
 ```
 1. Extra dirs:        hooks.internal.load.extraDirs (lowest precedence)
 2. Bundled hooks:     <bundledDir>/ (from config or package)
-3. Managed hooks:     ~/.milady/hooks/
+3. Managed hooks:     ~/.eliza/hooks/
 4. Workspace hooks:   <workspaceDir>/hooks/ (highest precedence)
 ```
 
@@ -169,7 +169,7 @@ Each hook directory should contain a `HOOK.md` file with frontmatter metadata.
 name: my-hook
 description: Does something useful on session start
 metadata:
-  milady:
+  eliza:
     events:
       - "session:start"
     requires:
@@ -196,7 +196,7 @@ metadata:
 
 ## Internal Hook Config
 
-Hooks can be enabled/disabled via `milady.json`:
+Hooks can be enabled/disabled via `eliza.json`:
 
 ```json
 {
@@ -209,7 +209,7 @@ Hooks can be enabled/disabled via `milady.json`:
         }
       },
       "load": {
-        "extraDirs": ["~/.milady/custom-hooks"]
+        "extraDirs": ["~/.eliza/custom-hooks"]
       }
     }
   }
@@ -227,7 +227,7 @@ Older-style handlers can be registered directly in config (still supported):
       "handlers": [
         {
           "event": "command:new",
-          "module": "~/.milady/hooks/my-handler/index.ts",
+          "module": "~/.eliza/hooks/my-handler/index.ts",
           "export": "default"
         }
       ]
@@ -236,7 +236,7 @@ Older-style handlers can be registered directly in config (still supported):
 }
 ```
 
-Module paths for legacy handlers must resolve to a file under `~/.milady/` to prevent arbitrary code execution via config injection.
+Module paths for legacy handlers must resolve to a file under `~/.eliza/` to prevent arbitrary code execution via config injection.
 
 ## Error Handling
 

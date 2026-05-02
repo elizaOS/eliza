@@ -1,17 +1,17 @@
 ---
 title: "Nextcloud Talk Plugin"
 sidebarTitle: "Nextcloud Talk"
-description: "Nextcloud Talk connector for Milady — bot integration with Nextcloud Talk chat."
+description: "Nextcloud Talk connector for Eliza — bot integration with Nextcloud Talk chat."
 ---
 
-The Nextcloud Talk plugin connects Milady agents to Nextcloud Talk, enabling message handling in Nextcloud Talk conversations on self-hosted Nextcloud instances.
+The Nextcloud Talk plugin connects Eliza agents to Nextcloud Talk, enabling message handling in Nextcloud Talk conversations on self-hosted Nextcloud instances.
 
 **Package:** `@elizaos/plugin-nextcloud-talk`
 
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-nextcloud-talk
+eliza plugins install @elizaos/plugin-nextcloud-talk
 ```
 
 ## Setup
@@ -22,7 +22,7 @@ milady plugins install @elizaos/plugin-nextcloud-talk
 2. Create a bot user or use an existing account for the agent
 3. Note the Nextcloud server URL and bot credentials
 
-### 2. Configure Milady
+### 2. Configure Eliza
 
 ```json
 {

@@ -1,7 +1,7 @@
 ---
 title: Logs
 sidebarTitle: Logs
-description: View runtime and service logs for your Milady agent directly in the dashboard.
+description: View runtime and service logs for your Eliza agent directly in the dashboard.
 ---
 
 The Logs tab provides a real-time log viewer for your agent's runtime output. Access it from the **Advanced** section of the dashboard at `/logs`.

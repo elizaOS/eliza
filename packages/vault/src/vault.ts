@@ -87,7 +87,7 @@ export interface CreateVaultOptions {
    * Working directory. Resolution order (first non-empty wins):
    *
    *   1. `opts.workDir` — explicit caller override (tests, embedded use).
-   *   2. `$MILADY_STATE_DIR` — Milady's state-dir override.
+   *   2. `$ELIZA_STATE_DIR` — Eliza's state-dir override.
    *   3. `$ELIZA_STATE_DIR` — elizaOS-compatible state-dir override.
    *   4. `~/$ELIZA_NAMESPACE` with a leading dot (`~/.eliza` by default).
    *
@@ -107,7 +107,7 @@ export interface CreateVaultOptions {
 export function createVault(opts: CreateVaultOptions = {}): Vault {
   const root =
     opts.workDir ??
-    process.env.MILADY_STATE_DIR ??
+    process.env.ELIZA_STATE_DIR ??
     process.env.ELIZA_STATE_DIR ??
     join(homedir(), `.${process.env.ELIZA_NAMESPACE?.trim() || "eliza"}`);
   const storePath = join(root, "vault.json");

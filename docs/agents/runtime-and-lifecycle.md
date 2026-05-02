@@ -1,14 +1,14 @@
 ---
 title: "Runtime and Lifecycle"
 sidebarTitle: "Runtime & Lifecycle"
-description: "Boot sequence, initialization steps, plugin loading order, service startup, and restart behavior for the Milady agent runtime."
+description: "Boot sequence, initialization steps, plugin loading order, service startup, and restart behavior for the Eliza agent runtime."
 ---
 
-This page documents how Milady initializes and manages the elizaOS `AgentRuntime`, from process startup through graceful shutdown.
+This page documents how Eliza initializes and manages the elizaOS `AgentRuntime`, from process startup through graceful shutdown.
 
 ## Entry Points
 
-Milady has two primary runtime entry points:
+Eliza has two primary runtime entry points:
 
 | Function | File | Use |
 |---|---|---|
@@ -41,7 +41,7 @@ addLogListener(logToChatListener);
 
 ### Step 2: Load Config
 
-`milady.json` is loaded from the state directory (`~/.milady/milady.json`). If the file does not exist, an empty config is used with defaults:
+`eliza.json` is loaded from the state directory (`~/.eliza/eliza.json`). If the file does not exist, an empty config is used with defaults:
 
 ```typescript
 config = loadElizaConfig();
@@ -58,7 +58,7 @@ If no agent name is configured and stdin is a TTY, the interactive onboarding wi
 4. Wallet setup (EVM and Solana keypairs)
 5. Skills registry URL
 
-The wizard writes the agent name and chosen style template back to `milady.json` before continuing. In headless mode, onboarding is skipped — the GUI handles it.
+The wizard writes the agent name and chosen style template back to `eliza.json` before continuing. In headless mode, onboarding is skipped — the GUI handles it.
 
 ### Step 3a: Post-Config Propagation
 
@@ -85,7 +85,7 @@ Several helper functions push config values into `process.env` so that elizaOS p
 
 ### Step 5: Build Character
 
-`buildCharacterFromConfig()` assembles the elizaOS `Character` from `milady.json`, resolving the agent name, personality fields, and secrets from environment variables.
+`buildCharacterFromConfig()` assembles the elizaOS `Character` from `eliza.json`, resolving the agent name, personality fields, and secrets from environment variables.
 
 ### Step 6: Ensure Workspace
 
@@ -95,7 +95,7 @@ The agent workspace directory is created if needed:
 await ensureAgentWorkspace({ dir: workspaceDir });
 ```
 
-### Step 7: Create Milady Plugin
+### Step 7: Create Eliza Plugin
 
 `createElizaPlugin()` is called to produce the core bridge plugin that provides workspace context, session keys, custom actions, and lifecycle actions (restart, send-message):
 
@@ -113,8 +113,8 @@ const elizaPlugin = createElizaPlugin({
 1. **Core plugins** — always loaded (see [Services](/runtime/services))
 2. **Connector plugins** — loaded when channel config is present (Discord, Telegram, etc.)
 3. **Provider plugins** — loaded when the corresponding API key env var is set
-4. **Custom/drop-in plugins** — scanned from `~/.milady/plugins/custom/`
-5. **Ejected plugins** — local overrides from `~/.milady/plugins/ejected/`
+4. **Custom/drop-in plugins** — scanned from `~/.eliza/plugins/custom/`
+5. **Ejected plugins** — local overrides from `~/.eliza/plugins/ejected/`
 
 Each plugin is wrapped with an error boundary so a crash in one plugin cannot halt startup.
 
@@ -170,7 +170,7 @@ After initialization:
 
 ## Restart Behavior
 
-Milady supports pluggable restart handlers via `eliza/packages/agent/src/runtime/restart.ts`:
+Eliza supports pluggable restart handlers via `eliza/packages/agent/src/runtime/restart.ts`:
 
 ```typescript
 export const RESTART_EXIT_CODE = 75;
@@ -227,7 +227,7 @@ The sandbox system has two layers of configuration:
 | `"standard"` | Docker container isolation for tool execution |
 | `"max"` | Maximum isolation including network restrictions |
 <Note>
-The runtime in `eliza.ts` reads `agents.defaults.sandbox.mode` as a raw string and maps it to the `SandboxMode` type. It only recognizes `"light"`, `"standard"`, and `"max"` -- all other values (including the TypeScript-typed `"non-main"` and `"all"`) fall back to `"off"`. To enable sandboxing, use `"light"`, `"standard"`, or `"max"` in `milady.json`. The per-agent `sandbox.mode` field in `types.agents.ts` (`"off" | "non-main" | "all"`) controls which sessions are sandboxed, while the defaults-level mode controls the sandbox intensity.
+The runtime in `eliza.ts` reads `agents.defaults.sandbox.mode` as a raw string and maps it to the `SandboxMode` type. It only recognizes `"light"`, `"standard"`, and `"max"` -- all other values (including the TypeScript-typed `"non-main"` and `"all"`) fall back to `"off"`. To enable sandboxing, use `"light"`, `"standard"`, or `"max"` in `eliza.json`. The per-agent `sandbox.mode` field in `types.agents.ts` (`"off" | "non-main" | "all"`) controls which sessions are sandboxed, while the defaults-level mode controls the sandbox intensity.
 </Note>
 
 ## Related Pages

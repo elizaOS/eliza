@@ -15,7 +15,7 @@ interface FirstRunOfferProps {
   busy: boolean;
 }
 
-const DISMISS_STORAGE_KEY = "milady.localInference.firstRunOfferDismissed";
+const DISMISS_STORAGE_KEY = "eliza.localInference.firstRunOfferDismissed";
 
 export function FirstRunOffer({
   catalog,
@@ -30,8 +30,8 @@ export function FirstRunOffer({
       window.localStorage?.getItem(DISMISS_STORAGE_KEY) === "1",
   );
 
-  const miladyOwned = installed.filter((m) => m.source === "milady-download");
-  if (miladyOwned.length > 0 || dismissed) return null;
+  const elizaOwned = installed.filter((m) => m.source === "eliza-download");
+  if (elizaOwned.length > 0 || dismissed) return null;
 
   const recommended = pickRecommended(catalog, installed, hardware);
   if (!recommended) return null;

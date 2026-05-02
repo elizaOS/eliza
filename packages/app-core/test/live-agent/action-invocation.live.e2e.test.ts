@@ -3,7 +3,7 @@
  * selects and executes actions in response to natural language input.
  *
  * NO MOCKS. Uses a real PGlite database and a real LLM provider.
- * All tests are gated on MILADY_LIVE_TEST=1 / ELIZA_LIVE_TEST=1 plus
+ * All tests are gated on ELIZA_LIVE_TEST=1 / ELIZA_LIVE_TEST=1 plus
  * a configured LLM API key.
  *
  * Dogfoods the ActionSpy / ConversationHarness helpers (which were previously
@@ -44,7 +44,7 @@ import { createRealTestRuntime } from "../helpers/real-runtime.ts";
 // ---------------------------------------------------------------------------
 
 const liveModelTestsEnabled =
-  process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
+  process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const selectedLiveProvider = liveModelTestsEnabled
   ? selectLiveProvider()
   : null;
@@ -84,8 +84,8 @@ describe("Action Invocation E2E", () => {
   // environment-dependent (Twilio, Calendly, X, Google Calendar, native
   // app/website blockers, etc.). Default behavior is to warn loudly and
   // skip — CI environments cannot configure all third-party credentials.
-  // Set MILADY_REQUIRE_ALL_CONNECTORS=1 in dev to surface gaps as failures.
-  const strictConnectorMode = process.env.MILADY_REQUIRE_ALL_CONNECTORS === "1";
+  // Set ELIZA_REQUIRE_ALL_CONNECTORS=1 in dev to surface gaps as failures.
+  const strictConnectorMode = process.env.ELIZA_REQUIRE_ALL_CONNECTORS === "1";
 
   function reportMissingCapability(message: string): void {
     console.warn(message);

@@ -9,7 +9,7 @@
 
 ## Problem
 
-The Milady agent has full API access to wallet, permissions, plugins, cloud, and connector state — but none of this is injected into the LLM context. The agent cannot perceive its own capabilities unless it explicitly makes API calls. This creates a "fragmented" experience where the UI shows system state but the agent is blind to it.
+The Eliza agent has full API access to wallet, permissions, plugins, cloud, and connector state — but none of this is injected into the LLM context. The agent cannot perceive its own capabilities unless it explicitly makes API calls. This creates a "fragmented" experience where the UI shows system state but the agent is blind to it.
 
 ## Design Decisions
 

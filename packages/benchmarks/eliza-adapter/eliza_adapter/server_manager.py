@@ -1,4 +1,4 @@
-"""Manage the milady benchmark server as a subprocess."""
+"""Manage the eliza benchmark server as a subprocess."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import sys
 import time
 from pathlib import Path
 
-from milady_adapter.client import MiladyClient
+from eliza_adapter.client import ElizaClient
 
 logger = logging.getLogger(__name__)
 
@@ -20,21 +20,21 @@ def _find_repo_root() -> Path:
     """Walk up from this file to find the repository root (contains packages/)."""
     current = Path(__file__).resolve()
     for parent in current.parents:
-        if (parent / "packages" / "milady" / "package.json").exists():
+        if (parent / "packages" / "eliza" / "package.json").exists():
             return parent
     raise FileNotFoundError(
-        "Could not locate repository root (expected packages/milady/package.json)"
+        "Could not locate repository root (expected packages/eliza/package.json)"
     )
 
 
-class MiladyServerManager:
-    """Start and stop the milady benchmark server subprocess.
+class ElizaServerManager:
+    """Start and stop the eliza benchmark server subprocess.
 
     Usage::
 
-        mgr = MiladyServerManager()
+        mgr = ElizaServerManager()
         mgr.start()          # spawns node process, waits until healthy
-        client = mgr.client  # ready-to-use MiladyClient
+        client = mgr.client  # ready-to-use ElizaClient
         # ... run benchmarks ...
         mgr.stop()           # kills the subprocess
     """
@@ -49,11 +49,11 @@ class MiladyServerManager:
         self.timeout = timeout
         self.repo_root = repo_root or _find_repo_root()
         self._proc: subprocess.Popen[str] | None = None
-        self._client = MiladyClient(f"http://localhost:{port}")
+        self._client = ElizaClient(f"http://localhost:{port}")
         atexit.register(self.stop)
 
     @property
-    def client(self) -> MiladyClient:
+    def client(self) -> ElizaClient:
         return self._client
 
     # ------------------------------------------------------------------
@@ -61,21 +61,21 @@ class MiladyServerManager:
     def start(self) -> None:
         """Spawn the benchmark server and block until it reports ready."""
         if self._proc is not None and self._proc.poll() is None:
-            logger.info("Milady benchmark server already running (pid=%d)", self._proc.pid)
+            logger.info("Eliza benchmark server already running (pid=%d)", self._proc.pid)
             return
 
         # Try standard monorepo location first
         server_script = (
-            self.repo_root / "packages" / "milady" / "src" / "benchmark" / "server.ts"
+            self.repo_root / "packages" / "eliza" / "src" / "benchmark" / "server.ts"
         )
-        cwd = self.repo_root / "packages" / "milady"
+        cwd = self.repo_root / "packages" / "eliza"
         
-        # Fallback to repo root if milady is top-level (e.g. current workspace structure)
+        # Fallback to repo root if eliza is top-level (e.g. current workspace structure)
         if not server_script.exists():
             server_script = (
-                self.repo_root / "milady" / "src" / "benchmark" / "server.ts"
+                self.repo_root / "eliza" / "src" / "benchmark" / "server.ts"
             )
-            cwd = self.repo_root / "milady"
+            cwd = self.repo_root / "eliza"
 
         if not server_script.exists():
             # Fallback for internal testing where repo_root might point differently
@@ -85,11 +85,11 @@ class MiladyServerManager:
              cwd = self.repo_root
 
         if not server_script.exists():
-            raise FileNotFoundError(f"Server script not found: {server_script} (checked packages/milady, milady, and root)")
+            raise FileNotFoundError(f"Server script not found: {server_script} (checked packages/eliza, eliza, and root)")
 
-        env = {**os.environ, "MILADY_BENCH_PORT": str(self.port)}
+        env = {**os.environ, "ELIZA_BENCH_PORT": str(self.port)}
 
-        logger.info("Starting milady benchmark server on port %d from %s ...", self.port, cwd)
+        logger.info("Starting eliza benchmark server on port %d from %s ...", self.port, cwd)
         self._proc = subprocess.Popen(
             ["node", "--import", "tsx", str(server_script)],
             cwd=str(cwd),
@@ -128,7 +128,7 @@ class MiladyServerManager:
         if self._proc.poll() is not None:
              logger.debug("Server process already exited (pid=%d)", pid)
         else:
-             logger.info("Stopping milady benchmark server (pid=%d) ...", pid)
+             logger.info("Stopping eliza benchmark server (pid=%d) ...", pid)
              self._proc.terminate()
              try:
                  self._proc.wait(timeout=5)

@@ -1,10 +1,10 @@
 ---
 title: "Configuration"
 sidebarTitle: "Configuration"
-description: "Référence complète du fichier de configuration principal du runtime Milady, des variables d'environnement, des commandes CLI et de toutes les sections de configuration."
+description: "Référence complète du fichier de configuration principal du runtime Eliza, des variables d'environnement, des commandes CLI et de toutes les sections de configuration."
 ---
 
-Milady utilise un fichier de configuration JSON5 principal pour les paramètres de runtime et d'amorçage.
+Eliza utilise un fichier de configuration JSON5 principal pour les paramètres de runtime et d'amorçage.
 Cette page documente le fichier de configuration, les variables d'environnement de substitution et
 les champs canoniques de routage du runtime qui pilotent désormais la sélection de l'hébergement et du fournisseur.
 
@@ -14,14 +14,14 @@ les champs canoniques de routage du runtime qui pilotent désormais la sélectio
 
 </div>
 
-Par défaut, Milady stocke sa configuration à l'emplacement suivant :
+Par défaut, Eliza stocke sa configuration à l'emplacement suivant :
 
 ```
-~/.milady/milady.json
+~/.eliza/eliza.json
 ```
 
 <Info>
-Le répertoire de configuration est `~/.milady` et le fichier de configuration est `milady.json` à l'intérieur. Le binaire CLI est `milady` et le nom du paquet npm est `miladyai`.
+Le répertoire de configuration est `~/.eliza` et le fichier de configuration est `eliza.json` à l'intérieur. Le binaire CLI est `eliza` et le nom du paquet npm est `elizaai`.
 </Info>
 
 <div id="overriding-the-location">
@@ -30,21 +30,21 @@ Le répertoire de configuration est `~/.milady` et le fichier de configuration e
 
 </div>
 
-Deux variables d'environnement contrôlent l'endroit où Milady cherche la configuration :
+Deux variables d'environnement contrôlent l'endroit où Eliza cherche la configuration :
 
 | Variable | Objectif | Défaut |
 |----------|----------|--------|
-| `MILADY_STATE_DIR` | Remplacer l'intégralité du répertoire d'état | `~/.milady` |
-| `MILADY_CONFIG_PATH` | Remplacer directement le chemin du fichier de configuration | `~/.milady/milady.json` |
+| `ELIZA_STATE_DIR` | Remplacer l'intégralité du répertoire d'état | `~/.eliza` |
+| `ELIZA_CONFIG_PATH` | Remplacer directement le chemin du fichier de configuration | `~/.eliza/eliza.json` |
 
-`MILADY_CONFIG_PATH` a la priorité sur `MILADY_STATE_DIR`. Les deux prennent en charge l'expansion de `~` pour le répertoire personnel. Pour la compatibilité ascendante, les anciens noms `ELIZA_STATE_DIR` et `ELIZA_CONFIG_PATH` sont également acceptés comme alternatives.
+`ELIZA_CONFIG_PATH` a la priorité sur `ELIZA_STATE_DIR`. Les deux prennent en charge l'expansion de `~` pour le répertoire personnel. Pour la compatibilité ascendante, les anciens noms `ELIZA_STATE_DIR` et `ELIZA_CONFIG_PATH` sont également acceptés comme alternatives.
 
 ```bash
-# Use a custom state directory (config lives at /opt/milady/milady.json)
-MILADY_STATE_DIR=/opt/milady milady start
+# Use a custom state directory (config lives at /opt/eliza/eliza.json)
+ELIZA_STATE_DIR=/opt/eliza eliza start
 
 # Point to a specific config file
-MILADY_CONFIG_PATH=~/projects/bot/config.json5 milady start
+ELIZA_CONFIG_PATH=~/projects/bot/config.json5 eliza start
 ```
 
 <div id="other-state-directory-paths">
@@ -57,9 +57,9 @@ Le répertoire d'état contient également :
 
 | Chemin | Objectif |
 |--------|----------|
-| `~/.milady/models/` | Listes de fournisseurs de modèles en cache (fichiers JSON par fournisseur) |
-| `~/.milady/credentials/` | Identifiants OAuth (remplaçables via `MILADY_OAUTH_DIR`) |
-| `~/.milady/credentials/oauth.json` | Stockage des jetons OAuth |
+| `~/.eliza/models/` | Listes de fournisseurs de modèles en cache (fichiers JSON par fournisseur) |
+| `~/.eliza/credentials/` | Identifiants OAuth (remplaçables via `ELIZA_OAUTH_DIR`) |
+| `~/.eliza/credentials/oauth.json` | Stockage des jetons OAuth |
 
 <div id="canonical-runtime-routing">
 
@@ -67,7 +67,7 @@ Le répertoire d'état contient également :
 
 </div>
 
-La topologie de runtime enregistrée par Milady n'est plus déduite d'un unique
+La topologie de runtime enregistrée par Eliza n'est plus déduite d'un unique
 blob `connection`, et le champ racine `connection` ne fait plus partie du
 schéma de configuration persisté. Les champs canoniques persistés sont :
 
@@ -165,11 +165,11 @@ Les inclusions prennent en charge jusqu'à 10 niveaux d'imbrication. Les inclusi
 
 </div>
 
-Milady charge les variables d'environnement à partir de deux sources :
+Eliza charge les variables d'environnement à partir de deux sources :
 
 <Tabs>
   <Tab title="En ligne dans la config (section env)">
-    Définissez les variables directement dans `milady.json`. Elles sont appliquées à l'environnement du processus si elles ne sont pas déjà définies :
+    Définissez les variables directement dans `eliza.json`. Elles sont appliquées à l'environnement du processus si elles ne sont pas déjà définies :
 
     ```json5
     {
@@ -205,7 +205,7 @@ Milady charge les variables d'environnement à partir de deux sources :
 </Tabs>
 
 <Warning>
-Le fichier de configuration est écrit avec le mode `0o600` (lecture+écriture pour le propriétaire uniquement) car la section `env` peut contenir des clés API. Conservez les secrets dans la section `env` ou utilisez un fichier `~/.milady/.env` séparé.
+Le fichier de configuration est écrit avec le mode `0o600` (lecture+écriture pour le propriétaire uniquement) car la section `env` peut contenir des clés API. Conservez les secrets dans la section `env` ou utilisez un fichier `~/.eliza/.env` séparé.
 </Warning>
 
 <div id="top-level-structure">
@@ -214,7 +214,7 @@ Le fichier de configuration est écrit avec le mode `0o600` (lecture+écriture p
 
 </div>
 
-Voici chaque clé de niveau supérieur dans `MiladyConfig` :
+Voici chaque clé de niveau supérieur dans `ElizaConfig` :
 
 ```json5
 {
@@ -473,7 +473,7 @@ Chaque fournisseur personnalisé peut spécifier un mode d'authentification :
 
 </div>
 
-Les plugins étendent Milady avec des connecteurs, des fournisseurs et des fonctionnalités supplémentaires.
+Les plugins étendent Eliza avec des connecteurs, des fournisseurs et des fonctionnalités supplémentaires.
 
 ```json5
 {
@@ -509,7 +509,7 @@ Les plugins étendent Milady avec des connecteurs, des fournisseurs et des fonct
 
 </div>
 
-Milady active automatiquement les plugins en fonction de votre configuration. Vous n'avez pas besoin d'ajouter manuellement les plugins à la liste autorisée dans la plupart des cas.
+Eliza active automatiquement les plugins en fonction de votre configuration. Vous n'avez pas besoin d'ajouter manuellement les plugins à la liste autorisée dans la plupart des cas.
 
 **Les plugins de connecteurs** sont activés automatiquement lorsqu'un connecteur est configuré avec des identifiants :
 
@@ -615,7 +615,7 @@ Vous pouvez toujours forcer la désactivation de tout plugin activé automatique
 
 </div>
 
-Les connecteurs intègrent Milady aux plateformes de messagerie. Configurez-les sous `connectors` :
+Les connecteurs intègrent Eliza aux plateformes de messagerie. Configurez-les sous `connectors` :
 
 ```json5
 {
@@ -636,7 +636,7 @@ Les connecteurs intègrent Milady aux plateformes de messagerie. Configurez-les 
     },
     whatsapp: {
       enabled: true,
-      authDir: "~/.milady/whatsapp-auth",
+      authDir: "~/.eliza/whatsapp-auth",
     },
   },
 }
@@ -848,7 +848,7 @@ La section `tools` contrôle la disponibilité des outils, la recherche/récupé
     level: "error",            // silent | fatal | error | warn | info | debug | trace
     consoleLevel: "info",      // Independent console log level
     consoleStyle: "pretty",    // "pretty" | "compact" | "json"
-    file: "/var/log/milady.log",
+    file: "/var/log/eliza.log",
     redactSensitive: "tools",  // "off" | "tools"
     redactPatterns: ["sk-[a-zA-Z0-9]+"],
   },
@@ -856,7 +856,7 @@ La section `tools` contrôle la disponibilité des outils, la recherche/récupé
 ```
 
 <Info>
-Lorsqu'aucun fichier de configuration n'existe, Milady utilise par défaut `logging.level: "error"`.
+Lorsqu'aucun fichier de configuration n'existe, Eliza utilise par défaut `logging.level: "error"`.
 </Info>
 
 <div id="database">
@@ -865,7 +865,7 @@ Lorsqu'aucun fichier de configuration n'existe, Milady utilise par défaut `logg
 
 </div>
 
-Milady prend en charge deux backends de base de données :
+Eliza prend en charge deux backends de base de données :
 
 <Tabs>
   <Tab title="PGLite (par défaut)">
@@ -876,7 +876,7 @@ Milady prend en charge deux backends de base de données :
       database: {
         provider: "pglite",
         pglite: {
-          dataDir: "~/.milady/workspace/.eliza/.elizadb",
+          dataDir: "~/.eliza/workspace/.eliza/.elizadb",
         },
       },
     }
@@ -891,12 +891,12 @@ Milady prend en charge deux backends de base de données :
         provider: "postgres",
         postgres: {
           // Option 1: Connection string
-          connectionString: "postgresql://user:pass@localhost:5432/milady",
+          connectionString: "postgresql://user:pass@localhost:5432/eliza",
           // Option 2: Individual fields
           host: "localhost",
           port: 5432,
-          database: "milady",
-          user: "milady",
+          database: "eliza",
+          user: "eliza",
           password: "<DB_PASSWORD>",
           ssl: true,
         },
@@ -925,7 +925,7 @@ Milady prend en charge deux backends de base de données :
       ],
       sessions: {
         enabled: true,
-        exportDir: "~/.milady/qmd-sessions",
+        exportDir: "~/.eliza/qmd-sessions",
         retentionDays: 30,
       },
       update: {
@@ -987,7 +987,7 @@ Configurez l'automatisation du navigateur via Chrome DevTools Protocol :
     profiles: {
       chrome: {
         cdpPort: 9222,
-        driver: "milady",
+        driver: "eliza",
         color: "#FF4500",
       },
       remote: {
@@ -1205,7 +1205,7 @@ Configurez les serveurs Model Context Protocol (MCP) :
       enabled: true,
       endpoint: "https://otel.example.com",
       protocol: "http/protobuf",    // "http/protobuf" | "grpc"
-      serviceName: "milady",
+      serviceName: "eliza",
       traces: true,
       metrics: true,
       logs: true,
@@ -1233,7 +1233,7 @@ Configurez les serveurs Model Context Protocol (MCP) :
 {
   cron: {
     enabled: true,
-    store: "~/.milady/cron-store.json",
+    store: "~/.eliza/cron-store.json",
     maxConcurrentRuns: 3,
   },
 }
@@ -1253,7 +1253,7 @@ Configurez les serveurs Model Context Protocol (MCP) :
     },
     wideArea: {
       enabled: false,
-      domain: "milady.internal",
+      domain: "eliza.internal",
     },
   },
 }
@@ -1289,7 +1289,7 @@ Configurez les serveurs Model Context Protocol (MCP) :
 {
   ui: {
     seamColor: "#FF4500",
-    theme: "milady",                // milady | qt314 | web2000 | programmer | haxor | psycho
+    theme: "eliza",                // eliza | qt314 | web2000 | programmer | haxor | psycho
     assistant: {
       name: "Mila",
       avatar: "https://example.com/avatar.png",
@@ -1412,7 +1412,7 @@ Activez ou désactivez les commandes CLI et de discussion :
 
 </div>
 
-Variables d'environnement clés qui affectent le comportement de Milady :
+Variables d'environnement clés qui affectent le comportement de Eliza :
 
 <div id="path-overrides">
 
@@ -1422,9 +1422,9 @@ Variables d'environnement clés qui affectent le comportement de Milady :
 
 | Variable | Objectif |
 |----------|----------|
-| `MILADY_STATE_DIR` | Remplacer le répertoire d'état (`~/.milady`) |
-| `MILADY_CONFIG_PATH` | Remplacer directement le chemin du fichier de configuration |
-| `MILADY_OAUTH_DIR` | Remplacer le répertoire des identifiants OAuth |
+| `ELIZA_STATE_DIR` | Remplacer le répertoire d'état (`~/.eliza`) |
+| `ELIZA_CONFIG_PATH` | Remplacer directement le chemin du fichier de configuration |
+| `ELIZA_OAUTH_DIR` | Remplacer le répertoire des identifiants OAuth |
 
 <div id="ports-and-networking">
 
@@ -1434,15 +1434,15 @@ Variables d'environnement clés qui affectent le comportement de Milady :
 
 | Variable | Défaut | Objectif |
 |----------|--------|----------|
-| `MILADY_API_PORT` | `31337` | Port API + WebSocket (mode développement uniquement ; en production l'API est servie sur `MILADY_PORT`) |
-| `MILADY_PORT` | `2138` | Port du tableau de bord (Web UI) — sert également l'API en production |
-| `MILADY_GATEWAY_PORT` | `18789` | Port de la passerelle |
-| `MILADY_HOME_PORT` | `2142` | Port du tableau de bord d'accueil |
-| `MILADY_WECHAT_WEBHOOK_PORT` | `18790` | Port du webhook WeChat |
+| `ELIZA_API_PORT` | `31337` | Port API + WebSocket (mode développement uniquement ; en production l'API est servie sur `ELIZA_PORT`) |
+| `ELIZA_PORT` | `2138` | Port du tableau de bord (Web UI) — sert également l'API en production |
+| `ELIZA_GATEWAY_PORT` | `18789` | Port de la passerelle |
+| `ELIZA_HOME_PORT` | `2142` | Port du tableau de bord d'accueil |
+| `ELIZA_WECHAT_WEBHOOK_PORT` | `18790` | Port du webhook WeChat |
 
 ```bash
 # Custom ports
-MILADY_GATEWAY_PORT=19000 MILADY_PORT=3000 milady start
+ELIZA_GATEWAY_PORT=19000 ELIZA_PORT=3000 eliza start
 ```
 
 <div id="model-provider-api-keys">
@@ -1490,31 +1490,31 @@ Consultez la page [Fournisseurs de modèles](/fr/model-providers) pour une liste
 
 </div>
 
-Milady fournit des commandes CLI pour inspecter la configuration sans modifier directement le JSON :
+Eliza fournit des commandes CLI pour inspecter la configuration sans modifier directement le JSON :
 
 ```bash
 # Configuration guidance (common env vars and usage)
-milady configure
+eliza configure
 
 # Read a config value (dot-notation)
-milady config get agents.defaults.model
-milady config get gateway.port
+eliza config get agents.defaults.model
+eliza config get gateway.port
 
 # Print the resolved config file path
-milady config path
+eliza config path
 
 # Display all config values grouped by section
-milady config show
-milady config show --all    # Include advanced/hidden fields
-milady config show --json   # Raw JSON output
+eliza config show
+eliza config show --all    # Include advanced/hidden fields
+eliza config show --json   # Raw JSON output
 ```
 
-Pour modifier les valeurs, éditez directement `~/.milady/milady.json` (qui prend en charge JSON5 avec commentaires).
+Pour modifier les valeurs, éditez directement `~/.eliza/eliza.json` (qui prend en charge JSON5 avec commentaires).
 
 <Tip>
-Utilisez `milady configure` pour une référence rapide des options de configuration
-courantes et des variables d'environnement. Pour l'amorçage local, exécutez `milady setup`,
-ou éditez directement `~/.milady/milady.json`.
+Utilisez `eliza configure` pour une référence rapide des options de configuration
+courantes et des variables d'environnement. Pour l'amorçage local, exécutez `eliza setup`,
+ou éditez directement `~/.eliza/eliza.json`.
 </Tip>
 
 <div id="full-example">

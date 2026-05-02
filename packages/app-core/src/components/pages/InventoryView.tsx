@@ -72,10 +72,10 @@ const ALL_INVENTORY_FILTERS: InventoryChainFilters = {
 const SUPPORTED_WALLET_CHAINS = Object.keys(ALL_INVENTORY_FILTERS);
 
 const DASHBOARD_WINDOWS: DashboardWindow[] = ["24h", "7d", "30d"];
-const HIDDEN_TOKEN_IDS_KEY = "milady:wallet:hidden-token-ids:v1";
-const WALLET_CHAT_PREFILL_EVENT = "milady:chat:prefill";
-const WALLET_SIDEBAR_WIDTH_KEY = "milady:wallets:sidebar:width";
-const WALLET_SIDEBAR_COLLAPSED_KEY = "milady:wallets:sidebar:collapsed";
+const HIDDEN_TOKEN_IDS_KEY = "eliza:wallet:hidden-token-ids:v1";
+const WALLET_CHAT_PREFILL_EVENT = "eliza:chat:prefill";
+const WALLET_SIDEBAR_WIDTH_KEY = "eliza:wallets:sidebar:width";
+const WALLET_SIDEBAR_COLLAPSED_KEY = "eliza:wallets:sidebar:collapsed";
 const WALLET_SIDEBAR_DEFAULT_WIDTH = 352;
 const WALLET_SIDEBAR_MIN_WIDTH = 240;
 const WALLET_SIDEBAR_MAX_WIDTH = 520;

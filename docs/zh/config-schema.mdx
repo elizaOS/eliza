@@ -1,10 +1,10 @@
 ---
 title: 配置模式参考
 sidebarTitle: 配置模式
-description: milady.json 配置文件的完整参考，按部分组织并记录所有字段。
+description: eliza.json 配置文件的完整参考，按部分组织并记录所有字段。
 ---
 
-Milady 通过存储在状态目录（默认：`~/.milady/milady.json`）中的 `milady.json` 文件进行配置。所有部分均为可选；省略字段时 Milady 会使用合理的默认值。
+Eliza 通过存储在状态目录（默认：`~/.eliza/eliza.json`）中的 `eliza.json` 文件进行配置。所有部分均为可选；省略字段时 Eliza 会使用合理的默认值。
 
 规范的运行时路由与旧版兼容性字段分开持久化。顶层运行时真实来源为：
 
@@ -20,7 +20,7 @@ Milady 通过存储在状态目录（默认：`~/.milady/milady.json`）中的 `
 ## 顶层结构
 </div>
 
-`MiladyConfig` 类型定义了 `milady.json` 中可用的每个部分。以下是顶层键的完整列表：
+`ElizaConfig` 类型定义了 `eliza.json` 中可用的每个部分。以下是顶层键的完整列表：
 
 | 部分 | 类型 | 描述 |
 |---------|------|-------------|
@@ -64,7 +64,7 @@ Milady 通过存储在状态目录（默认：`~/.milady/milady.json`）中的 `
 | [`x402`](#x402) | `X402Config` | x402 HTTP 支付协议 |
 | [`media`](#media) | `MediaConfig` | 媒体生成提供商（图像、视频、音频、视觉） |
 | [`mcp`](#mcp) | `object` | MCP（模型上下文协议）服务器定义 |
-| [`registry`](#registry) | `object` | ERC-8004 代理注册表和 MiladyMaker NFT 配置 |
+| [`registry`](#registry) | `object` | ERC-8004 代理注册表和 ElizaMaker NFT 配置 |
 | [`features`](#features) | `Record<string, boolean \| object>` | 插件自动启用的功能标志 |
 | [`customActions`](#customactions) | `CustomActionDef[]` | 用户定义的自定义操作 |
 
@@ -132,7 +132,7 @@ Milady 通过存储在状态目录（默认：`~/.milady/milady.json`）中的 `
   deploymentTarget: {
     runtime: "remote",
     provider: "remote",
-    remoteApiBase: "https://milady.example.com",
+    remoteApiBase: "https://eliza.example.com",
   },
   linkedAccounts: {
     elizacloud: {
@@ -160,7 +160,7 @@ Milady 通过存储在状态目录（默认：`~/.milady/milady.json`）中的 `
 
 | 字段 | 类型 | 默认值 | 描述 |
 |-------|------|---------|-------------|
-| `lastTouchedVersion` | `string` | -- | 最后写入此配置的 Milady 版本 |
+| `lastTouchedVersion` | `string` | -- | 最后写入此配置的 Eliza 版本 |
 | `lastTouchedAt` | `string` | -- | 配置最后写入时的 ISO 时间戳 |
 
 ---
@@ -220,7 +220,7 @@ Milady 通过存储在状态目录（默认：`~/.milady/milady.json`）中的 `
 | 字段 | 类型 | 默认值 | 描述 |
 |-------|------|---------|-------------|
 | `lastRunAt` | `string` | -- | 最后一次运行向导的 ISO 时间戳 |
-| `lastRunVersion` | `string` | -- | 最后一次运行向导时的 Milady 版本 |
+| `lastRunVersion` | `string` | -- | 最后一次运行向导时的 Eliza 版本 |
 | `lastRunCommit` | `string` | -- | 最后一次运行向导时的 Git 提交 |
 | `lastRunCommand` | `string` | -- | 最后一次运行向导时使用的命令 |
 | `lastRunMode` | `"local" \| "remote"` | -- | 向导是在本地还是远程运行 |
@@ -317,7 +317,7 @@ OpenTelemetry 导出配置。
 | `cdpUrl` | `string` | -- | 基础 CDP 端点 URL（用于远程浏览器） |
 | `remoteCdpTimeoutMs` | `number` | `1500` | 远程 CDP HTTP 超时（毫秒） |
 | `remoteCdpHandshakeTimeoutMs` | `number` | `max(remoteCdpTimeoutMs * 2, 2000)` | 远程 CDP WebSocket 握手超时（毫秒） |
-| `color` | `string` | `#FF4500` | Milady 浏览器配置文件的强调色（十六进制） |
+| `color` | `string` | `#FF4500` | Eliza 浏览器配置文件的强调色（十六进制） |
 | `executablePath` | `string` | -- | 覆盖浏览器可执行文件路径（所有平台） |
 | `headless` | `boolean` | `false` | 以无头模式启动 Chrome |
 | `noSandbox` | `boolean` | `false` | 向 Chrome 传递 `--no-sandbox`（Linux 容器） |
@@ -334,7 +334,7 @@ OpenTelemetry 导出配置。
 |-------|------|---------|-------------|
 | `cdpPort` | `number` | -- | 此配置文件的 CDP 端口（分配一次后持久化） |
 | `cdpUrl` | `string` | -- | 此配置文件的 CDP URL（用于远程 Chrome） |
-| `driver` | `"milady" \| "extension"` | `"milady"` | 配置文件驱动程序 |
+| `driver` | `"eliza" \| "extension"` | `"eliza"` | 配置文件驱动程序 |
 | `color` | `string` | -- | 配置文件颜色（十六进制，创建时自动分配） |
 
 ---
@@ -347,8 +347,8 @@ UI 外观配置。
 
 | 字段 | 类型 | 默认值 | 描述 |
 |-------|------|---------|-------------|
-| `seamColor` | `string` | -- | Milady UI 界面的强调色（十六进制） |
-| `theme` | `"milady" \| "qt314" \| "web2000" \| "programmer" \| "haxor" \| "psycho"` | -- | 用户首选的 UI 主题（在引导时设置） |
+| `seamColor` | `string` | -- | Eliza UI 界面的强调色（十六进制） |
+| `theme` | `"eliza" \| "qt314" \| "web2000" \| "programmer" \| "haxor" \| "psycho"` | -- | 用户首选的 UI 主题（在引导时设置） |
 | `assistant.name` | `string` | -- | UI 界面显示的助手名称 |
 | `assistant.avatar` | `string` | -- | 头像表情符号、短文本或图片 URL/data URI |
 
@@ -1237,7 +1237,7 @@ WhatsApp Web 提供商配置。
 | 字段 | 类型 | 默认值 | 描述 |
 |-------|------|---------|-------------|
 | `wideArea.enabled` | `boolean` | -- | 启用广域 DNS-SD 发现 |
-| `wideArea.domain` | `string` | -- | 单播 DNS-SD 域（例如 `"milady.internal"`） |
+| `wideArea.domain` | `string` | -- | 单播 DNS-SD 域（例如 `"eliza.internal"`） |
 | `mdns.mode` | `"off" \| "minimal" \| "full"` | `"minimal"` | mDNS 广播模式（`off` = 禁用，`minimal` = 省略 cliPath/sshPort，`full` = 包含全部） |
 
 ---
@@ -1303,7 +1303,7 @@ ElevenLabs Talk 模式语音设置。
 | 字段 | 类型 | 默认值 | 描述 |
 |-------|------|---------|-------------|
 | `enabled` | `boolean` | -- | 提供控制 UI（默认：`/`） |
-| `basePath` | `string` | -- | 基础路径前缀（例如 `"/milady"`） |
+| `basePath` | `string` | -- | 基础路径前缀（例如 `"/eliza"`） |
 | `root` | `string` | -- | 控制 UI 资源的文件系统根目录（默认为 `dist/control-ui`） |
 | `allowedOrigins` | `string[]` | -- | WebSocket 连接允许的浏览器来源 |
 | `allowInsecureAuth` | `boolean` | `false` | 允许在不安全的 HTTP 上使用仅令牌认证 |
@@ -1464,7 +1464,7 @@ HTTP API 端点配置。
 
 | 字段 | 类型 | 默认值 | 描述 |
 |-------|------|---------|-------------|
-| `dataDir` | `string` | `~/.milady/workspace/.eliza/.elizadb` | PGLite 数据目录 |
+| `dataDir` | `string` | `~/.eliza/workspace/.eliza/.elizadb` | PGLite 数据目录 |
 
 <div id="database.postgres">
 ### `database.postgres`
@@ -1666,13 +1666,13 @@ MCP（模型上下文协议）服务器定义。
 ## `registry`
 </div>
 
-ERC-8004 代理注册表和 MiladyMaker NFT 收藏配置。
+ERC-8004 代理注册表和 ElizaMaker NFT 收藏配置。
 
 | 字段 | 类型 | 默认值 | 描述 |
 |-------|------|---------|-------------|
 | `mainnetRpc` | `string` | -- | 以太坊主网（或本地 Anvil）RPC URL |
-| `registryAddress` | `string` | -- | MiladyAgentRegistry 合约地址 |
-| `collectionAddress` | `string` | -- | MiladyMaker 收藏合约地址 |
+| `registryAddress` | `string` | -- | ElizaAgentRegistry 合约地址 |
+| `collectionAddress` | `string` | -- | ElizaMaker 收藏合约地址 |
 
 ---
 

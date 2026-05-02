@@ -4,7 +4,7 @@
  * This module owns:
  *   - Session lifecycle (pending → active → denied/revoked).
  *   - Pairing-code issuance and verification.
- *   - Local-mode bypass (MILADY_REMOTE_LOCAL_MODE=1 skips the code requirement
+ *   - Local-mode bypass (ELIZA_REMOTE_LOCAL_MODE=1 skips the code requirement
  *     but still requires explicit `confirmed: true`).
  *   - Data-plane handoff point (`ingressUrl`).
  *
@@ -100,7 +100,7 @@ export class RemoteSessionError extends Error {
 const PAIRING_SUBJECT = "agent";
 
 function defaultIsLocalMode(): boolean {
-  return process.env.MILADY_REMOTE_LOCAL_MODE === "1";
+  return process.env.ELIZA_REMOTE_LOCAL_MODE === "1";
 }
 
 const nullDataPlane: DataPlaneResolver = {

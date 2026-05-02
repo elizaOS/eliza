@@ -43,9 +43,9 @@ export function TradingStrategyPanel({ strategy }: TradingStrategyPanelProps) {
 
       {strategy === null && (
         <p className="text-xs leading-relaxed text-muted">
-          No Vincent trading strategy is configured in Milady yet. Vincent
+          No Vincent trading strategy is configured in Eliza yet. Vincent
           handles Hyperliquid and Polymarket execution after OAuth connection;
-          Milady does not run a local trading loop.
+          Eliza does not run a local trading loop.
         </p>
       )}
 

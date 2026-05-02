@@ -50,8 +50,8 @@ function makeRuntime(settings: Record<string, string> = {}) {
 }
 
 beforeEach(() => {
-  delete process.env.MILADY_DEVICE_BUS_URL;
-  delete process.env.MILADY_DEVICE_BUS_TOKEN;
+  delete process.env.ELIZA_DEVICE_BUS_URL;
+  delete process.env.ELIZA_DEVICE_BUS_TOKEN;
   vi.mocked(broadcastIntent).mockClear();
 });
 
@@ -115,7 +115,7 @@ describe("PUBLISH_DEVICE_INTENT graceful degradation", () => {
   });
 
   test("cloud publish requires a response intent id", async () => {
-    process.env.MILADY_DEVICE_BUS_URL = "https://device-bus.example.test";
+    process.env.ELIZA_DEVICE_BUS_URL = "https://device-bus.example.test";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
       status: 200,

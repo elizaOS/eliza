@@ -40,7 +40,7 @@ describe("PlaidManagedClient (config sentinel)", () => {
     });
   });
 
-  test("posts to /v1/milady/plaid/link-token with bearer auth", async () => {
+  test("posts to /v1/eliza/plaid/link-token with bearer auth", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
       new Response(
         JSON.stringify({
@@ -62,7 +62,7 @@ describe("PlaidManagedClient (config sentinel)", () => {
       const result = await client.createLinkToken();
       expect(result.linkToken).toBe("link-sandbox-1");
       const [url, init] = fetchMock.mock.calls[0]!;
-      expect(url).toBe("https://example.test/api/v1/milady/plaid/link-token");
+      expect(url).toBe("https://example.test/api/v1/eliza/plaid/link-token");
       expect(init).toMatchObject({
         method: "POST",
       });

@@ -24,7 +24,7 @@ Connect your agent to a self-hosted Mattermost server for channel and DM convers
 
 The connector auto-enables when `botToken` is truthy in the connector config and `enabled` is not explicitly `false`.
 
-Configure in `~/.milady/milady.json`:
+Configure in `~/.eliza/eliza.json`:
 
 ```json
 {
@@ -78,7 +78,7 @@ When the connector is loaded, the runtime pushes the following secrets from your
 
 ## Full Configuration Reference
 
-All fields are defined under `connectors.mattermost` in `milady.json`.
+All fields are defined under `connectors.mattermost` in `eliza.json`.
 
 ### Core Fields
 
@@ -118,7 +118,7 @@ The `chatmode` field controls where the bot responds:
 
 ### Self-Hosted Server Support
 
-The Mattermost connector works with any Mattermost server deployment, including self-hosted instances. Set `baseUrl` to your server's URL and ensure the Milady host can reach it over the network.
+The Mattermost connector works with any Mattermost server deployment, including self-hosted instances. Set `baseUrl` to your server's URL and ensure the Eliza host can reach it over the network.
 
 ## Multi-Account Support
 

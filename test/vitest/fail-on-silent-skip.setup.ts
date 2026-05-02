@@ -10,7 +10,7 @@
  *
  * The reason is recorded in the run logs; absence of a reason fails the run.
  *
- * Opt-out: set `MILADY_ALLOW_SILENT_SKIP=1` (only intended for local
+ * Opt-out: set `ELIZA_ALLOW_SILENT_SKIP=1` (only intended for local
  * exploration; CI must never set this).
  */
 
@@ -37,7 +37,7 @@ beforeEach((ctx) => {
 
 afterAll(() => {
   if (skipped.length === 0) return;
-  if (process.env.MILADY_ALLOW_SILENT_SKIP === "1") return;
+  if (process.env.ELIZA_ALLOW_SILENT_SKIP === "1") return;
   const reason = process.env.SKIP_REASON?.trim();
   if (reason && reason.length > 0) {
     console.warn(

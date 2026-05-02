@@ -1,17 +1,17 @@
 ---
 title: "xAI Plugin"
 sidebarTitle: "xAI (Grok)"
-description: "xAI model provider for Milady — access Grok models for real-time knowledge, reasoning, and conversational AI."
+description: "xAI model provider for Eliza — access Grok models for real-time knowledge, reasoning, and conversational AI."
 ---
 
-The xAI plugin connects Milady agents to xAI's Grok models, providing access to models with real-time knowledge and strong reasoning capabilities.
+The xAI plugin connects Eliza agents to xAI's Grok models, providing access to models with real-time knowledge and strong reasoning capabilities.
 
 **Package:** `@elizaos/plugin-xai`
 
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-xai
+eliza plugins install @elizaos/plugin-xai
 ```
 
 ## Auto-Enable
@@ -44,7 +44,7 @@ export XAI_API_KEY=xai-...
 
 \* Any one of `X_API_KEY`, `XAI_API_KEY`, or `GROK_API_KEY` activates the plugin.
 
-### milady.json Example
+### eliza.json Example
 
 ```json
 {

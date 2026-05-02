@@ -10,7 +10,7 @@
  *
  * Environment:
  *   ATROPOS_DATA_DIR  Where atropos picks up datasets. Defaults to
- *                     `<repo>/.milady/training/atropos`.
+ *                     `<repo>/.eliza/training/atropos`.
  *   ATROPOS_BIN       Optional path to a local atropos CLI binary.
  */
 

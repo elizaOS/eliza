@@ -1,7 +1,7 @@
 /**
  * Agent Browser Bridge plugin export.
  *
- * plugin-collector discovers `routes` and `schema` at runtime. Milady loads
+ * plugin-collector discovers `routes` and `schema` at runtime. Eliza loads
  * this as a core plugin so the Browser Workspace UI and browser companion
  * extension share one route surface.
  */

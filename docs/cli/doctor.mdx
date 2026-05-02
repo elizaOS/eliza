@@ -1,9 +1,9 @@
 ---
-title: "milady doctor"
+title: "eliza doctor"
 description: "Diagnose environment, ports, and common misconfigurations."
 ---
 
-# `milady doctor`
+# `eliza doctor`
 
 Runs health checks across four categories: System, Configuration, Storage, and Network. Reports pass/fail/warn status for each check with suggested fixes.
 
@@ -12,29 +12,29 @@ Runs health checks across four categories: System, Configuration, Storage, and N
 | Flag | Description |
 |------|-------------|
 | `--no-ports` | Skip port availability checks |
-| `--fix` | Automatically fix issues where possible (runs `milady` sub-commands for auto-fixable checks) |
+| `--fix` | Automatically fix issues where possible (runs `eliza` sub-commands for auto-fixable checks) |
 | `--json` | Output results as JSON (CI-friendly). Exits with code 1 if any checks fail. |
 
 ## Examples
 
 ```bash
-milady doctor
-milady doctor --fix
-milady doctor --json
-milady doctor --no-ports
+eliza doctor
+eliza doctor --fix
+eliza doctor --json
+eliza doctor --no-ports
 ```
 
 From a source checkout:
 
 ```bash
-bun run milady:doctor
+bun run eliza:doctor
 ```
 
 ## When to use it
 
-- After installing or updating Milady
+- After installing or updating Eliza
 - After changing ports or state directory paths
-- After moving `~/.milady/` to a new location
+- After moving `~/.eliza/` to a new location
 - When the agent fails to start or connectors do not load
 - When filing a bug report — include the doctor output
 

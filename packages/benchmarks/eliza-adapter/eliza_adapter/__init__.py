@@ -1,9 +1,9 @@
-"""Benchmark adapter for the TypeScript milady agent.
+"""Benchmark adapter for the TypeScript eliza agent.
 
-Bridges Python benchmark runners with the milady benchmark HTTP server.
+Bridges Python benchmark runners with the eliza benchmark HTTP server.
 """
 
-from milady_adapter.client import MiladyClient
-from milady_adapter.server_manager import MiladyServerManager
+from eliza_adapter.client import ElizaClient
+from eliza_adapter.server_manager import ElizaServerManager
 
-__all__ = ["MiladyClient", "MiladyServerManager"]
+__all__ = ["ElizaClient", "ElizaServerManager"]

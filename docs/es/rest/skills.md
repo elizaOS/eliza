@@ -6,7 +6,7 @@ description: "Endpoints de la API REST para gestionar skills locales, el catálo
 
 La API de skills cubre tres áreas: **skills locales** (archivos de acciones TypeScript específicos del agente), el **catálogo de skills** (registro curado de skills de la comunidad) y el **marketplace de skills** (paquetes de skills basados en npm). Los skills extienden el agente con nuevas acciones, proveedores o evaluadores.
 
-Cuando `MILADY_API_TOKEN` está configurado, inclúyelo como token `Bearer` en el encabezado `Authorization`.
+Cuando `ELIZA_API_TOKEN` está configurado, inclúyelo como token `Bearer` en el encabezado `Authorization`.
 
 <div id="endpoints">
 
@@ -653,7 +653,7 @@ Confirma los hallazgos del escaneo de seguridad de un skill. Obligatorio antes d
 
 </div>
 
-1. Confirma que el directorio de skills (`~/.milady/workspace/skills/`) sea legible y escribible por el runtime.
+1. Confirma que el directorio de skills (`~/.eliza/workspace/skills/`) sea legible y escribible por el runtime.
 2. Confirma que el acceso de red/registro del marketplace esté disponible (por defecto: `https://clawhub.ai`). Verifica las variables de entorno `SKILLS_REGISTRY`, `CLAWHUB_REGISTRY` o `SKILLS_MARKETPLACE_URL`.
 3. Confirma que los prerrequisitos del instalador de plugins (`npm`/`pnpm`/`bun` y `git`) estén presentes en el PATH del runtime.
 4. Para el marketplace legacy SkillsMP, configura `SKILLSMP_API_KEY` en el entorno.
@@ -696,7 +696,7 @@ Confirma los hallazgos del escaneo de seguridad de un skill. Obligatorio antes d
 
 </div>
 
-1. **Instalación del marketplace corrupta:** Elimina `~/.milady/workspace/skills/.marketplace/<skill-id>/` y remueve su entrada de `~/.milady/workspace/skills/.cache/marketplace-installs.json`, luego reinstala.
+1. **Instalación del marketplace corrupta:** Elimina `~/.eliza/workspace/skills/.marketplace/<skill-id>/` y remueve su entrada de `~/.eliza/workspace/skills/.cache/marketplace-installs.json`, luego reinstala.
 2. **Archivo del catálogo faltante:** Reinstala o actualiza `@elizaos/plugin-agent-skills` para restaurar el catálogo incluido.
 3. **Conflicto de sobrescritura de skills:** Si un skill del workspace sobrescribe inesperadamente un skill incluido, renombra el directorio del skill del workspace o muévelo a una ubicación diferente.
 

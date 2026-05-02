@@ -8,7 +8,7 @@ description: "Native RAG system — document ingestion, embedding generation, si
 Knowledge management is a built-in runtime capability, not a standalone plugin. No separate installation is needed — knowledge features are available by default.
 </Warning>
 
-The native knowledge feature provides a Retrieval-Augmented Generation (RAG) system for Milady agents. It enables agents to retrieve relevant information from a document corpus and inject it into the LLM context.
+The native knowledge feature provides a Retrieval-Augmented Generation (RAG) system for Eliza agents. It enables agents to retrieve relevant information from a document corpus and inject it into the LLM context.
 
 **Built-in runtime feature** — `knowledge` is part of the elizaOS core runtime and is enabled by default. It is not a standalone plugin in the plugin registry; it loads automatically as part of the core plugin set.
 
@@ -23,7 +23,7 @@ The knowledge feature manages the full RAG pipeline:
 
 ## Installation
 
-Knowledge is enabled automatically in Milady. No installation is required.
+Knowledge is enabled automatically in Eliza. No installation is required.
 
 ## Supported File Formats
 
@@ -46,14 +46,14 @@ Navigate to **Agent → Knowledge** and upload documents through the file picker
 
 ```bash
 curl -X POST http://localhost:31337/api/knowledge \
-  -H "Authorization: Bearer $MILADY_API_KEY" \
+  -H "Authorization: Bearer $ELIZA_API_KEY" \
   -F "file=@document.pdf" \
   -F "agentId=your-agent-id"
 ```
 
 ### Via Configuration
 
-Place documents in the knowledge directory specified in `milady.json`:
+Place documents in the knowledge directory specified in `eliza.json`:
 
 ```json
 {
@@ -99,9 +99,9 @@ Place documents in the knowledge directory specified in `milady.json`:
 
 ## Embedding Model
 
-By default, knowledge embeddings use the local embedding model provided by `@elizaos/plugin-local-embedding` (Nomic Embed Text v1.5). Milady caps the embedding dimension to **384** (set via `EMBEDDING_DIMENSION` at boot). This runs entirely on-device — no API key required.
+By default, knowledge embeddings use the local embedding model provided by `@elizaos/plugin-local-embedding` (Nomic Embed Text v1.5). Eliza caps the embedding dimension to **384** (set via `EMBEDDING_DIMENSION` at boot). This runs entirely on-device — no API key required.
 
-To use a different embedding model, configure it in `milady.json`:
+To use a different embedding model, configure it in `eliza.json`:
 
 ```json
 {

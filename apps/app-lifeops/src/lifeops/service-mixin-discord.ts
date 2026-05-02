@@ -1213,7 +1213,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
       if (!discordBrowserWorkspaceAvailable()) {
         fail(
           503,
-          "Discord connector requires either Your Browser connected through Agent Browser Bridge or Milady Desktop Browser."
+          "Discord connector requires either Your Browser connected through Agent Browser Bridge or Eliza Desktop Browser."
         );
       }
 

@@ -44,7 +44,7 @@ export function Chat({
     <main style={styles.root}>
       <header style={styles.header}>
         <div style={styles.headerRow}>
-          <h2 style={styles.title}>Milady</h2>
+          <h2 style={styles.title}>Eliza</h2>
           <div style={styles.actions}>
             {remoteSessionAvailable ? (
               <button

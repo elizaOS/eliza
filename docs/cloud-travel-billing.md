@@ -103,7 +103,7 @@ interface X402PaymentRequirement {
 Power users who don't want the Cloud-managed flow can run the adapter
 in **direct mode**:
 
-- Set `MILADY_DUFFEL_DIRECT=1` and provide your own `DUFFEL_API_KEY`.
+- Set `ELIZA_DUFFEL_DIRECT=1` and provide your own `DUFFEL_API_KEY`.
 - The `cloud.duffel` feature flag should be left at its baseline OFF.
 - Direct-mode calls hit `api.duffel.com` directly; no markup is
   applied; `DuffelCallCost.metered` is `false`.

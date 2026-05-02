@@ -17,10 +17,10 @@ Get the current character data from the running agent runtime.
 ```json
 {
   "character": {
-    "name": "Milady",
-    "username": "milady",
+    "name": "Eliza",
+    "username": "eliza",
     "bio": ["An AI agent with a unique personality."],
-    "system": "You are Milady, a helpful and witty assistant.",
+    "system": "You are Eliza, a helpful and witty assistant.",
     "adjectives": ["curious", "witty", "helpful"],
     "topics": ["technology", "art", "philosophy"],
     "style": {
@@ -31,12 +31,12 @@ Get the current character data from the running agent runtime.
     "messageExamples": [
       [
         { "name": "{{user1}}", "content": { "text": "Hey, what do you think about AI?" } },
-        { "name": "Milady", "content": { "text": "Oh, I have thoughts..." } }
+        { "name": "Eliza", "content": { "text": "Oh, I have thoughts..." } }
       ]
     ],
     "postExamples": ["Just shipped a new feature~"]
   },
-  "agentName": "Milady"
+  "agentName": "Eliza"
 }
 ```
 
@@ -50,10 +50,10 @@ Update character fields. The body is validated against the `CharacterSchema`. On
 
 ```json
 {
-  "name": "Milady",
-  "username": "milady",
+  "name": "Eliza",
+  "username": "eliza",
   "bio": "An AI agent with a unique personality.",
-  "system": "You are Milady, a helpful assistant.",
+  "system": "You are Eliza, a helpful assistant.",
   "adjectives": ["curious", "witty"],
   "topics": ["technology", "art"],
   "style": {
@@ -64,7 +64,7 @@ Update character fields. The body is validated against the `CharacterSchema`. On
   "messageExamples": [
     [
       { "name": "{{user1}}", "content": { "text": "What's new?" } },
-      { "name": "Milady", "content": { "text": "Just shipped something cool~" } }
+      { "name": "Eliza", "content": { "text": "Just shipped something cool~" } }
     ]
   ],
   "postExamples": ["Just shipped something cool~"]
@@ -88,8 +88,8 @@ Update character fields. The body is validated against the `CharacterSchema`. On
 ```json
 {
   "ok": true,
-  "character": { "name": "Milady" },
-  "agentName": "Milady"
+  "character": { "name": "Eliza" },
+  "agentName": "Eliza"
 }
 ```
 
@@ -130,7 +130,7 @@ AI-assisted generation of character fields using the running agent's language mo
 {
   "field": "bio",
   "context": {
-    "name": "Milady",
+    "name": "Eliza",
     "system": "A witty AI assistant",
     "bio": "",
     "style": { "all": ["Be concise"] }
@@ -169,7 +169,7 @@ The `generated` field contains a raw string whose format depends on the requeste
     {
       "examples": [
         { "name": "{{user1}}", "content": { "text": "Hey, what do you think about AI?" } },
-        { "name": "Milady", "content": { "text": "Oh, I have thoughts..." } }
+        { "name": "Eliza", "content": { "text": "Oh, I have thoughts..." } }
       ]
     }
   ]

@@ -145,7 +145,7 @@ Send a message and get the agent's response synchronously (non-streaming).
 ```json
 {
   "text": "Here's what I think...",
-  "agentName": "Milady"
+  "agentName": "Eliza"
 }
 ```
 
@@ -184,7 +184,7 @@ When a `fullText` field is present, it is authoritative and the client should re
 
 Final event:
 ```
-data: {"type":"done","fullText":"Here's what I think...","agentName":"Milady"}
+data: {"type":"done","fullText":"Here's what I think...","agentName":"Eliza"}
 ```
 
 The conversation title is auto-generated in the background if it is still `"New Chat"`, and a `conversation-updated` WebSocket event is broadcast. If AI title generation fails, the title falls back to the first five words of the user's message.
@@ -246,7 +246,7 @@ Generate a greeting message for a new conversation. Picks a random `postExample`
 ```json
 {
   "text": "gm. ready to go viral today or what.",
-  "agentName": "Milady",
+  "agentName": "Eliza",
   "generated": true
 }
 ```

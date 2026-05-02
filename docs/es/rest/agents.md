@@ -4,7 +4,7 @@ sidebarTitle: "Agentes"
 description: "Endpoints de la API REST para el ciclo de vida del agente, administración y transferencia (exportar/importar)."
 ---
 
-Todos los endpoints de agentes requieren que el runtime del agente esté inicializado. El servidor de la API se ejecuta en el puerto **31337** por defecto y todas las rutas tienen el prefijo `/api/`. Cuando `MILADY_API_TOKEN` está configurado, inclúyelo como un token `Bearer` en el encabezado `Authorization`.
+Todos los endpoints de agentes requieren que el runtime del agente esté inicializado. El servidor de la API se ejecuta en el puerto **31337** por defecto y todas las rutas tienen el prefijo `/api/`. Cuando `ELIZA_API_TOKEN` está configurado, inclúyelo como un token `Bearer` en el encabezado `Authorization`.
 
 <div id="endpoints">
 
@@ -42,7 +42,7 @@ Iniciar el agente y habilitar la operación autónoma. Establece el estado del a
   "ok": true,
   "status": {
     "state": "running",
-    "agentName": "Milady",
+    "agentName": "Eliza",
     "model": "@elizaos/plugin-anthropic",
     "uptime": 0,
     "startedAt": 1718000000000
@@ -67,7 +67,7 @@ Detener el agente y deshabilitar la autonomía. Establece el estado del agente a
   "ok": true,
   "status": {
     "state": "stopped",
-    "agentName": "Milady"
+    "agentName": "Eliza"
   }
 }
 ```
@@ -89,7 +89,7 @@ Pausar el agente manteniendo el tiempo de actividad intacto. Deshabilita la auto
   "ok": true,
   "status": {
     "state": "paused",
-    "agentName": "Milady",
+    "agentName": "Eliza",
     "model": "@elizaos/plugin-anthropic",
     "uptime": 34200000,
     "startedAt": 1718000000000
@@ -114,7 +114,7 @@ Reanudar un agente pausado y rehabilitar la autonomía. El primer tick se ejecut
   "ok": true,
   "status": {
     "state": "running",
-    "agentName": "Milady",
+    "agentName": "Eliza",
     "model": "@elizaos/plugin-anthropic",
     "uptime": 34200000,
     "startedAt": 1718000000000
@@ -140,7 +140,7 @@ Reiniciar el runtime del agente. Devuelve `409` si ya hay un reinicio en progres
   "pendingRestart": false,
   "status": {
     "state": "running",
-    "agentName": "Milady",
+    "agentName": "Eliza",
     "startedAt": 1718000000000
   }
 }
@@ -154,7 +154,7 @@ Reiniciar el runtime del agente. Devuelve `409` si ya hay un reinicio en progres
 
 </div>
 
-Borrar la configuración, el espacio de trabajo (memoria), los tokens OAuth y volver al estado de incorporación. Detiene el runtime, elimina el directorio de estado `~/.milady/` (con comprobaciones de seguridad para evitar la eliminación de rutas del sistema) y restablece todo el estado del servidor.
+Borrar la configuración, el espacio de trabajo (memoria), los tokens OAuth y volver al estado de incorporación. Detiene el runtime, elimina el directorio de estado `~/.eliza/` (con comprobaciones de seguridad para evitar la eliminación de rutas del sistema) y restablece todo el estado del servidor.
 
 **Respuesta**
 
@@ -240,7 +240,7 @@ Obtener un resumen estructurado del estado actual del agente, sus capacidades, e
 {
   "generatedAt": "2026-04-09T12:00:00.000Z",
   "state": "running",
-  "agentName": "Milady",
+  "agentName": "Eliza",
   "model": "anthropic/claude-sonnet-4.6",
   "provider": "anthropic",
   "automationMode": "connectors-only",

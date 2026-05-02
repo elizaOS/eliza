@@ -29,7 +29,7 @@ describe("policyEngine.pickProvider", () => {
       policy: "manual",
       preferredProvider: "anthropic",
       candidates: [reg("openai", 5), reg("anthropic", 3)],
-      selfProvider: "milady-router",
+      selfProvider: "eliza-router",
     });
     expect(pick?.provider).toBe("anthropic");
   });
@@ -40,7 +40,7 @@ describe("policyEngine.pickProvider", () => {
       policy: "manual",
       preferredProvider: null,
       candidates: [reg("low", 1), reg("high", 100)],
-      selfProvider: "milady-router",
+      selfProvider: "eliza-router",
     });
     expect(pick?.provider).toBe("high");
   });
@@ -51,7 +51,7 @@ describe("policyEngine.pickProvider", () => {
       policy: "manual",
       preferredProvider: "nonexistent",
       candidates: [reg("openai", 5), reg("anthropic", 3)],
-      selfProvider: "milady-router",
+      selfProvider: "eliza-router",
     });
     expect(pick?.provider).toBe("openai");
   });
@@ -63,12 +63,12 @@ describe("policyEngine.pickProvider", () => {
       preferredProvider: null,
       candidates: [
         reg("anthropic", 10),
-        reg("milady-local-inference", 0),
+        reg("eliza-local-inference", 0),
         reg("openai", 5),
       ],
-      selfProvider: "milady-router",
+      selfProvider: "eliza-router",
     });
-    expect(pick?.provider).toBe("milady-local-inference");
+    expect(pick?.provider).toBe("eliza-local-inference");
   });
 
   it("cheapest prefers subscription access over API keys and Eliza Cloud", () => {
@@ -81,7 +81,7 @@ describe("policyEngine.pickProvider", () => {
         reg("anthropic", 90),
         reg("openai-codex", 20),
       ],
-      selfProvider: "milady-router",
+      selfProvider: "eliza-router",
     });
     expect(pick?.provider).toBe("openai-codex");
   });
@@ -91,10 +91,10 @@ describe("policyEngine.pickProvider", () => {
       modelType: "TEXT_LARGE",
       policy: "prefer-local",
       preferredProvider: null,
-      candidates: [reg("anthropic", 10), reg("milady-local-inference", 0)],
-      selfProvider: "milady-router",
+      candidates: [reg("anthropic", 10), reg("eliza-local-inference", 0)],
+      selfProvider: "eliza-router",
     });
-    expect(pick?.provider).toBe("milady-local-inference");
+    expect(pick?.provider).toBe("eliza-local-inference");
   });
 
   it("prefer-local → falls back to device-bridge when local absent", () => {
@@ -102,10 +102,10 @@ describe("policyEngine.pickProvider", () => {
       modelType: "TEXT_LARGE",
       policy: "prefer-local",
       preferredProvider: null,
-      candidates: [reg("anthropic", 10), reg("milady-device-bridge", 0)],
-      selfProvider: "milady-router",
+      candidates: [reg("anthropic", 10), reg("eliza-device-bridge", 0)],
+      selfProvider: "eliza-router",
     });
-    expect(pick?.provider).toBe("milady-device-bridge");
+    expect(pick?.provider).toBe("eliza-device-bridge");
   });
 
   it("prefer-local → falls back to highest native priority when no local or bridge", () => {
@@ -114,7 +114,7 @@ describe("policyEngine.pickProvider", () => {
       policy: "prefer-local",
       preferredProvider: null,
       candidates: [reg("anthropic", 10), reg("openai", 5)],
-      selfProvider: "milady-router",
+      selfProvider: "eliza-router",
     });
     expect(pick?.provider).toBe("anthropic");
   });
@@ -128,7 +128,7 @@ describe("policyEngine.pickProvider", () => {
         reg("a", 1, "TEST_MODEL_NEW"),
         reg("b", 10, "TEST_MODEL_NEW"),
       ],
-      selfProvider: "milady-router",
+      selfProvider: "eliza-router",
     });
     expect(pick?.provider).toBe("b");
   });
@@ -146,7 +146,7 @@ describe("policyEngine.pickProvider", () => {
         reg("slow-one", 10, "TEST_MT"),
         reg("fast-one", 1, "TEST_MT"),
       ],
-      selfProvider: "milady-router",
+      selfProvider: "eliza-router",
     });
     expect(pick?.provider).toBe("fast-one");
   });
@@ -160,7 +160,7 @@ describe("policyEngine.pickProvider", () => {
       policy: "round-robin",
       preferredProvider: null,
       candidates: [reg("recent", 10, "TEST_RR"), reg("stale", 1, "TEST_RR")],
-      selfProvider: "milady-router",
+      selfProvider: "eliza-router",
     });
     expect(pick?.provider).toBe("stale");
   });
@@ -169,9 +169,9 @@ describe("policyEngine.pickProvider", () => {
     const pick = policyEngine.pickProvider({
       modelType: "TEXT_LARGE",
       policy: "manual",
-      preferredProvider: "milady-router",
-      candidates: [reg("milady-router", 9999), reg("openai", 0)],
-      selfProvider: "milady-router",
+      preferredProvider: "eliza-router",
+      candidates: [reg("eliza-router", 9999), reg("openai", 0)],
+      selfProvider: "eliza-router",
     });
     expect(pick?.provider).toBe("openai");
   });
@@ -182,7 +182,7 @@ describe("policyEngine.pickProvider", () => {
       policy: "manual",
       preferredProvider: null,
       candidates: [],
-      selfProvider: "milady-router",
+      selfProvider: "eliza-router",
     });
     expect(pick).toBeNull();
   });

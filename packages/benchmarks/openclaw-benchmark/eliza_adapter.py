@@ -15,13 +15,13 @@ This adapter supports TWO scoring modes:
 
 Usage:
     # Execution mode (real validation)
-    python milady_adapter.py --task setup --mode execution
+    python eliza_adapter.py --task setup --mode execution
 
     # Legacy conceptual mode
-    python milady_adapter.py --task setup --mode conceptual
+    python eliza_adapter.py --task setup --mode conceptual
 
     # Run all with execution validation
-    python milady_adapter.py --all --mode execution --json
+    python eliza_adapter.py --all --mode execution --json
 """
 
 import argparse
@@ -31,12 +31,12 @@ import sys
 import time
 from pathlib import Path
 
-# Add parent directory to path for milady_adapter imports
+# Add parent directory to path for eliza_adapter imports
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "eliza-adapter"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 try:
-    from milady_adapter import MiladyClient, MiladyServerManager
+    from eliza_adapter import ElizaClient, ElizaServerManager
     ELIZA_AVAILABLE = True
 except ImportError:
     ELIZA_AVAILABLE = False
@@ -298,11 +298,11 @@ Scoring modes:
 
         if ELIZA_AVAILABLE:
             if args.start_server:
-                mgr = MiladyServerManager()
+                mgr = ElizaServerManager()
                 mgr.start()
                 client = mgr.client
             else:
-                client = MiladyClient(ELIZA_URL)
+                client = ElizaClient(ELIZA_URL)
                 try:
                     client.wait_until_ready(timeout=10)
                 except TimeoutError:

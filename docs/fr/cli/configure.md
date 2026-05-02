@@ -1,5 +1,5 @@
 ---
-title: "milady configure"
+title: "eliza configure"
 sidebarTitle: "configure"
 description: "Affiche des conseils de configuration et les variables d'environnement courantes."
 ---
@@ -13,7 +13,7 @@ Affiche une référence rapide de configuration dans le terminal. La commande `c
 </div>
 
 ```bash
-milady configure
+eliza configure
 ```
 
 <div id="options">
@@ -22,13 +22,13 @@ milady configure
 
 </div>
 
-`milady configure` n'accepte aucune option au-delà des drapeaux globaux standard.
+`eliza configure` n'accepte aucune option au-delà des drapeaux globaux standard.
 
 | Drapeau | Description |
 |------|-------------|
-| `-v, --version` | Affiche la version actuelle de Milady et quitte |
+| `-v, --version` | Affiche la version actuelle de Eliza et quitte |
 | `--help`, `-h` | Affiche l'aide pour cette commande |
-| `--profile <name>` | Utilise un profil de configuration nommé (le répertoire d'état devient `~/.milady-<name>/`) |
+| `--profile <name>` | Utilise un profil de configuration nommé (le répertoire d'état devient `~/.eliza-<name>/`) |
 | `--dev` | Raccourci pour `--profile dev` (définit également le port du gateway sur `19001`) |
 | `--verbose` | Active les journaux informatifs d'exécution |
 | `--debug` | Active les journaux d'exécution au niveau débogage |
@@ -41,7 +41,7 @@ milady configure
 </div>
 
 ```bash
-milady configure
+eliza configure
 ```
 
 <div id="output">
@@ -50,14 +50,14 @@ milady configure
 
 </div>
 
-L'exécution de `milady configure` affiche les informations suivantes dans le terminal :
+L'exécution de `eliza configure` affiche les informations suivantes dans le terminal :
 
 ```
-Milady Configuration
+Eliza Configuration
 
 Set values with:
-  milady config get <key>     Read a config value
-  Edit ~/.milady/milady.json directly for full control.
+  eliza config get <key>     Read a config value
+  Edit ~/.eliza/eliza.json directly for full control.
 
 Common environment variables:
   ANTHROPIC_API_KEY    Anthropic (Claude)
@@ -72,7 +72,7 @@ Common environment variables:
 
 </div>
 
-Les variables d'environnement suivantes configurent l'accès aux fournisseurs de modèles d'IA. Définissez-les dans votre profil shell (p. ex. `~/.zshrc` ou `~/.bashrc`), dans `~/.milady/.env`, ou dans un fichier `.env` dans votre répertoire de travail.
+Les variables d'environnement suivantes configurent l'accès aux fournisseurs de modèles d'IA. Définissez-les dans votre profil shell (p. ex. `~/.zshrc` ou `~/.bashrc`), dans `~/.eliza/.env`, ou dans un fichier `.env` dans votre répertoire de travail.
 
 | Variable d'environnement | Fournisseur |
 |---------------------|----------|
@@ -90,7 +90,7 @@ Les variables d'environnement suivantes configurent l'accès aux fournisseurs de
 | `PERPLEXITY_API_KEY` | Perplexity |
 | `OLLAMA_BASE_URL` | Ollama (local, pas de clé API) |
 
-Pour une liste complète des fournisseurs pris en charge et de leurs variables d'environnement, consultez [milady models](/fr/cli/models) et [Variables d'environnement](/fr/cli/environment).
+Pour une liste complète des fournisseurs pris en charge et de leurs variables d'environnement, consultez [eliza models](/fr/cli/models) et [Variables d'environnement](/fr/cli/environment).
 
 <div id="setting-configuration-values">
 
@@ -98,31 +98,31 @@ Pour une liste complète des fournisseurs pris en charge et de leurs variables d
 
 </div>
 
-`milady configure` est en lecture seule. Pour modifier la configuration, utilisez l'une de ces approches :
+`eliza configure` est en lecture seule. Pour modifier la configuration, utilisez l'une de ces approches :
 
 **Lire une valeur :**
 ```bash
-milady config get gateway.port
-milady config get agents.defaults.workspace
+eliza config get gateway.port
+eliza config get agents.defaults.workspace
 ```
 
 **Inspecter toutes les valeurs :**
 ```bash
-milady config show
-milady config show --all      # inclure les champs avancés
-milady config show --json     # sortie lisible par machine
+eliza config show
+eliza config show --all      # inclure les champs avancés
+eliza config show --json     # sortie lisible par machine
 ```
 
 **Trouver le fichier de configuration :**
 ```bash
-milady config path
-# Output: /Users/you/.milady/milady.json
+eliza config path
+# Output: /Users/you/.eliza/eliza.json
 ```
 
 **Modifier directement :**
 ```bash
 # Ouvrir dans votre éditeur
-$EDITOR ~/.milady/milady.json
+$EDITOR ~/.eliza/eliza.json
 ```
 
 <div id="related">
@@ -131,8 +131,8 @@ $EDITOR ~/.milady/milady.json
 
 </div>
 
-- [milady config](/fr/cli/config) -- lire et inspecter les valeurs de configuration avec les sous-commandes `get`, `path` et `show`
-- [milady models](/fr/cli/models) -- vérifier quels fournisseurs de modèles sont configurés
-- [milady setup](/fr/cli/setup) -- initialiser le fichier de configuration et l'espace de travail
+- [eliza config](/fr/cli/config) -- lire et inspecter les valeurs de configuration avec les sous-commandes `get`, `path` et `show`
+- [eliza models](/fr/cli/models) -- vérifier quels fournisseurs de modèles sont configurés
+- [eliza setup](/fr/cli/setup) -- initialiser le fichier de configuration et l'espace de travail
 - [Variables d'environnement](/fr/cli/environment) -- référence complète des variables d'environnement
 - [Référence de configuration](/fr/configuration) -- schéma complet du fichier de configuration et tous les paramètres disponibles

@@ -1,20 +1,20 @@
 ---
 title: "Plugin OpenRouter"
 sidebarTitle: "OpenRouter"
-description: "Passerelle multi-fournisseurs OpenRouter pour Milady — accédez à plus de 200 modèles d'OpenAI, Anthropic, Google, Meta et d'autres via une seule API."
+description: "Passerelle multi-fournisseurs OpenRouter pour Eliza — accédez à plus de 200 modèles d'OpenAI, Anthropic, Google, Meta et d'autres via une seule API."
 ---
 
-Le plugin OpenRouter connecte les agents Milady à la passerelle d'inférence unifiée d'OpenRouter, fournissant l'accès à plus de 200 modèles de tous les principaux fournisseurs via une seule clé API et un seul point d'accès.
+Le plugin OpenRouter connecte les agents Eliza à la passerelle d'inférence unifiée d'OpenRouter, fournissant l'accès à plus de 200 modèles de tous les principaux fournisseurs via une seule clé API et un seul point d'accès.
 
 **Package:** `@elizaos/plugin-openrouter`
 
-<div id="milady-pinned-version-and-upstream-bundle-bug">
+<div id="eliza-pinned-version-and-upstream-bundle-bug">
 
-## Milady : version épinglée et bug du bundle upstream
+## Eliza : version épinglée et bug du bundle upstream
 
 </div>
 
-Dans le monorepo Milady, **`@elizaos/plugin-openrouter` est épinglé à `2.0.0-alpha.13`** (version exacte dans le `package.json` racine, reflétée dans `bun.lock`).
+Dans le monorepo Eliza, **`@elizaos/plugin-openrouter` est épinglé à `2.0.0-alpha.13`** (version exacte dans le `package.json` racine, reflétée dans `bun.lock`).
 
 **Pourquoi épingler**
 
@@ -35,7 +35,7 @@ Après qu'upstream publie une version corrigée, vérifiez que `dist/node/index.
 </div>
 
 ```bash
-milady plugins install @elizaos/plugin-openrouter
+eliza plugins install @elizaos/plugin-openrouter
 ```
 
 <div id="auto-enable">
@@ -60,9 +60,9 @@ export OPENROUTER_API_KEY=sk-or-...
 |--------------------------|--------|-------------|
 | `OPENROUTER_API_KEY` | Oui | Clé API OpenRouter depuis [openrouter.ai](https://openrouter.ai) |
 
-<div id="miladyjson-example">
+<div id="elizajson-example">
 
-### Exemple milady.json
+### Exemple eliza.json
 
 </div>
 

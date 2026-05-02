@@ -1,22 +1,22 @@
 ---
 title: Themes & Avatars
 sidebarTitle: Themes & Avatars
-description: Customize the Milady dashboard with the supported light and dark themes, plus the built-in VRM companion avatars.
+description: Customize the Eliza dashboard with the supported light and dark themes, plus the built-in VRM companion avatars.
 ---
 
-Milady currently supports two production themes: `light` and `dark`.
+Eliza currently supports two production themes: `light` and `dark`.
 
 These themes drive the dashboard and app shell through shared semantic CSS tokens. Avatars are a separate customization layer that controls the companion character, not the global color system.
 
 ## Theme Contract
 
-Milady applies the active theme to the document root by setting:
+Eliza applies the active theme to the document root by setting:
 
 - `data-theme="light"` or `data-theme="dark"`
 - the `.dark` class when the theme is dark
 - the `color-scheme` style so browser-native controls match the active mode
 
-The runtime stores the preference in local storage under `eliza:ui-theme` and still reads the legacy `milady:ui-theme` key during migration.
+The runtime stores the preference in local storage under `eliza:ui-theme` and still reads the legacy `eliza:ui-theme` key during migration.
 
 The live theme type is effectively:
 
@@ -41,7 +41,7 @@ The core implementation lives in:
 
 ## CSS Architecture
 
-Milady uses a semantic token system instead of per-theme component overrides.
+Eliza uses a semantic token system instead of per-theme component overrides.
 
 - `eliza/packages/app-core/src/styles/base.css` defines the token values for the default light theme and the `[data-theme="dark"], .dark` overrides.
 - `eliza/packages/app-core/src/styles/styles.css` maps those CSS custom properties into the utility layer so shared components can stay theme-aware without hardcoding colors.
@@ -73,7 +73,7 @@ New components should use these semantic tokens or their utility mappings. Compo
 
 ## Avatars
 
-Milady also includes built-in VRM companion avatars. Avatar selection is independent from the light/dark theme choice:
+Eliza also includes built-in VRM companion avatars. Avatar selection is independent from the light/dark theme choice:
 
 - the theme controls the dashboard and shell styling
 - the avatar controls the companion character shown in supported chat and companion views

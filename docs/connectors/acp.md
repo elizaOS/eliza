@@ -21,7 +21,7 @@ The ACP (Agent Communication Protocol) connector links agents through a shared g
 ## Installation
 
 ```bash
-milady plugins install acp
+eliza plugins install acp
 ```
 
 ## Minimal Configuration
@@ -34,7 +34,7 @@ ACP_GATEWAY_TOKEN=your-token
 ACP_GATEWAY_PASSWORD=your-password
 ```
 
-Or configure in `~/.milady/milady.json`:
+Or configure in `~/.eliza/eliza.json`:
 
 ```json
 {

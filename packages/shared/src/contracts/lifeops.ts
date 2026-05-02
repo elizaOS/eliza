@@ -1420,7 +1420,7 @@ export type LifeOpsTelemetryMessageChannel =
   | "imessage"
   | "whatsapp"
   | "sms"
-  | "milady_chat";
+  | "eliza_chat";
 
 export type LifeOpsMessageDirection = "inbound" | "outbound_by_owner";
 

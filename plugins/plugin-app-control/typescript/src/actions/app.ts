@@ -73,8 +73,8 @@ interface AppActionDeps {
 
 function defaultRepoRoot(): string {
 	const fromEnv =
-		process.env.MILADY_REPO_ROOT?.trim() ||
-		process.env.MILADY_WORKSPACE_DIR?.trim() ||
+		process.env.ELIZA_REPO_ROOT?.trim() ||
+		process.env.ELIZA_WORKSPACE_DIR?.trim() ||
 		process.env.ELIZA_WORKSPACE_DIR?.trim();
 	if (fromEnv && path.isAbsolute(fromEnv)) return fromEnv;
 	return process.cwd();

@@ -21,10 +21,10 @@ import type { RealTestRuntimeResult } from "../helpers/real-runtime.ts";
 const BENCHMARK_REPORT_PATH = "action-benchmark-report.md";
 const BENCHMARK_TRAJECTORY_DIR = "action-benchmark-report";
 
-const USE_MOCKED_APIS = process.env.MILADY_BENCHMARK_USE_MOCKS === "1";
+const USE_MOCKED_APIS = process.env.ELIZA_BENCHMARK_USE_MOCKS === "1";
 const RUN_ACTION_BENCHMARK =
   USE_MOCKED_APIS ||
-  process.env.MILADY_RUN_ACTION_BENCHMARK === "1" ||
+  process.env.ELIZA_RUN_ACTION_BENCHMARK === "1" ||
   process.env.ELIZA_RUN_ACTION_BENCHMARK === "1";
 
 async function createBenchmarkRuntimeFactory(): Promise<{
@@ -34,7 +34,7 @@ async function createBenchmarkRuntimeFactory(): Promise<{
   }>;
   cleanup: () => Promise<void>;
 }> {
-  const providerOverride = process.env.MILADY_BENCHMARK_PROVIDER?.trim();
+  const providerOverride = process.env.ELIZA_BENCHMARK_PROVIDER?.trim();
   const preferredProvider =
     (providerOverride as LiveProviderName | undefined) ??
     selectLiveProvider()?.name;
@@ -109,7 +109,7 @@ describe("action selection benchmark", () => {
       ]);
       const runtimeFactory = await createBenchmarkRuntimeFactory();
 
-      const filterRaw = process.env.MILADY_BENCHMARK_FILTER?.trim();
+      const filterRaw = process.env.ELIZA_BENCHMARK_FILTER?.trim();
       const filterIds = filterRaw
         ? new Set(
             filterRaw

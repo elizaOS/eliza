@@ -1,17 +1,17 @@
 ---
 title: "Feishu Plugin"
 sidebarTitle: "Feishu"
-description: "Feishu/Lark connector for Milady — bot messaging, group chats, and workflow notifications."
+description: "Feishu/Lark connector for Eliza — bot messaging, group chats, and workflow notifications."
 ---
 
-The Feishu plugin connects Milady agents to Feishu (known as Lark outside China), enabling bot interactions in direct messages and group chats.
+The Feishu plugin connects Eliza agents to Feishu (known as Lark outside China), enabling bot interactions in direct messages and group chats.
 
 **Package:** `@elizaos/plugin-feishu`
 
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-feishu
+eliza plugins install @elizaos/plugin-feishu
 ```
 
 ## Setup
@@ -24,7 +24,7 @@ Go to the [Feishu Open Platform](https://open.feishu.cn/) (or [Lark Developer](h
 
 Under your app settings, enable the **Bot** capability and configure event subscriptions.
 
-### 3. Configure Milady
+### 3. Configure Eliza
 
 ```json
 {

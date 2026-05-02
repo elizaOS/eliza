@@ -1,8 +1,8 @@
 # @elizaos/capacitor-llama
 
-Mobile llama.cpp adapter for Milady. A **thin wrapper** over
+Mobile llama.cpp adapter for Eliza. A **thin wrapper** over
 [`llama-cpp-capacitor`](https://github.com/arusatech/annadata-llama-cpp) that
-maps its contextId-based API onto Milady's `LocalInferenceLoader` contract,
+maps its contextId-based API onto Eliza's `LocalInferenceLoader` contract,
 so the standard `ActiveModelCoordinator` in `@elizaos/app-core` can switch
 between the desktop (node-llama-cpp) engine and mobile native inference
 transparently.
@@ -14,7 +14,7 @@ transparently.
 - Maps `loadModel({ modelPath })` → `initContext`.
 - Maps `unloadModel()` → `releaseContext` / `releaseAllContexts`.
 - Exposes a `generate()` surface matching the desktop engine.
-- Fans the native `@LlamaCpp_onToken` stream out to Milady's token listeners.
+- Fans the native `@LlamaCpp_onToken` stream out to Eliza's token listeners.
 
 ## What it does not do
 
@@ -60,7 +60,7 @@ transparently.
 - For a full desktop-level feature set (embeddings, reranking, chat
   templates, tool calling), read the upstream
   [`llama-cpp-capacitor` README](https://github.com/arusatech/annadata-llama-cpp).
-  This adapter only wires the minimal slice needed for Milady's agent
+  This adapter only wires the minimal slice needed for Eliza's agent
   runtime; extend it as the mobile product grows.
 
 ## Licensing

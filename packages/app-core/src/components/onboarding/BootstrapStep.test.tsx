@@ -107,7 +107,7 @@ describe("BootstrapStep", () => {
 
     await waitFor(() => {
       expect(exchangeFn).toHaveBeenCalledWith("my-token-123");
-      expect(sessionStorage.getItem("milady_session")).toBe("sess-abc");
+      expect(sessionStorage.getItem("eliza_session")).toBe("sess-abc");
       expect(onAdvance).toHaveBeenCalledOnce();
     });
   });
@@ -126,7 +126,7 @@ describe("BootstrapStep", () => {
 
     await waitFor(() => {
       expect(onAdvance).not.toHaveBeenCalled();
-      expect(sessionStorage.getItem("milady_session")).toBeNull();
+      expect(sessionStorage.getItem("eliza_session")).toBeNull();
     });
 
     // Error message should mention single-use nature.
@@ -173,7 +173,7 @@ describe("BootstrapStep", () => {
 
     await waitFor(() => {
       expect(onAdvance).not.toHaveBeenCalled();
-      expect(sessionStorage.getItem("milady_session")).toBeNull();
+      expect(sessionStorage.getItem("eliza_session")).toBeNull();
     });
 
     expect(screen.getByText(/network error|fetch failed/i)).toBeTruthy();
@@ -204,7 +204,7 @@ describe("BootstrapStep", () => {
 
       await waitFor(() => {
         expect(exchangeFn).toHaveBeenCalledWith("hash-token-xyz");
-        expect(sessionStorage.getItem("milady_session")).toBe("sess-auto");
+        expect(sessionStorage.getItem("eliza_session")).toBe("sess-auto");
         expect(onAdvance).toHaveBeenCalledOnce();
       });
     });

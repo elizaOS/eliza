@@ -27,14 +27,14 @@ El conector de iMessage es un plugin externo de elizaOS que conecta tu agente co
 </div>
 
 - macOS con iMessage configurado e iniciado sesión
-- Acceso completo al disco otorgado a la terminal o aplicación que ejecuta Milady (para acceso a la base de datos de chat en `~/Library/Messages/chat.db`)
+- Acceso completo al disco otorgado a la terminal o aplicación que ejecuta Eliza (para acceso a la base de datos de chat en `~/Library/Messages/chat.db`)
 - Una herramienta CLI para acceso a iMessage (p. ej., `imessage-exporter`)
 
 <div id="minimal-configuration">
 ## Configuración mínima
 </div>
 
-En `~/.milady/milady.json`:
+En `~/.eliza/eliza.json`:
 
 ```json
 {
@@ -77,7 +77,7 @@ No se requiere ninguna variable de entorno para activar la activación automáti
 ## Referencia completa de configuración
 </div>
 
-Todos los campos se definen bajo `connectors.imessage` en `milady.json`.
+Todos los campos se definen bajo `connectors.imessage` en `eliza.json`.
 
 <div id="core-fields">
 ### Campos principales
@@ -206,7 +206,7 @@ Asegúrate de que la autenticación SSH basada en claves esté configurada entre
 Si la recuperación de mensajes falla, asegúrate de que el Acceso completo al disco esté otorgado:
 
 1. Abre **Ajustes del Sistema > Privacidad y Seguridad > Acceso completo al disco**
-2. Agrega la aplicación de terminal o el proceso de Milady
+2. Agrega la aplicación de terminal o el proceso de Eliza
 
 <div id="database-path">
 ### Ruta de la base de datos

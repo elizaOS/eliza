@@ -9,14 +9,14 @@ at those local URLs via env vars instead of hitting real services.
 
 | File                                  | Mocks                                | Env var                                                  |
 | ------------------------------------- | ------------------------------------ | -------------------------------------------------------- |
-| `environments/twilio.json`            | Twilio Programmable Messaging/Voice  | `ELIZA_MOCK_TWILIO_BASE` / `MILADY_MOCK_TWILIO_BASE`     |
-| `environments/whatsapp.json`          | WhatsApp Business Cloud (Meta Graph) | `ELIZA_MOCK_WHATSAPP_BASE` / `MILADY_MOCK_WHATSAPP_BASE` |
-| `environments/calendly.json`          | Calendly v2                          | `ELIZA_MOCK_CALENDLY_BASE` / `MILADY_MOCK_CALENDLY_BASE` |
-| `environments/x-twitter.json`         | X (Twitter) v2                       | `ELIZA_MOCK_X_BASE` / `MILADY_MOCK_X_BASE`               |
-| `environments/google.json`            | Gmail / Calendar / OAuth token       | `ELIZA_MOCK_GOOGLE_BASE` / `MILADY_MOCK_GOOGLE_BASE`     |
+| `environments/twilio.json`            | Twilio Programmable Messaging/Voice  | `ELIZA_MOCK_TWILIO_BASE` / `ELIZA_MOCK_TWILIO_BASE`     |
+| `environments/whatsapp.json`          | WhatsApp Business Cloud (Meta Graph) | `ELIZA_MOCK_WHATSAPP_BASE` / `ELIZA_MOCK_WHATSAPP_BASE` |
+| `environments/calendly.json`          | Calendly v2                          | `ELIZA_MOCK_CALENDLY_BASE` / `ELIZA_MOCK_CALENDLY_BASE` |
+| `environments/x-twitter.json`         | X (Twitter) v2                       | `ELIZA_MOCK_X_BASE` / `ELIZA_MOCK_X_BASE`               |
+| `environments/google.json`            | Gmail / Calendar / OAuth token       | `ELIZA_MOCK_GOOGLE_BASE` / `ELIZA_MOCK_GOOGLE_BASE`     |
 | `environments/cloud-managed.json`     | Eliza Cloud managed-Google endpoints | `ELIZA_CLOUD_BASE_URL`                                   |
 | `environments/signal.json`            | signal-cli HTTP receive/send         | `SIGNAL_HTTP_URL`                                        |
-| `environments/browser-workspace.json` | Desktop browser workspace bridge     | `ELIZA_BROWSER_WORKSPACE_URL` / `ELIZA_BROWSER_WORKSPACE_TOKEN` / `ELIZA_DISABLE_DISCORD_DESKTOP_CDP` / `MILADY_DISABLE_DISCORD_DESKTOP_CDP` |
+| `environments/browser-workspace.json` | Desktop browser workspace bridge     | `ELIZA_BROWSER_WORKSPACE_URL` / `ELIZA_BROWSER_WORKSPACE_TOKEN` / `ELIZA_DISABLE_DISCORD_DESKTOP_CDP` / `ELIZA_DISABLE_DISCORD_DESKTOP_CDP` |
 | `environments/bluebubbles.json`       | BlueBubbles iMessage HTTP API        | `ELIZA_BLUEBUBBLES_URL`                                  |
 | `environments/github.json`            | GitHub REST plus Octokit fixtures    | `ELIZA_MOCK_GITHUB_BASE`                                 |
 
@@ -38,9 +38,9 @@ import { startMocks } from "./scripts/start-mocks.ts";
 
 const mocks = await startMocks({ envs: ["google", "twilio"] });
 process.env.ELIZA_MOCK_GOOGLE_BASE = mocks.baseUrls.google;
-process.env.MILADY_MOCK_GOOGLE_BASE = mocks.baseUrls.google;
+process.env.ELIZA_MOCK_GOOGLE_BASE = mocks.baseUrls.google;
 process.env.ELIZA_MOCK_TWILIO_BASE = mocks.baseUrls.twilio;
-process.env.MILADY_MOCK_TWILIO_BASE = mocks.baseUrls.twilio;
+process.env.ELIZA_MOCK_TWILIO_BASE = mocks.baseUrls.twilio;
 await mocks.stop();
 ```
 
@@ -90,21 +90,21 @@ Then point the clients at the mocks:
 
 ```bash
 export ELIZA_MOCK_TWILIO_BASE=http://127.0.0.1:3001
-export MILADY_MOCK_TWILIO_BASE=http://127.0.0.1:3001
+export ELIZA_MOCK_TWILIO_BASE=http://127.0.0.1:3001
 export ELIZA_MOCK_WHATSAPP_BASE=http://127.0.0.1:3002
-export MILADY_MOCK_WHATSAPP_BASE=http://127.0.0.1:3002
+export ELIZA_MOCK_WHATSAPP_BASE=http://127.0.0.1:3002
 export ELIZA_MOCK_CALENDLY_BASE=http://127.0.0.1:3003
-export MILADY_MOCK_CALENDLY_BASE=http://127.0.0.1:3003
+export ELIZA_MOCK_CALENDLY_BASE=http://127.0.0.1:3003
 export ELIZA_MOCK_X_BASE=http://127.0.0.1:3004
-export MILADY_MOCK_X_BASE=http://127.0.0.1:3004
+export ELIZA_MOCK_X_BASE=http://127.0.0.1:3004
 export ELIZA_MOCK_GOOGLE_BASE=http://127.0.0.1:3005
-export MILADY_MOCK_GOOGLE_BASE=http://127.0.0.1:3005
+export ELIZA_MOCK_GOOGLE_BASE=http://127.0.0.1:3005
 export SIGNAL_HTTP_URL=http://127.0.0.1:3006
 export SIGNAL_ACCOUNT_NUMBER=+15550000000
 export ELIZA_BROWSER_WORKSPACE_URL=http://127.0.0.1:3007
 export ELIZA_BROWSER_WORKSPACE_TOKEN=mock-browser-workspace-token
 export ELIZA_DISABLE_DISCORD_DESKTOP_CDP=1
-export MILADY_DISABLE_DISCORD_DESKTOP_CDP=1
+export ELIZA_DISABLE_DISCORD_DESKTOP_CDP=1
 export ELIZA_IMESSAGE_BACKEND=bluebubbles
 export ELIZA_BLUEBUBBLES_URL=http://127.0.0.1:3008
 export ELIZA_BLUEBUBBLES_PASSWORD=mock-bluebubbles-password

@@ -58,8 +58,8 @@ beforeEach(() => {
     if (
       k.startsWith("ELIZA_HEALTHKIT") ||
       k.startsWith("ELIZA_GOOGLE_FIT") ||
-      k === "MILADY_TEST_HEALTH_BACKEND" ||
-      k === "MILADY_BENCHMARK_USE_MOCKS"
+      k === "ELIZA_TEST_HEALTH_BACKEND" ||
+      k === "ELIZA_BENCHMARK_USE_MOCKS"
     ) {
       delete process.env[k];
     }
@@ -78,7 +78,7 @@ describe("detectHealthBackend", () => {
   });
 
   test("does not enable fixture health data from benchmark mock mode", async () => {
-    process.env.MILADY_BENCHMARK_USE_MOCKS = "1";
+    process.env.ELIZA_BENCHMARK_USE_MOCKS = "1";
 
     const backend = await detectHealthBackend();
 
@@ -86,7 +86,7 @@ describe("detectHealthBackend", () => {
   });
 
   test("enables fixture health data only through explicit health test backend", async () => {
-    process.env.MILADY_TEST_HEALTH_BACKEND = "fixture";
+    process.env.ELIZA_TEST_HEALTH_BACKEND = "fixture";
 
     const backend = await detectHealthBackend();
 

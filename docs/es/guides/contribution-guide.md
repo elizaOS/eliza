@@ -1,12 +1,12 @@
 ---
 title: "Guía de contribución"
 sidebarTitle: "Contribución"
-description: "Configura tu entorno de desarrollo y contribuye a Milady."
+description: "Configura tu entorno de desarrollo y contribuye a Eliza."
 ---
 
-Bienvenido al proyecto Milady. Esta guía cubre la configuración del entorno, el flujo de trabajo de desarrollo y el proceso de pull request.
+Bienvenido al proyecto Eliza. Esta guía cubre la configuración del entorno, el flujo de trabajo de desarrollo y el proceso de pull request.
 
-Antes de contribuir, lee [CONTRIBUTING.md](https://github.com/milady-ai/milady/blob/develop/CONTRIBUTING.md) en la raíz del repositorio para conocer la filosofía de contribución del proyecto. Milady es un **código base solo de agentes** -- cada PR es revisado y fusionado por agentes de IA, no por mantenedores humanos. Los humanos contribuyen principalmente como testers de QA y reporteros de bugs.
+Antes de contribuir, lee [CONTRIBUTING.md](https://github.com/eliza-ai/eliza/blob/develop/CONTRIBUTING.md) en la raíz del repositorio para conocer la filosofía de contribución del proyecto. Eliza es un **código base solo de agentes** -- cada PR es revisado y fusionado por agentes de IA, no por mantenedores humanos. Los humanos contribuyen principalmente como testers de QA y reporteros de bugs.
 
 ---
 
@@ -30,8 +30,8 @@ Bun es el gestor de paquetes del proyecto. Todos los comandos de esta guía usan
 
 ```bash
 # Clone the repository
-git clone https://github.com/milady-ai/milady.git
-cd milady
+git clone https://github.com/eliza-ai/eliza.git
+cd eliza
 
 # Install dependencies
 bun install
@@ -43,10 +43,10 @@ bun run build
 Después de compilar, verifica que el CLI funciona:
 
 ```bash
-bun run milady --help
+bun run eliza --help
 ```
 
-La configuración se almacena en `~/.milady/milady.json` y el espacio de trabajo está en `~/.milady/workspace/`.
+La configuración se almacena en `~/.eliza/eliza.json` y el espacio de trabajo está en `~/.eliza/workspace/`.
 
 ---
 
@@ -69,7 +69,7 @@ bun run dev:ui
 bun run dev:desktop
 
 # Run the CLI directly
-bun run milady start
+bun run eliza start
 ```
 
 <div id="testing">
@@ -95,7 +95,7 @@ bun run db:check
 bun run test:e2e
 
 # Live API tests (requires API keys)
-MILADY_LIVE_TEST=1 bun run test:live
+ELIZA_LIVE_TEST=1 bun run test:live
 
 # Docker-based integration tests
 bun run test:docker:all
@@ -185,7 +185,7 @@ Siempre crea ramas desde `develop` y dirige los PRs de vuelta a `develop`.
 
 2. **Haz cambios** con commits concisos y orientados a la acción
    ```bash
-   git commit -m "milady: add verbose flag to send action"
+   git commit -m "eliza: add verbose flag to send action"
    ```
 
 3. **Ejecuta verificaciones antes de push**
@@ -215,7 +215,7 @@ refactor: extract session key logic to provider
 chore: update @elizaos/core to latest
 ```
 
-Otros estilos aceptados siguen el patrón `milady: description` visto en el historial del repositorio (por ejemplo, `milady: fix telegram reconnect on rate limit`).
+Otros estilos aceptados siguen el patrón `eliza: description` visto en el historial del repositorio (por ejemplo, `eliza: fix telegram reconnect on rate limit`).
 
 <div id="the-agent-review-bot">
 ### El bot de revisión de agentes
@@ -293,8 +293,8 @@ Antes de enviar, verifica:
 ### Nombres de producto vs código
 </div>
 
-- **Milady** -- Nombre del producto, encabezados, prosa de documentación
-- **milady** -- Nombre del binario CLI, rutas de paquetes, claves de configuración
+- **Eliza** -- Nombre del producto, encabezados, prosa de documentación
+- **eliza** -- Nombre del binario CLI, rutas de paquetes, claves de configuración
 
 <div id="file-size">
 ### Tamaño de archivo
@@ -351,7 +351,7 @@ Instala la [extensión Biome para VS Code](https://marketplace.visualstudio.com/
 </div>
 
 ```
-milady/
+eliza/
 ├── apps/
 │   ├── app/                 # Desktop/mobile app (Capacitor + React)
 │   │   ├── electrobun/      # Electrobun desktop wrapper
@@ -385,7 +385,7 @@ milady/
 ├── tsconfig.json            # TypeScript config
 ├── tsdown.config.ts         # Build config (tsdown bundler)
 ├── vitest.config.ts         # Vitest test config
-└── milady.mjs               # npm bin entry point
+└── eliza.mjs               # npm bin entry point
 ```
 
 <div id="key-entry-points">
@@ -397,8 +397,8 @@ milady/
 | `src/entry.ts` | Punto de entrada CLI |
 | `src/index.ts` | Exportaciones de librería |
 | `src/runtime/eliza.ts` | Inicialización del runtime elizaOS |
-| `src/runtime/milady-plugin.ts` | Plugin principal de Milady |
-| `milady.mjs` | Entrada bin de npm (`"bin"` en package.json) |
+| `src/runtime/eliza-plugin.ts` | Plugin principal de Eliza |
+| `eliza.mjs` | Entrada bin de npm (`"bin"` en package.json) |
 
 ---
 
@@ -410,7 +410,7 @@ Al crear un reporte de error:
 
 1. **Verifica los issues existentes** para evitar duplicados
 2. **Incluye pasos de reproducción** -- qué hiciste, qué pasó, qué esperabas
-3. **Comparte tu entorno** -- SO, versión de Node, versión de Milady (`milady --version`)
+3. **Comparte tu entorno** -- SO, versión de Node, versión de Eliza (`eliza --version`)
 4. **Adjunta logs** -- salida de errores relevante
 
 Un agente de IA triaje todos los issues entrantes. Los bugs válidos son etiquetados y priorizados. Los issues fuera del alcance (solicitudes estéticas, expansión de funcionalidades) serán cerrados con una explicación.
@@ -421,8 +421,8 @@ Un agente de IA triaje todos los issues entrantes. Los bugs válidos son etiquet
 ## Lectura adicional
 </div>
 
-- [CONTRIBUTING.md](https://github.com/milady-ai/milady/blob/develop/CONTRIBUTING.md) -- Filosofía completa de contribución
-- [AGENTS.md](https://github.com/milady-ai/milady/blob/develop/AGENTS.md) -- Directrices del repositorio para agentes de codificación
+- [CONTRIBUTING.md](https://github.com/eliza-ai/eliza/blob/develop/CONTRIBUTING.md) -- Filosofía completa de contribución
+- [AGENTS.md](https://github.com/eliza-ai/eliza/blob/develop/AGENTS.md) -- Directrices del repositorio para agentes de codificación
 - [Guía de desarrollo de plugins](/es/plugins/development) -- Crear plugins
 - [Documentación de skills](/es/plugins/skills) -- Crear skills
 - [Desarrollo local de plugins](/es/plugins/local-plugins) -- Desarrollar plugins localmente

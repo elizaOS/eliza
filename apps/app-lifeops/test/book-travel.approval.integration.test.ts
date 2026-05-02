@@ -416,17 +416,17 @@ function installApprovalResolutionModelStub(requestId: string, reason: string) {
 beforeAll(async () => {
   envBackup = saveEnv(
     "ELIZA_STATE_DIR",
-    "MILADY_STATE_DIR",
+    "ELIZA_STATE_DIR",
     "DUFFEL_API_KEY",
-    "MILADY_DUFFEL_DIRECT",
+    "ELIZA_DUFFEL_DIRECT",
   );
   stateDir = await fs.promises.mkdtemp(
     path.join(os.tmpdir(), "book-travel-approval-"),
   );
   process.env.ELIZA_STATE_DIR = stateDir;
-  process.env.MILADY_STATE_DIR = stateDir;
+  process.env.ELIZA_STATE_DIR = stateDir;
   process.env.DUFFEL_API_KEY = "duffel-test-key";
-  process.env.MILADY_DUFFEL_DIRECT = "1";
+  process.env.ELIZA_DUFFEL_DIRECT = "1";
 
   testRuntime = await createLifeOpsTestRuntime({
     characterName: "book-travel-test-agent",

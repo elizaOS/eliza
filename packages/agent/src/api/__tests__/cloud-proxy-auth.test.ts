@@ -162,7 +162,7 @@ describe("cloud proxy auth resolution", () => {
         return new Response(
           JSON.stringify({
             success: true,
-            data: [{ id: "agent-123", name: "Milady" }],
+            data: [{ id: "agent-123", name: "Eliza" }],
           }),
           { status: 200, headers: { "Content-Type": "application/json" } },
         );
@@ -195,7 +195,7 @@ describe("cloud proxy auth resolution", () => {
       readBody<{ success: boolean; data: Array<{ id: string }> }>(),
     ).toEqual({
       success: true,
-      data: [{ id: "agent-123", name: "Milady" }],
+      data: [{ id: "agent-123", name: "Eliza" }],
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });

@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { MiladyIntentWeb } from "./milady-intent";
+import { ElizaIntentWeb } from "./eliza-intent";
 
-describe("MiladyIntentWeb", () => {
+describe("ElizaIntentWeb", () => {
   it("getPairingStatus returns unpaired in web fallback", async () => {
-    const plugin = new MiladyIntentWeb();
+    const plugin = new ElizaIntentWeb();
     const status = await plugin.getPairingStatus();
     expect(status).toEqual({
       paired: false,
@@ -13,7 +13,7 @@ describe("MiladyIntentWeb", () => {
   });
 
   it("receiveIntent rejects with explicit reason (no silent success)", async () => {
-    const plugin = new MiladyIntentWeb();
+    const plugin = new ElizaIntentWeb();
     const result = await plugin.receiveIntent({
       kind: "alarm",
       payload: { timeIso: "2026-04-17T06:30:00Z" },
@@ -24,7 +24,7 @@ describe("MiladyIntentWeb", () => {
   });
 
   it("scheduleAlarm throws unavailable on web — does not fake success", async () => {
-    const plugin = new MiladyIntentWeb();
+    const plugin = new ElizaIntentWeb();
     await expect(
       plugin.scheduleAlarm({
         timeIso: "2026-04-17T06:30:00Z",
@@ -35,7 +35,7 @@ describe("MiladyIntentWeb", () => {
   });
 
   it("logs when scheduleAlarm is attempted so dev sees the absence", async () => {
-    const plugin = new MiladyIntentWeb();
+    const plugin = new ElizaIntentWeb();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     await expect(
       plugin.scheduleAlarm({

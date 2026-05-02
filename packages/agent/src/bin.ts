@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { runAutonomousCli } from "./cli/index.js";
 // Static import so `Bun.build` pulls the AOSP llama loader into the mobile
-// bundle. The adapter self-gates on `MILADY_LOCAL_LLAMA=1` and no-ops on
+// bundle. The adapter self-gates on `ELIZA_LOCAL_LLAMA=1` and no-ops on
 // every other platform/runtime, so the import is safe everywhere; we only
 // need it bundled so `ensure-local-inference-handler.ts`'s dynamic import of
 // `@elizaos/agent/runtime/aosp-llama-adapter` resolves on-device. Registration
@@ -13,7 +13,7 @@ import { runAutonomousCli } from "./cli/index.js";
 // which is exactly what we observed empirically (only the source-map comment
 // survived, the symbol did not). Dropping it would silently break the
 // dynamic import path on AOSP. Keep this guard pinned.
-import { registerAospLlamaLoader as __miladyAospLlamaLoader } from "./runtime/aosp-llama-adapter.js";
+import { registerAospLlamaLoader as __elizaAospLlamaLoader } from "./runtime/aosp-llama-adapter.js";
 // Static import so `Bun.build` pulls the AOSP local-inference bootstrap
 // into the mobile bundle. The bootstrap runs `ensureAospLocalInferenceHandlers`
 // after `startEliza()` returns the runtime, registering TEXT_SMALL /
@@ -21,18 +21,18 @@ import { registerAospLlamaLoader as __miladyAospLlamaLoader } from "./runtime/ao
 // Without this static import + globalThis pin, Bun.build tree-shakes the
 // symbol out (the only consumer is a dynamic import in `cli/index.ts`,
 // which is enough for resolution but not for inclusion in some Bun.build
-// configurations). Mirror the `__miladyAospLlamaLoader` pattern.
-import { ensureAospLocalInferenceHandlers as __miladyAospLocalInferenceBootstrap } from "./runtime/aosp-local-inference-bootstrap.js";
+// configurations). Mirror the `__elizaAospLlamaLoader` pattern.
+import { ensureAospLocalInferenceHandlers as __elizaAospLocalInferenceBootstrap } from "./runtime/aosp-local-inference-bootstrap.js";
 
 (
-  globalThis as { __miladyAospLlamaLoader?: typeof __miladyAospLlamaLoader }
-).__miladyAospLlamaLoader = __miladyAospLlamaLoader;
+  globalThis as { __elizaAospLlamaLoader?: typeof __elizaAospLlamaLoader }
+).__elizaAospLlamaLoader = __elizaAospLlamaLoader;
 
 (
   globalThis as {
-    __miladyAospLocalInferenceBootstrap?: typeof __miladyAospLocalInferenceBootstrap;
+    __elizaAospLocalInferenceBootstrap?: typeof __elizaAospLocalInferenceBootstrap;
   }
-).__miladyAospLocalInferenceBootstrap = __miladyAospLocalInferenceBootstrap;
+).__elizaAospLocalInferenceBootstrap = __elizaAospLocalInferenceBootstrap;
 
 runAutonomousCli().catch((error) => {
   console.error(

@@ -13,7 +13,7 @@ export function ensureNamespaceDefaults(
   env: NodeJS.ProcessEnv = process.env,
 ): void {
   if (!trimEnvValue(env.ELIZA_NAMESPACE)) {
-    env.ELIZA_NAMESPACE = "milady";
+    env.ELIZA_NAMESPACE = "eliza";
   }
 }
 

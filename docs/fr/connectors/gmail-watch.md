@@ -24,7 +24,7 @@ Le connecteur Gmail Watch est un plugin elizaOS qui surveille les boîtes de ré
 |-------|--------|
 | Package | `@elizaos/plugin-gmail-watch` |
 | Feature flag | `features.gmailWatch` |
-| Installation | `milady plugins install @elizaos/plugin-gmail-watch` |
+| Installation | `eliza plugins install @elizaos/plugin-gmail-watch` |
 
 <div id="setup-requirements">
 
@@ -41,7 +41,7 @@ Le connecteur Gmail Watch est un plugin elizaOS qui surveille les boîtes de ré
 
 </div>
 
-Gmail Watch se configure à deux endroits dans `milady.json` :
+Gmail Watch se configure à deux endroits dans `eliza.json` :
 
 ### 1. Activer via le feature flag
 

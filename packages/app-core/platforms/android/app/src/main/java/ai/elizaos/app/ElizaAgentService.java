@@ -44,11 +44,11 @@ import java.util.Map;
  * shape — start/stop/restart helpers match what other call sites already
  * use.
  */
-public class MiladyAgentService extends Service {
+public class ElizaAgentService extends Service {
 
-    private static final String TAG = "MiladyAgent";
+    private static final String TAG = "ElizaAgent";
 
-    private static final String CHANNEL_ID = "milady_agent";
+    private static final String CHANNEL_ID = "eliza_agent";
     private static final int NOTIFICATION_ID = 2;
 
     // Intent actions
@@ -66,7 +66,7 @@ public class MiladyAgentService extends Service {
     //   agent/{abi}/ld-musl-*.so.1
     //   agent/{abi}/libstdc++.so.6
     //   agent/{abi}/libgcc_s.so.1
-    //   .milady/                   ← MILADY_STATE_DIR (PGlite data, auth, prompts)
+    //   .eliza/                   ← ELIZA_STATE_DIR (PGlite data, auth, prompts)
     //
     // The agent runs in the priv_app SELinux domain — Android.bp deliberately
     // omits the platform certificate so seapp_contexts puts the APK there
@@ -77,7 +77,7 @@ public class MiladyAgentService extends Service {
     // trick, no custom domain, no symlinks: the binary just sits in the
     // app's writable data dir at canonical names.
     private static final String AGENT_DIR_NAME = "agent";
-    private static final String AGENT_STATE_DIR_NAME = ".milady";
+    private static final String AGENT_STATE_DIR_NAME = ".eliza";
     private static final String AGENT_BUNDLE_NAME = "agent-bundle.js";
     private static final String AGENT_LAUNCH_SCRIPT = "launch.sh";
     private static final String BUN_BINARY = "bun";
@@ -132,7 +132,7 @@ public class MiladyAgentService extends Service {
     // The Capacitor agent plugin reads it from `localAgentToken()` to
     // hydrate `window.__ELIZA_API_TOKEN__` so the WebView's fetches
     // include `Authorization: Bearer <token>`. The agent enforces the
-    // token via MILADY_REQUIRE_LOCAL_AUTH=1.
+    // token via ELIZA_REQUIRE_LOCAL_AUTH=1.
     private static volatile String currentLocalAgentToken;
 
     /** Called by the Capacitor agent plugin Android binding. */
@@ -147,7 +147,7 @@ public class MiladyAgentService extends Service {
         super.onCreate();
         ensureNotificationChannel();
 
-        Notification notification = buildNotification("Milady agent", "Starting…");
+        Notification notification = buildNotification("Eliza agent", "Starting…");
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(
@@ -421,11 +421,11 @@ public class MiladyAgentService extends Service {
         }
 
         // Bundled default models (chat + embedding GGUF files staged by
-        // scripts/miladyos/stage-default-models.mjs at AOSP build time).
-        // Land them under $MILADY_STATE_DIR/local-inference/models/ so
+        // scripts/elizaos/stage-default-models.mjs at AOSP build time).
+        // Land them under $ELIZA_STATE_DIR/local-inference/models/ so
         // the runtime's first-run bootstrap discovers them at canonical
         // paths and registers them in the local-inference registry as
-        // milady-owned models. The manifest.json carried alongside the
+        // eliza-owned models. The manifest.json carried alongside the
         // GGUF files lets the bootstrap pick the right id + role for
         // each file without re-deriving them from the filename.
         //
@@ -624,7 +624,7 @@ public class MiladyAgentService extends Service {
             // — including from other apps on the device — because the
             // agent's default isTrustedLocalRequest() heuristic treats
             // loopback as authoritative, which is wrong on multi-app
-            // Android. MILADY_REQUIRE_LOCAL_AUTH on the server side flips
+            // Android. ELIZA_REQUIRE_LOCAL_AUTH on the server side flips
             // that heuristic off so every request needs the bearer token.
             String token = generateLocalAgentToken();
             currentLocalAgentToken = token;
@@ -635,7 +635,7 @@ public class MiladyAgentService extends Service {
             }
 
             // Invocation:
-            //   LD_LIBRARY_PATH=<agent/{abi}>  PORT=31337  MILADY_*=…
+            //   LD_LIBRARY_PATH=<agent/{abi}>  PORT=31337  ELIZA_*=…
             //   ELIZA_API_TOKEN=<token>
             //   agent/{abi}/ld-musl-…so.1  agent/{abi}/bun  agent/agent-bundle.js
             List<String> command = new ArrayList<>();
@@ -649,7 +649,7 @@ public class MiladyAgentService extends Service {
             Map<String, String> agentEnv = new LinkedHashMap<>();
             agentEnv.put("LD_LIBRARY_PATH", abiDir.getAbsolutePath());
             agentEnv.put("PORT", String.valueOf(AGENT_PORT));
-            agentEnv.put("MILADY_API_PORT", String.valueOf(AGENT_PORT));
+            agentEnv.put("ELIZA_API_PORT", String.valueOf(AGENT_PORT));
             // The agent's runtime-env resolver reads ELIZA_PORT / ELIZA_UI_PORT
             // (defaulting to 2138) before falling back to PORT. Without
             // these the agent binds 2138 even though the service advertises
@@ -658,9 +658,9 @@ public class MiladyAgentService extends Service {
             // the same port — UI bundles in the same Hono server.
             agentEnv.put("ELIZA_PORT", String.valueOf(AGENT_PORT));
             agentEnv.put("ELIZA_UI_PORT", String.valueOf(AGENT_PORT));
-            agentEnv.put("MILADY_STATE_DIR", agentStateDir().getAbsolutePath());
-            agentEnv.put("MILADY_PLATFORM", "android");
-            agentEnv.put("MILADY_DISABLE_DIRECT_RUN", "1");
+            agentEnv.put("ELIZA_STATE_DIR", agentStateDir().getAbsolutePath());
+            agentEnv.put("ELIZA_PLATFORM", "android");
+            agentEnv.put("ELIZA_DISABLE_DIRECT_RUN", "1");
             // Bearer auth on the loopback API is reserved for the case
             // where the WebView wires up a token-fetch native binding;
             // until that exists, requiring the token blocks the WebView
@@ -670,9 +670,9 @@ public class MiladyAgentService extends Service {
             // Android consistent with desktop's loopback model — the
             // WebView and agent share the same Linux UID, so any process
             // that can hit loopback already has app-uid filesystem access.
-            // Setting MILADY_REQUIRE_LOCAL_AUTH=1 still works once the
+            // Setting ELIZA_REQUIRE_LOCAL_AUTH=1 still works once the
             // WebView side is wired up; it's just no longer the default.
-            // agentEnv.put("MILADY_REQUIRE_LOCAL_AUTH", "1");
+            // agentEnv.put("ELIZA_REQUIRE_LOCAL_AUTH", "1");
             agentEnv.put("ELIZA_API_TOKEN", token);
             // The Capacitor APK always hosts @elizaos/capacitor-llama in the
             // WebView, so the runtime should always be ready to broker
@@ -686,7 +686,7 @@ public class MiladyAgentService extends Service {
             // gradle BuildConfig.AOSP_BUILD field is wired by sub-task 2B;
             // the Capacitor APK keeps its DeviceBridge loopback path.
             if (BuildConfig.AOSP_BUILD) {
-                agentEnv.put("MILADY_LOCAL_LLAMA", "1");
+                agentEnv.put("ELIZA_LOCAL_LLAMA", "1");
                 // CPU-only inference of a 12k-token prompt on cuttlefish
                 // x86_64 / Llama-3.2-1B lands well past the 180 s default
                 // chat-generation timeout (chat-routes.ts). 30 minutes
@@ -703,8 +703,8 @@ public class MiladyAgentService extends Service {
                 // for 1B-Q4_K_M / fp16 KV). 16k = ~80 MB KV cache, well
                 // under cvd's 4 GB budget. Override via env on real-
                 // device builds when ctx vs RAM trade-offs change.
-                if (!env.containsKey("MILADY_LLAMA_N_CTX")) {
-                    agentEnv.put("MILADY_LLAMA_N_CTX", "16384");
+                if (!env.containsKey("ELIZA_LLAMA_N_CTX")) {
+                    agentEnv.put("ELIZA_LLAMA_N_CTX", "16384");
                 }
 
                 // Pin n_threads to the actual CPU count. The default of
@@ -716,10 +716,10 @@ public class MiladyAgentService extends Service {
                 // most real phones have 6–8 big.LITTLE cores. Read
                 // from the JVM at startup and pass through so the FFI
                 // side doesn't need to call any blocked syscall.
-                if (!env.containsKey("MILADY_LLAMA_THREADS")) {
+                if (!env.containsKey("ELIZA_LLAMA_THREADS")) {
                     int cores = Runtime.getRuntime().availableProcessors();
                     if (cores < 1) cores = 1;
-                    agentEnv.put("MILADY_LLAMA_THREADS", String.valueOf(cores));
+                    agentEnv.put("ELIZA_LLAMA_THREADS", String.valueOf(cores));
                 }
 
                 // Smaller decode chunks → more event-loop yield points
@@ -729,8 +729,8 @@ public class MiladyAgentService extends Service {
                 // time. 512-token chunks land each call in ~6–8 s, so
                 // the 30 s probe timeout has a realistic chance to
                 // wake the listener between chunks.
-                if (!env.containsKey("MILADY_LLAMA_N_BATCH")) {
-                    agentEnv.put("MILADY_LLAMA_N_BATCH", "512");
+                if (!env.containsKey("ELIZA_LLAMA_N_BATCH")) {
+                    agentEnv.put("ELIZA_LLAMA_N_BATCH", "512");
                 }
             }
             agentEnv.put("HOME", getFilesDir().getAbsolutePath());
@@ -746,7 +746,7 @@ public class MiladyAgentService extends Service {
             // inherited and locked by SECCOMP_FILTER_FLAG_TSYNC; a child
             // process spawned via fork+execve (which is how this service
             // launches bun via ProcessBuilder) cannot opt out. SELinux
-            // policy in vendor/milady/sepolicy/ is orthogonal — it does
+            // policy in vendor/eliza/sepolicy/ is orthogonal — it does
             // not (and cannot) override seccomp.
             //
             // Bun's Linux runtime exercises several syscalls that Android's
@@ -936,7 +936,7 @@ public class MiladyAgentService extends Service {
                     Log.w(TAG, "Stream pump (" + label + ") ended.", error);
                 }
             }
-        }, "MiladyAgent-pump-" + label);
+        }, "ElizaAgent-pump-" + label);
         t.setDaemon(true);
         t.start();
         return t;
@@ -963,7 +963,7 @@ public class MiladyAgentService extends Service {
             }
             if (shuttingDown) return;
             startAgentProcess();
-        }, "MiladyAgent-restart").start();
+        }, "ElizaAgent-restart").start();
     }
 
     // ── Watchdog ─────────────────────────────────────────────────────────
@@ -979,7 +979,7 @@ public class MiladyAgentService extends Service {
         private int unhealthyTicks;
 
         WatchdogThread() {
-            super("MiladyAgent-watchdog");
+            super("ElizaAgent-watchdog");
             setDaemon(true);
         }
 
@@ -1119,10 +1119,10 @@ public class MiladyAgentService extends Service {
     private void ensureNotificationChannel() {
         NotificationChannel channel = new NotificationChannel(
             CHANNEL_ID,
-            "Milady Agent",
+            "Eliza Agent",
             NotificationManager.IMPORTANCE_LOW
         );
-        channel.setDescription("Local Milady agent runtime status");
+        channel.setDescription("Local Eliza agent runtime status");
         channel.setShowBadge(false);
 
         NotificationManager mgr = getSystemService(NotificationManager.class);
@@ -1139,7 +1139,7 @@ public class MiladyAgentService extends Service {
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
 
-        Intent stopIntent = new Intent(this, MiladyAgentService.class);
+        Intent stopIntent = new Intent(this, ElizaAgentService.class);
         stopIntent.setAction(ACTION_STOP);
         PendingIntent stopPending = PendingIntent.getService(
             this, 2, stopIntent,
@@ -1163,33 +1163,33 @@ public class MiladyAgentService extends Service {
         String text;
         switch (currentStatus) {
             case "running":
-                title = "Milady agent · Running";
+                title = "Eliza agent · Running";
                 text = "Local agent listening on :" + AGENT_PORT;
                 break;
             case "starting":
-                title = "Milady agent · Starting";
+                title = "Eliza agent · Starting";
                 text = "Preparing on-device runtime…";
                 break;
             case "fatal":
-                title = "Milady agent · Stopped";
+                title = "Eliza agent · Stopped";
                 text = "Agent crashed repeatedly; tap to investigate";
                 break;
             case "extract-failed":
-                title = "Milady agent · Asset error";
+                title = "Eliza agent · Asset error";
                 text = "Could not unpack runtime";
                 break;
             case "missing-bundle":
             case "missing-bun":
             case "missing-loader":
-                title = "Milady agent · Missing files";
+                title = "Eliza agent · Missing files";
                 text = currentStatus;
                 break;
             case "spawn-failed":
-                title = "Milady agent · Spawn failed";
+                title = "Eliza agent · Spawn failed";
                 text = "Could not start runtime process";
                 break;
             default:
-                title = "Milady agent";
+                title = "Eliza agent";
                 text = currentStatus;
                 break;
         }
@@ -1205,28 +1205,28 @@ public class MiladyAgentService extends Service {
 
     /** Start the foreground service (safe to call repeatedly). */
     public static void start(Context context) {
-        Intent intent = new Intent(context, MiladyAgentService.class);
+        Intent intent = new Intent(context, ElizaAgentService.class);
         intent.setAction(ACTION_START);
         context.startForegroundService(intent);
     }
 
     /** Request a graceful stop via the ACTION_STOP intent. */
     public static void stop(Context context) {
-        Intent intent = new Intent(context, MiladyAgentService.class);
+        Intent intent = new Intent(context, ElizaAgentService.class);
         intent.setAction(ACTION_STOP);
         context.startService(intent);
     }
 
     /** Restart the agent process without tearing down the service. */
     public static void restart(Context context) {
-        Intent intent = new Intent(context, MiladyAgentService.class);
+        Intent intent = new Intent(context, ElizaAgentService.class);
         intent.setAction(ACTION_RESTART);
         context.startService(intent);
     }
 
     /** Push a status string into the foreground notification. */
     public static void updateStatus(Context context, String status) {
-        Intent intent = new Intent(context, MiladyAgentService.class);
+        Intent intent = new Intent(context, ElizaAgentService.class);
         intent.setAction(ACTION_UPDATE_STATUS);
         intent.putExtra(EXTRA_STATUS, status);
         context.startService(intent);

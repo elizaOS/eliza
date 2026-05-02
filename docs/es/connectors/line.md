@@ -24,7 +24,7 @@ El conector de LINE es un plugin de elizaOS que conecta tu agente a la API de me
 |-------|-------|
 | Paquete | `@elizaos/plugin-line` |
 | Clave de configuración | `connectors.line` |
-| Instalación | `milady plugins install @elizaos/plugin-line` |
+| Instalación | `eliza plugins install @elizaos/plugin-line` |
 
 <div id="setup-requirements">
 

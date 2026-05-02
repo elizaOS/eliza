@@ -43,17 +43,17 @@ type DiscordMessage = {
 const DEFAULT_GUILD_NAME = process.env.DISCORD_QA_GUILD_NAME ?? "Cozy Devs";
 const DEFAULT_GUILD_ID =
   process.env.DISCORD_QA_GUILD_ID ?? "1051457140637827122";
-const POST_CHALLENGE = process.env.MILADY_DISCORD_QA_POST === "1";
-const WAIT_FOR_HUMAN = process.env.MILADY_DISCORD_QA_WAIT_FOR_HUMAN === "1";
+const POST_CHALLENGE = process.env.ELIZA_DISCORD_QA_POST === "1";
+const WAIT_FOR_HUMAN = process.env.ELIZA_DISCORD_QA_WAIT_FOR_HUMAN === "1";
 const EXPECT_BOT_RESPONSE =
-  process.env.MILADY_DISCORD_QA_EXPECT_BOT_RESPONSE === "1";
+  process.env.ELIZA_DISCORD_QA_EXPECT_BOT_RESPONSE === "1";
 const TIMEOUT_MS = Math.max(
   30_000,
   Number.parseInt(process.env.DISCORD_QA_TIMEOUT_MS ?? "", 10) || 10 * 60_000,
 );
 
 function loadDiscordToken(): string {
-  const configPath = path.join(os.homedir(), ".milady", "milady.json");
+  const configPath = path.join(os.homedir(), ".eliza", "eliza.json");
   const parsed = JSON.parse(
     fs.readFileSync(configPath, "utf8"),
   ) as DiscordConfig;
@@ -67,7 +67,7 @@ function loadDiscordToken(): string {
   const fromEnv = process.env.DISCORD_BOT_TOKEN?.trim();
   if (!fromEnv) {
     throw new Error(
-      "DISCORD_BOT_TOKEN is not configured in the environment or ~/.milady/milady.json",
+      "DISCORD_BOT_TOKEN is not configured in the environment or ~/.eliza/eliza.json",
     );
   }
   return fromEnv;
@@ -187,7 +187,7 @@ const report: Record<string, unknown> = {
 
 if (POST_CHALLENGE) {
   const tokenSuffix = `${Date.now()}`;
-  const challengeToken = `MILADY_DISCORD_QA_${tokenSuffix}`;
+  const challengeToken = `ELIZA_DISCORD_QA_${tokenSuffix}`;
   let posted: DiscordMessage | null = null;
   let postingChannel = selectedChannel;
   let lastError = "";

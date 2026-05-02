@@ -253,9 +253,9 @@ export function formatOrchestratorDesktopDevBanner(p) {
       setting: "ELIZA_NAMESPACE (Vite child env)",
       effective: elizaNamespace,
       source: elizaNamespaceUnset
-        ? "default (milady)"
+        ? "default (eliza)"
         : `env set — ELIZA_NAMESPACE=${elizaNamespace}`,
-      change: "export ELIZA_NAMESPACE=<ns> or unset for milady",
+      change: "export ELIZA_NAMESPACE=<ns> or unset for eliza",
     },
     {
       setting: "ELECTROBUN_SKIP_CODESIGN",

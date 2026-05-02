@@ -1,10 +1,10 @@
 ---
 title: "Plugin de Instagram"
 sidebarTitle: "Instagram"
-description: "Conector de Instagram para Milady — interactúa con la mensajería y el contenido de Instagram."
+description: "Conector de Instagram para Eliza — interactúa con la mensajería y el contenido de Instagram."
 ---
 
-El plugin de Instagram conecta agentes de Milady a Instagram, permitiendo el manejo de mensajes e interacciones de contenido.
+El plugin de Instagram conecta agentes de Eliza a Instagram, permitiendo el manejo de mensajes e interacciones de contenido.
 
 **Package:** `@elizaos/plugin-instagram`
 
@@ -15,7 +15,7 @@ El plugin de Instagram conecta agentes de Milady a Instagram, permitiendo el man
 </div>
 
 ```bash
-milady plugins install @elizaos/plugin-instagram
+eliza plugins install @elizaos/plugin-instagram
 ```
 
 <div id="setup">
@@ -33,9 +33,9 @@ milady plugins install @elizaos/plugin-instagram
 1. Usa tu nombre de usuario y contraseña de cuenta de Instagram
 2. Para automatización, considera crear una cuenta dedicada para tu agente
 
-<div id="2-configure-milady">
+<div id="2-configure-eliza">
 
-### 2. Configura Milady
+### 2. Configura Eliza
 
 </div>
 

@@ -24,9 +24,9 @@ import android.util.Log;
  * The JS layer is responsible for parsing the PDU (or scheduling
  * MmsManager.downloadMultimediaMessage if/when that path is wired up).
  */
-public class MiladyMmsReceiver extends BroadcastReceiver {
+public class ElizaMmsReceiver extends BroadcastReceiver {
 
-    private static final String TAG = "MiladyMmsReceiver";
+    private static final String TAG = "ElizaMmsReceiver";
 
     @Override
     public void onReceive(Context context, Intent intent) {

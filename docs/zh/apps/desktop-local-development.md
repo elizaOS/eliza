@@ -1,12 +1,12 @@
 ---
 title: 桌面本地开发
 sidebarTitle: 本地开发
-description: Milady 桌面开发编排器（scripts/dev-platform.mjs）为何以及如何同时运行 Vite、API 和 Electrobun — 环境变量、信号和关闭行为。
+description: Eliza 桌面开发编排器（scripts/dev-platform.mjs）为何以及如何同时运行 Vite、API 和 Electrobun — 环境变量、信号和关闭行为。
 ---
 
-**桌面开发栈**不是一个单一的二进制文件。`bun run dev:desktop` 和 `bun run dev:desktop:watch` 运行 `scripts/dev-platform.mjs`，它**编排**独立的进程：可选的一次性 `vite build`、可选的仓库根目录 `tsdown`，然后是长期运行的 **Vite**（当 `MILADY_DESKTOP_VITE_WATCH=1` 时）、**`bun --watch` API** 和 **Electrobun**。
+**桌面开发栈**不是一个单一的二进制文件。`bun run dev:desktop` 和 `bun run dev:desktop:watch` 运行 `scripts/dev-platform.mjs`，它**编排**独立的进程：可选的一次性 `vite build`、可选的仓库根目录 `tsdown`，然后是长期运行的 **Vite**（当 `ELIZA_DESKTOP_VITE_WATCH=1` 时）、**`bun --watch` API** 和 **Electrobun**。
 
-**为什么要编排？** Electrobun 需要 (a) 一个渲染器 URL，(b) 通常需要一个运行中的仪表盘 API，(c) 在开发中需要一个根目录 `dist/` 包用于嵌入式 Milady 运行时。手动执行容易出错；一个脚本保持端口、环境变量和关闭一致。
+**为什么要编排？** Electrobun 需要 (a) 一个渲染器 URL，(b) 通常需要一个运行中的仪表盘 API，(c) 在开发中需要一个根目录 `dist/` 包用于嵌入式 Eliza 运行时。手动执行容易出错；一个脚本保持端口、环境变量和关闭一致。
 
 <div id="commands">
 ## 命令
@@ -17,7 +17,7 @@ description: Milady 桌面开发编排器（scripts/dev-platform.mjs）为何以
 | 命令 | 启动内容 | 典型用途 |
 |------|---------|---------|
 | `bun run dev:desktop` | API（除非 `--no-api`）+ Electrobun；当 `apps/app/dist` 比源代码更新时**跳过** `vite build` | 针对**已构建**渲染资产的快速迭代 |
-| `bun run dev:desktop:watch` | 同一编排器带 **`MILADY_DESKTOP_VITE_WATCH=1`** — **Vite 开发服务器** + HMR | 桌面 UI 工作流 |
+| `bun run dev:desktop:watch` | 同一编排器带 **`ELIZA_DESKTOP_VITE_WATCH=1`** — **Vite 开发服务器** + HMR | 桌面 UI 工作流 |
 | `bun run dev` / `bun run dev:web:ui` | 仅浏览器仪表盘栈（API + Vite） | 兼容无头模式的仪表盘迭代 |
 
 **启动表：** 编排器、Vite、API 和 Electrobun 各自打印一个**纯文本设置表**（列为 *Setting / Effective / Source / Change*），以便你查看默认值与环境值及如何更改选项。不带 `--help` 运行即可在终端中查看。
@@ -41,9 +41,9 @@ description: Milady 桌面开发编排器（scripts/dev-platform.mjs）为何以
 如果你明确需要每次保存时输出文件（例如调试 Rollup 行为）：
 
 ```bash
-MILADY_DESKTOP_VITE_WATCH=1 bun scripts/dev-platform.mjs -- --rollup-watch
+ELIZA_DESKTOP_VITE_WATCH=1 bun scripts/dev-platform.mjs -- --rollup-watch
 # or env-only:
-MILADY_DESKTOP_VITE_WATCH=1 MILADY_DESKTOP_VITE_BUILD_WATCH=1 bun scripts/dev-platform.mjs
+ELIZA_DESKTOP_VITE_WATCH=1 ELIZA_DESKTOP_VITE_BUILD_WATCH=1 bun scripts/dev-platform.mjs
 ```
 
 **为什么这是可选的：** `vite build --watch` 仍然运行 Rollup 生产输出；"3 modules transformed" 仍可能意味着**数秒**重写多 MB 的 chunk。默认的 watch 路径使用 **Vite 开发服务器**代替。
@@ -54,18 +54,18 @@ MILADY_DESKTOP_VITE_WATCH=1 MILADY_DESKTOP_VITE_BUILD_WATCH=1 bun scripts/dev-pl
 
 | 变量 | 用途 |
 |------|------|
-| `MILADY_DESKTOP_VITE_WATCH=1` | 启用 watch 工作流（默认为开发服务器；见下文） |
-| `MILADY_DESKTOP_VITE_BUILD_WATCH=1` | 与 `VITE_WATCH` 一起使用，用 `vite build --watch` 代替 `vite dev` |
-| `MILADY_PORT` | Vite / 预期 UI 端口（默认 **2138**） |
-| `MILADY_API_PORT` | API 端口（默认 **31337**）；转发到 Vite 代理 env 和 Electrobun |
-| `MILADY_RENDERER_URL` | 使用 Vite dev 时**由编排器设置** — Electrobun 的 `resolveRendererUrl()` 优先使用此值而非内置静态服务器（**原因：** HMR 仅对开发服务器有效） |
-| `MILADY_DESKTOP_RENDERER_BUILD=always` | 即使 `dist/` 看起来是最新的也强制 `vite build` |
+| `ELIZA_DESKTOP_VITE_WATCH=1` | 启用 watch 工作流（默认为开发服务器；见下文） |
+| `ELIZA_DESKTOP_VITE_BUILD_WATCH=1` | 与 `VITE_WATCH` 一起使用，用 `vite build --watch` 代替 `vite dev` |
+| `ELIZA_PORT` | Vite / 预期 UI 端口（默认 **2138**） |
+| `ELIZA_API_PORT` | API 端口（默认 **31337**）；转发到 Vite 代理 env 和 Electrobun |
+| `ELIZA_RENDERER_URL` | 使用 Vite dev 时**由编排器设置** — Electrobun 的 `resolveRendererUrl()` 优先使用此值而非内置静态服务器（**原因：** HMR 仅对开发服务器有效） |
+| `ELIZA_DESKTOP_RENDERER_BUILD=always` | 即使 `dist/` 看起来是最新的也强制 `vite build` |
 | `--force-renderer` | 等同于始终重新构建渲染器 |
 | `--vite-force` | 在 Vite 开发服务器启动时传递 `vite --force`（清除依赖优化缓存） |
-| `--rollup-watch` | 与 `MILADY_DESKTOP_VITE_WATCH=1` 一起使用，用 `vite build --watch` 代替 `vite dev` |
+| `--rollup-watch` | 与 `ELIZA_DESKTOP_VITE_WATCH=1` 一起使用，用 `vite build --watch` 代替 `vite dev` |
 | `--no-api` | 仅 Electrobun；不启动 `dev-server.ts` 子进程 |
-| `MILADY_DESKTOP_SCREENSHOT_SERVER` | 对于 `dev:desktop` / `bun run dev` **默认开启**：Electrobun 在 `127.0.0.1:MILADY_SCREENSHOT_SERVER_PORT`（默认 **31339**）上监听；Milady API 将 **`GET /api/dev/cursor-screenshot`**（loopback）代理为**全屏 PNG** 供代理/工具使用（macOS 需要 Screen Recording 权限）。设置为 **`0`**、**`false`**、**`no`** 或 **`off`** 以禁用。 |
-| `MILADY_DESKTOP_DEV_LOG` | **默认开启：** 子进程日志（vite / api / electrobun）镜像到仓库根目录的 **`.milady/desktop-dev-console.log`**。API（loopback）上的 **`GET /api/dev/console-log`** 返回尾部内容（`?maxLines=`、`?maxBytes=`）。设置为 **`0`** / **`false`** / **`no`** / **`off`** 以禁用。 |
+| `ELIZA_DESKTOP_SCREENSHOT_SERVER` | 对于 `dev:desktop` / `bun run dev` **默认开启**：Electrobun 在 `127.0.0.1:ELIZA_SCREENSHOT_SERVER_PORT`（默认 **31339**）上监听；Eliza API 将 **`GET /api/dev/cursor-screenshot`**（loopback）代理为**全屏 PNG** 供代理/工具使用（macOS 需要 Screen Recording 权限）。设置为 **`0`**、**`false`**、**`no`** 或 **`off`** 以禁用。 |
+| `ELIZA_DESKTOP_DEV_LOG` | **默认开启：** 子进程日志（vite / api / electrobun）镜像到仓库根目录的 **`.eliza/desktop-dev-console.log`**。API（loopback）上的 **`GET /api/dev/console-log`** 返回尾部内容（`?maxLines=`、`?maxBytes=`）。设置为 **`0`** / **`false`** / **`no`** / **`off`** 以禁用。 |
 
 <div id="when-default-ports-are-busy">
 ### 当默认端口被占用时
@@ -75,14 +75,14 @@ MILADY_DESKTOP_VITE_WATCH=1 MILADY_DESKTOP_VITE_BUILD_WATCH=1 bun scripts/dev-pl
 
 | 环境变量 | 角色 | 默认值 |
 |---------|------|--------|
-| **`MILADY_API_PORT`** | Milady API（`dev-server.ts`） | **31337** |
-| **`MILADY_PORT`** | Vite 开发服务器（仅 watch 模式） | **2138** |
+| **`ELIZA_API_PORT`** | Eliza API（`dev-server.ts`） | **31337** |
+| **`ELIZA_PORT`** | Vite 开发服务器（仅 watch 模式） | **2138** |
 
-如果首选端口已被占用，编排器尝试 **preferred + 1**，然后 +2，...（有上限），并将**解析后的**值传递给**每个**子进程（`MILADY_DESKTOP_API_BASE`、**`MILADY_RENDERER_URL`**、Vite 的 **`MILADY_PORT`** 等）。
+如果首选端口已被占用，编排器尝试 **preferred + 1**，然后 +2，...（有上限），并将**解析后的**值传递给**每个**子进程（`ELIZA_DESKTOP_API_BASE`、**`ELIZA_RENDERER_URL`**、Vite 的 **`ELIZA_PORT`** 等）。
 
 **为什么在父进程中预分配（而不只在 API 进程内）：** Vite 在启动时只读取一次 `vite.config.ts`；代理的 **`target`** 必须在第一个请求**之前**与 API 端口匹配。如果只有 API 在绑定后才切换端口，UI 仍会代理到旧的默认值直到有人重启 Vite。在 `dev-platform.mjs` 中**一次**解析端口可以保持**编排器日志、环境、代理和 Electrobun** 使用相同的端口号。
 
-**打包桌面（`local` 嵌入式代理）：** Electrobun 主进程从首选的 **`MILADY_PORT`**（默认 **2138**）调用 **`findFirstAvailableLoopbackPort`**（`apps/app/electrobun/src/native/loopback-port.ts`），将其传递给 **`entry.js start`** 子进程，健康启动后更新 shell 中的 **`process.env.MILADY_PORT` / `MILADY_API_PORT` / `ELIZA_PORT`**。**为什么停止默认的 `lsof` + SIGKILL：** 当状态目录不同时，同一默认端口上的第二个 Milady 实例（或任何应用）是合法的；从 shell 中杀死 PID 令人意外且可能终止无关的工作。**可选回收：** **`MILADY_AGENT_RECLAIM_STALE_PORT=1`** 运行旧的**"先释放此端口"**行为，供希望单实例接管的开发者使用。
+**打包桌面（`local` 嵌入式代理）：** Electrobun 主进程从首选的 **`ELIZA_PORT`**（默认 **2138**）调用 **`findFirstAvailableLoopbackPort`**（`apps/app/electrobun/src/native/loopback-port.ts`），将其传递给 **`entry.js start`** 子进程，健康启动后更新 shell 中的 **`process.env.ELIZA_PORT` / `ELIZA_API_PORT` / `ELIZA_PORT`**。**为什么停止默认的 `lsof` + SIGKILL：** 当状态目录不同时，同一默认端口上的第二个 Eliza 实例（或任何应用）是合法的；从 shell 中杀死 PID 令人意外且可能终止无关的工作。**可选回收：** **`ELIZA_AGENT_RECLAIM_STALE_PORT=1`** 运行旧的**"先释放此端口"**行为，供希望单实例接管的开发者使用。
 
 **分离窗口：** 当嵌入式 API 端口确定或变更时，**`injectApiBase`** 对主窗口和**所有** `SurfaceWindowManager` 窗口执行（**原因：** chat/settings/等不能继续轮询过时的 `http://127.0.0.1:…`）。
 
@@ -100,15 +100,15 @@ MILADY_DESKTOP_VITE_WATCH=1 MILADY_DESKTOP_VITE_BUILD_WATCH=1 bun scripts/dev-pl
 cd apps/app/electrobun && bun run build:native-effects
 ```
 
-更多详情：[Electrobun shell 包](https://github.com/milady-ai/milady/tree/main/apps/app/electrobun)（README：*macOS window chrome*），以及 [Electrobun macOS 窗口 chrome](../guides/electrobun-mac-window-chrome.md)。
+更多详情：[Electrobun shell 包](https://github.com/eliza-ai/eliza/tree/main/apps/app/electrobun)（README：*macOS window chrome*），以及 [Electrobun macOS 窗口 chrome](../guides/electrobun-mac-window-chrome.md)。
 
 <div id="macos-local-network-permission-gateway-discovery">
 ## macOS：本地网络权限（网关发现）
 </div>
 
-桌面 shell 使用 **Bonjour/mDNS** 在局域网上发现 Milady 网关。macOS 可能显示**本地网络**隐私对话框 — 如果你依赖本地发现，请选择**允许**。
+桌面 shell 使用 **Bonjour/mDNS** 在局域网上发现 Eliza 网关。macOS 可能显示**本地网络**隐私对话框 — 如果你依赖本地发现，请选择**允许**。
 
-Milady 固定的 **Electrobun** 配置类型（以本仓库中的版本为准）**不**公开 **`NSLocalNetworkUsageDescription`** 的 `Info.plist` 合并，因此操作系统可能显示通用提示。如果上游稍后添加该 hook，我们可以设置更清晰的文案；行为不依赖于它。
+Eliza 固定的 **Electrobun** 配置类型（以本仓库中的版本为准）**不**公开 **`NSLocalNetworkUsageDescription`** 的 `Info.plist` 合并，因此操作系统可能显示通用提示。如果上游稍后添加该 hook，我们可以设置更清晰的文案；行为不依赖于它。
 
 <div id="why-vite-build-is-sometimes-skipped">
 ## 为什么 `vite build` 有时会被跳过
@@ -162,20 +162,20 @@ Milady 固定的 **Electrobun** 配置类型（以本仓库中的版本为准）
 ## IDE 和代理可观测性（Cursor、脚本）
 </div>
 
-编辑器和编码代理**看不到**原生 Electrobun 窗口，听不到音频，也无法自动发现 localhost。Milady 添加了**显式的、机器可读的 hook**，以便工具可以推理"正在运行什么"并近似"用户看到了什么"。
+编辑器和编码代理**看不到**原生 Electrobun 窗口，听不到音频，也无法自动发现 localhost。Eliza 添加了**显式的、机器可读的 hook**，以便工具可以推理"正在运行什么"并近似"用户看到了什么"。
 
 **为什么存在**
 
 1. **多进程事实** — 健康不是一个 PID。Vite、API 和 Electrobun 可能在端口上不一致；日志是交错的。一个 JSON 端点和一个日志文件避免了"在五个终端中搜索"。
 2. **安全 vs 便利** — 截图和日志尾部端点**仅限 loopback**；截图路径在 Electrobun 和 API 代理之间使用**会话令牌**；日志 API 仅对名为 **`desktop-dev-console.log`** 的文件做 tail。**原因：** 本地优先不意味着"LAN 上的任何进程都可以获取你的屏幕"。
-3. **默认启用可关闭** — 截图和聚合日志对 `dev:desktop` / `bun run dev` **默认开启**，因为代理和人类一起调试时受益；两者都可以通过 **`MILADY_DESKTOP_SCREENSHOT_SERVER=0`** 和 **`MILADY_DESKTOP_DEV_LOG=0`** 禁用，以缩小攻击面或减少磁盘 I/O。
+3. **默认启用可关闭** — 截图和聚合日志对 `dev:desktop` / `bun run dev` **默认开启**，因为代理和人类一起调试时受益；两者都可以通过 **`ELIZA_DESKTOP_SCREENSHOT_SERVER=0`** 和 **`ELIZA_DESKTOP_DEV_LOG=0`** 禁用，以缩小攻击面或减少磁盘 I/O。
 4. **Cursor 不自动轮询** — 发现是**文档 + `.cursor/rules`**（见仓库）加上你要求代理运行 `curl` 或读取文件。**原因：** 产品不会静默扫描你的机器；hook 在被指示时才存在。
 
-<div id="get-apidevstack-milady-api">
-### `GET /api/dev/stack`（Milady API）
+<div id="get-apidevstack-eliza-api">
+### `GET /api/dev/stack`（Eliza API）
 </div>
 
-返回稳定的 JSON（`schema: milady.dev.stack/v1`）：API **监听端口**（可能时来自**socket**）、来自 env 的**桌面** URL/端口（`MILADY_RENDERER_URL`、`MILADY_PORT`、…）、**`cursorScreenshot`** / **`desktopDevLog`** 可用性和路径，以及简短的 **hints**（例如启动器日志中 Electrobun 的内部 RPC 端口）。
+返回稳定的 JSON（`schema: eliza.dev.stack/v1`）：API **监听端口**（可能时来自**socket**）、来自 env 的**桌面** URL/端口（`ELIZA_RENDERER_URL`、`ELIZA_PORT`、…）、**`cursorScreenshot`** / **`desktopDevLog`** 可用性和路径，以及简短的 **hints**（例如启动器日志中 Electrobun 的内部 RPC 端口）。
 
 **为什么在 API 上：** 代理通常已经探测 `/api/health`；额外一个 GET 复用同一主机，避免解析 Electrobun 的临时端口。
 
@@ -199,19 +199,19 @@ Milady 固定的 **Electrobun** 配置类型（以本仓库中的版本为准）
 ### 聚合控制台 — 文件 + `GET /api/dev/console-log`
 </div>
 
-带前缀的 **vite / api / electrobun** 行被镜像到 **`.milady/desktop-dev-console.log`**（每次编排器启动时有会话横幅）。**`GET /api/dev/console-log`**（loopback）返回**文本尾部**；查询参数 **`maxLines`**（默认 400，上限 5000）和 **`maxBytes`**（默认 256000）。
+带前缀的 **vite / api / electrobun** 行被镜像到 **`.eliza/desktop-dev-console.log`**（每次编排器启动时有会话横幅）。**`GET /api/dev/console-log`**（loopback）返回**文本尾部**；查询参数 **`maxLines`**（默认 400，上限 5000）和 **`maxBytes`**（默认 256000）。
 
-**为什么是文件：** 代理可以从 `desktopDevLog.filePath` `read_file` 路径而无需 HTTP。**为什么是 HTTP tail：** 避免将多 MB 的日志读入上下文；限制防止 OOM。**为什么是基名允许列表：** `MILADY_DESKTOP_DEV_LOG_PATH` 否则可能指向任意文件。
+**为什么是文件：** 代理可以从 `desktopDevLog.filePath` `read_file` 路径而无需 HTTP。**为什么是 HTTP tail：** 避免将多 MB 的日志读入上下文；限制防止 OOM。**为什么是基名允许列表：** `ELIZA_DESKTOP_DEV_LOG_PATH` 否则可能指向任意文件。
 
 <div id="ui-e2e-playwright">
 ## UI E2E（Playwright）
 </div>
 
-浏览器冒烟测试目标是 Electrobun 在 watch 模式下加载的**同一渲染器 URL**（`http://localhost:<MILADY_PORT>`，默认 **2138**）。它们**不**驱动原生 Electrobun webview；托盘、原生菜单和仅打包行为由 **`bun run test:desktop:packaged`**（适用时）和[发布回归检查清单](./release-regression-checklist.md)覆盖。
+浏览器冒烟测试目标是 Electrobun 在 watch 模式下加载的**同一渲染器 URL**（`http://localhost:<ELIZA_PORT>`，默认 **2138**）。它们**不**驱动原生 Electrobun webview；托盘、原生菜单和仅打包行为由 **`bun run test:desktop:packaged`**（适用时）和[发布回归检查清单](./release-regression-checklist.md)覆盖。
 
 **为什么是 Playwright：** 应用已经包含 Playwright 用于渲染器和打包检查，因此浏览器冒烟流程现在使用相同的受支持栈，而不是单独的 TestCafe 工具链。这完全消除了有漏洞的 `replicator` 依赖，并将 UI E2E 面保持在一个运行器上。
 
-**依赖：** Playwright 位于 **`@miladyai/app`** 中，冒烟 spec 位于 `apps/app/test/ui-smoke/`。正常的根目录 `bun install` 仍然提升工作空间包；这些浏览器检查通过 `test:ui:playwright*` 选择加入。
+**依赖：** Playwright 位于 **`@elizaai/app`** 中，冒烟 spec 位于 `apps/app/test/ui-smoke/`。正常的根目录 `bun install` 仍然提升工作空间包；这些浏览器检查通过 `test:ui:playwright*` 选择加入。
 
 **浏览器运行时：** 该套件使用 Playwright Chromium。如果机器上尚未安装，请用 `cd apps/app && bunx playwright install chromium` 安装一次。
 
@@ -221,7 +221,7 @@ Milady 固定的 **Electrobun** 配置类型（以本仓库中的版本为准）
 | `bun run test:ui:playwright:settings-chat` | 运行 [`apps/app/test/ui-smoke/settings-chat-companion.spec.ts`](../../apps/app/test/ui-smoke/settings-chat-companion.spec.ts)，用于 companion 媒体设置持久化。 |
 | `bun run test:ui:playwright:packaged` | 运行 [`apps/app/test/ui-smoke/packaged-hash.spec.ts`](../../apps/app/test/ui-smoke/packaged-hash.spec.ts) 对 `apps/app/dist/index.html`；如果 `dist` 不存在则跳过。 |
 
-**完整测试矩阵：** `bun run test` 默认**不**运行 Playwright UI 冒烟测试。设置 **`MILADY_TEST_UI_PLAYWRIGHT=1`** 将 UI 套件添加到 `test/scripts/test-parallel.mjs`（串行，在 Vitest e2e 之后）。`MILADY_TEST_UI_TESTCAFE=1` 仍被接受为旧版别名。
+**完整测试矩阵：** `bun run test` 默认**不**运行 Playwright UI 冒烟测试。设置 **`ELIZA_TEST_UI_PLAYWRIGHT=1`** 将 UI 套件添加到 `test/scripts/test-parallel.mjs`（串行，在 Vitest e2e 之后）。`ELIZA_TEST_UI_TESTCAFE=1` 仍被接受为旧版别名。
 
 **路径 A vs 原生 webview（阶段 B）：** 这些 spec 仍然目标是渲染器 URL，而不是嵌入式 Electrobun webview。打包/原生行为由 **`bun run test:desktop:packaged`**、**`bun run test:desktop:playwright`** 和[发布回归检查清单](./release-regression-checklist.md)覆盖。
 
@@ -231,7 +231,7 @@ Milady 固定的 **Electrobun** 配置类型（以本仓库中的版本为准）
 
 | 部分 | 角色 |
 |------|------|
-| `.cursor/rules/milady-desktop-dev-observability.mdc` | Cursor：何时使用 stack / screenshot / console hook（**原因：** 产品不自动扫描 localhost） |
+| `.cursor/rules/eliza-desktop-dev-observability.mdc` | Cursor：何时使用 stack / screenshot / console hook（**原因：** 产品不自动扫描 localhost） |
 | `scripts/dev-platform.mjs` | 编排器；为 stack / screenshot / 日志路径设置 env |
 | `scripts/lib/vite-renderer-dist-stale.mjs` | 何时需要 `vite build` |
 | `scripts/lib/kill-ui-listen-port.mjs` | 释放 UI 端口 |

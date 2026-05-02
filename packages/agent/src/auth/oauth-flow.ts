@@ -141,7 +141,7 @@ interface StartOptions {
   /**
    * Called after the account is saved on disk. Used by the HTTP
    * route layer to also write a `LinkedAccountConfig` row into
-   * `milady.json`. Failures here propagate as flow `error`.
+   * `eliza.json`. Failures here propagate as flow `error`.
    */
   onAccountSaved?: (account: AccountCredentialRecord) => void | Promise<void>;
 }

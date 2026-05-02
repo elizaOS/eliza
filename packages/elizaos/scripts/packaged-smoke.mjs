@@ -34,7 +34,7 @@ const cliEnv =
     : process.env;
 const fullstackInstallEnv = {
   ...process.env,
-  MILADY_NO_VISION_DEPS: process.env.MILADY_NO_VISION_DEPS || "1",
+  ELIZA_NO_VISION_DEPS: process.env.ELIZA_NO_VISION_DEPS || "1",
   SKIP_AVATAR_CLONE: process.env.SKIP_AVATAR_CLONE || "1",
 };
 

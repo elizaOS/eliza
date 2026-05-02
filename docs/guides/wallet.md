@@ -4,7 +4,7 @@ sidebarTitle: "Wallet & Crypto"
 description: "Built-in EVM and Solana wallet with key generation, balance fetching, NFT queries, signing policy, and smart contract interactions."
 ---
 
-Milady includes a built-in crypto wallet supporting both EVM-compatible chains and Solana. The wallet uses Node.js crypto primitives (no heavy dependencies like viem or @solana/web3.js) and fetches on-chain data via Alchemy (EVM) and Helius (Solana) REST APIs.
+Eliza includes a built-in crypto wallet supporting both EVM-compatible chains and Solana. The wallet uses Node.js crypto primitives (no heavy dependencies like viem or @solana/web3.js) and fetches on-chain data via Alchemy (EVM) and Helius (Solana) REST APIs.
 
 ## Table of Contents
 
@@ -28,7 +28,7 @@ Milady includes a built-in crypto wallet supporting both EVM-compatible chains a
 
 ## Architecture Overview
 
-The Milady wallet is a self-contained module that runs entirely within the Milady process. It does not depend on external wallet libraries such as viem or `@solana/web3.js`. Instead, it uses:
+The Eliza wallet is a self-contained module that runs entirely within the Eliza process. It does not depend on external wallet libraries such as viem or `@solana/web3.js`. Instead, it uses:
 
 - **Node.js `crypto` module** for random byte generation and Ed25519 key derivation.
 - **`@noble/curves` (secp256k1)** for EVM public key derivation. This library was chosen because it works across Node, Bun, and browser runtimes. Node's built-in `crypto.createECDH("secp256k1")` fails in Bun due to BoringSSL limitations.
@@ -37,7 +37,7 @@ The Milady wallet is a self-contained module that runs entirely within the Milad
 
 The wallet communicates with blockchain networks exclusively through provider REST APIs (Alchemy for EVM, Helius for Solana). All RPC calls use a 15-second timeout (`AbortSignal.timeout(15_000)`) to prevent hanging requests.
 
-Private keys are stored in `process.env` at runtime and persisted to the agent's `milady.json` config file (written with `0o600` file permissions for owner-only read/write access).
+Private keys are stored in `process.env` at runtime and persisted to the agent's `eliza.json` config file (written with `0o600` file permissions for owner-only read/write access).
 
 ---
 
@@ -87,7 +87,7 @@ interface WalletGenerateResult {
 
 ### EVM Chains
 
-Milady supports five EVM chains out of the box, all fetched via Alchemy:
+Eliza supports five EVM chains out of the box, all fetched via Alchemy:
 
 | Chain | Chain ID | Native Symbol | Alchemy Subdomain |
 |-------|----------|---------------|-------------------|
@@ -222,7 +222,7 @@ The `POST /api/wallet/import` endpoint accepts a `chain` ("evm" or "solana") and
 - Keys starting with `0x` or 64-character hex strings are treated as EVM.
 - All other keys are treated as Solana (Base58-decoded, validated as 32 or 64 bytes).
 
-On successful import, the key is stored in `process.env` and persisted to the agent's `milady.json` config file under the `env` section. The import function validates the key, derives the address, and returns:
+On successful import, the key is stored in `process.env` and persisted to the agent's `eliza.json` config file under the `env` section. The import function validates the key, derives the address, and returns:
 
 ```typescript
 interface WalletImportResult {
@@ -429,7 +429,7 @@ All signing events are recorded to a `SandboxAuditLog` (if configured). Event ty
 
 ## Smart Contract Interactions
 
-Milady defines several smart contract interaction interfaces in `src/contracts/`:
+Eliza defines several smart contract interaction interfaces in `src/contracts/`:
 
 ### Apps Registry (`src/contracts/apps.ts`)
 
@@ -461,7 +461,7 @@ Identity verification:
 Private keys are stored in two places:
 
 1. **Runtime memory** — `process.env.EVM_PRIVATE_KEY` and `process.env.SOLANA_PRIVATE_KEY` are set when keys are generated or imported.
-2. **Config file** — the `env` section of `milady.json` persists keys to disk. The config file is written with `0o600` permissions (owner read/write only) and the config directory is created with `0o700` permissions.
+2. **Config file** — the `env` section of `eliza.json` persists keys to disk. The config file is written with `0o600` permissions (owner read/write only) and the config directory is created with `0o700` permissions.
 
 **Planned:** optional storage in the OS secret store (macOS Keychain, Windows Credential Manager, Linux Secret Service) with a **per-state-directory vault id**, so keys are not persisted in plaintext config when enabled. See [Platform secure store (design)](/guides/platform-secure-store).
 
@@ -543,7 +543,7 @@ After updating, the service calls `ensureWalletKeysInEnvAndConfig` to verify key
 
 ### Config File Location
 
-Wallet configuration lives within the main Milady config file (`milady.json`). The config is loaded using JSON5 (supporting comments and trailing commas) and resolved via includes.
+Wallet configuration lives within the main Eliza config file (`eliza.json`). The config is loaded using JSON5 (supporting comments and trailing commas) and resolved via includes.
 
 Private keys and API keys are stored in the `env` section:
 

@@ -40,7 +40,7 @@ function hasOuterElizaElectrobunCheckout(candidateDir: string): boolean {
   );
 }
 
-export function findMiladyRepoRoot(startDir: string): string {
+export function findElizaRepoRoot(startDir: string): string {
   let current = path.resolve(startDir);
   const matches: string[] = [];
   while (true) {
@@ -76,7 +76,7 @@ export function resolveElectrobunRepoRoot(startDir: string): string {
     return resolved;
   }
 
-  return findMiladyRepoRoot(startDir);
+  return findElizaRepoRoot(startDir);
 }
 
 const repoRoot = resolveElectrobunRepoRoot(electrobunDir);
@@ -113,7 +113,7 @@ export function createElectrobunConfig(): ElectrobunConfig {
     (process.env.ELIZA_RUNTIME_DIST_DIR ?? "").trim() || "eliza-dist";
   // Note: All paths relative to electrobun.config.ts location
   // (eliza/packages/app-core/platforms/electrobun/)
-  // ../../../../../ goes to milady repo root where dist/, plugins.json, package.json exist
+  // ../../../../../ goes to eliza repo root where dist/, plugins.json, package.json exist
 
   return {
     app: {

@@ -60,8 +60,8 @@ import { ConfigPageView } from "./ConfigPageView";
 import { ReleaseCenterView } from "./ReleaseCenterView";
 import { IdentitySettingsSection } from "./settings/IdentitySettingsSection";
 
-const SETTINGS_SIDEBAR_WIDTH_KEY = "milady:settings:sidebar:width";
-const SETTINGS_SIDEBAR_COLLAPSED_KEY = "milady:settings:sidebar:collapsed";
+const SETTINGS_SIDEBAR_WIDTH_KEY = "eliza:settings:sidebar:width";
+const SETTINGS_SIDEBAR_COLLAPSED_KEY = "eliza:settings:sidebar:collapsed";
 const SETTINGS_SIDEBAR_DEFAULT_WIDTH = 240;
 const SETTINGS_SIDEBAR_MIN_WIDTH = 200;
 const SETTINGS_SIDEBAR_MAX_WIDTH = 520;
@@ -733,7 +733,7 @@ export function SettingsView({
   }, [loadPlugins]);
 
   // Deep-link target: another component (e.g. AutomationsView's missing-creds
-  // banner, or apps/app/src/main.tsx parsing milady://settings/connectors/<x>)
+  // banner, or apps/app/src/main.tsx parsing eliza://settings/connectors/<x>)
   // dispatches SETTINGS_FOCUS_CONNECTOR_EVENT with the canonical provider id.
   // We focus the Integrations section, then scroll the matching panel wrapper
   // (`[data-connector="<provider>"]`) into view and briefly flash it.

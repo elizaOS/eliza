@@ -1,10 +1,10 @@
 ---
 title: "Publicar un Plugin"
 sidebarTitle: "Publicar"
-description: "Cómo empaquetar, versionar y publicar un plugin de Milady en el registro de npm y enviarlo al registro de la comunidad."
+description: "Cómo empaquetar, versionar y publicar un plugin de Eliza en el registro de npm y enviarlo al registro de la comunidad."
 ---
 
-Esta guía cubre el flujo completo de publicación de un plugin de Milady — desde el empaquetado hasta la publicación en npm y el envío al registro de la comunidad.
+Esta guía cubre el flujo completo de publicación de un plugin de Eliza — desde el empaquetado hasta la publicación en npm y el envío al registro de la comunidad.
 
 <div id="naming-conventions">
 
@@ -39,7 +39,7 @@ El `package.json` de tu plugin debe incluir estos campos:
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": ["dist", "elizaos.plugin.json"],
-  "keywords": ["elizaos", "milady", "plugin"],
+  "keywords": ["elizaos", "eliza", "plugin"],
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -181,7 +181,7 @@ npm info @yourorg/plugin-my-feature
 
 </div>
 
-Incluye un `elizaos.plugin.json` en la raíz del paquete para una integración enriquecida con la interfaz del panel de administración de Milady:
+Incluye un `elizaos.plugin.json` en la raíz del paquete para una integración enriquecida con la interfaz del panel de administración de Eliza:
 
 ```json
 {

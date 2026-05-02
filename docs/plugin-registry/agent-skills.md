@@ -1,7 +1,7 @@
 ---
 title: "Agent Skills Plugin"
 sidebarTitle: "Agent Skills"
-description: "Agent Skills plugin for Milady — implement the Agent Skills specification with progressive disclosure."
+description: "Agent Skills plugin for Eliza — implement the Agent Skills specification with progressive disclosure."
 ---
 
 The Agent Skills plugin implements the Agent Skills specification for **elizaOS**, giving agents the ability to discover, load, and execute skills with progressive disclosure.
@@ -26,7 +26,7 @@ This plugin is a core plugin and is always loaded. No manual installation is req
 | `BUNDLED_SKILLS_DIRS` | string | No | Comma-separated list of directories containing bundled (read-only) skills |
 | `OTTO_BUNDLED_SKILLS_DIR` | string | No | Legacy: Single directory containing Otto bundled skills |
 
-Example in `milady.json`:
+Example in `eliza.json`:
 
 ```json
 {

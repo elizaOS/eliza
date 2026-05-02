@@ -6,7 +6,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.text.TextUtils;
 
-public class MiladySmsComposeActivity extends Activity {
+public class ElizaSmsComposeActivity extends Activity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {

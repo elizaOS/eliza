@@ -25,9 +25,9 @@ import org.junit.runner.RunWith;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 
 @RunWith(AndroidJUnit4.class)
-public class MiladyOsInstrumentedTest {
+public class ElizaOsInstrumentedTest {
 
-    private static final String PACKAGE_NAME = "com.miladyai.milady";
+    private static final String PACKAGE_NAME = "com.elizaai.eliza";
     private static final String[] REQUIRED_PERMISSIONS = {
             Manifest.permission.READ_CONTACTS,
             Manifest.permission.WRITE_CONTACTS,
@@ -90,25 +90,25 @@ public class MiladyOsInstrumentedTest {
         return componentName.getPackageName();
     }
 
-    private void assumeSystemMilady() throws PackageManager.NameNotFoundException {
+    private void assumeSystemEliza() throws PackageManager.NameNotFoundException {
         ApplicationInfo info = appInfo();
-        assumeTrue("MiladyOS tests only run for the system privileged Milady APK",
-                info.sourceDir != null && info.sourceDir.startsWith("/system/priv-app/Milady/"));
+        assumeTrue("ElizaOS tests only run for the system privileged Eliza APK",
+                info.sourceDir != null && info.sourceDir.startsWith("/system/priv-app/Eliza/"));
     }
 
     @Test
-    public void packageIsPrivilegedSystemMilady() throws Exception {
-        assumeSystemMilady();
+    public void packageIsPrivilegedSystemEliza() throws Exception {
+        assumeSystemEliza();
         ApplicationInfo info = appInfo();
 
         assertEquals(PACKAGE_NAME, context().getPackageName());
         assertTrue((info.flags & ApplicationInfo.FLAG_SYSTEM) != 0);
-        assertTrue(info.sourceDir.startsWith("/system/priv-app/Milady/"));
+        assertTrue(info.sourceDir.startsWith("/system/priv-app/Eliza/"));
     }
 
     @Test
-    public void homeIntentResolvesToMilady() throws Exception {
-        assumeSystemMilady();
+    public void homeIntentResolvesToEliza() throws Exception {
+        assumeSystemEliza();
         Intent home = new Intent(Intent.ACTION_MAIN);
         home.addCategory(Intent.CATEGORY_HOME);
 
@@ -117,8 +117,8 @@ public class MiladyOsInstrumentedTest {
     }
 
     @Test
-    public void miladyHoldsAndroidDefaultRoles() throws Exception {
-        assumeSystemMilady();
+    public void elizaHoldsAndroidDefaultRoles() throws Exception {
+        assumeSystemEliza();
         assumeTrue(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q);
         RoleManager roleManager = (RoleManager) context().getSystemService(Context.ROLE_SERVICE);
         assertNotNull(roleManager);
@@ -136,7 +136,7 @@ public class MiladyOsInstrumentedTest {
 
     @Test
     public void defaultPermissionsAreGranted() throws Exception {
-        assumeSystemMilady();
+        assumeSystemEliza();
         for (String permission : REQUIRED_PERMISSIONS) {
             assertEquals(
                     permission,
@@ -148,7 +148,7 @@ public class MiladyOsInstrumentedTest {
 
     @Test
     public void stockPhoneAppsAreNotInstalled() throws Exception {
-        assumeSystemMilady();
+        assumeSystemEliza();
         PackageManager packageManager = context().getPackageManager();
         for (String packageName : FORBIDDEN_PACKAGES) {
             try {

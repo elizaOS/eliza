@@ -97,13 +97,13 @@ export async function createScenarioRuntime(
   const prevWebsiteBlockerHostsFilePath =
     process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH;
   const prevSelfControlHostsFilePath = process.env.SELFCONTROL_HOSTS_FILE_PATH;
-  const prevMiladyDisableActivityTracker =
-    process.env.MILADY_DISABLE_ACTIVITY_TRACKER;
+  const prevElizaDisableActivityTracker =
+    process.env.ELIZA_DISABLE_ACTIVITY_TRACKER;
   const prevElizaDisableActivityTracker =
     process.env.ELIZA_DISABLE_ACTIVITY_TRACKER;
   let scenarioHostsRoot: string | null = null;
   process.env.PGLITE_DATA_DIR = pgliteDir;
-  process.env.MILADY_DISABLE_ACTIVITY_TRACKER = "1";
+  process.env.ELIZA_DISABLE_ACTIVITY_TRACKER = "1";
   process.env.ELIZA_DISABLE_ACTIVITY_TRACKER = "1";
   if (!process.env.LOCAL_EMBEDDING_DIMENSIONS?.trim()) {
     process.env.LOCAL_EMBEDDING_DIMENSIONS = "384";
@@ -334,11 +334,11 @@ export async function createScenarioRuntime(
     } else {
       delete process.env.SELFCONTROL_HOSTS_FILE_PATH;
     }
-    if (prevMiladyDisableActivityTracker !== undefined) {
-      process.env.MILADY_DISABLE_ACTIVITY_TRACKER =
-        prevMiladyDisableActivityTracker;
+    if (prevElizaDisableActivityTracker !== undefined) {
+      process.env.ELIZA_DISABLE_ACTIVITY_TRACKER =
+        prevElizaDisableActivityTracker;
     } else {
-      delete process.env.MILADY_DISABLE_ACTIVITY_TRACKER;
+      delete process.env.ELIZA_DISABLE_ACTIVITY_TRACKER;
     }
     if (prevElizaDisableActivityTracker !== undefined) {
       process.env.ELIZA_DISABLE_ACTIVITY_TRACKER =

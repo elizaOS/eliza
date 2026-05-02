@@ -1,14 +1,14 @@
 ---
 title: "Twitter / X Plugin"
 sidebarTitle: "Twitter"
-description: "Twitter/X connector for Milady — posting, replying, monitoring mentions, and timeline interactions via the xAI plugin."
+description: "Twitter/X connector for Eliza — posting, replying, monitoring mentions, and timeline interactions via the xAI plugin."
 ---
 
-> **Registry note:** `@elizaos/plugin-twitter` is not currently listed in the Milady plugin registry (`plugins.json`). The package may be available from npm or a separate elizaOS plugin repository. Verify availability before configuring.
+> **Registry note:** `@elizaos/plugin-twitter` is not currently listed in the Eliza plugin registry (`plugins.json`). The package may be available from npm or a separate elizaOS plugin repository. Verify availability before configuring.
 
-The Twitter plugin connects Milady agents to Twitter/X, enabling autonomous posting, replying to mentions, monitoring timelines, and engaging with other accounts.
+The Twitter plugin connects Eliza agents to Twitter/X, enabling autonomous posting, replying to mentions, monitoring timelines, and engaging with other accounts.
 
-> **On-demand plugin.** This plugin is resolved from the remote elizaOS plugin registry and auto-installs when its credentials are detected. It is not included in Milady's bundled `plugins.json` index.
+> **On-demand plugin.** This plugin is resolved from the remote elizaOS plugin registry and auto-installs when its credentials are detected. It is not included in Eliza's bundled `plugins.json` index.
 
 **Package:** `@elizaos/plugin-twitter`
 
@@ -20,7 +20,7 @@ The separate `@elizaos/plugin-xai` package also bundles X/Twitter integration al
 
 ```bash
 # Requires the package to be available on npm
-milady plugins install twitter
+eliza plugins install twitter
 ```
 
 ## Setup
@@ -33,7 +33,7 @@ milady plugins install twitter
 4. Set the app permissions to **Read and Write** (required for posting)
 5. Generate your API keys and tokens
 
-### 2. Configure Milady
+### 2. Configure Eliza
 
 ```json
 {

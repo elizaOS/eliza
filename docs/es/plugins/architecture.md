@@ -1,10 +1,10 @@
 ---
 title: "Arquitectura de Plugins"
 sidebarTitle: "Arquitectura"
-description: "Análisis profundo del sistema de plugins de Milady — ciclo de vida del registro, puntos de enganche, mecanismo de auto-habilitación y resolución de dependencias."
+description: "Análisis profundo del sistema de plugins de Eliza — ciclo de vida del registro, puntos de enganche, mecanismo de auto-habilitación y resolución de dependencias."
 ---
 
-El sistema de plugins de Milady está construido sobre el núcleo de elizaOS. Toda capacidad más allá del runtime base — proveedores de modelos, conectores de plataformas, integraciones DeFi, programación de tareas y funcionalidades personalizadas — se entrega como un plugin.
+El sistema de plugins de Eliza está construido sobre el núcleo de elizaOS. Toda capacidad más allá del runtime base — proveedores de modelos, conectores de plataformas, integraciones DeFi, programación de tareas y funcionalidades personalizadas — se entrega como un plugin.
 
 <div id="system-design">
 
@@ -143,7 +143,7 @@ interface Plugin {
 
 </div>
 
-Los plugins se habilitan automáticamente cuando se detecta su configuración requerida. Esta lógica se encuentra en `eliza/packages/agent/src/config/plugin-auto-enable.ts` (extendida por el `plugin-auto-enable.ts` de Milady para conectores como WeChat) y se ejecuta antes de la inicialización del runtime.
+Los plugins se habilitan automáticamente cuando se detecta su configuración requerida. Esta lógica se encuentra en `eliza/packages/agent/src/config/plugin-auto-enable.ts` (extendida por el `plugin-auto-enable.ts` de Eliza para conectores como WeChat) y se ejecuta antes de la inicialización del runtime.
 
 <div id="trigger-sources">
 
@@ -205,13 +205,13 @@ const CONNECTOR_PLUGINS = {
   nostr:       "@elizaos/plugin-nostr",
   blooio:      "@elizaos/plugin-blooio",
   twitch:      "@elizaos/plugin-twitch",
-  wechat:      "@elizaos/plugin-wechat",  // Milady-specific (added in app-core)
+  wechat:      "@elizaos/plugin-wechat",  // Eliza-specific (added in app-core)
 };
 ```
 
-> **Nota:** El paquete upstream `packages/agent` define todos los conectores `@elizaos/*`. El `packages/app-core` de Milady extiende este mapa con la entrada `wechat` apuntando a `@elizaos/plugin-wechat`.
+> **Nota:** El paquete upstream `packages/agent` define todos los conectores `@elizaos/*`. El `packages/app-core` de Eliza extiende este mapa con la entrada `wechat` apuntando a `@elizaos/plugin-wechat`.
 
-**Flags de funcionalidades** — La sección `features` de `milady.json` habilita automáticamente los plugins de funcionalidades. Una funcionalidad puede habilitarse con `features.<name>: true` o `features.<name>.enabled: true`:
+**Flags de funcionalidades** — La sección `features` de `eliza.json` habilita automáticamente los plugins de funcionalidades. Una funcionalidad puede habilitarse con `features.<name>: true` o `features.<name>.enabled: true`:
 
 ```json
 {

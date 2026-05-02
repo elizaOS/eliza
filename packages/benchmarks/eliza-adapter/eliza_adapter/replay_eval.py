@@ -1,4 +1,4 @@
-"""Evaluate normalized Milady replay artifacts for orchestrator benchmarking."""
+"""Evaluate normalized Eliza replay artifacts for orchestrator benchmarking."""
 
 from __future__ import annotations
 
@@ -103,7 +103,7 @@ def _collect_inputs(input_path: Path, pattern: str) -> list[Path]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Score normalized Milady replay artifacts.",
+        description="Score normalized Eliza replay artifacts.",
     )
     parser.add_argument(
         "--input",
@@ -172,7 +172,7 @@ def main() -> int:
     avg_duration_ms = sum(durations) / len(durations) if durations else None
 
     result = {
-        "benchmark": "milaidy_replay",
+        "benchmark": "eliza_replay",
         "score": success_rate,
         "unit": "ratio",
         "higher_is_better": True,

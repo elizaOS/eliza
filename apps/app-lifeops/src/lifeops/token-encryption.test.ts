@@ -13,7 +13,7 @@ import {
 let tmpDir: string;
 
 beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "milady-token-enc-"));
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-token-enc-"));
 });
 
 afterEach(() => {

@@ -19,9 +19,9 @@
 import { type BrandingConfig, DEFAULT_BRANDING } from "./branding";
 
 export interface AppDesktopConfig {
-  /** Reverse-domain bundle identifier (e.g. "com.miladyai.milady") */
+  /** Reverse-domain bundle identifier (e.g. "com.elizaai.eliza") */
   bundleId: string;
-  /** Custom URL scheme for deep links (e.g. "milady", "myagent") */
+  /** Custom URL scheme for deep links (e.g. "eliza", "myagent") */
   urlScheme: string;
   /** Release notes URL */
   releaseNotesUrl?: string;
@@ -85,7 +85,7 @@ export interface AppConfig {
   /** Repository name */
   repoName: string;
 
-  /** CLI command name (e.g. "milady", "myagent") */
+  /** CLI command name (e.g. "eliza", "myagent") */
   cliName: string;
 
   /** Short tagline / description */
@@ -104,7 +104,7 @@ export interface AppConfig {
   /**
    * Env var prefix for this app.
    * When set, the app's brand-env layer aliases `{PREFIX}_PORT` → `ELIZA_PORT`, etc.
-   * Example: "MILADY" generates MILADY_PORT → ELIZA_PORT.
+   * Example: "ELIZA" generates ELIZA_PORT → ELIZA_PORT.
    */
   envPrefix?: string;
 

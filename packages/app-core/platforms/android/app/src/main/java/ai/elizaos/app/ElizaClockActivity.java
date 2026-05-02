@@ -11,14 +11,14 @@ import android.provider.AlarmClock;
  * DeskClock is stripped. SET_ALARM and SHOW_ALARMS are critical for a
  * phone — third-party apps (calendar reminders, fitness apps, etc.)
  * fire SET_ALARM all the time. Without this activity, a phone shipping
- * MiladyOS literally cannot have alarms set programmatically.
+ * ElizaOS literally cannot have alarms set programmatically.
  *
- * Routes to milady://clock with the action and any extras
+ * Routes to eliza://clock with the action and any extras
  * (HOUR/MINUTES/MESSAGE/RINGTONE/SKIP_UI) preserved so the WebView can
  * either show the alarm UI or, on SKIP_UI=true, schedule it directly
- * via the Milady alarm service.
+ * via the Eliza alarm service.
  */
-public class MiladyClockActivity extends Activity {
+public class ElizaClockActivity extends Activity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {

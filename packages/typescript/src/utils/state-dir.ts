@@ -1,8 +1,8 @@
 /**
- * Milady state-dir resolution.
+ * Eliza state-dir resolution.
  *
- * Canonical rule: `MILADY_STATE_DIR` wins, then `ELIZA_STATE_DIR` (historical
- * alias), then `<homedir>/.milady`. Every caller that wants to touch the
+ * Canonical rule: `ELIZA_STATE_DIR` wins, then `ELIZA_STATE_DIR` (historical
+ * alias), then `<homedir>/.eliza`. Every caller that wants to touch the
  * persisted user state (skills, training, optimized prompts, counters) must
  * go through `resolveStateDir()` so we have one place that enforces this
  * precedence.
@@ -16,13 +16,13 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 /**
- * Resolve the Milady per-user state directory, honoring the documented
- * `MILADY_STATE_DIR` → `ELIZA_STATE_DIR` → `~/.milady` precedence.
+ * Resolve the Eliza per-user state directory, honoring the documented
+ * `ELIZA_STATE_DIR` → `ELIZA_STATE_DIR` → `~/.eliza` precedence.
  */
 export function resolveStateDir(): string {
 	return (
-		process.env.MILADY_STATE_DIR?.trim() ||
 		process.env.ELIZA_STATE_DIR?.trim() ||
-		join(homedir(), ".milady")
+		process.env.ELIZA_STATE_DIR?.trim() ||
+		join(homedir(), ".eliza")
 	);
 }

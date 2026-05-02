@@ -10,14 +10,14 @@ description: "DEPRECATED: replaced by @elizaos/plugin-n8n-workflow. N8n workflow
 
 ## Overview
 
-The n8n plugin provided workflow automation integration for Milady agents. It has been superseded by the n8n-workflow plugin, which offers improved workflow management and execution.
+The n8n plugin provided workflow automation integration for Eliza agents. It has been superseded by the n8n-workflow plugin, which offers improved workflow management and execution.
 
 ## Migration
 
 Install the replacement plugin instead:
 
 ```bash
-milady plugins install n8n-workflow
+eliza plugins install n8n-workflow
 ```
 
 See the [n8n-workflow documentation](/plugin-registry/n8n-workflow) for configuration and usage.

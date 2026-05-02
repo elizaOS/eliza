@@ -351,7 +351,7 @@ function runScript(cwd, scriptName, label) {
       env: {
         ...process.env,
         NODE_NO_WARNINGS: process.env.NODE_NO_WARNINGS || "1",
-        MILADY_LIVE_TEST: process.env.MILADY_LIVE_TEST || "1",
+        ELIZA_LIVE_TEST: process.env.ELIZA_LIVE_TEST || "1",
         ELIZA_LIVE_TEST: process.env.ELIZA_LIVE_TEST || "1",
         PWD: cwd,
       },

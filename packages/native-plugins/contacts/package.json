@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/capacitor-contacts",
   "version": "1.0.0",
-  "description": "Android ContactsContract bridge for MiladyOS.",
+  "description": "Android ContactsContract bridge for ElizaOS.",
   "main": "./dist/plugin.cjs.js",
   "module": "./dist/esm/index.js",
   "types": "./dist/esm/index.d.ts",

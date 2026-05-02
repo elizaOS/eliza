@@ -10,12 +10,12 @@ Hedera blockchain integration for **elizaOS** agents.
 
 ## Overview
 
-The Hedera plugin enables Milady agents to interact with the Hedera network. Agents can perform on-chain operations using their configured Hedera account across mainnet, testnet, or previewnet environments.
+The Hedera plugin enables Eliza agents to interact with the Hedera network. Agents can perform on-chain operations using their configured Hedera account across mainnet, testnet, or previewnet environments.
 
 ## Installation
 
 ```bash
-milady plugins install hedera
+eliza plugins install hedera
 ```
 
 ## Auto-Enable

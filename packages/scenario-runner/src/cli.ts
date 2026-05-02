@@ -1,5 +1,5 @@
 /**
- * `milady-scenarios` CLI. Two commands:
+ * `eliza-scenarios` CLI. Two commands:
  *
  *   run  <dir> [--report <path>] [--report-dir <dir>] [--runId <id>] [--scenario <id,id,...>] [fileGlob ...]
  *   list <dir> [fileGlob ...]
@@ -28,9 +28,9 @@ interface ParsedArgs {
 }
 
 function usageAndExit(message: string, code: number): never {
-  process.stderr.write(`[milady-scenarios] ${message}\n`);
+  process.stderr.write(`[eliza-scenarios] ${message}\n`);
   process.stderr.write(
-    "Usage:\n  milady-scenarios run  <dir> [--report <jsonPath>] [--report-dir <dir>] [--runId <id>] [--scenario id1,id2] [fileGlob ...]\n  milady-scenarios list <dir> [fileGlob ...]\n",
+    "Usage:\n  eliza-scenarios run  <dir> [--report <jsonPath>] [--report-dir <dir>] [--runId <id>] [--scenario id1,id2] [fileGlob ...]\n  eliza-scenarios list <dir> [fileGlob ...]\n",
   );
   process.exit(code);
 }
@@ -128,7 +128,7 @@ async function main(): Promise<number> {
 
   if (availableProviderNames().length === 0) {
     process.stderr.write(
-      "[milady-scenarios] no LLM provider API key set; refusing to run (WS7 policy: fail loudly on silent credential skips).\n  Set one of: GROQ_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY, OPENROUTER_API_KEY.\n",
+      "[eliza-scenarios] no LLM provider API key set; refusing to run (WS7 policy: fail loudly on silent credential skips).\n  Set one of: GROQ_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY, OPENROUTER_API_KEY.\n",
     );
     return 2;
   }
@@ -138,7 +138,7 @@ async function main(): Promise<number> {
   );
   if (!Number.isFinite(minJudgeScore) || minJudgeScore <= 0) {
     process.stderr.write(
-      `[milady-scenarios] invalid LIFEOPS_LIVE_JUDGE_MIN_SCORE=${process.env.LIFEOPS_LIVE_JUDGE_MIN_SCORE}\n`,
+      `[eliza-scenarios] invalid LIFEOPS_LIVE_JUDGE_MIN_SCORE=${process.env.LIFEOPS_LIVE_JUDGE_MIN_SCORE}\n`,
     );
     return 2;
   }
@@ -150,13 +150,13 @@ async function main(): Promise<number> {
   );
   if (loaded.length === 0) {
     process.stderr.write(
-      `[milady-scenarios] no scenarios discovered under ${parsed.dir}${parsed.filter ? ` (filter=${[...parsed.filter].join(",")})` : ""}${parsed.fileGlobs && parsed.fileGlobs.length > 0 ? ` (fileGlobs=${parsed.fileGlobs.join(",")})` : ""}\n`,
+      `[eliza-scenarios] no scenarios discovered under ${parsed.dir}${parsed.filter ? ` (filter=${[...parsed.filter].join(",")})` : ""}${parsed.fileGlobs && parsed.fileGlobs.length > 0 ? ` (fileGlobs=${parsed.fileGlobs.join(",")})` : ""}\n`,
     );
     return 2;
   }
 
   logger.info(
-    `[milady-scenarios] discovered ${loaded.length} scenario(s) under ${parsed.dir}`,
+    `[eliza-scenarios] discovered ${loaded.length} scenario(s) under ${parsed.dir}`,
   );
 
   const startedAtIso = new Date().toISOString();
@@ -166,12 +166,12 @@ async function main(): Promise<number> {
   // (required when testing cross-scenario state leakage), invoke the CLI
   // once per scenario from a shell loop (see scripts/run-scenarios-isolated.mjs).
   const { runtime, providerName, cleanup } = await createScenarioRuntime();
-  logger.info(`[milady-scenarios] live provider: ${providerName}`);
+  logger.info(`[eliza-scenarios] live provider: ${providerName}`);
 
   const reports: ScenarioReport[] = [];
   try {
     for (const { scenario } of loaded) {
-      logger.info(`[milady-scenarios] ▶ ${scenario.id}`);
+      logger.info(`[eliza-scenarios] ▶ ${scenario.id}`);
       const report = await runScenario(scenario, runtime, {
         providerName,
         minJudgeScore,
@@ -179,7 +179,7 @@ async function main(): Promise<number> {
       });
       reports.push(report);
       logger.info(
-        `[milady-scenarios] ${report.status === "passed" ? "✓" : report.status === "skipped" ? "∼" : "✗"} ${scenario.id} ${report.status} (${report.durationMs}ms)${report.skipReason ? ` — ${report.skipReason}` : ""}`,
+        `[eliza-scenarios] ${report.status === "passed" ? "✓" : report.status === "skipped" ? "∼" : "✗"} ${scenario.id} ${report.status} (${report.durationMs}ms)${report.skipReason ? ` — ${report.skipReason}` : ""}`,
       );
     }
   } finally {
@@ -207,7 +207,7 @@ async function main(): Promise<number> {
   const skipReason = (process.env.SKIP_REASON ?? "").trim();
   if (aggregate.totals.skipped > 0 && skipReason.length === 0) {
     process.stderr.write(
-      `[milady-scenarios] ${aggregate.totals.skipped} scenario(s) skipped without SKIP_REASON — failing loudly per WS7 policy.\n`,
+      `[eliza-scenarios] ${aggregate.totals.skipped} scenario(s) skipped without SKIP_REASON — failing loudly per WS7 policy.\n`,
     );
     return 2;
   }
@@ -221,7 +221,7 @@ main()
   })
   .catch((err: unknown) => {
     process.stderr.write(
-      `[milady-scenarios] fatal: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`,
+      `[eliza-scenarios] fatal: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`,
     );
     process.exit(1);
   });

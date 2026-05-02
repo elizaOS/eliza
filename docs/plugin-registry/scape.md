@@ -10,12 +10,12 @@ Autonomous agent gameplay for xRSPS (RuneScape private servers).
 
 ## Overview
 
-The Scape plugin provides first-class agent integration for xRSPS, enabling Milady agents to autonomously play RuneScape-alike private servers. Agents can navigate the game world, manage inventory, interact with NPCs, and carry out gameplay tasks.
+The Scape plugin provides first-class agent integration for xRSPS, enabling Eliza agents to autonomously play RuneScape-alike private servers. Agents can navigate the game world, manage inventory, interact with NPCs, and carry out gameplay tasks.
 
 ## Installation
 
 ```bash
-milady plugins install scape
+eliza plugins install scape
 ```
 
 ## Configuration

@@ -1,18 +1,18 @@
 ---
 title: Coding Swarms (Orchestrator)
 sidebarTitle: Coding Swarms
-description: How Milady coding swarms work, how to enable/configure them, auth modes, debug capture, and benchmark basics.
+description: How Eliza coding swarms work, how to enable/configure them, auth modes, debug capture, and benchmark basics.
 ---
 
-Milady's coding swarm capability is powered by `@elizaos/plugin-agent-orchestrator`.
+Eliza's coding swarm capability is powered by `@elizaos/plugin-agent-orchestrator`.
 
 ## Is It Enabled By Default?
 
-Yes. The orchestrator plugin is in Milady's core plugin set and loads by default.
+Yes. The orchestrator plugin is in Eliza's core plugin set and loads by default.
 
 It is only disabled if you explicitly disable it in config.
 
-Example (`~/.milady/milady.json`):
+Example (`~/.eliza/eliza.json`):
 
 ```json
 {
@@ -45,13 +45,13 @@ The orchestration stack has four main pieces:
 - `SwarmCoordinator`: handles multi-agent supervision, turn triage, and completion.
 - `CodingWorkspaceService`: provisions per-task Git workspaces.
 
-In short: Milady receives a coding request, provisions workspace(s), spawns one or more coding-agent sessions, coordinates progress, and reports back in chat/API.
+In short: Eliza receives a coding request, provisions workspace(s), spawns one or more coding-agent sessions, coordinates progress, and reports back in chat/API.
 
 ## Scratch Workspace Lifecycle
 
 When no `repo` and no explicit `workdir` are provided, the orchestrator creates a scratch workspace under:
 
-- `~/.milady/workspaces/<uuid>`
+- `~/.eliza/workspaces/<uuid>`
 
 Current behavior: scratch is treated as temporary and is cleaned up automatically when the task reaches a terminal state (`task_complete`, `stopped`, or `error`).
 
@@ -63,12 +63,12 @@ If users want multi-turn coding on local files over time, use an explicit `workd
 
 By default, safety checks allow `workdir` only under:
 
-- `~/.milady/workspaces`
-- the Milady server process current working directory (`cwd`)
+- `~/.eliza/workspaces`
+- the Eliza server process current working directory (`cwd`)
 
 Recommended pattern:
 
-1. Create a project folder under `~/.milady/workspaces` (or under the directory where you launch Milady).
+1. Create a project folder under `~/.eliza/workspaces` (or under the directory where you launch Eliza).
 2. Start coding tasks with that folder as `workdir`.
 3. Reuse the same `workdir` across sessions.
 
@@ -76,7 +76,7 @@ This keeps data persistent without opening unrestricted filesystem access.
 
 ## Local Agent CLIs Must Be Installed
 
-Milady can orchestrate these agent types:
+Eliza can orchestrate these agent types:
 
 - `claude`
 - `codex`
@@ -102,7 +102,7 @@ This is the source of truth for "is this agent available on this machine right n
 
 ## Credentials and Login Behavior
 
-Milady passes provider keys to coding-agent sessions when present:
+Eliza passes provider keys to coding-agent sessions when present:
 
 - `ANTHROPIC_API_KEY`
 - `OPENAI_API_KEY`
@@ -112,7 +112,7 @@ Behavior when keys are missing depends on the agent CLI:
 
 - `gemini`: supports API-key mode and Google login flow. If no key is set, orchestrator uses CLI auth flow.
 - `claude` and `codex`: typically rely on each CLI's own login/subscription flow when API keys are not set.
-- `aider`: typically requires provider API keys and does not rely on a subscription-style login in Milady.
+- `aider`: typically requires provider API keys and does not rely on a subscription-style login in Eliza.
 
 ## GitHub Access for Repo/PR/Issue Work
 
@@ -125,14 +125,14 @@ Optional:
 
 - `GITHUB_OAUTH_CLIENT_SECRET`
 
-If no `GITHUB_TOKEN` is set and `GITHUB_OAUTH_CLIENT_ID` is present, Milady can run GitHub device auth and prompt you with a verification URL + code.
+If no `GITHUB_TOKEN` is set and `GITHUB_OAUTH_CLIENT_ID` is present, Eliza can run GitHub device auth and prompt you with a verification URL + code.
 
 ### Creating a GitHub OAuth App (Device Flow)
 
 1. GitHub -> Settings -> Developer settings -> OAuth Apps.
 2. Create a new OAuth App.
 3. Copy Client ID.
-4. Set `GITHUB_OAUTH_CLIENT_ID` in Milady env/config.
+4. Set `GITHUB_OAUTH_CLIENT_ID` in Eliza env/config.
 5. Set `GITHUB_OAUTH_CLIENT_SECRET` only if your policy requires it.
 
 ## Debug Capture (Use Carefully)

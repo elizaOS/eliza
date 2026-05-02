@@ -2,10 +2,10 @@ import { expect, it } from "vitest";
 import { describeIf } from "../../../../eliza/test/helpers/conditional-tests.ts";
 
 const REMOTE_API_BASE =
-  process.env.MILADY_LIFEOPS_REMOTE_E2E_URL?.trim().replace(/\/+$/, "") ?? "";
+  process.env.ELIZA_LIFEOPS_REMOTE_E2E_URL?.trim().replace(/\/+$/, "") ?? "";
 const REMOTE_API_TOKEN =
-  process.env.MILADY_LIFEOPS_REMOTE_E2E_TOKEN?.trim() ??
-  process.env.MILADY_API_TOKEN?.trim() ??
+  process.env.ELIZA_LIFEOPS_REMOTE_E2E_TOKEN?.trim() ??
+  process.env.ELIZA_API_TOKEN?.trim() ??
   "";
 const CAN_RUN_REMOTE_E2E =
   REMOTE_API_BASE.length > 0 && REMOTE_API_TOKEN.length > 0;

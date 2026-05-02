@@ -60,7 +60,7 @@ This requires modifying the workflow to use the Azure action instead of signtool
    - Signs packaged app binaries in the Electrobun build output with `signtool` (SHA-256 + timestamp)
    - Verifies each signature
    - Cleans up the temp certificate
-3. The Windows release runner installs **Inno Setup 6.7.1** via `winget` and runs `packaging/inno/build-inno.ps1` to produce `Milady-Setup-{channel}.exe`
+3. The Windows release runner installs **Inno Setup 6.7.1** via `winget` and runs `packaging/inno/build-inno.ps1` to produce `Eliza-Setup-{channel}.exe`
 4. When signing secrets are present, the Inno compiler signs the **final installer** and the **generated uninstaller**
 5. If signing secrets are absent, the workflow logs a warning and still builds an unsigned installer
 6. After installer creation, `build-msix.ps1` creates and signs the MSIX package

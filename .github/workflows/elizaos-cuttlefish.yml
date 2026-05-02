@@ -3,7 +3,7 @@ name: ElizaOS Cuttlefish
 # Brand-aware AOSP / Cuttlefish build pipeline.
 #
 # Defaults to the elizaOS brand (scripts/distro-android/brand.eliza.json).
-# Downstream brands (e.g. MiladyOS) supply their own brand config + vendor
+# Downstream brands (e.g. ElizaOS) supply their own brand config + vendor
 # tree via `brand-config` and `vendor-source` inputs and call this workflow
 # either via workflow_dispatch (manual run from this repo) or via
 # workflow_call (cross-repo reusable workflow):

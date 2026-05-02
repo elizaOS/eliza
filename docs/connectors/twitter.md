@@ -4,11 +4,11 @@ sidebarTitle: Twitter/X
 description: Connect your agent to Twitter/X via the xAI plugin (@elizaos/plugin-xai).
 ---
 
-> **Registry note:** `@elizaos/plugin-twitter` is not currently listed in the Milady plugin registry (`plugins.json`). The package may be available from npm or a separate elizaOS plugin repository. Verify availability before configuring.
+> **Registry note:** `@elizaos/plugin-twitter` is not currently listed in the Eliza plugin registry (`plugins.json`). The package may be available from npm or a separate elizaOS plugin repository. Verify availability before configuring.
 
 Connect your agent to Twitter/X for social media engagement.
 
-> **Availability:** `@elizaos/plugin-twitter` is an on-demand elizaOS plugin resolved from the remote plugin registry. It is **not** included in Milady's bundled `plugins.json` index. The plugin auto-installs at runtime when a valid token is detected in your connector configuration.
+> **Availability:** `@elizaos/plugin-twitter` is an on-demand elizaOS plugin resolved from the remote plugin registry. It is **not** included in Eliza's bundled `plugins.json` index. The plugin auto-installs at runtime when a valid token is detected in your connector configuration.
 
 ## Overview
 
@@ -17,7 +17,7 @@ The Twitter connector is an elizaOS plugin that bridges your agent to Twitter/X.
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-twitter
+eliza plugins install @elizaos/plugin-twitter
 ```
 
 ## Configuration
@@ -36,7 +36,7 @@ milady plugins install @elizaos/plugin-twitter
 
 The connector auto-enables when `botToken`, `token`, or `apiKey` is truthy in the connector config and `enabled` is not explicitly `false`.
 
-Configure in `~/.milady/milady.json`:
+Configure in `~/.eliza/eliza.json`:
 
 ```json
 {
@@ -71,7 +71,7 @@ No environment variable is required to trigger auto-enable — it is driven enti
 
 ## Environment Variables
 
-Unlike Discord, Telegram, and Slack, the Milady runtime does **not** inject Twitter secrets into `process.env` via the `CHANNEL_ENV_MAP`. The plugin reads credentials directly from the `connectors.twitter` config object.
+Unlike Discord, Telegram, and Slack, the Eliza runtime does **not** inject Twitter secrets into `process.env` via the `CHANNEL_ENV_MAP`. The plugin reads credentials directly from the `connectors.twitter` config object.
 
 The plugin also reads these environment variables as a fallback if the corresponding config fields are absent:
 
@@ -93,7 +93,7 @@ Config fields take precedence over environment variables. When using config-base
 
 ## Full Configuration Reference
 
-All fields are nested under `connectors.twitter` in `milady.json`.
+All fields are nested under `connectors.twitter` in `eliza.json`.
 
 Note: Twitter does **not** support multi-account configuration. Only a single Twitter account can be configured per agent.
 

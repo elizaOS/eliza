@@ -1,5 +1,5 @@
 /**
- * Milady n8n runtime-context provider — registers as service type
+ * Eliza n8n runtime-context provider — registers as service type
  * `n8n_runtime_context_provider` so the patched `@elizaos/plugin-n8n-workflow`
  * can pull connector facts (Discord guilds + channels, Gmail email, supported
  * credential types) into the workflow-generation prompt.
@@ -68,7 +68,7 @@ export interface ConnectorConfigLike {
  * `discordWebhookApi` and `googleOAuth2Api` previously listed here without
  * fact entries).
  */
-const MILADY_SUPPORTED_CRED_TYPES: ReadonlySet<string> = new Set([
+const ELIZA_SUPPORTED_CRED_TYPES: ReadonlySet<string> = new Set([
   "discordApi",
   "discordBotApi",
   "telegramApi",
@@ -126,7 +126,7 @@ interface RuntimeContextProviderInput {
 /**
  * Static map: which n8n cred types match which n8n node types, plus a
  * human-friendly name for the credential block. Filtered at runtime against
- * `MILADY_SUPPORTED_CRED_TYPES` AND against which connectors are actually
+ * `ELIZA_SUPPORTED_CRED_TYPES` AND against which connectors are actually
  * configured (no point listing `gmailOAuth2` as available when the user
  * hasn't run the OAuth flow).
  */
@@ -199,7 +199,7 @@ interface CredProviderLike {
   resolve(userId: string, credType: string): Promise<CredResolveResult>;
 }
 
-export interface MiladyN8nRuntimeContextProviderOptions {
+export interface ElizaN8nRuntimeContextProviderOptions {
   /** Re-read on every call so connector edits do not require a restart. */
   getConfig: () => ConnectorConfigLike;
   /**
@@ -214,7 +214,7 @@ export interface MiladyN8nRuntimeContextProviderOptions {
   now?: () => number;
 }
 
-export interface MiladyN8nRuntimeContextProviderHandle {
+export interface ElizaN8nRuntimeContextProviderHandle {
   service: {
     getRuntimeContext: (
       input: RuntimeContextProviderInput,
@@ -262,10 +262,10 @@ function formatTriggerContextFact(
   return undefined;
 }
 
-export function startMiladyN8nRuntimeContextProvider(
+export function startElizaN8nRuntimeContextProvider(
   runtime: AgentRuntime,
-  options: MiladyN8nRuntimeContextProviderOptions,
-): MiladyN8nRuntimeContextProviderHandle {
+  options: ElizaN8nRuntimeContextProviderOptions,
+): ElizaN8nRuntimeContextProviderHandle {
   const { getConfig, credProvider } = options;
   const fetchImpl = options.fetchImpl ?? fetch;
   const now = options.now ?? Date.now;
@@ -367,7 +367,7 @@ export function startMiladyN8nRuntimeContextProvider(
 
   /**
    * Filter the static CRED_TYPE_FACTS to types that are (a) listed in
-   * MILADY_SUPPORTED_CRED_TYPES, (b) appear in the requested
+   * ELIZA_SUPPORTED_CRED_TYPES, (b) appear in the requested
    * `relevantCredTypes` (so we only advertise types the LLM might actually
    * use), and (c) the cred provider can satisfy with `credential_data`
    * (so we don't promise a credential the user hasn't wired up yet).
@@ -378,7 +378,7 @@ export function startMiladyN8nRuntimeContextProvider(
   ): Promise<RuntimeContextSupportedCredential[]> => {
     const out: RuntimeContextSupportedCredential[] = [];
     for (const credType of relevantCredTypes) {
-      if (!MILADY_SUPPORTED_CRED_TYPES.has(credType)) continue;
+      if (!ELIZA_SUPPORTED_CRED_TYPES.has(credType)) continue;
       const meta = CRED_TYPE_FACTS[credType];
       if (!meta) continue;
       if (credProvider) {
@@ -459,7 +459,7 @@ export function startMiladyN8nRuntimeContextProvider(
       discordCache.clear();
     },
     capabilityDescription:
-      "Provides Milady runtime facts (Discord guilds/channels, Gmail email) and supported credential types to the n8n workflow generator.",
+      "Provides Eliza runtime facts (Discord guilds/channels, Gmail email) and supported credential types to the n8n workflow generator.",
   };
 
   runtime.services.set(SERVICE_TYPE as never, [service as never]);
@@ -470,7 +470,7 @@ export function startMiladyN8nRuntimeContextProvider(
       try {
         runtime.services.delete(SERVICE_TYPE as never);
       } catch {
-        // ignore — symmetric with other Milady bridge stop hooks
+        // ignore — symmetric with other Eliza bridge stop hooks
       }
     },
   };

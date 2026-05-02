@@ -12,7 +12,7 @@ A personal-account variant is also available as `@elizaos/plugin-zalouser`.
 |-------|-------|
 | Package | `@elizaos/plugin-zalo` |
 | Config key | `connectors.zalo` |
-| Install | `milady plugins install @elizaos/plugin-zalo` |
+| Install | `eliza plugins install @elizaos/plugin-zalo` |
 
 ## Setup
 
@@ -22,7 +22,7 @@ A personal-account variant is also available as `@elizaos/plugin-zalouser`.
 2. Create an application and obtain your App ID and App Secret
 3. Generate an access token and refresh token for API access
 
-### 2. Configure Milady
+### 2. Configure Eliza
 
 | Name | Required | Description |
 |------|----------|-------------|
@@ -40,10 +40,10 @@ A personal-account variant is also available as `@elizaos/plugin-zalouser`.
 Install the plugin from the registry:
 
 ```bash
-milady plugins install zalo
+eliza plugins install zalo
 ```
 
-Configure in `~/.milady/milady.json`:
+Configure in `~/.eliza/eliza.json`:
 
 ```json
 {
@@ -101,7 +101,7 @@ export ZALO_APP_ID=YOUR_APP_ID
 A separate connector, `@elizaos/plugin-zalouser`, provides personal Zalo account messaging (as opposed to Official Account). Install it with:
 
 ```bash
-milady plugins install zalouser
+eliza plugins install zalouser
 ```
 
 ### Package Info

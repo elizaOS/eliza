@@ -1,10 +1,10 @@
 ---
 title: "Simple Voice Plugin"
 sidebarTitle: "Simple Voice"
-description: "Retro 1980s SAM Text-to-Speech plugin for Milady agents."
+description: "Retro 1980s SAM Text-to-Speech plugin for Eliza agents."
 ---
 
-The Simple Voice plugin provides a lightweight Text-to-Speech capability for Milady agents using the SAM (Software Automatic Mouth) speech synthesizer.
+The Simple Voice plugin provides a lightweight Text-to-Speech capability for Eliza agents using the SAM (Software Automatic Mouth) speech synthesizer.
 
 **Package:** `@elizaos/plugin-simple-voice`
 
@@ -17,7 +17,7 @@ The Simple Voice plugin focuses on minimal setup — no API keys, no external se
 ## Installation
 
 ```bash
-milady plugins install simple-voice
+eliza plugins install simple-voice
 ```
 
 ## Configuration

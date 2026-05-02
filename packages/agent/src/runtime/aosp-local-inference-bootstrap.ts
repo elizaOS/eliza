@@ -5,7 +5,7 @@
  * any local-inference wiring — that lives in the `@elizaos/app-core`
  * runtime wrapper (`ensure-local-inference-handler.ts`), which the mobile
  * agent bundle does NOT import. As a result, on AOSP the runtime boots
- * with `MILADY_LOCAL_LLAMA=1` set but no TEXT_SMALL / TEXT_LARGE /
+ * with `ELIZA_LOCAL_LLAMA=1` set but no TEXT_SMALL / TEXT_LARGE /
  * TEXT_EMBEDDING handler registered, and chat fails with
  *   "No handler found for delegate type: TEXT_SMALL"
  *
@@ -22,8 +22,8 @@
  * and CI even when the bundler can inline the cycle. Keeping the AOSP
  * registration here avoids the cycle entirely.
  *
- * Activation: only fires when `MILADY_LOCAL_LLAMA === "1"`, which is
- * the AOSP build flag set by `MiladyAgentService.java` before
+ * Activation: only fires when `ELIZA_LOCAL_LLAMA === "1"`, which is
+ * the AOSP build flag set by `ElizaAgentService.java` before
  * `Runtime.exec`'ing the bun process. On every other build the call is
  * a logged no-op.
  */
@@ -41,7 +41,7 @@ import {
 import { registerAospLlamaLoader } from "./aosp-llama-adapter.js";
 
 const SERVICE_NAME = "localInferenceLoader";
-const PROVIDER = "milady-aosp-llama";
+const PROVIDER = "eliza-aosp-llama";
 
 /**
  * Same priority band as cloud / direct provider plugins. Routing-policy
@@ -152,14 +152,14 @@ async function callRegisterAndCaptureLoader(
 
 /**
  * Resolve the bundled chat / embedding GGUF paths shipped under
- * `$MILADY_STATE_DIR/local-inference/models/`. Both files are staged by
- * the AOSP build (`scripts/miladyos/stage-default-models.mjs`) and
- * extracted by `MiladyAgentService.extractAssetsIfNeeded` before bun
+ * `$ELIZA_STATE_DIR/local-inference/models/`. Both files are staged by
+ * the AOSP build (`scripts/elizaos/stage-default-models.mjs`) and
+ * extracted by `ElizaAgentService.extractAssetsIfNeeded` before bun
  * starts. We pick the role from the sibling `manifest.json` so a future
  * model swap doesn't need a code change.
  */
 interface BundledModelManifestEntry {
-  // The build-time staging script (`scripts/miladyos/stage-default-models.mjs`)
+  // The build-time staging script (`scripts/elizaos/stage-default-models.mjs`)
   // writes `ggufFile` (the on-disk filename relative to the models dir).
   // Older manifests used `filename`; we read both for forward-compat.
   ggufFile?: string;
@@ -197,13 +197,13 @@ function readBundledModelManifest(modelsDir: string): {
 }
 
 function resolveStateDir(): string {
-  const explicit = process.env.MILADY_STATE_DIR ?? process.env.ELIZA_STATE_DIR;
+  const explicit = process.env.ELIZA_STATE_DIR ?? process.env.ELIZA_STATE_DIR;
   if (explicit?.trim()) return explicit;
-  // On AOSP we expect MILADY_STATE_DIR to be set by MiladyAgentService.
-  // Fall back to $HOME/.milady so dev / non-Android exercise paths still
+  // On AOSP we expect ELIZA_STATE_DIR to be set by ElizaAgentService.
+  // Fall back to $HOME/.eliza so dev / non-Android exercise paths still
   // resolve.
   const home = process.env.HOME ?? process.cwd();
-  return path.join(home, ".milady");
+  return path.join(home, ".eliza");
 }
 
 function resolveBundledModelsDir(): string {
@@ -266,7 +266,7 @@ function makeLoaderLifecycle(loader: AospLoader): {
     const target = role === "chat" ? resolved.chat : resolved.embedding;
     if (!target) {
       throw new Error(
-        `[aosp-local-inference] No bundled ${role} model found under ${modelsDir}. Stage one via scripts/miladyos/stage-default-models.mjs and rebuild the APK.`,
+        `[aosp-local-inference] No bundled ${role} model found under ${modelsDir}. Stage one via scripts/elizaos/stage-default-models.mjs and rebuild the APK.`,
       );
     }
     inflight = (async () => {
@@ -338,7 +338,7 @@ function makeEmbeddingHandler(
  *
  * Returns true when handlers were registered, false on every other path
  * (env opt-in not set, runtime missing `registerModel`, FFI dlopen
- * failure). All failures are logged at `error` because `MILADY_LOCAL_LLAMA=1`
+ * failure). All failures are logged at `error` because `ELIZA_LOCAL_LLAMA=1`
  * is an explicit operator opt-in — silent fall-through to "No handler"
  * crashes is unacceptable.
  */
@@ -349,9 +349,9 @@ export async function ensureAospLocalInferenceHandlers(
   // sometimes hides early bootstrap output behind the pino transport,
   // and we need a visible signal that the post-startEliza hook ran.
   console.log("[aosp-local-inference] bootstrap entered");
-  if (process.env.MILADY_LOCAL_LLAMA?.trim() !== "1") {
+  if (process.env.ELIZA_LOCAL_LLAMA?.trim() !== "1") {
     console.log(
-      "[aosp-local-inference] MILADY_LOCAL_LLAMA != '1', returning early",
+      "[aosp-local-inference] ELIZA_LOCAL_LLAMA != '1', returning early",
     );
     return false;
   }
@@ -398,7 +398,7 @@ export async function ensureAospLocalInferenceHandlers(
   const lifecycle = makeLoaderLifecycle(loader);
   // TEXT_EMBEDDING is wired unconditionally now that the adapter resets
   // the llama.cpp embeddings flag on both decode paths (chat + embed) —
-  // the previous `MILADY_AOSP_EMBEDDING=1` opt-in existed only because
+  // the previous `ELIZA_AOSP_EMBEDDING=1` opt-in existed only because
   // the shared-context flag bled across calls and caused
   //   GGML_ASSERT((!batch_inp.token && batch_inp.embd) ||
   //               (batch_inp.token && !batch_inp.embd))

@@ -1,10 +1,10 @@
 ---
 title: "OpenAI 插件"
 sidebarTitle: "OpenAI"
-description: "Milady 的 OpenAI 模型提供者 — GPT-4o、o1、o3、嵌入向量、图像生成和语音。"
+description: "Eliza 的 OpenAI 模型提供者 — GPT-4o、o1、o3、嵌入向量、图像生成和语音。"
 ---
 
-OpenAI 插件将 Milady 代理连接到 OpenAI 的 API，提供对 GPT-4o、o1/o3 推理模型系列、DALL-E 图像生成和 Whisper 语音转文字的访问。
+OpenAI 插件将 Eliza 代理连接到 OpenAI 的 API，提供对 GPT-4o、o1/o3 推理模型系列、DALL-E 图像生成和 Whisper 语音转文字的访问。
 
 **Package:** `@elizaos/plugin-openai`
 
@@ -15,10 +15,10 @@ OpenAI 插件将 Milady 代理连接到 OpenAI 的 API，提供对 GPT-4o、o1/o
 </div>
 
 ```bash
-milady plugins install @elizaos/plugin-openai
+eliza plugins install @elizaos/plugin-openai
 ```
 
-或添加到 `milady.json`：
+或添加到 `eliza.json`：
 
 ```json
 {
@@ -53,9 +53,9 @@ export OPENAI_API_KEY=sk-...
 | `OPENAI_ORG_ID` | 否 | 用于使用量跟踪的组织 ID |
 | `OPENAI_PROJECT_ID` | 否 | 用于配额管理的项目 ID |
 
-<div id="miladyjson-example">
+<div id="elizajson-example">
 
-### milady.json 示例
+### eliza.json 示例
 
 </div>
 

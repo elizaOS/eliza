@@ -42,7 +42,7 @@ describe("GoogleManagedClient URL prefixes", () => {
     fetchSpy.mockRestore();
   });
 
-  it("getStatus targets /api/v1/milady/google/status with side query", async () => {
+  it("getStatus targets /api/v1/eliza/google/status with side query", async () => {
     nextBody = {
       provider: "google",
       side: "owner",
@@ -63,28 +63,28 @@ describe("GoogleManagedClient URL prefixes", () => {
     await client.getStatus("owner");
     expect(capturedUrls).toHaveLength(1);
     expect(capturedUrls[0]).toBe(
-      "https://cloud.example.test/api/v1/milady/google/status?side=owner",
+      "https://cloud.example.test/api/v1/eliza/google/status?side=owner",
     );
   });
 
-  it("listAccounts targets /api/v1/milady/google/accounts", async () => {
+  it("listAccounts targets /api/v1/eliza/google/accounts", async () => {
     nextBody = [];
     const client = new GoogleManagedClient(CONFIG);
     await client.listAccounts("owner");
     expect(capturedUrls[0]).toBe(
-      "https://cloud.example.test/api/v1/milady/google/accounts?side=owner",
+      "https://cloud.example.test/api/v1/eliza/google/accounts?side=owner",
     );
   });
 
-  it("disconnectConnector targets /api/v1/milady/google/disconnect", async () => {
+  it("disconnectConnector targets /api/v1/eliza/google/disconnect", async () => {
     const client = new GoogleManagedClient(CONFIG);
     await client.disconnectConnector("cxn-1", "owner");
     expect(capturedUrls[0]).toBe(
-      "https://cloud.example.test/api/v1/milady/google/disconnect",
+      "https://cloud.example.test/api/v1/eliza/google/disconnect",
     );
   });
 
-  it("calendar, gmail read, subscription scan, and send endpoints all use /milady/google prefix", async () => {
+  it("calendar, gmail read, subscription scan, and send endpoints all use /eliza/google prefix", async () => {
     const client = new GoogleManagedClient(CONFIG);
 
     nextBody = { calendarId: "primary", events: [], syncedAt: "" };
@@ -151,19 +151,19 @@ describe("GoogleManagedClient URL prefixes", () => {
 
     for (const url of capturedUrls) {
       expect(
-        url.startsWith("https://cloud.example.test/api/v1/milady/google/"),
+        url.startsWith("https://cloud.example.test/api/v1/eliza/google/"),
       ).toBe(true);
       expect(url).not.toContain("/eliza/google/");
     }
 
     expect(capturedUrls).toEqual([
-      "https://cloud.example.test/api/v1/milady/google/calendar/feed?side=owner&calendarId=primary&timeMin=2026-04-17T00%3A00%3A00Z&timeMax=2026-04-18T00%3A00%3A00Z&timeZone=UTC",
-      "https://cloud.example.test/api/v1/milady/google/gmail/triage?side=owner&maxResults=10",
-      "https://cloud.example.test/api/v1/milady/google/gmail/search?side=owner&query=foo&maxResults=10",
-      "https://cloud.example.test/api/v1/milady/google/gmail/subscription-headers?side=owner&query=category%3Apromotions+newer_than%3A30d&maxResults=25",
-      "https://cloud.example.test/api/v1/milady/google/gmail/read?side=owner&messageId=m1",
-      "https://cloud.example.test/api/v1/milady/google/gmail/reply-send",
-      "https://cloud.example.test/api/v1/milady/google/gmail/message-send",
+      "https://cloud.example.test/api/v1/eliza/google/calendar/feed?side=owner&calendarId=primary&timeMin=2026-04-17T00%3A00%3A00Z&timeMax=2026-04-18T00%3A00%3A00Z&timeZone=UTC",
+      "https://cloud.example.test/api/v1/eliza/google/gmail/triage?side=owner&maxResults=10",
+      "https://cloud.example.test/api/v1/eliza/google/gmail/search?side=owner&query=foo&maxResults=10",
+      "https://cloud.example.test/api/v1/eliza/google/gmail/subscription-headers?side=owner&query=category%3Apromotions+newer_than%3A30d&maxResults=25",
+      "https://cloud.example.test/api/v1/eliza/google/gmail/read?side=owner&messageId=m1",
+      "https://cloud.example.test/api/v1/eliza/google/gmail/reply-send",
+      "https://cloud.example.test/api/v1/eliza/google/gmail/message-send",
     ]);
   });
 
@@ -224,7 +224,7 @@ describe("GoogleManagedClient URL prefixes", () => {
     expect(status.connected).toBe(true);
     expect(status.connectionId).toBe("legacy-id");
     expect(capturedUrls[0]).toBe(
-      "https://cloud.example.test/api/v1/milady/google/status?side=owner",
+      "https://cloud.example.test/api/v1/eliza/google/status?side=owner",
     );
   });
 });

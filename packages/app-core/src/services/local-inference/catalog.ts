@@ -1,5 +1,5 @@
 /**
- * Milady-curated local model catalog.
+ * Eliza-curated local model catalog.
  *
  * Hand-picked as of April 2026. All entries reference public GGUF repos on
  * HuggingFace. Quants default to Q4_K_M (the usual sweet spot). When upstream
@@ -159,7 +159,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     category: "chat",
     bucket: "mid",
     blurb:
-      '1-bit weights with TurboQuant KV-cache compression (~4-4.6x KV memory cut) on phone CPU via the apothic/llama.cpp-1bit-turboquant fork. Auto-enabled when the AOSP runtime loads any GGUF whose filename contains "bonsai" (k=tbq4_0, v=tbq3_0); override with MILADY_LLAMA_CACHE_TYPE_K/_V. Apple Silicon (Metal) and Vulkan GPU still run at full fp16 KV cache.',
+      '1-bit weights with TurboQuant KV-cache compression (~4-4.6x KV memory cut) on phone CPU via the apothic/llama.cpp-1bit-turboquant fork. Auto-enabled when the AOSP runtime loads any GGUF whose filename contains "bonsai" (k=tbq4_0, v=tbq3_0); override with ELIZA_LLAMA_CACHE_TYPE_K/_V. Apple Silicon (Metal) and Vulkan GPU still run at full fp16 KV cache.',
   },
 
   // ─── large (8-20 GB) ────────────────────────────────────────────────
@@ -254,13 +254,13 @@ export function findCatalogModel(id: string): CatalogModel | undefined {
 /**
  * Construct the HuggingFace resolve URL for a given catalog entry.
  *
- * Respects `MILADY_HF_BASE_URL` when set so self-hosted HF mirrors and the
+ * Respects `ELIZA_HF_BASE_URL` when set so self-hosted HF mirrors and the
  * downloader e2e test suite can redirect all downloads without touching
  * the catalog.
  */
 export function buildHuggingFaceResolveUrl(model: CatalogModel): string {
   const base =
-    process.env.MILADY_HF_BASE_URL?.trim().replace(/\/+$/, "") ||
+    process.env.ELIZA_HF_BASE_URL?.trim().replace(/\/+$/, "") ||
     "https://huggingface.co";
   // Encode each path segment separately so nested layouts like
   // `models/gguf/8B/Bonsai-8B.gguf` keep their slashes (HF resolve URLs

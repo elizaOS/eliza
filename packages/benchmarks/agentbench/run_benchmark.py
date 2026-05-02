@@ -250,26 +250,26 @@ async def main() -> int:
             runtime = SmartMockRuntime()
     elif args.eliza:
         print("\n" + "=" * 60)
-        print("Using MILADY TypeScript agent via benchmark server")
+        print("Using ELIZA TypeScript agent via benchmark server")
         print("=" * 60)
-        from milady_adapter import MiladyServerManager
-        from milady_adapter.agentbench import MiladyAgentHarness
+        from eliza_adapter import ElizaServerManager
+        from eliza_adapter.agentbench import ElizaAgentHarness
 
         _load_dotenv()
-        milady_server = MiladyServerManager()
-        milady_server.start()
-        milady_harness = MiladyAgentHarness(milady_server.client)
+        eliza_server = ElizaServerManager()
+        eliza_server.start()
+        eliza_harness = ElizaAgentHarness(eliza_server.client)
         # Use mock runtime for the runner scaffolding; the harness overrides
         # the actual agent loop.
         runtime = SmartMockRuntime()
-        runtime._milady_harness = milady_harness  # type: ignore[attr-defined]
+        runtime._eliza_harness = eliza_harness  # type: ignore[attr-defined]
         print("✅ Eliza benchmark server connected")
     else:
         print("\nUsing deterministic mock runtime (for harness validation)")
         runtime = SmartMockRuntime()
 
     # Baseline comparisons are only meaningful for real model runs
-    if isinstance(runtime, SmartMockRuntime) and not getattr(runtime, "_milady_harness", None):
+    if isinstance(runtime, SmartMockRuntime) and not getattr(runtime, "_eliza_harness", None):
         config.enable_baseline_comparison = False
 
     # Show enabled environments

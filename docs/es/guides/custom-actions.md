@@ -4,7 +4,7 @@ sidebarTitle: Acciones Personalizadas
 description: Define capacidades creadas por el usuario con manejadores HTTP, shell y de código que amplían lo que el agente puede hacer.
 ---
 
-Las acciones son la forma principal en que los agentes interactúan con el mundo. Representan capacidades discretas -- cosas que el agente puede hacer en respuesta al contexto de la conversación. Milady incluye acciones integradas y proporciona un sistema para definir tus propias acciones personalizadas sin escribir código de plugin.
+Las acciones son la forma principal en que los agentes interactúan con el mundo. Representan capacidades discretas -- cosas que el agente puede hacer en respuesta al contexto de la conversación. Eliza incluye acciones integradas y proporciona un sistema para definir tus propias acciones personalizadas sin escribir código de plugin.
 
 <div id="action-interface">
 
@@ -30,7 +30,7 @@ Cuando un usuario envía un mensaje, el runtime evalúa todas las acciones regis
 
 </div>
 
-Milady registra las siguientes acciones integradas desde `src/actions/` automáticamente en tiempo de ejecución.
+Eliza registra las siguientes acciones integradas desde `src/actions/` automáticamente en tiempo de ejecución.
 
 <div id="agent-lifecycle">
 
@@ -112,7 +112,7 @@ Todas las acciones de medios usan el proveedor configurado (Eliza Cloud por defe
 
 </div>
 
-Las acciones personalizadas son capacidades definidas por el usuario en tu configuración `milady.json`. Te permiten conectar APIs externas, ejecutar comandos de shell o ejecutar JavaScript en línea -- todo presentado como acciones de primera clase que el agente puede invocar durante las conversaciones.
+Las acciones personalizadas son capacidades definidas por el usuario en tu configuración `eliza.json`. Te permiten conectar APIs externas, ejecutar comandos de shell o ejecutar JavaScript en línea -- todo presentado como acciones de primera clase que el agente puede invocar durante las conversaciones.
 
 <div id="handler-types">
 
@@ -185,7 +185,7 @@ Los handlers HTTP incluyen protección SSRF que bloquea solicitudes a direccione
 
 </div>
 
-Agrega acciones personalizadas al arreglo `customActions` en tu `milady.json`:
+Agrega acciones personalizadas al arreglo `customActions` en tu `eliza.json`:
 
 ```json
 {
@@ -221,7 +221,7 @@ Agrega acciones personalizadas al arreglo `customActions` en tu `milady.json`:
 
 </div>
 
-**Carga al inicio:** Durante la inicialización del plugin, `loadCustomActions()` lee `milady.json`, filtra solo las definiciones con `enabled`, y convierte cada una en una `Action` de elizaOS mediante `defToAction()`. La conversión construye un handler asíncrono basado en el tipo de handler, mapea los parámetros al formato elizaOS (todos tipados como `string`), y establece `validate: async () => true`.
+**Carga al inicio:** Durante la inicialización del plugin, `loadCustomActions()` lee `eliza.json`, filtra solo las definiciones con `enabled`, y convierte cada una en una `Action` de elizaOS mediante `defToAction()`. La conversión construye un handler asíncrono basado en el tipo de handler, mapea los parámetros al formato elizaOS (todos tipados como `string`), y establece `validate: async () => true`.
 
 **Registro en vivo:** Registra nuevas acciones en tiempo de ejecución sin reiniciar usando `registerCustomActionLive(def)`. Esto convierte la definición usando el mismo pipeline `defToAction()` y llama a `runtime.registerAction()` para hacerla disponible inmediatamente. Devuelve la `Action` creada o `null` si no hay runtime disponible.
 

@@ -6,11 +6,11 @@
  * paste required. Otherwise the manual paste form is shown as a fallback.
  *
  * On success the returned session id is written to
- * sessionStorage["milady_session"] and the `onAdvance` callback fires.
+ * sessionStorage["eliza_session"] and the `onAdvance` callback fires.
  *
  * P1 will migrate the session to an HttpOnly cookie and retire sessionStorage.
  * The key name is kept in sync with the cookie name planned for P1
- * (milady_session) so the P1 migration is a straightforward swap.
+ * (eliza_session) so the P1 migration is a straightforward swap.
  *
  * Error contract (fail closed):
  *   401 → token invalid / expired / already used, single-use, must rotate.
@@ -44,7 +44,7 @@ import {
   onboardingTitleClass,
 } from "./onboarding-step-chrome";
 
-const SESSION_STORAGE_KEY = "milady_session";
+const SESSION_STORAGE_KEY = "eliza_session";
 const MONO_FONT = "'Courier New', 'Courier', 'Monaco', monospace";
 const BOOTSTRAP_HASH_PARAM = "bootstrap";
 

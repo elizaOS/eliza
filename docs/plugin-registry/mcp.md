@@ -4,7 +4,7 @@ sidebarTitle: "MCP"
 description: "ElizaOS plugin allowing agents to connect to MCP servers"
 ---
 
-Connect Milady agents to Model Context Protocol (MCP) servers for extended tool and resource access.
+Connect Eliza agents to Model Context Protocol (MCP) servers for extended tool and resource access.
 
 **Package:** `@elizaos/plugin-mcp`
 
@@ -15,7 +15,7 @@ The MCP plugin enables elizaOS agents to connect to external MCP servers, giving
 ## Installation
 
 ```bash
-milady plugins install mcp
+eliza plugins install mcp
 ```
 
 ## Auto-Enable

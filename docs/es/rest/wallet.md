@@ -497,7 +497,7 @@ Ejecuta un trade de token en BSC. El comportamiento depende de la configuración
 
 | Cabecera | Tipo | Requerido | Descripción |
 |----------|------|-----------|-------------|
-| `x-milady-agent-action` | string | No | Establezca a `1`, `true`, `yes` o `agent` para marcar esto como una solicitud automatizada por agente. Afecta a la resolución del modo de permiso de trade. |
+| `x-eliza-agent-action` | string | No | Establezca a `1`, `true`, `yes` o `agent` para marcar esto como una solicitud automatizada por agente. Afecta a la resolución del modo de permiso de trade. |
 
 **Cuerpo de la solicitud**
 
@@ -725,7 +725,7 @@ Transfiere tokens nativos (BNB) o tokens ERC-20 en BSC.
 
 | Cabecera | Tipo | Requerido | Descripción |
 |----------|------|-----------|-------------|
-| `x-milady-agent-action` | string | No | Establezca a `1`, `true`, `yes` o `agent` para marcar esto como una solicitud automatizada por agente. Afecta a la resolución del modo de permiso de trade. |
+| `x-eliza-agent-action` | string | No | Establezca a `1`, `true`, `yes` o `agent` para marcar esto como una solicitud automatizada por agente. Afecta a la resolución del modo de permiso de trade. |
 
 **Cuerpo de la solicitud**
 

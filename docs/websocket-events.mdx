@@ -1,10 +1,10 @@
 ---
 title: WebSocket Real-Time Events
 sidebarTitle: WebSocket Events
-description: Reference for the Milady WebSocket protocol, connection details, event types, and payloads.
+description: Reference for the Eliza WebSocket protocol, connection details, event types, and payloads.
 ---
 
-Milady uses WebSocket connections to deliver real-time updates from the agent runtime to connected clients, including the frontend UI, the Electrobun desktop app, and custom integrations.
+Eliza uses WebSocket connections to deliver real-time updates from the agent runtime to connected clients, including the frontend UI, the Electrobun desktop app, and custom integrations.
 
 ## Connection
 
@@ -20,11 +20,11 @@ ws://localhost:18789/ws
 ```
 </CodeGroup>
 
-The WebSocket endpoint is available at `/ws` on the API server. In development, this is port 31337 (`MILADY_API_PORT`); in production, the API shares port 2138 (`MILADY_PORT`) with the dashboard. The Gateway (port 18789 by default) also proxies WebSocket connections.
+The WebSocket endpoint is available at `/ws` on the API server. In development, this is port 31337 (`ELIZA_API_PORT`); in production, the API shares port 2138 (`ELIZA_PORT`) with the dashboard. The Gateway (port 18789 by default) also proxies WebSocket connections.
 
 ### Authentication
 
-When `MILADY_API_TOKEN` is configured, the WebSocket connection requires authentication. The client connects to the `/ws` endpoint without credentials in the URL, then authenticates by sending an `auth` message immediately after the connection opens:
+When `ELIZA_API_TOKEN` is configured, the WebSocket connection requires authentication. The client connects to the `/ws` endpoint without credentials in the URL, then authenticates by sending an `auth` message immediately after the connection opens:
 
 ```json
 { "type": "auth", "token": "YOUR_API_TOKEN" }
@@ -45,7 +45,7 @@ Messages sent before authentication (other than the `auth` message itself) are r
 You can also authenticate during the HTTP upgrade handshake by including the token in an `Authorization: Bearer <token>` header. If the handshake includes a valid token, the connection is activated immediately without needing to send an `auth` message.
 
 <Warning>
-Passing the token as a `?token=` query parameter is **deprecated** and disabled by default. Query-parameter tokens are rejected with a `401 Unauthorized` response. To temporarily re-enable query-parameter authentication during migration, set the environment variable `MILADY_ALLOW_WS_QUERY_TOKEN=1` (the legacy `ELIZA_ALLOW_WS_QUERY_TOKEN` also works). Requests to paths other than `/ws` receive a 404 rejection.
+Passing the token as a `?token=` query parameter is **deprecated** and disabled by default. Query-parameter tokens are rejected with a `401 Unauthorized` response. To temporarily re-enable query-parameter authentication during migration, set the environment variable `ELIZA_ALLOW_WS_QUERY_TOKEN=1` (the legacy `ELIZA_ALLOW_WS_QUERY_TOKEN` also works). Requests to paths other than `/ws` receive a 404 rejection.
 </Warning>
 
 ## Connection Lifecycle
@@ -61,7 +61,7 @@ When a WebSocket client connects and is authenticated (either via a handshake he
 {
   "type": "status",
   "state": "running",
-  "agentName": "Milady",
+  "agentName": "Eliza",
   "model": "@elizaos/plugin-anthropic",
   "startedAt": 1708000000000,
   "uptime": 60000
@@ -125,7 +125,7 @@ All WebSocket event types at a glance:
 
 ### Authentication
 
-When `MILADY_API_TOKEN` is configured, the first message sent after connecting must be an `auth` message:
+When `ELIZA_API_TOKEN` is configured, the first message sent after connecting must be an `auth` message:
 
 ```json
 {
@@ -159,7 +159,7 @@ Broadcast every 5 seconds and on state changes.
 {
   "type": "status",
   "state": "running",
-  "agentName": "Milady",
+  "agentName": "Eliza",
   "model": "@elizaos/plugin-anthropic",
   "startedAt": 1708000000000,
   "pendingRestart": false,
@@ -523,7 +523,7 @@ Sent once at the beginning of the response.
     "id": "msg_a1b2c3d4e5f6",
     "type": "message",
     "role": "assistant",
-    "model": "Milady",
+    "model": "Eliza",
     "content": [],
     "stop_reason": null,
     "stop_sequence": null,

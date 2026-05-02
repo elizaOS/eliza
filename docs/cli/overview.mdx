@@ -1,16 +1,16 @@
 ---
 title: "CLI overview"
-description: "The milady command-line interface — runtime control, configuration, and maintenance."
+description: "The eliza command-line interface — runtime control, configuration, and maintenance."
 ---
 
 # CLI overview
 
-The `milady` binary (also published as `milady-ai` / `miladyai`) is the primary way to start the API server, run setup wizards, and manage local configuration from a terminal.
+The `eliza` binary (also published as `eliza-ai` / `elizaai`) is the primary way to start the API server, run setup wizards, and manage local configuration from a terminal.
 
 ## Requirements
 
 - **Node.js 22+** or **Bun** as documented in [Installation](/installation).
-- Config and state live under the Milady state directory (by default `~/.milady/` when `ELIZA_NAMESPACE=milady`).
+- Config and state live under the Eliza state directory (by default `~/.eliza/` when `ELIZA_NAMESPACE=eliza`).
 
 ## Global Flags
 
@@ -25,17 +25,17 @@ The `milady` binary (also published as `milady-ai` / `miladyai`) is the primary 
 
 | Command | Purpose |
 |---------|---------|
-| [`milady start`](/cli/start) | Run the API server (embedded runtime). `milady run` is an alias. |
-| [`milady setup`](/cli/setup) | First-time wizard (keys, workspace) |
-| [`milady configure`](/cli/configure) | Configuration guidance (prints env-var help) |
-| [`milady config`](/cli/config) | Read config values (`get`, `path`, `show`) |
-| [`milady dashboard`](/cli/dashboard) | Open the Control UI in your browser |
-| [`milady models`](/cli/models) | Show configured model providers |
-| [`milady plugins`](/cli/plugins) | Plugin listing, search, install, and management |
-| [`milady update`](/cli/update) | Check for and install updates |
-| [`milady doctor`](/cli/doctor) | Health and environment checks |
-| [`milady db`](/cli/db) | Database utilities (reset) |
-| `milady benchmark` | Run a benchmark task headlessly against the agent |
+| [`eliza start`](/cli/start) | Run the API server (embedded runtime). `eliza run` is an alias. |
+| [`eliza setup`](/cli/setup) | First-time wizard (keys, workspace) |
+| [`eliza configure`](/cli/configure) | Configuration guidance (prints env-var help) |
+| [`eliza config`](/cli/config) | Read config values (`get`, `path`, `show`) |
+| [`eliza dashboard`](/cli/dashboard) | Open the Control UI in your browser |
+| [`eliza models`](/cli/models) | Show configured model providers |
+| [`eliza plugins`](/cli/plugins) | Plugin listing, search, install, and management |
+| [`eliza update`](/cli/update) | Check for and install updates |
+| [`eliza doctor`](/cli/doctor) | Health and environment checks |
+| [`eliza db`](/cli/db) | Database utilities (reset) |
+| `eliza benchmark` | Run a benchmark task headlessly against the agent |
 
 ## Global options
 
@@ -51,19 +51,19 @@ The `milady` binary (also published as `milady-ai` / `miladyai`) is the primary 
 ### Config subcommands
 
 ```bash
-milady config get <key>   # read a config value
-milady config path        # print resolved config file path
-milady config show        # display all config values grouped by section
+eliza config get <key>   # read a config value
+eliza config path        # print resolved config file path
+eliza config show        # display all config values grouped by section
 ```
 
 ### Plugin subcommands
 
 ```bash
-milady plugins list            # browse registry plugins
-milady plugins installed       # show installed plugins
-milady plugins install <name>  # install a plugin from the registry
-milady plugins uninstall <name>  # remove an installed plugin
-milady plugins search <query>  # search plugins by keyword
+eliza plugins list            # browse registry plugins
+eliza plugins installed       # show installed plugins
+eliza plugins install <name>  # install a plugin from the registry
+eliza plugins uninstall <name>  # remove an installed plugin
+eliza plugins search <query>  # search plugins by keyword
 ```
 
 ## Global flags
@@ -76,14 +76,14 @@ milady plugins search <query>  # search plugins by keyword
 | `--debug` | Enable debug-level runtime logs |
 
 ```bash
-milady --version
-milady --debug start
-milady plugins --help
+eliza --version
+eliza --debug start
+eliza plugins --help
 ```
 
 ## Help
 
-Run `milady --help` or `milady <command> --help` for the exact flags in your build. Implementation lives under `eliza/packages/app-core/src/cli/` in the elizaOS submodule (run `bun run setup:upstreams` to initialize it for development).
+Run `eliza --help` or `eliza <command> --help` for the exact flags in your build. Implementation lives under `eliza/packages/app-core/src/cli/` in the elizaOS submodule (run `bun run setup:upstreams` to initialize it for development).
 
 ## Environment
 

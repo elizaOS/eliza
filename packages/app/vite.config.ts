@@ -163,7 +163,7 @@ const NATIVE_PLUGIN_ALIAS_ENTRIES = CAPACITOR_PLUGIN_NAMES.map((name) => ({
   replacement: path.join(nativePluginsRoot, `${name}/src/index.ts`),
 }));
 const CAPACITOR_BUILD_TARGET =
-  process.env.MILADY_CAPACITOR_BUILD_TARGET ??
+  process.env.ELIZA_CAPACITOR_BUILD_TARGET ??
   process.env.ELIZA_CAPACITOR_BUILD_TARGET ??
   "";
 const IS_CAPACITOR_MOBILE_BUILD =
@@ -666,7 +666,7 @@ function desktopCorsPlugin(): Plugin {
         );
         res.setHeader(
           "Access-Control-Allow-Headers",
-          "Content-Type, Authorization, X-Milady-Token, X-Api-Key, X-Milady-Export-Token, X-Milady-Client-Id, X-Milady-Terminal-Token, X-Milady-UI-Language",
+          "Content-Type, Authorization, X-Eliza-Token, X-Api-Key, X-Eliza-Export-Token, X-Eliza-Client-Id, X-Eliza-Terminal-Token, X-Eliza-UI-Language",
         );
 
         if (req.method === "OPTIONS") {
@@ -1200,7 +1200,7 @@ function nativeModuleStubPlugin(): Plugin {
         AgentEventService: "function(){}",
         AutonomyService: "function(){}",
         createBasicCapabilitiesPlugin: "function(){return{name:'stub'}}",
-        resolveStateDir: "function(){return '/.milady'}",
+        resolveStateDir: "function(){return '/.eliza'}",
         runPluginMigrations: "async function(){}",
       };
       // Check which are actually missing from the existing export block
@@ -1213,7 +1213,7 @@ function nativeModuleStubPlugin(): Plugin {
       });
       if (needed.length === 0 && patched === code) return null;
       // Use unique prefixed names to avoid collisions with minified vars
-      const prefix = "__milady_stub_";
+      const prefix = "__eliza_stub_";
       const stubs = needed
         .map((n) => `var ${prefix}${n} = ${missingExports[n]};`)
         .join("\n");

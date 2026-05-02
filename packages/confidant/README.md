@@ -56,7 +56,7 @@ underlying env vars, files, or storage backends.
 
 | Scheme | Where the value lives |
 |---|---|
-| `file://` | encrypted in `~/.milady/confidant.json` (this package) |
+| `file://` | encrypted in `~/.eliza/confidant.json` (this package) |
 | `keyring://service/account` | OS keychain (macOS in phase 0) |
 | `op://vault/item/field` | 1Password (phase 4) |
 | `pass://...` | Proton Pass (phase 4) |
@@ -65,7 +65,7 @@ underlying env vars, files, or storage backends.
 
 ## Storage
 
-`~/.milady/confidant.json` (mode `0600`). Literals are AES-256-GCM
+`~/.eliza/confidant.json` (mode `0600`). Literals are AES-256-GCM
 encrypted with a master key held in the OS keychain (cross-platform via
 `@napi-rs/keyring` — macOS Keychain, Windows Credential Manager, Linux
 Secret Service / libsecret). Headless hosts without a Secret Service

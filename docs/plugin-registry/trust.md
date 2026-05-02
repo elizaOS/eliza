@@ -1,7 +1,7 @@
 ---
 title: "Trust (runtime)"
 sidebarTitle: "Trust"
-description: "Trust primitives for Milady — scoring, security signals, and trust-based decisions via the built-in runtime capability."
+description: "Trust primitives for Eliza — scoring, security signals, and trust-based decisions via the built-in runtime capability."
 ---
 
 Trust is provided by the elizaOS runtime. Enable it with `enableTrust: true` (and related agent config) rather than installing a separate package.

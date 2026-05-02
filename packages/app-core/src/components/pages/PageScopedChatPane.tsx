@@ -31,7 +31,7 @@ import {
 } from "./page-scoped-conversations";
 
 const MAX_PAGE_CHAT_IMAGES = 4;
-const CHAT_PREFILL_EVENT = "milady:chat:prefill";
+const CHAT_PREFILL_EVENT = "eliza:chat:prefill";
 
 interface ChatPrefillDetail {
   text?: string;

@@ -87,7 +87,7 @@ function assertBrowserWorkspaceUrl(url: string): string {
 }
 
 function resolveEvalTimeoutMs(): number {
-  const raw = process.env.MILADY_BROWSER_TAB_EVAL_TIMEOUT_MS?.trim();
+  const raw = process.env.ELIZA_BROWSER_TAB_EVAL_TIMEOUT_MS?.trim();
   if (!raw) return DEFAULT_EVAL_TIMEOUT_MS;
   const parsed = Number.parseInt(raw, 10);
   if (!Number.isFinite(parsed)) return DEFAULT_EVAL_TIMEOUT_MS;

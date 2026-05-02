@@ -119,11 +119,11 @@ function withMockXBaseUrl(
   baseUrl: string,
   fn: () => Promise<void>,
 ): Promise<void> {
-  const prev = process.env.MILADY_MOCK_X_BASE;
-  process.env.MILADY_MOCK_X_BASE = baseUrl;
+  const prev = process.env.ELIZA_MOCK_X_BASE;
+  process.env.ELIZA_MOCK_X_BASE = baseUrl;
   return fn().finally(() => {
-    if (prev === undefined) delete process.env.MILADY_MOCK_X_BASE;
-    else process.env.MILADY_MOCK_X_BASE = prev;
+    if (prev === undefined) delete process.env.ELIZA_MOCK_X_BASE;
+    else process.env.ELIZA_MOCK_X_BASE = prev;
   });
 }
 
@@ -249,7 +249,7 @@ describe("pullXInboundDms (mock server)", () => {
       TWITTER_ACCESS_TOKEN: process.env.TWITTER_ACCESS_TOKEN,
       TWITTER_ACCESS_TOKEN_SECRET: process.env.TWITTER_ACCESS_TOKEN_SECRET,
       TWITTER_USER_ID: process.env.TWITTER_USER_ID,
-      MILADY_MOCK_X_BASE: process.env.MILADY_MOCK_X_BASE,
+      ELIZA_MOCK_X_BASE: process.env.ELIZA_MOCK_X_BASE,
     };
   });
 

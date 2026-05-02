@@ -219,7 +219,7 @@ async function main(): Promise<void> {
   const baseUrl =
     argValue("base-url") ??
     process.env.LIFEOPS_API_BASE ??
-    process.env.MILADY_API_BASE ??
+    process.env.ELIZA_API_BASE ??
     "http://127.0.0.1:31337";
   const includeDestructivePulls = hasFlag("include-destructive-pulls");
   const endpoints = [

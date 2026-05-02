@@ -1,17 +1,17 @@
 ---
 title: "Zalo Plugin"
 sidebarTitle: "Zalo"
-description: "Zalo connector for Milady — bot integration with the Zalo messaging platform."
+description: "Zalo connector for Eliza — bot integration with the Zalo messaging platform."
 ---
 
-The Zalo plugin connects Milady agents to Zalo, enabling message handling through the Zalo Official Account API.
+The Zalo plugin connects Eliza agents to Zalo, enabling message handling through the Zalo Official Account API.
 
 **Package:** `@elizaos/plugin-zalo`
 
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-zalo
+eliza plugins install @elizaos/plugin-zalo
 ```
 
 ## Setup
@@ -22,7 +22,7 @@ milady plugins install @elizaos/plugin-zalo
 2. Create an application and obtain your App ID and App Secret
 3. Generate an access token and refresh token for API access
 
-### 2. Configure Milady
+### 2. Configure Eliza
 
 ```json
 {

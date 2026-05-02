@@ -1,10 +1,10 @@
 ---
 title: Mobile App (iOS/Android)
 sidebarTitle: Mobile App
-description: Run Milady on iOS and Android devices using the Capacitor-based mobile app with native plugin support.
+description: Run Eliza on iOS and Android devices using the Capacitor-based mobile app with native plugin support.
 ---
 
-The Milady mobile app brings the full dashboard experience to iOS and Android devices using [Capacitor](https://capacitorjs.com/), a cross-platform native runtime. The same web UI runs inside a native WebView with access to device hardware through Capacitor plugins.
+The Eliza mobile app brings the full dashboard experience to iOS and Android devices using [Capacitor](https://capacitorjs.com/), a cross-platform native runtime. The same web UI runs inside a native WebView with access to device hardware through Capacitor plugins.
 
 ## Platform Support
 
@@ -13,8 +13,8 @@ The Milady mobile app brings the full dashboard experience to iOS and Android de
 | **iOS** | iOS 14+ (armv7) | HTTPS | Automatic content inset, mobile-preferred content mode, link preview disabled |
 | **Android** | API 26 (Android 8.0+) | HTTPS | Input capture enabled, mixed content disabled, WebContents debugging off in production |
 
-**App ID:** `com.miladyai.milady`
-**Package name:** `@miladyai/app`
+**App ID:** `com.elizaai.eliza`
+**Package name:** `@elizaai/app`
 **Current version:** `2.0.0-alpha.87`
 
 ## Prerequisites
@@ -106,15 +106,15 @@ The shared Capacitor configuration lives in `capacitor.config.ts`. Mobile target
 
 ```typescript
 {
-  appId: "com.miladyai.milady",
-  appName: "Milady",
+  appId: "com.elizaai.eliza",
+  appName: "Eliza",
   webDir: "dist",
   server: {
     androidScheme: "https",
     iosScheme: "https",
     allowNavigation: [
       "localhost", "127.0.0.1",
-      "*.elizacloud.ai", "app.milady.ai", "cloud.milady.ai", "*.milady.ai",
+      "*.elizacloud.ai", "app.eliza.ai", "cloud.eliza.ai", "*.eliza.ai",
       "rs-sdk-demo.fly.dev", "*.fly.dev",
       "hyperscape.gg", "*.hyperscape.gg",
     ],
@@ -152,13 +152,13 @@ The shared Capacitor configuration lives in `capacitor.config.ts`. Mobile target
 
 ## Capacitor Plugins
 
-The mobile app uses 13 custom Milady Capacitor plugins plus the core Haptics plugin, each providing native capabilities with web fallbacks.
+The mobile app uses 13 custom Eliza Capacitor plugins plus the core Haptics plugin, each providing native capabilities with web fallbacks.
 
 ### 1. Gateway (`@elizaos/capacitor-gateway`)
 
-Connects the mobile app to a Milady agent running elsewhere on the network.
+Connects the mobile app to a Eliza agent running elsewhere on the network.
 
-- **Discovery:** Native Bonjour/mDNS discovery scans for `_milady-gw._tcp` services on the local network. Supports both local discovery and wide-area DNS-SD (e.g., over Tailscale).
+- **Discovery:** Native Bonjour/mDNS discovery scans for `_eliza-gw._tcp` services on the local network. Supports both local discovery and wide-area DNS-SD (e.g., over Tailscale).
 - **WebSocket:** Real-time RPC communication with authentication, reconnection, and event streaming.
 - **Authentication:** Supports token-based and password-based auth with configurable client name, version, session key, role, and scopes.
 - **Events:** Streams `gatewayEvent`, `stateChange`, `error`, and `discovery` events.
@@ -168,7 +168,7 @@ Connects the mobile app to a Milady agent running elsewhere on the network.
 
 Voice wake-word detection for hands-free activation.
 
-- **Wake words:** Configurable trigger words (e.g., `["milady"]`) with post-trigger gap detection and minimum command length.
+- **Wake words:** Configurable trigger words (e.g., `["eliza"]`) with post-trigger gap detection and minimum command length.
 - **Continuous listening:** Only available on native platforms (iOS/Android). Uses the native Speech framework on iOS, SpeechRecognizer on Android, and Whisper.cpp on desktop.
 - **Audio levels:** Streams real-time audio level events for visualization.
 - **Transcript events:** Provides speech segments with timing information and confidence scores.
@@ -223,7 +223,7 @@ Canvas rendering and web view management. Available on all platforms (HTML Canva
 - **Layer system:** Create, update, delete, and composite named layers with opacity and z-index.
 - **Batch drawing:** Send multiple draw commands in a single call for performance.
 - **Web view:** Navigate URLs, evaluate JavaScript, take snapshots, and push A2UI messages.
-- **Deep links:** Intercepts `milady://` URLs and fires `deepLink` events.
+- **Deep links:** Intercepts `eliza://` URLs and fires `deepLink` events.
 - **Touch input:** Streams multi-touch events with force data.
 
 ### 8. Agent (`@elizaos/capacitor-agent`)
@@ -349,7 +349,7 @@ Web API detection helpers check for `SpeechRecognition`, `speechSynthesis`, `med
 
 On mobile, the agent typically runs on a separate machine (desktop or server). The mobile app connects to it via the Gateway plugin:
 
-1. **Discovery** (native only) — the app broadcasts a Bonjour/mDNS query for `_milady-gw._tcp` services. On iOS, the `NSBonjourServices` and `NSLocalNetworkUsageDescription` keys in `Info.plist` authorize this. Results stream in via the `discovery` event as gateways are found, lost, or updated.
+1. **Discovery** (native only) — the app broadcasts a Bonjour/mDNS query for `_eliza-gw._tcp` services. On iOS, the `NSBonjourServices` and `NSLocalNetworkUsageDescription` keys in `Info.plist` authorize this. Results stream in via the `discovery` event as gateways are found, lost, or updated.
 2. **Manual connection** — enter the gateway WebSocket URL directly (e.g., `wss://192.168.1.100:8080`).
 3. **WebSocket** — once connected, all communication happens over a persistent WebSocket with JSON-RPC style request/response and event streaming. The connection supports token and password authentication, role negotiation, and automatic reconnection.
 
@@ -385,21 +385,21 @@ The following keys are automatically synced to native Preferences:
 
 | Key | Purpose |
 |-----|---------|
-| `milady.control.settings.v1` | Dashboard settings and preferences |
-| `milady.device.identity` | Device identity token |
-| `milady.device.auth` | Device authentication credentials |
+| `eliza.control.settings.v1` | Dashboard settings and preferences |
+| `eliza.device.identity` | Device identity token |
+| `eliza.device.auth` | Device authentication credentials |
 
 ### API
 
 ```typescript
 // Read a value (works on both native and web)
-const value = await getStorageValue("milady.device.identity");
+const value = await getStorageValue("eliza.device.identity");
 
 // Write a value
-await setStorageValue("milady.control.settings.v1", jsonString);
+await setStorageValue("eliza.control.settings.v1", jsonString);
 
 // Remove a value
-await removeStorageValue("milady.device.auth");
+await removeStorageValue("eliza.device.auth");
 
 // Register additional keys for native sync
 registerSyncedKey("my.custom.key");
@@ -410,7 +410,7 @@ isStorageBridgeInitialized(); // boolean
 
 ## Capacitor Bridge
 
-The global bridge object is exposed on `window.Milady` and provides a unified API for all native capabilities.
+The global bridge object is exposed on `window.Eliza` and provides a unified API for all native capabilities.
 
 ### Properties
 
@@ -419,7 +419,7 @@ The global bridge object is exposed on `window.Milady` and provides a unified AP
 | `capabilities` | `CapacitorCapabilities` | Platform capability flags (native, haptics, camera, microphone, screenCapture, fileSystem, notifications, geolocation, background, voiceWake) |
 | `pluginCapabilities` | `PluginCapabilities` | Per-plugin capability details (see above) |
 | `haptics` | object | Haptic feedback functions: `light()`, `medium()`, `heavy()`, `success()`, `warning()`, `error()`, `selectionStart()`, `selectionChanged()`, `selectionEnd()` |
-| `plugins` | `MiladyPlugins` | Access to all Milady plugins with fallback support |
+| `plugins` | `ElizaPlugins` | Access to all Eliza plugins with fallback support |
 | `isFeatureAvailable(feature)` | function | Check if a specific feature is available on the current platform |
 | `platform` | object | Platform detection: `name`, `isNative`, `isIOS`, `isAndroid`, `isDesktop`, `isWeb`, `isMacOS` |
 | `getPlugin(name)` | function | Get a registered plugin by name |
@@ -428,7 +428,7 @@ The global bridge object is exposed on `window.Milady` and provides a unified AP
 
 ### Initialization
 
-The bridge dispatches a `milady:bridge-ready` custom event on `document` when initialization completes. Use `waitForBridge()` to await initialization:
+The bridge dispatches a `eliza:bridge-ready` custom event on `document` when initialization completes. Use `waitForBridge()` to await initialization:
 
 ```typescript
 import { waitForBridge } from "./bridge/capacitor-bridge";
@@ -437,7 +437,7 @@ const bridge = await waitForBridge();
 console.log(bridge.platform.isIOS); // true on iPhone/iPad
 ```
 
-If `window.Milady` is already set, `waitForBridge()` resolves immediately. Otherwise it listens for the custom event.
+If `window.Eliza` is already set, `waitForBridge()` resolves immediately. Otherwise it listens for the custom event.
 
 ## iOS-Specific Details
 
@@ -447,15 +447,15 @@ The iOS app declares the following usage descriptions in `Info.plist`:
 
 | Key | Description shown to user |
 |-----|--------------------------|
-| `NSCameraUsageDescription` | "Milady uses your camera to capture photos and video when you ask it to." |
-| `NSMicrophoneUsageDescription` | "Milady needs microphone access for voice wake, talk mode, and video capture." |
-| `NSLocationWhenInUseUsageDescription` | "Milady uses your location to provide location-aware responses when you allow it." |
-| `NSLocationAlwaysAndWhenInUseUsageDescription` | "Milady can share your location in the background so it stays up to date even when the app is not in use." |
-| `NSSpeechRecognitionUsageDescription` | "Milady uses on-device speech recognition to listen for voice commands and wake words." |
-| `NSPhotoLibraryUsageDescription` | "Milady accesses your photo library to attach and share photos or videos." |
-| `NSPhotoLibraryAddUsageDescription` | "Milady saves captured photos and videos to your photo library." |
-| `NSLocalNetworkUsageDescription` | "Milady discovers and connects to your Milady gateway on the local network." |
-| `NSBonjourServices` | `_milady-gw._tcp` (for gateway discovery) |
+| `NSCameraUsageDescription` | "Eliza uses your camera to capture photos and video when you ask it to." |
+| `NSMicrophoneUsageDescription` | "Eliza needs microphone access for voice wake, talk mode, and video capture." |
+| `NSLocationWhenInUseUsageDescription` | "Eliza uses your location to provide location-aware responses when you allow it." |
+| `NSLocationAlwaysAndWhenInUseUsageDescription` | "Eliza can share your location in the background so it stays up to date even when the app is not in use." |
+| `NSSpeechRecognitionUsageDescription` | "Eliza uses on-device speech recognition to listen for voice commands and wake words." |
+| `NSPhotoLibraryUsageDescription` | "Eliza accesses your photo library to attach and share photos or videos." |
+| `NSPhotoLibraryAddUsageDescription` | "Eliza saves captured photos and videos to your photo library." |
+| `NSLocalNetworkUsageDescription` | "Eliza discovers and connects to your Eliza gateway on the local network." |
+| `NSBonjourServices` | `_eliza-gw._tcp` (for gateway discovery) |
 
 ### Orientation Support
 
@@ -494,8 +494,8 @@ The Android manifest declares these permissions:
 | `minSdkVersion` | 26 (Android 8.0) |
 | `compileSdkVersion` | 35 |
 | `targetSdkVersion` | 35 |
-| `applicationId` | `com.miladyai.milady` |
-| `namespace` | `ai.milady.app` |
+| `applicationId` | `com.elizaai.eliza` |
+| `namespace` | `ai.eliza.app` |
 
 ### Activity Configuration
 
@@ -567,11 +567,11 @@ bun run build:ios   # or build:android
 
 - **iOS:** Ensure the app has local network permission (Settings -> Privacy -> Local Network).
 - **Android:** Ensure the device is on the same Wi-Fi network as the gateway. Background network restrictions on some Android manufacturers may interfere.
-- Both platforms require the gateway to be advertising via mDNS/Bonjour with the `_milady-gw._tcp` service type.
+- Both platforms require the gateway to be advertising via mDNS/Bonjour with the `_eliza-gw._tcp` service type.
 
 ### Foreground service notification not visible (Android)
 
-On Android 13+, the `POST_NOTIFICATIONS` permission must be granted. The app requests this on first launch, but if denied, the foreground service notification is silently suppressed. Go to Settings -> Apps -> Milady -> Notifications and enable notifications.
+On Android 13+, the `POST_NOTIFICATIONS` permission must be granted. The app requests this on first launch, but if denied, the foreground service notification is silently suppressed. Go to Settings -> Apps -> Eliza -> Notifications and enable notifications.
 
 ### Haptics not working
 

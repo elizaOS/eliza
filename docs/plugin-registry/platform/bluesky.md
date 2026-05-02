@@ -1,19 +1,19 @@
 ---
 title: "Bluesky Plugin"
 sidebarTitle: "Bluesky"
-description: "Bluesky connector for Milady — post, reply, and interact on the AT Protocol network."
+description: "Bluesky connector for Eliza — post, reply, and interact on the AT Protocol network."
 ---
 
-The Bluesky plugin connects Milady agents to the Bluesky social network via the AT Protocol, enabling posting, replying, and social interactions.
+The Bluesky plugin connects Eliza agents to the Bluesky social network via the AT Protocol, enabling posting, replying, and social interactions.
 
 **Package:** `@elizaos/plugin-bluesky`
 
 ## Installation
 
-This connector auto-enables when its configuration is present in `milady.json`. You can also install it explicitly:
+This connector auto-enables when its configuration is present in `eliza.json`. You can also install it explicitly:
 
 ```bash
-milady plugins install @elizaos/plugin-bluesky
+eliza plugins install @elizaos/plugin-bluesky
 ```
 
 ## Setup
@@ -24,7 +24,7 @@ milady plugins install @elizaos/plugin-bluesky
 2. Note your handle (e.g., `yourname.bsky.social`)
 3. Use your account username and password (or generate an app password in Settings → App Passwords)
 
-### 2. Configure Milady
+### 2. Configure Eliza
 
 Set the credentials via environment variables in your config:
 

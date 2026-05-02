@@ -1,17 +1,17 @@
 ---
 title: "Microsoft Teams Plugin"
 sidebarTitle: "MS Teams"
-description: "Microsoft Teams connector for Milady — Azure Bot integration with per-team configuration, threaded replies, and media support up to 100MB."
+description: "Microsoft Teams connector for Eliza — Azure Bot integration with per-team configuration, threaded replies, and media support up to 100MB."
 ---
 
-The Microsoft Teams plugin connects Milady agents to Teams as an Azure Bot, supporting channel messages, DMs, threaded replies, and media uploads via OneDrive/SharePoint.
+The Microsoft Teams plugin connects Eliza agents to Teams as an Azure Bot, supporting channel messages, DMs, threaded replies, and media uploads via OneDrive/SharePoint.
 
 **Package:** `@elizaos/plugin-msteams`
 
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-msteams
+eliza plugins install @elizaos/plugin-msteams
 ```
 
 ## Setup
@@ -26,13 +26,13 @@ milady plugins install @elizaos/plugin-msteams
 
 ### 2. Configure Bot Messaging Endpoint
 
-Set the messaging endpoint to your Milady server URL:
+Set the messaging endpoint to your Eliza server URL:
 
 ```
-https://your-milady-host/api/msteams/webhook
+https://your-eliza-host/api/msteams/webhook
 ```
 
-### 3. Configure Milady
+### 3. Configure Eliza
 
 ```json
 {
@@ -104,7 +104,7 @@ The plugin auto-enables when the `connectors.msteams` block contains `botToken`,
 
 ### Bot Not Responding
 
-Verify the messaging endpoint URL is publicly accessible and points to your Milady server's webhook path.
+Verify the messaging endpoint URL is publicly accessible and points to your Eliza server's webhook path.
 
 ### Authentication Errors
 

@@ -1,23 +1,23 @@
 ---
 title: "Google Antigravity Plugin"
 sidebarTitle: "Google Antigravity"
-description: "Google Cloud AI model provider for Milady — access Google Cloud AI Platform models via the Antigravity integration."
+description: "Google Cloud AI model provider for Eliza — access Google Cloud AI Platform models via the Antigravity integration."
 ---
 
-The Google Antigravity plugin connects Milady agents to Google Cloud AI Platform, providing access to Google's cloud-hosted AI models through the Google Cloud API. This is the Google Cloud (Vertex AI) integration, as opposed to the [Google Gemini plugin](/plugin-registry/llm/google-genai) which uses Google AI Studio.
+The Google Antigravity plugin connects Eliza agents to Google Cloud AI Platform, providing access to Google's cloud-hosted AI models through the Google Cloud API. This is the Google Cloud (Vertex AI) integration, as opposed to the [Google Gemini plugin](/plugin-registry/llm/google-genai) which uses Google AI Studio.
 
 <Info>
 This plugin is available from the upstream elizaOS registry. It is **not bundled** in `plugins.json` and must be installed explicitly.
 </Info>
 
-> **On-demand plugin.** This plugin is resolved from the remote elizaOS plugin registry and auto-installs when its API key is detected. It is not included in Milady's bundled `plugins.json` index.
+> **On-demand plugin.** This plugin is resolved from the remote elizaOS plugin registry and auto-installs when its API key is detected. It is not included in Eliza's bundled `plugins.json` index.
 
 **Package:** `@elizaos/plugin-google-antigravity`
 
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-google-antigravity
+eliza plugins install @elizaos/plugin-google-antigravity
 ```
 
 ## Auto-Enable
@@ -34,7 +34,7 @@ export GOOGLE_CLOUD_API_KEY=your-google-cloud-api-key
 |---------------------|----------|-------------|
 | `GOOGLE_CLOUD_API_KEY` | Yes | Google Cloud API key with AI Platform access |
 
-### milady.json Example
+### eliza.json Example
 
 ```json
 {

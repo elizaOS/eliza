@@ -1,9 +1,9 @@
 import { logger } from "./logger";
 import {
-  MiladyIntent,
+  ElizaIntent,
   type ReceiveIntentPayload,
   type ReceiveIntentResult,
-} from "./milady-intent";
+} from "./eliza-intent";
 
 /**
  * Intent bridge — single entry point used by UI layers to forward an
@@ -11,7 +11,7 @@ import {
  *
  * This is a thin wrapper, not an abstraction layer. It exists so that
  * when push payloads land (T9c) there is one place to attach decoding +
- * authentication rather than scattering `MiladyIntent.receiveIntent` calls.
+ * authentication rather than scattering `ElizaIntent.receiveIntent` calls.
  */
 export async function forwardIntent(
   payload: ReceiveIntentPayload,
@@ -20,5 +20,5 @@ export async function forwardIntent(
     kind: payload.kind,
     issuedAtIso: payload.issuedAtIso,
   });
-  return MiladyIntent.receiveIntent(payload);
+  return ElizaIntent.receiveIntent(payload);
 }

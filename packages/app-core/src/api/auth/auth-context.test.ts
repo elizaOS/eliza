@@ -39,7 +39,7 @@ interface Harness {
 }
 
 async function open(): Promise<Harness> {
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "milady-authctx-"));
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-authctx-"));
   const adapter = createDatabaseAdapter(
     { dataDir },
     "00000000-0000-0000-0000-000000000001" as `${string}-${string}-${string}-${string}-${string}`,
@@ -105,12 +105,12 @@ describe("ensureSessionForRequest", () => {
     _resetLegacyBearerState();
     _resetAuthRateLimiter();
     delete process.env.ELIZA_API_TOKEN;
-    delete process.env.MILADY_LEGACY_GRACE_UNTIL;
+    delete process.env.ELIZA_LEGACY_GRACE_UNTIL;
   });
   afterEach(async () => {
     await harness.cleanup();
     delete process.env.ELIZA_API_TOKEN;
-    delete process.env.MILADY_LEGACY_GRACE_UNTIL;
+    delete process.env.ELIZA_LEGACY_GRACE_UNTIL;
   });
 
   it("resolves a session via the cookie path", async () => {
@@ -173,7 +173,7 @@ describe("ensureSessionForRequest", () => {
 
   it("rejects legacy bearer when grace window is past", async () => {
     process.env.ELIZA_API_TOKEN = "legacy-token-value-1234567890";
-    process.env.MILADY_LEGACY_GRACE_UNTIL = "1"; // ms epoch in the past
+    process.env.ELIZA_LEGACY_GRACE_UNTIL = "1"; // ms epoch in the past
     const req = fakeReq({ bearer: "legacy-token-value-1234567890" });
     const res = fakeRes();
     const ctx = await ensureSessionForRequest(req, res, {

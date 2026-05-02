@@ -166,10 +166,10 @@ type GmailMockRequest = {
 };
 
 async function readGmailMockRequests(): Promise<GmailMockRequest[]> {
-  const base = process.env.MILADY_MOCK_GOOGLE_BASE;
+  const base = process.env.ELIZA_MOCK_GOOGLE_BASE;
   if (!isLoopbackUrl(base)) {
     throw new Error(
-      "MILADY_MOCK_GOOGLE_BASE must be a loopback URL for Gmail ledger checks",
+      "ELIZA_MOCK_GOOGLE_BASE must be a loopback URL for Gmail ledger checks",
     );
   }
   const response = await fetch(`${base}/__mock/requests`);
@@ -1183,16 +1183,16 @@ registerFinalCheckHandler("gmailApproval", async (check, { ctx }) => {
 });
 
 registerFinalCheckHandler("gmailNoRealWrite", () => {
-  if (!isLoopbackUrl(process.env.MILADY_MOCK_GOOGLE_BASE)) {
+  if (!isLoopbackUrl(process.env.ELIZA_MOCK_GOOGLE_BASE)) {
     return {
       status: "failed",
-      detail: "MILADY_MOCK_GOOGLE_BASE is not loopback; Gmail write proof cannot exclude real writes",
+      detail: "ELIZA_MOCK_GOOGLE_BASE is not loopback; Gmail write proof cannot exclude real writes",
     };
   }
-  if (process.env.MILADY_ALLOW_REAL_GMAIL_WRITES === "1") {
+  if (process.env.ELIZA_ALLOW_REAL_GMAIL_WRITES === "1") {
     return {
       status: "failed",
-      detail: "MILADY_ALLOW_REAL_GMAIL_WRITES=1 disables no-real-write proof",
+      detail: "ELIZA_ALLOW_REAL_GMAIL_WRITES=1 disables no-real-write proof",
     };
   }
   return {

@@ -12,7 +12,7 @@ export function createAppClawvillePlugin(): Plugin {
   return {
     name: "@clawville/app-clawville",
     description:
-      "ClawVille app wrapper for Milady. Serves an embedded viewer for the sea-themed agent game and routes session commands to the ClawVille API.",
+      "ClawVille app wrapper for Eliza. Serves an embedded viewer for the sea-themed agent game and routes session commands to the ClawVille API.",
     app: {
       displayName: "ClawVille",
       category: "game",

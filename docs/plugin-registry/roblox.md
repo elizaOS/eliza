@@ -10,12 +10,12 @@ Roblox integration for agent-driven gameplay.
 
 ## Overview
 
-The Roblox plugin connects Milady agents to Roblox, enabling agent-driven gameplay and interactive experiences within the platform.
+The Roblox plugin connects Eliza agents to Roblox, enabling agent-driven gameplay and interactive experiences within the platform.
 
 ## Installation
 
 ```bash
-milady plugins install roblox
+eliza plugins install roblox
 ```
 
 ## Auto-Enable

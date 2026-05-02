@@ -28,7 +28,7 @@ Connect your agent to the Farcaster decentralized social protocol for casting, r
 | `ACTION_INTERVAL` | No | Minutes between action-processing cycles (default: `5`) |
 | `MAX_ACTIONS_PROCESSING` | No | Maximum actions per batch (default: `1`) |
 
-These can be set as environment variables or under the `connectors.farcaster` config in `~/.milady/milady.json`:
+These can be set as environment variables or under the `connectors.farcaster` config in `~/.eliza/eliza.json`:
 
 ```json
 {
@@ -69,7 +69,7 @@ The connector can also be enabled via the `FARCASTER_NEYNAR_API_KEY` environment
 
 | Variable | Description |
 |----------|-------------|
-| `FARCASTER_NEYNAR_API_KEY` | Neynar API key. When set, the runtime maps this to the connector's `apiKey` field. Can be used as an alternative to placing the key directly in `milady.json`. |
+| `FARCASTER_NEYNAR_API_KEY` | Neynar API key. When set, the runtime maps this to the connector's `apiKey` field. Can be used as an alternative to placing the key directly in `eliza.json`. |
 
 ## Environment Variables
 
@@ -95,7 +95,7 @@ When the connector is loaded, the following environment variables are consumed b
 
 ## Full Configuration Reference
 
-All fields are defined under `connectors.farcaster` in `milady.json`.
+All fields are defined under `connectors.farcaster` in `eliza.json`.
 
 ### Core Fields
 

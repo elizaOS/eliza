@@ -104,7 +104,7 @@ Estos servicios están disponibles pero no se cargan por defecto — se habilita
 
 Los secretos los gestiona **`@elizaos/core`** (no como paquete npm independiente). Actívalo con `enableSecretsManager: true` o `ENABLE_SECRETS_MANAGER` en el personaje o la configuración; el runtime registra el servicio `SECRETS` y las acciones/proveedores asociados al inicio, antes de otros plugins.
 
-Los secretos se cifran en reposo (AES-256-GCM), quedan auditados (solo nombres de clave, nunca valores) y tienen alcance por agente. Usa **Agente → Settings → Secrets**, `milady config path`, la sección `secrets` del archivo de configuración, variables de entorno al arrancar u `runtime.getSetting()` desde plugins (prioridad habitual: valores en base de datos, `settings.secrets` del character, `process.env`, secretos globales bajo `~/.milady/secrets`).
+Los secretos se cifran en reposo (AES-256-GCM), quedan auditados (solo nombres de clave, nunca valores) y tienen alcance por agente. Usa **Agente → Settings → Secrets**, `eliza config path`, la sección `secrets` del archivo de configuración, variables de entorno al arrancar u `runtime.getSetting()` desde plugins (prioridad habitual: valores en base de datos, `settings.secrets` del character, `process.env`, secretos globales bajo `~/.eliza/secrets`).
 
 En los registros de auditoría sólo aparecen nombres de clave; nunca se escribe el valor en claro.
 
@@ -114,14 +114,14 @@ En los registros de auditoría sólo aparecen nombres de clave; nunca se escribe
 
 </div>
 
-El registrador de trayectorias se trata de forma especial durante el arranque. Milady espera a que esté disponible con un tiempo de espera de 3 segundos antes de habilitarlo:
+El registrador de trayectorias se trata de forma especial durante el arranque. Eliza espera a que esté disponible con un tiempo de espera de 3 segundos antes de habilitarlo:
 
 ```typescript
 await waitForTrajectoriesService(runtime, "post-init", 3000);
 ensureTrajectoryLoggerEnabled(runtime, "post-init");
 ```
 
-El servicio soporta los métodos `isEnabled()` y `setEnabled(enabled: boolean)`. Milady lo habilita por defecto después de la inicialización.
+El servicio soporta los métodos `isEnabled()` y `setEnabled(enabled: boolean)`. Eliza lo habilita por defecto después de la inicialización.
 
 <div id="skills-service">
 
@@ -129,14 +129,14 @@ El servicio soporta los métodos `isEnabled()` y `setEnabled(enabled: boolean)`.
 
 </div>
 
-`@elizaos/plugin-agent-skills` carga y gestiona el catálogo de habilidades. Milady precalienta este servicio de forma asíncrona después del arranque:
+`@elizaos/plugin-agent-skills` carga y gestiona el catálogo de habilidades. Eliza precalienta este servicio de forma asíncrona después del arranque:
 
 ```typescript
 const svc = runtime.getService("AGENT_SKILLS_SERVICE") as {
   getCatalogStats?: () => { loaded: number; total: number; storageType: string };
 };
 const stats = svc?.getCatalogStats?.();
-logger.info(`[milady] Skills: ${stats.loaded}/${stats.total} loaded`);
+logger.info(`[eliza] Skills: ${stats.loaded}/${stats.total} loaded`);
 ```
 
 Las habilidades se descubren desde múltiples directorios en orden de precedencia:
@@ -170,7 +170,7 @@ const sandboxManager = new SandboxManager({
   mode: "standard",
   image: dockerSettings?.image ?? undefined,  // no default image — must be configured
   browser: dockerSettings?.browser ?? undefined,
-  containerPrefix: "milady-sandbox-",
+  containerPrefix: "eliza-sandbox-",
   network: "bridge",
   memory: "512m",
   cpus: 0.5,

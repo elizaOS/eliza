@@ -304,8 +304,8 @@ async function provisionStewardFromCloud(
     | { agentId?: string; character?: { name?: string } }
     | null
     | undefined;
-  const agentId = runtime?.agentId ?? "milady-desktop";
-  const agentName = runtime?.character?.name ?? "Milady";
+  const agentId = runtime?.agentId ?? "eliza-desktop";
+  const agentName = runtime?.character?.name ?? "Eliza";
 
   let agentResult: EnsureStewardAgentResult | null = null;
   try {
@@ -486,7 +486,7 @@ Remove phantom env vars from the abandoned cloud-wallet plan and add the real St
 In CLAUDE.md's "Setup Environment Variables" table, find and remove these rows (they reference code that was never implemented):
 
 - `ENABLE_CLOUD_WALLET` — the entire row
-- `MILADY_CLOUD_CLIENT_ADDRESS_KEY` — the entire row
+- `ELIZA_CLOUD_CLIENT_ADDRESS_KEY` — the entire row
 - `WALLET_SOURCE_EVM` / `WALLET_SOURCE_SOLANA` — the entire row
 - `ENABLE_EVM_PLUGIN` — the entire row
 
@@ -498,7 +498,7 @@ Add these rows to the env var table:
 | `STEWARD_API_URL` | Steward vault API base URL. Auto-provisioned on Eliza Cloud login; set manually for self-hosted Steward. | — |
 | `STEWARD_TENANT_ID` | Steward tenant identifier. Auto-provisioned on cloud login. | — |
 | `STEWARD_API_KEY` | Steward tenant API key. Auto-provisioned on cloud login. Persisted to `config.env`. | — |
-| `STEWARD_AGENT_TOKEN` | Steward agent bearer token. Generated during agent provisioning, persisted to `~/.milady/steward-credentials.json`. | — |
+| `STEWARD_AGENT_TOKEN` | Steward agent bearer token. Generated during agent provisioning, persisted to `~/.eliza/steward-credentials.json`. | — |
 | `STEWARD_AGENT_ID` | Steward agent identifier. Defaults to the runtime `agentId`. | — |
 ```
 
@@ -509,7 +509,7 @@ cd "$(git rev-parse --show-toplevel)"
 git add CLAUDE.md
 git commit -m "docs: replace phantom cloud-wallet env vars with real Steward ones
 
-Remove ENABLE_CLOUD_WALLET, MILADY_CLOUD_CLIENT_ADDRESS_KEY,
+Remove ENABLE_CLOUD_WALLET, ELIZA_CLOUD_CLIENT_ADDRESS_KEY,
 WALLET_SOURCE_*, ENABLE_EVM_PLUGIN (never implemented). Add STEWARD_*
 env vars that are actually used by the cloud login provisioning flow."
 ```
@@ -546,13 +546,13 @@ Manual testing to confirm the full flow works end-to-end.
 - [ ] **Step 1: Clean steward state**
 
 ```bash
-rm -f ~/.milady/steward-credentials.json
+rm -f ~/.eliza/steward-credentials.json
 ```
 
 Verify no STEWARD_* vars in config:
 
 ```bash
-grep -i steward ~/.milady/milady.json || echo "Clean — no steward config"
+grep -i steward ~/.eliza/eliza.json || echo "Clean — no steward config"
 ```
 
 - [ ] **Step 2: Start dev environment**
@@ -586,13 +586,13 @@ If you see `Steward already configured, skipping cloud provisioning`, credential
 - [ ] **Step 5: Verify credentials persisted**
 
 ```bash
-cat ~/.milady/steward-credentials.json | python3 -m json.tool
+cat ~/.eliza/steward-credentials.json | python3 -m json.tool
 ```
 
 Expected fields: `apiUrl`, `tenantId`, `agentId`, `apiKey`, `agentToken`, `walletAddresses.evm`.
 
 ```bash
-grep -i steward ~/.milady/milady.json
+grep -i steward ~/.eliza/eliza.json
 ```
 
 Expected: `STEWARD_API_URL`, `STEWARD_TENANT_ID`, `STEWARD_API_KEY` in the `env` object.

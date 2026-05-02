@@ -2,7 +2,7 @@ import Capacitor
 import Foundation
 import UserNotifications
 
-/// MiladyIntentPlugin — native bridge for the phone-companion surface.
+/// ElizaIntentPlugin — native bridge for the phone-companion surface.
 ///
 /// Exposes four methods to the JS layer:
 ///   - `scheduleAlarm({ timeIso, title, body })`
@@ -19,10 +19,10 @@ import UserNotifications
 ///   - `setPairingStatus({ deviceId, agentUrl })`
 ///       Persists the same keys after a QR handshake or `session.start` push so
 ///       cold launches can restore `paired: true` via `getPairingStatus`.
-@objc(MiladyIntentPlugin)
-public class MiladyIntentPlugin: CAPPlugin, CAPBridgedPlugin {
-    public let identifier = "MiladyIntentPlugin"
-    public let jsName = "MiladyIntent"
+@objc(ElizaIntentPlugin)
+public class ElizaIntentPlugin: CAPPlugin, CAPBridgedPlugin {
+    public let identifier = "ElizaIntentPlugin"
+    public let jsName = "ElizaIntent"
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "scheduleAlarm", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "receiveIntent", returnType: CAPPluginReturnPromise),
@@ -30,8 +30,8 @@ public class MiladyIntentPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "setPairingStatus", returnType: CAPPluginReturnPromise),
     ]
 
-    private static let pairingDeviceIdKey = "com.milady.companion.pairing.deviceId"
-    private static let pairingAgentUrlKey = "com.milady.companion.pairing.agentUrl"
+    private static let pairingDeviceIdKey = "com.eliza.companion.pairing.deviceId"
+    private static let pairingAgentUrlKey = "com.eliza.companion.pairing.agentUrl"
 
     @objc public func scheduleAlarm(_ call: CAPPluginCall) {
         guard let timeIso = call.getString("timeIso"),
@@ -158,8 +158,8 @@ public class MiladyIntentPlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc public func getPairingStatus(_ call: CAPPluginCall) {
         let defaults = UserDefaults.standard
-        let deviceId = defaults.string(forKey: MiladyIntentPlugin.pairingDeviceIdKey)
-        let agentUrl = defaults.string(forKey: MiladyIntentPlugin.pairingAgentUrlKey)
+        let deviceId = defaults.string(forKey: ElizaIntentPlugin.pairingDeviceIdKey)
+        let agentUrl = defaults.string(forKey: ElizaIntentPlugin.pairingAgentUrlKey)
         let paired = deviceId != nil && agentUrl != nil
 
         call.resolve([
@@ -178,8 +178,8 @@ public class MiladyIntentPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         let defaults = UserDefaults.standard
-        defaults.set(deviceId, forKey: MiladyIntentPlugin.pairingDeviceIdKey)
-        defaults.set(agentUrl, forKey: MiladyIntentPlugin.pairingAgentUrlKey)
+        defaults.set(deviceId, forKey: ElizaIntentPlugin.pairingDeviceIdKey)
+        defaults.set(agentUrl, forKey: ElizaIntentPlugin.pairingAgentUrlKey)
         call.resolve(["ok": true])
     }
 }

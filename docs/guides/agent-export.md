@@ -1,10 +1,10 @@
 ---
 title: Agent Export & Import
 sidebarTitle: Agent Export & Import
-description: Export and import Milady agents as encrypted portable archives for migration between machines.
+description: Export and import Eliza agents as encrypted portable archives for migration between machines.
 ---
 
-Milady provides an encrypted export/import system for migrating agents between machines. The entire agent state — character configuration, memories, knowledge, relationships, and more — is captured in a single password-protected binary file.
+Eliza provides an encrypted export/import system for migrating agents between machines. The entire agent state — character configuration, memories, knowledge, relationships, and more — is captured in a single password-protected binary file.
 
 ## Table of Contents
 
@@ -444,10 +444,10 @@ The export format includes a `version` field (currently `1`). The import logic h
 
 ### Migration Between Versions
 
-When upgrading Milady, your existing `.eliza-agent` files remain compatible as long as the export version is not higher than what the new build supports. Best practices:
+When upgrading Eliza, your existing `.eliza-agent` files remain compatible as long as the export version is not higher than what the new build supports. Best practices:
 
 - Keep your `.eliza-agent` files after upgrading — they will still import.
-- If you need to move an agent from a newer Milady version to an older one, you may need to upgrade the target instance first.
+- If you need to move an agent from a newer Eliza version to an older one, you may need to upgrade the target instance first.
 - The `characterConfig` merge strategy (base with agent overlay) ensures that fields added in newer versions do not break imports on older versions — unknown fields are simply ignored by the Zod schema's strict mode during validation of sub-objects but preserved via the `Record<string, unknown>` type.
 
 ---
@@ -459,7 +459,7 @@ To share an agent with another person:
 1. **Export** the agent with a strong password using the dashboard or API.
 2. Share the `.eliza-agent` file through any file transfer method (email, cloud storage, USB drive, etc.).
 3. Share the password through a **separate channel** (never in the same message as the file).
-4. The recipient imports the file into their Milady instance using the same password.
+4. The recipient imports the file into their Eliza instance using the same password.
 
 Important considerations when sharing:
 
@@ -479,7 +479,7 @@ Key compatibility details:
 - The database schema types (`Agent`, `Memory`, `Entity`, `Component`, `Room`, `Task`, `World`, `Relationship`, `Log`) are imported from `@elizaos/core`.
 - Memory table names (`messages`, `facts`, `documents`, `fragments`, `descriptions`, `character_modifications`, `custom`) follow the elizaOS convention.
 - The `Task` type uses `agent_id` in the database schema but `agentId` in the TypeScript proto type. The export service handles both naming conventions when filtering tasks.
-- The `characterConfig` field is Milady-specific — elizaOS exports may not include it, but imports handle its absence gracefully.
+- The `characterConfig` field is Eliza-specific — elizaOS exports may not include it, but imports handle its absence gracefully.
 
 ---
 
@@ -540,7 +540,7 @@ The error message includes the specific fields that failed validation (e.g., `"e
 
 ### "Unsupported export version"
 
-The file was created by a newer version of Milady than the one you are running. Upgrade your Milady installation to import the file.
+The file was created by a newer version of Eliza than the one you are running. Upgrade your Eliza installation to import the file.
 
 ### Export file is very large
 

@@ -5,7 +5,7 @@ Last updated: 2026-04-17
 
 ## Goal
 
-Turn the real assistant behaviors from the `ice bambam` transcript into executable scenario coverage for Milady `LifeOps`.
+Turn the real assistant behaviors from the `ice bambam` transcript into executable scenario coverage for Eliza `LifeOps`.
 
 This plan is narrower than the full unified scenario matrix plan. It focuses on **executive-assistant composition**:
 

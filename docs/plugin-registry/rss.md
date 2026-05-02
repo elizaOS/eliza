@@ -1,10 +1,10 @@
 ---
 title: "RSS Plugin"
 sidebarTitle: "RSS"
-description: "RSS and news feed support for Milady — subscribe to feeds and surface new content to agents."
+description: "RSS and news feed support for Eliza — subscribe to feeds and surface new content to agents."
 ---
 
-The RSS plugin adds news and feed support to Milady agents.
+The RSS plugin adds news and feed support to Eliza agents.
 
 **Package:** `@elizaos/plugin-rss`
 
@@ -15,7 +15,7 @@ This plugin lets agents subscribe to RSS feeds and receive new content as it is 
 ## Installation
 
 ```bash
-milady plugins install rss
+eliza plugins install rss
 ```
 
 ## Auto-Enable

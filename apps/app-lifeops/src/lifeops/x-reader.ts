@@ -3,7 +3,7 @@ import { logger } from "@elizaos/core";
 
 function getXBaseUrl(): string {
   return (
-    process.env.MILADY_MOCK_X_BASE ??
+    process.env.ELIZA_MOCK_X_BASE ??
     process.env.ELIZA_MOCK_X_BASE ??
     "https://api.twitter.com"
   );

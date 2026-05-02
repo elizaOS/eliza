@@ -62,7 +62,7 @@ const BROWSER_WORKSPACE_APP_PARTITION = "persist:eliza-browser-app";
 // respects prefers-color-scheme so the OS theme drives light/dark.
 const BROWSER_WORKSPACE_DEFAULT_HOME_URL = "https://docs.elizaos.ai/";
 const BROWSER_WORKSPACE_COLLAPSED_SECTIONS_STORAGE_KEY =
-  "milady:browser-workspace:collapsed-sections";
+  "eliza:browser-workspace:collapsed-sections";
 
 // Minimal subset of Electrobun's <electrobun-webview> custom element surface
 // used by this view. Inlined so this file typechecks identically from any
@@ -808,7 +808,7 @@ export function BrowserWorkspaceView(): JSX.Element {
               const allowed =
                 walletConnectAllowedDomainsRef.current.has(domain) ||
                 (await walletActionConfirm({
-                  title: `Connect Milady wallet to ${domain}`,
+                  title: `Connect Eliza wallet to ${domain}`,
                   message: `${domain} is requesting your wallet address. Allow it to read ${formatAddressForDisplay(evmAddress)}?`,
                   confirmLabel: "Connect",
                   cancelLabel: "Reject",
@@ -972,7 +972,7 @@ export function BrowserWorkspaceView(): JSX.Element {
               const allowed =
                 walletConnectAllowedDomainsRef.current.has(domain) ||
                 (await walletActionConfirm({
-                  title: `Connect Milady Solana wallet to ${domain}`,
+                  title: `Connect Eliza Solana wallet to ${domain}`,
                   message: `${domain} is requesting your Solana address. Allow it to read ${formatAddressForDisplay(solanaAddress)}?`,
                   confirmLabel: "Connect",
                   cancelLabel: "Reject",
@@ -1168,7 +1168,7 @@ export function BrowserWorkspaceView(): JSX.Element {
           allowed ||
           (await vaultAutofillConfirm({
             title: `Autofill ${req.domain}`,
-            message: `Sign in as ${chosen.username || chosen.title} from ${sourceLabel}?\n\nMilady will fill the saved username and password for this site.`,
+            message: `Sign in as ${chosen.username || chosen.title} from ${sourceLabel}?\n\nEliza will fill the saved username and password for this site.`,
             confirmLabel: "Allow",
             cancelLabel: "Deny",
           }));
@@ -2378,7 +2378,7 @@ export function BrowserWorkspaceView(): JSX.Element {
                   <div className="text-xs leading-5 text-muted">
                     {t("browserworkspace.FrameBlockedDescription", {
                       defaultValue:
-                        "Discord blocks embedded browser frames. Use Milady Desktop Browser or a connected browser profile so LifeOps can inspect the page after login.",
+                        "Discord blocks embedded browser frames. Use Eliza Desktop Browser or a connected browser profile so LifeOps can inspect the page after login.",
                     })}
                   </div>
                   <Button

@@ -8,11 +8,11 @@ Why the release pipeline and desktop bundle work the way they do.
 
 ## macOS: why two DMGs (arm64 and x64)
 
-We ship **separate** `Milady-arm64.dmg` and `Milady-x64.dmg` because:
+We ship **separate** `Eliza-arm64.dmg` and `Eliza-x64.dmg` because:
 
 - **Native Node addons** (e.g. `onnxruntime-node`, `whisper-node`) ship prebuilt `.node` binaries per OS and arch. There is no single "universal" npm artifact that contains both arm64 and x64; the addon is built for the arch of the machine that ran `npm install` / `bun install`.
 - **CI builds both macOS architectures separately.** The Apple Silicon artifact runs on `macos-14`, and the Intel artifact runs on the dedicated `macos-15-intel` runner.
-- **The Intel artifact still uses explicit x64 invocations** through the shared desktop builder (`MILADY_DESKTOP_COMMAND_PREFIX="arch -x86_64"`) so native modules and helper binaries are resolved consistently as x64 throughout the packaging path.
+- **The Intel artifact still uses explicit x64 invocations** through the shared desktop builder (`ELIZA_DESKTOP_COMMAND_PREFIX="arch -x86_64"`) so native modules and helper binaries are resolved consistently as x64 throughout the packaging path.
 - **Why this still matters on the Intel runner:** our workflow shares the same commands and staging logic across all jobs, and the explicit x64 path avoids accidental host/translation drift in the install and packaging steps.
 
 See `.github/workflows/release-electrobun.yml`: the platform jobs run `arch -x86_64` for the macOS Intel leg during "Install root dependencies", `scripts/desktop-build.mjs stage`, and `scripts/desktop-build.mjs package`.
@@ -21,10 +21,10 @@ See `.github/workflows/release-electrobun.yml`: the platform jobs run `arch -x86
 
 ## Desktop bundle: why we copy plugins and deps
 
-The packaged app runs the agent from `milady-dist/` (bundled JS + `node_modules`). The main bundle is built by tsdown with dependencies inlined where possible, but:
+The packaged app runs the agent from `eliza-dist/` (bundled JS + `node_modules`). The main bundle is built by tsdown with dependencies inlined where possible, but:
 
-- **Plugins** (`@elizaos/plugin-*`) are loaded at runtime; their dist/ and any **runtime-only** dependencies (native addons, optional requires, etc.) must be present in `milady-dist/node_modules`.
-- **Why not rely on a single global node_modules at pack time?** The app is built into an ASAR (and unpacked dirs); resolution at runtime is from the app directory. So we copy the subset we need into `apps/app/electrobun/milady-dist/node_modules` before packaging runs.
+- **Plugins** (`@elizaos/plugin-*`) are loaded at runtime; their dist/ and any **runtime-only** dependencies (native addons, optional requires, etc.) must be present in `eliza-dist/node_modules`.
+- **Why not rely on a single global node_modules at pack time?** The app is built into an ASAR (and unpacked dirs); resolution at runtime is from the app directory. So we copy the subset we need into `apps/app/electrobun/eliza-dist/node_modules` before packaging runs.
 
 The packaging scripts derive that subset instead of keeping a hand-maintained allowlist:
 
@@ -41,10 +41,10 @@ The release workflow (`.github/workflows/release-electrobun.yml`) is designed fo
 - **Strict shell (`bash -euo pipefail`)** — Applied at job default for `build-desktop` so every step exits on first error, undefined variable, or pipe failure. **Why:** Without it, a failing command in the middle of a script can be ignored and the step still "succeeds", producing broken artifacts or confusing later failures.
 - **Retry loops with final assertion** — `bun install` steps retry up to 3 times, then run the same install command once more after the loop. **Why:** If all retries failed, the loop exits without failing the step; the final run ensures the step fails with a clear install error instead of silently continuing.
 - **Crash dump uses the maintained ASAR CLI** — When packaging crashes, we list ASAR contents with the maintained ASAR CLI, not the deprecated `asar` package. **Why:** The deprecated package can be missing or incompatible; the maintained ASAR tooling works when the build fails.
-- **`find -print0` and `while IFS= read -r -d ''`** — Copying JS into `milady-dist` and removing node-gyp artifacts use null-delimited find + read. **Why:** Filenames with newlines or spaces would break `find | while read`; null-delimited iteration is safe for any path.
+- **`find -print0` and `while IFS= read -r -d ''`** — Copying JS into `eliza-dist` and removing node-gyp artifacts use null-delimited find + read. **Why:** Filenames with newlines or spaces would break `find | while read`; null-delimited iteration is safe for any path.
 - **DMG path via `find` + `stat -f`** — We pick the newest DMG with `find dist -name '*.dmg' -exec stat -f '%m\t%N' {} \; | sort -rn | head -1` instead of `ls -t dist/*.dmg`. **Why:** `ls -t` with a glob can fail or behave oddly when no DMG exists or paths have spaces; find + stat is robust and this step runs only on macOS where `stat -f` is available.
-- **Remove node-gyp build artifacts before packaging** — We delete `build-tmp*` and `node_gyp_bins` under `node_modules` (root and milady-dist). **Why:** @tensorflow/tfjs-node and other native addons leave symlinks to system Python there; the packager refuses to pack symlinks to paths outside the app (security), so the pack step would fail without removal.
-- **Size report includes `milady-dist`** — We report sizes of both `app.asar.unpacked/node_modules` and `app.asar.unpacked/milady-dist` (and its node_modules when present). **Why:** Both regions contribute to artifact size; reporting both makes it obvious where bloat comes from.
+- **Remove node-gyp build artifacts before packaging** — We delete `build-tmp*` and `node_gyp_bins` under `node_modules` (root and eliza-dist). **Why:** @tensorflow/tfjs-node and other native addons leave symlinks to system Python there; the packager refuses to pack symlinks to paths outside the app (security), so the pack step would fail without removal.
+- **Size report includes `eliza-dist`** — We report sizes of both `app.asar.unpacked/node_modules` and `app.asar.unpacked/eliza-dist` (and its node_modules when present). **Why:** Both regions contribute to artifact size; reporting both makes it obvious where bloat comes from.
 - **Size report `du | sort | head` pipelines** — We run each pipeline in a subshell and capture exit code with `( pipeline ) || r=$?`, then allow 0 or 141; we also redirect `sort` stderr to `/dev/null`. **Why:** Under `bash -euo pipefail`, when `head` closes the pipe after N lines, `sort` gets SIGPIPE and exits 141; the step would exit before `r=$?` ran. The subshell + `||` lets us treat 141 as success. Silencing `sort` avoids noisy "Broken pipe" in logs.
 - **Single Capacitor build step** — One "Build Capacitor app" step runs `npx vite build` on all platforms. **Why:** The previous split (non-Windows vs Windows) was redundant; vite build works everywhere, so one step reduces drift and confusion.
 - **Packaged DMG E2E: 240s CDP timeout in CI, stdout/stderr dump on timeout** — In CI we use a longer CDP wait and on timeout we log app stdout/stderr before failing. **Why:** CI can be slower; a longer timeout reduces flaky failures. Dumping logs makes CDP timeouts debuggable instead of silent.
@@ -70,11 +70,11 @@ CI workflows that need Node (for node-gyp / native modules or npm registry) were
 
 Electrobun writes **platform-prefixed flat artifact names** into `apps/app/electrobun/artifacts/`, for example:
 
-- `canary-macos-arm64-Milady-canary.app.tar.zst`
-- `canary-macos-arm64-Milady-canary.dmg`
+- `canary-macos-arm64-Eliza-canary.app.tar.zst`
+- `canary-macos-arm64-Eliza-canary.dmg`
 - `canary-macos-arm64-update.json`
 
-Why the workflow mirrors that shape directly to `https://milady.ai/releases/`:
+Why the workflow mirrors that shape directly to `https://eliza.ai/releases/`:
 
 - The Electrobun updater resolves manifests at `${baseUrl}/${platformPrefix}-update.json`, not `${baseUrl}/${channel}/update.json`.
 - It also resolves tarballs at `${baseUrl}/${platformPrefix}-${tarballFileName}`.
@@ -82,7 +82,7 @@ Why the workflow mirrors that shape directly to `https://milady.ai/releases/`:
 
 ## CLI usage in this repo
 
-The official Electrobun docs expect the CLI to come from the project dependency and be invoked through npm scripts or `bunx`. Milady now uses the shared desktop builder to reach that package-local path:
+The official Electrobun docs expect the CLI to come from the project dependency and be invoked through npm scripts or `bunx`. Eliza now uses the shared desktop builder to reach that package-local path:
 
 - `apps/app/electrobun/package.json` declares `electrobun` as a dependency.
 - `scripts/desktop-build.mjs stage` installs the Electrobun workspace package before packaging.
@@ -103,7 +103,7 @@ We still keep two Windows-specific guards around that documented flow:
 
 If preload build fails with `EACCES` around `electrobun/view`, use this exact repair flow:
 
-1. Stop all Bun/Electrobun/Milady processes.
+1. Stop all Bun/Electrobun/Eliza processes.
 2. Delete `apps/app/electrobun/node_modules`.
 3. Delete root `node_modules/.bun`.
 4. From repo root run `bun install --frozen-lockfile`.
@@ -113,7 +113,7 @@ You can run the preflight alone with `bun run desktop:preflight`.
 
 ## Desktop WebGPU: browser + native
 
-Milady now carries both WebGPU paths in the desktop app:
+Eliza now carries both WebGPU paths in the desktop app:
 
 - **Renderer-side WebGPU:** the existing avatar and vector-browser scenes run in the webview and prefer `three/webgpu` when the embedded browser exposes `navigator.gpu`.
 - **Electrobun-native WebGPU:** `apps/app/electrobun/electrobun.config.ts` enables `bundleWGPU: true` on macOS, Windows, and Linux, so packaged desktop builds also include Dawn (`libwebgpu_dawn.*`) for Bun-side `GpuWindow`, `WGPUView`, and `<electrobun-wgpu>` surfaces.
@@ -128,10 +128,10 @@ Why this split exists:
 
 The local Electrobun smoke test now verifies the backend, not just the window shell:
 
-- After building, `apps/app/electrobun/scripts/smoke-test.sh` launches the packaged app and tails `~/.config/Milady/milady-startup.log`.
+- After building, `apps/app/electrobun/scripts/smoke-test.sh` launches the packaged app and tails `~/.config/Eliza/eliza-startup.log`.
 - It fails if the child runtime logs `Cannot find module`, exits before becoming healthy, or never reaches `Runtime started -- agent: ... port: ...`.
 - Once the startup log reports a port, the script probes `http://127.0.0.1:${port}/api/health` and requires that endpoint to stay healthy for the liveness window.
-- On Windows, `apps/app/electrobun/scripts/smoke-test-windows.ps1` now prefers the packaged `*.tar.zst` bundle and launches its `launcher.exe` directly. It only falls back to the `Milady-Setup*.exe` installer path when no direct packaged bundle artifact is available.
+- On Windows, `apps/app/electrobun/scripts/smoke-test-windows.ps1` now prefers the packaged `*.tar.zst` bundle and launches its `launcher.exe` directly. It only falls back to the `Eliza-Setup*.exe` installer path when no direct packaged bundle artifact is available.
 
 Why: the previous smoke test could pass while the launcher stayed open but the embedded agent backend had already crashed.
 

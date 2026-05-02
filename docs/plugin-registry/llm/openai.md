@@ -1,20 +1,20 @@
 ---
 title: "OpenAI Plugin"
 sidebarTitle: "OpenAI"
-description: "OpenAI model provider for Milady — GPT-5, o3, o4-mini, embeddings, image generation, and speech."
+description: "OpenAI model provider for Eliza — GPT-5, o3, o4-mini, embeddings, image generation, and speech."
 ---
 
-The OpenAI plugin connects Milady agents to OpenAI's API, providing access to GPT-5, GPT-5-mini, the o3/o4-mini reasoning model families, DALL-E image generation, and Whisper speech-to-text.
+The OpenAI plugin connects Eliza agents to OpenAI's API, providing access to GPT-5, GPT-5-mini, the o3/o4-mini reasoning model families, DALL-E image generation, and Whisper speech-to-text.
 
 **Package:** `@elizaos/plugin-openai`
 
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-openai
+eliza plugins install @elizaos/plugin-openai
 ```
 
-Or add to `milady.json`:
+Or add to `eliza.json`:
 
 ```json
 {
@@ -53,7 +53,7 @@ export OPENAI_API_KEY=sk-...
 | `OPENAI_BROWSER_BASE_URL` | No | Browser-only proxy endpoint base URL (no secrets in the client) |
 | `OPENAI_BROWSER_EMBEDDING_URL` | No | Browser-only proxy URL for embedding requests |
 
-### milady.json Example
+### eliza.json Example
 
 ```json
 {

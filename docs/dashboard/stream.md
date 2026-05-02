@@ -1,7 +1,7 @@
 ---
 title: Stream
 sidebarTitle: Stream
-description: Go live with your Milady agent — stream to Twitch, YouTube, or any RTMP destination with overlays, voice, and real-time widgets.
+description: Go live with your Eliza agent — stream to Twitch, YouTube, or any RTMP destination with overlays, voice, and real-time widgets.
 ---
 
 The Stream tab lets you broadcast your agent live to streaming platforms. The `StreamView` component renders the stream canvas (1280x720), manages overlays, and provides controls for going live, adjusting volume, and switching destinations.

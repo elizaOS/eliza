@@ -4,17 +4,17 @@ sidebarTitle: "Platform secure store"
 description: "Cross-platform design for wallet and agent secrets: macOS Keychain, Windows Credential Manager, Linux Secret Service, namespacing for multi-agent isolation, and signing without fan-out to child processes."
 ---
 
-This document defines how Milady should store **high-value secrets** (especially **chain private keys**) using each OS’s native secret store, while staying compatible with **multi-agent** workflows (per-agent state, coding swarms / PTY workers).
+This document defines how Eliza should store **high-value secrets** (especially **chain private keys**) using each OS’s native secret store, while staying compatible with **multi-agent** workflows (per-agent state, coding swarms / PTY workers).
 
 **Status:** architecture — implementation is phased; today wallet keys may still live in config `env` (see [Wallet & Crypto](/guides/wallet)).
 
 ## Goals
 
-1. **At rest:** Private keys and comparable secrets are **not** persisted in plaintext `milady.json` when the user opts in (or by default on supported desktops).
-2. **Namespaced:** Secrets are **scoped per Milady agent instance** (state directory / agent identity), so two profiles on one machine do not collide.
+1. **At rest:** Private keys and comparable secrets are **not** persisted in plaintext `eliza.json` when the user opts in (or by default on supported desktops).
+2. **Namespaced:** Secrets are **scoped per Eliza agent instance** (state directory / agent identity), so two profiles on one machine do not collide.
 3. **Multi-agent safe:** **Swarm / PTY / subprocess** agents do **not** receive raw key material in environment variables; they use **host-mediated signing** (existing [RemoteSigningService](./wallet.md#remote-signing-service) direction).
 4. **Cross-platform:** One **abstract API** with **platform backends** and explicit **fallback** behavior.
-5. **Operable:** Headless `milady start`, desktop Electrobun, and CI have documented behavior (including “store unavailable”).
+5. **Operable:** Headless `eliza start`, desktop Electrobun, and CI have documented behavior (including “store unavailable”).
 
 ## Non-goals (for this layer)
 
@@ -38,20 +38,20 @@ TypeScript contract: `eliza/packages/app-core/src/security/platform-secure-store
 
 ## Vault ID (`vaultId`) — multi-profile and multi-agent
 
-**Problem:** A generic keychain item named `Milady/EVM_PRIVATE_KEY` would be shared by every profile and unsafe.
+**Problem:** A generic keychain item named `Eliza/EVM_PRIVATE_KEY` would be shared by every profile and unsafe.
 
-**Rule:** Every stored item is keyed by a **`vaultId`**: a **stable, opaque string** derived from the **canonical agent state root** (e.g. resolved `MILADY_STATE_DIR` / config home for this Milady process).
+**Rule:** Every stored item is keyed by a **`vaultId`**: a **stable, opaque string** derived from the **canonical agent state root** (e.g. resolved `ELIZA_STATE_DIR` / config home for this Eliza process).
 
 **Requirements:**
 
 - **Stable** across restarts for the same profile.
-- **Distinct** for different `MILADY_STATE_DIR` values.
-- **Not reversible** to a full filesystem path in the stored label (use a short hash prefix in service/account fields; optional human label `"Milady wallet"` for prompts only).
+- **Distinct** for different `ELIZA_STATE_DIR` values.
+- **Not reversible** to a full filesystem path in the stored label (use a short hash prefix in service/account fields; optional human label `"Eliza wallet"` for prompts only).
 
 **Suggested derivation (normative for implementers):**
 
 ```
-canonicalPath = realpath(normalize(MILADY_STATE_DIR or equivalent))
+canonicalPath = realpath(normalize(ELIZA_STATE_DIR or equivalent))
 vaultId = "mldy1-" + base64url(sha256(utf8(canonicalPath)))[0:16]
 ```
 
@@ -69,7 +69,7 @@ Version prefix `mldy1-` allows future algorithm changes without colliding.
 
 **Service / target naming convention** (examples):
 
-- **Service:** `ai.milady.agent.vault` (fixed product id).
+- **Service:** `ai.eliza.agent.vault` (fixed product id).
 - **Account:** `{vaultId}:{secretKind}` (max length within OS limits; shorten hash if needed).
 
 Exact spelling is implementation-defined but must stay **consistent** per release (document migrations if it changes).
@@ -87,9 +87,9 @@ Document the chosen fallback in release notes and [Wallet](/guides/wallet).
 
 | Runtime | Reads OS store? | Notes |
 |---------|----------------|-------|
-| **Electrobun main process** | **Yes** (preferred) | Native `security` / FFI / future bundled helper; reuse patterns from `apps/app/electrobun/src/native/credentials.ts` (today: third-party CLI OAuth), extended for Milady-owned vault items. |
+| **Electrobun main process** | **Yes** (preferred) | Native `security` / FFI / future bundled helper; reuse patterns from `apps/app/electrobun/src/native/credentials.ts` (today: third-party CLI OAuth), extended for Eliza-owned vault items. |
 | **Embedded API / Node child** | **Via bridge** | Renderer or CLI child asks main/native holder for **set/get/delete** over IPC, or receives **signed payloads** only. |
-| **`milady start` (Node only)** | **Yes** if linked to platform APIs | On Linux without GUI, often `unavailable` — acceptable if documented. |
+| **`eliza start` (Node only)** | **Yes** if linked to platform APIs | On Linux without GUI, often `unavailable` — acceptable if documented. |
 | **PTY / swarm child** | **No** | Must not receive `EVM_PRIVATE_KEY` / `SOLANA_PRIVATE_KEY`; use **RemoteSigningService** (or equivalent IPC) on the host. |
 
 This preserves the **multi-agent** property: many logical agents can **request** signatures; **one** trusted component holds or retrieves key material.
@@ -107,7 +107,7 @@ When loading wallet keys into the signing layer:
 ## Migration and backup
 
 - **Backup:** OS store is **not** in `export agent` zip by default. Offer explicit **“Export wallet secrets”** (already sensitive) or document **manual keychain backup** (platform-specific).
-- **Restore:** Re-import keys or restore keychain backup; align `vaultId` with **same** `MILADY_STATE_DIR` or document re-keying.
+- **Restore:** Re-import keys or restore keychain backup; align `vaultId` with **same** `ELIZA_STATE_DIR` or document re-keying.
 - **Reset agent:** Delete platform entries for this `vaultId` when user confirms full wipe (same as clearing config `env` today).
 
 ## Phased implementation (suggested)

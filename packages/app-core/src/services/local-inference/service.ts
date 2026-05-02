@@ -17,8 +17,8 @@ import { probeHardware } from "./hardware";
 import { searchHuggingFaceGguf } from "./hf-search";
 import {
   listInstalledModels,
-  removeMiladyModel,
-  upsertMiladyModel,
+  removeElizaModel,
+  upsertElizaModel,
 } from "./registry";
 import type {
   ActiveModelState,
@@ -117,7 +117,7 @@ export class LocalInferenceService {
 
   /**
    * Verify an installed model's file integrity. When the model was a
-   * Milady-download and there was no stored sha256 yet (legacy entry), the
+   * Eliza-download and there was no stored sha256 yet (legacy entry), the
    * computed hash is persisted so subsequent verifies have a baseline.
    */
   async verifyModel(id: string): Promise<VerifyResult> {
@@ -128,15 +128,15 @@ export class LocalInferenceService {
     }
     const result = await verifyInstalledModel(model);
 
-    // Self-heal: when a Milady-owned legacy entry has no sha256 yet and
+    // Self-heal: when a Eliza-owned legacy entry has no sha256 yet and
     // the file passes the structural GGUF check, pin the computed hash as
     // the baseline. External models are never mutated.
     if (
       result.state === "unknown" &&
       result.currentSha256 &&
-      model.source === "milady-download"
+      model.source === "eliza-download"
     ) {
-      await upsertMiladyModel({
+      await upsertElizaModel({
         ...model,
         sha256: result.currentSha256,
         lastVerifiedAt: new Date().toISOString(),
@@ -147,8 +147,8 @@ export class LocalInferenceService {
         expectedSha256: result.currentSha256,
       };
     }
-    if (result.state === "ok" && model.source === "milady-download") {
-      await upsertMiladyModel({
+    if (result.state === "ok" && model.source === "eliza-download") {
+      await upsertElizaModel({
         ...model,
         lastVerifiedAt: new Date().toISOString(),
       });
@@ -191,7 +191,7 @@ export class LocalInferenceService {
     if (this.activeModel.snapshot().modelId === modelId) {
       await this.activeModel.unload(null);
     }
-    return removeMiladyModel(modelId);
+    return removeElizaModel(modelId);
   }
 }
 

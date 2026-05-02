@@ -56,7 +56,7 @@ function resolveOriginPort(origin: URL, fallbackPort: number): number {
 export function resolveViteDevServerRuntime(
   env: Record<string, string | undefined>,
   uiPort: number,
-  brandedPrefix = "MILADY",
+  brandedPrefix = "ELIZA",
 ): ViteDevServerRuntime {
   const branded = (suffix: string) => `${brandedPrefix}_${suffix}`;
   const explicitOrigin = parseHttpOrigin(

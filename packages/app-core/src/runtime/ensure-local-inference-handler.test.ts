@@ -70,8 +70,8 @@ function makeRuntime() {
 afterEach(() => {
   delete (globalThis as CapacitorGlobal).Capacitor;
   delete process.env.ELIZA_DEVICE_BRIDGE_ENABLED;
-  delete process.env.MILADY_LOCAL_LLAMA;
-  delete process.env.MILADY_PLATFORM;
+  delete process.env.ELIZA_LOCAL_LLAMA;
+  delete process.env.ELIZA_PLATFORM;
 });
 
 describe("ensureLocalInferenceHandler", () => {
@@ -103,14 +103,14 @@ describe("ensureLocalInferenceHandler", () => {
     // loader exposes `embed` so the embedding handler is wired in too.
     expect(
       runtime.registrations.filter(
-        (r) => r.provider === "milady-device-bridge",
+        (r) => r.provider === "eliza-device-bridge",
       ),
     ).toHaveLength(3);
     expect(runtime.getService("localInferenceLoader")).toBeTruthy();
   });
 
-  it("registers device-bridge loader when MILADY_PLATFORM=android with ELIZA_DEVICE_BRIDGE_ENABLED=1", async () => {
-    process.env.MILADY_PLATFORM = "android";
+  it("registers device-bridge loader when ELIZA_PLATFORM=android with ELIZA_DEVICE_BRIDGE_ENABLED=1", async () => {
+    process.env.ELIZA_PLATFORM = "android";
     process.env.ELIZA_DEVICE_BRIDGE_ENABLED = "1";
     const runtime = makeRuntime();
 
@@ -120,14 +120,14 @@ describe("ensureLocalInferenceHandler", () => {
 
     expect(
       runtime.registrations.filter(
-        (r) => r.provider === "milady-device-bridge",
+        (r) => r.provider === "eliza-device-bridge",
       ),
     ).toHaveLength(3);
   });
 
-  it("registers AOSP llama loader under the milady-aosp-llama provider when MILADY_LOCAL_LLAMA=1", async () => {
-    process.env.MILADY_PLATFORM = "android";
-    process.env.MILADY_LOCAL_LLAMA = "1";
+  it("registers AOSP llama loader under the eliza-aosp-llama provider when ELIZA_LOCAL_LLAMA=1", async () => {
+    process.env.ELIZA_PLATFORM = "android";
+    process.env.ELIZA_LOCAL_LLAMA = "1";
     const runtime = makeRuntime();
 
     await ensureLocalInferenceHandler(
@@ -137,7 +137,7 @@ describe("ensureLocalInferenceHandler", () => {
     // TEXT_SMALL + TEXT_LARGE + TEXT_EMBEDDING because the AOSP loader
     // exposes `embed` (bun:ffi via llama_get_embeddings_seq).
     expect(
-      runtime.registrations.filter((r) => r.provider === "milady-aosp-llama"),
+      runtime.registrations.filter((r) => r.provider === "eliza-aosp-llama"),
     ).toHaveLength(3);
     expect(runtime.getService("localInferenceLoader")).toBeTruthy();
     // AOSP wins over Capacitor and device-bridge.
@@ -145,14 +145,14 @@ describe("ensureLocalInferenceHandler", () => {
       runtime.registrations.filter(
         (r) =>
           r.provider === "capacitor-llama" ||
-          r.provider === "milady-device-bridge",
+          r.provider === "eliza-device-bridge",
       ),
     ).toHaveLength(0);
   });
 
   it("registers TEXT_EMBEDDING under the AOSP provider when the loader exposes embed()", async () => {
-    process.env.MILADY_PLATFORM = "android";
-    process.env.MILADY_LOCAL_LLAMA = "1";
+    process.env.ELIZA_PLATFORM = "android";
+    process.env.ELIZA_LOCAL_LLAMA = "1";
     const runtime = makeRuntime();
 
     await ensureLocalInferenceHandler(
@@ -164,7 +164,7 @@ describe("ensureLocalInferenceHandler", () => {
     // that proves the loader-backed embedding handler was wired in.
     const aospEmbeddingRegs = runtime.registrations.filter(
       (r) =>
-        r.modelType === "TEXT_EMBEDDING" && r.provider === "milady-aosp-llama",
+        r.modelType === "TEXT_EMBEDDING" && r.provider === "eliza-aosp-llama",
     );
     expect(aospEmbeddingRegs).toHaveLength(1);
   });
@@ -198,8 +198,8 @@ describe("ensureLocalInferenceHandler", () => {
     // missing when no priority-0 handler exists. Tie-breaks between
     // local and cloud live in routing-policy, not in the priority
     // ordinal — both bands now register at 0 and the router decides.
-    process.env.MILADY_PLATFORM = "android";
-    process.env.MILADY_LOCAL_LLAMA = "1";
+    process.env.ELIZA_PLATFORM = "android";
+    process.env.ELIZA_LOCAL_LLAMA = "1";
     const runtime = makeRuntime();
 
     await ensureLocalInferenceHandler(
@@ -207,7 +207,7 @@ describe("ensureLocalInferenceHandler", () => {
     );
 
     const aospRegs = runtime.registrations.filter(
-      (r) => r.provider === "milady-aosp-llama",
+      (r) => r.provider === "eliza-aosp-llama",
     );
     expect(aospRegs.length).toBeGreaterThan(0);
     for (const reg of aospRegs) {
@@ -228,7 +228,7 @@ describe("ensureLocalInferenceHandler", () => {
     );
 
     const bridgeRegs = runtime.registrations.filter(
-      (r) => r.provider === "milady-device-bridge",
+      (r) => r.provider === "eliza-device-bridge",
     );
     expect(bridgeRegs.length).toBeGreaterThan(0);
     for (const reg of bridgeRegs) {

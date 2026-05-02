@@ -23,7 +23,7 @@ describe("terminalAction", () => {
           command: "pwd",
           runId: "run-1",
           exitCode: 0,
-          stdout: "/Users/shawwalters/eliza-workspace/milady\n",
+          stdout: "/Users/shawwalters/eliza-workspace/eliza\n",
           stderr: "",
           timedOut: false,
           truncated: false,
@@ -67,7 +67,7 @@ describe("terminalAction", () => {
     });
     expect(result.success).toBe(true);
     expect(result.text).toContain("Shell command completed: `pwd`");
-    expect(result.text).toContain("/Users/shawwalters/eliza-workspace/milady");
+    expect(result.text).toContain("/Users/shawwalters/eliza-workspace/eliza");
     expect(result.text).toContain("SAVE_ATTACHMENT_TO_CLIPBOARD");
     expect(result.text).not.toContain("Running in terminal");
     expect(result.data).toMatchObject({

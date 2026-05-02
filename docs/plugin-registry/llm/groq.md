@@ -1,17 +1,17 @@
 ---
 title: "Groq Plugin"
 sidebarTitle: "Groq"
-description: "Groq inference provider for Milady — ultra-fast LPU-accelerated inference for Llama, Mixtral, and Gemma models."
+description: "Groq inference provider for Eliza — ultra-fast LPU-accelerated inference for Llama, Mixtral, and Gemma models."
 ---
 
-The Groq plugin connects Milady agents to Groq's inference API. Groq's Language Processing Unit (LPU) delivers significantly faster token generation speeds than GPU-based inference — making it ideal for latency-sensitive agent workflows.
+The Groq plugin connects Eliza agents to Groq's inference API. Groq's Language Processing Unit (LPU) delivers significantly faster token generation speeds than GPU-based inference — making it ideal for latency-sensitive agent workflows.
 
 **Package:** `@elizaos/plugin-groq`
 
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-groq
+eliza plugins install @elizaos/plugin-groq
 ```
 
 ## Auto-Enable
@@ -34,7 +34,7 @@ export GROQ_API_KEY=gsk_...
 | `GROQ_TTS_VOICE` | No | Voice profile for text-to-speech output |
 | `GROQ_TTS_RESPONSE_FORMAT` | No | Output format for text-to-speech audio |
 
-### milady.json Example
+### eliza.json Example
 
 ```json
 {

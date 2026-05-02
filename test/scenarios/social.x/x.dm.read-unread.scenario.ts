@@ -31,7 +31,7 @@ export default scenario({
           },
           {
             externalDmId: "x-dm-2",
-            senderHandle: "milady_art",
+            senderHandle: "eliza_art",
             text: "Sent over the concept sketch. Want feedback today?",
             offsetMinutes: 21,
           },
@@ -62,7 +62,7 @@ export default scenario({
       }),
       responseIncludesAny: [
         /x dms|dm/i,
-        /jane_doe|milady_art/i,
+        /jane_doe|eliza_art/i,
         /call|sketch|feedback/i,
       ],
     },

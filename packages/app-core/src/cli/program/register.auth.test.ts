@@ -1,5 +1,5 @@
 /**
- * Tests for `milady auth reset` — loopback-only refusal and the
+ * Tests for `eliza auth reset` — loopback-only refusal and the
  * filesystem-proof challenge.
  */
 
@@ -14,7 +14,7 @@ import {
 } from "@elizaos/plugin-sql";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AuthStore } from "../../services/auth-store";
-import { runMiladyAuthReset } from "./register.auth";
+import { runElizaAuthReset } from "./register.auth";
 
 interface AdapterWithDb {
   db?: unknown;
@@ -30,7 +30,7 @@ interface Harness {
 }
 
 async function open(): Promise<Harness> {
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "milady-cli-auth-"));
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-cli-auth-"));
   const adapter = createDatabaseAdapter(
     { dataDir },
     "00000000-0000-0000-0000-000000000001" as `${string}-${string}-${string}-${string}-${string}`,
@@ -57,7 +57,7 @@ async function open(): Promise<Harness> {
   };
 }
 
-describe("milady auth reset", () => {
+describe("eliza auth reset", () => {
   let harness: Harness;
   beforeEach(async () => {
     harness = await open();
@@ -67,7 +67,7 @@ describe("milady auth reset", () => {
   });
 
   it("refuses to run when bound to a non-loopback address", async () => {
-    const result = await runMiladyAuthReset({
+    const result = await runElizaAuthReset({
       env: { ELIZA_API_BIND: "0.0.0.0" },
       store: harness.store,
       proofReader: async () => "ignored",
@@ -80,7 +80,7 @@ describe("milady auth reset", () => {
   });
 
   it("times out when the proof file is never written", async () => {
-    const result = await runMiladyAuthReset({
+    const result = await runElizaAuthReset({
       env: { ELIZA_API_BIND: "127.0.0.1" },
       store: harness.store,
       proofReader: async () => null,
@@ -116,7 +116,7 @@ describe("milady auth reset", () => {
       scopes: [],
     });
 
-    const result = await runMiladyAuthReset({
+    const result = await runElizaAuthReset({
       env: { ELIZA_API_BIND: "127.0.0.1" },
       store: harness.store,
       proofReader: async () => "fixed-challenge",
@@ -131,7 +131,7 @@ describe("milady auth reset", () => {
   });
 
   it("rejects a proof file with mismatched contents", async () => {
-    const result = await runMiladyAuthReset({
+    const result = await runElizaAuthReset({
       env: { ELIZA_API_BIND: "127.0.0.1" },
       store: harness.store,
       proofReader: async () => "wrong-token-content",

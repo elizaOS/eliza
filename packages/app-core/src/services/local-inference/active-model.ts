@@ -1,6 +1,6 @@
 /**
  * Coordinates which model is currently loaded into the plugin-local-ai
- * runtime. Milady runs one inference model at a time; switching models
+ * runtime. Eliza runs one inference model at a time; switching models
  * unloads the previous one first so we don't double-allocate VRAM.
  *
  * This module *does not* talk to `node-llama-cpp` directly. The plugin
@@ -12,7 +12,7 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { localInferenceEngine } from "./engine";
-import { touchMiladyModel } from "./registry";
+import { touchElizaModel } from "./registry";
 import type { ActiveModelState, InstalledModel } from "./types";
 
 export interface LocalInferenceLoader {
@@ -127,8 +127,8 @@ export class ActiveModelCoordinator {
         loadedAt: new Date().toISOString(),
         status: "ready",
       };
-      if (installed.source === "milady-download") {
-        await touchMiladyModel(installed.id);
+      if (installed.source === "eliza-download") {
+        await touchElizaModel(installed.id);
       }
     } catch (err) {
       this.state = {

@@ -4,7 +4,7 @@ sidebarTitle: "Custom Actions"
 description: "REST API endpoints for creating, managing, and testing custom actions — user-defined HTTP, shell, or code handlers the agent can invoke."
 ---
 
-Custom actions let you extend the agent with user-defined behaviors that can call HTTP APIs, run shell commands, or execute arbitrary JavaScript. They are stored in the Milady config file and hot-registered into the running agent without a restart.
+Custom actions let you extend the agent with user-defined behaviors that can call HTTP APIs, run shell commands, or execute arbitrary JavaScript. They are stored in the Eliza config file and hot-registered into the running agent without a restart.
 
 ## Endpoints
 

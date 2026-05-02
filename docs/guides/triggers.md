@@ -4,7 +4,7 @@ sidebarTitle: Triggers
 description: Schedule tasks that wake the agent on intervals, at specific times, or via cron expressions.
 ---
 
-Triggers are scheduled tasks that wake the Milady agent at defined times or intervals. They allow the agent to perform recurring work, one-time future tasks, or cron-scheduled operations without manual intervention.
+Triggers are scheduled tasks that wake the Eliza agent at defined times or intervals. They allow the agent to perform recurring work, one-time future tasks, or cron-scheduled operations without manual intervention.
 
 ## Architecture Overview
 
@@ -146,21 +146,21 @@ If the autonomy service is unavailable (not registered or missing `injectAutonom
 
 Two environment variables control the trigger system:
 
-### `MILADY_TRIGGERS_ENABLED`
+### `ELIZA_TRIGGERS_ENABLED`
 
 Enables or disables the entire trigger system. Default: `true` (enabled).
 
 - Set to `"false"` or `"0"` to disable all triggers
-- Can also be set as a runtime setting via `runtime.getSetting("MILADY_TRIGGERS_ENABLED")`
+- Can also be set as a runtime setting via `runtime.getSetting("ELIZA_TRIGGERS_ENABLED")`
 - The runtime setting takes precedence over the environment variable
 - When disabled, all trigger API endpoints (except `/api/triggers/health`) return `503`
 
-### `MILADY_TRIGGERS_MAX_ACTIVE`
+### `ELIZA_TRIGGERS_MAX_ACTIVE`
 
 Maximum number of active triggers per creator. Default: `100`.
 
 - Must be a positive integer
-- Can also be set as a runtime setting via `runtime.getSetting("MILADY_TRIGGERS_MAX_ACTIVE")`
+- Can also be set as a runtime setting via `runtime.getSetting("ELIZA_TRIGGERS_MAX_ACTIVE")`
 - The runtime setting takes precedence over the environment variable
 - Minimum enforced value is `1` (values less than 1 are clamped)
 
@@ -204,7 +204,7 @@ The trigger task's metadata (`TriggerTaskMetadata`) contains:
 
 ## API Endpoints
 
-All trigger endpoints are under `/api/triggers`. Triggers must be enabled via the `MILADY_TRIGGERS_ENABLED` setting (defaults to `true`). When triggers are disabled, all endpoints except `/api/triggers/health` return a `503` error.
+All trigger endpoints are under `/api/triggers`. Triggers must be enabled via the `ELIZA_TRIGGERS_ENABLED` setting (defaults to `true`). When triggers are disabled, all endpoints except `/api/triggers/health` return a `503` error.
 
 Trigger lookup by `:id` accepts either a `triggerId` or a `taskId` -- the system searches both fields when resolving a trigger.
 
@@ -502,8 +502,8 @@ When creating a trigger, existing enabled triggers are checked for matching dedu
 
 ## Trigger Limits and Quotas
 
-- **Active trigger limit** -- configurable via `MILADY_TRIGGERS_MAX_ACTIVE` (setting or environment variable). Default: 100 active triggers per creator. The limit is checked per `createdBy` value.
-- **Feature toggle** -- triggers can be disabled entirely via `MILADY_TRIGGERS_ENABLED=false` (setting or environment variable). Defaults to enabled.
+- **Active trigger limit** -- configurable via `ELIZA_TRIGGERS_MAX_ACTIVE` (setting or environment variable). Default: 100 active triggers per creator. The limit is checked per `createdBy` value.
+- **Feature toggle** -- triggers can be disabled entirely via `ELIZA_TRIGGERS_ENABLED=false` (setting or environment variable). Defaults to enabled.
 - **Duplicate detection** -- triggers with identical instructions, type, interval, and wake mode are detected via the dedupe key hash and rejected.
 - **Max runs** -- set `maxRuns` to a positive integer to automatically delete a trigger after that many executions. A `maxRuns` of 0 or less is rejected during validation.
 - **Once triggers** -- automatically deleted after their single execution, regardless of `maxRuns`.

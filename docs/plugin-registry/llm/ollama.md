@@ -1,10 +1,10 @@
 ---
 title: "Ollama Plugin"
 sidebarTitle: "Ollama"
-description: "Ollama local model inference for Milady — run Llama, Mistral, Gemma, and other models entirely on-device."
+description: "Ollama local model inference for Eliza — run Llama, Mistral, Gemma, and other models entirely on-device."
 ---
 
-The Ollama plugin connects Milady agents to a locally running Ollama instance, enabling fully on-device inference with no API keys and no data leaving your machine.
+The Ollama plugin connects Eliza agents to a locally running Ollama instance, enabling fully on-device inference with no API keys and no data leaving your machine.
 
 **Package:** `@elizaos/plugin-ollama`
 
@@ -41,7 +41,7 @@ Ollama listens on `http://localhost:11434` by default.
 ### 4. Enable the Plugin
 
 ```bash
-milady plugins install @elizaos/plugin-ollama
+eliza plugins install @elizaos/plugin-ollama
 ```
 
 ## Auto-Enable
@@ -67,7 +67,7 @@ export OLLAMA_BASE_URL=http://localhost:11434
 | `SMALL_MODEL` | No | Global alias to override the small model identifier |
 | `LARGE_MODEL` | No | Global alias to override the large model identifier |
 
-### milady.json Example
+### eliza.json Example
 
 ```json
 {
@@ -172,7 +172,7 @@ Error: Unsupported model version v1
 Ollama exposes an OpenAI-compatible API at `http://localhost:11434/v1`. Route through the OpenAI plugin instead:
 
 ```json5
-// ~/.milady/milady.json
+// ~/.eliza/eliza.json
 {
   env: {
     OPENAI_API_KEY: "ollama",                        // any non-empty string
@@ -189,7 +189,7 @@ This bypasses `plugin-ollama` entirely and uses `plugin-openai` with your local 
 
 ### Ollama Not Detected
 
-If Milady doesn't detect your Ollama instance:
+If Eliza doesn't detect your Ollama instance:
 
 1. Verify Ollama is running: `curl http://localhost:11434/api/tags`
 2. Check you have models pulled: `ollama list`

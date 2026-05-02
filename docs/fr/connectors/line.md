@@ -24,7 +24,7 @@ Le connecteur LINE est un plugin elizaOS qui relie votre agent à l'API de messa
 |-------|--------|
 | Package | `@elizaos/plugin-line` |
 | Clé de configuration | `connectors.line` |
-| Installation | `milady plugins install @elizaos/plugin-line` |
+| Installation | `eliza plugins install @elizaos/plugin-line` |
 
 <div id="setup-requirements">
 

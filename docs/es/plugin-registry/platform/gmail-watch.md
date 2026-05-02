@@ -1,10 +1,10 @@
 ---
 title: "Plugin de Gmail Watch"
 sidebarTitle: "Gmail Watch"
-description: "Conector de Gmail Watch para Milady — monitorea bandejas de entrada de Gmail y responde a correos entrantes."
+description: "Conector de Gmail Watch para Eliza — monitorea bandejas de entrada de Gmail y responde a correos entrantes."
 ---
 
-El plugin de Gmail Watch conecta agentes de Milady a Gmail, permitiendo el monitoreo de correos entrantes y respuestas automatizadas.
+El plugin de Gmail Watch conecta agentes de Eliza a Gmail, permitiendo el monitoreo de correos entrantes y respuestas automatizadas.
 
 **Package:** `@elizaos/plugin-gmail-watch`
 
@@ -15,7 +15,7 @@ El plugin de Gmail Watch conecta agentes de Milady a Gmail, permitiendo el monit
 </div>
 
 ```bash
-milady plugins install @elizaos/plugin-gmail-watch
+eliza plugins install @elizaos/plugin-gmail-watch
 ```
 
 <div id="setup">
@@ -30,7 +30,7 @@ milady plugins install @elizaos/plugin-gmail-watch
 
 </div>
 
-El plugin de Gmail Watch se activa mediante el flag `features.gmailWatch` en tu configuración de Milady:
+El plugin de Gmail Watch se activa mediante el flag `features.gmailWatch` en tu configuración de Eliza:
 
 ```json
 {

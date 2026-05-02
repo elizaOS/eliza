@@ -15,9 +15,9 @@ import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import org.json.JSONObject
 
-@CapacitorPlugin(name = "MiladyPhone")
+@CapacitorPlugin(name = "ElizaPhone")
 class PhonePlugin : Plugin() {
-    private val transcriptPreferencesName = "milady_phone_call_transcripts"
+    private val transcriptPreferencesName = "eliza_phone_call_transcripts"
 
     @PluginMethod
     fun getStatus(call: PluginCall) {

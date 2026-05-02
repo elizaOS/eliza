@@ -4,7 +4,7 @@ title: Streaming Integration
 
 # Streaming Integration — Agent Skill Reference
 
-Milady agents can autonomously control live streaming: go live, switch channels, manage stream overlays, speak via TTS, and switch what content is being captured — all through built-in actions.
+Eliza agents can autonomously control live streaming: go live, switch channels, manage stream overlays, speak via TTS, and switch what content is being captured — all through built-in actions.
 
 ---
 
@@ -259,7 +259,7 @@ An agent that greets viewers, goes live, and reacts to chat:
 
 ## Notes
 
-- All streaming APIs are only available on `127.0.0.1` (localhost). Agents running as part of the Milady server have direct access.
+- All streaming APIs are only available on `127.0.0.1` (localhost). Agents running as part of the Eliza server have direct access.
 - Switching destinations requires the stream to be offline first.
 - Overlay widget configs (position, zIndex, custom config fields) can only be set via the `/api/stream/overlay-layout` API directly; MANAGE_OVERLAY_WIDGET only toggles enabled/disabled.
 - The stream view pop-out window (`?popout` URL param) is what gets captured by FFmpeg — do not close it while live.

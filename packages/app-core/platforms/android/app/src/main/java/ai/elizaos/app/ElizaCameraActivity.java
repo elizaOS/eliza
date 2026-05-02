@@ -14,12 +14,12 @@ import android.provider.MediaStore;
  *   - User taps "Camera" in the launcher (LAUNCHER intent).
  *   - Another app fires IMAGE_CAPTURE / VIDEO_CAPTURE / STILL_IMAGE_CAMERA.
  *
- * For the LAUNCHER case we route to the Milady camera surface. For
+ * For the LAUNCHER case we route to the Eliza camera surface. For
  * IMAGE_CAPTURE the WebView sees the EXTRA_OUTPUT URI and is responsible
  * for writing the captured frame back to that URI before calling
  * setResult — the standard contract that other apps expect.
  */
-public class MiladyCameraActivity extends Activity {
+public class ElizaCameraActivity extends Activity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {

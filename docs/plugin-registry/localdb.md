@@ -1,10 +1,10 @@
 ---
 title: "Local DB Plugin"
 sidebarTitle: "Local DB"
-description: "Simple JSON-based local database storage for Milady — no SQL, no migrations."
+description: "Simple JSON-based local database storage for Eliza — no SQL, no migrations."
 ---
 
-The Local DB plugin provides a simple, file-based database adapter for Milady agents using JSON storage. No SQL engine, no migrations, no external dependencies.
+The Local DB plugin provides a simple, file-based database adapter for Eliza agents using JSON storage. No SQL engine, no migrations, no external dependencies.
 
 **Package:** `@elizaos/plugin-localdb`
 
@@ -17,7 +17,7 @@ This plugin implements the elizaOS database adapter interface using JSON files s
 ## Installation
 
 ```bash
-milady plugins install localdb
+eliza plugins install localdb
 ```
 
 ## Configuration

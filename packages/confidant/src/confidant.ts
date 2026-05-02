@@ -37,9 +37,9 @@ import type {
 } from "./types.js";
 
 export interface ConfidantOptions {
-  /** Path to the local store. Default: `~/.milady/confidant.json`. */
+  /** Path to the local store. Default: `~/.eliza/confidant.json`. */
   readonly storePath?: string;
-  /** Path to the audit log. Default: `~/.milady/audit/confidant.jsonl`. */
+  /** Path to the audit log. Default: `~/.eliza/audit/confidant.jsonl`. */
   readonly auditLogPath?: string;
   /** Master key resolver. Default: macOS keychain on darwin, else throws. */
   readonly masterKey?: MasterKeyResolver;
@@ -65,11 +65,11 @@ export interface Confidant {
 }
 
 export function createConfidant(opts: ConfidantOptions = {}): Confidant {
-  const root = process.env.MILADY_STATE_DIR
-    ? process.env.MILADY_STATE_DIR
+  const root = process.env.ELIZA_STATE_DIR
+    ? process.env.ELIZA_STATE_DIR
     : process.env.ELIZA_STATE_DIR
       ? process.env.ELIZA_STATE_DIR
-      : join(homedir(), ".milady");
+      : join(homedir(), ".eliza");
   const storePath = opts.storePath ?? join(root, "confidant.json");
   const auditPath = opts.auditLogPath ?? join(root, "audit", "confidant.jsonl");
   const masterKeyResolver =

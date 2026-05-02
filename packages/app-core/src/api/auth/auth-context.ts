@@ -2,7 +2,7 @@
  * Canonical request guard for the P1 auth model.
  *
  * Order of resolution per task brief:
- *   1. session cookie (`milady_session`) — modern path, what the SPA uses.
+ *   1. session cookie (`eliza_session`) — modern path, what the SPA uses.
  *   2. bearer header — covers machine sessions AND the legacy static
  *      `ELIZA_API_TOKEN` during the 14-day grace window.
  *   3. bootstrap-token bearer (delegates to existing

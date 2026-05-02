@@ -21,7 +21,7 @@ plus optional Steward auth) on a dev laptop and point the homepage at it via
    ```
    The script auto-remaps host ports if the defaults are already in use
    (e.g. `5432` held by an unrelated container) and writes the chosen ports
-   to `.milady/cache/local-cloud-ports.json`. Banner output prints the
+   to `.eliza/cache/local-cloud-ports.json`. Banner output prints the
    `DATABASE_URL` you should export.
 
 2. **Run cloud migrations** (first time only, or after schema bumps):
@@ -68,7 +68,7 @@ plus optional Steward auth) on a dev laptop and point the homepage at it via
 If your `5432` is occupied by another container (a common case is
 `hindsight-postgres-1`), `dev:cloud:local` will pick the next free port
 and write a docker-compose override at
-`.milady/cache/local-cloud-overrides.yml`.
+`.eliza/cache/local-cloud-overrides.yml`.
 
 ## Steward (optional)
 
@@ -114,7 +114,7 @@ You should get a JSON `200` response. If not, check:
 
 ## Files written by the script
 
-- `.milady/cache/local-cloud-overrides.yml` - generated docker-compose
+- `.eliza/cache/local-cloud-overrides.yml` - generated docker-compose
   override layer (host port remaps).
-- `.milady/cache/local-cloud-ports.json` - chosen ports + connection URLs,
+- `.eliza/cache/local-cloud-ports.json` - chosen ports + connection URLs,
   consumed by `seed:cloud:local` and useful for downstream tooling.

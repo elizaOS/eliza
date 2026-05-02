@@ -26,7 +26,7 @@ export default scenario({
       kind: "message",
       name: "career-goal preview",
       text: "My Q2 career goal is to ship Eliza v2 by the end of June. Success means a public release, at least 500 active users, and a shipped iOS companion app.",
-      responseIncludesAny: ["Milady", "Q2", "ship", "June"],
+      responseIncludesAny: ["Eliza", "Q2", "ship", "June"],
     },
     {
       kind: "message",

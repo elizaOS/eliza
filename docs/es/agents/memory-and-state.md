@@ -1,10 +1,10 @@
 ---
 title: "Memoria y Estado"
 sidebarTitle: "Memoria y Estado"
-description: "Tipos de memoria, composición de estado, configuración de búsqueda vectorial y configuración del modelo de embeddings para agentes Milady."
+description: "Tipos de memoria, composición de estado, configuración de búsqueda vectorial y configuración del modelo de embeddings para agentes Eliza."
 ---
 
-Milady utiliza el sistema de memoria de elizaOS respaldado por `@elizaos/plugin-sql` para la persistencia y `@elizaos/plugin-local-embedding` para embeddings vectoriales. La memoria se compone en el estado del agente en cada turno de conversación.
+Eliza utiliza el sistema de memoria de elizaOS respaldado por `@elizaos/plugin-sql` para la persistencia y `@elizaos/plugin-local-embedding` para embeddings vectoriales. La memoria se compone en el estado del agente en cada turno de conversación.
 
 <div id="memory-backend">
 
@@ -20,20 +20,20 @@ El backend predeterminado es PGLite (PostgreSQL embebido). PostgreSQL puede conf
 
 </div>
 
-PGLite almacena datos en un directorio local. Milady fija el directorio de datos al inicio:
+PGLite almacena datos en un directorio local. Eliza fija el directorio de datos al inicio:
 
 ```
-Default path: ~/.milady/workspace/.eliza/.elizadb
+Default path: ~/.eliza/workspace/.eliza/.elizadb
 ```
 
-Configurado mediante `milady.json`:
+Configurado mediante `eliza.json`:
 
 ```json
 {
   "database": {
     "provider": "pglite",
     "pglite": {
-      "dataDir": "~/.milady/workspace/.eliza/.elizadb"
+      "dataDir": "~/.eliza/workspace/.eliza/.elizadb"
     }
   }
 }
@@ -54,7 +54,7 @@ Para despliegues compartidos o en producción:
     "postgres": {
       "host": "localhost",
       "port": 5432,
-      "database": "milady",
+      "database": "eliza",
       "user": "postgres",
       "password": "secret",
       "ssl": false
@@ -70,7 +70,7 @@ Se puede usar un `connectionString` completo en lugar de campos individuales:
   "database": {
     "provider": "postgres",
     "postgres": {
-      "connectionString": "postgresql://postgres:secret@localhost:5432/milady"
+      "connectionString": "postgresql://postgres:secret@localhost:5432/eliza"
     }
   }
 }
@@ -94,7 +94,7 @@ Se puede usar un `connectionString` completo en lugar de campos individuales:
 nomic-embed-text-v1.5.Q5_K_M.gguf
 ```
 
-Los modelos se almacenan en `~/.milady/models/` de forma predeterminada.
+Los modelos se almacenan en `~/.eliza/models/` de forma predeterminada.
 
 <div id="embedding-configuration">
 
@@ -132,7 +132,7 @@ En Apple Silicon, `mmap` está deshabilitado de forma predeterminada para preven
 
 </div>
 
-Milady incluye un sistema configurable de búsqueda de memoria vectorial. La configuración se encuentra bajo `agents.defaults.memorySearch` o por agente en `agents.list[n].memorySearch`:
+Eliza incluye un sistema configurable de búsqueda de memoria vectorial. La configuración se encuentra bajo `agents.defaults.memorySearch` o por agente en `agents.list[n].memorySearch`:
 
 ```json
 {

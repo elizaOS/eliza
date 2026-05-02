@@ -1,10 +1,10 @@
 ---
 title: "Gmail Watch Plugin"
 sidebarTitle: "Gmail Watch"
-description: "Gmail Watch connector for Milady — monitor Gmail inboxes and respond to incoming emails."
+description: "Gmail Watch connector for Eliza — monitor Gmail inboxes and respond to incoming emails."
 ---
 
-The Gmail Watch plugin connects Milady agents to Gmail, enabling monitoring of incoming emails and automated responses.
+The Gmail Watch plugin connects Eliza agents to Gmail, enabling monitoring of incoming emails and automated responses.
 
 **Package:** `@elizaos/plugin-gmail-watch`
 
@@ -13,14 +13,14 @@ The Gmail Watch plugin connects Milady agents to Gmail, enabling monitoring of i
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-gmail-watch
+eliza plugins install @elizaos/plugin-gmail-watch
 ```
 
 ## Setup
 
 ### 1. Enable the Feature Flag
 
-The Gmail Watch plugin is activated via the `features.gmailWatch` flag in your Milady configuration:
+The Gmail Watch plugin is activated via the `features.gmailWatch` flag in your Eliza configuration:
 
 ```json
 {

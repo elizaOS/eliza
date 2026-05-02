@@ -1,10 +1,10 @@
 # Lens Connector
 
-> **Registry note:** `@elizaos/plugin-lens` is not currently listed in the Milady plugin registry (`plugins.json`). The package may be available from npm or a separate elizaOS plugin repository. Verify availability before configuring.
+> **Registry note:** `@elizaos/plugin-lens` is not currently listed in the Eliza plugin registry (`plugins.json`). The package may be available from npm or a separate elizaOS plugin repository. Verify availability before configuring.
 
 Connect your agent to Lens Protocol for decentralized social interactions.
 
-> **Availability:** `@elizaos/plugin-lens` is an on-demand elizaOS plugin resolved from the remote plugin registry. It is **not** included in Milady's bundled `plugins.json` index. The plugin auto-installs at runtime when an API key is detected.
+> **Availability:** `@elizaos/plugin-lens` is an on-demand elizaOS plugin resolved from the remote plugin registry. It is **not** included in Eliza's bundled `plugins.json` index. The plugin auto-installs at runtime when an API key is detected.
 
 ## Overview
 
@@ -13,7 +13,7 @@ The Lens connector is an external elizaOS plugin that bridges your agent to the 
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-lens
+eliza plugins install @elizaos/plugin-lens
 ```
 
 - A Lens Protocol account and API credentials from the [Lens Protocol](https://www.lens.xyz/) developer portal
@@ -26,7 +26,7 @@ milady plugins install @elizaos/plugin-lens
 
 Obtain API credentials from the [Lens Protocol](https://www.lens.xyz/) developer portal.
 
-### 2. Configure Milady
+### 2. Configure Eliza
 
 ```json
 {

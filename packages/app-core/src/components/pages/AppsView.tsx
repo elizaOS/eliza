@@ -45,12 +45,12 @@ export { shouldShowAppInAppsView } from "../apps/helpers";
 /** Max items retained in launch history. */
 const RECENT_APPS_LIMIT = 10;
 
-const APPS_SIDEBAR_WIDTH_KEY = "milady:apps:sidebar:width";
-const APPS_SIDEBAR_COLLAPSED_KEY = "milady:apps:sidebar:collapsed";
+const APPS_SIDEBAR_WIDTH_KEY = "eliza:apps:sidebar:width";
+const APPS_SIDEBAR_COLLAPSED_KEY = "eliza:apps:sidebar:collapsed";
 const APPS_SIDEBAR_DEFAULT_WIDTH = 240;
 const APPS_SIDEBAR_MIN_WIDTH = 200;
 const APPS_SIDEBAR_MAX_WIDTH = 520;
-const APP_WINDOW_ALWAYS_ON_TOP_KEY = "milady:apps:window:always-on-top";
+const APP_WINDOW_ALWAYS_ON_TOP_KEY = "eliza:apps:window:always-on-top";
 const APP_WINDOW_HEARTBEAT_MS = 15_000;
 
 interface AppWindowRecord {

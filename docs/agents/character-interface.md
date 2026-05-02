@@ -1,10 +1,10 @@
 ---
 title: "Character Interface"
 sidebarTitle: "Character Interface"
-description: "Schema, field reference, and examples for the elizaOS Character object used by Milady agents."
+description: "Schema, field reference, and examples for the elizaOS Character object used by Eliza agents."
 ---
 
-The Character object is the primary definition of an agent's identity. Milady builds a Character at startup from `milady.json` using `buildCharacterFromConfig()`, then passes it to `AgentRuntime`. All personality fields are sourced from `config.agents.list[0]` (set during onboarding or edited directly).
+The Character object is the primary definition of an agent's identity. Eliza builds a Character at startup from `eliza.json` using `buildCharacterFromConfig()`, then passes it to `AgentRuntime`. All personality fields are sourced from `config.agents.list[0]` (set during onboarding or edited directly).
 
 ## Character Hub Surfaces
 
@@ -22,8 +22,8 @@ Only the **Personality** section maps directly to the core `Character` schema. *
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `name` | `string` | Yes | Agent display name. Resolved from `agents.list[0].name`, then `ui.assistant.name`, then `"Milady"`. |
-| `bio` | `string[]` | No | Array of biography lines injected into the system context. Defaults to `["{{name}} is an AI assistant powered by Milady and elizaOS."]` |
+| `name` | `string` | Yes | Agent display name. Resolved from `agents.list[0].name`, then `ui.assistant.name`, then `"Eliza"`. |
+| `bio` | `string[]` | No | Array of biography lines injected into the system context. Defaults to `["{{name}} is an AI assistant powered by Eliza and elizaOS."]` |
 | `system` | `string` | No | System prompt template. Defaults to `"You are {{name}}, an autonomous AI agent powered by elizaOS."` |
 | `style` | `object` | No | Communication style rules object. Contains `all`, `chat`, and `post` sub-arrays. |
 | `adjectives` | `string[]` | No | Personality adjectives (e.g., `["witty", "playful", "direct"]`). Used in prompt composition. |
@@ -59,10 +59,10 @@ The `style` object controls how the agent adapts its tone across different conte
 ```typescript
 // Name resolution
 const agentEntry = config.agents?.list?.[0];
-const name = agentEntry?.name ?? config.ui?.assistant?.name ?? "Milady";
+const name = agentEntry?.name ?? config.ui?.assistant?.name ?? "Eliza";
 
 // Personality from agent config entry (set during onboarding)
-const bio      = agentEntry?.bio ?? ["{{name}} is an AI assistant powered by Milady and elizaOS."];
+const bio      = agentEntry?.bio ?? ["{{name}} is an AI assistant powered by Eliza and elizaOS."];
 const system   = agentEntry?.system ?? "You are {{name}}, an autonomous AI agent powered by elizaOS.";
 const style    = agentEntry?.style;
 const adjectives = agentEntry?.adjectives;
@@ -79,7 +79,7 @@ const mappedExamples = messageExamples?.map((convo) =>
 
 ## Secrets Injection
 
-Milady collects the following environment variables into `character.secrets` so that loaded plugins can find them at runtime without reading `process.env` directly:
+Eliza collects the following environment variables into `character.secrets` so that loaded plugins can find them at runtime without reading `process.env` directly:
 
 ```
 # LLM Provider Keys
@@ -126,7 +126,7 @@ Only variables that have a non-empty value are included.
 
 ## AgentConfig Personality Fields
 
-These fields live in `milady.json` under `agents.list[0]` and map directly to Character:
+These fields live in `eliza.json` under `agents.list[0]` and map directly to Character:
 
 ```typescript
 export type AgentConfig = {
@@ -174,7 +174,7 @@ export type AgentConfig = {
 };
 ```
 
-## Example milady.json Agent Entry
+## Example eliza.json Agent Entry
 
 ```json
 {
@@ -220,4 +220,4 @@ The character is finalised via `mergeCharacterDefaults()` from `@elizaos/core`, 
 
 - [Personality and Behavior](./personality-and-behavior) — how fields compose into the live system prompt
 - [Runtime and Lifecycle](./runtime-and-lifecycle) — when and how the character is loaded
-- [Configuration Reference](/configuration) — full `milady.json` schema
+- [Configuration Reference](/configuration) — full `eliza.json` schema

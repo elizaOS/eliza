@@ -1,21 +1,21 @@
 ---
 title: "n8n Workflow Plugin"
 sidebarTitle: "n8n Workflow"
-description: "Manage n8n automation workflows from Milady — create, activate, deactivate, and delete workflows through agent chat."
+description: "Manage n8n automation workflows from Eliza — create, activate, deactivate, and delete workflows through agent chat."
 ---
 
-The n8n Workflow plugin lets Milady agents manage n8n automations through natural language.
+The n8n Workflow plugin lets Eliza agents manage n8n automations through natural language.
 
 **Package:** `@elizaos/plugin-n8n-workflow`
 
 ## Overview
 
-This plugin connects Milady to an n8n instance, exposing workflow management actions. Agents can create new workflows, activate or deactivate existing ones, and delete workflows they no longer need — all through conversational commands rather than the n8n UI.
+This plugin connects Eliza to an n8n instance, exposing workflow management actions. Agents can create new workflows, activate or deactivate existing ones, and delete workflows they no longer need — all through conversational commands rather than the n8n UI.
 
 ## Installation
 
 ```bash
-milady plugins install n8n-workflow
+eliza plugins install n8n-workflow
 ```
 
 ## Auto-Enable

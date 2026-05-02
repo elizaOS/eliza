@@ -1,23 +1,23 @@
 ---
 title: "Together AI Plugin"
 sidebarTitle: "Together AI"
-description: "Together AI model provider for Milady — access open-source models via Together's high-performance inference platform."
+description: "Together AI model provider for Eliza — access open-source models via Together's high-performance inference platform."
 ---
 
 <Warning>
-This plugin is not yet available in the Milady plugin registry. To use Together AI models today, configure them through the [OpenRouter plugin](/plugin-registry/llm/openrouter) using the appropriate model ID.
+This plugin is not yet available in the Eliza plugin registry. To use Together AI models today, configure them through the [OpenRouter plugin](/plugin-registry/llm/openrouter) using the appropriate model ID.
 </Warning>
 
-The Together AI plugin connects Milady agents to Together's inference platform, providing access to a wide catalog of open-source models with competitive pricing and fast inference.
+The Together AI plugin connects Eliza agents to Together's inference platform, providing access to a wide catalog of open-source models with competitive pricing and fast inference.
 
-> **On-demand plugin.** This plugin is resolved from the remote elizaOS plugin registry and auto-installs when its API key is detected. It is not included in Milady's bundled `plugins.json` index.
+> **On-demand plugin.** This plugin is resolved from the remote elizaOS plugin registry and auto-installs when its API key is detected. It is not included in Eliza's bundled `plugins.json` index.
 
 **Package:** `@elizaos/plugin-together`
 
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-together
+eliza plugins install @elizaos/plugin-together
 ```
 
 ## Auto-Enable
@@ -34,7 +34,7 @@ export TOGETHER_API_KEY=your-together-api-key
 |---------------------|----------|-------------|
 | `TOGETHER_API_KEY` | Yes | Together AI API key from [api.together.ai](https://api.together.ai) |
 
-### milady.json Example
+### eliza.json Example
 
 ```json
 {

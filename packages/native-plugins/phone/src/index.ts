@@ -6,6 +6,6 @@ export * from "./definitions";
 
 const loadWeb = () => import("./web").then((m) => new m.PhoneWeb());
 
-export const Phone = registerPlugin<PhonePlugin>("MiladyPhone", {
+export const Phone = registerPlugin<PhonePlugin>("ElizaPhone", {
   web: loadWeb,
 });

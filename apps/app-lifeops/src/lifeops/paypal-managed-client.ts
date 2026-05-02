@@ -1,5 +1,5 @@
 /**
- * Milady-runtime client for Eliza Cloud's PayPal bridge endpoints.
+ * Eliza-runtime client for Eliza Cloud's PayPal bridge endpoints.
  *
  * Same pattern as PlaidManagedClient: cloud holds the PAYPAL_* secrets,
  * we just authenticate with the user's Eliza Cloud API key and forward
@@ -165,7 +165,7 @@ export class PaypalManagedClient {
   }): Promise<PaypalAuthorizeUrlResponse> {
     const config = this.requireConfig();
     const response = await fetch(
-      `${config.apiBaseUrl}/v1/milady/paypal/authorize`,
+      `${config.apiBaseUrl}/v1/eliza/paypal/authorize`,
       {
         method: "POST",
         headers: {
@@ -182,7 +182,7 @@ export class PaypalManagedClient {
   async exchangeCode(args: { code: string }): Promise<PaypalCallbackResponse> {
     const config = this.requireConfig();
     const response = await fetch(
-      `${config.apiBaseUrl}/v1/milady/paypal/callback`,
+      `${config.apiBaseUrl}/v1/eliza/paypal/callback`,
       {
         method: "POST",
         headers: {
@@ -204,7 +204,7 @@ export class PaypalManagedClient {
   }> {
     const config = this.requireConfig();
     const response = await fetch(
-      `${config.apiBaseUrl}/v1/milady/paypal/refresh`,
+      `${config.apiBaseUrl}/v1/eliza/paypal/refresh`,
       {
         method: "POST",
         headers: {
@@ -226,7 +226,7 @@ export class PaypalManagedClient {
   }): Promise<PaypalTransactionsResponse> {
     const config = this.requireConfig();
     const response = await fetch(
-      `${config.apiBaseUrl}/v1/milady/paypal/transactions`,
+      `${config.apiBaseUrl}/v1/eliza/paypal/transactions`,
       {
         method: "POST",
         headers: {

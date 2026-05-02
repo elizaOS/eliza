@@ -4,9 +4,9 @@
  * `vault://<KEY>` sentinels.
  *
  * Sources (in order):
- *   1. milady.json `env[KEY]` and `env.vars[KEY]`
+ *   1. eliza.json `env[KEY]` and `env.vars[KEY]`
  *   2. `<stateDir>/config.env`
- *   3. milady.json `plugins.entries[<id>].config[KEY]`
+ *   3. eliza.json `plugins.entries[<id>].config[KEY]`
  *   4. `process.env[KEY]` for keys flagged sensitive in any registered plugin
  *      (does not mutate process.env — only mirrors to the vault).
  *
@@ -116,11 +116,11 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Walk milady.json env / env.vars / plugins.entries[*].config in place,
+ * Walk eliza.json env / env.vars / plugins.entries[*].config in place,
  * pushing sensitive plaintext values to the vault and replacing them with
  * sentinels. Returns the keys we attempted to migrate plus the failures.
  */
-async function migrateMiladyJson(
+async function migrateElizaJson(
   config: ElizaConfig,
   vault: Vault,
   sensitiveKeys: ReadonlySet<string>,
@@ -157,7 +157,7 @@ async function migrateMiladyJson(
       failed.push(key);
       logger.error(
         { err, key },
-        "[vault-bootstrap] failed to migrate milady.json secret",
+        "[vault-bootstrap] failed to migrate eliza.json secret",
       );
     }
   }
@@ -277,7 +277,7 @@ export async function runVaultBootstrap(
   const sensitiveKeys = sensitiveKeysFromRegistry();
   const config = loadElizaConfig();
 
-  const json = await migrateMiladyJson(config, vault, sensitiveKeys);
+  const json = await migrateElizaJson(config, vault, sensitiveKeys);
   if (json.mutated) {
     saveElizaConfig(config);
   }

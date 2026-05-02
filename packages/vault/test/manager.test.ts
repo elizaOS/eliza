@@ -12,7 +12,7 @@ import { createVault } from "../src/vault.js";
 describe("manager — preferences", () => {
   let workDir: string;
   beforeEach(async () => {
-    workDir = await fs.mkdtemp(join(tmpdir(), "milady-mgr-"));
+    workDir = await fs.mkdtemp(join(tmpdir(), "eliza-mgr-"));
   });
   afterEach(async () => {
     await fs.rm(workDir, { recursive: true, force: true });
@@ -64,7 +64,7 @@ describe("manager — preferences", () => {
 describe("manager — routing", () => {
   let workDir: string;
   beforeEach(async () => {
-    workDir = await fs.mkdtemp(join(tmpdir(), "milady-mgr-"));
+    workDir = await fs.mkdtemp(join(tmpdir(), "eliza-mgr-"));
   });
   afterEach(async () => {
     await fs.rm(workDir, { recursive: true, force: true });
@@ -168,7 +168,7 @@ describe("manager — routing", () => {
 describe("manager — list filters internal keys", () => {
   let workDir: string;
   beforeEach(async () => {
-    workDir = await fs.mkdtemp(join(tmpdir(), "milady-mgr-"));
+    workDir = await fs.mkdtemp(join(tmpdir(), "eliza-mgr-"));
   });
   afterEach(async () => {
     await fs.rm(workDir, { recursive: true, force: true });
@@ -192,7 +192,7 @@ describe("manager — list filters internal keys", () => {
 describe("manager — backend detection", () => {
   let workDir: string;
   beforeEach(async () => {
-    workDir = await fs.mkdtemp(join(tmpdir(), "milady-mgr-"));
+    workDir = await fs.mkdtemp(join(tmpdir(), "eliza-mgr-"));
   });
   afterEach(async () => {
     await fs.rm(workDir, { recursive: true, force: true });
@@ -261,7 +261,7 @@ describe("manager — backend detection", () => {
 describe("manager — listAllSavedLogins", () => {
   let workDir: string;
   beforeEach(async () => {
-    workDir = await fs.mkdtemp(join(tmpdir(), "milady-mgr-list-"));
+    workDir = await fs.mkdtemp(join(tmpdir(), "eliza-mgr-list-"));
   });
   afterEach(async () => {
     await fs.rm(workDir, { recursive: true, force: true });

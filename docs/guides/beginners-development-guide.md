@@ -1,8 +1,8 @@
 ---
 title: Beginner Development Guide
 sidebarTitle: Beginner Dev Guide
-summary: End-to-end contributor onboarding for setting up, understanding, and safely extending the Milady codebase.
-description: A complete onboarding guide for new contributors to understand Milady architecture, local setup, workflow, testing, and safe first contributions.
+summary: End-to-end contributor onboarding for setting up, understanding, and safely extending the Eliza codebase.
+description: A complete onboarding guide for new contributors to understand Eliza architecture, local setup, workflow, testing, and safe first contributions.
 ---
 
 This guide is for developers new to this repository who want to make safe, reviewable contributions quickly.
@@ -11,7 +11,7 @@ This guide is for developers new to this repository who want to make safe, revie
 
 ## 1) What this repo is optimizing for
 
-Milady is a local-first AI assistant built on elizaOS.
+Eliza is a local-first AI assistant built on elizaOS.
 
 The repository prioritizes:
 
@@ -64,7 +64,7 @@ Recommended quick sanity checks:
 ```bash
 node -v
 bun -v
-bun run milady --version
+bun run eliza --version
 ```
 
 ---
@@ -90,7 +90,7 @@ Core areas (all under `eliza/packages/app-core/`):
 - `scripts/` — build/dev/release tooling
 - `test/` + colocated tests — verification
 
-> **Note:** The `eliza/` directory is a git submodule — these paths will not exist until you run `bun run setup:upstreams` or `git submodule update --init --recursive`. See [CONTRIBUTING.md](https://github.com/milady-ai/milady/blob/main/CONTRIBUTING.md) for submodule maintenance details.
+> **Note:** The `eliza/` directory is a git submodule — these paths will not exist until you run `bun run setup:upstreams` or `git submodule update --init --recursive`. See [CONTRIBUTING.md](https://github.com/eliza-ai/eliza/blob/main/CONTRIBUTING.md) for submodule maintenance details.
 
 ---
 
@@ -124,14 +124,14 @@ bun run test:e2e
 bun run test:coverage
 ```
 
-In dev mode, the API runs on port 31337 and the dashboard UI on port 2138. In production, both share port 2138. The dev orchestrator auto-shifts to the next free port if defaults are busy and syncs the env vars (`MILADY_API_PORT`, `MILADY_PORT`).
+In dev mode, the API runs on port 31337 and the dashboard UI on port 2138. In production, both share port 2138. The dev orchestrator auto-shifts to the next free port if defaults are busy and syncs the env vars (`ELIZA_API_PORT`, `ELIZA_PORT`).
 
 CLI iteration examples:
 
 ```bash
-bun run milady --help
-bun run milady start --verbose
-bun run milady config get agents.defaults.model
+bun run eliza --help
+bun run eliza start --verbose
+bun run eliza config get agents.defaults.model
 ```
 
 When you touch logic, at minimum run:
@@ -242,7 +242,7 @@ If you cannot run both paths fully, explain what you validated and why.
 
 - Run a single focused command before full suite
 - Capture exact failing command output in PR notes
-- Use logs under `~/.milady/logs/` for runtime investigation
+- Use logs under `~/.eliza/logs/` for runtime investigation
 - Prefer minimal reproducible cases
 
 ---

@@ -20,14 +20,14 @@ The Zalouser connector is a personal-account variant of the [Zalo](/connectors/z
 ## Installation
 
 ```bash
-milady plugins install zalouser
+eliza plugins install zalouser
 ```
 
 ## Setup
 
 1. Export your Zalo session cookies from the official Zalo app or web client
 2. Note your device IMEI from the Zalo app
-3. Configure the environment variables or `milady.json`
+3. Configure the environment variables or `eliza.json`
 
 ## Configuration
 
@@ -38,7 +38,7 @@ ZALOUSER_COOKIE_PATH=/path/to/cookies.json
 ZALOUSER_IMEI=your-device-imei
 ```
 
-Or configure in `~/.milady/milady.json`:
+Or configure in `~/.eliza/eliza.json`:
 
 ```json
 {

@@ -113,10 +113,10 @@ export class FilesystemRuntimeOperationRepository
     this.dir = operationsDirFor(stateDir);
     this.retentionMs =
       opts.retentionMs ??
-      readEnvNumber("MILADY_RUNTIME_OPS_RETENTION_MS", DEFAULT_RETENTION_MS);
+      readEnvNumber("ELIZA_RUNTIME_OPS_RETENTION_MS", DEFAULT_RETENTION_MS);
     this.maxRecords =
       opts.maxRecords ??
-      readEnvNumber("MILADY_RUNTIME_OPS_MAX_RECORDS", DEFAULT_MAX_RECORDS);
+      readEnvNumber("ELIZA_RUNTIME_OPS_MAX_RECORDS", DEFAULT_MAX_RECORDS);
   }
 
   private hydrate(): Promise<void> {

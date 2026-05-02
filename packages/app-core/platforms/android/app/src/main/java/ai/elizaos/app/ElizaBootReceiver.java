@@ -8,9 +8,9 @@ import android.os.Process;
 import android.util.Log;
 import java.lang.reflect.Method;
 
-public class MiladyBootReceiver extends BroadcastReceiver {
+public class ElizaBootReceiver extends BroadcastReceiver {
 
-    private static final String TAG = "MiladyBootReceiver";
+    private static final String TAG = "ElizaBootReceiver";
 
     @Override
     public void onReceive(Context context, Intent intent) {
@@ -27,7 +27,7 @@ public class MiladyBootReceiver extends BroadcastReceiver {
         // apps at runtime, no-ops cleanly otherwise.
         allowUsageStatsAppOp(context);
         GatewayConnectionService.start(context);
-        MiladyAgentService.start(context);
+        ElizaAgentService.start(context);
     }
 
     private static void allowUsageStatsAppOp(Context context) {

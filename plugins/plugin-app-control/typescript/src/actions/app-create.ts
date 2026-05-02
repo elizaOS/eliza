@@ -422,7 +422,7 @@ function buildCreatePrompt(
 	workdir: string,
 ): string {
 	return [
-		`You are building a brand-new Milady app called "${displayName}".`,
+		`You are building a brand-new Eliza app called "${displayName}".`,
 		`The user's intent: ${intent}`,
 		"",
 		`The app source directory is ${workdir}. It has already been scaffolded from the min-app template.`,
@@ -447,7 +447,7 @@ function buildEditPrompt(
 	workdir: string,
 ): string {
 	return [
-		`You are modifying the existing Milady app "${app.displayName}" (${app.name}).`,
+		`You are modifying the existing Eliza app "${app.displayName}" (${app.name}).`,
 		`Source lives in ${workdir}.`,
 		`User's request: ${intent}`,
 		"",

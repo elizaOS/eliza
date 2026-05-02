@@ -23,7 +23,7 @@ Connect your agent to Discord servers and DMs using the `@elizaos/plugin-discord
 
 The connector auto-enables when `token`, `botToken`, or `apiKey` is truthy in the connector config and `enabled` is not explicitly `false`.
 
-Configure in `~/.milady/milady.json`:
+Configure in `~/.eliza/eliza.json`:
 
 ```json
 {
@@ -80,7 +80,7 @@ Note: If `DISCORD_APPLICATION_ID` is not configured, the runtime automatically r
 
 ## Full Configuration Reference
 
-All fields are set under `connectors.discord` in `milady.json`.
+All fields are set under `connectors.discord` in `eliza.json`.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|

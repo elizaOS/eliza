@@ -46,8 +46,8 @@ describe("catalog", () => {
   });
 
   it("buildHuggingFaceResolveUrl produces an HF resolve URL with encoded filename", () => {
-    const saved = process.env.MILADY_HF_BASE_URL;
-    delete process.env.MILADY_HF_BASE_URL;
+    const saved = process.env.ELIZA_HF_BASE_URL;
+    delete process.env.ELIZA_HF_BASE_URL;
     try {
       const url = buildHuggingFaceResolveUrl({
         id: "test",
@@ -66,13 +66,13 @@ describe("catalog", () => {
         "https://huggingface.co/bartowski/Test-GGUF/resolve/main/Test%20Model-Q4_K_M.gguf?download=true",
       );
     } finally {
-      if (saved !== undefined) process.env.MILADY_HF_BASE_URL = saved;
+      if (saved !== undefined) process.env.ELIZA_HF_BASE_URL = saved;
     }
   });
 
   it("buildHuggingFaceResolveUrl preserves nested ggufFile path separators", () => {
-    const saved = process.env.MILADY_HF_BASE_URL;
-    delete process.env.MILADY_HF_BASE_URL;
+    const saved = process.env.ELIZA_HF_BASE_URL;
+    delete process.env.ELIZA_HF_BASE_URL;
     try {
       const url = buildHuggingFaceResolveUrl({
         id: "nested",
@@ -91,13 +91,13 @@ describe("catalog", () => {
         "https://huggingface.co/apothic/bonsai-8B-1bit-turboquant/resolve/main/models/gguf/8B/Bonsai-8B.gguf?download=true",
       );
     } finally {
-      if (saved !== undefined) process.env.MILADY_HF_BASE_URL = saved;
+      if (saved !== undefined) process.env.ELIZA_HF_BASE_URL = saved;
     }
   });
 
-  it("buildHuggingFaceResolveUrl honours MILADY_HF_BASE_URL override", () => {
-    const saved = process.env.MILADY_HF_BASE_URL;
-    process.env.MILADY_HF_BASE_URL = "http://127.0.0.1:8080/";
+  it("buildHuggingFaceResolveUrl honours ELIZA_HF_BASE_URL override", () => {
+    const saved = process.env.ELIZA_HF_BASE_URL;
+    process.env.ELIZA_HF_BASE_URL = "http://127.0.0.1:8080/";
     try {
       const url = buildHuggingFaceResolveUrl({
         id: "t",
@@ -116,8 +116,8 @@ describe("catalog", () => {
         "http://127.0.0.1:8080/org/repo/resolve/main/model.gguf?download=true",
       );
     } finally {
-      if (saved === undefined) delete process.env.MILADY_HF_BASE_URL;
-      else process.env.MILADY_HF_BASE_URL = saved;
+      if (saved === undefined) delete process.env.ELIZA_HF_BASE_URL;
+      else process.env.ELIZA_HF_BASE_URL = saved;
     }
   });
 });

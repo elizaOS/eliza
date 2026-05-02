@@ -1,10 +1,10 @@
 ---
 title: "OpenAI & Anthropic Compatible API"
 sidebarTitle: "v1 Compat"
-description: "OpenAI- and Anthropic-compatible REST API endpoints that allow any client built for those APIs to interact with the Milady agent."
+description: "OpenAI- and Anthropic-compatible REST API endpoints that allow any client built for those APIs to interact with the Eliza agent."
 ---
 
-Milady exposes compatibility endpoints that mirror the OpenAI and Anthropic API formats. Any client, library, or tool built for those APIs (e.g. `openai` Python SDK, `curl` scripts targeting `/v1/chat/completions`) can point at the Milady server and get agent responses. All paths are at the root (`/v1/...`) without the `/api/` prefix.
+Eliza exposes compatibility endpoints that mirror the OpenAI and Anthropic API formats. Any client, library, or tool built for those APIs (e.g. `openai` Python SDK, `curl` scripts targeting `/v1/chat/completions`) can point at the Eliza server and get agent responses. All paths are at the root (`/v1/...`) without the `/api/` prefix.
 
 ## Endpoints
 
@@ -19,7 +19,7 @@ Milady exposes compatibility endpoints that mirror the OpenAI and Anthropic API 
 
 ### GET /v1/models
 
-List available models in OpenAI's `/v1/models` format. Returns the agent's name and `"milady"` as model IDs.
+List available models in OpenAI's `/v1/models` format. Returns the agent's name and `"eliza"` as model IDs.
 
 **Response**
 
@@ -28,16 +28,16 @@ List available models in OpenAI's `/v1/models` format. Returns the agent's name 
   "object": "list",
   "data": [
     {
-      "id": "milady",
+      "id": "eliza",
       "object": "model",
       "created": 1718000000,
-      "owned_by": "milady"
+      "owned_by": "eliza"
     },
     {
       "id": "Aurora",
       "object": "model",
       "created": 1718000000,
-      "owned_by": "milady"
+      "owned_by": "eliza"
     }
   ]
 }
@@ -53,10 +53,10 @@ Get details for a single model.
 
 ```json
 {
-  "id": "milady",
+  "id": "eliza",
   "object": "model",
   "created": 1718000000,
-  "owned_by": "milady"
+  "owned_by": "eliza"
 }
 ```
 
@@ -81,7 +81,7 @@ OpenAI-compatible chat completions endpoint. Supports both streaming (SSE) and n
     { "role": "system", "content": "You are a helpful agent." },
     { "role": "user", "content": "What is the meaning of life?" }
   ],
-  "model": "milady",
+  "model": "eliza",
   "stream": false
 }
 ```
@@ -93,7 +93,7 @@ OpenAI-compatible chat completions endpoint. Supports both streaming (SSE) and n
   "id": "chatcmpl-uuid",
   "object": "chat.completion",
   "created": 1718000000,
-  "model": "milady",
+  "model": "eliza",
   "choices": [
     {
       "index": 0,
@@ -112,11 +112,11 @@ OpenAI-compatible chat completions endpoint. Supports both streaming (SSE) and n
 When `stream: true` or the `Accept` header includes `text/event-stream`, the response uses Server-Sent Events:
 
 ```
-data: {"id":"chatcmpl-uuid","object":"chat.completion.chunk","created":1718000000,"model":"milady","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}
+data: {"id":"chatcmpl-uuid","object":"chat.completion.chunk","created":1718000000,"model":"eliza","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}
 
-data: {"id":"chatcmpl-uuid","object":"chat.completion.chunk","created":1718000000,"model":"milady","choices":[{"index":0,"delta":{"content":"The meaning"},"finish_reason":null}]}
+data: {"id":"chatcmpl-uuid","object":"chat.completion.chunk","created":1718000000,"model":"eliza","choices":[{"index":0,"delta":{"content":"The meaning"},"finish_reason":null}]}
 
-data: {"id":"chatcmpl-uuid","object":"chat.completion.chunk","created":1718000000,"model":"milady","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+data: {"id":"chatcmpl-uuid","object":"chat.completion.chunk","created":1718000000,"model":"eliza","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
 
 data: [DONE]
 ```
@@ -147,7 +147,7 @@ Anthropic-compatible Messages API endpoint. Processes the `messages` array in An
 
 ```json
 {
-  "model": "milady",
+  "model": "eliza",
   "system": "You are a helpful agent.",
   "messages": [
     {
@@ -172,7 +172,7 @@ Anthropic-compatible Messages API endpoint. Processes the `messages` array in An
       "text": "The meaning of life is..."
     }
   ],
-  "model": "milady",
+  "model": "eliza",
   "stop_reason": "end_turn"
 }
 ```
@@ -183,7 +183,7 @@ When `stream: true`, the response uses Anthropic-style SSE events:
 
 ```
 event: message_start
-data: {"type":"message_start","message":{"id":"msg_uuid","type":"message","role":"assistant","content":[],"model":"milady"}}
+data: {"type":"message_start","message":{"id":"msg_uuid","type":"message","role":"assistant","content":[],"model":"eliza"}}
 
 event: content_block_start
 data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
@@ -220,11 +220,11 @@ from openai import OpenAI
 
 client = OpenAI(
     base_url="http://localhost:2138/v1",
-    api_key="your-milady-api-token"  # or "not-needed" if no token is set
+    api_key="your-eliza-api-token"  # or "not-needed" if no token is set
 )
 
 response = client.chat.completions.create(
-    model="milady",
+    model="eliza",
     messages=[{"role": "user", "content": "Hello!"}]
 )
 print(response.choices[0].message.content)
@@ -237,11 +237,11 @@ import anthropic
 
 client = anthropic.Anthropic(
     base_url="http://localhost:2138",
-    api_key="your-milady-api-token"
+    api_key="your-eliza-api-token"
 )
 
 message = client.messages.create(
-    model="milady",
+    model="eliza",
     max_tokens=1024,
     messages=[{"role": "user", "content": "Hello!"}]
 )
@@ -253,9 +253,9 @@ print(message.content[0].text)
 ```bash
 curl http://localhost:2138/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer your-milady-api-token" \
+  -H "Authorization: Bearer your-eliza-api-token" \
   -d '{
-    "model": "milady",
+    "model": "eliza",
     "messages": [{"role": "user", "content": "Hello!"}]
   }'
 ```

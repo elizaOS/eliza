@@ -3,7 +3,7 @@
   "private": true,
   "version": "2.0.0-alpha.1",
   "type": "module",
-  "description": "App control plugin for Milady agents — launch, close, and list running apps via the local dashboard API.",
+  "description": "App control plugin for Eliza agents — launch, close, and list running apps via the local dashboard API.",
   "main": "typescript/dist/index.js",
   "types": "typescript/dist/index.d.ts",
   "exports": {

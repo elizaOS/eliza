@@ -267,7 +267,7 @@ List all fine-tuned models.
     {
       "id": "model-001",
       "jobId": "job-001",
-      "name": "milady-llama-3.2-3b-v1",
+      "name": "eliza-llama-3.2-3b-v1",
       "createdAt": 1718003600000,
       "active": false
     }
@@ -291,7 +291,7 @@ Import a fine-tuned model into Ollama for local inference.
 
 ```json
 {
-  "modelName": "milady-v1",
+  "modelName": "eliza-v1",
   "baseModel": "llama3.2:3b",
   "ollamaUrl": "http://localhost:11434"
 }
@@ -309,7 +309,7 @@ Import a fine-tuned model into Ollama for local inference.
 {
   "model": {
     "id": "model-001",
-    "ollamaName": "milady-v1",
+    "ollamaName": "eliza-v1",
     "importedAt": 1718005000000
   }
 }
@@ -331,7 +331,7 @@ Activate a fine-tuned model so the agent uses it for inference.
 
 ```json
 {
-  "providerModel": "milady-v1"
+  "providerModel": "eliza-v1"
 }
 ```
 
@@ -344,7 +344,7 @@ Activate a fine-tuned model so the agent uses it for inference.
 ```json
 {
   "ok": true,
-  "activeModel": "milady-v1"
+  "activeModel": "eliza-v1"
 }
 ```
 

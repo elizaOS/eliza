@@ -5,7 +5,7 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 
-public class MiladyAssistActivity extends Activity {
+public class ElizaAssistActivity extends Activity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {

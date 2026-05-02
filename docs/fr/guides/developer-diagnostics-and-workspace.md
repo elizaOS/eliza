@@ -4,7 +4,7 @@ title: Diagnostics développeur et outillage workspace
 
 # Diagnostics développeur et outillage workspace (POURQUOI)
 
-Ce guide est destiné aux **personnes qui compilent Milady depuis les sources** — éditeurs, agents et mainteneurs. Il explique **pourquoi** certains comportements récents orientés développeur existent afin que vous puissiez déboguer plus rapidement sans confondre du bruit optionnel avec des bugs produit.
+Ce guide est destiné aux **personnes qui compilent Eliza depuis les sources** — éditeurs, agents et mainteneurs. Il explique **pourquoi** certains comportements récents orientés développeur existent afin que vous puissiez déboguer plus rapidement sans confondre du bruit optionnel avec des bugs produit.
 
 <div id="plugin-load-reasons-optional-plugins">
 ## Raisons de chargement des plugins (plugins optionnels)
@@ -12,7 +12,7 @@ Ce guide est destiné aux **personnes qui compilent Milady depuis les sources** 
 
 **Problème :** Des journaux comme `Cannot find module '@elizaos/plugin-solana'` ou "browser server not found" donnaient l'impression que le runtime était cassé, alors que souvent le vrai problème était que la **configuration ou une variable d'environnement** ajoutait un plugin à l'ensemble de chargement alors que le package ou le binaire natif n'avait jamais été installé.
 
-**Pourquoi nous traçons la provenance :** `collectPluginNames()` peut enregistrer la **première** source ayant ajouté chaque package (par exemple `plugins.allow["@elizaos/plugin-solana"]`, `env: SOLANA_PRIVATE_KEY`, `features.browser`, `CORE_PLUGINS`). `resolvePlugins()` transmet cette map à travers la résolution ; quand un plugin **optionnel** échoue pour une raison bénigne (module npm manquant, stagehand manquant), le résumé du journal inclut **`(added by: …)`** pour que vous sachiez s'il faut modifier `milady.json`, désactiver une variable d'environnement, installer un package ou ajouter un checkout de plugin.
+**Pourquoi nous traçons la provenance :** `collectPluginNames()` peut enregistrer la **première** source ayant ajouté chaque package (par exemple `plugins.allow["@elizaos/plugin-solana"]`, `env: SOLANA_PRIVATE_KEY`, `features.browser`, `CORE_PLUGINS`). `resolvePlugins()` transmet cette map à travers la résolution ; quand un plugin **optionnel** échoue pour une raison bénigne (module npm manquant, stagehand manquant), le résumé du journal inclut **`(added by: …)`** pour que vous sachiez s'il faut modifier `eliza.json`, désactiver une variable d'environnement, installer un package ou ajouter un checkout de plugin.
 
 **Portée :** Ce sont des **diagnostics**, pas une dissimulation d'erreurs. Les erreurs de résolution sérieuses continuent de s'afficher normalement.
 
@@ -22,9 +22,9 @@ Ce guide est destiné aux **personnes qui compilent Milady depuis les sources** 
 ## Chemin du serveur browser / stagehand
 </div>
 
-**Problème :** `@elizaos/plugin-browser` attend un arbre binaire **stagehand-server** sous `dist/server/` dans le package npm, mais le tarball publié ne le contient pas. Milady lie ou découvre un checkout sous `plugins/plugin-browser/stagehand-server/`.
+**Problème :** `@elizaos/plugin-browser` attend un arbre binaire **stagehand-server** sous `dist/server/` dans le package npm, mais le tarball publié ne le contient pas. Eliza lie ou découvre un checkout sous `plugins/plugin-browser/stagehand-server/`.
 
-**Pourquoi la remontée par les parents :** Le fichier runtime se trouve à différentes profondeurs (`milady/packages/agent/...` vs `eliza/packages/agent/...` avec un sous-module). Une profondeur fixe `../` manquait la racine du workspace. **`findPluginBrowserStagehandDir()`** remonte les répertoires parents jusqu'à trouver `plugins/plugin-browser/stagehand-server` avec `dist/index.js` ou `src/index.ts`.
+**Pourquoi la remontée par les parents :** Le fichier runtime se trouve à différentes profondeurs (`eliza/packages/agent/...` vs `eliza/packages/agent/...` avec un sous-module). Une profondeur fixe `../` manquait la racine du workspace. **`findPluginBrowserStagehandDir()`** remonte les répertoires parents jusqu'à trouver `plugins/plugin-browser/stagehand-server` avec `dist/index.js` ou `src/index.ts`.
 
 **Note opérationnelle :** Si vous n'utilisez pas l'automatisation du navigateur, l'absence de stagehand est **attendue** ; les messages sont intentionnellement concis au niveau débogage pour ne pas spammer le développement quotidien.
 

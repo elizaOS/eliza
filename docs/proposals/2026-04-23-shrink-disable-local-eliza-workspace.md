@@ -7,8 +7,8 @@ Related review: the install-flow cleanup series (D1–D9, E1–E6, F1–F4)
 ## Background
 
 `scripts/disable-local-eliza-workspace.mjs` is ~1,287 lines. It runs only
-when `MILADY_SKIP_LOCAL_UPSTREAMS=1` + (GITHUB_ACTIONS=true or
-`MILADY_DISABLE_LOCAL_UPSTREAMS=force`) — i.e. CI jobs that install
+when `ELIZA_SKIP_LOCAL_UPSTREAMS=1` + (GITHUB_ACTIONS=true or
+`ELIZA_DISABLE_LOCAL_UPSTREAMS=force`) — i.e. CI jobs that install
 without the `eliza/` submodule checked out.
 
 What it does today:
@@ -75,8 +75,8 @@ Machines not affected: CI workflow yaml, `setup-upstreams.mjs`.
 ## Validation plan (REQUIRED before landing)
 
 1. **Local repro of CI.** On a clean checkout with
-   `MILADY_SKIP_LOCAL_UPSTREAMS=1`, simulate the `eliza/`-absent state:
-   `MILADY_SKIP_LOCAL_UPSTREAMS=1 GITHUB_ACTIONS=true bun install`.
+   `ELIZA_SKIP_LOCAL_UPSTREAMS=1`, simulate the `eliza/`-absent state:
+   `ELIZA_SKIP_LOCAL_UPSTREAMS=1 GITHUB_ACTIONS=true bun install`.
    Today this runs `disable-local-eliza-workspace.mjs` and installs
    cleanly.
 
@@ -101,16 +101,16 @@ Machines not affected: CI workflow yaml, `setup-upstreams.mjs`.
    InvalidPackageKey`. That must pass in the proposed state.
 
 5. **Run the matrix in GitHub Actions.** Open a PR with the lite
-   script as a toggle (`MILADY_LITE_DISABLE=1` selects lite, default
+   script as a toggle (`ELIZA_LITE_DISABLE=1` selects lite, default
    selects current). Run every workflow that sets
-   `MILADY_SKIP_LOCAL_UPSTREAMS=1`:
+   `ELIZA_SKIP_LOCAL_UPSTREAMS=1`:
    - `nightly.yml`
    - `test.yml`
    - `agent-release.yml`
    - Mobile platform workflows
    - Release workflow path contract jobs
 
-   All must pass with `MILADY_LITE_DISABLE=1` before the lite variant
+   All must pass with `ELIZA_LITE_DISABLE=1` before the lite variant
    becomes the default.
 
 6. **Flip the default + keep the old path as an opt-out for one

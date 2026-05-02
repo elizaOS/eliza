@@ -10,12 +10,12 @@ Shopify Admin API integration for managing store operations.
 
 ## Overview
 
-The Shopify plugin connects Milady agents to the Shopify Admin API, enabling management of products, orders, inventory, and customers directly through agent conversations.
+The Shopify plugin connects Eliza agents to the Shopify Admin API, enabling management of products, orders, inventory, and customers directly through agent conversations.
 
 ## Installation
 
 ```bash
-milady plugins install shopify
+eliza plugins install shopify
 ```
 
 ## Auto-Enable

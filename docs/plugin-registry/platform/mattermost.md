@@ -1,17 +1,17 @@
 ---
 title: "Mattermost Plugin"
 sidebarTitle: "Mattermost"
-description: "Mattermost connector for Milady — self-hosted team messaging with bot token auth, mention filtering, and chat mode configuration."
+description: "Mattermost connector for Eliza — self-hosted team messaging with bot token auth, mention filtering, and chat mode configuration."
 ---
 
-The Mattermost plugin connects Milady agents to a Mattermost server as a bot, supporting channel messages and DMs with configurable mention requirements and chat modes.
+The Mattermost plugin connects Eliza agents to a Mattermost server as a bot, supporting channel messages and DMs with configurable mention requirements and chat modes.
 
 **Package:** `@elizaos/plugin-mattermost`
 
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-mattermost
+eliza plugins install @elizaos/plugin-mattermost
 ```
 
 ## Setup
@@ -24,7 +24,7 @@ milady plugins install @elizaos/plugin-mattermost
 4. Fill in the display name and description
 5. Copy the generated **Bot Token**
 
-### 2. Configure Milady
+### 2. Configure Eliza
 
 ```json
 {
@@ -119,11 +119,11 @@ Ensure the bot account has been added to the channels where it should respond. B
 
 ### Connection Refused
 
-Verify the `baseUrl` is correct and the Mattermost server is reachable from the Milady host. For self-hosted instances, check firewall rules.
+Verify the `baseUrl` is correct and the Mattermost server is reachable from the Eliza host. For self-hosted instances, check firewall rules.
 
 ### Bot Token Invalid
 
-Bot tokens can be regenerated from **System Console → Integrations → Bot Accounts**. Update the token in your Milady configuration after regeneration.
+Bot tokens can be regenerated from **System Console → Integrations → Bot Accounts**. Update the token in your Eliza configuration after regeneration.
 
 ## Related
 
