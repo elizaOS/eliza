@@ -93,6 +93,6 @@ Results are written as JSON in `benchmarks/voicebench/results/`.
 - Response verbosity is hard-capped via `responseMaxChars` in `benchmarks/voicebench/shared/config.json`.
 - Fixture manifests include `samples[].id`, `samples[].text`, and `samples[].audioPath`.
 - TypeScript runner dynamically imports plugin packages from:
-  - `plugins/plugin-groq/typescript`
-  - `plugins/plugin-elevenlabs/typescript`
+  - `plugins/plugin-groq`
+  - `plugins/plugin-elevenlabs`
 - If Bun reports missing plugin dependencies, install those plugin dependencies first.

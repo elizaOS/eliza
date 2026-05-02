@@ -8,6 +8,18 @@ import { StewardUnavailableError } from "./errors.js";
 import type { SignResult, SignScope } from "./pending.js";
 
 /**
+ * Structural stand-in for viem `Account` produced by Steward — avoids incompatible
+ * nominal `Account` types when multiple `viem` copies resolve in the workspace.
+ */
+interface StewardEvmAccountBinding {
+	readonly address: `0x${string}`;
+	signMessage?(parameters: {
+		message: string | { raw: Uint8Array | string };
+	}): Promise<Hex>;
+	signTypedData?(typedData: TypedDataDefinition): Promise<Hex>;
+}
+
+/**
  * Cloud / mobile signing via Steward for EVM. Solana addresses may be exposed from
  * Steward when `/vault/.../addresses` returns them; Solana **transaction** signing is
  * not implemented here yet — callers must treat Solana writes as unavailable until wired.
@@ -15,11 +27,14 @@ import type { SignResult, SignScope } from "./pending.js";
 export class StewardBackend implements WalletBackend {
 	readonly kind = "steward" as const;
 
-	private readonly account: Account;
+	private readonly account: StewardEvmAccountBinding;
 
 	private readonly solanaPubkey: PublicKey | null;
 
-	private constructor(account: Account, solanaPubkey: PublicKey | null) {
+	private constructor(
+		account: StewardEvmAccountBinding,
+		solanaPubkey: PublicKey | null,
+	) {
 		this.account = account;
 		this.solanaPubkey = solanaPubkey;
 	}
@@ -65,7 +80,7 @@ export class StewardBackend implements WalletBackend {
 			}
 		}
 
-		return new StewardBackend(account, solanaPubkey);
+		return new StewardBackend(account as StewardEvmAccountBinding, solanaPubkey);
 	}
 
 	getAddresses(): WalletAddresses {
@@ -84,7 +99,7 @@ export class StewardBackend implements WalletBackend {
 
 	getEvmAccount(_chainId: number): Account {
 		void _chainId;
-		return this.account;
+		return this.account as Account;
 	}
 
 	getSolanaSigner(): never {
@@ -95,7 +110,13 @@ export class StewardBackend implements WalletBackend {
 
 	async signMessage(scope: SignScope, message: Hex): Promise<SignResult> {
 		void scope;
-		const sig = await this.account.signMessage({
+		const signMessage = this.account.signMessage?.bind(this.account);
+		if (!signMessage) {
+			throw new StewardUnavailableError(
+				"Steward EVM account does not expose signMessage.",
+			);
+		}
+		const sig = await signMessage({
 			message: { raw: hexToBytes(message) },
 		});
 		return { kind: "signature", signature: sig };
@@ -106,7 +127,13 @@ export class StewardBackend implements WalletBackend {
 		typedData: TypedDataDefinition,
 	): Promise<SignResult> {
 		void scope;
-		const sig = await this.account.signTypedData(typedData);
+		const signTypedData = this.account.signTypedData?.bind(this.account);
+		if (!signTypedData) {
+			throw new StewardUnavailableError(
+				"Steward EVM account does not expose signTypedData.",
+			);
+		}
+		const sig = await signTypedData(typedData);
 		return { kind: "signature", signature: sig };
 	}
 }

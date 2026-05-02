@@ -9,7 +9,7 @@
  *
  *   DEV (default — no flag, or `--dev`):
  *     1. `git submodule update --init` for each configured path
- *     2. Append `plugins/.../typescript` entries to root package.json workspaces
+ *     2. Append `plugins/...` entries to root package.json workspaces
  *     3. Remove self-dependencies on the package name (e.g. @elizaos/plugin-sql → itself)
  *        so bun does not hit a workspace dependency loop
  *     4. Run `scripts/fix-workspace-deps.mjs` when `--check` fails (otherwise skip)
@@ -19,8 +19,8 @@
  *
  *   RESTORE (--restore):
  *     1. Run `scripts/fix-workspace-deps.mjs --restore` (parent-repo package.json only)
- *     2. Remove the plugin `.../typescript` workspace entries from root package.json
- *     3. `git checkout -- typescript/package.json` inside each submodule (reset submodule trees)
+ *     2. Remove the plugin workspace entries from root package.json
+ *     3. `git checkout -- package.json` inside each submodule (reset submodule trees)
  *
  * Pair with:
  *   - `bun run fix-deps` for the rest of the monorepo
@@ -49,21 +49,21 @@ function touchInstallStamp() {
   writeFileSync(INSTALL_STAMP, `${Date.now()}\n`);
 }
 
-/** Submodules under plugins/ and their Bun workspace path (typescript package). */
+/** Submodules under plugins/ and their Bun workspace path (package root). */
 const PLUGIN_SUBMODULES = [
   {
     submodulePath: "plugins/plugin-sql",
-    workspaceEntry: "plugins/plugin-sql/typescript",
+    workspaceEntry: "plugins/plugin-sql",
     packageName: "@elizaos/plugin-sql",
   },
   {
     submodulePath: "plugins/plugin-ollama",
-    workspaceEntry: "plugins/plugin-ollama/typescript",
+    workspaceEntry: "plugins/plugin-ollama",
     packageName: "@elizaos/plugin-ollama",
   },
   {
     submodulePath: "plugins/plugin-local-ai",
-    workspaceEntry: "plugins/plugin-local-ai/typescript",
+    workspaceEntry: "plugins/plugin-local-ai",
     packageName: "@elizaos/plugin-local-ai",
   },
 ];
@@ -229,11 +229,11 @@ function resetSubmodulePackageJson() {
       continue;
     }
     try {
-      execFileSync("git", ["checkout", "--", "typescript/package.json"], {
+      execFileSync("git", ["checkout", "--", "package.json"], {
         cwd: abs,
         stdio: QUIET ? "pipe" : "inherit",
       });
-      log(`  reset  ${submodulePath}/typescript/package.json`);
+      log(`  reset  ${submodulePath}/package.json`);
     } catch {
       log(
         `  skip reset  ${submodulePath} (no typescript/package.json in index?)`,

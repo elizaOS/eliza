@@ -57,7 +57,7 @@ import {
   AppRegistryService,
   AppVerificationService,
   createAppAction,
-} from "../../../../plugins/plugin-app-control/typescript/src/index.ts";
+} from "../../../../plugins/plugin-app-control/src/index.ts";
 import { createTestRuntime } from "../helpers/pglite-runtime";
 
 type Framework = "claude" | "codex";

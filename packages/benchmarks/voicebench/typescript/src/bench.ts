@@ -406,7 +406,7 @@ async function seedRuntimeGraph(
 
 async function resolvePlugins(profile: string): Promise<Plugin[]> {
   const groqModule = await import(
-    "../../../../plugins/plugin-groq/typescript/index.ts"
+    "../../../../plugins/plugin-groq/index.ts"
   );
   const groq =
     (groqModule as { groqPlugin?: Plugin }).groqPlugin ??
@@ -421,7 +421,7 @@ async function resolvePlugins(profile: string): Promise<Plugin[]> {
   }
 
   const elevenLabsModule = await import(
-    "../../../../plugins/plugin-elevenlabs/typescript/src/index.ts"
+    "../../../../plugins/plugin-elevenlabs/src/index.ts"
   );
   const elevenLabs =
     (elevenLabsModule as { elevenLabsPlugin?: Plugin }).elevenLabsPlugin ??

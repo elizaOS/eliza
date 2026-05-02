@@ -120,7 +120,7 @@ describe("managed file upgrades", () => {
         {
           name: "fixture",
           private: true,
-          workspaces: ["packages/*", "plugins/plugin-sql/typescript"],
+          workspaces: ["packages/*", "plugins/plugin-sql"],
         },
         null,
         2,
@@ -129,8 +129,8 @@ describe("managed file upgrades", () => {
 
     expect(
       ensurePackageJsonWorkspaces(packageJsonPath, [
-        "plugins/plugin-sql/typescript",
-        "plugins/plugin-elizacloud/typescript",
+        "plugins/plugin-sql",
+        "plugins/plugin-elizacloud",
       ]),
     ).toBe(true);
 
@@ -139,8 +139,8 @@ describe("managed file upgrades", () => {
     };
     expect(next.workspaces).toEqual([
       "packages/*",
-      "plugins/plugin-sql/typescript",
-      "plugins/plugin-elizacloud/typescript",
+      "plugins/plugin-sql",
+      "plugins/plugin-elizacloud",
     ]);
   });
 

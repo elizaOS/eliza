@@ -59,7 +59,7 @@
     "test:plugins": "bun run build:core && turbo run test --concurrency 3 --filter='./plugins/*' --filter='!@elizaos/plugin-agent-orchestrator' && turbo run test --concurrency 1 --filter='@elizaos/plugin-agent-orchestrator'",
     "test:client": "bun run build:core && TEST_PACKAGE_FILTER='\\((packages/app|packages/ui|apps/app-lifeops|apps/app-companion|apps/app-training)\\)' TEST_SCRIPT_FILTER='^test$' node scripts/run-all-tests.mjs",
     "test:core": "turbo run test --filter=./packages/typescript",
-    "test:server": "bun run build:core && TEST_PACKAGE_FILTER='\\((packages/agent|packages/app-core|packages/shared|packages/typescript|packages/confidant|packages/elizaos|packages/schemas|packages/skills|packages/interop|packages/scenario-runner)\\)' TEST_SCRIPT_FILTER='^test$' node scripts/run-all-tests.mjs",
+    "test:server": "bun run build:core && TEST_PACKAGE_FILTER='\\((packages/agent|packages/app-core|packages/shared|packages/typescript|packages/vault|packages/elizaos|packages/schemas|packages/skills|packages/interop|packages/scenario-runner)\\)' TEST_SCRIPT_FILTER='^test$' node scripts/run-all-tests.mjs",
     "browser-bridge:package:release": "cd apps/browser-bridge && bun run package:release",
     "test:browser-bridge": "cd apps/browser-bridge && bun run test:ci",
     "test:browser-bridge:safari": "cd apps/browser-bridge && bun run test:smoke:safari"
@@ -72,11 +72,6 @@
     "packages/app-core/deploy/cloud-agent-template",
     "apps/*",
     "plugins/*",
-    "plugins/*/typescript",
-    "plugins/plugin-sql/typescript",
-    "plugins/plugin-ollama/typescript",
-    "plugins/plugin-local-ai/typescript",
-    "plugins/plugin-whatsapp/typescript",
     "cloud/packages/sdk"
   ],
   "devDependencies": {

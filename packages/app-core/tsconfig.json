@@ -51,10 +51,10 @@
         "./packages/native-plugins/activity-tracker/src/index.ts"
       ],
       "drizzle-orm": [
-        "./plugins/plugin-sql/typescript/node_modules/drizzle-orm"
+        "./plugins/plugin-sql/node_modules/drizzle-orm"
       ],
       "drizzle-orm/*": [
-        "./plugins/plugin-sql/typescript/node_modules/drizzle-orm/*"
+        "./plugins/plugin-sql/node_modules/drizzle-orm/*"
       ],
       "react": ["./packages/app-core/node_modules/@types/react/index.d.ts"],
       "react/jsx-runtime": [

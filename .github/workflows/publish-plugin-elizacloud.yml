@@ -1,5 +1,5 @@
 # Publishes @elizaos/plugin-elizacloud (npm) when the version in
-# plugins/plugin-elizacloud/typescript/package.json changes.
+# plugins/plugin-elizacloud/package.json changes.
 name: Publish @elizaos/plugin-elizacloud
 
 on:
@@ -25,11 +25,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check typescript package version
+      - name: Check package version
         id: check
         run: |
           set -euo pipefail
-          PKG_JSON="plugins/plugin-elizacloud/typescript/package.json"
+          PKG_JSON="plugins/plugin-elizacloud/package.json"
           CURRENT_VERSION=$(jq -r .version "$PKG_JSON")
           echo "Current version: $CURRENT_VERSION"
           PREV_COMMIT=$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)
@@ -84,7 +84,7 @@ jobs:
           registry-url: "https://registry.npmjs.org"
 
       - name: Publish to npm
-        working-directory: plugins/plugin-elizacloud/typescript
+        working-directory: plugins/plugin-elizacloud
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

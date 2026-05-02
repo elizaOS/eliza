@@ -31,6 +31,6 @@ export class WalletBackendService extends Service {
 	}
 
 	override async stop(): Promise<void> {
-		// No persistent connections for local / stub Steward today.
+		// No persistent connections for local / Steward HTTP clients today.
 	}
 }

@@ -84,17 +84,17 @@ const ciExcludedRealPaths = [
     "packages/agent/src/actions/life-param-extractor-real.test.ts",
   ),
   elizaWorkspacePattern(
-    "plugins/plugin-evm/typescript/__tests__/integration/rpc-providers.live.test.ts",
+    "plugins/plugin-evm/__tests__/integration/rpc-providers.live.test.ts",
   ),
   elizaWorkspacePattern(
-    "plugins/plugin-evm/typescript/__tests__/integration/transfer.live.test.ts",
+    "plugins/plugin-evm/__tests__/integration/transfer.live.test.ts",
   ),
   elizaWorkspacePattern(
-    "plugins/plugin-shell/typescript/__tests__/shell.real.test.ts",
+    "plugins/plugin-shell/__tests__/shell.real.test.ts",
   ),
   // plugin-openrouter sdk nested workspace deps don't resolve in this CI lane.
   elizaWorkspacePattern(
-    "plugins/plugin-openrouter/typescript/__tests__/models.live.test.ts",
+    "plugins/plugin-openrouter/__tests__/models.live.test.ts",
   ),
 ];
 const liveSetupFile = [
