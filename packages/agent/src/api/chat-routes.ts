@@ -454,9 +454,7 @@ function resolveChatGenerationTimeoutMs(explicit?: number): number {
     return Math.max(1, Math.floor(explicit));
   }
 
-  const fromEnv =
-    process.env.ELIZA_CHAT_GENERATION_TIMEOUT_MS?.trim() ||
-    process.env.ELIZA_CHAT_GENERATION_TIMEOUT_MS?.trim();
+  const fromEnv = process.env.ELIZA_CHAT_GENERATION_TIMEOUT_MS?.trim();
   if (!fromEnv) return DEFAULT_CHAT_GENERATION_TIMEOUT_MS;
 
   const parsed = Number.parseInt(fromEnv, 10);

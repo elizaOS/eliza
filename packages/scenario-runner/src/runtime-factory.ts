@@ -99,11 +99,8 @@ export async function createScenarioRuntime(
   const prevSelfControlHostsFilePath = process.env.SELFCONTROL_HOSTS_FILE_PATH;
   const prevElizaDisableActivityTracker =
     process.env.ELIZA_DISABLE_ACTIVITY_TRACKER;
-  const prevElizaDisableActivityTracker =
-    process.env.ELIZA_DISABLE_ACTIVITY_TRACKER;
   let scenarioHostsRoot: string | null = null;
   process.env.PGLITE_DATA_DIR = pgliteDir;
-  process.env.ELIZA_DISABLE_ACTIVITY_TRACKER = "1";
   process.env.ELIZA_DISABLE_ACTIVITY_TRACKER = "1";
   if (!process.env.LOCAL_EMBEDDING_DIMENSIONS?.trim()) {
     process.env.LOCAL_EMBEDDING_DIMENSIONS = "384";

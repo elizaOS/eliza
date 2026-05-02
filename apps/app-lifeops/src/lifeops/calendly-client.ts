@@ -43,11 +43,7 @@ export class CalendlyError extends Error {
 const REQUEST_TIMEOUT_MS = 12_000;
 
 function getCalendlyBaseUrl(): string {
-  return (
-    process.env.ELIZA_MOCK_CALENDLY_BASE ??
-    process.env.ELIZA_MOCK_CALENDLY_BASE ??
-    "https://api.calendly.com"
-  );
+  return process.env.ELIZA_MOCK_CALENDLY_BASE ?? "https://api.calendly.com";
 }
 
 export function readCalendlyCredentialsFromEnv(

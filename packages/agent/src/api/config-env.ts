@@ -2,7 +2,7 @@
  * Atomic key/value writer for the on-disk `config.env` file.
  *
  * `config.env` lives under the Eliza state directory (default
- * `~/.eliza/config.env`, or whatever `ELIZA_STATE_DIR` / `ELIZA_STATE_DIR`
+ * `~/.eliza/config.env`, or whatever `ELIZA_STATE_DIR`
  * resolves to). It is an escape hatch for sensitive process-env-only
  * material (e.g. cloud-wallet client address keys, `WALLET_SOURCE_*`
  * bindings) that must not be mirrored into `eliza.json` but still needs

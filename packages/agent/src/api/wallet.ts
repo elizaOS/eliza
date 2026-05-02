@@ -553,7 +553,6 @@ export async function initStewardWalletCache(): Promise<void> {
   const agentId =
     normalizeOptionalString(process.env.STEWARD_AGENT_ID) ||
     normalizeOptionalString(process.env.ELIZA_STEWARD_AGENT_ID) ||
-    normalizeOptionalString(process.env.ELIZA_STEWARD_AGENT_ID) ||
     persisted?.agentId ||
     null;
 
@@ -692,7 +691,6 @@ export async function getWalletAddressesWithSteward(): Promise<
 
   const agentId =
     process.env.STEWARD_AGENT_ID?.trim() ||
-    process.env.ELIZA_STEWARD_AGENT_ID?.trim() ||
     process.env.ELIZA_STEWARD_AGENT_ID?.trim() ||
     base.evmAddress?.trim() ||
     null;

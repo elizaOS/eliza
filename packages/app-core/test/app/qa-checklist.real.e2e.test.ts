@@ -42,10 +42,7 @@ let API_URL = stripTrailingSlash(
     process.env.ELIZA_API_URL ??
     "http://127.0.0.1:31337",
 );
-const API_TOKEN =
-  process.env.ELIZA_API_TOKEN?.trim() ??
-  process.env.ELIZA_API_TOKEN?.trim() ??
-  "";
+const API_TOKEN = process.env.ELIZA_API_TOKEN?.trim() ?? "";
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY?.trim() ?? "";
 const CHROME_PATH =
   process.env.ELIZA_CHROME_PATH ??

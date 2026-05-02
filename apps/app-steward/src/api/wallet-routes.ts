@@ -409,7 +409,6 @@ export async function handleWalletRoutes(
         const agentId =
           process.env.STEWARD_AGENT_ID?.trim() ||
           process.env.ELIZA_STEWARD_AGENT_ID?.trim() ||
-          process.env.ELIZA_STEWARD_AGENT_ID?.trim() ||
           null;
 
         if (!agentId) {

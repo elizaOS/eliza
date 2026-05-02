@@ -26,10 +26,7 @@ import type { SkillFrontmatter } from "../src/types.js";
 function withCuratedTempDir<T>(callback: (stateDir: string) => T): T {
   const stateDir = mkdtempSync(join(tmpdir(), "skills-curated-"));
   const previousState = process.env.ELIZA_STATE_DIR;
-  const previousElizaState = process.env.ELIZA_STATE_DIR;
   process.env.ELIZA_STATE_DIR = stateDir;
-  // Clear so ELIZA_STATE_DIR wins.
-  delete process.env.ELIZA_STATE_DIR;
   clearSkillsDirCache();
   try {
     return callback(stateDir);
@@ -38,9 +35,6 @@ function withCuratedTempDir<T>(callback: (stateDir: string) => T): T {
       delete process.env.ELIZA_STATE_DIR;
     } else {
       process.env.ELIZA_STATE_DIR = previousState;
-    }
-    if (previousElizaState !== undefined) {
-      process.env.ELIZA_STATE_DIR = previousElizaState;
     }
     clearSkillsDirCache();
     rmSync(stateDir, { recursive: true, force: true });
