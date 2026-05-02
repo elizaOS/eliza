@@ -26,6 +26,7 @@ import {
   type LucideIcon,
   Palette,
   RefreshCw,
+  Server,
   Shield,
   SlidersHorizontal,
   Upload,
@@ -47,6 +48,7 @@ import {
   type SettingsFocusConnectorDetail,
   useApp,
 } from "../../state";
+import { isMiladyOS } from "../../platform/init";
 import { AppearanceSettingsSection } from "../settings/AppearanceSettingsSection";
 import { AppsManagementSection } from "../settings/AppsManagementSection";
 import { CapabilitiesSection } from "../settings/CapabilitiesSection";
@@ -59,6 +61,7 @@ import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { ConfigPageView } from "./ConfigPageView";
 import { ReleaseCenterView } from "./ReleaseCenterView";
 import { IdentitySettingsSection } from "./settings/IdentitySettingsSection";
+import { RuntimeSettingsSection } from "./settings/RuntimeSettingsSection";
 
 const SETTINGS_SIDEBAR_WIDTH_KEY = "eliza:settings:sidebar:width";
 const SETTINGS_SIDEBAR_COLLAPSED_KEY = "eliza:settings:sidebar:collapsed";
@@ -128,6 +131,15 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     icon: Brain,
     description: "settings.sections.aimodel.desc",
     defaultDescription: "Cloud, local, subscriptions, and direct providers.",
+  },
+  {
+    id: "runtime",
+    label: "settings.sections.runtime.label",
+    defaultLabel: "Runtime",
+    icon: Server,
+    description: "settings.sections.runtime.desc",
+    defaultDescription:
+      "Switch between the on-device agent, Eliza Cloud, and a Remote Mac.",
   },
   {
     id: "appearance",
@@ -673,8 +685,16 @@ export function SettingsView({
   }, []);
 
   const visibleSections = useMemo(() => {
+    // The Runtime section is the deliberate escape hatch out of MiladyOS's
+    // pre-seeded local agent. On the vanilla Android APK and on desktop /
+    // iOS / web there is nothing to switch *out of* — the runtime was
+    // chosen at first launch through the regular RuntimeGate flow — so the
+    // section is hidden to avoid offering an action that would silently
+    // re-show a picker the user already answered.
+    const showRuntime = isMiladyOS();
     return SETTINGS_SECTIONS.filter((section) => {
       if (section.id === "wallet-rpc" && walletEnabled === false) return false;
+      if (section.id === "runtime" && !showRuntime) return false;
       return true;
     });
   }, [walletEnabled]);
@@ -987,6 +1007,22 @@ export function SettingsView({
           ref={registerContentItem("ai-model")}
         >
           <ProviderSwitcher />
+        </SettingsSection>
+      )}
+
+      {visibleSectionIds.has("runtime") && (
+        <SettingsSection
+          id="runtime"
+          title={t("settings.sections.runtime.label", {
+            defaultValue: "Runtime",
+          })}
+          description={t("settings.sections.runtime.desc", {
+            defaultValue:
+              "Switch between the on-device agent, Eliza Cloud, and a Remote Mac.",
+          })}
+          ref={registerContentItem("runtime")}
+        >
+          <RuntimeSettingsSection />
         </SettingsSection>
       )}
 

@@ -41,12 +41,14 @@ import {
 } from "../../bridge/gateway-discovery";
 import { normalizeLanguage } from "../../i18n";
 import type { UiLanguage } from "../../i18n/messages";
-import {
-  persistMobileRuntimeModeForServerTarget,
-  readPersistedMobileRuntimeMode,
-} from "../../onboarding/mobile-runtime-mode";
+import { persistMobileRuntimeModeForServerTarget } from "../../onboarding/mobile-runtime-mode";
 import { shouldShowLocalOption } from "../../onboarding/probe-local-agent";
-import { isAndroid, isDesktopPlatform, isIOS } from "../../platform/init";
+import {
+  isAndroid,
+  isDesktopPlatform,
+  isIOS,
+  isMiladyOS,
+} from "../../platform/init";
 import {
   addAgentProfile,
   clearPersistedActiveServer,
@@ -63,6 +65,38 @@ const MONO_FONT = "'Courier New', 'Courier', 'Monaco', monospace";
 const DEFAULT_AUTO_AGENT_NAME = "My Agent";
 
 const LOCAL_AGENT_API_BASE = "http://127.0.0.1:31337";
+
+/**
+ * URL query flag that deliberately re-opens the RuntimeGate picker on
+ * MiladyOS, which is otherwise bypassed in favour of the pre-seeded
+ * on-device agent.
+ *
+ * Settings ▸ Runtime navigates to a URL with `?runtime=picker` after clearing
+ * the persisted mode + active server when the user wants to switch runtimes.
+ * Without this exact query value the MiladyOS branch falls through to the
+ * "Starting your local agent…" splash and auto-completes as local.
+ *
+ * Has no effect on the vanilla Android APK (installed on a stock phone) —
+ * that build always renders the picker tiles, since the user actively
+ * chooses Cloud / Remote / Local.
+ */
+export const RUNTIME_GATE_PICKER_OVERRIDE_PARAM = "runtime";
+export const RUNTIME_GATE_PICKER_OVERRIDE_VALUE = "picker";
+
+export function hasPickerOverride(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const search = window.location?.search ?? "";
+    const hashSearch = window.location?.hash?.split("?")[1] ?? "";
+    const params = new URLSearchParams(search || hashSearch);
+    return (
+      params.get(RUNTIME_GATE_PICKER_OVERRIDE_PARAM) ===
+      RUNTIME_GATE_PICKER_OVERRIDE_VALUE
+    );
+  } catch {
+    return false;
+  }
+}
 
 type SubView = "chooser" | "cloud" | "remote";
 type RuntimeChoice = "cloud" | "local" | "remote";
@@ -256,6 +290,18 @@ export function RuntimeGate() {
     synchronousLocal ? true : isAndroid ? null : false,
   );
 
+  // MiladyOS: the picker is bypassed entirely unless the user explicitly asks
+  // for it via `?runtime=picker` (Settings ▸ Runtime is the only legitimate
+  // caller). Without the override the gate renders an "INITIALIZING AGENT…"
+  // splash with the same probe-poll loop as the chooser tile, then calls
+  // `finishAsLocal()` the moment the probe succeeds.
+  //
+  // The same APK installed on a stock Android phone (no `MiladyOS/<tag>`
+  // user-agent suffix) falls through to the regular picker — those users
+  // pick Cloud / Remote / Local themselves.
+  const pickerOverride = hasPickerOverride();
+  const miladyOSAutoLocal = isMiladyOS() && !pickerOverride;
+
   useEffect(() => {
     if (synchronousLocal) return;
     if (!isAndroid) return;
@@ -425,19 +471,27 @@ export function RuntimeGate() {
     completeOnboarding();
   }, [completeOnboarding, setState, startupCoordinator]);
 
-  // Auto-pick the on-device agent on Android when (a) the probe shows the
-  // agent is up and (b) the user hasn't already chosen a runtime. The
-  // RuntimeGate then never renders — the user lands directly in chat. If
-  // they later want a different agent (cloud / remote), the Settings ▸
-  // Runtime view re-opens this picker. The auto-pick is intentionally one
-  // shot: once the mode is persisted any subsequent launch reads it
-  // directly from storage and skips this path.
+  // Auto-pick the on-device agent on MiladyOS. The picker is bypassed by
+  // default — the only legitimate way to see it is `?runtime=picker`, set
+  // by Settings ▸ Runtime when the user explicitly wants to switch
+  // runtimes. As soon as the on-device agent's `/api/health` responds we
+  // finish onboarding as local and the user lands in chat.
+  //
+  // Pre-seed (in `apps/app/src/main.tsx` via `preSeedAndroidLocalRuntimeIfFresh`)
+  // already ensures the persisted mode + active server look like "local" by
+  // first render, so `finishAsLocal()` here is mostly idempotent. The
+  // important effect of this call is the `completeOnboarding()` /
+  // `ONBOARDING_COMPLETE` dispatch that flips the startup coordinator out
+  // of `onboarding-required`.
+  //
+  // The vanilla Android APK (no MiladyOS user-agent suffix) does not enter
+  // this branch — it renders the chooser tiles like iOS / web and waits for
+  // a user choice.
   useEffect(() => {
-    if (!isAndroid) return;
+    if (!miladyOSAutoLocal) return;
     if (!showLocalOption) return;
-    if (readPersistedMobileRuntimeMode() != null) return;
     finishAsLocal();
-  }, [finishAsLocal, showLocalOption]);
+  }, [miladyOSAutoLocal, finishAsLocal, showLocalOption]);
 
   const finishAsRemoteGateway = useCallback(
     (gateway: GatewayDiscoveryEndpoint) => {
@@ -633,6 +687,24 @@ export function RuntimeGate() {
     setError(null);
     setCloudStage("loading");
   }, []);
+
+  // ── Render: MiladyOS local-only splash ────────────────────────────
+  // MiladyOS never shows the picker tiles — the device IS the agent. Render
+  // the same yellow "INITIALIZING AGENT…" bar that surrounds the rest of the
+  // startup flow and let the probe-poll + auto-pick effect upstream call
+  // `finishAsLocal()` once the on-device agent answers `/api/health`.
+  // Settings ▸ Runtime opens this component with `?runtime=picker` to
+  // bypass this branch and render the chooser. The vanilla Android APK
+  // never enters this branch and falls through to the chooser below.
+  if (miladyOSAutoLocal) {
+    return (
+      <MiladyOSLocalSplash
+        message={t("runtimegate.startingLocalAgent", {
+          defaultValue: "INITIALIZING AGENT...",
+        })}
+      />
+    );
+  }
 
   // ── Render: chooser ────────────────────────────────────────────────
 
@@ -1232,6 +1304,51 @@ function ChoiceCard({
         {statusLabel}
       </span>
     </button>
+  );
+}
+
+/**
+ * MiladyOS-only "starting your local agent" splash. Matches the yellow
+ * segmented-bar style of `StartupShell`'s loading screens so the transition
+ * from auth/agent handshake → onboarding → chat reads as one continuous
+ * boot. The auto-pick effect in `RuntimeGate` calls `finishAsLocal()` as
+ * soon as the probe succeeds, at which point this component unmounts.
+ */
+function MiladyOSLocalSplash({ message }: { message: string }) {
+  return (
+    <div
+      data-testid="runtime-gate-miladyos-local-splash"
+      className="relative flex h-full w-full items-center justify-center overflow-hidden bg-[#ffe600] text-black"
+    >
+      <img
+        src={resolveAppAssetUrl("splash-bg.png")}
+        alt=""
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+      />
+      <div
+        className="relative z-10 flex w-full flex-col items-center gap-5 px-6 text-center"
+        style={{ maxWidth: 360 }}
+      >
+        <div className="w-full mt-2">
+          <div className="h-5 w-full overflow-hidden border-2 border-black/70 bg-black/5">
+            <div
+              className="h-full w-full bg-black/70 transition-all duration-700 ease-out"
+              style={{
+                backgroundImage:
+                  "repeating-linear-gradient(90deg, transparent, transparent 6px, rgba(255,230,0,0.5) 6px, rgba(255,230,0,0.5) 8px)",
+              }}
+            />
+          </div>
+          <p
+            style={{ fontFamily: MONO_FONT }}
+            className="mt-2 animate-pulse text-3xs uppercase text-black/70"
+          >
+            {message}
+          </p>
+        </div>
+      </div>
+    </div>
   );
 }
 

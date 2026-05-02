@@ -226,13 +226,25 @@ function fallbackFindBundledModels(modelsDir: string): {
     if (!name.endsWith(".gguf")) continue;
     const abs = path.join(modelsDir, name);
     const lower = name.toLowerCase();
-    if (!chat && (lower.includes("smollm") || lower.includes("instruct"))) {
-      chat = abs;
-    } else if (
+    // Embedding match runs first so models like "bge-..." (no "instruct"
+    // marker) don't get mistakenly classified as chat by the broader
+    // "instruct" rule below.
+    if (
       !embedding &&
-      (lower.includes("bge") || lower.includes("embed"))
+      (lower.includes("bge") ||
+        lower.includes("embed") ||
+        lower.includes("nomic") ||
+        lower.includes("minilm"))
     ) {
       embedding = abs;
+    } else if (
+      !chat &&
+      (lower.includes("llama") ||
+        lower.includes("smollm") ||
+        lower.includes("qwen") ||
+        lower.includes("instruct"))
+    ) {
+      chat = abs;
     }
   }
   return { chat, embedding };
@@ -422,6 +434,20 @@ export async function ensureAospLocalInferenceHandlers(
       LOCAL_INFERENCE_PRIORITY,
     );
   }
+
+  // Pre-warm the chat model so the first incoming chat request doesn't
+  // pay the ~10 s `llama_model_load_from_file` + ~5 s
+  // `llama_init_from_model` cost inside the request handler. The load
+  // is best-effort: if the bundled chat file is missing we let the
+  // request handler bubble up a clear error instead of crashing the
+  // boot. ensureChatLoaded is also memoized at the lifecycle layer, so
+  // calling it here doesn't conflict with the first real request.
+  void lifecycle.ensureChatLoaded().catch((err) => {
+    logger.warn(
+      "[aosp-local-inference] Chat model pre-warm failed (will retry on first request): " +
+        (err instanceof Error ? err.message : String(err)),
+    );
+  });
 
   console.log(
     `[aosp-local-inference] registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING (priority ${LOCAL_INFERENCE_PRIORITY})`,
