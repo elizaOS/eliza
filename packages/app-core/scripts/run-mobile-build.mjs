@@ -623,6 +623,11 @@ export function injectAospAssetThinning(content) {
     `// we hook the merge task and delete agent/ post-merge.\n` +
     `afterEvaluate {\n` +
     `    tasks.matching { it.name.startsWith('merge') && it.name.endsWith('Assets') }.all { mergeTask ->\n` +
+    `        // Track the build mode as a task input so switching between\n` +
+    `        // Capacitor and AOSP forces a re-merge. Without this the merge\n` +
+    `        // task is UP-TO-DATE on the second invocation and reuses the\n` +
+    `        // shape the previous build left in merged_assets.\n` +
+    `        mergeTask.inputs.property('elizaAospBuild', project.findProperty('elizaAospBuild') ?: 'false')\n` +
     `        mergeTask.doLast {\n` +
     `            if (project.findProperty('elizaAospBuild') != 'true') {\n` +
     `                def assetsDir = mergeTask.outputDir.get().asFile\n` +
