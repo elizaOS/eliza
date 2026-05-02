@@ -16,7 +16,7 @@ export function shouldRunMorningCheckinFromSleepCycle(args: {
   readonly state: CheckinSleepCycleState | null;
   readonly now: Date;
 }): boolean {
-  if (!args.state.circadianState !== "awake") {
+  if (args.state.circadianState !== "awake") {
     return false;
   }
   const wakeAtMs = parseIsoMs(args.state.wakeAt);

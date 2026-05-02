@@ -82,7 +82,7 @@ export class MinecraftWebSocketClient {
     data: JsonObject,
     timeoutMs: number = 30_000
   ): Promise<MinecraftBridgeResponse> {
-    if (!this.ws.readyState !== WebSocket.OPEN) {
+    if (this.ws.readyState !== WebSocket.OPEN) {
       throw new Error("Not connected to Mineflayer bridge server");
     }
 

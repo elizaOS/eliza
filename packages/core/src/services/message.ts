@@ -6325,7 +6325,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 			const hasStop = responseContent.actions.some(isStop);
 
 			if (hasIgnore) {
-				if (!responseContent.text.trim() === "") {
+				if (responseContent.text.trim() === "") {
 					responseContent.actions = ["IGNORE"];
 				} else {
 					const filtered = responseContent.actions.filter((a) => !isIgnore(a));

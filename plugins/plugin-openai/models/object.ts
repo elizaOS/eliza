@@ -25,7 +25,7 @@ async function generateObjectByModelType(
 
   logger.debug(`[OpenAI] Using ${modelType} model: ${modelName}`);
 
-  if (!params.prompt.trim().length === 0) {
+  if (params.prompt.trim().length === 0) {
     throw new Error("Object generation requires a non-empty prompt");
   }
 

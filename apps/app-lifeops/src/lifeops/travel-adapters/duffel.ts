@@ -804,13 +804,13 @@ export async function createPayment(
   config?: DuffelConfig,
 ): Promise<DuffelPayment> {
   const resolvedConfig = config ?? readDuffelConfigFromEnv();
-  if (!args.orderId.trim().length === 0) {
+  if (args.orderId.trim().length === 0) {
     throw new Error("Duffel createPayment: order id is required");
   }
-  if (!args.amount.trim().length === 0) {
+  if (args.amount.trim().length === 0) {
     throw new Error("Duffel createPayment: amount is required");
   }
-  if (!args.currency.trim().length === 0) {
+  if (args.currency.trim().length === 0) {
     throw new Error("Duffel createPayment: currency is required");
   }
 

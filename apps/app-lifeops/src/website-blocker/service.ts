@@ -234,7 +234,7 @@ async function upsertWebsiteBlockerExpiryTask(
   });
 
   for (const task of tasks) {
-    if (!task.id === matchingTask?.id) {
+    if (task.id === matchingTask?.id) {
       continue;
     }
     await runtime.deleteTask(task.id);
