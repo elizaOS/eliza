@@ -10,9 +10,9 @@
 		"dev": "tsup --format esm --watch",
 		"lint": "echo \"Lint skipped for release\"",
 		"lint:check": "bun run lint",
-		"lint:fix": "biome check --apply src/",
-		"format": "biome format src/",
-		"format:fix": "biome format --write src/",
+		"lint:fix": "bunx @biomejs/biome check --write ./src",
+		"format": "bunx @biomejs/biome format --write ./src",
+		"format:check": "bunx @biomejs/biome format ./src",
 		"test": "echo \"Tests skipped for release\"",
 		"typecheck": "echo \"Typecheck skipped for release\""
 	},

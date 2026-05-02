@@ -10,7 +10,7 @@ import type {
 
 // Helper function to generate a pseudo-random multiverse seed
 function generateMultiverseSeed(a: number, b: number): number {
-  const seed = ((a * 73) + (b * 37)) % 1000;
+  const seed = (a * 73 + b * 37) % 1000;
   return Math.abs(seed);
 }
 
@@ -41,15 +41,19 @@ function findNearestFibonacci(n: number): number {
   while (fibSeq[fibSeq.length - 1] < Math.abs(n)) {
     fibSeq.push(fibSeq[fibSeq.length - 1] + fibSeq[fibSeq.length - 2]);
   }
-  
+
   const lastFib = fibSeq[fibSeq.length - 1];
   const prevFib = fibSeq[fibSeq.length - 2];
-  
+
   return Math.abs(n - lastFib) < Math.abs(n - prevFib) ? lastFib : prevFib;
 }
 
 // Helper to safely parse numbers from state
-function getStateValue(state: State | undefined, key: string, defaultValue: number = 0): number {
+function getStateValue(
+  state: State | undefined,
+  key: string,
+  defaultValue: number = 0,
+): number {
   const value = state?.values?.[key];
   if (typeof value === "number") return value;
   if (typeof value === "string") {
@@ -71,11 +75,11 @@ function createNumberAction(digit: number): Action {
       message: Memory,
       state?: State,
       _options?: Record<string, unknown>,
-      callback?: HandlerCallback
+      callback?: HandlerCallback,
     ): Promise<ActionResult> => {
       const currentBuffer = getStateValue(state, "inputBuffer", 0);
       const newBuffer = currentBuffer * 10 + digit;
-      
+
       if (callback) {
         await callback({
           text: `Input: ${newBuffer}`,
@@ -118,19 +122,20 @@ function createNumberAction(digit: number): Action {
 const selectDimensionAction: Action = {
   name: "SELECT_DIMENSION",
   similes: ["DIMENSION", "SET_DIMENSION", "CHOOSE_DIMENSION"],
-  description: "Select the dimensional constant that affects how mathematical operations behave in the multiverse.",
+  description:
+    "Select the dimensional constant that affects how mathematical operations behave in the multiverse.",
   validate: async () => true,
   handler: async (
     _runtime: IAgentRuntime,
     message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     // Parse dimension from message content
     const content = message.content.text?.toLowerCase() || "";
     let dimension = "standard";
-    
+
     if (content.includes("quantum")) dimension = "quantum";
     else if (content.includes("chaos")) dimension = "chaos";
     else if (content.includes("prime")) dimension = "prime";
@@ -145,9 +150,9 @@ const selectDimensionAction: Action = {
     else if (content.includes("spiral")) dimension = "spiral";
     else if (content.includes("fractal")) dimension = "fractal";
     else if (content.includes("cyclical")) dimension = "cyclical";
-    
+
     const text = `Dimension set to: ${dimension}`;
-    
+
     if (callback) {
       await callback({ text, source: message.content.source });
     }
@@ -185,22 +190,23 @@ const selectDimensionAction: Action = {
 const multiverseAddAction: Action = {
   name: "MULTIVERSE_ADD",
   similes: ["M_ADD", "MULTI_ADD", "DIMENSIONAL_ADD"],
-  description: "Performs addition in the multiverse where numbers behave differently based on dimensional constants (prime, quantum, or chaos).",
+  description:
+    "Performs addition in the multiverse where numbers behave differently based on dimensional constants (prime, quantum, or chaos).",
   validate: async () => true,
   handler: async (
     _runtime: IAgentRuntime,
     message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const a = getStateValue(state, "accumulator", 0);
     const b = getStateValue(state, "inputBuffer", 0);
     const dimension = state?.values?.dimension || "prime";
-    
+
     let result: number;
     let explanation: string;
-    
+
     switch (dimension) {
       case "quantum":
         // In quantum dimension, addition creates superposition
@@ -222,9 +228,9 @@ const multiverseAddAction: Action = {
         explanation = `In prime dimension: ${a} + ${b} = ${result} (elevated to nearest prime from ${standardResult})`;
         break;
     }
-    
+
     result = Math.round(result * 1000) / 1000; // Round to 3 decimal places
-    
+
     if (callback) {
       await callback({ text: explanation, source: message.content.source });
     }
@@ -269,22 +275,23 @@ const multiverseAddAction: Action = {
 const multiverseSubtractAction: Action = {
   name: "MULTIVERSE_SUBTRACT",
   similes: ["M_SUBTRACT", "MULTI_SUB", "DIMENSIONAL_SUBTRACT"],
-  description: "Performs subtraction in the multiverse where negative numbers might not exist in some dimensions (absolute, mirror, or void).",
+  description:
+    "Performs subtraction in the multiverse where negative numbers might not exist in some dimensions (absolute, mirror, or void).",
   validate: async () => true,
   handler: async (
     _runtime: IAgentRuntime,
     message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const a = getStateValue(state, "accumulator", 0);
     const b = getStateValue(state, "inputBuffer", 0);
     const dimension = state?.values?.dimension || "absolute";
-    
+
     let result: number;
     let explanation: string;
-    
+
     switch (dimension) {
       case "mirror":
         // In mirror dimension, subtraction reflects across zero
@@ -303,9 +310,9 @@ const multiverseSubtractAction: Action = {
         explanation = `In absolute dimension: ${a} - ${b} = ${result} (absolute value universe)`;
         break;
     }
-    
+
     result = Math.round(result * 1000) / 1000;
-    
+
     if (callback) {
       await callback({ text: explanation, source: message.content.source });
     }
@@ -350,22 +357,23 @@ const multiverseSubtractAction: Action = {
 const multiverseMultiplyAction: Action = {
   name: "MULTIVERSE_MULTIPLY",
   similes: ["M_MULTIPLY", "MULTI_MUL", "DIMENSIONAL_MULTIPLY"],
-  description: "Performs multiplication across dimensional boundaries with exotic number behaviors (fibonacci, exponential, or harmonic).",
+  description:
+    "Performs multiplication across dimensional boundaries with exotic number behaviors (fibonacci, exponential, or harmonic).",
   validate: async () => true,
   handler: async (
     _runtime: IAgentRuntime,
     message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const a = getStateValue(state, "accumulator", 1);
     const b = getStateValue(state, "inputBuffer", 1);
     const dimension = state?.values?.dimension || "fibonacci";
-    
+
     let result: number;
     let explanation: string;
-    
+
     switch (dimension) {
       case "exponential":
         // In exponential dimension, multiplication compounds
@@ -374,7 +382,7 @@ const multiverseMultiplyAction: Action = {
         break;
       case "harmonic":
         // In harmonic dimension, multiplication creates harmonics
-        const harmonic = (a * b) + ((a + b) / 2);
+        const harmonic = a * b + (a + b) / 2;
         result = harmonic;
         explanation = `In harmonic dimension: ${a} × ${b} = ${result} (includes harmonic mean)`;
         break;
@@ -386,9 +394,9 @@ const multiverseMultiplyAction: Action = {
         explanation = `In fibonacci dimension: ${a} × ${b} = ${result} (nearest Fibonacci to ${standard})`;
         break;
     }
-    
+
     result = Math.round(result * 1000) / 1000;
-    
+
     if (callback) {
       await callback({ text: explanation, source: message.content.source });
     }
@@ -433,22 +441,23 @@ const multiverseMultiplyAction: Action = {
 const multiverseDivideAction: Action = {
   name: "MULTIVERSE_DIVIDE",
   similes: ["M_DIVIDE", "MULTI_DIV", "DIMENSIONAL_DIVIDE"],
-  description: "Performs division in the multiverse where infinity and zero have special meanings (safe, infinite, or golden).",
+  description:
+    "Performs division in the multiverse where infinity and zero have special meanings (safe, infinite, or golden).",
   validate: async () => true,
   handler: async (
     _runtime: IAgentRuntime,
     message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const a = getStateValue(state, "accumulator", 0);
     const b = getStateValue(state, "inputBuffer", 1);
     const dimension = state?.values?.dimension || "safe";
-    
+
     let result: number;
     let explanation: string;
-    
+
     switch (dimension) {
       case "infinite":
         // In infinite dimension, division by zero opens portals
@@ -471,14 +480,15 @@ const multiverseDivideAction: Action = {
       default:
         // In safe dimension, division by zero returns the dividend
         result = b === 0 ? a : a / b;
-        explanation = b === 0 
-          ? `In safe dimension: ${a} ÷ 0 = ${a} (safe division, returns dividend)`
-          : `In safe dimension: ${a} ÷ ${b} = ${result} (standard division)`;
+        explanation =
+          b === 0
+            ? `In safe dimension: ${a} ÷ 0 = ${a} (safe division, returns dividend)`
+            : `In safe dimension: ${a} ÷ ${b} = ${result} (standard division)`;
         break;
     }
-    
+
     result = Math.round(result * 1000) / 1000;
-    
+
     if (callback) {
       await callback({ text: explanation, source: message.content.source });
     }
@@ -523,8 +533,13 @@ const multiverseDivideAction: Action = {
 const multiverseModuloAction: Action = {
   name: "MULTIVERSE_MODULO",
   similes: ["M_MODULO", "MULTI_MOD", "DIMENSIONAL_MODULO"],
-  description: "Performs modulo operation in the multiverse with cyclical dimensional properties (cyclical, spiral, or fractal).",
-  validate: async (_runtime: IAgentRuntime, _message: Memory, state?: State) => {
+  description:
+    "Performs modulo operation in the multiverse with cyclical dimensional properties (cyclical, spiral, or fractal).",
+  validate: async (
+    _runtime: IAgentRuntime,
+    _message: Memory,
+    state?: State,
+  ) => {
     const b = getStateValue(state, "inputBuffer", 1);
     return b !== 0;
   },
@@ -533,15 +548,15 @@ const multiverseModuloAction: Action = {
     message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const a = getStateValue(state, "accumulator", 0);
     const b = getStateValue(state, "inputBuffer", 1);
     const dimension = state?.values?.dimension || "cyclical";
-    
+
     let result: number;
     let explanation: string;
-    
+
     if (b === 0) {
       return {
         success: false,
@@ -549,7 +564,7 @@ const multiverseModuloAction: Action = {
         values: state?.values || {},
       };
     }
-    
+
     switch (dimension) {
       case "spiral":
         // In spiral dimension, modulo creates spiraling patterns
@@ -574,9 +589,9 @@ const multiverseModuloAction: Action = {
         explanation = `In cyclical dimension: ${a} % ${b} = ${result} (perfect cycle)`;
         break;
     }
-    
+
     result = Math.round(result * 100) / 100;
-    
+
     if (callback) {
       await callback({ text: explanation, source: message.content.source });
     }
@@ -621,26 +636,27 @@ const multiverseModuloAction: Action = {
 const multiversePowerAction: Action = {
   name: "MULTIVERSE_POWER",
   similes: ["M_POWER", "MULTI_POW", "DIMENSIONAL_POWER"],
-  description: "Raises numbers to powers in the multiverse with dimensional effects (standard, imaginary, or recursive).",
+  description:
+    "Raises numbers to powers in the multiverse with dimensional effects (standard, imaginary, or recursive).",
   validate: async () => true,
   handler: async (
     _runtime: IAgentRuntime,
     message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const a = getStateValue(state, "accumulator", 0);
     const b = getStateValue(state, "inputBuffer", 2);
     const dimension = state?.values?.dimension || "standard";
-    
+
     let result: number;
     let explanation: string;
-    
+
     switch (dimension) {
       case "imaginary":
         // In imaginary dimension, powers oscillate
-        const oscillation = Math.cos(b * Math.PI / 2);
+        const oscillation = Math.cos((b * Math.PI) / 2);
         result = Math.pow(Math.abs(a), b) * oscillation;
         explanation = `In imaginary dimension: ${a}^${b} = ${result} (oscillation factor: ${oscillation.toFixed(2)})`;
         break;
@@ -658,9 +674,9 @@ const multiversePowerAction: Action = {
         explanation = `In standard dimension: ${a}^${b} = ${result}`;
         break;
     }
-    
+
     result = Math.round(result * 1000) / 1000;
-    
+
     if (callback) {
       await callback({ text: explanation, source: message.content.source });
     }
@@ -705,21 +721,22 @@ const multiversePowerAction: Action = {
 const multiverseSqrtAction: Action = {
   name: "MULTIVERSE_SQRT",
   similes: ["M_SQRT", "MULTI_ROOT", "DIMENSIONAL_SQRT"],
-  description: "Takes square root in the multiverse with dimensional variations (positive, complex, or quantum).",
+  description:
+    "Takes square root in the multiverse with dimensional variations (positive, complex, or quantum).",
   validate: async () => true,
   handler: async (
     _runtime: IAgentRuntime,
     message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const a = getStateValue(state, "accumulator", 0);
     const dimension = state?.values?.dimension || "positive";
-    
+
     let result: number;
     let explanation: string;
-    
+
     switch (dimension) {
       case "complex":
         // In complex dimension, negative numbers have positive roots
@@ -732,7 +749,8 @@ const multiverseSqrtAction: Action = {
         break;
       case "quantum":
         // In quantum dimension, square root creates superposition
-        const superposition = Math.sqrt(Math.abs(a)) + (Math.random() - 0.5) * 0.1;
+        const superposition =
+          Math.sqrt(Math.abs(a)) + (Math.random() - 0.5) * 0.1;
         result = Math.abs(superposition);
         explanation = `In quantum dimension: √${a} = ${result} (quantum fluctuation)`;
         break;
@@ -743,9 +761,9 @@ const multiverseSqrtAction: Action = {
         explanation = `In positive dimension: √${a} = ${result} (absolute square root)`;
         break;
     }
-    
+
     result = Math.round(result * 1000) / 1000;
-    
+
     if (callback) {
       await callback({ text: explanation, source: message.content.source });
     }
@@ -796,10 +814,10 @@ const clearAction: Action = {
     message: Memory,
     _state?: State,
     _options?: Record<string, unknown>,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const text = "Cleared all buffers";
-    
+
     if (callback) {
       await callback({ text, source: message.content.source });
     }
@@ -846,11 +864,11 @@ const storeAction: Action = {
     message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const accumulator = getStateValue(state, "accumulator", 0);
     const text = `Stored ${accumulator} to memory`;
-    
+
     if (callback) {
       await callback({ text, source: message.content.source });
     }
@@ -896,11 +914,11 @@ const recallAction: Action = {
     message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const memory = getStateValue(state, "memory", 0);
     const text = `Recalled ${memory} from memory`;
-    
+
     if (callback) {
       await callback({ text, source: message.content.source });
     }
@@ -947,11 +965,11 @@ const transferAction: Action = {
     message: Memory,
     state?: State,
     _options?: Record<string, unknown>,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const accumulator = getStateValue(state, "accumulator", 0);
     const text = `Transferred ${accumulator} from accumulator to input buffer`;
-    
+
     if (callback) {
       await callback({ text, source: message.content.source });
     }

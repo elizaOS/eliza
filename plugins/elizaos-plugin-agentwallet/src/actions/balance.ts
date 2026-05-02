@@ -1,4 +1,11 @@
-import type { Action, IAgentRuntime, Memory, State, HandlerCallback } from '@elizaos/core';
+import type {
+  Action,
+  ActionResult,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  State,
+} from '@elizaos/core';
 import type { TokenBalance } from '../types';
 import { getSDK } from '../providers/wallet';
 
@@ -22,11 +29,11 @@ export const balanceAction: Action = {
     _state: State | undefined,
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<boolean> => {
+  ): Promise<ActionResult> => {
     const sdk = await getSDK(runtime);
     if (!sdk) {
       callback?.({ text: 'No wallet configured.' });
-      return false;
+      return { success: false, text: 'No wallet configured.' };
     }
 
     try {
@@ -40,23 +47,33 @@ export const balanceAction: Action = {
         text: lines.length
           ? `Wallet balances on ${sdk.getNetwork()}:\n${lines.join('\n')}`
           : 'Wallet is empty.',
-        content: { balances, address: sdk.getAddress() },
       });
-      return true;
+      return {
+        success: true,
+        data: {
+          address: sdk.getAddress(),
+          balances: balances.map((b: TokenBalance) => ({
+            symbol: b.symbol,
+            balance: String(b.balance),
+            usdValue: b.usdValue ?? null,
+          })),
+        },
+      };
     } catch (err) {
-      callback?.({ text: `Failed to fetch balances: ${(err as Error).message}` });
-      return false;
+      const msg = `Failed to fetch balances: ${(err as Error).message}`;
+      callback?.({ text: msg });
+      return { success: false, text: msg, error: err as Error };
     }
   },
 
   examples: [
     [
-      { user: '{{user1}}', content: { text: 'What is my wallet balance?' } },
+      { name: '{{user1}}', content: { text: 'What is my wallet balance?' } },
       {
-        user: '{{agentName}}',
+        name: '{{agentName}}',
         content: {
           text: 'Wallet balances on base:\nETH: 0.5 (~$1200.00)\nUSDC: 250.00 (~$250.00)',
-          action: 'WALLET_BALANCE',
+          actions: ['WALLET_BALANCE'],
         },
       },
     ],

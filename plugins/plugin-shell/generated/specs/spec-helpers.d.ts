@@ -37,9 +37,7 @@ export declare function requireProviderSpec(name: string): ProviderDoc;
  * @param name - The evaluator name
  * @returns The evaluator spec or undefined if not found
  */
-export declare function getEvaluatorSpec(
-	name: string,
-): EvaluatorDoc | undefined;
+export declare function getEvaluatorSpec(name: string): EvaluatorDoc | undefined;
 /**
  * Get an evaluator spec by name, throwing if not found.
  * @param name - The evaluator name

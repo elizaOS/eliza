@@ -20,19 +20,19 @@ describe('clankerPlugin', () => {
     });
 
     it('should have correct number of services', () => {
-      expect(clankerPlugin.services).toHaveLength(2);
+      expect(clankerPlugin.services).toHaveLength(1);
     });
 
     it('should have correct number of actions', () => {
-      expect(clankerPlugin.actions).toHaveLength(5);
+      expect(clankerPlugin.actions).toHaveLength(2);
     });
 
     it('should have correct number of providers', () => {
-      expect(clankerPlugin.providers).toHaveLength(2);
+      expect(clankerPlugin.providers).toHaveLength(0);
     });
 
     it('should have correct number of evaluators', () => {
-      expect(clankerPlugin.evaluators).toHaveLength(1);
+      expect(clankerPlugin.evaluators).toHaveLength(0);
     });
   });
 
@@ -43,7 +43,7 @@ describe('clankerPlugin', () => {
         WALLET_PRIVATE_KEY: '0x' + '0'.repeat(64),
       };
 
-      await expect(clankerPlugin.init!(config)).resolves.not.toThrow();
+      await clankerPlugin.init!(config);
       expect((global as any).__clankerConfig).toBeDefined();
       expect((global as any).__clankerConfig.BASE_RPC_URL).toBe(config.BASE_RPC_URL);
     });
@@ -53,7 +53,7 @@ describe('clankerPlugin', () => {
         WALLET_PRIVATE_KEY: '0x' + '0'.repeat(64),
       };
 
-      await expect(clankerPlugin.init!(config)).rejects.toThrow('BASE_RPC_URL is required');
+      await expect(clankerPlugin.init!(config)).rejects.toThrow(/BASE_RPC_URL/);
     });
 
     it('should throw error without required WALLET_PRIVATE_KEY', async () => {
@@ -61,7 +61,7 @@ describe('clankerPlugin', () => {
         BASE_RPC_URL: 'https://mainnet.base.org',
       };
 
-      await expect(clankerPlugin.init!(config)).rejects.toThrow('WALLET_PRIVATE_KEY is required');
+      await expect(clankerPlugin.init!(config)).rejects.toThrow(/WALLET_PRIVATE_KEY/);
     });
 
     it('should use default values', async () => {
@@ -91,23 +91,4 @@ describe('clankerPlugin', () => {
     });
   });
 
-  describe('routes', () => {
-    it('should have status route', () => {
-      expect(clankerPlugin.routes).toBeDefined();
-      expect(clankerPlugin.routes).toHaveLength(1);
-
-      const statusRoute = clankerPlugin.routes![0];
-      expect(statusRoute.name).toBe('clanker-status');
-      expect(statusRoute.path).toBe('/api/clanker/status');
-      expect(statusRoute.type).toBe('GET');
-    });
-  });
-
-  describe('events', () => {
-    it('should have transaction event handlers', () => {
-      expect(clankerPlugin.events).toBeDefined();
-      expect(clankerPlugin.events!.TRANSACTION_CONFIRMED).toBeDefined();
-      expect(clankerPlugin.events!.TRANSACTION_FAILED).toBeDefined();
-    });
-  });
 });

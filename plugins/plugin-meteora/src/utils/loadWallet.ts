@@ -1,6 +1,6 @@
-import { IAgentRuntime } from '@elizaos/core';
-import { Connection, Keypair, PublicKey } from '@solana/web3.js';
-import bs58 from 'bs58';
+import { IAgentRuntime } from "@elizaos/core";
+import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+import bs58 from "bs58";
 
 export interface WalletResult {
   signer?: Keypair;
@@ -16,10 +16,12 @@ export interface WalletResult {
  */
 export async function loadWallet(
   runtime: IAgentRuntime,
-  requirePrivateKey: boolean = true
+  requirePrivateKey: boolean = true,
 ): Promise<WalletResult> {
-  const rpcUrl = runtime.getSetting('SOLANA_RPC_URL') || 'https://api.mainnet-beta.solana.com';
-  const connection = new Connection(rpcUrl, 'confirmed');
+  const rpcUrl =
+    runtime.getSetting("SOLANA_RPC_URL") ||
+    "https://api.mainnet-beta.solana.com";
+  const connection = new Connection(rpcUrl, "confirmed");
 
   // TODO: Re-enable TEE mode once DeriveKeyProvider is available
   // const teeMode = runtime.getSetting('TEE_MODE') || TEEMode.OFF;
@@ -45,10 +47,11 @@ export async function loadWallet(
   // TEE mode is OFF
   if (requirePrivateKey) {
     const privateKeyString =
-      runtime.getSetting('SOLANA_PRIVATE_KEY') ?? runtime.getSetting('WALLET_PRIVATE_KEY');
+      runtime.getSetting("SOLANA_PRIVATE_KEY") ??
+      runtime.getSetting("WALLET_PRIVATE_KEY");
 
     if (!privateKeyString) {
-      throw new Error('Private key not found in settings');
+      throw new Error("Private key not found in settings");
     }
 
     try {
@@ -56,23 +59,26 @@ export async function loadWallet(
       const secretKey = bs58.decode(privateKeyString);
       return { signer: Keypair.fromSecretKey(secretKey), connection };
     } catch (e) {
-      console.log('Error decoding base58 private key:', e);
+      console.log("Error decoding base58 private key:", e);
       try {
         // Then try base64
-        console.log('Try decoding base64 instead');
-        const secretKey = Uint8Array.from(Buffer.from(privateKeyString, 'base64'));
+        console.log("Try decoding base64 instead");
+        const secretKey = Uint8Array.from(
+          Buffer.from(privateKeyString, "base64"),
+        );
         return { signer: Keypair.fromSecretKey(secretKey), connection };
       } catch (e2) {
-        console.error('Error decoding private key: ', e2);
-        throw new Error('Invalid private key format');
+        console.error("Error decoding private key: ", e2);
+        throw new Error("Invalid private key format");
       }
     }
   } else {
     const publicKeyString =
-      runtime.getSetting('SOLANA_PUBLIC_KEY') ?? runtime.getSetting('WALLET_PUBLIC_KEY');
+      runtime.getSetting("SOLANA_PUBLIC_KEY") ??
+      runtime.getSetting("WALLET_PUBLIC_KEY");
 
     if (!publicKeyString) {
-      throw new Error('Public key not found in settings');
+      throw new Error("Public key not found in settings");
     }
 
     return { address: new PublicKey(publicKeyString), connection };

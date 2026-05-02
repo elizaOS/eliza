@@ -56,7 +56,7 @@ export class RaydiumLpService extends Service /* implements ILpService */ {
     "Provides a Raydium implementation of the ILpService for LP management.";
   private _sdkService: RaydiumSdkService | null = null;
 
-  constructor(runtime: IAgentRuntime) {
+  constructor(runtime?: IAgentRuntime) {
     super(runtime);
   }
 

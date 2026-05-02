@@ -11,15 +11,15 @@ export const SOCKET_MESSAGE_TYPE = {
 } as const;
 
 export const ChannelType = {
-  SELF: 'SELF',
-  DM: 'DM', 
-  GROUP: 'GROUP',
-  VOICE_DM: 'VOICE_DM',
-  VOICE_GROUP: 'VOICE_GROUP',
-  FEED: 'FEED',
-  THREAD: 'THREAD',
-  WORLD: 'WORLD',
-  FORUM: 'FORUM',
+  SELF: "SELF",
+  DM: "DM",
+  GROUP: "GROUP",
+  VOICE_DM: "VOICE_DM",
+  VOICE_GROUP: "VOICE_GROUP",
+  FEED: "FEED",
+  THREAD: "THREAD",
+  WORLD: "WORLD",
+  FORUM: "FORUM",
 } as const;
 
-export const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000';
+export const DEFAULT_SERVER_ID = "00000000-0000-0000-0000-000000000000";

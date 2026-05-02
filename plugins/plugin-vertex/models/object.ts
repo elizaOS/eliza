@@ -23,7 +23,7 @@ async function generateObjectWithModel(
       model,
       messages: [{ role: "user" as const, content: params.prompt }],
       system: runtime.character.system ?? undefined,
-      schema: jsonSchema(params.schema ?? { type: "object" }),
+      schema: jsonSchema((params.schema ?? { type: "object" }) as Parameters<typeof jsonSchema>[0]),
       temperature: params.temperature ?? 0.7,
       maxOutputTokens: params.maxTokens ?? 8192,
     }),

@@ -5,7 +5,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { generateDts, runBuild } from "../../packages/core/build";
 
-const PLUGIN_ROOT = resolve(dirname(import.meta.path), "..");
+const PLUGIN_ROOT = dirname(import.meta.path);
 
 async function buildAll() {
   const originalCwd = process.cwd();
@@ -15,8 +15,8 @@ async function buildAll() {
     const nodeOk = await runBuild({
       packageName: "@elizaos/plugin-inmemorydb",
       buildOptions: {
-        entrypoints: ["typescript/index.ts"],
-        outdir: "typescript/dist/node",
+        entrypoints: ["index.ts"],
+        outdir: "dist/node",
         target: "node",
         format: "esm",
         external: ["@elizaos/core"],
@@ -31,8 +31,8 @@ async function buildAll() {
     const browserOk = await runBuild({
       packageName: "@elizaos/plugin-inmemorydb",
       buildOptions: {
-        entrypoints: ["typescript/index.ts"],
-        outdir: "typescript/dist/browser",
+        entrypoints: ["index.browser.ts"],
+        outdir: "dist/browser",
         target: "browser",
         format: "esm",
         external: ["@elizaos/core"],
@@ -45,9 +45,9 @@ async function buildAll() {
     if (!browserOk) return false;
 
     console.log("📝 Generating type declarations...");
-    await generateDts("typescript/tsconfig.build.json", false);
+    await generateDts("tsconfig.build.json", false);
 
-    const distDir = join(PLUGIN_ROOT, "typescript", "dist");
+    const distDir = join(PLUGIN_ROOT, "dist");
     const browserDir = join(distDir, "browser");
     const nodeDir = join(distDir, "node");
 

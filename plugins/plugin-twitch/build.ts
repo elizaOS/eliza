@@ -1,12 +1,12 @@
 import { build } from "bun";
 
 await build({
-	entrypoints: ["./src/index.ts"],
-	outdir: "./dist",
-	target: "node",
-	format: "esm",
-	sourcemap: "external",
-	external: ["@elizaos/core", "@twurple/auth", "@twurple/chat"],
+  entrypoints: ["./src/index.ts"],
+  outdir: "./dist",
+  target: "node",
+  format: "esm",
+  sourcemap: "external",
+  external: ["@elizaos/core", "@twurple/auth", "@twurple/chat"],
 });
 
 // Also emit declarations with tsc

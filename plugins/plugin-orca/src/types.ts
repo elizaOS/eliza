@@ -1,4 +1,4 @@
-import { PublicKey } from '@solana/web3.js';
+import { PublicKey } from "@solana/web3.js";
 
 export interface LPPosition {
   positionId: string;
@@ -64,5 +64,5 @@ export interface PositionMetrics {
 }
 
 export const ServiceTypes = {
-  LP_TRADING: 'lp_trader',
+  LP_TRADING: "lp_trader",
 } as const;
