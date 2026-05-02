@@ -204,7 +204,7 @@ export function ChatSidebar({ className, isOpen = false, onToggle }: ChatSidebar
 
     if (!selectedCharacterId) {
       // Show rooms with no character assignment OR default Eliza ID
-      return rooms.filter((room) => !room.characterId || room.characterId === DEFAULT_AGENT_ID);
+      return rooms.filter((room) => !room.characterId === DEFAULT_AGENT_ID);
     }
     return rooms.filter((room) => room.characterId === selectedCharacterId);
   }, [rooms, selectedCharacterId]);

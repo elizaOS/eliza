@@ -55,7 +55,7 @@ export interface ChatSession {
 // Message structure
 export interface ChatMessage {
   id: string;
-  role: 'user' | 'assistant';
+  role: "user" | "assistant";
   content: string;
   timestamp: Date;
 }
@@ -73,4 +73,3 @@ export interface CreateCharacterResponse {
   sessionId: string;
   character: ElizaCharacter;
 }
-

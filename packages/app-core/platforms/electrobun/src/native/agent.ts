@@ -102,7 +102,7 @@ export function getHealthPollTimeoutMs(
 	platform: string = process.platform,
 ): number {
 	const raw = (
-		env.ELIZA_AGENT_HEALTH_TIMEOUT_MS ?? env.ELIZA_AGENT_HEALTH_TIMEOUT_MS
+		env.ELIZA_AGENT_HEALTH_TIMEOUT_MS
 	)?.trim();
 	if (raw) {
 		const parsed = Number.parseInt(raw, 10);
@@ -588,7 +588,7 @@ export function isPackagedDesktopRuntime(
 		normalizedExecPath.endsWith("/launcher") ||
 		normalizedExecPath.endsWith("/launcher.exe");
 	if (
-		(process.env.ELIZA_DIST_PATH ?? process.env.ELIZA_DIST_PATH)?.trim() &&
+		(process.env.ELIZA_DIST_PATH)?.trim() &&
 		!looksLikePackagedExec
 	) {
 		return false;
@@ -715,7 +715,7 @@ export function resolveRuntimeDistPath(opts?: {
 	}
 
 	// 1. Env override
-	const envPath = env.ELIZA_DIST_PATH ?? env.ELIZA_DIST_PATH;
+	const envPath = env.ELIZA_DIST_PATH;
 	if (envPath) {
 		const resolved = resolvePortablePath(envPath);
 		if (fs.existsSync(resolved)) {
@@ -1245,7 +1245,6 @@ export class AgentManager {
 				ELIZA_PORT: String(apiPort),
 			};
 			childEnv.ELIZA_NAMESPACE =
-				childEnv.ELIZA_NAMESPACE?.trim() ||
 				childEnv.ELIZA_NAMESPACE?.trim() ||
 				getBrandConfig().namespace;
 			childEnv.ELIZA_NAMESPACE =

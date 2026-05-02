@@ -262,7 +262,7 @@ export class PlanningService extends Service {
 		message?: Memory,
 		state?: State,
 	): Promise<ActionPlan> {
-		if (!context.goal || context.goal.trim() === "") {
+		if (!context.goal.trim() === "") {
 			throw new Error("Planning context must have a non-empty goal");
 		}
 		if (!Array.isArray(context.constraints)) {

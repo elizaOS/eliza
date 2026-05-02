@@ -182,11 +182,9 @@ function envVarsFor(
   const out: Record<string, string> = {};
   if (envs.includes("google")) {
     out.ELIZA_MOCK_GOOGLE_BASE = baseUrls.google;
-    out.ELIZA_MOCK_GOOGLE_BASE = baseUrls.google;
     out.ELIZA_BLOCK_REAL_GMAIL_WRITES = "1";
   }
   if (envs.includes("twilio")) {
-    out.ELIZA_MOCK_TWILIO_BASE = baseUrls.twilio;
     out.ELIZA_MOCK_TWILIO_BASE = baseUrls.twilio;
   }
   if (envs.includes("whatsapp"))
@@ -194,7 +192,6 @@ function envVarsFor(
   if (envs.includes("whatsapp"))
     out.ELIZA_MOCK_WHATSAPP_BASE = baseUrls.whatsapp;
   if (envs.includes("x-twitter")) {
-    out.ELIZA_MOCK_X_BASE = baseUrls["x-twitter"];
     out.ELIZA_MOCK_X_BASE = baseUrls["x-twitter"];
   }
   if (envs.includes("calendly"))
@@ -210,7 +207,6 @@ function envVarsFor(
   if (envs.includes("browser-workspace")) {
     out.ELIZA_BROWSER_WORKSPACE_URL = baseUrls["browser-workspace"];
     out.ELIZA_BROWSER_WORKSPACE_TOKEN = MOCK_BROWSER_WORKSPACE_TOKEN;
-    out.ELIZA_DISABLE_DISCORD_DESKTOP_CDP = "1";
     out.ELIZA_DISABLE_DISCORD_DESKTOP_CDP = "1";
   }
   if (envs.includes("bluebubbles")) {

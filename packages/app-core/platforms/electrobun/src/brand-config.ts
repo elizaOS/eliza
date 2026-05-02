@@ -74,7 +74,6 @@ function envFallback(...keys: string[]): string {
 function loadFileConfig(): Partial<DesktopBrandConfig> {
 	const envPath = envFallback(
 		"ELIZA_BRAND_CONFIG_PATH",
-		"ELIZA_BRAND_CONFIG_PATH",
 	);
 	const candidatePaths = [
 		envPath,

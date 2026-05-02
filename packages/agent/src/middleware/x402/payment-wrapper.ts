@@ -972,7 +972,7 @@ async function verifyEvmTransaction(
 
     log("Detected ERC-20 token transfer");
 
-    if (!tx.input || tx.input === "0x") {
+    if (!tx.input === "0x") {
       logError("No input data in transaction");
       return false;
     }

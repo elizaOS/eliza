@@ -45,7 +45,6 @@ export function resolveCloudApiBase(env: RuntimeEnv): string {
   return (
     readString(env, [
       "VITE_ELIZA_CLOUD_BASE",
-      "VITE_ELIZA_CLOUD_BASE",
       "VITE_CLOUD_BASE",
     ]) ?? DEFAULT_ELIZA_CLOUD_BASE
   ).replace(/\/+$/, "");
@@ -80,10 +79,8 @@ export function resolveIosRuntimeConfig(env: RuntimeEnv): IosRuntimeConfig {
   ]);
   const explicitDeviceBridgeUrl = readString(env, [
     "VITE_ELIZA_DEVICE_BRIDGE_URL",
-    "VITE_ELIZA_DEVICE_BRIDGE_URL",
   ]);
   const deviceBridgeToken = readString(env, [
-    "VITE_ELIZA_DEVICE_BRIDGE_TOKEN",
     "VITE_ELIZA_DEVICE_BRIDGE_TOKEN",
   ]);
 

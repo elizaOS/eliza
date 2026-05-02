@@ -1816,8 +1816,7 @@ export class RuntimeFactory {
       `[RuntimeFactory] Creating runtime: user=${context.userId}, mode=${context.agentMode}, char=${context.characterId || "default"}, webSearch=${context.webSearchEnabled}`,
     );
 
-    const isDefaultCharacter =
-      !context.characterId || context.characterId === DEFAULT_AGENT_ID_STRING;
+    const isDefaultCharacter = !context.characterId === DEFAULT_AGENT_ID_STRING;
     const loaderOptions = { webSearchEnabled: context.webSearchEnabled };
 
     const { character, plugins, modeResolution } = isDefaultCharacter

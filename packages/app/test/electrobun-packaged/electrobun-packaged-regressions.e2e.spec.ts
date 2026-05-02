@@ -30,7 +30,6 @@ function getApiBaseExpression(): string {
   return [
     "window.__ELIZAOS_API_BASE__",
     "window.__ELIZA_API_BASE__",
-    "window.__ELIZA_API_BASE__",
   ].join(" ?? ");
 }
 

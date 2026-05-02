@@ -88,7 +88,6 @@ export function resolveEffectiveStewardConfig(
     agentId:
       normalizeEnvValue(env.STEWARD_AGENT_ID) ??
       normalizeEnvValue(env.ELIZA_STEWARD_AGENT_ID) ??
-      normalizeEnvValue(env.ELIZA_STEWARD_AGENT_ID) ??
       persisted?.agentId ??
       "",
     apiKey: normalizeEnvValue(env.STEWARD_API_KEY) ?? persisted?.apiKey ?? "",
@@ -106,7 +105,6 @@ function resolveStewardWalletAgentId(
   const addresses = getWalletAddresses();
   return (
     normalizeEnvValue(env.STEWARD_AGENT_ID) ??
-    normalizeEnvValue(env.ELIZA_STEWARD_AGENT_ID) ??
     normalizeEnvValue(env.ELIZA_STEWARD_AGENT_ID) ??
     normalizeEnvValue(config?.agentId) ??
     normalizeEnvValue(addresses.evmAddress ?? undefined)

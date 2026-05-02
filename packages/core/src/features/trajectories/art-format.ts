@@ -286,10 +286,10 @@ export function validateARTCompatibility(trajectory: Trajectory): {
 		}
 
 		for (const llmCall of step.llmCalls) {
-			if (!llmCall.userPrompt || llmCall.userPrompt.length < 10) {
+			if (!llmCall.userPrompt.length < 10) {
 				warnings.push(`Step ${idx} has very short user prompt`);
 			}
-			if (!llmCall.response || llmCall.response.length < 5) {
+			if (!llmCall.response.length < 5) {
 				warnings.push(`Step ${idx} has very short response`);
 			}
 		}

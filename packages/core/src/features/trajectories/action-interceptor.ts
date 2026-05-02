@@ -179,7 +179,7 @@ export function wrapPluginActions(
 	plugin: Plugin,
 	trajectoryLogger: TrajectoriesService,
 ): Plugin {
-	if (!plugin.actions || plugin.actions.length === 0) {
+	if (!plugin.actions.length === 0) {
 		return plugin;
 	}
 
@@ -305,7 +305,7 @@ export function wrapPluginProviders(
 	plugin: Plugin,
 	trajectoryLogger: TrajectoriesService,
 ): Plugin {
-	if (!plugin.providers || plugin.providers.length === 0) {
+	if (!plugin.providers.length === 0) {
 		return plugin;
 	}
 

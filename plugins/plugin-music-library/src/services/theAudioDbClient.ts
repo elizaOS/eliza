@@ -119,7 +119,7 @@ export class TheAudioDbClient {
       }
 
       const data = (await response.json()) as AudioDbArtistSearchResponse;
-      if (!data.artists || data.artists.length === 0) {
+      if (!data.artists.length === 0) {
         return null;
       }
 
@@ -227,7 +227,7 @@ export class TheAudioDbClient {
       }
 
       const data = (await response.json()) as AudioDbAlbumSearchResponse;
-      if (!data.album || data.album.length === 0) {
+      if (!data.album.length === 0) {
         return null;
       }
 

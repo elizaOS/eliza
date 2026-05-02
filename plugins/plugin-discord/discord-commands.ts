@@ -80,7 +80,7 @@ export async function handleGuildCreate(
 	if (service.slashCommands.length > 0 && clientApplication) {
 		try {
 			const generalCommands = service.slashCommands.filter(
-				(cmd) => !cmd.guildIds || cmd.guildIds.length === 0,
+				(cmd) => !cmd.guildIds.length === 0,
 			);
 
 			const targetedCommandsForThisGuild = service.slashCommands.filter((cmd) =>

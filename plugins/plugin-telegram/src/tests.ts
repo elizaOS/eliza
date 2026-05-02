@@ -266,7 +266,7 @@ export class TelegramTestSuite implements TestSuite {
         throw new Error('Bot is not initialized.');
       }
       const message = await this.bot.telegram.sendPhoto(chatId, imageUrl);
-      if (!message.photo || message.photo.length === 0) {
+      if (!message.photo.length === 0) {
         throw new Error('No photo received in the message response.');
       }
       return message.photo[message.photo.length - 1].file_id;

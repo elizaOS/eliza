@@ -14,7 +14,7 @@ The Docker sandbox orchestrator creates newly provisioned Agent containers with 
   - `POST /agents/:agentId/token`
 - New containers are attached to `agent-isolated` by default
   - Overrideable with `AGENT_DOCKER_NETWORK`
-- Docker healthcheck now targets `ELIZA_PORT` instead of legacy `ELIZA_PORT`
+- Docker healthcheck now targets `ELIZA_PORT`
 
 ## Steward URL Resolution
 

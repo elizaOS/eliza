@@ -127,10 +127,9 @@ const appCompanionSourceRoot = path.join(
   "src",
 );
 const liveRetryCount =
-  process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1"
+  process.env.ELIZA_LIVE_TEST === "1"
     ? 1
     : 0;
-process.env.ELIZA_LIVE_TEST = "1";
 process.env.ELIZA_LIVE_TEST = "1";
 
 const realResolveAlias: ModuleAlias[] = [

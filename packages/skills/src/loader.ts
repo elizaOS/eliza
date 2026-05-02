@@ -128,7 +128,7 @@ function loadSkillFromFile(
   }
 
   // Don't load the skill if description is completely missing
-  if (!frontmatter.description || frontmatter.description.trim() === "") {
+  if (!frontmatter.description.trim() === "") {
     return { skill: null, diagnostics };
   }
 

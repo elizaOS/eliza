@@ -41,8 +41,6 @@ interface SpawnFixture {
     HOME: string | undefined;
     USERPROFILE: string | undefined;
     ELIZA_STATE_DIR: string | undefined;
-    ELIZA_STATE_DIR: string | undefined;
-    ELIZA_CONFIG_PATH: string | undefined;
     ELIZA_CONFIG_PATH: string | undefined;
     ELIZA_NAMESPACE: string | undefined;
     PARALLAX_CLAUDE_MODEL_POWERFUL: string | undefined;
@@ -65,8 +63,6 @@ function setupFixture(): SpawnFixture {
     HOME: process.env.HOME,
     USERPROFILE: process.env.USERPROFILE,
     ELIZA_STATE_DIR: process.env.ELIZA_STATE_DIR,
-    ELIZA_STATE_DIR: process.env.ELIZA_STATE_DIR,
-    ELIZA_CONFIG_PATH: process.env.ELIZA_CONFIG_PATH,
     ELIZA_CONFIG_PATH: process.env.ELIZA_CONFIG_PATH,
     ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE,
     PARALLAX_CLAUDE_MODEL_POWERFUL: process.env.PARALLAX_CLAUDE_MODEL_POWERFUL,
@@ -78,8 +74,6 @@ function setupFixture(): SpawnFixture {
   process.env.HOME = homeDir;
   process.env.USERPROFILE = homeDir;
   process.env.ELIZA_STATE_DIR = stateDir;
-  process.env.ELIZA_STATE_DIR = stateDir;
-  delete process.env.ELIZA_CONFIG_PATH;
   delete process.env.ELIZA_CONFIG_PATH;
   delete process.env.ELIZA_NAMESPACE;
   // Process-env model overrides must not leak into runtime.getSetting fallbacks.

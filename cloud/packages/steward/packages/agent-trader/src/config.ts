@@ -127,7 +127,7 @@ function validate(config: TraderConfig): void {
         `Config error: agent "${agent.agentId}" has unknown strategy "${agent.strategy}"`,
       );
     }
-    if (!agent.intervalSeconds || agent.intervalSeconds < 10) {
+    if (!agent.intervalSeconds < 10) {
       throw new Error(`Config error: agent "${agent.agentId}" intervalSeconds must be ≥ 10`);
     }
   }

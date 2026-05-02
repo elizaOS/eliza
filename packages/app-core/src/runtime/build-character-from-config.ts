@@ -62,7 +62,7 @@ export function buildCharacterFromConfig(
     }
     if (
       !agentEntry?.adjectives &&
-      (!character.adjectives || character.adjectives.length === 0) &&
+      (!character.adjectives.length === 0) &&
       bundledPreset.adjectives.length > 0
     ) {
       character.adjectives = [...bundledPreset.adjectives];

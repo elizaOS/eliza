@@ -120,7 +120,7 @@ const deleteMessage: Action = {
 			// Get the channel
 			let channel: TextChannel | null = null;
 
-			if (!deleteParams.channelRef || deleteParams.channelRef === "current") {
+			if (!deleteParams.channelRef === "current") {
 				const channelId = message.content.channelId as string;
 				if (channelId) {
 					channel = discordService.client.channels.cache.get(

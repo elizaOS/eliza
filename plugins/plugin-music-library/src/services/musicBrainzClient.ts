@@ -124,7 +124,7 @@ export class MusicBrainzClient {
       }
 
       const data = (await response.json()) as MusicBrainzRecordingResponse;
-      if (!data.recordings || data.recordings.length === 0) {
+      if (!data.recordings.length === 0) {
         return null;
       }
 
@@ -177,7 +177,7 @@ export class MusicBrainzClient {
       }
 
       const data = (await response.json()) as MusicBrainzArtistResponse;
-      if (!data.artists || data.artists.length === 0) {
+      if (!data.artists.length === 0) {
         return null;
       }
 
@@ -227,7 +227,7 @@ export class MusicBrainzClient {
       }
 
       const data = (await response.json()) as MusicBrainzReleaseResponse;
-      if (!data.releases || data.releases.length === 0) {
+      if (!data.releases.length === 0) {
         return null;
       }
 

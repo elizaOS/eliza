@@ -37,7 +37,7 @@ export async function handleImageGeneration(
 
   logger.debug(`[OpenAI] Using IMAGE model: ${modelName}`);
 
-  if (!params.prompt || params.prompt.trim().length === 0) {
+  if (!params.prompt.trim().length === 0) {
     throw new Error("IMAGE generation requires a non-empty prompt");
   }
 
@@ -79,7 +79,7 @@ export async function handleImageGeneration(
 
   const data = (await response.json()) as OpenAIImageGenerationResponse;
 
-  if (!data.data || data.data.length === 0) {
+  if (!data.data.length === 0) {
     throw new Error("OpenAI API returned no images");
   }
 

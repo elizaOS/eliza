@@ -242,7 +242,7 @@ export async function queryPastExperience(
       QUERY_TIMEOUT_MS,
     );
 
-    if (!result.trajectories || result.trajectories.length === 0) return [];
+    if (!result.trajectories.length === 0) return [];
 
     const experiences: PastExperience[] = [];
     const slowPathDeadline = Date.now() + SLOW_PATH_BUDGET_MS;

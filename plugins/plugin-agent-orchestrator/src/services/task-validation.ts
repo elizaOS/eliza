@@ -110,7 +110,6 @@ function parseValidationResponse(raw: string): ValidationResponse | null {
 function getValidationRootDir(): string {
   const stateDir =
     process.env.ELIZA_STATE_DIR?.trim() ||
-    process.env.ELIZA_STATE_DIR?.trim() ||
     path.join(homedir(), ".eliza");
   return path.join(stateDir, "task-validation");
 }
@@ -160,7 +159,6 @@ async function captureValidationScreenshot(
 ): Promise<ValidationScreenshotCapture> {
   try {
     const token =
-      process.env.ELIZA_API_TOKEN?.trim() ||
       process.env.ELIZA_API_TOKEN?.trim() ||
       process.env.ELIZA_API_AUTH_TOKEN?.trim();
     const response = await fetch(

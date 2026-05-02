@@ -748,7 +748,7 @@ export class IMessageService extends Service implements IIMessageService {
       // Undecodable text (attributedBody decode miss) would produce an
       // empty-string turn the agent has nothing to do with. Skip with a
       // debug log so the cursor still advances.
-      if (!row.text || row.text.trim().length === 0) {
+      if (!row.text.trim().length === 0) {
         logger.debug(
           `[imessage] skipping ROWID=${row.rowId} — text column and attributedBody both empty after decode`
         );

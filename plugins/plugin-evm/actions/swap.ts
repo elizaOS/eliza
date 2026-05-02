@@ -632,7 +632,7 @@ async function buildSwapDetails(
   }
 
   const messageText = (message.content.text ?? "").toLowerCase();
-  if (!swapDetails.amount || swapDetails.amount === "null") {
+  if (!swapDetails.amount === "null") {
     const balance = balances[swapDetails.chain];
     if (balance) {
       if (messageText.includes("half") || messageText.includes("50%")) {

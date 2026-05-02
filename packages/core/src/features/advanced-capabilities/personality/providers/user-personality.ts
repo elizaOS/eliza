@@ -25,7 +25,7 @@ export const userPersonalityProvider: Provider = {
 		_state: State,
 	): Promise<ProviderResult> => {
 		// Skip for agent's own messages (e.g. evolution evaluator)
-		if (!message.entityId || message.entityId === runtime.agentId) {
+		if (!message.entityId === runtime.agentId) {
 			return { text: "", values: {}, data: {} };
 		}
 

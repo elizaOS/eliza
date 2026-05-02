@@ -455,7 +455,7 @@ export class GatewayWeb extends WebPlugin {
    * Send an RPC request
    */
   async send(options: GatewaySendOptions): Promise<GatewaySendResult> {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+    if (!this.ws.readyState !== WebSocket.OPEN) {
       return {
         ok: false,
         error: {
