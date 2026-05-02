@@ -47,6 +47,32 @@ runs:
       shell: bash
       run: pip install setuptools
 
+    - name: Install protoc
+      # protoc is required even when install-native-deps=false because Rust
+      # plugins (plugin-{discord,groq,openai,sql,whatsapp}) depend on the
+      # crates.io `elizaos` crate whose build script invokes prost-build.
+      # Without protoc, `cargo test` fails before any test runs.
+      if: ${{ runner.os == 'Linux' }}
+      shell: bash
+      run: |
+        if command -v protoc >/dev/null 2>&1; then
+          echo "protoc already installed: $(protoc --version)"
+          exit 0
+        fi
+        APT_ARGS=(-o Acquire::ForceIPv4=true -o Acquire::Retries=5 -o Acquire::http::Timeout=30)
+        for attempt in 1 2 3; do
+          if sudo apt-get "${APT_ARGS[@]}" update && \
+             sudo apt-get "${APT_ARGS[@]}" install -y --fix-missing protobuf-compiler; then
+            break
+          fi
+          if [ "$attempt" -eq 3 ]; then
+            echo "apt install of protobuf-compiler failed after ${attempt} attempts"
+            exit 1
+          fi
+          sleep $((attempt * 10))
+        done
+        protoc --version
+
     - name: Install native dependencies
       if: ${{ inputs.install-native-deps == 'true' && runner.os == 'Linux' }}
       shell: bash
@@ -58,7 +84,7 @@ runs:
           if sudo apt-get "${APT_ARGS[@]}" update && \
              sudo apt-get "${APT_ARGS[@]}" install -y --fix-missing \
                build-essential libcairo2-dev libpango1.0-dev libjpeg-dev \
-               libgif-dev libpixman-1-dev librsvg2-dev protobuf-compiler; then
+               libgif-dev libpixman-1-dev librsvg2-dev; then
             break
           fi
           if [ "$attempt" -eq 3 ]; then
