@@ -332,16 +332,24 @@ function hasLocalTestFiles(dir) {
   return false;
 }
 
-function shouldSkipEmptyVitestPassWithNoTests(cwd, scriptName, scripts) {
+function isSingleVitestRunCommand(command) {
+  const commandWithoutEnv = command.replace(
+    /^(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S+)\s+)*/,
+    "",
+  );
+  if (/[;&|]/.test(commandWithoutEnv)) {
+    return false;
+  }
+  return /^(?:(?:bunx|npx)\s+)?vitest\s+run\b/.test(commandWithoutEnv) ||
+    /^bun\s+x\s+vitest\s+run\b/.test(commandWithoutEnv);
+}
+
+function shouldSkipEmptyVitestScript(cwd, scriptName, scripts) {
   const command =
     resolveScriptCommand(scriptName, scripts) ||
     normalizeWhitespace(scripts?.[scriptName] ?? "");
 
-  return (
-    /\bvitest\b/.test(command) &&
-    /--passWithNoTests\b/.test(command) &&
-    !hasLocalTestFiles(cwd)
-  );
+  return isSingleVitestRunCommand(command) && !hasLocalTestFiles(cwd);
 }
 
 function runScript(cwd, scriptName, label) {
@@ -425,9 +433,9 @@ for (const packageJsonPath of packageJsonPaths) {
     if (scriptFilter && !scriptFilter.test(scriptName)) {
       continue;
     }
-    if (shouldSkipEmptyVitestPassWithNoTests(cwd, scriptName, scripts)) {
+    if (shouldSkipEmptyVitestScript(cwd, scriptName, scripts)) {
       console.log(
-        `[eliza-test] SKIP ${label} (no local test files for --passWithNoTests vitest script)`,
+        `[eliza-test] SKIP ${label} (no local test files for vitest script)`,
       );
       continue;
     }
