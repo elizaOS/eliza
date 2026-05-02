@@ -59,7 +59,7 @@ export const CORE_PLUGINS: readonly string[] = [
   // @elizaos/app-form — now built-in as advanced capability (form); enabled when advancedCapabilities: true
   "@elizaos/app-companion", // VRM companion emotes; actions gated until app session is active
   // @elizaos/plugin-agent-orchestrator — opt-in via ELIZA_AGENT_ORCHESTRATOR (Eliza app enables by default)
-  "@elizaos/plugin-cron", // scheduled jobs and automation
+  // Recurring work uses runtime TaskService + triggers (no @elizaos/plugin-cron).
   "@elizaos/plugin-app-control", // launch, close, and list running Eliza apps from agent chat
   "@elizaos/plugin-shell", // shell command execution
   "@elizaos/plugin-agent-skills", // skill execution and marketplace runtime

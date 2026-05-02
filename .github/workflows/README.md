@@ -9,13 +9,11 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 | `ci.yaml` | Push/PR to main | Main CI - tests, lint, build |
 | `pr.yaml` | PR opened/edited | PR title validation |
 | `release.yaml` | Push to develop/main, Release | NPM package releases |
-| `release-python.yaml` | Release, Manual | PyPI package releases |
-| `release-rust.yaml` | Release, Manual | Crates.io releases |
 | `claude.yml` | @claude mentions | Interactive Claude assistance |
+| `confidant-ci.yaml` | Push/PR | Confidant package CI |
 | `claude-code-review.yml` | PR opened | Automated code review |
 | `claude-security-review.yml` | PR opened | Security-focused review |
 | `codeql.yml` | Push/PR to main, Weekly | Static security analysis |
-| `multi-lang-tests.yaml` | Push/PR (Rust/Python paths) | Rust, Python, WASM tests |
 | `docs-ci.yml` | PR (docs paths), Manual | Documentation quality checks |
 | `image.yaml` | Release, Manual | Docker image builds |
 | `tee-build-deploy.yml` | Push to main, Manual | TEE deployment to Phala Cloud |
@@ -36,40 +34,6 @@ Publishes TypeScript/JavaScript packages to NPM.
 
 **Packages:** All `@elizaos/*` packages in the monorepo
 
-### Python Packages (`release-python.yaml`)
-
-Publishes Python packages to PyPI.
-
-**Triggers:**
-
-- GitHub Release created
-- Manual dispatch
-
-**Packages:**
-
-- `elizaos` (packages/python) - Core runtime and types
-- `elizaos-plugin-sql` (packages/plugin-sql/python) - SQL database adapters
-- Additional plugins as configured
-
-**Required Secrets:** `PYPI_TOKEN`
-
-### Rust Crates (`release-rust.yaml`)
-
-Publishes Rust crates to crates.io.
-
-**Triggers:**
-
-- GitHub Release created
-- Manual dispatch
-
-**Crates:**
-
-- `elizaos` (packages/rust) - Core runtime and types
-- `elizaos-plugin-sql` (packages/plugin-sql/rust) - SQL database adapters
-- Additional plugins as configured
-
-**Required Secrets:** `CRATES_IO_TOKEN`
-
 ## Test Workflows
 
 ### Main CI (`ci.yaml`)
@@ -79,16 +43,7 @@ Runs on PRs and pushes to main:
 - TypeScript tests with coverage
 - Linting and formatting checks
 - Build verification
-
-### Multi-Language Tests (`multi-lang-tests.yaml`)
-
-Tests Rust and Python packages:
-
-- **Rust:** formatting, clippy, tests, release build
-- **Python:** ruff linting, pytest
-- **WASM:** build verification
-- **Interop:** cross-language integration tests
-- **SQL Plugin:** PostgreSQL integration tests
+- Interop TypeScript tests (`packages/interop`)
 
 ## Code Review Workflows
 
@@ -138,26 +93,10 @@ Manual workflow for generating JSDoc documentation.
 The release will trigger:
 
 - `release.yaml` → NPM packages
-- `release-python.yaml` → PyPI packages
-- `release-rust.yaml` → crates.io crates
 
-### 3. Manual Publishing (if needed)
+### 3. Manual publishing
 
-**Python:**
-
-```bash
-cd packages/python
-pip install build twine
-python -m build
-twine upload dist/*
-```
-
-**Rust:**
-
-```bash
-cd packages/rust
-cargo publish
-```
+Use `bunx lerna publish` from the repo root when automation is not sufficient (see `release.yaml`).
 
 ## Setting Up Secrets
 
@@ -166,8 +105,6 @@ cargo publish
 | Secret | Purpose | How to Get |
 |--------|---------|------------|
 | `NPM_TOKEN` | NPM publishing | [npmjs.com/settings/~/tokens](https://www.npmjs.com/settings/~/tokens) |
-| `PYPI_TOKEN` | PyPI publishing | [pypi.org/manage/account/token/](https://pypi.org/manage/account/token/) |
-| `CRATES_IO_TOKEN` | crates.io publishing | [crates.io/settings/tokens](https://crates.io/settings/tokens) |
 | `ANTHROPIC_API_KEY` | Claude workflows | [console.anthropic.com](https://console.anthropic.com) |
 | `OPENAI_API_KEY` | Tests requiring OpenAI | [platform.openai.com](https://platform.openai.com) |
 
@@ -179,21 +116,9 @@ cargo publish
 | `PHALA_CLOUD_API_KEY` | TEE deployment |
 | `GH_PAT` | Cross-repo operations |
 
-## Package Dependencies
+## Package dependencies
 
-When releasing, packages are published in this order:
-
-1. **Core packages first:**
-   - `elizaos` (Python)
-   - `elizaos` (Rust)
-   - `@elizaos/core` (NPM)
-
-2. **Then dependent packages:**
-   - `elizaos-plugin-*` (Python, depends on elizaos)
-   - `elizaos-plugin-*` (Rust, depends on elizaos)
-   - `@elizaos/plugin-*` (NPM, depends on @elizaos/core)
-
-The workflows handle this ordering automatically.
+NPM packages are ordered by the monorepo graph; `release.yaml` / Lerna handle publish ordering for `@elizaos/*` packages.
 
 ## Troubleshooting
 
@@ -208,7 +133,6 @@ The workflows handle this ordering automatically.
 1. Verify secrets are configured
 2. Check workflow logs for specific errors
 3. For NPM: ensure package versions are unique
-4. For crates.io: wait for index propagation (2 min delay built-in)
 
 ### Claude Workflow Issues
 

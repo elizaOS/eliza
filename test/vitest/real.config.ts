@@ -439,20 +439,6 @@ const realResolveAlias: ModuleAlias[] = [
       },
     },
     {
-      find: "@elizaos/plugin-cron",
-      packageName: "@elizaos/plugin-cron",
-      options: {
-        fallbackPath: path.join(
-          elizaWorkspaceRoot,
-          "plugins",
-          "plugin-cron",
-          "typescript",
-          "src",
-          "index",
-        ),
-      },
-    },
-    {
       find: "@elizaos/plugin-sql",
       packageName: "@elizaos/plugin-sql",
       options: {

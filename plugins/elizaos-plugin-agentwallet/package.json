@@ -1,0 +1,61 @@
+{
+  "name": "elizaos-plugin-agentwallet",
+  "version": "1.0.2",
+  "description": "Non-custodial wallet plugin for ElizaOS agents \u2014 EVM + Solana, x402, CCTP bridge, spend limits",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "lint": "eslint src/"
+  },
+  "keywords": [
+    "a2a",
+    "agent",
+    "agent-payments",
+    "ap2",
+    "cctp",
+    "cross-chain",
+    "eliza",
+    "elizaos",
+    "evm",
+    "mcp",
+    "non-custodial",
+    "plugin",
+    "polygon",
+    "solana",
+    "spend-limits",
+    "typescript",
+    "wallet",
+    "x402"
+  ],
+  "author": "Bill Wilson <bill@ai-agent-economy.com>",
+  "license": "MIT",
+  "peerDependencies": {
+    "@elizaos/core": "^0.1.0",
+    "agentwallet-sdk": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.0",
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.57.1",
+    "@typescript-eslint/parser": "^8.57.1",
+    "eslint": "^10.1.0",
+    "globals": "^17.4.0",
+    "jest": "^29.5.0",
+    "ts-jest": "^29.1.0",
+    "typescript": "^5.0.0"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/up2itnow0822/elizaos-plugin-agentwallet.git"
+  },
+  "homepage": "https://github.com/up2itnow0822/elizaos-plugin-agentwallet#readme",
+  "bugs": {
+    "url": "https://github.com/up2itnow0822/elizaos-plugin-agentwallet/issues"
+  }
+}

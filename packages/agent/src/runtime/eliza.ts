@@ -203,12 +203,6 @@ try {
 } catch {
   pluginCommands = null;
 }
-let pluginCron: unknown = null;
-try {
-  pluginCron = require("@elizaos/plugin-cron");
-} catch {
-  pluginCron = null;
-}
 // Keep plugin-elizacloud behind a guarded runtime require as well. Some
 // published alpha builds advertise dist/node/index.node.js but do not ship
 // that ESM entry, which breaks CLI bootstrap in published-only CI.
@@ -336,7 +330,6 @@ Object.assign(STATIC_ELIZA_PLUGINS, {
   ...(pluginAgentOrchestrator
     ? { "agent-orchestrator": pluginAgentOrchestrator }
     : {}),
-  ...(pluginCron ? { "@elizaos/plugin-cron": pluginCron } : {}),
   ...(pluginShell ? { "@elizaos/plugin-shell": pluginShell } : {}),
   // plugin-manager: now built-in core capability (ENABLE_PLUGIN_MANAGER)
   "@elizaos/plugin-agent-skills": pluginAgentSkills,

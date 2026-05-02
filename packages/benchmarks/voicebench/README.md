@@ -1,6 +1,6 @@
 # Voicebench
 
-`voicebench` benchmarks end-to-end voice latency with Eliza across TypeScript, Python, and Rust.
+`voicebench` benchmarks end-to-end voice latency with Eliza using the TypeScript runtime.
 
 ## What It Measures
 
@@ -41,7 +41,7 @@ Common:
   - `benchmarks/voicebench/shared/audio/default.wav`
   - `examples/town/public/assets/background.mp3`
   - `agent-town/public/assets/background.mp3`
-  - `run.sh` resolves the selected path to an absolute path before invoking TS/Python/Rust runners
+  - `run.sh` resolves the selected path to an absolute path before invoking the TypeScript runner
 
 Groq profile:
 
@@ -70,14 +70,6 @@ cd benchmarks/voicebench
 ./run.sh --profile=elevenlabs
 ```
 
-Generate labeled TTS fixtures:
-
-```bash
-cd benchmarks/voicebench
-./generate-fixtures.sh --profile=groq
-./generate-fixtures.sh --profile=elevenlabs
-```
-
 Run benchmark against labeled dataset:
 
 ```bash
@@ -89,7 +81,7 @@ cd benchmarks/voicebench
 Optional flags:
 
 - `--iterations=N` (default from `shared/config.json`)
-- `--ts-only` / `--py-only` / `--rs-only`
+- `--ts-only` (no-op; only TypeScript runs). `--py-only` / `--rs-only` exit with an error.
 - `--output-dir=/absolute/or/relative/path`
 - `--dataset=/path/to/manifest.json` (uses fixture samples instead of a single `VOICEBENCH_AUDIO_PATH`)
 
@@ -104,5 +96,3 @@ Results are written as JSON in `benchmarks/voicebench/results/`.
   - `plugins/plugin-groq/typescript`
   - `plugins/plugin-elevenlabs/typescript`
 - If Bun reports missing plugin dependencies, install those plugin dependencies first.
-- Rust plugin model handlers return TTS audio as base64 text (the benchmark records decoded byte length).
-- Rust execution falls back to `benchmarks/voicebench/rust/target/release/voicebench-rust` if `cargo run` fails.

@@ -1,0 +1,16 @@
+{
+  "version": "1.0.0",
+  "actions": [
+    {
+      "name": "POST",
+      "description": "Post content on X (formerly Twitter)",
+      "similes": [
+        "POST_TO_X",
+        "POST",
+        "SEND_POST",
+        "SHARE_ON_X"
+      ],
+      "parameters": []
+    }
+  ]
+}

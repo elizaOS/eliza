@@ -1,0 +1,9 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.4.2/schema.json",
+  "root": false,
+  "extends": ["../../../biome.json"],
+  "files": {
+    "ignoreUnknown": true,
+    "includes": ["src/**", "__tests__/**", "build.ts", "package.json"]
+  }
+}

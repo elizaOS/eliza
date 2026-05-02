@@ -6,7 +6,6 @@
 **/.venv/**
 **/coverage/**
 **/scripts/async-optimizer.js
-**/packages/python/**
 .turbo
 .turbo/**
 **/.turbo

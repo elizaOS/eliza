@@ -27,17 +27,6 @@
       "outputs": ["dist/**"],
       "inputs": ["src/**", "build.ts", "tsconfig.declarations.json"]
     },
-    "@elizaos/rust#build": {
-      "dependsOn": [],
-      "outputs": ["pkg/**", "target/release/**"],
-      "inputs": ["src/**", "Cargo.toml", "build.sh"]
-    },
-    "@elizaos/python#build": {
-      "dependsOn": [],
-      "outputs": ["elizaos.egg-info/**"],
-      "inputs": ["elizaos/**", "pyproject.toml"],
-      "cache": false
-    },
     "@elizaos/client#build": {
       "dependsOn": ["^build"],
       "env": ["LOG_LEVEL"],
@@ -53,10 +42,6 @@
       "outputs": []
     },
     "@elizaos/plugin-commands-root#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
-    },
-    "@elizaos/plugin-cron-root#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
@@ -116,20 +101,8 @@
     "lint:check": {
       "outputs": []
     },
-    "lint:rust": {
-      "outputs": []
-    },
     "typecheck": {
       "dependsOn": ["@elizaos/core#build"],
-      "outputs": []
-    },
-    "typecheck:rust": {
-      "outputs": []
-    },
-    "lint:python": {
-      "outputs": []
-    },
-    "typecheck:python": {
       "outputs": []
     },
     "format": {
@@ -150,16 +123,8 @@
     "test": {
       "dependsOn": [],
       "outputs": ["coverage/**"],
-      "inputs": ["src/**/*.ts", "src/**/*.js", "__tests__/**/*", "*.test.*", "package.json", "tests/**/*", "python/tests/**/*"],
+      "inputs": ["src/**/*.ts", "src/**/*.js", "__tests__/**/*", "*.test.*", "package.json", "tests/**/*"],
       "cache": false
-    },
-    "@elizaos/rust#test": {
-      "outputs": [],
-      "inputs": ["src/**", "tests/**"]
-    },
-    "@elizaos/python#test": {
-      "outputs": [],
-      "inputs": ["elizaos/**", "tests/**"]
     },
     "migrate": {
       "dependsOn": ["@elizaos/core#build"],
