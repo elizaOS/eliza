@@ -22,8 +22,8 @@ import { ElizaCloudClient } from "./bridge-client";
 import {
   __resetCloudWalletModuleForTests,
   CloudWalletFlagDisabledError,
-  getOrCreateClientAddressKey,
   ELIZA_CLOUD_CLIENT_ADDRESS_KEY_ENV,
+  getOrCreateClientAddressKey,
   persistCloudWalletCache,
   provisionCloudWallets,
   provisionCloudWalletsBestEffort,
