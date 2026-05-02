@@ -249,6 +249,7 @@ vitest.config.ts
 !packages/app/vitest.config.ts
 !packages/confidant/vitest.config.ts
 !packages/shared/vitest.config.ts
+!packages/cloud-routing/vitest.config.ts
 tsconfig.test.json
 
 # Migration status docs (temporary)
