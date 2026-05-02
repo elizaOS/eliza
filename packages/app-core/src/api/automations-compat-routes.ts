@@ -8,9 +8,7 @@ import type {
   ConversationScope,
 } from "@elizaos/agent/api/server-types";
 import { toWorkbenchTask } from "@elizaos/agent/api/workbench-helpers";
-import {
-  loadElizaConfig,
-} from "@elizaos/agent/config/config";
+import { loadElizaConfig } from "@elizaos/agent/config/config";
 import {
   listTriggerTasks,
   taskToTriggerSummary,

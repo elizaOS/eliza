@@ -476,25 +476,6 @@ export async function readChromiumCookies(
 
 // ── Eliza Cloud (browser cookie auto-import) ─────────────────────────
 
-interface PrivyTokenPayload {
-  sub?: string;
-  aud?: string;
-  exp?: number;
-  iat?: number;
-  sid?: string;
-}
-
-function decodeJwtPayload(jwt: string): PrivyTokenPayload | null {
-  try {
-    const parts = jwt.split(".");
-    if (parts.length !== 3) return null;
-    const payload = Buffer.from(parts[1], "base64url").toString("utf8");
-    return JSON.parse(payload) as PrivyTokenPayload;
-  } catch {
-    return null;
-  }
-}
-
 async function scanElizaCloudBrowserSession(): Promise<DetectedProvider | null> {
   // Check if user has an active elizacloud.ai session in their browser.
   // The privy-token JWT is in-memory only (not persisted to SQLite),

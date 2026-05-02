@@ -147,11 +147,7 @@ const rpc = Electroview.defineRPC({
         const id = readRequiredString(record, "id");
         const script = readRequiredString(record, "script");
         const timeoutMs = readRequiredNumber(record, "timeoutMs");
-        getBrowserTabsRendererImpl().evaluate(
-          id,
-          script,
-          timeoutMs,
-        );
+        getBrowserTabsRendererImpl().evaluate(id, script, timeoutMs);
       },
       browserWorkspaceRendererGetTabRect: async (params: unknown) => {
         const record = readRecord(params);

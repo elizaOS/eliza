@@ -24,6 +24,7 @@ import type {
   ConversationMessage,
   ImageAttachment,
 } from "../../api/client-types-chat";
+import { fetchWithCsrf } from "../../api/csrf-client";
 import {
   CodingAgentControlChip,
   PtyConsoleBase,
@@ -41,7 +42,6 @@ import {
   useChatVoiceController,
   useGameModalMessages,
 } from "./chat-view-hooks";
-import { fetchWithCsrf } from "../../api/csrf-client";
 
 export { __resetCompanionSpeechMemoryForTests } from "./chat-view-hooks";
 

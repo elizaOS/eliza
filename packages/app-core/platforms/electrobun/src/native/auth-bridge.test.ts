@@ -80,7 +80,7 @@ describe("auth-bridge", () => {
       let capturedSocketPath = "";
       let capturedSecretLength = 0;
 
-      const fakeFetch: FetchLike = async (input, init) => {
+      const fakeFetch: FetchLike = async (_input, init) => {
         const body = JSON.parse((init?.body as string) ?? "{}") as {
           socketPath: string;
         };
@@ -133,7 +133,7 @@ describe("auth-bridge", () => {
     it("returns null when the response shape is wrong", async () => {
       if (process.platform === "win32") return;
 
-      const fakeFetch: FetchLike = async (input, init) => {
+      const fakeFetch: FetchLike = async (_input, init) => {
         const body = JSON.parse((init?.body as string) ?? "{}") as {
           socketPath: string;
         };
@@ -245,7 +245,7 @@ describe("auth-bridge", () => {
     it("falls back to bootstrap when there is no persisted session", async () => {
       if (process.platform === "win32") return;
 
-      const fakeFetch: FetchLike = async (input, init) => {
+      const fakeFetch: FetchLike = async (_input, init) => {
         const body = JSON.parse((init?.body as string) ?? "{}") as {
           socketPath: string;
         };

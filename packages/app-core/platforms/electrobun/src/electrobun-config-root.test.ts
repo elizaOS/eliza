@@ -49,7 +49,10 @@ afterEach(() => {
   }
 
   while (tempRoots.length > 0) {
-    fs.rmSync(tempRoots.pop()!, { force: true, recursive: true });
+    const tempRoot = tempRoots.pop();
+    if (tempRoot) {
+      fs.rmSync(tempRoot, { force: true, recursive: true });
+    }
   }
 });
 

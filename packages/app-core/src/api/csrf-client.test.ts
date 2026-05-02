@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_BOOT_CONFIG, setBootConfig } from "../config/boot-config";
 import { CSRF_COOKIE_NAME, CSRF_HEADER_NAME } from "./auth/sessions";
 import { fetchWithCsrf, readCsrfTokenFromCookie } from "./csrf-client";
+
 describe("readCsrfTokenFromCookie", () => {
   afterEach(() => {
     document.cookie = `${CSRF_COOKIE_NAME}=; Max-Age=0; path=/`;
