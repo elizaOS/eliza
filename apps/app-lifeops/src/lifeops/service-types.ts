@@ -32,6 +32,17 @@ export type RuntimeMessageTarget = Parameters<
 export type ReminderAttemptLifecycle = "plan" | "escalation";
 
 export type LifeOpsAttentionContext = {
+  source?:
+    | "proactive_activity_profile"
+    | "schedule_state"
+    | "mixed"
+    | "unknown";
+  capturedAt?: string | null;
+  sourceFreshnessMs?: number | null;
+  sourceConfidence?: number | null;
+  privacyMode?: "normal" | "sensitive" | "unknown";
+  socialContext?: "alone" | "with_others" | "unknown";
+  locationSafety?: "safe" | "transit" | "driving" | "unknown";
   primaryPlatform: string | null;
   secondaryPlatform: string | null;
   lastSeenPlatform: string | null;
