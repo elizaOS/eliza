@@ -134,4 +134,33 @@ describe("runPollingBackend auth gates", () => {
       { type: "BACKEND_REACHED", onboardingComplete: false },
     ]);
   });
+
+  it("does not treat onboarding 401 as completed startup", async () => {
+    const expiresAt = Date.now() + 60_000;
+    vi.spyOn(client, "hasToken").mockReturnValue(false);
+    vi.spyOn(client, "getAuthStatus").mockResolvedValue({
+      required: false,
+      authenticated: false,
+      loginRequired: true,
+      localAccess: false,
+      passwordConfigured: true,
+      pairingEnabled: true,
+      expiresAt,
+    });
+    vi.spyOn(client, "getOnboardingStatus").mockRejectedValue({
+      kind: "http",
+      status: 401,
+      path: "/api/onboarding/status",
+      message: "Unauthorized",
+    });
+
+    const deps = createDeps();
+    const events = await runOnce(deps);
+
+    expect(deps.setAuthRequired).toHaveBeenCalledWith(true);
+    expect(deps.setPairingEnabled).toHaveBeenCalledWith(true);
+    expect(deps.setPairingExpiresAt).toHaveBeenCalledWith(expiresAt);
+    expect(deps.setOnboardingComplete).not.toHaveBeenCalledWith(true);
+    expect(events).toEqual([{ type: "BACKEND_AUTH_REQUIRED" }]);
+  });
 });

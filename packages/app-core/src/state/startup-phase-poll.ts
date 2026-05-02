@@ -311,15 +311,12 @@ export async function runPollingBackend(
       return;
     } catch (err) {
       const ae = asApiLikeError(err);
-      if (
-        ae?.status === 401 &&
-        latestAuth.loginRequired &&
-        !client.hasToken()
-      ) {
-        deps.setAuthRequired(false);
-        deps.setOnboardingComplete(true);
+      if (ae?.status === 401 && !client.hasToken()) {
+        deps.setAuthRequired(true);
+        deps.setPairingEnabled(latestAuth.pairingEnabled);
+        deps.setPairingExpiresAt(latestAuth.expiresAt);
         deps.setOnboardingLoading(false);
-        dispatch({ type: "BACKEND_REACHED", onboardingComplete: true });
+        dispatch({ type: "BACKEND_AUTH_REQUIRED" });
         return;
       }
       if (ae?.status === 401 && client.hasToken()) {

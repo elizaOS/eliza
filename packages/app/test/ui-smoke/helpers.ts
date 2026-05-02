@@ -6,6 +6,7 @@ const NAV_TIMEOUT_MS = 12_000;
 // Full bootstrap waits use the surrounding test timeout and Playwright defaults.
 const READY_CHECK_TIMEOUT_MS = 15_000;
 const SMOKE_GENERATED_AT = "2026-01-01T00:00:00.000Z";
+const STORAGE_SEEDED_KEY = "eliza:ui-smoke-storage-seeded";
 
 type ReadyCheck =
   | { selector: string; text?: never }
@@ -32,11 +33,15 @@ export async function seedAppStorage(
   overrides: Record<string, string> = {},
 ): Promise<void> {
   const storage = { ...DEFAULT_APP_STORAGE, ...overrides };
-  await page.addInitScript((entries: Record<string, string>) => {
+  await page.addInitScript(({ entries, seededKey }) => {
+    if (sessionStorage.getItem(seededKey) === "1") {
+      return;
+    }
     for (const [key, value] of Object.entries(entries)) {
       localStorage.setItem(key, value);
     }
-  }, storage);
+    sessionStorage.setItem(seededKey, "1");
+  }, { entries: storage, seededKey: STORAGE_SEEDED_KEY });
 }
 
 async function expectRootReady(page: Page): Promise<void> {
