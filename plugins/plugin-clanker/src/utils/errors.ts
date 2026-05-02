@@ -1,6 +1,8 @@
 import { ErrorCode, ErrorResponse } from '../types';
 import { logger } from '@elizaos/core';
 
+export { ErrorCode };
+
 export class ClankerError extends Error {
   code: ErrorCode;
   details?: any;

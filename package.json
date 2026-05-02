@@ -14,7 +14,7 @@
     "plugin-submodules:restore": "bun scripts/plugin-submodules-dev.mjs --restore",
     "ensure-plugin-test-conventions": "bun scripts/ensure-plugin-test-conventions.mjs",
     "ensure-plugin-test-conventions:check": "bun scripts/ensure-plugin-test-conventions.mjs --check",
-    "generate:types": "cd packages/@schemas && bunx buf lint && bunx buf generate",
+    "generate:types": "cd packages/schemas && bunx buf lint && bunx buf generate",
     "start": "bun run --cwd packages/agent start",
     "start:eliza": "bun packages/app-core/src/entry.ts start",
     "dev": "node packages/app-core/scripts/rt.mjs packages/app-core/scripts/dev-ui.mjs --name=eliza --app=app",
@@ -104,7 +104,8 @@
     "typedoc-plugin-markdown": "4.11.0",
     "typedoc": "0.28.19",
     "zod": "^4.3.6",
-    "drizzle-orm": "^0.45.1"
+    "drizzle-orm": "^0.45.1",
+    "@electric-sql/pglite": "^0.4.5"
   },
   "overrides": {
     "@biomejs/biome": "2.4.14",
@@ -127,6 +128,7 @@
     "@uniswap/v2-sdk": "4.20.0",
     "@uniswap/v4-sdk": "2.0.0",
     "drizzle-orm": "^0.45.1",
+    "@electric-sql/pglite": "^0.4.5",
     "rimraf": "^6.0.1"
   },
   "patchedDependencies": {
