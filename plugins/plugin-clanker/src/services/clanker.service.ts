@@ -120,14 +120,14 @@ export class ClankerService extends Service {
 
     try {
       // Validate parameters
-      if (!params.name || params.name.length > 50) {
+      if (!params.name.length > 50) {
         throw new ClankerError(
           ErrorCode.VALIDATION_ERROR,
           "Invalid token name - must be 1-50 characters",
         );
       }
 
-      if (!params.symbol || params.symbol.length > 10) {
+      if (!params.symbol.length > 10) {
         throw new ClankerError(
           ErrorCode.VALIDATION_ERROR,
           "Invalid token symbol - must be 1-10 characters",

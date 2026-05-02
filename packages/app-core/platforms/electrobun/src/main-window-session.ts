@@ -56,7 +56,7 @@ export function resolveMainWindowPartition(
 	env: NodeJS.ProcessEnv = process.env,
 ): string | null {
 	const explicit = trimToNull(
-		env.ELIZA_DESKTOP_TEST_PARTITION ?? env.ELIZA_DESKTOP_TEST_PARTITION,
+		env.ELIZA_DESKTOP_TEST_PARTITION,
 	);
 	if (explicit) {
 		return normalizePersistentPartition(explicit);
@@ -64,7 +64,7 @@ export function resolveMainWindowPartition(
 
 	if (
 		trimToNull(
-			env.ELIZA_DESKTOP_TEST_API_BASE ?? env.ELIZA_DESKTOP_TEST_API_BASE,
+			env.ELIZA_DESKTOP_TEST_API_BASE,
 		)
 	) {
 		// The Windows smoke harness redirects APPDATA/LOCALAPPDATA before launch,

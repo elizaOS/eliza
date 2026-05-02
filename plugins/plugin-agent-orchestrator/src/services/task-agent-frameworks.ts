@@ -432,7 +432,6 @@ function resolveElizaConfigPath(): string {
 
   const stateDir =
     process.env.ELIZA_STATE_DIR?.trim() ||
-    process.env.ELIZA_STATE_DIR?.trim() ||
     path.join(getUserHomeDir(), ".eliza");
   const namespace = process.env.ELIZA_NAMESPACE?.trim();
   const filename =

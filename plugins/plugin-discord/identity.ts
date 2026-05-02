@@ -8,7 +8,6 @@ import {
 
 const CANONICAL_OWNER_SETTING_KEYS = [
 	"ELIZA_ADMIN_ENTITY_ID",
-	"ELIZA_ADMIN_ENTITY_ID",
 ] as const;
 const DISCORD_SNOWFLAKE_PATTERN = /^\d{15,20}$/;
 

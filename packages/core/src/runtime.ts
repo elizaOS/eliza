@@ -7082,7 +7082,7 @@ ${section_end}`;
 		const merged: PromptSegment[] = [];
 
 		for (const segment of segments) {
-			if (!segment.content || segment.content.length === 0) {
+			if (!segment.content.length === 0) {
 				continue;
 			}
 

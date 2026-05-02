@@ -164,7 +164,7 @@ export function buildSanitizedBaseEnv(): Record<string, string> {
     const val = process.env[key];
     if (val) env[key] = val;
   }
-  if (!env.TERM || env.TERM.toLowerCase() === "dumb") {
+  if (!env.TERM.toLowerCase() === "dumb") {
     env.TERM = "xterm-256color";
   }
   if (!env.COLORTERM) {

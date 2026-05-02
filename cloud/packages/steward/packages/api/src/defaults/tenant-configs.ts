@@ -240,75 +240,8 @@ export const ELIZA_DESKTOP_CONFIG: TenantControlPlaneConfig = {
   },
 };
 
-export const ELIZA_CLOUD_CONFIG: TenantControlPlaneConfig = {
-  tenantId: "eliza-cloud",
-  displayName: "Eliza Cloud",
-  policyExposure: {
-    "spending-limit": "enforced",
-    "approved-addresses": "hidden",
-    "auto-approve-threshold": "hidden",
-    "time-window": "hidden",
-    "rate-limit": "enforced",
-    "allowed-chains": "enforced",
-  },
-  policyTemplates: [CHATBOT_TEMPLATE],
-  secretRoutePresets: [
-    {
-      id: "openai",
-      name: "OpenAI API",
-      hostPattern: "api.openai.com",
-      pathPattern: "/*",
-      injectAs: "bearer",
-      injectKey: "Authorization",
-      injectFormat: "Bearer {value}",
-      provisioning: "platform",
-    },
-    {
-      id: "anthropic",
-      name: "Anthropic API",
-      hostPattern: "api.anthropic.com",
-      pathPattern: "/*",
-      injectAs: "header",
-      injectKey: "x-api-key",
-      injectFormat: "{value}",
-      provisioning: "platform",
-    },
-  ],
-  approvalConfig: {
-    autoExpireSeconds: 3600,
-    approvers: { mode: "tenant-admin" },
-    webhookCallbackEnabled: true,
-  },
-  featureFlags: {
-    showFundingQR: true,
-    showTransactionHistory: true,
-    showSpendDashboard: false,
-    showPolicyControls: false,
-    showApprovalQueue: false,
-    showSecretManager: false,
-    enableSolana: false,
-    showChainSelector: false,
-    allowAddressExport: true,
-  },
-  theme: {
-    primaryColor: "#3B82F6",
-    accentColor: "#60A5FA",
-    backgroundColor: "#111827",
-    surfaceColor: "#1F2937",
-    textColor: "#F9FAFB",
-    mutedColor: "#9CA3AF",
-    successColor: "#10B981",
-    errorColor: "#EF4444",
-    warningColor: "#F59E0B",
-    borderRadius: 8,
-    fontFamily: "Inter, system-ui, sans-serif",
-    colorScheme: "dark",
-  },
-};
-
 /** All default configs, keyed by tenant ID */
 export const DEFAULT_TENANT_CONFIGS: Record<string, TenantControlPlaneConfig> = {
   "eliza-cloud": ELIZA_CLOUD_CONFIG,
   "eliza-desktop": ELIZA_DESKTOP_CONFIG,
-  "eliza-cloud": ELIZA_CLOUD_CONFIG,
 };

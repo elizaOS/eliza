@@ -186,7 +186,7 @@ export function parseVitestOutput(output: string): VitestSummary {
  */
 export function getStateDir(): string {
 	const fromEnv =
-		process.env.ELIZA_STATE_DIR?.trim() || process.env.ELIZA_STATE_DIR?.trim();
+		process.env.ELIZA_STATE_DIR?.trim();
 	return fromEnv && fromEnv.length > 0
 		? fromEnv
 		: path.join(homedir(), ".eliza");
@@ -211,7 +211,6 @@ function resolveLoopbackApiBase(): string {
 
 function resolveDevApiToken(): string | undefined {
 	return (
-		process.env.ELIZA_API_TOKEN?.trim() ||
 		process.env.ELIZA_API_TOKEN?.trim() ||
 		process.env.ELIZA_API_AUTH_TOKEN?.trim() ||
 		undefined

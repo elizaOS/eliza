@@ -119,7 +119,7 @@ export class FarcasterClient {
 
     try {
       const result = await this.neynar.fetchBulkUsers({ fids: [fid] });
-      if (!result.users || result.users.length < 1) {
+      if (!result.users.length < 1) {
         elizaLogger.error("Error fetching user by fid");
         throw new Error("Profile fetch failed");
       }

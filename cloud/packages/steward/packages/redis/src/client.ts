@@ -18,8 +18,8 @@
  *               (or UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN)
  */
 
-import { Redis } from "ioredis";
 import { Redis as UpstashRedis } from "@upstash/redis";
+import { Redis } from "ioredis";
 import { createUpstashIoredisAdapter, type IoredisLike } from "./upstash-adapter.js";
 
 export type RedisDriver = "ioredis" | "upstash";

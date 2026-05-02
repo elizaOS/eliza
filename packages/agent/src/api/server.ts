@@ -1273,7 +1273,7 @@ async function handleRequest(
       res,
       {
         error: "Forbidden — invalid Host header",
-        hint: `To allow this host, set ELIZA_ALLOWED_HOSTS=${incomingHost} (or ELIZA_ALLOWED_HOSTS) in your environment, or access via http://localhost`,
+        hint: `To allow this host, set ELIZA_ALLOWED_HOSTS=${incomingHost} in your environment, or access via http://localhost`,
         docs: "https://docs.eliza.ai/configuration#allowed-hosts",
       },
       403,

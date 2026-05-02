@@ -27,13 +27,13 @@ function resolveUserPath(input: string): string {
 }
 
 function resolveStateDirFromEnv(env: NodeJS.ProcessEnv = process.env): string {
-	const override = env.ELIZA_STATE_DIR?.trim() || env.ELIZA_STATE_DIR?.trim();
+	const override = env.ELIZA_STATE_DIR?.trim();
 	if (override) {
 		return resolveUserPath(override);
 	}
 
 	const namespace =
-		env.ELIZA_NAMESPACE?.trim() || env.ELIZA_NAMESPACE?.trim() || "eliza";
+		env.ELIZA_NAMESPACE?.trim() || "eliza";
 	return path.join(os.homedir(), `.${namespace}`);
 }
 

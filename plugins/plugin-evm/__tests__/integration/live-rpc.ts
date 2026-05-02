@@ -21,7 +21,7 @@ for (const envPath of ENV_CANDIDATE_PATHS) {
 }
 
 export const LIVE_EVM_RPC_TEST =
-  process.env.ELIZA_LIVE_EVM_RPC_TEST === "1" || process.env.ELIZA_LIVE_EVM_RPC_TEST === "1";
+  process.env.ELIZA_LIVE_EVM_RPC_TEST === "1";
 
 export const ELIZA_CLOUD_BASE_URL = (
   process.env.ELIZAOS_CLOUD_BASE_URL?.trim() || "https://www.elizacloud.ai/api/v1"

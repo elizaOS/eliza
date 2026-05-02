@@ -250,7 +250,6 @@ function getConfiguredTaskAgentAuthHosts(
     readTaskAgentAuthSetting(runtime, env, [
       "TASK_AGENT_AUTH_TRUSTED_HOSTS",
       "ELIZA_TASK_AGENT_AUTH_TRUSTED_HOSTS",
-      "ELIZA_TASK_AGENT_AUTH_TRUSTED_HOSTS",
     ]),
   );
   return new Set([
@@ -268,7 +267,6 @@ function getTaskAgentBrowserClickSelectors(
   const configured = parseTaskAgentAuthStringList(
     readTaskAgentAuthSetting(runtime, env, [
       `TASK_AGENT_AUTH_SELECTORS_${suffix}`,
-      `ELIZA_TASK_AGENT_AUTH_SELECTORS_${suffix}`,
       `ELIZA_TASK_AGENT_AUTH_SELECTORS_${suffix}`,
     ]),
   );
@@ -652,7 +650,6 @@ function resolveLocalApiBaseUrl(
   const configured = parseHttpBaseUrl(
     readTaskAgentAuthSetting(runtime, env, [
       "TASK_AGENT_AUTH_API_BASE_URL",
-      "ELIZA_TASK_AGENT_AUTH_API_BASE_URL",
       "ELIZA_TASK_AGENT_AUTH_API_BASE_URL",
     ]),
   );

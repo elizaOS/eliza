@@ -3,8 +3,6 @@ import { shouldWarmupLocalEmbeddingModel } from "./embedding-warmup-policy";
 
 const ENV_KEYS = [
   "ELIZA_DISABLE_LOCAL_EMBEDDINGS",
-  "ELIZA_DISABLE_LOCAL_EMBEDDINGS",
-  "ELIZA_CLOUD_EMBEDDINGS_DISABLED",
   "ELIZA_CLOUD_EMBEDDINGS_DISABLED",
   "ELIZAOS_CLOUD_USE_EMBEDDINGS",
 ] as const;

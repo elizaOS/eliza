@@ -133,7 +133,7 @@ export function StewardUserButton({
       {open && (
         <div className="stwd-user-button__dropdown" role="menu">
           {displayEmail && showWallet && displayWallet && (
-            <div className="stwd-user-button__dropdown-info" role="menuitem">
+            <div className="stwd-user-button__dropdown-info" role="presentation">
               {displayWallet}
             </div>
           )}
@@ -143,7 +143,7 @@ export function StewardUserButton({
             (() => {
               const current = auth.tenants.find((t) => t.tenantId === auth.activeTenantId);
               return current ? (
-                <div className="stwd-user-button__dropdown-tenant" role="menuitem">
+                <div className="stwd-user-button__dropdown-tenant" role="presentation">
                   <span className="stwd-user-button__tenant-label">App:</span>{" "}
                   <span className="stwd-user-button__tenant-name">{current.tenantName}</span>
                 </div>

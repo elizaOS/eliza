@@ -300,7 +300,7 @@ export class GatewayElectrobun {
     };
   }
   async send(options) {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+    if (!this.ws.readyState !== WebSocket.OPEN) {
       return {
         ok: false,
         error: {

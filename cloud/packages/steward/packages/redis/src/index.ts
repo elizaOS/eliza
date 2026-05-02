@@ -7,8 +7,6 @@ export {
   type IoredisLike,
   type RedisDriver,
 } from "./client.js";
-export type { IoredisPipelineLike } from "./upstash-adapter.js";
-export { createUpstashIoredisAdapter } from "./upstash-adapter.js";
 export {
   estimateCost,
   getPricingTable,
@@ -33,3 +31,5 @@ export {
   recordSpend,
   type SpendPeriod,
 } from "./spend-tracker.js";
+export type { IoredisPipelineLike } from "./upstash-adapter.js";
+export { createUpstashIoredisAdapter } from "./upstash-adapter.js";

@@ -25,7 +25,6 @@ function parsePositivePort(value) {
 function resolveDesktopApiPort(env) {
   return (
     parsePositivePort(env.ELIZA_API_PORT) ||
-    parsePositivePort(env.ELIZA_API_PORT) ||
     parsePositivePort(env.ELIZA_PORT) ||
     DEFAULT_API_PORT
   );

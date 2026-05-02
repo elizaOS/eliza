@@ -147,7 +147,7 @@ if (process.env.PLAYWRIGHT_TEST_AUTH_SECRET) {
   env.PLAYWRIGHT_TEST_AUTH_SECRET = process.env.PLAYWRIGHT_TEST_AUTH_SECRET;
 }
 
-if ((process.env.PLAYWRIGHT_TEST_AUTH ?? env.PLAYWRIGHT_TEST_AUTH) === "true") {
+if (process.env.PLAYWRIGHT_TEST_AUTH === "true") {
   const testDatabaseUrl =
     process.env.TEST_DATABASE_URL ||
     process.env.DATABASE_URL ||

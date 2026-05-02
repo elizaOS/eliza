@@ -1478,7 +1478,7 @@ export async function executeWebBrowserWorkspaceDomCommand(
                   undefined,
                   command,
                 );
-                if (!command.state || command.state === "visible") {
+                if (!command.state === "visible") {
                   return found
                     ? isBrowserWorkspaceElementVisible(found)
                     : false;

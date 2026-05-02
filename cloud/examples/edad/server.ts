@@ -18,8 +18,8 @@
  * app creator and the affiliate share to the affiliate code holder.
  */
 
-import { CloudApiError, ElizaCloudClient } from "@elizaos/cloud-sdk";
 import { join } from "node:path";
+import { CloudApiError, ElizaCloudClient } from "@elizaos/cloud-sdk";
 
 const PORT = Number(process.env.PORT ?? 3000);
 const PUBLIC_DIR = join(import.meta.dir, "public");

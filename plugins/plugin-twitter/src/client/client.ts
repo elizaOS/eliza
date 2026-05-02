@@ -970,7 +970,7 @@ export class Client {
           cursor,
         );
 
-        if (!page.tweets || page.tweets.length === 0) {
+        if (!page.tweets.length === 0) {
           break;
         }
 

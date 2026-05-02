@@ -496,7 +496,6 @@ async function loadBrowserModule(): Promise<BrowserModule | null> {
 function resolveChromePath(): string | undefined {
 	const fromEnv =
 		process.env.ELIZA_CHROME_PATH?.trim() ||
-		process.env.ELIZA_CHROME_PATH?.trim() ||
 		process.env.PUPPETEER_EXECUTABLE_PATH?.trim();
 	if (fromEnv) return fromEnv;
 	if (process.platform === "darwin") {

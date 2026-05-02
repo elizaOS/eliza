@@ -41,9 +41,7 @@ interface FrameworkFixture {
   tmpRoot: string;
   previous: {
     ELIZA_STATE_DIR: string | undefined;
-    ELIZA_STATE_DIR: string | undefined;
     ELIZA_NAMESPACE: string | undefined;
-    ELIZA_CONFIG_PATH: string | undefined;
     ELIZA_CONFIG_PATH: string | undefined;
     HOME: string | undefined;
     USERPROFILE: string | undefined;
@@ -73,9 +71,7 @@ function setupFixture(): FrameworkFixture {
 
   const previous = {
     ELIZA_STATE_DIR: process.env.ELIZA_STATE_DIR,
-    ELIZA_STATE_DIR: process.env.ELIZA_STATE_DIR,
     ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE,
-    ELIZA_CONFIG_PATH: process.env.ELIZA_CONFIG_PATH,
     ELIZA_CONFIG_PATH: process.env.ELIZA_CONFIG_PATH,
     HOME: process.env.HOME,
     USERPROFILE: process.env.USERPROFILE,
@@ -96,9 +92,7 @@ function setupFixture(): FrameworkFixture {
   };
 
   process.env.ELIZA_STATE_DIR = stateDir;
-  process.env.ELIZA_STATE_DIR = stateDir;
   delete process.env.ELIZA_NAMESPACE;
-  delete process.env.ELIZA_CONFIG_PATH;
   delete process.env.ELIZA_CONFIG_PATH;
   process.env.HOME = homeDir;
   process.env.USERPROFILE = homeDir;

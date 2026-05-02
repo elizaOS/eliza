@@ -86,8 +86,8 @@ The IP is resolved from `req.socket.remoteAddress`. When the limit is exceeded, 
 
 When the agent is running as a cloud-provisioned container (e.g., on Eliza Cloud or in an enterprise deployment), authentication and pairing are bypassed automatically. The bypass activates only when **both** conditions are met:
 
-1. `ELIZA_CLOUD_PROVISIONED=1` (or `ELIZA_CLOUD_PROVISIONED=1`) is set
-2. `ELIZA_API_TOKEN` (or `ELIZA_API_TOKEN`) is configured
+1. `ELIZA_CLOUD_PROVISIONED=1` is set
+2. `ELIZA_API_TOKEN` is configured
 
 When cloud provisioned, `GET /api/auth/status` returns `{ "required": false, "pairingEnabled": false, "expiresAt": null }` — cloud-provisioned containers enforce API auth upstream, and reporting `required: true` locally would strand clients in the pairing flow. The pairing flow is disabled since the token is already provisioned.
 
@@ -173,7 +173,7 @@ Access-Control-Allow-Headers: Content-Type, Authorization, X-API-Token, X-Api-Ke
 ## Related
 
 - [API Reference overview](/api-reference)
-- [Environment variables](/cli/environment) — `ELIZA_API_TOKEN` / `ELIZA_API_TOKEN`, `ELIZA_ALLOW_WS_QUERY_TOKEN`, `ELIZA_PAIRING_DISABLED`, `ELIZA_CLOUD_PROVISIONED` / `ELIZA_CLOUD_PROVISIONED`
+- [Environment variables](/cli/environment) — `ELIZA_API_TOKEN`, `ELIZA_ALLOW_WS_QUERY_TOKEN`, `ELIZA_PAIRING_DISABLED`, `ELIZA_CLOUD_PROVISIONED`
 
 ## Common Error Codes
 

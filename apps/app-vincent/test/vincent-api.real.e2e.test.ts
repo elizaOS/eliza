@@ -6,7 +6,7 @@ import { startLiveRuntimeServer } from "../../../packages/app-core/test/helpers/
 import type { RuntimeHarness } from "../../../packages/app-core/test/live-agent/helpers/runtime-harness.ts";
 
 const LIVE =
-  process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
+  process.env.ELIZA_LIVE_TEST === "1";
 
 async function waitForVincentRoute(runtime: RuntimeHarness): Promise<void> {
   const deadline = Date.now() + 30_000;

@@ -64,7 +64,7 @@ function isCloudProvisionedRuntime(): boolean {
     return false;
   }
   return (
-    process.env.ELIZA_CLOUD_PROVISIONED === "1" || process.env.ELIZA_CLOUD_PROVISIONED === "1"
+    process.env.ELIZA_CLOUD_PROVISIONED === "1"
   );
 }
 

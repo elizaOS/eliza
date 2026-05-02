@@ -7,7 +7,6 @@ config({ path: resolve(import.meta.dir, "../../../../.env") });
 
 const runToonLiveTest =
 	process.env.ELIZA_LIVE_TOON_TEST === "1" ||
-	process.env.ELIZA_LIVE_TOON_TEST === "1" ||
 	process.env.ELIZA_LIVE_TEST === "1" ||
 	process.env.ELIZA_LIVE_TEST === "1";
 

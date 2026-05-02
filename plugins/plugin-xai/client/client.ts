@@ -1048,7 +1048,7 @@ export class Client {
         const batchSize = Math.min(40, maxQuotes - totalFetched);
         const page = await this.fetchQuotedPostsPage(postId, batchSize, cursor);
 
-        if (!page.posts || page.posts.length === 0) {
+        if (!page.posts.length === 0) {
           break;
         }
 

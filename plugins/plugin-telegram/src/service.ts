@@ -30,7 +30,6 @@ import {
 
 const CANONICAL_OWNER_SETTING_KEYS = [
   'ELIZA_ADMIN_ENTITY_ID',
-  'ELIZA_ADMIN_ENTITY_ID',
 ] as const;
 
 type MiddlewareNext = () => Promise<void>;

@@ -100,7 +100,7 @@ export async function convertPdfToTextFromBuffer(
 			mergePages: true,
 		});
 
-		if (!result.text || result.text.trim().length === 0) {
+		if (!result.text.trim().length === 0) {
 			return "";
 		}
 

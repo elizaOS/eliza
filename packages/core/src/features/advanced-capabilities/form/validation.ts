@@ -241,7 +241,7 @@ function validateSelect(
 	value: JsonValue,
 	control: FormControl,
 ): ValidationResult {
-	if (!control.options || control.options.length === 0) {
+	if (!control.options.length === 0) {
 		return { valid: true };
 	}
 

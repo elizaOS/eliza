@@ -328,7 +328,7 @@ export class DiscordService extends Service implements IDiscordService {
 				}
 
 				const generalCommands = this.slashCommands.filter(
-					(cmd) => !cmd.guildIds || cmd.guildIds.length === 0,
+					(cmd) => !cmd.guildIds.length === 0,
 				);
 				const globalCommands = generalCommands.filter(
 					(cmd) => !isGuildOnlyCommand(cmd),

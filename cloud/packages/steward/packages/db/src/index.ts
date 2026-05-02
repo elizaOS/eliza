@@ -1,6 +1,7 @@
 import type { AgentIdentity, PolicyRule, SignRequest, TxRecord } from "@stwd/shared";
 import { eq, inArray } from "drizzle-orm";
 
+export type { DatabaseDriver } from "./client";
 export {
   closeDb,
   createDb,
@@ -13,7 +14,6 @@ export {
   getSql,
   setPGLiteOverride,
 } from "./client";
-export type { DatabaseDriver } from "./client";
 export { runMigrations } from "./migrate";
 // PGLite re-exports below pull in node:fs / node:os / node:path at module
 // init time. They are kept here for backward compatibility with the

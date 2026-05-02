@@ -1,23 +1,23 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Heart, Sparkles } from 'lucide-react';
-import { ROUTES, APP_CONFIG } from '@/lib/constants';
+import { Heart, Sparkles } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { APP_CONFIG, ROUTES } from "@/lib/constants";
 
 export default function CloningPage() {
   const router = useRouter();
-  const [dots, setDots] = useState('');
-  const [error, setError] = useState('');
+  const [dots, setDots] = useState("");
+  const [error, setError] = useState("");
   const [characterPhoto, setCharacterPhoto] = useState<string | null>(null);
-  const [characterName, setCharacterName] = useState<string>('');
-  const [characterDescription, setCharacterDescription] = useState<string>('');
+  const [characterName, setCharacterName] = useState<string>("");
+  const [characterDescription, setCharacterDescription] = useState<string>("");
   const [progressStep, setProgressStep] = useState(0);
 
   useEffect(() => {
     // Animated dots
     const interval = setInterval(() => {
-      setDots((prev) => (prev.length >= 3 ? '' : prev + '.'));
+      setDots((prev) => (prev.length >= 3 ? "" : prev + "."));
     }, 500);
 
     // Animate progress steps sequentially
@@ -26,9 +26,9 @@ export default function CloningPage() {
     }, 700);
 
     // Get character data from localStorage
-    const sessionId = localStorage.getItem('cyc_session_id');
-    const characterId = localStorage.getItem('cyc_character_id');
-    const characterDataStr = localStorage.getItem('cyc_character_data');
+    const sessionId = localStorage.getItem("cyc_session_id");
+    const characterId = localStorage.getItem("cyc_character_id");
+    const characterDataStr = localStorage.getItem("cyc_character_data");
 
     if (!characterId) {
       router.push(ROUTES.home);
@@ -39,29 +39,27 @@ export default function CloningPage() {
     if (characterDataStr) {
       try {
         const characterData = JSON.parse(characterDataStr);
-        console.log('=== CLONING PAGE CHARACTER DATA ===');
-        console.log('Full character data:', characterData);
-        
-        setCharacterName(characterData.name || '');
-        
+        console.log("=== CLONING PAGE CHARACTER DATA ===");
+        console.log("Full character data:", characterData);
+
+        setCharacterName(characterData.name || "");
+
         // Get description from bio array
         if (characterData.bio && Array.isArray(characterData.bio)) {
-          setCharacterDescription(characterData.bio[0] || '');
+          setCharacterDescription(characterData.bio[0] || "");
         }
-        
+
         // Try to get photo from various possible sources
-        const photoUrl = characterData.photoUrl || 
-                        characterData.settings?.photoUrl ||
-                        null;
-        console.log('Character photo URL:', photoUrl);
-        console.log('Has photoUrl:', !!photoUrl);
+        const photoUrl = characterData.photoUrl || characterData.settings?.photoUrl || null;
+        console.log("Character photo URL:", photoUrl);
+        console.log("Has photoUrl:", !!photoUrl);
         setCharacterPhoto(photoUrl);
-        
+
         if (!photoUrl) {
-          console.warn('⚠️  No photo URL found in character data!');
+          console.warn("⚠️  No photo URL found in character data!");
         }
       } catch (e) {
-        console.error('Failed to parse character data:', e);
+        console.error("Failed to parse character data:", e);
       }
     }
 
@@ -74,15 +72,24 @@ export default function CloningPage() {
     const createCharacter = async () => {
       try {
         // Get stored character data
-        const characterDataStr = localStorage.getItem('cyc_character_data');
+        const characterDataStr = localStorage.getItem("cyc_character_data");
         if (!characterDataStr) {
-          throw new Error('Character data not found');
+          throw new Error("Character data not found");
         }
 
         const characterData = JSON.parse(characterDataStr);
 
         // Map photoUrl to avatar_url (Cloud schema expects avatar_url, not photoUrl)
-        const { photoUrl, fullBodyImageUrl, system, username, knowledge, plugins, postExamples, ...cloudFields } = characterData;
+        const {
+          photoUrl,
+          fullBodyImageUrl,
+          system,
+          username,
+          knowledge,
+          plugins,
+          postExamples,
+          ...cloudFields
+        } = characterData;
         const cloudCharacter = {
           ...cloudFields,
           // Cloud affiliate schema expects avatar_url for the character image
@@ -97,68 +104,69 @@ export default function CloningPage() {
         // Call ElizaOS Cloud affiliate API to create character
         // Requires Bearer API key with "affiliate:create-character" permission
         const headers: Record<string, string> = {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         };
         if (APP_CONFIG.affiliateApiKey) {
-          headers['Authorization'] = `Bearer ${APP_CONFIG.affiliateApiKey}`;
+          headers["Authorization"] = `Bearer ${APP_CONFIG.affiliateApiKey}`;
         }
 
         const response = await fetch(`${APP_CONFIG.elizaCloudUrl}/api/affiliate/create-character`, {
-          method: 'POST',
+          method: "POST",
           headers,
           body: JSON.stringify({
             character: cloudCharacter,
-            affiliateId: 'clone-your-crush',
+            affiliateId: "clone-your-crush",
             sessionId,
           }),
         });
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
-          console.error('Cloud API error:', errorData);
-          throw new Error(errorData.error || 'Failed to create character in Cloud');
+          console.error("Cloud API error:", errorData);
+          throw new Error(errorData.error || "Failed to create character in Cloud");
         }
 
         const result = await response.json();
 
         if (!result.success || !result.characterId) {
-          throw new Error('Invalid response from Cloud');
+          throw new Error("Invalid response from Cloud");
         }
 
-        // Store full-body image URL if generated
-        const finalCharacterData = localStorage.getItem('cyc_character_data');
-        let fullBodyImageUrl = null;
+        // Re-read full-body image URL in case it was updated since the
+        // initial destructure above.
+        const finalCharacterData = localStorage.getItem("cyc_character_data");
+        let freshFullBodyImageUrl = fullBodyImageUrl;
         if (finalCharacterData) {
           try {
             const parsed = JSON.parse(finalCharacterData);
-            fullBodyImageUrl = parsed.fullBodyImageUrl;
+            freshFullBodyImageUrl = parsed.fullBodyImageUrl;
           } catch (e) {
-            console.error('Error parsing final character data:', e);
+            console.error("Error parsing final character data:", e);
           }
         }
 
         // Redirect to ElizaOS Cloud chat page with images in URL params
         const cloudChatUrl = new URL(`${APP_CONFIG.elizaCloudUrl}/chat/${result.characterId}`);
-        cloudChatUrl.searchParams.set('source', 'clone-your-crush');
-        cloudChatUrl.searchParams.set('session', sessionId || '');
-        
+        cloudChatUrl.searchParams.set("source", "clone-your-crush");
+        cloudChatUrl.searchParams.set("session", sessionId || "");
+
         // Pass images via URL since localStorage won't work cross-origin
         if (characterData.photoUrl) {
-          cloudChatUrl.searchParams.set('photoUrl', characterData.photoUrl);
+          cloudChatUrl.searchParams.set("photoUrl", characterData.photoUrl);
         }
-        if (fullBodyImageUrl) {
-          cloudChatUrl.searchParams.set('fullBodyImageUrl', fullBodyImageUrl);
+        if (freshFullBodyImageUrl) {
+          cloudChatUrl.searchParams.set("fullBodyImageUrl", freshFullBodyImageUrl);
         }
-        
+
         console.log(`Redirecting to Cloud: ${cloudChatUrl.toString()}`);
-        
+
         // Small delay to show the animation
         setTimeout(() => {
           window.location.href = cloudChatUrl.toString();
         }, 2000);
       } catch (err) {
-        console.error('Error creating character:', err);
-        setError('Failed to create your character. Please try again.');
+        console.error("Error creating character:", err);
+        setError("Failed to create your character. Please try again.");
         setTimeout(() => {
           router.push(ROUTES.home);
         }, 3000);
@@ -189,7 +197,10 @@ export default function CloningPage() {
               />
             ) : (
               <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
-                <Heart className="w-32 h-32 text-primary/40 animate-pulse-glow" fill="currentColor" />
+                <Heart
+                  className="w-32 h-32 text-primary/40 animate-pulse-glow"
+                  fill="currentColor"
+                />
               </div>
             )}
 
@@ -206,7 +217,7 @@ export default function CloningPage() {
               {/* Name and Description */}
               <div className="mb-6">
                 <h1 className="text-4xl md:text-5xl font-bold text-white mb-3">
-                  {characterName || 'Your Crush'}
+                  {characterName || "Your Crush"}
                   <span className="ml-3 text-pink-400 animate-pulse-glow">{dots}</span>
                 </h1>
                 {characterDescription && (
@@ -219,12 +230,12 @@ export default function CloningPage() {
               {/* Progress Steps - Sequential Chat-like Animation */}
               <div className="space-y-3 mb-6 min-h-[120px]">
                 {progressStep >= 0 && (
-                  <div 
+                  <div
                     className={`flex items-center gap-3 bg-white/10 backdrop-blur-md rounded-xl p-3 transition-all duration-500 ${
-                      progressStep > 0 ? 'opacity-60 scale-95' : 'opacity-100 scale-100'
+                      progressStep > 0 ? "opacity-60 scale-95" : "opacity-100 scale-100"
                     }`}
-                    style={{ 
-                      animation: 'slideInUp 0.4s ease-out',
+                    style={{
+                      animation: "slideInUp 0.4s ease-out",
                     }}
                   >
                     <Sparkles className="w-4 h-4 text-pink-300 flex-shrink-0 animate-spin" />
@@ -232,12 +243,12 @@ export default function CloningPage() {
                   </div>
                 )}
                 {progressStep >= 1 && (
-                  <div 
+                  <div
                     className={`flex items-center gap-3 bg-white/10 backdrop-blur-md rounded-xl p-3 transition-all duration-500 ${
-                      progressStep > 1 ? 'opacity-60 scale-95' : 'opacity-100 scale-100'
+                      progressStep > 1 ? "opacity-60 scale-95" : "opacity-100 scale-100"
                     }`}
-                    style={{ 
-                      animation: 'slideInUp 0.4s ease-out',
+                    style={{
+                      animation: "slideInUp 0.4s ease-out",
                     }}
                   >
                     <Sparkles className="w-4 h-4 text-purple-300 flex-shrink-0 animate-spin" />
@@ -245,10 +256,10 @@ export default function CloningPage() {
                   </div>
                 )}
                 {progressStep >= 2 && (
-                  <div 
+                  <div
                     className="flex items-center gap-3 bg-white/10 backdrop-blur-md rounded-xl p-3 opacity-100 scale-100 transition-all duration-500"
-                    style={{ 
-                      animation: 'slideInUp 0.4s ease-out',
+                    style={{
+                      animation: "slideInUp 0.4s ease-out",
                     }}
                   >
                     <Sparkles className="w-4 h-4 text-pink-300 flex-shrink-0 animate-spin" />
@@ -264,20 +275,14 @@ export default function CloningPage() {
         <div className="min-h-screen flex items-center justify-center p-4">
           <div className="text-center max-w-md">
             <Heart className="w-24 h-24 text-red-500 mx-auto mb-6" fill="currentColor" />
-            <h1 className="text-3xl font-bold mb-4 text-red-600">
-              Oops!
-            </h1>
-            <p className="text-lg text-gray-700 mb-4">
-              {error}
-            </p>
-            <p className="text-sm text-gray-500">
-              Redirecting you back to try again...
-            </p>
+            <h1 className="text-3xl font-bold mb-4 text-red-600">Oops!</h1>
+            <p className="text-lg text-gray-700 mb-4">{error}</p>
+            <p className="text-sm text-gray-500">Redirecting you back to try again...</p>
 
             {/* Footer Branding */}
             <div className="mt-12">
               <p className="text-sm text-gray-600">
-                A product of{' '}
+                A product of{" "}
                 <a
                   href="https://elizaos.ai"
                   target="_blank"

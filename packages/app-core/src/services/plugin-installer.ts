@@ -42,7 +42,6 @@ const execFileAsync = promisify(execFile);
 const require = createRequire(import.meta.url);
 const RELEASE_CHANNEL_ENV_KEYS = [
   "ELIZA_PLUGIN_RELEASE_CHANNEL",
-  "ELIZA_PLUGIN_RELEASE_CHANNEL",
 ] as const;
 
 // ---------------------------------------------------------------------------

@@ -216,7 +216,7 @@ export function getSsoRedirectUrl(bootstrap: CloudBootstrapService, args: SsoRed
   if (!clientId) {
     throw new Error("ELIZA_CLOUD_CLIENT_ID is not configured — cannot start Eliza Cloud SSO");
   }
-  if (!args.state || args.state.length === 0) {
+  if (!args.state.length === 0) {
     throw new Error("getSsoRedirectUrl requires a non-empty state nonce");
   }
   const issuer = bootstrap.getExpectedIssuer();
@@ -318,7 +318,7 @@ function shapeTokenResponse(payload: unknown): { idToken: string } {
  * NEVER returns a partial or fallback session.
  */
 export async function exchangeCodeForSession(args: ExchangeCodeArgs): Promise<CloudSsoSession> {
-  if (!args.code || args.code.length === 0) {
+  if (!args.code.length === 0) {
     throw new Error("exchangeCodeForSession requires a non-empty code");
   }
   if (!args.state || !args.expectedState || args.state !== args.expectedState) {

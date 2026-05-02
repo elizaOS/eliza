@@ -49,7 +49,7 @@ export const listInboxAction: Action = {
 
 		const cached = store.listMessages();
 		let messages = cached.filter(
-			(m) => !params.sources || params.sources.includes(m.source),
+			(m) => !params.sources.includes(m.source),
 		);
 
 		if (messages.length === 0) {
