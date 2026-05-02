@@ -33,7 +33,6 @@ import path from "node:path";
 //   updateWalletTradeLedgerEntryStatus,
 // } from "./wallet-trading-profile.js";
 // Phase 2 extraction: Website-blocker routes → app-lifeops/src/routes/plugin.ts (lifeopsPlugin)
-import { setActiveTrainingService } from "@elizaos/app-training/services/training-service-registry";
 import {
   type AgentRuntime,
   type IAgentRuntime,
@@ -936,6 +935,9 @@ type TrainingServiceCtor = new (options: {
   setConfig: (nextConfig: ElizaConfig) => void;
 }) => TrainingServiceWithRuntime;
 
+const TRAINING_SERVICE_REGISTRY_MODULE: string =
+  "@elizaos/app-training/services/training-service-registry";
+
 async function resolveTrainingServiceCtor(): Promise<TrainingServiceCtor | null> {
   const candidates = [
     "../services/training-service",
@@ -959,6 +961,25 @@ async function resolveTrainingServiceCtor(): Promise<TrainingServiceCtor | null>
   }
 
   return null;
+}
+
+async function setActiveTrainingServiceIfAvailable(
+  service: TrainingServiceWithRuntime,
+): Promise<void> {
+  try {
+    const loaded = (await import(
+      /* @vite-ignore */ TRAINING_SERVICE_REGISTRY_MODULE
+    )) as {
+      setActiveTrainingService?: (
+        activeService: TrainingServiceWithRuntime,
+      ) => void;
+    };
+    loaded.setActiveTrainingService?.(service);
+  } catch (err) {
+    logger.debug(
+      `[eliza-api] Training service registry unavailable: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 }
 
 // mcpServersIncludeStdio, resolveMcpTerminalAuthorizationRejection extracted to server-helpers-mcp.ts
@@ -3045,7 +3066,7 @@ export async function startApiServer(opts?: {
   };
   if (trainingServiceCtor) {
     state.trainingService = new trainingServiceCtor(trainingServiceOptions);
-    setActiveTrainingService(state.trainingService);
+    await setActiveTrainingServiceIfAvailable(state.trainingService);
   } else {
     logger.info(
       "[eliza-api] Training service package unavailable; training routes will be disabled",
