@@ -482,6 +482,10 @@ if (-not $launcher) {
   }
 
   Write-Host "Installing via Inno Setup: $($installer.FullName)"
+  Write-Host "Installer size: $([math]::Round($installer.Length / 1MB, 1)) MB"
+  Write-Host "Install target: $installerRoot"
+  # Log disk space before install — the installer extracts ~1.5GB of files.
+  Get-Volume | Where-Object { $_.DriveLetter } | Format-Table DriveLetter, @{N='FreeGB';E={[math]::Round($_.SizeRemaining/1GB,1)}}, @{N='TotalGB';E={[math]::Round($_.Size/1GB,1)}}
   Remove-Item $installerRoot -Recurse -Force -ErrorAction SilentlyContinue
   New-Item -ItemType Directory -Force -Path $installerRoot | Out-Null
 
@@ -491,7 +495,6 @@ if (-not $launcher) {
     "/SUPPRESSMSGBOXES",
     "/NORESTART",
     "/SP-",
-    "/CLOSEAPPLICATIONS",
     "/DIR=$installerRoot",
     "/LOG=$installerLogPath"
   )
@@ -502,7 +505,7 @@ if (-not $launcher) {
     Write-Host "Inno Setup installer attempt 1 exited with code $($installerProcess.ExitCode)."
     if (Test-Path $installerLogPath) {
       Write-Host "--- Inno Setup log (attempt 1) ---"
-      Get-Content $installerLogPath -Tail 100 | ForEach-Object { Write-Host $_ }
+      Get-Content $installerLogPath | ForEach-Object { Write-Host $_ }
       Write-Host "--- end Inno Setup log ---"
     }
 
@@ -532,7 +535,7 @@ if (-not $launcher) {
         Write-Host "Inno Setup installer attempt 2 (cmd /c) failed with exit code $($cmdProcess.ExitCode)."
         if (Test-Path $installerLogPath) {
           Write-Host "--- Inno Setup log (attempt 2) ---"
-          Get-Content $installerLogPath -Tail 100 | ForEach-Object { Write-Host $_ }
+          Get-Content $installerLogPath | ForEach-Object { Write-Host $_ }
           Write-Host "--- end Inno Setup log ---"
         } else {
           Write-Host "Inno Setup log not found at $installerLogPath"
