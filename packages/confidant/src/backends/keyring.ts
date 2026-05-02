@@ -1,4 +1,4 @@
-import { Entry } from "@napi-rs/keyring";
+import type { Entry as EntryType } from "@napi-rs/keyring";
 import { parseReference } from "../references.js";
 import type { VaultReference } from "../types.js";
 import {
@@ -36,6 +36,7 @@ export class KeyringBackend implements VaultBackend {
 
   async resolve(ref: VaultReference): Promise<string> {
     const { service, account } = parseKeyringRef(ref);
+    const Entry = await loadEntryClass();
     let value: string | null;
     try {
       value = new Entry(service, account).getPassword();
@@ -54,6 +55,7 @@ export class KeyringBackend implements VaultBackend {
   async store(id: string, value: string): Promise<VaultReference> {
     const account = id;
     const service = this.defaultService;
+    const Entry = await loadEntryClass();
     try {
       new Entry(service, account).setPassword(value);
     } catch (err) {
@@ -64,6 +66,7 @@ export class KeyringBackend implements VaultBackend {
 
   async remove(ref: VaultReference): Promise<void> {
     const { service, account } = parseKeyringRef(ref);
+    const Entry = await loadEntryClass();
     try {
       new Entry(service, account).deleteCredential();
     } catch (err) {
@@ -72,6 +75,27 @@ export class KeyringBackend implements VaultBackend {
       throw mapKeyringError(err, `delete keychain entry ${service}/${account}`);
     }
   }
+}
+
+/**
+ * Lazy-loads `@napi-rs/keyring` and returns the `Entry` constructor.
+ * Throws BackendNotConfiguredError on hosts where the native binding
+ * is known to crash the process (headless Linux without D-Bus). The
+ * top-level import was changed to type-only so merely importing this
+ * module does not initialize the native binding.
+ */
+async function loadEntryClass(): Promise<typeof EntryType> {
+  if (
+    process.env.CONFIDANT_DISABLE_KEYCHAIN === "1" ||
+    (process.platform === "linux" && !process.env.DBUS_SESSION_BUS_ADDRESS)
+  ) {
+    throw new BackendNotConfiguredError(
+      "keyring",
+      "OS keychain unsafe on this host (headless Linux without DBUS_SESSION_BUS_ADDRESS, or *_DISABLE_KEYCHAIN=1). On Linux, ensure libsecret + a Secret Service agent is running, or use a different backend.",
+    );
+  }
+  const mod = await import("@napi-rs/keyring");
+  return mod.Entry;
 }
 
 function parseKeyringRef(ref: VaultReference): {
