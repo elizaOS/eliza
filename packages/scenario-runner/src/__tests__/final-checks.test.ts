@@ -21,8 +21,8 @@ async function withMockGoogleLedger<T>(
   requests: unknown[],
   run: () => Promise<T>,
 ): Promise<T> {
-  const previousMockBase = process.env.MILADY_MOCK_GOOGLE_BASE;
-  const previousAllowRealWrites = process.env.MILADY_ALLOW_REAL_GMAIL_WRITES;
+  const previousMockBase = process.env.ELIZA_MOCK_GOOGLE_BASE;
+  const previousAllowRealWrites = process.env.ELIZA_ALLOW_REAL_GMAIL_WRITES;
   const server = createServer((req, res) => {
     if (req.method === "GET" && req.url === "/__mock/requests") {
       res.writeHead(200, { "content-type": "application/json" });
@@ -37,20 +37,20 @@ async function withMockGoogleLedger<T>(
   if (!address || typeof address === "string") {
     throw new Error("mock ledger server did not bind to a TCP port");
   }
-  process.env.MILADY_MOCK_GOOGLE_BASE = `http://127.0.0.1:${address.port}`;
-  delete process.env.MILADY_ALLOW_REAL_GMAIL_WRITES;
+  process.env.ELIZA_MOCK_GOOGLE_BASE = `http://127.0.0.1:${address.port}`;
+  delete process.env.ELIZA_ALLOW_REAL_GMAIL_WRITES;
   try {
     return await run();
   } finally {
     if (previousMockBase === undefined) {
-      delete process.env.MILADY_MOCK_GOOGLE_BASE;
+      delete process.env.ELIZA_MOCK_GOOGLE_BASE;
     } else {
-      process.env.MILADY_MOCK_GOOGLE_BASE = previousMockBase;
+      process.env.ELIZA_MOCK_GOOGLE_BASE = previousMockBase;
     }
     if (previousAllowRealWrites === undefined) {
-      delete process.env.MILADY_ALLOW_REAL_GMAIL_WRITES;
+      delete process.env.ELIZA_ALLOW_REAL_GMAIL_WRITES;
     } else {
-      process.env.MILADY_ALLOW_REAL_GMAIL_WRITES = previousAllowRealWrites;
+      process.env.ELIZA_ALLOW_REAL_GMAIL_WRITES = previousAllowRealWrites;
     }
     await new Promise<void>((resolve, reject) =>
       server.close((err) => (err ? reject(err) : resolve())),

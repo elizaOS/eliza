@@ -4,21 +4,21 @@
  * The AOSP build pipeline stages a small chat model + a small embedding
  * model into the APK at `assets/agent/models/{file}.gguf` plus a
  * `manifest.json` describing each one (id, role, sha256, sizeBytes).
- * `MiladyAgentService.extractAssetsIfNeeded()` copies those files into
- * `$MILADY_STATE_DIR/local-inference/models/` on first launch.
+ * `ElizaAgentService.extractAssetsIfNeeded()` copies those files into
+ * `$ELIZA_STATE_DIR/local-inference/models/` on first launch.
  *
  * This module reads the manifest at runtime startup and registers each
- * file as a milady-owned model in the local-inference registry, so the
+ * file as a eliza-owned model in the local-inference registry, so the
  * auto-assign pass picks them up for TEXT_LARGE / TEXT_SMALL /
  * TEXT_EMBEDDING slots without needing the user to download anything.
  *
  * Idempotent: re-running with the registry already populated is a
- * no-op for unchanged entries (`upsertMiladyModel` overwrites entries
+ * no-op for unchanged entries (`upsertElizaModel` overwrites entries
  * with the same id, so updated sha256s on a future re-bundle replace
  * the old metadata cleanly).
  *
  * Source classification: the runtime treats bundled models as
- * `source: "milady-download"` because Milady ships the file and Milady
+ * `source: "eliza-download"` because Eliza ships the file and Eliza
  * owns it on disk — same lifecycle as a user-initiated download
  * (uninstall removes the file, the registry tracks the install). The
  * only difference is the file arrived via APK extraction rather than
@@ -27,8 +27,9 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import { miladyModelsDir } from "./paths";
-import { upsertMiladyModel } from "./registry";
+import { ensureDefaultAssignment } from "./assignments";
+import { elizaModelsDir } from "./paths";
+import { upsertElizaModel } from "./registry";
 import type { InstalledModel } from "./types";
 
 interface BundledModelEntry {
@@ -47,7 +48,7 @@ interface BundledModelManifest {
 }
 
 function manifestPath(): string {
-  return path.join(miladyModelsDir(), "manifest.json");
+  return path.join(elizaModelsDir(), "manifest.json");
 }
 
 async function readManifest(): Promise<BundledModelManifest | null> {
@@ -72,7 +73,7 @@ async function readManifest(): Promise<BundledModelManifest | null> {
 export async function registerBundledModels(): Promise<number> {
   const manifest = await readManifest();
   if (!manifest) return 0;
-  const dir = miladyModelsDir();
+  const dir = elizaModelsDir();
   let registered = 0;
   for (const entry of manifest.models) {
     const filePath = path.join(dir, entry.ggufFile);
@@ -95,10 +96,20 @@ export async function registerBundledModels(): Promise<number> {
       hfRepo: entry.hfRepo,
       installedAt: new Date().toISOString(),
       lastUsedAt: null,
-      source: "milady-download",
+      source: "eliza-download",
       sha256: entry.sha256 ?? undefined,
     };
-    await upsertMiladyModel(installed);
+    await upsertElizaModel(installed);
+    // Auto-assign each bundled model to its appropriate slots if the
+    // user hasn't already assigned them. ensureDefaultAssignment is
+    // idempotent and slot-aware: a chat model fills TEXT_SMALL /
+    // TEXT_LARGE if empty, an embedding model fills TEXT_EMBEDDING if
+    // empty, and existing assignments are never overwritten. This is
+    // why we don't use `autoAssignAtBoot` here — that helper requires
+    // exactly one installed model and short-circuits to null when
+    // >1 model is registered (which is precisely the AOSP case:
+    // chat + embedding always ship together).
+    await ensureDefaultAssignment(entry.id);
     registered += 1;
   }
   return registered;

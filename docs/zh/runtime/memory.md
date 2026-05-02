@@ -4,7 +4,7 @@ sidebarTitle: "内存"
 description: "内存持久化、嵌入生成、向量搜索、内存类型和检索 API。"
 ---
 
-Milady 的内存系统由 `@elizaos/plugin-sql` 提供持久化支持，由 `@elizaos/plugin-local-embedding` 提供向量嵌入支持。本页从运行时的角度介绍内存基础设施。
+Eliza 的内存系统由 `@elizaos/plugin-sql` 提供持久化支持，由 `@elizaos/plugin-local-embedding` 提供向量嵌入支持。本页从运行时的角度介绍内存基础设施。
 
 <div id="memory-architecture">
 
@@ -36,13 +36,13 @@ Memory retrieval → injected into context
 
 </div>
 
-PGLite 是 PostgreSQL 的嵌入式 WebAssembly 构建版本，在 Node.js 进程中运行，无需外部数据库服务器。Milady 通过 `PGLITE_DATA_DIR` 配置数据目录：
+PGLite 是 PostgreSQL 的嵌入式 WebAssembly 构建版本，在 Node.js 进程中运行，无需外部数据库服务器。Eliza 通过 `PGLITE_DATA_DIR` 配置数据目录：
 
 ```
-Default: ~/.milady/workspace/.eliza/.elizadb
+Default: ~/.eliza/workspace/.eliza/.elizadb
 ```
 
-如果目录不存在，将在启动时创建。在 `adapter.init()` 之后，Milady 会执行健康检查：
+如果目录不存在，将在启动时创建。在 `adapter.init()` 之后，Eliza 会执行健康检查：
 
 ```typescript
 const files = await fs.readdir(pgliteDataDir);
@@ -57,7 +57,7 @@ if (files.length === 0) {
 
 </div>
 
-如果 PGLite 初始化因可恢复错误（WASM 中止或迁移架构错误）而失败，Milady 会备份现有数据目录并重试：
+如果 PGLite 初始化因可恢复错误（WASM 中止或迁移架构错误）而失败，Eliza 会备份现有数据目录并重试：
 
 ```typescript
 // Back up: <dataDir>.corrupt-<timestamp>
@@ -91,7 +91,7 @@ if (files.length === 0) {
 ```
 nomic-embed-text-v1.5.Q5_K_M.gguf
 Dimensions: 768
-Model directory: ~/.milady/models/
+Model directory: ~/.eliza/models/
 ```
 
 <div id="environment-variables">
@@ -110,7 +110,7 @@ Model directory: ~/.milady/models/
 | `LOCAL_EMBEDDING_CONTEXT_SIZE` | auto | 上下文窗口大小 |
 | `LOCAL_EMBEDDING_GPU_LAYERS` | `"auto"`（Apple Silicon）/ `"0"`（其他） | GPU 加速 |
 | `LOCAL_EMBEDDING_USE_MMAP` | `"false"`（Apple Silicon）/ `"true"`（其他） | 内存映射模型加载 |
-| `MODELS_DIR` | `~/.milady/models` | 模型存储目录 |
+| `MODELS_DIR` | `~/.eliza/models` | 模型存储目录 |
 
 <div id="memory-config">
 
@@ -134,7 +134,7 @@ export type MemoryConfig = {
 
 </div>
 
-默认后端通过 `plugin-sql` 使用 elizaOS 核心内存。在 `milady.json` 中进行配置：
+默认后端通过 `plugin-sql` 使用 elizaOS 核心内存。在 `eliza.json` 中进行配置：
 
 ```json
 {
@@ -166,7 +166,7 @@ Quantum Memory Daemon 后端支持索引外部文件路径：
       ],
       "sessions": {
         "enabled": true,
-        "exportDir": "~/.milady/sessions",
+        "exportDir": "~/.eliza/sessions",
         "retentionDays": 30
       },
       "update": {
@@ -203,7 +203,7 @@ Quantum Memory Daemon 后端支持索引外部文件路径：
         "provider": "local",
         "store": {
           "driver": "sqlite",
-          "path": "~/.milady/memory-search.db",
+          "path": "~/.eliza/memory-search.db",
           "vector": {
             "enabled": true,
             "extensionPath": null
@@ -305,7 +305,7 @@ Quantum Memory Daemon 后端支持索引外部文件路径：
 
 </div>
 
-当上下文接近 token 限制时，Milady 可以修剪旧的工具结果：
+当上下文接近 token 限制时，Eliza 可以修剪旧的工具结果：
 
 ```json
 {

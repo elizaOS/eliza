@@ -1132,7 +1132,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         """Build command for OpenClaw benchmark tasks."""
         args = [
             python,
-            repo("benchmarks/openclaw-benchmark/milady_adapter.py"),
+            repo("benchmarks/openclaw-benchmark/eliza_adapter.py"),
             "--json",
         ]
         task = extra.get("task")

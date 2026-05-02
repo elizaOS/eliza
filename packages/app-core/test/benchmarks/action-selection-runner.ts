@@ -47,7 +47,7 @@ export interface ActionBenchmarkResult {
   pass: boolean;
   latencyMs: number;
   error?: string;
-  /** Populated when trajectory capture is enabled (MILADY_DUMP_TRAJECTORIES=1). */
+  /** Populated when trajectory capture is enabled (ELIZA_DUMP_TRAJECTORIES=1). */
   trajectory?: TrajectoryRecord;
   /** Path to per-case trajectory JSON file when written. */
   trajectoryPath?: string;
@@ -122,7 +122,7 @@ export interface ActionBenchmarkRunOptions {
   timeoutMsPerCase?: number;
   /**
    * Directory to write per-case trajectory JSON files. Only used when
-   * trajectory capture is enabled (`MILADY_DUMP_TRAJECTORIES=1` or the
+   * trajectory capture is enabled (`ELIZA_DUMP_TRAJECTORIES=1` or the
    * `forceTrajectoryCapture` flag).
    */
   trajectoryDir?: string;
@@ -132,7 +132,7 @@ export interface ActionBenchmarkRunOptions {
    * Number of independent runs per case. Defaults to 1. When > 1, the
    * report includes a reliability table bucketed by pass-rate (0/N, 1/N,
    * 2/N, …, N/N) so deterministic-broken cases are distinguished from
-   * stochastic flakes. Override via `MILADY_BENCHMARK_RUNS_PER_CASE`.
+   * stochastic flakes. Override via `ELIZA_BENCHMARK_RUNS_PER_CASE`.
    */
   runsPerCase?: number;
 }
@@ -227,13 +227,13 @@ function isRetryableCaseError(error: string | undefined): boolean {
  * Inter-case pause to prevent the benchmark from saturating TPM limits on
  * throughput-constrained providers (e.g. GROQ llama-3.1-8b-instant has a
  * 250k TPM ceiling that a 69-case run will otherwise wipe out). Override
- * with `MILADY_BENCHMARK_CASE_PAUSE_MS`. Default is off for local non-TPM
+ * with `ELIZA_BENCHMARK_CASE_PAUSE_MS`. Default is off for local non-TPM
  * providers; opt-in for rate-limited providers.
  */
 function caseThrottleMs(): number {
   const raw =
     typeof process !== "undefined"
-      ? process.env.MILADY_BENCHMARK_CASE_PAUSE_MS
+      ? process.env.ELIZA_BENCHMARK_CASE_PAUSE_MS
       : undefined;
   if (!raw) return 0;
   const parsed = Number.parseInt(raw, 10);
@@ -589,7 +589,7 @@ async function seedBenchmarkCaseFixtures(
   // 3) Seed a Google OAuth connector grant + token file so calendar/inbox
   //    cases can reach the mock Google server. The mock's
   //    `refreshGoogleTokensFromSeededGrants` reads plain-JSON files under
-  //    `${MILADY_STATE_DIR}/credentials/lifeops/google/...` and indexes them
+  //    `${ELIZA_STATE_DIR}/credentials/lifeops/google/...` and indexes them
   //    by `accessToken`. The lifeops handler reads the same file via
   //    `readStoredGoogleTokenFile`, which transparently supports legacy
   //    plaintext tokens, so a single plain-JSON write satisfies both sides.
@@ -899,7 +899,7 @@ export async function runActionSelectionBenchmark(
   const runsPerCaseEnv = (() => {
     const raw =
       typeof process !== "undefined"
-        ? process.env.MILADY_BENCHMARK_RUNS_PER_CASE
+        ? process.env.ELIZA_BENCHMARK_RUNS_PER_CASE
         : undefined;
     if (!raw) return undefined;
     const parsed = Number.parseInt(raw, 10);

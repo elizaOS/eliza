@@ -124,7 +124,7 @@ function baseConfig(over: Partial<N8nSidecarConfig> = {}): N8nSidecarConfig {
     maxRetries: 2,
     backoffBaseMs: 5,
     startPort: 5678,
-    stateDir: "/tmp/milady-n8n-test",
+    stateDir: "/tmp/eliza-n8n-test",
     version: "1.70.0",
     ...over,
   };
@@ -189,12 +189,12 @@ describe("N8nSidecar", () => {
         cwd: string;
         env: NodeJS.ProcessEnv;
       };
-      expect(spawnOptions.cwd).toBe("/tmp/milady-n8n-test");
+      expect(spawnOptions.cwd).toBe("/tmp/eliza-n8n-test");
       expect(spawnOptions.env.NPM_CONFIG_CACHE).toBe(
-        "/tmp/milady-n8n-test/.npm-cache",
+        "/tmp/eliza-n8n-test/.npm-cache",
       );
       expect(spawnOptions.env.npm_config_cache).toBe(
-        "/tmp/milady-n8n-test/.npm-cache",
+        "/tmp/eliza-n8n-test/.npm-cache",
       );
 
       await sidecar.stop();
@@ -228,7 +228,7 @@ describe("N8nSidecar", () => {
 
     it("reuses a reachable n8n instance when the preferred port is already occupied", async () => {
       const stateDir = await fs.mkdtemp(
-        path.join(os.tmpdir(), "milady-n8n-existing-"),
+        path.join(os.tmpdir(), "eliza-n8n-existing-"),
       );
       await fs.writeFile(path.join(stateDir, "api-key"), "cached_key_abc");
 
@@ -567,7 +567,7 @@ describe("N8nSidecar", () => {
 
   describe("orphan reaping (Bug 2)", () => {
     async function makeStateDir(): Promise<string> {
-      const dir = await fs.mkdtemp(path.join(os.tmpdir(), "milady-n8n-"));
+      const dir = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-n8n-"));
       return dir;
     }
 
@@ -752,7 +752,7 @@ describe("N8nSidecar", () => {
   describe("API key persistence (Bug 6)", () => {
     it("reuses a cached api key when /rest/api-keys accepts it", async () => {
       const stateDir = await fs.mkdtemp(
-        path.join(os.tmpdir(), "milady-n8n-key-"),
+        path.join(os.tmpdir(), "eliza-n8n-key-"),
       );
       await fs.writeFile(path.join(stateDir, "api-key"), "cached_key_abc");
 
@@ -807,7 +807,7 @@ describe("N8nSidecar", () => {
 
     it("re-provisions and persists a new key when the cached key is rejected", async () => {
       const stateDir = await fs.mkdtemp(
-        path.join(os.tmpdir(), "milady-n8n-key-"),
+        path.join(os.tmpdir(), "eliza-n8n-key-"),
       );
       await fs.writeFile(path.join(stateDir, "api-key"), "stale_key");
 

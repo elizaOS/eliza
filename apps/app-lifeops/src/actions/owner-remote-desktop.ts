@@ -108,7 +108,7 @@ export const ownerRemoteDesktopAction: Action & {
     {
       name: "pairingCode",
       description:
-        "6-digit one-time pairing code for start. Required unless MILADY_REMOTE_LOCAL_MODE=1.",
+        "6-digit one-time pairing code for start. Required unless ELIZA_REMOTE_LOCAL_MODE=1.",
       required: false,
       schema: { type: "string" as const },
     },

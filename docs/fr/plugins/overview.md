@@ -1,7 +1,7 @@
 ---
 title: Vue d'ensemble des plugins
 sidebarTitle: Vue d'ensemble
-description: Le système de plugins de Milady fournit des capacités modulaires — fournisseurs de modèles, connecteurs de plateformes, intégrations DeFi et fonctionnalités personnalisées.
+description: Le système de plugins de Eliza fournit des capacités modulaires — fournisseurs de modèles, connecteurs de plateformes, intégrations DeFi et fonctionnalités personnalisées.
 ---
 
 Les plugins sont le mécanisme d'extension principal d'elizaOS. Chaque capacité au-delà du runtime principal — des fournisseurs de LLM aux interactions blockchain — est livrée sous forme de plugin.
@@ -28,7 +28,7 @@ Un plugin est un module autonome qui enregistre un ou plusieurs des éléments s
 <CardGroup cols={2}>
 
 <Card title="Plugins principaux" icon="cube" href="/fr/plugin-registry/knowledge">
-  Plugins essentiels livrés avec chaque installation de Milady — knowledge, database, form, cron, shell, agent-skills, trajectories et agent-orchestrator.
+  Plugins essentiels livrés avec chaque installation de Eliza — knowledge, database, form, cron, shell, agent-skills, trajectories et agent-orchestrator.
 </Card>
 
 <Card title="Fournisseurs de modèles" icon="brain" href="/fr/plugin-registry/llm/openai">
@@ -57,16 +57,16 @@ Un plugin est un module autonome qui enregistre un ou plusieurs des éléments s
 
 Les plugins sont chargés lors de l'initialisation du runtime dans cet ordre :
 
-1. **Plugin Milady** — Le plugin passerelle (`createMiladyPlugin()`) fournissant le contexte du workspace, les clés de session, les emotes, les actions personnalisées et les actions de cycle de vie. Toujours en première position dans le tableau de plugins.
+1. **Plugin Eliza** — Le plugin passerelle (`createElizaPlugin()`) fournissant le contexte du workspace, les clés de session, les emotes, les actions personnalisées et les actions de cycle de vie. Toujours en première position dans le tableau de plugins.
 2. **Plugins pré-enregistrés** — `@elizaos/plugin-sql` et `@elizaos/plugin-local-embedding` sont pré-enregistrés avant `runtime.initialize()` pour éviter les conditions de concurrence.
 3. **Plugins principaux** — Toujours chargés : `sql`, `local-embedding`, `form`, `knowledge`, `trajectories`, `agent-orchestrator`, `cron`, `shell`, `agent-skills` (voir `packages/agent/src/runtime/core-plugins.ts`). Des plugins supplémentaires comme `pdf`, `cua`, `browser`, `computeruse`, `obsidian`, `code`, `repoprompt`, `claude-code-workbench`, `vision`, `cli`, `edge-tts`, `elevenlabs`, `discord`, `telegram` et `twitch` sont optionnels et chargés lorsque leurs feature flags ou variables d'environnement sont configurés.
 4. **Plugins auto-activés** — Les plugins de connecteurs, fournisseurs, fonctionnalités, streaming, abonnement, hooks (webhooks + Gmail Watch) et génération de médias sont auto-activés en fonction de la configuration et des variables d'environnement (voir [Architecture](/fr/plugins/architecture) pour les cartes complètes).
-5. **Plugins éjectés** — Surcharges locales découvertes depuis `~/.milady/plugins/ejected/`. Lorsqu'une copie éjectée existe, elle a la priorité sur la version publiée sur npm.
-6. **Plugins installés par l'utilisateur** — Suivis dans `plugins.installs` dans `milady.json`. Collectés avant les plugins drop-in ; tout nom de plugin déjà présent ici a la priorité.
-7. **Plugins personnalisés/drop-in** — Scannés depuis `~/.milady/plugins/custom/` et tout chemin supplémentaire dans `plugins.load.paths`. Les plugins dont les noms existent déjà dans `plugins.installs` sont ignorés (règle de priorité de `mergeDropInPlugins`).
+5. **Plugins éjectés** — Surcharges locales découvertes depuis `~/.eliza/plugins/ejected/`. Lorsqu'une copie éjectée existe, elle a la priorité sur la version publiée sur npm.
+6. **Plugins installés par l'utilisateur** — Suivis dans `plugins.installs` dans `eliza.json`. Collectés avant les plugins drop-in ; tout nom de plugin déjà présent ici a la priorité.
+7. **Plugins personnalisés/drop-in** — Scannés depuis `~/.eliza/plugins/custom/` et tout chemin supplémentaire dans `plugins.load.paths`. Les plugins dont les noms existent déjà dans `plugins.installs` sont ignorés (règle de priorité de `mergeDropInPlugins`).
 
 ```json
-// milady.json plugin configuration
+// eliza.json plugin configuration
 {
   "plugins": {
     "allow": ["@elizaos/plugin-openai", "discord"],
@@ -109,7 +109,7 @@ Install → Register → Initialize → Active → Shutdown
 </div>
 
 ```bash
-milady plugins install @elizaos/plugin-openai
+eliza plugins install @elizaos/plugin-openai
 ```
 
 <div id="list-installed-plugins">
@@ -119,7 +119,7 @@ milady plugins install @elizaos/plugin-openai
 </div>
 
 ```bash
-milady plugins list
+eliza plugins list
 ```
 
 <div id="enable-disable">
@@ -128,7 +128,7 @@ milady plugins list
 
 </div>
 
-Activez ou désactivez un plugin en définissant son flag `enabled` dans `milady.json` :
+Activez ou désactivez un plugin en définissant son flag `enabled` dans `eliza.json` :
 
 ```json
 {
@@ -140,10 +140,10 @@ Activez ou désactivez un plugin en définissant son flag `enabled` dans `milady
 }
 ```
 
-Ou modifiez directement le fichier de configuration (`milady config path` affiche l'emplacement du fichier) :
+Ou modifiez directement le fichier de configuration (`eliza config path` affiche l'emplacement du fichier) :
 
 ```bash
-$EDITOR "$(milady config path)"
+$EDITOR "$(eliza config path)"
 ```
 
 <div id="eject-copy-to-local">

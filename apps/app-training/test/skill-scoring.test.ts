@@ -18,22 +18,17 @@ import {
 } from "../src/core/skill-scoring-cron.js";
 
 let stateDir: string;
-let prevState: string | undefined;
 let prevElizaState: string | undefined;
 
 beforeEach(() => {
   stateDir = mkdtempSync(join(tmpdir(), "skill-score-"));
-  prevState = process.env.MILADY_STATE_DIR;
   prevElizaState = process.env.ELIZA_STATE_DIR;
-  process.env.MILADY_STATE_DIR = stateDir;
-  delete process.env.ELIZA_STATE_DIR;
+  process.env.ELIZA_STATE_DIR = stateDir;
 });
 
 afterEach(() => {
-  if (prevState === undefined) delete process.env.MILADY_STATE_DIR;
-  else process.env.MILADY_STATE_DIR = prevState;
-  if (prevElizaState !== undefined)
-    process.env.ELIZA_STATE_DIR = prevElizaState;
+  if (prevElizaState === undefined) delete process.env.ELIZA_STATE_DIR;
+  else process.env.ELIZA_STATE_DIR = prevElizaState;
   rmSync(stateDir, { recursive: true, force: true });
 });
 

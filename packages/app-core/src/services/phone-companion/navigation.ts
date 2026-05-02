@@ -15,7 +15,7 @@ import { logger } from "./logger";
 
 export type ViewName = "chat" | "pairing" | "remote-session";
 
-const STORAGE_KEY = "milady.companion.nav.v1";
+const STORAGE_KEY = "eliza.companion.nav.v1";
 const DEFAULT_VIEW: ViewName = "chat";
 
 export interface NavState {

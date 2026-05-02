@@ -1,10 +1,10 @@
 ---
 title: "Plugin GitHub"
 sidebarTitle: "GitHub"
-description: "Connecteur GitHub pour Milady — interagissez avec les dépôts, les issues et les pull requests."
+description: "Connecteur GitHub pour Eliza — interagissez avec les dépôts, les issues et les pull requests."
 ---
 
-Le plugin GitHub connecte les agents Milady à GitHub, permettant les interactions avec les dépôts, les issues, les pull requests et d'autres ressources GitHub.
+Le plugin GitHub connecte les agents Eliza à GitHub, permettant les interactions avec les dépôts, les issues, les pull requests et d'autres ressources GitHub.
 
 **Package :** `@elizaos/plugin-github`
 
@@ -15,7 +15,7 @@ Le plugin GitHub connecte les agents Milady à GitHub, permettant les interactio
 </div>
 
 ```bash
-milady plugins install @elizaos/plugin-github
+eliza plugins install @elizaos/plugin-github
 ```
 
 <div id="setup">
@@ -35,9 +35,9 @@ milady plugins install @elizaos/plugin-github
 3. Sélectionnez les permissions nécessaires pour votre cas d'usage (par exemple, `repo`, `issues`, `pull_requests`)
 4. Copiez le token généré
 
-<div id="2-configure-milady">
+<div id="2-configure-eliza">
 
-### 2. Configurez Milady
+### 2. Configurez Eliza
 
 </div>
 

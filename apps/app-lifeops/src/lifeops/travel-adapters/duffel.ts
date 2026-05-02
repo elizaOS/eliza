@@ -37,12 +37,12 @@ const DUFFEL_API_VERSION = "v2";
 const DEFAULT_CLOUD_RELAY_BASE = "http://127.0.0.1:31337";
 
 function resolveDirectFlag(env: NodeJS.ProcessEnv): boolean {
-  const value = env.MILADY_DUFFEL_DIRECT?.trim().toLowerCase();
+  const value = env.ELIZA_DUFFEL_DIRECT?.trim().toLowerCase();
   return value === "1" || value === "true";
 }
 
 function resolveLocalApiBase(env: NodeJS.ProcessEnv): string {
-  const port = env.MILADY_API_PORT?.trim();
+  const port = env.ELIZA_API_PORT?.trim();
   if (port && /^\d+$/.test(port)) {
     return `http://127.0.0.1:${port}`;
   }
@@ -466,7 +466,7 @@ function readRelayCost(envelope: unknown): DuffelCallCost {
     !("_meta" in envelope)
   ) {
     throw new Error(
-      "Duffel cloud relay response missing _meta envelope. Update Eliza Cloud or set MILADY_DUFFEL_DIRECT=1.",
+      "Duffel cloud relay response missing _meta envelope. Update Eliza Cloud or set ELIZA_DUFFEL_DIRECT=1.",
     );
   }
   const meta = (envelope as RelayEnvelope)._meta;

@@ -24,7 +24,7 @@ Obtener entradas de registro almacenadas en búfer con filtrado opcional. Devuel
 
 | Parámetro | Tipo | Requerido | Descripción |
 |-----------|------|-----------|-------------|
-| `source` | string | No | Filtrar por origen del registro (ej., `"milady-api"`, `"runtime"`) |
+| `source` | string | No | Filtrar por origen del registro (ej., `"eliza-api"`, `"runtime"`) |
 | `level` | string | No | Filtrar por nivel de registro (ej., `"info"`, `"warn"`, `"error"`, `"debug"`) |
 | `tag` | string | No | Filtrar por etiqueta |
 | `since` | number | No | Marca de tiempo en milisegundos Unix — solo devuelve entradas en o después de este momento |
@@ -37,12 +37,12 @@ Obtener entradas de registro almacenadas en búfer con filtrado opcional. Devuel
     {
       "timestamp": 1718000000000,
       "level": "info",
-      "source": "milady-api",
+      "source": "eliza-api",
       "tags": ["startup"],
       "message": "API server started on port 31337"
     }
   ],
-  "sources": ["milady-api", "runtime", "plugin-anthropic"],
+  "sources": ["eliza-api", "runtime", "plugin-anthropic"],
   "tags": ["startup", "auth", "knowledge"]
 }
 ```
@@ -146,7 +146,7 @@ data: {"type":"entry","entry":{"type":"policy_decision","severity":"warn",...}}
 
 </div>
 
-Verificar el estado del relay de la extensión del navegador y la ruta de la extensión. Se utiliza para determinar si la extensión del navegador Milady está conectada y puede cargarse.
+Verificar el estado del relay de la extensión del navegador y la ruta de la extensión. Se utiliza para determinar si la extensión del navegador Eliza está conectada y puede cargarse.
 
 **Respuesta**
 

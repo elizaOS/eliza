@@ -44,7 +44,7 @@ interface Harness {
 }
 
 async function open(): Promise<Harness> {
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "milady-routes-"));
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-routes-"));
   const adapter = createDatabaseAdapter(
     { dataDir },
     "00000000-0000-0000-0000-000000000001" as `${string}-${string}-${string}-${string}-${string}`,
@@ -182,14 +182,14 @@ describe("P1 session routes (real pglite)", () => {
     _resetLegacyBearerState();
     delete process.env.ELIZA_API_TOKEN;
     delete process.env.ELIZA_CLOUD_PROVISIONED;
-    delete process.env.MILADY_LEGACY_GRACE_UNTIL;
+    delete process.env.ELIZA_LEGACY_GRACE_UNTIL;
   }, HARNESS_HOOK_TIMEOUT_MS);
 
   afterEach(async () => {
     await harness.cleanup();
     delete process.env.ELIZA_API_TOKEN;
     delete process.env.ELIZA_CLOUD_PROVISIONED;
-    delete process.env.MILADY_LEGACY_GRACE_UNTIL;
+    delete process.env.ELIZA_LEGACY_GRACE_UNTIL;
   });
 
   it("setup -> me -> logout flow", async () => {
@@ -446,7 +446,7 @@ describe("P1 session routes (real pglite)", () => {
       store: harness.store,
     });
     expect(ok).toBe(true);
-    expect(res.headers()["x-milady-legacy-token-deprecated"]).toBe("1");
+    expect(res.headers()["x-eliza-legacy-token-deprecated"]).toBe("1");
 
     // Now set up a real auth method — legacy bearer is invalidated.
     await handleAuthSessionRoutes(
@@ -480,7 +480,7 @@ describe("P1 session routes (real pglite)", () => {
 
   it("legacy bearer migration: post-grace use is rejected", async () => {
     process.env.ELIZA_API_TOKEN = "legacy-token-value-1234567890";
-    process.env.MILADY_LEGACY_GRACE_UNTIL = "1"; // ms epoch in the past
+    process.env.ELIZA_LEGACY_GRACE_UNTIL = "1"; // ms epoch in the past
 
     const { ensureCompatApiAuthorizedAsync, _resetAuthRateLimiter: reset } =
       await import("./auth");

@@ -1,10 +1,10 @@
 ---
 title: "Memory Plugin"
 sidebarTitle: "Memory"
-description: "Agent memory for Milady — persistent recall of conversations, facts, and context across sessions."
+description: "Agent memory for Eliza — persistent recall of conversations, facts, and context across sessions."
 ---
 
-The Memory plugin provides persistent memory capabilities for Milady agents.
+The Memory plugin provides persistent memory capabilities for Eliza agents.
 
 **Package:** `@elizaos/plugin-memory`
 
@@ -21,7 +21,7 @@ Key capabilities:
 ## Installation
 
 ```bash
-milady plugins install memory
+eliza plugins install memory
 ```
 
 ## Configuration

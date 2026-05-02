@@ -56,11 +56,11 @@ Primary references:
 - LifeOps Gmail clients expose triage, search, needs-response, recommendations, unresponded, manage, and event-ingest calls with typed inputs and outputs.
 - LifeOps exposes thread-level unresponded detection from sent-thread chronology on the local OAuth path.
 - LifeOps accepts Gmail event ingestion and can fan out to event workflows, including n8n dispatch workflow steps.
-- `MILADY_BLOCK_REAL_GMAIL_WRITES=1` blocks direct Gmail writes unless traffic is routed to loopback mock or `MILADY_ALLOW_REAL_GMAIL_WRITES=1` is explicitly set.
+- `ELIZA_BLOCK_REAL_GMAIL_WRITES=1` blocks direct Gmail writes unless traffic is routed to loopback mock or `ELIZA_ALLOW_REAL_GMAIL_WRITES=1` is explicitly set.
 - `scripts/export-gmail-fixture.mjs` provides the read-only exporter/scrubber/validator path for producing scrubbed Gmail fixtures.
 - `scripts/gmail-real-sweep.mjs` provides dry-run-first real Gmail cleanup for write-safe smoke sends, with exact run allowlists, recipient allowlists, LifeOps search/manage support, and direct Gmail token fallback.
-- Direct Gmail smoke sends create and apply a per-run Gmail label and include `X-Milady-Test-Run`; LifeOps smoke sends include the same run id in subject/body because the LifeOps send contract does not expose custom RFC 822 headers yet.
-- `MILADY_MOCK_GOOGLE_BASE` switches Google API and OAuth traffic to the local mock.
+- Direct Gmail smoke sends create and apply a per-run Gmail label and include `X-Eliza-Test-Run`; LifeOps smoke sends include the same run id in subject/body because the LifeOps send contract does not expose custom RFC 822 headers yet.
+- `ELIZA_MOCK_GOOGLE_BASE` switches Google API and OAuth traffic to the local mock.
 - The Google mock now covers labels, drafts, batch modify/delete, message trash/untrash/delete, thread operations, watch/history, settings filters, and message send/list/get routes.
 - The in-process Google mock applies Gmail-aware list filtering for `q`, `labelIds`, `maxResults`, `pageToken`, and `includeSpamTrash`, while still using Mockoon-compatible JSON as the editable fixture source.
 - The mock runtime records a request ledger through `requestLedger()` and `GET /__mock/requests`.
@@ -137,7 +137,7 @@ Remaining test gaps:
 
 Mock mode is for local integration and CI without touching Google:
 
-- `MILADY_MOCK_GOOGLE_BASE` must point to loopback.
+- `ELIZA_MOCK_GOOGLE_BASE` must point to loopback.
 - Every Gmail write must be asserted through a mock request ledger.
 - The scenario runner should fail if a Gmail write occurs and the ledger has no matching mock request.
 - Synthetic examples must use `example.com`, `example.test`, or dedicated e2e domains only.
@@ -149,18 +149,18 @@ Real mode is for read-only smoke tests until write guards and cleanup exist:
 
 - Use dedicated Google Workspace test accounts only.
 - Default scopes should be read-only unless a scenario explicitly needs writes.
-- Write scenarios require an opt-in such as `MILADY_ALLOW_REAL_GMAIL_WRITES=1`.
+- Write scenarios require an opt-in such as `ELIZA_ALLOW_REAL_GMAIL_WRITES=1`.
 - Writes require recipient allowlist, per-run label, per-run header, and an implemented Gmail sweeper.
-- Real send smoke requires an explicit run id and exact run allowlist. Direct Gmail sends add `X-Milady-Test-Run` and apply `Milady/GmailSmoke/<runId>`; LifeOps sends put the run id in subject/body and report the intended label for the sweeper.
-- Real sweeps require an exact run allowlist even in dry-run. Executing trash/delete also requires `MILADY_GMAIL_REAL_SWEEP=1` and a recipient allowlist. Permanent delete additionally requires `MILADY_GMAIL_REAL_SWEEP_DELETE=1`.
+- Real send smoke requires an explicit run id and exact run allowlist. Direct Gmail sends add `X-Eliza-Test-Run` and apply `Eliza/GmailSmoke/<runId>`; LifeOps sends put the run id in subject/body and report the intended label for the sweeper.
+- Real sweeps require an exact run allowlist even in dry-run. Executing trash/delete also requires `ELIZA_GMAIL_REAL_SWEEP=1` and a recipient allowlist. Permanent delete additionally requires `ELIZA_GMAIL_REAL_SWEEP_DELETE=1`.
 - Production/personal Gmail must not be used for destructive scenarios.
 
 ### Switching Requirements
 
 The same application path must work in both modes:
 
-- unset `MILADY_MOCK_GOOGLE_BASE`: real Gmail path
-- set `MILADY_MOCK_GOOGLE_BASE`: mock Gmail path
+- unset `ELIZA_MOCK_GOOGLE_BASE`: real Gmail path
+- set `ELIZA_MOCK_GOOGLE_BASE`: mock Gmail path
 - test mode with real Gmail write attempted and no explicit allow flag: hard failure
 - mock mode with non-loopback mock base: hard failure
 
@@ -174,12 +174,12 @@ For a read-only real API shape check without writing a fixture, prefer the logge
 bun run lifeops:gmail:real-smoke -- --source lifeops --query "in:inbox newer_than:7d" --max 5
 ```
 
-The smoke output hashes IDs and redacts emails, URLs, names, subjects, and snippets by default. Set `MILADY_GMAIL_REAL_SMOKE_VERBOSE=1` only for a local manual inspection where scrubbed text content is intentionally needed.
+The smoke output hashes IDs and redacts emails, URLs, names, subjects, and snippets by default. Set `ELIZA_GMAIL_REAL_SMOKE_VERBOSE=1` only for a local manual inspection where scrubbed text content is intentionally needed.
 
 If the local API is not on the default dev ports, pass it explicitly:
 
 ```bash
-MILADY_LIFEOPS_API_BASE=http://127.0.0.1:31337 \
+ELIZA_LIFEOPS_API_BASE=http://127.0.0.1:31337 \
 bun run lifeops:gmail:real-smoke -- --source lifeops --query "in:inbox" --max 5
 ```
 
@@ -192,45 +192,45 @@ GOOGLE_ACCESS_TOKEN=... bun run lifeops:gmail:real-smoke -- --source gmail --que
 For a real test send through the logged-in LifeOps connector, use a dedicated test mailbox and require all send gates:
 
 ```bash
-RUN_ID=milady-gmail-smoke-20260422T120000-manual
+RUN_ID=eliza-gmail-smoke-20260422T120000-manual
 
-MILADY_GMAIL_REAL_SMOKE_SEND=1 \
-MILADY_ALLOW_REAL_GMAIL_WRITES=1 \
-MILADY_GMAIL_REAL_SMOKE_TO=test-recipient@example.com \
-MILADY_GMAIL_REAL_SMOKE_ALLOWLIST=test-recipient@example.com \
-MILADY_GMAIL_REAL_SMOKE_RUN_ID="$RUN_ID" \
-MILADY_GMAIL_REAL_SMOKE_RUN_ALLOWLIST="$RUN_ID" \
+ELIZA_GMAIL_REAL_SMOKE_SEND=1 \
+ELIZA_ALLOW_REAL_GMAIL_WRITES=1 \
+ELIZA_GMAIL_REAL_SMOKE_TO=test-recipient@example.com \
+ELIZA_GMAIL_REAL_SMOKE_ALLOWLIST=test-recipient@example.com \
+ELIZA_GMAIL_REAL_SMOKE_RUN_ID="$RUN_ID" \
+ELIZA_GMAIL_REAL_SMOKE_RUN_ALLOWLIST="$RUN_ID" \
 bun run lifeops:gmail:real-smoke -- --source lifeops --send-test
 ```
 
-Do not run real sends against production/personal contacts. Direct Gmail sends include an `X-Milady-Test-Run` header and apply a hidden `Milady/GmailSmoke/<runId>` label. LifeOps sends include the explicit run id in the subject/body because custom headers are not available through that contract.
+Do not run real sends against production/personal contacts. Direct Gmail sends include an `X-Eliza-Test-Run` header and apply a hidden `Eliza/GmailSmoke/<runId>` label. LifeOps sends include the explicit run id in the subject/body because custom headers are not available through that contract.
 
 The same gates apply to direct Gmail send mode:
 
 ```bash
 GOOGLE_ACCESS_TOKEN=... \
-MILADY_GMAIL_REAL_SMOKE_SEND=1 \
-MILADY_ALLOW_REAL_GMAIL_WRITES=1 \
-MILADY_GMAIL_REAL_SMOKE_TO=test-recipient@example.com \
-MILADY_GMAIL_REAL_SMOKE_ALLOWLIST=test-recipient@example.com \
-MILADY_GMAIL_REAL_SMOKE_RUN_ID="$RUN_ID" \
-MILADY_GMAIL_REAL_SMOKE_RUN_ALLOWLIST="$RUN_ID" \
+ELIZA_GMAIL_REAL_SMOKE_SEND=1 \
+ELIZA_ALLOW_REAL_GMAIL_WRITES=1 \
+ELIZA_GMAIL_REAL_SMOKE_TO=test-recipient@example.com \
+ELIZA_GMAIL_REAL_SMOKE_ALLOWLIST=test-recipient@example.com \
+ELIZA_GMAIL_REAL_SMOKE_RUN_ID="$RUN_ID" \
+ELIZA_GMAIL_REAL_SMOKE_RUN_ALLOWLIST="$RUN_ID" \
 bun run lifeops:gmail:real-smoke -- --source gmail --send-test
 ```
 
 Before any cleanup write, dry-run the sweeper and inspect redacted matches:
 
 ```bash
-MILADY_GMAIL_REAL_SWEEP_RUN_ALLOWLIST="$RUN_ID" \
+ELIZA_GMAIL_REAL_SWEEP_RUN_ALLOWLIST="$RUN_ID" \
 bun run lifeops:gmail:real-sweep -- --source lifeops --run-id "$RUN_ID"
 ```
 
 Then trash only the allowlisted run and recipients:
 
 ```bash
-MILADY_GMAIL_REAL_SWEEP=1 \
-MILADY_GMAIL_REAL_SWEEP_RUN_ALLOWLIST="$RUN_ID" \
-MILADY_GMAIL_REAL_SWEEP_RECIPIENT_ALLOWLIST=test-recipient@example.com \
+ELIZA_GMAIL_REAL_SWEEP=1 \
+ELIZA_GMAIL_REAL_SWEEP_RUN_ALLOWLIST="$RUN_ID" \
+ELIZA_GMAIL_REAL_SWEEP_RECIPIENT_ALLOWLIST=test-recipient@example.com \
 bun run lifeops:gmail:real-sweep -- --source lifeops --run-id "$RUN_ID" --execute
 ```
 
@@ -238,7 +238,7 @@ Direct Gmail fallback uses `GOOGLE_ACCESS_TOKEN`, the same exact run allowlist, 
 
 ```bash
 GOOGLE_ACCESS_TOKEN=... \
-MILADY_GMAIL_REAL_SWEEP_RUN_ALLOWLIST="$RUN_ID" \
+ELIZA_GMAIL_REAL_SWEEP_RUN_ALLOWLIST="$RUN_ID" \
 bun run lifeops:gmail:real-sweep -- --source gmail --run-id "$RUN_ID"
 ```
 
@@ -246,10 +246,10 @@ Permanent deletion is intentionally a separate gate and should only be used afte
 
 ```bash
 GOOGLE_ACCESS_TOKEN=... \
-MILADY_GMAIL_REAL_SWEEP=1 \
-MILADY_GMAIL_REAL_SWEEP_DELETE=1 \
-MILADY_GMAIL_REAL_SWEEP_RUN_ALLOWLIST="$RUN_ID" \
-MILADY_GMAIL_REAL_SWEEP_RECIPIENT_ALLOWLIST=test-recipient@example.com \
+ELIZA_GMAIL_REAL_SWEEP=1 \
+ELIZA_GMAIL_REAL_SWEEP_DELETE=1 \
+ELIZA_GMAIL_REAL_SWEEP_RUN_ALLOWLIST="$RUN_ID" \
+ELIZA_GMAIL_REAL_SWEEP_RECIPIENT_ALLOWLIST=test-recipient@example.com \
 bun run lifeops:gmail:real-sweep -- --source gmail --run-id "$RUN_ID" --operation delete --execute
 ```
 

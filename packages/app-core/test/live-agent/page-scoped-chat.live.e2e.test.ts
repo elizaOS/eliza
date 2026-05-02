@@ -9,7 +9,7 @@
  *   3. Main-chat awareness: a populated source conversation surfaces in the
  *      provider; a blank or agent-only-initiated source is correctly ignored.
  *
- * Live tests gated on MILADY_LIVE_TEST=1 / ELIZA_LIVE_TEST=1 plus a configured
+ * Live tests gated on ELIZA_LIVE_TEST=1 / ELIZA_LIVE_TEST=1 plus a configured
  * LLM API key. NODE_ENV is temporarily overridden to enable trajectory
  * persistence (the runtime disables it under NODE_ENV=test by default).
  */
@@ -45,7 +45,7 @@ import {
 } from "../helpers/trajectory-assertions.js";
 
 const liveModelTestsEnabled =
-  process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
+  process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const selectedLiveProvider = liveModelTestsEnabled
   ? selectLiveProvider()
   : null;

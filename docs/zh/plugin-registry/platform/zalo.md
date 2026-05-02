@@ -1,10 +1,10 @@
 ---
 title: "Zalo 插件"
 sidebarTitle: "Zalo"
-description: "Milady 的 Zalo 连接器 — 与 Zalo 消息平台的机器人集成。"
+description: "Eliza 的 Zalo 连接器 — 与 Zalo 消息平台的机器人集成。"
 ---
 
-Zalo 插件将 Milady 代理连接到 Zalo，实现通过 Zalo 官方账号 API 的消息处理。
+Zalo 插件将 Eliza 代理连接到 Zalo，实现通过 Zalo 官方账号 API 的消息处理。
 
 **Package:** `@elizaos/plugin-zalo`
 
@@ -15,7 +15,7 @@ Zalo 插件将 Milady 代理连接到 Zalo，实现通过 Zalo 官方账号 API 
 </div>
 
 ```bash
-milady plugins install @elizaos/plugin-zalo
+eliza plugins install @elizaos/plugin-zalo
 ```
 
 <div id="setup">
@@ -34,9 +34,9 @@ milady plugins install @elizaos/plugin-zalo
 2. 创建应用并获取你的 App ID 和 App Secret
 3. 生成访问令牌和刷新令牌以访问 API
 
-<div id="2-configure-milady">
+<div id="2-configure-eliza">
 
-### 2. 配置 Milady
+### 2. 配置 Eliza
 
 </div>
 

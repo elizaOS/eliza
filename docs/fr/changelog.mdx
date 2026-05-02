@@ -1,6 +1,6 @@
 ---
 title: Journal des modifications
-description: Nouveautés de Milady — fonctionnalités, améliorations et correctifs.
+description: Nouveautés de Eliza — fonctionnalités, améliorations et correctifs.
 ---
 
 <Update label="2026-04-23" description="Semaine du 23 avril ; portefeuille dual et provisionnement de portefeuille cloud, Agent Browser Bridge, brouillons d'automatisation, UX de provisionnement d'agents cloud, connecteur BlueBubbles" tags={["Feature", "Update", "Fix"]}>
@@ -122,7 +122,7 @@ Les panneaux de configuration du connecteur [life-ops](/fr/rest/lifeops) ont ét
 - Correction de l'interface web de l'agent affichant un écran blanc dans les navigateurs sans support WebGPU (Chrome sans flag, Safari, Chromium headless) — un polyfill empêche désormais le crash d'initialisation de three.js
 - Correction de l'interface web de l'agent affichant un écran blanc à cause d'une erreur "require is not defined" lorsque le bundle navigateur tentait de résoudre les valeurs par défaut de marque
 - Correction de l'API de solde du portefeuille cloud retournant des erreurs 500 car le stub de route du portefeuille Steward manquait une exportation de sous-chemin
-- Correction du bouton "Ouvrir Milady" sur la page d'accueil naviguant vers un port mort quand aucun runtime local n'était en cours d'exécution — il affiche désormais des instructions d'installation à la place
+- Correction du bouton "Ouvrir Eliza" sur la page d'accueil naviguant vers un port mort quand aucun runtime local n'était en cours d'exécution — il affiche désormais des instructions d'installation à la place
 - Correction de la modale de provisionnement d'agents cloud permettant la création d'agents en double quand le bouton d'envoi se réactivait après le succès
 - Correction des cartes de connecteur life-ops n'affichant pas les boutons de connexion
 - Correction des builds navigateur Vite 6 plantant à cause d'importations de plugins serveur uniquement non résolues — celles-ci sont désormais correctement stubbées
@@ -313,13 +313,13 @@ Votre agent peut désormais vous aider à configurer des plugins par la conversa
 ## Commandes slash Discord
 </div>
 
-Milady prend désormais en charge les commandes slash natives de Discord. Quatre commandes sont disponibles cette semaine — `/skill`, `/workspace`, `/shell` et `/cron` — vous permettant de gérer les compétences, les espaces de travail, l'accès au shell et les tâches planifiées directement depuis Discord. Une commande `/issue` avec support auto-vision est également disponible pour soumettre des problèmes avec des captures d'écran. Consultez le [connecteur Discord](/fr/connectors/discord) pour la configuration.
+Eliza prend désormais en charge les commandes slash natives de Discord. Quatre commandes sont disponibles cette semaine — `/skill`, `/workspace`, `/shell` et `/cron` — vous permettant de gérer les compétences, les espaces de travail, l'accès au shell et les tâches planifiées directement depuis Discord. Une commande `/issue` avec support auto-vision est également disponible pour soumettre des problèmes avec des captures d'écran. Consultez le [connecteur Discord](/fr/connectors/discord) pour la configuration.
 
 <div id="skills-marketplace-with-remote-registry">
 ## Marché de compétences avec registre distant
 </div>
 
-Vous pouvez désormais parcourir et installer des compétences depuis un registre distant directement dans le tableau de bord. Le marché de [compétences](/fr/plugins/skills) se connecte à un catalogue hébergé, de sorte que les nouvelles compétences contribuées par la communauté apparaissent automatiquement sans mise à jour de Milady.
+Vous pouvez désormais parcourir et installer des compétences depuis un registre distant directement dans le tableau de bord. Le marché de [compétences](/fr/plugins/skills) se connecte à un catalogue hébergé, de sorte que les nouvelles compétences contribuées par la communauté apparaissent automatiquement sans mise à jour de Eliza.
 
 <div id="vincent-oauth-wallet-login">
 ## Connexion au portefeuille Vincent OAuth
@@ -386,7 +386,7 @@ Appuyez sur `Shift+?` depuis n'importe où dans l'application pour voir tous les
 ## Détection du backend d'entraînement
 </div>
 
-Avant de lancer un travail de fine-tuning, Milady détecte désormais automatiquement les backends de calcul disponibles (MLX, CUDA, CPU) et valide votre sélection. Si vous demandez un backend qui n'est pas disponible, vous recevez une erreur claire au lieu d'un échec silencieux. Les backends détectés sont également disponibles via l'[API d'entraînement](/fr/rest/training).
+Avant de lancer un travail de fine-tuning, Eliza détecte désormais automatiquement les backends de calcul disponibles (MLX, CUDA, CPU) et valide votre sélection. Si vous demandez un backend qui n'est pas disponible, vous recevez une erreur claire au lieu d'un échec silencieux. Les backends détectés sont également disponibles via l'[API d'entraînement](/fr/rest/training).
 
 <div id="orchestrator-trajectory-view">
 ## Vue de trajectoire de l'orchestrateur
@@ -451,7 +451,7 @@ Le connecteur Signal prend désormais en charge l'appairage natif des appareils 
 
 ## Mises à jour
 
-- **Variables d'environnement héritées d'Electron supprimées** — `MILADY_ELECTRON_API_BASE` et `MILADY_ELECTRON_TEST_API_BASE` ne sont plus prises en charge. La migration vers Electrobun est terminée — utilisez les chemins de configuration Electrobun actuels à la place. Consultez le [guide de l'application de bureau](/apps/desktop) pour plus de détails.
+- **Variables d'environnement héritées d'Electron supprimées** — `ELIZA_ELECTRON_API_BASE` et `ELIZA_ELECTRON_TEST_API_BASE` ne sont plus prises en charge. La migration vers Electrobun est terminée — utilisez les chemins de configuration Electrobun actuels à la place. Consultez le [guide de l'application de bureau](/apps/desktop) pour plus de détails.
 - **Empaquetage modulaire du runtime** — Les services principaux de l'agent autonome ont été extraits dans un package autonome, améliorant les frontières entre modules et réduisant la surcharge au démarrage pour les déploiements légers.
 </Update>
 
@@ -508,7 +508,7 @@ Votre agent peut désormais se connecter à trois plateformes de messagerie supp
 - **Nostr** — réseau social décentralisé basé sur les relais avec authentification par clé privée, liste de relais configurable et support des messages directs.
 - **Nextcloud Talk** — intégration de bot basée sur les webhooks avec filtrage par salon.
 
-Installez n'importe quel connecteur avec `milady plugins install <name>` et configurez-le dans vos [paramètres sociaux](/fr/guides/connectors).
+Installez n'importe quel connecteur avec `eliza plugins install <name>` et configurez-le dans vos [paramètres sociaux](/fr/guides/connectors).
 
 <div id="updates">
 ## Mises à jour
@@ -562,7 +562,7 @@ Le connecteur Telegram gère désormais les erreurs inattendues de manière él�
 </div>
 
 - **L'onglet Connecteurs n'affiche que le connecteur sélectionné** — Le panneau de configuration des [connecteurs](/fr/guides/connectors) n'affiche désormais que le connecteur sélectionné dans la barre latérale au lieu d'afficher tous les connecteurs en même temps, ce qui facilite la recherche et la modification des paramètres.
-- **Identité dans les dialogues de permission macOS** — Les invites de permission système sur macOS (microphone, accessibilité, etc.) affichent désormais correctement "Milady" comme nom de l'application demandeuse au lieu d'un identifiant générique ou manquant.
+- **Identité dans les dialogues de permission macOS** — Les invites de permission système sur macOS (microphone, accessibilité, etc.) affichent désormais correctement "Eliza" comme nom de l'application demandeuse au lieu d'un identifiant générique ou manquant.
 
 <div id="bug-fixes">
 ## Corrections de bugs
@@ -584,7 +584,7 @@ Votre agent peut désormais se connecter à six plateformes de messagerie suppl�
 - **Google Chat** — intégration par compte de service avec livraison par webhook et configuration par espace. Consultez la [documentation du plugin Google Chat](/fr/plugin-registry/platform/googlechat).
 - **Mattermost** — messagerie d'équipe auto-hébergée avec authentification par jeton de bot et filtrage des mentions. Consultez la [documentation du plugin Mattermost](/fr/plugin-registry/platform/mattermost).
 
-Installez n'importe quel connecteur avec `milady plugins install <name>` et configurez-le dans vos [paramètres sociaux](/fr/guides/connectors).
+Installez n'importe quel connecteur avec `eliza plugins install <name>` et configurez-le dans vos [paramètres sociaux](/fr/guides/connectors).
 
 <div id="lens-protocol-connector">
 ## Connecteur Lens Protocol
@@ -742,13 +742,13 @@ La barre système inclut désormais des sous-menus interactifs pour chaque fourn
 ## Tableau de bord du plan de contrôle cloud
 </div>
 
-Vous pouvez désormais gérer les agents cloud directement depuis la page d'accueil de Milady. Le nouveau tableau de bord inclut les contrôles de cycle de vie des agents (provisionnement, suspension, reprise, suppression), les snapshots et sauvegardes, les crédits et la facturation, les métriques de conteneur et le streaming de logs — le tout sans quitter l'application. Les agents locaux et distants sont auto-découverts aux côtés des agents cloud. Consultez le [déploiement Cloud](/fr/deployment#cloud-agent-deployment) pour plus de détails.
+Vous pouvez désormais gérer les agents cloud directement depuis la page d'accueil de Eliza. Le nouveau tableau de bord inclut les contrôles de cycle de vie des agents (provisionnement, suspension, reprise, suppression), les snapshots et sauvegardes, les crédits et la facturation, les métriques de conteneur et le streaming de logs — le tout sans quitter l'application. Les agents locaux et distants sont auto-découverts aux côtés des agents cloud. Consultez le [déploiement Cloud](/fr/deployment#cloud-agent-deployment) pour plus de détails.
 
 <div id="cloud-first-onboarding">
 ## Intégration cloud-first
 </div>
 
-Exécuter `milady start` pour la première fois demande désormais "Où votre agent doit-il vivre ?" avec [Eliza Cloud](/fr/guides/cloud) comme option recommandée. Choisissez cloud pour un runtime hébergé sans configuration locale, ou local pour exécuter sur votre propre machine. La configuration cloud est enregistrée automatiquement afin que les lancements suivants se reconnectent sans invite. Consultez le [guide cloud](/fr/guides/cloud) pour plus de détails.
+Exécuter `eliza start` pour la première fois demande désormais "Où votre agent doit-il vivre ?" avec [Eliza Cloud](/fr/guides/cloud) comme option recommandée. Choisissez cloud pour un runtime hébergé sans configuration locale, ou local pour exécuter sur votre propre machine. La configuration cloud est enregistrée automatiquement afin que les lancements suivants se reconnectent sans invite. Consultez le [guide cloud](/fr/guides/cloud) pour plus de détails.
 
 <div id="game-style-notebook-character-editor">
 ## Éditeur de personnage en style carnet de jeu
@@ -766,7 +766,7 @@ Les sessions d'agent de codage affichent désormais des contrôles de conservati
 ## Images Docker officielles
 </div>
 
-Des images Docker pré-construites sont désormais publiées sur GitHub Container Registry à chaque version, optimisées à environ la moitié de la taille d'un build manuel. Tirez `ghcr.io/milady-ai/agent` pour déployer sans compiler depuis les sources. Consultez le [guide de déploiement](/fr/deployment) pour la configuration Docker Compose et les variables d'environnement.
+Des images Docker pré-construites sont désormais publiées sur GitHub Container Registry à chaque version, optimisées à environ la moitié de la taille d'un build manuel. Tirez `ghcr.io/eliza-ai/agent` pour déployer sans compiler depuis les sources. Consultez le [guide de déploiement](/fr/deployment) pour la configuration Docker Compose et les variables d'environnement.
 
 <div id="vrm-wave-greeting-and-smooth-loading-transitions">
 ## Animation de salut VRM et transitions de chargement fluides
@@ -872,18 +872,18 @@ La configuration initiale a été reconstruite sous forme d'un flux simplifié e
 
 Trois nouvelles commandes CLI sont livrées cette semaine :
 
-- **`milady doctor`** — exécute une vérification complète de l'état de l'environnement, signalant les dépendances manquantes, les conflits de ports et les problèmes de configuration. Consultez la [référence doctor](/fr/cli/doctor).
-- **`milady db reset`** — réinitialise la base de données en toute sécurité avec une invite de confirmation. Consultez la [référence db](/fr/cli/db).
-- **`milady setup`** — un assistant interactif qui vous guide à travers la sélection du fournisseur de modèles avec prise en charge de neuf fournisseurs. Consultez la [référence setup](/fr/cli/setup).
+- **`eliza doctor`** — exécute une vérification complète de l'état de l'environnement, signalant les dépendances manquantes, les conflits de ports et les problèmes de configuration. Consultez la [référence doctor](/fr/cli/doctor).
+- **`eliza db reset`** — réinitialise la base de données en toute sécurité avec une invite de confirmation. Consultez la [référence db](/fr/cli/db).
+- **`eliza setup`** — un assistant interactif qui vous guide à travers la sélection du fournisseur de modèles avec prise en charge de neuf fournisseurs. Consultez la [référence setup](/fr/cli/setup).
 
 <div id="distribution-across-six-new-package-managers">
 ## Distribution via six nouveaux gestionnaires de paquets
 </div>
 
-Milady est désormais disponible via beaucoup plus de canaux d'installation :
+Eliza est désormais disponible via beaucoup plus de canaux d'installation :
 
-- **Homebrew** — `brew install milaidy` (CLI) ou `brew install --cask milaidy` (bureau)
-- **Snap Store** — `snap install milady` avec confinement strict
+- **Homebrew** — `brew install eliza` (CLI) ou `brew install --cask eliza` (bureau)
+- **Snap Store** — `snap install eliza` avec confinement strict
 - **Flatpak / Flathub** — Flatpak prêt pour la production avec métadonnées AppStream
 - **APT** — les utilisateurs Debian/Ubuntu peuvent installer via APT et exécuter comme service systemd avec redémarrage automatique
 - **Google Play Store** — application Android avec versions signées
@@ -971,7 +971,7 @@ Vous pouvez désormais exécuter plusieurs agents de codage en parallèle sur un
 ## Streaming en direct vers Twitch, YouTube et RTMP personnalisé
 </div>
 
-Milady prend désormais en charge le streaming en direct multi-destinations. Vous pouvez streamer vers Twitch, YouTube, pump.fun, X/Twitter ou toute cible RTMP personnalisée — et changer de destination au moment de l'exécution sans redémarrer. Votre agent peut également parler pendant le stream via TTS injecté directement dans la piste audio. Consultez le [guide de stream](/fr/dashboard/stream) pour plus de détails.
+Eliza prend désormais en charge le streaming en direct multi-destinations. Vous pouvez streamer vers Twitch, YouTube, pump.fun, X/Twitter ou toute cible RTMP personnalisée — et changer de destination au moment de l'exécution sans redémarrer. Votre agent peut également parler pendant le stream via TTS injecté directement dans la piste audio. Consultez le [guide de stream](/fr/dashboard/stream) pour plus de détails.
 
 <div id="3d-companion-with-vrm-avatars">
 ## Compagnon 3D avec avatars VRM

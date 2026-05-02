@@ -123,7 +123,7 @@ Get full trajectory details including all LLM calls and provider accesses.
       "trajectoryId": "550e8400-e29b-41d4-a716-446655440000",
       "stepId": "step-0",
       "model": "claude-opus-4-7",
-      "systemPrompt": "You are Milady...",
+      "systemPrompt": "You are Eliza...",
       "userPrompt": "What should I post today?",
       "response": "Here are some ideas...",
       "temperature": 0.7,

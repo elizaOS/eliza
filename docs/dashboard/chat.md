@@ -1,7 +1,7 @@
 ---
 title: Chat
 sidebarTitle: Chat
-description: The core messaging interface for interacting with your Milady agent — voice chat, 3D avatar, conversations, and autonomous monitoring.
+description: The core messaging interface for interacting with your Eliza agent — voice chat, 3D avatar, conversations, and autonomous monitoring.
 ---
 
 The Chat tab is the default landing view of the dashboard. It provides the core messaging interface through the `ChatView` component, with a three-column layout: Conversations Sidebar on the left, the Chat View in the center, and the Autonomous Panel on the right.
@@ -32,7 +32,7 @@ Built-in voice chat powered by ElevenLabs or browser TTS/STT:
 
 - Voice configuration loads automatically from the agent's config on mount.
 - The `useVoiceChat` hook manages the microphone toggle, agent voice playback, and the speaking state that drives avatar lip-sync.
-- Voice config changes in Settings or Character views are synchronized in real-time via a `milady:voice-config-updated` custom DOM event.
+- Voice config changes in Settings or Character views are synchronized in real-time via a `eliza:voice-config-updated` custom DOM event.
 
 ## VRM 3D Avatar
 

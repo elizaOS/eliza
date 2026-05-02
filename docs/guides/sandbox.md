@@ -4,7 +4,7 @@ sidebarTitle: "Sandbox & Security"
 description: "Container-based sandbox isolation with configurable security modes, network policies, audit logging, and remote signing."
 ---
 
-Milady provides a container-based sandbox system that isolates agent code execution from the host environment. The sandbox supports multiple security levels, network policies, audit logging, and a remote signing service that keeps private keys on the host while allowing sandboxed agents to submit transactions.
+Eliza provides a container-based sandbox system that isolates agent code execution from the host environment. The sandbox supports multiple security levels, network policies, audit logging, and a remote signing service that keeps private keys on the host while allowing sandboxed agents to submit transactions.
 
 ## Table of Contents
 

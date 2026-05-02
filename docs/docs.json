@@ -1,7 +1,7 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "Milady",
+  "name": "Eliza",
   "homepage": "index",
   "colors": {
     "primary": "#4a7c59",
@@ -17,18 +17,18 @@
     "links": [
       {
         "label": "GitHub",
-        "href": "https://github.com/milady-ai/milady"
+        "href": "https://github.com/eliza-ai/eliza"
       },
       {
         "label": "Discord",
-        "href": "https://discord.gg/milady"
+        "href": "https://discord.gg/eliza"
       }
     ]
   },
   "navigation": {
     "tabs": [
       {
-        "tab": "Use Milady",
+        "tab": "Use Eliza",
         "groups": [
           {
             "group": "Start Here",

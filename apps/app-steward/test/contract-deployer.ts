@@ -93,11 +93,11 @@ export async function deployContracts(
 ): Promise<DeployedContracts> {
   // Load compiled artifacts
   const registryArtifact = loadCompiledContract([
-    "MockMiladyAgentRegistry",
+    "MockElizaAgentRegistry",
     "MockAgentRegistry",
   ]);
   const collectionArtifact = loadCompiledContract([
-    "MockMiladyCollection",
+    "MockElizaCollection",
     "MockCollection",
   ]);
 
@@ -151,11 +151,11 @@ export function getContractABIs(): {
   collectionABI: ethers.InterfaceAbi;
 } {
   const registryArtifact = loadCompiledContract([
-    "MockMiladyAgentRegistry",
+    "MockElizaAgentRegistry",
     "MockAgentRegistry",
   ]);
   const collectionArtifact = loadCompiledContract([
-    "MockMiladyCollection",
+    "MockElizaCollection",
     "MockCollection",
   ]);
 

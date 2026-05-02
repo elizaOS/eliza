@@ -61,7 +61,7 @@ await runManagedTestCommand({
   cwd: path.join(repoRoot, "eliza", "plugins", "plugin-computeruse"),
   env: {
     ...buildTestEnv(repoRoot),
-    MILADY_LIVE_TEST: "1",
+    ELIZA_LIVE_TEST: "1",
     ELIZA_LIVE_TEST: "1",
     COMPUTER_USE_BROWSER_HEADLESS:
       process.env.COMPUTER_USE_BROWSER_HEADLESS || "1",

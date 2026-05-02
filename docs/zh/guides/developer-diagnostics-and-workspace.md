@@ -4,7 +4,7 @@ title: 开发者诊断和 workspace 工具
 
 # 开发者诊断和 workspace 工具（为什么）
 
-本指南面向**从源码构建 Milady 的人员**——编辑器、代理和维护者。它解释了近期面向开发者的行为**为什么**存在，以便你能更快地调试，而不会将可选的噪声误认为产品 bug。
+本指南面向**从源码构建 Eliza 的人员**——编辑器、代理和维护者。它解释了近期面向开发者的行为**为什么**存在，以便你能更快地调试，而不会将可选的噪声误认为产品 bug。
 
 <div id="plugin-load-reasons-optional-plugins">
 ## 插件加载原因（可选插件）
@@ -12,7 +12,7 @@ title: 开发者诊断和 workspace 工具
 
 **问题：** 类似 `Cannot find module '@elizaos/plugin-solana'` 或 "browser server not found" 的日志看起来像是运行时出了问题，但实际上往往是**配置或环境变量**将某个插件拉入了加载集，而该包或原生二进制文件从未安装过。
 
-**为什么要追踪来源：** `collectPluginNames()` 可以记录添加每个包的**第一个**来源（例如 `plugins.allow["@elizaos/plugin-solana"]`、`env: SOLANA_PRIVATE_KEY`、`features.browser`、`CORE_PLUGINS`）。`resolvePlugins()` 在解析过程中传递该映射；当**可选**插件因良性原因失败（缺少 npm 模块、缺少 stagehand）时，摘要日志会包含 **`(added by: …)`**，这样你就知道应该编辑 `milady.json`、取消环境变量、安装包还是添加插件 checkout。
+**为什么要追踪来源：** `collectPluginNames()` 可以记录添加每个包的**第一个**来源（例如 `plugins.allow["@elizaos/plugin-solana"]`、`env: SOLANA_PRIVATE_KEY`、`features.browser`、`CORE_PLUGINS`）。`resolvePlugins()` 在解析过程中传递该映射；当**可选**插件因良性原因失败（缺少 npm 模块、缺少 stagehand）时，摘要日志会包含 **`(added by: …)`**，这样你就知道应该编辑 `eliza.json`、取消环境变量、安装包还是添加插件 checkout。
 
 **范围：** 这是**诊断**，不是隐藏错误。严重的解析错误仍然会正常显示。
 
@@ -22,9 +22,9 @@ title: 开发者诊断和 workspace 工具
 ## Browser / stagehand 服务器路径
 </div>
 
-**问题：** `@elizaos/plugin-browser` 期望在 npm 包的 `dist/server/` 下有一个 **stagehand-server** 二进制树，但发布的 tarball 不包含它。Milady 会链接或发现 `plugins/plugin-browser/stagehand-server/` 下的 checkout。
+**问题：** `@elizaos/plugin-browser` 期望在 npm 包的 `dist/server/` 下有一个 **stagehand-server** 二进制树，但发布的 tarball 不包含它。Eliza 会链接或发现 `plugins/plugin-browser/stagehand-server/` 下的 checkout。
 
-**为什么要向上遍历：** 运行时文件位于不同的深度（`milady/packages/agent/...` vs 使用子模块时的 `eliza/packages/agent/...`）。固定的 `../` 深度无法到达 workspace 根目录。**`findPluginBrowserStagehandDir()`** 向上遍历父目录，直到找到包含 `dist/index.js` 或 `src/index.ts` 的 `plugins/plugin-browser/stagehand-server`。
+**为什么要向上遍历：** 运行时文件位于不同的深度（`eliza/packages/agent/...` vs 使用子模块时的 `eliza/packages/agent/...`）。固定的 `../` 深度无法到达 workspace 根目录。**`findPluginBrowserStagehandDir()`** 向上遍历父目录，直到找到包含 `dist/index.js` 或 `src/index.ts` 的 `plugins/plugin-browser/stagehand-server`。
 
 **操作说明：** 如果你不使用浏览器自动化，stagehand 的缺失是**预期行为**；消息在调试级别有意保持简洁，以免干扰日常开发。
 

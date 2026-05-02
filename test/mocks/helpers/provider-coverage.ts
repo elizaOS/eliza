@@ -39,7 +39,7 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     label: "Google Calendar",
     mode: "stateful-http",
     environment: "google",
-    envVars: ["ELIZA_MOCK_GOOGLE_BASE", "MILADY_MOCK_GOOGLE_BASE"],
+    envVars: ["ELIZA_MOCK_GOOGLE_BASE", "ELIZA_MOCK_GOOGLE_BASE"],
     surfaces: [
       "OAuth token and userinfo rewrite",
       "calendar list",
@@ -66,7 +66,7 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     environment: "google",
     envVars: [
       "ELIZA_MOCK_GOOGLE_BASE",
-      "MILADY_MOCK_GOOGLE_BASE",
+      "ELIZA_MOCK_GOOGLE_BASE",
       "ELIZA_BLOCK_REAL_GMAIL_WRITES",
     ],
     surfaces: [
@@ -119,7 +119,7 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     label: "X",
     mode: "stateful-http",
     environment: "x-twitter",
-    envVars: ["ELIZA_MOCK_X_BASE", "MILADY_MOCK_X_BASE"],
+    envVars: ["ELIZA_MOCK_X_BASE", "ELIZA_MOCK_X_BASE"],
     surfaces: [
       "home timeline",
       "mentions",
@@ -144,7 +144,7 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     label: "WhatsApp Business Cloud",
     mode: "stateful-http",
     environment: "whatsapp",
-    envVars: ["ELIZA_MOCK_WHATSAPP_BASE", "MILADY_MOCK_WHATSAPP_BASE"],
+    envVars: ["ELIZA_MOCK_WHATSAPP_BASE", "ELIZA_MOCK_WHATSAPP_BASE"],
     surfaces: [
       "text message send",
       "inbound webhook ingestion",
@@ -224,7 +224,7 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
       "ELIZA_BROWSER_WORKSPACE_URL",
       "ELIZA_BROWSER_WORKSPACE_TOKEN",
       "ELIZA_DISABLE_DISCORD_DESKTOP_CDP",
-      "MILADY_DISABLE_DISCORD_DESKTOP_CDP",
+      "ELIZA_DISABLE_DISCORD_DESKTOP_CDP",
     ],
     surfaces: [
       "desktop browser workspace tab lifecycle",
@@ -283,7 +283,7 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     label: "Twilio",
     mode: "static-http",
     environment: "twilio",
-    envVars: ["ELIZA_MOCK_TWILIO_BASE", "MILADY_MOCK_TWILIO_BASE"],
+    envVars: ["ELIZA_MOCK_TWILIO_BASE", "ELIZA_MOCK_TWILIO_BASE"],
     surfaces: [
       "Programmable Messaging send",
       "Programmable Voice call create",
@@ -303,7 +303,7 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     label: "Calendly",
     mode: "static-http",
     environment: "calendly",
-    envVars: ["ELIZA_MOCK_CALENDLY_BASE", "MILADY_MOCK_CALENDLY_BASE"],
+    envVars: ["ELIZA_MOCK_CALENDLY_BASE", "ELIZA_MOCK_CALENDLY_BASE"],
     surfaces: [
       "current user",
       "event types",

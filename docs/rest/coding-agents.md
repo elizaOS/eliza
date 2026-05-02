@@ -4,7 +4,7 @@ sidebarTitle: Coding Agents
 description: REST API endpoints for managing autonomous coding agent tasks and sessions.
 ---
 
-These endpoints manage coding agent tasks exposed by `@elizaos/plugin-agent-orchestrator`. When the plugin does not export its own route handler, Milady falls back to the plugin's `CODE_TASK` compatibility service for task metadata.
+These endpoints manage coding agent tasks exposed by `@elizaos/plugin-agent-orchestrator`. When the plugin does not export its own route handler, Eliza falls back to the plugin's `CODE_TASK` compatibility service for task metadata.
 
 For setup, architecture, auth, and debug/benchmark guidance, see:
 

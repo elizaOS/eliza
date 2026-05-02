@@ -1,6 +1,6 @@
-# Milady Remote Auth Hardening — Design Plan
+# Eliza Remote Auth Hardening — Design Plan
 
-Status: Draft for milady-feature-coordinator handoff
+Status: Draft for eliza-feature-coordinator handoff
 Scope: P0 through P4, all approved
 Audience: implementation specialists (api, electrobun, ui, plugin, ci)
 
@@ -12,7 +12,7 @@ We need to replace this with a layered model: bootstrap secret to gate the conta
 
 ## 1. Auth Model — Data Structures
 
-All persistent auth state lives in the milady namespace under `~/.milady/auth/` (respecting `MILADY_STATE_DIR` / `ELIZA_STATE_DIR`). The DB (pglite) holds session and audit rows because we already have transactional writes there and because Bun + pglite is the project's blessed storage path. Files are reserved for material that must survive a DB rebuild (password hash, signing keys).
+All persistent auth state lives in the eliza namespace under `~/.eliza/auth/` (respecting `ELIZA_STATE_DIR` / `ELIZA_STATE_DIR`). The DB (pglite) holds session and audit rows because we already have transactional writes there and because Bun + pglite is the project's blessed storage path. Files are reserved for material that must survive a DB rebuild (password hash, signing keys).
 
 ### 1.1 Identity
 
@@ -28,7 +28,7 @@ interface Identity {
 }
 ```
 
-Stored in `auth_identities` table; password hash mirrored to `~/.milady/auth/password.json` (file-mode 0600) so a corrupted DB does not lock the user out forever.
+Stored in `auth_identities` table; password hash mirrored to `~/.eliza/auth/password.json` (file-mode 0600) so a corrupted DB does not lock the user out forever.
 
 ### 1.2 OwnerBinding
 
@@ -86,7 +86,7 @@ interface BootstrapTokenClaims {
 }
 ```
 
-Verified using a JWKS fetched from `${ELIZA_CLOUD_ISSUER}/.well-known/jwks.json` and cached on disk (`~/.milady/auth/cloud-jwks.json`, refreshed every 6h). RS256 only.
+Verified using a JWKS fetched from `${ELIZA_CLOUD_ISSUER}/.well-known/jwks.json` and cached on disk (`~/.eliza/auth/cloud-jwks.json`, refreshed every 6h). RS256 only.
 
 ### 1.5 AuditEvent
 
@@ -103,14 +103,14 @@ interface AuditEvent {
 }
 ```
 
-Stored in `auth_audit_events` and mirrored as JSONL at `~/.milady/auth/audit.log` (appended, rotated at 10MB) so a wiped DB does not lose history.
+Stored in `auth_audit_events` and mirrored as JSONL at `~/.eliza/auth/audit.log` (appended, rotated at 10MB) so a wiped DB does not lose history.
 
 ## 2. Connector-Owner Mechanism — Decision
 
 Both DM-link and slash-command pairing should exist; **slash-command pairing is the canonical default**. Reasoning:
 
 - DM-link requires the agent to be reachable and authenticated to the connector at the moment the user clicks. After a fresh container restart, the connector may not yet be online — the user is locked out by their own login method. That is the exact failure mode we are trying to fix in P0.
-- Slash-command pairing flips the trust direction: the user types `/milady-pair 482-193` from their phone, the connector handler matches it against a code shown in the dashboard, no outbound DM needed, works the moment the connector finishes its first poll.
+- Slash-command pairing flips the trust direction: the user types `/eliza-pair 482-193` from their phone, the connector handler matches it against a code shown in the dashboard, no outbound DM needed, works the moment the connector finishes its first poll.
 - DM-link is offered as a "convenience login" once an owner binding already exists, reusing the same machinery as our existing pairing flow but scoped to a specific identity.
 
 So: bind via slash-command, log in afterwards via DM-link by default with slash-command always available as the recovery path.
@@ -149,12 +149,12 @@ It verifies signature against cached JWKS, checks `iss`, `exp`, `containerId ===
 
 ### 4.1 Cookie shape
 
-- Name: `milady_session`. Attributes: `HttpOnly; Secure; SameSite=Lax; Path=/`. `Secure` is dropped only when bound on loopback (the Electrobun shell).
+- Name: `eliza_session`. Attributes: `HttpOnly; Secure; SameSite=Lax; Path=/`. `Secure` is dropped only when bound on loopback (the Electrobun shell).
 - Value: opaque session id (32 bytes hex). Server-side lookup; never JWT.
 
 ### 4.2 CSRF
 
-Double-submit cookie pattern. Server emits `milady_csrf` (readable, not HttpOnly) on session creation; the SPA mirrors the value into an `x-milady-csrf` header on every state-changing request. Server compares header to cookie using `tokenMatches`. This is the same compare primitive already used at `eliza/packages/app-core/src/api/auth.ts:34`.
+Double-submit cookie pattern. Server emits `eliza_csrf` (readable, not HttpOnly) on session creation; the SPA mirrors the value into an `x-eliza-csrf` header on every state-changing request. Server compares header to cookie using `tokenMatches`. This is the same compare primitive already used at `eliza/packages/app-core/src/api/auth.ts:34`.
 
 ### 4.3 Bearer tokens
 
@@ -174,7 +174,7 @@ The wizard renders inside `apps/app/src/routes/onboarding/` and its API contract
 
 **Cloud-provisioned** (`ELIZA_CLOUD_PROVISIONED=1` and a verified bootstrap token): Step 1 is "paste your bootstrap token". Step 2 pre-populates the SSO link with the user already extracted from the bootstrap claims and asks for confirmation. Password is presented as an optional break-glass fallback — recommended but not required, with a clearly worded warning about what happens if cloud SSO is unreachable.
 
-**Connector-owner**: never the first method. Always layered onto an existing identity, gated behind a confirmation that explains "this connector account will be able to log into this Milady instance".
+**Connector-owner**: never the first method. Always layered onto an existing identity, gated behind a confirmation that explains "this connector account will be able to log into this Eliza instance".
 
 The wizard never proceeds without at least one viable login method. "Cloud SSO only" counts as viable if the bootstrap token verified against the cloud public key in the same wizard step.
 
@@ -197,7 +197,7 @@ Audit destination is the dual-write described in §1.5. Logged fields: `actorIde
 
 ## 7. Hardware Fingerprint — Confirmed Demoted
 
-`eliza/plugins/plugin-elizacloud/typescript/services/cloud-auth.ts` keeps the `deriveDeviceId()` flow only as a way for a fresh install to claim free-tier credits. The result is treated as an opaque identifier passed to the cloud signup endpoint; it never authorises anything inside the Milady container. The auth layer treats the cloud API key obtained via device signup like any other cloud credential — usable for outbound LLM calls, not for inbound dashboard access.
+`eliza/plugins/plugin-elizacloud/typescript/services/cloud-auth.ts` keeps the `deriveDeviceId()` flow only as a way for a fresh install to claim free-tier credits. The result is treated as an opaque identifier passed to the cloud signup endpoint; it never authorises anything inside the Eliza container. The auth layer treats the cloud API key obtained via device signup like any other cloud credential — usable for outbound LLM calls, not for inbound dashboard access.
 
 ## 8. File-by-File Change Inventory
 
@@ -237,7 +237,7 @@ Audit destination is the dual-write described in §1.5. Logged fields: `actorIde
 ### Connector plugins
 
 - `eliza/packages/plugin-discord/` — new `pair` slash command and DM-link handler. Hooks into `auth/owner-binding.ts` via the runtime service registry.
-- `eliza/packages/plugin-telegram/` — same shape, `/milady_pair` command.
+- `eliza/packages/plugin-telegram/` — same shape, `/eliza_pair` command.
 - `packages/plugin-wechat/` — same shape, deferred to P3 since lower-traffic.
 - Other connectors get a tracking issue, not P0 work.
 
@@ -295,8 +295,8 @@ Each phase is independently shippable. P0 by itself meaningfully changes the thr
 - **argon2 binding**: native `argon2` requires a build step that has caused friction with Bun on Linux CI. `@node-rs/argon2` is a Rust binding with prebuilt binaries and is the safer choice. Confirm before P1 starts.
 - **DB vs file split**: should sessions live only in pglite, or mirror to disk? Recommend DB-only for sessions (transient, regeneratable) and dual-write for password hash and audit. User to confirm.
 - **Bootstrap token transport**: env var (`ELIZA_CLOUD_BOOTSTRAP_TOKEN`) vs control-plane API call on boot. Env var is simpler and matches how `STEWARD_AGENT_TOKEN` already flows. Recommend env var for v1.
-- **Connector-owner uniqueness**: should a single Discord account be allowed to own multiple Milady instances? Recommend yes (a user with 3 containers is normal), but enforce one-binding-per-(connector,externalId,instance) to prevent the same external account being bound to two identities on the same instance.
-- **Recovery story**: if the user loses every login method (no password, cloud unreachable, connector accounts gone), what happens? Recommend a "recovery" subcommand on the CLI (`milady auth reset`) that runs locally with filesystem access proof, regenerates the wizard, and forces full re-auth. Loopback-only.
+- **Connector-owner uniqueness**: should a single Discord account be allowed to own multiple Eliza instances? Recommend yes (a user with 3 containers is normal), but enforce one-binding-per-(connector,externalId,instance) to prevent the same external account being bound to two identities on the same instance.
+- **Recovery story**: if the user loses every login method (no password, cloud unreachable, connector accounts gone), what happens? Recommend a "recovery" subcommand on the CLI (`eliza auth reset`) that runs locally with filesystem access proof, regenerates the wizard, and forces full re-auth. Loopback-only.
 - **Electrobun trust**: should the desktop shell auto-create a session on first boot? Recommend yes, scoped to loopback, but still requires the user to set a password before any non-loopback access works. This keeps the desktop UX zero-friction without weakening remote security.
 
 ## 12. Test Strategy
@@ -345,7 +345,7 @@ Mandatory before any phase ships.
 - **NODE_PATH**: no — auth modules are plain TypeScript inside `app-core` and `agent`; no new dynamic plugin loads.
 - **patch-deps**: yes if `jose` or `@node-rs/argon2` upstream packaging needs nudging; budget one patch entry per dep.
 - **Electrobun boundary**: yes — `apps/app/electrobun/src/native/auth-bridge.ts` is new; startup try/catch guards preserved.
-- **Ports / namespaces**: no changes. API stays 31337, UI 2138, namespace `milady`. Cookie name is `milady_*`.
+- **Ports / namespaces**: no changes. API stays 31337, UI 2138, namespace `eliza`. Cookie name is `eliza_*`.
 - **CI workflows**: yes — `agent-review.yml` adds the auth test matrix; `agent-release.yml` adds the cloud-fixture smoke test.
 
 ## 14. Handoff
@@ -358,4 +358,4 @@ Mandatory before any phase ships.
 - **ci specialist**: workflow updates and the cloud-fixture smoke test harness.
 - **docs specialist**: sequence diagrams in `docs/security/auth-flows.md`.
 
-The milady-feature-coordinator owns sequencing; P0 is the only blocker for closing the audited gap and should ship before P1–P4 begin in parallel.
+The eliza-feature-coordinator owns sequencing; P0 is the only blocker for closing the audited gap and should ship before P1–P4 begin in parallel.

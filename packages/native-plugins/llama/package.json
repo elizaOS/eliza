@@ -1,14 +1,14 @@
 {
   "name": "@elizaos/capacitor-llama",
   "version": "0.1.0",
-  "description": "Milady mobile llama.cpp adapter — wraps llama-cpp-capacitor and maps its contextId-based API onto Milady's LocalInferenceLoader contract.",
+  "description": "Eliza mobile llama.cpp adapter — wraps llama-cpp-capacitor and maps its contextId-based API onto Eliza's LocalInferenceLoader contract.",
   "keywords": [
     "llama",
     "llama.cpp",
     "gguf",
     "on-device-inference",
     "capacitor",
-    "milady"
+    "eliza"
   ],
   "main": "./dist/plugin.cjs.js",
   "module": "./dist/esm/index.js",

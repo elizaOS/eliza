@@ -18,7 +18,7 @@ Connect your agent to Google Chat for DMs and space conversations using the `@el
 
 The connector auto-enables when `botToken`, `token`, or `apiKey` is truthy in the connector config. The `serviceAccountFile`/`audience` fields alone do not trigger auto-enable -- you must include one of the trigger fields or add the plugin to `plugins.allow`.
 
-Configure in `~/.milady/milady.json`:
+Configure in `~/.eliza/eliza.json`:
 
 Google Chat authenticates via a service account JSON file, not an API key. The `apiKey` field below is only used to trigger auto-enable — it has no functional role in authentication.
 
@@ -71,8 +71,8 @@ To disable:
 1. Create a Google Cloud project and enable the Google Chat API.
 2. Create a service account with the Chat Bot role.
 3. Download the service account key file or configure inline credentials.
-4. Configure the Chat app in the Google Cloud Console with an HTTP endpoint pointing to your Milady instance.
-5. Add the credentials and webhook path to your Milady config.
+4. Configure the Chat app in the Google Cloud Console with an HTTP endpoint pointing to your Eliza instance.
+5. Add the credentials and webhook path to your Eliza config.
 6. Start your agent.
 
 ## Features
@@ -96,7 +96,7 @@ The following environment variables are supported by the plugin:
 
 ## Full Configuration Reference
 
-All fields are defined under `connectors.googlechat` in `milady.json`.
+All fields are defined under `connectors.googlechat` in `eliza.json`.
 
 ### Core Fields
 

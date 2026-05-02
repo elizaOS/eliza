@@ -24,7 +24,7 @@ Le connecteur Twilio est un plugin elizaOS qui relie votre agent aux API de comm
 |-------|--------|
 | Package | `@elizaos/plugin-twilio` |
 | Clé de configuration | `connectors.twilio` |
-| Installation | `milady plugins install @elizaos/plugin-twilio` |
+| Installation | `eliza plugins install @elizaos/plugin-twilio` |
 
 <div id="setup-requirements">
 

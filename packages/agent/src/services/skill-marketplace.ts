@@ -208,8 +208,7 @@ export interface InstallSkillInput {
 }
 
 function stateDirBase(): string {
-  const base =
-    process.env.ELIZA_STATE_DIR?.trim() || process.env.ELIZA_STATE_DIR?.trim();
+  const base = process.env.ELIZA_STATE_DIR?.trim();
   return base || path.join(os.homedir(), ".eliza");
 }
 

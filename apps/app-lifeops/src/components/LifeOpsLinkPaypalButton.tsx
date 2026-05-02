@@ -30,12 +30,12 @@ interface LifeOpsLinkPaypalButtonProps {
 }
 
 const POPUP_FEATURES = "width=560,height=720,resizable=yes,scrollbars=yes";
-const POPUP_NAME = "milady-paypal-oauth";
+const POPUP_NAME = "eliza-paypal-oauth";
 const POPUP_TIMEOUT_MS = 5 * 60 * 1000;
 const ORIGIN_ALLOWLIST_ENV_FALLBACK = "*";
 
 interface OauthMessage {
-  type: "milady-paypal-oauth";
+  type: "eliza-paypal-oauth";
   code: string;
   state: string;
   error?: string;
@@ -45,7 +45,7 @@ interface OauthMessage {
 function isOauthMessage(value: unknown): value is OauthMessage {
   if (!value || typeof value !== "object") return false;
   const msg = value as Record<string, unknown>;
-  return msg.type === "milady-paypal-oauth";
+  return msg.type === "eliza-paypal-oauth";
 }
 
 export function LifeOpsLinkPaypalButton({
@@ -120,7 +120,7 @@ export function LifeOpsLinkPaypalButton({
 
     const handler = (event: MessageEvent) => {
       const expectedOrigin =
-        process.env.MILADY_APP_ORIGIN ?? ORIGIN_ALLOWLIST_ENV_FALLBACK;
+        process.env.ELIZA_APP_ORIGIN ?? ORIGIN_ALLOWLIST_ENV_FALLBACK;
       if (
         expectedOrigin !== "*" &&
         event.origin &&

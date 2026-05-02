@@ -1,19 +1,19 @@
 ---
 title: "Model Providers"
 sidebarTitle: "Model Providers"
-description: "Supported inference backends and how they fit into Milady's server-target-first routing model."
+description: "Supported inference backends and how they fit into Eliza's server-target-first routing model."
 ---
 
-Milady supports **18 inference backends**. Five are **bundled** with every release (OpenAI, OpenRouter, Groq, Ollama, and Eliza Cloud); the remaining providers are **on demand** — they auto-install from the plugin registry when their API key or config is detected. The active backend is selected through canonical runtime routing on the connected server, not by ad hoc env toggles in the client.
+Eliza supports **18 inference backends**. Five are **bundled** with every release (OpenAI, OpenRouter, Groq, Ollama, and Eliza Cloud); the remaining providers are **on demand** — they auto-install from the plugin registry when their API key or config is detected. The active backend is selected through canonical runtime routing on the connected server, not by ad hoc env toggles in the client.
 
 ---
 
 ## Provider Reference
 
-The table below is the complete list of supported provider plugins, sourced from Milady's provider catalog.
+The table below is the complete list of supported provider plugins, sourced from Eliza's provider catalog.
 
 <Note>
-Providers marked **bundled** are pre-installed with every Milady release and load instantly. Providers marked **auto-install** are downloaded automatically the first time their API key is detected — no manual plugin install required. All providers auto-enable when their API key or config is present.
+Providers marked **bundled** are pre-installed with every Eliza release and load instantly. Providers marked **auto-install** are downloaded automatically the first time their API key is detected — no manual plugin install required. All providers auto-enable when their API key or config is present.
 </Note>
 
 | Provider | Plugin Package | Env Variable(s) | Install | Notes |
@@ -36,7 +36,7 @@ Providers marked **bundled** are pre-installed with every Milady release and loa
 | [Cohere](https://cohere.com) | `@elizaos/plugin-cohere` | `COHERE_API_KEY` | On demand | Command R+ and embed models. |
 | [Perplexity](https://perplexity.ai) | `@elizaos/plugin-perplexity` | `PERPLEXITY_API_KEY` | On demand | Search-augmented generation. |
 | [Zai](https://homunculuslabs.com) | `@homunculuslabs/plugin-zai` | `ZAI_API_KEY` | On demand | Homunculus Labs Zai models. |
-| [Eliza Cloud](https://elizacloud.ai) | `@elizaos/plugin-elizacloud` | `ELIZAOS_CLOUD_API_KEY` | Bundled | Cloud-managed inference route. Can be selected independently from where Milady itself is running. |
+| [Eliza Cloud](https://elizacloud.ai) | `@elizaos/plugin-elizacloud` | `ELIZAOS_CLOUD_API_KEY` | Bundled | Cloud-managed inference route. Can be selected independently from where Eliza itself is running. |
 
 <Info>
 For providers without dedicated plugins (DeepSeek, Mistral, Cohere, Together AI, Perplexity, Qwen, MiniMax), use the **OpenRouter** plugin. OpenRouter provides unified access to 200+ models from these providers and more through a single API key. See the [OpenRouter plugin reference](/plugin-registry/llm/openrouter) for model ID format.
@@ -46,7 +46,7 @@ For providers without dedicated plugins (DeepSeek, Mistral, Cohere, Together AI,
 
 ## How Provider Selection Works
 
-Milady uses a **server-target-first** model:
+Eliza uses a **server-target-first** model:
 
 1. Choose which server to use: local, Eliza Cloud, or a remote backend.
 2. Link any accounts the server may need, such as Eliza Cloud or OpenAI.
@@ -62,14 +62,14 @@ Provider plugins are still auto-enabled from the server environment when appropr
 
 ### Auto-enable flow
 
-1. On startup, Milady scans your environment variables (from `~/.milady/.env`, shell environment, or `milady.json`).
+1. On startup, Eliza scans your environment variables (from `~/.eliza/.env`, shell environment, or `eliza.json`).
 2. If a recognized API key is found (e.g., `ANTHROPIC_API_KEY`), the corresponding provider plugin is automatically added to the plugin allowlist.
-3. The plugin is installed on demand if not already present (installed to `~/.milady/plugins/installed/`).
+3. The plugin is installed on demand if not already present (installed to `~/.eliza/plugins/installed/`).
 4. The provider becomes available for model selection.
 
 ### Explicit plugin configuration
 
-You can also enable providers manually in `~/.milady/milady.json` under the `plugins` key:
+You can also enable providers manually in `~/.eliza/eliza.json` under the `plugins` key:
 
 ```json5
 {
@@ -116,7 +116,7 @@ Providers can also be activated through auth profiles in your config:
 
 ### Option 1: Environment file (recommended)
 
-Create or edit `~/.milady/.env`:
+Create or edit `~/.eliza/.env`:
 
 ```bash
 # Primary provider
@@ -130,7 +130,7 @@ GROQ_API_KEY=gsk_...
 
 ### Option 2: Config file
 
-Add keys directly in `~/.milady/milady.json`:
+Add keys directly in `~/.eliza/eliza.json`:
 
 ```json5
 {
@@ -144,13 +144,13 @@ Add keys directly in `~/.milady/milady.json`:
 ### Option 3: Interactive setup
 
 ```bash
-milady configure
+eliza configure
 ```
 
 This walks you through setting common environment variables including your preferred model provider.
 
 <Warning>
-When using the config file approach, your API keys are stored in plaintext in `milady.json`. The `.env` file approach keeps secrets separate from configuration and is easier to exclude from version control.
+When using the config file approach, your API keys are stored in plaintext in `eliza.json`. The `.env` file approach keeps secrets separate from configuration and is easier to exclude from version control.
 </Warning>
 
 ---
@@ -158,13 +158,13 @@ When using the config file approach, your API keys are stored in plaintext in `m
 ## CLI Commands
 
 ```bash
-milady models             # list configured model providers and their status
-milady configure          # show provider status and env variable guide (read-only)
+eliza models             # list configured model providers and their status
+eliza configure          # show provider status and env variable guide (read-only)
 ```
 
 ### Setting the default model
 
-In `~/.milady/milady.json`, specify the model using `provider/model` format:
+In `~/.eliza/eliza.json`, specify the model using `provider/model` format:
 
 ```json5
 {
@@ -188,7 +188,7 @@ Or switch mid-session using the `/model` chat command:
 
 ## Model Fallbacks
 
-If your primary model is unavailable (rate limit, outage, billing issue), Milady automatically tries the next option in the list. This keeps the agent responsive even when a single provider has problems.
+If your primary model is unavailable (rate limit, outage, billing issue), Eliza automatically tries the next option in the list. This keeps the agent responsive even when a single provider has problems.
 
 ```json5
 {
@@ -217,7 +217,7 @@ You can have multiple providers active simultaneously. Every provider whose API 
 A common setup:
 
 ```bash
-# ~/.milady/.env
+# ~/.eliza/.env
 
 # Primary — high-quality reasoning
 ANTHROPIC_API_KEY=sk-ant-api03-...
@@ -270,14 +270,14 @@ Ollama lets you run models locally with no API key and full privacy. It does not
     ```
   </Step>
   <Step title="Set the endpoint URL">
-    Add to `~/.milady/.env`:
+    Add to `~/.eliza/.env`:
     ```bash
     OLLAMA_API_ENDPOINT=http://127.0.0.1:11434
     ```
     (`OLLAMA_BASE_URL` also works as an alias.)
   </Step>
   <Step title="Select the model">
-    In `~/.milady/milady.json`:
+    In `~/.eliza/eliza.json`:
     ```json5
     {
       agents: {
@@ -340,5 +340,5 @@ Some providers accept multiple env variable names for convenience (e.g., both `A
 </Tip>
 
 <Info>
-**Local AI** does not auto-enable via an environment variable. Enable it explicitly with `milady plugins install local-ai` or by adding `"local-ai"` to `plugins.allow` in `milady.json`. See the [Local AI plugin page](/plugin-registry/llm/local-ai) for configuration.
+**Local AI** does not auto-enable via an environment variable. Enable it explicitly with `eliza plugins install local-ai` or by adding `"local-ai"` to `plugins.allow` in `eliza.json`. See the [Local AI plugin page](/plugin-registry/llm/local-ai) for configuration.
 </Info>

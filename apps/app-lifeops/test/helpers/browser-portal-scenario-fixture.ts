@@ -184,7 +184,7 @@ async function createBlockedPortalSession(
         artifacts: [
           {
             kind: "input_asset",
-            label: "milady-keynote.pdf",
+            label: "eliza-keynote.pdf",
             detail: "received from chat",
           },
         ],
@@ -223,7 +223,7 @@ async function resumePortalSession(
         uploadedAssets: [
           {
             kind: "uploaded_deck",
-            label: "milady-keynote.pdf",
+            label: "eliza-keynote.pdf",
             detail: "uploaded to the speaker portal",
             uploaded: true,
           },

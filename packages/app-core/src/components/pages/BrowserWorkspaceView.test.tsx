@@ -287,8 +287,8 @@ describe("BrowserWorkspaceView", () => {
       tabs: [
         {
           id: "user-tab",
-          title: "milady.ai",
-          url: "https://milady.ai/",
+          title: "eliza.ai",
+          url: "https://eliza.ai/",
           partition: "persist:eliza-browser",
           visible: true,
           createdAt: "2026-04-20T00:00:00.000Z",
@@ -323,7 +323,7 @@ describe("BrowserWorkspaceView", () => {
     await screen.findByText("User Tabs");
     expect(screen.getByText("Agent Tabs")).toBeDefined();
     expect(screen.getByText("App Tabs")).toBeDefined();
-    expect(screen.getByRole("tab", { name: /milady\.ai/i })).toBeDefined();
+    expect(screen.getByRole("tab", { name: /eliza\.ai/i })).toBeDefined();
     expect(screen.getByRole("tab", { name: /discord\.com/i })).toBeDefined();
     expect(screen.getByRole("tab", { name: /pump\.fun/i })).toBeDefined();
     expect(screen.getByRole("button", { name: "Go" })).toBeDefined();
@@ -333,8 +333,8 @@ describe("BrowserWorkspaceView", () => {
     const mockClient = getClientMock();
     const initialTab = {
       id: "user-tab",
-      title: "milady.ai",
-      url: "https://milady.ai/",
+      title: "eliza.ai",
+      url: "https://eliza.ai/",
       partition: "persist:eliza-browser",
       visible: true,
       createdAt: "2026-04-20T00:00:00.000Z",
@@ -363,7 +363,7 @@ describe("BrowserWorkspaceView", () => {
 
     render(<BrowserWorkspaceView />);
 
-    const addressInput = await screen.findByDisplayValue("https://milady.ai/");
+    const addressInput = await screen.findByDisplayValue("https://eliza.ai/");
     fireEvent.change(addressInput, { target: { value: "example.com" } });
     fireEvent.click(screen.getByRole("button", { name: "Go" }));
 

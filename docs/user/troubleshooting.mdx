@@ -1,7 +1,7 @@
 ---
 title: "Troubleshooting"
 sidebarTitle: "Troubleshooting"
-description: "Fix common Milady issues with startup, providers, voice, connectors, and remote access."
+description: "Fix common Eliza issues with startup, providers, voice, connectors, and remote access."
 ---
 
 Most failures come from one of these areas:
@@ -12,11 +12,11 @@ Most failures come from one of these areas:
 4. connector credentials
 5. remote URL or token configuration
 
-## Milady will not open
+## Eliza will not open
 
 ### macOS
 
-Re-download from the official [GitHub releases](https://github.com/milady-ai/milady/releases/latest) page if Gatekeeper or notarization warnings look suspicious.
+Re-download from the official [GitHub releases](https://github.com/eliza-ai/eliza/releases/latest) page if Gatekeeper or notarization warnings look suspicious.
 
 ### Windows
 
@@ -27,7 +27,7 @@ If SmartScreen appears, use `More info` and confirm you downloaded the official 
 If the AppImage will not start:
 
 ```bash
-chmod +x Milady.AppImage
+chmod +x Eliza.AppImage
 ```
 
 ## The first message hangs
@@ -38,7 +38,7 @@ Check:
 - whether Ollama is running (if using local models): `curl http://127.0.0.1:11434/api/tags`
 - whether the selected model exists on the provider
 - whether a remote backend owns provider routing (`deploymentTarget` in config)
-- logs for specific errors: check `~/.milady/logs/` or run `milady doctor`
+- logs for specific errors: check `~/.eliza/logs/` or run `eliza doctor`
 
 ## Voice is silent
 
@@ -106,7 +106,7 @@ These commands work in the chat input and can help diagnose issues:
 
 See [Chat Commands](/chat-commands) for the full reference.
 
-## Milady is slow
+## Eliza is slow
 
 - slow before the first token: choose a faster model or provider (Groq and Anthropic Haiku are fast options)
 - slow throughout: check network limits or local model size (smaller Ollama models like `llama3.2:3b` are faster)
@@ -115,10 +115,10 @@ See [Chat Commands](/chat-commands) for the full reference.
 
 ## Start over
 
-Quit Milady, rename the state directory, and relaunch:
+Quit Eliza, rename the state directory, and relaunch:
 
-- macOS / Linux: `~/.milady`
-- Windows: `%USERPROFILE%\\.milady\\`
+- macOS / Linux: `~/.eliza`
+- Windows: `%USERPROFILE%\\.eliza\\`
 
 ## File a bug
 
@@ -130,4 +130,4 @@ Include:
 - expected behavior
 - actual behavior
 
-Issue tracker: [milady-ai/milady issues](https://github.com/milady-ai/milady/issues)
+Issue tracker: [eliza-ai/eliza issues](https://github.com/eliza-ai/eliza/issues)

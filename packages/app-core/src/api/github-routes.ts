@@ -123,7 +123,7 @@ async function validateToken(
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: "application/vnd.github+json",
-        "User-Agent": "milady-github-connection",
+        "User-Agent": "eliza-github-connection",
       },
       signal: controller.signal,
     });

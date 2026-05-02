@@ -56,7 +56,7 @@ export async function handleSubscriptionRoutes(
       const { getSubscriptionStatus } = await loadSubscriptionAuth();
       const baseRows = getSubscriptionStatus();
       // Join each per-account row with its rich LinkedAccountConfig
-      // entry from `milady.json` (priority, enabled, health, usage).
+      // entry from `eliza.json` (priority, enabled, health, usage).
       // CLI / setup-token / Claude Code rows have synthetic accountIds
       // and no config-level row — they pass through unchanged so the
       // UI's existing `find(s => s.provider === ...)` keeps working.

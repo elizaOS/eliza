@@ -1,10 +1,10 @@
 ---
 title: "Local Embedding Plugin"
 sidebarTitle: "Local Embedding"
-description: "Local embedding generation plugin for Milady — generate vector embeddings locally without external API calls."
+description: "Local embedding generation plugin for Eliza — generate vector embeddings locally without external API calls."
 ---
 
-The Local Embedding plugin provides on-device vector embedding generation for Milady agents, enabling memory and semantic search without external API dependencies.
+The Local Embedding plugin provides on-device vector embedding generation for Eliza agents, enabling memory and semantic search without external API dependencies.
 
 **Package:** `@elizaos/plugin-local-embedding` (core plugin — always loaded, required for memory)
 

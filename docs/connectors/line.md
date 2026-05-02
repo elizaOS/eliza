@@ -12,7 +12,7 @@ The LINE connector is an elizaOS plugin that bridges your agent to LINE Messagin
 |-------|-------|
 | Package | `@elizaos/plugin-line` |
 | Config key | `connectors.line` |
-| Install | `milady plugins install @elizaos/plugin-line` |
+| Install | `eliza plugins install @elizaos/plugin-line` |
 
 ## Setup
 
@@ -24,7 +24,7 @@ The LINE connector is an elizaOS plugin that bridges your agent to LINE Messagin
 4. Under the **Messaging API** tab, issue a **Channel access token**
 5. Note the **Channel secret** from the **Basic settings** tab
 
-### 2. Configure Milady
+### 2. Configure Eliza
 
 | Name | Required | Description |
 |------|----------|-------------|
@@ -39,10 +39,10 @@ The LINE connector is an elizaOS plugin that bridges your agent to LINE Messagin
 Install the plugin from the registry:
 
 ```bash
-milady plugins install line
+eliza plugins install line
 ```
 
-Configure in `~/.milady/milady.json`:
+Configure in `~/.eliza/eliza.json`:
 
 ```json
 {

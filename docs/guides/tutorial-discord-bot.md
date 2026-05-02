@@ -1,22 +1,22 @@
 ---
 title: "Tutorial: Discord Bot"
 sidebarTitle: "Discord Bot Setup"
-description: "Set up Milady as a Discord bot with step-by-step instructions for creating the app, configuring permissions, and deploying your AI assistant."
+description: "Set up Eliza as a Discord bot with step-by-step instructions for creating the app, configuring permissions, and deploying your AI assistant."
 ---
 
-# Setting Up Milady as a Discord Bot
+# Setting Up Eliza as a Discord Bot
 
-This tutorial walks you through creating and configuring Milady to run as a Discord bot. By the end, you'll have a fully functional AI assistant responding to messages in your Discord server.
+This tutorial walks you through creating and configuring Eliza to run as a Discord bot. By the end, you'll have a fully functional AI assistant responding to messages in your Discord server.
 
 <Info>
-Milady uses the `@elizaos/plugin-discord` connector to interact with Discord servers. This guide assumes you have Milady installed locally and basic familiarity with Discord's developer portal.
+Eliza uses the `@elizaos/plugin-discord` connector to interact with Discord servers. This guide assumes you have Eliza installed locally and basic familiarity with Discord's developer portal.
 </Info>
 
 ## Prerequisites
 
 Before starting, ensure you have:
 - A Discord account with a server where you have admin permissions
-- Milady installed on your system (see [Installation](/installation))
+- Eliza installed on your system (see [Installation](/installation))
 - Node.js 22+ installed
 - A code editor for modifying configuration files
 
@@ -27,7 +27,7 @@ Before starting, ensure you have:
 <Step title="Create a Discord Application">
 1. Navigate to the [Discord Developer Portal](https://discord.com/developers/applications)
 2. Click **New Application** in the top right
-3. Enter a name for your bot (e.g., "Milady AI Assistant")
+3. Enter a name for your bot (e.g., "Eliza AI Assistant")
 4. Click **Create**
 5. Go to the **Bot** tab on the left sidebar
 6. Click **Add Bot**
@@ -52,8 +52,8 @@ If your token is ever exposed, regenerate it immediately by clicking **Regenerat
 
 </Step>
 
-<Step title="Configure milady.json">
-1. Open your Milady config file (run `milady config path` to find it, typically `~/.milady/milady.json`)
+<Step title="Configure eliza.json">
+1. Open your Eliza config file (run `eliza config path` to find it, typically `~/.eliza/eliza.json`)
 2. Add the Discord connector configuration:
 
 ```json
@@ -85,11 +85,11 @@ The Discord connector auto-enables when `token` is present in the config. Make s
 1. Open your terminal and run the following command to verify the plugin is recognized:
 
 ```bash
-milady plugins installed
+eliza plugins installed
 ```
 
 2. Confirm that `discord` appears in the list of installed plugins
-3. Check `milady.json` to ensure the `token` field is set under `connectors.discord`
+3. Check `eliza.json` to ensure the `token` field is set under `connectors.discord`
 
 </Step>
 
@@ -114,11 +114,11 @@ For a production bot, you may want to add additional permissions like `Manage Me
 
 </Step>
 
-<Step title="Start Milady and Test Your Bot">
-1. In your terminal, start Milady:
+<Step title="Start Eliza and Test Your Bot">
+1. In your terminal, start Eliza:
 
 ```bash
-milady start
+eliza start
 ```
 
 2. You should see output confirming the Discord connector has connected
@@ -137,12 +137,12 @@ milady start
 
 Before considering your setup complete:
 
-- [ ] Bot token is securely stored in `milady.json` under `connectors.discord.token`
+- [ ] Bot token is securely stored in `eliza.json` under `connectors.discord.token`
 - [ ] Discord connector shows as connected in the console output
 - [ ] Bot appears online in your Discord server
 - [ ] Bot responds to direct messages
 - [ ] Bot responds to channel messages (if configured)
-- [ ] No errors in the Milady console output
+- [ ] No errors in the Eliza console output
 
 ## Troubleshooting
 
@@ -153,9 +153,9 @@ This usually means the Discord connector didn't connect successfully.
 
 **Solutions:**
 1. Verify your bot token is correct and hasn't expired
-2. Check that `token` is set under `connectors.discord` in `milady.json`
+2. Check that `token` is set under `connectors.discord` in `eliza.json`
 3. Ensure the `MESSAGE_CONTENT` privileged intent is enabled in the Discord Developer Portal
-4. Run `milady start` and look for error messages in the console
+4. Run `eliza start` and look for error messages in the console
 5. Regenerate your bot token if it's been compromised or auto-revoked
 </Accordion>
 
@@ -165,9 +165,9 @@ If your bot is online but not responding:
 **Solutions:**
 1. Check that `MESSAGE_CONTENT` intent is enabled in the Discord Developer Portal under **Bot > Privileged Gateway Intents**
 2. Verify the bot has permission to see and send messages in the channel
-3. Check the Milady console for error messages
+3. Check the Eliza console for error messages
 4. If using `groupPolicy: "allowlist"`, ensure the server/channel IDs are listed in the `guilds` config
-5. Try restarting Milady with `Ctrl+C` followed by `milady start`
+5. Try restarting Eliza with `Ctrl+C` followed by `eliza start`
 </Accordion>
 
 <Accordion title="Permission denied errors">
@@ -175,10 +175,10 @@ Your bot is responding but encountering permission issues:
 
 **Solutions:**
 1. Go to your Discord server settings → Roles
-2. Move the "Milady" role higher in the hierarchy (above other roles it needs to interact with)
+2. Move the "Eliza" role higher in the hierarchy (above other roles it needs to interact with)
 3. In the Developer Portal, add missing permissions under the URL Generator
 4. Re-invite your bot using the new authorization URL
-5. Restart Milady after making permission changes
+5. Restart Eliza after making permission changes
 </Accordion>
 
 <Accordion title="Rate limiting warnings">
@@ -187,9 +187,9 @@ Discord limits how many messages bots can send:
 **Solutions:**
 1. Reduce the frequency of bot responses if testing rapidly
 2. Implement longer delays between test messages
-3. Add rate limiting configuration to `milady.json` if available in your version
+3. Add rate limiting configuration to `eliza.json` if available in your version
 4. Avoid @mentioning the bot excessively
-5. Check the Milady documentation for rate limiting best practices
+5. Check the Eliza documentation for rate limiting best practices
 </Accordion>
 
 <Accordion title="Slash commands not showing up">
@@ -197,7 +197,7 @@ If slash commands aren't appearing:
 
 **Solutions:**
 1. Ensure the `Use Slash Commands` scope is included in your bot's OAuth2 invite URL
-2. Restart Milady after making any configuration changes
+2. Restart Eliza after making any configuration changes
 3. In Discord, type `/` in a message box and wait 1-2 seconds for commands to appear
 4. If still missing, re-invite the bot using an updated authorization URL with the `applications.commands` scope
 </Accordion>
@@ -208,7 +208,7 @@ If slash commands aren't appearing:
 
 Now that your Discord bot is running, explore these guides:
 
-- **[Telegram Bot Setup](/guides/tutorial-telegram-bot)** - Add Milady to Telegram
+- **[Telegram Bot Setup](/guides/tutorial-telegram-bot)** - Add Eliza to Telegram
 - **[Autonomous Agents](/guides/tutorial-autonomous-agent)** - Create self-managing AI agents
 - **[Discord Connector Reference](/connectors/discord)** - Advanced Discord plugin configuration
 
@@ -218,8 +218,8 @@ Now that your Discord bot is running, explore these guides:
 <Tab title="Discord Developer Portal">
 Visit the [Discord Developer Portal](https://discord.com/developers/applications) to manage your bot's settings, permissions, and webhooks.
 </Tab>
-<Tab title="Milady Configuration">
-See the [Configuration Guide](/configuration) for detailed options in `milady.json`.
+<Tab title="Eliza Configuration">
+See the [Configuration Guide](/configuration) for detailed options in `eliza.json`.
 </Tab>
 <Tab title="elizaOS Documentation">
 Learn more about elizaOS at the [elizaOS GitHub](https://github.com/elizaOS/eliza).
@@ -231,6 +231,6 @@ Learn more about elizaOS at the [elizaOS GitHub](https://github.com/elizaOS/eliz
 If you encounter issues:
 
 1. Check the troubleshooting section above
-2. Review Milady's console output for error messages
-3. Visit the [Milady Community Discord](https://discord.gg/milady)
-4. Open an issue on the [Milady GitHub repository](https://github.com/milady-ai/milady)
+2. Review Eliza's console output for error messages
+3. Visit the [Eliza Community Discord](https://discord.gg/eliza)
+4. Open an issue on the [Eliza GitHub repository](https://github.com/eliza-ai/eliza)

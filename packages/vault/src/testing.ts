@@ -42,7 +42,7 @@ export async function createTestVault(
 ): Promise<TestVault> {
   const ownsWorkDir = !opts.workDir;
   const workDir =
-    opts.workDir ?? (await fs.mkdtemp(join(tmpdir(), "milady-vault-")));
+    opts.workDir ?? (await fs.mkdtemp(join(tmpdir(), "eliza-vault-")));
   const storePath = join(workDir, "vault.json");
   const auditLogPath = join(workDir, "audit", "vault.jsonl");
   const vault = createVault({

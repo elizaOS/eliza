@@ -1,7 +1,7 @@
 ---
 title: "Plugin Resolution and NODE_PATH"
 sidebarTitle: "Plugin Resolution"
-description: "Why dynamic plugin imports fail without NODE_PATH and how Milady fixes it across CLI, dev server, and Electrobun."
+description: "Why dynamic plugin imports fail without NODE_PATH and how Eliza fixes it across CLI, dev server, and Electrobun."
 ---
 
 # Plugin resolution: why NODE_PATH is needed
@@ -23,9 +23,9 @@ Node resolves this by walking up from the **importing file's directory**. When e
 | Entry point | Importing file location | Walks up from | Reaches root `node_modules`? |
 |---|---|---|---|
 | `bun run dev` | `src/runtime/eliza.ts` | `src/runtime/` | Usually yes (2 levels) |
-| `milady start` (CLI) | `dist/runtime/eliza.js` | `dist/runtime/` | Usually yes (2 levels) |
-| Electrobun dev | `milady-dist/eliza.js` | `apps/app/electrobun/milady-dist/` | **No** — walks into `apps/` |
-| Electrobun packaged | `app.asar.unpacked/milady-dist/eliza.js` | Inside the `.app` bundle | **No** — different filesystem |
+| `eliza start` (CLI) | `dist/runtime/eliza.js` | `dist/runtime/` | Usually yes (2 levels) |
+| Electrobun dev | `eliza-dist/eliza.js` | `apps/app/electrobun/eliza-dist/` | **No** — walks into `apps/` |
+| Electrobun packaged | `app.asar.unpacked/eliza-dist/eliza.js` | Inside the `.app` bundle | **No** — different filesystem |
 
 In the Electrobun cases (and sometimes the built dist case depending on bundler behavior), the walk never reaches the repo root where `@elizaos/plugin-*` packages are installed. The import fails with "Cannot find module".
 
@@ -55,7 +55,7 @@ const rootModules = path.join(cwd, "node_modules");
 env.NODE_PATH = ...;
 ```
 
-**Why here:** The CLI runner spawns a child process that runs `milady.mjs` → `dist/entry.js` → `dist/eliza.js`. Setting `NODE_PATH` in the child's env ensures the child resolves from root even though `dist/` doesn't have its own `node_modules`.
+**Why here:** The CLI runner spawns a child process that runs `eliza.mjs` → `dist/entry.js` → `dist/eliza.js`. Setting `NODE_PATH` in the child's env ensures the child resolves from root even though `dist/` doesn't have its own `node_modules`.
 
 ### 3. `eliza/packages/app-core/platforms/electrobun/src/native/agent.ts` (Electrobun native runtime)
 
@@ -64,7 +64,7 @@ env.NODE_PATH = ...;
 // Packaged: use ASAR node_modules
 ```
 
-**Why here:** The Electrobun native runtime loads `milady-dist/eliza.js` via `dynamicImport()`. In dev mode, `__dirname` is deep inside `apps/app/electrobun/build/src/native/` — we walk up to find the first `node_modules` directory (the monorepo root). In packaged mode, we use the ASAR's `node_modules` instead.
+**Why here:** The Electrobun native runtime loads `eliza-dist/eliza.js` via `dynamicImport()`. In dev mode, `__dirname` is deep inside `apps/app/electrobun/build/src/native/` — we walk up to find the first `node_modules` directory (the monorepo root). In packaged mode, we use the ASAR's `node_modules` instead.
 
 ## Why not just use the bundler?
 
@@ -72,7 +72,7 @@ tsdown with `noExternal: [/.*/]` inlines most dependencies, but `@elizaos/plugin
 
 ## Packaged app: no-op
 
-In the packaged `.app`, `eliza.js` lives at `app.asar.unpacked/milady-dist/eliza.js`. Two levels up is `Contents/Resources/` — no `node_modules` there. The `existsSync` check in `eliza.ts` returns false, so the NODE_PATH code is skipped entirely. The packaged app instead copies runtime packages into `milady-dist/node_modules` during the desktop build (`copy-runtime-node-modules.ts` for Electrobun) and `agent.ts` sets that packaged `node_modules` directory on `NODE_PATH`.
+In the packaged `.app`, `eliza.js` lives at `app.asar.unpacked/eliza-dist/eliza.js`. Two levels up is `Contents/Resources/` — no `node_modules` there. The `existsSync` check in `eliza.ts` returns false, so the NODE_PATH code is skipped entirely. The packaged app instead copies runtime packages into `eliza-dist/node_modules` during the desktop build (`copy-runtime-node-modules.ts` for Electrobun) and `agent.ts` sets that packaged `node_modules` directory on `NODE_PATH`.
 
 ## Bun and published package exports
 
@@ -80,7 +80,7 @@ Some `@elizaos` packages (e.g. `@elizaos/plugin-sql`) publish a `package.json` w
 
 **What happens:** Bun's resolver prefers the `"bun"` export condition. It tries to load `./src/index.ts`, the file is missing, and we get "Cannot find module … from …/src/runtime/eliza.ts" even though the package is in `node_modules`. Bun does not fall back to the `"import"` condition when the `"bun"` target is missing.
 
-**Our fix:** `eliza/packages/app-core/scripts/patch-deps.mjs` runs after `bun install` via `eliza/packages/app-core/scripts/run-repo-setup.mjs` (invoked from Milady's `postinstall` entry at `scripts/milady-postinstall-repo-setup.mjs`). It finds affected `@elizaos` packages (including any we add to the allowlist) and, if `exports["."].bun` points to `./src/index.ts` and that file does not exist, removes the `"bun"` and `"default"` conditions that reference `src/`. After the patch, only `"import"` (and similar) remain, so Bun resolves to `./dist/index.js`. **Why we only patch when the file is missing:** In a development workspace where the plugin is checked out with `src/` present, we leave the package unchanged so upstream workflows still work.
+**Our fix:** `eliza/packages/app-core/scripts/patch-deps.mjs` runs after `bun install` via `eliza/packages/app-core/scripts/run-repo-setup.mjs` (invoked from Eliza's `postinstall` entry at `scripts/eliza-postinstall-repo-setup.mjs`). It finds affected `@elizaos` packages (including any we add to the allowlist) and, if `exports["."].bun` points to `./src/index.ts` and that file does not exist, removes the `"bun"` and `"default"` conditions that reference `src/`. After the patch, only `"import"` (and similar) remain, so Bun resolves to `./dist/index.js`. **Why we only patch when the file is missing:** In a development workspace where the plugin is checked out with `src/` present, we leave the package unchanged so upstream workflows still work.
 
 ## Pinned: `@elizaos/plugin-openrouter`
 
@@ -98,7 +98,7 @@ The published npm tarball for **`2.0.0-alpha.12`** contains **truncated** JavaSc
 **Why we do not postinstall-patch the dist:** The broken release is missing the
 entire plugin body, not a single wrong identifier (contrast
 `@elizaos/plugin-pdf`, where a small string replace fixes a bad export alias).
-Reconstructing the plugin from source inside Milady would fork upstream and be
+Reconstructing the plugin from source inside Eliza would fork upstream and be
 fragile. When you are not using the local workspace checkout, prefer the known
 good published **`2.0.0-alpha.13`** artifact.
 
@@ -115,7 +115,7 @@ Optional plugins (and some core-adjacent packages) can end up in the load set be
 
 **Why we record provenance:** `collectPluginNames()` optionally fills a **`PluginLoadReasons`** map (first source wins per package). `resolvePlugins()` passes it through; benign optional failures are summarized as **`Optional plugins not installed: … (added by: …)`**. That answers “what should I change?” — edit config, unset env, install the package, or add a plugin checkout — instead of chasing a false “eliza is broken” hypothesis.
 
-**Browser / stagehand:** `@elizaos/plugin-browser` expects a **stagehand-server** tree that is **not** in the npm tarball. Milady discovers `plugins/plugin-browser/stagehand-server` by **walking parents** from the runtime so both flat Milady checkouts and **`eliza/` submodule** layouts resolve. See **[Developer diagnostics and workspace](guides/developer-diagnostics-and-workspace.md)**.
+**Browser / stagehand:** `@elizaos/plugin-browser` expects a **stagehand-server** tree that is **not** in the npm tarball. Eliza discovers `plugins/plugin-browser/stagehand-server` by **walking parents** from the runtime so both flat Eliza checkouts and **`eliza/` submodule** layouts resolve. See **[Developer diagnostics and workspace](guides/developer-diagnostics-and-workspace.md)**.
 
 ## Pack-and-test and Vendored Workspace Validation (Phase 5)
 

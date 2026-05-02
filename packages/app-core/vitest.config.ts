@@ -30,9 +30,7 @@ const pluginEdgeTtsSrc = path.join(
 const pluginPdfSrc = path.join(monorepoRoot, "plugins/plugin-pdf/typescript");
 const reactPkg = path.join(fileDir, "node_modules/react");
 const reactDomPkg = path.join(fileDir, "node_modules/react-dom");
-const includeLiveE2e =
-  process.env.MILADY_INCLUDE_LIVE_E2E === "1" ||
-  process.env.ELIZA_INCLUDE_LIVE_E2E === "1";
+const includeLiveE2e = process.env.ELIZA_INCLUDE_LIVE_E2E === "1";
 
 /**
  * Real `react` / `react-dom` packages (not .d.ts stubs from tsconfig paths)

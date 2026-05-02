@@ -1,11 +1,11 @@
 ---
 title: Contributing Guide
-description: How to set up a development environment, follow code conventions, and submit pull requests to the Milady project.
+description: How to set up a development environment, follow code conventions, and submit pull requests to the Eliza project.
 ---
 
 # Contributing Guide
 
-Welcome to Milady! This guide covers development environment setup and contribution workflow.
+Welcome to Eliza! This guide covers development environment setup and contribution workflow.
 
 <Info>
 For the full contribution process including the Agent Review Bot and agents-only PR workflow, see the [Contribution Guide](/guides/contribution-guide).
@@ -35,8 +35,8 @@ For the full contribution process including the Agent Review Bot and agents-only
 
 ```bash
 # Clone the repository
-git clone https://github.com/milady-ai/milady.git
-cd milady
+git clone https://github.com/eliza-ai/eliza.git
+cd eliza
 
 # Match repository Node version
 nvm use || nvm install
@@ -90,10 +90,10 @@ bun run dev
 
 ## Monorepo Structure
 
-Milady is a monorepo managed with Bun workspaces. The core elizaOS runtime lives in the `eliza/` git submodule.
+Eliza is a monorepo managed with Bun workspaces. The core elizaOS runtime lives in the `eliza/` git submodule.
 
 ```
-milady/
+eliza/
 ├── eliza/                       # elizaOS submodule (core runtime)
 │   ├── packages/
 │   │   ├── app-core/            # Main application package (CLI, API, runtime, config)
@@ -138,9 +138,9 @@ bun run test
 
 | File | Purpose |
 |------|---------|
-| `milady.mjs` | npm bin entry |
+| `eliza.mjs` | npm bin entry |
 | `eliza/packages/app-core/src/entry.ts` | CLI process bootstrap |
-| `eliza/packages/app-core/src/cli/` | Commander CLI (milady command) |
+| `eliza/packages/app-core/src/cli/` | Commander CLI (eliza command) |
 | `eliza/packages/app-core/src/runtime/eliza.ts` | Agent loader and runtime boot |
 | `eliza/packages/app-core/src/api/` | Dashboard API |
 | `eliza/packages/app-core/src/config/` | Plugin auto-enable, config schemas |
@@ -196,7 +196,7 @@ bun run test:watch
 bun run test:e2e
 
 # Live tests (requires API keys)
-MILADY_LIVE_TEST=1 bun run test:live
+ELIZA_LIVE_TEST=1 bun run test:live
 
 # Docker-based runtime review
 bun run test:docker:review
@@ -204,10 +204,10 @@ bun run test:docker:review
 
 ### Runtime fallback for Bun crashes
 
-If Bun segfaults on your platform during long-running sessions, run Milady on Node runtime:
+If Bun segfaults on your platform during long-running sessions, run Eliza on Node runtime:
 
 ```bash
-MILADY_RUNTIME=node bun run milady start
+ELIZA_RUNTIME=node bun run eliza start
 ```
 
 ### Test File Conventions
@@ -252,8 +252,8 @@ The repo root **`vitest.config.ts`** (used by **`bun run test`** via the unit sh
 
 ### Product vs Code Naming
 
-- **Milady** — Product name, headings, docs
-- **milady** — CLI command, package name, paths, config keys
+- **Eliza** — Product name, headings, docs
+- **eliza** — CLI command, package name, paths, config keys
 
 ### Formatting
 
@@ -415,7 +415,7 @@ Claude Code Review is enabled for automated initial feedback.
 
 Join the community Discord for help, discussions, and announcements:
 
-**[discord.gg/milady](https://discord.gg/milady)**
+**[discord.gg/eliza](https://discord.gg/eliza)**
 
 Channels:
 - `#dev` — Development help
@@ -435,7 +435,7 @@ When filing an issue:
 2. **Use templates** — Fill out the provided template
 3. **Include reproduction** — Steps to reproduce
 4. **Share logs** — Relevant error output
-5. **Environment** — OS, Node version, Milady version
+5. **Environment** — OS, Node version, Eliza version
 
 ```markdown
 ## Bug Report
@@ -444,7 +444,7 @@ When filing an issue:
 Brief description
 
 **To reproduce:**
-1. Run `milady start`
+1. Run `eliza start`
 2. Send message "..."
 3. Error occurs
 
@@ -454,7 +454,7 @@ What should happen
 **Environment:**
 - OS: macOS 14.2
 - Node: 22.12.0
-- Milady: 2.0.0-alpha.8
+- Eliza: 2.0.0-alpha.8
 
 **Logs:**
 ```

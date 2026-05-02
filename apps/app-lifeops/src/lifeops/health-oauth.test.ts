@@ -48,7 +48,7 @@ function stateFrom(authUrl: string | null): string {
 }
 
 beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "milady-health-oauth-"));
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-health-oauth-"));
 });
 
 afterEach(() => {

@@ -1,10 +1,10 @@
 ---
 title: "Publish a Plugin"
 sidebarTitle: "Publish"
-description: "How to package, version, and publish a Milady plugin to the npm registry and submit it to the community registry."
+description: "How to package, version, and publish a Eliza plugin to the npm registry and submit it to the community registry."
 ---
 
-This guide covers the full publishing workflow for a Milady plugin — from packaging to npm publication and community registry submission.
+This guide covers the full publishing workflow for a Eliza plugin — from packaging to npm publication and community registry submission.
 
 ## Naming Conventions
 
@@ -31,7 +31,7 @@ Your plugin's `package.json` must include these fields:
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": ["dist", "elizaos.plugin.json"],
-  "keywords": ["elizaos", "milady", "plugin"],
+  "keywords": ["elizaos", "eliza", "plugin"],
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -137,7 +137,7 @@ npm info @yourorg/plugin-my-feature
 
 ## Plugin Manifest
 
-Include an `elizaos.plugin.json` at the package root for rich UI integration in the Milady admin panel:
+Include an `elizaos.plugin.json` at the package root for rich UI integration in the Eliza admin panel:
 
 ```json
 {

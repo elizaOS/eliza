@@ -2,7 +2,7 @@
 
 ## Scope
 
-This writeup covers the live Milady game surface for Defense of the Agents and ClawVille. It is based on direct inspection of the local routes:
+This writeup covers the live Eliza game surface for Defense of the Agents and ClawVille. It is based on direct inspection of the local routes:
 
 - `/apps/defense-of-the-agents`
 - `/apps/clawville`
@@ -11,7 +11,7 @@ The review focuses on the host UI around the iframe: game header, diagnostics, c
 
 ## Product Goal
 
-Milady should make games feel like playable chat-native app experiences, not embedded web pages with a debug panel next to them. A consumer should understand:
+Eliza should make games feel like playable chat-native app experiences, not embedded web pages with a debug panel next to them. A consumer should understand:
 
 - what game is running,
 - what is happening right now,
@@ -66,7 +66,7 @@ What is weak:
 What it does:
 
 - Keeps Chat, Apps, Character, Wallet, Browser, and Automations available.
-- Orients the user inside Milady, not inside the game.
+- Orients the user inside Eliza, not inside the game.
 
 Why it should be there:
 
@@ -137,7 +137,7 @@ What it does:
 
 Why it should be there:
 
-- The integrated game already has a dedicated renderer. Milady should not reimplement the full game.
+- The integrated game already has a dedicated renderer. Eliza should not reimplement the full game.
 
 Does it need to be there:
 
@@ -166,7 +166,7 @@ What it does:
 
 Why it should be there:
 
-- The value of Milady is that the agent can play through chat and actions. The rail is the bridge between natural language and game APIs.
+- The value of Eliza is that the agent can play through chat and actions. The rail is the bridge between natural language and game APIs.
 
 Does it need to be there:
 
@@ -228,7 +228,7 @@ Implementation guidance:
 
 What it does:
 
-- Shows what the user asked for, what Milady sent, and how the game responded.
+- Shows what the user asked for, what Eliza sent, and how the game responded.
 
 Why it should be there:
 
@@ -360,7 +360,7 @@ What users care about:
 
 Current gap:
 
-- The game supports a richer MOBA loop: class choice, lane switching, recall, pings, ability picks every three levels, towers, dragon, scoreboard, and armory. The Milady surface mostly exposes lane/recall/autoplay.
+- The game supports a richer MOBA loop: class choice, lane switching, recall, pings, ability picks every three levels, towers, dragon, scoreboard, and armory. The Eliza surface mostly exposes lane/recall/autoplay.
 
 Recommended UI:
 
@@ -387,7 +387,7 @@ What users care about:
 
 Current gap:
 
-- The current ClawVille play skill exposes perception events, movement, building visits, NPC chat, NeoTokens, knowledge books, and skill loading. The Milady surface only makes movement, visit, and chat visible, and shop/buy is not currently supported by the API route.
+- The current ClawVille play skill exposes perception events, movement, building visits, NPC chat, NeoTokens, knowledge books, and skill loading. The Eliza surface only makes movement, visit, and chat visible, and shop/buy is not currently supported by the API route.
 
 Recommended UI:
 

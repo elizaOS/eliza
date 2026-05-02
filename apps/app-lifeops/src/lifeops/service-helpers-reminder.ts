@@ -8,6 +8,7 @@ import type {
   LifeOpsReminderPreferenceSetting,
   LifeOpsReminderUrgency,
   LifeOpsTaskDefinition,
+  SnoozeLifeOpsOccurrenceRequest,
 } from "../contracts/index.js";
 import {
   LIFEOPS_ACTIVITY_SIGNAL_SOURCES,
@@ -197,7 +198,7 @@ export type ReminderChannelRankingWeights = {
 
 const DEFAULT_REMINDER_CHANNEL_RANKING_WEIGHTS: ReminderChannelRankingWeights =
   {
-    inAppAnchor: 10_000,
+    inAppAnchor: 450,
     activePlatform: 1_200,
     primaryPlatform: 900,
     secondaryPlatform: 650,
@@ -210,12 +211,75 @@ const DEFAULT_REMINDER_CHANNEL_RANKING_WEIGHTS: ReminderChannelRankingWeights =
     recencyMax: 120,
   };
 
-function resolveReminderChannelRankingWeights(
-  overrides: Partial<ReminderChannelRankingWeights> | undefined,
-): ReminderChannelRankingWeights {
-  return overrides
-    ? { ...DEFAULT_REMINDER_CHANNEL_RANKING_WEIGHTS, ...overrides }
-    : DEFAULT_REMINDER_CHANNEL_RANKING_WEIGHTS;
+export type ReminderInterruptionBudget =
+  | "low"
+  | "normal"
+  | "elevated"
+  | "urgent";
+
+export type ReminderEscalationRoutingPolicy = {
+  includeInApp: boolean;
+  interruptionBudget: ReminderInterruptionBudget;
+  weights: ReminderChannelRankingWeights;
+  reason: string;
+};
+
+export function resolveReminderEscalationRoutingPolicy(args: {
+  activityProfile: ReminderActivityProfileSnapshot | null;
+  urgency?: LifeOpsReminderUrgency;
+  includeInApp?: boolean;
+  weights?: Partial<ReminderChannelRankingWeights>;
+}): ReminderEscalationRoutingPolicy {
+  const urgency = args.urgency ?? "medium";
+  const screenBusy = args.activityProfile?.screenContextBusy === true;
+  const ownerActive = args.activityProfile?.isCurrentlyActive === true;
+  const activeChannel = mapPlatformToReminderChannel(
+    ownerActive ? args.activityProfile?.lastSeenPlatform : null,
+  );
+  const interruptionBudget: ReminderInterruptionBudget =
+    urgency === "critical"
+      ? "urgent"
+      : urgency === "high"
+        ? "elevated"
+        : screenBusy
+          ? "low"
+          : "normal";
+  const urgencyWeight =
+    urgency === "critical" ? 350 : urgency === "high" ? 220 : 0;
+  const busyInAppBias = screenBusy && urgency !== "critical" ? 450 : 0;
+  const inactiveInAppPenalty = ownerActive ? 0 : -250;
+  const activeInAppBias =
+    activeChannel === "in_app" || activeChannel === null ? 250 : 0;
+  const weights: ReminderChannelRankingWeights = {
+    ...DEFAULT_REMINDER_CHANNEL_RANKING_WEIGHTS,
+    inAppAnchor: Math.max(
+      50,
+      DEFAULT_REMINDER_CHANNEL_RANKING_WEIGHTS.inAppAnchor +
+        busyInAppBias +
+        inactiveInAppPenalty +
+        activeInAppBias,
+    ),
+    preferredContactChannel:
+      DEFAULT_REMINDER_CHANNEL_RANKING_WEIGHTS.preferredContactChannel +
+      urgencyWeight,
+    lastResponseChannel:
+      DEFAULT_REMINDER_CHANNEL_RANKING_WEIGHTS.lastResponseChannel +
+      Math.round(urgencyWeight * 0.7),
+    policyChannel:
+      DEFAULT_REMINDER_CHANNEL_RANKING_WEIGHTS.policyChannel +
+      Math.round(urgencyWeight * 0.4),
+    ...args.weights,
+  };
+  return {
+    includeInApp: args.includeInApp !== false,
+    interruptionBudget,
+    weights,
+    reason: screenBusy
+      ? "screen_context_busy"
+      : ownerActive
+        ? "owner_currently_active"
+        : "owner_recent_channel_history",
+  };
 }
 
 function addReminderChannelScore(
@@ -255,10 +319,20 @@ export function rankReminderEscalationChannels(args: {
   ownerContactSources: readonly string[];
   policyChannels: readonly string[];
   includeInApp?: boolean;
+  urgency?: LifeOpsReminderUrgency;
+  routingPolicy?: ReminderEscalationRoutingPolicy;
   now?: Date | number;
   weights?: Partial<ReminderChannelRankingWeights>;
 }): LifeOpsReminderChannel[] {
-  const weights = resolveReminderChannelRankingWeights(args.weights);
+  const routingPolicy =
+    args.routingPolicy ??
+    resolveReminderEscalationRoutingPolicy({
+      activityProfile: args.activityProfile,
+      urgency: args.urgency,
+      includeInApp: args.includeInApp,
+      weights: args.weights,
+    });
+  const weights = routingPolicy.weights;
   const nowMs =
     args.now instanceof Date
       ? args.now.getTime()
@@ -267,7 +341,7 @@ export function rankReminderEscalationChannels(args: {
         : Date.now();
   const scores = new Map<LifeOpsReminderChannel, number>();
   const evidenceOrder = new Map<LifeOpsReminderChannel, number>();
-  if (args.includeInApp !== false) {
+  if (routingPolicy.includeInApp) {
     addReminderChannelScore(
       scores,
       "in_app",
@@ -348,7 +422,7 @@ export function rankReminderEscalationChannels(args: {
   }
 
   return [...scores.keys()]
-    .filter((channel) => args.includeInApp !== false || channel !== "in_app")
+    .filter((channel) => routingPolicy.includeInApp || channel !== "in_app")
     .sort((left, right) => {
       const scoreDelta = (scores.get(right) ?? 0) - (scores.get(left) ?? 0);
       if (scoreDelta !== 0) {

@@ -1,4 +1,6 @@
 import { scryptSync } from "node:crypto";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { generateMasterKey, KEY_BYTES } from "./crypto.js";
 
 /**
@@ -9,7 +11,7 @@ import { generateMasterKey, KEY_BYTES } from "./crypto.js";
  *   1. **OS keychain** — cross-platform via @napi-rs/keyring (macOS
  *      Keychain, Windows Credential Manager, Linux Secret Service /
  *      libsecret). The default on machines with a desktop session.
- *   2. **Passphrase** — scrypt-derived 32-byte key from `MILADY_VAULT_PASSPHRASE`
+ *   2. **Passphrase** — scrypt-derived 32-byte key from `ELIZA_VAULT_PASSPHRASE`
  *      with a per-service salt. Use this on headless Linux servers, in
  *      Docker containers, or in CI where the OS keychain isn't reachable.
  *      Operator opts in by setting the env var; we never derive from a
@@ -51,7 +53,7 @@ export function inMemoryMasterKey(key: Buffer): MasterKeyResolver {
 }
 
 export interface OsKeychainOptions {
-  /** Service name shown in the OS keychain UI. Default: "milady". */
+  /** Service name shown in the OS keychain UI. Default: "eliza". */
   readonly service?: string;
   /** Account/account name within the service. Default: "vault.masterKey". */
   readonly account?: string;
@@ -59,7 +61,7 @@ export interface OsKeychainOptions {
 
 export interface PassphraseOptions {
   /**
-   * Passphrase string. Typically read from `process.env.MILADY_VAULT_PASSPHRASE`.
+   * Passphrase string. Typically read from `process.env.ELIZA_VAULT_PASSPHRASE`.
    * Must be at least 12 characters; shorter passphrases are rejected to
    * push operators away from trivially-brute-forceable keys.
    */
@@ -78,7 +80,7 @@ export interface PassphraseOptions {
    * default 64MB memory cap on Node's scrypt. Override for tests if needed.
    */
   readonly cost?: number;
-  /** Service identifier used as the default salt prefix. Default `"milady"`. */
+  /** Service identifier used as the default salt prefix. Default `"eliza"`. */
   readonly service?: string;
 }
 
@@ -108,7 +110,7 @@ export function passphraseMasterKey(
       `passphraseMasterKey: passphrase must be at least ${PASSPHRASE_MIN_LENGTH} characters`,
     );
   }
-  const service = opts.service ?? "milady";
+  const service = opts.service ?? "eliza";
   const salt = opts.salt ?? `${service}.vault.masterKey.v1`;
   const cost = opts.cost ?? DEFAULT_SCRYPT_COST;
   return {
@@ -148,14 +150,14 @@ export function passphraseMasterKey(
 }
 
 /**
- * Construct a passphrase resolver from `MILADY_VAULT_PASSPHRASE` env. Returns
+ * Construct a passphrase resolver from `ELIZA_VAULT_PASSPHRASE` env. Returns
  * `null` when the env var is absent or empty so callers can fall through
  * to the next strategy without a try/catch dance.
  */
 export function passphraseMasterKeyFromEnv(
   service?: string,
 ): MasterKeyResolver | null {
-  const raw = process.env.MILADY_VAULT_PASSPHRASE;
+  const raw = process.env.ELIZA_VAULT_PASSPHRASE;
   if (!raw || raw.length === 0) return null;
   return passphraseMasterKey({
     passphrase: raw,
@@ -164,8 +166,47 @@ export function passphraseMasterKeyFromEnv(
 }
 
 /**
+ * Detects hosts where invoking `@napi-rs/keyring` is known to crash the
+ * process at the native level instead of throwing a catchable JS error:
+ *
+ *   - explicit opt-out via `ELIZA_VAULT_DISABLE_KEYCHAIN=1`
+ *   - headless Linux with no reachable D-Bus session (the libsecret
+ *     backend aborts at the C level when it can't reach the Secret
+ *     Service)
+ *
+ * D-Bus reachability on Linux is checked two ways:
+ *
+ *   1. `DBUS_SESSION_BUS_ADDRESS` env var — the classical signal,
+ *      reliably set by desktop session startup and `dbus-launch`.
+ *   2. `$XDG_RUNTIME_DIR/bus` socket — modern systemd user sessions
+ *      socket-activate D-Bus and don't always export the env var
+ *      (notably SSH sessions without env forwarding, and Fedora /
+ *      Arch / Ubuntu 22+ desktops). Treat the socket file's presence
+ *      as equivalent to the env var.
+ *
+ * This is intentionally a heuristic: it never returns `false` (safe)
+ * for a host that would actually crash, and may return `false` (safe)
+ * for a host where the keychain ultimately fails with a regular JS
+ * error. That's the desired direction — we'd rather attempt the
+ * keychain and let the existing try/catch handle a JS-level failure
+ * than refuse on a host where it would have worked.
+ */
+function isKeychainUnsafe(): boolean {
+  if (process.env.ELIZA_VAULT_DISABLE_KEYCHAIN === "1") return true;
+  if (process.platform !== "linux") return false;
+  if (process.env.DBUS_SESSION_BUS_ADDRESS) return false;
+  const xdgRuntime = process.env.XDG_RUNTIME_DIR;
+  if (xdgRuntime && existsSync(join(xdgRuntime, "bus"))) return false;
+  return true;
+}
+
+function keychainUnsafeMessage(prefix: string): string {
+  return `${prefix}OS keychain is unsafe on this host (headless Linux with no reachable D-Bus session, or ELIZA_VAULT_DISABLE_KEYCHAIN=1). Set ELIZA_VAULT_PASSPHRASE (≥${PASSPHRASE_MIN_LENGTH} chars) to enable a passphrase-derived master key, or pass an inMemoryMasterKey.`;
+}
+
+/**
  * Default resolver: try the OS keychain first, then a passphrase-derived
- * key from `MILADY_VAULT_PASSPHRASE`. If both fail, throws a single
+ * key from `ELIZA_VAULT_PASSPHRASE`. If both fail, throws a single
  * `MasterKeyUnavailableError` whose message lists every remediation
  * option so operators on a fresh headless box see one actionable line.
  *
@@ -177,6 +218,15 @@ export function defaultMasterKey(opts: OsKeychainOptions = {}): MasterKeyResolve
   const keychain = osKeychainMasterKey(opts);
   return {
     async load() {
+      // Skip the OS keychain on hosts where @napi-rs/keyring is known to
+      // segfault the process instead of throwing a catchable JS error.
+      // The defensive try/catch around keychain.load() can't help once
+      // the native crash fires.
+      if (isKeychainUnsafe()) {
+        const passphrase = passphraseMasterKeyFromEnv(opts.service);
+        if (passphrase) return passphrase.load();
+        throw new MasterKeyUnavailableError(keychainUnsafeMessage("vault: "));
+      }
       try {
         return await keychain.load();
       } catch (keychainErr) {
@@ -203,12 +253,20 @@ export function defaultMasterKey(opts: OsKeychainOptions = {}): MasterKeyResolve
             keychainErr instanceof Error
               ? keychainErr.message
               : String(keychainErr)
-          } To use a passphrase-derived key on a headless host, set MILADY_VAULT_PASSPHRASE (≥${PASSPHRASE_MIN_LENGTH} chars) and restart.`,
+          } To use a passphrase-derived key on a headless host, set ELIZA_VAULT_PASSPHRASE (≥${PASSPHRASE_MIN_LENGTH} chars) and restart.`,
         );
       }
     },
     describe() {
+      // describe() reflects the runtime-selected path. On hosts where
+      // the keychain is bypassed, surfacing `keychain://...` would
+      // misrepresent which resolver actually ran.
       const passphrase = passphraseMasterKeyFromEnv(opts.service);
+      if (isKeychainUnsafe()) {
+        return passphrase
+          ? `${passphrase.describe()} (keychain bypassed: host unsafe)`
+          : `unavailable (keychain bypassed: host unsafe; no ELIZA_VAULT_PASSPHRASE set)`;
+      }
       return passphrase
         ? `${keychain.describe()} (fallback: ${passphrase.describe()})`
         : keychain.describe();
@@ -217,10 +275,18 @@ export function defaultMasterKey(opts: OsKeychainOptions = {}): MasterKeyResolve
 }
 
 export function osKeychainMasterKey(opts: OsKeychainOptions = {}): MasterKeyResolver {
-  const service = opts.service ?? "milady";
+  const service = opts.service ?? "eliza";
   const account = opts.account ?? "vault.masterKey";
   return {
     async load() {
+      // Refuse to invoke the native binding on hosts where it crashes
+      // the process. Direct callers of `osKeychainMasterKey` (plugins,
+      // integrations) get the same protection as `defaultMasterKey`.
+      if (isKeychainUnsafe()) {
+        throw new MasterKeyUnavailableError(
+          keychainUnsafeMessage(`OS keychain (${service}/${account}): `),
+        );
+      }
       let Entry: typeof import("@napi-rs/keyring").Entry;
       try {
         ({ Entry } = await import("@napi-rs/keyring"));

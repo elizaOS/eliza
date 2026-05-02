@@ -69,30 +69,31 @@ async function startApiHarness(): Promise<Harness> {
 describe("secrets-manager routes", () => {
   let harness: Harness | null;
   let workDir: string | null;
-  let originalStateDir: string | undefined;
   let originalElizaStateDir: string | undefined;
 
   beforeEach(async () => {
     harness = null;
     // Isolate vault state in a fresh tmp dir per test so preferences
-    // reads/writes don't leak across cases or stomp on a real ~/.milady.
-    workDir = await fs.mkdtemp(join(tmpdir(), "milady-secrets-routes-"));
-    originalStateDir = process.env.MILADY_STATE_DIR;
+    // reads/writes don't leak across cases or stomp on a real ~/.eliza.
+    workDir = await fs.mkdtemp(join(tmpdir(), "eliza-secrets-routes-"));
     originalElizaStateDir = process.env.ELIZA_STATE_DIR;
-    process.env.MILADY_STATE_DIR = workDir;
     process.env.ELIZA_STATE_DIR = workDir;
-    // The manager now wraps `sharedVault()`, which itself caches across
-    // tests. Drop both so the next call constructs a fresh `Vault`
-    // pointed at the per-test tmp dir.
-    _resetSharedVaultForTesting(null);
+    // Inject a test vault with an in-memory master key so route tests
+    // never touch the OS keychain. Linux CI runners without a reachable
+    // D-Bus session refuse the keychain by design (see
+    // packages/vault/src/master-key.ts:isKeychainUnsafe), and these are
+    // route tests, not OS-keychain integration tests.
+    const testVault = createVault({
+      workDir,
+      masterKey: inMemoryMasterKey(generateMasterKey()),
+    });
+    _resetSharedVaultForTesting(testVault);
     _resetSecretsManagerForTesting();
   });
 
   afterEach(async () => {
     await harness?.dispose();
     if (workDir) await fs.rm(workDir, { recursive: true, force: true });
-    if (originalStateDir === undefined) delete process.env.MILADY_STATE_DIR;
-    else process.env.MILADY_STATE_DIR = originalStateDir;
     if (originalElizaStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
     else process.env.ELIZA_STATE_DIR = originalElizaStateDir;
     _resetSharedVaultForTesting(null);

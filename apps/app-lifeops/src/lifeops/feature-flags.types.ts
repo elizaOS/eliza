@@ -27,7 +27,7 @@
  *    (Commandment 2).
  *  - Without Cloud, paid features stay OFF until the user opts in
  *    locally (which then requires them to bring their own travel-provider
- *    API credentials via `MILADY_DUFFEL_DIRECT=1` + `DUFFEL_API_KEY`).
+ *    API credentials via `ELIZA_DUFFEL_DIRECT=1` + `DUFFEL_API_KEY`).
  */
 
 export type LifeOpsFeatureKey =

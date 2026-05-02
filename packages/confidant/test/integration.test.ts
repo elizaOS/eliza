@@ -160,7 +160,7 @@ describe("Confidant — bug-fix demonstrations", () => {
    * BUG #6 in §2 — "No reveal."
    *
    * The Settings UI cannot round-trip a saved API key today; users have
-   * to open ~/.milady/milady.json by hand to verify what was stored.
+   * to open ~/.eliza/eliza.json by hand to verify what was stored.
    * Confidant supports a programmatic round-trip (the foundation a UI
    * "Reveal" button would call); this test demonstrates parity.
    */

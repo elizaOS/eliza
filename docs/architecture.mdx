@@ -1,10 +1,10 @@
 ---
 title: System Architecture
 sidebarTitle: Architecture
-description: High-level overview of the Milady AI system architecture, layers, plugin system, and cross-platform delivery.
+description: High-level overview of the Eliza AI system architecture, layers, plugin system, and cross-platform delivery.
 ---
 
-Milady is a cross-platform AI agent runtime built on top of [elizaOS](https://elizaos.ai). It delivers the same backend across CLI, web, desktop (Electrobun), and mobile (Capacitor) through a layered architecture. This page covers the full system from entry points through runtime lifecycle, plugin loading, API surface, and build tooling.
+Eliza is a cross-platform AI agent runtime built on top of [elizaOS](https://elizaos.ai). It delivers the same backend across CLI, web, desktop (Electrobun), and mobile (Capacitor) through a layered architecture. This page covers the full system from entry points through runtime lifecycle, plugin loading, API surface, and build tooling.
 
 <Info>
 Source paths like `packages/app-core/src/...` and `packages/agent/src/...` live in the `eliza/` git submodule. Initialize it with `bun run setup:upstreams` or `git submodule update --init --recursive` to browse these files locally.
@@ -32,7 +32,7 @@ Source paths like `packages/app-core/src/...` and `packages/agent/src/...` live 
 +---------------------------------------------------------------+
 |                    Runtime Layer (elizaOS)                     |
 |  AgentRuntime + Plugin system                                 |
-|  12 core plugins + optional plugins + Milady plugin           |
+|  12 core plugins + optional plugins + Eliza plugin           |
 |  Providers, Actions, Services, Evaluators                     |
 +----------------------------+----------------------------------+
                              |
@@ -40,8 +40,8 @@ Source paths like `packages/app-core/src/...` and `packages/agent/src/...` live 
 +---------------------------------------------------------------+
 |                     API Server Layer                           |
 |  Node.js HTTP server                                          |
-|  Dev: port 31337 (MILADY_API_PORT)                            |
-|  Prod: port 2138 (MILADY_PORT, shared with dashboard)         |
+|  Dev: port 31337 (ELIZA_API_PORT)                            |
+|  Prod: port 2138 (ELIZA_PORT, shared with dashboard)         |
 |  REST endpoints (/api/*) + WebSocket (/ws)                    |
 |  SSE log streaming, static UI assets                          |
 +---------------------------------------------------------------+
@@ -49,10 +49,10 @@ Source paths like `packages/app-core/src/...` and `packages/agent/src/...` live 
                              v
 +---------------------------------------------------------------+
 |                    Storage & Config Layer                      |
-|  ~/.milady/milady.json  (primary runtime config)            |
+|  ~/.eliza/eliza.json  (primary runtime config)            |
 |  PGLite (default) or PostgreSQL (database)                    |
-|  ~/.milady/workspace/ (agent files, skills)               |
-|  ~/.milady/plugins/  (custom, ejected, installed)            |
+|  ~/.eliza/workspace/ (agent files, skills)               |
+|  ~/.eliza/plugins/  (custom, ejected, installed)            |
 +---------------------------------------------------------------+
 ```
 
@@ -60,15 +60,15 @@ Source paths like `packages/app-core/src/...` and `packages/agent/src/...` live 
 
 > **Note:** Source paths like `packages/app-core/src/...` and `packages/agent/src/...` referenced throughout this page live in the elizaOS submodule at `eliza/`. Run `bun run setup:upstreams` to populate the submodule for local inspection.
 
-Milady has two primary entry points, plus a dev-server variant:
+Eliza has two primary entry points, plus a dev-server variant:
 
 ### CLI Entry (`eliza/packages/app-core/src/entry.ts`)
 
-The CLI entry point is the bootstrap for all Milady operations. Built by `tsdown` into `dist/entry.js` and invoked by the `milady.mjs` wrapper script.
+The CLI entry point is the bootstrap for all Eliza operations. Built by `tsdown` into `dist/entry.js` and invoked by the `eliza.mjs` wrapper script.
 
 The boot sequence is:
 
-1. **Set process title** to `milady` (visible in `ps` output)
+1. **Set process title** to `eliza` (visible in `ps` output)
 2. **Normalize environment** -- honor `--no-color`, `--debug`, `--verbose` flags by setting `NO_COLOR`, `FORCE_COLOR`, and `LOG_LEVEL` in `process.env`
 3. **Suppress native logging** -- set `NODE_LLAMA_CPP_LOG_LEVEL` to match the chosen log level, suppressing noisy tokenizer warnings at default verbosity
 4. **Parse CLI profiles** -- extract `--profile <name>` from `process.argv` via `parseCliProfileArgs()`, apply the profile environment via `applyCliProfileEnv()`
@@ -76,7 +76,7 @@ The boot sequence is:
 
 ```typescript
 // eliza/packages/app-core/src/entry.ts — simplified bootstrap
-process.title = "milady";
+process.title = "eliza";
 const parsed = parseCliProfileArgs(process.argv);
 if (parsed.profile) applyCliProfileEnv({ profile: parsed.profile });
 import("./cli/run-main")
@@ -87,9 +87,9 @@ import("./cli/run-main")
 
 ### Library Entry (`eliza/packages/app-core/src/index.ts`)
 
-The public API surface exported by the `miladyai` npm package. It re-exports:
+The public API surface exported by the `elizaai` npm package. It re-exports:
 
-- **Config types** from `eliza/packages/app-core/src/config/types.ts` -- the full `MiladyConfig` type and its nested schemas
+- **Config types** from `eliza/packages/app-core/src/config/types.ts` -- the full `ElizaConfig` type and its nested schemas
 - **Restart infrastructure** -- `RESTART_EXIT_CODE`, `requestRestart()`, `setRestartHandler()`, and the `RestartHandler` type
 
 This allows other packages (e.g., the Electrobun app, the dev-server) to programmatically control the runtime without importing internal modules.
@@ -112,7 +112,7 @@ The `startEliza()` function in `eliza/packages/app-core/src/runtime/eliza.ts` or
 
 <Steps>
   <Step title="Load Configuration">
-    Read the config file (defaults to `~/.milady/milady.json` in this product) via `loadElizaConfig()`. If no config exists, fall back to an empty `ElizaConfig` object with all-optional fields.
+    Read the config file (defaults to `~/.eliza/eliza.json` in this product) via `loadElizaConfig()`. If no config exists, fall back to an empty `ElizaConfig` object with all-optional fields.
   </Step>
   <Step title="Startup / First-Run Selection">
     If no server target has been established yet, the app surfaces a chooser-first startup flow: create a local server, connect to a discovered LAN server, connect to Eliza Cloud, or manually connect to a remote server. Provider routing happens after server selection rather than being implied by hosting mode.
@@ -121,10 +121,10 @@ The `startEliza()` function in `eliza/packages/app-core/src/runtime/eliza.ts` or
     Push connector secrets (`DISCORD_API_TOKEN`, `TELEGRAM_BOT_TOKEN`, etc.) from config into `process.env`. Auto-resolve Discord Application ID from bot token via the Discord API. Propagate cloud, x402, and database config into env vars.
   </Step>
   <Step title="Build Character">
-    Construct an elizaOS `Character` object from the Milady config: agent name, bio, system prompt, style, adjectives, topics, message examples, and API key secrets.
+    Construct an elizaOS `Character` object from the Eliza config: agent name, bio, system prompt, style, adjectives, topics, message examples, and API key secrets.
   </Step>
   <Step title="Prepare Workspace">
-    Ensure `~/.milady/workspace/` exists with bootstrap files. Create the `~/.milady/plugins/custom/` directory for drop-in plugins.
+    Ensure `~/.eliza/workspace/` exists with bootstrap files. Create the `~/.eliza/plugins/custom/` directory for drop-in plugins.
   </Step>
   <Step title="Create Eliza Plugin">
     Instantiate the bridge plugin via `createElizaPlugin()` that provides workspace context, session keys, custom actions, trigger tasks, and lifecycle actions to the elizaOS runtime.
@@ -133,13 +133,13 @@ The `startEliza()` function in `eliza/packages/app-core/src/runtime/eliza.ts` or
     Run the full plugin resolution pipeline (detailed below). Plugins are loaded in parallel for faster startup.
   </Step>
   <Step title="Create AgentRuntime">
-    Instantiate `AgentRuntime` with the character, Milady plugin, and all resolved plugins. Pre-register `plugin-sql` (with PGLite recovery) and `plugin-local-embedding` before other plugins to avoid race conditions.
+    Instantiate `AgentRuntime` with the character, Eliza plugin, and all resolved plugins. Pre-register `plugin-sql` (with PGLite recovery) and `plugin-local-embedding` before other plugins to avoid race conditions.
   </Step>
   <Step title="Initialize Runtime">
     Call `runtime.initialize()` which registers all remaining plugins in parallel, starts services, and sets up the agent loop. Enable trajectory logging. Warm up the AgentSkillsService asynchronously.
   </Step>
   <Step title="Start API Server">
-    Launch the HTTP/WebSocket API server on port 31337 (default `MILADY_API_PORT`). Register the restart handler for hot-reload support.
+    Launch the HTTP/WebSocket API server on port 31337 (default `ELIZA_API_PORT`). Register the restart handler for hot-reload support.
   </Step>
   <Step title="Load Hooks System">
     Load webhook and hook configurations from the workspace. Fire the `gateway.startup` hook event.
@@ -177,11 +177,11 @@ Restart is pluggable via `setRestartHandler()`:
 
 ## elizaOS Integration Layer
 
-Milady extends elizaOS through several integration points:
+Eliza extends elizaOS through several integration points:
 
 ### Plugin System Bridge
 
-The `createMiladyPlugin()` function (`eliza/packages/app-core/src/runtime/eliza-plugin.ts`) creates a standard elizaOS `Plugin` that bridges Milady-specific functionality into the runtime:
+The `createElizaPlugin()` function (`eliza/packages/app-core/src/runtime/eliza-plugin.ts`) creates a standard elizaOS `Plugin` that bridges Eliza-specific functionality into the runtime:
 
 **Providers** (injected into every LLM context):
 - `channelProfileProvider` -- channel-specific personality profiles
@@ -197,7 +197,7 @@ The `createMiladyPlugin()` function (`eliza/packages/app-core/src/runtime/eliza-
 - `sendMessageAction` -- send a proactive message to a channel
 - `triggerTaskAction` -- execute a trigger task
 - `emoteAction` -- play an emote animation on the 3D avatar
-- Custom actions loaded from `~/.milady/workspace/custom-actions/`
+- Custom actions loaded from `~/.eliza/workspace/custom-actions/`
 
 **Init hooks**:
 - Register trigger task workers
@@ -242,8 +242,8 @@ Plugin resolution (`resolvePlugins()`) handles three tiers of plugins through a 
 
 Scan filesystem directories for additional plugins:
 
-- **Ejected plugins** (`~/.milady/plugins/ejected/`) -- override npm/core versions
-- **Custom plugins** (`~/.milady/plugins/custom/`) -- user-created plugins
+- **Ejected plugins** (`~/.eliza/plugins/ejected/`) -- override npm/core versions
+- **Custom plugins** (`~/.eliza/plugins/custom/`) -- user-created plugins
 - **Extra paths** from `config.plugins.load.paths` -- additional directories
 
 Each immediate subdirectory is treated as a plugin package. The plugin name comes from `package.json` or the directory name. Deny-list and core-collision filtering is applied.
@@ -280,7 +280,7 @@ Two plugins require special ordering to avoid race conditions:
 
 ## Action, Provider, and Evaluator System
 
-Milady inherits elizaOS's three-part extension model:
+Eliza inherits elizaOS's three-part extension model:
 
 ### Providers
 
@@ -294,7 +294,7 @@ interface Provider {
 }
 ```
 
-Milady registers 7+ providers through the Milady plugin, plus any providers from loaded plugins.
+Eliza registers 7+ providers through the Eliza plugin, plus any providers from loaded plugins.
 
 ### Actions
 
@@ -313,11 +313,11 @@ Evaluators run after each conversation turn to assess agent performance and upda
 
 ### Database Layer
 
-Milady uses `@elizaos/plugin-sql` as the database adapter with two backend options:
+Eliza uses `@elizaos/plugin-sql` as the database adapter with two backend options:
 
 | Backend | Config | Use Case |
 |---------|--------|----------|
-| **PGLite** (default) | `database.provider: "pglite"` | Zero-config embedded PostgreSQL. Data stored in `~/.milady/workspace/.eliza/.elizadb/` |
+| **PGLite** (default) | `database.provider: "pglite"` | Zero-config embedded PostgreSQL. Data stored in `~/.eliza/workspace/.eliza/.elizadb/` |
 | **PostgreSQL** | `database.provider: "postgres"` | External PostgreSQL server for production deployments |
 
 PGLite includes automatic corruption recovery: if initialization fails with a known error pattern (WASM abort, migration schema failure), the data directory is backed up and recreated.
@@ -388,17 +388,17 @@ Routes are organized into domain-specific handler modules:
 
 ### Authentication
 
-When `MILADY_API_TOKEN` is set (or auto-generated for non-loopback binds), all API requests must include a valid bearer token:
+When `ELIZA_API_TOKEN` is set (or auto-generated for non-loopback binds), all API requests must include a valid bearer token:
 
 ```
 Authorization: Bearer <token>
 ```
 
-If the API is bound to a non-loopback address (`MILADY_API_BIND` is not `127.0.0.1` or `localhost`) and no token is set, the server auto-generates a temporary token and logs it to stderr.
+If the API is bound to a non-loopback address (`ELIZA_API_BIND` is not `127.0.0.1` or `localhost`) and no token is set, the server auto-generates a temporary token and logs it to stderr.
 
 ## WebSocket Event System
 
-The API server exposes a WebSocket endpoint at `/ws` on the same port as the API (31337 by default, configurable via `MILADY_API_PORT`).
+The API server exposes a WebSocket endpoint at `/ws` on the same port as the API (31337 by default, configurable via `ELIZA_API_PORT`).
 
 ### Event Types
 
@@ -437,7 +437,7 @@ Events are buffered in a ring buffer on the server so newly connected clients ca
 
 ## Service Architecture
 
-Milady's `eliza/packages/app-core/src/services/` directory contains standalone service modules:
+Eliza's `eliza/packages/app-core/src/services/` directory contains standalone service modules:
 
 | Service | File | Purpose |
 |---------|------|---------|
@@ -460,14 +460,14 @@ Milady's `eliza/packages/app-core/src/services/` directory contains standalone s
 
 ## Configuration Cascade
 
-Milady resolves configuration through a priority cascade:
+Eliza resolves configuration through a priority cascade:
 
 ```
 Highest priority
   1. CLI flags (--debug, --verbose, --no-color, --profile)
-  2. Environment variables (MILADY_*, ANTHROPIC_API_KEY, etc.)
+  2. Environment variables (ELIZA_*, ANTHROPIC_API_KEY, etc.)
   3. .env file (loaded by dotenv in run-main.ts)
-  4. Config file (~/.milady/milady.json)
+  4. Config file (~/.eliza/eliza.json)
   5. Profile-specific overrides (--profile <name>)
   6. Built-in defaults (hardcoded in Zod schemas)
 Lowest priority
@@ -475,18 +475,18 @@ Lowest priority
 
 ### State Directory Resolution
 
-The state directory (`~/.milady/`) is resolved via:
+The state directory (`~/.eliza/`) is resolved via:
 
-1. `MILADY_STATE_DIR` environment variable (if set)
-2. Default: `~/.milady/` (`$HOME/.milady/`)
+1. `ELIZA_STATE_DIR` environment variable (if set)
+2. Default: `~/.eliza/` (`$HOME/.eliza/`)
 
 The config file path follows a similar pattern:
-1. `MILADY_CONFIG_PATH` environment variable (if set)
-2. Default: `<stateDir>/milady.json`
+1. `ELIZA_CONFIG_PATH` environment variable (if set)
+2. Default: `<stateDir>/eliza.json`
 
 ### Config File Structure
 
-Milady uses a Zod-validated JSON configuration file (`milady.json`):
+Eliza uses a Zod-validated JSON configuration file (`eliza.json`):
 
 <Tabs>
   <Tab title="Structure">
@@ -509,7 +509,7 @@ Milady uses a Zod-validated JSON configuration file (`milady.json`):
     - `logging` -- Log level configuration
   </Tab>
   <Tab title="Validation">
-    All config sections are validated against Zod schemas at load time. Invalid fields produce warnings but do not prevent startup. The config file includes metadata tracking the last Milady version that wrote it and when.
+    All config sections are validated against Zod schemas at load time. Invalid fields produce warnings but do not prevent startup. The config file includes metadata tracking the last Eliza version that wrote it and when.
   </Tab>
 </Tabs>
 
@@ -517,7 +517,7 @@ Milady uses a Zod-validated JSON configuration file (`milady.json`):
 
 ### API Authentication
 
-- Token-based auth via `MILADY_API_TOKEN` (bearer token on all `/api/*` requests)
+- Token-based auth via `ELIZA_API_TOKEN` (bearer token on all `/api/*` requests)
 - Auto-generated token when binding to non-loopback addresses
 - WebSocket connections authenticated via an `auth` message after connection (or via a bearer token in the upgrade handshake header)
 
@@ -538,7 +538,7 @@ The sandbox uses Docker container isolation with configurable image, memory limi
 - **Deny list** (`config.plugins.deny`) blocks specific plugins from loading
 - **Core collision detection** prevents custom plugins from shadowing core plugins
 - **Error boundaries** isolate plugin crashes from the main runtime
-- **Config allowlist** prevents API endpoints from writing sensitive env vars (e.g., `MILADY_API_TOKEN` is stripped from config patches)
+- **Config allowlist** prevents API endpoints from writing sensitive env vars (e.g., `ELIZA_API_TOKEN` is stripped from config patches)
 
 ### Secret Management
 
@@ -552,7 +552,7 @@ The same backend serves all platforms:
 
 | Platform | Delivery | Notes |
 |----------|----------|-------|
-| CLI | `milady start` | Direct Node.js process, runner script handles restart exit codes |
+| CLI | `eliza start` | Direct Node.js process, runner script handles restart exit codes |
 | Web | Browser at `http://localhost:2138` (UI port) | Vite dev proxy forwards API calls to port 31337 |
 | Desktop | Electrobun wrapper | Bundles the API server + UI, uses the Electrobun updater for native updates |
 | iOS | Capacitor | Connects to local/remote API |
@@ -587,7 +587,7 @@ The Gateway runs on port **18789** (default) and provides:
 The monorepo uses Bun workspaces. Core runtime packages live inside the `eliza/` git submodule:
 
 ```
-milady/
+eliza/
   eliza/                # elizaOS submodule (core runtime packages)
     packages/
       app-core/         # Core runtime, CLI, API, services (source of truth)
@@ -629,7 +629,7 @@ The `eliza/packages/app-core/scripts/rt.mjs` helper resolves the best available 
 
 ### Engine Requirements
 
-Milady requires **Node.js 22+** (specified in `package.json` `engines` field). The `node-llama-cpp` dependency for local embeddings benefits from native compilation on the target platform.
+Eliza requires **Node.js 22+** (specified in `package.json` `engines` field). The `node-llama-cpp` dependency for local embeddings benefits from native compilation on the target platform.
 
 <Tip>
 See the [Configuration Schema Reference](/config-schema) for a complete field-by-field breakdown of every config section.

@@ -5,7 +5,7 @@ type SettingsReader = {
 type EnvLike = Record<string, string | undefined>;
 
 const PASSIVE_CONNECTOR_SETTING_KEYS = [
-	"MILADY_LIFEOPS_PASSIVE_CONNECTORS",
+	"ELIZA_LIFEOPS_PASSIVE_CONNECTORS",
 	"LIFEOPS_PASSIVE_CONNECTORS",
 ] as const;
 

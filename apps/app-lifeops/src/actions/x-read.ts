@@ -143,7 +143,7 @@ async function resolveXReadPlanWithLlm(args: {
     "Examples:",
     '  "check my X DMs" -> {"subaction":"read_dms","feedType":null,"query":null,"limit":null,"shouldAct":true,"response":null}',
     '  "show me my mentions" -> {"subaction":"read_feed","feedType":"mentions","query":null,"limit":null,"shouldAct":true,"response":null}',
-    '  "search X for Milady" -> {"subaction":"search","feedType":null,"query":"Milady","limit":null,"shouldAct":true,"response":null}',
+    '  "search X for Eliza" -> {"subaction":"search","feedType":null,"query":"Eliza","limit":null,"shouldAct":true,"response":null}',
     '  "help me with X" -> {"subaction":null,"feedType":null,"query":null,"limit":null,"shouldAct":false,"response":"Do you want me to read your X DMs, timeline, mentions, or run a search?"}',
     "",
     "Return ONLY valid JSON.",

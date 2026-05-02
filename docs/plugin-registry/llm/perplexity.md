@@ -1,23 +1,23 @@
 ---
 title: "Perplexity Plugin"
 sidebarTitle: "Perplexity"
-description: "Perplexity model provider for Milady — search-augmented language models with real-time web access."
+description: "Perplexity model provider for Eliza — search-augmented language models with real-time web access."
 ---
 
 <Warning>
-This plugin is not yet available in the Milady plugin registry. To use Perplexity models today, configure them through the [OpenRouter plugin](/plugin-registry/llm/openrouter) using the appropriate model ID.
+This plugin is not yet available in the Eliza plugin registry. To use Perplexity models today, configure them through the [OpenRouter plugin](/plugin-registry/llm/openrouter) using the appropriate model ID.
 </Warning>
 
-The Perplexity plugin connects Milady agents to Perplexity's search-augmented language models. These models combine LLM reasoning with live web search, making them ideal for agents that need up-to-date information.
+The Perplexity plugin connects Eliza agents to Perplexity's search-augmented language models. These models combine LLM reasoning with live web search, making them ideal for agents that need up-to-date information.
 
-> **On-demand plugin.** This plugin is resolved from the remote elizaOS plugin registry and auto-installs when its API key is detected. It is not included in Milady's bundled `plugins.json` index.
+> **On-demand plugin.** This plugin is resolved from the remote elizaOS plugin registry and auto-installs when its API key is detected. It is not included in Eliza's bundled `plugins.json` index.
 
 **Package:** `@elizaos/plugin-perplexity`
 
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-perplexity
+eliza plugins install @elizaos/plugin-perplexity
 ```
 
 ## Auto-Enable
@@ -34,7 +34,7 @@ export PERPLEXITY_API_KEY=pplx-...
 |---------------------|----------|-------------|
 | `PERPLEXITY_API_KEY` | Yes | Perplexity API key from [perplexity.ai](https://perplexity.ai) |
 
-### milady.json Example
+### eliza.json Example
 
 ```json
 {

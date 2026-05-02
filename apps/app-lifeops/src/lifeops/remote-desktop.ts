@@ -70,7 +70,7 @@ const DEFAULT_VNC_PORT = 5900;
 const DEFAULT_SESSION_MINUTES = 60;
 
 function isMockRemoteDesktopEnabled(): boolean {
-  const explicit = process.env.MILADY_TEST_REMOTE_DESKTOP_BACKEND?.trim();
+  const explicit = process.env.ELIZA_TEST_REMOTE_DESKTOP_BACKEND?.trim();
   if (explicit) {
     const normalized = explicit.toLowerCase();
     return (

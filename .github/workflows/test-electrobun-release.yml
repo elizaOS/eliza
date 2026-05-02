@@ -45,21 +45,21 @@ jobs:
           run-postinstall: "true"
 
       # TODO: port `test:regression-matrix:release-contract` and
-      # `test:release:contract` from the milady repo. Until then these
+      # `test:release:contract` from the eliza repo. Until then these
       # steps are intentionally no-ops so the workflow stays green and
       # documents the porting work without blocking CI.
-      - name: Run regression matrix contract (TODO — port from milady)
+      - name: Run regression matrix contract (TODO — port from eliza)
         run: |
           if bun run --silent test:regression-matrix:release-contract --help >/dev/null 2>&1; then
             bun run test:regression-matrix:release-contract
           else
-            echo "::warning::test:regression-matrix:release-contract not yet ported from milady; skipping"
+            echo "::warning::test:regression-matrix:release-contract not yet ported from eliza; skipping"
           fi
 
-      - name: Run release contract suite (TODO — port from milady)
+      - name: Run release contract suite (TODO — port from eliza)
         run: |
           if bun run --silent test:release:contract --help >/dev/null 2>&1; then
             bun run test:release:contract
           else
-            echo "::warning::test:release:contract not yet ported from milady; skipping"
+            echo "::warning::test:release:contract not yet ported from eliza; skipping"
           fi

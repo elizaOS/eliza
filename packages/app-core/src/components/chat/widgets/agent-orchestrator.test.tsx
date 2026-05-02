@@ -56,7 +56,7 @@ function buildRun(overrides?: Partial<AppRunSummary>): AppRunSummary {
   return {
     runId: "run-1",
     appName: "@elizaos/app-companion",
-    displayName: "Milady Companion",
+    displayName: "Eliza Companion",
     pluginName: "@elizaos/plugin-apps",
     launchType: "local",
     launchUrl: null,
@@ -122,7 +122,7 @@ describe("agent orchestrator app runs widget", () => {
     clientMock.listApps.mockResolvedValue([
       {
         ...makeCatalogCandidate("@elizaos/app-companion", "game"),
-        displayName: "Milady Companion",
+        displayName: "Eliza Companion",
         icon: "/icons/companion.svg",
         heroImage: "/heroes/companion.png",
       },
@@ -136,7 +136,7 @@ describe("agent orchestrator app runs widget", () => {
     );
 
     expect(
-      (await screen.findAllByText("Milady Companion")).length,
+      (await screen.findAllByText("Eliza Companion")).length,
     ).toBeGreaterThan(0);
     const expectedSrc = resolveRuntimeImageUrl("/heroes/companion.png");
     await waitFor(() => {

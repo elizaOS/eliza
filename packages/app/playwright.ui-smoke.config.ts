@@ -11,14 +11,14 @@ const uiSmokeLiveStack = path.join(
   "scripts",
   "playwright-ui-live-stack.ts",
 );
-const uiSmokeApiPort = Number(process.env.MILADY_UI_SMOKE_API_PORT || "31337");
-const uiSmokePort = Number(process.env.MILADY_UI_SMOKE_PORT || "2138");
-const reuseExistingServer = process.env.MILADY_UI_SMOKE_REUSE_SERVER === "1";
+const uiSmokeApiPort = Number(process.env.ELIZA_UI_SMOKE_API_PORT || "31337");
+const uiSmokePort = Number(process.env.ELIZA_UI_SMOKE_PORT || "2138");
+const reuseExistingServer = process.env.ELIZA_UI_SMOKE_REUSE_SERVER === "1";
 
 // Keep the app's API port env aligned with the live stack when the suite runs
 // on non-default ports.
-if (!process.env.MILADY_API_PORT) {
-  process.env.MILADY_API_PORT = String(uiSmokeApiPort);
+if (!process.env.ELIZA_API_PORT) {
+  process.env.ELIZA_API_PORT = String(uiSmokeApiPort);
 }
 
 export default defineConfig({

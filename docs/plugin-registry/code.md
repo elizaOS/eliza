@@ -4,7 +4,7 @@ sidebarTitle: "Code"
 description: "A coder tools plugin for elizaOS that provides filesystem, shell, and git capabilities"
 ---
 
-Filesystem, shell, and git capabilities for Milady agents to work with code.
+Filesystem, shell, and git capabilities for Eliza agents to work with code.
 
 **Package:** `@elizaos/plugin-code`
 
@@ -15,7 +15,7 @@ The Code plugin equips elizaOS agents with developer tooling -- filesystem opera
 ## Installation
 
 ```bash
-milady plugins install code
+eliza plugins install code
 ```
 
 ## Auto-Enable

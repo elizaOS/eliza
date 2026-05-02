@@ -91,7 +91,7 @@ function formatCloudLoginPersistError(cause: unknown): string {
     cause instanceof Error && cause.message.trim().length > 0
       ? ` ${cause.message.trim()}`
       : "";
-  return `Eliza Cloud login completed, but Milady could not save the cloud session locally.${detail}`;
+  return `Eliza Cloud login completed, but Eliza could not save the cloud session locally.${detail}`;
 }
 
 // ── Types ──────────────────────────────────────────────────────────────────

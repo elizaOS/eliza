@@ -7,7 +7,7 @@
  *
  * These tests cover:
  *   - viewerUrl missing → hard fail with diagnostic.
- *   - puppeteer-core missing + MILADY_BROWSER_VERIFY_OPTIONAL=1 → soft skip
+ *   - puppeteer-core missing + ELIZA_BROWSER_VERIFY_OPTIONAL=1 → soft skip
  *     (legacy behavior is now opt-in only).
  *   - puppeteer-core missing without the env var → hard fail with the
  *     install/opt-out diagnostic.
@@ -25,7 +25,7 @@ import {
 import { ensureVerificationDir } from "../verification-helpers.js";
 
 const STATE_DIR = mkdtempSync(path.join(tmpdir(), "app-verify-browser-state-"));
-process.env.MILADY_STATE_DIR = STATE_DIR;
+process.env.ELIZA_STATE_DIR = STATE_DIR;
 
 async function makeRunDir(name: string): Promise<string> {
 	return ensureVerificationDir(name);
@@ -77,12 +77,12 @@ describe("runBrowserCheck (fail-closed semantics)", () => {
 		expect(outcome.check.diagnostics?.[0]?.message).toContain(
 			"puppeteer-core dependency missing",
 		);
-		expect(outcome.check.output).toContain("MILADY_BROWSER_VERIFY_OPTIONAL=1");
+		expect(outcome.check.output).toContain("ELIZA_BROWSER_VERIFY_OPTIONAL=1");
 		expect(outcome.check.output).toContain("bun add -D puppeteer-core");
 	});
 
-	it("soft-skips when puppeteer-core is missing and MILADY_BROWSER_VERIFY_OPTIONAL=1", async () => {
-		vi.stubEnv("MILADY_BROWSER_VERIFY_OPTIONAL", "1");
+	it("soft-skips when puppeteer-core is missing and ELIZA_BROWSER_VERIFY_OPTIONAL=1", async () => {
+		vi.stubEnv("ELIZA_BROWSER_VERIFY_OPTIONAL", "1");
 		const dir = await makeRunDir("browser-puppeteer-optional");
 		const launchCtx: LaunchContext = {
 			viewerUrl: "http://127.0.0.1:65535/",
@@ -95,7 +95,7 @@ describe("runBrowserCheck (fail-closed semantics)", () => {
 		);
 		expect(outcome.check.passed).toBe(true);
 		expect(outcome.check.diagnostics).toBeUndefined();
-		expect(outcome.check.output).toContain("MILADY_BROWSER_VERIFY_OPTIONAL=1");
+		expect(outcome.check.output).toContain("ELIZA_BROWSER_VERIFY_OPTIONAL=1");
 		expect(outcome.check.output).toContain("install puppeteer-core");
 	});
 

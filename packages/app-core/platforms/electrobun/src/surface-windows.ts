@@ -173,7 +173,7 @@ export function buildAppWindowRendererUrl(
   routePath: string,
 ): string {
   const renderer = new URL(rendererUrl);
-  const route = new URL(routePath, "http://milady.local");
+  const route = new URL(routePath, "http://eliza.local");
   const appRoute = `${route.pathname}${route.search}${route.hash}`;
   renderer.searchParams.set("appWindow", "1");
   renderer.hash = appRoute;

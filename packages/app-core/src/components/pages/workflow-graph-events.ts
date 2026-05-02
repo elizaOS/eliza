@@ -1,5 +1,5 @@
 // Event consumer for agent-driven graph focus
-export const VISUALIZE_WORKFLOW_EVENT = "milady:automations:visualize-workflow";
+export const VISUALIZE_WORKFLOW_EVENT = "eliza:automations:visualize-workflow";
 
 export interface VisualizeWorkflowEventDetail {
   workflowId: string;

@@ -42,7 +42,6 @@ let testVault: TestVault;
 let secrets: SecretsManager;
 let repo: FilesystemRuntimeOperationRepository;
 let prevElizaHome: string | undefined;
-let prevMiladyState: string | undefined;
 let prevElizaState: string | undefined;
 
 beforeEach(async () => {
@@ -57,10 +56,8 @@ beforeEach(async () => {
   // Ensure config writes go inside `stateDir` so the test can scan for
   // plaintext leakage without touching the developer's real eliza home.
   prevElizaHome = process.env.ELIZA_HOME;
-  prevMiladyState = process.env.MILADY_STATE_DIR;
   prevElizaState = process.env.ELIZA_STATE_DIR;
   process.env.ELIZA_HOME = stateDir;
-  process.env.MILADY_STATE_DIR = stateDir;
   process.env.ELIZA_STATE_DIR = stateDir;
 });
 
@@ -69,8 +66,6 @@ afterEach(async () => {
   rmSync(stateDir, { recursive: true, force: true });
   if (prevElizaHome === undefined) delete process.env.ELIZA_HOME;
   else process.env.ELIZA_HOME = prevElizaHome;
-  if (prevMiladyState === undefined) delete process.env.MILADY_STATE_DIR;
-  else process.env.MILADY_STATE_DIR = prevMiladyState;
   if (prevElizaState === undefined) delete process.env.ELIZA_STATE_DIR;
   else process.env.ELIZA_STATE_DIR = prevElizaState;
 });

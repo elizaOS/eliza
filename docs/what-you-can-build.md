@@ -1,10 +1,10 @@
 ---
 title: What You Can Build
 sidebarTitle: What You Can Build
-description: Explore the types of AI agents and applications you can create with Milady — from autonomous social media agents to DeFi bots and customer support.
+description: Explore the types of AI agents and applications you can create with Eliza — from autonomous social media agents to DeFi bots and customer support.
 ---
 
-Milady is a modular AI agent framework. Here's what people are building with it.
+Eliza is a modular AI agent framework. Here's what people are building with it.
 
 ## Social Media Agents
 
@@ -170,7 +170,7 @@ Orchestrate multiple agents that collaborate, share knowledge, and specialize in
 
 Pick a use case above and follow these steps:
 
-1. [Install Milady](/installation)
+1. [Install Eliza](/installation)
 2. Choose or connect to a server target
 3. Install relevant plugins for your use case
 4. Configure connectors for your platforms

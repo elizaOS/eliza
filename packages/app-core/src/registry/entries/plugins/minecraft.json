@@ -1,7 +1,7 @@
 {
   "id": "minecraft",
   "name": "Minecraft",
-  "description": "Minecraft automation app for driving Mineflayer bots from Milady agents.",
+  "description": "Minecraft automation app for driving Mineflayer bots from Eliza agents.",
   "npmName": "@elizaos/plugin-minecraft",
   "version": "2.0.0-alpha.4",
   "source": "bundled",

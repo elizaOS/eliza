@@ -622,17 +622,17 @@ export function getWebsiteBlockerPlugin(): WebsiteBlockerPluginLike {
 }
 
 export function getPhonePlugin(): PhonePluginLike {
-  return getNativePlugin<PhonePluginLike>("MiladyPhone");
+  return getNativePlugin<PhonePluginLike>("ElizaPhone");
 }
 
 export function getContactsPlugin(): ContactsPluginLike {
-  return getNativePlugin<ContactsPluginLike>("MiladyContacts");
+  return getNativePlugin<ContactsPluginLike>("ElizaContacts");
 }
 
 export function getMessagesPlugin(): MessagesPluginLike {
-  return getNativePlugin<MessagesPluginLike>("MiladyMessages");
+  return getNativePlugin<MessagesPluginLike>("ElizaMessages");
 }
 
 export function getSystemPlugin(): SystemPluginLike {
-  return getNativePlugin<SystemPluginLike>("MiladySystem");
+  return getNativePlugin<SystemPluginLike>("ElizaSystem");
 }

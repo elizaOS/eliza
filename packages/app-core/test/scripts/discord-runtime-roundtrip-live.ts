@@ -17,7 +17,7 @@ type DiscordConfig = {
   enabled?: boolean;
 };
 
-type MiladyConfig = {
+type ElizaConfig = {
   logging?: {
     level?: string;
   };
@@ -104,7 +104,7 @@ await mkdir(QA_ROOT, { recursive: true });
 const REPORT_DIR = await mkdtemp(
   path.join(QA_ROOT, "discord-runtime-roundtrip-"),
 );
-const KEEP_ARTIFACTS = process.env.MILADY_KEEP_LIVE_ARTIFACTS === "1";
+const KEEP_ARTIFACTS = process.env.ELIZA_KEEP_LIVE_ARTIFACTS === "1";
 const GUILD_NAME = process.env.DISCORD_QA_GUILD_NAME ?? "Cozy Devs";
 const GUILD_ID = process.env.DISCORD_QA_GUILD_ID ?? "1051457140637827122";
 const CHANNEL_ID = process.env.DISCORD_QA_CHANNEL_ID ?? "1472326219759620258";
@@ -113,12 +113,12 @@ const TIMEOUT_MS = Math.max(
   Number.parseInt(process.env.DISCORD_QA_TIMEOUT_MS ?? "", 10) || 10 * 60_000,
 );
 
-function loadBaseConfig(): MiladyConfig {
-  const configPath = path.join(os.homedir(), ".milady", "milady.json");
-  return JSON.parse(fs.readFileSync(configPath, "utf8")) as MiladyConfig;
+function loadBaseConfig(): ElizaConfig {
+  const configPath = path.join(os.homedir(), ".eliza", "eliza.json");
+  return JSON.parse(fs.readFileSync(configPath, "utf8")) as ElizaConfig;
 }
 
-function resolveDiscordToken(config: MiladyConfig): string {
+function resolveDiscordToken(config: ElizaConfig): string {
   const fromConfig =
     config.connectors?.discord?.token?.trim() ||
     config.connectors?.discord?.botToken?.trim() ||
@@ -132,7 +132,7 @@ function resolveDiscordToken(config: MiladyConfig): string {
   return process.env.DISCORD_BOT_TOKEN?.trim() || "";
 }
 
-function resolveDiscordApplicationId(config: MiladyConfig): string {
+function resolveDiscordApplicationId(config: ElizaConfig): string {
   return (
     config.connectors?.discord?.applicationId?.trim() ||
     config.env?.DISCORD_APPLICATION_ID?.trim() ||
@@ -141,7 +141,7 @@ function resolveDiscordApplicationId(config: MiladyConfig): string {
   );
 }
 
-function resolveCloudApiKey(config: MiladyConfig): string {
+function resolveCloudApiKey(config: ElizaConfig): string {
   return (
     process.env.ELIZAOS_CLOUD_API_KEY?.trim() ||
     process.env.ELIZA_CLOUD_API_KEY?.trim() ||
@@ -151,10 +151,10 @@ function resolveCloudApiKey(config: MiladyConfig): string {
 }
 
 function buildRuntimeConfig(
-  baseConfig: MiladyConfig,
+  baseConfig: ElizaConfig,
   discordToken: string,
   discordApplicationId: string,
-): MiladyConfig {
+): ElizaConfig {
   const allow = new Set(baseConfig.plugins?.allow ?? []);
   allow.add("@elizaos/plugin-discord");
   allow.add("@elizaos/plugin-elizacloud");
@@ -162,7 +162,7 @@ function buildRuntimeConfig(
   return {
     logging: {
       level:
-        process.env.MILADY_QA_LOG_LEVEL?.trim() ||
+        process.env.ELIZA_QA_LOG_LEVEL?.trim() ||
         baseConfig.logging?.level ||
         "info",
     },
@@ -297,16 +297,16 @@ async function waitForJsonPredicate<T>(
 }
 
 async function startRuntime(
-  config: MiladyConfig,
+  config: ElizaConfig,
   discordToken: string,
   discordApplicationId: string,
   cloudApiKey: string,
 ): Promise<StartedRuntime> {
   const tempRoot = await mkdtemp(
-    path.join(os.tmpdir(), "milady-discord-runtime-"),
+    path.join(os.tmpdir(), "eliza-discord-runtime-"),
   );
   const stateDir = path.join(tempRoot, "state");
-  const configPath = path.join(tempRoot, "milady.json");
+  const configPath = path.join(tempRoot, "eliza.json");
   const logPath = path.join(tempRoot, "runtime.log");
   const apiPort = await getFreePort();
   const uiPort = await getFreePort();
@@ -323,15 +323,15 @@ async function startRuntime(
       ELIZA_DISABLE_WORKSPACE_PLUGIN_OVERRIDES: "1",
       ELIZA_SKIP_LOCAL_UPSTREAMS: "1",
       ELIZA_CONFIG_PATH: configPath,
-      MILADY_SKIP_LOCAL_UPSTREAMS: "1",
-      MILADY_CONFIG_PATH: configPath,
+      ELIZA_SKIP_LOCAL_UPSTREAMS: "1",
+      ELIZA_CONFIG_PATH: configPath,
       ELIZA_STATE_DIR: stateDir,
-      MILADY_STATE_DIR: stateDir,
+      ELIZA_STATE_DIR: stateDir,
       ELIZA_PORT: String(apiPort),
-      MILADY_API_PORT: String(apiPort),
-      MILADY_PORT: String(uiPort),
+      ELIZA_API_PORT: String(apiPort),
+      ELIZA_PORT: String(uiPort),
       ELIZA_DISABLE_LOCAL_EMBEDDINGS: "1",
-      MILADY_DISABLE_LOCAL_EMBEDDINGS: "1",
+      ELIZA_DISABLE_LOCAL_EMBEDDINGS: "1",
       DISCORD_API_TOKEN: discordToken,
       DISCORD_BOT_TOKEN: discordToken,
       DISCORD_APPLICATION_ID: discordApplicationId,
@@ -435,12 +435,12 @@ async function main(): Promise<void> {
   const cloudApiKey = resolveCloudApiKey(baseConfig);
   if (!discordToken) {
     throw new Error(
-      "No Discord bot token found in environment or ~/.milady/milady.json",
+      "No Discord bot token found in environment or ~/.eliza/eliza.json",
     );
   }
   if (!cloudApiKey) {
     throw new Error(
-      "No Eliza Cloud API key found in environment or ~/.milady/milady.json",
+      "No Eliza Cloud API key found in environment or ~/.eliza/eliza.json",
     );
   }
 
@@ -531,7 +531,7 @@ async function main(): Promise<void> {
       logPath: runtime.logPath,
     };
 
-    const challengeToken = `MILADY_DISCORD_RUNTIME_QA_${Date.now()}`;
+    const challengeToken = `ELIZA_DISCORD_RUNTIME_QA_${Date.now()}`;
     console.log(
       "[discord-runtime-roundtrip-live] posting_challenge",
       JSON.stringify({ challengeToken, channelId: CHANNEL_ID }),
@@ -543,7 +543,7 @@ async function main(): Promise<void> {
         method: "POST",
         body: JSON.stringify({
           content:
-            `Discord runtime QA is live on a local Milady server. Reply directly to this message with \`${challengeToken}\` and mention <@${botUser.id}> so the runtime can answer.\n` +
+            `Discord runtime QA is live on a local Eliza server. Reply directly to this message with \`${challengeToken}\` and mention <@${botUser.id}> so the runtime can answer.\n` +
             `This run is waiting for a real human -> bot roundtrip in ${channel.name}.`,
         }),
       },

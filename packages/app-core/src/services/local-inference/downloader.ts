@@ -23,8 +23,8 @@ import { Readable, type Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { ensureDefaultAssignment } from "./assignments";
 import { buildHuggingFaceResolveUrl, findCatalogModel } from "./catalog";
-import { downloadsStagingDir, miladyModelsDir } from "./paths";
-import { upsertMiladyModel } from "./registry";
+import { downloadsStagingDir, elizaModelsDir } from "./paths";
+import { upsertElizaModel } from "./registry";
 import type {
   CatalogModel,
   DownloadEvent,
@@ -59,7 +59,7 @@ function finalFilename(model: CatalogModel): string {
 
 async function ensureDirs(): Promise<void> {
   await fsp.mkdir(downloadsStagingDir(), { recursive: true });
-  await fsp.mkdir(miladyModelsDir(), { recursive: true });
+  await fsp.mkdir(elizaModelsDir(), { recursive: true });
 }
 
 async function partialSize(stagingPath: string): Promise<number> {
@@ -125,7 +125,7 @@ export class Downloader {
       downloadsStagingDir(),
       stagingFilename(modelId),
     );
-    const finalPath = path.join(miladyModelsDir(), finalFilename(catalogEntry));
+    const finalPath = path.join(elizaModelsDir(), finalFilename(catalogEntry));
 
     const job: DownloadJob = {
       jobId: randomUUID(),
@@ -207,7 +207,7 @@ export class Downloader {
       const startByte = record.job.received;
 
       const headers: Record<string, string> = {
-        "user-agent": "Milady-LocalInference/1.0",
+        "user-agent": "Eliza-LocalInference/1.0",
       };
       if (startByte > 0) {
         headers.range = `bytes=${startByte}-`;
@@ -282,11 +282,11 @@ export class Downloader {
         hfRepo: catalogEntry.hfRepo,
         installedAt: new Date().toISOString(),
         lastUsedAt: null,
-        source: "milady-download",
+        source: "eliza-download",
         sha256,
         lastVerifiedAt: new Date().toISOString(),
       };
-      await upsertMiladyModel(installed);
+      await upsertElizaModel(installed);
 
       // First-light convenience: assign the freshly-installed model to any
       // empty slot so chat works without a Settings detour. Idempotent —

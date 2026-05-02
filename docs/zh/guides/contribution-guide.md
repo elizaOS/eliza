@@ -1,12 +1,12 @@
 ---
 title: "贡献指南"
 sidebarTitle: "贡献"
-description: "设置你的开发环境并为 Milady 做出贡献。"
+description: "设置你的开发环境并为 Eliza 做出贡献。"
 ---
 
-欢迎来到 Milady 项目。本指南涵盖环境设置、开发工作流和 pull request 流程。
+欢迎来到 Eliza 项目。本指南涵盖环境设置、开发工作流和 pull request 流程。
 
-在贡献之前，请阅读仓库根目录的 [CONTRIBUTING.md](https://github.com/milady-ai/milady/blob/develop/CONTRIBUTING.md) 了解项目的贡献理念。Milady 是一个**仅限代理的代码库** -- 每个 PR 都由 AI 代理审查和合并，而非人类维护者。人类主要作为 QA 测试者和 bug 报告者参与贡献。
+在贡献之前，请阅读仓库根目录的 [CONTRIBUTING.md](https://github.com/eliza-ai/eliza/blob/develop/CONTRIBUTING.md) 了解项目的贡献理念。Eliza 是一个**仅限代理的代码库** -- 每个 PR 都由 AI 代理审查和合并，而非人类维护者。人类主要作为 QA 测试者和 bug 报告者参与贡献。
 
 ---
 
@@ -30,8 +30,8 @@ Bun 是项目的包管理器。本指南中的所有命令都使用 `bun`。
 
 ```bash
 # Clone the repository
-git clone https://github.com/milady-ai/milady.git
-cd milady
+git clone https://github.com/eliza-ai/eliza.git
+cd eliza
 
 # Install dependencies
 bun install
@@ -43,10 +43,10 @@ bun run build
 构建后，验证 CLI 是否正常工作：
 
 ```bash
-bun run milady --help
+bun run eliza --help
 ```
 
-配置存储在 `~/.milady/milady.json`，工作空间位于 `~/.milady/workspace/`。
+配置存储在 `~/.eliza/eliza.json`，工作空间位于 `~/.eliza/workspace/`。
 
 ---
 
@@ -69,7 +69,7 @@ bun run dev:ui
 bun run dev:desktop
 
 # Run the CLI directly
-bun run milady start
+bun run eliza start
 ```
 
 <div id="testing">
@@ -95,7 +95,7 @@ bun run db:check
 bun run test:e2e
 
 # Live API tests (requires API keys)
-MILADY_LIVE_TEST=1 bun run test:live
+ELIZA_LIVE_TEST=1 bun run test:live
 
 # Docker-based integration tests
 bun run test:docker:all
@@ -185,7 +185,7 @@ bun run build:ios
 
 2. **进行更改**，提交简洁、面向行动的 commit
    ```bash
-   git commit -m "milady: add verbose flag to send action"
+   git commit -m "eliza: add verbose flag to send action"
    ```
 
 3. **推送前运行检查**
@@ -215,7 +215,7 @@ refactor: extract session key logic to provider
 chore: update @elizaos/core to latest
 ```
 
-其他接受的风格遵循仓库历史中看到的 `milady: description` 模式（例如 `milady: fix telegram reconnect on rate limit`）。
+其他接受的风格遵循仓库历史中看到的 `eliza: description` 模式（例如 `eliza: fix telegram reconnect on rate limit`）。
 
 <div id="the-agent-review-bot">
 ### 代理审查机器人
@@ -293,8 +293,8 @@ chore: update @elizaos/core to latest
 ### 产品名称 vs 代码名称
 </div>
 
-- **Milady** -- 产品名称、标题、文档正文
-- **milady** -- CLI 二进制名称、包路径、配置键
+- **Eliza** -- 产品名称、标题、文档正文
+- **eliza** -- CLI 二进制名称、包路径、配置键
 
 <div id="file-size">
 ### 文件大小
@@ -351,7 +351,7 @@ try {
 </div>
 
 ```
-milady/
+eliza/
 ├── apps/
 │   ├── app/                 # Desktop/mobile app (Capacitor + React)
 │   │   ├── electrobun/      # Electrobun desktop wrapper
@@ -385,7 +385,7 @@ milady/
 ├── tsconfig.json            # TypeScript config
 ├── tsdown.config.ts         # Build config (tsdown bundler)
 ├── vitest.config.ts         # Vitest test config
-└── milady.mjs               # npm bin entry point
+└── eliza.mjs               # npm bin entry point
 ```
 
 <div id="key-entry-points">
@@ -397,8 +397,8 @@ milady/
 | `src/entry.ts` | CLI 入口点 |
 | `src/index.ts` | 库导出 |
 | `src/runtime/eliza.ts` | elizaOS 运行时初始化 |
-| `src/runtime/milady-plugin.ts` | Milady 主插件 |
-| `milady.mjs` | npm bin 入口（package.json 中的 `"bin"`） |
+| `src/runtime/eliza-plugin.ts` | Eliza 主插件 |
+| `eliza.mjs` | npm bin 入口（package.json 中的 `"bin"`） |
 
 ---
 
@@ -410,7 +410,7 @@ milady/
 
 1. **检查现有 issues** 避免重复
 2. **包含复现步骤** -- 你做了什么、发生了什么、你期望什么
-3. **分享你的环境** -- 操作系统、Node 版本、Milady 版本（`milady --version`）
+3. **分享你的环境** -- 操作系统、Node 版本、Eliza 版本（`eliza --version`）
 4. **附加日志** -- 相关错误输出
 
 一个 AI 代理对所有传入的 issue 进行分类。有效的 bug 会被标记和优先处理。超出范围的 issue（美学请求、功能扩展）将被关闭并附带解释。
@@ -421,8 +421,8 @@ milady/
 ## 延伸阅读
 </div>
 
-- [CONTRIBUTING.md](https://github.com/milady-ai/milady/blob/develop/CONTRIBUTING.md) -- 完整的贡献理念
-- [AGENTS.md](https://github.com/milady-ai/milady/blob/develop/AGENTS.md) -- 编码代理的仓库指南
+- [CONTRIBUTING.md](https://github.com/eliza-ai/eliza/blob/develop/CONTRIBUTING.md) -- 完整的贡献理念
+- [AGENTS.md](https://github.com/eliza-ai/eliza/blob/develop/AGENTS.md) -- 编码代理的仓库指南
 - [插件开发指南](/zh/plugins/development) -- 构建插件
 - [Skills 文档](/zh/plugins/skills) -- 创建 skills
 - [本地插件开发](/zh/plugins/local-plugins) -- 本地开发插件

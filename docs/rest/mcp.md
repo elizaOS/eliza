@@ -95,7 +95,7 @@ Get full details for a specific MCP server from the marketplace.
 
 ### GET /api/mcp/config
 
-Returns the current MCP server configuration from the Milady config file. Secret values (API keys, tokens) are redacted.
+Returns the current MCP server configuration from the Eliza config file. Secret values (API keys, tokens) are redacted.
 
 **Response**
 

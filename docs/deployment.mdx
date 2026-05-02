@@ -1,10 +1,10 @@
 ---
 title: Deployment Guide
 sidebarTitle: Deployment
-description: Deploy Milady using Docker, Docker Compose, or cloud containers. Covers environment variables, port configuration, volumes, and security hardening.
+description: Deploy Eliza using Docker, Docker Compose, or cloud containers. Covers environment variables, port configuration, volumes, and security hardening.
 ---
 
-Milady supports multiple deployment strategies: standalone Docker containers, Docker Compose orchestration, and cloud-managed containers for Eliza Cloud (AWS ECS).
+Eliza supports multiple deployment strategies: standalone Docker containers, Docker Compose orchestration, and cloud-managed containers for Eliza Cloud (AWS ECS).
 
 <Warning>
 The Docker deployment files referenced below (`deploy/Dockerfile`, `docker-setup.sh`) live in the `eliza/` submodule. You must initialize it first with `bun run setup:upstreams` or `git submodule update --init --recursive` before following these instructions. The `deploy/` directory in the repo root contains only `Dockerfile.ci` (CI-specific image for pre-built artifacts) and supporting config files.
@@ -12,7 +12,7 @@ The Docker deployment files referenced below (`deploy/Dockerfile`, `docker-setup
 
 ## Quick Start with Docker Compose
 
-The fastest way to deploy Milady is using the included setup script, which builds the image, generates authentication tokens, runs interactive onboarding, and starts the gateway.
+The fastest way to deploy Eliza is using the included setup script, which builds the image, generates authentication tokens, runs interactive onboarding, and starts the gateway.
 
 <Note>
 The Docker deployment files live in the upstream elizaOS toolkit. Initialize the submodule first:
@@ -26,14 +26,14 @@ cd deploy
 bash ../eliza/packages/app-core/deploy/docker-setup.sh
 ```
 
-Milady-specific overrides (image name, ports, state paths) are in `deploy/deploy.env` and automatically merged with the upstream defaults.
+Eliza-specific overrides (image name, ports, state paths) are in `deploy/deploy.env` and automatically merged with the upstream defaults.
 
 The setup script performs the following steps:
 
-1. Builds the Docker image (`milady:local` by default)
+1. Builds the Docker image (`eliza:local` by default)
 2. Generates a random gateway token (via `openssl rand -hex 32`, or Python `secrets.token_hex(32)` as fallback)
 3. Writes environment variables to `deploy/.env`
-4. Runs interactive setup (`milady-cli setup`)
+4. Runs interactive setup (`eliza-cli setup`)
 5. Starts the gateway service in detached mode
 
 <Warning>
@@ -86,8 +86,8 @@ The CI image is built by the GitHub Actions release pipeline. To run it locally 
 
 ```bash
 docker build \
-  --build-arg MILADY_DOCKER_APT_PACKAGES="ffmpeg imagemagick" \
-  -t milady:local \
+  --build-arg ELIZA_DOCKER_APT_PACKAGES="ffmpeg imagemagick" \
+  -t eliza:local \
   -f eliza/packages/app-core/deploy/Dockerfile \
   .
 ```
@@ -98,16 +98,16 @@ Mount persistent state to survive container restarts:
 
 | Volume Mount | Container Path | Purpose |
 |-------------|---------------|---------|
-| `~/.milady` | `/root/.milady` | Configuration files (`milady.json`), database, secrets |
-| `~/.milady/workspace` | `/root/.milady/workspace` | Agent workspace files, uploaded knowledge, generated content |
+| `~/.eliza` | `/root/.eliza` | Configuration files (`eliza.json`), database, secrets |
+| `~/.eliza/workspace` | `/root/.eliza/workspace` | Agent workspace files, uploaded knowledge, generated content |
 
 ## Ports
 
 | Port | Service | Default | Environment Variable | Notes |
 |------|---------|---------|---------------------|-------|
-| 2138 | API Server + Dashboard UI | Always exposed inside container | `MILADY_PORT` | Production default; `MILADY_API_PORT` (31337) is the dev-mode default |
-| 18789 | Gateway (WebSocket + HTTP) | Host-mapped | `MILADY_GATEWAY_PORT` | Multiplexed WebSocket + HTTP with optional TLS |
-| 18790 | Bridge (inter-service communication) | Host-mapped | `MILADY_BRIDGE_PORT` | Inter-container communication (WeChat webhook, etc.) |
+| 2138 | API Server + Dashboard UI | Always exposed inside container | `ELIZA_PORT` | Production default; `ELIZA_API_PORT` (31337) is the dev-mode default |
+| 18789 | Gateway (WebSocket + HTTP) | Host-mapped | `ELIZA_GATEWAY_PORT` | Multiplexed WebSocket + HTTP with optional TLS |
+| 18790 | Bridge (inter-service communication) | Host-mapped | `ELIZA_BRIDGE_PORT` | Inter-container communication (WeChat webhook, etc.) |
 
 ## Environment Variables
 
@@ -115,16 +115,16 @@ Mount persistent state to survive container restarts:
 
 | Variable | Description |
 |----------|-------------|
-| `MILADY_API_TOKEN` | Token-based auth for the API server. Set in production. |
+| `ELIZA_API_TOKEN` | Token-based auth for the API server. Set in production. |
 
 ### Optional
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MILADY_API_BIND` | `127.0.0.1` | API server bind address (set to `0.0.0.0` for container networking) |
-| `MILADY_ALLOWED_ORIGINS` | (none) | CORS allowed origins for the API server |
-| `MILADY_GATEWAY_PORT` | `18789` | Gateway port |
-| `MILADY_GATEWAY_BIND` | `lan` | Gateway bind mode (`lan`, `localhost`, `0.0.0.0`) |
+| `ELIZA_API_BIND` | `127.0.0.1` | API server bind address (set to `0.0.0.0` for container networking) |
+| `ELIZA_ALLOWED_ORIGINS` | (none) | CORS allowed origins for the API server |
+| `ELIZA_GATEWAY_PORT` | `18789` | Gateway port |
+| `ELIZA_GATEWAY_BIND` | `lan` | Gateway bind mode (`lan`, `localhost`, `0.0.0.0`) |
 
 ### AI Provider Keys
 
@@ -249,19 +249,19 @@ The sandbox runs as a sidecar and sleeps indefinitely, ready to accept commands 
 ### Viewing Logs
 
 ```bash
-docker compose -f eliza/packages/app-core/deploy/docker-compose.yml logs -f milady-gateway
+docker compose -f eliza/packages/app-core/deploy/docker-compose.yml logs -f eliza-gateway
 ```
 
 ### Health Check
 
 ```bash
-docker compose -f eliza/packages/app-core/deploy/docker-compose.yml exec milady-gateway \
-  node dist/index.js health --token "$MILADY_GATEWAY_TOKEN"
+docker compose -f eliza/packages/app-core/deploy/docker-compose.yml exec eliza-gateway \
+  node dist/index.js health --token "$ELIZA_GATEWAY_TOKEN"
 ```
 
 ### Adding Connectors
 
-Configure connectors in your `milady.json` instead of using CLI commands. See [Configuration — Connectors](/configuration#connectors-messaging-channels) for the full schema.
+Configure connectors in your `eliza.json` instead of using CLI commands. See [Configuration — Connectors](/configuration#connectors-messaging-channels) for the full schema.
 
 ```json
 {
@@ -275,7 +275,7 @@ Configure connectors in your `milady.json` instead of using CLI commands. See [C
 Then restart the service:
 
 ```bash
-docker compose -f deploy/docker-compose.yml restart milady
+docker compose -f deploy/docker-compose.yml restart eliza
 ```
 
 ### Stopping and Restarting
@@ -285,7 +285,7 @@ docker compose -f deploy/docker-compose.yml restart milady
 docker compose -f eliza/packages/app-core/deploy/docker-compose.yml down
 
 # Restart the gateway
-docker compose -f eliza/packages/app-core/deploy/docker-compose.yml up -d milady-gateway
+docker compose -f eliza/packages/app-core/deploy/docker-compose.yml up -d eliza-gateway
 ```
 
 ## Security Hardening
@@ -295,16 +295,16 @@ docker compose -f eliza/packages/app-core/deploy/docker-compose.yml up -d milady
     Both Dockerfiles run as non-root users (`node` or `agent`). Never override this with `--user root` in production.
   </Card>
   <Card title="API Token Auth" icon="key">
-    Set `MILADY_API_TOKEN` in production to require authentication for all API and WebSocket connections.
+    Set `ELIZA_API_TOKEN` in production to require authentication for all API and WebSocket connections.
   </Card>
   <Card title="Gateway Token" icon="lock">
     The gateway token is auto-generated with 256 bits of entropy. Store it securely and rotate periodically.
   </Card>
   <Card title="Network Binding" icon="network-wired">
-    Use `MILADY_GATEWAY_BIND=localhost` to restrict gateway access to the host machine only. Use `lan` for local network access.
+    Use `ELIZA_GATEWAY_BIND=localhost` to restrict gateway access to the host machine only. Use `lan` for local network access.
   </Card>
 </CardGroup>
 
 <Warning>
-Never expose the gateway to the public internet without setting `MILADY_GATEWAY_TOKEN` and configuring TLS. See the [Configuration Schema](/config-schema) for TLS settings under the `gateway` section.
+Never expose the gateway to the public internet without setting `ELIZA_GATEWAY_TOKEN` and configuring TLS. See the [Configuration Schema](/config-schema) for TLS settings under the `gateway` section.
 </Warning>

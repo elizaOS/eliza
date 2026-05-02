@@ -1,13 +1,13 @@
 /**
- * Milady-runtime client for Eliza Cloud's Plaid bridge endpoints.
+ * Eliza-runtime client for Eliza Cloud's Plaid bridge endpoints.
  *
  * Pattern matches GoogleManagedClient: read the cloud apiKey from
  * loadElizaConfig() / ELIZAOS_CLOUD_API_KEY, hit the cloud at
- * /api/v1/milady/plaid/*, and surface a typed PlaidManagedClientError on
+ * /api/v1/eliza/plaid/*, and surface a typed PlaidManagedClientError on
  * non-2xx responses so callers can show actionable messages.
  *
  * The cloud API holds the long-lived Plaid `access_token` for transaction
- * sync. The Milady runtime never sees Plaid client secrets, only the cloud
+ * sync. The Eliza runtime never sees Plaid client secrets, only the cloud
  * api key.
  */
 
@@ -162,7 +162,7 @@ export class PlaidManagedClient {
   async createLinkToken(): Promise<PlaidLinkTokenResponse> {
     const config = this.requireConfig();
     const response = await fetch(
-      `${config.apiBaseUrl}/v1/milady/plaid/link-token`,
+      `${config.apiBaseUrl}/v1/eliza/plaid/link-token`,
       {
         method: "POST",
         headers: {
@@ -181,7 +181,7 @@ export class PlaidManagedClient {
   }): Promise<PlaidExchangeResponse> {
     const config = this.requireConfig();
     const response = await fetch(
-      `${config.apiBaseUrl}/v1/milady/plaid/exchange`,
+      `${config.apiBaseUrl}/v1/eliza/plaid/exchange`,
       {
         method: "POST",
         headers: {
@@ -201,7 +201,7 @@ export class PlaidManagedClient {
     count?: number;
   }): Promise<PlaidSyncResponse> {
     const config = this.requireConfig();
-    const response = await fetch(`${config.apiBaseUrl}/v1/milady/plaid/sync`, {
+    const response = await fetch(`${config.apiBaseUrl}/v1/eliza/plaid/sync`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${config.apiKey}`,

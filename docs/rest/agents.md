@@ -4,7 +4,7 @@ sidebarTitle: "Agents"
 description: "REST API endpoints for agent lifecycle, administration, and transfer (export/import)."
 ---
 
-All agent endpoints require the agent runtime to be initialized. The API server runs on port **2138** by default when started with `milady start`. In dev mode (`bun run dev`), the API splits to port **31337** while the UI stays on **2138**. Override with `MILADY_API_PORT` (dev API) or `MILADY_PORT` (server-only / UI). All paths are prefixed with `/api/`. When `MILADY_API_TOKEN` is set, include it as a `Bearer` token in the `Authorization` header.
+All agent endpoints require the agent runtime to be initialized. The API server runs on port **2138** by default when started with `eliza start`. In dev mode (`bun run dev`), the API splits to port **31337** while the UI stays on **2138**. Override with `ELIZA_API_PORT` (dev API) or `ELIZA_PORT` (server-only / UI). All paths are prefixed with `/api/`. When `ELIZA_API_TOKEN` is set, include it as a `Bearer` token in the `Authorization` header.
 
 ## Endpoints
 
@@ -38,7 +38,7 @@ List the running agent(s). The app runs a single agent; the response wraps it in
   "agents": [
     {
       "id": "550e8400-e29b-41d4-a716-446655440000",
-      "name": "Milady",
+      "name": "Eliza",
       "status": "running"
     }
   ]
@@ -63,7 +63,7 @@ Start the agent. Sets the agent state to `running`, records the start timestamp,
 {
   "status": {
     "state": "running",
-    "agentName": "Milady",
+    "agentName": "Eliza",
     "model": "@elizaos/plugin-anthropic",
     "uptime": 0,
     "startedAt": 1718000000000
@@ -83,7 +83,7 @@ Stop the agent and disable autonomy. Sets the agent state to `stopped` and clear
 {
   "status": {
     "state": "stopped",
-    "agentName": "Milady",
+    "agentName": "Eliza",
     "model": "@elizaos/plugin-anthropic",
     "startedAt": 1718000000000,
     "uptime": 34200000
@@ -103,7 +103,7 @@ Pause the agent while keeping uptime intact. Disables autonomy but preserves the
 {
   "status": {
     "state": "paused",
-    "agentName": "Milady",
+    "agentName": "Eliza",
     "model": "@elizaos/plugin-anthropic",
     "uptime": 34200000,
     "startedAt": 1718000000000
@@ -123,7 +123,7 @@ Resume a paused agent and re-enable autonomy. The first tick fires immediately.
 {
   "status": {
     "state": "running",
-    "agentName": "Milady",
+    "agentName": "Eliza",
     "model": "@elizaos/plugin-anthropic",
     "uptime": 34200000,
     "startedAt": 1718000000000
@@ -177,7 +177,7 @@ Restart the agent runtime. Returns `409` if a restart is already in progress and
 {
   "status": {
     "state": "running",
-    "agentName": "Milady",
+    "agentName": "Eliza",
     "model": "@elizaos/plugin-anthropic",
     "startedAt": 1718000000000
   }
@@ -191,7 +191,7 @@ Restart the agent runtime. Returns `409` if a restart is already in progress and
 Wipe memory, onboarding config, cloud secrets, and return to onboarding state. Stops the runtime, deletes the PGlite database directory (with safety checks), clears persisted onboarding and cloud credentials, and resets server state. GGUF models and the state directory itself are preserved.
 
 This is a sensitive endpoint with stricter authorization:
-- If `MILADY_API_TOKEN` is configured, the request must include it as a Bearer token.
+- If `ELIZA_API_TOKEN` is configured, the request must include it as a Bearer token.
 - If no token is configured, the request is only allowed from loopback addresses (localhost). Non-loopback requests without a token return `403`.
 
 **Response**
@@ -285,7 +285,7 @@ Get a structured summary of the agent's current state, capabilities, wallet stat
 {
   "generatedAt": "2026-04-09T12:00:00.000Z",
   "state": "running",
-  "agentName": "Milady",
+  "agentName": "Eliza",
   "model": "anthropic/claude-sonnet-4.6",
   "provider": "anthropic",
   "automationMode": "connectors-only",

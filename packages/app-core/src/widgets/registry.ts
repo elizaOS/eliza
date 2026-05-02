@@ -182,7 +182,7 @@ export type WidgetPluginState = Pick<PluginInfo, "id" | "enabled" | "isActive">;
 /**
  * Some bundled widgets intentionally stay visible even when the runtime plugin
  * snapshot omits their feature IDs because the UI has compat-backed data
- * sources for them. Generic todo widgets do not qualify here — Milady does not
+ * sources for them. Generic todo widgets do not qualify here — Eliza does not
  * ship a runtime todo plugin, and leaving the fallback enabled crowds out the
  * LifeOps-first sidebar with a stale generic tasks panel.
  */

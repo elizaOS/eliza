@@ -9,7 +9,7 @@ import { LifeOpsServiceError } from "./service-types.js";
 function runtime(overrides: Record<string, unknown> = {}) {
   return {
     agentId: "agent-gmail-service",
-    character: { name: "Milady" },
+    character: { name: "Eliza" },
     ...overrides,
   } as unknown as ConstructorParameters<typeof LifeOpsService>[0];
 }

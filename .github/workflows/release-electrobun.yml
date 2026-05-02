@@ -186,7 +186,7 @@ jobs:
           run-postinstall: "true"
 
       # TODO: verify this script exists in eliza or port equivalent.
-      # In milady this was `bun run test:regression-matrix:release`.
+      # In eliza this was `bun run test:regression-matrix:release`.
       - name: Regression matrix contract
         run: bun run test:regression-matrix:release
 
@@ -662,7 +662,7 @@ jobs:
           restore-keys: electrobun-core-${{ matrix.platform.artifact-name }}-
 
       # TODO: verify this script exists in eliza. `ensure-electrobun-core.mjs`
-      # was milady-only and is not present in upstream eliza/packages/app-core/scripts/.
+      # was eliza-only and is not present in upstream eliza/packages/app-core/scripts/.
       # Without it the cache step above is decorative — Electrobun will fall
       # back to its own download flow on first build. Port the script if you
       # want pre-warmed core binaries on the first packaging run.
@@ -756,7 +756,7 @@ jobs:
           # Flat release root for the updater. Env is encoded in the platform prefix
           # (canary-macos-arm64-update.json etc.), so the baseUrl has no env subdir.
           # TODO: Configure releases host on elizaOS/eliza repo settings (replace
-          # releases.milady.ai placeholder with the eliza release host).
+          # releases.eliza.ai placeholder with the eliza release host).
           ELIZA_RELEASE_URL: ${{ (github.event_name != 'workflow_call' || inputs.publish_release) && !inputs.draft && 'https://releases.elizaos.ai/' || '' }}
 
       - name: Dump Electrobun build diagnostics
@@ -1074,7 +1074,7 @@ jobs:
           name: electrobun-windows-installer-debug
           path: |
             packages/app-core/platforms/electrobun/artifacts/*.exe
-            ${{ runner.temp }}/milady-inno-setup.log
+            ${{ runner.temp }}/eliza-inno-setup.log
           if-no-files-found: warn
           retention-days: 14
 
@@ -1088,7 +1088,7 @@ jobs:
         with:
           name: electrobun-windows-ui-playwright-diagnostics
           # TODO: confirm packaged-app Playwright result location in eliza
-          # (was apps/app/test-results/** in milady; might be packages/app/test-results/**).
+          # (was apps/app/test-results/** in eliza; might be packages/app/test-results/**).
           path: packages/app/test-results/**
           if-no-files-found: warn
           retention-days: 14
@@ -1329,7 +1329,7 @@ jobs:
           $appDataRoot = if ($env:ELIZA_TEST_WINDOWS_APPDATA_PATH) { $env:ELIZA_TEST_WINDOWS_APPDATA_PATH } else { $env:APPDATA }
           $localAppDataRoot = if ($env:ELIZA_TEST_WINDOWS_LOCALAPPDATA_PATH) { $env:ELIZA_TEST_WINDOWS_LOCALAPPDATA_PATH } else { $env:LOCALAPPDATA }
           $wrapperRoots = @(@(
-            (Join-Path $localAppDataRoot "com.miladyai.milady"),
+            (Join-Path $localAppDataRoot "com.elizaai.eliza"),
             (Join-Path $localAppDataRoot "ai.elizaos.Eliza"),
             (Join-Path $localAppDataRoot "ai.elizaos.app")
           ) | Select-Object -Unique)

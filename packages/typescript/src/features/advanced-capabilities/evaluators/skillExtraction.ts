@@ -4,7 +4,7 @@
  * Watches successful trajectories and asks an LLM whether the agent just
  * executed a generalizable procedure that should be lifted into a reusable
  * SKILL.md. Drafted skills are staged under
- * `~/.milady/skills/curated/proposed/<name>/SKILL.md` with provenance set to
+ * `~/.eliza/skills/curated/proposed/<name>/SKILL.md` with provenance set to
  * `agent-generated`. Proposed skills are NEVER auto-loaded into the runtime —
  * the user reviews them via the Settings → Learned Skills panel and either
  * promotes, edits, or discards.

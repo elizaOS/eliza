@@ -1,11 +1,11 @@
 ---
 title: 插件设置指南
-description: Milady 连接器、AI 提供者和直播推流插件的完整设置说明。
+description: Eliza 连接器、AI 提供者和直播推流插件的完整设置说明。
 ---
 
-<div id="plugin-setup-guide--milady-ai">
+<div id="plugin-setup-guide--eliza-ai">
 
-# 插件设置指南 — Milady AI
+# 插件设置指南 — Eliza AI
 </div>
 
 所有连接器、AI 提供者和直播推流插件的完整设置说明。
@@ -366,8 +366,8 @@ description: Milady 连接器、AI 提供者和直播推流插件的完整设置
 - `features.groups` — 启用群聊支持（默认：false）
 **设置步骤：**
 1. 从微信代理服务获取 API 密钥
-2. 在 milady.json 中配置 `connectors.wechat`，设置 `apiKey` 和 `proxyUrl`
-3. 启动 Milady——用微信扫描终端中显示的二维码
+2. 在 eliza.json 中配置 `connectors.wechat`，设置 `apiKey` 和 `proxyUrl`
+3. 启动 Eliza——用微信扫描终端中显示的二维码
 **提示：** 微信使用第三方代理服务，而非官方 API。只使用您信任的代理——它能看到所有消息流量。通过 `accounts` 映射支持多账户。插件包：`@elizaos/plugin-wechat`。
 
 <div id="github">

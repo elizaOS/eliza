@@ -113,13 +113,13 @@ export function clearSkillsDirCache(): void {
 
 /**
  * Default base directory for the curated learning loop. Lives alongside the
- * Milady state dir (`~/.milady/`) and holds two sibling namespaces:
+ * Eliza state dir (`~/.eliza/`) and holds two sibling namespaces:
  *
  *   curated/active/    — auto-promoted or human-promoted skills (loaded)
  *   curated/proposed/  — staged drafts awaiting human review (NOT loaded)
  *
- * Honors `MILADY_STATE_DIR` and `ELIZA_STATE_DIR` (in that order); falls back
- * to `~/.milady`.
+ * Honors `ELIZA_STATE_DIR` and `ELIZA_STATE_DIR` (in that order); falls back
+ * to `~/.eliza`.
  */
 function resolveCuratedBaseDir(): string {
   return join(resolveStateDir(), "skills", "curated");

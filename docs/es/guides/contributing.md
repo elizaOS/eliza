@@ -1,13 +1,13 @@
 ---
 title: Guía de contribución
-description: Cómo configurar un entorno de desarrollo, seguir las convenciones de código y enviar pull requests al proyecto Milady.
+description: Cómo configurar un entorno de desarrollo, seguir las convenciones de código y enviar pull requests al proyecto Eliza.
 ---
 
 <div id="contributing-guide">
 # Guía de contribución
 </div>
 
-¡Bienvenido a Milady! Esta guía te ayudará a configurar tu entorno de desarrollo y contribuir de manera efectiva.
+¡Bienvenido a Eliza! Esta guía te ayudará a configurar tu entorno de desarrollo y contribuir de manera efectiva.
 
 <div id="table-of-contents">
 ## Tabla de contenidos
@@ -41,8 +41,8 @@ description: Cómo configurar un entorno de desarrollo, seguir las convenciones 
 
 ```bash
 # Clone the repository
-git clone https://github.com/milady-ai/milady.git
-cd milady
+git clone https://github.com/eliza-ai/eliza.git
+cd eliza
 
 # Match repository Node version
 nvm use || nvm install
@@ -109,13 +109,13 @@ bun run dev
 ## Estructura del monorepo
 </div>
 
-Milady es un monorepo gestionado con Turborepo y workspaces de Bun.
+Eliza es un monorepo gestionado con Turborepo y workspaces de Bun.
 
 ```
-milady/
+eliza/
 ├── packages/                # Shared packages
 │   ├── typescript/          # @elizaos/core — Core TypeScript SDK
-│   ├── elizaos/             # CLI tool (milady command)
+│   ├── elizaos/             # CLI tool (eliza command)
 │   ├── skills/              # Skills system and bundled skills
 │   ├── docs/                # Documentation site (Mintlify)
 │   ├── schemas/             # Protobuf schemas
@@ -128,9 +128,9 @@ milady/
 ├── apps/
 │   ├── app/                 # Desktop/mobile app (Capacitor + React)
 │   └── ...                  # No shipped chrome-extension app in this release checkout
-├── src/                     # Milady runtime
+├── src/                     # Eliza runtime
 │   ├── runtime/             # elizaOS runtime bootstrap
-│   ├── plugins/             # Built-in Milady plugins
+│   ├── plugins/             # Built-in Eliza plugins
 │   ├── config/              # Configuration loading
 │   ├── services/            # Registry client, plugin manager
 │   └── api/                 # REST API server
@@ -175,8 +175,8 @@ turbo run lint
 | `src/entry.ts` | Punto de entrada CLI |
 | `src/index.ts` | Exportaciones de librería |
 | `src/runtime/eliza.ts` | Inicialización del runtime elizaOS |
-| `src/runtime/milady-plugin.ts` | Plugin principal de Milady |
-| `milady.mjs` | Entrada bin de npm |
+| `src/runtime/eliza-plugin.ts` | Plugin principal de Eliza |
+| `eliza.mjs` | Entrada bin de npm |
 
 ---
 
@@ -214,7 +214,7 @@ bun run build:ios
 bun run dev
 
 # Run CLI directly (via tsx)
-bun run milady start
+bun run eliza start
 
 # UI development only
 bun run dev:ui
@@ -243,7 +243,7 @@ bun run test:watch
 bun run test:e2e
 
 # Live tests (requires API keys)
-MILADY_LIVE_TEST=1 bun run test:live
+ELIZA_LIVE_TEST=1 bun run test:live
 
 # Docker-based tests
 bun run test:docker:all
@@ -253,10 +253,10 @@ bun run test:docker:all
 ### Fallback de runtime para crashes de Bun
 </div>
 
-Si Bun falla con segfault en tu plataforma durante sesiones largas, ejecuta Milady en runtime de Node:
+Si Bun falla con segfault en tu plataforma durante sesiones largas, ejecuta Eliza en runtime de Node:
 
 ```bash
-MILADY_RUNTIME=node bun run milady start
+ELIZA_RUNTIME=node bun run eliza start
 ```
 
 <div id="test-file-conventions">
@@ -313,8 +313,8 @@ El **`vitest.config.ts`** en la raíz del repositorio (usado por **`bun run test
 ### Nombres de producto vs código
 </div>
 
-- **Milady** — Nombre del producto, encabezados, documentación
-- **milady** — Comando CLI, nombre de paquete, rutas, claves de configuración
+- **Eliza** — Nombre del producto, encabezados, documentación
+- **eliza** — Comando CLI, nombre de paquete, rutas, claves de configuración
 
 <div id="formatting">
 ### Formateo
@@ -503,7 +503,7 @@ Claude Code Review está habilitado para feedback inicial automatizado.
 **[discord.gg/ai16z](https://discord.gg/ai16z)**
 
 Canales:
-- `#milady` — Discusión específica de Milady
+- `#eliza` — Discusión específica de Eliza
 - `#dev` — Ayuda de desarrollo
 - `#showcase` — Comparte lo que has construido
 
@@ -525,7 +525,7 @@ Al crear un issue:
 2. **Usa las plantillas** — Completa la plantilla proporcionada
 3. **Incluye reproducción** — Pasos para reproducir
 4. **Comparte logs** — Salida de errores relevante
-5. **Entorno** — SO, versión de Node, versión de Milady
+5. **Entorno** — SO, versión de Node, versión de Eliza
 
 ```markdown
 ## Bug Report
@@ -534,7 +534,7 @@ Al crear un issue:
 Brief description
 
 **To reproduce:**
-1. Run `milady start`
+1. Run `eliza start`
 2. Send message "..."
 3. Error occurs
 
@@ -544,7 +544,7 @@ What should happen
 **Environment:**
 - OS: macOS 14.2
 - Node: 22.12.0
-- Milady: 2.0.0-alpha.8
+- Eliza: 2.0.0-alpha.8
 
 **Logs:**
 ```
@@ -572,4 +572,4 @@ What should happen
 - [Guía de desarrollo de plugins](/es/plugins/development) — Crear plugins
 - [Documentación de skills](/es/plugins/skills) — Crear skills
 - [Desarrollo local de plugins](/es/plugins/local-plugins) — Desarrollar localmente
-- Explora el código: empieza con `src/runtime/milady-plugin.ts`
+- Explora el código: empieza con `src/runtime/eliza-plugin.ts`

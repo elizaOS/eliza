@@ -123,7 +123,7 @@ export interface PluginMetadata {
 // --- Eject / Sync / Reinject Types ---
 
 export interface UpstreamMetadata {
-	$schema: "milaidy-upstream-v1";
+	$schema: "eliza-upstream-v1";
 	source: string;
 	gitUrl: string;
 	branch: string;

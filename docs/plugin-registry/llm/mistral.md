@@ -1,23 +1,23 @@
 ---
 title: "Mistral Plugin"
 sidebarTitle: "Mistral"
-description: "Mistral AI model provider for Milady — open-weight and commercial models with strong multilingual and coding capabilities."
+description: "Mistral AI model provider for Eliza — open-weight and commercial models with strong multilingual and coding capabilities."
 ---
 
 <Warning>
-This plugin is not yet available in the Milady plugin registry. To use Mistral models today, configure them through the [OpenRouter plugin](/plugin-registry/llm/openrouter) using the appropriate model ID.
+This plugin is not yet available in the Eliza plugin registry. To use Mistral models today, configure them through the [OpenRouter plugin](/plugin-registry/llm/openrouter) using the appropriate model ID.
 </Warning>
 
-The Mistral plugin connects Milady agents to Mistral AI models, offering both open-weight and commercial models with competitive performance, especially for European languages and code generation.
+The Mistral plugin connects Eliza agents to Mistral AI models, offering both open-weight and commercial models with competitive performance, especially for European languages and code generation.
 
-> **On-demand plugin.** This plugin is resolved from the remote elizaOS plugin registry and auto-installs when its API key is detected. It is not included in Milady's bundled `plugins.json` index.
+> **On-demand plugin.** This plugin is resolved from the remote elizaOS plugin registry and auto-installs when its API key is detected. It is not included in Eliza's bundled `plugins.json` index.
 
 **Package:** `@elizaos/plugin-mistral`
 
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-mistral
+eliza plugins install @elizaos/plugin-mistral
 ```
 
 ## Auto-Enable
@@ -34,7 +34,7 @@ export MISTRAL_API_KEY=your-mistral-api-key
 |---------------------|----------|-------------|
 | `MISTRAL_API_KEY` | Yes | Mistral AI API key from [console.mistral.ai](https://console.mistral.ai) |
 
-### milady.json Example
+### eliza.json Example
 
 ```json
 {

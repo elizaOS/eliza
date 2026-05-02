@@ -1,10 +1,10 @@
 ---
 title: "Plugin LINE"
 sidebarTitle: "LINE"
-description: "Connecteur LINE pour Milady — intégration de bot avec la plateforme de messagerie LINE."
+description: "Connecteur LINE pour Eliza — intégration de bot avec la plateforme de messagerie LINE."
 ---
 
-Le plugin LINE connecte les agents Milady à LINE en tant que bot, permettant la gestion des messages dans les chats et les groupes.
+Le plugin LINE connecte les agents Eliza à LINE en tant que bot, permettant la gestion des messages dans les chats et les groupes.
 
 **Package :** `@elizaos/plugin-line`
 
@@ -15,7 +15,7 @@ Le plugin LINE connecte les agents Milady à LINE en tant que bot, permettant la
 </div>
 
 ```bash
-milady plugins install @elizaos/plugin-line
+eliza plugins install @elizaos/plugin-line
 ```
 
 <div id="setup">
@@ -36,9 +36,9 @@ milady plugins install @elizaos/plugin-line
 4. Sous l'onglet **Messaging API**, émettez un **Channel access token**
 5. Notez le **Channel secret** depuis l'onglet **Basic settings**
 
-<div id="2-configure-milady">
+<div id="2-configure-eliza">
 
-### 2. Configurez Milady
+### 2. Configurez Eliza
 
 </div>
 

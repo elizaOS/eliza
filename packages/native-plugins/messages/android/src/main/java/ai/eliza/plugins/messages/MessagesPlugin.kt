@@ -21,7 +21,7 @@ import com.getcapacitor.annotation.CapacitorPlugin
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-@CapacitorPlugin(name = "MiladyMessages")
+@CapacitorPlugin(name = "ElizaMessages")
 class MessagesPlugin : Plugin() {
     private val requestCounter = AtomicInteger(1)
 
@@ -50,7 +50,7 @@ class MessagesPlugin : Plugin() {
         }
 
         val requestId = requestCounter.getAndIncrement()
-        val action = "${context.packageName}.MILADY_SMS_SENT.$requestId"
+        val action = "${context.packageName}.ELIZA_SMS_SENT.$requestId"
         val remaining = AtomicInteger(parts.size)
         val failed = AtomicBoolean(false)
         val receiver = object : BroadcastReceiver() {

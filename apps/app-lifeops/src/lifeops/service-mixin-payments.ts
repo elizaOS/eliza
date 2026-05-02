@@ -780,7 +780,7 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
 
     // -----------------------------------------------------------------------
     // Plaid bridge — uses Eliza Cloud as the secret holder for the Plaid
-    // access_token. Cloud routes live at /api/v1/milady/plaid/*.
+    // access_token. Cloud routes live at /api/v1/eliza/plaid/*.
     // -----------------------------------------------------------------------
 
     // Cannot be `private` — TS4094 fires when the mixin's anonymous class
@@ -968,7 +968,7 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
 
     // -----------------------------------------------------------------------
     // PayPal bridge — uses Eliza Cloud as the OAuth + Reporting API proxy.
-    // Cloud routes live at /api/v1/milady/paypal/*.
+    // Cloud routes live at /api/v1/eliza/paypal/*.
     //
     // Personal-tier PayPal accounts CANNOT use the Reporting API. The cloud
     // surfaces this as a 403 with `fallback: "csv_export"`; we propagate

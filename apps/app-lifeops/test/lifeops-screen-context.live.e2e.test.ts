@@ -16,7 +16,7 @@ import { describeIf } from "../../../../eliza/test/helpers/conditional-tests.ts"
 import { LifeOpsScreenContextSampler } from "../src/lifeops/screen-context.js";
 
 const LIVE_TESTS_ENABLED =
-  process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
+  process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const CHROME_SUPPORTED = isBrowserCaptureSupported();
 
 console.info(

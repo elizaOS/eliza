@@ -33,7 +33,7 @@ export default scenario({
           {
             externalTweetId: "x-home-2",
             feedType: "home_timeline",
-            authorHandle: "milady_ai",
+            authorHandle: "eliza_ai",
             text: "Eliza dev loop feels dramatically better after trimming dead paths.",
             offsetMinutes: 22,
           },

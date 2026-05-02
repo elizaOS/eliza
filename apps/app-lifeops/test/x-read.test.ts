@@ -102,7 +102,7 @@ describe("readXDms", () => {
         includes: {
           users: [
             { id: "alice-id", username: "alice" },
-            { id: "user-42", username: "milady" },
+            { id: "user-42", username: "eliza" },
           ],
         },
         meta: { next_token: "next-page" },
@@ -124,7 +124,7 @@ describe("readXDms", () => {
     expect(page.items[1]).toMatchObject({
       id: "dm-out-1",
       senderId: "user-42",
-      senderHandle: "milady",
+      senderHandle: "eliza",
       isInbound: false,
     });
   });
@@ -261,7 +261,7 @@ describe("withXRead mixin", () => {
       senderHandle: "alice",
       senderId: "user-alice",
       isInbound: true,
-      text: "Milady update",
+      text: "Eliza update",
       receivedAt: now,
       readAt: null,
       repliedAt: null,
@@ -326,14 +326,14 @@ describe("withXRead mixin", () => {
   });
 
   test("searchXPosts searches and dedupes cached feed rows when X credentials are absent", async () => {
-    const duplicate = makeFeedItem("tweet-1", "home_timeline", "Milady launch");
+    const duplicate = makeFeedItem("tweet-1", "home_timeline", "Eliza launch");
     const cachedByFeed: Record<LifeOpsXFeedType, LifeOpsXFeedItem[]> = {
-      search: [makeFeedItem("tweet-1", "search", "Milady launch")],
+      search: [makeFeedItem("tweet-1", "search", "Eliza launch")],
       home_timeline: [
         duplicate,
         makeFeedItem("tweet-2", "home_timeline", "unrelated"),
       ],
-      mentions: [makeFeedItem("tweet-3", "mentions", "Milady mention")],
+      mentions: [makeFeedItem("tweet-3", "mentions", "Eliza mention")],
     };
     class StubBase {
       runtime = { agentId: SAME_ID, logger: { warn: () => undefined } };
@@ -357,7 +357,7 @@ describe("withXRead mixin", () => {
       Composed as unknown as new () => StubBase & XReadService
     )();
 
-    const results = await svc.searchXPosts("milady");
+    const results = await svc.searchXPosts("eliza");
 
     expect(results.map((item) => item.externalTweetId)).toEqual([
       "tweet-1",

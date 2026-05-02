@@ -1,10 +1,10 @@
 ---
 title: "Eliza Classic Plugin"
 sidebarTitle: "Eliza Classic"
-description: "Compatibility plugin for Milady — original ELIZA-style patterns alongside legacy Eliza Classic behavior."
+description: "Compatibility plugin for Eliza — original ELIZA-style patterns alongside legacy Eliza Classic behavior."
 ---
 
-The Eliza Classic plugin brings the original 1966 ELIZA chatbot patterns into Milady, providing Rogerian psychotherapist-style conversational responses alongside legacy Eliza Classic behavior.
+The Eliza Classic plugin brings the original 1966 ELIZA chatbot patterns into Eliza, providing Rogerian psychotherapist-style conversational responses alongside legacy Eliza Classic behavior.
 
 **Package:** `@elizaos/plugin-eliza-classic`
 
@@ -17,7 +17,7 @@ Note: "Eliza Classic" refers to the 1966 chatbot, not elizaOS.
 ## Installation
 
 ```bash
-milady plugins install eliza-classic
+eliza plugins install eliza-classic
 ```
 
 ## Configuration

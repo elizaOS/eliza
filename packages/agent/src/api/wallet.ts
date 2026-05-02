@@ -95,8 +95,8 @@ export {
 const FETCH_TIMEOUT_MS = 15_000;
 export const MANAGED_EVM_ADDRESS_ENV_KEY = "ELIZA_MANAGED_EVM_ADDRESS";
 export const MANAGED_SOLANA_ADDRESS_ENV_KEY = "ELIZA_MANAGED_SOLANA_ADDRESS";
-export const CLOUD_EVM_ADDRESS_ENV_KEY = "MILADY_CLOUD_EVM_ADDRESS";
-export const CLOUD_SOLANA_ADDRESS_ENV_KEY = "MILADY_CLOUD_SOLANA_ADDRESS";
+export const CLOUD_EVM_ADDRESS_ENV_KEY = "ELIZA_CLOUD_EVM_ADDRESS";
+export const CLOUD_SOLANA_ADDRESS_ENV_KEY = "ELIZA_CLOUD_SOLANA_ADDRESS";
 export const WALLET_SOURCE_EVM_ENV_KEY = "WALLET_SOURCE_EVM";
 export const WALLET_SOURCE_SOLANA_ENV_KEY = "WALLET_SOURCE_SOLANA";
 const SOLANA_WRAPPED_NATIVE_MINT =
@@ -553,7 +553,6 @@ export async function initStewardWalletCache(): Promise<void> {
   const agentId =
     normalizeOptionalString(process.env.STEWARD_AGENT_ID) ||
     normalizeOptionalString(process.env.ELIZA_STEWARD_AGENT_ID) ||
-    normalizeOptionalString(process.env.ELIZA_STEWARD_AGENT_ID) ||
     persisted?.agentId ||
     null;
 
@@ -692,7 +691,6 @@ export async function getWalletAddressesWithSteward(): Promise<
 
   const agentId =
     process.env.STEWARD_AGENT_ID?.trim() ||
-    process.env.ELIZA_STEWARD_AGENT_ID?.trim() ||
     process.env.ELIZA_STEWARD_AGENT_ID?.trim() ||
     base.evmAddress?.trim() ||
     null;

@@ -10,8 +10,8 @@ This document defines the Eliza Cloud rollout as one of several server targets e
 2. Eliza Cloud
    The frontend provisions and connects to a managed container through Eliza Cloud at `elizacloud.ai`.
 
-3. Remote Milady backend
-   The frontend connects to an already running Milady backend by address plus access key (`MILADY_API_TOKEN`).
+3. Remote Eliza backend
+   The frontend connects to an already running Eliza backend by address plus access key (`ELIZA_API_TOKEN`).
 
 ## Architecture
 
@@ -29,31 +29,31 @@ This document defines the Eliza Cloud rollout as one of several server targets e
 
 ### Self-hosted remote backend
 
-- The backend stays the canonical Milady API server.
-- Browser clients must send a bearer token using `MILADY_API_TOKEN`.
-- CORS must explicitly allow the frontend origin with `MILADY_ALLOWED_ORIGINS`.
-- The onboarding access key shown to the user is the same value as `MILADY_API_TOKEN`.
+- The backend stays the canonical Eliza API server.
+- Browser clients must send a bearer token using `ELIZA_API_TOKEN`.
+- CORS must explicitly allow the frontend origin with `ELIZA_ALLOWED_ORIGINS`.
+- The onboarding access key shown to the user is the same value as `ELIZA_API_TOKEN`.
 
 ### Eliza Cloud control plane
 
 - `elizacloud.ai` is the canonical managed control plane.
-- There is no separate Milady-specific cloud API service.
+- There is no separate Eliza-specific cloud API service.
 - Eliza Cloud is the control plane, OAuth handler, billing surface, and user store.
-- Managed launches redirect into `app.milady.ai` with a one-time launch session that selects the hosted server target and skips manual server entry.
+- Managed launches redirect into `app.eliza.ai` with a one-time launch session that selects the hosted server target and skips manual server entry.
 
 ### Browser transport
 
-- `app.milady.ai` already exchanges managed launch sessions directly with Eliza Cloud.
-- The hosted Milady frontend should use Eliza Cloud APIs directly for browser-safe managed flows.
+- `app.eliza.ai` already exchanges managed launch sessions directly with Eliza Cloud.
+- The hosted Eliza frontend should use Eliza Cloud APIs directly for browser-safe managed flows.
 - The local desktop/backend keeps same-origin `/api/cloud/*` passthrough routes so it can persist the user's Eliza Cloud API key into local config and runtime state.
-- If a Milady-owned origin is ever required for browser routing or enterprise policy, use the Cloudflare Worker proxy template in `deploy/cloudflare/eliza-cloud-proxy/` instead of standing up a separate application server.
+- If a Eliza-owned origin is ever required for browser routing or enterprise policy, use the Cloudflare Worker proxy template in `deploy/cloudflare/eliza-cloud-proxy/` instead of standing up a separate application server.
 
 ## Operator checklist
 
-### Milady app and API
+### Eliza app and API
 
 - [x] Restore chooser-first startup in the app.
-- [x] Add `Eliza Cloud` and `Remote Milady` cloud sub-options.
+- [x] Add `Eliza Cloud` and `Remote Eliza` cloud sub-options.
 - [x] Allow the frontend client to rebind to a remote backend during onboarding.
 - [x] Persist the rebound API base for the current session.
 - [x] Update cloud defaults and user-facing copy to Eliza Cloud.
@@ -71,10 +71,10 @@ This document defines the Eliza Cloud rollout as one of several server targets e
 ### Eliza Cloud control plane
 
 - [x] Point managed launch onboarding at canonical `deploymentTarget.runtime = "cloud"`.
-- [x] Keep Milady-managed launch sessions flowing through Eliza Cloud.
+- [x] Keep Eliza-managed launch sessions flowing through Eliza Cloud.
 - [x] Make the browser-facing Eliza Cloud auth/compat endpoints callable cross-origin when needed.
-- [x] Remove active `Milady Cloud` labels from the managed auth/runtime surfaces.
-- [ ] Verify post-login session redirects and popup flows end-to-end against the Milady app.
+- [x] Remove active `Eliza Cloud` labels from the managed auth/runtime surfaces.
+- [ ] Verify post-login session redirects and popup flows end-to-end against the Eliza app.
 
 ### Infrastructure and release
 
@@ -83,25 +83,25 @@ This document defines the Eliza Cloud rollout as one of several server targets e
   - Eliza Cloud provisioning
   - Remote self-host attach by URL + token
   - Desktop download flow from the homepage
-- [ ] Cut a Milady release after the hosted flow is verified on the public domain.
+- [ ] Cut a Eliza release after the hosted flow is verified on the public domain.
 
 ## Remote backend deployment recipe
 
-Use this when the user wants to host their own backend and connect from the Milady web frontend.
+Use this when the user wants to host their own backend and connect from the Eliza web frontend.
 
-1. Install Milady on the target machine.
+1. Install Eliza on the target machine.
 2. Set a non-loopback bind, a strong API token, and explicit allowed origins.
 3. Expose the service over HTTPS or a private Tailscale URL.
 4. In startup, choose `Manually connect` or a discovered remote server, then enter:
    - backend address
-   - access key (`MILADY_API_TOKEN`)
+   - access key (`ELIZA_API_TOKEN`)
 
 Recommended environment:
 
 ```bash
-MILADY_API_BIND=0.0.0.0
-MILADY_API_TOKEN=$(openssl rand -hex 32)
-MILADY_ALLOWED_ORIGINS=https://app.milady.ai,https://milady.ai,https://elizacloud.ai,https://www.elizacloud.ai
+ELIZA_API_BIND=0.0.0.0
+ELIZA_API_TOKEN=$(openssl rand -hex 32)
+ELIZA_ALLOWED_ORIGINS=https://app.eliza.ai,https://eliza.ai,https://elizacloud.ai,https://www.elizacloud.ai
 ```
 
 Optional Tailscale exposure:
@@ -118,7 +118,7 @@ tailscale funnel --https=443 http://127.0.0.1:2138
 
 ## Optional Cloudflare proxy
 
-Use this only if a Milady-owned browser origin is required for policy or routing reasons.
+Use this only if a Eliza-owned browser origin is required for policy or routing reasons.
 
 1. Deploy the Worker template in `deploy/cloudflare/eliza-cloud-proxy/`.
 2. Point the Worker at `https://www.elizacloud.ai`.

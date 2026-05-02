@@ -25,7 +25,7 @@ In the bundled registry (`plugins.json`) this plugin is listed under the `featur
 | `BLOOIO_WEBHOOK_SECRET` | No | Secret key for webhook/client verification |
 | `BLOOIO_SIGNATURE_TOLERANCE_SEC` | No | Tolerance window in seconds for signature validation |
 
-These can be set as environment variables or under the `connectors.blooio` config in `~/.milady/milady.json`:
+These can be set as environment variables or under the `connectors.blooio` config in `~/.eliza/eliza.json`:
 
 ```json
 {
@@ -81,7 +81,7 @@ No environment variable is required to trigger auto-enable — it is driven enti
 
 ## Full Configuration Reference
 
-All fields are defined under `connectors.blooio` in `milady.json`.
+All fields are defined under `connectors.blooio` in `eliza.json`.
 
 ### Core Fields
 

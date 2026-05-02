@@ -239,7 +239,7 @@ function readEnv(
   const spec = HEALTH_OAUTH_SPECS[provider];
   const keys = [
     `ELIZA_${spec.envPrefix}_${suffix}`,
-    `MILADY_${spec.envPrefix}_${suffix}`,
+    `ELIZA_${spec.envPrefix}_${suffix}`,
   ];
   for (const key of keys) {
     const value = env[key]?.trim();

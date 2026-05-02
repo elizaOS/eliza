@@ -1,14 +1,14 @@
 ---
 title: Pairing
 sidebarTitle: Pairing
-description: Authenticate with the Milady dashboard by entering a pairing code from the server logs.
+description: Authenticate with the Eliza dashboard by entering a pairing code from the server logs.
 ---
 
 The Pairing View is the authentication screen shown when the dashboard cannot connect with an authenticated session. You must provide a pairing code to establish a secure connection between the dashboard and the agent runtime.
 
 ## How Pairing Works
 
-1. Start the Milady agent — a one-time pairing code is printed to the server logs
+1. Start the Eliza agent — a one-time pairing code is printed to the server logs
 2. Open the dashboard — the Pairing View appears if no valid session exists
 3. Enter the pairing code from the server logs
 4. The dashboard exchanges the code for an API token and stores it for future sessions
@@ -30,7 +30,7 @@ If the server does not have pairing enabled, the screen shows:
 1. "Pairing is not enabled on this server."
 2. Instructions to either:
    - Ask the server owner for an API token
-   - Enable pairing on the server and restart Milady
+   - Enable pairing on the server and restart Eliza
 
 ## After Pairing
 

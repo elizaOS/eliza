@@ -16,7 +16,7 @@ The Twilio plugin is an elizaOS feature plugin that bridges your agent to Twilio
 |-------|-------|
 | Package | `@elizaos/plugin-twilio` |
 | Config key | `connectors.twilio` |
-| Install | `milady plugins install @elizaos/plugin-twilio` |
+| Install | `eliza plugins install @elizaos/plugin-twilio` |
 
 ## Setup
 
@@ -26,7 +26,7 @@ The Twilio plugin is an elizaOS feature plugin that bridges your agent to Twilio
 2. From the Twilio Console dashboard, copy your **Account SID** and **Auth Token**
 3. Purchase or configure a Twilio phone number
 
-### 2. Configure Milady
+### 2. Configure Eliza
 
 | Name | Required | Description |
 |------|----------|-------------|
@@ -51,10 +51,10 @@ The Twilio plugin is an elizaOS feature plugin that bridges your agent to Twilio
 Install the plugin from the registry:
 
 ```bash
-milady plugins install twilio
+eliza plugins install twilio
 ```
 
-Configure in `~/.milady/milady.json`:
+Configure in `~/.eliza/eliza.json`:
 
 ```json
 {

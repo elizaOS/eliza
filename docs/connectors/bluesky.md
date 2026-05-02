@@ -14,7 +14,7 @@ Unlike the 18 auto-enabled connectors (Discord, Telegram, etc.), Bluesky is a **
 |-------|-------|
 | Package | `@elizaos/plugin-bluesky` |
 | Config key | `connectors.bluesky` |
-| Install | `milady plugins install @elizaos/plugin-bluesky` |
+| Install | `eliza plugins install @elizaos/plugin-bluesky` |
 
 ## Setup Requirements
 
@@ -44,10 +44,10 @@ Unlike the 18 auto-enabled connectors (Discord, Telegram, etc.), Bluesky is a **
 Install the plugin from the registry:
 
 ```bash
-milady plugins install bluesky
+eliza plugins install bluesky
 ```
 
-Configure in `~/.milady/milady.json`:
+Configure in `~/.eliza/eliza.json`:
 
 ```json
 {

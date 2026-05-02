@@ -4,7 +4,7 @@ sidebarTitle: Custom Actions
 description: Define user-created agent capabilities with HTTP, shell, and code handlers that extend what the agent can do.
 ---
 
-Actions are the primary way agents interact with the world. They represent discrete capabilities -- things the agent can do in response to conversation context. Milady ships with built-in actions and provides a system for defining your own custom actions without writing plugin code.
+Actions are the primary way agents interact with the world. They represent discrete capabilities -- things the agent can do in response to conversation context. Eliza ships with built-in actions and provides a system for defining your own custom actions without writing plugin code.
 
 ## Action Interface
 
@@ -22,7 +22,7 @@ When a user sends a message, the runtime evaluates all registered actions. If th
 
 ## Built-in Actions Reference
 
-Milady registers the following built-in actions automatically at runtime. Action source lives in the elizaOS submodule under `eliza/packages/app-core/src/actions/`.
+Eliza registers the following built-in actions automatically at runtime. Action source lives in the elizaOS submodule under `eliza/packages/app-core/src/actions/`.
 
 ### Agent Lifecycle
 
@@ -76,7 +76,7 @@ All media actions use the configured provider (Eliza Cloud by default, or FAL/Op
 
 ## Custom Actions
 
-Custom actions are user-defined capabilities defined in your `milady.json` configuration. They allow you to wire up external APIs, run shell commands, or execute inline JavaScript -- all surfaced as first-class actions the agent can invoke during conversations.
+Custom actions are user-defined capabilities defined in your `eliza.json` configuration. They allow you to wire up external APIs, run shell commands, or execute inline JavaScript -- all surfaced as first-class actions the agent can invoke during conversations.
 
 ### Handler Types
 
@@ -137,7 +137,7 @@ HTTP handlers include SSRF protection that blocks requests to private/internal n
 
 ### Defining Custom Actions
 
-Add custom actions to the `customActions` array in your `milady.json`:
+Add custom actions to the `customActions` array in your `eliza.json`:
 
 ```json
 {
@@ -169,7 +169,7 @@ Add custom actions to the `customActions` array in your `milady.json`:
 
 ### Action Discovery and Registration
 
-**Startup loading:** At plugin initialization, `loadCustomActions()` reads `milady.json`, filters to only `enabled` definitions, and converts each into an elizaOS `Action` via `defToAction()`. The conversion builds an async handler based on the handler type, maps parameters to elizaOS format (all typed as `string`), and sets `validate: async () => true`.
+**Startup loading:** At plugin initialization, `loadCustomActions()` reads `eliza.json`, filters to only `enabled` definitions, and converts each into an elizaOS `Action` via `defToAction()`. The conversion builds an async handler based on the handler type, maps parameters to elizaOS format (all typed as `string`), and sets `validate: async () => true`.
 
 **Live registration:** Register new actions at runtime without restarting using `registerCustomActionLive(def)`. This converts the definition using the same `defToAction()` pipeline and calls `runtime.registerAction()` to make it immediately available. Returns the created `Action` or `null` if no runtime is available.
 

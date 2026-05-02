@@ -83,22 +83,22 @@ import { viteRendererBuildNeeded } from "./lib/vite-renderer-dist-stale.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaRoot = path.resolve(here, "../../..");
-const miladyRoot = path.resolve(here, "../../../..");
-const isMiladyMonorepo =
-  existsSync(path.join(miladyRoot, "package.json")) &&
+const elizaRoot = path.resolve(here, "../../../..");
+const isElizaMonorepo =
+  existsSync(path.join(elizaRoot, "package.json")) &&
   existsSync(
-    path.join(miladyRoot, "eliza", "packages", "app-core", "package.json"),
+    path.join(elizaRoot, "eliza", "packages", "app-core", "package.json"),
   );
-const bundleRoot = isMiladyMonorepo ? miladyRoot : elizaRoot;
+const bundleRoot = isElizaMonorepo ? elizaRoot : elizaRoot;
 
 function resolveRendererAppDir() {
   return resolveMainAppDir(bundleRoot, "app");
 }
 
 function resolveElectrobunDir() {
-  if (isMiladyMonorepo) {
+  if (isElizaMonorepo) {
     return path.join(
-      miladyRoot,
+      elizaRoot,
       "eliza",
       "packages",
       "app-core",
@@ -115,20 +115,20 @@ function resolveElectrobunDir() {
   );
 }
 
-const devServerEntry = isMiladyMonorepo
+const devServerEntry = isElizaMonorepo
   ? "eliza/packages/app-core/src/runtime/dev-server.ts"
   : "packages/app-core/src/runtime/dev-server.ts";
 
 const appDir = resolveRendererAppDir();
 const electrobunDir = resolveElectrobunDir();
 const defaultElizaNamespace =
-  isMiladyMonorepo &&
+  isElizaMonorepo &&
   path
     .resolve(appDir)
-    .startsWith(`${path.resolve(miladyRoot, "eliza")}${path.sep}`)
+    .startsWith(`${path.resolve(elizaRoot, "eliza")}${path.sep}`)
     ? "eliza"
-    : isMiladyMonorepo
-      ? "milady"
+    : isElizaMonorepo
+      ? "eliza"
       : "eliza";
 
 const BUN_EXECUTABLE = process.versions?.bun ? process.execPath : "bun";
@@ -180,19 +180,19 @@ const forceRenderer =
   process.env.ELIZA_DESKTOP_RENDERER_BUILD === "1";
 const viteWatch =
   process.env.ELIZA_DESKTOP_VITE_WATCH === "1" ||
-  process.env.MILADY_DESKTOP_VITE_WATCH === "1";
+  process.env.ELIZA_DESKTOP_VITE_WATCH === "1";
 const viteDepForceCli = process.argv.includes("--vite-force");
 const viteDepForce =
   viteDepForceCli ||
   process.env.ELIZA_VITE_FORCE === "1" ||
-  process.env.MILADY_VITE_FORCE === "1";
+  process.env.ELIZA_VITE_FORCE === "1";
 const viteRollupWatchCli = process.argv.includes("--rollup-watch");
 /** Legacy: Rollup `vite build --watch` (tens of seconds per edit on large graphs). */
 const viteRollupWatch =
   viteWatch &&
   (viteRollupWatchCli ||
     process.env.ELIZA_DESKTOP_VITE_BUILD_WATCH === "1" ||
-    process.env.MILADY_DESKTOP_VITE_BUILD_WATCH === "1");
+    process.env.ELIZA_DESKTOP_VITE_BUILD_WATCH === "1");
 /** Default when VITE_WATCH: Vite dev server + Electrobun ELIZA_RENDERER_URL (fast HMR). */
 const viteDevServer = viteWatch && !viteRollupWatch;
 /** On by default for `dev:desktop` / `dev:desktop:watch`; set to 0/false/no/off to disable. */

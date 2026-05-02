@@ -46,13 +46,19 @@ export interface LocalOptionGate {
 }
 
 /**
- * Whether the "Local Agent" tile should appear on the onboarding chooser.
+ * Liveness probe for the on-device local agent, framed as "should the local
+ * option be visible / actionable yet?".
  *
- * - Desktop and dev builds always show it (they manage the runtime themselves).
- * - On Android the tile only appears when the on-device agent is actually
- *   responding on `127.0.0.1:31337` — there is no point showing an option
- *   that would immediately fail.
- * - Other platforms (iOS, plain web) do not host a local agent.
+ * - Desktop and dev builds: always `true` synchronously — they manage the
+ *   runtime themselves.
+ * - Android: unconditionally the only runtime mode (the picker is bypassed
+ *   in the APK by `preSeedAndroidLocalRuntimeIfFresh` + the `RuntimeGate`
+ *   Android branch). The probe here is purely a *readiness* signal —
+ *   "is the agent's `/api/health` reachable yet?" — used by the splash to
+ *   know when to call `finishAsLocal()`. It is **not** a gate on whether
+ *   the local mode is offered at all; on Android it always is.
+ * - Other platforms (iOS, plain web): `false`. They do not host a local
+ *   agent.
  */
 export async function shouldShowLocalOption(
   gate: LocalOptionGate,

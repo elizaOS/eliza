@@ -18,7 +18,7 @@ if [[ ! -d "$ARTIFACTS_DIR" ]]; then
   exit 1
 fi
 
-TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/milady-macos-artifacts.XXXXXX")"
+TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/eliza-macos-artifacts.XXXXXX")"
 EXTRACT_DIR="$TMP_ROOT/extracted"
 DMG_STAGING_DIR="$TMP_ROOT/dmg-staging"
 TEMP_DMG_PATH=""

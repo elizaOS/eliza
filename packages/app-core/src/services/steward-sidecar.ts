@@ -264,7 +264,7 @@ export class StewardSidecar {
     }
 
     // Steward's embedded runtime historically defaulted to ~/.steward/data.
-    // Migrate that legacy PGLite directory into Milady's state dir when the
+    // Migrate that legacy PGLite directory into Eliza's state dir when the
     // new target is still empty so upgrades keep the same wallet/agent data.
     const legacyDataDir = path.join(home, ".steward", "data");
     const targetDataDir = path.join(dir, "data");

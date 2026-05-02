@@ -1,11 +1,11 @@
 /**
  * Atomic key/value writer for the on-disk `config.env` file.
  *
- * `config.env` lives under the Milady state directory (default
- * `~/.milady/config.env`, or whatever `MILADY_STATE_DIR` / `ELIZA_STATE_DIR`
+ * `config.env` lives under the Eliza state directory (default
+ * `~/.eliza/config.env`, or whatever `ELIZA_STATE_DIR`
  * resolves to). It is an escape hatch for sensitive process-env-only
  * material (e.g. cloud-wallet client address keys, `WALLET_SOURCE_*`
- * bindings) that must not be mirrored into `milady.json` but still needs
+ * bindings) that must not be mirrored into `eliza.json` but still needs
  * to survive restarts.
  *
  * ── Crash safety ────────────────────────────────────────────────────
@@ -18,7 +18,7 @@
  *   - Step 2 fails → no `config.env` mutation. `.bak` may exist but the
  *     live file is untouched.
  *   - Step 3 fails → `.bak` still holds the pre-image. Recover manually
- *     via `cp ~/.milady/config.env.bak ~/.milady/config.env` or the
+ *     via `cp ~/.eliza/config.env.bak ~/.eliza/config.env` or the
  *     documented `bun run agent:repair-config` command.
  *
  * Concurrent writes in-process are serialised via a promise chain mutex.

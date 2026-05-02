@@ -8,7 +8,7 @@ The MCP (Model Context Protocol) marketplace lets your agent discover and connec
 
 ## How It Works
 
-Milady integrates with the official MCP registry at `https://registry.modelcontextprotocol.io`. You can browse available servers, install them into your agent config, and the runtime connects to them automatically.
+Eliza integrates with the official MCP registry at `https://registry.modelcontextprotocol.io`. You can browse available servers, install them into your agent config, and the runtime connects to them automatically.
 
 MCP servers run in three modes:
 
@@ -40,7 +40,7 @@ curl "http://localhost:31337/api/mcp/marketplace/server/filesystem" \
 
 ### Install a Server
 
-Installation writes the server config into your `milady.json` under the `mcp.servers` key:
+Installation writes the server config into your `eliza.json` under the `mcp.servers` key:
 
 ```bash
 # Add a server to your config
@@ -82,7 +82,7 @@ curl "http://localhost:31337/api/mcp/status" \
 
 ## Configuration
 
-MCP servers are configured in `milady.json` under the `mcp` key:
+MCP servers are configured in `eliza.json` under the `mcp` key:
 
 ```json
 {

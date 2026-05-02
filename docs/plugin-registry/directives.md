@@ -15,7 +15,7 @@ The Directives plugin adds inline directive parsing to elizaOS agents. Users can
 ## Installation
 
 ```bash
-milady plugins install directives
+eliza plugins install directives
 ```
 
 ## Configuration

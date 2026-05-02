@@ -75,7 +75,7 @@ The runtime already provides multiple verification surfaces — they just aren't
 
 ### Problem Statement
 
-Milady is being built as a comprehensive personal assistant with dozens of actions (scheduling, messaging, reminders, to-dos, relationship tracking, browser control, etc.). We have no way to verify in E2E tests that the agent actually invokes the correct action when a user asks it to do something. We can only verify that the agent produced text output — not that it took the right action.
+Eliza is being built as a comprehensive personal assistant with dozens of actions (scheduling, messaging, reminders, to-dos, relationship tracking, browser control, etc.). We have no way to verify in E2E tests that the agent actually invokes the correct action when a user asks it to do something. We can only verify that the agent produced text output — not that it took the right action.
 
 This means:
 - We ship action-dependent features (LifeOps reminders, scheduling, message triage) with zero confidence they work end-to-end
@@ -607,7 +607,7 @@ action-e2e:
   needs: [regression-matrix]
   timeout-minutes: 30
   env:
-    MILADY_LIVE_TEST: "1"
+    ELIZA_LIVE_TEST: "1"
     GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
   steps:
     - run: bun run test:e2e:actions

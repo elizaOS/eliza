@@ -93,7 +93,7 @@ async function newManager(workDir: string) {
 describe("SecretsManagerInstaller — install", () => {
   let workDir: string;
   beforeEach(async () => {
-    workDir = await fs.mkdtemp(join(tmpdir(), "milady-installer-"));
+    workDir = await fs.mkdtemp(join(tmpdir(), "eliza-installer-"));
   });
   afterEach(async () => {
     await fs.rm(workDir, { recursive: true, force: true });
@@ -216,7 +216,7 @@ describe("SecretsManagerInstaller — install", () => {
 describe("SecretsManagerInstaller — sign-in", () => {
   let workDir: string;
   beforeEach(async () => {
-    workDir = await fs.mkdtemp(join(tmpdir(), "milady-signin-"));
+    workDir = await fs.mkdtemp(join(tmpdir(), "eliza-signin-"));
   });
   afterEach(async () => {
     await fs.rm(workDir, { recursive: true, force: true });

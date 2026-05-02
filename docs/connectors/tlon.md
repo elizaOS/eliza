@@ -12,7 +12,7 @@ The Tlon connector is an elizaOS plugin that bridges your agent to the Urbit net
 |-------|-------|
 | Package | `@elizaos/plugin-tlon` |
 | Config key | `connectors.tlon` |
-| Install | `milady plugins install @elizaos/plugin-tlon` |
+| Install | `eliza plugins install @elizaos/plugin-tlon` |
 
 ## Setup
 
@@ -23,7 +23,7 @@ The Tlon connector is an elizaOS plugin that bridges your agent to the Urbit net
 3. Obtain the access code from your ship's web interface (Settings → Access Key)
 4. Note the ship's URL (e.g., `http://localhost:8080`)
 
-### 2. Configure Milady
+### 2. Configure Eliza
 
 | Name | Required | Description |
 |------|----------|-------------|
@@ -38,10 +38,10 @@ The Tlon connector is an elizaOS plugin that bridges your agent to the Urbit net
 Install the plugin from the registry:
 
 ```bash
-milady plugins install tlon
+eliza plugins install tlon
 ```
 
-Configure in `~/.milady/milady.json`:
+Configure in `~/.eliza/eliza.json`:
 
 ```json
 {

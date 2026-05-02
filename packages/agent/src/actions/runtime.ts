@@ -193,7 +193,7 @@ export const reloadRuntimeConfigAction: Action = {
   name: "RELOAD_RUNTIME_CONFIG",
   similes: ["RELOAD_CONFIG", "REFRESH_CONFIG"],
   description:
-    "Reload milady.json from disk and apply hot-reloadable fields (character name/system/bio, voice config, provider API keys, feature flags) to the running runtime. Plugin list, model registry, and database changes still require RESTART_RUNTIME.",
+    "Reload eliza.json from disk and apply hot-reloadable fields (character name/system/bio, voice config, provider API keys, feature flags) to the running runtime. Plugin list, model registry, and database changes still require RESTART_RUNTIME.",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {

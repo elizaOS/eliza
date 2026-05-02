@@ -53,9 +53,9 @@ To explicitly disable the connector even when a token is present:
 
 1. Create a Matrix account for your bot on your preferred homeserver.
 2. Obtain an access token. You can generate one via the Matrix client or the [admin API](https://spec.matrix.org/latest/client-server-api/#login).
-3. Add the access token to your Milady config under `env.MATRIX_ACCESS_TOKEN`.
+3. Add the access token to your Eliza config under `env.MATRIX_ACCESS_TOKEN`.
 4. Optionally configure the homeserver URL, user ID, and rooms.
-5. Start Milady — the plugin auto-enables when the access token is present.
+5. Start Eliza — the plugin auto-enables when the access token is present.
 
 ## Features
 

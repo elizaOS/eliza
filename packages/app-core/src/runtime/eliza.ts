@@ -743,10 +743,10 @@ async function ensureN8nRuntimeContextProvider(
     _n8nRuntimeContextProvider = null;
   }
   try {
-    const { startMiladyN8nRuntimeContextProvider } = await import(
+    const { startElizaN8nRuntimeContextProvider } = await import(
       "../services/n8n-runtime-context-provider.js"
     );
-    // If a sibling `n8n_credential_provider` is registered (Milady ships one
+    // If a sibling `n8n_credential_provider` is registered (Eliza ships one
     // separately), reach into the runtime services map for its `resolve` so
     // the context provider can filter `supportedCredentials` to types that
     // actually have data right now. Optional — without it the context
@@ -761,10 +761,10 @@ async function ensureN8nRuntimeContextProvider(
     const credProvider =
       credProviderInstance && typeof credProviderInstance.resolve === "function"
         ? (credProviderInstance as Parameters<
-            typeof startMiladyN8nRuntimeContextProvider
+            typeof startElizaN8nRuntimeContextProvider
           >[1]["credProvider"])
         : undefined;
-    _n8nRuntimeContextProvider = startMiladyN8nRuntimeContextProvider(runtime, {
+    _n8nRuntimeContextProvider = startElizaN8nRuntimeContextProvider(runtime, {
       getConfig: () => loadElizaConfig(),
       credProvider,
     });
@@ -1037,7 +1037,7 @@ async function warmupEmbeddingModel(
   // embeddings until `llama-cpp-capacitor` is wired in (separate task).
   if (isMobilePlatform()) {
     logger.info(
-      "[eliza] Skipping local embedding warmup — running on mobile (MILADY_PLATFORM=android|ios)",
+      "[eliza] Skipping local embedding warmup — running on mobile (ELIZA_PLATFORM=android|ios)",
     );
     return;
   }

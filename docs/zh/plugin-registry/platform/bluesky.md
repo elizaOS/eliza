@@ -1,10 +1,10 @@
 ---
 title: "Bluesky 插件"
 sidebarTitle: "Bluesky"
-description: "Milady 的 Bluesky 连接器 — 在 AT 协议网络上发布、回复和互动。"
+description: "Eliza 的 Bluesky 连接器 — 在 AT 协议网络上发布、回复和互动。"
 ---
 
-Bluesky 插件通过 AT 协议将 Milady 代理连接到 Bluesky 社交网络，实现发布、回复和社交互动。
+Bluesky 插件通过 AT 协议将 Eliza 代理连接到 Bluesky 社交网络，实现发布、回复和社交互动。
 
 **Package:** `@elizaos/plugin-bluesky`
 
@@ -15,7 +15,7 @@ Bluesky 插件通过 AT 协议将 Milady 代理连接到 Bluesky 社交网络，
 </div>
 
 ```bash
-milady plugins install @elizaos/plugin-bluesky
+eliza plugins install @elizaos/plugin-bluesky
 ```
 
 <div id="setup">
@@ -34,9 +34,9 @@ milady plugins install @elizaos/plugin-bluesky
 2. 记下你的 handle（例如 `yourname.bsky.social`）
 3. 使用你的账户用户名和密码（或在设置 → 应用密码中生成应用密码）
 
-<div id="2-configure-milady">
+<div id="2-configure-eliza">
 
-### 2. 配置 Milady
+### 2. 配置 Eliza
 
 </div>
 

@@ -120,7 +120,7 @@ function isFalsyEnv(value: string | undefined): boolean {
 }
 
 function isFixturePasswordManagerEnabled(): boolean {
-  const explicit = process.env.MILADY_TEST_PASSWORD_MANAGER_BACKEND;
+  const explicit = process.env.ELIZA_TEST_PASSWORD_MANAGER_BACKEND;
   if (isFalsyEnv(explicit)) return false;
   if (isTruthyEnv(explicit)) return true;
   return false;
@@ -577,7 +577,7 @@ export async function injectCredentialToClipboard(
         boundary: "lifeops",
         component: "password-manager-bridge",
       },
-      "[password-manager-bridge] fixture backend active: NO actual clipboard write performed. Set MILADY_TEST_PASSWORD_MANAGER_BACKEND=0 for real injection.",
+      "[password-manager-bridge] fixture backend active: NO actual clipboard write performed. Set ELIZA_TEST_PASSWORD_MANAGER_BACKEND=0 for real injection.",
     );
     return {
       ok: true,

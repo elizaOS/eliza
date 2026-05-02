@@ -1,10 +1,10 @@
 ---
 title: "Plugin Twilio"
 sidebarTitle: "Twilio"
-description: "Connecteur Twilio pour Milady — intégration SMS et voix via l'API Twilio."
+description: "Connecteur Twilio pour Eliza — intégration SMS et voix via l'API Twilio."
 ---
 
-Le plugin Twilio connecte les agents Milady à Twilio, permettant la messagerie SMS et les interactions vocales via des numéros de téléphone Twilio.
+Le plugin Twilio connecte les agents Eliza à Twilio, permettant la messagerie SMS et les interactions vocales via des numéros de téléphone Twilio.
 
 **Package :** `@elizaos/plugin-twilio`
 
@@ -15,7 +15,7 @@ Le plugin Twilio connecte les agents Milady à Twilio, permettant la messagerie 
 </div>
 
 ```bash
-milady plugins install @elizaos/plugin-twilio
+eliza plugins install @elizaos/plugin-twilio
 ```
 
 <div id="setup">
@@ -34,9 +34,9 @@ milady plugins install @elizaos/plugin-twilio
 2. Depuis le tableau de bord de la Console Twilio, copiez votre **Account SID** et **Auth Token**
 3. Achetez ou configurez un numéro de téléphone Twilio
 
-<div id="2-configure-milady">
+<div id="2-configure-eliza">
 
-### 2. Configurez Milady
+### 2. Configurez Eliza
 
 </div>
 

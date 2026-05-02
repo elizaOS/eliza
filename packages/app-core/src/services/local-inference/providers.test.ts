@@ -33,7 +33,7 @@ describe("provider snapshot (real env-state readers)", () => {
   let tmpState: string;
 
   beforeEach(async () => {
-    tmpState = await fs.mkdtemp(path.join(os.tmpdir(), "milady-provider-"));
+    tmpState = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-provider-"));
     saved = {};
     for (const k of ENV_KEYS) {
       saved[k] = process.env[k];
@@ -91,8 +91,8 @@ describe("provider snapshot (real env-state readers)", () => {
   it("exposes every expected provider id", async () => {
     const ids = BUILT_IN_PROVIDERS.map((p) => p.id);
     for (const expected of [
-      "milady-local-inference",
-      "milady-device-bridge",
+      "eliza-local-inference",
+      "eliza-device-bridge",
       "capacitor-llama",
       "anthropic",
       "openai",
@@ -133,13 +133,13 @@ describe("provider snapshot (real env-state readers)", () => {
   it("device-bridge requires ELIZA_DEVICE_BRIDGE_ENABLED=1", async () => {
     let snap = await snapshotProviders();
     expect(
-      snap.find((s) => s.id === "milady-device-bridge")?.enableState.enabled,
+      snap.find((s) => s.id === "eliza-device-bridge")?.enableState.enabled,
     ).toBe(false);
 
     process.env.ELIZA_DEVICE_BRIDGE_ENABLED = "1";
     snap = await snapshotProviders();
     expect(
-      snap.find((s) => s.id === "milady-device-bridge")?.enableState.enabled,
+      snap.find((s) => s.id === "eliza-device-bridge")?.enableState.enabled,
     ).toBe(true);
   });
 
@@ -171,7 +171,7 @@ describe("provider snapshot (real env-state readers)", () => {
     // No file yet → disabled
     let snap = await snapshotProviders();
     expect(
-      snap.find((s) => s.id === "milady-local-inference")?.enableState.enabled,
+      snap.find((s) => s.id === "eliza-local-inference")?.enableState.enabled,
     ).toBe(false);
 
     // Drop a real .gguf file in place
@@ -184,7 +184,7 @@ describe("provider snapshot (real env-state readers)", () => {
 
     snap = await snapshotProviders();
     expect(
-      snap.find((s) => s.id === "milady-local-inference")?.enableState.enabled,
+      snap.find((s) => s.id === "eliza-local-inference")?.enableState.enabled,
     ).toBe(true);
   });
 

@@ -3,11 +3,11 @@
  *
  * The cloud control plane publishes its public keys at
  * `${ELIZA_CLOUD_ISSUER}/.well-known/jwks.json`. We fetch on first use and
- * cache to disk under the milady state dir so a container restart does not
+ * cache to disk under the eliza state dir so a container restart does not
  * require an online round-trip just to read its own boot token.
  *
- * State dir resolution honours `MILADY_STATE_DIR` then `ELIZA_STATE_DIR`,
- * falling back to `~/.milady`. The default cache TTL is 6h per the plan.
+ * State dir resolution honours `ELIZA_STATE_DIR` then `ELIZA_STATE_DIR`,
+ * falling back to `~/.eliza`. The default cache TTL is 6h per the plan.
  */
 
 import fs from "node:fs/promises";
@@ -43,16 +43,16 @@ interface JwksCacheEnvelope {
 }
 
 /**
- * Resolve the milady state directory.
+ * Resolve the eliza state directory.
  *
- * Order: `MILADY_STATE_DIR` → `ELIZA_STATE_DIR` → `~/.milady`.
+ * Order: `ELIZA_STATE_DIR` → `ELIZA_STATE_DIR` → `~/.eliza`.
  */
-export function resolveMiladyStateDir(
+export function resolveElizaStateDir(
   env: RuntimeEnvRecord = process.env,
 ): string {
-  const explicit = env.MILADY_STATE_DIR?.trim() || env.ELIZA_STATE_DIR?.trim();
+  const explicit = env.ELIZA_STATE_DIR?.trim() || env.ELIZA_STATE_DIR?.trim();
   if (explicit) return path.resolve(explicit);
-  return path.join(os.homedir(), ".milady");
+  return path.join(os.homedir(), ".eliza");
 }
 
 /**
@@ -63,7 +63,7 @@ export function resolveMiladyStateDir(
 export function resolveJwksCachePath(
   env: RuntimeEnvRecord = process.env,
 ): string {
-  return path.join(resolveMiladyStateDir(env), "auth", JWKS_CACHE_FILENAME);
+  return path.join(resolveElizaStateDir(env), "auth", JWKS_CACHE_FILENAME);
 }
 
 function isFiniteNumber(value: unknown): value is number {

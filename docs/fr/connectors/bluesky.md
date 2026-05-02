@@ -26,7 +26,7 @@ Contrairement aux 18 connecteurs auto-activés (Discord, Telegram, etc.), Bluesk
 |-------|--------|
 | Package | `@elizaos/plugin-bluesky` |
 | Clé de configuration | `connectors.bluesky` |
-| Installation | `milady plugins install @elizaos/plugin-bluesky` |
+| Installation | `eliza plugins install @elizaos/plugin-bluesky` |
 
 <div id="setup-requirements">
 

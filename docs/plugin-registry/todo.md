@@ -1,10 +1,10 @@
 ---
 title: "Todo Plugin"
 sidebarTitle: "Todo"
-description: "A todo list for Milady — task management for humans and agents."
+description: "A todo list for Eliza — task management for humans and agents."
 ---
 
-The Todo plugin adds task list management to Milady agents.
+The Todo plugin adds task list management to Eliza agents.
 
 **Package:** `@elizaos/plugin-todo`
 
@@ -23,7 +23,7 @@ Key capabilities:
 ## Installation
 
 ```bash
-milady plugins install todo
+eliza plugins install todo
 ```
 
 ## Configuration

@@ -64,7 +64,7 @@
   },
   "elizaos": {
     "app": {
-      "displayName": "Milady Companion",
+      "displayName": "Eliza Companion",
       "category": "game",
       "heroImage": "assets/hero.png"
     }

@@ -1,14 +1,14 @@
 ---
 title: "Lens Plugin"
 sidebarTitle: "Lens"
-description: "The @elizaos/plugin-lens package is not currently available in the Milady plugin registry."
+description: "The @elizaos/plugin-lens package is not currently available in the Eliza plugin registry."
 ---
 
-> **Registry note:** `@elizaos/plugin-lens` is not currently listed in the Milady plugin registry (`plugins.json`). The package may be available from npm or a separate elizaOS plugin repository. Verify availability before configuring.
+> **Registry note:** `@elizaos/plugin-lens` is not currently listed in the Eliza plugin registry (`plugins.json`). The package may be available from npm or a separate elizaOS plugin repository. Verify availability before configuring.
 
-The Lens plugin connects Milady agents to the Lens Protocol, enabling social interactions on the decentralized social graph built on Polygon.
+The Lens plugin connects Eliza agents to the Lens Protocol, enabling social interactions on the decentralized social graph built on Polygon.
 
-> **On-demand plugin.** This plugin is resolved from the remote elizaOS plugin registry and auto-installs when its API key is detected. It is not included in Milady's bundled `plugins.json` index.
+> **On-demand plugin.** This plugin is resolved from the remote elizaOS plugin registry and auto-installs when its API key is detected. It is not included in Eliza's bundled `plugins.json` index.
 
 **Package:** `@elizaos/plugin-lens`
 
@@ -16,7 +16,7 @@ The Lens plugin connects Milady agents to the Lens Protocol, enabling social int
 
 ```bash
 # Requires the package to be available on npm
-milady plugins install lens
+eliza plugins install lens
 ```
 
 ## Setup
@@ -25,7 +25,7 @@ milady plugins install lens
 
 Obtain API credentials from the [Lens Protocol](https://www.lens.xyz/) developer portal.
 
-### 2. Configure Milady
+### 2. Configure Eliza
 
 ```json
 {

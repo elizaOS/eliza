@@ -16,7 +16,7 @@
  * The LLM step at the end (gated on a live provider) proves the agent can
  * actually reach the sidecar through the API server the UI talks to.
  *
- * Gated on MILADY_LIVE_TEST=1 / ELIZA_LIVE_TEST=1. The live provider is
+ * Gated on ELIZA_LIVE_TEST=1 / ELIZA_LIVE_TEST=1. The live provider is
  * optional — the sidecar mechanics run on any environment, the chat step
  * only runs if a provider key is configured.
  */
@@ -100,7 +100,7 @@ async function waitForReady(
 }
 
 describeIf(CAN_RUN)("Live: n8n sidecar end-to-end", () => {
-  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "milady-n8n-e2e-"));
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-n8n-e2e-"));
   let sidecar: N8nSidecar;
   let port: number;
   let host: string;
@@ -160,7 +160,7 @@ describeIf(CAN_RUN)("Live: n8n sidecar end-to-end", () => {
       const ownerJson = JSON.parse(
         await fs.promises.readFile(ownerJsonPath, "utf-8"),
       ) as { email?: unknown; password?: unknown };
-      expect(ownerJson.email).toBe("milady@milady.local");
+      expect(ownerJson.email).toBe("eliza@eliza.local");
       expect(typeof ownerJson.password).toBe("string");
       expect(String(ownerJson.password).length).toBeGreaterThan(40);
     },
@@ -204,7 +204,7 @@ describeIf(CAN_RUN)("Live: n8n sidecar end-to-end", () => {
     "creates + lists a workflow through the public API",
     async () => {
       const minimalWorkflow = {
-        name: `milady-e2e-${Date.now()}`,
+        name: `eliza-e2e-${Date.now()}`,
         nodes: [
           {
             parameters: {},

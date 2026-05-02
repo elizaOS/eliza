@@ -23,7 +23,7 @@ export default scenario({
         dms: [
           {
             externalDmId: "twitter-dm-character-1",
-            senderHandle: "milady_art",
+            senderHandle: "eliza_art",
             senderId: "442211",
             text: "can you send me a quick update on where the concept sketch stands?",
             offsetMinutes: 6,
@@ -45,16 +45,16 @@ export default scenario({
       kind: "message",
       name: "draft in character reply",
       room: "main",
-      text: "Draft a reply to that Twitter DM from @milady_art in my usual tone.",
+      text: "Draft a reply to that Twitter DM from @eliza_art in my usual tone.",
       assertTurn: expectTurnToCallAction({
         acceptedActions: ["X_READ", "INBOX", "OWNER_SEND_MESSAGE"],
         description: "Twitter/X DM draft in the owner's tone",
-        includesAny: ["x", "dm", "draft", "milady_art"],
+        includesAny: ["x", "dm", "draft", "eliza_art"],
       }),
-      responseIncludesAny: [/draft|preview/i, /milady_art/i, /update|sketch/i],
+      responseIncludesAny: [/draft|preview/i, /eliza_art/i, /update|sketch/i],
       responseJudge: {
         rubric:
-          "Reply matches the user's typical tone (informal, lowercase, concise) and addresses the @milady_art DM context.",
+          "Reply matches the user's typical tone (informal, lowercase, concise) and addresses the @eliza_art DM context.",
         minimumScore: 0.7,
       },
     },
@@ -75,7 +75,7 @@ export default scenario({
       predicate: expectScenarioToCallAction({
         acceptedActions: ["X_READ", "INBOX", "OWNER_SEND_MESSAGE"],
         description: "Twitter/X DM draft in the owner's tone",
-        includesAny: ["x", "dm", "draft", "milady_art"],
+        includesAny: ["x", "dm", "draft", "eliza_art"],
       }),
     },
     judgeRubric({

@@ -2,7 +2,7 @@ import type {
   StewardStatusResponse,
   WalletConfigStatus,
   WalletEntry,
-} from "@miladyai/shared/contracts/wallet";
+} from "@elizaai/shared/contracts/wallet";
 
 export interface StewardUiState {
   connected: boolean;

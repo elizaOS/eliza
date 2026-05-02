@@ -155,7 +155,7 @@ const result = spawnSync(
     env: {
       ...process.env,
       ELIZA_LIVE_TEST: "1",
-      MILADY_LIVE_TEST: "1",
+      ELIZA_LIVE_TEST: "1",
       ...(pluginId ? { ELIZA_PLUGIN_LIFECYCLE_FILTER: pluginId } : {}),
     },
   },

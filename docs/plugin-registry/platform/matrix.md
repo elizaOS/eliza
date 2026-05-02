@@ -1,17 +1,17 @@
 ---
 title: "Matrix Plugin"
 sidebarTitle: "Matrix"
-description: "Matrix connector for Milady — federated chat with room support, encryption, and auto-join."
+description: "Matrix connector for Eliza — federated chat with room support, encryption, and auto-join."
 ---
 
-The Matrix plugin connects Milady agents to any Matrix homeserver, enabling messaging in rooms, direct messages, and optional end-to-end encryption.
+The Matrix plugin connects Eliza agents to any Matrix homeserver, enabling messaging in rooms, direct messages, and optional end-to-end encryption.
 
 **Package:** `@elizaos/plugin-matrix`
 
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-matrix
+eliza plugins install @elizaos/plugin-matrix
 ```
 
 ## Setup
@@ -29,7 +29,7 @@ curl -X POST https://matrix.example.com/_matrix/client/v3/login \
   -d '{"type":"m.login.password","user":"@bot:example.com","password":"botpassword"}'
 ```
 
-### 3. Configure Milady
+### 3. Configure Eliza
 
 ```json
 {

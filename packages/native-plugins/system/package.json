@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/capacitor-system",
   "version": "1.0.0",
-  "description": "Android system-role status bridge for MiladyOS.",
+  "description": "Android system-role status bridge for ElizaOS.",
   "main": "./dist/plugin.cjs.js",
   "module": "./dist/esm/index.js",
   "types": "./dist/esm/index.d.ts",

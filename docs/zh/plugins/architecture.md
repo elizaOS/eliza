@@ -1,10 +1,10 @@
 ---
 title: "插件架构"
 sidebarTitle: "架构"
-description: "深入了解 Milady 的插件系统——注册生命周期、钩子点、自动启用机制和依赖解析。"
+description: "深入了解 Eliza 的插件系统——注册生命周期、钩子点、自动启用机制和依赖解析。"
 ---
 
-Milady 插件系统基于 elizaOS 核心构建。除基础运行时之外的所有能力——模型提供者、平台连接器、DeFi 集成、调度和自定义功能——都以插件形式交付。
+Eliza 插件系统基于 elizaOS 核心构建。除基础运行时之外的所有能力——模型提供者、平台连接器、DeFi 集成、调度和自定义功能——都以插件形式交付。
 
 <div id="system-design">
 
@@ -143,7 +143,7 @@ interface Plugin {
 
 </div>
 
-当检测到所需配置时，插件会自动启用。此逻辑位于 `eliza/packages/agent/src/config/plugin-auto-enable.ts`（由 Milady 自身的 `plugin-auto-enable.ts` 扩展，用于微信等连接器），并在运行时初始化之前执行。
+当检测到所需配置时，插件会自动启用。此逻辑位于 `eliza/packages/agent/src/config/plugin-auto-enable.ts`（由 Eliza 自身的 `plugin-auto-enable.ts` 扩展，用于微信等连接器），并在运行时初始化之前执行。
 
 <div id="trigger-sources">
 
@@ -205,13 +205,13 @@ const CONNECTOR_PLUGINS = {
   nostr:       "@elizaos/plugin-nostr",
   blooio:      "@elizaos/plugin-blooio",
   twitch:      "@elizaos/plugin-twitch",
-  wechat:      "@elizaos/plugin-wechat",  // Milady-specific (added in app-core)
+  wechat:      "@elizaos/plugin-wechat",  // Eliza-specific (added in app-core)
 };
 ```
 
-> **注意：** 上游 `packages/agent` 定义了所有 `@elizaos/*` 连接器。Milady 的 `packages/app-core` 扩展了此映射，添加了指向 `@elizaos/plugin-wechat` 的 `wechat` 条目。
+> **注意：** 上游 `packages/agent` 定义了所有 `@elizaos/*` 连接器。Eliza 的 `packages/app-core` 扩展了此映射，添加了指向 `@elizaos/plugin-wechat` 的 `wechat` 条目。
 
-**功能标志** — `milady.json` 的 `features` 部分可自动启用功能插件。功能可以通过 `features.<name>: true` 或 `features.<name>.enabled: true` 启用：
+**功能标志** — `eliza.json` 的 `features` 部分可自动启用功能插件。功能可以通过 `features.<name>: true` 或 `features.<name>.enabled: true` 启用：
 
 ```json
 {

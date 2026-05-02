@@ -2,7 +2,7 @@
  * Server-safe native-platform detection.
  *
  * On Capacitor-hosted mobile (iOS / Android), an in-process Node / Bun
- * runtime boots the Milady server inside the native shell, and Capacitor
+ * runtime boots the Eliza server inside the native shell, and Capacitor
  * installs a global `Capacitor` object. On desktop (Electrobun) and plain
  * Node / Bun servers, that global is absent.
  *

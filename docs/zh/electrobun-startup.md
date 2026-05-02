@@ -8,11 +8,11 @@
 ## 启动序列
 </div>
 
-1. **Electrobun 主进程**启动，创建窗口，并解析渲染器 URL（通过 `MILADY_RENDERER_URL` 使用 Vite 开发服务器，或使用打包的 `apps/app/dist` 的内置静态资产服务器）。
-2. **`AgentManager.start()`**（在 `native/agent.ts` 中）生成一个 **Bun 子进程**：`bun run <milady-dist>/entry.js start`（或你的 bundle 布局的等效路径）。子进程**不是** `server.js` / `eliza.js` 的进程内动态导入。
-3. **子进程**启动 Milady CLI 入口点，启动 API 服务器，并在该进程中以 headless 模式运行 elizaOS 运行时。
+1. **Electrobun 主进程**启动，创建窗口，并解析渲染器 URL（通过 `ELIZA_RENDERER_URL` 使用 Vite 开发服务器，或使用打包的 `apps/app/dist` 的内置静态资产服务器）。
+2. **`AgentManager.start()`**（在 `native/agent.ts` 中）生成一个 **Bun 子进程**：`bun run <eliza-dist>/entry.js start`（或你的 bundle 布局的等效路径）。子进程**不是** `server.js` / `eliza.js` 的进程内动态导入。
+3. **子进程**启动 Eliza CLI 入口点，启动 API 服务器，并在该进程中以 headless 模式运行 elizaOS 运行时。
 4. **主进程**对 `http://127.0.0.1:{port}/api/health` 进行健康轮询，直到子进程报告就绪（或超时/出错）。
-5. **主进程**将 `apiBaseUpdate`（及相关 RPC）推送到渲染器，使 `window.__MILADY_API_BASE__` 与活跃的 API 匹配。
+5. **主进程**将 `apiBaseUpdate`（及相关 RPC）推送到渲染器，使 `window.__ELIZA_API_BASE__` 与活跃的 API 匹配。
 
 如果子进程启动失败或始终未变为健康状态：
 
@@ -52,9 +52,9 @@
 
 打包应用将启动日志写入：
 
-- **macOS：** `~/Library/Application Support/Milady/milady-startup.log`
-- **Windows：** `%APPDATA%\Milady\milady-startup.log`
-- **Linux：** `~/.config/Milady/milady-startup.log`
+- **macOS：** `~/Library/Application Support/Eliza/eliza-startup.log`
+- **Windows：** `%APPDATA%\Eliza\eliza-startup.log`
+- **Linux：** `~/.config/Eliza/eliza-startup.log`
 
 使用它来调试加载失败（缺失模块、原生二进制路径等）。
 

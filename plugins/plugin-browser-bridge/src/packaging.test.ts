@@ -21,7 +21,7 @@ describe("browser bridge packaging", () => {
       },
       releaseTag: "v0.1.0",
       releaseVersion: "0.1.0",
-      repository: "milady-ai/milady",
+      repository: "eliza-ai/eliza",
       safari: {
         asset: {
           fileName: "browser-bridge-safari-v0.1.0.zip",

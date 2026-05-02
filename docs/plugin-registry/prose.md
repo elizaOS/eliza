@@ -1,10 +1,10 @@
 ---
 title: "Prose Plugin"
 sidebarTitle: "Prose"
-description: "OpenProse VM integration for Milady — a programming language for AI sessions."
+description: "OpenProse VM integration for Eliza — a programming language for AI sessions."
 ---
 
-The Prose plugin integrates the OpenProse VM with Milady, providing a programming language designed specifically for AI sessions.
+The Prose plugin integrates the OpenProse VM with Eliza, providing a programming language designed specifically for AI sessions.
 
 **Package:** `@elizaos/plugin-prose`
 
@@ -17,7 +17,7 @@ Rather than describing agent behavior in natural language alone, OpenProse progr
 ## Installation
 
 ```bash
-milady plugins install prose
+eliza plugins install prose
 ```
 
 ## Configuration

@@ -1,10 +1,10 @@
 ---
 title: "Desarrollo de Plugins"
 sidebarTitle: "Desarrollo de Plugins"
-description: "Crea, prueba y publica plugins para Milady/elizaOS."
+description: "Crea, prueba y publica plugins para Eliza/elizaOS."
 ---
 
-Esta guía te lleva paso a paso por la creación, prueba y publicación de plugins para Milady/elizaOS.
+Esta guía te lleva paso a paso por la creación, prueba y publicación de plugins para Eliza/elizaOS.
 
 <div id="table-of-contents">
 
@@ -98,9 +98,9 @@ export default myPlugin;
 </div>
 
 1. **Descubrimiento** — Los plugins se descubren desde:
-   - Plugins incluidos (enviados con Milady)
+   - Plugins incluidos (enviados con Eliza)
    - Plugins del workspace (`./plugins/`)
-   - Plugins globales (`~/.milady/plugins/`)
+   - Plugins globales (`~/.eliza/plugins/`)
    - Paquetes npm (`@elizaos/plugin-*`)
    - Plugins especificados en la configuración
 
@@ -459,7 +459,7 @@ const workspaceProvider: Provider = {
   position: -10, // Run early
 
   get: async (runtime, message, state) => {
-    const workspaceDir = runtime.getSetting("WORKSPACE_DIR") || "~/.milady/workspace";
+    const workspaceDir = runtime.getSetting("WORKSPACE_DIR") || "~/.eliza/workspace";
 
     // Read key files from workspace
     const agentsMd = await readFile(path.join(workspaceDir, "AGENTS.md"));
@@ -875,9 +875,9 @@ Para desarrollo local de plugins sin publicar:
 
 1. **Descubrimiento por workspace** — Coloca tu plugin en:
    - `./plugins/my-plugin/` (local al proyecto)
-   - `~/.milady/plugins/my-plugin/` (global)
+   - `~/.eliza/plugins/my-plugin/` (global)
 
-2. **Carga basada en configuración** — Añade a `milady.json`:
+2. **Carga basada en configuración** — Añade a `eliza.json`:
    ```json
    {
      "plugins": ["./path/to/my-plugin"]
@@ -886,7 +886,7 @@ Para desarrollo local de plugins sin publicar:
 
 3. **Enlace simbólico para desarrollo:**
    ```bash
-   cd ~/.milady/plugins
+   cd ~/.eliza/plugins
    ln -s /path/to/my-plugin my-plugin
    ```
 
@@ -973,8 +973,8 @@ Indica dónde se descubrió un plugin:
 
 | Origin | Descripción |
 |--------|-------------|
-| `bundled` | Incluido con Milady |
-| `global` | Desde `~/.milady/plugins/` |
+| `bundled` | Incluido con Eliza |
+| `global` | Desde `~/.eliza/plugins/` |
 | `workspace` | Desde `./plugins/` |
 | `config` | Listado explícitamente en la configuración |
 | `npm` | Paquete npm instalado |
@@ -1265,4 +1265,4 @@ const myPlugin: Plugin = {
 
 - [Documentación de Skills](/es/plugins/skills) — Aprende sobre extensiones de habilidades basadas en markdown
 - [Guía del Registro](/es/plugins/registry) — Publicación en el registro de plugins
-- [Guía de Contribución](/es/guides/contribution-guide) — Contribuir a Milady/elizaOS
+- [Guía de Contribución](/es/guides/contribution-guide) — Contribuir a Eliza/elizaOS

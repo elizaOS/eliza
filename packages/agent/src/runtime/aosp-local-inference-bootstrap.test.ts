@@ -3,9 +3,9 @@
  * bundle invokes after `startEliza()` returns.
  *
  * Coverage:
- *   1. Env gating — non-AOSP processes are no-ops (`MILADY_LOCAL_LLAMA !== "1"`).
+ *   1. Env gating — non-AOSP processes are no-ops (`ELIZA_LOCAL_LLAMA !== "1"`).
  *   2. Successful registration path registers TEXT_SMALL / TEXT_LARGE /
- *      TEXT_EMBEDDING handlers under the `milady-aosp-llama` provider id
+ *      TEXT_EMBEDDING handlers under the `eliza-aosp-llama` provider id
  *      at priority 0 (same band as cloud, lets the runtime's getModel()
  *      find handlers without a router installed).
  *   3. Failure path — when the AOSP llama loader can't register (no
@@ -77,7 +77,7 @@ beforeEach(() => {
   adapterMock.registerAospLlamaLoader.mockReset();
   for (const key of Object.keys(process.env)) delete process.env[key];
   Object.assign(process.env, ORIGINAL_ENV);
-  delete process.env.MILADY_LOCAL_LLAMA;
+  delete process.env.ELIZA_LOCAL_LLAMA;
 });
 
 afterEach(() => {
@@ -86,7 +86,7 @@ afterEach(() => {
 });
 
 describe("ensureAospLocalInferenceHandlers", () => {
-  it("no-ops when MILADY_LOCAL_LLAMA is not '1'", async () => {
+  it("no-ops when ELIZA_LOCAL_LLAMA is not '1'", async () => {
     const { ensureAospLocalInferenceHandlers } = await import(
       "./aosp-local-inference-bootstrap.js"
     );
@@ -102,7 +102,7 @@ describe("ensureAospLocalInferenceHandlers", () => {
   });
 
   it("registers TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING handlers when the AOSP loader registers", async () => {
-    process.env.MILADY_LOCAL_LLAMA = "1";
+    process.env.ELIZA_LOCAL_LLAMA = "1";
 
     adapterMock.registerAospLlamaLoader.mockImplementation(
       async (rt: { registerService: (n: string, i: unknown) => void }) => {
@@ -137,10 +137,10 @@ describe("ensureAospLocalInferenceHandlers", () => {
     expect(adapterMock.registerAospLlamaLoader).toHaveBeenCalledTimes(1);
 
     const aospRegs = runtime.registrations.filter(
-      (r) => r.provider === "milady-aosp-llama",
+      (r) => r.provider === "eliza-aosp-llama",
     );
     // TEXT_SMALL + TEXT_LARGE + TEXT_EMBEDDING register together. Earlier
-    // builds gated TEXT_EMBEDDING behind MILADY_AOSP_EMBEDDING=1 because
+    // builds gated TEXT_EMBEDDING behind ELIZA_AOSP_EMBEDDING=1 because
     // the embed path triggered a llama_decode batch_inp assert; that's
     // fixed by resetting `llama_set_embeddings` on every decode path in
     // `aosp-llama-adapter.ts`, so the gate is gone.
@@ -155,7 +155,7 @@ describe("ensureAospLocalInferenceHandlers", () => {
   });
 
   it("returns false and registers no handlers when the AOSP loader fails to register", async () => {
-    process.env.MILADY_LOCAL_LLAMA = "1";
+    process.env.ELIZA_LOCAL_LLAMA = "1";
     adapterMock.registerAospLlamaLoader.mockResolvedValue(false);
 
     const { ensureAospLocalInferenceHandlers } = await import(
@@ -175,12 +175,12 @@ describe("ensureAospLocalInferenceHandlers", () => {
 });
 
 describe("cli/index.ts serve command", () => {
-  it("invokes ensureAospLocalInferenceHandlers after startEliza when MILADY_LOCAL_LLAMA=1", async () => {
+  it("invokes ensureAospLocalInferenceHandlers after startEliza when ELIZA_LOCAL_LLAMA=1", async () => {
     // The bin.ts AOSP entry point routes through `runAutonomousCli('serve')`,
     // which awaits `startEliza({ serverOnly: true })` and then must wire the
     // local-inference handlers. We verify the chain by mocking startEliza
     // and the bootstrap module, then driving the CLI.
-    process.env.MILADY_LOCAL_LLAMA = "1";
+    process.env.ELIZA_LOCAL_LLAMA = "1";
 
     const startElizaMock = vi.fn();
     const bootstrapMock = vi.fn();
@@ -204,8 +204,8 @@ describe("cli/index.ts serve command", () => {
     expect(bootstrapMock).toHaveBeenCalledWith(fakeRuntime);
   });
 
-  it("does NOT invoke ensureAospLocalInferenceHandlers when MILADY_LOCAL_LLAMA is unset", async () => {
-    delete process.env.MILADY_LOCAL_LLAMA;
+  it("does NOT invoke ensureAospLocalInferenceHandlers when ELIZA_LOCAL_LLAMA is unset", async () => {
+    delete process.env.ELIZA_LOCAL_LLAMA;
 
     const startElizaMock = vi.fn();
     const bootstrapMock = vi.fn();

@@ -1,10 +1,10 @@
 ---
 title: "Plugin de Slack"
 sidebarTitle: "Slack"
-description: "Conector de Slack para Milady — bot de espacio de trabajo, monitoreo de canales, comandos slash y componentes interactivos."
+description: "Conector de Slack para Eliza — bot de espacio de trabajo, monitoreo de canales, comandos slash y componentes interactivos."
 ---
 
-El plugin de Slack conecta agentes de Milady a espacios de trabajo de Slack como una aplicación bot, gestionando mensajes en canales, mensajes directos e hilos con soporte para comandos slash y componentes interactivos.
+El plugin de Slack conecta agentes de Eliza a espacios de trabajo de Slack como una aplicación bot, gestionando mensajes en canales, mensajes directos e hilos con soporte para comandos slash y componentes interactivos.
 
 **Package:** `@elizaos/plugin-slack`
 
@@ -13,7 +13,7 @@ El plugin de Slack conecta agentes de Milady a espacios de trabajo de Slack como
 </div>
 
 ```bash
-milady plugins install @elizaos/plugin-slack
+eliza plugins install @elizaos/plugin-slack
 ```
 
 <div id="setup">
@@ -72,8 +72,8 @@ Navega a **Event Subscriptions** y suscríbete a los eventos del bot:
 
 Navega a **OAuth & Permissions** y haz clic en **Install to Workspace**. Copia el **Bot User OAuth Token** (`xoxb-...`).
 
-<div id="6-configure-milady">
-### 6. Configurar Milady
+<div id="6-configure-eliza">
+### 6. Configurar Eliza
 </div>
 
 ```json

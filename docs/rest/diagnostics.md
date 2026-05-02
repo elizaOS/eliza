@@ -16,7 +16,7 @@ Get buffered log entries with optional filtering. Returns up to the last 200 ent
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `source` | string | No | Filter by log source (e.g., `"milady-api"`, `"runtime"`) |
+| `source` | string | No | Filter by log source (e.g., `"eliza-api"`, `"runtime"`) |
 | `level` | string | No | Filter by log level (e.g., `"info"`, `"warn"`, `"error"`, `"debug"`) |
 | `tag` | string | No | Filter by tag |
 | `since` | number | No | Unix ms timestamp — only return entries at or after this time |
@@ -29,12 +29,12 @@ Get buffered log entries with optional filtering. Returns up to the last 200 ent
     {
       "timestamp": 1718000000000,
       "level": "info",
-      "source": "milady-api",
+      "source": "eliza-api",
       "tags": ["startup"],
       "message": "API server started on port 2138"
     }
   ],
-  "sources": ["milady-api", "runtime", "plugin-anthropic"],
+  "sources": ["eliza-api", "runtime", "plugin-anthropic"],
   "tags": ["startup", "auth", "knowledge"]
 }
 ```
@@ -126,7 +126,7 @@ data: {"type":"entry","entry":{"type":"policy_decision","severity":"warn",...}}
 
 ### GET /api/extension/status
 
-Check browser extension relay status and extension path. Used to determine whether the Milady browser extension is connected and loadable.
+Check browser extension relay status and extension path. Used to determine whether the Eliza browser extension is connected and loadable.
 
 **Response**
 

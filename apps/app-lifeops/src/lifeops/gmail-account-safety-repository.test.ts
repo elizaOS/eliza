@@ -182,7 +182,7 @@ async function createHarness(): Promise<Harness> {
   }
   const runtime = {
     agentId: AGENT_ID,
-    character: { name: "Milady" },
+    character: { name: "Eliza" },
     adapter: { db },
   } as unknown as IAgentRuntime;
   return {

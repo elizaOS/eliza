@@ -4,7 +4,7 @@ sidebarTitle: "CLI"
 description: "CLI framework plugin for ElizaOS agents - provides command registration, execution, and interactive terminal sessions"
 ---
 
-Command-line interface framework for Milady agents, enabling command registration and interactive terminal sessions.
+Command-line interface framework for Eliza agents, enabling command registration and interactive terminal sessions.
 
 **Package:** `@elizaos/plugin-cli`
 
@@ -15,7 +15,7 @@ The CLI plugin provides elizaOS agents with a command registration and execution
 ## Installation
 
 ```bash
-milady plugins install cli
+eliza plugins install cli
 ```
 
 ## Configuration

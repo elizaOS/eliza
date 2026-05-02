@@ -17,7 +17,7 @@ export type LifeOpsReliabilityKey =
 
 export type LifeOpsMessageReliabilityChannel =
   | "imessage"
-  | "milady_chat"
+  | "eliza_chat"
   | "gmail"
   | "x_dm"
   | "discord"
@@ -31,7 +31,7 @@ const MESSAGE_CHANNEL_WEIGHTS: Record<
   number
 > = {
   imessage: 0.88,
-  milady_chat: 0.88,
+  eliza_chat: 0.88,
   gmail: 0.8,
   x_dm: 0.8,
   discord: 0.8,

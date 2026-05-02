@@ -1,10 +1,10 @@
 ---
 title: "Robot Voice Plugin"
 sidebarTitle: "Robot Voice"
-description: "Retro 1980s SAM Text-to-Speech plugin for Milady agents."
+description: "Retro 1980s SAM Text-to-Speech plugin for Eliza agents."
 ---
 
-The Robot Voice plugin gives Milady agents a retro 1980s synthesized voice using the SAM (Software Automatic Mouth) Text-to-Speech engine.
+The Robot Voice plugin gives Eliza agents a retro 1980s synthesized voice using the SAM (Software Automatic Mouth) Text-to-Speech engine.
 
 **Package:** `@elizaos/plugin-robot-voice`
 
@@ -17,7 +17,7 @@ The Robot Voice plugin is a TTS provider — once installed, the agent's text re
 ## Installation
 
 ```bash
-milady plugins install robot-voice
+eliza plugins install robot-voice
 ```
 
 ## Configuration

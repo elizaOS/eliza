@@ -1,10 +1,10 @@
 ---
 title: "Form Plugin"
 sidebarTitle: "Form"
-description: "Form chain integration for Milady — curves-based token economics with ERC20 compatibility."
+description: "Form chain integration for Eliza — curves-based token economics with ERC20 compatibility."
 ---
 
-The Form plugin integrates Form chain capabilities into Milady, enabling agents to interact with curves-based token economics and ERC20-compatible assets on the Form network.
+The Form plugin integrates Form chain capabilities into Eliza, enabling agents to interact with curves-based token economics and ERC20-compatible assets on the Form network.
 
 **Package:** `@elizaos/plugin-form` (core plugin — always loaded)
 
@@ -34,7 +34,7 @@ export FORM_PRIVATE_KEY="your-private-key-here"
 export FORM_RPC_URL="https://custom-rpc.example.com"
 ```
 
-Or in `milady.json`:
+Or in `eliza.json`:
 
 ```json
 {

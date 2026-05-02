@@ -4,7 +4,7 @@ sidebarTitle: "Training & Fine-Tuning"
 description: "Trajectory collection, dataset curation, fine-tuning workflows, and Ollama model import for agent self-improvement."
 ---
 
-Milady captures all LLM interactions as trajectories, which can be curated into training datasets and used to fine-tune local models. The training pipeline supports dataset building, training job management, model import to Ollama, and model activation.
+Eliza captures all LLM interactions as trajectories, which can be curated into training datasets and used to fine-tune local models. The training pipeline supports dataset building, training job management, model import to Ollama, and model activation.
 
 ## Table of Contents
 
@@ -18,7 +18,7 @@ Milady captures all LLM interactions as trajectories, which can be curated into 
 ---
 
 <Info>
-**API port note:** In development mode (`bun run dev`), the API runs on port **31337**. In production mode (`milady start`), the API runs on port **2138**. Curl examples below use `localhost:2138` (production). Adjust the port for dev mode.
+**API port note:** In development mode (`bun run dev`), the API runs on port **31337**. In production mode (`eliza start`), the API runs on port **2138**. Curl examples below use `localhost:2138` (production). Adjust the port for dev mode.
 </Info>
 
 <Info>
@@ -164,11 +164,11 @@ The native backend dispatches per-task JSONL datasets through one of three optim
 | `prompt-evolution` | Evolutionary prompt optimization (GEPA-style) |
 | `bootstrap-fewshot` | Selects high-quality few-shot examples from trajectories |
 
-Optimized prompts are written to `~/.milady/optimized-prompts/<task>/`. The `OptimizedPromptService` automatically loads these artifacts at boot, so improvements take effect on restart without manual configuration.
+Optimized prompts are written to `~/.eliza/optimized-prompts/<task>/`. The `OptimizedPromptService` automatically loads these artifacts at boot, so improvements take effect on restart without manual configuration.
 
 ### Auto-Training
 
-Milady can trigger native optimization automatically when enough trajectory data accumulates:
+Eliza can trigger native optimization automatically when enough trajectory data accumulates:
 
 - **Default threshold:** 100 trajectories per task
 - **Cooldown:** 12 hours between auto-training runs
@@ -176,7 +176,7 @@ Milady can trigger native optimization automatically when enough trajectory data
 
 Auto-training runs the native backend by default. It only fires when the trajectory count exceeds the threshold and no recent artifact exists for that task.
 
-To disable auto-training at startup, set `MILADY_DISABLE_AUTO_BOOTSTRAP=1`.
+To disable auto-training at startup, set `ELIZA_DISABLE_AUTO_BOOTSTRAP=1`.
 
 ### Running Native Optimization Manually
 
@@ -273,7 +273,7 @@ The `ollamaUrl` must target a loopback host (localhost, 127.0.0.1, or ::1) for s
 
 ## Dashboard Integration
 
-The Milady dashboard provides two dedicated tabs for training:
+The Eliza dashboard provides two dedicated tabs for training:
 
 ### Fine-Tuning Tab (`FineTuningView`)
 
@@ -303,7 +303,7 @@ The Trajectories view displays:
 
 ## Native Optimization (Default Backend)
 
-The default training backend is `native`, which runs MIPRO / GEPA / bootstrap-fewshot optimization against collected trajectory data. Unlike the `mlx`/`cuda`/`cpu` backends that fine-tune model weights, native optimization produces optimized prompt artifacts stored under `~/.milady/optimized-prompts/<task>/`. The `OptimizedPromptService` loads these automatically at boot.
+The default training backend is `native`, which runs MIPRO / GEPA / bootstrap-fewshot optimization against collected trajectory data. Unlike the `mlx`/`cuda`/`cpu` backends that fine-tune model weights, native optimization produces optimized prompt artifacts stored under `~/.eliza/optimized-prompts/<task>/`. The `OptimizedPromptService` loads these automatically at boot.
 
 ### Auto-Training
 
@@ -312,7 +312,7 @@ When enough trajectories accumulate, the runtime can trigger native optimization
 - **Threshold:** 100 trajectories per task (default)
 - **Cooldown:** 12 hours between auto-training runs
 - **Configuration:** `GET /api/training/auto/config` and `PUT /api/training/auto/config`, or Settings > Auto-Training in the dashboard
-- **Disable at boot:** set `MILADY_DISABLE_AUTO_BOOTSTRAP=1`
+- **Disable at boot:** set `ELIZA_DISABLE_AUTO_BOOTSTRAP=1`
 
 ### Privacy Filter
 
@@ -363,7 +363,7 @@ All write paths that touch real user trajectories run through the privacy filter
 
 ## Native Optimization (Default Backend)
 
-The default training backend is `native`. Native optimization uses techniques like MIPRO, GEPA, and bootstrap-fewshot to optimize prompts directly from trajectory data without fine-tuning a model. Outputs land as prompt artifacts under `~/.milady/optimized-prompts/<task>/`. The `OptimizedPromptService` auto-loads those artifacts at boot.
+The default training backend is `native`. Native optimization uses techniques like MIPRO, GEPA, and bootstrap-fewshot to optimize prompts directly from trajectory data without fine-tuning a model. Outputs land as prompt artifacts under `~/.eliza/optimized-prompts/<task>/`. The `OptimizedPromptService` auto-loads those artifacts at boot.
 
 To use native optimization:
 
@@ -396,7 +396,7 @@ curl -X PUT http://localhost:31337/api/training/auto/config \
   }'
 ```
 
-The auto-bootstrap runs at runtime boot when trajectory counters exceed the threshold and no artifact exists for the task. Disable it by setting `MILADY_DISABLE_AUTO_BOOTSTRAP=1`.
+The auto-bootstrap runs at runtime boot when trajectory counters exceed the threshold and no artifact exists for the task. Disable it by setting `ELIZA_DISABLE_AUTO_BOOTSTRAP=1`.
 
 ### Privacy Filter
 

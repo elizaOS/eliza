@@ -14,10 +14,8 @@ export function useIsolatedConfigEnv(
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   const configPath = path.join(tempDir, "eliza.json");
   const previousElizaConfigPath = process.env.ELIZA_CONFIG_PATH;
-  const previousMiladyConfigPath = process.env.MILADY_CONFIG_PATH;
 
   process.env.ELIZA_CONFIG_PATH = configPath;
-  process.env.MILADY_CONFIG_PATH = configPath;
 
   return {
     configPath,
@@ -26,12 +24,6 @@ export function useIsolatedConfigEnv(
         delete process.env.ELIZA_CONFIG_PATH;
       } else {
         process.env.ELIZA_CONFIG_PATH = previousElizaConfigPath;
-      }
-
-      if (previousMiladyConfigPath === undefined) {
-        delete process.env.MILADY_CONFIG_PATH;
-      } else {
-        process.env.MILADY_CONFIG_PATH = previousMiladyConfigPath;
       }
 
       await fsp

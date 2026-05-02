@@ -1,18 +1,18 @@
 ---
 title: REST API Reference
 sidebarTitle: API Reference
-description: Complete reference for all Milady REST API endpoints, organized by resource group.
+description: Complete reference for all Eliza REST API endpoints, organized by resource group.
 ---
 
-The Milady API server runs on port **31337** (`MILADY_API_PORT`) in development and on port **2138** (`MILADY_PORT`) in production, where the API and dashboard share the same port. All endpoints are prefixed with `/api/`. Authentication is required when `MILADY_API_TOKEN` is set.
+The Eliza API server runs on port **31337** (`ELIZA_API_PORT`) in development and on port **2138** (`ELIZA_PORT`) in production, where the API and dashboard share the same port. All endpoints are prefixed with `/api/`. Authentication is required when `ELIZA_API_TOKEN` is set.
 
 <Warning>
-When `MILADY_API_TOKEN` is configured, include the token as a `Bearer` token in the `Authorization` header, or use the pairing flow to obtain it.
+When `ELIZA_API_TOKEN` is configured, include the token as a `Bearer` token in the `Authorization` header, or use the pairing flow to obtain it.
 </Warning>
 
 ## Quick Start
 
-These examples use port `31337` (the development default). In production, replace with port `2138` or your configured `MILADY_PORT`. Replace `YOUR_TOKEN` with the value of `MILADY_API_TOKEN` or the token received from the pairing flow.
+These examples use port `31337` (the development default). In production, replace with port `2138` or your configured `ELIZA_PORT`. Replace `YOUR_TOKEN` with the value of `ELIZA_API_TOKEN` or the token received from the pairing flow.
 
 ### Check agent status
 
@@ -23,7 +23,7 @@ curl http://localhost:31337/api/status
 ```json
 {
   "state": "running",
-  "agentName": "Milady",
+  "agentName": "Eliza",
   "model": "@elizaos/plugin-anthropic",
   "uptime": 3600000,
   "startedAt": 1718000000000
@@ -88,14 +88,14 @@ curl -X POST http://localhost:31337/api/knowledge/documents \
   -H "Content-Type: application/json" \
   -d '{
     "title": "Company FAQ",
-    "content": "Q: What is Milady?\nA: A personal AI assistant built on elizaOS."
+    "content": "Q: What is Eliza?\nA: A personal AI assistant built on elizaOS."
   }'
 ```
 
 ### Search knowledge
 
 ```bash
-curl "http://localhost:31337/api/knowledge/search?q=what+is+milady&limit=5" \
+curl "http://localhost:31337/api/knowledge/search?q=what+is+eliza&limit=5" \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
@@ -152,7 +152,7 @@ Example `GET /api/status` response:
 
 ```json
 {
-  "name": "Milady",
+  "name": "Eliza",
   "status": "running",
   "model": "anthropic/claude-sonnet-4.6",
   "uptime": 3600,
@@ -279,7 +279,7 @@ The inbox aggregates messages from every connected platform (iMessage, Telegram,
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/config` | Get the current milady.json configuration |
+| `GET` | `/api/config` | Get the current eliza.json configuration |
 | `PUT` | `/api/config` | Update configuration fields |
 | `GET` | `/api/config/schema` | Get the configuration schema for UI rendering |
 
@@ -508,7 +508,7 @@ The inbox aggregates messages from every connected platform (iMessage, Telegram,
 | `POST` | `/api/cloud/agents/:id/provision` | Provision a cloud agent |
 | `POST` | `/api/cloud/agents/:id/shutdown` | Shutdown and delete a cloud agent |
 | `POST` | `/api/cloud/agents/:id/connect` | Connect to an existing cloud agent |
-| `POST` | `/api/cloud/v1/milady/agents/:id/pairing-token` | Generate a pairing token for opening a cloud agent's Web UI in a new tab. Returns `{ success, data: { token, redirectUrl, expiresIn } }` |
+| `POST` | `/api/cloud/v1/eliza/agents/:id/pairing-token` | Generate a pairing token for opening a cloud agent's Web UI in a new tab. Returns `{ success, data: { token, redirectUrl, expiresIn } }` |
 
 <Info>
 Routes under `/api/cloud/v1/` are forwarded as `/api/v1/` on the cloud backend, distinct from the legacy `/api/cloud/compat/*` mapping. Both `Authorization: Bearer` and `X-Api-Key` headers are accepted for authentication.

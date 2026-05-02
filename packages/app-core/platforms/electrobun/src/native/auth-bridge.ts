@@ -34,8 +34,8 @@ import path from "node:path";
 import { getBrandConfig } from "../brand-config";
 
 export const DESKTOP_BOOTSTRAP_ENDPOINT = "/api/auth/desktop-bootstrap";
-export const SESSION_COOKIE_NAME = "milady_session";
-export const CSRF_COOKIE_NAME = "milady_csrf";
+export const SESSION_COOKIE_NAME = "eliza_session";
+export const CSRF_COOKIE_NAME = "eliza_csrf";
 const PERSISTED_SCHEMA_VERSION = 1;
 const SOCKET_CONNECT_TIMEOUT_MS = 5_000;
 const HTTP_REQUEST_TIMEOUT_MS = 10_000;
@@ -80,13 +80,13 @@ interface DesktopBootstrapResponseBody {
 // ── State paths ───────────────────────────────────────────────────────────────
 
 /**
- * Resolve the milady state dir. Mirrors the precedence used elsewhere in the
- * codebase: explicit milady env first, then legacy eliza env, then
+ * Resolve the eliza state dir. Mirrors the precedence used elsewhere in the
+ * codebase: explicit eliza env first, then legacy eliza env, then
  * `~/.<namespace>` derived from brand config.
  */
 export function resolveStateDir(env: NodeJS.ProcessEnv = process.env): string {
   const explicit =
-    env.MILADY_STATE_DIR?.trim() || env.ELIZA_STATE_DIR?.trim() || "";
+    env.ELIZA_STATE_DIR?.trim() || env.ELIZA_STATE_DIR?.trim() || "";
   if (explicit) return explicit;
   return path.join(os.homedir(), `.${getBrandConfig().namespace}`);
 }
@@ -467,7 +467,7 @@ export interface CookieInstaller {
  * Install the desktop session and CSRF cookies into the given Electrobun
  * session's cookie jar. The session cookie is HttpOnly and Secure-only when
  * the API origin is https; the CSRF cookie is readable so the SPA can mirror
- * it into `x-milady-csrf` on state-changing requests.
+ * it into `x-eliza-csrf` on state-changing requests.
  *
  * Returns the list of targets that were touched, for logging.
  */

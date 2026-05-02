@@ -10,7 +10,7 @@ Usage:
 
     The adapter expects the app repo root to be passed as
     ``app_root`` in the config, or set via the ``ELIZA_APP_ROOT``
-    environment variable.  The legacy ``MILADY_ROOT`` env var is
+    environment variable.  The legacy ``ELIZA_ROOT`` env var is
     also accepted for backwards compatibility.
 """
 
@@ -38,7 +38,7 @@ class AppBenchmarkConfig:
         if not self.app_root:
             self.app_root = (
                 os.environ.get("ELIZA_APP_ROOT")
-                or os.environ.get("MILADY_ROOT")
+                or os.environ.get("ELIZA_ROOT")
                 or ""
             )
         if not self.app_root:

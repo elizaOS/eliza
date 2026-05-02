@@ -24,7 +24,7 @@ El conector de GitHub es un plugin de elizaOS que conecta tu agente a la API de 
 |-------|-------|
 | Paquete | `@elizaos/plugin-github` |
 | Clave de configuración | `connectors.github` |
-| Instalación | `milady plugins install @elizaos/plugin-github` |
+| Instalación | `eliza plugins install @elizaos/plugin-github` |
 
 <div id="setup-requirements">
 

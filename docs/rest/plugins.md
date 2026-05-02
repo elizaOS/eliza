@@ -6,7 +6,7 @@ description: "REST API endpoints for plugin management, the elizaOS plugin regis
 
 The plugins API manages the agent's plugin system. It covers three areas: **plugin management** (listing, configuring, enabling/disabling installed plugins), **plugin installation** (install, uninstall, eject, sync from npm), and the **plugin registry** (browsing the elizaOS community catalog).
 
-When `MILADY_API_TOKEN` is set, include it as a `Bearer` token in the `Authorization` header.
+When `ELIZA_API_TOKEN` is set, include it as a `Bearer` token in the `Authorization` header.
 
 ## Endpoints
 
@@ -469,7 +469,7 @@ List all plugins from the elizaOS registry with installation and load status.
 | `installed` | boolean | Whether this plugin is currently installed |
 | `installedVersion` | string\|null | Installed version, or `null` if not installed |
 | `loaded` | boolean | Whether this plugin is loaded in the running agent runtime |
-| `bundled` | boolean | Whether this plugin is bundled into the Milady binary |
+| `bundled` | boolean | Whether this plugin is bundled into the Eliza binary |
 
 ---
 
@@ -566,7 +566,7 @@ When the registry service is configured:
   "registered": true,
   "configured": true,
   "tokenId": 1,
-  "agentName": "Milady",
+  "agentName": "Eliza",
   "agentEndpoint": "https://...",
   "capabilitiesHash": "...",
   "isActive": true,
@@ -670,4 +670,4 @@ Get the current registry configuration. Returns the contents of `config.registry
 }
 ```
 
-The exact response shape depends on what is configured in `milady.json` under the `registry` key.
+The exact response shape depends on what is configured in `eliza.json` under the `registry` key.

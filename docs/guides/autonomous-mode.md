@@ -4,7 +4,7 @@ sidebarTitle: Autonomous Mode
 description: Configure and monitor the agent's autonomous reasoning loop, where it acts independently between conversations.
 ---
 
-Autonomous mode allows the Milady agent to reason and act independently between user conversations. When enabled, the agent runs a continuous loop -- observing its environment, making decisions, and executing actions without waiting for explicit user input. This is useful for background monitoring, scheduled workflows, and proactive behavior.
+Autonomous mode allows the Eliza agent to reason and act independently between user conversations. When enabled, the agent runs a continuous loop -- observing its environment, making decisions, and executing actions without waiting for explicit user input. This is useful for background monitoring, scheduled workflows, and proactive behavior.
 
 <Tip>
 For a step-by-step walkthrough with use cases and safety controls, see the [Autonomous Agent Tutorial](/guides/tutorial-autonomous-agent).
@@ -15,7 +15,7 @@ For a step-by-step walkthrough with use cases and safety controls, see the [Auto
 The autonomous system is built on elizaOS's core task system and consists of several interconnected components:
 
 1. **Autonomy Service** (`AUTONOMY`) -- a runtime service that manages the autonomous loop lifecycle, including enabling/disabling autonomy and providing an autonomous room for reasoning.
-2. **Autonomous State Provider** (`miladyAutonomousState`) -- a dynamic provider that bridges context between loop iterations by injecting recent activity snapshots.
+2. **Autonomous State Provider** (`elizaAutonomousState`) -- a dynamic provider that bridges context between loop iterations by injecting recent activity snapshots.
 3. **Agent Event Service** (`AGENT_EVENT`) -- the event bus that broadcasts thoughts, actions, tool calls, and heartbeats to subscribers.
 4. **Trigger System** -- scheduled and event-based automations that wake the agent at defined intervals.
 5. **Proactive Messaging** -- routes autonomous output to the user's active conversation in the dashboard.
@@ -80,13 +80,13 @@ At the elizaOS runtime level, autonomy is controlled by the `runtime.enableAuton
 
 ## Autonomous State Provider
 
-The `miladyAutonomousState` provider bridges context between autonomous loop iterations. It is a dynamic elizaOS provider (position 10) that injects a snapshot of recent autonomous activity into the agent's context on every reasoning cycle.
+The `elizaAutonomousState` provider bridges context between autonomous loop iterations. It is a dynamic elizaOS provider (position 10) that injects a snapshot of recent autonomous activity into the agent's context on every reasoning cycle.
 
 ### Provider Configuration
 
 | Property | Value |
 |----------|-------|
-| **Name** | `miladyAutonomousState` |
+| **Name** | `elizaAutonomousState` |
 | **Type** | Dynamic provider |
 | **Position** | 10 |
 | **Source** | `src/providers/autonomous-state.ts` |
@@ -259,7 +259,7 @@ When a trigger fires, the `injectAutonomousInstruction()` method on the Autonomy
 | Limit | Value | Purpose |
 |-------|-------|---------|
 | **Event buffer cap** | 240 events per agent | Bounds memory usage for the autonomous state cache |
-| **Max active triggers** | 100 per creator (default) | Prevents runaway trigger creation. Configurable via `MILADY_TRIGGERS_MAX_ACTIVE` env var or runtime setting. |
+| **Max active triggers** | 100 per creator (default) | Prevents runaway trigger creation. Configurable via `ELIZA_TRIGGERS_MAX_ACTIVE` env var or runtime setting. |
 | **Trigger maxRuns** | Per-trigger configurable | Limits how many times a trigger can execute before auto-deletion |
 
 ### SSRF Protection
@@ -289,7 +289,7 @@ Custom actions executed during autonomous mode enforce the same SSRF guards as u
   <Tab title="Headless Mode">
     When the runtime is initialized in headless mode (no dashboard), autonomy is enabled automatically:
     ```
-    [milady] Runtime initialised in headless mode (autonomy enabled)
+    [eliza] Runtime initialised in headless mode (autonomy enabled)
     ```
   </Tab>
 </Tabs>

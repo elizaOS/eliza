@@ -585,7 +585,7 @@ export type CloudConfig = {
  *      pumps `${cloud.baseUrl}/api/v1/agents/${agentId}/n8n` into N8N_HOST and
  *      `cloud.apiKey` into N8N_API_KEY.
  *   2. Local sidecar — when `localEnabled !== false` (the default) and the
- *      Milady n8n sidecar is running, the sidecar lifecycle writes `host`
+ *      Eliza n8n sidecar is running, the sidecar lifecycle writes `host`
  *      and `apiKey` fields below when it reaches the "ready" status. The
  *      runtime pumps those into the plugin.
  *
@@ -825,7 +825,7 @@ export type ElizaConfig = {
   /** Deployment target for the current agent runtime. */
   deploymentTarget?: DeploymentTargetConfig;
   /**
-   * Legacy linked-account flags persisted in `milady.json` (e.g.
+   * Legacy linked-account flags persisted in `eliza.json` (e.g.
    * `linkedAccounts.elizacloud.status === "linked"`). Per-account
    * credential records live under `~/.eliza/auth/{providerId}/...`
    * and are surfaced via the WS3 accounts API, not this config.

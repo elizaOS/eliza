@@ -2983,7 +2983,7 @@ export async function startEliza(
   applyDatabaseConfigToEnv(config);
 
   // 2e. Boot-time vault hydration. Migrate plaintext sensitive values from
-  // milady.json + config.env + sensitive process.env keys into the OS-keychain
+  // eliza.json + config.env + sensitive process.env keys into the OS-keychain
   // vault, then resolve any vault://KEY sentinels in `config.env` so the
   // legacy hydration loop below sees real values.
   {
@@ -3185,8 +3185,8 @@ export async function startEliza(
   // routing layer, then write the resolved value into process.env so
   // the synchronous runtime.getSetting fast path picks it up. Idempotent;
   // safe to run multiple times. Opt-out via
-  // MILADY_DISABLE_VAULT_PROFILE_RESOLVER=1.
-  if (process.env.MILADY_DISABLE_VAULT_PROFILE_RESOLVER !== "1") {
+  // ELIZA_DISABLE_VAULT_PROFILE_RESOLVER=1.
+  if (process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER !== "1") {
     try {
       const { sharedVault } = await import(
         "@elizaos/app-core/services/vault-mirror"
@@ -3206,8 +3206,8 @@ export async function startEliza(
   // The runtime-wide EVM_PRIVATE_KEY / SOLANA_PRIVATE_KEY (process.env) is
   // the *user* wallet; per-agent wallets live inside the encrypted vault and
   // are surfaced separately in the in-app browser. Idempotent — existing
-  // wallets are preserved. Opt-out via MILADY_DISABLE_AGENT_WALLET_BOOTSTRAP=1.
-  if (process.env.MILADY_DISABLE_AGENT_WALLET_BOOTSTRAP !== "1") {
+  // wallets are preserved. Opt-out via ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP=1.
+  if (process.env.ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP !== "1") {
     try {
       const { sharedVault } = await import(
         "@elizaos/app-core/services/vault-mirror"
@@ -4619,14 +4619,14 @@ export async function startInCloudMode(
 }
 
 const isDirectRun = (() => {
-  // Mobile (bundled) builds set MILADY_DISABLE_DIRECT_RUN=1 via Bun's
+  // Mobile (bundled) builds set ELIZA_DISABLE_DIRECT_RUN=1 via Bun's
   // `--define`. After bundling, `import.meta.url` and `process.argv[1]`
   // collapse to the same bundle path, so this check spuriously matches and
   // the runtime self-invokes a SECOND `startEliza()` alongside the CLI's
   // primary one. The second invocation lacks `{ serverOnly: true }` and
   // drops into the readline chat loop, which closes on stdin EOF and tears
   // the whole process down.
-  if (process.env.MILADY_DISABLE_DIRECT_RUN === "1") return false;
+  if (process.env.ELIZA_DISABLE_DIRECT_RUN === "1") return false;
   const scriptArg = process.argv[1];
   if (!scriptArg) return false;
   const normalised = path.resolve(scriptArg);

@@ -31,7 +31,7 @@ describe("hydrate-wallet-keys-from-platform-store", () => {
   const originalEnv: Record<string, string | undefined> = {};
 
   beforeEach(async () => {
-    workDir = await fs.mkdtemp(join(tmpdir(), "milady-wallet-hydrate-"));
+    workDir = await fs.mkdtemp(join(tmpdir(), "eliza-wallet-hydrate-"));
     vault = createVault({
       workDir,
       masterKey: inMemoryMasterKey(generateMasterKey()),

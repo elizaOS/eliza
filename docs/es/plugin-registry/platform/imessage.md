@@ -1,10 +1,10 @@
 ---
 title: "Plugin iMessage"
 sidebarTitle: "iMessage"
-description: "Conector iMessage para Milady — mensajería nativa de macOS con soporte de iMessage y SMS, acceso a base de datos y conectividad con host remoto."
+description: "Conector iMessage para Eliza — mensajería nativa de macOS con soporte de iMessage y SMS, acceso a base de datos y conectividad con host remoto."
 ---
 
-El plugin iMessage conecta agentes de Milady a iMessage en macOS, soportando tanto conversaciones de iMessage como SMS con selección de servicio configurable y manejo de adjuntos.
+El plugin iMessage conecta agentes de Eliza a iMessage en macOS, soportando tanto conversaciones de iMessage como SMS con selección de servicio configurable y manejo de adjuntos.
 
 **Paquete:** `@elizaos/plugin-imessage`
 
@@ -13,7 +13,7 @@ El plugin iMessage conecta agentes de Milady a iMessage en macOS, soportando tan
 </div>
 
 ```bash
-milady plugins install @elizaos/plugin-imessage
+eliza plugins install @elizaos/plugin-imessage
 ```
 
 <div id="setup">
@@ -25,10 +25,10 @@ milady plugins install @elizaos/plugin-imessage
 </div>
 
 - macOS con iMessage configurado e iniciado sesión
-- Acceso completo al disco otorgado a la terminal o aplicación que ejecuta Milady (para acceso a la base de datos de chat)
+- Acceso completo al disco otorgado a la terminal o aplicación que ejecuta Eliza (para acceso a la base de datos de chat)
 
-<div id="2-configure-milady">
-### 2. Configurar Milady
+<div id="2-configure-eliza">
+### 2. Configurar Eliza
 </div>
 
 ```json
@@ -95,7 +95,7 @@ El plugin se activa automáticamente cuando el bloque `connectors.imessage` est�
 Si la recuperación de mensajes falla, asegúrate de que el Acceso completo al disco esté otorgado:
 
 1. Abre **Ajustes del Sistema → Privacidad y Seguridad → Acceso completo al disco**
-2. Agrega la aplicación de terminal o el proceso de Milady
+2. Agrega la aplicación de terminal o el proceso de Eliza
 
 <div id="database-path">
 ### Ruta de la base de datos

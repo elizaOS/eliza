@@ -109,7 +109,7 @@ const requiredWorkflowSnippets = [
   "node eliza/packages/app-core/scripts/desktop-build.mjs stage --variant=base --build-whisper",
   "Inject version.json into bundle (Windows)",
   "Inject version.json into bundle (macOS / Linux)",
-  '"identifier":"com.miladyai.milady"',
+  '"identifier":"com.elizaai.eliza"',
   "Stage standard macOS release app",
   "packages/app-core/platforms/electrobun/scripts/stage-macos-release-artifacts.sh",
   "retry_stapler_validate()",

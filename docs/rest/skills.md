@@ -6,7 +6,7 @@ description: "REST API endpoints for managing local skills, the skills catalog, 
 
 The skills API covers three areas: **local skills** (markdown-based SKILL.md extensions that teach the agent task-specific procedures), the **skills catalog** (curated registry of community skills), and the **skills marketplace** (git-based skill packages). Skills are injected into the agent's context at runtime to guide its behavior.
 
-When `MILADY_API_TOKEN` is set, include it as a `Bearer` token in the `Authorization` header.
+When `ELIZA_API_TOKEN` is set, include it as a `Bearer` token in the `Authorization` header.
 
 ## Endpoints
 
@@ -556,7 +556,7 @@ Acknowledges the security scan findings for a skill. Required before the skill c
 
 ### Setup Checklist
 
-1. Confirm skills directory (`~/.milady/workspace/skills/`) is readable and writable by the runtime.
+1. Confirm skills directory (`~/.eliza/workspace/skills/`) is readable and writable by the runtime.
 2. Confirm marketplace registry/network access is available (default: `https://clawhub.ai`). Check `SKILLS_REGISTRY`, `CLAWHUB_REGISTRY`, or `SKILLS_MARKETPLACE_URL` environment variables.
 3. Confirm plugin installer prerequisites (`npm`/`pnpm`/`bun` and `git`) are present in runtime PATH.
 4. For legacy SkillsMP marketplace, set `SKILLSMP_API_KEY` in the environment.
@@ -591,7 +591,7 @@ Acknowledges the security scan findings for a skill. Required before the skill c
 
 ### Recovery Procedures
 
-1. **Corrupted marketplace install:** Delete `~/.milady/workspace/skills/.marketplace/<skill-id>/` and remove its entry from `~/.milady/workspace/skills/.cache/marketplace-installs.json`, then re-install.
+1. **Corrupted marketplace install:** Delete `~/.eliza/workspace/skills/.marketplace/<skill-id>/` and remove its entry from `~/.eliza/workspace/skills/.cache/marketplace-installs.json`, then re-install.
 2. **Catalog file missing:** Re-install or update `@elizaos/plugin-agent-skills` to restore the bundled catalog.
 3. **Skill override conflict:** If a workspace skill unexpectedly overrides a bundled skill, rename the workspace skill directory or move it to a different location.
 

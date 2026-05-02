@@ -438,7 +438,7 @@ export interface N8nWorkflow {
 
 /**
  * One missing credential entry on a workflow generate response. `authUrl` is
- * a `milady://settings/connectors/<provider>` deep-link the UI may surface.
+ * a `eliza://settings/connectors/<provider>` deep-link the UI may surface.
  */
 export interface N8nWorkflowMissingCredential {
   credType: string;

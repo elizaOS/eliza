@@ -174,7 +174,7 @@ function resolveElizaConfigPath(): string {
   const explicit = process.env.ELIZA_CONFIG_PATH?.trim();
   if (explicit) return explicit;
 
-  const namespace = process.env.ELIZA_NAMESPACE?.trim() || "milady";
+  const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
   const stateDir =
     process.env.ELIZA_STATE_DIR?.trim() ||
     path.join(getHomeDir(), `.${namespace}`);

@@ -182,18 +182,18 @@ export function parseVitestOutput(output: string): VitestSummary {
 }
 
 /**
- * Resolve the root state directory honoring Milady/Eliza env overrides.
+ * Resolve the root state directory honoring Eliza/Eliza env overrides.
  */
 export function getStateDir(): string {
 	const fromEnv =
-		process.env.MILADY_STATE_DIR?.trim() || process.env.ELIZA_STATE_DIR?.trim();
+		process.env.ELIZA_STATE_DIR?.trim() || process.env.ELIZA_STATE_DIR?.trim();
 	return fromEnv && fromEnv.length > 0
 		? fromEnv
-		: path.join(homedir(), ".milady");
+		: path.join(homedir(), ".eliza");
 }
 
 /**
- * Ensure `~/.milady/app-verifications/<runId>/` exists and return the path.
+ * Ensure `~/.eliza/app-verifications/<runId>/` exists and return the path.
  */
 export async function ensureVerificationDir(runId: string): Promise<string> {
 	const dir = path.join(getStateDir(), "app-verifications", runId);
@@ -203,7 +203,7 @@ export async function ensureVerificationDir(runId: string): Promise<string> {
 
 function resolveLoopbackApiBase(): string {
 	const port =
-		process.env.MILADY_API_PORT?.trim() ||
+		process.env.ELIZA_API_PORT?.trim() ||
 		process.env.ELIZA_PORT?.trim() ||
 		"31337";
 	return `http://127.0.0.1:${port}`;
@@ -212,8 +212,8 @@ function resolveLoopbackApiBase(): string {
 function resolveDevApiToken(): string | undefined {
 	return (
 		process.env.ELIZA_API_TOKEN?.trim() ||
-		process.env.MILADY_API_TOKEN?.trim() ||
-		process.env.MILADY_API_AUTH_TOKEN?.trim() ||
+		process.env.ELIZA_API_TOKEN?.trim() ||
+		process.env.ELIZA_API_AUTH_TOKEN?.trim() ||
 		undefined
 	);
 }

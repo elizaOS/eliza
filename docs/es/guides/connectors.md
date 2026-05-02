@@ -50,7 +50,7 @@ Los conectores son puentes de plataforma que permiten a tu agente comunicarse a 
 ## Plataformas compatibles
 </div>
 
-Los conectores marcados como **Auto** se cargan automáticamente cuando su configuración está presente en `milady.json`. Los conectores marcados como **Registry** deben instalarse primero con `milady plugins install <package>`.
+Los conectores marcados como **Auto** se cargan automáticamente cuando su configuración está presente en `eliza.json`. Los conectores marcados como **Registry** deben instalarse primero con `eliza plugins install <package>`.
 
 | Plataforma | Método de autenticación | Soporte de MD | Soporte de grupo | Multi-cuenta | Disponibilidad |
 |----------|------------|------------|---------------|---------------|-------------|
@@ -89,7 +89,7 @@ Los conectores marcados como **Auto** se cargan automáticamente cuando su confi
 ## Configuración general
 </div>
 
-Los conectores se configuran en la sección `connectors` de `milady.json`. Campos comunes compartidos entre la mayoría de los conectores:
+Los conectores se configuran en la sección `connectors` de `eliza.json`. Campos comunes compartidos entre la mayoría de los conectores:
 
 | Campo | Tipo | Descripción |
 |-------|------|-------------|
@@ -415,7 +415,7 @@ Se conecta a iMessage a través de un servidor [BlueBubbles](https://bluebubbles
 ### Requisitos de configuración
 
 - Una Mac con iMessage conectado y el [servidor BlueBubbles](https://bluebubbles.app) instalado
-- La contraseña del servidor y URL accesible desde la máquina que ejecuta Milady
+- La contraseña del servidor y URL accesible desde la máquina que ejecuta Eliza
 
 ### Configuración clave
 
@@ -709,7 +709,7 @@ Se conecta a mensajería de iMessage y SMS a través del servicio Blooio con web
 - Modo de prueba en seco (dry run)
 - Red social descentralizada basada en AT Protocol
 
-**Nota:** Este conector está disponible desde el registro de plugins. Instálalo con `milady plugins install @elizaos/plugin-bluesky`.
+**Nota:** Este conector está disponible desde el registro de plugins. Instálalo con `eliza plugins install @elizaos/plugin-bluesky`.
 
 ---
 
@@ -749,7 +749,7 @@ Se conecta a mensajería de iMessage y SMS a través del servicio Blooio con web
 - Modo de prueba en seco (dry run)
 - Intervalos de publicación y sondeo configurables
 
-**Nota:** Este conector está disponible desde el registro de plugins. Instálalo con `milady plugins install @elizaos/plugin-instagram`.
+**Nota:** Este conector está disponible desde el registro de plugins. Instálalo con `eliza plugins install @elizaos/plugin-instagram`.
 
 ---
 
@@ -1067,7 +1067,7 @@ operes tú mismo o en la que confíes explícitamente para ese flujo de mensajes
 - Soporte de chat grupal
 - Manejo de eventos basado en webhook
 
-**Nota:** Este conector está disponible desde el registro de plugins. Instálalo con `milady plugins install @elizaos/plugin-line`.
+**Nota:** Este conector está disponible desde el registro de plugins. Instálalo con `eliza plugins install @elizaos/plugin-line`.
 
 ---
 
@@ -1107,7 +1107,7 @@ operes tú mismo o en la que confíes explícitamente para ese flujo de mensajes
 
 También está disponible una variante de cuenta personal como `@elizaos/plugin-zalouser` para mensajería uno a uno fuera del sistema de Cuenta Oficial.
 
-**Nota:** Este conector está disponible desde el registro de plugins. Instálalo con `milady plugins install @elizaos/plugin-zalo`.
+**Nota:** Este conector está disponible desde el registro de plugins. Instálalo con `eliza plugins install @elizaos/plugin-zalo`.
 
 ---
 
@@ -1146,7 +1146,7 @@ También está disponible una variante de cuenta personal como `@elizaos/plugin-
 - Capacidades de llamadas de voz
 - Manejo de mensajes entrantes basado en webhook
 
-**Nota:** Este conector está disponible desde el registro de plugins. Instálalo con `milady plugins install @elizaos/plugin-twilio`.
+**Nota:** Este conector está disponible desde el registro de plugins. Instálalo con `eliza plugins install @elizaos/plugin-twilio`.
 
 ---
 
@@ -1185,7 +1185,7 @@ También está disponible una variante de cuenta personal como `@elizaos/plugin-
 - Flujos de trabajo de pull requests (crear, revisar, fusionar)
 - Búsqueda de código y acceso a archivos
 
-**Nota:** Este conector está disponible desde el registro de plugins. Instálalo con `milady plugins install @elizaos/plugin-github`.
+**Nota:** Este conector está disponible desde el registro de plugins. Instálalo con `eliza plugins install @elizaos/plugin-github`.
 
 ---
 
@@ -1213,7 +1213,7 @@ Gmail Watch se habilita a través del flag `features.gmailWatch` o variables de 
 - Renovación automática de suscripciones de monitoreo
 - Manejo de eventos de correo electrónico entrante
 
-**Nota:** Este conector está disponible desde el registro de plugins. Instálalo con `milady plugins install @elizaos/plugin-gmail-watch`.
+**Nota:** Este conector está disponible desde el registro de plugins. Instálalo con `eliza plugins install @elizaos/plugin-gmail-watch`.
 
 ---
 
@@ -1249,7 +1249,7 @@ Gmail Watch se habilita a través del flag `features.gmailWatch` o variables de 
 - Soporte de conversaciones en MDs y grupos
 - Integración con plataforma de colaboración auto-alojada
 
-**Nota:** Este conector está disponible desde el registro de plugins. Instálalo con `milady plugins install @elizaos/plugin-nextcloud-talk`.
+**Nota:** Este conector está disponible desde el registro de plugins. Instálalo con `eliza plugins install @elizaos/plugin-nextcloud-talk`.
 
 ---
 
@@ -1287,7 +1287,7 @@ Gmail Watch se habilita a través del flag `features.gmailWatch` o variables de 
 - Mensajería ship-a-ship
 - Participación en chats grupales
 
-**Nota:** Este conector está disponible desde el registro de plugins. Instálalo con `milady plugins install @elizaos/plugin-tlon`.
+**Nota:** Este conector está disponible desde el registro de plugins. Instálalo con `eliza plugins install @elizaos/plugin-tlon`.
 
 ---
 
@@ -1326,7 +1326,7 @@ Gmail Watch se habilita a través del flag `features.gmailWatch` o variables de 
 El ciclo de vida típico del conector sigue este patrón:
 
 1. **Instalar plugin** -- Los plugins de conector se instalan como paquetes `@elizaos/plugin-{platform}`
-2. **Configurar** -- Agregar la configuración de la plataforma a la sección `connectors` de `milady.json`
+2. **Configurar** -- Agregar la configuración de la plataforma a la sección `connectors` de `eliza.json`
 3. **Habilitar** -- Establecer `enabled: true` en la configuración del conector
 4. **Autenticar** -- Proporcionar credenciales (tokens, claves) o completar el flujo de autenticación (escaneo de código QR)
 5. **Ejecutar** -- El runtime inicia el conector, establece conexiones y comienza el manejo de mensajes
@@ -1544,7 +1544,7 @@ Las opciones de `dmPolicy` son:
 </div>
 
 1. **Sesión de conector obsoleta:** Reiniciar el agente. Los conectores reinicializan sus conexiones de plataforma al inicio. Para conectores basados en WebSocket (Discord, Slack), esto fuerza un nuevo handshake.
-2. **Rotación de tokens:** Actualizar el token en `milady.json` bajo `connectors.<name>` y reiniciar. No edites variables de entorno en un proceso en ejecución — la configuración se lee al inicio.
+2. **Rotación de tokens:** Actualizar el token en `eliza.json` bajo `connectors.<name>` y reiniciar. No edites variables de entorno en un proceso en ejecución — la configuración se lee al inicio.
 3. **Recuperación de límite de tasa:** El agente retrocede automáticamente en respuestas 429. Si el conector está completamente bloqueado, esperar a que la ventana de límite de tasa expire (típicamente 1–60 segundos para Discord, varía según plataforma) y reiniciar.
 
 <div id="verification-commands">

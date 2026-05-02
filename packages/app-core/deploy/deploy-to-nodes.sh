@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# deploy-to-nodes.sh — Deploy milady/agent image to Docker nodes
+# deploy-to-nodes.sh — Deploy eliza/agent image to Docker nodes
 #
 # Usage:
 #   ./deploy/deploy-to-nodes.sh [OPTIONS]
 #
 # Options:
-#   --image TAG       Image to deploy (default: milady/agent:latest)
+#   --image TAG       Image to deploy (default: eliza/agent:latest)
 #   --nodes LIST      Comma-separated node list: name:ip (overrides defaults)
 #   --node NAME       Deploy to a single node by name (agent-node-1 or nyx-node)
-#   --restart         Restart all milady containers after loading image
+#   --restart         Restart all eliza containers after loading image
 #   --rolling         Rolling restart (one container at a time, wait for healthy)
 #   --snapshot        Create container snapshots before restarting (default when --restart)
 #   --no-snapshot     Skip snapshot before restart
@@ -28,7 +28,7 @@
 set -euo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────────────
-DEFAULT_IMAGE="milady/agent:latest"
+DEFAULT_IMAGE="eliza/agent:latest"
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/clawdnet_nodes}"
 SSH_USER="${SSH_USER:-root}"
 SSH_OPTS="-o StrictHostKeyChecking=no -o ConnectTimeout=15"
@@ -70,7 +70,7 @@ ssh_cmd() {
 
 list_remote_images_cmd() {
   cat <<'EOF'
-docker images --format 'table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.ID}}\t{{.CreatedSince}}' | grep -E '^(milady/agent|ghcr\.io/milady-ai/agent|ghcr\.io/milady-ai/milady/agent):' || true
+docker images --format 'table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.ID}}\t{{.CreatedSince}}' | grep -E '^(eliza/agent|ghcr\.io/eliza-ai/agent|ghcr\.io/eliza-ai/eliza/agent):' || true
 EOF
 }
 
@@ -79,13 +79,13 @@ list_remote_containers_cmd() {
 {
   printf 'NAMES|IMAGE|STATUS|PORTS\n'
   docker ps --format '{{.Names}}|{{.Image}}|{{.Status}}|{{.Ports}}'
-} | awk -F'|' 'NR == 1 || $2 ~ /^(milady\/agent|ghcr\.io\/milady-ai\/agent|ghcr\.io\/milady-ai\/milady\/agent)(:|@)/'
+} | awk -F'|' 'NR == 1 || $2 ~ /^(eliza\/agent|ghcr\.io\/eliza-ai\/agent|ghcr\.io\/eliza-ai\/eliza\/agent)(:|@)/'
 EOF
 }
 
 list_remote_container_names_cmd() {
   cat <<'EOF'
-docker ps --format '{{.Names}}|{{.Image}}' | awk -F'|' '$2 ~ /^(milady\/agent|ghcr\.io\/milady-ai\/agent|ghcr\.io\/milady-ai\/milady\/agent)(:|@)/ { print $1 }'
+docker ps --format '{{.Names}}|{{.Image}}' | awk -F'|' '$2 ~ /^(eliza\/agent|ghcr\.io\/eliza-ai\/agent|ghcr\.io\/eliza-ai\/eliza\/agent)(:|@)/ { print $1 }'
 EOF
 }
 
@@ -163,7 +163,7 @@ if ! docker image inspect "$IMAGE" &>/dev/null; then
 fi
 
 # Save image to temp file
-TMPFILE=$(mktemp /tmp/milady-deploy-XXXXXX.tar)
+TMPFILE=$(mktemp /tmp/eliza-deploy-XXXXXX.tar)
 trap "rm -f $TMPFILE" EXIT
 
 if ! $DRY_RUN; then
@@ -180,7 +180,7 @@ for node in "${SELECTED_NODES[@]}"; do
   
   if $DRY_RUN; then
     echo "  Would load $IMAGE"
-    if $DO_RESTART; then echo "  Would restart milady containers"; fi
+    if $DO_RESTART; then echo "  Would restart eliza containers"; fi
     continue
   fi
   
@@ -191,11 +191,11 @@ for node in "${SELECTED_NODES[@]}"; do
   LOAD_END=$(date +%s)
   ok "Loaded in $((LOAD_END - LOAD_START))s"
   
-  # Get running milady containers
+  # Get running eliza containers
   CONTAINERS=$(ssh_cmd "$ip" "$(list_remote_container_names_cmd)" 2>/dev/null || true)
   
   if [[ -z "$CONTAINERS" ]]; then
-    warn "No running milady containers on $node"
+    warn "No running eliza containers on $node"
     continue
   fi
   

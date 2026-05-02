@@ -290,17 +290,13 @@ function normalizeDurationMinutes(
 
 export function resolveScheduleDeviceIdentity(): ResolvedScheduleDeviceIdentity {
   const envDeviceId =
-    process.env.MILADY_DEVICE_ID?.trim() ??
-    process.env.ELIZA_DEVICE_ID?.trim() ??
-    process.env.HOSTNAME?.trim();
+    process.env.ELIZA_DEVICE_ID?.trim() ?? process.env.HOSTNAME?.trim();
   const deviceId =
     envDeviceId && envDeviceId.length > 0
       ? envDeviceId
       : `${process.platform}-${crypto.createHash("sha1").update(process.cwd()).digest("hex").slice(0, 8)}`;
   const envDeviceKind =
-    process.env.MILADY_DEVICE_KIND?.trim().toLowerCase() ??
-    process.env.ELIZA_DEVICE_KIND?.trim().toLowerCase() ??
-    "";
+    process.env.ELIZA_DEVICE_KIND?.trim().toLowerCase() ?? "";
   if (
     envDeviceKind === "iphone" ||
     envDeviceKind === "ipad" ||

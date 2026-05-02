@@ -4,7 +4,7 @@ sidebarTitle: "Memoria"
 description: "Persistencia de memoria, generación de embeddings, búsqueda vectorial, tipos de memoria y la API de recuperación."
 ---
 
-El sistema de memoria de Milady está respaldado por `@elizaos/plugin-sql` para la persistencia y `@elizaos/plugin-local-embedding` para los embeddings vectoriales. Esta página cubre la infraestructura de memoria desde la perspectiva del runtime.
+El sistema de memoria de Eliza está respaldado por `@elizaos/plugin-sql` para la persistencia y `@elizaos/plugin-local-embedding` para los embeddings vectoriales. Esta página cubre la infraestructura de memoria desde la perspectiva del runtime.
 
 <div id="memory-architecture">
 
@@ -36,13 +36,13 @@ Memory retrieval → injected into context
 
 </div>
 
-PGLite es una compilación WebAssembly embebida de PostgreSQL que se ejecuta en el proceso de Node.js sin necesidad de un servidor de base de datos externo. Milady configura el directorio de datos mediante `PGLITE_DATA_DIR`:
+PGLite es una compilación WebAssembly embebida de PostgreSQL que se ejecuta en el proceso de Node.js sin necesidad de un servidor de base de datos externo. Eliza configura el directorio de datos mediante `PGLITE_DATA_DIR`:
 
 ```
-Default: ~/.milady/workspace/.eliza/.elizadb
+Default: ~/.eliza/workspace/.eliza/.elizadb
 ```
 
-El directorio se crea al iniciar si no existe. Después de `adapter.init()`, Milady realiza una verificación de salud:
+El directorio se crea al iniciar si no existe. Después de `adapter.init()`, Eliza realiza una verificación de salud:
 
 ```typescript
 const files = await fs.readdir(pgliteDataDir);
@@ -57,7 +57,7 @@ if (files.length === 0) {
 
 </div>
 
-Si la inicialización de PGLite falla con un error recuperable (aborto de WASM o error de esquema de migraciones), Milady realiza una copia de seguridad del directorio de datos existente y reintenta:
+Si la inicialización de PGLite falla con un error recuperable (aborto de WASM o error de esquema de migraciones), Eliza realiza una copia de seguridad del directorio de datos existente y reintenta:
 
 ```typescript
 // Back up: <dataDir>.corrupt-<timestamp>
@@ -91,7 +91,7 @@ Para despliegues en producción o compartidos, establezca `database.provider = "
 ```
 nomic-embed-text-v1.5.Q5_K_M.gguf
 Dimensions: 768
-Model directory: ~/.milady/models/
+Model directory: ~/.eliza/models/
 ```
 
 <div id="environment-variables">
@@ -110,7 +110,7 @@ El plugin de embedding lee la configuración de variables de entorno establecida
 | `LOCAL_EMBEDDING_CONTEXT_SIZE` | auto | Tamaño de la ventana de contexto |
 | `LOCAL_EMBEDDING_GPU_LAYERS` | `"auto"` (Apple Silicon) / `"0"` (otros) | Aceleración por GPU |
 | `LOCAL_EMBEDDING_USE_MMAP` | `"false"` (Apple Silicon) / `"true"` (otros) | Carga del modelo mapeada en memoria |
-| `MODELS_DIR` | `~/.milady/models` | Directorio para almacenamiento de modelos |
+| `MODELS_DIR` | `~/.eliza/models` | Directorio para almacenamiento de modelos |
 
 <div id="memory-config">
 
@@ -134,7 +134,7 @@ export type MemoryConfig = {
 
 </div>
 
-El backend por defecto utiliza la memoria central de elizaOS mediante `plugin-sql`. Se configura en `milady.json`:
+El backend por defecto utiliza la memoria central de elizaOS mediante `plugin-sql`. Se configura en `eliza.json`:
 
 ```json
 {
@@ -166,7 +166,7 @@ El backend Quantum Memory Daemon soporta la indexación de rutas de archivos ext
       ],
       "sessions": {
         "enabled": true,
-        "exportDir": "~/.milady/sessions",
+        "exportDir": "~/.eliza/sessions",
         "retentionDays": 30
       },
       "update": {
@@ -203,7 +203,7 @@ El backend Quantum Memory Daemon soporta la indexación de rutas de archivos ext
         "provider": "local",
         "store": {
           "driver": "sqlite",
-          "path": "~/.milady/memory-search.db",
+          "path": "~/.eliza/memory-search.db",
           "vector": {
             "enabled": true,
             "extensionPath": null
@@ -305,7 +305,7 @@ Indexar directorios adicionales o archivos Markdown junto con la memoria:
 
 </div>
 
-Cuando el contexto se acerca a los límites de tokens, Milady puede podar resultados antiguos de herramientas:
+Cuando el contexto se acerca a los límites de tokens, Eliza puede podar resultados antiguos de herramientas:
 
 ```json
 {

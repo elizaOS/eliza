@@ -1,12 +1,12 @@
 ---
 title: Desarrollo local de escritorio
 sidebarTitle: Desarrollo local
-description: Por qué y cómo el orquestador de desarrollo de escritorio de Milady (scripts/dev-platform.mjs) ejecuta Vite, la API y Electrobun juntos — variables de entorno, señales y comportamiento de cierre.
+description: Por qué y cómo el orquestador de desarrollo de escritorio de Eliza (scripts/dev-platform.mjs) ejecuta Vite, la API y Electrobun juntos — variables de entorno, señales y comportamiento de cierre.
 ---
 
-La **pila de desarrollo de escritorio** no es un solo binario. `bun run dev:desktop` y `bun run dev:desktop:watch` ejecutan `scripts/dev-platform.mjs`, que **orquesta** procesos separados: compilación única opcional de `vite build`, `tsdown` opcional en la raíz del repositorio, luego **Vite** de larga duración (cuando `MILADY_DESKTOP_VITE_WATCH=1`), **`bun --watch` API**, y **Electrobun**.
+La **pila de desarrollo de escritorio** no es un solo binario. `bun run dev:desktop` y `bun run dev:desktop:watch` ejecutan `scripts/dev-platform.mjs`, que **orquesta** procesos separados: compilación única opcional de `vite build`, `tsdown` opcional en la raíz del repositorio, luego **Vite** de larga duración (cuando `ELIZA_DESKTOP_VITE_WATCH=1`), **`bun --watch` API**, y **Electrobun**.
 
-**¿Por qué orquestar?** Electrobun necesita (a) una URL de renderizado, (b) generalmente una API del dashboard ejecutándose, y (c) en desarrollo, un paquete `dist/` en la raíz para el runtime embebido de Milady. Hacerlo manualmente es propenso a errores; un solo script mantiene los puertos, las variables de entorno y el cierre consistentes.
+**¿Por qué orquestar?** Electrobun necesita (a) una URL de renderizado, (b) generalmente una API del dashboard ejecutándose, y (c) en desarrollo, un paquete `dist/` en la raíz para el runtime embebido de Eliza. Hacerlo manualmente es propenso a errores; un solo script mantiene los puertos, las variables de entorno y el cierre consistentes.
 
 <div id="commands">
 ## Comandos
@@ -17,7 +17,7 @@ La **pila de desarrollo de escritorio** no es un solo binario. `bun run dev:desk
 | Comando | Qué inicia | Uso típico |
 |---------|------------|------------|
 | `bun run dev:desktop` | API (a menos que `--no-api`) + Electrobun; **omite** `vite build` cuando `apps/app/dist` es más reciente que las fuentes | Iteración rápida contra assets de renderizado **compilados** |
-| `bun run dev:desktop:watch` | Mismo orquestador con **`MILADY_DESKTOP_VITE_WATCH=1`** — **Servidor de desarrollo Vite** + HMR | Flujo de trabajo de UI de escritorio |
+| `bun run dev:desktop:watch` | Mismo orquestador con **`ELIZA_DESKTOP_VITE_WATCH=1`** — **Servidor de desarrollo Vite** + HMR | Flujo de trabajo de UI de escritorio |
 | `bun run dev` / `bun run dev:web:ui` | Solo la pila del dashboard del navegador (API + Vite) | Iteración del dashboard compatible con headless |
 
 **Tablas de inicio:** el orquestador, Vite, API y Electrobun cada uno imprime una **tabla de configuración en texto plano** (columnas *Setting / Effective / Source / Change*) para que puedas ver los valores por defecto vs entorno y cómo cambiar una opción. Ejecútalo sin `--help` para verlas en la terminal.
@@ -41,9 +41,9 @@ En un **TTY**, las tablas pueden usar un **marco de caja Unicode** y un gran tí
 Si necesitas explícitamente salida de archivos en cada guardado (por ejemplo, depurando el comportamiento de Rollup):
 
 ```bash
-MILADY_DESKTOP_VITE_WATCH=1 bun scripts/dev-platform.mjs -- --rollup-watch
+ELIZA_DESKTOP_VITE_WATCH=1 bun scripts/dev-platform.mjs -- --rollup-watch
 # or env-only:
-MILADY_DESKTOP_VITE_WATCH=1 MILADY_DESKTOP_VITE_BUILD_WATCH=1 bun scripts/dev-platform.mjs
+ELIZA_DESKTOP_VITE_WATCH=1 ELIZA_DESKTOP_VITE_BUILD_WATCH=1 bun scripts/dev-platform.mjs
 ```
 
 **Por qué esto es opt-in:** `vite build --watch` aún ejecuta emisiones de producción de Rollup; "3 modules transformed" puede significar **segundos** reescribiendo chunks de múltiples MB. La ruta de watch por defecto usa el **servidor de desarrollo de Vite** en su lugar.
@@ -54,18 +54,18 @@ MILADY_DESKTOP_VITE_WATCH=1 MILADY_DESKTOP_VITE_BUILD_WATCH=1 bun scripts/dev-pl
 
 | Variable | Propósito |
 |----------|-----------|
-| `MILADY_DESKTOP_VITE_WATCH=1` | Habilita el flujo de trabajo de watch (servidor de desarrollo por defecto; ver abajo) |
-| `MILADY_DESKTOP_VITE_BUILD_WATCH=1` | Con `VITE_WATCH`, usa `vite build --watch` en vez de `vite dev` |
-| `MILADY_PORT` | Puerto de Vite / UI esperado (por defecto **2138**) |
-| `MILADY_API_PORT` | Puerto de la API (por defecto **31337**); reenviado al proxy env de Vite y Electrobun |
-| `MILADY_RENDERER_URL` | Establecido **por el orquestador** cuando usa Vite dev — el `resolveRendererUrl()` de Electrobun prefiere esto sobre el servidor estático integrado (**por qué:** HMR solo funciona contra el servidor de desarrollo) |
-| `MILADY_DESKTOP_RENDERER_BUILD=always` | Fuerza `vite build` incluso cuando `dist/` parece reciente |
+| `ELIZA_DESKTOP_VITE_WATCH=1` | Habilita el flujo de trabajo de watch (servidor de desarrollo por defecto; ver abajo) |
+| `ELIZA_DESKTOP_VITE_BUILD_WATCH=1` | Con `VITE_WATCH`, usa `vite build --watch` en vez de `vite dev` |
+| `ELIZA_PORT` | Puerto de Vite / UI esperado (por defecto **2138**) |
+| `ELIZA_API_PORT` | Puerto de la API (por defecto **31337**); reenviado al proxy env de Vite y Electrobun |
+| `ELIZA_RENDERER_URL` | Establecido **por el orquestador** cuando usa Vite dev — el `resolveRendererUrl()` de Electrobun prefiere esto sobre el servidor estático integrado (**por qué:** HMR solo funciona contra el servidor de desarrollo) |
+| `ELIZA_DESKTOP_RENDERER_BUILD=always` | Fuerza `vite build` incluso cuando `dist/` parece reciente |
 | `--force-renderer` | Lo mismo que siempre recompilar el renderizador |
 | `--vite-force` | Pasa `vite --force` cuando se inicia el servidor de desarrollo Vite (limpia la caché de optimización de deps) |
-| `--rollup-watch` | Con `MILADY_DESKTOP_VITE_WATCH=1`, usa `vite build --watch` en vez de `vite dev` |
+| `--rollup-watch` | Con `ELIZA_DESKTOP_VITE_WATCH=1`, usa `vite build --watch` en vez de `vite dev` |
 | `--no-api` | Solo Electrobun; sin hijo `dev-server.ts` |
-| `MILADY_DESKTOP_SCREENSHOT_SERVER` | **Activo por defecto** para `dev:desktop` / `bun run dev`: Electrobun escucha en `127.0.0.1:MILADY_SCREENSHOT_SERVER_PORT` (por defecto **31339**); la API de Milady hace proxy de **`GET /api/dev/cursor-screenshot`** (loopback) como un **PNG de pantalla completa** para agentes/herramientas (macOS necesita permiso de Screen Recording). Establece **`0`**, **`false`**, **`no`**, u **`off`** para desactivar. |
-| `MILADY_DESKTOP_DEV_LOG` | **Activo por defecto:** los logs de hijos (vite / api / electrobun) se reflejan en **`.milady/desktop-dev-console.log`** en la raíz del repositorio. **`GET /api/dev/console-log`** en la API (loopback) devuelve un tail (`?maxLines=`, `?maxBytes=`). Establece **`0`** / **`false`** / **`no`** / **`off`** para desactivar. |
+| `ELIZA_DESKTOP_SCREENSHOT_SERVER` | **Activo por defecto** para `dev:desktop` / `bun run dev`: Electrobun escucha en `127.0.0.1:ELIZA_SCREENSHOT_SERVER_PORT` (por defecto **31339**); la API de Eliza hace proxy de **`GET /api/dev/cursor-screenshot`** (loopback) como un **PNG de pantalla completa** para agentes/herramientas (macOS necesita permiso de Screen Recording). Establece **`0`**, **`false`**, **`no`**, u **`off`** para desactivar. |
+| `ELIZA_DESKTOP_DEV_LOG` | **Activo por defecto:** los logs de hijos (vite / api / electrobun) se reflejan en **`.eliza/desktop-dev-console.log`** en la raíz del repositorio. **`GET /api/dev/console-log`** en la API (loopback) devuelve un tail (`?maxLines=`, `?maxBytes=`). Establece **`0`** / **`false`** / **`no`** / **`off`** para desactivar. |
 
 <div id="when-default-ports-are-busy">
 ### Cuando los puertos por defecto están ocupados
@@ -75,14 +75,14 @@ MILADY_DESKTOP_VITE_WATCH=1 MILADY_DESKTOP_VITE_BUILD_WATCH=1 bun scripts/dev-pl
 
 | Env | Rol | Por defecto |
 |-----|-----|-------------|
-| **`MILADY_API_PORT`** | API de Milady (`dev-server.ts`) | **31337** |
-| **`MILADY_PORT`** | Servidor de desarrollo Vite (solo modo watch) | **2138** |
+| **`ELIZA_API_PORT`** | API de Eliza (`dev-server.ts`) | **31337** |
+| **`ELIZA_PORT`** | Servidor de desarrollo Vite (solo modo watch) | **2138** |
 
-Si el puerto preferido ya está en uso, el orquestador prueba **preferred + 1**, luego +2, ... (con límite), y pasa los valores **resueltos** a **cada** hijo (`MILADY_DESKTOP_API_BASE`, **`MILADY_RENDERER_URL`**, **`MILADY_PORT`** de Vite, etc.).
+Si el puerto preferido ya está en uso, el orquestador prueba **preferred + 1**, luego +2, ... (con límite), y pasa los valores **resueltos** a **cada** hijo (`ELIZA_DESKTOP_API_BASE`, **`ELIZA_RENDERER_URL`**, **`ELIZA_PORT`** de Vite, etc.).
 
 **Por qué pre-asignar en el padre (no solo dentro del proceso de la API):** Vite lee `vite.config.ts` una vez al inicio; el **`target`** del proxy debe coincidir con el puerto de la API **antes** de la primera solicitud. Si solo la API cambiara puertos después de bind, la UI seguiría haciendo proxy al viejo valor por defecto hasta que alguien reiniciara Vite. Resolver puertos **una vez** en `dev-platform.mjs` mantiene **logs del orquestador, env, proxy y Electrobun** en los mismos números.
 
-**Escritorio empaquetado (agente `local` embebido):** el proceso principal de Electrobun llama a **`findFirstAvailableLoopbackPort`** (`apps/app/electrobun/src/native/loopback-port.ts`) desde el **`MILADY_PORT`** preferido (por defecto **2138**), lo pasa al hijo **`entry.js start`**, y después de un inicio saludable actualiza **`process.env.MILADY_PORT` / `MILADY_API_PORT` / `ELIZA_PORT`** en el shell. **Por qué dejamos de usar `lsof` + SIGKILL por defecto:** una segunda instancia de Milady (o cualquier app) en el mismo puerto por defecto es válida cuando los directorios de estado difieren; matar PIDs desde el shell es sorprendente y puede terminar trabajo no relacionado. **Reclaim opt-in:** **`MILADY_AGENT_RECLAIM_STALE_PORT=1`** ejecuta el antiguo comportamiento de **"liberar este puerto primero"** para desarrolladores que quieren toma de control de instancia única.
+**Escritorio empaquetado (agente `local` embebido):** el proceso principal de Electrobun llama a **`findFirstAvailableLoopbackPort`** (`apps/app/electrobun/src/native/loopback-port.ts`) desde el **`ELIZA_PORT`** preferido (por defecto **2138**), lo pasa al hijo **`entry.js start`**, y después de un inicio saludable actualiza **`process.env.ELIZA_PORT` / `ELIZA_API_PORT` / `ELIZA_PORT`** en el shell. **Por qué dejamos de usar `lsof` + SIGKILL por defecto:** una segunda instancia de Eliza (o cualquier app) en el mismo puerto por defecto es válida cuando los directorios de estado difieren; matar PIDs desde el shell es sorprendente y puede terminar trabajo no relacionado. **Reclaim opt-in:** **`ELIZA_AGENT_RECLAIM_STALE_PORT=1`** ejecuta el antiguo comportamiento de **"liberar este puerto primero"** para desarrolladores que quieren toma de control de instancia única.
 
 **Ventanas separadas:** cuando el puerto de la API embebida se finaliza o cambia, **`injectApiBase`** se ejecuta para la ventana principal y **todas** las ventanas de `SurfaceWindowManager` (**por qué:** chat/settings/etc. no deben seguir sondeando un `http://127.0.0.1:…` obsoleto).
 
@@ -100,15 +100,15 @@ Después de clonar el repositorio, o cuando cambies `native/macos/window-effects
 cd apps/app/electrobun && bun run build:native-effects
 ```
 
-Más detalle: [Paquete shell de Electrobun](https://github.com/milady-ai/milady/tree/main/apps/app/electrobun) (README: *macOS window chrome*), y [Chrome de ventana macOS de Electrobun](../guides/electrobun-mac-window-chrome.md).
+Más detalle: [Paquete shell de Electrobun](https://github.com/eliza-ai/eliza/tree/main/apps/app/electrobun) (README: *macOS window chrome*), y [Chrome de ventana macOS de Electrobun](../guides/electrobun-mac-window-chrome.md).
 
 <div id="macos-local-network-permission-gateway-discovery">
 ## macOS: permiso de Red Local (descubrimiento de gateway)
 </div>
 
-El shell de escritorio usa **Bonjour/mDNS** para descubrir gateways de Milady en tu LAN. macOS puede mostrar un diálogo de privacidad de **Red Local** — elige **Permitir** si dependes del descubrimiento local.
+El shell de escritorio usa **Bonjour/mDNS** para descubrir gateways de Eliza en tu LAN. macOS puede mostrar un diálogo de privacidad de **Red Local** — elige **Permitir** si dependes del descubrimiento local.
 
-La configuración de tipos de **Electrobun** fijada por Milady (a partir de la versión en este repositorio) **no** expone un merge de `Info.plist` para **`NSLocalNetworkUsageDescription`**, por lo que el sistema operativo puede mostrar un mensaje genérico. Si upstream añade ese hook más adelante, podremos establecer un texto más claro; el comportamiento no depende de ello.
+La configuración de tipos de **Electrobun** fijada por Eliza (a partir de la versión en este repositorio) **no** expone un merge de `Info.plist` para **`NSLocalNetworkUsageDescription`**, por lo que el sistema operativo puede mostrar un mensaje genérico. Si upstream añade ese hook más adelante, podremos establecer un texto más claro; el comportamiento no depende de ello.
 
 <div id="why-vite-build-is-sometimes-skipped">
 ## Por qué `vite build` a veces se omite
@@ -162,20 +162,20 @@ El cierre usa `signalSpawnedProcessTree` — **solo** el árbol de PIDs enraizad
 ## Observabilidad para IDE y agentes (Cursor, scripts)
 </div>
 
-Los editores y agentes de codificación **no** ven la ventana nativa de Electrobun, no escuchan audio, ni auto-descubren localhost. Milady añade **hooks explícitos y legibles por máquina** para que las herramientas puedan razonar sobre "qué está ejecutándose" y aproximar "qué ve el usuario."
+Los editores y agentes de codificación **no** ven la ventana nativa de Electrobun, no escuchan audio, ni auto-descubren localhost. Eliza añade **hooks explícitos y legibles por máquina** para que las herramientas puedan razonar sobre "qué está ejecutándose" y aproximar "qué ve el usuario."
 
 **Por qué existe esto**
 
 1. **Verdad multi-proceso** — La salud no es un solo PID. Vite, la API y Electrobun pueden discrepar en puertos; los logs se intercalan. Un solo endpoint JSON y un archivo de log evitan "buscar en cinco terminales."
 2. **Seguridad vs conveniencia** — Los endpoints de screenshot y tail de logs son **solo loopback**; la ruta del screenshot usa un **token de sesión** entre Electrobun y el proxy de la API; la API de logs solo hace tail de un archivo llamado **`desktop-dev-console.log`**. **Por qué:** local-first no significa "cualquier proceso en la LAN puede obtener tu pantalla."
-3. **Defaults opt-out** — Screenshot y logging agregado están **activos** para `dev:desktop` / `bun run dev` porque agentes y humanos depurando juntos se benefician; ambos se desactivan con **`MILADY_DESKTOP_SCREENSHOT_SERVER=0`** y **`MILADY_DESKTOP_DEV_LOG=0`** para que puedas reducir la superficie de ataque o el I/O de disco.
+3. **Defaults opt-out** — Screenshot y logging agregado están **activos** para `dev:desktop` / `bun run dev` porque agentes y humanos depurando juntos se benefician; ambos se desactivan con **`ELIZA_DESKTOP_SCREENSHOT_SERVER=0`** y **`ELIZA_DESKTOP_DEV_LOG=0`** para que puedas reducir la superficie de ataque o el I/O de disco.
 4. **Cursor no hace auto-poll** — El descubrimiento es **documentación + `.cursor/rules`** (ver repositorio) más tú pidiendo al agente que ejecute `curl` o lea un archivo. **Por qué:** el producto no escanea silenciosamente tu máquina; los hooks están ahí cuando se indican.
 
-<div id="get-apidevstack-milady-api">
-### `GET /api/dev/stack` (API de Milady)
+<div id="get-apidevstack-eliza-api">
+### `GET /api/dev/stack` (API de Eliza)
 </div>
 
-Devuelve JSON estable (`schema: milady.dev.stack/v1`): **puerto de escucha** de la API (desde el **socket** cuando es posible), URLs/puertos del **escritorio** desde env (`MILADY_RENDERER_URL`, `MILADY_PORT`, …), disponibilidad y rutas de **`cursorScreenshot`** / **`desktopDevLog`**, y **hints** cortos (por ejemplo, el puerto RPC interno de Electrobun en los logs del launcher).
+Devuelve JSON estable (`schema: eliza.dev.stack/v1`): **puerto de escucha** de la API (desde el **socket** cuando es posible), URLs/puertos del **escritorio** desde env (`ELIZA_RENDERER_URL`, `ELIZA_PORT`, …), disponibilidad y rutas de **`cursorScreenshot`** / **`desktopDevLog`**, y **hints** cortos (por ejemplo, el puerto RPC interno de Electrobun en los logs del launcher).
 
 **Por qué en la API:** los agentes a menudo ya sondean `/api/health`; un GET extra reutiliza el mismo host y evita parsear el puerto efímero de Electrobun.
 
@@ -199,19 +199,19 @@ Script: `scripts/desktop-stack-status.mjs` (con `scripts/lib/desktop-stack-statu
 ### Consola agregada — archivo + `GET /api/dev/console-log`
 </div>
 
-Líneas prefijadas de **vite / api / electrobun** se reflejan en **`.milady/desktop-dev-console.log`** (banner de sesión en cada inicio del orquestador). **`GET /api/dev/console-log`** (loopback) devuelve un **tail de texto**; query **`maxLines`** (por defecto 400, límite 5000) y **`maxBytes`** (por defecto 256000).
+Líneas prefijadas de **vite / api / electrobun** se reflejan en **`.eliza/desktop-dev-console.log`** (banner de sesión en cada inicio del orquestador). **`GET /api/dev/console-log`** (loopback) devuelve un **tail de texto**; query **`maxLines`** (por defecto 400, límite 5000) y **`maxBytes`** (por defecto 256000).
 
-**Por qué un archivo:** los agentes pueden `read_file` la ruta desde `desktopDevLog.filePath` sin HTTP. **Por qué tail HTTP:** evita leer logs de múltiples megabytes en contexto; los límites previenen OOM. **Por qué lista de nombres permitidos:** `MILADY_DESKTOP_DEV_LOG_PATH` de otro modo podría apuntar a archivos arbitrarios.
+**Por qué un archivo:** los agentes pueden `read_file` la ruta desde `desktopDevLog.filePath` sin HTTP. **Por qué tail HTTP:** evita leer logs de múltiples megabytes en contexto; los límites previenen OOM. **Por qué lista de nombres permitidos:** `ELIZA_DESKTOP_DEV_LOG_PATH` de otro modo podría apuntar a archivos arbitrarios.
 
 <div id="ui-e2e-playwright">
 ## E2E de UI (Playwright)
 </div>
 
-Las pruebas de humo del navegador apuntan a la **misma URL de renderizado** que Electrobun carga en modo watch (`http://localhost:<MILADY_PORT>`, por defecto **2138**). **No** controlan el webview nativo de Electrobun; el tray, menús nativos y comportamientos solo de empaquetado permanecen cubiertos por **`bun run test:desktop:packaged`** (donde aplique) y la [checklist de regresión de lanzamiento](./release-regression-checklist.md).
+Las pruebas de humo del navegador apuntan a la **misma URL de renderizado** que Electrobun carga en modo watch (`http://localhost:<ELIZA_PORT>`, por defecto **2138**). **No** controlan el webview nativo de Electrobun; el tray, menús nativos y comportamientos solo de empaquetado permanecen cubiertos por **`bun run test:desktop:packaged`** (donde aplique) y la [checklist de regresión de lanzamiento](./release-regression-checklist.md).
 
 **Por qué Playwright:** la app ya incluye Playwright para verificaciones de renderizado y empaquetado, así que los flujos de humo del navegador ahora usan la misma pila soportada en lugar de un toolchain separado de TestCafe. Esto elimina la dependencia vulnerable `replicator` por completo y mantiene la superficie E2E de UI en un solo runner.
 
-**Dependencia:** Playwright vive en **`@miladyai/app`** y las specs de humo viven en `apps/app/test/ui-smoke/`. Un `bun install` normal en la raíz aún eleva los paquetes del workspace; estas verificaciones del navegador son opt-in vía `test:ui:playwright*`.
+**Dependencia:** Playwright vive en **`@elizaai/app`** y las specs de humo viven en `apps/app/test/ui-smoke/`. Un `bun install` normal en la raíz aún eleva los paquetes del workspace; estas verificaciones del navegador son opt-in vía `test:ui:playwright*`.
 
 **Runtime del navegador:** la suite usa Playwright Chromium. Instala el navegador una vez con `cd apps/app && bunx playwright install chromium` si no está presente en la máquina.
 
@@ -221,7 +221,7 @@ Las pruebas de humo del navegador apuntan a la **misma URL de renderizado** que 
 | `bun run test:ui:playwright:settings-chat` | Ejecuta [`apps/app/test/ui-smoke/settings-chat-companion.spec.ts`](../../apps/app/test/ui-smoke/settings-chat-companion.spec.ts) para persistencia de configuración de medios del companion. |
 | `bun run test:ui:playwright:packaged` | Ejecuta [`apps/app/test/ui-smoke/packaged-hash.spec.ts`](../../apps/app/test/ui-smoke/packaged-hash.spec.ts) contra `apps/app/dist/index.html`; omite si `dist` no existe. |
 
-**Matriz completa de pruebas:** `bun run test` **no** ejecuta las pruebas de humo de Playwright UI por defecto. Establece **`MILADY_TEST_UI_PLAYWRIGHT=1`** para añadir la suite de UI a `test/scripts/test-parallel.mjs` (serial, después de Vitest e2e). `MILADY_TEST_UI_TESTCAFE=1` aún se acepta como alias legacy.
+**Matriz completa de pruebas:** `bun run test` **no** ejecuta las pruebas de humo de Playwright UI por defecto. Establece **`ELIZA_TEST_UI_PLAYWRIGHT=1`** para añadir la suite de UI a `test/scripts/test-parallel.mjs` (serial, después de Vitest e2e). `ELIZA_TEST_UI_TESTCAFE=1` aún se acepta como alias legacy.
 
 **Ruta A vs webview nativo (Fase B):** Estas specs aún apuntan a la URL del renderizador, no al webview embebido de Electrobun. Los comportamientos empaquetados/nativos permanecen cubiertos por **`bun run test:desktop:packaged`**, **`bun run test:desktop:playwright`**, y la [checklist de regresión de lanzamiento](./release-regression-checklist.md).
 
@@ -231,7 +231,7 @@ Las pruebas de humo del navegador apuntan a la **misma URL de renderizado** que 
 
 | Pieza | Rol |
 |-------|-----|
-| `.cursor/rules/milady-desktop-dev-observability.mdc` | Cursor: cuándo usar los hooks de stack / screenshot / consola (**por qué:** el producto no auto-escanea localhost) |
+| `.cursor/rules/eliza-desktop-dev-observability.mdc` | Cursor: cuándo usar los hooks de stack / screenshot / consola (**por qué:** el producto no auto-escanea localhost) |
 | `scripts/dev-platform.mjs` | Orquestador; establece env para stack / screenshot / ruta de log |
 | `scripts/lib/vite-renderer-dist-stale.mjs` | Cuándo se necesita `vite build` |
 | `scripts/lib/kill-ui-listen-port.mjs` | Liberar puerto de UI |

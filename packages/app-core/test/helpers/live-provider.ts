@@ -43,8 +43,8 @@ function providerKeyMatchesSelection(
 function getLiveTestModelOverride(kind: "small" | "large"): string | null {
   const key =
     kind === "small"
-      ? ["MILADY_LIVE_TEST_SMALL_MODEL", "ELIZA_LIVE_TEST_SMALL_MODEL"]
-      : ["MILADY_LIVE_TEST_LARGE_MODEL", "ELIZA_LIVE_TEST_LARGE_MODEL"];
+      ? ["ELIZA_LIVE_TEST_SMALL_MODEL", "ELIZA_LIVE_TEST_SMALL_MODEL"]
+      : ["ELIZA_LIVE_TEST_LARGE_MODEL", "ELIZA_LIVE_TEST_LARGE_MODEL"];
 
   for (const name of key) {
     const value = getTrimmedEnv(name);
@@ -61,7 +61,7 @@ function getLiveTestBaseUrlOverride(
 ): string | null {
   const suffix = providerName.toUpperCase().replace(/-/g, "_");
   for (const name of [
-    `MILADY_LIVE_TEST_${suffix}_BASE_URL`,
+    `ELIZA_LIVE_TEST_${suffix}_BASE_URL`,
     `ELIZA_LIVE_TEST_${suffix}_BASE_URL`,
   ]) {
     const value = getTrimmedEnv(name);
@@ -277,7 +277,7 @@ export function requireLiveProvider(
  */
 export function isLiveTestEnabled(): boolean {
   return (
-    process.env.MILADY_LIVE_TEST === "1" ||
+    process.env.ELIZA_LIVE_TEST === "1" ||
     process.env.ELIZA_LIVE_TEST === "1" ||
     process.env.LIVE === "1"
   );

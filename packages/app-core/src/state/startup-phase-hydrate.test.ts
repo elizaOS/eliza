@@ -146,7 +146,7 @@ describe("bindReadyPhase wallet recovery", () => {
 
     wsHandlers.get("status")?.({
       state: "running",
-      agentName: "Milady",
+      agentName: "Eliza",
       restarted: true,
     });
     await Promise.resolve();

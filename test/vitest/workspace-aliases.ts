@@ -15,18 +15,18 @@ type FallbackAliasOptions = {
   fallbackReplacement?: string;
 };
 
-type MiladyAliasOptions = {
-  includeMiladyAlias?: boolean;
+type ElizaAliasOptions = {
+  includeElizaAlias?: boolean;
 };
 
-export type AgentSourceAliasOptions = FallbackAliasOptions & MiladyAliasOptions;
+export type AgentSourceAliasOptions = FallbackAliasOptions & ElizaAliasOptions;
 
 export type AppCoreSourceAliasOptions = FallbackAliasOptions & {
   bridgeReplacement?: string;
   stubRootSpecifier?: boolean;
 };
 
-export type SharedSourceAliasOptions = MiladyAliasOptions & {
+export type SharedSourceAliasOptions = ElizaAliasOptions & {
   includeConfigAlias?: boolean;
 };
 
@@ -134,10 +134,10 @@ function getPackageSourceAliases(
   packageName: string,
   sourceRoot: string,
   {
-    includeMiladyAlias = false,
+    includeElizaAlias = false,
     rootReplacement,
   }: {
-    includeMiladyAlias?: boolean;
+    includeElizaAlias?: boolean;
     rootReplacement: string;
   },
 ): ModuleAlias[] {
@@ -150,20 +150,20 @@ function getPackageSourceAliases(
       find: new RegExp(`^@elizaos/${escapeRegExp(packageName)}/(.*)`),
       replacement: path.join(sourceRoot, "$1"),
     },
-    ...(includeMiladyAlias
+    ...(includeElizaAlias
       ? [
           {
             find: new RegExp(
-              `^@miladyai/${escapeRegExp(packageName)}/(.*)\\.js$`,
+              `^@elizaai/${escapeRegExp(packageName)}/(.*)\\.js$`,
             ),
             replacement: path.join(sourceRoot, "$1.ts"),
           },
           {
-            find: new RegExp(`^@miladyai/${escapeRegExp(packageName)}/(.*)`),
+            find: new RegExp(`^@elizaai/${escapeRegExp(packageName)}/(.*)`),
             replacement: path.join(sourceRoot, "$1"),
           },
           {
-            find: `@miladyai/${packageName}`,
+            find: `@elizaai/${packageName}`,
             replacement: rootReplacement,
           },
         ]
@@ -273,7 +273,7 @@ export function getOptionalPluginSdkAliases(repoRoot: string): ModuleAlias[] {
   const pluginSdkEntry = path.join(repoRoot, "src", "plugin-sdk", "index.ts");
 
   return existsSync(pluginSdkEntry)
-    ? [{ find: "milady/plugin-sdk", replacement: pluginSdkEntry }]
+    ? [{ find: "eliza/plugin-sdk", replacement: pluginSdkEntry }]
     : [];
 }
 
@@ -283,7 +283,7 @@ export function getAgentSourceAliases(
 ): ModuleAlias[] {
   if (sourceRoot) {
     return getPackageSourceAliases("agent", sourceRoot, {
-      includeMiladyAlias: options.includeMiladyAlias,
+      includeElizaAlias: options.includeElizaAlias,
       rootReplacement: resolveModuleEntry(path.join(sourceRoot, "index")),
     });
   }
@@ -336,11 +336,11 @@ export function getAppCoreSourceAliases(
         replacement: path.join(sourceRoot, "$1"),
       },
       {
-        find: /^@miladyai\/app-core\/src\/(.*)/,
+        find: /^@elizaai\/app-core\/src\/(.*)/,
         replacement: path.join(sourceRoot, "$1"),
       },
       {
-        find: /^@miladyai\/app-core\/(.*)/,
+        find: /^@elizaai\/app-core\/(.*)/,
         replacement: path.join(sourceRoot, "$1"),
       },
       ...(!options.stubRootSpecifier
@@ -385,7 +385,7 @@ export function getSharedSourceAliases(
         ]
       : []),
     ...getPackageSourceAliases("shared", sourceRoot, {
-      includeMiladyAlias: options.includeMiladyAlias,
+      includeElizaAlias: options.includeElizaAlias,
       rootReplacement: path.join(sourceRoot, "index.ts"),
     }),
   ];
@@ -399,7 +399,7 @@ export function getUiSourceAliases(
   }
 
   return getPackageSourceAliases("ui", sourceRoot, {
-    includeMiladyAlias: true,
+    includeElizaAlias: true,
     rootReplacement: resolveModuleEntry(path.join(sourceRoot, "index")),
   });
 }

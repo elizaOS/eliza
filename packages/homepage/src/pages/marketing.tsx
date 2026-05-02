@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ElizaLogo } from "@/components/brand/eliza-logo";
+import {
+  releaseData,
+  type ReleaseDataDownload,
+} from "@/generated/release-data";
 
 type OS = "macos-arm" | "macos-intel" | "windows" | "linux" | "unknown";
 
@@ -14,7 +18,12 @@ type DownloadButton = {
   href: string;
 };
 
-const MAC_BUTTONS: DownloadButton[] = [
+// Hardcoded fallbacks point at /releases/latest/download by filename. They are
+// used when release-data.ts is generated against a release that has no
+// installer assets (the desktop release-electrobun.yml workflow has not run
+// yet, or its run failed). The names match the artifact names produced by
+// release-electrobun.yml.
+const FALLBACK_MAC_BUTTONS: DownloadButton[] = [
   {
     id: "macos-arm",
     label: "macOS Apple Silicon",
@@ -29,7 +38,7 @@ const MAC_BUTTONS: DownloadButton[] = [
   },
 ];
 
-const WINDOWS_BUTTONS: DownloadButton[] = [
+const FALLBACK_WINDOWS_BUTTONS: DownloadButton[] = [
   {
     id: "windows",
     label: "Windows",
@@ -38,7 +47,7 @@ const WINDOWS_BUTTONS: DownloadButton[] = [
   },
 ];
 
-const LINUX_BUTTONS: DownloadButton[] = [
+const FALLBACK_LINUX_BUTTONS: DownloadButton[] = [
   {
     id: "linux-deb",
     label: "Debian / Ubuntu",
@@ -65,6 +74,67 @@ const LINUX_BUTTONS: DownloadButton[] = [
   },
 ];
 
+function buildButtonFromGenerated(
+  d: ReleaseDataDownload,
+): DownloadButton | null {
+  const sublabel = d.note ? `${d.note} · ${d.sizeLabel}` : d.sizeLabel;
+  switch (d.id) {
+    case "macos-arm64":
+      return { id: "macos-arm", label: "macOS Apple Silicon", sublabel, href: d.url };
+    case "macos-x64":
+      return { id: "macos-intel", label: "macOS Intel", sublabel, href: d.url };
+    case "windows-x64":
+      return { id: "windows", label: "Windows", sublabel, href: d.url };
+    case "linux-x64":
+      // The release-data script produces "linux-x64" for AppImage or .tar.gz;
+      // map by file extension so the right card lights up.
+      if (/\.appimage$/i.test(d.fileName)) {
+        return { id: "linux-appimage", label: "AppImage", sublabel, href: d.url };
+      }
+      return { id: "linux-tar", label: "Tarball", sublabel, href: d.url };
+    case "linux-deb":
+      return { id: "linux-deb", label: "Debian / Ubuntu", sublabel, href: d.url };
+    default:
+      return null;
+  }
+}
+
+function partitionGeneratedDownloads(downloads: readonly ReleaseDataDownload[]) {
+  const mac: DownloadButton[] = [];
+  const windows: DownloadButton[] = [];
+  const linux: DownloadButton[] = [];
+  for (const d of downloads) {
+    const button = buildButtonFromGenerated(d);
+    if (!button) continue;
+    if (button.id === "macos-arm" || button.id === "macos-intel") {
+      mac.push(button);
+    } else if (button.id === "windows") {
+      windows.push(button);
+    } else {
+      linux.push(button);
+    }
+  }
+  return { mac, windows, linux };
+}
+
+const generated = partitionGeneratedDownloads(releaseData.release.downloads);
+
+const MAC_BUTTONS: DownloadButton[] =
+  generated.mac.length > 0 ? generated.mac : FALLBACK_MAC_BUTTONS;
+const WINDOWS_BUTTONS: DownloadButton[] =
+  generated.windows.length > 0 ? generated.windows : FALLBACK_WINDOWS_BUTTONS;
+const LINUX_BUTTONS: DownloadButton[] =
+  generated.linux.length > 0 ? generated.linux : FALLBACK_LINUX_BUTTONS;
+
+const RELEASE_TAG_LABEL =
+  releaseData.release.tagName !== "unavailable"
+    ? releaseData.release.tagName
+    : null;
+const RELEASE_PUBLISHED_LABEL =
+  releaseData.release.publishedAtLabel !== "unavailable"
+    ? releaseData.release.publishedAtLabel
+    : null;
+
 function detectOS(): OS {
   if (typeof navigator === "undefined") return "unknown";
   const ua = navigator.userAgent.toLowerCase();
@@ -72,8 +142,6 @@ function detectOS(): OS {
   if (ua.includes("win")) return "windows";
   if (ua.includes("linux") && !ua.includes("android")) return "linux";
   if (ua.includes("mac") || platform.includes("mac")) {
-    // Apple Silicon detection is best-effort; modern Safari hides it.
-    // Treat the user agent that explicitly mentions "arm" as Apple Silicon.
     if (ua.includes("arm") || platform.includes("arm")) return "macos-arm";
     return "macos-arm";
   }
@@ -189,7 +257,25 @@ export default function Marketing() {
 
         <section className="mt-16">
           <div className="mb-6 flex items-baseline justify-between">
-            <h2 className="text-2xl font-semibold">Download</h2>
+            <div className="flex flex-col gap-1">
+              <h2 className="text-2xl font-semibold">Download</h2>
+              {RELEASE_TAG_LABEL ? (
+                <p className="text-xs text-white/50">
+                  Latest:{" "}
+                  <a
+                    href={releaseData.release.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-mono text-white/80 transition-colors hover:text-[#FF5800]"
+                  >
+                    {RELEASE_TAG_LABEL}
+                  </a>
+                  {RELEASE_PUBLISHED_LABEL
+                    ? ` · ${RELEASE_PUBLISHED_LABEL}`
+                    : null}
+                </p>
+              ) : null}
+            </div>
             <a
               href="https://github.com/elizaOS/eliza/releases"
               target="_blank"

@@ -241,7 +241,7 @@ const { clientMock } = vi.hoisted(() => {
         connected: true,
         grantedCapabilities: ["x.read", "x.write", "x.dm.read", "x.dm.write"],
         grantedScopes: [],
-        identity: { username: "milady" },
+        identity: { username: "eliza" },
         hasCredentials: true,
         dmInbound: true,
         grant: null,

@@ -95,7 +95,7 @@ function isFalsyEnv(value: string | undefined): boolean {
 }
 
 function isFixtureHealthBackendEnabled(): boolean {
-  const explicit = process.env.MILADY_TEST_HEALTH_BACKEND;
+  const explicit = process.env.ELIZA_TEST_HEALTH_BACKEND;
   if (isFalsyEnv(explicit)) return false;
   if (isTruthyEnv(explicit)) return true;
   return false;

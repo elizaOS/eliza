@@ -153,10 +153,10 @@ async function open(): Promise<Harness> {
 
   const containerId = `ci-fixture-${process.env.GITHUB_RUN_ID ?? Date.now()}`;
   const stateDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "milady-auth-smoke-state-"),
+    path.join(os.tmpdir(), "eliza-auth-smoke-state-"),
   );
   const dataDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "milady-auth-smoke-data-"),
+    path.join(os.tmpdir(), "eliza-auth-smoke-data-"),
   );
 
   const real = await generateKeyPair("RS256", { extractable: true });
@@ -192,7 +192,7 @@ async function open(): Promise<Harness> {
   // the unauthenticated `/api/onboarding/status` return 401 instead of
   // 200.
   process.env.ELIZA_API_TOKEN = crypto.randomBytes(24).toString("hex");
-  process.env.MILADY_STATE_DIR = stateDir;
+  process.env.ELIZA_STATE_DIR = stateDir;
 
   const api = await startApiServer(db);
 
@@ -213,7 +213,7 @@ async function open(): Promise<Harness> {
       delete process.env.ELIZA_CLOUD_CONTAINER_ID;
       delete process.env.ELIZA_API_BIND;
       delete process.env.ELIZA_API_TOKEN;
-      delete process.env.MILADY_STATE_DIR;
+      delete process.env.ELIZA_STATE_DIR;
     },
   };
 }

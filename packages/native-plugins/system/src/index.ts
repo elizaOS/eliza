@@ -6,6 +6,6 @@ export * from "./definitions";
 
 const loadWeb = () => import("./web").then((m) => new m.SystemWeb());
 
-export const System = registerPlugin<SystemPlugin>("MiladySystem", {
+export const System = registerPlugin<SystemPlugin>("ElizaSystem", {
   web: loadWeb,
 });

@@ -422,7 +422,7 @@ export async function readChromiumCookies(
       // Copy the DB to a temp file to avoid locking issues with the running browser
       const tmpDb = path.join(
         os.tmpdir(),
-        `milady-cookies-${browser.name}-${Date.now()}.db`,
+        `eliza-cookies-${browser.name}-${Date.now()}.db`,
       );
       fs.copyFileSync(dbPath, tmpDb);
 

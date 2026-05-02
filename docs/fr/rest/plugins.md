@@ -6,7 +6,7 @@ description: "Points de terminaison de l'API REST pour la gestion des plugins, l
 
 L'API plugins gère le système de plugins de l'agent. Elle couvre trois domaines : **la gestion des plugins** (lister, configurer, activer/désactiver les plugins installés), **l'installation de plugins** (installer, désinstaller, éjecter, synchroniser depuis npm) et le **registre de plugins** (parcourir le catalogue communautaire elizaOS).
 
-Lorsque `MILADY_API_TOKEN` est défini, incluez-le comme jeton `Bearer` dans l'en-tête `Authorization`.
+Lorsque `ELIZA_API_TOKEN` est défini, incluez-le comme jeton `Bearer` dans l'en-tête `Authorization`.
 
 <div id="endpoints">
 
@@ -520,7 +520,7 @@ Lister tous les plugins du registre elizaOS avec le statut d'installation et de 
 | `installed` | boolean | Si ce plugin est actuellement installé |
 | `installedVersion` | string\|null | Version installée, ou `null` si non installé |
 | `loaded` | boolean | Si ce plugin est chargé dans le runtime de l'agent en cours d'exécution |
-| `bundled` | boolean | Si ce plugin est intégré dans le binaire Milady |
+| `bundled` | boolean | Si ce plugin est intégré dans le binaire Eliza |
 
 ---
 
@@ -633,7 +633,7 @@ Lorsque le service de registre est configuré :
   "registered": true,
   "configured": true,
   "tokenId": 1,
-  "agentName": "Milady",
+  "agentName": "Eliza",
   "agentEndpoint": "https://...",
   "capabilitiesHash": "...",
   "isActive": true,
@@ -753,4 +753,4 @@ Obtenir la configuration actuelle du registre. Retourne le contenu de `config.re
 }
 ```
 
-La forme exacte de la réponse dépend de ce qui est configuré dans `milady.json` sous la clé `registry`.
+La forme exacte de la réponse dépend de ce qui est configuré dans `eliza.json` sous la clé `registry`.

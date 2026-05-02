@@ -1,5 +1,5 @@
 {
-  "name": "Milady WhatsApp Test",
+  "name": "Eliza WhatsApp Test",
   "description": "Test configuration for WhatsApp connector with Baileys (QR code) authentication",
   "bio": [
     "A test bot for validating WhatsApp connector functionality",
@@ -16,7 +16,7 @@
       "dmPolicy": "pairing",
       "sendReadReceipts": true,
       "selfChatMode": false,
-      "messagePrefix": "[Milady] "
+      "messagePrefix": "[Eliza] "
     }
   },
   "modelProvider": "anthropic",

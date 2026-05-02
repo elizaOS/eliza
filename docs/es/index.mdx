@@ -1,21 +1,21 @@
 ---
-title: "Milady"
+title: "Eliza"
 sidebarTitle: "Introducción"
 description: "Una aplicación de agente IA cliente/servidor que puede crear, descubrir y conectarse a servidores locales, LAN, remotos y de Eliza Cloud."
 ---
 
-**Milady** es una aplicación de agente IA cliente/servidor construida sobre [elizaOS](https://github.com/elizaOS).
-El cliente Milady puede crear un servidor local en tu máquina, descubrir un servidor
+**Eliza** es una aplicación de agente IA cliente/servidor construida sobre [elizaOS](https://github.com/elizaOS).
+El cliente Eliza puede crear un servidor local en tu máquina, descubrir un servidor
 en tu LAN, conectarse a un gateway remoto existente o adjuntarse a Eliza Cloud.
 Una vez conectado, el servidor seleccionado gestiona el enrutamiento de proveedores, herramientas, memoria y
 estado del runtime a través del plano de control del Gateway.
 
-Este sitio Mintlify documenta el lado de desarrollador y operador de Milady:
+Este sitio Mintlify documenta el lado de desarrollador y operador de Eliza:
 arquitectura, configuración, APIs, plugins y comportamiento del runtime. La documentación para
-desarrolladores está en [docs.milady.ai](https://docs.milady.ai). La documentación para
-consumidores está en [milady.ai/docs](https://milady.ai/docs).
+desarrolladores está en [docs.eliza.ai](https://docs.eliza.ai). La documentación para
+consumidores está en [eliza.ai/docs](https://eliza.ai/docs).
 
-Milady soporta inferencia local y proveedores de modelos de terceros, tiene un ecosistema
+Eliza soporta inferencia local y proveedores de modelos de terceros, tiene un ecosistema
 de plugins en crecimiento impulsado por elizaOS, un mercado de habilidades a través de
 [ClawHub](https://clawhub.ai), y funciona en todas las plataformas principales: escritorio,
 móvil, web, CLI y extensión de Chrome.
@@ -34,22 +34,22 @@ móvil, web, CLI y extensión de Chrome.
     Todos los comandos y opciones del terminal
   </Card>
   <Card title="Desarrollo de plugins" icon="puzzle-piece" href="/es/plugins/overview">
-    Extiende Milady con plugins personalizados
+    Extiende Eliza con plugins personalizados
   </Card>
   <Card title="Arquitectura" icon="sitemap" href="/es/architecture">
     Cómo encajan el runtime, el gateway y los plugins
   </Card>
 </CardGroup>
 
-<div id="why-milady">
-## Por qué Milady
+<div id="why-eliza">
+## Por qué Eliza
 </div>
 
 <div id="clientserver-by-default">
 ### Cliente/Servidor por defecto
 </div>
 
-Milady puede crear un servidor local en tu propio hardware, descubrir un servidor en
+Eliza puede crear un servidor local en tu propio hardware, descubrir un servidor en
 tu LAN, o conectarse a un servidor remoto de confianza o de Eliza Cloud sin
 cambiar el modelo del cliente. El servidor seleccionado gestiona el enrutamiento de proveedores,
 conversaciones, herramientas y estado del runtime.
@@ -87,7 +87,7 @@ Cambia de proveedor en medio de una conversación con `/model <id>`. Sin depende
 ### Ecosistema de plugins
 </div>
 
-Milady incluye más de 25 plugins de primera parte de elizaOS que cubren gestión de conocimiento, automatización de navegador, uso de computadora, Discord, Telegram, TTS (Edge TTS y ElevenLabs), procesamiento de PDF, acceso a shell, programación cron, puntuación de confianza y más. Los plugins de terceros se instalan con un solo comando a través del gestor de plugins.
+Eliza incluye más de 25 plugins de primera parte de elizaOS que cubren gestión de conocimiento, automatización de navegador, uso de computadora, Discord, Telegram, TTS (Edge TTS y ElevenLabs), procesamiento de PDF, acceso a shell, programación cron, puntuación de confianza y más. Los plugins de terceros se instalan con un solo comando a través del gestor de plugins.
 
 <div id="skills-marketplace">
 ### Mercado de habilidades
@@ -99,7 +99,7 @@ Las habilidades son extensiones basadas en markdown que enseñan a tu agente nue
 ### Modo autónomo
 </div>
 
-Milady puede operar de forma autónoma — ejecutando tareas programadas, ejecutando flujos de trabajo de múltiples pasos y manteniendo su propio ciclo de pensamientos y acciones. Configura disparadores (intervalo, cron o una sola vez) y deja que el agente trabaje en tu nombre.
+Eliza puede operar de forma autónoma — ejecutando tareas programadas, ejecutando flujos de trabajo de múltiples pasos y manteniendo su propio ciclo de pensamientos y acciones. Configura disparadores (intervalo, cron o una sola vez) y deja que el agente trabaje en tu nombre.
 
 <div id="built-in-crypto-wallet">
 ### Billetera crypto integrada
@@ -111,7 +111,7 @@ El flujo de incorporación puede generar o importar billeteras EVM y Solana. Las
 ## Soporte de plataformas
 </div>
 
-Milady es una sola base de código que se dirige a cada superficie que necesitas:
+Eliza es una sola base de código que se dirige a cada superficie que necesitas:
 
 <CardGroup cols={3}>
   <Card title="Escritorio" icon="desktop">
@@ -138,7 +138,7 @@ Milady es una sola base de código que se dirige a cada superficie que necesitas
 ## Arquitectura de un vistazo
 </div>
 
-Milady está estructurado como un sistema por capas:
+Eliza está estructurado como un sistema por capas:
 
 ```
  Interfaces de usuario (Escritorio / Móvil / Web / CLI)
@@ -149,7 +149,7 @@ Milady está estructurado como un sistema por capas:
                           |
                    Runtime elizaOS
                      |         |
-             Plugin Milady    Otros plugins
+             Plugin Eliza    Otros plugins
              (personalidad,    (conocimiento, navegador,
               billetera,        TTS, Discord, Telegram,
               habilidades,      shell, cron, ...)
@@ -161,16 +161,16 @@ Milady está estructurado como un sistema por capas:
 ```
 
 - **Runtime elizaOS** — el framework central del agente que maneja memoria, procesamiento de mensajes, despacho de acciones y abstracción de proveedores.
-- **Plugin Milady** — un plugin de primera parte de elizaOS que proporciona contexto de workspace, claves de sesión, presets de personalidad, estado autónomo e integración de billetera.
+- **Plugin Eliza** — un plugin de primera parte de elizaOS que proporciona contexto de workspace, claves de sesión, presets de personalidad, estado autónomo e integración de billetera.
 - **Gateway** — un servidor multiplexado WebSocket + HTTP que conecta el runtime con todos los clientes y conectores.
 - **Sistema de plugins** — plugins estándar de elizaOS que añaden capacidades (conocimiento, navegador, TTS, etc.).
 - **Capa de conectores** — adaptadores específicos de plataforma para Telegram, Discord, Slack, WhatsApp, Signal, iMessage, BlueBubbles, Blooio, MS Teams, Google Chat, Twitter, Farcaster, Twitch, Mattermost, WeChat, Matrix, Feishu/Lark, Nostr, Lens y la UI de chat web.
 
-La configuración principal persistida del runtime reside en `~/.milady/milady.json`.
+La configuración principal persistida del runtime reside en `~/.eliza/eliza.json`.
 El enrutamiento canónico del runtime se divide entre `deploymentTarget`,
 `linkedAccounts` y `serviceRouting`. Los secretos también pueden provenir de
-`~/.milady/.env`.
+`~/.eliza/.env`.
 
 <Info>
-Milady está actualmente en alfa (`v2.0.0-alpha.116`). Las APIs y configuración pueden cambiar entre versiones. Consulta las [versiones en GitHub](https://github.com/milady-ai/milady/releases) para la última versión.
+Eliza está actualmente en alfa (`v2.0.0-alpha.116`). Las APIs y configuración pueden cambiar entre versiones. Consulta las [versiones en GitHub](https://github.com/eliza-ai/eliza/releases) para la última versión.
 </Info>

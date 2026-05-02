@@ -1,10 +1,10 @@
 ---
 title: "Social Alpha Plugin"
 sidebarTitle: "Social Alpha"
-description: "Social Alpha plugin for Milady — tracks token recommendations, builds trust scores."
+description: "Social Alpha plugin for Eliza — tracks token recommendations, builds trust scores."
 ---
 
-The Social Alpha plugin enables Milady agents to track token recommendations (shills and FUD) and build trust scores for social signal analysis.
+The Social Alpha plugin enables Eliza agents to track token recommendations (shills and FUD) and build trust scores for social signal analysis.
 
 **Package:** `@elizaos/plugin-social-alpha`
 
@@ -15,7 +15,7 @@ This plugin provides a social signal tracking layer within the elizaOS runtime. 
 ## Installation
 
 ```bash
-milady plugins install social-alpha
+eliza plugins install social-alpha
 ```
 
 ## Configuration

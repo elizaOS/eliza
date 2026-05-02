@@ -1,11 +1,11 @@
 ---
 title: Action callbacks and SSE streaming
-description: Why Milady replaces (not concatenates) action callback text in dashboard chat, and how it matches Discord-style progressive messages.
+description: Why Eliza replaces (not concatenates) action callback text in dashboard chat, and how it matches Discord-style progressive messages.
 ---
 
 # Action callbacks and SSE streaming
 
-Milady’s dashboard chat uses **Server-Sent Events (SSE)** to stream the assistant reply. Two different kinds of text arrive on the same stream:
+Eliza’s dashboard chat uses **Server-Sent Events (SSE)** to stream the assistant reply. Two different kinds of text arrive on the same stream:
 
 1. **LLM tokens** — the model’s streamed reply (`onStreamChunk`).
 2. **Action callbacks** — text returned from `HandlerCallback` while an action runs (e.g. `PLAY_AUDIO`, wallet flows, Binance skill fallbacks).
@@ -30,7 +30,7 @@ That is correct for **token deltas** that extend the same answer, but wrong for 
 
 ---
 
-## The Milady behavior
+## The Eliza behavior
 
 Inside `generateChatResponse` (`eliza/packages/agent/src/api/chat-routes.ts`):
 
@@ -72,7 +72,7 @@ await callback({
 
 `eliza/plugins/plugin-music-player` now does this explicitly through its `ProgressiveMessage` helper. Most plugins do not need to set `merge`; omitting it preserves the existing behavior.
 
-**Why preserve the contract:** Discord and other connectors already rely on this API; Milady’s job is to interpret repeated callbacks correctly in the **API chat** path, not to fork the plugin surface.
+**Why preserve the contract:** Discord and other connectors already rely on this API; Eliza’s job is to interpret repeated callbacks correctly in the **API chat** path, not to fork the plugin surface.
 
 ---
 

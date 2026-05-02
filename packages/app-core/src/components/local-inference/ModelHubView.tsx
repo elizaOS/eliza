@@ -233,7 +233,7 @@ function ModelListRow({
               Verify
             </Button>
           ) : null}
-          {installedEntry?.source === "milady-download" && onRedownload ? (
+          {installedEntry?.source === "eliza-download" && onRedownload ? (
             <Button
               size="sm"
               variant="ghost"
@@ -244,7 +244,7 @@ function ModelListRow({
               Redownload
             </Button>
           ) : null}
-          {installedEntry?.source === "milady-download" ? (
+          {installedEntry?.source === "eliza-download" ? (
             <Button
               size="sm"
               variant="ghost"

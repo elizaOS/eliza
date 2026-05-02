@@ -1,23 +1,23 @@
 ---
 title: "FAL Plugin"
 sidebarTitle: "FAL"
-description: "FAL media generation plugin for Milady — access FAL.ai's suite of image, video, and audio generation models."
+description: "FAL media generation plugin for Eliza — access FAL.ai's suite of image, video, and audio generation models."
 ---
 
 <Warning>
-This plugin is not yet available in the Milady plugin registry. FAL media generation is not currently supported as a standalone plugin.
+This plugin is not yet available in the Eliza plugin registry. FAL media generation is not currently supported as a standalone plugin.
 </Warning>
 
-The FAL plugin connects Milady agents to [FAL.ai](https://fal.ai)'s media generation platform, providing access to fast inference for image, video, and audio generation models.
+The FAL plugin connects Eliza agents to [FAL.ai](https://fal.ai)'s media generation platform, providing access to fast inference for image, video, and audio generation models.
 
-> **On-demand plugin.** This plugin is resolved from the remote elizaOS plugin registry and auto-installs when its API key is detected. It is not included in Milady's bundled `plugins.json` index.
+> **On-demand plugin.** This plugin is resolved from the remote elizaOS plugin registry and auto-installs when its API key is detected. It is not included in Eliza's bundled `plugins.json` index.
 
 **Package:** `@elizaos/plugin-fal`
 
 ## Installation
 
 ```bash
-milady plugins install @elizaos/plugin-fal
+eliza plugins install @elizaos/plugin-fal
 ```
 
 ## Configuration

@@ -494,7 +494,7 @@ GET /api/stream/settings
 {
   "ok": true,
   "settings": {
-    "theme": "milady",
+    "theme": "eliza",
     "avatarIndex": 0
   }
 }
@@ -510,7 +510,7 @@ POST /api/stream/settings
 ```json
 {
   "settings": {
-    "theme": "milady",
+    "theme": "eliza",
     "avatarIndex": 2
   }
 }

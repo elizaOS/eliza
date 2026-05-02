@@ -1,6 +1,6 @@
 /**
  * @elizaos/confidant — secrets vault, mediation boundary, and audit surface
- * for Eliza agents. See `docs/architecture/confidant.md` in the Milady repo
+ * for Eliza agents. See `docs/architecture/confidant.md` in the Eliza repo
  * for the full design rationale.
  *
  * Phase 0 surface — no runtime code calls Confidant yet. This package ships

@@ -34,7 +34,7 @@ Connectors are platform bridges that allow your agent to communicate across mess
 19. [Nostr](#nostr)
 20. [Lens](#lens)
 
-**Registry connectors** (install with `milady plugins install <name>`):
+**Registry connectors** (install with `eliza plugins install <name>`):
 
 21. [Bluesky](#bluesky)
 22. [Instagram](#instagram)
@@ -56,7 +56,7 @@ Connectors are platform bridges that allow your agent to communicate across mess
 
 ## Supported Platforms
 
-Connectors marked **Auto** load automatically when their config is present in `milady.json`. Connectors marked **Registry** must be installed first with `milady plugins install <package>`. Connectors marked **Upstream** are available from the upstream elizaOS registry but are not bundled — install them explicitly with `milady plugins install <package>` before configuring.
+Connectors marked **Auto** load automatically when their config is present in `eliza.json`. Connectors marked **Registry** must be installed first with `eliza plugins install <package>`. Connectors marked **Upstream** are available from the upstream elizaOS registry but are not bundled — install them explicitly with `eliza plugins install <package>` before configuring.
 
 | Platform | Auth Method | DM Support | Group Support | Multi-Account | Availability |
 |----------|------------|------------|---------------|---------------|-------------|
@@ -95,7 +95,7 @@ Connectors marked **Auto** load automatically when their config is present in `m
 
 ## General Configuration
 
-Connectors are configured in the `connectors` section of `milady.json`. Common fields shared across most connectors:
+Connectors are configured in the `connectors` section of `eliza.json`. Common fields shared across most connectors:
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -373,7 +373,7 @@ Connects to iMessage through a self-hosted [BlueBubbles](https://bluebubbles.app
 ### Setup Requirements
 
 - A Mac with iMessage signed in and [BlueBubbles server](https://bluebubbles.app) installed
-- The server password and URL reachable from the machine running Milady
+- The server password and URL reachable from the machine running Eliza
 
 ### Key Configuration
 
@@ -521,7 +521,7 @@ Connects to iMessage and SMS messaging via the Blooio service with signed webhoo
 
 ## Twitter
 
-Install from the registry before configuring: `milady plugins install @elizaos/plugin-twitter`
+Install from the registry before configuring: `eliza plugins install @elizaos/plugin-twitter`
 
 ### Setup Requirements
 
@@ -669,7 +669,7 @@ Install from the registry before configuring: `milady plugins install @elizaos/p
 - Dry run mode for testing
 - AT Protocol-based decentralized social networking
 
-This connector auto-enables when its configuration is present in `milady.json`.
+This connector auto-enables when its configuration is present in `eliza.json`.
 
 ---
 
@@ -701,7 +701,7 @@ This connector auto-enables when its configuration is present in `milady.json`.
 - Dry run mode for testing
 - Configurable posting and polling intervals
 
-This connector auto-enables when its configuration is present in `milady.json`.
+This connector auto-enables when its configuration is present in `eliza.json`.
 
 ---
 
@@ -910,7 +910,7 @@ This connector auto-enables when its configuration is present in `milady.json`.
 - Group chat support
 - Webhook-based event handling
 
-This connector auto-enables when its configuration is present in `milady.json`.
+This connector auto-enables when its configuration is present in `eliza.json`.
 
 ---
 
@@ -942,7 +942,7 @@ This connector auto-enables when its configuration is present in `milady.json`.
 
 A personal-account variant is also available — see [Zalo User](#zalo-user) below.
 
-This connector auto-enables when its configuration is present in `milady.json`.
+This connector auto-enables when its configuration is present in `eliza.json`.
 
 ---
 
@@ -973,7 +973,7 @@ This connector auto-enables when its configuration is present in `milady.json`.
 - Cookie-based session persistence
 - DM and group policy controls
 
-**Note:** This is the personal-account variant of the [Zalo](#zalo) connector. Install it with `milady plugins install @elizaos/plugin-zalouser`.
+**Note:** This is the personal-account variant of the [Zalo](#zalo) connector. Install it with `eliza plugins install @elizaos/plugin-zalouser`.
 
 ---
 
@@ -1004,7 +1004,7 @@ This connector auto-enables when its configuration is present in `milady.json`.
 - Multi-profile support via `ZALOUSER_PROFILES`
 - Thread allowlisting via `ZALOUSER_ALLOWED_THREADS`
 
-**Note:** This connector is available from the plugin registry. Install it with `milady plugins install @elizaos/plugin-zalouser`.
+**Note:** This connector is available from the plugin registry. Install it with `eliza plugins install @elizaos/plugin-zalouser`.
 
 ---
 
@@ -1039,7 +1039,7 @@ A personal-account variant of the Zalo connector for one-to-one messaging outsid
 - Profile configuration
 - Thread allowlists
 
-**Note:** This connector is available from the plugin registry. Install it with `milady plugins install @elizaos/plugin-zalouser`.
+**Note:** This connector is available from the plugin registry. Install it with `eliza plugins install @elizaos/plugin-zalouser`.
 
 ---
 
@@ -1070,7 +1070,7 @@ A personal-account variant of the Zalo connector for one-to-one messaging outsid
 - Self-hosted collaboration platform integration
 - Webhook-based message delivery
 
-**Note:** This connector is available from the plugin registry. Install it with `milady plugins install @elizaos/plugin-nextcloud-talk`.
+**Note:** This connector is available from the plugin registry. Install it with `eliza plugins install @elizaos/plugin-nextcloud-talk`.
 
 ---
 
@@ -1100,13 +1100,13 @@ A personal-account variant of the Zalo connector for one-to-one messaging outsid
 - Ship-to-ship messaging
 - Group chat participation
 
-**Note:** This connector is available from the plugin registry. Install it with `milady plugins install @elizaos/plugin-tlon`.
+**Note:** This connector is available from the plugin registry. Install it with `eliza plugins install @elizaos/plugin-tlon`.
 
 ---
 
 ## ACP (Agent Communication Protocol)
 
-Install from the registry before configuring: `milady plugins install @elizaos/plugin-lens`
+Install from the registry before configuring: `eliza plugins install @elizaos/plugin-lens`
 
 > **Note:** `@elizaos/plugin-lens` is registered in the auto-enable map but is not yet published or bundled. This connector is planned but not yet functional.
 
@@ -1139,7 +1139,7 @@ Connects agents through an ACP gateway for inter-agent communication.
 - Configurable client modes
 - Verbose logging option
 
-**Note:** This connector is available from the plugin registry. Install it with `milady plugins install @elizaos/plugin-acp`.
+**Note:** This connector is available from the plugin registry. Install it with `eliza plugins install @elizaos/plugin-acp`.
 
 ---
 
@@ -1182,7 +1182,7 @@ The ACP connector links agents through an ACP gateway for agent-to-agent communi
 The typical connector lifecycle follows this pattern:
 
 1. **Install plugin** -- Connector plugins are installed as `@elizaos/plugin-{platform}` packages
-2. **Configure** -- Add the platform configuration to the `connectors` section of `milady.json`
+2. **Configure** -- Add the platform configuration to the `connectors` section of `eliza.json`
 3. **Enable** -- Set `enabled: true` in the connector config
 4. **Authenticate** -- Provide credentials (tokens, keys) or complete auth flow (QR code scan)
 5. **Run** -- The runtime starts the connector, establishes connections, and begins message handling
@@ -1354,7 +1354,7 @@ The `dmPolicy` options are:
 **BlueBubbles:**
 
 - Server connection fails:
-  Confirm `BLUEBUBBLES_SERVER_URL` points to a running BlueBubbles server and `BLUEBUBBLES_PASSWORD` is correct. The server must be reachable from the machine running Milady.
+  Confirm `BLUEBUBBLES_SERVER_URL` points to a running BlueBubbles server and `BLUEBUBBLES_PASSWORD` is correct. The server must be reachable from the machine running Eliza.
 
 **Blooio:**
 
@@ -1394,7 +1394,7 @@ The `dmPolicy` options are:
 ### Recovery Procedures
 
 1. **Stale connector session:** Restart the agent. Connectors re-initialize their platform connections on startup. For WebSocket-based connectors (Discord, Slack), this forces a fresh handshake.
-2. **Token rotation:** Update the token in `milady.json` under `connectors.<name>` and restart. Do not edit env vars in a running process — the config is read at startup.
+2. **Token rotation:** Update the token in `eliza.json` under `connectors.<name>` and restart. Do not edit env vars in a running process — the config is read at startup.
 3. **Rate limit recovery:** The agent automatically backs off on 429 responses. If the connector is fully blocked, wait for the rate limit window to expire (typically 1–60 seconds for Discord, varies by platform) and restart.
 
 ### Verification Commands

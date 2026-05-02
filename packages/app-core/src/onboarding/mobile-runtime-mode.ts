@@ -3,6 +3,16 @@ import type { OnboardingServerTarget } from "./server-target";
 
 export const MOBILE_RUNTIME_MODE_STORAGE_KEY = "eliza:mobile-runtime-mode";
 
+/**
+ * Constants describing the bundled Android on-device agent endpoint. The
+ * MiladyOS variant pre-seeds these as the persisted active server at app
+ * boot; the vanilla Android APK uses them only when the user explicitly
+ * picks Local in `RuntimeGate`.
+ */
+export const ANDROID_LOCAL_AGENT_API_BASE = "http://127.0.0.1:31337";
+export const ANDROID_LOCAL_AGENT_SERVER_ID = "local:android";
+export const ANDROID_LOCAL_AGENT_LABEL = "On-device agent";
+
 export type MobileRuntimeMode =
   | "remote-mac"
   | "cloud"

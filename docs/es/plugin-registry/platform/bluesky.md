@@ -1,10 +1,10 @@
 ---
 title: "Plugin de Bluesky"
 sidebarTitle: "Bluesky"
-description: "Conector de Bluesky para Milady — publica, responde e interactúa en la red del Protocolo AT."
+description: "Conector de Bluesky para Eliza — publica, responde e interactúa en la red del Protocolo AT."
 ---
 
-El plugin de Bluesky conecta agentes de Milady a la red social Bluesky a través del Protocolo AT, permitiendo publicar, responder e interactuar socialmente.
+El plugin de Bluesky conecta agentes de Eliza a la red social Bluesky a través del Protocolo AT, permitiendo publicar, responder e interactuar socialmente.
 
 **Package:** `@elizaos/plugin-bluesky`
 
@@ -15,7 +15,7 @@ El plugin de Bluesky conecta agentes de Milady a la red social Bluesky a través
 </div>
 
 ```bash
-milady plugins install @elizaos/plugin-bluesky
+eliza plugins install @elizaos/plugin-bluesky
 ```
 
 <div id="setup">
@@ -34,9 +34,9 @@ milady plugins install @elizaos/plugin-bluesky
 2. Anota tu handle (por ejemplo, `yourname.bsky.social`)
 3. Usa tu nombre de usuario y contraseña de cuenta (o genera una contraseña de aplicación en Configuración → Contraseñas de App)
 
-<div id="2-configure-milady">
+<div id="2-configure-eliza">
 
-### 2. Configura Milady
+### 2. Configura Eliza
 
 </div>
 

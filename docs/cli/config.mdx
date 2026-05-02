@@ -1,9 +1,9 @@
 ---
-title: "milady config"
+title: "eliza config"
 description: "Read, display, and locate the active configuration from the shell."
 ---
 
-# `milady config`
+# `eliza config`
 
 Read-only helpers for inspecting the active configuration.
 
@@ -11,32 +11,32 @@ Read-only helpers for inspecting the active configuration.
 
 | Subcommand | Description |
 |------------|-------------|
-| `milady config get <key>` | Read a specific config value |
-| `milady config path` | Print the resolved config file path |
-| `milady config show` | Display all config values grouped by section |
+| `eliza config get <key>` | Read a specific config value |
+| `eliza config path` | Print the resolved config file path |
+| `eliza config show` | Display all config values grouped by section |
 
 ## Subcommands
 
-### `milady config get <key>`
+### `eliza config get <key>`
 
 Read a single config value using dot-notation. Nested keys are supported (e.g. `agents.defaults.model.primary`). Prints `(not set)` when the key does not exist, or the JSON-formatted value otherwise.
 
 ```bash
-milady config path                  # show which file the runtime loads
-milady config get connectors.discord.token   # read a specific key
-milady config show                  # dump all config values
-milady config --help                # show available subcommands
+eliza config path                  # show which file the runtime loads
+eliza config get connectors.discord.token   # read a specific key
+eliza config show                  # dump all config values
+eliza config --help                # show available subcommands
 ```
 
-### `milady config path`
+### `eliza config path`
 
 Print the resolved config file path (e.g. `~/.eliza/eliza.json`).
 
 ```bash
-milady config path
+eliza config path
 ```
 
-### `milady config show`
+### `eliza config show`
 
 Display all configuration values grouped by section. Sensitive values (API keys, tokens) are masked. Hidden fields are excluded unless `--all` is passed.
 
@@ -46,12 +46,12 @@ Display all configuration values grouped by section. Sensitive values (API keys,
 | `--json` | Output as raw JSON |
 
 ```bash
-milady config show
-milady config show --all
-milady config show --json
+eliza config show
+eliza config show --all
+eliza config show --json
 ```
 
 ## Related
 
 - [Configuration](/configuration)
-- [`milady configure`](/cli/configure)
+- [`eliza configure`](/cli/configure)

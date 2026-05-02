@@ -59,7 +59,7 @@ export class ComputerUseApprovalManager {
   private listeners = new Set<ApprovalListener>();
   private readonly configPath = path.join(
     os.homedir(),
-    ".milady",
+    ".eliza",
     "computer-use-approval.json",
   );
 

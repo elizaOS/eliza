@@ -21,7 +21,7 @@ Connect your agent to Slack workspaces using the `@elizaos/plugin-slack` package
 
 The connector auto-enables when `botToken`, `token`, or `apiKey` is truthy in the connector config and `enabled` is not explicitly `false`.
 
-Configure in `~/.milady/milady.json`:
+Configure in `~/.eliza/eliza.json`:
 
 ```json
 {

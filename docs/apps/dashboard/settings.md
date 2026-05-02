@@ -1,10 +1,10 @@
 ---
 title: "Dashboard Settings"
 sidebarTitle: "Dashboard Settings"
-description: "Configure the Milady web dashboard preferences, theme, permissions, and advanced runtime options."
+description: "Configure the Eliza web dashboard preferences, theme, permissions, and advanced runtime options."
 ---
 
-The Dashboard Settings panel controls appearance, AI model selection, media generation, voice, permissions, updates, and agent data management. Settings are persisted to `localStorage` under the key `milady.control.settings.v1`. On native platforms (iOS/Android) they are automatically synced to Capacitor Preferences, so they survive app reinstalls. Changes take effect immediately without restarting the agent.
+The Dashboard Settings panel controls appearance, AI model selection, media generation, voice, permissions, updates, and agent data management. Settings are persisted to `localStorage` under the key `eliza.control.settings.v1`. On native platforms (iOS/Android) they are automatically synced to Capacitor Preferences, so they survive app reinstalls. Changes take effect immediately without restarting the agent.
 
 Open the settings panel from the gear icon in the dashboard header or via the Command Palette (`Cmd/Ctrl+K`).
 
@@ -12,11 +12,11 @@ Open the settings panel from the gear icon in the dashboard header or via the Co
 
 ## 1. Appearance
 
-Controls the visual theme applied across the entire dashboard UI. The active theme is stored separately in `localStorage` under the key `milady:theme`.
+Controls the visual theme applied across the entire dashboard UI. The active theme is stored separately in `localStorage` under the key `eliza:theme`.
 
 | Theme | Description |
 |---|---|
-| `milady` | Default. Clean black-and-white aesthetic. |
+| `eliza` | Default. Clean black-and-white aesthetic. |
 | `qt314` | Soft pastels. |
 | `web2000` | Early-internet retro styling. |
 | `programmer` | VSCode-dark color scheme. |
@@ -25,14 +25,14 @@ Controls the visual theme applied across the entire dashboard UI. The active the
 
 ```typescript
 // Read the active theme
-const theme = localStorage.getItem("milady:theme"); // e.g. "milady"
+const theme = localStorage.getItem("eliza:theme"); // e.g. "eliza"
 
 // Apply a theme programmatically
-localStorage.setItem("milady:theme", "programmer");
+localStorage.setItem("eliza:theme", "programmer");
 // The dashboard reads this on mount and applies the matching CSS class.
 ```
 
-Switching themes in the UI writes `milady:theme` and re-applies the stylesheet immediately — no reload required.
+Switching themes in the UI writes `eliza:theme` and re-applies the stylesheet immediately — no reload required.
 
 ---
 
@@ -90,7 +90,7 @@ Controls which providers handle image, video, audio, and vision tasks. Each sub-
 |---|---|
 | Provider | `cloud`, `openai`, `google`, `anthropic`, `xai` |
 
-When mode is `own-key`, an API key field appears below the provider selector. Keys are stored under `milady.control.settings.v1` and are included in agent exports (encrypted).
+When mode is `own-key`, an API key field appears below the provider selector. Keys are stored under `eliza.control.settings.v1` and are included in agent exports (encrypted).
 
 ---
 
@@ -207,7 +207,7 @@ Settings > Agent Export / Import > Export Agent
 
 ### Import
 
-Accepts a `.eliza-agent` file created by a Milady-compatible agent runtime. You must provide the password used at export time.
+Accepts a `.eliza-agent` file created by a Eliza-compatible agent runtime. You must provide the password used at export time.
 
 ```
 Settings > Agent Export / Import > Import Agent
@@ -239,17 +239,17 @@ Private key export does not require a password beyond the confirmation dialog. S
 
 | Storage key | Scope | Contents |
 |---|---|---|
-| `milady.control.settings.v1` | `localStorage` + Capacitor Preferences | All settings described in this page except the active theme |
-| `milady:theme` | `localStorage` only | Active theme name string |
+| `eliza.control.settings.v1` | `localStorage` + Capacitor Preferences | All settings described in this page except the active theme |
+| `eliza:theme` | `localStorage` only | Active theme name string |
 
 ```typescript
 // Read all settings
-const raw = localStorage.getItem("milady.control.settings.v1");
+const raw = localStorage.getItem("eliza.control.settings.v1");
 const settings = raw ? JSON.parse(raw) : {};
 
 // Write a single field without overwriting others
 const updated = { ...settings, speechProvider: "edge" };
-localStorage.setItem("milady.control.settings.v1", JSON.stringify(updated));
+localStorage.setItem("eliza.control.settings.v1", JSON.stringify(updated));
 ```
 
 On iOS and Android the dashboard's storage bridge mirrors every write to Capacitor Preferences automatically. No additional configuration is required.

@@ -1,10 +1,10 @@
 ---
 title: "插件开发"
 sidebarTitle: "插件开发"
-description: "为 Milady/elizaOS 创建、测试和发布插件。"
+description: "为 Eliza/elizaOS 创建、测试和发布插件。"
 ---
 
-本指南将引导你完成为 Milady/elizaOS 创建、测试和发布插件的过程。
+本指南将引导你完成为 Eliza/elizaOS 创建、测试和发布插件的过程。
 
 <div id="table-of-contents">
 
@@ -98,9 +98,9 @@ export default myPlugin;
 </div>
 
 1. **发现** — 从以下位置发现插件：
-   - 内置插件（随 Milady 一起发布）
+   - 内置插件（随 Eliza 一起发布）
    - 工作区插件（`./plugins/`）
-   - 全局插件（`~/.milady/plugins/`）
+   - 全局插件（`~/.eliza/plugins/`）
    - npm 包（`@elizaos/plugin-*`）
    - 配置中指定的插件
 
@@ -459,7 +459,7 @@ const workspaceProvider: Provider = {
   position: -10, // Run early
 
   get: async (runtime, message, state) => {
-    const workspaceDir = runtime.getSetting("WORKSPACE_DIR") || "~/.milady/workspace";
+    const workspaceDir = runtime.getSetting("WORKSPACE_DIR") || "~/.eliza/workspace";
 
     // Read key files from workspace
     const agentsMd = await readFile(path.join(workspaceDir, "AGENTS.md"));
@@ -875,9 +875,9 @@ describe("my-plugin integration", () => {
 
 1. **工作区发现** — 将你的插件放在：
    - `./plugins/my-plugin/`（项目本地）
-   - `~/.milady/plugins/my-plugin/`（全局）
+   - `~/.eliza/plugins/my-plugin/`（全局）
 
-2. **基于配置的加载** — 添加到 `milady.json`：
+2. **基于配置的加载** — 添加到 `eliza.json`：
    ```json
    {
      "plugins": ["./path/to/my-plugin"]
@@ -886,7 +886,7 @@ describe("my-plugin integration", () => {
 
 3. **用于开发的符号链接：**
    ```bash
-   cd ~/.milady/plugins
+   cd ~/.eliza/plugins
    ln -s /path/to/my-plugin my-plugin
    ```
 
@@ -973,8 +973,8 @@ describe("my-plugin integration", () => {
 
 | Origin | 描述 |
 |--------|------|
-| `bundled` | 随 Milady 一起发布 |
-| `global` | 来自 `~/.milady/plugins/` |
+| `bundled` | 随 Eliza 一起发布 |
+| `global` | 来自 `~/.eliza/plugins/` |
 | `workspace` | 来自 `./plugins/` |
 | `config` | 在配置中显式列出 |
 | `npm` | 已安装的 npm 包 |
@@ -1265,4 +1265,4 @@ const myPlugin: Plugin = {
 
 - [Skills 文档](/zh/plugins/skills) — 了解基于 markdown 的技能扩展
 - [注册表指南](/zh/plugins/registry) — 发布到插件注册表
-- [贡献指南](/zh/guides/contribution-guide) — 为 Milady/elizaOS 做贡献
+- [贡献指南](/zh/guides/contribution-guide) — 为 Eliza/elizaOS 做贡献

@@ -2,23 +2,23 @@
  * Phone-companion surface — the iOS-paired-handset experience.
  *
  * Originally shipped as a standalone `apps/app-ios-companion` Capacitor app;
- * folded into the main Milady iOS bundle so one binary handles both the full
- * Milady UI and the pairing / chat-mirror / remote-session flow.
+ * folded into the main Eliza iOS bundle so one binary handles both the full
+ * Eliza UI and the pairing / chat-mirror / remote-session flow.
  */
 
-export { agentUrl, apnsEnabled, isDev } from "./env";
-export { logger } from "./logger";
 export {
-  MiladyIntent,
-  type MiladyIntentPlugin,
-  MiladyIntentWeb,
+  ElizaIntent,
+  type ElizaIntentPlugin,
+  ElizaIntentWeb,
   type PairingStatus,
   type ReceiveIntentPayload,
   type ReceiveIntentResult,
   type ScheduleAlarmOptions,
   type ScheduleAlarmResult,
   type SetPairingStatusOptions,
-} from "./milady-intent";
+} from "./eliza-intent";
+export { agentUrl, apnsEnabled, isDev } from "./env";
+export { logger } from "./logger";
 export { type NavState, useNavigation, type ViewName } from "./navigation";
 export {
   type PushIntent,

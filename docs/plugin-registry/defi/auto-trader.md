@@ -10,12 +10,12 @@ Autonomous trading plugin that uses LLM-powered strategies to execute trades on 
 
 ## Overview
 
-The Auto Trader plugin enables Milady agents to autonomously trade tokens on Solana using configurable, LLM-driven strategies. It supports position sizing limits and multiple risk levels to match different trading profiles.
+The Auto Trader plugin enables Eliza agents to autonomously trade tokens on Solana using configurable, LLM-driven strategies. It supports position sizing limits and multiple risk levels to match different trading profiles.
 
 ## Installation
 
 ```bash
-milady plugins install auto-trader
+eliza plugins install auto-trader
 ```
 
 ## Auto-Enable

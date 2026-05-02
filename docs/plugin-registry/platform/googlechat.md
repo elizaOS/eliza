@@ -1,21 +1,21 @@
 ---
 title: "Google Chat Plugin"
 sidebarTitle: "Google Chat"
-description: "Google Chat connector for Milady — service account integration with webhook delivery, typing indicators, and per-space configuration."
+description: "Google Chat connector for Eliza — service account integration with webhook delivery, typing indicators, and per-space configuration."
 ---
 
 <Info>
-The registry ID for this plugin is `google-chat` (with a hyphen). Use `milady plugins install google-chat` to install.
+The registry ID for this plugin is `google-chat` (with a hyphen). Use `eliza plugins install google-chat` to install.
 </Info>
 
-The Google Chat plugin connects Milady agents to Google Chat via a Google Cloud service account, supporting spaces, DMs, and group conversations with webhook-based event delivery.
+The Google Chat plugin connects Eliza agents to Google Chat via a Google Cloud service account, supporting spaces, DMs, and group conversations with webhook-based event delivery.
 
 **Package:** `@elizaos/plugin-google-chat`
 
 ## Installation
 
 ```bash
-milady plugins install google-chat
+eliza plugins install google-chat
 ```
 
 ## Setup
@@ -38,11 +38,11 @@ milady plugins install google-chat
 1. Go to the [Google Chat API configuration](https://console.cloud.google.com/apis/api/chat.googleapis.com/hangouts-chat)
 2. Set the **App URL** to your webhook endpoint:
    ```
-   https://your-milady-host/google-chat
+   https://your-eliza-host/google-chat
    ```
 3. Note the **Project Number** for audience configuration
 
-### 4. Configure Milady
+### 4. Configure Eliza
 
 ```json
 {

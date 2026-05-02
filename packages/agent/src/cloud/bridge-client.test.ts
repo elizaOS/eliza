@@ -124,7 +124,7 @@ describe("getAgentWallet", () => {
     expect(lastRequest?.headers["x-api-key"]).toBe("test-api-key");
     expect(lastRequest?.method).toBe("GET");
     expect(lastRequest?.url).toBe(
-      "/api/v1/milady/agents/agent-42/wallet?chain=evm",
+      "/api/v1/eliza/agents/agent-42/wallet?chain=evm",
     );
   });
 
@@ -158,7 +158,7 @@ describe("getAgentWallet", () => {
       balance: "0.42",
     });
     expect(lastRequest?.url).toBe(
-      "/api/v1/milady/agents/agent-42/wallet?chain=solana",
+      "/api/v1/eliza/agents/agent-42/wallet?chain=solana",
     );
   });
 

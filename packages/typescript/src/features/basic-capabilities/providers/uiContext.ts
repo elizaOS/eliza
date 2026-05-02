@@ -21,7 +21,7 @@ function asString(value: unknown): string | null {
 export const uiContextProvider: Provider = {
 	name: "UI_CONTEXT",
 	description:
-		"Milady UI surface that sent the current message and the forced capability context for this turn.",
+		"Eliza UI surface that sent the current message and the forced capability context for this turn.",
 	position: -10,
 	get: async (_runtime, message: Memory, state: State) => {
 		const metadata = asRecord(message.content?.metadata);

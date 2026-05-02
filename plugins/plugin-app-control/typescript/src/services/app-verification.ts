@@ -495,7 +495,7 @@ async function loadBrowserModule(): Promise<BrowserModule | null> {
 
 function resolveChromePath(): string | undefined {
 	const fromEnv =
-		process.env.MILADY_CHROME_PATH?.trim() ||
+		process.env.ELIZA_CHROME_PATH?.trim() ||
 		process.env.ELIZA_CHROME_PATH?.trim() ||
 		process.env.PUPPETEER_EXECUTABLE_PATH?.trim();
 	if (fromEnv) return fromEnv;
@@ -544,9 +544,9 @@ async function runBrowserCheck(
 
 	const browserModule = await loadBrowserModule();
 	if (!browserModule) {
-		if (process.env.MILADY_BROWSER_VERIFY_OPTIONAL === "1") {
+		if (process.env.ELIZA_BROWSER_VERIFY_OPTIONAL === "1") {
 			const output =
-				"browser check skipped — MILADY_BROWSER_VERIFY_OPTIONAL=1; install puppeteer-core for full coverage";
+				"browser check skipped — ELIZA_BROWSER_VERIFY_OPTIONAL=1; install puppeteer-core for full coverage";
 			logger.warn(`[AppVerificationService] ${output}`);
 			const outputPath = await persistOutput(dir, "browser", output);
 			return {
@@ -560,7 +560,7 @@ async function runBrowserCheck(
 			};
 		}
 		const output =
-			"puppeteer-core not installed; cannot verify rendering. Install puppeteer-core (bun add -D puppeteer-core), or set MILADY_BROWSER_VERIFY_OPTIONAL=1 to acknowledge skipping this check.";
+			"puppeteer-core not installed; cannot verify rendering. Install puppeteer-core (bun add -D puppeteer-core), or set ELIZA_BROWSER_VERIFY_OPTIONAL=1 to acknowledge skipping this check.";
 		logger.error(`[AppVerificationService] ${output}`);
 		const outputPath = await persistOutput(dir, "browser", output);
 		return {
@@ -574,7 +574,7 @@ async function runBrowserCheck(
 					{
 						file: "browser",
 						message:
-							"puppeteer-core dependency missing — install puppeteer-core (bun add -D puppeteer-core) or set MILADY_BROWSER_VERIFY_OPTIONAL=1 to acknowledge skipping browser verification",
+							"puppeteer-core dependency missing — install puppeteer-core (bun add -D puppeteer-core) or set ELIZA_BROWSER_VERIFY_OPTIONAL=1 to acknowledge skipping browser verification",
 						severity: "error",
 					},
 				],

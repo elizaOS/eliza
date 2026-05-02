@@ -1,23 +1,23 @@
 ---
 title: Web Dashboard
 sidebarTitle: Dashboard
-description: Navigate the Milady web dashboard to configure your agent, chat, manage knowledge, and access advanced settings.
+description: Navigate the Eliza web dashboard to configure your agent, chat, manage knowledge, and access advanced settings.
 ---
 
-The Milady web dashboard is the primary interface for interacting with your agent. It provides a full-featured control panel for chatting, configuring your agent's character, managing plugins, and monitoring runtime behavior.
+The Eliza web dashboard is the primary interface for interacting with your agent. It provides a full-featured control panel for chatting, configuring your agent's character, managing plugins, and monitoring runtime behavior.
 
 ## Accessing the Dashboard
 
-The dashboard runs as a web application served by the Milady agent runtime.
+The dashboard runs as a web application served by the Eliza agent runtime.
 
 | Method | Details |
 |--------|---------|
 | **Default URL** | `http://localhost:2138` |
-| **CLI shortcut** | Run `milady dashboard` to open the dashboard in your default browser |
+| **CLI shortcut** | Run `eliza dashboard` to open the dashboard in your default browser |
 | **Desktop app** | The Electrobun desktop app embeds the dashboard directly (no browser required) |
 
 On first launch you will see the server chooser / startup flow. If the selected
-server still needs setup, Milady continues into onboarding for that server
+server still needs setup, Eliza continues into onboarding for that server
 before you reach the main dashboard. If authentication is required you will see
 the **Pairing View** before reaching the main dashboard.
 
@@ -124,7 +124,7 @@ Theme picker with 6 built-in themes displayed as a button grid (3 columns on mob
 
 | Theme | Description |
 |-------|-------------|
-| **milady** | Clean black & white |
+| **eliza** | Clean black & white |
 | **qt3.14** | Soft pastels |
 | **web2000** | Green hacker vibes |
 | **programmer** | VS Code dark |
@@ -162,7 +162,7 @@ The `PermissionsSection` component manages system permission grants for native p
 - **Current version** display.
 - **Release channel** selection via radio buttons: Stable (recommended), Beta (preview), or Nightly (bleeding edge).
 - **Check Now** button for manual update checks.
-- **Update available** banner showing current and latest version with instructions to run `milady update`.
+- **Update available** banner showing current and latest version with instructions to run `eliza update`.
 - **Last checked** timestamp.
 
 #### 7. Chrome Extension

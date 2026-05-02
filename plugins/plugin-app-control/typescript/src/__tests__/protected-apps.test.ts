@@ -23,16 +23,16 @@ let repoRoot: string;
 let originalEnv: string | undefined;
 
 beforeEach(async () => {
-	repoRoot = await mkdtemp(path.join(tmpdir(), "milady-protected-apps-"));
-	originalEnv = process.env.MILADY_PROTECTED_APPS;
-	delete process.env.MILADY_PROTECTED_APPS;
+	repoRoot = await mkdtemp(path.join(tmpdir(), "eliza-protected-apps-"));
+	originalEnv = process.env.ELIZA_PROTECTED_APPS;
+	delete process.env.ELIZA_PROTECTED_APPS;
 });
 
 afterEach(async () => {
 	if (originalEnv === undefined) {
-		delete process.env.MILADY_PROTECTED_APPS;
+		delete process.env.ELIZA_PROTECTED_APPS;
 	} else {
-		process.env.MILADY_PROTECTED_APPS = originalEnv;
+		process.env.ELIZA_PROTECTED_APPS = originalEnv;
 	}
 	await rm(repoRoot, { recursive: true, force: true });
 });
@@ -52,7 +52,7 @@ describe("resolveProtectedApps", () => {
 	});
 
 	it("returns env-only contributions when only the env var is set", async () => {
-		process.env.MILADY_PROTECTED_APPS =
+		process.env.ELIZA_PROTECTED_APPS =
 			"@elizaos/app-companion , custom-locked,  ";
 		const resolution = await resolveProtectedApps(repoRoot);
 		expect(resolution.fromEnv).toEqual([
@@ -92,7 +92,7 @@ describe("resolveProtectedApps", () => {
 	it("unions env + first-party contributions and dedupes", async () => {
 		await makeApp("app-companion");
 		await makeApp("app-training");
-		process.env.MILADY_PROTECTED_APPS = "app-companion,custom-locked";
+		process.env.ELIZA_PROTECTED_APPS = "app-companion,custom-locked";
 
 		const resolution = await resolveProtectedApps(repoRoot);
 		expect(resolution.fromEnv).toEqual(["app-companion", "custom-locked"]);
@@ -120,7 +120,7 @@ describe("isProtected", () => {
 
 	beforeEach(async () => {
 		await makeApp("app-companion");
-		process.env.MILADY_PROTECTED_APPS = "@elizaos/app-shopify,custom-locked";
+		process.env.ELIZA_PROTECTED_APPS = "@elizaos/app-shopify,custom-locked";
 		resolution = await resolveProtectedApps(repoRoot);
 	});
 
@@ -165,7 +165,7 @@ describe("isProtected", () => {
 		// It does NOT produce `foo` because the function strips only the outermost
 		// `app-` prefix in a single pass.
 		await makeApp("app-app-foo");
-		process.env.MILADY_PROTECTED_APPS = "app-app-foo";
+		process.env.ELIZA_PROTECTED_APPS = "app-app-foo";
 		const res = await resolveProtectedApps(repoRoot);
 		// Both the full name and the single-stripped form are protected.
 		expect(isProtected("app-app-foo", res)).toBe(true);

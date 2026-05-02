@@ -16,7 +16,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { AppVerificationService } from "../app-verification.js";
 
 const STATE_DIR = mkdtempSync(path.join(tmpdir(), "app-verify-state-"));
-process.env.MILADY_STATE_DIR = STATE_DIR;
+process.env.ELIZA_STATE_DIR = STATE_DIR;
 
 const noopRuntime = {} as IAgentRuntime;
 
@@ -352,7 +352,7 @@ describe("AppVerificationService.verifyApp (fast profile)", () => {
 
 	// Ensure the temp state-dir env stays set across tests (keep the dir alive
 	// in scope so it's not gc'd into oblivion).
-	it("persisted verification artifacts under MILADY_STATE_DIR", () => {
-		expect(process.env.MILADY_STATE_DIR).toBe(STATE_DIR);
+	it("persisted verification artifacts under ELIZA_STATE_DIR", () => {
+		expect(process.env.ELIZA_STATE_DIR).toBe(STATE_DIR);
 	});
 });

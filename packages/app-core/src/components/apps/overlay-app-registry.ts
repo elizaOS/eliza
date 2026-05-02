@@ -43,6 +43,41 @@ export function getAllOverlayApps(): OverlayApp[] {
   return Array.from(registry.values());
 }
 
+/**
+ * Get overlay apps that are available on the current platform. Filters
+ * out `androidOnly: true` apps when not running on Android. Used by the
+ * apps catalog UI so iOS / desktop / web users don't see tiles that
+ * launch into permanent error states.
+ *
+ * Platform detection: when `Capacitor.getPlatform()` is available it is
+ * preferred; otherwise the user-agent is inspected. Tests can pass a
+ * platform string explicitly.
+ */
+export function getAvailableOverlayApps(
+  platform: string = detectPlatformForCatalog(),
+): OverlayApp[] {
+  const isAndroid = platform === "android";
+  return getAllOverlayApps().filter(
+    (app) => isAndroid || app.androidOnly !== true,
+  );
+}
+
+function detectPlatformForCatalog(): string {
+  type CapacitorGlobal = {
+    Capacitor?: { getPlatform?: () => string };
+  };
+  const cap = (globalThis as CapacitorGlobal).Capacitor;
+  const fromCap = cap?.getPlatform?.();
+  if (fromCap) return fromCap;
+  if (
+    typeof navigator !== "undefined" &&
+    /Android/i.test(navigator.userAgent)
+  ) {
+    return "android";
+  }
+  return "web";
+}
+
 /** Check if an app name belongs to a registered overlay app. */
 export function isOverlayApp(name: string): boolean {
   return registry.has(name);

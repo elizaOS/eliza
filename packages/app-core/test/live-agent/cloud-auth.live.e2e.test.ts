@@ -24,7 +24,7 @@ import { createLiveRuntimeChildEnv } from "../helpers/live-child-env.ts";
 import { selectLiveProvider } from "../helpers/live-provider.ts";
 
 const LIVE =
-  process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
+  process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const REPO_ROOT = path.resolve(
   import.meta.dirname,
   "..",
