@@ -1,0 +1,60 @@
+{
+  "name": "@elizaos/app-screenshare",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Screen Share app: authenticated desktop screen streaming and remote mouse/keyboard control for local, Linux, macOS, and Windows runtimes.",
+  "main": "./src/index.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": "./src/index.ts",
+    "./routes": "./src/routes.ts",
+    "./ui": "./src/ui/index.ts"
+  },
+  "dependencies": {
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/app-core": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*",
+    "@elizaos/ui": "workspace:*",
+    "lucide-react": "^1.0.0"
+  },
+  "peerDependencies": {
+    "react": "*",
+    "react-dom": "*"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {}
+  },
+  "elizaos": {
+    "kind": "app",
+    "app": {
+      "displayName": "Screen Share",
+      "category": "utility",
+      "heroImage": "assets/hero.svg",
+      "launchType": "connect",
+      "launchUrl": "/api/apps/screenshare/viewer",
+      "capabilities": [
+        "screen-stream",
+        "mouse-control",
+        "keyboard-control",
+        "remote-support"
+      ],
+      "runtimePlugin": "@elizaos/app-screenshare",
+      "bridgeExport": "./src/index.ts",
+      "viewer": {
+        "url": "/api/apps/screenshare/viewer",
+        "sandbox": "allow-scripts allow-same-origin allow-forms allow-pointer-lock"
+      },
+      "session": {
+        "mode": "spectate-and-steer",
+        "features": [
+          "commands",
+          "telemetry",
+          "suggestions"
+        ]
+      }
+    }
+  }
+}

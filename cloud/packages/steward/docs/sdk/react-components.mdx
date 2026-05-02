@@ -1,0 +1,452 @@
+---
+title: "@stwd/react"
+description: "Embeddable React components for Steward agent wallet management, policy controls, and approval queues."
+---
+
+# @stwd/react
+
+Drop-in React components for building agent management UIs. Includes wallet overview, transaction history, policy controls, approval queues, and spend analytics — all wired to the Steward API with zero configuration.
+
+## Install
+
+```bash
+npm install @stwd/react @stwd/sdk
+# or: bun add @stwd/react @stwd/sdk
+```
+
+## Quick Start
+
+```tsx
+import { StewardProvider, WalletOverview, PolicyControls, TransactionHistory } from "@stwd/react";
+import "@stwd/react/styles.css";
+import { StewardClient } from "@stwd/sdk";
+
+const client = new StewardClient({
+  baseUrl: "https://api.steward.fi",
+  apiKey: "your-tenant-key",
+  tenantId: "your-tenant-id",
+});
+
+function AgentDashboard({ agentId }: { agentId: string }) {
+  return (
+    <StewardProvider client={client} agentId={agentId}>
+      <WalletOverview showQR />
+      <PolicyControls />
+      <TransactionHistory pageSize={10} />
+    </StewardProvider>
+  );
+}
+```
+
+---
+
+## Provider
+
+### `<StewardProvider>`
+
+Wraps all other Steward components. Must be a parent of any component that uses Steward hooks or components.
+
+```tsx
+<StewardProvider
+  client={client}        // StewardClient instance
+  agentId="agent-1"     // The agent to display
+  theme={{              // Optional theme overrides
+    primaryColor: "#8B5CF6",
+    colorScheme: "dark",
+  }}
+>
+  {children}
+</StewardProvider>
+```
+
+| Prop | Type | Required | Description |
+|------|------|----------|-------------|
+| `client` | `StewardClient` | ✅ | Configured SDK client |
+| `agentId` | `string` | ✅ | Agent ID to scope all components to |
+| `theme` | `ThemeOverrides` | — | Override default CSS custom properties |
+
+---
+
+## Components
+
+### `<WalletOverview>`
+
+Displays the agent's wallet address, on-chain balance, chain info, and optionally a funding QR code.
+
+```tsx
+<WalletOverview
+  showQR           // Show funding QR code
+  showCopy         // Show copy-to-clipboard button (default: true)
+  refreshInterval={30000}  // Auto-refresh balance every 30s
+/>
+```
+
+### `<TransactionHistory>`
+
+Paginated transaction history with status badges and blockchain explorer links.
+
+```tsx
+<TransactionHistory
+  pageSize={10}    // Rows per page (default: 10)
+  showFilters      // Show status/date filter controls
+/>
+```
+
+Displays: timestamp, destination address, value (ETH), status badge (`signed` / `pending_approval` / `rejected` / `failed`), and a link to the block explorer.
+
+### `<PolicyControls>`
+
+Human-friendly policy management UI. Shows the current policy set with toggles, limits, and address lists.
+
+```tsx
+<PolicyControls
+  readOnly    // Disable editing (default: false)
+  showTemplates  // Show policy template selector
+/>
+```
+
+Supports all policy types: `spending-limit`, `approved-addresses`, `rate-limit`, `time-window`, `auto-approve-threshold`. Respects the tenant's `policyExposure` config — policies marked `hidden` or `enforced` are not shown.
+
+### `<ApprovalQueue>`
+
+Shows pending transactions awaiting human review. Supports approve and deny actions.
+
+```tsx
+<ApprovalQueue
+  pollInterval={5000}   // Poll for new approvals every 5s (default: 5000ms)
+  onApprove={(id) => console.log("Approved:", id)}
+  onDeny={(id) => console.log("Denied:", id)}
+/>
+```
+
+Each item shows the destination address, value, requesting agent, and time waiting. Approve/deny actions call the API immediately.
+
+### `<SpendDashboard>`
+
+Spend analytics for the agent with budget bars and summary numbers.
+
+```tsx
+<SpendDashboard
+  range="week"   // "day" | "week" | "month" (default: "week")
+/>
+```
+
+Shows: total spent in the selected range vs. the policy limit, daily breakdown chart, and largest single transactions.
+
+---
+
+## Authentication Components
+
+### `<StewardLogin>`
+
+Drop-in auth widget supporting passkeys, email magic links, and OAuth providers.
+
+```tsx
+<StewardLogin
+  showPasskey        // Show passkey button (default: true)
+  showEmail          // Show email magic link (default: true)
+  showGoogle         // Show Google OAuth (default: true)
+  showDiscord        // Show Discord OAuth (default: true)
+  showSIWE           // Show SIWE button (default: false)
+  variant="card"      // "card" (with background) or "inline"
+  logo={<MyLogo />}  // Optional logo element
+  title="Welcome"    // Header title
+  subtitle="Sign in to continue" // Header subtitle
+  tenantId="my-app"  // Scope auth to a specific tenant
+  onSuccess={(result) => console.log("Signed in:", result)}
+  onError={(err) => console.error(err)}
+/>
+```
+
+The component auto-discovers enabled providers via `GET /auth/providers` and only shows buttons for methods that are enabled on both the server and in the props.
+
+### `<StewardEmailCallback>`
+
+Mount on your `/auth/callback` route to handle magic link token verification:
+
+```tsx
+<StewardEmailCallback
+  onSuccess={(result) => navigate("/dashboard")}
+  onError={(err) => console.error(err)}
+  redirectTo="/dashboard"  // Auto-redirect after success
+/>
+```
+
+Reads `token` and `email` from URL search params automatically.
+
+### `<StewardAuthGuard>`
+
+Renders children only when the user is authenticated. Shows a login form (or custom fallback) when not authenticated.
+
+```tsx
+<StewardAuthGuard
+  fallback={<CustomLoginPage />}       // Shown when unauthenticated (default: <StewardLogin />)
+  loadingFallback={<Spinner />}        // Shown while checking auth state
+>
+  <ProtectedDashboard />
+</StewardAuthGuard>
+```
+
+### `<StewardUserButton>`
+
+User avatar and dropdown menu with sign-out and optional tenant switching:
+
+```tsx
+<StewardUserButton
+  showWallet            // Show wallet address in dropdown
+  showTenantSwitcher    // Add tenant switching to dropdown
+  avatarSize={32}       // Avatar size in pixels
+  onSignOut={() => router.push("/login")}
+/>
+```
+
+Displays the user's email or truncated wallet address. Gravatar integration for email users.
+
+### `<StewardTenantPicker>`
+
+Switch between connected apps/tenants:
+
+```tsx
+// Dropdown (compact)
+<StewardTenantPicker
+  variant="dropdown"
+  onSwitch={(tenantId) => console.log("Switched to:", tenantId)}
+/>
+
+// List (always visible, good for settings)
+<StewardTenantPicker variant="list" />
+```
+
+Shows tenant memberships with roles. Handles switching via `auth.switchTenant()` internally.
+
+---
+
+## Hooks
+
+All components are built on public hooks — use them directly for custom UIs.
+
+```tsx
+import {
+  useSteward,
+  useWallet,
+  useTransactions,
+  usePolicies,
+  useApprovals,
+  useSpend,
+} from "@stwd/react";
+```
+
+### `useSteward()`
+
+Access the Steward context: client, agentId, theme, and tenant config.
+
+```tsx
+const { client, agentId, theme, tenantConfig } = useSteward();
+```
+
+### `useWallet()`
+
+Agent identity and on-chain balance with auto-refresh.
+
+```tsx
+const { agent, balance, isLoading, error, refresh } = useWallet();
+
+// agent: AgentIdentity | null
+// balance: { native: string; nativeFormatted: string; symbol: string; chainId: number } | null
+```
+
+### `useTransactions(opts?)`
+
+Paginated transaction history.
+
+```tsx
+const { transactions, page, setPage, total, isLoading } = useTransactions({
+  pageSize: 10,
+  status: "all", // "all" | "signed" | "pending_approval" | "rejected"
+});
+```
+
+### `usePolicies()`
+
+Current policy set with CRUD operations.
+
+```tsx
+const { policies, setPolicies, isLoading, isSaving } = usePolicies();
+
+// Update a spending limit
+await setPolicies([
+  ...policies,
+  {
+    id: "new-limit",
+    type: "spending-limit",
+    enabled: true,
+    config: { maxPerTx: "100000000000000000", maxPerDay: "500000000000000000" },
+  },
+]);
+```
+
+### `useApprovals(interval?)`
+
+Pending approvals with approve/reject actions.
+
+```tsx
+const { approvals, approve, deny, isLoading } = useApprovals(5000); // poll every 5s
+
+// Approve a pending transaction
+await approve(approvalId);
+
+// Deny with a reason
+await deny(approvalId, "Amount too large");
+```
+
+### `useSpend(range?)`
+
+Spend analytics for a time range.
+
+```tsx
+const { spend, isLoading } = useSpend("week");
+
+// spend: {
+//   today: string; thisWeek: string; thisMonth: string;
+//   todayFormatted: string; thisWeekFormatted: string; thisMonthFormatted: string;
+// }
+```
+
+### `useAuth()`
+
+Access the auth context for custom auth UIs.
+
+```tsx
+import { useAuth } from "@stwd/react";
+
+const {
+  isAuthenticated,
+  isLoading,
+  user,                // StewardUser | null
+  session,             // StewardSession | null
+  providers,           // { passkey, email, siwe, google, discord, oauth[] }
+  signOut,
+  getToken,
+  signInWithPasskey,
+  signInWithEmail,
+  verifyEmailCallback,
+  signInWithSIWE,
+  signInWithOAuth,
+  // Multi-tenant
+  activeTenantId,
+  tenants,
+  isTenantsLoading,
+  listTenants,
+  switchTenant,
+  joinTenant,
+  leaveTenant,
+} = useAuth();
+```
+
+---
+
+## Theming
+
+Components use CSS custom properties scoped to `.stwd-root`. Override any `--stwd-*` variable in your stylesheet:
+
+```css
+.stwd-root {
+  --stwd-primary: #8B5CF6;
+  --stwd-accent: #A78BFA;
+  --stwd-bg: #0F0F0F;
+  --stwd-surface: #1A1A2E;
+  --stwd-text: #FAFAFA;
+  --stwd-muted: #6B7280;
+  --stwd-success: #10B981;
+  --stwd-error: #EF4444;
+  --stwd-warning: #F59E0B;
+  --stwd-radius: 12px;
+  --stwd-font: Inter, system-ui, sans-serif;
+}
+```
+
+Or pass overrides to the provider:
+
+```tsx
+<StewardProvider
+  client={client}
+  agentId={agentId}
+  theme={{
+    primaryColor: "#FF6B35",
+    accentColor: "#FF8C5A",
+    backgroundColor: "#0A0A0A",
+    colorScheme: "dark",
+  }}
+>
+```
+
+The tenant's control plane config can also supply a theme — `@stwd/react` fetches it automatically from `GET /tenants/:id/config` and merges it with any prop overrides.
+
+---
+
+## Tenant Control Plane Integration
+
+If your Steward tenant has a [control plane config](/api-reference/tenant-config) configured, `@stwd/react` will automatically:
+
+- Hide or lock policies marked as `hidden` or `enforced` in `policyExposure`
+- Apply the tenant's theme as base styles
+- Show/hide features based on `featureFlags` (e.g., `showFundingQR`, `showApprovalQueue`)
+- Use policy templates from `policyTemplates` in the policy editor
+
+This lets platform operators white-label the UI and control what end users can configure.
+
+---
+
+## Full Example
+
+```tsx
+import React from "react";
+import {
+  StewardProvider,
+  WalletOverview,
+  TransactionHistory,
+  PolicyControls,
+  ApprovalQueue,
+  SpendDashboard,
+} from "@stwd/react";
+import "@stwd/react/styles.css";
+import { StewardClient } from "@stwd/sdk";
+
+const client = new StewardClient({
+  baseUrl: process.env.STEWARD_API_URL!,
+  apiKey: process.env.STEWARD_API_KEY!,
+  tenantId: process.env.STEWARD_TENANT_ID!,
+});
+
+export function AgentManagementPage({ agentId }: { agentId: string }) {
+  return (
+    <StewardProvider
+      client={client}
+      agentId={agentId}
+      theme={{ colorScheme: "dark" }}
+    >
+      <div style={{ display: "grid", gap: 24, maxWidth: 960, margin: "0 auto" }}>
+        <WalletOverview showQR showCopy />
+        <SpendDashboard range="week" />
+        <ApprovalQueue pollInterval={10000} />
+        <PolicyControls showTemplates />
+        <TransactionHistory pageSize={20} showFilters />
+      </div>
+    </StewardProvider>
+  );
+}
+```
+
+---
+
+## Peer Dependencies
+
+- `react >= 18`
+- `react-dom >= 18`
+- `@stwd/sdk >= 0.3.0`
+
+## Related
+
+- [SDK Client Reference](/sdk/client) — The underlying `StewardClient` API
+- [Tenant Config](/api-reference/tenant-config) — Control plane for per-tenant theming + feature flags
+- [Approvals API](/api-reference/approvals) — REST API for the approval workflow

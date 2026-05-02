@@ -1,0 +1,151 @@
+---
+title: "Wallet Vault"
+description: "Encrypted wallet management for AI agents — AES-256-GCM encryption, multi-chain signing, and policy enforcement."
+---
+
+# Wallet Vault
+
+The Wallet Vault is Steward's encrypted key storage system. It generates, stores, and manages private keys for AI agents — providing signing capabilities without ever exposing raw keys.
+
+## How It Works
+
+When you create an agent, Steward generates keypairs for both EVM and Solana chains:
+
+```typescript
+const agent = await steward.createWallet("trading-agent", "Trading Agent");
+// → EVM address: 0x742d35Cc6634C0532925a3b844Bc9e7595f2bD18
+// → Solana address: 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU
+```
+
+The private keys are immediately encrypted with AES-256-GCM and stored as ciphertext. They're only decrypted in-memory for the brief moment needed to sign a transaction, then zeroed.
+
+## Encryption Architecture
+
+```
+Master Password (env: STEWARD_MASTER_PASSWORD)
+    │
+    └─ Argon2id key derivation
+        │
+        └─ Master Key
+            │
+            ├─ encrypts → Agent "trading-agent" EVM key (AES-256-GCM)
+            ├─ encrypts → Agent "trading-agent" Solana key (AES-256-GCM)
+            └─ encrypts → Agent "data-agent" EVM key (AES-256-GCM)
+```
+
+Each encrypted key is stored with:
+- **Ciphertext** — the encrypted private key
+- **IV** — 12-byte initialization vector (unique per encryption)
+- **Auth Tag** — 16-byte GCM authentication tag (tamper detection)
+
+## Supported Chains
+
+<Tabs>
+  <Tab title="EVM">
+    Steward supports all EVM-compatible chains. Configure the chain via `chainId`:
+
+    | Chain | Chain ID | Status |
+    |-------|----------|--------|
+    | Base Mainnet | 8453 | ✅ Production |
+    | Base Sepolia | 84532 | ✅ Testnet |
+    | Ethereum Mainnet | 1 | ✅ Production |
+    | Arbitrum One | 42161 | ✅ Production |
+    | Optimism | 10 | ✅ Production |
+    | Polygon | 137 | ✅ Production |
+    | BSC | 56 | ✅ Production |
+
+    **Signing methods:**
+    - `eth_signTransaction` — Standard transaction signing + broadcast
+    - `eth_signTypedData_v4` (EIP-712) — DEX approvals, permits, structured data
+    - `personal_sign` — Message signing
+  </Tab>
+  <Tab title="Solana">
+    | Chain | Chain ID | Status |
+    |-------|----------|--------|
+    | Solana Mainnet | 101 | ✅ Production |
+    | Solana Devnet | 102 | ✅ Testnet |
+
+    **Signing methods:**
+    - `signTransaction` — Sign and optionally broadcast a serialized transaction
+    - `signMessage` — Arbitrary message signing
+  </Tab>
+</Tabs>
+
+## Signing Flow
+
+Every signing request passes through the [Policy Engine](/concepts/policy-engine) before execution:
+
+```typescript
+// 1. Agent requests a transaction
+const result = await steward.signTransaction("trading-agent", {
+  to: "0xDEX_ROUTER",
+  value: "50000000000000000", // 0.05 ETH
+  data: "0x...",              // calldata
+  chainId: 8453,              // Base
+});
+
+// 2. Steward evaluates policies:
+//    ✅ spending-limit: 0.05 ETH < 0.1 ETH max per tx
+//    ✅ approved-addresses: 0xDEX_ROUTER in whitelist
+//    ✅ rate-limit: 5 tx/hour < 10 max
+//    ✅ auto-approve: 0.05 ETH ≤ 0.05 ETH threshold → auto-approve
+
+// 3. Key decrypted, transaction signed, broadcast to chain
+console.log(result.txHash); // "0x8d7592b..."
+```
+
+## Key Import
+
+For agents that already have keys (e.g., migrating from another system), you can import private keys:
+
+```typescript
+// Import requires tenant-level authentication
+const result = await fetch("https://api.steward.fi/vault/my-agent/import", {
+  method: "POST",
+  headers: {
+    "X-Steward-Key": "your-tenant-api-key",
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    privateKey: "0x...",
+    chain: "evm", // or "solana"
+  }),
+});
+```
+
+<Warning>
+  Key import requires **tenant-level authentication** (not agent tokens). The imported key is immediately encrypted and the plaintext is discarded. Never store private keys in environment variables or logs.
+</Warning>
+
+## Multi-Wallet Addresses
+
+Each agent can have wallets across multiple chain families. Query all addresses:
+
+```typescript
+const addresses = await steward.getAddresses("trading-agent");
+// {
+//   agentId: "trading-agent",
+//   addresses: [
+//     { chainFamily: "evm", address: "0x742d35Cc..." },
+//     { chainFamily: "solana", address: "7xKXtg2CW87d..." }
+//   ]
+// }
+```
+
+## RPC Passthrough
+
+Agents can make read-only RPC calls through Steward, which injects the RPC provider's API key:
+
+```typescript
+const result = await steward.rpcPassthrough("trading-agent", {
+  method: "eth_getBalance",
+  params: ["0x742d35Cc6634C0532925a3b844Bc9e7595f2bD18", "latest"],
+  chainId: 8453,
+});
+```
+
+## Related
+
+- [Policy Engine](/concepts/policy-engine) — How policies control signing
+- [Vault API Reference](/api-reference/vault) — Full signing API documentation
+- [Agent Setup Guide](/guides/agent-setup) — Creating and configuring agents

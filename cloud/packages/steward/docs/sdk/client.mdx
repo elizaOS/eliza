@@ -1,0 +1,263 @@
+---
+title: "StewardClient"
+description: "Complete reference for the StewardClient TypeScript SDK."
+---
+
+# StewardClient
+
+The `StewardClient` class provides typed methods for all Steward API operations.
+
+## Constructor
+
+```typescript
+import { StewardClient } from "@stwd/sdk";
+
+const client = new StewardClient({
+  baseUrl: string;        // Steward API URL (e.g., "https://api.steward.fi")
+  apiKey?: string;        // Tenant API key (X-Steward-Key header)
+  bearerToken?: string;   // Agent JWT (Authorization: Bearer header)
+  tenantId?: string;      // Optional tenant ID header
+});
+```
+
+<Note>
+  When both `apiKey` and `bearerToken` are provided, `bearerToken` takes priority. Use `apiKey` for tenant operations and `bearerToken` for agent operations.
+</Note>
+
+## Agent Methods
+
+### createWallet
+
+Creates a new agent with encrypted EVM and Solana wallets.
+
+```typescript
+const agent = await client.createWallet(
+  agentId: string,
+  name: string,
+  platformId?: string
+): Promise<AgentIdentity>;
+```
+
+```typescript
+const agent = await client.createWallet("my-agent", "My Agent");
+// Returns: { id, name, tenantId, walletAddresses: { evm, solana }, createdAt }
+```
+
+### listAgents
+
+Lists all agents for the authenticated tenant.
+
+```typescript
+const agents = await client.listAgents(): Promise<AgentIdentity[]>;
+```
+
+### getAgent
+
+Gets a single agent by ID.
+
+```typescript
+const agent = await client.getAgent(agentId: string): Promise<AgentIdentity>;
+```
+
+### createWalletBatch
+
+Creates multiple agents in one request with optional shared policies.
+
+```typescript
+const result = await client.createWalletBatch(
+  agents: BatchAgentSpec[],
+  policies?: PolicyRule[]
+): Promise<BatchCreateResult>;
+```
+
+```typescript
+const result = await client.createWalletBatch(
+  [
+    { id: "agent-1", name: "Agent One" },
+    { id: "agent-2", name: "Agent Two" },
+  ],
+  [{ id: "limit", type: "spending-limit", enabled: true, config: { maxPerDay: "1000000000000000000" } }]
+);
+// Returns: { created: AgentIdentity[], errors: { id, error }[] }
+```
+
+## Signing Methods
+
+### signTransaction
+
+Signs and optionally broadcasts an EVM transaction.
+
+```typescript
+const result = await client.signTransaction(
+  agentId: string,
+  tx: SignTransactionInput
+): Promise<SignTransactionResult>;
+```
+
+```typescript
+interface SignTransactionInput {
+  to: string;          // Destination address
+  value: string;       // Wei amount
+  data?: string;       // Calldata
+  chainId?: number;    // Chain ID (default: server's active chain)
+  broadcast?: boolean; // Broadcast after signing (default: true)
+}
+
+// Result is one of:
+type SignTransactionResult =
+  | { txHash: string }              // Broadcast success
+  | { signedTx: string }            // Sign-only (broadcast: false)
+  | { status: "pending_approval"; results: PolicyResult[] }; // Queued
+```
+
+```typescript
+const result = await client.signTransaction("my-agent", {
+  to: "0xDEX_ROUTER",
+  value: "50000000000000000",
+  chainId: 8453,
+});
+
+if ("txHash" in result) {
+  console.log("TX hash:", result.txHash);
+} else if ("signedTx" in result) {
+  console.log("Signed TX:", result.signedTx);
+} else {
+  console.log("Needs approval:", result.results);
+}
+```
+
+### signTypedData
+
+Signs EIP-712 structured data.
+
+```typescript
+const result = await client.signTypedData(
+  agentId: string,
+  input: SignTypedDataInput
+): Promise<{ signature: string }>;
+```
+
+### signSolanaTransaction
+
+Signs a serialized Solana transaction.
+
+```typescript
+const result = await client.signSolanaTransaction(
+  agentId: string,
+  input: SignSolanaTransactionInput
+): Promise<SignSolanaTransactionResult>;
+```
+
+```typescript
+interface SignSolanaTransactionInput {
+  transaction: string; // Base64-encoded serialized transaction
+  chainId?: number;    // 101 = mainnet, 102 = devnet
+  broadcast?: boolean;
+}
+```
+
+### signMessage
+
+Signs an arbitrary message.
+
+```typescript
+const result = await client.signMessage(
+  agentId: string,
+  message: string
+): Promise<{ signature: string }>;
+```
+
+## Query Methods
+
+### getBalance
+
+Gets the native token balance for an agent's wallet.
+
+```typescript
+const balance = await client.getBalance(
+  agentId: string,
+  chainId?: number
+): Promise<AgentBalance>;
+```
+
+### getAddresses
+
+Gets all wallet addresses across chain families.
+
+```typescript
+const addresses = await client.getAddresses(
+  agentId: string
+): Promise<GetAddressesResult>;
+```
+
+### getHistory
+
+Gets the transaction history for an agent.
+
+```typescript
+const history = await client.getHistory(
+  agentId: string
+): Promise<StewardHistoryEntry[]>;
+```
+
+### rpcPassthrough
+
+Proxies a read-only RPC call.
+
+```typescript
+const result = await client.rpcPassthrough(
+  agentId: string,
+  input: { method: string; params?: unknown[]; chainId: number }
+): Promise<RpcResponse>;
+```
+
+## Policy Methods
+
+### getPolicies
+
+Gets all policies for an agent.
+
+```typescript
+const policies = await client.getPolicies(
+  agentId: string
+): Promise<PolicyRule[]>;
+```
+
+### setPolicies
+
+Replaces all policies for an agent.
+
+```typescript
+await client.setPolicies(
+  agentId: string,
+  policies: PolicyRule[]
+): Promise<void>;
+```
+
+## Error Handling
+
+All methods throw `StewardApiError` on failure:
+
+```typescript
+import { StewardApiError } from "@stwd/sdk";
+
+try {
+  await client.signTransaction("my-agent", { ... });
+} catch (error) {
+  if (error instanceof StewardApiError) {
+    console.error(`HTTP ${error.status}: ${error.message}`);
+    
+    // For signing errors, data may contain policy results
+    if (error.data?.results) {
+      console.error("Policy results:", error.data.results);
+    }
+  }
+}
+```
+
+```typescript
+class StewardApiError<TData = unknown> extends Error {
+  readonly status: number;  // HTTP status code (0 for network errors)
+  readonly data?: TData;    // Response data (may include policy results)
+}
+```

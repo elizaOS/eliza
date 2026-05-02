@@ -1,0 +1,16 @@
+apiVersion: v2
+name: gateway-webhook
+description: Multi-tenant webhook gateway service for Eliza Cloud (Telegram, WhatsApp, Twilio, etc.)
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+maintainers:
+  - name: ElizaOS
+    url: https://github.com/elizaOS
+keywords:
+  - webhook
+  - gateway
+  - eliza
+  - telegram
+  - whatsapp
+  - twilio

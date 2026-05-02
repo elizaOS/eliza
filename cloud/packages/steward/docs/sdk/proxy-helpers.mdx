@@ -1,0 +1,154 @@
+---
+title: "Proxy Helpers"
+description: "Helper utilities for routing LLM SDK clients through the Steward proxy."
+---
+
+# Proxy Helpers
+
+When using the [Proxy Gateway](/concepts/proxy-gateway), you need to configure LLM SDK clients to route through Steward instead of calling APIs directly. These helpers simplify that process.
+
+## Manual Configuration
+
+Most LLM SDKs support custom base URLs. Configure them to point at the Steward proxy:
+
+<Tabs>
+  <Tab title="OpenAI">
+    ```typescript
+    import OpenAI from "openai";
+
+    const openai = new OpenAI({
+      apiKey: "steward",  // dummy — stripped by proxy
+      baseURL: `${process.env.STEWARD_PROXY_URL}/openai/v1`,
+    });
+
+    // Use normally — proxy handles authentication
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [{ role: "user", content: "Hello" }],
+    });
+    ```
+  </Tab>
+  <Tab title="Anthropic">
+    ```typescript
+    import Anthropic from "@anthropic-ai/sdk";
+
+    const anthropic = new Anthropic({
+      apiKey: "steward",
+      baseURL: `${process.env.STEWARD_PROXY_URL}/anthropic`,
+    });
+
+    const message = await anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 1024,
+      messages: [{ role: "user", content: "Hello" }],
+    });
+    ```
+  </Tab>
+  <Tab title="Generic fetch">
+    ```typescript
+    async function proxiedFetch(
+      path: string,
+      init?: RequestInit
+    ): Promise<Response> {
+      const proxyUrl = process.env.STEWARD_PROXY_URL;
+      const agentToken = process.env.STEWARD_AGENT_TOKEN;
+
+      return fetch(`${proxyUrl}${path}`, {
+        ...init,
+        headers: {
+          ...init?.headers,
+          "Authorization": `Bearer ${agentToken}`,
+          "Content-Type": "application/json",
+        },
+      });
+    }
+
+    // Usage
+    const response = await proxiedFetch("/openai/v1/chat/completions", {
+      method: "POST",
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [{ role: "user", content: "Hello" }],
+      }),
+    });
+    ```
+  </Tab>
+</Tabs>
+
+## StewardProxy Helper
+
+The SDK provides a planned `StewardProxy` helper class for wrapping common SDK clients:
+
+```typescript
+import { StewardProxy } from "@stwd/sdk";
+
+const proxy = new StewardProxy({
+  proxyUrl: process.env.STEWARD_PROXY_URL!,
+  agentToken: process.env.STEWARD_AGENT_TOKEN!,
+});
+
+// Get pre-configured OpenAI client
+const openai = proxy.openai();
+
+// Get pre-configured Anthropic client
+const anthropic = proxy.anthropic();
+```
+
+<Note>
+  `StewardProxy` is planned for SDK v0.4.0. For now, use the manual configuration shown above — it's straightforward and works with any SDK.
+</Note>
+
+## Environment Variables
+
+In your agent container, you need:
+
+```bash
+STEWARD_PROXY_URL=http://steward-proxy:8080
+STEWARD_AGENT_TOKEN=stwd_jwt_...
+```
+
+## Pattern: Wrapper Function
+
+A common pattern for projects with multiple API clients:
+
+```typescript
+// lib/steward-proxy.ts
+const PROXY_URL = process.env.STEWARD_PROXY_URL!;
+const AGENT_TOKEN = process.env.STEWARD_AGENT_TOKEN!;
+
+export function getOpenAI() {
+  const OpenAI = require("openai").default;
+  return new OpenAI({
+    apiKey: "steward",
+    baseURL: `${PROXY_URL}/openai/v1`,
+    defaultHeaders: {
+      "Authorization": `Bearer ${AGENT_TOKEN}`,
+    },
+  });
+}
+
+export function getAnthropic() {
+  const Anthropic = require("@anthropic-ai/sdk").default;
+  return new Anthropic({
+    apiKey: "steward",
+    baseURL: `${PROXY_URL}/anthropic`,
+    defaultHeaders: {
+      "Authorization": `Bearer ${AGENT_TOKEN}`,
+    },
+  });
+}
+```
+
+```typescript
+// Anywhere in your agent code
+import { getOpenAI, getAnthropic } from "./lib/steward-proxy";
+
+const openai = getOpenAI();
+const response = await openai.chat.completions.create({ ... });
+```
+
+## Related
+
+- [Proxy Gateway Concepts](/concepts/proxy-gateway) — How the proxy works
+- [Proxy API Reference](/api-reference/proxy) — Proxy endpoints
+- [Secrets Guide](/guides/secrets) — Managing credentials

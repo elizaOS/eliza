@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "typecheck-project": {
+      "enabled": false
+    },
+    "typecheck-changed": {
+      "command": "npx tsc --noEmit --skipLibCheck"
+    }
+  }
+}

@@ -1,0 +1,838 @@
+---
+title: "Character Interface"
+description: "Define your agent personality, knowledge, and behavior in TypeScript, Python, or Rust"
+---
+
+## Your First Character (2 minutes)
+
+A character file is all you need to create a unique agent. Here's the minimum:
+
+<Tabs>
+  <Tab title="TypeScript">
+```typescript
+import type { Character } from '@elizaos/core';
+
+export const character: Character = {
+  name: "Chef Mario",
+  bio: "A passionate Italian chef who loves sharing recipes and cooking tips.",
+  plugins: ["@elizaos/plugin-openai"],
+};
+```
+  </Tab>
+  <Tab title="Python">
+```python
+from elizaos import Character
+
+character = Character(
+name="Chef Mario",
+bio="A passionate Italian chef who loves sharing recipes and cooking tips.",
+)
+
+````
+  </Tab>
+  <Tab title="Rust">
+```rust
+use elizaos::parse_character;
+
+let character = parse_character(r#"{
+    "name": "Chef Mario",
+    "bio": "A passionate Italian chef who loves sharing recipes and cooking tips."
+}"#)?;
+````
+
+  </Tab>
+</Tabs>
+
+That's it. Your agent now has a name, personality, and can chat. Everything else is optional.
+
+<Tip>
+  **Start minimal, add complexity later.** Most fields have sensible defaults.
+  Only add what you need.
+</Tip>
+
+---
+
+## Overview
+
+In elizaOS, the distinction between a **Character** and an **Agent** is fundamental:
+
+- **Character**: A configuration object that defines an agent's personality, capabilities, and settings
+- **Agent**: A runtime instance created from a Character, with additional status tracking and lifecycle management
+
+Think of a Character as a blueprint and an Agent as the living instance built from that blueprint. For hands-on implementation, see [Customize an Agent](/guides/customize-an-agent). For runtime details, see [Runtime and Lifecycle](/agents/runtime-and-lifecycle).
+
+## Character Interface Reference
+
+The complete interface for character configuration (identical across all languages):
+
+| Property          | Type               | Required | Description                                        |
+| ----------------- | ------------------ | -------- | -------------------------------------------------- |
+| `name`            | string             | ✅       | Agent's display name                               |
+| `bio`             | string \| string[] | ✅       | Background/personality description                 |
+| `id`              | UUID               | ❌       | Unique identifier (auto-generated if not provided) |
+| `username`        | string             | ❌       | Social media username                              |
+| `system`          | string             | ❌       | System prompt override                             |
+| `templates`       | object             | ❌       | Custom prompt templates                            |
+| `adjectives`      | string[]           | ❌       | Character traits (e.g., "helpful", "creative")     |
+| `topics`          | string[]           | ❌       | Conversation topics the agent knows                |
+| `knowledge`       | array              | ❌       | Facts, files, or directories of knowledge          |
+| `messageExamples` | array[][]          | ❌       | Example conversations (2D array)                   |
+| `postExamples`    | string[]           | ❌       | Example social media posts                         |
+| `style`           | object             | ❌       | Writing style for different contexts               |
+| `plugins`         | string[]           | ❌       | Enabled plugin packages                            |
+| `settings`        | object             | ❌       | Configuration values                               |
+| `secrets`         | object             | ❌       | Sensitive configuration                            |
+
+---
+
+## Core Properties
+
+### Identity Configuration
+
+<Tabs>
+  <Tab title="TypeScript">
+```typescript
+export const character: Character = {
+  // Required: The agent's display name
+  name: "TechHelper",
+  
+  // Optional: Username for social platforms
+  username: "tech_helper_bot",
+  
+  // Optional: Unique ID (auto-generated from name if not provided)
+  id: "550e8400-e29b-41d4-a716-446655440000",
+};
+```
+  </Tab>
+  <Tab title="Python">
+```python
+from elizaos import Character
+from uuid import UUID
+
+character = Character( # Required: The agent's display name
+name="TechHelper",
+
+    # Optional: Username for social platforms
+    username="tech_helper_bot",
+
+    # Optional: Unique ID (auto-generated from name if not provided)
+    id=UUID("550e8400-e29b-41d4-a716-446655440000"),
+
+)
+
+````
+  </Tab>
+  <Tab title="Rust">
+```rust
+let character = parse_character(r#"{
+    "name": "TechHelper",
+    "username": "tech_helper_bot",
+    "id": "550e8400-e29b-41d4-a716-446655440000"
+}"#)?;
+````
+
+  </Tab>
+</Tabs>
+
+### Bio and Description
+
+The bio can be a single string or an array of strings for better organization:
+
+<Tabs>
+  <Tab title="TypeScript">
+```typescript
+// Simple string bio
+const simpleCharacter: Character = {
+  name: "SimpleBot",
+  bio: "A friendly assistant that helps with everyday tasks.",
+};
+
+// Array bio for detailed personalities
+const detailedCharacter: Character = {
+name: "DetailedBot",
+bio: [
+"A senior software engineer with 15 years of experience.",
+"Specializes in distributed systems and cloud architecture.",
+"Known for patient explanations and thorough code reviews.",
+"Believes in clean code and comprehensive documentation.",
+],
+};
+
+````
+  </Tab>
+  <Tab title="Python">
+```python
+# Simple string bio
+simple_character = Character(
+    name="SimpleBot",
+    bio="A friendly assistant that helps with everyday tasks.",
+)
+
+# Array bio for detailed personalities
+detailed_character = Character(
+    name="DetailedBot",
+    bio=[
+        "A senior software engineer with 15 years of experience.",
+        "Specializes in distributed systems and cloud architecture.",
+        "Known for patient explanations and thorough code reviews.",
+        "Believes in clean code and comprehensive documentation.",
+    ],
+)
+````
+
+  </Tab>
+  <Tab title="Rust">
+```rust
+// Simple string bio
+let simple = parse_character(r#"{
+    "name": "SimpleBot",
+    "bio": "A friendly assistant that helps with everyday tasks."
+}"#)?;
+
+// Array bio for detailed personalities
+let detailed = parse_character(r#"{
+"name": "DetailedBot",
+"bio": [
+"A senior software engineer with 15 years of experience.",
+"Specializes in distributed systems and cloud architecture.",
+"Known for patient explanations and thorough code reviews."
+]
+}"#)?;
+
+````
+  </Tab>
+</Tabs>
+
+### System Prompt
+
+Override the default system prompt for complete control:
+
+<Tabs>
+  <Tab title="TypeScript">
+```typescript
+const character: Character = {
+  name: "StrictAssistant",
+  bio: "A focused coding assistant.",
+  system: `You are a senior software engineer specializing in TypeScript.
+Always provide production-ready code with proper error handling.
+Never use 'any' type. Prefer strict typing.
+Include JSDoc comments for all public functions.`,
+};
+````
+
+  </Tab>
+  <Tab title="Python">
+```python
+character = Character(
+    name="StrictAssistant",
+    bio="A focused coding assistant.",
+    system="""You are a senior software engineer specializing in Python.
+Always provide production-ready code with proper error handling.
+Include type hints for all functions.
+Include docstrings for all public functions.""",
+)
+```
+  </Tab>
+  <Tab title="Rust">
+```rust
+let character = parse_character(r#"{
+    "name": "StrictAssistant",
+    "bio": "A focused coding assistant.",
+    "system": "You are a senior software engineer specializing in Rust.\nAlways provide production-ready code with proper error handling.\nUse proper Result types and error propagation."
+}"#)?;
+```
+  </Tab>
+</Tabs>
+
+---
+
+## Personality Configuration
+
+### Adjectives
+
+Define character traits that influence responses:
+
+<Tabs>
+  <Tab title="TypeScript">
+```typescript
+const character: Character = {
+  name: "CreativeWriter",
+  bio: "An imaginative storyteller.",
+  adjectives: [
+    "creative",
+    "imaginative",
+    "poetic",
+    "thoughtful",
+    "whimsical",
+  ],
+};
+```
+  </Tab>
+  <Tab title="Python">
+```python
+character = Character(
+    name="CreativeWriter",
+    bio="An imaginative storyteller.",
+    adjectives=[
+        "creative",
+        "imaginative",
+        "poetic",
+        "thoughtful",
+        "whimsical",
+    ],
+)
+```
+  </Tab>
+  <Tab title="Rust">
+```rust
+let character = parse_character(r#"{
+    "name": "CreativeWriter",
+    "bio": "An imaginative storyteller.",
+    "adjectives": ["creative", "imaginative", "poetic", "thoughtful", "whimsical"]
+}"#)?;
+```
+  </Tab>
+</Tabs>
+
+### Topics
+
+Specify domains of knowledge:
+
+<Tabs>
+  <Tab title="TypeScript">
+```typescript
+const character: Character = {
+  name: "TechExpert",
+  bio: "A technology specialist.",
+  topics: [
+    "machine learning",
+    "distributed systems",
+    "cloud computing",
+    "software architecture",
+    "DevOps",
+    "security",
+  ],
+};
+```
+  </Tab>
+  <Tab title="Python">
+```python
+character = Character(
+    name="TechExpert",
+    bio="A technology specialist.",
+    topics=[
+        "machine learning",
+        "distributed systems",
+        "cloud computing",
+        "software architecture",
+        "DevOps",
+        "security",
+    ],
+)
+```
+  </Tab>
+  <Tab title="Rust">
+```rust
+let character = parse_character(r#"{
+    "name": "TechExpert",
+    "bio": "A technology specialist.",
+    "topics": [
+        "machine learning",
+        "distributed systems",
+        "cloud computing",
+        "software architecture"
+    ]
+}"#)?;
+```
+  </Tab>
+</Tabs>
+
+### Style Configuration
+
+Control how your agent writes in different contexts:
+
+<Tabs>
+  <Tab title="TypeScript">
+```typescript
+const character: Character = {
+  name: "VersatileBot",
+  bio: "Adapts communication style to context.",
+  style: {
+    all: [
+      "Be concise and clear",
+      "Use technical terms when appropriate",
+    ],
+    chat: [
+      "Be conversational and friendly",
+      "Use emojis sparingly",
+    ],
+    post: [
+      "Be engaging and thought-provoking",
+      "Include relevant hashtags",
+    ],
+  },
+};
+```
+  </Tab>
+  <Tab title="Python">
+```python
+character = Character(
+    name="VersatileBot",
+    bio="Adapts communication style to context.",
+    style={
+        "all": [
+            "Be concise and clear",
+            "Use technical terms when appropriate",
+        ],
+        "chat": [
+            "Be conversational and friendly",
+            "Use emojis sparingly",
+        ],
+        "post": [
+            "Be engaging and thought-provoking",
+            "Include relevant hashtags",
+        ],
+    },
+)
+```
+  </Tab>
+  <Tab title="Rust">
+```rust
+let character = parse_character(r#"{
+    "name": "VersatileBot",
+    "bio": "Adapts communication style to context.",
+    "style": {
+        "all": ["Be concise and clear", "Use technical terms when appropriate"],
+        "chat": ["Be conversational and friendly", "Use emojis sparingly"],
+        "post": ["Be engaging and thought-provoking", "Include relevant hashtags"]
+    }
+}"#)?;
+```
+  </Tab>
+</Tabs>
+
+---
+
+## Knowledge and Examples
+
+### Knowledge Sources
+
+Add facts, files, or directories:
+
+<Tabs>
+  <Tab title="TypeScript">
+```typescript
+const character: Character = {
+  name: "KnowledgeBot",
+  bio: "An informed assistant.",
+  knowledge: [
+    // Inline facts
+    "The company was founded in 2020",
+    "Our main product is an AI agent framework",
+    
+    // File references
+    { path: "./docs/api-reference.md" },
+    { path: "./docs/tutorials/" },  // Directory
+  ],
+};
+```
+  </Tab>
+  <Tab title="Python">
+```python
+character = Character(
+    name="KnowledgeBot",
+    bio="An informed assistant.",
+    knowledge=[
+        # Inline facts
+        "The company was founded in 2020",
+        "Our main product is an AI agent framework",
+        
+        # File references
+        {"path": "./docs/api-reference.md"},
+        {"path": "./docs/tutorials/"},  # Directory
+    ],
+)
+```
+  </Tab>
+  <Tab title="Rust">
+```rust
+let character = parse_character(r#"{
+    "name": "KnowledgeBot",
+    "bio": "An informed assistant.",
+    "knowledge": [
+        "The company was founded in 2020",
+        "Our main product is an AI agent framework",
+        {"path": "./docs/api-reference.md"}
+    ]
+}"#)?;
+```
+  </Tab>
+</Tabs>
+
+### Message Examples
+
+Teach your agent how to respond:
+
+<Tabs>
+  <Tab title="TypeScript">
+```typescript
+const character: Character = {
+  name: "ExampleBot",
+  bio: "Learns from examples.",
+  messageExamples: [
+    [
+      { name: "user", content: { text: "How do I create a plugin?" } },
+      { name: "ExampleBot", content: { 
+        text: "Great question! Here's how to create a plugin:\n\n1. Run `elizaos create --type plugin`\n2. Define your actions in `src/actions/`\n3. Export your plugin from `src/index.ts`\n\nWant me to walk you through any of these steps?" 
+      }},
+    ],
+    [
+      { name: "user", content: { text: "What's the weather like?" } },
+      { name: "ExampleBot", content: { 
+        text: "I don't have access to weather data, but I can help you build a weather plugin! Would you like to see how?" 
+      }},
+    ],
+  ],
+};
+```
+  </Tab>
+  <Tab title="Python">
+```python
+character = Character(
+    name="ExampleBot",
+    bio="Learns from examples.",
+    message_examples=[
+        [
+            {"name": "user", "content": {"text": "How do I create a plugin?"}},
+            {"name": "ExampleBot", "content": {
+                "text": "Great question! Here's how to create a plugin:\n\n1. Run `elizaos create --type plugin`\n2. Define your actions in `src/actions/`\n3. Export your plugin from `src/index.ts`"
+            }},
+        ],
+    ],
+)
+```
+  </Tab>
+  <Tab title="Rust">
+```rust
+let character = parse_character(r#"{
+    "name": "ExampleBot",
+    "bio": "Learns from examples.",
+    "messageExamples": [
+        [
+            {"name": "user", "content": {"text": "How do I create a plugin?"}},
+            {"name": "ExampleBot", "content": {"text": "Great question! Here's how..."}}
+        ]
+    ]
+}"#)?;
+```
+  </Tab>
+</Tabs>
+
+---
+
+## Configuration
+
+### Settings
+
+Non-sensitive configuration values:
+
+<Tabs>
+  <Tab title="TypeScript">
+```typescript
+const character: Character = {
+  name: "ConfiguredBot",
+  bio: "A configured assistant.",
+  settings: {
+    model: "gpt-5",
+    maxTokens: 2048,
+    temperature: 0.7,
+    voice: {
+      provider: "elevenlabs",
+      voiceId: "voice-id-here",
+    },
+  },
+};
+```
+  </Tab>
+  <Tab title="Python">
+```python
+character = Character(
+    name="ConfiguredBot",
+    bio="A configured assistant.",
+    settings={
+        "model": "gpt-5",
+        "max_tokens": 2048,
+        "temperature": 0.7,
+        "voice": {
+            "provider": "elevenlabs",
+            "voice_id": "voice-id-here",
+        },
+    },
+)
+```
+  </Tab>
+  <Tab title="Rust">
+```rust
+let character = parse_character(r#"{
+    "name": "ConfiguredBot",
+    "bio": "A configured assistant.",
+    "settings": {
+        "model": "gpt-5",
+        "maxTokens": 2048,
+        "temperature": 0.7
+    }
+}"#)?;
+```
+  </Tab>
+</Tabs>
+
+### Secrets
+
+Sensitive data like API keys:
+
+<Tabs>
+  <Tab title="TypeScript">
+```typescript
+const character: Character = {
+  name: "SecureBot",
+  bio: "A secure assistant.",
+  secrets: {
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    DATABASE_URL: process.env.DATABASE_URL,
+  },
+};
+```
+  </Tab>
+  <Tab title="Python">
+```python
+import os
+
+character = Character(
+name="SecureBot",
+bio="A secure assistant.",
+secrets={
+"OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY"),
+"DATABASE_URL": os.environ.get("DATABASE_URL"),
+},
+)
+
+````
+  </Tab>
+  <Tab title="Rust">
+```rust
+use std::env;
+
+let character = parse_character(&format!(r#"{{
+    "name": "SecureBot",
+    "bio": "A secure assistant.",
+    "secrets": {{
+        "OPENAI_API_KEY": "{}"
+    }}
+}}"#, env::var("OPENAI_API_KEY").unwrap_or_default()))?;
+````
+
+  </Tab>
+</Tabs>
+
+<Warning>
+  Never commit secrets to version control. Use environment variables or a
+  secrets manager.
+</Warning>
+
+---
+
+## Complete Example
+
+<Tabs>
+  <Tab title="TypeScript">
+```typescript
+import type { Character } from '@elizaos/core';
+
+export const character: Character = {
+  name: "DevHelper",
+  username: "devhelper",
+  bio: [
+    "A senior software engineer specializing in web development.",
+    "Expert in TypeScript, React, and Node.js.",
+    "Passionate about clean code and best practices.",
+  ],
+  system: `You are DevHelper, a senior software engineer.
+Provide production-ready code with proper error handling.
+Explain complex concepts in simple terms.
+Always suggest best practices and potential improvements.`,
+  adjectives: ["helpful", "thorough", "patient", "technical"],
+  topics: [
+    "TypeScript",
+    "React",
+    "Node.js",
+    "testing",
+    "architecture",
+    "performance",
+  ],
+  style: {
+    all: ["Be concise", "Use code examples"],
+    chat: ["Be friendly", "Ask clarifying questions"],
+  },
+  messageExamples: [
+    [
+      { name: "user", content: { text: "How do I handle errors in async functions?" } },
+      { name: "DevHelper", content: { 
+        text: "Great question! Here are two patterns:\n\n**1. try/catch:**\n```typescript\ntry {\n  await fetchData();\n} catch (error) {\n  console.error('Failed:', error);\n}\n```\n\n**2. .catch():**\n```typescript\nawait fetchData().catch(handleError);\n```\n\nWhich pattern fits your use case better?" 
+      }},
+    ],
+  ],
+  plugins: ["@elizaos/plugin-openai"],
+  settings: {
+    model: "gpt-5",
+    temperature: 0.7,
+  },
+  secrets: {
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+  },
+};
+```
+  </Tab>
+  <Tab title="Python">
+```python
+import os
+from elizaos import Character
+
+character = Character(
+name="DevHelper",
+username="devhelper",
+bio=[
+"A senior software engineer specializing in web development.",
+"Expert in Python, FastAPI, and Django.",
+"Passionate about clean code and best practices.",
+],
+system="""You are DevHelper, a senior software engineer.
+Provide production-ready code with proper error handling.
+Explain complex concepts in simple terms.
+Always suggest best practices and potential improvements.""",
+adjectives=["helpful", "thorough", "patient", "technical"],
+topics=[
+"Python",
+"FastAPI",
+"Django",
+"testing",
+"architecture",
+"performance",
+],
+style={
+"all": ["Be concise", "Use code examples"],
+"chat": ["Be friendly", "Ask clarifying questions"],
+},
+settings={
+"model": "gpt-5",
+"temperature": 0.7,
+},
+secrets={
+"OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY"),
+},
+)
+
+````
+  </Tab>
+  <Tab title="Rust">
+```rust
+use elizaos::parse_character;
+use std::env;
+
+let character_json = format!(r#"{{
+    "name": "DevHelper",
+    "username": "devhelper",
+    "bio": [
+        "A senior software engineer specializing in systems programming.",
+        "Expert in Rust, async programming, and performance optimization.",
+        "Passionate about memory safety and zero-cost abstractions."
+    ],
+    "system": "You are DevHelper, a senior Rust engineer.\nProvide production-ready code with proper error handling.\nExplain complex concepts in simple terms.",
+    "adjectives": ["helpful", "thorough", "patient", "technical"],
+    "topics": ["Rust", "async", "systems programming", "performance"],
+    "style": {{
+        "all": ["Be concise", "Use code examples"],
+        "chat": ["Be friendly", "Ask clarifying questions"]
+    }},
+    "settings": {{
+        "model": "gpt-5",
+        "temperature": 0.7
+    }},
+    "secrets": {{
+        "OPENAI_API_KEY": "{}"
+    }}
+}}"#, env::var("OPENAI_API_KEY").unwrap_or_default());
+
+let character = parse_character(&character_json)?;
+````
+
+  </Tab>
+</Tabs>
+
+---
+
+## Loading Characters
+
+<Tabs>
+  <Tab title="TypeScript">
+```typescript
+import { AgentRuntime } from '@elizaos/core';
+import { character } from './character';
+
+const runtime = new AgentRuntime({
+character,
+plugins: [/* your plugins */],
+});
+
+await runtime.initialize();
+
+````
+  </Tab>
+  <Tab title="Python">
+```python
+from elizaos import AgentRuntime
+from character import character
+
+runtime = AgentRuntime(
+    character=character,
+    plugins=[],
+)
+
+await runtime.initialize()
+````
+
+  </Tab>
+  <Tab title="Rust">
+```rust
+use elizaos::{AgentRuntime, RuntimeOptions};
+
+let runtime = AgentRuntime::new(RuntimeOptions {
+character: Some(character),
+plugins: vec![],
+..Default::default()
+}).await?;
+
+runtime.initialize().await?;
+
+```
+  </Tab>
+</Tabs>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Customize an Agent" icon="sliders" href="/guides/customize-an-agent">
+    Hands-on guide to building agents
+  </Card>
+  <Card title="Personality & Behavior" icon="brain" href="/agents/personality-and-behavior">
+    Deep dive into agent personalities
+  </Card>
+  <Card title="Memory & State" icon="database" href="/agents/memory-and-state">
+    How agents remember and learn
+  </Card>
+  <Card title="Examples" icon="code" href="/examples/overview">
+    Working code in all languages
+  </Card>
+</CardGroup>
+```

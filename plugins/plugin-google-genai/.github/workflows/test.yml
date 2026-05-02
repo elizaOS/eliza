@@ -1,0 +1,74 @@
+name: Test
+
+on:
+  push:
+    branches: [main, 1.x]
+  pull_request:
+    branches: [main, 1.x]
+
+jobs:
+  test-typescript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Type check
+        run: bun run typecheck
+
+      - name: Run unit tests
+        run: bun run test:unit
+
+  test-python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        working-directory: python
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run type check
+        working-directory: python
+        run: mypy elizaos_plugin_google_genai
+
+      - name: Run linter
+        working-directory: python
+        run: ruff check . && ruff format --check .
+
+      - name: Run tests
+        working-directory: python
+        run: pytest --ignore=tests/test_integration.py
+
+  test-rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Run clippy
+        working-directory: rust
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Run tests
+        working-directory: rust
+        run: cargo test --lib
+
+
+

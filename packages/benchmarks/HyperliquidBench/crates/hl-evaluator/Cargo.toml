@@ -1,0 +1,18 @@
+[package]
+name = "hl-evaluator"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+hl-common = { path = "../hl-common" }
+indexmap = { version = "2.5", features = ["serde"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+thiserror = { workspace = true }
+dotenvy = { workspace = true }
+
+[dev-dependencies]
+uuid = { workspace = true }

@@ -1,0 +1,188 @@
+---
+title: "Dépannage"
+sidebarTitle: "Dépannage"
+description: "Résoudre les problèmes courants de Eliza liés au démarrage, aux fournisseurs, à la voix, aux connecteurs et à l'accès à distance."
+---
+
+La plupart des échecs proviennent de l'un de ces domaines :
+
+1. lancement de l'application
+2. configuration du fournisseur
+3. configuration de la voix
+4. identifiants des connecteurs
+5. configuration de l'URL distante ou du jeton
+
+<div id="eliza-will-not-open">
+
+## Eliza ne s'ouvre pas
+
+</div>
+
+<div id="macos">
+
+### macOS
+
+</div>
+
+Re-téléchargez depuis la page officielle des [releases GitHub](https://github.com/eliza-ai/eliza/releases/latest) si les avertissements de Gatekeeper ou de notarisation semblent suspects.
+
+<div id="windows">
+
+### Windows
+
+</div>
+
+Si SmartScreen apparaît, utilisez `More info` et confirmez que vous avez téléchargé l'installateur officiel.
+
+<div id="linux">
+
+### Linux
+
+</div>
+
+Si l'AppImage ne démarre pas :
+
+```bash
+chmod +x Eliza.AppImage
+```
+
+<div id="the-first-message-hangs">
+
+## Le premier message reste en attente
+
+</div>
+
+Vérifiez :
+
+- la clé API
+- si Ollama est en cours d'exécution
+- si le modèle sélectionné existe
+- si un backend distant gère le routage du fournisseur
+
+<div id="voice-is-silent">
+
+## La voix est silencieuse
+
+</div>
+
+Testez d'abord l'aperçu vocal.
+
+- si l'aperçu échoue, corrigez le fournisseur vocal ou la sortie audio
+- si l'aperçu fonctionne mais les réponses restent silencieuses, corrigez le fournisseur de synthèse vocale
+- si le mode conversation échoue, vérifiez les permissions du microphone
+
+<div id="a-connector-does-not-reply">
+
+## Un connecteur ne répond pas
+
+</div>
+
+<div id="discord">
+
+### Discord
+
+</div>
+
+- jeton incorrect
+- Message Content Intent désactivé
+- permissions de canal manquantes
+
+<div id="telegram">
+
+### Telegram
+
+</div>
+
+- jeton incorrect
+- connecteur hors ligne
+- mode confidentialité bloquant le comportement en groupe
+
+<div id="slack">
+
+### Slack
+
+</div>
+
+- `appToken` manquant pour le Socket Mode
+- `signingSecret` incorrect pour le mode HTTP
+
+<div id="whatsapp">
+
+### WhatsApp
+
+</div>
+
+- QR code non scanné ou session expirée
+- `authDir` non défini ou non accessible en écriture
+
+<div id="signal">
+
+### Signal
+
+</div>
+
+- `signal-cli` non démarré ou inaccessible à `httpUrl`
+
+<div id="general">
+
+### Général
+
+</div>
+
+Pour tout connecteur : vérifiez le jeton/identifiant, confirmez que le connecteur est activé dans la configuration (`connectors.<name>.enabled` n'est pas `false`) et consultez les logs pour les erreurs de démarrage.
+
+Guides :
+
+- [Connecter Discord](/fr/user/connect-discord)
+- [Connecter Telegram](/fr/user/connect-telegram)
+- [Tous les connecteurs](/fr/guides/connectors)
+
+<div id="remote-connection-fails">
+
+## Échec de la connexion distante
+
+</div>
+
+Vérifiez :
+
+- l'URL
+- le jeton
+- si le backend est en cours d'exécution
+- si le backend écoute en dehors de localhost
+- si l'appareil actuel peut atteindre ce réseau
+
+<div id="eliza-is-slow">
+
+## Eliza est lent
+
+</div>
+
+- lent avant le premier token : choisissez un modèle ou un fournisseur plus rapide
+- lent de manière continue : vérifiez les limites réseau ou la taille du modèle local
+
+<div id="start-over">
+
+## Recommencer à zéro
+
+</div>
+
+Quittez Eliza, renommez le répertoire d'état et relancez :
+
+- macOS / Linux : `~/.eliza`
+- Windows : `%USERPROFILE%\\.eliza\\`
+
+<div id="file-a-bug">
+
+## Signaler un bug
+
+</div>
+
+Incluez :
+
+- OS
+- local, distant ou Eliza Cloud
+- fournisseur sélectionné
+- comportement attendu
+- comportement réel
+
+Suivi des problèmes : [eliza-ai/eliza issues](https://github.com/eliza-ai/eliza/issues)

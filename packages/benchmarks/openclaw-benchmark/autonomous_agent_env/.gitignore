@@ -1,0 +1,4 @@
+.isolated_home/
+.firecrawl-data/
+firecrawl-local/firecrawl-src/
+autonomous_agent_env/.isolated_home/.config/opencode/opencode.json

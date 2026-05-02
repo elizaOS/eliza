@@ -1,0 +1,24 @@
+Extract comment details from the user's request to add a comment to a Linear issue.
+
+User request: "{{userMessage}}"
+
+The user might express this in various ways:
+- "Comment on ENG-123: This looks good"
+- "Tell ENG-123 that the fix is ready for testing"
+- "Add a note to the login bug saying we need more info"
+- "Reply to COM2-7: Thanks for the update"
+- "Let the payment issue know that it's blocked by API changes"
+
+Return ONLY a JSON object:
+{
+  "issueId": "Direct issue ID if explicitly mentioned (e.g., ENG-123)",
+  "issueDescription": "Description/keywords of the issue if no ID provided",
+  "commentBody": "The actual comment content to add",
+  "commentType": "note/reply/update/question/feedback (inferred from context)"
+}
+
+Extract the core message the user wants to convey as the comment body.
+
+
+
+

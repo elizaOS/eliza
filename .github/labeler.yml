@@ -1,0 +1,73 @@
+# Auto-labels PRs based on changed file paths
+# Used by actions/labeler in auto-label.yml
+
+core:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'packages/agent/**'
+      - 'packages/app-core/src/runtime/**'
+      - 'packages/app-core/src/cli/**'
+      - 'packages/app-core/src/config/**'
+
+connector:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'plugins/plugin-telegram/**'
+      - 'plugins/plugin-discord/**'
+      - 'plugins/plugin-slack/**'
+      - 'plugins/plugin-imessage/**'
+      - 'plugins/plugin-whatsapp/**'
+
+ui:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'packages/app/**'
+      - 'packages/ui/**'
+      - 'packages/homepage/**'
+      - '**/*.css'
+      - '**/*.scss'
+
+tests:
+  - changed-files:
+    - any-glob-to-any-file:
+      - '**/*.test.ts'
+      - 'packages/app-core/test/**'
+      - 'test/**'
+      - 'vitest*.config.*'
+
+ci:
+  - changed-files:
+    - any-glob-to-any-file:
+      - '.github/**'
+
+docs:
+  - changed-files:
+    - any-glob-to-any-file:
+      - '**/*.md'
+      - 'packages/docs/**'
+
+build:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'package.json'
+      - 'tsconfig*.json'
+      - 'tsdown.config.*'
+      - 'packages/app-core/scripts/**'
+
+plugins:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'plugins/**'
+      - 'packages/native-plugins/**'
+
+electron:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'packages/app/electrobun/**'
+
+deploy:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'deploy/**'
+      - 'Dockerfile*'
+      - 'docker-compose*'

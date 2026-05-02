@@ -1,0 +1,41 @@
+{
+	"extends": "../../tsconfig.json",
+	// Sources only: build emits JS to dist/; declarations via tsconfig.declarations.json + build.ts. Stray .js/.d.ts next to .ts are accidental IDE/tsc emits — remove with bun run clean.
+	"compilerOptions": {
+		"outDir": "./dist",
+		"rootDir": "../../",
+		"baseUrl": "../../",
+		"ignoreDeprecations": "6.0",
+		"typeRoots": [
+			"../../../node_modules/@types",
+			"../../../node_modules/.bun/node_modules/@types",
+			"../../node_modules/@types",
+			"../../node_modules/.bun/node_modules/@types",
+			"../../../node_modules",
+			"../../../node_modules/.bun/node_modules",
+			"../../node_modules",
+			"../../node_modules/.bun/node_modules"
+		],
+		"types": ["node", "bun"],
+		"noEmit": true,
+		"composite": false,
+		"declaration": false,
+		"declarationMap": false,
+		"skipLibCheck": true,
+		"paths": {
+			"@elizaos/core": ["./src/index.node.ts"],
+			"@elizaos/core/*": ["./src/*"],
+			"@elizaos/shared": ["../shared/src/index.ts"],
+			"@elizaos/shared/*": ["../shared/src/*"]
+		}
+	},
+	"include": ["src/**/*.ts", "../@schemas/**/*.ts"],
+	"exclude": [
+		"src/**/*.test.ts",
+		"src/**/*.spec.ts",
+		"src/**/__tests__/**",
+		"vitest.config.ts",
+		"node_modules",
+		"dist"
+	]
+}

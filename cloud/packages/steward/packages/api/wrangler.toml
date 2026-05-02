@@ -1,0 +1,62 @@
+name = "steward-api"
+main = "src/worker.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+account_id = "REPLACE_ME"
+workers_dev = true
+minify = true
+
+[observability]
+enabled = true
+
+[vars]
+SKIP_MIGRATIONS = "1"
+DATABASE_DRIVER = "neon-http"
+REDIS_DRIVER = "upstash"
+# Non-secret config goes here. Anything sensitive must be set via
+# `wrangler secret put` instead so it doesn't end up in this file.
+# JWT_ISSUER = "steward"  (default in code)
+# EMAIL_AUTH_REDIRECT_BASE_URL = "https://www.elizacloud.ai"
+
+# Required secrets — set via `wrangler secret put <NAME>`. DO NOT COMMIT VALUES.
+#
+# Database / Redis
+#   DATABASE_URL                     Neon HTTP connection string (postgres://...)
+#   KV_REST_API_URL                  Upstash REST endpoint (https://*.upstash.io)
+#   KV_REST_API_TOKEN                Upstash REST token
+#
+# Auth / vault
+#   STEWARD_SESSION_SECRET           HS256 JWT signing secret (canonical)
+#   STEWARD_MASTER_PASSWORD          Vault keystore master
+#   STEWARD_KDF_SALT                 Per-deployment hex salt for the KeyStore KDF
+#
+# Email
+#   RESEND_API_KEY                   Magic-link email provider
+#   EMAIL_FROM                       optional: from address (default login@steward.fi)
+#   APP_URL                          optional: base URL for magic links
+#
+# OAuth providers
+#   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+#   DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET
+#   GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET
+#   TWITTER_CLIENT_ID, TWITTER_CLIENT_SECRET
+#
+# Passkeys (WebAuthn)
+#   PASSKEY_RP_ID, PASSKEY_ORIGIN, PASSKEY_RP_NAME
+#   PASSKEY_ALLOWED_ORIGINS          comma-separated list of accepted origins
+
+[env.staging]
+name = "steward-api-staging"
+
+[env.staging.vars]
+SKIP_MIGRATIONS = "1"
+DATABASE_DRIVER = "neon-http"
+REDIS_DRIVER = "upstash"
+
+[env.production]
+name = "steward-api-prod"
+
+[env.production.vars]
+SKIP_MIGRATIONS = "1"
+DATABASE_DRIVER = "neon-http"
+REDIS_DRIVER = "upstash"
