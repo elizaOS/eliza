@@ -168,10 +168,10 @@ This example can work alongside the Telegram example. Both share the same `.env`
 
 ```bash
 # Run Discord bot
-cd examples/discord/typescript && bun start &
+cd examples/discord && bun start &
 
 # Run Telegram bot (in another terminal)
-cd examples/telegram/typescript && bun start &
+cd examples/telegram && bun start &
 ```
 
 ## License

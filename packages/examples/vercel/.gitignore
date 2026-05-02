@@ -5,15 +5,6 @@ node_modules/
 dist/
 .vercel/
 
-# Rust/WASM outputs
-rust/target/
-api/rust/pkg/
-
-# Python
-__pycache__/
-*.pyc
-.venv/
-
 # Environment
 .env
 .env.local

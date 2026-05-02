@@ -1,18 +1,19 @@
 {
   "name": "@elizaos/aws-examples",
   "version": "2.0.0-alpha",
-  "description": "elizaOS AWS Lambda worker examples and test clients",
+  "description": "elizaOS AWS Lambda worker (TypeScript) and test client",
   "type": "module",
+  "main": "dist/handler.js",
   "scripts": {
-    "test:typescript": "npx ts-node test-client.ts",
-    "test:python": "python test-client.py",
-    "build:typescript": "cd typescript && npm install && npm run build",
-    "build:python": "cd python && pip install -r requirements.txt -t .",
-    "build:rust": "cd rust && cargo lambda build --release",
-    "deploy": "sam deploy --guided",
-    "deploy:typescript": "npm run build:typescript && sam deploy --parameter-overrides RuntimeLanguage=typescript",
-    "deploy:python": "npm run build:python && sam deploy --parameter-overrides RuntimeLanguage=python",
-    "deploy:rust": "npm run build:rust && sam deploy --parameter-overrides RuntimeLanguage=rust",
+    "build": "bun build handler.ts --outdir=dist --target=node --format=esm --outfile=dist/handler.js --packages=external",
+    "build:watch": "bun run build --watch",
+    "clean": "rm -rf dist",
+    "test": "bun run test-local.ts",
+    "start": "bun run server-local.ts",
+    "test:client": "bun run test-client.ts",
+    "deploy": "sam build && sam deploy",
+    "deploy:guided": "sam build && sam deploy --guided",
+    "invoke:local": "sam local invoke ElizaWorkerFunction --event events/chat.json",
     "local": "sam local start-api",
     "logs": "sam logs --tail",
     "delete": "sam delete",
@@ -20,10 +21,17 @@
     "lint:check": "bunx @biomejs/biome check .",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@elizaos/core": "alpha",
+    "@elizaos/plugin-openai": "alpha",
+    "@elizaos/plugin-sql": "alpha"
+  },
   "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
     "@types/node": "^25.0.3",
-    "ts-node": "^10.9.2",
     "typescript": "^6.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   }
 }

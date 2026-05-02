@@ -42,7 +42,7 @@ Not directly via Open Cloud.
 
 ### Examples
 
-- **TypeScript**: `examples/roblox/typescript/` (canonical agent runtime + `@elizaos/plugin-roblox`)
+- **TypeScript**: `examples/roblox/` (canonical agent runtime + `@elizaos/plugin-roblox`)
 - **Python**: `examples/roblox/python/` (canonical agent runtime + HTTP bridge)
 - **Rust**: `examples/roblox/rust/` (canonical agent runtime + HTTP bridge)
 
