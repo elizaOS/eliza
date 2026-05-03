@@ -5,25 +5,25 @@ type ItFn = typeof it;
 type TestFn = typeof test;
 
 export function describeIf(condition: boolean): DescribeFn {
-  if (condition) {
-    return describe;
-  }
+	if (condition) {
+		return describe;
+	}
 
-  return ((_: string, __?: () => void) => {}) as unknown as DescribeFn;
+	return ((_: string, __?: () => void) => {}) as unknown as DescribeFn;
 }
 
 export function itIf(condition: boolean): ItFn {
-  if (condition) {
-    return it;
-  }
+	if (condition) {
+		return it;
+	}
 
-  return ((_: string, __?: () => void) => {}) as unknown as ItFn;
+	return ((_: string, __?: () => void) => {}) as unknown as ItFn;
 }
 
 export function testIf(condition: boolean): TestFn {
-  if (condition) {
-    return test;
-  }
+	if (condition) {
+		return test;
+	}
 
-  return ((_: string, __?: () => void) => {}) as unknown as TestFn;
+	return ((_: string, __?: () => void) => {}) as unknown as TestFn;
 }

@@ -11,19 +11,19 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const packageRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
+	path.dirname(fileURLToPath(import.meta.url)),
+	"..",
 );
 
 export function setup(): void {
-  const distIndex = path.join(packageRoot, "dist", "index.js");
+	const distIndex = path.join(packageRoot, "dist", "index.js");
 
-  if (fs.existsSync(distIndex)) {
-    // Already built — skip to keep the fast path fast.
-    return;
-  }
+	if (fs.existsSync(distIndex)) {
+		// Already built — skip to keep the fast path fast.
+		return;
+	}
 
-  // eslint-disable-next-line no-console
-  console.log("[e2e-global-setup] dist/ not found — running tsdown…");
-  execSync("bunx tsdown", { cwd: packageRoot, stdio: "inherit" });
+	// eslint-disable-next-line no-console
+	console.log("[e2e-global-setup] dist/ not found — running tsdown…");
+	execSync("bunx tsdown", { cwd: packageRoot, stdio: "inherit" });
 }

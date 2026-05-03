@@ -11,6 +11,20 @@
 import { parseFrontmatter, validateFrontmatter } from "./parser";
 import type { Skill } from "./types";
 
+type FflateUnzipped = Record<string, Uint8Array>;
+interface FflateModule {
+	unzipSync: (data: Uint8Array) => FflateUnzipped;
+}
+
+// fflate's package.json exports map omits a "types" entry in older transitive
+// resolutions (v0.6.10 pulled in by three-stdlib), which breaks tsup's DTS
+// build under bun's isolated layout. Widening moduleId to `string` prevents
+// TypeScript from evaluating the import as a literal and triggering TS7016.
+async function loadFflate(): Promise<FflateModule> {
+	const moduleId: string = "fflate";
+	return (await import(moduleId)) as FflateModule;
+}
+
 // ============================================================
 // STORAGE INTERFACE
 // ============================================================
@@ -198,8 +212,7 @@ export class MemorySkillStore implements ISkillStorage {
 	 * Load a skill from a zip buffer (for registry downloads).
 	 */
 	async loadFromZip(slug: string, zipBuffer: Uint8Array): Promise<void> {
-		// Dynamic import for browser compatibility
-		const { unzipSync } = await import("fflate");
+		const { unzipSync } = await loadFflate();
 		const unzipped = unzipSync(zipBuffer);
 
 		const files = new Map<string, SkillFile>();
@@ -424,7 +437,7 @@ export class FileSystemSkillStore implements ISkillStorage {
 	 * Save a skill from a zip buffer.
 	 */
 	async saveFromZip(slug: string, zipBuffer: Uint8Array): Promise<void> {
-		const { unzipSync } = await import("fflate");
+		const { unzipSync } = await loadFflate();
 		const unzipped = unzipSync(zipBuffer);
 
 		const files = new Map<string, SkillFile>();

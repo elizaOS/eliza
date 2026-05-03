@@ -15,10 +15,10 @@ import { act } from "react-test-renderer";
  * Only concatenates immediate string children — does not recurse.
  */
 export function text(node: TestRenderer.ReactTestInstance): string {
-  return node.children
-    .map((child) => (typeof child === "string" ? child : ""))
-    .join("")
-    .trim();
+	return node.children
+		.map((child) => (typeof child === "string" ? child : ""))
+		.join("")
+		.trim();
 }
 
 /**
@@ -26,9 +26,9 @@ export function text(node: TestRenderer.ReactTestInstance): string {
  * Traverses the full subtree to collect all string children.
  */
 export function textOf(node: TestRenderer.ReactTestInstance): string {
-  return node.children
-    .map((child) => (typeof child === "string" ? child : textOf(child)))
-    .join("");
+	return node.children
+		.map((child) => (typeof child === "string" ? child : textOf(child)))
+		.join("");
 }
 
 /**
@@ -36,16 +36,16 @@ export function textOf(node: TestRenderer.ReactTestInstance): string {
  * Throws if no matching button is found.
  */
 export function findButtonByText(
-  root: TestRenderer.ReactTestInstance,
-  label: string,
+	root: TestRenderer.ReactTestInstance,
+	label: string,
 ): TestRenderer.ReactTestInstance {
-  const matches = root.findAll(
-    (node) => node.type === "button" && text(node) === label,
-  );
-  if (!matches[0]) {
-    throw new Error(`Button "${label}" not found`);
-  }
-  return matches[0];
+	const matches = root.findAll(
+		(node) => node.type === "button" && text(node) === label,
+	);
+	if (!matches[0]) {
+		throw new Error(`Button "${label}" not found`);
+	}
+	return matches[0];
 }
 
 /**
@@ -53,7 +53,7 @@ export function findButtonByText(
  * Use after state updates to let effects and re-renders settle.
  */
 export async function flush(): Promise<void> {
-  await act(async () => {
-    await Promise.resolve();
-  });
+	await act(async () => {
+		await Promise.resolve();
+	});
 }

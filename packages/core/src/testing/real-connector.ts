@@ -18,10 +18,10 @@ import { setTimeout as sleep } from "node:timers/promises";
 // Load .env
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
 try {
-  const { config } = await import("dotenv");
-  config({ path: path.join(REPO_ROOT, ".env") });
+	const { config } = await import("dotenv");
+	config({ path: path.join(REPO_ROOT, ".env") });
 } catch {
-  // dotenv optional
+	// dotenv optional
 }
 
 // ---------------------------------------------------------------------------
@@ -29,9 +29,9 @@ try {
 // ---------------------------------------------------------------------------
 
 export interface DiscordTestClient {
-  client: unknown; // Discord.js Client - typed loosely to avoid hard dep
-  userId: string;
-  destroy: () => Promise<void>;
+	client: unknown; // Discord.js Client - typed loosely to avoid hard dep
+	userId: string;
+	destroy: () => Promise<void>;
 }
 
 /**
@@ -40,77 +40,89 @@ export interface DiscordTestClient {
  * Returns null if token is not available.
  */
 export async function createDiscordTestClient(): Promise<DiscordTestClient | null> {
-  const token = process.env.DISCORD_BOT_TOKEN?.trim();
-  if (!token) return null;
+	const token = process.env.DISCORD_BOT_TOKEN?.trim();
+	if (!token) return null;
 
-  try {
-    const { Client, GatewayIntentBits } = await import("discord.js");
-    const client = new Client({
-      intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.DirectMessages,
-        GatewayIntentBits.MessageContent,
-      ],
-    });
+	try {
+		const { Client, GatewayIntentBits } = await import("discord.js");
+		const client = new Client({
+			intents: [
+				GatewayIntentBits.Guilds,
+				GatewayIntentBits.GuildMessages,
+				GatewayIntentBits.DirectMessages,
+				GatewayIntentBits.MessageContent,
+			],
+		});
 
-    await client.login(token);
+		await client.login(token);
 
-    // Wait for ready
-    await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(
-        () => reject(new Error("Discord client ready timeout")),
-        30_000,
-      );
-      client.once("ready", () => {
-        clearTimeout(timeout);
-        resolve();
-      });
-    });
+		// Wait for ready
+		await new Promise<void>((resolve, reject) => {
+			const timeout = setTimeout(
+				() => reject(new Error("Discord client ready timeout")),
+				30_000,
+			);
+			client.once("ready", () => {
+				clearTimeout(timeout);
+				resolve();
+			});
+		});
 
-    const userId = client.user?.id ?? "";
+		const userId = client.user?.id ?? "";
 
-    return {
-      client,
-      userId,
-      destroy: async () => {
-        try {
-          client.destroy();
-        } catch {
-          // ignore
-        }
-      },
-    };
-  } catch (err) {
-    console.warn(`[real-connector] Discord client creation failed: ${err}`);
-    return null;
-  }
+		return {
+			client,
+			userId,
+			destroy: async () => {
+				try {
+					client.destroy();
+				} catch {
+					// ignore
+				}
+			},
+		};
+	} catch (err) {
+		console.warn(`[real-connector] Discord client creation failed: ${err}`);
+		return null;
+	}
 }
 
 /**
  * Send a DM to a Discord user via the bot.
  */
 export async function sendDiscordDM(
-  client: unknown,
-  userId: string,
-  content: string,
+	client: unknown,
+	userId: string,
+	content: string,
 ): Promise<void> {
-  const c = client as { users: { fetch: (id: string) => Promise<{ send: (content: string) => Promise<void> }> } };
-  const user = await c.users.fetch(userId);
-  await user.send(content);
+	const c = client as {
+		users: {
+			fetch: (
+				id: string,
+			) => Promise<{ send: (content: string) => Promise<void> }>;
+		};
+	};
+	const user = await c.users.fetch(userId);
+	await user.send(content);
 }
 
 /**
  * Send a message to a Discord channel.
  */
 export async function sendDiscordChannelMessage(
-  client: unknown,
-  channelId: string,
-  content: string,
+	client: unknown,
+	channelId: string,
+	content: string,
 ): Promise<void> {
-  const c = client as { channels: { fetch: (id: string) => Promise<{ send: (content: string) => Promise<void> }> } };
-  const channel = await c.channels.fetch(channelId);
-  await channel.send(content);
+	const c = client as {
+		channels: {
+			fetch: (
+				id: string,
+			) => Promise<{ send: (content: string) => Promise<void> }>;
+		};
+	};
+	const channel = await c.channels.fetch(channelId);
+	await channel.send(content);
 }
 
 /**
@@ -118,32 +130,43 @@ export async function sendDiscordChannelMessage(
  * Returns the message content or null if timeout.
  */
 export async function waitForDiscordMessage(
-  client: unknown,
-  channelId: string,
-  timeoutMs = 30_000,
-  fromBotOnly = true,
+	client: unknown,
+	channelId: string,
+	timeoutMs = 30_000,
+	fromBotOnly = true,
 ): Promise<string | null> {
-  const c = client as {
-    on: (event: string, handler: (msg: { channelId: string; content: string; author: { bot: boolean } }) => void) => void;
-    off: (event: string, handler: (...args: unknown[]) => void) => void;
-  };
+	const c = client as {
+		on: (
+			event: string,
+			handler: (msg: {
+				channelId: string;
+				content: string;
+				author: { bot: boolean };
+			}) => void,
+		) => void;
+		off: (event: string, handler: (...args: unknown[]) => void) => void;
+	};
 
-  return new Promise((resolve) => {
-    const timeout = setTimeout(() => {
-      c.off("messageCreate", handler);
-      resolve(null);
-    }, timeoutMs);
+	return new Promise((resolve) => {
+		const timeout = setTimeout(() => {
+			c.off("messageCreate", handler);
+			resolve(null);
+		}, timeoutMs);
 
-    const handler = (msg: { channelId: string; content: string; author: { bot: boolean } }) => {
-      if (msg.channelId !== channelId) return;
-      if (fromBotOnly && !msg.author.bot) return;
-      clearTimeout(timeout);
-      c.off("messageCreate", handler);
-      resolve(msg.content);
-    };
+		const handler = (msg: {
+			channelId: string;
+			content: string;
+			author: { bot: boolean };
+		}) => {
+			if (msg.channelId !== channelId) return;
+			if (fromBotOnly && !msg.author.bot) return;
+			clearTimeout(timeout);
+			c.off("messageCreate", handler);
+			resolve(msg.content);
+		};
 
-    c.on("messageCreate", handler);
-  });
+		c.on("messageCreate", handler);
+	});
 }
 
 // ---------------------------------------------------------------------------
@@ -151,10 +174,10 @@ export async function waitForDiscordMessage(
 // ---------------------------------------------------------------------------
 
 export interface TelegramTestBot {
-  token: string;
-  botInfo: { id: number; username: string };
-  sendMessage: (chatId: string | number, text: string) => Promise<void>;
-  destroy: () => void;
+	token: string;
+	botInfo: { id: number; username: string };
+	sendMessage: (chatId: string | number, text: string) => Promise<void>;
+	destroy: () => void;
 }
 
 /**
@@ -163,38 +186,38 @@ export interface TelegramTestBot {
  * Returns null if token is not available.
  */
 export async function createTelegramTestBot(): Promise<TelegramTestBot | null> {
-  const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
-  if (!token) return null;
+	const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
+	if (!token) return null;
 
-  try {
-    // Use raw HTTP API to avoid telegraf/grammY dependency
-    const baseUrl = `https://api.telegram.org/bot${token}`;
+	try {
+		// Use raw HTTP API to avoid telegraf/grammY dependency
+		const baseUrl = `https://api.telegram.org/bot${token}`;
 
-    const meResponse = await fetch(`${baseUrl}/getMe`);
-    const meData = (await meResponse.json()) as {
-      ok: boolean;
-      result: { id: number; username: string };
-    };
-    if (!meData.ok) return null;
+		const meResponse = await fetch(`${baseUrl}/getMe`);
+		const meData = (await meResponse.json()) as {
+			ok: boolean;
+			result: { id: number; username: string };
+		};
+		if (!meData.ok) return null;
 
-    return {
-      token,
-      botInfo: meData.result,
-      sendMessage: async (chatId: string | number, text: string) => {
-        await fetch(`${baseUrl}/sendMessage`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chat_id: chatId, text }),
-        });
-      },
-      destroy: () => {
-        // No persistent connection to clean up with raw HTTP
-      },
-    };
-  } catch (err) {
-    console.warn(`[real-connector] Telegram bot creation failed: ${err}`);
-    return null;
-  }
+		return {
+			token,
+			botInfo: meData.result,
+			sendMessage: async (chatId: string | number, text: string) => {
+				await fetch(`${baseUrl}/sendMessage`, {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ chat_id: chatId, text }),
+				});
+			},
+			destroy: () => {
+				// No persistent connection to clean up with raw HTTP
+			},
+		};
+	} catch (err) {
+		console.warn(`[real-connector] Telegram bot creation failed: ${err}`);
+		return null;
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -207,39 +230,39 @@ export async function createTelegramTestBot(): Promise<TelegramTestBot | null> {
  * Falls back to sending via the agent's email action.
  */
 export async function sendTestEmail(
-  to: string,
-  subject: string,
-  body: string,
+	to: string,
+	subject: string,
+	body: string,
 ): Promise<boolean> {
-  const host = process.env.SMTP_HOST?.trim();
-  const port = process.env.SMTP_PORT?.trim();
-  const user = process.env.SMTP_USER?.trim();
-  const pass = process.env.SMTP_PASS?.trim();
+	const host = process.env.SMTP_HOST?.trim();
+	const port = process.env.SMTP_PORT?.trim();
+	const user = process.env.SMTP_USER?.trim();
+	const pass = process.env.SMTP_PASS?.trim();
 
-  if (!host || !user || !pass) {
-    console.warn("[real-connector] SMTP credentials not available");
-    return false;
-  }
+	if (!host || !user || !pass) {
+		console.warn("[real-connector] SMTP credentials not available");
+		return false;
+	}
 
-  try {
-    const nodemailer = await import("nodemailer");
-    const transport = nodemailer.createTransport({
-      host,
-      port: port ? Number.parseInt(port, 10) : 587,
-      secure: port === "465",
-      auth: { user, pass },
-    });
+	try {
+		const nodemailer = await import("nodemailer");
+		const transport = nodemailer.createTransport({
+			host,
+			port: port ? Number.parseInt(port, 10) : 587,
+			secure: port === "465",
+			auth: { user, pass },
+		});
 
-    await transport.sendMail({
-      from: user,
-      to,
-      subject,
-      text: body,
-    });
+		await transport.sendMail({
+			from: user,
+			to,
+			subject,
+			text: body,
+		});
 
-    return true;
-  } catch (err) {
-    console.warn(`[real-connector] Email send failed: ${err}`);
-    return false;
-  }
+		return true;
+	} catch (err) {
+		console.warn(`[real-connector] Email send failed: ${err}`);
+		return false;
+	}
 }
