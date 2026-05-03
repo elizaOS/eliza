@@ -83,6 +83,7 @@ export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   // Enable via character settings: ENABLE_PLUGIN_MANAGER, ENABLE_SECRETS_MANAGER, ENABLE_TRUST
   // "@elizaos/app-lifeops" — moved to CORE_PLUGINS above
   "@elizaos/plugin-pdf", // PDF processing (published bundle broken in alpha.15)
+  "@elizaos/plugin-video", // Video download / transcription (ffmpeg + yt-dlp; opt-in)
   "@elizaos/plugin-cua", // CUA computer-use agent (cloud sandbox automation)
   "@elizaos/plugin-obsidian", // Obsidian vault CLI integration
   "@elizaos/plugin-code", // code writing and file operations

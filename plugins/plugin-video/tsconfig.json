@@ -1,8 +1,10 @@
 {
   "compilerOptions": {
+    "ignoreDeprecations": "6.0",
     "outDir": "dist",
     "rootDir": "src",
-    "lib": ["ESNext", "dom"],
+    "lib": ["ESNext"],
+    "types": ["node"],
     "module": "Preserve",
     "moduleResolution": "Bundler",
     "strict": false,
@@ -20,5 +22,7 @@
     "moduleDetection": "force",
     "allowArbitraryExtensions": true
   },
-  "include": ["src/**/*.ts"]
+  "include": [
+    "src/**/*.ts"
+  ]
 }
