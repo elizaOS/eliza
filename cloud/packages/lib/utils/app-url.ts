@@ -9,12 +9,16 @@
  * appropriate for the browser bundle (Vite replaces `process.env.NEXT_PUBLIC_*`
  * at build time) and Node tests.
  */
-export function getAppUrl(env: NodeJS.ProcessEnv = process.env): string {
+interface AppUrlEnv {
+  NEXT_PUBLIC_APP_URL?: string | null;
+}
+
+export function getAppUrl(env: AppUrlEnv = process.env as AppUrlEnv): string {
   const url = env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const base = url.startsWith("http") ? url : `https://${url}`;
   return base.replace(/\/$/, "");
 }
 
-export function getAppHost(env: NodeJS.ProcessEnv = process.env): string {
+export function getAppHost(env: AppUrlEnv = process.env as AppUrlEnv): string {
   return new URL(getAppUrl(env)).host;
 }
