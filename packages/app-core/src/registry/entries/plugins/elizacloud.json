@@ -29,7 +29,7 @@
       "required": false,
       "sensitive": false,
       "label": "Cloud Small Model",
-      "help": "Small/fast model for quick tasks (overrides SMALL_MODEL). Available: gpt-5-mini, gpt-5, claude-3-5-sonnet, gemini-2.0-flash",
+      "help": "Small/fast model for quick tasks (overrides SMALL_MODEL). Available: gpt-5-mini, gpt-5, claude-3-5-sonnet, gemini-2.0-flash, vast/qwen3.6-35b-a3b-awq (Cloud-hosted, autoscaled)",
       "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
       "advanced": false
     },
@@ -48,7 +48,7 @@
       "required": false,
       "sensitive": false,
       "label": "Cloud Large Model",
-      "help": "Large/powerful model for complex tasks (overrides LARGE_MODEL). Available: gpt-5-mini, gpt-5, claude-3-5-sonnet, gemini-2.0-flash",
+      "help": "Large/powerful model for complex tasks (overrides LARGE_MODEL). Available: gpt-5-mini, gpt-5, claude-3-5-sonnet, gemini-2.0-flash, vast/qwen3.6-35b-a3b-awq (Cloud-hosted, autoscaled)",
       "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
       "advanced": false
     },
