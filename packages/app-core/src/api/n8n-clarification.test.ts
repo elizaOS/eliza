@@ -113,8 +113,10 @@ describe("setByDotPath", () => {
       nodes: [{ parameters: {} }, { parameters: {} }],
     };
     setByDotPath(draft, "nodes[1].parameters.guildId", "1234");
-    expect((draft.nodes as Array<{ parameters: { guildId?: string } }>)[1]
-      .parameters.guildId).toBe("1234");
+    expect(
+      (draft.nodes as Array<{ parameters: { guildId?: string } }>)[1].parameters
+        .guildId,
+    ).toBe("1234");
   });
 
   it("creates array intermediates when the next segment is numeric", () => {
@@ -162,9 +164,7 @@ describe("applyResolutions", () => {
   it("rejects a missing paramPath", () => {
     const draft: Record<string, unknown> = {};
     expect(
-      applyResolutions(draft, [
-        { paramPath: "", value: "x" } as never,
-      ]),
+      applyResolutions(draft, [{ paramPath: "", value: "x" } as never]),
     ).toEqual({ ok: false, error: "resolution missing paramPath" });
   });
 
@@ -242,10 +242,7 @@ describe("pruneResolvedClarifications", () => {
         ],
       },
     };
-    pruneResolvedClarifications(
-      draft,
-      new Set(["nodes[0].parameters.x"]),
-    );
+    pruneResolvedClarifications(draft, new Set(["nodes[0].parameters.x"]));
     expect(
       (draft._meta as { requiresClarification?: unknown })
         .requiresClarification,

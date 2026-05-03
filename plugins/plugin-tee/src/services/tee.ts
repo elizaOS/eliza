@@ -82,6 +82,6 @@ export class TEEService extends Service {
     path: string,
     subject: string,
   ): Promise<GetTlsKeyResponse> {
-    return this.provider.rawGetTlsKeyResponse(path, subject);
+    return this.provider.rawDeriveKeyResponse(path, subject);
   }
 }

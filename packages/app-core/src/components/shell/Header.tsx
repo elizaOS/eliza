@@ -226,12 +226,7 @@ export function Header({
   }, [showMacDesktopTitleBar]);
 
   const streamingEnabled = useMemo(
-    () =>
-      plugins.some(
-        (plugin) =>
-          plugin.id === "streaming" &&
-          plugin.enabled,
-      ),
+    () => plugins.some((plugin) => plugin.id === "streaming" && plugin.enabled),
     [plugins],
   );
   const tabGroups = useMemo(

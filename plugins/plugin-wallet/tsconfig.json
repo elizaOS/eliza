@@ -14,7 +14,7 @@
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "noEmit": true,
-    "types": ["node"]
+    "types": ["node", "bun"]
   },
   "include": ["src/**/*.ts"],
   "exclude": ["src/sdk/**", "src/**/__tests__/**", "src/**/tests/**", "src/**/e2e/**"]

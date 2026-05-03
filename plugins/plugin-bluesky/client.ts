@@ -44,7 +44,9 @@ function isPostView(
 	);
 }
 
-function isReplyWithPostViews(reply: AppBskyFeedDefs.ReplyRef | null | undefined): reply is AppBskyFeedDefs.ReplyRef & {
+function isReplyWithPostViews(
+	reply: AppBskyFeedDefs.ReplyRef | null | undefined,
+): reply is AppBskyFeedDefs.ReplyRef & {
 	root: AppBskyFeedDefs.PostView;
 	parent: AppBskyFeedDefs.PostView;
 } {

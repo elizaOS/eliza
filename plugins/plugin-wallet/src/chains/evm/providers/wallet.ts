@@ -219,7 +219,7 @@ export class WalletProvider {
       });
       return formatUnits(balance, 18);
     } catch (error) {
-      logger.error(`Error getting wallet balance for ${chainName}:`, error);
+      logger.error(`Error getting wallet balance for ${chainName}:`, error instanceof Error ? error.message : String(error));
       return null;
     }
   }
@@ -285,7 +285,7 @@ export class WalletProvider {
                 } catch (error) {
                   logger.warn(
                     `[WalletProvider] Eliza Cloud RPC request threw for ${chainName}. Falling back to ${fallbackRpcUrl}.`,
-                    error
+                    error instanceof Error ? error.message : String(error)
                   );
 
                   return await fetch(fallbackRpcUrl, {
@@ -423,7 +423,10 @@ async function generateAndStorePrivateKey(runtime: IAgentRuntime): Promise<`0x${
     });
     logger.log("EVM private key persisted to agent settings");
   } catch (error) {
-    logger.warn("Could not persist EVM private key to database - key is only in memory", error);
+    logger.warn(
+      "Could not persist EVM private key to database - key is only in memory",
+      error instanceof Error ? error.message : String(error),
+    );
   }
 
   return newPrivateKey;
@@ -627,7 +630,7 @@ export const evmWalletProvider: Provider = {
         },
       };
     } catch (error) {
-      logger.error("Error in EVM wallet provider:", error);
+      logger.error("Error in EVM wallet provider:", error instanceof Error ? error.message : String(error));
       throw error;
     }
   },
