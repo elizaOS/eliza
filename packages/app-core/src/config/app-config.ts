@@ -124,6 +124,101 @@ export interface AppAndroidConfig {
   userAgentMarkers?: AndroidUserAgentMarker[];
 }
 
+/**
+ * Per-fork configuration for the AOSP system-app build toolkit
+ * shipped under `eliza/packages/app-core/scripts/aosp/`.
+ *
+ * White-label forks that want their own AOSP product image declare
+ * one `aosp:` block on their `AppConfig`; the build/validate/test
+ * scripts read it once at startup and parameterize every hardcoded
+ * brand value (vendor dir, lunch target, package name, etc.) off it.
+ *
+ * Forks without an AOSP image leave this `undefined`; the toolkit
+ * is inert in that case.
+ *
+ * Example:
+ *
+ *   aosp: {
+ *     productLunch:
+ *       "milady_cf_x86_64_phone-trunk_staging-userdebug",
+ *     vendorDir: "milady",
+ *     variantName: "MiladyOS",
+ *     productName: "milady",
+ *     packageName: "com.miladyai.milady",
+ *     appName: "Milady",
+ *     commonMk: "vendor/milady/milady_common.mk",
+ *     modelSourceLabel: "milady-download",
+ *     bootanimationAssetDir:
+ *       "os/android/vendor/milady/bootanimation",
+ *   }
+ */
+export interface AospVariantConfig {
+  /**
+   * Full AOSP product lunch target string, e.g.
+   * `"milady_cf_x86_64_phone-trunk_staging-userdebug"`. Passed to
+   * `lunch` inside the AOSP envsetup shell.
+   */
+  productLunch: string;
+  /**
+   * Vendor directory name relative to the AOSP root. The toolkit
+   * reads/writes `<aospRoot>/vendor/<vendorDir>/`. Examples:
+   * `"milady"`, `"acmecorp"`.
+   */
+  vendorDir: string;
+  /**
+   * Display name used in log lines and status messages, e.g.
+   * `"MiladyOS"`. Cosmetic only — affects no on-device behavior.
+   */
+  variantName: string;
+  /**
+   * Brand short name used for `make` invocations and product
+   * makefile names, e.g. `"milady"`. Conventionally lowercase ASCII
+   * matching `vendorDir`.
+   */
+  productName: string;
+  /**
+   * Reverse-DNS package name of the system app, e.g.
+   * `"com.miladyai.milady"`. Used to locate manifest entries,
+   * default-permissions XMLs, and `/data/data/<pkg>/` paths in
+   * sepolicy file_contexts.
+   */
+  packageName: string;
+  /**
+   * Display name of the staged APK (and its Soong module name in
+   * `vendor/<vendorDir>/apps/<appName>/Android.bp`), e.g.
+   * `"Milady"`. The validator pins `apk: "<appName>.apk"` and
+   * `name: "<appName>"`.
+   */
+  appName: string;
+  /**
+   * Path to the common product makefile, relative to AOSP root,
+   * e.g. `"vendor/milady/milady_common.mk"`. The validator checks
+   * that the per-product makefile inherits this file.
+   */
+  commonMk: string;
+  /**
+   * Source-label string written into the bundled-models manifest
+   * so the on-device runtime registers the staged GGUFs in the
+   * local-inference registry as fork-owned, e.g.
+   * `"milady-download"`.
+   */
+  modelSourceLabel: string;
+  /**
+   * Optional path to bootanimation source assets (`desc.txt` +
+   * `partN/` PNG dirs), relative to the host repo root, e.g.
+   * `"os/android/vendor/milady/bootanimation"`. When unset the
+   * `build-bootanimation.mjs` script must be passed `--frames`.
+   */
+  bootanimationAssetDir?: string;
+  /**
+   * Optional Cuttlefish device dir name used in
+   * `out/target/product/<deviceDir>/`. Defaults to
+   * `"vsoc_x86_64_only"` (matches Google's stock cuttlefish).
+   * Override only when shipping a custom device profile.
+   */
+  cuttlefishDeviceDir?: string;
+}
+
 export interface AppConfig {
   /** Display name shown in UI, desktop title bars, etc. */
   appName: string;
@@ -177,6 +272,13 @@ export interface AppConfig {
 
   /** Android-specific build-time configuration. */
   android?: AppAndroidConfig;
+
+  /**
+   * AOSP system-app build variant. Only set on forks that ship
+   * their own AOSP product image; consumed by the toolkit under
+   * `eliza/packages/app-core/scripts/aosp/`.
+   */
+  aosp?: AospVariantConfig;
 
   /** Package manager configurations */
   packaging?: AppPackagingConfig;
