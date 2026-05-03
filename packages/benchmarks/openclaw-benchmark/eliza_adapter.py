@@ -31,15 +31,20 @@ import sys
 import time
 from pathlib import Path
 
-# Add parent directory to path for eliza_adapter imports
+# Add the eliza-adapter package directory to sys.path. This script's own
+# directory must NOT come before it on sys.path because this file is itself
+# named `eliza_adapter.py` and would shadow the `eliza_adapter` package.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "eliza-adapter"))
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 try:
     from eliza_adapter import ElizaClient, ElizaServerManager
     ELIZA_AVAILABLE = True
 except ImportError:
     ELIZA_AVAILABLE = False
+
+# Now make the script's own directory available so the local `openclaw/`
+# package can be imported.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 # Try to import the new execution-based runner
 try:
