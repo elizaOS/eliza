@@ -171,7 +171,7 @@ export class N8nWorkflowService extends Service {
 
   /**
    * Query the optional `n8n_runtime_context_provider` service for runtime
-   * facts to inject into the workflow-generation prompt. The host (e.g. Milady)
+   * facts to inject into the workflow-generation prompt. The host runtime
    * uses this to surface real Discord guild/channel IDs, the user's Gmail
    * email, and which credential types it can resolve. Returns `undefined`
    * when no provider is registered or the call throws — generation proceeds

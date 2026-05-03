@@ -262,7 +262,7 @@ export function pruneResolvedClarifications(
 }
 
 /**
- * Subset of `MiladyConnectorTargetCatalog` used by the route. Declared here
+ * Subset of `ElizaConnectorTargetCatalog` used by the route. Declared here
  * (vs. imported from the service) so route tests can stub it without
  * spinning up the full service.
  */
