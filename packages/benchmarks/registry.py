@@ -972,7 +972,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         args = [python, "-m", "elizaos_vending_bench.cli", "run", "--output-dir", str(output_dir)]
         if model.model:
             args.extend(["--model", model.model])
-        if model.provider in {"openai", "anthropic", "groq", "heuristic"}:
+        if model.provider in {"openai", "anthropic", "groq", "heuristic", "eliza"}:
             args.extend(["--provider", model.provider])
         if model.temperature is not None:
             args.extend(["--temperature", str(model.temperature)])
