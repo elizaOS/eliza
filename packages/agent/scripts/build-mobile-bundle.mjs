@@ -245,7 +245,7 @@ const dedupeTargets = {
   "@elizaos/core": path.resolve(
     repoRoot,
     "packages",
-    "typescript",
+    "core",
     "src",
     "index.node.ts",
   ),
