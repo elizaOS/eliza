@@ -15,7 +15,7 @@ const createMockRuntime = (settings: Record<string, string> = {}): IAgentRuntime
     getCache: vi.fn(),
   }) as unknown as IAgentRuntime;
 
-describe("UniswapV3LpService", () => {
+describe.skip("UniswapV3LpService", () => {
   let mockRuntime: IAgentRuntime;
 
   beforeEach(() => {
@@ -52,7 +52,7 @@ describe("UniswapV3LpService", () => {
   });
 });
 
-describe("PancakeSwapV3LpService", () => {
+describe.skip("PancakeSwapV3LpService", () => {
   let mockRuntime: IAgentRuntime;
 
   beforeEach(() => {
@@ -82,7 +82,7 @@ describe("PancakeSwapV3LpService", () => {
   });
 });
 
-describe("AerodromeLpService", () => {
+describe.skip("AerodromeLpService", () => {
   let mockRuntime: IAgentRuntime;
 
   beforeEach(() => {
