@@ -8,7 +8,7 @@
   "lunchTarget": "eliza_cf_x86_64_phone-trunk_staging-userdebug",
   "envPrefix": "ELIZA",
   "propertyPrefix": "elizaos",
-  "vendorDir": "os/android/vendor/eliza",
+  "vendorDir": "packages/os/android/vendor/eliza",
   "initRcName": "init.eliza.rc",
   "commonMakefile": "eliza_common.mk",
   "cuttlefishMakefile": "eliza_cf_x86_64_phone.mk",

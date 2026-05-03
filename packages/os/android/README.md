@@ -8,7 +8,7 @@ distribution by supplying a JSON brand config + vendor tree.
 ## Layout
 
 ```
-os/android/
+packages/os/android/
 └── vendor/
     └── <brand>/                # Vendor tree for brand <brand>
         ├── AndroidProducts.mk
