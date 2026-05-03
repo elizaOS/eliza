@@ -9,14 +9,14 @@ at those local URLs via env vars instead of hitting real services.
 
 | File                                  | Mocks                                | Env var                                                  |
 | ------------------------------------- | ------------------------------------ | -------------------------------------------------------- |
-| `environments/twilio.json`            | Twilio Programmable Messaging/Voice  | `ELIZA_MOCK_TWILIO_BASE` / `ELIZA_MOCK_TWILIO_BASE`     |
-| `environments/whatsapp.json`          | WhatsApp Business Cloud (Meta Graph) | `ELIZA_MOCK_WHATSAPP_BASE` / `ELIZA_MOCK_WHATSAPP_BASE` |
-| `environments/calendly.json`          | Calendly v2                          | `ELIZA_MOCK_CALENDLY_BASE` / `ELIZA_MOCK_CALENDLY_BASE` |
-| `environments/x-twitter.json`         | X (Twitter) v2                       | `ELIZA_MOCK_X_BASE` / `ELIZA_MOCK_X_BASE`               |
-| `environments/google.json`            | Gmail / Calendar / OAuth token       | `ELIZA_MOCK_GOOGLE_BASE` / `ELIZA_MOCK_GOOGLE_BASE`     |
+| `environments/twilio.json`            | Twilio Programmable Messaging/Voice  | `ELIZA_MOCK_TWILIO_BASE`                                |
+| `environments/whatsapp.json`          | WhatsApp Business Cloud (Meta Graph) | `ELIZA_MOCK_WHATSAPP_BASE`                              |
+| `environments/calendly.json`          | Calendly v2                          | `ELIZA_MOCK_CALENDLY_BASE`                              |
+| `environments/x-twitter.json`         | X (Twitter) v2                       | `ELIZA_MOCK_X_BASE`                                     |
+| `environments/google.json`            | Gmail / Calendar / OAuth token       | `ELIZA_MOCK_GOOGLE_BASE`                                |
 | `environments/cloud-managed.json`     | Eliza Cloud managed-Google endpoints | `ELIZA_CLOUD_BASE_URL`                                   |
 | `environments/signal.json`            | signal-cli HTTP receive/send         | `SIGNAL_HTTP_URL`                                        |
-| `environments/browser-workspace.json` | Desktop browser workspace bridge     | `ELIZA_BROWSER_WORKSPACE_URL` / `ELIZA_BROWSER_WORKSPACE_TOKEN` / `ELIZA_DISABLE_DISCORD_DESKTOP_CDP` / `ELIZA_DISABLE_DISCORD_DESKTOP_CDP` |
+| `environments/browser-workspace.json` | Desktop browser workspace bridge     | `ELIZA_BROWSER_WORKSPACE_URL` / `ELIZA_BROWSER_WORKSPACE_TOKEN` / `ELIZA_DISABLE_DISCORD_DESKTOP_CDP` |
 | `environments/bluebubbles.json`       | BlueBubbles iMessage HTTP API        | `ELIZA_BLUEBUBBLES_URL`                                  |
 | `environments/github.json`            | GitHub REST plus Octokit fixtures    | `ELIZA_MOCK_GITHUB_BASE`                                 |
 
@@ -38,8 +38,6 @@ import { startMocks } from "./scripts/start-mocks.ts";
 
 const mocks = await startMocks({ envs: ["google", "twilio"] });
 process.env.ELIZA_MOCK_GOOGLE_BASE = mocks.baseUrls.google;
-process.env.ELIZA_MOCK_GOOGLE_BASE = mocks.baseUrls.google;
-process.env.ELIZA_MOCK_TWILIO_BASE = mocks.baseUrls.twilio;
 process.env.ELIZA_MOCK_TWILIO_BASE = mocks.baseUrls.twilio;
 await mocks.stop();
 ```
@@ -83,38 +81,34 @@ bunx @mockoon/cli start \
   --data test/mocks/environments/signal.json \
   --data test/mocks/environments/browser-workspace.json \
   --data test/mocks/environments/bluebubbles.json \
-  --data test/mocks/environments/github.json
+  --data test/mocks/environments/github.json \
+  --data test/mocks/environments/lifeops-samantha.json
 ```
 
 Then point the clients at the mocks:
 
 ```bash
 export ELIZA_MOCK_TWILIO_BASE=http://127.0.0.1:3001
-export ELIZA_MOCK_TWILIO_BASE=http://127.0.0.1:3001
-export ELIZA_MOCK_WHATSAPP_BASE=http://127.0.0.1:3002
 export ELIZA_MOCK_WHATSAPP_BASE=http://127.0.0.1:3002
 export ELIZA_MOCK_CALENDLY_BASE=http://127.0.0.1:3003
-export ELIZA_MOCK_CALENDLY_BASE=http://127.0.0.1:3003
 export ELIZA_MOCK_X_BASE=http://127.0.0.1:3004
-export ELIZA_MOCK_X_BASE=http://127.0.0.1:3004
-export ELIZA_MOCK_GOOGLE_BASE=http://127.0.0.1:3005
 export ELIZA_MOCK_GOOGLE_BASE=http://127.0.0.1:3005
 export SIGNAL_HTTP_URL=http://127.0.0.1:3006
 export SIGNAL_ACCOUNT_NUMBER=+15550000000
 export ELIZA_BROWSER_WORKSPACE_URL=http://127.0.0.1:3007
 export ELIZA_BROWSER_WORKSPACE_TOKEN=mock-browser-workspace-token
 export ELIZA_DISABLE_DISCORD_DESKTOP_CDP=1
-export ELIZA_DISABLE_DISCORD_DESKTOP_CDP=1
 export ELIZA_IMESSAGE_BACKEND=bluebubbles
 export ELIZA_BLUEBUBBLES_URL=http://127.0.0.1:3008
 export ELIZA_BLUEBUBBLES_PASSWORD=mock-bluebubbles-password
 export ELIZA_MOCK_GITHUB_BASE=http://127.0.0.1:3009
+export ELIZA_MOCK_LIFEOPS_SAMANTHA_BASE=http://127.0.0.1:3010
 ```
 
 ## Test usage
 
 Tests use `createMockedTestRuntime`, which boots the fixture servers, isolates
-Eliza state/config in a temporary directory, sets the mock env vars, and then
+elizaOS state/config in a temporary directory, sets the mock env vars, and then
 constructs the LifeOps runtime. Existing unit tests that use
 `vi.stubGlobal('fetch', ...)` continue to work and do not require fixture
 servers.
@@ -156,6 +150,7 @@ dynamic routes for surfaces LifeOps needs for read, send, and inbox-zero
 development:
 
 - message list/get/send/modify plus batch modify/delete
+- message attachment metadata and download
 - message trash, untrash, and delete
 - label list, including system labels and the `eliza-e2e` user label
 - draft create/list/get/send/delete
@@ -195,6 +190,40 @@ MTProto through `telegram-local-client.ts` and already exposes a dependency
 injection seam (`TelegramLocalClientDeps`) for tests. Adding a fake Telegram
 HTTP gateway would not match a real consumer path.
 
+## Samantha interaction scenario mocks
+
+`fixtures/lifeops-samantha.ts` is the executable catalog for the seven assistant
+interaction moves from the Samantha/Theodore setup and email scene: intake
+affect, assistant identity, permissioned context scan, bulk email curation,
+contact resolution, document review, and proactive multi-hop follow-up.
+
+The in-process runner serves the catalog only from the `lifeops-samantha` mock
+base URL:
+
+- `GET /__mock/lifeops/samantha/scenarios` returns scenario summaries, provider
+  coverage, API example counts, and edge-case counts.
+- `GET /__mock/lifeops/samantha/scenarios/:id` returns the full scenario with
+  lined-up mock records, API examples, expected workflow, assertions, safety
+  gates, and edge cases.
+- `POST /__mock/lifeops/samantha/tasks` starts a synthetic long-running task for
+  the multi-hop vendor packet scenario.
+- `GET /__mock/lifeops/samantha/tasks/:id` returns the current deterministic
+  task snapshot without advancing it.
+- `POST /__mock/lifeops/samantha/tasks/:id/advance` moves the in-process task
+  through queued, running, waiting-for-input, and completed snapshots.
+
+For manual Mockoon API testing, load
+`test/mocks/environments/lifeops-samantha.json`. It exposes representative local
+LifeOps endpoints for onboarding affect, organization scans, email curation,
+explicit preference memory, contact resolution, document proofread,
+long-running task polling, task advance, and edge variants for provider
+downtime, ambiguous recipients, too-broad bulk email requests, and rate limits.
+The standalone Mockoon file is stateless; full task progression is provided by
+the in-process `startMocks` runner. Provider API examples are static contract
+checks against the provider mocks above, so complex tests can combine the
+scenario catalog with Gmail, GitHub, Signal, BlueBubbles, and browser-workspace
+requests.
+
 ## Provider coverage and remaining gaps
 
 The executable source of truth for this table is
@@ -205,7 +234,7 @@ falls out of sync.
 | Provider id                  | Covered surfaces                                                                                                                                                                                                                                                                     | Remaining gaps                                                                                                                                                                                                   |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `google-calendar`            | OAuth token and userinfo rewrite; calendar list; event list/get/search; event create/patch/update/move/delete; request ledger metadata                                                                                                                                               | No recurring-event expansion beyond single synthetic events<br>No freebusy, ACL, attachment, or conference-data surfaces<br>No Google rate-limit or partial-failure variants                                     |
-| `gmail`                      | work/home account fixture data; message list/get/search/send/modify/delete; thread list/get/modify/trash/untrash; draft create/list/get/send/delete; labels, history, watch, filters; priority, vague, multi-search, and cross-account query fixtures; write request ledger metadata | Search is deterministic fixture matching, not the full Gmail query grammar<br>No attachment download/upload or multipart MIME fidelity<br>No delegated mailbox, push-notification, quota, or rate-limit variants |
+| `gmail`                      | work/home account fixture data; message list/get/search/send/modify/delete; thread list/get/modify/trash/untrash; draft create/list/get/send/delete; attachment metadata and download; labels, history, watch, filters; priority, vague, multi-search, and cross-account query fixtures; write request ledger metadata | Search is deterministic fixture matching, not the full Gmail query grammar<br>No attachment upload or full multipart MIME fidelity<br>No delegated mailbox, push-notification, quota, or rate-limit variants |
 | `github`                     | REST pull request list/review; issue creation and assignment fixtures; issue/PR search; notification list; Octokit-shaped unit-test fixture; request ledger metadata                                                                                                                 | No GraphQL API coverage<br>No checks, statuses, contents, branch protection, or workflow endpoints<br>No webhook delivery simulation                                                                             |
 | `x`                          | home timeline; mentions; recent search; DM list; tweet create; DM send; request ledger metadata                                                                                                                                                                                      | No streaming API, OAuth handshake, media upload, or delete/like/repost surfaces<br>No rate-limit, partial response, or protected-account variants                                                                |
 | `whatsapp`                   | text message send; inbound webhook ingestion; Cloud API webhook metadata and contact mapping in simulator seed; test-only inbound buffer route; request ledger metadata                                                                                                             | No media upload/download, templates, reactions, or message status lifecycle<br>No webhook signature validation or delivery retry simulation                                                                      |

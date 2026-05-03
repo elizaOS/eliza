@@ -39,7 +39,7 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     label: "Google Calendar",
     mode: "stateful-http",
     environment: "google",
-    envVars: ["ELIZA_MOCK_GOOGLE_BASE", "ELIZA_MOCK_GOOGLE_BASE"],
+    envVars: ["ELIZA_MOCK_GOOGLE_BASE"],
     surfaces: [
       "OAuth token and userinfo rewrite",
       "calendar list",
@@ -64,23 +64,20 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     label: "Gmail",
     mode: "stateful-http",
     environment: "google",
-    envVars: [
-      "ELIZA_MOCK_GOOGLE_BASE",
-      "ELIZA_MOCK_GOOGLE_BASE",
-      "ELIZA_BLOCK_REAL_GMAIL_WRITES",
-    ],
+    envVars: ["ELIZA_MOCK_GOOGLE_BASE", "ELIZA_BLOCK_REAL_GMAIL_WRITES"],
     surfaces: [
       "work/home account fixture data",
       "message list/get/search/send/modify/delete",
       "thread list/get/modify/trash/untrash",
       "draft create/list/get/send/delete",
+      "attachment metadata and download",
       "labels, history, watch, filters",
       "priority, vague, multi-search, and cross-account query fixtures",
       "write request ledger metadata",
     ],
     knownGaps: [
       "Search is deterministic fixture matching, not the full Gmail query grammar",
-      "No attachment download/upload or multipart MIME fidelity",
+      "No attachment upload or full multipart MIME fidelity",
       "No delegated mailbox, push-notification, quota, or rate-limit variants",
     ],
     validation: [
@@ -119,7 +116,7 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     label: "X",
     mode: "stateful-http",
     environment: "x-twitter",
-    envVars: ["ELIZA_MOCK_X_BASE", "ELIZA_MOCK_X_BASE"],
+    envVars: ["ELIZA_MOCK_X_BASE"],
     surfaces: [
       "home timeline",
       "mentions",
@@ -144,7 +141,7 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     label: "WhatsApp Business Cloud",
     mode: "stateful-http",
     environment: "whatsapp",
-    envVars: ["ELIZA_MOCK_WHATSAPP_BASE", "ELIZA_MOCK_WHATSAPP_BASE"],
+    envVars: ["ELIZA_MOCK_WHATSAPP_BASE"],
     surfaces: [
       "text message send",
       "inbound webhook ingestion",
@@ -224,7 +221,6 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
       "ELIZA_BROWSER_WORKSPACE_URL",
       "ELIZA_BROWSER_WORKSPACE_TOKEN",
       "ELIZA_DISABLE_DISCORD_DESKTOP_CDP",
-      "ELIZA_DISABLE_DISCORD_DESKTOP_CDP",
     ],
     surfaces: [
       "desktop browser workspace tab lifecycle",
@@ -283,7 +279,7 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     label: "Twilio",
     mode: "static-http",
     environment: "twilio",
-    envVars: ["ELIZA_MOCK_TWILIO_BASE", "ELIZA_MOCK_TWILIO_BASE"],
+    envVars: ["ELIZA_MOCK_TWILIO_BASE"],
     surfaces: [
       "Programmable Messaging send",
       "Programmable Voice call create",
@@ -303,7 +299,7 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     label: "Calendly",
     mode: "static-http",
     environment: "calendly",
-    envVars: ["ELIZA_MOCK_CALENDLY_BASE", "ELIZA_MOCK_CALENDLY_BASE"],
+    envVars: ["ELIZA_MOCK_CALENDLY_BASE"],
     surfaces: [
       "current user",
       "event types",
