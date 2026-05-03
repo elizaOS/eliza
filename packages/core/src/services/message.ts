@@ -37,6 +37,7 @@ import type {
 	HandlerCallback,
 	StreamChunkCallback,
 } from "../types/components";
+import { isActionConfirmationStatus } from "../types/components";
 import type { Room } from "../types/environment";
 import type { RunEventPayload } from "../types/events";
 import { EventType } from "../types/events";
@@ -5292,13 +5293,6 @@ export class DefaultMessageService implements IMessageService {
 			// REMOTE_DESKTOP / OWNER_SEND_MESSAGE confirm-then-dispatch /
 			// BLOCK_WEBSITES re-fire their plan every iteration until
 			// maxMultiStepIterations is hit.
-			const confirmErrorCodes = new Set([
-				"CONFIRMATION_REQUIRED",
-				"NOT_CONFIRMED",
-				"REQUIRES_CONFIRMATION",
-				"AWAITING_CONFIRMATION",
-				"NEEDS_CONFIRMATION",
-			]);
 			const requiresConfirmation = latestActionResults.some((r) => {
 				const v =
 					r &&
@@ -5311,13 +5305,11 @@ export class DefaultMessageService implements IMessageService {
 					r && "data" in r && typeof r.data === "object" && r.data !== null
 						? (r.data as Record<string, unknown>)
 						: null;
-				const ve = typeof v?.error === "string" ? v.error : "";
-				const de = typeof d?.error === "string" ? d.error : "";
 				return (
 					v?.requiresConfirmation === true ||
 					d?.requiresConfirmation === true ||
-					confirmErrorCodes.has(ve) ||
-					confirmErrorCodes.has(de)
+					isActionConfirmationStatus(v?.error) ||
+					isActionConfirmationStatus(d?.error)
 				);
 			});
 			if (requiresConfirmation) {
@@ -7087,28 +7079,14 @@ Output ONLY the continuation, starting immediately after the last character abov
 						: null;
 				// Recognize any confirmation-required signal an action might use:
 				// the canonical `requiresConfirmation: true` flag (in either values
-				// or data) plus the legacy error codes that some handlers still
-				// return (NOT_CONFIRMED, REQUIRES_CONFIRMATION, AWAITING_CONFIRMATION).
-				const confirmErrorCodes = new Set([
-					"CONFIRMATION_REQUIRED",
-					"NOT_CONFIRMED",
-					"REQUIRES_CONFIRMATION",
-					"AWAITING_CONFIRMATION",
-					"NEEDS_CONFIRMATION",
-				]);
-				const valuesError =
-					typeof resultValuesForConfirm?.error === "string"
-						? resultValuesForConfirm.error
-						: "";
-				const dataError =
-					typeof resultDataForConfirm?.error === "string"
-						? resultDataForConfirm.error
-						: "";
+				// or data) plus the typed `ActionConfirmationStatus` codes that
+				// handlers may set on `error`. The set is owned by
+				// `types/components.ts` so callers cannot drift.
 				const requiresConfirmation =
 					resultValuesForConfirm?.requiresConfirmation === true ||
 					resultDataForConfirm?.requiresConfirmation === true ||
-					confirmErrorCodes.has(valuesError) ||
-					confirmErrorCodes.has(dataError);
+					isActionConfirmationStatus(resultValuesForConfirm?.error) ||
+					isActionConfirmationStatus(resultDataForConfirm?.error);
 				if (requiresConfirmation) {
 					runtime.logger.info(
 						{
