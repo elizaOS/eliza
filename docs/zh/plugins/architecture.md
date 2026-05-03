@@ -28,7 +28,6 @@ AgentRuntime
 export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-sql",               // database adapter — required
   "@elizaos/plugin-local-embedding",   // local embeddings — required for memory
-  "@elizaos/plugin-form",              // form handling for guided user journeys
   "knowledge",         // RAG knowledge management — required for knowledge tab
   "trajectories", // trajectory logging for debugging and RL training
   "@elizaos/plugin-agent-orchestrator",// multi-agent orchestration (PTY, SwarmCoordinator, workspace provisioning)
@@ -238,8 +237,6 @@ const FEATURE_PLUGINS = {
   diagnosticsOtel:      "@elizaos/plugin-diagnostics-otel",
   webhooks:             "@elizaos/plugin-webhooks",
   gmailWatch:           "@elizaos/plugin-gmail-watch",
-  experience:           "(内建高级能力)",
-  form:                 "@elizaos/plugin-form",
   x402:                 "@elizaos/plugin-x402",
   fal:                  "@elizaos/plugin-fal",
   suno:                 "@elizaos/plugin-suno",
@@ -249,6 +246,8 @@ const FEATURE_PLUGINS = {
   claudeCodeWorkbench:  "@elizaos/plugin-claude-code-workbench",
 };
 ```
+
+> **注意：** `personality`、`experience` 与 `form` 不再作为特性标志映射中的独立插件包——它们由内置于 `@elizaos/core` 的高级能力提供，通过在角色设置中启用 `advancedCapabilities: true` 开启。
 
 **流媒体目标** — 配置中的 `streaming` 部分可自动启用直播平台的流媒体插件：
 

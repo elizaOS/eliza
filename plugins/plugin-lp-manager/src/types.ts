@@ -352,7 +352,7 @@ export interface TrackedLpPosition {
   positionIdentifier: string;
   dex: string;
   poolAddress: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, string | number | boolean | null>;
   trackedAt: string;
 }
 

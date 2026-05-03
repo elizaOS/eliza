@@ -6,7 +6,7 @@
     "allowJs": false,
     "jsx": "react-jsx",
     "skipLibCheck": true,
-        "allowSyntheticDefaultImports": true,
+    "allowSyntheticDefaultImports": true,
     "strict": false,
     "useUnknownInCatchVariables": false,
     "forceConsistentCasingInFileNames": true,

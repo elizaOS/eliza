@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-        "outDir": "dist",
+    "outDir": "dist",
     "rootDir": "src",
     "lib": ["ESNext", "dom"],
     "module": "Preserve",

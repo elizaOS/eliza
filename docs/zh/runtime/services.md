@@ -63,7 +63,7 @@ const status = runtime.getServiceRegistrationStatus("trajectories");
 |---|---|---|
 | `@elizaos/plugin-sql` | Database adapter | PGLite 或 PostgreSQL 持久化；提供 `runtime.adapter` |
 | `@elizaos/plugin-local-embedding` | `TEXT_EMBEDDING` handler | 通过 node-llama-cpp 使用本地 GGUF 嵌入模型 |
-| `@elizaos/plugin-form` | Form service | 用于引导用户旅程的结构化表单打包 |
+| `@elizaos/core`（高级能力） | `FORM` | 结构化会话表单 — FormService、表单上下文与评估（在启用高级能力时加载；非独立 npm 插件） |
 | `knowledge` | Knowledge service | RAG 知识索引和检索 |
 | `trajectories` | `trajectories` | 调试和 RL 训练轨迹捕获 |
 | `@elizaos/plugin-agent-orchestrator` | Orchestrator service | 多代理任务协调和生成 |

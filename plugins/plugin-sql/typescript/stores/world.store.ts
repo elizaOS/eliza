@@ -1,6 +1,6 @@
+import { randomUUID } from "node:crypto";
 import type { UUID, World } from "@elizaos/core";
 import { eq } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
 import { worldTable } from "../schema/index";
 import type { DrizzleDatabase } from "../types";
 import type { Store, StoreContext } from "./types";

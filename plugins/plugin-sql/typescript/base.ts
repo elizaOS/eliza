@@ -71,7 +71,9 @@ import {
   type SQL,
   sql,
 } from "drizzle-orm";
+
 const v4 = () => crypto.randomUUID();
+
 import type { DatabaseMigrationService } from "./migration-service";
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from "./schema/embedding";
 import {
