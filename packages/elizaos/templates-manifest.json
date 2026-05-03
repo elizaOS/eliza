@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "generatedAt": "2026-05-03T02:22:30.670Z",
+  "generatedAt": "2026-05-03T03:38:00.696Z",
   "repoUrl": "https://github.com/elizaos/eliza",
   "templates": [
     {
@@ -35,7 +35,7 @@
       "description": "Create an elizaOS plugin starter",
       "kind": "plugin",
       "version": 1,
-      "languages": ["typescript", "python", "rust"]
+      "languages": ["typescript"]
     }
   ]
 }

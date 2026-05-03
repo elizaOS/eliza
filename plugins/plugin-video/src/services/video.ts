@@ -13,15 +13,10 @@ import {
     type VideoProcessingOptions,
 } from "@elizaos/core";
 import ffmpeg from "fluent-ffmpeg";
-import ffmpegStatic from "ffmpeg-static";
 import fs from "fs";
 import { tmpdir } from "os";
 import path from "path";
-import youtubeDl from "youtube-dl-exec";
-
-if (typeof ffmpegStatic === "string" && ffmpegStatic.length > 0) {
-    ffmpeg.setFfmpegPath(ffmpegStatic);
-}
+import { BinaryResolver } from "./binaries";
 
 /** Minimal yt-dlp JSON shape used by this service (fields vary by extractor). */
 interface YtDlpSubtitleTrack {
@@ -61,12 +56,15 @@ export class VideoService extends IVideoService {
     static override readonly serviceType = ServiceType.VIDEO;
     private cacheKey = "content/video";
     private dataDir = "./content_cache";
+    private readonly binaries: BinaryResolver;
+    private ffmpegPathConfigured = false;
 
     /** Serialize downloads/processing so cache keys and temp files do not race. */
     private processingChain: Promise<void> = Promise.resolve();
 
-    constructor(runtime?: IAgentRuntime) {
+    constructor(runtime?: IAgentRuntime, binaries?: BinaryResolver) {
         super(runtime);
+        this.binaries = binaries ?? BinaryResolver.instance();
         this.ensureDataDirectoryExists();
     }
 
@@ -77,7 +75,23 @@ export class VideoService extends IVideoService {
     }
 
 
-    async initialize(_runtime: IAgentRuntime): Promise<void> { }
+    async initialize(_runtime: IAgentRuntime): Promise<void> {
+        await this.configureFfmpeg();
+    }
+
+    private async configureFfmpeg(): Promise<void> {
+        if (this.ffmpegPathConfigured) return;
+        const ffmpegPath = await this.binaries.getFfmpegPath();
+        if (ffmpegPath) {
+            ffmpeg.setFfmpegPath(ffmpegPath);
+            elizaLogger.log(`[plugin-video] ffmpeg path: ${ffmpegPath}`);
+        } else {
+            elizaLogger.warn(
+                "[plugin-video] No ffmpeg binary located via env, PATH, or ffmpeg-static; fluent-ffmpeg will fail at first invocation.",
+            );
+        }
+        this.ffmpegPathConfigured = true;
+    }
 
     async stop(): Promise<void> {
         this.processingChain = Promise.resolve();
@@ -146,7 +160,7 @@ export class VideoService extends IVideoService {
                 downloadOptions.format = 'bestvideo[ext=mp4]/best[ext=mp4]/best';
             }
 
-            await youtubeDl(url, downloadOptions);
+            await this.binaries.runYtDlp(url, downloadOptions);
             return outputFile;
         } catch (error) {
             elizaLogger.log("Error downloading video:", error);
@@ -162,6 +176,7 @@ export class VideoService extends IVideoService {
             return audioFile;
         }
 
+        await this.configureFfmpeg();
         return new Promise((resolve, reject) => {
             ffmpeg(videoPath)
                 .output(audioFile)
@@ -187,6 +202,7 @@ export class VideoService extends IVideoService {
             return thumbnailFile;
         }
 
+        await this.configureFfmpeg();
         return new Promise((resolve, reject) => {
             ffmpeg(videoPath)
                 .screenshots({
@@ -211,6 +227,7 @@ export class VideoService extends IVideoService {
         outputPath: string,
         options?: VideoProcessingOptions
     ): Promise<string> {
+        await this.configureFfmpeg();
         return new Promise((resolve, reject) => {
             let command = ffmpeg(videoPath);
 
@@ -263,7 +280,7 @@ export class VideoService extends IVideoService {
 
     async getAvailableFormats(url: string): Promise<VideoFormat[]> {
         try {
-            const result = await youtubeDl(url, {
+            const result = await this.binaries.runYtDlp(url, {
                 dumpJson: true,
                 verbose: true,
                 callHome: false,
@@ -325,7 +342,7 @@ export class VideoService extends IVideoService {
         }
 
         try {
-            await youtubeDl(url, {
+            await this.binaries.runYtDlp(url, {
                 verbose: true,
                 output: outputFile,
                 format: "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
@@ -414,7 +431,7 @@ export class VideoService extends IVideoService {
         }
 
         try {
-            const result = await youtubeDl(url, {
+            const result = await this.binaries.runYtDlp(url, {
                 dumpJson: true,
                 verbose: true,
                 callHome: false,
@@ -581,6 +598,7 @@ export class VideoService extends IVideoService {
         inputPath: string,
         outputPath: string
     ): Promise<void> {
+        await this.configureFfmpeg();
         return new Promise((resolve, reject) => {
             ffmpeg(inputPath)
                 .output(outputPath)
@@ -621,6 +639,7 @@ export class VideoService extends IVideoService {
                 const buffer = Buffer.from(arrayBuffer);
                 fs.writeFileSync(tempMp4File, buffer);
 
+                await this.configureFfmpeg();
                 await new Promise<void>((resolve, reject) => {
                     ffmpeg(tempMp4File)
                         .output(outputFile)
@@ -639,7 +658,7 @@ export class VideoService extends IVideoService {
                 elizaLogger.log(
                     "YouTube video detected, downloading audio with youtube-dl"
                 );
-                await youtubeDl(url, {
+                await this.binaries.runYtDlp(url, {
                     verbose: true,
                     extractAudio: true,
                     audioFormat: "mp3",

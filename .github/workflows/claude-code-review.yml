@@ -62,7 +62,7 @@ jobs:
             **✅ REQUIRED:**
             - TypeScript types (no 'any')
             - Tests with vitest (via bun run test)
-            - Use @elizaos/core imports (not packages/typescript)
+            - Use @elizaos/core imports (canonical sources live under packages/core)
             - Functional code (no classes)
             - Error handling
 

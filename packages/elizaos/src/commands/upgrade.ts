@@ -42,7 +42,6 @@ export async function upgrade(options: UpgradeOptions): Promise<void> {
     values: metadata.values,
   });
   const sourceDir = resolveTemplateSourceDir({
-    language: metadata.language,
     template,
     templatesDir: getTemplatesDir(),
   });

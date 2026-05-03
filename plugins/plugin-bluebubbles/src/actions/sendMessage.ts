@@ -86,9 +86,7 @@ export const sendMessageAction: Action = {
 			__avKeywords.some((word) => word.length > 0 && __avText.includes(word));
 		const __avRegex = /\b(?:send|bluebubbles|message)\b/i;
 		const __avRegexOk = __avRegex.test(__avText);
-		const __avSource = String(
-			message?.content?.source ?? "",
-		);
+		const __avSource = String(message?.content?.source ?? "");
 		const __avExpectedSource = "";
 		const __avSourceOk = __avExpectedSource
 			? __avSource === __avExpectedSource
@@ -124,9 +122,7 @@ export const sendMessageAction: Action = {
 				__avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
 			const __avRegex = /\b(?:send|bluebubbles|message)\b/i;
 			const __avRegexOk = __avRegex.test(__avText);
-			const __avSource = String(
-				message?.content?.source ?? "",
-			);
+			const __avSource = String(message?.content?.source ?? "");
 			const __avExpectedSource = "bluebubbles";
 			const __avSourceOk = __avExpectedSource
 				? __avSource === __avExpectedSource

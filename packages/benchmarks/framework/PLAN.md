@@ -417,7 +417,7 @@ Example console output:
 ### 9.2 Dependencies Per Runtime
 
 **TypeScript:**
-- `@elizaos/core` (from `packages/typescript`) — the agent framework
+- `@elizaos/core` (from `packages/core`) — the agent framework
 - No additional deps (Bun built-in perf APIs)
 
 **Python:**

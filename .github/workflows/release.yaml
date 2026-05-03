@@ -739,7 +739,7 @@ jobs:
           echo "Forcing dist-tag update for all published packages..."
 
           # Get list of public packages from lerna, plus @elizaos/core
-          # which is published from packages/typescript but may not appear
+          # which is published from packages/core but may not appear
           # in lerna ls if the workspace config changed.
           PACKAGES=$(bunx lerna ls --json --no-private 2>/dev/null | node -e "
             const pkgs = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
