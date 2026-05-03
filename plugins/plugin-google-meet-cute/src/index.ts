@@ -27,12 +27,12 @@ export const googleMeetPlugin: Plugin = {
   providers: [meetingProvider],
 
   config: {
-    GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
-    GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
-    GOOGLE_REDIRECT_URI: process.env.GOOGLE_REDIRECT_URI,
-    GOOGLE_REFRESH_TOKEN: process.env.GOOGLE_REFRESH_TOKEN,
-    GOOGLE_MEET_DEFAULT_ACCESS_TYPE: process.env.GOOGLE_MEET_DEFAULT_ACCESS_TYPE,
-    REPORT_OUTPUT_DIR: process.env.REPORT_OUTPUT_DIR,
+    GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID ?? null,
+    GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET ?? null,
+    GOOGLE_REDIRECT_URI: process.env.GOOGLE_REDIRECT_URI ?? null,
+    GOOGLE_REFRESH_TOKEN: process.env.GOOGLE_REFRESH_TOKEN ?? null,
+    GOOGLE_MEET_DEFAULT_ACCESS_TYPE: process.env.GOOGLE_MEET_DEFAULT_ACCESS_TYPE ?? null,
+    REPORT_OUTPUT_DIR: process.env.REPORT_OUTPUT_DIR ?? null,
   },
 
   async init(config: Record<string, string>, runtime?: any): Promise<void> {
