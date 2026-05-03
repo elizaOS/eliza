@@ -846,7 +846,11 @@ function buildPluginEvmDiagnosticEntry(
     capability.pluginEvmLoaded ||
     capability.pluginEvmRequired ||
     (state.config.plugins?.allow ?? []).some((entry) => {
-      return entry === EVM_PLUGIN_PACKAGE || entry === "evm";
+      return (
+        entry === EVM_PLUGIN_PACKAGE ||
+        entry === "evm" ||
+        entry === "wallet"
+      );
     });
 
   const capabilityStatus = capability.pluginEvmLoaded

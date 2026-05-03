@@ -2,7 +2,7 @@
   "id": "solana",
   "name": "Solana",
   "description": "Core Solana blockchain plugin for elizaOS, enabling token operations, trading, and DeFi integrations.",
-  "npmName": "@elizaos/plugin-solana",
+  "npmName": "@elizaos/plugin-wallet",
   "version": "2.0.0-alpha.4",
   "source": "bundled",
   "tags": ["crypto", "solana"],

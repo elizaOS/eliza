@@ -9,7 +9,8 @@ import {
 import { getWalletAddresses } from "./wallet.js";
 import { resolveWalletRpcReadiness } from "./wallet-rpc.js";
 
-export const EVM_PLUGIN_PACKAGE = "@elizaos/plugin-evm";
+/** Unified wallet package (bundles legacy EVM + Solana plugins). */
+export const EVM_PLUGIN_PACKAGE = "@elizaos/plugin-wallet";
 const EVM_PLUGIN_SERVICE_NAMES = ["evm", "evmService"] as const;
 
 export interface WalletCapabilityStatus {
@@ -231,7 +232,7 @@ export function resolveWalletCapabilityStatus(state: {
     executionBlockedReason = "BSC RPC is not configured.";
   } else if (!pluginEvmLoaded) {
     executionBlockedReason =
-      "plugin-evm is not loaded, so EVM wallet execution is unavailable.";
+      "@elizaos/plugin-wallet is not loaded, so EVM wallet execution is unavailable.";
   } else if (automationMode !== "full") {
     executionBlockedReason =
       "Agent automation is in connectors-only mode, so wallet execution is blocked in chat.";

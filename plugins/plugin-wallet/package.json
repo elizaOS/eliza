@@ -1,28 +1,28 @@
 {
-  "name": "@elizaos/plugin-agent-wallet",
+  "name": "@elizaos/plugin-wallet",
   "version": "0.1.0",
   "description": "Unified non-custodial wallet for elizaOS agents — EVM + Solana, ERC-6551 token-bound accounts, on-chain spend policies, x402 micropayments, CCTP bridge, Li.Fi swap routing, Jupiter routing, multi-DEX LP management (Raydium/Orca/Meteora on Solana, Uniswap/Aerodrome on EVM), Hyperliquid perps, Polymarket, Aave/Morpho lending, and Clanker token launches. Replaces plugin-evm + plugin-solana + plugin-raydium + plugin-orca + plugin-meteora + plugin-jupiter + plugin-lp-manager + plugin-clanker behind one canonical action+provider surface.",
   "type": "module",
   "license": "MIT",
-  "homepage": "https://github.com/eliza-ai/eliza/tree/main/eliza/plugins/plugin-agent-wallet",
+  "homepage": "https://github.com/eliza-ai/eliza/tree/main/eliza/plugins/plugin-wallet",
   "repository": {
     "type": "git",
     "url": "https://github.com/eliza-ai/eliza.git",
-    "directory": "eliza/plugins/plugin-agent-wallet"
+    "directory": "eliza/plugins/plugin-wallet"
   },
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "dist/index.mjs",
+  "types": "dist/index.d.mts",
   "exports": {
     ".": {
       "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
       }
     },
     "./sdk": {
       "import": {
-        "types": "./dist/sdk/index.d.ts",
-        "default": "./dist/sdk/index.js"
+        "types": "./dist/sdk/index.d.mts",
+        "default": "./dist/sdk/index.mjs"
       }
     },
     "./package.json": "./package.json"
@@ -50,6 +50,8 @@
     }
   },
   "dependencies": {
+    "@elizaos/plugin-evm": "workspace:*",
+    "@elizaos/plugin-solana": "workspace:*",
     "bs58": "^6.0.0",
     "viem": "^2.48.8",
     "zod": "^4.3.6"
