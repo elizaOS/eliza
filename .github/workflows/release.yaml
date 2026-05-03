@@ -1,9 +1,9 @@
 name: NPM Release
 
 # Consolidated workflow for all NPM releases:
-# - Alpha: On merge to develop branch
 # - Beta: On merge to main branch
 # - Production: On GitHub release creation
+# - Alpha: handled by publish-alpha.yml on alpha version tag pushes
 #
 # Version Management:
 # - Uses lerna version and publish commands with consistent patterns
@@ -14,7 +14,6 @@ name: NPM Release
 on:
   push:
     branches:
-      - develop # Triggers alpha releases
       - main # Triggers beta releases
     paths-ignore:
       - "**/*.md"
@@ -35,7 +34,6 @@ on:
         required: true
         type: choice
         options:
-          - alpha
           - beta
           # Note: 'latest' removed - production releases MUST be done via GitHub releases
 
@@ -60,93 +58,6 @@ jobs:
       actions: read
 
     steps:
-      - name: Wait for other workflow runs before alpha publish
-        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          SHA: ${{ github.sha }}
-          BRANCH: ${{ github.ref_name }}
-          RUN_ID: ${{ github.run_id }}
-          MAX_WAIT_SECONDS: "7200"
-          POLL_SECONDS: "30"
-        run: |
-          set -euo pipefail
-
-          echo "Waiting for all other workflow runs for ${SHA} to complete successfully before publishing alpha."
-          sleep 30
-
-          started_at="$(date +%s)"
-          while true; do
-            runs_json="$(gh api \
-              -H "Accept: application/vnd.github+json" \
-              "/repos/${REPO}/actions/runs?head_sha=${SHA}&branch=${BRANCH}&event=push&per_page=100")"
-
-            other_runs="$(jq --argjson run_id "${RUN_ID}" '
-              [
-                .workflow_runs[]
-                | select(.id != $run_id)
-                | {
-                    id,
-                    name,
-                    status,
-                    conclusion,
-                    html_url
-                  }
-              ]
-            ' <<< "${runs_json}")"
-
-            echo "Observed peer workflow runs:"
-            jq -r '.[] | "- \(.name): \(.status) / \(.conclusion // "pending") \(.html_url)"' <<< "${other_runs}"
-
-            failed_runs="$(jq '
-              [
-                .[]
-                | select(.status == "completed")
-                | select(.conclusion != "success")
-              ]
-            ' <<< "${other_runs}")"
-
-            if [[ "$(jq 'length' <<< "${failed_runs}")" -gt 0 ]]; then
-              echo "::error::At least one peer workflow run failed, was cancelled, or did not conclude successfully."
-              jq -r '.[] | "::error::\(.name) concluded \(.conclusion) - \(.html_url)"' <<< "${failed_runs}"
-              exit 1
-            fi
-
-            pending_runs="$(jq '[.[] | select(.status != "completed")]' <<< "${other_runs}")"
-            if [[ "$(jq 'length' <<< "${pending_runs}")" -eq 0 ]]; then
-              echo "All peer workflow runs completed successfully."
-              break
-            fi
-
-            elapsed="$(( $(date +%s) - started_at ))"
-            if [[ "${elapsed}" -ge "${MAX_WAIT_SECONDS}" ]]; then
-              echo "::error::Timed out waiting for peer workflow runs after ${elapsed}s."
-              jq -r '.[] | select(.status != "completed") | "::error::Still waiting on \(.name): \(.status) - \(.html_url)"' <<< "${pending_runs}"
-              exit 1
-            fi
-
-            echo "Waiting ${POLL_SECONDS}s for peer workflows to finish..."
-            sleep "${POLL_SECONDS}"
-          done
-
-      - name: Verify develop still points at this commit
-        if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          remote_sha="$(gh api \
-            -H "Accept: application/vnd.github+json" \
-            "/repos/${REPO}/git/ref/heads/develop" \
-            --jq '.object.sha')"
-          if [[ "${remote_sha}" != "${SHA}" ]]; then
-            echo "::error::develop advanced to ${remote_sha}; refusing to publish stale alpha for ${SHA}."
-            exit 1
-          fi
-
       - name: Checkout code
         uses: actions/checkout@v6
         with:
@@ -248,10 +159,6 @@ jobs:
             echo "type=${{ github.event.inputs.release_type }}" >> $GITHUB_OUTPUT
             echo "dist_tag=${{ github.event.inputs.release_type }}" >> $GITHUB_OUTPUT
             echo "is_release_event=false" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
-            echo "type=alpha" >> $GITHUB_OUTPUT
-            echo "dist_tag=alpha" >> $GITHUB_OUTPUT
-            echo "is_release_event=false" >> $GITHUB_OUTPUT
           elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
             echo "type=beta" >> $GITHUB_OUTPUT
             echo "dist_tag=beta" >> $GITHUB_OUTPUT
@@ -314,59 +221,6 @@ jobs:
               --no-push \
               --allow-branch release/*
               
-          elif [[ "${RELEASE_TYPE}" == "alpha" ]]; then
-            echo "🚀 Alpha release workflow..."
-            BASE_VERSION=$(get_base_version "$CURRENT_VERSION")
-
-            # Always check existing tags to find the true highest alpha version
-            # This prevents tag conflicts when lerna.json is out of sync with tags
-            echo "Checking for existing alpha tags for base version ${BASE_VERSION}..."
-            git fetch --tags
-
-            HIGHEST_TAG=$(git tag -l "v${BASE_VERSION}-alpha.*" 2>/dev/null | sort -V | tail -n 1)
-
-            if [[ -n "$HIGHEST_TAG" ]]; then
-              HIGHEST_VERSION=${HIGHEST_TAG#v}
-              echo "Highest existing alpha tag: ${HIGHEST_VERSION}"
-
-              # Only sync if lerna.json is BEHIND the tags (not ahead).
-              # If lerna.json is ahead, a previous run already bumped it
-              # but failed to create the tag — just increment from current.
-              HIGHEST_NUM=$(echo "$HIGHEST_VERSION" | grep -o '[0-9]*$')
-              CURRENT_NUM=$(echo "$CURRENT_VERSION" | grep -o '[0-9]*$')
-
-              if [[ "$CURRENT_NUM" -lt "$HIGHEST_NUM" ]]; then
-                echo "Syncing lerna.json from ${CURRENT_VERSION} to ${HIGHEST_VERSION} (behind tags)..."
-                bunx lerna version ${HIGHEST_VERSION} \
-                  --force-publish \
-                  --yes \
-                  --no-private \
-                  --no-git-tag-version \
-                  --no-push
-              elif [[ "$CURRENT_NUM" -gt "$HIGHEST_NUM" ]]; then
-                echo "lerna.json (${CURRENT_VERSION}) is ahead of highest tag (${HIGHEST_VERSION}) — skipping sync"
-              fi
-
-              # Now increment to the next alpha
-              echo "Incrementing from $(node -p "require('./lerna.json').version")..."
-              bunx lerna version prerelease \
-                --preid alpha \
-                --force-publish \
-                --yes \
-                --no-private \
-                --no-git-tag-version \
-                --no-push
-            else
-              # No existing alpha tags, safe to start at .0
-              echo "No existing alpha tags found, starting at ${BASE_VERSION}-alpha.0"
-              bunx lerna version "${BASE_VERSION}-alpha.0" \
-                --force-publish \
-                --yes \
-                --no-private \
-                --no-git-tag-version \
-                --no-push
-            fi
-
           elif [[ "${RELEASE_TYPE}" == "beta" ]]; then
             echo "🔵 Beta release workflow..."
             BASE_VERSION=$(get_base_version "$CURRENT_VERSION")
@@ -431,7 +285,7 @@ jobs:
           # so we must detect collisions here and bump again if needed.
           VERSION=$(node -p "require('./lerna.json').version")
 
-          if [[ "${RELEASE_TYPE}" == "alpha" || "${RELEASE_TYPE}" == "beta" ]]; then
+          if [[ "${RELEASE_TYPE}" == "beta" ]]; then
             MAX_RETRIES=3
             for i in $(seq 1 $MAX_RETRIES); do
               # Check if this version already exists on npm
@@ -597,7 +451,7 @@ jobs:
         run: |
           echo "Building packages with version v${{ steps.version.outputs.version }}..."
           # Build only the publish-critical package graph so unrelated plugin cycles
-          # do not block alpha/beta releases.
+          # do not block beta releases.
           RELEASE_BUILD_FILTERS=(
             --filter=@elizaos/agent
             --filter=@elizaos/app-core
@@ -780,7 +634,7 @@ jobs:
           node scripts/restore-workspace-refs.js
           echo "✅ Workspace references restored"
 
-      # Create GitHub Release for alpha/beta (not for production, as it already exists)
+      # Create GitHub Release for beta (not for production, as it already exists)
       - name: Create GitHub release
         if: github.event_name != 'release' && steps.release_type.outputs.type != 'latest' && steps.tag.outputs.tag_created == 'true'
         uses: softprops/action-gh-release@v3
@@ -790,7 +644,7 @@ jobs:
           tag_name: ${{ steps.tag.outputs.tag_name }}
           name: ${{ steps.tag.outputs.tag_name }}
           body: |
-            ${{ steps.release_type.outputs.type == 'alpha' && '🚀 Alpha Release' || '🔵 Beta Release' }}
+            🔵 Beta Release
 
             **Version:** `${{ steps.tag.outputs.tag_name }}`
             **Channel:** `${{ steps.release_type.outputs.dist_tag }}`
