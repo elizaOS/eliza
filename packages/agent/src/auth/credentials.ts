@@ -187,6 +187,46 @@ export async function getAccessToken(
   });
 }
 
+/** Shape of `~/.codex/auth.json` (Codex CLI); fields vary by CLI version. */
+interface CodexCliAuthJson {
+  auth_mode?: string;
+  OPENAI_API_KEY?: string;
+  tokens?: {
+    access_token?: string;
+    refresh_token?: string;
+  };
+}
+
+function parseCodexCliAuthJson(raw: string): CodexCliAuthJson | null {
+  try {
+    const data = JSON.parse(raw) as CodexCliAuthJson;
+    if (!data || typeof data !== "object") return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * OAuth / subscription-style access token from the Codex CLI auth file.
+ * Returns null for plain API-key installs (`auth_mode === "api-key"`).
+ */
+function readCodexCliAuthAccessToken(): string | null {
+  const authPath = path.join(os.homedir(), ".codex", "auth.json");
+  try {
+    const parsed = parseCodexCliAuthJson(fs.readFileSync(authPath, "utf-8"));
+    if (!parsed) return null;
+    const oauthAccess = parsed.tokens?.access_token?.trim();
+    if (oauthAccess) return oauthAccess;
+    const mode = parsed.auth_mode?.trim().toLowerCase();
+    const legacy = parsed.OPENAI_API_KEY?.trim();
+    if (legacy && mode && mode !== "api-key") return legacy;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 function readConfiguredAnthropicSetupToken(): string | null {
   const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
   const configPath =
@@ -210,10 +250,9 @@ function readConfiguredAnthropicSetupToken(): string | null {
 function hasCodexCliSubscriptionAuth(): boolean {
   const authPath = path.join(os.homedir(), ".codex", "auth.json");
   try {
-    const data = JSON.parse(fs.readFileSync(authPath, "utf-8")) as {
-      auth_mode?: string;
-      OPENAI_API_KEY?: string;
-    };
+    const data = parseCodexCliAuthJson(fs.readFileSync(authPath, "utf-8"));
+    if (!data) return false;
+    if (data.tokens?.access_token?.trim()) return true;
     return Boolean(
       data.OPENAI_API_KEY?.trim() &&
         data.auth_mode?.trim() &&
@@ -565,6 +604,15 @@ export async function applySubscriptionCredentials(config?: {
       process.env.OPENAI_API_KEY = codexToken;
       logger.info(
         `[auth] Applied OpenAI Codex subscription credentials to environment from account "${primary.label}" (${primary.id})`,
+      );
+    }
+  } else {
+    const existing = process.env.OPENAI_API_KEY?.trim();
+    const cliToken = readCodexCliAuthAccessToken();
+    if (cliToken && !existing) {
+      process.env.OPENAI_API_KEY = cliToken;
+      logger.info(
+        "[auth] Applied OpenAI Codex credentials from ~/.codex/auth.json (CLI; no eliza auth account)",
       );
     }
   }

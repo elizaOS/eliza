@@ -30,6 +30,15 @@ import {
 
 const CANONICAL_OWNER_SETTING_KEYS = ['ELIZA_ADMIN_ENTITY_ID'] as const;
 
+function resolveTelegramBotToken(runtime: IAgentRuntime): string | null {
+  const fromRuntime = runtime.getSetting('TELEGRAM_BOT_TOKEN');
+  if (typeof fromRuntime === 'string' && fromRuntime.trim()) {
+    return fromRuntime.trim();
+  }
+  const fromEnv = process.env.TELEGRAM_BOT_TOKEN;
+  return typeof fromEnv === 'string' && fromEnv.trim() ? fromEnv.trim() : null;
+}
+
 type MiddlewareNext = () => Promise<void>;
 
 type ActiveTelegramPoller = {
@@ -124,10 +133,11 @@ export class TelegramService extends Service {
       'Constructing TelegramService',
     );
 
-    // Check if Telegram bot token is available and valid
-    const botToken = runtime.getSetting('TELEGRAM_BOT_TOKEN') as string;
-    this.botToken = botToken?.trim() || null;
-    if (!botToken || botToken.trim() === '') {
+    // Prefer runtime settings (character / DB merge); fall back to process.env
+    // so connector hydration matches plugins that only sync TELEGRAM_BOT_TOKEN into env.
+    const botToken = resolveTelegramBotToken(runtime);
+    this.botToken = botToken;
+    if (!botToken) {
       logger.warn(
         { src: 'plugin:telegram', agentId: runtime.agentId },
         'Bot token not provided, Telegram functionality unavailable',
