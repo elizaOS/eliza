@@ -43,7 +43,7 @@ function isBrowser(): boolean {
 function getSetting(
   runtime: IAgentRuntime,
   key: string,
-  fallback?: string
+  fallback?: string,
 ): string {
   const envValue =
     typeof process !== "undefined" &&
@@ -92,22 +92,22 @@ function getVoiceSettings(runtime: IAgentRuntime): VoiceSettings {
     outputFormat: getSetting(
       runtime,
       "ELEVENLABS_OUTPUT_FORMAT",
-      "mp3_44100_128"
+      "mp3_44100_128",
     ),
     similarity: getSetting(
       runtime,
       "ELEVENLABS_VOICE_SIMILARITY_BOOST",
-      "0.75"
+      "0.75",
     ),
     style: getSetting(runtime, "ELEVENLABS_VOICE_STYLE", "0"),
     speakerBoost: parseBooleanFromText(
-      `${getSetting(runtime, "ELEVENLABS_VOICE_USE_SPEAKER_BOOST", "true")}` as string
+      `${getSetting(runtime, "ELEVENLABS_VOICE_USE_SPEAKER_BOOST", "true")}` as string,
     ),
   };
 }
 
 function getTranscriptionSettings(
-  runtime: IAgentRuntime
+  runtime: IAgentRuntime,
 ): TranscriptionSettings {
   const languageCode = getSetting(runtime, "ELEVENLABS_STT_LANGUAGE_CODE");
   const numSpeakersStr = getSetting(runtime, "ELEVENLABS_STT_NUM_SPEAKERS");
@@ -119,14 +119,14 @@ function getTranscriptionSettings(
     timestampsGranularity: getSetting(
       runtime,
       "ELEVENLABS_STT_TIMESTAMPS_GRANULARITY",
-      "word"
+      "word",
     ),
     diarize: parseBooleanFromText(
-      `${getSetting(runtime, "ELEVENLABS_STT_DIARIZE", "false")}` as string
+      `${getSetting(runtime, "ELEVENLABS_STT_DIARIZE", "false")}` as string,
     ),
     numSpeakers: numSpeakersStr ? Number(numSpeakersStr) : undefined,
     tagAudioEvents: parseBooleanFromText(
-      `${getSetting(runtime, "ELEVENLABS_STT_TAG_AUDIO_EVENTS", "false")}` as string
+      `${getSetting(runtime, "ELEVENLABS_STT_TAG_AUDIO_EVENTS", "false")}` as string,
     ),
   };
 }
@@ -139,7 +139,7 @@ function getTranscriptionSettings(
  * @returns {Promise<Uint8Array>}
  */
 async function readStreamToUint8Array(
-  stream: ReadableStream<Uint8Array>
+  stream: ReadableStream<Uint8Array>,
 ): Promise<Uint8Array> {
   const reader = stream.getReader();
   const chunks: Uint8Array[] = [];
@@ -174,7 +174,7 @@ async function fetchSpeech(
     style: string;
     speakerBoost: boolean;
     latency: string;
-  }
+  },
 ): Promise<Uint8Array> {
   try {
     const baseUrl = getBaseURL(runtime);
@@ -220,7 +220,7 @@ async function fetchTranscription(
     diarize: boolean;
     numSpeakers?: number;
     tagAudioEvents: boolean;
-  }
+  },
 ): Promise<string> {
   try {
     const baseUrl = getBaseURL(runtime);
@@ -333,7 +333,7 @@ export const elevenLabsPlugin: Plugin = {
             voiceId?: string;
             format?: string;
             instructions?: string;
-          }
+          },
     ) => {
       const options = typeof input === "string" ? { text: input } : input;
       const settings = getVoiceSettings(runtime);
@@ -372,7 +372,7 @@ export const elevenLabsPlugin: Plugin = {
     },
     [ModelType.TRANSCRIPTION]: async (
       runtime: IAgentRuntime,
-      input: string | Buffer | { audioUrl: string; prompt?: string }
+      input: string | Buffer | { audioUrl: string; prompt?: string },
     ) => {
       const settings = getTranscriptionSettings(runtime);
 
@@ -394,7 +394,7 @@ export const elevenLabsPlugin: Plugin = {
           const response = await fetch(input.audioUrl);
           if (!response.ok) {
             throw new Error(
-              `Failed to fetch audio from URL: ${input.audioUrl}`
+              `Failed to fetch audio from URL: ${input.audioUrl}`,
             );
           }
           const arrayBuffer = await response.arrayBuffer();
@@ -431,7 +431,7 @@ export const elevenLabsPlugin: Plugin = {
             const settings = getVoiceSettings(runtime);
             if (!settings.apiKey) {
               throw new Error(
-                "Missing API key: Please provide a valid Eleven Labs API key."
+                "Missing API key: Please provide a valid Eleven Labs API key.",
               );
             }
           },
@@ -467,7 +467,7 @@ export const elevenLabsPlugin: Plugin = {
             const settings = getVoiceSettings(runtime);
             if (!settings.apiKey) {
               logger.warn(
-                "Skipping API connectivity test - no API key provided"
+                "Skipping API connectivity test - no API key provided",
               );
               return;
             }
@@ -510,7 +510,7 @@ export const elevenLabsPlugin: Plugin = {
             try {
               const audioStream = (await runtime.useModel(
                 ModelType.TEXT_TO_SPEECH,
-                testText
+                testText,
               )) as ReadableStream<Uint8Array>;
 
               if (
@@ -533,13 +533,13 @@ export const elevenLabsPlugin: Plugin = {
                 error instanceof Error ? error.message : String(error);
               if (msg.includes("QUOTA_EXCEEDED")) {
                 logger.warn(
-                  "[ElevenLabs Test] API quota exceeded - test skipped"
+                  "[ElevenLabs Test] API quota exceeded - test skipped",
                 );
                 return;
               }
               logger.error(
                 "[ElevenLabs Test] TTS Generation test failed:",
-                msg
+                msg,
               );
               throw new Error(`TTS Generation test failed: ${msg}`);
             }
@@ -588,7 +588,7 @@ export const elevenLabsPlugin: Plugin = {
             const validGranularities = ["none", "word", "character"];
             if (!validGranularities.includes(settings.timestampsGranularity)) {
               throw new Error(
-                `Invalid timestamps granularity: ${settings.timestampsGranularity}`
+                `Invalid timestamps granularity: ${settings.timestampsGranularity}`,
               );
             }
 
@@ -613,7 +613,7 @@ export const elevenLabsPlugin: Plugin = {
 
             if (settings.timestampsGranularity !== "word") {
               logger.warn(
-                `Using non-default timestamps granularity: ${settings.timestampsGranularity}`
+                `Using non-default timestamps granularity: ${settings.timestampsGranularity}`,
               );
             }
 
@@ -632,7 +632,7 @@ export const elevenLabsPlugin: Plugin = {
             for (const testCase of testCases) {
               if (!testCase.valid) {
                 throw new Error(
-                  `Invalid test case should not be valid: ${testCase.type}`
+                  `Invalid test case should not be valid: ${testCase.type}`,
                 );
               }
             }
