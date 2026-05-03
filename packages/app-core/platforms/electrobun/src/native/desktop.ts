@@ -155,42 +155,75 @@ export function resetDesktopManagerForTesting(): void {
 	nativeContextMenuEventsInstalled = false;
 }
 
-async function readProcessStdout(argv: string[]): Promise<string> {
-	const proc = Bun.spawn(argv, {
-		stdout: "pipe",
-		stderr: "ignore",
-	});
-	const text = await new Response(proc.stdout).text();
-	await proc.exited;
-	return text;
+/**
+ * Injectable shell-runner used by every native power-state probe in this
+ * module. Tests override this via {@link setNativeShellRunnerForTesting} so
+ * `pmset`, `ioreg`, `CGSession`, `xprintidle`, `loginctl`, `powershell`, and
+ * other host subprocesses are never invoked on developer machines during
+ * unit / integration runs.
+ */
+export interface NativeShellRunner {
+	read(argv: string[]): Promise<string>;
+	readSafe(argv: string[], timeoutMs?: number): Promise<string | null>;
 }
 
-async function readProcessStdoutSafe(
-	argv: string[],
-	timeoutMs = POWER_STATE_PROBE_TIMEOUT_MS,
-): Promise<string | null> {
-	try {
+const realNativeShellRunner: NativeShellRunner = {
+	async read(argv) {
 		const proc = Bun.spawn(argv, {
 			stdout: "pipe",
 			stderr: "ignore",
 		});
-		const timer = setTimeout(() => {
-			try {
-				proc.kill();
-			} catch {
-				// already exited
-			}
-		}, timeoutMs);
 		const text = await new Response(proc.stdout).text();
 		await proc.exited;
-		clearTimeout(timer);
-		if (typeof proc.exitCode === "number" && proc.exitCode !== 0) {
+		return text;
+	},
+	async readSafe(argv, timeoutMs = POWER_STATE_PROBE_TIMEOUT_MS) {
+		try {
+			const proc = Bun.spawn(argv, {
+				stdout: "pipe",
+				stderr: "ignore",
+			});
+			const timer = setTimeout(() => {
+				try {
+					proc.kill();
+				} catch {
+					// already exited
+				}
+			}, timeoutMs);
+			const text = await new Response(proc.stdout).text();
+			await proc.exited;
+			clearTimeout(timer);
+			if (typeof proc.exitCode === "number" && proc.exitCode !== 0) {
+				return null;
+			}
+			return text;
+		} catch {
 			return null;
 		}
-		return text;
-	} catch {
-		return null;
-	}
+	},
+};
+
+let activeNativeShellRunner: NativeShellRunner = realNativeShellRunner;
+
+/**
+ * Test-only seam: swap the native shell runner used by power-state probes.
+ * Pass `null` to restore the real `Bun.spawn`-backed implementation.
+ */
+export function setNativeShellRunnerForTesting(
+	runner: NativeShellRunner | null,
+): void {
+	activeNativeShellRunner = runner ?? realNativeShellRunner;
+}
+
+function readProcessStdout(argv: string[]): Promise<string> {
+	return activeNativeShellRunner.read(argv);
+}
+
+function readProcessStdoutSafe(
+	argv: string[],
+	timeoutMs = POWER_STATE_PROBE_TIMEOUT_MS,
+): Promise<string | null> {
+	return activeNativeShellRunner.readSafe(argv, timeoutMs);
 }
 
 async function readLinuxLockedHint(): Promise<boolean | null> {
