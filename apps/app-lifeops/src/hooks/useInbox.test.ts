@@ -42,7 +42,9 @@ describe("useInbox", () => {
       expect(hook.result.current.loading).toBe(false);
     });
 
-    act(() => hook.result.current.setChannel("discord"));
+    await act(async () => {
+      hook.result.current.setChannel("discord");
+    });
 
     channels.current = ["gmail"];
     channel.current = "gmail";
