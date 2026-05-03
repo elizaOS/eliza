@@ -8,31 +8,20 @@
 // `require_inherits_browser` is undefined and elliptic / hash-base /
 // create-hash crash, taking the React tree down with them on /login.
 //
-// This file is the body of `inherits_browser.js` exposed as a single CJS
-// module, so vite resolves to a known-good entry every time.
+// Body of `inherits_browser.js` exposed as a single CJS module so vite
+// resolves to a known-good entry every time. Drops the legacy
+// `Object.create`-less branch — every browser the SPA targets has it.
 
-if (typeof Object.create === "function") {
-  module.exports = function inherits(ctor, superCtor) {
-    if (superCtor) {
-      ctor.super_ = superCtor;
-      ctor.prototype = Object.create(superCtor.prototype, {
-        constructor: {
-          value: ctor,
-          enumerable: false,
-          writable: true,
-          configurable: true,
-        },
-      });
-    }
-  };
-} else {
-  module.exports = function inherits(ctor, superCtor) {
-    if (superCtor) {
-      ctor.super_ = superCtor;
-      var TempCtor = function () {};
-      TempCtor.prototype = superCtor.prototype;
-      ctor.prototype = new TempCtor();
-      ctor.prototype.constructor = ctor;
-    }
-  };
-}
+module.exports = function inherits(ctor, superCtor) {
+  if (superCtor) {
+    ctor.super_ = superCtor;
+    ctor.prototype = Object.create(superCtor.prototype, {
+      constructor: {
+        value: ctor,
+        enumerable: false,
+        writable: true,
+        configurable: true,
+      },
+    });
+  }
+};
