@@ -162,86 +162,45 @@ export const LpManagementAgentAction: Action = {
 
   examples: [] as ActionExample[][], // Empty for now - add examples when specific LP workflows are documented
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
-    const __avTextRaw = typeof message?.content?.text === "string" ? message.content.text : "";
-    const __avText = __avTextRaw.toLowerCase();
-    const __avKeywords = ["management"];
-    const __avKeywordOk =
-      __avKeywords.length > 0 && __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
-    const __avRegex = /\b(?:management)\b/i;
-    const __avRegexOk = __avRegex.test(__avText);
-    const __avSource = String(message?.content?.source ?? "");
-    const __avExpectedSource = "";
-    const __avSourceOk = __avExpectedSource
-      ? __avSource === __avExpectedSource
-      : Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
-    const __avInputOk =
-      __avText.trim().length > 0 ||
-      Boolean(message?.content && typeof message.content === "object");
-
-    if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
+  validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
+    if (!message?.content?.text) {
       return false;
     }
 
-    const __avLegacyValidate = async (
-      _runtime: IAgentRuntime,
-      message: Memory,
-      _state?: State
-    ): Promise<boolean> => {
-      console.info(
-        "[LpManagementAgentAction] Validate called with message:",
-        message?.content?.text || "No text"
-      );
+    const text = message.content.text.toLowerCase();
 
-      // If there's no message content, validation fails
-      if (!message?.content?.text) {
-        console.info("[LpManagementAgentAction] No message text, returning false");
-        return false;
-      }
+    const lpKeywords = [
+      "liquidity",
+      "lp",
+      "pool",
+      "dex",
+      "vault",
+      "slippage",
+      "apr",
+      "apy",
+      "tvl",
+      "swap",
+      "balance",
+      "position",
+      "yield",
+      "deposit",
+      "withdraw",
+      "rebalance",
+      "auto-rebalance",
+      "auto rebalance",
+      "enable rebalance",
+      "preference",
+      "concentrated",
+      "range",
+      "price range",
+      "narrow",
+      "tight",
+      "out of range",
+      "management",
+      "intent",
+    ];
 
-      const text = message.content.text.toLowerCase();
-
-      // Check for LP-related keywords in the message
-      const lpKeywords = [
-        "liquidity",
-        "lp",
-        "pool",
-        "dex",
-        "vault",
-        "slippage",
-        "apr",
-        "apy",
-        "tvl",
-        "swap",
-        "balance",
-        "position",
-        "yield",
-        "deposit",
-        "withdraw",
-        "rebalance",
-        "auto-rebalance",
-        "auto rebalance",
-        "enable rebalance",
-        "preference",
-        "slippage",
-        "concentrated",
-        "range",
-        "price range",
-        "narrow",
-        "tight",
-        "out of range",
-      ];
-
-      const hasLpKeyword = lpKeywords.some((keyword) => text.includes(keyword));
-      console.info("[LpManagementAgentAction] Has LP keyword:", hasLpKeyword);
-
-      return hasLpKeyword;
-    };
-    try {
-      return Boolean(await __avLegacyValidate(runtime, message, state));
-    } catch {
-      return false;
-    }
+    return lpKeywords.some((keyword) => text.includes(keyword));
   },
 
   handler: async (runtime, message, _state) => {
