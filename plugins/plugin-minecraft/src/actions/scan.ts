@@ -10,6 +10,7 @@ import type {
 } from "@elizaos/core";
 import { z } from "zod";
 import { MINECRAFT_SERVICE_TYPE, type MinecraftService } from "../services/minecraft-service.js";
+import { matchPlannerValidateGate } from "./action-validate-gate.js";
 
 const scanSchema = z
   .object({
@@ -56,39 +57,15 @@ export const minecraftScanAction: Action = {
   similes: ["MINECRAFT_SCAN", "FIND_BLOCKS", "SCAN_BLOCKS"],
   description:
     'Scan nearby blocks. Optional JSON input: {"blocks":["oak_log"],"radius":16,"maxResults":32}. If omitted, scans for any non-air blocks.',
-  validate: async (runtime: any, message: any, state?: any, options?: any): Promise<boolean> => {
-    const __avTextRaw = typeof message?.content?.text === "string" ? message.content.text : "";
-    const __avText = __avTextRaw.toLowerCase();
-    const __avKeywords = ["scan"];
-    const __avKeywordOk =
-      __avKeywords.length > 0 && __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
-    const __avRegex = /\b(?:scan)\b/i;
-    const __avRegexOk = __avRegex.test(__avText);
-    const __avSource = String(message?.content?.source ?? "");
-    const __avExpectedSource = "";
-    const __avSourceOk = __avExpectedSource
-      ? __avSource === __avExpectedSource
-      : Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
-    const __avOptions = options && typeof options === "object" ? options : {};
-    const __avInputOk =
-      __avText.trim().length > 0 ||
-      Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-      Boolean(message?.content && typeof message.content === "object");
-
-    if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
-      return false;
-    }
-
-    const __avLegacyValidate = async (runtime: IAgentRuntime): Promise<boolean> => {
-      const service = runtime.getService<MinecraftService>(MINECRAFT_SERVICE_TYPE);
-      return Boolean(service);
-    };
-    try {
-      return Boolean(await (__avLegacyValidate as any)(runtime, message, state, options));
-    } catch {
-      return false;
-    }
-  },
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
+    matchPlannerValidateGate(runtime, message, state, {
+      keywords: ["scan"],
+      regex: /\b(?:scan)\b/i,
+      legacyValidate: async (rt) => {
+        const service = rt.getService<MinecraftService>(MINECRAFT_SERVICE_TYPE);
+        return Boolean(service);
+      },
+    }),
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,

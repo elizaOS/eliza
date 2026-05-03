@@ -10,6 +10,7 @@ import type {
 } from "@elizaos/core";
 import { z } from "zod";
 import { MINECRAFT_SERVICE_TYPE, type MinecraftService } from "../services/minecraft-service.js";
+import { matchPlannerValidateGate } from "./action-validate-gate.js";
 
 const placeSchema = z.object({
   x: z.number(),
@@ -52,42 +53,15 @@ export const minecraftPlaceAction: Action = {
   similes: ["MINECRAFT_PLACE", "PLACE_BLOCK"],
   description:
     "Place the currently-held block onto a reference block face. Provide 'x y z face' (face=up/down/north/south/east/west) or JSON {x,y,z,face}.",
-  validate: async (runtime: any, message: any, state?: any, options?: any): Promise<boolean> => {
-    const __avTextRaw = typeof message?.content?.text === "string" ? message.content.text : "";
-    const __avText = __avTextRaw.toLowerCase();
-    const __avKeywords = ["place"];
-    const __avKeywordOk =
-      __avKeywords.length > 0 && __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
-    const __avRegex = /\b(?:place)\b/i;
-    const __avRegexOk = __avRegex.test(__avText);
-    const __avSource = String(message?.content?.source ?? "");
-    const __avExpectedSource = "";
-    const __avSourceOk = __avExpectedSource
-      ? __avSource === __avExpectedSource
-      : Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
-    const __avOptions = options && typeof options === "object" ? options : {};
-    const __avInputOk =
-      __avText.trim().length > 0 ||
-      Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-      Boolean(message?.content && typeof message.content === "object");
-
-    if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
-      return false;
-    }
-
-    const __avLegacyValidate = async (
-      runtime: IAgentRuntime,
-      message: Memory
-    ): Promise<boolean> => {
-      const service = runtime.getService<MinecraftService>(MINECRAFT_SERVICE_TYPE);
-      return Boolean(service) && Boolean(parsePlace(message.content.text ?? ""));
-    };
-    try {
-      return Boolean(await (__avLegacyValidate as any)(runtime, message, state, options));
-    } catch {
-      return false;
-    }
-  },
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
+    matchPlannerValidateGate(runtime, message, state, {
+      keywords: ["place"],
+      regex: /\b(?:place)\b/i,
+      legacyValidate: async (rt, msg) => {
+        const service = rt.getService<MinecraftService>(MINECRAFT_SERVICE_TYPE);
+        return Boolean(service) && Boolean(parsePlace(msg.content.text ?? ""));
+      },
+    }),
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
