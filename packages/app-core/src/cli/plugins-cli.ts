@@ -5,7 +5,7 @@ import {
   isPluginManagerLike,
   type PluginManagerLike,
 } from "@elizaos/agent";
-import type { IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, PluginManagerService } from "@elizaos/core";
 import chalk from "chalk";
 import type { Command } from "commander";
 import { parseClampedInteger } from "../utils/number-parsing";
@@ -125,10 +125,6 @@ function displayPluginConfig(
 }
 
 async function getPluginManager(): Promise<PluginManagerLike> {
-  // plugin-manager is now built into @elizaos/core features
-  const { PluginManagerService } = await import(
-    "@elizaos/core/features/plugin-manager/index"
-  );
   const mockRuntime: Partial<IAgentRuntime> = {
     plugins: [],
     actions: [],

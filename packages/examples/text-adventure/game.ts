@@ -400,7 +400,7 @@ class AdventureGame {
   private handleAttack(withSword: boolean): string {
     const room = this.getCurrentRoom();
 
-    if (!room.enemy || room.enemy.health <= 0) {
+    if (room.enemy.health <= 0) {
       return "There is nothing to attack here.";
     }
 

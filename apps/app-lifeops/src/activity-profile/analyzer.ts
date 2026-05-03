@@ -274,7 +274,7 @@ function resolveScreenHeartbeatAt(
   if (!profile.screenContextAvailable || profile.screenContextStale) {
     return 0;
   }
-  if (!profile.screenContextSampledAt || profile.screenContextSampledAt <= 0) {
+  if (profile.screenContextSampledAt <= 0) {
     return 0;
   }
   if (!SCREEN_ACTIVE_FOCUS.has(profile.screenContextFocus ?? "unknown")) {

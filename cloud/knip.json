@@ -1,0 +1,16 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "ignore": [".claude/**", "apps/frontend/dist/**", "packages/sdk/dist/**", "test-results/**"],
+  "ignoreBinaries": ["stripe"],
+  "workspaces": {
+    "@elizaos/cloud-api": {
+      "entry": [
+        "src/index.ts!",
+        "src/_router.generated.ts!",
+        "src/queue/stripe-event.ts!",
+        "test/e2e/preload.ts!"
+      ],
+      "ignore": ["_smoke-mcp/**"]
+    }
+  }
+}

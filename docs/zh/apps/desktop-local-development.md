@@ -82,7 +82,7 @@ ELIZA_DESKTOP_VITE_WATCH=1 ELIZA_DESKTOP_VITE_BUILD_WATCH=1 bun scripts/dev-plat
 
 **为什么在父进程中预分配（而不只在 API 进程内）：** Vite 在启动时只读取一次 `vite.config.ts`；代理的 **`target`** 必须在第一个请求**之前**与 API 端口匹配。如果只有 API 在绑定后才切换端口，UI 仍会代理到旧的默认值直到有人重启 Vite。在 `dev-platform.mjs` 中**一次**解析端口可以保持**编排器日志、环境、代理和 Electrobun** 使用相同的端口号。
 
-**打包桌面（`local` 嵌入式代理）：** Electrobun 主进程从首选的 **`ELIZA_PORT`**（默认 **2138**）调用 **`findFirstAvailableLoopbackPort`**（`apps/app/electrobun/src/native/loopback-port.ts`），将其传递给 **`entry.js start`** 子进程，健康启动后更新 shell 中的 **`process.env.ELIZA_PORT` / `ELIZA_API_PORT` / `ELIZA_PORT`**。**为什么停止默认的 `lsof` + SIGKILL：** 当状态目录不同时，同一默认端口上的第二个 Eliza 实例（或任何应用）是合法的；从 shell 中杀死 PID 令人意外且可能终止无关的工作。**可选回收：** **`ELIZA_AGENT_RECLAIM_STALE_PORT=1`** 运行旧的**"先释放此端口"**行为，供希望单实例接管的开发者使用。
+**打包桌面（`local` 嵌入式代理）：** Electrobun 主进程从首选的 **`ELIZA_PORT`**（默认 **2138**）调用 **`findFirstAvailableLoopbackPort`**（`apps/app/electrobun/src/native/loopback-port.ts`），将其传递给 **`entry.js start`** 子进程，健康启动后更新 shell 中的 **`process.env.ELIZA_PORT` / `ELIZA_API_PORT`**。**为什么停止默认的 `lsof` + SIGKILL：** 当状态目录不同时，同一默认端口上的第二个 Eliza 实例（或任何应用）是合法的；从 shell 中杀死 PID 令人意外且可能终止无关的工作。**可选回收：** **`ELIZA_AGENT_RECLAIM_STALE_PORT=1`** 运行旧的**"先释放此端口"**行为，供希望单实例接管的开发者使用。
 
 **分离窗口：** 当嵌入式 API 端口确定或变更时，**`injectApiBase`** 对主窗口和**所有** `SurfaceWindowManager` 窗口执行（**原因：** chat/settings/等不能继续轮询过时的 `http://127.0.0.1:…`）。
 

@@ -118,7 +118,7 @@ describe("withDiscord agent plugin surface", () => {
       client: {
         user: {
           id: "discord-bot-1",
-          username: "milady",
+          username: "eliza",
           discriminator: "0001",
         },
       },
@@ -135,7 +135,7 @@ describe("withDiscord agent plugin surface", () => {
     expect(status.reason).toBe("connected");
     expect(status.identity).toMatchObject({
       id: "discord-bot-1",
-      username: "milady",
+      username: "eliza",
       discriminator: "0001",
     });
     expect(status.grantedCapabilities).toEqual([
@@ -151,7 +151,7 @@ describe("withDiscord agent plugin surface", () => {
   it("treats agent-side connect as plugin status instead of opening a LifeOps browser session", async () => {
     const service = createService({
       isReady: vi.fn(() => true),
-      client: { user: { id: "discord-bot-1", username: "milady" } },
+      client: { user: { id: "discord-bot-1", username: "eliza" } },
     });
 
     const status = await service.authorizeDiscordConnector("agent");
@@ -165,7 +165,7 @@ describe("withDiscord agent plugin surface", () => {
   it("sends agent-side Discord messages through the elizaOS plugin send handler", async () => {
     const service = createService({
       isReady: vi.fn(() => true),
-      client: { user: { id: "discord-bot-1", username: "milady" } },
+      client: { user: { id: "discord-bot-1", username: "eliza" } },
     });
 
     await expect(

@@ -154,7 +154,6 @@ const nativeStubs = {
 // let them bundle. The mobile plugin filter still strips them out of the
 // runtime load set, so they don't try to register at boot.
 const optionalPluginStubs = {
-  "@elizaos/plugin-cron": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-cli": path.join(stubsDir, "null-plugin.cjs"),
   // Static `import * as pluginBrowserBridge from "@elizaos/plugin-browser-bridge"`
   // in eliza.ts pulls in puppeteer/Chromium plumbing transitively. Mobile

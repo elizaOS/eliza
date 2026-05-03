@@ -44,9 +44,9 @@ const SECRET_BYTES = 32;
 const EXPIRY_SAFETY_MARGIN_MS = 60_000;
 
 export interface DesktopSession {
-  sessionId: string;
-  csrfToken: string;
-  expiresAt: number;
+	sessionId: string;
+	csrfToken: string;
+	expiresAt: number;
 }
 
 /**
@@ -54,27 +54,27 @@ export interface DesktopSession {
  * includes `preconnect`) so tests can pass simple stubs.
  */
 export type FetchLike = (
-  input: URL | RequestInfo,
-  init?: RequestInit,
+	input: URL | RequestInfo,
+	init?: RequestInit,
 ) => Promise<Response>;
 
 export interface DesktopBootstrapDeps {
-  /** Loopback API base, e.g. `http://127.0.0.1:31337`. */
-  apiBase: string;
-  /** Override for tests. Default: `process.env`. */
-  env?: NodeJS.ProcessEnv;
-  /** Override secret generator for deterministic tests. */
-  generateSecret?: () => Buffer;
-  /** Override fetch (tests inject a stub). Default: global `fetch`. */
-  fetchImpl?: FetchLike;
-  /** Override clock for tests. */
-  now?: () => number;
+	/** Loopback API base, e.g. `http://127.0.0.1:31337`. */
+	apiBase: string;
+	/** Override for tests. Default: `process.env`. */
+	env?: NodeJS.ProcessEnv;
+	/** Override secret generator for deterministic tests. */
+	generateSecret?: () => Buffer;
+	/** Override fetch (tests inject a stub). Default: global `fetch`. */
+	fetchImpl?: FetchLike;
+	/** Override clock for tests. */
+	now?: () => number;
 }
 
 interface DesktopBootstrapResponseBody {
-  sessionId?: string;
-  csrfToken?: string;
-  expiresAt?: number;
+	sessionId?: string;
+	csrfToken?: string;
+	expiresAt?: number;
 }
 
 // ── State paths ───────────────────────────────────────────────────────────────
@@ -85,24 +85,24 @@ interface DesktopBootstrapResponseBody {
  * `~/.<namespace>` derived from brand config.
  */
 export function resolveStateDir(env: NodeJS.ProcessEnv = process.env): string {
-  const explicit =
-    env.ELIZA_STATE_DIR?.trim() || env.ELIZA_STATE_DIR?.trim() || "";
-  if (explicit) return explicit;
-  return path.join(os.homedir(), `.${getBrandConfig().namespace}`);
+	const explicit =
+		env.ELIZA_STATE_DIR?.trim() || "";
+	if (explicit) return explicit;
+	return path.join(os.homedir(), `.${getBrandConfig().namespace}`);
 }
 
 export function resolveAuthDir(env: NodeJS.ProcessEnv = process.env): string {
-  return path.join(resolveStateDir(env), "auth");
+	return path.join(resolveStateDir(env), "auth");
 }
 
 export function resolveSessionPath(
-  env: NodeJS.ProcessEnv = process.env,
+	env: NodeJS.ProcessEnv = process.env,
 ): string {
-  return path.join(resolveAuthDir(env), "desktop-session.json");
+	return path.join(resolveAuthDir(env), "desktop-session.json");
 }
 
 export function resolveSocketDir(env: NodeJS.ProcessEnv = process.env): string {
-  return path.join(resolveStateDir(env), "sockets");
+	return path.join(resolveStateDir(env), "sockets");
 }
 
 // ── Persisted-session round-trip ─────────────────────────────────────────────
@@ -113,94 +113,94 @@ export function resolveSocketDir(env: NodeJS.ProcessEnv = process.env): string {
  * caller is expected to fall through to `bootstrapDesktopSession`.
  */
 export function loadPersistedSession(
-  env: NodeJS.ProcessEnv = process.env,
-  now: () => number = Date.now,
+	env: NodeJS.ProcessEnv = process.env,
+	now: () => number = Date.now,
 ): DesktopSession | null {
-  const sessionPath = resolveSessionPath(env);
-  if (!fs.existsSync(sessionPath)) return null;
+	const sessionPath = resolveSessionPath(env);
+	if (!fs.existsSync(sessionPath)) return null;
 
-  let raw: string;
-  try {
-    raw = fs.readFileSync(sessionPath, "utf8");
-  } catch {
-    return null;
-  }
+	let raw: string;
+	try {
+		raw = fs.readFileSync(sessionPath, "utf8");
+	} catch {
+		return null;
+	}
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return null;
-  }
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch {
+		return null;
+	}
 
-  if (!parsed || typeof parsed !== "object") return null;
-  const record = parsed as Record<string, unknown>;
-  if (record.schemaVersion !== PERSISTED_SCHEMA_VERSION) return null;
+	if (!parsed || typeof parsed !== "object") return null;
+	const record = parsed as Record<string, unknown>;
+	if (record.schemaVersion !== PERSISTED_SCHEMA_VERSION) return null;
 
-  const sessionId =
-    typeof record.sessionId === "string" ? record.sessionId : "";
-  const csrfToken =
-    typeof record.csrfToken === "string" ? record.csrfToken : "";
-  const expiresAt =
-    typeof record.expiresAt === "number" && Number.isFinite(record.expiresAt)
-      ? record.expiresAt
-      : 0;
+	const sessionId =
+		typeof record.sessionId === "string" ? record.sessionId : "";
+	const csrfToken =
+		typeof record.csrfToken === "string" ? record.csrfToken : "";
+	const expiresAt =
+		typeof record.expiresAt === "number" && Number.isFinite(record.expiresAt)
+			? record.expiresAt
+			: 0;
 
-  if (!sessionId || !csrfToken || expiresAt <= 0) return null;
-  if (expiresAt - EXPIRY_SAFETY_MARGIN_MS <= now()) return null;
+	if (!sessionId || !csrfToken || expiresAt <= 0) return null;
+	if (expiresAt - EXPIRY_SAFETY_MARGIN_MS <= now()) return null;
 
-  return { sessionId, csrfToken, expiresAt };
+	return { sessionId, csrfToken, expiresAt };
 }
 
 export function persistSession(
-  session: DesktopSession,
-  env: NodeJS.ProcessEnv = process.env,
+	session: DesktopSession,
+	env: NodeJS.ProcessEnv = process.env,
 ): void {
-  const dir = resolveAuthDir(env);
-  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  // Best-effort tighten in case mkdir respected an inherited umask.
-  try {
-    fs.chmodSync(dir, 0o700);
-  } catch {
-    /* non-fatal on platforms where chmod has no effect */
-  }
-  const sessionPath = resolveSessionPath(env);
-  const body = JSON.stringify(
-    {
-      schemaVersion: PERSISTED_SCHEMA_VERSION,
-      sessionId: session.sessionId,
-      csrfToken: session.csrfToken,
-      expiresAt: session.expiresAt,
-    },
-    null,
-    2,
-  );
-  fs.writeFileSync(sessionPath, body, { encoding: "utf8", mode: 0o600 });
-  try {
-    fs.chmodSync(sessionPath, 0o600);
-  } catch {
-    /* non-fatal */
-  }
+	const dir = resolveAuthDir(env);
+	fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+	// Best-effort tighten in case mkdir respected an inherited umask.
+	try {
+		fs.chmodSync(dir, 0o700);
+	} catch {
+		/* non-fatal on platforms where chmod has no effect */
+	}
+	const sessionPath = resolveSessionPath(env);
+	const body = JSON.stringify(
+		{
+			schemaVersion: PERSISTED_SCHEMA_VERSION,
+			sessionId: session.sessionId,
+			csrfToken: session.csrfToken,
+			expiresAt: session.expiresAt,
+		},
+		null,
+		2,
+	);
+	fs.writeFileSync(sessionPath, body, { encoding: "utf8", mode: 0o600 });
+	try {
+		fs.chmodSync(sessionPath, 0o600);
+	} catch {
+		/* non-fatal */
+	}
 }
 
 export function clearPersistedSession(
-  env: NodeJS.ProcessEnv = process.env,
+	env: NodeJS.ProcessEnv = process.env,
 ): void {
-  const sessionPath = resolveSessionPath(env);
-  try {
-    if (fs.existsSync(sessionPath)) fs.unlinkSync(sessionPath);
-  } catch {
-    /* non-fatal */
-  }
+	const sessionPath = resolveSessionPath(env);
+	try {
+		if (fs.existsSync(sessionPath)) fs.unlinkSync(sessionPath);
+	} catch {
+		/* non-fatal */
+	}
 }
 
 // ── Socket server (one-shot secret hand-off) ─────────────────────────────────
 
 interface BootstrapSocket {
-  socketPath: string;
-  /** Resolves once a peer has connected, read the secret, and disconnected. */
-  consumed: Promise<void>;
-  close: () => void;
+	socketPath: string;
+	/** Resolves once a peer has connected, read the secret, and disconnected. */
+	consumed: Promise<void>;
+	close: () => void;
 }
 
 /**
@@ -210,101 +210,101 @@ interface BootstrapSocket {
  * skip the auto-session path on win32 and fall back to the password flow.
  */
 function openBootstrapSocket(
-  env: NodeJS.ProcessEnv,
-  secret: Buffer,
+	env: NodeJS.ProcessEnv,
+	secret: Buffer,
 ): BootstrapSocket {
-  let socketDir = resolveSocketDir(env);
-  let socketName = `desktop-auth-${crypto.randomBytes(8).toString("hex")}.sock`;
-  if (
-    process.platform === "darwin" &&
-    path.join(socketDir, socketName).length > 100
-  ) {
-    socketDir = os.tmpdir();
-    socketName = `mda-${crypto.randomBytes(4).toString("hex")}.sock`;
-  }
-  fs.mkdirSync(socketDir, { recursive: true, mode: 0o700 });
-  try {
-    fs.chmodSync(socketDir, 0o700);
-  } catch {
-    /* non-fatal */
-  }
+	let socketDir = resolveSocketDir(env);
+	let socketName = `desktop-auth-${crypto.randomBytes(8).toString("hex")}.sock`;
+	if (
+		process.platform === "darwin" &&
+		path.join(socketDir, socketName).length > 100
+	) {
+		socketDir = os.tmpdir();
+		socketName = `mda-${crypto.randomBytes(4).toString("hex")}.sock`;
+	}
+	fs.mkdirSync(socketDir, { recursive: true, mode: 0o700 });
+	try {
+		fs.chmodSync(socketDir, 0o700);
+	} catch {
+		/* non-fatal */
+	}
 
-  const socketPath = path.join(socketDir, socketName);
+	const socketPath = path.join(socketDir, socketName);
 
-  // Stale socket from a previous crashed run — unlink before bind.
-  try {
-    if (fs.existsSync(socketPath)) fs.unlinkSync(socketPath);
-  } catch {
-    /* swallowed; bind will report the real failure */
-  }
+	// Stale socket from a previous crashed run — unlink before bind.
+	try {
+		if (fs.existsSync(socketPath)) fs.unlinkSync(socketPath);
+	} catch {
+		/* swallowed; bind will report the real failure */
+	}
 
-  let resolveConsumed: () => void = () => {};
-  let rejectConsumed: (err: Error) => void = () => {};
-  const consumed = new Promise<void>((res, rej) => {
-    resolveConsumed = res;
-    rejectConsumed = rej;
-  });
+	let resolveConsumed: () => void = () => {};
+	let rejectConsumed: (err: Error) => void = () => {};
+	const consumed = new Promise<void>((res, rej) => {
+		resolveConsumed = res;
+		rejectConsumed = rej;
+	});
 
-  const server = net.createServer((conn) => {
-    // Hand the secret over and tear down. The peer (the API process) is
-    // expected to read the bytes and close. We close on our side after a
-    // single connection regardless.
-    conn.write(secret, () => {
-      conn.end();
-    });
-    conn.once("close", () => resolveConsumed());
-    conn.once("error", (err) => rejectConsumed(err));
-  });
+	const server = net.createServer((conn) => {
+		// Hand the secret over and tear down. The peer (the API process) is
+		// expected to read the bytes and close. We close on our side after a
+		// single connection regardless.
+		conn.write(secret, () => {
+			conn.end();
+		});
+		conn.once("close", () => resolveConsumed());
+		conn.once("error", (err) => rejectConsumed(err));
+	});
 
-  server.on("error", (err) => rejectConsumed(err));
-  server.listen(socketPath);
+	server.on("error", (err) => rejectConsumed(err));
+	server.listen(socketPath);
 
-  // chmod the socket inode itself so only the owner can connect. On Linux this
-  // is enforced; on macOS UDS permissions are advisory but still useful.
-  try {
-    fs.chmodSync(socketPath, 0o600);
-  } catch {
-    /* non-fatal */
-  }
+	// chmod the socket inode itself so only the owner can connect. On Linux this
+	// is enforced; on macOS UDS permissions are advisory but still useful.
+	try {
+		fs.chmodSync(socketPath, 0o600);
+	} catch {
+		/* non-fatal */
+	}
 
-  return {
-    socketPath,
-    consumed,
-    close: () => {
-      try {
-        server.close();
-      } catch {
-        /* no-op */
-      }
-      try {
-        if (fs.existsSync(socketPath)) fs.unlinkSync(socketPath);
-      } catch {
-        /* no-op */
-      }
-    },
-  };
+	return {
+		socketPath,
+		consumed,
+		close: () => {
+			try {
+				server.close();
+			} catch {
+				/* no-op */
+			}
+			try {
+				if (fs.existsSync(socketPath)) fs.unlinkSync(socketPath);
+			} catch {
+				/* no-op */
+			}
+		},
+	};
 }
 
 // ── Backend call ─────────────────────────────────────────────────────────────
 
 function buildBootstrapUrl(apiBase: string): string {
-  const trimmed = apiBase.replace(/\/+$/, "");
-  return `${trimmed}${DESKTOP_BOOTSTRAP_ENDPOINT}`;
+	const trimmed = apiBase.replace(/\/+$/, "");
+	return `${trimmed}${DESKTOP_BOOTSTRAP_ENDPOINT}`;
 }
 
 function isLoopbackBase(apiBase: string): boolean {
-  try {
-    const url = new URL(apiBase);
-    const host = url.hostname.toLowerCase();
-    return (
-      host === "127.0.0.1" ||
-      host === "localhost" ||
-      host === "::1" ||
-      host === "[::1]"
-    );
-  } catch {
-    return false;
-  }
+	try {
+		const url = new URL(apiBase);
+		const host = url.hostname.toLowerCase();
+		return (
+			host === "127.0.0.1" ||
+			host === "localhost" ||
+			host === "::1" ||
+			host === "[::1]"
+		);
+	} catch {
+		return false;
+	}
 }
 
 /**
@@ -313,97 +313,97 @@ function isLoopbackBase(apiBase: string): boolean {
  * timeout, or socket-permission failure.
  */
 export async function bootstrapDesktopSession(
-  deps: DesktopBootstrapDeps,
+	deps: DesktopBootstrapDeps,
 ): Promise<DesktopSession | null> {
-  const env = deps.env ?? process.env;
-  const fetchImpl = deps.fetchImpl ?? fetch;
-  const now = deps.now ?? Date.now;
-  const generateSecret =
-    deps.generateSecret ?? (() => crypto.randomBytes(SECRET_BYTES));
+	const env = deps.env ?? process.env;
+	const fetchImpl = deps.fetchImpl ?? fetch;
+	const now = deps.now ?? Date.now;
+	const generateSecret =
+		deps.generateSecret ?? (() => crypto.randomBytes(SECRET_BYTES));
 
-  if (process.platform === "win32") {
-    // UDS path is POSIX-only for this bridge. Win32 falls through to the
-    // password flow for now; revisit when the named-pipe variant is wired.
-    return null;
-  }
+	if (process.platform === "win32") {
+		// UDS path is POSIX-only for this bridge. Win32 falls through to the
+		// password flow for now; revisit when the named-pipe variant is wired.
+		return null;
+	}
 
-  if (!isLoopbackBase(deps.apiBase)) {
-    // Defence-in-depth: never hand a secret to a non-loopback origin.
-    return null;
-  }
+	if (!isLoopbackBase(deps.apiBase)) {
+		// Defence-in-depth: never hand a secret to a non-loopback origin.
+		return null;
+	}
 
-  const secret = generateSecret();
-  if (secret.length < SECRET_BYTES) {
-    return null;
-  }
+	const secret = generateSecret();
+	if (secret.length < SECRET_BYTES) {
+		return null;
+	}
 
-  let socketHandle: BootstrapSocket | null = null;
-  try {
-    socketHandle = openBootstrapSocket(env, secret);
-  } catch {
-    return null;
-  }
+	let socketHandle: BootstrapSocket | null = null;
+	try {
+		socketHandle = openBootstrapSocket(env, secret);
+	} catch {
+		return null;
+	}
 
-  const url = buildBootstrapUrl(deps.apiBase);
-  const requestSignal = AbortSignal.timeout(HTTP_REQUEST_TIMEOUT_MS);
-  const consumeSignal = AbortSignal.timeout(SOCKET_CONNECT_TIMEOUT_MS);
+	const url = buildBootstrapUrl(deps.apiBase);
+	const requestSignal = AbortSignal.timeout(HTTP_REQUEST_TIMEOUT_MS);
+	const consumeSignal = AbortSignal.timeout(SOCKET_CONNECT_TIMEOUT_MS);
 
-  // Wrap consumed in a race so a hung backend doesn't keep the socket open.
-  const consumedOrTimeout = new Promise<void>((resolve, reject) => {
-    const onAbort = () =>
-      reject(new Error("socket consume timed out before backend connected"));
-    consumeSignal.addEventListener("abort", onAbort, { once: true });
-    socketHandle?.consumed
-      .then(() => resolve())
-      .catch((err: unknown) =>
-        reject(err instanceof Error ? err : new Error(String(err))),
-      );
-  });
+	// Wrap consumed in a race so a hung backend doesn't keep the socket open.
+	const consumedOrTimeout = new Promise<void>((resolve, reject) => {
+		const onAbort = () =>
+			reject(new Error("socket consume timed out before backend connected"));
+		consumeSignal.addEventListener("abort", onAbort, { once: true });
+		socketHandle?.consumed
+			.then(() => resolve())
+			.catch((err: unknown) =>
+				reject(err instanceof Error ? err : new Error(String(err))),
+			);
+	});
 
-  let body: DesktopBootstrapResponseBody | null = null;
-  try {
-    const response = await fetchImpl(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify({ socketPath: socketHandle.socketPath }),
-      signal: requestSignal,
-    });
+	let body: DesktopBootstrapResponseBody | null = null;
+	try {
+		const response = await fetchImpl(url, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				Accept: "application/json",
+			},
+			body: JSON.stringify({ socketPath: socketHandle.socketPath }),
+			signal: requestSignal,
+		});
 
-    if (!response.ok) {
-      // 404 means the backend doesn't implement the endpoint yet — flag in
-      // logs but stay silent in the UX so the renderer can still log in.
-      return null;
-    }
+		if (!response.ok) {
+			// 404 means the backend doesn't implement the endpoint yet — flag in
+			// logs but stay silent in the UX so the renderer can still log in.
+			return null;
+		}
 
-    body = (await response
-      .json()
-      .catch(() => null)) as DesktopBootstrapResponseBody | null;
+		body = (await response
+			.json()
+			.catch(() => null)) as DesktopBootstrapResponseBody | null;
 
-    // Wait for the API to actually connect to the socket before we tear it
-    // down. If the API never connects we still got an HTTP response, but the
-    // session it minted was based on something other than filesystem proof —
-    // refuse it.
-    await consumedOrTimeout;
-  } catch {
-    return null;
-  } finally {
-    socketHandle.close();
-  }
+		// Wait for the API to actually connect to the socket before we tear it
+		// down. If the API never connects we still got an HTTP response, but the
+		// session it minted was based on something other than filesystem proof —
+		// refuse it.
+		await consumedOrTimeout;
+	} catch {
+		return null;
+	} finally {
+		socketHandle.close();
+	}
 
-  if (!body) return null;
-  const sessionId = typeof body.sessionId === "string" ? body.sessionId : "";
-  const csrfToken = typeof body.csrfToken === "string" ? body.csrfToken : "";
-  const expiresAt =
-    typeof body.expiresAt === "number" && Number.isFinite(body.expiresAt)
-      ? body.expiresAt
-      : 0;
+	if (!body) return null;
+	const sessionId = typeof body.sessionId === "string" ? body.sessionId : "";
+	const csrfToken = typeof body.csrfToken === "string" ? body.csrfToken : "";
+	const expiresAt =
+		typeof body.expiresAt === "number" && Number.isFinite(body.expiresAt)
+			? body.expiresAt
+			: 0;
 
-  if (!sessionId || !csrfToken || expiresAt <= now()) return null;
+	if (!sessionId || !csrfToken || expiresAt <= now()) return null;
 
-  return { sessionId, csrfToken, expiresAt };
+	return { sessionId, csrfToken, expiresAt };
 }
 
 // ── Public entry point ───────────────────────────────────────────────────────
@@ -415,24 +415,24 @@ export async function bootstrapDesktopSession(
  * the normal login flow.
  */
 export async function loadOrCreateDesktopSession(
-  deps: DesktopBootstrapDeps,
+	deps: DesktopBootstrapDeps,
 ): Promise<DesktopSession | null> {
-  const env = deps.env ?? process.env;
-  const now = deps.now ?? Date.now;
+	const env = deps.env ?? process.env;
+	const now = deps.now ?? Date.now;
 
-  const existing = loadPersistedSession(env, now);
-  if (existing) return existing;
+	const existing = loadPersistedSession(env, now);
+	if (existing) return existing;
 
-  const fresh = await bootstrapDesktopSession(deps);
-  if (!fresh) return null;
+	const fresh = await bootstrapDesktopSession(deps);
+	if (!fresh) return null;
 
-  try {
-    persistSession(fresh, env);
-  } catch {
-    // Persistence is best-effort: even without it, the renderer is logged in
-    // for the lifetime of this process.
-  }
-  return fresh;
+	try {
+		persistSession(fresh, env);
+	} catch {
+		// Persistence is best-effort: even without it, the renderer is logged in
+		// for the lifetime of this process.
+	}
+	return fresh;
 }
 
 // ── Cookie installation ──────────────────────────────────────────────────────
@@ -446,21 +446,21 @@ export async function loadOrCreateDesktopSession(
  * `rendererOrigin === apiOrigin`.
  */
 export interface InstallCookieTargets {
-  apiOrigin: string;
-  rendererOrigin?: string | null;
+	apiOrigin: string;
+	rendererOrigin?: string | null;
 }
 
 export interface CookieInstaller {
-  set: (cookie: {
-    name: string;
-    value: string;
-    domain?: string;
-    path?: string;
-    secure?: boolean;
-    httpOnly?: boolean;
-    sameSite?: "no_restriction" | "lax" | "strict";
-    expirationDate?: number;
-  }) => boolean;
+	set: (cookie: {
+		name: string;
+		value: string;
+		domain?: string;
+		path?: string;
+		secure?: boolean;
+		httpOnly?: boolean;
+		sameSite?: "no_restriction" | "lax" | "strict";
+		expirationDate?: number;
+	}) => boolean;
 }
 
 /**
@@ -472,55 +472,55 @@ export interface CookieInstaller {
  * Returns the list of targets that were touched, for logging.
  */
 export function installDesktopSessionCookies(
-  installer: CookieInstaller,
-  session: DesktopSession,
-  targets: InstallCookieTargets,
+	installer: CookieInstaller,
+	session: DesktopSession,
+	targets: InstallCookieTargets,
 ): string[] {
-  const expirationDate = Math.floor(session.expiresAt / 1000);
-  const seen = new Set<string>();
-  const touched: string[] = [];
+	const expirationDate = Math.floor(session.expiresAt / 1000);
+	const seen = new Set<string>();
+	const touched: string[] = [];
 
-  const tryInstall = (origin: string): void => {
-    if (!origin) return;
-    let parsed: URL;
-    try {
-      parsed = new URL(origin);
-    } catch {
-      return;
-    }
-    const key = parsed.origin;
-    if (seen.has(key)) return;
-    seen.add(key);
-    const secure = parsed.protocol === "https:";
-    const url = parsed.origin;
-    installer.set({
-      name: SESSION_COOKIE_NAME,
-      value: session.sessionId,
-      domain: parsed.hostname,
-      path: "/",
-      secure,
-      httpOnly: true,
-      sameSite: "lax",
-      expirationDate,
-      // electrobun's `Cookie` shape uses `url`/origin under the hood; adding
-      // `domain` keeps it compatible with both implementations.
-      ...({ url } as Record<string, unknown>),
-    });
-    installer.set({
-      name: CSRF_COOKIE_NAME,
-      value: session.csrfToken,
-      domain: parsed.hostname,
-      path: "/",
-      secure,
-      httpOnly: false,
-      sameSite: "lax",
-      expirationDate,
-      ...({ url } as Record<string, unknown>),
-    });
-    touched.push(key);
-  };
+	const tryInstall = (origin: string): void => {
+		if (!origin) return;
+		let parsed: URL;
+		try {
+			parsed = new URL(origin);
+		} catch {
+			return;
+		}
+		const key = parsed.origin;
+		if (seen.has(key)) return;
+		seen.add(key);
+		const secure = parsed.protocol === "https:";
+		const url = parsed.origin;
+		installer.set({
+			name: SESSION_COOKIE_NAME,
+			value: session.sessionId,
+			domain: parsed.hostname,
+			path: "/",
+			secure,
+			httpOnly: true,
+			sameSite: "lax",
+			expirationDate,
+			// electrobun's `Cookie` shape uses `url`/origin under the hood; adding
+			// `domain` keeps it compatible with both implementations.
+			...({ url } as Record<string, unknown>),
+		});
+		installer.set({
+			name: CSRF_COOKIE_NAME,
+			value: session.csrfToken,
+			domain: parsed.hostname,
+			path: "/",
+			secure,
+			httpOnly: false,
+			sameSite: "lax",
+			expirationDate,
+			...({ url } as Record<string, unknown>),
+		});
+		touched.push(key);
+	};
 
-  tryInstall(targets.apiOrigin);
-  if (targets.rendererOrigin) tryInstall(targets.rendererOrigin);
-  return touched;
+	tryInstall(targets.apiOrigin);
+	if (targets.rendererOrigin) tryInstall(targets.rendererOrigin);
+	return touched;
 }

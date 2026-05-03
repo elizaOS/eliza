@@ -339,13 +339,13 @@ Object.assign(STATIC_ELIZA_PLUGINS, {
 // pattern used for `registerAospLlamaLoader` in `bin.ts`.
 (
   globalThis as {
-    __miladyAndroidAppPlugins?: {
+    __elizaAndroidAppPlugins?: {
       wifi: typeof appWifiPluginModule;
       contacts: typeof appContactsPluginModule;
       phone: typeof appPhonePluginModule;
     };
   }
-).__miladyAndroidAppPlugins = {
+).__elizaAndroidAppPlugins = {
   wifi: appWifiPluginModule,
   contacts: appContactsPluginModule,
   phone: appPhonePluginModule,

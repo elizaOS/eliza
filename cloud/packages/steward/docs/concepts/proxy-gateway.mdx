@@ -1,0 +1,178 @@
+---
+title: "Proxy Gateway"
+description: "API proxy with automatic credential injection — agents call APIs without knowing the credentials."
+---
+
+# Proxy Gateway
+
+The Proxy Gateway sits between agent containers and external APIs. Agents make requests to the proxy, and Steward injects the real credentials before forwarding.
+
+## How It Works
+
+Agent code that normally calls an API directly:
+
+```typescript
+// ❌ Old way — agent has the API key
+const openai = new OpenAI({ apiKey: "sk-proj-abc123..." });
+```
+
+Instead routes through Steward's proxy:
+
+```typescript
+// ✅ New way — agent uses proxy, no API key needed
+const openai = new OpenAI({
+  apiKey: "steward",  // dummy, stripped by proxy
+  baseURL: `${process.env.STEWARD_PROXY_URL}/openai/v1`,
+});
+```
+
+The proxy:
+1. Strips the dummy auth header
+2. Looks up the route for `api.openai.com`
+3. Decrypts the real API key from the Secret Vault
+4. Injects it as `Authorization: Bearer sk-proj-abc123...`
+5. Forwards to `https://api.openai.com/v1/chat/completions`
+
+## URL Routing
+
+The proxy supports two routing modes:
+
+<Tabs>
+  <Tab title="Named Aliases (Recommended)">
+    Friendly names that map to real API hosts:
+
+    ```
+    POST http://steward-proxy:8080/openai/v1/chat/completions
+    → https://api.openai.com/v1/chat/completions
+
+    POST http://steward-proxy:8080/anthropic/v1/messages
+    → https://api.anthropic.com/v1/messages
+
+    GET http://steward-proxy:8080/birdeye/defi/price
+    → https://public-api.birdeye.so/defi/price
+    ```
+
+    Aliases are configured per-tenant and can be customized.
+  </Tab>
+  <Tab title="Direct Host Routing">
+    For arbitrary APIs, encode the target host in the path:
+
+    ```
+    POST http://steward-proxy:8080/proxy/api.custom-service.com/v2/endpoint
+    → https://api.custom-service.com/v2/endpoint
+    ```
+
+    Any API with a configured [credential route](/api-reference/routes) can be proxied this way.
+  </Tab>
+</Tabs>
+
+## Common Route Configurations
+
+```yaml
+# OpenAI — Bearer token in header
+- host: "api.openai.com"
+  path: "/*"
+  inject_as: header
+  inject_key: Authorization
+  inject_format: "Bearer {value}"
+  secret: openai-prod
+
+# Anthropic — API key in custom header
+- host: "api.anthropic.com"
+  path: "/*"
+  inject_as: header
+  inject_key: x-api-key
+  inject_format: "{value}"
+  secret: anthropic-prod
+
+# Birdeye — API key in custom header
+- host: "public-api.birdeye.so"
+  path: "/defi/*"
+  inject_as: header
+  inject_key: X-API-KEY
+  inject_format: "{value}"
+  secret: birdeye-main
+
+# Path-specific credentials (higher priority first)
+- host: "api.internal.example.com"
+  path: "/v2/trading/*"
+  inject_as: header
+  inject_key: Authorization
+  inject_format: "Bearer {value}"
+  secret: trading-api-prod
+  priority: 10
+
+- host: "api.internal.example.com"
+  path: "/*"
+  inject_as: header
+  inject_key: Authorization
+  inject_format: "Bearer {value}"
+  secret: internal-api-read-only
+  priority: 0  # fallback
+```
+
+## Request Pipeline
+
+Every proxied request passes through this pipeline:
+
+```
+Agent Request
+    │
+    ├─ 1. JWT Authentication → agent ID, tenant, scopes
+    │
+    ├─ 2. Route Resolution → match host + path to credential
+    │
+    ├─ 3. Policy Evaluation
+    │     ├─ API Access Policy → is this agent allowed to call this API?
+    │     ├─ Rate Limit Policy → within request limits?
+    │     └─ Spend Policy → within budget?
+    │
+    ├─ 4. Credential Injection → decrypt + inject
+    │
+    ├─ 5. Forward to External API
+    │
+    ├─ 6. Response Processing
+    │     ├─ Cost estimation (parse usage from response)
+    │     └─ Spend tracking update
+    │
+    └─ 7. Audit Log Entry
+```
+
+## Network Isolation
+
+The real security win comes from combining the proxy with Docker network isolation:
+
+```
+┌─────────────────────────────────────┐
+│ Docker Network: steward-agents       │
+│                                       │
+│  agent-1 ──┐                         │
+│  agent-2 ──┤── steward-proxy:8080    │
+│  agent-3 ──┘      │                  │
+│                    │ (only proxy has  │
+│                    │  internet access)│
+│                    ▼                  │
+│              External APIs            │
+└─────────────────────────────────────┘
+```
+
+Even if an agent is fully compromised:
+- ❌ Cannot exfiltrate data to arbitrary URLs
+- ❌ Cannot access other agents' data
+- ❌ Cannot spend more than policy allows
+- ✅ Can only communicate through Steward (which logs everything)
+
+## Performance
+
+| Metric | Target | Notes |
+|--------|--------|-------|
+| Policy evaluation | < 5ms | Cached in Redis, 30s TTL |
+| Credential decryption | < 1ms | AES-256-GCM is fast |
+| Total proxy overhead | 5-15ms | Negligible vs API latency (100-2000ms) |
+
+## Related
+
+- [Secret Vault](/concepts/secret-vault) — How credentials are encrypted and stored
+- [Policy Engine](/concepts/policy-engine) — Policy evaluation on every request
+- [Routes API Reference](/api-reference/routes) — Configure credential injection routes
+- [Proxy API Reference](/api-reference/proxy) — Proxy usage documentation

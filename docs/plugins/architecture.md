@@ -27,7 +27,6 @@ export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-sql",               // database adapter — required
   "@elizaos/plugin-local-embedding",   // local embeddings — required for memory
   "@elizaos/app-companion",            // VRM companion emotes
-  "@elizaos/plugin-cron",              // scheduled jobs and automation
   "@elizaos/plugin-app-control",       // launch, close, list running Eliza apps
   "@elizaos/plugin-shell",             // shell command execution
   "@elizaos/plugin-agent-skills",      // skill execution and marketplace runtime
@@ -210,7 +209,6 @@ const FEATURE_PLUGINS = {
   browser:              "@elizaos/plugin-browser",
   cua:                  "@elizaos/plugin-cua",                   // * upstream-only
   obsidian:             "@elizaos/plugin-obsidian",              // * upstream-only
-  cron:                 "@elizaos/plugin-cron",
   shell:                "@elizaos/plugin-shell",
   executeCode:          "@elizaos/plugin-executecode",
   imageGen:             "@elizaos/plugin-image-generation",

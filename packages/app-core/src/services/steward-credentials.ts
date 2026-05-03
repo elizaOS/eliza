@@ -99,7 +99,6 @@ export function resolveEffectiveStewardConfig(
   const agentId =
     env.STEWARD_AGENT_ID?.trim() ||
     env.ELIZA_STEWARD_AGENT_ID?.trim() ||
-    env.ELIZA_STEWARD_AGENT_ID?.trim() ||
     persisted?.agentId ||
     null;
   const apiKey = env.STEWARD_API_KEY?.trim() || persisted?.apiKey || "";

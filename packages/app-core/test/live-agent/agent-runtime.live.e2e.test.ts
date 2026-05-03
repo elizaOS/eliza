@@ -54,7 +54,7 @@ dotenv.config({ path: path.resolve(packageRoot, ".env") });
 dotenv.config({ path: path.resolve(packageRoot, "..", "..", ".env") });
 
 const liveModelTestsEnabled =
-  process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
+  process.env.ELIZA_LIVE_TEST === "1";
 const selectedLiveProvider = liveModelTestsEnabled
   ? selectLiveProvider()
   : null;
@@ -398,7 +398,6 @@ describe("Agent Runtime E2E", () => {
     if (!hasModelProvider) return;
     process.env.LOG_LEVEL = process.env.ELIZA_E2E_LOG_LEVEL ?? "error";
     process.env.ENABLE_TRAJECTORIES = "false";
-    process.env.ELIZA_TRAJECTORY_LOGGING = "false";
     process.env.ELIZA_TRAJECTORY_LOGGING = "false";
 
     const provider = selectedLiveProvider;

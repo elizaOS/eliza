@@ -53,7 +53,7 @@ export function formatApiDevSettingsBannerText(
         ? `env set — ${bindWin.key}=${bindWin.value}`
         : `default (unset — ${sec.bindHost})`,
       change:
-        "export ELIZA_API_BIND=127.0.0.1 (or ELIZA_API_BIND); unset both for default",
+        "export ELIZA_API_BIND=127.0.0.1; unset both for default",
     },
     {
       setting: "ELIZA_API_TOKEN / ELIZA_API_TOKEN",
@@ -81,7 +81,7 @@ export function formatApiDevSettingsBannerText(
       source: hostsWin
         ? `env set — ${hostsWin.key}`
         : "default (unset — empty list)",
-      change: "export ELIZA_ALLOWED_HOSTS=host1,host2 (or ELIZA_ALLOWED_HOSTS)",
+      change: "export ELIZA_ALLOWED_HOSTS=host1,host2",
     },
     {
       setting: "ELIZA_ALLOW_NULL_ORIGIN / ELIZA_ALLOW_NULL_ORIGIN",

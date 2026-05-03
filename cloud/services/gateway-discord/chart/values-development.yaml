@@ -1,0 +1,25 @@
+# Development environment overrides for gateway-discord
+
+# Enable Eliza App Discord bot (system-wide DM-based interactions)
+elizaAppBot:
+  enabled: true
+  leaderKey: "discord:eliza-app-bot:leader:dev"
+
+# Use smaller resource limits for development
+resources:
+  requests:
+    memory: "256Mi"
+    cpu: "100m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"
+
+# Smaller scaling limits for development
+hpa:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 5
+
+# Prometheus monitoring (enable if Prometheus Operator is installed in development)
+prometheus:
+  enabled: false

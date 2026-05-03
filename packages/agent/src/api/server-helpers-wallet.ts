@@ -229,7 +229,7 @@ export function resolveWalletExportRejection(
     return {
       status: 403,
       reason:
-        "Wallet export is disabled. Set ELIZA_WALLET_EXPORT_TOKEN (or ELIZA_WALLET_EXPORT_TOKEN) to enable secure exports.",
+        "Wallet export is disabled. Set ELIZA_WALLET_EXPORT_TOKEN to enable secure exports.",
     };
   }
 

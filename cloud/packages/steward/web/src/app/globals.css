@@ -1,0 +1,154 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Color System — warm-tinted near-black base */
+  --color-bg: #0b0a09;
+  --color-bg-elevated: #141210;
+  --color-bg-surface: #1c1a17;
+  --color-bg-hover: #242119;
+
+  --color-text: #e8e5e0;
+  --color-text-secondary: #9c9788;
+  --color-text-tertiary: #6b6560;
+
+  --color-border: #2a2722;
+  --color-border-subtle: #1f1d1a;
+
+  /* Accent — warm amber/burnt orange */
+  --color-accent: oklch(0.75 0.15 55);
+  --color-accent-hover: oklch(0.8 0.17 55);
+  --color-accent-muted: oklch(0.45 0.08 55);
+  --color-accent-bg: oklch(0.2 0.04 55);
+
+  /* Semantic */
+  --color-success: #4ade80;
+  --color-warning: #fbbf24;
+  --color-error: #f87171;
+  --color-info: #60a5fa;
+
+  /* Motion */
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Typography Scale */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 2rem;
+  --text-4xl: 2.5rem;
+  --text-hero: clamp(3.5rem, 8vw + 1rem, 8rem);
+  --text-hero-landing: clamp(3rem, 6vw + 0.5rem, 6rem);
+  --text-hero-sm: clamp(2.5rem, 5vw + 1rem, 5rem);
+  --font-display: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Instrument Sans", "Avenir Next", system-ui, sans-serif;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    background: var(--color-bg);
+    color: var(--color-text);
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    font-family: var(--font-body), system-ui, sans-serif;
+    font-weight: 400;
+    line-height: 1.6;
+    background: var(--color-bg);
+    min-height: 100vh;
+  }
+
+  /* Reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms;
+      animation-iteration-count: 1;
+      transition-duration: 0.01ms;
+    }
+  }
+
+  ::selection {
+    background: oklch(0.75 0.15 55 / 0.3);
+    color: var(--color-text);
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-text-tertiary);
+  }
+}
+
+@layer components {
+  /* Noise overlay for texture */
+  .noise-overlay::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0.03;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 256px;
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: var(--font-display), system-ui, sans-serif;
+  }
+
+  .text-hero {
+    font-size: var(--text-hero);
+    line-height: 0.95;
+    letter-spacing: -0.03em;
+  }
+
+  .text-hero-landing {
+    font-size: var(--text-hero-landing);
+    line-height: 0.92;
+    letter-spacing: -0.03em;
+  }
+
+  .text-hero-sm {
+    font-size: var(--text-hero-sm);
+    line-height: 0.95;
+    letter-spacing: -0.02em;
+  }
+
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}

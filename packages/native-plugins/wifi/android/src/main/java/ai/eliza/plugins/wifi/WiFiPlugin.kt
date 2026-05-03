@@ -18,7 +18,7 @@ import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 
 /**
- * Wi-Fi bridge for MiladyOS.
+ * Wi-Fi bridge for ElizaOS.
  *
  * Exposes a small set of methods over the standard `WifiManager` /
  * `ConnectivityManager` APIs. The connect path branches on API level:
@@ -26,9 +26,9 @@ import com.getcapacitor.annotation.CapacitorPlugin
  *    request a connection without holding a system-signature permission.
  *    Legacy `WifiConfiguration.addNetwork` is deprecated and returns -1.
  *  - API 23–28: legacy `WifiConfiguration` + `enableNetwork` is still
- *    permitted for system / privileged callers like Milady.
+ *    permitted for system / privileged callers like Eliza.
  */
-@CapacitorPlugin(name = "MiladyWiFi")
+@CapacitorPlugin(name = "ElizaWiFi")
 class WiFiPlugin : Plugin() {
     private val wifiManager: WifiManager?
         get() = context.applicationContext
@@ -244,7 +244,7 @@ class WiFiPlugin : Plugin() {
     /**
      * Legacy connect path for API 23–28. Uses the deprecated
      * `WifiConfiguration` API which still works for system / privileged
-     * callers (Milady ships as a privileged system app).
+     * callers (Eliza ships as a privileged system app).
      */
     @Suppress("DEPRECATION")
     private fun connectViaLegacyConfig(
