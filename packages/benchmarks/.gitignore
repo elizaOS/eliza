@@ -95,3 +95,6 @@ framework/results/*.json
 
 # --- Stale refs ---
 **/refs/
+
+# SWE-bench cloned task workspaces (nested git repos; local checkout only)
+swe-bench-workspace/
