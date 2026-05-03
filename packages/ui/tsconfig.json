@@ -42,6 +42,7 @@
       "@elizaos/plugin-browser-bridge/*": [
         "../../plugins/plugin-browser-bridge/src/*"
       ],
+      "@elizaos/plugin-video": ["../../plugins/plugin-video/dist/index.d.ts"],
       "@elizaos/app-core": ["../app-core/src/index.ts"],
       "@elizaos/app-core/*": ["../app-core/src/*"],
       "@elizaos/agent": ["../agent/src/index.ts"],

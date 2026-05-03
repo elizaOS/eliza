@@ -102,7 +102,7 @@ def _build_message_text(scenario: "TradingScenario", last_feedback: str | None) 
         '{"steps": [',
         '  {"perp_orders": {"orders": [{"coin": "ETH", "side": "buy"|"sell", '
         '"tif": "GTC"|"ALO"|"IOC", "sz": number, "reduceOnly": bool, '
-        '"px": number|"mid+X%"|"mid-X%", "trigger": {"kind": "none"}}]}},',
+        '"px": number|"mid+X%"|"mid-X%"}]}},',
         '  {"cancel_last": {"coin": "ETH"}},',
         '  {"cancel_all": {"coin": "BTC"}},',
         '  {"usd_class_transfer": {"toPerp": true, "usdc": 5.0}},',
@@ -114,7 +114,7 @@ def _build_message_text(scenario: "TradingScenario", last_feedback: str | None) 
         "- Use only the allowed coins.",
         "- Sizes must be positive (e.g., 0.001 to 1).",
         "- Leverage in [1, 20].",
-        '- "trigger.kind" must always be "none".',
+        "- Do NOT include a 'trigger' field on orders (demo mode rejects it).",
         '- Total steps must be <= the provided max.',
         "- Maximize coverage of distinct action signatures (different TIFs, "
         "buy AND sell, reduceOnly true AND false, transfers in BOTH directions, "

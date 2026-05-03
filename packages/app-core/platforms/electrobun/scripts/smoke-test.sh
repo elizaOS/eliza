@@ -1015,7 +1015,7 @@ if ! backend_health_probe_satisfied "http://127.0.0.1:${BACKEND_PORT}/api/health
 fi
 
 LOG_SLICE="$(tail -c +"$((LOG_OFFSET + 1))" "$STARTUP_LOG" 2>/dev/null || true)"
-STREAMING_FAILURE_REGEX='@elizaos/plugin-streaming-base|@elizaos/plugin-x-streaming|@elizaos/plugin-youtube-streaming|@elizaos/plugin-retake'
+STREAMING_FAILURE_REGEX='@elizaos/plugin-streaming|@elizaos/plugin-retake'
 if printf '%s\n' "$LOG_SLICE" | grep -Eq "Could not load plugin (${STREAMING_FAILURE_REGEX})"; then
   echo "ERROR: Streaming plugin resolution failed during packaged startup."
   printf '%s\n' "$LOG_SLICE" | grep -E "Could not load plugin|Failed plugins:" | tail -n 40
@@ -1026,12 +1026,6 @@ if printf '%s\n' "$LOG_SLICE" | grep -Eq "Failed plugins:.*(${STREAMING_FAILURE_
   echo "ERROR: Packaged startup reported failed streaming plugins."
   printf '%s\n' "$LOG_SLICE" | grep -E "Plugin resolution complete|Failed plugins:" | tail -n 20
   dump_failure_diagnostics "streaming plugins reported failed"
-  exit 1
-fi
-if printf '%s\n' "$LOG_SLICE" | grep -Eq "Plugin @elizaos/plugin-streaming-base did not export a valid Plugin object"; then
-  echo "ERROR: Streaming helper package was treated as a real plugin."
-  printf '%s\n' "$LOG_SLICE" | grep -E "plugin-streaming-base|Plugin resolution complete|Failed plugins:" | tail -n 20
-  dump_failure_diagnostics "streaming helper package treated as a plugin"
   exit 1
 fi
 if printf '%s\n' "$LOG_SLICE" | grep -Eq "AGENT_EVENT service not found on runtime"; then

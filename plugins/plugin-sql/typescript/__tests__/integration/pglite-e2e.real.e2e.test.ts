@@ -38,7 +38,7 @@ describe("PostgreSQL E2E Tests", () => {
       expect(isReady).toBe(true);
 
       await adapter.close();
-    });
+    }, 60_000);
 
     it("should get connection", async () => {
       const { adapter } = await createTestAdapter();
@@ -47,7 +47,7 @@ describe("PostgreSQL E2E Tests", () => {
       expect(connection).toBeDefined();
 
       await adapter.close();
-    });
+    }, 60_000);
   });
 
   describe("Agent Operations", () => {

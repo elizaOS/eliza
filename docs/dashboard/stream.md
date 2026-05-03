@@ -14,14 +14,12 @@ To start streaming, select a destination from the status bar and click the strea
 
 | Destination | Plugin | Notes |
 |-------------|--------|-------|
-| **Twitch** | `@elizaos/plugin-twitch-streaming` | Standard Twitch RTMP ingest |
-| **YouTube** | `@elizaos/plugin-youtube-streaming` | Supports custom RTMP URL |
-| **Custom RTMP** | Any RTMP-compatible plugin | Any platform using standard RTMP protocol |
+| **Twitch, YouTube, X, pump.fun, custom RTMP, named sources** | `@elizaos/plugin-streaming` | One plugin; configure `streaming.*` in settings |
 
 Each destination provides RTMP URL and stream key credentials, optional lifecycle hooks (`onStreamStart`, `onStreamStop`), and per-destination default overlay layouts.
 
 <Info>
-Streaming destinations are provided by plugins. Install the appropriate streaming plugin for your target platform, then configure your stream key in the plugin settings.
+Install **`@elizaos/plugin-streaming`** and configure stream keys under **streaming** in plugin/config settings (`twitch`, `youtube`, `x`, `pumpfun`, `customRtmp`, `rtmpSources`).
 </Info>
 
 ### FFmpeg Requirement

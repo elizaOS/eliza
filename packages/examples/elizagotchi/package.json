@@ -13,7 +13,7 @@
 	},
 	"dependencies": {
 		"@elizaos/core": "alpha",
-		"@elizaos/plugin-localdb": "alpha",
+		"@elizaos/plugin-localdb": "workspace:*",
 		"react": "19.2.3",
 		"react-dom": "19.2.3"
 	},

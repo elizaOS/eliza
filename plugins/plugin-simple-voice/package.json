@@ -49,7 +49,7 @@
   "author": "ElizaOS Team",
   "license": "MIT",
   "dependencies": {
-    "@elizaos/core": "2.0.0-alpha.3",
+    "@elizaos/core": "workspace:*",
     "sam-js": "^0.3.1"
   },
   "devDependencies": {
@@ -60,7 +60,7 @@
     "typescript": "^6.0.3"
   },
   "peerDependencies": {
-    "@elizaos/core": "2.0.0-alpha.3"
+    "@elizaos/core": "workspace:*"
   },
   "files": [
     "dist",

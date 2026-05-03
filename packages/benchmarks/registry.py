@@ -612,6 +612,38 @@ def _score_from_webshop_json(data: JSONValue) -> ScoreExtraction:
     )
 
 
+def _score_from_hyperliquid_bench_json(data: JSONValue) -> ScoreExtraction:
+    """Extract scores from HyperliquidBench results.
+
+    The benchmark writes one aggregated JSON per ``__main__`` invocation
+    containing the average ``final_score`` across all scenarios plus the
+    base/bonus/penalty totals from ``hl-evaluator``. Higher is better.
+    """
+    root = expect_dict(data, ctx="hyperliquid_bench:root")
+    overall = expect_float(
+        get_required(root, "final_score", ctx="hyperliquid_bench:root"),
+        ctx="hyperliquid_bench:final_score",
+    )
+    return ScoreExtraction(
+        score=overall,
+        unit="score",
+        higher_is_better=True,
+        metrics={
+            "final_score": overall,
+            "total_score": get_optional(root, "total_score") or 0,
+            "base": get_optional(root, "base") or 0,
+            "bonus": get_optional(root, "bonus") or 0,
+            "penalty": get_optional(root, "penalty") or 0,
+            "total_scenarios": get_optional(root, "total_scenarios") or 0,
+            "passed_scenarios": get_optional(root, "passed_scenarios") or 0,
+            "mode": get_optional(root, "mode") or "",
+            "model": get_optional(root, "model") or "",
+            "network": get_optional(root, "network") or "",
+            "demo_mode": get_optional(root, "demo_mode") if get_optional(root, "demo_mode") is not None else True,
+        },
+    )
+
+
 def _score_from_gauntlet_json(data: JSONValue) -> ScoreExtraction:
     """Extract scores from Solana Gauntlet benchmark results.
 
@@ -1217,6 +1249,80 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _osworld_result(output_dir: Path) -> Path:
         return find_latest_file(output_dir, glob_pattern="osworld-eliza-results-*.json")
 
+    # HyperliquidBench - perp-trading plan generation + Rust execution
+    def _hyperliquid_bench_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
+        """Build command for HyperliquidBench.
+
+        Defaults to ``--mode python`` (in-process elizaos.AgentRuntime). When
+        the caller asks for the eliza bridge (via ``model.provider == "eliza"``
+        or ``extra.agent == "eliza"``), routes plan generation through the TS
+        benchmark server. Always runs in ``--demo`` mode unless the caller
+        explicitly opts in to ``--no-demo`` (which requires ``HL_PRIVATE_KEY``
+        and a non-mainnet network).
+        """
+        args = [
+            python,
+            "-m",
+            "benchmarks.HyperliquidBench",
+            "--output",
+            str(output_dir),
+        ]
+        agent = extra.get("agent")
+        provider_name = (model.provider or "").strip().lower()
+        if agent == "eliza" or provider_name == "eliza":
+            args.extend(["--mode", "eliza"])
+        else:
+            args.extend(["--mode", "python"])
+
+        if model.model:
+            args.extend(["--model", model.model])
+        if model.temperature is not None:
+            args.extend(["--temperature", str(model.temperature)])
+
+        coins = extra.get("coins")
+        if isinstance(coins, list):
+            coin_values = [str(c) for c in coins if str(c).strip()]
+            if coin_values:
+                args.extend(["--coins", ",".join(coin_values)])
+        elif isinstance(coins, str) and coins.strip():
+            args.extend(["--coins", coins.strip()])
+
+        max_steps = extra.get("max_steps")
+        if isinstance(max_steps, int) and max_steps > 0:
+            args.extend(["--max-steps", str(max_steps)])
+        max_iterations = extra.get("max_iterations")
+        if isinstance(max_iterations, int) and max_iterations > 0:
+            args.extend(["--max-iterations", str(max_iterations)])
+
+        builder_code = extra.get("builder_code")
+        if isinstance(builder_code, str) and builder_code.strip():
+            args.extend(["--builder-code", builder_code.strip()])
+
+        tasks = extra.get("tasks")
+        if isinstance(tasks, list) and tasks:
+            args.append("--tasks")
+            args.extend(str(t) for t in tasks)
+        elif extra.get("coverage") is True:
+            args.append("--coverage")
+
+        # Network + demo handling. Default behavior is demo=true with testnet.
+        network_raw = extra.get("network")
+        network = network_raw.strip().lower() if isinstance(network_raw, str) else "testnet"
+        if network in {"testnet", "mainnet", "local"}:
+            args.extend(["--network", network])
+
+        if extra.get("no_demo") is True or extra.get("demo") is False:
+            # Live trading on the chosen network — caller must have HL_PRIVATE_KEY.
+            args.append("--no-demo")
+        # else: --demo is the default in __main__.py, no flag needed
+
+        return args
+
+    def _hyperliquid_bench_result(output_dir: Path) -> Path:
+        return find_latest_file(output_dir, glob_pattern="hyperliquid_bench-*.json")
+
     def _gauntlet_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         """Build command for Solana Gauntlet benchmark with ElizaOS agent."""
         args = [
@@ -1745,6 +1851,29 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             build_command=_osworld_cmd,
             locate_result=_osworld_result,
             extract_score=_score_from_osworld_json,
+        ),
+        BenchmarkDefinition(
+            id="hyperliquid_bench",
+            display_name="HyperliquidBench",
+            description="Hyperliquid perp trading-plan generation benchmark (Eliza agent + Rust runner/evaluator)",
+            cwd_rel=".",
+            requirements=BenchmarkRequirements(
+                env_vars=(),
+                paths=("benchmarks/HyperliquidBench/dataset/domains-hl.yaml",),
+                notes=(
+                    "Defaults to --mode python (in-process elizaos.AgentRuntime) with --demo "
+                    "and --network testnet, so no funds are at risk. "
+                    "Set agent=eliza (or model.provider=eliza) to route plan generation through "
+                    "the eliza TS benchmark server (eliza_adapter.hyperliquid). "
+                    "Live network runs require building the Rust toolchain "
+                    "(cd benchmarks/HyperliquidBench && cargo build --release -p hl-runner -p hl-evaluator) "
+                    "AND HL_PRIVATE_KEY plus extra.no_demo=true. "
+                    "Score: average final_score across scenarios (Base + Bonus − Penalty from hl-evaluator)."
+                ),
+            ),
+            build_command=_hyperliquid_bench_cmd,
+            locate_result=_hyperliquid_bench_result,
+            extract_score=_score_from_hyperliquid_bench_json,
         ),
         BenchmarkDefinition(
             id="gauntlet",
