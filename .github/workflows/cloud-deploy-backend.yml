@@ -54,6 +54,11 @@ jobs:
   determine-env:
     name: Determine Environment
     runs-on: ubuntu-latest
+    # Workflow defaults use working-directory: cloud; this job does not checkout,
+    # so `cloud/` does not exist yet and bash fails to start.
+    defaults:
+      run:
+        working-directory: .
     outputs:
       environment: ${{ steps.env.outputs.environment }}
       branch: ${{ steps.env.outputs.branch }}
