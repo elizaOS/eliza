@@ -9,14 +9,7 @@
  * appropriate for the browser bundle (Vite replaces `process.env.NEXT_PUBLIC_*`
  * at build time) and Node tests.
  */
-/**
- * Structural minimum the helpers actually read.
- * Accepts Node `ProcessEnv` (string-record), Cloudflare `Bindings`, or any
- * other shape that exposes the URL key. The default uses `process.env`,
- * cast through `as AppUrlEnv` because `ProcessEnv` is a string index
- * signature with no nominal `NEXT_PUBLIC_APP_URL` property — TS can't
- * structurally see the overlap, but the runtime read is safe.
- */
+/** Minimal env shape: accepts Node `ProcessEnv` and Cloudflare `Bindings` via `as` cast. */
 export type AppUrlEnv = { NEXT_PUBLIC_APP_URL?: string | undefined };
 
 export function getAppUrl(env: AppUrlEnv = process.env as AppUrlEnv): string {
