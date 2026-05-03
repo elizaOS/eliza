@@ -11,7 +11,7 @@
 
 services:
   storage_db:
-    image: postgres:15-alpine
+    image: postgres:18-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: storage
@@ -28,7 +28,7 @@ services:
       retries: 20
 
   storage:
-    image: supabase/storage-api:v1.11.13
+    image: supabase/storage-api:v1.58.4
     restart: unless-stopped
     depends_on:
       storage_db:

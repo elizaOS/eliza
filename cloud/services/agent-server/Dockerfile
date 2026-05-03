@@ -1,9 +1,9 @@
-FROM oven/bun:1.3-alpine AS deps
+FROM oven/bun:1.3.13-alpine AS deps
 WORKDIR /app
 COPY package.json ./
 RUN bun install
 
-FROM oven/bun:1.3-alpine AS runner
+FROM oven/bun:1.3.13-alpine AS runner
 WORKDIR /app
 RUN adduser -D -u 1001 appuser && mkdir -p /app/cache && chown appuser /app/cache
 COPY --from=deps /app/node_modules ./node_modules
