@@ -78,7 +78,7 @@ export const ROUTINE_SEED_TEMPLATES: RoutineSeedTemplate[] = [
   {
     key: "stretch",
     title: "Stretch",
-    description: "High-priority stretch breaks in the afternoon and evening",
+    description: "Soft stretch nudges in the afternoon and evening",
     category: "health",
     request: {
       kind: "habit",
@@ -91,10 +91,15 @@ export const ROUTINE_SEED_TEMPLATES: RoutineSeedTemplate[] = [
       },
       priority: 2,
       originalIntent:
-        "high-priority stretch twice daily in the afternoon and evening",
+        "soft stretch reminder twice daily in the afternoon and evening",
+      // Stretch is a soft self-care nudge — never escalate aggressively.
+      // The high-urgency cadence (7m initial / 10m repeat across SMS, voice,
+      // Discord) is appropriate for medication or workout-block reminders,
+      // not stretch breaks. Demoted to "medium" so an unacknowledged stretch
+      // reminder retries at 90m / 180m via softer channels only.
       metadata: {
         [REMINDER_ACTIVITY_GATE_METADATA_KEY]: "active_on_computer",
-        [REMINDER_URGENCY_METADATA_KEY]: "high",
+        [REMINDER_URGENCY_METADATA_KEY]: "medium",
       },
     },
   },

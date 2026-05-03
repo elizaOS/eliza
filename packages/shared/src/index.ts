@@ -182,6 +182,7 @@ export * from "./onboarding-presets.characters";
 export * from "./recent-messages-state";
 export * from "./restart";
 export * from "./runtime-env";
+export * from "./self-edit";
 // Settings debug helpers
 export {
   isElizaSettingsDebugEnabled,
