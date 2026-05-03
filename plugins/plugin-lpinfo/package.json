@@ -11,7 +11,7 @@
     "@kamino-finance/klend-sdk": "latest",
     "@steerprotocol/sdk": "^1.20.1",
     "@solana/web3.js": "^1.98.2",
-    "@solana/spl-token": "0.4.9",
+    "@solana/spl-token": "0.4.14",
     "@coral-xyz/anchor": "^0.31.1",
     "bignumber.js": "^9.1.2",
     "bn.js": "^5.2.1"
