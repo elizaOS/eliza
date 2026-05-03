@@ -1388,21 +1388,25 @@ function browserWorkspaceDynamicFixture(
   if (!tab) return mockJsonError(404, "tab not found");
 
   if (action === "show" && method === "POST") {
+    const nextTab = { ...tab, show: true };
+    state.tabs.set(tabId, nextTab);
     ledgerEntry.browserWorkspace =
       withRunId<BrowserWorkspaceRequestLedgerMetadata>(ledgerEntry, {
         action: "tabs.show",
         tabId,
       });
-    return jsonFixture({ tab: { ...tab, show: true } });
+    return jsonFixture({ tab: nextTab });
   }
 
   if (action === "hide" && method === "POST") {
+    const nextTab = { ...tab, show: false };
+    state.tabs.set(tabId, nextTab);
     ledgerEntry.browserWorkspace =
       withRunId<BrowserWorkspaceRequestLedgerMetadata>(ledgerEntry, {
         action: "tabs.hide",
         tabId,
       });
-    return jsonFixture({ tab: { ...tab, show: false } });
+    return jsonFixture({ tab: nextTab });
   }
 
   if (action === "navigate" && method === "POST") {
@@ -1670,13 +1674,73 @@ function bluebubblesDynamicFixture(
   return null;
 }
 
+interface GitHubIssueFixture {
+  number: number;
+  title: string;
+  state: "open" | "closed";
+  html_url: string;
+  user: { login: string };
+  assignees: Array<{ login: string }>;
+  body?: string;
+}
+
+interface GitHubReviewFixture {
+  id: number;
+  body: string;
+  event: string;
+  state: string;
+  user: { login: string };
+  submitted_at: string;
+  pull_request_url: string;
+}
+
 interface GitHubMockState {
   nextIssueNumber: number;
   nextReviewId: number;
+  issuesByRepo: Map<string, GitHubIssueFixture[]>;
+  reviewsByPull: Map<string, GitHubReviewFixture[]>;
 }
 
 function createGitHubMockState(): GitHubMockState {
-  return { nextIssueNumber: 101, nextReviewId: 777 };
+  return {
+    nextIssueNumber: 101,
+    nextReviewId: 777,
+    issuesByRepo: new Map(),
+    reviewsByPull: new Map(),
+  };
+}
+
+function githubRepoKey(owner: string, repo: string): string {
+  return `${owner}/${repo}`;
+}
+
+function githubPullKey(owner: string, repo: string, number: number): string {
+  return `${githubRepoKey(owner, repo)}#${number}`;
+}
+
+function cloneGitHubIssue(issue: GitHubIssueFixture): GitHubIssueFixture {
+  return {
+    ...issue,
+    user: { ...issue.user },
+    assignees: issue.assignees.map((assignee) => ({ ...assignee })),
+  };
+}
+
+function cloneGitHubReview(review: GitHubReviewFixture): GitHubReviewFixture {
+  return {
+    ...review,
+    user: { ...review.user },
+  };
+}
+
+function findGitHubIssue(
+  state: GitHubMockState,
+  owner: string,
+  repo: string,
+  number: number,
+): GitHubIssueFixture | null {
+  const issues = state.issuesByRepo.get(githubRepoKey(owner, repo)) ?? [];
+  return issues.find((issue) => issue.number === number) ?? null;
 }
 
 function parseGitHubRepoPath(
@@ -1724,13 +1788,45 @@ function githubDynamicFixture(
   if (method === "POST" && reviewPath) {
     const number = Number.parseInt(reviewPath.match[3] ?? "", 10);
     const id = state.nextReviewId++;
+    const event = readOptionalString(requestBody, "event") ?? "COMMENT";
+    const review: GitHubReviewFixture = {
+      id,
+      body: readOptionalString(requestBody, "body") ?? "",
+      event,
+      state: event === "APPROVE" ? "APPROVED" : event,
+      user: { login: "mocked-reviewer" },
+      submitted_at: new Date().toISOString(),
+      pull_request_url: `https://api.github.com/repos/${reviewPath.owner}/${reviewPath.repo}/pulls/${number}`,
+    };
+    const key = githubPullKey(reviewPath.owner, reviewPath.repo, number);
+    state.reviewsByPull.set(key, [
+      review,
+      ...(state.reviewsByPull.get(key) ?? []),
+    ]);
     ledgerEntry.github = withRunId<GitHubRequestLedgerMetadata>(ledgerEntry, {
       action: "pulls.createReview",
       owner: reviewPath.owner,
       repo: reviewPath.repo,
       number,
     });
-    return jsonFixture({ id });
+    return jsonFixture(cloneGitHubReview(review));
+  }
+
+  if (method === "GET" && reviewPath) {
+    const number = Number.parseInt(reviewPath.match[3] ?? "", 10);
+    ledgerEntry.github = withRunId<GitHubRequestLedgerMetadata>(ledgerEntry, {
+      action: "pulls.listReviews",
+      owner: reviewPath.owner,
+      repo: reviewPath.repo,
+      number,
+    });
+    return jsonFixture(
+      (
+        state.reviewsByPull.get(
+          githubPullKey(reviewPath.owner, reviewPath.repo, number),
+        ) ?? []
+      ).map(cloneGitHubReview),
+    );
   }
 
   const createIssuePath = parseGitHubRepoPath(
@@ -1739,17 +1835,72 @@ function githubDynamicFixture(
   );
   if (method === "POST" && createIssuePath) {
     const number = state.nextIssueNumber++;
+    const issue: GitHubIssueFixture = {
+      number,
+      html_url: `https://github.com/${createIssuePath.owner}/${createIssuePath.repo}/issues/${number}`,
+      title: readOptionalString(requestBody, "title") ?? "Mock issue",
+      state: "open",
+      user: { login: "mocked-owner" },
+      assignees: [],
+      ...(readOptionalString(requestBody, "body")
+        ? { body: readOptionalString(requestBody, "body") ?? undefined }
+        : {}),
+    };
+    const key = githubRepoKey(createIssuePath.owner, createIssuePath.repo);
+    state.issuesByRepo.set(key, [
+      issue,
+      ...(state.issuesByRepo.get(key) ?? []),
+    ]);
     ledgerEntry.github = withRunId<GitHubRequestLedgerMetadata>(ledgerEntry, {
       action: "issues.create",
       owner: createIssuePath.owner,
       repo: createIssuePath.repo,
       number,
     });
-    return jsonFixture({
-      number,
-      html_url: `https://github.com/${createIssuePath.owner}/${createIssuePath.repo}/issues/${number}`,
-      title: readOptionalString(requestBody, "title") ?? "Mock issue",
+    return jsonFixture(cloneGitHubIssue(issue));
+  }
+
+  if (method === "GET" && createIssuePath) {
+    const requestedState = searchParams.get("state") ?? "open";
+    const issues =
+      state.issuesByRepo.get(
+        githubRepoKey(createIssuePath.owner, createIssuePath.repo),
+      ) ?? [];
+    ledgerEntry.github = withRunId<GitHubRequestLedgerMetadata>(ledgerEntry, {
+      action: "issues.list",
+      owner: createIssuePath.owner,
+      repo: createIssuePath.repo,
     });
+    return jsonFixture(
+      issues
+        .filter(
+          (issue) => requestedState === "all" || issue.state === requestedState,
+        )
+        .map(cloneGitHubIssue),
+    );
+  }
+
+  const issuePath = parseGitHubRepoPath(
+    pathname,
+    /^\/repos\/([^/]+)\/([^/]+)\/issues\/(\d+)\/?$/,
+  );
+  if (method === "GET" && issuePath) {
+    const number = Number.parseInt(issuePath.match[3] ?? "", 10);
+    const issue = findGitHubIssue(
+      state,
+      issuePath.owner,
+      issuePath.repo,
+      number,
+    );
+    ledgerEntry.github = withRunId<GitHubRequestLedgerMetadata>(ledgerEntry, {
+      action: "issues.get",
+      owner: issuePath.owner,
+      repo: issuePath.repo,
+      number,
+    });
+    return issue
+      ? jsonFixture(cloneGitHubIssue(issue))
+      : mockJsonError(404, "issue not found");
   }
 
   const assigneesPath = parseGitHubRepoPath(
@@ -1761,13 +1912,29 @@ function githubDynamicFixture(
     const assignees = readStringArray(requestBody, "assignees").map(
       (login) => ({ login }),
     );
+    const issue = findGitHubIssue(
+      state,
+      assigneesPath.owner,
+      assigneesPath.repo,
+      number,
+    );
+    if (issue) {
+      const existing = new Set(issue.assignees.map((entry) => entry.login));
+      for (const assignee of assignees) {
+        if (!existing.has(assignee.login)) issue.assignees.push(assignee);
+      }
+    }
     ledgerEntry.github = withRunId<GitHubRequestLedgerMetadata>(ledgerEntry, {
       action: "issues.addAssignees",
       owner: assigneesPath.owner,
       repo: assigneesPath.repo,
       number,
     });
-    return jsonFixture({ assignees });
+    return jsonFixture({
+      assignees: issue
+        ? issue.assignees.map((entry) => ({ ...entry }))
+        : assignees,
+    });
   }
 
   if (method === "GET" && pathname === "/search/issues") {
