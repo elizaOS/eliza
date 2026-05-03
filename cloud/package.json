@@ -330,6 +330,7 @@
   },
   "patchedDependencies": {
     "x402@1.1.0": "packages/patches/x402@1.1.0.patch",
-    "@elizaos/core@2.0.0-alpha.136": "packages/patches/@elizaos%2Fcore@2.0.0-alpha.136.patch"
+    "@elizaos/core@2.0.0-alpha.136": "packages/patches/@elizaos%2Fcore@2.0.0-alpha.136.patch",
+    "@brighter/storage-adapter-s3@1.6.3": "packages/patches/@brighter+storage-adapter-s3@1.6.3.patch"
   }
 }

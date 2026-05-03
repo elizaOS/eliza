@@ -13,6 +13,7 @@
  * initialization, before plugins are loaded.
  */
 
+import { setStewardEvmBridgeActive } from "@elizaos/agent/services/external-bridge-state";
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   initStewardEvmAccount,
@@ -68,6 +69,7 @@ export async function stewardEvmPreBoot(runtime: IAgentRuntime): Promise<void> {
         console.log(`[StewardEvmBridge] Set ELIZA_MANAGED_EVM_ADDRESS=${addr}`);
       }
       _initialized = true;
+      setStewardEvmBridgeActive(true);
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

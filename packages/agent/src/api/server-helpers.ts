@@ -9,7 +9,6 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
-import { isPrivyWalletProvisioningEnabled } from "@elizaos/app-steward/services/privy-wallets";
 import {
   type AgentRuntime,
   type ChannelType,
@@ -20,6 +19,7 @@ import {
   type Media,
   type UUID,
 } from "@elizaos/core";
+import { isPrivyWalletProvisioningEnabled } from "../services/external-bridge-state.js";
 import {
   normalizeCharacterLanguage,
   resolveStylePresetByAvatarIndex,
