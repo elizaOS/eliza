@@ -14,13 +14,25 @@ from elizaos_gaia.dataset import GAIADataset
 from elizaos_gaia.evaluator import GAIAEvaluator
 from elizaos_gaia.metrics import MetricsCalculator
 from elizaos_gaia.plugin import create_gaia_plugin, gaia_plugin
-from elizaos_gaia.orchestrator.runner import OrchestratedGAIARunner
-from elizaos_gaia.orchestrator.types import (
-    ExecutionMode,
-    OrchestratedGAIAReport,
-    ProviderQuestionResult,
-    ProviderType as OrchestratedProviderType,
-)
+
+# Orchestrator runner depends on the optional `elizaos_plugin_agent_orchestrator`
+# python package shipped from the TS plugin's repo-local `python/` dir. When
+# that dir is absent (e.g. this checkout has only the TS plugin built), basic
+# GAIA mode must still work, so import it lazily and tolerate ImportError.
+try:
+    from elizaos_gaia.orchestrator.runner import OrchestratedGAIARunner
+    from elizaos_gaia.orchestrator.types import (
+        ExecutionMode,
+        OrchestratedGAIAReport,
+        ProviderQuestionResult,
+        ProviderType as OrchestratedProviderType,
+    )
+except ImportError:
+    OrchestratedGAIARunner = None  # type: ignore[assignment]
+    ExecutionMode = None  # type: ignore[assignment]
+    OrchestratedGAIAReport = None  # type: ignore[assignment]
+    ProviderQuestionResult = None  # type: ignore[assignment]
+    OrchestratedProviderType = None  # type: ignore[assignment]
 from elizaos_gaia.providers import (
     PRESETS,
     SUPPORTED_MODELS,
