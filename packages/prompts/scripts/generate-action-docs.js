@@ -519,13 +519,7 @@ function normalizeSpecsInPlace(actionsSpec, providersSpec) {
 }
 
 function generateTypeScript(actionsSpec, providersSpec, evaluatorsSpec) {
-  const outDir = path.join(
-    REPO_ROOT,
-    "packages",
-    "core",
-    "src",
-    "generated",
-  );
+  const outDir = path.join(REPO_ROOT, "packages", "core", "src", "generated");
   ensureDir(outDir);
 
   const actionsJson = JSON.stringify(

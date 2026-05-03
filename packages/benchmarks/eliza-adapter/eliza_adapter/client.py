@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 import urllib.error
 import urllib.request
@@ -31,8 +32,25 @@ class ElizaClient:
     dependencies to install.
     """
 
-    def __init__(self, base_url: str = "http://localhost:3939") -> None:
-        self.base_url = base_url.rstrip("/")
+    def __init__(
+        self,
+        base_url: str | None = None,
+        token: str | None = None,
+    ) -> None:
+        resolved_url = (
+            base_url
+            or os.environ.get("ELIZA_BENCH_URL")
+            or "http://localhost:3939"
+        )
+        self.base_url = resolved_url.rstrip("/")
+        if token is None:
+            env_token = os.environ.get("ELIZA_BENCH_TOKEN", "").strip()
+            token = env_token or None
+        self._token = token
+
+    def set_token(self, token: str | None) -> None:
+        """Set or clear the bearer token used for authenticated endpoints."""
+        self._token = token
 
     # ------------------------------------------------------------------
     # Public API
@@ -114,19 +132,25 @@ class ElizaClient:
     # Internals
     # ------------------------------------------------------------------
 
+    def _auth_headers(self) -> dict[str, str]:
+        if self._token:
+            return {"Authorization": f"Bearer {self._token}"}
+        return {}
+
     def _get(self, path: str) -> dict[str, object]:
         url = f"{self.base_url}{path}"
-        req = urllib.request.Request(url, method="GET")
+        req = urllib.request.Request(url, method="GET", headers=self._auth_headers())
         return self._do(req)
 
     def _post(self, path: str, body: dict[str, object]) -> dict[str, object]:
         url = f"{self.base_url}{path}"
         data = json.dumps(body).encode("utf-8")
+        headers = {"Content-Type": "application/json", **self._auth_headers()}
         req = urllib.request.Request(
             url,
             data=data,
             method="POST",
-            headers={"Content-Type": "application/json"},
+            headers=headers,
         )
         return self._do(req)
 

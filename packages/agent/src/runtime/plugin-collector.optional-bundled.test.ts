@@ -16,7 +16,7 @@ import { collectPluginNames } from "./plugin-collector.js";
 /** A sample of optional plugins to verify gating behavior. */
 const SAMPLE_OPTIONAL = [
   "@elizaos/plugin-pdf",
-  "@elizaos/plugin-video",
+  "@elizaos/plugin-obsidian",
   "@elizaos/plugin-cli",
   "@elizaos/plugin-discord",
 ] as const;
@@ -115,7 +115,7 @@ describe("optional core plugins (require explicit opt-in)", () => {
       plugins: {
         entries: {
           pdf: {},
-          video: { enabled: true },
+          obsidian: { enabled: true },
           cli: { enabled: false },
           discord: { enabled: true },
         },
@@ -124,7 +124,7 @@ describe("optional core plugins (require explicit opt-in)", () => {
     // Empty entry object should not enable
     expect(names.has("@elizaos/plugin-pdf")).toBe(false);
     // Explicitly enabled optional core
-    expect(names.has("@elizaos/plugin-video")).toBe(true);
+    expect(names.has("@elizaos/plugin-obsidian")).toBe(true);
     // Explicitly disabled
     expect(names.has("@elizaos/plugin-cli")).toBe(false);
     // Explicitly enabled
