@@ -56,3 +56,25 @@ try:
     __all__.append("ElizaGauntletAgent")
 except ImportError:
     pass
+
+# Optional: MINT bridge — only loaded when benchmarks.mint is on sys.path.
+try:
+    from eliza_adapter.mint import ElizaMINTAgent  # noqa: F401
+    __all__.append("ElizaMINTAgent")
+except ImportError:
+    pass
+
+# Trust bridge — only depends on the lightweight HTTP client, always importable.
+from eliza_adapter.trust import ElizaBridgeTrustHandler  # noqa: F401  # noqa: E402
+__all__.append("ElizaBridgeTrustHandler")
+
+# WooBench bridge — only depends on the lightweight HTTP client, always importable.
+from eliza_adapter.woobench import build_eliza_bridge_agent_fn  # noqa: F401  # noqa: E402
+__all__.append("build_eliza_bridge_agent_fn")
+
+# Optional: Solana bridge — only loaded when benchmarks.solana + voyager are on sys.path.
+try:
+    from eliza_adapter.solana import ElizaBridgeSolanaExplorer  # noqa: F401
+    __all__.append("ElizaBridgeSolanaExplorer")
+except ImportError:
+    pass
