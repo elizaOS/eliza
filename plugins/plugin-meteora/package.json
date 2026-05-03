@@ -8,7 +8,7 @@
     "@coral-xyz/anchor": "^0.31.1",
     "@elizaos/core": "workspace:*",
     "@meteora-ag/dlmm": "1.5.3",
-    "@solana/web3.js": "1.98.2",
+    "@solana/web3.js": "1.98.4",
     "rpc-websockets": "^9.1.1"
   },
   "devDependencies": {
