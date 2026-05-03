@@ -28,7 +28,7 @@ export const minecraftWaypointSetAction: Action = {
       __avKeywords.length > 0 && __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
     const __avRegex = /\b(?:waypoint|set)\b/i;
     const __avRegexOk = __avRegex.test(__avText);
-    const __avSource = String(message?.content?.source ?? message?.source ?? "");
+    const __avSource = String(message?.content?.source ?? "");
     const __avExpectedSource = "";
     const __avSourceOk = __avExpectedSource
       ? __avSource === __avExpectedSource
@@ -116,7 +116,7 @@ export const minecraftWaypointDeleteAction: Action = {
       __avKeywords.length > 0 && __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
     const __avRegex = /\b(?:waypoint|delete)\b/i;
     const __avRegexOk = __avRegex.test(__avText);
-    const __avSource = String(message?.content?.source ?? message?.source ?? "");
+    const __avSource = String(message?.content?.source ?? "");
     const __avExpectedSource = "";
     const __avSourceOk = __avExpectedSource
       ? __avSource === __avExpectedSource
@@ -181,7 +181,7 @@ export const minecraftWaypointListAction: Action = {
       __avKeywords.length > 0 && __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
     const __avRegex = /\b(?:waypoint|list)\b/i;
     const __avRegexOk = __avRegex.test(__avText);
-    const __avSource = String(message?.content?.source ?? message?.source ?? "");
+    const __avSource = String(message?.content?.source ?? "");
     const __avExpectedSource = "";
     const __avSourceOk = __avExpectedSource
       ? __avSource === __avExpectedSource
@@ -252,7 +252,7 @@ export const minecraftWaypointGotoAction: Action = {
       __avKeywords.length > 0 && __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
     const __avRegex = /\b(?:waypoint|goto)\b/i;
     const __avRegexOk = __avRegex.test(__avText);
-    const __avSource = String(message?.content?.source ?? message?.source ?? "");
+    const __avSource = String(message?.content?.source ?? "");
     const __avExpectedSource = "";
     const __avSourceOk = __avExpectedSource
       ? __avSource === __avExpectedSource

@@ -24,7 +24,8 @@
     "test": "buf lint --path eliza --disable-symlinks"
   },
   "devDependencies": {
-    "@bufbuild/buf": "^1.47.2"
+    "@bufbuild/buf": "^1.47.2",
+    "@bufbuild/protoc-gen-es": "^2.2.2"
   },
   "gitHead": "cb192f7b21c441e9463d1af2f890c145814baad2"
 }
