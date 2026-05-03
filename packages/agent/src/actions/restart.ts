@@ -26,6 +26,7 @@ import type {
 import { logger } from "@elizaos/core";
 import {
   getValidationKeywordTerms,
+  isSelfEditEnabled,
   textIncludesKeywordTerm,
 } from "@elizaos/shared";
 import { requestRestart } from "../runtime/restart.js";
@@ -33,6 +34,29 @@ import { hasOwnerAccess } from "../security/access.js";
 
 /** Small delay (ms) before restarting so the response has time to flush. */
 const SHUTDOWN_DELAY_MS = 1_500;
+
+/**
+ * Origin of a restart request. The dev-mode self-edit flow tags its restart
+ * with `"self-edit"` so the action can refuse it when the runtime is not in
+ * self-edit dev-mode (see {@link isSelfEditEnabled}). Other restarts (`"user"`
+ * for explicit `/restart`, `"plugin-install"` for post-install reloads) are
+ * unaffected by the gate.
+ */
+export type RestartSource = "self-edit" | "user" | "plugin-install";
+
+const RESTART_SOURCES: ReadonlySet<RestartSource> = new Set([
+  "self-edit",
+  "user",
+  "plugin-install",
+]);
+
+function parseRestartSource(value: unknown): RestartSource | undefined {
+  if (typeof value !== "string") return undefined;
+  return RESTART_SOURCES.has(value as RestartSource)
+    ? (value as RestartSource)
+    : undefined;
+}
+
 const RESTART_REQUEST_TERMS = getValidationKeywordTerms(
   "action.restart.request",
   {
@@ -99,9 +123,25 @@ export const restartAction: Action = {
 
     // This action declares parameters, so the runtime provides HandlerOptions.
     const params = (options as HandlerOptions | undefined)?.parameters as
-      | { reason?: string }
+      | { reason?: string; source?: string }
       | undefined;
     const reason = params?.reason;
+    const source = parseRestartSource(params?.source);
+
+    // Self-edit-driven restarts must only execute when the dev-mode gate is
+    // open. Other restart sources (user-issued, plugin install) bypass the
+    // gate so production users can still bounce the agent normally.
+    if (source === "self-edit" && !isSelfEditEnabled()) {
+      const refusalText =
+        "Refused: self-edit restart requires dev mode " +
+        "(MILADY_ENABLE_SELF_EDIT=1 plus NODE_ENV!=production or MILADY_DEV_MODE=1).";
+      logger.warn(`[eliza] ${refusalText}`);
+      return {
+        success: false,
+        text: refusalText,
+        data: { reason, source, refused: "self-edit-not-enabled" },
+      };
+    }
 
     const restartText = reason ? `Restarting… (${reason})` : "Restarting…";
 
@@ -131,7 +171,7 @@ export const restartAction: Action = {
       text: restartText,
       success: true,
       values: { restarting: true },
-      data: { reason },
+      data: { reason, source },
     };
   },
 
@@ -141,6 +181,17 @@ export const restartAction: Action = {
       description: "Optional reason for the restart (logged for diagnostics).",
       required: false,
       schema: { type: "string" as const },
+    },
+    {
+      name: "source",
+      description:
+        "Origin of the restart request. 'self-edit' is gated by " +
+        "isSelfEditEnabled(); 'user' and 'plugin-install' bypass the gate.",
+      required: false,
+      schema: {
+        type: "string" as const,
+        enum: ["self-edit", "user", "plugin-install"] as const,
+      },
     },
   ],
   examples: [
