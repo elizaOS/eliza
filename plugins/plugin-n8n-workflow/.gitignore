@@ -36,10 +36,6 @@ coverage/
 .temp/
 tmp/
 temp/
-# Generated data files (run `bun run crawl` to regenerate)
-src/data/defaultNodes.json
-src/data/schemaIndex.json
-src/data/triggerSchemaIndex.json
 
 # Credential IDs (created by create-credentials.ts, contains n8n instance-specific IDs)
 .credentials-map.json
