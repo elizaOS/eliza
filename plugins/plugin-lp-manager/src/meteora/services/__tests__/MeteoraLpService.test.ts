@@ -2,7 +2,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import * as dlmmModule from "@meteora-ag/dlmm";
 import { Keypair as SolanaKeypair } from "@solana/web3.js";
-import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
+import { beforeEach, describe, expect, it, type Mock, type MockInstance, vi } from "vitest";
 import { MeteoraLpService } from "../MeteoraLpService.ts";
 
 // Mock fetch
@@ -37,7 +37,7 @@ const mockPoolsResponse = [
 describe("MeteoraLpService", () => {
   let meteoraService: MeteoraLpService;
   const mockUserKeypair = SolanaKeypair.generate();
-  let _mockDlmmCreate: any;
+  let _mockDlmmCreate: MockInstance;
 
   beforeEach(async () => {
     vi.clearAllMocks();

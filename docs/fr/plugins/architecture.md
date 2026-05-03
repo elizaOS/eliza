@@ -28,7 +28,6 @@ La source de vérité pour les plugins toujours chargés se trouve dans `eliza/p
 export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-sql",               // database adapter — required
   "@elizaos/plugin-local-embedding",   // local embeddings — required for memory
-  "@elizaos/plugin-form",              // form handling for guided user journeys
   "knowledge",         // RAG knowledge management — required for knowledge tab
   "trajectories", // trajectory logging for debugging and RL training
   "@elizaos/plugin-agent-orchestrator",// multi-agent orchestration (PTY, SwarmCoordinator, workspace provisioning)
@@ -238,8 +237,6 @@ const FEATURE_PLUGINS = {
   diagnosticsOtel:      "@elizaos/plugin-diagnostics-otel",
   webhooks:             "@elizaos/plugin-webhooks",
   gmailWatch:           "@elizaos/plugin-gmail-watch",
-  experience:           "(capacité avancée intégrée)",
-  form:                 "@elizaos/plugin-form",
   x402:                 "@elizaos/plugin-x402",
   fal:                  "@elizaos/plugin-fal",
   suno:                 "@elizaos/plugin-suno",
@@ -249,6 +246,8 @@ const FEATURE_PLUGINS = {
   claudeCodeWorkbench:  "@elizaos/plugin-claude-code-workbench",
 };
 ```
+
+> **Remarque :** `personality`, `experience` et `form` ne sont plus des entrées de paquets distinctes dans la carte des feature flags — ce sont des capacités avancées intégrées à `@elizaos/core`, activées via `advancedCapabilities: true` dans les réglages du personnage.
 
 **Destinations de streaming** — La section `streaming` de la configuration active automatiquement les plugins de streaming pour les plateformes vidéo en direct :
 

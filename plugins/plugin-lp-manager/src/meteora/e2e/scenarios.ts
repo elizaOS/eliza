@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import type { IAgentRuntime, TestSuite } from "@elizaos/core";
+import type { IAgentRuntime, Memory, TestSuite } from "@elizaos/core";
 import { Keypair } from "@solana/web3.js";
 import { meteoraPositionProvider } from "../providers/positionProvider.ts";
 import type { MeteoraLpService } from "../services/MeteoraLpService.ts";
@@ -139,9 +139,9 @@ export const meteoraScenarios: TestSuite = {
           roomId: "test-room",
           content: { text: "test message" },
           createdAt: Date.now(),
-        } as any;
+        } as Memory;
 
-        const context = await meteoraPositionProvider.get(runtime, testMemory, {} as any);
+        const context = await meteoraPositionProvider.get(runtime, testMemory);
 
         assert(
           typeof context === "object" && context !== null,
@@ -297,9 +297,9 @@ export const meteoraScenarios: TestSuite = {
           roomId: "test-room",
           content: { text: "test message" },
           createdAt: Date.now(),
-        } as any;
+        } as Memory;
 
-        const context = await meteoraPositionProvider.get(runtime, testMemory2, {} as any);
+        const context = await meteoraPositionProvider.get(runtime, testMemory2);
         assert(typeof context === "object" && context !== null, "Position provider should work");
         assert(
           "data" in context && "values" in context && "text" in context,

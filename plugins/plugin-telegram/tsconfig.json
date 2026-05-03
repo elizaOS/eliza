@@ -23,7 +23,7 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "allowUnusedLabels": true,
-        "types": ["node"]
+    "types": ["node"]
   },
   "include": ["src/**/*.ts"]
 }

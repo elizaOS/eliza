@@ -8,7 +8,7 @@
     "module": "Preserve",
     "moduleResolution": "Bundler",
     "strict": true,
-        "esModuleInterop": true,
+    "esModuleInterop": true,
     "allowImportingTsExtensions": true,
     "declaration": true,
     "emitDeclarationOnly": true,

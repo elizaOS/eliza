@@ -1,11 +1,9 @@
 import {
   type AgentRuntime,
   type actions,
-  composeContext,
   elizaLogger,
   type HandlerCallback,
   type Memory,
-  ModelTypes,
   parseJSONObjectFromText,
   type State,
   settings,
@@ -48,13 +46,33 @@ interface ManagePositionsInput {
   slippageToleranceBps: number;
 }
 
+const ORCA_POSITION_PROVIDER = "orca-lp-position-provider";
+
+function extractOrcaPositionsFromState(state: State): FetchedPosition[] {
+  const providers = state.providers;
+  if (!Array.isArray(providers)) {
+    throw new Error("No providers array on state");
+  }
+  for (const entry of providers) {
+    if (typeof entry !== "object" || entry === null || !("name" in entry)) continue;
+    const name = (entry as { name?: string }).name;
+    if (name !== ORCA_POSITION_PROVIDER) continue;
+    const data = (entry as { data?: string }).data;
+    if (typeof data !== "string") {
+      throw new Error("Orca provider data must be a JSON string");
+    }
+    return JSON.parse(data) as FetchedPosition[];
+  }
+  throw new Error("No Orca position data found");
+}
+
 export const managePositions: typeof actions = {
   name: "manage_positions",
   similes: ["AUTOMATE_REBALANCING", "AUTOMATE_POSITIONS", "START_MANAGING_POSITIONS"],
   description:
     "Automatically manage positions by rebalancing them when they drift too far from the pool price",
 
-  validate: async (runtime: any, message: any, state?: any, options?: any): Promise<boolean> => {
+  validate: async (runtime: AgentRuntime, message: Memory, state?: State): Promise<boolean> => {
     const __avTextRaw = typeof message?.content?.text === "string" ? message.content.text : "";
     const __avText = __avTextRaw.toLowerCase();
     const __avKeywords = ["manage", "position", "rebalance", "liquidity", "orca"];
@@ -67,10 +85,8 @@ export const managePositions: typeof actions = {
     const __avSourceOk = __avExpectedSource
       ? __avSource === __avExpectedSource
       : Boolean(__avSource || state || runtime?.agentId || runtime?.composeState);
-    const __avOptions = options && typeof options === "object" ? options : {};
     const __avInputOk =
       __avText.trim().length > 0 ||
-      Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
       Boolean(message?.content && typeof message.content === "object");
 
     if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
@@ -86,7 +102,7 @@ export const managePositions: typeof actions = {
       return true;
     };
     try {
-      return Boolean(await (__avLegacyValidate as any)(runtime, message, state, options));
+      return Boolean(await __avLegacyValidate(runtime, message));
     } catch {
       return false;
     }
@@ -107,7 +123,7 @@ export const managePositions: typeof actions = {
     }
     const { repositionThresholdBps, slippageToleranceBps }: ManagePositionsInput =
       await extractAndValidateConfiguration(message.content.text, runtime);
-    const fetchedPositions = await extractFetchedPositions(state.providers, runtime);
+    const fetchedPositions = extractOrcaPositionsFromState(state);
     elizaLogger.log(
       `Validated configuration: repositionThresholdBps=${repositionThresholdBps}, slippageTolerance=${slippageToleranceBps}`
     );
@@ -171,44 +187,21 @@ export const managePositions: typeof actions = {
   ],
 };
 
-async function extractFetchedPositions(
-  text: string,
-  runtime: AgentRuntime
-): Promise<FetchedPosition[]> {
-  const prompt = `Given this message: "${text}", extract the available data and return a JSON object with the following structure:
-        [
-            {
-                "whirlpoolAddress": string,
-                "positionMint": string,
-                "inRange": boolean,
-                "distanceCenterPositionFromPoolPriceBps": number,
-                "positionWidthBps": number
-            },
-        ]
-    `;
-
-  const content = await composeContext({
-    state: runtime.state,
-    template: prompt,
-    modelClass: ModelTypes.LARGE,
-  });
-
-  const fetchedPositions = parseJSONObjectFromText(content) as FetchedPosition[];
-  return fetchedPositions;
-}
-
-function validateManagePositionsInput(obj: Record<string, any>): ManagePositionsInput {
+function validateManagePositionsInput(obj: Record<string, unknown>): ManagePositionsInput {
+  const repositionThresholdBps = obj.repositionThresholdBps;
+  const intervalSeconds = obj.intervalSeconds;
+  const slippageToleranceBps = obj.slippageToleranceBps;
   if (
-    typeof obj.repositionThresholdBps !== "number" ||
-    !Number.isInteger(obj.repositionThresholdBps) ||
-    typeof obj.intervalSeconds !== "number" ||
-    !Number.isInteger(obj.intervalSeconds) ||
-    typeof obj.slippageToleranceBps !== "number" ||
-    !Number.isInteger(obj.slippageToleranceBps)
+    typeof repositionThresholdBps !== "number" ||
+    !Number.isInteger(repositionThresholdBps) ||
+    typeof intervalSeconds !== "number" ||
+    !Number.isInteger(intervalSeconds) ||
+    typeof slippageToleranceBps !== "number" ||
+    !Number.isInteger(slippageToleranceBps)
   ) {
     throw new Error("Invalid input: Object does not match the ManagePositionsInput type.");
   }
-  return obj as ManagePositionsInput;
+  return { repositionThresholdBps, intervalSeconds, slippageToleranceBps };
 }
 
 export async function extractAndValidateConfiguration(
@@ -236,7 +229,10 @@ export async function extractAndValidateConfiguration(
 
   try {
     const configuration = parseJSONObjectFromText(content);
-    return validateManagePositionsInput(configuration);
+    if (!configuration || typeof configuration !== "object" || Array.isArray(configuration)) {
+      throw new Error("Configuration must be a JSON object");
+    }
+    return validateManagePositionsInput(configuration as Record<string, unknown>);
   } catch (error) {
     elizaLogger.warn("Invalid configuration detected:", error);
     return null;

@@ -14,10 +14,6 @@
       "@elizaos/core": ["../core/dist/index.node.d.ts"]
     }
   },
-  "include": [
-    "src"
-  ],
-  "exclude": [
-    "src/**/*.test.ts"
-  ]
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts"]
 }

@@ -7,7 +7,7 @@
     "inlineSources": true,
     "declaration": true,
     "emitDeclarationOnly": true,
-        "paths": {}
+    "paths": {}
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]

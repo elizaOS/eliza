@@ -1,6 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { logger, type Memory, type MemoryMetadata, type UUID } from "@elizaos/core";
 import { and, cosineDistance, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
 import { embeddingTable, memoryTable } from "../schema/index";
 import type { DrizzleDatabase } from "../types";
 import type { Store, StoreContext } from "./types";

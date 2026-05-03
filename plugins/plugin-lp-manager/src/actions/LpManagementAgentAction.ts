@@ -1,4 +1,4 @@
-import type { Action, ActionExample, IAgentRuntime } from "@elizaos/core";
+import type { Action, ActionExample, IAgentRuntime, Memory, State } from "@elizaos/core";
 import type {
   IDexInteractionService,
   IUserLpProfileService,
@@ -161,7 +161,7 @@ export const LpManagementAgentAction: Action = {
 
   examples: [] as ActionExample[][], // Empty for now - add examples when specific LP workflows are documented
 
-  validate: async (runtime: any, message: any, state?: any, options?: any): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
     const __avTextRaw = typeof message?.content?.text === "string" ? message.content.text : "";
     const __avText = __avTextRaw.toLowerCase();
     const __avKeywords = ["management"];
@@ -174,17 +174,19 @@ export const LpManagementAgentAction: Action = {
     const __avSourceOk = __avExpectedSource
       ? __avSource === __avExpectedSource
       : Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
-    const __avOptions = options && typeof options === "object" ? options : {};
     const __avInputOk =
       __avText.trim().length > 0 ||
-      Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
       Boolean(message?.content && typeof message.content === "object");
 
     if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
       return false;
     }
 
-    const __avLegacyValidate = async (_runtime, message, _state) => {
+    const __avLegacyValidate = async (
+      _runtime: IAgentRuntime,
+      message: Memory,
+      _state?: State
+    ): Promise<boolean> => {
       console.info(
         "[LpManagementAgentAction] Validate called with message:",
         message?.content?.text || "No text"
@@ -235,7 +237,7 @@ export const LpManagementAgentAction: Action = {
       return hasLpKeyword;
     };
     try {
-      return Boolean(await (__avLegacyValidate as any)(runtime, message, state, options));
+      return Boolean(await __avLegacyValidate(runtime, message, state));
     } catch {
       return false;
     }
