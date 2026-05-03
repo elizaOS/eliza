@@ -65,9 +65,6 @@ export function isElizaOS(): boolean {
   return userAgentHasElizaOSMarker(navigator.userAgent ?? "");
 }
 
-/** Alias of {@link isElizaOS} using the Milady product name. */
-export const isMiladyOS = isElizaOS;
-
 /** True when the runtime can spin up a local agent — desktop or dev server. */
 export function canRunLocal(): boolean {
   return isDesktopPlatform() || Boolean(import.meta.env.DEV);

@@ -188,6 +188,16 @@ const optionalPluginStubs = {
   // browser-bridge from the load set anyway, so a null stub satisfies the
   // top-level resolution without dragging in 200 MB of native deps.
   "@elizaos/plugin-browser-bridge": path.join(stubsDir, "null-plugin.cjs"),
+  // Server-side connectors that app-lifeops dynamically imports inside
+  // its service mixins. Mobile never reaches the runtime path that
+  // calls `import("@elizaos/plugin-whatsapp")` or `plugin-signal`, but
+  // Bun's bundler still has to resolve them statically. The plugins
+  // are workspace-only deps on app-lifeops and aren't in
+  // packages/agent's resolution scope, so stub them out here. Trying to
+  // bundle the real packages also drags Baileys / libsignal native
+  // bindings into the mobile bundle, which is wrong on every axis.
+  "@elizaos/plugin-whatsapp": path.join(stubsDir, "null-plugin.cjs"),
+  "@elizaos/plugin-signal": path.join(stubsDir, "null-plugin.cjs"),
 };
 
 const stubAliases = { ...nativeStubs, ...optionalPluginStubs };

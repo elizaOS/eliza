@@ -84,15 +84,15 @@ export interface AppWebConfig {
  * is always emitted by the framework — these are *additional*
  * brand-specific markers, not replacements.
  *
- * Example:
+ * Example (for a fork named "AcmeOS"):
  *
  *   android: {
  *     userAgentMarkers: [
- *       { systemProp: "ro.miladyos.product", uaPrefix: "MiladyOS/" },
+ *       { systemProp: "ro.acmeos.product", uaPrefix: "AcmeOS/" },
  *     ],
  *   }
  *
- * Produces a UA like `... ElizaOS/<tag> MiladyOS/<tag>` on a MiladyOS
+ * Produces a UA like `... ElizaOS/<tag> AcmeOS/<tag>` on an AcmeOS
  * image, and an unmodified UA on stock Android.
  */
 export interface AndroidUserAgentMarker {
@@ -104,7 +104,7 @@ export interface AndroidUserAgentMarker {
   /**
    * Prefix for the UA token. The marker emits `<uaPrefix><value>`
    * where `<value>` is the system-property value. Conventionally ends
-   * with `/` (e.g. `"MiladyOS/"`).
+   * with `/` (e.g. `"AcmeOS/"`).
    */
   uaPrefix: string;
 }
@@ -136,49 +136,49 @@ export interface AppAndroidConfig {
  * Forks without an AOSP image leave this `undefined`; the toolkit
  * is inert in that case.
  *
- * Example:
+ * Example (for a fork named "AcmeOS"):
  *
  *   aosp: {
  *     productLunch:
- *       "milady_cf_x86_64_phone-trunk_staging-userdebug",
- *     vendorDir: "milady",
- *     variantName: "MiladyOS",
- *     productName: "milady",
- *     packageName: "com.miladyai.milady",
- *     appName: "Milady",
- *     commonMk: "vendor/milady/milady_common.mk",
- *     modelSourceLabel: "milady-download",
+ *       "acme_cf_x86_64_phone-trunk_staging-userdebug",
+ *     vendorDir: "acme",
+ *     variantName: "AcmeOS",
+ *     productName: "acme",
+ *     packageName: "com.acmecorp.acme",
+ *     appName: "Acme",
+ *     commonMk: "vendor/acme/acme_common.mk",
+ *     modelSourceLabel: "acme-download",
  *     bootanimationAssetDir:
- *       "os/android/vendor/milady/bootanimation",
+ *       "os/android/vendor/acme/bootanimation",
  *   }
  */
 export interface AospVariantConfig {
   /**
    * Full AOSP product lunch target string, e.g.
-   * `"milady_cf_x86_64_phone-trunk_staging-userdebug"`. Passed to
+   * `"acme_cf_x86_64_phone-trunk_staging-userdebug"`. Passed to
    * `lunch` inside the AOSP envsetup shell.
    */
   productLunch: string;
   /**
    * Vendor directory name relative to the AOSP root. The toolkit
    * reads/writes `<aospRoot>/vendor/<vendorDir>/`. Examples:
-   * `"milady"`, `"acmecorp"`.
+   * `"acme"`, `"acmecorp"`.
    */
   vendorDir: string;
   /**
    * Display name used in log lines and status messages, e.g.
-   * `"MiladyOS"`. Cosmetic only — affects no on-device behavior.
+   * `"AcmeOS"`. Cosmetic only — affects no on-device behavior.
    */
   variantName: string;
   /**
    * Brand short name used for `make` invocations and product
-   * makefile names, e.g. `"milady"`. Conventionally lowercase ASCII
+   * makefile names, e.g. `"acme"`. Conventionally lowercase ASCII
    * matching `vendorDir`.
    */
   productName: string;
   /**
    * Reverse-DNS package name of the system app, e.g.
-   * `"com.miladyai.milady"`. Used to locate manifest entries,
+   * `"com.acmecorp.acme"`. Used to locate manifest entries,
    * default-permissions XMLs, and `/data/data/<pkg>/` paths in
    * sepolicy file_contexts.
    */
@@ -186,13 +186,13 @@ export interface AospVariantConfig {
   /**
    * Display name of the staged APK (and its Soong module name in
    * `vendor/<vendorDir>/apps/<appName>/Android.bp`), e.g.
-   * `"Milady"`. The validator pins `apk: "<appName>.apk"` and
+   * `"Acme"`. The validator pins `apk: "<appName>.apk"` and
    * `name: "<appName>"`.
    */
   appName: string;
   /**
    * Path to the common product makefile, relative to AOSP root,
-   * e.g. `"vendor/milady/milady_common.mk"`. The validator checks
+   * e.g. `"vendor/acme/acme_common.mk"`. The validator checks
    * that the per-product makefile inherits this file.
    */
   commonMk: string;
@@ -200,13 +200,13 @@ export interface AospVariantConfig {
    * Source-label string written into the bundled-models manifest
    * so the on-device runtime registers the staged GGUFs in the
    * local-inference registry as fork-owned, e.g.
-   * `"milady-download"`.
+   * `"acme-download"`.
    */
   modelSourceLabel: string;
   /**
    * Optional path to bootanimation source assets (`desc.txt` +
    * `partN/` PNG dirs), relative to the host repo root, e.g.
-   * `"os/android/vendor/milady/bootanimation"`. When unset the
+   * `"os/android/vendor/acme/bootanimation"`. When unset the
    * `build-bootanimation.mjs` script must be passed `--frames`.
    */
   bootanimationAssetDir?: string;

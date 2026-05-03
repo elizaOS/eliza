@@ -34,7 +34,7 @@
 // AOSP/cuttlefish builds keep the APK path (`<PREFIX>_BUILD_FORMAT=apk`,
 // the default). Cuttlefish needs an APK because cvd does not handle
 // AABs. This script only runs when `<PREFIX>_BUILD_FORMAT=aab` (where
-// `<PREFIX>` is the host app's `envPrefix`, e.g. MILADY / ELIZA), or
+// `<PREFIX>` is the host app's `envPrefix`, e.g. ELIZA / ACME), or
 // when invoked with `--force`.
 //
 // On-device asset access:

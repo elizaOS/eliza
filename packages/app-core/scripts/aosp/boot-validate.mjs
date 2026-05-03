@@ -90,8 +90,9 @@ function requiredBootProperties(vendorDir) {
 export function buildLogcatFailurePatterns({ packageName, vendorDir }) {
   const escPkg = packageName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   // ClassName prefix used by the variant's templated Java overlay
-  // (e.g. `MiladyDialActivity`, `MiladySmsReceiver`). Capitalize the
-  // vendor's first character — the AOSP overlay pattern in
+  // (e.g. `AcmeDialActivity`, `AcmeSmsReceiver` for a fork named
+  // "acme"). Capitalize the vendor's first character — the AOSP
+  // overlay pattern in
   // run-mobile-build.mjs:overlayAndroid() does the same.
   const classPrefix =
     vendorDir.length > 0
@@ -261,8 +262,7 @@ function assertMatches(value, pattern, label) {
 
 function validateProductProperty(adb, serial, variant) {
   // The variant's `vendorDir` doubles as the system-property
-  // namespace. e.g. `ro.miladyos.product` = "milady_cf_x86_64_phone"
-  // on the Milady image; `ro.acmeos.product` = "acme_cf_x86_64_phone"
+  // namespace. e.g. `ro.acmeos.product` = "acme_cf_x86_64_phone"
   // on a fork called Acme.
   const propName = `ro.${variant.vendorDir}os.product`;
   const product = shell(adb, serial, `getprop ${propName}`);

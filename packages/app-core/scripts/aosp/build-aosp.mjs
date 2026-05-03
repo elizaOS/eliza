@@ -29,7 +29,7 @@ const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 /**
  * Read `<PREFIX>_BUILD_FORMAT` from the environment. We accept any
  * env var ending in `_BUILD_FORMAT` so forks with different
- * envPrefix values (MILADY, ELIZA, ACME, …) don't have to fork this
+ * envPrefix values (ELIZA, ACME, …) don't have to fork this
  * script. `apk` wins if multiple are set.
  */
 function readBuildFormatFromEnv(env = process.env) {
@@ -79,7 +79,7 @@ export function parseArgs(argv) {
     // for builders who want runtime-download instead.
     skipBundledModels: false,
     // When set, also re-run `bun run build:android:system` with AOSP env
-    // flags so the privileged APK staged into vendor/milady is rebuilt
+    // flags so the privileged APK staged into vendor/<vendorDir> is rebuilt
     // with libllama.so + BuildConfig.AOSP_BUILD=true. Off by default to
     // preserve the existing two-step contract documented in SETUP_AOSP.md.
     rebuildPrivilegedApk: false,
@@ -242,24 +242,21 @@ function launchCuttlefish(aospRoot, lunchTarget) {
 /**
  * Re-build the privileged Capacitor APK with AOSP-only env flags so the
  * staged `<appName>.apk` picks up `BuildConfig.AOSP_BUILD=true` and
- * the agent bundle is produced with both the framework's
- * `ELIZA_AOSP_BUILD=1` and the host's `<envPrefix>_AOSP_BUILD=1`
- * markers (bundler keeps `node-llama-cpp` real instead of stubbing
- * it; see `eliza/packages/agent/scripts/build-mobile-bundle.mjs`).
+ * the agent bundle is produced with `ELIZA_AOSP_BUILD=1` (which keeps
+ * `node-llama-cpp` real instead of stubbing it; see
+ * `eliza/packages/agent/scripts/build-mobile-bundle.mjs`).
  *
- * Both flags are propagated explicitly via env so subprocesses spawned by
+ * The flags are propagated explicitly via env so subprocesses spawned by
  * gradle and bun see them. The gradle property `-PelizaAospBuild=true`
- * controls the BuildConfig field via run-mobile-build.mjs.
+ * controls the BuildConfig field via run-mobile-build.mjs. Forks that
+ * mirror these to a brand-prefixed env var (`<envPrefix>_AOSP_BUILD`)
+ * should set the mirror in their own wrapper before invoking this
+ * script.
  */
 function rebuildPrivilegedApk() {
-  // The host's envPrefix-bound mirror is unknown at this layer, so we
-  // export both the framework's canonical name and a few common
-  // brand-prefix variants. Setting all of them is harmless when only
-  // one is read.
   const env = {
     ...process.env,
     ELIZA_AOSP_BUILD: "1",
-    MILADY_AOSP_BUILD: "1",
     ELIZA_GRADLE_AOSP_BUILD: "true",
   };
   const result = spawnSync("bun", ["run", "build:android:system"], {

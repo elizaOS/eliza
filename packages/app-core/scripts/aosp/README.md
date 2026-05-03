@@ -12,20 +12,20 @@ Add an `aosp` block to your host app's `app.config.ts`:
 import type { AppConfig } from "@elizaos/app-core";
 
 export default {
-  appName: "Milady",
-  appId: "com.miladyai.milady",
+  appName: "Acme",
+  appId: "com.acmecorp.acme",
   // ... other AppConfig fields ...
 
   aosp: {
-    productLunch: "milady_cf_x86_64_phone-trunk_staging-userdebug",
-    vendorDir: "milady",
-    variantName: "MiladyOS",
-    productName: "milady",
-    packageName: "com.miladyai.milady",
-    appName: "Milady",
-    commonMk: "vendor/milady/milady_common.mk",
-    modelSourceLabel: "milady-download",
-    bootanimationAssetDir: "os/android/vendor/milady/bootanimation",
+    productLunch: "acme_cf_x86_64_phone-trunk_staging-userdebug",
+    vendorDir: "acme",
+    variantName: "AcmeOS",
+    productName: "acme",
+    packageName: "com.acmecorp.acme",
+    appName: "Acme",
+    commonMk: "vendor/acme/acme_common.mk",
+    modelSourceLabel: "acme-download",
+    bootanimationAssetDir: "os/android/vendor/acme/bootanimation",
   },
 } satisfies AppConfig;
 ```
