@@ -14,7 +14,7 @@
   "dependencies": {
     "@elizaos/core": "alpha",
     "@elizaos/plugin-sql": "workspace:*",
-    "@elizaos/plugin-twitter": "workspace:*",
+    "@elizaos/plugin-x": "workspace:*",
     "@elizaos/plugin-xai": "workspace:*",
     "dotenv": "^17.2.3"
   },

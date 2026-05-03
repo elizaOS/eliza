@@ -180,7 +180,7 @@ List all installed plugin packages with version information.
   "count": 3,
   "plugins": [
     {
-      "name": "@elizaos/plugin-twitter",
+      "name": "@elizaos/plugin-x",
       "version": "1.2.0",
       "installedAt": "2025-06-01T12:00:00.000Z"
     }
@@ -205,7 +205,7 @@ List all ejected plugins (plugins that have been copied to a local directory for
 {
   "plugins": [
     {
-      "name": "@elizaos/plugin-twitter",
+      "name": "@elizaos/plugin-x",
       "localPath": "/path/to/local/plugin-twitter"
     }
   ]
@@ -294,9 +294,9 @@ Eject a plugin to a local directory for development. Creates a local copy of the
 ```json
 {
   "ok": true,
-  "pluginName": "@elizaos/plugin-twitter",
+  "pluginName": "@elizaos/plugin-x",
   "requiresRestart": true,
-  "message": "@elizaos/plugin-twitter ejected to local source."
+  "message": "@elizaos/plugin-x ejected to local source."
 }
 ```
 
@@ -323,9 +323,9 @@ Sync an ejected plugin back — re-build from the local copy.
 ```json
 {
   "ok": true,
-  "pluginName": "@elizaos/plugin-twitter",
+  "pluginName": "@elizaos/plugin-x",
   "requiresRestart": true,
-  "message": "@elizaos/plugin-twitter synced with upstream."
+  "message": "@elizaos/plugin-x synced with upstream."
 }
 ```
 
@@ -352,9 +352,9 @@ Restore a previously ejected plugin back to its registry version, removing the l
 ```json
 {
   "ok": true,
-  "pluginName": "@elizaos/plugin-twitter",
+  "pluginName": "@elizaos/plugin-x",
   "requiresRestart": true,
-  "message": "@elizaos/plugin-twitter restored to registry version."
+  "message": "@elizaos/plugin-x restored to registry version."
 }
 ```
 
@@ -447,11 +447,11 @@ List all plugins from the elizaOS registry with installation and load status.
   "count": 87,
   "plugins": [
     {
-      "name": "@elizaos/plugin-twitter",
+      "name": "@elizaos/plugin-x",
       "displayName": "Twitter",
       "description": "Twitter/X integration for posting and monitoring",
       "npm": {
-        "package": "@elizaos/plugin-twitter",
+        "package": "@elizaos/plugin-x",
         "version": "1.2.0"
       },
       "installed": false,
@@ -488,11 +488,11 @@ Get details for a specific registry plugin. The `name` parameter should be URL-e
 ```json
 {
   "plugin": {
-    "name": "@elizaos/plugin-twitter",
+    "name": "@elizaos/plugin-x",
     "displayName": "Twitter",
     "description": "Twitter/X integration for posting and monitoring",
     "npm": {
-      "package": "@elizaos/plugin-twitter",
+      "package": "@elizaos/plugin-x",
       "version": "1.2.0"
     },
     "author": "elizaOS Team",
@@ -526,10 +526,10 @@ Search the plugin registry by keyword.
   "count": 2,
   "results": [
     {
-      "name": "@elizaos/plugin-twitter",
+      "name": "@elizaos/plugin-x",
       "displayName": "Twitter",
       "description": "Twitter/X integration",
-      "npmPackage": "@elizaos/plugin-twitter",
+      "npmPackage": "@elizaos/plugin-x",
       "version": "1.2.0"
     }
   ]

@@ -1,9 +1,11 @@
-import { describe, expect, test } from "bun:test";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, expect, test } from "vitest";
 import { parseKeyValueXml } from "@elizaos/core";
 import { config } from "dotenv";
 
-config({ path: resolve(import.meta.dir, "../../../../.env") });
+const __dirname = dirname(fileURLToPath(import.meta.url));
+config({ path: resolve(__dirname, "../../../../.env") });
 
 const runToonLiveTest =
 	process.env.ELIZA_LIVE_TOON_TEST === "1" ||
@@ -50,6 +52,7 @@ describe.skipIf(!runToonLiveTest || !hasApiKey)(
 	() => {
 		test(
 			"extracts transfer fields from a user message",
+			{ timeout: 30_000 },
 			async () => {
 				const prompt = `Given the recent messages and wallet information below:
 
@@ -83,7 +86,6 @@ IMPORTANT: Your response must ONLY contain the TOON document above. No preamble 
 					"0x742d35cc".toLowerCase(),
 				);
 			},
-			{ timeout: 30_000 },
 		);
 	},
 );

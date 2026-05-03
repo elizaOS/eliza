@@ -103,7 +103,7 @@ export function getConnectorModes(
           id: "local-oauth",
           label: "Local OAuth2",
           description:
-            "Use @elizaos/plugin-twitter with TWITTER_AUTH_MODE=oauth, a client ID, and a loopback redirect URI.",
+            "Use @elizaos/plugin-x with TWITTER_AUTH_MODE=oauth, a client ID, and a loopback redirect URI.",
         },
         {
           id: "developer",
