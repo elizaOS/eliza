@@ -375,7 +375,6 @@ packages/elizaos/examples/
 /rs-sdk/
 /openclaw-classic/
 /examples/runescape2004/
-/plugins/plugin-social-alpha/
 
 # Database files
 *.db

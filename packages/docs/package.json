@@ -5,5 +5,6 @@
   "description": "ElizaOS documentation",
   "scripts": {
     "test": "bun test ./test"
-  }
+  },
+  "private": true
 }

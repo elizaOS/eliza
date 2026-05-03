@@ -29,5 +29,8 @@
       "linux": "Not available — macOS-only collector.",
       "win32": "Not available — macOS-only collector."
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

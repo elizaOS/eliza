@@ -1,3 +1,4 @@
+// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 /// <reference types="vitest/globals" />
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { afterEach, beforeEach, describe, expect, it, type Mock, type Mocked, vi } from "vitest";

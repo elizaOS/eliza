@@ -48,5 +48,8 @@
     "platformDetails": {
       "darwin": "Swift CLI helper using UNUserNotificationCenter. Non-darwin platforms receive macos-only failures."
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

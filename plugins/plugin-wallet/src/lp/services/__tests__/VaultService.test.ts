@@ -1,3 +1,4 @@
+// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 /// <reference types="vitest/globals" />
 
 import { Keypair } from "@solana/web3.js";

@@ -167,11 +167,6 @@ class GAIAConfig:
     max_iterations: int = 15  # Max agent iterations per question
     timeout_per_question_ms: int = 300000  # 5 minutes per question
 
-    # Canonical Eliza runtime execution
-    # When enabled, the benchmark runs questions through AgentRuntime.message_service
-    # (providers + action planning + action execution + evaluators).
-    use_eliza_runtime: bool = True
-
     # Tool settings
     enable_web_search: bool = True
     enable_web_browse: bool = True
@@ -199,17 +194,6 @@ class GAIAConfig:
 
     # Result naming - include model in output path
     include_model_in_output: bool = True  # Prevents overwriting results from different models
-
-    # Orchestrated evaluation mode
-    orchestrated: bool = False
-    execution_mode: str = "orchestrated"  # orchestrated | direct_shell
-    matrix: bool = False
-    orchestrator_model: str = "gpt-4o"
-    provider_set: list[str] = field(
-        default_factory=lambda: ["claude-code", "swe-agent", "codex"]
-    )
-    required_capabilities: list[str] = field(default_factory=list)
-    strict_capabilities: bool = False
 
 
 @dataclass

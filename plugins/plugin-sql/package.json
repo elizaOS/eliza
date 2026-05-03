@@ -70,5 +70,8 @@
   "peerDependencies": {
     "@elizaos/core": "workspace:*"
   },
-  "gitHead": "05d4ca11d769db8c7f54a722ee24b2ce2b951543"
+  "gitHead": "05d4ca11d769db8c7f54a722ee24b2ce2b951543",
+  "publishConfig": {
+    "access": "public"
+  }
 }

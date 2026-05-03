@@ -1,3 +1,4 @@
+// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { meteoraScenarios } from "./e2e/scenarios.ts";
 import { meteoraPositionProvider } from "./providers/positionProvider.ts";

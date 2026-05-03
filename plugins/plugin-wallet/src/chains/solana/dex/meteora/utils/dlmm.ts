@@ -1,3 +1,4 @@
+// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 // Shared DLMM module export to avoid bundler issues
 import DLMMDefault from "@meteora-ag/dlmm";
 

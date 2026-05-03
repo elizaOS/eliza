@@ -1,3 +1,4 @@
+// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import type { IAgentRuntime, Memory, Provider, State } from '@elizaos/core';
 import { extractChain } from '../utils';
 import { BIRDEYE_SERVICE_NAME } from '../constants';

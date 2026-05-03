@@ -63,5 +63,8 @@
         ]
       }
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

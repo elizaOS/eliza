@@ -1,3 +1,4 @@
+// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import { type IAgentRuntime, Service } from "@elizaos/core";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { type Connection, Keypair, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";

@@ -2,7 +2,10 @@
 GAIA Benchmark Runner
 
 Orchestrates the complete benchmark execution including dataset loading,
-agent execution, evaluation, and report generation.
+agent execution, evaluation, and report generation. Every LLM/tool call
+is routed through the elizaOS TypeScript benchmark bridge
+(``packages/app-core/src/benchmark/server.ts``); the legacy Python
+``AgentRuntime`` path has been removed.
 """
 
 from __future__ import annotations
@@ -15,12 +18,7 @@ import tracemalloc
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from elizaos.runtime import AgentRuntime
-
-from elizaos_gaia.agent import GAIAAgent
 from elizaos_gaia.dataset import DatasetAccessError, GAIADataset
 from elizaos_gaia.evaluator import GAIAEvaluator
 from elizaos_gaia.metrics import MetricsCalculator
@@ -85,112 +83,33 @@ class GAIARunner:
     Main benchmark runner for GAIA evaluation.
 
     Orchestrates the complete benchmark pipeline:
-    1. Load dataset from HuggingFace
-    2. Run agent on each question
+    1. Load dataset from HuggingFace (or sample/jsonl)
+    2. Run agent on each question via the elizaOS TS benchmark bridge
     3. Evaluate answers
     4. Calculate metrics
     5. Generate reports
     """
 
-    def __init__(
-        self,
-        config: GAIAConfig,
-        runtime: AgentRuntime | None = None,
-    ):
+    def __init__(self, config: GAIAConfig):
         """
         Initialize GAIA runner.
 
         Args:
             config: Benchmark configuration
-            runtime: Optional ElizaOS runtime for LLM access
 
         Raises:
             ValueError: If config.split is not 'validation' or 'test'
         """
-        # Validate config
         if config.split not in ("validation", "test"):
             raise ValueError(f"Invalid split '{config.split}'. Must be 'validation' or 'test'")
 
         self.config = config
-        self.runtime = runtime
-        self._runtime_initialized = False
 
-        # If --provider eliza, route every LLM call through the elizaOS
-        # TypeScript benchmark bridge instead of building a Python
-        # AgentRuntime. The Python runtime is being removed.
-        self._use_eliza_bridge = (config.provider or "").lower() == "eliza"
-        if self._use_eliza_bridge:
-            from eliza_adapter.client import ElizaClient
-            from eliza_adapter.gaia import ElizaGAIAAgent
+        from eliza_adapter.client import ElizaClient
+        from eliza_adapter.gaia import ElizaGAIAAgent
 
-            self.dataset = GAIADataset(cache_dir=config.cache_dir)
-            self.agent = ElizaGAIAAgent(config, client=ElizaClient())  # type: ignore[assignment]
-            self.evaluator = GAIAEvaluator()
-            self.metrics_calculator = MetricsCalculator()
-            self.memory_tracker = MemoryTracker(enabled=True)
-            self._start_time = 0.0
-            return
-
-        # If requested and no runtime was provided, build a canonical Eliza runtime.
-        if self.runtime is None and self.config.use_eliza_runtime:
-            from elizaos.runtime import AgentRuntime as _AgentRuntime
-            from elizaos.types.agent import Character
-            from elizaos.prompts import MESSAGE_HANDLER_TEMPLATE
-
-            from elizaos_gaia.inmemory_adapter import InMemoryBenchmarkAdapter
-            from elizaos_gaia.plugin import gaia_plugin
-
-            # Minimal character for benchmarking. The canonical MESSAGE_HANDLER_TEMPLATE
-            # enforces XML response format; we add GAIA-specific requirements here.
-            system = (
-                "You are an ElizaOS agent running the GAIA benchmark.\n"
-                "This is an evaluation harness: do NOT chit-chat, do NOT ask 'why are you curious', and do NOT roleplay.\n"
-                "Your job is to solve the user's task using the available actions when needed.\n"
-                "When you are ready to answer, put the final answer in your <text> as:\n"
-                "FINAL ANSWER: <answer>\n"
-                "Keep the final answer concise and do not include extra explanation in the final answer line."
-            )
-
-            # Tighten message handler rules for benchmark determinism and correct tool params.
-            benchmark_instructions = (
-                "\n\nGAIA BENCHMARK RULES:\n"
-                "- When you provide the answer, your <text> MUST start with 'FINAL ANSWER:' and contain ONLY the answer.\n"
-                "- If you select an action with required parameters, you MUST include a <params> block with ALL required params.\n"
-                "- For CALCULATE <expression>, use pure math only (no units like km/h). Use '**' for exponentiation.\n"
-                "- For WEB_SEARCH <query>, always provide a clear natural-language query string.\n"
-                "- For EXECUTE_CODE <code>, provide valid Python code as a string.\n"
-            )
-            message_handler_template = MESSAGE_HANDLER_TEMPLATE.replace(
-                "</instructions>",
-                benchmark_instructions + "\n</instructions>",
-            )
-
-            character = Character(
-                name="GAIABenchmarkAgent",
-                bio="GAIA benchmark agent",
-                system=system,
-                templates={"messageHandlerTemplate": message_handler_template},
-            )
-
-            adapter = InMemoryBenchmarkAdapter()
-            self.runtime = _AgentRuntime(
-                character=character,
-                adapter=adapter,
-                plugins=[gaia_plugin],
-                disable_basic_capabilities=False,
-                enable_autonomy=False,
-                log_level="ERROR",
-            )
-
-            # Configure model selection on the runtime for the model handler to use
-            if self.config.provider:
-                self.runtime.set_setting("GAIA_PROVIDER", self.config.provider)
-            if self.config.model_name:
-                self.runtime.set_setting("GAIA_MODEL", self.config.model_name)
-            self.runtime.set_setting("GAIA_TEMPERATURE", self.config.temperature)
-            self.runtime.set_setting("GAIA_MAX_TOKENS", self.config.max_tokens)
         self.dataset = GAIADataset(cache_dir=config.cache_dir)
-        self.agent = GAIAAgent(config, self.runtime)
+        self.agent = ElizaGAIAAgent(config, client=ElizaClient())
         self.evaluator = GAIAEvaluator()
         self.metrics_calculator = MetricsCalculator()
         self.memory_tracker = MemoryTracker(enabled=True)
@@ -213,16 +132,10 @@ class GAIARunner:
         await self.memory_tracker.start()
 
         logger.info("=" * 60)
-        logger.info("GAIA Benchmark - ElizaOS Python")
+        logger.info("GAIA Benchmark - elizaOS TS bridge")
         logger.info("=" * 60)
 
         try:
-            # Initialize runtime/plugins once (canonical Eliza agent mode)
-            if self.runtime is not None and self.config.use_eliza_runtime and not self._runtime_initialized:
-                await self.runtime.initialize()
-                self._runtime_initialized = True
-
-            # Load dataset
             logger.info(
                 f"Loading dataset: source={self.config.dataset_source} split={self.config.split}..."
             )
@@ -233,52 +146,34 @@ class GAIARunner:
                 dataset_path=self.config.dataset_path,
             )
 
-            # Filter by level if specified
             if self.config.levels:
-                questions = [
-                    q for q in questions
-                    if q.level in self.config.levels
-                ]
+                questions = [q for q in questions if q.level in self.config.levels]
 
-            # Limit number of questions if specified
             if self.config.max_questions:
-                questions = questions[:self.config.max_questions]
+                questions = questions[: self.config.max_questions]
 
             logger.info(f"Running benchmark on {len(questions)} questions")
 
-            # Print dataset stats
             stats = self.dataset.get_stats(self.config.split)
             logger.info(f"Dataset stats: {json.dumps(stats['by_level'])}")
 
-            # Run evaluation
             results = await self._run_evaluation(questions)
-
-            # Calculate metrics
             metrics = self.metrics_calculator.calculate(results)
 
-            # Compare with leaderboard
             leaderboard_comparison = None
             if self.config.compare_leaderboard and self.config.dataset_source == "gaia":
-                leaderboard_comparison = self.metrics_calculator.compare_with_leaderboard(
-                    metrics
-                )
+                leaderboard_comparison = self.metrics_calculator.compare_with_leaderboard(metrics)
             elif self.config.compare_leaderboard and self.config.dataset_source != "gaia":
                 logger.warning(
                     "Leaderboard comparison skipped (dataset_source is not 'gaia'). "
                     "Run with --dataset gaia for official GAIA/leaderboard comparison."
                 )
 
-            # Generate analysis
-            analysis = self.metrics_calculator.generate_analysis(
-                metrics,
-                leaderboard_comparison,
-            )
+            analysis = self.metrics_calculator.generate_analysis(metrics, leaderboard_comparison)
 
-            # Build final results
             memory_stats = self.memory_tracker.get_stats()
             total_duration = time.time() - self._start_time
 
-            # Get model identifier for output naming
             model_id = self.agent.model_identifier
             provider = self.agent.model_config.provider.value
             model_name = self.agent.model_config.model_name
@@ -290,13 +185,11 @@ class GAIARunner:
                     "split": self.config.split,
                     "dataset_source": self.config.dataset_source,
                     "total_questions": len(questions),
-                    # Full model info
                     "provider": provider,
                     "model": model_name,
                     "model_identifier": model_id,
                     "temperature": self.config.temperature,
                     "max_tokens": self.config.max_tokens,
-                    # Memory stats
                     "memory_peak_mb": memory_stats["peak_bytes"] / (1024 * 1024),
                     "memory_avg_mb": memory_stats["average_bytes"] / (1024 * 1024),
                 },
@@ -306,17 +199,14 @@ class GAIARunner:
                 summary=analysis,
             )
 
-            # Save results
             if self.config.generate_report:
                 await self._save_results(benchmark_results)
 
-            # Print summary
             self._print_summary(benchmark_results)
 
             return benchmark_results
 
         except DatasetAccessError as e:
-            # Provide a crisp error message (and allow sample fallback via config if desired)
             logger.error(str(e))
             raise
         except Exception as e:
@@ -325,14 +215,6 @@ class GAIARunner:
         finally:
             await self.memory_tracker.stop()
             await self.agent.close()
-            if self.config.use_eliza_runtime:
-                try:
-                    from elizaos_gaia.plugin import close_gaia_plugin_tools
-
-                    await close_gaia_plugin_tools()
-                except Exception:
-                    # Never fail benchmark teardown due to cleanup
-                    pass
 
     async def _run_evaluation(
         self,
@@ -348,13 +230,11 @@ class GAIARunner:
             )
 
             try:
-                # Set timeout for the question
                 result = await asyncio.wait_for(
                     self.agent.solve(question),
                     timeout=self.config.timeout_per_question_ms / 1000,
                 )
 
-                # Evaluate the answer
                 is_correct, norm_pred, norm_exp = self.evaluator.evaluate(
                     result.predicted_answer,
                     question.final_answer,
@@ -364,8 +244,7 @@ class GAIARunner:
                 result.normalized_predicted = norm_pred
                 result.normalized_expected = norm_exp
 
-                # Log result
-                status = "✓" if is_correct else "✗"
+                status = "PASS" if is_correct else "FAIL"
                 logger.info(f"{status} Answer: '{result.predicted_answer}'")
                 if not is_correct:
                     logger.info(f"  Expected: '{question.final_answer}'")
@@ -395,7 +274,6 @@ class GAIARunner:
 
             results.append(result)
 
-            # Log running accuracy
             correct_so_far = sum(1 for r in results if r.is_correct)
             logger.info(
                 f"Running accuracy: {correct_so_far}/{len(results)} "
@@ -413,62 +291,50 @@ class GAIARunner:
         output_dir = Path(self.config.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Get model identifier for unique filenames
         model_id = str(results.metadata.get("model_identifier", "unknown"))
         dataset_source = str(results.metadata.get("dataset_source", "gaia"))
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-        # Determine file naming based on config
         if self.config.include_model_in_output:
-            # Create model-specific subdirectory
             model_dir = output_dir / dataset_source / model_id
             model_dir.mkdir(parents=True, exist_ok=True)
 
-            # Save with timestamp to preserve history
             results_path = model_dir / f"gaia-results_{timestamp}.json"
             details_path = model_dir / f"gaia-detailed-results_{timestamp}.jsonl"
             report_path = model_dir / f"BENCHMARK_RESULTS_{timestamp}.md"
 
-            # Also save latest version for easy access
             latest_results_path = model_dir / "gaia-results-latest.json"
             latest_report_path = model_dir / "BENCHMARK_RESULTS.md"
         else:
-            # Legacy mode - overwrite
             results_path = output_dir / "gaia-results.json"
             details_path = output_dir / "gaia-detailed-results.jsonl"
             report_path = output_dir / "BENCHMARK_RESULTS.md"
             latest_results_path = None
             latest_report_path = None
 
-        # Save detailed JSON results
         with open(results_path, "w") as f:
             json.dump(self._to_serializable(results), f, indent=2, default=str)
         logger.info(f"Saved results to {results_path}")
 
-        # Save latest version
         if latest_results_path:
             with open(latest_results_path, "w") as f:
                 json.dump(self._to_serializable(results), f, indent=2, default=str)
 
-        # Save individual results
         if self.config.save_detailed_logs:
             with open(details_path, "w") as f:
                 for result in results.results:
                     f.write(json.dumps(self._to_serializable(result), default=str) + "\n")
             logger.info(f"Saved detailed results to {details_path}")
 
-        # Generate markdown report
         markdown = self._generate_markdown_report(results)
         with open(report_path, "w") as f:
             f.write(markdown)
         logger.info(f"Saved report to {report_path}")
 
-        # Save latest report
         if latest_report_path:
             with open(latest_report_path, "w") as f:
                 f.write(markdown)
 
-        # Update comparison index
         await self._update_comparison_index(output_dir / dataset_source, results)
 
     async def _update_comparison_index(
@@ -476,14 +342,10 @@ class GAIARunner:
         output_dir: Path,
         results: GAIABenchmarkResults,
     ) -> None:
-        """Update the model comparison index with latest results.
-
-        Creates/updates a comparison table across all tested models.
-        """
+        """Update the model comparison index with latest results."""
         index_path = output_dir / "MODEL_COMPARISON.md"
         data_path = output_dir / "model_comparison.json"
 
-        # Load existing comparison data
         comparison_data: dict[str, object] = {}
         if data_path.exists():
             try:
@@ -492,7 +354,6 @@ class GAIARunner:
             except (json.JSONDecodeError, OSError):
                 comparison_data = {}
 
-        # Add current results
         model_id = str(results.metadata.get("model_identifier", "unknown"))
         metrics = results.metrics
 
@@ -538,7 +399,6 @@ class GAIARunner:
             return default
 
         def _is_better(a: dict[str, object], b: dict[str, object]) -> bool:
-            """Return True if a should replace b as the best run."""
             a_acc = _as_float(a.get("overall_accuracy"), 0.0)
             b_acc = _as_float(b.get("overall_accuracy"), 0.0)
             if a_acc != b_acc:
@@ -561,7 +421,6 @@ class GAIARunner:
 
             return False
 
-        # Upgrade legacy data and keep both best + latest (do NOT overwrite best)
         existing = comparison_data.get(model_id)
         best_stats: dict[str, object] | None = None
 
@@ -571,7 +430,6 @@ class GAIARunner:
             if isinstance(existing_best, dict) and isinstance(existing_latest, dict):
                 best_stats = dict(existing_best)
             else:
-                # Legacy single-record format: treat as both best and latest
                 best_stats = dict(existing)
         else:
             best_stats = None
@@ -588,11 +446,9 @@ class GAIARunner:
             "latest": current_stats,
         }
 
-        # Save updated data
         with open(data_path, "w") as f:
             json.dump(comparison_data, f, indent=2)
 
-        # Generate comparison markdown
         dataset_source = output_dir.name
         md = f"""# GAIA Benchmark - Model Comparison
 
@@ -606,13 +462,11 @@ This table compares results across all tested models for this dataset. Results a
 |----------|-------|---------|---------|---------|---------|-----------|--------|--------|-------------|
 """
 
-        # Normalize + sort by best overall accuracy (then by best question count)
         def _get_best(entry: object) -> dict[str, object]:
             if isinstance(entry, dict):
                 best = entry.get("best")
                 if isinstance(best, dict):
                     return best
-                # Legacy fallback
                 return entry
             return {}
 
@@ -621,7 +475,6 @@ This table compares results across all tested models for this dataset. Results a
                 latest = entry.get("latest")
                 if isinstance(latest, dict):
                     return latest
-                # Legacy fallback
                 return entry
             return {}
 
@@ -667,7 +520,6 @@ This table compares results across all tested models for this dataset. Results a
 |----------|-------|---------|-----------|--------|--------|-------------|-----------|
 """
 
-        # Latest table: show what happened most recently for each model id
         for mid, container, _best, latest in sortable:
             provider = str(container.get("provider", latest.get("provider", "?")))
             model = str(container.get("model", latest.get("model", mid)))
@@ -704,7 +556,7 @@ This table compares results across all tested models for this dataset. Results a
         md += """
 
 ---
-*Updated automatically by ElizaOS GAIA Benchmark Runner*
+*Updated automatically by the elizaOS GAIA Benchmark Runner*
 """
 
         with open(index_path, "w") as f:
@@ -715,18 +567,12 @@ This table compares results across all tested models for this dataset. Results a
     def _to_serializable(self, obj) -> dict | list | str | int | float | bool | None:
         """Convert dataclass/enum to JSON-serializable dict."""
         if hasattr(obj, "__dataclass_fields__"):
-            return {
-                k: self._to_serializable(v)
-                for k, v in asdict(obj).items()
-            }
+            return {k: self._to_serializable(v) for k, v in asdict(obj).items()}
         elif isinstance(obj, dict):
-            return {
-                str(k): self._to_serializable(v)
-                for k, v in obj.items()
-            }
+            return {str(k): self._to_serializable(v) for k, v in obj.items()}
         elif isinstance(obj, list):
             return [self._to_serializable(item) for item in obj]
-        elif hasattr(obj, "value"):  # Enum
+        elif hasattr(obj, "value"):
             return obj.value
         elif isinstance(obj, Path):
             return str(obj)
@@ -740,7 +586,7 @@ This table compares results across all tested models for this dataset. Results a
         summary = results.summary
         metadata = results.metadata
 
-        md = f"""# GAIA Benchmark Results - ElizaOS Python
+        md = f"""# GAIA Benchmark Results - elizaOS TS bridge
 
 **Generated:** {metadata.get('timestamp', 'N/A')}
 
@@ -793,7 +639,6 @@ This table compares results across all tested models for this dataset. Results a
 | System | Level 1 | Level 2 | Level 3 | Overall |
 |--------|---------|---------|---------|---------|
 """
-            # Sort by overall score
             sorted_entries = sorted(
                 comparison.comparison.items(),
                 key=lambda x: x[1].get("overall", 0),
@@ -806,7 +651,6 @@ This table compares results across all tested models for this dataset. Results a
                 l3 = scores.get("level_3", 0)
                 overall = scores.get("overall", 0)
 
-                # Highlight our entry
                 if name == "ElizaOS Agent":
                     name = f"**{name}**"
 
@@ -847,7 +691,7 @@ This table compares results across all tested models for this dataset. Results a
 - **Peak Memory:** {metadata.get('memory_peak_mb', 0):.1f} MB
 
 ---
-*Generated by ElizaOS GAIA Benchmark Runner*
+*Generated by the elizaOS GAIA Benchmark Runner*
 """
         return md
 
@@ -903,7 +747,6 @@ async def run_quick_test(
     try:
         return await runner.run_benchmark(hf_token=hf_token)
     except DatasetAccessError as e:
-        # If GAIA is gated, fall back to sample dataset for E2E validation.
         if config.dataset_source == "gaia" and e.is_gated:
             logger.warning(
                 "GAIA dataset is gated; running built-in sample dataset for quick test instead. "

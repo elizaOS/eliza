@@ -112,6 +112,17 @@ export default defineConfig(({ mode }) => {
     },
     resolve: {
       alias: [
+        // The `inherits` shim's main entry tries `require('util').inherits`
+        // first, then falls back to `./inherits_browser.js`. Our `util`
+        // alias is the empty shim, so the require'd module is `{}` and the
+        // fallback path runs — but rolldown / esbuild's optimizeDeps
+        // prebundle has trouble wiring that fallback through the wrapped
+        // CommonJS module. The bundle ends up calling
+        // `require_inherits_browser` before the wrapper is defined, which
+        // throws inside elliptic / hash-base / create-hash and crashes the
+        // React tree on /login. Resolve `inherits` to a self-contained
+        // browser shim instead.
+        { find: /^inherits$/, replacement: r("./src/shims/inherits.ts") },
         // Real Buffer polyfill — Solana wallet adapters, viem, ethers, base64
         // helpers all depend on Buffer. Stubbing it throws at runtime as soon
         // as any browser-reachable code path constructs a Buffer.

@@ -81,5 +81,8 @@
     "app": {
       "heroImage": "assets/hero.png"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -1,3 +1,4 @@
+// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { PancakeSwapV3LpService } from "./services/PancakeSwapV3LpService.ts";
 

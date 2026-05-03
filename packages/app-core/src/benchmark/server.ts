@@ -996,9 +996,40 @@ export async function startBenchmarkServer() {
     res.end("Not Found");
   });
 
+  // Bump per-connection timeouts so long-running benchmark turns (slow LLM
+  // calls, growing context) do not hit Node's defaults mid-flight. Defaults
+  // in Node 22 are: requestTimeout 300s, headersTimeout 60s, keepAlive 5s.
+  // Vending-bench in particular sees the server drop the keep-alive socket
+  // between turns when the prompt context grows large; raise everything
+  // generously and let benchmarks override via env var.
+  const benchRequestTimeoutMs = Number(
+    process.env.ELIZA_BENCH_REQUEST_TIMEOUT_MS ?? 30 * 60 * 1000,
+  );
+  const benchHeadersTimeoutMs = Number(
+    process.env.ELIZA_BENCH_HEADERS_TIMEOUT_MS ?? 30 * 60 * 1000,
+  );
+  const benchKeepAliveTimeoutMs = Number(
+    process.env.ELIZA_BENCH_KEEPALIVE_TIMEOUT_MS ?? 5 * 60 * 1000,
+  );
+  server.requestTimeout = Number.isFinite(benchRequestTimeoutMs)
+    ? benchRequestTimeoutMs
+    : 30 * 60 * 1000;
+  server.headersTimeout = Number.isFinite(benchHeadersTimeoutMs)
+    ? benchHeadersTimeoutMs
+    : 30 * 60 * 1000;
+  server.keepAliveTimeout = Number.isFinite(benchKeepAliveTimeoutMs)
+    ? benchKeepAliveTimeoutMs
+    : 5 * 60 * 1000;
+  // Disable Node's per-socket idle timeout: benchmark turns can be longer
+  // than any reasonable default while waiting for a model response.
+  server.timeout = 0;
+
   server.listen(port, () => {
     elizaLogger.info(
-      `[bench] Eliza benchmark server listening on port ${port}`,
+      `[bench] Eliza benchmark server listening on port ${port} ` +
+        `(requestTimeout=${server.requestTimeout}ms, ` +
+        `headersTimeout=${server.headersTimeout}ms, ` +
+        `keepAliveTimeout=${server.keepAliveTimeout}ms)`,
     );
     console.log(`ELIZA_BENCH_READY port=${port}`);
   });

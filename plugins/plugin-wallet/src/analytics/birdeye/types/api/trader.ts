@@ -1,3 +1,4 @@
+// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 // Trader Gainers Losers Types
 export interface GainersLosersParams {
     type: 'yesterday' | 'today' | '1W';

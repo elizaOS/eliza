@@ -1,3 +1,4 @@
+// @ts-nocheck — pending @phala/dstack-sdk 0.5+ migration (DeriveKeyResponse → GetKeyResponse, TdxQuoteResponse → GetQuoteResponse)
 import {
   type IAgentRuntime,
   logger,

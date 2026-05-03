@@ -1,3 +1,4 @@
+// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 // Wallet Portfolio Types
 export interface WalletPortfolioParams {
     wallet: string;

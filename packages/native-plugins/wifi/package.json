@@ -48,5 +48,8 @@
       "browser": "Web fallback throws — Wi-Fi is only available on Android.",
       "android": true
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -67,5 +67,17 @@
     }
   },
   "license": "MIT",
-  "keywords": ["elizaos", "plugin", "vertex-ai", "google-cloud", "claude", "anthropic", "gemini", "google"]
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "vertex-ai",
+    "google-cloud",
+    "claude",
+    "anthropic",
+    "gemini",
+    "google"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
 }

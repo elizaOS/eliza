@@ -14,7 +14,9 @@ Benchmarks included:
 Execution modes:
 - stub: Fast heuristic-based mock (for testing)
 - rlm: Direct RLM plugin inference (bypasses Eliza runtime)
-- eliza: Full Eliza agent loop (Provider -> Model -> Action -> Evaluator)
+- eliza: Full Eliza agent loop dispatched through the elizaOS TypeScript
+  benchmark bridge (``packages/app-core/src/benchmark/server.ts``); the
+  Python ``AgentRuntime`` path has been removed.
 - custom: Custom LLM query function
 
 Reference:
@@ -33,7 +35,7 @@ from .types import (
     RLMBenchType,
     RLMStrategyMetrics,
 )
-from .runner import RLMBenchRunner, run_eliza_benchmark, setup_eliza_runner
+from .runner import RLMBenchRunner
 from .generator import RLMBenchGenerator
 from .evaluator import RLMBenchEvaluator
 from .reporting import RLMBenchReporter, save_results
@@ -49,8 +51,6 @@ __all__ = [
     "RLMStrategyMetrics",
     # Runner
     "RLMBenchRunner",
-    "run_eliza_benchmark",
-    "setup_eliza_runner",
     # Generator
     "RLMBenchGenerator",
     # Evaluator

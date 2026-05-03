@@ -99,6 +99,20 @@ LABEL org.opencontainers.image.title="${OCI_TITLE}" \
       org.opencontainers.image.licenses="${OCI_LICENSES}"
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl ffmpeg libopus-dev \
   && rm -rf /var/lib/apt/lists/*
+
+# Install yt-dlp from upstream GitHub release. See Dockerfile.cloud for rationale.
+RUN ARCH="$(dpkg --print-architecture)" \
+  && case "$ARCH" in \
+       amd64)  YTDLP_ASSET=yt-dlp_linux ;; \
+       arm64)  YTDLP_ASSET=yt-dlp_linux_aarch64 ;; \
+       armhf)  YTDLP_ASSET=yt-dlp_linux_armv7l ;; \
+       *) echo "Unsupported architecture for yt-dlp: $ARCH" >&2; exit 1 ;; \
+     esac \
+  && curl -fsSL "https://github.com/yt-dlp/yt-dlp/releases/latest/download/${YTDLP_ASSET}" \
+       -o /usr/local/bin/yt-dlp \
+  && chmod +x /usr/local/bin/yt-dlp \
+  && yt-dlp --version
+
 WORKDIR /app
 COPY --from=pruner /app /app
 

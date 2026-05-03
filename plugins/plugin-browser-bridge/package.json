@@ -31,5 +31,8 @@
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {}
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
