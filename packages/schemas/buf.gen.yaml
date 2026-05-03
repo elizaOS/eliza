@@ -14,8 +14,3 @@ plugins:
     opt:
       - target=ts
       - import_extension=.js
-  - remote: buf.build/bufbuild/es:v2.2.2
-    out: ../core/src/types/generated
-    opt:
-      - target=ts
-      - import_extension=.js

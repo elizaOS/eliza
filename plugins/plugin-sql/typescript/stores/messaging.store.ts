@@ -1,6 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { ChannelType, type Metadata, type UUID } from "@elizaos/core";
 import { and, desc, eq, lt, sql } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
 import {
   channelParticipantsTable,
   channelTable,

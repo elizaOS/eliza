@@ -5,10 +5,19 @@ export interface JupiterQuoteParams {
   slippageBps: number;
 }
 
-export interface JupiterSwapParams {
-  quoteResponse: any;
-  userPublicKey: string;
-  slippageBps: number;
+/** Minimal Jupiter route step shape used by swap quotes */
+export interface JupiterRoutePlanSwapInfo {
+  ammKey?: string;
+  label?: string;
+  inputMint?: string;
+  outputMint?: string;
+  inAmount?: string;
+  outAmount?: string;
+}
+
+export interface JupiterRoutePlanStep {
+  swapInfo?: JupiterRoutePlanSwapInfo;
+  percent?: number;
 }
 
 export interface JupiterQuoteResponse {
@@ -20,9 +29,15 @@ export interface JupiterQuoteResponse {
   swapMode: string;
   slippageBps: number;
   priceImpactPct: string;
-  routePlan: any[];
+  routePlan: JupiterRoutePlanStep[];
   contextSlot: number;
   timeTaken: number;
+}
+
+export interface JupiterSwapParams {
+  quoteResponse: JupiterQuoteResponse;
+  userPublicKey: string;
+  slippageBps: number;
 }
 
 export interface JupiterSwapResponse {

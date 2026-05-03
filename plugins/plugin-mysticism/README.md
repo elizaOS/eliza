@@ -23,7 +23,7 @@ bun add @elizaos/plugin-mysticism@next
 ### Peer Dependencies
 
 - `@elizaos/core` (v2.x)
-- `@elizaos/plugin-form` (v2.x) — required for intake forms and payment flows
+- Built-in **FORM** / advanced capabilities in `@elizaos/core` — use structured intake flows when `advancedCapabilities` is enabled (no extra form plugin dependency)
 
 ## Quick Start
 

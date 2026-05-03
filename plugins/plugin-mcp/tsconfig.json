@@ -3,10 +3,7 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": [
-      "ES2022",
-      "DOM"
-    ],
+    "lib": ["ES2022", "DOM"],
     "strict": false,
     "noEmit": true,
     "skipLibCheck": true,
@@ -20,17 +17,8 @@
     "noUnusedParameters": false,
     "noImplicitReturns": false,
     "noImplicitAny": false,
-    "types": [
-      "node"
-    ]
+    "types": ["node"]
   },
-  "include": [
-    "src/**/*.ts",
-    "__tests__/**/*.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "build.ts"
-  ]
+  "include": ["src/**/*.ts", "__tests__/**/*.ts"],
+  "exclude": ["node_modules", "dist", "build.ts"]
 }

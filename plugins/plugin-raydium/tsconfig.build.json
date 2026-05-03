@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-        "outDir": "dist",
+    "outDir": "dist",
     "lib": ["ESNext"],
     "target": "ESNext",
     "module": "Preserve",

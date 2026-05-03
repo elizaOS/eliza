@@ -1,9 +1,8 @@
 {
   "id": "form",
   "name": "Form",
-  "description": "Integrates Form chain capabilities for curves-based token economics with ERC20 conversion and management.",
-  "npmName": "@elizaos/plugin-form",
-  "version": "2.0.0-alpha.6",
+  "description": "Structured conversational forms — FORM service, form context provider, and form evaluator built into elizaOS core as an advanced capability.",
+  "version": "2.0.0-alpha.4",
   "source": "bundled",
   "tags": ["form", "conversational", "data-collection"],
   "config": {},

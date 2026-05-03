@@ -978,13 +978,11 @@ describe("Client Parameter Validation", () => {
   it("FarcasterClient constructor requires neynar and signerUuid", async () => {
     const { FarcasterClient } = await import("../client/FarcasterClient");
     // Passing minimal valid params should not throw
-    const neynarMock = {} as Parameters<typeof FarcasterClient.prototype.sendCast>[0] extends never
-      ? never
-      : Record<string, Function>;
+    const neynarMock = {} as never;
     expect(
       () =>
         new FarcasterClient({
-          neynar: neynarMock as never,
+          neynar: neynarMock,
           signerUuid: "uuid",
         })
     ).not.toThrow();

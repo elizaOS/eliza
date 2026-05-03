@@ -1,7 +1,9 @@
+import { elizaLogger } from "@elizaos/core";
 import {
   ComputeBudgetProgram,
   type Connection,
   type Keypair,
+  type TransactionInstruction,
   TransactionMessage,
   VersionedTransaction,
 } from "@solana/web3.js";
@@ -9,7 +11,7 @@ import {
 // For more information: https://orca-so.github.io/whirlpools/Whirlpools%20SDKs/Whirlpools/Send%20Transaction
 export async function sendTransaction(
   connection: Connection,
-  instructions: Array<any>,
+  instructions: TransactionInstruction[],
   wallet: Keypair
 ): Promise<string> {
   const latestBlockhash = await connection.getLatestBlockhash();

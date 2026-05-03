@@ -30,15 +30,11 @@
       "@elizaos/capacitor-mobile-signals": [
         "../native-plugins/mobile-signals/src/index.ts"
       ],
-      "@elizaos/capacitor-wifi": [
-        "../native-plugins/wifi/src/index.ts"
-      ],
+      "@elizaos/capacitor-wifi": ["../native-plugins/wifi/src/index.ts"],
       "@elizaos/capacitor-contacts": [
         "../native-plugins/contacts/src/index.ts"
       ],
-      "@elizaos/capacitor-phone": [
-        "../native-plugins/phone/src/index.ts"
-      ],
+      "@elizaos/capacitor-phone": ["../native-plugins/phone/src/index.ts"],
       "@elizaos/app-lifeops": ["../../apps/app-lifeops/src/index.ts"],
       "@elizaos/app-lifeops/*": ["../../apps/app-lifeops/src/*"],
       "@elizaos/app-phone": ["../../apps/app-phone/src/index.ts"],

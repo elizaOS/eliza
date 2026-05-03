@@ -8,23 +8,12 @@
     "emitDeclarationOnly": true,
     "noEmit": false,
     "paths": {
-      "@elizaos/cloud-sdk": [
-        "../../../cloud/packages/sdk/dist/index.d.ts"
-      ],
-      "@elizaos/core": [
-        "../packages/core/dist"
-      ]
+      "@elizaos/cloud-sdk": ["../../../cloud/packages/sdk/dist/index.d.ts"],
+      "@elizaos/core": ["../packages/core/dist"]
     },
-    "types": [
-      "node",
-      "bun-types"
-    ]
+    "types": ["node", "bun-types"]
   },
-  "include": [
-    "index.ts",
-    "index.node.ts",
-    "index.browser.ts"
-  ],
+  "include": ["index.ts", "index.node.ts", "index.browser.ts"],
   "exclude": [
     "node_modules",
     "dist",
