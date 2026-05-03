@@ -65,7 +65,7 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "zod": "^4.3.6"
+    "zod": "^4.4.2"
   },
   "optionalDependencies": {
     "figlet": "^1.11.0"

@@ -9,16 +9,16 @@
     "@raydium-io/raydium-sdk-v2": "^0.1.139-alpha",
     "@solana/spl-token": "^0.4.1",
     "bn.js": "^5.2.1",
-    "bs58": "^5.0.0",
+    "bs58": "^6.0.0",
     "decimal.js": "^10.4.3"
   },
   "devDependencies": {
-    "@solana/web3.js": "^1.91.4",
+    "@solana/web3.js": "^1.98.4",
     "@types/bn.js": "^5.1.5",
-    "dotenv": "^16.5.0",
-    "tsup": "8.5.0",
-    "vite-tsconfig-paths": "^4.3.2",
-    "vitest": "^2.0.4"
+    "dotenv": "^17.0.0",
+    "tsup": "^8.5.1",
+    "vite-tsconfig-paths": "^6.0.0",
+    "vitest": "^4.0.0"
   },
   "scripts": {
     "build": "tsup",

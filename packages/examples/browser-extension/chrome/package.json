@@ -22,10 +22,10 @@
   "devDependencies": {
     "@types/chrome": "^0.1.33",
     "@types/uuid": "^11.0.0",
-    "tsup": "^8.4.0",
+    "tsup": "^8.5.1",
     "typescript": "^6.0.0"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=24.0.0"
   }
 }

@@ -25,23 +25,23 @@
   ],
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@telegraf/types": "7.1.0",
+    "@telegraf/types": "^9.0.0",
     "@types/node": "^24.0.10",
     "strip-literal": "^3.0.0",
-    "telegram": "2.17.4",
+    "telegram": "^2.26.22",
     "telegraf": "4.16.3",
     "type-detect": "^4.1.0",
     "typescript": "^6.0.0"
   },
   "devDependencies": {
     "@elizaos/config": "1.7.3-alpha.4",
-    "@eslint/js": "^9.17.0",
+    "@eslint/js": "^10.0.0",
     "@typescript-eslint/eslint-plugin": "^8.22.0",
     "@typescript-eslint/parser": "^8.22.0",
-    "eslint": "^9.17.0",
-    "prettier": "3.5.3",
-    "tsup": "8.4.0",
-    "vitest": "1.6.1"
+    "eslint": "^10.0.0",
+    "prettier": "^3.8.3",
+    "tsup": "^8.5.1",
+    "vitest": "^4.0.0"
   },
   "scripts": {
     "build": "tsup",

@@ -15,11 +15,11 @@
     "@elizaos/plugin-sql": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^22.14.0",
+    "@types/node": "^22.19.17",
     "bun-types": "latest",
     "typescript": "^6.0.0"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=24.0.0"
   }
 }

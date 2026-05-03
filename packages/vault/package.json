@@ -10,7 +10,7 @@
     "directory": "packages/vault"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=24.0.0"
   },
   "main": "./src/index.ts",
   "types": "./src/index.ts",

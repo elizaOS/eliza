@@ -137,7 +137,7 @@
   "peerDependencies": {
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "three": "^0.182.0 || ^0.184.0"
+    "three": "^0.184.0"
   },
   "optionalDependencies": {
     "node-llama-cpp": "3.18.1"
@@ -195,7 +195,7 @@
     "telegraf": "^4.16.3",
     "undici": "^8.0.0",
     "ws": "^8.19.0",
-    "zod": "^4.3.6"
+    "zod": "^4.4.2"
   },
   "publishConfig": {
     "access": "public",

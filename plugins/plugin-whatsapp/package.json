@@ -35,8 +35,8 @@
   "dependencies": {
     "@hapi/boom": "^10.0.1",
     "@whiskeysockets/baileys": "^7.0.0-rc.9",
-    "axios": "1.15.0",
-    "pino": "^9.6.0",
+    "axios": "^1.16.0",
+    "pino": "^10.3.1",
     "qrcode": "^1.5.4",
     "qrcode-terminal": "^0.12.0"
   },
@@ -44,10 +44,10 @@
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.3.11",
+    "@biomejs/biome": "^2.4.14",
     "@types/node": "^25.0.3",
     "typescript": "^6.0.0",
-    "vitest": "^3.2.4"
+    "vitest": "^4.0.0"
   },
   "scripts": {
     "dev": "bun --hot build.ts",

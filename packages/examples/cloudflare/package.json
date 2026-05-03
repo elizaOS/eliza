@@ -23,7 +23,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241205.0",
-    "@types/uuid": "^10.0.0",
+    "@types/uuid": "^11.0.0",
     "wrangler": "^3.99.0"
   },
   "keywords": [

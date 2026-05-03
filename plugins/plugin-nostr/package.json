@@ -31,13 +31,13 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "nostr-tools": "^2.0.0",
-    "zod": "^4.3.6"
+    "zod": "^4.4.2"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
+    "@types/node": "^22.19.17",
     "typescript": "^6.0.3",
-    "@biomejs/biome": "^2.3.11",
-    "vitest": "^3.2.4"
+    "@biomejs/biome": "^2.4.14",
+    "vitest": "^4.0.0"
   },
   "eliza": {
     "platforms": [
