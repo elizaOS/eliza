@@ -122,10 +122,27 @@ export interface AuthedUser {
   is_anonymous?: boolean;
 }
 
+/**
+ * Per-request dependency container — populated by the composition middleware
+ * in `apps/api/src/composition/build-container.ts`, consumed by routes as
+ * `c.var.deps.<useCase>.execute(...)`.
+ *
+ * As aggregates migrate to Clean Architecture, use case properties are added
+ * to this interface (e.g., `issueApiKey: IssueApiKeyUseCase`). Phase A ships
+ * the empty interface — no use cases migrated yet, container is `{}`.
+ */
+export interface CompositionContext {}
+
 export interface Variables {
   user: AuthedUser | null | undefined;
   authMethod?: "session" | "api_key" | "wallet_signature" | "anonymous";
   requestId: string;
+  /**
+   * Per-request use-case container. Always set by the composition middleware
+   * mounted in `apps/api/src/bootstrap-app.ts`. Empty until Phase B; after
+   * that, contains use cases per migrated aggregate.
+   */
+  deps: CompositionContext;
 }
 
 export type AppEnv = {

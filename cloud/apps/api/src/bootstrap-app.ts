@@ -14,7 +14,8 @@ import { corsMiddleware } from "@/lib/cors/cloud-api-hono-cors";
 import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
 import { setRuntimeR2Bucket } from "@/lib/storage/r2-runtime-binding";
 import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv, Bindings } from "@/types/cloud-worker-env";
+import { buildContainer } from "./composition/build-container";
 import { mountRoutes } from "./_router.generated";
 
 import { authMiddleware } from "./middleware/auth";
@@ -25,8 +26,9 @@ export function createApp(): Hono<AppEnv> {
 
   app.use("*", async (c, next) => {
     setRuntimeR2Bucket(c.env.BLOB);
-    await runWithCloudBindingsAsync(c.env as Record<string, unknown>, async () =>
-      runWithDbCacheAsync(async () => next()),
+    await runWithCloudBindingsAsync(
+      c.env as Record<string, unknown>,
+      async () => runWithDbCacheAsync(async () => next()),
     );
   });
 
@@ -36,6 +38,7 @@ export function createApp(): Hono<AppEnv> {
   app.use("*", async (c, next) => {
     c.set("requestId", c.get("requestId") ?? crypto.randomUUID());
     c.set("user", undefined);
+    c.set("deps", buildContainer(c.env as Bindings));
     await next();
   });
   app.use("*", authMiddleware);
@@ -49,7 +52,10 @@ export function createApp(): Hono<AppEnv> {
   // splat-mounted sub-app.
   app.all("/api/v1/proxy/birdeye/*", (c) => {
     const url = new URL(c.req.url);
-    url.pathname = url.pathname.replace("/api/v1/proxy/birdeye", "/api/v1/apis/birdeye");
+    url.pathname = url.pathname.replace(
+      "/api/v1/proxy/birdeye",
+      "/api/v1/apis/birdeye",
+    );
     return c.redirect(url.toString(), 308);
   });
 
@@ -66,11 +72,21 @@ export function createApp(): Hono<AppEnv> {
   mountRoutes(app);
 
   app.notFound((c) =>
-    c.json({ success: false, error: "Not found", code: "resource_not_found" as const }, 404),
+    c.json(
+      {
+        success: false,
+        error: "Not found",
+        code: "resource_not_found" as const,
+      },
+      404,
+    ),
   );
 
   app.onError((err, c) => {
-    if (err instanceof ApiError || (err instanceof HTTPException && err.status < 500)) {
+    if (
+      err instanceof ApiError ||
+      (err instanceof HTTPException && err.status < 500)
+    ) {
       logger.debug("[CloudApi] Request rejected", {
         status: err.status,
         message: err.message,
