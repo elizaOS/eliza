@@ -9,6 +9,7 @@ import {
 import { hasLifeOpsAccess } from "../actions/lifeops-google-helpers.js";
 import type {
   LifeOpsGmailTriageSummary,
+  LifeOpsGoalDefinition,
   LifeOpsNextCalendarEventContext,
 } from "../contracts/index.js";
 import {
@@ -18,9 +19,97 @@ import {
 import { LifeOpsService } from "../lifeops/service.js";
 
 const INTERNAL_URL = new URL("http://127.0.0.1/");
+const GOAL_TITLE_MAX_LENGTH = 80;
+const GOAL_TITLES_MAX_DISPLAYED = 5;
 
 function formatCount(label: string, count: number): string {
   return `${label}: ${count}`;
+}
+
+function truncateGoalTitle(title: string): string {
+  const trimmed = title.trim();
+  if (trimmed.length <= GOAL_TITLE_MAX_LENGTH) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, GOAL_TITLE_MAX_LENGTH - 1).trimEnd()}…`;
+}
+
+function readGoalReviewedAt(goal: LifeOpsGoalDefinition): string | null {
+  const metadata = goal.metadata;
+  if (metadata && typeof metadata === "object") {
+    const computed = (metadata as Record<string, unknown>).computedGoalReview;
+    if (computed && typeof computed === "object") {
+      const reviewedAt = (computed as Record<string, unknown>).reviewedAt;
+      if (typeof reviewedAt === "string" && reviewedAt.length > 0) {
+        return reviewedAt;
+      }
+    }
+  }
+  return null;
+}
+
+function formatRelativePast(fromIso: string, now: Date): string {
+  const fromMs = new Date(fromIso).getTime();
+  if (!Number.isFinite(fromMs)) {
+    return "unknown";
+  }
+  const deltaMs = now.getTime() - fromMs;
+  if (deltaMs < 60_000) {
+    return "just now";
+  }
+  const minutes = Math.floor(deltaMs / 60_000);
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
+  const days = Math.floor(hours / 24);
+  if (days < 7) {
+    return `${days}d ago`;
+  }
+  const weeks = Math.floor(days / 7);
+  if (weeks < 5) {
+    return `${weeks}w ago`;
+  }
+  const months = Math.floor(days / 30);
+  if (months < 12) {
+    return `${months}mo ago`;
+  }
+  const years = Math.floor(days / 365);
+  return `${years}y ago`;
+}
+
+function summarizeActiveGoals(
+  goals: LifeOpsGoalDefinition[],
+  now: Date,
+): string[] {
+  const active = goals.filter((goal) => goal.status === "active");
+  if (active.length === 0) {
+    return [];
+  }
+  const sorted = [...active].sort((left, right) => {
+    const leftActivityIso = readGoalReviewedAt(left) ?? left.updatedAt;
+    const rightActivityIso = readGoalReviewedAt(right) ?? right.updatedAt;
+    const leftMs = new Date(leftActivityIso).getTime();
+    const rightMs = new Date(rightActivityIso).getTime();
+    const leftSafe = Number.isFinite(leftMs) ? leftMs : 0;
+    const rightSafe = Number.isFinite(rightMs) ? rightMs : 0;
+    return rightSafe - leftSafe;
+  });
+  const top = sorted.slice(0, GOAL_TITLES_MAX_DISPLAYED);
+  const lines = top.map((goal) => {
+    const reviewedAtIso = readGoalReviewedAt(goal);
+    const lastReviewedFragment = reviewedAtIso
+      ? `last reviewed ${formatRelativePast(reviewedAtIso, now)}`
+      : "not yet reviewed";
+    return `- ${truncateGoalTitle(goal.title)} (${goal.reviewState}, ${lastReviewedFragment})`;
+  });
+  if (active.length > top.length) {
+    lines.push(`- (+${active.length - top.length} more active goals)`);
+  }
+  return lines;
 }
 
 function summarizeOccurrences(
@@ -107,10 +196,12 @@ export const lifeOpsProvider: Provider = {
     const service = new LifeOpsService(runtime);
     const ownerProfile = await readLifeOpsOwnerProfile(runtime);
     const overview = await service.getOverview();
+    const now = new Date();
     const ownerLines = summarizeOccurrences(
       "Owner active items:",
       overview.owner.occurrences,
     );
+    const ownerGoalLines = summarizeActiveGoals(overview.owner.goals, now);
     const agentLines = summarizeOccurrences(
       "Agent ops:",
       overview.agentOps.occurrences,
@@ -229,6 +320,7 @@ export const lifeOpsProvider: Provider = {
           "Owner active goals",
           overview.owner.summary.activeGoalCount,
         ),
+        ...ownerGoalLines,
         formatCount(
           "Owner live reminders",
           overview.owner.summary.activeReminderCount,
@@ -250,6 +342,9 @@ export const lifeOpsProvider: Provider = {
       values: {
         ownerOpenOccurrences: overview.owner.summary.activeOccurrenceCount,
         ownerActiveGoals: overview.owner.summary.activeGoalCount,
+        ownerActiveGoalTitles: overview.owner.goals
+          .filter((goal) => goal.status === "active")
+          .map((goal) => goal.title),
         ownerProfileName: ownerProfile.name,
         ownerRelationshipStatus: ownerProfile.relationshipStatus,
         ownerPartnerName: ownerProfile.partnerName,
