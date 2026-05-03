@@ -311,7 +311,7 @@
     "dompurify": "3.4.2",
     "bn.js": "5.2.3",
     "express-rate-limit": "8.3.0",
-    "fast-xml-parser": "5.4.2",
+    "fast-xml-parser": "5.7.2",
     "hono": "4.12.16",
     "lodash-es": "4.17.23",
     "multer": "2.1.1",
