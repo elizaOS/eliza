@@ -22,5 +22,8 @@
   "modelProvider": "anthropic",
   "secrets": {
     "enableServerless": false
-  }
+  },
+  "plugins": [
+    "@elizaos/plugin-exergynet"
+  ]
 }
