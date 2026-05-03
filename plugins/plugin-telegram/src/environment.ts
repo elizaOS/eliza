@@ -23,9 +23,7 @@ export async function validateTelegramConfig(
   try {
     const rawToken = runtime.getSetting('TELEGRAM_BOT_TOKEN');
     const fromRuntime =
-      typeof rawToken === 'string' && rawToken.trim()
-        ? rawToken.trim()
-        : '';
+      typeof rawToken === 'string' && rawToken.trim() ? rawToken.trim() : '';
     const fromEnv = process.env.TELEGRAM_BOT_TOKEN;
     const config = {
       TELEGRAM_BOT_TOKEN:

@@ -1195,6 +1195,7 @@ export function categorizePlugin(
     "twitch",
   ];
   const streamingDests = [
+    "streaming",
     "streaming-base",
     "custom-rtmp",
     "youtube",
@@ -1317,6 +1318,7 @@ const PLUGIN_SETUP_GUIDE_ANCHORS: Record<string, string> = {
   mcp: "#mcp-model-context-protocol",
   iq: "#iq-solana-on-chain",
   "gmail-watch": "#gmail-watch",
+  streaming: "#enable-streaming-streaming-base",
   "streaming-base": "#enable-streaming-streaming-base",
   "twitch-streaming": "#twitch-streaming",
   "youtube-streaming": "#youtube-streaming",

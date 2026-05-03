@@ -48,7 +48,7 @@ interface YtDlpMeta {
   lastUpdateAttemptedAt: number;
 }
 
-type YtDlpSource = "env" | "path" | "cache";
+type YtDlpSource = "env" | "path" | "cache" | "bundled";
 
 const EXTRACTOR_BROKEN_PATTERNS: readonly RegExp[] = [
   /Unable to extract/i,
@@ -107,14 +107,14 @@ export class BinaryResolver {
     this.fetchImpl = opts.fetchImpl ?? ((...a) => globalThis.fetch(...a));
     this.now = opts.now ?? Date.now;
     this.disableAutoUpdate =
-      opts.disableAutoUpdate ?? envBool("MILADY_DISABLE_YTDLP_AUTOUPDATE");
+      opts.disableAutoUpdate ?? envBool("ELIZA_DISABLE_YTDLP_AUTOUPDATE");
     this.preferSystemPath =
-      opts.preferSystemPath ?? envBool("MILADY_YT_DLP_PREFER_PATH");
+      opts.preferSystemPath ?? envBool("ELIZA_YT_DLP_PREFER_PATH");
     this.updateThrottleMs = opts.updateThrottleMs ?? YT_DLP_UPDATE_THROTTLE_MS;
     this.envOverridePath =
       opts.envOverridePath !== undefined
         ? opts.envOverridePath
-        : (process.env.MILADY_YT_DLP_PATH ?? null);
+        : (process.env.ELIZA_YT_DLP_PATH ?? null);
   }
 
   get cacheDir(): string {
@@ -131,8 +131,8 @@ export class BinaryResolver {
 
   /**
    * Resolve the yt-dlp binary path. Order:
-   *   1. MILADY_YT_DLP_PATH env override.
-   *   2. If MILADY_YT_DLP_PREFER_PATH=1: system PATH, then cache.
+   *   1. ELIZA_YT_DLP_PATH env override.
+   *   2. If ELIZA_YT_DLP_PREFER_PATH=1: system PATH, then cache.
    *   3. Otherwise: cache (download if missing) → PATH fallback.
    */
   async getYtDlpPath(): Promise<string> {
@@ -148,7 +148,7 @@ export class BinaryResolver {
         return this.envOverridePath;
       }
       elizaLogger.warn(
-        `[plugin-video] MILADY_YT_DLP_PATH=${this.envOverridePath} is not executable; falling through.`,
+        `[plugin-video] ELIZA_YT_DLP_PATH=${this.envOverridePath} is not executable; falling through.`,
       );
     }
 
@@ -182,6 +182,16 @@ export class BinaryResolver {
       return sys;
     }
 
+    const bundled = await getBundledYtDlpPath();
+    if (bundled) {
+      this.resolvedYtDlpPath = bundled;
+      this.resolvedYtDlpSource = "bundled";
+      elizaLogger.log(
+        `[plugin-video] Using yt-dlp from youtube-dl-exec bundle: ${bundled}`,
+      );
+      return bundled;
+    }
+
     elizaLogger.log(
       "[plugin-video] No yt-dlp binary found; downloading to managed cache.",
     );
@@ -191,11 +201,11 @@ export class BinaryResolver {
     return cachePath;
   }
 
-  /** Resolution order: MILADY_FFMPEG_PATH env → system ffmpeg → ffmpeg-static. */
+  /** Resolution order: ELIZA_FFMPEG_PATH env → system ffmpeg → ffmpeg-static. */
   async getFfmpegPath(): Promise<string | null> {
     if (this.resolvedFfmpegPath !== undefined) return this.resolvedFfmpegPath;
 
-    const envPath = process.env.MILADY_FFMPEG_PATH;
+    const envPath = process.env.ELIZA_FFMPEG_PATH;
     if (envPath && (await isExecutable(envPath))) {
       this.resolvedFfmpegPath = envPath;
       return envPath;
@@ -265,7 +275,15 @@ export class BinaryResolver {
 
   private shouldRetryWithUpdate(err: unknown): boolean {
     if (this.disableAutoUpdate) return false;
-    if (this.resolvedYtDlpSource !== "cache") return false;
+    // Auto-update fires only when we own the binary lifecycle (managed cache
+    // or the bundled-with-youtube-dl-exec copy). User-managed binaries (env
+    // override, system PATH) are out of scope — we don't touch homebrew.
+    if (
+      this.resolvedYtDlpSource !== "cache" &&
+      this.resolvedYtDlpSource !== "bundled"
+    ) {
+      return false;
+    }
     const msg = errorMessage(err);
     return EXTRACTOR_BROKEN_PATTERNS.some((p) => p.test(msg));
   }
@@ -457,12 +475,10 @@ export class BinaryResolver {
 }
 
 function defaultBinariesDir(): string {
-  const explicit = process.env.MILADY_BINARIES_DIR;
+  const explicit = process.env.ELIZA_BINARIES_DIR;
   if (explicit) return explicit;
   const stateDir =
-    process.env.MILADY_STATE_DIR ??
-    process.env.ELIZA_STATE_DIR ??
-    path.join(os.homedir(), ".milady");
+    process.env.ELIZA_STATE_DIR ?? path.join(os.homedir(), ".eliza");
   return path.join(stateDir, "binaries");
 }
 
@@ -492,6 +508,44 @@ async function isExecutable(p: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Look for the yt-dlp binary that `youtube-dl-exec`'s postinstall ships into
+ * its own `bin/` directory. Tries the package's internal constants first
+ * (which the wrapper uses by default), then falls back to a hardcoded
+ * relative path. Returns the path only if the binary is actually executable.
+ */
+async function getBundledYtDlpPath(): Promise<string | null> {
+  try {
+    const constantsModule = (await import(
+      "youtube-dl-exec/src/constants.js" as string
+    )) as { default?: { YOUTUBE_DL_PATH?: string } } & {
+      YOUTUBE_DL_PATH?: string;
+    };
+    const fromConstants =
+      constantsModule.default?.YOUTUBE_DL_PATH ??
+      constantsModule.YOUTUBE_DL_PATH;
+    if (
+      typeof fromConstants === "string" &&
+      fromConstants.length > 0 &&
+      (await isExecutable(fromConstants))
+    ) {
+      return fromConstants;
+    }
+  } catch {
+    /* package internals unavailable; fall through to relative resolve */
+  }
+  try {
+    const { createRequire } = await import("node:module");
+    const req = createRequire(import.meta.url);
+    const pkgPath = req.resolve("youtube-dl-exec/package.json");
+    const candidate = path.join(path.dirname(pkgPath), "bin", ytDlpFileName());
+    if (await isExecutable(candidate)) return candidate;
+  } catch {
+    /* youtube-dl-exec not installed in this tree */
+  }
+  return null;
 }
 
 async function lookupOnPath(name: string): Promise<string | null> {

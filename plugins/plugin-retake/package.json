@@ -35,7 +35,7 @@
   ],
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-streaming-base": "workspace:*"
+    "@elizaos/plugin-streaming": "workspace:*"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

@@ -243,7 +243,7 @@ const vitestResolveAlias: ModuleAlias[] = [
     find: /^@elizaos\/plugin-sql$/,
     replacement: path.join(
       elizaWorkspaceRoot,
-      "plugins/plugin-sql/index.node.ts",
+      "plugins/plugin-sql/typescript/index.node.ts",
     ),
   },
   {
@@ -353,6 +353,7 @@ const vitestResolveAlias: ModuleAlias[] = [
   ...getWorkspaceAppAliases(repoRoot, [
     "app-companion",
     "app-task-coordinator",
+    "app-training",
     "app-vincent",
     "app-shopify",
     "app-steward",

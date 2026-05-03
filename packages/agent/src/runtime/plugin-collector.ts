@@ -182,12 +182,13 @@ export const OPTIONAL_PLUGIN_MAP: Readonly<Record<string, string>> = {
   x402: "@elizaos/plugin-x402",
   // plugin-manager, secrets (SECRETS), trust: now built-in core capabilities
   // Enable via ENABLE_PLUGIN_MANAGER, ENABLE_SECRETS_MANAGER, ENABLE_TRUST
-  "streaming-base": "@elizaos/plugin-streaming-base",
-  "twitch-streaming": "@elizaos/plugin-twitch-streaming",
-  "youtube-streaming": "@elizaos/plugin-youtube-streaming",
-  "custom-rtmp": "@elizaos/plugin-custom-rtmp",
-  "pumpfun-streaming": "@elizaos/plugin-pumpfun-streaming",
-  "x-streaming": "@elizaos/plugin-x-streaming",
+  streaming: "@elizaos/plugin-streaming",
+  "streaming-base": "@elizaos/plugin-streaming",
+  "twitch-streaming": "@elizaos/plugin-streaming",
+  "youtube-streaming": "@elizaos/plugin-streaming",
+  "custom-rtmp": "@elizaos/plugin-streaming",
+  "pumpfun-streaming": "@elizaos/plugin-streaming",
+  "x-streaming": "@elizaos/plugin-streaming",
   // Steward wallet plugin — short ID used by auto-enable
   "stwd-eliza-plugin": "@stwd/eliza-plugin",
 };

@@ -1,17 +1,17 @@
+import { strict as assert } from "node:assert";
 import {
-  type IAgentRuntime,
-  type Entity,
-  type Room,
-  type Content,
-  type Memory,
-  createUniqueUuid,
-  EventType,
   asUUID,
   ChannelType,
+  type Content,
+  createUniqueUuid,
+  type Entity,
+  EventType,
+  type IAgentRuntime,
+  type Memory,
+  type Room,
   type World,
 } from "@elizaos/core";
 import { v4 as uuid } from "uuid";
-import { strict as assert } from "node:assert";
 
 /**
  * Sets up a standard scenario environment for an E2E test.

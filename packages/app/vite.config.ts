@@ -335,10 +335,7 @@ function tryResolveElizaCorePkgDir(): string | null {
   try {
     return path.dirname(_require.resolve("@elizaos/core/package.json"));
   } catch {
-    const workspaceCorePkg = path.join(
-      elizaRoot,
-      "packages/core/package.json",
-    );
+    const workspaceCorePkg = path.join(elizaRoot, "packages/core/package.json");
     return fs.existsSync(workspaceCorePkg)
       ? path.dirname(workspaceCorePkg)
       : null;
@@ -368,9 +365,7 @@ function isElizaCoreBrowserDistId(id: string | undefined): boolean {
       "/node_modules/@elizaos/core/dist/browser/index.browser.js",
     ) ||
     normalized.endsWith("/eliza/packages/core/dist/index.browser.js") ||
-    normalized.endsWith(
-      "/eliza/packages/core/dist/browser/index.browser.js",
-    )
+    normalized.endsWith("/eliza/packages/core/dist/browser/index.browser.js")
   );
 }
 

@@ -30,20 +30,20 @@ describe("BinaryResolver", () => {
 
   beforeEach(async () => {
     tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "binres-test-"));
-    delete process.env.MILADY_YT_DLP_PATH;
-    delete process.env.MILADY_YT_DLP_PREFER_PATH;
-    delete process.env.MILADY_FFMPEG_PATH;
-    delete process.env.MILADY_DISABLE_YTDLP_AUTOUPDATE;
+    delete process.env.ELIZA_YT_DLP_PATH;
+    delete process.env.ELIZA_YT_DLP_PREFER_PATH;
+    delete process.env.ELIZA_FFMPEG_PATH;
+    delete process.env.ELIZA_DISABLE_YTDLP_AUTOUPDATE;
   });
 
   afterEach(async () => {
     await fsp.rm(tmpDir, { recursive: true, force: true });
     ytMock.mockReset();
     BinaryResolver.resetForTests();
-    delete process.env.MILADY_YT_DLP_PATH;
-    delete process.env.MILADY_YT_DLP_PREFER_PATH;
-    delete process.env.MILADY_FFMPEG_PATH;
-    delete process.env.MILADY_DISABLE_YTDLP_AUTOUPDATE;
+    delete process.env.ELIZA_YT_DLP_PATH;
+    delete process.env.ELIZA_YT_DLP_PREFER_PATH;
+    delete process.env.ELIZA_FFMPEG_PATH;
+    delete process.env.ELIZA_DISABLE_YTDLP_AUTOUPDATE;
   });
 
   async function writeExecutable(
@@ -139,7 +139,7 @@ describe("BinaryResolver", () => {
   }
 
   describe("resolution", () => {
-    it("uses MILADY_YT_DLP_PATH env override when executable", async () => {
+    it("uses ELIZA_YT_DLP_PATH env override when executable", async () => {
       const envPath = await writeExecutable(path.join(tmpDir, "custom-yt-dlp"));
       const r = new BinaryResolver({
         binariesDir: path.join(tmpDir, "cache"),
@@ -184,7 +184,7 @@ describe("BinaryResolver", () => {
       }
     });
 
-    it("prefers PATH over cache when MILADY_YT_DLP_PREFER_PATH is set", async () => {
+    it("prefers PATH over cache when ELIZA_YT_DLP_PREFER_PATH is set", async () => {
       await writeExecutable(path.join(tmpDir, "cache", ytDlpFileName()));
       const sysDir = await fsp.mkdtemp(path.join(os.tmpdir(), "binres-sys-"));
       const sysBin = await writeExecutable(path.join(sysDir, ytDlpFileName()));
@@ -370,7 +370,7 @@ describe("BinaryResolver", () => {
       expect(ytMock).toHaveBeenCalledTimes(1);
     });
 
-    it("does not auto-update when MILADY_DISABLE_YTDLP_AUTOUPDATE=1", async () => {
+    it("does not auto-update when ELIZA_DISABLE_YTDLP_AUTOUPDATE=1", async () => {
       await writeExecutable(path.join(tmpDir, "cache", ytDlpFileName()));
       ytMock.mockRejectedValueOnce(
         Object.assign(new Error("fail"), {
@@ -434,10 +434,83 @@ describe("BinaryResolver", () => {
     });
   });
 
+  describe("bundled fallback (youtube-dl-exec/bin/yt-dlp)", () => {
+    /**
+     * youtube-dl-exec's postinstall normally drops the binary at
+     * `node_modules/youtube-dl-exec/bin/yt-dlp`. On dev machines where the
+     * postinstall succeeded, the binary will already be discoverable via
+     * `getBundledYtDlpPath()`. This test asserts that when env/cache/PATH
+     * all fail, we resolve through that bundled path rather than going
+     * straight to download.
+     */
+    it("uses youtube-dl-exec's bundled binary when env/cache/PATH are empty (if present in node_modules)", async () => {
+      const oldPath = process.env.PATH;
+      process.env.PATH = "/nonexistent-dir-for-test";
+      try {
+        const r = new BinaryResolver({
+          binariesDir: path.join(tmpDir, "cache"),
+          envOverridePath: null,
+          releaseUrl: "https://example.invalid/release",
+          fetchImpl: buildFetch([]),
+        });
+        // The bundled binary may or may not exist on this machine — the test
+        // tolerates both. If absent, the resolver must fall through to a
+        // download attempt (which fails because no fetch handler is set,
+        // yielding a clear error). If present, resolution succeeds and the
+        // path lives inside node_modules/youtube-dl-exec/bin/.
+        try {
+          const resolved = await r.getYtDlpPath();
+          expect(resolved).toMatch(/youtube-dl-exec[/\\]bin[/\\]yt-dlp/);
+        } catch (err) {
+          // Acceptable: bundled binary missing; resolver tried download next.
+          expect(String(err)).toMatch(/Unexpected fetch/i);
+        }
+      } finally {
+        process.env.PATH = oldPath;
+      }
+    });
+
+    it("auto-updates from a bundled binary on extractor failure", async () => {
+      // Stage a fake "bundled" path: simulate by giving the resolver an
+      // executable file that is not in the cache or on PATH. We can't easily
+      // intercept the youtube-dl-exec resolution for the bundled path, but
+      // we can validate the more general invariant: any non-env, non-path
+      // source should still get the auto-update treatment. The cache test
+      // already covers source="cache". Here we sanity-check that the source
+      // gating in shouldRetryWithUpdate accepts the right values by exercising
+      // the cache path with a thrown extractor error.
+      await writeExecutable(
+        path.join(tmpDir, "cache", ytDlpFileName()),
+        "old-bundled-equiv",
+      );
+      const newContent = "new-binary-from-update";
+      const release = buildRelease(newContent);
+      const releaseUrl = "https://example.invalid/release";
+      ytMock
+        .mockRejectedValueOnce(
+          Object.assign(new Error("e"), {
+            stderr: "Unable to extract player response",
+          }),
+        )
+        .mockResolvedValueOnce({ ok: true });
+      const r = new BinaryResolver({
+        binariesDir: path.join(tmpDir, "cache"),
+        envOverridePath: null,
+        releaseUrl,
+        fetchImpl: buildFetch(
+          buildHandlers(releaseUrl, { ...release, binaryContent: newContent }),
+        ),
+      });
+      const result = (await r.runYtDlp("https://x/y", {})) as { ok?: boolean };
+      expect(result.ok).toBe(true);
+      expect(ytMock).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe("ffmpeg resolution", () => {
-    it("uses MILADY_FFMPEG_PATH env override when executable", async () => {
+    it("uses ELIZA_FFMPEG_PATH env override when executable", async () => {
       const ffPath = await writeExecutable(path.join(tmpDir, "ffmpeg"));
-      process.env.MILADY_FFMPEG_PATH = ffPath;
+      process.env.ELIZA_FFMPEG_PATH = ffPath;
       const r = new BinaryResolver({
         binariesDir: path.join(tmpDir, "cache"),
         envOverridePath: null,

@@ -1,16 +1,33 @@
 import * as anchor from "@coral-xyz/anchor";
 import {
-  IAgentRuntime,
+  type IAgentRuntime,
+  type LpPositionDetails,
+  type PoolInfo,
   Service,
-  LpPositionDetails,
-  PoolInfo,
-  TokenBalance,
-  TransactionResult,
+  type TokenBalance,
+  type TransactionResult,
 } from "@elizaos/core";
-import { DLMM, StrategyType, autoFillYByStrategy } from "../utils/dlmm.ts";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+import { autoFillYByStrategy, DLMM, StrategyType } from "../utils/dlmm.ts";
 import { sendTransaction } from "../utils/sendTransaction.ts";
+
 const { BN } = anchor;
+
+/** Shape returned by `GET https://dlmm-api.meteora.ag/pair/all` */
+interface MeteoraApiPoolRow {
+  address: string;
+  mint_x: string;
+  name_x?: string;
+  decimals_x: number;
+  mint_y: string;
+  name_y?: string;
+  decimals_y: number;
+  apr?: number;
+  liquidity?: string | number;
+}
+
+type DlmmPool = Awaited<ReturnType<typeof DLMM.create>>;
+type DlmmPosition = Awaited<ReturnType<DlmmPool["getPosition"]>>;
 
 export class MeteoraLpService extends Service {
   public static readonly serviceType = "meteora-lp";
@@ -50,10 +67,10 @@ export class MeteoraLpService extends Service {
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      const data = (await response.json()) as any[];
+      const data = (await response.json()) as MeteoraApiPoolRow[];
 
-      let pools = data.map(
-        (pool: any): PoolInfo => ({
+      const pools = data.map(
+        (pool: MeteoraApiPoolRow): PoolInfo => ({
           id: pool.address,
           dex: "meteora",
           tokenA: {
@@ -69,7 +86,7 @@ export class MeteoraLpService extends Service {
           // The API does not provide APY or TVL directly in this endpoint.
           // These would need to be fetched from another source or calculated.
           apy: pool.apr ? pool.apr / 100 : 0, // Handle missing apr field
-          tvl: pool.liquidity ? parseFloat(pool.liquidity) : 0, // Parse liquidity string to number
+          tvl: pool.liquidity != null ? Number(pool.liquidity) : 0,
         }),
       );
 
@@ -173,11 +190,11 @@ export class MeteoraLpService extends Service {
           symbol: "METEORA-POS",
         },
       };
-    } catch (error: any) {
+    } catch (error) {
       console.error("[MeteoraLpService] Error adding liquidity:", error);
       return {
         success: false,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
       };
     }
   }
@@ -288,11 +305,11 @@ export class MeteoraLpService extends Service {
         transactionId: lastSignature,
         tokensReceived,
       };
-    } catch (error: any) {
+    } catch (error) {
       console.error("[MeteoraLpService] Error removing liquidity:", error);
       return {
         success: false,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
       };
     }
   }
@@ -304,19 +321,21 @@ export class MeteoraLpService extends Service {
     try {
       const userPubKey = new PublicKey(userAccountPublicKey);
 
-      let position: any = null;
-      let poolAddress: string = "";
+      let position: DlmmPosition | null = null;
+      let poolAddress = "";
 
       try {
         // First, assume the identifier is a position public key
         const positionPubKey = new PublicKey(poolOrPositionIdentifier);
-        const dlmmPool = await DLMM.create(
-          this.connection,
-          (await this.connection.getAccountInfo(positionPubKey))!.owner,
-        );
+        const accountInfo =
+          await this.connection.getAccountInfo(positionPubKey);
+        if (!accountInfo) {
+          throw new Error("Position account not found");
+        }
+        const dlmmPool = await DLMM.create(this.connection, accountInfo.owner);
         position = await dlmmPool.getPosition(positionPubKey);
         poolAddress = dlmmPool.pubkey.toBase58();
-      } catch (e) {
+      } catch (_e) {
         // If that fails, assume it's a pool address
         try {
           const dlmmPool = await DLMM.create(
@@ -383,7 +402,7 @@ export class MeteoraLpService extends Service {
         underlyingTokens,
         valueUsd: 0, // TODO: requires a price oracle
       };
-    } catch (error: any) {
+    } catch (error) {
       console.error(
         "[MeteoraLpService] Error getting LP position details:",
         error,
@@ -434,10 +453,10 @@ export class MeteoraLpService extends Service {
         const decimals =
           tokenAccounts.value[0].account.data.parsed.info.decimals;
         // Convert UI amount to lamports
-        return new BN(balance * Math.pow(10, decimals));
+        return new BN(balance * 10 ** decimals);
       }
       return new BN(0);
-    } catch (e) {
+    } catch (_e) {
       // This can happen if the token account doesn't exist.
       return new BN(0);
     }

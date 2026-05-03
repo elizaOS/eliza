@@ -4,42 +4,23 @@ import {
   ModelType,
   type Plugin,
 } from "@elizaos/core";
-import { postAction } from "./actions/post";
 import {
   handleTextEmbedding,
   handleTextLarge,
   handleTextSmall,
   isGrokConfigured,
 } from "./models/grok";
-import { XService } from "./services/x.service";
-import { getSetting } from "./utils/settings";
-
-export { XService } from "./services/x.service";
 
 export const XAIPlugin: Plugin = {
   name: "xai",
-  description: "xAI Grok models and X (formerly Twitter) API integration",
-
-  actions: [postAction],
-  services: [XService],
+  description: "xAI Grok models for text generation and embeddings",
 
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     logger.log("Initializing xAI plugin...");
-
     if (isGrokConfigured(runtime)) {
       logger.log("✓ Grok API configured");
-    }
-
-    const authMode = getSetting(runtime, "X_AUTH_MODE") || "env";
-    const hasApiKey = getSetting(runtime, "X_API_KEY");
-    const hasBearer = getSetting(runtime, "X_BEARER_TOKEN");
-
-    if (authMode === "env" && hasApiKey) {
-      logger.log("✓ X API configured (OAuth 1.0a)");
-    } else if (authMode === "bearer" && hasBearer) {
-      logger.log("✓ X API configured (Bearer token)");
-    } else if (authMode === "oauth") {
-      logger.log("✓ X API configured (OAuth 2.0)");
+    } else {
+      logger.warn("XAI_API_KEY not set; Grok models will fail at call time.");
     }
   },
 

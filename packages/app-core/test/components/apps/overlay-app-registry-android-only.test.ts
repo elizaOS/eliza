@@ -10,11 +10,11 @@
  */
 
 import { describe, expect, it } from "vitest";
+import type { OverlayApp } from "../../../src/components/apps/overlay-app-api";
 import {
   getAvailableOverlayApps,
   registerOverlayApp,
 } from "../../../src/components/apps/overlay-app-registry";
-import type { OverlayApp } from "../../../src/components/apps/overlay-app-api";
 
 function makeApp(name: string, opts: { androidOnly?: boolean }): OverlayApp {
   return {

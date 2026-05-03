@@ -43,10 +43,8 @@ function normalizeMode(value: string | undefined): IosRuntimeMode {
 
 export function resolveCloudApiBase(env: RuntimeEnv): string {
   return (
-    readString(env, [
-      "VITE_ELIZA_CLOUD_BASE",
-      "VITE_CLOUD_BASE",
-    ]) ?? DEFAULT_ELIZA_CLOUD_BASE
+    readString(env, ["VITE_ELIZA_CLOUD_BASE", "VITE_CLOUD_BASE"]) ??
+    DEFAULT_ELIZA_CLOUD_BASE
   ).replace(/\/+$/, "");
 }
 
@@ -80,9 +78,7 @@ export function resolveIosRuntimeConfig(env: RuntimeEnv): IosRuntimeConfig {
   const explicitDeviceBridgeUrl = readString(env, [
     "VITE_ELIZA_DEVICE_BRIDGE_URL",
   ]);
-  const deviceBridgeToken = readString(env, [
-    "VITE_ELIZA_DEVICE_BRIDGE_TOKEN",
-  ]);
+  const deviceBridgeToken = readString(env, ["VITE_ELIZA_DEVICE_BRIDGE_TOKEN"]);
 
   return {
     mode,

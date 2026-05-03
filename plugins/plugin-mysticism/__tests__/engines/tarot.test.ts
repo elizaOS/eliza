@@ -20,6 +20,7 @@ import type {
   TarotCard,
   TarotReadingState,
 } from "../../src/types";
+import { assertNonNull } from "../assert-non-null";
 
 // ─── Deck Tests ──────────────────────────────────────────
 
@@ -309,8 +310,8 @@ describe("TarotEngine", () => {
   });
 
   it("reversed cards produce different interpretation prompt than upright", () => {
-    const spread = getSpread("single")!;
-    const card = getCard("major_00_fool")!;
+    const spread = assertNonNull(getSpread("single"));
+    const card = assertNonNull(getCard("major_00_fool"));
 
     const uprightState: TarotReadingState = {
       spread,
@@ -645,7 +646,7 @@ describe("TarotEngine Edge Cases", () => {
 // ─── Interpreter Prompt Content Verification ─────────────
 
 describe("Interpreter Prompt Content Verification", () => {
-  const testCard = getCard("major_00_fool")!;
+  const testCard = assertNonNull(getCard("major_00_fool"));
   const testPosition: SpreadPosition = {
     index: 0,
     name: "Present / Significator",
@@ -701,15 +702,15 @@ describe("Interpreter Prompt Content Verification", () => {
 
   it("buildSynthesisPrompt includes all card names", () => {
     const cards: DrawnCard[] = [
-      { card: getCard("major_00_fool")!, reversed: false, positionIndex: 0 },
-      { card: getCard("major_01_magician")!, reversed: true, positionIndex: 1 },
+      { card: assertNonNull(getCard("major_00_fool")), reversed: false, positionIndex: 0 },
+      { card: assertNonNull(getCard("major_01_magician")), reversed: true, positionIndex: 1 },
       {
-        card: getCard("major_02_high_priestess")!,
+        card: assertNonNull(getCard("major_02_high_priestess")),
         reversed: false,
         positionIndex: 2,
       },
     ];
-    const spread = getSpread("three_card")!;
+    const spread = assertNonNull(getSpread("three_card"));
     const prompt = buildSynthesisPrompt(cards, spread, "test question", []);
     expect(prompt).toContain("The Fool");
     expect(prompt).toContain("The Magician");
@@ -718,9 +719,9 @@ describe("Interpreter Prompt Content Verification", () => {
 
   it("buildSynthesisPrompt includes the question", () => {
     const cards: DrawnCard[] = [
-      { card: getCard("major_00_fool")!, reversed: false, positionIndex: 0 },
+      { card: assertNonNull(getCard("major_00_fool")), reversed: false, positionIndex: 0 },
     ];
-    const spread = getSpread("single")!;
+    const spread = assertNonNull(getSpread("single"));
     const prompt = buildSynthesisPrompt(cards, spread, "Am I on the right path?", []);
     expect(prompt).toContain("Am I on the right path?");
   });

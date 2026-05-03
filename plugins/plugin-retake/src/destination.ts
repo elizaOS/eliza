@@ -25,7 +25,7 @@ import {
   createCloudRelayDestination,
   resolveStreamingBackend,
   type StreamingPluginConfig,
-} from "@elizaos/plugin-streaming-base";
+} from "@elizaos/plugin-streaming";
 import type { StreamingDestination } from "./types.ts";
 
 const RETAKE_BACKEND_CFG: StreamingPluginConfig = {

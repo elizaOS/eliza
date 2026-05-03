@@ -16,12 +16,12 @@ describe("SendMessageAction", () => {
 
 		it("should have a description", () => {
 			expect(sendMessageAction.description).toBeTruthy();
-			expect(sendMessageAction.description.length).toBeGreaterThan(0);
+			expect(sendMessageAction.description?.length ?? 0).toBeGreaterThan(0);
 		});
 
 		it("should have examples", () => {
 			expect(sendMessageAction.examples).toBeDefined();
-			expect(sendMessageAction.examples.length).toBeGreaterThan(0);
+			expect(sendMessageAction.examples?.length ?? 0).toBeGreaterThan(0);
 		});
 	});
 

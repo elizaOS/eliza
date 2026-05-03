@@ -71,7 +71,12 @@ export const tarotReadingAction: Action = {
   description:
     "Perform a tarot card reading, drawing cards into a spread and revealing each one iteratively.",
 
-  validate: async (runtime: any, message: any, state?: any, options?: any): Promise<boolean> => {
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+    options?: HandlerOptions | Record<string, JsonValue | undefined>
+  ): Promise<boolean> => {
     const __avTextRaw = typeof message?.content?.text === "string" ? message.content.text : "";
     const __avText = __avTextRaw.toLowerCase();
     const __avKeywords = ["tarot", "reading"];
@@ -84,10 +89,14 @@ export const tarotReadingAction: Action = {
     const __avSourceOk = __avExpectedSource
       ? __avSource === __avExpectedSource
       : Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
-    const __avOptions = options && typeof options === "object" ? options : {};
+    const __avOptionsHasKeys =
+      options !== undefined &&
+      typeof options === "object" &&
+      options !== null &&
+      Object.keys(options).length > 0;
     const __avInputOk =
       __avText.trim().length > 0 ||
-      Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
+      __avOptionsHasKeys ||
       Boolean(message?.content && typeof message.content === "object");
 
     if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
@@ -95,27 +104,27 @@ export const tarotReadingAction: Action = {
     }
 
     const __avLegacyValidate = async (
-      runtime: IAgentRuntime,
-      message: Memory,
+      rt: IAgentRuntime,
+      msg: Memory,
       _state: State | undefined
     ): Promise<boolean> => {
-      const text = (message.content.text ?? "").toLowerCase();
+      const text = (msg.content.text ?? "").toLowerCase();
 
       const hasTarotIntent = TAROT_KEYWORDS.some((kw) => text.includes(kw));
       if (!hasTarotIntent) return false;
 
-      const service = runtime.getService<MysticismService>("MYSTICISM");
+      const service = rt.getService<MysticismService>("MYSTICISM");
       if (!service) {
         logger.warn("TAROT_READING validation failed: MysticismService not found");
         return false;
       }
 
       // Don't start a new reading if one is already active
-      const entityId = message.entityId;
-      const existingSession = service.getSession(entityId, message.roomId);
+      const entityId = msg.entityId;
+      const existingSession = service.getSession(entityId, msg.roomId);
       if (existingSession) {
         logger.debug(
-          { entityId, roomId: message.roomId, type: existingSession.type },
+          { entityId, roomId: msg.roomId, type: existingSession.type },
           "TAROT_READING skipped: active session exists"
         );
         return false;
@@ -124,7 +133,7 @@ export const tarotReadingAction: Action = {
       return true;
     };
     try {
-      return Boolean(await (__avLegacyValidate as any)(runtime, message, state, options));
+      return Boolean(await __avLegacyValidate(runtime, message, state));
     } catch {
       return false;
     }

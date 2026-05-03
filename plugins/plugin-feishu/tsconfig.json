@@ -1,21 +1,22 @@
 {
-	"extends": "../../../../tsconfig.base.json",
 	"compilerOptions": {
-		"outDir": "./dist",
-		"rootDir": "./src",
 		"declaration": true,
 		"declarationMap": true,
 		"sourceMap": true,
+		"target": "ES2023",
 		"module": "ESNext",
 		"moduleResolution": "bundler",
-		"target": "ESNext",
+		"lib": ["ES2023", "DOM"],
 		"esModuleInterop": true,
 		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true,
+		"allowSyntheticDefaultImports": true,
 		"strict": true,
 		"resolveJsonModule": true,
 		"isolatedModules": true,
-		"noEmit": false
+		"noEmit": true,
+		"types": ["node", "bun-types"]
 	},
-	"include": ["src/**/*"],
-	"exclude": ["node_modules", "dist", "**/*.test.ts"]
+	"include": ["src/**/*", "__tests__/**/*"],
+	"exclude": ["node_modules", "dist"]
 }

@@ -23,7 +23,7 @@ import {
   unlinkSync,
 } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 

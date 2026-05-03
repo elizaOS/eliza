@@ -74,7 +74,7 @@ const getPlayerInfo: Action = {
   description: "Fetch Roblox player information by username or user id.",
   examples: getPlayerInfoExamples,
 
-  validate: async (runtime: any, message: any, state?: any, options?: any): Promise<boolean> => {
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
     const __avTextRaw = typeof message?.content?.text === "string" ? message.content.text : "";
     const __avText = __avTextRaw.toLowerCase();
     const __avKeywords = ["get", "roblox", "player"];
@@ -87,22 +87,20 @@ const getPlayerInfo: Action = {
     const __avSourceOk = __avExpectedSource
       ? __avSource === __avExpectedSource
       : Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
-    const __avOptions = options && typeof options === "object" ? options : {};
     const __avInputOk =
       __avText.trim().length > 0 ||
-      Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
       Boolean(message?.content && typeof message.content === "object");
 
     if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
       return false;
     }
 
-    const __avLegacyValidate = async (runtime: IAgentRuntime): Promise<boolean> => {
-      const apiKey = runtime.getSetting("ROBLOX_API_KEY");
+    const checkApiKey = async (rt: IAgentRuntime): Promise<boolean> => {
+      const apiKey = rt.getSetting("ROBLOX_API_KEY");
       return Boolean(apiKey);
     };
     try {
-      return Boolean(await (__avLegacyValidate as any)(runtime, message, state, options));
+      return Boolean(await checkApiKey(runtime));
     } catch {
       return false;
     }

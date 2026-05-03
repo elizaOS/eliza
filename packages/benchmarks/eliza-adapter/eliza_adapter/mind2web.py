@@ -1,18 +1,26 @@
-"""Mind2Web agent backed by the eliza benchmark server."""
+"""Mind2Web agent backed by the eliza benchmark server.
+
+The ``benchmarks.mind2web.types`` import lives outside this package and is
+imported lazily so consumers can ``from eliza_adapter.mind2web import
+ElizaMind2WebAgent`` without forcing ``benchmarks/`` onto ``sys.path`` at
+module-import time. The types are only needed when the agent is actually
+constructed or used.
+"""
 
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from eliza_adapter.client import ElizaClient
 
-from benchmarks.mind2web.types import (
-    Mind2WebAction,
-    Mind2WebConfig,
-    Mind2WebOperation,
-    Mind2WebTask,
-)
+if TYPE_CHECKING:
+    from benchmarks.mind2web.types import (
+        Mind2WebAction,
+        Mind2WebConfig,
+        Mind2WebOperation,
+        Mind2WebTask,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +34,7 @@ class ElizaMind2WebAgent:
 
     def __init__(
         self,
-        config: Mind2WebConfig,
+        config: "Mind2WebConfig",
         client: ElizaClient | None = None,
     ) -> None:
         self.config = config
@@ -36,8 +44,10 @@ class ElizaMind2WebAgent:
         """Verify the eliza server is reachable."""
         self._client.wait_until_ready(timeout=120)
 
-    async def process_task(self, task: Mind2WebTask) -> list[Mind2WebAction]:
+    async def process_task(self, task: "Mind2WebTask") -> list["Mind2WebAction"]:
         """Process a Mind2Web task and return predicted actions."""
+        from benchmarks.mind2web.types import Mind2WebAction, Mind2WebOperation
+
         # Reset session
         self._client.reset(task_id=task.annotation_id, benchmark="mind2web")
 

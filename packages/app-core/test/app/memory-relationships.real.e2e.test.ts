@@ -32,8 +32,7 @@ const API_TOKEN = process.env.ELIZA_API_TOKEN?.trim() ?? "";
 const CHROME_PATH =
   process.env.ELIZA_CHROME_PATH ??
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-const LIVE_TESTS_ENABLED =
-  process.env.ELIZA_LIVE_TEST === "1";
+const LIVE_TESTS_ENABLED = process.env.ELIZA_LIVE_TEST === "1";
 const CHROME_AVAILABLE = existsSync(CHROME_PATH);
 const LIVE_PROVIDER =
   (LIVE_TESTS_ENABLED && selectLiveProvider("groq")) ||

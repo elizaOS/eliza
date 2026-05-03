@@ -25,6 +25,7 @@ import {
   GoogleChatConfigSchema,
   IMessageConfigSchema,
   MSTeamsConfigSchema,
+  NamedRtmpSourceSchema,
   PumpfunStreamConfigSchema,
   SignalConfigSchema,
   SlackConfigSchema,
@@ -168,6 +169,7 @@ const StreamingSchema = z
     customRtmp: CustomRtmpConfigSchema.optional(),
     pumpfun: PumpfunStreamConfigSchema.optional(),
     x: XStreamConfigSchema.optional(),
+    rtmpSources: z.array(NamedRtmpSourceSchema).optional(),
   })
   .passthrough() // Allow extension streaming destination configs
   .optional();

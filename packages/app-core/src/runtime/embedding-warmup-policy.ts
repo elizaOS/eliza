@@ -19,11 +19,7 @@ function isTruthyEnv(...names: string[]): boolean {
 }
 
 export function shouldWarmupLocalEmbeddingModel(): boolean {
-  if (
-    isTruthyEnv(
-      "ELIZA_DISABLE_LOCAL_EMBEDDINGS",
-    )
-  ) {
+  if (isTruthyEnv("ELIZA_DISABLE_LOCAL_EMBEDDINGS")) {
     return false;
   }
 

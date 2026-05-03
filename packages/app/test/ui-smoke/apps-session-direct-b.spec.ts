@@ -32,8 +32,12 @@ for (const routeCase of ROUTE_CASES) {
       );
       return;
     }
-    await assertReadyChecks(page, routeCase.name, [
-      { selector: routeCase.selector },
-    ]);
+    await assertReadyChecks(
+      page,
+      routeCase.name,
+      [{ selector: routeCase.selector }],
+      "any",
+      "timeoutMs" in routeCase ? routeCase.timeoutMs : undefined,
+    );
   });
 }

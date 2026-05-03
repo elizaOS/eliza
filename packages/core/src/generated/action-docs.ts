@@ -4250,7 +4250,7 @@ export const allActionsSpec = {
 		{
 			name: "PLAY_EMOTE",
 			description:
-				'Play an emote animation on your avatar. Available emotes: ${VALID_EMOTE_IDS.join(", ")}. Use emotes to express yourself visually on stream — react to chat, celebrate, dance, etc.',
+				"Play an emote animation on your avatar. Available emotes: wave, kiss, crying, sorrow, rude-gesture, looking-around, dance-happy, dance-breaking, dance-hiphop, dance-popping, hook-punch, punching, firing-gun, sword-swing, chopping, spell-cast, range, death, idle, talk, squat, fishing, float, jump, flip, run, walk, crawling, fall. Use emotes to express yourself visually on stream — react to chat, celebrate, dance, etc.",
 			parameters: [],
 			similes: [
 				"DO_EMOTE",
@@ -4261,7 +4261,7 @@ export const allActionsSpec = {
 				"WAVE",
 			],
 			descriptionCompressed:
-				'Play an emote animation on your avatar. Available emotes: ${VALID_EMOTE_IDS.join(", ")}. Use emotes to express yourself visually on stream — react to chat, c...',
+				"Play an emote animation on your avatar. Available emotes: wave, kiss, crying, sorrow, rude-gesture, looking-around, dance-happy, dance-breaking, dance-hiphop...",
 		},
 		{
 			name: "PLAY_MUSIC_QUERY",
