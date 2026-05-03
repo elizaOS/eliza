@@ -155,6 +155,26 @@
       "dependsOn": ["@elizaos/core#build"],
       "outputs": []
     },
+    "@elizaos/plugin-retake#typecheck": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-streaming-base#build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-twitch-streaming#typecheck": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-streaming-base#build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-x-streaming#typecheck": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-streaming-base#build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-youtube-streaming#typecheck": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-streaming-base#build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-pumpfun-streaming#typecheck": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-streaming-base#build"],
+      "outputs": []
+    },
     "format": {
       "outputs": []
     },

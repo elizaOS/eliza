@@ -2,7 +2,9 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "lib": ["ESNext"],
+    "lib": [
+      "ESNext"
+    ],
     "target": "ESNext",
     "module": "Preserve",
     "moduleResolution": "Bundler",
@@ -13,7 +15,10 @@
     "emitDeclarationOnly": true,
     "resolveJsonModule": true,
     "moduleDetection": "force",
-    "allowArbitraryExtensions": true
+    "allowArbitraryExtensions": true,
+    "ignoreDeprecations": "6.0"
   },
-  "include": ["src/**/*.ts"]
+  "include": [
+    "src/**/*.ts"
+  ]
 }

@@ -1,13 +1,22 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import videoPlugin from "./index.js";
+import { BinaryResolver } from "./services/binaries.js";
 import { VideoService } from "./services/video.js";
 
 const ytMock = vi.fn();
 
-vi.mock("youtube-dl-exec", () => ({
-  default: (...args: unknown[]) => ytMock(...args),
-}));
+vi.mock("youtube-dl-exec", () => {
+  const callable = (...args: unknown[]) => ytMock(...args);
+  // youtube-dl-exec exposes `create(path)` returning a runner with the same shape.
+  (callable as unknown as { create: (p: string) => typeof callable }).create = (
+    _path: string,
+  ) => callable;
+  return {
+    default: callable,
+    create: (_path: string) => callable,
+  };
+});
 
 describe("@elizaos/plugin-video", () => {
   beforeEach(() => {
@@ -33,6 +42,7 @@ describe("@elizaos/plugin-video", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     ytMock.mockReset();
+    BinaryResolver.resetForTests();
   });
 
   it("exports a plugin wired with VideoService", () => {
@@ -41,8 +51,18 @@ describe("@elizaos/plugin-video", () => {
     expect(videoPlugin.services?.[0]).toBe(VideoService);
   });
 
+  // Hand-rolled BinaryResolver double that skips real path resolution / network I/O.
+  const stubBinaries = (): BinaryResolver =>
+    ({
+      getFfmpegPath: async () => null,
+      getYtDlpPath: async () => "/usr/bin/yt-dlp",
+      getYtDlpRunner: async () => ytMock,
+      runYtDlp: (url: string, flags: Record<string, unknown>) =>
+        ytMock(url, flags),
+    }) as unknown as BinaryResolver;
+
   it("detects common video hosts", () => {
-    const v = new VideoService();
+    const v = new VideoService(undefined, stubBinaries());
     expect(v.isVideoUrl("https://www.youtube.com/watch?v=abc")).toBe(true);
     expect(v.isVideoUrl("https://youtu.be/abc")).toBe(true);
     expect(v.isVideoUrl("https://vimeo.com/123")).toBe(true);
@@ -55,7 +75,7 @@ describe("@elizaos/plugin-video", () => {
       setCache: vi.fn(async () => undefined),
     } as unknown as IAgentRuntime;
 
-    const svc = new VideoService(runtime);
+    const svc = new VideoService(runtime, stubBinaries());
     const media = await svc.processVideo(
       "https://www.youtube.com/watch?v=testvid",
       runtime,

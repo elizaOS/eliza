@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import type { Hono } from "hono";
 import { R2StorageAdapter } from "@/lib/services/storage/r2-storage-adapter";
 
 const ORG_ID = "11111111-1111-1111-1111-111111111111";
@@ -181,7 +182,7 @@ function makeHarness(overrides: Partial<MockHarness> = {}): MockHarness {
 }
 
 interface RouteApp {
-  fetch: (req: Request) => Promise<Response>;
+  fetch: (req: Request) => Response | Promise<Response>;
 }
 
 async function loadObjectsRoute(): Promise<RouteApp> {
@@ -192,7 +193,7 @@ async function loadObjectsRoute(): Promise<RouteApp> {
       import.meta.url,
     ).href
   );
-  const inner = mod.default as RouteApp;
+  const inner = mod.default as Hono;
   const parent = new Hono();
   parent.route("/api/v1/apis/storage/objects/:*{.+}", inner);
   return parent;
@@ -206,7 +207,7 @@ async function loadPresignRoute(): Promise<RouteApp> {
       import.meta.url,
     ).href
   );
-  const inner = mod.default as RouteApp;
+  const inner = mod.default as Hono;
   const parent = new Hono();
   parent.route("/api/v1/apis/storage/presign", inner);
   return parent;
@@ -218,7 +219,7 @@ async function loadListRoute(): Promise<RouteApp> {
     new URL(`../../../apps/api/v1/apis/storage/list/route.ts?test=${Date.now()}`, import.meta.url)
       .href
   );
-  const inner = mod.default as RouteApp;
+  const inner = mod.default as Hono;
   const parent = new Hono();
   parent.route("/api/v1/apis/storage/list", inner);
   return parent;

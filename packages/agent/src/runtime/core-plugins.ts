@@ -66,6 +66,7 @@ export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-commands", // slash command handling (skills auto-register as /commands)
   "@elizaos/app-lifeops", // LifeOps: personal ops — tasks, goals, calendar, inbox, website blocking
   "@elizaos/plugin-browser-bridge", // Agent Browser Bridge: Chrome/Safari companion pairing, tab + page context sync, packaging artifacts
+  "@elizaos/plugin-video", // Video download / transcription (managed yt-dlp + ffmpeg with auto-update on extractor failure)
   // Built-in runtime capabilities (no longer external plugins):
   // - experience, form, clipboard, personality: advanced capabilities (advancedCapabilities: true)
   // - trust: core capability (enableTrust: true)
@@ -83,7 +84,6 @@ export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   // Enable via character settings: ENABLE_PLUGIN_MANAGER, ENABLE_SECRETS_MANAGER, ENABLE_TRUST
   // "@elizaos/app-lifeops" — moved to CORE_PLUGINS above
   "@elizaos/plugin-pdf", // PDF processing (published bundle broken in alpha.15)
-  "@elizaos/plugin-video", // Video download / transcription (ffmpeg + yt-dlp; opt-in)
   "@elizaos/plugin-cua", // CUA computer-use agent (cloud sandbox automation)
   "@elizaos/plugin-obsidian", // Obsidian vault CLI integration
   "@elizaos/plugin-code", // code writing and file operations

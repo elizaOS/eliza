@@ -27,7 +27,7 @@
     "prettier": "^3.0.0",
     "bun": "^1.2.15",
     "@types/bun": "latest",
-    "typescript": "^5.0.0",
+    "typescript": "^6.0.3",
     "@types/node": "^20.8.0"
   },
   "keywords": [
