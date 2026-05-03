@@ -49,10 +49,7 @@ export function createApp(): Hono<AppEnv> {
   // splat-mounted sub-app.
   app.all("/api/v1/proxy/birdeye/*", (c) => {
     const url = new URL(c.req.url);
-    url.pathname = url.pathname.replace(
-      "/api/v1/proxy/birdeye",
-      "/api/v1/apis/birdeye",
-    );
+    url.pathname = url.pathname.replace("/api/v1/proxy/birdeye", "/api/v1/apis/birdeye");
     return c.redirect(url.toString(), 308);
   });
 
