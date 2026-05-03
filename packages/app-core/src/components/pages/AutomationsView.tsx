@@ -1709,9 +1709,10 @@ function ClarificationPanel({
   if (!current) return null;
 
   const options = optionsForClarification(state.response.catalog, current);
-  // Stable id derived from the paramPath so React preserves selection state
-  // across renders and the ChoiceWidget's internal "locked after first
-  // click" semantics behave correctly.
+  // Used as React key so chained clarifications (e.g. target_server →
+  // target_channel) force a fresh ChoiceWidget instance instead of inheriting
+  // the previous pick's locked/disabled internal state. Also doubled as the
+  // widget's data id.
   const choiceId = `n8n-clarification-${current.paramPath || "free-text"}`;
 
   return (
@@ -1730,6 +1731,7 @@ function ClarificationPanel({
           ) : null}
           {options.length > 0 ? (
             <ChoiceWidget
+              key={choiceId}
               id={choiceId}
               scope="n8n-clarification"
               options={options}
@@ -1740,6 +1742,7 @@ function ClarificationPanel({
             />
           ) : (
             <ClarificationFreeTextInput
+              key={choiceId}
               busy={state.busy}
               onSubmit={(value) => onChoose(current.paramPath, value)}
               placeholderHint={current.platform}
@@ -4971,7 +4974,12 @@ function AutomationsLayout() {
         const draftRecord = clarification?.response.draft as
           | (Record<string, unknown> & { id?: string; name?: string })
           | undefined;
-        if (!draftRecord) return;
+        if (!draftRecord) {
+          setClarification((prev) =>
+            prev ? { ...prev, busy: false } : prev,
+          );
+          return;
+        }
         const result = await client.resolveN8nClarification({
           draft: draftRecord,
           resolutions: [{ paramPath, value }],
