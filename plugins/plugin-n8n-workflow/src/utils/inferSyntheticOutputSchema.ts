@@ -31,8 +31,9 @@ const SUMMARIZE_AGG_PREFIX: Record<string, string> = {
 /** Returns top-level output field names a Summarize node will emit, derived
  *  from its `fieldsToSummarize.values[]` parameter. */
 function inferSummarizeFields(node: N8nNode): string[] | null {
-  const fields = (node.parameters as Record<string, unknown> | undefined)
-    ?.fieldsToSummarize as { values?: Array<{ aggregation?: string; field?: string }> } | undefined;
+  const fields = (node.parameters as Record<string, unknown> | undefined)?.fieldsToSummarize as
+    | { values?: Array<{ aggregation?: string; field?: string }> }
+    | undefined;
   if (!fields?.values || !Array.isArray(fields.values)) return null;
   const out: string[] = [];
   for (const entry of fields.values) {
