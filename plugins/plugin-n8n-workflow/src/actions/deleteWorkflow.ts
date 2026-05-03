@@ -12,6 +12,14 @@ import { N8N_WORKFLOW_SERVICE_TYPE, type N8nWorkflowService } from '../services/
 import { matchWorkflow } from '../utils/generation';
 import { buildConversationContext } from '../utils/context';
 
+const DELETE_CONFIRM_TTL_MS = 5 * 60 * 1000;
+
+interface PendingDeletion {
+  workflowId: string;
+  workflowName: string;
+  createdAt: number;
+}
+
 const examples: ActionExample[][] = [
   [
     {
@@ -96,6 +104,44 @@ export const deleteWorkflowAction: Action = {
 
     try {
       const userId = message.entityId;
+      const cacheKey = `workflow_delete_pending:${userId}`;
+
+      // Check for pending confirmation
+      const pending = await runtime.getCache<PendingDeletion>(cacheKey);
+      if (pending && Date.now() - pending.createdAt < DELETE_CONFIRM_TTL_MS) {
+        const userText = (message.content?.text || '').toLowerCase().trim();
+        const isConfirm = /^(yes|confirm|ok|do it|go ahead|oui|y)$/i.test(userText);
+
+        if (isConfirm) {
+          await service.deleteWorkflow(pending.workflowId);
+          await runtime.deleteCache(cacheKey);
+
+          logger.info(
+            { src: 'plugin:n8n-workflow:action:delete' },
+            `Deleted workflow ${pending.workflowId} after confirmation`
+          );
+
+          if (callback) {
+            await callback({
+              text: `Workflow "${pending.workflowName}" deleted permanently.`,
+              success: true,
+            });
+          }
+          return { success: true };
+        }
+
+        // Not a confirm — cancel the pending deletion
+        await runtime.deleteCache(cacheKey);
+        if (callback) {
+          await callback({
+            text: 'Deletion cancelled.',
+            success: true,
+          });
+        }
+        return { success: true };
+      }
+
+      // No pending — start a new deletion flow
       const workflows = await service.listWorkflows(userId);
 
       if (workflows.length === 0) {
@@ -123,21 +169,26 @@ export const deleteWorkflowAction: Action = {
         return { success: false };
       }
 
-      await service.deleteWorkflow(matchResult.matchedWorkflowId);
+      const matchedWorkflow = workflows.find((w) => w.id === matchResult.matchedWorkflowId);
+      const workflowName = matchedWorkflow?.name || matchResult.matchedWorkflowId;
 
-      logger.info(
-        { src: 'plugin:n8n-workflow:action:delete' },
-        `Deleted workflow ${matchResult.matchedWorkflowId}`
-      );
+      // Store pending deletion and ask for confirmation
+      const pendingDeletion: PendingDeletion = {
+        workflowId: matchResult.matchedWorkflowId,
+        workflowName,
+        createdAt: Date.now(),
+      };
+      await runtime.setCache(cacheKey, pendingDeletion);
 
       if (callback) {
         await callback({
-          text: '🗑️  Workflow deleted permanently.',
+          text: `Are you sure you want to permanently delete "${workflowName}"? This cannot be undone. Reply "yes" to confirm.`,
           success: true,
+          data: { awaitingUserInput: true },
         });
       }
 
-      return { success: true };
+      return { success: true, data: { awaitingUserInput: true } };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error(
