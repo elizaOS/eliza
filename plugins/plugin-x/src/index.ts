@@ -6,13 +6,13 @@ import { replyXDmAction } from "./actions/replyXDm.js";
 import { searchXAction } from "./actions/searchX.js";
 import { sendXPostAction } from "./actions/sendXPost.js";
 import { summarizeFeedAction } from "./actions/summarizeFeed.js";
-import { TwitterService } from "./services/twitter.service.js";
+import { XService } from "./services/x.service.js";
 import { getSetting } from "./utils/settings";
 
-export const TwitterPlugin: Plugin = {
-  name: "twitter",
+export const XPlugin: Plugin = {
+  name: "x",
   description:
-    "Twitter client with posting, interactions, and timeline actions",
+    "X (formerly Twitter) connector with posting, interactions, and timeline actions",
   actions: [
     postTweetAction,
     fetchFeedTopAction,
@@ -22,10 +22,9 @@ export const TwitterPlugin: Plugin = {
     replyXDmAction,
     sendXPostAction,
   ],
-  services: [TwitterService],
+  services: [XService],
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
-    // Only do validation in init, don't start services
-    logger.log("🔧 Initializing Twitter plugin...");
+    logger.log("🔧 Initializing X plugin...");
 
     const mode = (
       getSetting(runtime, "TWITTER_AUTH_MODE") || "env"
@@ -48,10 +47,10 @@ export const TwitterPlugin: Plugin = {
         if (!accessTokenSecret) missing.push("TWITTER_ACCESS_TOKEN_SECRET");
 
         logger.warn(
-          `Twitter env auth not configured - Twitter functionality will be limited. Missing: ${missing.join(", ")}`,
+          `X env auth not configured - X functionality will be limited. Missing: ${missing.join(", ")}`,
         );
       } else {
-        logger.log("✅ Twitter env credentials found");
+        logger.log("✅ X env credentials found");
       }
     } else if (mode === "oauth") {
       const clientId = getSetting(runtime, "TWITTER_CLIENT_ID");
@@ -61,21 +60,19 @@ export const TwitterPlugin: Plugin = {
         if (!clientId) missing.push("TWITTER_CLIENT_ID");
         if (!redirectUri) missing.push("TWITTER_REDIRECT_URI");
         logger.warn(
-          `Twitter OAuth not configured - Twitter functionality will be limited. Missing: ${missing.join(", ")}`,
+          `X OAuth not configured - X functionality will be limited. Missing: ${missing.join(", ")}`,
         );
       } else {
-        logger.log("✅ Twitter OAuth configuration found");
+        logger.log("✅ X OAuth configuration found");
       }
     } else if (mode === "broker") {
       const brokerUrl = getSetting(runtime, "TWITTER_BROKER_URL");
       if (!brokerUrl) {
         logger.warn(
-          "TWITTER_AUTH_MODE=broker requires TWITTER_BROKER_URL (broker auth is not implemented yet).",
+          "TWITTER_AUTH_MODE=broker requires TWITTER_BROKER_URL.",
         );
       } else {
-        logger.log(
-          "ℹ️ Twitter broker mode configured (stub; not functional yet)",
-        );
+        logger.log("✅ X broker mode configured");
       }
     } else {
       logger.warn(
@@ -85,4 +82,7 @@ export const TwitterPlugin: Plugin = {
   },
 };
 
-export default TwitterPlugin;
+// Backward-compatible alias for users still importing { TwitterPlugin }.
+export const TwitterPlugin = XPlugin;
+
+export default XPlugin;
