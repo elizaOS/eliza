@@ -222,7 +222,7 @@
     "motion": "^12.38.0",
     "music-metadata": "^11.12.3",
     "nanoid": "^5.1.9",
-    "nodemailer": "^7.0.13",
+    "nodemailer": "^8.0.5",
     "openai": "^6.35.0",
     "oxapay": "^1.0.3",
     "react": "19.2.4",
