@@ -1663,7 +1663,7 @@ X-GNOME-Autostart-enabled=true
 			session.cookies.clear();
 		}
 
-		if (!options.storageTypes === "all") {
+		if (options.storageTypes === "all") {
 			session.clearStorageData("all");
 		} else {
 			const storageTypes = options.storageTypes.filter(
