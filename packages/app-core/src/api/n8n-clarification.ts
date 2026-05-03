@@ -25,9 +25,7 @@ const VALID_KINDS: ReadonlySet<N8nClarificationRequest["kind"]> = new Set([
   "free_text",
 ]);
 
-function isStructuredClarification(
-  v: unknown,
-): v is N8nClarificationRequest {
+function isStructuredClarification(v: unknown): v is N8nClarificationRequest {
   if (!v || typeof v !== "object") return false;
   const o = v as Record<string, unknown>;
   if (typeof o.question !== "string" || o.question.trim().length === 0) {
@@ -38,9 +36,7 @@ function isStructuredClarification(
   return true;
 }
 
-export function coerceClarifications(
-  raw: unknown,
-): N8nClarificationRequest[] {
+export function coerceClarifications(raw: unknown): N8nClarificationRequest[] {
   if (!Array.isArray(raw) || raw.length === 0) return [];
   const out: N8nClarificationRequest[] = [];
   for (const item of raw) {
@@ -58,8 +54,7 @@ export function coerceClarifications(
         ? kindRaw
         : "free_text"
     ) as N8nClarificationRequest["kind"];
-    const platform =
-      typeof o.platform === "string" ? o.platform : undefined;
+    const platform = typeof o.platform === "string" ? o.platform : undefined;
     let scope: { guildId?: string } | undefined;
     if (
       o.scope &&
@@ -70,8 +65,7 @@ export function coerceClarifications(
         guildId: (o.scope as Record<string, string>).guildId,
       };
     }
-    const paramPath =
-      typeof o.paramPath === "string" ? o.paramPath : "";
+    const paramPath = typeof o.paramPath === "string" ? o.paramPath : "";
     out.push({
       kind,
       platform,
@@ -110,10 +104,7 @@ export function parseParamPath(path: string): string[] {
       }
       const first = inner[0];
       const last = inner[inner.length - 1];
-      if (
-        (first === '"' && last === '"') ||
-        (first === "'" && last === "'")
-      ) {
+      if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
         segments.push(inner.slice(1, -1));
       } else if (/^[0-9]+$/.test(inner)) {
         segments.push(inner);

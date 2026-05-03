@@ -5,7 +5,10 @@
  * Supports key rotation by allowing multiple active keys identified by "kid".
  */
 
-import { exportJWK, importPKCS8, importSPKI, type JWK, type KeyLike } from "jose";
+// jose v6 dropped the legacy `KeyLike` alias; `importPKCS8` / `importSPKI`
+// now resolve to the global `CryptoKey` type directly, which is available
+// in Node 18+ and Cloudflare Workers — everywhere this module runs.
+import { exportJWK, importPKCS8, importSPKI, type JWK } from "jose";
 
 import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 
@@ -19,9 +22,9 @@ import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 const ALGORITHM = "ES256";
 
 // Cached key instances to avoid repeated parsing (invalidated when env value changes)
-let cachedPrivateKey: KeyLike | null = null;
+let cachedPrivateKey: CryptoKey | null = null;
 let cachedPrivateKeySource: string | null = null;
-let cachedPublicKey: KeyLike | null = null;
+let cachedPublicKey: CryptoKey | null = null;
 let cachedPublicKeySource: string | null = null;
 
 function getSigningPrivateKeyEnv(): string | undefined {
@@ -54,7 +57,7 @@ function decodePemKey(base64Key: string, type: "PRIVATE" | "PUBLIC"): string {
  * Get the private key for signing JWTs.
  * Keys are cached after first load.
  */
-export async function getPrivateKey(): Promise<KeyLike> {
+export async function getPrivateKey(): Promise<CryptoKey> {
   const privateKey = getSigningPrivateKeyEnv();
   if (!privateKey) {
     throw new Error("JWT_SIGNING_PRIVATE_KEY is not configured");
@@ -74,7 +77,7 @@ export async function getPrivateKey(): Promise<KeyLike> {
  * Get the public key for verifying JWTs.
  * Keys are cached after first load.
  */
-export async function getPublicKey(): Promise<KeyLike> {
+export async function getPublicKey(): Promise<CryptoKey> {
   const publicKey = getSigningPublicKeyEnv();
   if (!publicKey) {
     throw new Error("JWT_SIGNING_PUBLIC_KEY is not configured");

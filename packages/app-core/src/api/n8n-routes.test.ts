@@ -1202,9 +1202,7 @@ describe("n8n /generate clarification short-circuit", () => {
     expect(status).toBe(200);
     expect(payload).toMatchObject({
       status: "needs_clarification",
-      clarifications: [
-        expect.objectContaining({ kind: "target_channel" }),
-      ],
+      clarifications: [expect.objectContaining({ kind: "target_channel" })],
       catalog: [
         expect.objectContaining({ groupId: "g-cozy", groupName: "Cozy Devs" }),
       ],
@@ -1303,7 +1301,7 @@ describe("n8n POST /api/n8n/workflows/resolve-clarification", () => {
             platform: "discord",
             scope: { guildId: "g-cozy" },
             question: "Which channel?",
-            paramPath: 'nodes[0].parameters.channelId',
+            paramPath: "nodes[0].parameters.channelId",
           },
         ],
       },
@@ -1391,9 +1389,7 @@ describe("n8n POST /api/n8n/workflows/resolve-clarification", () => {
 
   it("returns the next pending clarification instead of deploying when more remain", async () => {
     const draft = {
-      nodes: [
-        { name: "Discord Send", parameters: {} },
-      ],
+      nodes: [{ name: "Discord Send", parameters: {} }],
       connections: {},
       _meta: {
         requiresClarification: [
@@ -1448,15 +1444,15 @@ describe("n8n POST /api/n8n/workflows/resolve-clarification", () => {
     expect(status).toBe(200);
     expect(payload).toMatchObject({
       status: "needs_clarification",
-      clarifications: [
-        expect.objectContaining({ kind: "target_channel" }),
-      ],
+      clarifications: [expect.objectContaining({ kind: "target_channel" })],
     });
     expect(deployWorkflow).not.toHaveBeenCalled();
     // The patched draft should have the resolved guildId baked in for the
     // next round.
     const echoed = (
-      payload as { draft: { nodes: Array<{ parameters: Record<string, string> }> } }
+      payload as {
+        draft: { nodes: Array<{ parameters: Record<string, string> }> };
+      }
     ).draft;
     expect(echoed.nodes[0].parameters.guildId).toBe("g-cozy");
   });

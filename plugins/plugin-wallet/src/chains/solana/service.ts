@@ -1000,13 +1000,14 @@ export class SolanaService extends Service {
     const acceptableInMs = options.notOlderThan ?? 60 * 60_000;
     let cache: Array<TokenMetaCacheEntry | null> = [];
     if (acceptableInMs !== 0) {
-      cache = await Promise.all(
+      const cacheResults = await Promise.all(
         heldTokens.map((t) =>
           this.runtime.getCache<TokenMetaCacheEntry | null>(
             `solana_token_meta_${t.account.data.parsed.info.mint}`
           )
         )
       );
+      cache = cacheResults.map((entry) => entry ?? null);
     }
 
     let misses = 0;
@@ -1390,8 +1391,9 @@ export class SolanaService extends Service {
               );
               for (const i in data.items) {
                 const item = data.items[i];
-                if (symbols[item.address]) {
-                  data.items[i].symbol = symbols[item.address];
+                const resolved = symbols[item.address];
+                if (resolved) {
+                  data.items[i].symbol = resolved;
                 }
               }
             }
@@ -1401,13 +1403,13 @@ export class SolanaService extends Service {
               totalSol: totalUsd.div(solPriceInUSD).toFixed(6),
               prices,
               lastUpdated: now,
-              items: data.items.map((item: Item) => ({
-                ...item,
-                valueSol: new BigNumber(item.valueUsd || 0).div(solPriceInUSD).toFixed(6),
-                name: item.name || "Unknown",
-                symbol: item.symbol || "Unknown",
-                priceUsd: item.priceUsd || "0",
-                valueUsd: item.valueUsd || "0",
+              items: data.items.map((item) => ({
+                ...(item as Item),
+                valueSol: new BigNumber((item as Item).valueUsd || 0).div(solPriceInUSD).toFixed(6),
+                name: (item as Item).name || "Unknown",
+                symbol: (item as Item).symbol || "Unknown",
+                priceUsd: (item as Item).priceUsd || "0",
+                valueUsd: (item as Item).valueUsd || "0",
               })),
             };
 
@@ -1804,13 +1806,23 @@ export class SolanaService extends Service {
     availableAmount: number
   ): Promise<{ amount: number; slippage: number }> {
     try {
-      const priceImpact = await this.jupiterService.getPriceImpact({
+      const jupiterService = this.jupiterService;
+      if (!jupiterService) {
+        throw new Error("JupiterService not registered on SolanaService");
+      }
+      const getPriceImpact = jupiterService.getPriceImpact;
+      const findBestSlippage = jupiterService.findBestSlippage;
+      if (!getPriceImpact || !findBestSlippage) {
+        throw new Error("JupiterService is missing getPriceImpact / findBestSlippage");
+      }
+
+      const priceImpact = await getPriceImpact.call(jupiterService, {
         inputMint,
         outputMint,
         amount: availableAmount,
       });
 
-      const slippage = await this.jupiterService.findBestSlippage({
+      const slippage = await findBestSlippage.call(jupiterService, {
         inputMint,
         outputMint,
         amount: availableAmount,

@@ -4,12 +4,7 @@
 
 import type { EventPayload, IAgentRuntime } from "@elizaos/core";
 import { logger, Service } from "@elizaos/core";
-import {
-  type MiddlewareConfig,
-  messagingApi,
-  middleware,
-  webhook,
-} from "@line/bot-sdk";
+import { type MiddlewareConfig, messagingApi, middleware, type webhook } from "@line/bot-sdk";
 
 // @line/bot-sdk v11 moved message and event types under namespaces.
 type FlexMessage = messagingApi.FlexMessage;
@@ -17,6 +12,7 @@ type LocationMessage = messagingApi.LocationMessage;
 type Message = messagingApi.Message;
 type TemplateMessage = messagingApi.TemplateMessage;
 type WebhookEvent = webhook.Event;
+
 import {
   getChatTypeFromId,
   type ILineService,
@@ -457,7 +453,7 @@ export class LineService extends Service implements ILineService {
         this.runtime.emitEvent([LineEventTypes.FOLLOW], {
           runtime: this.runtime,
           source: "line",
-          userId: event.source.userId,
+          userId: event.source?.userId,
           timestamp: event.timestamp,
         } as unknown as EventPayload);
         break;
@@ -465,7 +461,7 @@ export class LineService extends Service implements ILineService {
         this.runtime.emitEvent([LineEventTypes.UNFOLLOW], {
           runtime: this.runtime,
           source: "line",
-          userId: event.source.userId,
+          userId: event.source?.userId,
           timestamp: event.timestamp,
         } as unknown as EventPayload);
         break;
@@ -474,12 +470,12 @@ export class LineService extends Service implements ILineService {
           runtime: this.runtime,
           source: "line",
           groupId:
-            event.source.type === "group"
-              ? event.source.groupId
-              : event.source.type === "room"
-                ? event.source.roomId
+            event.source?.type === "group"
+              ? (event.source as webhook.GroupSource).groupId
+              : event.source?.type === "room"
+                ? (event.source as webhook.RoomSource).roomId
                 : undefined,
-          type: event.source.type,
+          type: event.source?.type,
           timestamp: event.timestamp,
         } as unknown as EventPayload);
         break;
@@ -488,12 +484,12 @@ export class LineService extends Service implements ILineService {
           runtime: this.runtime,
           source: "line",
           groupId:
-            event.source.type === "group"
-              ? event.source.groupId
-              : event.source.type === "room"
-                ? event.source.roomId
+            event.source?.type === "group"
+              ? (event.source as webhook.GroupSource).groupId
+              : event.source?.type === "room"
+                ? (event.source as webhook.RoomSource).roomId
                 : undefined,
-          type: event.source.type,
+          type: event.source?.type,
           timestamp: event.timestamp,
         } as unknown as EventPayload);
         break;
@@ -501,7 +497,7 @@ export class LineService extends Service implements ILineService {
         this.runtime.emitEvent([LineEventTypes.POSTBACK], {
           runtime: this.runtime,
           source: "line",
-          userId: event.source.userId,
+          userId: event.source?.userId,
           data: event.postback.data,
           params: event.postback.params,
           timestamp: event.timestamp,
@@ -518,7 +514,7 @@ export class LineService extends Service implements ILineService {
     const message: LineMessage = {
       id: event.message.id,
       type: event.message.type,
-      userId: event.source.userId || "",
+      userId: event.source?.userId || "",
       timestamp: event.timestamp,
       replyToken: event.replyToken,
     };
@@ -530,10 +526,10 @@ export class LineService extends Service implements ILineService {
     }
 
     // Add group/room ID if applicable
-    if (event.source.type === "group") {
-      message.groupId = event.source.groupId;
-    } else if (event.source.type === "room") {
-      message.roomId = event.source.roomId;
+    if (event.source?.type === "group") {
+      message.groupId = (event.source as webhook.GroupSource).groupId;
+    } else if (event.source?.type === "room") {
+      message.roomId = (event.source as webhook.RoomSource).roomId;
     }
 
     // Emit message received event

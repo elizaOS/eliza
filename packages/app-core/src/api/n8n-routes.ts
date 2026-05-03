@@ -1295,9 +1295,9 @@ interface N8nWorkflowServiceLike {
 function getN8nWorkflowService(
   ctx: N8nRouteContext,
 ): N8nWorkflowServiceLike | null {
-  const service = ctx.runtime?.getService?.(
-    "n8n_workflow",
-  ) as N8nWorkflowServiceLike | undefined;
+  const service = ctx.runtime?.getService?.("n8n_workflow") as
+    | N8nWorkflowServiceLike
+    | undefined;
   if (
     typeof service?.generateWorkflowDraft !== "function" ||
     typeof service.deployWorkflow !== "function" ||
@@ -1308,17 +1308,15 @@ function getN8nWorkflowService(
   return service;
 }
 
-function getConnectorTargetCatalog(
-  ctx: N8nRouteContext,
-): CatalogLike | null {
+function getConnectorTargetCatalog(ctx: N8nRouteContext): CatalogLike | null {
   // The runtime registers the catalog in `runtime.services` keyed by
   // `connector_target_catalog`. We use the same lookup pattern as the
   // n8n_workflow service. Falling back to null is fine — the route then
   // returns clarifications without a catalog and the UI renders free-text
   // inputs only.
-  const candidate = ctx.runtime?.getService?.(
-    "connector_target_catalog",
-  ) as CatalogLike | undefined;
+  const candidate = ctx.runtime?.getService?.("connector_target_catalog") as
+    | CatalogLike
+    | undefined;
   if (candidate && typeof candidate.listGroups === "function") {
     return candidate;
   }
@@ -1331,7 +1329,11 @@ async function deployAndRespond(
   draft: Record<string, unknown>,
 ): Promise<void> {
   const userId = resolveAgentId(ctx);
-  const deployed = await service.deployWorkflow!(draft, userId);
+  const deployed = await service.deployWorkflow?.(draft, userId);
+  if (!deployed) {
+    sendJson(ctx, 500, { error: "deployWorkflow not available" });
+    return;
+  }
   if (deployed.missingCredentials.length > 0) {
     sendJson(ctx, 200, {
       ...deployed,
@@ -1339,7 +1341,7 @@ async function deployAndRespond(
     });
     return;
   }
-  const full = await service.getWorkflow!(deployed.id);
+  const full = await service.getWorkflow?.(deployed.id);
   sendJson(ctx, 200, full);
 }
 
@@ -1370,7 +1372,7 @@ async function handleGenerateWorkflow(ctx: N8nRouteContext): Promise<boolean> {
       )
     : undefined;
 
-  const draft = await service.generateWorkflowDraft!(
+  const draft = await service.generateWorkflowDraft?.(
     prompt,
     triggerContext ? { triggerContext } : undefined,
   );

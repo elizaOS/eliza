@@ -2547,6 +2547,7 @@ function HeroEmptyState({
   );
 }
 
+// biome-ignore lint/correctness/noUnusedVariables: reserved for future dashboard view
 function AutomationsDashboard({
   items,
   onSelectItem,
@@ -4857,6 +4858,7 @@ function AutomationsLayout() {
     openCreateTask();
   }, [openCreateTask, showAutomationsList]);
 
+  // biome-ignore lint/correctness/noUnusedVariables: reserved for seeded task creation
   const openSeededTask = useCallback(
     (idea: AutomationExample) => {
       showAutomationsList();
@@ -5519,9 +5521,7 @@ function AutomationsLayout() {
             onSubmit={(text) =>
               void createWorkflowDraft({ initialPrompt: text })
             }
-            drafts={ctx.allItems
-              .filter((item) => item.isDraft)
-              .slice(0, 4)}
+            drafts={ctx.allItems.filter((item) => item.isDraft).slice(0, 4)}
             onSelectDraft={selectItem}
             onDeleteDraft={handleDeleteDraft}
             t={t}

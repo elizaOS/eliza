@@ -288,7 +288,9 @@ class NodeRedisAdapter implements CacheRedisClient {
     cursor: string | number,
     options: { match: string; count: number },
   ): Promise<[string | number, string[]]> {
-    const result = await this.client.scan(Number(cursor), {
+    // redis v5 typed `scan` expects RedisArgument (string|Buffer) — v4 took a
+    // number cursor. Coerce to string so we work cleanly under both.
+    const result = await this.client.scan(String(cursor), {
       MATCH: options.match,
       COUNT: options.count,
     });

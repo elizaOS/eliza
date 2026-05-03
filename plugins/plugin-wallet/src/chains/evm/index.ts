@@ -1,4 +1,4 @@
-import type { Plugin, ServiceClass } from "@elizaos/core";
+import type { Action, Plugin, ServiceClass } from "@elizaos/core";
 import { bridgeAction } from "./actions/bridge";
 import { executeAction } from "./actions/gov-execute";
 import { proposeAction } from "./actions/gov-propose";
@@ -21,12 +21,12 @@ export const evmPlugin: Plugin = {
   services: [EVMService] as ServiceClass[],
   actions: [
     transferAction,
-    bridgeAction,
-    swapAction,
-    proposeAction,
-    voteAction,
-    queueAction,
-    executeAction,
+    bridgeAction as Action,
+    swapAction as Action,
+    proposeAction as Action,
+    voteAction as Action,
+    queueAction as Action,
+    executeAction as Action,
   ],
 };
 
