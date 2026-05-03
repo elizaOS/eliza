@@ -16,31 +16,31 @@
  * Mutates the workflow in place AND returns it for ergonomic chaining.
  */
 
-import { logger } from '@elizaos/core';
+import { logger } from "@elizaos/core";
 import type {
   N8nNode,
   N8nWorkflow,
   NodeDefinition,
   RuntimeContext,
-} from '../types/index';
+} from "../types/index";
 import {
   loadOutputSchema,
   loadTriggerOutputSchema,
   parseExpressions,
-} from './outputSchema';
-import { inferSyntheticOutputSchema } from './inferSyntheticOutputSchema';
+} from "./outputSchema";
+import { inferSyntheticOutputSchema } from "./inferSyntheticOutputSchema";
 
 export type RepairKind =
-  | 'typeVersionClamp'
-  | 'authenticationBackfill'
-  | 'fieldNameCaseFix'
-  | 'aggregationSourceFieldCaseFix'
-  | 'nodeNameDeduplication'
-  | 'droppedDanglingEdge';
+  | "typeVersionClamp"
+  | "authenticationBackfill"
+  | "fieldNameCaseFix"
+  | "aggregationSourceFieldCaseFix"
+  | "nodeNameDeduplication"
+  | "droppedDanglingEdge";
 
 export type ValidationErrorKind =
-  | 'unknownOutputField'
-  | 'requiredParameterMissing';
+  | "unknownOutputField"
+  | "requiredParameterMissing";
 
 export interface Repair {
   kind: RepairKind;
@@ -64,7 +64,7 @@ export interface RepairResult {
   errors: ValidationError[];
 }
 
-const LOG_SRC = 'plugin:n8n-workflow:utils:validate';
+const LOG_SRC = "plugin:n8n-workflow:utils:validate";
 
 // ─── Check 1 ────────────────────────────────────────────────────────────────
 
@@ -99,7 +99,7 @@ function applyTypeVersionClamp(
     ? def.version
     : [def.version];
   const catalogNumeric = catalogVersions.filter(
-    (v): v is number => typeof v === 'number',
+    (v): v is number => typeof v === "number",
   );
 
   // When the live n8n runtime registry is available, intersect with it.
@@ -131,11 +131,11 @@ function applyTypeVersionClamp(
   if (clamped === null) {
     return;
   }
-  const source = runtime ? 'runtime∩catalog' : 'catalog';
+  const source = runtime ? "runtime∩catalog" : "catalog";
   repairs.push({
-    kind: 'typeVersionClamp',
+    kind: "typeVersionClamp",
     node: node.name,
-    detail: `${node.type} typeVersion ${node.typeVersion} → ${clamped} (${source} valid: ${validVersions.join(', ')})`,
+    detail: `${node.type} typeVersion ${node.typeVersion} → ${clamped} (${source} valid: ${validVersions.join(", ")})`,
   });
   node.typeVersion = clamped;
 }
@@ -180,7 +180,7 @@ function applyAuthenticationBackfill(
   const requiredAuth = authOpts[0];
   const params = (node.parameters ?? {}) as Record<string, unknown>;
   if (
-    typeof params.authentication === 'string' &&
+    typeof params.authentication === "string" &&
     params.authentication.length > 0
   ) {
     return; // LLM already set it
@@ -188,7 +188,7 @@ function applyAuthenticationBackfill(
 
   node.parameters = { ...params, authentication: requiredAuth };
   repairs.push({
-    kind: 'authenticationBackfill',
+    kind: "authenticationBackfill",
     node: node.name,
     detail: `set parameters.authentication="${requiredAuth}" to match attached ${credType}`,
   });
@@ -232,8 +232,8 @@ function knownOutputFieldsForNode(node: N8nNode): string[] | null {
 
   // 2. Static output-schema catalog (Gmail non-simple, Slack, Discord etc.)
   if (
-    typeof node.parameters?.resource === 'string' &&
-    typeof node.parameters?.operation === 'string'
+    typeof node.parameters?.resource === "string" &&
+    typeof node.parameters?.operation === "string"
   ) {
     const schema = loadOutputSchema(
       node.type,
@@ -246,7 +246,7 @@ function knownOutputFieldsForNode(node: N8nNode): string[] | null {
   }
 
   // 3. Trigger schemas (gmailTrigger, etc.) — respect simple flag
-  if (node.type.toLowerCase().includes('trigger')) {
+  if (node.type.toLowerCase().includes("trigger")) {
     const triggerSchema = loadTriggerOutputSchema(node.type, node.parameters);
     if (triggerSchema) {
       return triggerSchema.fields;
@@ -271,7 +271,7 @@ function validateOutputFieldReferences(
   }
 
   for (const node of workflow.nodes) {
-    if (!node.parameters || typeof node.parameters !== 'object') {
+    if (!node.parameters || typeof node.parameters !== "object") {
       continue;
     }
     const refs = parseExpressions(node.parameters as Record<string, unknown>);
@@ -318,13 +318,13 @@ function validateOutputFieldReferences(
       if (ciMatch) {
         rewriteParameterFieldRef(node, ref.fullExpression, topField, ciMatch);
         repairs.push({
-          kind: 'fieldNameCaseFix',
+          kind: "fieldNameCaseFix",
           node: node.name,
           detail: `${ref.fullExpression}: "${topField}" → "${ciMatch}" (matches ${sourceNode.name} output)`,
         });
       } else {
         errors.push({
-          kind: 'unknownOutputField',
+          kind: "unknownOutputField",
           node: node.name,
           detail: `expression references unknown field "${topField}" on upstream node ${sourceNode.name}`,
           expression: ref.fullExpression,
@@ -362,17 +362,17 @@ function rewriteInObject(
 ): void {
   for (const key of Object.keys(obj)) {
     const val = obj[key];
-    if (typeof val === 'string' && val.includes(oldStr)) {
+    if (typeof val === "string" && val.includes(oldStr)) {
       obj[key] = val.replaceAll(oldStr, newStr);
     } else if (Array.isArray(val)) {
       for (let i = 0; i < val.length; i++) {
-        if (typeof val[i] === 'string' && (val[i] as string).includes(oldStr)) {
+        if (typeof val[i] === "string" && (val[i] as string).includes(oldStr)) {
           val[i] = (val[i] as string).replaceAll(oldStr, newStr);
-        } else if (typeof val[i] === 'object' && val[i] !== null) {
+        } else if (typeof val[i] === "object" && val[i] !== null) {
           rewriteInObject(val[i] as Record<string, unknown>, oldStr, newStr);
         }
       }
-    } else if (typeof val === 'object' && val !== null) {
+    } else if (typeof val === "object" && val !== null) {
       rewriteInObject(val as Record<string, unknown>, oldStr, newStr);
     }
   }
@@ -407,7 +407,7 @@ function applyAggregationSourceFieldFix(
   }
 
   for (const node of workflow.nodes) {
-    if (node.type !== 'n8n-nodes-base.summarize') {
+    if (node.type !== "n8n-nodes-base.summarize") {
       continue;
     }
 
@@ -435,7 +435,7 @@ function applyAggregationSourceFieldFix(
     } // unknowable schema → skip
 
     for (const entry of values) {
-      if (typeof entry?.field !== 'string' || entry.field.length === 0) {
+      if (typeof entry?.field !== "string" || entry.field.length === 0) {
         continue;
       }
       if (fields.includes(entry.field)) {
@@ -448,13 +448,13 @@ function applyAggregationSourceFieldFix(
         const oldField = entry.field;
         entry.field = ciMatch;
         repairs.push({
-          kind: 'aggregationSourceFieldCaseFix',
+          kind: "aggregationSourceFieldCaseFix",
           node: node.name,
           detail: `fieldsToSummarize.values[].field "${oldField}" → "${ciMatch}" (matches ${sourceNode.name} output)`,
         });
       } else {
         errors.push({
-          kind: 'unknownOutputField',
+          kind: "unknownOutputField",
           node: node.name,
           detail: `fieldsToSummarize.values[].field "${entry.field}" does not match any known field on upstream ${sourceNode.name}`,
           expression: `field: "${entry.field}"`,
@@ -484,7 +484,7 @@ function applyRequiredParameterPreflight(
         continue;
       }
       const params = (node.parameters ?? {}) as Record<string, unknown>;
-      if (params[prop.name] === undefined || params[prop.name] === '') {
+      if (params[prop.name] === undefined || params[prop.name] === "") {
         clarifications.push(
           `${node.name} (${node.type}) is missing required parameter "${prop.name}" — please provide this value or clarify your requirements`,
         );
@@ -497,7 +497,7 @@ function applyRequiredParameterPreflight(
   workflow._meta = workflow._meta ?? {};
   const existing = workflow._meta.requiresClarification ?? [];
   // Avoid duplicate-suffix clutter from prior catalog passes.
-  const SUFFIX = '— please provide this value or clarify your requirements';
+  const SUFFIX = "— please provide this value or clarify your requirements";
   const nonCatalog = existing.filter((c) => !c.endsWith(SUFFIX));
   workflow._meta.requiresClarification = [...nonCatalog, ...clarifications];
 }
@@ -520,7 +520,7 @@ function deduplicateNodeNames(workflow: N8nWorkflow, repairs: Repair[]): void {
       seen.set(candidate, 1);
       seen.set(oldName, count + 1);
       repairs.push({
-        kind: 'nodeNameDeduplication',
+        kind: "nodeNameDeduplication",
         node: candidate,
         detail: `renamed duplicate "${oldName}" → "${candidate}"`,
       });
@@ -553,9 +553,9 @@ function dropDanglingEdges(workflow: N8nWorkflow, repairs: Repair[]): void {
       // Source node doesn't exist — drop the entire entry.
       delete workflow.connections[fromName];
       repairs.push({
-        kind: 'droppedDanglingEdge',
+        kind: "droppedDanglingEdge",
         node: fromName,
-        detail: 'dropped connections entry for non-existent node',
+        detail: "dropped connections entry for non-existent node",
       });
       continue;
     }
@@ -568,7 +568,7 @@ function dropDanglingEdges(workflow: N8nWorkflow, repairs: Repair[]): void {
           const dropped = branch.filter((e) => !nodeNames.has(e.node));
           for (const e of dropped) {
             repairs.push({
-              kind: 'droppedDanglingEdge',
+              kind: "droppedDanglingEdge",
               node: fromName,
               detail: `dropped edge ${fromName} → ${e.node} (target missing)`,
             });

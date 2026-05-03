@@ -3,15 +3,15 @@ import {
   type Memory,
   type State,
   type UUID,
-} from '@elizaos/core';
+} from "@elizaos/core";
 
 export function buildConversationContext(
   message: Memory,
   state: State | undefined,
 ): string {
   const raw = state?.values?.recentMessages;
-  const recentMessages = typeof raw === 'string' ? raw : '';
-  const currentText = message.content?.text ?? '';
+  const recentMessages = typeof raw === "string" ? raw : "";
+  const currentText = message.content?.text ?? "";
 
   if (!recentMessages) {
     return currentText;
@@ -25,7 +25,7 @@ export async function getUserTagName(
   userId: string,
 ): Promise<string> {
   const entity = await runtime.getEntityById(userId as UUID);
-  const shortId = userId.replace(/-/g, '').slice(0, 8);
+  const shortId = userId.replace(/-/g, "").slice(0, 8);
   const name = entity?.names?.[0];
   // ElizaOS default name is "User" + UUID — not useful for a tag
   const isRealName = name && !name.includes(userId.slice(0, 8));

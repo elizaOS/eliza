@@ -10,22 +10,22 @@
  * null (skip) for Code/Function and a populated array for Summarize/Set.
  */
 
-import type { N8nNode } from '../types/index';
+import type { N8nNode } from "../types/index";
 
 /** n8n Summarize node aggregation → output prefix. Verified against actual
  *  n8n output during Session 20 dogfood (concatenate→concatenated_<field>,
  *  count→count_<field>). Update this map when new aggregations show up. */
 const SUMMARIZE_AGG_PREFIX: Record<string, string> = {
-  concatenate: 'concatenated',
-  count: 'count',
-  countUnique: 'uniqueCount',
-  sum: 'sum',
-  average: 'average',
-  min: 'min',
-  max: 'max',
-  first: 'first',
-  last: 'last',
-  append: 'appended',
+  concatenate: "concatenated",
+  count: "count",
+  countUnique: "uniqueCount",
+  sum: "sum",
+  average: "average",
+  min: "min",
+  max: "max",
+  first: "first",
+  last: "last",
+  append: "appended",
 };
 
 /** Returns top-level output field names a Summarize node will emit, derived
@@ -41,8 +41,8 @@ function inferSummarizeFields(node: N8nNode): string[] | null {
   const out: string[] = [];
   for (const entry of fields.values) {
     if (
-      typeof entry?.aggregation !== 'string' ||
-      typeof entry?.field !== 'string'
+      typeof entry?.aggregation !== "string" ||
+      typeof entry?.field !== "string"
     ) {
       continue;
     }
@@ -71,7 +71,7 @@ function inferSetFields(node: N8nNode): string[] | null {
   if (modern?.assignments && Array.isArray(modern.assignments)) {
     const names = modern.assignments
       .map((a) => a?.name)
-      .filter((n): n is string => typeof n === 'string' && n.length > 0);
+      .filter((n): n is string => typeof n === "string" && n.length > 0);
     if (names.length > 0) {
       return names;
     }
@@ -81,14 +81,14 @@ function inferSetFields(node: N8nNode): string[] | null {
   const legacy = params.values as
     | Record<string, Array<{ name?: string }>>
     | undefined;
-  if (legacy && typeof legacy === 'object') {
+  if (legacy && typeof legacy === "object") {
     const names: string[] = [];
     for (const arr of Object.values(legacy)) {
       if (!Array.isArray(arr)) {
         continue;
       }
       for (const v of arr) {
-        if (typeof v?.name === 'string' && v.name.length > 0) {
+        if (typeof v?.name === "string" && v.name.length > 0) {
           names.push(v.name);
         }
       }
@@ -115,21 +115,21 @@ function inferSetFields(node: N8nNode): string[] | null {
  * sizeEstimate, historyId, internalDate, labels, Subject, From, To]`.
  */
 const GMAIL_SIMPLE_MODE_FIELDS = [
-  'id',
-  'threadId',
-  'snippet',
-  'payload',
-  'sizeEstimate',
-  'historyId',
-  'internalDate',
-  'labels',
-  'Subject',
-  'From',
-  'To',
-  'Date',
-  'Cc',
-  'Bcc',
-  'Reply-To',
+  "id",
+  "threadId",
+  "snippet",
+  "payload",
+  "sizeEstimate",
+  "historyId",
+  "internalDate",
+  "labels",
+  "Subject",
+  "From",
+  "To",
+  "Date",
+  "Cc",
+  "Bcc",
+  "Reply-To",
 ];
 
 function inferGmailSimpleFields(node: N8nNode): string[] | null {
@@ -150,20 +150,20 @@ function inferGmailSimpleFields(node: N8nNode): string[] | null {
  */
 export function inferSyntheticOutputSchema(node: N8nNode): string[] | null {
   switch (node.type) {
-    case 'n8n-nodes-base.summarize':
+    case "n8n-nodes-base.summarize":
       return inferSummarizeFields(node);
-    case 'n8n-nodes-base.set':
-    case 'n8n-nodes-base.editFields':
+    case "n8n-nodes-base.set":
+    case "n8n-nodes-base.editFields":
       return inferSetFields(node);
-    case 'n8n-nodes-base.gmail':
+    case "n8n-nodes-base.gmail":
       // simple-mode override — only applies when simple !== false.
       // For simple=false, return null so the caller falls back to the
       // static schema (which captures the non-simple lowercase shape).
       return inferGmailSimpleFields(node);
     // Arbitrary user output — schema unknowable without execution.
-    case 'n8n-nodes-base.code':
-    case 'n8n-nodes-base.function':
-    case 'n8n-nodes-base.functionItem':
+    case "n8n-nodes-base.code":
+    case "n8n-nodes-base.function":
+    case "n8n-nodes-base.functionItem":
       return null;
     default:
       return null;

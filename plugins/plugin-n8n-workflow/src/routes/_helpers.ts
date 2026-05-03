@@ -1,6 +1,6 @@
-import type { IAgentRuntime } from '@elizaos/core';
-import { N8N_WORKFLOW_SERVICE_TYPE } from '../services/n8n-workflow-service';
-import type { N8nWorkflowService } from '../services/n8n-workflow-service';
+import type { IAgentRuntime } from "@elizaos/core";
+import { N8N_WORKFLOW_SERVICE_TYPE } from "../services/n8n-workflow-service";
+import type { N8nWorkflowService } from "../services/n8n-workflow-service";
 
 /**
  * Extract N8nWorkflowService from runtime services
@@ -11,7 +11,7 @@ export function getService(runtime: IAgentRuntime): N8nWorkflowService {
     | undefined;
 
   if (!service) {
-    throw new Error('N8nWorkflowService not available in runtime');
+    throw new Error("N8nWorkflowService not available in runtime");
   }
 
   return service;

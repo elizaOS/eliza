@@ -1,4 +1,4 @@
-import { logger } from '@elizaos/core';
+import { logger } from "@elizaos/core";
 import type {
   N8nWorkflow,
   NodeDefinition,
@@ -7,19 +7,19 @@ import type {
   OutputRefValidation,
   SchemaContent,
   RuntimeContext,
-} from '../types/index';
-import { getNodeDefinition, simplifyNodeForLLM } from './catalog';
+} from "../types/index";
+import { getNodeDefinition, simplifyNodeForLLM } from "./catalog";
 import {
   loadOutputSchema,
   loadTriggerOutputSchema,
   parseExpressions,
   fieldExistsInSchema,
   getAllFieldPathsTyped,
-} from './outputSchema';
+} from "./outputSchema";
 
 function isTriggerNode(type: string): boolean {
   const t = type.toLowerCase();
-  return t.includes('trigger') || t.includes('webhook');
+  return t.includes("trigger") || t.includes("webhook");
 }
 
 export function validateWorkflow(
@@ -30,18 +30,18 @@ export function validateWorkflow(
 
   // 1. Check nodes array exists and is non-empty
   if (!workflow.nodes || !Array.isArray(workflow.nodes)) {
-    errors.push('Missing or invalid nodes array');
+    errors.push("Missing or invalid nodes array");
     return { valid: false, errors, warnings };
   }
 
   if (workflow.nodes.length === 0) {
-    errors.push('Workflow must have at least one node');
+    errors.push("Workflow must have at least one node");
     return { valid: false, errors, warnings };
   }
 
   // 2. Check connections structure
-  if (!workflow.connections || typeof workflow.connections !== 'object') {
-    errors.push('Missing or invalid connections object');
+  if (!workflow.connections || typeof workflow.connections !== "object") {
+    errors.push("Missing or invalid connections object");
     return { valid: false, errors, warnings };
   }
 
@@ -51,12 +51,12 @@ export function validateWorkflow(
 
   for (const node of workflow.nodes) {
     // Check required fields
-    if (!node.name || typeof node.name !== 'string') {
-      errors.push('Node missing name');
+    if (!node.name || typeof node.name !== "string") {
+      errors.push("Node missing name");
       continue;
     }
 
-    if (!node.type || typeof node.type !== 'string') {
+    if (!node.type || typeof node.type !== "string") {
       errors.push(`Node "${node.name}" missing type`);
       continue;
     }
@@ -80,7 +80,7 @@ export function validateWorkflow(
     }
 
     // Check parameters
-    if (!node.parameters || typeof node.parameters !== 'object') {
+    if (!node.parameters || typeof node.parameters !== "object") {
       warnings.push(`Node "${node.name}" missing parameters object`);
     }
   }
@@ -106,7 +106,7 @@ export function validateWorkflow(
         }
 
         for (const connection of connectionGroup) {
-          if (!connection.node || typeof connection.node !== 'string') {
+          if (!connection.node || typeof connection.node !== "string") {
             errors.push(`Invalid connection from "${sourceName}"`);
             continue;
           }
@@ -124,12 +124,12 @@ export function validateWorkflow(
   // 5. Check for at least one trigger node
   const hasTrigger = workflow.nodes.some(
     (node) =>
-      isTriggerNode(node.type) || node.name.toLowerCase().includes('start'),
+      isTriggerNode(node.type) || node.name.toLowerCase().includes("start"),
   );
 
   if (!hasTrigger) {
     warnings.push(
-      'Workflow has no trigger node - it can only be executed manually',
+      "Workflow has no trigger node - it can only be executed manually",
     );
   }
 
@@ -148,7 +148,7 @@ export function validateWorkflow(
   for (const node of workflow.nodes) {
     if (
       !isTriggerNode(node.type) &&
-      !node.name.toLowerCase().includes('start') &&
+      !node.name.toLowerCase().includes("start") &&
       !nodesWithIncoming.has(node.name)
     ) {
       warnings.push(
@@ -187,7 +187,7 @@ export function validateNodeParameters(workflow: N8nWorkflow): string[] {
       }
 
       const value = node.parameters?.[prop.name];
-      if (value === undefined || value === null || value === '') {
+      if (value === undefined || value === null || value === "") {
         const label = prop.displayName || prop.name;
         warnings.push(
           `Node "${node.name}": missing required parameter "${label}"`,
@@ -214,7 +214,7 @@ function buildEffectiveParams(
   nodeDef: NodeDefinition,
   node: { typeVersion: number; parameters: Record<string, unknown> },
 ): Record<string, unknown> {
-  const effective: Record<string, unknown> = { '@version': node.typeVersion };
+  const effective: Record<string, unknown> = { "@version": node.typeVersion };
 
   // Pass 1: always-visible properties (no displayOptions)
   for (const prop of nodeDef.properties) {
@@ -317,7 +317,7 @@ export function validateNodeInputs(workflow: N8nWorkflow): string[] {
       continue;
     }
 
-    if (isTriggerNode(node.type) || nodeDef.group.includes('trigger')) {
+    if (isTriggerNode(node.type) || nodeDef.group.includes("trigger")) {
       continue;
     }
 
@@ -326,7 +326,7 @@ export function validateNodeInputs(workflow: N8nWorkflow): string[] {
       continue;
     }
 
-    const expectedInputs = nodeDef.inputs.filter((i) => i === 'main').length;
+    const expectedInputs = nodeDef.inputs.filter((i) => i === "main").length;
     const actualInputs = incomingCount.get(node.name) || 0;
 
     if (expectedInputs > 0 && actualInputs < expectedInputs) {
@@ -350,8 +350,8 @@ export function positionNodes(workflow: N8nWorkflow): N8nWorkflow {
       node.position &&
       Array.isArray(node.position) &&
       node.position.length === 2 &&
-      typeof node.position[0] === 'number' &&
-      typeof node.position[1] === 'number',
+      typeof node.position[0] === "number" &&
+      typeof node.position[1] === "number",
   );
 
   if (allHavePositions) {
@@ -377,7 +377,7 @@ export function normalizeTriggerSimpleParam(workflow: N8nWorkflow): void {
 
     const def = getNodeDefinition(node.type);
     const hasSimple = def?.properties?.some(
-      (p: { name: string }) => p.name === 'simple',
+      (p: { name: string }) => p.name === "simple",
     );
     if (hasSimple) {
       node.parameters = { ...node.parameters, simple: true };
@@ -401,7 +401,7 @@ export function validateOutputReferences(
     {
       schema: SchemaContent;
       fields: string[];
-      node: N8nWorkflow['nodes'][0];
+      node: N8nWorkflow["nodes"][0];
     } | null
   >();
 
@@ -414,13 +414,13 @@ export function validateOutputReferences(
       schemaCache.set(sourceName, null);
       return null;
     }
-    const resource = (sourceNode.parameters?.resource as string) || '';
-    const operation = (sourceNode.parameters?.operation as string) || '';
+    const resource = (sourceNode.parameters?.resource as string) || "";
+    const operation = (sourceNode.parameters?.operation as string) || "";
     const schemaResult = isTriggerNode(sourceNode.type)
       ? loadTriggerOutputSchema(
-        sourceNode.type,
+          sourceNode.type,
           sourceNode.parameters as Record<string, unknown>,
-      )
+        )
       : loadOutputSchema(sourceNode.type, resource, operation);
     if (!schemaResult) {
       schemaCache.set(sourceName, null);
@@ -461,8 +461,8 @@ export function validateOutputReferences(
 
       const exists = fieldExistsInSchema(expr.path, cached.schema);
       if (!exists) {
-        const resource = (cached.node.parameters?.resource as string) || '';
-        const operation = (cached.node.parameters?.operation as string) || '';
+        const resource = (cached.node.parameters?.resource as string) || "";
+        const operation = (cached.node.parameters?.operation as string) || "";
         invalidRefs.push({
           nodeName: node.name,
           expression: expr.fullExpression,
@@ -497,7 +497,7 @@ export function correctOptionParameters(workflow: N8nWorkflow): number {
 
     if (node.type !== nodeDef.name) {
       logger.warn(
-        { src: 'plugin:n8n-workflow:correctOptions' },
+        { src: "plugin:n8n-workflow:correctOptions" },
         `Node "${node.name}": type "${node.type}" → "${nodeDef.name}"`,
       );
       node.type = nodeDef.name;
@@ -510,7 +510,7 @@ export function correctOptionParameters(workflow: N8nWorkflow): number {
     if (node.typeVersion && !validVersions.includes(node.typeVersion)) {
       const maxVersion = Math.max(...validVersions);
       logger.warn(
-        { src: 'plugin:n8n-workflow:correctOptions' },
+        { src: "plugin:n8n-workflow:correctOptions" },
         `Node "${node.name}": typeVersion ${node.typeVersion} → ${maxVersion}`,
       );
       node.typeVersion = maxVersion;
@@ -520,7 +520,7 @@ export function correctOptionParameters(workflow: N8nWorkflow): number {
     const topLevel: NodeProperty[] = [];
     const dependent: NodeProperty[] = [];
     for (const prop of nodeDef.properties) {
-      if (prop.type !== 'options' || !prop.options?.length) {
+      if (prop.type !== "options" || !prop.options?.length) {
         continue;
       }
       if (prop.displayOptions) {
@@ -547,7 +547,7 @@ export function correctOptionParameters(workflow: N8nWorkflow): number {
 }
 
 function fixOptionValue(
-  node: N8nWorkflow['nodes'][0],
+  node: N8nWorkflow["nodes"][0],
   prop: NodeProperty,
 ): number {
   const currentValue = node.parameters[prop.name];
@@ -567,7 +567,7 @@ function fixOptionValue(
       : allowedValues[0];
 
   logger.warn(
-    { src: 'plugin:n8n-workflow:correctOptions' },
+    { src: "plugin:n8n-workflow:correctOptions" },
     `Node "${node.name}": ${prop.name} "${currentValue}" → "${corrected}"`,
   );
   node.parameters[prop.name] = corrected;
@@ -627,9 +627,9 @@ function buildNodeGraph(workflow: N8nWorkflow): Map<string, string[]> {
 }
 
 function positionByLevels(
-  nodes: N8nWorkflow['nodes'],
+  nodes: N8nWorkflow["nodes"],
   graph: Map<string, string[]>,
-): N8nWorkflow['nodes'] {
+): N8nWorkflow["nodes"] {
   // Find trigger/start nodes (nodes with no incoming connections)
   const incomingCount = new Map<string, number>();
   for (const node of nodes) {
@@ -850,7 +850,7 @@ export function injectMissingCredentialBlocks(
     // n8n nodes typically gate credentials by `displayOptions.show.authentication`
     // (e.g. discord's discordBotApi shows when authentication=botToken).
     const auth =
-      typeof node.parameters?.authentication === 'string'
+      typeof node.parameters?.authentication === "string"
         ? (node.parameters.authentication as string)
         : null;
     const candidate = def.credentials.find((c) => {
@@ -872,18 +872,18 @@ export function injectMissingCredentialBlocks(
     const friendlyName = supportedForType.get(candidate.name) ?? candidate.name;
     node.credentials = {
       [candidate.name]: {
-        id: '{{CREDENTIAL_ID}}',
+        id: "{{CREDENTIAL_ID}}",
         name: friendlyName,
       },
     };
     logger.debug(
       {
-        src: 'plugin:n8n-workflow:utils:workflow',
+        src: "plugin:n8n-workflow:utils:workflow",
         node: node.name,
         nodeType: node.type,
         credType: candidate.name,
       },
-      'Injected missing credentials block on node (LLM omitted it)',
+      "Injected missing credentials block on node (LLM omitted it)",
     );
     injected++;
   }
@@ -906,26 +906,26 @@ function prefixExpressions(obj: Record<string, unknown>): number {
   for (const key of Object.keys(obj)) {
     const value = obj[key];
     if (
-      typeof value === 'string' &&
-      value.includes('{{') &&
-      !value.startsWith('=')
+      typeof value === "string" &&
+      value.includes("{{") &&
+      !value.startsWith("=")
     ) {
       obj[key] = `=${value}`;
       count++;
     } else if (Array.isArray(value)) {
       for (let i = 0; i < value.length; i++) {
         if (
-          typeof value[i] === 'string' &&
-          value[i].includes('{{') &&
-          !value[i].startsWith('=')
+          typeof value[i] === "string" &&
+          value[i].includes("{{") &&
+          !value[i].startsWith("=")
         ) {
           value[i] = `=${value[i]}`;
           count++;
-        } else if (typeof value[i] === 'object' && value[i] !== null) {
+        } else if (typeof value[i] === "object" && value[i] !== null) {
           count += prefixExpressions(value[i] as Record<string, unknown>);
         }
       }
-    } else if (typeof value === 'object' && value !== null) {
+    } else if (typeof value === "object" && value !== null) {
       count += prefixExpressions(value as Record<string, unknown>);
     }
   }

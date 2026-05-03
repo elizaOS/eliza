@@ -3,15 +3,15 @@ import type {
   RouteRequest,
   RouteResponse,
   IAgentRuntime,
-} from '@elizaos/core';
+} from "@elizaos/core";
 import {
   validateWorkflow,
   validateNodeParameters,
   validateNodeInputs,
   positionNodes,
-} from '../utils/workflow';
-import type { N8nWorkflow } from '../types/index';
-import { getService } from './_helpers';
+} from "../utils/workflow";
+import type { N8nWorkflow } from "../types/index";
+import { getService } from "./_helpers";
 
 /**
  * GET /workflows
@@ -29,8 +29,8 @@ async function listWorkflows(
   } catch (error) {
     res.status(500).json({
       success: false,
-      error: 'failed_to_list_workflows',
-      message: error instanceof Error ? error.message : 'Unknown error',
+      error: "failed_to_list_workflows",
+      message: error instanceof Error ? error.message : "Unknown error",
     });
   }
 }
@@ -54,7 +54,7 @@ async function createWorkflow(
     if (!workflow || !userId) {
       res
         .status(400)
-        .json({ success: false, error: 'workflow and userId are required' });
+        .json({ success: false, error: "workflow and userId are required" });
       return;
     }
 
@@ -62,7 +62,7 @@ async function createWorkflow(
     if (!validation.valid) {
       res.status(422).json({
         success: false,
-        error: 'validation_failed',
+        error: "validation_failed",
         errors: validation.errors,
         warnings: validation.warnings,
       });
@@ -79,7 +79,7 @@ async function createWorkflow(
     if (result.missingCredentials.length > 0 && !result.id) {
       res.status(200).json({
         success: false,
-        reason: 'missing_integrations',
+        reason: "missing_integrations",
         missingIntegrations: result.missingCredentials,
         warnings: [...paramWarnings, ...inputWarnings],
       });
@@ -99,8 +99,8 @@ async function createWorkflow(
   } catch (error) {
     res.status(500).json({
       success: false,
-      error: 'failed_to_create_workflow',
-      message: error instanceof Error ? error.message : 'Unknown error',
+      error: "failed_to_create_workflow",
+      message: error instanceof Error ? error.message : "Unknown error",
     });
   }
 }
@@ -116,7 +116,7 @@ async function getWorkflow(
   try {
     const id = req.params?.id;
     if (!id) {
-      res.status(400).json({ success: false, error: 'workflow_id_required' });
+      res.status(400).json({ success: false, error: "workflow_id_required" });
       return;
     }
 
@@ -126,8 +126,8 @@ async function getWorkflow(
   } catch (error) {
     res.status(500).json({
       success: false,
-      error: 'failed_to_get_workflow',
-      message: error instanceof Error ? error.message : 'Unknown error',
+      error: "failed_to_get_workflow",
+      message: error instanceof Error ? error.message : "Unknown error",
     });
   }
 }
@@ -146,7 +146,7 @@ async function updateWorkflow(
   try {
     const id = req.params?.id;
     if (!id) {
-      res.status(400).json({ success: false, error: 'workflow_id_required' });
+      res.status(400).json({ success: false, error: "workflow_id_required" });
       return;
     }
 
@@ -158,7 +158,7 @@ async function updateWorkflow(
     if (!workflow || !userId) {
       res
         .status(400)
-        .json({ success: false, error: 'workflow and userId are required' });
+        .json({ success: false, error: "workflow and userId are required" });
       return;
     }
 
@@ -166,7 +166,7 @@ async function updateWorkflow(
     if (!validation.valid) {
       res.status(422).json({
         success: false,
-        error: 'validation_failed',
+        error: "validation_failed",
         errors: validation.errors,
         warnings: validation.warnings,
       });
@@ -183,7 +183,7 @@ async function updateWorkflow(
     if (result.missingCredentials.length > 0 && !result.id) {
       res.status(200).json({
         success: false,
-        reason: 'missing_integrations',
+        reason: "missing_integrations",
         missingIntegrations: result.missingCredentials,
         warnings: [...paramWarnings, ...inputWarnings],
       });
@@ -198,8 +198,8 @@ async function updateWorkflow(
   } catch (error) {
     res.status(500).json({
       success: false,
-      error: 'failed_to_update_workflow',
-      message: error instanceof Error ? error.message : 'Unknown error',
+      error: "failed_to_update_workflow",
+      message: error instanceof Error ? error.message : "Unknown error",
     });
   }
 }
@@ -215,7 +215,7 @@ async function deleteWorkflow(
   try {
     const id = req.params?.id;
     if (!id) {
-      res.status(400).json({ success: false, error: 'workflow_id_required' });
+      res.status(400).json({ success: false, error: "workflow_id_required" });
       return;
     }
 
@@ -225,8 +225,8 @@ async function deleteWorkflow(
   } catch (error) {
     res.status(500).json({
       success: false,
-      error: 'failed_to_delete_workflow',
-      message: error instanceof Error ? error.message : 'Unknown error',
+      error: "failed_to_delete_workflow",
+      message: error instanceof Error ? error.message : "Unknown error",
     });
   }
 }
@@ -242,7 +242,7 @@ async function activateWorkflow(
   try {
     const id = req.params?.id;
     if (!id) {
-      res.status(400).json({ success: false, error: 'workflow_id_required' });
+      res.status(400).json({ success: false, error: "workflow_id_required" });
       return;
     }
 
@@ -252,8 +252,8 @@ async function activateWorkflow(
   } catch (error) {
     res.status(500).json({
       success: false,
-      error: 'failed_to_activate_workflow',
-      message: error instanceof Error ? error.message : 'Unknown error',
+      error: "failed_to_activate_workflow",
+      message: error instanceof Error ? error.message : "Unknown error",
     });
   }
 }
@@ -269,7 +269,7 @@ async function deactivateWorkflow(
   try {
     const id = req.params?.id;
     if (!id) {
-      res.status(400).json({ success: false, error: 'workflow_id_required' });
+      res.status(400).json({ success: false, error: "workflow_id_required" });
       return;
     }
 
@@ -279,22 +279,22 @@ async function deactivateWorkflow(
   } catch (error) {
     res.status(500).json({
       success: false,
-      error: 'failed_to_deactivate_workflow',
-      message: error instanceof Error ? error.message : 'Unknown error',
+      error: "failed_to_deactivate_workflow",
+      message: error instanceof Error ? error.message : "Unknown error",
     });
   }
 }
 
 export const workflowRoutes: Route[] = [
-  { type: 'GET', path: '/workflows', handler: listWorkflows },
-  { type: 'POST', path: '/workflows', handler: createWorkflow },
-  { type: 'GET', path: '/workflows/:id', handler: getWorkflow },
-  { type: 'PUT', path: '/workflows/:id', handler: updateWorkflow },
-  { type: 'DELETE', path: '/workflows/:id', handler: deleteWorkflow },
-  { type: 'POST', path: '/workflows/:id/activate', handler: activateWorkflow },
+  { type: "GET", path: "/workflows", handler: listWorkflows },
+  { type: "POST", path: "/workflows", handler: createWorkflow },
+  { type: "GET", path: "/workflows/:id", handler: getWorkflow },
+  { type: "PUT", path: "/workflows/:id", handler: updateWorkflow },
+  { type: "DELETE", path: "/workflows/:id", handler: deleteWorkflow },
+  { type: "POST", path: "/workflows/:id/activate", handler: activateWorkflow },
   {
-    type: 'POST',
-    path: '/workflows/:id/deactivate',
+    type: "POST",
+    path: "/workflows/:id/deactivate",
     handler: deactivateWorkflow,
   },
 ];

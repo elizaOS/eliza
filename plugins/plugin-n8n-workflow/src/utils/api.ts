@@ -6,7 +6,7 @@ import {
   N8nExecution,
   N8nTag,
   N8nApiError,
-} from '../types/index';
+} from "../types/index";
 
 /**
  * Strip readOnly and internal fields from a workflow before sending to n8n API.
@@ -85,7 +85,7 @@ export class N8nApiClient {
   private apiKey: string;
 
   constructor(host: string, apiKey: string) {
-    this.baseUrl = host.replace(/\/$/, ''); // Remove trailing slash
+    this.baseUrl = host.replace(/\/$/, ""); // Remove trailing slash
     this.apiKey = apiKey;
   }
 
@@ -96,8 +96,8 @@ export class N8nApiClient {
   /** @see POST /workflows */
   async createWorkflow(workflow: N8nWorkflow): Promise<N8nWorkflowResponse> {
     return this.request<N8nWorkflowResponse>(
-      'POST',
-      '/workflows',
+      "POST",
+      "/workflows",
       toWorkflowPayload(workflow),
     );
   }
@@ -111,27 +111,27 @@ export class N8nApiClient {
   }): Promise<{ data: N8nWorkflowResponse[]; nextCursor?: string }> {
     const query = new URLSearchParams();
     if (params?.active !== undefined) {
-      query.append('active', params.active.toString());
+      query.append("active", params.active.toString());
     }
     if (params?.tags) {
-      params.tags.forEach((tag) => query.append('tags', tag));
+      params.tags.forEach((tag) => query.append("tags", tag));
     }
     if (params?.limit) {
-      query.append('limit', params.limit.toString());
+      query.append("limit", params.limit.toString());
     }
     if (params?.cursor) {
-      query.append('cursor', params.cursor);
+      query.append("cursor", params.cursor);
     }
 
     return this.request<{ data: N8nWorkflowResponse[]; nextCursor?: string }>(
-      'GET',
-      `/workflows${query.toString() ? `?${query.toString()}` : ''}`,
+      "GET",
+      `/workflows${query.toString() ? `?${query.toString()}` : ""}`,
     );
   }
 
   /** @see GET /workflows/{id} */
   async getWorkflow(id: string): Promise<N8nWorkflowResponse> {
-    return this.request<N8nWorkflowResponse>('GET', `/workflows/${id}`);
+    return this.request<N8nWorkflowResponse>("GET", `/workflows/${id}`);
   }
 
   /** @see PUT /workflows/{id} */
@@ -140,7 +140,7 @@ export class N8nApiClient {
     workflow: N8nWorkflow,
   ): Promise<N8nWorkflowResponse> {
     return this.request<N8nWorkflowResponse>(
-      'PUT',
+      "PUT",
       `/workflows/${id}`,
       toWorkflowPayload(workflow),
     );
@@ -148,13 +148,13 @@ export class N8nApiClient {
 
   /** @see DELETE /workflows/{id} */
   async deleteWorkflow(id: string): Promise<void> {
-    await this.request('DELETE', `/workflows/${id}`);
+    await this.request("DELETE", `/workflows/${id}`);
   }
 
   /** @see POST /workflows/{id}/activate */
   async activateWorkflow(id: string): Promise<N8nWorkflowResponse> {
     return this.request<N8nWorkflowResponse>(
-      'POST',
+      "POST",
       `/workflows/${id}/activate`,
     );
   }
@@ -162,7 +162,7 @@ export class N8nApiClient {
   /** @see POST /workflows/{id}/deactivate */
   async deactivateWorkflow(id: string): Promise<N8nWorkflowResponse> {
     return this.request<N8nWorkflowResponse>(
-      'POST',
+      "POST",
       `/workflows/${id}/deactivate`,
     );
   }
@@ -170,7 +170,7 @@ export class N8nApiClient {
   /** @see PUT /workflows/{id}/tags */
   async updateWorkflowTags(id: string, tagIds: string[]): Promise<N8nTag[]> {
     return this.request<N8nTag[]>(
-      'PUT',
+      "PUT",
       `/workflows/${id}/tags`,
       tagIds.map((id) => ({ id })),
     );
@@ -186,12 +186,12 @@ export class N8nApiClient {
     type: string;
     data: Record<string, unknown>;
   }): Promise<N8nCredential> {
-    return this.request<N8nCredential>('POST', '/credentials', credential);
+    return this.request<N8nCredential>("POST", "/credentials", credential);
   }
 
   /** @see DELETE /credentials/{id} */
   async deleteCredential(id: string): Promise<void> {
-    await this.request('DELETE', `/credentials/${id}`);
+    await this.request("DELETE", `/credentials/${id}`);
   }
 
   // ============================================================================
@@ -201,38 +201,38 @@ export class N8nApiClient {
   /** @see GET /executions */
   async listExecutions(params?: {
     workflowId?: string;
-    status?: 'canceled' | 'error' | 'running' | 'success' | 'waiting';
+    status?: "canceled" | "error" | "running" | "success" | "waiting";
     limit?: number;
     cursor?: string;
   }): Promise<{ data: N8nExecution[]; nextCursor?: string }> {
     const query = new URLSearchParams();
     if (params?.workflowId) {
-      query.append('workflowId', params.workflowId);
+      query.append("workflowId", params.workflowId);
     }
     if (params?.status) {
-      query.append('status', params.status);
+      query.append("status", params.status);
     }
     if (params?.limit) {
-      query.append('limit', params.limit.toString());
+      query.append("limit", params.limit.toString());
     }
     if (params?.cursor) {
-      query.append('cursor', params.cursor);
+      query.append("cursor", params.cursor);
     }
 
     return this.request<{ data: N8nExecution[]; nextCursor?: string }>(
-      'GET',
-      `/executions${query.toString() ? `?${query.toString()}` : ''}`,
+      "GET",
+      `/executions${query.toString() ? `?${query.toString()}` : ""}`,
     );
   }
 
   /** @see GET /executions/{id} */
   async getExecution(id: string): Promise<N8nExecution> {
-    return this.request<N8nExecution>('GET', `/executions/${id}`);
+    return this.request<N8nExecution>("GET", `/executions/${id}`);
   }
 
   /** @see DELETE /executions/{id} */
   async deleteExecution(id: string): Promise<void> {
-    await this.request('DELETE', `/executions/${id}`);
+    await this.request("DELETE", `/executions/${id}`);
   }
 
   // ============================================================================
@@ -241,12 +241,12 @@ export class N8nApiClient {
 
   /** @see GET /tags */
   async listTags(): Promise<{ data: N8nTag[] }> {
-    return this.request<{ data: N8nTag[] }>('GET', '/tags');
+    return this.request<{ data: N8nTag[] }>("GET", "/tags");
   }
 
   /** @see POST /tags */
   async createTag(name: string): Promise<N8nTag> {
-    return this.request<N8nTag>('POST', '/tags', { name });
+    return this.request<N8nTag>("POST", "/tags", { name });
   }
 
   /**
@@ -291,7 +291,7 @@ export class N8nApiClient {
   async getRuntimeNodeTypeVersions(): Promise<Map<string, number[]> | null> {
     try {
       const response = await fetch(`${this.baseUrl}/types/nodes.json`, {
-        headers: { 'X-N8N-API-KEY': this.apiKey },
+        headers: { "X-N8N-API-KEY": this.apiKey },
       });
       if (!response.ok) {
         return null;
@@ -309,12 +309,12 @@ export class N8nApiClient {
       // regression, observed in Session 21 dogfood).
       const acc = new Map<string, Set<number>>();
       for (const entry of data) {
-        if (typeof entry?.name !== 'string') {
+        if (typeof entry?.name !== "string") {
           continue;
         }
         const versions = Array.isArray(entry.version)
-          ? entry.version.filter((v): v is number => typeof v === 'number')
-          : typeof entry.version === 'number'
+          ? entry.version.filter((v): v is number => typeof v === "number")
+          : typeof entry.version === "number"
             ? [entry.version]
             : [];
         if (versions.length === 0) {
@@ -356,8 +356,8 @@ export class N8nApiClient {
     const options: RequestInit = {
       method,
       headers: {
-        'Content-Type': 'application/json',
-        'X-N8N-API-KEY': this.apiKey,
+        "Content-Type": "application/json",
+        "X-N8N-API-KEY": this.apiKey,
       },
     };
 
