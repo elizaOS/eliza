@@ -17,7 +17,7 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@xmtp/node-sdk": "2.0.3",
-    "sharp": "0.34.1",
+    "sharp": "0.34.5",
     "tsup": "8.3.5",
     "uint8arrays": "^5.1.0",
     "viem": "^2.48.8"
