@@ -435,3 +435,6 @@ benchmark_results/
 # src/main/assets/agent/ at build time; committing the 33 MB bundle
 # blob and 5 MB pglite.data into the repo is wrong.
 packages/agent/dist-mobile/
+packages/benchmarks/benchmark_results/
+packages/benchmarks/benchmark_results
+packages/swe-bench-workspace/
