@@ -282,6 +282,18 @@ if [[ -f "$WHATSAPP_PLUGIN_TS_DIR/package.json" ]]; then
   popd >/dev/null
 fi
 
+# Plugin-sql ships a `typescript/` subtree whose dist is the package's `main`/
+# `exports`. The agent imports `@elizaos/plugin-sql` at boot, so the dist must
+# exist inside the COPY-into-Docker tree or the runtime fails with
+# ERR_MODULE_NOT_FOUND on `@elizaos/plugin-sql/typescript/dist/index.js`.
+SQL_PLUGIN_DIR="$PLUGINS_DIR/plugin-sql"
+if [[ -f "$SQL_PLUGIN_DIR/package.json" ]]; then
+  log "Building @elizaos/plugin-sql workspace artifacts"
+  pushd "$SQL_PLUGIN_DIR" >/dev/null
+  "$BUN_BIN" run build
+  popd >/dev/null
+fi
+
 log "Building agent workspace"
 pushd "$AGENT_DIR" >/dev/null
 "$BUN_BIN" run build:docker-dist
