@@ -539,7 +539,7 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: Set up kubectl
-        uses: azure/setup-kubectl@v4
+        uses: azure/setup-kubectl@v5
 
       - name: Set up Helm
         uses: azure/setup-helm@v4
