@@ -6,7 +6,7 @@
  * for the per-user preference storage case.
  *
  * Requires:
- *   - ELIZA_LIVE_TEST=1 (or ELIZA_LIVE_TEST=1)
+ *   - ELIZA_LIVE_TEST=1
  *   - at least one real model provider API key
  */
 import crypto from "node:crypto";
@@ -42,7 +42,7 @@ dotenv.config({ path: path.resolve(packageRoot, ".env") });
 dotenv.config({ path: path.resolve(packageRoot, "..", "..", ".env") });
 
 const liveModelTestsEnabled =
-  process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
+  process.env.ELIZA_LIVE_TEST === "1";
 const selectedLiveProvider = liveModelTestsEnabled
   ? selectLiveProvider()
   : null;

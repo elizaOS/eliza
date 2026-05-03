@@ -62,7 +62,7 @@ const DEP_SECTIONS = ["dependencies", "devDependencies", "peerDependencies"];
 // ── Glob expansion ──────────────────────────────────────────────────────────
 
 /**
- * Expand a single workspace pattern (e.g. "plugins/plugin-*\/typescript")
+ * Expand a single workspace pattern (e.g. "plugins/plugin-*")
  * into a list of directories that actually exist and contain a package.json.
  */
 function expandPattern(pattern) {

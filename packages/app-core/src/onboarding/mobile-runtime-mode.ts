@@ -5,7 +5,7 @@ export const MOBILE_RUNTIME_MODE_STORAGE_KEY = "eliza:mobile-runtime-mode";
 
 /**
  * Constants describing the bundled Android on-device agent endpoint. The
- * MiladyOS variant pre-seeds these as the persisted active server at app
+ * ElizaOS variant pre-seeds these as the persisted active server at app
  * boot; the vanilla Android APK uses them only when the user explicitly
  * picks Local in `RuntimeGate`.
  */

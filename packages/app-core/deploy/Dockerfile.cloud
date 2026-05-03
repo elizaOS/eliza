@@ -31,8 +31,8 @@ COPY eliza/packages/agent/package.json ./eliza/packages/agent/package.json
 COPY eliza/packages/app-core/package.json ./eliza/packages/app-core/package.json
 COPY eliza/packages/shared/package.json ./eliza/packages/shared/package.json
 COPY eliza/packages/ui/package.json ./eliza/packages/ui/package.json
-COPY eliza/plugins/plugin-sql/typescript/package.json ./eliza/plugins/plugin-sql/typescript/package.json
-COPY eliza/plugins/plugin-elizacloud/typescript/package.json ./eliza/plugins/plugin-elizacloud/typescript/package.json
+COPY eliza/plugins/plugin-sql/package.json ./eliza/plugins/plugin-sql/package.json
+COPY eliza/plugins/plugin-elizacloud/package.json ./eliza/plugins/plugin-elizacloud/package.json
 COPY packages/app/package.json ./packages/app/package.json
 COPY eliza/packages/app-core/platforms/electrobun/package.json ./eliza/packages/app-core/platforms/electrobun/package.json
 COPY eliza/packages/app-core/deploy/cloud-agent-template/package.json ./eliza/packages/app-core/deploy/cloud-agent-template/package.json
@@ -70,8 +70,8 @@ const STRIP_NAMES =
   /^@elizaos\/(app-|capacitor-|plugin-agent-orchestrator|plugin-cli|plugin-imessage|plugin-local-ai|plugin-pdf|plugin-wechat|steward-)/;
 const VERSION_MANIFESTS = [
   "eliza/packages/typescript/package.json",
-  "eliza/plugins/plugin-sql/typescript/package.json",
-  "eliza/plugins/plugin-elizacloud/typescript/package.json",
+  "eliza/plugins/plugin-sql/package.json",
+  "eliza/plugins/plugin-elizacloud/package.json",
 ];
 const CLOUD_AGENT_RELEASE_DEPS = [
   "@elizaos/core",

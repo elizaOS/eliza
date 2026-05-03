@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { isCloudConnected, resolveCloudRoute } from "../src/resolve.ts";
+import {
+  cloudServiceApisBaseUrl,
+  isCloudConnected,
+  resolveCloudRoute,
+  toRuntimeSettings,
+} from "../src/resolve.ts";
 import type { RouteSpec } from "../src/types.ts";
 
 type SettingValue = string | boolean | number | null;
@@ -236,5 +241,33 @@ describe("isCloudConnected", () => {
       ELIZAOS_CLOUD_ENABLED: 0,
     });
     expect(isCloudConnected(rt as never)).toBe(false);
+  });
+});
+
+describe("toRuntimeSettings", () => {
+  it("coerces bigint settings to string", () => {
+    const wrapped = toRuntimeSettings({
+      getSetting: () => 42n,
+    });
+    expect(wrapped.getSetting("x")).toBe("42");
+  });
+});
+
+describe("cloudServiceApisBaseUrl", () => {
+  it("returns cloud apis base + bearer when connected", () => {
+    const rt = mockRuntime({
+      ELIZAOS_CLOUD_API_KEY: "ck",
+      ELIZAOS_CLOUD_ENABLED: "true",
+    });
+    const got = cloudServiceApisBaseUrl(rt as never, "dexscreener");
+    expect(got).not.toBeNull();
+    if (!got) throw new Error("unreachable");
+    expect(got.baseUrl).toBe("https://www.elizacloud.ai/api/v1/apis/dexscreener");
+    expect(got.headers.Authorization).toBe("Bearer ck");
+  });
+
+  it("returns null when cloud is not connected", () => {
+    const rt = mockRuntime({});
+    expect(cloudServiceApisBaseUrl(rt as never, "dexscreener")).toBeNull();
   });
 });

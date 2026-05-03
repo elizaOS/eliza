@@ -64,48 +64,6 @@ describe("importPluginModuleFromPath", () => {
     await fs.rm(stateDir, { recursive: true, force: true }).catch(() => {});
   });
 
-  it("stages declared workspace-plugin dependencies before import", async () => {
-    const pluginRoot = path.resolve(
-      import.meta.dirname,
-      "..",
-      "..",
-      "..",
-      "..",
-      "plugins",
-      "plugin-cron",
-      "typescript",
-    );
-
-    const pluginModule = await importPluginModuleFromPath(
-      pluginRoot,
-      "@elizaos/plugin-cron",
-    );
-    expect(pluginModule.cronPlugin).toBeDefined();
-
-    const stagingBaseDir = path.join(
-      stateDir,
-      "plugins",
-      ".runtime-imports",
-      "_elizaos_plugin-cron",
-    );
-    const stagedDirs = await fs.readdir(stagingBaseDir);
-    expect(stagedDirs.length).toBeGreaterThan(0);
-    const stagedDir = stagedDirs[0];
-    expect(stagedDir).toBeDefined();
-    if (!stagedDir) {
-      throw new Error("Expected a staged plugin directory");
-    }
-
-    const stagedCronerPath = path.join(
-      stagingBaseDir,
-      stagedDir,
-      "root",
-      "node_modules",
-      "croner",
-    );
-    await expect(fs.stat(stagedCronerPath)).resolves.toBeDefined();
-  });
-
   it("merges outer workspace peer dependencies into staged app packages", async () => {
     const workspaceRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "eliza-app-plugin-workspace-"),

@@ -1,0 +1,96 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Steward — Development Override
+#
+# Layered on top of docker-compose.yml for local development:
+#   - Live source mounts (hot reload via bun --hot)
+#   - PGLite in-process DB (no Postgres container needed)
+#   - Redis removed (in-memory fallback)
+#   - Debug ports exposed
+#   - Verbose logging
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# Or add a shell alias:
+#   alias dcd="docker compose -f docker-compose.yml -f docker-compose.dev.yml"
+# ──────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  steward-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: deps            # Stop at deps stage — runtime is the mounted src
+    # Run with --hot for live reload when source files change
+    command: ["bun", "--hot", "packages/api/src/index.ts"]
+    environment:
+      NODE_ENV: "development"
+      PORT: "3200"
+      STEWARD_BIND_HOST: "0.0.0.0"
+      # PGLite: skip external postgres entirely
+      STEWARD_DB_MODE: "pglite"
+      STEWARD_PGLITE_PATH: "/app/.pglite"
+      # Unset DATABASE_URL so the API uses PGLite
+      DATABASE_URL: ""
+      # Redis is removed in dev; API falls back to in-memory stores
+      REDIS_URL: ""
+      STEWARD_MASTER_PASSWORD: "${STEWARD_MASTER_PASSWORD:-dev_master_password_not_for_prod}"
+      STEWARD_SESSION_SECRET: "${STEWARD_SESSION_SECRET:-dev_session_secret}"
+      STEWARD_PLATFORM_KEYS: "${STEWARD_PLATFORM_KEYS:-dev_platform_key}"
+      STEWARD_DEFAULT_TENANT_KEY: "${STEWARD_DEFAULT_TENANT_KEY:-dev_tenant_key}"
+      AGENT_TOKEN_EXPIRY: "7d"
+      RPC_URL: "${RPC_URL:-https://sepolia.base.org}"
+      CHAIN_ID: "${CHAIN_ID:-84532}"
+    volumes:
+      # Mount entire monorepo source (live edits, no rebuild needed)
+      - ./packages:/app/packages
+      # Persist PGLite data across restarts
+      - pglite-data:/app/.pglite
+    ports:
+      # API
+      - "3200:3200"
+      # Node/Bun inspector (attach with chrome://inspect or VS Code)
+      - "9229:9229"
+    healthcheck:
+      # Relaxed for dev: /health only (PGLite doesn't do full /ready checks)
+      test: ["CMD", "bun", "-e", "const r=await fetch('http://127.0.0.1:3200/health');process.exit(r.ok?0:1)"]
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
+      retries: 5
+    # Remove postgres/redis dependencies in dev
+    depends_on: {}
+
+  steward-proxy:
+    command: ["bun", "--hot", "packages/proxy/src/index.ts"]
+    environment:
+      NODE_ENV: "development"
+      STEWARD_PROXY_PORT: "8080"
+      # Proxy also uses PGLite in dev
+      STEWARD_DB_MODE: "pglite"
+      STEWARD_PGLITE_PATH: "/app/.pglite"
+      DATABASE_URL: ""
+      REDIS_URL: ""
+      STEWARD_MASTER_PASSWORD: "${STEWARD_MASTER_PASSWORD:-dev_master_password_not_for_prod}"
+      STEWARD_SESSION_SECRET: "${STEWARD_SESSION_SECRET:-dev_session_secret}"
+    volumes:
+      - ./packages:/app/packages
+      - pglite-data:/app/.pglite
+    ports:
+      - "8080:8080"
+    depends_on:
+      steward-api:
+        condition: service_healthy
+
+  # Disable Postgres and Redis in dev
+  postgres:
+    profiles: ["disabled"]
+
+  redis:
+    profiles: ["disabled"]
+
+# ── Dev volumes ───────────────────────────────────────────────────────────────
+volumes:
+  pglite-data:
+    driver: local

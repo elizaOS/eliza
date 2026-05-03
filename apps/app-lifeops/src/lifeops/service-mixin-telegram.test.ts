@@ -229,8 +229,8 @@ describe("withTelegram consumer surface", () => {
       bot: {
         botInfo: {
           id: 12345,
-          username: "milady_bot",
-          first_name: "Milady",
+          username: "eliza_bot",
+          first_name: "Eliza",
         },
       },
     };
@@ -245,8 +245,8 @@ describe("withTelegram consumer surface", () => {
     expect(status.reason).toBe("connected");
     expect(status.identity).toMatchObject({
       id: "12345",
-      username: "milady_bot",
-      firstName: "Milady",
+      username: "eliza_bot",
+      firstName: "Eliza",
     });
     expect(status.grantedCapabilities).toEqual([
       "telegram.read",

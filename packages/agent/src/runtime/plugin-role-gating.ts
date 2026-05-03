@@ -109,7 +109,7 @@ const ACTION_ROLE_OVERRIDES: Readonly<Record<string, RoleGate>> = {
   START_CODING_TASK: "owner",
   // PROVISION_WORKSPACE / MANAGE_ISSUES already covered above
 
-  // --- plugin-cron: create/delete/update are owner, list/run are admin ---
+  // --- Cron-style actions (TaskService / triggers; not @elizaos/plugin-cron) ---
   CREATE_CRON: "owner",
   DELETE_CRON: "owner",
   UPDATE_CRON: "owner",

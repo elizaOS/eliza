@@ -1,11 +1,11 @@
 // null-plugin.cjs — used by the mobile bundle for optional @elizaos plugins
-// that pull in desktop-only transitive deps (plugin-cron drags in plugin-cli
+// that pull in desktop-only transitive deps (e.g. plugin-cli
 // which pins old @elizaos/core, plugin-shell drags in PTY, plugin-pdf needs
 // canvas, etc.).
 //
 // The agent runtime references these packages in three ways:
 //
-//   1. Top-level `require()` in try/catch — `if (pluginCron) { ... }` etc.
+//   1. Top-level `require()` in try/catch — `if (pluginShell) { ... }` etc.
 //      We can't `module.exports = null` because Bun's `__toESM(mod, 1)`
 //      helper (used to wrap CJS for ESM `import * as X`) calls
 //      `__getOwnPropNames(mod)` which throws on null.

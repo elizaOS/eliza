@@ -18,89 +18,89 @@ import { getTalkModeManager } from "./talkmode";
 const NATIVE_DISPOSE_TIMEOUT_MS = 10_000;
 
 export function initializeNativeModules(
-  mainWindow: BrowserWindow,
-  sendToWebview: SendToWebview,
+	mainWindow: BrowserWindow,
+	sendToWebview: SendToWebview,
 ): void {
-  const desktop = getDesktopManager();
-  desktop.setMainWindow(mainWindow);
-  desktop.setSendToWebview(sendToWebview);
+	const desktop = getDesktopManager();
+	desktop.setMainWindow(mainWindow);
+	desktop.setSendToWebview(sendToWebview);
 
-  getAgentManager().setSendToWebview(sendToWebview);
-  getBrowserWorkspaceManager().setSendToWebview(sendToWebview);
-  getCameraManager().setSendToWebview(sendToWebview);
-  getCanvasManager().setSendToWebview(sendToWebview);
-  getGatewayDiscovery().setSendToWebview(sendToWebview);
-  getGpuWindowManager().setSendToWebview(sendToWebview);
-  getLocationManager().setSendToWebview(sendToWebview);
-  getPermissionManager().setSendToWebview(sendToWebview);
-  const screencapture = getScreenCaptureManager();
-  screencapture.setSendToWebview(sendToWebview);
-  screencapture.setMainWebview(mainWindow.webview);
-  getSwabbleManager().setSendToWebview(sendToWebview);
-  getTalkModeManager().setSendToWebview(sendToWebview);
+	getAgentManager().setSendToWebview(sendToWebview);
+	getBrowserWorkspaceManager().setSendToWebview(sendToWebview);
+	getCameraManager().setSendToWebview(sendToWebview);
+	getCanvasManager().setSendToWebview(sendToWebview);
+	getGatewayDiscovery().setSendToWebview(sendToWebview);
+	getGpuWindowManager().setSendToWebview(sendToWebview);
+	getLocationManager().setSendToWebview(sendToWebview);
+	getPermissionManager().setSendToWebview(sendToWebview);
+	const screencapture = getScreenCaptureManager();
+	screencapture.setSendToWebview(sendToWebview);
+	screencapture.setMainWebview(mainWindow.webview);
+	getSwabbleManager().setSendToWebview(sendToWebview);
+	getTalkModeManager().setSendToWebview(sendToWebview);
 }
 
 export async function disposeNativeModules(): Promise<void> {
-  const managers = [
-    ["agent", getAgentManager()],
-    ["browser-workspace", getBrowserWorkspaceManager()],
-    ["camera", getCameraManager()],
-    ["canvas", getCanvasManager()],
-    ["desktop", getDesktopManager()],
-    ["gateway", getGatewayDiscovery()],
-    ["gpu-window", getGpuWindowManager()],
-    ["location", getLocationManager()],
-    ["permissions", getPermissionManager()],
-    ["screencapture", getScreenCaptureManager()],
-    ["swabble", getSwabbleManager()],
-    ["talkmode", getTalkModeManager()],
-    ["music-player", getMusicPlayerManager()],
-  ] as const;
+	const managers = [
+		["agent", getAgentManager()],
+		["browser-workspace", getBrowserWorkspaceManager()],
+		["camera", getCameraManager()],
+		["canvas", getCanvasManager()],
+		["desktop", getDesktopManager()],
+		["gateway", getGatewayDiscovery()],
+		["gpu-window", getGpuWindowManager()],
+		["location", getLocationManager()],
+		["permissions", getPermissionManager()],
+		["screencapture", getScreenCaptureManager()],
+		["swabble", getSwabbleManager()],
+		["talkmode", getTalkModeManager()],
+		["music-player", getMusicPlayerManager()],
+	] as const;
 
-  // Stop steward sidecar if it was running
-  if (isStewardLocalEnabled()) {
-    try {
-      await stopSteward();
-    } catch (err) {
-      console.warn(
-        "[Native] steward dispose failed:",
-        err instanceof Error ? err.message : err,
-      );
-    }
-  }
+	// Stop steward sidecar if it was running
+	if (isStewardLocalEnabled()) {
+		try {
+			await stopSteward();
+		} catch (err) {
+			console.warn(
+				"[Native] steward dispose failed:",
+				err instanceof Error ? err.message : err,
+			);
+		}
+	}
 
-  const settleDisposals = Promise.allSettled(
-    managers.map(async ([name, manager]) => {
-      try {
-        await Promise.resolve(manager.dispose());
-      } catch (err) {
-        console.warn(
-          `[Native] ${name} dispose failed:`,
-          err instanceof Error ? err.message : err,
-        );
-      }
-    }),
-  );
+	const settleDisposals = Promise.allSettled(
+		managers.map(async ([name, manager]) => {
+			try {
+				await Promise.resolve(manager.dispose());
+			} catch (err) {
+				console.warn(
+					`[Native] ${name} dispose failed:`,
+					err instanceof Error ? err.message : err,
+				);
+			}
+		}),
+	);
 
-  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-  const timedOut = await Promise.race([
-    settleDisposals.then(() => false),
-    new Promise<boolean>((resolve) => {
-      timeoutHandle = setTimeout(
-        () => resolve(true),
-        NATIVE_DISPOSE_TIMEOUT_MS,
-      );
-    }),
-  ]);
-  if (timeoutHandle) {
-    clearTimeout(timeoutHandle);
-  }
+	let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+	const timedOut = await Promise.race([
+		settleDisposals.then(() => false),
+		new Promise<boolean>((resolve) => {
+			timeoutHandle = setTimeout(
+				() => resolve(true),
+				NATIVE_DISPOSE_TIMEOUT_MS,
+			);
+		}),
+	]);
+	if (timeoutHandle) {
+		clearTimeout(timeoutHandle);
+	}
 
-  if (timedOut) {
-    console.warn(
-      `[Native] Timed out waiting ${NATIVE_DISPOSE_TIMEOUT_MS}ms for native module disposal`,
-    );
-  } else {
-    await settleDisposals;
-  }
+	if (timedOut) {
+		console.warn(
+			`[Native] Timed out waiting ${NATIVE_DISPOSE_TIMEOUT_MS}ms for native module disposal`,
+		);
+	} else {
+		await settleDisposals;
+	}
 }

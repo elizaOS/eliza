@@ -158,7 +158,6 @@ const pluginPdfSrc = path.join(
   elizaWorkspaceRoot,
   "plugins",
   "plugin-pdf",
-  "typescript",
 );
 // Fall back to a stub when an optional plugin tarball has a broken entry point.
 const unresolvedPluginStubs = workspacePluginPackageNames
@@ -244,7 +243,7 @@ const vitestResolveAlias: ModuleAlias[] = [
     find: /^@elizaos\/plugin-sql$/,
     replacement: path.join(
       elizaWorkspaceRoot,
-      "plugins/plugin-sql/typescript/index.node.ts",
+      "plugins/plugin-sql/index.node.ts",
     ),
   },
   {
@@ -256,10 +255,7 @@ const vitestResolveAlias: ModuleAlias[] = [
   },
   {
     find: /^@elizaos\/plugin-sql\/(.+)$/,
-    replacement: path.join(
-      elizaWorkspaceRoot,
-      "plugins/plugin-sql/typescript/$1",
-    ),
+    replacement: path.join(elizaWorkspaceRoot, "plugins/plugin-sql/$1"),
   },
   {
     // App-core tests mock this plugin, but Vitest still has to resolve the specifier.
@@ -428,8 +424,7 @@ export default defineConfig({
       "eliza/apps/app-lifeops/src/**/*.test.ts",
       "packages/plugin-wechat/src/**/*.test.ts",
       "eliza/plugins/plugin-music-player/src/**/*.test.ts",
-      "eliza/plugins/plugin-discord/typescript/__tests__/identity.test.ts",
-      "eliza/plugins/plugin-discord/typescript/__tests__/slash-command-roles.test.ts",
+      "eliza/plugins/plugin-discord/__tests__/**/*.test.ts",
       "src/**/*.test.{ts,tsx}",
       "scripts/**/*.test.{ts,tsx}",
       "apps/chrome-extension/**/*.test.ts",

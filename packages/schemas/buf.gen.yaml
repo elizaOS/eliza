@@ -1,4 +1,4 @@
-# buf.gen.yaml - Code generation configuration for multiple languages
+# buf.gen.yaml - Code generation configuration (TypeScript)
 version: v2
 
 managed:
@@ -14,15 +14,8 @@ plugins:
     opt:
       - target=ts
       - import_extension=.js
-
-  # Python generation using standard protobuf
-  - remote: buf.build/protocolbuffers/python:v29.3
-    out: ../python/elizaos/types/generated
-
-  # Python type stubs
-  - remote: buf.build/protocolbuffers/pyi:v29.3
-    out: ../python/elizaos/types/generated
-
-  # Rust generation using prost (WASM-compatible)
-  - remote: buf.build/community/neoeinstein-prost:v0.4.0
-    out: ../rust/src/types/generated
+  - remote: buf.build/bufbuild/es:v2.2.2
+    out: ../core/src/types/generated
+    opt:
+      - target=ts
+      - import_extension=.js

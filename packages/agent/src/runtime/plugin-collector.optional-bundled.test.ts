@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ElizaConfig } from "../config/types.js";
 import {
   CORE_PLUGINS,
-  MILADYOS_ANDROID_CORE_PLUGINS,
+  ELIZAOS_ANDROID_CORE_PLUGINS,
   OPTIONAL_CORE_PLUGINS,
 } from "./core-plugins.js";
 import { collectPluginNames } from "./plugin-collector.js";
@@ -245,12 +245,12 @@ describe("optional core plugins (require explicit opt-in)", () => {
       plugins: {},
     } as ElizaConfig);
 
-    for (const pluginName of MILADYOS_ANDROID_CORE_PLUGINS) {
+    for (const pluginName of ELIZAOS_ANDROID_CORE_PLUGINS) {
       expect(names.has(pluginName)).toBe(false);
     }
   });
 
-  it("loads privileged system app plugins only for the MiladyOS Android runtime", () => {
+  it("loads privileged system app plugins only for the ElizaOS Android runtime", () => {
     process.env.ELIZA_PLATFORM = "android";
     process.env.ELIZA_LOCAL_LLAMA = "1";
 
@@ -258,7 +258,7 @@ describe("optional core plugins (require explicit opt-in)", () => {
       plugins: {},
     } as ElizaConfig);
 
-    for (const pluginName of MILADYOS_ANDROID_CORE_PLUGINS) {
+    for (const pluginName of ELIZAOS_ANDROID_CORE_PLUGINS) {
       expect(names.has(pluginName)).toBe(true);
     }
   });

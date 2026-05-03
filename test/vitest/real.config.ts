@@ -84,17 +84,17 @@ const ciExcludedRealPaths = [
     "packages/agent/src/actions/life-param-extractor-real.test.ts",
   ),
   elizaWorkspacePattern(
-    "plugins/plugin-evm/typescript/__tests__/integration/rpc-providers.live.test.ts",
+    "plugins/plugin-evm/__tests__/integration/rpc-providers.live.test.ts",
   ),
   elizaWorkspacePattern(
-    "plugins/plugin-evm/typescript/__tests__/integration/transfer.live.test.ts",
+    "plugins/plugin-evm/__tests__/integration/transfer.live.test.ts",
   ),
   elizaWorkspacePattern(
-    "plugins/plugin-shell/typescript/__tests__/shell.real.test.ts",
+    "plugins/plugin-shell/__tests__/shell.real.test.ts",
   ),
   // plugin-openrouter sdk nested workspace deps don't resolve in this CI lane.
   elizaWorkspacePattern(
-    "plugins/plugin-openrouter/typescript/__tests__/models.live.test.ts",
+    "plugins/plugin-openrouter/__tests__/models.live.test.ts",
   ),
 ];
 const liveSetupFile = [
@@ -127,10 +127,9 @@ const appCompanionSourceRoot = path.join(
   "src",
 );
 const liveRetryCount =
-  process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1"
+  process.env.ELIZA_LIVE_TEST === "1"
     ? 1
     : 0;
-process.env.ELIZA_LIVE_TEST = "1";
 process.env.ELIZA_LIVE_TEST = "1";
 
 const realResolveAlias: ModuleAlias[] = [
@@ -443,20 +442,6 @@ const realResolveAlias: ModuleAlias[] = [
           elizaWorkspaceRoot,
           "plugins",
           "plugin-commands",
-          "typescript",
-          "src",
-          "index",
-        ),
-      },
-    },
-    {
-      find: "@elizaos/plugin-cron",
-      packageName: "@elizaos/plugin-cron",
-      options: {
-        fallbackPath: path.join(
-          elizaWorkspaceRoot,
-          "plugins",
-          "plugin-cron",
           "typescript",
           "src",
           "index",

@@ -15,13 +15,13 @@ import { CODE_ASSISTANT_SYSTEM_PROMPT } from "./prompts.js";
  * Eliza Code Character Configuration (Direct Code Agent)
  */
 const elizaCodeCharacter: Character = {
-  name: "Eliza",
-  bio: [
-    "A coding assistant that directly helps users with implementation tasks.",
-    "Capable of reading, writing, and editing files directly.",
-    "Executes shell commands to run tests, linters, and other tools."
-  ],
-  system: `${CODE_ASSISTANT_SYSTEM_PROMPT}
+	name: "Eliza",
+	bio: [
+		"A coding assistant that directly helps users with implementation tasks.",
+		"Capable of reading, writing, and editing files directly.",
+		"Executes shell commands to run tests, linters, and other tools.",
+	],
+	system: `${CODE_ASSISTANT_SYSTEM_PROMPT}
 
 You are a direct coding agent. You have tools to READ, WRITE, and EDIT files directly.
 You also have tools to executing SHELL commands.
@@ -31,38 +31,38 @@ Always explain what you are about to do before doing it.
 After making changes, verify them if possible (e.g. run a test).
 The current working directory is dynamically provided.`,
 
-  topics: [
-    "coding",
-    "programming",
-    "software development",
-    "debugging",
-    "testing",
-    "refactoring",
-    "file operations",
-    "shell commands",
-    "git",
-    "TypeScript",
-    "JavaScript",
-    "Python",
-    "Rust",
-  ],
+	topics: [
+		"coding",
+		"programming",
+		"software development",
+		"debugging",
+		"testing",
+		"refactoring",
+		"file operations",
+		"shell commands",
+		"git",
+		"TypeScript",
+		"JavaScript",
+		"Python",
+		"Rust",
+	],
 
-  style: {
-    all: [
-      "Be thorough but concise",
-      "Explain your reasoning and actions",
-      "Proactively identify potential issues",
-      "Use code blocks for all code examples",
-    ],
-    chat: [
-      "Engage naturally in conversation",
-      "Provide updates on actions taken",
-    ],
-  },
+	style: {
+		all: [
+			"Be thorough but concise",
+			"Explain your reasoning and actions",
+			"Proactively identify potential issues",
+			"Use code blocks for all code examples",
+		],
+		chat: [
+			"Engage naturally in conversation",
+			"Provide updates on actions taken",
+		],
+	},
 
-  settings: {
-    secrets: {},
-  }
+	settings: {
+		secrets: {},
+	},
 };
 
 import { agentOrchestratorPlugin } from "@elizaos/plugin-agent-orchestrator";
@@ -71,51 +71,51 @@ import { agentOrchestratorPlugin } from "@elizaos/plugin-agent-orchestrator";
  * Initialize the Eliza runtime with coding capabilities
  */
 export async function initializeAgent(): Promise<AgentRuntime> {
-  const provider = resolveModelProvider(process.env);
-  if (provider === "anthropic" && !process.env.ANTHROPIC_API_KEY) {
-    throw new Error(
-      "ANTHROPIC_API_KEY is required (ELIZA_CODE_PROVIDER=anthropic).",
-    );
-  }
-  if (provider === "openai" && !process.env.OPENAI_API_KEY) {
-    throw new Error("OPENAI_API_KEY is required (ELIZA_CODE_PROVIDER=openai).");
-  }
+	const provider = resolveModelProvider(process.env);
+	if (provider === "anthropic" && !process.env.ANTHROPIC_API_KEY) {
+		throw new Error(
+			"ANTHROPIC_API_KEY is required (ELIZA_CODE_PROVIDER=anthropic).",
+		);
+	}
+	if (provider === "openai" && !process.env.OPENAI_API_KEY) {
+		throw new Error("OPENAI_API_KEY is required (ELIZA_CODE_PROVIDER=openai).");
+	}
 
-  const providerPlugin =
-    provider === "anthropic" ? anthropicPlugin : openaiPlugin;
+	const providerPlugin =
+		provider === "anthropic" ? anthropicPlugin : openaiPlugin;
 
-  // Ensure directories are set for safety
-  if (!process.env.CODER_ALLOWED_DIRECTORY) {
-    process.env.CODER_ALLOWED_DIRECTORY = process.cwd();
-  }
-  if (!process.env.SHELL_ALLOWED_DIRECTORY) {
-    process.env.SHELL_ALLOWED_DIRECTORY = process.cwd();
-  }
+	// Ensure directories are set for safety
+	if (!process.env.CODER_ALLOWED_DIRECTORY) {
+		process.env.CODER_ALLOWED_DIRECTORY = process.cwd();
+	}
+	if (!process.env.SHELL_ALLOWED_DIRECTORY) {
+		process.env.SHELL_ALLOWED_DIRECTORY = process.cwd();
+	}
 
-  // Enable coder plugin explicitly
-  process.env.CODER_ENABLED = "true";
+	// Enable coder plugin explicitly
+	process.env.CODER_ENABLED = "true";
 
-  const plugins: Plugin[] = [
-    sqlPlugin,
-    providerPlugin,
-    mcpPlugin,
-    goalsPlugin,
-    trajectoryLoggerPlugin,
-    shellPlugin,
-    coderPlugin, // Direct coding capabilities
-    agentOrchestratorPlugin, // Agent orchestration
-  ];
+	const plugins: Plugin[] = [
+		sqlPlugin,
+		providerPlugin,
+		mcpPlugin,
+		goalsPlugin,
+		trajectoryLoggerPlugin,
+		shellPlugin,
+		coderPlugin, // Direct coding capabilities
+		agentOrchestratorPlugin, // Agent orchestration
+	];
 
-  const runtime = new AgentRuntime({
-    character: elizaCodeCharacter,
-    plugins,
-  });
+	const runtime = new AgentRuntime({
+		character: elizaCodeCharacter,
+		plugins,
+	});
 
-  await runtime.initialize();
+	await runtime.initialize();
 
-  return runtime;
+	return runtime;
 }
 
 export async function shutdownAgent(runtime: AgentRuntime): Promise<void> {
-  await runtime.stop();
+	await runtime.stop();
 }

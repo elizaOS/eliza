@@ -90,7 +90,7 @@ Microsoft Edge TTS is free and requires no API key. Synthesis is performed throu
 
 **Eliza default:** When `@elizaos/plugin-agent-orchestrator` is loaded, Eliza **automatically** adds `@elizaos/plugin-edge-tts` so swarm / PTY paths that call `TEXT_TO_SPEECH` have a handler. That means a default install with the orchestrator can make **outbound calls to Microsoft** whenever those code paths run TTS—even if you never enabled “TTS” in features.
 
-**Opt out of auto-load:** set `ELIZA_DISABLE_EDGE_TTS=1` (or `ELIZA_DISABLE_EDGE_TTS=1`) in the environment or `~/.eliza/.env`, or disable the plugin entry: `plugins.entries["edge-tts"].enabled: false`. See [Environment variables](/cli/environment#runtime-behavior) (`ELIZA_DISABLE_EDGE_TTS`).
+**Opt out of auto-load:** set `ELIZA_DISABLE_EDGE_TTS=1` in the environment or `~/.eliza/.env`, or disable the plugin entry: `plugins.entries["edge-tts"].enabled: false`. See [Environment variables](/cli/environment#runtime-behavior) (`ELIZA_DISABLE_EDGE_TTS`).
 
 ```json
 {

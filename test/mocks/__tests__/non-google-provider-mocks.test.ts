@@ -62,6 +62,23 @@ describe("non-Google central provider mocks", () => {
     );
     expect(tweetBody.data.id).toMatch(/^tweet-/);
 
+    const timelineAfterTweet = await fetch(
+      `${baseUrl}/2/users/user-owner/timelines/reverse_chronological?max_results=1`,
+    );
+    expect(timelineAfterTweet.status).toBe(200);
+    expect(
+      (
+        await readJson<{ data: Array<{ id: string; text: string }> }>(
+          timelineAfterTweet,
+        )
+      ).data[0],
+    ).toEqual(
+      expect.objectContaining({
+        id: tweetBody.data.id,
+        text: "posting through central mock",
+      }),
+    );
+
     const dmSend = await fetch(
       `${baseUrl}/2/dm_conversations/with/user-alice/messages`,
       {
@@ -71,10 +88,26 @@ describe("non-Google central provider mocks", () => {
       },
     );
     expect(dmSend.status).toBe(200);
+    const dmSendBody = await readJson<{ data: { dm_event_id: string } }>(
+      dmSend,
+    );
+    expect(dmSendBody.data.dm_event_id).toMatch(/^dm-event-/);
+    const dmEventsAfterSend = await fetch(
+      `${baseUrl}/2/dm_events?max_results=1`,
+    );
+    expect(dmEventsAfterSend.status).toBe(200);
     expect(
-      (await readJson<{ data: { dm_event_id: string } }>(dmSend)).data
-        .dm_event_id,
-    ).toMatch(/^dm-event-/);
+      (
+        await readJson<{ data: Array<{ id: string; text: string }> }>(
+          dmEventsAfterSend,
+        )
+      ).data[0],
+    ).toEqual(
+      expect.objectContaining({
+        id: dmSendBody.data.dm_event_id,
+        text: "central DM fixture",
+      }),
+    );
 
     expect(mocks.requestLedger()).toEqual(
       expect.arrayContaining([
@@ -162,6 +195,61 @@ describe("non-Google central provider mocks", () => {
     expect(bufferedBody.messages.map((message) => message.id)).toEqual([
       "wamid.inbound",
     ]);
+    expect(bufferedBody.messages[0]).toEqual(
+      expect.objectContaining({
+        text: { body: "inbound fixture" },
+      }),
+    );
+
+    const updateWebhook = await fetch(`${baseUrl}/webhooks/whatsapp`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entry: [
+          {
+            changes: [
+              {
+                value: {
+                  messages: [
+                    {
+                      id: "wamid.inbound",
+                      from: "15551112222",
+                      timestamp: "1777132860",
+                      type: "text",
+                      text: { body: "updated inbound fixture" },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    expect(updateWebhook.status).toBe(200);
+
+    const updatedBuffer = await fetch(`${baseUrl}/__mock/whatsapp/inbound`);
+    const updatedBufferBody = await readJson<{
+      messages: Array<{ id: string; text?: { body?: string } }>;
+    }>(updatedBuffer);
+    expect(updatedBufferBody.messages).toHaveLength(1);
+    expect(updatedBufferBody.messages[0]).toEqual(
+      expect.objectContaining({
+        id: "wamid.inbound",
+        text: { body: "updated inbound fixture" },
+      }),
+    );
+
+    const drained = await fetch(`${baseUrl}/__mock/whatsapp/inbound`, {
+      method: "DELETE",
+    });
+    expect(drained.status).toBe(200);
+    expect((await readJson<{ drained: number }>(drained)).drained).toBe(1);
+
+    const afterDrain = await fetch(`${baseUrl}/__mock/whatsapp/inbound`);
+    expect(
+      (await readJson<{ messages: unknown[] }>(afterDrain)).messages,
+    ).toHaveLength(0);
 
     expect(mocks.requestLedger()).toEqual(
       expect.arrayContaining([
@@ -198,6 +286,12 @@ describe("non-Google central provider mocks", () => {
     );
     expect(receive.status).toBe(200);
     expect((await readJson<unknown[]>(receive)).length).toBe(2);
+
+    const receiveAfterDrain = await fetch(
+      `${baseUrl}/v1/receive/${encodeURIComponent(accountNumber)}`,
+    );
+    expect(receiveAfterDrain.status).toBe(200);
+    expect(await readJson<unknown[]>(receiveAfterDrain)).toHaveLength(0);
 
     const send = await fetch(`${baseUrl}/v2/send`, {
       method: "POST",
@@ -282,6 +376,52 @@ describe("non-Google central provider mocks", () => {
     expect(created.status).toBe(200);
     const createdBody = await readJson<{ tab: { id: string } }>(created);
     const tabId = createdBody.tab.id;
+
+    const navigated = await fetch(`${baseUrl}/tabs/${tabId}/navigate`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ url: "https://discord.com/channels/@me/222" }),
+    });
+    expect(navigated.status).toBe(200);
+    expect((await readJson<{ tab: { url: string } }>(navigated)).tab.url).toBe(
+      "https://discord.com/channels/@me/222",
+    );
+
+    const hidden = await fetch(`${baseUrl}/tabs/${tabId}/hide`, {
+      method: "POST",
+      headers,
+    });
+    expect(hidden.status).toBe(200);
+    expect((await readJson<{ tab: { show: boolean } }>(hidden)).tab.show).toBe(
+      false,
+    );
+
+    const shown = await fetch(`${baseUrl}/tabs/${tabId}/show`, {
+      method: "POST",
+      headers,
+    });
+    expect(shown.status).toBe(200);
+    expect((await readJson<{ tab: { show: boolean } }>(shown)).tab.show).toBe(
+      true,
+    );
+
+    const listedTabs = await fetch(`${baseUrl}/tabs`, { headers });
+    expect(listedTabs.status).toBe(200);
+    expect(
+      (
+        await readJson<{
+          tabs: Array<{ id: string; url: string; show: boolean }>;
+        }>(listedTabs)
+      ).tabs,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: tabId,
+          url: "https://discord.com/channels/@me/222",
+          show: true,
+        }),
+      ]),
+    );
 
     const evalResponse = await fetch(`${baseUrl}/tabs/${tabId}/eval`, {
       method: "POST",
@@ -380,6 +520,25 @@ describe("non-Google central provider mocks", () => {
         .isDelivered,
     ).toBe(true);
 
+    const sentSearch = await fetch(`${baseUrl}/api/v1/message/query`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ search: "sent from BlueBubbles", chatGuid }),
+    });
+    expect(sentSearch.status).toBe(200);
+    expect(
+      (
+        await readJson<{ data: Array<{ guid: string; text: string }> }>(
+          sentSearch,
+        )
+      ).data[0],
+    ).toEqual(
+      expect.objectContaining({
+        guid: messageGuid,
+        text: "sent from BlueBubbles fixture",
+      }),
+    );
+
     expect(mocks.requestLedger()).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -423,7 +582,60 @@ describe("non-Google central provider mocks", () => {
       body: JSON.stringify({ title: "central mock issue" }),
     });
     expect(issue.status).toBe(200);
-    expect((await readJson<{ number: number }>(issue)).number).toBe(101);
+    const issueBody = await readJson<{
+      number: number;
+      title: string;
+      assignees: Array<{ login: string }>;
+    }>(issue);
+    expect(issueBody.number).toBe(101);
+    expect(issueBody.assignees).toEqual([]);
+
+    const assignees = await fetch(
+      `${baseUrl}/repos/elizaOS/eliza/issues/${issueBody.number}/assignees`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assignees: ["alice", "bob"] }),
+      },
+    );
+    expect(assignees.status).toBe(200);
+    expect(
+      (await readJson<{ assignees: Array<{ login: string }> }>(assignees))
+        .assignees,
+    ).toEqual([{ login: "alice" }, { login: "bob" }]);
+
+    const issueDetail = await fetch(
+      `${baseUrl}/repos/elizaOS/eliza/issues/${issueBody.number}`,
+    );
+    expect(issueDetail.status).toBe(200);
+    expect(
+      await readJson<{
+        number: number;
+        title: string;
+        assignees: Array<{ login: string }>;
+      }>(issueDetail),
+    ).toEqual(
+      expect.objectContaining({
+        number: issueBody.number,
+        title: "central mock issue",
+        assignees: [{ login: "alice" }, { login: "bob" }],
+      }),
+    );
+
+    const issueList = await fetch(
+      `${baseUrl}/repos/elizaOS/eliza/issues?state=open`,
+    );
+    expect(issueList.status).toBe(200);
+    expect(
+      await readJson<Array<{ number: number; title: string }>>(issueList),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          number: issueBody.number,
+          title: "central mock issue",
+        }),
+      ]),
+    );
 
     const review = await fetch(
       `${baseUrl}/repos/elizaOS/eliza/pulls/17/reviews`,
@@ -434,7 +646,21 @@ describe("non-Google central provider mocks", () => {
       },
     );
     expect(review.status).toBe(200);
-    expect((await readJson<{ id: number }>(review)).id).toBe(777);
+    const reviewBody = await readJson<{ id: number; event: string }>(review);
+    expect(reviewBody.id).toBe(777);
+    expect(reviewBody.event).toBe("APPROVE");
+
+    const reviews = await fetch(
+      `${baseUrl}/repos/elizaOS/eliza/pulls/17/reviews`,
+    );
+    expect(reviews.status).toBe(200);
+    expect(
+      await readJson<Array<{ id: number; event: string }>>(reviews),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: reviewBody.id, event: "APPROVE" }),
+      ]),
+    );
 
     const notifications = await fetch(`${baseUrl}/notifications`);
     expect(notifications.status).toBe(200);

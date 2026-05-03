@@ -105,7 +105,6 @@ export function isWorkspaceDependency(version: string | undefined): boolean {
 
 const DISCORD_PLUGIN_PACKAGE_NAME = "@elizaos/plugin-discord";
 const DISCORD_PLUGIN_LOCAL_ENTRY_CANDIDATES = [
-  "../plugins/plugin-discord/typescript/dist/index",
   "../plugins/plugin-discord/dist/index",
 ] as const;
 /**
@@ -132,7 +131,6 @@ export function resolveDiscordPluginImportSpecifier(): string | null {
 
 const TELEGRAM_PLUGIN_PACKAGE_NAME = "@elizaos/plugin-telegram";
 const TELEGRAM_PLUGIN_LOCAL_ENTRY_CANDIDATES = [
-  "../plugins/plugin-telegram/typescript/dist/index",
   "../plugins/plugin-telegram/dist/index",
 ] as const;
 
@@ -176,7 +174,6 @@ export function resolveTelegramPluginImportSpecifier(): string | null {
 const LENS_PLUGIN_PACKAGE_NAME = "@elizaos/plugin-lens";
 const LENS_PLUGIN_FALLBACK_PACKAGE = "@elizaos-plugins/client-lens";
 const LENS_PLUGIN_LOCAL_ENTRY_CANDIDATES = [
-  "../plugins/plugin-lens/typescript/dist/index",
   "../plugins/plugin-lens/dist/index",
   "../../client-lens/dist/index",
   "../../client-lens/src/index",
@@ -233,7 +230,6 @@ export function resolveLensPluginImportSpecifier(): string | null {
 
 const FARCASTER_PLUGIN_PACKAGE_NAME = "@elizaos/plugin-farcaster";
 const FARCASTER_PLUGIN_LOCAL_ENTRY_CANDIDATES = [
-  "../plugins/plugin-farcaster/typescript/dist/index",
   "../plugins/plugin-farcaster/dist/index",
 ] as const;
 
@@ -261,7 +257,6 @@ export function resolveFarcasterPluginImportSpecifier(): string | null {
 
 const NOSTR_PLUGIN_PACKAGE_NAME = "@elizaos/plugin-nostr";
 const NOSTR_PLUGIN_LOCAL_ENTRY_CANDIDATES = [
-  "../plugins/plugin-nostr/typescript/dist/index",
   "../plugins/plugin-nostr/dist/index",
 ] as const;
 
@@ -289,7 +284,6 @@ export function resolveNostrPluginImportSpecifier(): string | null {
 
 const MATRIX_PLUGIN_PACKAGE_NAME = "@elizaos/plugin-matrix";
 const MATRIX_PLUGIN_LOCAL_ENTRY_CANDIDATES = [
-  "../plugins/plugin-matrix/typescript/dist/index",
   "../plugins/plugin-matrix/dist/index",
 ] as const;
 
@@ -317,7 +311,6 @@ export function resolveMatrixPluginImportSpecifier(): string | null {
 
 const FEISHU_PLUGIN_PACKAGE_NAME = "@elizaos/plugin-feishu";
 const FEISHU_PLUGIN_LOCAL_ENTRY_CANDIDATES = [
-  "../plugins/plugin-feishu/typescript/dist/index",
   "../plugins/plugin-feishu/dist/index",
 ] as const;
 

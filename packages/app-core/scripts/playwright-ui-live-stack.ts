@@ -479,7 +479,6 @@ async function startStubStack(): Promise<StartedStack> {
       ...process.env,
       FORCE_COLOR: "0",
       ELIZA_UI_SMOKE_API_PORT: String(API_PORT),
-      ELIZA_UI_SMOKE_API_PORT: String(API_PORT),
     },
     stdio: ["ignore", "pipe", "pipe"],
   });

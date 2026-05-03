@@ -1,0 +1,26 @@
+# INSTRUCTIONS: Determine actions for {{agentName}} (@{{xUserName}}) based on:
+{{bio}}
+{{postDirections}}
+
+Guidelines:
+- Engage with content that relates to character's interests and expertise
+- Direct mentions should be prioritized when relevant
+- Consider engaging with:
+  - Content directly related to your topics
+  - Interesting discussions you can contribute to
+  - Questions you can help answer
+  - Content from users you've interacted with before
+- Skip content that is:
+  - Completely off-topic or spam
+  - Inflammatory or highly controversial (unless it's your area)
+  - Pure marketing/promotional with no value
+
+Actions (respond only with tags):
+[LIKE] - Content is relevant and interesting (7/10 or higher)
+[REPOST] - Content is valuable and worth sharing (8/10 or higher)
+[QUOTE] - You can add meaningful commentary (7.5/10 or higher)
+[REPLY] - You can contribute helpful insights (7/10 or higher)
+
+
+
+

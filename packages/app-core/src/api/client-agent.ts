@@ -2329,7 +2329,7 @@ ElizaClient.prototype.getCodingAgentStatus = async function (
     );
     if (
       status &&
-      (!status.tasks || status.tasks.length === 0) &&
+      (status.tasks.length === 0) &&
       Array.isArray(status.taskThreads) &&
       status.taskThreads.length > 0
     ) {

@@ -1,0 +1,40 @@
+{
+  "name": "@elizaos/plugin-defi-news",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "type": "module",
+  "types": "dist/index.d.ts",
+  "description": "DeFi and cryptocurrency market data, news, and analytics plugin for ElizaOS",
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@solana/web3.js": "^1.95.2"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.5",
+    "@types/node": "^20.0.0"
+  },
+  "scripts": {
+    "build": "tsup --format esm --dts",
+    "dev": "tsup --format esm --dts --watch",
+    "clean": "rm -rf dist",
+    "lint": "prettier --write ./src"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-defi-news.git"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "COINGECKO_API_KEY": {
+        "type": "string",
+        "description": "API key for CoinGecko service (optional, enhances token data)",
+        "required": false
+      }
+    }
+  }
+}
+

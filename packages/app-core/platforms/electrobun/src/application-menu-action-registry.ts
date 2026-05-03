@@ -1,21 +1,21 @@
 type ApplicationMenuActionHandler = (
-  action: string | undefined,
+	action: string | undefined,
 ) => Promise<void>;
 
 let handler: ApplicationMenuActionHandler | null = null;
 
 export function setApplicationMenuActionHandler(
-  nextHandler: ApplicationMenuActionHandler | null,
+	nextHandler: ApplicationMenuActionHandler | null,
 ): void {
-  handler = nextHandler;
+	handler = nextHandler;
 }
 
 export async function invokeApplicationMenuAction(
-  action: string | undefined,
+	action: string | undefined,
 ): Promise<boolean> {
-  if (!handler) {
-    return false;
-  }
-  await handler(action);
-  return true;
+	if (!handler) {
+		return false;
+	}
+	await handler(action);
+	return true;
 }

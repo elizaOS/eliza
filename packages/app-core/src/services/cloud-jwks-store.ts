@@ -50,7 +50,7 @@ interface JwksCacheEnvelope {
 export function resolveElizaStateDir(
   env: RuntimeEnvRecord = process.env,
 ): string {
-  const explicit = env.ELIZA_STATE_DIR?.trim() || env.ELIZA_STATE_DIR?.trim();
+  const explicit = env.ELIZA_STATE_DIR?.trim();
   if (explicit) return path.resolve(explicit);
   return path.join(os.homedir(), ".eliza");
 }

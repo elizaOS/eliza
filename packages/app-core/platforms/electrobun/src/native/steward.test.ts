@@ -10,107 +10,107 @@ const saveStewardCredentialsMock = vi.fn();
 const COLD_NATIVE_IMPORT_TIMEOUT_MS = 45_000;
 
 vi.mock("@elizaos/app-core/services/steward-sidecar", () => ({
-  createDesktopStewardSidecar: vi.fn(() => ({
-    start: startMock,
-    stop: stopMock,
-    restart: restartMock,
-    getStatus: getStatusMock,
-    getCredentials: getCredentialsMock,
-    getApiBase: getApiBaseMock,
-  })),
+	createDesktopStewardSidecar: vi.fn(() => ({
+		start: startMock,
+		stop: stopMock,
+		restart: restartMock,
+		getStatus: getStatusMock,
+		getCredentials: getCredentialsMock,
+		getApiBase: getApiBaseMock,
+	})),
 }));
 
 vi.mock("@elizaos/app-core/services/steward-credentials", () => ({
-  saveStewardCredentials: saveStewardCredentialsMock,
+	saveStewardCredentials: saveStewardCredentialsMock,
 }));
 
 const stewardModule = await import("./steward");
 
 describe("native steward bootstrap", () => {
-  afterEach(() => {
-    delete process.env.STEWARD_LOCAL;
-    delete process.env.STEWARD_API_URL;
-    delete process.env.STEWARD_AGENT_TOKEN;
-    delete process.env.STEWARD_API_KEY;
-    delete process.env.STEWARD_TENANT_ID;
-    delete process.env.STEWARD_AGENT_ID;
-    vi.clearAllMocks();
-  });
+	afterEach(() => {
+		delete process.env.STEWARD_LOCAL;
+		delete process.env.STEWARD_API_URL;
+		delete process.env.STEWARD_AGENT_TOKEN;
+		delete process.env.STEWARD_API_KEY;
+		delete process.env.STEWARD_TENANT_ID;
+		delete process.env.STEWARD_AGENT_ID;
+		vi.clearAllMocks();
+	});
 
-  it(
-    "allows explicit enable via STEWARD_LOCAL=true",
-    async () => {
-      process.env.STEWARD_LOCAL = "true";
+	it(
+		"allows explicit enable via STEWARD_LOCAL=true",
+		async () => {
+			process.env.STEWARD_LOCAL = "true";
 
-      expect(stewardModule.isStewardLocalEnabled()).toBe(true);
-    },
-    COLD_NATIVE_IMPORT_TIMEOUT_MS,
-  );
+			expect(stewardModule.isStewardLocalEnabled()).toBe(true);
+		},
+		COLD_NATIVE_IMPORT_TIMEOUT_MS,
+	);
 
-  it(
-    "allows explicit disable via STEWARD_LOCAL=false",
-    async () => {
-      process.env.STEWARD_LOCAL = "false";
+	it(
+		"allows explicit disable via STEWARD_LOCAL=false",
+		async () => {
+			process.env.STEWARD_LOCAL = "false";
 
-      expect(stewardModule.isStewardLocalEnabled()).toBe(false);
-    },
-    COLD_NATIVE_IMPORT_TIMEOUT_MS,
-  );
+			expect(stewardModule.isStewardLocalEnabled()).toBe(false);
+		},
+		COLD_NATIVE_IMPORT_TIMEOUT_MS,
+	);
 
-  it(
-    "persists canonical steward bridge credentials after startup",
-    async () => {
-      startMock.mockResolvedValue({
-        state: "running",
-        port: 3200,
-        pid: 123,
-        error: null,
-        restartCount: 0,
-        walletAddress: "0x1234567890abcdef1234567890abcdef12345678",
-        agentId: "eliza-wallet",
-        tenantId: "eliza-desktop",
-        startedAt: Date.now(),
-      });
-      getStatusMock.mockReturnValue({
-        state: "stopped",
-        port: null,
-        pid: null,
-        error: null,
-        restartCount: 0,
-        walletAddress: null,
-        agentId: null,
-        tenantId: null,
-        startedAt: null,
-      });
-      getCredentialsMock.mockReturnValue({
-        tenantId: "eliza-desktop",
-        tenantApiKey: "tenant-key",
-        agentId: "eliza-wallet",
-        agentToken: "agent-token",
-        walletAddress: "0x1234567890abcdef1234567890abcdef12345678",
-        masterPassword: "",
-      });
-      getApiBaseMock.mockReturnValue("http://127.0.0.1:3200");
+	it(
+		"persists canonical steward bridge credentials after startup",
+		async () => {
+			startMock.mockResolvedValue({
+				state: "running",
+				port: 3200,
+				pid: 123,
+				error: null,
+				restartCount: 0,
+				walletAddress: "0x1234567890abcdef1234567890abcdef12345678",
+				agentId: "eliza-wallet",
+				tenantId: "eliza-desktop",
+				startedAt: Date.now(),
+			});
+			getStatusMock.mockReturnValue({
+				state: "stopped",
+				port: null,
+				pid: null,
+				error: null,
+				restartCount: 0,
+				walletAddress: null,
+				agentId: null,
+				tenantId: null,
+				startedAt: null,
+			});
+			getCredentialsMock.mockReturnValue({
+				tenantId: "eliza-desktop",
+				tenantApiKey: "tenant-key",
+				agentId: "eliza-wallet",
+				agentToken: "agent-token",
+				walletAddress: "0x1234567890abcdef1234567890abcdef12345678",
+				masterPassword: "",
+			});
+			getApiBaseMock.mockReturnValue("http://127.0.0.1:3200");
 
-      await stewardModule.startSteward();
+			await stewardModule.startSteward();
 
-      expect(process.env.STEWARD_API_URL).toBe("http://127.0.0.1:3200");
-      expect(process.env.STEWARD_AGENT_TOKEN).toBe("agent-token");
-      expect(process.env.STEWARD_API_KEY).toBe("tenant-key");
-      expect(process.env.STEWARD_TENANT_ID).toBe("eliza-desktop");
-      expect(process.env.STEWARD_AGENT_ID).toBe("eliza-wallet");
-      expect(saveStewardCredentialsMock).toHaveBeenCalledWith({
-        apiUrl: "http://127.0.0.1:3200",
-        tenantId: "eliza-desktop",
-        agentId: "eliza-wallet",
-        apiKey: "tenant-key",
-        agentToken: "agent-token",
-        walletAddresses: {
-          evm: "0x1234567890abcdef1234567890abcdef12345678",
-        },
-        agentName: "eliza-wallet",
-      });
-    },
-    COLD_NATIVE_IMPORT_TIMEOUT_MS,
-  );
+			expect(process.env.STEWARD_API_URL).toBe("http://127.0.0.1:3200");
+			expect(process.env.STEWARD_AGENT_TOKEN).toBe("agent-token");
+			expect(process.env.STEWARD_API_KEY).toBe("tenant-key");
+			expect(process.env.STEWARD_TENANT_ID).toBe("eliza-desktop");
+			expect(process.env.STEWARD_AGENT_ID).toBe("eliza-wallet");
+			expect(saveStewardCredentialsMock).toHaveBeenCalledWith({
+				apiUrl: "http://127.0.0.1:3200",
+				tenantId: "eliza-desktop",
+				agentId: "eliza-wallet",
+				apiKey: "tenant-key",
+				agentToken: "agent-token",
+				walletAddresses: {
+					evm: "0x1234567890abcdef1234567890abcdef12345678",
+				},
+				agentName: "eliza-wallet",
+			});
+		},
+		COLD_NATIVE_IMPORT_TIMEOUT_MS,
+	);
 });
