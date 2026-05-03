@@ -102,7 +102,7 @@ It also exports the per-platform inference env vars to the bun process:
 
 Apps in the default `priv_app` / `system_app` domain on AOSP can `execve()` binaries from their
 own data dir, but the shared-object dependencies (musl loader, libstdc++) are an unusual access
-pattern that can trip avc denials. The current `os/android/vendor/eliza/sepolicy/` is a
+pattern that can trip avc denials. The current `packages/os/android/vendor/eliza/sepolicy/` is a
 permissive-only stub. Production needs:
 
 - A `eliza_agent` type for the executables under `/data/data/com.elizaai.eliza/files/agent/`.

@@ -6,8 +6,8 @@
 //
 // Usage:
 //   node scripts/distro-android/build-bootanimation.mjs \
-//     --frames os/android/vendor/<brand>/bootanimation \
-//     --out os/android/vendor/<brand>/bootanimation/bootanimation.zip
+//     --frames packages/os/android/vendor/<brand>/bootanimation \
+//     --out packages/os/android/vendor/<brand>/bootanimation/bootanimation.zip
 //
 // Flags:
 //   --frames <dir>   Directory containing desc.txt + part0/ part1/ ...
