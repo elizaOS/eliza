@@ -145,8 +145,7 @@
     "viem": "2.48.8"
   },
   "patchedDependencies": {
-    "@pixiv/three-vrm@3.5.2": "packages/app-core/patches/@pixiv%2Fthree-vrm@3.5.2.patch",
-    "tsup@8.5.1": "packages/app-core/patches/tsup@8.5.1.patch"
+    "@pixiv/three-vrm@3.5.2": "packages/app-core/patches/@pixiv%2Fthree-vrm@3.5.2.patch"
   },
   "trustedDependencies": [
     "@biomejs/biome",
