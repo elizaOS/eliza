@@ -24,7 +24,10 @@ import {
 } from "ai";
 import { Hono } from "hono";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import {
   calculateCost,
   getProviderFromModel,
@@ -35,7 +38,10 @@ import {
   mergeAnthropicCotProviderOptions,
   resolveAnthropicThinkingBudgetTokens,
 } from "@/lib/providers/anthropic-thinking";
-import { getLanguageModel, resolveAiProviderSource } from "@/lib/providers/language-model";
+import {
+  getLanguageModel,
+  resolveAiProviderSource,
+} from "@/lib/providers/language-model";
 import {
   billUsage,
   estimateInputTokens,
@@ -59,7 +65,9 @@ type AnthropicTextBlock = { type: "text"; text: string };
 
 type AnthropicImageBlock = {
   type: "image";
-  source: { type: "url"; url: string } | { type: "base64"; media_type: string; data: string };
+  source:
+    | { type: "url"; url: string }
+    | { type: "base64"; media_type: string; data: string };
 };
 
 type AnthropicToolUseBlock = {
@@ -88,7 +96,9 @@ interface AnthropicMessageParam {
   content: string | AnthropicContentBlock[];
 }
 
-type AnthropicSystemParam = string | Array<{ type: "text"; text: string; cache_control?: unknown }>;
+type AnthropicSystemParam =
+  | string
+  | Array<{ type: "text"; text: string; cache_control?: unknown }>;
 
 interface AnthropicTool {
   name: string;
@@ -116,7 +126,11 @@ interface AnthropicMessagesRequest {
   tool_choice?: AnthropicToolChoice;
 }
 
-type AnthropicStopReason = "end_turn" | "max_tokens" | "stop_sequence" | "tool_use";
+type AnthropicStopReason =
+  | "end_turn"
+  | "max_tokens"
+  | "stop_sequence"
+  | "tool_use";
 
 type ToolNameMap = Map<string, string>;
 type AppCreditsInfo = {
@@ -159,7 +173,9 @@ function inferImageMediaType(urlOrType: string): string {
   return "image/jpeg";
 }
 
-function normalizeSystemPrompt(system: AnthropicSystemParam | undefined): string | undefined {
+function normalizeSystemPrompt(
+  system: AnthropicSystemParam | undefined,
+): string | undefined {
   if (!system) return undefined;
   if (typeof system === "string") return system;
   return system.map((block) => block.text).join("\n\n");
@@ -167,7 +183,12 @@ function normalizeSystemPrompt(system: AnthropicSystemParam | undefined): string
 
 function mapToolChoice(
   toolChoice: AnthropicToolChoice | undefined,
-): "auto" | "none" | "required" | { type: "tool"; toolName: string } | undefined {
+):
+  | "auto"
+  | "none"
+  | "required"
+  | { type: "tool"; toolName: string }
+  | undefined {
   if (!toolChoice) return undefined;
   if (toolChoice.type === "auto") return "auto";
   if (toolChoice.type === "none") return "none";
@@ -235,7 +256,9 @@ function serializeToolResultContent(
   return content;
 }
 
-function toToolResultOutput(content: string | AnthropicContentBlock[]): ToolResultPart["output"] {
+function toToolResultOutput(
+  content: string | AnthropicContentBlock[],
+): ToolResultPart["output"] {
   const serialized = serializeToolResultContent(content);
 
   if (typeof serialized === "string") {
@@ -248,7 +271,10 @@ function toToolResultOutput(content: string | AnthropicContentBlock[]): ToolResu
   };
 }
 
-function trackToolNames(content: string | AnthropicContentBlock[], toolNames: ToolNameMap): void {
+function trackToolNames(
+  content: string | AnthropicContentBlock[],
+  toolNames: ToolNameMap,
+): void {
   if (typeof content === "string") return;
 
   for (const block of content) {
@@ -258,7 +284,9 @@ function trackToolNames(content: string | AnthropicContentBlock[], toolNames: To
   }
 }
 
-function anthropicMessagesToModelMessages(messages: AnthropicMessageParam[]): ModelMessage[] {
+function anthropicMessagesToModelMessages(
+  messages: AnthropicMessageParam[],
+): ModelMessage[] {
   const modelMessages: ModelMessage[] = [];
   const toolNames = new Map<string, string>();
 
@@ -363,7 +391,10 @@ function anthropicMessagesToModelMessages(messages: AnthropicMessageParam[]): Mo
 
     const assistantMessage: AssistantModelMessage = {
       role: "assistant",
-      content: assistantParts.length > 0 ? assistantParts : [{ type: "text", text: "" }],
+      content:
+        assistantParts.length > 0
+          ? assistantParts
+          : [{ type: "text", text: "" }],
     };
     modelMessages.push(assistantMessage);
   }
@@ -380,7 +411,9 @@ function getMessageContentForEstimate(message: AnthropicMessageParam): string {
       if (block.type === "tool_use") return JSON.stringify(block.input);
       if (block.type === "tool_result") {
         const serialized = serializeToolResultContent(block.content);
-        return typeof serialized === "string" ? serialized : JSON.stringify(serialized);
+        return typeof serialized === "string"
+          ? serialized
+          : JSON.stringify(serialized);
       }
       return "";
     })
@@ -422,8 +455,15 @@ function resolveStopSequence(
   return null;
 }
 
-function anthropicError(type: string, message: string, status: number): Response {
-  return Response.json({ type: "error", error: { type, message } }, { status: status as 400 });
+function anthropicError(
+  type: string,
+  message: string,
+  status: number,
+): Response {
+  return Response.json(
+    { type: "error", error: { type, message } },
+    { status: status as 400 },
+  );
 }
 
 const app = new Hono<AppEnv>();
@@ -449,7 +489,9 @@ app.post("/", async (c) => {
 
   const appId = c.req.header("X-App-Id");
   let useAppCredits = false;
-  let monetizedApp: NonNullable<Awaited<ReturnType<typeof appsService.getById>>> | null = null;
+  let monetizedApp: NonNullable<
+    Awaited<ReturnType<typeof appsService.getById>>
+  > | null = null;
   if (appId) {
     monetizedApp = (await appsService.getById(appId)) ?? null;
     useAppCredits = Boolean(monetizedApp?.monetization_enabled);
@@ -467,7 +509,11 @@ app.post("/", async (c) => {
   }
 
   const request = body as AnthropicMessagesRequest;
-  if (!request.model || request.max_tokens == null || !request.messages?.length) {
+  if (
+    !request.model ||
+    request.max_tokens == null ||
+    !request.messages?.length
+  ) {
     return anthropicError(
       "invalid_request_error",
       "Missing required fields: model, max_tokens, messages",
@@ -488,16 +534,23 @@ app.post("/", async (c) => {
     );
   }
 
-  const lastUserMessage = request.messages.filter((message) => message.role === "user").pop();
+  const lastUserMessage = request.messages
+    .filter((message) => message.role === "user")
+    .pop();
   if (lastUserMessage) {
     const content = getMessageContentForEstimate(lastUserMessage);
     if (content) {
-      contentModerationService.moderateInBackground(content, user.id, undefined, (result) => {
-        logger.warn("[Messages API] Async moderation detected violation", {
-          userId: user.id,
-          categories: result.flaggedCategories,
-        });
-      });
+      contentModerationService.moderateInBackground(
+        content,
+        user.id,
+        undefined,
+        (result) => {
+          logger.warn("[Messages API] Async moderation detected violation", {
+            userId: user.id,
+            categories: result.flaggedCategories,
+          });
+        },
+      );
     }
   }
 
@@ -512,7 +565,8 @@ app.post("/", async (c) => {
   const estimatedInputTokens = estimateInputTokens(estimateMessages);
   const estimatedOutputTokens = request.max_tokens;
   const affiliateCode = c.req.header("X-Affiliate-Code") ?? null;
-  const billingSource: PricingBillingSource = resolveAiProviderSource(model) ?? "openrouter";
+  const billingSource: PricingBillingSource =
+    resolveAiProviderSource(model) ?? "openrouter";
 
   let reservation: CreditReservation;
   let appCreditsInfo: AppCreditsInfo | undefined;
@@ -525,7 +579,10 @@ app.post("/", async (c) => {
       estimatedOutputTokens,
       billingSource,
     );
-    const costWithMarkup = await appCreditsService.calculateCostWithMarkup(appId, totalCost);
+    const costWithMarkup = await appCreditsService.calculateCostWithMarkup(
+      appId,
+      totalCost,
+    );
     const balanceCheck = await appCreditsService.checkBalance(
       appId,
       user.id,
@@ -637,15 +694,16 @@ app.post("/", async (c) => {
  * Workers auth shim doesn't expose the validated apiKey row; repeat the
  * lookup so usage attribution stays in parity with the Next-era handler.
  */
-async function getRequestApiKeyId(c: AppContext): Promise<{ id: string } | null> {
+async function getRequestApiKeyId(
+  c: AppContext,
+): Promise<{ id: string } | null> {
   const apiKeyHeader = c.req.header("X-API-Key") || c.req.header("x-api-key");
   const auth = c.req.header("authorization");
   const bearer = auth?.startsWith("Bearer ") ? auth.slice(7).trim() : null;
   const elizaBearer = bearer && bearer.startsWith("eliza_") ? bearer : null;
   const apiKey = apiKeyHeader || elizaBearer;
   if (!apiKey) return null;
-  const { apiKeysService } = await import("@/lib/services/api-keys");
-  const validated = await apiKeysService.validateApiKey(apiKey);
+  const validated = await c.var.deps.validateApiKey.execute(apiKey);
   return validated ? { id: validated.id } : null;
 }
 
@@ -661,7 +719,12 @@ async function handleNonStream(
   startTime: number,
   safeParams: ReturnType<typeof getSafeModelParams>,
   tools: ReturnType<typeof convertTools>,
-  toolChoice: "auto" | "none" | "required" | { type: "tool"; toolName: string } | undefined,
+  toolChoice:
+    | "auto"
+    | "none"
+    | "required"
+    | { type: "tool"; toolName: string }
+    | undefined,
   abortSignal: AbortSignal | undefined,
   timeoutMs: number,
   settleReservation: (actualCost: number) => Promise<void>,
@@ -671,11 +734,16 @@ async function handleNonStream(
 
   const cotBudget = resolveAnthropicThinkingBudgetTokens(model, process.env);
   const cotOptions =
-    cotBudget != null ? mergeAnthropicCotProviderOptions(model, process.env, cotBudget) : {};
+    cotBudget != null
+      ? mergeAnthropicCotProviderOptions(model, process.env, cotBudget)
+      : {};
   const MIN_RESPONSE_BUFFER = 4096;
   const effectiveMaxTokens =
     cotBudget != null
-      ? Math.max(request.max_tokens ?? MIN_RESPONSE_BUFFER, cotBudget + MIN_RESPONSE_BUFFER)
+      ? Math.max(
+          request.max_tokens ?? MIN_RESPONSE_BUFFER,
+          cotBudget + MIN_RESPONSE_BUFFER,
+        )
       : request.max_tokens;
 
   try {
@@ -757,7 +825,11 @@ async function handleNonStream(
     }
 
     const hasToolCalls = Boolean(result.toolCalls?.length);
-    const stopReason = mapFinishReason(result.finishReason, result.rawFinishReason, hasToolCalls);
+    const stopReason = mapFinishReason(
+      result.finishReason,
+      result.rawFinishReason,
+      hasToolCalls,
+    );
     const stopSequence = resolveStopSequence(
       stopReason,
       result.rawFinishReason,
@@ -796,7 +868,12 @@ async function handleStream(
   estimatedInputTokens: number,
   safeParams: ReturnType<typeof getSafeModelParams>,
   tools: ReturnType<typeof convertTools>,
-  toolChoice: "auto" | "none" | "required" | { type: "tool"; toolName: string } | undefined,
+  toolChoice:
+    | "auto"
+    | "none"
+    | "required"
+    | { type: "tool"; toolName: string }
+    | undefined,
   abortSignal: AbortSignal | undefined,
   timeoutMs: number,
   settleReservation: (actualCost: number) => Promise<void>,
@@ -807,11 +884,16 @@ async function handleStream(
 
   const cotBudget = resolveAnthropicThinkingBudgetTokens(model, process.env);
   const cotOptions =
-    cotBudget != null ? mergeAnthropicCotProviderOptions(model, process.env, cotBudget) : {};
+    cotBudget != null
+      ? mergeAnthropicCotProviderOptions(model, process.env, cotBudget)
+      : {};
   const MIN_RESPONSE_BUFFER = 4096;
   const effectiveMaxTokens =
     cotBudget != null
-      ? Math.max(request.max_tokens ?? MIN_RESPONSE_BUFFER, cotBudget + MIN_RESPONSE_BUFFER)
+      ? Math.max(
+          request.max_tokens ?? MIN_RESPONSE_BUFFER,
+          cotBudget + MIN_RESPONSE_BUFFER,
+        )
       : request.max_tokens;
 
   const result = streamText({
@@ -1088,7 +1170,11 @@ async function handleStream(
           }
         }
 
-        const stopReason = mapFinishReason(finishReason, rawFinishReason, sawToolCalls);
+        const stopReason = mapFinishReason(
+          finishReason,
+          rawFinishReason,
+          sawToolCalls,
+        );
         const stopSequence = resolveStopSequence(
           stopReason,
           rawFinishReason,

@@ -5,13 +5,19 @@
  */
 
 import { Hono } from "hono";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { apiKeysService } from "@/lib/services/api-keys";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-function detectSource(origin: string, referer: string, pageUrl: string): string {
+function detectSource(
+  origin: string,
+  referer: string,
+  pageUrl: string,
+): string {
   const combined = `${origin} ${referer} ${pageUrl}`.toLowerCase();
   if (
     combined.includes("sandbox") ||
@@ -33,7 +39,10 @@ app.use("*", rateLimit(RateLimitPresets.RELAXED));
 app.post("/", async (c) => {
   const startTime = Date.now();
   try {
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = (await c.req.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
     const {
       app_id,
       api_key: bodyApiKey,
@@ -64,7 +73,7 @@ app.post("/", async (c) => {
 
     let appId = app_id;
     if (!appId && apiKey) {
-      const validatedKey = await apiKeysService.validateApiKey(apiKey);
+      const validatedKey = await c.var.deps.validateApiKey.execute(apiKey);
       if (validatedKey) {
         const appRow = await appsService.getByApiKeyId(validatedKey.id);
         if (appRow) appId = appRow.id;
@@ -72,7 +81,10 @@ app.post("/", async (c) => {
     }
 
     if (!appId) {
-      return c.json({ success: false, error: "Missing app_id or valid API key" }, 400);
+      return c.json(
+        { success: false, error: "Missing app_id or valid API key" },
+        400,
+      );
     }
 
     const appRow = await appsService.getById(appId);

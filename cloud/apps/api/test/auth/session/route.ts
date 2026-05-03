@@ -11,7 +11,6 @@ import {
   PLAYWRIGHT_TEST_SESSION_COOKIE_NAME,
   type PlaywrightTestAuthEnv,
 } from "@/lib/auth/playwright-test-session";
-import { apiKeysService } from "@/lib/services/api-keys";
 import { usersService } from "@/lib/services/users";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
@@ -22,7 +21,9 @@ function isEnabled(c: AppContext): boolean {
 function testAuthEnv(c: AppContext): PlaywrightTestAuthEnv {
   return {
     PLAYWRIGHT_TEST_AUTH:
-      typeof c.env.PLAYWRIGHT_TEST_AUTH === "string" ? c.env.PLAYWRIGHT_TEST_AUTH : undefined,
+      typeof c.env.PLAYWRIGHT_TEST_AUTH === "string"
+        ? c.env.PLAYWRIGHT_TEST_AUTH
+        : undefined,
     PLAYWRIGHT_TEST_AUTH_SECRET:
       typeof c.env.PLAYWRIGHT_TEST_AUTH_SECRET === "string"
         ? c.env.PLAYWRIGHT_TEST_AUTH_SECRET
@@ -49,7 +50,7 @@ app.post("/", async (c) => {
   const apiKeyValue = getApiKeyFromRequest(c);
   if (!apiKeyValue) return c.json({ error: "API key required" }, 401);
 
-  const apiKey = await apiKeysService.validateApiKey(apiKeyValue);
+  const apiKey = await c.var.deps.validateApiKey.execute(apiKeyValue);
   if (!apiKey) return c.json({ error: "Invalid API key" }, 401);
   if (!apiKey.is_active) return c.json({ error: "API key is inactive" }, 403);
   if (apiKey.expires_at && new Date(apiKey.expires_at) < new Date()) {
@@ -64,7 +65,11 @@ app.post("/", async (c) => {
     return c.json({ error: "User or organization is inactive" }, 403);
   }
 
-  const token = createPlaywrightTestSessionToken(user.id, user.organization_id, testAuthEnv(c));
+  const token = createPlaywrightTestSessionToken(
+    user.id,
+    user.organization_id,
+    testAuthEnv(c),
+  );
 
   const url = new URL(c.req.url);
   setCookie(c, PLAYWRIGHT_TEST_SESSION_COOKIE_NAME, token, {

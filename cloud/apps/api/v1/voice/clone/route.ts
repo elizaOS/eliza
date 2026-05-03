@@ -21,9 +21,16 @@
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { getDb } from "@/db/worker-neon-http";
-import { failureResponse, jsonError, ValidationError } from "@/lib/api/cloud-worker-errors";
+import {
+  failureResponse,
+  jsonError,
+  ValidationError,
+} from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { billFlatUsage } from "@/lib/services/ai-billing";
 import { calculateVoiceCloneCostFromCatalog } from "@/lib/services/ai-pricing";
 import {
@@ -85,7 +92,9 @@ app.post("/", async (c) => {
   let reservation: CreditReservation | undefined;
   let jobId: string | undefined;
   let cloneType: CloneType | undefined;
-  let cloneCost: Awaited<ReturnType<typeof calculateVoiceCloneCostFromCatalog>> | undefined;
+  let cloneCost:
+    | Awaited<ReturnType<typeof calculateVoiceCloneCostFromCatalog>>
+    | undefined;
   let user: { id: string; organization_id: string } | undefined;
   let apiKeyId: string | null = null;
   let totalSize = 0;
@@ -107,7 +116,12 @@ app.post("/", async (c) => {
     const apiKey = c.env.ELEVENLABS_API_KEY;
     if (!apiKey) {
       logger.error("[Voice Clone API] ELEVENLABS_API_KEY not configured");
-      return jsonError(c, 500, "Voice cloning is not configured", "internal_error");
+      return jsonError(
+        c,
+        500,
+        "Voice cloning is not configured",
+        "internal_error",
+      );
     }
 
     const formData = await c.req.formData();
@@ -120,7 +134,9 @@ app.post("/", async (c) => {
 
     const cloneTypeField = formData.get("cloneType");
     if (cloneTypeField !== "instant" && cloneTypeField !== "professional") {
-      throw ValidationError("Invalid cloneType. Must be 'instant' or 'professional'");
+      throw ValidationError(
+        "Invalid cloneType. Must be 'instant' or 'professional'",
+      );
     }
     cloneType = cloneTypeField;
 
@@ -169,7 +185,9 @@ app.post("/", async (c) => {
         );
       }
       const isAudio =
-        file.type.startsWith("audio/") || file.type === "" || file.type.startsWith("video/mp4");
+        file.type.startsWith("audio/") ||
+        file.type === "" ||
+        file.type.startsWith("video/mp4");
       if (!isAudio) {
         throw ValidationError(
           `File "${file.name}" has invalid type "${file.type}". Only audio files are allowed.`,
@@ -178,16 +196,21 @@ app.post("/", async (c) => {
       totalSize += file.size;
     }
     if (totalSize > MAX_TOTAL_SIZE) {
-      throw ValidationError(`Total file size exceeds ${MAX_TOTAL_SIZE / 1024 / 1024}MB limit`);
+      throw ValidationError(
+        `Total file size exceeds ${MAX_TOTAL_SIZE / 1024 / 1024}MB limit`,
+      );
     }
     fileCount = files.length;
 
-    logger.info(`[Voice Clone API] Creating ${cloneType} voice clone: ${voiceName}`, {
-      userId: user.id,
-      organizationId: user.organization_id,
-      fileCount,
-      totalSize,
-    });
+    logger.info(
+      `[Voice Clone API] Creating ${cloneType} voice clone: ${voiceName}`,
+      {
+        userId: user.id,
+        organizationId: user.organization_id,
+        fileCount,
+        totalSize,
+      },
+    );
 
     cloneCost = await calculateVoiceCloneCostFromCatalog({ cloneType });
 
@@ -225,7 +248,10 @@ app.post("/", async (c) => {
       metadata: { fileCount, totalSize },
       startedAt: new Date(),
     };
-    const [createdJob] = await db.insert(voiceCloningJobs).values(newJob).returning();
+    const [createdJob] = await db
+      .insert(voiceCloningJobs)
+      .values(newJob)
+      .returning();
     if (!createdJob) {
       throw new Error("Failed to create voice cloning job");
     }
@@ -237,11 +263,14 @@ app.post("/", async (c) => {
     const r2Host = c.env.R2_PUBLIC_HOST || DEFAULT_R2_PUBLIC_HOST;
     const sampleRecords = await Promise.all(
       files.map(async (file) => {
-        const safeName = file.name.replace(/[^A-Za-z0-9._-]+/g, "_") || "sample";
+        const safeName =
+          file.name.replace(/[^A-Za-z0-9._-]+/g, "_") || "sample";
         const key = `voice-samples/${user!.organization_id}/${createdJob.id}/${crypto.randomUUID()}-${safeName}`;
         const body = await file.arrayBuffer();
         await c.env.BLOB.put(key, body, {
-          httpMetadata: { contentType: file.type || "application/octet-stream" },
+          httpMetadata: {
+            contentType: file.type || "application/octet-stream",
+          },
           customMetadata: {
             userId: user!.id,
             organizationId: user!.organization_id,
@@ -271,7 +300,8 @@ app.post("/", async (c) => {
     }
 
     // 2) Call ElevenLabs.
-    const language = typeof settings.language === "string" ? settings.language : "en";
+    const language =
+      typeof settings.language === "string" ? settings.language : "en";
     const elevenlabsVoiceId = await createElevenLabsVoice({
       apiKey,
       cloneType,
@@ -293,7 +323,10 @@ app.post("/", async (c) => {
       sampleCount: fileCount,
       creationCost: String(cloneCost.totalCost),
     };
-    const [insertedVoice] = await db.insert(userVoices).values(newUserVoice).returning();
+    const [insertedVoice] = await db
+      .insert(userVoices)
+      .values(newUserVoice)
+      .returning();
     if (!insertedVoice) {
       throw new Error("Failed to insert user_voices row");
     }
@@ -394,7 +427,8 @@ app.post("/", async (c) => {
           progress: updatedJob.progress,
         },
         creditsDeducted: cloneCost.totalCost,
-        estimatedCompletionTime: cloneType === "professional" ? "30-60 minutes" : "30 seconds",
+        estimatedCompletionTime:
+          cloneType === "professional" ? "30-60 minutes" : "30 seconds",
       },
       201,
     );
@@ -416,10 +450,14 @@ app.post("/", async (c) => {
         try {
           await db.delete(voiceSamples).where(eq(voiceSamples.jobId, jobId));
         } catch (dbError) {
-          logger.error("[Voice Clone API] Failed to delete orphan voice_samples rows", {
-            jobId,
-            error: dbError instanceof Error ? dbError.message : String(dbError),
-          });
+          logger.error(
+            "[Voice Clone API] Failed to delete orphan voice_samples rows",
+            {
+              jobId,
+              error:
+                dbError instanceof Error ? dbError.message : String(dbError),
+            },
+          );
         }
 
         // 2) Delete the orphaned R2 objects we uploaded before the failure.
@@ -427,11 +465,17 @@ app.post("/", async (c) => {
           try {
             await c.env.BLOB.delete(key);
           } catch (blobError) {
-            logger.error("[Voice Clone API] Failed to delete orphan R2 object", {
-              jobId,
-              key,
-              error: blobError instanceof Error ? blobError.message : String(blobError),
-            });
+            logger.error(
+              "[Voice Clone API] Failed to delete orphan R2 object",
+              {
+                jobId,
+                key,
+                error:
+                  blobError instanceof Error
+                    ? blobError.message
+                    : String(blobError),
+              },
+            );
           }
         }
       }
@@ -480,7 +524,10 @@ app.post("/", async (c) => {
           })
           .catch((usageError) => {
             logger.error("[Voice Clone API] Failed to record failed usage", {
-              error: usageError instanceof Error ? usageError.message : String(usageError),
+              error:
+                usageError instanceof Error
+                  ? usageError.message
+                  : String(usageError),
             });
           }),
       );
@@ -489,7 +536,11 @@ app.post("/", async (c) => {
     if (error instanceof Error) {
       const lower = errorMessage.toLowerCase();
       if (lower.includes("rate limit")) {
-        return jsonError(c, 429, "Rate limit exceeded. Please try again later.");
+        return jsonError(
+          c,
+          429,
+          "Rate limit exceeded. Please try again later.",
+        );
       }
       if (lower.includes("quota")) {
         return c.json(
@@ -548,8 +599,7 @@ async function getRequestApiKeyId(c: AppContext): Promise<string | null> {
   const elizaBearer = bearer && bearer.startsWith("eliza_") ? bearer : null;
   const apiKey = apiKeyHeader || elizaBearer;
   if (!apiKey) return null;
-  const { apiKeysService } = await import("@/lib/services/api-keys");
-  const validated = await apiKeysService.validateApiKey(apiKey);
+  const validated = await c.var.deps.validateApiKey.execute(apiKey);
   return validated ? validated.id : null;
 }
 
@@ -635,7 +685,10 @@ async function createElevenLabsVoice(params: {
   return voiceId;
 }
 
-async function parseElevenLabsResponse(res: Response, cloneType: CloneType): Promise<string> {
+async function parseElevenLabsResponse(
+  res: Response,
+  cloneType: CloneType,
+): Promise<string> {
   if (!res.ok) {
     const message = await readElevenLabsError(res);
     if (cloneType === "professional" && /limit|quota/i.test(message)) {

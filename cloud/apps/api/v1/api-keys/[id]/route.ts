@@ -7,8 +7,10 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { apiKeysService } from "@/lib/services/api-keys";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -24,13 +26,13 @@ app.delete("/", async (c) => {
     const id = c.req.param("id");
     if (!id) return c.json({ error: "Missing id" }, 400);
 
-    const existingKey = await apiKeysService.getById(id);
+    const existingKey = await c.var.deps.getApiKeyById.execute(id);
     if (!existingKey) return c.json({ error: "API key not found" }, 404);
     if (existingKey.organization_id !== user.organization_id) {
       return c.json({ error: "Forbidden" }, 403);
     }
 
-    await apiKeysService.delete(id);
+    await c.var.deps.deleteApiKey.execute(id);
     return c.json({ success: true });
   } catch (error) {
     logger.error("[API Keys] Error deleting API key", { error });
@@ -44,17 +46,23 @@ app.patch("/", async (c) => {
     const id = c.req.param("id");
     if (!id) return c.json({ error: "Missing id" }, 400);
 
-    const existingKey = await apiKeysService.getById(id);
+    const existingKey = await c.var.deps.getApiKeyById.execute(id);
     if (!existingKey) return c.json({ error: "API key not found" }, 404);
     if (existingKey.organization_id !== user.organization_id) {
       return c.json({ error: "Forbidden" }, 403);
     }
 
     const body = await c.req.json();
-    const { name, description, permissions, rate_limit, is_active, expires_at } =
-      updateApiKeySchema.parse(body);
+    const {
+      name,
+      description,
+      permissions,
+      rate_limit,
+      is_active,
+      expires_at,
+    } = updateApiKeySchema.parse(body);
 
-    const updatedKey = await apiKeysService.update(id, {
+    const updatedKey = await c.var.deps.updateApiKey.execute(id, {
       ...(name !== undefined && { name }),
       ...(description !== undefined && { description }),
       ...(permissions !== undefined && { permissions }),

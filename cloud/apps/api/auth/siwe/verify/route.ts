@@ -13,7 +13,6 @@ import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { apiKeysService } from "@/lib/services/api-keys";
 import { findOrCreateUserByWalletAddress } from "@/lib/services/wallet-signup";
 import { getAppHost } from "@/lib/utils/app-url";
 import { logger } from "@/lib/utils/logger";
@@ -64,9 +63,9 @@ app.post("/", async (c) => {
     );
   }
 
-  await apiKeysService.deactivateUserKeysByName(user.id, "SIWE sign-in");
+  await c.var.deps.deactivateApiKeysByName.execute(user.id, "SIWE sign-in");
 
-  const { plainKey } = await apiKeysService.create({
+  const { plainKey } = await c.var.deps.issueApiKey.execute({
     user_id: user.id,
     organization_id: user.organization_id,
     name: "SIWE sign-in",
