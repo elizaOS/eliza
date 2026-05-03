@@ -3,48 +3,47 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-const skipLocalUpstreams =
-  process.env.ELIZA_SKIP_LOCAL_UPSTREAMS === "1";
+const skipLocalUpstreams = process.env.ELIZA_SKIP_LOCAL_UPSTREAMS === "1";
 
 function getRepoLocalWorkspaceRoot(
-  packageName: string,
-  repoRoot: string,
+	packageName: string,
+	repoRoot: string,
 ): string | undefined {
-  if (skipLocalUpstreams) {
-    return undefined;
-  }
+	if (skipLocalUpstreams) {
+		return undefined;
+	}
 
-  if (packageName === "@elizaos/core") {
-    return getRepoLocalElizaCoreRoot(packageName, repoRoot);
-  }
+	if (packageName === "@elizaos/core") {
+		return getRepoLocalElizaCoreRoot(packageName, repoRoot);
+	}
 
-  const relativeRoots: Record<string, string[]> = {
-    "@elizaos/agent": ["eliza/agent", "../eliza/agent"],
-    "@elizaos/agent": ["eliza/agent", "../eliza/agent"],
-    "@elizaos/app-core": [
-      "eliza/packages/app-core",
-      "../eliza/packages/app-core",
-    ],
-    "@elizaos/app-core": [
-      "eliza/packages/app-core",
-      "../eliza/packages/app-core",
-    ],
-    "@elizaos/shared": ["eliza/packages/shared", "../eliza/packages/shared"],
-    "@elizaos/shared": ["eliza/packages/shared", "../eliza/packages/shared"],
-    "@elizaos/app-companion": [
-      "eliza/plugins/app-companion",
-      "../eliza/plugins/app-companion",
-    ],
-  };
+	const relativeRoots: Record<string, string[]> = {
+		"@elizaos/agent": ["eliza/agent", "../eliza/agent"],
+		"@elizaos/agent": ["eliza/agent", "../eliza/agent"],
+		"@elizaos/app-core": [
+			"eliza/packages/app-core",
+			"../eliza/packages/app-core",
+		],
+		"@elizaos/app-core": [
+			"eliza/packages/app-core",
+			"../eliza/packages/app-core",
+		],
+		"@elizaos/shared": ["eliza/packages/shared", "../eliza/packages/shared"],
+		"@elizaos/shared": ["eliza/packages/shared", "../eliza/packages/shared"],
+		"@elizaos/app-companion": [
+			"eliza/plugins/app-companion",
+			"../eliza/plugins/app-companion",
+		],
+	};
 
-  for (const relativeRoot of relativeRoots[packageName] ?? []) {
-    const candidate = path.resolve(repoRoot, relativeRoot);
-    if (existsSync(path.join(candidate, "package.json"))) {
-      return candidate;
-    }
-  }
+	for (const relativeRoot of relativeRoots[packageName] ?? []) {
+		const candidate = path.resolve(repoRoot, relativeRoot);
+		if (existsSync(path.join(candidate, "package.json"))) {
+			return candidate;
+		}
+	}
 
-  return undefined;
+	return undefined;
 }
 
 /**
@@ -53,364 +52,364 @@ function getRepoLocalWorkspaceRoot(
  * Bun can rewrite differently across fresh CI installs.
  */
 function getRepoLocalElizaCoreRoot(
-  packageName: string,
-  repoRoot: string,
+	packageName: string,
+	repoRoot: string,
 ): string | undefined {
-  if (packageName !== "@elizaos/core" || skipLocalUpstreams) {
-    return undefined;
-  }
+	if (packageName !== "@elizaos/core" || skipLocalUpstreams) {
+		return undefined;
+	}
 
-  const elizaRoots = [
-    path.resolve(repoRoot, "eliza"),
-    path.resolve(repoRoot, "..", "eliza"),
-  ];
+	const elizaRoots = [
+		path.resolve(repoRoot, "eliza"),
+		path.resolve(repoRoot, "..", "eliza"),
+	];
 
-  for (const elizaRoot of elizaRoots) {
-    if (!existsSync(path.join(elizaRoot, "package.json"))) {
-      continue;
-    }
+	for (const elizaRoot of elizaRoots) {
+		if (!existsSync(path.join(elizaRoot, "package.json"))) {
+			continue;
+		}
 
-    const candidate = path.join(elizaRoot, "packages", "typescript");
-    if (!existsSync(path.join(candidate, "package.json"))) {
-      continue;
-    }
+		const candidate = path.join(elizaRoot, "packages", "typescript");
+		if (!existsSync(path.join(candidate, "package.json"))) {
+			continue;
+		}
 
-    // Require both a source entry AND installed dependencies. CI checks out the
-    // submodule (submodules: recursive) but skips its dependency install
-    // (ELIZA_SKIP_LOCAL_UPSTREAMS=1), so the source exists but imports of
-    // transitive deps like 'dedent' or 'adze' fail at runtime.
-    const hasSource =
-      existsSync(path.join(candidate, "dist", "node", "index.node.js")) ||
-      existsSync(path.join(candidate, "dist", "index.js")) ||
-      existsSync(path.join(candidate, "src", "index.node.ts")) ||
-      existsSync(path.join(candidate, "src", "index.ts")) ||
-      existsSync(path.join(candidate, "index.node.ts")) ||
-      existsSync(path.join(candidate, "index.ts"));
-    const hasDeps = existsSync(path.join(candidate, "node_modules"));
+		// Require both a source entry AND installed dependencies. CI checks out the
+		// submodule (submodules: recursive) but skips its dependency install
+		// (ELIZA_SKIP_LOCAL_UPSTREAMS=1), so the source exists but imports of
+		// transitive deps like 'dedent' or 'adze' fail at runtime.
+		const hasSource =
+			existsSync(path.join(candidate, "dist", "node", "index.node.js")) ||
+			existsSync(path.join(candidate, "dist", "index.js")) ||
+			existsSync(path.join(candidate, "src", "index.node.ts")) ||
+			existsSync(path.join(candidate, "src", "index.ts")) ||
+			existsSync(path.join(candidate, "index.node.ts")) ||
+			existsSync(path.join(candidate, "index.ts"));
+		const hasDeps = existsSync(path.join(candidate, "node_modules"));
 
-    if (hasSource && hasDeps) {
-      return candidate;
-    }
-  }
+		if (hasSource && hasDeps) {
+			return candidate;
+		}
+	}
 
-  return undefined;
+	return undefined;
 }
 
 function isRepoLocalElizaCorePackageRoot(
-  packageName: string,
-  packageRoot: string,
-  repoRoot: string,
+	packageName: string,
+	packageRoot: string,
+	repoRoot: string,
 ): boolean {
-  if (packageName !== "@elizaos/core") {
-    return false;
-  }
+	if (packageName !== "@elizaos/core") {
+		return false;
+	}
 
-  const localRoot = getRepoLocalElizaCoreRoot(packageName, repoRoot);
-  if (!localRoot) {
-    return false;
-  }
+	const localRoot = getRepoLocalElizaCoreRoot(packageName, repoRoot);
+	if (!localRoot) {
+		return false;
+	}
 
-  return path.resolve(packageRoot) === path.resolve(localRoot);
+	return path.resolve(packageRoot) === path.resolve(localRoot);
 }
 
 const MODULE_EXTENSIONS = [
-  ".ts",
-  ".tsx",
-  ".mts",
-  ".js",
-  ".jsx",
-  ".mjs",
-  ".cjs",
+	".ts",
+	".tsx",
+	".mts",
+	".js",
+	".jsx",
+	".mjs",
+	".cjs",
 ];
 const require = createRequire(import.meta.url);
 
 type ModuleNamespace = Record<string, unknown> & {
-  default?: Record<string, unknown>;
+	default?: Record<string, unknown>;
 };
 
 function getRequireFor(baseDir?: string) {
-  if (!baseDir) {
-    return require;
-  }
+	if (!baseDir) {
+		return require;
+	}
 
-  return createRequire(path.join(baseDir, "package.json"));
+	return createRequire(path.join(baseDir, "package.json"));
 }
 
 function firstExistingPath(
-  candidates: Array<string | undefined>,
+	candidates: Array<string | undefined>,
 ): string | undefined {
-  return candidates.find(
-    (candidate): candidate is string =>
-      typeof candidate === "string" && existsSync(candidate),
-  );
+	return candidates.find(
+		(candidate): candidate is string =>
+			typeof candidate === "string" && existsSync(candidate),
+	);
 }
 
 export function resolveModuleEntry(basePath: string): string {
-  if (existsSync(basePath)) {
-    return basePath;
-  }
+	if (existsSync(basePath)) {
+		return basePath;
+	}
 
-  const withExtension = firstExistingPath(
-    MODULE_EXTENSIONS.map((extension) => `${basePath}${extension}`),
-  );
+	const withExtension = firstExistingPath(
+		MODULE_EXTENSIONS.map((extension) => `${basePath}${extension}`),
+	);
 
-  return withExtension ?? basePath;
+	return withExtension ?? basePath;
 }
 
 export function getInstalledPackageRoot(
-  packageName: string,
-  fromDir?: string,
+	packageName: string,
+	fromDir?: string,
 ): string | undefined {
-  if (fromDir) {
-    const localPackage = getRepoLocalWorkspaceRoot(packageName, fromDir);
-    if (localPackage) return localPackage;
-  }
+	if (fromDir) {
+		const localPackage = getRepoLocalWorkspaceRoot(packageName, fromDir);
+		if (localPackage) return localPackage;
+	}
 
-  const scopedRequire = getRequireFor(fromDir);
+	const scopedRequire = getRequireFor(fromDir);
 
-  try {
-    return path.dirname(scopedRequire.resolve(`${packageName}/package.json`));
-  } catch {
-    try {
-      const entryPath = scopedRequire.resolve(packageName);
-      return path.dirname(entryPath);
-    } catch {
-      return undefined;
-    }
-  }
+	try {
+		return path.dirname(scopedRequire.resolve(`${packageName}/package.json`));
+	} catch {
+		try {
+			const entryPath = scopedRequire.resolve(packageName);
+			return path.dirname(entryPath);
+		} catch {
+			return undefined;
+		}
+	}
 }
 
 export function getInstalledPackageEntry(
-  packageName: string,
-  repoRoot: string,
-  subpath?: "node",
+	packageName: string,
+	repoRoot: string,
+	subpath?: "node",
 ): string | undefined {
-  const packageRoot = getInstalledPackageRoot(packageName, repoRoot);
-  if (!packageRoot) {
-    return undefined;
-  }
+	const packageRoot = getInstalledPackageRoot(packageName, repoRoot);
+	if (!packageRoot) {
+		return undefined;
+	}
 
-  const preferSource = isRepoLocalElizaCorePackageRoot(
-    packageName,
-    packageRoot,
-    repoRoot,
-  );
-  const candidates = preferSource
-    ? subpath === "node"
-      ? [
-          path.join(packageRoot, "src", "index.node"),
-          path.join(packageRoot, "src", "index"),
-          path.join(packageRoot, "dist", "node", "index.node"),
-          path.join(packageRoot, "dist", "index"),
-          path.join(packageRoot, "index.node"),
-          path.join(packageRoot, "index"),
-        ]
-      : [
-          path.join(packageRoot, "src", "index.node"),
-          path.join(packageRoot, "src", "index"),
-          path.join(packageRoot, "dist", "node", "index.node"),
-          path.join(packageRoot, "dist", "index"),
-          path.join(packageRoot, "index.node"),
-          path.join(packageRoot, "index"),
-        ]
-    : subpath === "node"
-      ? [
-          path.join(packageRoot, "dist", "node", "index.node"),
-          path.join(packageRoot, "index.node"),
-          path.join(packageRoot, "src", "index.node"),
-          path.join(packageRoot, "src", "index"),
-          path.join(packageRoot, "index"),
-        ]
-      : [
-          path.join(packageRoot, "dist", "node", "index.node"),
-          path.join(packageRoot, "dist", "index"),
-          path.join(packageRoot, "src", "index"),
-          path.join(packageRoot, "index.node"),
-          path.join(packageRoot, "index"),
-        ];
+	const preferSource = isRepoLocalElizaCorePackageRoot(
+		packageName,
+		packageRoot,
+		repoRoot,
+	);
+	const candidates = preferSource
+		? subpath === "node"
+			? [
+					path.join(packageRoot, "src", "index.node"),
+					path.join(packageRoot, "src", "index"),
+					path.join(packageRoot, "dist", "node", "index.node"),
+					path.join(packageRoot, "dist", "index"),
+					path.join(packageRoot, "index.node"),
+					path.join(packageRoot, "index"),
+				]
+			: [
+					path.join(packageRoot, "src", "index.node"),
+					path.join(packageRoot, "src", "index"),
+					path.join(packageRoot, "dist", "node", "index.node"),
+					path.join(packageRoot, "dist", "index"),
+					path.join(packageRoot, "index.node"),
+					path.join(packageRoot, "index"),
+				]
+		: subpath === "node"
+			? [
+					path.join(packageRoot, "dist", "node", "index.node"),
+					path.join(packageRoot, "index.node"),
+					path.join(packageRoot, "src", "index.node"),
+					path.join(packageRoot, "src", "index"),
+					path.join(packageRoot, "index"),
+				]
+			: [
+					path.join(packageRoot, "dist", "node", "index.node"),
+					path.join(packageRoot, "dist", "index"),
+					path.join(packageRoot, "src", "index"),
+					path.join(packageRoot, "index.node"),
+					path.join(packageRoot, "index"),
+				];
 
-  const resolvedCandidate = candidates
-    .map((candidate) => resolveModuleEntry(candidate))
-    .find((candidate) => existsSync(candidate));
+	const resolvedCandidate = candidates
+		.map((candidate) => resolveModuleEntry(candidate))
+		.find((candidate) => existsSync(candidate));
 
-  return resolvedCandidate ?? resolveModuleEntry(candidates[0]);
+	return resolvedCandidate ?? resolveModuleEntry(candidates[0]);
 }
 
 function getNamedExport<T>(
-  moduleNamespace: ModuleNamespace,
-  exportName: string,
+	moduleNamespace: ModuleNamespace,
+	exportName: string,
 ): T | undefined {
-  if (exportName in moduleNamespace) {
-    return moduleNamespace[exportName] as T;
-  }
+	if (exportName in moduleNamespace) {
+		return moduleNamespace[exportName] as T;
+	}
 
-  const defaultNamespace = moduleNamespace.default;
-  if (
-    defaultNamespace &&
-    typeof defaultNamespace === "object" &&
-    exportName in defaultNamespace
-  ) {
-    return defaultNamespace[exportName] as T;
-  }
+	const defaultNamespace = moduleNamespace.default;
+	if (
+		defaultNamespace &&
+		typeof defaultNamespace === "object" &&
+		exportName in defaultNamespace
+	) {
+		return defaultNamespace[exportName] as T;
+	}
 
-  return undefined;
+	return undefined;
 }
 
 async function tryImportNamedExport<T>(
-  specifier: string,
-  exportName: string,
+	specifier: string,
+	exportName: string,
 ): Promise<{ value?: T; error?: string }> {
-  try {
-    const moduleNamespace = (await import(specifier)) as ModuleNamespace;
-    const value = getNamedExport<T>(moduleNamespace, exportName);
-    if (value !== undefined) {
-      return { value };
-    }
+	try {
+		const moduleNamespace = (await import(specifier)) as ModuleNamespace;
+		const value = getNamedExport<T>(moduleNamespace, exportName);
+		if (value !== undefined) {
+			return { value };
+		}
 
-    return {
-      error: `${specifier}: missing export ${exportName}`,
-    };
-  } catch (error) {
-    return {
-      error: `${specifier}: ${error instanceof Error ? error.message : String(error)}`,
-    };
-  }
+		return {
+			error: `${specifier}: missing export ${exportName}`,
+		};
+	} catch (error) {
+		return {
+			error: `${specifier}: ${error instanceof Error ? error.message : String(error)}`,
+		};
+	}
 }
 
 export async function getInstalledPackageNamedExport<T>(
-  packageName: string,
-  exportName: string,
-  repoRoot: string,
-  subpath?: "node",
+	packageName: string,
+	exportName: string,
+	repoRoot: string,
+	subpath?: "node",
 ): Promise<T> {
-  const attempts: string[] = [];
-  const specifiers = subpath
-    ? [`${packageName}/${subpath}`, packageName]
-    : [packageName];
+	const attempts: string[] = [];
+	const specifiers = subpath
+		? [`${packageName}/${subpath}`, packageName]
+		: [packageName];
 
-  for (const specifier of specifiers) {
-    const result = await tryImportNamedExport<T>(specifier, exportName);
-    if (result.value !== undefined) {
-      return result.value;
-    }
-    if (result.error) {
-      attempts.push(result.error);
-    }
-  }
+	for (const specifier of specifiers) {
+		const result = await tryImportNamedExport<T>(specifier, exportName);
+		if (result.value !== undefined) {
+			return result.value;
+		}
+		if (result.error) {
+			attempts.push(result.error);
+		}
+	}
 
-  const entry = getInstalledPackageEntry(packageName, repoRoot, subpath);
-  if (entry) {
-    const result = await tryImportNamedExport<T>(
-      pathToFileURL(entry).href,
-      exportName,
-    );
-    if (result.value !== undefined) {
-      return result.value;
-    }
-    if (result.error) {
-      attempts.push(result.error);
-    }
-  }
+	const entry = getInstalledPackageEntry(packageName, repoRoot, subpath);
+	if (entry) {
+		const result = await tryImportNamedExport<T>(
+			pathToFileURL(entry).href,
+			exportName,
+		);
+		if (result.value !== undefined) {
+			return result.value;
+		}
+		if (result.error) {
+			attempts.push(result.error);
+		}
+	}
 
-  throw new TypeError(
-    `${exportName} export not found in ${packageName}. Tried: ${attempts.join(" | ")}`,
-  );
+	throw new TypeError(
+		`${exportName} export not found in ${packageName}. Tried: ${attempts.join(" | ")}`,
+	);
 }
 
 export function getElizaCoreEntry(repoRoot: string): string | undefined {
-  const packageRoot = getInstalledPackageRoot("@elizaos/core", repoRoot);
-  if (!packageRoot) {
-    return undefined;
-  }
+	const packageRoot = getInstalledPackageRoot("@elizaos/core", repoRoot);
+	if (!packageRoot) {
+		return undefined;
+	}
 
-  const candidates = isRepoLocalElizaCorePackageRoot(
-    "@elizaos/core",
-    packageRoot,
-    repoRoot,
-  )
-    ? [
-        path.join(packageRoot, "src", "index.node"),
-        path.join(packageRoot, "src", "index"),
-        path.join(packageRoot, "dist", "node", "index.node"),
-        path.join(packageRoot, "dist", "index"),
-        path.join(packageRoot, "index.node"),
-        path.join(packageRoot, "index"),
-      ]
-    : [
-        path.join(packageRoot, "dist", "node", "index.node"),
-        path.join(packageRoot, "dist", "index"),
-        path.join(packageRoot, "src", "index.node"),
-        path.join(packageRoot, "src", "index"),
-        path.join(packageRoot, "index.node"),
-        path.join(packageRoot, "index"),
-      ];
+	const candidates = isRepoLocalElizaCorePackageRoot(
+		"@elizaos/core",
+		packageRoot,
+		repoRoot,
+	)
+		? [
+				path.join(packageRoot, "src", "index.node"),
+				path.join(packageRoot, "src", "index"),
+				path.join(packageRoot, "dist", "node", "index.node"),
+				path.join(packageRoot, "dist", "index"),
+				path.join(packageRoot, "index.node"),
+				path.join(packageRoot, "index"),
+			]
+		: [
+				path.join(packageRoot, "dist", "node", "index.node"),
+				path.join(packageRoot, "dist", "index"),
+				path.join(packageRoot, "src", "index.node"),
+				path.join(packageRoot, "src", "index"),
+				path.join(packageRoot, "index.node"),
+				path.join(packageRoot, "index"),
+			];
 
-  const resolvedCandidate = candidates
-    .map((candidate) => resolveModuleEntry(candidate))
-    .find((candidate) => existsSync(candidate));
+	const resolvedCandidate = candidates
+		.map((candidate) => resolveModuleEntry(candidate))
+		.find((candidate) => existsSync(candidate));
 
-  return resolvedCandidate ?? resolveModuleEntry(candidates[0]);
+	return resolvedCandidate ?? resolveModuleEntry(candidates[0]);
 }
 
 export function getAutonomousSourceRoot(repoRoot: string): string | undefined {
-  const packageRoot =
-    getInstalledPackageRoot("@elizaos/agent", repoRoot) ??
-    getInstalledPackageRoot("@elizaos/agent", repoRoot);
+	const packageRoot =
+		getInstalledPackageRoot("@elizaos/agent", repoRoot) ??
+		getInstalledPackageRoot("@elizaos/agent", repoRoot);
 
-  if (!packageRoot) {
-    return undefined;
-  }
+	if (!packageRoot) {
+		return undefined;
+	}
 
-  if (path.basename(packageRoot) === "src") {
-    return packageRoot;
-  }
+	if (path.basename(packageRoot) === "src") {
+		return packageRoot;
+	}
 
-  const directSrc = path.join(packageRoot, "src");
-  if (existsSync(directSrc)) {
-    return directSrc;
-  }
+	const directSrc = path.join(packageRoot, "src");
+	if (existsSync(directSrc)) {
+		return directSrc;
+	}
 
-  return path.join(packageRoot, "packages", "agent", "src");
+	return path.join(packageRoot, "packages", "agent", "src");
 }
 
 export function getAppCoreSourceRoot(repoRoot: string): string | undefined {
-  const packageRoot =
-    getInstalledPackageRoot("@elizaos/app-core", repoRoot) ??
-    getInstalledPackageRoot("@elizaos/app-core", repoRoot);
-  if (!packageRoot) {
-    return undefined;
-  }
+	const packageRoot =
+		getInstalledPackageRoot("@elizaos/app-core", repoRoot) ??
+		getInstalledPackageRoot("@elizaos/app-core", repoRoot);
+	if (!packageRoot) {
+		return undefined;
+	}
 
-  if (path.basename(packageRoot) === "src") {
-    return packageRoot;
-  }
+	if (path.basename(packageRoot) === "src") {
+		return packageRoot;
+	}
 
-  const sourceRoot = path.join(packageRoot, "src");
-  return existsSync(sourceRoot) ? sourceRoot : packageRoot;
+	const sourceRoot = path.join(packageRoot, "src");
+	return existsSync(sourceRoot) ? sourceRoot : packageRoot;
 }
 
 export function getSharedSourceRoot(repoRoot: string): string | undefined {
-  const packageRoot =
-    getInstalledPackageRoot("@elizaos/shared", repoRoot) ??
-    getInstalledPackageRoot("@elizaos/shared", repoRoot);
-  if (!packageRoot) {
-    return undefined;
-  }
+	const packageRoot =
+		getInstalledPackageRoot("@elizaos/shared", repoRoot) ??
+		getInstalledPackageRoot("@elizaos/shared", repoRoot);
+	if (!packageRoot) {
+		return undefined;
+	}
 
-  if (path.basename(packageRoot) === "src") {
-    return packageRoot;
-  }
+	if (path.basename(packageRoot) === "src") {
+		return packageRoot;
+	}
 
-  const sourceRoot = path.join(packageRoot, "src");
-  return existsSync(sourceRoot) ? sourceRoot : packageRoot;
+	const sourceRoot = path.join(packageRoot, "src");
+	return existsSync(sourceRoot) ? sourceRoot : packageRoot;
 }
 
 export function getUiSourceRoot(repoRoot: string): string | undefined {
-  const appCoreSourceRoot = getAppCoreSourceRoot(repoRoot);
-  if (!appCoreSourceRoot) {
-    return undefined;
-  }
+	const appCoreSourceRoot = getAppCoreSourceRoot(repoRoot);
+	if (!appCoreSourceRoot) {
+		return undefined;
+	}
 
-  const sourceRoot = path.join(appCoreSourceRoot, "ui");
-  return existsSync(path.join(sourceRoot, "index.ts")) ? sourceRoot : undefined;
+	const sourceRoot = path.join(appCoreSourceRoot, "ui");
+	return existsSync(path.join(sourceRoot, "index.ts")) ? sourceRoot : undefined;
 }

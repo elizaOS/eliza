@@ -24,79 +24,85 @@ import type { Plugin } from "@elizaos/core";
 import { AgentRuntime, createCharacter, logger } from "@elizaos/core";
 import { configureLocalEmbeddingPlugin } from "../../../../agent/src/runtime/eliza";
 import {
-  selectLiveProvider,
-  type LiveProviderConfig,
-  type LiveProviderName,
+	selectLiveProvider,
+	type LiveProviderConfig,
+	type LiveProviderName,
 } from "./live-provider";
 
 export interface RealTestRuntimeOptions {
-  /** Name for the test agent character. Defaults to "TestAgent". */
-  characterName?: string;
-  /** Additional plugins to register. */
-  plugins?: Plugin[];
-  /** Register a real LLM plugin based on available API keys. Default: false. */
-  withLLM?: boolean;
-  /** Preferred LLM provider (e.g., "groq" for cheapest). */
-  preferredProvider?: LiveProviderName;
-  /** Register Discord plugin if DISCORD_BOT_TOKEN is available. Default: false. */
-  withDiscord?: boolean;
-  /** Register Telegram plugin if TELEGRAM_BOT_TOKEN is available. Default: false. */
-  withTelegram?: boolean;
-  /** Reuse an existing PGLite data directory. */
-  pgliteDir?: string;
-  /** Remove PGLite dir on cleanup. Defaults to true when dir is auto-created. */
-  removePgliteDirOnCleanup?: boolean;
+	/** Name for the test agent character. Defaults to "TestAgent". */
+	characterName?: string;
+	/** Additional plugins to register. */
+	plugins?: Plugin[];
+	/** Register a real LLM plugin based on available API keys. Default: false. */
+	withLLM?: boolean;
+	/** Preferred LLM provider (e.g., "groq" for cheapest). */
+	preferredProvider?: LiveProviderName;
+	/** Register Discord plugin if DISCORD_BOT_TOKEN is available. Default: false. */
+	withDiscord?: boolean;
+	/** Register Telegram plugin if TELEGRAM_BOT_TOKEN is available. Default: false. */
+	withTelegram?: boolean;
+	/** Reuse an existing PGLite data directory. */
+	pgliteDir?: string;
+	/** Remove PGLite dir on cleanup. Defaults to true when dir is auto-created. */
+	removePgliteDirOnCleanup?: boolean;
 }
 
 export interface RealTestRuntimeResult {
-  runtime: AgentRuntime;
-  pgliteDir: string;
-  /** Which LLM provider was registered (null if withLLM was false or none available). */
-  providerName: LiveProviderName | null;
-  /** The full provider config if an LLM was registered. */
-  providerConfig: LiveProviderConfig | null;
-  /** Stops the runtime and removes the temp PGLite directory. */
-  cleanup: () => Promise<void>;
+	runtime: AgentRuntime;
+	pgliteDir: string;
+	/** Which LLM provider was registered (null if withLLM was false or none available). */
+	providerName: LiveProviderName | null;
+	/** The full provider config if an LLM was registered. */
+	providerConfig: LiveProviderConfig | null;
+	/** Stops the runtime and removes the temp PGLite directory. */
+	cleanup: () => Promise<void>;
 }
 
 function applyRuntimeSettings(
-  runtime: AgentRuntime,
-  settings: Record<string, string>,
+	runtime: AgentRuntime,
+	settings: Record<string, string>,
 ): void {
-  for (const [key, value] of Object.entries(settings)) {
-    runtime.setSetting(key, value, /(API_KEY|TOKEN|SECRET|PASSWORD)/i.test(key));
-  }
+	for (const [key, value] of Object.entries(settings)) {
+		runtime.setSetting(
+			key,
+			value,
+			/(API_KEY|TOKEN|SECRET|PASSWORD)/i.test(key),
+		);
+	}
 }
 
 type TrajectoryWriteService = {
-  writeQueues?: Map<string, Promise<void>>;
+	writeQueues?: Map<string, Promise<void>>;
 };
 
 async function flushPendingTrajectoryWrites(
-  runtime: AgentRuntime,
+	runtime: AgentRuntime,
 ): Promise<void> {
-  try {
-    const { flushTrajectoryWrites } = await import(
-      "../../../../agent/src/runtime/trajectory-storage"
-    );
-    await flushTrajectoryWrites(runtime);
-  } catch {
-    // Best effort only. Some test runtimes do not register this helper.
-  }
+	try {
+		const { flushTrajectoryWrites } = await import(
+			"../../../../agent/src/runtime/trajectory-storage"
+		);
+		await flushTrajectoryWrites(runtime);
+	} catch {
+		// Best effort only. Some test runtimes do not register this helper.
+	}
 
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const pending = runtime
-      .getServicesByType("trajectories")
-      .flatMap((service) => {
-        const writeQueues = (service as TrajectoryWriteService).writeQueues;
-        return writeQueues instanceof Map ? Array.from(writeQueues.values()) : [];
-      });
-    if (pending.length === 0) {
-      return;
-    }
-    await Promise.allSettled(pending);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  }
+	for (let attempt = 0; attempt < 3; attempt += 1) {
+		const pending = runtime
+			.getServicesByType("trajectories")
+			.flatMap((service) => {
+				const writeQueues = (service as TrajectoryWriteService).writeQueues;
+				return writeQueues instanceof Map
+					? Array.from(writeQueues.values())
+					: [];
+			});
+		if (pending.length === 0) {
+			return;
+		}
+		await Promise.allSettled(pending);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+	}
 }
 
 /**
@@ -107,160 +113,160 @@ async function flushPendingTrajectoryWrites(
  * inference and connector plugins.
  */
 export async function createRealTestRuntime(
-  options?: RealTestRuntimeOptions,
+	options?: RealTestRuntimeOptions,
 ): Promise<RealTestRuntimeResult> {
-  const pgliteDir =
-    options?.pgliteDir ??
-    fs.mkdtempSync(path.join(os.tmpdir(), "eliza-real-test-"));
-  const removePgliteDirOnCleanup =
-    options?.removePgliteDirOnCleanup ?? options?.pgliteDir === undefined;
+	const pgliteDir =
+		options?.pgliteDir ??
+		fs.mkdtempSync(path.join(os.tmpdir(), "eliza-real-test-"));
+	const removePgliteDirOnCleanup =
+		options?.removePgliteDirOnCleanup ?? options?.pgliteDir === undefined;
 
-  const prevPgliteDir = process.env.PGLITE_DATA_DIR;
-  process.env.PGLITE_DATA_DIR = pgliteDir;
+	const prevPgliteDir = process.env.PGLITE_DATA_DIR;
+	process.env.PGLITE_DATA_DIR = pgliteDir;
 
-  // Apply local embedding defaults so PGLite vector search works
-  if (!process.env.LOCAL_EMBEDDING_DIMENSIONS?.trim()) {
-    process.env.LOCAL_EMBEDDING_DIMENSIONS = "384";
-  }
-  if (!process.env.EMBEDDING_DIMENSION?.trim()) {
-    process.env.EMBEDDING_DIMENSION = "384";
-  }
+	// Apply local embedding defaults so PGLite vector search works
+	if (!process.env.LOCAL_EMBEDDING_DIMENSIONS?.trim()) {
+		process.env.LOCAL_EMBEDDING_DIMENSIONS = "384";
+	}
+	if (!process.env.EMBEDDING_DIMENSION?.trim()) {
+		process.env.EMBEDDING_DIMENSION = "384";
+	}
 
-  const character = createCharacter({
-    name: options?.characterName ?? "TestAgent",
-  });
+	const character = createCharacter({
+		name: options?.characterName ?? "TestAgent",
+	});
 
-  const runtime = new AgentRuntime({
-    character,
-    plugins: [],
-    logLevel: "warn",
-    enableAutonomy: false,
-  });
+	const runtime = new AgentRuntime({
+		character,
+		plugins: [],
+		logLevel: "warn",
+		enableAutonomy: false,
+	});
 
-  // Always register plugin-sql for PGLite database
-  const { default: pluginSql } = await import("@elizaos/plugin-sql");
-  await runtime.registerPlugin(pluginSql);
+	// Always register plugin-sql for PGLite database
+	const { default: pluginSql } = await import("@elizaos/plugin-sql");
+	await runtime.registerPlugin(pluginSql);
 
-  if (options?.withLLM) {
-    try {
-      const pluginModule = await import("@elizaos/plugin-local-embedding");
-      const plugin = pluginModule.default ?? pluginModule.elizaPlugin;
-      if (plugin) {
-        configureLocalEmbeddingPlugin(plugin);
-        await runtime.registerPlugin(plugin);
-        logger.info(
-          "[real-runtime] Registered local embedding plugin for TEXT_EMBEDDING",
-        );
-      }
-    } catch (err) {
-      logger.warn(
-        `[real-runtime] Failed to register local embedding plugin: ${err}`,
-      );
-    }
-  }
+	if (options?.withLLM) {
+		try {
+			const pluginModule = await import("@elizaos/plugin-local-embedding");
+			const plugin = pluginModule.default ?? pluginModule.elizaPlugin;
+			if (plugin) {
+				configureLocalEmbeddingPlugin(plugin);
+				await runtime.registerPlugin(plugin);
+				logger.info(
+					"[real-runtime] Registered local embedding plugin for TEXT_EMBEDDING",
+				);
+			}
+		} catch (err) {
+			logger.warn(
+				`[real-runtime] Failed to register local embedding plugin: ${err}`,
+			);
+		}
+	}
 
-  // Register LLM plugin if requested
-  let providerName: LiveProviderName | null = null;
-  let providerConfig: LiveProviderConfig | null = null;
+	// Register LLM plugin if requested
+	let providerName: LiveProviderName | null = null;
+	let providerConfig: LiveProviderConfig | null = null;
 
-  if (options?.withLLM) {
-    providerConfig = selectLiveProvider(options.preferredProvider);
-    if (providerConfig) {
-      providerName = providerConfig.name;
-      // Set provider env vars so the plugin picks them up
-      for (const [key, value] of Object.entries(providerConfig.env)) {
-        process.env[key] = value;
-      }
-      applyRuntimeSettings(runtime, providerConfig.env);
-      try {
-        const pluginModule = await import(providerConfig.pluginPackage);
-        const plugin = pluginModule.default ?? pluginModule.elizaPlugin;
-        if (plugin) {
-          await runtime.registerPlugin(plugin);
-          logger.info(
-            `[real-runtime] Registered LLM plugin: ${providerConfig.pluginPackage} (${providerName})`,
-          );
-        }
-      } catch (err) {
-        logger.warn(
-          `[real-runtime] Failed to register LLM plugin ${providerConfig.pluginPackage}: ${err}`,
-        );
-        providerName = null;
-        providerConfig = null;
-      }
-    }
-  }
+	if (options?.withLLM) {
+		providerConfig = selectLiveProvider(options.preferredProvider);
+		if (providerConfig) {
+			providerName = providerConfig.name;
+			// Set provider env vars so the plugin picks them up
+			for (const [key, value] of Object.entries(providerConfig.env)) {
+				process.env[key] = value;
+			}
+			applyRuntimeSettings(runtime, providerConfig.env);
+			try {
+				const pluginModule = await import(providerConfig.pluginPackage);
+				const plugin = pluginModule.default ?? pluginModule.elizaPlugin;
+				if (plugin) {
+					await runtime.registerPlugin(plugin);
+					logger.info(
+						`[real-runtime] Registered LLM plugin: ${providerConfig.pluginPackage} (${providerName})`,
+					);
+				}
+			} catch (err) {
+				logger.warn(
+					`[real-runtime] Failed to register LLM plugin ${providerConfig.pluginPackage}: ${err}`,
+				);
+				providerName = null;
+				providerConfig = null;
+			}
+		}
+	}
 
-  // Register Discord plugin if requested and token available
-  if (options?.withDiscord && process.env.DISCORD_BOT_TOKEN?.trim()) {
-    try {
-      const discordModule = await import("@elizaos/plugin-discord");
-      const plugin = discordModule.default ?? discordModule.elizaPlugin;
-      if (plugin) {
-        await runtime.registerPlugin(plugin);
-        logger.info("[real-runtime] Registered Discord plugin");
-      }
-    } catch (err) {
-      logger.warn(`[real-runtime] Failed to register Discord plugin: ${err}`);
-    }
-  }
+	// Register Discord plugin if requested and token available
+	if (options?.withDiscord && process.env.DISCORD_BOT_TOKEN?.trim()) {
+		try {
+			const discordModule = await import("@elizaos/plugin-discord");
+			const plugin = discordModule.default ?? discordModule.elizaPlugin;
+			if (plugin) {
+				await runtime.registerPlugin(plugin);
+				logger.info("[real-runtime] Registered Discord plugin");
+			}
+		} catch (err) {
+			logger.warn(`[real-runtime] Failed to register Discord plugin: ${err}`);
+		}
+	}
 
-  // Register Telegram plugin if requested and token available
-  if (options?.withTelegram && process.env.TELEGRAM_BOT_TOKEN?.trim()) {
-    try {
-      const telegramModule = await import("@elizaos/plugin-telegram");
-      const plugin = telegramModule.default ?? telegramModule.elizaPlugin;
-      if (plugin) {
-        await runtime.registerPlugin(plugin);
-        logger.info("[real-runtime] Registered Telegram plugin");
-      }
-    } catch (err) {
-      logger.warn(`[real-runtime] Failed to register Telegram plugin: ${err}`);
-    }
-  }
+	// Register Telegram plugin if requested and token available
+	if (options?.withTelegram && process.env.TELEGRAM_BOT_TOKEN?.trim()) {
+		try {
+			const telegramModule = await import("@elizaos/plugin-telegram");
+			const plugin = telegramModule.default ?? telegramModule.elizaPlugin;
+			if (plugin) {
+				await runtime.registerPlugin(plugin);
+				logger.info("[real-runtime] Registered Telegram plugin");
+			}
+		} catch (err) {
+			logger.warn(`[real-runtime] Failed to register Telegram plugin: ${err}`);
+		}
+	}
 
-  // Register any additional plugins
-  for (const plugin of options?.plugins ?? []) {
-    await runtime.registerPlugin(plugin);
-  }
+	// Register any additional plugins
+	for (const plugin of options?.plugins ?? []) {
+		await runtime.registerPlugin(plugin);
+	}
 
-  await runtime.initialize();
+	await runtime.initialize();
 
-  const cleanup = async () => {
-    try {
-      await flushPendingTrajectoryWrites(runtime);
-    } catch (err) {
-      logger.debug(`[real-runtime] trajectory flush error: ${err}`);
-    }
-    try {
-      await runtime.stop();
-    } catch (err) {
-      logger.debug(`[real-runtime] runtime.stop() error: ${err}`);
-    }
-    try {
-      await flushPendingTrajectoryWrites(runtime);
-    } catch (err) {
-      logger.debug(`[real-runtime] post-stop trajectory flush error: ${err}`);
-    }
-    try {
-      await runtime.close();
-    } catch (err) {
-      logger.debug(`[real-runtime] runtime.close() error: ${err}`);
-    }
-    // Restore previous env
-    if (prevPgliteDir !== undefined) {
-      process.env.PGLITE_DATA_DIR = prevPgliteDir;
-    } else {
-      delete process.env.PGLITE_DATA_DIR;
-    }
-    if (removePgliteDirOnCleanup) {
-      try {
-        fs.rmSync(pgliteDir, { recursive: true, force: true });
-      } catch {
-        // ignore cleanup errors
-      }
-    }
-  };
+	const cleanup = async () => {
+		try {
+			await flushPendingTrajectoryWrites(runtime);
+		} catch (err) {
+			logger.debug(`[real-runtime] trajectory flush error: ${err}`);
+		}
+		try {
+			await runtime.stop();
+		} catch (err) {
+			logger.debug(`[real-runtime] runtime.stop() error: ${err}`);
+		}
+		try {
+			await flushPendingTrajectoryWrites(runtime);
+		} catch (err) {
+			logger.debug(`[real-runtime] post-stop trajectory flush error: ${err}`);
+		}
+		try {
+			await runtime.close();
+		} catch (err) {
+			logger.debug(`[real-runtime] runtime.close() error: ${err}`);
+		}
+		// Restore previous env
+		if (prevPgliteDir !== undefined) {
+			process.env.PGLITE_DATA_DIR = prevPgliteDir;
+		} else {
+			delete process.env.PGLITE_DATA_DIR;
+		}
+		if (removePgliteDirOnCleanup) {
+			try {
+				fs.rmSync(pgliteDir, { recursive: true, force: true });
+			} catch {
+				// ignore cleanup errors
+			}
+		}
+	};
 
-  return { runtime, pgliteDir, providerName, providerConfig, cleanup };
+	return { runtime, pgliteDir, providerName, providerConfig, cleanup };
 }
