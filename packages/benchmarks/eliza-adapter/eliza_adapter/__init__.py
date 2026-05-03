@@ -25,3 +25,34 @@ try:
     __all__.append("ElizaREALMAgent")
 except ImportError:
     pass
+
+# Optional: ADHDBench bridge — only loaded when elizaos_adhdbench is on sys.path.
+try:
+    from eliza_adapter.adhdbench import ElizaADHDBenchRunner  # noqa: F401
+    __all__.append("ElizaADHDBenchRunner")
+except ImportError:
+    pass
+
+# Optional: EVM bridge — only loaded when benchmarks.evm is on sys.path.
+try:
+    from eliza_adapter.evm import ElizaBridgeEVMExplorer  # noqa: F401
+    __all__.append("ElizaBridgeEVMExplorer")
+except ImportError:
+    pass
+
+# Optional: Experience bridge — only loaded when elizaos_experience_bench is on sys.path.
+try:
+    from eliza_adapter.experience import (  # noqa: F401
+        ElizaBridgeExperienceRunner,
+        ElizaExperienceConfig,
+    )
+    __all__.extend(["ElizaBridgeExperienceRunner", "ElizaExperienceConfig"])
+except ImportError:
+    pass
+
+# Optional: Gauntlet bridge — only loaded when gauntlet.sdk is on sys.path.
+try:
+    from eliza_adapter.gauntlet import Agent as ElizaGauntletAgent  # noqa: F401
+    __all__.append("ElizaGauntletAgent")
+except ImportError:
+    pass

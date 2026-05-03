@@ -640,7 +640,26 @@ class EVMExplorerAgent:
 
 
 async def main() -> None:
-    """CLI entry point — same env-var interface as eliza_explorer.py."""
+    """CLI entry point — same env-var interface as eliza_explorer.py.
+
+    Provider selection:
+      - Default: in-process Python AgentRuntime (this module's EVMExplorerAgent).
+      - PROVIDER=eliza or --provider eliza: route LLM calls through the
+        elizaOS TypeScript benchmark bridge instead.
+    """
+    import argparse as _argparse
+
+    parser = _argparse.ArgumentParser(prog="evm.eliza_agent")
+    parser.add_argument(
+        "--provider",
+        default=os.getenv("PROVIDER", ""),
+        help=(
+            "Set to 'eliza' to route through the elizaOS TS benchmark bridge. "
+            "Otherwise uses the in-process Python AgentRuntime."
+        ),
+    )
+    cli_args, _ = parser.parse_known_args()
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s  %(levelname)-7s  %(message)s",
@@ -660,20 +679,36 @@ async def main() -> None:
     private_key = os.getenv("AGENT_PRIVATE_KEY", "")
     verbose = os.getenv("VERBOSE", "false").lower() == "true"
 
+    use_eliza_bridge = (cli_args.provider or "").strip().lower() == "eliza"
+    agent_label = "eliza-ts-bridge" if use_eliza_bridge else "eliza"
+
     logger.info(
-        "Model: %s  Messages: %d  Chain: %s  External: %s  Agent: eliza",
-        model_name, max_messages, chain, use_external,
+        "Model: %s  Messages: %d  Chain: %s  External: %s  Agent: %s",
+        model_name, max_messages, chain, use_external, agent_label,
     )
 
-    agent = EVMExplorerAgent(
-        model_name=model_name,
-        max_messages=max_messages,
-        run_index=run_index,
-        chain=chain,
-        environment_config=environment_config,
-        code_file=os.getenv("CODE_FILE"),
-        verbose=verbose,
-    )
+    if use_eliza_bridge:
+        from eliza_adapter.evm import ElizaBridgeEVMExplorer
+
+        agent = ElizaBridgeEVMExplorer(
+            model_name=model_name,
+            max_messages=max_messages,
+            run_index=run_index,
+            chain=chain,
+            environment_config=environment_config,
+            code_file=os.getenv("CODE_FILE"),
+            verbose=verbose,
+        )
+    else:
+        agent = EVMExplorerAgent(
+            model_name=model_name,
+            max_messages=max_messages,
+            run_index=run_index,
+            chain=chain,
+            environment_config=environment_config,
+            code_file=os.getenv("CODE_FILE"),
+            verbose=verbose,
+        )
 
     async def go(env: AnvilEnv) -> None:
         await env.reset()

@@ -38,7 +38,15 @@ def parse_args() -> argparse.Namespace:
     # -- run --
     run_parser = sub.add_parser("run", help="Run the benchmark")
     run_parser.add_argument("--model", default="gpt-4o-mini", help="Model name (default: gpt-4o-mini)")
-    run_parser.add_argument("--provider", default="openai", help="Model provider (default: openai)")
+    run_parser.add_argument(
+        "--provider",
+        default="openai",
+        help=(
+            "Model provider. Default 'openai' uses the in-process Python "
+            "AgentRuntime. Use 'eliza' to route through the elizaOS TypeScript "
+            "benchmark bridge (requires the bridge server to be running)."
+        ),
+    )
     run_parser.add_argument("--levels", nargs="+", type=int, default=[0, 1, 2], help="Levels to run (0, 1, 2)")
     run_parser.add_argument("--tags", nargs="+", default=[], help="Filter by scenario tags")
     run_parser.add_argument("--ids", nargs="+", default=[], help="Filter by scenario IDs")
@@ -106,9 +114,18 @@ def cmd_run(args: argparse.Namespace) -> None:
     def progress(config_name: str, scale: str, current: int, total: int) -> None:
         print(f"  [{config_name}/{scale}] {current}/{total}", end="\r", flush=True)
 
-    from elizaos_adhdbench.runner import ADHDBenchRunner
-    runner = ADHDBenchRunner(config)
-    results = asyncio.run(runner.run(progress_callback=progress))
+    if (config.model_provider or "").strip().lower() == "eliza":
+        # Route through the elizaOS TypeScript benchmark bridge instead of
+        # the in-process Python AgentRuntime. This requires the TS bench
+        # server to be reachable via ELIZA_BENCH_URL / ELIZA_BENCH_TOKEN.
+        from eliza_adapter.adhdbench import ElizaADHDBenchRunner
+
+        runner = ElizaADHDBenchRunner(config)
+        results = asyncio.run(runner.run(progress_callback=progress))
+    else:
+        from elizaos_adhdbench.runner import ADHDBenchRunner
+        runner = ADHDBenchRunner(config)
+        results = asyncio.run(runner.run(progress_callback=progress))
 
     print(f"\nBenchmark complete. {len(results.results)} scenario results.")
     print(f"Results saved to: {config.output_dir}/")
