@@ -1169,7 +1169,68 @@ async function handleRespond(
 
 // -- Auto-reply (used by triage) -------------------------------------------
 
-async function tryAutoReply(
+/**
+ * Inbox sources that are email channels. Email replies are NEVER auto-sent —
+ * the owner has set a hard invariant that mail responses must always pass
+ * through the approval queue. This is a deterministic, code-enforced gate
+ * (not LLM-driven) so it cannot be bypassed by reflection hallucinations or
+ * configuration drift.
+ */
+const EMAIL_INBOX_SOURCES: ReadonlySet<string> = new Set(["gmail"]);
+
+/**
+ * Returns true when an inbound message MUST go through the approval queue
+ * before any outbound send is allowed. Email channels always require
+ * approval regardless of `autoReply.enabled` — see `EMAIL_INBOX_SOURCES`.
+ */
+export function requiresApprovalQueue(source: string): boolean {
+  return EMAIL_INBOX_SOURCES.has(source);
+}
+
+/**
+ * Enqueue an auto-reply draft into the approval queue instead of sending it
+ * directly. Used for email channels where the owner has set the invariant
+ * "always ask permission first." The resulting `pending` request is the same
+ * shape `handleRespond` produces, so the existing `handleConfirmation` path
+ * can dispatch it once the owner approves.
+ */
+async function enqueueAutoReplyForApproval(
+  runtime: IAgentRuntime,
+  msg: InboundMessage,
+  draftText: string,
+  entryId: string,
+): Promise<void> {
+  const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
+  const channel = approvalChannelForInboxSource(msg.source);
+  const isEmail = msg.source === "gmail";
+  await queue.enqueue({
+    requestedBy: `inbox-auto:${entryId}`,
+    subjectUserId: String(msg.entityId ?? runtime.agentId),
+    action: isEmail ? "send_email" : "send_message",
+    payload: isEmail
+      ? {
+          action: "send_email",
+          to: [],
+          cc: [],
+          bcc: [],
+          subject: msg.channelName,
+          body: draftText,
+          threadId: msg.threadId ?? null,
+          replyToMessageId: msg.gmailMessageId ?? null,
+        }
+      : {
+          action: "send_message",
+          recipient: String(msg.roomId ?? msg.entityId ?? ""),
+          body: draftText,
+          replyToMessageId: msg.id,
+        },
+    channel,
+    reason: `Auto-reply draft for ${msg.senderName} on ${msg.channelName} — queued for approval (email invariant)`,
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+  });
+}
+
+export async function tryAutoReply(
   runtime: IAgentRuntime,
   msg: InboundMessage,
   result: TriageResult,
@@ -1181,6 +1242,20 @@ async function tryAutoReply(
   if (!autoConfig?.enabled) return false;
   const suggestedResponse = result.suggestedResponse;
   if (!suggestedResponse) return false;
+
+  // Hard invariant: email channels are NEVER auto-sent. Enqueue an approval
+  // request so the owner can review and explicitly send. This gate runs
+  // BEFORE confidence / whitelist / rate-limit / reflection because none of
+  // those are sufficient for the user's "never auto-respond to my mails"
+  // invariant. Returning `false` keeps the auto-reply counter accurate (the
+  // message was queued, not auto-replied).
+  if (requiresApprovalQueue(msg.source)) {
+    await enqueueAutoReplyForApproval(runtime, msg, suggestedResponse, entryId);
+    logger.info(
+      `[INBOX] Auto-reply for ${msg.senderName} on ${msg.source} queued for approval; never auto-sent for email channels.`,
+    );
+    return false;
+  }
 
   const threshold = autoConfig.confidenceThreshold ?? 0.85;
   if (result.confidence < threshold) return false;
