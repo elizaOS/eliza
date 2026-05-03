@@ -123,10 +123,27 @@ def _get_model_plugin(model_name: str) -> Plugin:
     """Get a model provider plugin for LLM calls.
 
     Checks available API keys in order:
-      1. ANTHROPIC_API_KEY → try elizaos_plugin_anthropic
-      2. OPENAI_API_KEY → use elizaos_plugin_openai
-      3. OPENROUTER_API_KEY → use elizaos_plugin_openai with OpenRouter base URL
+      1. SOLANA_AGENT_PROVIDER=groq + GROQ_API_KEY → elizaos_plugin_groq
+      2. ANTHROPIC_API_KEY → try elizaos_plugin_anthropic
+      3. OPENAI_API_KEY → use elizaos_plugin_openai
+      4. OPENROUTER_API_KEY → use elizaos_plugin_openai with OpenRouter base URL
     """
+    explicit_provider = os.getenv("SOLANA_AGENT_PROVIDER", "").strip().lower()
+    if explicit_provider == "groq" or (not explicit_provider and os.getenv("GROQ_API_KEY") and not os.getenv("ANTHROPIC_API_KEY")):
+        if not os.getenv("GROQ_API_KEY"):
+            raise RuntimeError("GROQ_API_KEY not set; required for groq provider")
+        try:
+            from elizaos_plugin_groq import get_groq_plugin
+
+            clean = model_name.split("/", 1)[-1] if "/" in model_name else model_name
+            os.environ.setdefault("GROQ_SMALL_MODEL", clean)
+            os.environ.setdefault("GROQ_LARGE_MODEL", clean)
+            logger.info("Model plugin: Groq (%s)", clean)
+            return get_groq_plugin()
+        except ImportError:
+            logger.info(
+                "elizaos_plugin_groq not found, falling back to OpenAI/Anthropic/OpenRouter"
+            )
     clean_model = model_name.split("/")[-1] if "/" in model_name else model_name
     openai_base_url = os.getenv("OPENAI_BASE_URL", "").strip()
 
