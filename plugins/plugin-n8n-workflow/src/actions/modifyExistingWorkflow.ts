@@ -12,8 +12,7 @@ import { N8N_WORKFLOW_SERVICE_TYPE, type N8nWorkflowService } from '../services/
 import type { WorkflowDraft } from '../types/index';
 import { matchWorkflow, formatActionResponse } from '../utils/generation';
 import { buildConversationContext } from '../utils/context';
-
-const DRAFT_TTL_MS = 30 * 60 * 1000;
+import { DRAFT_TTL_MS } from '../utils/constants';
 
 const examples: ActionExample[][] = [
   [
@@ -229,7 +228,7 @@ export const modifyExistingWorkflowAction: Action = {
       });
 
       if (callback) {
-        await callback({ text, success: true });
+        await callback({ text, success: true, data: { awaitingUserInput: true } });
       }
 
       return { success: true, data: { workflowId, awaitingUserInput: true } };
