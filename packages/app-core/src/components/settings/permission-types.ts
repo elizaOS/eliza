@@ -75,6 +75,17 @@ export const SYSTEM_PERMISSIONS: PermissionDef[] = [
     platforms: ["darwin", "win32", "linux"],
     requiredForFeatures: ["website-blocker"],
   },
+  {
+    id: "location",
+    name: "Location",
+    nameKey: "permissionssection.permission.location.name",
+    description:
+      "Read the device's current location for travel-time, time-zone, and place-aware planning. Mobile uses GPS; desktop falls back to coarse IP geolocation.",
+    descriptionKey: "permissionssection.permission.location.description",
+    icon: "map-pin",
+    platforms: ["darwin", "win32", "linux"],
+    requiredForFeatures: ["travel-time", "location"],
+  },
 ];
 
 /** Capability toggle definition. */
