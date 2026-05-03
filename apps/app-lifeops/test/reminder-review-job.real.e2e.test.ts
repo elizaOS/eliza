@@ -1,5 +1,11 @@
 import crypto from "node:crypto";
-import type { AgentRuntime } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  ChannelType,
+  type Memory,
+  stringToUuid,
+  type UUID,
+} from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { createRealTestRuntime } from "../../../../eliza/test/helpers/real-runtime";
 import type { LifeOpsOccurrence } from "../src/contracts/index.js";
@@ -13,6 +19,8 @@ import { LifeOpsService } from "../src/lifeops/service.js";
 import {
   REMINDER_LIFECYCLE_METADATA_KEY,
   REMINDER_REVIEW_AT_METADATA_KEY,
+  REMINDER_REVIEW_DECISION_METADATA_KEY,
+  REMINDER_REVIEW_RESPONSE_TEXT_METADATA_KEY,
   REMINDER_REVIEW_STATUS_METADATA_KEY,
   REMINDER_URGENCY_METADATA_KEY,
 } from "../src/lifeops/service-constants.js";
@@ -26,13 +34,15 @@ function addMinutes(date: Date, minutes: number): string {
 function makeOccurrence(args: {
   runtime: AgentRuntime;
   definitionId: string;
+  subjectId?: string;
 }): LifeOpsOccurrence {
+  const subjectId = args.subjectId ?? String(args.runtime.agentId);
   return {
     id: crypto.randomUUID(),
     agentId: String(args.runtime.agentId),
     domain: "user_lifeops",
     subjectType: "owner",
-    subjectId: String(args.runtime.agentId),
+    subjectId,
     visibilityScope: "owner_agent_admin",
     contextPolicy: "explicit_only",
     definitionId: args.definitionId,
@@ -55,13 +65,16 @@ function makeOccurrence(args: {
 async function seedDueStretchReview(args: {
   runtime: AgentRuntime;
   repository: LifeOpsRepository;
+  ownerEntityId?: string;
+  deliveryRoomId?: string;
 }) {
   const agentId = String(args.runtime.agentId);
+  const subjectId = args.ownerEntityId ?? agentId;
   const definition = createLifeOpsTaskDefinition({
     agentId,
     domain: "user_lifeops",
     subjectType: "owner",
-    subjectId: agentId,
+    subjectId,
     visibilityScope: "owner_agent_admin",
     contextPolicy: "explicit_only",
     kind: "habit",
@@ -105,6 +118,7 @@ async function seedDueStretchReview(args: {
   const occurrence = makeOccurrence({
     runtime: args.runtime,
     definitionId: definition.id,
+    subjectId,
   });
   await args.repository.upsertOccurrence(occurrence);
   const initialAttempt = createLifeOpsReminderAttempt({
@@ -122,6 +136,7 @@ async function seedDueStretchReview(args: {
     deliveryMetadata: {
       title: "Stretch",
       urgency: "high",
+      ...(args.deliveryRoomId ? { deliveryRoomId: args.deliveryRoomId } : {}),
       [REMINDER_LIFECYCLE_METADATA_KEY]: "plan",
       [REMINDER_REVIEW_AT_METADATA_KEY]: addMinutes(baseAt, 7),
     },
@@ -134,6 +149,48 @@ async function seedDueStretchReview(args: {
     occurrence,
     plan,
   };
+}
+
+async function seedOwnerReply(args: {
+  runtime: AgentRuntime;
+  ownerEntityId: UUID;
+  roomId: UUID;
+  text: string;
+  createdAt: string;
+}): Promise<void> {
+  const worldId = stringToUuid(`lifeops-reminder-review-world-${args.roomId}`);
+  await args.runtime.ensureWorldExists({
+    id: worldId,
+    name: "lifeops-reminder-review-world",
+    agentId: args.runtime.agentId,
+  } as Parameters<typeof args.runtime.ensureWorldExists>[0]);
+  await args.runtime.ensureConnection({
+    entityId: args.ownerEntityId,
+    roomId: args.roomId,
+    worldId,
+    userName: "Owner",
+    name: "Owner",
+    source: "client_chat",
+    channelId: `client-chat-${args.roomId}`,
+    type: ChannelType.DM,
+  });
+  await args.runtime.ensureParticipantInRoom(args.runtime.agentId, args.roomId);
+  await args.runtime.ensureParticipantInRoom(args.ownerEntityId, args.roomId);
+  await args.runtime.createMemory(
+    {
+      id: crypto.randomUUID() as UUID,
+      entityId: args.ownerEntityId,
+      agentId: args.runtime.agentId,
+      roomId: args.roomId,
+      content: {
+        text: args.text,
+        source: "client_chat",
+        channelType: ChannelType.DM,
+      },
+      createdAt: Date.parse(args.createdAt),
+    } as Memory,
+    "messages",
+  );
 }
 
 describe("reminder review jobs real scenarios", () => {
@@ -245,6 +302,68 @@ describe("reminder review jobs real scenarios", () => {
       expect(reviewedAttempt?.reviewAt).toBe(addMinutes(baseAt, 7));
       expect(reviewedAttempt?.reviewStatus).toBe("escalated");
       expect(reviewedAttempt?.deliveryMetadata).toMatchObject({
+        [REMINDER_REVIEW_STATUS_METADATA_KEY]: "escalated",
+      });
+    } finally {
+      await runtimeHandle.cleanup();
+    }
+  }, 30_000);
+
+  it("keeps a persisted unrelated owner reply from suppressing escalation", async () => {
+    const runtimeHandle = await createRealTestRuntime({
+      characterName: "lifeops-reminder-unrelated-reply-e2e-agent",
+    });
+    try {
+      const runtime = runtimeHandle.runtime;
+      await LifeOpsRepository.bootstrapSchema(runtime);
+      const repository = new LifeOpsRepository(runtime);
+      const ownerEntityId = stringToUuid(
+        "lifeops-reminder-unrelated-reply-owner",
+      );
+      const roomId = stringToUuid("lifeops-reminder-unrelated-reply-room");
+      await seedOwnerReply({
+        runtime,
+        ownerEntityId,
+        roomId,
+        text: "yes on the invoices",
+        createdAt: addMinutes(baseAt, 2),
+      });
+      const service = new LifeOpsService(runtime, {
+        ownerEntityId,
+      });
+      const { initialAttempt, occurrence } = await seedDueStretchReview({
+        runtime,
+        repository,
+        ownerEntityId,
+        deliveryRoomId: roomId,
+      });
+
+      const result = await service.processReminders({
+        now: addMinutes(baseAt, 8),
+        limit: 1,
+      });
+
+      expect(result.attempts).toHaveLength(1);
+      expect(result.attempts[0]).toMatchObject({
+        ownerType: "occurrence",
+        ownerId: occurrence.id,
+        channel: "in_app",
+        outcome: "delivered",
+      });
+      const persistedAttempts = await repository.listReminderAttempts(
+        String(runtime.agentId),
+        {
+          ownerType: "occurrence",
+          ownerId: occurrence.id,
+        },
+      );
+      const reviewedAttempt = persistedAttempts.find(
+        (attempt) => attempt.id === initialAttempt.id,
+      );
+      expect(reviewedAttempt?.reviewStatus).toBe("escalated");
+      expect(reviewedAttempt?.deliveryMetadata).toMatchObject({
+        [REMINDER_REVIEW_DECISION_METADATA_KEY]: "escalate",
+        [REMINDER_REVIEW_RESPONSE_TEXT_METADATA_KEY]: "yes on the invoices",
         [REMINDER_REVIEW_STATUS_METADATA_KEY]: "escalated",
       });
     } finally {
