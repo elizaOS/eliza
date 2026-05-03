@@ -1,6 +1,7 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
+    "noEmit": false,
     "outDir": "./dist",
     "sourceMap": true,
     "inlineSources": true,
