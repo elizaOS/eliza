@@ -30,7 +30,7 @@
 		"fflate": "^0.8.2"
 	},
 	"devDependencies": {
-		"@anthropic-ai/sdk": "^0.30.1",
+		"@anthropic-ai/sdk": "^0.92.0",
 		"tsup": "8.3.5",
 		"typescript": "^6.0.0",
 		"vitest": "^2.0.0",

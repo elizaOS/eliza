@@ -408,6 +408,28 @@ def main(
         if api_base:
             os.environ["OPENAI_BASE_URL"] = api_base
         sys_instance = ElizaSystem(cache_dir=cache_dir, model=model or "gpt-4o-mini")
+    elif system_name in ("eliza-bridge", "eliza-ts"):
+        cache_dir = data_path / ".." / ".benchmark_cache"
+        console.print(
+            "\n[bold blue]System: ElizaBridgeSystem (TypeScript bridge via ElizaClient)[/]"
+        )
+        console.print(f"  Cache dir: {cache_dir.resolve()}")
+        from dotenv import load_dotenv
+        load_dotenv(Path(__file__).resolve().parents[3] / ".env")
+        # Auto-spawn the TS benchmark server (idempotent — no-op if already running)
+        try:
+            from eliza_adapter.server_manager import ElizaServerManager
+            from eliza_adapter.social_alpha import make_eliza_bridge_social_alpha_system
+        except ImportError as exc:
+            console.print(f"[red]eliza_adapter not available: {exc}[/]")
+            sys.exit(1)
+        mgr = ElizaServerManager()
+        mgr.start()
+        sys_instance = make_eliza_bridge_social_alpha_system(
+            cache_dir=cache_dir,
+            model=model,
+            client=mgr.client,
+        )
     else:
         sys_instance = BaselineSystem()
         console.print(f"\nSystem: [bold]{sys_instance.__class__.__name__}[/]")
