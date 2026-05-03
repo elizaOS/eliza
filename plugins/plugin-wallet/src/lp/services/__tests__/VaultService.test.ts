@@ -40,8 +40,12 @@ describe("VaultService", () => {
 
     it('should store a retrievable "encrypted" secret key', async () => {
       const userId = "testUser789";
-      const { publicKey, secretKeyEncrypted } = await vaultService.createVault(userId);
-      const keypair = await vaultService.getVaultKeypair(userId, secretKeyEncrypted);
+      const { publicKey, secretKeyEncrypted } =
+        await vaultService.createVault(userId);
+      const keypair = await vaultService.getVaultKeypair(
+        userId,
+        secretKeyEncrypted,
+      );
       expect(keypair).toBeInstanceOf(Keypair);
       expect(keypair.publicKey.toBase58()).toEqual(publicKey);
       const secretKeyBytes = Buffer.from(secretKeyEncrypted, "hex");
@@ -70,23 +74,23 @@ describe("VaultService", () => {
     it("should retrieve the correct Keypair", async () => {
       const keypair = await vaultService.getVaultKeypair(
         testUserId,
-        createdVault.secretKeyEncrypted
+        createdVault.secretKeyEncrypted,
       );
       expect(keypair).toBeInstanceOf(Keypair);
       expect(keypair.publicKey.toBase58()).toEqual(createdVault.publicKey);
     });
 
     it("should throw for invalid hex secret", async () => {
-      await expect(vaultService.getVaultKeypair(testUserId, "not-hex")).rejects.toThrow(
-        "Could not derive Keypair from the provided secret."
-      );
+      await expect(
+        vaultService.getVaultKeypair(testUserId, "not-hex"),
+      ).rejects.toThrow("Could not derive Keypair from the provided secret.");
     });
 
     it("should throw for incorrect length secret", async () => {
       const shortSecret = Buffer.from(new Uint8Array(32)).toString("hex");
-      await expect(vaultService.getVaultKeypair(testUserId, shortSecret)).rejects.toThrow(
-        "Could not derive Keypair from the provided secret."
-      );
+      await expect(
+        vaultService.getVaultKeypair(testUserId, shortSecret),
+      ).rejects.toThrow("Could not derive Keypair from the provided secret.");
     });
   });
 
@@ -121,7 +125,9 @@ describe("VaultService", () => {
     it("should accept valid public key format", async () => {
       // This test might fail due to network issues, but at least tests the interface
       try {
-        const balances = await vaultService.getBalances(MOCK_VALID_PUBLIC_KEY_STRING);
+        const balances = await vaultService.getBalances(
+          MOCK_VALID_PUBLIC_KEY_STRING,
+        );
         expect(Array.isArray(balances)).toBe(true);
         // Should at least have SOL balance entry
         const solBalance = balances.find((b) => b.address === "SOL");
@@ -149,7 +155,7 @@ describe("VaultService", () => {
       const exportedKey = await vaultService.exportPrivateKey(
         testUserId,
         createdVault.secretKeyEncrypted,
-        validConfirmation
+        validConfirmation,
       );
       expect(typeof exportedKey).toBe("string");
       let decodedSecret: Uint8Array | undefined;
@@ -160,25 +166,39 @@ describe("VaultService", () => {
       // Reconstruct keypair and check public key
       if (decodedSecret) {
         const reconstructedKeypair = Keypair.fromSecretKey(decodedSecret);
-        expect(reconstructedKeypair.publicKey.toBase58()).toEqual(createdVault.publicKey);
+        expect(reconstructedKeypair.publicKey.toBase58()).toEqual(
+          createdVault.publicKey,
+        );
       }
     });
 
     it("should throw an error if confirmation token is invalid", async () => {
       await expect(
-        vaultService.exportPrivateKey(testUserId, createdVault.secretKeyEncrypted, "short")
+        vaultService.exportPrivateKey(
+          testUserId,
+          createdVault.secretKeyEncrypted,
+          "short",
+        ),
       ).rejects.toThrow("Invalid confirmation token");
     });
 
     it("should throw an error if confirmation token is missing", async () => {
       await expect(
-        vaultService.exportPrivateKey(testUserId, createdVault.secretKeyEncrypted, "")
+        vaultService.exportPrivateKey(
+          testUserId,
+          createdVault.secretKeyEncrypted,
+          "",
+        ),
       ).rejects.toThrow("Invalid confirmation token");
     });
 
     it("should throw if getVaultKeypair fails (e.g. bad encryptedSecretKey)", async () => {
       await expect(
-        vaultService.exportPrivateKey(testUserId, "bad-encrypted-key", validConfirmation)
+        vaultService.exportPrivateKey(
+          testUserId,
+          "bad-encrypted-key",
+          validConfirmation,
+        ),
       ).rejects.toThrow("Failed to export private key");
     });
   });

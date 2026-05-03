@@ -496,7 +496,9 @@ export class LpMonitoringService extends Service {
     }
 
     const rebalancable = positions.filter((p) => p.rebalancable);
-    const balances = await this.vaultService.getBalances(profile.vaultPublicKey);
+    const balances = await this.vaultService.getBalances(
+      profile.vaultPublicKey,
+    );
     const opportunities = await this.yieldService.findBestYieldOpportunities(
       userId,
       rebalancable.map((p) => p.position),

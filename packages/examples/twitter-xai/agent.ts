@@ -21,7 +21,10 @@ function validateEnvironment(): void {
   const authMode = (process.env.TWITTER_AUTH_MODE ?? "broker").toLowerCase();
   switch (authMode) {
     case "broker":
-      if (!process.env.TWITTER_BROKER_TOKEN && !process.env.ELIZAOS_CLOUD_API_KEY) {
+      if (
+        !process.env.TWITTER_BROKER_TOKEN &&
+        !process.env.ELIZAOS_CLOUD_API_KEY
+      ) {
         throw new Error(
           "TWITTER_AUTH_MODE=broker requires TWITTER_BROKER_TOKEN or ELIZAOS_CLOUD_API_KEY. Connect your X account on the Eliza Cloud connectors page first.",
         );

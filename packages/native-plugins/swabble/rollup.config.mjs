@@ -9,9 +9,9 @@ const external = ["@capacitor/core"];
 // Resolve against this file's directory — turbo/bun may not use the package root as cwd.
 const esmIndex = path.join(__dirname, "dist/esm/index.js");
 if (!fs.existsSync(esmIndex)) {
-	throw new Error(
-		`[@elizaos/capacitor-swabble] Missing ${esmIndex}. Run tsc before rollup (expected rootDir src → dist/esm/index.js).`,
-	);
+  throw new Error(
+    `[@elizaos/capacitor-swabble] Missing ${esmIndex}. Run tsc before rollup (expected rootDir src → dist/esm/index.js).`,
+  );
 }
 const input = esmIndex;
 

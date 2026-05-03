@@ -128,10 +128,10 @@ export async function performOAuthFlow(
   // Step 2: Surface the auth prompt to the user
   const delivered = ctx.authPromptCallback
     ? await ctx.authPromptCallback({
-      verificationUri: deviceCode.verificationUri,
-      userCode: deviceCode.userCode,
-      expiresIn: deviceCode.expiresIn,
-    })
+        verificationUri: deviceCode.verificationUri,
+        userCode: deviceCode.userCode,
+        expiresIn: deviceCode.expiresIn,
+      })
     : false;
 
   if (!delivered) {

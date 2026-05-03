@@ -89,10 +89,7 @@ export interface GitHubOctokitClient {
       Octokit["pulls"]["createReview"],
       GitHubReviewResult
     >;
-    list: OctokitEndpoint<
-      Octokit["pulls"]["list"],
-      GitHubPullRequestSummary[]
-    >;
+    list: OctokitEndpoint<Octokit["pulls"]["list"], GitHubPullRequestSummary[]>;
   };
   search: {
     issuesAndPullRequests: OctokitEndpoint<

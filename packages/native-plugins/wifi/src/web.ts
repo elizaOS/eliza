@@ -10,8 +10,7 @@ import type {
   WifiStateResult,
 } from "./definitions";
 
-const UNAVAILABLE_MESSAGE =
-  "Wi-Fi controls are only available on Android.";
+const UNAVAILABLE_MESSAGE = "Wi-Fi controls are only available on Android.";
 
 let warned = false;
 function warnOnce(): void {

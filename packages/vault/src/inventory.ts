@@ -177,7 +177,8 @@ const PROVIDER_LABELS: Readonly<Record<string, string>> = {
 };
 
 function defaultLabel(key: string, providerId: string | null): string {
-  if (providerId && PROVIDER_LABELS[providerId]) return PROVIDER_LABELS[providerId]!;
+  if (providerId && PROVIDER_LABELS[providerId])
+    return PROVIDER_LABELS[providerId]!;
   return key;
 }
 
@@ -251,7 +252,10 @@ export async function setEntryMeta(
  * removing the underlying value(s) and profile entries — this only
  * touches `_meta.<key>`.
  */
-export async function removeEntryMeta(vault: Vault, key: string): Promise<void> {
+export async function removeEntryMeta(
+  vault: Vault,
+  key: string,
+): Promise<void> {
   const metaKey = `${META_PREFIX}${key}`;
   if (await vault.has(metaKey)) {
     await vault.remove(metaKey);
@@ -408,12 +412,15 @@ function parseMetaRecord(
       const profile: VaultEntryProfile = {
         id: rec.id,
         label,
-        ...(typeof rec.createdAt === "number" ? { createdAt: rec.createdAt } : {}),
+        ...(typeof rec.createdAt === "number"
+          ? { createdAt: rec.createdAt }
+          : {}),
       };
       profiles.push(profile);
     }
     if (profiles.length > 0) {
-      (out as { profiles: ReadonlyArray<VaultEntryProfile> }).profiles = profiles;
+      (out as { profiles: ReadonlyArray<VaultEntryProfile> }).profiles =
+        profiles;
     }
   }
   return out;

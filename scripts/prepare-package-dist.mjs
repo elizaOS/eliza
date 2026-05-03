@@ -301,9 +301,7 @@ function replaceSourceExtension(relPath, nextExt) {
     return `${relPath.slice(0, -declarationExtMatch[0].length)}${nextExt}`;
   }
 
-  const sourceExtMatch = relPath.match(
-    /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/,
-  );
+  const sourceExtMatch = relPath.match(/\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/);
   if (sourceExtMatch) {
     return `${relPath.slice(0, -sourceExtMatch[0].length)}${nextExt}`;
   }

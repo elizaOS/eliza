@@ -17,8 +17,7 @@ import { describeIf } from "../../../../eliza/test/helpers/conditional-tests";
 import { req } from "../../../../eliza/test/helpers/http";
 import { createLiveRuntimeChildEnv } from "../../../../eliza/test/helpers/live-child-env";
 
-const LIVE =
-  process.env.ELIZA_LIVE_TEST === "1";
+const LIVE = process.env.ELIZA_LIVE_TEST === "1";
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
 
 try {

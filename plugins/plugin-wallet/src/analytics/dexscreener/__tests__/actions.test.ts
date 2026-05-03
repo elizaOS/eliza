@@ -80,7 +80,7 @@ describe("DexScreener Actions", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(mockService.search).toHaveBeenCalledWith({ query: "PEPE" });
@@ -106,7 +106,7 @@ describe("DexScreener Actions", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith({
@@ -130,7 +130,7 @@ describe("DexScreener Actions", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith({
@@ -143,7 +143,7 @@ describe("DexScreener Actions", () => {
   describe("getTokenInfoAction", () => {
     it("should validate token info queries", async () => {
       const message = createTestMemory(
-        "Get token info for 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+        "Get token info for 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
       );
 
       const isValid = await getTokenInfoAction.validate(mockRuntime, message);
@@ -176,7 +176,7 @@ describe("DexScreener Actions", () => {
       });
 
       const message = createTestMemory(
-        "Get token info for 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+        "Get token info for 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
       );
       const callback = createMockCallback();
       const state = createMockState();
@@ -186,7 +186,7 @@ describe("DexScreener Actions", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(mockService.getTokenPairs).toHaveBeenCalledWith({
@@ -209,7 +209,7 @@ describe("DexScreener Actions", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith({
@@ -254,7 +254,7 @@ describe("DexScreener Actions", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(mockService.getTrending).toHaveBeenCalledWith({
@@ -305,7 +305,7 @@ describe("DexScreener Actions", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(mockService.getNewPairs).toHaveBeenCalledWith({
@@ -326,7 +326,7 @@ describe("DexScreener Actions", () => {
 
       const isValid = await getPairsByChainAction.validate(
         mockRuntime,
-        message
+        message,
       );
       expect(isValid).toBe(true);
     });
@@ -351,7 +351,7 @@ describe("DexScreener Actions", () => {
       });
 
       const message = createTestMemory(
-        "What are the most liquid pairs on polygon?"
+        "What are the most liquid pairs on polygon?",
       );
       const callback = createMockCallback();
       const state = createMockState();
@@ -361,7 +361,7 @@ describe("DexScreener Actions", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(mockService.getPairsByChain).toHaveBeenCalledWith({
@@ -386,7 +386,7 @@ describe("DexScreener Actions", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith({

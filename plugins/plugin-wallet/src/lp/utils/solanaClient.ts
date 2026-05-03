@@ -11,11 +11,18 @@ const DEFAULT_COMMITMENT = "confirmed";
  */
 export function getConnection(runtime: IAgentRuntime): Connection {
   const rpcUrl =
-    runtime.getSetting("SOLANA_RPC_URL") || runtime.getSetting("RPC_URL") || DEFAULT_ENDPOINT;
-  const commitmentRaw = runtime.getSetting("SOLANA_COMMITMENT") || DEFAULT_COMMITMENT;
-  const commitment = typeof commitmentRaw === "string" ? commitmentRaw : DEFAULT_COMMITMENT;
+    runtime.getSetting("SOLANA_RPC_URL") ||
+    runtime.getSetting("RPC_URL") ||
+    DEFAULT_ENDPOINT;
+  const commitmentRaw =
+    runtime.getSetting("SOLANA_COMMITMENT") || DEFAULT_COMMITMENT;
+  const commitment =
+    typeof commitmentRaw === "string" ? commitmentRaw : DEFAULT_COMMITMENT;
 
-  return new Connection(rpcUrl as string, commitment as "confirmed" | "finalized" | "processed");
+  return new Connection(
+    rpcUrl as string,
+    commitment as "confirmed" | "finalized" | "processed",
+  );
 }
 
 export function getWalletPublicKey(runtime: IAgentRuntime): string | null {
@@ -44,7 +51,7 @@ export interface WalletResult {
  */
 export async function loadWallet(
   runtime: IAgentRuntime,
-  requirePrivateKey: boolean = true
+  requirePrivateKey: boolean = true,
 ): Promise<WalletResult> {
   if (requirePrivateKey) {
     const privateKeyString = getWalletPrivateKey(runtime);
@@ -62,12 +69,16 @@ export async function loadWallet(
       logger.debug("Error decoding base58 private key, trying base64...");
       try {
         // Then try base64
-        const secretKey = Uint8Array.from(Buffer.from(privateKeyString, "base64"));
+        const secretKey = Uint8Array.from(
+          Buffer.from(privateKeyString, "base64"),
+        );
         const signer = Keypair.fromSecretKey(secretKey);
         return { signer, address: signer.publicKey };
       } catch (e2) {
         logger.error("Error decoding private key:", e2);
-        throw new Error("Invalid private key format - must be base58 or base64 encoded");
+        throw new Error(
+          "Invalid private key format - must be base58 or base64 encoded",
+        );
       }
     }
   } else {
@@ -85,7 +96,9 @@ export async function loadWallet(
 
     const publicKeyString = getWalletPublicKey(runtime);
     if (!publicKeyString) {
-      throw new Error("SOLANA_PUBLIC_KEY or SOLANA_PRIVATE_KEY not found in settings");
+      throw new Error(
+        "SOLANA_PUBLIC_KEY or SOLANA_PRIVATE_KEY not found in settings",
+      );
     }
 
     return { address: new PublicKey(publicKeyString) };
@@ -98,23 +111,27 @@ export async function loadWallet(
 export async function sendTransaction(
   connection: Connection,
   instructions: import("@solana/web3.js").TransactionInstruction[],
-  signer: Keypair
+  signer: Keypair,
 ): Promise<string> {
   const { Transaction } = await import("@solana/web3.js");
 
   const transaction = new Transaction();
   transaction.add(...instructions);
 
-  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+  const { blockhash, lastValidBlockHeight } =
+    await connection.getLatestBlockhash();
   transaction.recentBlockhash = blockhash;
   transaction.feePayer = signer.publicKey;
 
   transaction.sign(signer);
 
-  const signature = await connection.sendRawTransaction(transaction.serialize(), {
-    skipPreflight: false,
-    preflightCommitment: "confirmed",
-  });
+  const signature = await connection.sendRawTransaction(
+    transaction.serialize(),
+    {
+      skipPreflight: false,
+      preflightCommitment: "confirmed",
+    },
+  );
 
   await connection.confirmTransaction({
     blockhash,

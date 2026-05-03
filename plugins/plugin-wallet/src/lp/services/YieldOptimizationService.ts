@@ -42,7 +42,7 @@ export interface IYieldOptimizationService extends Service {
   findBestYieldOpportunities(
     userId: string,
     currentPositions: LpPositionDetails[],
-    idleAssets: TokenBalance[]
+    idleAssets: TokenBalance[],
   ): Promise<OptimizationOpportunity[]>;
 
   /**
@@ -59,7 +59,7 @@ export interface IYieldOptimizationService extends Service {
     toPool: PoolInfo,
     solPriceUsd: number,
     amountToMoveLamports?: string,
-    underlyingTokensToMove?: TokenBalance[] // Specific tokens being moved, if known (e.g. after withdrawal)
+    underlyingTokensToMove?: TokenBalance[], // Specific tokens being moved, if known (e.g. after withdrawal)
   ): Promise<{
     costSolLamports: string;
     costUsd?: number;
@@ -70,11 +70,14 @@ export interface IYieldOptimizationService extends Service {
   findBestYield(
     userId: string,
     currentTokenA: string,
-    currentTokenB: string
+    currentTokenB: string,
   ): Promise<OptimizationOpportunity[]>;
 }
 
-export class YieldOptimizationService extends Service implements IYieldOptimizationService {
+export class YieldOptimizationService
+  extends Service
+  implements IYieldOptimizationService
+{
   public static readonly serviceType = "YieldOptimizationService";
   public readonly capabilityDescription =
     "Finds and evaluates yield optimization opportunities across DEXs.";
@@ -83,7 +86,9 @@ export class YieldOptimizationService extends Service implements IYieldOptimizat
   private userLpProfileService!: IUserLpProfileService;
 
   // Static methods required by ElizaOS Service architecture
-  static async start(runtime: IAgentRuntime): Promise<YieldOptimizationService> {
+  static async start(
+    runtime: IAgentRuntime,
+  ): Promise<YieldOptimizationService> {
     const service = new YieldOptimizationService(runtime);
     await service.start(runtime);
     return service;
@@ -94,10 +99,15 @@ export class YieldOptimizationService extends Service implements IYieldOptimizat
   }
 
   async start(runtime: IAgentRuntime): Promise<void> {
-    const dexInteractionService = runtime.getService<DexInteractionService>("dex-interaction");
-    const userLpProfileService = runtime.getService<UserLpProfileService>("UserLpProfileService");
+    const dexInteractionService =
+      runtime.getService<DexInteractionService>("dex-interaction");
+    const userLpProfileService = runtime.getService<UserLpProfileService>(
+      "UserLpProfileService",
+    );
     if (!dexInteractionService || !userLpProfileService) {
-      throw new Error("Required services for YieldOptimizationService not available.");
+      throw new Error(
+        "Required services for YieldOptimizationService not available.",
+      );
     }
     this.dexInteractionService = dexInteractionService;
     this.userLpProfileService = userLpProfileService;
@@ -117,7 +127,7 @@ export class YieldOptimizationService extends Service implements IYieldOptimizat
     targetPool: PoolInfo,
     solPriceUsd: number,
     _valueOfLpTokensToMoveLamports?: string,
-    underlyingTokensAvailable?: TokenBalance[]
+    underlyingTokensAvailable?: TokenBalance[],
   ): Promise<{
     costSolLamports: string;
     costUsd?: number;
@@ -128,7 +138,9 @@ export class YieldOptimizationService extends Service implements IYieldOptimizat
     let totalEstimatedCostLamports = BigInt(0);
 
     if (fromPositionOrNull) {
-      steps.push(`1. Withdraw from ${fromPositionOrNull.dex} pool: ${fromPositionOrNull.poolId}`);
+      steps.push(
+        `1. Withdraw from ${fromPositionOrNull.dex} pool: ${fromPositionOrNull.poolId}`,
+      );
       totalEstimatedCostLamports += AVG_LP_ADD_REMOVE_TX_FEE_LAMPORTS;
     }
 
@@ -136,8 +148,12 @@ export class YieldOptimizationService extends Service implements IYieldOptimizat
     if (underlyingTokensAvailable && underlyingTokensAvailable.length === 2) {
       const targetTokenA = targetPool.tokenA.mint;
       const targetTokenB = targetPool.tokenB.mint;
-      const hasTokenA = underlyingTokensAvailable.find((t) => t.address === targetTokenA);
-      const hasTokenB = underlyingTokensAvailable.find((t) => t.address === targetTokenB);
+      const hasTokenA = underlyingTokensAvailable.find(
+        (t) => t.address === targetTokenA,
+      );
+      const hasTokenB = underlyingTokensAvailable.find(
+        (t) => t.address === targetTokenB,
+      );
       if (!hasTokenA || !hasTokenB) {
         needsSwap = true;
       }
@@ -145,7 +161,10 @@ export class YieldOptimizationService extends Service implements IYieldOptimizat
       const sourceTokens = fromPositionOrNull.underlyingTokens
         .map((t: TokenBalance) => t.address)
         .sort();
-      const targetTokens = [targetPool.tokenA.mint, targetPool.tokenB.mint].sort();
+      const targetTokens = [
+        targetPool.tokenA.mint,
+        targetPool.tokenB.mint,
+      ].sort();
       if (sourceTokens.join(",") !== targetTokens.join(",")) {
         needsSwap = true;
       }
@@ -155,7 +174,7 @@ export class YieldOptimizationService extends Service implements IYieldOptimizat
 
     if (needsSwap) {
       steps.push(
-        `2. (Potentially) Swap tokens to match ${targetPool.tokenA.symbol || "TokenA"}/${targetPool.tokenB.symbol || "TokenB"}`
+        `2. (Potentially) Swap tokens to match ${targetPool.tokenA.symbol || "TokenA"}/${targetPool.tokenB.symbol || "TokenB"}`,
       );
       totalEstimatedCostLamports += AVG_SWAP_TX_FEE_LAMPORTS;
     }
@@ -164,7 +183,9 @@ export class YieldOptimizationService extends Service implements IYieldOptimizat
     totalEstimatedCostLamports += AVG_LP_ADD_REMOVE_TX_FEE_LAMPORTS;
 
     const costSolLamportsStr = totalEstimatedCostLamports.toString();
-    const costUsd = (Number(totalEstimatedCostLamports) / Number(LAMPORTS_PER_SOL)) * solPriceUsd;
+    const costUsd =
+      (Number(totalEstimatedCostLamports) / Number(LAMPORTS_PER_SOL)) *
+      solPriceUsd;
 
     return {
       costSolLamports: costSolLamportsStr,
@@ -176,7 +197,7 @@ export class YieldOptimizationService extends Service implements IYieldOptimizat
   async findBestYieldOpportunities(
     userId: string,
     currentPositions: LpPositionDetails[],
-    idleAssets: TokenBalance[]
+    idleAssets: TokenBalance[],
   ): Promise<OptimizationOpportunity[]> {
     const userProfile = await this.userLpProfileService.getProfile(userId);
     if (!userProfile) {
@@ -189,14 +210,24 @@ export class YieldOptimizationService extends Service implements IYieldOptimizat
     for (const position of currentPositions) {
       const { underlyingTokens } = position;
       const currentYield =
-        (position.metadata?.apy as number) || (position.metadata?.apr as number) || 0;
+        (position.metadata?.apy as number) ||
+        (position.metadata?.apr as number) ||
+        0;
 
       for (const targetPool of allAvailablePools) {
-        if (targetPool.id === position.poolId && targetPool.dex === position.dex) continue;
+        if (
+          targetPool.id === position.poolId &&
+          targetPool.dex === position.dex
+        )
+          continue;
 
-        const sourceMints = underlyingTokens.map((t: TokenBalance) => t.address);
+        const sourceMints = underlyingTokens.map(
+          (t: TokenBalance) => t.address,
+        );
         const targetMints = [targetPool.tokenA.mint, targetPool.tokenB.mint];
-        const canPotentiallyFormPair = sourceMints.some((sm: string) => targetMints.includes(sm));
+        const canPotentiallyFormPair = sourceMints.some((sm: string) =>
+          targetMints.includes(sm),
+        );
 
         if (canPotentiallyFormPair) {
           const estimatedNewYield = targetPool.apy || targetPool.apr || 0;
@@ -206,14 +237,19 @@ export class YieldOptimizationService extends Service implements IYieldOptimizat
               targetPool,
               solPriceUsdForCosting,
               undefined,
-              underlyingTokens
+              underlyingTokens,
             );
             const positionValueUsd = position.valueUsd || 1;
-            const costInYieldTerms = (costDetails.costUsd || 0) / positionValueUsd;
+            const costInYieldTerms =
+              (costDetails.costUsd || 0) / positionValueUsd;
 
-            const netGainPercent = (estimatedNewYield - currentYield - costInYieldTerms) * 100;
+            const netGainPercent =
+              (estimatedNewYield - currentYield - costInYieldTerms) * 100;
 
-            if (netGainPercent > userProfile.autoRebalanceConfig.minGainThresholdPercent) {
+            if (
+              netGainPercent >
+              userProfile.autoRebalanceConfig.minGainThresholdPercent
+            ) {
               opportunities.push({
                 sourcePosition: position,
                 sourcePool: {
@@ -248,10 +284,15 @@ export class YieldOptimizationService extends Service implements IYieldOptimizat
 
     if (idleAssets.length > 0) {
       for (const pool of allAvailablePools) {
-        if ((pool.apr || 0) <= userProfile.autoRebalanceConfig.minGainThresholdPercent / 100)
+        if (
+          (pool.apr || 0) <=
+          userProfile.autoRebalanceConfig.minGainThresholdPercent / 100
+        )
           continue;
         const canFormFromIdle = idleAssets.some(
-          (asset) => asset.address === pool.tokenA.mint || asset.address === pool.tokenB.mint
+          (asset) =>
+            asset.address === pool.tokenA.mint ||
+            asset.address === pool.tokenB.mint,
         );
         if (canFormFromIdle) {
           const costDetails = await this.calculateRebalanceCost(
@@ -259,35 +300,44 @@ export class YieldOptimizationService extends Service implements IYieldOptimizat
             pool,
             solPriceUsdForCosting,
             undefined,
-            idleAssets
+            idleAssets,
           );
-          if ((pool.apr || 0) * 100 > userProfile.autoRebalanceConfig.minGainThresholdPercent) {
+          if (
+            (pool.apr || 0) * 100 >
+            userProfile.autoRebalanceConfig.minGainThresholdPercent
+          ) {
             opportunities.push({
               targetPool: pool,
               estimatedNewYield: (pool.apr || 0) * 100,
               currentYield: 0,
               estimatedCostToMoveLamports: costDetails.costSolLamports,
               estimatedCostToMoveUsd: costDetails.costUsd,
-              netGainPercent: (pool.apr || 0) * 100 - ((costDetails.costUsd || 0) / 1000) * 100,
+              netGainPercent:
+                (pool.apr || 0) * 100 -
+                ((costDetails.costUsd || 0) / 1000) * 100,
               reason: `Deploy idle assets to ${pool.displayName || pool.id} with APR of ${((pool.apr || 0) * 100).toFixed(2)}%`,
-              actions: costDetails.steps.filter((s) => !s.toLowerCase().includes("withdraw")),
+              actions: costDetails.steps.filter(
+                (s) => !s.toLowerCase().includes("withdraw"),
+              ),
             });
           }
         }
       }
     }
 
-    opportunities.sort((a, b) => (b.netGainPercent || 0) - (a.netGainPercent || 0));
+    opportunities.sort(
+      (a, b) => (b.netGainPercent || 0) - (a.netGainPercent || 0),
+    );
     return opportunities;
   }
 
   public async findBestYield(
     userId: string,
     currentTokenA: string,
-    currentTokenB: string
+    currentTokenB: string,
   ): Promise<OptimizationOpportunity[]> {
     console.log(
-      `Finding best yield for user ${userId} with tokens ${currentTokenA} and ${currentTokenB}`
+      `Finding best yield for user ${userId} with tokens ${currentTokenA} and ${currentTokenB}`,
     );
     return [];
   }

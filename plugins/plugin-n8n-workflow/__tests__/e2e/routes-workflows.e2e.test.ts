@@ -10,20 +10,20 @@
  *
  * Run with: bun test __tests__/e2e/routes-workflows.e2e.test.ts
  */
-import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
-import { workflowRoutes } from '../../src/routes/workflows';
-import { createE2ERuntime } from '../helpers/e2eRuntime';
-import { createSimpleWorkflowNoCredentials } from '../fixtures/workflows';
-import type { RouteRequest, RouteResponse } from '@elizaos/core';
+import { describe, test, expect, beforeAll, afterAll } from "bun:test";
+import { workflowRoutes } from "../../src/routes/workflows";
+import { createE2ERuntime } from "../helpers/e2eRuntime";
+import { createSimpleWorkflowNoCredentials } from "../fixtures/workflows";
+import type { RouteRequest, RouteResponse } from "@elizaos/core";
 
-let runtime: ReturnType<typeof createE2ERuntime>['runtime'];
-const testUserId = 'e2e-test-user';
+let runtime: ReturnType<typeof createE2ERuntime>["runtime"];
+const testUserId = "e2e-test-user";
 const createdWorkflowIds: string[] = [];
 const hasN8n = Boolean(Bun.env.N8N_HOST && Bun.env.N8N_API_KEY);
 
 beforeAll(() => {
   if (!hasN8n) {
-    console.log('\n⚠️  Skipping e2e tests: N8N_HOST/N8N_API_KEY not set\n');
+    console.log("\n⚠️  Skipping e2e tests: N8N_HOST/N8N_API_KEY not set\n");
     return;
   }
   const setup = createE2ERuntime();
@@ -35,15 +35,21 @@ afterAll(async () => {
   if (!hasN8n) return;
 
   // Cleanup: delete all workflows created during tests
-  console.log(`\n🧹 Cleaning up ${createdWorkflowIds.length} test workflows...`);
+  console.log(
+    `\n🧹 Cleaning up ${createdWorkflowIds.length} test workflows...`,
+  );
   const deleteHandler = workflowRoutes.find(
-    (r) => r.type === 'DELETE' && r.path === '/workflows/:id'
+    (r) => r.type === "DELETE" && r.path === "/workflows/:id",
   )!.handler!;
 
   for (const id of createdWorkflowIds) {
     try {
       const { res } = createTestResponse();
-      await deleteHandler({ params: { id }, query: {}, body: undefined }, res, runtime);
+      await deleteHandler(
+        { params: { id }, query: {}, body: undefined },
+        res,
+        runtime,
+      );
       console.log(`  ✓ Deleted workflow ${id}`);
     } catch (err) {
       console.warn(`  ⚠️  Failed to delete workflow ${id}:`, err);
@@ -52,13 +58,15 @@ afterAll(async () => {
 });
 
 /** Helper to create test request */
-function createTestRequest(overrides: Partial<RouteRequest> = {}): RouteRequest {
+function createTestRequest(
+  overrides: Partial<RouteRequest> = {},
+): RouteRequest {
   return {
     body: undefined,
     params: {},
     query: {},
     headers: {},
-    method: 'GET',
+    method: "GET",
     ...overrides,
   };
 }
@@ -89,10 +97,10 @@ function createTestResponse() {
   return { res, getResponse: () => ({ status, body }) };
 }
 
-describe.skipIf(!hasN8n)('E2E: POST /workflows', () => {
-  test('creates a real workflow on n8n instance', async () => {
+describe.skipIf(!hasN8n)("E2E: POST /workflows", () => {
+  test("creates a real workflow on n8n instance", async () => {
     const handler = workflowRoutes.find(
-      (r) => r.type === 'POST' && r.path === '/workflows'
+      (r) => r.type === "POST" && r.path === "/workflows",
     )!.handler!;
 
     const workflow = createSimpleWorkflowNoCredentials({
@@ -101,19 +109,22 @@ describe.skipIf(!hasN8n)('E2E: POST /workflows', () => {
 
     const req = createTestRequest({
       body: { workflow, userId: testUserId },
-      method: 'POST',
+      method: "POST",
     });
 
     const { res, getResponse } = createTestResponse();
     await handler(req, res, runtime);
 
     const { status, body } = getResponse();
-    const data = body as { success: boolean; data: { id: string; name: string; active: boolean } };
+    const data = body as {
+      success: boolean;
+      data: { id: string; name: string; active: boolean };
+    };
 
     expect(status).toBe(200);
     expect(data.success).toBe(true);
     expect(data.data.id).toBeTruthy();
-    expect(data.data.name).toContain('E2E Test Workflow');
+    expect(data.data.name).toContain("E2E Test Workflow");
 
     // Track for cleanup
     if (data.data.id) {
@@ -123,20 +134,20 @@ describe.skipIf(!hasN8n)('E2E: POST /workflows', () => {
     console.log(`  ✅ Created workflow: ${data.data.id}`);
   });
 
-  test('returns 422 for invalid workflow', async () => {
+  test("returns 422 for invalid workflow", async () => {
     const handler = workflowRoutes.find(
-      (r) => r.type === 'POST' && r.path === '/workflows'
+      (r) => r.type === "POST" && r.path === "/workflows",
     )!.handler!;
 
     const invalidWorkflow = {
-      name: 'Invalid',
+      name: "Invalid",
       nodes: [], // No nodes → invalid
       connections: {},
     };
 
     const req = createTestRequest({
       body: { workflow: invalidWorkflow, userId: testUserId },
-      method: 'POST',
+      method: "POST",
     });
 
     const { res, getResponse } = createTestResponse();
@@ -144,14 +155,14 @@ describe.skipIf(!hasN8n)('E2E: POST /workflows', () => {
 
     const { status, body } = getResponse();
     expect(status).toBe(422);
-    expect((body as { error: string }).error).toBe('validation_failed');
+    expect((body as { error: string }).error).toBe("validation_failed");
   });
 });
 
-describe.skipIf(!hasN8n)('E2E: GET /workflows', () => {
-  test('lists workflows from real n8n instance', async () => {
+describe.skipIf(!hasN8n)("E2E: GET /workflows", () => {
+  test("lists workflows from real n8n instance", async () => {
     const handler = workflowRoutes.find(
-      (r) => r.type === 'GET' && r.path === '/workflows'
+      (r) => r.type === "GET" && r.path === "/workflows",
     )!.handler!;
 
     const req = createTestRequest({ query: { userId: testUserId } });
@@ -160,7 +171,10 @@ describe.skipIf(!hasN8n)('E2E: GET /workflows', () => {
     await handler(req, res, runtime);
 
     const { status, body } = getResponse();
-    const data = body as { success: boolean; data: Array<{ id: string; name: string }> };
+    const data = body as {
+      success: boolean;
+      data: Array<{ id: string; name: string }>;
+    };
 
     expect(status).toBe(200);
     expect(data.success).toBe(true);

@@ -283,5 +283,9 @@ export const workflowRoutes: Route[] = [
   { type: 'PUT', path: '/workflows/:id', handler: updateWorkflow },
   { type: 'DELETE', path: '/workflows/:id', handler: deleteWorkflow },
   { type: 'POST', path: '/workflows/:id/activate', handler: activateWorkflow },
-  { type: 'POST', path: '/workflows/:id/deactivate', handler: deactivateWorkflow },
+  {
+    type: 'POST',
+    path: '/workflows/:id/deactivate',
+    handler: deactivateWorkflow,
+  },
 ];

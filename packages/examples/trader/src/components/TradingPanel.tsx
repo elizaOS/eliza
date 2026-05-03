@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState } from "react";
 
 interface TradingPanelProps {
   isTrading: boolean;
@@ -16,10 +16,26 @@ interface TradingPanelProps {
 }
 
 const STRATEGIES = [
-  { id: 'llm', name: 'LLM Strategy', description: 'AI-powered analysis of trending tokens' },
-  { id: 'momentum', name: 'Momentum', description: 'Technical breakout detection' },
-  { id: 'mean-reversion', name: 'Mean Reversion', description: 'Trade price deviations' },
-  { id: 'rules', name: 'Rule-Based', description: 'Configurable indicator rules' },
+  {
+    id: "llm",
+    name: "LLM Strategy",
+    description: "AI-powered analysis of trending tokens",
+  },
+  {
+    id: "momentum",
+    name: "Momentum",
+    description: "Technical breakout detection",
+  },
+  {
+    id: "mean-reversion",
+    name: "Mean Reversion",
+    description: "Trade price deviations",
+  },
+  {
+    id: "rules",
+    name: "Rule-Based",
+    description: "Configurable indicator rules",
+  },
 ];
 
 export function TradingPanel({
@@ -30,7 +46,7 @@ export function TradingPanel({
   loading,
   disabled,
 }: TradingPanelProps) {
-  const [strategy, setStrategy] = useState('llm');
+  const [strategy, setStrategy] = useState("llm");
   const [maxPositionSize, setMaxPositionSize] = useState(10);
   const [stopLossPercent, setStopLossPercent] = useState(5);
   const [takeProfitPercent, setTakeProfitPercent] = useState(15);
@@ -50,9 +66,11 @@ export function TradingPanel({
     <div className="card">
       <div className="card-header">
         <h2 className="card-title">🤖 Trading Controls</h2>
-        <div className={`status-badge ${isTrading ? 'status-active' : 'status-inactive'}`}>
+        <div
+          className={`status-badge ${isTrading ? "status-active" : "status-inactive"}`}
+        >
           <span className="status-dot"></span>
-          {isTrading ? 'ACTIVE' : 'STOPPED'}
+          {isTrading ? "ACTIVE" : "STOPPED"}
         </div>
       </div>
 
@@ -61,25 +79,26 @@ export function TradingPanel({
           <div className="alert alert-info">
             Trading with <strong>{currentStrategy}</strong> strategy
           </div>
-          <button 
+          <button
             className="btn btn-danger btn-full"
             onClick={onStop}
             disabled={loading}
           >
-            {loading ? <span className="loading-spinner"></span> : '⏹️'} Stop Trading
+            {loading ? <span className="loading-spinner"></span> : "⏹️"} Stop
+            Trading
           </button>
         </div>
       ) : (
         <div>
           <div className="form-group">
             <label className="form-label">Strategy</label>
-            <select 
+            <select
               className="form-select"
               value={strategy}
               onChange={(e) => setStrategy(e.target.value)}
               disabled={disabled}
             >
-              {STRATEGIES.map(s => (
+              {STRATEGIES.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name} - {s.description}
                 </option>
@@ -99,7 +118,9 @@ export function TradingPanel({
                 onChange={(e) => setMaxPositionSize(Number(e.target.value))}
                 disabled={disabled}
               />
-              <div className="slider-value">{maxPositionSize}% of portfolio</div>
+              <div className="slider-value">
+                {maxPositionSize}% of portfolio
+              </div>
             </div>
           </div>
 
@@ -139,7 +160,7 @@ export function TradingPanel({
 
           <div className="form-group">
             <label className="form-label">Trading Interval</label>
-            <select 
+            <select
               className="form-select"
               value={intervalMinutes}
               onChange={(e) => setIntervalMinutes(Number(e.target.value))}
@@ -153,12 +174,13 @@ export function TradingPanel({
             </select>
           </div>
 
-          <button 
+          <button
             className="btn btn-success btn-full"
             onClick={handleStart}
             disabled={loading || disabled}
           >
-            {loading ? <span className="loading-spinner"></span> : '▶️'} Start Trading
+            {loading ? <span className="loading-spinner"></span> : "▶️"} Start
+            Trading
           </button>
         </div>
       )}

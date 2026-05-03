@@ -446,6 +446,7 @@ jobs:
     if: |
       github.event_name != 'pull_request' &&
       (needs.detect-changes.outputs.app == 'true' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'deploy'))
+    environment: ${{ needs.detect-changes.outputs.environment }}
     permissions:
       contents: read
       packages: write
@@ -462,8 +463,8 @@ jobs:
         uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ secrets.GHCR_USERNAME }}
+          password: ${{ secrets.GHCR_TOKEN }}
 
       - name: Extract metadata
         id: meta

@@ -64,10 +64,7 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     label: "Gmail",
     mode: "stateful-http",
     environment: "google",
-    envVars: [
-      "ELIZA_MOCK_GOOGLE_BASE",
-      "ELIZA_BLOCK_REAL_GMAIL_WRITES",
-    ],
+    envVars: ["ELIZA_MOCK_GOOGLE_BASE", "ELIZA_BLOCK_REAL_GMAIL_WRITES"],
     surfaces: [
       "work/home account fixture data",
       "message list/get/search/send/modify/delete",

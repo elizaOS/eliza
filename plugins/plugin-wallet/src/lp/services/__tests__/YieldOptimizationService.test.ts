@@ -1,7 +1,16 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 /// <reference types="vitest/globals" />
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
-import { afterEach, beforeEach, describe, expect, it, type Mock, type Mocked, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  type Mock,
+  type Mocked,
+  vi,
+} from "vitest";
 import type {
   IDexInteractionService,
   IUserLpProfileService,
@@ -55,7 +64,9 @@ describe("YieldOptimizationService", () => {
       enabled: true,
       minGainThresholdPercent: 0.1,
       maxSlippageBps: 50,
-      maxGasFeeLamports: (Number(AVG_LP_ADD_REMOVE_TX_FEE_LAMPORTS_TEST) * 2).toString(),
+      maxGasFeeLamports: (
+        Number(AVG_LP_ADD_REMOVE_TX_FEE_LAMPORTS_TEST) * 2
+      ).toString(),
     }, // Default for 2 ops
     version: 1,
     createdAt: "now",
@@ -120,15 +131,20 @@ describe("YieldOptimizationService", () => {
     vi.clearAllMocks();
 
     // Set up runtime to return our mock services
-    (mockRuntime.getService as Mock).mockImplementation((serviceName: string) => {
-      if (serviceName === "dex-interaction") return mockDexInteractionService;
-      if (serviceName === "UserLpProfileService") return mockUserLpProfileService;
-      return null;
-    });
+    (mockRuntime.getService as Mock).mockImplementation(
+      (serviceName: string) => {
+        if (serviceName === "dex-interaction") return mockDexInteractionService;
+        if (serviceName === "UserLpProfileService")
+          return mockUserLpProfileService;
+        return null;
+      },
+    );
 
     service = new YieldOptimizationService(mockRuntime);
     await service.start(mockRuntime);
-    (mockUserLpProfileService.getProfile as Mock).mockResolvedValue(testUserProfile);
+    (mockUserLpProfileService.getProfile as Mock).mockResolvedValue(
+      testUserProfile,
+    );
     (mockDexInteractionService.getPools as Mock).mockResolvedValue([
       mockPoolBasicSolUsdc,
       mockPoolHighYieldSolUsdc,
@@ -148,28 +164,36 @@ describe("YieldOptimizationService", () => {
         mockPoolHighYieldSolUsdc,
         solPrice,
         undefined,
-        currentPositionBasic.underlyingTokens
+        currentPositionBasic.underlyingTokens,
       );
-      const expectedCostLamports = (AVG_LP_ADD_REMOVE_TX_FEE_LAMPORTS_TEST * BigInt(2)).toString();
+      const expectedCostLamports = (
+        AVG_LP_ADD_REMOVE_TX_FEE_LAMPORTS_TEST * BigInt(2)
+      ).toString();
       expect(cost.costSolLamports).toBe(expectedCostLamports);
-      const expectedCostUsd = (Number(expectedCostLamports) / LAMPORTS_PER_SOL) * solPrice;
+      const expectedCostUsd =
+        (Number(expectedCostLamports) / LAMPORTS_PER_SOL) * solPrice;
       expect(cost.costUsd).toBeCloseTo(expectedCostUsd);
       expect(cost.steps.length).toBe(2);
     });
 
     it("should calculate cost for deploying idle assets (no swap needed if tokens match)", async () => {
       const solPrice = 120;
-      const idleAssetsMatchingTarget: TokenBalance[] = [tokenA_SOL, tokenB_USDC];
+      const idleAssetsMatchingTarget: TokenBalance[] = [
+        tokenA_SOL,
+        tokenB_USDC,
+      ];
       const cost = await service.calculateRebalanceCost(
         null,
         mockPoolHighYieldSolUsdc,
         solPrice,
         undefined,
-        idleAssetsMatchingTarget
+        idleAssetsMatchingTarget,
       );
-      const expectedCostLamports = AVG_LP_ADD_REMOVE_TX_FEE_LAMPORTS_TEST.toString();
+      const expectedCostLamports =
+        AVG_LP_ADD_REMOVE_TX_FEE_LAMPORTS_TEST.toString();
       expect(cost.costSolLamports).toBe(expectedCostLamports);
-      const expectedCostUsd = (Number(expectedCostLamports) / LAMPORTS_PER_SOL) * solPrice;
+      const expectedCostUsd =
+        (Number(expectedCostLamports) / LAMPORTS_PER_SOL) * solPrice;
       expect(cost.costUsd).toBeCloseTo(expectedCostUsd);
       expect(cost.steps.length).toBe(1);
     });
@@ -184,7 +208,7 @@ describe("YieldOptimizationService", () => {
         mockPoolHighYieldSolUsdc,
         solPrice,
         undefined,
-        idleAssetsNeedingSwap
+        idleAssetsNeedingSwap,
       );
       const expectedCostLamports = (
         AVG_LP_ADD_REMOVE_TX_FEE_LAMPORTS_TEST + AVG_SWAP_TX_FEE_LAMPORTS_TEST
@@ -202,46 +226,54 @@ describe("YieldOptimizationService", () => {
       const opportunities = await service.findBestYieldOpportunities(
         testUserId,
         [currentPositionBasic],
-        []
+        [],
       );
       const bestOpp = opportunities.find(
-        (op) => op.targetPool.id === mockPoolSuperHighYieldSolUsdc.id
+        (op) => op.targetPool.id === mockPoolSuperHighYieldSolUsdc.id,
       );
       expect(bestOpp).toBeDefined();
       if (bestOpp) {
         expect(bestOpp.currentYield).toBe(10);
         expect(bestOpp.estimatedNewYield).toBe(25);
-        const costOfTwoTxLamports = AVG_LP_ADD_REMOVE_TX_FEE_LAMPORTS_TEST * BigInt(2);
+        const costOfTwoTxLamports =
+          AVG_LP_ADD_REMOVE_TX_FEE_LAMPORTS_TEST * BigInt(2);
         const costOfTwoTxUsd =
           (Number(costOfTwoTxLamports) / LAMPORTS_PER_SOL) *
           SERVICE_INTERNAL_PLACEHOLDER_SOL_PRICE_USD;
-        const costYieldImpact = (costOfTwoTxUsd / currentPositionBasic.valueUsd!) * 100;
+        const costYieldImpact =
+          (costOfTwoTxUsd / currentPositionBasic.valueUsd!) * 100;
         const expectedNetGain =
           mockPoolSuperHighYieldSolUsdc.apr! * 100 -
           (currentPositionBasic.metadata?.apr as number) * 100 -
           costYieldImpact;
         expect(bestOpp.netGainPercent).toBeCloseTo(expectedNetGain, 2);
         expect(bestOpp.netGainPercent || 0).toBeGreaterThan(
-          testUserProfile.autoRebalanceConfig.minGainThresholdPercent
+          testUserProfile.autoRebalanceConfig.minGainThresholdPercent,
         );
       }
     });
 
     it("should not suggest rebalancing if net gain is below threshold after costs", async () => {
-      const solPriceForCostingInService = SERVICE_INTERNAL_PLACEHOLDER_SOL_PRICE_USD;
-      const costOfTwoTxLamports = AVG_LP_ADD_REMOVE_TX_FEE_LAMPORTS_TEST * BigInt(2);
+      const solPriceForCostingInService =
+        SERVICE_INTERNAL_PLACEHOLDER_SOL_PRICE_USD;
+      const costOfTwoTxLamports =
+        AVG_LP_ADD_REMOVE_TX_FEE_LAMPORTS_TEST * BigInt(2);
       const costOfTwoTxUsd =
-        (Number(costOfTwoTxLamports) / LAMPORTS_PER_SOL) * solPriceForCostingInService;
-      const costYieldImpactFraction = costOfTwoTxUsd / currentPositionBasic.valueUsd!;
+        (Number(costOfTwoTxLamports) / LAMPORTS_PER_SOL) *
+        solPriceForCostingInService;
+      const costYieldImpactFraction =
+        costOfTwoTxUsd / currentPositionBasic.valueUsd!;
 
       const currentAprFraction = currentPositionBasic.metadata?.apr as number;
-      const _minGainThreshold = testUserProfile.autoRebalanceConfig.minGainThresholdPercent / 100; // as fraction
+      const _minGainThreshold =
+        testUserProfile.autoRebalanceConfig.minGainThresholdPercent / 100; // as fraction
 
       // Set target APR to achieve a true net gain clearly below the threshold (e.g., 0.05%)
       // True Net Gain = targetApr - currentApr - costImpact
       // 0.0005 (for 0.05%) = targetApr - currentAprFraction - costYieldImpactFraction
       // targetApr = currentAprFraction + costYieldImpactFraction + 0.0005
-      const targetAprToFail = currentAprFraction + costYieldImpactFraction + 0.0005;
+      const targetAprToFail =
+        currentAprFraction + costYieldImpactFraction + 0.0005;
 
       const poolFailsAfterCost: PoolInfo = {
         id: "poolFails",
@@ -260,9 +292,11 @@ describe("YieldOptimizationService", () => {
       const opportunities = await service.findBestYieldOpportunities(
         testUserId,
         [currentPositionBasic],
-        []
+        [],
       );
-      const failingOpp = opportunities.find((op) => op.targetPool.id === "poolFails");
+      const failingOpp = opportunities.find(
+        (op) => op.targetPool.id === "poolFails",
+      );
       expect(failingOpp).toBeUndefined(); // This opportunity should now be filtered out
     });
 
@@ -271,16 +305,20 @@ describe("YieldOptimizationService", () => {
       (mockDexInteractionService.getPools as Mock).mockResolvedValue([
         mockPoolSuperHighYieldSolUsdc,
       ]);
-      const opportunities = await service.findBestYieldOpportunities(testUserId, [], idleAssets);
+      const opportunities = await service.findBestYieldOpportunities(
+        testUserId,
+        [],
+        idleAssets,
+      );
       expect(opportunities.length).toBe(1);
       const opp = opportunities[0];
       expect(opp.targetPool.id).toBe(mockPoolSuperHighYieldSolUsdc.id);
       expect(opp.currentYield).toBe(0);
       expect(opp.reason).toContain(
-        `APR of ${((mockPoolSuperHighYieldSolUsdc.apr || 0) * 100).toFixed(2)}%`
+        `APR of ${((mockPoolSuperHighYieldSolUsdc.apr || 0) * 100).toFixed(2)}%`,
       );
       expect(opp.netGainPercent).toBeGreaterThan(
-        testUserProfile.autoRebalanceConfig.minGainThresholdPercent
+        testUserProfile.autoRebalanceConfig.minGainThresholdPercent,
       );
     });
   });

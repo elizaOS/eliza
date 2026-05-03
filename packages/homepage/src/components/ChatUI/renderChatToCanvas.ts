@@ -19,9 +19,15 @@ const imessageMessages: Msg[] = [
 
 const telegramMessages: Msg[] = [
   { from: "user", text: "what's the weather like this weekend?" },
-  { from: "bot", text: "saturday sunny 72°, sunday partly cloudy 68°. great for outdoors!" },
+  {
+    from: "bot",
+    text: "saturday sunny 72°, sunday partly cloudy 68°. great for outdoors!",
+  },
   { from: "user", text: "nice. find me a good brunch spot nearby" },
-  { from: "bot", text: "the corner bistro has a 4.8 rating and is 5 min away. want me to book?" },
+  {
+    from: "bot",
+    text: "the corner bistro has a 4.8 rating and is 5 min away. want me to book?",
+  },
   { from: "user", text: "yes! table for two at noon" },
   { from: "bot", text: "booked! confirmation sent to your email 🎉" },
 ];
@@ -32,7 +38,7 @@ function getMessages(): Msg[] {
   console.warn(
     "[renderChatToCanvas] Unsupported render platform:",
     currentRenderPlatform,
-    "- falling back to iMessage messages."
+    "- falling back to iMessage messages.",
   );
   return imessageMessages;
 }
@@ -266,10 +272,30 @@ function drawStatusBar(ctx: CanvasRenderingContext2D) {
   ctx.stroke();
   const bi = s(2);
   ctx.fillStyle = "#000";
-  roundRect(ctx, batX + bi, batY + bi, batW - bi * 2, batH - bi * 2, s(1.5), s(1.5), s(1.5), s(1.5));
+  roundRect(
+    ctx,
+    batX + bi,
+    batY + bi,
+    batW - bi * 2,
+    batH - bi * 2,
+    s(1.5),
+    s(1.5),
+    s(1.5),
+    s(1.5),
+  );
   ctx.fill();
   ctx.fillStyle = "rgba(0,0,0,0.35)";
-  roundRect(ctx, batX + batW + s(1), iconCenterY - s(2.5), batCapW, s(5), s(0.8), s(0.8), s(0.8), s(0.8));
+  roundRect(
+    ctx,
+    batX + batW + s(1),
+    iconCenterY - s(2.5),
+    batCapW,
+    s(5),
+    s(0.8),
+    s(0.8),
+    s(0.8),
+    s(0.8),
+  );
   ctx.fill();
 
   // WiFi
@@ -287,7 +313,14 @@ function drawStatusBar(ctx: CanvasRenderingContext2D) {
     ctx.beginPath();
     if (layer.inner > 0) {
       ctx.arc(wifiCx, wifiBaseline, layer.outer, wifiAngleStart, wifiAngleEnd);
-      ctx.arc(wifiCx, wifiBaseline, layer.inner, wifiAngleEnd, wifiAngleStart, true);
+      ctx.arc(
+        wifiCx,
+        wifiBaseline,
+        layer.inner,
+        wifiAngleEnd,
+        wifiAngleStart,
+        true,
+      );
       ctx.closePath();
     } else {
       ctx.arc(wifiCx, wifiBaseline, layer.outer, wifiAngleStart, wifiAngleEnd);
@@ -414,7 +447,15 @@ function renderChatContent(
   scrollY = 0,
   extraMessages: ExtraMessage[] = [],
 ): HTMLCanvasElement {
-  return renderChatToCanvas(visibleCount, avatarImg, lastMsgProgress, contentYOffset, scrollY, extraMessages, 0);
+  return renderChatToCanvas(
+    visibleCount,
+    avatarImg,
+    lastMsgProgress,
+    contentYOffset,
+    scrollY,
+    extraMessages,
+    0,
+  );
 }
 
 export function renderChatToCanvas(
@@ -443,7 +484,11 @@ export function renderChatToCanvas(
   // ── App switcher mode ──
   if (switcherProgress > 0) {
     // Wallpaper background
-    if (wallpaperImg && wallpaperImg.complete && wallpaperImg.naturalWidth > 0) {
+    if (
+      wallpaperImg &&
+      wallpaperImg.complete &&
+      wallpaperImg.naturalWidth > 0
+    ) {
       ctx.drawImage(wallpaperImg, 0, 0, W, H);
     } else {
       ctx.fillStyle = "#22c55e";
@@ -451,17 +496,25 @@ export function renderChatToCanvas(
     }
 
     // Shared values
-    const contentScale = 1 - 0.25 * switcherProgress;   // 1 → 0.75
+    const contentScale = 1 - 0.25 * switcherProgress; // 1 → 0.75
     const shiftX = (60 / 100) * W * switcherShiftProgress;
     const finalShiftX = (60 / 100) * W * switcherFinalProgress;
     const cardR = s(60);
     const scaledW = W * contentScale;
     const leftCardX = W / 2 - scaledW * 1.05;
-    const leftShiftX = leftCardX - W / 2 + (W / 2 - leftCardX) * switcherShiftProgress;
+    const leftShiftX =
+      leftCardX - W / 2 + (W / 2 - leftCardX) * switcherShiftProgress;
     const leftScale = contentScale + (1 - contentScale) * switcherFinalProgress;
 
     // Render both card canvases
-    const chatCanvas = renderChatContent(visibleCount, avatarImg, lastMsgProgress, contentYOffset, scrollY, extraMessages);
+    const chatCanvas = renderChatContent(
+      visibleCount,
+      avatarImg,
+      lastMsgProgress,
+      contentYOffset,
+      scrollY,
+      extraMessages,
+    );
     const loginCanvas = renderLoginCard(loginTitle, loginSubtitle);
     const leftContent = switcherReversed ? chatCanvas : loginCanvas;
     const frontContent = switcherReversed ? loginCanvas : chatCanvas;
@@ -513,7 +566,12 @@ export function renderChatToCanvas(
   ctx.save();
   roundRect(ctx, 0, 0, W, H, screenR, screenR, screenR, screenR);
   ctx.clip();
-  if (currentRenderPlatform === "telegram" && tgBgImg && tgBgImg.complete && tgBgImg.naturalWidth > 0) {
+  if (
+    currentRenderPlatform === "telegram" &&
+    tgBgImg &&
+    tgBgImg.complete &&
+    tgBgImg.naturalWidth > 0
+  ) {
     ctx.drawImage(tgBgImg, 0, 0, W, H);
   } else {
     ctx.fillStyle = "#ffffff";
@@ -553,7 +611,8 @@ export function renderChatToCanvas(
     const dateText = isTGDate ? "Today" : `Today ${statusTime}`;
     const dateFontSize = s(13);
     ctx.font = `400 ${dateFontSize}px Inter, -apple-system, system-ui, sans-serif`;
-    const dateY = sepY + s(20) - scrollOffset + dateSlide - (isTGDate ? s(65) : 0);
+    const dateY =
+      sepY + s(20) - scrollOffset + dateSlide - (isTGDate ? s(65) : 0);
     ctx.textAlign = "center";
     if (isTGDate) {
       const textW = ctx.measureText(dateText).width;
@@ -570,7 +629,12 @@ export function renderChatToCanvas(
       ctx.lineTo(chipX + chipW - chipR, chipY);
       ctx.quadraticCurveTo(chipX + chipW, chipY, chipX + chipW, chipY + chipR);
       ctx.lineTo(chipX + chipW, chipY + chipH - chipR);
-      ctx.quadraticCurveTo(chipX + chipW, chipY + chipH, chipX + chipW - chipR, chipY + chipH);
+      ctx.quadraticCurveTo(
+        chipX + chipW,
+        chipY + chipH,
+        chipX + chipW - chipR,
+        chipY + chipH,
+      );
       ctx.lineTo(chipX + chipR, chipY + chipH);
       ctx.quadraticCurveTo(chipX, chipY + chipH, chipX, chipY + chipH - chipR);
       ctx.lineTo(chipX, chipY + chipR);
@@ -650,8 +714,12 @@ export function renderChatToCanvas(
     ctx.shadowOffsetY = s(1);
     const isTG = currentRenderPlatform === "telegram";
     ctx.fillStyle = isUser
-      ? (isTG ? "#e9fec7" : "#007AFF")
-      : (isTG ? "#ffffff" : "#ebebed");
+      ? isTG
+        ? "#e9fec7"
+        : "#007AFF"
+      : isTG
+        ? "#ffffff"
+        : "#ebebed";
     iMessageBubble(
       ctx,
       bubbleX,
@@ -668,12 +736,11 @@ export function renderChatToCanvas(
     ctx.restore();
 
     // Text — thinner weight on blue to match visual weight of black-on-grey
-    ctx.fillStyle = isUser
-      ? (isTG ? "#000000" : "#ffffff")
-      : "#000000";
-    ctx.font = isUser && !isTG
-      ? `200 ${msgFontSize}px Inter, -apple-system, system-ui, sans-serif`
-      : msgFont;
+    ctx.fillStyle = isUser ? (isTG ? "#000000" : "#ffffff") : "#000000";
+    ctx.font =
+      isUser && !isTG
+        ? `200 ${msgFontSize}px Inter, -apple-system, system-ui, sans-serif`
+        : msgFont;
     for (let i = 0; i < lines.length; i++) {
       ctx.fillText(
         lines[i],
@@ -719,7 +786,19 @@ export function renderChatToCanvas(
       ctx.shadowOffsetY = s(1);
       const isTGTyping = currentRenderPlatform === "telegram";
       ctx.fillStyle = isTGTyping ? "#ffffff" : "#ebebed";
-      iMessageBubble(ctx, typingX, msgY + slideOffset, typingW, typingH, bubbleR, false, undefined, isTGTyping ? s(8) : 0, false, isTGTyping);
+      iMessageBubble(
+        ctx,
+        typingX,
+        msgY + slideOffset,
+        typingW,
+        typingH,
+        bubbleR,
+        false,
+        undefined,
+        isTGTyping ? s(8) : 0,
+        false,
+        isTGTyping,
+      );
       ctx.restore();
 
       // Three pulsing dots
@@ -730,12 +809,13 @@ export function renderChatToCanvas(
       const now = Date.now();
 
       for (let d = 0; d < 3; d++) {
-        const phase = ((now / 1000) + d * 0.33) % 1;
+        const phase = (now / 1000 + d * 0.33) % 1;
         const pulse = Math.max(0, Math.sin(phase * Math.PI * 2));
         const dotAlpha = 0.1 + 0.23 * pulse;
-        ctx.fillStyle = currentRenderPlatform === "telegram"
-          ? `rgba(42,171,238,${dotAlpha + 0.2})`
-          : `rgba(0,0,0,${dotAlpha})`;
+        ctx.fillStyle =
+          currentRenderPlatform === "telegram"
+            ? `rgba(42,171,238,${dotAlpha + 0.2})`
+            : `rgba(0,0,0,${dotAlpha})`;
         ctx.beginPath();
         ctx.arc(dotsStartX + d * dotGap, dotsBaseY, dotR, 0, Math.PI * 2);
         ctx.fill();
@@ -790,17 +870,32 @@ export function renderChatToCanvas(
       ctx.shadowOffsetY = s(1);
       const isTG2 = currentRenderPlatform === "telegram";
       ctx.fillStyle = isUser
-        ? (isTG2 ? "#e9fec7" : "#007AFF")
-        : (isTG2 ? "#ffffff" : "#ebebed");
-      iMessageBubble(ctx, bubbleX, msgY + slideOffset, bubbleW, bubbleH, bubbleR, isUser, undefined, isTG2 ? s(8) : 0, isTG2 && isUser, isTG2 && !isUser);
+        ? isTG2
+          ? "#e9fec7"
+          : "#007AFF"
+        : isTG2
+          ? "#ffffff"
+          : "#ebebed";
+      iMessageBubble(
+        ctx,
+        bubbleX,
+        msgY + slideOffset,
+        bubbleW,
+        bubbleH,
+        bubbleR,
+        isUser,
+        undefined,
+        isTG2 ? s(8) : 0,
+        isTG2 && isUser,
+        isTG2 && !isUser,
+      );
       ctx.restore();
 
-      ctx.fillStyle = isUser
-        ? (isTG2 ? "#000000" : "#ffffff")
-        : "#000000";
-      ctx.font = isUser && !isTG2
-        ? `200 ${msgFontSize}px Inter, -apple-system, system-ui, sans-serif`
-        : msgFont;
+      ctx.fillStyle = isUser ? (isTG2 ? "#000000" : "#ffffff") : "#000000";
+      ctx.font =
+        isUser && !isTG2
+          ? `200 ${msgFontSize}px Inter, -apple-system, system-ui, sans-serif`
+          : msgFont;
       for (let i = 0; i < lines.length; i++) {
         ctx.fillText(
           lines[i],
@@ -995,11 +1090,19 @@ export function renderChatToCanvas(
     ctx.arc(tgAvatarCx, tgAvatarCy, tgAvatarR, 0, Math.PI * 2);
     ctx.clip();
     if (avatarImg) {
-      ctx.drawImage(avatarImg, tgAvatarCx - tgAvatarR, tgAvatarCy - tgAvatarR, tgAvatarR * 2, tgAvatarR * 2);
+      ctx.drawImage(
+        avatarImg,
+        tgAvatarCx - tgAvatarR,
+        tgAvatarCy - tgAvatarR,
+        tgAvatarR * 2,
+        tgAvatarR * 2,
+      );
     } else {
       const avatarGrad = ctx.createLinearGradient(
-        tgAvatarCx - tgAvatarR, tgAvatarCy - tgAvatarR,
-        tgAvatarCx + tgAvatarR, tgAvatarCy + tgAvatarR,
+        tgAvatarCx - tgAvatarR,
+        tgAvatarCy - tgAvatarR,
+        tgAvatarCx + tgAvatarR,
+        tgAvatarCy + tgAvatarR,
       );
       avatarGrad.addColorStop(0, "#A8A8B0");
       avatarGrad.addColorStop(1, "#C8C8D0");

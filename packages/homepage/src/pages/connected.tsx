@@ -1,5 +1,3 @@
-
-
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Copy, Check, LogOut, Info } from "lucide-react";
@@ -49,12 +47,7 @@ function TelegramIcon({ className }: { className?: string }) {
  */
 function AppleMessagesIcon({ className }: { className?: string }) {
   return (
-    <svg
-      viewBox="0 0 120 120"
-      fill="none"
-      className={className}
-      aria-hidden
-    >
+    <svg viewBox="0 0 120 120" fill="none" className={className} aria-hidden>
       <defs>
         <linearGradient id="messagesGradient" x1="0%" y1="0%" x2="0%" y2="100%">
           <stop offset="0%" stopColor="#5FE95C" />
@@ -111,7 +104,12 @@ function getDiscordBotApplicationId(): string {
  * Displays a note about cross-platform conversation linking,
  * only when the user has 2+ platforms connected.
  */
-function CrossPlatformNote({ telegramId, discordId, whatsappId, phoneNumber }: {
+function CrossPlatformNote({
+  telegramId,
+  discordId,
+  whatsappId,
+  phoneNumber,
+}: {
   telegramId?: string | null;
   discordId?: string | null;
   whatsappId?: string | null;
@@ -134,16 +132,13 @@ function CrossPlatformNote({ telegramId, discordId, whatsappId, phoneNumber }: {
     text = `Your conversations are linked across ${platforms.slice(0, -1).join(", ")}, and ${platforms[platforms.length - 1]}`;
   }
 
-  return (
-    <p className="text-xs text-white/40 text-center">
-      {text}
-    </p>
-  );
+  return <p className="text-xs text-white/40 text-center">{text}</p>;
 }
 
 export default function ConnectedPage() {
   const navigate = useNavigate();
-  const { user, organization, isAuthenticated, isLoading, logout, linkPhone } = useAuth();
+  const { user, organization, isAuthenticated, isLoading, logout, linkPhone } =
+    useAuth();
   const [copiedPhone, setCopiedPhone] = useState(false);
   const [copiedTelegram, setCopiedTelegram] = useState(false);
   const [copiedWhatsApp, setCopiedWhatsApp] = useState(false);
@@ -176,13 +171,19 @@ export default function ConnectedPage() {
     } else {
       // Show user-friendly messages based on error code
       if (result.errorCode === "PHONE_ALREADY_LINKED") {
-        setPhoneError("This phone number is already linked to another account. Please use a different number.");
+        setPhoneError(
+          "This phone number is already linked to another account. Please use a different number.",
+        );
       } else if (result.errorCode === "PHONE_ALREADY_SET") {
         setPhoneError("A phone number is already linked to your account.");
       } else if (result.errorCode === "INVALID_REQUEST") {
-        setPhoneError("Invalid phone number format. Please check and try again.");
+        setPhoneError(
+          "Invalid phone number format. Please check and try again.",
+        );
       } else {
-        setPhoneError(result.error || "Something went wrong. Please try again.");
+        setPhoneError(
+          result.error || "Something went wrong. Please try again.",
+        );
       }
     }
 
@@ -211,7 +212,9 @@ export default function ConnectedPage() {
    * Copy Telegram bot link to clipboard
    */
   const handleCopyTelegram = async () => {
-    await navigator.clipboard.writeText(`https://t.me/${getTelegramBotUsername()}`);
+    await navigator.clipboard.writeText(
+      `https://t.me/${getTelegramBotUsername()}`,
+    );
     setCopiedTelegram(true);
     setTimeout(() => setCopiedTelegram(false), 2000);
   };
@@ -293,9 +296,9 @@ export default function ConnectedPage() {
 
   // Format credit balance with commas for thousands
   const rawCreditBalance = organization?.credit_balance || "0.00";
-  const creditBalance = Number(rawCreditBalance).toLocaleString('en-US', {
+  const creditBalance = Number(rawCreditBalance).toLocaleString("en-US", {
     minimumFractionDigits: 2,
-    maximumFractionDigits: 2
+    maximumFractionDigits: 2,
   });
 
   return (
@@ -304,7 +307,9 @@ export default function ConnectedPage() {
       <div className="absolute top-4 right-4 flex items-center gap-3">
         <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl px-4 py-2.5 flex items-center gap-2">
           <span className="text-xs text-white/50">Credits</span>
-          <span className="text-sm font-semibold text-white">${creditBalance}</span>
+          <span className="text-sm font-semibold text-white">
+            ${creditBalance}
+          </span>
         </div>
 
         {/* User profile with dropdown menu */}
@@ -333,10 +338,14 @@ export default function ConnectedPage() {
             <div className="px-2 py-2 border-b border-white/10">
               <p className="text-sm font-medium">{displayName}</p>
               {user.telegram_username && (
-                <p className="text-xs text-white/50">@{user.telegram_username}</p>
+                <p className="text-xs text-white/50">
+                  @{user.telegram_username}
+                </p>
               )}
               {user.discord_username && !user.telegram_username && (
-                <p className="text-xs text-white/50">@{user.discord_username}</p>
+                <p className="text-xs text-white/50">
+                  @{user.discord_username}
+                </p>
               )}
             </div>
             <DropdownMenuItem
@@ -368,9 +377,7 @@ export default function ConnectedPage() {
           <h1 className="text-xl font-medium text-white">Talk to Eliza</h1>
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-500/10 border border-green-500/20">
             <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            <span className="text-xs font-medium text-green-400">
-              Awake
-            </span>
+            <span className="text-xs font-medium text-green-400">Awake</span>
           </div>
         </div>
 
@@ -628,7 +635,6 @@ export default function ConnectedPage() {
             phoneNumber={user.phone_number}
           />
         </div>
-
       </div>
 
       <footer className="absolute bottom-6 left-0 right-0 text-center">

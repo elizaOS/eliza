@@ -7,6 +7,8 @@ const ALLOWED_ORIGINS = [
   "https://www.eliza.ai",
   "https://elizacloud.ai",
   "https://www.elizacloud.ai",
+  "https://milady.ai",
+  "https://www.milady.ai",
 ].filter(Boolean) as string[];
 
 export function getCorsHeaders(origin: string | null): Record<string, string> {

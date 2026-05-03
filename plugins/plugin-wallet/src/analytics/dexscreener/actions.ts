@@ -17,7 +17,7 @@ export const searchTokensAction: Action = {
 
   validate: async (
     runtime: IAgentRuntime,
-    message: Memory
+    message: Memory,
   ): Promise<boolean> => {
     const content =
       typeof message.content === "string"
@@ -35,7 +35,7 @@ export const searchTokensAction: Action = {
     message: Memory,
     _: any,
     __: any,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<void> => {
     if (!callback) {
       console.error("No callback");
@@ -50,7 +50,7 @@ export const searchTokensAction: Action = {
 
     // Extract search query
     const queryMatch = content.match(
-      /(?:search|find|look for)\s+(?:for\s+)?(.+?)(?:\s+on\s+dexscreener)?$/i
+      /(?:search|find|look for)\s+(?:for\s+)?(.+?)(?:\s+on\s+dexscreener)?$/i,
     );
 
     if (!queryMatch) {
@@ -126,7 +126,7 @@ export const getTokenInfoAction: Action = {
 
   validate: async (
     runtime: IAgentRuntime,
-    message: Memory
+    message: Memory,
   ): Promise<boolean> => {
     const content =
       typeof message.content === "string"
@@ -145,7 +145,7 @@ export const getTokenInfoAction: Action = {
     message: Memory,
     _: any,
     __: any,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<void> => {
     if (!callback) {
       console.error("No callback");
@@ -193,7 +193,7 @@ export const getTokenInfoAction: Action = {
 
     // Get the most liquid pair
     const mainPair = pairs.reduce((prev, curr) =>
-      (curr.liquidity?.usd || 0) > (prev.liquidity?.usd || 0) ? curr : prev
+      (curr.liquidity?.usd || 0) > (prev.liquidity?.usd || 0) ? curr : prev,
     );
 
     const pairList = pairs
@@ -201,7 +201,7 @@ export const getTokenInfoAction: Action = {
       .map(
         (pair) =>
           `• **${pair.baseToken.symbol}/${pair.quoteToken.symbol}** on ${pair.dexId} (${pair.chainId})\n` +
-          `  Price: ${service.formatPrice(pair.priceUsd || pair.priceNative)} | Liq: ${pair.liquidity?.usd ? service.formatUsdValue(pair.liquidity.usd) : "N/A"}`
+          `  Price: ${service.formatPrice(pair.priceUsd || pair.priceNative)} | Liq: ${pair.liquidity?.usd ? service.formatUsdValue(pair.liquidity.usd) : "N/A"}`,
       )
       .join("\n");
 
@@ -248,7 +248,7 @@ export const getTrendingAction: Action = {
 
   validate: async (
     runtime: IAgentRuntime,
-    message: Memory
+    message: Memory,
   ): Promise<boolean> => {
     const content =
       typeof message.content === "string"
@@ -267,7 +267,7 @@ export const getTrendingAction: Action = {
     message: Memory,
     _: any,
     __: any,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<void> => {
     if (!callback) {
       console.error("No callback");
@@ -343,7 +343,7 @@ export const getNewPairsAction: Action = {
 
   validate: async (
     runtime: IAgentRuntime,
-    message: Memory
+    message: Memory,
   ): Promise<boolean> => {
     const content =
       typeof message.content === "string"
@@ -362,7 +362,7 @@ export const getNewPairsAction: Action = {
     message: Memory,
     _: any,
     __: any,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<void> => {
     if (!callback) {
       console.error("No callback");
@@ -440,7 +440,7 @@ export const getPairsByChainAction: Action = {
 
   validate: async (
     runtime: IAgentRuntime,
-    message: Memory
+    message: Memory,
   ): Promise<boolean> => {
     const content =
       typeof message.content === "string"
@@ -464,7 +464,7 @@ export const getPairsByChainAction: Action = {
     message: Memory,
     _: any,
     __: any,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<void> => {
     if (!callback) {
       console.error("No callback");
@@ -579,7 +579,7 @@ export const getBoostedTokensAction: Action = {
 
   validate: async (
     runtime: IAgentRuntime,
-    message: Memory
+    message: Memory,
   ): Promise<boolean> => {
     const content =
       typeof message.content === "string"
@@ -597,7 +597,7 @@ export const getBoostedTokensAction: Action = {
     message: Memory,
     _: any,
     __: any,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<void> => {
     if (!callback) {
       console.error("No callback");
@@ -678,7 +678,7 @@ export const getTokenProfilesAction: Action = {
 
   validate: async (
     runtime: IAgentRuntime,
-    message: Memory
+    message: Memory,
   ): Promise<boolean> => {
     const content =
       typeof message.content === "string"
@@ -695,7 +695,7 @@ export const getTokenProfilesAction: Action = {
     message: Memory,
     _: any,
     __: any,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<void> => {
     if (!callback) {
       console.error("No callback");

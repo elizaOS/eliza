@@ -10,7 +10,6 @@ import logging
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
 
 from benchmarks.realm.types import (
     LEADERBOARD_SCORES,
@@ -24,11 +23,7 @@ from benchmarks.realm.types import (
     REALMResultDetails,
 )
 from benchmarks.realm.dataset import REALMDataset
-from benchmarks.realm.agent import REALMAgent, MockREALMAgent
 from benchmarks.realm.evaluator import REALMEvaluator, MetricsCalculator
-
-if TYPE_CHECKING:
-    from elizaos.runtime import AgentRuntime
 
 logger = logging.getLogger(__name__)
 
@@ -39,50 +34,27 @@ class REALMRunner:
     def __init__(
         self,
         config: REALMConfig,
-        runtime: Optional["AgentRuntime"] = None,
-        use_mock: bool = False,
+        agent: object,
         enable_trajectory_logging: bool = True,
-        agent: object | None = None,
     ):
         """
         Initialize the REALM benchmark runner.
 
         Args:
             config: Benchmark configuration
-            runtime: Optional ElizaOS runtime for model interactions
-            use_mock: If True, use mock agent for testing
+            agent: Pre-built agent (any object exposing ``initialize`` /
+                ``solve_task`` / ``close``). The canonical implementation lives
+                in :class:`eliza_adapter.realm.ElizaREALMAgent` and routes
+                through the eliza TS bridge.
             enable_trajectory_logging: Enable trajectory logging for training export
-            agent: Optional pre-built agent (any object exposing ``initialize`` /
-                ``solve_task`` / ``close``). When provided, ``use_mock`` and
-                ``runtime`` are ignored. Used by the ``--provider eliza``
-                CLI mode to plug in :class:`eliza_adapter.realm.ElizaREALMAgent`.
         """
         self.config = config
-        self.runtime = runtime
-        self.use_mock = use_mock
         self.enable_trajectory_logging = enable_trajectory_logging
 
         # Initialize components
         self.dataset = REALMDataset(config.data_path)
+        self.agent = agent
 
-        if agent is not None:
-            self.agent = agent  # type: ignore[assignment]
-        elif use_mock:
-            self.agent = MockREALMAgent(
-                return_expected=True,
-                success_rate=0.8,
-            )
-        else:
-            self.agent = REALMAgent(
-                runtime=runtime,
-                max_steps=config.max_steps,
-                execution_model=config.execution_model,
-                enable_adaptation=config.enable_adaptation,
-                temperature=config.temperature,
-                use_llm=True,
-                enable_trajectory_logging=enable_trajectory_logging,
-            )
-        
         self.evaluator = REALMEvaluator()
         self.metrics_calculator = MetricsCalculator()
 
@@ -217,8 +189,10 @@ class REALMRunner:
         if self.config.generate_report:
             await self._save_results(report)
 
-        # Export trajectories for training if configured
-        if self.config.save_trajectories and isinstance(self.agent, REALMAgent):
+        # Export trajectories for training if the bridge agent exposes them
+        if self.config.save_trajectories and hasattr(
+            self.agent, "get_completed_trajectories"
+        ):
             await self._export_training_trajectories(report)
 
         logger.info(
@@ -344,13 +318,14 @@ class REALMRunner:
 
     async def _export_training_trajectories(self, report: REALMReport) -> None:
         """Export trajectories in training-ready formats (ART/GRPO)."""
-        if not isinstance(self.agent, REALMAgent):
+        getter = getattr(self.agent, "get_completed_trajectories", None)
+        if not callable(getter):
             return
 
         output_dir = Path(self.config.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        completed = self.agent.get_completed_trajectories()
+        completed = getter()
         if not completed:
             logger.info("[REALMRunner] No completed trajectories to export")
             return

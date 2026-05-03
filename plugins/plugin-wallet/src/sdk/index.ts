@@ -8,9 +8,9 @@ import {
   type WalletClient,
   type Chain,
   zeroAddress,
-} from 'viem';
-import { base, baseSepolia, mainnet, arbitrum, polygon } from 'viem/chains';
-import { AgentAccountV2Abi, AgentAccountFactoryV2Abi } from './abi.js';
+} from "viem";
+import { base, baseSepolia, mainnet, arbitrum, polygon } from "viem/chains";
+import { AgentAccountV2Abi, AgentAccountFactoryV2Abi } from "./abi.js";
 import type {
   AgentWalletConfig,
   SpendPolicy,
@@ -22,13 +22,21 @@ import type {
   WalletHealth,
   ActivityEntry,
   BatchTransfer,
-} from './types.js';
+} from "./types.js";
 
 export type {
-  SpendPolicy, BudgetStatus, PendingTx, ExecuteResult, AgentWalletConfig, QueuedEvent,
-  BudgetForecast, WalletHealth, ActivityEntry, BatchTransfer,
-} from './types.js';
-export { AgentAccountV2Abi, AgentAccountFactoryV2Abi } from './abi.js';
+  SpendPolicy,
+  BudgetStatus,
+  PendingTx,
+  ExecuteResult,
+  AgentWalletConfig,
+  QueuedEvent,
+  BudgetForecast,
+  WalletHealth,
+  ActivityEntry,
+  BatchTransfer,
+} from "./types.js";
+export { AgentAccountV2Abi, AgentAccountFactoryV2Abi } from "./abi.js";
 
 // [MAX-ADDED] x402 protocol support
 export {
@@ -41,7 +49,7 @@ export {
   wrapWithX402,
   USDC_ADDRESSES,
   DEFAULT_SUPPORTED_NETWORKS,
-} from './x402/index.js';
+} from "./x402/index.js";
 export type {
   X402PaymentRequired,
   X402PaymentRequirements,
@@ -51,11 +59,11 @@ export type {
   X402ServiceBudget,
   X402TransactionLog,
   X402ClientConfig,
-} from './x402/index.js';
+} from "./x402/index.js";
 
 const CHAINS: Record<string, Chain> = {
   base,
-  'base-sepolia': baseSepolia,
+  "base-sepolia": baseSepolia,
   ethereum: mainnet,
   arbitrum,
   polygon,
@@ -69,7 +77,9 @@ export const NATIVE_TOKEN: Address = zeroAddress;
 /**
  * Create a wallet client connected to an existing AgentAccountV2.
  */
-export function createWallet(config: AgentWalletConfig & { walletClient: WalletClient }) {
+export function createWallet(
+  config: AgentWalletConfig & { walletClient: WalletClient },
+) {
   const chain = CHAINS[config.chain];
   if (!chain) throw new Error(`Unsupported chain: ${config.chain}`);
 
@@ -101,16 +111,14 @@ type Wallet = ReturnType<typeof createWallet>;
  */
 export async function setSpendPolicy(
   wallet: Wallet,
-  policy: SpendPolicy
+  policy: SpendPolicy,
 ): Promise<Hash> {
   const periodLength = policy.periodLength || 86400;
 
-  const hash = await wallet.contract.write.setSpendPolicy([
-    policy.token,
-    policy.perTxLimit,
-    policy.periodLimit,
-    BigInt(periodLength),
-  ], { account: wallet.walletClient.account!, chain: wallet.chain });
+  const hash = await wallet.contract.write.setSpendPolicy(
+    [policy.token, policy.perTxLimit, policy.periodLimit, BigInt(periodLength)],
+    { account: wallet.walletClient.account!, chain: wallet.chain },
+  );
 
   return hash;
 }
@@ -121,26 +129,28 @@ export async function setSpendPolicy(
  */
 export async function agentExecute(
   wallet: Wallet,
-  params: { to: Address; value?: bigint; data?: Hex }
+  params: { to: Address; value?: bigint; data?: Hex },
 ): Promise<ExecuteResult> {
   const value = params.value ?? 0n;
-  const data = params.data ?? '0x';
+  const data = params.data ?? "0x";
 
-  const hash = await wallet.contract.write.agentExecute([
-    params.to,
-    value,
-    data,
-  ], { value, account: wallet.walletClient.account!, chain: wallet.chain });
+  const hash = await wallet.contract.write.agentExecute(
+    [params.to, value, data],
+    { value, account: wallet.walletClient.account!, chain: wallet.chain },
+  );
 
   // Check the tx receipt for TransactionQueued vs TransactionExecuted events
   const receipt = await wallet.publicClient.waitForTransactionReceipt({ hash });
 
   // Event topic hash for AgentAccountV2 queue detection
-  const QUEUED_TOPIC = '0x338e4b9b04df0b67a953d7ea6a7037128b8c6948e3d8c09a9d51a5f5be6c2284';
+  const QUEUED_TOPIC =
+    "0x338e4b9b04df0b67a953d7ea6a7037128b8c6948e3d8c09a9d51a5f5be6c2284";
 
   const walletAddr = wallet.address.toLowerCase();
   const queuedLog = receipt.logs.find(
-    (log) => log.address.toLowerCase() === walletAddr && log.topics[0] === QUEUED_TOPIC
+    (log) =>
+      log.address.toLowerCase() === walletAddr &&
+      log.topics[0] === QUEUED_TOPIC,
   );
 
   const wasExecuted = !queuedLog;
@@ -156,9 +166,10 @@ export async function agentExecute(
  */
 export async function checkBudget(
   wallet: Wallet,
-  token: Address = NATIVE_TOKEN
+  token: Address = NATIVE_TOKEN,
 ): Promise<BudgetStatus> {
-  const [perTxLimit, remainingInPeriod] = await wallet.contract.read.remainingBudget([token]);
+  const [perTxLimit, remainingInPeriod] =
+    await wallet.contract.read.remainingBudget([token]);
 
   return {
     token,
@@ -173,9 +184,9 @@ export async function checkBudget(
 export async function getPendingApprovals(
   wallet: Wallet,
   fromId: bigint = 0n,
-  toId?: bigint
+  toId?: bigint,
 ): Promise<PendingTx[]> {
-  const maxId = toId ?? await wallet.contract.read.pendingNonce();
+  const maxId = toId ?? (await wallet.contract.read.pendingNonce());
   const results: PendingTx[] = [];
 
   for (let i = fromId; i < maxId; i++) {
@@ -187,7 +198,7 @@ export async function getPendingApprovals(
         txId: i,
         to,
         value,
-        data: '0x', // data not returned by getPending view
+        data: "0x", // data not returned by getPending view
         token,
         amount,
         createdAt: Number(createdAt),
@@ -205,9 +216,12 @@ export async function getPendingApprovals(
  */
 export async function approveTransaction(
   wallet: Wallet,
-  txId: bigint
+  txId: bigint,
 ): Promise<Hash> {
-  return wallet.contract.write.approvePending([txId], { account: wallet.walletClient.account!, chain: wallet.chain });
+  return wallet.contract.write.approvePending([txId], {
+    account: wallet.walletClient.account!,
+    chain: wallet.chain,
+  });
 }
 
 /**
@@ -215,9 +229,12 @@ export async function approveTransaction(
  */
 export async function cancelTransaction(
   wallet: Wallet,
-  txId: bigint
+  txId: bigint,
 ): Promise<Hash> {
-  return wallet.contract.write.cancelPending([txId], { account: wallet.walletClient.account!, chain: wallet.chain });
+  return wallet.contract.write.cancelPending([txId], {
+    account: wallet.walletClient.account!,
+    chain: wallet.chain,
+  });
 }
 
 /**
@@ -226,9 +243,12 @@ export async function cancelTransaction(
 export async function setOperator(
   wallet: Wallet,
   operator: Address,
-  authorized: boolean
+  authorized: boolean,
 ): Promise<Hash> {
-  return wallet.contract.write.setOperator([operator, authorized], { account: wallet.walletClient.account!, chain: wallet.chain });
+  return wallet.contract.write.setOperator([operator, authorized], {
+    account: wallet.walletClient.account!,
+    chain: wallet.chain,
+  });
 }
 
 /**
@@ -236,13 +256,12 @@ export async function setOperator(
  */
 export async function agentTransferToken(
   wallet: Wallet,
-  params: { token: Address; to: Address; amount: bigint }
+  params: { token: Address; to: Address; amount: bigint },
 ): Promise<Hash> {
-  return wallet.contract.write.agentTransferToken([
-    params.token,
-    params.to,
-    params.amount,
-  ], { account: wallet.walletClient.account!, chain: wallet.chain });
+  return wallet.contract.write.agentTransferToken(
+    [params.token, params.to, params.amount],
+    { account: wallet.walletClient.account!, chain: wallet.chain },
+  );
 }
 
 // ─── Factory: Deploy New Wallets ───
@@ -274,16 +293,16 @@ export async function deployWallet(config: {
   });
 
   // Get deterministic address first
-  const walletAddress = await factory.read.getAddress([
+  const walletAddress = (await factory.read.getAddress([
     config.tokenContract,
     config.tokenId,
-  ]) as Address;
+  ])) as Address;
 
   // Deploy
-  const txHash = await factory.write.createAccount([
-    config.tokenContract,
-    config.tokenId,
-  ], { account: config.walletClient.account!, chain });
+  const txHash = await factory.write.createAccount(
+    [config.tokenContract, config.tokenId],
+    { account: config.walletClient.account!, chain },
+  );
 
   return { walletAddress, txHash };
 }
@@ -312,7 +331,10 @@ export async function getWalletAddress(config: {
     client: publicClient,
   });
 
-  return factory.read.getAddress([config.tokenContract, config.tokenId]) as Promise<Address>;
+  return factory.read.getAddress([
+    config.tokenContract,
+    config.tokenId,
+  ]) as Promise<Address>;
 }
 
 // ─── [MAX-ADDED] Value-Add Features for Agent Customers ───
@@ -325,18 +347,18 @@ export async function getWalletAddress(config: {
 export async function getBudgetForecast(
   wallet: Wallet,
   token: Address = NATIVE_TOKEN,
-  now?: number
+  now?: number,
 ): Promise<BudgetForecast> {
-  const [perTxLimit, remainingInPeriod] = await wallet.contract.read.remainingBudget([token]);
+  const [perTxLimit, remainingInPeriod] =
+    await wallet.contract.read.remainingBudget([token]);
   const [_policyPerTx, periodLimit, periodLength, periodSpent, periodStart] =
     await wallet.contract.read.spendPolicies([token]);
 
   const currentTime = now ?? Math.floor(Date.now() / 1000);
   const periodEnd = Number(periodStart) + Number(periodLength);
   const secondsUntilReset = Math.max(0, periodEnd - currentTime);
-  const utilizationPercent = periodLimit > 0n
-    ? Number((periodSpent * 100n) / periodLimit)
-    : 0;
+  const utilizationPercent =
+    periodLimit > 0n ? Number((periodSpent * 100n) / periodLimit) : 0;
 
   return {
     token,
@@ -360,7 +382,7 @@ export async function getWalletHealth(
   wallet: Wallet,
   operatorsToCheck: Address[] = [],
   tokensToCheck: Address[] = [NATIVE_TOKEN],
-  now?: number
+  now?: number,
 ): Promise<WalletHealth> {
   // Read wallet identity
   const [tokenContract, tokenId, operatorEpoch] = await Promise.all([
@@ -373,21 +395,30 @@ export async function getWalletHealth(
   const activeOperators = await Promise.all(
     operatorsToCheck.map(async (addr) => ({
       address: addr,
-      active: await wallet.contract.read.isOperatorActive([addr]) as boolean,
-    }))
+      active: (await wallet.contract.read.isOperatorActive([addr])) as boolean,
+    })),
   );
 
   // Count pending queue depth
-  const pendingNonce = await wallet.contract.read.pendingNonce() as bigint;
+  const pendingNonce = (await wallet.contract.read.pendingNonce()) as bigint;
   let pendingQueueDepth = 0;
   for (let i = 0n; i < pendingNonce; i++) {
-    const [, , , , createdAt, executed, cancelled] = await wallet.contract.read.getPending([i]) as [any, any, any, any, bigint, boolean, boolean];
+    const [, , , , createdAt, executed, cancelled] =
+      (await wallet.contract.read.getPending([i])) as [
+        any,
+        any,
+        any,
+        any,
+        bigint,
+        boolean,
+        boolean,
+      ];
     if (!executed && !cancelled && createdAt > 0n) pendingQueueDepth++;
   }
 
   // Budget forecasts for requested tokens
   const budgets = await Promise.all(
-    tokensToCheck.map((t) => getBudgetForecast(wallet, t, now))
+    tokensToCheck.map((t) => getBudgetForecast(wallet, t, now)),
   );
 
   return {
@@ -409,13 +440,13 @@ export async function getWalletHealth(
  */
 export async function batchAgentTransfer(
   wallet: Wallet,
-  transfers: BatchTransfer[]
+  transfers: BatchTransfer[],
 ): Promise<Hash[]> {
   const hashes: Hash[] = [];
   for (const t of transfers) {
     const hash = await wallet.contract.write.agentTransferToken(
       [t.token, t.to, t.amount],
-      { account: wallet.walletClient.account!, chain: wallet.chain }
+      { account: wallet.walletClient.account!, chain: wallet.chain },
     );
     hashes.push(hash);
   }
@@ -429,18 +460,21 @@ export async function batchAgentTransfer(
  */
 export async function getActivityHistory(
   wallet: Wallet,
-  options: { fromBlock?: bigint; toBlock?: bigint } = {}
+  options: { fromBlock?: bigint; toBlock?: bigint } = {},
 ): Promise<ActivityEntry[]> {
   const fromBlock = options.fromBlock ?? 0n;
-  const toBlock = options.toBlock ?? 'latest' as any;
+  const toBlock = options.toBlock ?? ("latest" as any);
 
   const eventConfigs = [
-    { eventName: 'TransactionExecuted' as const, type: 'execution' as const },
-    { eventName: 'TransactionQueued' as const, type: 'queued' as const },
-    { eventName: 'TransactionApproved' as const, type: 'approved' as const },
-    { eventName: 'TransactionCancelled' as const, type: 'cancelled' as const },
-    { eventName: 'SpendPolicyUpdated' as const, type: 'policy_update' as const },
-    { eventName: 'OperatorUpdated' as const, type: 'operator_update' as const },
+    { eventName: "TransactionExecuted" as const, type: "execution" as const },
+    { eventName: "TransactionQueued" as const, type: "queued" as const },
+    { eventName: "TransactionApproved" as const, type: "approved" as const },
+    { eventName: "TransactionCancelled" as const, type: "cancelled" as const },
+    {
+      eventName: "SpendPolicyUpdated" as const,
+      type: "policy_update" as const,
+    },
+    { eventName: "OperatorUpdated" as const, type: "operator_update" as const },
   ];
 
   const allEntries: ActivityEntry[] = [];
@@ -458,7 +492,7 @@ export async function getActivityHistory(
       allEntries.push({
         type,
         blockNumber: log.blockNumber ?? 0n,
-        transactionHash: log.transactionHash ?? ('0x' as Hash),
+        transactionHash: log.transactionHash ?? ("0x" as Hash),
         args: (log as any).args ?? {},
       });
     }
@@ -477,12 +511,12 @@ export async function getActivityHistory(
  */
 export function onTransactionQueued(
   wallet: Wallet,
-  callback: (event: QueuedEvent) => void
+  callback: (event: QueuedEvent) => void,
 ): () => void {
   return wallet.publicClient.watchContractEvent({
     address: wallet.address,
     abi: AgentAccountV2Abi,
-    eventName: 'TransactionQueued',
+    eventName: "TransactionQueued",
     onLogs: (logs) => {
       for (const log of logs) {
         const args = (log as any).args;
@@ -505,12 +539,17 @@ export function onTransactionQueued(
  */
 export function onTransactionExecuted(
   wallet: Wallet,
-  callback: (event: { target: Address; value: bigint; executor: Address; transactionHash: Hash }) => void
+  callback: (event: {
+    target: Address;
+    value: bigint;
+    executor: Address;
+    transactionHash: Hash;
+  }) => void,
 ): () => void {
   return wallet.publicClient.watchContractEvent({
     address: wallet.address,
     abi: AgentAccountV2Abi,
-    eventName: 'TransactionExecuted',
+    eventName: "TransactionExecuted",
     onLogs: (logs) => {
       for (const log of logs) {
         const args = (log as any).args;
@@ -527,58 +566,124 @@ export function onTransactionExecuted(
 
 // ─── ERC-8004: Trustless Agents — Identity Registry ─────────────────────────
 export {
-  ERC8004Client, ERC8004IdentityRegistryAbi, METADATA_KEYS,
-  REGISTRATION_FILE_TYPE, KNOWN_REGISTRY_ADDRESSES,
-  buildDataURI, parseDataURI, resolveAgentURI, validateRegistrationFile, formatAgentRegistry,
-} from './identity/erc8004.js';
+  ERC8004Client,
+  ERC8004IdentityRegistryAbi,
+  METADATA_KEYS,
+  REGISTRATION_FILE_TYPE,
+  KNOWN_REGISTRY_ADDRESSES,
+  buildDataURI,
+  parseDataURI,
+  resolveAgentURI,
+  validateRegistrationFile,
+  formatAgentRegistry,
+} from "./identity/erc8004.js";
 export type {
-  AgentServiceEndpoint, SupportedTrustMechanism, AgentRegistrationRef,
-  AgentRegistrationFile, AgentModelMetadata, AgentIdentity,
-  MetadataEntry, ERC8004ClientConfig, RegistrationResult, SupportedChain,
-} from './identity/erc8004.js';
+  AgentServiceEndpoint,
+  SupportedTrustMechanism,
+  AgentRegistrationRef,
+  AgentRegistrationFile,
+  AgentModelMetadata,
+  AgentIdentity,
+  MetadataEntry,
+  ERC8004ClientConfig,
+  RegistrationResult,
+  SupportedChain,
+} from "./identity/erc8004.js";
 
 // ─── ERC-8004: Reputation Registry ─────────────────────────────────────────
-export { ReputationClient, ReputationRegistryAbi } from './identity/reputation.js';
+export {
+  ReputationClient,
+  ReputationRegistryAbi,
+} from "./identity/reputation.js";
 export type {
-  ReputationClientConfig, GiveFeedbackParams, FeedbackEntry,
-  AgentReputationSummary, FeedbackFilters, RespondToFeedbackParams,
-} from './identity/reputation.js';
+  ReputationClientConfig,
+  GiveFeedbackParams,
+  FeedbackEntry,
+  AgentReputationSummary,
+  FeedbackFilters,
+  RespondToFeedbackParams,
+} from "./identity/reputation.js";
 
 // ─── ERC-8004: Validation Registry ─────────────────────────────────────────
-export { ValidationClient, ValidationRegistryAbi } from './identity/validation.js';
+export {
+  ValidationClient,
+  ValidationRegistryAbi,
+} from "./identity/validation.js";
 export type {
-  ValidationClientConfig, RequestValidationParams, RespondToValidationParams,
-  ValidationStatus, ValidationSummary,
-} from './identity/validation.js';
+  ValidationClientConfig,
+  RequestValidationParams,
+  RespondToValidationParams,
+  ValidationStatus,
+  ValidationSummary,
+} from "./identity/validation.js";
 
 // ─── UAID: Cross-Chain Identity Resolution (HOL Registry Broker) ────────────
-export { UAIDResolver } from './identity/uaid.js';
+export { UAIDResolver } from "./identity/uaid.js";
 export type {
-  UAIDProtocol, ParsedUAID, UAIDResolution, UniversalAgentIdentity,
-  UAIDResolverConfig, RegisterUAIDParams,
-} from './identity/uaid.js';
+  UAIDProtocol,
+  ParsedUAID,
+  UAIDResolution,
+  UniversalAgentIdentity,
+  UAIDResolverConfig,
+  RegisterUAIDParams,
+} from "./identity/uaid.js";
 
 // ─── SwapModule — Uniswap V3 token swap aggregator ──────────────────────────
-export { SwapModule, attachSwap, calcProtocolFee, applySlippage, calcDeadline } from './swap/index.js';
-export { UniswapV3RouterAbi, UniswapV3QuoterV2Abi, ERC20Abi } from './swap/index.js';
-export { BASE_TOKENS, UNISWAP_V3_BASE, PROTOCOL_FEE_BPS, PROTOCOL_FEE_COLLECTOR, DEFAULT_SLIPPAGE_BPS } from './swap/index.js';
-export type { UniswapFeeTier, SwapQuote, SwapOptions, SwapResult, SwapModuleConfig } from './swap/index.js';
+export {
+  SwapModule,
+  attachSwap,
+  calcProtocolFee,
+  applySlippage,
+  calcDeadline,
+} from "./swap/index.js";
+export {
+  UniswapV3RouterAbi,
+  UniswapV3QuoterV2Abi,
+  ERC20Abi,
+} from "./swap/index.js";
+export {
+  BASE_TOKENS,
+  UNISWAP_V3_BASE,
+  PROTOCOL_FEE_BPS,
+  PROTOCOL_FEE_COLLECTOR,
+  DEFAULT_SLIPPAGE_BPS,
+} from "./swap/index.js";
+export type {
+  UniswapFeeTier,
+  SwapQuote,
+  SwapOptions,
+  SwapResult,
+  SwapModuleConfig,
+} from "./swap/index.js";
 
 // ─── CCTP V2 Cross-Chain Bridge ─────────────────────────────────────────────
 export {
-  BridgeModule, BridgeError, createBridge,
-  CCTP_DOMAIN_IDS, BRIDGE_CHAIN_IDS, USDC_CONTRACT,
-  TOKEN_MESSENGER_V2, MESSAGE_TRANSMITTER_V2, FINALITY_THRESHOLD,
-} from './bridge/index.js';
-export { TokenMessengerV2Abi, MessageTransmitterV2Abi, ERC20BridgeAbi } from './bridge/index.js';
-export type { BridgeChain, BridgeOptions, BurnResult, BridgeResult } from './bridge/index.js';
+  BridgeModule,
+  BridgeError,
+  createBridge,
+  CCTP_DOMAIN_IDS,
+  BRIDGE_CHAIN_IDS,
+  USDC_CONTRACT,
+  TOKEN_MESSENGER_V2,
+  MESSAGE_TRANSMITTER_V2,
+  FINALITY_THRESHOLD,
+} from "./bridge/index.js";
+export {
+  TokenMessengerV2Abi,
+  MessageTransmitterV2Abi,
+  ERC20BridgeAbi,
+} from "./bridge/index.js";
+export type {
+  BridgeChain,
+  BridgeOptions,
+  BurnResult,
+  BridgeResult,
+} from "./bridge/index.js";
 
 // x402 already exported above from original index.ts
 
 // ─── SpendingPolicy — Programmable spending guardrails ───────────────────────
-export {
-  SpendingPolicy,
-} from './policy/SpendingPolicy.js';
+export { SpendingPolicy } from "./policy/SpendingPolicy.js";
 export type {
   SpendingPolicyConfig,
   PaymentIntent,
@@ -586,12 +691,10 @@ export type {
   PolicyStatus,
   AuditEntry,
   DraftEntry,
-} from './policy/SpendingPolicy.js';
+} from "./policy/SpendingPolicy.js";
 
 // ─── UptoBillingPolicy — x402 usage-based settlement accounting ─────────────
-export {
-  UptoBillingPolicy,
-} from './policy/UptoBillingPolicy.js';
+export { UptoBillingPolicy } from "./policy/UptoBillingPolicy.js";
 export type {
   UptoAuthorizationStatus,
   UptoAuthorizationRequest,
@@ -600,30 +703,30 @@ export type {
   UptoAuthorizationRecord,
   WalletLedgerDelta,
   UptoBillingSnapshot,
-} from './policy/UptoBillingPolicy.js';
+} from "./policy/UptoBillingPolicy.js";
 
 // ─── Mutual Stake Escrow ─────────────────────────────────────────────────────
-export { MutualStakeEscrow } from './escrow/MutualStakeEscrow.js';
+export { MutualStakeEscrow } from "./escrow/MutualStakeEscrow.js";
 export type {
   CreateEscrowParams,
   EscrowCreated,
   EscrowDetails,
   TxResult as EscrowTxResult,
-} from './escrow/types.js';
-export { TaskStatus } from './escrow/types.js';
+} from "./escrow/types.js";
+export { TaskStatus } from "./escrow/types.js";
 export {
   resolveVerifierAddress,
   encodeHashVerifierData,
   encodeOptimisticVerifierData,
   VERIFIER_ADDRESSES,
-} from './escrow/verifiers.js';
+} from "./escrow/verifiers.js";
 
 // ─── Convenience: env-variable-driven wallet bootstrap ──────────────────────
 export {
   walletFromEnv,
   setPolicyFromEnv,
   x402FromEnv,
-} from './convenience.js';
+} from "./convenience.js";
 // ─── v6: Multi-Token Support ─────────────────────────────────────────────────
 
 // TokenRegistry — pre-populated multi-chain token address registry
@@ -642,12 +745,17 @@ export {
   SONIC_REGISTRY,
   WORLDCHAIN_REGISTRY,
   BASE_SEPOLIA_REGISTRY,
-} from './tokens/registry.js';
-export type { TokenEntry, AddTokenParams } from './tokens/registry.js';
+} from "./tokens/registry.js";
+export type { TokenEntry, AddTokenParams } from "./tokens/registry.js";
 
 // Token decimal normalization
-export { toRaw, toHuman, formatBalance, parseAmount } from './tokens/decimals.js';
-export type { TokenInfo } from './tokens/decimals.js';
+export {
+  toRaw,
+  toHuman,
+  formatBalance,
+  parseAmount,
+} from "./tokens/decimals.js";
+export type { TokenInfo } from "./tokens/decimals.js";
 
 // Multi-token EVM transfers (direct EOA/hot-wallet operations)
 export {
@@ -657,16 +765,21 @@ export {
   getNativeBalance,
   getBalances,
   encodeERC20Transfer,
-} from './tokens/transfers.js';
+} from "./tokens/transfers.js";
 export type {
   TransferContext,
   TransferOptions,
   TokenBalanceResult,
   NativeBalanceResult,
-} from './tokens/transfers.js';
+} from "./tokens/transfers.js";
 
 // Solana SPL token support (optional peer dependency: @solana/web3.js)
-export { SolanaWallet, createSolanaWallet, SOLANA_TOKENS, SOLANA_TOKEN_DECIMALS } from './tokens/solana.js';
+export {
+  SolanaWallet,
+  createSolanaWallet,
+  SOLANA_TOKENS,
+  SOLANA_TOKEN_DECIMALS,
+} from "./tokens/solana.js";
 export type {
   SolanaWalletConfig,
   SolanaTokenInfo,
@@ -674,7 +787,7 @@ export type {
   SolBalanceResult,
   SplBalanceResult,
   SolanaTxResult,
-} from './tokens/solana.js';
+} from "./tokens/solana.js";
 
 // x402 multi-asset resolution (v6 additions)
 export {
@@ -683,14 +796,14 @@ export {
   buildSupportedAssets,
   isStablecoin,
   parseNetworkChainId,
-} from './x402/multi-asset.js';
+} from "./x402/multi-asset.js";
 
 // ─── Payment Router ───────────────────────────────────────────────────────────
-export { PaymentRouter } from './router/index.js';
+export { PaymentRouter } from "./router/index.js";
 export type {
   PaymentRail,
   RailStatus,
   RailConfig,
   PaymentContext,
   RoutingDecision,
-} from './router/index.js';
+} from "./router/index.js";

@@ -4,46 +4,48 @@
 /* Custom theme tokens for Tailwind v4 */
 @theme {
   /* Custom font families */
-  --font-display: 'Upheaval Pro', sans-serif;
-  --font-body: 'VCR OSD Mono', monospace;
+  --font-display: "Upheaval Pro", sans-serif;
+  --font-body: "VCR OSD Mono", monospace;
 
   /* Brown color palette */
-  --color-brown-100: #FFFFFF;
-  --color-brown-200: #EAD4AA;
-  --color-brown-300: #E4A672;
-  --color-brown-500: #B86F50;
-  --color-brown-700: #743F39;
-  --color-brown-800: #3F2832;
+  --color-brown-100: #ffffff;
+  --color-brown-200: #ead4aa;
+  --color-brown-300: #e4a672;
+  --color-brown-500: #b86f50;
+  --color-brown-700: #743f39;
+  --color-brown-800: #3f2832;
   --color-brown-900: #181425;
 
   /* Clay color palette */
-  --color-clay-100: #C0CBDC;
-  --color-clay-300: #8B9BB4;
-  --color-clay-500: #5A6988;
-  --color-clay-700: #3A4466;
+  --color-clay-100: #c0cbdc;
+  --color-clay-300: #8b9bb4;
+  --color-clay-500: #5a6988;
+  --color-clay-700: #3a4466;
   --color-clay-900: #181425;
 }
 
 @font-face {
-  font-family: 'Upheaval Pro';
+  font-family: "Upheaval Pro";
   src: url(/assets/fonts/upheaval_pro.ttf);
 }
 
 @font-face {
-  font-family: 'VCR OSD Mono';
+  font-family: "VCR OSD Mono";
   src: url(/assets/fonts/vcr_osd_mono.ttf);
 }
 
 .font-display {
-  font-family: 'Upheaval Pro', 'sans-serif';
+  font-family: "Upheaval Pro", "sans-serif";
 }
 
 .font-body {
-  font-family: 'VCR OSD Mono', 'monospace';
+  font-family: "VCR OSD Mono", "monospace";
 }
 
 .font-system {
-  font-family: system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  font-family:
+    system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
 }
 
 :root {
@@ -62,7 +64,11 @@
 
 body {
   color: rgb(var(--foreground-rgb));
-  background: linear-gradient(to bottom, transparent, rgb(var(--background-end-rgb)))
+  background: linear-gradient(
+      to bottom,
+      transparent,
+      rgb(var(--background-end-rgb))
+    )
     rgb(var(--background-start-rgb));
 }
 
@@ -96,7 +102,13 @@ body {
 }
 
 .game-progress-bar-progress {
-  background: repeating-linear-gradient(135deg, white, white 10px, #dfdfdf 10px, #dfdfdf 20px);
+  background: repeating-linear-gradient(
+    135deg,
+    white,
+    white 10px,
+    #dfdfdf 10px,
+    #dfdfdf 20px
+  );
   background-size: 200% 100%;
   background-position: 100% 0;
   animation: moveStripes 0.5s linear infinite;
@@ -191,7 +203,7 @@ body {
   transform: none;
 }
 
-p[contenteditable='true']:empty::before {
+p[contenteditable="true"]:empty::before {
   content: attr(placeholder);
   color: #aaa;
 }

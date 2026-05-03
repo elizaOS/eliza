@@ -415,17 +415,13 @@ describe("LifeOps sleep-cycle check-in scheduler", () => {
         minutesUntilBedtimeTarget: null,
         currentSleepStartedAt: "2026-04-21T23:00:00.000Z",
       });
-      await seedSchedule(
-        fixture.service,
-        sleepingState,
-        {
-          ...sleepingState,
-          id: `${sleepingState.id}:previous`,
-          mergedAt: isoMinutesFrom(nowIso, -5),
-          inferredAt: isoMinutesFrom(nowIso, -5),
-          updatedAt: isoMinutesFrom(nowIso, -5),
-        },
-      );
+      await seedSchedule(fixture.service, sleepingState, {
+        ...sleepingState,
+        id: `${sleepingState.id}:previous`,
+        mergedAt: isoMinutesFrom(nowIso, -5),
+        inferredAt: isoMinutesFrom(nowIso, -5),
+        updatedAt: isoMinutesFrom(nowIso, -5),
+      });
 
       await fixture.service.processScheduledWork({ now: nowIso });
 

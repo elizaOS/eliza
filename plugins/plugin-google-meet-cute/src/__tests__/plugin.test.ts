@@ -5,7 +5,9 @@ describe("Google Meet Plugin", () => {
   it("should export the plugin with correct structure", () => {
     expect(googleMeetPlugin).toBeDefined();
     expect(googleMeetPlugin.name).toBe("plugin-google-meet-cute");
-    expect(googleMeetPlugin.description).toContain("Google Meet integration plugin");
+    expect(googleMeetPlugin.description).toContain(
+      "Google Meet integration plugin",
+    );
     expect(googleMeetPlugin.services).toBeDefined();
     expect(googleMeetPlugin.services).toHaveLength(2); // GoogleAuthService and GoogleMeetAPIService
     expect(googleMeetPlugin.actions).toBeDefined();
@@ -20,11 +22,12 @@ describe("Google Meet Plugin", () => {
   });
 
   it("should have all required actions", () => {
-    const actionNames = googleMeetPlugin.actions?.map(action => action.name) || [];
+    const actionNames =
+      googleMeetPlugin.actions?.map((action) => action.name) || [];
     expect(actionNames).toContain("AUTHENTICATE_GOOGLE");
     expect(actionNames).toContain("CREATE_MEETING");
     expect(actionNames).toContain("GET_MEETING_INFO");
     expect(actionNames).toContain("GET_PARTICIPANTS");
     expect(actionNames).toContain("GENERATE_REPORT");
   });
-}); 
+});

@@ -38,13 +38,13 @@ export interface RuntimeFactoryResult {
 
 function applyRuntimeSettings(
   runtime: AgentRuntime,
-  settings: Record<string, string>
+  settings: Record<string, string>,
 ): void {
   for (const [key, value] of Object.entries(settings)) {
     runtime.setSetting(
       key,
       value,
-      /(API_KEY|TOKEN|SECRET|PASSWORD)/i.test(key)
+      /(API_KEY|TOKEN|SECRET|PASSWORD)/i.test(key),
     );
   }
 }
@@ -75,12 +75,12 @@ export interface CreateScenarioRuntimeOptions {
 }
 
 export async function createScenarioRuntime(
-  options?: CreateScenarioRuntimeOptions
+  options?: CreateScenarioRuntimeOptions,
 ): Promise<RuntimeFactoryResult> {
   const providerConfig = selectLiveProvider(options?.preferredProvider);
   if (!providerConfig) {
     throw new Error(
-      "[scenario-runner] no LLM provider configured. Set GROQ_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_GENERATIVE_AI_API_KEY / OPENROUTER_API_KEY."
+      "[scenario-runner] no LLM provider configured. Set GROQ_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_GENERATIVE_AI_API_KEY / OPENROUTER_API_KEY.",
     );
   }
   const mockedEnvironment = await prepareMockedTestEnvironment({
@@ -91,7 +91,7 @@ export async function createScenarioRuntime(
   }
 
   const pgliteDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "scenario-runner-pglite-")
+    path.join(os.tmpdir(), "scenario-runner-pglite-"),
   );
   const prevPgliteDir = process.env.PGLITE_DATA_DIR;
   const prevWebsiteBlockerHostsFilePath =
@@ -113,13 +113,13 @@ export async function createScenarioRuntime(
     !prevSelfControlHostsFilePath?.trim()
   ) {
     scenarioHostsRoot = fs.mkdtempSync(
-      path.join(os.tmpdir(), "scenario-runner-hosts-")
+      path.join(os.tmpdir(), "scenario-runner-hosts-"),
     );
     const scenarioHostsFilePath = path.join(scenarioHostsRoot, "hosts");
     fs.writeFileSync(
       scenarioHostsFilePath,
       ["127.0.0.1 localhost", "::1 localhost", ""].join("\n"),
-      "utf8"
+      "utf8",
     );
     process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH = scenarioHostsFilePath;
     process.env.SELFCONTROL_HOSTS_FILE_PATH = scenarioHostsFilePath;
@@ -147,7 +147,7 @@ export async function createScenarioRuntime(
   // Without this plugin the runtime has no conversational reply action and
   // nearly every scenario fails with "expected 1 call(s) to REPLY, saw 0".
   await runtime.registerPlugin(
-    createBasicCapabilitiesPlugin({ advancedCapabilities: true })
+    createBasicCapabilitiesPlugin({ advancedCapabilities: true }),
   );
 
   try {
@@ -159,7 +159,7 @@ export async function createScenarioRuntime(
     logger.warn(
       `[scenario-runner] local-embedding plugin unavailable: ${
         err instanceof Error ? err.message : String(err)
-      }`
+      }`,
     );
   }
 
@@ -174,7 +174,7 @@ export async function createScenarioRuntime(
   ]);
   if (!providerPlugin) {
     throw new Error(
-      `[scenario-runner] provider package ${providerConfig.pluginPackage} did not export a Plugin`
+      `[scenario-runner] provider package ${providerConfig.pluginPackage} did not export a Plugin`,
     );
   }
   await runtime.registerPlugin(providerPlugin);
@@ -194,14 +194,14 @@ export async function createScenarioRuntime(
       await runtime.registerPlugin(agentSkillsPlugin);
     } else {
       logger.warn(
-        "[scenario-runner] @elizaos/plugin-agent-skills did not export a Plugin; skipping"
+        "[scenario-runner] @elizaos/plugin-agent-skills did not export a Plugin; skipping",
       );
     }
   } catch (err) {
     logger.warn(
       `[scenario-runner] @elizaos/plugin-agent-skills unavailable: ${
         err instanceof Error ? err.message : String(err)
-      }`
+      }`,
     );
   }
 
@@ -223,14 +223,14 @@ export async function createScenarioRuntime(
       await runtime.registerPlugin(lifeOpsPlugin);
     } else {
       logger.warn(
-        "[scenario-runner] @elizaos/app-lifeops did not export a Plugin; skipping"
+        "[scenario-runner] @elizaos/app-lifeops did not export a Plugin; skipping",
       );
     }
   } catch (err) {
     logger.warn(
       `[scenario-runner] @elizaos/app-lifeops unavailable: ${
         err instanceof Error ? err.message : String(err)
-      }`
+      }`,
     );
   }
 
@@ -256,14 +256,14 @@ export async function createScenarioRuntime(
       }
     } else {
       logger.warn(
-        "[scenario-runner] @elizaos/app-lifeops/routes/plugin did not export a Plugin; skipping"
+        "[scenario-runner] @elizaos/app-lifeops/routes/plugin did not export a Plugin; skipping",
       );
     }
   } catch (err) {
     logger.warn(
       `[scenario-runner] @elizaos/app-lifeops/routes/plugin unavailable: ${
         err instanceof Error ? err.message : String(err)
-      }`
+      }`,
     );
   }
 
@@ -272,9 +272,8 @@ export async function createScenarioRuntime(
   }
 
   await runtime.initialize();
-  const cleanupRuntimeFixtures = await mockedEnvironment.applyRuntimeFixtures?.(
-    runtime
-  );
+  const cleanupRuntimeFixtures =
+    await mockedEnvironment.applyRuntimeFixtures?.(runtime);
   await seedGoogleConnectorGrant(runtime);
   await seedXConnectorGrant(runtime);
   await seedBenchmarkLifeOpsFixtures(runtime);
@@ -347,7 +346,7 @@ export async function createScenarioRuntime(
       await mockedEnvironment.cleanup();
     } catch (err) {
       logger.debug(
-        `[scenario-runner] mocked environment cleanup error: ${err}`
+        `[scenario-runner] mocked environment cleanup error: ${err}`,
       );
     }
     try {

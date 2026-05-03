@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { VastProvider } from "@/lib/providers/vast";
 import type { OpenAIChatRequest } from "@/lib/providers/types";
+import { VastProvider } from "@/lib/providers/vast";
 
 const baseChatRequest: OpenAIChatRequest = {
   model: "vast/qwen3.6-35b-a3b-awq",
@@ -47,14 +47,17 @@ describe("VastProvider", () => {
   test("normalizes a base URL with a trailing slash", async () => {
     const fetchMock = mock(
       async () =>
-        new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }),
+        new Response("{}", {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
     );
     globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
 
     const provider = new VastProvider("k", "https://run.vast.ai/route/abc123/");
     await provider.chatCompletions(baseChatRequest);
 
-    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [url] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("https://run.vast.ai/route/abc123/v1/chat/completions");
   });
 
@@ -70,7 +73,10 @@ describe("VastProvider", () => {
     const res = await provider.listModels();
     expect(res.status).toBe(200);
 
-    const body = (await res.json()) as { object: string; data: Array<{ id: string }> };
+    const body = (await res.json()) as {
+      object: string;
+      data: Array<{ id: string }>;
+    };
     expect(body.object).toBe("list");
     expect(body.data.map((m) => m.id)).toContain("vast/qwen3.6-35b-a3b-awq");
   });

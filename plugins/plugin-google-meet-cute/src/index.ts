@@ -6,7 +6,7 @@ import {
   getMeetingInfoAction,
   getParticipantsAction,
   generateReportAction,
-  authenticateAction
+  authenticateAction,
 } from "./actions";
 import { meetingProvider } from "./providers";
 import { googleMeetConfigSchema } from "./types";
@@ -22,7 +22,7 @@ export const googleMeetPlugin: Plugin = {
     createMeetingAction,
     getMeetingInfoAction,
     getParticipantsAction,
-    generateReportAction
+    generateReportAction,
   ],
   providers: [meetingProvider],
 
@@ -31,7 +31,8 @@ export const googleMeetPlugin: Plugin = {
     GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET ?? null,
     GOOGLE_REDIRECT_URI: process.env.GOOGLE_REDIRECT_URI ?? null,
     GOOGLE_REFRESH_TOKEN: process.env.GOOGLE_REFRESH_TOKEN ?? null,
-    GOOGLE_MEET_DEFAULT_ACCESS_TYPE: process.env.GOOGLE_MEET_DEFAULT_ACCESS_TYPE ?? null,
+    GOOGLE_MEET_DEFAULT_ACCESS_TYPE:
+      process.env.GOOGLE_MEET_DEFAULT_ACCESS_TYPE ?? null,
     REPORT_OUTPUT_DIR: process.env.REPORT_OUTPUT_DIR ?? null,
   },
 
@@ -82,8 +83,13 @@ export const googleMeetPlugin: Plugin = {
       }
 
       // Check if credentials are configured
-      if (!validatedConfig.GOOGLE_CLIENT_ID || !validatedConfig.GOOGLE_CLIENT_SECRET) {
-        logger.warn("Google OAuth credentials not configured. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to use the Google Meet API.");
+      if (
+        !validatedConfig.GOOGLE_CLIENT_ID ||
+        !validatedConfig.GOOGLE_CLIENT_SECRET
+      ) {
+        logger.warn(
+          "Google OAuth credentials not configured. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to use the Google Meet API.",
+        );
       }
     } catch (error) {
       logger.error(

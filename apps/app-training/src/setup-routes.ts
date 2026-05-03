@@ -121,7 +121,13 @@ function trajectoryRouteHandler(): PluginRouteHandler {
     }
     const method = (httpReq.method ?? "GET").toUpperCase();
     const url = new URL(httpReq.url ?? "/", requestBaseUrl(httpReq));
-    await handleTrajectoryRoute(httpReq, httpRes, agentRuntime, url.pathname, method);
+    await handleTrajectoryRoute(
+      httpReq,
+      httpRes,
+      agentRuntime,
+      url.pathname,
+      method,
+    );
   };
 }
 

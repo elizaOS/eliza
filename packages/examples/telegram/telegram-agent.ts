@@ -1,6 +1,6 @@
 /**
  * Telegram bot using elizaOS with full message pipeline.
- * 
+ *
  * Required env vars: TELEGRAM_BOT_TOKEN, OPENAI_API_KEY
  * Optional: POSTGRES_URL (defaults to PGLite)
  */

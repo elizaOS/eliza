@@ -113,14 +113,13 @@ describe("iOS Screen Time build validation", () => {
 
     writeFile(
       entitlementsPath,
-      entitlementPlist(Object.values(IOS_SCREEN_TIME_REQUIREMENTS.entitlements)),
+      entitlementPlist(
+        Object.values(IOS_SCREEN_TIME_REQUIREMENTS.entitlements),
+      ),
     );
     writeFile(projectPath, validProject());
     writeFile(podspecPath, validPodspec());
-    writeFile(
-      provisioningProfilePath,
-      provisioningProfilePlist([]),
-    );
+    writeFile(provisioningProfilePath, provisioningProfilePlist([]));
 
     const result = validateIosScreenTimeBuildWiring({
       entitlementsPath,

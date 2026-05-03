@@ -1,5 +1,3 @@
-
-
 import { useRef, useEffect } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
@@ -16,10 +14,16 @@ function ShaderPlane() {
 
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
-      mouseRaw.current.set(e.clientX / window.innerWidth, 1 - e.clientY / window.innerHeight);
+      mouseRaw.current.set(
+        e.clientX / window.innerWidth,
+        1 - e.clientY / window.innerHeight,
+      );
     };
     const onDown = (e: PointerEvent) => {
-      clickPos.current.set(e.clientX / window.innerWidth, 1 - e.clientY / window.innerHeight);
+      clickPos.current.set(
+        e.clientX / window.innerWidth,
+        1 - e.clientY / window.innerHeight,
+      );
       clickTime.current = 0;
     };
     window.addEventListener("pointermove", onMove);
@@ -37,7 +41,7 @@ function ShaderPlane() {
     mat.uniforms.uTime.value = _state.clock.elapsedTime;
     mat.uniforms.uResolution.value.set(
       _state.gl.domElement.clientWidth,
-      _state.gl.domElement.clientHeight
+      _state.gl.domElement.clientHeight,
     );
     mat.uniforms.uClickPos.value.copy(clickPos.current);
 
@@ -50,7 +54,7 @@ function ShaderPlane() {
     const safeDelta = Math.max(delta, 0.001);
     mouseVel.current.set(
       (mouseSmooth.current.x - prev.x) / safeDelta,
-      (mouseSmooth.current.y - prev.y) / safeDelta
+      (mouseSmooth.current.y - prev.y) / safeDelta,
     );
     // Smooth velocity so it doesn't jitter
     velSmooth.current.lerp(mouseVel.current, 0.1);
@@ -70,7 +74,9 @@ function ShaderPlane() {
 
 export default function ShaderBackground() {
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 0, pointerEvents: "none" }}>
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 0, pointerEvents: "none" }}
+    >
       <Canvas
         orthographic
         camera={{ position: [0, 0, 1] }}

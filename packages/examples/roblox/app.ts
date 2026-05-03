@@ -30,7 +30,10 @@ export type RobloxChatResponseBody = {
 };
 
 export type RequestWithRawBody = Request & { rawBody?: string };
-export type HeaderReader = { header: (name: string) => string | undefined; rawBody?: string };
+export type HeaderReader = {
+  header: (name: string) => string | undefined;
+  rawBody?: string;
+};
 
 export type RuntimeLike = {
   agentId: UUID;
@@ -44,15 +47,13 @@ export type RuntimeLike = {
     channelId: string;
     type: ChannelType;
   }) => Promise<void>;
-  messageService:
-    | {
+  messageService: {
     handleMessage: (
       runtime: IAgentRuntime,
       message: Memory,
-      callback?: (content: Content) => Promise<Memory[]>
+      callback?: (content: Content) => Promise<Memory[]>,
     ) => Promise<MessageProcessingResult>;
-  }
-    | null;
+  } | null;
   getService: <T extends Service>(serviceName: string) => T | null;
 };
 
@@ -63,7 +64,10 @@ function timingSafeEqual(a: string, b: string): boolean {
   return crypto.timingSafeEqual(aBuf, bBuf);
 }
 
-export function verifySharedSecret(req: HeaderReader, sharedSecret: string): boolean {
+export function verifySharedSecret(
+  req: HeaderReader,
+  sharedSecret: string,
+): boolean {
   if (!sharedSecret) return true;
 
   const headerSecret = req.header("x-eliza-secret") ?? "";
@@ -75,15 +79,18 @@ export function verifySharedSecret(req: HeaderReader, sharedSecret: string): boo
   if (!sig.startsWith("sha256=")) return false;
   const rawBody = req.rawBody ?? "";
   const expected =
-    "sha256=" + crypto.createHmac("sha256", sharedSecret).update(rawBody).digest("hex");
+    "sha256=" +
+    crypto.createHmac("sha256", sharedSecret).update(rawBody).digest("hex");
   return timingSafeEqual(sig, expected);
 }
 
 export function assertValidChatBody(body: RobloxChatRequestBody): void {
-  if (!Number.isFinite(body.playerId)) throw new Error("playerId must be a number");
+  if (!Number.isFinite(body.playerId))
+    throw new Error("playerId must be a number");
   if (!body.playerName || typeof body.playerName !== "string")
     throw new Error("playerName must be a string");
-  if (!body.text || typeof body.text !== "string") throw new Error("text must be a string");
+  if (!body.text || typeof body.text !== "string")
+    throw new Error("text must be a string");
 }
 
 const RATE_LIMIT_WINDOW_MS = 60_000;
@@ -106,14 +113,17 @@ function createRateLimiter() {
   };
 }
 
-export function createRobloxBridgeApp(runtime: RuntimeLike, sharedSecret: string): express.Express {
+export function createRobloxBridgeApp(
+  runtime: RuntimeLike,
+  sharedSecret: string,
+): express.Express {
   const app = express();
   app.use(
     express.json({
       verify: (req, _res, buf) => {
         (req as RequestWithRawBody).rawBody = buf.toString("utf8");
       },
-    })
+    }),
   );
 
   const checkChatRateLimit = createRateLimiter();
@@ -122,7 +132,8 @@ export function createRobloxBridgeApp(runtime: RuntimeLike, sharedSecret: string
     res.json({ status: "ok" });
   });
 
-  const debugEnabled = process.env.DEBUG_ROBLOX_BRIDGE?.toLowerCase() === "true";
+  const debugEnabled =
+    process.env.DEBUG_ROBLOX_BRIDGE?.toLowerCase() === "true";
   if (debugEnabled) {
     app.get("/debug-env", (_req: Request, res: Response) => {
       res.json({
@@ -134,7 +145,10 @@ export function createRobloxBridgeApp(runtime: RuntimeLike, sharedSecret: string
 
   app.post(
     "/roblox/chat",
-    async (req: Request<object, object, RobloxChatRequestBody>, res: Response) => {
+    async (
+      req: Request<object, object, RobloxChatRequestBody>,
+      res: Response,
+    ) => {
       try {
         const clientIp = req.ip ?? req.socket.remoteAddress ?? "unknown";
         if (!checkChatRateLimit(clientIp)) {
@@ -152,7 +166,9 @@ export function createRobloxBridgeApp(runtime: RuntimeLike, sharedSecret: string
 
         const userId = stringToUuid(`roblox:user:${body.playerId}`);
         const roomId = stringToUuid(`roblox:job:${body.jobId ?? "unknown"}`);
-        const worldId = stringToUuid(`roblox:universe:${process.env.ROBLOX_UNIVERSE_ID ?? "unknown"}`);
+        const worldId = stringToUuid(
+          `roblox:universe:${process.env.ROBLOX_UNIVERSE_ID ?? "unknown"}`,
+        );
 
         await runtime.ensureConnection({
           entityId: userId,
@@ -190,7 +206,7 @@ export function createRobloxBridgeApp(runtime: RuntimeLike, sharedSecret: string
           async (content) => {
             if (content?.text) reply += content.text;
             return [];
-          }
+          },
         );
 
         if (!reply.trim() && result.responseContent?.text) {
@@ -202,7 +218,10 @@ export function createRobloxBridgeApp(runtime: RuntimeLike, sharedSecret: string
         if (process.env.ROBLOX_ECHO_TO_GAME?.toLowerCase() === "true") {
           const svc = runtime.getService<RobloxService>(ROBLOX_SERVICE_NAME);
           if (svc) {
-            await svc.sendMessage(runtime.agentId, reply.trim() || "(no response)");
+            await svc.sendMessage(
+              runtime.agentId,
+              reply.trim() || "(no response)",
+            );
           }
         }
 
@@ -233,9 +252,8 @@ export function createRobloxBridgeApp(runtime: RuntimeLike, sharedSecret: string
         const msg = error instanceof Error ? error.message : "Unknown error";
         res.status(400).json({ error: msg });
       }
-    }
+    },
   );
 
   return app;
 }
-

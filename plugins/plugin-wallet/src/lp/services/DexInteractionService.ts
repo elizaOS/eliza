@@ -31,7 +31,11 @@ export interface IDexInteractionService extends Service {
    * @param tokenBMint - Optional. Filter pools by token B mint address.
    * @returns A promise that resolves to an array of PoolInfo objects.
    */
-  getPools(dexName?: string, tokenAMint?: string, tokenBMint?: string): Promise<PoolInfo[]>;
+  getPools(
+    dexName?: string,
+    tokenAMint?: string,
+    tokenBMint?: string,
+  ): Promise<PoolInfo[]>;
 
   /**
    * Adds liquidity to a specified pool on a specific DEX.
@@ -57,7 +61,7 @@ export interface IDexInteractionService extends Service {
   getLpPosition(
     userId: string,
     poolIdOrPositionIdentifier: string,
-    dexName: string
+    dexName: string,
   ): Promise<LpPositionDetails | null>;
 
   /**
@@ -69,7 +73,10 @@ export interface IDexInteractionService extends Service {
   getAllUserLpPositions(userId: string): Promise<LpPositionDetails[]>;
 }
 
-export class DexInteractionService extends Service implements IDexInteractionService {
+export class DexInteractionService
+  extends Service
+  implements IDexInteractionService
+{
   public static override readonly serviceType = "dex-interaction";
   public readonly capabilityDescription =
     "A service for interacting with various DEX LP services in a standardized way.";
@@ -90,9 +97,11 @@ export class DexInteractionService extends Service implements IDexInteractionSer
 
   private discoverLpServices() {
     console.info("DexInteractionService: Discovering LP services...");
-    console.info(`DexInteractionService: Total services in runtime: ${this.runtime.services.size}`);
     console.info(
-      `DexInteractionService: Already registered LP services: ${this.lpServices.length}`
+      `DexInteractionService: Total services in runtime: ${this.runtime.services.size}`,
+    );
+    console.info(
+      `DexInteractionService: Already registered LP services: ${this.lpServices.length}`,
     );
 
     // Otherwise, try to discover from runtime services
@@ -110,7 +119,7 @@ export class DexInteractionService extends Service implements IDexInteractionSer
         "MeteoraService",
       ];
       const isDexService = dexServiceNames.some((name) =>
-        serviceType.toLowerCase().includes(name.toLowerCase())
+        serviceType.toLowerCase().includes(name.toLowerCase()),
       );
 
       // Check if the service implements ILpService interface or is a known DEX service
@@ -128,12 +137,16 @@ export class DexInteractionService extends Service implements IDexInteractionSer
             typeof serviceUnknown.getDexName === "function"
               ? (serviceUnknown.getDexName as () => string)()
               : serviceType;
-          console.info(`DexInteractionService: Discovered and registered LP service: ${dexName}`);
+          console.info(
+            `DexInteractionService: Discovered and registered LP service: ${dexName}`,
+          );
         }
       }
     }
 
-    console.info(`DexInteractionService: Found ${this.lpServices.length} LP services`);
+    console.info(
+      `DexInteractionService: Found ${this.lpServices.length} LP services`,
+    );
   }
 
   private isLpService(service: unknown): service is ILpService {
@@ -154,7 +167,9 @@ export class DexInteractionService extends Service implements IDexInteractionSer
   }
 
   public getLpService(dexName: string): ILpService | undefined {
-    return this.lpServices.find((s) => s.getDexName().toLowerCase() === dexName.toLowerCase());
+    return this.lpServices.find(
+      (s) => s.getDexName().toLowerCase() === dexName.toLowerCase(),
+    );
   }
 
   public getLpServices(): ILpService[] {
@@ -171,10 +186,14 @@ export class DexInteractionService extends Service implements IDexInteractionSer
 
   async start(runtime: IAgentRuntime): Promise<void> {
     const vaultService = runtime.getService<VaultService>("VaultService");
-    const userLpProfileService = runtime.getService<UserLpProfileService>("UserLpProfileService");
+    const userLpProfileService = runtime.getService<UserLpProfileService>(
+      "UserLpProfileService",
+    );
 
     if (!vaultService || !userLpProfileService) {
-      throw new Error("Required services (VaultService, UserLpProfileService) not available.");
+      throw new Error(
+        "Required services (VaultService, UserLpProfileService) not available.",
+      );
     }
     this.vaultService = vaultService;
     this.userLpProfileService = userLpProfileService;
@@ -187,7 +206,9 @@ export class DexInteractionService extends Service implements IDexInteractionSer
     // Also try discovery again after a longer delay
     setTimeout(() => {
       if (this.lpServices.length === 0) {
-        console.info("DexInteractionService: No LP services found after 5s, retrying discovery...");
+        console.info(
+          "DexInteractionService: No LP services found after 5s, retrying discovery...",
+        );
         this.discoverLpServices();
       }
     }, 5000);
@@ -205,24 +226,32 @@ export class DexInteractionService extends Service implements IDexInteractionSer
   registerDexService(dexService: ILpService): void {
     const dexName = dexService.getDexName().toLowerCase();
     const existingIndex = this.lpServices.findIndex(
-      (s) => s.getDexName().toLowerCase() === dexName
+      (s) => s.getDexName().toLowerCase() === dexName,
     );
 
     if (existingIndex !== -1) {
       console.warn(
-        `DexInteractionService: Service for DEX '${dexName}' is already registered. Overwriting.`
+        `DexInteractionService: Service for DEX '${dexName}' is already registered. Overwriting.`,
       );
       this.lpServices[existingIndex] = dexService;
     } else {
       this.lpServices.push(dexService);
-      console.info(`DexInteractionService: Registered service for DEX '${dexName}'.`);
+      console.info(
+        `DexInteractionService: Registered service for DEX '${dexName}'.`,
+      );
     }
   }
 
-  async getPools(dexName?: string, tokenAMint?: string, tokenBMint?: string): Promise<PoolInfo[]> {
+  async getPools(
+    dexName?: string,
+    tokenAMint?: string,
+    tokenBMint?: string,
+  ): Promise<PoolInfo[]> {
     // If no LP services found, try to rediscover
     if (this.lpServices.length === 0) {
-      console.info("DexInteractionService: No LP services found, attempting rediscovery...");
+      console.info(
+        "DexInteractionService: No LP services found, attempting rediscovery...",
+      );
       this.rediscoverServices();
 
       // If still no services after rediscovery, wait a bit and try again
@@ -246,7 +275,7 @@ export class DexInteractionService extends Service implements IDexInteractionSer
         } catch (error) {
           console.error(
             `DexInteractionService: Error fetching pools from ${service.getDexName()}:`,
-            error
+            error,
           );
         }
       }
@@ -254,7 +283,9 @@ export class DexInteractionService extends Service implements IDexInteractionSer
     return allPools;
   }
 
-  public async addLiquidity(config: AddLiquidityConfig): Promise<TransactionResult> {
+  public async addLiquidity(
+    config: AddLiquidityConfig,
+  ): Promise<TransactionResult> {
     const service = this.getLpService(config.dexName);
     if (!service) {
       throw new Error(`No service registered for DEX '${config.dexName}'`);
@@ -262,7 +293,9 @@ export class DexInteractionService extends Service implements IDexInteractionSer
     return service.addLiquidity(config);
   }
 
-  public async removeLiquidity(config: RemoveLiquidityConfig): Promise<TransactionResult> {
+  public async removeLiquidity(
+    config: RemoveLiquidityConfig,
+  ): Promise<TransactionResult> {
     const service = this.getLpService(config.dexName);
     if (!service) {
       throw new Error(`No service registered for DEX '${config.dexName}'`);
@@ -273,7 +306,7 @@ export class DexInteractionService extends Service implements IDexInteractionSer
   async getLpPosition(
     userId: string,
     poolIdOrPositionIdentifier: string,
-    dexName: string
+    dexName: string,
   ): Promise<LpPositionDetails | null> {
     const service = this.getLpService(dexName);
     if (!service) {
@@ -281,19 +314,27 @@ export class DexInteractionService extends Service implements IDexInteractionSer
     }
     const profile = await this.userLpProfileService.getProfile(userId);
     if (!profile?.vaultPublicKey) {
-      throw new Error(`User profile or vault public key not found for user ${userId}.`);
+      throw new Error(
+        `User profile or vault public key not found for user ${userId}.`,
+      );
     }
-    return service.getLpPositionDetails(profile.vaultPublicKey, poolIdOrPositionIdentifier);
+    return service.getLpPositionDetails(
+      profile.vaultPublicKey,
+      poolIdOrPositionIdentifier,
+    );
   }
 
-  public async getAllUserLpPositions(userId: string): Promise<LpPositionDetails[]> {
+  public async getAllUserLpPositions(
+    userId: string,
+  ): Promise<LpPositionDetails[]> {
     const profile = await this.userLpProfileService.getProfile(userId);
     if (!profile) {
       return [];
     }
 
     const allPositions: LpPositionDetails[] = [];
-    const trackedPositions = await this.userLpProfileService.getTrackedPositions(userId);
+    const trackedPositions =
+      await this.userLpProfileService.getTrackedPositions(userId);
 
     for (const tracked of trackedPositions) {
       const service = this.getLpService(tracked.dex);
@@ -301,7 +342,7 @@ export class DexInteractionService extends Service implements IDexInteractionSer
         try {
           const positionDetails = await service.getLpPositionDetails(
             profile.vaultPublicKey,
-            tracked.positionIdentifier
+            tracked.positionIdentifier,
           );
           if (positionDetails) {
             allPositions.push(positionDetails);
@@ -309,7 +350,7 @@ export class DexInteractionService extends Service implements IDexInteractionSer
         } catch (error) {
           console.error(
             `Error fetching position details for ${tracked.positionIdentifier} from ${tracked.dex}:`,
-            error
+            error,
           );
         }
       }

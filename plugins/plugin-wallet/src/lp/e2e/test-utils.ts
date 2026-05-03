@@ -24,15 +24,17 @@ import { v4 as uuid } from "uuid";
  * @returns A promise that resolves to an object containing the created world, user, and room.
  */
 export async function setupScenario(
-  runtime: IAgentRuntime
+  runtime: IAgentRuntime,
 ): Promise<{ user: Entity; room: Room; world: World }> {
   assert(runtime.agentId, "Runtime must have an agentId to run a scenario");
 
   // Set up mock environment for DEX plugins
-  process.env.RPC_URL = process.env.RPC_URL || "https://api.mainnet-beta.solana.com";
+  process.env.RPC_URL =
+    process.env.RPC_URL || "https://api.mainnet-beta.solana.com";
   process.env.SOLANA_PUBLIC_KEY =
     process.env.SOLANA_PUBLIC_KEY || "11111111111111111111111111111111";
-  process.env.SOLANA_PRIVATE_KEY = process.env.SOLANA_PRIVATE_KEY || "mockPrivateKeyForTesting";
+  process.env.SOLANA_PRIVATE_KEY =
+    process.env.SOLANA_PRIVATE_KEY || "mockPrivateKeyForTesting";
   // 1. Create a test user entity first, so we can assign ownership
   const user: Entity = {
     id: asUUID(uuid()),
@@ -82,7 +84,9 @@ export async function setupScenario(
 
   // Register mock services for testing
   // The real DEX plugins are not properly registering their services currently
-  const { registerMockDexServices } = await import("../services/MockLpService.ts");
+  const { registerMockDexServices } = await import(
+    "../services/MockLpService.ts"
+  );
   await registerMockDexServices(runtime);
 
   // Wait for services to be registered
@@ -107,7 +111,7 @@ export function sendMessageAndWaitForResponse(
   runtime: IAgentRuntime,
   room: Room,
   user: Entity,
-  text: string
+  text: string,
 ): Promise<Content> {
   return new Promise((resolve) => {
     assert(runtime.agentId, "Runtime must have an agentId to send a message");

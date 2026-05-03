@@ -92,7 +92,10 @@ async function tryImportDeps(): Promise<boolean> {
     typeof core.secretsManagerPlugin === "object"
       ? (core.secretsManagerPlugin as Plugin)
       : null;
-  if ("SECRETS_SERVICE_TYPE" in core && typeof core.SECRETS_SERVICE_TYPE === "string") {
+  if (
+    "SECRETS_SERVICE_TYPE" in core &&
+    typeof core.SECRETS_SERVICE_TYPE === "string"
+  ) {
     SECRETS_SERVICE_TYPE = core.SECRETS_SERVICE_TYPE;
   }
 
@@ -118,7 +121,9 @@ async function tryImportDeps(): Promise<boolean> {
  * sendMessage callback never fires.
  */
 async function loadModelProviderPlugin(): Promise<Plugin | null> {
-  const explicit = (process.env.CONFIGBENCH_AGENT_PROVIDER ?? "").trim().toLowerCase();
+  const explicit = (process.env.CONFIGBENCH_AGENT_PROVIDER ?? "")
+    .trim()
+    .toLowerCase();
   const hasGroq = !!process.env.GROQ_API_KEY;
   const hasAnthropic = !!process.env.ANTHROPIC_API_KEY;
   const hasOpenAI = !!process.env.OPENAI_API_KEY;
@@ -148,14 +153,18 @@ async function loadModelProviderPlugin(): Promise<Plugin | null> {
         }
       } else if (provider === "anthropic") {
         const mod = await import("@elizaos/plugin-anthropic");
-        const plugin = (mod.anthropicPlugin ?? mod.default ?? null) as Plugin | null;
+        const plugin = (mod.anthropicPlugin ??
+          mod.default ??
+          null) as Plugin | null;
         if (plugin) {
           console.log("[ElizaHandler] Loaded model provider plugin: anthropic");
           return plugin;
         }
       } else if (provider === "openai") {
         const mod = await import("@elizaos/plugin-openai");
-        const plugin = (mod.openaiPlugin ?? mod.default ?? null) as Plugin | null;
+        const plugin = (mod.openaiPlugin ??
+          mod.default ??
+          null) as Plugin | null;
         if (plugin) {
           console.log("[ElizaHandler] Loaded model provider plugin: openai");
           return plugin;
@@ -195,15 +204,17 @@ async function sendMessageAndWaitForResponse(
   // Prefer the runtime's messageService (DefaultMessageService) which actually
   // generates a response via the model provider plugin. emitEvent alone only
   // triggers logging/trajectory hooks and never produces a reply.
-  const messageService = (rt as unknown as {
-    messageService?: {
-      handleMessage(
-        runtime: IAgentRuntime,
-        message: Memory,
-        callback: (responseContent: Content) => Promise<Memory[]>,
-      ): Promise<unknown>;
-    } | null;
-  }).messageService;
+  const messageService = (
+    rt as unknown as {
+      messageService?: {
+        handleMessage(
+          runtime: IAgentRuntime,
+          message: Memory,
+          callback: (responseContent: Content) => Promise<Memory[]>,
+        ): Promise<unknown>;
+      } | null;
+    }
+  ).messageService;
 
   const work = (async () => {
     if (messageService && typeof messageService.handleMessage === "function") {

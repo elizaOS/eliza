@@ -345,10 +345,15 @@ export class N8nWorkflowService extends Service {
         runtimeVersions
       );
       workflow = repairResult.workflow;
-      if (repairResult.errors.length === 0) {break;}
+      if (repairResult.errors.length === 0) {
+        break;
+      }
       if (attempt === 2) {
         logger.warn(
-          { src: 'plugin:n8n-workflow:service:main', errors: repairResult.errors },
+          {
+            src: 'plugin:n8n-workflow:service:main',
+            errors: repairResult.errors,
+          },
           `validateAndRepair: ${repairResult.errors.length} unrecoverable error(s) after 3 retries — proceeding to deploy with _meta.errors`
         );
         workflow._meta = workflow._meta ?? {};
@@ -507,10 +512,15 @@ export class N8nWorkflowService extends Service {
         runtimeVersionsForModify
       );
       workflow = repairResult.workflow;
-      if (repairResult.errors.length === 0) {break;}
+      if (repairResult.errors.length === 0) {
+        break;
+      }
       if (attempt === 2) {
         logger.warn(
-          { src: 'plugin:n8n-workflow:service:main', errors: repairResult.errors },
+          {
+            src: 'plugin:n8n-workflow:service:main',
+            errors: repairResult.errors,
+          },
           `validateAndRepair (modify): ${repairResult.errors.length} unrecoverable error(s) after 3 retries`
         );
         workflow._meta = workflow._meta ?? {};

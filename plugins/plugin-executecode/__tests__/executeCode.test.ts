@@ -126,9 +126,15 @@ function makeRecordingAction(
     description: `${name} for tests`,
     similes: [],
     validate: async () => true,
-    handler: async (_runtime, _message, _state, options): Promise<ActionResult> => {
-      const params = (options as { parameters?: { value?: unknown } } | undefined)
-        ?.parameters;
+    handler: async (
+      _runtime,
+      _message,
+      _state,
+      options,
+    ): Promise<ActionResult> => {
+      const params = (
+        options as { parameters?: { value?: unknown } } | undefined
+      )?.parameters;
       calls.push(`${name}:${JSON.stringify(params ?? null)}`);
       return {
         success: true,
@@ -329,7 +335,11 @@ describe("EXECUTE_CODE action", () => {
       state,
       { parameters: { script: `await tools.MEDIA_ACTION({});` } },
     );
-    if (!blockedResult || typeof blockedResult !== "object" || !("success" in blockedResult)) {
+    if (
+      !blockedResult ||
+      typeof blockedResult !== "object" ||
+      !("success" in blockedResult)
+    ) {
       throw new Error("expected ActionResult");
     }
     expect(blockedResult.success).toBe(false);
@@ -343,7 +353,11 @@ describe("EXECUTE_CODE action", () => {
       state,
       { parameters: { script: `await tools.WALLET_ACTION({});` } },
     );
-    if (!allowedResult || typeof allowedResult !== "object" || !("success" in allowedResult)) {
+    if (
+      !allowedResult ||
+      typeof allowedResult !== "object" ||
+      !("success" in allowedResult)
+    ) {
       throw new Error("expected ActionResult");
     }
     expect(allowedResult.success).toBe(true);
@@ -387,11 +401,16 @@ describe("EXECUTE_CODE action", () => {
     } as IAgentRuntime;
 
     const capturedRoomIds: string[] = [];
-    (runtime as unknown as { getMemories: IAgentRuntime["getMemories"] }).getMemories =
-      (async (params: { tableName: string; roomId: string; limit?: number }) => {
-        capturedRoomIds.push(params.roomId);
-        return [];
-      }) as unknown as IAgentRuntime["getMemories"];
+    (
+      runtime as unknown as { getMemories: IAgentRuntime["getMemories"] }
+    ).getMemories = (async (params: {
+      tableName: string;
+      roomId: string;
+      limit?: number;
+    }) => {
+      capturedRoomIds.push(params.roomId);
+      return [];
+    }) as unknown as IAgentRuntime["getMemories"];
 
     const message = createMessage();
     const script = `
@@ -447,9 +466,18 @@ describe("EXECUTE_CODE action", () => {
       throw new Error("expected ActionResult");
     }
     expect(result.success).toBe(true);
-    const data = (result as ActionResult & {
-      data?: { returnValue?: { keys: string[]; hasDatabaseAdapter: boolean; hasServices: boolean; hasRuntime: boolean } };
-    }).data;
+    const data = (
+      result as ActionResult & {
+        data?: {
+          returnValue?: {
+            keys: string[];
+            hasDatabaseAdapter: boolean;
+            hasServices: boolean;
+            hasRuntime: boolean;
+          };
+        };
+      }
+    ).data;
     const returnValue = data?.returnValue;
     expect(returnValue?.hasDatabaseAdapter).toBe(false);
     expect(returnValue?.hasServices).toBe(false);
@@ -513,9 +541,11 @@ describe("EXECUTE_CODE action", () => {
       throw new Error("expected ActionResult");
     }
     expect(result.success).toBe(true);
-    const returnValue = (result as ActionResult & {
-      data?: { returnValue?: { hasHostBound: boolean; safeString: string } };
-    }).data?.returnValue;
+    const returnValue = (
+      result as ActionResult & {
+        data?: { returnValue?: { hasHostBound: boolean; safeString: string } };
+      }
+    ).data?.returnValue;
     // sanitizeForScript drops non-plain-object fields — `hostBound` becomes
     // undefined and omitted from the sanitized data object.
     expect(returnValue?.hasHostBound).toBe(false);
@@ -542,17 +572,12 @@ describe("EXECUTE_CODE action", () => {
 
     // Wallet routing would normally block ACTION_B, but explicit allowedActions
     // wins.
-    const result = await executeCodeAction.handler(
-      runtime,
-      message,
-      state,
-      {
-        parameters: {
-          script: `await tools.ACTION_B({});`,
-          allowedActions: ["ACTION_B"],
-        },
+    const result = await executeCodeAction.handler(runtime, message, state, {
+      parameters: {
+        script: `await tools.ACTION_B({});`,
+        allowedActions: ["ACTION_B"],
       },
-    );
+    });
     if (!result || typeof result !== "object" || !("success" in result)) {
       throw new Error("expected ActionResult");
     }
