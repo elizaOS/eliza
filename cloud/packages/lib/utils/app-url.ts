@@ -10,15 +10,18 @@
  * at build time) and Node tests.
  */
 interface AppUrlEnv {
-  NEXT_PUBLIC_APP_URL?: string | null;
+  NEXT_PUBLIC_APP_URL?: unknown;
+  [key: string]: unknown;
 }
 
-export function getAppUrl(env: AppUrlEnv = process.env as AppUrlEnv): string {
-  const url = env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+export function getAppUrl(env: AppUrlEnv = process.env): string {
+  const configuredUrl =
+    typeof env.NEXT_PUBLIC_APP_URL === "string" ? env.NEXT_PUBLIC_APP_URL : undefined;
+  const url = configuredUrl || "http://localhost:3000";
   const base = url.startsWith("http") ? url : `https://${url}`;
   return base.replace(/\/$/, "");
 }
 
-export function getAppHost(env: AppUrlEnv = process.env as AppUrlEnv): string {
+export function getAppHost(env: AppUrlEnv = process.env): string {
   return new URL(getAppUrl(env)).host;
 }
