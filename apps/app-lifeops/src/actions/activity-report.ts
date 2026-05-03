@@ -5,6 +5,10 @@
  * GET_TIME_ON_APP      — time spent on a specific app (by name or bundle id).
  * GET_TIME_ON_SITE     — time spent on a specific site based on browser
  *                        activity reports pushed into the runtime store.
+ *
+ * Every user-visible reply runs through `renderLifeOpsActionReply` so the raw
+ * data templates land in the agent's character voice. The structured `data`
+ * payload on each ActionResult is preserved verbatim for downstream consumers.
  */
 
 import type {
@@ -13,6 +17,7 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
+  State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { isSupportedPlatform } from "@elizaos/native-activity-tracker";
@@ -21,6 +26,10 @@ import {
   getTimeOnApp,
 } from "../activity-profile/activity-tracker-reporting.js";
 import { getBrowserDomainActivity } from "../lifeops/browser-extension-store.js";
+import {
+  messageText,
+  renderLifeOpsActionReply,
+} from "./lifeops-grounded-reply.js";
 import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
 
 const DEFAULT_WINDOW_HOURS = 24;
@@ -113,6 +122,43 @@ function buildReportSummary(
     .join("\n");
 }
 
+type RespondPayload<T extends NonNullable<ActionResult["data"]> | undefined> = {
+  success: boolean;
+  scenario: string;
+  fallback: string;
+  context?: Record<string, unknown>;
+  data?: T;
+};
+
+function makeRespond(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  callback: Parameters<NonNullable<Action["handler"]>>[4],
+  actionName: string,
+): <T extends NonNullable<ActionResult["data"]> | undefined>(
+  payload: RespondPayload<T>,
+) => Promise<ActionResult> {
+  const intent = messageText(message).trim();
+  return async (payload) => {
+    const text = await renderLifeOpsActionReply({
+      runtime,
+      message,
+      state,
+      intent,
+      scenario: payload.scenario,
+      fallback: payload.fallback,
+      context: payload.context,
+    });
+    await callback?.({ text, source: "action", action: actionName });
+    return {
+      text,
+      success: payload.success,
+      ...(payload.data ? { data: payload.data } : {}),
+    };
+  };
+}
+
 export const getActivityReportAction: Action = {
   name: "GET_ACTIVITY_REPORT",
   similes: ["ACTIVITY_REPORT", "WHAT_DID_I_WORK_ON", "TIME_TRACKING_REPORT"],
@@ -122,36 +168,43 @@ export const getActivityReportAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _state,
+    state,
     options,
     callback,
   ): Promise<ActionResult> => {
+    const respond = makeRespond(
+      runtime,
+      message,
+      state,
+      callback,
+      "GET_ACTIVITY_REPORT",
+    );
+
     if (!(await hasLifeOpsAccess(runtime, message))) {
-      const text = "Activity reports are restricted to the owner.";
-      await callback?.({ text });
-      return { text, success: false, data: { error: "PERMISSION_DENIED" } };
+      return respond({
+        success: false,
+        scenario: "access_denied",
+        fallback: "Activity reports are restricted to the owner.",
+        data: { error: "PERMISSION_DENIED" },
+      });
     }
     const params = getActivityReportParams(options);
     const windowMs = resolveWindowMs(params.windowHours);
 
     if (!isSupportedPlatform()) {
-      const text =
-        "Activity tracking is macOS-only. No data available on this platform.";
-      await callback?.({
-        text,
-        source: "action",
-        action: "GET_ACTIVITY_REPORT",
-      });
-      return {
-        text,
+      return respond({
         success: true,
+        scenario: "activity_report_unsupported_platform",
+        fallback:
+          "Activity tracking is macOS-only. No data available on this platform.",
+        context: { windowMs },
         data: {
           apps: [],
           totalMs: 0,
           windowMs,
           noDataReason: "macos-only",
         },
-      };
+      });
     }
 
     const agentId = String(runtime.agentId);
@@ -159,20 +212,25 @@ export const getActivityReportAction: Action = {
       windowMs,
       limit: 20,
     });
-    const text = `Activity report (${formatMinutes(report.totalMs)}m total):\n${buildReportSummary(
+    const fallback = `Activity report (${formatMinutes(report.totalMs)}m total):\n${buildReportSummary(
       report.apps,
     )}`;
-    await callback?.({ text, source: "action", action: "GET_ACTIVITY_REPORT" });
-    return {
-      text,
+    return respond({
       success: true,
+      scenario: "activity_report_summary",
+      fallback,
+      context: {
+        totalMs: report.totalMs,
+        appCount: report.apps.length,
+        topApps: report.apps.slice(0, 5),
+      },
       data: {
         sinceMs: report.sinceMs,
         untilMs: report.untilMs,
         totalMs: report.totalMs,
         apps: report.apps,
       },
-    };
+    });
   },
   parameters: [
     {
@@ -205,34 +263,44 @@ export const getTimeOnAppAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _state,
+    state,
     options,
     callback,
   ): Promise<ActionResult> => {
+    const respond = makeRespond(
+      runtime,
+      message,
+      state,
+      callback,
+      "GET_TIME_ON_APP",
+    );
+
     if (!(await hasLifeOpsAccess(runtime, message))) {
-      const text = "Activity reports are restricted to the owner.";
-      await callback?.({ text });
-      return { text, success: false, data: { error: "PERMISSION_DENIED" } };
+      return respond({
+        success: false,
+        scenario: "access_denied",
+        fallback: "Activity reports are restricted to the owner.",
+        data: { error: "PERMISSION_DENIED" },
+      });
     }
     const params = getTimeOnAppParams(options);
     const target = (params.appNameOrBundleId ?? "").trim();
     if (!target) {
-      const text = "Specify an app name or bundle id.";
-      await callback?.({ text });
-      return {
-        text,
+      return respond({
         success: false,
+        scenario: "time_on_app_missing_app",
+        fallback: "Specify an app name or bundle id.",
         data: { error: "MISSING_APP" },
-      };
+      });
     }
     const windowMs = resolveWindowMs(params.windowHours);
 
     if (!isSupportedPlatform()) {
-      const text = `Activity tracking is macOS-only; no time-on-app data for ${target}.`;
-      await callback?.({ text, source: "action", action: "GET_TIME_ON_APP" });
-      return {
-        text,
+      return respond({
         success: true,
+        scenario: "time_on_app_unsupported_platform",
+        fallback: `Activity tracking is macOS-only; no time-on-app data for ${target}.`,
+        context: { app: target, windowMs },
         data: {
           minutes: 0,
           totalMs: 0,
@@ -240,20 +308,25 @@ export const getTimeOnAppAction: Action = {
           app: target,
           noDataReason: "macos-only",
         },
-      };
+      });
     }
 
     const agentId = String(runtime.agentId);
     const result = await getTimeOnApp(runtime, agentId, target, { windowMs });
     const minutes = formatMinutes(result.totalMs);
-    const text =
+    const fallback =
       result.matchedBy === "none"
         ? `No focus events recorded for ${target} in that window.`
         : `${target}: ${minutes}m (matched by ${result.matchedBy}).`;
-    await callback?.({ text, source: "action", action: "GET_TIME_ON_APP" });
-    return {
-      text,
+    return respond({
       success: true,
+      scenario: "time_on_app",
+      fallback,
+      context: {
+        app: target,
+        minutes,
+        matchedBy: result.matchedBy,
+      },
       data: {
         app: target,
         minutes,
@@ -261,7 +334,7 @@ export const getTimeOnAppAction: Action = {
         matchedBy: result.matchedBy,
         windowMs,
       },
-    };
+    });
   },
   parameters: [
     {
@@ -302,22 +375,36 @@ export const getTimeOnSiteAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _state,
+    state,
     options,
     callback,
   ): Promise<ActionResult> => {
+    const respond = makeRespond(
+      runtime,
+      message,
+      state,
+      callback,
+      "GET_TIME_ON_SITE",
+    );
+
     if (!(await hasLifeOpsAccess(runtime, message))) {
-      const text = "Activity reports are restricted to the owner.";
-      await callback?.({ text });
-      return { text, success: false, data: { error: "PERMISSION_DENIED" } };
+      return respond({
+        success: false,
+        scenario: "access_denied",
+        fallback: "Activity reports are restricted to the owner.",
+        data: { error: "PERMISSION_DENIED" },
+      });
     }
     const params = getTimeOnSiteParams(options);
     const rawDomain = (params.domain ?? "").trim();
     const domain = rawDomain ? normalizeDomain(rawDomain) : "";
     if (!domain) {
-      const text = "Specify a site domain.";
-      await callback?.({ text });
-      return { text, success: false, data: { error: "MISSING_DOMAIN" } };
+      return respond({
+        success: false,
+        scenario: "time_on_site_missing_domain",
+        fallback: "Specify a site domain.",
+        data: { error: "MISSING_DOMAIN" },
+      });
     }
     const windowMs = resolveWindowMs(params.windowHours);
     const untilMs = Date.now();
@@ -330,16 +417,16 @@ export const getTimeOnSiteAction: Action = {
     const minutes = formatMinutes(result.totalMs);
 
     if (result.reportCount === 0) {
-      const text =
-        "No browser activity reports have been received yet. Connect the LifeOps browser activity source and try again.";
       logger.debug(
         { domain, windowMs },
         "[activity-tracker] GET_TIME_ON_SITE invoked before any browser activity reports were recorded.",
       );
-      await callback?.({ text, source: "action", action: "GET_TIME_ON_SITE" });
-      return {
-        text,
+      return respond({
         success: true,
+        scenario: "time_on_site_no_browser_activity",
+        fallback:
+          "No browser activity reports have been received yet. Connect the LifeOps browser activity source and try again.",
+        context: { domain, windowMs },
         data: {
           domain,
           minutes: 0,
@@ -347,17 +434,18 @@ export const getTimeOnSiteAction: Action = {
           windowMs,
           noDataReason: "no-browser-activity-yet",
         },
-      };
+      });
     }
 
-    const text =
+    const fallback =
       result.totalMs > 0
         ? `${domain}: ${minutes}m.`
         : `No browser activity recorded for ${domain} in that window.`;
-    await callback?.({ text, source: "action", action: "GET_TIME_ON_SITE" });
-    return {
-      text,
+    return respond({
       success: true,
+      scenario: "time_on_site",
+      fallback,
+      context: { domain, minutes, totalMs: result.totalMs },
       data: {
         domain,
         minutes,
@@ -365,7 +453,7 @@ export const getTimeOnSiteAction: Action = {
         windowMs,
         ...(result.totalMs === 0 ? { noDataReason: "no-domain-activity" } : {}),
       },
-    };
+    });
   },
   parameters: [
     {
