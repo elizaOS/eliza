@@ -47,8 +47,13 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
-    # Skip if commit message contains [skip ci]
-    if: ${{ !contains(github.event.head_commit.message || '', '[skip ci]') }}
+    # Skip if commit message contains [skip ci], and keep prerelease tags
+    # out of the production/latest GitHub Release path.
+    if: >-
+      ${{
+        !contains(github.event.head_commit.message || '', '[skip ci]') &&
+        !(github.event_name == 'release' && contains(github.event.release.tag_name || '', '-'))
+      }}
 
     permissions:
       contents: write
