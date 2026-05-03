@@ -29,6 +29,7 @@ from elizaos_gaia.orchestrator.providers import (
     BaseGAIAProvider,
     ClaudeCodeGAIAProvider,
     CodexGAIAProvider,
+    ElizaCodeGAIAProvider,
     SWEAgentGAIAProvider,
 )
 from elizaos_gaia.orchestrator.trace import GAIATraceRecorder
@@ -91,7 +92,12 @@ class OrchestratedGAIARunner:
             except ValueError:
                 logger.warning("Ignoring unsupported provider '%s' for GAIA matrix", raw)
         if not selected:
-            return [ProviderType.CLAUDE_CODE, ProviderType.SWE_AGENT, ProviderType.CODEX]
+            return [
+                ProviderType.CLAUDE_CODE,
+                ProviderType.SWE_AGENT,
+                ProviderType.CODEX,
+                ProviderType.ELIZA_CODE,
+            ]
         return selected
 
     def _required_capabilities(self) -> list[str]:
@@ -143,6 +149,7 @@ class OrchestratedGAIARunner:
             ProviderType.CLAUDE_CODE: ClaudeCodeGAIAProvider(None, self.config),
             ProviderType.SWE_AGENT: SWEAgentGAIAProvider(None, self.config),
             ProviderType.CODEX: CodexGAIAProvider(None, self.config),
+            ProviderType.ELIZA_CODE: ElizaCodeGAIAProvider(None, self.config),
         }
         selected_types = self._provider_types()
         self.providers = {

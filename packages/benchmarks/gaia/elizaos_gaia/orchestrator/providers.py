@@ -140,3 +140,8 @@ class SWEAgentGAIAProvider(BaseGAIAProvider):
 class CodexGAIAProvider(BaseGAIAProvider):
     def __init__(self, runtime: AgentRuntime | None, config: GAIAConfig) -> None:
         super().__init__("codex", "Codex", runtime, config)
+
+
+class ElizaCodeGAIAProvider(BaseGAIAProvider):
+    def __init__(self, runtime: AgentRuntime | None, config: GAIAConfig) -> None:
+        super().__init__("eliza-code", "Eliza Code", runtime, config)
