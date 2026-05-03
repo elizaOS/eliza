@@ -54,6 +54,10 @@ retry_command() {
   return "$command_status"
 }
 
+retry_codesign() {
+  retry_command "${ELECTROBUN_CODESIGN_ATTEMPTS:-3}" "${ELECTROBUN_CODESIGN_RETRY_DELAY_SECONDS:-20}" codesign "$@"
+}
+
 parse_notary_submission_id() {
   local output_path="$1"
   /usr/bin/python3 - "$output_path" <<'PY'
@@ -131,14 +135,149 @@ fs.writeFileSync(
 NODE
 }
 
-TARBALL_PATH="$(find -L "$ARTIFACTS_DIR" -maxdepth 1 -type f -name "*-macos-*.app.tar.zst" | sort | head -1)"
+parse_notary_status() {
+  local output_path="$1"
+  /usr/bin/python3 - "$output_path" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+if not path.exists():
+    sys.exit(1)
+
+raw = path.read_text(encoding="utf-8", errors="replace")
+
+try:
+    payload = json.loads(raw)
+except json.JSONDecodeError:
+    sys.exit(1)
+
+status = payload.get("status") or ""
+if status:
+    print(status)
+PY
+}
+
+retry_notarytool_submit() {
+  local output_path="$1"
+  local attempts="$2"
+  local delay_seconds="$3"
+
+  local attempt command_status=0
+  for ((attempt = 1; attempt <= attempts; attempt += 1)); do
+    rm -f "$output_path"
+    if "$REAL_XCRUN" notarytool submit \
+      --apple-id "$ELECTROBUN_APPLEID" \
+      --password "$ELECTROBUN_APPLEIDPASS" \
+      --team-id "$ELECTROBUN_TEAMID" \
+      --output-format json \
+      "$TEMP_DMG_PATH" >"$output_path"; then
+      return 0
+    else
+      command_status=$?
+    fi
+
+    echo "stage-macos-release-artifacts: notarization submit failed for $TEMP_DMG_PATH (attempt $attempt/$attempts, exit=$command_status)" >&2
+    if [[ "$attempt" -lt "$attempts" ]]; then
+      sleep "$((delay_seconds * attempt))"
+    fi
+  done
+
+  return "$command_status"
+}
+
+retry_notarytool_wait() {
+  local output_path="$1"
+  local attempts="$2"
+  local delay_seconds="$3"
+
+  local attempt command_status=0 notary_status=""
+  for ((attempt = 1; attempt <= attempts; attempt += 1)); do
+    rm -f "$output_path"
+    if "$REAL_XCRUN" notarytool wait \
+      --apple-id "$ELECTROBUN_APPLEID" \
+      --password "$ELECTROBUN_APPLEIDPASS" \
+      --team-id "$ELECTROBUN_TEAMID" \
+      --timeout "$NOTARY_WAIT_TIMEOUT" \
+      --output-format json \
+      "$NOTARY_SUBMISSION_ID" >"$output_path"; then
+      NOTARY_STATUS="$(parse_notary_status "$output_path" || true)"
+      if [[ "$NOTARY_STATUS" == "Accepted" ]]; then
+        return 0
+      fi
+      echo "stage-macos-release-artifacts: notarization ended with status ${NOTARY_STATUS:-unknown} for submission $NOTARY_SUBMISSION_ID" >&2
+      return 1
+    else
+      command_status=$?
+    fi
+
+    notary_status="$(parse_notary_status "$output_path" || true)"
+    if [[ "$notary_status" == "Invalid" || "$notary_status" == "Rejected" ]]; then
+      echo "stage-macos-release-artifacts: notarization ended with status $notary_status for submission $NOTARY_SUBMISSION_ID" >&2
+      return "$command_status"
+    fi
+
+    echo "stage-macos-release-artifacts: notarization wait failed for submission $NOTARY_SUBMISSION_ID (attempt $attempt/$attempts, exit=$command_status)" >&2
+    if [[ "$attempt" -lt "$attempts" ]]; then
+      sleep "$((delay_seconds * attempt))"
+    fi
+  done
+
+  return "$command_status"
+}
+
+retry_notarytool_log() {
+  local attempts="${ELECTROBUN_NOTARY_LOG_ATTEMPTS:-3}"
+  local delay_seconds="${ELECTROBUN_NOTARY_LOG_RETRY_DELAY_SECONDS:-20}"
+
+  local attempt command_status=0
+  for ((attempt = 1; attempt <= attempts; attempt += 1)); do
+    if "$REAL_XCRUN" notarytool log \
+      --apple-id "$ELECTROBUN_APPLEID" \
+      --password "$ELECTROBUN_APPLEIDPASS" \
+      --team-id "$ELECTROBUN_TEAMID" \
+      "$NOTARY_SUBMISSION_ID"; then
+      return 0
+    else
+      command_status=$?
+    fi
+
+    echo "stage-macos-release-artifacts: notarization log fetch failed for submission $NOTARY_SUBMISSION_ID (attempt $attempt/$attempts, exit=$command_status)" >&2
+    if [[ "$attempt" -lt "$attempts" ]]; then
+      sleep "$((delay_seconds * attempt))"
+    fi
+  done
+
+  return "$command_status"
+}
+
+TARBALL_PATH=""
+for tarball_pattern in "*-macos-*.app.tar.zst" "*-macos-*.app.tar.gz" "*-macos-*.tar.gz"; do
+  TARBALL_PATH="$(find -L "$ARTIFACTS_DIR" -maxdepth 1 -type f -name "$tarball_pattern" | sort | head -1)"
+  if [[ -n "$TARBALL_PATH" ]]; then
+    break
+  fi
+done
 if [[ -z "$TARBALL_PATH" ]]; then
   echo "stage-macos-release-artifacts: no macOS updater tarball found in $ARTIFACTS_DIR"
   exit 1
 fi
 
 echo "Using updater tarball: $TARBALL_PATH"
-tar --zstd -xf "$TARBALL_PATH" -C "$EXTRACT_DIR"
+TARBALL_BASENAME="$(basename "$TARBALL_PATH")"
+case "$TARBALL_BASENAME" in
+  *.tar.zst)
+    tar --zstd -xf "$TARBALL_PATH" -C "$EXTRACT_DIR"
+    ;;
+  *.tar.gz)
+    tar -xzf "$TARBALL_PATH" -C "$EXTRACT_DIR"
+    ;;
+  *)
+    echo "stage-macos-release-artifacts: unsupported macOS updater tarball: $TARBALL_BASENAME"
+    exit 1
+    ;;
+esac
 
 APP_BUNDLE_PATH="$(find "$EXTRACT_DIR" -maxdepth 2 -type d -name "*.app" | sort | head -1)"
 if [[ -z "$APP_BUNDLE_PATH" ]]; then
@@ -217,17 +356,75 @@ if [[ "$SKIP_SIGNATURE_CHECK" != "1" && -n "${ELECTROBUN_DEVELOPER_ID:-}" ]]; th
   # The extracted updater app bundle is already correctly signed/notarized by
   # electrobun. Re-sign only what changed and keep the original entitlements so
   # we do not rewrite valid nested signatures with a blanket --deep pass.
-  if ! codesign --force --timestamp --sign "$ELECTROBUN_DEVELOPER_ID" --options runtime "${entitlement_args[@]}" "$LAUNCHER_PATH"; then
-    echo "stage-macos-release-artifacts: launcher runtime signing failed, retrying without hardened runtime" >&2
-    codesign --force --timestamp --sign "$ELECTROBUN_DEVELOPER_ID" "${entitlement_args[@]}" "$LAUNCHER_PATH"
+  runtime_sign_args=(--force --timestamp --sign "$ELECTROBUN_DEVELOPER_ID" --options runtime)
+  fallback_runtime_sign_args=(--force --timestamp --sign "$ELECTROBUN_DEVELOPER_ID")
+  app_sign_args=(--force --timestamp --sign "$ELECTROBUN_DEVELOPER_ID" --options runtime)
+  if [[ -s "${TMP_ENTITLEMENTS_PATH:-}" ]]; then
+    runtime_sign_args+=(--entitlements "$TMP_ENTITLEMENTS_PATH")
+    fallback_runtime_sign_args+=(--entitlements "$TMP_ENTITLEMENTS_PATH")
+    app_sign_args+=(--entitlements "$TMP_ENTITLEMENTS_PATH")
   fi
-  codesign --force --timestamp --sign "$ELECTROBUN_DEVELOPER_ID" --options runtime "${entitlement_args[@]}" "$STAGED_APP_PATH"
+  sign_macos_runtime_target() {
+    local target_path="$1"
+    if ! retry_codesign "${runtime_sign_args[@]}" "$target_path"; then
+      echo "stage-macos-release-artifacts: runtime signing failed for $target_path, retrying without hardened runtime" >&2
+      retry_codesign "${fallback_runtime_sign_args[@]}" "$target_path"
+    fi
+  }
+  sign_nested_macos_runtime_targets() {
+    local runtime_resources_dir="$STAGED_APP_PATH/Contents/Resources/app/eliza-dist"
+    local candidate_path file_type
+    if [[ ! -d "$runtime_resources_dir" ]]; then
+      return 0
+    fi
+    while IFS= read -r -d '' candidate_path; do
+      file_type="$(file "$candidate_path" 2>/dev/null || true)"
+      case "$file_type" in
+        *Mach-O*)
+          sign_macos_runtime_target "$candidate_path"
+          ;;
+      esac
+    done < <(find "$runtime_resources_dir" -type f -print0)
+  }
+  macos_code_dir="$STAGED_APP_PATH/Contents/MacOS"
+  for runtime_target in \
+    "$macos_code_dir/libNativeWrapper.dylib" \
+    "$macos_code_dir/libwebgpu_dawn.dylib" \
+    "$macos_code_dir/libasar.dylib" \
+    "$macos_code_dir/bun" \
+    "$macos_code_dir/extractor" \
+    "$macos_code_dir/process_helper" \
+    "$macos_code_dir/zig-zstd" \
+    "$macos_code_dir/zig-asar" \
+    "$macos_code_dir/bspatch" \
+    "$macos_code_dir/bsdiff"; do
+    if [[ -e "$runtime_target" ]]; then
+      sign_macos_runtime_target "$runtime_target"
+    fi
+  done
+  sign_nested_macos_runtime_targets
+  sign_macos_runtime_target "$LAUNCHER_PATH"
+  retry_codesign "${app_sign_args[@]}" "$STAGED_APP_PATH"
   codesign --verify --deep --strict --verbose=2 "$STAGED_APP_PATH"
 else
   echo "Skipping staged app signature verification (unsigned/local build)."
 fi
 
-FINAL_DMG_NAME="$(basename "${TARBALL_PATH%.app.tar.zst}.dmg")"
+case "$TARBALL_BASENAME" in
+  *.app.tar.zst)
+    FINAL_DMG_NAME="${TARBALL_BASENAME%.app.tar.zst}.dmg"
+    ;;
+  *.app.tar.gz)
+    FINAL_DMG_NAME="${TARBALL_BASENAME%.app.tar.gz}.dmg"
+    ;;
+  *.tar.gz)
+    FINAL_DMG_NAME="${TARBALL_BASENAME%.tar.gz}.dmg"
+    ;;
+  *)
+    echo "stage-macos-release-artifacts: unsupported macOS updater tarball: $TARBALL_BASENAME"
+    exit 1
+    ;;
+esac
 FINAL_DMG_PATH="$ARTIFACTS_DIR/$FINAL_DMG_NAME"
 TEMP_DMG_PATH="$TMP_ROOT/$FINAL_DMG_NAME"
 VOLUME_NAME="$(basename "$STAGED_APP_PATH" .app)"
@@ -244,17 +441,18 @@ hdiutil create \
   "$TEMP_DMG_PATH"
 
 if [[ "$SKIP_SIGNATURE_CHECK" != "1" && -n "${ELECTROBUN_DEVELOPER_ID:-}" ]]; then
-  codesign --force --timestamp --sign "$ELECTROBUN_DEVELOPER_ID" "$TEMP_DMG_PATH"
+  retry_codesign --force --timestamp --sign "$ELECTROBUN_DEVELOPER_ID" "$TEMP_DMG_PATH"
 fi
 
 if [[ "$SKIP_SIGNATURE_CHECK" != "1" && -n "${ELECTROBUN_APPLEID:-}" && -n "${ELECTROBUN_APPLEIDPASS:-}" && -n "${ELECTROBUN_TEAMID:-}" ]]; then
+  NOTARY_SUBMIT_ATTEMPTS="${ELECTROBUN_NOTARY_SUBMIT_ATTEMPTS:-3}"
+  NOTARY_SUBMIT_RETRY_DELAY_SECONDS="${ELECTROBUN_NOTARY_SUBMIT_RETRY_DELAY_SECONDS:-30}"
   NOTARY_SUBMIT_OUTPUT_PATH="$TMP_ROOT/notary-submit.json"
-  "$REAL_XCRUN" notarytool submit \
-    --apple-id "$ELECTROBUN_APPLEID" \
-    --password "$ELECTROBUN_APPLEIDPASS" \
-    --team-id "$ELECTROBUN_TEAMID" \
-    --output-format json \
-    "$TEMP_DMG_PATH" >"$NOTARY_SUBMIT_OUTPUT_PATH"
+  if ! retry_notarytool_submit "$NOTARY_SUBMIT_OUTPUT_PATH" "$NOTARY_SUBMIT_ATTEMPTS" "$NOTARY_SUBMIT_RETRY_DELAY_SECONDS"; then
+    echo "stage-macos-release-artifacts: notarization submit failed for $TEMP_DMG_PATH" >&2
+    sed -n '1,80p' "$NOTARY_SUBMIT_OUTPUT_PATH" >&2 || true
+    exit 1
+  fi
   NOTARY_SUBMISSION_ID="$(parse_notary_submission_id "$NOTARY_SUBMIT_OUTPUT_PATH" || true)"
   if [[ -z "$NOTARY_SUBMISSION_ID" ]]; then
     echo "stage-macos-release-artifacts: failed to parse notary submission id" >&2
@@ -263,28 +461,27 @@ if [[ "$SKIP_SIGNATURE_CHECK" != "1" && -n "${ELECTROBUN_APPLEID:-}" && -n "${EL
   fi
   echo "Notary submission id: $NOTARY_SUBMISSION_ID"
 
+  NOTARY_WAIT_ATTEMPTS="${ELECTROBUN_NOTARY_WAIT_ATTEMPTS:-3}"
+  NOTARY_WAIT_RETRY_DELAY_SECONDS="${ELECTROBUN_NOTARY_WAIT_RETRY_DELAY_SECONDS:-60}"
   NOTARY_WAIT_OUTPUT_PATH="$TMP_ROOT/notary-wait.json"
-  if ! "$REAL_XCRUN" notarytool wait \
-    --apple-id "$ELECTROBUN_APPLEID" \
-    --password "$ELECTROBUN_APPLEIDPASS" \
-    --team-id "$ELECTROBUN_TEAMID" \
-    --timeout "$NOTARY_WAIT_TIMEOUT" \
-    --output-format json \
-    "$NOTARY_SUBMISSION_ID" >"$NOTARY_WAIT_OUTPUT_PATH"; then
+  if ! retry_notarytool_wait "$NOTARY_WAIT_OUTPUT_PATH" "$NOTARY_WAIT_ATTEMPTS" "$NOTARY_WAIT_RETRY_DELAY_SECONDS"; then
     echo "stage-macos-release-artifacts: notarization wait failed for submission $NOTARY_SUBMISSION_ID" >&2
     sed -n '1,80p' "$NOTARY_WAIT_OUTPUT_PATH" >&2 || true
-    "$REAL_XCRUN" notarytool log \
-      --apple-id "$ELECTROBUN_APPLEID" \
-      --password "$ELECTROBUN_APPLEIDPASS" \
-      --team-id "$ELECTROBUN_TEAMID" \
-      "$NOTARY_SUBMISSION_ID" >&2 || true
+    retry_notarytool_log >&2 || true
     exit 1
   fi
   echo "Notarization accepted for submission $NOTARY_SUBMISSION_ID"
 
   # Apple can lag several minutes before the notarization ticket becomes
   # visible to stapler, especially on Intel runners.
-  retry_command 8 20 xcrun stapler staple "$TEMP_DMG_PATH"
+  STAPLER_ATTEMPTS="${ELECTROBUN_STAPLER_ATTEMPTS:-12}"
+  STAPLER_DELAY_SECONDS="${ELECTROBUN_STAPLER_DELAY_SECONDS:-30}"
+  if ! retry_command "$STAPLER_ATTEMPTS" "$STAPLER_DELAY_SECONDS" xcrun stapler staple "$TEMP_DMG_PATH"; then
+    if [[ "${ELECTROBUN_REQUIRE_STAPLED_DMG:-0}" == "1" ]]; then
+      exit 1
+    fi
+    echo "stage-macos-release-artifacts: notarization accepted but stapler ticket was not available; continuing without stapled DMG" >&2
+  fi
 fi
 
 mv "$TEMP_DMG_PATH" "$FINAL_DMG_PATH"

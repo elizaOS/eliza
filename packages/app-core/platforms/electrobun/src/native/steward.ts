@@ -16,11 +16,9 @@
  *   4. Stops the sidecar on app shutdown
  */
 
-import { saveStewardCredentials } from "@elizaos/app-core/services/steward-credentials";
-import {
-	createDesktopStewardSidecar,
-	type StewardSidecar,
-	type StewardSidecarStatus,
+import type {
+	StewardSidecar,
+	StewardSidecarStatus,
 } from "@elizaos/app-core/services/steward-sidecar";
 import { getBrandConfig } from "../brand-config";
 
@@ -32,6 +30,34 @@ type StatusChangeCallback = (status: StewardSidecarStatus) => void;
 type SendToWebviewFn = (message: string, payload?: unknown) => void;
 
 // ---------------------------------------------------------------------------
+// Lazy runtime imports
+// ---------------------------------------------------------------------------
+
+type StewardSidecarModule = typeof import(
+	"@elizaos/app-core/services/steward-sidecar"
+);
+type StewardCredentialsModule = typeof import(
+	"@elizaos/app-core/services/steward-credentials"
+);
+
+let stewardSidecarModulePromise: Promise<StewardSidecarModule> | null = null;
+let stewardCredentialsModulePromise: Promise<StewardCredentialsModule> | null =
+	null;
+
+function loadStewardSidecarModule(): Promise<StewardSidecarModule> {
+	stewardSidecarModulePromise ??= import(
+		"@elizaos/app-core/services/steward-sidecar"
+	);
+	return stewardSidecarModulePromise;
+}
+
+function loadStewardCredentialsModule(): Promise<StewardCredentialsModule> {
+	stewardCredentialsModulePromise ??= import(
+		"@elizaos/app-core/services/steward-credentials"
+	);
+	return stewardCredentialsModulePromise;
+}
+
 // Singleton
 // ---------------------------------------------------------------------------
 
@@ -56,8 +82,9 @@ export function setStewardSendToWebview(fn: SendToWebviewFn): void {
  * The sidecar is NOT started automatically — call `startSteward()` explicitly
  * during app initialization so the UI can show a loading indicator.
  */
-export function getStewardSidecar(): StewardSidecar {
+export async function getStewardSidecar(): Promise<StewardSidecar> {
 	if (!sidecar) {
+		const { createDesktopStewardSidecar } = await loadStewardSidecarModule();
 		sidecar = createDesktopStewardSidecar({
 			onStatusChange: (status) => {
 				// Push status to renderer
@@ -90,7 +117,7 @@ export function getStewardSidecar(): StewardSidecar {
  * This must be called BEFORE the the app agent starts so `createStewardClient()`
  * in steward-bridge.ts picks up STEWARD_API_URL.
  */
-function configureStewardEnvFromCredentials(): void {
+async function configureStewardEnvFromCredentials(): Promise<void> {
 	if (!sidecar) return;
 
 	const credentials = sidecar.getCredentials();
@@ -119,6 +146,7 @@ function configureStewardEnvFromCredentials(): void {
 		}
 
 		try {
+			const { saveStewardCredentials } = await loadStewardCredentialsModule();
 			saveStewardCredentials({
 				apiUrl: apiBase,
 				tenantId: credentials.tenantId ?? "",
@@ -150,7 +178,7 @@ function configureStewardEnvFromCredentials(): void {
  * Returns the status after startup (running or error).
  */
 export async function startSteward(): Promise<StewardSidecarStatus> {
-	const steward = getStewardSidecar();
+	const steward = await getStewardSidecar();
 	const status = steward.getStatus();
 
 	if (status.state === "running") {
@@ -180,7 +208,7 @@ export async function startSteward(): Promise<StewardSidecarStatus> {
 		);
 
 		// Configure env vars so the the app agent's steward bridge finds steward
-		configureStewardEnvFromCredentials();
+		await configureStewardEnvFromCredentials();
 
 		return result;
 	} catch (err) {
@@ -211,7 +239,7 @@ export async function restartSteward(): Promise<StewardSidecarStatus> {
 	}
 	console.log("[Steward] Restarting sidecar...");
 	const result = await sidecar.restart();
-	configureStewardEnvFromCredentials();
+	await configureStewardEnvFromCredentials();
 	return result;
 }
 

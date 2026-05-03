@@ -6,10 +6,9 @@ import path from "node:path";
 import type { Plugin } from "@elizaos/core";
 import { AgentRuntime, createCharacter, logger } from "@elizaos/core";
 import { configureLocalEmbeddingPlugin } from "../../../agent/src/runtime/eliza";
-import {
-  type LiveProviderConfig,
-  type LiveProviderName,
-  selectLiveProvider,
+import type {
+  LiveProviderConfig,
+  LiveProviderName,
 } from "./live-provider";
 
 export interface RealTestRuntimeOptions {
@@ -242,6 +241,7 @@ export async function createRealTestRuntime(
     let providerConfig: LiveProviderConfig | null = null;
 
     if (options?.withLLM) {
+      const { selectLiveProvider } = await import("./live-provider");
       providerConfig = selectLiveProvider(options.preferredProvider);
       if (providerConfig) {
         providerName = providerConfig.name;

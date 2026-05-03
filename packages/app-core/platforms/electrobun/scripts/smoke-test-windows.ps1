@@ -49,16 +49,19 @@ $pgliteDataDir = Join-Path $tempRoot "pglite"
 New-Item -ItemType Directory -Force -Path $pgliteDataDir | Out-Null
 $env:PGLITE_DATA_DIR = $pgliteDataDir
 if ($env:GITHUB_ENV) {
+  Add-Content -Path $env:GITHUB_ENV -Value "MILADY_TEST_WINDOWS_APPDATA_PATH=$($env:APPDATA)"
+  Add-Content -Path $env:GITHUB_ENV -Value "MILADY_TEST_WINDOWS_LOCALAPPDATA_PATH=$($env:LOCALAPPDATA)"
   Add-Content -Path $env:GITHUB_ENV -Value "ELIZA_TEST_WINDOWS_APPDATA_PATH=$($env:APPDATA)"
   Add-Content -Path $env:GITHUB_ENV -Value "ELIZA_TEST_WINDOWS_LOCALAPPDATA_PATH=$($env:LOCALAPPDATA)"
   Add-Content -Path $env:GITHUB_ENV -Value "PGLITE_DATA_DIR=$pgliteDataDir"
 }
-# Eliza writes its startup log to AppData\Roaming\Eliza on Windows, but the
-# release workflow still exports the legacy Eliza paths/env vars for contract
-# compatibility.
+# Packaged builds can still use the default elizaOS brand config before Milady
+# overrides are loaded, so include all known startup log locations.
 $legacyStartupLog = Join-Path $env:APPDATA "Eliza\\eliza-startup.log"
-$startupLog = Join-Path $env:APPDATA "Eliza\\eliza-startup.log"
-$startupLogs = @($startupLog, $legacyStartupLog) | Select-Object -Unique
+$defaultStartupLog = Join-Path $env:APPDATA "elizaOS\\eliza-startup.log"
+$miladyStartupLog = Join-Path $env:APPDATA "Milady\\eliza-startup.log"
+$startupLog = Join-Path $env:APPDATA "Milady\\milady-startup.log"
+$startupLogs = @($startupLog, $miladyStartupLog, $defaultStartupLog, $legacyStartupLog) | Select-Object -Unique
 $selfExtractionRoot = Join-Path $env:LOCALAPPDATA "com.elizaai.eliza"
 $tempExtractDir = Join-Path $tempRoot ("eliza-windows-smoke-" + [Guid]::NewGuid().ToString("N"))
 $persistLauncherDir = $env:ELIZA_TEST_WINDOWS_LAUNCHER_DIR
@@ -368,9 +371,11 @@ Stop-ElizaProcesses
 $env:ELECTROBUN_CONSOLE = "1"
 $env:ELIZA_FORCE_AUTOSTART_AGENT = "1"
 $env:ELIZA_STARTUP_SESSION_ID = $startupSessionId
-$env:ELIZA_STARTUP_SESSION_ID = $startupSessionId
+$env:MILADY_STARTUP_SESSION_ID = $startupSessionId
 $env:ELIZA_STARTUP_STATE_FILE = $startupStateFile
 $env:ELIZA_STARTUP_EVENTS_FILE = $startupEventsFile
+$env:MILADY_STARTUP_STATE_FILE = $startupStateFile
+$env:MILADY_STARTUP_EVENTS_FILE = $startupEventsFile
 $BackendPort = Resolve-BackendPort $BackendPort
 $env:ELIZA_API_PORT = "$BackendPort"
 $env:ELIZA_API_PORT = "$BackendPort"
@@ -404,10 +409,15 @@ $requireInstaller = $env:ELIZA_WINDOWS_SMOKE_REQUIRE_INSTALLER -eq "1"
 if (-not $requireInstaller) {
   $requireInstaller = $env:ELIZA_WINDOWS_SMOKE_REQUIRE_INSTALLER -eq "1"
 }
-$installerRoot = if ($env:ELIZA_TEST_WINDOWS_INSTALL_DIR) {
+$installerRoot = if ($env:MILADY_TEST_WINDOWS_INSTALL_DIR) {
+  $env:MILADY_TEST_WINDOWS_INSTALL_DIR
+} elseif ($env:ELIZA_TEST_WINDOWS_INSTALL_DIR) {
+  # The release workflow exports ELIZA_TEST_WINDOWS_INSTALL_DIR for legacy
+  # contract compatibility; accept either prefix so a short, MAX_PATH-safe
+  # install dir actually flows through to the Inno /DIR override on CI.
   $env:ELIZA_TEST_WINDOWS_INSTALL_DIR
 } else {
-  Join-Path $tempRoot ("eliza-windows-installed-" + [Guid]::NewGuid().ToString("N"))
+  Join-Path $tempRoot ("milady-installed-" + [Guid]::NewGuid().ToString("N").Substring(0, 8))
 }
 if ($requireInstaller) {
   $launcher = $null
@@ -663,6 +673,18 @@ function Dump-FailureDiagnostics([int]$Port) {
     Write-Host "(startup events file not found)"
   }
 
+  Write-Host ""
+  Write-Host "[4c/6] Startup logs:"
+  foreach ($candidateLog in $startupLogs) {
+    Write-Host "--- $candidateLog ---"
+    if (Test-Path $candidateLog) {
+      Get-Content $candidateLog -Tail 400 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
+    } else {
+      Write-Host "(startup log not found)"
+    }
+    Write-Host "--- end $candidateLog ---"
+  }
+
   # 5. Firewall state for port
   Write-Host ""
   Write-Host "[5/6] Firewall rules mentioning port $Port or Bun/Eliza:"
@@ -738,6 +760,7 @@ try {
     if ($startupState -and $startupState.phase -eq "fatal") {
       Write-Host "Startup trace entered fatal phase:"
       $startupState | ConvertTo-Json -Depth 6 | Write-Host
+      Dump-FailureDiagnostics $BackendPort
       throw "Windows packaged app reported a fatal startup phase."
     }
 
@@ -785,7 +808,7 @@ try {
       # Method 2: curl.exe (ships with Windows 10+, uses its own network stack).
       if (-not $healthy) {
         try {
-          $curlResult = & "$env:SystemRoot\System32\curl.exe" -s -o NUL -w "%{http_code}" $uri --connect-timeout 3 --noproxy "127.0.0.1" 2>$null
+          $curlResult = & "$env:SystemRoot\System32\curl.exe" -s -o NUL -w "%{http_code}" $uri --connect-timeout 3 --max-time 5 --noproxy "127.0.0.1" 2>$null
           if ($curlResult -eq "200" -or $curlResult -eq "401") {
             $healthy = $true
             $healthCheckMethod = "curl.exe"
