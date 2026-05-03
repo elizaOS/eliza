@@ -2,6 +2,10 @@
  * LifeOps screen time action — query per-app and per-website dwell time.
  *
  * Subactions: summary, today, weekly, weekly_average_by_app, by_app, by_website.
+ *
+ * Every user-visible reply runs through `renderLifeOpsActionReply` so the raw
+ * data templates land in the agent's character voice (bio + system + style +
+ * recent conversation + action history) instead of being streamed raw.
  */
 
 import type {
@@ -10,8 +14,13 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
+  State,
 } from "@elizaos/core";
 import { LifeOpsService } from "../lifeops/service.js";
+import {
+  messageText,
+  renderLifeOpsActionReply,
+} from "./lifeops-grounded-reply.js";
 import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
 
 type Subaction =
@@ -73,14 +82,45 @@ export const screenTimeAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _state,
+    state: State | undefined,
     options,
     callback,
   ): Promise<ActionResult> => {
+    const intent = messageText(message).trim();
+
+    const respond = async <
+      T extends NonNullable<ActionResult["data"]> | undefined,
+    >(payload: {
+      success: boolean;
+      scenario: string;
+      fallback: string;
+      context?: Record<string, unknown>;
+      data?: T;
+    }): Promise<ActionResult> => {
+      const text = await renderLifeOpsActionReply({
+        runtime,
+        message,
+        state,
+        intent,
+        scenario: payload.scenario,
+        fallback: payload.fallback,
+        context: payload.context,
+      });
+      await callback?.({ text, source: "action", action: "SCREEN_TIME" });
+      return {
+        text,
+        success: payload.success,
+        ...(payload.data ? { data: payload.data } : {}),
+      };
+    };
+
     if (!(await hasLifeOpsAccess(runtime, message))) {
-      const text = "Screen time data is restricted to the owner.";
-      await callback?.({ text });
-      return { text, success: false, data: { error: "PERMISSION_DENIED" } };
+      return respond({
+        success: false,
+        scenario: "access_denied",
+        fallback: "Screen time data is restricted to the owner.",
+        data: { error: "PERMISSION_DENIED" },
+      });
     }
 
     const params = getParams(options);
@@ -96,7 +136,7 @@ export const screenTimeAction: Action = {
         limit: 10,
       });
       const total = daily.reduce((acc, row) => acc + row.totalSeconds, 0);
-      const text =
+      const fallback =
         daily.length === 0
           ? `No screen time recorded for ${date}.`
           : `Screen time for ${date} (total ${formatSeconds(total)}):\n${daily
@@ -105,8 +145,13 @@ export const screenTimeAction: Action = {
                   `- ${row.source}: ${row.identifier} — ${formatSeconds(row.totalSeconds)} (${row.sessionCount} session${row.sessionCount === 1 ? "" : "s"})`,
               )
               .join("\n")}`;
-      await callback?.({ text, source: "action", action: "SCREEN_TIME" });
-      return { text, success: true, data: { subaction, date, daily } };
+      return respond({
+        success: true,
+        scenario: "screen_time_daily",
+        fallback,
+        context: { date, totalSeconds: total, daily },
+        data: { subaction, date, daily },
+      });
     }
 
     if (subaction === "weekly") {
@@ -119,7 +164,7 @@ export const screenTimeAction: Action = {
         identifier: params.identifier,
         topN: 10,
       });
-      const text =
+      const fallback =
         summary.items.length === 0
           ? `No screen time recorded in the last ${params.sinceDays ?? 7} days.`
           : `Top screen time over the last ${params.sinceDays ?? 7} days (total ${formatSeconds(summary.totalSeconds)}):\n${summary.items
@@ -128,12 +173,17 @@ export const screenTimeAction: Action = {
                   `- ${item.source}: ${item.displayName} — ${formatSeconds(item.totalSeconds)}`,
               )
               .join("\n")}`;
-      await callback?.({ text, source: "action", action: "SCREEN_TIME" });
-      return {
-        text,
+      return respond({
         success: true,
+        scenario: "screen_time_weekly",
+        fallback,
+        context: {
+          windowDays: params.sinceDays ?? 7,
+          totalSeconds: summary.totalSeconds,
+          items: summary.items,
+        },
         data: { subaction, since, until, summary },
-      };
+      });
     }
 
     if (subaction === "weekly_average_by_app") {
@@ -146,7 +196,7 @@ export const screenTimeAction: Action = {
         daysInWindow,
         identifier: params.identifier,
       });
-      const text =
+      const fallback =
         weeklyAverage.items.length === 0
           ? `No app screen time recorded in the last ${daysInWindow} days.`
           : `Weekly average per app over the last ${daysInWindow} days (total ${formatSeconds(weeklyAverage.totalSeconds)}):\n${weeklyAverage.items
@@ -155,12 +205,17 @@ export const screenTimeAction: Action = {
                   `- ${item.displayName} — ${formatSeconds(item.averageSecondsPerDay)}/day average (${formatSeconds(item.totalSeconds)} total)`,
               )
               .join("\n")}`;
-      await callback?.({ text, source: "action", action: "SCREEN_TIME" });
-      return {
-        text,
+      return respond({
         success: true,
+        scenario: "screen_time_weekly_average_by_app",
+        fallback,
+        context: {
+          daysInWindow,
+          totalSeconds: weeklyAverage.totalSeconds,
+          items: weeklyAverage.items,
+        },
         data: { subaction, source: "app", since, until, weeklyAverage },
-      };
+      });
     }
 
     if (subaction === "by_app" || subaction === "by_website") {
@@ -175,7 +230,7 @@ export const screenTimeAction: Action = {
         topN: 10,
       });
       const label = source === "app" ? "apps" : "websites";
-      const text =
+      const fallback =
         summary.items.length === 0
           ? `No ${label} recorded in that window.`
           : `Top ${label} (total ${formatSeconds(summary.totalSeconds)}):\n${summary.items
@@ -184,12 +239,18 @@ export const screenTimeAction: Action = {
                   `- ${item.displayName} — ${formatSeconds(item.totalSeconds)}`,
               )
               .join("\n")}`;
-      await callback?.({ text, source: "action", action: "SCREEN_TIME" });
-      return {
-        text,
+      return respond({
         success: true,
+        scenario:
+          source === "app" ? "screen_time_by_app" : "screen_time_by_website",
+        fallback,
+        context: {
+          source,
+          totalSeconds: summary.totalSeconds,
+          items: summary.items,
+        },
         data: { subaction, source, since, until, summary },
-      };
+      });
     }
 
     // summary — default
@@ -202,7 +263,7 @@ export const screenTimeAction: Action = {
       identifier: params.identifier,
       topN: 10,
     });
-    const text =
+    const fallback =
       summary.items.length === 0
         ? "No screen time recorded in that window."
         : `Screen time summary (total ${formatSeconds(summary.totalSeconds)}):\n${summary.items
@@ -211,12 +272,16 @@ export const screenTimeAction: Action = {
                 `- ${item.source}: ${item.displayName} — ${formatSeconds(item.totalSeconds)}`,
             )
             .join("\n")}`;
-    await callback?.({ text, source: "action", action: "SCREEN_TIME" });
-    return {
-      text,
+    return respond({
       success: true,
+      scenario: "screen_time_summary",
+      fallback,
+      context: {
+        totalSeconds: summary.totalSeconds,
+        items: summary.items,
+      },
       data: { subaction: "summary", since, until, summary },
-    };
+    });
   },
   parameters: [
     {
