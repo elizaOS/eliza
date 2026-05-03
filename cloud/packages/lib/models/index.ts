@@ -7,8 +7,10 @@ export {
   getGroqApiModelId,
   getGroqCatalogModel,
   getOpenRouterFreeModel,
+  getVastApiModelId,
   isGroqNativeModel,
   isSelectableTextModel,
+  isVastNativeModel,
   mergeCatalogModels,
   OPENROUTER_DEFAULT_FREE_MODEL,
   OPENROUTER_FREE_MODEL_MAP,
@@ -16,6 +18,8 @@ export {
   STATIC_TEXT_CATALOG_MODELS,
   sortSelectorModels,
   toSelectorModel,
+  VAST_NATIVE_MODEL_ID_MAP,
+  VAST_NATIVE_MODELS,
 } from "./catalog";
 export {
   ADDITIONAL_IMAGE_MODELS,

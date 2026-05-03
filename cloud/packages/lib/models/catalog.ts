@@ -300,6 +300,24 @@ export const GROQ_NATIVE_MODEL_ID_MAP: Record<string, string> = {
   "groq/compound-mini": "compound-beta-mini",
 };
 
+export const VAST_NATIVE_MODELS: CatalogModel[] = [
+  {
+    id: "vast/qwen3.6-35b-a3b-awq",
+    object: "model",
+    created: 0,
+    owned_by: "vast",
+    name: "Qwen3.6 35B A3B (AWQ)",
+    description:
+      "Qwen3.6 35B A3B (INT4 AWQ), self-hosted on Vast.ai Serverless via vLLM + PyWorker",
+    type: "language",
+    tags: ["self-hosted", "vllm"],
+  },
+] as const;
+
+export const VAST_NATIVE_MODEL_ID_MAP: Record<string, string> = {
+  "vast/qwen3.6-35b-a3b-awq": "QuantTrio/Qwen3.6-35B-A3B-AWQ",
+};
+
 export const STATIC_TEXT_CATALOG_MODELS: CatalogModel[] = [
   ...OPENAI_TEXT_MODEL_IDS,
   ...ANTHROPIC_TEXT_MODEL_IDS,
@@ -319,6 +337,7 @@ export const STATIC_TEXT_CATALOG_MODELS: CatalogModel[] = [
   ...INCEPTION_TEXT_MODEL_IDS,
   ...MEITUAN_TEXT_MODEL_IDS,
   ...GROQ_NATIVE_MODELS.map((model) => model.id),
+  ...VAST_NATIVE_MODELS.map((model) => model.id),
 ].map(buildCatalogModel);
 
 export function isGroqNativeModel(modelId: string): boolean {
@@ -327,6 +346,14 @@ export function isGroqNativeModel(modelId: string): boolean {
 
 export function getGroqApiModelId(modelId: string): string {
   return GROQ_NATIVE_MODEL_ID_MAP[modelId] ?? modelId;
+}
+
+export function isVastNativeModel(modelId: string): boolean {
+  return modelId in VAST_NATIVE_MODEL_ID_MAP;
+}
+
+export function getVastApiModelId(modelId: string): string {
+  return VAST_NATIVE_MODEL_ID_MAP[modelId] ?? modelId;
 }
 
 export function mergeCatalogModels(
