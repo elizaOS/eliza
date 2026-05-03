@@ -23,7 +23,5 @@
   "secrets": {
     "enableServerless": false
   },
-  "plugins": [
-    "@elizaos/plugin-exergynet"
-  ]
+  "plugins": []
 }

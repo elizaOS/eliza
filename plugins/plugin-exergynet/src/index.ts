@@ -5,8 +5,12 @@ import * as crypto from "crypto";
 import { Buffer } from "buffer";
 import bs58 from "bs58";
 
-const LNES_PROGRAM_ID = new PublicKey("7BCPpUMBxQMPomsgTaJsQdLEfycNwPWqkQD1Cea4CcCL");
-const EXG_MINT = new PublicKey("5fZZJ29oH5SDqxiz2tkEf1wopp5Sn5TtcCF3fPS9rdiJ");
+export const LNES_PROGRAM_ID = new PublicKey("7BCPpUMBxQMPomsgTaJsQdLEfycNwPWqkQD1Cea4CcCL");
+export const OMEGA_MINT = new PublicKey("5fZZJ29oH5SDqxiz2tkEf1wopp5Sn5TtcCF3fPS9rdiJ");
+
+// FIXED: Removed Magic Constants
+const DEFAULT_AXIOM_HASH = Buffer.from(new Uint8Array(32).fill(7)); 
+const COMPUTE_TOLL_LAMPORTS = BigInt(2_000_000); // 0.002 SOL
 
 export const requestExergyComputeAction: Action = {
     name: "REQUEST_EXERGY_COMPUTE",
@@ -15,7 +19,6 @@ export const requestExergyComputeAction: Action = {
     validate: async (runtime: IAgentRuntime) => {
         return !!runtime.getSetting("SOLANA_PRIVATE_KEY");
     },
-    // Fix: Return type changed to Promise<any> to satisfy strict Handler checks
     handler: async (runtime: IAgentRuntime, _message: Memory, _state?: State, _options?: any, callback?: HandlerCallback): Promise<any> => {
         try {
             const rpcUrl = (runtime.getSetting("RPC_URL") as string) || "https://api.mainnet-beta.solana.com";
@@ -35,8 +38,8 @@ export const requestExergyComputeAction: Action = {
             const openJobData = Buffer.concat([
                 crypto.createHash("sha256").update("global:open_job").digest().subarray(0, 8),
                 Buffer.from(jobId),
-                Buffer.from(new Uint8Array(32).fill(7)), 
-                Buffer.from(new BigUint64Array([BigInt(2_000_000)]).buffer)
+                DEFAULT_AXIOM_HASH, 
+                Buffer.from(new BigUint64Array([COMPUTE_TOLL_LAMPORTS]).buffer)
             ]);
 
             const ix = new TransactionInstruction({
@@ -46,7 +49,7 @@ export const requestExergyComputeAction: Action = {
                     { pubkey: payer.publicKey, isSigner: true, isWritable: true },
                     { pubkey: escrowPda, isSigner: false, isWritable: true },
                     { pubkey: escrowVault, isSigner: false, isWritable: true },
-                    { pubkey: EXG_MINT, isSigner: false, isWritable: true },
+                    { pubkey: OMEGA_MINT, isSigner: false, isWritable: true },
                     { pubkey: mintAuth, isSigner: false, isWritable: false },
                     { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
                     { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
@@ -55,23 +58,49 @@ export const requestExergyComputeAction: Action = {
             });
 
             const tx = new Transaction().add(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 150000 }), ix);
-            const { blockhash } = await connection.getLatestBlockhash();
-            tx.recentBlockhash = blockhash;
+            
+            // FIXED: Fetch latest blockhash for explicit confirmation
+            const latestBlockhash = await connection.getLatestBlockhash("confirmed");
+            tx.recentBlockhash = latestBlockhash.blockhash;
             tx.feePayer = payer.publicKey;
             tx.sign(payer);
 
-            const sig = await connection.sendRawTransaction(tx.serialize());
+            elizaLogger.log("[exergynet] Broadcasting transaction...");
+            const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false });
+
+            // FIXED: Await strict on-chain confirmation before returning SUCCESS
+            elizaLogger.log(`[exergynet] Awaiting confirmation for signature: ${sig}`);
+            const confirmation = await connection.confirmTransaction({
+                signature: sig,
+                blockhash: latestBlockhash.blockhash,
+                lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+            }, "confirmed");
+
+            if (confirmation.value.err) {
+                throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+            }
 
             if (callback) {
                 callback({
-                    text: `ExergyNet Strike Successful. SOL Locked. ZK-Proof Request broadcasted.\nSignature: ${sig}`,
-                    content: { signature: sig, status: "SUCCESS" }
+                    text: `ExergyNet request confirmed on Solana.
+Signature: ${sig}`,
+                    content: { signature: sig, status: "CONFIRMED" }
                 });
             }
-            return; // Fix: Returning void satisfies the new type definitions
-        } catch (e: any) { // Fix: typed 'e' as any to avoid 'unknown' assignment errors
-            elizaLogger.error("[exergynet] Strike Fracture:", e instanceof Error ? e.message : String(e));
-            return;
+            return true;
+
+        } catch (e: unknown) {
+            // FIXED: Surface errors to the callback
+            const errMsg = e instanceof Error ? e.message : String(e);
+            elizaLogger.error("[exergynet] Strike Fracture:", errMsg);
+
+            if (callback) {
+                callback({
+                    text: `ExergyNet request failed: ${errMsg}`,
+                    content: { status: "FAILED", error: errMsg }
+                });
+            }
+            return false;
         }
     },
     examples: [[
@@ -79,12 +108,12 @@ export const requestExergyComputeAction: Action = {
             { user: "assistant", content: { text: "Initiating thermodynamic proof order...", action: "REQUEST_EXERGY_COMPUTE" } }
         ] as any
     ]
-} as Action; // Hard-cast to bypass deep type inference conflicts
+} as Action;
 
 export const exergynetPlugin: Plugin = {
     name: "exergynet",
     description: "ExergyNet LNES-03 ZK-Compute Membrane Integration",
-    actions:[requestExergyComputeAction],
+    actions: [requestExergyComputeAction],
     providers:[{
         name: "exergynet-membrane",
         get: async (_runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<any> => {
