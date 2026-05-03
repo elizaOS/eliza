@@ -19,18 +19,41 @@ import json
 import logging
 import re
 import time
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from eliza_adapter.client import ElizaClient
 
-from benchmarks.realm.types import (
-    ExecutionModel,
-    PlanningAction,
-    PlanningStep,
-    PlanningTrajectory,
-    REALMTask,
-    REALMTestCase,
-)
+if TYPE_CHECKING:
+    from benchmarks.realm.types import (
+        ExecutionModel,
+        PlanningAction,
+        PlanningStep,
+        PlanningTrajectory,
+        REALMTask,
+        REALMTestCase,
+    )
+
+
+def _realm_types():
+    """Lazy import of benchmarks.realm.types to avoid requiring benchmarks/ on sys.path at module load."""
+    from benchmarks.realm.types import (
+        ExecutionModel,
+        PlanningAction,
+        PlanningStep,
+        PlanningTrajectory,
+        REALMTask,
+        REALMTestCase,
+    )
+
+    return (
+        ExecutionModel,
+        PlanningAction,
+        PlanningStep,
+        PlanningTrajectory,
+        REALMTask,
+        REALMTestCase,
+    )
+
 
 logger = logging.getLogger(__name__)
 
@@ -128,11 +151,14 @@ class ElizaREALMAgent:
         self,
         client: ElizaClient | None = None,
         max_steps: int = 15,
-        execution_model: ExecutionModel = ExecutionModel.DAG,
+        execution_model: "ExecutionModel | None" = None,
         enable_adaptation: bool = True,
     ) -> None:
         self._client = client or ElizaClient()
         self.max_steps = max_steps
+        if execution_model is None:
+            ExecutionModelCls, *_ = _realm_types()
+            execution_model = ExecutionModelCls.DAG
         self.execution_model = execution_model
         self.enable_adaptation = enable_adaptation
         self._initialized = False
@@ -151,6 +177,8 @@ class ElizaREALMAgent:
     ) -> PlanningTrajectory:
         if not self._initialized:
             await self.initialize()
+
+        _, PlanningAction, PlanningStep, PlanningTrajectory, *_ = _realm_types()
 
         start_time = time.time()
         trajectory = PlanningTrajectory(task_id=task.id)
