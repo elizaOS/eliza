@@ -1,253 +1,200 @@
 <div align="center">
   <h1>elizaOS</h1>
-  <p><strong>The Open-Source Framework for Multi-Agent AI Development</strong></p>
-  <p>Build, deploy, and manage autonomous AI agents with a modern, extensible, and full-featured platform.</p>
+  <p><strong>An open-source framework — and a library of applications and benchmarks — for building autonomous AI agents.</strong></p>
 </div>
 
-<p align="center">
-  <a href="https://trendshift.io/repositories/12591" target="_blank"><img src="https://trendshift.io/api/badge/repositories/12591" alt="elizaOS%2Feliza | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
-</p>
-<div align="center">
-  <a href="https://www.npmjs.com/package/@elizaos/core"><img src="https://img.shields.io/npm/dm/@elizaos/core" alt="Downloads" width=140 height=20></a>
-  <a href="https://github.com/elizaOS/eliza/releases"><img src="https://img.shields.io/github/v/release/elizaOS/eliza" alt="Releases" width=94 height=20></a>
-  <a href="https://arxiv.org/abs/2501.06781"><img src="https://img.shields.io/badge/arXiv-2501.06781-b31b1b.svg" alt="Paper" width=116 height=20></a>
-  <a href="https://deepwiki.com/elizaOS/eliza"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki" width=109 height=20></a>
-</div>
-<div align="center">
-  <a href="https://github.com/elizaos/eliza/stargazers"><img src="https://img.shields.io/github/stars/elizaos/eliza?style=for-the-badge&logo=github" alt="GitHub Stars"></a>
-  <a href="https://github.com/elizaos/eliza/network/members"><img src="https://img.shields.io/github/forks/elizaos/eliza?style=for-the-badge&logo=github" alt="GitHub Forks"></a>
-  <a href="https://github.com/elizaos/eliza/commits"><img src="https://img.shields.io/github/last-commit/elizaos/eliza?style=for-the-badge" alt="Last Commit on GitHub"></a>
-</div>
+## Framework vs. application
 
-<div align="center">
-  <a href="https://github.com/elizaos/eliza/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License"></a>
-  <a href="https://www.npmjs.com/package/@elizaos/cli"><img src="https://img.shields.io/npm/v/@elizaos/cli?style=for-the-badge" alt="NPM Version"></a>
-  <a href="https://github.com/elizaos/eliza/graphs/contributors"><img src="https://img.shields.io/github/contributors/elizaos/eliza?style=for-the-badge" alt="Contributors"></a>
-</div>
-<div align="center">
-  <a href="https://docs.elizaos.ai/"><img src="https://img.shields.io/badge/Documentation-Read%20Docs-blue?style=for-the-badge" alt="Documentation"></a>
-  <!-- a href="https://github.com/elizaos/eliza/actions/workflows/image.yaml"><img src="https://img.shields.io/github/actions/workflow/status/elizaos/eliza/ci.yaml?branch=main&style=for-the-badge" alt="CI Status"></a -->
-  <a href="https://twitter.com/elizaOS"><img src="https://img.shields.io/twitter/follow/elizaOS?style=for-the-badge&logo=x&label=Follow" alt="Follow on X"></a>
-  <a href="https://discord.gg/ai16z"><img src="https://img.shields.io/discord/1253563208833433701?style=for-the-badge&logo=discord" alt="Discord"></a>
-</div>
+elizaOS is two things stacked together. Knowing which one you're working with makes everything else easier.
 
-## ✨ What is Eliza?
+**The framework** is the runtime: `@elizaos/core`, the agent loop, the plugin model (actions, providers, services, evaluators), the message/memory/state primitives, and the model-agnostic LLM layer. If you depend on `@elizaos/core` from your own code, you are using the framework.
 
-elizaOS is an all-in-one, extensible platform for building and deploying AI-powered applications. Whether you're creating sophisticated chatbots, autonomous agents for business process automation, or intelligent game NPCs, Eliza provides the tools you need to get started quickly and scale effectively.
+**An application** is a product *built on* the framework. [`apps/app-companion`](apps/app-companion), [`apps/app-browser`](apps/app-browser), [`apps/app-knowledge`](apps/app-knowledge), [`apps/app-phone`](apps/app-phone), and the rest of [`apps/`](apps) are first-party examples. Each is a self-contained package with its own UI, runtime plugin, data model, and deployment story. They share the framework, not the implementation.
 
-It combines a modular architecture, a powerful CLI, and a rich web interface to give you full control over your agents' development, deployment, and management lifecycle.
+The same split shows up in the directory tree:
 
-For complete guides and API references, visit our official **[documentation](https://docs.elizaos.ai/)**.
+```
+packages/        ← FRAMEWORK
+  core/          # @elizaos/core — runtime, types, agent loop
+  agent/         # @elizaos/agent — AgentRuntime + plugin loader
+  app-core/      # API + dashboard host
+  elizaos/       # the `elizaos` CLI
+  prompts/       # shared prompt scaffolding
+  ui/            # shared React component library
+  examples/      # 30+ standalone examples (chat, discord, mcp, …)
+  benchmarks/    # 30+ evaluation suites (gaia, swe_bench, tau-bench, …)
 
-## 🚀 Key Features
+apps/            ← APPLICATIONS
+  app-companion/ app-browser/ app-knowledge/ app-phone/
+  app-task-coordinator/ app-training/ app-form/ ...
 
-- 🔌 **Rich Connectivity**: Out-of-the-box connectors for Discord, Telegram, Farcaster, and more.
-- 🧠 **Model Agnostic**: Supports all major models, including OpenAI, Gemini, Anthropic, Llama, and Grok.
-- 🖥️ **Modern Web UI**: A professional dashboard for managing agents, groups, and conversations in real-time.
-- 🤖 **Multi-Agent Architecture**: Designed from the ground up for creating and orchestrating groups of specialized agents.
-- 📄 **Document Ingestion**: Easily ingest documents and allow agents to retrieve information and answer questions from your data (RAG).
-- 🛠️ **Highly Extensible**: Build your own functionality with a powerful plugin system.
-- 📦 **It Just Works**: A seamless setup and development experience from day one.
+plugins/         ← runtime plugins (connectors + capabilities)
+templates/       ← scaffolds used by `APP create` / `PLUGIN create` flows
+```
 
-> **Looking for plugins?** Browse the community plugin registry at **[elizaOS-plugins/registry](https://github.com/elizaOS-plugins/registry)** for a full list of available ElizaOS plugins.
+A *plugin* sits between the two: framework-shaped (registers actions/providers/services with the runtime) but shipped and consumed like a product. Community plugins are listed at [elizaOS-plugins/registry](https://github.com/elizaOS-plugins/registry).
 
-## 🏁 Getting Started (5-Minute Quick Start)
+## Pick your starting point
 
-There are two recommended paths for using Eliza:
+| You want to… | Start here |
+|---|---|
+| Try an agent in 5 minutes | [CLI quick start](#cli-quick-start) |
+| Use the runtime from your own TypeScript code (no CLI, no UI) | [Standalone usage](#standalone-usage) |
+| Build a new agent application | [Create a new app](#create-a-new-app) |
+| Build a runtime plugin (action / provider / service) | [Create a new plugin](#create-a-new-plugin) |
+| See how others did it | [Examples](#examples) |
+| Evaluate or benchmark an agent | [Benchmarks](#benchmarks) |
+| Read the docs | [docs.elizaos.ai](https://docs.elizaos.ai/) |
 
-- **For Beginners & Standalone Projects (CLI):** If you want to create and deploy agents without modifying Eliza's core code, the CLI is the fastest and simplest method. The guide below is for you.
+## CLI quick start
 
-- **For Power Users & Contributors (Monorepo):** If you plan to contribute to Eliza, create complex custom plugins, or manage multiple projects in one place, we recommend cloning the full monorepo. See the [How to Contribute](#-how-to-contribute) section to get started.
-
-**Monorepo app (API + web UI):** from the repo root, run `bun install` then `bun run dev` (Vite + runtime API for `apps/app`). Desktop: `bun run dev:desktop` / `bun run dev:desktop:watch`. The packaged-agent watch harness lives at `bun run dev:harness`.
-
----
-
-Get your first AI agent running in just a few commands.
-
-**Prerequisites:**
-
-- [Node.js](https://nodejs.org/) (v23+)
-- [bun](https://bun.sh/docs/installation)
-
-> **Note for Windows Users:** [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual) is required.
-
-### 1. Install the CLI
+**Prerequisites:** [Node.js v23+](https://nodejs.org/), [bun](https://bun.sh/docs/installation). On Windows, use [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual).
 
 ```bash
-# Install the elizaOS CLI globally
 bun install -g @elizaos/cli
-
-# Verify installation
-elizaos --version
-```
-
-### 2. Create Your Project
-
-```bash
-# Create a new project with an interactive setup
-elizaos create my-first-agent
-
-# Follow the prompts. For beginners, we recommend:
-# - Database: pglite (no setup required)
-# - Model Provider: openai
-# - Project Type: project
-```
-
-### 3. Configure Your API Key
-
-```bash
+elizaos create my-first-agent       # interactive — pick `fullstack-app` for the standard path
 cd my-first-agent
-
-# Open the local environment file
-elizaos env edit-local
-```
-
-Add your model provider's API key (e.g., for OpenAI):
-
-```env
-OPENAI_API_KEY=your_api_key_here
-```
-
-### 4. Start Your Agent
-
-```bash
-# Build and start the agent server
+elizaos env edit-local               # add OPENAI_API_KEY=...
 elizaos start
 ```
 
-Your agent is now running!
+Web UI: [http://localhost:3000](http://localhost:3000) — API: `http://localhost:3000/api`.
 
-- **Web Interface**: [http://localhost:3000](http://localhost:3000)
-- **API Endpoint**: `http://localhost:3000/api`
-
----
-
-<details>
-<summary>📚 **Advanced CLI Commands & Usage**</summary>
-
-Eliza's CLI is powerful. Here are some more commands for development and management.
-
-#### Development Workflow
+Common follow-ups:
 
 ```bash
-# Make changes to your agent code, then rebuild and restart
-bun run build
-elizaos start
-
-# Or, start in development mode with auto-rebuild
-elizaos dev
-
-# Run tests to verify your changes
-elizaos test
-```
-
-#### Agent & Environment Management
-
-```bash
-# List all available agents
+elizaos dev                          # auto-rebuild on save
+elizaos test                         # run tests
 elizaos agent list
-
-# Start a specific agent by name
-elizaos agent start --name "MyAgent"
-
-# Show all environment variables
-elizaos env list
-```
-
-#### Debugging
-
-```bash
-# Start with detailed debug logging
 LOG_LEVEL=debug elizaos start
 ```
 
-For a full command reference, run `elizaos --help` or `elizaos <command> --help`.
+Full reference: `elizaos --help` or `elizaos <command> --help`.
 
-</details>
+## Standalone usage
 
----
-
-## 🔧 Running elizaOS Core Standalone
-
-Use elizaOS agents directly in your applications without the CLI or web interface.
+Use `@elizaos/core` directly — no CLI, no dashboard, just the runtime in your code.
 
 ```bash
-# Recommended: blobless clone — full history, file contents fetched on demand
 git clone --filter=blob:none https://github.com/elizaos/eliza.git
 cd eliza
+bun install
 
-# Interactive chat
-OPENAI_API_KEY=your_key bun run examples/typescript/chat.ts
-
-# Basic message processing
-OPENAI_API_KEY=your_key bun run examples/typescript/standalone.ts
+# Interactive REPL against a real agent
+OPENAI_API_KEY=your_key bun run packages/examples/chat/chat.ts
 ```
 
-> **Why `--filter=blob:none`?** This is a [partial clone](https://github.blog/open-source/git/get-up-to-speed-with-partial-clone-and-shallow-clone/): you get every commit and tree (so `git log`, branches, tags, and `git checkout` all work normally) but not the historical file contents. Missing blobs are fetched lazily when needed. On this repo it cuts clone size by roughly 10×.
->
-> Trade-offs: heavy history operations like `git blame`, `git log -p`, or `git log -S` will trigger background fetches and may be slow the first time. They also require network — offline use of those commands will fail until blobs are cached. If you do code archaeology often, upgrade to a full clone:
->
-> ```bash
-> git config --unset remote.origin.partialclonefilter
-> git fetch --refetch
-> ```
->
-> For one-off CI or scripts that only need the latest commit, use `--depth=1 --single-branch` instead — even smaller, no history.
+Nearly every surface has a working example in [`packages/examples/`](packages/examples) — 30+ in total. Each one has its own README and runs independently. They are the fastest way to see the framework standing on its own. See [Examples](#examples) below for the highlights.
 
-## 🏛️ Architecture Overview
+> **About the partial clone.** `--filter=blob:none` gives you the full history but fetches file contents on demand — about 10× smaller. `git log`, branches, and `git checkout` work normally; `git blame` and `git log -p` will fetch on first use. To upgrade later: `git config --unset remote.origin.partialclonefilter && git fetch --refetch`. For one-off CI, `--depth=1 --single-branch` is even smaller.
 
-Eliza is a monorepo that contains all the packages needed to run the entire platform.
+## Create a new app
 
-```
-/
-├── packages/
-│   ├── server/         # Core backend server (Express.js)
-│   ├── client/         # Frontend web interface (React)
-│   ├── cli/            # Command-line tool for managing projects
-│   ├── core/           # Shared utilities, basic-capabilities plugin, and functions
-│   ├── app/            # Cross-platform desktop app (Tauri)
-│   ├── plugin-sql/     # Database integration (Postgres, PGLite)
-│   └── ...             # Other plugins and project starters
-└── ...
+An *application* is a self-contained product on top of the runtime: UI, runtime plugin, metadata. Two paths:
+
+**1. CLI scaffold (recommended).**
+
+```bash
+elizaos create my-app -t fullstack-app
+cd my-app
+bun install
+bun run dev
 ```
 
-- **`@elizaos/server`**: The Express.js backend that runs your agents and exposes the API.
-- **`@elizaos/client`**: The React-based web UI for managing and interacting with your agents.
-- **`@elizaos/cli`**: The central tool for scaffolding, running, and managing your projects.
-- **`@elizaos/core`**: The core package that includes the basic-capabilities plugin which handles message processing and basic agent actions.
+`fullstack-app` lays out a full workspace with a local eliza checkout, default plugins (`plugin-sql`, `plugin-elizacloud`, `plugin-local-ai`, `plugin-ollama`), and a Vite + React UI you can edit immediately.
 
-## 🤝 How to Contribute
+**2. Copy a template directly.** [`templates/min-app/`](templates/min-app) is the smallest possible app — Vite + React UI, a runtime `Plugin` with one action, the `elizaos.app` metadata block in `package.json`, and a vitest smoke test. Read [`templates/min-app/SCAFFOLD.md`](templates/min-app/SCAFFOLD.md) for the placeholders to replace and the verification contract.
 
-We welcome contributions from the community! Please read our `CONTRIBUTING.md` guide to get started.
+For real-world references, browse [`apps/`](apps). A few starting points by complexity:
 
-- **Report a Bug**: Open an issue using the [Bug Report](.github/ISSUE_TEMPLATE/bug_report.md) template.
-- **Request a Feature**: Use the [Feature Request](.github/ISSUE_TEMPLATE/feature_request.md) template.
-- **Submit a Pull Request**: Please open an issue first to discuss your proposed changes.
+- [`app-companion`](apps/app-companion) — chat-first companion with a custom React UI.
+- [`app-browser`](apps/app-browser) — agent-driven browser automation.
+- [`app-knowledge`](apps/app-knowledge) — RAG over user documents.
+- [`app-phone`](apps/app-phone) — voice + telephony surface.
+- [`app-form`](apps/app-form) — form-driven data collection.
+- [`app-task-coordinator`](apps/app-task-coordinator) — multi-agent orchestration.
+- [`app-training`](apps/app-training) — trajectory capture + native prompt optimization.
 
-## 📜 License
+## Create a new plugin
 
-This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
+A *plugin* extends the runtime with actions, providers, services, or evaluators — no UI required.
 
-## 🎓 Citation
-
-If you use Eliza in your research, please cite our paper:
-
-```bibtex
-@article{walters2025eliza,
-  title={Eliza: A Web3 friendly AI Agent Operating System},
-  author={Walters, Shaw and Gao, Sam and Nerd, Shakker and Da, Feng and Williams, Warren and Meng, Ting-Chien and Han, Hunter and He, Frank and Zhang, Allen and Wu, Ming and others},
-  journal={arXiv preprint arXiv:2501.06781},
-  year={2025}
-}
+```bash
+elizaos create my-plugin -t plugin
+cd my-plugin
+bun install
+bun run build
 ```
+
+Or copy [`templates/min-plugin/`](templates/min-plugin) directly. See [`templates/min-plugin/SCAFFOLD.md`](templates/min-plugin/SCAFFOLD.md) for the contract.
+
+To publish, run `elizaos publish` once typecheck, lint, and tests pass. Community plugins are listed in [elizaOS-plugins/registry](https://github.com/elizaOS-plugins/registry).
+
+## Examples
+
+[`packages/examples/`](packages/examples) — 30+ runnable references covering connectors, integrations, hosting targets, and gameplay. Each subdirectory is independently buildable and has its own README.
+
+| Category | Examples |
+|---|---|
+| Conversational | [`chat`](packages/examples/chat), [`discord`](packages/examples/discord), [`telegram`](packages/examples/telegram), [`farcaster`](packages/examples/farcaster), [`farcaster-miniapp`](packages/examples/farcaster-miniapp), [`twitter-xai`](packages/examples/twitter-xai), [`bluesky`](packages/examples/bluesky) |
+| Web frameworks | [`next`](packages/examples/next), [`react`](packages/examples/react), [`html`](packages/examples/html), [`browser-extension`](packages/examples/browser-extension), [`rest-api`](packages/examples/rest-api) |
+| Hosting / serverless | [`vercel`](packages/examples/vercel), [`cloudflare`](packages/examples/cloudflare), [`gcp`](packages/examples/gcp), [`aws`](packages/examples/aws), [`supabase`](packages/examples/supabase), [`convex`](packages/examples/convex) |
+| Protocols | [`mcp`](packages/examples/mcp), [`a2a`](packages/examples/a2a) |
+| On-chain / trading | [`polyagent`](packages/examples/polyagent), [`polymarket`](packages/examples/polymarket), [`trader`](packages/examples/trader), [`lp-manager`](packages/examples/lp-manager) |
+| Fun / games | [`tic-tac-toe`](packages/examples/tic-tac-toe), [`text-adventure`](packages/examples/text-adventure), [`game-of-life`](packages/examples/game-of-life), [`town`](packages/examples/town), [`roblox`](packages/examples/roblox), [`elizagotchi`](packages/examples/elizagotchi) |
+| Other | [`autonomous`](packages/examples/autonomous), [`avatar`](packages/examples/avatar), [`code`](packages/examples/code), [`form`](packages/examples/form), [`moltbook`](packages/examples/moltbook), [`_plugin`](packages/examples/_plugin) |
+
+## Benchmarks
+
+[`packages/benchmarks/`](packages/benchmarks) — 30+ evaluation suites for measuring agent capability. Each lives in its own subdirectory with its own harness and README.
+
+| Category | Benchmarks |
+|---|---|
+| General agent | [`gaia`](packages/benchmarks/gaia), [`agentbench`](packages/benchmarks/agentbench), [`tau-bench`](packages/benchmarks/tau-bench), [`gauntlet`](packages/benchmarks/gauntlet), [`realm`](packages/benchmarks/realm), [`trust`](packages/benchmarks/trust), [`experience`](packages/benchmarks/experience) |
+| Coding | [`swe_bench`](packages/benchmarks/swe_bench), [`bfcl`](packages/benchmarks/bfcl), [`mint`](packages/benchmarks/mint) |
+| OS / desktop | [`OSWorld`](packages/benchmarks/OSWorld), [`terminal-bench`](packages/benchmarks/terminal-bench) |
+| Web | [`mind2web`](packages/benchmarks/mind2web), [`webshop`](packages/benchmarks/webshop) |
+| On-chain / trading | [`HyperliquidBench`](packages/benchmarks/HyperliquidBench), [`solana`](packages/benchmarks/solana), [`evm`](packages/benchmarks/evm), [`vending-bench`](packages/benchmarks/vending-bench) |
+| Voice / multimodal | [`voicebench`](packages/benchmarks/voicebench) |
+| Specialized | [`adhdbench`](packages/benchmarks/adhdbench), [`clawbench`](packages/benchmarks/clawbench), [`openclaw-benchmark`](packages/benchmarks/openclaw-benchmark), [`woobench`](packages/benchmarks/woobench), [`rlm-bench`](packages/benchmarks/rlm-bench), [`social-alpha`](packages/benchmarks/social-alpha) |
+| elizaOS-specific | [`app-eval`](packages/benchmarks/app-eval), [`configbench`](packages/benchmarks/configbench), [`context-bench`](packages/benchmarks/context-bench), [`framework`](packages/benchmarks/framework), [`orchestrator`](packages/benchmarks/orchestrator), [`orchestrator_lifecycle`](packages/benchmarks/orchestrator_lifecycle) |
+
+The runbook for orchestrator-driven benchmark runs is [`packages/benchmarks/ORCHESTRATOR_SUBAGENT_BENCHMARK_RUNBOOK.md`](packages/benchmarks/ORCHESTRATOR_SUBAGENT_BENCHMARK_RUNBOOK.md). The Eliza adapter that lets a benchmark drive an Eliza agent lives at [`packages/benchmarks/eliza-adapter`](packages/benchmarks/eliza-adapter). A combined results viewer is at [`packages/benchmarks/viewer`](packages/benchmarks/viewer).
+
+## Working in the monorepo
+
+```bash
+bun install            # workspace install
+bun run dev            # API + Vite UI
+bun run build          # tsdown + vite
+bun run verify         # typecheck + lint
+bun run test           # parallel test suite
+bun run test:e2e       # end-to-end
+```
+
+Key framework packages:
+
+- **[`@elizaos/core`](packages/core)** — runtime, types, agent loop. The package the framework starts and ends with.
+- **[`@elizaos/agent`](packages/agent)** — `AgentRuntime`, plugin loader, default plugin map.
+- **[`@elizaos/app-core`](packages/app-core)** — Express API + dashboard host that runs agents.
+- **[`elizaos`](packages/elizaos)** — the `elizaos` CLI: `create`, `start`, `dev`, `test`, `env`, `agent`, `publish`, `upgrade`.
+- **[`@elizaos/prompts`](packages/prompts)** — shared prompt scaffolding.
+- **[`@elizaos/ui`](packages/ui)** — shared React component library.
+- **[`plugins/`](plugins)** — connectors and capabilities (Telegram, Discord, Farcaster, Twitter/X, browser, video, TEE, …).
+
+## Contributing
+
+Contributions welcome. Open an issue before sending a non-trivial PR.
+
+- [Bug Report](.github/ISSUE_TEMPLATE/bug_report.md)
+- [Feature Request](.github/ISSUE_TEMPLATE/feature_request.md)
+
+## License
+
+MIT — see [LICENSE](LICENSE).
 
 ## Contributors
 
 <a href="https://github.com/elizaos/eliza/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=elizaos/eliza" alt="Eliza project contributors" />
 </a>
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=elizaos/eliza&type=Date)](https://star-history.com/#elizaos/eliza&Date)

@@ -6,7 +6,8 @@
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "lib": ["ES2023"]
+    "lib": ["ES2023"],
+    "types": ["node", "bun-types"]
   },
   "include": ["src/**/*.ts"]
 }

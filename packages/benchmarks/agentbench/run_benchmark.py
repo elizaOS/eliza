@@ -262,14 +262,14 @@ async def main() -> int:
         # Use mock runtime for the runner scaffolding; the harness overrides
         # the actual agent loop.
         runtime = SmartMockRuntime()
-        runtime._eliza_harness = eliza_harness  # type: ignore[attr-defined]
+        runtime._app_harness = eliza_harness  # type: ignore[attr-defined]
         print("✅ Eliza benchmark server connected")
     else:
         print("\nUsing deterministic mock runtime (for harness validation)")
         runtime = SmartMockRuntime()
 
     # Baseline comparisons are only meaningful for real model runs
-    if isinstance(runtime, SmartMockRuntime) and not getattr(runtime, "_eliza_harness", None):
+    if isinstance(runtime, SmartMockRuntime) and not getattr(runtime, "_app_harness", None):
         config.enable_baseline_comparison = False
 
     # Show enabled environments
