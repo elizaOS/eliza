@@ -145,6 +145,11 @@ LLM_TRAJECTORY_STORAGE = "r2"
 #   GROQ_API_KEY                       Groq
 #   FAL_KEY                            Fal.ai video gen
 #   ELEVENLABS_API_KEY                 ElevenLabs TTS
+#   VAST_API_KEY                       Vast.ai Serverless endpoint API token (Bearer)
+#   VAST_BASE_URL                      Vast.ai Serverless endpoint URL (e.g.
+#       https://run.vast.ai/route/abc123). Provider strips trailing slash and
+#       appends /v1/chat/completions. Set both VAST_* secrets together — both
+#       are required to enable the vast/* model family.
 #   SENDGRID_API_KEY                   (or RESEND_API_KEY) — outbound mail
 #   AWS_KMS_KEY_ID / AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY  KMS-only;
 #       used by packages/lib/services/secrets/encryption.ts when AWS_KMS_KEY_ID

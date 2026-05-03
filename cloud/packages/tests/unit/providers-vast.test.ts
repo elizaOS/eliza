@@ -3,7 +3,7 @@ import type { OpenAIChatRequest } from "@/lib/providers/types";
 import { VastProvider } from "@/lib/providers/vast";
 
 const baseChatRequest: OpenAIChatRequest = {
-  model: "vast/qwen3.6-35b-a3b-awq",
+  model: "vast/qwen3.6-27b-neo-code",
   messages: [{ role: "user", content: "hi" }],
 };
 
@@ -18,7 +18,7 @@ afterEach(() => {
 });
 
 describe("VastProvider", () => {
-  test("translates catalog id to upstream HF id and posts to /v1/chat/completions", async () => {
+  test("forwards catalog model id verbatim and posts to /v1/chat/completions", async () => {
     const fetchMock = mock(async (_url: string, _init: RequestInit) => {
       return new Response(JSON.stringify({ ok: true }), {
         status: 200,
@@ -36,7 +36,9 @@ describe("VastProvider", () => {
     expect(url).toBe("https://run.vast.ai/route/abc123/v1/chat/completions");
 
     const body = JSON.parse(init.body as string);
-    expect(body.model).toBe("QuantTrio/Qwen3.6-35B-A3B-AWQ");
+    // llama-server's --alias makes the upstream model id match the catalog id,
+    // so the provider doesn't translate.
+    expect(body.model).toBe("vast/qwen3.6-27b-neo-code");
     expect(body.messages).toEqual([{ role: "user", content: "hi" }]);
 
     const headers = new Headers(init.headers as HeadersInit);
@@ -78,13 +80,13 @@ describe("VastProvider", () => {
       data: Array<{ id: string }>;
     };
     expect(body.object).toBe("list");
-    expect(body.data.map((m) => m.id)).toContain("vast/qwen3.6-35b-a3b-awq");
+    expect(body.data.map((m) => m.id)).toContain("vast/qwen3.6-27b-neo-code");
   });
 
   test("getModel returns the entry when present, 404 otherwise", async () => {
     const provider = new VastProvider("k", "https://run.vast.ai/route/x");
 
-    const ok = await provider.getModel("vast/qwen3.6-35b-a3b-awq");
+    const ok = await provider.getModel("vast/qwen3.6-27b-neo-code");
     expect(ok.status).toBe(200);
 
     const missing = await provider.getModel("vast/does-not-exist");
@@ -95,7 +97,7 @@ describe("VastProvider", () => {
     const provider = new VastProvider("k", "https://run.vast.ai/route/x");
     const res = await provider.embeddings({
       input: "hello",
-      model: "vast/qwen3.6-35b-a3b-awq",
+      model: "vast/qwen3.6-27b-neo-code",
     });
     expect(res.status).toBe(400);
   });
