@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-telegram",
-  "version": "2.0.0-alpha.12",
+  "version": "2.0.0-alpha.536",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -28,8 +28,8 @@
     "@telegraf/types": "7.1.0",
     "@types/node": "^24.0.10",
     "strip-literal": "^3.0.0",
-    "telegram": "2.17.4",
     "telegraf": "4.16.3",
+    "telegram": "2.17.4",
     "type-detect": "^4.1.0",
     "typescript": "^6.0.0"
   },

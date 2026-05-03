@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-matrix",
-  "version": "2.0.0-alpha.8",
+  "version": "2.0.0-alpha.536",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -31,9 +31,9 @@
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.3.11",
     "@types/bun": "^1.1.0",
     "typescript": "^6.0.3",
-    "@biomejs/biome": "^2.3.11",
     "vitest": "^3.2.4"
   },
   "eliza": {

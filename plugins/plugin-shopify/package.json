@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-shopify",
-  "version": "0.1.0",
+  "version": "2.0.0-alpha.536",
   "description": "Shopify Admin API plugin for elizaOS agents -- manage products, orders, inventory, and customers.",
   "type": "module",
   "main": "dist/index.js",

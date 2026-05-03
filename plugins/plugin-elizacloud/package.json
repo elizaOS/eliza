@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-elizacloud",
-  "version": "2.0.0-alpha.8",
+  "version": "2.0.0-alpha.536",
   "type": "module",
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",
@@ -38,8 +38,8 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "ai": "^6.0.30",
-    "js-tiktoken": "^1.0.21",
     "jose": "^6.2.2",
+    "js-tiktoken": "^1.0.21",
     "undici": "^7.16.0"
   },
   "devDependencies": {

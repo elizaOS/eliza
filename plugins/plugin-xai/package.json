@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-xai",
-  "version": "2.0.0-alpha.7",
+  "version": "2.0.0-alpha.536",
   "description": "elizaOS xAI plugin: Grok models for text generation and embeddings.",
   "type": "module",
   "main": "dist/node/index.node.js",

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-dexscreener",
-  "version": "1.0.2",
+  "version": "2.0.0-alpha.536",
   "description": "DexScreener integration plugin for ElizaOS",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -23,12 +23,12 @@
     "axios": "^1.6.0"
   },
   "devDependencies": {
-    "tsup": "8.3.5",
-    "prettier": "^3.0.0",
-    "bun": "^1.2.15",
     "@types/bun": "latest",
-    "typescript": "^6.0.3",
-    "@types/node": "^20.8.0"
+    "@types/node": "^20.8.0",
+    "bun": "^1.2.15",
+    "prettier": "^3.0.0",
+    "tsup": "8.3.5",
+    "typescript": "^6.0.3"
   },
   "keywords": [
     "elizaos",

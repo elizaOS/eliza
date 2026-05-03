@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-minecraft",
   "description": "Minecraft automation plugin for ElizaOS (Mineflayer bridge)",
-  "version": "2.0.0-alpha.7",
+  "version": "2.0.0-alpha.536",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
