@@ -1,0 +1,5 @@
+ts,oid,coin,side,px,sz,tif,reduceOnly,builderCode
+tsMs,oid,coin,side,px,sz,tif,reduceOnly,builderCode
+1777788964327,1,ETH,buy,3517.4999999999995,0.01,Alo,false,
+1777788964327,2,ETH,sell,3482.5,0.02,Gtc,true,
+1777788964327,3,BTC,buy,30000.0,0.005,Ioc,false,
