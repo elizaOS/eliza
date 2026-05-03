@@ -51,7 +51,7 @@ export class VaultService extends Service implements IVaultService {
         throw new Error("Invalid secret key length.");
       }
       return Keypair.fromSecretKey(new Uint8Array(secretKey));
-    } catch (error: any) {
+    } catch (error) {
       console.error(`Failed to create Keypair from secret for user ${userId}:`, error);
       throw new Error("Could not derive Keypair from the provided secret.");
     }

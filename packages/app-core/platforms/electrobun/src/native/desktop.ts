@@ -1665,7 +1665,7 @@ X-GNOME-Autostart-enabled=true
 
 		if (options.storageTypes === "all") {
 			session.clearStorageData("all");
-		} else {
+		} else if (options.storageTypes) {
 			const storageTypes = options.storageTypes.filter(
 				(type) => type !== "cookies",
 			);

@@ -1,21 +1,15 @@
 import {
   elizaLogger,
-  AgentRuntime,
-  AgentState as State,
-  IAgentRuntime,
+  type IAgentRuntime,
+  type Memory,
+  type Provider,
+  type AgentState as State,
+  settings,
 } from "@elizaos/core";
-import { Connection, PublicKey } from "@solana/web3.js";
-import {
-  WhirlpoolClient,
-  buildWhirlpoolClient,
-  PDAUtil,
-  PoolUtil,
-  Position,
-} from "@orca-so/whirlpools-sdk";
+import { buildWhirlpoolClient, PoolUtil } from "@orca-so/whirlpools-sdk";
 import { getMint } from "@solana/spl-token";
+import { Connection, type PublicKey } from "@solana/web3.js";
 import { loadWallet } from "../utils/loadWallet";
-import { Memory } from "@elizaos/core";
-import { Provider } from "@elizaos/core";
 
 export interface FetchedPositionStatistics {
   whirlpoolAddress: PublicKey;
@@ -35,7 +29,12 @@ export const positionProvider: Provider = {
     }
     try {
       const { address: ownerAddress } = await loadWallet(runtime, false);
-      const connection = new Connection(settings.SOLANA_RPC_URL!);
+      const rpcUrl = settings.SOLANA_RPC_URL;
+      if (!rpcUrl || typeof rpcUrl !== "string") {
+        elizaLogger.error("SOLANA_RPC_URL is not configured");
+        return null;
+      }
+      const connection = new Connection(rpcUrl);
       const positions = await fetchPositions(connection, ownerAddress);
       const positionsString = JSON.stringify(positions);
       return positionsString;
@@ -124,7 +123,7 @@ const fetchPositions = async (
       );
 
     return FetchedPositionsStatistics;
-  } catch (error) {
+  } catch (_error) {
     throw new Error("Error during fetching positions");
   }
 };

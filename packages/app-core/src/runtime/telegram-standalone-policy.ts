@@ -14,7 +14,5 @@ export function shouldStartTelegramStandaloneBot(
   if (lifeOpsPassiveConnectorsEnabled(null, env)) {
     return false;
   }
-  return isExplicitTrue(
-    env.ELIZA_TELEGRAM_STANDALONE_BOT,
-  );
+  return isExplicitTrue(env.ELIZA_TELEGRAM_STANDALONE_BOT);
 }

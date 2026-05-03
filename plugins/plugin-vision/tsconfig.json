@@ -17,7 +17,6 @@
     "noUnusedParameters": false,
     "noImplicitReturns": false,
     "noImplicitAny": false,
-    "baseUrl": "./src",
     "types": ["node"]
   },
   "include": ["src/*.ts", "src/@types/**/*.ts", "src/workers/**/*.ts"],

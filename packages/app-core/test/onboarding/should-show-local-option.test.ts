@@ -93,13 +93,10 @@ describe("shouldShowLocalOption", () => {
       fetchMock
         .mockRejectedValueOnce(new Error("ECONNREFUSED"))
         .mockResolvedValueOnce(
-          new Response(
-            JSON.stringify({ ready: true, agentState: "running" }),
-            {
-              status: 200,
-              headers: { "Content-Type": "application/json" },
-            },
-          ),
+          new Response(JSON.stringify({ ready: true, agentState: "running" }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
         );
 
       // Before the agent is up, the readiness signal is `false`.

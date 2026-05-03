@@ -79,10 +79,15 @@ export interface StewardVerifyEnv {
 let _jwtSecretCache: { raw: string; key: Uint8Array } | null = null;
 
 function resolveJwtSecret(env: StewardVerifyEnv): Uint8Array | null {
-  const raw = env.STEWARD_SESSION_SECRET || env.STEWARD_JWT_SECRET || "";
+  // Mirror @stwd/auth getJwtSecret() preference order:
+  // STEWARD_JWT_SECRET is canonical, STEWARD_SESSION_SECRET is the deprecated
+  // backwards-compat fallback. Reading them in the wrong order causes silent
+  // verify failures when a deployment sets both (signer uses JWT_SECRET,
+  // verifier ends up using SESSION_SECRET). See steward-fi/auth/src/jwt.ts.
+  const raw = env.STEWARD_JWT_SECRET || env.STEWARD_SESSION_SECRET || "";
 
   if (!raw) {
-    logger.warn("[StewardClient] No STEWARD_SESSION_SECRET or STEWARD_JWT_SECRET configured");
+    logger.warn("[StewardClient] No STEWARD_JWT_SECRET or STEWARD_SESSION_SECRET configured");
     return null;
   }
 

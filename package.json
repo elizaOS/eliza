@@ -25,7 +25,7 @@
     "dev:harness": "bun scripts/dev-harness.mjs",
     "dev:agent": "bun run --cwd packages/agent dev",
     "harness": "bun run --cwd packages/agent start",
-    "dev:core": "bun run --cwd packages/typescript dev",
+    "dev:core": "bun run --cwd packages/core dev",
     "start:debug": "NODE_NO_WARNINGS=1 LOG_LEVEL=debug bun run --cwd packages/agent start",
     "build": "turbo run build",
     "build:typescript": "turbo run build",
@@ -58,8 +58,8 @@
     "test:all": "node scripts/run-all-tests.mjs",
     "test:plugins": "bun run build:core && turbo run test --concurrency 3 --filter='./plugins/*' --filter='!@elizaos/plugin-agent-orchestrator' && turbo run test --concurrency 1 --filter='@elizaos/plugin-agent-orchestrator'",
     "test:client": "bun run build:core && TEST_PACKAGE_FILTER='\\((packages/app|packages/ui|apps/app-lifeops|apps/app-companion|apps/app-training)\\)' TEST_SCRIPT_FILTER='^test$' node scripts/run-all-tests.mjs",
-    "test:core": "turbo run test --filter=./packages/typescript",
-    "test:server": "bun run build:core && TEST_PACKAGE_FILTER='\\((packages/agent|packages/app-core|packages/shared|packages/typescript|packages/vault|packages/elizaos|packages/schemas|packages/skills|packages/interop|packages/scenario-runner)\\)' TEST_SCRIPT_FILTER='^test$' node scripts/run-all-tests.mjs",
+    "test:core": "turbo run test --filter=./packages/core",
+    "test:server": "bun run build:core && TEST_PACKAGE_FILTER='\\((packages/agent|packages/app-core|packages/shared|packages/core|packages/vault|packages/elizaos|packages/schemas|packages/skills|packages/interop|packages/scenario-runner)\\)' TEST_SCRIPT_FILTER='^test$' node scripts/run-all-tests.mjs",
     "browser-bridge:package:release": "cd apps/browser-bridge && bun run package:release",
     "test:browser-bridge": "cd apps/browser-bridge && bun run test:ci",
     "test:browser-bridge:safari": "cd apps/browser-bridge && bun run test:smoke:safari",
@@ -140,10 +140,13 @@
     "@uniswap/v4-sdk": "2.0.0",
     "drizzle-orm": "0.45.2",
     "@electric-sql/pglite": "^0.4.5",
-    "rimraf": "^6.0.1"
+    "rimraf": "^6.0.1",
+    "tsup": "8.5.1",
+    "viem": "2.48.8"
   },
   "patchedDependencies": {
-    "@pixiv/three-vrm@3.5.2": "packages/app-core/patches/@pixiv%2Fthree-vrm@3.5.2.patch"
+    "@pixiv/three-vrm@3.5.2": "packages/app-core/patches/@pixiv%2Fthree-vrm@3.5.2.patch",
+    "telegraf@4.16.3": "patches/telegraf@4.16.3.patch"
   },
   "trustedDependencies": [
     "@biomejs/biome",

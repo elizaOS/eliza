@@ -48,14 +48,7 @@ const AI_PROVIDERS = new Set([
   "zai",
 ]);
 
-export const STREAMING_DESTINATIONS = new Set([
-  "streaming-base",
-  "custom-rtmp",
-  "youtube-streaming",
-  "twitch-streaming",
-  "x-streaming",
-  "pumpfun-streaming",
-]);
+export const STREAMING_DESTINATIONS = new Set(["streaming"]);
 
 const CONNECTORS = new Set([
   "telegram",
@@ -166,12 +159,7 @@ const SETUP_GUIDE_ANCHORS = {
   mcp: "#mcp-model-context-protocol",
   iq: "#iq-solana-on-chain",
   "gmail-watch": "#gmail-watch",
-  "streaming-base": "#enable-streaming-streaming-base",
-  "twitch-streaming": "#twitch-streaming",
-  "youtube-streaming": "#youtube-streaming",
-  "x-streaming": "#x-streaming",
-  "pumpfun-streaming": "#pumpfun-streaming",
-  "custom-rtmp": "#custom-rtmp",
+  streaming: "#streaming",
 };
 
 const ELIZA_REPO_ROOT = "https://github.com/elizaOS/eliza";

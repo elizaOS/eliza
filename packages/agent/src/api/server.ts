@@ -854,7 +854,9 @@ function buildPluginEvmDiagnosticEntry(
     capability.pluginEvmLoaded ||
     capability.pluginEvmRequired ||
     (state.config.plugins?.allow ?? []).some((entry) => {
-      return entry === EVM_PLUGIN_PACKAGE || entry === "evm";
+      return (
+        entry === EVM_PLUGIN_PACKAGE || entry === "evm" || entry === "wallet"
+      );
     });
 
   const capabilityStatus = capability.pluginEvmLoaded
@@ -3525,100 +3527,91 @@ export async function startApiServer(opts?: {
           import("./stream-routes.js").StreamingDestination
         >();
 
-        // Custom RTMP
-        if (
-          isStreamingDestinationConfigured("customRtmp", streaming?.customRtmp)
-        ) {
-          try {
-            const { createCustomRtmpDestination } = await import(
-              "../plugins/custom-rtmp/index.js"
-            );
+        try {
+          const streamMod = await import("@elizaos/plugin-streaming");
+
+          if (
+            isStreamingDestinationConfigured(
+              "customRtmp",
+              streaming?.customRtmp,
+            )
+          ) {
             destinations.set(
               "custom-rtmp",
-              createCustomRtmpDestination(
+              streamMod.createCustomRtmpDestination(
                 streaming?.customRtmp as {
                   rtmpUrl?: string;
                   rtmpKey?: string;
                 },
               ),
             );
-          } catch (err) {
-            logger.warn(
-              `[eliza-api] Failed to load custom-rtmp destination: ${err instanceof Error ? err.message : String(err)}`,
-            );
           }
-        }
 
-        // Twitch
-        if (isStreamingDestinationConfigured("twitch", streaming?.twitch)) {
-          try {
-            const twitchMod = "@elizaos/plugin-twitch-streaming";
-            const { createTwitchDestination } = await import(twitchMod);
+          const rawSources = streaming?.rtmpSources;
+          if (Array.isArray(rawSources)) {
+            for (const row of rawSources) {
+              if (!row || typeof row !== "object") continue;
+              const rec = row as Record<string, string | undefined>;
+              const id = String(rec.id ?? "").trim();
+              const name = String(rec.name ?? id).trim();
+              const rtmpUrl = String(rec.rtmpUrl ?? "").trim();
+              const rtmpKey = String(rec.rtmpKey ?? "").trim();
+              if (!id || !rtmpUrl || !rtmpKey) continue;
+              destinations.set(
+                id,
+                streamMod.createNamedRtmpDestination({
+                  id,
+                  name,
+                  rtmpUrl,
+                  rtmpKey,
+                }),
+              );
+            }
+          }
+
+          if (isStreamingDestinationConfigured("twitch", streaming?.twitch)) {
             destinations.set(
               "twitch",
-              createTwitchDestination(
+              streamMod.createTwitchDestination(
+                undefined,
                 streaming?.twitch as { streamKey?: string },
               ),
             );
-          } catch (err) {
-            logger.warn(
-              `[eliza-api] Failed to load twitch destination: ${err instanceof Error ? err.message : String(err)}`,
-            );
           }
-        }
 
-        // YouTube
-        if (isStreamingDestinationConfigured("youtube", streaming?.youtube)) {
-          try {
-            const youtubeMod = "@elizaos/plugin-youtube-streaming";
-            const { createYoutubeDestination } = await import(youtubeMod);
+          if (isStreamingDestinationConfigured("youtube", streaming?.youtube)) {
             destinations.set(
               "youtube",
-              createYoutubeDestination(
+              streamMod.createYoutubeDestination(
+                undefined,
                 streaming?.youtube as { streamKey?: string; rtmpUrl?: string },
               ),
             );
-          } catch (err) {
-            logger.warn(
-              `[eliza-api] Failed to load youtube destination: ${err instanceof Error ? err.message : String(err)}`,
-            );
           }
-        }
 
-        // pump.fun
-        if (isStreamingDestinationConfigured("pumpfun", streaming?.pumpfun)) {
-          try {
-            const pumpfunMod = "@elizaos/plugin-pumpfun-streaming";
-            const { createPumpfunDestination } = await import(pumpfunMod);
+          if (isStreamingDestinationConfigured("pumpfun", streaming?.pumpfun)) {
             destinations.set(
               "pumpfun",
-              createPumpfunDestination(
+              streamMod.createPumpfunDestination(
+                undefined,
                 streaming?.pumpfun as { streamKey?: string; rtmpUrl?: string },
               ),
             );
-          } catch (err) {
-            logger.warn(
-              `[eliza-api] Failed to load pumpfun destination: ${err instanceof Error ? err.message : String(err)}`,
-            );
           }
-        }
 
-        // X (Twitter)
-        if (isStreamingDestinationConfigured("x", streaming?.x)) {
-          try {
-            const xMod = "@elizaos/plugin-x-streaming";
-            const { createXStreamDestination } = await import(xMod);
+          if (isStreamingDestinationConfigured("x", streaming?.x)) {
             destinations.set(
               "x",
-              createXStreamDestination(
+              streamMod.createXStreamDestination(
+                undefined,
                 streaming?.x as { streamKey?: string; rtmpUrl?: string },
               ),
             );
-          } catch (err) {
-            logger.warn(
-              `[eliza-api] Failed to load x destination: ${err instanceof Error ? err.message : String(err)}`,
-            );
           }
+        } catch (err) {
+          logger.warn(
+            `[eliza-api] Failed to load @elizaos/plugin-streaming destinations: ${err instanceof Error ? err.message : String(err)}`,
+          );
         }
 
         // Active destination: config preference → first available

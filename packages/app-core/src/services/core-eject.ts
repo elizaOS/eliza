@@ -17,8 +17,8 @@ const execFileAsync = promisify(execFile);
 const CORE_GIT_URL = "https://github.com/elizaos/eliza.git";
 const CORE_BRANCH = "develop";
 const CORE_PACKAGE_NAME = "@elizaos/core";
-const DEFAULT_CORE_PATHS = ["../packages/typescript/src/index.node.ts"];
-const DEFAULT_CORE_SUBPATHS = ["../packages/typescript/src/*"];
+const DEFAULT_CORE_PATHS = ["../packages/core/src/index.node.ts"];
+const DEFAULT_CORE_SUBPATHS = ["../packages/core/src/*"];
 const UPSTREAM_SCHEMA = "eliza-upstream-v1";
 
 function isSupportedUpstreamSchema(value: string): boolean {

@@ -88,7 +88,6 @@ Connectors marked **Auto** load automatically when their config is present in `e
 | Gmail Watch | Service account / OAuth | N/A | N/A | No | Registry |
 | Nextcloud Talk | Server credentials | Yes | Yes (rooms) | No | Registry |
 | Tlon | Ship credentials | Yes | Yes (Urbit chats) | No | Registry |
-| ACP | Gateway token | Yes (agent-to-agent) | N/A | No | Registry |
 | Zalouser | User credentials | Yes | N/A | No | Registry |
 
 ---
@@ -521,7 +520,7 @@ Connects to iMessage and SMS messaging via the Blooio service with signed webhoo
 
 ## Twitter
 
-Install from the registry before configuring: `eliza plugins install @elizaos/plugin-twitter`
+Install from the registry before configuring: `eliza plugins install @elizaos/plugin-x`
 
 ### Setup Requirements
 
@@ -1101,79 +1100,6 @@ A personal-account variant of the Zalo connector for one-to-one messaging outsid
 - Group chat participation
 
 **Note:** This connector is available from the plugin registry. Install it with `eliza plugins install @elizaos/plugin-tlon`.
-
----
-
-## ACP (Agent Communication Protocol)
-
-Install from the registry before configuring: `eliza plugins install @elizaos/plugin-lens`
-
-> **Note:** `@elizaos/plugin-lens` is registered in the auto-enable map but is not yet published or bundled. This connector is planned but not yet functional.
-
-**Plugin:** `@elizaos/plugin-lens`
-
-Connects agents through an ACP gateway for inter-agent communication.
-
-### Setup Requirements
-
-- ACP Gateway token and password
-
-### Key Configuration
-
-```json
-{
-  "connectors": {
-    "acp": {
-      "enabled": true
-    }
-  }
-}
-```
-
-**Environment variables:** `ACP_GATEWAY_TOKEN`, `ACP_GATEWAY_PASSWORD`, `ACP_GATEWAY_URL`, `ACP_CLIENT_NAME`, `ACP_AGENT_ID`
-
-### Features
-
-- Agent-to-agent communication via ACP gateway
-- Session persistence and management
-- Configurable client modes
-- Verbose logging option
-
-**Note:** This connector is available from the plugin registry. Install it with `eliza plugins install @elizaos/plugin-acp`.
-
----
-
-## ACP (Agent Communication Protocol)
-
-**Plugin:** `@elizaos/plugin-acp`
-
-The ACP connector links agents through an ACP gateway for agent-to-agent communication.
-
-### Setup Requirements
-
-- ACP gateway token
-
-### Key Configuration
-
-```json
-{
-  "connectors": {
-    "acp": {
-      "enabled": true
-    }
-  }
-}
-```
-
-| Env Variable | Description |
-|-------------|-------------|
-| `ACP_GATEWAY_TOKEN` | Gateway authentication token |
-
-### Features
-
-**Features (planned):**
-- Lens Protocol social interactions
-- Post publishing and engagement
 
 ---
 

@@ -147,14 +147,14 @@ for (const [featureName, enabled] of Object.entries(config.features ?? {})) {
 
 ## Channel to Plugin Mapping
 
-> **Note:** Not all plugins in this map are bundled with Eliza. `twitter` (`@elizaos/plugin-twitter`) and `lens` (`@elizaos/plugin-lens`) are upstream elizaOS plugins that must be installed manually. `wechat` (added by Eliza's `app-core`) is experimental. See the [connectors availability table](/guides/connectors#supported-platforms).
+> **Note:** Not all plugins in this map are bundled with Eliza. `twitter` (`@elizaos/plugin-x`) and `lens` (`@elizaos/plugin-lens`) are upstream elizaOS plugins that must be installed manually. `wechat` (added by Eliza's `app-core`) is experimental. See the [connectors availability table](/guides/connectors#supported-platforms).
 
 ```typescript
 const CHANNEL_PLUGIN_MAP = {
   telegram:    "@elizaos/plugin-telegram",
   discord:     "@elizaos/plugin-discord",
   slack:       "@elizaos/plugin-slack",
-  twitter:     "@elizaos/plugin-twitter",     // upstream, not bundled
+  twitter:     "@elizaos/plugin-x",     // upstream, not bundled
   whatsapp:    "@elizaos/plugin-whatsapp",
   signal:      "@elizaos/plugin-signal",
   imessage:    "@elizaos/plugin-imessage",

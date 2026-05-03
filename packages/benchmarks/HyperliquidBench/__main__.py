@@ -1,24 +1,30 @@
 """
-CLI entry point for the HyperliquidBench Eliza agent.
+CLI entry point for HyperliquidBench.
 
-Usage:
-    python -m benchmarks.HyperliquidBench.eliza_agent [OPTIONS]
+Two modes are supported via ``--mode``:
+
+* ``python`` (default) — runs the in-process Python ``elizaos`` ``AgentRuntime``
+  defined in ``eliza_agent.py``. This is the original path.
+* ``eliza`` — routes plan generation through the eliza TypeScript benchmark
+  server via ``eliza_adapter.hyperliquid.ElizaHyperliquidAgent``. The Rust
+  execution path (``hl-runner`` + ``hl-evaluator``) is reused unchanged in
+  both modes.
 
 Examples:
-    # Run with demo mode (default) – no real trades
-    python -m benchmarks.HyperliquidBench.eliza_agent --demo
+    # Python runtime, demo, default coverage scenario
+    python -m benchmarks.HyperliquidBench --demo
 
-    # Run free-form coverage scenario with specific coins
-    python -m benchmarks.HyperliquidBench.eliza_agent --coins ETH,BTC,SOL --max-steps 7
+    # Eliza TS bridge, demo (requires ELIZA_BENCH_URL/TOKEN, or ElizaServerManager)
+    python -m benchmarks.HyperliquidBench --mode eliza --demo
+
+    # Free-form coverage scenario with specific coins
+    python -m benchmarks.HyperliquidBench --coins ETH,BTC,SOL --max-steps 7
 
     # Run scenarios from task files
-    python -m benchmarks.HyperliquidBench.eliza_agent --tasks hl_perp_basic_01.jsonl
+    python -m benchmarks.HyperliquidBench --tasks hl_perp_basic_01.jsonl
 
-    # Verbose output with custom model
-    python -m benchmarks.HyperliquidBench.eliza_agent --model gpt-4o --verbose
-
-    # Live network (requires HL_PRIVATE_KEY)
-    python -m benchmarks.HyperliquidBench.eliza_agent --network testnet --no-demo
+    # Live testnet (requires HL_PRIVATE_KEY)
+    python -m benchmarks.HyperliquidBench --network testnet --no-demo
 """
 
 from __future__ import annotations
@@ -28,13 +34,28 @@ import asyncio
 import json
 import logging
 import sys
+from datetime import datetime
 from pathlib import Path
 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog="benchmarks.HyperliquidBench.eliza_agent",
-        description="Run HyperliquidBench scenarios through an ElizaOS agent",
+        prog="benchmarks.HyperliquidBench",
+        description="Run HyperliquidBench scenarios through an Eliza agent",
+    )
+
+    # Mode selection — controls whether planning happens in-process via the
+    # Python elizaos runtime or via the eliza TS benchmark server bridge.
+    parser.add_argument(
+        "--mode",
+        type=str,
+        default="python",
+        choices=["python", "eliza"],
+        help=(
+            "Agent backend. 'python' uses the in-process elizaos.AgentRuntime "
+            "(default). 'eliza' routes plan generation through the eliza "
+            "TypeScript benchmark server via eliza_adapter.hyperliquid."
+        ),
     )
 
     # Scenario selection
@@ -115,6 +136,17 @@ def _parse_args() -> argparse.Namespace:
 
     # Output
     parser.add_argument(
+        "--output",
+        "--output-dir",
+        dest="output",
+        type=str,
+        default=None,
+        help=(
+            "Directory to write the aggregated result JSON file. "
+            "Defaults to <bench_root>/runs."
+        ),
+    )
+    parser.add_argument(
         "--verbose", "-v",
         action="store_true",
         default=False,
@@ -124,10 +156,66 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _build_results_summary(results: list[object]) -> dict[str, object]:
+    """Aggregate per-scenario results into the JSON the registry will read."""
+    scenarios_out: list[dict[str, object]] = []
+    total_score = 0.0
+    total_base = 0.0
+    total_bonus = 0.0
+    total_penalty = 0.0
+    passed = 0
+
+    for result in results:
+        evaluator = getattr(result, "evaluator", None)
+        runner = getattr(result, "runner", None)
+        scenario_id = getattr(result, "scenario_id", "")
+        error_message = getattr(result, "error_message", None)
+
+        success = bool(evaluator and getattr(evaluator, "success", False))
+        score = float(getattr(evaluator, "final_score", 0.0)) if evaluator else 0.0
+        base = float(getattr(evaluator, "base", 0.0)) if evaluator else 0.0
+        bonus = float(getattr(evaluator, "bonus", 0.0)) if evaluator else 0.0
+        penalty = float(getattr(evaluator, "penalty", 0.0)) if evaluator else 0.0
+        sigs = list(getattr(evaluator, "unique_signatures", [])) if evaluator else []
+        out_dir = getattr(runner, "out_dir", "") if runner else ""
+
+        if success:
+            passed += 1
+
+        total_score += score
+        total_base += base
+        total_bonus += bonus
+        total_penalty += penalty
+
+        scenarios_out.append({
+            "scenario_id": scenario_id,
+            "success": success,
+            "final_score": score,
+            "base": base,
+            "bonus": bonus,
+            "penalty": penalty,
+            "unique_signatures": sigs,
+            "out_dir": out_dir,
+            "error": error_message,
+        })
+
+    n = max(len(results), 1)
+    return {
+        "benchmark": "hyperliquid_bench",
+        "scenarios": scenarios_out,
+        "total_scenarios": len(results),
+        "passed_scenarios": passed,
+        "final_score": total_score / n,  # average per scenario
+        "total_score": total_score,
+        "base": total_base,
+        "bonus": total_bonus,
+        "penalty": total_penalty,
+    }
+
+
 async def _main() -> int:
     args = _parse_args()
 
-    # Configure logging
     log_level = logging.DEBUG if args.verbose else logging.INFO
     logging.basicConfig(
         level=log_level,
@@ -137,7 +225,6 @@ async def _main() -> int:
 
     # Lazy imports so --help is fast
     from .eliza_agent import (
-        ElizaHyperliquidAgent,
         load_scenarios_from_tasks,
         make_coverage_scenario,
     )
@@ -158,7 +245,6 @@ async def _main() -> int:
         verbose=args.verbose,
     )
 
-    # Build scenario list
     coins = [c.strip().upper() for c in args.coins.split(",") if c.strip()]
     scenarios: list[TradingScenario] = []
 
@@ -173,7 +259,6 @@ async def _main() -> int:
     elif args.tasks:
         scenarios = load_scenarios_from_tasks(bench_root, task_files=args.tasks)
     else:
-        # Default: free-form coverage
         scenarios.append(
             make_coverage_scenario(
                 allowed_coins=coins,
@@ -186,35 +271,56 @@ async def _main() -> int:
         logging.error("No scenarios to run")
         return 1
 
-    # Run the agent
-    agent = ElizaHyperliquidAgent(config=config, verbose=args.verbose)
+    # Pick the agent backend.
+    if args.mode == "eliza":
+        from eliza_adapter.hyperliquid import ElizaHyperliquidAgent as _BridgeAgent
+
+        agent: object = _BridgeAgent(config=config, verbose=args.verbose)
+        logging.info("Using eliza TS bridge agent (eliza_adapter.hyperliquid)")
+    else:
+        from .eliza_agent import ElizaHyperliquidAgent as _PythonAgent
+
+        agent = _PythonAgent(config=config, verbose=args.verbose)
+        logging.info("Using in-process Python elizaos AgentRuntime")
 
     try:
-        results = await agent.run_benchmark(scenarios=scenarios)
+        results = await agent.run_benchmark(scenarios=scenarios)  # type: ignore[attr-defined]
     finally:
-        await agent.cleanup()
+        await agent.cleanup()  # type: ignore[attr-defined]
 
-    # Print summary
+    summary = _build_results_summary(results)
+    summary["mode"] = args.mode
+    summary["model"] = args.model
+    summary["network"] = args.network
+    summary["demo_mode"] = demo_mode
+
+    # Write the aggregated result JSON in a location the registry can locate.
+    output_dir = Path(args.output).resolve() if args.output else (bench_root / config.runs_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    out_file = output_dir / f"hyperliquid_bench-{args.mode}-{timestamp}.json"
+    out_file.write_text(json.dumps(summary, indent=2))
+    logging.info("Wrote aggregated results to %s", out_file)
+
+    # Print the human summary on stdout.
     print("\n" + "=" * 60)
-    print("HyperliquidBench – Eliza Agent Results")
+    print(f"HyperliquidBench — {args.mode} mode results")
     print("=" * 60)
-
-    total_score = 0.0
-    for result in results:
-        status = "PASS" if (result.evaluator and result.evaluator.success) else "FAIL"
-        score = result.evaluator.final_score if result.evaluator else 0.0
-        total_score += score
-        print(f"\n  [{status}] {result.scenario_id}")
-        if result.evaluator:
-            print(f"    Score: {score:.3f}  (base={result.evaluator.base:.1f}, "
-                  f"bonus={result.evaluator.bonus:.1f}, penalty={result.evaluator.penalty:.1f})")
-            if result.evaluator.unique_signatures:
-                print(f"    Signatures: {', '.join(result.evaluator.unique_signatures)}")
-        if result.error_message:
-            print(f"    Error: {result.error_message}")
-
-    print(f"\n  Total Score: {total_score:.3f}")
-    print(f"  Scenarios: {len(results)}")
+    for scenario in summary["scenarios"]:  # type: ignore[union-attr]
+        status = "PASS" if scenario["success"] else "FAIL"  # type: ignore[index]
+        print(f"\n  [{status}] {scenario['scenario_id']}")  # type: ignore[index]
+        print(
+            f"    Score: {scenario['final_score']:.3f}  "  # type: ignore[index]
+            f"(base={scenario['base']:.1f}, bonus={scenario['bonus']:.1f}, "
+            f"penalty={scenario['penalty']:.1f})"
+        )
+        if scenario["unique_signatures"]:  # type: ignore[index]
+            print(f"    Signatures: {', '.join(scenario['unique_signatures'])}")  # type: ignore[index]
+        if scenario["error"]:  # type: ignore[index]
+            print(f"    Error: {scenario['error']}")  # type: ignore[index]
+    print(f"\n  Average final_score: {summary['final_score']:.3f}")
+    print(f"  Scenarios: {summary['total_scenarios']}, Passed: {summary['passed_scenarios']}")
+    print(f"  Result file: {out_file}")
     print("=" * 60)
 
     return 0

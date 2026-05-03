@@ -17,7 +17,7 @@
  *     "productName":         "eliza_cf_x86_64_phone",  // Cuttlefish product name (used for lunch target + product makefile filename)
  *     "lunchTarget":         "eliza_cf_x86_64_phone-trunk_staging-userdebug",
  *     "envPrefix":           "ELIZA",                  // env var prefix (ELIZA_PIXEL_CODENAME, ELIZA_AOSP_BUILD, …)
- *     "vendorDir":            "os/android/vendor/eliza" // optional override of source vendor dir relative to repo root
+ *     "vendorDir":            "packages/os/android/vendor/eliza" // optional override of source vendor dir relative to repo root
  *     "buildAndroidSystemCmd": ["bun", "run", "build:android:system"]  // command to rebuild the privileged APK
  *   }
  *
@@ -108,7 +108,8 @@ export function loadBrandConfig(configPath) {
   }
   // Defaults for optional fields.
   parsed.initRcName = parsed.initRcName ?? `init.${parsed.brand}.rc`;
-  parsed.vendorDir = parsed.vendorDir ?? `os/android/vendor/${parsed.brand}`;
+  parsed.vendorDir =
+    parsed.vendorDir ?? `packages/os/android/vendor/${parsed.brand}`;
   parsed.buildAndroidSystemCmd = parsed.buildAndroidSystemCmd ?? [
     "bun",
     "run",

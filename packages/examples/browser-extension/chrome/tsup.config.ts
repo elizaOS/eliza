@@ -13,7 +13,7 @@ function resolvePackage(pkg: string, browserPath?: string): string {
   // Check if it's a core package or a plugin
   let basePath: string;
   if (pkgName === "core") {
-    // Core package is at packages/typescript
+    // Core package is at packages/core
     basePath = path.join(packagesDir, "typescript");
   } else {
     // Plugins have a typescript/ subdirectory

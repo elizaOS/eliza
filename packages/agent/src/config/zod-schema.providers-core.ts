@@ -818,6 +818,15 @@ export const XStreamConfigSchema = z
   })
   .strict();
 
+export const NamedRtmpSourceSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().optional(),
+    rtmpUrl: z.string().min(1),
+    rtmpKey: z.string().min(1),
+  })
+  .strict();
+
 export const MSTeamsChannelSchema = z
   .object({
     requireMention: z.boolean().optional(),

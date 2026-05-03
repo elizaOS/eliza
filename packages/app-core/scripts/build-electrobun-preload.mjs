@@ -27,10 +27,7 @@ function isElectrobunDir(dir) {
 }
 
 const ELECTROBUN_DIR =
-  [
-    process.cwd(),
-    resolveElectrobunDir(repoRoot),
-  ].find(isElectrobunDir) ??
+  [process.cwd(), resolveElectrobunDir(repoRoot)].find(isElectrobunDir) ??
   (() => {
     throw new Error("Could not resolve Electrobun workspace directory");
   })();

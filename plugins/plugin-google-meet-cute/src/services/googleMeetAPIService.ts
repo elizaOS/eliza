@@ -9,7 +9,7 @@ export class GoogleMeetAPIService extends Service {
   private conferenceClient: ConferenceRecordsServiceClient | null = null;
   private currentMeeting: Meeting | null = null;
 
-  constructor(runtime: IAgentRuntime) {
+  constructor(runtime?: IAgentRuntime) {
     super(runtime);
   }
 

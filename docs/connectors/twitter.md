@@ -4,11 +4,11 @@ sidebarTitle: Twitter/X
 description: Connect your agent to Twitter/X via the xAI plugin (@elizaos/plugin-xai).
 ---
 
-> **Registry note:** `@elizaos/plugin-twitter` is not currently listed in the Eliza plugin registry (`plugins.json`). The package may be available from npm or a separate elizaOS plugin repository. Verify availability before configuring.
+> **Registry note:** `@elizaos/plugin-x` is not currently listed in the Eliza plugin registry (`plugins.json`). The package may be available from npm or a separate elizaOS plugin repository. Verify availability before configuring.
 
 Connect your agent to Twitter/X for social media engagement.
 
-> **Availability:** `@elizaos/plugin-twitter` is an on-demand elizaOS plugin resolved from the remote plugin registry. It is **not** included in Eliza's bundled `plugins.json` index. The plugin auto-installs at runtime when a valid token is detected in your connector configuration.
+> **Availability:** `@elizaos/plugin-x` is an on-demand elizaOS plugin resolved from the remote plugin registry. It is **not** included in Eliza's bundled `plugins.json` index. The plugin auto-installs at runtime when a valid token is detected in your connector configuration.
 
 ## Overview
 
@@ -17,7 +17,7 @@ The Twitter connector is an elizaOS plugin that bridges your agent to Twitter/X.
 ## Installation
 
 ```bash
-eliza plugins install @elizaos/plugin-twitter
+eliza plugins install @elizaos/plugin-x
 ```
 
 ## Configuration
@@ -29,7 +29,7 @@ eliza plugins install @elizaos/plugin-twitter
 | Auto-enable trigger | `apiKey`, `token`, or X OAuth env vars (`X_API_KEY`, etc.) |
 
 <Note>
-`@elizaos/plugin-twitter` is the dedicated Twitter connector and handles posting, mentions, and timeline interactions. The separate `@elizaos/plugin-xai` package also includes X/Twitter integration alongside Grok model access — if you already have xAI configured with `X_*` env vars, you may not need this connector separately.
+`@elizaos/plugin-x` is the dedicated Twitter connector and handles posting, mentions, and timeline interactions. The separate `@elizaos/plugin-xai` package also includes X/Twitter integration alongside Grok model access — if you already have xAI configured with `X_*` env vars, you may not need this connector separately.
 </Note>
 
 ## Minimal Configuration
@@ -65,7 +65,7 @@ To explicitly disable the connector even when a token is present:
 
 ## Setup
 
-After installation, the `plugin-auto-enable.ts` module checks `connectors.twitter` in your config. If any of the fields `botToken`, `token`, or `apiKey` is truthy (and `enabled` is not explicitly `false`), the runtime automatically loads `@elizaos/plugin-twitter`.
+After installation, the `plugin-auto-enable.ts` module checks `connectors.twitter` in your config. If any of the fields `botToken`, `token`, or `apiKey` is truthy (and `enabled` is not explicitly `false`), the runtime automatically loads `@elizaos/plugin-x`.
 
 No environment variable is required to trigger auto-enable — it is driven entirely by the connector config object. However, the plugin must first be installed via the registry (see [Installation](#installation) above).
 

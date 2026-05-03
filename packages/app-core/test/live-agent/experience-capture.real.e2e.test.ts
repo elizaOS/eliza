@@ -7,14 +7,14 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { recordExperienceAction } from "../../../typescript/src/features/advanced-capabilities/experience/actions/record-experience.ts";
-import { experienceEvaluator } from "../../../typescript/src/features/advanced-capabilities/experience/evaluators/experienceEvaluator.ts";
-import { ExperienceService } from "../../../typescript/src/features/advanced-capabilities/experience/service.ts";
+import { recordExperienceAction } from "../../../core/src/features/advanced-capabilities/experience/actions/record-experience.ts";
+import { experienceEvaluator } from "../../../core/src/features/advanced-capabilities/experience/evaluators/experienceEvaluator.ts";
+import { ExperienceService } from "../../../core/src/features/advanced-capabilities/experience/service.ts";
 import {
   type Experience,
   ExperienceType,
   OutcomeType,
-} from "../../../typescript/src/features/advanced-capabilities/experience/types.ts";
+} from "../../../core/src/features/advanced-capabilities/experience/types.ts";
 
 type Extraction = {
   type: string;

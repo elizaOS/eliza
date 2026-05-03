@@ -42,6 +42,49 @@ function readJson(filePath) {
 }
 
 /**
+ * Template literals are extracted as raw source text; expand known `${...}` patterns
+ * so generated JSON/docs contain real strings (Biome flags `${` inside quoted TS strings).
+ * @param {string} description
+ * @param {string} actionFilePath
+ * @returns {string}
+ */
+function expandDescriptionTemplateLiterals(description, actionFilePath) {
+  if (!description.includes("${VALID_EMOTE_IDS.join")) {
+    return description;
+  }
+  const emotesPath = path.join(path.dirname(actionFilePath), "emotes.ts");
+  if (!fs.existsSync(emotesPath)) {
+    console.warn(
+      `[generate-plugin-action-spec] VALID_EMOTE_IDS placeholder but missing ${emotesPath}`,
+    );
+    return description;
+  }
+  const emotesSrc = readText(emotesPath);
+  const block = emotesSrc.match(
+    /export\s+const\s+VALID_EMOTE_IDS\s*=\s*\[([\s\S]*?)\];/,
+  );
+  if (!block) {
+    console.warn(
+      `[generate-plugin-action-spec] Could not parse VALID_EMOTE_IDS in ${emotesPath}`,
+    );
+    return description;
+  }
+  /** @type {string[]} */
+  const ids = [];
+  const idRe = /"([a-zA-Z0-9_-]+)"/g;
+  let match = idRe.exec(block[1]);
+  while (match !== null) {
+    ids.push(match[1]);
+    match = idRe.exec(block[1]);
+  }
+  if (ids.length === 0) {
+    return description;
+  }
+  const joined = ids.join(", ");
+  return description.replace(/\$\{VALID_EMOTE_IDS\.join\([^)]*\)\}/g, joined);
+}
+
+/**
  * Ensures a directory exists, creating it and parent directories if necessary.
  * @param {string} dir - The directory path to ensure exists
  * @throws {Error} If the directory path is empty or whitespace-only
@@ -610,8 +653,10 @@ function main() {
       const name = extractTopLevelStringProp(obj.objectText, "name");
       if (!name) continue;
       if (coreActionNames.has(name)) continue;
-      const description =
-        extractTopLevelStringProp(obj.objectText, "description") ?? "";
+      const description = expandDescriptionTemplateLiterals(
+        extractTopLevelStringProp(obj.objectText, "description") ?? "",
+        filePath,
+      );
       const similes = extractTopLevelStringArrayProp(obj.objectText, "similes");
       const parameters = inferParameters(obj.objectText);
       const exampleCalls = buildExampleCallForAction(name, parameters);

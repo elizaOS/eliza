@@ -19,9 +19,7 @@
     "types": ["node", "vitest/globals"],
     "noEmitOnError": false,
     "moduleDetection": "force",
-    "allowArbitraryExtensions": true,
-    "baseUrl": ".",
-    "ignoreDeprecations": "6.0"
+    "allowArbitraryExtensions": true
   },
   "include": ["src/**/*.ts", "e2e/**/*.ts", "__tests__/**/*.ts"]
 }

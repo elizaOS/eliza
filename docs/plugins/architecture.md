@@ -170,7 +170,7 @@ const CONNECTOR_PLUGINS = {
   telegram:    "@elizaos/plugin-telegram",      // bundled
   discord:     "@elizaos/plugin-discord",        // bundled
   slack:       "@elizaos/plugin-slack",           // bundled
-  twitter:     "@elizaos/plugin-twitter",         // upstream (not in plugins.json)
+  twitter:     "@elizaos/plugin-x",         // upstream (not in plugins.json)
   whatsapp:    "@elizaos/plugin-whatsapp",        // bundled
   signal:      "@elizaos/plugin-signal",          // bundled
   imessage:    "@elizaos/plugin-imessage",        // bundled
@@ -237,11 +237,12 @@ const FEATURE_PLUGINS = {
 
 ```typescript
 const STREAMING_PLUGINS = {
-  twitch:     "@elizaos/plugin-twitch-streaming",   // * upstream-only
-  youtube:    "@elizaos/plugin-youtube-streaming",   // * upstream-only
-  customRtmp: "@elizaos/plugin-custom-rtmp",         // * upstream-only
-  pumpfun:    "@elizaos/plugin-pumpfun-streaming",   // * upstream-only
-  x:          "@elizaos/plugin-x-streaming",         // * upstream-only
+  twitch:       "@elizaos/plugin-streaming",
+  youtube:      "@elizaos/plugin-streaming",
+  customRtmp:   "@elizaos/plugin-streaming",
+  pumpfun:      "@elizaos/plugin-streaming",
+  x:            "@elizaos/plugin-streaming",
+  rtmpSources:  "@elizaos/plugin-streaming",
 };
 ```
 

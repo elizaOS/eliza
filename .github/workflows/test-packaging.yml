@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - 'packages/app-core/packaging/**'
-      - 'packages/typescript/**'
+      - 'packages/core/**'
       - 'plugins/*/typescript/**'
       - 'packages/app-core/scripts/pack-upstreams.mjs'
       - '.github/workflows/publish-packages.yml'
@@ -13,7 +13,7 @@ on:
     branches: [main]
     paths:
       - 'packages/app-core/packaging/**'
-      - 'packages/typescript/**'
+      - 'packages/core/**'
       - 'plugins/*/typescript/**'
   workflow_dispatch:
 
@@ -193,7 +193,7 @@ jobs:
 
       - name: Generate protobuf types
         run: |
-          if [ -d packages/schemas ] && [ -f packages/schemas/buf.gen.yaml ] && [ ! -d packages/typescript/src/types/generated ]; then
+          if [ -d packages/schemas ] && [ -f packages/schemas/buf.gen.yaml ] && [ ! -d packages/core/src/types/generated ]; then
             cd packages/schemas
             node node_modules/@bufbuild/buf/install.js 2>/dev/null || true
             bunx @bufbuild/buf@1.67.0 generate

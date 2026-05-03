@@ -34,7 +34,9 @@ export const CONNECTOR_PLUGINS: Record<string, string> = {
   discord: "@elizaos/plugin-discord",
   discordLocal: "@elizaos/plugin-discord-local",
   slack: "@elizaos/plugin-slack",
-  twitter: "@elizaos/plugin-twitter",
+  x: "@elizaos/plugin-x",
+  // Backward-compat alias: legacy "twitter" connector key resolves to plugin-x.
+  twitter: "@elizaos/plugin-x",
   // Internal connector built from src/plugins/whatsapp (not an npm package).
   whatsapp: "@elizaos/plugin-whatsapp",
   // Internal connector built from src/plugins/signal (not an npm package).
@@ -53,11 +55,12 @@ export const CONNECTOR_PLUGINS: Record<string, string> = {
 };
 
 export const STREAMING_PLUGINS: Record<string, string> = {
-  twitch: "@elizaos/plugin-twitch-streaming",
-  youtube: "@elizaos/plugin-youtube-streaming",
-  customRtmp: "@elizaos/plugin-custom-rtmp",
-  pumpfun: "@elizaos/plugin-pumpfun-streaming",
-  x: "@elizaos/plugin-x-streaming",
+  twitch: "@elizaos/plugin-streaming",
+  youtube: "@elizaos/plugin-streaming",
+  customRtmp: "@elizaos/plugin-streaming",
+  pumpfun: "@elizaos/plugin-streaming",
+  x: "@elizaos/plugin-streaming",
+  rtmpSources: "@elizaos/plugin-streaming",
 };
 
 const PROVIDER_PLUGINS: Record<string, string> = {
@@ -108,10 +111,8 @@ export const AUTH_PROVIDER_PLUGINS: Record<string, string> = {
   OBSIDAN_VAULT_PATH: "@elizaos/plugin-obsidian",
   REPOPROMPT_CLI_PATH: "@elizaos/plugin-repoprompt",
   CLAUDE_CODE_WORKBENCH_ENABLED: "@elizaos/plugin-claude-code-workbench",
-  // NOTE: @elizaos/plugin-evm is NOT enabled via this map. Its auto-enable
-  // reasons (local key / Steward cloud / Steward self-hosted) are resolved by
-  // resolveEvmAutoEnableReason() below so a single code path owns the decision.
-  SOLANA_PRIVATE_KEY: "@elizaos/plugin-solana",
+  // NOTE: EVM signing auto-enable is NOT via this map — see resolveEvmAutoEnableReason().
+  SOLANA_PRIVATE_KEY: "@elizaos/plugin-wallet",
   LASTFM_API_KEY: "@elizaos/plugin-music-library",
   GENIUS_API_KEY: "@elizaos/plugin-music-library",
   THEAUDIODB_API_KEY: "@elizaos/plugin-music-library",
@@ -150,18 +151,15 @@ const FEATURE_PLUGINS: Record<string, string> = {
   rs2004scape: "@elizaos/app-2004scape",
 };
 
-const EVM_PLUGIN_PACKAGE = "@elizaos/plugin-evm";
-const EVM_PLUGIN_SHORT_ID = "evm";
-
-const AGENT_WALLET_PLUGIN_PACKAGE = "@elizaos/plugin-agent-wallet";
-const AGENT_WALLET_PLUGIN_SHORT_ID = "agent-wallet";
+const WALLET_PLUGIN_PACKAGE = "@elizaos/plugin-wallet";
+const WALLET_PLUGIN_SHORT_ID = "wallet";
 
 const STEWARD_ELIZA_PLUGIN_PACKAGE = "@stwd/eliza-plugin";
 const STEWARD_ELIZA_PLUGIN_SHORT_ID = "stwd-eliza-plugin";
 
-// Delegates to resolveEvmSigningCapability so plugin-evm auto-enable and the
+// Delegates to resolveEvmSigningCapability so wallet auto-enable and the
 // wallet-capability UI agree on whether a signing path exists. A cloud address
-// without signing (cloud-view-only) returns null — plugin-evm must not load
+// without signing (cloud-view-only) returns null — @elizaos/plugin-wallet must not load
 // without a working signer.
 function resolveEvmAutoEnableReason(env: NodeJS.ProcessEnv): string | null {
   return evmAutoEnableReasonFromCapability(env);
@@ -271,6 +269,18 @@ export function isStreamingDestinationConfigured(
       return Boolean(config.streamKey && config.rtmpUrl);
     case "x":
       return Boolean(config.streamKey && config.rtmpUrl);
+    case "rtmpSources":
+      return (
+        Array.isArray(destConfig) &&
+        destConfig.some((row) => {
+          if (!row || typeof row !== "object") return false;
+          const rec = row as Record<string, unknown>;
+          const id = String(rec.id ?? "").trim();
+          const url = String(rec.rtmpUrl ?? "").trim();
+          const key = String(rec.rtmpKey ?? "").trim();
+          return Boolean(id && url && key);
+        })
+      );
     default:
       return false;
   }
@@ -355,7 +365,7 @@ export function applyPluginAutoEnable(
       const pluginName = STREAMING_PLUGINS[destName];
       if (!pluginName) continue;
       if (!isStreamingDestinationConfigured(destName, destConfig)) continue;
-      // Derive short ID from the package name (e.g. "@elizaos/plugin-twitch-streaming" → "twitch-streaming")
+      // Derive short ID from the package name (e.g. "@elizaos/plugin-streaming" → "streaming")
       const shortId = pluginName.includes("/plugin-")
         ? pluginName.slice(
             pluginName.lastIndexOf("/plugin-") + "/plugin-".length,
@@ -448,18 +458,6 @@ export function applyPluginAutoEnable(
   }
 
   const evmAutoEnableReason = resolveEvmAutoEnableReason(env);
-  if (
-    evmAutoEnableReason &&
-    pluginsConfig.entries[EVM_PLUGIN_SHORT_ID]?.enabled !== false
-  ) {
-    addToAllowlist(
-      pluginsConfig.allow,
-      EVM_PLUGIN_PACKAGE,
-      EVM_PLUGIN_SHORT_ID,
-      changes,
-      evmAutoEnableReason,
-    );
-  }
 
   if (env.ELIZA_AGENT_WALLET_AUTO_ENABLE !== "0") {
     const solanaKeyReason =
@@ -475,14 +473,16 @@ export function applyPluginAutoEnable(
         : null;
     const agentWalletReason =
       evmAutoEnableReason ?? solanaKeyReason ?? cloudStewardReason;
-    if (
-      agentWalletReason &&
-      pluginsConfig.entries[AGENT_WALLET_PLUGIN_SHORT_ID]?.enabled !== false
-    ) {
+    const walletExplicitlyDisabled =
+      pluginsConfig.entries[WALLET_PLUGIN_SHORT_ID]?.enabled === false ||
+      pluginsConfig.entries["agent-wallet"]?.enabled === false ||
+      pluginsConfig.entries.evm?.enabled === false ||
+      pluginsConfig.entries.solana?.enabled === false;
+    if (agentWalletReason && !walletExplicitlyDisabled) {
       addToAllowlist(
         pluginsConfig.allow,
-        AGENT_WALLET_PLUGIN_PACKAGE,
-        AGENT_WALLET_PLUGIN_SHORT_ID,
+        WALLET_PLUGIN_PACKAGE,
+        WALLET_PLUGIN_SHORT_ID,
         changes,
         agentWalletReason,
       );

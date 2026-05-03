@@ -29,7 +29,7 @@ import { afterAll, beforeAll, describe, expect } from "vitest";
 import { itIf } from "../../../../../eliza/test/helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../../../../../eliza/test/helpers/live-provider";
 import { pageScopedContextProvider } from "../../../agent/src/providers/page-scoped-context.js";
-import { trajectoriesPlugin } from "../../../typescript/src/features/trajectories/index.js";
+import { trajectoriesPlugin } from "../../../core/src/features/trajectories/index.js";
 import {
   buildPageScopedRoutingMetadata,
   PAGE_SCOPE_VERSION,
@@ -44,8 +44,7 @@ import {
   stampPageScopedRoomMetadata,
 } from "../helpers/trajectory-assertions.js";
 
-const liveModelTestsEnabled =
-  process.env.ELIZA_LIVE_TEST === "1";
+const liveModelTestsEnabled = process.env.ELIZA_LIVE_TEST === "1";
 const selectedLiveProvider = liveModelTestsEnabled
   ? selectLiveProvider()
   : null;

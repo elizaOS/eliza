@@ -8,6 +8,11 @@ import type {
   TransactionResult,
 } from "../types.ts";
 
+interface DexInteractionRegistry {
+  registerDexService?: (svc: Service) => void;
+  rediscoverServices?: () => void;
+}
+
 /**
  * Mock LP Service for testing that simulates real DEX behavior
  */
@@ -251,7 +256,7 @@ export async function registerMockDexServices(runtime: IAgentRuntime): Promise<v
       await mockService.start();
 
       // Register with DexInteractionService directly
-      const dexInteractionService = runtime.getService<any>("dex-interaction");
+      const dexInteractionService = runtime.getService<DexInteractionRegistry>("dex-interaction");
       if (dexInteractionService?.registerDexService) {
         dexInteractionService.registerDexService(mockService);
         console.info(`Registered MockLpService for ${dexName}`);
@@ -261,7 +266,7 @@ export async function registerMockDexServices(runtime: IAgentRuntime): Promise<v
     }
 
     // Force rediscovery of services
-    const dexInteractionService = runtime.getService<any>("dex-interaction");
+    const dexInteractionService = runtime.getService<DexInteractionRegistry>("dex-interaction");
     if (dexInteractionService?.rediscoverServices) {
       dexInteractionService.rediscoverServices();
     }

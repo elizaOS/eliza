@@ -13,8 +13,6 @@
     "esModuleInterop": true,
     "strict": true,
     "resolveJsonModule": true,
-    "ignoreDeprecations": "6.0",
-    "baseUrl": ".",
     "paths": {
       "@/api-app/*": ["./src/*"],
       "@/api-queue/*": ["./src/queue/*"],

@@ -133,7 +133,7 @@ The mock will detect which template is being used by inspecting the `prompt` or 
 ### 4.1 Strategy
 
 Each runtime already has an in-memory database adapter:
-- **TypeScript**: `InMemoryDatabaseAdapter` built into core (`packages/typescript/src/database/inMemoryAdapter.ts`)
+- **TypeScript**: `InMemoryDatabaseAdapter` built into core (`packages/core/src/database/inMemoryAdapter.ts`)
 - **Python**: `plugin-inmemorydb` package (`plugins/plugin-inmemorydb/python/`)
 - **Rust**: `plugin-inmemorydb` crate (`plugins/plugin-inmemorydb/rust/`)
 
@@ -417,7 +417,7 @@ Example console output:
 ### 9.2 Dependencies Per Runtime
 
 **TypeScript:**
-- `@elizaos/core` (from `packages/typescript`) — the agent framework
+- `@elizaos/core` (from `packages/core`) — the agent framework
 - No additional deps (Bun built-in perf APIs)
 
 **Python:**

@@ -39,7 +39,7 @@ The plugin reads `TAILSCALE_BACKEND` from runtime settings:
 | ----------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `TAILSCALE_BACKEND`                 | `auto`                             | `local` / `cloud` / `auto`.                                                                                             |
 | `TAILSCALE_AUTH_KEY`                | —                                  | Optional pre-minted auth key for the local backend. Most users authenticate via `tailscale up` once and never set this. |
-| `TAILSCALE_TAGS`                    | `tag:eliza-tunnel`                | Comma-separated list of ACL tags applied to the cloud-minted ephemeral key.                                             |
+| `TAILSCALE_TAGS`                    | `tag:eliza-tunnel`                 | Comma-separated list of ACL tags applied to the cloud-minted ephemeral key.                                             |
 | `TAILSCALE_FUNNEL`                  | `false`                            | When truthy, use `tailscale funnel` (public Internet) instead of `tailscale serve` (tailnet-only).                      |
 | `TAILSCALE_DEFAULT_PORT`            | `3000`                             | Used when no port is extracted from the user message.                                                                   |
 | `TAILSCALE_AUTH_KEY_EXPIRY_SECONDS` | `3600`                             | Expiry hint passed to the cloud auth-key minter.                                                                        |

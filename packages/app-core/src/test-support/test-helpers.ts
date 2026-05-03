@@ -230,7 +230,7 @@ export function resolveLensPluginImportSpecifier(): string | null {
 
 const FARCASTER_PLUGIN_PACKAGE_NAME = "@elizaos/plugin-farcaster";
 const FARCASTER_PLUGIN_LOCAL_ENTRY_CANDIDATES = [
-  "../plugins/plugin-farcaster/dist/index",
+  "../plugins/plugin-farcaster/dist/node/index.node.js",
 ] as const;
 
 /**

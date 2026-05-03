@@ -42,6 +42,7 @@ class REALMRunner:
         runtime: Optional["AgentRuntime"] = None,
         use_mock: bool = False,
         enable_trajectory_logging: bool = True,
+        agent: object | None = None,
     ):
         """
         Initialize the REALM benchmark runner.
@@ -51,6 +52,10 @@ class REALMRunner:
             runtime: Optional ElizaOS runtime for model interactions
             use_mock: If True, use mock agent for testing
             enable_trajectory_logging: Enable trajectory logging for training export
+            agent: Optional pre-built agent (any object exposing ``initialize`` /
+                ``solve_task`` / ``close``). When provided, ``use_mock`` and
+                ``runtime`` are ignored. Used by the ``--provider eliza``
+                CLI mode to plug in :class:`eliza_adapter.realm.ElizaREALMAgent`.
         """
         self.config = config
         self.runtime = runtime
@@ -59,9 +64,11 @@ class REALMRunner:
 
         # Initialize components
         self.dataset = REALMDataset(config.data_path)
-        
-        if use_mock:
-            self.agent: REALMAgent | MockREALMAgent = MockREALMAgent(
+
+        if agent is not None:
+            self.agent = agent  # type: ignore[assignment]
+        elif use_mock:
+            self.agent = MockREALMAgent(
                 return_expected=True,
                 success_rate=0.8,
             )

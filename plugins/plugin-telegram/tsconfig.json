@@ -23,7 +23,6 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "allowUnusedLabels": true,
-    "ignoreDeprecations": "6.0",
     "types": ["node"]
   },
   "include": ["src/**/*.ts"]

@@ -16,7 +16,12 @@ export const checkPaymentAction: Action = {
   similes: ["VERIFY_PAYMENT", "PAYMENT_STATUS"],
   description: "Check if payment has been received for the current reading session.",
 
-  validate: async (runtime: any, message: any, state?: any, options?: any): Promise<boolean> => {
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+    options?: HandlerOptions | Record<string, JsonValue | undefined>
+  ): Promise<boolean> => {
     const __avTextRaw = typeof message?.content?.text === "string" ? message.content.text : "";
     const __avText = __avTextRaw.toLowerCase();
     const __avKeywords = ["check", "payment"];
@@ -24,15 +29,19 @@ export const checkPaymentAction: Action = {
       __avKeywords.length > 0 && __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
     const __avRegex = /\b(?:check|payment)\b/i;
     const __avRegexOk = __avRegex.test(__avText);
-    const __avSource = String(message?.content?.source ?? message?.source ?? "");
+    const __avSource = String(message?.content?.source ?? "");
     const __avExpectedSource = "";
     const __avSourceOk = __avExpectedSource
       ? __avSource === __avExpectedSource
       : Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
-    const __avOptions = options && typeof options === "object" ? options : {};
+    const __avOptionsHasKeys =
+      options !== undefined &&
+      typeof options === "object" &&
+      options !== null &&
+      Object.keys(options).length > 0;
     const __avInputOk =
       __avText.trim().length > 0 ||
-      Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
+      __avOptionsHasKeys ||
       Boolean(message?.content && typeof message.content === "object");
 
     if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
@@ -40,17 +49,17 @@ export const checkPaymentAction: Action = {
     }
 
     const __avLegacyValidate = async (
-      runtime: IAgentRuntime,
-      message: Memory,
+      rt: IAgentRuntime,
+      msg: Memory,
       _state: State | undefined
     ): Promise<boolean> => {
-      const service = runtime.getService<MysticismService>("MYSTICISM");
+      const service = rt.getService<MysticismService>("MYSTICISM");
       if (!service) return false;
-      const session = service.getSession(message.entityId, message.roomId);
+      const session = service.getSession(msg.entityId, msg.roomId);
       return session !== null && session.paymentStatus !== "none";
     };
     try {
-      return Boolean(await (__avLegacyValidate as any)(runtime, message, state, options));
+      return Boolean(await __avLegacyValidate(runtime, message, state));
     } catch {
       return false;
     }

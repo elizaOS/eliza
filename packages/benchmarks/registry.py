@@ -14,6 +14,7 @@ if __package__ in {"", None}:
         ScoreExtraction,
         expect_dict,
         expect_float,
+        expect_list,
         expect_str,
         find_latest_file,
         get_optional,
@@ -29,6 +30,7 @@ else:
         ScoreExtraction,
         expect_dict,
         expect_float,
+        expect_list,
         expect_str,
         find_latest_file,
         get_optional,
@@ -465,6 +467,183 @@ def _score_from_osworld_json(data: JSONValue) -> ScoreExtraction:
     )
 
 
+def _score_from_configbench_json(data: JSONValue) -> ScoreExtraction:
+    """Extract scores from ConfigBench results.
+
+    Prefers the Eliza handler when present; otherwise falls back to the first
+    handler emitted (Perfect oracle in mock-only runs). Scores are reported
+    in 0..100; we normalize to 0..1 for parity with other benchmarks.
+    """
+    root = expect_dict(data, ctx="configbench:root")
+    handlers = expect_list(get_required(root, "handlers", ctx="configbench:root"), ctx="configbench:handlers")
+    target: dict[str, JSONValue] | None = None
+    for entry in handlers:
+        if not isinstance(entry, dict):
+            continue
+        name_raw = entry.get("handlerName")
+        if isinstance(name_raw, str) and "eliza" in name_raw.lower():
+            target = entry
+            break
+    if target is None and handlers:
+        first = handlers[0]
+        if isinstance(first, dict):
+            target = first
+    if target is None:
+        raise ValueError("configbench: no handler entries found")
+    overall_raw = target.get("overallScore")
+    overall = expect_float(overall_raw if overall_raw is not None else 0.0, ctx="configbench:overallScore")
+    security_raw = target.get("securityScore")
+    capability_raw = target.get("capabilityScore")
+    return ScoreExtraction(
+        score=overall / 100.0,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "overallScore": overall,
+            "securityScore": security_raw if security_raw is not None else 0,
+            "capabilityScore": capability_raw if capability_raw is not None else 0,
+            "handlerName": target.get("handlerName") or "",
+            "validationPassed": root.get("validationPassed") or False,
+        },
+    )
+
+
+def _score_from_voicebench_json(data: JSONValue) -> ScoreExtraction:
+    """Extract scores from VoiceBench results.
+
+    VoiceBench is a latency benchmark: we report the average end-to-end
+    latency (ms) for the ``simple`` mode as the primary score (lower is
+    better) and surface key percentile + transcription metrics for context.
+    Falls back to whichever mode key is present when ``simple`` is missing.
+    """
+    root = expect_dict(data, ctx="voicebench:root")
+    summary = expect_dict(get_required(root, "summary", ctx="voicebench:root"), ctx="voicebench:summary")
+    if not summary:
+        raise ValueError("voicebench: empty summary block")
+    mode_key = "simple" if "simple" in summary else next(iter(summary))
+    mode_summary = expect_dict(summary[mode_key], ctx=f"voicebench:summary.{mode_key}")
+    avg_e2e = expect_float(
+        get_required(mode_summary, "avgEndToEndMs", ctx=f"voicebench:summary.{mode_key}"),
+        ctx=f"voicebench:summary.{mode_key}.avgEndToEndMs",
+    )
+    return ScoreExtraction(
+        score=avg_e2e,
+        unit="ms",
+        higher_is_better=False,
+        metrics={
+            "mode": mode_key,
+            "avgEndToEndMs": avg_e2e,
+            "p95EndToEndMs": mode_summary.get("p95EndToEndMs") or 0,
+            "p99EndToEndMs": mode_summary.get("p99EndToEndMs") or 0,
+            "avgTranscriptionMs": mode_summary.get("avgTranscriptionMs") or 0,
+            "avgResponseTtftMs": mode_summary.get("avgResponseTtftMs") or 0,
+            "avgVoiceFirstTokenCachedMs": mode_summary.get("avgVoiceFirstTokenCachedMs") or 0,
+            "transcriptionNormalizedAccuracy": mode_summary.get("transcriptionNormalizedAccuracy") or 0,
+            "runs": mode_summary.get("runs") or 0,
+            "profile": root.get("profile") or "",
+        },
+    )
+
+
+def _score_from_social_alpha_json(data: JSONValue) -> ScoreExtraction:
+    """Extract scores from Social-Alpha results.
+
+    Reports the COMPOSITE Trust Marketplace Score (0..100) when all four
+    suites ran. Falls back to averaging the available per-suite scores when
+    only a subset of suites was selected (e.g. ``--suite detect``).
+    """
+    root = expect_dict(data, ctx="social_alpha:root")
+    composite_raw = root.get("COMPOSITE")
+    suite_scores: dict[str, float] = {}
+    for key, value in root.items():
+        if not isinstance(value, dict) or key == "COMPOSITE":
+            continue
+        suite_score_raw = value.get("suite_score")
+        if isinstance(suite_score_raw, (int, float)):
+            suite_scores[key] = float(suite_score_raw)
+    if isinstance(composite_raw, dict):
+        tms_raw = composite_raw.get("trust_marketplace_score")
+        if isinstance(tms_raw, (int, float)):
+            tms = float(tms_raw)
+            return ScoreExtraction(
+                score=tms / 100.0,
+                unit="ratio",
+                higher_is_better=True,
+                metrics={
+                    "trust_marketplace_score": tms,
+                    "suite_scores": cast(JSONValue, suite_scores),
+                },
+            )
+    if not suite_scores:
+        raise ValueError("social_alpha: no suite_score values found")
+    avg_score = sum(suite_scores.values()) / len(suite_scores)
+    return ScoreExtraction(
+        score=avg_score / 100.0,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "average_suite_score": avg_score,
+            "suite_scores": cast(JSONValue, suite_scores),
+            "suites_run": list(suite_scores.keys()),
+        },
+    )
+
+
+def _score_from_webshop_json(data: JSONValue) -> ScoreExtraction:
+    """Extract scores from WebShop benchmark results."""
+    root = expect_dict(data, ctx="webshop:root")
+    success_rate = expect_float(
+        get_required(root, "success_rate", ctx="webshop:root"),
+        ctx="webshop:success_rate",
+    )
+    return ScoreExtraction(
+        score=success_rate,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "success_rate": success_rate,
+            "average_reward": root.get("average_reward") or 0,
+            "average_turns": root.get("average_turns") or 0,
+            "average_steps": root.get("average_steps") or 0,
+            "average_duration_ms": root.get("average_duration_ms") or 0,
+            "total_tasks": root.get("total_tasks") or 0,
+            "total_trials": root.get("total_trials") or 0,
+        },
+    )
+
+
+def _score_from_hyperliquid_bench_json(data: JSONValue) -> ScoreExtraction:
+    """Extract scores from HyperliquidBench results.
+
+    The benchmark writes one aggregated JSON per ``__main__`` invocation
+    containing the average ``final_score`` across all scenarios plus the
+    base/bonus/penalty totals from ``hl-evaluator``. Higher is better.
+    """
+    root = expect_dict(data, ctx="hyperliquid_bench:root")
+    overall = expect_float(
+        get_required(root, "final_score", ctx="hyperliquid_bench:root"),
+        ctx="hyperliquid_bench:final_score",
+    )
+    return ScoreExtraction(
+        score=overall,
+        unit="score",
+        higher_is_better=True,
+        metrics={
+            "final_score": overall,
+            "total_score": get_optional(root, "total_score") or 0,
+            "base": get_optional(root, "base") or 0,
+            "bonus": get_optional(root, "bonus") or 0,
+            "penalty": get_optional(root, "penalty") or 0,
+            "total_scenarios": get_optional(root, "total_scenarios") or 0,
+            "passed_scenarios": get_optional(root, "passed_scenarios") or 0,
+            "mode": get_optional(root, "mode") or "",
+            "model": get_optional(root, "model") or "",
+            "network": get_optional(root, "network") or "",
+            "demo_mode": get_optional(root, "demo_mode") if get_optional(root, "demo_mode") is not None else True,
+        },
+    )
+
+
 def _score_from_gauntlet_json(data: JSONValue) -> ScoreExtraction:
     """Extract scores from Solana Gauntlet benchmark results.
 
@@ -529,8 +708,17 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if isinstance(max_tasks, int) and max_tasks > 0:
             args.extend(["--max-tasks", str(max_tasks)])
         if model.model:
-            # REALM currently treats --model as a reporting label; still useful to record.
+            # REALM treats --model as a reporting label only; the actual LLM is
+            # picked by the in-process elizaOS Python runtime (default) or by the
+            # TS bridge (when --provider eliza is set).
             args.extend(["--model", model.model])
+        # Route the planning loop through the TS benchmark server when the
+        # caller asks for the eliza agent (either via model.provider or the
+        # explicit "agent": "eliza" extra).
+        agent = extra.get("agent")
+        provider_name = (model.provider or "").strip().lower()
+        if agent == "eliza" or provider_name == "eliza":
+            args.extend(["--provider", "eliza"])
         return args
 
     def _realm_result(output_dir: Path) -> Path:
@@ -778,6 +966,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         args = [python, "-m", "elizaos_vending_bench.cli", "run", "--output-dir", str(output_dir)]
         if model.model:
             args.extend(["--model", model.model])
+        if model.provider in {"openai", "anthropic", "groq", "heuristic"}:
+            args.extend(["--provider", model.provider])
         if model.temperature is not None:
             args.extend(["--temperature", str(model.temperature)])
         runs = extra.get("runs")
@@ -794,7 +984,13 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         args = [python, "-m", "benchmarks.swe_bench.cli", "--output", str(output_dir)]
         if model.model:
             model_name = model.model
-            if model.provider and "/" not in model_name:
+            # The eliza bridge forwards the model name as a hint to the
+            # TypeScript runtime, so we leave it unprefixed.
+            if (
+                model.provider
+                and model.provider != "eliza"
+                and "/" not in model_name
+            ):
                 model_name = f"{model.provider}/{model_name}"
             args.extend(["--model", model_name])
         if model.provider:
@@ -823,7 +1019,11 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         ]
         if model.model:
             model_name = model.model
-            if model.provider and "/" not in model_name:
+            if (
+                model.provider
+                and model.provider != "eliza"
+                and "/" not in model_name
+            ):
                 model_name = f"{model.provider}/{model_name}"
             args.extend(["--model", model_name])
         if model.provider:
@@ -1051,6 +1251,80 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _osworld_result(output_dir: Path) -> Path:
         return find_latest_file(output_dir, glob_pattern="osworld-eliza-results-*.json")
 
+    # HyperliquidBench - perp-trading plan generation + Rust execution
+    def _hyperliquid_bench_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
+        """Build command for HyperliquidBench.
+
+        Defaults to ``--mode python`` (in-process elizaos.AgentRuntime). When
+        the caller asks for the eliza bridge (via ``model.provider == "eliza"``
+        or ``extra.agent == "eliza"``), routes plan generation through the TS
+        benchmark server. Always runs in ``--demo`` mode unless the caller
+        explicitly opts in to ``--no-demo`` (which requires ``HL_PRIVATE_KEY``
+        and a non-mainnet network).
+        """
+        args = [
+            python,
+            "-m",
+            "benchmarks.HyperliquidBench",
+            "--output",
+            str(output_dir),
+        ]
+        agent = extra.get("agent")
+        provider_name = (model.provider or "").strip().lower()
+        if agent == "eliza" or provider_name == "eliza":
+            args.extend(["--mode", "eliza"])
+        else:
+            args.extend(["--mode", "python"])
+
+        if model.model:
+            args.extend(["--model", model.model])
+        if model.temperature is not None:
+            args.extend(["--temperature", str(model.temperature)])
+
+        coins = extra.get("coins")
+        if isinstance(coins, list):
+            coin_values = [str(c) for c in coins if str(c).strip()]
+            if coin_values:
+                args.extend(["--coins", ",".join(coin_values)])
+        elif isinstance(coins, str) and coins.strip():
+            args.extend(["--coins", coins.strip()])
+
+        max_steps = extra.get("max_steps")
+        if isinstance(max_steps, int) and max_steps > 0:
+            args.extend(["--max-steps", str(max_steps)])
+        max_iterations = extra.get("max_iterations")
+        if isinstance(max_iterations, int) and max_iterations > 0:
+            args.extend(["--max-iterations", str(max_iterations)])
+
+        builder_code = extra.get("builder_code")
+        if isinstance(builder_code, str) and builder_code.strip():
+            args.extend(["--builder-code", builder_code.strip()])
+
+        tasks = extra.get("tasks")
+        if isinstance(tasks, list) and tasks:
+            args.append("--tasks")
+            args.extend(str(t) for t in tasks)
+        elif extra.get("coverage") is True:
+            args.append("--coverage")
+
+        # Network + demo handling. Default behavior is demo=true with testnet.
+        network_raw = extra.get("network")
+        network = network_raw.strip().lower() if isinstance(network_raw, str) else "testnet"
+        if network in {"testnet", "mainnet", "local"}:
+            args.extend(["--network", network])
+
+        if extra.get("no_demo") is True or extra.get("demo") is False:
+            # Live trading on the chosen network — caller must have HL_PRIVATE_KEY.
+            args.append("--no-demo")
+        # else: --demo is the default in __main__.py, no flag needed
+
+        return args
+
+    def _hyperliquid_bench_result(output_dir: Path) -> Path:
+        return find_latest_file(output_dir, glob_pattern="hyperliquid_bench-*.json")
+
     def _gauntlet_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         """Build command for Solana Gauntlet benchmark with ElizaOS agent."""
         args = [
@@ -1082,12 +1356,18 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _gauntlet_result(output_dir: Path) -> Path:
         return find_latest_file(output_dir, glob_pattern="*.json")
 
-    # ClawBench - OpenClaw agent evaluation
+    # ClawBench - OpenClaw agent evaluation via the eliza benchmark bridge
     def _clawbench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
-        """Build command for ClawBench scenario evaluation."""
+        """Build command for ClawBench scenario evaluation through the eliza bridge.
+
+        Routes through ``clawbench/eliza_adapter.py`` which honors the shared
+        ``ELIZA_BENCH_URL`` / ``ELIZA_BENCH_TOKEN`` env vars so all eliza-bridge
+        benchmarks reuse the same server. Output filename matches
+        ``_clawbench_result``'s ``trajectory_*.json`` glob.
+        """
         args = [
             python,
-            repo("benchmarks/clawbench/test_groq_full.py"),
+            repo("benchmarks/clawbench/eliza_adapter.py"),
             "--output-dir",
             str(output_dir),
         ]
@@ -1096,9 +1376,11 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.extend(["--scenario", scenario.strip()])
         else:
             args.extend(["--scenario", "inbox_triage"])
-        model_name = extra.get("model")
-        if isinstance(model_name, str) and model_name.strip():
-            args.extend(["--model", model_name.strip()])
+        variant = extra.get("variant")
+        if isinstance(variant, str) and variant.strip():
+            args.extend(["--variant", variant.strip()])
+        if extra.get("start_server") is True:
+            args.append("--start-server")
         _ = model
         return args
 
@@ -1163,6 +1445,164 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
                 "tasks_completed": tasks_completed,
             },
         )
+
+    # ConfigBench - secrets + plugin-manager security benchmark (Bun runtime)
+    def _configbench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+        """Build command for ConfigBench (Bun TS).
+
+        ConfigBench instantiates ``@elizaos/core`` in-process when ``--eliza``
+        is set, so it does not route through the TS bridge. The ``eliza`` agent
+        path requires a provider key (GROQ/OPENAI); other paths are oracle/random.
+        """
+        args = [
+            "bun",
+            "run",
+            "src/index.ts",
+            "--output",
+            str(output_dir),
+        ]
+        agent = extra.get("agent")
+        if agent == "eliza" or (model.provider or "").strip().lower() == "eliza":
+            args.append("--eliza")
+        elif extra.get("eliza") is True:
+            args.append("--eliza")
+        if extra.get("verbose") is True:
+            args.append("--verbose")
+        return args
+
+    def _configbench_result(output_dir: Path) -> Path:
+        return find_latest_file(output_dir, glob_pattern="configbench-results-*.json")
+
+    # VoiceBench - end-to-end voice latency benchmark (Bun TS via run.sh)
+    def _voicebench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+        """Build command for VoiceBench.
+
+        VoiceBench instantiates the elizaOS TS runtime in-process and is wrapped
+        by ``run.sh`` which manages provider env defaults, audio fixture
+        resolution, and dataset manifest selection. Run from the voicebench
+        directory (``cwd_rel`` resolves there).
+        """
+        args = ["bash", "./run.sh", f"--output-dir={output_dir}"]
+        profile_raw = extra.get("profile")
+        if isinstance(profile_raw, str) and profile_raw.strip():
+            profile = profile_raw.strip().lower()
+        else:
+            profile = "groq"
+        if profile not in {"groq", "elevenlabs"}:
+            raise ValueError(f"voicebench: unsupported profile '{profile}' (expected groq or elevenlabs)")
+        args.append(f"--profile={profile}")
+        iterations = extra.get("iterations")
+        if isinstance(iterations, int) and iterations > 0:
+            args.append(f"--iterations={iterations}")
+        dataset = extra.get("dataset")
+        if isinstance(dataset, str) and dataset.strip():
+            args.append(f"--dataset={dataset.strip()}")
+        _ = model
+        return args
+
+    def _voicebench_result(output_dir: Path) -> Path:
+        return find_latest_file(output_dir, glob_pattern="voicebench-typescript-*.json")
+
+    # Social-Alpha - trust-marketplace benchmark on real Discord crypto chat data
+    def _social_alpha_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+        """Build command for Social-Alpha.
+
+        Routes through the click-based ``benchmark.harness`` CLI installed by
+        the ``trust-marketplace-benchmark`` pyproject. Defaults to the bundled
+        ``trenches-chat-dataset`` checked into the benchmark dir; callers can
+        override via ``data_dir``. Defaults to the ``baseline`` system unless
+        another system is requested via ``extra.system`` or ``model.provider``.
+        """
+        data_dir_raw = extra.get("data_dir")
+        if isinstance(data_dir_raw, str) and data_dir_raw.strip():
+            data_dir = data_dir_raw.strip()
+        else:
+            data_dir = "trenches-chat-dataset/data"
+        args = [
+            python,
+            "-m",
+            "benchmark.harness",
+            "--data-dir",
+            data_dir,
+            "--output",
+            str(output_dir),
+        ]
+        system_raw = extra.get("system")
+        if isinstance(system_raw, str) and system_raw.strip():
+            system = system_raw.strip()
+        elif (model.provider or "").strip().lower() == "eliza":
+            system = "eliza"
+        else:
+            system = "baseline"
+        args.extend(["--system", system])
+        if model.model:
+            args.extend(["--model", model.model])
+        api_base = extra.get("api_base")
+        if isinstance(api_base, str) and api_base.strip():
+            args.extend(["--api-base", api_base.strip()])
+        suites = extra.get("suites")
+        if isinstance(suites, list):
+            for suite in suites:
+                if isinstance(suite, str) and suite.strip():
+                    args.extend(["--suite", suite.strip()])
+        elif isinstance(suites, str) and suites.strip():
+            args.extend(["--suite", suites.strip()])
+        if extra.get("generate_gt") is True:
+            args.append("--generate-gt")
+        return args
+
+    def _social_alpha_result(output_dir: Path) -> Path:
+        return find_latest_file(output_dir, glob_pattern="benchmark_results_*.json")
+
+    # WebShop - product-search/purchase benchmark with Eliza agent
+    def _webshop_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+        """Build command for WebShop benchmark.
+
+        Defaults to the bundled sample task set and disables trajectory logging
+        unless the caller opts in. Provider/model selection is forwarded so the
+        in-process ``elizaos`` agent picks up the requested LLM (or the
+        ``--mock`` flag bypasses it for smoke tests).
+        """
+        args = [
+            python,
+            "-m",
+            "elizaos_webshop",
+            "--output",
+            str(output_dir),
+        ]
+        if extra.get("mock") is True or (model.provider or "").strip().lower() == "mock":
+            args.append("--mock")
+        else:
+            if model.provider:
+                args.extend(["--model-provider", model.provider])
+            if model.model:
+                args.extend(["--model", model.model])
+        max_tasks = extra.get("max_tasks")
+        if isinstance(max_tasks, int) and max_tasks > 0:
+            args.extend(["--max-tasks", str(max_tasks)])
+        max_turns = extra.get("max_turns")
+        if isinstance(max_turns, int) and max_turns > 0:
+            args.extend(["--max-turns", str(max_turns)])
+        trials = extra.get("trials")
+        if isinstance(trials, int) and trials > 0:
+            args.extend(["--trials", str(trials)])
+        if extra.get("hf") is True:
+            args.append("--hf")
+            split = extra.get("split")
+            if isinstance(split, str) and split.strip():
+                args.extend(["--split", split.strip()])
+        else:
+            args.append("--sample")
+        if extra.get("trajectories") is True:
+            args.append("--trajectories")
+        else:
+            args.append("--no-trajectories")
+        if model.temperature is not None:
+            args.extend(["--temperature", str(model.temperature)])
+        return args
+
+    def _webshop_result(output_dir: Path) -> Path:
+        return output_dir / "webshop-results.json"
 
     return [
         BenchmarkDefinition(
@@ -1257,7 +1697,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             id="terminal_bench",
             display_name="Terminal-Bench",
             description="Terminal proficiency benchmark",
-            cwd_rel="benchmarks/terminal-bench/python",
+            cwd_rel="benchmarks/terminal-bench",
             requirements=BenchmarkRequirements(
                 env_vars=("OPENAI_API_KEY",),
                 paths=(),
@@ -1271,7 +1711,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             id="gaia",
             display_name="GAIA",
             description="GAIA real-world tasks benchmark",
-            cwd_rel="benchmarks/gaia/python",
+            cwd_rel="benchmarks/gaia",
             requirements=BenchmarkRequirements(
                 env_vars=("GROQ_API_KEY",),
                 paths=(),
@@ -1285,7 +1725,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             id="gaia_orchestrated",
             display_name="GAIA (Orchestrated)",
             description="GAIA benchmark with orchestrator/direct-shell provider matrix",
-            cwd_rel="benchmarks/gaia/python",
+            cwd_rel="benchmarks/gaia",
             requirements=BenchmarkRequirements(
                 env_vars=("GROQ_API_KEY",),
                 paths=(),
@@ -1299,7 +1739,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             id="tau_bench",
             display_name="Tau-bench",
             description="Tool-Agent-User Interaction benchmark",
-            cwd_rel="benchmarks/tau-bench/python",
+            cwd_rel="benchmarks/tau-bench",
             requirements=BenchmarkRequirements(
                 env_vars=(),
                 paths=("benchmark-data/tau-bench",),
@@ -1415,6 +1855,29 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_osworld_json,
         ),
         BenchmarkDefinition(
+            id="hyperliquid_bench",
+            display_name="HyperliquidBench",
+            description="Hyperliquid perp trading-plan generation benchmark (Eliza agent + Rust runner/evaluator)",
+            cwd_rel=".",
+            requirements=BenchmarkRequirements(
+                env_vars=(),
+                paths=("benchmarks/HyperliquidBench/dataset/domains-hl.yaml",),
+                notes=(
+                    "Defaults to --mode python (in-process elizaos.AgentRuntime) with --demo "
+                    "and --network testnet, so no funds are at risk. "
+                    "Set agent=eliza (or model.provider=eliza) to route plan generation through "
+                    "the eliza TS benchmark server (eliza_adapter.hyperliquid). "
+                    "Live network runs require building the Rust toolchain "
+                    "(cd benchmarks/HyperliquidBench && cargo build --release -p hl-runner -p hl-evaluator) "
+                    "AND HL_PRIVATE_KEY plus extra.no_demo=true. "
+                    "Score: average final_score across scenarios (Base + Bonus − Penalty from hl-evaluator)."
+                ),
+            ),
+            build_command=_hyperliquid_bench_cmd,
+            locate_result=_hyperliquid_bench_result,
+            extract_score=_score_from_hyperliquid_bench_json,
+        ),
+        BenchmarkDefinition(
             id="gauntlet",
             display_name="Solana Gauntlet",
             description="Tiered adversarial safety benchmark for Solana AI agents (96 scenarios, 4 levels)",
@@ -1468,6 +1931,78 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             build_command=_openclaw_bench_cmd,
             locate_result=_openclaw_bench_result,
             extract_score=_score_from_openclaw_bench_json,
+        ),
+        BenchmarkDefinition(
+            id="configbench",
+            display_name="ConfigBench",
+            description="Plugin configuration & secrets security benchmark (50 scripted scenarios)",
+            cwd_rel="benchmarks/configbench",
+            requirements=BenchmarkRequirements(
+                env_vars=(),
+                paths=("benchmarks/configbench/src",),
+                notes=(
+                    "Bun runtime. Default run uses oracle/random/failing handlers (no LLM). "
+                    "Set agent=eliza (or model.provider=eliza) for the LLM handler — that path "
+                    "instantiates @elizaos/core in-process and needs GROQ_API_KEY or OPENAI_API_KEY."
+                ),
+            ),
+            build_command=_configbench_cmd,
+            locate_result=_configbench_result,
+            extract_score=_score_from_configbench_json,
+        ),
+        BenchmarkDefinition(
+            id="voicebench",
+            display_name="VoiceBench",
+            description="End-to-end voice latency benchmark (transcription + response + TTS)",
+            cwd_rel="benchmarks/voicebench",
+            requirements=BenchmarkRequirements(
+                env_vars=("GROQ_API_KEY",),
+                paths=("benchmarks/voicebench/run.sh", "benchmarks/voicebench/typescript/src/bench.ts"),
+                notes=(
+                    "Bun runtime via run.sh. Profiles: groq (default), elevenlabs (additionally needs "
+                    "ELEVENLABS_API_KEY). Audio fixture resolved from VOICEBENCH_AUDIO_PATH or repo defaults. "
+                    "Reports avg/p95/p99 end-to-end latency; lower is better."
+                ),
+            ),
+            build_command=_voicebench_cmd,
+            locate_result=_voicebench_result,
+            extract_score=_score_from_voicebench_json,
+        ),
+        BenchmarkDefinition(
+            id="social_alpha",
+            display_name="Social-Alpha",
+            description="Trust marketplace benchmark on real Discord crypto-chat data (EXTRACT/RANK/DETECT/PROFIT)",
+            cwd_rel="benchmarks/social-alpha",
+            requirements=BenchmarkRequirements(
+                env_vars=(),
+                paths=("benchmarks/social-alpha/trenches-chat-dataset",),
+                notes=(
+                    "Defaults to the rule-based BaselineSystem (no LLM). Set system=eliza|full|smart|oracle "
+                    "via extra to swap implementations; eliza/full additionally need provider keys. "
+                    "Score: composite Trust Marketplace Score (0..1)."
+                ),
+            ),
+            build_command=_social_alpha_cmd,
+            locate_result=_social_alpha_result,
+            extract_score=_score_from_social_alpha_json,
+        ),
+        BenchmarkDefinition(
+            id="webshop",
+            display_name="WebShop",
+            description="WebShop product-search/purchase benchmark with Eliza agent",
+            cwd_rel="benchmarks/webshop",
+            requirements=BenchmarkRequirements(
+                env_vars=(),
+                paths=("benchmarks/webshop/elizaos_webshop",),
+                notes=(
+                    "Defaults to bundled sample tasks (--sample). Set hf=true to load from HuggingFace. "
+                    "Real-LLM mode is the default and needs a provider key (GROQ/OPENAI/etc.); "
+                    "set mock=true for a deterministic smoke run. Score: success_rate."
+                ),
+            ),
+            build_command=_webshop_cmd,
+            locate_result=_webshop_result,
+            extract_score=_score_from_webshop_json,
         ),
     ]
 

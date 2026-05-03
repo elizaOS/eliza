@@ -23,8 +23,6 @@ import type {
 } from "../types.js";
 
 const LANGUAGE_NAMES: Record<string, string> = {
-  python: "Python",
-  rust: "Rust",
   typescript: "TypeScript",
 };
 
@@ -231,7 +229,6 @@ export async function create(
 
   const destinationDir = path.resolve(process.cwd(), finalProjectName);
   const sourceDir = resolveTemplateSourceDir({
-    language,
     template,
     templatesDir: getTemplatesDir(),
   });

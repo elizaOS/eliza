@@ -53,7 +53,7 @@ Everything below is the OS path.
 
 ## What we strip and why
 
-`os/android/vendor/eliza/eliza_common.mk` removes these from `PRODUCT_PACKAGES`:
+`packages/os/android/vendor/eliza/eliza_common.mk` removes these from `PRODUCT_PACKAGES`:
 
 | Package | Reason | Replacement |
 | --- | --- | --- |
@@ -131,7 +131,7 @@ This is intentional — the OS path can't function without it — but it means *
 - **MMS retrieval** — `ElizaMmsReceiver` logs the WAP-push event and forwards PDU bytes to the JS layer but doesn't actually fetch MMS content. Hidden-API PduParser is reachable at runtime; wiring it is on the JS side and is deferred work.
 - **Gallery handler** — `Gallery2` stripped, no replacement. `ACTION_VIEW` on image content URIs falls through. Open question: build a Eliza gallery surface, or reinstate a minimal viewer.
 - **Settings panels** — Eliza deep-links to AOSP Settings, but a Eliza-themed wrapper around Wifi/Bluetooth/Display panels (so it doesn't visually whiplash the user) would be nicer. Not blocking.
-- **Boot animation** — recipe + script in place, but the actual brand frames are intentionally not in the repo. Drop PNGs into `os/android/vendor/eliza/bootanimation/part0/` and run `node scripts/elizaos/build-bootanimation.mjs --frames os/android/vendor/eliza/bootanimation` to ship one.
+- **Boot animation** — recipe + script in place, but the actual brand frames are intentionally not in the repo. Drop PNGs into `packages/os/android/vendor/eliza/bootanimation/part0/` and run `node scripts/elizaos/build-bootanimation.mjs --frames packages/os/android/vendor/eliza/bootanimation` to ship one.
 - **Pixel device makefiles** — wrappers exist (oriole / panther / shiba / caiman) but `lunch` only resolves them when the AOSP checkout has the matching device tree. AOSP `android-latest-release` may not — bisect by re-init'ing `repo` to a tag that does.
 - **OTA infrastructure** — none. First flash is `fastboot flashall`. Auto-update is deferred until production-key signing lands.
 - **Production signing** — the AOSP test platform key signs Cuttlefish images, which is fine for dev. A production deployment **must** swap to a generated `releasekey` / `platform` / `shared` / `media` keypair. See `SETUP_REAL_DEVICE.md`.
@@ -141,7 +141,7 @@ This is intentional — the OS path can't function without it — but it means *
 
 1. `SETUP_AOSP.md` — bring up Cuttlefish.
 2. This file — orient on the layer map and what's stripped.
-3. `os/android/vendor/eliza/eliza_common.mk` — see the actual strip list and PRODUCT_COPY_FILES.
+3. `packages/os/android/vendor/eliza/eliza_common.mk` — see the actual strip list and PRODUCT_COPY_FILES.
 4. `eliza/packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/Eliza*.java` — every native entry point.
 5. `scripts/elizaos/validate.mjs` and `boot-validate.mjs` — what we assert about the resulting build.
 6. `SETUP_REAL_DEVICE.md` — when ready to leave Cuttlefish.

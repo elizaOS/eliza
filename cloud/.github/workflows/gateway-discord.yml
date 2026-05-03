@@ -413,9 +413,6 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
-      - name: Prepare Steward workspaces
-        run: bash packages/scripts/prepare-steward-workspaces.sh
-
       - name: Install root dependencies
         run: bun install --frozen-lockfile
 

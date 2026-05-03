@@ -55,7 +55,6 @@ export {
   resolvePackageEntry,
   STATIC_ELIZA_PLUGINS,
   scanDropInPlugins,
-  shouldIgnoreMissingPluginExport,
 } from "./plugin-types.js";
 
 // resolvePlugins is re-exported via index.ts from ./plugin-resolver
@@ -97,6 +96,7 @@ import * as pluginAgentSkills from "@elizaos/plugin-agent-skills";
 import * as pluginBrowserBridge from "@elizaos/plugin-browser-bridge";
 import * as pluginPdf from "@elizaos/plugin-pdf";
 import * as pluginSql from "@elizaos/plugin-sql";
+import * as pluginVideo from "@elizaos/plugin-video";
 import {
   formatError,
   getDefaultStylePreset,
@@ -361,6 +361,7 @@ Object.assign(STATIC_ELIZA_PLUGINS, {
   "@elizaos/plugin-agent-skills": pluginAgentSkills,
   ...(pluginCommands ? { "@elizaos/plugin-commands": pluginCommands } : {}),
   "@elizaos/plugin-pdf": pluginPdf,
+  "@elizaos/plugin-video": pluginVideo,
   ...(pluginOpenai ? { "@elizaos/plugin-openai": pluginOpenai } : {}),
   ...(pluginAnthropic ? { "@elizaos/plugin-anthropic": pluginAnthropic } : {}),
   ...(pluginOllama ? { "@elizaos/plugin-ollama": pluginOllama } : {}),

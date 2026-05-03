@@ -2912,7 +2912,7 @@
   "streamview.StreamReady": "Stream Ready",
   "streamview.StreamingUnavailabl": "Streaming unavailable",
   "streamview.pluginThenReload": "plugin, then reload the Stream tab.",
-  "streamview.streamingBase": "streaming-base",
+  "streamview.streamingBase": "streaming",
   "streamview.{{appName}}CouldNotRea": "Could not reach the",
   "subscriptionstatus.AfterLoggingInCo": "After logging in to Claude, copy the authorization code and\n                paste it below.",
   "subscriptionstatus.AfterLoggingInYo": "After logging in, you'll be redirected to a page that won't load\n                (starts with",

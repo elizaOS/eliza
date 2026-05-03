@@ -2,13 +2,18 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "lib": ["ESNext", "DOM"],
+    "lib": [
+      "ESNext",
+      "DOM"
+    ],
     "target": "ESNext",
-    "types": ["bun-types", "node"],
+    "types": [
+      "bun-types",
+      "node"
+    ],
     "module": "Preserve",
     "moduleResolution": "Bundler",
     "strict": true,
-    "ignoreDeprecations": "6.0",
     "esModuleInterop": true,
     "allowImportingTsExtensions": true,
     "declaration": true,
@@ -17,5 +22,7 @@
     "moduleDetection": "force",
     "skipLibCheck": true
   },
-  "include": ["src/**/*.ts"]
+  "include": [
+    "src/**/*.ts"
+  ]
 }

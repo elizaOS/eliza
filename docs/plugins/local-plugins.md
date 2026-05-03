@@ -323,7 +323,7 @@ The plugin installer (`plugin-installer.ts`) handles runtime installation of plu
 
 ### Package Name Sanitisation
 
-The installer sanitises package names for directory names by replacing non-alphanumeric characters (except `.`, `-`, `_`) with underscores. For example, `@elizaos/plugin-twitter` becomes `_elizaos_plugin-twitter`.
+The installer sanitises package names for directory names by replacing non-alphanumeric characters (except `.`, `-`, `_`) with underscores. For example, `@elizaos/plugin-x` becomes `_elizaos_plugin-twitter`.
 
 ### Install Record
 
@@ -333,9 +333,9 @@ Each installed plugin is tracked in `eliza.json`:
 {
   "plugins": {
     "installs": {
-      "@elizaos/plugin-twitter": {
+      "@elizaos/plugin-x": {
         "source": "npm",
-        "spec": "@elizaos/plugin-twitter@1.0.0",
+        "spec": "@elizaos/plugin-x@1.0.0",
         "installPath": "/Users/you/.eliza/plugins/installed/_elizaos_plugin-twitter",
         "version": "1.0.0",
         "installedAt": "2026-02-19T12:00:00.000Z"

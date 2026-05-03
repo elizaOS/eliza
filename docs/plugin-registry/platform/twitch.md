@@ -90,4 +90,4 @@ The plugin auto-enables when any of these are present:
 
 ## Streaming
 
-For live-streaming output to Twitch, use the separate **Twitch Streaming** plugin (`@elizaos/plugin-twitch-streaming`). See [Streaming](/skills/streaming) for setup details.
+For live-streaming output to Twitch, enable **`@elizaos/plugin-streaming`** and set `TWITCH_STREAM_KEY` (and optional `streaming.twitch` in config). See [Streaming](/skills/streaming) for setup details.

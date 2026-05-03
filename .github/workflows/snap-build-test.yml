@@ -64,7 +64,7 @@ jobs:
 
       - name: Generate protobuf types
         run: |
-          if [ -d packages/schemas ] && [ -f packages/schemas/buf.gen.yaml ] && [ ! -d packages/typescript/src/types/generated ]; then
+          if [ -d packages/schemas ] && [ -f packages/schemas/buf.gen.yaml ] && [ ! -d packages/core/src/types/generated ]; then
             cd packages/schemas
             buf dep update
             buf generate

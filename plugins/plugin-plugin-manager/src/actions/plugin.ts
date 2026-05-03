@@ -210,7 +210,7 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
       {
         name: "name",
         description:
-          "Plugin name (e.g. @elizaos/plugin-twitter or plugin-twitter). Required for install / eject / sync / reinject.",
+          "Plugin name (e.g. @elizaos/plugin-discord or plugin-discord). Required for install / eject / sync / reinject.",
         required: false,
         schema: { type: "string" },
       },
@@ -306,7 +306,7 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
       const mode = inferMode(text, options);
       if (!mode) {
         const reply =
-          'Tell me which plugin operation to run. Try: "install @elizaos/plugin-twitter", "list ejected plugins", "search for plugins for blockchain", "create a new plugin for X".';
+          'Tell me which plugin operation to run. Try: "install @elizaos/plugin-discord", "list ejected plugins", "search for plugins for blockchain", "create a new plugin for X".';
         await callback?.({ text: reply });
         return { success: false, text: reply };
       }
@@ -352,12 +352,12 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
       [
         {
           name: "{{user1}}",
-          content: { text: "install @elizaos/plugin-twitter" },
+          content: { text: "install @elizaos/plugin-discord" },
         },
         {
           name: "{{agentName}}",
           content: {
-            text: "Installed @elizaos/plugin-twitter@2.0.0 at /…/plugins/installed/@elizaos_plugin-twitter\nRestart required to activate.",
+            text: "Installed @elizaos/plugin-discord@2.0.0 at /…/plugins/installed/@elizaos_plugin-discord\nRestart required to activate.",
             action: "PLUGIN",
           },
         },
@@ -435,7 +435,7 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
         {
           name: "{{agentName}}",
           content: {
-            text: 'Found 3 plugin(s) matching "handle blockchain":\n\n1. @elizaos/plugin-evm (match: 90%)\n   …',
+            text: 'Found 3 plugin(s) matching "handle blockchain":\n\n1. @elizaos/plugin-wallet (match: 90%)\n   …',
             action: "PLUGIN",
           },
         },

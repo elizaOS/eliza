@@ -141,7 +141,7 @@ describe("handleConfigRoutes — POST /api/config/reload", () => {
   it("reports plugin-list changes under requiresRestart, not applied", async () => {
     const onDisk = {
       ui: { assistant: { name: "X" } },
-      plugins: { allow: ["@elizaos/plugin-twitter"] },
+      plugins: { allow: ["@elizaos/plugin-x"] },
     } as ElizaConfig;
     await fs.writeFile(configPath, JSON.stringify(onDisk), "utf8");
 

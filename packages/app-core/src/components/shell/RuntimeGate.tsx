@@ -46,8 +46,8 @@ import { shouldShowLocalOption } from "../../onboarding/probe-local-agent";
 import {
   isAndroid,
   isDesktopPlatform,
-  isIOS,
   isElizaOS,
+  isIOS,
 } from "../../platform/init";
 import {
   addAgentProfile,

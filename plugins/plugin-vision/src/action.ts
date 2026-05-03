@@ -69,9 +69,7 @@ export const describeSceneAction: Action = {
         __avLegacyContextOk);
     const __avRegex = new RegExp("\\b(?:describe|scene)\\b", "i");
     const __avRegexOk = __avRegex.test(__avText) || __avLegacyContextOk;
-    const __avSource = String(
-      message?.content?.source ?? message?.source ?? "",
-    );
+    const __avSource = String(message?.content?.source ?? "");
     const __avExpectedSource = "";
     const __avSourceOk = __avExpectedSource
       ? __avSource === __avExpectedSource
@@ -374,9 +372,7 @@ export const captureImageAction: Action = {
         __avLegacyContextOk);
     const __avRegex = new RegExp("\\b(?:capture|image)\\b", "i");
     const __avRegexOk = __avRegex.test(__avText) || __avLegacyContextOk;
-    const __avSource = String(
-      message?.content?.source ?? message?.source ?? "",
-    );
+    const __avSource = String(message?.content?.source ?? "");
     const __avExpectedSource = "";
     const __avSourceOk = __avExpectedSource
       ? __avSource === __avExpectedSource
@@ -650,9 +646,7 @@ export const setVisionModeAction: Action = {
         __avLegacyContextOk);
     const __avRegex = new RegExp("\\b(?:set|vision|mode)\\b", "i");
     const __avRegexOk = __avRegex.test(__avText) || __avLegacyContextOk;
-    const __avSource = String(
-      message?.content?.source ?? message?.source ?? "",
-    );
+    const __avSource = String(message?.content?.source ?? "");
     const __avExpectedSource = "";
     const __avSourceOk = __avExpectedSource
       ? __avSource === __avExpectedSource
@@ -924,9 +918,7 @@ export const nameEntityAction: Action = {
         __avLegacyContextOk);
     const __avRegex = new RegExp("\\b(?:name|entity)\\b", "i");
     const __avRegexOk = __avRegex.test(__avText) || __avLegacyContextOk;
-    const __avSource = String(
-      message?.content?.source ?? message?.source ?? "",
-    );
+    const __avSource = String(message?.content?.source ?? "");
     const __avExpectedSource = "";
     const __avSourceOk = __avExpectedSource
       ? __avSource === __avExpectedSource
@@ -1181,9 +1173,7 @@ export const identifyPersonAction: Action = {
         __avLegacyContextOk);
     const __avRegex = new RegExp("\\b(?:identify|person)\\b", "i");
     const __avRegexOk = __avRegex.test(__avText) || __avLegacyContextOk;
-    const __avSource = String(
-      message?.content?.source ?? message?.source ?? "",
-    );
+    const __avSource = String(message?.content?.source ?? "");
     const __avExpectedSource = "";
     const __avSourceOk = __avExpectedSource
       ? __avSource === __avExpectedSource
@@ -1438,9 +1428,7 @@ export const trackEntityAction: Action = {
         __avLegacyContextOk);
     const __avRegex = new RegExp("\\b(?:track|entity)\\b", "i");
     const __avRegexOk = __avRegex.test(__avText) || __avLegacyContextOk;
-    const __avSource = String(
-      message?.content?.source ?? message?.source ?? "",
-    );
+    const __avSource = String(message?.content?.source ?? "");
     const __avExpectedSource = "";
     const __avSourceOk = __avExpectedSource
       ? __avSource === __avExpectedSource

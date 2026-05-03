@@ -4,5 +4,5 @@
   "description": "Create an elizaOS plugin starter",
   "kind": "plugin",
   "version": 1,
-  "languages": ["typescript", "python", "rust"]
+  "languages": ["typescript"]
 }

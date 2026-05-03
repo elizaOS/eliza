@@ -223,8 +223,25 @@ async def run_eliza_benchmark_mode(
     print("  RLM_CONTEXT Provider -> MESSAGE_HANDLER -> REPLY Action -> Evaluator")
     print()
 
+    # Auto-pick a model plugin based on available API keys so the agent loop
+    # actually has TEXT_LARGE / OBJECT_LARGE handlers. Mirrors the provider
+    # selection just added to adhdbench / mint / gauntlet / woobench / solana /
+    # vending-bench.
+    model_plugin_factory: Callable[[], object] | None = None
+    if os.getenv("GROQ_API_KEY"):
+        try:
+            from elizaos_plugin_groq import get_groq_plugin
+
+            os.environ.setdefault("GROQ_LARGE_MODEL", "openai/gpt-oss-120b")
+            os.environ.setdefault("GROQ_SMALL_MODEL", "openai/gpt-oss-120b")
+            logger.info("rlm-bench: using Groq model plugin (openai/gpt-oss-120b)")
+            model_plugin_factory = get_groq_plugin  # type: ignore[assignment]
+        except ImportError:
+            logger.warning("rlm-bench: GROQ_API_KEY set but elizaos_plugin_groq not importable")
+
     results = await run_eliza_benchmark(
         config=config,
+        model_plugin_factory=model_plugin_factory,
         progress_callback=progress_callback_fn,
     )
 

@@ -45,8 +45,7 @@ const ROLE_GATED_PLUGINS: Readonly<Record<string, RoleGate>> = {
   "@elizaos/app-steward": "owner",
   "@elizaos/plugin-browser-bridge": "owner",
   "@elizaos/plugin-computeruse": "owner",
-  "@elizaos/plugin-evm": "owner",
-  "@elizaos/plugin-solana": "owner",
+  "@elizaos/plugin-wallet": "owner",
   evm: "owner",
   solana: "owner",
 

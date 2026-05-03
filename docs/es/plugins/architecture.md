@@ -28,7 +28,6 @@ La fuente de verdad sobre qué plugins se cargan siempre se encuentra en `eliza/
 export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-sql",               // database adapter — required
   "@elizaos/plugin-local-embedding",   // local embeddings — required for memory
-  "@elizaos/plugin-form",              // form handling for guided user journeys
   "knowledge",         // RAG knowledge management — required for knowledge tab
   "trajectories", // trajectory logging for debugging and RL training
   "@elizaos/plugin-agent-orchestrator",// multi-agent orchestration (PTY, SwarmCoordinator, workspace provisioning)
@@ -190,7 +189,7 @@ const CONNECTOR_PLUGINS = {
   telegram:    "@elizaos/plugin-telegram",
   discord:     "@elizaos/plugin-discord",
   slack:       "@elizaos/plugin-slack",
-  twitter:     "@elizaos/plugin-twitter",
+  twitter:     "@elizaos/plugin-x",
   whatsapp:    "@elizaos/plugin-whatsapp",
   signal:      "@elizaos/plugin-signal",
   imessage:    "@elizaos/plugin-imessage",
@@ -238,8 +237,6 @@ const FEATURE_PLUGINS = {
   diagnosticsOtel:      "@elizaos/plugin-diagnostics-otel",
   webhooks:             "@elizaos/plugin-webhooks",
   gmailWatch:           "@elizaos/plugin-gmail-watch",
-  experience:           "(capacidad avanzada integrada)",
-  form:                 "@elizaos/plugin-form",
   x402:                 "@elizaos/plugin-x402",
   fal:                  "@elizaos/plugin-fal",
   suno:                 "@elizaos/plugin-suno",
@@ -250,15 +247,18 @@ const FEATURE_PLUGINS = {
 };
 ```
 
+> **Nota:** `personality`, `experience` y `form` ya no son paquetes listados en el mapa de feature flags — son capacidades avanzadas integradas en `@elizaos/core`, habilitadas con `advancedCapabilities: true` en la configuración del personaje.
+
 **Destinos de streaming** — La sección `streaming` de la configuración habilita automáticamente los plugins de streaming para plataformas de video en vivo:
 
 ```typescript
 const STREAMING_PLUGINS = {
-  twitch:     "@elizaos/plugin-twitch-streaming",
-  youtube:    "@elizaos/plugin-youtube-streaming",
-  customRtmp: "@elizaos/plugin-custom-rtmp",
-  pumpfun:    "@elizaos/plugin-pumpfun-streaming",
-  x:          "@elizaos/plugin-x-streaming",
+  twitch:       "@elizaos/plugin-streaming",
+  youtube:      "@elizaos/plugin-streaming",
+  customRtmp:   "@elizaos/plugin-streaming",
+  pumpfun:      "@elizaos/plugin-streaming",
+  x:            "@elizaos/plugin-streaming",
+  rtmpSources:  "@elizaos/plugin-streaming",
 };
 ```
 

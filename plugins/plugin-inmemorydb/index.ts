@@ -21,13 +21,23 @@ if (!globalSymbols[GLOBAL_SINGLETONS]) {
 }
 const globalSingletons = globalSymbols[GLOBAL_SINGLETONS];
 
-export function createDatabaseAdapter(agentId: UUID): IDatabaseAdapter {
+export function createDatabaseAdapter(agentId: UUID): InMemoryDatabaseAdapter {
   if (!globalSingletons.storageManager) {
     globalSingletons.storageManager = new MemoryStorage();
   }
-
   return new InMemoryDatabaseAdapter(globalSingletons.storageManager, agentId);
 }
+
+// `IAgentRuntime` historically didn't expose `registerDatabaseAdapter` on the
+// public type — at runtime it does. We narrow the runtime to the registration
+// surface we need and call it defensively so the plugin still loads against
+// runtimes that don't accept adapter registration.
+type RuntimeWithRegister = IAgentRuntime & {
+  registerDatabaseAdapter?: (adapter: IDatabaseAdapter) => void;
+  adapter?: IDatabaseAdapter;
+  databaseAdapter?: IDatabaseAdapter;
+  hasDatabaseAdapter?: () => boolean;
+};
 
 export const plugin: Plugin = {
   name: "@elizaos/plugin-inmemorydb",
@@ -36,18 +46,11 @@ export const plugin: Plugin = {
   async init(_config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {
     logger.info({ src: "plugin:inmemorydb" }, "Initializing in-memory database plugin");
 
-    interface RuntimeWithAdapter {
-      adapter?: IDatabaseAdapter;
-      hasDatabaseAdapter?: () => boolean;
-      getDatabaseAdapter?: () => IDatabaseAdapter | undefined;
-      databaseAdapter?: IDatabaseAdapter;
-    }
-    const runtimeWithAdapter = runtime as RuntimeWithAdapter;
-
+    const r = runtime as RuntimeWithRegister;
     const hasAdapter =
-      runtimeWithAdapter.adapter !== undefined ||
-      runtimeWithAdapter.databaseAdapter !== undefined ||
-      (runtimeWithAdapter.hasDatabaseAdapter?.() ?? false);
+      r.adapter !== undefined ||
+      r.databaseAdapter !== undefined ||
+      (r.hasDatabaseAdapter?.() ?? false);
 
     if (hasAdapter) {
       logger.debug(
@@ -58,9 +61,8 @@ export const plugin: Plugin = {
     }
 
     const adapter = createDatabaseAdapter(runtime.agentId);
-
-    await adapter.init();
-    runtime.registerDatabaseAdapter(adapter);
+    await adapter.initialize();
+    r.registerDatabaseAdapter?.(adapter);
 
     logger.success(
       { src: "plugin:inmemorydb" },

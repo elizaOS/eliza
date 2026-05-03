@@ -3,7 +3,7 @@ title: "Batch queue subsystem"
 description: "Why @elizaos/core ships utils/batch-queue and how PriorityQueue, BatchProcessor, TaskDrain, and BatchQueue fit together"
 ---
 
-This page mirrors the contributor-oriented markdown in the core package (`packages/typescript/docs/BATCH_QUEUE.md`) so the public docs stay aligned with source.
+This page mirrors the contributor-oriented markdown in the core package (`packages/core/docs/BATCH_QUEUE.md`) so the public docs stay aligned with source.
 
 <Tip>
   **Why this exists:** the runtime is not globally “batching-bound,” but several subsystems share the same **ordering**, **bounded parallelism**, **retries**, and **repeat-task drain** patterns. One small composable stack avoids parallel one-off queues that drift apart over time.
@@ -67,10 +67,10 @@ Anything other than `high`, `normal`, or `low` is logged **once** per queue (via
 
 ## Where to read code
 
-- Module rationale (reviewer-oriented): [`batch-queue.ts` (core source)](https://github.com/elizaos/eliza/blob/main/packages/typescript/src/utils/batch-queue.ts)
-- Composition and `BatchQueue` behavior: [`batch-queue/index.ts`](https://github.com/elizaos/eliza/blob/main/packages/typescript/src/utils/batch-queue/index.ts)
-- Canonical markdown (stays in sync with this page): [`BATCH_QUEUE.md`](https://github.com/elizaos/eliza/blob/main/packages/typescript/docs/BATCH_QUEUE.md)
-- Tests: `batch-queue.test.ts`, `task-drain.test.ts` under `packages/typescript/src/__tests__/`
+- Module rationale (reviewer-oriented): [`batch-queue.ts` (core source)](https://github.com/elizaos/eliza/blob/main/packages/core/src/utils/batch-queue.ts)
+- Composition and `BatchQueue` behavior: [`batch-queue/index.ts`](https://github.com/elizaos/eliza/blob/main/packages/core/src/utils/batch-queue/index.ts)
+- Canonical markdown (stays in sync with this page): [`BATCH_QUEUE.md`](https://github.com/elizaos/eliza/blob/main/packages/core/docs/BATCH_QUEUE.md)
+- Tests: `batch-queue.test.ts`, `task-drain.test.ts` under `packages/core/src/__tests__/`
 
 ## Related docs
 

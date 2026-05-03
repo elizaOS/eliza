@@ -19,8 +19,8 @@
     "paths": {
       "@elizaos/ui": ["./packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["./packages/ui/src/*"],
-      "@elizaos/core": ["./packages/typescript/src/index.node.ts"],
-      "@elizaos/core/*": ["./packages/typescript/src/*"],
+      "@elizaos/core": ["./packages/core/src/index.node.ts"],
+      "@elizaos/core/*": ["./packages/core/src/*"],
       "@elizaos/shared": ["./packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["./packages/shared/src/*"],
     }
@@ -50,7 +50,7 @@
     "plugins/plugin-local-ai/**",
     "plugins/plugin-vision/**",
     "plugins/plugin-github/**",
-    "plugins/plugin-evm/**",
+    "plugins/plugin-wallet/src/chains/evm/**",
     "plugins/plugin-polymarket/**",
     "plugins/plugin-sql/**",
     "plugins/plugin-minecraft/**",

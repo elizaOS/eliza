@@ -47,9 +47,7 @@ function loadCloudApiKey(): string {
   }
 
   const configPath = path.join(os.homedir(), ".eliza", "eliza.json");
-  const parsed = JSON.parse(
-    fs.readFileSync(configPath, "utf8"),
-  ) as ElizaConfig;
+  const parsed = JSON.parse(fs.readFileSync(configPath, "utf8")) as ElizaConfig;
   const fromConfig = parsed.cloud?.apiKey?.trim();
   if (!fromConfig) {
     throw new Error(

@@ -363,7 +363,10 @@ export async function handlePluginRoutes(
       runtime: state.runtime,
     });
     const existingEvmPlugin = allPlugins.find(
-      (plugin) => plugin.id === "evm" || plugin.npmName === EVM_PLUGIN_PACKAGE,
+      (plugin) =>
+        plugin.id === "evm" ||
+        plugin.id === "wallet" ||
+        plugin.npmName === EVM_PLUGIN_PACKAGE,
     );
     if (existingEvmPlugin) {
       existingEvmPlugin.autoEnabled = evmDiagnostic.autoEnabled;
@@ -452,7 +455,11 @@ export async function handlePluginRoutes(
             "Plugin installed but failed to load — the package may be missing compiled files.";
         }
       }
-      if (plugin.id === "evm" || plugin.npmName === EVM_PLUGIN_PACKAGE) {
+      if (
+        plugin.id === "evm" ||
+        plugin.id === "wallet" ||
+        plugin.npmName === EVM_PLUGIN_PACKAGE
+      ) {
         plugin.enabled = evmDiagnostic.enabled;
         plugin.isActive = evmDiagnostic.isActive;
         plugin.autoEnabled = evmDiagnostic.autoEnabled;

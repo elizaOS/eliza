@@ -3,7 +3,8 @@ import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CompatRuntimeState } from "../../src/api/compat-route-shared";
 
-type AutomationsCompatRoutesModule = typeof import("../../src/api/automations-compat-routes");
+type AutomationsCompatRoutesModule =
+  typeof import("../../src/api/automations-compat-routes");
 
 const toWorkbenchTaskMock = vi.fn();
 const listTriggerTasksMock = vi.fn();
@@ -339,7 +340,8 @@ describe("automations compat routes", () => {
       {
         id: "lifeops:gmail",
         label: "Gmail",
-        description: "Owner-scoped Gmail triage, drafting, and send operations.",
+        description:
+          "Owner-scoped Gmail triage, drafting, and send operations.",
         class: "integration",
         source: "lifeops",
         backingCapability: "lifeops:gmail",
@@ -644,7 +646,7 @@ describe("automations compat routes", () => {
   });
 
   it("does not leak crypto secrets in the automation node catalog", async () => {
-    process.env.EVM_PRIVATE_KEY = "0x" + "11".repeat(32);
+    process.env.EVM_PRIVATE_KEY = `0x${"11".repeat(32)}`;
     process.env.SOLANA_PRIVATE_KEY = "solana-secret-test-key";
     process.env.POLYMARKET_PRIVATE_KEY = "polymarket-secret-test-key";
 

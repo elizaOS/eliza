@@ -19,7 +19,7 @@ const skipLocalUpstreams =
   process.env.ELIZA_SKIP_LOCAL_UPSTREAMS === "1" ||
   process.env.ELIZA_SKIP_LOCAL_UPSTREAMS === "1";
 const SUBMODULE_READINESS_MARKERS = {
-  eliza: ["package.json", "packages/typescript/package.json"],
+  eliza: ["package.json", "packages/core/package.json"],
 };
 
 // plugin-openrouter contains PGlite :memory:<UUID> paths committed under

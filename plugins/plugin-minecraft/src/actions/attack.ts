@@ -9,6 +9,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { MINECRAFT_SERVICE_TYPE, type MinecraftService } from "../services/minecraft-service.js";
+import { matchPlannerValidateGate } from "./action-validate-gate.js";
 
 function parseEntityId(text: string): number | null {
   const trimmed = text.trim();
@@ -21,42 +22,15 @@ export const minecraftAttackAction: Action = {
   name: "MC_ATTACK",
   similes: ["MINECRAFT_ATTACK", "HIT_ENTITY"],
   description: "Attack an entity by numeric entityId (from MC_WORLD_STATE.nearbyEntities).",
-  validate: async (runtime: any, message: any, state?: any, options?: any): Promise<boolean> => {
-    const __avTextRaw = typeof message?.content?.text === "string" ? message.content.text : "";
-    const __avText = __avTextRaw.toLowerCase();
-    const __avKeywords = ["attack"];
-    const __avKeywordOk =
-      __avKeywords.length > 0 && __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
-    const __avRegex = /\b(?:attack)\b/i;
-    const __avRegexOk = __avRegex.test(__avText);
-    const __avSource = String(message?.content?.source ?? message?.source ?? "");
-    const __avExpectedSource = "";
-    const __avSourceOk = __avExpectedSource
-      ? __avSource === __avExpectedSource
-      : Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
-    const __avOptions = options && typeof options === "object" ? options : {};
-    const __avInputOk =
-      __avText.trim().length > 0 ||
-      Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-      Boolean(message?.content && typeof message.content === "object");
-
-    if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
-      return false;
-    }
-
-    const __avLegacyValidate = async (
-      runtime: IAgentRuntime,
-      message: Memory
-    ): Promise<boolean> => {
-      const service = runtime.getService<MinecraftService>(MINECRAFT_SERVICE_TYPE);
-      return Boolean(service) && parseEntityId(message.content.text ?? "") !== null;
-    };
-    try {
-      return Boolean(await (__avLegacyValidate as any)(runtime, message, state, options));
-    } catch {
-      return false;
-    }
-  },
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
+    matchPlannerValidateGate(runtime, message, state, {
+      keywords: ["attack"],
+      regex: /\b(?:attack)\b/i,
+      legacyValidate: async (rt, msg) => {
+        const service = rt.getService<MinecraftService>(MINECRAFT_SERVICE_TYPE);
+        return Boolean(service) && parseEntityId(msg.content.text ?? "") !== null;
+      },
+    }),
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,

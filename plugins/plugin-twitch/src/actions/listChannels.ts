@@ -35,13 +35,13 @@ export const listChannels: Action = {
     const __avKeywordOk =
       (__avKeywords.length > 0 &&
         __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw))) ||
-      String(message?.content?.source ?? message?.source ?? "") === "twitch";
+      String(message?.content?.source ?? "") === "twitch";
     const __avRegex = new RegExp("\\b(?:twitch|list|channels)\\b", "i");
     const __avRegexOk =
       __avRegex.test(__avText) ||
-      String(message?.content?.source ?? message?.source ?? "") === "twitch";
+      String(message?.content?.source ?? "") === "twitch";
     const __avSource = String(
-      message?.content?.source ?? message?.source ?? "",
+      message?.content?.source ?? "",
     );
     const __avExpectedSource = "twitch";
     const __avSourceOk = __avExpectedSource
@@ -52,7 +52,7 @@ export const listChannels: Action = {
       __avText.trim().length > 0 ||
       Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
       Boolean(message?.content && typeof message.content === "object") ||
-      String(message?.content?.source ?? message?.source ?? "") === "twitch";
+      String(message?.content?.source ?? "") === "twitch";
 
     if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
       return false;

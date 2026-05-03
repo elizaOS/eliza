@@ -15,11 +15,9 @@
     "declarationMap": true,
     "allowImportingTsExtensions": true,
     "types": ["node", "bun-types"],
-    "baseUrl": "../../..",
-    "ignoreDeprecations": "6.0",
     "paths": {
-      "@elizaos/core": ["packages/typescript/dist/node"],
-      "@elizaos/core/*": ["packages/typescript/dist/*"]
+      "@elizaos/core": ["../../../packages/core/dist/node"],
+      "@elizaos/core/*": ["../../../packages/core/dist/*"]
     }
   },
   "include": ["./**/*.ts"],

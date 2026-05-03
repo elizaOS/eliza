@@ -20,7 +20,7 @@
  * where the stubs are one-line re-exports from `@elizaos/core` for
  * `./entities` (createUniqueUuid) and `./logger` (logger). The source
  * `roles.ts` is copied verbatim from
- * `eliza/packages/typescript/src/roles.ts`. The bundle inlines the
+ * `eliza/packages/core/src/roles.ts`. The bundle inlines the
  * role logic and leaves `createUniqueUuid` and `logger` as top-level
  * runtime imports from `@elizaos/core`, which ARE present in the
  * published main bundle.
