@@ -34,7 +34,7 @@
   ],
   "peerDependencies": {
     "@elizaos/core": "2.0.0-alpha.3",
-    "@elizaos/plugin-form": "2.0.0-alpha.5"
+    "@elizaos/plugin-form": "2.0.0-alpha.11"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.11",
