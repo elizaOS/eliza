@@ -2,9 +2,10 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "ignoreDeprecations": "6.0",
-    "baseUrl": "../..",
-    "lib": ["ESNext", "DOM"],
+    "lib": [
+      "ESNext",
+      "DOM"
+    ],
     "target": "ESNext",
     "module": "Preserve",
     "moduleResolution": "Bundler",
@@ -18,10 +19,19 @@
     "moduleDetection": "force",
     "allowArbitraryExtensions": true,
     "paths": {
-      "@elizaos/core": ["../core/src"],
-      "@elizaos/core/*": ["../core/src/*"]
+      "@elizaos/core": [
+        "../../../core/src"
+      ],
+      "@elizaos/core/*": [
+        "../../../core/src/*"
+      ]
     },
-    "types": ["node", "bun-types"]
+    "types": [
+      "node",
+      "bun-types"
+    ]
   },
-  "include": ["src/**/*.ts"]
+  "include": [
+    "src/**/*.ts"
+  ]
 }

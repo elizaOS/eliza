@@ -1,6 +1,6 @@
 import { ChannelType, type Metadata, type UUID } from "@elizaos/core";
 import { and, desc, eq, lt, sql } from "drizzle-orm";
-import { v4 } from "uuid";
+import { randomUUID } from "node:crypto";
 import {
   channelParticipantsTable,
   channelTable,
@@ -90,7 +90,7 @@ export class MessagingStore implements Store {
     metadata?: Metadata;
   }): Promise<MessageServer> {
     return this.ctx.withRetry(async () => {
-      const newId = data.id || (v4() as UUID);
+      const newId = data.id || (randomUUID() as UUID);
       const now = new Date();
       const serverToInsert = {
         id: newId,
@@ -249,7 +249,7 @@ export class MessagingStore implements Store {
     participantIds?: UUID[]
   ): Promise<Channel> {
     return this.ctx.withRetry(async () => {
-      const newId = data.id || (v4() as UUID);
+      const newId = data.id || (randomUUID() as UUID);
       const now = new Date();
       const channelToInsert = {
         id: newId,
@@ -508,7 +508,7 @@ export class MessagingStore implements Store {
     messageId?: UUID;
   }): Promise<Message> {
     return this.ctx.withRetry(async () => {
-      const newId = data.messageId || (v4() as UUID);
+      const newId = data.messageId || (randomUUID() as UUID);
       const now = new Date();
       const messageToInsert = {
         id: newId,

@@ -19,8 +19,6 @@
     "noEmitOnError": false,
     "moduleDetection": "force",
     "allowArbitraryExtensions": true,
-    "ignoreDeprecations": "6.0",
-    "baseUrl": ".",
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "allowUnusedLabels": true,

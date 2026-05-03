@@ -234,14 +234,14 @@ standalone.ts
 
 # Proto-generated files (regenerated from schemas/)
 packages/core/src/types/generated/
-packages/typescript/src/types/generated/
+packages/core/src/types/generated/
 packages/python/elizaos/types/generated/
 packages/rust/src/types/generated/
 packages/rust/.cargo-tools/
 
 # i18n keyword codegen (regenerated from keywords/*.keywords.json)
 packages/shared/src/i18n/generated/
-packages/typescript/src/i18n/generated/
+packages/core/src/i18n/generated/
 
 tsconfig.test.json
 # But cloud has a real source-tracked tsconfig.test.json — un-ignore it
@@ -258,12 +258,12 @@ test-output.txt
 apps/app-training/datasets/
 
 # Vitest type compatibility shims
-packages/typescript/src/types/vitest-*.d.ts
+packages/core/src/types/vitest-*.d.ts
 
 # Accidental tsc output next to .ts sources (declarations and JS ship from dist/, not src/)
 # Hand-written ambient .d.ts files are excluded from this rule via negation below.
-packages/typescript/src/**/*.d.ts
-packages/typescript/src/**/*.d.ts.map
+packages/core/src/**/*.d.ts
+packages/core/src/**/*.d.ts.map
 packages/agent/src/**/*.js
 packages/agent/src/**/*.d.ts
 packages/agent/src/**/*.d.ts.map

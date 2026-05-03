@@ -3,7 +3,10 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": ["ES2022", "DOM"],
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
     "strict": false,
     "noEmit": true,
     "skipLibCheck": true,
@@ -17,16 +20,23 @@
     "noUnusedParameters": false,
     "noImplicitReturns": false,
     "noImplicitAny": false,
-    "types": ["node", "bun-types"],
-    "ignoreDeprecations": "6.0",
+    "types": [
+      "node",
+      "bun-types"
+    ],
     "allowImportingTsExtensions": true,
-    "baseUrl": "../../../",
     "paths": {
-      "@elizaos/core": ["packages/core/dist/node"],
-      "@elizaos/core/*": ["packages/core/dist/*"]
+      "@elizaos/core": [
+        "../../../packages/core/dist/node"
+      ],
+      "@elizaos/core/*": [
+        "../../../packages/core/dist/*"
+      ]
     }
   },
-  "include": ["./**/*.ts"],
+  "include": [
+    "./**/*.ts"
+  ],
   "exclude": [
     "node_modules",
     "dist",

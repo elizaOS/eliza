@@ -63,7 +63,7 @@ if ! $COMPARE_ONLY; then
   fi
 
   # Ensure core is built
-  if [ ! -f "${REPO_ROOT}/packages/typescript/dist/node/index.node.js" ]; then
+  if [ ! -f "${REPO_ROOT}/packages/core/dist/node/index.node.js" ]; then
     info "Building @elizaos/core..."
     cd "${REPO_ROOT}" && bun run build:core
     cd "${SCRIPT_DIR}"

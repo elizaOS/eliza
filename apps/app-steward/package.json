@@ -29,7 +29,7 @@
     "@elizaos/ui": "workspace:*",
     "ethers": "^6.16.0",
     "lucide-react": "^1.0.0",
-    "viem": "^2.21.0"
+    "viem": "^2.48.8"
   },
   "elizaos": {
     "app": {

@@ -1,6 +1,6 @@
 import { logger, type Memory, type MemoryMetadata, type UUID } from "@elizaos/core";
 import { and, cosineDistance, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
-import { v4 } from "uuid";
+import { randomUUID } from "node:crypto";
 import { embeddingTable, memoryTable } from "../schema/index";
 import type { DrizzleDatabase } from "../types";
 import type { Store, StoreContext } from "./types";
@@ -281,7 +281,7 @@ export class MemoryStore implements Store {
   }
 
   async create(memory: Memory & { metadata?: MemoryMetadata }, tableName: string): Promise<UUID> {
-    const memoryId = memory.id ?? (v4() as UUID);
+    const memoryId = memory.id ?? (randomUUID() as UUID);
 
     if (memory.unique === undefined) {
       memory.unique = true;
@@ -479,7 +479,7 @@ export class MemoryStore implements Store {
         .set(updateValues)
         .where(eq(embeddingTable.memoryId, memoryId));
     } else {
-      const embeddingValues: Record<string, unknown> = { id: v4(), memoryId };
+      const embeddingValues: Record<string, unknown> = { id: randomUUID(), memoryId };
       embeddingValues[this.ctx.getEmbeddingDimension()] = cleanVector;
       await tx.insert(embeddingTable).values([embeddingValues]);
     }

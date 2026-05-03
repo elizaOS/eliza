@@ -6,8 +6,7 @@
     "allowJs": false,
     "jsx": "react-jsx",
     "skipLibCheck": true,
-    "ignoreDeprecations": "6.0",
-    "allowSyntheticDefaultImports": true,
+        "allowSyntheticDefaultImports": true,
     "strict": false,
     "useUnknownInCatchVariables": false,
     "forceConsistentCasingInFileNames": true,
@@ -31,8 +30,8 @@
     ],
     "paths": {
       "@types/*": ["./src/*"],
-      "@elizaos/core": ["../typescript/src/index.node.ts"],
-      "@elizaos/core/*": ["../typescript/src/*"],
+      "@elizaos/core": ["../core/src/index.node.ts"],
+      "@elizaos/core/*": ["../core/src/*"],
       "react": ["../app-core/node_modules/@types/react/index.d.ts"],
       "react/jsx-runtime": [
         "../app-core/node_modules/@types/react/jsx-runtime.d.ts"

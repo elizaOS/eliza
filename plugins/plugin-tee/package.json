@@ -36,7 +36,7 @@
     "@elizaos/core": "2.0.0-alpha.3",
     "@phala/dstack-sdk": "0.1.11",
     "@solana/web3.js": "1.98.4",
-    "viem": "2.29.4"
+    "viem": "^2.48.8"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.11",

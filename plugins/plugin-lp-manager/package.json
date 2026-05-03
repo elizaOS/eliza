@@ -47,7 +47,7 @@
     "@uniswap/v3-sdk": "^3.13.1",
     "bs58": "^6.0.0",
     "decimal.js": "^10.4.3",
-    "viem": "^2.21.0"
+    "viem": "^2.48.8"
   },
   "peerDependencies": {
     "@elizaos/plugin-evm": "2.0.0-alpha.3"

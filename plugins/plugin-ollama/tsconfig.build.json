@@ -22,8 +22,6 @@
     "types": ["bun-types", "node"],
     "resolvePackageJsonExports": true,
     "resolvePackageJsonImports": true,
-    "ignoreDeprecations": "6.0",
-    "baseUrl": ".",
     "paths": {
       "@elizaos/core": ["../../../packages/core/dist"]
     }

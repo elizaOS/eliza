@@ -1,4 +1,12 @@
-import type { Action, IAgentRuntime, Memory, State, HandlerCallback } from '@elizaos/core';
+import type {
+  Action,
+  ActionResult,
+  HandlerCallback,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  State,
+} from '@elizaos/core';
 import { getSDK } from '../providers/wallet';
 
 export const x402PayAction: Action = {
@@ -17,46 +25,49 @@ export const x402PayAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state: State | undefined,
-    _options?: Record<string, unknown>,
+    _options?: HandlerOptions,
     callback?: HandlerCallback
-  ): Promise<boolean> => {
+  ): Promise<ActionResult | undefined> => {
     const sdk = await getSDK(runtime);
     if (!sdk) {
       callback?.({ text: 'No wallet configured for x402 payments.' });
-      return false;
+      return { success: false, text: 'No wallet configured for x402 payments.' };
     }
 
     const params = parseX402Intent(message.content.text ?? '');
     if (!params) {
-      callback?.({
-        text: 'Please specify the endpoint URL and max payment amount. Example: "pay x402 endpoint https://api.example.com/data max 0.01 USDC"',
-      });
-      return false;
+      const text =
+        'Please specify the endpoint URL and max payment amount. Example: "pay x402 endpoint https://api.example.com/data max 0.01 USDC"';
+      callback?.({ text });
+      return { success: false, text };
     }
 
     try {
       const result = await sdk.x402Pay(params);
+      const text =
+        `x402 payment sent — $${result.amountPaid} USDC to ${params.endpoint}. ` +
+        `Response received: ${result.httpStatus} ${result.contentType ?? ''}`;
       callback?.({
-        text:
-          `x402 payment sent — $${result.amountPaid} USDC to ${params.endpoint}. ` +
-          `Response received: ${result.httpStatus} ${result.contentType ?? ''}`,
+        text,
         content: { success: true, ...result, params },
       });
-      return true;
+      return { success: true, text };
     } catch (err) {
-      callback?.({ text: `x402 payment failed: ${(err as Error).message}` });
-      return false;
+      const messageErr = err instanceof Error ? err.message : String(err);
+      const text = `x402 payment failed: ${messageErr}`;
+      callback?.({ text });
+      return { success: false, text, error: messageErr };
     }
   },
 
   examples: [
     [
       {
-        user: '{{user1}}',
+        name: '{{user1}}',
         content: { text: 'Pay x402 endpoint https://api.weatheragent.xyz/forecast max 0.001 USDC' },
       },
       {
-        user: '{{agentName}}',
+        name: '{{agentName}}',
         content: {
           text: 'x402 payment sent — $0.001 USDC to https://api.weatheragent.xyz/forecast. Response: 200 application/json',
           action: 'X402_PAY',

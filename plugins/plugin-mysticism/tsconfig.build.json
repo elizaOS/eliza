@@ -5,9 +5,15 @@
     "declaration": true,
     "declarationMap": true,
     "emitDeclarationOnly": true,
-    "outDir": "../dist",
-    "baseUrl": "."
+    "outDir": "../dist"
   },
-  "include": ["**/*.ts"],
-  "exclude": ["**/__tests__/**", "**/*.test.ts", "**/*.spec.ts", "build.ts"]
+  "include": [
+    "**/*.ts"
+  ],
+  "exclude": [
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "build.ts"
+  ]
 }

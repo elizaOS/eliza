@@ -173,7 +173,8 @@ For a full command reference, run `elizaos --help` or `elizaos <command> --help`
 Use elizaOS agents directly in your applications without the CLI or web interface.
 
 ```bash
-git clone https://github.com/elizaos/eliza.git
+# Recommended: blobless clone — full history, file contents fetched on demand
+git clone --filter=blob:none https://github.com/elizaos/eliza.git
 cd eliza
 
 # Interactive chat
@@ -182,6 +183,17 @@ OPENAI_API_KEY=your_key bun run examples/typescript/chat.ts
 # Basic message processing
 OPENAI_API_KEY=your_key bun run examples/typescript/standalone.ts
 ```
+
+> **Why `--filter=blob:none`?** This is a [partial clone](https://github.blog/open-source/git/get-up-to-speed-with-partial-clone-and-shallow-clone/): you get every commit and tree (so `git log`, branches, tags, and `git checkout` all work normally) but not the historical file contents. Missing blobs are fetched lazily when needed. On this repo it cuts clone size by roughly 10×.
+>
+> Trade-offs: heavy history operations like `git blame`, `git log -p`, or `git log -S` will trigger background fetches and may be slow the first time. They also require network — offline use of those commands will fail until blobs are cached. If you do code archaeology often, upgrade to a full clone:
+>
+> ```bash
+> git config --unset remote.origin.partialclonefilter
+> git fetch --refetch
+> ```
+>
+> For one-off CI or scripts that only need the latest commit, use `--depth=1 --single-branch` instead — even smaller, no history.
 
 ## 🏛️ Architecture Overview
 

@@ -20,7 +20,7 @@ on:
         required: false
         type: string
       root_directory:
-        description: "Only scans files in this directory (relative to repository root, e.g., packages/typescript/src)"
+        description: "Only scans files in this directory (relative to repository root, e.g., packages/core/src)"
         required: true
         default: "packages/typescript"
         type: string
@@ -59,6 +59,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          filter: blob:none
 
       - name: Check if autodoc package exists
         id: check-autodoc

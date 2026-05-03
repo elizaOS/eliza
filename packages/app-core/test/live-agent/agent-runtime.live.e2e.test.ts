@@ -462,7 +462,7 @@ describe("Agent Runtime E2E", () => {
       await instance.initialize();
       if (!instance.getService("AUTONOMY")) {
         const { AutonomyService } = await import(
-          "../../../typescript/src/features/autonomy/service.ts"
+          "../../../core/src/features/autonomy/service.ts"
         );
         await AutonomyService.start(instance);
       }

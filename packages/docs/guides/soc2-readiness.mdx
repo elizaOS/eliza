@@ -61,7 +61,7 @@ This is a practical mapping of what the codebase helps with vs what operators mu
 ### Security (CC series)
 
 - **Codebase support**
-  - Redaction-first logging in TypeScript core (`packages/typescript/src/logger.ts`) and Python core (`packages/python/elizaos/logger.py`).
+  - Redaction-first logging in TypeScript core (`packages/core/src/logger.ts`) and Python core (`packages/python/elizaos/logger.py`).
   - Secret encryption for stored settings/secrets with authenticated encryption (v2 AES-GCM) and legacy read support.
   - Interop limits and safer defaults (message size limits, max pending requests, WASM size/memory caps).
   - CI checks for prompt templates to avoid accidental secret commits.

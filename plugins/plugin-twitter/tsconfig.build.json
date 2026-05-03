@@ -7,8 +7,7 @@
     "inlineSources": true,
     "declaration": true,
     "emitDeclarationOnly": true,
-    "ignoreDeprecations": "6.0",
-    "paths": {}
+        "paths": {}
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
