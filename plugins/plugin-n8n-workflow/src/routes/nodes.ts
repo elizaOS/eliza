@@ -3,19 +3,19 @@ import type {
   RouteRequest,
   RouteResponse,
   IAgentRuntime,
-} from '@elizaos/core';
+} from "@elizaos/core";
 import {
   searchNodes,
   getNodeDefinition,
   getAllNodes,
   filterNodesByIntegrationSupport,
-} from '../utils/catalog';
-import type { NodeSearchResult } from '../types/index';
+} from "../utils/catalog";
+import type { NodeSearchResult } from "../types/index";
 import {
   N8N_CREDENTIAL_PROVIDER_TYPE,
   isCredentialProvider,
-} from '../types/index';
-import { validateLimit } from './_helpers';
+} from "../types/index";
+import { validateLimit } from "./_helpers";
 
 /**
  * GET /nodes?q=gmail,email&limit=20
@@ -30,17 +30,15 @@ async function listNodes(
     const limit = validateLimit(req.query?.limit, 20, 100);
 
     if (!q) {
-      res
-        .status(400)
-        .json({
-          success: false,
-          error: 'q parameter is required (comma-separated keywords)',
-        });
+      res.status(400).json({
+        success: false,
+        error: "q parameter is required (comma-separated keywords)",
+      });
       return;
     }
 
     const keywords = q
-      .split(',')
+      .split(",")
       .map((k) => k.trim())
       .filter(Boolean);
     const results = searchNodes(keywords, limit);
@@ -52,8 +50,8 @@ async function listNodes(
   } catch (error) {
     res.status(500).json({
       success: false,
-      error: 'failed_to_search_nodes',
-      message: error instanceof Error ? error.message : 'Unknown error',
+      error: "failed_to_search_nodes",
+      message: error instanceof Error ? error.message : "Unknown error",
     });
   }
 }
@@ -72,7 +70,7 @@ async function listAvailableNodes(
     const catalog = getAllNodes();
     const allResults: NodeSearchResult[] = catalog
       .filter((n) => n.name && n.displayName)
-      .map((node) => ({ node, score: 0, matchReason: 'catalog' }));
+      .map((node) => ({ node, score: 0, matchReason: "catalog" }));
 
     const rawProvider = runtime.getService(N8N_CREDENTIAL_PROVIDER_TYPE);
     const credProvider = isCredentialProvider(rawProvider) ? rawProvider : null;
@@ -126,8 +124,8 @@ async function listAvailableNodes(
   } catch (error) {
     res.status(500).json({
       success: false,
-      error: 'failed_to_list_nodes',
-      message: error instanceof Error ? error.message : 'Unknown error',
+      error: "failed_to_list_nodes",
+      message: error instanceof Error ? error.message : "Unknown error",
     });
   }
 }
@@ -144,7 +142,7 @@ async function getNode(
   try {
     const type = req.params?.type;
     if (!type) {
-      res.status(400).json({ success: false, error: 'node_type_required' });
+      res.status(400).json({ success: false, error: "node_type_required" });
       return;
     }
 
@@ -160,8 +158,8 @@ async function getNode(
   } catch (error) {
     res.status(500).json({
       success: false,
-      error: 'failed_to_get_node',
-      message: error instanceof Error ? error.message : 'Unknown error',
+      error: "failed_to_get_node",
+      message: error instanceof Error ? error.message : "Unknown error",
     });
   }
 }
@@ -195,7 +193,7 @@ function formatCatalogNode(r: NodeSearchResult) {
 }
 
 export const nodeRoutes: Route[] = [
-  { type: 'GET', path: '/nodes/available', handler: listAvailableNodes },
-  { type: 'GET', path: '/nodes/:type', handler: getNode },
-  { type: 'GET', path: '/nodes', handler: listNodes },
+  { type: "GET", path: "/nodes/available", handler: listAvailableNodes },
+  { type: "GET", path: "/nodes/:type", handler: getNode },
+  { type: "GET", path: "/nodes", handler: listNodes },
 ];

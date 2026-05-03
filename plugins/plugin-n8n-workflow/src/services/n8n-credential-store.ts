@@ -1,9 +1,9 @@
-import { type IAgentRuntime, logger, Service } from '@elizaos/core';
-import { eq, and, sql } from 'drizzle-orm';
-import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { credentialMappings } from '../db/schema';
-import { N8N_CREDENTIAL_STORE_TYPE } from '../types/index';
-import type { N8nCredentialStoreApi, CredentialMapping } from '../types/index';
+import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { eq, and, sql } from "drizzle-orm";
+import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import { credentialMappings } from "../db/schema";
+import { N8N_CREDENTIAL_STORE_TYPE } from "../types/index";
+import type { N8nCredentialStoreApi, CredentialMapping } from "../types/index";
 
 /**
  * Default DB-backed credential store.
@@ -19,33 +19,33 @@ export class N8nCredentialStore
   static override readonly serviceType = N8N_CREDENTIAL_STORE_TYPE;
 
   override capabilityDescription =
-    'Stores n8n credential ID mappings per user and credential type, backed by PostgreSQL.';
+    "Stores n8n credential ID mappings per user and credential type, backed by PostgreSQL.";
 
   private getDb(): NodePgDatabase {
     const db = this.runtime.db;
     if (!db) {
-      throw new Error('Database not available for N8nCredentialStore');
+      throw new Error("Database not available for N8nCredentialStore");
     }
     return db as NodePgDatabase;
   }
 
   static async start(runtime: IAgentRuntime): Promise<N8nCredentialStore> {
     logger.info(
-      { src: 'plugin:n8n-workflow:service:credential-store' },
-      'Starting N8n Credential Store...',
+      { src: "plugin:n8n-workflow:service:credential-store" },
+      "Starting N8n Credential Store...",
     );
     const service = new N8nCredentialStore(runtime);
     logger.info(
-      { src: 'plugin:n8n-workflow:service:credential-store' },
-      'N8n Credential Store started',
+      { src: "plugin:n8n-workflow:service:credential-store" },
+      "N8n Credential Store started",
     );
     return service;
   }
 
   override async stop(): Promise<void> {
     logger.info(
-      { src: 'plugin:n8n-workflow:service:credential-store' },
-      'N8n Credential Store stopped',
+      { src: "plugin:n8n-workflow:service:credential-store" },
+      "N8n Credential Store stopped",
     );
   }
 
