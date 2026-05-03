@@ -3,7 +3,7 @@
  * Action/Provider/Evaluator Docs Generator
  *
  * Reads canonical specs from packages/prompts/specs/** and generates
- * TypeScript docs modules under packages/typescript.
+ * TypeScript docs modules under packages/core/src/generated.
  *
  * This is intentionally dependency-free (no zod/yup) to keep builds lightweight.
  */
@@ -522,7 +522,7 @@ function generateTypeScript(actionsSpec, providersSpec, evaluatorsSpec) {
   const outDir = path.join(
     REPO_ROOT,
     "packages",
-    "typescript",
+    "core",
     "src",
     "generated",
   );

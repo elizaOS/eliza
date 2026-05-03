@@ -160,7 +160,7 @@ export class ACPService extends Service {
 
     const gatewayUrl = mergedOpts.gatewayUrl || "ws://127.0.0.1:18789";
 
-    this.gateway = new GatewayClient({
+    const gateway = new GatewayClient({
       url: gatewayUrl,
       token: mergedOpts.gatewayToken,
       password: mergedOpts.gatewayPassword,
@@ -178,6 +178,7 @@ export class ACPService extends Service {
         this.agent?.handleGatewayDisconnect(`${code}: ${reason}`);
       },
     });
+    this.gateway = gateway;
 
     const input = Writable.toWeb(process.stdout);
     const output = Readable.toWeb(
@@ -186,7 +187,7 @@ export class ACPService extends Service {
     const stream = ndJsonStream(input, output);
 
     new AgentSideConnection((conn: AgentSideConnection) => {
-      this.agent = new AcpGatewayAgent(conn, this.gateway!, {
+      this.agent = new AcpGatewayAgent(conn, gateway, {
         ...mergedOpts,
         sessionStore: this.sessionStore,
       });
@@ -194,7 +195,7 @@ export class ACPService extends Service {
       return this.agent;
     }, stream);
 
-    this.gateway.start();
+    gateway.start();
     this.isRunning = true;
 
     logger.info(

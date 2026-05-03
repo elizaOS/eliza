@@ -1,10 +1,17 @@
 {
   "compilerOptions": {
+    "ignoreDeprecations": "6.0",
     "outDir": "dist",
     "rootDir": "src",
-    "lib": ["ESNext", "DOM"],
+    "lib": [
+      "ESNext",
+      "DOM"
+    ],
     "target": "ESNext",
-    "types": ["bun-types", "node"],
+    "types": [
+      "bun-types",
+      "node"
+    ],
     "module": "Preserve",
     "moduleResolution": "Bundler",
     "strict": true,
@@ -14,7 +21,10 @@
     "emitDeclarationOnly": true,
     "resolveJsonModule": true,
     "moduleDetection": "force",
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "ignoreDeprecations": "6.0"
   },
-  "include": ["src/**/*.ts"]
+  "include": [
+    "src/**/*.ts"
+  ]
 }

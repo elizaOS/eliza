@@ -399,13 +399,13 @@ if (target === "ts" || target === "all") {
   writeFileSync(jsOutPath, js, "utf-8");
   console.log(`  JavaScript (shared): ${jsOutPath}`);
 
-  // Also generate for the typescript (@elizaos/core) package — same data,
+  // Also generate for @elizaos/core — same data,
   // standalone file with no import dependency on @elizaos/shared.
   const tsCorePath = join(
     __dirname,
     "..",
     "..",
-    "typescript",
+    "core",
     "src",
     "i18n",
     "generated",

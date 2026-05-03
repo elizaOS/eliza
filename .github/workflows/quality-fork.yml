@@ -74,7 +74,7 @@ jobs:
       # references can fail before turbo schedules the core build, so we
       # build it explicitly here.
       - name: Build @elizaos/core dist
-        working-directory: packages/typescript
+        working-directory: packages/core
         run: bun run build
 
       - name: Run typecheck

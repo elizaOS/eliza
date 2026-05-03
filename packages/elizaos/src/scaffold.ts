@@ -193,23 +193,15 @@ export function buildFullstackTemplateValues(
 export function getPluginReplacementEntries(
   values: PluginTemplateValues,
 ): Array<[string, string]> {
-  const rustPluginName = `rust-${values.pluginBaseName}`;
-  const pythonPluginName = `python-${values.pluginBaseName}`;
-  const pythonSnake = `python_${values.pluginSnake}`;
   return [
     [`\${PLUGINNAME}`, values.pluginBaseName],
     [`\${PLUGINDESCRIPTION}`, values.pluginDescription],
     [`\${GITHUB_USERNAME}`, values.githubUsername],
     [`\${REPO_URL}`, values.repoUrl],
     ["__ELIZAOS_VERSION__", values.elizaVersion],
-    ["@elizaos/rust-plugin-starter", `@elizaos/${rustPluginName}`],
     ["@elizaos/plugin-starter", `@elizaos/${values.pluginBaseName}`],
     ["elizaos_plugin_starter", `elizaos_${values.pluginSnake}`],
     ["elizaos-plugin-starter", `elizaos-${values.pluginBaseName}`],
-    ["rust_plugin_starter", `rust_${values.pluginSnake}`],
-    ["python_plugin_starter", pythonSnake],
-    ["rust-plugin-starter", rustPluginName],
-    ["python-plugin-starter", pythonPluginName],
     ["plugin_starter", values.pluginSnake],
     ["plugin-starter", values.pluginBaseName],
     ["Plugin starter", `${values.displayName} plugin`],
@@ -257,15 +249,10 @@ export function getTemplateReplacementEntries(options: {
 }
 
 export function resolveTemplateSourceDir(options: {
-  language?: string;
   template: TemplateDefinition;
   templatesDir: string;
 }): string {
-  const templateRoot = path.join(options.templatesDir, options.template.id);
-  if (options.template.id !== "plugin") {
-    return templateRoot;
-  }
-  return path.join(templateRoot, options.language ?? "typescript");
+  return path.join(options.templatesDir, options.template.id);
 }
 
 function copyRenderedTreeInternal(

@@ -56,7 +56,7 @@
     "prettier": "3.5.3",
     "tsup": "^8.5.0",
     "twitter-api-v2": "^1.27.0",
-    "typescript": "^5.9.2"
+    "typescript": "^6.0.3"
   },
   "scripts": {
     "build": "bun run build.ts",

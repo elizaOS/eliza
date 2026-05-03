@@ -65,7 +65,7 @@
     "@types/tesseract.js": "^2.0.0",
     "dotenv": "^17.2.3",
     "tsx": "^4.7.0",
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.3"
   },
   "scripts": {
     "dev": "bun run build.ts --watch",
