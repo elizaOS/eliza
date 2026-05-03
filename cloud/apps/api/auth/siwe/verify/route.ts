@@ -17,7 +17,7 @@ import { apiKeysService } from "@/lib/services/api-keys";
 import { findOrCreateUserByWalletAddress } from "@/lib/services/wallet-signup";
 import { logger } from "@/lib/utils/logger";
 import { validateAndConsumeSIWE } from "@/lib/utils/siwe-helpers";
-import type { AppEnv, Bindings } from "@/types/cloud-worker-env";
+import type { AppEnv } from "@/types/cloud-worker-env";
 
 interface VerifyBody {
   message: string;
@@ -29,7 +29,7 @@ const app = new Hono<AppEnv>();
 app.use("*", rateLimit(RateLimitPresets.STRICT));
 
 app.post("/", async (c) => {
-  const redis = buildRedisClient(c.env as Bindings);
+  const redis = buildRedisClient(c.env);
   if (!redis) {
     return c.json({ error: "Service temporarily unavailable" }, 503);
   }

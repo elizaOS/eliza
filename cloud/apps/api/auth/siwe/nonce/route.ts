@@ -17,7 +17,7 @@ import {
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { getAppHost, getAppUrl } from "@/lib/utils/app-url";
 import { issueNonce } from "@/lib/utils/siwe-helpers";
-import type { AppEnv, Bindings } from "@/types/cloud-worker-env";
+import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
@@ -27,7 +27,7 @@ app.get("/", async (c) => {
   const chainIdRaw = c.req.query("chainId") ?? "1";
   const chainId = Number.parseInt(chainIdRaw, 10);
 
-  const redis = buildRedisClient(c.env as Bindings);
+  const redis = buildRedisClient(c.env);
   if (!redis) {
     return c.json({ error: "Nonce storage unavailable" }, 503);
   }
