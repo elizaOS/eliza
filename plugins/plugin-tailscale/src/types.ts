@@ -8,15 +8,15 @@
  * exclusive — only one tunnel plugin can be enabled at a time.
  */
 
-import type { IAgentRuntime, Service } from '@elizaos/core';
+import type { IAgentRuntime, Service } from "@elizaos/core";
 
-declare module '@elizaos/core' {
+declare module "@elizaos/core" {
   interface ServiceTypeRegistry {
-    TUNNEL: 'tunnel';
+    TUNNEL: "tunnel";
   }
 }
 
-export type TunnelProvider = 'tailscale';
+export type TunnelProvider = "tailscale";
 
 export interface TunnelStatus {
   active: boolean;
@@ -34,7 +34,7 @@ export interface ITunnelService {
   getStatus(): TunnelStatus;
 }
 
-export type TailscaleBackendMode = 'local' | 'cloud' | 'auto';
+export type TailscaleBackendMode = "local" | "cloud" | "auto";
 
 /**
  * Backend-agnostic accessor. Both bundled backends extend `Service` and
@@ -42,10 +42,12 @@ export type TailscaleBackendMode = 'local' | 'cloud' | 'auto';
  * The shape check guards against an unrelated service registering under
  * `"tunnel"`.
  */
-export function getTunnelService(runtime: IAgentRuntime): ITunnelService | null {
-  const service = runtime.getService('tunnel');
+export function getTunnelService(
+  runtime: IAgentRuntime,
+): ITunnelService | null {
+  const service = runtime.getService("tunnel");
   if (!service) return null;
-  if (typeof (service as Partial<ITunnelService>).startTunnel !== 'function') {
+  if (typeof (service as Partial<ITunnelService>).startTunnel !== "function") {
     return null;
   }
   return service as Service & ITunnelService;

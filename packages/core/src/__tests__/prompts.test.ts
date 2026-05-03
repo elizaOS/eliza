@@ -45,14 +45,12 @@ describe("Prompts", () => {
 		it("messageHandlerTemplate should contain required placeholders and structure", () => {
 			expect(messageHandlerTemplate).toContain("{{agentName}}");
 			expect(messageHandlerTemplate).toContain("{{providers}}");
-			expect(messageHandlerTemplate).toContain("<response>");
-			expect(messageHandlerTemplate).toContain("<thought>");
-			expect(messageHandlerTemplate).toContain("<actions>");
-			expect(messageHandlerTemplate).toContain("<name>REPLY</name>");
-			expect(messageHandlerTemplate).toContain(
-				"<text>Your message here</text>",
-			);
-			expect(messageHandlerTemplate).toContain("<simple>true</simple>");
+			expect(messageHandlerTemplate).toContain("thought:");
+			expect(messageHandlerTemplate).toContain("- thought |");
+			expect(messageHandlerTemplate).toContain("actions[");
+			expect(messageHandlerTemplate).toContain("name: REPLY");
+			expect(messageHandlerTemplate).toContain("text: Your message here");
+			expect(messageHandlerTemplate).toContain("simple: true");
 
 			expect(messageHandlerTemplate).toMatch(/rules\[\d+\]:/);
 			expect(messageHandlerTemplate).toContain(
@@ -65,7 +63,7 @@ describe("Prompts", () => {
 			expect(messageHandlerTemplate).toContain("formatting:");
 			expect(messageHandlerTemplate).toContain("fenced code blocks");
 			expect(messageHandlerTemplate).toContain("inline backticks");
-			expect(messageHandlerTemplate).toContain("XML only.");
+			expect(messageHandlerTemplate).toContain("TOON only.");
 			expect(messageHandlerTemplate).toContain(
 				"REPLY means a direct chat reply in the current conversation only",
 			);
