@@ -52,7 +52,7 @@
     "@solana/spl-token": "0.4.14",
     "@solana/spl-token-metadata": "^0.1.6",
     "@solana/web3.js": "^1.98.4",
-    "bignumber.js": "9.3.0",
+    "bignumber.js": "9.3.1",
     "bs58": "^6.0.0",
     "tweetnacl": "^1.0.3",
     "viem": "^2.48.8",
