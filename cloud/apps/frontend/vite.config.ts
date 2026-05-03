@@ -109,20 +109,37 @@ export default defineConfig(({ mode }) => {
       // Avoid scanning the giant transitive graph from packages/lib at
       // dev-server boot.
       entries: ["src/main.tsx"],
+      // Force-include the crypto graph so vite/rolldown's optimizer wires
+      // every CommonJS `require_*` wrapper before any consumer call site.
+      // Without this, the prebundle for elliptic/hash-base/create-hash
+      // ends up referencing `require_inherits` before its wrapper is
+      // defined (a known rolldown CJS hoisting issue), which crashes the
+      // React tree on /login. Pre-bundling them as a unit forces the
+      // wrappers into deterministic top-level position in the chunk.
+      include: [
+        "elliptic",
+        "inherits",
+        "hash-base",
+        "create-hash",
+        "create-hmac",
+        "browserify-sign",
+        "secp256k1",
+      ],
     },
     resolve: {
       alias: [
-        // The `inherits` shim's main entry tries `require('util').inherits`
-        // first, then falls back to `./inherits_browser.js`. Our `util`
-        // alias is the empty shim, so the require'd module is `{}` and the
-        // fallback path runs — but rolldown / esbuild's optimizeDeps
-        // prebundle has trouble wiring that fallback through the wrapped
-        // CommonJS module. The bundle ends up calling
-        // `require_inherits_browser` before the wrapper is defined, which
-        // throws inside elliptic / hash-base / create-hash and crashes the
-        // React tree on /login. Resolve `inherits` to a self-contained
-        // browser shim instead.
-        { find: /^inherits$/, replacement: r("./src/shims/inherits.ts") },
+        // The upstream `inherits` package's main entry tries
+        // `require('util').inherits` first and falls back to
+        // `inherits_browser.js` inside a try/catch. Vite aliases `util`
+        // to an empty shim, so the real path is the fallback — but
+        // rolldown's CommonJS optimizeDeps prebundle ends up referencing
+        // `require_inherits_browser` before its wrapper is hoisted, which
+        // throws inside elliptic / hash-base / create-hash and crashes
+        // the React tree on /login. Resolve `inherits` directly to a
+        // browser-safe shim so the try/catch never runs at all. Pairs
+        // with the `optimizeDeps.include` block above which forces the
+        // crypto graph to bundle as a single deterministic chunk.
+        { find: /^inherits$/, replacement: r("./src/shims/inherits.cjs") },
         // Real Buffer polyfill — Solana wallet adapters, viem, ethers, base64
         // helpers all depend on Buffer. Stubbing it throws at runtime as soon
         // as any browser-reachable code path constructs a Buffer.
