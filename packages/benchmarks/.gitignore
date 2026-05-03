@@ -98,3 +98,4 @@ framework/results/*.json
 
 # SWE-bench cloned task workspaces (nested git repos; local checkout only)
 swe-bench-workspace/
+benchmark_results

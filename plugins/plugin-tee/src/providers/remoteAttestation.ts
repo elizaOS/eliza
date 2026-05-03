@@ -1,4 +1,3 @@
-// @ts-nocheck — pending @phala/dstack-sdk 0.5+ migration (DeriveKeyResponse → GetKeyResponse, TdxQuoteResponse → GetQuoteResponse)
 import {
   type IAgentRuntime,
   logger,
@@ -8,7 +7,7 @@ import {
 import {
   TappdClient,
   type TdxQuoteHashAlgorithms,
-  type TdxQuoteResponse,
+  type GetQuoteResponse,
 } from "@phala/dstack-sdk";
 import type {
   RemoteAttestationMessage,
@@ -39,7 +38,7 @@ export class PhalaRemoteAttestationProvider extends RemoteAttestationProvider {
     hashAlgorithm?: TdxQuoteHashAlgorithm,
   ): Promise<RemoteAttestationQuote> {
     try {
-      const tdxQuote: TdxQuoteResponse = await this.client.tdxQuote(
+      const tdxQuote: GetQuoteResponse = await this.client.tdxQuote(
         reportData,
         hashAlgorithm as TdxQuoteHashAlgorithms | undefined,
       );

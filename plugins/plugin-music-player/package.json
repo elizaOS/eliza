@@ -25,10 +25,10 @@
     "uuid": "^14.0.0"
   },
   "devDependencies": {
-    "prettier": "3.5.3",
-    "tsup": "8.4.0",
+    "prettier": "^3.8.3",
+    "tsup": "^8.5.1",
     "typescript": "^6.0.0",
-    "vitest": "1.6.1"
+    "vitest": "^4.0.0"
   },
   "scripts": {
     "build": "tsup",
@@ -44,7 +44,7 @@
   },
   "peerDependencies": {
     "@elizaos/plugin-music-library": "workspace:*",
-    "whatwg-url": "7.1.0"
+    "whatwg-url": "^16.0.0"
   },
   "publishConfig": {
     "access": "public"
