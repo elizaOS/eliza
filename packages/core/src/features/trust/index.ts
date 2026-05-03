@@ -10,7 +10,6 @@ import { recordTrustInteractionAction } from "./actions/recordTrustInteraction.t
 import { requestElevationAction } from "./actions/requestElevation.ts";
 import { updateRoleAction } from "./actions/roles.ts";
 import { updateSettingsAction } from "./actions/settings.ts";
-import { reflectionEvaluator } from "./evaluators/reflection.ts";
 import { securityEvaluator } from "./evaluators/securityEvaluator.ts";
 import { trustChangeEvaluator } from "./evaluators/trustChangeEvaluator.ts";
 import { adminTrustProvider } from "./providers/adminTrust.ts";
@@ -142,7 +141,7 @@ const trustPlugin: Plugin = {
 		adminTrustProvider,
 	],
 
-	evaluators: [securityEvaluator, reflectionEvaluator, trustChangeEvaluator],
+	evaluators: [securityEvaluator, trustChangeEvaluator],
 
 	services: [
 		TrustEngineServiceWrapper,
