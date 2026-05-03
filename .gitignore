@@ -196,6 +196,10 @@ tasks/
 # But cloud's frontend uses src/lib/data/ as legitimate source — un-ignore it
 !cloud/apps/frontend/src/lib/data/
 !cloud/apps/frontend/src/lib/data/**
+# plugin-mysticism ships data/*.json fixtures alongside the engines —
+# tarot, iching, and astrology all import their data tables from those JSONs.
+!plugins/plugin-mysticism/src/engines/*/data/
+!plugins/plugin-mysticism/src/engines/*/data/**
 **/.roo/
 **/.roomodes/
 **/.taskmaster/
