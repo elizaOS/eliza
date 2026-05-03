@@ -47,7 +47,9 @@ function createRuntime(): AgentRuntime {
 }
 
 console.log("🚀 Starting Roblox agent bridge...\n");
-console.log(`[roblox-bridge] DEBUG_ROBLOX_BRIDGE=${process.env.DEBUG_ROBLOX_BRIDGE ?? ""}`);
+console.log(
+  `[roblox-bridge] DEBUG_ROBLOX_BRIDGE=${process.env.DEBUG_ROBLOX_BRIDGE ?? ""}`,
+);
 const runtime = createRuntime();
 await runtime.initialize();
 
@@ -58,4 +60,3 @@ app.listen(PORT, () => {
   console.log(`   POST /roblox/chat`);
   console.log(`   GET  /health\n`);
 });
-

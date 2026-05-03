@@ -57,9 +57,7 @@ export async function pruneDuplicateTasksByName(
   const tasks = await runtime.getTasksByName(taskName);
   if (tasks.length <= 1) return;
 
-  const sorted = [...tasks].sort(
-    (a, b) => taskUpdatedMs(b) - taskUpdatedMs(a),
-  );
+  const sorted = [...tasks].sort((a, b) => taskUpdatedMs(b) - taskUpdatedMs(a));
   let removed = 0;
   for (const dup of sorted.slice(1)) {
     if (dup.id) {
@@ -127,7 +125,12 @@ export async function ensureTrackCCronRepeatTask(
   params: EnsureTrackCCronRepeatTaskParams,
 ): Promise<"created" | "existing"> {
   const logPrefix = params.logPrefix ?? "[TrackCTask]";
-  await pruneDuplicateTasksByName(runtime, params.taskName, params.log, logPrefix);
+  await pruneDuplicateTasksByName(
+    runtime,
+    params.taskName,
+    params.log,
+    logPrefix,
+  );
 
   registerTrackCWorkerOnce(
     runtime,

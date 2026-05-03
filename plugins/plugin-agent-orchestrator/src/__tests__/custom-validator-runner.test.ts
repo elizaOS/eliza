@@ -128,9 +128,7 @@ describe("runCustomValidator", () => {
     const result = await runCustomValidator(runtime, SPEC);
 
     expect(result.verdict).toBe("fail");
-    expect(result.retryablePromptForChild).toContain(
-      "pglite probe timed out",
-    );
+    expect(result.retryablePromptForChild).toContain("pglite probe timed out");
   });
 
   it("returns fail when the validator returns a non-object payload", async () => {
@@ -141,9 +139,7 @@ describe("runCustomValidator", () => {
     const result = await runCustomValidator(runtime, SPEC);
 
     expect(result.verdict).toBe("fail");
-    expect(result.retryablePromptForChild).toContain(
-      "non-object result",
-    );
+    expect(result.retryablePromptForChild).toContain("non-object result");
   });
 
   it("returns fail when the validator returns an unrecognized verdict", async () => {

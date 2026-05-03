@@ -67,29 +67,36 @@ export const n8nWorkflowPlugin: Plugin = {
     deleteWorkflowAction,
   ],
 
-  providers: [workflowStatusProvider, activeWorkflowsProvider, pendingDraftProvider],
+  providers: [
+    workflowStatusProvider,
+    activeWorkflowsProvider,
+    pendingDraftProvider,
+  ],
 
   routes: n8nRoutes,
 
-  init: async (_config: Record<string, string>, runtime: IAgentRuntime): Promise<void> => {
+  init: async (
+    _config: Record<string, string>,
+    runtime: IAgentRuntime,
+  ): Promise<void> => {
     const apiKey = runtime.getSetting('N8N_API_KEY');
     const host = runtime.getSetting('N8N_HOST');
 
     logger.info(
-      `n8n Workflow Plugin - API Key: ${apiKey ? 'configured' : 'not configured'}, Host: ${host || 'not set'}`
+      `n8n Workflow Plugin - API Key: ${apiKey ? 'configured' : 'not configured'}, Host: ${host || 'not set'}`,
     );
 
     if (!apiKey) {
       logger.warn(
         'N8N_API_KEY not provided - plugin will not be functional. ' +
-          'Please set N8N_API_KEY in your environment or character settings.'
+          'Please set N8N_API_KEY in your environment or character settings.',
       );
     }
 
     if (!host) {
       logger.warn(
         'N8N_HOST not provided - plugin will not be functional. ' +
-          'Please set N8N_HOST to your n8n instance URL (e.g., https://your.n8n.cloud).'
+          'Please set N8N_HOST to your n8n instance URL (e.g., https://your.n8n.cloud).',
       );
     }
 
@@ -100,17 +107,17 @@ export const n8nWorkflowPlugin: Plugin = {
       | undefined;
     if (workflowSettings?.credentials) {
       const credCount = Object.keys(workflowSettings.credentials).filter(
-        (k) => workflowSettings.credentials![k]
+        (k) => workflowSettings.credentials![k],
       ).length;
       logger.info(
         { src: 'plugin:n8n-workflow:plugin:init' },
-        `Pre-configured credentials: ${credCount} credential types`
+        `Pre-configured credentials: ${credCount} credential types`,
       );
     }
 
     logger.info(
       { src: 'plugin:n8n-workflow:plugin:init' },
-      'n8n Workflow Plugin initialized successfully'
+      'n8n Workflow Plugin initialized successfully',
     );
   },
 };

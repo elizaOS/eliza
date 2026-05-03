@@ -9,10 +9,7 @@ import type {
 } from "@elizaos/core";
 import type { ComputerUseService } from "../services/computer-use-service.js";
 import type { TerminalActionParams, TerminalActionResult } from "../types.js";
-import {
-  resolveActionParams,
-  toComputerUseActionResult,
-} from "./helpers.js";
+import { resolveActionParams, toComputerUseActionResult } from "./helpers.js";
 
 function formatTerminalResultText(result: TerminalActionResult): string {
   return result.success

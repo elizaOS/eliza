@@ -1,9 +1,10 @@
-
-
 import type { ComponentType, SVGProps } from "react";
 import { useTrail, animated } from "@react-spring/web";
 
-type SpringAnimatedStyle = Record<string, string | number | boolean | null | undefined | object>;
+type SpringAnimatedStyle = Record<
+  string,
+  string | number | boolean | null | undefined | object
+>;
 type AnimatedSvgProps<T extends SVGElement> = Omit<SVGProps<T>, "style"> & {
   style?: SpringAnimatedStyle;
 };

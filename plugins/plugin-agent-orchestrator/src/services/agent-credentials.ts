@@ -132,7 +132,6 @@ export function buildAgentCredentials(
   return directCredentials;
 }
 
-
 export interface OpencodeSpawnConfig {
   configContent: string;
   providerLabel: string;
@@ -164,8 +163,9 @@ export function buildOpencodeSpawnConfig(
       | string
       | undefined) || readConfigEnvKey("PARALLAX_OPENCODE_MODEL_POWERFUL");
   const userFast =
-    (runtime.getSetting("PARALLAX_OPENCODE_MODEL_FAST") as string | undefined) ||
-    readConfigEnvKey("PARALLAX_OPENCODE_MODEL_FAST");
+    (runtime.getSetting("PARALLAX_OPENCODE_MODEL_FAST") as
+      | string
+      | undefined) || readConfigEnvKey("PARALLAX_OPENCODE_MODEL_FAST");
 
   if (llmProvider === "cloud") {
     const cloudKey = readConfigCloudKey("apiKey");

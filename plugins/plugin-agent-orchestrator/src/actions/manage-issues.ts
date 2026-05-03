@@ -22,7 +22,9 @@ import { requireTaskAgentAccess } from "../services/task-policy.js";
 import type { AuthPromptCallback } from "../services/workspace-github.js";
 import type { CodingWorkspaceService } from "../services/workspace-service.js";
 
-function formatGitHubAuthPrompt(prompt: Parameters<AuthPromptCallback>[0]): string {
+function formatGitHubAuthPrompt(
+  prompt: Parameters<AuthPromptCallback>[0],
+): string {
   return (
     `I need GitHub access to manage issues. Please authorize me:\n\n` +
     `Go to: ${prompt.verificationUri}\n` +

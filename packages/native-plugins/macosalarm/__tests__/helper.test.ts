@@ -14,11 +14,13 @@ class FakeProc extends EventEmitter {
   stderr = new PassThrough();
 }
 
-function makeSpawn(responder: (req: MacosAlarmHelperRequest) => {
-  stdout?: string;
-  stderr?: string;
-  exit?: number;
-}): HelperSpawn {
+function makeSpawn(
+  responder: (req: MacosAlarmHelperRequest) => {
+    stdout?: string;
+    stderr?: string;
+    exit?: number;
+  },
+): HelperSpawn {
   return () => {
     const proc = new FakeProc();
     // Read the request written to stdin, then emit the response.

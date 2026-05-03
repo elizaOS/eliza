@@ -23,9 +23,7 @@ async function readRepoFile(relativePath: string): Promise<string> {
 
 describe("LifeOps no-heuristics source-level invariants (lint-style, not behavioral)", () => {
   it("keeps LIFE operation routing on the extractor path", async () => {
-    const source = await readRepoFile(
-      "apps/app-lifeops/src/actions/life.ts",
-    );
+    const source = await readRepoFile("apps/app-lifeops/src/actions/life.ts");
     expect(source).not.toContain("export function classifyIntent");
     expect(source).not.toContain("classifyIntent(intent)");
     expect(source).not.toContain("getValidationKeywordTerms");
@@ -33,9 +31,7 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
   });
 
   it("keeps INBOX subaction selection off keyword term banks", async () => {
-    const source = await readRepoFile(
-      "apps/app-lifeops/src/actions/inbox.ts",
-    );
+    const source = await readRepoFile("apps/app-lifeops/src/actions/inbox.ts");
     expect(source).not.toContain("const TRIAGE_TERMS");
     expect(source).not.toContain("const DIGEST_TERMS");
     expect(source).not.toContain("const RESPOND_TERMS");
@@ -91,9 +87,7 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
   });
 
   it("keeps Gmail follow-up handling on LLM planning instead of phrase lists", async () => {
-    const source = await readRepoFile(
-      "apps/app-lifeops/src/actions/gmail.ts",
-    );
+    const source = await readRepoFile("apps/app-lifeops/src/actions/gmail.ts");
     expect(source).not.toContain(
       "function looksLikeReplyDraftRewriteFollowup(",
     );
@@ -120,9 +114,7 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
   });
 
   it("keeps HEALTH subaction and metric routing on the LLM planner instead of English regex", async () => {
-    const source = await readRepoFile(
-      "apps/app-lifeops/src/actions/health.ts",
-    );
+    const source = await readRepoFile("apps/app-lifeops/src/actions/health.ts");
     expect(source).not.toContain("function inferSubaction(");
     expect(source).not.toContain("function inferMetric(");
     expect(source).not.toContain(
@@ -132,9 +124,7 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
   });
 
   it("keeps LIFE goal-update time-phrase extraction off English regex", async () => {
-    const source = await readRepoFile(
-      "apps/app-lifeops/src/actions/life.ts",
-    );
+    const source = await readRepoFile("apps/app-lifeops/src/actions/life.ts");
     expect(source).not.toContain("function extractNaturalTimePhrase(");
     expect(source).not.toContain("\\bmornings?\\s+only\\b");
     expect(source).not.toContain("\\bafternoons?\\s+only\\b");
@@ -186,9 +176,7 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
   });
 
   it("keeps X read routing on structured params and the LLM planner", async () => {
-    const source = await readRepoFile(
-      "apps/app-lifeops/src/actions/x-read.ts",
-    );
+    const source = await readRepoFile("apps/app-lifeops/src/actions/x-read.ts");
     expect(source).not.toContain("function inferSubactionFromIntent(");
     expect(source).toContain("resolveXReadPlanWithLlm");
   });
@@ -218,9 +206,7 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
       readRepoFile(
         "apps/app-lifeops/src/followup/actions/listOverdueFollowups.ts",
       ),
-      readRepoFile(
-        "apps/app-lifeops/src/followup/actions/markFollowupDone.ts",
-      ),
+      readRepoFile("apps/app-lifeops/src/followup/actions/markFollowupDone.ts"),
       readRepoFile(
         "apps/app-lifeops/src/followup/actions/setFollowupThreshold.ts",
       ),
@@ -261,9 +247,7 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
   });
 
   it("keeps chat fallback execution off website-blocker regex intent detection", async () => {
-    const source = await readRepoFile(
-      "packages/agent/src/api/chat-routes.ts",
-    );
+    const source = await readRepoFile("packages/agent/src/api/chat-routes.ts");
     expect(source).not.toContain("fallbackHasWebsiteBlockDeferralIntent");
     expect(source).not.toContain("fallbackHasWebsiteBlockIntent");
     expect(source).not.toContain("inferWebsiteBlockFallback");

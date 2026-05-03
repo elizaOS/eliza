@@ -20,7 +20,11 @@ export function getService(runtime: IAgentRuntime): N8nWorkflowService {
 /**
  * Validate and clamp limit parameter
  */
-export function validateLimit(limitParam: unknown, defaultLimit = 20, maxLimit = 100): number {
+export function validateLimit(
+  limitParam: unknown,
+  defaultLimit = 20,
+  maxLimit = 100,
+): number {
   const limit = Number(limitParam);
   if (!Number.isFinite(limit) || limit <= 0) {
     return defaultLimit;

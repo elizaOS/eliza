@@ -124,7 +124,7 @@ function redact(value: unknown, depth = 0): unknown {
       Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
         key,
         redact(entry, depth + 1),
-      ])
+      ]),
     );
   }
   return null;
@@ -147,7 +147,7 @@ function shapeOf(value: unknown, depth = 0): unknown {
         Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
           key,
           shapeOf(entry, depth + 1),
-        ])
+        ]),
       ),
     };
   }
@@ -156,7 +156,7 @@ function shapeOf(value: unknown, depth = 0): unknown {
 
 async function snapshotEndpoint(
   baseUrl: string,
-  endpoint: SnapshotEndpoint
+  endpoint: SnapshotEndpoint,
 ): Promise<EndpointSnapshot> {
   const url = new URL(endpoint.path, baseUrl);
   try {
@@ -191,7 +191,7 @@ async function snapshotEndpoint(
 
 function compareShapes(
   current: EndpointSnapshot[],
-  baselinePath: string
+  baselinePath: string,
 ): Array<{
   id: string;
   changed: boolean;
@@ -202,7 +202,7 @@ function compareShapes(
     endpoints?: EndpointSnapshot[];
   };
   const baselineById = new Map(
-    (baseline.endpoints ?? []).map((endpoint) => [endpoint.id, endpoint.shape])
+    (baseline.endpoints ?? []).map((endpoint) => [endpoint.id, endpoint.shape]),
   );
   return current.map((endpoint) => {
     const baselineShape = baselineById.get(endpoint.id);

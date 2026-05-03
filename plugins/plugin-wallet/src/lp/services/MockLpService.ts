@@ -18,7 +18,8 @@ interface DexInteractionRegistry {
  * Mock LP Service for testing that simulates real DEX behavior
  */
 export class MockLpService extends Service implements ILpService {
-  public readonly capabilityDescription = "Provides standardized access to DEX liquidity pools.";
+  public readonly capabilityDescription =
+    "Provides standardized access to DEX liquidity pools.";
 
   private dexName: string;
   private mockPools: PoolInfo[] = [];
@@ -112,9 +113,12 @@ export class MockLpService extends Service implements ILpService {
     return this.dexName;
   }
 
-  async getPools(tokenAMint?: string, tokenBMint?: string): Promise<PoolInfo[]> {
+  async getPools(
+    tokenAMint?: string,
+    tokenBMint?: string,
+  ): Promise<PoolInfo[]> {
     console.log(
-      `MockLpService.getPools called for ${this.dexName} with tokenA: ${tokenAMint}, tokenB: ${tokenBMint}`
+      `MockLpService.getPools called for ${this.dexName} with tokenA: ${tokenAMint}, tokenB: ${tokenBMint}`,
     );
 
     if (!tokenAMint && !tokenBMint) {
@@ -123,15 +127,22 @@ export class MockLpService extends Service implements ILpService {
 
     return this.mockPools.filter((pool) => {
       const hasTokenA =
-        !tokenAMint || pool.tokenA.mint === tokenAMint || pool.tokenB.mint === tokenAMint;
+        !tokenAMint ||
+        pool.tokenA.mint === tokenAMint ||
+        pool.tokenB.mint === tokenAMint;
       const hasTokenB =
-        !tokenBMint || pool.tokenA.mint === tokenBMint || pool.tokenB.mint === tokenBMint;
+        !tokenBMint ||
+        pool.tokenA.mint === tokenBMint ||
+        pool.tokenB.mint === tokenBMint;
       return hasTokenA && hasTokenB;
     });
   }
 
   async addLiquidity(config: AddLiquidityConfig): Promise<TransactionResult> {
-    console.log(`MockLpService.addLiquidity called for ${this.dexName}`, config);
+    console.log(
+      `MockLpService.addLiquidity called for ${this.dexName}`,
+      config,
+    );
 
     // Simulate successful transaction
     const mockTxId = `mock-tx-${Date.now()}`;
@@ -172,15 +183,22 @@ export class MockLpService extends Service implements ILpService {
     };
   }
 
-  async removeLiquidity(config: RemoveLiquidityConfig): Promise<TransactionResult> {
-    console.log(`MockLpService.removeLiquidity called for ${this.dexName}`, config);
+  async removeLiquidity(
+    config: RemoveLiquidityConfig,
+  ): Promise<TransactionResult> {
+    console.log(
+      `MockLpService.removeLiquidity called for ${this.dexName}`,
+      config,
+    );
 
     const mockTxId = `mock-tx-${Date.now()}`;
 
     // Remove position from storage
     const userKey = config.userVault.publicKey.toBase58();
     const positions = this.userPositions.get(userKey) || [];
-    const updatedPositions = positions.filter((p) => p.poolId !== config.poolId);
+    const updatedPositions = positions.filter(
+      (p) => p.poolId !== config.poolId,
+    );
     this.userPositions.set(userKey, updatedPositions);
 
     return {
@@ -196,20 +214,27 @@ export class MockLpService extends Service implements ILpService {
 
   async getLpPositionDetails(
     userPublicKey: string,
-    poolIdOrPositionIdentifier: string
+    poolIdOrPositionIdentifier: string,
   ): Promise<LpPositionDetails | null> {
     console.log(
       `MockLpService.getLpPositionDetails called for ${this.dexName}`,
       userPublicKey,
-      poolIdOrPositionIdentifier
+      poolIdOrPositionIdentifier,
     );
 
     const positions = this.userPositions.get(userPublicKey) || [];
-    return positions.find((p) => p.poolId === poolIdOrPositionIdentifier) || null;
+    return (
+      positions.find((p) => p.poolId === poolIdOrPositionIdentifier) || null
+    );
   }
 
-  async getMarketDataForPools(poolIds: string[]): Promise<Record<string, Partial<PoolInfo>>> {
-    console.log(`MockLpService.getMarketDataForPools called for ${this.dexName}`, poolIds);
+  async getMarketDataForPools(
+    poolIds: string[],
+  ): Promise<Record<string, Partial<PoolInfo>>> {
+    console.log(
+      `MockLpService.getMarketDataForPools called for ${this.dexName}`,
+      poolIds,
+    );
 
     const result: Record<string, Partial<PoolInfo>> = {};
 
@@ -237,7 +262,10 @@ export class MockLpService extends Service implements ILpService {
   }
 
   // Static factory method for easier instantiation
-  static create(runtime: IAgentRuntime, dexName: string = "mock-dex"): MockLpService {
+  static create(
+    runtime: IAgentRuntime,
+    dexName: string = "mock-dex",
+  ): MockLpService {
     return new MockLpService(runtime, dexName);
   }
 }
@@ -245,7 +273,9 @@ export class MockLpService extends Service implements ILpService {
 /**
  * Register mock DEX services for testing
  */
-export async function registerMockDexServices(runtime: IAgentRuntime): Promise<void> {
+export async function registerMockDexServices(
+  runtime: IAgentRuntime,
+): Promise<void> {
   const mockDexes = ["raydium", "orca", "meteora"];
 
   // Wait for DexInteractionService to be available
@@ -257,17 +287,21 @@ export async function registerMockDexServices(runtime: IAgentRuntime): Promise<v
       await mockService.start();
 
       // Register with DexInteractionService directly
-      const dexInteractionService = runtime.getService<DexInteractionRegistry>("dex-interaction");
+      const dexInteractionService =
+        runtime.getService<DexInteractionRegistry>("dex-interaction");
       if (dexInteractionService?.registerDexService) {
         dexInteractionService.registerDexService(mockService);
         console.info(`Registered MockLpService for ${dexName}`);
       } else {
-        console.warn("DexInteractionService not available for registering mock services");
+        console.warn(
+          "DexInteractionService not available for registering mock services",
+        );
       }
     }
 
     // Force rediscovery of services
-    const dexInteractionService = runtime.getService<DexInteractionRegistry>("dex-interaction");
+    const dexInteractionService =
+      runtime.getService<DexInteractionRegistry>("dex-interaction");
     if (dexInteractionService?.rediscoverServices) {
       dexInteractionService.rediscoverServices();
     }

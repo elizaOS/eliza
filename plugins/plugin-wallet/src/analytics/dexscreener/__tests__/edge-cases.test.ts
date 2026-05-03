@@ -60,7 +60,7 @@ describe("DexScreener Actions - Edge Cases", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith({
@@ -84,7 +84,7 @@ describe("DexScreener Actions - Edge Cases", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(mockService.search).toHaveBeenCalledWith({ query: "$PEPE/USDT" });
@@ -106,7 +106,7 @@ describe("DexScreener Actions - Edge Cases", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(mockService.search).toHaveBeenCalledWith({ query: longQuery });
@@ -127,7 +127,7 @@ describe("DexScreener Actions - Edge Cases", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(mockService.search).toHaveBeenCalledWith({ query: "PEPE" });
@@ -145,7 +145,7 @@ describe("DexScreener Actions - Edge Cases", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith({
@@ -161,7 +161,7 @@ describe("DexScreener Actions - Edge Cases", () => {
       });
 
       const message = createTestMemory(
-        "Get token info for 0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+        "Get token info for 0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
       );
       const callback = createMockCallback();
       const state = createMockState();
@@ -171,7 +171,7 @@ describe("DexScreener Actions - Edge Cases", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(mockService.getTokenPairs).toHaveBeenCalledWith({
@@ -203,7 +203,7 @@ describe("DexScreener Actions - Edge Cases", () => {
       });
 
       const message = createTestMemory(
-        "Get token info for 0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+        "Get token info for 0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
       );
       const callback = createMockCallback();
       const state = createMockState();
@@ -213,7 +213,7 @@ describe("DexScreener Actions - Edge Cases", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith({
@@ -240,7 +240,7 @@ describe("DexScreener Actions - Edge Cases", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       // Should default to 24h
@@ -265,7 +265,7 @@ describe("DexScreener Actions - Edge Cases", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(mockService.getTrending).toHaveBeenCalledWith({
@@ -304,7 +304,7 @@ describe("DexScreener Actions - Edge Cases", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith({
@@ -329,7 +329,7 @@ describe("DexScreener Actions - Edge Cases", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(mockService.getNewPairs).toHaveBeenCalledWith({
@@ -355,7 +355,7 @@ describe("DexScreener Actions - Edge Cases", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(mockService.getPairsByChain).toHaveBeenCalledWith({
@@ -372,7 +372,7 @@ describe("DexScreener Actions - Edge Cases", () => {
       });
 
       const message = createTestMemory(
-        "Show me most active trading pairs on solana"
+        "Show me most active trading pairs on solana",
       );
       const callback = createMockCallback();
       const state = createMockState();
@@ -382,7 +382,7 @@ describe("DexScreener Actions - Edge Cases", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(mockService.getPairsByChain).toHaveBeenCalledWith({
@@ -418,7 +418,7 @@ describe("DexScreener Actions - Edge Cases", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith({

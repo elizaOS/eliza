@@ -15,8 +15,8 @@ import {
   type Hash,
   type PublicClient,
   type WalletClient,
-} from 'viem';
-import { UniswapV3RouterAbi, UniswapV3QuoterV2Abi, ERC20Abi } from './abi.js';
+} from "viem";
+import { UniswapV3RouterAbi, UniswapV3QuoterV2Abi, ERC20Abi } from "./abi.js";
 import {
   type SwapQuote,
   type SwapOptions,
@@ -28,7 +28,7 @@ import {
   PROTOCOL_FEE_COLLECTOR,
   DEFAULT_SLIPPAGE_BPS,
   UNISWAP_V3_ADDRESSES,
-} from './types.js';
+} from "./types.js";
 
 const FEE_TIERS: UniswapFeeTier[] = [100, 500, 3000, 10000];
 
@@ -62,7 +62,7 @@ export class SwapModule {
     this.publicClient = publicClient;
     this.walletClient = walletClient;
     this.accountAddress = accountAddress;
-    const chain: SwapChain = config?.chain ?? 'base';
+    const chain: SwapChain = config?.chain ?? "base";
     const chainAddresses = UNISWAP_V3_ADDRESSES[chain];
     this.config = {
       routerAddress: chainAddresses.ROUTER,
@@ -72,8 +72,12 @@ export class SwapModule {
       chain,
       ...config,
       // Re-apply chain-derived addresses if chain was specified but addresses were not
-      ...(config?.routerAddress ? {} : { routerAddress: chainAddresses.ROUTER }),
-      ...(config?.quoterAddress ? {} : { quoterAddress: chainAddresses.QUOTER_V2 }),
+      ...(config?.routerAddress
+        ? {}
+        : { routerAddress: chainAddresses.ROUTER }),
+      ...(config?.quoterAddress
+        ? {}
+        : { quoterAddress: chainAddresses.QUOTER_V2 }),
     };
   }
 
@@ -81,28 +85,51 @@ export class SwapModule {
     tokenIn: Address,
     tokenOut: Address,
     amountIn: bigint,
-    options: Pick<SwapOptions, 'slippageBps' | 'feeTiers'> = {},
+    options: Pick<SwapOptions, "slippageBps" | "feeTiers"> = {},
   ): Promise<SwapQuote> {
     const slippageBps = options.slippageBps ?? DEFAULT_SLIPPAGE_BPS;
     const tiersToTry = options.feeTiers ?? FEE_TIERS;
     const feeAmount = calcProtocolFee(amountIn, this.config.feeBps);
     const amountInNet = amountIn - feeAmount;
     if (amountInNet <= 0n) {
-      throw new Error(`SwapModule: amountIn (${amountIn}) is too small — fee (${feeAmount}) exceeds input`);
+      throw new Error(
+        `SwapModule: amountIn (${amountIn}) is too small — fee (${feeAmount}) exceeds input`,
+      );
     }
 
-    let bestQuote: { amountOut: bigint; gasEstimate: bigint; feeTier: UniswapFeeTier } | null = null;
+    let bestQuote: {
+      amountOut: bigint;
+      gasEstimate: bigint;
+      feeTier: UniswapFeeTier;
+    } | null = null;
     for (const fee of tiersToTry) {
       try {
         const result = await this.publicClient.readContract({
           address: this.config.quoterAddress,
           abi: UniswapV3QuoterV2Abi,
-          functionName: 'quoteExactInputSingle',
-          args: [{ tokenIn, tokenOut, amount: amountInNet, fee, sqrtPriceLimitX96: 0n }],
+          functionName: "quoteExactInputSingle",
+          args: [
+            {
+              tokenIn,
+              tokenOut,
+              amount: amountInNet,
+              fee,
+              sqrtPriceLimitX96: 0n,
+            },
+          ],
         });
-        const [amountOut, , , gasEstimate] = result as [bigint, bigint, number, bigint];
+        const [amountOut, , , gasEstimate] = result as [
+          bigint,
+          bigint,
+          number,
+          bigint,
+        ];
         if (!bestQuote || amountOut > bestQuote.amountOut) {
-          bestQuote = { amountOut, gasEstimate, feeTier: fee as UniswapFeeTier };
+          bestQuote = {
+            amountOut,
+            gasEstimate,
+            feeTier: fee as UniswapFeeTier,
+          };
         }
       } catch {
         // Pool doesn't exist for this fee tier
@@ -110,50 +137,81 @@ export class SwapModule {
     }
 
     if (!bestQuote) {
-      throw new Error(`SwapModule: No Uniswap V3 pool found for ${tokenIn} → ${tokenOut} on ${this.config.chain}.`);
+      throw new Error(
+        `SwapModule: No Uniswap V3 pool found for ${tokenIn} → ${tokenOut} on ${this.config.chain}.`,
+      );
     }
 
     const amountOutMinimum = applySlippage(bestQuote.amountOut, slippageBps);
-    const effectiveRate = amountInNet > 0n ? Number(bestQuote.amountOut) / Number(amountInNet) : 0;
+    const effectiveRate =
+      amountInNet > 0n ? Number(bestQuote.amountOut) / Number(amountInNet) : 0;
 
     return {
-      tokenIn, tokenOut, amountInRaw: amountIn, amountInNet, feeAmount,
-      amountOut: bestQuote.amountOut, amountOutMinimum,
-      poolFeeTier: bestQuote.feeTier, effectiveRate, gasEstimate: bestQuote.gasEstimate,
+      tokenIn,
+      tokenOut,
+      amountInRaw: amountIn,
+      amountInNet,
+      feeAmount,
+      amountOut: bestQuote.amountOut,
+      amountOutMinimum,
+      poolFeeTier: bestQuote.feeTier,
+      effectiveRate,
+      gasEstimate: bestQuote.gasEstimate,
     };
   }
 
-  async ensureApproval(token: Address, spender: Address, amount: bigint): Promise<Hash | undefined> {
+  async ensureApproval(
+    token: Address,
+    spender: Address,
+    amount: bigint,
+  ): Promise<Hash | undefined> {
     const currentAllowance = (await this.publicClient.readContract({
-      address: token, abi: ERC20Abi, functionName: 'allowance',
+      address: token,
+      abi: ERC20Abi,
+      functionName: "allowance",
       args: [this.accountAddress, spender],
     })) as bigint;
 
     if (currentAllowance >= amount) return undefined;
 
-    const MAX_UINT256 = 115792089237316195423570985008687907853269984665640564039457584007913129639935n;
+    const MAX_UINT256 =
+      115792089237316195423570985008687907853269984665640564039457584007913129639935n;
     const account = this.walletClient.account;
-    if (!account) throw new Error('SwapModule: walletClient has no account');
+    if (!account) throw new Error("SwapModule: walletClient has no account");
 
     const approveData = encodeFunctionData({
-      abi: ERC20Abi, functionName: 'approve', args: [spender, MAX_UINT256],
+      abi: ERC20Abi,
+      functionName: "approve",
+      args: [spender, MAX_UINT256],
     });
 
     return this.walletClient.sendTransaction({
-      account, to: token, data: approveData, chain: this.walletClient.chain ?? null,
+      account,
+      to: token,
+      data: approveData,
+      chain: this.walletClient.chain ?? null,
     });
   }
 
-  private async transferFee(token: Address, feeAmount: bigint, feeWallet: Address): Promise<Hash> {
+  private async transferFee(
+    token: Address,
+    feeAmount: bigint,
+    feeWallet: Address,
+  ): Promise<Hash> {
     const account = this.walletClient.account;
-    if (!account) throw new Error('SwapModule: walletClient has no account');
+    if (!account) throw new Error("SwapModule: walletClient has no account");
 
     const transferData = encodeFunctionData({
-      abi: ERC20Abi, functionName: 'transfer', args: [feeWallet, feeAmount],
+      abi: ERC20Abi,
+      functionName: "transfer",
+      args: [feeWallet, feeAmount],
     });
 
     return this.walletClient.sendTransaction({
-      account, to: token, data: transferData, chain: this.walletClient.chain ?? null,
+      account,
+      to: token,
+      data: transferData,
+      chain: this.walletClient.chain ?? null,
     });
   }
 
@@ -167,13 +225,22 @@ export class SwapModule {
     const deadlineSecs = options.deadlineSecs ?? 300;
     const feeWallet = options.feeWallet ?? this.config.feeWallet;
 
-    const quote = await this.getQuote(tokenIn, tokenOut, amountIn, { slippageBps, feeTiers: options.feeTiers });
+    const quote = await this.getQuote(tokenIn, tokenOut, amountIn, {
+      slippageBps,
+      feeTiers: options.feeTiers,
+    });
 
     if (quote.gasEstimate > 2000000n) {
-      console.warn(`SwapModule: High gas estimate (${quote.gasEstimate}). Pool may be illiquid.`);
+      console.warn(
+        `SwapModule: High gas estimate (${quote.gasEstimate}). Pool may be illiquid.`,
+      );
     }
 
-    const approvalTxHash = await this.ensureApproval(tokenIn, this.config.routerAddress, amountIn);
+    const approvalTxHash = await this.ensureApproval(
+      tokenIn,
+      this.config.routerAddress,
+      amountIn,
+    );
     const approvalRequired = approvalTxHash !== undefined;
 
     let feeTxHash: Hash | undefined;
@@ -182,20 +249,30 @@ export class SwapModule {
     }
 
     const account = this.walletClient.account;
-    if (!account) throw new Error('SwapModule: walletClient has no account');
+    if (!account) throw new Error("SwapModule: walletClient has no account");
 
     const _deadline = calcDeadline(deadlineSecs); // reserved for future router versions
     const swapData = encodeFunctionData({
       abi: UniswapV3RouterAbi,
-      functionName: 'exactInputSingle',
-      args: [{
-        tokenIn, tokenOut, fee: quote.poolFeeTier, recipient: this.accountAddress,
-        amountIn: quote.amountInNet, amountOutMinimum: quote.amountOutMinimum, sqrtPriceLimitX96: 0n,
-      }],
+      functionName: "exactInputSingle",
+      args: [
+        {
+          tokenIn,
+          tokenOut,
+          fee: quote.poolFeeTier,
+          recipient: this.accountAddress,
+          amountIn: quote.amountInNet,
+          amountOutMinimum: quote.amountOutMinimum,
+          sqrtPriceLimitX96: 0n,
+        },
+      ],
     });
 
     const txHash = await this.walletClient.sendTransaction({
-      account, to: this.config.routerAddress, data: swapData, chain: this.walletClient.chain ?? null,
+      account,
+      to: this.config.routerAddress,
+      data: swapData,
+      chain: this.walletClient.chain ?? null,
     });
 
     return { txHash, feeTxHash, quote, approvalRequired, approvalTxHash };
@@ -211,10 +288,19 @@ export class SwapModule {
 }
 
 export function attachSwap(
-  wallet: { address: Address; publicClient: PublicClient; walletClient: WalletClient },
+  wallet: {
+    address: Address;
+    publicClient: PublicClient;
+    walletClient: WalletClient;
+  },
   config?: Partial<SwapModuleConfig> & { chain?: SwapChain },
 ) {
-  const swapModule = new SwapModule(wallet.publicClient, wallet.walletClient, wallet.address, config);
+  const swapModule = new SwapModule(
+    wallet.publicClient,
+    wallet.walletClient,
+    wallet.address,
+    config,
+  );
   return {
     ...wallet,
     swapModule,

@@ -1,4 +1,9 @@
-import type { Route, RouteRequest, RouteResponse, IAgentRuntime } from '@elizaos/core';
+import type {
+  Route,
+  RouteRequest,
+  RouteResponse,
+  IAgentRuntime,
+} from '@elizaos/core';
 import {
   validateWorkflow,
   validateNodeParameters,
@@ -14,7 +19,7 @@ import { getService } from './_helpers';
 async function listWorkflows(
   req: RouteRequest,
   res: RouteResponse,
-  runtime: IAgentRuntime
+  runtime: IAgentRuntime,
 ): Promise<void> {
   try {
     const userId = req.query?.userId as string | undefined;
@@ -37,7 +42,7 @@ async function listWorkflows(
 async function createWorkflow(
   req: RouteRequest,
   res: RouteResponse,
-  runtime: IAgentRuntime
+  runtime: IAgentRuntime,
 ): Promise<void> {
   try {
     const { workflow, userId, activate } = req.body as {
@@ -47,7 +52,9 @@ async function createWorkflow(
     };
 
     if (!workflow || !userId) {
-      res.status(400).json({ success: false, error: 'workflow and userId are required' });
+      res
+        .status(400)
+        .json({ success: false, error: 'workflow and userId are required' });
       return;
     }
 
@@ -104,7 +111,7 @@ async function createWorkflow(
 async function getWorkflow(
   req: RouteRequest,
   res: RouteResponse,
-  runtime: IAgentRuntime
+  runtime: IAgentRuntime,
 ): Promise<void> {
   try {
     const id = req.params?.id;
@@ -134,7 +141,7 @@ async function getWorkflow(
 async function updateWorkflow(
   req: RouteRequest,
   res: RouteResponse,
-  runtime: IAgentRuntime
+  runtime: IAgentRuntime,
 ): Promise<void> {
   try {
     const id = req.params?.id;
@@ -149,7 +156,9 @@ async function updateWorkflow(
     };
 
     if (!workflow || !userId) {
-      res.status(400).json({ success: false, error: 'workflow and userId are required' });
+      res
+        .status(400)
+        .json({ success: false, error: 'workflow and userId are required' });
       return;
     }
 
@@ -201,7 +210,7 @@ async function updateWorkflow(
 async function deleteWorkflow(
   req: RouteRequest,
   res: RouteResponse,
-  runtime: IAgentRuntime
+  runtime: IAgentRuntime,
 ): Promise<void> {
   try {
     const id = req.params?.id;
@@ -228,7 +237,7 @@ async function deleteWorkflow(
 async function activateWorkflow(
   req: RouteRequest,
   res: RouteResponse,
-  runtime: IAgentRuntime
+  runtime: IAgentRuntime,
 ): Promise<void> {
   try {
     const id = req.params?.id;
@@ -255,7 +264,7 @@ async function activateWorkflow(
 async function deactivateWorkflow(
   req: RouteRequest,
   res: RouteResponse,
-  runtime: IAgentRuntime
+  runtime: IAgentRuntime,
 ): Promise<void> {
   try {
     const id = req.params?.id;
@@ -283,5 +292,9 @@ export const workflowRoutes: Route[] = [
   { type: 'PUT', path: '/workflows/:id', handler: updateWorkflow },
   { type: 'DELETE', path: '/workflows/:id', handler: deleteWorkflow },
   { type: 'POST', path: '/workflows/:id/activate', handler: activateWorkflow },
-  { type: 'POST', path: '/workflows/:id/deactivate', handler: deactivateWorkflow },
+  {
+    type: 'POST',
+    path: '/workflows/:id/deactivate',
+    handler: deactivateWorkflow,
+  },
 ];

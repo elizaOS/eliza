@@ -1,5 +1,3 @@
-
-
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { elizacloudFetch } from "./client";
 import { elizacloudKeys } from "./query-keys";
@@ -21,7 +19,11 @@ export function useElizacloudMutation<
   invalidateKeys?: unknown[][];
 }) {
   const queryClient = useQueryClient();
-  const { path, method = "POST", invalidateKeys = [elizacloudKeys.all] } = options;
+  const {
+    path,
+    method = "POST",
+    invalidateKeys = [elizacloudKeys.all],
+  } = options;
 
   return useMutation({
     mutationFn: async ({ body }: { body?: TBody }) => {
@@ -32,7 +34,9 @@ export function useElizacloudMutation<
       return res;
     },
     onSuccess: () => {
-      invalidateKeys.forEach((key) => queryClient.invalidateQueries({ queryKey: key }));
+      invalidateKeys.forEach((key) =>
+        queryClient.invalidateQueries({ queryKey: key }),
+      );
     },
   });
 }

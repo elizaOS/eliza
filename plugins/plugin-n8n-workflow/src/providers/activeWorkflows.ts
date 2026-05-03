@@ -1,5 +1,14 @@
-import { type IAgentRuntime, logger, type Memory, type Provider, type State } from '@elizaos/core';
-import { N8N_WORKFLOW_SERVICE_TYPE, type N8nWorkflowService } from '../services/index';
+import {
+  type IAgentRuntime,
+  logger,
+  type Memory,
+  type Provider,
+  type State,
+} from '@elizaos/core';
+import {
+  N8N_WORKFLOW_SERVICE_TYPE,
+  type N8nWorkflowService,
+} from '../services/index';
 
 /**
  * Provider that enriches state with user's active workflows
@@ -15,7 +24,9 @@ export const activeWorkflowsProvider: Provider = {
 
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
     try {
-      const service = runtime.getService<N8nWorkflowService>(N8N_WORKFLOW_SERVICE_TYPE);
+      const service = runtime.getService<N8nWorkflowService>(
+        N8N_WORKFLOW_SERVICE_TYPE,
+      );
 
       if (!service) {
         return {
@@ -65,7 +76,7 @@ export const activeWorkflowsProvider: Provider = {
     } catch (error) {
       logger.error(
         { src: 'plugin:n8n-workflow:providers:active-workflows' },
-        `Failed to get active workflows: ${error instanceof Error ? error.message : String(error)}`
+        `Failed to get active workflows: ${error instanceof Error ? error.message : String(error)}`,
       );
       return {
         text: '',

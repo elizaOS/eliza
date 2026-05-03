@@ -212,7 +212,10 @@ function normalizeRule(r: unknown): RoutingRule | null {
   if (typeof rec.keyPattern !== "string" || rec.keyPattern.length === 0) {
     return null;
   }
-  if (rec.keyPattern.startsWith(META_PREFIX) || rec.keyPattern === ROUTING_KEY) {
+  if (
+    rec.keyPattern.startsWith(META_PREFIX) ||
+    rec.keyPattern === ROUTING_KEY
+  ) {
     return null; // never route an internal key
   }
   if (typeof rec.profileId !== "string" || rec.profileId.length === 0) {

@@ -25,14 +25,28 @@ import {
   type PublicClient,
   type WalletClient,
   type TransactionReceipt,
-} from 'viem';
-import { base, mainnet, optimism, arbitrum, polygon, avalanche, linea } from 'viem/chains';
+} from "viem";
+import {
+  base,
+  mainnet,
+  optimism,
+  arbitrum,
+  polygon,
+  avalanche,
+  linea,
+} from "viem/chains";
 import {
   TokenMessengerV2Abi,
   MessageTransmitterV2Abi,
   ERC20BridgeAbi,
-} from './abis.js';
-import type { BridgeChain, EVMBridgeChain, BridgeOptions, BurnResult, BridgeResult } from './types.js';
+} from "./abis.js";
+import type {
+  BridgeChain,
+  EVMBridgeChain,
+  BridgeOptions,
+  BurnResult,
+  BridgeResult,
+} from "./types.js";
 import {
   CCTP_DOMAIN_IDS,
   BRIDGE_CHAIN_IDS,
@@ -43,7 +57,7 @@ import {
   CIRCLE_ATTESTATION_API,
   MAX_ATTESTATION_POLLS,
   ATTESTATION_POLL_INTERVAL_MS,
-} from './types.js';
+} from "./types.js";
 
 /**
  * Viem chain definitions for all supported EVM CCTP V2 chains.
@@ -58,9 +72,26 @@ const VIEM_CHAINS: Record<EVMBridgeChain, any> = {
   polygon,
   avalanche,
   linea,
-  unichain:   { id: 130, name: 'Unichain',    nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }, rpcUrls: { default: { http: ['https://mainnet.unichain.org'] } } },
-  sonic:      { id: 146, name: 'Sonic',        nativeCurrency: { name: 'S',   symbol: 'S',   decimals: 18 }, rpcUrls: { default: { http: ['https://rpc.soniclabs.com'] } } },
-  worldchain: { id: 480, name: 'World Chain',  nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }, rpcUrls: { default: { http: ['https://worldchain-mainnet.g.alchemy.com/public'] } } },
+  unichain: {
+    id: 130,
+    name: "Unichain",
+    nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
+    rpcUrls: { default: { http: ["https://mainnet.unichain.org"] } },
+  },
+  sonic: {
+    id: 146,
+    name: "Sonic",
+    nativeCurrency: { name: "S", symbol: "S", decimals: 18 },
+    rpcUrls: { default: { http: ["https://rpc.soniclabs.com"] } },
+  },
+  worldchain: {
+    id: 480,
+    name: "World Chain",
+    nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
+    rpcUrls: {
+      default: { http: ["https://worldchain-mainnet.g.alchemy.com/public"] },
+    },
+  },
 };
 
 export class BridgeModule {
@@ -71,13 +102,13 @@ export class BridgeModule {
 
   constructor(
     walletClient: WalletClient,
-    fromChain: EVMBridgeChain = 'base',
+    fromChain: EVMBridgeChain = "base",
     options: { rpcUrl?: string } = {},
   ) {
     if (!walletClient.account) {
       throw new BridgeError(
-        'NO_WALLET_CLIENT',
-        'WalletClient must have an account attached. Use privateKeyToAccount() or similar to attach a signer.',
+        "NO_WALLET_CLIENT",
+        "WalletClient must have an account attached. Use privateKeyToAccount() or similar to attach a signer.",
       );
     }
     this.walletClient = walletClient;
@@ -89,19 +120,40 @@ export class BridgeModule {
     }) as PublicClient;
   }
 
-  async bridge(amount: bigint, toChain: EVMBridgeChain, options: BridgeOptions = {}): Promise<BridgeResult> {
+  async bridge(
+    amount: bigint,
+    toChain: EVMBridgeChain,
+    options: BridgeOptions = {},
+  ): Promise<BridgeResult> {
     const startMs = Date.now();
     this.validateBridgeParams(amount, toChain);
     const account = this.walletClient.account!;
     const recipient = options.destinationAddress ?? account.address;
-    const minFinalityThreshold = options.minFinalityThreshold ?? FINALITY_THRESHOLD.FAST;
+    const minFinalityThreshold =
+      options.minFinalityThreshold ?? FINALITY_THRESHOLD.FAST;
     const maxFee = options.maxFee ?? 0n;
-    const attestationApiUrl = options.attestationApiUrl ?? CIRCLE_ATTESTATION_API;
+    const attestationApiUrl =
+      options.attestationApiUrl ?? CIRCLE_ATTESTATION_API;
 
     await this.approveUsdc(amount);
-    const burnResult = await this.depositForBurn(amount, toChain, recipient, minFinalityThreshold, maxFee);
-    const attestation = await this.pollForAttestation(burnResult.messageHash, this.fromChain, attestationApiUrl);
-    const mintTxHash = await this.receiveMessage(burnResult.messageBytes, attestation, toChain, options.destinationRpcUrl);
+    const burnResult = await this.depositForBurn(
+      amount,
+      toChain,
+      recipient,
+      minFinalityThreshold,
+      maxFee,
+    );
+    const attestation = await this.pollForAttestation(
+      burnResult.messageHash,
+      this.fromChain,
+      attestationApiUrl,
+    );
+    const mintTxHash = await this.receiveMessage(
+      burnResult.messageBytes,
+      attestation,
+      toChain,
+      options.destinationRpcUrl,
+    );
 
     return {
       burnTxHash: burnResult.burnTxHash,
@@ -115,22 +167,46 @@ export class BridgeModule {
     };
   }
 
-  async burn(amount: bigint, toChain: EVMBridgeChain, options: BridgeOptions = {}): Promise<BurnResult> {
+  async burn(
+    amount: bigint,
+    toChain: EVMBridgeChain,
+    options: BridgeOptions = {},
+  ): Promise<BurnResult> {
     this.validateBridgeParams(amount, toChain);
     const account = this.walletClient.account!;
     const recipient = options.destinationAddress ?? account.address;
-    const minFinalityThreshold = options.minFinalityThreshold ?? FINALITY_THRESHOLD.FAST;
+    const minFinalityThreshold =
+      options.minFinalityThreshold ?? FINALITY_THRESHOLD.FAST;
     const maxFee = options.maxFee ?? 0n;
     await this.approveUsdc(amount);
-    return this.depositForBurn(amount, toChain, recipient, minFinalityThreshold, maxFee);
+    return this.depositForBurn(
+      amount,
+      toChain,
+      recipient,
+      minFinalityThreshold,
+      maxFee,
+    );
   }
 
-  async waitForAttestation(messageHash: Hex, apiUrl: string = CIRCLE_ATTESTATION_API): Promise<Hex> {
+  async waitForAttestation(
+    messageHash: Hex,
+    apiUrl: string = CIRCLE_ATTESTATION_API,
+  ): Promise<Hex> {
     return this.pollForAttestation(messageHash, this.fromChain, apiUrl);
   }
 
-  async mint(messageBytes: Hex, attestation: Hex, toChain: EVMBridgeChain, destinationRpcUrl?: string): Promise<Hash> {
-    return this.receiveMessage(messageBytes, attestation, toChain, destinationRpcUrl);
+  async mint(
+    messageBytes: Hex,
+    attestation: Hex,
+    toChain: EVMBridgeChain,
+    destinationRpcUrl?: string,
+  ): Promise<Hash> {
+    return this.receiveMessage(
+      messageBytes,
+      attestation,
+      toChain,
+      destinationRpcUrl,
+    );
   }
 
   async getUsdcBalance(): Promise<bigint> {
@@ -150,15 +226,25 @@ export class BridgeModule {
       abi: ERC20BridgeAbi,
       client: this.publicClient,
     });
-    return usdc.read.allowance([account.address, TOKEN_MESSENGER_V2[this.fromChain]]) as Promise<bigint>;
+    return usdc.read.allowance([
+      account.address,
+      TOKEN_MESSENGER_V2[this.fromChain],
+    ]) as Promise<bigint>;
   }
 
   private async approveUsdc(amount: bigint): Promise<void> {
     const account = this.walletClient.account!;
     const spender = TOKEN_MESSENGER_V2[this.fromChain];
     const usdcAddress = USDC_CONTRACT[this.fromChain];
-    const usdc = getContract({ address: usdcAddress, abi: ERC20BridgeAbi, client: this.publicClient });
-    const currentAllowance = await usdc.read.allowance([account.address, spender]) as bigint;
+    const usdc = getContract({
+      address: usdcAddress,
+      abi: ERC20BridgeAbi,
+      client: this.publicClient,
+    });
+    const currentAllowance = (await usdc.read.allowance([
+      account.address,
+      spender,
+    ])) as bigint;
     if (currentAllowance >= amount) return;
 
     const usdcWrite = getContract({
@@ -170,9 +256,14 @@ export class BridgeModule {
       account,
       chain: VIEM_CHAINS[this.fromChain],
     });
-    const approveReceipt = await this.publicClient.waitForTransactionReceipt({ hash: approveTxHash });
-    if (approveReceipt.status !== 'success') {
-      throw new BridgeError('INSUFFICIENT_ALLOWANCE', `USDC approve failed (tx: ${approveTxHash}).`);
+    const approveReceipt = await this.publicClient.waitForTransactionReceipt({
+      hash: approveTxHash,
+    });
+    if (approveReceipt.status !== "success") {
+      throw new BridgeError(
+        "INSUFFICIENT_ALLOWANCE",
+        `USDC approve failed (tx: ${approveTxHash}).`,
+      );
     }
   }
 
@@ -188,7 +279,7 @@ export class BridgeModule {
     const messengerAddress = TOKEN_MESSENGER_V2[this.fromChain];
     const usdcAddress = USDC_CONTRACT[this.fromChain];
     const mintRecipient = pad(recipient, { size: 32 });
-    const destinationCaller = pad('0x0' as Hex, { size: 32 });
+    const destinationCaller = pad("0x0" as Hex, { size: 32 });
 
     const messenger = getContract({
       address: messengerAddress,
@@ -199,25 +290,54 @@ export class BridgeModule {
     let burnTxHash: Hash;
     try {
       burnTxHash = await messenger.write.depositForBurn(
-        [amount, destinationDomain, mintRecipient, usdcAddress, destinationCaller, maxFee, minFinalityThreshold],
+        [
+          amount,
+          destinationDomain,
+          mintRecipient,
+          usdcAddress,
+          destinationCaller,
+          maxFee,
+          minFinalityThreshold,
+        ],
         { account, chain: VIEM_CHAINS[this.fromChain] },
       );
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      throw new BridgeError('BURN_FAILED', `CCTP depositForBurn failed: ${msg}.`);
+      throw new BridgeError(
+        "BURN_FAILED",
+        `CCTP depositForBurn failed: ${msg}.`,
+      );
     }
 
-    const receipt = await this.publicClient.waitForTransactionReceipt({ hash: burnTxHash });
-    if (receipt.status !== 'success') {
-      throw new BridgeError('BURN_FAILED', `depositForBurn transaction reverted (tx: ${burnTxHash}).`);
+    const receipt = await this.publicClient.waitForTransactionReceipt({
+      hash: burnTxHash,
+    });
+    if (receipt.status !== "success") {
+      throw new BridgeError(
+        "BURN_FAILED",
+        `depositForBurn transaction reverted (tx: ${burnTxHash}).`,
+      );
     }
 
-    const { messageBytes, messageHash, nonce } = this.extractMessageSent(receipt);
-    return { burnTxHash, nonce, messageHash, messageBytes, sourceDomain: CCTP_DOMAIN_IDS[this.fromChain], destinationDomain };
+    const { messageBytes, messageHash, nonce } =
+      this.extractMessageSent(receipt);
+    return {
+      burnTxHash,
+      nonce,
+      messageHash,
+      messageBytes,
+      sourceDomain: CCTP_DOMAIN_IDS[this.fromChain],
+      destinationDomain,
+    };
   }
 
-  private extractMessageSent(receipt: TransactionReceipt): { messageBytes: Hex; messageHash: Hex; nonce: bigint } {
-    const MESSAGE_SENT_TOPIC = '0x8c5261668696ce22758910d05bab8f186d6eb247ceac2af2e82c7dc17669b036';
+  private extractMessageSent(receipt: TransactionReceipt): {
+    messageBytes: Hex;
+    messageHash: Hex;
+    nonce: bigint;
+  } {
+    const MESSAGE_SENT_TOPIC =
+      "0x8c5261668696ce22758910d05bab8f186d6eb247ceac2af2e82c7dc17669b036";
     for (const log of receipt.logs) {
       if (log.topics[0]?.toLowerCase() === MESSAGE_SENT_TOPIC.toLowerCase()) {
         const rawData = log.data;
@@ -227,51 +347,87 @@ export class BridgeModule {
         const messageLength = parseInt(lengthHex, 16);
         if (messageLength === 0) continue;
         const messageBytesHex = dataHex.slice(128, 128 + messageLength * 2);
-        const messageBytes = ('0x' + messageBytesHex) as Hex;
+        const messageBytes = ("0x" + messageBytesHex) as Hex;
         const messageHash = keccak256(messageBytes);
         const nonceBytesHex = messageBytesHex.slice(24, 40);
-        const nonce = BigInt('0x' + nonceBytesHex);
+        const nonce = BigInt("0x" + nonceBytesHex);
         return { messageBytes, messageHash, nonce };
       }
     }
-    throw new BridgeError('BURN_FAILED', 'Could not find MessageSent event in burn transaction receipt.');
+    throw new BridgeError(
+      "BURN_FAILED",
+      "Could not find MessageSent event in burn transaction receipt.",
+    );
   }
 
-  private async pollForAttestation(messageHash: Hex, fromChain: EVMBridgeChain, apiUrl: string): Promise<Hex> {
+  private async pollForAttestation(
+    messageHash: Hex,
+    fromChain: EVMBridgeChain,
+    apiUrl: string,
+  ): Promise<Hex> {
     const sourceDomain = CCTP_DOMAIN_IDS[fromChain];
     const url = `${apiUrl}/v2/messages/${sourceDomain}/${messageHash}`;
 
     for (let attempt = 0; attempt < MAX_ATTESTATION_POLLS; attempt++) {
-      let response: { status: string; attestation?: Hex | null; error?: string };
+      let response: {
+        status: string;
+        attestation?: Hex | null;
+        error?: string;
+      };
       try {
-        const res = await fetch(url, { headers: { Accept: 'application/json' } });
+        const res = await fetch(url, {
+          headers: { Accept: "application/json" },
+        });
         if (!res.ok) {
-          if (res.status === 404) { await this.sleep(ATTESTATION_POLL_INTERVAL_MS); continue; }
-          const body = await res.text().catch(() => '');
-          throw new BridgeError('ATTESTATION_ERROR', `Circle API returned HTTP ${res.status}: ${body}.`);
+          if (res.status === 404) {
+            await this.sleep(ATTESTATION_POLL_INTERVAL_MS);
+            continue;
+          }
+          const body = await res.text().catch(() => "");
+          throw new BridgeError(
+            "ATTESTATION_ERROR",
+            `Circle API returned HTTP ${res.status}: ${body}.`,
+          );
         }
-        response = await res.json() as typeof response;
+        response = (await res.json()) as typeof response;
       } catch (err: unknown) {
         if (err instanceof BridgeError) throw err;
         const msg = err instanceof Error ? err.message : String(err);
-        throw new BridgeError('ATTESTATION_ERROR', `Failed to reach Circle IRIS API: ${msg}.`);
+        throw new BridgeError(
+          "ATTESTATION_ERROR",
+          `Failed to reach Circle IRIS API: ${msg}.`,
+        );
       }
 
-      if (response.status === 'complete' && response.attestation) return response.attestation;
-      if (response.status === 'error') {
-        throw new BridgeError('ATTESTATION_ERROR', `Circle attestation failed: ${response.error ?? 'unknown error'}.`);
+      if (response.status === "complete" && response.attestation)
+        return response.attestation;
+      if (response.status === "error") {
+        throw new BridgeError(
+          "ATTESTATION_ERROR",
+          `Circle attestation failed: ${response.error ?? "unknown error"}.`,
+        );
       }
       await this.sleep(ATTESTATION_POLL_INTERVAL_MS);
     }
-    throw new BridgeError('ATTESTATION_TIMEOUT',
-      `Attestation not received after ${MAX_ATTESTATION_POLLS} attempts. Message hash: ${messageHash}.`);
+    throw new BridgeError(
+      "ATTESTATION_TIMEOUT",
+      `Attestation not received after ${MAX_ATTESTATION_POLLS} attempts. Message hash: ${messageHash}.`,
+    );
   }
 
-  private async receiveMessage(messageBytes: Hex, attestation: Hex, toChain: EVMBridgeChain, destinationRpcUrl?: string): Promise<Hash> {
+  private async receiveMessage(
+    messageBytes: Hex,
+    attestation: Hex,
+    toChain: EVMBridgeChain,
+    destinationRpcUrl?: string,
+  ): Promise<Hash> {
     const account = this.walletClient.account!;
     const transmitterAddress = MESSAGE_TRANSMITTER_V2[toChain];
     const destChain = VIEM_CHAINS[toChain];
-    const destPublicClient = createPublicClient({ chain: destChain, transport: http(destinationRpcUrl) }) as PublicClient;
+    const destPublicClient = createPublicClient({
+      chain: destChain,
+      transport: http(destinationRpcUrl),
+    }) as PublicClient;
 
     const transmitter = getContract({
       address: transmitterAddress,
@@ -281,28 +437,48 @@ export class BridgeModule {
 
     let mintTxHash: Hash;
     try {
-      mintTxHash = await transmitter.write.receiveMessage([messageBytes, attestation], { account, chain: destChain });
+      mintTxHash = await transmitter.write.receiveMessage(
+        [messageBytes, attestation],
+        { account, chain: destChain },
+      );
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      throw new BridgeError('MINT_FAILED', `CCTP receiveMessage failed on ${toChain}: ${msg}.`);
+      throw new BridgeError(
+        "MINT_FAILED",
+        `CCTP receiveMessage failed on ${toChain}: ${msg}.`,
+      );
     }
 
-    const mintReceipt = await destPublicClient.waitForTransactionReceipt({ hash: mintTxHash });
-    if (mintReceipt.status !== 'success') {
-      throw new BridgeError('MINT_FAILED', `receiveMessage reverted on ${toChain} (tx: ${mintTxHash}).`);
+    const mintReceipt = await destPublicClient.waitForTransactionReceipt({
+      hash: mintTxHash,
+    });
+    if (mintReceipt.status !== "success") {
+      throw new BridgeError(
+        "MINT_FAILED",
+        `receiveMessage reverted on ${toChain} (tx: ${mintTxHash}).`,
+      );
     }
     return mintTxHash;
   }
 
   private validateBridgeParams(amount: bigint, toChain: EVMBridgeChain): void {
     if (amount <= 0n) {
-      throw new BridgeError('INVALID_AMOUNT', `Bridge amount must be greater than 0. Received: ${amount}.`);
+      throw new BridgeError(
+        "INVALID_AMOUNT",
+        `Bridge amount must be greater than 0. Received: ${amount}.`,
+      );
     }
     if (!(toChain in CCTP_DOMAIN_IDS)) {
-      throw new BridgeError('UNSUPPORTED_CHAIN', `Chain '${toChain}' is not supported.`);
+      throw new BridgeError(
+        "UNSUPPORTED_CHAIN",
+        `Chain '${toChain}' is not supported.`,
+      );
     }
     if (toChain === this.fromChain) {
-      throw new BridgeError('UNSUPPORTED_CHAIN', `Source and destination chains must be different.`);
+      throw new BridgeError(
+        "UNSUPPORTED_CHAIN",
+        `Source and destination chains must be different.`,
+      );
     }
   }
 
@@ -316,20 +492,30 @@ export class BridgeError extends Error {
   constructor(code: string, message: string) {
     super(`[BridgeModule:${code}] ${message}`);
     this.code = code;
-    this.name = 'BridgeError';
+    this.name = "BridgeError";
   }
 }
 
 export function createBridge(
   walletClient: WalletClient,
-  fromChain: EVMBridgeChain = 'base',
+  fromChain: EVMBridgeChain = "base",
   options: { rpcUrl?: string } = {},
 ): BridgeModule {
   return new BridgeModule(walletClient, fromChain, options);
 }
 
-export type { BridgeChain, EVMBridgeChain, BridgeOptions, BurnResult, BridgeResult };
+export type {
+  BridgeChain,
+  EVMBridgeChain,
+  BridgeOptions,
+  BurnResult,
+  BridgeResult,
+};
 export {
-  CCTP_DOMAIN_IDS, BRIDGE_CHAIN_IDS, USDC_CONTRACT,
-  TOKEN_MESSENGER_V2, MESSAGE_TRANSMITTER_V2, FINALITY_THRESHOLD,
+  CCTP_DOMAIN_IDS,
+  BRIDGE_CHAIN_IDS,
+  USDC_CONTRACT,
+  TOKEN_MESSENGER_V2,
+  MESSAGE_TRANSMITTER_V2,
+  FINALITY_THRESHOLD,
 };

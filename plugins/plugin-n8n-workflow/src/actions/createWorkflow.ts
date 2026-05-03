@@ -9,8 +9,15 @@ import {
   type Memory,
   type State,
 } from '@elizaos/core';
-import { N8N_WORKFLOW_SERVICE_TYPE, type N8nWorkflowService } from '../services/index';
-import type { N8nWorkflow, N8nConnections, WorkflowDraft } from '../types/index';
+import {
+  N8N_WORKFLOW_SERVICE_TYPE,
+  type N8nWorkflowService,
+} from '../services/index';
+import type {
+  N8nWorkflow,
+  N8nConnections,
+  WorkflowDraft,
+} from '../types/index';
 import { UnsupportedIntegrationError } from '../types/index';
 import { classifyDraftIntent, formatActionResponse } from '../utils/generation';
 import { buildConversationContext } from '../utils/context';
@@ -80,21 +87,28 @@ function buildPreviewData(workflow: N8nWorkflow): Record<string, unknown> {
     })),
     flow: buildFlowChain(workflow.connections),
     credentials: [...creds],
-    ...(workflow._meta?.assumptions?.length && { assumptions: workflow._meta.assumptions }),
-    ...(workflow._meta?.suggestions?.length && { suggestions: workflow._meta.suggestions }),
+    ...(workflow._meta?.assumptions?.length && {
+      assumptions: workflow._meta.assumptions,
+    }),
+    ...(workflow._meta?.suggestions?.length && {
+      suggestions: workflow._meta.suggestions,
+    }),
   };
 }
 
 function diffNodeParams(
   before: N8nWorkflow,
-  after: N8nWorkflow
+  after: N8nWorkflow,
 ): Record<string, Record<string, unknown>> {
   const changes: Record<string, Record<string, unknown>> = {};
 
   for (const afterNode of after.nodes) {
     const beforeNode = before.nodes.find((n) => n.name === afterNode.name);
     const afterParams = (afterNode.parameters || {}) as Record<string, unknown>;
-    const beforeParams = (beforeNode?.parameters || {}) as Record<string, unknown>;
+    const beforeParams = (beforeNode?.parameters || {}) as Record<
+      string,
+      unknown
+    >;
 
     const nodeChanges: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(afterParams)) {
@@ -164,7 +178,10 @@ const examples: ActionExample[][] = [
     },
     {
       name: '{{agent}}',
-      content: { text: 'Deploying your workflow now...', actions: ['CREATE_N8N_WORKFLOW'] },
+      content: {
+        text: 'Deploying your workflow now...',
+        actions: ['CREATE_N8N_WORKFLOW'],
+      },
     },
   ],
   [
@@ -174,7 +191,10 @@ const examples: ActionExample[][] = [
     },
     {
       name: '{{agent}}',
-      content: { text: 'Deploying your workflow...', actions: ['CREATE_N8N_WORKFLOW'] },
+      content: {
+        text: 'Deploying your workflow...',
+        actions: ['CREATE_N8N_WORKFLOW'],
+      },
     },
   ],
   [
@@ -184,7 +204,10 @@ const examples: ActionExample[][] = [
     },
     {
       name: '{{agent}}',
-      content: { text: 'Deploying your workflow...', actions: ['CREATE_N8N_WORKFLOW'] },
+      content: {
+        text: 'Deploying your workflow...',
+        actions: ['CREATE_N8N_WORKFLOW'],
+      },
     },
   ],
   [
@@ -194,7 +217,10 @@ const examples: ActionExample[][] = [
     },
     {
       name: '{{agent}}',
-      content: { text: 'Workflow draft cancelled.', actions: ['CREATE_N8N_WORKFLOW'] },
+      content: {
+        text: 'Workflow draft cancelled.',
+        actions: ['CREATE_N8N_WORKFLOW'],
+      },
     },
   ],
   [
@@ -217,7 +243,10 @@ const examples: ActionExample[][] = [
     },
     {
       name: '{{agent}}',
-      content: { text: 'Deploying your workflow...', actions: ['CREATE_N8N_WORKFLOW'] },
+      content: {
+        text: 'Deploying your workflow...',
+        actions: ['CREATE_N8N_WORKFLOW'],
+      },
     },
   ],
   [
@@ -227,7 +256,10 @@ const examples: ActionExample[][] = [
     },
     {
       name: '{{agent}}',
-      content: { text: 'Deploying your workflow now.', actions: ['CREATE_N8N_WORKFLOW'] },
+      content: {
+        text: 'Deploying your workflow now.',
+        actions: ['CREATE_N8N_WORKFLOW'],
+      },
     },
   ],
   [
@@ -237,13 +269,19 @@ const examples: ActionExample[][] = [
     },
     {
       name: '{{agent}}',
-      content: { text: 'Deploying your workflow...', actions: ['CREATE_N8N_WORKFLOW'] },
+      content: {
+        text: 'Deploying your workflow...',
+        actions: ['CREATE_N8N_WORKFLOW'],
+      },
     },
   ],
 ];
 
 export const createWorkflowAction: Action & {
-  parameters?: Record<string, { type: string; description: string; required?: boolean }>;
+  parameters?: Record<
+    string,
+    { type: string; description: string; required?: boolean }
+  >;
 } = {
   name: 'CREATE_N8N_WORKFLOW',
   similes: [
@@ -277,18 +315,21 @@ export const createWorkflowAction: Action & {
     message: Memory,
     state: State | undefined,
     _options?: unknown,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const service = runtime.getService<N8nWorkflowService>(N8N_WORKFLOW_SERVICE_TYPE);
+    const service = runtime.getService<N8nWorkflowService>(
+      N8N_WORKFLOW_SERVICE_TYPE,
+    );
 
     if (!service) {
       logger.error(
         { src: 'plugin:n8n-workflow:action:create' },
-        'N8n Workflow service not available'
+        'N8n Workflow service not available',
       );
       if (callback) {
         const text = await formatActionResponse(runtime, 'ERROR', {
-          error: 'N8n Workflow service is not available. Check N8N_API_KEY and N8N_HOST.',
+          error:
+            'N8n Workflow service is not available. Check N8N_API_KEY and N8N_HOST.',
         });
         await callback({ text, success: false });
       }
@@ -304,8 +345,14 @@ export const createWorkflowAction: Action & {
     try {
       let existingDraft = await runtime.getCache<WorkflowDraft>(cacheKey);
 
-      if (existingDraft && Date.now() - existingDraft.createdAt > DRAFT_TTL_MS) {
-        logger.debug({ src: 'plugin:n8n-workflow:action:create' }, 'Draft expired, clearing cache');
+      if (
+        existingDraft &&
+        Date.now() - existingDraft.createdAt > DRAFT_TTL_MS
+      ) {
+        logger.debug(
+          { src: 'plugin:n8n-workflow:action:create' },
+          'Draft expired, clearing cache',
+        );
         await runtime.deleteCache(cacheKey);
         existingDraft = undefined;
       }
@@ -313,18 +360,25 @@ export const createWorkflowAction: Action & {
       if (existingDraft) {
         // Guard: if the draft was created by this same message, return silently.
         // No callback = no new output for the multi-step agent to process = it stops looping.
-        if (existingDraft.originMessageId && existingDraft.originMessageId === message.id) {
+        if (
+          existingDraft.originMessageId &&
+          existingDraft.originMessageId === message.id
+        ) {
           logger.info(
             { src: 'plugin:n8n-workflow:action:create' },
-            'Same message as draft origin — skipping'
+            'Same message as draft origin — skipping',
           );
           return { success: true, data: { awaitingUserInput: true } };
         }
 
-        const intentResult = await classifyDraftIntent(runtime, userText, existingDraft);
+        const intentResult = await classifyDraftIntent(
+          runtime,
+          userText,
+          existingDraft,
+        );
         logger.info(
           { src: 'plugin:n8n-workflow:action:create' },
-          `Draft intent: ${intentResult.intent} — ${intentResult.reason}`
+          `Draft intent: ${intentResult.intent} — ${intentResult.reason}`,
         );
 
         // If the draft was awaiting clarification and the user answered, treat "confirm" as "modify"
@@ -338,22 +392,29 @@ export const createWorkflowAction: Action & {
         if (effectiveIntent !== intentResult.intent) {
           logger.info(
             { src: 'plugin:n8n-workflow:action:create' },
-            'Draft has pending clarification — overriding "confirm" → "modify" to regenerate with user\'s answers'
+            'Draft has pending clarification — overriding "confirm" → "modify" to regenerate with user\'s answers',
           );
         }
 
         switch (effectiveIntent) {
           case 'confirm': {
-            const result = await service.deployWorkflow(existingDraft.workflow, userId);
+            const result = await service.deployWorkflow(
+              existingDraft.workflow,
+              userId,
+            );
 
             // Deploy blocked — unresolved credentials
             if (result.missingCredentials.length > 0) {
-              const text = await formatActionResponse(runtime, 'AUTH_REQUIRED', {
-                connections: result.missingCredentials.map((m) => ({
-                  service: m.credType,
-                  ...(m.authUrl && { authUrl: m.authUrl }),
-                })),
-              });
+              const text = await formatActionResponse(
+                runtime,
+                'AUTH_REQUIRED',
+                {
+                  connections: result.missingCredentials.map((m) => ({
+                    service: m.credType,
+                    ...(m.authUrl && { authUrl: m.authUrl }),
+                  })),
+                },
+              );
               if (callback) {
                 await callback({ text, success: true });
               }
@@ -389,13 +450,13 @@ export const createWorkflowAction: Action & {
             const modification = intentResult.modificationRequest || userText;
             logger.info(
               { src: 'plugin:n8n-workflow:action:create' },
-              `Modifying draft: ${modification.slice(0, 100)}`
+              `Modifying draft: ${modification.slice(0, 100)}`,
             );
 
             const modifiedWorkflow = await service.modifyWorkflowDraft(
               existingDraft.workflow,
               modification,
-              { userId }
+              { userId },
             );
 
             const modifiedDraft: WorkflowDraft = {
@@ -408,9 +469,13 @@ export const createWorkflowAction: Action & {
             await runtime.setCache(cacheKey, modifiedDraft);
 
             if (modifiedWorkflow._meta?.requiresClarification?.length) {
-              const text = await formatActionResponse(runtime, 'CLARIFICATION', {
-                questions: modifiedWorkflow._meta.requiresClarification,
-              });
+              const text = await formatActionResponse(
+                runtime,
+                'CLARIFICATION',
+                {
+                  questions: modifiedWorkflow._meta.requiresClarification,
+                },
+              );
               if (callback) {
                 await callback({ text, success: true });
               }
@@ -418,12 +483,19 @@ export const createWorkflowAction: Action & {
             }
 
             const previewData = buildPreviewData(modifiedWorkflow);
-            const changes = diffNodeParams(existingDraft.workflow, modifiedWorkflow);
+            const changes = diffNodeParams(
+              existingDraft.workflow,
+              modifiedWorkflow,
+            );
             if (Object.keys(changes).length > 0) {
               previewData.changes = changes;
             }
 
-            const text = await formatActionResponse(runtime, 'PREVIEW', previewData);
+            const text = await formatActionResponse(
+              runtime,
+              'PREVIEW',
+              previewData,
+            );
             if (callback) {
               await callback({ text, success: true });
             }
@@ -432,7 +504,11 @@ export const createWorkflowAction: Action & {
 
           case 'new': {
             if (!userText) {
-              const text = await formatActionResponse(runtime, 'EMPTY_PROMPT', {});
+              const text = await formatActionResponse(
+                runtime,
+                'EMPTY_PROMPT',
+                {},
+              );
               if (callback) {
                 await callback({ text, success: false });
               }
@@ -449,12 +525,12 @@ export const createWorkflowAction: Action & {
                 userId,
                 cacheKey,
                 message.id ?? '',
-                callback
+                callback,
               );
             } catch (genError) {
               logger.warn(
                 { src: 'plugin:n8n-workflow:action:create' },
-                `New workflow generation failed — restoring previous draft: ${genError instanceof Error ? genError.message : String(genError)}`
+                `New workflow generation failed — restoring previous draft: ${genError instanceof Error ? genError.message : String(genError)}`,
               );
               await runtime.setCache(cacheKey, existingDraft);
               const text = await formatActionResponse(runtime, 'PREVIEW', {
@@ -471,12 +547,12 @@ export const createWorkflowAction: Action & {
           default: {
             logger.info(
               { src: 'plugin:n8n-workflow:action:create' },
-              'Intent classification unclear — re-showing preview'
+              'Intent classification unclear — re-showing preview',
             );
             const text = await formatActionResponse(
               runtime,
               'PREVIEW',
-              buildPreviewData(existingDraft.workflow)
+              buildPreviewData(existingDraft.workflow),
             );
             if (callback) {
               await callback({ text, success: true });
@@ -501,27 +577,34 @@ export const createWorkflowAction: Action & {
         userId,
         cacheKey,
         message.id ?? '',
-        callback
+        callback,
       );
     } catch (error) {
       if (error instanceof UnsupportedIntegrationError) {
-        const text = await formatActionResponse(runtime, 'UNSUPPORTED_INTEGRATION', {
-          unsupported: error.unsupportedServices,
-          available: error.availableServices,
-        });
+        const text = await formatActionResponse(
+          runtime,
+          'UNSUPPORTED_INTEGRATION',
+          {
+            unsupported: error.unsupportedServices,
+            available: error.availableServices,
+          },
+        );
         if (callback) {
           await callback({ text, success: false });
         }
         return { success: false };
       }
 
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
       logger.error(
         { src: 'plugin:n8n-workflow:action:create' },
-        `Failed to create workflow: ${errorMessage}`
+        `Failed to create workflow: ${errorMessage}`,
       );
 
-      const text = await formatActionResponse(runtime, 'ERROR', { error: errorMessage });
+      const text = await formatActionResponse(runtime, 'ERROR', {
+        error: errorMessage,
+      });
       if (callback) {
         await callback({ text, success: false });
       }
@@ -539,11 +622,11 @@ async function generateAndPreview(
   userId: string,
   cacheKey: string,
   messageId: string,
-  callback?: HandlerCallback
+  callback?: HandlerCallback,
 ): Promise<ActionResult> {
   logger.info(
     { src: 'plugin:n8n-workflow:action:create' },
-    `Generating workflow from prompt: ${prompt.slice(0, 100)}...`
+    `Generating workflow from prompt: ${prompt.slice(0, 100)}...`,
   );
 
   const workflow = await service.generateWorkflowDraft(prompt, { userId });
@@ -567,7 +650,11 @@ async function generateAndPreview(
     return { success: true, data: { awaitingUserInput: true } };
   }
 
-  const text = await formatActionResponse(runtime, 'PREVIEW', buildPreviewData(workflow));
+  const text = await formatActionResponse(
+    runtime,
+    'PREVIEW',
+    buildPreviewData(workflow),
+  );
   if (callback) {
     await callback({ text, success: true });
   }

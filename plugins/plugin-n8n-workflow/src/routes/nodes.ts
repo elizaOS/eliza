@@ -1,4 +1,9 @@
-import type { Route, RouteRequest, RouteResponse, IAgentRuntime } from '@elizaos/core';
+import type {
+  Route,
+  RouteRequest,
+  RouteResponse,
+  IAgentRuntime,
+} from '@elizaos/core';
 import {
   searchNodes,
   getNodeDefinition,
@@ -6,7 +11,10 @@ import {
   filterNodesByIntegrationSupport,
 } from '../utils/catalog';
 import type { NodeSearchResult } from '../types/index';
-import { N8N_CREDENTIAL_PROVIDER_TYPE, isCredentialProvider } from '../types/index';
+import {
+  N8N_CREDENTIAL_PROVIDER_TYPE,
+  isCredentialProvider,
+} from '../types/index';
 import { validateLimit } from './_helpers';
 
 /**
@@ -15,7 +23,7 @@ import { validateLimit } from './_helpers';
 async function listNodes(
   req: RouteRequest,
   res: RouteResponse,
-  _runtime: IAgentRuntime
+  _runtime: IAgentRuntime,
 ): Promise<void> {
   try {
     const q = req.query?.q as string | undefined;
@@ -24,7 +32,10 @@ async function listNodes(
     if (!q) {
       res
         .status(400)
-        .json({ success: false, error: 'q parameter is required (comma-separated keywords)' });
+        .json({
+          success: false,
+          error: 'q parameter is required (comma-separated keywords)',
+        });
       return;
     }
 
@@ -55,7 +66,7 @@ async function listNodes(
 async function listAvailableNodes(
   _req: RouteRequest,
   res: RouteResponse,
-  runtime: IAgentRuntime
+  runtime: IAgentRuntime,
 ): Promise<void> {
   try {
     const catalog = getAllNodes();
@@ -68,7 +79,9 @@ async function listAvailableNodes(
 
     if (!credProvider?.checkCredentialTypes) {
       const utility = allResults.filter((r) => !r.node.credentials?.length);
-      const services = allResults.filter((r) => (r.node.credentials?.length ?? 0) > 0);
+      const services = allResults.filter(
+        (r) => (r.node.credentials?.length ?? 0) > 0,
+      );
       res.json({
         success: true,
         data: {
@@ -89,10 +102,15 @@ async function listAvailableNodes(
 
     const checkResult = credProvider.checkCredentialTypes([...credTypes]);
     const supportedSet = new Set(checkResult.supported);
-    const { remaining, removed } = filterNodesByIntegrationSupport(allResults, supportedSet);
+    const { remaining, removed } = filterNodesByIntegrationSupport(
+      allResults,
+      supportedSet,
+    );
 
     const utility = remaining.filter((r) => !r.node.credentials?.length);
-    const supported = remaining.filter((r) => (r.node.credentials?.length ?? 0) > 0);
+    const supported = remaining.filter(
+      (r) => (r.node.credentials?.length ?? 0) > 0,
+    );
 
     res.json({
       success: true,
@@ -121,7 +139,7 @@ async function listAvailableNodes(
 async function getNode(
   req: RouteRequest,
   res: RouteResponse,
-  _runtime: IAgentRuntime
+  _runtime: IAgentRuntime,
 ): Promise<void> {
   try {
     const type = req.params?.type;
@@ -132,7 +150,9 @@ async function getNode(
 
     const definition = getNodeDefinition(type);
     if (!definition) {
-      res.status(404).json({ success: false, error: `node_type_not_found: ${type}` });
+      res
+        .status(404)
+        .json({ success: false, error: `node_type_not_found: ${type}` });
       return;
     }
 

@@ -1,5 +1,8 @@
 import type { AgentRuntime, UUID } from "@elizaos/core";
-import type { ScenarioContext, ScenarioSeedStep } from "@elizaos/scenario-schema";
+import type {
+  ScenarioContext,
+  ScenarioSeedStep,
+} from "@elizaos/scenario-schema";
 import { stringToUuid } from "@elizaos/core";
 import { resolveDefaultWindowPolicy } from "../../../apps/app-lifeops/src/lifeops/defaults.ts";
 import { materializeDefinitionOccurrences } from "../../../apps/app-lifeops/src/lifeops/engine.ts";
@@ -85,15 +88,13 @@ type RelationshipsServiceLike = {
       isPrimary?: boolean;
     },
   ) => Promise<unknown>;
-  recordInteraction?: (
-    input: {
-      contactId: UUID;
-      platform: string;
-      direction: "inbound" | "outbound";
-      occurredAt?: string;
-      summary?: string;
-    },
-  ) => Promise<unknown>;
+  recordInteraction?: (input: {
+    contactId: UUID;
+    platform: string;
+    direction: "inbound" | "outbound";
+    occurredAt?: string;
+    summary?: string;
+  }) => Promise<unknown>;
   setRelationshipGoal?: (
     contactId: UUID,
     goal: { goalText: string; targetCadenceDays?: number },
@@ -122,7 +123,9 @@ function readStringArray(value: unknown): string[] {
 }
 
 function readOptionalNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 function readOptionalBoolean(value: unknown): boolean | undefined {
@@ -153,7 +156,9 @@ function readScenarioNow(ctx: ScenarioContext): Date {
 }
 
 function normalizeTodoTitle(seed: TodoSeed): string {
-  return readNonEmptyString(seed.name) ?? readNonEmptyString(seed.title) ?? "Todo";
+  return (
+    readNonEmptyString(seed.name) ?? readNonEmptyString(seed.title) ?? "Todo"
+  );
 }
 
 function normalizeTodoDueIso(seed: TodoSeed, ctx: ScenarioContext): string {
@@ -385,7 +390,7 @@ async function seedMemory(
 }
 
 const GMAIL_FIXTURE_MESSAGE_IDS: Readonly<Record<string, readonly string[]>> = {
-  "default": ["msg-finance", "msg-sarah", "msg-newsletter"],
+  default: ["msg-finance", "msg-sarah", "msg-newsletter"],
   "unread-inbox.eml": ["msg-finance", "msg-sarah"],
   "sarah-product-brief.eml": ["msg-sarah"],
   "high-priority-client.eml": ["msg-sarah"],
@@ -408,7 +413,9 @@ async function clearGmailMockLedger(baseUrl: string): Promise<void> {
     method: "DELETE",
   });
   if (!response.ok) {
-    throw new Error(`Gmail mock ledger clear failed with HTTP ${response.status}`);
+    throw new Error(
+      `Gmail mock ledger clear failed with HTTP ${response.status}`,
+    );
   }
 }
 
@@ -425,7 +432,9 @@ async function requireMockGmailMessage(
   return `Gmail mock fixture message ${messageId} unavailable (HTTP ${response.status})`;
 }
 
-async function seedGmailInbox(seed: GmailInboxSeed): Promise<string | undefined> {
+async function seedGmailInbox(
+  seed: GmailInboxSeed,
+): Promise<string | undefined> {
   const baseUrl = process.env.ELIZA_MOCK_GOOGLE_BASE;
   if (typeof baseUrl !== "string" || !isLoopbackUrl(baseUrl)) {
     return "gmailInbox seed requires ELIZA_MOCK_GOOGLE_BASE to point at the loopback Google mock";

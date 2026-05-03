@@ -75,11 +75,10 @@ async function build() {
   // TypeScript declarations
   const dtsStart = Date.now();
   console.log("📝 Generating TypeScript declarations...");
-  const tsc = spawnSync(
-    "bunx",
-    ["tsc", "--project", "tsconfig.build.json"],
-    { stdio: "inherit", shell: false },
-  );
+  const tsc = spawnSync("bunx", ["tsc", "--project", "tsconfig.build.json"], {
+    stdio: "inherit",
+    shell: false,
+  });
   if (tsc.status !== 0) {
     throw new Error("TypeScript declaration emit failed");
   }

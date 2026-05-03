@@ -75,7 +75,10 @@ describe('CloudTailscaleService', () => {
 
     expect(cliCalls).toEqual([
       { cmd: 'tailscale', args: ['up', '--auth-key=tskey-auth-xxx'] },
-      { cmd: 'tailscale', args: ['serve', '--bg', '--https=443', 'localhost:8080'] },
+      {
+        cmd: 'tailscale',
+        args: ['serve', '--bg', '--https=443', 'localhost:8080'],
+      },
     ]);
   });
 

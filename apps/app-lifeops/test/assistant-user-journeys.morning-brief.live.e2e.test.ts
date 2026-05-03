@@ -18,7 +18,10 @@ import {
 import dotenv from "dotenv";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeIf } from "../../../../eliza/test/helpers/conditional-tests.ts";
-import { saveEnv, withTimeout } from "../../../../eliza/test/helpers/test-utils";
+import {
+  saveEnv,
+  withTimeout,
+} from "../../../../eliza/test/helpers/test-utils";
 import { InboxTriageRepository } from "../src/inbox/repository.js";
 import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
 import { LifeOpsService } from "../src/lifeops/service.js";

@@ -21,11 +21,7 @@ import {
 } from "@elizaos/core";
 import { openaiPlugin } from "@elizaos/plugin-openai";
 
-import type {
-  ChatResponse,
-  ErrorResponse,
-  HealthResponse,
-} from "./types.ts";
+import type { ChatResponse, ErrorResponse, HealthResponse } from "./types.ts";
 
 // ============================================================================
 // Configuration
@@ -183,12 +179,16 @@ export async function handleChat(req: Request): Promise<Response> {
 
     // Process through the FULL elizaOS pipeline
     let responseText = "";
-    await rt.messageService?.handleMessage(rt, messageMemory, async (content) => {
-      if (content?.text) {
-        responseText += content.text;
-      }
-      return [];
-    });
+    await rt.messageService?.handleMessage(
+      rt,
+      messageMemory,
+      async (content) => {
+        if (content?.text) {
+          responseText += content.text;
+        }
+        return [];
+      },
+    );
 
     const response: ChatResponse = {
       response: responseText || "I could not generate a response.",
@@ -199,7 +199,8 @@ export async function handleChat(req: Request): Promise<Response> {
     console.log("[elizaOS] Message processed successfully");
     return jsonResponse(response);
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
     console.error("[elizaOS] Chat error:", errorMessage);
     return errorResponse("Internal server error", 500, "INTERNAL_ERROR");
   }

@@ -59,14 +59,21 @@ async function withMockGoogleLedger<T>(
 }
 
 describe("final-checks", () => {
-  const runtime = {} as unknown as Parameters<typeof runFinalCheck>[1]["runtime"];
+  const runtime = {} as unknown as Parameters<
+    typeof runFinalCheck
+  >[1]["runtime"];
 
   it("actionCalled passes when action present with success", async () => {
     const ctx = ctxWith({
       actionsCalled: [{ actionName: "REPLY", result: { success: true } }],
     });
     const res = await runFinalCheck(
-      { type: "actionCalled", actionName: "REPLY", status: "success", minCount: 1 },
+      {
+        type: "actionCalled",
+        actionName: "REPLY",
+        status: "success",
+        minCount: 1,
+      },
       { runtime, ctx },
     );
     expect(res.status).toBe("passed");

@@ -71,7 +71,9 @@ function toRecord(value: unknown): Record<string, unknown> | null {
 function getRuntimeCaptureHooks(
   runtime: IAgentRuntime,
 ): RuntimeCaptureHooks | null {
-  const hooks = (runtime as unknown as Record<PropertyKey, unknown>)[RUNTIME_CAPTURE_HOOK];
+  const hooks = (runtime as unknown as Record<PropertyKey, unknown>)[
+    RUNTIME_CAPTURE_HOOK
+  ];
   if (!hooks || typeof hooks !== "object") {
     return null;
   }
@@ -90,7 +92,11 @@ function normalizeCapturedApprovalRequest(
   value: unknown,
 ): CapturedApprovalRequest | null {
   const record = toRecord(value);
-  if (!record || typeof record.id !== "string" || typeof record.state !== "string") {
+  if (
+    !record ||
+    typeof record.id !== "string" ||
+    typeof record.state !== "string"
+  ) {
     return null;
   }
   const actionRaw =
@@ -168,9 +174,10 @@ export async function ensureInterceptorRuntimeHooks(): Promise<void> {
         "../../../apps/app-lifeops/src/lifeops/approval-queue.ts",
         import.meta.url,
       );
-      const moduleRecord = (await import(
-        approvalQueueUrl.href
-      )) as Record<string, unknown>;
+      const moduleRecord = (await import(approvalQueueUrl.href)) as Record<
+        string,
+        unknown
+      >;
       const PgApprovalQueue = moduleRecord.PgApprovalQueue as
         | { prototype?: Record<string, unknown> }
         | undefined;
@@ -313,7 +320,9 @@ function captureArtifactsFromValue(
     }
   }
   const nestedData =
-    record.data && typeof record.data === "object" && !Array.isArray(record.data)
+    record.data &&
+    typeof record.data === "object" &&
+    !Array.isArray(record.data)
       ? (record.data as Record<string, unknown>)
       : null;
   const nestedArtifacts = nestedData?.artifacts;
@@ -324,8 +333,7 @@ function captureArtifactsFromValue(
       captureArtifact(artifacts, {
         source,
         actionName,
-        kind:
-          typeof item.kind === "string" ? item.kind : "artifact",
+        kind: typeof item.kind === "string" ? item.kind : "artifact",
         label: typeof item.label === "string" ? item.label : undefined,
         detail: typeof item.detail === "string" ? item.detail : undefined,
         data: item,
@@ -344,7 +352,9 @@ function captureStateTransitionsFromValue(
   }
   const record = value as Record<string, unknown>;
   const data =
-    record.data && typeof record.data === "object" && !Array.isArray(record.data)
+    record.data &&
+    typeof record.data === "object" &&
+    !Array.isArray(record.data)
       ? (record.data as Record<string, unknown>)
       : null;
   const browserTask =
@@ -563,7 +573,9 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
             "callback",
             content,
           );
-          return (callback as (...inner: unknown[]) => unknown)(...callbackArgs);
+          return (callback as (...inner: unknown[]) => unknown)(
+            ...callbackArgs,
+          );
         }) as HandlerCallback;
       }
       try {
@@ -573,8 +585,7 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
         if (result && typeof result === "object") {
           const r = result as Record<string, unknown>;
           entry.result = {
-            success:
-              typeof r.success === "boolean" ? r.success : undefined,
+            success: typeof r.success === "boolean" ? r.success : undefined,
             data: r.data,
             values: r.values,
             text: typeof r.text === "string" ? r.text : undefined,
@@ -659,10 +670,10 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
 
   type CreateTaskFn = (task: Task) => Promise<unknown>;
   if (isCallable((rt as { createTask?: CreateTaskFn }).createTask)) {
-    const originalCreateTask = (rt as { createTask: CreateTaskFn }).createTask as
-      CreateTaskFn & {
-        [INTERCEPTOR_MARKER]?: true;
-      };
+    const originalCreateTask = (rt as { createTask: CreateTaskFn })
+      .createTask as CreateTaskFn & {
+      [INTERCEPTOR_MARKER]?: true;
+    };
     if (!originalCreateTask[INTERCEPTOR_MARKER]) {
       const wrappedCreateTask: CreateTaskFn & {
         [INTERCEPTOR_MARKER]?: true;
@@ -707,7 +718,9 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
       artifacts.length = 0;
     },
     detach(): void {
-      delete (runtime as unknown as Record<PropertyKey, unknown>)[RUNTIME_CAPTURE_HOOK];
+      delete (runtime as unknown as Record<PropertyKey, unknown>)[
+        RUNTIME_CAPTURE_HOOK
+      ];
       for (const restore of restoreFns) restore();
       restoreFns.length = 0;
     },

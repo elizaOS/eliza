@@ -8,7 +8,10 @@ import {
   type Memory,
   type State,
 } from '@elizaos/core';
-import { N8N_WORKFLOW_SERVICE_TYPE, type N8nWorkflowService } from '../services/index';
+import {
+  N8N_WORKFLOW_SERVICE_TYPE,
+  type N8nWorkflowService,
+} from '../services/index';
 import type { WorkflowDraft } from '../types/index';
 import { matchWorkflow, formatActionResponse } from '../utils/generation';
 import { buildConversationContext } from '../utils/context';
@@ -100,18 +103,21 @@ export const modifyExistingWorkflowAction: Action = {
     message: Memory,
     state: State | undefined,
     _options?: unknown,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const service = runtime.getService<N8nWorkflowService>(N8N_WORKFLOW_SERVICE_TYPE);
+    const service = runtime.getService<N8nWorkflowService>(
+      N8N_WORKFLOW_SERVICE_TYPE,
+    );
 
     if (!service) {
       logger.error(
         { src: 'plugin:n8n-workflow:action:modify-existing' },
-        'N8n Workflow service not available'
+        'N8n Workflow service not available',
       );
       if (callback) {
         const text = await formatActionResponse(runtime, 'ERROR', {
-          error: 'N8n Workflow service is not available. Check N8N_API_KEY and N8N_HOST.',
+          error:
+            'N8n Workflow service is not available. Check N8N_API_KEY and N8N_HOST.',
         });
         await callback({ text, success: false });
       }
@@ -124,7 +130,10 @@ export const modifyExistingWorkflowAction: Action = {
 
       // Check for existing draft — if one exists, user should use CREATE_N8N_WORKFLOW
       const existingDraft = await runtime.getCache<WorkflowDraft>(cacheKey);
-      if (existingDraft && Date.now() - existingDraft.createdAt < DRAFT_TTL_MS) {
+      if (
+        existingDraft &&
+        Date.now() - existingDraft.createdAt < DRAFT_TTL_MS
+      ) {
         if (callback) {
           await callback({
             text:
@@ -155,7 +164,7 @@ export const modifyExistingWorkflowAction: Action = {
 
       logger.info(
         { src: 'plugin:n8n-workflow:action:modify-existing' },
-        `Workflow match: ${matchResult.matchedWorkflowId || 'none'} (confidence: ${matchResult.confidence})`
+        `Workflow match: ${matchResult.matchedWorkflowId || 'none'} (confidence: ${matchResult.confidence})`,
       );
 
       // No match or low confidence — show available workflows
@@ -175,7 +184,9 @@ export const modifyExistingWorkflowAction: Action = {
 
       // Low confidence — ask for confirmation
       if (matchResult.confidence === 'low') {
-        const matchedWorkflow = workflows.find((wf) => wf.id === matchResult.matchedWorkflowId);
+        const matchedWorkflow = workflows.find(
+          (wf) => wf.id === matchResult.matchedWorkflowId,
+        );
         if (callback) {
           await callback({
             text: `Did you mean the workflow "${matchedWorkflow?.name}"? Please confirm or be more specific.`,
@@ -191,7 +202,7 @@ export const modifyExistingWorkflowAction: Action = {
 
       logger.info(
         { src: 'plugin:n8n-workflow:action:modify-existing' },
-        `Loading workflow "${fullWorkflow.name}" (${fullWorkflow.id}) with ${fullWorkflow.nodes?.length || 0} nodes`
+        `Loading workflow "${fullWorkflow.name}" (${fullWorkflow.id}) with ${fullWorkflow.nodes?.length || 0} nodes`,
       );
 
       // Create draft from the existing workflow
@@ -224,22 +235,30 @@ export const modifyExistingWorkflowAction: Action = {
         active: fullWorkflow.active,
         nodes,
         credentials: [...creds],
-        message: 'Workflow loaded for editing. Tell me what changes you want to make.',
+        message:
+          'Workflow loaded for editing. Tell me what changes you want to make.',
       });
 
       if (callback) {
-        await callback({ text, success: true, data: { awaitingUserInput: true } });
+        await callback({
+          text,
+          success: true,
+          data: { awaitingUserInput: true },
+        });
       }
 
       return { success: true, data: { workflowId, awaitingUserInput: true } };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
       logger.error(
         { src: 'plugin:n8n-workflow:action:modify-existing' },
-        `Failed to load workflow for modification: ${errorMessage}`
+        `Failed to load workflow for modification: ${errorMessage}`,
       );
 
-      const text = await formatActionResponse(runtime, 'ERROR', { error: errorMessage });
+      const text = await formatActionResponse(runtime, 'ERROR', {
+        error: errorMessage,
+      });
       if (callback) {
         await callback({ text, success: false });
       }

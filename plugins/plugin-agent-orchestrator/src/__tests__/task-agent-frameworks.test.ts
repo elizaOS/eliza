@@ -15,9 +15,7 @@ import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { readConfigCodexSubscriptionRestrictedToCodexFramework } from "../services/config-env.js";
-import {
-  buildOpencodeSpawnConfig,
-} from "../services/agent-credentials.js";
+import { buildOpencodeSpawnConfig } from "../services/agent-credentials.js";
 import {
   isOpencodeAgentType,
   normalizeAgentType,
@@ -478,9 +476,7 @@ describe("buildOpencodeSpawnConfig", () => {
     expect(parsed.provider["eliza-local"].options.baseURL).toBe(
       "http://localhost:1234/v1",
     );
-    expect(parsed.provider["eliza-local"].options.apiKey).toBe(
-      "lm-studio-key",
-    );
+    expect(parsed.provider["eliza-local"].options.apiKey).toBe("lm-studio-key");
   });
 
   it("returns a thin user-config override when only PARALLAX_OPENCODE_MODEL_POWERFUL is set", () => {

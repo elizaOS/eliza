@@ -1,5 +1,8 @@
 import { Service, IAgentRuntime, logger } from "@elizaos/core";
-import { SpacesServiceClient, ConferenceRecordsServiceClient } from '@google-apps/meet';
+import {
+  SpacesServiceClient,
+  ConferenceRecordsServiceClient,
+} from "@google-apps/meet";
 import { GoogleAuthService } from "./googleAuthService";
 import { Meeting, MeetingStatus, Participant, Transcript } from "../types";
 
@@ -21,7 +24,9 @@ export class GoogleMeetAPIService extends Service {
   }
 
   async initialize(): Promise<void> {
-    this.authService = this.runtime.getService("google-auth") as GoogleAuthService;
+    this.authService = this.runtime.getService(
+      "google-auth",
+    ) as GoogleAuthService;
     if (!this.authService) {
       throw new Error("Google Auth Service not found");
     }
@@ -49,44 +54,48 @@ export class GoogleMeetAPIService extends Service {
 
     try {
       const request: any = {};
-      
+
       // Set meeting configuration
       if (params?.accessType) {
         switch (params.accessType.toUpperCase()) {
-          case 'TRUSTED':
-            request.accessType = 'TRUSTED';
+          case "TRUSTED":
+            request.accessType = "TRUSTED";
             break;
-          case 'RESTRICTED':
-            request.accessType = 'RESTRICTED';
+          case "RESTRICTED":
+            request.accessType = "RESTRICTED";
             break;
           default:
-            request.accessType = 'OPEN';
+            request.accessType = "OPEN";
         }
       }
 
       const [space] = await this.spacesClient.createSpace({ space: request });
-      
+
       if (!space || !space.name) {
         throw new Error("Failed to create meeting space");
       }
 
       // Extract meeting code from the space name
-      const meetingCode = space.meetingCode || '';
-      
+      const meetingCode = space.meetingCode || "";
+
       this.currentMeeting = {
         id: space.name,
         meetingCode: meetingCode,
-        meetingUri: space.meetingUri || `https://meet.google.com/${meetingCode}`,
+        meetingUri:
+          space.meetingUri || `https://meet.google.com/${meetingCode}`,
         title: params?.title || "Meeting",
         startTime: new Date(),
         status: MeetingStatus.WAITING,
         participants: [],
-        transcripts: []
+        transcripts: [],
       };
 
       return this.currentMeeting;
     } catch (error) {
-      logger.error("Failed to create meeting:", error instanceof Error ? error.message : String(error));
+      logger.error(
+        "Failed to create meeting:",
+        error instanceof Error ? error.message : String(error),
+      );
       throw error;
     }
   }
@@ -100,7 +109,10 @@ export class GoogleMeetAPIService extends Service {
       const [space] = await this.spacesClient.getSpace({ name: spaceName });
       return space;
     } catch (error) {
-      logger.error(`Failed to get meeting space ${spaceName}:`, error instanceof Error ? error.message : String(error));
+      logger.error(
+        `Failed to get meeting space ${spaceName}:`,
+        error instanceof Error ? error.message : String(error),
+      );
       throw error;
     }
   }
@@ -112,11 +124,14 @@ export class GoogleMeetAPIService extends Service {
 
     try {
       const [conference] = await this.conferenceClient.getConferenceRecord({
-        name: conferenceRecordName
+        name: conferenceRecordName,
       });
       return conference;
     } catch (error) {
-      logger.error(`Failed to get conference ${conferenceRecordName}:`, error instanceof Error ? error.message : String(error));
+      logger.error(
+        `Failed to get conference ${conferenceRecordName}:`,
+        error instanceof Error ? error.message : String(error),
+      );
       throw error;
     }
   }
@@ -128,48 +143,55 @@ export class GoogleMeetAPIService extends Service {
 
     try {
       const participants: Participant[] = [];
-      
+
       // Use the async iterator to list participants
       const iterable = this.conferenceClient.listParticipantsAsync({
         parent: conferenceRecordName,
-        pageSize: 100
+        pageSize: 100,
       });
 
       for await (const participant of iterable) {
         if (participant.name) {
           // Handle different participant types based on the API structure
           let displayName = "Unknown";
-          
+
           // Check if it's a signedinUser
           if (participant.signedinUser) {
-            displayName = participant.signedinUser.displayName || participant.signedinUser.user || "Signed-in User";
+            displayName =
+              participant.signedinUser.displayName ||
+              participant.signedinUser.user ||
+              "Signed-in User";
           }
           // Check if it's an anonymousUser
           else if (participant.anonymousUser) {
-            displayName = participant.anonymousUser.displayName || "Anonymous User";
+            displayName =
+              participant.anonymousUser.displayName || "Anonymous User";
           }
           // Check if it's a phoneUser
           else if (participant.phoneUser) {
             displayName = participant.phoneUser.displayName || "Phone User";
           }
-          
+
           participants.push({
             id: participant.name,
             name: displayName,
-            joinTime: participant.earliestStartTime ? 
-              new Date((participant.earliestStartTime as any).seconds * 1000) : 
-              new Date(),
-            leaveTime: participant.latestEndTime ? 
-              new Date((participant.latestEndTime as any).seconds * 1000) : 
-              undefined,
-            isActive: !participant.latestEndTime
+            joinTime: participant.earliestStartTime
+              ? new Date((participant.earliestStartTime as any).seconds * 1000)
+              : new Date(),
+            leaveTime: participant.latestEndTime
+              ? new Date((participant.latestEndTime as any).seconds * 1000)
+              : undefined,
+            isActive: !participant.latestEndTime,
           });
         }
       }
-      
+
       return participants;
     } catch (error) {
-      logger.error(`Failed to list participants for ${conferenceRecordName}:`, error instanceof Error ? error.message : String(error));
+      logger.error(
+        `Failed to list participants for ${conferenceRecordName}:`,
+        error instanceof Error ? error.message : String(error),
+      );
       throw error;
     }
   }
@@ -181,9 +203,9 @@ export class GoogleMeetAPIService extends Service {
 
     try {
       const [transcript] = await this.conferenceClient.getTranscript({
-        name: transcriptName
+        name: transcriptName,
       });
-      
+
       if (!transcript) {
         throw new Error("Invalid transcript response");
       }
@@ -191,7 +213,7 @@ export class GoogleMeetAPIService extends Service {
       // Get transcript entries
       let fullTranscript = "";
       const iterable = this.conferenceClient.listTranscriptEntriesAsync({
-        parent: transcriptName
+        parent: transcriptName,
       });
 
       for await (const entry of iterable) {
@@ -202,7 +224,10 @@ export class GoogleMeetAPIService extends Service {
 
       return fullTranscript;
     } catch (error) {
-      logger.error(`Failed to get transcript ${transcriptName}:`, error instanceof Error ? error.message : String(error));
+      logger.error(
+        `Failed to get transcript ${transcriptName}:`,
+        error instanceof Error ? error.message : String(error),
+      );
       throw error;
     }
   }
@@ -215,7 +240,7 @@ export class GoogleMeetAPIService extends Service {
     try {
       const recordings: any[] = [];
       const iterable = this.conferenceClient.listRecordingsAsync({
-        parent: conferenceRecordName
+        parent: conferenceRecordName,
       });
 
       for await (const recording of iterable) {
@@ -224,7 +249,10 @@ export class GoogleMeetAPIService extends Service {
 
       return recordings;
     } catch (error) {
-      logger.error(`Failed to list recordings for ${conferenceRecordName}:`, error instanceof Error ? error.message : String(error));
+      logger.error(
+        `Failed to list recordings for ${conferenceRecordName}:`,
+        error instanceof Error ? error.message : String(error),
+      );
       throw error;
     }
   }
@@ -236,12 +264,15 @@ export class GoogleMeetAPIService extends Service {
 
     try {
       const [recording] = await this.conferenceClient.getRecording({
-        name: recordingName
+        name: recordingName,
       });
-      
+
       return recording?.driveDestination?.exportUri || null;
     } catch (error) {
-      logger.error(`Failed to get recording ${recordingName}:`, error instanceof Error ? error.message : String(error));
+      logger.error(
+        `Failed to get recording ${recordingName}:`,
+        error instanceof Error ? error.message : String(error),
+      );
       return null;
     }
   }
@@ -253,15 +284,18 @@ export class GoogleMeetAPIService extends Service {
 
     try {
       await this.spacesClient.endActiveConference({
-        name: spaceName
+        name: spaceName,
       });
-      
+
       if (this.currentMeeting?.id === spaceName) {
         this.currentMeeting.status = MeetingStatus.ENDED;
         this.currentMeeting.endTime = new Date();
       }
     } catch (error) {
-      logger.error(`Failed to end meeting ${spaceName}:`, error instanceof Error ? error.message : String(error));
+      logger.error(
+        `Failed to end meeting ${spaceName}:`,
+        error instanceof Error ? error.message : String(error),
+      );
       throw error;
     }
   }
@@ -282,4 +316,4 @@ export class GoogleMeetAPIService extends Service {
     this.spacesClient = null;
     this.conferenceClient = null;
   }
-} 
+}

@@ -113,7 +113,15 @@ export interface N8nExecution {
   startedAt: string;
   stoppedAt?: string | null;
   workflowId: string;
-  status: 'canceled' | 'crashed' | 'error' | 'new' | 'running' | 'success' | 'unknown' | 'waiting';
+  status:
+    | 'canceled'
+    | 'crashed'
+    | 'error'
+    | 'new'
+    | 'running'
+    | 'success'
+    | 'unknown'
+    | 'waiting';
   waitTill?: string | null;
   customData?: Record<string, unknown>;
   data?: {
@@ -262,7 +270,9 @@ export interface FeasibilityResult {
 /**
  * Type guard to check if a service implements CredentialProvider
  */
-export function isCredentialProvider(service: unknown): service is CredentialProvider {
+export function isCredentialProvider(
+  service: unknown,
+): service is CredentialProvider {
   if (!service || typeof service !== 'object') {
     return false;
   }
@@ -346,17 +356,23 @@ export interface RuntimeContextProviderInput {
 }
 
 export interface RuntimeContextProvider {
-  getRuntimeContext(input: RuntimeContextProviderInput): Promise<RuntimeContext>;
+  getRuntimeContext(
+    input: RuntimeContextProviderInput,
+  ): Promise<RuntimeContext>;
 }
 
 /**
  * Type guard to check if a service implements RuntimeContextProvider.
  */
-export function isRuntimeContextProvider(service: unknown): service is RuntimeContextProvider {
+export function isRuntimeContextProvider(
+  service: unknown,
+): service is RuntimeContextProvider {
   if (!service || typeof service !== 'object') {
     return false;
   }
-  return typeof (service as Record<string, unknown>).getRuntimeContext === 'function';
+  return (
+    typeof (service as Record<string, unknown>).getRuntimeContext === 'function'
+  );
 }
 
 // Credential store types
@@ -437,7 +453,7 @@ export class N8nApiError extends Error {
   constructor(
     message: string,
     public statusCode?: number,
-    public response?: unknown
+    public response?: unknown,
   ) {
     super(message);
     this.name = 'N8nApiError';
@@ -447,7 +463,7 @@ export class N8nApiError extends Error {
 export class UnsupportedIntegrationError extends Error {
   constructor(
     public unsupportedServices: string[],
-    public availableServices: string[]
+    public availableServices: string[],
   ) {
     super(`Unsupported integrations: ${unsupportedServices.join(', ')}`);
     this.name = 'UnsupportedIntegrationError';

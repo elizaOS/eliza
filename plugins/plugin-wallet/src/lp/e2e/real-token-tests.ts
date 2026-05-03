@@ -24,7 +24,8 @@ export const realTokenTestsSuite: TestSuite = {
       name: "Test 1: Discover ai16z/SOL pools across DEXs",
       fn: async (runtime: IAgentRuntime) => {
         // Get the DEX interaction service
-        const dexService = runtime.getService<DexInteractionService>("dex-interaction");
+        const dexService =
+          runtime.getService<DexInteractionService>("dex-interaction");
         assert(dexService, "DexInteractionService should be available");
 
         // Search for ai16z/SOL pools
@@ -32,12 +33,14 @@ export const realTokenTestsSuite: TestSuite = {
         const pools = await dexService.getPools(
           undefined,
           TOKEN_ADDRESSES.AI16Z,
-          TOKEN_ADDRESSES.SOL
+          TOKEN_ADDRESSES.SOL,
         );
 
         console.log(`Found ${pools.length} ai16z/SOL pools:`);
         pools.forEach((pool) => {
-          console.log(`- ${pool.dex}: ${pool.id} (APR: ${pool.apr}%, TVL: $${pool.tvl})`);
+          console.log(
+            `- ${pool.dex}: ${pool.id} (APR: ${pool.apr}%, TVL: $${pool.tvl})`,
+          );
         });
 
         // Assert that we found at least one pool
@@ -52,7 +55,7 @@ export const realTokenTestsSuite: TestSuite = {
               pool.tokenB.mint === TOKEN_ADDRESSES.SOL) ||
               (pool.tokenA.mint === TOKEN_ADDRESSES.SOL &&
                 pool.tokenB.mint === TOKEN_ADDRESSES.AI16Z),
-            "Pool should contain ai16z and SOL tokens"
+            "Pool should contain ai16z and SOL tokens",
           );
         });
       },
@@ -61,7 +64,8 @@ export const realTokenTestsSuite: TestSuite = {
     {
       name: "Test 2: Discover degenai/SOL pools across DEXs",
       fn: async (runtime: IAgentRuntime) => {
-        const dexService = runtime.getService<DexInteractionService>("dex-interaction");
+        const dexService =
+          runtime.getService<DexInteractionService>("dex-interaction");
         assert(dexService, "DexInteractionService should be available");
 
         // Search for degenai/SOL pools
@@ -69,12 +73,14 @@ export const realTokenTestsSuite: TestSuite = {
         const pools = await dexService.getPools(
           undefined,
           TOKEN_ADDRESSES.DEGENAI,
-          TOKEN_ADDRESSES.SOL
+          TOKEN_ADDRESSES.SOL,
         );
 
         console.log(`Found ${pools.length} degenai/SOL pools:`);
         pools.forEach((pool) => {
-          console.log(`- ${pool.dex}: ${pool.id} (APR: ${pool.apr}%, TVL: $${pool.tvl})`);
+          console.log(
+            `- ${pool.dex}: ${pool.id} (APR: ${pool.apr}%, TVL: $${pool.tvl})`,
+          );
         });
 
         // Assert that we found at least one pool
@@ -89,7 +95,7 @@ export const realTokenTestsSuite: TestSuite = {
               pool.tokenB.mint === TOKEN_ADDRESSES.SOL) ||
               (pool.tokenA.mint === TOKEN_ADDRESSES.SOL &&
                 pool.tokenB.mint === TOKEN_ADDRESSES.DEGENAI),
-            "Pool should contain degenai and SOL tokens"
+            "Pool should contain degenai and SOL tokens",
           );
         });
       },
@@ -98,13 +104,14 @@ export const realTokenTestsSuite: TestSuite = {
     {
       name: "Test 3: Compare APR across different DEXs for ai16z/SOL",
       fn: async (runtime: IAgentRuntime) => {
-        const dexService = runtime.getService<DexInteractionService>("dex-interaction");
+        const dexService =
+          runtime.getService<DexInteractionService>("dex-interaction");
         assert(dexService, "DexInteractionService should be available");
 
         const pools = await dexService.getPools(
           undefined,
           TOKEN_ADDRESSES.AI16Z,
-          TOKEN_ADDRESSES.SOL
+          TOKEN_ADDRESSES.SOL,
         );
 
         if (pools.length === 0) {
@@ -117,7 +124,9 @@ export const realTokenTestsSuite: TestSuite = {
 
         console.log("APR Comparison for ai16z/SOL pools:");
         sortedPools.forEach((pool) => {
-          console.log(`- ${pool.dex}: ${pool.apr || 0}% APR (TVL: $${pool.tvl || 0})`);
+          console.log(
+            `- ${pool.dex}: ${pool.apr || 0}% APR (TVL: $${pool.tvl || 0})`,
+          );
         });
 
         // Find best APR
@@ -126,7 +135,7 @@ export const realTokenTestsSuite: TestSuite = {
 
         assert(
           bestPool.apr !== undefined && bestPool.apr >= 0,
-          "Best pool should have a valid APR"
+          "Best pool should have a valid APR",
         );
       },
     },
@@ -141,15 +150,18 @@ export const realTokenTestsSuite: TestSuite = {
           runtime,
           room,
           user,
-          "Show me all degenai/SOL pools with their APR"
+          "Show me all degenai/SOL pools with their APR",
         );
 
-        console.log("Pool discovery response:", response1.text || "No text response");
+        console.log(
+          "Pool discovery response:",
+          response1.text || "No text response",
+        );
 
         assert.match(
           response1.text || "",
           /pool|degenai|SOL|APR|liquidity/i,
-          "Response should mention pools and APR"
+          "Response should mention pools and APR",
         );
 
         // Then simulate adding liquidity
@@ -157,15 +169,18 @@ export const realTokenTestsSuite: TestSuite = {
           runtime,
           room,
           user,
-          "I want to add 0.1 SOL and equivalent degenai to the best APR pool"
+          "I want to add 0.1 SOL and equivalent degenai to the best APR pool",
         );
 
-        console.log("Add liquidity response:", response2.text || "No text response");
+        console.log(
+          "Add liquidity response:",
+          response2.text || "No text response",
+        );
 
         assert.match(
           response2.text || "",
           /add|liquidity|SOL|degenai|pool/i,
-          "Response should acknowledge liquidity addition request"
+          "Response should acknowledge liquidity addition request",
         );
       },
     },
@@ -180,15 +195,18 @@ export const realTokenTestsSuite: TestSuite = {
           runtime,
           room,
           user,
-          "Show me all my LP positions including underlying token amounts"
+          "Show me all my LP positions including underlying token amounts",
         );
 
-        console.log("LP positions response:", response.text || "No text response");
+        console.log(
+          "LP positions response:",
+          response.text || "No text response",
+        );
 
         assert.match(
           response.text || "",
           /position|LP|liquidity|token|amount/i,
-          "Response should show LP positions"
+          "Response should show LP positions",
         );
       },
     },
@@ -197,7 +215,7 @@ export const realTokenTestsSuite: TestSuite = {
       name: "Test 6: Test yield optimization opportunities",
       fn: async (runtime: IAgentRuntime) => {
         const yieldService = runtime.getService<YieldOptimizationService>(
-          "YieldOptimizationService"
+          "YieldOptimizationService",
         );
         assert(yieldService, "YieldOptimizationService should be available");
 
@@ -213,7 +231,7 @@ export const realTokenTestsSuite: TestSuite = {
             pool.tokenA.mint === TOKEN_ADDRESSES.AI16Z ||
             pool.tokenB.mint === TOKEN_ADDRESSES.AI16Z ||
             pool.tokenA.mint === TOKEN_ADDRESSES.DEGENAI ||
-            pool.tokenB.mint === TOKEN_ADDRESSES.DEGENAI
+            pool.tokenB.mint === TOKEN_ADDRESSES.DEGENAI,
         );
 
         console.log(`Pools with ai16z or degenai: ${targetPools.length}`);
@@ -222,7 +240,9 @@ export const realTokenTestsSuite: TestSuite = {
         const bestByPair = new Map<string, PoolInfo>();
 
         targetPools.forEach((pool) => {
-          const pair = [pool.tokenA.symbol, pool.tokenB.symbol].sort().join("/");
+          const pair = [pool.tokenA.symbol, pool.tokenB.symbol]
+            .sort()
+            .join("/");
           const current = bestByPair.get(pair);
 
           if (!current || (pool.apr || 0) > (current.apr || 0)) {
@@ -235,7 +255,10 @@ export const realTokenTestsSuite: TestSuite = {
           console.log(`- ${pair}: ${pool.apr || 0}% on ${pool.dex}`);
         });
 
-        assert(targetPools.length > 0, "Should find at least one pool with target tokens");
+        assert(
+          targetPools.length > 0,
+          "Should find at least one pool with target tokens",
+        );
       },
     },
 
@@ -249,15 +272,18 @@ export const realTokenTestsSuite: TestSuite = {
           runtime,
           room,
           user,
-          "Enable auto-rebalance with 3% minimum gain, prefer Orca and Raydium DEXs, max slippage 0.5%"
+          "Enable auto-rebalance with 3% minimum gain, prefer Orca and Raydium DEXs, max slippage 0.5%",
         );
 
-        console.log("Auto-rebalance config response:", response.text || "No text response");
+        console.log(
+          "Auto-rebalance config response:",
+          response.text || "No text response",
+        );
 
         assert.match(
           response.text || "",
           /auto.*rebalance|enable|3%|Orca|Raydium|slippage/i,
-          "Response should acknowledge auto-rebalance configuration"
+          "Response should acknowledge auto-rebalance configuration",
         );
       },
     },
@@ -272,15 +298,18 @@ export const realTokenTestsSuite: TestSuite = {
           runtime,
           room,
           user,
-          "I want to remove 50% of my degenai/SOL LP position"
+          "I want to remove 50% of my degenai/SOL LP position",
         );
 
-        console.log("Remove liquidity response:", response.text || "No text response");
+        console.log(
+          "Remove liquidity response:",
+          response.text || "No text response",
+        );
 
         assert.match(
           response.text || "",
           /remove|withdraw|50%|liquidity|degenai|SOL/i,
-          "Response should acknowledge liquidity removal request"
+          "Response should acknowledge liquidity removal request",
         );
       },
     },
@@ -288,14 +317,15 @@ export const realTokenTestsSuite: TestSuite = {
     {
       name: "Test 9: Test handling of Token2022 (ai16z) specifics",
       fn: async (runtime: IAgentRuntime) => {
-        const dexService = runtime.getService<DexInteractionService>("dex-interaction");
+        const dexService =
+          runtime.getService<DexInteractionService>("dex-interaction");
         assert(dexService, "DexInteractionService should be available");
 
         // Get pools for ai16z (Token2022)
         const pools = await dexService.getPools(
           undefined,
           TOKEN_ADDRESSES.AI16Z,
-          TOKEN_ADDRESSES.SOL
+          TOKEN_ADDRESSES.SOL,
         );
 
         console.log("Checking Token2022 compatibility:");
@@ -312,7 +342,9 @@ export const realTokenTestsSuite: TestSuite = {
         });
 
         // Note: Some DEXs may not support Token2022
-        console.log("\nNote: Some DEXs may not support Token2022 tokens like ai16z");
+        console.log(
+          "\nNote: Some DEXs may not support Token2022 tokens like ai16z",
+        );
       },
     },
 
@@ -327,9 +359,12 @@ export const realTokenTestsSuite: TestSuite = {
           runtime,
           room,
           user,
-          "I want to start LP management with auto-rebalancing enabled"
+          "I want to start LP management with auto-rebalancing enabled",
         );
-        console.log("Onboard response:", onboardResponse.text || "No text response");
+        console.log(
+          "Onboard response:",
+          onboardResponse.text || "No text response",
+        );
 
         // 2. Check available pools
         console.log("\nStep 2: Checking pools...");
@@ -337,9 +372,12 @@ export const realTokenTestsSuite: TestSuite = {
           runtime,
           room,
           user,
-          "Show me the best APR pools for SOL pairs"
+          "Show me the best APR pools for SOL pairs",
         );
-        console.log("Pools response:", poolsResponse.text || "No text response");
+        console.log(
+          "Pools response:",
+          poolsResponse.text || "No text response",
+        );
 
         // 3. Add liquidity
         console.log("\nStep 3: Adding liquidity...");
@@ -347,9 +385,12 @@ export const realTokenTestsSuite: TestSuite = {
           runtime,
           room,
           user,
-          "Add 0.2 SOL to the best SOL pool you can find"
+          "Add 0.2 SOL to the best SOL pool you can find",
         );
-        console.log("Add liquidity response:", addResponse.text || "No text response");
+        console.log(
+          "Add liquidity response:",
+          addResponse.text || "No text response",
+        );
 
         // 4. Check positions
         console.log("\nStep 4: Checking positions...");
@@ -357,15 +398,30 @@ export const realTokenTestsSuite: TestSuite = {
           runtime,
           room,
           user,
-          "Show me my current LP positions and their performance"
+          "Show me my current LP positions and their performance",
         );
-        console.log("Positions response:", positionsResponse.text || "No text response");
+        console.log(
+          "Positions response:",
+          positionsResponse.text || "No text response",
+        );
 
         // Assert responses are meaningful
-        assert((onboardResponse.text?.length || 0) > 0, "Onboard response should not be empty");
-        assert((poolsResponse.text?.length || 0) > 0, "Pools response should not be empty");
-        assert((addResponse.text?.length || 0) > 0, "Add liquidity response should not be empty");
-        assert((positionsResponse.text?.length || 0) > 0, "Positions response should not be empty");
+        assert(
+          (onboardResponse.text?.length || 0) > 0,
+          "Onboard response should not be empty",
+        );
+        assert(
+          (poolsResponse.text?.length || 0) > 0,
+          "Pools response should not be empty",
+        );
+        assert(
+          (addResponse.text?.length || 0) > 0,
+          "Add liquidity response should not be empty",
+        );
+        assert(
+          (positionsResponse.text?.length || 0) > 0,
+          "Positions response should not be empty",
+        );
       },
     },
   ],

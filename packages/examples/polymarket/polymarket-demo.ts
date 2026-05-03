@@ -98,12 +98,12 @@ if (import.meta.main) {
   main().catch((err) => {
     const message = err instanceof Error ? err.message : String(err);
     const stack = err instanceof Error ? err.stack : undefined;
-    
+
     // Reset terminal state in case TUI was active
     if (process.stdout.isTTY) {
       process.stdout.write("\x1b[?1000l\x1b[?1006l\x1b[?1015l\x1b[?1007l\n");
     }
-    
+
     console.error("\n" + "=".repeat(60));
     console.error("❌ FATAL ERROR");
     console.error("=".repeat(60));
@@ -118,4 +118,3 @@ if (import.meta.main) {
     process.exit(1);
   });
 }
-

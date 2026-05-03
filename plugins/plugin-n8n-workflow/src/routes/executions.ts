@@ -1,4 +1,9 @@
-import type { Route, RouteRequest, RouteResponse, IAgentRuntime } from '@elizaos/core';
+import type {
+  Route,
+  RouteRequest,
+  RouteResponse,
+  IAgentRuntime,
+} from '@elizaos/core';
 import { getService, validateLimit } from './_helpers';
 
 /**
@@ -7,7 +12,7 @@ import { getService, validateLimit } from './_helpers';
 async function listExecutions(
   req: RouteRequest,
   res: RouteResponse,
-  runtime: IAgentRuntime
+  runtime: IAgentRuntime,
 ): Promise<void> {
   try {
     const workflowId = req.query?.workflowId as string | undefined;
@@ -22,8 +27,17 @@ async function listExecutions(
     const cursor = req.query?.cursor as string | undefined;
 
     const service = getService(runtime);
-    const response = await service.listExecutions({ workflowId, status, limit, cursor });
-    res.json({ success: true, data: response.data, nextCursor: response.nextCursor });
+    const response = await service.listExecutions({
+      workflowId,
+      status,
+      limit,
+      cursor,
+    });
+    res.json({
+      success: true,
+      data: response.data,
+      nextCursor: response.nextCursor,
+    });
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -39,7 +53,7 @@ async function listExecutions(
 async function getExecution(
   req: RouteRequest,
   res: RouteResponse,
-  runtime: IAgentRuntime
+  runtime: IAgentRuntime,
 ): Promise<void> {
   try {
     const id = req.params?.id;

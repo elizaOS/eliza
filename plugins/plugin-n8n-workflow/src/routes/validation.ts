@@ -1,5 +1,14 @@
-import type { Route, RouteRequest, RouteResponse, IAgentRuntime } from '@elizaos/core';
-import { validateWorkflow, validateNodeParameters, validateNodeInputs } from '../utils/workflow';
+import type {
+  Route,
+  RouteRequest,
+  RouteResponse,
+  IAgentRuntime,
+} from '@elizaos/core';
+import {
+  validateWorkflow,
+  validateNodeParameters,
+  validateNodeInputs,
+} from '../utils/workflow';
 import type { N8nWorkflow } from '../types/index';
 
 /**
@@ -11,13 +20,15 @@ import type { N8nWorkflow } from '../types/index';
 async function validate(
   req: RouteRequest,
   res: RouteResponse,
-  _runtime: IAgentRuntime
+  _runtime: IAgentRuntime,
 ): Promise<void> {
   try {
     const workflow = req.body as N8nWorkflow;
 
     if (!workflow?.nodes || !workflow?.connections) {
-      res.status(400).json({ success: false, error: 'nodes and connections are required' });
+      res
+        .status(400)
+        .json({ success: false, error: 'nodes and connections are required' });
       return;
     }
 

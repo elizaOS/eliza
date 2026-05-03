@@ -32,9 +32,17 @@ export function selectTunnelBackend(runtime: IAgentRuntime): BackendDecision {
 
   switch (mode) {
     case 'local':
-      return { backend: LocalTailscaleService, mode, reason: 'TAILSCALE_BACKEND=local' };
+      return {
+        backend: LocalTailscaleService,
+        mode,
+        reason: 'TAILSCALE_BACKEND=local',
+      };
     case 'cloud':
-      return { backend: CloudTailscaleService, mode, reason: 'TAILSCALE_BACKEND=cloud' };
+      return {
+        backend: CloudTailscaleService,
+        mode,
+        reason: 'TAILSCALE_BACKEND=cloud',
+      };
     case 'auto': {
       if (isCloudConnected(runtime)) {
         return {

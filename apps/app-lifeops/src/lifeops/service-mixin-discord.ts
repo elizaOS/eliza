@@ -130,11 +130,11 @@ function discordAgentPluginDegradations(
 }
 
 function normalizeDiscordCapabilities(
-  capabilities: readonly string[] | null | undefined
+  capabilities: readonly string[] | null | undefined,
 ): LifeOpsDiscordCapability[] {
   return (capabilities ?? []).filter(
     (candidate): candidate is LifeOpsDiscordCapability =>
-      candidate === "discord.read" || candidate === "discord.send"
+      candidate === "discord.read" || candidate === "discord.send",
   );
 }
 
@@ -155,7 +155,7 @@ function isDiscordHost(url: string): boolean {
 }
 
 function discordChannelIdFromUrl(
-  url: string | null | undefined
+  url: string | null | undefined,
 ): string | null {
   if (!url) return null;
   const match = url.match(DISCORD_CHANNEL_URL_RE);
@@ -164,7 +164,7 @@ function discordChannelIdFromUrl(
 }
 
 function selectedDiscordChannelIdFromStatus(
-  status: LifeOpsDiscordConnectorStatus
+  status: LifeOpsDiscordConnectorStatus,
 ): string | null {
   if (status.dmInbox.selectedChannelId) {
     return status.dmInbox.selectedChannelId;
@@ -182,7 +182,7 @@ function sleep(ms: number): Promise<void> {
 
 function identityFromProbe(
   probe: DiscordTabProbe | null,
-  fallback: Record<string, unknown> | null
+  fallback: Record<string, unknown> | null,
 ): LifeOpsDiscordConnectorStatus["identity"] {
   if (probe?.loggedIn && probe.identity.username) {
     return {
@@ -231,7 +231,7 @@ function tabIdFromGrant(grant: LifeOpsConnectorGrant | null): string | null {
 }
 
 function sessionIdFromGrant(
-  grant: LifeOpsConnectorGrant | null
+  grant: LifeOpsConnectorGrant | null,
 ): string | null {
   if (!grant) return null;
   const raw = (grant.metadata as Record<string, unknown> | undefined)
@@ -240,7 +240,7 @@ function sessionIdFromGrant(
 }
 
 function companionIdFromGrant(
-  grant: LifeOpsConnectorGrant | null
+  grant: LifeOpsConnectorGrant | null,
 ): string | null {
   if (!grant) return null;
   const raw = (grant.metadata as Record<string, unknown> | undefined)
@@ -253,7 +253,7 @@ function companionKey(args: { browser: string; profileId: string }): string {
 }
 
 function companionMap(
-  companions: readonly BrowserBridgeCompanionStatus[]
+  companions: readonly BrowserBridgeCompanionStatus[],
 ): Map<string, BrowserBridgeCompanionStatus> {
   return new Map(
     companions.map((companion) => [
@@ -262,12 +262,12 @@ function companionMap(
         profileId: companion.profileId,
       }),
       companion,
-    ])
+    ]),
   );
 }
 
 function sortCompanionsByRecency(
-  companions: readonly BrowserBridgeCompanionStatus[]
+  companions: readonly BrowserBridgeCompanionStatus[],
 ): BrowserBridgeCompanionStatus[] {
   return [...companions].sort((left, right) => {
     const leftMs = Date.parse(left.lastSeenAt ?? "");
@@ -291,7 +291,7 @@ function sortCompanionsByRecency(
 }
 
 function pickNewestDiscordTab(
-  tabs: readonly BrowserBridgeTabSummary[]
+  tabs: readonly BrowserBridgeTabSummary[],
 ): BrowserBridgeTabSummary | null {
   return (
     [...tabs]
@@ -318,7 +318,7 @@ function pickNewestDiscordTab(
 }
 
 function parseSessionProbe(
-  session: LifeOpsBrowserSession | null
+  session: LifeOpsBrowserSession | null,
 ): DiscordTabProbe | null {
   if (!session) return null;
   const result = asRecord(session.result);
@@ -363,7 +363,7 @@ function parseSessionProbe(
           Boolean(candidate) &&
           typeof candidate === "object" &&
           typeof (candidate as { href?: unknown }).href === "string" &&
-          typeof (candidate as { text?: unknown }).text === "string"
+          typeof (candidate as { text?: unknown }).text === "string",
       );
     } else if (action.kind === "extract_forms") {
       const candidateForms = Array.isArray(entry.forms) ? entry.forms : [];
@@ -371,7 +371,7 @@ function parseSessionProbe(
         (candidate): candidate is { action: string | null; fields: string[] } =>
           Boolean(candidate) &&
           typeof candidate === "object" &&
-          Array.isArray((candidate as { fields?: unknown }).fields)
+          Array.isArray((candidate as { fields?: unknown }).fields),
       );
     }
   }
@@ -397,7 +397,7 @@ function sessionError(session: LifeOpsBrowserSession | null): string | null {
 
 function siteAccessAllowsDiscord(
   companion: BrowserBridgeCompanionStatus | null,
-  hasDiscordPage: boolean
+  hasDiscordPage: boolean,
 ): boolean | null {
   if (!companion) {
     return null;
@@ -409,12 +409,12 @@ function siteAccessAllowsDiscord(
     return true;
   }
   return companion.permissions.grantedOrigins.some((origin) =>
-    isDiscordHost(origin)
+    isDiscordHost(origin),
   );
 }
 
 function browserAuthStateFromProbe(
-  probe: DiscordTabProbe | null
+  probe: DiscordTabProbe | null,
 ): LifeOpsOwnerBrowserAuthState {
   if (probe?.loggedIn === true) {
     return "logged_in";
@@ -549,7 +549,7 @@ function desktopBrowserAccessStatus(args: {
 }
 
 function discordDesktopAccessStatus(
-  state: DiscordDesktopCdpStatus
+  state: DiscordDesktopCdpStatus,
 ): LifeOpsOwnerBrowserAccessStatus {
   const probe = state.probe;
   const authState = browserAuthStateFromProbe(probe);
@@ -603,25 +603,25 @@ function discordDesktopReasonFor(args: {
 
 /** @internal */
 export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
-  Base: TBase
+  Base: TBase,
 ) {
   class LifeOpsDiscordServiceMixin extends Base {
     async lifeOpsDiscordProbeTab(
-      tabId: string | null
+      tabId: string | null,
     ): Promise<DiscordTabProbe | null> {
       if (!tabId) return null;
       try {
         return await probeDiscordTab(tabId);
       } catch (error) {
         logger.debug(
-          `[lifeops-discord] probe failed for tab ${tabId}: ${String(error)}`
+          `[lifeops-discord] probe failed for tab ${tabId}: ${String(error)}`,
         );
         return null;
       }
     }
 
     async lifeOpsDiscordGetBrowserSessionById(
-      sessionId: string | null
+      sessionId: string | null,
     ): Promise<LifeOpsBrowserSession | null> {
       if (!sessionId) return null;
       try {
@@ -632,7 +632,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
     }
 
     async lifeOpsDiscordGetOwnerBrowserDiscordState(
-      grant: LifeOpsConnectorGrant | null
+      grant: LifeOpsConnectorGrant | null,
     ): Promise<{
       available: boolean;
       settingsEnabled: boolean;
@@ -651,10 +651,10 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
     }> {
       const settings = await this.getBrowserSettings();
       const allCompanions = sortCompanionsByRecency(
-        await this.listBrowserCompanions()
+        await this.listBrowserCompanions(),
       );
       const connectedCompanions = allCompanions.filter(
-        (companion) => companion.connectionState === "connected"
+        (companion) => companion.connectionState === "connected",
       );
       const paused = this.isBrowserPaused(settings);
       const trackingEnabled = settings.trackingMode !== "off";
@@ -674,7 +674,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
           : null;
       const discordTab = pickNewestDiscordTab(tabs);
       const session = await this.lifeOpsDiscordGetBrowserSessionById(
-        sessionIdFromGrant(grant)
+        sessionIdFromGrant(grant),
       );
       const sessionProbe = parseSessionProbe(session);
       const probe =
@@ -693,25 +693,25 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
             companionKey({
               browser: currentPage.browser,
               profileId: currentPage.profileId,
-            })
+            }),
           )) ??
         (discordTab &&
           companionByKey.get(
             companionKey({
               browser: discordTab.browser,
               profileId: discordTab.profileId,
-            })
+            }),
           )) ??
         (companionIdFromGrant(grant)
-          ? connectedCompanions.find(
-              (companion) => companion.id === companionIdFromGrant(grant)
-            ) ?? null
+          ? (connectedCompanions.find(
+              (companion) => companion.id === companionIdFromGrant(grant),
+            ) ?? null)
           : null) ??
         connectedCompanions[0] ??
         (companionIdFromGrant(grant)
-          ? allCompanions.find(
-              (companion) => companion.id === companionIdFromGrant(grant)
-            ) ?? null
+          ? (allCompanions.find(
+              (companion) => companion.id === companionIdFromGrant(grant),
+            ) ?? null)
           : null) ??
         allCompanions[0] ??
         null;
@@ -750,7 +750,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
 
     async lifeOpsDiscordBuildWorkspaceStatus(
       normalizedSide: LifeOpsConnectorSide,
-      grant: LifeOpsConnectorGrant | null
+      grant: LifeOpsConnectorGrant | null,
     ): Promise<LifeOpsDiscordConnectorStatus> {
       const available = discordBrowserWorkspaceAvailable();
       const tabId = tabIdFromGrant(grant);
@@ -818,7 +818,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
         existing &&
         sameStringList(
           normalizeDiscordCapabilities(existing.capabilities),
-          capabilities
+          capabilities,
         ) &&
         JSON.stringify(existing.identity ?? {}) ===
           JSON.stringify(args.identity) &&
@@ -855,7 +855,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
     }
 
     async getDiscordConnectorStatus(
-      side?: LifeOpsConnectorSide
+      side?: LifeOpsConnectorSide,
     ): Promise<LifeOpsDiscordConnectorStatus> {
       const normalizedSide =
         normalizeOptionalConnectorSide(side, "side") ?? "owner";
@@ -886,7 +886,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
         this.agentId(),
         "discord",
         "local",
-        normalizedSide
+        normalizedSide,
       );
       if (normalizedSide === "owner") {
         const browserState =
@@ -902,7 +902,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
         const onDiscordPage =
           Boolean(
             browserState.currentPageUrl &&
-              isDiscordHost(browserState.currentPageUrl)
+              isDiscordHost(browserState.currentPageUrl),
           ) || Boolean(browserState.discordTab);
         const browserAccess = [
           discordDesktopAccessStatus(discordDesktopState),
@@ -919,7 +919,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
             hasDiscordTab: onDiscordPage,
             siteAccessOk: siteAccessAllowsDiscord(
               browserState.selectedCompanion,
-              onDiscordPage || Boolean(browserState.discordTab)
+              onDiscordPage || Boolean(browserState.discordTab),
             ),
           }),
           desktopBrowserAccessStatus({
@@ -943,7 +943,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
               : normalizeDiscordCapabilities(grant?.capabilities);
           const identity = identityFromProbe(
             desktopProbe,
-            grant?.identity ?? null
+            grant?.identity ?? null,
           );
           const statusGrant = desktopConnected
             ? await this.lifeOpsDiscordUpsertGrantForActiveSession({
@@ -1021,7 +1021,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
         }
         const workspaceStatus = await this.lifeOpsDiscordBuildWorkspaceStatus(
           normalizedSide,
-          grant
+          grant,
         );
         return {
           ...workspaceStatus,
@@ -1039,7 +1039,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
      */
     async authorizeDiscordConnector(
       side?: LifeOpsConnectorSide,
-      source?: LifeOpsOwnerBrowserAccessSource
+      source?: LifeOpsOwnerBrowserAccessSource,
     ): Promise<LifeOpsDiscordConnectorStatus> {
       const normalizedSide =
         normalizeOptionalConnectorSide(side, "side") ?? "owner";
@@ -1051,14 +1051,14 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
         this.agentId(),
         "discord",
         "local",
-        normalizedSide
+        normalizedSide,
       );
 
       if (source === "discord_desktop") {
         if (normalizedSide !== "owner") {
           fail(
             400,
-            "Discord Desktop control is only available for the owner side."
+            "Discord Desktop control is only available for the owner side.",
           );
         }
         const state = await relaunchDiscordDesktopForCdp();
@@ -1067,7 +1067,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
         const capabilities =
           loggedIn || probe?.dmInbox.visible
             ? FULL_DISCORD_CAPABILITIES
-            : existing?.capabilities ?? [];
+            : (existing?.capabilities ?? []);
         const identity =
           identityFromProbe(probe, existing?.identity ?? null) ?? {};
         const metadata = {
@@ -1109,7 +1109,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
             cdpPort: state.port,
             loggedIn,
             targetUrl: state.targetUrl,
-          }
+          },
         );
 
         return this.getDiscordConnectorStatus(normalizedSide);
@@ -1122,7 +1122,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
           browserState.hasConnectedCompanion ||
           Boolean(
             browserState.currentPageUrl &&
-              isDiscordHost(browserState.currentPageUrl)
+              isDiscordHost(browserState.currentPageUrl),
           ) ||
           Boolean(browserState.discordTab) ||
           Boolean(browserState.probe);
@@ -1134,7 +1134,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
             identityFromProbe(probe, existing?.identity ?? null) ?? {};
           const onDiscordPage = Boolean(probe?.url && isDiscordHost(probe.url));
           const onDiscordDmPage = Boolean(
-            probe?.url?.includes("/channels/@me")
+            probe?.url?.includes("/channels/@me"),
           );
           const needsDiscordOpen = !connected && !onDiscordPage;
           const needsDmInspection = connected && !dmInboxVisible;
@@ -1146,7 +1146,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
           ) {
             fail(
               409,
-              "Agent Browser Bridge can see your browser, but browser control is disabled. Enable browser control or open Discord manually, then try again."
+              "Agent Browser Bridge can see your browser, but browser control is disabled. Enable browser control or open Discord manually, then try again.",
             );
           }
 
@@ -1158,7 +1158,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
               if (!browserState.canControl && !onDiscordDmPage) {
                 fail(
                   409,
-                  "Discord is open in your browser, but Agent Browser Bridge control is disabled. Focus the Discord DM tab manually or enable browser control."
+                  "Discord is open in your browser, but Agent Browser Bridge control is disabled. Focus the Discord DM tab manually or enable browser control.",
                 );
               }
             }
@@ -1166,13 +1166,13 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
             if (!browserState.selectedCompanion) {
               fail(
                 503,
-                "No connected Agent Browser Bridge companion is available for Discord."
+                "No connected Agent Browser Bridge companion is available for Discord.",
               );
             }
             if (!browserState.canControl) {
               fail(
                 409,
-                "Agent Browser Bridge control is disabled. Enable browser control or open Discord manually so LifeOps can inspect your DMs."
+                "Agent Browser Bridge control is disabled. Enable browser control or open Discord manually so LifeOps can inspect your DMs.",
               );
             }
 
@@ -1270,7 +1270,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
           const capabilities =
             connected && dmInboxVisible
               ? FULL_DISCORD_CAPABILITIES
-              : existing?.capabilities ?? [];
+              : (existing?.capabilities ?? []);
           const metadata = {
             ...(existing?.metadata ?? {}),
             tabId: tabIdFromGrant(existing),
@@ -1310,7 +1310,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
               companionId,
               sessionId,
               loggedIn: connected,
-            }
+            },
           );
 
           return this.getDiscordConnectorStatus(normalizedSide);
@@ -1320,7 +1320,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
       if (!discordBrowserWorkspaceAvailable()) {
         fail(
           503,
-          "Discord connector requires either Your Browser connected through Agent Browser Bridge or Eliza Desktop Browser."
+          "Discord connector requires either Your Browser connected through Agent Browser Bridge or Eliza Desktop Browser.",
         );
       }
 
@@ -1335,7 +1335,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
       const loggedIn = probe?.loggedIn === true;
       const capabilities = loggedIn
         ? FULL_DISCORD_CAPABILITIES
-        : existing?.capabilities ?? [];
+        : (existing?.capabilities ?? []);
       const identity =
         identityFromProbe(probe, existing?.identity ?? null) ?? {};
 
@@ -1368,7 +1368,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
         `discord:${normalizedSide}`,
         "discord browser connector authorized",
         { side: normalizedSide },
-        { tabId, loggedIn }
+        { tabId, loggedIn },
       );
 
       return this.getDiscordConnectorStatus(normalizedSide);
@@ -1398,20 +1398,20 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
         this.agentId(),
         "discord",
         "local",
-        normalizedSide
+        normalizedSide,
       );
 
       const tabId = tabIdFromGrant(grant);
       if (!tabId && !discordBrowserWorkspaceAvailable()) {
         fail(
           409,
-          "Discord search requires a connected browser tab. Authorize the Discord connector first."
+          "Discord search requires a connected browser tab. Authorize the Discord connector first.",
         );
       }
       if (!tabId) {
         fail(
           409,
-          "Discord search requires a connected workspace tab. Authorize the Discord connector first."
+          "Discord search requires a connected workspace tab. Authorize the Discord connector first.",
         );
       }
 
@@ -1430,7 +1430,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
      * Capability descriptor: `deliveryStatus: 'partial'`.
      */
     async captureDiscordDeliveryStatus(
-      side?: LifeOpsConnectorSide
+      side?: LifeOpsConnectorSide,
     ): Promise<DiscordMessageSearchResult[]> {
       const normalizedSide =
         normalizeOptionalConnectorSide(side, "side") ?? "owner";
@@ -1438,14 +1438,14 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
         this.agentId(),
         "discord",
         "local",
-        normalizedSide
+        normalizedSide,
       );
 
       const tabId = tabIdFromGrant(grant);
       if (!tabId) {
         fail(
           409,
-          "Discord delivery status capture requires a connected workspace tab."
+          "Discord delivery status capture requires a connected workspace tab.",
         );
       }
 
@@ -1483,7 +1483,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
       if (!channelId) {
         fail(
           400,
-          "channelId is required because no active Discord channel or DM is selected."
+          "channelId is required because no active Discord channel or DM is selected.",
         );
       }
       // Local-execution grants (Discord Desktop via CDP) drive the user's
@@ -1510,7 +1510,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
         }
         await this.runtime.sendMessageToTarget(
           { source: "discord", channelId },
-          { text, source: "lifeops" }
+          { text, source: "lifeops" },
         );
       }
 
@@ -1589,7 +1589,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
     }
 
     async disconnectDiscord(
-      side?: LifeOpsConnectorSide
+      side?: LifeOpsConnectorSide,
     ): Promise<LifeOpsDiscordConnectorStatus> {
       const normalizedSide =
         normalizeOptionalConnectorSide(side, "side") ?? "owner";
@@ -1603,7 +1603,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
         this.agentId(),
         "discord",
         "local",
-        normalizedSide
+        normalizedSide,
       );
       const tabId = tabIdFromGrant(grant);
 
@@ -1612,7 +1612,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
           await closeDiscordTab(tabId);
         } catch (error) {
           logger.debug(
-            `[lifeops-discord] failed to close tab ${tabId}: ${String(error)}`
+            `[lifeops-discord] failed to close tab ${tabId}: ${String(error)}`,
           );
         }
       }
@@ -1621,14 +1621,14 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
         this.agentId(),
         "discord",
         "local",
-        normalizedSide
+        normalizedSide,
       );
 
       await this.recordConnectorAudit(
         `discord:${normalizedSide}`,
         "discord browser connector disconnected",
         { side: normalizedSide },
-        {}
+        {},
       );
 
       return this.getDiscordConnectorStatus(normalizedSide);

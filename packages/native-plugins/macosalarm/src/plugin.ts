@@ -6,7 +6,9 @@ import {
   createSetAlarmAction,
 } from "./actions";
 
-export function createMacosAlarmPlugin(deps: MacosAlarmActionDeps = {}): Plugin {
+export function createMacosAlarmPlugin(
+  deps: MacosAlarmActionDeps = {},
+): Plugin {
   return {
     name: "macosalarm",
     description:

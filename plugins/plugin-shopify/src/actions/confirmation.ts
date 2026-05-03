@@ -30,4 +30,3 @@ export function confirmationRequired(
     data: { requiresConfirmation: true, preview, ...data },
   };
 }
-

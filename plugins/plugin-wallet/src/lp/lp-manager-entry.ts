@@ -28,18 +28,25 @@ function getDexConfiguration(runtime: IAgentRuntime): {
 
   // Check for chain-specific RPC URLs to determine which chains are configured
   const hasEthereumRpc = !!(
-    runtime.getSetting("ETHEREUM_RPC_URL") || runtime.getSetting("EVM_PROVIDER_MAINNET")
+    runtime.getSetting("ETHEREUM_RPC_URL") ||
+    runtime.getSetting("EVM_PROVIDER_MAINNET")
   );
   const hasBaseRpc = !!(
-    runtime.getSetting("BASE_RPC_URL") || runtime.getSetting("EVM_PROVIDER_BASE")
+    runtime.getSetting("BASE_RPC_URL") ||
+    runtime.getSetting("EVM_PROVIDER_BASE")
   );
-  const hasBscRpc = !!(runtime.getSetting("BSC_RPC_URL") || runtime.getSetting("EVM_PROVIDER_BSC"));
+  const hasBscRpc = !!(
+    runtime.getSetting("BSC_RPC_URL") || runtime.getSetting("EVM_PROVIDER_BSC")
+  );
   const hasArbitrumRpc = !!(
-    runtime.getSetting("ARBITRUM_RPC_URL") || runtime.getSetting("EVM_PROVIDER_ARBITRUM")
+    runtime.getSetting("ARBITRUM_RPC_URL") ||
+    runtime.getSetting("EVM_PROVIDER_ARBITRUM")
   );
   const _hasSolanaRpc = !!runtime.getSetting("SOLANA_RPC_URL");
 
-  const hasSolana = !!(solanaPrivateKey && typeof solanaPrivateKey === "string");
+  const hasSolana = !!(
+    solanaPrivateKey && typeof solanaPrivateKey === "string"
+  );
   const hasEvm = !!(evmPrivateKey && typeof evmPrivateKey === "string");
 
   // Determine Solana DEXes to load
@@ -51,7 +58,9 @@ function getDexConfiguration(runtime: IAgentRuntime): {
       const dexList = preferredSolanaDexes
         .split(",")
         .map((d) => d.trim().toLowerCase() as SolanaDex);
-      solanaDexes.push(...dexList.filter((d) => ["raydium", "orca", "meteora"].includes(d)));
+      solanaDexes.push(
+        ...dexList.filter((d) => ["raydium", "orca", "meteora"].includes(d)),
+      );
     } else {
       // Default: load all Solana DEXes
       solanaDexes.push("raydium", "orca", "meteora");
@@ -63,8 +72,14 @@ function getDexConfiguration(runtime: IAgentRuntime): {
   if (hasEvm) {
     const preferredEvmDexes = runtime.getSetting("LP_EVM_DEXES");
     if (preferredEvmDexes && typeof preferredEvmDexes === "string") {
-      const dexList = preferredEvmDexes.split(",").map((d) => d.trim().toLowerCase() as EvmDex);
-      evmDexes.push(...dexList.filter((d) => ["uniswap", "pancakeswap", "aerodrome"].includes(d)));
+      const dexList = preferredEvmDexes
+        .split(",")
+        .map((d) => d.trim().toLowerCase() as EvmDex);
+      evmDexes.push(
+        ...dexList.filter((d) =>
+          ["uniswap", "pancakeswap", "aerodrome"].includes(d),
+        ),
+      );
     } else {
       // Auto-detect based on configured RPCs
       if (hasEthereumRpc || hasArbitrumRpc) {
@@ -91,13 +106,15 @@ function getDexConfiguration(runtime: IAgentRuntime): {
 async function loadSolanaDexes(
   dexes: SolanaDex[],
   config: Record<string, string>,
-  runtime: IAgentRuntime
+  runtime: IAgentRuntime,
 ): Promise<void> {
   for (const dex of dexes) {
     try {
       switch (dex) {
         case "raydium": {
-          const { raydiumPlugin } = await import("../chains/solana/dex/raydium/index.ts");
+          const { raydiumPlugin } = await import(
+            "../chains/solana/dex/raydium/index.ts"
+          );
           if (raydiumPlugin.init) {
             await raydiumPlugin.init(config, runtime);
           }
@@ -105,7 +122,9 @@ async function loadSolanaDexes(
           break;
         }
         case "orca": {
-          const { orcaPlugin } = await import("../chains/solana/dex/orca/index.ts");
+          const { orcaPlugin } = await import(
+            "../chains/solana/dex/orca/index.ts"
+          );
           if (orcaPlugin.init) {
             await orcaPlugin.init(config, runtime);
           }
@@ -113,7 +132,9 @@ async function loadSolanaDexes(
           break;
         }
         case "meteora": {
-          const meteoraPlugin = await import("../chains/solana/dex/meteora/index.ts");
+          const meteoraPlugin = await import(
+            "../chains/solana/dex/meteora/index.ts"
+          );
           if (meteoraPlugin.default?.init) {
             await meteoraPlugin.default.init(config, runtime);
           }
@@ -124,7 +145,7 @@ async function loadSolanaDexes(
     } catch (error: unknown) {
       logger.warn(
         `[LP Manager] Failed to load ${dex} DEX:`,
-        error instanceof Error ? error.message : String(error)
+        error instanceof Error ? error.message : String(error),
       );
     }
   }
@@ -136,13 +157,15 @@ async function loadSolanaDexes(
 async function loadEvmDexes(
   dexes: EvmDex[],
   _config: Record<string, string>,
-  runtime: IAgentRuntime
+  runtime: IAgentRuntime,
 ): Promise<void> {
   for (const dex of dexes) {
     try {
       switch (dex) {
         case "uniswap": {
-          const { uniswapPlugin, UniswapV3LpService } = await import("../chains/evm/dex/uniswap/index.ts");
+          const { uniswapPlugin, UniswapV3LpService } = await import(
+            "../chains/evm/dex/uniswap/index.ts"
+          );
           const service = await UniswapV3LpService.start(runtime);
           // Register with DexInteractionService
           registerEvmService(runtime, service);
@@ -159,7 +182,9 @@ async function loadEvmDexes(
           break;
         }
         case "aerodrome": {
-          const { aerodromePlugin, AerodromeLpService } = await import("../chains/evm/dex/aerodrome/index.ts");
+          const { aerodromePlugin, AerodromeLpService } = await import(
+            "../chains/evm/dex/aerodrome/index.ts"
+          );
           const service = await AerodromeLpService.start(runtime);
           registerEvmService(runtime, service);
           logger.info(`[LP Manager] Loaded Aerodrome DEX`);
@@ -169,7 +194,7 @@ async function loadEvmDexes(
     } catch (error: unknown) {
       logger.warn(
         `[LP Manager] Failed to load ${dex} DEX:`,
-        error instanceof Error ? error.message : String(error)
+        error instanceof Error ? error.message : String(error),
       );
     }
   }
@@ -181,15 +206,17 @@ async function loadEvmDexes(
 function registerEvmService(runtime: IAgentRuntime, service: unknown): void {
   // We'll register EVM services after a delay to ensure DexInteractionService is ready
   setTimeout(() => {
-    const dexService = runtime.getService<DexInteractionService>("dex-interaction");
+    const dexService =
+      runtime.getService<DexInteractionService>("dex-interaction");
     if (
       dexService &&
-      typeof (dexService as unknown as Record<string, unknown>).registerDexService === "function"
+      typeof (dexService as unknown as Record<string, unknown>)
+        .registerDexService === "function"
     ) {
       // EVM services need an adapter to work with the Solana-centric DexInteractionService
       // For now, we just store them and they can be accessed directly
       logger.info(
-        `[LP Manager] EVM service registered: ${(service as { getDexName?: () => string }).getDexName?.()}`
+        `[LP Manager] EVM service registered: ${(service as { getDexName?: () => string }).getDexName?.()}`,
       );
     }
   }, 2000);
@@ -209,35 +236,41 @@ const lpManagerPlugin: Plugin = {
   ],
   tests: [lpManagerScenariosSuite, realTokenTestsSuite],
 
-  init: async (config: Record<string, string>, runtime: IAgentRuntime): Promise<void> => {
+  init: async (
+    config: Record<string, string>,
+    runtime: IAgentRuntime,
+  ): Promise<void> => {
     logger.info(`[LP Manager] Initializing ${LP_MANAGER_PLUGIN_NAME}...`);
 
     // Determine which DEXes to load based on configuration
-    const { solanaDexes, evmDexes, hasSolana, hasEvm } = getDexConfiguration(runtime);
+    const { solanaDexes, evmDexes, hasSolana, hasEvm } =
+      getDexConfiguration(runtime);
 
     logger.info(`[LP Manager] Configuration detected:`);
     logger.info(
-      `  - Solana: ${hasSolana ? "enabled" : "disabled"} (DEXes: ${solanaDexes.join(", ") || "none"})`
+      `  - Solana: ${hasSolana ? "enabled" : "disabled"} (DEXes: ${solanaDexes.join(", ") || "none"})`,
     );
     logger.info(
-      `  - EVM: ${hasEvm ? "enabled" : "disabled"} (DEXes: ${evmDexes.join(", ") || "none"})`
+      `  - EVM: ${hasEvm ? "enabled" : "disabled"} (DEXes: ${evmDexes.join(", ") || "none"})`,
     );
 
     if (!hasSolana && !hasEvm) {
       logger.warn(
-        `[LP Manager] No wallet credentials found. Please set SOLANA_PRIVATE_KEY and/or EVM_PRIVATE_KEY.`
+        `[LP Manager] No wallet credentials found. Please set SOLANA_PRIVATE_KEY and/or EVM_PRIVATE_KEY.`,
       );
       logger.warn(`[LP Manager] Loading mock services for testing...`);
 
       // Load mock services for testing
       setTimeout(async () => {
         try {
-          const { registerMockDexServices } = await import("./services/MockLpService.ts");
+          const { registerMockDexServices } = await import(
+            "./services/MockLpService.ts"
+          );
           await registerMockDexServices(runtime);
         } catch (error: unknown) {
           logger.error(
             `[LP Manager] Failed to load mock services:`,
-            error instanceof Error ? error.message : String(error)
+            error instanceof Error ? error.message : String(error),
           );
         }
       }, 3000);
@@ -257,32 +290,43 @@ const lpManagerPlugin: Plugin = {
 
     // Verify services loaded after a delay
     setTimeout(async () => {
-      const dexService = runtime.getService<DexInteractionService>("dex-interaction");
+      const dexService =
+        runtime.getService<DexInteractionService>("dex-interaction");
       if (
         dexService &&
-        typeof (dexService as unknown as Record<string, unknown>).getLpServices === "function"
+        typeof (dexService as unknown as Record<string, unknown>)
+          .getLpServices === "function"
       ) {
-        const lpServices = (dexService as DexInteractionService).getLpServices();
+        const lpServices = (
+          dexService as DexInteractionService
+        ).getLpServices();
         logger.info(`[LP Manager] ${lpServices.length} LP services registered`);
 
         // If no services loaded but we have credentials, load mocks as fallback
         if (lpServices.length === 0 && (hasSolana || hasEvm)) {
           logger.warn(
-            `[LP Manager] No real DEX services loaded, registering mock services as fallback`
+            `[LP Manager] No real DEX services loaded, registering mock services as fallback`,
           );
-          const { registerMockDexServices } = await import("./services/MockLpService.ts");
+          const { registerMockDexServices } = await import(
+            "./services/MockLpService.ts"
+          );
           await registerMockDexServices(runtime);
         }
       }
     }, 5000);
 
-    logger.info(`[LP Manager] Plugin ${LP_MANAGER_PLUGIN_NAME} initialized successfully.`);
+    logger.info(
+      `[LP Manager] Plugin ${LP_MANAGER_PLUGIN_NAME} initialized successfully.`,
+    );
   },
 };
 
 export default lpManagerPlugin;
 
-export { AerodromeLpService, aerodromePlugin } from "../chains/evm/dex/aerodrome/index.ts";
+export {
+  AerodromeLpService,
+  aerodromePlugin,
+} from "../chains/evm/dex/aerodrome/index.ts";
 export { orcaPlugin } from "../chains/solana/dex/orca/index.ts";
 export {
   PancakeSwapV3LpService,
@@ -292,7 +336,10 @@ export { raydiumPlugin } from "../chains/solana/dex/raydium/index.ts";
 // Export types
 export * from "./types.ts";
 // Export sub-plugins for direct use
-export { UniswapV3LpService, uniswapPlugin } from "../chains/evm/dex/uniswap/index.ts";
+export {
+  UniswapV3LpService,
+  uniswapPlugin,
+} from "../chains/evm/dex/uniswap/index.ts";
 // Export all services and utilities
 export {
   ConcentratedLiquidityService,

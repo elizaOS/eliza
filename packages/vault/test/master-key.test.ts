@@ -36,8 +36,14 @@ describe("passphraseMasterKey", () => {
   });
 
   test("different passphrases produce different keys", async () => {
-    const a = passphraseMasterKey({ passphrase: "passphrase-one-aaaa", cost: 1024 });
-    const b = passphraseMasterKey({ passphrase: "passphrase-two-bbbb", cost: 1024 });
+    const a = passphraseMasterKey({
+      passphrase: "passphrase-one-aaaa",
+      cost: 1024,
+    });
+    const b = passphraseMasterKey({
+      passphrase: "passphrase-two-bbbb",
+      cost: 1024,
+    });
     const k1 = await a.load();
     const k2 = await b.load();
     expect(k1.equals(k2)).toBe(false);
@@ -54,8 +60,16 @@ describe("passphraseMasterKey", () => {
 
   test("different services produce different default salts", async () => {
     const passphrase = "shared-test-passphrase";
-    const a = passphraseMasterKey({ passphrase, service: "service-a", cost: 1024 });
-    const b = passphraseMasterKey({ passphrase, service: "service-b", cost: 1024 });
+    const a = passphraseMasterKey({
+      passphrase,
+      service: "service-a",
+      cost: 1024,
+    });
+    const b = passphraseMasterKey({
+      passphrase,
+      service: "service-b",
+      cost: 1024,
+    });
     const k1 = await a.load();
     const k2 = await b.load();
     expect(k1.equals(k2)).toBe(false);
@@ -205,8 +219,7 @@ describe("defaultMasterKey — keychain bypassed on unsafe hosts", () => {
     process.env.ELIZA_VAULT_DISABLE_KEYCHAIN = "1";
   });
   afterEach(() => {
-    if (prevPassphrase === undefined)
-      delete process.env.ELIZA_VAULT_PASSPHRASE;
+    if (prevPassphrase === undefined) delete process.env.ELIZA_VAULT_PASSPHRASE;
     else process.env.ELIZA_VAULT_PASSPHRASE = prevPassphrase;
     if (prevDisable === undefined)
       delete process.env.ELIZA_VAULT_DISABLE_KEYCHAIN;

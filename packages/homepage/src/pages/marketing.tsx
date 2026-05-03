@@ -12,7 +12,13 @@ const RELEASE_BASE =
   "https://github.com/elizaOS/eliza/releases/latest/download";
 
 type DownloadButton = {
-  id: OS | "macos-any" | "linux-deb" | "linux-rpm" | "linux-appimage" | "linux-tar";
+  id:
+    | OS
+    | "macos-any"
+    | "linux-deb"
+    | "linux-rpm"
+    | "linux-appimage"
+    | "linux-tar";
   label: string;
   sublabel?: string;
   href: string;
@@ -80,7 +86,12 @@ function buildButtonFromGenerated(
   const sublabel = d.note ? `${d.note} · ${d.sizeLabel}` : d.sizeLabel;
   switch (d.id) {
     case "macos-arm64":
-      return { id: "macos-arm", label: "macOS Apple Silicon", sublabel, href: d.url };
+      return {
+        id: "macos-arm",
+        label: "macOS Apple Silicon",
+        sublabel,
+        href: d.url,
+      };
     case "macos-x64":
       return { id: "macos-intel", label: "macOS Intel", sublabel, href: d.url };
     case "windows-x64":
@@ -89,17 +100,29 @@ function buildButtonFromGenerated(
       // The release-data script produces "linux-x64" for AppImage or .tar.gz;
       // map by file extension so the right card lights up.
       if (/\.appimage$/i.test(d.fileName)) {
-        return { id: "linux-appimage", label: "AppImage", sublabel, href: d.url };
+        return {
+          id: "linux-appimage",
+          label: "AppImage",
+          sublabel,
+          href: d.url,
+        };
       }
       return { id: "linux-tar", label: "Tarball", sublabel, href: d.url };
     case "linux-deb":
-      return { id: "linux-deb", label: "Debian / Ubuntu", sublabel, href: d.url };
+      return {
+        id: "linux-deb",
+        label: "Debian / Ubuntu",
+        sublabel,
+        href: d.url,
+      };
     default:
       return null;
   }
 }
 
-function partitionGeneratedDownloads(downloads: readonly ReleaseDataDownload[]) {
+function partitionGeneratedDownloads(
+  downloads: readonly ReleaseDataDownload[],
+) {
   const mac: DownloadButton[] = [];
   const windows: DownloadButton[] = [];
   const linux: DownloadButton[] = [];
@@ -165,7 +188,9 @@ function DownloadCard({
           : "border-white/15 bg-white/5 text-white/90 hover:border-white/40 hover:bg-white/10",
       ].join(" ")}
     >
-      <span className="text-base font-semibold leading-tight">{button.label}</span>
+      <span className="text-base font-semibold leading-tight">
+        {button.label}
+      </span>
       {button.sublabel ? (
         <span className="text-xs text-white/60">{button.sublabel}</span>
       ) : null}

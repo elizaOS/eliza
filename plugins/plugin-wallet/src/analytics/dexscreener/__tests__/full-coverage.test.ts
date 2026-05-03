@@ -77,7 +77,7 @@ describe("DexScreener Actions - Full Coverage", () => {
       const state = createMockState();
 
       await expect(
-        searchTokensAction.handler(mockRuntime, message, state, {}, undefined)
+        searchTokensAction.handler(mockRuntime, message, state, {}, undefined),
       ).resolves.toBeUndefined();
     });
 
@@ -123,7 +123,7 @@ describe("DexScreener Actions - Full Coverage", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(mockService.search).toHaveBeenCalledWith({ query: "PEPE" });
@@ -153,7 +153,7 @@ describe("DexScreener Actions - Full Coverage", () => {
       const state = createMockState();
 
       await expect(
-        getTokenInfoAction.handler(mockRuntime, message, state, {}, undefined)
+        getTokenInfoAction.handler(mockRuntime, message, state, {}, undefined),
       ).resolves.toBeUndefined();
     });
 
@@ -201,7 +201,7 @@ describe("DexScreener Actions - Full Coverage", () => {
       });
 
       const message = createTestMemory(
-        "Get token info for 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+        "Get token info for 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
       );
       const callback = createMockCallback();
       const state = createMockState();
@@ -211,7 +211,7 @@ describe("DexScreener Actions - Full Coverage", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith({
@@ -233,7 +233,7 @@ describe("DexScreener Actions - Full Coverage", () => {
       });
 
       const message = createTestMemory(
-        "Get token info for 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+        "Get token info for 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
       );
       const callback = createMockCallback();
       const state = createMockState();
@@ -243,7 +243,7 @@ describe("DexScreener Actions - Full Coverage", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith({
@@ -259,7 +259,7 @@ describe("DexScreener Actions - Full Coverage", () => {
       });
 
       const message = createTestMemory(
-        "Get token info for 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+        "Get token info for 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
       );
       const callback = createMockCallback();
       const state = createMockState();
@@ -269,7 +269,7 @@ describe("DexScreener Actions - Full Coverage", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith({
@@ -303,7 +303,7 @@ describe("DexScreener Actions - Full Coverage", () => {
       const state = createMockState();
 
       await expect(
-        getTrendingAction.handler(mockRuntime, message, state, {}, undefined)
+        getTrendingAction.handler(mockRuntime, message, state, {}, undefined),
       ).resolves.toBeUndefined();
     });
 
@@ -335,7 +335,7 @@ describe("DexScreener Actions - Full Coverage", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(mockService.getTrending).toHaveBeenCalledWith({
@@ -364,7 +364,7 @@ describe("DexScreener Actions - Full Coverage", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith({
@@ -392,7 +392,7 @@ describe("DexScreener Actions - Full Coverage", () => {
       const state = createMockState();
 
       await expect(
-        getNewPairsAction.handler(mockRuntime, message, state, {}, undefined)
+        getNewPairsAction.handler(mockRuntime, message, state, {}, undefined),
       ).resolves.toBeUndefined();
     });
 
@@ -425,7 +425,7 @@ describe("DexScreener Actions - Full Coverage", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(mockService.getNewPairs).toHaveBeenCalledWith({
@@ -454,7 +454,7 @@ describe("DexScreener Actions - Full Coverage", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith({
@@ -480,7 +480,7 @@ describe("DexScreener Actions - Full Coverage", () => {
         const message = createTestMemory(`Show me tokens on ${chain}`);
         const isValid = await getPairsByChainAction.validate(
           mockRuntime,
-          message
+          message,
         );
         expect(isValid).toBe(true);
       }
@@ -496,8 +496,8 @@ describe("DexScreener Actions - Full Coverage", () => {
           message,
           state,
           {},
-          undefined
-        )
+          undefined,
+        ),
       ).resolves.toBeUndefined();
     });
 
@@ -530,7 +530,7 @@ describe("DexScreener Actions - Full Coverage", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(mockService.getPairsByChain).toHaveBeenCalledWith({
@@ -555,7 +555,7 @@ describe("DexScreener Actions - Full Coverage", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith({
@@ -593,7 +593,7 @@ describe("DexScreener Actions - Full Coverage", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith({

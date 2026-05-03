@@ -1,11 +1,11 @@
-import { useState, useCallback } from 'react';
-import type { AgentRuntime } from '@elizaos/core';
-import { getRuntime, resetRuntime, isRuntimeInitialized } from './runtime';
-import { useTrading } from './hooks/useTrading';
-import { WalletSetup } from './components/WalletSetup';
-import { TradingPanel } from './components/TradingPanel';
-import { PositionList } from './components/PositionList';
-import { TradeHistory } from './components/TradeHistory';
+import { useState, useCallback } from "react";
+import type { AgentRuntime } from "@elizaos/core";
+import { getRuntime, resetRuntime, isRuntimeInitialized } from "./runtime";
+import { useTrading } from "./hooks/useTrading";
+import { WalletSetup } from "./components/WalletSetup";
+import { TradingPanel } from "./components/TradingPanel";
+import { PositionList } from "./components/PositionList";
+import { TradeHistory } from "./components/TradeHistory";
 
 function App() {
   const [runtime, setRuntime] = useState<AgentRuntime | null>(null);
@@ -13,50 +13,57 @@ function App() {
   const [initError, setInitError] = useState<string | null>(null);
   const [initLoading, setInitLoading] = useState(false);
 
-  const { state, loading, error, startTrading, stopTrading } = useTrading(runtime);
+  const { state, loading, error, startTrading, stopTrading } =
+    useTrading(runtime);
 
-  const handleConfigure = useCallback(async (config: {
-    privateKey: string;
-    rpcUrl: string;
-    birdeyeApiKey: string;
-    anthropicApiKey: string;
-  }) => {
-    setInitLoading(true);
-    setInitError(null);
+  const handleConfigure = useCallback(
+    async (config: {
+      privateKey: string;
+      rpcUrl: string;
+      birdeyeApiKey: string;
+      anthropicApiKey: string;
+    }) => {
+      setInitLoading(true);
+      setInitError(null);
 
-    // Reset existing runtime if any
-    if (isRuntimeInitialized()) {
-      resetRuntime();
-    }
+      // Reset existing runtime if any
+      if (isRuntimeInitialized()) {
+        resetRuntime();
+      }
 
-    const newRuntime = await getRuntime({
-      solanaPrivateKey: config.privateKey,
-      solanaRpcUrl: config.rpcUrl,
-      birdeyeApiKey: config.birdeyeApiKey,
-      anthropicApiKey: config.anthropicApiKey,
-      tradingMode: 'paper', // Default to paper trading for safety
-    });
+      const newRuntime = await getRuntime({
+        solanaPrivateKey: config.privateKey,
+        solanaRpcUrl: config.rpcUrl,
+        birdeyeApiKey: config.birdeyeApiKey,
+        anthropicApiKey: config.anthropicApiKey,
+        tradingMode: "paper", // Default to paper trading for safety
+      });
 
-    setRuntime(newRuntime);
-    setIsConfigured(true);
-    setInitLoading(false);
-  }, []);
+      setRuntime(newRuntime);
+      setIsConfigured(true);
+      setInitLoading(false);
+    },
+    [],
+  );
 
-  const handleStartTrading = useCallback(async (config: {
-    strategy: string;
-    maxPositionSize: number;
-    stopLossPercent: number;
-    takeProfitPercent: number;
-    intervalMs: number;
-  }) => {
-    await startTrading({
-      strategy: config.strategy,
-      maxPositionSize: config.maxPositionSize,
-      stopLossPercent: config.stopLossPercent,
-      takeProfitPercent: config.takeProfitPercent,
-      intervalMs: config.intervalMs,
-    });
-  }, [startTrading]);
+  const handleStartTrading = useCallback(
+    async (config: {
+      strategy: string;
+      maxPositionSize: number;
+      stopLossPercent: number;
+      takeProfitPercent: number;
+      intervalMs: number;
+    }) => {
+      await startTrading({
+        strategy: config.strategy,
+        maxPositionSize: config.maxPositionSize,
+        stopLossPercent: config.stopLossPercent,
+        takeProfitPercent: config.takeProfitPercent,
+        intervalMs: config.intervalMs,
+      });
+    },
+    [startTrading],
+  );
 
   return (
     <div className="app-container">
@@ -66,13 +73,13 @@ function App() {
       </header>
 
       {initError && (
-        <div className="alert alert-warning" style={{ marginBottom: '24px' }}>
+        <div className="alert alert-warning" style={{ marginBottom: "24px" }}>
           {initError}
         </div>
       )}
 
       {error && (
-        <div className="alert alert-warning" style={{ marginBottom: '24px' }}>
+        <div className="alert alert-warning" style={{ marginBottom: "24px" }}>
           {error}
         </div>
       )}
@@ -86,7 +93,7 @@ function App() {
             isConfigured={isConfigured}
           />
 
-          <div style={{ marginTop: '24px' }}>
+          <div style={{ marginTop: "24px" }}>
             <TradingPanel
               isTrading={state.isTrading}
               currentStrategy={state.strategy}
@@ -99,12 +106,10 @@ function App() {
         </div>
 
         <div>
-          <PositionList 
-            positions={state.positions}
-          />
+          <PositionList positions={state.positions} />
 
-          <div style={{ marginTop: '24px' }}>
-            <TradeHistory 
+          <div style={{ marginTop: "24px" }}>
+            <TradeHistory
               trades={state.recentTrades}
               performance={state.performance}
             />
@@ -112,19 +117,27 @@ function App() {
         </div>
       </div>
 
-      <footer style={{ 
-        textAlign: 'center', 
-        marginTop: '48px', 
-        padding: '24px',
-        color: 'var(--text-muted)',
-        fontSize: '0.875rem'
-      }}>
+      <footer
+        style={{
+          textAlign: "center",
+          marginTop: "48px",
+          padding: "24px",
+          color: "var(--text-muted)",
+          fontSize: "0.875rem",
+        }}
+      >
         <p>
-          ⚠️ Trading cryptocurrencies involves significant risk. 
-          Only trade with funds you can afford to lose.
+          ⚠️ Trading cryptocurrencies involves significant risk. Only trade with
+          funds you can afford to lose.
         </p>
-        <p style={{ marginTop: '8px' }}>
-          Built with ElizaOS • <a href="https://github.com/elizaos/eliza" style={{ color: 'var(--accent-primary)' }}>GitHub</a>
+        <p style={{ marginTop: "8px" }}>
+          Built with ElizaOS •{" "}
+          <a
+            href="https://github.com/elizaos/eliza"
+            style={{ color: "var(--accent-primary)" }}
+          >
+            GitHub
+          </a>
         </p>
       </footer>
     </div>

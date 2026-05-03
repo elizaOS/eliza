@@ -69,7 +69,9 @@ function normalizeValidatorSpec(value: unknown): CustomValidatorSpec | null {
   };
 }
 
-function normalizeOnVerificationFail(value: unknown): OnVerificationFail | null {
+function normalizeOnVerificationFail(
+  value: unknown,
+): OnVerificationFail | null {
   return value === "retry" || value === "escalate" ? value : null;
 }
 
@@ -175,7 +177,6 @@ function looksLikeProseTask(text: string | undefined | null): boolean {
   return false;
 }
 
-
 /**
  * When the action-selector LLM trims a multi-clause user prompt down to a
  * single imperative `task`, the rest of the user text is dropped — e.g.
@@ -196,15 +197,15 @@ function looksLikeProseTask(text: string | undefined | null): boolean {
  * planner trimmed.
  */
 export function preserveUserPromptInTask(
-	extractedTask: string,
-	userText: string,
+  extractedTask: string,
+  userText: string,
 ): string {
-	const task = (extractedTask ?? "").trim();
-	const raw = (userText ?? "").trim();
-	if (!raw) return task;
-	if (raw.length <= task.length) return task;
-	if (raw.toLowerCase().includes(task.toLowerCase())) return raw;
-	return `${task}\n\n# Full user message (preserved — may contain context the action-selector trimmed)\n\n${raw}`;
+  const task = (extractedTask ?? "").trim();
+  const raw = (userText ?? "").trim();
+  if (!raw) return task;
+  if (raw.length <= task.length) return task;
+  if (raw.toLowerCase().includes(task.toLowerCase())) return raw;
+  return `${task}\n\n# Full user message (preserved — may contain context the action-selector trimmed)\n\n${raw}`;
 }
 
 /**
@@ -577,12 +578,14 @@ export const startCodingTaskAction: BackgroundAction = {
     // Persisted onto session metadata so plugin-app-control's
     // verification-room-bridge can find it when filtering broadcast events.
     const paramsMetadata =
-      params?.metadata && typeof params.metadata === "object" &&
+      params?.metadata &&
+      typeof params.metadata === "object" &&
       !Array.isArray(params.metadata)
         ? (params.metadata as Record<string, unknown>)
         : null;
     const contentMetadata =
-      content.metadata && typeof content.metadata === "object" &&
+      content.metadata &&
+      typeof content.metadata === "object" &&
       !Array.isArray(content.metadata)
         ? (content.metadata as Record<string, unknown>)
         : null;
@@ -645,7 +648,10 @@ export const startCodingTaskAction: BackgroundAction = {
     if (agentsParam) {
       return handleMultiAgent(ctx, agentsParam);
     }
-    return handleMultiAgent(ctx, preserveUserPromptInTask(task, userText) || userText);
+    return handleMultiAgent(
+      ctx,
+      preserveUserPromptInTask(task, userText) || userText,
+    );
   },
 
   parameters: [

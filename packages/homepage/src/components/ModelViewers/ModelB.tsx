@@ -1,5 +1,3 @@
-
-
 import {
   useRef,
   useEffect,
@@ -644,7 +642,11 @@ function Model() {
   });
 
   return (
-    <animated.group rotation-z={rotation} position-z={dipZ} position-y={slideY.to((y) => -y)}>
+    <animated.group
+      rotation-z={rotation}
+      position-z={dipZ}
+      position-y={slideY.to((y) => -y)}
+    >
       <primitive object={scene} position={[0, 0, 3.6]} />
     </animated.group>
   );

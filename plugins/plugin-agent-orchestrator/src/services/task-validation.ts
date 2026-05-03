@@ -109,8 +109,7 @@ function parseValidationResponse(raw: string): ValidationResponse | null {
 
 function getValidationRootDir(): string {
   const stateDir =
-    process.env.ELIZA_STATE_DIR?.trim() ||
-    path.join(homedir(), ".eliza");
+    process.env.ELIZA_STATE_DIR?.trim() || path.join(homedir(), ".eliza");
   return path.join(stateDir, "task-validation");
 }
 
