@@ -49,9 +49,9 @@ export const APPS_VIEW_HIDDEN_APP_NAMES = [
   "@elizaos/app-knowledge",
   "@elizaos/app-screenshare",
   "@elizaos/app-task-coordinator",
-  // Android-only system apps (declared `androidOnly: true` in their
-  // package.json elizaos.app block). They are surfaced inside the
-  // Android shell, never the desktop / web catalog.
+  // MiladyOS-only system apps (declared `androidOnly: true` in their
+  // package.json elizaos.app block). They are surfaced inside the custom
+  // Android OS shell, never stock Android, desktop, or web catalogs.
   "@elizaos/app-contacts",
   "@elizaos/app-phone",
   "@elizaos/app-wifi",
