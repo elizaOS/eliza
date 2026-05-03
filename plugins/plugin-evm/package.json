@@ -28,7 +28,7 @@
   "sideEffects": false,
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@lifi/data-types": "5.15.5",
+    "@lifi/data-types": "6.79.1",
     "@lifi/sdk": "^3.7.9",
     "@lifi/types": "^17.18.0",
     "viem": "^2.21.0",
