@@ -6,6 +6,59 @@ import {
   parseBooleanFromText,
 } from "@elizaos/core";
 import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
+import {
+  SpeechToTextConvertRequestModelId,
+  SpeechToTextConvertRequestTimestampsGranularity,
+  TextToSpeechStreamRequestOutputFormat,
+} from "@elevenlabs/elevenlabs-js/api";
+import type {
+  BodySpeechToTextV1SpeechToTextPost,
+  MultichannelSpeechToTextResponseModel,
+  SpeechToTextChunkResponseModel,
+  SpeechToTextConvertRequestModelId,
+  SpeechToTextConvertRequestTimestampsGranularity,
+  TextToSpeechStreamRequestOutputFormat,
+} from "@elevenlabs/elevenlabs-js/api";
+
+function parseTtsOutputFormat(
+  format: string,
+): TextToSpeechStreamRequestOutputFormat {
+  for (const allowed of Object.values(TextToSpeechStreamRequestOutputFormat)) {
+    if (allowed === format) return allowed;
+  }
+  throw new Error(`Unsupported ElevenLabs TTS output format: ${format}`);
+}
+
+function parseSttModelId(id: string): SpeechToTextConvertRequestModelId {
+  for (const allowed of Object.values(SpeechToTextConvertRequestModelId)) {
+    if (allowed === id) return allowed;
+  }
+  throw new Error(`Unsupported ElevenLabs STT model: ${id}`);
+}
+
+function parseSttTimestampsGranularity(
+  value: string,
+): SpeechToTextConvertRequestTimestampsGranularity {
+  for (const allowed of Object.values(
+    SpeechToTextConvertRequestTimestampsGranularity,
+  )) {
+    if (allowed === value) return allowed;
+  }
+  throw new Error(
+    `Unsupported ElevenLabs STT timestamps granularity: ${value}`,
+  );
+}
+
+function extractTranscript(
+  response:
+    | SpeechToTextChunkResponseModel
+    | MultichannelSpeechToTextResponseModel,
+): string {
+  if ("transcripts" in response) {
+    return response.transcripts.map((t) => t.text).join("\n");
+  }
+  return response.text;
+}
 
 /**
  * Voice settings configuration for ElevenLabs API

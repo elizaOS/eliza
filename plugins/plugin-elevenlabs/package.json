@@ -59,7 +59,9 @@
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
-    "lint": "prettier --write ./src"
+    "lint": "prettier --write ./src",
+    "lint:check": "prettier --check ./src",
+    "typecheck": "tsc --project tsconfig.build.json --noEmit"
   },
   "publishConfig": {
     "access": "public"
