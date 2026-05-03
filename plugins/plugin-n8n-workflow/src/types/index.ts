@@ -269,6 +269,96 @@ export function isCredentialProvider(service: unknown): service is CredentialPro
   return typeof (service as Record<string, unknown>).resolve === 'function';
 }
 
+// Runtime context provider types
+
+export const N8N_RUNTIME_CONTEXT_PROVIDER_TYPE = 'n8n_runtime_context_provider';
+
+export interface RuntimeContextSupportedCredential {
+  credType: string;
+  friendlyName: string;
+  nodeTypes: string[];
+}
+
+/**
+ * Optional runtime-supplied context the host injects into the workflow-generation
+ * prompt. The plugin treats this as advisory information for the LLM:
+ * - `supportedCredentials` becomes a "## Available Credentials" section so the
+ *   LLM only references credential types the host can actually resolve.
+ * - `facts` becomes a "## Runtime Facts" section with real values (Discord
+ *   guilds/channels, the user's Gmail email, etc.) so the LLM substitutes
+ *   them verbatim instead of emitting `{{YOUR_…}}` placeholders.
+ *
+ * The plugin works without a provider — both sections are simply omitted.
+ */
+export interface RuntimeContext {
+  /**
+   * Optional. When omitted (or empty), the generation prompt simply
+   * skips the "## Available Credentials" section. Implementers can
+   * return only what they have without fabricating empty arrays.
+   */
+  supportedCredentials?: RuntimeContextSupportedCredential[];
+  /**
+   * Optional. When omitted (or empty), the generation prompt simply
+   * skips the "## Runtime Facts" section.
+   */
+  facts?: string[];
+  /**
+   * Optional bias hint for keyword extraction. Lowercase provider tags the
+   * host knows it can satisfy (e.g. `["gmail", "discord"]`). When present,
+   * keyword extraction nudges the LLM toward these providers and away from
+   * generic fallbacks (e.g. emit `gmail` not `imap`, `discord` not
+   * `webhook`). Always optional — older hosts that omit it keep working.
+   */
+  preferredProviders?: string[];
+}
+
+/**
+ * Originating-conversation routing context. Hosts pass this when the workflow
+ * is being generated from inside a platform conversation (e.g. a Discord DM),
+ * so the LLM can target "this channel" / "back to me" without the user having
+ * to name an ID. The host typically derives it from the inbound message's
+ * `MessageMetadata` and surfaces it as a fact line ("This workflow was
+ * prompted from Discord channel #foo (id 123) in Bar (id 456)…").
+ *
+ * All fields are optional. Hosts only fill the platform block that matches
+ * the trigger source. `resolvedNames` lets the host pass human names for the
+ * channel / server (when available) so the prompt can reference them in
+ * natural language.
+ */
+export interface TriggerContext {
+  /** Source platform — `"discord" | "telegram" | "slack" | "gmail" | …` */
+  source?: string;
+  discord?: { channelId?: string; guildId?: string; threadId?: string };
+  telegram?: { chatId?: string | number; threadId?: string | number };
+  slack?: { channelId?: string; teamId?: string };
+  resolvedNames?: { channel?: string; server?: string };
+}
+
+export interface RuntimeContextProviderInput {
+  userId: string;
+  relevantNodes: NodeDefinition[];
+  relevantCredTypes: string[];
+  /**
+   * Optional originating-conversation context. Forward-compatible: hosts that
+   * don't know about it simply omit the field.
+   */
+  triggerContext?: TriggerContext;
+}
+
+export interface RuntimeContextProvider {
+  getRuntimeContext(input: RuntimeContextProviderInput): Promise<RuntimeContext>;
+}
+
+/**
+ * Type guard to check if a service implements RuntimeContextProvider.
+ */
+export function isRuntimeContextProvider(service: unknown): service is RuntimeContextProvider {
+  if (!service || typeof service !== 'object') {
+    return false;
+  }
+  return typeof (service as Record<string, unknown>).getRuntimeContext === 'function';
+}
+
 // Credential store types
 
 export const N8N_CREDENTIAL_STORE_TYPE = 'n8n_credential_store';
@@ -282,6 +372,17 @@ export interface N8nCredentialStoreApi {
   get(userId: string, credType: string): Promise<string | null>;
   set(userId: string, credType: string, n8nCredId: string): Promise<void>;
   listByUser(userId: string): Promise<CredentialMapping[]>;
+  /**
+   * Forget the cached n8n credential id for (userId, credType). The next
+   * resolution falls back to credProvider so a disconnect-then-prompt flow
+   * surfaces `needs_auth` instead of reusing stale credentials.
+   *
+   * Optional: external/custom credential-store implementations that pre-date
+   * this method continue to satisfy the interface; hosts that need to cascade
+   * a disconnect must check for the method (`store.delete?.(userId, credType)`)
+   * before calling.
+   */
+  delete?(userId: string, credType: string): Promise<void>;
 }
 
 // Credential resolution types

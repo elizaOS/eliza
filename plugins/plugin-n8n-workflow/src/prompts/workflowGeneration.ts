@@ -97,28 +97,79 @@ Each node type (e.g. HTTP Request, Slack, Google Sheets) defines:
 
 ---
 
-### 6. **Credentials**
+### 6. **Credentials — MANDATORY INVARIANT**
 
-Some nodes require credentials. For nodes that need authentication:
+EVERY node whose definition has a non-empty \`credentials\` array MUST include a matching \`credentials\` block in the emitted node JSON. **This is a hard rule.** A workflow that omits the credentials block for a credentialed node is an invalid output.
 
 **IMPORTANT:** Always use native n8n nodes (e.g. \`n8n-nodes-base.gmail\`, \`n8n-nodes-base.slack\`) rather than generic HTTP Request nodes.
 
-When a node requires credentials, include a \`credentials\` field in the node object:
+**Exact shape — copy verbatim, do not omit, do not improvise:**
 
 \`\`\`json
 {
   "name": "Send Gmail",
   "type": "n8n-nodes-base.gmail",
   "credentials": {
-    "gmailOAuth2": {
+    "<credentialTypeName>": {
       "id": "{{CREDENTIAL_ID}}",
-      "name": "Gmail Account"
+      "name": "<Friendly Name>"
     }
   }
 }
 \`\`\`
 
-The credential ID will be injected automatically. **Use the exact credential type name from the node's \`credentials\` array** (e.g. \`gmailOAuth2\`, \`slackOAuth2Api\`, \`stripeApi\`). The credential type name varies per node — always refer to the node definition provided to you.
+The host injects the real \`id\` after generation; you write the literal string \`"{{CREDENTIAL_ID}}"\`.
+
+Pick \`<credentialTypeName>\` from the node definition's \`credentials[].name\` field. Common names: \`gmailOAuth2\`, \`slackOAuth2Api\`, \`discordApi\`, \`discordBotApi\`, \`telegramApi\`, \`googleSheetsOAuth2Api\`, \`googleCalendarOAuth2Api\`. **Never invent type names** — always use the value from the node definition. When the host publishes a \`## Available Credentials\` section below, prefer those names.
+
+Pick \`<Friendly Name>\` to match what the user would see in n8n's UI: "Gmail Account", "Slack Workspace", "Discord Bot", "Telegram Bot", etc.
+
+**Self-check before emitting:** for every node whose \`credentials\` array is non-empty in its definition, verify the emitted node has the \`credentials\` block. Missing this on a Gmail / Slack / Discord / Telegram node makes the workflow non-runnable.
+
+---
+
+### 6a. **\`typeVersion\` selection — MANDATORY INVARIANT**
+
+Each node definition includes \`version: number[]\` listing the EXACT versions n8n knows about (e.g. \`[1, 2, 2.1]\` for Gmail). You MUST pick \`typeVersion\` from this array — pick the highest available value.
+
+**Hard rule:** never invent versions not in the array. If the array is \`[1, 2, 2.1]\`, do NOT emit \`2.2\`, \`2.3\`, or \`3\`. n8n's runtime cannot find a node implementation for a version you invent and the workflow crashes at activation with \`Cannot read properties of undefined (reading 'execute')\`.
+
+If a node definition lists \`version: [2]\` only, emit \`typeVersion: 2\`. If it lists \`version: [1, 2, 2.1]\`, emit \`typeVersion: 2.1\` (the highest).
+
+---
+
+### 6b. **\`parameters.authentication\` ↔ credentials coupling — MANDATORY INVARIANT**
+
+Some nodes (Gmail, Discord, etc.) gate which credential type applies based on \`parameters.authentication\`. Each such node's definition includes a \`credentialAuthMatrix\` mapping credType to the required authentication value, e.g.:
+
+\`\`\`json
+"credentialAuthMatrix": {
+  "gmailOAuth2": "oAuth2",
+  "googleApi": "serviceAccount"
+}
+\`\`\`
+
+**Hard rule:** when you attach a \`credentials\` block of type X, set \`parameters.authentication\` to the matching value from \`credentialAuthMatrix\`. Mismatched (or missing) \`authentication\` values mean n8n cannot bind the credential at activation time and the workflow crashes the same way as a missing typeVersion.
+
+Example — attaching \`gmailOAuth2\` credentials to a Gmail node:
+
+\`\`\`json
+{
+  "name": "Get Gmail Messages",
+  "type": "n8n-nodes-base.gmail",
+  "typeVersion": 2.1,
+  "parameters": {
+    "authentication": "oAuth2",
+    "resource": "message",
+    "operation": "getAll"
+  },
+  "credentials": {
+    "gmailOAuth2": { "id": "{{CREDENTIAL_ID}}", "name": "Gmail Account" }
+  }
+}
+\`\`\`
+
+If a node has no \`credentialAuthMatrix\` field, no \`authentication\` parameter is required.
 
 ---
 
@@ -286,6 +337,35 @@ The \`name\` field must be a short, descriptive label (3-6 words max) that summa
 - "Workflow - Tu peux creer un workflow qui trigger a chaque fois que je recois un mail" (user prompt as name)
 - "My Workflow" (too vague)
 - "Automation" (meaningless)
+
+---
+
+## **Runtime Facts — substitute, do not placeholder**
+
+The host provides real values for the user's connectors in the optional \`## Runtime Facts\` block below. Use those values verbatim. NEVER emit a placeholder for a value the runtime has provided. Specifically, you must NOT emit:
+
+- \`"={{YOUR_SERVER_ID}}"\`, \`"={{YOUR_GUILD_ID}}"\`, \`"={{YOUR_CHANNEL_ID}}"\`, or any \`"={{YOUR_…}}"\` template for an ID
+- \`"<your-email-here>"\`, \`"<channel-name>"\`, or any \`<…>\`-bracketed pseudo-value for a fact the runtime has provided
+- \`"PLACEHOLDER"\`, \`"REPLACE_ME"\`, \`"FILL_ME_IN"\`, or similar literal placeholder strings
+
+When the runtime gives you a Discord guild id or channel id, write it verbatim as a JSON string of digits — e.g. \`"123456789012345678"\` — NOT as an unquoted number. Discord snowflake ids exceed JavaScript's safe-integer range (~17–20 digits), and n8n's Discord node expects them as JSON strings. \`"#general"\` is NOT a valid \`channelId\`. When the runtime gives you the user's Gmail email, write the email.
+
+If a fact is genuinely missing AND the runtime did not provide it, add a question to \`_meta.requiresClarification\` rather than emitting a placeholder.
+
+---
+
+## **Node Output Field Names — exact match only**
+
+When you write \`{{ $json.someField }}\` or \`{{ $node["X"].json.someField }}\`, \`someField\` MUST be one of:
+
+  (a) a field listed in the optional \`## Node Output Schemas\` section for that node, OR
+  (b) a field you yourself created earlier in the same workflow (in a Set / Code / Function node's \`parameters\`).
+
+If neither applies, you MUST NOT invent a field name from training data. Pick the closest documented field, OR pass the entire \`$json\` object, OR add an explicit \`Set\` node upstream that creates the field.
+
+**Common Gmail mistake:** writing \`{{ $json.subject }}\` — Gmail's \`getAll\` operation returns \`snippet\` (top-level) and \`payload.headers\` (an array of \`{name, value}\` entries; extract Subject by filtering \`name == 'Subject'\`). Use the schema, not your guess.
+
+**Reference your own intermediate nodes precisely.** If a Code or Function node emits a field named \`concatenated_snippet\`, downstream nodes must reference exactly \`concatenated_snippet\` — not \`concatenate_snippet\`, not \`concatenatedSnippet\`. Typos are not auto-corrected; copy the field name verbatim from the upstream node.
 
 ---
 

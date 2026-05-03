@@ -177,6 +177,12 @@ function extractExpressionsFromString(str: string, paramPath: string): Expressio
 
   // Match every $json.field reference, even inside compound expressions like {{ $json.a || $json.b }}
   const simplePattern = /\$json\.([a-zA-Z0-9_.\[\]'"-]{1,200})/g;
+  // Bracket-notation variant: $json["someField"] or $json['someField'] (Session 21
+  // follow-up). The LLM occasionally emits this when the field name has chars
+  // that wouldn't survive dot notation, OR when it's just "trying to be safe".
+  // Without this pattern, validateAndRepair walks past references like
+  // {{ $json["concatenate_subject"] }} silently — the typo never gets caught.
+  const bracketPattern = /\$json\[\s*(['"])([^'"]{1,200})\1\s*\]/g;
   const namedNodePattern =
     /\$\(['"]([^'"]{1,100})['"]\)\.item\.json\.([a-zA-Z0-9_.\[\]'"-]{1,200})/g;
 
@@ -184,6 +190,16 @@ function extractExpressionsFromString(str: string, paramPath: string): Expressio
 
   while ((match = simplePattern.exec(str)) !== null) {
     const field = match[1];
+    refs.push({
+      fullExpression: match[0],
+      field,
+      path: parseFieldPath(field),
+      paramPath,
+    });
+  }
+
+  while ((match = bracketPattern.exec(str)) !== null) {
+    const field = match[2];
     refs.push({
       fullExpression: match[0],
       field,

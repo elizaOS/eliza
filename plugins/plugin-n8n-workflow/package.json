@@ -55,7 +55,7 @@
     "eslint": "^9",
     "n8n-nodes-base": "^1.121.12",
     "prettier": "^3.8.1",
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.3"
   },
   "publishConfig": {
     "access": "public"
