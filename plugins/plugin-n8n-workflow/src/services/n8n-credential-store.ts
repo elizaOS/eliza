@@ -83,11 +83,6 @@ export class N8nCredentialStore extends Service implements N8nCredentialStoreApi
     const db = this.getDb();
     await db
       .delete(credentialMappings)
-      .where(
-        and(
-          eq(credentialMappings.userId, userId),
-          eq(credentialMappings.credType, credType)
-        )
-      );
+      .where(and(eq(credentialMappings.userId, userId), eq(credentialMappings.credType, credType)));
   }
 }

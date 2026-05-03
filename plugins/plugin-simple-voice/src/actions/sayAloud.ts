@@ -146,9 +146,7 @@ export const sayAloudAction: Action = {
       __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
     const __avRegex = new RegExp("\\b(?:say|aloud)\\b", "i");
     const __avRegexOk = __avRegex.test(__avText);
-    const __avSource = String(
-      message?.content?.source ?? "",
-    );
+    const __avSource = String(message?.content?.source ?? "");
     const __avExpectedSource = "";
     const __avSourceOk = __avExpectedSource
       ? __avSource === __avExpectedSource
@@ -177,9 +175,7 @@ export const sayAloudAction: Action = {
         __avKeywords.length > 0 &&
         __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
       const __avRegexOk = new RegExp("\\b(?:say|aloud)\\b", "i").test(__avText);
-      const __avSource = String(
-        message?.content?.source ?? "",
-      );
+      const __avSource = String(message?.content?.source ?? "");
       const __avExpectedSource = "";
       const __avSourceOk = __avExpectedSource
         ? __avSource === __avExpectedSource
