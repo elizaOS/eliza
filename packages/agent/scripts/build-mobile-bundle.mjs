@@ -61,24 +61,51 @@ await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
 
 function findPgliteDist() {
+  // pglite.wasm + pglite.data MUST match the @electric-sql/pglite version
+  // that the bundled agent JS resolves at runtime — they're a triple
+  // (engine + filesystem image + JS shim). The agent imports from
+  // @elizaos/plugin-sql, which pins ^0.3.3, while the eliza repo's
+  // top-level deps may pull in a newer 0.4.x for unrelated reasons.
+  // Bun's hoisting can park a 0.4.x copy at the top of `node_modules/.bun`
+  // and a `readdirSync` walk will pick that up first. The runtime then
+  // throws "Invalid FS bundle size: <new> !== <old>" because the bundled
+  // 0.3.x WASM expects the 0.3.x .data while we shipped 0.4.x.
+  //
+  // Resolve plugin-sql's OWN private node_modules first so the staged
+  // assets always match the bundled engine. Fall back to the repoRoot
+  // hoisted location and to the .bun cache for the bundled-monorepo
+  // case where plugin-sql is hoisted instead of nested.
   const candidates = [
+    path.join(
+      repoRoot,
+      "plugins",
+      "plugin-sql",
+      "typescript",
+      "node_modules",
+      "@electric-sql",
+      "pglite",
+      "dist",
+    ),
     path.join(repoRoot, "node_modules", "@electric-sql", "pglite", "dist"),
   ];
   const bunDir = path.join(repoRoot, "node_modules", ".bun");
   if (existsSync(bunDir)) {
-    for (const entry of readdirSyncSafe(bunDir)) {
-      if (entry.startsWith("@electric-sql+pglite@")) {
-        candidates.push(
-          path.join(
-            bunDir,
-            entry,
-            "node_modules",
-            "@electric-sql",
-            "pglite",
-            "dist",
-          ),
-        );
-      }
+    // Sort .bun entries by version so that 0.3.x wins over 0.4.x —
+    // matches the plugin-sql ^0.3.3 pin without forcing a manual list.
+    const sortedEntries = readdirSyncSafe(bunDir)
+      .filter((e) => e.startsWith("@electric-sql+pglite@"))
+      .sort();
+    for (const entry of sortedEntries) {
+      candidates.push(
+        path.join(
+          bunDir,
+          entry,
+          "node_modules",
+          "@electric-sql",
+          "pglite",
+          "dist",
+        ),
+      );
     }
   }
   for (const c of candidates) {

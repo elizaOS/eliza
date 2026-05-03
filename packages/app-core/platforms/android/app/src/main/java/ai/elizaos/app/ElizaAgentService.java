@@ -11,6 +11,7 @@ import android.content.pm.ServiceInfo;
 import android.content.res.AssetManager;
 import android.os.Build;
 import android.os.IBinder;
+import android.provider.Settings;
 import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
@@ -854,6 +855,41 @@ public class ElizaAgentService extends Service {
             agentEnv.put("ELIZA_DISABLE_AUTO_BOOTSTRAP", "1");
             agentEnv.put("MILADY_DISABLE_AUTO_BOOTSTRAP", "1");
             agentEnv.put("ELIZA_DISABLE_TRAJECTORY_LOGGING", "1");
+
+            // ── Vault passphrase ──────────────────────────────────────
+            // The runtime's vault-bootstrap mirrors process.env secrets
+            // through @elizaos/vault, which on a headless Linux host
+            // (Android counts: no reachable D-Bus session) refuses the
+            // OS keychain and demands ELIZA_VAULT_PASSPHRASE (≥12 chars)
+            // to derive a master key. Without it the bootstrap fails
+            // and startEliza() throws "[vault-bootstrap] all 1 secret
+            // writes failed; vault unreachable", which the watchdog
+            // interprets as a crash and restart-loops the agent.
+            //
+            // Derive a per-install stable passphrase from ANDROID_ID
+            // (Settings.Secure.ANDROID_ID — 16 hex chars, per-app-install
+            // on Android 8+, stable across reboots and OS updates).
+            // Prefix with a constant so the value is always ≥12 chars
+            // even if ANDROID_ID is unexpectedly short or null. The
+            // resulting passphrase is opaque to the user and is only
+            // ever stored in memory in the spawned bun process.
+            //
+            // Operators can override by setting ELIZA_VAULT_PASSPHRASE
+            // in the parent service env (e.g. for a deterministic dev
+            // passphrase across reinstalls).
+            if (!env.containsKey("ELIZA_VAULT_PASSPHRASE")) {
+                String androidId = Settings.Secure.getString(
+                    getContentResolver(),
+                    Settings.Secure.ANDROID_ID
+                );
+                if (androidId == null || androidId.length() < 8) {
+                    androidId = "fallback-" + Build.SERIAL;
+                }
+                agentEnv.put(
+                    "ELIZA_VAULT_PASSPHRASE",
+                    "elizaos-android-vault-" + androidId
+                );
+            }
 
             // Default to info-level logging so plugin resolution + listen
             // progress is visible in agent.log. The runtime defaults to
