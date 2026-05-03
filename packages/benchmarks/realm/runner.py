@@ -10,7 +10,6 @@ import logging
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
 
 from benchmarks.realm.types import (
     LEADERBOARD_SCORES,
@@ -24,11 +23,7 @@ from benchmarks.realm.types import (
     REALMResultDetails,
 )
 from benchmarks.realm.dataset import REALMDataset
-from benchmarks.realm.agent import REALMAgent, MockREALMAgent
 from benchmarks.realm.evaluator import REALMEvaluator, MetricsCalculator
-
-if TYPE_CHECKING:
-    from elizaos.runtime import AgentRuntime
 
 logger = logging.getLogger(__name__)
 
@@ -39,50 +34,27 @@ class REALMRunner:
     def __init__(
         self,
         config: REALMConfig,
-        runtime: Optional["AgentRuntime"] = None,
-        use_mock: bool = False,
+        agent: object,
         enable_trajectory_logging: bool = True,
-        agent: object | None = None,
     ):
         """
         Initialize the REALM benchmark runner.
 
         Args:
             config: Benchmark configuration
-            runtime: Optional ElizaOS runtime for model interactions
-            use_mock: If True, use mock agent for testing
+            agent: Pre-built agent (any object exposing ``initialize`` /
+                ``solve_task`` / ``close``). The canonical implementation lives
+                in :class:`eliza_adapter.realm.ElizaREALMAgent` and routes
+                through the eliza TS bridge.
             enable_trajectory_logging: Enable trajectory logging for training export
-            agent: Optional pre-built agent (any object exposing ``initialize`` /
-                ``solve_task`` / ``close``). When provided, ``use_mock`` and
-                ``runtime`` are ignored. Used by the ``--provider eliza``
-                CLI mode to plug in :class:`eliza_adapter.realm.ElizaREALMAgent`.
         """
         self.config = config
-        self.runtime = runtime
-        self.use_mock = use_mock
         self.enable_trajectory_logging = enable_trajectory_logging
 
         # Initialize components
         self.dataset = REALMDataset(config.data_path)
+        self.agent = agent
 
-        if agent is not None:
-            self.agent = agent  # type: ignore[assignment]
-        elif use_mock:
-            self.agent = MockREALMAgent(
-                return_expected=True,
-                success_rate=0.8,
-            )
-        else:
-            self.agent = REALMAgent(
-                runtime=runtime,
-                max_steps=config.max_steps,
-                execution_model=config.execution_model,
-                enable_adaptation=config.enable_adaptation,
-                temperature=config.temperature,
-                use_llm=True,
-                enable_trajectory_logging=enable_trajectory_logging,
-            )
-        
         self.evaluator = REALMEvaluator()
         self.metrics_calculator = MetricsCalculator()
 

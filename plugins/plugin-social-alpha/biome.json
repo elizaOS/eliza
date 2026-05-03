@@ -7,7 +7,8 @@
 			"**",
 			"!**/__tests__/e2e/benchmarks/data_processed/**",
 			"!**/dist/**",
-			"!**/node_modules/**"
+			"!**/node_modules/**",
+			"!src/frontend/index.css"
 		]
 	}
 }
