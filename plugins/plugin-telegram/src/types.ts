@@ -102,8 +102,7 @@ export interface TelegramMessageSentPayload extends MessagePayload {
 /**
  * Telegram-specific reaction received payload
  */
-export interface TelegramReactionReceivedPayload
-  extends TelegramMessageReceivedPayload {
+export interface TelegramReactionReceivedPayload extends TelegramMessageReceivedPayload {
   /** The reaction type as a string */
   reactionString: string;
   /** The original reaction object */

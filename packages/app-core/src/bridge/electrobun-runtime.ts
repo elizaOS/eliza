@@ -52,11 +52,11 @@ export function getBackendStartupTimeoutMs(): number {
   // ~30s PGlite migration + ~30s agent registration before the API is
   // reachable, vs. <5s for cloud/remote backends. Use the same 3-minute
   // budget as the desktop path so the splash poll loop catches it
-  // instead of dead-ending on a "Backend Timeout" card. Detection is
-  // the canonical `ElizaOS/<tag>` UA suffix; white-label forks should
-  // either also append `ElizaOS/<tag>` to their UA or override this
-  // function in their own bridge layer.
-  if (typeof navigator !== "undefined" && /\bElizaOS\//.test(navigator.userAgent ?? "")) {
+  // instead of dead-ending on a "Backend Timeout" card.
+  if (
+    typeof navigator !== "undefined" &&
+    /\bMiladyOS\//.test(navigator.userAgent ?? "")
+  ) {
     return 180_000;
   }
   return 30_000;

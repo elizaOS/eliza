@@ -74,7 +74,9 @@ describe("fetchDiscordEnumeration", () => {
     const { fn } = makeFetch({
       "/users/@me/guilds": { ok: false, status: 401 },
     });
-    const result = await fetchDiscordEnumeration("bad-token", { fetchImpl: fn });
+    const result = await fetchDiscordEnumeration("bad-token", {
+      fetchImpl: fn,
+    });
     expect(result).toEqual([]);
   });
 

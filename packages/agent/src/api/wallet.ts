@@ -9,7 +9,6 @@
  */
 import crypto from "node:crypto";
 import fs from "node:fs";
-import { computeValueUsd } from "./wallet-dex-prices.js";
 import { logger } from "@elizaos/core";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { ethers } from "ethers";
@@ -23,6 +22,7 @@ import type {
   WalletImportResult,
   WalletKeys,
 } from "../contracts/wallet.js";
+import { computeValueUsd } from "./wallet-dex-prices.js";
 
 type StewardAgentPayload = {
   walletAddress?: string;
