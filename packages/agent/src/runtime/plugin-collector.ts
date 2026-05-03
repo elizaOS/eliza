@@ -85,7 +85,9 @@ export const CHANNEL_PLUGIN_MAP: Readonly<Record<string, string>> = {
   discordLocal: "@elizaos/plugin-discord-local",
   telegram: "@elizaos/plugin-telegram",
   slack: "@elizaos/plugin-slack",
-  twitter: "@elizaos/plugin-twitter",
+  x: "@elizaos/plugin-x",
+  // Backward-compat alias: legacy "twitter" channel resolves to plugin-x.
+  twitter: "@elizaos/plugin-x",
   // Internal connector built from src/plugins/whatsapp (not an npm package).
   whatsapp: "@elizaos/plugin-whatsapp",
   // Internal connector built from src/plugins/signal (not an npm package).

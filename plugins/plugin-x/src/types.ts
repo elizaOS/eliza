@@ -77,7 +77,7 @@ export interface ITwitterService extends Service {
 
 // Import types for the service interface
 import type { Service } from "@elizaos/core";
-import type { TwitterClientInstance } from "./services/twitter.service";
+import type { TwitterClientInstance } from "./services/x.service";
 
 /**
  * Twitter-specific tweet type
