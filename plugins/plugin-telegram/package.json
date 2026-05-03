@@ -25,7 +25,7 @@
   ],
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@telegraf/types": "^9.0.0",
+    "@telegraf/types": "^7.1.0",
     "@types/node": "^24.0.10",
     "strip-literal": "^3.0.0",
     "telegram": "^2.26.22",
