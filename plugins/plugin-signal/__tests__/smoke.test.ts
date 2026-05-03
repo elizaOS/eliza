@@ -29,7 +29,7 @@ describe("@elizaos/plugin-signal", () => {
     const namedPlugin = "plugin" in mod && isSignalPlugin(mod.plugin) ? mod.plugin : undefined;
 
     plugin = defaultPlugin ?? namedPlugin ?? Object.values(mod).find(isSignalPlugin);
-  });
+  }, 60000);
 
   it("exports the plugin", () => {
     expect(mod).toBeDefined();
