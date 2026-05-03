@@ -108,6 +108,21 @@ def _strip_model_prefix(model_name: str) -> str:
     return model_name
 
 
+def _strip_provider_prefix_for_backend(model_name: str, backend: str) -> str:
+    """Strip only the prefix matching the backend.
+
+    Groq and OpenRouter use vendor-prefixed model IDs like ``openai/gpt-oss-120b``
+    or ``anthropic/claude-sonnet-4`` that must be sent verbatim to the upstream
+    API. Stripping ``openai/`` from a Groq model ID breaks the call. Only strip
+    a prefix when it matches the active backend.
+    """
+    lowered = model_name.lower().strip()
+    prefix = f"{backend}/"
+    if lowered.startswith(prefix):
+        return model_name[len(prefix) :]
+    return model_name
+
+
 def _model_provider_from_name(model_name: str) -> str | None:
     lowered = model_name.lower().strip()
     for prefix in ("openai/", "anthropic/", "groq/", "openrouter/"):
@@ -190,9 +205,9 @@ def _pick_runtime_model(
 
     if backend in {"groq", "openrouter"}:
         if requested:
-            return _strip_model_prefix(requested)
+            return _strip_provider_prefix_for_backend(requested, backend)
         if fallback:
-            return _strip_model_prefix(fallback)
+            return _strip_provider_prefix_for_backend(fallback, backend)
         return "qwen3-32b"
 
     return requested if requested else fallback

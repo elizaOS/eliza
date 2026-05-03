@@ -1695,7 +1695,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             id="terminal_bench",
             display_name="Terminal-Bench",
             description="Terminal proficiency benchmark",
-            cwd_rel="benchmarks/terminal-bench/python",
+            cwd_rel="benchmarks/terminal-bench",
             requirements=BenchmarkRequirements(
                 env_vars=("OPENAI_API_KEY",),
                 paths=(),
@@ -1709,7 +1709,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             id="gaia",
             display_name="GAIA",
             description="GAIA real-world tasks benchmark",
-            cwd_rel="benchmarks/gaia/python",
+            cwd_rel="benchmarks/gaia",
             requirements=BenchmarkRequirements(
                 env_vars=("GROQ_API_KEY",),
                 paths=(),
@@ -1723,7 +1723,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             id="gaia_orchestrated",
             display_name="GAIA (Orchestrated)",
             description="GAIA benchmark with orchestrator/direct-shell provider matrix",
-            cwd_rel="benchmarks/gaia/python",
+            cwd_rel="benchmarks/gaia",
             requirements=BenchmarkRequirements(
                 env_vars=("GROQ_API_KEY",),
                 paths=(),
@@ -1737,7 +1737,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             id="tau_bench",
             display_name="Tau-bench",
             description="Tool-Agent-User Interaction benchmark",
-            cwd_rel="benchmarks/tau-bench/python",
+            cwd_rel="benchmarks/tau-bench",
             requirements=BenchmarkRequirements(
                 env_vars=(),
                 paths=("benchmark-data/tau-bench",),
