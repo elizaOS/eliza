@@ -307,7 +307,7 @@
     "thread-stream": "3.1.0",
     "bs58": "4.0.1",
     "base-x": "3.0.11",
-    "@hono/node-server": "1.19.11",
+    "@hono/node-server": "1.19.13",
     "axios": "1.15.0",
     "dompurify": "3.3.2",
     "bn.js": "5.2.3",
