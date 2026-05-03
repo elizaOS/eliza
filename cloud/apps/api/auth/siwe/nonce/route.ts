@@ -11,10 +11,7 @@
 
 import { Hono } from "hono";
 import { buildRedisClient } from "@/lib/cache/redis-factory";
-import {
-  RateLimitPresets,
-  rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
+import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { getAppHost, getAppUrl } from "@/lib/utils/app-url";
 import { issueNonce } from "@/lib/utils/siwe-helpers";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -37,8 +34,8 @@ app.get("/", async (c) => {
   return c.json(
     {
       nonce,
-      domain: getAppHost(),
-      uri: getAppUrl(),
+      domain: getAppHost(c.env),
+      uri: getAppUrl(c.env),
       chainId: Number.isNaN(chainId) ? 1 : chainId,
       version: "1",
       statement: "Sign in to Eliza Cloud",

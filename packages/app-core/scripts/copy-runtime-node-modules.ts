@@ -508,6 +508,30 @@ export function shouldSkipPackagedDependency(
   );
 }
 
+function isRecursivePackageSymlinkTarget(
+  entry: string,
+  resolvedTarget: string,
+): boolean {
+  let targetStats: fs.Stats;
+  try {
+    targetStats = fs.statSync(resolvedTarget);
+  } catch {
+    return true;
+  }
+
+  if (!targetStats.isDirectory()) {
+    return false;
+  }
+
+  const relative = path.relative(resolvedTarget, entry);
+  return (
+    relative === "" ||
+    (Boolean(relative) &&
+      !relative.startsWith("..") &&
+      !path.isAbsolute(relative))
+  );
+}
+
 export function shouldCopyPackageEntry(entry: string): boolean {
   if (path.basename(entry) === "node_modules") {
     return false;
@@ -529,7 +553,10 @@ export function shouldCopyPackageEntry(entry: string): boolean {
       path.dirname(entry),
       fs.readlinkSync(entry),
     );
-    return fs.existsSync(resolvedTarget);
+    if (!fs.existsSync(resolvedTarget)) {
+      return false;
+    }
+    return !isRecursivePackageSymlinkTarget(entry, resolvedTarget);
   } catch {
     return false;
   }

@@ -10,6 +10,7 @@ export default defineConfig({
     exclude: [
       "**/node_modules/**",
       "**/dist/**",
+      "src/**/tasks/**",
       "src/**/*.live.test.ts",
       "src/chains/evm/tests/**",
     ],
