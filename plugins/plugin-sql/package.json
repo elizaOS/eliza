@@ -56,7 +56,8 @@
   "dependencies": {
     "@electric-sql/pglite": "^0.3.3",
     "drizzle-orm": "0.45.2",
-    "pg": "^8.16.3"
+    "pg": "^8.16.3",
+    "uuid": "^14.0.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.11",
