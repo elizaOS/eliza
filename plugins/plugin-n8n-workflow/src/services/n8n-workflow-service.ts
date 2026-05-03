@@ -314,11 +314,7 @@ export class N8nWorkflowService extends Service {
     // it deterministically based on the node's catalog definition + the
     // host's supported cred types so resolveCredentials can mint the
     // credential server-side instead of falling back to a manual UI step.
-    const injectedCreds = injectMissingCredentialBlocks(
-      workflow,
-      finalNodeDefs,
-      runtimeContext
-    );
+    const injectedCreds = injectMissingCredentialBlocks(workflow, finalNodeDefs, runtimeContext);
     if (injectedCreds > 0) {
       logger.debug(
         { src: 'plugin:n8n-workflow:service:main' },
@@ -340,10 +336,14 @@ export class N8nWorkflowService extends Service {
     // actually-installed n8n binary (e.g. catalog says Gmail v2.2 but
     // runtime only ships up to v2.1).
     const generateClient = this.getClient();
-    const runtimeVersions =
-      (await generateClient.getRuntimeNodeTypeVersions()) ?? undefined;
+    const runtimeVersions = (await generateClient.getRuntimeNodeTypeVersions()) ?? undefined;
     for (let attempt = 0; attempt < 3; attempt++) {
-      const repairResult = validateAndRepair(workflow, finalNodeDefs, runtimeContext, runtimeVersions);
+      const repairResult = validateAndRepair(
+        workflow,
+        finalNodeDefs,
+        runtimeContext,
+        runtimeVersions
+      );
       workflow = repairResult.workflow;
       if (repairResult.errors.length === 0) break;
       if (attempt === 2) {
@@ -353,7 +353,8 @@ export class N8nWorkflowService extends Service {
         );
         workflow._meta = workflow._meta ?? {};
         const errorLines = repairResult.errors.map(
-          (e) => `${e.node}: ${e.detail}${e.availableFields?.length ? ` (available: ${e.availableFields.join(', ')})` : ''}`
+          (e) =>
+            `${e.node}: ${e.detail}${e.availableFields?.length ? ` (available: ${e.availableFields.join(', ')})` : ''}`
         );
         const existing = workflow._meta.requiresClarification ?? [];
         workflow._meta.requiresClarification = [...existing, ...errorLines];
@@ -368,13 +369,15 @@ export class N8nWorkflowService extends Service {
         );
       } catch (err) {
         logger.warn(
-          { src: 'plugin:n8n-workflow:service:main', err: err instanceof Error ? err.message : String(err) },
+          {
+            src: 'plugin:n8n-workflow:service:main',
+            err: err instanceof Error ? err.message : String(err),
+          },
           'fixWorkflowErrors threw — exiting retry loop'
         );
         break;
       }
     }
-
 
     normalizeTriggerSimpleParam(workflow);
 
@@ -481,11 +484,7 @@ export class N8nWorkflowService extends Service {
     // Safety net: same deterministic credential-block injection as
     // generateWorkflowDraft. Modification regenerations are equally prone
     // to dropping the credentials block.
-    const injectedCreds = injectMissingCredentialBlocks(
-      workflow,
-      combinedDefs,
-      runtimeContext
-    );
+    const injectedCreds = injectMissingCredentialBlocks(workflow, combinedDefs, runtimeContext);
     if (injectedCreds > 0) {
       logger.debug(
         { src: 'plugin:n8n-workflow:service:main' },
@@ -499,10 +498,14 @@ export class N8nWorkflowService extends Service {
     // gate must run here too. Same runtime-version intersect as the
     // generate path — fetch once, reuse across all 3 retry attempts.
     const modifyClient = this.getClient();
-    const runtimeVersionsForModify =
-      (await modifyClient.getRuntimeNodeTypeVersions()) ?? undefined;
+    const runtimeVersionsForModify = (await modifyClient.getRuntimeNodeTypeVersions()) ?? undefined;
     for (let attempt = 0; attempt < 3; attempt++) {
-      const repairResult = validateAndRepair(workflow, combinedDefs, runtimeContext, runtimeVersionsForModify);
+      const repairResult = validateAndRepair(
+        workflow,
+        combinedDefs,
+        runtimeContext,
+        runtimeVersionsForModify
+      );
       workflow = repairResult.workflow;
       if (repairResult.errors.length === 0) break;
       if (attempt === 2) {
@@ -512,7 +515,8 @@ export class N8nWorkflowService extends Service {
         );
         workflow._meta = workflow._meta ?? {};
         const errorLines = repairResult.errors.map(
-          (e) => `${e.node}: ${e.detail}${e.availableFields?.length ? ` (available: ${e.availableFields.join(', ')})` : ''}`
+          (e) =>
+            `${e.node}: ${e.detail}${e.availableFields?.length ? ` (available: ${e.availableFields.join(', ')})` : ''}`
         );
         const existing = workflow._meta.requiresClarification ?? [];
         workflow._meta.requiresClarification = [...existing, ...errorLines];
@@ -527,13 +531,15 @@ export class N8nWorkflowService extends Service {
         );
       } catch (err) {
         logger.warn(
-          { src: 'plugin:n8n-workflow:service:main', err: err instanceof Error ? err.message : String(err) },
+          {
+            src: 'plugin:n8n-workflow:service:main',
+            err: err instanceof Error ? err.message : String(err),
+          },
           'fixWorkflowErrors (modify) threw — exiting retry loop'
         );
         break;
       }
     }
-
 
     normalizeTriggerSimpleParam(workflow);
 

@@ -43,6 +43,16 @@ export function createApp(): Hono<AppEnv> {
   app.all("/steward", embeddedStewardHandler);
   app.all("/steward/*", embeddedStewardHandler);
 
+  // Legacy `/api/v1/proxy/birdeye/*` mount — emit 308 to canonical
+  // `/api/v1/apis/birdeye/*`. Registered before `mountRoutes` so the
+  // redirect fires regardless of how the file-based router resolves the
+  // splat-mounted sub-app.
+  app.all("/api/v1/proxy/birdeye/*", (c) => {
+    const url = new URL(c.req.url);
+    url.pathname = url.pathname.replace("/api/v1/proxy/birdeye", "/api/v1/apis/birdeye");
+    return c.redirect(url.toString(), 308);
+  });
+
   app.get("/", (c) =>
     c.json({
       name: "eliza-cloud-api",

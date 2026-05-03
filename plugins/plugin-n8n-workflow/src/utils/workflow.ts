@@ -782,10 +782,7 @@ export function injectMissingCredentialBlocks(
   const defByType = new Map(relevantNodes.map((n) => [n.name, n]));
   let injected = 0;
   for (const node of workflow.nodes) {
-    if (
-      node.credentials &&
-      Object.keys(node.credentials).length > 0
-    ) {
+    if (node.credentials && Object.keys(node.credentials).length > 0) {
       continue;
     }
     const def = defByType.get(node.type);
@@ -807,9 +804,8 @@ export function injectMissingCredentialBlocks(
       if (!supportedForType.has(c.name)) {
         return false;
       }
-      const showOpts = (c.displayOptions as
-        | { show?: { authentication?: string[] } }
-        | undefined)?.show;
+      const showOpts = (c.displayOptions as { show?: { authentication?: string[] } } | undefined)
+        ?.show;
       if (showOpts?.authentication && showOpts.authentication.length > 0) {
         return auth ? showOpts.authentication.includes(auth) : false;
       }

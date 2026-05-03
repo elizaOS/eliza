@@ -138,9 +138,12 @@ For more information, visit: https://tbench.ai
     parser.add_argument(
         "--model-provider",
         type=str,
-        choices=["openai", "groq", "openrouter", "anthropic", "google", "ollama"],
+        choices=["openai", "groq", "openrouter", "anthropic", "google", "ollama", "eliza"],
         default=None,
-        help="Optional provider hint (openai, groq, openrouter, etc.)",
+        help=(
+            "Optional provider hint. 'eliza' routes through the elizaOS "
+            "TypeScript benchmark bridge (Python AgentRuntime is being removed)."
+        ),
     )
     parser.add_argument(
         "--temperature",
@@ -256,6 +259,20 @@ async def run_cli(args: argparse.Namespace) -> int:
     os.environ.setdefault("GROQ_LARGE_MODEL", model_name)
     os.environ.setdefault("GROQ_SMALL_MODEL", model_name)
 
+    # When --model-provider eliza is used, spin up the elizaOS TS benchmark
+    # bridge server (or honor an existing ELIZA_BENCH_URL). The runner
+    # detects BENCHMARK_MODEL_PROVIDER=eliza and routes through the bridge.
+    server_mgr = None
+    if args.model_provider == "eliza" and not os.environ.get("ELIZA_BENCH_URL"):
+        from eliza_adapter.server_manager import ElizaServerManager
+
+        server_mgr = ElizaServerManager()
+        server_mgr.start()
+        os.environ["ELIZA_BENCH_TOKEN"] = server_mgr.token
+        os.environ.setdefault(
+            "ELIZA_BENCH_URL", f"http://localhost:{server_mgr.port}"
+        )
+
     # Build configuration
     config = TerminalBenchConfig(
         data_path=args.data_path or "./terminal-bench-data",
@@ -281,43 +298,47 @@ async def run_cli(args: argparse.Namespace) -> int:
     # Create runner
     runner = TerminalBenchRunner(runtime=None, config=config)
 
-    # Setup with sample tasks or full dataset
-    use_sample = args.sample or not args.data_path
-    await runner.setup(use_sample_tasks=use_sample)
+    try:
+        # Setup with sample tasks or full dataset
+        use_sample = args.sample or not args.data_path
+        await runner.setup(use_sample_tasks=use_sample)
 
-    # Run single task or full benchmark
-    if args.single:
-        try:
-            result = await runner.run_single(args.single)
-            print(f"\nTask: {result.task_id}")
-            print(f"Status: {'PASS' if result.success else 'FAIL'}")
-            print(f"Commands: {result.commands_executed}")
-            print(f"Time: {result.total_execution_time_ms:.0f}ms")
-            if result.error_message:
-                print(f"Error: {result.error_message}")
-            return 0 if result.success else 1
-        except ValueError as e:
-            print(f"Error: {e}")
-            return 1
-    else:
-        report = await runner.run()
+        # Run single task or full benchmark
+        if args.single:
+            try:
+                result = await runner.run_single(args.single)
+                print(f"\nTask: {result.task_id}")
+                print(f"Status: {'PASS' if result.success else 'FAIL'}")
+                print(f"Commands: {result.commands_executed}")
+                print(f"Time: {result.total_execution_time_ms:.0f}ms")
+                if result.error_message:
+                    print(f"Error: {result.error_message}")
+                return 0 if result.success else 1
+            except ValueError as e:
+                print(f"Error: {e}")
+                return 1
+        else:
+            report = await runner.run()
 
-        # Print summary
-        print("\n" + "=" * 60)
-        print("TERMINAL-BENCH RESULTS")
-        print("=" * 60)
-        print(f"Accuracy: {report.accuracy:.1%}")
-        print(f"Passed: {report.passed_tasks}/{report.total_tasks}")
-        print(f"Total Time: {report.evaluation_time_seconds:.1f}s")
+            # Print summary
+            print("\n" + "=" * 60)
+            print("TERMINAL-BENCH RESULTS")
+            print("=" * 60)
+            print(f"Accuracy: {report.accuracy:.1%}")
+            print(f"Passed: {report.passed_tasks}/{report.total_tasks}")
+            print(f"Total Time: {report.evaluation_time_seconds:.1f}s")
 
-        if report.leaderboard_comparison:
-            lc = report.leaderboard_comparison
-            print(f"\nLeaderboard Rank: #{lc.rank} ({lc.our_score:.1f}%)")
-            print(f"Percentile: {lc.percentile:.1f}%")
+            if report.leaderboard_comparison:
+                lc = report.leaderboard_comparison
+                print(f"\nLeaderboard Rank: #{lc.rank} ({lc.our_score:.1f}%)")
+                print(f"Percentile: {lc.percentile:.1f}%")
 
-        print(f"\nResults saved to: {config.output_dir}")
+            print(f"\nResults saved to: {config.output_dir}")
 
-        return 0 if report.accuracy > 0 else 1
+            return 0 if report.accuracy > 0 else 1
+    finally:
+        if server_mgr is not None:
+            server_mgr.stop()
 
 
 def main() -> None:

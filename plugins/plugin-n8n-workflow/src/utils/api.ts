@@ -301,7 +301,10 @@ export class N8nApiClient {
       if (acc.size === 0) return null;
       const out = new Map<string, number[]>();
       for (const [name, set] of acc) {
-        out.set(name, [...set].sort((a, b) => a - b));
+        out.set(
+          name,
+          [...set].sort((a, b) => a - b)
+        );
       }
       return out;
     } catch {

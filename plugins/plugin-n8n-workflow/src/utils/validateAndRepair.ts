@@ -17,17 +17,8 @@
  */
 
 import { logger } from '@elizaos/core';
-import type {
-  N8nNode,
-  N8nWorkflow,
-  NodeDefinition,
-  RuntimeContext,
-} from '../types/index';
-import {
-  loadOutputSchema,
-  loadTriggerOutputSchema,
-  parseExpressions,
-} from './outputSchema';
+import type { N8nNode, N8nWorkflow, NodeDefinition, RuntimeContext } from '../types/index';
+import { loadOutputSchema, loadTriggerOutputSchema, parseExpressions } from './outputSchema';
 import { inferSyntheticOutputSchema } from './inferSyntheticOutputSchema';
 
 export type RepairKind =
@@ -38,9 +29,7 @@ export type RepairKind =
   | 'nodeNameDeduplication'
   | 'droppedDanglingEdge';
 
-export type ValidationErrorKind =
-  | 'unknownOutputField'
-  | 'requiredParameterMissing';
+export type ValidationErrorKind = 'unknownOutputField' | 'requiredParameterMissing';
 
 export interface Repair {
   kind: RepairKind;
@@ -71,10 +60,7 @@ const LOG_SRC = 'plugin:n8n-workflow:utils:validate';
 /** Pick the closest-but-not-greater valid version. Falls back to the maximum
  *  when all valid versions are smaller than the requested one (LLM picked
  *  a higher number — clamp down). */
-function clampTypeVersion(
-  requested: number,
-  validVersions: number[],
-): number | null {
+function clampTypeVersion(requested: number, validVersions: number[]): number | null {
   if (validVersions.length === 0) return null;
   const sorted = [...validVersions].sort((a, b) => a - b);
   if (sorted.includes(requested)) return null; // already valid
@@ -87,7 +73,7 @@ function applyTypeVersionClamp(
   node: N8nNode,
   def: NodeDefinition,
   repairs: Repair[],
-  runtimeVersions: Map<string, number[]> | undefined,
+  runtimeVersions: Map<string, number[]> | undefined
 ): void {
   const catalogVersions = Array.isArray(def.version) ? def.version : [def.version];
   const catalogNumeric = catalogVersions.filter((v): v is number => typeof v === 'number');
@@ -136,11 +122,7 @@ interface CredentialDef {
  *  shows it gates on a single authentication value (and node.parameters
  *  doesn't already set one), back-fill it. Closes the Gmail-missing-auth
  *  bug surfaced in Session 20 dogfood. */
-function applyAuthenticationBackfill(
-  node: N8nNode,
-  def: NodeDefinition,
-  repairs: Repair[],
-): void {
+function applyAuthenticationBackfill(node: N8nNode, def: NodeDefinition, repairs: Repair[]): void {
   if (!node.credentials) return;
   const attachedTypes = Object.keys(node.credentials);
   if (attachedTypes.length !== 1) return; // ambiguous → leave alone
@@ -202,12 +184,11 @@ function knownOutputFieldsForNode(node: N8nNode): string[] | null {
   if (synthetic !== null) return synthetic;
 
   // 2. Static output-schema catalog (Gmail non-simple, Slack, Discord etc.)
-  if (typeof node.parameters?.resource === 'string' && typeof node.parameters?.operation === 'string') {
-    const schema = loadOutputSchema(
-      node.type,
-      node.parameters.resource,
-      node.parameters.operation,
-    );
+  if (
+    typeof node.parameters?.resource === 'string' &&
+    typeof node.parameters?.operation === 'string'
+  ) {
+    const schema = loadOutputSchema(node.type, node.parameters.resource, node.parameters.operation);
     if (schema) return schema.fields;
   }
 
@@ -226,7 +207,7 @@ function knownOutputFieldsForNode(node: N8nNode): string[] | null {
 function validateOutputFieldReferences(
   workflow: N8nWorkflow,
   repairs: Repair[],
-  errors: ValidationError[],
+  errors: ValidationError[]
 ): void {
   const upstream = buildUpstreamMap(workflow);
   const nodeByName = new Map<string, N8nNode>();
@@ -289,21 +270,14 @@ function rewriteParameterFieldRef(
   node: N8nNode,
   fullExpression: string,
   oldField: string,
-  newField: string,
+  newField: string
 ): void {
   const oldPattern = fullExpression;
-  const newPattern = fullExpression.replace(
-    new RegExp(`\\b${oldField}\\b`),
-    newField,
-  );
+  const newPattern = fullExpression.replace(new RegExp(`\\b${oldField}\\b`), newField);
   rewriteInObject(node.parameters as Record<string, unknown>, oldPattern, newPattern);
 }
 
-function rewriteInObject(
-  obj: Record<string, unknown>,
-  oldStr: string,
-  newStr: string,
-): void {
+function rewriteInObject(obj: Record<string, unknown>, oldStr: string, newStr: string): void {
   for (const key of Object.keys(obj)) {
     const val = obj[key];
     if (typeof val === 'string' && val.includes(oldStr)) {
@@ -342,7 +316,7 @@ function rewriteInObject(
 function applyAggregationSourceFieldFix(
   workflow: N8nWorkflow,
   repairs: Repair[],
-  errors: ValidationError[],
+  errors: ValidationError[]
 ): void {
   const upstream = buildUpstreamMap(workflow);
   const nodeByName = new Map<string, N8nNode>();
@@ -397,7 +371,7 @@ function applyAggregationSourceFieldFix(
  *  required parameter is missing AND can't be inferred. Non-fatal. */
 function applyRequiredParameterPreflight(
   workflow: N8nWorkflow,
-  defByType: Map<string, NodeDefinition>,
+  defByType: Map<string, NodeDefinition>
 ): void {
   const clarifications: string[] = [];
   for (const node of workflow.nodes) {
@@ -408,7 +382,7 @@ function applyRequiredParameterPreflight(
       const params = (node.parameters ?? {}) as Record<string, unknown>;
       if (params[prop.name] === undefined || params[prop.name] === '') {
         clarifications.push(
-          `${node.name} (${node.type}) is missing required parameter "${prop.name}" — please provide this value or clarify your requirements`,
+          `${node.name} (${node.type}) is missing required parameter "${prop.name}" — please provide this value or clarify your requirements`
         );
       }
     }
@@ -504,7 +478,7 @@ export function validateAndRepair(
   workflow: N8nWorkflow,
   relevantNodes: NodeDefinition[],
   _runtimeContext: RuntimeContext | undefined,
-  runtimeVersions?: Map<string, number[]>,
+  runtimeVersions?: Map<string, number[]>
 ): RepairResult {
   const repairs: Repair[] = [];
   const errors: ValidationError[] = [];
@@ -513,9 +487,7 @@ export function validateAndRepair(
     return { workflow, repairs, errors };
   }
 
-  const defByType = new Map<string, NodeDefinition>(
-    relevantNodes.map((d) => [d.name, d]),
-  );
+  const defByType = new Map<string, NodeDefinition>(relevantNodes.map((d) => [d.name, d]));
 
   // Check 1 + 2: per-node passes
   for (const node of workflow.nodes) {
@@ -547,13 +519,13 @@ export function validateAndRepair(
   if (repairs.length > 0) {
     logger.info(
       { src: LOG_SRC, repairCount: repairs.length, repairs },
-      `validateAndRepair applied ${repairs.length} fix(es)`,
+      `validateAndRepair applied ${repairs.length} fix(es)`
     );
   }
   if (errors.length > 0) {
     logger.warn(
       { src: LOG_SRC, errorCount: errors.length, errors },
-      `validateAndRepair flagged ${errors.length} unrecoverable error(s) for retry loop`,
+      `validateAndRepair flagged ${errors.length} unrecoverable error(s) for retry loop`
     );
   }
 

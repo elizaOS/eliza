@@ -124,7 +124,14 @@ fi
 APP_CORE_SCRIPTS_DIR="$APP_CORE_DIR/scripts"
 AGENT_DIR="$PACKAGES_DIR/agent"
 SCHEMAS_DIR="$PACKAGES_DIR/schemas"
-TYPESCRIPT_DIR="$PACKAGES_DIR/typescript"
+# @elizaos/core source lives under packages/core (current) or packages/typescript
+# (legacy). Prefer the current name; fall back to the legacy path so older branches
+# still work.
+if [[ -f "$PACKAGES_DIR/core/package.json" ]]; then
+  TYPESCRIPT_DIR="$PACKAGES_DIR/core"
+else
+  TYPESCRIPT_DIR="$PACKAGES_DIR/typescript"
+fi
 
 [[ -f "$APP_CORE_DIR/deploy/Dockerfile.ci" ]] || fail "$APP_CORE_DIR/deploy/Dockerfile.ci not found"
 [[ -f "$APP_CORE_DIR/deploy/.dockerignore.ci" ]] || fail "$APP_CORE_DIR/deploy/.dockerignore.ci not found"
@@ -274,6 +281,23 @@ if [[ -f "$WHATSAPP_PLUGIN_TS_DIR/package.json" ]]; then
   "$BUN_BIN" run build
   popd >/dev/null
 fi
+
+# The agent statically imports a small set of plugins at boot. Their
+# package.json `main`/`exports` point at `dist/...`, so the dist must exist
+# inside the COPY-into-Docker tree or the runtime fails with
+# ERR_MODULE_NOT_FOUND. Build them explicitly here — `bun install
+# --ignore-scripts` skipped per-package postinstall hooks.
+for plugin in plugin-sql plugin-video plugin-agent-skills plugin-pdf; do
+  plugin_dir="$PLUGINS_DIR/$plugin"
+  if [[ -f "$plugin_dir/package.json" ]]; then
+    if jq -e '.scripts.build' "$plugin_dir/package.json" >/dev/null; then
+      log "Building @elizaos/$plugin workspace artifacts"
+      pushd "$plugin_dir" >/dev/null
+      "$BUN_BIN" run build
+      popd >/dev/null
+    fi
+  fi
+done
 
 log "Building agent workspace"
 pushd "$AGENT_DIR" >/dev/null

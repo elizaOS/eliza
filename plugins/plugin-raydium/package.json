@@ -9,7 +9,8 @@
     "@raydium-io/raydium-sdk-v2": "^0.1.139-alpha",
     "@solana/spl-token": "^0.4.1",
     "bn.js": "^5.2.1",
-    "bs58": "^5.0.0"
+    "bs58": "^5.0.0",
+    "decimal.js": "^10.4.3"
   },
   "devDependencies": {
     "@solana/web3.js": "^1.91.4",

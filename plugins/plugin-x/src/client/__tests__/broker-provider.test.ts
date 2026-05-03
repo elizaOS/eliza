@@ -51,12 +51,14 @@ describe("BrokerAuthProvider", () => {
   });
 
   it("prefers explicit TWITTER_BROKER_TOKEN over ELIZAOS_CLOUD_API_KEY", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({ auth_mode: "oauth2", access_token: "ok" }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      ),
-    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ auth_mode: "oauth2", access_token: "ok" }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     const provider = new BrokerAuthProvider(
@@ -68,7 +70,9 @@ describe("BrokerAuthProvider", () => {
 
     await provider.getAccessToken();
     const init = fetchMock.mock.calls[0][1] as RequestInit;
-    expect(init.headers).toMatchObject({ Authorization: "Bearer specific-tok" });
+    expect(init.headers).toMatchObject({
+      Authorization: "Bearer specific-tok",
+    });
   });
 
   it("calls the broker /token endpoint with the bearer token and returns OAuth2 access_token", async () => {

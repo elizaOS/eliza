@@ -40,51 +40,21 @@ export const replyCastAction: Action = {
     ],
   ],
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
-    const __avTextRaw = typeof message?.content?.text === "string" ? message.content.text : "";
-    const __avText = __avTextRaw.toLowerCase();
-    const __avKeywords = ["reply", "cast"];
-    const __avKeywordOk =
-      __avKeywords.length > 0 && __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
-    const __avRegex = /\b(?:reply|cast)\b/i;
-    const __avRegexOk = Boolean(__avText.match(__avRegex));
-    const __avSource = String(message?.content?.source ?? "");
-    const __avExpectedSource = "farcaster";
-    const __avSourceOk = __avExpectedSource
-      ? __avSource === __avExpectedSource
-      : Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
-    const __avInputOk =
-      __avText.trim().length > 0 ||
-      Boolean(message?.content && typeof message.content === "object");
+  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
+    const text = message.content.text?.toLowerCase() || "";
+    const keywords = ["reply", "respond", "answer", "comment"];
 
-    if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
-      return false;
-    }
+    const hasKeyword = keywords.some((keyword) => text.includes(keyword));
 
-    const __avLegacyValidate = async (
-      runtime: IAgentRuntime,
-      message: Memory
-    ): Promise<boolean> => {
-      const text = message.content.text?.toLowerCase() || "";
-      const keywords = ["reply", "respond", "answer", "comment"];
+    const hasParentCast = !!(
+      message.content.metadata &&
+      (message.content.metadata as Record<string, unknown>).parentCastHash
+    );
 
-      const hasKeyword = keywords.some((keyword) => text.includes(keyword));
+    const service = runtime.getService(FARCASTER_SERVICE_NAME) as FarcasterService;
+    const isServiceAvailable = !!service?.getMessageService(runtime.agentId);
 
-      const hasParentCast = !!(
-        message.content.metadata &&
-        (message.content.metadata as Record<string, unknown>).parentCastHash
-      );
-
-      const service = runtime.getService(FARCASTER_SERVICE_NAME) as FarcasterService;
-      const isServiceAvailable = !!service?.getMessageService(runtime.agentId);
-
-      return hasKeyword && (hasParentCast || isServiceAvailable);
-    };
-    try {
-      return Boolean(await __avLegacyValidate(runtime, message));
-    } catch {
-      return false;
-    }
+    return hasKeyword && (hasParentCast || isServiceAvailable);
   },
 
   handler: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
