@@ -1,7 +1,6 @@
 {
   "name": "@elizaos/app-babylon",
   "version": "0.0.0",
-  "private": true,
   "type": "module",
   "description": "Eliza app integration for Babylon prediction market game.",
   "main": "./src/index.ts",

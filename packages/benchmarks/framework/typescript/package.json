@@ -1,7 +1,6 @@
 {
   "name": "@elizaos/benchmark-framework",
   "version": "1.0.0",
-  "private": true,
   "type": "module",
   "scripts": {
     "bench": "bun run src/bench.ts",

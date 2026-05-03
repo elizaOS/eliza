@@ -1,7 +1,7 @@
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 
 // =============================================================================
-// Type Definitions (mirrors @elizaos/plugin-lp-manager)
+// Type Definitions (mirrors @elizaos/plugin-wallet's LP types)
 // =============================================================================
 
 interface TokenBalance {

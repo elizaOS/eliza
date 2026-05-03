@@ -904,7 +904,7 @@ export async function resolvePlugins(
   // `plugins.allow` populated based on env vars and connector configuration.
   // We have to USE the returned config for collectPluginNames — the previous
   // code discarded the return value and kept using the original `config`,
-  // which meant every env-gated plugin (plugin-evm, plugin-solana, etc.) was
+  // which meant every env-gated plugin (plugin-wallet, etc.) was
   // silently dropped. Capture the result and assign back so both the allow
   // list and any downstream config reads see the mutation.
   const autoEnableResult = applyPluginAutoEnable({

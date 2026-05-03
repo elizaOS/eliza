@@ -1,7 +1,6 @@
 {
   "name": "__PROJECT_SLUG__",
   "version": "0.1.0",
-  "private": true,
   "description": "__APP_NAME__ workspace built on elizaOS",
   "license": "MIT",
   "type": "module",

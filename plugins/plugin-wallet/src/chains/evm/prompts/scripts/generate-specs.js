@@ -153,7 +153,7 @@ function generateTypeScript(actionsSpec, providersSpec, evaluatorsSpec) {
 	);
 
 	const content = `/**
- * Auto-generated canonical action/provider/evaluator docs for plugin-evm.
+ * Auto-generated canonical action/provider/evaluator docs for plugin-wallet evm chain.
  * DO NOT EDIT - Generated from prompts/specs/**.
  */
 
@@ -370,7 +370,7 @@ function generatePython(actionsSpec, providersSpec, evaluatorsSpec) {
 	);
 
 	const content = `"""
-Auto-generated canonical action/provider/evaluator docs for plugin-evm.
+Auto-generated canonical action/provider/evaluator docs for plugin-wallet evm chain.
 DO NOT EDIT - Generated from prompts/specs/**.
 """
 
@@ -493,7 +493,7 @@ function generateRust(actionsSpec, providersSpec, evaluatorsSpec) {
 	const evalDelim = "#".repeat(evalHashCount);
 	const evalAllDelim = "#".repeat(evalAllHashCount);
 
-	const content = `//! Auto-generated canonical action/provider/evaluator docs for plugin-evm.
+	const content = `//! Auto-generated canonical action/provider/evaluator docs for plugin-wallet evm chain.
 //! DO NOT EDIT - Generated from prompts/specs/**.
 
 pub const CORE_ACTION_DOCS_JSON: &str = r${actionsDelim}"${actionsContent}"${actionsDelim};
@@ -520,7 +520,7 @@ function main() {
 	generatePython(actionsSpec, providersSpec, evaluatorsSpec);
 	generateRust(actionsSpec, providersSpec, evaluatorsSpec);
 
-	console.log("Generated plugin-evm action/provider/evaluator docs.");
+	console.log("Generated plugin-wallet evm chain action/provider/evaluator docs.");
 }
 
 main();

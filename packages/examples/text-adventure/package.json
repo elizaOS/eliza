@@ -3,7 +3,6 @@
   "version": "2.0.0-alpha",
   "description": "Text adventure game with AI-powered decision making using elizaOS",
   "type": "module",
-  "private": true,
   "scripts": {
     "start": "bun run game.ts",
     "dev": "bun --watch run game.ts"

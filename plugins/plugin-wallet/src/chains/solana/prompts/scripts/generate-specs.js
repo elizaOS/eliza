@@ -153,7 +153,7 @@ function generateTypeScript(actionsSpec, providersSpec, evaluatorsSpec) {
   );
 
   const content = `/**
- * Auto-generated canonical action/provider/evaluator docs for plugin-solana.
+ * Auto-generated canonical action/provider/evaluator docs for plugin-wallet solana chain.
  * DO NOT EDIT - Generated from prompts/specs/**.
  */
 
@@ -364,7 +364,7 @@ function generatePython(actionsSpec, providersSpec, evaluatorsSpec) {
   );
 
   const content = `"""
-Auto-generated canonical action/provider/evaluator docs for plugin-solana.
+Auto-generated canonical action/provider/evaluator docs for plugin-wallet solana chain.
 DO NOT EDIT - Generated from prompts/specs/**.
 """
 
@@ -485,7 +485,7 @@ function generateRust(actionsSpec, providersSpec, evaluatorsSpec) {
   const evalDelim = "#".repeat(evalHashCount);
   const evalAllDelim = "#".repeat(evalAllHashCount);
 
-  const content = `//! Auto-generated canonical action/provider/evaluator docs for plugin-solana.
+  const content = `//! Auto-generated canonical action/provider/evaluator docs for plugin-wallet solana chain.
 //! DO NOT EDIT - Generated from prompts/specs/**.
 
 pub const CORE_ACTION_DOCS_JSON: &str = r${actionsDelim}"${actionsContent}"${actionsDelim};
@@ -512,7 +512,7 @@ function main() {
   generatePython(actionsSpec, providersSpec, evaluatorsSpec);
   generateRust(actionsSpec, providersSpec, evaluatorsSpec);
 
-  console.log("Generated plugin-solana action/provider/evaluator docs.");
+  console.log("Generated plugin-wallet solana chain action/provider/evaluator docs.");
 }
 
 main();

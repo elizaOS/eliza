@@ -13,16 +13,6 @@ This plugin provides Groq API integration for elizaOS agents, enabling ultra-fas
 - 🔢 **Object Generation** - Generate structured JSON objects
 - 🎯 **Tokenization** - Tokenize and detokenize text
 
-## Multi-Language Support
-
-This plugin is available for three languages:
-
-| Language              | Package                | Registry                                                  |
-| --------------------- | ---------------------- | --------------------------------------------------------- |
-| TypeScript/JavaScript | `@elizaos/plugin-groq` | [npm](https://www.npmjs.com/package/@elizaos/plugin-groq) |
-| Python                | `elizaos-plugin-groq`  | [PyPI](https://pypi.org/project/elizaos-plugin-groq/)     |
-| Rust                  | `elizaos-plugin-groq`  | [crates.io](https://crates.io/crates/elizaos-plugin-groq) |
-
 ## Installation
 
 ### TypeScript/JavaScript (npm)
@@ -32,19 +22,6 @@ npm install @elizaos/plugin-groq
 # or
 bun add @elizaos/plugin-groq
 ```
-
-### Python (PyPI)
-
-```bash
-pip install elizaos-plugin-groq
-```
-
-### Rust (crates.io)
-
-```bash
-cargo add elizaos-plugin-groq
-```
-
 ## Usage
 
 ### TypeScript
@@ -57,38 +34,6 @@ const agent = new Agent({
   plugins: [groqPlugin],
 });
 ```
-
-### Python
-
-```python
-from elizaos_plugin_groq import GroqClient, GenerateTextParams
-
-async with GroqClient(api_key="your-api-key") as client:
-    response = await client.generate_text_large(
-        GenerateTextParams(prompt="What is the nature of reality?")
-    )
-    print(response)
-```
-
-### Rust
-
-```rust
-use elizaos_plugin_groq::{GroqClient, GenerateTextParams};
-
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let client = GroqClient::new("your-api-key", None)?;
-
-    let response = client.generate_text_large(GenerateTextParams {
-        prompt: "What is the nature of reality?".to_string(),
-        ..Default::default()
-    }).await?;
-
-    println!("{}", response);
-    Ok(())
-}
-```
-
 ## Configuration
 
 Set the following environment variables:
@@ -126,46 +71,7 @@ This plugin provides handlers for the following elizaOS model types:
 # TypeScript
 bun install
 bun run build
-
-# Rust
-cd rust && cargo build --release
-
-# Python
-cd python && pip install -e ".[dev]"
-```
-
-### Running Tests
-
-```bash
 # TypeScript
 bun run test
-
-# Rust
-cd rust && cargo test
-
-# Python
-cd python && pytest
-```
-
-### Linting
-
-```bash
 # TypeScript
 bun run format:check
-
-# Rust
-cd rust && cargo clippy
-
-# Python
-cd python && ruff check .
-```
-
-## License
-
-MIT License - see [LICENSE](LICENSE) for details.
-
-## Links
-
-- [elizaOS Documentation](https://elizaos.ai/docs)
-- [Groq Console](https://console.groq.com)
-- [Groq API Documentation](https://console.groq.com/docs)

@@ -3,7 +3,6 @@
   "version": "0.0.1",
   "description": "elizaOS Server Operator",
   "type": "module",
-  "private": true,
   "engines": {
     "node": ">=20.0.0"
   },

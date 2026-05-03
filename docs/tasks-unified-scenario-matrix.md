@@ -153,7 +153,7 @@ T13 (cleanup + delete old runners)
 > - Similes
 > - Whether it returns `ActionResult.data` and the shape of that data (if observable from the handler's return statements)
 >
-> Group by domain. At minimum cover: core (basic, advanced, clipboard, trust, plugin-manager, planning, secrets, memory), plugin-agent-orchestrator, plugin-music-*, plugin-evm, plugin-discord, plugin-shopify, TaskService/triggers (scheduling), plugin-computeruse, plugin-commands, plugin-gmail, plugin-calendar, plugin-telegram, plugin-twitter, plugin-signal, plugin-whatsapp, plugin-imessage, plugin-bluebubbles, plugin-twilio, lifeops-specific actions.
+> Group by domain. At minimum cover: core (basic, advanced, clipboard, trust, plugin-manager, planning, secrets, memory), plugin-agent-orchestrator, plugin-music-*, plugin-wallet, plugin-discord, plugin-shopify, TaskService/triggers (scheduling), plugin-computeruse, plugin-commands, plugin-gmail, plugin-calendar, plugin-telegram, plugin-twitter, plugin-signal, plugin-whatsapp, plugin-imessage, plugin-bluebubbles, plugin-twilio, lifeops-specific actions.
 >
 > Start with a quick stats header: total count, count by domain, count without tests, count without examples[].
 >

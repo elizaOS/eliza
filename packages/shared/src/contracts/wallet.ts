@@ -207,7 +207,7 @@ export interface WalletConfigUpdateRequest {
 export type WalletNetworkMode = "mainnet" | "testnet";
 
 /**
- * Paths through which plugin-evm can produce a signature.
+ * Paths through which plugin-wallet can produce a signature.
  *
  * - "local":             EVM_PRIVATE_KEY env var (non-placeholder)
  * - "steward-self":      self-hosted Steward vault

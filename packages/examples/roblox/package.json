@@ -3,7 +3,6 @@
   "version": "2.0.0-alpha",
   "description": "Roblox ↔ elizaOS agent bridge (TypeScript)",
   "type": "module",
-  "private": true,
   "scripts": {
     "start": "bun --no-env-file run server.ts",
     "dev": "bun --no-env-file --watch run server.ts",

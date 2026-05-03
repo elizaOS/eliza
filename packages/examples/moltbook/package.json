@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "Autonomous Eliza agent for Moltbook social engagement",
   "type": "module",
-  "private": true,
   "scripts": {
     "start": "bun run autonomous.ts",
     "dev": "bun --watch run autonomous.ts",

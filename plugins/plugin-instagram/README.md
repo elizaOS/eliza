@@ -44,12 +44,6 @@ const agent = new Agent({
   // ... other configuration
 });
 ```
-
-### Python
-
-```python
-from elizaos_plugin_instagram import InstagramService, InstagramConfig
-
 # Create configuration
 config = InstagramConfig.from_env()
 

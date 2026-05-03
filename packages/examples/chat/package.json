@@ -3,7 +3,6 @@
   "version": "2.0.0-alpha",
   "description": "Interactive CLI chat with an AI agent using elizaOS - supports OpenAI, Claude, xAI, Gemini, and Groq",
   "type": "module",
-  "private": true,
   "scripts": {
     "start": "bun run chat.ts",
     "dev": "bun --watch run chat.ts"

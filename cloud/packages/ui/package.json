@@ -1,7 +1,6 @@
 {
   "name": "@elizaos/cloud-ui",
   "version": "0.1.0",
-  "private": true,
   "description": "Shared React UI for Eliza Cloud. Browser bundles do not depend on @elizaos/core (use local types under src/types for protocol constants).",
   "main": "src/index.ts",
   "dependencies": {

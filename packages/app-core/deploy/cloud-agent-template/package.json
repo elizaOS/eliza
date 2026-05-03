@@ -1,6 +1,5 @@
 {
   "name": "eliza-cloud-agent",
-  "private": true,
   "type": "module",
   "scripts": {
     "start": "tsx entrypoint.ts"

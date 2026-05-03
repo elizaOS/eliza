@@ -122,7 +122,7 @@ export interface CloudRouteState {
   /**
    * Optional runtime restart hook. When Phase 8 lands the cloud-wallet
    * provisioning integration, the cloud-login handler will call this to
-   * rebind plugin-evm / plugin-solana to the cloud provider. Threaded
+   * rebind plugin-wallet to the cloud provider. Threaded
    * from server.ts the same way provider-switch-routes does.
    */
   restartRuntime?: (reason: string) => Promise<boolean> | boolean;

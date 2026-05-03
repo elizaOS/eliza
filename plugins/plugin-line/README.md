@@ -11,7 +11,6 @@ LINE Messaging API plugin for ElizaOS agents. Enables chatbot integration with L
 - **Group/Room Support**: Operate in groups and multi-user rooms
 - **User Profiles**: Access user display names, pictures, and language
 - **Webhook Integration**: Receive messages via LINE webhooks
-- **Multi-language Support**: Available in TypeScript, Python, and Rust
 
 ## Installation
 
@@ -184,27 +183,13 @@ const flexMessage = {
 ### Building
 
 ```bash
-# TypeScript
 cd typescript && npm run build
-
-# Python
-cd python && pip install -e .
-
-# Rust
-cd rust && cargo build
 ```
 
 ### Testing
 
 ```bash
-# TypeScript
 npm test
-
-# Python
-pytest
-
-# Rust
-cargo test
 ```
 
 ## API Reference

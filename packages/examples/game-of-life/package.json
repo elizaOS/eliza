@@ -3,7 +3,6 @@
   "version": "2.0.0-alpha",
   "description": "Agentic Game of Life - multi-agent evolution simulation with self-replicating agents",
   "type": "module",
-  "private": true,
   "scripts": {
     "start": "bun run game.ts",
     "dev": "bun run game.ts --fast --stats",
