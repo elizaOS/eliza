@@ -18,12 +18,41 @@ public class MainActivity extends BridgeActivity {
     private static final String TAG = "ElizaMainActivity";
     private static final int REQUEST_NOTIFICATION_PERMISSION = 1001;
 
-    // Set by the AOSP product config (vendor/eliza/eliza_common.mk) on
-    // every ElizaOS image; absent on stock Android. Reading it is the
-    // signal that this APK is running as the system app on a Eliza
-    // device, vs. installed on a vanilla phone where Eliza Cloud / Remote
-    // / Local must remain user-selectable in the RuntimeGate picker.
-    private static final String ELIZAOS_PRODUCT_PROP = "ro.elizaos.product";
+    /**
+     * One UA marker entry. The MainActivity reads `systemProp` via
+     * `android.os.SystemProperties` (hidden API; reflective access from
+     * the system app), and when the value is non-empty, appends
+     * `<uaPrefix><value>` to the WebView's User-Agent.
+     *
+     * White-label forks add additional entries via
+     * `app.config.ts > android.userAgentMarkers`; the
+     * `run-mobile-build.mjs:overlayAndroid()` step rewrites
+     * `BRAND_USER_AGENT_MARKERS` below to include them. The default
+     * `ro.elizaos.product` → `ElizaOS/` entry is always emitted by the
+     * framework so the renderer can sniff `isElizaOS()` consistently
+     * across forks.
+     */
+    private static final class UserAgentMarker {
+        final String systemProp;
+        final String uaPrefix;
+
+        UserAgentMarker(String systemProp, String uaPrefix) {
+            this.systemProp = systemProp;
+            this.uaPrefix = uaPrefix;
+        }
+    }
+
+    /**
+     * Brand UA markers applied during `onCreate`. The framework's
+     * `ro.elizaos.product` → `ElizaOS/` entry is the default. White-label
+     * forks declare additional entries via
+     * `app.config.ts > android.userAgentMarkers`, which the mobile build
+     * overlay rewrites in place at build time.
+     */
+    private static final UserAgentMarker[] BRAND_USER_AGENT_MARKERS = new UserAgentMarker[] {
+        new UserAgentMarker("ro.elizaos.product", "ElizaOS/"),
+        // BRAND_USER_AGENT_MARKERS_INJECTION_POINT
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -42,7 +71,7 @@ public class MainActivity extends BridgeActivity {
         if (getBridge() != null && getBridge().getWebView() != null) {
             WebSettings settings = getBridge().getWebView().getSettings();
             settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-            applyElizaOSUserAgentSuffix(settings);
+            applyBrandUserAgentMarkers(settings);
         }
 
         // Android 13+ requires explicit POST_NOTIFICATIONS permission for the
@@ -72,30 +101,44 @@ public class MainActivity extends BridgeActivity {
     }
 
     /**
-     * Append `ElizaOS/<tag>` to the WebView's user-agent string when the
-     * AOSP-set system property `ro.elizaos.product` is present. The web
-     * layer (`platform/init.ts → isElizaOS()`) sniffs this suffix to
-     * decide whether the RuntimeGate "Choose your setup" picker is
-     * bypassed (ElizaOS) or rendered (vanilla Android APK).
+     * Iterate over `BRAND_USER_AGENT_MARKERS` and append each marker's
+     * `<uaPrefix><tag>` token to the WebView's User-Agent when the
+     * named system property is non-empty. On stock Android no marker
+     * matches and the UA is left untouched, preserving the
+     * RuntimeGate picker. Idempotent — already-present markers aren't
+     * duplicated.
      *
-     * `android.os.SystemProperties` is hidden API but accessible via
-     * reflection from the system app; on stock Android it returns "" and
-     * we leave the user-agent untouched, preserving the picker.
+     * The framework's default `ro.elizaos.product` → `ElizaOS/` entry
+     * lets the renderer sniff `isElizaOS()` consistently across
+     * white-label forks; brand-specific entries are injected by the
+     * mobile build overlay from `app.config.ts > android.userAgentMarkers`.
      */
-    private void applyElizaOSUserAgentSuffix(WebSettings settings) {
-        String tag = readSystemProperty(ELIZAOS_PRODUCT_PROP);
-        if (tag == null || tag.isEmpty()) {
-            return;
-        }
+    private void applyBrandUserAgentMarkers(WebSettings settings) {
+        StringBuilder newUa = null;
         String currentUa = settings.getUserAgentString();
-        String marker = "ElizaOS/" + tag;
-        if (currentUa != null && currentUa.contains(marker)) {
-            return;
+        for (UserAgentMarker marker : BRAND_USER_AGENT_MARKERS) {
+            if (marker.systemProp == null || marker.systemProp.isEmpty()) {
+                continue;
+            }
+            String tag = readSystemProperty(marker.systemProp);
+            if (tag == null || tag.isEmpty()) {
+                continue;
+            }
+            String token = marker.uaPrefix + tag;
+            if (currentUa != null && currentUa.contains(token)) {
+                continue;
+            }
+            if (newUa == null) {
+                newUa = new StringBuilder(currentUa == null ? "" : currentUa);
+            }
+            if (newUa.length() > 0) {
+                newUa.append(" ");
+            }
+            newUa.append(token);
         }
-        String newUa = (currentUa == null || currentUa.isEmpty())
-            ? marker
-            : currentUa + " " + marker;
-        settings.setUserAgentString(newUa);
+        if (newUa != null) {
+            settings.setUserAgentString(newUa.toString());
+        }
     }
 
     private static String readSystemProperty(String key) {

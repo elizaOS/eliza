@@ -6,6 +6,13 @@ import { Keypair as SolanaKeypair } from "@solana/web3.js";
 import { beforeEach, describe, expect, it, type Mock, type MockInstance, vi } from "vitest";
 import { MeteoraLpService } from "../MeteoraLpService.ts";
 
+vi.mock("@coral-xyz/anchor", () => ({
+  BN: class BN {
+    constructor(public value: number | string) {}
+    toString() { return String(this.value); }
+  },
+}));
+
 vi.mock("@meteora-ag/dlmm", () => ({
   default: { create: vi.fn() },
 }));

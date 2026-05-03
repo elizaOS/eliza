@@ -72,6 +72,58 @@ export interface AppWebConfig {
   shareImagePath?: string;
 }
 
+/**
+ * One brand-specific User-Agent marker that the Android `MainActivity`
+ * should append to the WebView UA when the named system property is
+ * set. Used by white-label forks that ship their own AOSP product
+ * image (set by `vendor/<brand>/<brand>_common.mk`'s
+ * `PRODUCT_PRODUCT_PROPERTIES`) and want their renderer to detect the
+ * branded image at runtime via a stable UA suffix.
+ *
+ * The default `ElizaOS/<tag>` marker (driven by `ro.elizaos.product`)
+ * is always emitted by the framework — these are *additional*
+ * brand-specific markers, not replacements.
+ *
+ * Example:
+ *
+ *   android: {
+ *     userAgentMarkers: [
+ *       { systemProp: "ro.miladyos.product", uaPrefix: "MiladyOS/" },
+ *     ],
+ *   }
+ *
+ * Produces a UA like `... ElizaOS/<tag> MiladyOS/<tag>` on a MiladyOS
+ * image, and an unmodified UA on stock Android.
+ */
+export interface AndroidUserAgentMarker {
+  /**
+   * Android system property to read via reflection. Empty string =
+   * marker disabled (skipped silently).
+   */
+  systemProp: string;
+  /**
+   * Prefix for the UA token. The marker emits `<uaPrefix><value>`
+   * where `<value>` is the system-property value. Conventionally ends
+   * with `/` (e.g. `"MiladyOS/"`).
+   */
+  uaPrefix: string;
+}
+
+export interface AppAndroidConfig {
+  /**
+   * Brand-specific UA markers appended after the framework's
+   * `ElizaOS/<tag>` marker. Only applied when the corresponding
+   * system property is non-empty (i.e. the AOSP brand image is
+   * actually running).
+   *
+   * Consumed by `run-mobile-build.mjs:overlayAndroid()`, which
+   * generates additional Java methods + call sites in the templated
+   * `MainActivity.java`. Stock Android APK installs see neither the
+   * `ElizaOS/` marker nor any brand-specific marker.
+   */
+  userAgentMarkers?: AndroidUserAgentMarker[];
+}
+
 export interface AppConfig {
   /** Display name shown in UI, desktop title bars, etc. */
   appName: string;
@@ -122,6 +174,9 @@ export interface AppConfig {
 
   /** Web app manifest and share metadata overrides. */
   web?: AppWebConfig;
+
+  /** Android-specific build-time configuration. */
+  android?: AppAndroidConfig;
 
   /** Package manager configurations */
   packaging?: AppPackagingConfig;
