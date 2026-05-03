@@ -5,8 +5,12 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type InboxChannel, useInbox } from "./useInbox";
 
-const { getLifeOpsInboxMock } = vi.hoisted(() => ({
+const { getLifeOpsInboxMock, translateMock } = vi.hoisted(() => ({
   getLifeOpsInboxMock: vi.fn(),
+  translateMock: vi.fn(
+    (_key: string, options?: { defaultValue?: string }) =>
+      options?.defaultValue ?? "",
+  ),
 }));
 
 vi.mock("@elizaos/app-core", () => ({
@@ -14,13 +18,13 @@ vi.mock("@elizaos/app-core", () => ({
     getLifeOpsInbox: getLifeOpsInboxMock,
   },
   useApp: () => ({
-    t: (_key: string, options?: { defaultValue?: string }) =>
-      options?.defaultValue ?? "",
+    t: translateMock,
   }),
 }));
 
 afterEach(() => {
   getLifeOpsInboxMock.mockReset();
+  translateMock.mockClear();
 });
 
 describe("useInbox", () => {
