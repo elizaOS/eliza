@@ -1,0 +1,174 @@
+---
+title: "Test a Project"
+description: "Write tests for your multi-agent elizaOS project"
+---
+
+<Tip>
+  **Video Tutorial**: [**Testing Projects and Plugins with
+  elizaOS**](https://www.youtube.com/watch?v=HHbY9a27b6A&list=PLrjBjP4nU8ehOgKAa0-XddHzE0KK0nNvS&index=5)
+</Tip>
+
+<Note>
+  This guide builds on concepts from [Add Multiple
+  Agents](/guides/add-multiple-agents)
+</Note>
+
+## Step 1: Test multi-agent configuration
+
+We added a bunch of new features to our project. In addition to the default tests that projects ship with, let's write some new tests to cover our new feature scope:
+
+| Feature                       | Test Type | What We're Validating                                         |
+| ----------------------------- | --------- | ------------------------------------------------------------- |
+| **Multi-agent configuration** | Component | Two agents with unique Discord tokens, voice IDs, and plugins |
+| **Multi-agent runtime**       | E2E       | Both agents initialize and run simultaneously                 |
+
+<Note>
+  ElizaOS projects ship with comprehensive built-in tests for core functionality
+  (character config, plugin loading, runtime behavior). For details on the
+  default test structure, see [Testing
+  Projects](/projects/overview#testing-projects).
+</Note>
+
+### Create component tests
+
+Let's create a new component test file to test the specific multi-agent features we built:
+
+```typescript src/__tests__/multi-agent-features.test.ts
+import { describe, it, expect } from "vitest";
+import { character as shakespeare } from "../character";
+import hemingway from "../../hemingway.json";
+
+describe("multi-agent configuration", () => {
+  it("loads second agent (hemingway.json)", () => {
+    expect(hemingway).toBeDefined();
+    expect(hemingway.name).toBe("Hemingway");
+  });
+
+  it("agents have unique Discord credentials", () => {
+    expect(shakespeare.settings?.secrets?.DISCORD_API_TOKEN).toBeDefined();
+    expect(hemingway.settings?.secrets?.DISCORD_API_TOKEN).toBeDefined();
+
+    // Each agent must have different bot token
+    expect(shakespeare.settings?.secrets?.DISCORD_API_TOKEN).not.toBe(
+      hemingway.settings?.secrets?.DISCORD_API_TOKEN,
+    );
+  });
+
+  it("includes ElevenLabs plugin in both agents", () => {
+    expect(shakespeare.plugins).toContain("@elizaos/plugin-elevenlabs");
+    expect(hemingway.plugins).toContain("@elizaos/plugin-elevenlabs");
+  });
+
+  it("voice is enabled for Discord", () => {
+    expect(shakespeare.settings?.secrets?.DISCORD_VOICE_ENABLED).toBe("true");
+    expect(hemingway.settings?.secrets?.DISCORD_VOICE_ENABLED).toBe("true");
+  });
+
+  it("each agent has unique ElevenLabs voice ID", () => {
+    // Valid ElevenLabs voice IDs from packages/client/src/config/voice-models.ts
+    expect(shakespeare.settings?.secrets?.ELEVENLABS_VOICE_ID).toBe(
+      "21m00Tcm4TlvDq8ikWAM",
+    ); // Adam
+    expect(hemingway.settings?.secrets?.ELEVENLABS_VOICE_ID).toBe(
+      "TxGEqnHWrfWFTfGW9XjX",
+    ); // Josh
+  });
+});
+```
+
+## Step 2: Test runtime functionality
+
+### Create e2e tests
+
+The `project-starter.e2e.ts` file already contains default tests for core functionality (agent initialization, message processing, memory storage). Add these multi-agent specific tests to the existing `ProjectStarterTestSuite.tests` array:
+
+```typescript src/__tests__/e2e/project-starter.e2e.ts
+export const ProjectStarterTestSuite: TestSuite = {
+  name: 'project-starter-e2e',
+  tests: [
+    {
+      name: 'agent_should_respond_to_greeting',
+      fn: async (runtime: IAgentRuntime) => {
+        // ... existing test code
+      }
+    },
+    // ... other existing tests
+
+    // Add the new multi-agent tests:
+    {  // [!code ++]
+      name: 'multi_agent_project_should_load_both_agents',  // [!code ++]
+      fn: async (runtime: IAgentRuntime) => {  // [!code ++]
+        // This test validates that our multi-agent project setup works correctly  // [!code ++]
+        // It should run once for each agent in the project (Shakespeare and Hemingway)  // [!code ++]
+          // [!code ++]
+        const agentName = runtime.character.name;  // [!code ++]
+        const agentId = runtime.agentId;  // [!code ++]
+          // [!code ++]
+        // Verify agent has valid identity  // [!code ++]
+        if (!agentName) {  // [!code ++]
+          throw new Error('Agent name is not defined');  // [!code ++]
+        }  // [!code ++]
+        if (!agentId) {  // [!code ++]
+          throw new Error('Agent ID is not defined');  // [!code ++]
+        }  // [!code ++]
+          // [!code ++]
+        // Check it's one of our expected agents from the multi-agent guide  // [!code ++]
+        const expectedAgents = ['Shakespeare', 'Hemingway'];  // [!code ++]
+        if (!expectedAgents.some(expected => agentName.toLowerCase().includes(expected.toLowerCase()))) {  // [!code ++]
+          throw new Error(`Unexpected agent name: ${agentName}. Expected one containing: ${expectedAgents.join(', ')}`);  // [!code ++]
+        }  // [!code ++]
+          // [!code ++]
+        logger.info(`✓ Multi-agent project: ${agentName} initialized successfully`);  // [!code ++]
+      }  // [!code ++]
+    },  // [!code ++]
+      // [!code ++]
+    // Additional tests: agents_should_have_distinct_discord_configurations,  // [!code ++]
+    // agents_should_have_distinct_voice_configurations, etc.  // [!code ++]
+```
+
+## Step 3: Run and validate tests
+
+### Execute your test suite
+
+```bash Terminal
+# Run all tests
+elizaos test
+
+# Run only component tests
+elizaos test --type component
+
+# Run only E2E tests
+elizaos test --type e2e
+
+# Run specific test suite (case sensitive)
+elizaos test --name "multi-agent"
+```
+
+### Verify test results
+
+For complete test runner options, see the [CLI Test Reference](/cli-reference/test).
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Deploy a Project" icon="rocket" href="/guides/deploy-a-project">
+    Deploy your thoroughly tested agents to production environments
+  </Card>
+  <Card
+    title="Create a Plugin"
+    icon="puzzle-piece"
+    href="/guides/create-a-plugin"
+  >
+    Build custom plugins with comprehensive test coverage
+  </Card>
+  <Card title="Publish a Plugin" icon="upload" href="/guides/publish-a-plugin">
+    Learn how to publish your plugins to the elizaOS registry
+  </Card>
+  <Card
+    title="Contribute to Core"
+    icon="heart"
+    href="/guides/contribute-to-core"
+  >
+    Help improve elizaOS by contributing to the core framework
+  </Card>
+</CardGroup>

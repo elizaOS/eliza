@@ -1,0 +1,165 @@
+---
+title: "Audit Logging"
+description: "Immutable audit trail for every agent action — compliance, debugging, and cost tracking."
+---
+
+# Audit Logging
+
+Every action in Steward is logged: every signing request, every API proxy call, every policy decision, every credential access. The audit log is append-only, queryable, and exportable.
+
+## What's Logged
+
+| Event Type | Description | Example |
+|-----------|-------------|---------|
+| `wallet_sign` | Transaction signing request | Agent signed 0.05 ETH to 0xDEX |
+| `wallet_sign_typed` | EIP-712 typed data signing | Agent signed permit for USDC |
+| `wallet_sign_solana` | Solana transaction signing | Agent signed SOL transfer |
+| `api_proxy` | API request through proxy | Agent called OpenAI completions |
+| `policy_evaluate` | Policy evaluation result | Spending limit check passed |
+| `secret_decrypt` | Credential decryption for injection | OpenAI key decrypted for proxy |
+| `approval_required` | Transaction queued for approval | TX exceeds auto-approve threshold |
+| `tx_approved` | Manual approval granted | Tenant admin approved TX |
+| `tx_rejected` | Transaction rejected | Policy denied or admin rejected |
+
+## Log Entry Structure
+
+Every audit log entry includes:
+
+```json
+{
+  "id": 12345,
+  "tenantId": "eliza-cloud",
+  "agentId": "agent-7a3f",
+  "action": "wallet_sign",
+  "resource": "vault/agent-7a3f/sign",
+  "result": "allowed",
+  "details": {
+    "to": "0xDEX_ROUTER",
+    "value": "50000000000000000",
+    "chainId": 8453,
+    "txHash": "0x8d7592b..."
+  },
+  "policyResults": [
+    { "type": "spending-limit", "passed": true },
+    { "type": "approved-addresses", "passed": true },
+    { "type": "auto-approve-threshold", "passed": true }
+  ],
+  "costUsd": null,
+  "latencyMs": 1240,
+  "tokenJti": "jwt-unique-id",
+  "createdAt": "2026-03-26T15:08:00Z"
+}
+```
+
+## Transaction History
+
+Every agent has a complete transaction history:
+
+```typescript
+const history = await steward.getHistory("agent-7a3f");
+// Returns all signing requests: signed, rejected, and pending
+```
+
+Transaction records include:
+- **Status** — `signed`, `pending`, `rejected`
+- **Policy results** — full evaluation details
+- **TX hash** — for broadcast transactions
+- **Timestamps** — created, signed, resolved
+
+## Webhooks
+
+Steward dispatches webhooks for key events. Configure your webhook URL per-tenant:
+
+```typescript
+await fetch("https://api.steward.fi/tenants/your-tenant/webhook", {
+  method: "PUT",
+  headers: {
+    "X-Steward-Key": "your-key",
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    webhookUrl: "https://your-server.com/steward-webhooks",
+  }),
+});
+```
+
+Webhook events:
+
+<Accordion title="approval_required">
+```json
+{
+  "type": "approval_required",
+  "tenantId": "your-tenant",
+  "agentId": "agent-7a3f",
+  "data": {
+    "txId": "550e8400-...",
+    "results": [
+      { "type": "auto-approve-threshold", "passed": false, "reason": "..." }
+    ]
+  },
+  "timestamp": "2026-03-26T15:08:00Z"
+}
+```
+</Accordion>
+
+<Accordion title="tx_signed">
+```json
+{
+  "type": "tx_signed",
+  "tenantId": "your-tenant",
+  "agentId": "agent-7a3f",
+  "data": {
+    "txId": "550e8400-...",
+    "txHash": "0x8d7592b..."
+  },
+  "timestamp": "2026-03-26T15:08:01Z"
+}
+```
+</Accordion>
+
+<Accordion title="tx_rejected">
+```json
+{
+  "type": "tx_rejected",
+  "tenantId": "your-tenant",
+  "agentId": "agent-7a3f",
+  "data": {
+    "txId": "550e8400-...",
+    "results": [
+      { "type": "spending-limit", "passed": false, "reason": "Exceeds daily limit" }
+    ]
+  },
+  "timestamp": "2026-03-26T15:08:00Z"
+}
+```
+</Accordion>
+
+<Accordion title="tx_failed">
+```json
+{
+  "type": "tx_failed",
+  "tenantId": "your-tenant",
+  "agentId": "agent-7a3f",
+  "data": {
+    "error": "Insufficient funds for gas",
+    "requestId": "req-123"
+  },
+  "timestamp": "2026-03-26T15:08:00Z"
+}
+```
+</Accordion>
+
+## Compliance
+
+Steward's audit log supports compliance requirements:
+
+- **Immutability** — Append-only log; entries cannot be modified or deleted
+- **Retention** — Configurable per-tenant (default: 90 days hot storage)
+- **Export** — API endpoint for bulk export (CSV/JSON)
+- **Partitioning** — Monthly partitioned tables for query performance at scale
+
+## Related
+
+- [Architecture](/concepts/architecture) — How audit logging fits into the system
+- [Tenants API](/api-reference/tenants) — Configure webhook URLs
+- [Vault API](/api-reference/vault) — Transaction history endpoints

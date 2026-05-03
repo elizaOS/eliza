@@ -1,0 +1,12 @@
+git_url(ENV["MATCH_GIT_URL"] || "https://github.com/elizaOS/certificates.git")
+storage_mode("git")
+type("appstore")
+# When the app has extensions (e.g. WebsiteBlockerContentExtension), list them
+# in APP_IDENTIFIER_EXTRA so match fetches their profiles in the same run.
+app_identifier(
+  [
+    ENV["APP_IDENTIFIER"] || "ai.elizaos.app",
+    *(ENV["APP_IDENTIFIER_EXTRA"] || "").split(",").map(&:strip).reject(&:empty?)
+  ].uniq
+)
+team_id(ENV["APPLE_TEAM_ID"] || "25877RY2EH")

@@ -1,0 +1,6 @@
+{"channel":"orderUpdates","coin":"ETH","demo":true,"oid":1,"status":"open"}
+{"channel":"orderUpdates","coin":"ETH","demo":true,"oid":2,"status":"open"}
+{"channel":"orderUpdates","coin":"BTC","demo":true,"oid":3,"status":"open"}
+{"channel":"orderUpdates","demo":true,"oid":2,"status":"canceled"}
+{"change":-500.0,"channel":"userNonFundingLedgerUpdates","coin":"USDC","demo":true,"toPerp":true}
+{"channel":"setLeverage","coin":"BTC","cross":false,"demo":true,"leverage":15}

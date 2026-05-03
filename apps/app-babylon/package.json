@@ -1,0 +1,68 @@
+{
+  "name": "@elizaos/app-babylon",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Eliza app integration for Babylon prediction market game.",
+  "main": "./src/index.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": "./src/index.ts",
+    "./routes": "./src/routes.ts",
+    "./ui": "./src/ui/index.ts",
+    "./ui/babylon-data": "./src/ui/babylon-data.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/eliza.git"
+  },
+  "keywords": [
+    "game",
+    "prediction-market",
+    "babylon",
+    "elizaos",
+    "eliza"
+  ],
+  "dependencies": {
+    "@elizaos/app-core": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*",
+    "@elizaos/ui": "workspace:*"
+  },
+  "elizaos": {
+    "app": {
+      "displayName": "Babylon",
+      "category": "game",
+      "heroImage": "assets/hero.png",
+      "launchType": "url",
+      "launchUrl": "{BABYLON_CLIENT_URL}",
+      "capabilities": [
+        "trades",
+        "prediction-markets",
+        "social",
+        "team-chat",
+        "autonomous"
+      ],
+      "uiExtension": {
+        "detailPanelId": "babylon-operator-dashboard"
+      },
+      "viewer": {
+        "url": "{BABYLON_CLIENT_URL}",
+        "embedParams": {
+          "embedded": "true"
+        },
+        "postMessageAuth": true,
+        "sandbox": "allow-scripts allow-same-origin allow-popups allow-forms"
+      },
+      "session": {
+        "mode": "spectate-and-steer",
+        "features": [
+          "commands",
+          "telemetry",
+          "pause",
+          "resume"
+        ]
+      }
+    }
+  }
+}

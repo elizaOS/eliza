@@ -1,0 +1,37 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM"],
+    "strict": false,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noImplicitReturns": false,
+    "noImplicitAny": false,
+    "types": ["node", "bun-types"],
+    "ignoreDeprecations": "6.0",
+    "allowImportingTsExtensions": true,
+    "baseUrl": "../../../",
+    "paths": {
+      "@elizaos/core": ["packages/core/dist/node"],
+      "@elizaos/core/*": ["packages/core/dist/*"]
+    }
+  },
+  "include": ["./**/*.ts"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "build.ts"
+  ]
+}

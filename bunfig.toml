@@ -1,0 +1,28 @@
+[test]
+# Global test timeout in milliseconds
+# Use shorter timeout in CI to prevent hanging
+timeout = 60000
+
+# Coverage configuration
+coverage = true
+
+[install]
+# Optimize installation for CI
+cache = true
+auto = "fallback"
+
+[run]
+# Bun runtime optimizations
+shell = "system"
+
+coverage-exclude = [
+  "**/dist/**",
+  "**/build/**",
+  "**/chunk-*.js",
+  "**/*.chunk.js",
+  "**/node_modules/**",
+  "**/*.min.js",
+  "**/*.bundle.js",
+  "**/coverage/**",
+  "**/.turbo/**",
+]

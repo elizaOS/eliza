@@ -1,0 +1,98 @@
+{
+  "builderCode": null,
+  "demoMode": true,
+  "effectTimeoutMs": 2000,
+  "llmDryRun": false,
+  "network": "demo",
+  "outDir": "/Users/shawwalters/eliza-workspace/benchmarks/HyperliquidBench/runs/eliza-20260207-194200",
+  "plan": {
+    "steps": [
+      {
+        "perp_orders": {
+          "builderCode": "coverage1",
+          "orders": [
+            {
+              "coin": "ETH",
+              "px": {
+                "MidPercent": {
+                  "offset_pct": -1.0
+                }
+              },
+              "reduceOnly": false,
+              "side": "buy",
+              "sz": 0.05,
+              "tif": "ALO",
+              "trigger": null
+            }
+          ]
+        }
+      },
+      {
+        "perp_orders": {
+          "builderCode": "coverage2",
+          "orders": [
+            {
+              "coin": "BTC",
+              "px": {
+                "MidPercent": {
+                  "offset_pct": 0.5
+                }
+              },
+              "reduceOnly": true,
+              "side": "sell",
+              "sz": 0.03,
+              "tif": "GTC",
+              "trigger": null
+            }
+          ]
+        }
+      },
+      {
+        "perp_orders": {
+          "builderCode": "coverage3",
+          "orders": [
+            {
+              "coin": "SOL",
+              "px": {
+                "MidPercent": {
+                  "offset_pct": -0.2
+                }
+              },
+              "reduceOnly": false,
+              "side": "buy",
+              "sz": 0.1,
+              "tif": "IOC",
+              "trigger": null
+            }
+          ]
+        }
+      },
+      {
+        "cancel_last": {
+          "coin": "ETH"
+        }
+      },
+      {
+        "cancel_all": {
+          "coin": "BTC"
+        }
+      },
+      {
+        "usd_class_transfer": {
+          "toPerp": true,
+          "usdc": 500.0
+        }
+      },
+      {
+        "set_leverage": {
+          "coin": "ETH",
+          "cross": false,
+          "leverage": 10
+        }
+      }
+    ]
+  },
+  "timestamp": "20260208-034200",
+  "wallet": null,
+  "windowMs": 200
+}

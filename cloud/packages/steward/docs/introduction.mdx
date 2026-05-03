@@ -1,0 +1,91 @@
+---
+title: "What is Steward?"
+description: "The governance layer for autonomous AI agents — encrypted wallets, credential management, policy enforcement, and embeddable React UI."
+---
+
+# What is Steward?
+
+Steward is a **governance layer for autonomous AI agents**. It provides encrypted wallet management, credential storage, policy enforcement, API proxy with credential injection, and audit logging — so agents can interact with blockchains and external APIs without ever touching raw private keys or API credentials.
+
+<CardGroup cols={2}>
+  <Card title="Wallet Vault" icon="vault" href="/concepts/wallet-vault">
+    AES-256-GCM encrypted key storage with multi-chain signing (EVM + Solana). Agents request signatures — they never see private keys.
+  </Card>
+  <Card title="Secret Vault" icon="key" href="/concepts/secret-vault">
+    Encrypted credential storage with automatic injection. Agents never see API keys — Steward's proxy injects them at request time.
+  </Card>
+  <Card title="Policy Engine" icon="shield-check" href="/concepts/policy-engine">
+    Declarative policies evaluated before every action. Spending limits, rate limits, address whitelists, time windows — all configurable per agent.
+  </Card>
+  <Card title="API Proxy" icon="shuffle" href="/concepts/proxy-gateway">
+    All external API calls flow through Steward. Credentials injected at the proxy, costs tracked, everything audited.
+  </Card>
+</CardGroup>
+
+## The Problem
+
+Today, most agent platforms inject plaintext credentials directly into agent containers:
+
+```bash
+# What agent containers look like today 😬
+OPENAI_API_KEY=sk-proj-abc123...
+ANTHROPIC_API_KEY=sk-ant-def456...
+EVM_PRIVATE_KEY=0xdeadbeef...
+DATABASE_URL=postgres://user:pass@host/db
+```
+
+Any code running inside the container — including code triggered by prompt injection — can read these credentials, exfiltrate them, or drain wallets. There's no spending control, no audit trail, and rotating a credential means redeploying every container that uses it.
+
+## The Solution
+
+With Steward, agent containers only receive **two environment variables**:
+
+```bash
+# What agent containers look like with Steward ✅
+STEWARD_PROXY_URL=http://steward-proxy:8080
+STEWARD_AGENT_TOKEN=stwd_jwt_...
+```
+
+Every API call and every transaction flows through Steward, where it's **authenticated, policy-checked, logged, and metered** before being forwarded with the real credentials injected.
+
+## What's New
+
+Steward has grown beyond wallet management into a full agent infrastructure platform:
+
+- **API Proxy** — route any HTTP API call through Steward for credential injection, cost tracking, and audit logging
+- **Webhook events** — get notified on `tx.pending`, `tx.signed`, `spend.threshold`, `policy.violation`, and more
+- **Approval workflow** — large transactions queue for human review; approve or deny via API or the `<ApprovalQueue>` component
+- **Control plane config** — per-tenant configuration of policy exposure, UI feature flags, themes, and approval rules
+- **Embeddable React UI** — drop `@stwd/react` into any app for wallet overview, transaction history, policy controls, and approval queues
+- **Local mode** — run Steward without any external database using the built-in PGLite (Postgres-in-WASM) backend
+- **Aggregated dashboard** — single API call returns agent balances, spend stats, recent transactions, policy summary, and pending approvals
+
+## Who Uses Steward?
+
+- **[Eliza Cloud](https://eliza.ai)** — Production deployment managing 17+ AI agents across 6 nodes with on-chain transactions on Base mainnet.
+- **Agent developers** — Anyone building autonomous agents that need wallet access or API credential management.
+- **Platform operators** — Teams running multi-tenant agent hosting who need security, cost control, and compliance.
+- **Desktop apps** — Local mode with PGLite means Steward can run as an embedded sidecar with no external dependencies.
+
+## Quick Links
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get up and running with Steward in 5 minutes.
+  </Card>
+  <Card title="Architecture" icon="sitemap" href="/concepts/architecture">
+    Understand how the three pillars work together.
+  </Card>
+  <Card title="React Components" icon="react" href="/sdk/react-components">
+    Drop-in UI for wallet management and policy controls.
+  </Card>
+  <Card title="Local Mode" icon="computer" href="/guides/local-mode">
+    Run Steward locally with PGLite — no database required.
+  </Card>
+  <Card title="SDK Reference" icon="code" href="/sdk/installation">
+    Install the TypeScript SDK and start building.
+  </Card>
+  <Card title="API Reference" icon="server" href="/api-reference/overview">
+    Explore the full REST API.
+  </Card>
+</CardGroup>

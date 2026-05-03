@@ -1,0 +1,4 @@
+{"channel":"orderUpdates","coin":"ETH","demo":true,"oid":1,"status":"open"}
+{"channel":"orderUpdates","coin":"BTC","demo":true,"oid":2,"status":"open"}
+{"change":-1000.0,"channel":"userNonFundingLedgerUpdates","coin":"USDC","demo":true,"toPerp":true}
+{"channel":"setLeverage","coin":"ETH","cross":true,"demo":true,"leverage":10}

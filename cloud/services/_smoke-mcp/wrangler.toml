@@ -1,0 +1,17 @@
+# =============================================================================
+# cloud-mcp-smoke — minimal Worker to verify mcp-handler on workerd
+# =============================================================================
+# Temporary build/dry-deploy harness. NOT production. NOT deployed.
+# Purpose: isolate mcp-handler from the rest of the cloud bundle so build
+# errors are unambiguously about mcp-handler itself, not unrelated deps.
+# =============================================================================
+
+name = "cloud-mcp-smoke"
+main = "worker.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = false
+minify = true
+
+[observability]
+enabled = true

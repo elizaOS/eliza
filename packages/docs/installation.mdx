@@ -1,0 +1,332 @@
+---
+title: "Installation"
+description: "Install elizaOS in TypeScript, Python, or Rust on macOS, Linux, or Windows"
+---
+
+elizaOS is available in three languages with identical APIs. Choose your preferred language below.
+
+## Choose Your Language
+
+<Tabs>
+  <Tab title="TypeScript">
+    ## TypeScript Installation
+
+    ### Prerequisites
+
+    - **Node.js 23.3+**: Install from [nodejs.org](https://nodejs.org/)
+    - **Bun**: Install from [bun.sh](https://bun.sh/) (recommended)
+
+    <Note>
+      **Windows Users:** Use [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) for the best experience, or install [Git Bash](https://git-scm.com/downloads) and use it as your terminal.
+    </Note>
+
+    ### Install the CLI
+
+    ```bash
+    bun i -g @elizaos/cli
+    ```
+
+    ### Verify Installation
+
+    ```bash
+    elizaos --version
+    ```
+
+    ### Quick Start
+
+    ```bash
+    elizaos create        # Create a new project
+    cd my-project
+    elizaos start         # Start your agent
+    ```
+
+    <Tip>
+      You don't need to clone the elizaOS repository to build agents. The CLI handles everything. Only clone the monorepo if you're [contributing to core](/guides/contribute-to-core).
+    </Tip>
+
+  </Tab>
+
+  <Tab title="Python">
+    ## Python Installation
+
+    ### Prerequisites
+
+    - **Python 3.11+**: Install from [python.org](https://python.org/) or use pyenv
+    - **pip** or **uv**: Package manager
+
+    ### Install the Package
+
+    ```bash
+    pip install elizaos
+    ```
+
+    Or with uv (faster):
+
+    ```bash
+    uv pip install elizaos
+    ```
+
+    ### Verify Installation
+
+    ```python
+    python -c "from elizaos import AgentRuntime; print('elizaOS installed!')"
+    ```
+
+    ### Install Plugin Dependencies
+
+    ```bash
+    # OpenAI plugin
+    pip install elizaos-plugin-openai
+
+    # Or install from the monorepo for development
+    pip install -e packages/typescript/python
+    pip install -e plugins/plugin-openai/python
+    ```
+
+    ### Quick Start
+
+    ```python
+    from elizaos import AgentRuntime, Character
+    from elizaos_plugin_openai import get_openai_plugin
+
+    character = Character(
+        name="Eliza",
+        bio="A helpful AI assistant.",
+    )
+
+    runtime = AgentRuntime(
+        character=character,
+        plugins=[get_openai_plugin()],
+    )
+
+    await runtime.initialize()
+    ```
+
+    <Tip>
+      Use virtual environments to isolate your project dependencies:
+      ```bash
+      python -m venv .venv
+      source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+      pip install elizaos
+      ```
+    </Tip>
+
+  </Tab>
+
+  <Tab title="Rust">
+    ## Rust Installation
+
+    ### Prerequisites
+
+    - **Rust 1.70+**: Install from [rustup.rs](https://rustup.rs/)
+    - **Cargo**: Included with Rust
+
+    ### Add to Your Project
+
+    ```bash
+    cargo add elizaos
+    ```
+
+    Or add to `Cargo.toml`:
+
+    ```toml
+    [dependencies]
+    elizaos = "1.0"
+    elizaos-plugin-openai = "1.0"
+    tokio = { version = "1", features = ["full"] }
+    anyhow = "1"
+    ```
+
+    ### Verify Installation
+
+    ```bash
+    cargo build
+    ```
+
+    ### Quick Start
+
+    ```rust
+    use elizaos::{AgentRuntime, RuntimeOptions, parse_character};
+    use elizaos_plugin_openai::create_openai_plugin;
+
+    #[tokio::main]
+    async fn main() -> anyhow::Result<()> {
+        let character = parse_character(r#"{
+            "name": "Eliza",
+            "bio": "A helpful AI assistant."
+        }"#)?;
+
+        let runtime = AgentRuntime::new(RuntimeOptions {
+            character: Some(character),
+            plugins: vec![create_openai_plugin()?],
+            ..Default::default()
+        }).await?;
+
+        runtime.initialize().await?;
+        println!("Agent is ready!");
+        Ok(())
+    }
+    ```
+
+    ### WebAssembly Build
+
+    For browser deployment, build with WASM target:
+
+    ```bash
+    # Install wasm-pack
+    cargo install wasm-pack
+
+    # Build for web
+    wasm-pack build --target web --out-dir pkg
+    ```
+
+    <Tip>
+      The Rust implementation compiles to both native binaries and WebAssembly, enabling high-performance browser-based agents.
+    </Tip>
+
+  </Tab>
+</Tabs>
+
+---
+
+## Environment Setup
+
+All languages require an LLM provider API key. Set up your environment:
+
+```bash
+# Create .env file in your project root
+echo "OPENAI_API_KEY=your-api-key-here" > .env
+```
+
+| Variable            | Description           | Required                |
+| ------------------- | --------------------- | ----------------------- |
+| `OPENAI_API_KEY`    | OpenAI API key        | Yes (if using OpenAI)   |
+| `ANTHROPIC_API_KEY` | Anthropic API key     | Yes (if using Claude)   |
+| `PGLITE_DATA_DIR`   | Local database path   | No (defaults to memory) |
+| `POSTGRES_URL`      | PostgreSQL connection | No (for production)     |
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion icon="js" title="TypeScript / Node.js Issues">
+    **Check Node.js version:**
+    ```bash
+    node --version  # Should be 23.3+
+    ```
+
+    **Install with nvm if needed:**
+    ```bash
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+    nvm install 23.3
+    nvm use 23.3
+    ```
+
+    **Bun not found:**
+    ```bash
+    curl -fsSL https://bun.sh/install | bash
+    source ~/.bashrc  # or ~/.zshrc
+    ```
+
+    **CLI not found after install:**
+    ```bash
+    export PATH="$HOME/.bun/bin:$PATH"
+    ```
+
+  </Accordion>
+
+  <Accordion icon="python" title="Python Issues">
+    **Check Python version:**
+    ```bash
+    python --version  # Should be 3.11+
+    ```
+
+    **Install with pyenv if needed:**
+    ```bash
+    pyenv install 3.11
+    pyenv global 3.11
+    ```
+
+    **Module not found:**
+    ```bash
+    pip install --upgrade elizaos
+    ```
+
+    **Virtual environment issues:**
+    ```bash
+    rm -rf .venv
+    python -m venv .venv
+    source .venv/bin/activate
+    pip install elizaos
+    ```
+
+  </Accordion>
+
+  <Accordion icon="gear" title="Rust Issues">
+    **Check Rust version:**
+    ```bash
+    rustc --version  # Should be 1.70+
+    ```
+
+    **Update Rust:**
+    ```bash
+    rustup update stable
+    ```
+
+    **Build errors:**
+    ```bash
+    cargo clean
+    cargo build
+    ```
+
+    **WASM build fails:**
+    ```bash
+    rustup target add wasm32-unknown-unknown
+    cargo install wasm-pack
+    ```
+
+  </Accordion>
+
+  <Accordion icon="windows" title="Windows-Specific Issues">
+    **Recommended: Use WSL2**
+    ```powershell
+    wsl --install
+    ```
+
+    **Native Windows (Git Bash):**
+    1. Install [Git for Windows](https://git-scm.com/downloads)
+    2. Use Git Bash for all commands
+    3. Add Node.js to PATH:
+    ```powershell
+    echo 'export PATH=$PATH:"/c/Program Files/nodejs"' >> ~/.bashrc
+    ```
+
+    **Permission errors:**
+    Run Git Bash as Administrator
+
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Build your first agent in 3 minutes
+  </Card>
+  <Card title="Examples" icon="code" href="/examples/overview">
+    Explore working examples in all languages
+  </Card>
+  <Card
+    title="Create a Plugin"
+    icon="puzzle-piece"
+    href="/guides/create-a-plugin"
+  >
+    Extend elizaOS with custom functionality
+  </Card>
+  <Card title="Deploy" icon="cloud" href="/guides/deploy-a-project">
+    Ship your agent to production
+  </Card>
+</CardGroup>

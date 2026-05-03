@@ -1,0 +1,84 @@
+/**
+ * Browser-specific entry point for @elizaos/core
+ *
+ * This file exports only browser-compatible modules and provides
+ * stubs or alternatives for Node.js-specific functionality.
+ * Streaming context manager is auto-detected at runtime.
+ */
+
+// Export core modules (all browser-compatible after refactoring)
+export * from "./actions";
+export * from "./character";
+export * from "./database";
+export * from "./database/inMemoryAdapter";
+export * from "./entities";
+export * from "./features/advanced-memory";
+export { AutonomyService } from "./features/autonomy/index";
+export { createBasicCapabilitiesPlugin } from "./features/basic-capabilities/index";
+export {
+	__setKnowledgeUrlFetchImplForTests,
+	type FetchedKnowledgeUrl,
+	type FetchedKnowledgeUrlKind,
+	type FetchKnowledgeFromUrlOptions,
+	fetchKnowledgeFromUrl,
+	isYouTubeUrl,
+} from "./features/knowledge/index";
+export * from "./lifeops-passive-connectors";
+export * from "./logger";
+export * from "./memory";
+export * from "./prompts";
+export * from "./roles";
+export * from "./runtime";
+// Export schemas (including buildBaseTables for plugin-sql browser/PGLite builds)
+export * from "./schemas/character";
+export { type BaseTables, buildBaseTables } from "./schemas/index";
+export * from "./search";
+export * from "./services";
+export * from "./services/agentEvent";
+// Server/runtime entry points also register these; the browser bundle must
+// expose the same symbols so Vite/esbuild can statically resolve plugins that
+// list them in `services` (see @elizaos/agent runtime).
+export { AgentEventService } from "./services/agentEvent";
+export * from "./services/message";
+export * from "./services/trajectories";
+export * from "./settings";
+export * from "./streaming-context";
+export * from "./trajectory-context";
+export * from "./trajectory-utils";
+// Export everything from types (type-only, safe for browser)
+export * from "./types";
+export * from "./types/message-service";
+// Keep proto JSON helpers as explicit runtime exports so browser plugin
+// bundles don't depend on Bun preserving the ./types barrel namespace export.
+export * as proto from "./types/proto";
+export {
+	fromJson,
+	type JsonObject,
+	type JsonValue,
+	toJson,
+} from "./types/proto";
+// Export utils first to avoid circular dependency issues
+export * from "./utils";
+export { Semaphore } from "./utils/batch-queue/semaphore.js";
+export * from "./utils/buffer";
+// Export browser-compatible utilities
+export * from "./utils/environment";
+
+export function resolveStateDir(): string {
+	return "/.eliza";
+}
+
+export async function runPluginMigrations(): Promise<void> {}
+
+// Browser-specific exports or stubs for Node-only features
+export const isBrowser = true;
+export const isNode = false;
+
+/**
+ * Browser stub for server health checks
+ * In browser environment, this is a no-op
+ */
+export const serverHealth = {
+	check: async () => ({ status: "not-applicable", environment: "browser" }),
+	isHealthy: () => true,
+};

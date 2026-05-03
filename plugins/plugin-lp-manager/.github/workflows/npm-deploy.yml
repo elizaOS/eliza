@@ -1,0 +1,122 @@
+name: Publish Package
+
+on:
+  push:
+    branches:
+      - 1.x
+      - 0.x
+  workflow_dispatch:
+
+jobs:
+  verify_version:
+    runs-on: ubuntu-latest
+    outputs:
+      should_publish: ${{ steps.check.outputs.should_publish }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if package.json version changed
+        id: check
+        run: |
+          echo "Current branch: ${{ github.ref }}"
+
+          # Get current version
+          CURRENT_VERSION=$(jq -r .version package.json)
+          echo "Current version: $CURRENT_VERSION"
+
+          # Get previous commit hash
+          git rev-parse HEAD~1 || git rev-parse HEAD
+          PREV_COMMIT=$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)
+
+          # Check if package.json changed
+          if git diff --name-only HEAD~1 HEAD | grep "package.json"; then
+            echo "Package.json was changed in this commit"
+            
+            # Get previous version if possible
+            if git show "$PREV_COMMIT:package.json" 2>/dev/null; then
+              PREV_VERSION=$(git show "$PREV_COMMIT:package.json" | jq -r .version)
+              echo "Previous version: $PREV_VERSION"
+              
+              if [ "$CURRENT_VERSION" != "$PREV_VERSION" ]; then
+                echo "Version changed from $PREV_VERSION to $CURRENT_VERSION"
+                echo "should_publish=true" >> $GITHUB_OUTPUT
+              else
+                echo "Version unchanged"
+                echo "should_publish=false" >> $GITHUB_OUTPUT
+              fi
+            else
+              echo "First commit with package.json, will publish"
+              echo "should_publish=true" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "Package.json not changed in this commit"
+            echo "should_publish=false" >> $GITHUB_OUTPUT
+          fi
+
+          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+
+  publish:
+    needs: verify_version
+    if: needs.verify_version.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create Git tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${{ needs.verify_version.outputs.version }}" -m "Release v${{ needs.verify_version.outputs.version }}"
+          git push origin "v${{ needs.verify_version.outputs.version }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build package
+        run: bun run build
+
+      - name: Publish to npm
+        run: |
+          # strip “refs/heads/” prefix
+          BRANCH=${GITHUB_REF#refs/heads/}
+          if [[ "$BRANCH" == "1.x" ]]; then
+            echo "Publishing to npm under the 'beta' tag"
+            bun publish --tag beta
+          else
+            echo "Publishing to npm under the 'latest' tag"
+            bun publish
+          fi
+        env:
+          NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  create_release:
+    needs: [verify_version, publish]
+    if: needs.verify_version.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: "v${{ needs.verify_version.outputs.version }}"
+          release_name: "v${{ needs.verify_version.outputs.version }}"
+          body: "Release v${{ needs.verify_version.outputs.version }}"
+          draft: false
+          prerelease: false

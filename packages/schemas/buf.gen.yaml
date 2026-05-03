@@ -1,0 +1,21 @@
+# buf.gen.yaml - Code generation configuration (TypeScript)
+version: v2
+
+managed:
+  enabled: true
+  override:
+    - file_option: go_package_prefix
+      value: github.com/elizaos/eliza/gen/go
+
+plugins:
+  # TypeScript generation using @bufbuild/protobuf
+  - remote: buf.build/bufbuild/es:v2.2.2
+    out: ../typescript/src/types/generated
+    opt:
+      - target=ts
+      - import_extension=.js
+  - remote: buf.build/bufbuild/es:v2.2.2
+    out: ../core/src/types/generated
+    opt:
+      - target=ts
+      - import_extension=.js

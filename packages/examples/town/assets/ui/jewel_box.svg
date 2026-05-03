@@ -1,0 +1,34 @@
+<!-- Based on Pixel Art GUI Elements by Mounir Tohami (https://mounirtohami.itch.io/pixel-art-gui-elements) -->
+<svg width="30" height="30" viewBox="0 0 30 30" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g clip-path="url(#clip0_29_3)">
+<path fill-rule="evenodd" clip-rule="evenodd" d="M4 29V30L26 30V29H28V28H29V26H30V4H29V2H28V1H26V0H4V1H2V2H1V4H0V26H1V28H2V29H4Z" fill="#181425"/>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M2 24V25H4V26H5V28H6V29H24V28H25V26H26V25H28V24H29V6H28V5H26V4H25V2H24V1L6 1V2H5V4H4V5H2V6H1V24H2Z" fill="#8B9BB4"/>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M2 24V25H4V26H5V28H6V29H24V28H25V26H26V25H28V24H29V6H28V5H26V4H25V2H24V1L6 1V2H5V4H4V5H2V6H1V24H2Z" fill="#8B9BB4"/>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M2 24V25H4V26H5V28H6V29H24V28H25V26H26V25H28V24H29V6H28V5H26V4H25V2H24V1L6 1V2H5V4H4V5H2V6H1V24H2Z" fill="#8B9BB4"/>
+<rect x="2" y="2" width="2" height="2" fill="#5A6988"/>
+<rect x="2" y="26" width="2" height="2" fill="#5A6988"/>
+<rect x="26" y="2" width="2" height="2" fill="#5A6988"/>
+<rect x="26" y="26" width="2" height="2" fill="#5A6988"/>
+<rect x="3" y="2" width="1" height="1" fill="#C0CBDC"/>
+<rect x="27" y="2" width="1" height="1" fill="#C0CBDC"/>
+<rect x="27" y="26" width="1" height="1" fill="#C0CBDC"/>
+<rect x="28" y="25" width="1" height="1" fill="#C0CBDC"/>
+<rect x="4" y="1" width="1" height="1" fill="#C0CBDC"/>
+<rect x="1" y="4" width="1" height="1" fill="#3A4466"/>
+<rect x="25" y="28" width="1" height="1" fill="#3A4466"/>
+<rect x="28" y="4" width="1" height="1" fill="#5A6988"/>
+<rect x="25" y="1" width="1" height="1" fill="#5A6988"/>
+<rect x="1" y="25" width="1" height="1" fill="#5A6988"/>
+<rect x="4" y="28" width="1" height="1" fill="#5A6988"/>
+<rect x="3" y="26" width="1" height="1" fill="#C0CBDC"/>
+<rect x="2" y="27" width="1" height="1" fill="#3A4466"/>
+<rect x="2" y="3" width="1" height="1" fill="#3A4466"/>
+<rect x="26" y="3" width="1" height="1" fill="#3A4466"/>
+<rect x="26" y="27" width="1" height="1" fill="#3A4466"/>
+</g>
+<defs>
+<clipPath id="clip0_29_3">
+<rect width="30" height="30" fill="white"/>
+</clipPath>
+</defs>
+</svg>

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
+    },
+    "@stwd/agent-trader#build": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@stwd/api#build": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@stwd/auth#build": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@stwd/db#build": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@stwd/example-waifu-integration#build": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@stwd/policy-engine#build": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@stwd/proxy#build": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@stwd/vault#build": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@stwd/webhooks#build": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "lint": {},
+    "test": { "cache": false }
+  }
+}

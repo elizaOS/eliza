@@ -1,0 +1,137 @@
+[
+  {
+    "id": "msg_101",
+    "sender": "elena.rodriguez@techcorp.com",
+    "subject": "URGENT: Board deck — need product numbers by noon",
+    "body": "Alex, the board meeting is Friday. I need the product section of the deck finalized by noon today. Key metrics: Q4 revenue per product line, churn numbers, and the NPS trend. Sarah said you have the data. Let me know if there are blockers. — Elena",
+    "received_ts": "2026-02-06T05:15:00-08:00",
+    "labels": ["inbox", "important"],
+    "is_urgent": true
+  },
+  {
+    "id": "msg_102",
+    "sender": "mike.stevens@acmecorp.com",
+    "subject": "Re: Revised SOW — updated requirements attached",
+    "body": "Hi Alex, attached is the revised SOW incorporating our discussion from last week. Key changes: (1) reduced scope on Phase 2 analytics, (2) added the SSO integration requirement, (3) timeline moved to Q3 instead of Q2. The budget section needs your sign-off. Jennifer and I would like to walk through this on our 1pm call today. Let me know if you want to pre-discuss anything. Best, Mike",
+    "received_ts": "2026-02-06T04:45:00-08:00",
+    "labels": ["inbox", "client"],
+    "is_urgent": false
+  },
+  {
+    "id": "msg_103",
+    "sender": "marcus.johnson@techcorp.com",
+    "subject": "Auth migration — blocked on infrastructure",
+    "body": "Hey Alex, wanted to flag this before standup. The auth migration is blocked — we need the new Redis cluster provisioned before we can test the session management changes. Tom said it's in the DevOps queue but no ETA. This is blocking the sprint goal. Can you help escalate? The arch review with David today at 4pm is supposed to discuss this but I'm worried we're losing days. — Marcus",
+    "received_ts": "2026-02-06T02:30:00-08:00",
+    "labels": ["inbox"],
+    "is_urgent": true
+  },
+  {
+    "id": "msg_104",
+    "sender": "rachel.green@techcorp.com",
+    "subject": "ACTION REQUIRED: Benefits enrollment closes TOMORROW",
+    "body": "Hi Alex, friendly reminder that open enrollment for 2026 benefits closes February 7th at 5pm PST. You have NOT completed your selection yet. Please log in to the HR portal and complete your elections. If you need help, HR office hours are 10-12 today. This cannot be extended.",
+    "received_ts": "2026-02-05T16:00:00-08:00",
+    "labels": ["inbox", "hr"],
+    "is_urgent": true
+  },
+  {
+    "id": "msg_105",
+    "sender": "james.liu@techcorp.com",
+    "subject": "PR #342 — Dashboard data layer refactor (review requested)",
+    "body": "Hey Alex, I've put up the PR for the dashboard data layer refactor we discussed. It's a big one (~800 lines) but most of it is moving existing code into the new service pattern. Would appreciate your review when you get a chance — ideally before sprint planning so we can discuss the approach. Link: github.com/techcorp/platform/pull/342",
+    "received_ts": "2026-02-05T22:15:00-08:00",
+    "labels": ["inbox", "engineering"],
+    "is_urgent": false
+  },
+  {
+    "id": "msg_106",
+    "sender": "priya.patel@techcorp.com",
+    "subject": "Dashboard V2 mockups — Figma link + design decisions",
+    "body": "Hi Alex! Uploaded the Dashboard V2 mockups to Figma: figma.com/file/dashboard-v2. There are 3 layout options for the main analytics view — I need your input on which direction to go before I start the detailed specs. Also included the mobile responsive views. Would love 15 min before the design review at 3:30 if possible. Key trade-off: Option A is simpler but less data-dense, Option C matches your original spec but might be overwhelming for new users.",
+    "received_ts": "2026-02-05T20:00:00-08:00",
+    "labels": ["inbox", "design"],
+    "is_urgent": false
+  },
+  {
+    "id": "msg_107",
+    "sender": "sarah.kim@techcorp.com",
+    "subject": "1:1 prep — topics for tomorrow morning",
+    "body": "Hey Alex, for our 1:1 tomorrow I want to discuss: (1) Q4 report status — Elena is asking me daily, (2) your promo timeline — I'm putting together the packet this week, (3) headcount — we might get 2 more reqs approved. Come prepared with your Q4 numbers and a prioritized list of what you'd staff the new headcount on. See you at 9:30.",
+    "received_ts": "2026-02-05T18:30:00-08:00",
+    "labels": ["inbox"],
+    "is_urgent": false
+  },
+  {
+    "id": "msg_108",
+    "sender": "newsletter@platformweekly.com",
+    "subject": "Platform Weekly: Auth patterns, edge computing, and AI agents",
+    "body": "This week: Why passkeys are replacing passwords in 2026, edge compute patterns for real-time analytics, and how AI agents are changing product management workflows. Read more at platformweekly.com/issues/247",
+    "received_ts": "2026-02-06T05:00:00-08:00",
+    "labels": ["inbox", "newsletter"],
+    "is_urgent": false
+  },
+  {
+    "id": "msg_109",
+    "sender": "tom.anderson@techcorp.com",
+    "subject": "Re: Redis cluster provisioning — update",
+    "body": "Alex, got Marcus's ping. The Redis cluster is in the Terraform queue — I can get it provisioned today if it's truly blocking the sprint. The issue is we need to decide between the managed service ($400/mo) or self-hosted. David wanted to discuss in the arch review. Can we get a quick decision before 4pm so I can start the provisioning? If you approve the managed option I can have it running by EOD.",
+    "received_ts": "2026-02-06T03:15:00-08:00",
+    "labels": ["inbox", "engineering"],
+    "is_urgent": false
+  },
+  {
+    "id": "msg_110",
+    "sender": "recruiting@techcorp.com",
+    "subject": "Interview prep: Jordan Lee — Sr. Frontend Engineer (today 4pm)",
+    "body": "Hi Alex, reminder you're interviewing Jordan Lee today at 4pm PST (system design round). Resume attached. Jordan has 7 years experience, currently at Stripe, strong in React/TypeScript. Focus areas for your round: system design for data-heavy dashboards, API design patterns, and collaboration with PM/design. Scorecard link: greenhouse.io/interview/jlee-4521",
+    "received_ts": "2026-02-05T14:00:00-08:00",
+    "labels": ["inbox", "recruiting"],
+    "is_urgent": false
+  },
+  {
+    "id": "msg_111",
+    "sender": "lisa.wang@techcorp.com",
+    "subject": "Expense report approved — direct deposit pending",
+    "body": "Your expense report #EXP-2026-0089 for $1,247.50 (team dinner + conference registration) has been approved. Direct deposit will process within 3-5 business days.",
+    "received_ts": "2026-02-05T11:00:00-08:00",
+    "labels": ["inbox", "finance"],
+    "is_urgent": false
+  },
+  {
+    "id": "msg_112",
+    "sender": "noreply@github.com",
+    "subject": "[techcorp/platform] CI pipeline failed on main (build #1847)",
+    "body": "Build #1847 on branch main failed. Failure in: test-integration step. Error: ConnectionRefusedError — database container not starting. Last commit: 3a7f2b1 by marcus.johnson 'Update session handling for new auth flow'. See details: github.com/techcorp/platform/actions/runs/1847",
+    "received_ts": "2026-02-06T01:45:00-08:00",
+    "labels": ["inbox", "automated"],
+    "is_urgent": false
+  },
+  {
+    "id": "msg_113",
+    "sender": "robert.chen@headhunter.io",
+    "subject": "Exciting VP of Product opportunity — Series C startup",
+    "body": "Hi Alex, I came across your profile and thought you'd be a great fit for a VP of Product role at a well-funded Series C company in the AI infrastructure space. Comp range $350-420K + equity. Happy to share more details if interested. Best, Robert",
+    "received_ts": "2026-02-05T09:00:00-08:00",
+    "labels": ["inbox"],
+    "is_urgent": false
+  },
+  {
+    "id": "msg_114",
+    "sender": "fedex@tracking.fedex.com",
+    "subject": "Your package is out for delivery",
+    "body": "Your FedEx package (tracking #7829-4421-3356) is out for delivery today. Estimated delivery: 2:00-6:00 PM. Delivery address: 2847 Mission St.",
+    "received_ts": "2026-02-06T06:10:00-08:00",
+    "labels": ["inbox"],
+    "is_urgent": false
+  },
+  {
+    "id": "msg_115",
+    "sender": "david.park@techcorp.com",
+    "subject": "Arch review today — moved to 4pm, critical attendees needed",
+    "body": "Team, I'm scheduling the auth migration architecture review for today at 4pm. This is critical — the migration is blocking 3 downstream teams and we need to make a decision on the Redis infrastructure today. Alex, Marcus, Tom — please prioritize this. I know there might be conflicts but we've delayed this twice already. If you absolutely can't make 4pm, let me know by 10am and I'll try to find another slot, but I'd strongly prefer we just do it today. — David",
+    "received_ts": "2026-02-05T21:45:00-08:00",
+    "labels": ["inbox", "important"],
+    "is_urgent": false
+  }
+]

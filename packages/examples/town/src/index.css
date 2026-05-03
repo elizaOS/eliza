@@ -1,0 +1,201 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/forms";
+
+/* Custom theme tokens for Tailwind v4 */
+@theme {
+  /* Custom font families */
+  --font-display: 'Upheaval Pro', sans-serif;
+  --font-body: 'VCR OSD Mono', monospace;
+
+  /* Brown color palette */
+  --color-brown-100: #FFFFFF;
+  --color-brown-200: #EAD4AA;
+  --color-brown-300: #E4A672;
+  --color-brown-500: #B86F50;
+  --color-brown-700: #743F39;
+  --color-brown-800: #3F2832;
+  --color-brown-900: #181425;
+
+  /* Clay color palette */
+  --color-clay-100: #C0CBDC;
+  --color-clay-300: #8B9BB4;
+  --color-clay-500: #5A6988;
+  --color-clay-700: #3A4466;
+  --color-clay-900: #181425;
+}
+
+@font-face {
+  font-family: 'Upheaval Pro';
+  src: url(/assets/fonts/upheaval_pro.ttf);
+}
+
+@font-face {
+  font-family: 'VCR OSD Mono';
+  src: url(/assets/fonts/vcr_osd_mono.ttf);
+}
+
+.font-display {
+  font-family: 'Upheaval Pro', 'sans-serif';
+}
+
+.font-body {
+  font-family: 'VCR OSD Mono', 'monospace';
+}
+
+.font-system {
+  font-family: system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+}
+
+:root {
+  --foreground-rgb: 0, 0, 0;
+  --background-start-rgb: 214, 219, 220;
+  --background-end-rgb: 255, 255, 255;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --foreground-rgb: 255, 255, 255;
+    --background-start-rgb: 0, 0, 0;
+    --background-end-rgb: 0, 0, 0;
+  }
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: linear-gradient(to bottom, transparent, rgb(var(--background-end-rgb)))
+    rgb(var(--background-start-rgb));
+}
+
+.game-background {
+  background: black;
+}
+
+.game-title {
+  background: linear-gradient(to bottom, #fec742, #dd7c42);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0px 0.08em 0px #6e2146);
+}
+
+.game-frame {
+  border-width: 36px;
+  border-image-source: url(../assets/ui/frame.svg);
+  border-image-repeat: stretch;
+  border-image-slice: 25%;
+}
+
+.game-progress-bar {
+  border: 5px solid rgb(23, 20, 33);
+}
+
+@keyframes moveStripes {
+  to {
+    background-position: calc(100% + 28px) 0;
+  }
+}
+
+.game-progress-bar-progress {
+  background: repeating-linear-gradient(135deg, white, white 10px, #dfdfdf 10px, #dfdfdf 20px);
+  background-size: 200% 100%;
+  background-position: 100% 0;
+  animation: moveStripes 0.5s linear infinite;
+}
+
+@media screen and (min-width: 640px) {
+  .game-frame {
+    border-width: 48px;
+  }
+}
+
+.shadow-solid {
+  text-shadow: 0 0.1em 0 rgba(0, 0, 0, 0.5);
+}
+
+.bubble {
+  border-width: 30px;
+  border-image-source: url(../assets/ui/bubble-left.svg);
+  border-image-repeat: stretch;
+  border-image-slice: 20%;
+}
+
+.bubble-mine {
+  border-image-source: url(../assets/ui/bubble-right.svg);
+}
+
+.box {
+  border-width: 12px;
+  border-image-source: url(../assets/ui/box.svg);
+  border-image-repeat: stretch;
+  border-image-slice: 12.5%;
+}
+
+.desc {
+  border-width: 56px;
+  border-image-source: url(../assets/ui/desc.svg);
+  border-image-repeat: stretch;
+  border-image-slice: 28%;
+}
+
+.chats {
+  border-width: 24px;
+  border-image-source: url(../assets/ui/chats.svg);
+  border-image-repeat: stretch;
+  border-image-slice: 40%;
+}
+
+.login-prompt {
+  border-width: 48px;
+  border-image-source: url(../assets/ui/jewel_box.svg);
+  border-image-repeat: stretch;
+  border-image-slice: 40%;
+}
+
+.button {
+  border-width: 1em;
+  border-image-source: url(../assets/ui/button.svg);
+  border-image-repeat: stretch;
+  border-image-slice: 25%;
+  cursor: pointer;
+}
+
+.button span {
+  display: inline-block;
+  transform: translateY(-15%);
+}
+
+@media (max-width: 640px) {
+  .button {
+    height: 40px;
+    border-width: 0.75em;
+    font-size: 16px;
+  }
+
+  .button > div,
+  .button > span {
+    vertical-align: top;
+    line-height: 1;
+  }
+}
+
+.button:hover {
+  opacity: 0.8;
+}
+
+.button:active {
+  /* Inlining this image to avoid flashing during loading */
+  border-image-source: url("data:image/svg+xml,%3Csvg width='16' height='16' viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='1' y='2' width='14' height='13' fill='%23181425'/%3E%3Crect x='2' y='1' width='12' height='15' fill='%23181425'/%3E%3Crect y='3' width='16' height='11' fill='%23181425'/%3E%3Crect x='2' y='14' width='12' height='1' fill='%23262B44'/%3E%3Crect x='1' y='3' width='14' height='11' fill='%233A4466'/%3E%3Crect x='2' y='2' width='12' height='9' fill='%233A4466'/%3E%3Crect x='1' y='13' width='1' height='1' fill='%23262B44'/%3E%3Crect x='14' y='13' width='1' height='1' fill='%23262B44'/%3E%3C/svg%3E%0A");
+}
+
+.button:active span {
+  transform: none;
+}
+
+p[contenteditable='true']:empty::before {
+  content: attr(placeholder);
+  color: #aaa;
+}
+
+.shape-top-left-corner {
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+}

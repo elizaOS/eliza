@@ -1,0 +1,24 @@
+{
+  "name": "@elizaos/app-vincent",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./client": "./src/client.ts",
+    "./plugin": "./src/plugin.ts",
+    "./register": "./src/register.ts",
+    "./useVincentState": "./src/useVincentState.ts",
+    "./*": "./src/*"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "lucide-react": "^1.0.0"
+  },
+  "elizaos": {
+    "app": {
+      "heroImage": "assets/hero.png"
+    }
+  }
+}

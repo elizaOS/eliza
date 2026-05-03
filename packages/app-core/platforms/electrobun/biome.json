@@ -1,0 +1,11 @@
+{
+	"root": false,
+	"$schema": "https://biomejs.dev/schemas/2.4.14/schema.json",
+	"extends": "//",
+	"files": {
+		"includes": ["**", "!src/preload.js"]
+	},
+	"formatter": {
+		"indentStyle": "tab"
+	}
+}

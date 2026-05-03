@@ -1,0 +1,178 @@
+---
+title: "Policies"
+description: "Get and set agent policies for transaction governance."
+---
+
+# Policies API
+
+Manage policies for individual agents. Policies are evaluated before every signing operation.
+
+## Get Policies
+
+Returns all policies for an agent.
+
+```
+GET /agents/:agentId/policies
+```
+
+**Auth:** Tenant API key or agent JWT
+
+**Response:**
+
+```json
+{
+  "ok": true,
+  "data": [
+    {
+      "id": "spending-limit-1",
+      "type": "spending-limit",
+      "enabled": true,
+      "config": {
+        "maxPerTransaction": "100000000000000000",
+        "maxPerDay": "500000000000000000"
+      }
+    },
+    {
+      "id": "approved-addrs-1",
+      "type": "approved-addresses",
+      "enabled": true,
+      "config": {
+        "addresses": ["0x1111111254EEB25477B68fb85Ed929f73A960582"]
+      }
+    }
+  ]
+}
+```
+
+<CodeGroup>
+```typescript SDK
+const policies = await steward.getPolicies("my-agent");
+```
+
+```bash cURL
+curl https://api.steward.fi/agents/my-agent/policies \
+  -H "X-Steward-Key: your-key"
+```
+</CodeGroup>
+
+---
+
+## Set Policies
+
+Replaces all policies for an agent.
+
+```
+PUT /agents/:agentId/policies
+```
+
+**Auth:** Tenant API key or agent JWT
+
+<Warning>
+  This endpoint **replaces** the entire policy set. Always send the complete list of policies you want the agent to have.
+</Warning>
+
+**Request Body:**
+
+```typescript
+Array<{
+  id?: string;        // Unique ID (auto-generated if omitted)
+  type: string;       // Policy type
+  enabled: boolean;   // Active or inactive
+  config: object;     // Type-specific configuration
+}>
+```
+
+**Valid policy types:**
+
+| Type | Description |
+|------|-------------|
+| `spending-limit` | Max value per tx, per day, per week |
+| `approved-addresses` | Whitelist of allowed destination addresses |
+| `auto-approve-threshold` | Auto-approve below this value; queue above |
+| `time-window` | Restrict to specific hours |
+| `rate-limit` | Max transactions per minute/hour |
+| `allowed-chains` | Restrict to specific chain IDs |
+
+**Response:**
+
+```json
+{
+  "ok": true,
+  "data": [
+    {
+      "id": "spending-limit-1",
+      "type": "spending-limit",
+      "enabled": true,
+      "config": { "maxPerTransaction": "100000000000000000" }
+    }
+  ]
+}
+```
+
+<CodeGroup>
+```typescript SDK
+await steward.setPolicies("my-agent", [
+  {
+    id: "spending-limit",
+    type: "spending-limit",
+    enabled: true,
+    config: {
+      maxPerTransaction: "100000000000000000",
+      maxPerDay: "500000000000000000",
+    },
+  },
+  {
+    id: "approved-addrs",
+    type: "approved-addresses",
+    enabled: true,
+    config: {
+      addresses: ["0x1111111254EEB25477B68fb85Ed929f73A960582"],
+    },
+  },
+]);
+```
+
+```bash cURL
+curl -X PUT https://api.steward.fi/agents/my-agent/policies \
+  -H "X-Steward-Key: your-key" \
+  -H "Content-Type: application/json" \
+  -d '[
+    {
+      "id": "spending-limit",
+      "type": "spending-limit",
+      "enabled": true,
+      "config": {
+        "maxPerTransaction": "100000000000000000",
+        "maxPerDay": "500000000000000000"
+      }
+    }
+  ]'
+```
+</CodeGroup>
+
+---
+
+## Validation
+
+The API validates each policy:
+
+- `type` must be one of the valid types listed above
+- `enabled` must be a boolean
+- `config` must be a non-null object
+
+Invalid policies return `400`:
+
+```json
+{
+  "ok": false,
+  "error": "Unknown policy type \"invalid-type\" — supported types: spending-limit, approved-addresses, auto-approve-threshold, time-window, rate-limit, allowed-chains"
+}
+```
+
+---
+
+## Related
+
+- [Policy Engine Concepts](/concepts/policy-engine) — How evaluation works
+- [Policies Guide](/guides/policies) — Step-by-step configuration
+- [Vault API](/api-reference/vault) — Where policies are enforced

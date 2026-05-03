@@ -1,0 +1,67 @@
+{
+  "name": "@elizaos/capacitor-desktop",
+  "version": "1.0.0",
+  "description": "Adds tray icons, global shortcuts, notifications, and other desktop-only controls.",
+  "keywords": [
+    "desktop",
+    "electrobun",
+    "shortcuts",
+    "notifications"
+  ],
+  "main": "./dist/plugin.cjs.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/plugin.cjs.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "unpkg": "dist/plugin.js",
+  "files": [
+    "dist/",
+    "electrobun/"
+  ],
+  "author": "elizaOS",
+  "license": "MIT",
+  "dependencies": {
+    "@elizaos/app-core": "workspace:*"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaOS/eliza"
+  },
+  "scripts": {
+    "build": "npm run clean && tsc && rollup -c rollup.config.mjs",
+    "clean": "rimraf ./dist",
+    "watch": "tsc --watch"
+  },
+  "devDependencies": {
+    "@capacitor/core": "^8.0.0",
+    "@rollup/plugin-node-resolve": "^16.0.0",
+    "rimraf": "^6.0.0",
+    "rollup": "^4.0.0",
+    "typescript": "^6.0.0"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "elizaos": {
+    "platforms": [
+      "browser",
+      "node"
+    ],
+    "runtime": "both",
+    "platformDetails": {
+      "browser": "Limited support with graceful fallbacks (notifications via Web API, clipboard, basic window ops). System tray, global shortcuts, and auto-launch unavailable.",
+      "node": "Full support via Electrobun (system tray, global shortcuts, auto-launch, window management, power monitoring, native notifications)",
+      "ios": false,
+      "android": false
+    }
+  }
+}

@@ -1,0 +1,13 @@
+Your job: reflect on context, decide what you want to do next, and act if appropriate.
+- Use available actions/tools when they can advance the goal.
+- Use thinking to think about and plan what you want to do.
+- Do NOT speak out loud. This loop is internal-only.
+- Output structure: ONLY a <thought> plus any actions. No other message text.
+- If you don't need to make a change this round, take no action and output only a <thought>.
+- If you cannot act, explain what is missing inside <thought> and take no action.
+- Keep the response concise, focused on the next action.
+
+USER CONTEXT (most recent last):
+{{targetRoomContext}}
+
+Think briefly, then output <thought> and take action if needed.

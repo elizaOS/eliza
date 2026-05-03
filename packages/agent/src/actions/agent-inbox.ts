@@ -1,0 +1,171 @@
+/**
+ * AGENT_INBOX — the agent's own mailbox / channel inbox.
+ *
+ * Distinct from OWNER_INBOX (which covers the OWNER's Gmail/Slack/Discord/SMS
+ * etc.). AGENT_INBOX is scoped to the agent's OWN accounts — the mailbox the
+ * agent itself holds for autonomous outbound and inbound.
+ *
+ * Currently a stub: returns `not_configured` when no agent mailbox is wired.
+ * Placed in the registry now so the planner can see the distinction and we
+ * have a clear landing spot when agent-mailbox integration is implemented.
+ */
+
+import type {
+  Action,
+  ActionExample,
+  ActionResult,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+} from "@elizaos/core";
+import { hasOwnerAccess } from "../security/access.js";
+
+type AgentInboxSubaction =
+  | "triage"
+  | "digest"
+  | "respond"
+  | "search"
+  | "read_message"
+  | "draft_reply"
+  | "send_reply";
+
+interface AgentInboxParameters {
+  subaction?: AgentInboxSubaction | string;
+  channel?: string;
+  query?: string;
+  messageId?: string;
+  replyBody?: string;
+  confirmed?: boolean;
+}
+
+function notConfigured(subaction: string | undefined): ActionResult {
+  return {
+    success: false,
+    text:
+      "The agent's own inbox is not configured yet. Wire an agent-scoped " +
+      "mailbox (e.g. an Eliza Cloud inbox or a dedicated IMAP/SMTP account) " +
+      "before using AGENT_INBOX. For the OWNER's inbox, use OWNER_INBOX.",
+    values: { success: false, error: "AGENT_INBOX_NOT_CONFIGURED" },
+    data: {
+      actionName: "AGENT_INBOX",
+      subaction: subaction ?? null,
+      reason: "no_agent_mailbox_configured",
+    },
+  };
+}
+
+export const agentInboxAction: Action = {
+  name: "AGENT_INBOX",
+  similes: [
+    "AGENT_MAILBOX",
+    "AGENT_GMAIL",
+    "AGENT_EMAIL",
+    "AGENT_MESSAGES",
+    "MY_AGENT_INBOX",
+  ],
+  description:
+    "AGENT-scoped inbox: the AGENT's own mailbox / channel inbox. Use this " +
+    "when the agent itself has email or messaging accounts and needs to " +
+    "triage, digest, read, search, draft, or send on those accounts. " +
+    "Subactions: triage | digest | respond | search | read_message | " +
+    "draft_reply | send_reply. " +
+    "Do NOT use this for the OWNER's inbox — any 'my inbox', 'my Gmail', " +
+    "'my email', 'inbox digest', 'daily brief' request from the owner " +
+    "belongs to OWNER_INBOX. AGENT_INBOX only applies when the subject " +
+    "being triaged is the AGENT's own account.",
+
+  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
+    hasOwnerAccess(runtime, message),
+
+  parameters: [
+    {
+      name: "subaction",
+      description:
+        "One of: triage, digest, respond, search, read_message, draft_reply, send_reply.",
+      required: true,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "channel",
+      description:
+        "Which of the agent's channels to target (e.g. 'gmail', 'all').",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "query",
+      description: "Search / triage query string.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "messageId",
+      description:
+        "Specific message id for read_message / draft_reply / send_reply.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "replyBody",
+      description: "Body text for draft_reply / send_reply.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "confirmed",
+      description: "Must be true to dispatch a draft via send_reply.",
+      required: false,
+      schema: { type: "boolean" as const },
+    },
+  ],
+
+  handler: async (
+    _runtime,
+    _message,
+    _state,
+    options,
+  ): Promise<ActionResult> => {
+    const params =
+      ((options as HandlerOptions | undefined)?.parameters as
+        | AgentInboxParameters
+        | undefined) ?? {};
+    const subaction = (params.subaction ?? "").toString().trim().toLowerCase();
+    // Stub: the agent does not yet have a configured mailbox. Return a
+    // clean not-configured result so the planner gets an unambiguous signal
+    // rather than an exception.
+    return notConfigured(subaction || undefined);
+  },
+
+  examples: [
+    [
+      {
+        name: "{{user1}}",
+        content: {
+          text: "Check the agent's own inbox for anything new from the Eliza Cloud notifications address.",
+        },
+      },
+      {
+        name: "{{agent}}",
+        content: {
+          text: "The agent's own inbox is not configured yet.",
+          actions: ["AGENT_INBOX"],
+        },
+      },
+    ],
+    [
+      {
+        name: "{{user1}}",
+        content: {
+          text: "Triage your own mailbox and tell me what's pending.",
+        },
+      },
+      {
+        name: "{{agent}}",
+        content: {
+          text: "The agent's own inbox is not configured yet.",
+          actions: ["AGENT_INBOX"],
+        },
+      },
+    ],
+  ] as ActionExample[][],
+};
