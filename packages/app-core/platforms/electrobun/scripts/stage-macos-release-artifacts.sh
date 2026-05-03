@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ARTIFACTS_DIR="${1:-$(cd "$SCRIPT_DIR/.." && pwd)/artifacts}"
 SKIP_SIGNATURE_CHECK="${ELECTROBUN_SKIP_CODESIGN:-0}"
 REAL_XCRUN="${ELECTROBUN_REAL_XCRUN:-/usr/bin/xcrun}"
-NOTARY_WAIT_TIMEOUT="${ELECTROBUN_NOTARY_WAIT_TIMEOUT:-30m}"
+NOTARY_WAIT_TIMEOUT="${ELECTROBUN_NOTARY_WAIT_TIMEOUT:-60m}"
 
 if [[ "$(uname)" != "Darwin" ]]; then
   echo "stage-macos-release-artifacts: macOS only"
@@ -76,6 +76,61 @@ for key in ("id", "submissionId", "uuid", "notarizationId"):
 PY
 }
 
+write_config_entitlements_plist() {
+  local output_path="$1"
+  local config_path="$SCRIPT_DIR/../electrobun.config.ts"
+
+  node --import tsx --input-type=module - "$output_path" "$config_path" <<'NODE'
+import fs from "node:fs";
+import { pathToFileURL } from "node:url";
+
+const [outputPath, configPath] = process.argv.slice(2);
+const configModule = await import(pathToFileURL(configPath).href);
+const config = configModule.default?.default ?? configModule.default;
+const entitlements = config?.build?.mac?.entitlements;
+
+if (
+  !entitlements ||
+  typeof entitlements !== "object" ||
+  Array.isArray(entitlements) ||
+  Object.keys(entitlements).length === 0
+) {
+  console.error(
+    `stage-macos-release-artifacts: no macOS entitlements configured in ${configPath}`,
+  );
+  process.exit(1);
+}
+
+const encode = (value) =>
+  String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+
+const formatValue = (value) => {
+  if (value === true) return "<true/>";
+  if (value === false) return "<false/>";
+  if (typeof value === "string") return `<string>${encode(value)}</string>`;
+  if (Number.isInteger(value)) return `<integer>${value}</integer>`;
+  throw new Error(
+    `Unsupported macOS entitlement value for plist generation: ${JSON.stringify(value)}`,
+  );
+};
+
+const entries = Object.entries(entitlements)
+  .sort(([left], [right]) => left.localeCompare(right))
+  .map(([key, value]) => `\t<key>${encode(key)}</key>\n\t${formatValue(value)}`)
+  .join("\n");
+
+fs.writeFileSync(
+  outputPath,
+  `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<dict>\n${entries}\n</dict>\n</plist>\n`,
+);
+NODE
+}
+
 TARBALL_PATH="$(find -L "$ARTIFACTS_DIR" -maxdepth 1 -type f -name "*-macos-*.app.tar.zst" | sort | head -1)"
 if [[ -z "$TARBALL_PATH" ]]; then
   echo "stage-macos-release-artifacts: no macOS updater tarball found in $ARTIFACTS_DIR"
@@ -113,18 +168,18 @@ if [[ ! -f "$DIRECT_LAUNCHER_SOURCE" ]]; then
   exit 1
 fi
 
-entitlement_args=()
 if [[ "$SKIP_SIGNATURE_CHECK" != "1" && -n "${ELECTROBUN_DEVELOPER_ID:-}" ]]; then
   TMP_ENTITLEMENTS_PATH="$TMP_ROOT/staged-entitlements.plist"
   if ! codesign -d --entitlements :- "$STAGED_APP_PATH" >"$TMP_ENTITLEMENTS_PATH" 2>/dev/null; then
-    echo "stage-macos-release-artifacts: failed to extract entitlements from staged app bundle"
-    exit 1
+    write_config_entitlements_plist "$TMP_ENTITLEMENTS_PATH"
   fi
   if [[ ! -s "$TMP_ENTITLEMENTS_PATH" ]]; then
-    echo "stage-macos-release-artifacts: extracted entitlements were empty"
+    write_config_entitlements_plist "$TMP_ENTITLEMENTS_PATH"
+  fi
+  if [[ ! -s "$TMP_ENTITLEMENTS_PATH" ]]; then
+    echo "stage-macos-release-artifacts: macOS entitlements plist is empty"
     exit 1
   fi
-  entitlement_args=(--entitlements "$TMP_ENTITLEMENTS_PATH")
 fi
 
 TMP_LAUNCHER_PATH="$TMP_ROOT/direct-launcher"
