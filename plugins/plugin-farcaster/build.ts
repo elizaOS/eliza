@@ -6,15 +6,16 @@
  * This script builds the TypeScript source for both Node.js and browser environments.
  */
 
-import { existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const externalDeps = ["@elizaos/core", "@neynar/nodejs-sdk", "lru-cache", "zod"];
 
 async function build() {
   const totalStart = Date.now();
-  const distDir = join(process.cwd(), "..", "typescript", "dist");
+  const distDir = join(process.cwd(), "dist");
+
+  await rm(distDir, { recursive: true, force: true });
 
   // Node build
   const nodeStart = Date.now();
@@ -82,40 +83,31 @@ async function build() {
   const { $ } = await import("bun");
   await $`tsc --project tsconfig.build.json`;
 
-  // Ensure directories exist
   const nodeDir = join(distDir, "node");
   const browserDir = join(distDir, "browser");
   const cjsDir = join(distDir, "cjs");
 
-  if (!existsSync(nodeDir)) await mkdir(nodeDir, { recursive: true });
-  if (!existsSync(browserDir)) await mkdir(browserDir, { recursive: true });
-  if (!existsSync(cjsDir)) await mkdir(cjsDir, { recursive: true });
+  await mkdir(nodeDir, { recursive: true });
+  await mkdir(browserDir, { recursive: true });
+  await mkdir(cjsDir, { recursive: true });
 
-  // Root types alias to node by default
-  const rootIndexDtsPath = join(distDir, "index.d.ts");
-  const rootAlias = `export * from "./node/index";
-export { default } from "./node/index";
-`;
-  await writeFile(rootIndexDtsPath, rootAlias, "utf8");
-
-  // Node alias
+  // Package exports point types at dist/{node,browser,cjs}/index.d.ts; declarations
+  // for entry graphs live at dist/index.{node,browser}.d.ts from `tsc`.
   const nodeIndexDtsPath = join(nodeDir, "index.d.ts");
-  const nodeAlias = `export * from "./index.node";
-export { default } from "./index.node";
+  const nodeAlias = `export * from "../index.node";
+export { default } from "../index.node";
 `;
   await writeFile(nodeIndexDtsPath, nodeAlias, "utf8");
 
-  // Browser alias
   const browserIndexDtsPath = join(browserDir, "index.d.ts");
-  const browserAlias = `export * from "./index.browser";
-export { default } from "./index.browser";
+  const browserAlias = `export * from "../index.browser";
+export { default } from "../index.browser";
 `;
   await writeFile(browserIndexDtsPath, browserAlias, "utf8");
 
-  // CJS alias
   const cjsIndexDtsPath = join(cjsDir, "index.d.ts");
-  const cjsAlias = `export * from "./index.node";
-export { default } from "./index.node";
+  const cjsAlias = `export * from "../index.node";
+export { default } from "../index.node";
 `;
   await writeFile(cjsIndexDtsPath, cjsAlias, "utf8");
 

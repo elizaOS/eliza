@@ -253,11 +253,12 @@ const FEATURE_PLUGINS = {
 
 ```typescript
 const STREAMING_PLUGINS = {
-  twitch:     "@elizaos/plugin-twitch-streaming",
-  youtube:    "@elizaos/plugin-youtube-streaming",
-  customRtmp: "@elizaos/plugin-custom-rtmp",
-  pumpfun:    "@elizaos/plugin-pumpfun-streaming",
-  x:          "@elizaos/plugin-x-streaming",
+  twitch:       "@elizaos/plugin-streaming",
+  youtube:      "@elizaos/plugin-streaming",
+  customRtmp:   "@elizaos/plugin-streaming",
+  pumpfun:      "@elizaos/plugin-streaming",
+  x:            "@elizaos/plugin-streaming",
+  rtmpSources:  "@elizaos/plugin-streaming",
 };
 ```
 

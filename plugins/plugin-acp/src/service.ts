@@ -45,6 +45,7 @@ export class ACPService extends Service {
   private acpConfig: ACPServiceConfig;
   private sessionStore: AcpSessionStore;
   private agent: AcpGatewayAgent | null = null;
+  private gateway: GatewayClient | null = null;
   private isRunning = false;
 
   constructor(runtime?: IAgentRuntime, acpConfig: ACPServiceConfig = {}) {

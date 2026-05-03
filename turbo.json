@@ -116,16 +116,8 @@
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
-    "@elizaos/plugin-solana-root#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
-    },
     "@elizaos/plugin-wallet#build": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "@elizaos/plugin-evm#build",
-        "@elizaos/plugin-solana#build"
-      ],
+      "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
     "@elizaos/plugin-sql-root#build": {

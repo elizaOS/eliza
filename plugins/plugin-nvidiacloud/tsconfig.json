@@ -1,6 +1,5 @@
 {
   "compilerOptions": {
-    "ignoreDeprecations": "6.0",
     "outDir": "dist",
     "rootDir": "src",
     "lib": [
@@ -21,8 +20,7 @@
     "emitDeclarationOnly": true,
     "resolveJsonModule": true,
     "moduleDetection": "force",
-    "skipLibCheck": true,
-    "ignoreDeprecations": "6.0"
+    "skipLibCheck": true
   },
   "include": [
     "src/**/*.ts"

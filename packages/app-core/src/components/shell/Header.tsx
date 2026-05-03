@@ -228,7 +228,9 @@ export function Header({
   const streamingEnabled = useMemo(
     () =>
       plugins.some(
-        (plugin) => plugin.id === "streaming-base" && plugin.enabled,
+        (plugin) =>
+          plugin.id === "streaming" &&
+          plugin.enabled,
       ),
     [plugins],
   );

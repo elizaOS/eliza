@@ -43,7 +43,7 @@
     "build.config.ts"
   ],
   "dependencies": {
-    "@elizaos/core": "2.0.0-alpha.3",
+    "@elizaos/core": "workspace:*",
     "axios": "^1.7.2",
     "canvas": "^3.1.2",
     "face-api.js": "^0.22.2",

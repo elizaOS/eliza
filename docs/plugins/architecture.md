@@ -237,11 +237,12 @@ const FEATURE_PLUGINS = {
 
 ```typescript
 const STREAMING_PLUGINS = {
-  twitch:     "@elizaos/plugin-twitch-streaming",   // * upstream-only
-  youtube:    "@elizaos/plugin-youtube-streaming",   // * upstream-only
-  customRtmp: "@elizaos/plugin-custom-rtmp",         // * upstream-only
-  pumpfun:    "@elizaos/plugin-pumpfun-streaming",   // * upstream-only
-  x:          "@elizaos/plugin-x-streaming",         // * upstream-only
+  twitch:       "@elizaos/plugin-streaming",
+  youtube:      "@elizaos/plugin-streaming",
+  customRtmp:   "@elizaos/plugin-streaming",
+  pumpfun:      "@elizaos/plugin-streaming",
+  x:            "@elizaos/plugin-streaming",
+  rtmpSources:  "@elizaos/plugin-streaming",
 };
 ```
 

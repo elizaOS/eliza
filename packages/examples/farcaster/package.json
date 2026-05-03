@@ -13,9 +13,9 @@
   },
   "dependencies": {
     "@elizaos/core": "alpha",
-    "@elizaos/plugin-farcaster": "alpha",
-    "@elizaos/plugin-openai": "alpha",
-    "@elizaos/plugin-sql": "alpha",
+    "@elizaos/plugin-farcaster": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
     "dotenv": "^17.2.3"
   },
   "devDependencies": {

@@ -53,7 +53,7 @@
 	},
 	"homepage": "https://github.com/elizaos/eliza#readme",
 	"dependencies": {
-		"@elizaos/core": "2.0.0-alpha.3",
+		"@elizaos/core": "workspace:*",
 		"@linear/sdk": "^51.0.0"
 	},
 	"devDependencies": {

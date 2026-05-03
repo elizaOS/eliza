@@ -9,6 +9,8 @@ export default defineConfig({
   format: ["esm"],
   dts: true,
   external: [
+    "@elizaos/cloud-routing",
+    "@elizaos/core",
     "dotenv",
     "fs",
     "path",

@@ -816,32 +816,21 @@ Monitorea Gmail a través de notificaciones push de Google Pub/Sub.
 
 ---
 
-<div id="streaming-live-broadcasting">
+<div id="streaming"></div>
 
 ## Transmisión (Emisión en Vivo)
-</div>
 
-<div id="enable-streaming-streaming-base">
+### Pestaña Stream (`streaming`)
 
-### Habilitar Transmisión (streaming-base)
-</div>
-
-Agrega la pestaña de Transmisión a la UI con gestión de destinos RTMP.
-**No se necesita configuración** — solo habilita el plugin. Luego agrega los plugins de destino a continuación.
-
-<div id="twitch-streaming">
+Agrega la pestaña Stream a la UI con gestión de destinos RTMP. Habilita **`@elizaos/plugin-streaming`** una sola vez; cubre Twitch, YouTube, X, pump.fun, RTMP personalizado y, opcionalmente, ingestos nombrados vía `streaming.rtmpSources`.
 
 ### Transmisión en Twitch
-</div>
 
 **Obtener credenciales:** https://dashboard.twitch.tv → Settings → Stream
 **Variable:** `TWITCH_STREAM_KEY` — Tu clave de transmisión (mantenla en secreto!)
 **Consejos:** Nunca compartas tu clave de transmisión — permite que cualquiera transmita en tu canal. Regénérala si se filtra.
 
-<div id="youtube-streaming">
-
 ### Transmisión en YouTube
-</div>
 
 **Obtener credenciales:** https://studio.youtube.com → Go Live → Stream settings
 **Variables:**
@@ -849,10 +838,7 @@ Agrega la pestaña de Transmisión a la UI con gestión de destinos RTMP.
 - `YOUTUBE_RTMP_URL` — Predeterminado: `rtmp://a.rtmp.youtube.com/live2` (rara vez necesita cambios)
 **Consejos:** Necesitas un canal de YouTube con transmisión en vivo habilitada (puede requerir verificación telefónica).
 
-<div id="x-streaming">
-
 ### Transmisión en X
-</div>
 
 Transmite en vivo a X usando credenciales RTMP generadas para la emisión activa.
 **Obtener credenciales:** De X Live Producer / Media Studio al crear una transmisión en vivo
@@ -861,10 +847,7 @@ Transmite en vivo a X usando credenciales RTMP generadas para la emisión activa
 - `X_RTMP_URL` — URL de ingestión RTMP para la sesión de emisión
 **Consejos:** Las credenciales RTMP de X suelen ser por emisión. Crea la transmisión primero, luego copia ambos valores directamente en el plugin.
 
-<div id="pumpfun-streaming">
-
 ### Transmisión en pump.fun
-</div>
 
 Transmite a pump.fun usando las credenciales de ingestión RTMP de la plataforma.
 **Obtener credenciales:** Del flujo de transmisión en vivo de pump.fun al crear una transmisión
@@ -873,10 +856,7 @@ Transmite a pump.fun usando las credenciales de ingestión RTMP de la plataforma
 - `PUMPFUN_RTMP_URL` — URL de ingestión RTMP para la transmisión actual
 **Consejos:** Trata ambos valores como credenciales de sesión. Si la transmisión no inicia, recrea la emisión y pega valores nuevos.
 
-<div id="custom-rtmp">
-
 ### RTMP Personalizado
-</div>
 
 Transmite a cualquier plataforma (Facebook, TikTok, Kick, RTMP auto-alojado, etc.)
 **Variables:**

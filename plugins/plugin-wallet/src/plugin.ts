@@ -1,6 +1,6 @@
 import type { Plugin, ServiceClass } from "@elizaos/core";
-import evmPlugin from "@elizaos/plugin-evm";
-import solanaPlugin from "@elizaos/plugin-solana";
+import evmPlugin from "./chains/evm/index.js";
+import solanaPlugin from "./chains/solana/index.js";
 import { unifiedWalletProvider } from "./providers/unified-wallet-provider.js";
 import { WalletBackendService } from "./services/wallet-backend-service.js";
 
@@ -40,7 +40,7 @@ function concatPlugins<T>(
 export const walletPlugin: Plugin = {
 	name: "wallet",
 	description:
-		"Unified non-custodial wallet for elizaOS — EVM + Solana, Steward/local backends, x402, CCTP, and venue routing (replaces @elizaos/plugin-evm + @elizaos/plugin-solana).",
+		"Unified non-custodial wallet for elizaOS — EVM + Solana inlined (legacy plugin-evm + plugin-solana), Steward/local backends, x402, CCTP, and venue routing.",
 	services: concatServices(
 		coreWalletPlugin.services,
 		evmPlugin.services as ServiceClass[] | undefined,

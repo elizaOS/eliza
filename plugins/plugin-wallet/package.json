@@ -42,17 +42,19 @@
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*",
-    "@solana/web3.js": ">=1.87.0"
-  },
-  "peerDependenciesMeta": {
-    "@solana/web3.js": {
-      "optional": true
-    }
+    "form-data": "4.0.5",
+    "whatwg-url": "7.1.0"
   },
   "dependencies": {
-    "@elizaos/plugin-evm": "workspace:*",
-    "@elizaos/plugin-solana": "workspace:*",
+    "@lifi/data-types": "5.15.5",
+    "@lifi/sdk": "^3.7.9",
+    "@lifi/types": "^17.18.0",
+    "@solana/spl-token": "0.4.14",
+    "@solana/spl-token-metadata": "^0.1.6",
+    "@solana/web3.js": "^1.98.4",
+    "bignumber.js": "9.3.0",
     "bs58": "^6.0.0",
+    "tweetnacl": "^1.0.3",
     "viem": "^2.48.8",
     "zod": "^4.3.6"
   },
@@ -62,7 +64,6 @@
   "devDependencies": {
     "@elizaos/app-steward": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@solana/web3.js": "^1.95.5",
     "@types/node": "^24.0.0",
     "tsdown": "^0.21.0",
     "typescript": "^6.0.0",

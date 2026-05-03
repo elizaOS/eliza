@@ -816,32 +816,21 @@ Surveille Gmail via les notifications push Google Pub/Sub.
 
 ---
 
-<div id="streaming-live-broadcasting">
+<div id="streaming"></div>
 
 ## Streaming (Diffusion en direct)
-</div>
 
-<div id="enable-streaming-streaming-base">
+### Onglet Stream (`streaming`)
 
-### Activer le streaming (streaming-base)
-</div>
-
-Ajoute l'onglet Stream à l'interface utilisateur avec la gestion des destinations RTMP.
-**Aucune configuration nécessaire** — activez simplement le plugin. Ajoutez ensuite les plugins de destination ci-dessous.
-
-<div id="twitch-streaming">
+Ajoute l'onglet Stream à l'interface avec la gestion des destinations RTMP. Activez **`@elizaos/plugin-streaming`** une seule fois ; cela couvre Twitch, YouTube, X, pump.fun, RTMP personnalisé et optionnellement plusieurs ingest nommés via `streaming.rtmpSources`.
 
 ### Streaming Twitch
-</div>
 
 **Obtenir les identifiants :** https://dashboard.twitch.tv → Settings → Stream
 **Variable :** `TWITCH_STREAM_KEY` — Votre clé de stream (gardez-la secrète !)
 **Conseils :** Ne partagez jamais votre clé de stream — elle permet à quiconque de diffuser sur votre chaîne. Régénérez-la si elle est divulguée.
 
-<div id="youtube-streaming">
-
 ### Streaming YouTube
-</div>
 
 **Obtenir les identifiants :** https://studio.youtube.com → Go Live → Stream settings
 **Variables :**
@@ -849,10 +838,7 @@ Ajoute l'onglet Stream à l'interface utilisateur avec la gestion des destinatio
 - `YOUTUBE_RTMP_URL` — Par défaut : `rtmp://a.rtmp.youtube.com/live2` (rarement besoin de changer)
 **Conseils :** Vous avez besoin d'une chaîne YouTube avec le streaming en direct activé (peut nécessiter une vérification par téléphone).
 
-<div id="x-streaming">
-
 ### Streaming X
-</div>
 
 Diffusez en direct sur X en utilisant les identifiants RTMP générés pour la diffusion active.
 **Obtenir les identifiants :** Depuis X Live Producer / Media Studio lorsque vous créez un flux en direct
@@ -861,10 +847,7 @@ Diffusez en direct sur X en utilisant les identifiants RTMP générés pour la d
 - `X_RTMP_URL` — URL d'ingestion RTMP pour la session de diffusion
 **Conseils :** Les identifiants RTMP de X sont souvent par diffusion. Créez d'abord le flux, puis copiez les deux valeurs directement dans le plugin.
 
-<div id="pumpfun-streaming">
-
 ### Streaming pump.fun
-</div>
 
 Diffusez sur pump.fun en utilisant les identifiants d'ingestion RTMP de la plateforme.
 **Obtenir les identifiants :** Depuis le flux de streaming en direct pump.fun lorsque vous créez un stream
@@ -873,10 +856,7 @@ Diffusez sur pump.fun en utilisant les identifiants d'ingestion RTMP de la plate
 - `PUMPFUN_RTMP_URL` — URL d'ingestion RTMP pour le stream en cours
 **Conseils :** Traitez les deux valeurs comme des identifiants de session. Si le stream refuse de démarrer, recréez la diffusion et collez des valeurs fraîches.
 
-<div id="custom-rtmp">
-
 ### Custom RTMP
-</div>
 
 Diffusez sur n'importe quelle plateforme (Facebook, TikTok, Kick, RTMP auto-hébergé, etc.)
 **Variables :**
