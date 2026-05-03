@@ -362,7 +362,7 @@ Original commit hashes, oldest first:
 - [`c6bcd66c81c5`](https://github.com/elizaOS/eliza/commit/c6bcd66c81c54528c9160a01f18c1fc36d053d54) 2024-10-28 Jerad Bitner: adding github issue templates. resolves #61
 - [`7ee1a80ab5c2`](https://github.com/elizaOS/eliza/commit/7ee1a80ab5c25db3d75e7a08ce039fdf2a8e8aa9) 2024-10-28 M̵̞̗̝̼̅̏̎͝Ȯ̴̝̻̊̃̋̀Õ̷̼͋N̸̩̿͜ ̶̜̠̹̼̩͒: Merge pull request #62 from ai16z/61--issue-templates
 - [`54a00ff57fa2`](https://github.com/elizaOS/eliza/commit/54a00ff57fa233eb065a939263595061959e102b) 2024-10-29 Ikko Eltociear Ashimine: docs: update README.md
-- [`07ee6bf52250`](https://github.com/elizaOS/eliza/commit/07ee6bf52250c5929052d28d589f2837308d7b4b) 2024-10-29 Ikko Eltociear Ashimine: chore: update .env.example
+- [`07ee6bf52250`](https://github.com/elizaOS/eliza/commit/07ee6bf52250c5929052d28d589f2837308d7b4b) 2024-10-29 Ikko Eltociear Ashimine: chore: update.env.example
 - [`722e65474f48`](https://github.com/elizaOS/eliza/commit/722e65474f4823f21dde11fc9a63206398da97d0) 2024-10-28 Jerad Bitner: Merge pull request #71 from eltociear/patch-1
 - [`24368f54cf8a`](https://github.com/elizaOS/eliza/commit/24368f54cf8a2c6fc737a74b6f7a5a2c2e6caba6) 2024-10-28 moon: add gitignore
 - [`ab84bf09791c`](https://github.com/elizaOS/eliza/commit/ab84bf09791c9a793c5ccb648ecd82918d838af6) 2024-10-28 moon: add docs
@@ -688,7 +688,7 @@ Original commit hashes, oldest first:
 - [`57e2bb03e079`](https://github.com/elizaOS/eliza/commit/57e2bb03e0796cd124c0186ca7c2bb694f25b84c) 2024-11-04 moon: marc swap by CA
 - [`923ea7537bef`](https://github.com/elizaOS/eliza/commit/923ea7537bef303692eb8e6dbc972634888986f7) 2024-11-04 MarcoMandar: Merge remote-tracking branch 'upstream/swap-functionality'
 - [`50f3a4d9bd4b`](https://github.com/elizaOS/eliza/commit/50f3a4d9bd4b23ced8964cd96d30e0cd41acf4ef) 2024-11-04 MarcoMandar: use big number
-- [`fe0410e385d5`](https://github.com/elizaOS/eliza/commit/fe0410e385d52e1a64d00c17af832ddfa551aeda) 2024-11-04 MarcoMandar: add getTokensInWallet and add the logic  to resolve CA from symbol based on existing symbol in wallet
+- [`fe0410e385d5`](https://github.com/elizaOS/eliza/commit/fe0410e385d52e1a64d00c17af832ddfa551aeda) 2024-11-04 MarcoMandar: add getTokensInWallet and add the logic to resolve CA from symbol based on existing symbol in wallet
 - [`7e85609c07a7`](https://github.com/elizaOS/eliza/commit/7e85609c07a7c5c6c96a224b455d658f30ae76a8) 2024-11-04 MarcoMandar: fix
 - [`0b167441086f`](https://github.com/elizaOS/eliza/commit/0b167441086fe5c09a250fba1685ef522a6b6691) 2024-11-05 MarcoMandar: recommender, token performane integration to swap
 - [`5fe429a2886a`](https://github.com/elizaOS/eliza/commit/5fe429a2886ae440442ccd14d4355821721dc576) 2024-11-04 Shaw: Merge pull request #196 from MarcoMandar/main
@@ -744,7 +744,7 @@ Original commit hashes, oldest first:
 - [`2a56cf0abb96`](https://github.com/elizaOS/eliza/commit/2a56cf0abb96cce53df4cedc9b57a70c19ee310e) 2024-11-06 moon: Merge remote-tracking branch 'o-on-x/main'
 - [`c1a1c1f017ab`](https://github.com/elizaOS/eliza/commit/c1a1c1f017abe38aec77474c13c6d23d18f7296f) 2024-11-06 moon: merged ollama but llama cpp seems to be weird?
 - [`576457258b5e`](https://github.com/elizaOS/eliza/commit/576457258b5e762a2874f130ea31f56d29470816) 2024-11-06 moon: ollama merged, handling direct client in new setup
-- [`1d551e211cf4`](https://github.com/elizaOS/eliza/commit/1d551e211cf47de4e75fd018d860969bc607f571) 2024-11-07 Ophiuchus: tsconfig ref @eliza/core, target src, include types, & esm module resolution. & models.gguf stored in models folder
+- [`1d551e211cf4`](https://github.com/elizaOS/eliza/commit/1d551e211cf47de4e75fd018d860969bc607f571) 2024-11-07 Ophiuchus: tsconfig ref @eliza, target src, include types, & esm module resolution. & models.gguf stored in models folder
 - [`d1683bdedc08`](https://github.com/elizaOS/eliza/commit/d1683bdedc0880f635b2aaffe9a2108b4aa6321f) 2024-11-07 Shaw: Merge pull request #224 from o-on-x/main
 - [`6c59fc10d5ff`](https://github.com/elizaOS/eliza/commit/6c59fc10d5ffec9ac5d9646617b28d4e2b97170f) 2024-11-08 ponderingdemocritus: Merge branch 'main' of https://github.com/ai16z/eliza
 - [`504890b08f1a`](https://github.com/elizaOS/eliza/commit/504890b08f1a6d798124ca24bd6d5336915ffd65) 2024-11-07 moon: move code out to plugins, adapters and clients
@@ -752,7 +752,7 @@ Original commit hashes, oldest first:
 - [`5b79da685d8b`](https://github.com/elizaOS/eliza/commit/5b79da685d8b6f32788a5b00475ce6e7ce62b6a9) 2024-11-07 o-on-x: Merge branch 'ai16z:main' into main
 - [`d4268b389cb3`](https://github.com/elizaOS/eliza/commit/d4268b389cb31a990048cdc8966e7bbe00b68d03) 2024-11-07 Ophiuchus: changed plugin-image-gen tsconfig.json & added error handling ollama initialization
 - [`6ef7e56bc0d9`](https://github.com/elizaOS/eliza/commit/6ef7e56bc0d97fa8233255be807dee5d0111ff2e) 2024-11-07 moon: fix llama cpp service
-- [`d59135793e53`](https://github.com/elizaOS/eliza/commit/d59135793e53af203debee4438159dde36591bb2) 2024-11-07 moon: replace process.env with settings, fix .env path
+- [`d59135793e53`](https://github.com/elizaOS/eliza/commit/d59135793e53af203debee4438159dde36591bb2) 2024-11-07 moon: replace process.env with settings, fix.env path
 - [`aed6ef15d351`](https://github.com/elizaOS/eliza/commit/aed6ef15d3511dcd2b8f85871e79421b06d8080b) 2024-11-07 moon: remove garbage
 - [`40546f2bc92d`](https://github.com/elizaOS/eliza/commit/40546f2bc92d6322d3690eaeb50549b3da02d11a) 2024-11-07 moon: this is broken but structurally where we are going
 - [`c38e021e2d3f`](https://github.com/elizaOS/eliza/commit/c38e021e2d3f5b4a70ab78d52b66a567450e0c6e) 2024-11-07 moon: everything is moved mostly, but still some build package issues
@@ -893,7 +893,7 @@ Original commit hashes, oldest first:
 - [`9f74e70285fa`](https://github.com/elizaOS/eliza/commit/9f74e70285fa5113aa63fcaac349a1daa4ddf33d) 2024-11-12 moon: Merge branch 'main' of https://github.com/metadiver/gmeow into HEAD
 - [`08e97e5a80db`](https://github.com/elizaOS/eliza/commit/08e97e5a80db911c3649959c9999fafbc2dbcba1) 2024-11-12 twilwa: add modelProvider to json to resolve embeddings error
 - [`34fd76e6b4e6`](https://github.com/elizaOS/eliza/commit/34fd76e6b4e6661c86eac1fc879cf21d76208c3b) 2024-11-12 twilwa: lint with prettier
-- [`0e7722d64366`](https://github.com/elizaOS/eliza/commit/0e7722d643664681c2403f9e6d88f7b212105505) 2024-11-12 twilwa: replace .env.example
+- [`0e7722d64366`](https://github.com/elizaOS/eliza/commit/0e7722d643664681c2403f9e6d88f7b212105505) 2024-11-12 twilwa: replace.env.example
 - [`3b5f276473c6`](https://github.com/elizaOS/eliza/commit/3b5f276473c67a8e6fdb3cb8b50b30c6cef03977) 2024-11-12 moon: Merge branch 'main' of https://github.com/twilwa/Eliza into HEAD
 - [`14413b182309`](https://github.com/elizaOS/eliza/commit/14413b182309f4a91c9d7513f63d7671c112708f) 2024-11-12 moon: knowledge working
 - [`b14da62c0f60`](https://github.com/elizaOS/eliza/commit/b14da62c0f60896d7b5378f29466b84de6f166f0) 2024-11-12 Your Name: Fix: compute unit increasein swapts, default is too low to make transaction.
@@ -954,7 +954,7 @@ Original commit hashes, oldest first:
 - [`e9d03e73d1b7`](https://github.com/elizaOS/eliza/commit/e9d03e73d1b77224d02cbcf18925be881fa1ea3e) 2024-11-13 Monil Patel: [Refactor][1/2] Implement generateObject for typesafe JSON output
 - [`c1745f253298`](https://github.com/elizaOS/eliza/commit/c1745f2532982148605038bf2d9e8c9ef7e56aed) 2024-11-13 Monil Patel: Remove unneeded file
 - [`31d3b7199132`](https://github.com/elizaOS/eliza/commit/31d3b71991320edba2b7d607fe2e1a1ec75a6024) 2024-11-13 Monil Patel: Merge branch 'main' into llmContentGeneration
-- [`bb13009270f4`](https://github.com/elizaOS/eliza/commit/bb13009270f4145d93f2c19307df5fe2590b692d) 2024-11-13 Monil Patel: Update .gitignore
+- [`bb13009270f4`](https://github.com/elizaOS/eliza/commit/bb13009270f4145d93f2c19307df5fe2590b692d) 2024-11-13 Monil Patel: Update.gitignore
 - [`f826253ab7b8`](https://github.com/elizaOS/eliza/commit/f826253ab7b8f3b8e6fe5042f710c868983b0b6c) 2024-11-14 Monil Patel: Merge branch 'main' into llmContentGeneration
 - [`13b81981657a`](https://github.com/elizaOS/eliza/commit/13b81981657ac6b990f98e6b5c35ac7e068fd532) 2024-11-15 Jazzy: Merge pull request #309 from Sifchain/llmContentGeneration
 - [`4e1df2c78ade`](https://github.com/elizaOS/eliza/commit/4e1df2c78ade7b2f77af97313435addf93ca476e) 2024-11-15 moon: tsc before statt
@@ -1037,7 +1037,7 @@ Original commit hashes, oldest first:
 - [`4b1caa00b77b`](https://github.com/elizaOS/eliza/commit/4b1caa00b77b5eb23e15d3adc3774fd4d6062fe2) 2024-11-16 twilwa: Merge pull request #364 from ai16z/new_docs
 - [`1a905095abb8`](https://github.com/elizaOS/eliza/commit/1a905095abb821416a1c66ec7dc0f5ab3b7ab5a8) 2024-11-16 Ophiuchus: post time set in env
 - [`7bc8edcddb98`](https://github.com/elizaOS/eliza/commit/7bc8edcddb989aeac34a03eb8f3d80790dd54304) 2024-11-16 o-on-x: Merge pull request #368 from o-on-x/main
-- [`145dba5e6435`](https://github.com/elizaOS/eliza/commit/145dba5e6435026a237fbfbe50b9595f7d2a9175) 2024-11-16 Ophiuchus: default set to new standard  post time 90-180
+- [`145dba5e6435`](https://github.com/elizaOS/eliza/commit/145dba5e6435026a237fbfbe50b9595f7d2a9175) 2024-11-16 Ophiuchus: default set to new standard post time 90-180
 - [`63918b98bce5`](https://github.com/elizaOS/eliza/commit/63918b98bce5d7768a864f08d15418b9c303da67) 2024-11-16 o-on-x: Merge pull request #369 from o-on-x/main
 - [`1d61d0383046`](https://github.com/elizaOS/eliza/commit/1d61d0383046958d9bb102a979d21443366b6de6) 2024-11-17 ponderingdemocritus: readme
 - [`30587cdb6e95`](https://github.com/elizaOS/eliza/commit/30587cdb6e95cf6f872e21e93151b8b994050585) 2024-11-17 Loaf: Merge pull request #370 from ai16z/readme-update
@@ -1168,7 +1168,7 @@ Original commit hashes, oldest first:
 - [`352392ab4cdc`](https://github.com/elizaOS/eliza/commit/352392ab4cdc9d6a4ab6ec67638b23df87ddffe3) 2024-11-18 dorianjanezic: video generation plugin
 - [`591b97174655`](https://github.com/elizaOS/eliza/commit/591b971746556cf7709818489ee35df30ef9b0ef) 2024-11-19 dorianjanezic: Add video generation plugin tests and constants
 - [`af4e1fd1a258`](https://github.com/elizaOS/eliza/commit/af4e1fd1a25811352b0bfdaafa961f691638ee1c) 2024-11-19 Jerad Bitner: Merge pull request #394 from dorianjanezic/main
-- [`743aa784598e`](https://github.com/elizaOS/eliza/commit/743aa784598e30675cb01e06acfa05d9b56c9a0f) 2024-11-19 Deniz: Readme update WSL  2 link added. (#419)
+- [`743aa784598e`](https://github.com/elizaOS/eliza/commit/743aa784598e30675cb01e06acfa05d9b56c9a0f) 2024-11-19 Deniz: Readme update WSL 2 link added. (#419)
 - [`af591e0dd89e`](https://github.com/elizaOS/eliza/commit/af591e0dd89e3a47d6701d9d8848e1c67fd47ae1) 2024-11-20 ponderingdemocritus: merge
 - [`48d6fdbc966e`](https://github.com/elizaOS/eliza/commit/48d6fdbc966e11c4b10dfc666fdb3dbfc9dc3cc3) 2024-11-20 ponderingdemocritus: issues
 - [`3a033b46055d`](https://github.com/elizaOS/eliza/commit/3a033b46055da983e87360cf4b5c138552fab550) 2024-11-19 Jerad Bitner: Merge pull request #412 from ai16z/fix-services
@@ -1217,8 +1217,8 @@ Original commit hashes, oldest first:
 - [`7c9bbcc4b763`](https://github.com/elizaOS/eliza/commit/7c9bbcc4b763cf89a6f8eff19621d1b1e1b3e1ca) 2024-11-20 GitHub Action: chore: update changelog
 - [`7c35361ecc35`](https://github.com/elizaOS/eliza/commit/7c35361ecc353639e448fcc77c3a6b21eb9cf243) 2024-11-20 GitHub Action: chore: update changelog
 - [`aa978a7029c6`](https://github.com/elizaOS/eliza/commit/aa978a7029c6defe427298f3f9a43fe19a7519ba) 2024-11-20 GitHub Action: chore: update changelog
-- [`8962b656ad5d`](https://github.com/elizaOS/eliza/commit/8962b656ad5d588e755a61320e135ab757b8cc67) 2024-11-20 odilitime: don't require .env to exist
-- [`c3ab9463c1f0`](https://github.com/elizaOS/eliza/commit/c3ab9463c1f0629ae36e0f2c9161b17aee8c4d39) 2024-11-20 odilitime: add note about .env being optional
+- [`8962b656ad5d`](https://github.com/elizaOS/eliza/commit/8962b656ad5d588e755a61320e135ab757b8cc67) 2024-11-20 odilitime: don't require.env to exist
+- [`c3ab9463c1f0`](https://github.com/elizaOS/eliza/commit/c3ab9463c1f0629ae36e0f2c9161b17aee8c4d39) 2024-11-20 odilitime: add note about.env being optional
 - [`9a0e4749215f`](https://github.com/elizaOS/eliza/commit/9a0e4749215f8a851100fedeccceb8891c4d28c5) 2024-11-19 Jazzy: Merge pull request #427 from odilitime/env-change
 - [`fa450e734cdc`](https://github.com/elizaOS/eliza/commit/fa450e734cdcbcd2b5d7adc7a1a5b10769bc652a) 2024-11-19 Monil Patel: Update pr.yaml to use actual check
 - [`02effe0d6c1b`](https://github.com/elizaOS/eliza/commit/02effe0d6c1bca6c8d5e44238e82636031561593) 2024-11-19 Jazzy: Merge pull request #429 from monilpat/main
@@ -1290,7 +1290,7 @@ Original commit hashes, oldest first:
 - [`7337e17943d9`](https://github.com/elizaOS/eliza/commit/7337e17943d96d656271e70689d43968a18c71e8) 2024-11-20 Bruno Galego: remove createDirectRuntime
 - [`bc00ef1b8c8b`](https://github.com/elizaOS/eliza/commit/bc00ef1b8c8b50e1dd9663f075db709f0c6c845f) 2024-11-20 Bruno Galego: fix
 - [`bf22b2c5bd79`](https://github.com/elizaOS/eliza/commit/bf22b2c5bd79868079b3d31bd39c32a29092b41e) 2024-11-20 Bruno Galego: fix ensure dataDir exists
-- [`a6d05d684b25`](https://github.com/elizaOS/eliza/commit/a6d05d684b250023faeef5a36ec276d9b08b31f1) 2024-11-20 Bruno Galego: add data folder to .gitignore
+- [`a6d05d684b25`](https://github.com/elizaOS/eliza/commit/a6d05d684b250023faeef5a36ec276d9b08b31f1) 2024-11-20 Bruno Galego: add data folder to.gitignore
 - [`ba420c68ba4a`](https://github.com/elizaOS/eliza/commit/ba420c68ba4a4006aa8ab9856775ffdc4f26ec4a) 2024-11-20 Bruno Galego: fix schemas add CREATE IF NOT EXISTS to tables
 - [`84d4aeb812f8`](https://github.com/elizaOS/eliza/commit/84d4aeb812f837ca2621d72edb2fd40e31230089) 2024-11-20 Bruno Galego: check null values in sqlite
 - [`0f6877fae5aa`](https://github.com/elizaOS/eliza/commit/0f6877fae5aa67333c04186470636071c015d8d1) 2024-11-20 Bruno Galego: added sqlite env config
@@ -1366,7 +1366,7 @@ Original commit hashes, oldest first:
 - [`a729a9ca4ece`](https://github.com/elizaOS/eliza/commit/a729a9ca4ece6ad37264259299233f67c94da191) 2024-11-22 ponderingdemocritus: node-v
 - [`b4bf16a24398`](https://github.com/elizaOS/eliza/commit/b4bf16a24398f9b57b346f09c7c980c74ddf0885) 2024-11-22 Loaf: Merge pull request #501 from ai16z/node-v
 - [`4cba43d6f236`](https://github.com/elizaOS/eliza/commit/4cba43d6f2369aafdeaf149c313b2e1abdf4fb0e) 2024-11-22 ponderingdemocritus: deps
-- [`14b28d35bded`](https://github.com/elizaOS/eliza/commit/14b28d35bded0c748cad339108f5d3c2125cf223) 2024-11-22 Loaf: Merge pull request #503 from ai16z/fix/core-deps
+- [`14b28d35bded`](https://github.com/elizaOS/eliza/commit/14b28d35bded0c748cad339108f5d3c2125cf223) 2024-11-22 Loaf: Merge pull request #503 from ai16z/fix-deps
 - [`b3d3427fe99e`](https://github.com/elizaOS/eliza/commit/b3d3427fe99e693e2a515b578b60d7f809d675dd) 2024-11-16 futjr: make dev branch
 - [`d907f62077f7`](https://github.com/elizaOS/eliza/commit/d907f62077f7b475025b53b18cbdf92b047f327e) 2024-11-18 futjr: add Contribution License Agreement to md
 - [`d4462b86ca70`](https://github.com/elizaOS/eliza/commit/d4462b86ca702eed79e5a46f73f2689d094d58db) 2024-11-16 sirkitree: adding back the renovate file for automated security scanning
@@ -1391,7 +1391,7 @@ Original commit hashes, oldest first:
 - [`79f3ce42d75b`](https://github.com/elizaOS/eliza/commit/79f3ce42d75b3d188eb78dac585bb1ea6fd919b7) 2024-11-22 ponderingdemocritus: cleanup
 - [`dde12eba9646`](https://github.com/elizaOS/eliza/commit/dde12eba9646cf1a54787feb6d69a69780147f8a) 2024-11-22 Loaf: Merge pull request #512 from ai16z/fix/speech
 - [`019193678c2d`](https://github.com/elizaOS/eliza/commit/019193678c2dac938f520d023f9f908a339fed8a) 2024-11-22 ponderingdemocritus: v0.1.4-alpha.3
-- [`ee4f4c8a685a`](https://github.com/elizaOS/eliza/commit/ee4f4c8a685a24ab821217c5600351d5ca0d590e) 2024-12-02 JSon: fix: Fix the issue where running the program throws an error when the plugins field in the .character.json file is configured with plugin names.
+- [`ee4f4c8a685a`](https://github.com/elizaOS/eliza/commit/ee4f4c8a685a24ab821217c5600351d5ca0d590e) 2024-12-02 JSon: fix: Fix the issue where running the program throws an error when the plugins field in the.character.json file is configured with plugin names.
 - [`f5616c974cfa`](https://github.com/elizaOS/eliza/commit/f5616c974cfa30e7cd1b66f95d8541010193f884) 2024-11-22 GitHub Action: chore: update changelog
 - [`b856146c3fcd`](https://github.com/elizaOS/eliza/commit/b856146c3fcd870dff4a6d9ce6a9dc3479026e60) 2024-11-22 Oguz Serdar: docs: add template and client configuration guide
 - [`f2dde70d83ca`](https://github.com/elizaOS/eliza/commit/f2dde70d83cab000ae90b0e7e362f12df87adcc8) 2024-11-21 Jazzy: Merge pull request #510 from oguzserdar/main
@@ -1441,7 +1441,7 @@ Original commit hashes, oldest first:
 - [`3bf4b5d356e6`](https://github.com/elizaOS/eliza/commit/3bf4b5d356e6d431f1fd9179a223c59cb1574b52) 2024-11-22 UuPrEEth Varkrishin: Merge branch 'ai16z:main' into main
 - [`2f06f15ddcf5`](https://github.com/elizaOS/eliza/commit/2f06f15ddcf588e21ea178ccb1adbbca973b90a7) 2024-11-22 UuPrEEth Varkrishin: Merge branch 'ai16z:main' into main
 - [`68a4dcdf15c4`](https://github.com/elizaOS/eliza/commit/68a4dcdf15c4381b02510dbe2d0c6a308f1af6dd) 2024-11-23 Loaf: Merge pull request #495 from Ungate-Ai/main
-- [`a6126f9662ec`](https://github.com/elizaOS/eliza/commit/a6126f9662ecef24ad5da24dcf7252557219b608) 2024-11-22 yodamaster726: fix: ollamaModel unused variable.  fix security.md
+- [`a6126f9662ec`](https://github.com/elizaOS/eliza/commit/a6126f9662ecef24ad5da24dcf7252557219b608) 2024-11-22 yodamaster726: fix: ollamaModel unused variable. fix security.md
 - [`93608e02a6c2`](https://github.com/elizaOS/eliza/commit/93608e02a6c2d793af5f7fcb6d1154215ba4eac5) 2024-11-22 yodamaster726: fix: security.md failed to commit
 - [`998e55b7edc2`](https://github.com/elizaOS/eliza/commit/998e55b7edc244a295c3773f61b781e230ac3e18) 2024-11-23 Loaf: Merge pull request #524 from yodamaster726/ollama-fix
 - [`caa09723acad`](https://github.com/elizaOS/eliza/commit/caa09723acada7c4c5498aece54661cc43e43ce1) 2024-11-22 yodamaster726: llama_local, ollama and logger fixes/udpates
@@ -1572,8 +1572,8 @@ Original commit hashes, oldest first:
 - [`d18eef54a916`](https://github.com/elizaOS/eliza/commit/d18eef54a91650e23df27758bcedc5b93838c353) 2024-11-24 moon: re-add lock
 - [`a1e844706ff1`](https://github.com/elizaOS/eliza/commit/a1e844706ff1f2826c72d35ed86b8e76d53094bd) 2024-11-24 Shaw: Merge pull request #586 from ai16z/shaw/realityspiral/coinbase-fixes
 - [`d84cd632fd5e`](https://github.com/elizaOS/eliza/commit/d84cd632fd5eccc764304a923f3be29e26ceb5c6) 2024-11-24 moon: Merge branch 'renovate/pin-dependencies' of https://github.com/ai16z/eliza into shaw/realityspiral/coinbase-fixes
-- [`1cb7b02f2efd`](https://github.com/elizaOS/eliza/commit/1cb7b02f2efd96d1f7b1202e47549d46de599589) 2024-11-22 yodamaster726: fix: ci errors - ILogObjMeta  and ILogObj never used
-- [`7c3aeac24106`](https://github.com/elizaOS/eliza/commit/7c3aeac241069e370042e024937082bd95383baa) 2024-11-22 yodamaster726: fix:  Use "@ts-expect-error" instead of "@ts-ignore",
+- [`1cb7b02f2efd`](https://github.com/elizaOS/eliza/commit/1cb7b02f2efd96d1f7b1202e47549d46de599589) 2024-11-22 yodamaster726: fix: ci errors - ILogObjMeta and ILogObj never used
+- [`7c3aeac24106`](https://github.com/elizaOS/eliza/commit/7c3aeac241069e370042e024937082bd95383baa) 2024-11-22 yodamaster726: fix: Use "@ts-expect-error" instead of "@ts-ignore",
 - [`2e1bfb9f848c`](https://github.com/elizaOS/eliza/commit/2e1bfb9f848c5bdb858b21e4a3265ea9a9aa582b) 2024-11-22 yodamaster726: fix: missing tslog dpenendency
 - [`330bbdc8d39f`](https://github.com/elizaOS/eliza/commit/330bbdc8d39ffac1d25a5fbaf3dfd49e114ff3f4) 2024-11-23 yodamaster726: fix: put back defaultcharacter.ts and ci issues with logger.ts
 - [`95d1dd36440e`](https://github.com/elizaOS/eliza/commit/95d1dd36440e9fe51ce16438d22d0bd53cd5c38a) 2024-11-23 yodamaster726: fix: defaultCharacter and get the CI / CD pipeline working
@@ -1605,7 +1605,7 @@ Original commit hashes, oldest first:
 - [`360e66cf883f`](https://github.com/elizaOS/eliza/commit/360e66cf883fecc3037f7c2a77da28adeecb0684) 2024-11-19 root: add readme of plugin-0g
 - [`fb72dacb2075`](https://github.com/elizaOS/eliza/commit/fb72dacb2075679d41924ec07b8ec90116b4b5a7) 2024-11-19 root: new plugin description
 - [`ea525094809b`](https://github.com/elizaOS/eliza/commit/ea525094809b9d84f29b256daefbbd07fe5e35ef) 2024-11-19 root: change log
-- [`c67e4fd747fe`](https://github.com/elizaOS/eliza/commit/c67e4fd747fe217c8d09ac3ef24596757076e63e) 2024-11-19 root: add  script for development using tsup watch mode
+- [`c67e4fd747fe`](https://github.com/elizaOS/eliza/commit/c67e4fd747fe217c8d09ac3ef24596757076e63e) 2024-11-19 root: add script for development using tsup watch mode
 - [`bf8a940e3e9c`](https://github.com/elizaOS/eliza/commit/bf8a940e3e9ccd1b0557f15ba4dc298850fa9bd1) 2024-11-20 root: 1.add template into a separate file; 2.fix a incorrect log; 3.use more type safe generateObjectV2
 - [`3d302ba00ea9`](https://github.com/elizaOS/eliza/commit/3d302ba00ea9d4dcdd94e41fcfa053945fd411e3) 2024-11-20 root: resolve conflicts
 - [`9c92116871d4`](https://github.com/elizaOS/eliza/commit/9c92116871d46a3dd499626707518cea305a2214) 2024-11-20 root: rm unsued files uploaded by mistake
@@ -1671,9 +1671,9 @@ Original commit hashes, oldest first:
 - [`1b6bfa29fafc`](https://github.com/elizaOS/eliza/commit/1b6bfa29fafc6bf7e8088baf725fb90df6408a66) 2024-11-20 Malibu: Merge pull request #32 from ai16z/main
 - [`530e16a25286`](https://github.com/elizaOS/eliza/commit/530e16a25286b57662ecaecba660c767a8879361) 2024-11-20 MarcoMandar: simulation selling service initial
 - [`e6c34560304f`](https://github.com/elizaOS/eliza/commit/e6c34560304fd45a235b21d490de0d17a005c6ce) 2024-11-21 MarcoMandar: update sell simulation to include stop loss and calculate amount to sell
-- [`e240a1812ac4`](https://github.com/elizaOS/eliza/commit/e240a1812ac467fd2670f59cd29c01343f3b68f3) 2024-11-22 MarcoMandar: add rabbitMq,  executeSellDecision
+- [`e240a1812ac4`](https://github.com/elizaOS/eliza/commit/e240a1812ac467fd2670f59cd29c01343f3b68f3) 2024-11-22 MarcoMandar: add rabbitMq, executeSellDecision
 - [`6d6296ebf8a4`](https://github.com/elizaOS/eliza/commit/6d6296ebf8a496ccf563a0561acdc662e082b257) 2024-11-25 MarcoMandar: updates for the backend
-- [`a3aff1340c6e`](https://github.com/elizaOS/eliza/commit/a3aff1340c6ec3f8673e7e61f703f07e5794411f) 2024-11-25 MarcoMandar: Merge from  'main'
+- [`a3aff1340c6e`](https://github.com/elizaOS/eliza/commit/a3aff1340c6ec3f8673e7e61f703f07e5794411f) 2024-11-25 MarcoMandar: Merge from 'main'
 - [`940200056101`](https://github.com/elizaOS/eliza/commit/9402000561012e80676cf0f006be7f69352113c7) 2024-11-25 Malibu: Merge pull request #596 from MarcoMandar/pr-33
 - [`ea0984ffa358`](https://github.com/elizaOS/eliza/commit/ea0984ffa3588082a4afbae9d3427b084d94feb5) 2024-11-25 Malibu: Merge pull request #33 from ai16z/main
 - [`0b029c0d397f`](https://github.com/elizaOS/eliza/commit/0b029c0d397facbe48b37c73af6acff411a27449) 2024-11-25 MarcoMandar: sell simulation service
@@ -1716,7 +1716,7 @@ Original commit hashes, oldest first:
 - [`c69f97873402`](https://github.com/elizaOS/eliza/commit/c69f97873402b43a505feec8e3c07390af39a1df) 2024-11-25 genesis0000: Merge remote-tracking branch 'origin/main' into pull-request
 - [`01daf10b95cb`](https://github.com/elizaOS/eliza/commit/01daf10b95cbac0bf046aa83e263004871d79a19) 2024-11-26 moon: Merge branch 'pull-request' of https://github.com/TrustlessComputer/eliza
 - [`8f6a1d9039d9`](https://github.com/elizaOS/eliza/commit/8f6a1d9039d916a77e7b927b0d18d44736d9afd1) 2024-11-26 moon: Revert model provider in default character and rebuild pnpm lock
-- [`a4400d7f79d6`](https://github.com/elizaOS/eliza/commit/a4400d7f79d6c983bb05add9095345c99b645c1d) 2024-11-26 yoniebans: fix logging for memory similarity. at the moment we're trying to print the message similarity which is undefined. think memory similarity is what we're looking for in the .map function
+- [`a4400d7f79d6`](https://github.com/elizaOS/eliza/commit/a4400d7f79d6c983bb05add9095345c99b645c1d) 2024-11-26 yoniebans: fix logging for memory similarity. at the moment we're trying to print the message similarity which is undefined. think memory similarity is what we're looking for in the.map function
 - [`c69d2da88fee`](https://github.com/elizaOS/eliza/commit/c69d2da88feeba9d3c8cb45ae215adbbcb6e1611) 2024-11-26 yoniebans: added generatedImages folder in agent to gitignore
 - [`3b3800eb1018`](https://github.com/elizaOS/eliza/commit/3b3800eb101829a18741aaf781b0d6bdd5572c60) 2024-11-26 Shaw: Merge pull request #616 from yoniebans/bug/memory_similarity_log_new_knowledge_ingestion
 - [`a8bafc7bd008`](https://github.com/elizaOS/eliza/commit/a8bafc7bd008a2f9147e90bea1bd1cb3b0cb7ef0) 2024-11-22 Milan Cermak: dev(starknet): plugin cleanup
@@ -1774,7 +1774,7 @@ Original commit hashes, oldest first:
 - [`22e2fe6014e2`](https://github.com/elizaOS/eliza/commit/22e2fe6014e258f65ee4ad8f7121d1d4f08c5c78) 2024-11-22 flick: fix: pass runtime to video downloader
 - [`079124b7d448`](https://github.com/elizaOS/eliza/commit/079124b7d4489fcdee6b12e4f1d63d65069fe702) 2024-11-22 flick: fix: this typescript should work but it causes a build error in plugin-node
 - [`77c57ee80fd8`](https://github.com/elizaOS/eliza/commit/77c57ee80fd845b79f7b51ae9b1548f20d1af59f) 2024-11-23 yodamaster: Merge pull request #4 from yodamaster726/ollama-fix
-- [`15635c1c6001`](https://github.com/elizaOS/eliza/commit/15635c1c6001f9f48569ed77189cc49d7a0a3dc8) 2024-11-26 yodamaster726: fix:  running character file
+- [`15635c1c6001`](https://github.com/elizaOS/eliza/commit/15635c1c6001f9f48569ed77189cc49d7a0a3dc8) 2024-11-26 yodamaster726: fix: running character file
 - [`ddf0de03eb22`](https://github.com/elizaOS/eliza/commit/ddf0de03eb222b81a8194c7a835e8eb888ad34f9) 2024-11-28 Shaw: Merge branch 'character-run-fix' of https://github.com/yodamaster726/eliza into HEAD
 - [`94e1332510ac`](https://github.com/elizaOS/eliza/commit/94e1332510aca8030cded4a275c4abf96935a8df) 2024-11-28 Shaw: remove node plugin import
 - [`7b06e856cf38`](https://github.com/elizaOS/eliza/commit/7b06e856cf38d798a0429abdfdc530950f2ccb34) 2024-11-18 zkfarmoor: add evm swapping and briding with Base and Ethereum
@@ -1832,7 +1832,7 @@ Original commit hashes, oldest first:
 - [`f94c2d5aa2d7`](https://github.com/elizaOS/eliza/commit/f94c2d5aa2d79fb5038ed15f349e0c3d1b4ebe76) 2024-11-28 Monil Patel: merge conflicts
 - [`a2aad01d8169`](https://github.com/elizaOS/eliza/commit/a2aad01d8169dbe9b64a1a48fd88091a47d15526) 2024-11-28 Monil Patel: add missing eslint fix
 - [`4104d0be5d77`](https://github.com/elizaOS/eliza/commit/4104d0be5d7770a055dd623714302cfd3d05e530) 2024-11-28 Monil Patel: Address linter
-- [`fe58d491a0a4`](https://github.com/elizaOS/eliza/commit/fe58d491a0a45f6e586b2a4e9eb7534fbed7d15d) 2024-11-28 Monil Patel: Update .env.example
+- [`fe58d491a0a4`](https://github.com/elizaOS/eliza/commit/fe58d491a0a45f6e586b2a4e9eb7534fbed7d15d) 2024-11-28 Monil Patel: Update.env.example
 - [`6c876850f5d9`](https://github.com/elizaOS/eliza/commit/6c876850f5d9e5fc784cd5494cf849d6ccfe1504) 2024-11-25 Monil Patel: feat: implement coinbase trading
 - [`7ee219e4eaa0`](https://github.com/elizaOS/eliza/commit/7ee219e4eaa0d6cfd8096264c584663c6a546f7f) 2024-11-25 Monil Patel: Make massPayments gasless if usdc
 - [`c9e7eadc0c85`](https://github.com/elizaOS/eliza/commit/c9e7eadc0c85a9bf80a767ebc317b9e5fa9de737) 2024-11-25 Monil Patel: write to csv + clean up
@@ -1844,7 +1844,7 @@ Original commit hashes, oldest first:
 - [`18d10139cff4`](https://github.com/elizaOS/eliza/commit/18d10139cff45ea966a0910292dc282cf71d4109) 2024-11-28 Monil Patel: merge conflicts
 - [`389ea251d386`](https://github.com/elizaOS/eliza/commit/389ea251d386401d3b521a4f0deebc0d77af3154) 2024-11-28 Monil Patel: add missing eslint fix
 - [`ee64a1d587ff`](https://github.com/elizaOS/eliza/commit/ee64a1d587ff2c11b9dea70295160840efebecb8) 2024-11-28 Monil Patel: Address linter
-- [`11f0b9faa7aa`](https://github.com/elizaOS/eliza/commit/11f0b9faa7aa3dc6d2424da2276f419e6c57afd3) 2024-11-28 Monil Patel: Update .env.example
+- [`11f0b9faa7aa`](https://github.com/elizaOS/eliza/commit/11f0b9faa7aa3dc6d2424da2276f419e6c57afd3) 2024-11-28 Monil Patel: Update.env.example
 - [`1f864a1e9471`](https://github.com/elizaOS/eliza/commit/1f864a1e9471ebfcb4f47efce1efecee3e35e461) 2024-11-28 Monil Patel: Merge branch 'realitySpiral/coinbaseTrading' of https://github.com/monilpat/eliza into realitySpiral/coinbaseTrading
 - [`cd98ff99a628`](https://github.com/elizaOS/eliza/commit/cd98ff99a6281352ecf5246cb059b71c69e8b8c3) 2024-11-28 Monil Patel: Merge branch 'realitySpiral/coinbaseTrading' of https://github.com/monilpat/eliza into realitySpiral/coinbaseTrading
 - [`13b212ddede7`](https://github.com/elizaOS/eliza/commit/13b212ddede7e1326b1d8813330e4619112eddc5) 2024-11-28 Jazzy: Merge pull request #608 from monilpat/realitySpiral/coinbaseTrading
@@ -1860,15 +1860,15 @@ Original commit hashes, oldest first:
 - [`e4de65691c03`](https://github.com/elizaOS/eliza/commit/e4de65691c03abd077e578b9f9f10f0405f87e8d) 2024-11-29 Shaw: Merge pull request #667 from St4rgarden/pubkey-derivation
 - [`0d2b7ab88f2e`](https://github.com/elizaOS/eliza/commit/0d2b7ab88f2eccf03cbdcc491643f89417e1e97f) 2024-11-29 Agustin Armellini Fischer: Update quickstart.md
 - [`bb77f3fb1833`](https://github.com/elizaOS/eliza/commit/bb77f3fb183377ead618e12a5853644856530f68) 2024-11-29 Shaw: Merge pull request #665 from 0xaguspunk/patch-1
-- [`036489f3d7ac`](https://github.com/elizaOS/eliza/commit/036489f3d7ac26150dab6cc12a313b500b5d01a1) 2024-11-28 Villem-Oskar Ossip: Add GALADRIEL_API_KEY variable to .env.example for LLM provider configuration
+- [`036489f3d7ac`](https://github.com/elizaOS/eliza/commit/036489f3d7ac26150dab6cc12a313b500b5d01a1) 2024-11-28 Villem-Oskar Ossip: Add GALADRIEL_API_KEY variable to.env.example for LLM provider configuration
 - [`4aa5bbb69544`](https://github.com/elizaOS/eliza/commit/4aa5bbb6954400bd6cd4db4e960dce247bcd3d3e) 2024-11-28 Villem-Oskar Ossip: Add Galadriel as a new model provider in index.ts
 - [`b09dfccd04a4`](https://github.com/elizaOS/eliza/commit/b09dfccd04a4574ee098db11c98ea5a6db7bacc4) 2024-11-28 Villem-Oskar Ossip: Add Galadriel to models.ts as model provider
 - [`fcfda665e619`](https://github.com/elizaOS/eliza/commit/fcfda665e619e605bf7971629affbf704a68595a) 2024-11-28 Villem-Oskar Ossip: Add Galadriel enum to types.ts
 - [`3341291a1680`](https://github.com/elizaOS/eliza/commit/3341291a168039f3fd8c7703013c33ec7956ade0) 2024-11-28 Villem-Oskar Ossip: Add Galadriel to Models type in types.ts
 - [`5037164d386c`](https://github.com/elizaOS/eliza/commit/5037164d386ce7ada1575b172e2537f8757c6606) 2024-11-28 Villem-Oskar Ossip: Add case model provider for Galadriel
-- [`a13641da2cee`](https://github.com/elizaOS/eliza/commit/a13641da2ceec62bcb2169009472290863e51596) 2024-11-28 Villem-Oskar Ossip: Add Galadriel api key start to .env.example AND change Galadriel small model to llama3.1:70b
+- [`a13641da2cee`](https://github.com/elizaOS/eliza/commit/a13641da2ceec62bcb2169009472290863e51596) 2024-11-28 Villem-Oskar Ossip: Add Galadriel api key start to.env.example AND change Galadriel small model to llama3.1:70b
 - [`4770e942a07f`](https://github.com/elizaOS/eliza/commit/4770e942a07f58f0d52f17134f2ccb0510eeeb49) 2024-11-28 Villem-Oskar Ossip: Add back exact same copy of pnpm-lock.yaml from ai16z/eliza main
-- [`ebcce1380217`](https://github.com/elizaOS/eliza/commit/ebcce13802178b161b280dca058a55ff711fb0f8) 2024-11-28 Villem-Oskar Ossip: Add comment to .env.examples where to get free Galadriel API key
+- [`ebcce1380217`](https://github.com/elizaOS/eliza/commit/ebcce13802178b161b280dca058a55ff711fb0f8) 2024-11-28 Villem-Oskar Ossip: Add comment to.env.examples where to get free Galadriel API key
 - [`6216b636e73f`](https://github.com/elizaOS/eliza/commit/6216b636e73f35e8a5cddcf5fd17c5e48d40d349) 2024-11-28 VI: Merge branch 'main' into add-galadriel-provider
 - [`1b5ddb30d35f`](https://github.com/elizaOS/eliza/commit/1b5ddb30d35f0367e71329d942f92105bfe8d7c9) 2024-11-29 Shaw: Merge pull request #651 from dontAskVI/add-galadriel-provider
 - [`d528afd4741f`](https://github.com/elizaOS/eliza/commit/d528afd4741f3cc1bbf857154360a4f66621c9cf) 2024-11-29 Shaw: Merge branch 'main' of http://github.com/ai16z/eliza into HEAD
@@ -2012,7 +2012,7 @@ Original commit hashes, oldest first:
 - [`a92ea561e016`](https://github.com/elizaOS/eliza/commit/a92ea561e0165ce9f4eaebf8c4c70002d0bcec22) 2024-11-30 Shaw: Merge pull request #744 from ai16z/renovate/pin-dependencies
 - [`7ee706c13837`](https://github.com/elizaOS/eliza/commit/7ee706c13837587909d6ebce77abc778c3ac9183) 2024-12-01 Your Name: packagejson updated to latest agent-client 0.0.16
 - [`5eaa57d99a2c`](https://github.com/elizaOS/eliza/commit/5eaa57d99a2c5ae03ff3daf473de87025eb5b898) 2024-12-01 cygaar: Merge pull request #753 from denizekiz/twitterclientfix
-- [`77cb2e54952b`](https://github.com/elizaOS/eliza/commit/77cb2e54952b65818eaf689e4cae4c2cfc35603c) 2024-12-02 v1xingyue: Create .gitpod.yml
+- [`77cb2e54952b`](https://github.com/elizaOS/eliza/commit/77cb2e54952b65818eaf689e4cae4c2cfc35603c) 2024-12-02 v1xingyue: Create.gitpod.yml
 - [`7d8e6c30a64a`](https://github.com/elizaOS/eliza/commit/7d8e6c30a64a20faea57d1964ed3c75c30f1ae71) 2024-12-02 v1xingyue: Update README.md
 - [`3c0fe39d1ad2`](https://github.com/elizaOS/eliza/commit/3c0fe39d1ad256e006345db4d464c8be91b7d9e1) 2024-12-02 v1xingyue: test gitpod
 - [`c6fff5d74692`](https://github.com/elizaOS/eliza/commit/c6fff5d746926fe9bfe2fe92663b665d9a48f4be) 2024-12-02 v1xingyue: update run repo
@@ -2088,7 +2088,7 @@ Original commit hashes, oldest first:
 - [`bad009906d46`](https://github.com/elizaOS/eliza/commit/bad009906d465d6f93927be636108e0d8945a393) 2024-12-01 Agustin Armellini Fischer: Use generateObjectV2, add wallet provider, centralize chain config
 - [`2d7bdbf14d14`](https://github.com/elizaOS/eliza/commit/2d7bdbf14d1442d333abb86b587a7abff69b7f9f) 2024-12-01 Agustin Armellini Fischer: Remove console logs
 - [`4bed62a2570a`](https://github.com/elizaOS/eliza/commit/4bed62a2570ac10080a199898f139f7578480c31) 2024-12-01 Agustin Armellini Fischer: Merge branch 'main' into goat
-- [`9408709dcd38`](https://github.com/elizaOS/eliza/commit/9408709dcd3859db85d046bc04fc52efa93f4a96) 2024-12-01 Agustin Armellini Fischer: Update .env.example
+- [`9408709dcd38`](https://github.com/elizaOS/eliza/commit/9408709dcd3859db85d046bc04fc52efa93f4a96) 2024-12-01 Agustin Armellini Fischer: Update.env.example
 - [`8d3ed883bc62`](https://github.com/elizaOS/eliza/commit/8d3ed883bc625d5ac96b5280b2affeb0287797b7) 2024-12-01 Shaw: Merge branch 'goat' of https://github.com/goat-sdk/eliza into shaw/add-goat
 - [`9abeb1c15881`](https://github.com/elizaOS/eliza/commit/9abeb1c158816fda79a308a1efe4d570565c0d5f) 2024-12-01 Shaw: integrate goat plugin
 - [`719b0a74ccc2`](https://github.com/elizaOS/eliza/commit/719b0a74ccc234c9bc3ae68bf00deb36b2020440) 2024-12-01 Shaw: Merge pull request #773 from ai16z/shaw/add-goat
@@ -2101,7 +2101,7 @@ Original commit hashes, oldest first:
 - [`a62c8f4d81fd`](https://github.com/elizaOS/eliza/commit/a62c8f4d81fd94e065e81f35f4cc19642e397ded) 2024-12-01 Shaw: Merge pull request #774 from ai16z/shaw-add-llms
 - [`03f2b0bb888f`](https://github.com/elizaOS/eliza/commit/03f2b0bb888fa55b42280ccccbe0ff01fd4adc5e) 2024-12-01 Tang Bo Hao: feat: add Bailian and Volengine to ModelProvider
 - [`66d160c1485c`](https://github.com/elizaOS/eliza/commit/66d160c1485cc337299433811d460156755a7bea) 2024-12-01 Tang Bo Hao: Merge branch 'main' into tbh/more-providers
-- [`e33a11eb7988`](https://github.com/elizaOS/eliza/commit/e33a11eb7988a5b5d8748cc5210e8528d460da2a) 2024-12-01 Tang Bo Hao: chore: add ALI_BAILIAN_API_KEY and VOLENGINE_API_KEY in .env.example
+- [`e33a11eb7988`](https://github.com/elizaOS/eliza/commit/e33a11eb7988a5b5d8748cc5210e8528d460da2a) 2024-12-01 Tang Bo Hao: chore: add ALI_BAILIAN_API_KEY and VOLENGINE_API_KEY in.env.example
 - [`cbd77e515f7c`](https://github.com/elizaOS/eliza/commit/cbd77e515f7c66118d9b0db3fc1c077700ad8a70) 2024-12-01 Shaw: Merge branch 'tbh/more-providers' of https://github.com/btspoony/eliza into shaw-add-llms
 - [`b4c395add467`](https://github.com/elizaOS/eliza/commit/b4c395add467508427bb7ee8372f35fe2d932082) 2024-12-01 Shaw: Merge pull request #775 from ai16z/shaw-add-llms
 - [`0f48933b8b7a`](https://github.com/elizaOS/eliza/commit/0f48933b8b7a536aa587f90e9187bef2653e46d8) 2024-12-01 Shelven Zhou: add simulator tutor for plugin-tee docs
@@ -2242,7 +2242,7 @@ Original commit hashes, oldest first:
 - [`aba16db38b5f`](https://github.com/elizaOS/eliza/commit/aba16db38b5f312bc8af8ea1f072b73cc84706ae) 2024-12-04 cygaar: undo changelog
 - [`df09c4d05c88`](https://github.com/elizaOS/eliza/commit/df09c4d05c882fdd449a8226347c4244adc082d3) 2024-12-04 Shakker Nerd: Merge pull request #838 from cygaar/bump_0.1.5.3
 - [`892831a27c27`](https://github.com/elizaOS/eliza/commit/892831a27c27913149929b791dd934411771bd6e) 2024-12-04 GitHub Action: chore: update changelog
-- [`a460c04b4e7a`](https://github.com/elizaOS/eliza/commit/a460c04b4e7aa28f591515947d8ae98c7339b7ac) 2024-12-02 Monil Patel: feat: add coinbase  ERC20, ERC721, and ERC1155 tokenContract deployment / invokement plugins
+- [`a460c04b4e7a`](https://github.com/elizaOS/eliza/commit/a460c04b4e7aa28f591515947d8ae98c7339b7ac) 2024-12-02 Monil Patel: feat: add coinbase ERC20, ERC721, and ERC1155 tokenContract deployment / invokement plugins
 - [`df311aefac33`](https://github.com/elizaOS/eliza/commit/df311aefac339dd076b15484fd1f45ef416a7d66) 2024-12-02 Monil Patel: test nft / erc20 token creation
 - [`07d8e722ba41`](https://github.com/elizaOS/eliza/commit/07d8e722ba41d622ba794e7ccf11f58080101203) 2024-12-02 Monil Patel: remove token contract action for now to further test :)
 - [`34e4deb715c5`](https://github.com/elizaOS/eliza/commit/34e4deb715c569f29dffd51a42876f0aa6dba470) 2024-12-02 Monil Patel: fix linter
@@ -2271,7 +2271,7 @@ Original commit hashes, oldest first:
 - [`ea0ebe7374af`](https://github.com/elizaOS/eliza/commit/ea0ebe7374af7273a9f9dcbd1806d69ec12ba975) 2024-12-05 Jazzy: Merge pull request #850 from oxSaturn/patch-1
 - [`c2a4675981de`](https://github.com/elizaOS/eliza/commit/c2a4675981de5e17f75115357eab2128d1e8afe7) 2024-12-05 CryptoFede: Updated quickstart.md to contemplate common issue
 - [`09c7b03dd1e3`](https://github.com/elizaOS/eliza/commit/09c7b03dd1e30e2738a001b6a29fcef1ebd09ba2) 2024-12-05 Jazzy: Merge pull request #861 from fede2442/patch-1
-- [`bdf7a798e7b3`](https://github.com/elizaOS/eliza/commit/bdf7a798e7b3e332ac285d6bcfaedc767cd115b8) 2024-12-05 Michael Yuan: Remove duplicated coinbase CDP options in .env.example
+- [`bdf7a798e7b3`](https://github.com/elizaOS/eliza/commit/bdf7a798e7b3e332ac285d6bcfaedc767cd115b8) 2024-12-05 Michael Yuan: Remove duplicated coinbase CDP options in.env.example
 - [`7fb73d209a5d`](https://github.com/elizaOS/eliza/commit/7fb73d209a5d6d09a039515a088ff14b48691511) 2024-12-05 Jazzy: Merge pull request #863 from juntao/patch-1
 - [`eabeea784c3f`](https://github.com/elizaOS/eliza/commit/eabeea784c3f8bc8b7eaae9665781b8f593eccb7) 2024-12-05 Monil Patel: Merge branch 'main' into realitySpiral/coinbaseTesting
 - [`e32b55d55b28`](https://github.com/elizaOS/eliza/commit/e32b55d55b289e50b3a7fe4f215e4f8a32651229) 2024-12-05 Monil Patel: address linter
@@ -2285,7 +2285,7 @@ Original commit hashes, oldest first:
 - [`fb73cc02b619`](https://github.com/elizaOS/eliza/commit/fb73cc02b61933d0ddefddf3394149b09e0e7c16) 2024-12-06 Phlo: updating stream notes for dev school 2 and 3
 - [`59dc67b3f526`](https://github.com/elizaOS/eliza/commit/59dc67b3f526edacac1c2e459c9079f3a6a41b49) 2024-12-06 Shaw: Merge pull request #877 from YoungPhlo/docs/community-streams
 - [`a2568b5460b6`](https://github.com/elizaOS/eliza/commit/a2568b5460b6232150e94a83ae03355cd157757a) 2024-12-06 Peersky: Update models.ts
-- [`de9d38262e2c`](https://github.com/elizaOS/eliza/commit/de9d38262e2c615a0f0ce62c68fbfe83dfd3cfd9) 2024-12-07 Peersky: Update .env.example
+- [`de9d38262e2c`](https://github.com/elizaOS/eliza/commit/de9d38262e2c615a0f0ce62c68fbfe83dfd3cfd9) 2024-12-07 Peersky: Update.env.example
 - [`c40a1f785c57`](https://github.com/elizaOS/eliza/commit/c40a1f785c578f2c4e1dff28d010a4e03995a68c) 2024-12-06 Jazzy: Merge pull request #875 from peersky/patch-1
 - [`0d4cab37ac1c`](https://github.com/elizaOS/eliza/commit/0d4cab37ac1cf1ae43e405128e8ecba330d079f3) 2024-12-06 GitHub Action: chore: update changelog
 - [`469e2666a74c`](https://github.com/elizaOS/eliza/commit/469e2666a74cdaa350257a670035c3f190061dbc) 2024-11-24 sayangel: feat: working farcaster client with neynar
@@ -2393,7 +2393,7 @@ Original commit hashes, oldest first:
 - [`447cab072955`](https://github.com/elizaOS/eliza/commit/447cab072955f286c6f054cd444e122e06e4f2eb) 2024-12-08 Jonas Hals: Fix use of Heurist model env vars
 - [`a04195345260`](https://github.com/elizaOS/eliza/commit/a04195345260c20a1d57b7d73c788a30a8969134) 2024-12-09 Shakker Nerd: chore: variables naming consistency
 - [`621f3f47112a`](https://github.com/elizaOS/eliza/commit/621f3f47112a639a9ad1e33873aba25e6dfe7899) 2024-12-09 Shakker Nerd: Merge pull request #924 from boxhock/fix-heurist-model-selection
-- [`113d820b918b`](https://github.com/elizaOS/eliza/commit/113d820b918bcbf73db5ec332c401ff84d7e9a62) 2024-12-09 oxSaturn: fix: update quickstart and .env.example
+- [`113d820b918b`](https://github.com/elizaOS/eliza/commit/113d820b918bcbf73db5ec332c401ff84d7e9a62) 2024-12-09 oxSaturn: fix: update quickstart and.env.example
 - [`7418f881003c`](https://github.com/elizaOS/eliza/commit/7418f881003c933295fa260f69b8d2aee0d70a77) 2024-12-09 oxSaturn: add default
 - [`051323f3a550`](https://github.com/elizaOS/eliza/commit/051323f3a550b697c3ea3212023da35b191d3287) 2024-12-09 Shakker Nerd: Merge pull request #932 from oxSaturn/fix/update-docs
 - [`bd532a15b57d`](https://github.com/elizaOS/eliza/commit/bd532a15b57d0543f8a465382b0c44ae3bf0dd61) 2024-12-08 Monil Patel: feat: add readContract functionality to Coinbase plugin
@@ -2449,7 +2449,7 @@ Original commit hashes, oldest first:
 - [`c62a51831fdd`](https://github.com/elizaOS/eliza/commit/c62a51831fdd3bdf52768ce5e1178187351c8f89) 2024-12-10 Odilitime: Merge pull request #898 from goat-sdk/plugin-secrets
 - [`d8470eb75a5c`](https://github.com/elizaOS/eliza/commit/d8470eb75a5c5d6906e6ffbf593984039accf49b) 2024-12-03 HashWarlock: feat: add TEE mode to Solana Plugin
 - [`8a5f77910bd4`](https://github.com/elizaOS/eliza/commit/8a5f77910bd4b1ec851272a3944f2db84badb89a) 2024-12-03 HashWarlock: add reportdata hash to log for users to verify
-- [`64a25409028b`](https://github.com/elizaOS/eliza/commit/64a25409028b0620554490e84c529f419da9d1f3) 2024-12-04 HashWarlock: update .env.example with TEE_MODE
+- [`64a25409028b`](https://github.com/elizaOS/eliza/commit/64a25409028b0620554490e84c529f419da9d1f3) 2024-12-04 HashWarlock: update.env.example with TEE_MODE
 - [`aa21a9b964ab`](https://github.com/elizaOS/eliza/commit/aa21a9b964abdd33cb39c4577af5d14a3df7b198) 2024-12-05 HashWarlock: refactor: extract getting the public key or keypair to reduce repetitive code
 - [`bd6032b7761f`](https://github.com/elizaOS/eliza/commit/bd6032b7761f1a7e0fd52fbd0d47f46f939d20e4) 2024-12-05 HashWarlock: upgrade the dstack-sdk version and clean up logging for remote attestation
 - [`cfe7cad3ca5a`](https://github.com/elizaOS/eliza/commit/cfe7cad3ca5a4a9a461912c17d4071c093c42ff1) 2024-12-05 HashWarlock: Add skeleton of docs page for Eliza in TEE
@@ -2462,7 +2462,7 @@ Original commit hashes, oldest first:
 - [`26cec60ba379`](https://github.com/elizaOS/eliza/commit/26cec60ba379bcb459416b0f68bfd2abd26b1900) 2024-12-09 Sam: feat: add dynamic watch paths for agent development
 - [`98bfcfc3a58f`](https://github.com/elizaOS/eliza/commit/98bfcfc3a58f3134270577db920483951f3b9923) 2024-12-08 Jonas Hals: Fix use of Heurist model env vars
 - [`1e8fd6fede7e`](https://github.com/elizaOS/eliza/commit/1e8fd6fede7e968589c8749a1cdbdaf08142befa) 2024-12-09 Shakker Nerd: chore: variables naming consistency
-- [`ad9c1951e17d`](https://github.com/elizaOS/eliza/commit/ad9c1951e17dfe9e948a336a8208847bc61c6d69) 2024-12-09 oxSaturn: fix: update quickstart and .env.example
+- [`ad9c1951e17d`](https://github.com/elizaOS/eliza/commit/ad9c1951e17dfe9e948a336a8208847bc61c6d69) 2024-12-09 oxSaturn: fix: update quickstart and.env.example
 - [`5d6544417302`](https://github.com/elizaOS/eliza/commit/5d65444173024ed231dfe3e261f94848078c194f) 2024-12-09 oxSaturn: add default
 - [`b660b2cdd12a`](https://github.com/elizaOS/eliza/commit/b660b2cdd12aad040df35c09007a66db61978ce3) 2024-12-08 Monil Patel: feat: add readContract functionality to Coinbase plugin
 - [`bc75806855e4`](https://github.com/elizaOS/eliza/commit/bc75806855e4c0c2da2d5851adb769e5a15c1b76) 2024-12-08 Monil Patel: get read contract working :)
@@ -2527,7 +2527,7 @@ Original commit hashes, oldest first:
 - [`25268dc2ea47`](https://github.com/elizaOS/eliza/commit/25268dc2ea479d70513cb3c505ccd1489851a082) 2024-12-11 oxSaturn: fix: a typo in characterfile.md
 - [`d7e8d9aaa417`](https://github.com/elizaOS/eliza/commit/d7e8d9aaa417109e2c6dd586f6a567ec16d304c0) 2024-12-11 Shaw: Merge pull request #986 from oxSaturn/fix/typo-in-characterfile
 - [`649946c0e375`](https://github.com/elizaOS/eliza/commit/649946c0e375e89ab64de55e69bb37a224f0fa50) 2024-12-11 dontAskVI: Fix search for TwitterSearchClient
-- [`10d6e4321267`](https://github.com/elizaOS/eliza/commit/10d6e43212677fa5a8c1f200df6b95334b0e28a4) 2024-12-11 dontAskVI: Remove .getInstance() from serach.ts
+- [`10d6e4321267`](https://github.com/elizaOS/eliza/commit/10d6e43212677fa5a8c1f200df6b95334b0e28a4) 2024-12-11 dontAskVI: Remove.getInstance() from serach.ts
 - [`c6b00c6afe0b`](https://github.com/elizaOS/eliza/commit/c6b00c6afe0bb4fce628403f8c7b3f7ce9ea2fcf) 2024-12-11 dontAskVI: Comment search function out
 - [`a4bc51146010`](https://github.com/elizaOS/eliza/commit/a4bc511460101a4720405c28c5d539d9bf85625f) 2024-12-11 dontAskVI: Add image model for Galadriel model provider
 - [`ca49c0e68cc5`](https://github.com/elizaOS/eliza/commit/ca49c0e68cc5df2b62eaeef8950de5786441cf67) 2024-12-10 John Naulty: feat: make NodePlugin and GoatPlugin creation conditional
@@ -2607,7 +2607,7 @@ Original commit hashes, oldest first:
 - [`66de6f591cd3`](https://github.com/elizaOS/eliza/commit/66de6f591cd38be53e46146d30266fbbf463f58a) 2024-12-12 Nikita Ruban: Merge branch 'ai16z:main' into plugin-evm-multichain
 - [`06c1c41de600`](https://github.com/elizaOS/eliza/commit/06c1c41de600ccf39ce4a80d39c91ef70cad1a9b) 2024-12-11 Odilitime: Merge pull request #1006 from ai16z/main
 - [`0bef8ac01882`](https://github.com/elizaOS/eliza/commit/0bef8ac01882b47ee461f23ef1344d4a646e3243) 2024-12-08 tharak123455: Update interactions.ts
-- [`cc2aa50721a1`](https://github.com/elizaOS/eliza/commit/cc2aa50721a1979919e3f948cbf50e8090255917) 2024-12-08 tharak123455: Update .env.example
+- [`cc2aa50721a1`](https://github.com/elizaOS/eliza/commit/cc2aa50721a1979919e3f948cbf50e8090255917) 2024-12-08 tharak123455: Update.env.example
 - [`64220cbfad8e`](https://github.com/elizaOS/eliza/commit/64220cbfad8e21638e2a4b846c199b64d895734d) 2024-12-12 tharak123455: Update interactions.ts
 - [`314ffe1e2122`](https://github.com/elizaOS/eliza/commit/314ffe1e2122ab4fb78d6fc768334439456a9357) 2024-12-12 tharak123455: Merge branch 'main' into twitterClient-enhancements
 - [`d89a8793735d`](https://github.com/elizaOS/eliza/commit/d89a8793735dfdf5f0310019991ff8176e9c1445) 2024-12-12 tharak123455: Update interactions.ts
@@ -2641,7 +2641,7 @@ Original commit hashes, oldest first:
 - [`bedb2919d2c8`](https://github.com/elizaOS/eliza/commit/bedb2919d2c84b8e503aebae716369d1574c302e) 2024-12-12 madjin: Merge remote-tracking branch 'origin/develop' into tcm-contributor-page
 - [`12e10639978b`](https://github.com/elizaOS/eliza/commit/12e10639978b63e7b3c00e52d20e7dd580b72574) 2024-12-12 madjin: fix broken page
 - [`7ad74e3fb797`](https://github.com/elizaOS/eliza/commit/7ad74e3fb797319442c5321e0fc0f8fb45357328) 2024-12-12 jin: Merge pull request #809 from ai16z/tcm-contributor-page
-- [`3e15c72cf636`](https://github.com/elizaOS/eliza/commit/3e15c72cf6362ce0711c7bda0c35146c6015eac8) 2024-12-12 Snobbish Bee: chore: Update CI configuration to enable test coverage and add coverage directory to .gitignore
+- [`3e15c72cf636`](https://github.com/elizaOS/eliza/commit/3e15c72cf6362ce0711c7bda0c35146c6015eac8) 2024-12-12 Snobbish Bee: chore: Update CI configuration to enable test coverage and add coverage directory to.gitignore
 - [`4fd51a82b134`](https://github.com/elizaOS/eliza/commit/4fd51a82b134fec600df3c16c6e325adf72da0e1) 2024-12-12 Snobbish Bee: Merge branch 'develop' into ci/generate-coverage-files-to-upload-to-codecov
 - [`5573af6d0cf3`](https://github.com/elizaOS/eliza/commit/5573af6d0cf3f7856e6e63955eb52c09842a8dc3) 2024-12-12 Snobbish Bee: chore: Update CI workflow to run tests with coverage reporting
 - [`ffd5e0ad9b8e`](https://github.com/elizaOS/eliza/commit/ffd5e0ad9b8e3cfdca95470a0f2071989cb79515) 2024-12-12 Monil Patel: Merge pull request #1019 from Sifchain/ci/generate-coverage-files-to-upload-to-codecov
@@ -2739,7 +2739,7 @@ Original commit hashes, oldest first:
 - [`b9a903a1048b`](https://github.com/elizaOS/eliza/commit/b9a903a1048b7dab4ad00bb89cf8784a71ff4e43) 2024-12-14 Jure Žvikart: Fix pnpm-lock
 - [`bf60b960be46`](https://github.com/elizaOS/eliza/commit/bf60b960be46c9d884e8047b60ffb7f39401d92b) 2024-12-13 Monil Patel: Merge pull request #1055 from Sifchain/fix/fix-pnpm-lock-issues
 - [`0c13bfe6908f`](https://github.com/elizaOS/eliza/commit/0c13bfe6908f0d770f5c5eea7f720e9e9d3bc69b) 2024-12-13 Ting Chien Meng: enable image tweet on twitter
-- [`25590f402170`](https://github.com/elizaOS/eliza/commit/25590f402170ed0a6fe96fa8d5c84e85b12b1941) 2024-12-13 Ting Chien Meng: handle  http url
+- [`25590f402170`](https://github.com/elizaOS/eliza/commit/25590f402170ed0a6fe96fa8d5c84e85b12b1941) 2024-12-13 Ting Chien Meng: handle http url
 - [`711bbc6b783d`](https://github.com/elizaOS/eliza/commit/711bbc6b783d3e00a796a1824dae19a66443e380) 2024-12-13 Ting Chien Meng: add content type
 - [`b350f3c39099`](https://github.com/elizaOS/eliza/commit/b350f3c39099ae2b115004a8ddef5cabdc506126) 2024-12-13 Monil Patel: Merge pull request #1040 from ai16z/tcm-twitter-image
 - [`ee40fbbbe163`](https://github.com/elizaOS/eliza/commit/ee40fbbbe163172c6c5ad6b44af49962e4e918af) 2024-12-12 azep-ninja: Add Telegram team features.
@@ -2791,7 +2791,7 @@ Original commit hashes, oldest first:
 - [`8959826e9572`](https://github.com/elizaOS/eliza/commit/8959826e9572d00b31455ea0ec4deaaadbf81634) 2024-12-05 Gavrila Andrei: Add wallet provider and update transfer
 - [`c65791e9c849`](https://github.com/elizaOS/eliza/commit/c65791e9c849fd2ce09c82e891ba80f349266a7b) 2024-12-05 Gavrila Andrei: Update createToken
 - [`466367843c6b`](https://github.com/elizaOS/eliza/commit/466367843c6b61711228b9d53efb515e61a29b12) 2024-12-05 Gavrila Andrei: Add wallet test
-- [`d79680d74970`](https://github.com/elizaOS/eliza/commit/d79680d74970b969105798f980906b36b2ee39bd) 2024-12-05 Gavrila Andrei: Update .env.example
+- [`d79680d74970`](https://github.com/elizaOS/eliza/commit/d79680d74970b969105798f980906b36b2ee39bd) 2024-12-05 Gavrila Andrei: Update.env.example
 - [`ebd671b53c37`](https://github.com/elizaOS/eliza/commit/ebd671b53c372356d03f7b5fddbaba9a44db8361) 2024-12-05 Gavrila Andrei: Rename variable
 - [`fcaefa858700`](https://github.com/elizaOS/eliza/commit/fcaefa858700448cac9f1150903939c2314a1239) 2024-12-05 Gavrila Andrei: Apply prettier
 - [`9565cbd30c18`](https://github.com/elizaOS/eliza/commit/9565cbd30c1845f296da2c9ff5bb07fb72ab62ef) 2024-12-05 Gavrila Andrei: Remove elrond
@@ -2805,7 +2805,7 @@ Original commit hashes, oldest first:
 - [`66063736073e`](https://github.com/elizaOS/eliza/commit/66063736073eed655ccfff2a41ae0f69ccf49e8f) 2024-12-14 Shaw: Merge branch 'feature/multivesrx-plugin' of https://github.com/mgavrila/eliza into HEAD
 - [`c20030f0cb64`](https://github.com/elizaOS/eliza/commit/c20030f0cb643db8d27cfd1da9692ffe48bcf45b) 2024-12-14 Shaw: fix generate object ref
 - [`be4e528871a9`](https://github.com/elizaOS/eliza/commit/be4e528871a9686d6bd131b592c617803ba91526) 2024-11-30 firatsertgoz: feat: Near plugin wallet provider
-- [`8ebda0945a9f`](https://github.com/elizaOS/eliza/commit/8ebda0945a9f8bfcf94bd65c969aa641130158df) 2024-11-30 firatsertgoz: chore: .env.example near config
+- [`8ebda0945a9f`](https://github.com/elizaOS/eliza/commit/8ebda0945a9f8bfcf94bd65c969aa641130158df) 2024-11-30 firatsertgoz: chore:.env.example near config
 - [`dd14cd4c61b4`](https://github.com/elizaOS/eliza/commit/dd14cd4c61b44f582aedeef967f0b60d15954d66) 2024-11-30 firatsertgoz: feat: swap on testnet
 - [`92162ecc3b23`](https://github.com/elizaOS/eliza/commit/92162ecc3b234eede8ab1a92438cba957a46b2e3) 2024-11-30 firatsertgoz: fix: types and keystore
 - [`f5f74c21a256`](https://github.com/elizaOS/eliza/commit/f5f74c21a256862bad4ab8a73db5116d0c167cb0) 2024-12-01 firatsertgoz: fix: fix swap
@@ -2905,7 +2905,7 @@ Original commit hashes, oldest first:
 - [`ea1ef589c7ca`](https://github.com/elizaOS/eliza/commit/ea1ef589c7cabee66ba5d62562c5f53e226fe047) 2024-12-14 Odilitime: Merge pull request #998 from ai16z-demirix/main
 - [`6cab7ef9c544`](https://github.com/elizaOS/eliza/commit/6cab7ef9c54407f2988109177000947b8271a7d2) 2024-12-15 BalanaguYashwanth: Merge branch 'develop' of https://github.com/BalanaguYashwanth/eliza into 656--fix-twitter-multi-agent-support
 - [`ee4db04a8c10`](https://github.com/elizaOS/eliza/commit/ee4db04a8c108d156a77bc92752955797241cabd) 2024-12-14 Shaw: fix missing
-- [`2fe083caa204`](https://github.com/elizaOS/eliza/commit/2fe083caa20496663bf35bfc2cbce149d947c3b2) 2024-12-07 guzus: chore: improve formatting of .env.example for better readability
+- [`2fe083caa204`](https://github.com/elizaOS/eliza/commit/2fe083caa20496663bf35bfc2cbce149d947c3b2) 2024-12-07 guzus: chore: improve formatting of.env.example for better readability
 - [`5b07e03f2dc2`](https://github.com/elizaOS/eliza/commit/5b07e03f2dc218d3c911dec53e937cbdf960cc84) 2024-12-08 guzus: fix: restore missing comments for coinbase configuration
 - [`e4f257558b86`](https://github.com/elizaOS/eliza/commit/e4f257558b863054b115c7a1d92d607466ad31a8) 2024-12-09 guzus: fix: restore missing comments for coinbase configuration
 - [`0ddc3707d04c`](https://github.com/elizaOS/eliza/commit/0ddc3707d04c432aebc5d106bcb933873be05c5b) 2024-12-11 guzus: Merge branch 'main' into HEAD
@@ -2947,7 +2947,7 @@ Original commit hashes, oldest first:
 - [`f45dfb5736ef`](https://github.com/elizaOS/eliza/commit/f45dfb5736efda3eadaf015d11be45b7b440266f) 2024-12-14 Shaw: Merge branch 'develop' of http://github.com/ai16z/eliza into develop
 - [`a2c418c51cfc`](https://github.com/elizaOS/eliza/commit/a2c418c51cfc9d9cd572a505522c71df03fd70bc) 2024-12-09 Allen Chuang: init plugin-story
 - [`044a9ab0c057`](https://github.com/elizaOS/eliza/commit/044a9ab0c057bcc50929f813ab34e9edf36e4a61) 2024-12-09 Allen Chuang: update wallet.ts
-- [`f9aefc990f20`](https://github.com/elizaOS/eliza/commit/f9aefc990f2008f7b2af879955f78cd852df9a7a) 2024-12-09 Allen Chuang: add @story-protocol/core-sdk to package.json
+- [`f9aefc990f20`](https://github.com/elizaOS/eliza/commit/f9aefc990f2008f7b2af879955f78cd852df9a7a) 2024-12-09 Allen Chuang: add @story-protocol-sdk to package.json
 - [`b7ae3c0d03ef`](https://github.com/elizaOS/eliza/commit/b7ae3c0d03eff184a1bad8e2813f8122215198e4) 2024-12-09 Allen Chuang: add registerIP action scaffold
 - [`5221a113c1b2`](https://github.com/elizaOS/eliza/commit/5221a113c1b2052bbf2e6bd5ea3ed30887145845) 2024-12-09 Allen Chuang: fix typo
 - [`c74eca8ae10a`](https://github.com/elizaOS/eliza/commit/c74eca8ae10a16b05bc4c04ef0632f88fe98cbc9) 2024-12-09 Allen Chuang: test with main character
@@ -3015,7 +3015,7 @@ Original commit hashes, oldest first:
 - [`a09058dfab3c`](https://github.com/elizaOS/eliza/commit/a09058dfab3cdc29999aa071510ba30b19dafd6c) 2024-12-15 Monil Patel: remove -r
 - [`eff83ec4c7d5`](https://github.com/elizaOS/eliza/commit/eff83ec4c7d510517d6de931af363f28fc496b4d) 2024-12-15 Monil Patel: on default don't update pnpm lockfile
 - [`5f0b1ca1a42f`](https://github.com/elizaOS/eliza/commit/5f0b1ca1a42f2c6e3c621d67214d5efc541a73d2) 2024-12-15 Monil Patel: remove space
-- [`2afc62127335`](https://github.com/elizaOS/eliza/commit/2afc62127335be3ef44a52fb543e10bed4d3d60e) 2024-12-15 Monil Patel: don't need to explicitly set it with .npmrc in root file
+- [`2afc62127335`](https://github.com/elizaOS/eliza/commit/2afc62127335be3ef44a52fb543e10bed4d3d60e) 2024-12-15 Monil Patel: don't need to explicitly set it with.npmrc in root file
 - [`d381a57c7274`](https://github.com/elizaOS/eliza/commit/d381a57c7274effdba039576ca50822c9b71c8e8) 2024-12-15 Monil Patel: remove space
 - [`39b7394e7aa6`](https://github.com/elizaOS/eliza/commit/39b7394e7aa6d4be723fa45a6e573f8f58954a53) 2024-12-15 Monil Patel: Update quickstart.md
 - [`1c7be548f51f`](https://github.com/elizaOS/eliza/commit/1c7be548f51f2b54d293092d3f200e3fcbfe6b84) 2024-12-15 Mark.B: add 2 new chars
@@ -3217,7 +3217,7 @@ Original commit hashes, oldest first:
 - [`e6de3a58cd5e`](https://github.com/elizaOS/eliza/commit/e6de3a58cd5e73e428beb6100273c26c952f7321) 2024-12-20 Shakker Nerd: Merge pull request #1258 from ai16z/tcm-claude-vertext-miss
 - [`832a274f3053`](https://github.com/elizaOS/eliza/commit/832a274f3053076952a0ffb1635ca19839fdfff7) 2024-12-20 tomguluson92: Update generation.ts
 - [`db43e1322a81`](https://github.com/elizaOS/eliza/commit/db43e1322a8139dee6a1e6f26dc685df1cb583f2) 2024-12-20 tomguluson92: Update index.ts
-- [`85c3af4faf90`](https://github.com/elizaOS/eliza/commit/85c3af4faf90eb7ba973ef70e63f9e187c866e21) 2024-12-20 tomguluson92: Update .env.example
+- [`85c3af4faf90`](https://github.com/elizaOS/eliza/commit/85c3af4faf90eb7ba973ef70e63f9e187c866e21) 2024-12-20 tomguluson92: Update.env.example
 - [`2217ac038680`](https://github.com/elizaOS/eliza/commit/2217ac0386806c3fb5251e1c1da0161343bc2d14) 2024-12-19 Odilitime: Merge pull request #1246 from tomguluson92/tomguluson92-patch-2
 - [`242052bbb619`](https://github.com/elizaOS/eliza/commit/242052bbb61911b1b5e34b7faa5ce264842c0d86) 2024-12-19 Monil Patel: Merge branch 'develop' into main
 - [`ea8cfb3fc450`](https://github.com/elizaOS/eliza/commit/ea8cfb3fc450958456a8cb04184be5edd7a71f2b) 2024-12-19 Monil Patel: Merge pull request #1262 from derRizzMeister/main
@@ -3325,7 +3325,7 @@ Original commit hashes, oldest first:
 - [`f45396fcfaa2`](https://github.com/elizaOS/eliza/commit/f45396fcfaa25cb4ce47cb18a94d46720a180f81) 2024-12-21 madjin: revert discord url
 - [`4d6a7a1bf11b`](https://github.com/elizaOS/eliza/commit/4d6a7a1bf11bcbfa16883bf8664b8ce7cd849c5c) 2024-12-22 Shakker Nerd: Merge pull request #1355 from elizaOS/elizaos_discord
 - [`d3f8e8b19a1a`](https://github.com/elizaOS/eliza/commit/d3f8e8b19a1a8091af8bb7128f68197aac512763) 2024-12-21 Shaw: Merge pull request #1352 from elizaOS/elizaos
-- [`30670640d067`](https://github.com/elizaOS/eliza/commit/30670640d0670f203f73b914a81e241d8079b838) 2024-12-22 Shaw: elizaos/core
+- [`30670640d067`](https://github.com/elizaOS/eliza/commit/30670640d0670f203f73b914a81e241d8079b838) 2024-12-22 Shaw: elizaos
 - [`0945d7788402`](https://github.com/elizaOS/eliza/commit/0945d77884029b826bc30024c6d5273b9e9adde7) 2024-12-21 wylin: Update DOCUMENTATION links to point to https://elizaOS.github.io/eliza/
 - [`7a3acdf906e1`](https://github.com/elizaOS/eliza/commit/7a3acdf906e1c899475b007c4fcc3ef471916718) 2024-12-21 Shaw: Merge pull request #1356 from elizaOS/develop
 - [`7076f94137a8`](https://github.com/elizaOS/eliza/commit/7076f94137a866e94498b472b712d054114d1c81) 2024-12-22 Shaw: Merge branch 'main' into patch-1
@@ -3340,7 +3340,7 @@ Original commit hashes, oldest first:
 - [`4c658d7d7043`](https://github.com/elizaOS/eliza/commit/4c658d7d70433fdcb2feeffe879429eaef10685d) 2024-12-22 GitHub Action: chore: update changelog
 - [`156de3cc0823`](https://github.com/elizaOS/eliza/commit/156de3cc0823142518e40a3aed1ec42709bc7a7d) 2024-12-25 mhxw: fix: fix incorrect link redirection issue
 - [`710700ca1a23`](https://github.com/elizaOS/eliza/commit/710700ca1a234f2ceebd28a8b0d1b58197326aeb) 2024-12-24 “nulLeeKH”: fix: make twitter search feature works
-- [`cbd882153d7d`](https://github.com/elizaOS/eliza/commit/cbd882153d7d36b630412fd8a953156afab0544e) 2024-12-24 “nulLeeKH”: doc: add .idea in .gitignore
+- [`cbd882153d7d`](https://github.com/elizaOS/eliza/commit/cbd882153d7d36b630412fd8a953156afab0544e) 2024-12-24 “nulLeeKH”: doc: add.idea in.gitignore
 - [`a8836243f093`](https://github.com/elizaOS/eliza/commit/a8836243f093ccab2430eedb260a4a2923ff709e) 2024-12-24 “nulLeeKH”: Merge branch 'main' of github.com:nulLeeKH/eliza
 - [`b13277f18485`](https://github.com/elizaOS/eliza/commit/b13277f18485f387b61d7c1100400d1139045465) 2024-12-24 “nulLeeKH”: doc: modify some comments
 - [`7a885a627bec`](https://github.com/elizaOS/eliza/commit/7a885a627becb57a3bbdf7064c32ff7cf84df3fd) 2024-12-20 Monil Patel: feat: add auto PR / issue close after being stale for a certain period of time
@@ -3385,9 +3385,9 @@ Original commit hashes, oldest first:
 - [`d1287c88128f`](https://github.com/elizaOS/eliza/commit/d1287c88128ff475461fe0c1767b9754a58e69bc) 2024-12-23 Ryan: fix: postgres adapter settings not being applied
 - [`7b6d80cf82b4`](https://github.com/elizaOS/eliza/commit/7b6d80cf82b4684a5e6d249038c7aaa542adf92b) 2024-12-23 jasonqindev: Fix: Duplicate tweet scheduling loops in start method
 - [`6e26278baccd`](https://github.com/elizaOS/eliza/commit/6e26278baccd515142e14326b77a120ced1f9464) 2024-12-23 Jason Qin: Merge branch 'main' into fix/duplicate-next-tweet-log
-- [`c38add3c6ce1`](https://github.com/elizaOS/eliza/commit/c38add3c6ce1d80dcf65ead4d0a3c9eb54d758c0) 2024-12-23 jasonqindev: Fix:  Move generateNewTweetLoop() into the if condition for enableActionProcessing
+- [`c38add3c6ce1`](https://github.com/elizaOS/eliza/commit/c38add3c6ce1d80dcf65ead4d0a3c9eb54d758c0) 2024-12-23 jasonqindev: Fix: Move generateNewTweetLoop() into the if condition for enableActionProcessing
 - [`1da6e0d31c41`](https://github.com/elizaOS/eliza/commit/1da6e0d31c41ae97792ad526c4f6a946ed336f24) 2024-12-23 Jason Qin: Merge branch 'develop' into fix/duplicate-next-tweet-log
-- [`f9d227c081e0`](https://github.com/elizaOS/eliza/commit/f9d227c081e0b13cbe1fdcd41f79789460150b71) 2024-12-23 Hugo Caumo: Standardize boolean values and update .env file pattern
+- [`f9d227c081e0`](https://github.com/elizaOS/eliza/commit/f9d227c081e0b13cbe1fdcd41f79789460150b71) 2024-12-23 Hugo Caumo: Standardize boolean values and update.env file pattern
 - [`4af80724884e`](https://github.com/elizaOS/eliza/commit/4af80724884ee6c6e4c8133a01bd326ef070cbef) 2024-12-23 Phlo: docs: Add "What Did You Get Done This Week? 6" notes
 - [`8bdd67c9bf88`](https://github.com/elizaOS/eliza/commit/8bdd67c9bf888c03d02803e562fad6f9f20a2915) 2024-12-23 Phlo: docs: Standardize formatting for December 2024 streams
 - [`55a7eae6b62d`](https://github.com/elizaOS/eliza/commit/55a7eae6b62dc8a5b7ac0eac0cb7478219ecefc4) 2024-12-23 Monil Patel: Merge pull request #1399 from YoungPhlo/docs/community-streams
@@ -3532,7 +3532,7 @@ Original commit hashes, oldest first:
 - [`0e6f4873c169`](https://github.com/elizaOS/eliza/commit/0e6f4873c169276733428e24438e2fcf7875104b) 2024-12-25 jin: Update Readme.md
 - [`3dff1be5e41e`](https://github.com/elizaOS/eliza/commit/3dff1be5e41efdf6d70c781b10cfabf102c9c47d) 2024-12-25 Allen Harper: Update package.json
 - [`47d2adfb8571`](https://github.com/elizaOS/eliza/commit/47d2adfb8571a461f575b6e30123b0c943e1a5bc) 2024-12-25 Odilitime: Merge branch 'develop' into cleanstart
-- [`3550af7ce3e7`](https://github.com/elizaOS/eliza/commit/3550af7ce3e7458f008ac37b1d85285e9379bcc1) 2024-12-26 hanyh2004: fix: Remove code duplication in  getGoals call
+- [`3550af7ce3e7`](https://github.com/elizaOS/eliza/commit/3550af7ce3e7458f008ac37b1d85285e9379bcc1) 2024-12-26 hanyh2004: fix: Remove code duplication in getGoals call
 - [`9073ee5d8ba0`](https://github.com/elizaOS/eliza/commit/9073ee5d8ba07c545f1bf2c1183861b29ba538ad) 2024-12-25 Shakker Nerd: Merge branch 'fix-bug-duplicated-code' of https://github.com/0xbot-studio/eliza into 0xbot-studio-fix-bug-duplicated-code
 - [`8a10afb4df71`](https://github.com/elizaOS/eliza/commit/8a10afb4df71cef094b8fd20b62ed45d1a443996) 2024-12-25 Shakker Nerd: Merge branch '0xbot-studio-fix-bug-duplicated-code' into develop
 - [`a23ea1f10388`](https://github.com/elizaOS/eliza/commit/a23ea1f1038825fdaf868999d05c1540c9f61e1b) 2024-12-25 Shakker Nerd: Merge branch 'develop' into cleanstart
@@ -3643,13 +3643,13 @@ Original commit hashes, oldest first:
 - [`b274b5cce7d4`](https://github.com/elizaOS/eliza/commit/b274b5cce7d4c83611b09d4a2b770fbe6f974978) 2024-12-26 Preston Brown: images in chat
 - [`9432bf896c94`](https://github.com/elizaOS/eliza/commit/9432bf896c94f354e9026428d2f153f9439c6b71) 2024-12-26 Preston Brown: fix lockfile
 - [`ae6c30bdd6f5`](https://github.com/elizaOS/eliza/commit/ae6c30bdd6f5a083b432383624cba74fcda818cc) 2024-11-29 J. Brandon Johnson: chore: updates
-- [`f75fc774c8fd`](https://github.com/elizaOS/eliza/commit/f75fc774c8fd690b18b99ca709bfd912eb6238e2) 2024-12-01 J. Brandon Johnson: Create .env
+- [`f75fc774c8fd`](https://github.com/elizaOS/eliza/commit/f75fc774c8fd690b18b99ca709bfd912eb6238e2) 2024-12-01 J. Brandon Johnson: Create.env
 - [`953423788a94`](https://github.com/elizaOS/eliza/commit/953423788a9449db3934c04ba11c016c02116d03) 2024-12-02 J. Brandon Johnson: Merge branch 'main' of https://github.com/swizzmagik/eliza
 - [`8ac2d50c0837`](https://github.com/elizaOS/eliza/commit/8ac2d50c083783baa6527de9d9e13ea40a684ed3) 2024-12-23 J. Brandon Johnson: Merge branch 'main' of https://github.com/swizzmagik/eliza
 - [`5b26e41dc8f1`](https://github.com/elizaOS/eliza/commit/5b26e41dc8f1e0feae9b7022fc8cc4be4def3aa5) 2024-12-23 J. Brandon Johnson: Merge remote-tracking branch 'upstream/Main'
 - [`3b8b41900ff9`](https://github.com/elizaOS/eliza/commit/3b8b41900ff919d3dd5e4132d787532d7bce7b91) 2024-12-26 J. Brandon Johnson: Merge remote-tracking branch 'upstream/Main'
 - [`c6ff77c04f50`](https://github.com/elizaOS/eliza/commit/c6ff77c04f50a1a4897631667f0799b1a6e59f30) 2024-12-26 J. Brandon Johnson: feat: improve chat formatting and add support for line breaks
-- [`7b69f6f9d375`](https://github.com/elizaOS/eliza/commit/7b69f6f9d375211c6d56b9006583c105080d50af) 2024-12-26 J. Brandon Johnson: chore: remove .env
+- [`7b69f6f9d375`](https://github.com/elizaOS/eliza/commit/7b69f6f9d375211c6d56b9006583c105080d50af) 2024-12-26 J. Brandon Johnson: chore: remove.env
 - [`37fade7048aa`](https://github.com/elizaOS/eliza/commit/37fade7048aade21cf27a158772e3a221d8b6ba3) 2024-12-26 Shakker Nerd: chore: re-order components imports
 - [`df6ae2427723`](https://github.com/elizaOS/eliza/commit/df6ae2427723471b3146254a7bcfe24634ec7a7b) 2024-12-26 Shakker Nerd: chore: re-order useMutation import
 - [`210de566269f`](https://github.com/elizaOS/eliza/commit/210de566269faab9785877825b8e5cfcdc828ff0) 2024-12-26 Shakker Nerd: feat: add embedding to memory in client direct
@@ -3736,15 +3736,15 @@ Original commit hashes, oldest first:
 - [`fb2c533083ee`](https://github.com/elizaOS/eliza/commit/fb2c533083ee2ae0ad98a8817d2639b71e3e0f70) 2024-12-27 Shakker Nerd: fix: move dry run return to tweet reply
 - [`61181a2278b6`](https://github.com/elizaOS/eliza/commit/61181a2278b6da7c12f9e1864d02e0446521b537) 2024-12-27 Shakker Nerd: Merge branch 'develop' into pr-1498
 - [`9a47a0ca41e6`](https://github.com/elizaOS/eliza/commit/9a47a0ca41e6f15874f55d2a4cbde7d8dfd012b4) 2024-12-27 Shakker Nerd: feat: extend parseBooleanFromText function with additional boolean values
-- [`a6e1b83ef7d0`](https://github.com/elizaOS/eliza/commit/a6e1b83ef7d0ac93ccac0cd08e0d0544a480be8a) 2024-12-27 Shakker Nerd: Merge pull request #1501 from elizaOS/enhance/core
+- [`a6e1b83ef7d0`](https://github.com/elizaOS/eliza/commit/a6e1b83ef7d0ac93ccac0cd08e0d0544a480be8a) 2024-12-27 Shakker Nerd: Merge pull request #1501 from elizaOS/enhance
 - [`671e7aad8691`](https://github.com/elizaOS/eliza/commit/671e7aad86911521d4aacc76f6c8bfcb5cf86822) 2024-12-27 Shakker Nerd: Merge branch 'develop' into patch-1
 - [`339ccc7079c8`](https://github.com/elizaOS/eliza/commit/339ccc7079c820a74ac4334c7a867e7dd0563337) 2024-12-27 Shakker Nerd: Merge pull request #1500 from janeyJo/patch-1
 - [`2a71caa05bd6`](https://github.com/elizaOS/eliza/commit/2a71caa05bd6e0abc5578b3a1fc5fbad0bda02a9) 2024-12-27 Ting Chien Meng: resolve conflict
 - [`1691d95e5242`](https://github.com/elizaOS/eliza/commit/1691d95e524230a5296d4a514e75f90ccfefaf43) 2024-12-27 Ting Chien Meng: resolve conflict
-- [`3da642c770bb`](https://github.com/elizaOS/eliza/commit/3da642c770bbdcdf5ad8dbdd37b6ca5f976c6719) 2024-12-26 SHAN Ξ  M⚡️: fix: improve client type identification in runtime initialization - Add determineClientType helper function to reliably identify client types - Replace client.name usage with robust type detection - Maintain backward compatibility with existing clients - Add debug logging for client initialization
-- [`554f5daf05e0`](https://github.com/elizaOS/eliza/commit/554f5daf05e0c79e006cf0b74c0ba50493b388d1) 2024-12-26 SHAN Ξ  M⚡️: test: add Jest testing setup for client type identification - Add Jest and ts-jest dependencies - Configure Jest for TypeScript - Add test script to package.json
-- [`8a5dd4c38e2c`](https://github.com/elizaOS/eliza/commit/8a5dd4c38e2cf176f21d45f8b27f9ce96ee5828a) 2024-12-26 SHAN Ξ  M⚡️: test: add tests for client type identification - Test explicit type property handling - Test constructor name fallback - Test unique identifier generation for plain objects
-- [`63ef152bbe30`](https://github.com/elizaOS/eliza/commit/63ef152bbe30cec877d07eb4fff0fc51952c70fa) 2024-12-26 SHAN Ξ  M 🇺🇸 ♁: Merge branch 'main' into fix/client-type-identification
+- [`3da642c770bb`](https://github.com/elizaOS/eliza/commit/3da642c770bbdcdf5ad8dbdd37b6ca5f976c6719) 2024-12-26 SHAN Ξ M⚡️: fix: improve client type identification in runtime initialization - Add determineClientType helper function to reliably identify client types - Replace client.name usage with robust type detection - Maintain backward compatibility with existing clients - Add debug logging for client initialization
+- [`554f5daf05e0`](https://github.com/elizaOS/eliza/commit/554f5daf05e0c79e006cf0b74c0ba50493b388d1) 2024-12-26 SHAN Ξ M⚡️: test: add Jest testing setup for client type identification - Add Jest and ts-jest dependencies - Configure Jest for TypeScript - Add test script to package.json
+- [`8a5dd4c38e2c`](https://github.com/elizaOS/eliza/commit/8a5dd4c38e2cf176f21d45f8b27f9ce96ee5828a) 2024-12-26 SHAN Ξ M⚡️: test: add tests for client type identification - Test explicit type property handling - Test constructor name fallback - Test unique identifier generation for plain objects
+- [`63ef152bbe30`](https://github.com/elizaOS/eliza/commit/63ef152bbe30cec877d07eb4fff0fc51952c70fa) 2024-12-26 SHAN Ξ M 🇺🇸 ♁: Merge branch 'main' into fix/client-type-identification
 - [`7a36a47c522d`](https://github.com/elizaOS/eliza/commit/7a36a47c522dc1eebc1a9fc397b3df6c8badc428) 2024-12-27 Shakker Nerd: Merge branch 'develop' into pr-1490
 - [`a7b424462981`](https://github.com/elizaOS/eliza/commit/a7b4244629818cf7d4bf5315ee046ff01b40f074) 2024-12-27 Shakker Nerd: chore: pnpm lock file
 - [`d88e8e28f2f8`](https://github.com/elizaOS/eliza/commit/d88e8e28f2f8d996a792296c6eb7c1b0ca8e94e4) 2024-12-28 Shaw: Merge branch 'main' of http://github.com/ai16z/eliza into HEAD
@@ -3779,12 +3779,12 @@ Original commit hashes, oldest first:
 - [`ca528a2a1159`](https://github.com/elizaOS/eliza/commit/ca528a2a1159e8b8a245cc03bf142798eca0f953) 2024-12-28 Shakker Nerd: Merge pull request #1513 from elizaOS/fixes
 - [`88ea84a273df`](https://github.com/elizaOS/eliza/commit/88ea84a273df902d6775a9eed7208d076fd44d83) 2024-12-28 dhai: Merge branch 'develop' into 1510--add-fuel-plugin
 - [`88bff4d900d5`](https://github.com/elizaOS/eliza/commit/88bff4d900d5e1b254aa892097b1d2f8fe0f8933) 2024-12-28 Shakker Nerd: chore: add required fuel env
-- [`308958c03065`](https://github.com/elizaOS/eliza/commit/308958c03065c454fbc02f6ee016bc7966f33076) 2024-12-28 Shakker Nerd: chore: remove .env.example in package dir
+- [`308958c03065`](https://github.com/elizaOS/eliza/commit/308958c03065c454fbc02f6ee016bc7966f33076) 2024-12-28 Shakker Nerd: chore: remove.env.example in package dir
 - [`88d1b8336c47`](https://github.com/elizaOS/eliza/commit/88d1b8336c4778fbbfc4edcb09828e557ab73d35) 2024-12-28 odilitime: Merge branch 'develop' of https://github.com/elizaos/eliza into test-eliza
 - [`899119068da9`](https://github.com/elizaOS/eliza/commit/899119068da9317e57c678f47eb0499d3f381c62) 2024-12-28 odilitime: fix TWITTER_POLL_INTERVAL scale
 - [`820ac52d4fa8`](https://github.com/elizaOS/eliza/commit/820ac52d4fa8a4e6b1b9acb157c9a2027bb523bc) 2024-12-28 odilitime: make MAX_TWEET_LENGTH integer since that's how it's consomed/compared
-- [`caeab59a4604`](https://github.com/elizaOS/eliza/commit/caeab59a4604ac71615cafa97d460293ba4c3561) 2024-12-26 SHAN Ξ  M⚡️: fix: add required incremental option and remove invalid typescript config
-- [`495dd2b4f56c`](https://github.com/elizaOS/eliza/commit/495dd2b4f56c163a09ed78f2fa17f0aec97cfdb6) 2024-12-26 SHAN Ξ  M 🇺🇸 ♁: Merge branch 'main' into fix/typescript-config
+- [`caeab59a4604`](https://github.com/elizaOS/eliza/commit/caeab59a4604ac71615cafa97d460293ba4c3561) 2024-12-26 SHAN Ξ M⚡️: fix: add required incremental option and remove invalid typescript config
+- [`495dd2b4f56c`](https://github.com/elizaOS/eliza/commit/495dd2b4f56c163a09ed78f2fa17f0aec97cfdb6) 2024-12-26 SHAN Ξ M 🇺🇸 ♁: Merge branch 'main' into fix/typescript-config
 - [`17ec2a6150ad`](https://github.com/elizaOS/eliza/commit/17ec2a6150ad89f1545597bc867846f6a38cabc1) 2024-12-26 Monil Patel: Merge branch 'develop' into fix/typescript-config
 - [`6ca40e7e3cd5`](https://github.com/elizaOS/eliza/commit/6ca40e7e3cd5f3eeaa3a00b121858f1a80d5dd58) 2024-12-27 Monil Patel: Merge branch 'develop' into fix/typescript-config
 - [`2633a5e10f67`](https://github.com/elizaOS/eliza/commit/2633a5e10f671f2ec1993ab264e6f86482cd1688) 2024-12-27 Monil Patel: Merge pull request #1485 from ShaneOxM/fix/typescript-config
@@ -3838,7 +3838,7 @@ Original commit hashes, oldest first:
 - [`97d801d7f8fb`](https://github.com/elizaOS/eliza/commit/97d801d7f8fb5fde2415a9ca7dbb6615c68a25d0) 2024-12-23 Monil Patel: Merge branch 'develop' into main
 - [`0a1abc15d92f`](https://github.com/elizaOS/eliza/commit/0a1abc15d92f62791c578339303511f5559d96b7) 2024-12-23 Monil Patel: Merge branch 'develop' into main
 - [`45f54e0ac37f`](https://github.com/elizaOS/eliza/commit/45f54e0ac37fc95e059ce800d5a41c75bc5a497d) 2024-12-27 Frank: Merge branch 'develop' into main
-- [`276f4611c860`](https://github.com/elizaOS/eliza/commit/276f4611c860aed5c8c3e85cea8b66fc3afcf390) 2024-12-27 Titan Node: add Livepeer configuration to .env.example
+- [`276f4611c860`](https://github.com/elizaOS/eliza/commit/276f4611c860aed5c8c3e85cea8b66fc3afcf390) 2024-12-27 Titan Node: add Livepeer configuration to.env.example
 - [`025feb9c23c2`](https://github.com/elizaOS/eliza/commit/025feb9c23c2f300d380839fa2ad4fc506f5f302) 2024-12-27 Titan Node: add Livepeer gateway URL to agent configuration
 - [`b27ae3901e27`](https://github.com/elizaOS/eliza/commit/b27ae3901e271a8fa2012908510f13189fe30a50) 2024-12-27 Titan Node: add Livepeer model configuration
 - [`698a3eb5a111`](https://github.com/elizaOS/eliza/commit/698a3eb5a111e5374237a400cfd189f9b7e319f8) 2024-12-27 Titan Node: add Livepeer model and provider name to core types
@@ -3911,7 +3911,7 @@ Original commit hashes, oldest first:
 - [`d90cde969d66`](https://github.com/elizaOS/eliza/commit/d90cde969d66bdc7dceb09c01b6cf0355a907c96) 2024-12-28 Judasz: Added Polish Readme file
 - [`ef53017796b1`](https://github.com/elizaOS/eliza/commit/ef53017796b17aef414d874fb888b5d1b513bc7b) 2024-12-28 Judasz: Fixed polish's readme typo's
 - [`f41a882c796a`](https://github.com/elizaOS/eliza/commit/f41a882c796ad35969d1d0ad97ede4b2604aa98e) 2024-12-28 yanushevitz: Rename Readme_PL.md to README_PL.md
-- [`1fe70988557f`](https://github.com/elizaOS/eliza/commit/1fe70988557ff38cca21a8b5485d37645709aa9c) 2024-12-26 J. Brandon Johnson: chore: remove .env
+- [`1fe70988557f`](https://github.com/elizaOS/eliza/commit/1fe70988557ff38cca21a8b5485d37645709aa9c) 2024-12-26 J. Brandon Johnson: chore: remove.env
 - [`de83f3eeb2c0`](https://github.com/elizaOS/eliza/commit/de83f3eeb2c08d0e1174455fc568ebcb2588dc82) 2024-12-28 J. Brandon Johnson: Merge remote-tracking branch 'upstream/Main'
 - [`84c9d544c28b`](https://github.com/elizaOS/eliza/commit/84c9d544c28ba4115934612f4823d1405cf66e55) 2024-12-28 J. Brandon Johnson: feat: fix chat client to autoscroll
 - [`3561ed80eec1`](https://github.com/elizaOS/eliza/commit/3561ed80eec1ca275bb48c3b352a96816a968fdb) 2024-12-28 J. Brandon Johnson: chore: update changelog
@@ -3923,7 +3923,7 @@ Original commit hashes, oldest first:
 - [`0db8b7fc4648`](https://github.com/elizaOS/eliza/commit/0db8b7fc4648c63142cf57b718f44b3a40a00ff3) 2024-12-28 Monil Patel: Merge branch 'develop' into patch-1
 - [`e3c5880d0fc3`](https://github.com/elizaOS/eliza/commit/e3c5880d0fc3250700ea0b277f4150c60c1aaca4) 2024-12-28 Monil Patel: Merge pull request #1534 from SK1989sL/patch-1
 - [`c84b33cfc2ae`](https://github.com/elizaOS/eliza/commit/c84b33cfc2ae85fbb86349c19ffa237439668493) 2024-12-28 odilitime: fix number prefixed username, add X brand in messaging
-- [`d1e35825bd84`](https://github.com/elizaOS/eliza/commit/d1e35825bd84a1bfe467006c96346950a78f0a4a) 2024-12-28 E.FU: git ignore has .cursorrules
+- [`d1e35825bd84`](https://github.com/elizaOS/eliza/commit/d1e35825bd84a1bfe467006c96346950a78f0a4a) 2024-12-28 E.FU: git ignore has.cursorrules
 - [`34e9fc8e1ab9`](https://github.com/elizaOS/eliza/commit/34e9fc8e1ab977b89cac3b8a57fd4f53630f1a96) 2024-12-28 E.FU: fix(client-twitter): tighten engagement criteria and raise quality thresholds
 - [`b9789efd19bd`](https://github.com/elizaOS/eliza/commit/b9789efd19bd0e7da6d1037b80dbac04d7b88576) 2024-12-28 E.FU: Merge branch 'main' into fix/twitter-engagement-criteria
 - [`d86c5eefb544`](https://github.com/elizaOS/eliza/commit/d86c5eefb544205feb128f3f4cd1720856a94f8a) 2024-12-28 Odilitime: Merge branch 'develop' into fix/twitter-engagement-criteria
@@ -4027,7 +4027,7 @@ Original commit hashes, oldest first:
 - [`acf87d81fbd4`](https://github.com/elizaOS/eliza/commit/acf87d81fbd41b10363b36913bb31b6f3be3d727) 2024-12-31 Shakker Nerd: feat: include priority to plugin-tee build
 - [`e565f9810217`](https://github.com/elizaOS/eliza/commit/e565f9810217fe91170fbc6c6924f5c27db2c8ad) 2024-12-31 Shakker Nerd: chore: remove build cache with clean command
 - [`79738194207e`](https://github.com/elizaOS/eliza/commit/79738194207e2d1dfac4507e4168cf2b6d7331dd) 2024-12-31 Shakker Nerd: chore: changes to settings
-- [`a93839c86dac`](https://github.com/elizaOS/eliza/commit/a93839c86dac43dbf0df8df2dff2d9544471ec18) 2024-12-31 Shakker Nerd: fix: add @tavily/core to external libs (almost took my life)
+- [`a93839c86dac`](https://github.com/elizaOS/eliza/commit/a93839c86dac43dbf0df8df2dff2d9544471ec18) 2024-12-31 Shakker Nerd: fix: add @tavily to external libs (almost took my life)
 - [`bfcdc7be2a69`](https://github.com/elizaOS/eliza/commit/bfcdc7be2a69fd1c0eaa47a2d1e4bac38ef0326a) 2024-12-31 Shakker Nerd: chore: remove logs
 - [`9126cb17d6b4`](https://github.com/elizaOS/eliza/commit/9126cb17d6b4dd3f55e9867260b616dc8ded0145) 2024-12-31 Shakker Nerd: chore: console -> elizaLogger
 - [`86fcc1d6a88d`](https://github.com/elizaOS/eliza/commit/86fcc1d6a88dac90c958b9430573c8d1ebbfc50c) 2024-12-31 Shakker Nerd: Merge pull request #1609 from elizaOS/fix/breath_taking_error
@@ -4397,7 +4397,7 @@ Original commit hashes, oldest first:
 - [`11d832ac714d`](https://github.com/elizaOS/eliza/commit/11d832ac714d1c163d3fe9d9f57dd0483beb1273) 2025-01-12 Nuri Hodges: fix(client-twitter): add mention deduplication utility
 - [`bfc38e7e0803`](https://github.com/elizaOS/eliza/commit/bfc38e7e08032328f0db41967c10f1548dcda7e1) 2025-01-10 root: 20250110 tts
 - [`f47e323e71a5`](https://github.com/elizaOS/eliza/commit/f47e323e71a505debb063f12e0fbd48c3c6688ee) 2025-01-08 Antonio Piazza: Update index.ts
-- [`2b799dcda362`](https://github.com/elizaOS/eliza/commit/2b799dcda362422fea705c03680a5f9d647cd7a3) 2025-01-08 Antonio Piazza: Update .env.example
+- [`2b799dcda362`](https://github.com/elizaOS/eliza/commit/2b799dcda362422fea705c03680a5f9d647cd7a3) 2025-01-08 Antonio Piazza: Update.env.example
 - [`533c91e63acd`](https://github.com/elizaOS/eliza/commit/533c91e63acd487e581f600324af097110458edb) 2025-01-08 WAGMIBRO: Update README_RU.md
 - [`00e83d888611`](https://github.com/elizaOS/eliza/commit/00e83d888611360636647a53d767311d812f04bf) 2025-01-03 Luka Petrovic: feat: add coinmarketcap-plugin
 - [`e83beb5cb354`](https://github.com/elizaOS/eliza/commit/e83beb5cb354ad92ee60070e21711e205738b526) 2025-01-03 Luka Petrovic: fix: remove duplicate log
@@ -4423,7 +4423,7 @@ Original commit hashes, oldest first:
 - [`bd537d21cbd4`](https://github.com/elizaOS/eliza/commit/bd537d21cbd4a364c2fd2b540c5a314457ab461a) 2025-01-04 Jonathan Morales Velez: fix: add default export to plugin-image-generation
 - [`9306e32179f1`](https://github.com/elizaOS/eliza/commit/9306e32179f1e88ba2e370e450bdbcdf93e99c60) 2025-01-04 Monil Patel: Merge pull request #1831 from jonathanmv/develop
 - [`24e540e11646`](https://github.com/elizaOS/eliza/commit/24e540e11646474bd5cd8498ae9c130c30312a90) 2025-01-04 ai16z-demirix: improvement: replacing console.log with elizaLogger.
-- [`c954017eabd8`](https://github.com/elizaOS/eliza/commit/c954017eabd8616f3ec2adf69ee609caaed5f345) 2025-01-04 bitcoinbender: Update .env.example
+- [`c954017eabd8`](https://github.com/elizaOS/eliza/commit/c954017eabd8616f3ec2adf69ee609caaed5f345) 2025-01-04 bitcoinbender: Update.env.example
 - [`24318b03401f`](https://github.com/elizaOS/eliza/commit/24318b03401fa665c728e31fa945f51220d88ade) 2025-01-04 Monil Patel: Merge branch 'develop' into patch-1
 - [`b04368420f54`](https://github.com/elizaOS/eliza/commit/b04368420f5486f70ee6bce982bbb753faf5a696) 2025-01-04 Monil Patel: Merge pull request #1829 from bitcoinbender/patch-1
 - [`38f7082a055f`](https://github.com/elizaOS/eliza/commit/38f7082a055fb212871405ecba9ad9eb03e61627) 2025-01-04 ai16z-demirix: Merge branch 'develop' into improvement/eliza-logger
@@ -4480,13 +4480,13 @@ Original commit hashes, oldest first:
 - [`758a59d57daf`](https://github.com/elizaOS/eliza/commit/758a59d57daf2d566cfc5bd718115909c149fd99) 2025-01-04 Macs DIckinson: correct faq docs link in both contribution md files
 - [`27b59ff0346b`](https://github.com/elizaOS/eliza/commit/27b59ff0346bcd3bad7d904d1a67dd2ca30e0153) 2025-01-04 Macs Dickinson: Merge branch 'develop' into 1838--fix-faq-link-in-contributing-md
 - [`76ca66249cd5`](https://github.com/elizaOS/eliza/commit/76ca66249cd50237b0cd707ab0d47ab1f0292fe1) 2025-01-05 Shaw: Merge branch '1838--fix-faq-link-in-contributing-md' of https://github.com/MacsDickinson/eliza into HEAD
-- [`8b329ffc36a8`](https://github.com/elizaOS/eliza/commit/8b329ffc36a8baedd0bcf9ac6419da0256a00baa) 2025-01-05 Infera: Update .env.example
+- [`8b329ffc36a8`](https://github.com/elizaOS/eliza/commit/8b329ffc36a8baedd0bcf9ac6419da0256a00baa) 2025-01-05 Infera: Update.env.example
 - [`f6d308750374`](https://github.com/elizaOS/eliza/commit/f6d308750374d20b50306d41c8a968a126df0ba3) 2025-01-05 Infera: Add files via upload
 - [`ca1f3e50797f`](https://github.com/elizaOS/eliza/commit/ca1f3e50797f097dcb17e31f65750e1b7947b404) 2025-01-05 Infera: Add files via upload
 - [`ba3637f4f5ce`](https://github.com/elizaOS/eliza/commit/ba3637f4f5ce11ad3d8ed137e8d94bf7fe13dc7d) 2025-01-05 Infera: Merge branch 'develop' into develop
 - [`492ca471ce39`](https://github.com/elizaOS/eliza/commit/492ca471ce39b254cdf963ffee7210cfa20e9761) 2025-01-05 Shaw: Merge branch 'develop' of https://github.com/inferanetwork/eliza into HEAD
 - [`3277d012969b`](https://github.com/elizaOS/eliza/commit/3277d012969bb23ac980ec3eab59f741ea3ee831) 2024-12-30 robin-rrt: solve upstream conflicts
-- [`90fb85f06256`](https://github.com/elizaOS/eliza/commit/90fb85f06256fbf2555b2a1d68702fd1a293e32d) 2024-12-19 robin-rrt: add .env.example params for avail
+- [`90fb85f06256`](https://github.com/elizaOS/eliza/commit/90fb85f06256fbf2555b2a1d68702fd1a293e32d) 2024-12-19 robin-rrt: add.env.example params for avail
 - [`395bfa30146e`](https://github.com/elizaOS/eliza/commit/395bfa30146efe12272fc47538ce5dddcb02bf32) 2024-12-19 robin-rrt: update @ai16z/plugin-avail to use workspace:*
 - [`6eeaf7fcadd9`](https://github.com/elizaOS/eliza/commit/6eeaf7fcadd9729df449f8cbf9fcceb496237984) 2024-12-19 Robin Roy: delete pnpm-lock.yaml
 - [`9995ef3bee09`](https://github.com/elizaOS/eliza/commit/9995ef3bee094c646ff2a1b55f879342f1ef9249) 2024-12-20 robin-rrt: tidy up agent/index.ts
@@ -4545,7 +4545,7 @@ Original commit hashes, oldest first:
 - [`5e78b7a91932`](https://github.com/elizaOS/eliza/commit/5e78b7a9193246078a262f04f1f02475438c89c5) 2025-01-05 Shakker Nerd: Merge branch 'develop' into test/goals-memory-provider
 - [`ed16b0c170e9`](https://github.com/elizaOS/eliza/commit/ed16b0c170e9aeb1886dcd08443fa49ef2a50d2c) 2025-01-05 Shakker Nerd: Merge pull request #1840 from ai16z-demirix/test/goals-memory-provider
 - [`02384d486e0e`](https://github.com/elizaOS/eliza/commit/02384d486e0e8bac1aa5e1059ff281bdabfcf891) 2025-01-04 Ben Tatum: fix(solana token provider): await cached data
-- [`af2b2c54c1e3`](https://github.com/elizaOS/eliza/commit/af2b2c54c1e3bc37ec9c6dc594815b7f3f0255d8) 2025-01-04 jazzvaz: add .pnpm-store to gitignore
+- [`af2b2c54c1e3`](https://github.com/elizaOS/eliza/commit/af2b2c54c1e3bc37ec9c6dc594815b7f3f0255d8) 2025-01-04 jazzvaz: add.pnpm-store to gitignore
 - [`5c4f0a3dfa4e`](https://github.com/elizaOS/eliza/commit/5c4f0a3dfa4eb7927a60e2384b0f426193d18990) 2025-01-04 jazzvaz: add devcontainer
 - [`6df4ea66b6c1`](https://github.com/elizaOS/eliza/commit/6df4ea66b6c1833981d4590a53497c266ff375d5) 2025-01-04 Augustin Chan: fix: remove twitter profile caching (#1638)
 - [`89b9a8057b75`](https://github.com/elizaOS/eliza/commit/89b9a8057b75b6651b03d5688a6a227cebfe1a4b) 2025-01-04 Augustin Chan: Merge branch 'develop' into fix/twitter-profile-cache-1638
@@ -4765,7 +4765,7 @@ Original commit hashes, oldest first:
 - [`4cb867df4e12`](https://github.com/elizaOS/eliza/commit/4cb867df4e120e5055be850fe44776ecfc550ca9) 2025-01-04 KONFeature: feat: cleanup code and wrap it up
 - [`d9bc04d0b42a`](https://github.com/elizaOS/eliza/commit/d9bc04d0b42acb22a6a288401cd0193f46742b7e) 2025-01-04 KONFeature: chore: lint
 - [`79979229f59e`](https://github.com/elizaOS/eliza/commit/79979229f59ee12742e9b3ed2be58d49c5519107) 2025-01-07 Sayo: Merge branch 'develop' into pr/1810
-- [`7fa5d70b17be`](https://github.com/elizaOS/eliza/commit/7fa5d70b17be2cdbc69c52acaa80e6c162ed3a67) 2025-01-07 Sayo: update .env.example and gitignore
+- [`7fa5d70b17be`](https://github.com/elizaOS/eliza/commit/7fa5d70b17be2cdbc69c52acaa80e6c162ed3a67) 2025-01-07 Sayo: update.env.example and gitignore
 - [`3011fcaa2d21`](https://github.com/elizaOS/eliza/commit/3011fcaa2d21ef866df6f929b872c298e15b33b0) 2025-01-07 Sayo: Merge pull request #1810 from KONFeature/1809-add-pglite-adapter
 - [`41343659c7d5`](https://github.com/elizaOS/eliza/commit/41343659c7d57f8a03a247050fb781d9d3875932) 2025-01-07 César Rodríguez: Merge branch 'develop' into patch-1
 - [`b02ae4d6c57f`](https://github.com/elizaOS/eliza/commit/b02ae4d6c57f743105aa9c1d6d46ee85d27c4f51) 2025-01-07 Agnideep Ghosh: Merge pull request #1954 from kesar/patch-1
@@ -4821,7 +4821,7 @@ Original commit hashes, oldest first:
 - [`f6c5861f9137`](https://github.com/elizaOS/eliza/commit/f6c5861f91376825b58eda15a66aaa5f50b58cb0) 2024-12-30 conache: Add plugin details
 - [`dda0ca6baefe`](https://github.com/elizaOS/eliza/commit/dda0ca6baefe1775707cc57dfe3dddd1481891f1) 2024-12-30 conache: Revert character file change
 - [`4aa35c12f85d`](https://github.com/elizaOS/eliza/commit/4aa35c12f85d804430c16624fcdaed532b6b3ea9) 2024-12-30 conache: Revert redundant package file change
-- [`6829d37810ca`](https://github.com/elizaOS/eliza/commit/6829d37810caed31950fe291f27d27d346c1f2c8) 2025-01-03 conache: Update .env.example template
+- [`6829d37810ca`](https://github.com/elizaOS/eliza/commit/6829d37810caed31950fe291f27d27d346c1f2c8) 2025-01-03 conache: Update.env.example template
 - [`63fa0fc4c2d3`](https://github.com/elizaOS/eliza/commit/63fa0fc4c2d396f238ed85cfc33dec93da8bdcf6) 2025-01-06 conache: Merge remote-tracking branch 'upstream/develop' into plugin-allora
 - [`54140caf24b1`](https://github.com/elizaOS/eliza/commit/54140caf24b19d0b045223190e9e916dad058e3a) 2025-01-06 conache: Integrate allora-sdk for fetching topics and inferences
 - [`0e860b5258ce`](https://github.com/elizaOS/eliza/commit/0e860b5258ce20a4960d51c0f7f75147f4ba0147) 2025-01-07 conache: Merge remote-tracking branch 'upstream/develop' into plugin-allora
@@ -4914,7 +4914,7 @@ Original commit hashes, oldest first:
 - [`46a24ad9f02f`](https://github.com/elizaOS/eliza/commit/46a24ad9f02fb18ed9bab412f413a7fe9d2469c3) 2025-01-03 norbert-kulus-blockydevs: [ELIZAAI-16](fix): add optional chaining for getAvailableChains and getAvailableAssets
 - [`dd3e88704555`](https://github.com/elizaOS/eliza/commit/dd3e88704555844a355c4c3c1b0f308c96601945) 2025-01-03 norbert-kulus-blockydevs: Merge pull request #9 from blockydevs/ELIZAAI-16-custom-chains-and-assets-data
 - [`1117431b5e70`](https://github.com/elizaOS/eliza/commit/1117431b5e70d5166509a879e6008fc5affa7cac) 2025-01-03 stanislawkurzypBD: ELIZAAI-16 Fixed gasFee bug, reworked cosmos helper character
-- [`969f298038ee`](https://github.com/elizaOS/eliza/commit/969f298038ee643faa65d6498e9e81ff725b9ede) 2025-01-03 stanislawkurzypBD: ELIZAAI-16 Unit test coverage increased, Added missing env to .env.example
+- [`969f298038ee`](https://github.com/elizaOS/eliza/commit/969f298038ee643faa65d6498e9e81ff725b9ede) 2025-01-03 stanislawkurzypBD: ELIZAAI-16 Unit test coverage increased, Added missing env to.env.example
 - [`6e71dfb72d2d`](https://github.com/elizaOS/eliza/commit/6e71dfb72d2da087a68cabaa4eb760ee61dfbaf8) 2025-01-07 Michał Gacek: feat(): improve unit tests
 - [`ef9819f4f271`](https://github.com/elizaOS/eliza/commit/ef9819f4f271c827c853f8774dc1c4789a21fe0b) 2025-01-07 Michał Gacek: Merge branch 'develop' into ELIZAAI-16-unit-tests
 - [`e5737c66a2b8`](https://github.com/elizaOS/eliza/commit/e5737c66a2b833e848b2026862efe5d9c5a2d9a3) 2025-01-07 mgacek-blockydevs: Merge pull request #13 from blockydevs/ELIZAAI-16-unit-tests
@@ -5125,7 +5125,7 @@ Original commit hashes, oldest first:
 - [`c52356e07bec`](https://github.com/elizaOS/eliza/commit/c52356e07bec6916434209df127245cb49a543b7) 2025-01-05 Misch Strotz: reformated plugin order
 - [`2200cedcf5d6`](https://github.com/elizaOS/eliza/commit/2200cedcf5d65e5f0252f2f7cd3431c45b770895) 2025-01-05 Misch Strotz: reformated plugin order
 - [`21f85f85b62c`](https://github.com/elizaOS/eliza/commit/21f85f85b62c7d36ad2d4e0504f5fadaf55a1845) 2025-01-05 mitch0z: Reset tsconfig.json
-- [`467f078cf708`](https://github.com/elizaOS/eliza/commit/467f078cf708195124bf86e3aa1552e636f3449f) 2025-01-05 mitch0z: Update .env.example with LETZAI_API_KEY
+- [`467f078cf708`](https://github.com/elizaOS/eliza/commit/467f078cf708195124bf86e3aa1552e636f3449f) 2025-01-05 mitch0z: Update.env.example with LETZAI_API_KEY
 - [`7b020c224bf3`](https://github.com/elizaOS/eliza/commit/7b020c224bf3f4898cf3855fcb5065e43462ae24) 2025-01-05 mitch0z: Merge branch 'main' into 0000--feat-letzai-plugin
 - [`ec779809e5d2`](https://github.com/elizaOS/eliza/commit/ec779809e5d22e45a74313a2bee84fcfab15bffa) 2025-01-06 Misch Strotz: Merge branch '0000--feat-letzai-plugin' of https://github.com/Letz-AI/eliza into 0000--feat-letzai-plugin
 - [`a584e007882e`](https://github.com/elizaOS/eliza/commit/a584e007882ed24b8d073090482ed7c5c69878db) 2025-01-06 Misch Strotz: Small fixes resolving Daniel's comments
@@ -5277,7 +5277,7 @@ Original commit hashes, oldest first:
 - [`493bdc9b86ca`](https://github.com/elizaOS/eliza/commit/493bdc9b86cac82c3ec1ac5634873d448fddd101) 2025-01-09 Sayo: Merge pull request #1763 from xwxtwd/feat/nft-generation-support-evm-chain
 - [`0e345ec94809`](https://github.com/elizaOS/eliza/commit/0e345ec94809192bed127e4666e4e0332f486b92) 2025-01-09 Daniel Wahl: Added export of the letzAIPlugin as named export and added Plugin-type (#2062)
 - [`d2aa5ca65b34`](https://github.com/elizaOS/eliza/commit/d2aa5ca65b34fd18df38ba2f01ff1b5e3e68fa2d) 2025-01-09 AIFlow_ML: fix: resolved merge conflicts with develop for postgres adapter
-- [`dfe0940eacb1`](https://github.com/elizaOS/eliza/commit/dfe0940eacb1ad88131a501c5582866d075e3e07) 2025-01-09 kristjanpeterson: Galadriel docs and .env.example update
+- [`dfe0940eacb1`](https://github.com/elizaOS/eliza/commit/dfe0940eacb1ad88131a501c5582866d075e3e07) 2025-01-09 kristjanpeterson: Galadriel docs and.env.example update
 - [`3171604a7a30`](https://github.com/elizaOS/eliza/commit/3171604a7a3067d82a63a2f69aab6ebc2038125d) 2025-01-09 Sayo: remove docs update
 - [`b4f177f8f2b4`](https://github.com/elizaOS/eliza/commit/b4f177f8f2b4a4317ccf0b4ea28b1ff0c1c6cd22) 2025-01-09 Sayo: Merge branch 'develop' into develop
 - [`a28254c19d8b`](https://github.com/elizaOS/eliza/commit/a28254c19d8bce1f2161bf41f6f75af28cb4af95) 2025-01-09 Sayo: Merge pull request #2061 from kristjanpeterson1/develop
@@ -5474,7 +5474,7 @@ Original commit hashes, oldest first:
 - [`f1ac1a8873f2`](https://github.com/elizaOS/eliza/commit/f1ac1a8873f27cfdeeabf66ae2e2a29924ceef34) 2025-01-10 Ting Chien Meng: fetch user settings from runtime
 - [`ceddf8f56ad9`](https://github.com/elizaOS/eliza/commit/ceddf8f56ad9cea68fd0a127af0b72d7fd0556a2) 2025-01-10 Ting Chien Meng: move truncate to core
 - [`b6394592ca90`](https://github.com/elizaOS/eliza/commit/b6394592ca90b8de5d7327391753ccc4c2063033) 2025-01-10 Ting Chien Meng: remove unuse parameter
-- [`92387bd1a868`](https://github.com/elizaOS/eliza/commit/92387bd1a868f511566377913c1e68740767952c) 2025-01-10 Ting Chien Meng: prevent  repeated login
+- [`92387bd1a868`](https://github.com/elizaOS/eliza/commit/92387bd1a868f511566377913c1e68740767952c) 2025-01-10 Ting Chien Meng: prevent repeated login
 - [`273eef070d28`](https://github.com/elizaOS/eliza/commit/273eef070d28a8176cdee2121e88a0913098008a) 2025-01-10 Ting Chien Meng: clean code
 - [`cf8f93dc73bd`](https://github.com/elizaOS/eliza/commit/cf8f93dc73bdde5956cf1507b4b7184bdb2a4ebc) 2025-01-10 Ting Chien Meng: modify comment
 - [`8c6218cb928b`](https://github.com/elizaOS/eliza/commit/8c6218cb928bd729ea7c7d1a71eae5b06ab09404) 2025-01-10 Ting Chien Meng: return value
@@ -5597,7 +5597,7 @@ Original commit hashes, oldest first:
 - [`851e5f92a07a`](https://github.com/elizaOS/eliza/commit/851e5f92a07ad6104428b9c79be07e7bedaff13d) 2025-01-11 Sayo: resolve conflicts
 - [`1eb98bf15c35`](https://github.com/elizaOS/eliza/commit/1eb98bf15c352d359f99c9b6f036209c30765750) 2025-01-11 Sayo: Merge pull request #1582 from peterjah/massa_plugin
 - [`f1aeec644d66`](https://github.com/elizaOS/eliza/commit/f1aeec644d66391aa63f9bfb7e31936805d119f7) 2025-01-11 Sayo: Merge branch 'develop' into pr/2083
-- [`59e55ec6f62c`](https://github.com/elizaOS/eliza/commit/59e55ec6f62cafde98d39b4248c70a3fa45eff39) 2025-01-11 Sayo: Update .env.example
+- [`59e55ec6f62c`](https://github.com/elizaOS/eliza/commit/59e55ec6f62cafde98d39b4248c70a3fa45eff39) 2025-01-11 Sayo: Update.env.example
 - [`7e455cf32b2e`](https://github.com/elizaOS/eliza/commit/7e455cf32b2e387b92eeb98269eb761f8c2bc006) 2025-01-11 Sayo: Merge pull request #2083 from 0xalank/quai-integration
 - [`3a3a9f21162e`](https://github.com/elizaOS/eliza/commit/3a3a9f21162e6093100f1b57d29bf3ac0b1793bb) 2025-01-11 Dean Xu: Merge remote-tracking branch 'upstream/develop' into develop
 - [`d7f2c1890e49`](https://github.com/elizaOS/eliza/commit/d7f2c1890e497b89268c265e378998bbcf4210d3) 2025-01-09 daizhengxue: add deepseek
@@ -5607,7 +5607,7 @@ Original commit hashes, oldest first:
 - [`fdd101735dc7`](https://github.com/elizaOS/eliza/commit/fdd101735dc76b2ab3f77118e16bcee653756bfd) 2025-01-11 Sayo: fix env examples
 - [`e01e68a5335f`](https://github.com/elizaOS/eliza/commit/e01e68a5335f4863fc3421c90379069240502e25) 2025-01-11 Sayo: Update types.ts
 - [`5edcc49d1c43`](https://github.com/elizaOS/eliza/commit/5edcc49d1c436ba5839ffa95a39ec1d24d32da6a) 2025-01-11 Sayo: Merge branch 'main' of https://github.com/daizhengxue/eliza into pr/2067
-- [`34019f18c882`](https://github.com/elizaOS/eliza/commit/34019f18c8829724c03f3721cf47b46617ce0f68) 2025-01-11 Sayo: Update .env.example
+- [`34019f18c882`](https://github.com/elizaOS/eliza/commit/34019f18c8829724c03f3721cf47b46617ce0f68) 2025-01-11 Sayo: Update.env.example
 - [`93f0ae98c593`](https://github.com/elizaOS/eliza/commit/93f0ae98c59332bafd3acf23f670c99dc6b536ca) 2025-01-11 Sayo: Update models.ts
 - [`565f4e77903c`](https://github.com/elizaOS/eliza/commit/565f4e77903c975ca811bd5cc624ecdcccd3ab1f) 2025-01-11 Sayo: Merge pull request #2067 from daizhengxue/main
 - [`9bf45e052fcb`](https://github.com/elizaOS/eliza/commit/9bf45e052fcbbe28cde8db64da2309c47c51bb92) 2025-01-11 Dean Xu: Merge remote-tracking branch 'upstream/develop' into develop
@@ -5767,9 +5767,9 @@ Original commit hashes, oldest first:
 - [`36ab70d59cf3`](https://github.com/elizaOS/eliza/commit/36ab70d59cf3cd899635dcf88ba19d4445cf4e9c) 2025-01-09 francis2tm: fix: update handleAtoma response structure to include dynamic finishReason, usage metrics, and timestamp conversion
 - [`88cd7bee81c4`](https://github.com/elizaOS/eliza/commit/88cd7bee81c44cfa37705252147ceaba5d5fa4c5) 2025-01-14 francis2tm: feat: add new model classes for embedding and image processing
 - [`2a88cdb4da4d`](https://github.com/elizaOS/eliza/commit/2a88cdb4da4df3cdd578ab6635bec074ad58cfff) 2025-01-14 francis2tm: feat: extend handleProvider function to include runtime, context, and modelClass options
-- [`1d8bf8660389`](https://github.com/elizaOS/eliza/commit/1d8bf8660389c3137e013de04d73011cea1b276c) 2025-01-15 francis2tm: feat: add Atoma SDK configuration to .env.example for Bearer Auth token
+- [`1d8bf8660389`](https://github.com/elizaOS/eliza/commit/1d8bf8660389c3137e013de04d73011cea1b276c) 2025-01-15 francis2tm: feat: add Atoma SDK configuration to.env.example for Bearer Auth token
 - [`0480f65d7b69`](https://github.com/elizaOS/eliza/commit/0480f65d7b69b2a6cdbe0176cb5111bee4144e61) 2025-01-15 francis2tm: feat: integrate Atoma model support with configuration updates and SDK version change
-- [`f490729ab552`](https://github.com/elizaOS/eliza/commit/f490729ab5524349b24f1ddb1099739c4aeb577a) 2025-01-15 francis2tm: refactor: remove unused model configurations from .env.example and models.ts
+- [`f490729ab552`](https://github.com/elizaOS/eliza/commit/f490729ab5524349b24f1ddb1099739c4aeb577a) 2025-01-15 francis2tm: refactor: remove unused model configurations from.env.example and models.ts
 - [`57054df3ea34`](https://github.com/elizaOS/eliza/commit/57054df3ea34414a9c0aeb2a9cfac96c6d716767) 2025-01-15 francis2tm: Merge remote-tracking branch 'upstream/main' into feat/atoma-provider
 - [`10d8144b9edc`](https://github.com/elizaOS/eliza/commit/10d8144b9edcc56b13e97ac98f1526fa5a70bb4d) 2025-01-15 francis2tm: chore: update lockfile
 - [`f19eade36a56`](https://github.com/elizaOS/eliza/commit/f19eade36a560856c288e2e8a0682ebb96f1d581) 2025-01-15 francis2tm: chore: update lockfile
@@ -5902,7 +5902,7 @@ Original commit hashes, oldest first:
 - [`d7dd9aa01d39`](https://github.com/elizaOS/eliza/commit/d7dd9aa01d39e1f6d0d4bf689a43e9f5f40dbd8a) 2025-01-12 HowieDuhzit: Change permissions of setup.sh to make it executable
 - [`2a10793af3c0`](https://github.com/elizaOS/eliza/commit/2a10793af3c07f31f35bec4200306e39ce9138bb) 2025-01-12 HowieDuhzit: Enhance setup script with improved error handling, logging, and character management features. Added support for verbose mode, character selection, and environment configuration. Updated dependency installation process and streamlined project setup. Removed obsolete code related to previous character management.
 - [`b9cb7f20f6de`](https://github.com/elizaOS/eliza/commit/b9cb7f20f6dea8dd67ef2b84d4a4e12792a4779a) 2025-01-12 HowieDuhzit: Refactor setup.sh to enhance logging functionality with fallback support for environments without gum. Ensure gum installation is prioritized before other operations. Clean up and streamline logging methods for better user experience.
-- [`5eeeca7ea045`](https://github.com/elizaOS/eliza/commit/5eeeca7ea045d490142bc1e317875a76f30cf87b) 2025-01-12 HowieDuhzit: Enhance NVM installation process in setup.sh by downloading directly from the official source and adding necessary environment variables to .bashrc and .profile. Ensure NVM directory is created if it doesn't exist, and improve loading checks for nvm.sh. This update streamlines the setup process for users.
+- [`5eeeca7ea045`](https://github.com/elizaOS/eliza/commit/5eeeca7ea045d490142bc1e317875a76f30cf87b) 2025-01-12 HowieDuhzit: Enhance NVM installation process in setup.sh by downloading directly from the official source and adding necessary environment variables to.bashrc and.profile. Ensure NVM directory is created if it doesn't exist, and improve loading checks for nvm.sh. This update streamlines the setup process for users.
 - [`4316e6de193f`](https://github.com/elizaOS/eliza/commit/4316e6de193f9e85f4e29a9d55f988b3ffe5c5cf) 2025-01-12 HowieDuhzit: Refactor NVM installation in setup.sh to streamline the process. Directly download and install NVM, source necessary scripts immediately, and improve error handling. Removed redundant checks and logging for installation failures, enhancing user experience during setup.
 - [`14694ebaa55a`](https://github.com/elizaOS/eliza/commit/14694ebaa55a719c7da95ddfefd37feab5c43fb2) 2025-01-12 HowieDuhzit: Refactor NVM installation in setup.sh to improve error handling and streamline the process. The installation script is now downloaded to a temporary file, made executable, and executed with enhanced logging for failures. Clean up of temporary files is also included to ensure a tidy environment.
 - [`de249faccaf1`](https://github.com/elizaOS/eliza/commit/de249faccaf123129a44d361f798d156e264d9d5) 2025-01-12 HowieDuhzit: Refactor NVM installation in setup.sh to streamline the process by directly executing the installation script without temporary files. This change simplifies the setup procedure and enhances user experience by reducing complexity and improving efficiency.
@@ -5942,13 +5942,13 @@ Original commit hashes, oldest first:
 - [`4ced6b057c06`](https://github.com/elizaOS/eliza/commit/4ced6b057c068029bc0ba6c0bcb303487182bfdc) 2024-12-30 gene-zhan: fix: merge develop
 - [`43d5f68572b6`](https://github.com/elizaOS/eliza/commit/43d5f68572b6a4605782045c80118b7a2b961e92) 2025-01-05 gene-zhan: fix: merge tag v0.1.7
 - [`c9a22ebd0fd5`](https://github.com/elizaOS/eliza/commit/c9a22ebd0fd5e28210b5b5c82186da3abdf243d5) 2025-01-05 gene-zhan: fix: merge tag v0.1.7
-- [`bcd934a07aab`](https://github.com/elizaOS/eliza/commit/bcd934a07aab0d9463ea34872a6be275008c8c03) 2025-01-05 gene-zhan: fix:  package error
+- [`bcd934a07aab`](https://github.com/elizaOS/eliza/commit/bcd934a07aab0d9463ea34872a6be275008c8c03) 2025-01-05 gene-zhan: fix: package error
 - [`2a8386dfda8b`](https://github.com/elizaOS/eliza/commit/2a8386dfda8b597afa41560e2c054422a3490d37) 2025-01-04 cpppppp7: Merge pull request #13 from 0xbeekeeper/goplus-security
 - [`dcaafab42696`](https://github.com/elizaOS/eliza/commit/dcaafab42696adf3a7897a3cb23692d31c024ca6) 2025-01-04 Gene: Merge branch 'elizaOS:develop' into develop
 - [`86d74239344a`](https://github.com/elizaOS/eliza/commit/86d74239344a0642711d80f9e6e459d662fc8fc8) 2025-01-05 Gene: Merge branch 'elizaOS:develop' into develop
 - [`ba2da7342993`](https://github.com/elizaOS/eliza/commit/ba2da7342993f8eb27df62e4457079e660669c98) 2025-01-05 Gene: Merge branch 'elizaOS:develop' into develop
-- [`f35dbe35429d`](https://github.com/elizaOS/eliza/commit/f35dbe35429d128aa30a466cce106595c26a8dc4) 2025-01-05 gene-zhan: fix:  merge develop conflict
-- [`d13590b818ad`](https://github.com/elizaOS/eliza/commit/d13590b818ad37da6c4b5679e8fca5a4ac7c5645) 2025-01-05 gene-zhan: feat: add  dreiveProvider
+- [`f35dbe35429d`](https://github.com/elizaOS/eliza/commit/f35dbe35429d128aa30a466cce106595c26a8dc4) 2025-01-05 gene-zhan: fix: merge develop conflict
+- [`d13590b818ad`](https://github.com/elizaOS/eliza/commit/d13590b818ad37da6c4b5679e8fca5a4ac7c5645) 2025-01-05 gene-zhan: feat: add dreiveProvider
 - [`5dfbaaad21bf`](https://github.com/elizaOS/eliza/commit/5dfbaaad21bf088b7fa1154b5eab3281dafb6c8c) 2025-01-07 gene-zhan: feat: fix log
 - [`2a1fc6b22a02`](https://github.com/elizaOS/eliza/commit/2a1fc6b22a0274aef90d137e9cdb87f8c6e2ac70) 2025-01-10 cppppppp7: Merge remote-tracking branch 'upstream/develop' into ai16zPR/tee-verifiable-log-api-from-develop
 - [`a422d7aefe05`](https://github.com/elizaOS/eliza/commit/a422d7aefe0522d4f5595c6f66497ea062aca9da) 2025-01-13 gene-zhan: feat: update pnpm-lock
@@ -6131,7 +6131,7 @@ Original commit hashes, oldest first:
 - [`89b6a190449a`](https://github.com/elizaOS/eliza/commit/89b6a190449a2e42aaeeef4cb6caec6448442614) 2025-01-15 Shakker Nerd: Merge branch 'develop' into pr/CryptoGraffe/2307
 - [`d800539f77d2`](https://github.com/elizaOS/eliza/commit/d800539f77d2dc698c20125f23009cb5d2979b36) 2025-01-15 genesis0000: feat: support for eternalai provider can get onchain system prompt
 - [`3edf6ab64419`](https://github.com/elizaOS/eliza/commit/3edf6ab644196b340e425434cd698c7d0ab11ee3) 2025-01-13 Augustin Chan: git commit -m "feat(echochambers): add dead room detection and conversation starter
-- [`790499aa0b51`](https://github.com/elizaOS/eliza/commit/790499aa0b514f45adbcd112deacc12a90874757) 2025-01-14 v1xingyue: support load character from  character_url
+- [`790499aa0b51`](https://github.com/elizaOS/eliza/commit/790499aa0b514f45adbcd112deacc12a90874757) 2025-01-14 v1xingyue: support load character from character_url
 - [`ab3ca80c138b`](https://github.com/elizaOS/eliza/commit/ab3ca80c138b174ca414df1ff83b5436eab9ce21) 2025-01-14 v1xingyue: Merge branch 'develop' into character-from-url
 - [`df616ae7d3d2`](https://github.com/elizaOS/eliza/commit/df616ae7d3d2991260df6ef06a5f3dc80e0b1984) 2025-01-14 v1xingyue: Merge branch 'develop' into character-from-url
 - [`4516dcf329b1`](https://github.com/elizaOS/eliza/commit/4516dcf329b18cc7abe01617cd3d3f52d3d39809) 2025-01-15 v1xingyue: Merge branch 'develop' into character-from-url
@@ -6142,7 +6142,7 @@ Original commit hashes, oldest first:
 - [`eea525534d96`](https://github.com/elizaOS/eliza/commit/eea525534d96ba71cdf036c181401d3efdfab7d6) 2025-01-15 Sayo: Update index.ts
 - [`c0c7ed50ed59`](https://github.com/elizaOS/eliza/commit/c0c7ed50ed5973deb4bea9028ae2234ba186cbf0) 2025-01-15 Sayo: Update index.ts
 - [`6317e09430dd`](https://github.com/elizaOS/eliza/commit/6317e09430dd7482e4d56e9f12049bfb6c36eb25) 2025-01-15 Sayo: Update index.ts
-- [`caacc6127696`](https://github.com/elizaOS/eliza/commit/caacc61276961179d5644c760a2aa3055f776ac3) 2025-01-15 Sayo: Update .env.example
+- [`caacc6127696`](https://github.com/elizaOS/eliza/commit/caacc61276961179d5644c760a2aa3055f776ac3) 2025-01-15 Sayo: Update.env.example
 - [`60116c58726c`](https://github.com/elizaOS/eliza/commit/60116c58726cf66d44e54a35b8d58467b30eb763) 2025-01-15 Sayo: Merge pull request #2281 from v1xingyue/character-from-url
 - [`0389c0286571`](https://github.com/elizaOS/eliza/commit/0389c0286571c10e7d703b393fd3374a04bd426d) 2025-01-15 Shakker Nerd: Merge branch 'develop' into pr/augchan42/2248
 - [`706727268990`](https://github.com/elizaOS/eliza/commit/7067272689907013222ccc5e0301790bb6d0be22) 2025-01-15 Shakker Nerd: chore: pnpm lock file
@@ -6267,7 +6267,7 @@ Original commit hashes, oldest first:
 - [`63e4dbd723b9`](https://github.com/elizaOS/eliza/commit/63e4dbd723b962b39c5233e8094e6f20e5005918) 2025-01-16 Eugene: fix: check env REMOTE_CHARACTER_URLS is defined (#2382)
 - [`6794ac019fa1`](https://github.com/elizaOS/eliza/commit/6794ac019fa1007ae6d9671b68e4fc1ddd012471) 2025-01-16 ericlehong: Fix typo (#2385)
 - [`6cfbd1848143`](https://github.com/elizaOS/eliza/commit/6cfbd1848143461511b17ffb711045c4705622c6) 2025-01-16 Archethect: fix: set default Squid Router throttle to 1000 (#2386)
-- [`446dd007eb56`](https://github.com/elizaOS/eliza/commit/446dd007eb565d81cd1b73afd2bb7f85c107a91d) 2025-01-16 crStiv: chore: improve descriptions  (#2394)
+- [`446dd007eb56`](https://github.com/elizaOS/eliza/commit/446dd007eb565d81cd1b73afd2bb7f85c107a91d) 2025-01-16 crStiv: chore: improve descriptions (#2394)
 - [`81327099d51f`](https://github.com/elizaOS/eliza/commit/81327099d51f1c6f310630ea4e063032234ebdfb) 2025-01-16 Shakker Nerd: Merge branch 'develop' into feature/solana-plugin-tests
 - [`3b334cbdff0b`](https://github.com/elizaOS/eliza/commit/3b334cbdff0b4c0e82c072fbd38a9b9c16918d2e) 2025-01-16 Shakker Nerd: Merge pull request #2345 from ai16z-demirix/feature/solana-plugin-tests
 - [`5c0f8f3007ce`](https://github.com/elizaOS/eliza/commit/5c0f8f3007cebad12cee146da391ca3a79e03aa6) 2025-01-16 Shakker Nerd: Merge branch 'develop' into pr/francis2tm/2082
@@ -6288,7 +6288,7 @@ Original commit hashes, oldest first:
 - [`cbbd6df15ae2`](https://github.com/elizaOS/eliza/commit/cbbd6df15ae2bd00b03a04a2ebe8dc25e722e886) 2025-01-16 Shakker Nerd: Merge branch 'develop' into test/client-github
 - [`8ab8be583e10`](https://github.com/elizaOS/eliza/commit/8ab8be583e10ad70008f551dcaaadbb99a611b65) 2025-01-16 Shakker Nerd: Merge pull request #2407 from ai16z-demirix/test/client-github
 - [`f70c1cdbd146`](https://github.com/elizaOS/eliza/commit/f70c1cdbd1462a0ffa0fbd1eda1f2625ca1b1f8c) 2025-01-16 Hrishikesh Murali: feat: injective plugin (#1764)
-- [`d55a3c708f35`](https://github.com/elizaOS/eliza/commit/d55a3c708f35b0f5b9b4358ce9f0cf4b91590561) 2025-01-17 George P.: feat: Integrate Livepeer LLM provider  (#2154)
+- [`d55a3c708f35`](https://github.com/elizaOS/eliza/commit/d55a3c708f35b0f5b9b4358ce9f0cf4b91590561) 2025-01-17 George P.: feat: Integrate Livepeer LLM provider (#2154)
 - [`439851e927cb`](https://github.com/elizaOS/eliza/commit/439851e927cbad1607611666d6cc69430575eb87) 2025-01-17 Sayo: Delete tate.character.json (#2425)
 - [`52565607a98c`](https://github.com/elizaOS/eliza/commit/52565607a98c1b2f71fec380660bb3c83f0389c8) 2025-01-17 twilwa: refactor: dockerize smoke tests (#2420)
 - [`c4d173da6495`](https://github.com/elizaOS/eliza/commit/c4d173da649509fc6b106480cfbdce5bfdc6463f) 2025-01-17 sweetman.eth: feat: coinbase agentkit plugin for eliza (#2298)
@@ -6300,7 +6300,7 @@ Original commit hashes, oldest first:
 - [`1ccb0ab587cb`](https://github.com/elizaOS/eliza/commit/1ccb0ab587cb1a1f40a0c57f923381a21fc4438a) 2025-01-17 tcm390: Merge pull request #2437 from elizaOS/chore-remove-merge-conflict-in-quickstart
 - [`6c5207fc4f34`](https://github.com/elizaOS/eliza/commit/6c5207fc4f341565106e630daf46455f2005ca4e) 2025-01-17 Noisy: Update README.md (#2438)
 - [`8188b89a47b9`](https://github.com/elizaOS/eliza/commit/8188b89a47b9161710c1982570e3b012053736df) 2025-01-17 leopardracer: Update seed.sql (#2435)
-- [`16f83b795e60`](https://github.com/elizaOS/eliza/commit/16f83b795e6085a30d5a0040b2b37f269d9f5010) 2025-01-17 AIFlow_ML: feat: Pyth Data Plugin  (#2434)
+- [`16f83b795e60`](https://github.com/elizaOS/eliza/commit/16f83b795e6085a30d5a0040b2b37f269d9f5010) 2025-01-17 AIFlow_ML: feat: Pyth Data Plugin (#2434)
 - [`7267503c5a83`](https://github.com/elizaOS/eliza/commit/7267503c5a83650d7425dd6ea188951ee11ef57e) 2025-01-17 Santi: upd: if VITE_SERVER_PORT is not defined, use default 3000 (#2433)
 - [`fac4e812b1c8`](https://github.com/elizaOS/eliza/commit/fac4e812b1c85d285a1897b1577b3ce00623d156) 2025-01-17 Hopium: Update README.md (#2441)
 - [`cd0388d2d3cf`](https://github.com/elizaOS/eliza/commit/cd0388d2d3cf7c88fcbfdb1d06dbc248b60659db) 2025-01-17 KacperKoza343: feat: ibc transfer on cosmos blockchains (#2358)
@@ -6324,7 +6324,7 @@ Original commit hashes, oldest first:
 - [`24729eeea3d9`](https://github.com/elizaOS/eliza/commit/24729eeea3d923fb7346714d948734ba0cbfb82a) 2025-01-17 Savage: feat: create version.cmd for windows support (#2442)
 - [`48c7806478bc`](https://github.com/elizaOS/eliza/commit/48c7806478bcd87677a848d7a19825ce2f3ab1ba) 2025-01-18 Sayo: Merge branch 'develop' into fix/spelling
 - [`e28353c63b78`](https://github.com/elizaOS/eliza/commit/e28353c63b7848e251cb3f6a5f54af590a21dcf4) 2025-01-17 twilwa: Revert "refactor: dockerize smoke tests (#2420)" (#2459)
-- [`0f643c047f1c`](https://github.com/elizaOS/eliza/commit/0f643c047f1cd301fc44cfbb1d7f57a0202460b1) 2025-01-18 aryan: feat: Add features to the Solana Agent Kit  (#2458)
+- [`0f643c047f1c`](https://github.com/elizaOS/eliza/commit/0f643c047f1cd301fc44cfbb1d7f57a0202460b1) 2025-01-18 aryan: feat: Add features to the Solana Agent Kit (#2458)
 - [`f040918b9327`](https://github.com/elizaOS/eliza/commit/f040918b93277440b09b99d2087b856c9c5276fd) 2025-01-18 Sayo: Merge branch 'develop' into fix/spelling
 - [`26f71ddb65e3`](https://github.com/elizaOS/eliza/commit/26f71ddb65e3ba5a1e2e29409342168b29d41854) 2025-01-18 Sayo: chore: set openai as default provider (#2460)
 - [`8d55baa037b2`](https://github.com/elizaOS/eliza/commit/8d55baa037b2af923e32fc23c74221c930a8643f) 2025-01-18 Sayo: Merge branch 'develop' into fix/spelling
@@ -6372,7 +6372,7 @@ Original commit hashes, oldest first:
 - [`20501ff0720a`](https://github.com/elizaOS/eliza/commit/20501ff0720ac71343ff7351b9381b3cc4935cb2) 2025-01-18 Olexandr88: Update README_CN.md (#2489)
 - [`b336db053535`](https://github.com/elizaOS/eliza/commit/b336db0535350bd524859a7426b3c94ed506ca89) 2025-01-18 CrazyFrog: Update README.md (#2495)
 - [`7dd5cab1d3ab`](https://github.com/elizaOS/eliza/commit/7dd5cab1d3abc1add942333e779e6a6bfd8bf4cf) 2025-01-18 KoZivod: Improve error handling and typing in chat-bubble component (#2485)
-- [`90585ebdd42f`](https://github.com/elizaOS/eliza/commit/90585ebdd42ff8997e04b5009c4bc73151c0efce) 2025-01-18 ai16z-demirix: feat: adding test configuration and test coverage for binance plugin  (#2482)
+- [`90585ebdd42f`](https://github.com/elizaOS/eliza/commit/90585ebdd42ff8997e04b5009c4bc73151c0efce) 2025-01-18 ai16z-demirix: feat: adding test configuration and test coverage for binance plugin (#2482)
 - [`5b57a6d6aba8`](https://github.com/elizaOS/eliza/commit/5b57a6d6aba887a3527da9c5c9bdf6d631d6792a) 2025-01-18 tercel: feat: Implement character loading from multiple paths and enhance API… (#2365)
 - [`3a2fa762d4a7`](https://github.com/elizaOS/eliza/commit/3a2fa762d4a74ce35bda502a0ac41879a22f0343) 2025-01-18 Leeran Farin: feat: Load multiple characters from a single remote url (#2475)
 - [`35124759fb5e`](https://github.com/elizaOS/eliza/commit/35124759fb5e9b649b84f1e079a42a99906c75dc) 2025-01-18 Ninja Dev (QI): feat: Discord autonomous agent enhancement (#2335)
@@ -6430,10 +6430,10 @@ Original commit hashes, oldest first:
 - [`91c90884aa2e`](https://github.com/elizaOS/eliza/commit/91c90884aa2e7ed6bcebda8b2865ac53ec8b592d) 2025-01-21 Phlo: docs: Add "What Did You Get Done This Week? #10" notes (#2558)
 - [`306f16cc0a93`](https://github.com/elizaOS/eliza/commit/306f16cc0a932a28e9d04b03feb0131f2f693268) 2025-01-21 Jongwhan Lee: feat: Add Cronos Evm (#2585)
 - [`b77b995ff101`](https://github.com/elizaOS/eliza/commit/b77b995ff1017be97d4820ce7e599db0f6d1eb7e) 2025-01-21 Raveena Bhasin: feat: add router nitro plugin (#2590)
-- [`e80c2e67f28e`](https://github.com/elizaOS/eliza/commit/e80c2e67f28e10a120f508a14b2f3b7444ea8f97) 2025-01-21 Boosik: feat(plugin-new):  initia plugin + chore revert to integrationTests from stable releave 0.1.7 (#2448)
+- [`e80c2e67f28e`](https://github.com/elizaOS/eliza/commit/e80c2e67f28e10a120f508a14b2f3b7444ea8f97) 2025-01-21 Boosik: feat(plugin-new): initia plugin + chore revert to integrationTests from stable releave 0.1.7 (#2448)
 - [`4c8a60a538f1`](https://github.com/elizaOS/eliza/commit/4c8a60a538f1ecd1d377dc025da3b15f1f5019fd) 2025-01-21 AIFlow_ML: feat: nvidia-nim-plugin (#2599)
 - [`cac39126d865`](https://github.com/elizaOS/eliza/commit/cac39126d865921f4133b5be7af9b839f32e6de9) 2025-01-21 Shaw: add note to context for local generation (#2604)
-- [`d51ab6647dd4`](https://github.com/elizaOS/eliza/commit/d51ab6647dd4f0c2ea7dc052aa924e71b1ab9ebf) 2025-01-22 chuasonglin1995: feat: 0x plugin  (#2329)
+- [`d51ab6647dd4`](https://github.com/elizaOS/eliza/commit/d51ab6647dd4f0c2ea7dc052aa924e71b1ab9ebf) 2025-01-22 chuasonglin1995: feat: 0x plugin (#2329)
 - [`3f9ab84380fd`](https://github.com/elizaOS/eliza/commit/3f9ab84380fd26d8026b66dd46360a369780b926) 2025-01-22 Ting Chien Meng: add 0x plugin
 - [`0207a2604961`](https://github.com/elizaOS/eliza/commit/0207a26049617a67bbfe21f82dddba583fb86021) 2025-01-22 tcm390: Merge pull request #2626 from elizaOS/tcm-fix-develop
 - [`87af7c9f108e`](https://github.com/elizaOS/eliza/commit/87af7c9f108ebab5952b45afa6e34f678ce3c408) 2025-01-21 renovate[bot]: chore(deps): update dependency vite [security]
@@ -6607,7 +6607,7 @@ Original commit hashes, oldest first:
 - [`8b21401030e9`](https://github.com/elizaOS/eliza/commit/8b21401030e947296866d950dcb32bdcdf685c12) 2025-01-23 oxf71: Merge branch 'develop' into feat-adapter-qdrant
 - [`805fc508a102`](https://github.com/elizaOS/eliza/commit/805fc508a102498cb203d526f244e1020bcbc4aa) 2025-01-23 Sayo: Merge pull request #2322 from b2network/feat-adapter-qdrant
 - [`ef94c9cb9e81`](https://github.com/elizaOS/eliza/commit/ef94c9cb9e81cf02d3a5dbdb90d3311728954a5d) 2025-01-23 Odilitime: Merge branch 'develop' into develop
-- [`465ec6c47ef6`](https://github.com/elizaOS/eliza/commit/465ec6c47ef621d410db42a644433eaa6de0c92e) 2025-01-23 Christopher Freytes: feat(new-plugin): suno music generation  (#2679)
+- [`465ec6c47ef6`](https://github.com/elizaOS/eliza/commit/465ec6c47ef621d410db42a644433eaa6de0c92e) 2025-01-23 Christopher Freytes: feat(new-plugin): suno music generation (#2679)
 - [`ec07774fc13d`](https://github.com/elizaOS/eliza/commit/ec07774fc13d9896b813cfa954890f3aad2a9263) 2025-01-23 Christopher Freytes: feat(new-plugin): udio music generation for eliza (#2660)
 - [`0497c71e55ed`](https://github.com/elizaOS/eliza/commit/0497c71e55edad056d817b0cc75cfd2e4f0fdc73) 2025-01-23 Blockeater: feat(new-plugin): Eliza OmniFlix Plugin (#2693)
 - [`02f61148f677`](https://github.com/elizaOS/eliza/commit/02f61148f67793ec61f31d7f92dbd746398fe553) 2025-01-23 Augustin Chan: Fix RAG knowledge bug: ensure scoped IDs are properly used to check for existing knowledge (#2690)
@@ -6701,8 +6701,8 @@ Original commit hashes, oldest first:
 - [`7f0a5878d8ff`](https://github.com/elizaOS/eliza/commit/7f0a5878d8ffec449d224fdffa4604bfd1394f4f) 2025-01-24 CheddarQueso: Merge remote-tracking branch 'upstream/develop' into news-plugin
 - [`7b0113b77262`](https://github.com/elizaOS/eliza/commit/7b0113b77262e0753880ebe1221842565f00f60a) 2025-01-24 CheddarQueso: resolved conflict
 - [`f9aca521e3d8`](https://github.com/elizaOS/eliza/commit/f9aca521e3d8f1e971b3a769e885c07587661fe2) 2025-01-23 alex: fix(plugin-depin): sentientAI description (#2668)
-- [`a23378fd84b3`](https://github.com/elizaOS/eliza/commit/a23378fd84b38901e1aa1e098b0db0fe4cc2425d) 2025-01-25 Juan Carlos Claridad: fix for DTS Error  mismatch LanguageModelV1 in ai-sdk  mistral and fix for extract-version command in client package.json
-- [`40317d72fed1`](https://github.com/elizaOS/eliza/commit/40317d72fed1631fe926c14becdaf85afe40f0ac) 2025-01-24 twilwa: Create .turbo/config.json
+- [`a23378fd84b3`](https://github.com/elizaOS/eliza/commit/a23378fd84b38901e1aa1e098b0db0fe4cc2425d) 2025-01-25 Juan Carlos Claridad: fix for DTS Error mismatch LanguageModelV1 in ai-sdk mistral and fix for extract-version command in client package.json
+- [`40317d72fed1`](https://github.com/elizaOS/eliza/commit/40317d72fed1631fe926c14becdaf85afe40f0ac) 2025-01-24 twilwa: Create.turbo/config.json
 - [`131d88466ae5`](https://github.com/elizaOS/eliza/commit/131d88466ae5e18c863faeb5f5816363757f5f5c) 2025-01-24 twilwa: Merge pull request #2768 from twilwa/feat/turbo-config
 - [`19bc60c18776`](https://github.com/elizaOS/eliza/commit/19bc60c1877670482ce4245a1fde9eff525186d5) 2025-01-24 emile baizel: feat: Add Amazon Bedrock as LLM provider (#2769)
 - [`518cc9b53922`](https://github.com/elizaOS/eliza/commit/518cc9b53922d920d541957f9ee0c9d92ebbbd1a) 2025-01-24 LouisVannobel: Fix path in all files
@@ -6887,7 +6887,7 @@ Original commit hashes, oldest first:
 - [`60c2f3042ddd`](https://github.com/elizaOS/eliza/commit/60c2f3042ddded0981f386771145d2f7a2c4f979) 2025-01-28 AIFlow_ML: fixed all the typing errors. most of the actions had also a bad structur or missing code from the action.ts (#2898)
 - [`4773059993ac`](https://github.com/elizaOS/eliza/commit/4773059993ac692f6a5a84f493eabe2da405828a) 2025-01-28 Sayo: patch via pnpm (#2901)
 - [`8ba956f757cf`](https://github.com/elizaOS/eliza/commit/8ba956f757cf045116e6216b227597e997022626) 2025-01-28 AIFlow_ML: fixed all the typing issues (#2893)
-- [`b35c2f043e3b`](https://github.com/elizaOS/eliza/commit/b35c2f043e3b18504fdc63bc94a63b9f4fd30e89) 2025-01-28 AIFlow_ML: fix: plugin-quai  (#2892)
+- [`b35c2f043e3b`](https://github.com/elizaOS/eliza/commit/b35c2f043e3b18504fdc63bc94a63b9f4fd30e89) 2025-01-28 AIFlow_ML: fix: plugin-quai (#2892)
 - [`d8949c97fe82`](https://github.com/elizaOS/eliza/commit/d8949c97fe82724ff247221364e4f2f7d3d7daf5) 2025-01-28 Shakker Nerd: Merge branch 'develop' into fix-plugin-quick-intel
 - [`d7be423f6bb7`](https://github.com/elizaOS/eliza/commit/d7be423f6bb7e5f81db72cfaacd34a13d58f89d6) 2025-01-28 Shakker Nerd: Merge pull request #2890 from AIFlowML/fix-plugin-quick-intel
 - [`f93b351315fd`](https://github.com/elizaOS/eliza/commit/f93b351315fde0db448a891889a9ffe8520f9bce) 2025-01-28 Shakker Nerd: Merge branch 'develop' into fix-plugin-sei-v1
@@ -6992,7 +6992,7 @@ Original commit hashes, oldest first:
 - [`4c6bc3ca2068`](https://github.com/elizaOS/eliza/commit/4c6bc3ca2068368549596e8f55a49d0eb74ae00e) 2025-01-29 AIFlow_ML: fix: plugin-router-nitro (#2884)
 - [`9747be4f402c`](https://github.com/elizaOS/eliza/commit/9747be4f402cb84f5b6935ff4c24878e484e258d) 2025-01-29 tcm390: Merge branch 'develop' into tcm-twitter-reply-chain
 - [`dea40b75f123`](https://github.com/elizaOS/eliza/commit/dea40b75f123cfa9beca65b80f37b4c5a23351e8) 2025-01-29 tcm390: Merge pull request #2966 from elizaOS/tcm-twitter-reply-chain
-- [`57a175ea55ca`](https://github.com/elizaOS/eliza/commit/57a175ea55caf6116014a9130e251f9ea645ef69) 2025-01-29 AIFlow_ML: fix: plugin-lensnetwork  (#2965)
+- [`57a175ea55ca`](https://github.com/elizaOS/eliza/commit/57a175ea55caf6116014a9130e251f9ea645ef69) 2025-01-29 AIFlow_ML: fix: plugin-lensnetwork (#2965)
 - [`ca5d7cccf4f6`](https://github.com/elizaOS/eliza/commit/ca5d7cccf4f6db62c193e6f610a219dd33251370) 2025-01-29 Sayo: bump pnpm for remaining workflows (#2968)
 - [`03ec43df4df7`](https://github.com/elizaOS/eliza/commit/03ec43df4df71b8dfe0a0dd9d07e67449bf0dda4) 2025-01-30 AIFlow_ML: Very strange plug action free, added biome
 - [`8843976a7a6e`](https://github.com/elizaOS/eliza/commit/8843976a7a6ec81608945f7ba2caa1400aa65125) 2025-01-29 AIFlow_ML: fixed al the type issues (#2971)
@@ -7146,7 +7146,7 @@ Original commit hashes, oldest first:
 - [`34c0b2372672`](https://github.com/elizaOS/eliza/commit/34c0b237267261cec994206c30da685a03eb2be8) 2025-01-30 Shakker Nerd: Merge pull request #3022 from AIFlowML/fix-plugin-gitcoin-passport
 - [`662c27a62d2d`](https://github.com/elizaOS/eliza/commit/662c27a62d2de10a663e7865999397e87b54d802) 2025-01-30 Shakker Nerd: Merge branch 'develop' into fix-plugin-gitbook
 - [`e0b4688e3441`](https://github.com/elizaOS/eliza/commit/e0b4688e344175f3c4e9c68cb802bd33105c4f06) 2025-01-30 Shakker Nerd: Merge pull request #3023 from AIFlowML/fix-plugin-gitbook
-- [`fbf9501e3918`](https://github.com/elizaOS/eliza/commit/fbf9501e39186e92eb97e83daf9251165e4e32f0) 2025-01-30 Tobiloba Adedeji: feat: add  Fleek Eliza deployment to Readme_CN (#3048)
+- [`fbf9501e3918`](https://github.com/elizaOS/eliza/commit/fbf9501e39186e92eb97e83daf9251165e4e32f0) 2025-01-30 Tobiloba Adedeji: feat: add Fleek Eliza deployment to Readme_CN (#3048)
 - [`264ce5e4bbfd`](https://github.com/elizaOS/eliza/commit/264ce5e4bbfd7472b2032d670c17c93952ad6554) 2025-01-31 Ting Chien Meng: add imageVisionModelProvider
 - [`ed35db28b1fc`](https://github.com/elizaOS/eliza/commit/ed35db28b1fc25e923678dee833bb063e7301ac1) 2025-01-30 Ting Chien Meng: correct auto post condition
 - [`94444fad1ac7`](https://github.com/elizaOS/eliza/commit/94444fad1ac7cb0d690578e8a2267a2be396ef37) 2025-01-31 Ting Chien Meng: use room id for memory
@@ -7209,7 +7209,7 @@ Original commit hashes, oldest first:
 - [`40499e6250b7`](https://github.com/elizaOS/eliza/commit/40499e6250b70f473494962ddb33cbdd9eef8388) 2025-01-31 AIFlow_ML: Fixed all typings and wrong variables (#3061)
 - [`00cd249dee1e`](https://github.com/elizaOS/eliza/commit/00cd249dee1ee582c6d65a95252b545922f57eea) 2025-01-30 Michael Deng: feat: 3049 add demo api access coingecko (#3050)
 - [`1012d234b2e7`](https://github.com/elizaOS/eliza/commit/1012d234b2e708fbfba89e901e17eb6c12b377c2) 2025-01-31 AIFlow_ML: Fixed all the issues and added biome (#3044)
-- [`335c5b86cd4a`](https://github.com/elizaOS/eliza/commit/335c5b86cd4aa5746bac123399bbe7011139e45e) 2025-01-31 AIFlow_ML: fix: plugin-avail  (#3094)
+- [`335c5b86cd4a`](https://github.com/elizaOS/eliza/commit/335c5b86cd4aa5746bac123399bbe7011139e45e) 2025-01-31 AIFlow_ML: fix: plugin-avail (#3094)
 - [`6a849bf432f2`](https://github.com/elizaOS/eliza/commit/6a849bf432f20e6feafc57b12f7018abb0d24234) 2025-01-30 Guspan Tanadi: chore(packages/clients): include section links
 - [`681e38d32c2d`](https://github.com/elizaOS/eliza/commit/681e38d32c2d30ba9a0bc23cb40b2472684aa70e) 2025-01-30 Odilitime: Merge pull request #3005 from guspan-tanadi/adapterslinks
 - [`fe200262fdfd`](https://github.com/elizaOS/eliza/commit/fe200262fdfdc2182e790ef734e14b57412bfa1e) 2025-01-31 samarth30: fix: fixed a type issue due to which build was failing
@@ -7730,7 +7730,7 @@ Original commit hashes, oldest first:
 - [`32dbbd8618a5`](https://github.com/elizaOS/eliza/commit/32dbbd8618a538558f2f984e9eb276ab3f223c8c) 2025-02-07 Shaw: remove clean from docs, fix smoke test
 - [`f786a8998bc3`](https://github.com/elizaOS/eliza/commit/f786a8998bc3e65e3486d2028eeaba854c0dcb36) 2025-02-07 Shaw: remove gitpod from readme
 - [`d200e7251537`](https://github.com/elizaOS/eliza/commit/d200e725153786d9f52cb11cbaba1ce1c3f41a40) 2025-02-07 Shaw: cli shouldnt start with other stuff
-- [`cb9bf72ac5f8`](https://github.com/elizaOS/eliza/commit/cb9bf72ac5f8bfcc7bb68ce8d95a946de10dd297) 2025-01-31 Sayo: Update .env.example
+- [`cb9bf72ac5f8`](https://github.com/elizaOS/eliza/commit/cb9bf72ac5f8bfcc7bb68ce8d95a946de10dd297) 2025-01-31 Sayo: Update.env.example
 - [`d53dc2439636`](https://github.com/elizaOS/eliza/commit/d53dc2439636d22e42dafd732b7512008d12b52b) 2025-01-31 Sayo: cleanup
 - [`3a6a241a6bb3`](https://github.com/elizaOS/eliza/commit/3a6a241a6bb30e70e5c2ae582347339c1f9416e2) 2025-01-31 Sayo: lint issue + re-add eliza character
 - [`5119f76ff918`](https://github.com/elizaOS/eliza/commit/5119f76ff918ad5b539e3e1429402b855fe748e1) 2025-01-31 Sayo: Update generation.ts
@@ -7765,7 +7765,7 @@ Original commit hashes, oldest first:
 - [`4a66a2904c02`](https://github.com/elizaOS/eliza/commit/4a66a2904c022c618ac508c43657137adb477e79) 2025-02-04 Sayo: allow diff setting for all model class
 - [`9816c949fb08`](https://github.com/elizaOS/eliza/commit/9816c949fb0892125c1e598546a74be7a34a7575) 2025-02-04 Sayo: update goatPlugin similar to others
 - [`5ea72a0cbfc6`](https://github.com/elizaOS/eliza/commit/5ea72a0cbfc63d06afcb6de5525b5dc592ab30ea) 2025-02-04 Sayo: fix zilliqa plugin
-- [`81f6e8c6ee9f`](https://github.com/elizaOS/eliza/commit/81f6e8c6ee9f6398d4615e5f5f7a8f2a6c733071) 2025-02-04 Sayo: update .env.example
+- [`81f6e8c6ee9f`](https://github.com/elizaOS/eliza/commit/81f6e8c6ee9f6398d4615e5f5f7a8f2a6c733071) 2025-02-04 Sayo: update.env.example
 - [`ea315d1277c5`](https://github.com/elizaOS/eliza/commit/ea315d1277c5ce4bb9be21ea5fb255b942e4af1b) 2025-02-04 Sayo: wip: save
 - [`49ce19a8c895`](https://github.com/elizaOS/eliza/commit/49ce19a8c8956d14360a70786de9c9b5bc853b16) 2025-02-05 Sayo: Update runtime.ts
 - [`fc8e3d486b7b`](https://github.com/elizaOS/eliza/commit/fc8e3d486b7b29c044b43f5720e4034e14ad80ff) 2025-02-05 Sayo: fix env name mismatch
@@ -8077,7 +8077,7 @@ Original commit hashes, oldest first:
 - [`0f7ff9664979`](https://github.com/elizaOS/eliza/commit/0f7ff9664979541750e226564f603025ceb86465) 2025-02-20 Ting Chien Meng: fix no folder error
 - [`e8a558d0ce12`](https://github.com/elizaOS/eliza/commit/e8a558d0ce125e872dfa9a9e2f223502000c9ba2) 2025-02-20 Ting Chien Meng: fix dm failed
 - [`3e560fbdace5`](https://github.com/elizaOS/eliza/commit/3e560fbdace51dbd20281aacab63b7b010d8a47f) 2025-02-20 Ting Chien Meng: filter out agent from mentioned list
-- [`112f0ec5183a`](https://github.com/elizaOS/eliza/commit/112f0ec5183a593c36f6751bb55ad1634af4afc4) 2025-02-20 Ting Chien Meng: null check to fix crash issue of  transcribe media action
+- [`112f0ec5183a`](https://github.com/elizaOS/eliza/commit/112f0ec5183a593c36f6751bb55ad1634af4afc4) 2025-02-20 Ting Chien Meng: null check to fix crash issue of transcribe media action
 - [`84fe4a0c28e0`](https://github.com/elizaOS/eliza/commit/84fe4a0c28e0c8fc2dad2525537fa8b9d90405d9) 2025-02-20 Ting Chien Meng: null check
 - [`fae410a14770`](https://github.com/elizaOS/eliza/commit/fae410a14770d48bb2396a43ef6958ffaf2ba460) 2025-02-20 Ting Chien Meng: filter out agent
 - [`bcd8d2b34fb4`](https://github.com/elizaOS/eliza/commit/bcd8d2b34fb4e2775a398c107cbdb61801be12a2) 2025-02-20 Ting Chien Meng: fix summarize action
@@ -8209,7 +8209,7 @@ Original commit hashes, oldest first:
 - [`46d956534ced`](https://github.com/elizaOS/eliza/commit/46d956534cedcfb6edd45b824e1e79d2f9307e32) 2025-02-25 Shaw: fix base
 - [`de077ed198e7`](https://github.com/elizaOS/eliza/commit/de077ed198e760544a07a9054efb5eb413a90ee9) 2025-02-24 AIFlow_ML: Added the TTS manager, implemented in the init a basic test that state if model produce data or not. Fixed also a precedent issue in the vision.
 - [`d3d8c0495e45`](https://github.com/elizaOS/eliza/commit/d3d8c0495e4540d236b8a87116f2bc981df40138) 2025-02-24 AIFlow_ML: Added Ollama and StudioLM managers. Added initial envirnoment check - Ollama pefroermance very bad compared to StudioLM
-- [`3bc73e5d5cfb`](https://github.com/elizaOS/eliza/commit/3bc73e5d5cfb008b71c50e3ec79a59ab1b1b126a) 2025-02-25 AIFlow_ML: Added .env configuration for Ollama and StudioLM
+- [`3bc73e5d5cfb`](https://github.com/elizaOS/eliza/commit/3bc73e5d5cfb008b71c50e3ec79a59ab1b1b126a) 2025-02-25 AIFlow_ML: Added.env configuration for Ollama and StudioLM
 - [`01eb5a1da95a`](https://github.com/elizaOS/eliza/commit/01eb5a1da95abd1c20a3a9b89c80533141c398c9) 2025-02-24 v1xingyue: add agent server opitons with middleware settings
 - [`0a5d6cb2bfb9`](https://github.com/elizaOS/eliza/commit/0a5d6cb2bfb962c96c143be2609faef8cc6895bf) 2025-02-24 v1xingyue: allow null options with agent server
 - [`e64c57708abd`](https://github.com/elizaOS/eliza/commit/e64c57708abd93be6bc9c19f01f7d33081950ba6) 2025-02-24 v1xingyue: Merge branch 'v2-develop' into v2-api-middleware
@@ -8506,7 +8506,7 @@ Original commit hashes, oldest first:
 - [`994dbb76a7c5`](https://github.com/elizaOS/eliza/commit/994dbb76a7c5f11172ec98400f7399d6d5a60361) 2025-03-04 Shaw: fix duplicate tasks / tasks not found from gettasks
 - [`2e9602dc7f50`](https://github.com/elizaOS/eliza/commit/2e9602dc7f5008cb68a7d98301abd7a27dd72dff) 2025-03-04 Shaw: enable all swarm
 - [`22ab08d292a0`](https://github.com/elizaOS/eliza/commit/22ab08d292a06eadb0fa0f9973e5ad047ce8abd2) 2025-03-04 Shaw: fix issues with community investor
-- [`2df688a6025b`](https://github.com/elizaOS/eliza/commit/2df688a6025bf18ccec39b4a7044a3da36baa37c) 2025-03-04 Shaw: new .env
+- [`2df688a6025b`](https://github.com/elizaOS/eliza/commit/2df688a6025bf18ccec39b4a7044a3da36baa37c) 2025-03-04 Shaw: new.env
 - [`527409cff960`](https://github.com/elizaOS/eliza/commit/527409cff96043c18be5a3efea1dcffaa46e4897) 2025-03-04 Shaw: better trading service logs
 - [`10b6e87abc55`](https://github.com/elizaOS/eliza/commit/10b6e87abc55a2dda133e599ce62a31e983ad9af) 2025-03-04 Shaw: update task handling
 - [`bc1c8e723405`](https://github.com/elizaOS/eliza/commit/bc1c8e7234054a2e8b031f4f60155163d6e32d6e) 2025-03-04 Shaw: fix trading tasks
@@ -8571,7 +8571,7 @@ Original commit hashes, oldest first:
 - [`28e04e3aa9b2`](https://github.com/elizaOS/eliza/commit/28e04e3aa9b212dd9cf3ad215b1fb5c64101893f) 2025-03-06 Shaw: Add script to squash commits while preserving author contribution metrics
 - [`ace6f99d20c9`](https://github.com/elizaOS/eliza/commit/ace6f99d20c90888ab50f3bbe7825d16d33cfab4) 2025-03-06 Shaw: squash repo script
 - [`9eef870cea7a`](https://github.com/elizaOS/eliza/commit/9eef870cea7ae5ea475c32c89428df5f8274fc85) 2025-03-07 Shaw: Merge branches 'v2-develop' and 'v2-merge-agent-cli' of https://github.com/ai16z/eliza into v2-develop
-- [`e5f2ddb2d4e3`](https://github.com/elizaOS/eliza/commit/e5f2ddb2d4e31980f314627af9c4640eda5c1d82) 2025-03-07 Shaw: replace .databaseAdapter with .getDatabaseAdapter(), fix test
+- [`e5f2ddb2d4e3`](https://github.com/elizaOS/eliza/commit/e5f2ddb2d4e31980f314627af9c4640eda5c1d82) 2025-03-07 Shaw: replace.databaseAdapter with.getDatabaseAdapter(), fix test
 - [`ea8839b21a9f`](https://github.com/elizaOS/eliza/commit/ea8839b21a9f3dc16e1bc3b97ba290681e91eeaf) 2025-03-07 Shaw: lint and format
 - [`4561cb9d2ad7`](https://github.com/elizaOS/eliza/commit/4561cb9d2ad773ebe28248096958b6dd75017c11) 2025-03-07 Shaw: lint test
 - [`ba0e5059fb34`](https://github.com/elizaOS/eliza/commit/ba0e5059fb34e0aceb283b355488d385cfe14820) 2025-03-07 Shaw: record different action name
@@ -9076,7 +9076,7 @@ Original commit hashes, oldest first:
 - [`707011857eec`](https://github.com/elizaOS/eliza/commit/707011857eecf9f03c0e3239b7fde55dd2866966) 2025-03-08 Shaw: fix the onboarding
 - [`1b0b4355f55a`](https://github.com/elizaOS/eliza/commit/1b0b4355f55a7653b458ca49d9c6eb8afd3562ee) 2025-03-08 Shaw: many devex fixes, improve db handling, fix init, fix debugging
 - [`cfd7f2f173f9`](https://github.com/elizaOS/eliza/commit/cfd7f2f173f916a2e48f7ae12f42a30ea3ce24ba) 2025-03-08 Christopher Trimboli: add core types
-- [`bb56fd184770`](https://github.com/elizaOS/eliza/commit/bb56fd18477003b22c64f132fd7e7cdcfce7399d) 2025-03-08 Shaw: Merge pull request #3875 from elizaOS/core-types
+- [`bb56fd184770`](https://github.com/elizaOS/eliza/commit/bb56fd18477003b22c64f132fd7e7cdcfce7399d) 2025-03-08 Shaw: Merge pull request #3875 from elizaOS-types
 - [`0c1c445e9e5d`](https://github.com/elizaOS/eliza/commit/0c1c445e9e5d2ece1ab7df777774fca5e9eeb376) 2025-03-08 Shaw: Merge branch 'v2-develop' of https://github.com/elizaos/eliza into v2-develop
 - [`be8ab2eecd82`](https://github.com/elizaOS/eliza/commit/be8ab2eecd826b741f9b0a15a65db9bcbdc52182) 2025-03-08 Shaw: fix posting stuff
 - [`1e9a42e96a69`](https://github.com/elizaOS/eliza/commit/1e9a42e96a69bd8abcd5c6f905c23eff08696a62) 2025-03-08 Shaw: fix social media action, roles, onboarding, other issues
@@ -9155,7 +9155,7 @@ Original commit hashes, oldest first:
 - [`f42a44c32ef1`](https://github.com/elizaOS/eliza/commit/f42a44c32ef1b26cf7edd73df078b23db7080bf7) 2025-03-11 Sayo: Merge branch 'v2-develop' into v2-clean-command
 - [`ba2bd455aab5`](https://github.com/elizaOS/eliza/commit/ba2bd455aab5885a3fe4799c9d96af05ccd0e776) 2025-03-11 Sayo: Merge pull request #3891 from elizaOS/v2-clean-command
 - [`ab85bab85e1e`](https://github.com/elizaOS/eliza/commit/ab85bab85e1eb01e54d6227e37c61fd23621349a) 2025-03-11 Sayo: add clean cmd to core
-- [`eab22429d7d1`](https://github.com/elizaOS/eliza/commit/eab22429d7d1db38c595af2bb3a4693820adcd55) 2025-03-11 Sayo: revert "@elizaos/core": "workspace:*"
+- [`eab22429d7d1`](https://github.com/elizaOS/eliza/commit/eab22429d7d1db38c595af2bb3a4693820adcd55) 2025-03-11 Sayo: revert "@elizaos": "workspace:*"
 - [`3b87cf5f120c`](https://github.com/elizaOS/eliza/commit/3b87cf5f120c1dc421d62009e54ed6473bded90d) 2025-03-11 Sayo: Update bun.lock
 - [`1de9270d7dbc`](https://github.com/elizaOS/eliza/commit/1de9270d7dbccdca05d1dfc16cd8ca94f558261a) 2025-03-11 Sayo: Merge pull request #3892 from elizaOS/v2-add-missing-clean-command
 - [`ecf2919dfdc6`](https://github.com/elizaOS/eliza/commit/ecf2919dfdc67175be980a76768b4cf51fae0e01) 2025-03-11 Sayo: fix gui build and api server
@@ -9292,7 +9292,7 @@ Original commit hashes, oldest first:
 - [`c2f70eae180d`](https://github.com/elizaOS/eliza/commit/c2f70eae180dc18f9e6d49baebcb5331851ceb54) 2025-03-13 Shaw: remove garbo prompt
 - [`3ab6794ec27d`](https://github.com/elizaOS/eliza/commit/3ab6794ec27dfee9891ce79fcf7643aa8bc6b196) 2025-03-13 Shaw: v1.0.0-alpha.36
 - [`f66ec5b58306`](https://github.com/elizaOS/eliza/commit/f66ec5b5830658a5b4f45e9369a00bbb1b81224e) 2025-03-13 Shaw: v1.0.0-alpha.37
-- [`066c81b25961`](https://github.com/elizaOS/eliza/commit/066c81b2596158a1ca89a678fd841ce030981d4d) 2025-03-13 Shaw: alpha .37, fixing more env issues
+- [`066c81b25961`](https://github.com/elizaOS/eliza/commit/066c81b2596158a1ca89a678fd841ce030981d4d) 2025-03-13 Shaw: alpha.37, fixing more env issues
 - [`e98c03cf7e76`](https://github.com/elizaOS/eliza/commit/e98c03cf7e76ba967b203fdc3fc07cb438797559) 2025-03-13 Shaw: v1.0.0-alpha.38
 - [`e1692a677417`](https://github.com/elizaOS/eliza/commit/e1692a677417ae7b9432ddb4d98bd93ea00d322f) 2025-03-13 Shaw: v1.0.0-alpha.39
 - [`45931a9c0b37`](https://github.com/elizaOS/eliza/commit/45931a9c0b37198ad91a4d9a0e7b1d98c26c1c90) 2025-03-13 Shaw: tweak the cli on start
@@ -9329,7 +9329,7 @@ Original commit hashes, oldest first:
 - [`4a67feaabb8d`](https://github.com/elizaOS/eliza/commit/4a67feaabb8d0af4a539e298bafa7036fc3ffac8) 2025-03-13 Odilitime: attempt to fix Exec format error (os error 8)
 - [`fdcd807b6c21`](https://github.com/elizaOS/eliza/commit/fdcd807b6c2177d9c13fce9be7819abca248edc6) 2025-03-13 Odilitime: remove trust all PMs
 - [`050abd03a4ad`](https://github.com/elizaOS/eliza/commit/050abd03a4ad2d1cc8cfd95736b1ea4657bf30b7) 2025-03-13 Odilitime: attempt to fix Exec format error (os error 8) again
-- [`0ffb21f92f05`](https://github.com/elizaOS/eliza/commit/0ffb21f92f0568dafeddc9c03f14e0bbca190f98) 2025-03-13 Odilitime: remove .npmrc that's causing the issue
+- [`0ffb21f92f05`](https://github.com/elizaOS/eliza/commit/0ffb21f92f0568dafeddc9c03f14e0bbca190f98) 2025-03-13 Odilitime: remove.npmrc that's causing the issue
 - [`f49fe620dd10`](https://github.com/elizaOS/eliza/commit/f49fe620dd10027e2723ecc89bfc89b61405261b) 2025-03-13 Odilitime: Merge branch 'v2-develop' into odi-local-ai
 - [`a4a95a8b28e1`](https://github.com/elizaOS/eliza/commit/a4a95a8b28e10a1da54021fe5a62acf0e0b82d5c) 2025-03-13 Odilitime: definitely don't need to trust PMs
 - [`db2a90736466`](https://github.com/elizaOS/eliza/commit/db2a90736466ce99c5be721a051432802baec1b7) 2025-03-13 Shaw: Merge branch 'odi-local-ai' of https://github.com/elizaos/eliza into v2-develop
@@ -9704,7 +9704,7 @@ Original commit hashes, oldest first:
 - [`94a5721ccae7`](https://github.com/elizaOS/eliza/commit/94a5721ccae7e151985e9a96c60ab31d9dfaa612) 2025-03-19 Ting Chien Meng: export compress function
 - [`dcd9453ba0e9`](https://github.com/elizaOS/eliza/commit/dcd9453ba0e979714a79280a9ebf3b84138a5173) 2025-03-19 Ting Chien Meng: ensure avatar size
 - [`42fadee86118`](https://github.com/elizaOS/eliza/commit/42fadee861180b47e18becfdcc06654911712cdb) 2025-03-20 Ting Chien Meng: constants
-- [`4eb45d479e3a`](https://github.com/elizaOS/eliza/commit/4eb45d479e3a3177a92e8ccbb702e489c9dd5d71) 2025-03-19 0xbbjoker: chore: add drizzle table to  public schemaD
+- [`4eb45d479e3a`](https://github.com/elizaOS/eliza/commit/4eb45d479e3a3177a92e8ccbb702e489c9dd5d71) 2025-03-19 0xbbjoker: chore: add drizzle table to public schemaD
 - [`5dc96eb915c5`](https://github.com/elizaOS/eliza/commit/5dc96eb915c541f9cafc046eb381586b119996a1) 2025-03-19 Sayo: fix chat ui alignment
 - [`804f70837009`](https://github.com/elizaOS/eliza/commit/804f708370095f80926ac601e698dd93f2285352) 2025-03-19 Sayo: Merge pull request #4001 from elizaOS/fix-chat-ui-alignment
 - [`dd672845f4fc`](https://github.com/elizaOS/eliza/commit/dd672845f4fc9b288e443fc5b4e34a4c05f04a23) 2025-03-19 Sayo: Merge branch 'v2-develop' into add-drizzle-migration-table-to-public-schema
@@ -10272,7 +10272,7 @@ Original commit hashes, oldest first:
 - [`17214ac12633`](https://github.com/elizaOS/eliza/commit/17214ac1263312afad3f6e7801859bb8290030e9) 2025-04-02 Sayo: Merge pull request #4150 from elizaOS/fix-project-plugin-loading-first
 - [`51153dd56c1c`](https://github.com/elizaOS/eliza/commit/51153dd56c1cdf4c98ebdc75060299a27810caa0) 2025-04-02 Sayo: Merge branch 'v2-develop' into event-adapter
 - [`9146b017e283`](https://github.com/elizaOS/eliza/commit/9146b017e2832ca5d43496c4808ddc3986986a5d) 2025-04-02 Sayo: Merge pull request #4149 from elizaOS/event-adapter
-- [`fe69fe8e1019`](https://github.com/elizaOS/eliza/commit/fe69fe8e101925f2c5e5eaabc68cbc69b71a12f5) 2025-04-02 yung algorithm: add node_modules to .gitignore
+- [`fe69fe8e1019`](https://github.com/elizaOS/eliza/commit/fe69fe8e101925f2c5e5eaabc68cbc69b71a12f5) 2025-04-02 yung algorithm: add node_modules to.gitignore
 - [`11e9cdf90059`](https://github.com/elizaOS/eliza/commit/11e9cdf90059b09e8ba50b4df783cbad4fb653b6) 2025-03-27 Y4NK33420: added extensive ui tests
 - [`fe833d2f02ff`](https://github.com/elizaOS/eliza/commit/fe833d2f02ff7c8bce8e86fdddbf66f6f7e97773) 2025-03-27 Monil Patel: Merge branch 'v2-develop' into clean-ui-testing
 - [`c0eea512304d`](https://github.com/elizaOS/eliza/commit/c0eea512304d436851ecf9c5b808cf8c10abe2df) 2025-03-31 Monil Patel: Merge branch 'v2-develop' into clean-ui-testing
@@ -10565,7 +10565,7 @@ Original commit hashes, oldest first:
 - [`098f897a9e96`](https://github.com/elizaOS/eliza/commit/098f897a9e9662bb79647102b4effa79c1ed0ce1) 2025-04-13 0xbbjoker: chore: remove deprecated types
 - [`8af7e4b96bad`](https://github.com/elizaOS/eliza/commit/8af7e4b96bada81cd4e925483404b6d395267527) 2025-04-14 Sayo: Merge pull request #4275 from 0xbbjoker/chore/remove-deprecated-types
 - [`ecb975e98664`](https://github.com/elizaOS/eliza/commit/ecb975e98664565046089986cb4f97827541f2a9) 2025-04-15 tcm390: Merge branch 'v2-develop' into v2-develop
-- [`20d8e68358ad`](https://github.com/elizaOS/eliza/commit/20d8e68358ad8fd76c5cb7783c0e0a16bf93448c) 2025-04-11 Chris: Update .env.example to support post generation
+- [`20d8e68358ad`](https://github.com/elizaOS/eliza/commit/20d8e68358ad8fd76c5cb7783c0e0a16bf93448c) 2025-04-11 Chris: Update.env.example to support post generation
 - [`d6dac770e256`](https://github.com/elizaOS/eliza/commit/d6dac770e2561ff0863327ef4d26fcda0082b12e) 2025-04-15 tcm390: Merge branch 'v2-develop' into patch-1
 - [`bb880a9428fa`](https://github.com/elizaOS/eliza/commit/bb880a9428faceeabde7bbd7fbf11dcc75732533) 2025-04-15 tcm390: Merge pull request #4268 from chris35469/patch-1
 - [`8ce18e16a601`](https://github.com/elizaOS/eliza/commit/8ce18e16a601280270cacdb26c7207ef3dc75628) 2025-04-15 Ting Chien Meng: use constant
@@ -10781,7 +10781,7 @@ Original commit hashes, oldest first:
 - [`73986c92acde`](https://github.com/elizaOS/eliza/commit/73986c92acde9507b8c0cf2a9818db2629f04346) 2025-04-24 Ting Chien Meng: clean code
 - [`a8715413425f`](https://github.com/elizaOS/eliza/commit/a8715413425ffb45cc43770ad7ca42ec809ebfa1) 2025-04-24 Ting Chien Meng: fix readable stream
 - [`a63f955c2689`](https://github.com/elizaOS/eliza/commit/a63f955c268935be759fd64aeeccde585cc06207) 2025-04-24 Ting Chien Meng: move convert function to utils
-- [`d92aa0a49777`](https://github.com/elizaOS/eliza/commit/d92aa0a49777253952220644116d97b35e81f2ec) 2025-04-23 yung algorithm: added bc .gitignore wasnt getting copied from plugin-starter
+- [`d92aa0a49777`](https://github.com/elizaOS/eliza/commit/d92aa0a49777253952220644116d97b35e81f2ec) 2025-04-23 yung algorithm: added bc.gitignore wasnt getting copied from plugin-starter
 - [`dad8c4b2351d`](https://github.com/elizaOS/eliza/commit/dad8c4b2351dfc506ffa56938535c86c467dd82e) 2025-04-24 Odilitime: handleMessage set entityName in metadata, warn if no channel type
 - [`5be0c6a5583e`](https://github.com/elizaOS/eliza/commit/5be0c6a5583ef9db13b0cfd4c066dbcb872cb99a) 2025-04-24 Odilitime: update agent's entity metadata with current twitter name
 - [`f5c427820841`](https://github.com/elizaOS/eliza/commit/f5c427820841b859e0b1d03022651eb4b6a7b8bf) 2025-04-24 Odilitime: fix clearning cursor cache with null
@@ -10909,7 +10909,7 @@ Original commit hashes, oldest first:
 - [`4a1e43985301`](https://github.com/elizaOS/eliza/commit/4a1e4398530156ccd8aeb6a7cc03768773d43880) 2025-04-29 0xbbjoker: fix TEEMode import
 - [`94f5ec5d5c9d`](https://github.com/elizaOS/eliza/commit/94f5ec5d5c9d8d47dca0678b65f3216bee37fe30) 2025-04-28 Odilitime: Merge pull request #4385 from 0xbbjoker/fix-import-for-plugin-evm
 - [`415a17bc62ee`](https://github.com/elizaOS/eliza/commit/415a17bc62ee7a11d92e35ffeeb9e3489dba0b9f) 2025-04-28 Shaw: Merge branch 'v2-develop' of https://github.com/elizaos/eliza into HEAD
-- [`c4388d809382`](https://github.com/elizaOS/eliza/commit/c4388d80938209ece958239541a5d86c41c01d5a) 2025-04-29 samarth30: feat: added .env.example in project-starter
+- [`c4388d809382`](https://github.com/elizaOS/eliza/commit/c4388d80938209ece958239541a5d86c41c01d5a) 2025-04-29 samarth30: feat: added.env.example in project-starter
 - [`0c17f36423f4`](https://github.com/elizaOS/eliza/commit/0c17f36423f4a9f14aa27e49a345fbc07c099af9) 2025-04-28 Shaw: Merge pull request #4387 from elizaOS/feat/template-envexample
 - [`d326df08bfdd`](https://github.com/elizaOS/eliza/commit/d326df08bfddeca99d22628c2af279ce1934c522) 2025-04-29 samarth30: fix : marked no space left of disk error in red
 - [`0a0e9bd71cb3`](https://github.com/elizaOS/eliza/commit/0a0e9bd71cb3b5ab911ad0e5fa71e06028d48522) 2025-04-29 Shaw: Merge pull request #4389 from elizaOS/fix/error-disk-space
@@ -11107,7 +11107,7 @@ Original commit hashes, oldest first:
 - [`9ef5ad76a006`](https://github.com/elizaOS/eliza/commit/9ef5ad76a0065919c1f92561206aa2db264b063f) 2025-05-06 Sayo: fix bunx / npx detection
 - [`58fbc74cf044`](https://github.com/elizaOS/eliza/commit/58fbc74cf044d5762dc147b11ee3de5dd6d73ab0) 2025-05-06 Sayo: Merge pull request #4463 from elizaOS/fix-update
 - [`9f9672f31e88`](https://github.com/elizaOS/eliza/commit/9f9672f31e8872a2f27620f533c14ef4af62b0f2) 2025-05-06 Sayo: v1.0.0-beta.45
-- [`e1c1339f76df`](https://github.com/elizaOS/eliza/commit/e1c1339f76df428fc4d3bb59d71b31c04369ec7c) 2025-05-06 Christopher Trimboli: add elizadb to .gitignore
+- [`e1c1339f76df`](https://github.com/elizaOS/eliza/commit/e1c1339f76df428fc4d3bb59d71b31c04369ec7c) 2025-05-06 Christopher Trimboli: add elizadb to.gitignore
 - [`f58fe6eafb1e`](https://github.com/elizaOS/eliza/commit/f58fe6eafb1ecbe1ff2fcbcc5a58ecb7c9fe428f) 2025-05-06 Sayo: Merge pull request #4464 from elizaOS/gitignore-elizadb
 - [`ca6b3989abee`](https://github.com/elizaOS/eliza/commit/ca6b3989abee83e00bc19cd2ec949251ff5d8ea4) 2025-05-06 Sayo: Merge branch 'v2-develop' into fix/discord-service-unregister-timeout
 - [`23a13c5ea488`](https://github.com/elizaOS/eliza/commit/23a13c5ea488614941c441cf6cacbd1362236a44) 2025-05-06 tcm390: Merge pull request #4450 from standujar/fix/discord-service-unregister-timeout
@@ -11116,7 +11116,7 @@ Original commit hashes, oldest first:
 - [`4c6c3427b766`](https://github.com/elizaOS/eliza/commit/4c6c3427b7666a4a153354afde78457a8fc82bc9) 2025-05-06 0xbbjoker: chore: remove StudioLM support, focus on llama.cpp
 - [`0cbb7b9229d5`](https://github.com/elizaOS/eliza/commit/0cbb7b9229d5ad46b2e58c24b4e6f79fa8f8c62a) 2025-05-06 0xbbjoker: fix: sec issue for logs & and naming
 - [`9d396ba79bee`](https://github.com/elizaOS/eliza/commit/9d396ba79bee5885f86db9d34dd235bbe1b7cadc) 2025-05-06 0xbbjoker: fix: readme for consistency
-- [`d90e7f9a7460`](https://github.com/elizaOS/eliza/commit/d90e7f9a7460047562c8cca27dc66d5251414551) 2025-05-06 0xbbjoker: chore: update .env & enable custom cache/models dir
+- [`d90e7f9a7460`](https://github.com/elizaOS/eliza/commit/d90e7f9a7460047562c8cca27dc66d5251414551) 2025-05-06 0xbbjoker: chore: update.env & enable custom cache/models dir
 - [`2bdd73449c88`](https://github.com/elizaOS/eliza/commit/2bdd73449c88d1afb1bbbd1fe70c95250981d729) 2025-05-06 0xbbjoker: chore: fix tests & tts
 - [`26d9b2537592`](https://github.com/elizaOS/eliza/commit/26d9b25375924d6244bb6d59e8792fc3d7d27779) 2025-05-06 0xbbjoker: chore: allow custom embedding dimn
 - [`4482a44d6daf`](https://github.com/elizaOS/eliza/commit/4482a44d6daf9e241aa78dc7d1c46520391a50d2) 2025-05-06 0xbbjoker: chore: make sure validate config is called first
@@ -11286,7 +11286,7 @@ Original commit hashes, oldest first:
 - [`20e30e05c6ad`](https://github.com/elizaOS/eliza/commit/20e30e05c6adebfaa3f864afd69e24ce9dd9dff4) 2025-03-26 samarth30: updated record team member updates to message in a particular channel
 - [`66fe44df29dc`](https://github.com/elizaOS/eliza/commit/66fe44df29dc30f75810e78485694cd626df2ec5) 2025-03-26 samarth30: feat: task created to check in after a regular interval
 - [`7de7336394de`](https://github.com/elizaOS/eliza/commit/7de7336394de62ff8d616305ce09b080d7284fe1) 2025-03-28 samarth30: feat: pushed report generation action for jimmy
-- [`6842b1faa960`](https://github.com/elizaOS/eliza/commit/6842b1faa960a9c225c90d9976cd6463d3ec42d7) 2025-03-28 samarth30: cleaned check in report form , check in service and record team member discord name
+- [`6842b1faa960`](https://github.com/elizaOS/eliza/commit/6842b1faa960a9c225c90d9976cd6463d3ec42d7) 2025-03-28 samarth30: cleaned check in report form, check in service and record team member discord name
 - [`ac09137bd02a`](https://github.com/elizaOS/eliza/commit/ac09137bd02a3699f6201252d3d1dbef4c567202) 2025-03-29 samarth30: Merge branch 'v2-develop' of https://github.com/elizaOS/eliza into feat/jimmy-project-manager
 - [`224aa8e24394`](https://github.com/elizaOS/eliza/commit/224aa8e243943bda61df7924cf3c7513e73f7e70) 2025-03-29 samarth30: resolved merge conflicts
 - [`c3a5368aefbb`](https://github.com/elizaOS/eliza/commit/c3a5368aefbbc1ecc863caf1a40a61021d677a2b) 2025-03-29 samarth30: fixed jimmy dev command
@@ -11296,7 +11296,7 @@ Original commit hashes, oldest first:
 - [`b78d257a4caf`](https://github.com/elizaOS/eliza/commit/b78d257a4caf230e86798e3fb1804bd176844be5) 2025-03-29 samarth30: added open ai env key
 - [`f8d8be87f040`](https://github.com/elizaOS/eliza/commit/f8d8be87f040ceba5ea11a649637d56f2b23d7bc) 2025-03-31 samarth30: added server name to users for updates
 - [`2f402f1d181f`](https://github.com/elizaOS/eliza/commit/2f402f1d181f9fcc55c7536db8aa54f2266bbe19) 2025-03-31 samarth30: fetched user name from discord client when storing a checkin
-- [`cb4abe3f4c40`](https://github.com/elizaOS/eliza/commit/cb4abe3f4c4015f3bc52fe22a01b5a95fa428aa1) 2025-03-31 samarth30: updated check in form , report generation improved and list check in schedule cleaned
+- [`cb4abe3f4c40`](https://github.com/elizaOS/eliza/commit/cb4abe3f4c4015f3bc52fe22a01b5a95fa428aa1) 2025-03-31 samarth30: updated check in form, report generation improved and list check in schedule cleaned
 - [`00e929d368f2`](https://github.com/elizaOS/eliza/commit/00e929d368f2b5b59e48b855b6a9018c8d657566) 2025-03-31 samarth30: env keys added
 - [`2186d2f6a887`](https://github.com/elizaOS/eliza/commit/2186d2f6a887ddc83312e04240ddd81c9414c55d) 2025-04-01 samarth30: fix : generate report fixed and TeamMemberUpdate type added
 - [`7778e579a508`](https://github.com/elizaOS/eliza/commit/7778e579a5081e5cdaf364a164ddccb6b54c033c) 2025-04-01 samarth30: improved check in report form and ai implemented in record team member
@@ -11313,7 +11313,7 @@ Original commit hashes, oldest first:
 - [`ab291b2d7909`](https://github.com/elizaOS/eliza/commit/ab291b2d7909a18115512ddcb881dcb19b0a5ea9) 2025-04-08 samarth30: feat: jimmmy : fixed the build error
 - [`a538d85900d2`](https://github.com/elizaOS/eliza/commit/a538d85900d20534410cfbfc2c4e658bd2e684ea) 2025-04-09 samarth30: Merge branch 'v2-develop' of https://github.com/elizaOS/eliza into feat/jimmy-project-manager
 - [`9f6de7d18785`](https://github.com/elizaOS/eliza/commit/9f6de7d18785422003d860a90958e6bedbee19e9) 2025-04-09 samarth30: feat: jimmy: added respond to tagged for discord
-- [`67aecb649e4c`](https://github.com/elizaOS/eliza/commit/67aecb649e4c46b797a527374b2cbab4a7756fe5) 2025-04-09 samarth30: feat: renamed member updates file , fixed member updates action and enhanced examples to fix hallucinations
+- [`67aecb649e4c`](https://github.com/elizaOS/eliza/commit/67aecb649e4c46b797a527374b2cbab4a7756fe5) 2025-04-09 samarth30: feat: renamed member updates file, fixed member updates action and enhanced examples to fix hallucinations
 - [`5ee88c866a4e`](https://github.com/elizaOS/eliza/commit/5ee88c866a4e8af71a891d450e0d5dd41df21bb1) 2025-04-17 samarth30: feat: jimmy : updated format for updates
 - [`a5ed756b29c9`](https://github.com/elizaOS/eliza/commit/a5ed756b29c988288caac8d530b1810c815af9d2) 2025-04-17 samarth30: feat: jimmy : add team member action added to jimmy
 - [`3aedde058df6`](https://github.com/elizaOS/eliza/commit/3aedde058df634451a1522313c30d6dbde32bdcb) 2025-04-18 samarth30: feat: Jimmy : created list team members action
@@ -11380,7 +11380,7 @@ Original commit hashes, oldest first:
 - [`8d7f443b495a`](https://github.com/elizaOS/eliza/commit/8d7f443b495a688616f1d753827dbe0819a7daf7) 2025-05-12 odilitime: addParticipantsRoom clean up
 - [`5e0d291e6b22`](https://github.com/elizaOS/eliza/commit/5e0d291e6b2273eabcf61878ab4016b754df2709) 2025-05-22 odilitime: style
 - [`93cb35a69a84`](https://github.com/elizaOS/eliza/commit/93cb35a69a84fcd22929cbc7a72c31f93d149bf3) 2025-05-14 Odilitime: Update packages/plugin-sql/src/base.ts
-- [`fd59bdcf5de0`](https://github.com/elizaOS/eliza/commit/fd59bdcf5de0f2fb979805c8e09350cf80a71916) 2025-05-14 Odilitime: Update packages/core/src/runtime.ts
+- [`fd59bdcf5de0`](https://github.com/elizaOS/eliza/commit/fd59bdcf5de0f2fb979805c8e09350cf80a71916) 2025-05-14 Odilitime: Update packages/src/runtime.ts
 - [`bdb207399557`](https://github.com/elizaOS/eliza/commit/bdb207399557936d1519a7d2fbc3438832b219b4) 2025-05-14 Odilitime: Update packages/plugin-sql/src/base.ts
 - [`e1ec68d3eb52`](https://github.com/elizaOS/eliza/commit/e1ec68d3eb52e55382ffe33b2d9ca4cb430e5cf6) 2025-05-14 Odilitime: Update packages/plugin-sql/src/base.ts
 - [`3a486b826297`](https://github.com/elizaOS/eliza/commit/3a486b8262970a4ef9e0062d503f3649de08e912) 2025-05-22 odilitime: Merge branch 'odi-v2-dbapi' of https://github.com/elizaos/eliza into odi-v2-dbapi
@@ -11487,7 +11487,7 @@ Original commit hashes, oldest first:
 - [`d4bb22c975f9`](https://github.com/elizaOS/eliza/commit/d4bb22c975f976b78b9c6ca596f7507481c7b31a) 2025-05-15 madjin: add link to github leaderboard
 - [`2e99c3caa257`](https://github.com/elizaOS/eliza/commit/2e99c3caa257230f12b5923c1ea806b03682399a) 2025-05-15 yung algorithm: fix: make update -c properly identify outdated packages
 - [`f11fe94ffb6c`](https://github.com/elizaOS/eliza/commit/f11fe94ffb6c8cbbdd4d5f3c2bb8df4473a42b8d) 2025-05-15 yung algorithm: fix: -sb option not skipping build
-- [`9c8480983fca`](https://github.com/elizaOS/eliza/commit/9c8480983fca1c52a2b515d276d16094a067ad53) 2025-05-15 Ting Chien Meng: Ensure  is always called by wrapping entire message handler in try-finally
+- [`9c8480983fca`](https://github.com/elizaOS/eliza/commit/9c8480983fca1c52a2b515d276d16094a067ad53) 2025-05-15 Ting Chien Meng: Ensure is always called by wrapping entire message handler in try-finally
 - [`604c771bebf8`](https://github.com/elizaOS/eliza/commit/604c771bebf8f42baf973630cab6b90bc0f3a37f) 2025-05-15 Ting Chien Meng: add missing onComplete to VOICE_MESSAGE_RECEIVED
 - [`6f47135a24e1`](https://github.com/elizaOS/eliza/commit/6f47135a24e12adc0d47ade2b384079da640dd7b) 2025-05-15 tcm390: Merge pull request #4589 from elizaOS/tcm/fix-onComplete
 - [`baaa0c6007be`](https://github.com/elizaOS/eliza/commit/baaa0c6007be51c8aa97d6e479593bc40edc699d) 2025-05-15 yung algorithm: Merge branch 'v2-develop' of https://github.com/elizaOS/eliza into v2-develop
@@ -11548,9 +11548,9 @@ Original commit hashes, oldest first:
 - [`e87e3b0f276b`](https://github.com/elizaOS/eliza/commit/e87e3b0f276b8fadf7537627b8e9d0157f651800) 2025-05-16 tcm390: Merge pull request #4608 from elizaOS/tcm/fix-reply
 - [`166565b2e99d`](https://github.com/elizaOS/eliza/commit/166565b2e99d16b1f2389b0572ffcad781128c74) 2025-05-16 Sayo: Merge branch 'v2-develop' into ELIZA290/cli-merge-update-cli-into-update-command
 - [`a6c4ebd4e544`](https://github.com/elizaOS/eliza/commit/a6c4ebd4e544a20b083250b94efe65a03352cb63) 2025-05-16 Sayo: Merge pull request #4592 from elizaOS/ELIZA290/cli-merge-update-cli-into-update-command
-- [`cffd8c16d2bc`](https://github.com/elizaOS/eliza/commit/cffd8c16d2bced14a50d6e152f69f92013db461a) 2025-05-16 Sayo: Update .npmignore
+- [`cffd8c16d2bc`](https://github.com/elizaOS/eliza/commit/cffd8c16d2bced14a50d6e152f69f92013db461a) 2025-05-16 Sayo: Update.npmignore
 - [`7b4755089da7`](https://github.com/elizaOS/eliza/commit/7b4755089da7af180eda974de2471dec8b1fa194) 2025-05-16 Sayo: v1.0.0-beta.52
-- [`0a0fcafb179a`](https://github.com/elizaOS/eliza/commit/0a0fcafb179ac6c695c4cd9d16ef9e179c96daa2) 2025-05-16 yung algorithm: list command gives a warning message if no .env present
+- [`0a0fcafb179a`](https://github.com/elizaOS/eliza/commit/0a0fcafb179ac6c695c4cd9d16ef9e179c96daa2) 2025-05-16 yung algorithm: list command gives a warning message if no.env present
 - [`cb4ede24f966`](https://github.com/elizaOS/eliza/commit/cb4ede24f966b5af7aeca25c2d3a78f6730a3192) 2025-05-16 yung algorithm: elizaos env list: add system info as a flag option to keep consistency
 - [`a1c2993b65a7`](https://github.com/elizaOS/eliza/commit/a1c2993b65a70b5f81602508b5a28384b54e62f3) 2025-05-16 yung algorithm: fix set-path and interactive => set custom environment path option
 - [`e182610f6177`](https://github.com/elizaOS/eliza/commit/e182610f61778c70c04e70a4ca4fd5bcad6b9cf8) 2025-05-16 yung algorithm: fix reset subcommand - add all options (global, local, cache folder, global db, local db)
@@ -11587,7 +11587,7 @@ Original commit hashes, oldest first:
 - [`112db30bbc78`](https://github.com/elizaOS/eliza/commit/112db30bbc78207829be58d25d7f736793af21b4) 2025-05-17 Sayo: Merge pull request #4625 from elizaOS/codex/remove-wait-function-from-start-ts
 - [`ea4135e71dcc`](https://github.com/elizaOS/eliza/commit/ea4135e71dcc6f79e84670127a7100375daee1e7) 2025-05-18 Cardinal: return ID of newly created agent
 - [`52ad107050f8`](https://github.com/elizaOS/eliza/commit/52ad107050f8e8476f49153bb39b7fed81c901e1) 2025-05-17 yung algorithm: add -chars flag to dev to match start command
-- [`5afba7dee016`](https://github.com/elizaOS/eliza/commit/5afba7dee016928becf973c93b0650f6af979b93) 2025-05-17 yung algorithm: accept char name args without .json (works for dev and start command too)
+- [`5afba7dee016`](https://github.com/elizaOS/eliza/commit/5afba7dee016928becf973c93b0650f6af979b93) 2025-05-17 yung algorithm: accept char name args without.json (works for dev and start command too)
 - [`e5626ceb2ae1`](https://github.com/elizaOS/eliza/commit/e5626ceb2ae1818cece6d0823bbdabe1309cb4de) 2025-05-17 yung algorithm: update start and dev docs
 - [`7274a820da2a`](https://github.com/elizaOS/eliza/commit/7274a820da2a9297e55b92bff1e670b1906b3e6d) 2025-05-17 yung algorithm: collapse -characters into -character, so -char now accepts one or more char files
 - [`840dfe9f6caa`](https://github.com/elizaOS/eliza/commit/840dfe9f6caa4b96ded2b0792a7c874211011bf1) 2025-05-17 yung algorithm: Update packages/cli/src/server/loader.ts
@@ -11641,7 +11641,7 @@ Original commit hashes, oldest first:
 - [`bacb84885b24`](https://github.com/elizaOS/eliza/commit/bacb84885b2420d59f68c5e0940634c86ed4b9eb) 2025-05-20 tcm390: Merge pull request #4651 from elizaOS/tcm/remove-shortcut
 - [`60cfb9b66c2a`](https://github.com/elizaOS/eliza/commit/60cfb9b66c2a69f2cbd05d23fed34dd4ce374567) 2025-05-19 Christopher Trimboli: add sentry logging to core logger errrors
 - [`7264c9e21262`](https://github.com/elizaOS/eliza/commit/7264c9e21262e1dedef0495f6e03e1313f4623d8) 2025-05-19 Christopher Trimboli: remove comments
-- [`9769b45a1957`](https://github.com/elizaOS/eliza/commit/9769b45a19573145a63f04c39e324bcb3fbebc15) 2025-05-19 cjft: Update packages/core/src/sentry/instrument.ts
+- [`9769b45a1957`](https://github.com/elizaOS/eliza/commit/9769b45a19573145a63f04c39e324bcb3fbebc15) 2025-05-19 cjft: Update packages/src/sentry/instrument.ts
 - [`facb6bffd250`](https://github.com/elizaOS/eliza/commit/facb6bffd2502a8f8ed6920b60fec2a336423151) 2025-05-19 cjft: Merge pull request #4650 from elizaOS/telemetry
 - [`abd0f9fc8947`](https://github.com/elizaOS/eliza/commit/abd0f9fc89478661cd60ea9d12429aeb9ed5833b) 2025-05-19 Christopher Trimboli: add libvips-dev to fix sharp install in CI
 - [`ff80fa2d51b3`](https://github.com/elizaOS/eliza/commit/ff80fa2d51b39cd96fdfdd684c5e57bab0320239) 2025-05-20 Christopher Trimboli: fix sharp
@@ -12001,7 +12001,7 @@ Original commit hashes, oldest first:
 - [`a8d754b6d2ad`](https://github.com/elizaOS/eliza/commit/a8d754b6d2ad63750e193d0767a4e5bfdbcfdf3b) 2025-05-21 madjin: remove extra llms-plugins.txt file
 - [`9719477e6f1d`](https://github.com/elizaOS/eliza/commit/9719477e6f1d0ec27ff7418024e6fe9986683c5e) 2025-05-21 Sayo: make registry parsing direct executable + exportable
 - [`080d6ea76304`](https://github.com/elizaOS/eliza/commit/080d6ea763040081ff675e4913f7a98e1fe0ff15) 2025-05-21 Sayo: Merge pull request #4694 from elizaOS/executable+exportable
-- [`4c2343159110`](https://github.com/elizaOS/eliza/commit/4c234315911041571184b938817a2cbd152c89d5) 2025-05-21 Sayo: make create command only create .pglite in target dir
+- [`4c2343159110`](https://github.com/elizaOS/eliza/commit/4c234315911041571184b938817a2cbd152c89d5) 2025-05-21 Sayo: make create command only create.pglite in target dir
 - [`48cfc9f94bf1`](https://github.com/elizaOS/eliza/commit/48cfc9f94bf135f1e97334c52b7427e77578f887) 2025-05-21 Sayo: respect inline provided env
 - [`c2b0752aef66`](https://github.com/elizaOS/eliza/commit/c2b0752aef664d5cea1248759d7ce0128656ea71) 2025-05-21 Sayo: use right pglite with start command
 - [`3de2e8431d26`](https://github.com/elizaOS/eliza/commit/3de2e8431d264e1c75714a0ffb959093fb21f24f) 2025-05-21 Sayo: Merge pull request #4695 from elizaOS/create-pglite-targetdir
@@ -12028,9 +12028,9 @@ Original commit hashes, oldest first:
 - [`f496780dc219`](https://github.com/elizaOS/eliza/commit/f496780dc21928ff3a4c26ee9df3aabf5ad27199) 2025-05-22 Sayo: move from core to cli utils
 - [`9b5b774cdfec`](https://github.com/elizaOS/eliza/commit/9b5b774cdfec70645ae7a2c453b84c342ebcd7d3) 2025-05-22 Sayo: remaining change
 - [`16619a9859e8`](https://github.com/elizaOS/eliza/commit/16619a9859e8294883b6b7ec5b0f9a707b1416a8) 2025-05-22 Sayo: minor
-- [`dfddea97d116`](https://github.com/elizaOS/eliza/commit/dfddea97d1166e8754b6c06d090646d5598053ff) 2025-05-22 Sayo: Update .gitignore
+- [`dfddea97d116`](https://github.com/elizaOS/eliza/commit/dfddea97d1166e8754b6c06d090646d5598053ff) 2025-05-22 Sayo: Update.gitignore
 - [`0d28ca80effe`](https://github.com/elizaOS/eliza/commit/0d28ca80effe1fe5db9c637140527da5d33e486b) 2025-05-22 Sayo: eliminate home dir dependence further
-- [`990057e7aff0`](https://github.com/elizaOS/eliza/commit/990057e7aff08b34f45d12d26f55a9ad8cc6fc02) 2025-05-22 Sayo: use .elizadb and some more
+- [`990057e7aff0`](https://github.com/elizaOS/eliza/commit/990057e7aff08b34f45d12d26f55a9ad8cc6fc02) 2025-05-22 Sayo: use.elizadb and some more
 - [`5ed67ff7f50c`](https://github.com/elizaOS/eliza/commit/5ed67ff7f50c0ca5e593a078ee84ed4df9a6fa4c) 2025-05-22 Sayo: cleaner
 - [`a0f884fb11bd`](https://github.com/elizaOS/eliza/commit/a0f884fb11bd07a8cbe172edeab425340d35e8d8) 2025-05-22 Sayo: update in tests
 - [`684852790161`](https://github.com/elizaOS/eliza/commit/684852790161cdade2700b2b9a9e5692df181b4d) 2025-05-22 Sayo: change parse dir
@@ -12064,7 +12064,7 @@ Original commit hashes, oldest first:
 - [`b27e2146d8c3`](https://github.com/elizaOS/eliza/commit/b27e2146d8c3ed5c2e883403bdb1f59aaae2679d) 2025-05-23 Sayo: v1.0.0-beta.61
 - [`b1ae9952542a`](https://github.com/elizaOS/eliza/commit/b1ae9952542a95c6c4e76ca1b9c3884319d75ebb) 2025-05-22 Odilitime: Merge branch 'v2-develop' into odi-v2-dbapi
 - [`a3ee20397b94`](https://github.com/elizaOS/eliza/commit/a3ee20397b941073906cccccf05ed3c30e5370f3) 2025-05-22 odilitime: Merge branch 'odi-v2-dbapi' of https://github.com/elizaos/eliza into odi-v2-dbapi
-- [`e9d4e52c355f`](https://github.com/elizaOS/eliza/commit/e9d4e52c355f0146ca4493b938b11c1c9763b373) 2025-05-22 odilitime: fix getEntityById internal calls, kill createRoom/createEntity since we have the multi, remove some seemingly unneeded no .length checks
+- [`e9d4e52c355f`](https://github.com/elizaOS/eliza/commit/e9d4e52c355f0146ca4493b938b11c1c9763b373) 2025-05-22 odilitime: fix getEntityById internal calls, kill createRoom/createEntity since we have the multi, remove some seemingly unneeded no.length checks
 - [`d3ee213bceb3`](https://github.com/elizaOS/eliza/commit/d3ee213bceb384b34cc67d934f3f197469215c52) 2025-05-22 odilitime: createRoom => createRooms
 - [`ae18b4e69a00`](https://github.com/elizaOS/eliza/commit/ae18b4e69a00ab539c6c1515848bb78e0402e9f4) 2025-05-22 odilitime: style
 - [`246d0fa4d875`](https://github.com/elizaOS/eliza/commit/246d0fa4d875e421e0feddcb90bf3d89a023d7ec) 2025-05-22 odilitime: createRoom => createRooms, lower logging
@@ -12128,12 +12128,12 @@ Original commit hashes, oldest first:
 - [`0b64092eea1e`](https://github.com/elizaOS/eliza/commit/0b64092eea1e5058f9cc7d8cabe703fdda09b512) 2025-05-22 Shaw: remove docs
 - [`0ac9866179ec`](https://github.com/elizaOS/eliza/commit/0ac9866179ec8616cf34de33d731a925d840a0ab) 2025-05-22 Shaw: fix missing refs
 - [`576edc1c61f7`](https://github.com/elizaOS/eliza/commit/576edc1c61f7381e7ec67eec52411d015441563c) 2025-05-22 Shaw: service definition
-- [`03f0770bc0c9`](https://github.com/elizaOS/eliza/commit/03f0770bc0c9dad59f07981d347fe6fea7c6e702) 2025-05-22 Christopher Trimboli: write .env example, cleanup get-config functions
+- [`03f0770bc0c9`](https://github.com/elizaOS/eliza/commit/03f0770bc0c9dad59f07981d347fe6fea7c6e702) 2025-05-22 Christopher Trimboli: write.env example, cleanup get-config functions
 - [`8e11ef05794b`](https://github.com/elizaOS/eliza/commit/8e11ef05794ba7bcb2741684d9af2572f2160ad6) 2025-05-22 Shaw: Update get-config.ts
 - [`f049d6906d0b`](https://github.com/elizaOS/eliza/commit/f049d6906d0b5166d39c07ce0b7e379b9807de1d) 2025-05-22 Shaw: Merge pull request #4721 from elizaOS/env-cli-fixes
 - [`468cf078c4a0`](https://github.com/elizaOS/eliza/commit/468cf078c4a0c85a0e16cd3235211a9aa1e98eaf) 2025-05-22 Odilitime: Merge branch 'v2-develop' into odi-v2-dbapi
 - [`0c8ffa23133a`](https://github.com/elizaOS/eliza/commit/0c8ffa23133af82c58c0ab0b8a8f2828cb69c4ea) 2025-05-23 odilitime: createEntity => createEntities
-- [`179ea1e58bad`](https://github.com/elizaOS/eliza/commit/179ea1e58bad3c5cef9e996f321af6c62164e32b) 2025-05-22 Shaw: much more helpful .env.example
+- [`179ea1e58bad`](https://github.com/elizaOS/eliza/commit/179ea1e58bad3c5cef9e996f321af6c62164e32b) 2025-05-22 Shaw: much more helpful.env.example
 - [`cbca482ecd23`](https://github.com/elizaOS/eliza/commit/cbca482ecd23eec42830b6949fb350d3784de673) 2025-05-22 Shaw: Merge branch 'v2-develop' of https://github.com/elizaos/eliza into HEAD
 - [`123ad43c6e4f`](https://github.com/elizaOS/eliza/commit/123ad43c6e4f17cb782d0f00fed617ad1ee6aaf5) 2025-05-22 Shaw: fix test
 - [`dd01af6d2ac8`](https://github.com/elizaOS/eliza/commit/dd01af6d2ac8b04d44bb95ec820e4815e7396aa9) 2025-05-22 Shaw: fix room test
@@ -12161,7 +12161,7 @@ Original commit hashes, oldest first:
 - [`c58fb1101268`](https://github.com/elizaOS/eliza/commit/c58fb1101268edfcb32dc30a05305bf0069c96ec) 2025-05-12 odilitime: addParticipantsRoom clean up
 - [`0b4ba67b335a`](https://github.com/elizaOS/eliza/commit/0b4ba67b335ace43d683152f8265b28ae1af982a) 2025-05-22 odilitime: style
 - [`7412fd4b78b3`](https://github.com/elizaOS/eliza/commit/7412fd4b78b32c7cd45e9a28e2af70e425372b17) 2025-05-14 Odilitime: Update packages/plugin-sql/src/base.ts
-- [`a4cc36578ebe`](https://github.com/elizaOS/eliza/commit/a4cc36578ebe298cb2f9e12ec87db04580dd97e6) 2025-05-14 Odilitime: Update packages/core/src/runtime.ts
+- [`a4cc36578ebe`](https://github.com/elizaOS/eliza/commit/a4cc36578ebe298cb2f9e12ec87db04580dd97e6) 2025-05-14 Odilitime: Update packages/src/runtime.ts
 - [`a944ad7fcec2`](https://github.com/elizaOS/eliza/commit/a944ad7fcec26dd6c7ada5739a224b31cf922581) 2025-05-14 Odilitime: Update packages/plugin-sql/src/base.ts
 - [`e288a1b93b57`](https://github.com/elizaOS/eliza/commit/e288a1b93b57e056c73908e1c6fad84612bf0321) 2025-05-14 Odilitime: Update packages/plugin-sql/src/base.ts
 - [`47ccf7bf95f2`](https://github.com/elizaOS/eliza/commit/47ccf7bf95f2ebee7e9381a82e1fb2eb10be7d05) 2025-05-22 odilitime: createEntity/createRoom/addParticipant remove from adapter, move into wrapper inside runtime
@@ -12170,7 +12170,7 @@ Original commit hashes, oldest first:
 - [`9cbb9943e5ea`](https://github.com/elizaOS/eliza/commit/9cbb9943e5ea8c8145f825c3271397a60ade4a45) 2025-05-22 odilitime: fix createRoom return, fix createEntities return type
 - [`f35654a3fe0b`](https://github.com/elizaOS/eliza/commit/f35654a3fe0b4592fe332e848b7db737d5ceec33) 2025-05-22 odilitime: fix createEntities prototype
 - [`df3717b7c6de`](https://github.com/elizaOS/eliza/commit/df3717b7c6deca2c4ddadc0214cc21ea81a18754) 2025-05-22 odilitime: fix createRoom, createEntity/createEntities returns/types
-- [`312448e805cf`](https://github.com/elizaOS/eliza/commit/312448e805cf34613a1d060777f8f82894edb794) 2025-05-22 odilitime: fix getEntityById internal calls, kill createRoom/createEntity since we have the multi, remove some seemingly unneeded no .length checks
+- [`312448e805cf`](https://github.com/elizaOS/eliza/commit/312448e805cf34613a1d060777f8f82894edb794) 2025-05-22 odilitime: fix getEntityById internal calls, kill createRoom/createEntity since we have the multi, remove some seemingly unneeded no.length checks
 - [`1634274a89ac`](https://github.com/elizaOS/eliza/commit/1634274a89ac4696584da8ed027692ba92c5ae34) 2025-05-22 odilitime: createRoom => createRooms
 - [`05e1db960067`](https://github.com/elizaOS/eliza/commit/05e1db9600672c40bf79f1d8de3ab62556431ee4) 2025-05-22 odilitime: style
 - [`2852fb617173`](https://github.com/elizaOS/eliza/commit/2852fb61717305cf6cbd884d6a1d743d8a675ce7) 2025-05-22 odilitime: createRoom => createRooms, lower logging
@@ -12232,7 +12232,7 @@ Original commit hashes, oldest first:
 - [`47a65b456dd7`](https://github.com/elizaOS/eliza/commit/47a65b456dd7f41d3242071466d66b91da2abf63) 2025-05-22 yung algorithm: fix helper text scope -- projects dont get published to the registry, the core func of publish is plugin publishing to registry
 - [`e7e439f2265c`](https://github.com/elizaOS/eliza/commit/e7e439f2265cc276c8541b10e743111840ad142e) 2025-05-22 yung algorithm: remove -r / --registry opt. there is only one registry.
 - [`ef70ebfbad9a`](https://github.com/elizaOS/eliza/commit/ef70ebfbad9afb41bb51777ceaf31d24d969faff) 2025-05-22 yung algorithm: fix: use findNearestEnvFile(), etc to lookup github creds, before was hardcode searching for them only in ~/.eliza/.env
-- [`131c242bd1fe`](https://github.com/elizaOS/eliza/commit/131c242bd1fef40649ce716b83542c1d98a9ca9e) 2025-05-22 yung algorithm: add .env to plugin-starter's .gitignore file (publishing was failing due to key presence ofc)
+- [`131c242bd1fe`](https://github.com/elizaOS/eliza/commit/131c242bd1fef40649ce716b83542c1d98a9ca9e) 2025-05-22 yung algorithm: add.env to plugin-starter's.gitignore file (publishing was failing due to key presence ofc)
 - [`945b328e8c44`](https://github.com/elizaOS/eliza/commit/945b328e8c444bc47e27cc9c509a698e47ecf2d2) 2025-05-23 yung algorithm: update plugin-starter package.json to have necessary metadata for registry
 - [`f520fde659f0`](https://github.com/elizaOS/eliza/commit/f520fde659f0bac3c6bd7b88c590fa7af36d097b) 2025-05-23 yung algorithm: update plugin prefix check/add function to also validate "plugin-alphanumeric" format
 - [`095a3b2c3a74`](https://github.com/elizaOS/eliza/commit/095a3b2c3a74d3a280a793c5a3fc7e12ba842310) 2025-05-23 yung algorithm: update name handling in publisher.ts so it doesnt expect elizaos anymore as thats been removed
@@ -12242,7 +12242,7 @@ Original commit hashes, oldest first:
 - [`dac5b7c3968e`](https://github.com/elizaOS/eliza/commit/dac5b7c3968e45aa1eeadf562d1a7c7c7f1ba9bf) 2025-05-23 Sayo: Merge pull request #4731 from elizaOS/feat-enhance-plugin-publishing-with-NPM-authentication-and-validation-fixed
 - [`79574876912a`](https://github.com/elizaOS/eliza/commit/79574876912ad121e2a130e903868ad4d5e64174) 2025-05-23 Sayo: Merge branch 'v2-develop' into codex/add-graph-view-for-memories
 - [`443688909315`](https://github.com/elizaOS/eliza/commit/443688909315ec11c8c02a5334a53879de809c71) 2025-05-23 Shaw: Add prompt utilities tests
-- [`e4ceabaff231`](https://github.com/elizaOS/eliza/commit/e4ceabaff231091f7954351fe8f8d88b8be45e6c) 2025-05-23 Sayo: fix: prevent .elizadb directory creation when using PostgreSQL
+- [`e4ceabaff231`](https://github.com/elizaOS/eliza/commit/e4ceabaff231091f7954351fe8f8d88b8be45e6c) 2025-05-23 Sayo: fix: prevent.elizadb directory creation when using PostgreSQL
 - [`d5793e73709c`](https://github.com/elizaOS/eliza/commit/d5793e73709c6fe7c91451c11f99f8c47a740cf7) 2025-05-23 Sayo: Merge pull request #4741 from elizaOS/fix/prevent-elizadb-directory-creation
 - [`0f4d17142dc4`](https://github.com/elizaOS/eliza/commit/0f4d17142dc419186f732b10d667923a6a9adc3e) 2025-05-23 Sayo: Create claude.yml
 - [`c1e4b8f0fa4a`](https://github.com/elizaOS/eliza/commit/c1e4b8f0fa4ad617dd471e9a445ae872d37153a4) 2025-05-23 0xbbjoker: chore: update twitter setup blog
@@ -12258,11 +12258,11 @@ Original commit hashes, oldest first:
 - [`d5fcf3074b7b`](https://github.com/elizaOS/eliza/commit/d5fcf3074b7b40f36466d0600cb1a6ec12b2d741) 2025-05-24 Sayo: Create 1748080955693-870721841-qB4pcvcV_400x400.jpg
 - [`6ab1005e6dd9`](https://github.com/elizaOS/eliza/commit/6ab1005e6dd976a82b3247a2985bb431744ecfa9) 2025-05-23 Christopher Trimboli: unpeg CLI plugin / core deps
 - [`80216d289e8e`](https://github.com/elizaOS/eliza/commit/80216d289e8ef6f01341d405cae8e22a62a57efe) 2025-05-23 cjft: Merge pull request #4747 from elizaOS/cli-71
-- [`98cc1aee49c0`](https://github.com/elizaOS/eliza/commit/98cc1aee49c0224344f6fa601d26ca581160d2f6) 2025-05-23 Christopher Trimboli: bump CLI .72
+- [`98cc1aee49c0`](https://github.com/elizaOS/eliza/commit/98cc1aee49c0224344f6fa601d26ca581160d2f6) 2025-05-23 Christopher Trimboli: bump CLI.72
 - [`93ee5b8c6c8d`](https://github.com/elizaOS/eliza/commit/93ee5b8c6c8d585853568564132e0e51f8e723f3) 2025-05-23 Christopher Trimboli: v1.0.0-beta.70
 - [`6c367b48e994`](https://github.com/elizaOS/eliza/commit/6c367b48e9948cb4f91e0a072448f8db46a28a8e) 2025-05-23 Christopher Trimboli: v1.0.0-beta.71
-- [`315f498bd443`](https://github.com/elizaOS/eliza/commit/315f498bd443584b0632a2ac79d44b740dc968e8) 2025-05-23 Christopher Trimboli: .72 deploy
-- [`b66897cbd2fa`](https://github.com/elizaOS/eliza/commit/b66897cbd2fa209488bdfa0f411b90bbd2aa5d44) 2025-05-23 Christopher Trimboli: fix env files, .73 release
+- [`315f498bd443`](https://github.com/elizaOS/eliza/commit/315f498bd443584b0632a2ac79d44b740dc968e8) 2025-05-23 Christopher Trimboli:.72 deploy
+- [`b66897cbd2fa`](https://github.com/elizaOS/eliza/commit/b66897cbd2fa209488bdfa0f411b90bbd2aa5d44) 2025-05-23 Christopher Trimboli: fix env files,.73 release
 - [`e9f778ee5c43`](https://github.com/elizaOS/eliza/commit/e9f778ee5c438b05149ba461a4f3219506624b90) 2025-05-23 0xbbjoker: chore: improve message handler template
 - [`04cd12b9a450`](https://github.com/elizaOS/eliza/commit/04cd12b9a450a90a5d5bbfaa97457b87232de153) 2025-05-23 0xbbjoker: chore: improve workflow logic in bootstrap
 - [`25b19bc1b18d`](https://github.com/elizaOS/eliza/commit/25b19bc1b18d9ca4b799b60c01e891389f1cc8e1) 2025-05-23 0xbbjoker: chore: get rid of to many msg exmaples
@@ -12277,7 +12277,7 @@ Original commit hashes, oldest first:
 - [`ae9bf70c9512`](https://github.com/elizaOS/eliza/commit/ae9bf70c95127fb5399f626912a17b9db15eaacb) 2025-05-23 Sayo: v1.0.0-beta.73
 - [`d5bd5c43bfeb`](https://github.com/elizaOS/eliza/commit/d5bd5c43bfebeb7ac02f9e029f924cb6cd5c2ec7) 2025-05-23 Sayo: v1.0.0-beta.74
 - [`2e15695530c8`](https://github.com/elizaOS/eliza/commit/2e15695530c8433cc02dc21ac399dfc2b7372317) 2025-05-23 Sayo: 74 published
-- [`726fc355232c`](https://github.com/elizaOS/eliza/commit/726fc355232c6c3b19c483f1981157311d3ba463) 2025-05-23 Christopher Trimboli: fix .env hoisting in non-monorepos
+- [`726fc355232c`](https://github.com/elizaOS/eliza/commit/726fc355232c6c3b19c483f1981157311d3ba463) 2025-05-23 Christopher Trimboli: fix.env hoisting in non-monorepos
 - [`11979f58979a`](https://github.com/elizaOS/eliza/commit/11979f58979a37666a4a3274ee9027b1f8cf7a86) 2025-05-23 cjft: Merge pull request #4752 from elizaOS/fix-env-hoisting
 - [`464d3b2409fd`](https://github.com/elizaOS/eliza/commit/464d3b2409fd85f284f4e8c1924673acf96b3cc2) 2025-05-23 0xbbjoker: chore: improve message handler template
 - [`d93b3b0644e1`](https://github.com/elizaOS/eliza/commit/d93b3b0644e12c5678a00645bca438cb122a6732) 2025-05-24 0xbbjoker: feat: image description generation for attachments
@@ -12355,7 +12355,7 @@ Original commit hashes, oldest first:
 - [`9c1f8d6dbd6f`](https://github.com/elizaOS/eliza/commit/9c1f8d6dbd6f20690c6f5382c2f9af97edb3574f) 2025-05-26 odilitime: adjust now that composeRandomUser/upgradeDoubleToTriple aren't exported
 - [`4eb7854fe664`](https://github.com/elizaOS/eliza/commit/4eb7854fe664b5b68a4aef7b65c0065fb34783a6) 2025-05-27 odilitime: attempt to fix integration test
 - [`513a2eca23d6`](https://github.com/elizaOS/eliza/commit/513a2eca23d67dbcc0e139db02f275cade9b3d4f) 2025-05-27 odilitime: attempt to fix integration tests
-- [`86f889928ade`](https://github.com/elizaOS/eliza/commit/86f889928adeaf790f95c56914629af65306a193) 2025-05-27 odilitime: add .env step
+- [`86f889928ade`](https://github.com/elizaOS/eliza/commit/86f889928adeaf790f95c56914629af65306a193) 2025-05-27 odilitime: add.env step
 - [`7ac86eb6776e`](https://github.com/elizaOS/eliza/commit/7ac86eb6776e5b8fa0460e5e691738473f572ec4) 2025-05-27 odilitime: add telegram
 - [`86435b5c1a65`](https://github.com/elizaOS/eliza/commit/86435b5c1a657064ff1a47f1467225f876460ab5) 2025-05-27 odilitime: don't dynamic import eliza character
 - [`76b093e45e26`](https://github.com/elizaOS/eliza/commit/76b093e45e262b07b0c6b021b98524f798efd076) 2025-05-27 odilitime: update test expected output
@@ -12382,7 +12382,7 @@ Original commit hashes, oldest first:
 - [`eec6970d0625`](https://github.com/elizaOS/eliza/commit/eec6970d0625b9753a902ff765914f46ef9b6092) 2025-05-27 yung algorithm: use actual npm package name as per registry requirements
 - [`f4aaad2fe281`](https://github.com/elizaOS/eliza/commit/f4aaad2fe281172195a5ac3de5300eb96b1dafda) 2025-05-27 Sayo: Merge branch 'eliza290/consolidate-and-update-registry-urls-to-elizaos-plugins' into eliza290/fix-registry-publishing-logic
 - [`e6f24b71f9b9`](https://github.com/elizaOS/eliza/commit/e6f24b71f9b9e31aefd35c1e71e519ea4f151959) 2025-05-27 yung algorithm: Merge pull request #4792 from elizaOS/eliza290/fix-registry-publishing-logic
-- [`9d0095b868ba`](https://github.com/elizaOS/eliza/commit/9d0095b868baa4b8f9b953714c59c5cc6989b4b1) 2025-05-27 yung algorithm: fix: add environment loading to parse-registry.ts to access GITHUB_TOKEN from .env file
+- [`9d0095b868ba`](https://github.com/elizaOS/eliza/commit/9d0095b868baa4b8f9b953714c59c5cc6989b4b1) 2025-05-27 yung algorithm: fix: add environment loading to parse-registry.ts to access GITHUB_TOKEN from.env file
 - [`73179f55447f`](https://github.com/elizaOS/eliza/commit/73179f55447f43b8b7b9736ab231e5c60c6c8125) 2025-05-27 yung algorithm: feat(cli): add npm publishing to default elizaos publish workflow
 - [`945dd87c9403`](https://github.com/elizaOS/eliza/commit/945dd87c9403c1d8433ee9b78252d1ca66a765cb) 2025-05-27 yung algorithm: Merge pull request #4793 from elizaOS/eliza290/make-elizaos-publish-command-include-npm-publishing
 - [`94a8e4f35439`](https://github.com/elizaOS/eliza/commit/94a8e4f3543987d6c82fb1738bdd04e46950393c) 2025-05-27 yung algorithm: docs: update publish workflow documentation for npm integration
@@ -12547,9 +12547,9 @@ Original commit hashes, oldest first:
 - [`09bc33de799a`](https://github.com/elizaOS/eliza/commit/09bc33de799a2e6cc46b69106f465042164e094e) 2025-05-31 yung algorithm: Merge pull request #4849 from elizaOS/fix-misc-code-cleanup
 - [`d49bf67c3067`](https://github.com/elizaOS/eliza/commit/d49bf67c3067244eda874930cfb0098a6c64ef4e) 2025-05-30 Christopher Trimboli: remove process.env checking for model keys on create
 - [`5d48a7f960da`](https://github.com/elizaOS/eliza/commit/5d48a7f960daaf65e6d885f508741d633c9dd046) 2025-05-30 cjft: Merge pull request #4848 from elizaOS/cli-envs
-- [`a061da5eefa3`](https://github.com/elizaOS/eliza/commit/a061da5eefa30cdf2359323694cb58315056d8f1) 2025-05-29 Christopher Trimboli: Improves PGLite setup and .env handling
+- [`a061da5eefa3`](https://github.com/elizaOS/eliza/commit/a061da5eefa30cdf2359323694cb58315056d8f1) 2025-05-29 Christopher Trimboli: Improves PGLite setup and.env handling
 - [`9c5f77d0e6a8`](https://github.com/elizaOS/eliza/commit/9c5f77d0e6a8a9d4455c62fcd059ccc07ab72008) 2025-05-30 Christopher Trimboli: Merge remote-tracking branch 'origin/v2-develop' into starter-env-example
-- [`d01f7d58caf9`](https://github.com/elizaOS/eliza/commit/d01f7d58caf9d9e30c76798360f34c13e28cb8cd) 2025-05-30 Christopher Trimboli: handle existing .env file PG_LITTE_DATA_DIR
+- [`d01f7d58caf9`](https://github.com/elizaOS/eliza/commit/d01f7d58caf9d9e30c76798360f34c13e28cb8cd) 2025-05-30 Christopher Trimboli: handle existing.env file PG_LITTE_DATA_DIR
 - [`7605905fccf0`](https://github.com/elizaOS/eliza/commit/7605905fccf00a04ab98ca012b8acdf95841b550) 2025-05-30 cjft: Merge pull request #4825 from elizaOS/starter-env-example
 - [`165dca40f9ed`](https://github.com/elizaOS/eliza/commit/165dca40f9eddee352c98d282496eaab3798fb25) 2025-05-30 0xbbjoker: fix: action examples bug
 - [`21e60fda0ce6`](https://github.com/elizaOS/eliza/commit/21e60fda0ce6ee496a92559c5e73bf73cfb8015a) 2025-05-30 cjft: Merge pull request #4852 from elizaOS/fix/action-examples
@@ -12583,7 +12583,7 @@ Original commit hashes, oldest first:
 - [`8751a2407bd3`](https://github.com/elizaOS/eliza/commit/8751a2407bd3e30cf746b52b58b7ad226685d36e) 2025-05-31 Sayo: lint
 - [`d72a82d998aa`](https://github.com/elizaOS/eliza/commit/d72a82d998aab8202a1e8ae8e239c56ac7345e8a) 2025-05-31 Sayo: v1.0.2
 - [`1e824a967857`](https://github.com/elizaOS/eliza/commit/1e824a9678574f617cd4cf6e003a29c133d23d10) 2025-06-01 Shaw: Merge branch 'develop' of https://github.com/elizaos/eliza into HEAD
-- [`76839eb04446`](https://github.com/elizaOS/eliza/commit/76839eb044468147f2df80f0876fe809329135f2) 2025-05-31 Shaw: Create .cursorrules
+- [`76839eb04446`](https://github.com/elizaOS/eliza/commit/76839eb044468147f2df80f0876fe809329135f2) 2025-05-31 Shaw: Create.cursorrules
 - [`336e7628ef33`](https://github.com/elizaOS/eliza/commit/336e7628ef337fc49ffbc8e0c4031fb2a58450b8) 2025-06-01 Shaw: Merge pull request #4863 from elizaOS/lalalune-patch-2
 - [`73599d183f85`](https://github.com/elizaOS/eliza/commit/73599d183f850d276bc278f07bda04ca1f873dbe) 2025-05-31 Shaw: Create example.md
 - [`515b2c40ded2`](https://github.com/elizaOS/eliza/commit/515b2c40ded2da5f1e312f33bc88e36a07e80be5) 2025-06-01 Shaw: Merge pull request #4862 from elizaOS/lalalune-patch-1
@@ -12624,7 +12624,7 @@ Original commit hashes, oldest first:
 - [`91e3b26d52a2`](https://github.com/elizaOS/eliza/commit/91e3b26d52a28d2b063aea373afec8ca0e644889) 2025-06-01 0xbbjoker: Merge pull request #4870 from elizaOS/fix-all-tests
 - [`52072155bf39`](https://github.com/elizaOS/eliza/commit/52072155bf392738be3eede524dc90dee19d2773) 2025-06-01 Sayo: Merge branch 'main' into optimize-plugin-loading
 - [`306c2974e0cf`](https://github.com/elizaOS/eliza/commit/306c2974e0cfb5144744bbb25b4d2035f5e41294) 2025-06-01 0xbbjoker: Merge pull request #4868 from elizaOS/optimize-plugin-loading
-- [`eea2e706f872`](https://github.com/elizaOS/eliza/commit/eea2e706f872b8975a6782baed56f0f9b6cf5f55) 2025-06-01 Christopher Trimboli: remove plugin-spec .gitmodule
+- [`eea2e706f872`](https://github.com/elizaOS/eliza/commit/eea2e706f872b8975a6782baed56f0f9b6cf5f55) 2025-06-01 Christopher Trimboli: remove plugin-spec.gitmodule
 - [`952ec198a6a5`](https://github.com/elizaOS/eliza/commit/952ec198a6a583148f083689ca3c2038fa2b8d4f) 2025-06-01 Shaw: Merge pull request #4871 from elizaOS/remove-submodule
 - [`9935fbf8da70`](https://github.com/elizaOS/eliza/commit/9935fbf8da7063f607cc8a00cf9261b6e1cb38a1) 2025-06-01 Christopher Trimboli: fix linter formatting
 - [`a722ddb202f6`](https://github.com/elizaOS/eliza/commit/a722ddb202f619f1c73b7f3022423ac9b3748572) 2025-06-01 cjft: Merge pull request #4878 from elizaOS/fix-format
@@ -12635,7 +12635,7 @@ Original commit hashes, oldest first:
 - [`79bb510900d5`](https://github.com/elizaOS/eliza/commit/79bb510900d55a16e9415e410b964b1b73d9a953) 2025-06-01 Christopher Trimboli: core dts: true, better entry points, bundling changes
 - [`ae82149e3b32`](https://github.com/elizaOS/eliza/commit/ae82149e3b3261cf2a7b2bcd0b72b018f346bd6c) 2025-06-01 Christopher Trimboli: remove ignore watch
 - [`85dd3ec9eadb`](https://github.com/elizaOS/eliza/commit/85dd3ec9eadb5658b6910ef63f3869235c24a442) 2025-06-01 Christopher Trimboli: remove onSuccess
-- [`767360542e89`](https://github.com/elizaOS/eliza/commit/767360542e899ecc2bad4afa15a9687812067022) 2025-06-01 Shaw: Merge pull request #4874 from elizaOS/core-dts
+- [`767360542e89`](https://github.com/elizaOS/eliza/commit/767360542e899ecc2bad4afa15a9687812067022) 2025-06-01 Shaw: Merge pull request #4874 from elizaOS-dts
 - [`0a7303c16301`](https://github.com/elizaOS/eliza/commit/0a7303c16301c0787a69e94aa951fc4981960825) 2025-06-01 David Klank: fix errors in CHANGELOG.md
 - [`5562720da31f`](https://github.com/elizaOS/eliza/commit/5562720da31f141a4027e59a1ecb64e821b7c705) 2025-06-01 Shaw: Merge pull request #4875 from davidjsonn/main
 - [`5a4948c480a8`](https://github.com/elizaOS/eliza/commit/5a4948c480a8d05d4c50a6c3aadae0da381dbd1b) 2025-06-01 Christopher Trimboli: update twitter envs
@@ -12707,7 +12707,7 @@ Original commit hashes, oldest first:
 - [`ca6fc02ba2e8`](https://github.com/elizaOS/eliza/commit/ca6fc02ba2e865f60cc111f0332077d37c7520f8) 2025-06-03 yung algorithm: add missing v1 spec files as tsup entry points
 - [`12d907538e12`](https://github.com/elizaOS/eliza/commit/12d907538e12171793a5b76a77442c01c40cc37b) 2025-06-03 yung algorithm: use type-only exports for types in v1 specs
 - [`4d7c7ef838a8`](https://github.com/elizaOS/eliza/commit/4d7c7ef838a80977b6107b5dc60b4a5c650ac35f) 2025-06-03 yung algorithm: improve readability
-- [`e9613b1cb7e5`](https://github.com/elizaOS/eliza/commit/e9613b1cb7e5e7f7aada5da14db7558e166e1038) 2025-06-02 cjft: Merge pull request #4897 from elizaOS/fix/core-build-missing-entry-points
+- [`e9613b1cb7e5`](https://github.com/elizaOS/eliza/commit/e9613b1cb7e5e7f7aada5da14db7558e166e1038) 2025-06-02 cjft: Merge pull request #4897 from elizaOS/fix-build-missing-entry-points
 - [`86e95b959337`](https://github.com/elizaOS/eliza/commit/86e95b959337f8fad8d9551bb0201be48c6a4818) 2025-06-03 yung algorithm: auto-import plugin when starting from plugin directory
 - [`1fcda99ac0e3`](https://github.com/elizaOS/eliza/commit/1fcda99ac0e3e94ed2304cc908e2f08cf7036fde) 2025-06-03 yung algorithm: replace hardcoded "plugin-starter" in generated plugin templates
 - [`f34334db00b7`](https://github.com/elizaOS/eliza/commit/f34334db00b783a421d07f3cb5593346d12179e1) 2025-06-03 yung algorithm: fetch plugins dynamically from registry and current agent
@@ -12735,8 +12735,8 @@ Original commit hashes, oldest first:
 - [`9b1c77ceabba`](https://github.com/elizaOS/eliza/commit/9b1c77ceabbab7daeffe60f42975bb05c5cfa62d) 2025-06-03 Odilitime: handleServerSync utilize ensureConnections
 - [`d97920b4df1a`](https://github.com/elizaOS/eliza/commit/d97920b4df1a7e5d3ce213203be9d11d8ffe9bdd) 2025-06-03 Shaw: Merge commit '9b1c77ceabbab7daeffe60f42975bb05c5cfa62d' into HEAD
 - [`26a8557cdf08`](https://github.com/elizaOS/eliza/commit/26a8557cdf080c98922e416b77cb65a586272d3d) 2025-06-03 Shaw: runtime
-- [`2901d6275991`](https://github.com/elizaOS/eliza/commit/2901d62759910dff9cf49b4a43544c6a6c8ef15c) 2025-06-03 Odilitime: Update packages/core/src/runtime.ts
-- [`6cc40064e95a`](https://github.com/elizaOS/eliza/commit/6cc40064e95af1e904a84d9cded3329429a858d3) 2025-06-03 Odilitime: Update packages/core/src/runtime.ts
+- [`2901d6275991`](https://github.com/elizaOS/eliza/commit/2901d62759910dff9cf49b4a43544c6a6c8ef15c) 2025-06-03 Odilitime: Update packages/src/runtime.ts
+- [`6cc40064e95a`](https://github.com/elizaOS/eliza/commit/6cc40064e95af1e904a84d9cded3329429a858d3) 2025-06-03 Odilitime: Update packages/src/runtime.ts
 - [`32573649bb40`](https://github.com/elizaOS/eliza/commit/32573649bb40ac133051043b4dda5c9650d5ef59) 2025-06-03 Shaw: remove dead code
 - [`c2291ad1f3f4`](https://github.com/elizaOS/eliza/commit/c2291ad1f3f42f341f52bf4cfb0b4f7e1bdc6ba9) 2025-06-03 Shaw: turbo fix, windows elizaos npx fix
 - [`0197fad62b4f`](https://github.com/elizaOS/eliza/commit/0197fad62b4f0bdc78116a36970246232a6175dd) 2025-06-03 shaw: windows compatibility
@@ -12873,8 +12873,8 @@ Original commit hashes, oldest first:
 - [`4eb0d5cff442`](https://github.com/elizaOS/eliza/commit/4eb0d5cff44224d6bf656bda30b0e344a94f2b0b) 2025-06-06 Sayo: clean: remove obsolete test:cli:legacy script
 - [`9575903fafd6`](https://github.com/elizaOS/eliza/commit/9575903fafd67374e02aa6fdfed52ba195360782) 2025-06-06 Sayo: update: GitHub workflow to use new Bun TypeScript tests
 - [`6d4b08459377`](https://github.com/elizaOS/eliza/commit/6d4b084593776e1cb821fa4d7c8d6dccf0ae53ae) 2025-06-06 yung algorithm: update project-starter and plugin-starter to include updated bun instructions
-- [`00c6ef19e9e5`](https://github.com/elizaOS/eliza/commit/00c6ef19e9e58aded6cb2bf48314e404e6eade0d) 2025-06-06 yung algorithm: update and improve .gitignore files for project-starter, plugin-starter, and project-tee-starter
-- [`73736e7f0223`](https://github.com/elizaOS/eliza/commit/73736e7f0223e1ec2b288f3a2a1a77a83e89c121) 2025-06-06 yung algorithm: remove dist from .npmignore in plugin-starter
+- [`00c6ef19e9e5`](https://github.com/elizaOS/eliza/commit/00c6ef19e9e58aded6cb2bf48314e404e6eade0d) 2025-06-06 yung algorithm: update and improve.gitignore files for project-starter, plugin-starter, and project-tee-starter
+- [`73736e7f0223`](https://github.com/elizaOS/eliza/commit/73736e7f0223e1ec2b288f3a2a1a77a83e89c121) 2025-06-06 yung algorithm: remove dist from.npmignore in plugin-starter
 - [`d610384c4e6e`](https://github.com/elizaOS/eliza/commit/d610384c4e6e463d1770057e3da3e862a5cde47c) 2025-06-06 yung algorithm: add req files for npm to files array in package.json
 - [`f14714dc266e`](https://github.com/elizaOS/eliza/commit/f14714dc266e2750da8874627437d62fa9173b7b) 2025-06-06 yung algorithm: fix(plugin-starter)!: enable TypeScript declaration generation
 - [`6558f7353155`](https://github.com/elizaOS/eliza/commit/6558f73531551d2c71209ed506999800acb4eeaa) 2025-06-06 Sayo: Merge branch 'develop' into fix/plugin-starter-typescript-declarations-ignore-files
@@ -12923,7 +12923,7 @@ Original commit hashes, oldest first:
 - [`af1e63e036c0`](https://github.com/elizaOS/eliza/commit/af1e63e036c0c4021354e46b6eaef3f6384d4d7b) 2025-06-06 Shaw: add cursor rules
 - [`1fc88f2281b5`](https://github.com/elizaOS/eliza/commit/1fc88f2281b5d4ae67c097b9b26beada2f765817) 2025-06-07 Sayo: Merge pull request #4982 from elizaOS/feat/add-cursor-rules
 - [`3aa88b98c37d`](https://github.com/elizaOS/eliza/commit/3aa88b98c37d12280020efdf84bd1d0ab5517939) 2025-06-07 Sayo: Merge branch 'develop' into fix/immediate-port-validation-in-cli
-- [`2f0ce4370575`](https://github.com/elizaOS/eliza/commit/2f0ce43705759155140ca5336848d39dc9afabaa) 2025-06-06 Shaw: feat:  push version back to main and make a pr to develop on release
+- [`2f0ce4370575`](https://github.com/elizaOS/eliza/commit/2f0ce43705759155140ca5336848d39dc9afabaa) 2025-06-06 Shaw: feat: push version back to main and make a pr to develop on release
 - [`c23009c6165d`](https://github.com/elizaOS/eliza/commit/c23009c6165dc530e101343a42d9e8460b5c0dcc) 2025-06-07 Sayo: Merge pull request #4983 from elizaOS/feat/push-version-tag
 - [`ef5c735dbf3d`](https://github.com/elizaOS/eliza/commit/ef5c735dbf3d39d18d2694bfa5cf474ae54a4c99) 2025-06-07 Sayo: Merge branch 'develop' into fix/immediate-port-validation-in-cli
 - [`5f520a9dfd96`](https://github.com/elizaOS/eliza/commit/5f520a9dfd969e15ae36a645bd04b3a17e1b6e21) 2025-06-07 yung algorithm: update docs
@@ -13080,8 +13080,8 @@ Original commit hashes, oldest first:
 - [`737b38234d1e`](https://github.com/elizaOS/eliza/commit/737b38234d1ef6e6a6e805b92af000fd0b20a432) 2025-06-09 Christopher Trimboli: PGLITE_WASM_MODE: node in CI
 - [`936ebd5e1365`](https://github.com/elizaOS/eliza/commit/936ebd5e1365d1b342683e4afe6b9e868c3187c2) 2025-06-09 cjft: Merge pull request #5013 from elizaOS/fix-e2e-db
 - [`c784b67e5539`](https://github.com/elizaOS/eliza/commit/c784b67e55399126098e6b12fdba0e635378a745) 2025-06-09 Christopher Trimboli: cache bun / models in github actions
-- [`4bc75bc43949`](https://github.com/elizaOS/eliza/commit/4bc75bc43949729247bdb70fd66b7b031a9cd878) 2025-06-09 cjft: Update .github/workflows/cli-tests.yml
-- [`058df1996328`](https://github.com/elizaOS/eliza/commit/058df1996328413b967276a007ddb3496725879d) 2025-06-09 cjft: Update .github/workflows/tauri-ci.yml
+- [`4bc75bc43949`](https://github.com/elizaOS/eliza/commit/4bc75bc43949729247bdb70fd66b7b031a9cd878) 2025-06-09 cjft: Update.github/workflows/cli-tests.yml
+- [`058df1996328`](https://github.com/elizaOS/eliza/commit/058df1996328413b967276a007ddb3496725879d) 2025-06-09 cjft: Update.github/workflows/tauri-ci.yml
 - [`fcbc276b4f68`](https://github.com/elizaOS/eliza/commit/fcbc276b4f68ef874655cf72abffbc42ac33368c) 2025-06-09 cjft: Merge pull request #5014 from elizaOS/ci-caches
 - [`e1c0efda1b01`](https://github.com/elizaOS/eliza/commit/e1c0efda1b010e6af2e68516095a990b564f5124) 2025-06-10 Sayo: feat: replace prompts/inquirer with @clack/prompts for enhanced CLI UX
 - [`a1d40d2d5c5b`](https://github.com/elizaOS/eliza/commit/a1d40d2d5c5b0a8d0b0f9a6d12fc9ecff499a170) 2025-06-10 Sayo: revert: keep inquirer in plugin-creator.ts
@@ -13188,7 +13188,7 @@ Original commit hashes, oldest first:
 - [`ce6d39d343d8`](https://github.com/elizaOS/eliza/commit/ce6d39d343d8db6768f861c9c5bce2c7ed895a7a) 2025-06-10 Christopher Trimboli: handle default character project loading, no error
 - [`582e374178b4`](https://github.com/elizaOS/eliza/commit/582e374178b4cb5c3086282bbc5a21cfe77e5ed6) 2025-06-10 0xbbjoker: fix: load the env config before agent project is loaded
 - [`32acdd647af7`](https://github.com/elizaOS/eliza/commit/32acdd647af7e10bd90d03c592e72cb5a73d6ba0) 2025-06-11 Sayo: Merge pull request #5048 from elizaOS/fix/load-the-env-config-before-project-load
-- [`c0d24a78480e`](https://github.com/elizaOS/eliza/commit/c0d24a78480e65a3a17a994c2c30cef43708925f) 2025-06-10 Christopher Trimboli: migrate all generated files into .eliza
+- [`c0d24a78480e`](https://github.com/elizaOS/eliza/commit/c0d24a78480e65a3a17a994c2c30cef43708925f) 2025-06-10 Christopher Trimboli: migrate all generated files into.eliza
 - [`39c11a2675f2`](https://github.com/elizaOS/eliza/commit/39c11a2675f268ecd6b3e5feb5d688645dc7a3ba) 2025-06-10 cjft: Merge pull request #5043 from elizaOS/eliza-folder
 - [`e9eb5446b214`](https://github.com/elizaOS/eliza/commit/e9eb5446b21489eeaea9ab3abd8cf360a95b9df8) 2025-06-10 Christopher Trimboli: fix dup chats
 - [`4925b5e48fc0`](https://github.com/elizaOS/eliza/commit/4925b5e48fc0d0277b24eee1265252a1d95b49b1) 2025-06-10 cjft: Merge pull request #5049 from elizaOS/dup-chats-fix
@@ -13434,7 +13434,7 @@ Original commit hashes, oldest first:
 - [`5154be660107`](https://github.com/elizaOS/eliza/commit/5154be660107bc16a9731af1cdc0b9babd1f9e10) 2025-06-15 cjft: Merge pull request #5119 from urosognjenovic/develop
 - [`cfe975653d0a`](https://github.com/elizaOS/eliza/commit/cfe975653d0abc8e4e33e0653a8548f3847002e1) 2025-06-15 Sayo: Merge remote-tracking branch 'origin/develop' into continue-split-server-package
 - [`a166e9e696aa`](https://github.com/elizaOS/eliza/commit/a166e9e696aac01bf484204f188e9b29e391120e) 2025-06-15 Sayo: Update channels.ts
-- [`5251e9a6a2ef`](https://github.com/elizaOS/eliza/commit/5251e9a6a2ef8707d4385f927926945b48b34239) 2025-06-15 Sayo: Delete .env.example
+- [`5251e9a6a2ef`](https://github.com/elizaOS/eliza/commit/5251e9a6a2ef8707d4385f927926945b48b34239) 2025-06-15 Sayo: Delete.env.example
 - [`1ce39273b988`](https://github.com/elizaOS/eliza/commit/1ce39273b988f767dd178128371857d5a5f16e30) 2025-06-15 Christopher Trimboli: fix agent thinking...
 - [`f1820ace8a75`](https://github.com/elizaOS/eliza/commit/f1820ace8a754bc44c3d8262a93be7f2e5dab9dc) 2025-06-15 cjft: Merge pull request #5128 from elizaOS/fix-thinking
 - [`671ca74c47aa`](https://github.com/elizaOS/eliza/commit/671ca74c47aa70d1b6d63dc9cb131e08c46e0b3d) 2025-06-15 Sayo: Merge remote-tracking branch 'origin/develop' into continue-split-server-package
@@ -13918,7 +13918,7 @@ Original commit hashes, oldest first:
 - [`0ae4b2cb1672`](https://github.com/elizaOS/eliza/commit/0ae4b2cb16725e1a03e21db3e6ba5f061a1c0a89) 2025-06-25 Sayo: Handle 204 and empty responses safely in BaseApiClient
 - [`fee39246284c`](https://github.com/elizaOS/eliza/commit/fee39246284ca2d053e32c62393576f151419d4f) 2025-06-25 Sayo: fix: update attachment formatting to use comma-separated list
 - [`0cd58fd3d9ea`](https://github.com/elizaOS/eliza/commit/0cd58fd3d9ea354d79e057eee21eb37c382cecd0) 2025-06-25 Sayo: fix: properly handle attachment formatting for both simple and complex attachments
-- [`ef21c10c501f`](https://github.com/elizaOS/eliza/commit/ef21c10c501f829ef24fe0014e1884c9e0d49fd4) 2025-06-25 Sayo: Merge pull request #5273 from elizaOS/fix/core-attachment-test-formatting
+- [`ef21c10c501f`](https://github.com/elizaOS/eliza/commit/ef21c10c501f829ef24fe0014e1884c9e0d49fd4) 2025-06-25 Sayo: Merge pull request #5273 from elizaOS/fix-attachment-test-formatting
 - [`13d8f4c0ad31`](https://github.com/elizaOS/eliza/commit/13d8f4c0ad31bfa9ad69c1aa19efcca2bb2b07b8) 2025-06-25 Sayo: Merge branch 'develop' into feature/migrate-client-to-api-client
 - [`de43712ada51`](https://github.com/elizaOS/eliza/commit/de43712ada51781cd77bcf4d0ba771d7b67f5e24) 2025-06-25 tcm390: Merge pull request #5263 from elizaOS/feature/migrate-client-to-api-client
 - [`b28934840096`](https://github.com/elizaOS/eliza/commit/b289348400967e726f7dd72029ecfd842783e074) 2025-06-25 Ting Chien Meng: fix chat stuck issue
@@ -13929,17 +13929,17 @@ Original commit hashes, oldest first:
 - [`084400d8b9e7`](https://github.com/elizaOS/eliza/commit/084400d8b9e7ac2fb4c9dc5c5b146600114f30d8) 2025-06-26 Bealers: fix(plugin-sql): Convert message_servers.id from TEXT to UUID to fix broken foreign key constraints
 - [`44ded023c50a`](https://github.com/elizaOS/eliza/commit/44ded023c50afcfac937bb835d885ac51c272ec2) 2025-06-27 Bealers: feat(server): Add ELIZAOS_UI_ENABLE environment variable to disable web UI in production
 - [`7ecc90425df2`](https://github.com/elizaOS/eliza/commit/7ecc90425df2caff1cdc77e520bf31b1207d07a3) 2025-06-27 Bealers: docs: Add comprehensive documentation for ELIZAOS_UI_ENABLE feature
-- [`76701380bd41`](https://github.com/elizaOS/eliza/commit/76701380bd41219a60ce1c320e2f43a88153fc28) 2025-06-27 Bealers: docs: Add ELIZAOS_UI_ENABLE to .env.example with server configuration section
-- [`58efd1002915`](https://github.com/elizaOS/eliza/commit/58efd10029157c6e780e809d650c1a95be5d23d7) 2025-06-27 Bealers: docs: Clarify ELIZA_SERVER_AUTH_TOKEN security implications in .env.example
+- [`76701380bd41`](https://github.com/elizaOS/eliza/commit/76701380bd41219a60ce1c320e2f43a88153fc28) 2025-06-27 Bealers: docs: Add ELIZAOS_UI_ENABLE to.env.example with server configuration section
+- [`58efd1002915`](https://github.com/elizaOS/eliza/commit/58efd10029157c6e780e809d650c1a95be5d23d7) 2025-06-27 Bealers: docs: Clarify ELIZA_SERVER_AUTH_TOKEN security implications in.env.example
 - [`7d9b62a22fce`](https://github.com/elizaOS/eliza/commit/7d9b62a22fceaa6fc52b591d7a1a4cf907b12bb1) 2025-06-27 Bealers: fix: Rename ELIZAOS_UI_ENABLE to ELIZA_UI_ENABLE for naming consistency
-- [`29394cc38ef7`](https://github.com/elizaOS/eliza/commit/29394cc38ef72f9e8bc8b684e8dc5bc02f87a230) 2025-06-27 Bealers: docs: Minor improvements to .env.example and PR description formatting
+- [`29394cc38ef7`](https://github.com/elizaOS/eliza/commit/29394cc38ef72f9e8bc8b684e8dc5bc02f87a230) 2025-06-27 Bealers: docs: Minor improvements to.env.example and PR description formatting
 - [`c4a0c8849560`](https://github.com/elizaOS/eliza/commit/c4a0c884956012aff79479b42af05db6059ce047) 2025-06-27 Bealers: test: Add comprehensive tests for ELIZA_UI_ENABLE feature
 - [`d5ee449d08ac`](https://github.com/elizaOS/eliza/commit/d5ee449d08ac824ea9fcb26196bd40a9042c357a) 2025-06-27 Bealers: improve: Change UI disabled response from JSON 404 to standard HTTP 403 Forbidden
-- [`3fd8e6fc8799`](https://github.com/elizaOS/eliza/commit/3fd8e6fc879915efa2c9a5a759a974b0b2b9fe50) 2025-06-27 Bealers: cleanup: Remove personal .bealers directory and documentation files from repository
-- [`602699a4e0b1`](https://github.com/elizaOS/eliza/commit/602699a4e0b153fb7bb65e92d0d03a7ce883eab9) 2025-06-27 Bealers: fix: Remove personal .bealers entry from public repository .gitignore
-- [`c4b5700e7f34`](https://github.com/elizaOS/eliza/commit/c4b5700e7f34e947aae98e6745610d520e712ec4) 2025-06-27 Bealers: docs: Add ELIZA_UI_ENABLE to .env.example
-- [`b5feb2eb6765`](https://github.com/elizaOS/eliza/commit/b5feb2eb67652fb87310d3d787065ecd69ff6b31) 2025-06-27 Bealers: docs: Add ELIZA_UI_ENABLE and ELIZA_SERVER_AUTH_TOKEN to .env.example
-- [`3ba52b89e365`](https://github.com/elizaOS/eliza/commit/3ba52b89e365ec0df115b535c4028c1465ca1d57) 2025-06-27 Bealers: docs: Add ELIZA_UI_ENABLE and ELIZA_SERVER_AUTH_TOKEN to .env.example
+- [`3fd8e6fc8799`](https://github.com/elizaOS/eliza/commit/3fd8e6fc879915efa2c9a5a759a974b0b2b9fe50) 2025-06-27 Bealers: cleanup: Remove personal.bealers directory and documentation files from repository
+- [`602699a4e0b1`](https://github.com/elizaOS/eliza/commit/602699a4e0b153fb7bb65e92d0d03a7ce883eab9) 2025-06-27 Bealers: fix: Remove personal.bealers entry from public repository.gitignore
+- [`c4b5700e7f34`](https://github.com/elizaOS/eliza/commit/c4b5700e7f34e947aae98e6745610d520e712ec4) 2025-06-27 Bealers: docs: Add ELIZA_UI_ENABLE to.env.example
+- [`b5feb2eb6765`](https://github.com/elizaOS/eliza/commit/b5feb2eb67652fb87310d3d787065ecd69ff6b31) 2025-06-27 Bealers: docs: Add ELIZA_UI_ENABLE and ELIZA_SERVER_AUTH_TOKEN to.env.example
+- [`3ba52b89e365`](https://github.com/elizaOS/eliza/commit/3ba52b89e365ec0df115b535c4028c1465ca1d57) 2025-06-27 Bealers: docs: Add ELIZA_UI_ENABLE and ELIZA_SERVER_AUTH_TOKEN to.env.example
 - [`979b4e50c3a3`](https://github.com/elizaOS/eliza/commit/979b4e50c3a3648e258ea5237cbd5a8637b613a6) 2025-06-30 Bealers: fix: sensible disabled message and accurate URL now
 - [`e0efb61c9b52`](https://github.com/elizaOS/eliza/commit/e0efb61c9b52453555a7ee0a8007cc00460c3570) 2025-06-25 yung algorithm: add character option to plugin command interfaces (add, remove)
 - [`c19df50846ce`](https://github.com/elizaOS/eliza/commit/c19df50846ce9dbed5fa6ba14f76e91b75f07272) 2025-06-25 yung algorithm: add character file updater utility (supports json and ts)
@@ -14022,7 +14022,7 @@ Original commit hashes, oldest first:
 - [`df8350a51d8e`](https://github.com/elizaOS/eliza/commit/df8350a51d8e37564dd7c6a4472ee18a09b79f88) 2025-06-26 0xbbjoker: Merge branch 'develop' into fix/message-servers-uuid-conversion
 - [`a3557480f262`](https://github.com/elizaOS/eliza/commit/a3557480f262f4aa7f21ec94717218d02d266016) 2025-06-26 Sayo: Merge pull request #5287 from bealers/fix/message-servers-uuid-conversion
 - [`d452526c1557`](https://github.com/elizaOS/eliza/commit/d452526c15578197fd52cf328995e103e4c141b1) 2025-06-26 0xbbjoker: fix(core): fix bun import error by pointing to dist files
-- [`f713529deb74`](https://github.com/elizaOS/eliza/commit/f713529deb74c1f870b0128f0a1c9717425106d1) 2025-06-26 Sayo: Merge pull request #5284 from elizaOS/fix/core-bun-npm-import
+- [`f713529deb74`](https://github.com/elizaOS/eliza/commit/f713529deb74c1f870b0128f0a1c9717425106d1) 2025-06-26 Sayo: Merge pull request #5284 from elizaOS/fix-bun-npm-import
 - [`ecc3a80d796c`](https://github.com/elizaOS/eliza/commit/ecc3a80d796c6f696737f903eeeab3e04e45d61c) 2025-06-27 yung algorithm: rollback-pr-5270
 - [`10fae667f62f`](https://github.com/elizaOS/eliza/commit/10fae667f62ffeccb214a54c106ac8636e725d19) 2025-06-27 yung algorithm: add these timeouts back in as per sayo
 - [`568c6cfa0650`](https://github.com/elizaOS/eliza/commit/568c6cfa0650a310d4e1ef61f288a12e7d046c2c) 2025-06-27 yung algorithm: Update packages/cli/src/commands/plugins/actions/remove.ts
@@ -14155,7 +14155,7 @@ Original commit hashes, oldest first:
 - [`f1875082df7a`](https://github.com/elizaOS/eliza/commit/f1875082df7a2e3cd8bb9e5e46275c092a447879) 2025-07-01 Sayo: regen bunlock
 - [`5f90066b47e0`](https://github.com/elizaOS/eliza/commit/5f90066b47e0fcf5fab6e40033cac1f57a6ac079) 2025-07-01 Christopher Trimboli: Merge remote-tracking branch 'origin/develop' into clack-envs
 - [`b7a5ccd54a30`](https://github.com/elizaOS/eliza/commit/b7a5ccd54a308a6c9c03968ef62ce48422a8991a) 2025-07-01 Sayo: Merge pull request #5326 from elizaOS/clack-envs
-- [`19eece6b1b8e`](https://github.com/elizaOS/eliza/commit/19eece6b1b8ecba927b2c75d0e37460b9aaf4e50) 2025-07-01 Sayo: fix: simplify .env file creation to use template only
+- [`19eece6b1b8e`](https://github.com/elizaOS/eliza/commit/19eece6b1b8ecba927b2c75d0e37460b9aaf4e50) 2025-07-01 Sayo: fix: simplify.env file creation to use template only
 - [`19a0d5b9b37f`](https://github.com/elizaOS/eliza/commit/19a0d5b9b37fe933a48d33bc8df96e93ebd698ea) 2025-06-30 0xbbjoker: chore: update agent secrets when they are empty with local vars
 - [`ccdc4f205ba1`](https://github.com/elizaOS/eliza/commit/ccdc4f205ba1cb4b0a91417d227710b273174128) 2025-07-01 Sayo: Merge pull request #5329 from elizaOS/chore/update-agent-secrets-with-local-env-when-empty
 - [`d5841d40be28`](https://github.com/elizaOS/eliza/commit/d5841d40be2810402c2fa9f207d15a73fc1b28f7) 2025-07-01 0xbbjoker: Merge branch 'develop' into fix/simplify-env-setup
@@ -14174,7 +14174,7 @@ Original commit hashes, oldest first:
 - [`0f4dd5abe923`](https://github.com/elizaOS/eliza/commit/0f4dd5abe9234f77315a0e88401f6df395e9e9d3) 2025-07-01 Sayo: Update AgentCreateParams and agent creation usage
 - [`a5ca2f16f427`](https://github.com/elizaOS/eliza/commit/a5ca2f16f42746a142fa72353547eb22500a8910) 2025-07-01 Sayo: Merge pull request #5342 from elizaOS/feature/character-form-button-layout
 - [`24d6e0e58992`](https://github.com/elizaOS/eliza/commit/24d6e0e589922ade43aec40ae8bad7f0efa23fd6) 2025-07-01 Sayo: Merge branch 'develop' into disable-ui
-- [`da32ee708fd8`](https://github.com/elizaOS/eliza/commit/da32ee708fd8445541027e72621a4e2ccf638afd) 2025-07-01 Bealers: nitpick: de-duplicate multiple .env.example placeholders
+- [`da32ee708fd8`](https://github.com/elizaOS/eliza/commit/da32ee708fd8445541027e72621a4e2ccf638afd) 2025-07-01 Bealers: nitpick: de-duplicate multiple.env.example placeholders
 - [`9059eebc371c`](https://github.com/elizaOS/eliza/commit/9059eebc371c0ed4f31f94e9ef4d1900b94aa0ce) 2025-07-01 Sayo: Refactor web UI enable logic and improve tests
 - [`317653120c67`](https://github.com/elizaOS/eliza/commit/317653120c670dd31b4eac86125b2592d075b278) 2025-07-01 Sayo: Merge pull request #5304 from bealers/disable-ui
 - [`5d362b93d2cc`](https://github.com/elizaOS/eliza/commit/5d362b93d2cc25754c8a6cb1da7d1e4dab333737) 2025-07-01 Dango: fix: handle unwrapped server responses in BaseApiClient
@@ -14275,7 +14275,7 @@ Original commit hashes, oldest first:
 - [`d46e802b9a30`](https://github.com/elizaOS/eliza/commit/d46e802b9a3042e73c9e6863e49619a9ee25cfaf) 2025-07-02 0xbbjoker: chore: improve logs
 - [`e47193d05292`](https://github.com/elizaOS/eliza/commit/e47193d05292739bd0b1f82ff8eb77dabbc8b606) 2025-07-03 0xbbjoker: Merge branch 'develop' into chore/imporve-logs-for-upgrade-cmd
 - [`d2b544dd4e00`](https://github.com/elizaOS/eliza/commit/d2b544dd4e00cece2bdad6fc1ce32d43ac0741e9) 2025-07-03 Sayo: Merge pull request #5348 from elizaOS/chore/imporve-logs-for-upgrade-cmd
-- [`a01641d5bf4b`](https://github.com/elizaOS/eliza/commit/a01641d5bf4b2d770f7874b319c04d40b715014a) 2025-07-03 Sayo: refactor: reorganize .env.example for better clarity
+- [`a01641d5bf4b`](https://github.com/elizaOS/eliza/commit/a01641d5bf4b2d770f7874b319c04d40b715014a) 2025-07-03 Sayo: refactor: reorganize.env.example for better clarity
 - [`6591904cbf49`](https://github.com/elizaOS/eliza/commit/6591904cbf4944e54bc1b050e73564db18630fec) 2025-07-03 Sayo: Merge pull request #5372 from elizaOS/update-env-example
 - [`596b08b17aaa`](https://github.com/elizaOS/eliza/commit/596b08b17aaa7242016e63ceba08fb56602f2064) 2025-07-03 tcm390: Merge branch 'develop' into tcm/side-bar
 - [`c47afa11a913`](https://github.com/elizaOS/eliza/commit/c47afa11a913f6801cf0862961c0b82e511b9631) 2025-07-03 tcm390: Merge pull request #5373 from elizaOS/tcm/side-bar
@@ -14461,7 +14461,7 @@ Original commit hashes, oldest first:
 - [`c99b7529a7f1`](https://github.com/elizaOS/eliza/commit/c99b7529a7f152b63e9b8a12b520cd32ca200d83) 2025-07-05 SYMBaiEX: docs: update Docusaurus configuration and enhance search functionality
 - [`6040b127f68a`](https://github.com/elizaOS/eliza/commit/6040b127f68aad524132ba31fddcba6d97f86bbe) 2025-07-05 SYMBaiEX: feat: add AI assistant integration and comprehensive plugin creation guide
 - [`b0621b25576b`](https://github.com/elizaOS/eliza/commit/b0621b25576b7a4ad7978c5f1811fe4e6e68aa3b) 2025-07-05 SYMBaiEX: fix: address PR review feedback for security and documentation formatting
-- [`175718b99b93`](https://github.com/elizaOS/eliza/commit/175718b99b93f95b10628f5229554ae20590ae7f) 2025-07-05 SYMBaiEX: docs: update .env.example and state management documentation for consistency and clarity
+- [`175718b99b93`](https://github.com/elizaOS/eliza/commit/175718b99b93f95b10628f5229554ae20590ae7f) 2025-07-05 SYMBaiEX: docs: update.env.example and state management documentation for consistency and clarity
 - [`6142d06b6048`](https://github.com/elizaOS/eliza/commit/6142d06b60480c6e2663ab38f8c1987988808eaf) 2025-07-05 SYMBaiEX: docs: complete technical architecture documentation for issue #5234
 - [`ac677cf58f1b`](https://github.com/elizaOS/eliza/commit/ac677cf58f1bd38b074bc0d613056692650be10e) 2025-07-05 SYMBaiEX: fix: configure AI chat to use POST method instead of GET
 - [`3dbfdfc441f7`](https://github.com/elizaOS/eliza/commit/3dbfdfc441f74f11f6f6459eca4716c6c24ba09f) 2025-07-05 SYMBaiEX: fix: update Docusaurus configuration for AI chat and enhance mobile styles
@@ -14638,11 +14638,11 @@ Original commit hashes, oldest first:
 - [`0e785a05a85c`](https://github.com/elizaOS/eliza/commit/0e785a05a85c13b7fa6ef9daba92941327a38776) 2025-07-08 github-actions[bot]: chore: temporary commit for install changes
 - [`3454d6bf3b39`](https://github.com/elizaOS/eliza/commit/3454d6bf3b39751f9acc54233ead41a1ef827497) 2025-07-08 github-actions[bot]: chore(release): bump versions to v1.1.2
 - [`834c1337324b`](https://github.com/elizaOS/eliza/commit/834c1337324b0d1923ec36b2b6655769d8611f92) 2025-07-08 github-actions[bot]: chore: merge main to develop for v1.1.2 release
-- [`1f0dfaa51956`](https://github.com/elizaOS/eliza/commit/1f0dfaa51956581d22daa96362ed0eec138e4859) 2025-07-09 Sayo: fix: add bun.lock to .gitignore
+- [`1f0dfaa51956`](https://github.com/elizaOS/eliza/commit/1f0dfaa51956581d22daa96362ed0eec138e4859) 2025-07-09 Sayo: fix: add bun.lock to.gitignore
 - [`80b5aea74c6d`](https://github.com/elizaOS/eliza/commit/80b5aea74c6dc83b34e89d38f34b17d932cb3191) 2025-07-09 Sayo: fix: improve client path resolution for global installations
 - [`9350af064f22`](https://github.com/elizaOS/eliza/commit/9350af064f22deaee3efe83615151b70893e3560) 2025-07-09 Sayo: Merge pull request #5471 from elizaOS/fix/add-bun-lock-to-gitignore
 - [`7431a669c037`](https://github.com/elizaOS/eliza/commit/7431a669c0376d42e3a63d72065d23b5a73bc9f5) 2025-07-09 Sayo: format
-- [`e62ec7bec55e`](https://github.com/elizaOS/eliza/commit/e62ec7bec55eb1ba4ffeaf257198884f82e262cc) 2025-07-09 Sayo: Update .gitignore and improve type safety in server
+- [`e62ec7bec55e`](https://github.com/elizaOS/eliza/commit/e62ec7bec55eb1ba4ffeaf257198884f82e262cc) 2025-07-09 Sayo: Update.gitignore and improve type safety in server
 - [`9c2ff283890f`](https://github.com/elizaOS/eliza/commit/9c2ff283890f2cbe40cfda2b6563977521289821) 2025-07-09 Sayo: Merge pull request #5473 from elizaOS/develop
 - [`f4931cc81025`](https://github.com/elizaOS/eliza/commit/f4931cc8102523cc553db29caa33277c2bb670ef) 2025-07-09 Sayo: Merge branch 'main' into develop
 - [`eb0ba73b442d`](https://github.com/elizaOS/eliza/commit/eb0ba73b442d535360a7515efd8dd2f40b137397) 2025-07-09 Sayo: Merge pull request #5474 from elizaOS/develop
@@ -14679,7 +14679,7 @@ Original commit hashes, oldest first:
 - [`eef0fd0b2f8b`](https://github.com/elizaOS/eliza/commit/eef0fd0b2f8be4be48108d8b59a415afa23d81f0) 2025-07-09 Sayo: Merge pull request #5484 from elizaOS/develop
 - [`45e4bdce8b06`](https://github.com/elizaOS/eliza/commit/45e4bdce8b063573522ca45e723ca961576303dd) 2025-07-09 github-actions[bot]: chore(release): bump versions to v1.1.8
 - [`ca1ce9162dff`](https://github.com/elizaOS/eliza/commit/ca1ce9162dff97026e2d7d6bd1f8c6e5f6cf8a82) 2025-07-09 github-actions[bot]: chore: merge main to develop for v1.1.8 release
-- [`668fa5b722b1`](https://github.com/elizaOS/eliza/commit/668fa5b722b1de6e4f08ac108b2a71c99a352ed9) 2025-07-09 Sayo: fix: prevent PGLITE database hoisting to parent .eliza directory
+- [`668fa5b722b1`](https://github.com/elizaOS/eliza/commit/668fa5b722b1de6e4f08ac108b2a71c99a352ed9) 2025-07-09 Sayo: fix: prevent PGLITE database hoisting to parent.eliza directory
 - [`5ce228ead0c3`](https://github.com/elizaOS/eliza/commit/5ce228ead0c3d7c91961a0fb64cd60bfa9325e7c) 2025-07-09 Sayo: Fix env var loading for project creation and update tests
 - [`5d765f6f8502`](https://github.com/elizaOS/eliza/commit/5d765f6f8502e1817e432b8a5e244797515e6edb) 2025-07-09 Sayo: Merge pull request #5485 from elizaOS/fix/pglite-hoisting-in-create-command
 - [`96e6d1a8a8e5`](https://github.com/elizaOS/eliza/commit/96e6d1a8a8e5e00d2cc92fcb3559866c7ff14ced) 2025-07-08 Christopher Trimboli: regen lock
@@ -14724,10 +14724,10 @@ Original commit hashes, oldest first:
 - [`f32eafb786a6`](https://github.com/elizaOS/eliza/commit/f32eafb786a603f1996ce4b1cdaeadce050185cb) 2025-07-09 Sayo: Merge pull request #5489 from elizaOS/feat/forms-additional-tests
 - [`c0287ad36e3f`](https://github.com/elizaOS/eliza/commit/c0287ad36e3f4833532907055be2186e2b40801a) 2025-07-09 Sayo: Merge pull request #5487 from elizaOS/feat/form-plugin
 - [`6210b534770d`](https://github.com/elizaOS/eliza/commit/6210b534770d78555295a844cb6f4faeae368b96) 2025-07-09 Sayo: Enforce required success field in ActionResult
-- [`880124022efb`](https://github.com/elizaOS/eliza/commit/880124022efbfc05b138891ffa0e7e31a8f10af8) 2025-07-09 Sayo: Update packages/core/src/runtime.ts
+- [`880124022efb`](https://github.com/elizaOS/eliza/commit/880124022efbfc05b138891ffa0e7e31a8f10af8) 2025-07-09 Sayo: Update packages/src/runtime.ts
 - [`b3c2933d5d75`](https://github.com/elizaOS/eliza/commit/b3c2933d5d7513ade5dd65f4ff8cc7ee0dcf69fd) 2025-07-09 Sayo: fix: update v2 runtime test expectations
 - [`d24b7c42a061`](https://github.com/elizaOS/eliza/commit/d24b7c42a0612188ae5609a375cf6ad27217b32d) 2025-07-09 Sayo: fix: use immutable update pattern in error handling path
-- [`1c07e60cb326`](https://github.com/elizaOS/eliza/commit/1c07e60cb3269cb9f143eb7899e04d5941550125) 2025-07-09 Sayo: Update packages/core/src/runtime.ts
+- [`1c07e60cb326`](https://github.com/elizaOS/eliza/commit/1c07e60cb3269cb9f143eb7899e04d5941550125) 2025-07-09 Sayo: Update packages/src/runtime.ts
 - [`a964d5f0c2e9`](https://github.com/elizaOS/eliza/commit/a964d5f0c2e995d1ee5e3133828aaab4a5603766) 2025-07-09 Sayo: fix: add missing 'this' context for updateActionStep call
 - [`9fab87c771ca`](https://github.com/elizaOS/eliza/commit/9fab87c771ca9e1e9853ad3ffb87b258dffc43e2) 2025-07-09 Sayo: fix: address all review feedback - robustness and type safety improvements
 - [`11d7d7c84f19`](https://github.com/elizaOS/eliza/commit/11d7d7c84f192830aab5464bffd8f8186d195d9a) 2025-07-09 Sayo: Merge pull request #5490 from elizaOS/fix/action-chaining-critical-issues
@@ -15021,8 +15021,8 @@ Original commit hashes, oldest first:
 - [`eaec12f7f3c3`](https://github.com/elizaOS/eliza/commit/eaec12f7f3c3c8e9ef3c6c594de2eedfd8ad29a4) 2025-07-15 0xbbjoker: add tests for selection utilities
 - [`930edbbdf1ed`](https://github.com/elizaOS/eliza/commit/930edbbdf1ed6c062cc455175ef0774c0d004778) 2025-07-15 Sayo: Merge pull request #5594 from elizaOS/fix/ollama-conditional-loading
 - [`da37c4c95441`](https://github.com/elizaOS/eliza/commit/da37c4c95441d75693a7940e15a8b197a5ddecc5) 2025-07-15 Sayo: fix: remove duplicate ActionResult interface definition
-- [`7d7f90c61d39`](https://github.com/elizaOS/eliza/commit/7d7f90c61d391bd27483ce1a18a3f93a63852c13) 2025-07-15 Sayo: Replace @elizaos/cli with @elizaos/core in devDependencies
-- [`61461be4233a`](https://github.com/elizaOS/eliza/commit/61461be4233a428a7f9ebbd15dcc03f750b4720f) 2025-07-15 Sayo: Revert "Replace @elizaos/cli with @elizaos/core in devDependencies"
+- [`7d7f90c61d39`](https://github.com/elizaOS/eliza/commit/7d7f90c61d391bd27483ce1a18a3f93a63852c13) 2025-07-15 Sayo: Replace @elizaos/cli with @elizaos in devDependencies
+- [`61461be4233a`](https://github.com/elizaOS/eliza/commit/61461be4233a428a7f9ebbd15dcc03f750b4720f) 2025-07-15 Sayo: Revert "Replace @elizaos/cli with @elizaos in devDependencies"
 - [`d134afdf6b3c`](https://github.com/elizaOS/eliza/commit/d134afdf6b3cfcfe743ef1b819089a8a3e37e926) 2025-07-15 Sayo: Merge pull request #5593 from elizaOS/fix/actionresult-duplicate-interface
 - [`8bdabe55efad`](https://github.com/elizaOS/eliza/commit/8bdabe55efad56e12a4a0184504697e00523c997) 2025-07-15 Sayo: Merge branch 'develop' into chore/1.2.6
 - [`50eb096e81dc`](https://github.com/elizaOS/eliza/commit/50eb096e81dc71f4a9ce5041e95b5b0b878434fd) 2025-07-15 Sayo: Merge pull request #5591 from elizaOS/chore/1.2.6
@@ -15228,12 +15228,12 @@ Original commit hashes, oldest first:
 - [`796d6802e1f1`](https://github.com/elizaOS/eliza/commit/796d6802e1f14a18768573031bb55d7a3256320f) 2025-08-02 yung algorithm: fixed; ci: 'false' was truthy
 - [`bcdf469eb29a`](https://github.com/elizaOS/eliza/commit/bcdf469eb29aa17581d312071322f561abfe6468) 2025-08-02 yung algorithm: added check to skip preAction hook for component tests since they handle own build process
 - [`d7f9fb1ae0f9`](https://github.com/elizaOS/eliza/commit/d7f9fb1ae0f9d7eb4bdc76ea8205a6bf678014ee) 2025-08-02 yung algorithm: updated to use `bun x tsc` to run the project's local ts compiler
-- [`420353a77b88`](https://github.com/elizaOS/eliza/commit/420353a77b882194093933e27521232f5722109c) 2025-08-02 yung algorithm: @langchain/core expects 'zod/v3' import path which doesn't exist in zod v3, this throws an error when running component tests from a freshly created plugin . updating langchain resolves this dependency incompatibility.
+- [`420353a77b88`](https://github.com/elizaOS/eliza/commit/420353a77b882194093933e27521232f5722109c) 2025-08-02 yung algorithm: @langchain expects 'zod/v3' import path which doesn't exist in zod v3, this throws an error when running component tests from a freshly created plugin. updating langchain resolves this dependency incompatibility.
 - [`6133560b230f`](https://github.com/elizaOS/eliza/commit/6133560b230f38cd9c8345586fab807137a05bcf) 2025-08-02 yung algorithm: swapped logger.infos for logger.error/debug since they were cluttering output
 - [`abdf62742cc6`](https://github.com/elizaOS/eliza/commit/abdf62742cc68477330175d4df178e8e57bc3a19) 2025-08-02 yung algorithm: temp
-- [`333ce54c3fb6`](https://github.com/elizaOS/eliza/commit/333ce54c3fb6714b84d24987507d8cf2a8511d92) 2025-08-02 yung algorithm: Revert "@langchain/core expects 'zod/v3' import path which doesn't exist in zod v3, this throws an error when running component tests from a freshly created plugin . updating langchain resolves this dependency incompatibility."
+- [`333ce54c3fb6`](https://github.com/elizaOS/eliza/commit/333ce54c3fb6714b84d24987507d8cf2a8511d92) 2025-08-02 yung algorithm: Revert "@langchain expects 'zod/v3' import path which doesn't exist in zod v3, this throws an error when running component tests from a freshly created plugin. updating langchain resolves this dependency incompatibility."
 - [`31166c803ac1`](https://github.com/elizaOS/eliza/commit/31166c803ac1c6650faf5b8c122b297d94a8d95e) 2025-08-02 yung algorithm: revert version
-- [`62fb2f86f1a3`](https://github.com/elizaOS/eliza/commit/62fb2f86f1a30ff3c8cf37615949dc228ccacc80) 2025-08-02 yung algorithm: without these resolutions, @langchain/core expects 'zod/v3' import path which doesn't exist in zod v3, causing component tests to fail when running from a freshly created plugin. Adding explicit langchain and @langchain/core version overrides ensures compatibility between langchain and zod dependencies.
+- [`62fb2f86f1a3`](https://github.com/elizaOS/eliza/commit/62fb2f86f1a30ff3c8cf37615949dc228ccacc80) 2025-08-02 yung algorithm: without these resolutions, @langchain expects 'zod/v3' import path which doesn't exist in zod v3, causing component tests to fail when running from a freshly created plugin. Adding explicit langchain and @langchain version overrides ensures compatibility between langchain and zod dependencies.
 - [`4ca2f452f3e2`](https://github.com/elizaOS/eliza/commit/4ca2f452f3e2f5d458fd9d27f75dac179f4a52be) 2025-08-03 yung algorithm: improve plugin-quick-starter tests
 - [`2f8c42f375de`](https://github.com/elizaOS/eliza/commit/2f8c42f375de5f7ac444270ee8b1ecd580369490) 2025-08-03 yung algorithm: plugin.ts in plugin-quick-starter: simplify/syntax
 - [`f411ebdd5806`](https://github.com/elizaOS/eliza/commit/f411ebdd58064f454ede828fd15b103c03165f4d) 2025-08-03 yung algorithm: plugin.ts in plugin-starter: simplify/syntax
@@ -15242,7 +15242,7 @@ Original commit hashes, oldest first:
 - [`8dbcfef5ec8a`](https://github.com/elizaOS/eliza/commit/8dbcfef5ec8a6d288b8d3c3cb7a0d34d6c0984db) 2025-08-03 yung algorithm: package.json in project-tee-starter to match how we do it in project-starter
 - [`fda2336bacdf`](https://github.com/elizaOS/eliza/commit/fda2336bacdf0a722471b011e21940751ad886b8) 2025-08-03 yung algorithm: make tsup config in project-tee match the one in project-starter
 - [`5322eff964ab`](https://github.com/elizaOS/eliza/commit/5322eff964abdf44e099b60bf38fe2268fea7cd5) 2025-08-03 yung algorithm: import/export StarterService in example plugin
-- [`70c2114d60ad`](https://github.com/elizaOS/eliza/commit/70c2114d60ad8d4f5c75376bd23938f574e47217) 2025-08-04 yung algorithm: dts - true, add @elizaos/core to externals to match plugins
+- [`70c2114d60ad`](https://github.com/elizaOS/eliza/commit/70c2114d60ad8d4f5c75376bd23938f574e47217) 2025-08-04 yung algorithm: dts - true, add @elizaos to externals to match plugins
 - [`cea3f5fe3f55`](https://github.com/elizaOS/eliza/commit/cea3f5fe3f55067e001f8e6dc05077316080038d) 2025-08-04 yung algorithm: nitpick: test detection less brittle in project-tee-starter
 - [`a341372e03c6`](https://github.com/elizaOS/eliza/commit/a341372e03c6bd49967a2318278d809e0f6aec43) 2025-08-04 yung algorithm: nitpick: improve security surrounding this test wallet salt
 - [`646169f15c40`](https://github.com/elizaOS/eliza/commit/646169f15c407f35c2cc774764e970f498c68e92) 2025-08-04 yung algorithm: update comment
@@ -15267,7 +15267,7 @@ Original commit hashes, oldest first:
 - [`1bb036c11372`](https://github.com/elizaOS/eliza/commit/1bb036c113729ed4e6274306dff01f52fee92e93) 2025-08-04 Sayo: lint stuff
 - [`1dd332b5b54d`](https://github.com/elizaOS/eliza/commit/1dd332b5b54da431602bd48cf679ce58ac0030cb) 2025-08-04 Sayo: Rename deletedCount to deleted in agent memory APIs
 - [`d1dea95878f1`](https://github.com/elizaOS/eliza/commit/d1dea95878f1827c363ca10211d389b53a45cb81) 2025-08-04 Sayo: Update submodule URL for packages/docs
-- [`54b5ad79a39b`](https://github.com/elizaOS/eliza/commit/54b5ad79a39b7d6544f898a454d5b20002cc590c) 2025-08-04 Sayo: Update .cursor submodule to latest commit
+- [`54b5ad79a39b`](https://github.com/elizaOS/eliza/commit/54b5ad79a39b7d6544f898a454d5b20002cc590c) 2025-08-04 Sayo: Update.cursor submodule to latest commit
 - [`d588495c4850`](https://github.com/elizaOS/eliza/commit/d588495c485049651e4e70202d7db4a9a6536c0b) 2025-08-04 Sayo: Improve agent memory handling and test robustness
 - [`21e85828476b`](https://github.com/elizaOS/eliza/commit/21e85828476b30bb2f77ce44755793ae29a44112) 2025-08-04 Sayo: Refactor agent command test process handling
 - [`adf675f4f1e7`](https://github.com/elizaOS/eliza/commit/adf675f4f1e768e1d5963448e6245f18d02daf02) 2025-08-04 Sayo: Update agent.test.ts
@@ -15375,7 +15375,7 @@ Original commit hashes, oldest first:
 - [`32fd768237a4`](https://github.com/elizaOS/eliza/commit/32fd768237a493d716e24d1cb3231151c787eede) 2025-08-08 github-actions[bot]: chore: merge main to develop for v1.4.2 release
 - [`cac2f796c005`](https://github.com/elizaOS/eliza/commit/cac2f796c005c77011fc5c7ae4903cfcb321b81d) 2025-08-07 lkoczorowski: allow iframes when web ui is enabled in production
 - [`610a38a4c753`](https://github.com/elizaOS/eliza/commit/610a38a4c7539546c17910a9461cbfc3d024358f) 2025-08-08 cjft: Merge pull request #5735 from wookosh/fix-admin-panel-iframes
-- [`0f1246585d52`](https://github.com/elizaOS/eliza/commit/0f1246585d521e8de5a144a511a15b57e43b420f) 2025-08-10 yung algorithm: fix(project-starter): replace mock.module with spyOn for consistent logger testing  - Replace mock.module('@elizaos/core') with spyOn(logger) in 3 test files - Fix test expectations to match Pino's structured logging format - Align with testing patterns used across all other starter templates
+- [`0f1246585d52`](https://github.com/elizaOS/eliza/commit/0f1246585d521e8de5a144a511a15b57e43b420f) 2025-08-10 yung algorithm: fix(project-starter): replace mock.module with spyOn for consistent logger testing - Replace mock.module('@elizaos') with spyOn(logger) in 3 test files - Fix test expectations to match Pino's structured logging format - Align with testing patterns used across all other starter templates
 - [`f1d773c10ffd`](https://github.com/elizaOS/eliza/commit/f1d773c10ffdec1959334a3afe2e6fa53f594fea) 2025-08-10 yung algorithm: nitpick: remove empty clean up blocks
 - [`f8005e5ee6bc`](https://github.com/elizaOS/eliza/commit/f8005e5ee6bca928ffa717e70130e5b16643cfd0) 2025-08-10 cjft: Merge pull request #5748 from elizaOS/fix/project-starter-mock-module-tests
 - [`7984d2d1a9e4`](https://github.com/elizaOS/eliza/commit/7984d2d1a9e4575fe4cfaa399491ce5e0ed29303) 2025-08-14 yung algorithm: Update publisher.ts
@@ -15431,7 +15431,7 @@ Original commit hashes, oldest first:
 - [`cc3115b99add`](https://github.com/elizaOS/eliza/commit/cc3115b99add7611c6ae5a467b4fe3f70e17b1a1) 2025-08-18 Christopher Trimboli: clean bindings
 - [`74e01d0fdb93`](https://github.com/elizaOS/eliza/commit/74e01d0fdb930de2c1a1ce004e2229c9e75446b6) 2025-08-18 Christopher Trimboli: should not leak bindings test
 - [`f5472c012206`](https://github.com/elizaOS/eliza/commit/f5472c01220649152d98f3f6951c4b05a74d4c50) 2025-08-18 Christopher Trimboli: code cleanup, keep functional
-- [`1e91ded49cc2`](https://github.com/elizaOS/eliza/commit/1e91ded49cc29fc88ab9e5879293088a17971ad3) 2025-08-18 Christopher Trimboli: fix bad .this
+- [`1e91ded49cc2`](https://github.com/elizaOS/eliza/commit/1e91ded49cc29fc88ab9e5879293088a17971ad3) 2025-08-18 Christopher Trimboli: fix bad.this
 - [`d1ee41a461bf`](https://github.com/elizaOS/eliza/commit/d1ee41a461bf6bb641c7ace20cc01c82c4999b73) 2025-08-18 Christopher Trimboli: Allows configuring max in-memory logs
 - [`4f194f6173ec`](https://github.com/elizaOS/eliza/commit/4f194f6173eccbc0191a84d62f9a5c1d927e4751) 2025-08-18 Christopher Trimboli: lint
 - [`d9bd77c93bbb`](https://github.com/elizaOS/eliza/commit/d9bd77c93bbb0682c840b036fde156708790db97) 2025-08-18 Christopher Trimboli: Refactors environment detection and logger creation
@@ -15559,7 +15559,7 @@ Original commit hashes, oldest first:
 - [`f07f261c0e84`](https://github.com/elizaOS/eliza/commit/f07f261c0e842f0a78b381a7a533cf4a66cd1f72) 2025-08-09 Monil Patel: Merge remote-tracking branch 'origin/develop' into scenarios-cli
 - [`a9474af1ba54`](https://github.com/elizaOS/eliza/commit/a9474af1ba54d32816afeb06ad0a6b1894a2ee64) 2025-08-09 Monil Patel: fix lockfile
 - [`9b27a14f1449`](https://github.com/elizaOS/eliza/commit/9b27a14f1449fc72ded40ce59d963694691e1ac6) 2025-08-10 Monil Patel: update complex scenarios to match actions / providers in implementation of said plugins and remove dups scenarios
-- [`2284f959e182`](https://github.com/elizaOS/eliza/commit/2284f959e18250359de62b0e1ef704b7fd2928f8) 2025-08-10 Monil Patel: properly load dynamic plugins  + make service optional for mocking
+- [`2284f959e182`](https://github.com/elizaOS/eliza/commit/2284f959e18250359de62b0e1ef704b7fd2928f8) 2025-08-10 Monil Patel: properly load dynamic plugins + make service optional for mocking
 - [`48b01a55210d`](https://github.com/elizaOS/eliza/commit/48b01a55210d544300eb0fbfea30a10d821f45f3) 2025-08-10 Monil Patel: fix loading bug + test with dynamic github plugin loading
 - [`26ddcfc3dc36`](https://github.com/elizaOS/eliza/commit/26ddcfc3dc36a4258d87b824caddda84829b8d88) 2025-08-11 Monil Patel: update readme to run commands from root ot load dynamic plugins properly
 - [`9094e8152cc7`](https://github.com/elizaOS/eliza/commit/9094e8152cc7d39d9d176fa5b9f7fd2e058759a5) 2025-08-11 Monil Patel: now we grab the action message with longer delay
@@ -15577,7 +15577,7 @@ Original commit hashes, oldest first:
 - [`740fe2aa23f7`](https://github.com/elizaOS/eliza/commit/740fe2aa23f77f58fa6d9b1f26e1503412795634) 2025-08-15 Monil Patel: implement #5778 for matrix approach
 - [`12212bc0cb82`](https://github.com/elizaOS/eliza/commit/12212bc0cb8285534098d8419d60a4b152c4489e) 2025-08-15 Monil Patel: implement #5779
 - [`6e7b7c8761d8`](https://github.com/elizaOS/eliza/commit/6e7b7c8761d8a4dd29829121e7f54483f5c3cc69) 2025-08-15 Monil Patel: wip #5780 implementation
-- [`4291cee8dde1`](https://github.com/elizaOS/eliza/commit/4291cee8dde136280f852e9054db031f55640a41) 2025-08-16 Monil Patel: make resilient / unique for each run using .eliza/.elizadb custom path for the test dbs
+- [`4291cee8dde1`](https://github.com/elizaOS/eliza/commit/4291cee8dde136280f852e9054db031f55640a41) 2025-08-16 Monil Patel: make resilient / unique for each run using.eliza/.elizadb custom path for the test dbs
 - [`d4fe5238d1be`](https://github.com/elizaOS/eliza/commit/d4fe5238d1be5dea08b6a8e3f20e234bceaeae17) 2025-08-16 Monil Patel: feat(cli): Complete ticket #5779 - Implement elizaos scenario matrix CLI command
 - [`7fcffbe13ffa`](https://github.com/elizaOS/eliza/commit/7fcffbe13ffad6962674b653649103d4110a0874) 2025-08-16 Monil Patel: feat(cli): Add test:matrix command and fix matrix runner tests
 - [`96a5e88ee424`](https://github.com/elizaOS/eliza/commit/96a5e88ee4245f874007808ef0306df9314d6fca) 2025-08-16 Monil Patel: feat(cli): Implement Phase 1 of ticket #5780 - API compliance and enhanced validation
@@ -15761,7 +15761,7 @@ Original commit hashes, oldest first:
 - [`85fcbec58754`](https://github.com/elizaOS/eliza/commit/85fcbec58754369c4a4366b6efa5802b95f0904d) 2025-08-27 Christopher Trimboli: Removes `@solana/web3.js` from externals
 - [`fd0b94cbd29e`](https://github.com/elizaOS/eliza/commit/fd0b94cbd29e0c8df73fa8ebc5c3adfb7d4c4770) 2025-08-27 Sayo: fix: CI test failures in core and cypress tests
 - [`1cb6a1ffd5e0`](https://github.com/elizaOS/eliza/commit/1cb6a1ffd5e09d6f089f73dbdce68b4687036f10) 2025-08-27 Sayo: fix: TypeScript configuration and type errors
-- [`0773efba34aa`](https://github.com/elizaOS/eliza/commit/0773efba34aa5a0896b79d21aebadaecaefe8dfb) 2025-08-27 Sayo: fix: Remove .ts extensions from imports in project-tee-starter
+- [`0773efba34aa`](https://github.com/elizaOS/eliza/commit/0773efba34aa5a0896b79d21aebadaecaefe8dfb) 2025-08-27 Sayo: fix: Remove.ts extensions from imports in project-tee-starter
 - [`c13ec2c32f9c`](https://github.com/elizaOS/eliza/commit/c13ec2c32f9c40077f4faca89f23b6de6ec1c7dc) 2025-08-27 Sayo: fix: Resolve remaining CI test failures
 - [`d6bf398b7e13`](https://github.com/elizaOS/eliza/commit/d6bf398b7e13389f763e33ee2f8c32f70f378c29) 2025-08-27 Sayo: fix: Add optional chaining to providers test for better type safety
 - [`9d899b581773`](https://github.com/elizaOS/eliza/commit/9d899b58177364bbffb9d790e0bf088fb3a72ce1) 2025-08-28 Sayo: fix: downgrade Vite to 6.0.5 to resolve Cypress ESM compatibility issues in CI
@@ -15806,18 +15806,18 @@ Original commit hashes, oldest first:
 - [`60caf60bb6c1`](https://github.com/elizaOS/eliza/commit/60caf60bb6c16fa15a3edbbd9ac69736ef008327) 2025-08-30 Sayo: Merge pull request #5847 from elizaOS/fix-core-types
 - [`b0e26a7af137`](https://github.com/elizaOS/eliza/commit/b0e26a7af13791478a97780450664e0322d5ef46) 2025-08-29 Christopher Trimboli: lint and clean
 - [`071275736686`](https://github.com/elizaOS/eliza/commit/0712757366861c3802f8dd82b6e6c55c56f32c50) 2025-08-30 sandujar-externe: fix(core): fix TypeScript declarations in npm package
-- [`26469eef7f69`](https://github.com/elizaOS/eliza/commit/26469eef7f69e52dea47eb093733a160d1fc6f2f) 2025-08-30 cjft: Merge pull request #5848 from elizaOS/fix/core-build-declarations
+- [`26469eef7f69`](https://github.com/elizaOS/eliza/commit/26469eef7f69e52dea47eb093733a160d1fc6f2f) 2025-08-30 cjft: Merge pull request #5848 from elizaOS/fix-build-declarations
 - [`a1c4fea13195`](https://github.com/elizaOS/eliza/commit/a1c4fea13195b868de83aec985de31f4698cc2a9) 2025-09-02 Ting Chien Meng: pass files param
 - [`39616ba1464e`](https://github.com/elizaOS/eliza/commit/39616ba1464ebb9e24128f7aced2b663561dc864) 2025-09-02 Ting Chien Meng: file extension
 - [`ff13b71fb3f3`](https://github.com/elizaOS/eliza/commit/ff13b71fb3f34446d1baa087aa26352bbc546473) 2025-09-02 Ting Chien Meng: dry
 - [`9cedb2d8533e`](https://github.com/elizaOS/eliza/commit/9cedb2d8533e7de1b544c0d0ac526e8f7e0317b4) 2025-09-01 yung algorithm: add 3x docker files required for dockerizing
-- [`0c1233792f84`](https://github.com/elizaOS/eliza/commit/0c1233792f844afe04102dca6a346ccff2aa0522) 2025-09-01 yung algorithm: add DOCKER_IMAGE to .env.example
+- [`0c1233792f84`](https://github.com/elizaOS/eliza/commit/0c1233792f844afe04102dca6a346ccff2aa0522) 2025-09-01 yung algorithm: add DOCKER_IMAGE to.env.example
 - [`653683061659`](https://github.com/elizaOS/eliza/commit/65368306165976d8abd8155bf5583fd27f934ee4) 2025-09-01 Sayo: Apply suggestion from @Copilot
 - [`aecf63f6ff0a`](https://github.com/elizaOS/eliza/commit/aecf63f6ff0a80064d971b21091478ff12a7c966) 2025-09-01 Sayo: Apply suggestion from @Copilot
 - [`d40514478126`](https://github.com/elizaOS/eliza/commit/d40514478126ac17b1fb1520025453641f4d554a) 2025-09-01 yung algorithm: change port
 - [`8a99c9063674`](https://github.com/elizaOS/eliza/commit/8a99c9063674d6d0cb9265a4e8f007e9ee21b84d) 2025-09-01 yung algorithm: fix typo
 - [`889c05465e44`](https://github.com/elizaOS/eliza/commit/889c05465e44b70cea19d1b3e90e42b27ac1af77) 2025-09-01 yung algorithm: switch this back (didnt realize changes applied already)
-- [`72f6bbf2cd22`](https://github.com/elizaOS/eliza/commit/72f6bbf2cd22a7c448a68768e965d800397fc4c8) 2025-09-01 yung algorithm: add DOCKER_IMAGE to .env.example
+- [`72f6bbf2cd22`](https://github.com/elizaOS/eliza/commit/72f6bbf2cd22a7c448a68768e965d800397fc4c8) 2025-09-01 yung algorithm: add DOCKER_IMAGE to.env.example
 - [`39ebfb2103a0`](https://github.com/elizaOS/eliza/commit/39ebfb2103a007bf706b7f0221aea4cbf2e0ec06) 2025-09-01 yung algorithm: make some keys optional so it doesnt throw error if not configured
 - [`7eca8f55ca15`](https://github.com/elizaOS/eliza/commit/7eca8f55ca1596cee1a159dc478edf3c51234775) 2025-09-01 yung algorithm: change port
 - [`6373d05e9b79`](https://github.com/elizaOS/eliza/commit/6373d05e9b798070cf0d2128e5f83f7713d013d5) 2025-09-01 yung algorithm: change port to match project-starter
@@ -16155,7 +16155,7 @@ Original commit hashes, oldest first:
 - [`d88c0baf4c41`](https://github.com/elizaOS/eliza/commit/d88c0baf4c41de780247774967a4b81152841aab) 2025-09-10 Sayo: Update import paths and reformat runs service/types
 - [`e4625b8f9426`](https://github.com/elizaOS/eliza/commit/e4625b8f9426ac4f54ef450ee6f164672b72769f) 2025-09-10 Sayo: Merge branch 'develop' into feature/runs-tracking-interface
 - [`ee7ac1a99757`](https://github.com/elizaOS/eliza/commit/ee7ac1a99757212be86590db3b1989a183fbdf9b) 2025-09-10 Sayo: Delete runs-tracking-interface.md
-- [`ccf145979ec3`](https://github.com/elizaOS/eliza/commit/ccf145979ec36593afd617c14f4a0daef8c7e85c) 2025-09-10 Sayo: Update .gitignore
+- [`ccf145979ec3`](https://github.com/elizaOS/eliza/commit/ccf145979ec36593afd617c14f4a0daef8c7e85c) 2025-09-10 Sayo: Update.gitignore
 - [`dc0de2086f00`](https://github.com/elizaOS/eliza/commit/dc0de2086f00c736e79c2e8bccf9324924da74a6) 2025-09-11 tcm390: Merge pull request #5953 from elizaOS/feature/runs-tracking-interface
 - [`d20e01cd6bf1`](https://github.com/elizaOS/eliza/commit/d20e01cd6bf14c6f613c8ec7b0c2909ca371fd9c) 2025-09-11 tcm390: Merge branch 'develop' into tcm/fix-action-notification
 - [`d0a53d814613`](https://github.com/elizaOS/eliza/commit/d0a53d8146139b33cdff69159723d8a612ee1af5) 2025-09-11 tcm390: Merge pull request #5957 from elizaOS/tcm/fix-action-notification
@@ -16344,7 +16344,7 @@ Original commit hashes, oldest first:
 - [`3621810f239e`](https://github.com/elizaOS/eliza/commit/3621810f239e5f864deb72980d8f42b1045d3e2b) 2025-09-02 sandujar-externe: refactor: convert local-cli-delegation to use Bun.spawn instead of node:child_process
 - [`c28f22e25866`](https://github.com/elizaOS/eliza/commit/c28f22e258660515a2b50f66ad3214782c354e8e) 2025-09-02 sandujar-externe: fix: allow fallback to default agent when no agents in project config
 - [`f57989d1fc5c`](https://github.com/elizaOS/eliza/commit/f57989d1fc5cf025d201b58286c9b345a04b5d5e) 2025-09-02 sandujar-externe: fix: remove security issue exposing all env vars in character secrets
-- [`adc891cded95`](https://github.com/elizaOS/eliza/commit/adc891cded95018696470de89d836acc7ac5a009) 2025-09-11 sandujar-externe: Refactor: ElizaOS  into core
+- [`adc891cded95`](https://github.com/elizaOS/eliza/commit/adc891cded95018696470de89d836acc7ac5a009) 2025-09-11 sandujar-externe: Refactor: ElizaOS into core
 - [`cdc132f09c35`](https://github.com/elizaOS/eliza/commit/cdc132f09c35743f94f33a71eaf4988d73bb9b0d) 2025-09-14 sandujar-externe: refactor: clean multi-agent architecture
 - [`3e6aeb47c677`](https://github.com/elizaOS/eliza/commit/3e6aeb47c677f1f5c9b8ce93f481ada71035b83e) 2025-09-15 sandujar-externe: fix: ensure adapter close method is called only if adapter exists; add comprehensive tests for AgentServer functionality
 - [`b9ce592e4e41`](https://github.com/elizaOS/eliza/commit/b9ce592e4e41fad3d7c1b4db09f3613c640c66b9) 2025-09-15 sandujar-externe: refactor: replace Map with ElizaOS in AgentServer and related API routes
@@ -16584,7 +16584,7 @@ Original commit hashes, oldest first:
 - [`b3df779be8df`](https://github.com/elizaOS/eliza/commit/b3df779be8dfe09239b000101c5ecd90d25d7b6f) 2025-10-05 Sayo: Merge pull request #6030 from elizaOS/feature/mention-context-refactor
 - [`72880e8dab2e`](https://github.com/elizaOS/eliza/commit/72880e8dab2e3bbe2640f2ca09764b84a80cebd5) 2025-10-05 github-actions[bot]: chore: release v1.6.2-alpha.2 (alpha) [skip ci]
 - [`505479a29f40`](https://github.com/elizaOS/eliza/commit/505479a29f40503fab9ccfa9c49d067ab27ae0cf) 2025-10-05 Sayo: Merge branch 'develop' into feat/database-level-pagination
-- [`19d431a6e6c7`](https://github.com/elizaOS/eliza/commit/19d431a6e6c7d697ce828b6f2c3ebd796f21091b) 2025-10-05 Sayo: Update .gitmodules
+- [`19d431a6e6c7`](https://github.com/elizaOS/eliza/commit/19d431a6e6c7d697ce828b6f2c3ebd796f21091b) 2025-10-05 Sayo: Update.gitmodules
 - [`6961feff4ddc`](https://github.com/elizaOS/eliza/commit/6961feff4ddcef83c12168fa4730e50afe731105) 2025-10-05 Sayo: remove plugin-knowledge submodule
 - [`a0cf0939a7c7`](https://github.com/elizaOS/eliza/commit/a0cf0939a7c7303e029b2036328d7c409b4f1d71) 2025-10-05 Sayo: Merge pull request #6032 from elizaOS/feat/database-level-pagination
 - [`dd7da1604446`](https://github.com/elizaOS/eliza/commit/dd7da160444606c2e075a6dbca1346e1e73a87f5) 2025-10-05 github-actions[bot]: chore: release v1.6.2-alpha.3 (alpha) [skip ci]
@@ -16596,7 +16596,7 @@ Original commit hashes, oldest first:
 - [`10fb3c689f0b`](https://github.com/elizaOS/eliza/commit/10fb3c689f0b12d690a571077708ec69eb0f27c2) 2025-10-07 Sayo: Merge branch 'develop' into fix/agent-patch-plugin-reload
 - [`b365f8ae3c07`](https://github.com/elizaOS/eliza/commit/b365f8ae3c077abc1b9c7178455eca3bcf32c12d) 2025-10-07 Sayo: feat(core): improve character schema validation with comprehensive Zod schemas
 - [`c1a1f90cedde`](https://github.com/elizaOS/eliza/commit/c1a1f90cedde222c3eadab058376ce2c92ecaaa0) 2025-10-07 Sayo: Update character.ts
-- [`6480c817401b`](https://github.com/elizaOS/eliza/commit/6480c817401b0ea8206274bd688f5aaaa39a67f4) 2025-10-07 Sayo: Merge pull request #6044 from elizaOS/feat/core-improve-character-schema-validation
+- [`6480c817401b`](https://github.com/elizaOS/eliza/commit/6480c817401b0ea8206274bd688f5aaaa39a67f4) 2025-10-07 Sayo: Merge pull request #6044 from elizaOS/feat-improve-character-schema-validation
 - [`d373288bfe16`](https://github.com/elizaOS/eliza/commit/d373288bfe1684c22e2b4fa63342ca4e86ce773f) 2025-10-07 github-actions[bot]: chore: release v1.6.2-alpha.5 (alpha) [skip ci]
 - [`08dda0f12aec`](https://github.com/elizaOS/eliza/commit/08dda0f12aec3a251a0527ad466633484c517b57) 2025-10-06 Odilitime: handle when bool is passed into parseBooleanFromText
 - [`c3a773b99689`](https://github.com/elizaOS/eliza/commit/c3a773b9968978719cd111f8741180d508db5319) 2025-10-07 Sayo: Merge pull request #6042 from elizaOS/odilitime-parseBooleanFromText-fix
@@ -16638,7 +16638,7 @@ Original commit hashes, oldest first:
 - [`65160c6e8dad`](https://github.com/elizaOS/eliza/commit/65160c6e8dad6f5932c498a38c9c96760367aa43) 2025-10-07 Stan: Merge branch 'develop' into feat/renovate-config-improvement
 - [`7aba0031aa07`](https://github.com/elizaOS/eliza/commit/7aba0031aa07a97ca38555d63b4b94a97c167e84) 2025-10-08 Sayo: Merge pull request #6033 from elizaOS/feat/renovate-config-improvement
 - [`f31b3fea0374`](https://github.com/elizaOS/eliza/commit/f31b3fea03744cace37d68ea92dc26ba4e55c9d6) 2025-10-08 github-actions[bot]: chore: release v1.6.2-alpha.10 (alpha) [skip ci]
-- [`e37d07a17eba`](https://github.com/elizaOS/eliza/commit/e37d07a17ebadf0d4411166e190cbc1a0bdef12a) 2025-10-06 0xbbjoker: fix(plugins): use correct ZodError.issues API instead of .errors
+- [`e37d07a17eba`](https://github.com/elizaOS/eliza/commit/e37d07a17ebadf0d4411166e190cbc1a0bdef12a) 2025-10-06 0xbbjoker: fix(plugins): use correct ZodError.issues API instead of.errors
 - [`e6f22f5b87a7`](https://github.com/elizaOS/eliza/commit/e6f22f5b87a7c054ec441b1f9c3ba279ecb4ffcc) 2025-10-06 0xbbjoker: fix: add comprehensive ZodError handling tests
 - [`ffbfa65f769e`](https://github.com/elizaOS/eliza/commit/ffbfa65f769edb2177a1d22bae6baad3e716b54e) 2025-10-06 standujar: feat(core): add config and plugin modules - Phase 4 Tasks 1-2
 - [`88a20a21bf1c`](https://github.com/elizaOS/eliza/commit/88a20a21bf1c89543979f2066ea4b2a374d80192) 2025-10-06 standujar: refactor(core): clean up plugin and config classes by removing migration comments
@@ -16653,7 +16653,7 @@ Original commit hashes, oldest first:
 - [`8a1c805bf71a`](https://github.com/elizaOS/eliza/commit/8a1c805bf71a5820ae5e54543245c77ef5f9cedf) 2025-10-08 standujar: fix(plugin): enhance Bun availability checks and improve environment cleanup in tests
 - [`e51c519de61e`](https://github.com/elizaOS/eliza/commit/e51c519de61e982360e099344802a577da29fab8) 2025-10-08 standujar: fix(core): implement browser-compatible dynamic imports for Node.js modules
 - [`5c95024aff9c`](https://github.com/elizaOS/eliza/commit/5c95024aff9cdbd36d0299594618b568fe83dcfc) 2025-10-08 standujar: chore: update package versions in bun.lock for various dependencies
-- [`0150d28728bd`](https://github.com/elizaOS/eliza/commit/0150d28728bd2979b477586e71f417276aba68ed) 2025-10-08 standujar: test(secrets): enhance SecretsManager tests with environment handling and .env file loading
+- [`0150d28728bd`](https://github.com/elizaOS/eliza/commit/0150d28728bd2979b477586e71f417276aba68ed) 2025-10-08 standujar: test(secrets): enhance SecretsManager tests with environment handling and.env file loading
 - [`974ce63e305f`](https://github.com/elizaOS/eliza/commit/974ce63e305ff40b863db28fe1285b8cc888b3be) 2025-10-08 standujar: test(secrets): streamline environment variable management in SecretsManager tests
 - [`271c868b8cfe`](https://github.com/elizaOS/eliza/commit/271c868b8cfe8675d826ad06ee25827604bbe3a5) 2025-10-08 Stan: Apply suggestion from @standujar
 - [`989c7152eeb4`](https://github.com/elizaOS/eliza/commit/989c7152eeb4eb5f5bde2f4eff4069493cdfcbe3) 2025-10-08 Stan: Apply suggestion from @standujar
@@ -16673,7 +16673,7 @@ Original commit hashes, oldest first:
 - [`870793e2e4d5`](https://github.com/elizaOS/eliza/commit/870793e2e4d57f133e4d766df931a762231a1e11) 2025-10-12 0xbbjoker: Merge pull request #6056 from elizaOS/fix/cli-test-e2e-agent-manager-removed
 - [`bda67f6968d9`](https://github.com/elizaOS/eliza/commit/bda67f6968d9e12d51e7afda85e2f4901916184e) 2025-10-11 github-actions[bot]: chore: release v1.6.2-alpha.13 (alpha) [skip ci]
 - [`9c1bb2861426`](https://github.com/elizaOS/eliza/commit/9c1bb2861426d26f54d67f5a15be2e3c711c6b4c) 2025-10-12 0xbbjoker: Merge branch 'develop' into fix/zod-error-issues-api
-- [`a8f7fb536f2b`](https://github.com/elizaOS/eliza/commit/a8f7fb536f2b6891e4da2fef89eaf76c7621215f) 2025-10-12 0xbbjoker: fix:  add optional chaining to ZodError.issues.join() to prevent TypeError
+- [`a8f7fb536f2b`](https://github.com/elizaOS/eliza/commit/a8f7fb536f2b6891e4da2fef89eaf76c7621215f) 2025-10-12 0xbbjoker: fix: add optional chaining to ZodError.issues.join() to prevent TypeError
 - [`012eebe2c803`](https://github.com/elizaOS/eliza/commit/012eebe2c803b8e7bbbd59debad5b781b03a2d4a) 2025-10-07 Christopher Trimboli: elizaos deploy command
 - [`48cc46948405`](https://github.com/elizaOS/eliza/commit/48cc469484057e146777c4c0f08164a981fa684c) 2025-10-07 Christopher Trimboli: fix deploy envs
 - [`cce6dde2845a`](https://github.com/elizaOS/eliza/commit/cce6dde2845a784c8bc1d931db24acf9ec624b8d) 2025-10-08 Christopher Trimboli: fix Dockerfile issues
@@ -16768,19 +16768,19 @@ Original commit hashes, oldest first:
 - [`869eec144c08`](https://github.com/elizaOS/eliza/commit/869eec144c0870e75ce8035e3bf6209b231d96e0) 2025-10-08 0xbbjoker: chore: migrate message events to service-based architecture
 - [`e3967a828fcd`](https://github.com/elizaOS/eliza/commit/e3967a828fcdde379c0430929140209387467d8c) 2025-10-09 0xbbjoker: chore: remove deprecated MESSAGE_RECEIVED event handler tests
 - [`facc93a857f5`](https://github.com/elizaOS/eliza/commit/facc93a857f58e999f1a90f5a86518fd68c16f8e) 2025-10-09 0xbbjoker: fix: stateCache type mismatch preventing multi-step action result retrieval
-- [`414c9a7d0e28`](https://github.com/elizaOS/eliza/commit/414c9a7d0e28f37fa7e70809d85b1485fc4dd874) 2025-10-15 0xbbjoker: Merge branch 'develop' into feat/core-message-service-interface
-- [`45196bb682cd`](https://github.com/elizaOS/eliza/commit/45196bb682cdba183fc1884eb9f6e73112e3249a) 2025-10-15 0xbbjoker: Merge branch 'develop' into feat/core-message-service-interface
-- [`c723abb84faf`](https://github.com/elizaOS/eliza/commit/c723abb84faff24727d9967fa6229fcd12265500) 2025-10-15 Sayo: Merge branch 'develop' into feat/core-message-service-interface
-- [`fdb816ac219e`](https://github.com/elizaOS/eliza/commit/fdb816ac219e27077e67ca40bb6f3974bce79130) 2025-10-16 0xbbjoker: Merge branch 'develop' into feat/core-message-service-interface
-- [`1edbe6c8f931`](https://github.com/elizaOS/eliza/commit/1edbe6c8f931b6366844827458fb424be56240da) 2025-10-17 Sayo: Merge remote-tracking branch 'origin/develop' into feat/core-message-service-interface
-- [`1f9cea92e10d`](https://github.com/elizaOS/eliza/commit/1f9cea92e10d73329b15b3c6011ed5186ba292a5) 2025-10-18 0xbbjoker: Merge branch 'develop' into feat/core-message-service-interface
-- [`f510160938bd`](https://github.com/elizaOS/eliza/commit/f510160938bd0b33057112570c8642f6e44a298c) 2025-10-18 0xbbjoker: Merge branch 'develop' into feat/core-message-service-interface
-- [`972b13689a99`](https://github.com/elizaOS/eliza/commit/972b13689a99d5d8156c9f8d9e1e71bdbd21e3c7) 2025-10-17 Sayo: Merge branch 'feat/core-message-service-interface' of https://github.com/elizaOS/eliza into feat/core-message-service-interface
-- [`f723bd43a656`](https://github.com/elizaOS/eliza/commit/f723bd43a6561f050416c0d075f9fc07617dd8f9) 2025-10-17 Sayo: Merge branch 'develop' into feat/core-message-service-interface
-- [`2edc4ba6b089`](https://github.com/elizaOS/eliza/commit/2edc4ba6b089afa24064c797d5b454846555a0d1) 2025-10-19 Sayo: Merge pull request #6048 from elizaOS/feat/core-message-service-interface
+- [`414c9a7d0e28`](https://github.com/elizaOS/eliza/commit/414c9a7d0e28f37fa7e70809d85b1485fc4dd874) 2025-10-15 0xbbjoker: Merge branch 'develop' into feat-message-service-interface
+- [`45196bb682cd`](https://github.com/elizaOS/eliza/commit/45196bb682cdba183fc1884eb9f6e73112e3249a) 2025-10-15 0xbbjoker: Merge branch 'develop' into feat-message-service-interface
+- [`c723abb84faf`](https://github.com/elizaOS/eliza/commit/c723abb84faff24727d9967fa6229fcd12265500) 2025-10-15 Sayo: Merge branch 'develop' into feat-message-service-interface
+- [`fdb816ac219e`](https://github.com/elizaOS/eliza/commit/fdb816ac219e27077e67ca40bb6f3974bce79130) 2025-10-16 0xbbjoker: Merge branch 'develop' into feat-message-service-interface
+- [`1edbe6c8f931`](https://github.com/elizaOS/eliza/commit/1edbe6c8f931b6366844827458fb424be56240da) 2025-10-17 Sayo: Merge remote-tracking branch 'origin/develop' into feat-message-service-interface
+- [`1f9cea92e10d`](https://github.com/elizaOS/eliza/commit/1f9cea92e10d73329b15b3c6011ed5186ba292a5) 2025-10-18 0xbbjoker: Merge branch 'develop' into feat-message-service-interface
+- [`f510160938bd`](https://github.com/elizaOS/eliza/commit/f510160938bd0b33057112570c8642f6e44a298c) 2025-10-18 0xbbjoker: Merge branch 'develop' into feat-message-service-interface
+- [`972b13689a99`](https://github.com/elizaOS/eliza/commit/972b13689a99d5d8156c9f8d9e1e71bdbd21e3c7) 2025-10-17 Sayo: Merge branch 'feat-message-service-interface' of https://github.com/elizaOS/eliza into feat-message-service-interface
+- [`f723bd43a656`](https://github.com/elizaOS/eliza/commit/f723bd43a6561f050416c0d075f9fc07617dd8f9) 2025-10-17 Sayo: Merge branch 'develop' into feat-message-service-interface
+- [`2edc4ba6b089`](https://github.com/elizaOS/eliza/commit/2edc4ba6b089afa24064c797d5b454846555a0d1) 2025-10-19 Sayo: Merge pull request #6048 from elizaOS/feat-message-service-interface
 - [`f0740ea64e78`](https://github.com/elizaOS/eliza/commit/f0740ea64e7807a48b3f6b4453c40abe2eac30e7) 2025-10-19 github-actions[bot]: chore: release v1.6.2-alpha.25 (alpha) [skip ci]
 - [`17b67c7e8b9b`](https://github.com/elizaOS/eliza/commit/17b67c7e8b9bce90744d538605f301b6197643c4) 2025-10-19 Sayo: feat: enhance core functionality and deployment capabilities
-- [`2896b7cae2fd`](https://github.com/elizaOS/eliza/commit/2896b7cae2fd9646cc4b404411a3104c450fa9d2) 2025-10-19 Sayo: Merge pull request #6077 from elizaOS/feature/core-improvements-deploy-fixes
+- [`2896b7cae2fd`](https://github.com/elizaOS/eliza/commit/2896b7cae2fd9646cc4b404411a3104c450fa9d2) 2025-10-19 Sayo: Merge pull request #6077 from elizaOS/feature-improvements-deploy-fixes
 - [`d4b61ae880ea`](https://github.com/elizaOS/eliza/commit/d4b61ae880ea53987df89027dff5ac58287168a1) 2025-10-19 github-actions[bot]: chore: release v1.6.2-alpha.26 (alpha) [skip ci]
 - [`a7a7c8bda698`](https://github.com/elizaOS/eliza/commit/a7a7c8bda698bb251bcc0805ebca940104b735b3) 2025-09-22 0xbbjoker: chore: update zod pckg version
 - [`99c8cfdfa06b`](https://github.com/elizaOS/eliza/commit/99c8cfdfa06ba6fda3ff69e05e537ff9d8cffe7f) 2025-09-29 Sayo: Merge pull request #6015 from elizaOS/fix/project-starter-zod-issue
@@ -16803,7 +16803,7 @@ Original commit hashes, oldest first:
 - [`df4ba8a7f28c`](https://github.com/elizaOS/eliza/commit/df4ba8a7f28c956b1bad64ad561c40048b972450) 2025-10-19 Stan: Merge branch 'develop' into fix/expose-channel-id-in-session-api
 - [`908f4eba4273`](https://github.com/elizaOS/eliza/commit/908f4eba42735ba5010fab4c95ac1cebedb23f23) 2025-10-19 Sayo: Merge pull request #6079 from elizaOS/fix/expose-channel-id-in-session-api
 - [`25cc2a7ddd20`](https://github.com/elizaOS/eliza/commit/25cc2a7ddd201a39885343a0fdc2809119fd5cb7) 2025-10-19 github-actions[bot]: chore: release v1.6.3-alpha.2 (alpha) [skip ci]
-- [`feed646fa216`](https://github.com/elizaOS/eliza/commit/feed646fa216bd2ebc357e354d01a7de190b71c9) 2025-10-20 Sayo: fix(cli): include dotfiles (.gitignore, .npmignore, .env.example) in published package
+- [`feed646fa216`](https://github.com/elizaOS/eliza/commit/feed646fa216bd2ebc357e354d01a7de190b71c9) 2025-10-20 Sayo: fix(cli): include dotfiles (.gitignore,.npmignore,.env.example) in published package
 - [`8dc16da05567`](https://github.com/elizaOS/eliza/commit/8dc16da05567145914069eebae23bf1c34426463) 2025-10-20 Sayo: Merge pull request #6080 from elizaOS/fix/include-dotfiles-in-cli-package
 - [`b33224d5678e`](https://github.com/elizaOS/eliza/commit/b33224d5678e86e7c70f7dc850f46338cd5eb157) 2025-10-20 github-actions[bot]: chore: release v1.6.3-alpha.3 (alpha) [skip ci]
 - [`00f6cdfc8e00`](https://github.com/elizaOS/eliza/commit/00f6cdfc8e00380648d5c5459c763ae1fad65cbd) 2025-10-20 Sayo: fix(server): auto-discover free port on EADDRINUSE and align port check with host; set SERVER_PORT to bound port
@@ -16906,7 +16906,7 @@ Original commit hashes, oldest first:
 - [`812f877ba80a`](https://github.com/elizaOS/eliza/commit/812f877ba80aa6cd92f305ba8522ecf95a34d4c8) 2025-10-28 github-actions[bot]: chore: release v1.6.4-alpha.12 (alpha) [skip ci]
 - [`47e1ffea8ea8`](https://github.com/elizaOS/eliza/commit/47e1ffea8ea88b600eabd42e954fe784434d44a3) 2025-10-28 Christopher Trimboli: use small ec2s, micro too slow
 - [`0428d699ec21`](https://github.com/elizaOS/eliza/commit/0428d699ec215d10564f9aa60c1307849cb4776d) 2025-10-28 github-actions[bot]: chore: release v1.6.4-alpha.13 (alpha) [skip ci]
-- [`fe314249905b`](https://github.com/elizaOS/eliza/commit/fe314249905be8624a1836ae1cf1ef0053d2edf2) 2025-10-28 standujar: fix: merge .env variables with character
+- [`fe314249905b`](https://github.com/elizaOS/eliza/commit/fe314249905be8624a1836ae1cf1ef0053d2edf2) 2025-10-28 standujar: fix: merge.env variables with character
 - [`2ce621e5c1af`](https://github.com/elizaOS/eliza/commit/2ce621e5c1afb46d968ea26f83d7a7be63b92b4a) 2025-10-28 0xbbjoker: Merge pull request #6102 from elizaOS/fix/merge-env-with-character-settings
 - [`2008059da01b`](https://github.com/elizaOS/eliza/commit/2008059da01bd9a89c480e28a30d4aa27dd9840f) 2025-10-28 github-actions[bot]: chore: release v1.6.4-alpha.14 (alpha) [skip ci]
 - [`4d6f35d14ab0`](https://github.com/elizaOS/eliza/commit/4d6f35d14ab0a7499800f4167593b206e141a1ca) 2025-10-27 standujar: feat: Add PostgreSQL Row-Level Security (RLS) multi-tenant isolation
@@ -16961,11 +16961,11 @@ Original commit hashes, oldest first:
 - [`e66215b57b93`](https://github.com/elizaOS/eliza/commit/e66215b57b934523630fd6dc21d3dce34b16963d) 2025-11-10 standujar: refactor: implement server ID validation for RLS in messaging channels and core
 - [`f9f6d1aaad67`](https://github.com/elizaOS/eliza/commit/f9f6d1aaad679e3f7cbd90f6a54f6a7603654257) 2025-11-11 0xbbjoker: Merge pull request #6139 from elizaOS/fix/remove-unused-rls-check
 - [`fb9b8ad72bbb`](https://github.com/elizaOS/eliza/commit/fb9b8ad72bbbe5855281ea520c6dd3a4f55662a3) 2025-11-11 0xbbjoker: Merge branch 'develop' into fix/plugin-sql-package-json-types-path
-- [`76b57d2fd39a`](https://github.com/elizaOS/eliza/commit/76b57d2fd39ae181ca7349871535be34755eae11) 2025-11-10 standujar: fix: Load environment variables from process.env instead of .env file
+- [`76b57d2fd39a`](https://github.com/elizaOS/eliza/commit/76b57d2fd39ae181ca7349871535be34755eae11) 2025-11-10 standujar: fix: Load environment variables from process.env instead of.env file
 - [`cb7adabc6d5b`](https://github.com/elizaOS/eliza/commit/cb7adabc6d5b68bb643648af1c615c9219b30de0) 2025-11-10 standujar: chore: update dependencies in bun.lock file to latest versions
 - [`d72235454aae`](https://github.com/elizaOS/eliza/commit/d72235454aae216b9f96487d8790a94b20667cab) 2025-11-10 standujar: chore: update dependencies in bun.lock file to latest versions
-- [`2f5d8de31050`](https://github.com/elizaOS/eliza/commit/2f5d8de31050bfdcdc1b1b04caa8e95ce8dcd407) 2025-11-11 standujar: fix: improve error handling when loading .env files and clarify documentation
-- [`43263c294370`](https://github.com/elizaOS/eliza/commit/43263c294370d9d7d2b344a0e961c2e9d7874c5f) 2025-11-11 standujar: fix: ensure console.warn is defined before logging errors when loading .env files
+- [`2f5d8de31050`](https://github.com/elizaOS/eliza/commit/2f5d8de31050bfdcdc1b1b04caa8e95ce8dcd407) 2025-11-11 standujar: fix: improve error handling when loading.env files and clarify documentation
+- [`43263c294370`](https://github.com/elizaOS/eliza/commit/43263c294370d9d7d2b344a0e961c2e9d7874c5f) 2025-11-11 standujar: fix: ensure console.warn is defined before logging errors when loading.env files
 - [`56b7ca950c44`](https://github.com/elizaOS/eliza/commit/56b7ca950c4461f16eb2f835786474c8db6a6c23) 2025-11-11 github-actions[bot]: chore: release v1.6.5-alpha.1 (alpha) [skip ci]
 - [`96f3c3ab52da`](https://github.com/elizaOS/eliza/commit/96f3c3ab52dac4297138e23aea2332dab077400d) 2025-11-11 Stan: Merge branch 'develop' into fix/load-secrets-from-process-env
 - [`b1306a3d2388`](https://github.com/elizaOS/eliza/commit/b1306a3d23885a92015f0b6d6c87b0efff201ef2) 2025-11-12 0xbbjoker: Merge pull request #6141 from elizaOS/fix/load-secrets-from-process-env
@@ -16996,7 +16996,7 @@ Original commit hashes, oldest first:
 - [`d67598ac0254`](https://github.com/elizaOS/eliza/commit/d67598ac025459206222a7a46021b4525d3d63c5) 2025-10-08 iPLAY888: Update README.md
 - [`f3aa75c4bd3d`](https://github.com/elizaOS/eliza/commit/f3aa75c4bd3dc066b65b6d43bb3874f609043ccb) 2025-11-16 Sayo: Merge pull request #6050 from letmehateu/develop
 - [`7789a6c0664f`](https://github.com/elizaOS/eliza/commit/7789a6c0664f4801046283b200248c225bbb3987) 2025-11-17 0xbbjoker: Merge branch 'develop' into fix/migrate-langchain-to-v1
-- [`d94253631d00`](https://github.com/elizaOS/eliza/commit/d94253631d00f48f696ea01c879d965001f7b688) 2025-11-17 0xbbjoker: fix(core): add @langchain/core@^1.0.0 to resolve peer dependency
+- [`d94253631d00`](https://github.com/elizaOS/eliza/commit/d94253631d00f48f696ea01c879d965001f7b688) 2025-11-17 0xbbjoker: fix(core): add @langchain@^1.0.0 to resolve peer dependency
 - [`afa9b8586eab`](https://github.com/elizaOS/eliza/commit/afa9b8586eabcf4aeea80f9230e54a9401098288) 2025-11-17 0xbbjoker: Merge pull request #6152 from elizaOS/fix/migrate-langchain-to-v1
 - [`f89ce9749ab2`](https://github.com/elizaOS/eliza/commit/f89ce9749ab2e1d713380aae16692794fe433795) 2025-11-17 github-actions[bot]: chore: release v1.6.5-alpha.6 (alpha) [skip ci]
 - [`bbf68bbd614b`](https://github.com/elizaOS/eliza/commit/bbf68bbd614b48489fdb63b2d0f315ff4fe5ee74) 2025-11-06 Odilitime: fix tests
@@ -17246,7 +17246,7 @@ Original commit hashes, oldest first:
 - [`75764f7091a9`](https://github.com/elizaOS/eliza/commit/75764f7091a90a2dcc6e9a05ccdddc1f36c0b1ce) 2025-12-23 github-actions[bot]: chore: release v1.7.1-alpha.1 (alpha) [skip ci]
 - [`3bb98d29a6b6`](https://github.com/elizaOS/eliza/commit/3bb98d29a6b672a7e472030504f88cda879a7fea) 2025-12-26 standujar: fix(server): standardize message server route naming
 - [`fed8bc7aa8e1`](https://github.com/elizaOS/eliza/commit/fed8bc7aa8e160b67b25bcccc433f623432e8fef) 2025-12-26 standujar: test(server): replace mock tests with real API integration tests
-- [`f78b06fbe889`](https://github.com/elizaOS/eliza/commit/f78b06fbe889ed076cfd91397b9d345e0b853ce4) 2025-12-29 Sayo: Update .gitignore for Claude cache and thoughts
+- [`f78b06fbe889`](https://github.com/elizaOS/eliza/commit/f78b06fbe889ed076cfd91397b9d345e0b853ce4) 2025-12-29 Sayo: Update.gitignore for Claude cache and thoughts
 - [`658c62ac2929`](https://github.com/elizaOS/eliza/commit/658c62ac29295dfb8d96ad117131e418d68defa9) 2025-12-29 Sayo: docs: fix documentation inconsistencies and add missing test flags
 - [`5f3dbab56952`](https://github.com/elizaOS/eliza/commit/5f3dbab5695272ce7e1158d4889d03ec0715c74c) 2025-12-29 Sayo: docs(plugin-dummy-services): add comprehensive README
 - [`3fd8b6ee4b28`](https://github.com/elizaOS/eliza/commit/3fd8b6ee4b284a22de351021dad827a57243d716) 2025-12-29 Stan: Merge branch 'develop' into fix/message-servers-route-naming
@@ -17396,7 +17396,7 @@ Original commit hashes, oldest first:
 - [`a5db9e8c7228`](https://github.com/elizaOS/eliza/commit/a5db9e8c72280ed0607881f66290a5ca1e20754b) 2025-12-27 Sayo: Enhance multi-step logging and streaming in message service
 - [`4fba33742a65`](https://github.com/elizaOS/eliza/commit/4fba33742a650c019b39fc3023c97029050c6d53) 2025-12-27 Sayo: Fix state usage and improve summary streaming logic
 - [`829f8c256d4b`](https://github.com/elizaOS/eliza/commit/829f8c256d4bb6f0e357418b6564af2041847df5) 2025-12-28 Sayo: Improve streaming logic and action parameter formatting
-- [`c7f5d79e02e5`](https://github.com/elizaOS/eliza/commit/c7f5d79e02e57769ae33751c763980f468b127c5) 2025-12-29 Sayo: chore: update .cursor submodule to latest
+- [`c7f5d79e02e5`](https://github.com/elizaOS/eliza/commit/c7f5d79e02e57769ae33751c763980f468b127c5) 2025-12-29 Sayo: chore: update.cursor submodule to latest
 - [`309cb2841303`](https://github.com/elizaOS/eliza/commit/309cb2841303161324373c240720925e8e6b3423) 2026-01-02 standujar: fix(core): normalize empty action strings in multi-step workflow
 - [`6934ac583641`](https://github.com/elizaOS/eliza/commit/6934ac58364185f91383cc88ac87f4473a5b91f8) 2026-01-02 standujar: fix: check if object instead of array
 - [`51f9edd367aa`](https://github.com/elizaOS/eliza/commit/51f9edd367aa63e63380483f92fdaa2e6202971f) 2026-01-02 standujar: fix(plugin-bootstrap): validate action parameters and filter invalid entries
@@ -17411,7 +17411,7 @@ Original commit hashes, oldest first:
 - [`2e6162ec0e4c`](https://github.com/elizaOS/eliza/commit/2e6162ec0e4c6825f953e22f8aa79ad82d1eb217) 2025-12-27 Sayo: Enhance multi-step logging and streaming in message service
 - [`20119bda7fa5`](https://github.com/elizaOS/eliza/commit/20119bda7fa5147edc8240cc314e61054a4245ac) 2025-12-27 Sayo: Fix state usage and improve summary streaming logic
 - [`425205157331`](https://github.com/elizaOS/eliza/commit/425205157331bf48a3e97bee49b14f4fa30e6bff) 2025-12-28 Sayo: Improve streaming logic and action parameter formatting
-- [`6320f5f256e8`](https://github.com/elizaOS/eliza/commit/6320f5f256e83d9f2e5559f8d9bdcec56ec6322a) 2025-12-29 Sayo: chore: update .cursor submodule to latest
+- [`6320f5f256e8`](https://github.com/elizaOS/eliza/commit/6320f5f256e83d9f2e5559f8d9bdcec56ec6322a) 2025-12-29 Sayo: chore: update.cursor submodule to latest
 - [`6cc2fda50719`](https://github.com/elizaOS/eliza/commit/6cc2fda507194392c4876234b4cc1251e030cc66) 2026-01-02 standujar: fix(core): normalize empty action strings in multi-step workflow
 - [`8ef3ad35c48a`](https://github.com/elizaOS/eliza/commit/8ef3ad35c48ab4ace0b372cc831c25eca600efad) 2026-01-02 standujar: fix: check if object instead of array
 - [`47663758ebe9`](https://github.com/elizaOS/eliza/commit/47663758ebe9a6a43d100a6a03dd8963b79b3766) 2026-01-02 standujar: fix(plugin-bootstrap): validate action parameters and filter invalid entries
@@ -17495,7 +17495,7 @@ Original commit hashes, oldest first:
 - [`caa453e33cf2`](https://github.com/elizaOS/eliza/commit/caa453e33cf2753b44e7bb0eb2db83a6ab5ce1d2) 2026-02-07 Shaw: fix(ci): use compatible feature flags for Rust core tests
 - [`b58cda942348`](https://github.com/elizaOS/eliza/commit/b58cda942348457ef840a86f6eec170e127b65f3) 2026-02-07 Shaw: fix(ci): resolve Rust core compilation errors
 - [`01bded2edb58`](https://github.com/elizaOS/eliza/commit/01bded2edb58a54f0a741f0060eb6bd079270f1d) 2026-02-07 Shaw: fix(ci): remove external workspace reference that breaks CI
-- [`3e384878cd91`](https://github.com/elizaOS/eliza/commit/3e384878cd91266995ffd250930e63fb4de85ff3) 2026-02-07 Shaw: fix(ci): add .gitkeep to plugins directory for CI compatibility
+- [`3e384878cd91`](https://github.com/elizaOS/eliza/commit/3e384878cd91266995ffd250930e63fb4de85ff3) 2026-02-07 Shaw: fix(ci): add.gitkeep to plugins directory for CI compatibility
 - [`c1ca9011e04a`](https://github.com/elizaOS/eliza/commit/c1ca9011e04a3bb916a7dd9cae41c42f701477df) 2026-02-07 Shaw: fix(ci): make interop test build steps resilient to missing deps
 - [`5ef33b067940`](https://github.com/elizaOS/eliza/commit/5ef33b067940c83fb9e0235d035387c6f1d6d14a) 2026-02-07 Shaw: feat: add ActionFilterService with vector search + BM25 reranking
 - [`1042448ae18b`](https://github.com/elizaOS/eliza/commit/1042448ae18b8ace12fd3274caabfd6405bb695f) 2026-02-08 Shaw: chore: bump all packages to 2.0.0-alpha.10
@@ -17715,7 +17715,7 @@ Original commit hashes, oldest first:
 - [`09910934fb9f`](https://github.com/elizaOS/eliza/commit/09910934fb9f83d6054b594fda0d46cce1feacee) 2026-01-21 Shaw: fixes
 - [`bc73d6b1cc80`](https://github.com/elizaOS/eliza/commit/bc73d6b1cc806ff40dd21d48f398afcdbd560db1) 2026-01-21 Shaw: packages
 - [`53fe0ff56529`](https://github.com/elizaOS/eliza/commit/53fe0ff5652913ee99f49d363262dc5291993e26) 2026-01-21 Shaw: manifest
-- [`4b07a05137d1`](https://github.com/elizaOS/eliza/commit/4b07a05137d1e151df74f71224310e67d1896299) 2026-01-21 Shaw: chore: add .npmignore to exclude database and binary files from elizaos package
+- [`4b07a05137d1`](https://github.com/elizaOS/eliza/commit/4b07a05137d1e151df74f71224310e67d1896299) 2026-01-21 Shaw: chore: add.npmignore to exclude database and binary files from elizaos package
 - [`89aec2cf9b2a`](https://github.com/elizaOS/eliza/commit/89aec2cf9b2acb41ece4f23c62e98a9a350cd324) 2026-01-21 Shaw: chore: update gitHead and add soulmates example
 - [`81518ccee040`](https://github.com/elizaOS/eliza/commit/81518ccee0401c76817de910de0e283ce595cb76) 2026-01-21 Shaw: chore: remove embedded git repos from index
 - [`495c95086375`](https://github.com/elizaOS/eliza/commit/495c95086375c55fc232fd3af3a2e2e368f36085) 2026-01-21 Shaw: chore: ignore embedded git repos in soulmates
@@ -17725,7 +17725,7 @@ Original commit hashes, oldest first:
 - [`97cb016b794d`](https://github.com/elizaOS/eliza/commit/97cb016b794d01bc07a552427734d2e98a1d674a) 2026-01-21 Shaw: fix: correct gitignore paths for embedded repos
 - [`658f659feda0`](https://github.com/elizaOS/eliza/commit/658f659feda0e65899d9b0e8aa17ff9445dd715a) 2026-01-21 Shaw: chore: bump to 2.0.0-alpha.1 for clean republish
 - [`53a31ea4108a`](https://github.com/elizaOS/eliza/commit/53a31ea4108adc6580ecf0a43b49abc07d423824) 2026-01-21 Shaw: chore: update gitHead after version bump
-- [`05d4ca11d769`](https://github.com/elizaOS/eliza/commit/05d4ca11d769db8c7f54a722ee24b2ce2b951543) 2026-01-21 Shaw: chore: add plugins to lerna, add .npmignore to all plugins, bump to 2.0.0-alpha.1
+- [`05d4ca11d769`](https://github.com/elizaOS/eliza/commit/05d4ca11d769db8c7f54a722ee24b2ce2b951543) 2026-01-21 Shaw: chore: add plugins to lerna, add.npmignore to all plugins, bump to 2.0.0-alpha.1
 - [`401e0d2502fe`](https://github.com/elizaOS/eliza/commit/401e0d2502fea9d6f459aa80faad1369798e9600) 2026-01-21 Shaw: update version
 - [`357b43fde0b2`](https://github.com/elizaOS/eliza/commit/357b43fde0b248dc8ddf23e9d069cabec187a278) 2026-01-21 Shaw: chore: mark root packages as private, configure typescript packages for npm publish
 - [`97a31bdc50a0`](https://github.com/elizaOS/eliza/commit/97a31bdc50a09a12e2c39c0bba6c1a580ace5e40) 2026-01-13 Odilitime: fix(python): Fix Python chat example and add quickstart docs
@@ -17795,10 +17795,10 @@ Original commit hashes, oldest first:
 - [`38427d0d3da3`](https://github.com/elizaOS/eliza/commit/38427d0d3da35f9da04f5bb8505eb61812635a7b) 2026-01-11 Sayo: docs: fix interop references and markdown formatting
 - [`3165e15b1eb0`](https://github.com/elizaOS/eliza/commit/3165e15b1eb078e4c1c25a4c21787e65c8aac7b3) 2026-02-04 Shaw: Merge PR #6356: docs: V2.0.0 core documentation guides
 - [`17cd5bb98d3b`](https://github.com/elizaOS/eliza/commit/17cd5bb98d3bb281e7b79673028c5f9cfcf633c8) 2026-02-05 hanzlamateen: chore: Update dependencies and enhance training pipeline for 2048 game
-- [`82dd502e9e88`](https://github.com/elizaOS/eliza/commit/82dd502e9e88aa1211bf3d2d4c01d6bc681efaa1) 2026-02-05 hanzlamateen: chore: Update .gitignore files to include new patterns
-- [`8bd31f65c478`](https://github.com/elizaOS/eliza/commit/8bd31f65c47878d8dcf987ac9ef17f4284cd36ce) 2026-02-05 hanzlamateen: chore: Update test files and .gitignore for improved functionality
+- [`82dd502e9e88`](https://github.com/elizaOS/eliza/commit/82dd502e9e88aa1211bf3d2d4c01d6bc681efaa1) 2026-02-05 hanzlamateen: chore: Update.gitignore files to include new patterns
+- [`8bd31f65c478`](https://github.com/elizaOS/eliza/commit/8bd31f65c47878d8dcf987ac9ef17f4284cd36ce) 2026-02-05 hanzlamateen: chore: Update test files and.gitignore for improved functionality
 - [`258b6597b533`](https://github.com/elizaOS/eliza/commit/258b6597b53390a31670898c38241e839f9e2580) 2026-02-05 hanzlamateen: refactor(trainer): streamline inference server logging and clean up code
-- [`b092f56289f5`](https://github.com/elizaOS/eliza/commit/b092f56289f509ca2f8a815b2dd718f0b9b11180) 2026-02-05 hanzlamateen: chore: Update .gitignore to include '.art' file extension
+- [`b092f56289f5`](https://github.com/elizaOS/eliza/commit/b092f56289f509ca2f8a815b2dd718f0b9b11180) 2026-02-05 hanzlamateen: chore: Update.gitignore to include '.art' file extension
 - [`028293571588`](https://github.com/elizaOS/eliza/commit/028293571588d47f2ccf1aeb6e1596f260835a3c) 2026-01-20 Odilitime: feat(core): add dynamicPromptExecFromState for validation-aware structured output
 - [`64e3564c52e0`](https://github.com/elizaOS/eliza/commit/64e3564c52e08b4808eb086664a917f5bed0f0e3) 2026-01-20 Odilitime: feat(rust,python): add dynamicPromptExecFromState for validation-aware structured output
 - [`c6287bdf2953`](https://github.com/elizaOS/eliza/commit/c6287bdf2953ccf694dfa0628d4c1e57e847eea1) 2026-01-20 Odilitime: fix(core): address 3 bugs in dynamicPromptExecFromState
@@ -18134,7 +18134,7 @@ Original commit hashes, oldest first:
 - [`52582537746e`](https://github.com/elizaOS/eliza/commit/52582537746ed40a85c1fb13c7a90c94befcedf6) 2026-03-17 dependabot[bot]: build(deps): bump the npm_and_yarn group across 5 directories with 3 updates
 - [`be15eda25f4a`](https://github.com/elizaOS/eliza/commit/be15eda25f4abeff6053842043f73f33355cd2a0) 2026-03-16 Shaw: Merge pull request #6599 from elizaOS/dependabot/npm_and_yarn/examples/app/electron/backend/npm_and_yarn-534ddd84c6
 - [`d3afe8ed3e41`](https://github.com/elizaOS/eliza/commit/d3afe8ed3e410cd930d24ed50d773adb77946481) 2026-03-16 Shaw: chore: remove stale files and directories from repo root
-- [`62a6a06a08a4`](https://github.com/elizaOS/eliza/commit/62a6a06a08a41bcfbde6285cde96aede335887c9) 2026-03-16 Shaw: chore: restore .prr directory
+- [`62a6a06a08a4`](https://github.com/elizaOS/eliza/commit/62a6a06a08a41bcfbde6285cde96aede335887c9) 2026-03-16 Shaw: chore: restore.prr directory
 - [`f0a5a446debf`](https://github.com/elizaOS/eliza/commit/f0a5a446debf563cf7bc04f0302f147fd7071d99) 2026-03-16 Shaw: feat: sync local worktree changes (app-core, autonomous, ui, workflows)
 - [`54d9d6c13683`](https://github.com/elizaOS/eliza/commit/54d9d6c1368321a71412f6a10f691d54aa9fefde) 2026-03-16 Shaw: fix: remove unused uniswap peer dependencies from plugin-lp-manager
 - [`3c2e36d4e4b1`](https://github.com/elizaOS/eliza/commit/3c2e36d4e4b171d965e4461f33bc4ec403efdfbc) 2026-03-17 Alan Pope: feat: improve skill descriptions across 57 skills (#6582)
@@ -18245,7 +18245,7 @@ Original commit hashes, oldest first:
 - [`d56695e49672`](https://github.com/elizaOS/eliza/commit/d56695e49672defaef766e15075236b197c6604f) 2026-03-17 Shaw: feat: complete milady → eliza rename across entire codebase
 - [`60f7ae93d908`](https://github.com/elizaOS/eliza/commit/60f7ae93d9083f2f657d91d8c92477b1394b483d) 2026-03-17 Shaw: docs: add ElizaOS plugins registry link to README
 - [`562ee43cec90`](https://github.com/elizaOS/eliza/commit/562ee43cec90c3e8666a632f577288164b6622ce) 2026-03-17 Shaw: fix: add milady/miladyai to known package names and isAuthorized token check
-- [`5795b00c2693`](https://github.com/elizaOS/eliza/commit/5795b00c269369a054b18882915a3c00b5160f92) 2026-03-17 Shaw: fix(autonomous): move @elizaos/core from peerDependencies to dependencies
+- [`5795b00c2693`](https://github.com/elizaOS/eliza/commit/5795b00c269369a054b18882915a3c00b5160f92) 2026-03-17 Shaw: fix(autonomous): move @elizaos from peerDependencies to dependencies
 - [`f42f2b4c93b0`](https://github.com/elizaOS/eliza/commit/f42f2b4c93b075af88c4806ab2dbd34f75bc0e9f) 2026-03-17 Shaw: fix(autonomous): fix duplicate package.json export keys
 - [`f84ed2c72083`](https://github.com/elizaOS/eliza/commit/f84ed2c720830948f0ea6d2570c1150123ecf7de) 2026-03-18 github-actions[bot]: chore: release v2.0.0-alpha.53 (alpha) [skip ci]
 - [`a1bbab64edc3`](https://github.com/elizaOS/eliza/commit/a1bbab64edc34461f0024f141d0efc7e96476fca) 2026-03-17 Shaw: feat(app-core): branding config, theming fixes, companion entry point
@@ -18360,7 +18360,7 @@ Original commit hashes, oldest first:
 - [`d259d39b759c`](https://github.com/elizaOS/eliza/commit/d259d39b759c24d5f0689593b7824e1c4fd5c783) 2026-03-19 github-actions[bot]: chore: release v2.0.0-alpha.72 (alpha) [skip ci]
 - [`3060158987a8`](https://github.com/elizaOS/eliza/commit/3060158987a8953be375d26233a60ceca410fb0e) 2026-03-19 lalalune: fix(core): resolve noExplicitAny lint warnings in runtime
 - [`ab3418fd82dd`](https://github.com/elizaOS/eliza/commit/ab3418fd82dd6024c403526aacca9ac16bcd8274) 2026-03-19 github-actions[bot]: chore: release v2.0.0-alpha.73 (alpha) [skip ci]
-- [`3ab01a47fa27`](https://github.com/elizaOS/eliza/commit/3ab01a47fa2759c5d7b9b4f77ce4a6534c1c9cc6) 2026-03-19 Shaw: chore: release v2.0.0-alpha.72 — fix broken nested @elizaos/core dist
+- [`3ab01a47fa27`](https://github.com/elizaOS/eliza/commit/3ab01a47fa2759c5d7b9b4f77ce4a6534c1c9cc6) 2026-03-19 Shaw: chore: release v2.0.0-alpha.72 — fix broken nested @elizaos dist
 - [`1350c86d35ba`](https://github.com/elizaOS/eliza/commit/1350c86d35bac66a9b70a08e2c31c18600b45e74) 2026-03-19 Shaw: chore: restore workspace refs after prepublish
 - [`4ac16f6f0ef7`](https://github.com/elizaOS/eliza/commit/4ac16f6f0ef7416a44bee666210d9b80a98349c7) 2026-03-19 Shaw: chore: prepublish version replacement for alpha.72
 - [`5021459f8423`](https://github.com/elizaOS/eliza/commit/5021459f84233eae9825f6734bb1a57d9bbb3c71) 2026-03-19 Shaw: fix(app-core): show Eliza Cloud in LLM provider grid for cloudOnly mode
@@ -18427,7 +18427,7 @@ Original commit hashes, oldest first:
 - [`5be28a27144f`](https://github.com/elizaOS/eliza/commit/5be28a27144fdd6a7535806cdd008a5a5dd91cd6) 2026-03-20 github-actions[bot]: chore: release v2.0.0-alpha.81 (alpha) [skip ci]
 - [`4975b78a4cd3`](https://github.com/elizaOS/eliza/commit/4975b78a4cd39b73b1ca5aad30891c7481b1a592) 2026-03-20 dexploarer: feat: simplified onboarding, UI theme compliance, mode toggle fix
 - [`3783940c49f2`](https://github.com/elizaOS/eliza/commit/3783940c49f28718ee534564ecfac38e8b3cb1d5) 2026-03-20 Shaw: Merge pull request #6626 from Dexploarer/feat/onboarding-redesign-v2
-- [`cce57d5abdf4`](https://github.com/elizaOS/eliza/commit/cce57d5abdf41a8deefc156269f30580e32dbad1) 2026-03-20 dexploarer: fix: knowledge upload — image handling, .mdx support
+- [`cce57d5abdf4`](https://github.com/elizaOS/eliza/commit/cce57d5abdf41a8deefc156269f30580e32dbad1) 2026-03-20 dexploarer: fix: knowledge upload — image handling,.mdx support
 - [`53b6c01d40d2`](https://github.com/elizaOS/eliza/commit/53b6c01d40d2b7fc3990ab3bad32091872773140) 2026-03-20 Shaw: Merge pull request #6627 from Dexploarer/fix/knowledge-image-mdx-bulk
 - [`28ba2e824cad`](https://github.com/elizaOS/eliza/commit/28ba2e824cadc9684c7b76da2ba244a8870cd51d) 2026-03-20 Shaw: Merge branch 'develop' of https://github.com/elizaos/eliza into develop
 - [`ff97d9b4f2f3`](https://github.com/elizaOS/eliza/commit/ff97d9b4f2f3203cbd5471337bb1fb61597d36ff) 2026-03-20 Shaw: fix: post-merge lint, typecheck, and button visibility fixes
@@ -18457,7 +18457,7 @@ Original commit hashes, oldest first:
 - [`a9092195a850`](https://github.com/elizaOS/eliza/commit/a9092195a85025bbb95493260b0fed353f2d29a3) 2026-03-21 Shaw: feat: rename bootstrap to basic-capabilities, persist character edits to DB, fix action dedup
 - [`a227bb3a2f60`](https://github.com/elizaOS/eliza/commit/a227bb3a2f600d70bfe3fe22a2558f5968e86146) 2026-03-21 Shaw: fix: increase timeout for hook loader tests that do real dynamic imports
 - [`172332128354`](https://github.com/elizaOS/eliza/commit/172332128354c5a26e4cfad85c0457f613b35eb4) 2026-03-22 github-actions[bot]: chore: release v2.0.0-alpha.87 (alpha) [skip ci]
-- [`3202516390d0`](https://github.com/elizaOS/eliza/commit/3202516390d08238b122572143bf92c3472b619f) 2026-03-21 Shaw: fix: add types.eliza.ts to git and fix .gitignore pattern
+- [`3202516390d0`](https://github.com/elizaOS/eliza/commit/3202516390d08238b122572143bf92c3472b619f) 2026-03-21 Shaw: fix: add types.eliza.ts to git and fix.gitignore pattern
 - [`450fec7998c1`](https://github.com/elizaOS/eliza/commit/450fec7998c10125781d29cb641ea5a88a656add) 2026-03-22 github-actions[bot]: chore: release v2.0.0-alpha.88 (alpha) [skip ci]
 - [`aacb5e873699`](https://github.com/elizaOS/eliza/commit/aacb5e873699daf27fdbb4acb9ae25d375741049) 2026-03-21 Shaw: fix(ci): remove non-existent app-core from critical packages check
 - [`e952d6389175`](https://github.com/elizaOS/eliza/commit/e952d63891751210f691dfff4c38f8657a8499cd) 2026-03-22 github-actions[bot]: chore: release v2.0.0-alpha.89 (alpha) [skip ci]
@@ -18516,7 +18516,7 @@ Original commit hashes, oldest first:
 - [`5d4b26b777cd`](https://github.com/elizaOS/eliza/commit/5d4b26b777cd78bf5643f00f859dbcbe7c8f223c) 2026-03-24 Jakob: fix(ci): remove packages/agent from dist check — directory no longer exists
 - [`4fcb2ec5bc81`](https://github.com/elizaOS/eliza/commit/4fcb2ec5bc81ffb38469bffc5e7455e897fff678) 2026-03-24 Jakob: Merge pull request #6666 from elizaOS/fix/release-remove-agent-dist-check
 - [`b38534149931`](https://github.com/elizaOS/eliza/commit/b385341499319e894568428ef8f0641a81be9b81) 2026-03-25 github-actions[bot]: chore: release v2.0.0-alpha.105 (alpha) [skip ci]
-- [`315b3735a450`](https://github.com/elizaOS/eliza/commit/315b3735a45064e274c75f5b4173c08b79c9a7e9) 2026-03-25 Jakob: fix(ci): ensure @elizaos/core dist-tag is updated in release
+- [`315b3735a450`](https://github.com/elizaOS/eliza/commit/315b3735a45064e274c75f5b4173c08b79c9a7e9) 2026-03-25 Jakob: fix(ci): ensure @elizaos dist-tag is updated in release
 - [`1e593a3f2878`](https://github.com/elizaOS/eliza/commit/1e593a3f2878610c09df4f3e54b4b337cad0ba21) 2026-03-25 Jakob: Merge pull request #6667 from elizaOS/fix/release-core-dist-tag
 - [`4ad1ace16e7a`](https://github.com/elizaOS/eliza/commit/4ad1ace16e7a492ffbbb50f3fbbe221f2c6691e0) 2026-03-25 github-actions[bot]: chore: release v2.0.0-alpha.106 (alpha) [skip ci]
 - [`c6a3206b60ce`](https://github.com/elizaOS/eliza/commit/c6a3206b60ce59f8e38ae40b45c5c24b92d2466e) 2026-03-26 Jakob: fix(core): remove redundant action params example (~500 chars/prompt)
@@ -18973,7 +18973,7 @@ Original commit hashes, oldest first:
 - [`3b94ab008f85`](https://github.com/elizaOS/eliza/commit/3b94ab008f8529131b7cb0845eb1fc20e4f72045) 2026-04-16 dexploarer: fix(app-core): restore PtyConsoleDrawerProps to match component signature
 - [`84a702d5c546`](https://github.com/elizaOS/eliza/commit/84a702d5c5468f44d2aa8482a9b8a1100ecae5a3) 2026-04-16 dexploarer: fix(tsconfig): remove react/react-dom path mappings that break Bun runtime
 - [`542bb1d14015`](https://github.com/elizaOS/eliza/commit/542bb1d140150f54da71c01418bfc5c221b4d25f) 2026-04-16 dexploarer: fix(tsconfig): restore react/react-dom path mappings for tsc type identity
-- [`95ad44d760df`](https://github.com/elizaOS/eliza/commit/95ad44d760dfd2da534756942c38cd9a38787325) 2026-04-16 dexploarer: fix(pre-review): exempt .depot/ workflow mirrors from test requirement
+- [`95ad44d760df`](https://github.com/elizaOS/eliza/commit/95ad44d760dfd2da534756942c38cd9a38787325) 2026-04-16 dexploarer: fix(pre-review): exempt.depot/ workflow mirrors from test requirement
 - [`48cfdff2db4e`](https://github.com/elizaOS/eliza/commit/48cfdff2db4ebeb5c198c741971885b099a803ff) 2026-04-17 dexploarer: fix(pre-review): exempt tsconfig*.json from test requirement
 - [`cb89eddd427d`](https://github.com/elizaOS/eliza/commit/cb89eddd427dd053daca1a92da7c66ca2f410d9f) 2026-04-17 dexploarer: fix(setup): re-run patch-deps after all bun installs to clean @types cache
 - [`f2ccd784ede7`](https://github.com/elizaOS/eliza/commit/f2ccd784ede778684c525930d77f592f751f7eba) 2026-04-17 dexploarer: fix(setup): also re-run ensure-type-package-aliases after final patch-deps
@@ -19179,7 +19179,7 @@ Original commit hashes, oldest first:
 - [`ac56eaa3f781`](https://github.com/elizaOS/eliza/commit/ac56eaa3f781048910c5e7d31ec8a705cf05598b) 2026-04-17 Shaw: chore: cleanup-pass working-tree stragglers
 - [`b11948712e0e`](https://github.com/elizaOS/eliza/commit/b11948712e0e5ad04be62ec822202309a7c65545) 2026-04-17 renovate[bot]: fix(deps): update dependency com.android.tools.build:gradle to v8.13.2
 - [`251c7d09b6f9`](https://github.com/elizaOS/eliza/commit/251c7d09b6f9f5736322154fe4f8c5d89fb4bb45) 2026-04-17 Shaw: Merge renovate/com.android.tools.build-gradle-8.x
-- [`b0042e739887`](https://github.com/elizaOS/eliza/commit/b0042e73988719c157203446d8dfd6dcd543b0b9) 2026-04-17 renovate[bot]: fix(deps): update dependency @elizaos/core
+- [`b0042e739887`](https://github.com/elizaOS/eliza/commit/b0042e73988719c157203446d8dfd6dcd543b0b9) 2026-04-17 renovate[bot]: fix(deps): update dependency @elizaos
 - [`a7b568380d4b`](https://github.com/elizaOS/eliza/commit/a7b568380d4b6f85cb910bedd8d401a47eda3911) 2026-04-17 Shaw: Merge renovate/elizaos-core-2.x
 - [`c9deb4cc37d7`](https://github.com/elizaOS/eliza/commit/c9deb4cc37d74783c1aacd834082a03d75a5f4b2) 2026-04-17 renovate[bot]: fix(deps): update dependency @elizaos/plugin-elizacloud to v2.0.0-alpha.8
 - [`844298e5910b`](https://github.com/elizaOS/eliza/commit/844298e5910b2598e05c4fbf11cbd7ef7a482baa) 2026-04-17 Shaw: Merge renovate/elizaos-plugin-elizacloud-2.x
@@ -19265,7 +19265,7 @@ Original commit hashes, oldest first:
 - [`f168e72423e3`](https://github.com/elizaOS/eliza/commit/f168e72423e37609d090fc2b2fa442693f276fbc) 2026-04-17 renovate[bot]: fix(deps): update dependency androidx.exifinterface:exifinterface to v1.4.2
 - [`8dd995923898`](https://github.com/elizaOS/eliza/commit/8dd9959238989d980ebd8f93666addea212cdeb2) 2026-04-17 Shaw: Merge renovate/androidx.exifinterface-exifinterface-1.x
 - [`59c40fc9b299`](https://github.com/elizaOS/eliza/commit/59c40fc9b29989c04d01cd1c8053c5baabcec43e) 2026-04-17 renovate[bot]: fix(deps): update dependency androidx.core:core-splashscreen to v1.2.0
-- [`bc75eae1225b`](https://github.com/elizaOS/eliza/commit/bc75eae1225b10325e78f8bbc150247e0e497550) 2026-04-17 Shaw: Merge renovate/coresplashscreenversion
+- [`bc75eae1225b`](https://github.com/elizaOS/eliza/commit/bc75eae1225b10325e78f8bbc150247e0e497550) 2026-04-17 Shaw: Merge renovatesplashscreenversion
 - [`eececa3b19db`](https://github.com/elizaOS/eliza/commit/eececa3b19db1d5acb5fe9a503d1375fd97cd380) 2026-04-17 renovate[bot]: fix(deps): update dependency androidx.coordinatorlayout:coordinatorlayout to v1.3.0
 - [`1e1e776dbe1e`](https://github.com/elizaOS/eliza/commit/1e1e776dbe1eadeeb36bca01658c19e104f4ee44) 2026-04-17 Shaw: Merge renovate/androidxcoordinatorlayoutversion
 - [`4f5c1a01aa1f`](https://github.com/elizaOS/eliza/commit/4f5c1a01aa1f818511680cdaaf2d685e82a324f9) 2026-04-17 renovate[bot]: fix(deps): update dependency androidx.appcompat:appcompat to v1.7.1
@@ -19523,7 +19523,7 @@ Original commit hashes, oldest first:
 - [`b28d82a34818`](https://github.com/elizaOS/eliza/commit/b28d82a34818bfb77718bee9dab46ddeddfa9181) 2026-04-18 Shaw: fix(block-rule-service): drop 'as const' from worldMetadata to allow mutable JsonValue assignment
 - [`c99b7afbe77e`](https://github.com/elizaOS/eliza/commit/c99b7afbe77ea74310a3b49f8572ebbfa383be94) 2026-04-18 github-actions[bot]: chore: release v2.0.0-alpha.200 (alpha) [skip ci]
 - [`205ebe7b1ebe`](https://github.com/elizaOS/eliza/commit/205ebe7b1ebe6dc38bc4c77b19279b44c115d506) 2026-04-18 Shaw: Merge branch 'develop' of https://github.com/elizaOS/eliza into develop
-- [`b6efee2c4321`](https://github.com/elizaOS/eliza/commit/b6efee2c4321350319d5b998ae9b910c3c425763) 2026-04-18 Shaw: fix(agent): add explicit ./api/server-auth export (some resolvers fail on pattern-only)
+- [`b6efee2c4321`](https://github.com/elizaOS/eliza/commit/b6efee2c4321350319d5b998ae9b910c3c425763) 2026-04-18 Shaw: fix(agent): add explicit./api/server-auth export (some resolvers fail on pattern-only)
 - [`36b4ea1574ed`](https://github.com/elizaOS/eliza/commit/36b4ea1574ede096615969d8fdaa33ebf2df003a) 2026-04-18 github-actions[bot]: chore: release v2.0.0-alpha.201 (alpha) [skip ci]
 - [`915a3b1eaaec`](https://github.com/elizaOS/eliza/commit/915a3b1eaaec8946003ecf621573028b01f2ea68) 2026-04-18 Shaw: Merge branch 'develop' of https://github.com/elizaOS/eliza into develop
 - [`6aa45d2fadb2`](https://github.com/elizaOS/eliza/commit/6aa45d2fadb2f7d6b7b5a0b4cfd3a2827041d7d2) 2026-04-18 Shaw: fix: bump plugin-openrouter (openrouter sdk v2) + stragglers
@@ -19886,7 +19886,7 @@ Original commit hashes, oldest first:
 - [`e520be17813e`](https://github.com/elizaOS/eliza/commit/e520be17813e09d07215a3c4f8c55daa43dedd7c) 2026-04-20 Odilitime: fix: Pairing scan errors, i18n keyword import, and dedupe recent-messages helper
 - [`318e2bf844d7`](https://github.com/elizaOS/eliza/commit/318e2bf844d748157e5a4dd1b7c171ea555c815c) 2026-04-20 Odilitime: fix(phone-companion): keep pop stack updater pure for Strict Mode
 - [`f60ed6ebdcca`](https://github.com/elizaOS/eliza/commit/f60ed6ebdcca609f7685a66294e3e7da3815a89a) 2026-04-20 Odilitime: chore(phone-companion): remove unused intent-bridge forwardIntent wrapper
-- [`3deabb3a49cc`](https://github.com/elizaOS/eliza/commit/3deabb3a49cc442dba439fd4b1edb39eb8ad4af6) 2026-04-20 Odilitime: fix(typescript): point @elizaos/core paths to src/ for declaration emit
+- [`3deabb3a49cc`](https://github.com/elizaOS/eliza/commit/3deabb3a49cc442dba439fd4b1edb39eb8ad4af6) 2026-04-20 Odilitime: fix(typescript): point @elizaos paths to src/ for declaration emit
 - [`28318f7eb1a8`](https://github.com/elizaOS/eliza/commit/28318f7eb1a8742a23d5304c859b77084155c3c0) 2026-04-20 Odilitime: Merge eliza develop tip (f8a88654) into odi-dev2 — resolve phone-companion, relevance, tsconfig
 - [`bbb0a9394339`](https://github.com/elizaOS/eliza/commit/bbb0a9394339c21b04c9f81ae656c05ec7ac69c9) 2026-04-20 Odilitime: fix(phone-companion): clarify viewer URL comment; fix(message) non-LLM should-respond gates
 - [`b65822768f5e`](https://github.com/elizaOS/eliza/commit/b65822768f5eece27cf4cb8471825fb1bc1614c4) 2026-04-20 Odilitime: Merge eliza develop tip (9460edf7) into odi-dev2 — retain phone-companion, iOS intent plugin, message non-LLM gates
@@ -19923,7 +19923,7 @@ Original commit hashes, oldest first:
 - [`b888253902f3`](https://github.com/elizaOS/eliza/commit/b888253902f3422a26046a1ca161d76a4d15ab20) 2026-04-20 Stan: Merge branch 'develop' into feat/default-encapsulation-env-var
 - [`cb500f9b2df0`](https://github.com/elizaOS/eliza/commit/cb500f9b2df0459182dbdadc833d3f9374b39872) 2026-04-20 Stan: Update packages/typescript/src/runtime.ts
 - [`e16e361f1d21`](https://github.com/elizaOS/eliza/commit/e16e361f1d212bdd8bc52119c4c3b36654de657a) 2026-04-21 milady-bot: Merge branch 'pr-6978' into develop
-- [`79be8da883ab`](https://github.com/elizaOS/eliza/commit/79be8da883ab9b38c83e741f659d091aeb73cb1e) 2026-04-21 renovate[bot]: fix(deps): update dependency @elizaos/core to v2.0.0-alpha.223
+- [`79be8da883ab`](https://github.com/elizaOS/eliza/commit/79be8da883ab9b38c83e741f659d091aeb73cb1e) 2026-04-21 renovate[bot]: fix(deps): update dependency @elizaos to v2.0.0-alpha.223
 - [`d5985c592abd`](https://github.com/elizaOS/eliza/commit/d5985c592abd9dece47aee1fd9bfeeadaf323fe2) 2026-04-21 renovate[bot]: chore(deps): update dependency lerna to v9.0.7
 - [`b7a7dccad249`](https://github.com/elizaOS/eliza/commit/b7a7dccad249d1a25d7e023966ac688b74fba89e) 2026-04-21 milady-bot: Merge remote-tracking branch 'origin/renovate/lerna-monorepo' into develop
 - [`e1f7a67ce5a5`](https://github.com/elizaOS/eliza/commit/e1f7a67ce5a58f57f29eff398e152ff2425ae062) 2026-04-21 renovate[bot]: chore(deps): update dependency @types/node to v22.19.17
@@ -20218,7 +20218,7 @@ Original commit hashes, oldest first:
 - [`c8e9e29e37a1`](https://github.com/elizaOS/eliza/commit/c8e9e29e37a16563b9c26833831c893b7342b9e0) 2026-04-22 renovate[bot]: chore(deps): update supabase/postgres docker tag to v17.6.1.109
 - [`b8a3cf8596c8`](https://github.com/elizaOS/eliza/commit/b8a3cf8596c833f8512b23c4852bbfd59bd57c55) 2026-04-21 Shaw: Merge pull request #7010 from elizaOS/renovate/supabase-postgres-17.x
 - [`01dd7f194b21`](https://github.com/elizaOS/eliza/commit/01dd7f194b21b2d802a4923dfb9f4bdf572889b5) 2026-04-22 renovate[bot]: fix(deps): update dependency androidx.core:core-splashscreen to v1.2.0
-- [`b525028de7ee`](https://github.com/elizaOS/eliza/commit/b525028de7ee3032d32ad91c752da2b0461a8b33) 2026-04-21 Shaw: Merge pull request #7011 from elizaOS/renovate/coresplashscreenversion
+- [`b525028de7ee`](https://github.com/elizaOS/eliza/commit/b525028de7ee3032d32ad91c752da2b0461a8b33) 2026-04-21 Shaw: Merge pull request #7011 from elizaOS/renovatesplashscreenversion
 - [`a68ded120a04`](https://github.com/elizaOS/eliza/commit/a68ded120a04d45e21d4b5b5c39ab87e1e94ab17) 2026-04-22 renovate[bot]: fix(deps): update dependency tqdm to ~=4.66.3 [security]
 - [`fde73e8273c3`](https://github.com/elizaOS/eliza/commit/fde73e8273c3fe195eefa475852036fc94f2914d) 2026-04-21 Shaw: Merge pull request #7012 from elizaOS/renovate/pypi-tqdm-vulnerability
 - [`0101055a69d2`](https://github.com/elizaOS/eliza/commit/0101055a69d27aca7d9290ab25dd7fc0685bdda4) 2026-04-22 renovate[bot]: fix(deps): update dependency androidx.test.espresso:espresso-core to v3.7.0
@@ -20631,7 +20631,7 @@ Original commit hashes, oldest first:
 - [`82898e427fe9`](https://github.com/elizaOS/eliza/commit/82898e427fe99127308f1d90ec1b190bcc6e94b4) 2026-04-23 Shaw: Merge remote-tracking branch 'origin/pr/7070' into develop
 - [`e51c54554f61`](https://github.com/elizaOS/eliza/commit/e51c54554f610ed50f0955f4ff02058725ad3ed9) 2026-04-23 renovate[bot]: fix(deps): update dependency telegram to v2.26.22
 - [`f6b365310e48`](https://github.com/elizaOS/eliza/commit/f6b365310e489b820ac6f14b40b0c4b0848c697e) 2026-04-23 Shaw: Merge remote-tracking branch 'origin/pr/7069' into develop
-- [`4ab1e0f8e4ad`](https://github.com/elizaOS/eliza/commit/4ab1e0f8e4ad9f1811882f8c7e2444ea25a97e85) 2026-04-24 renovate[bot]: fix(deps): update dependency @elizaos/core to v2.0.0-alpha.336
+- [`4ab1e0f8e4ad`](https://github.com/elizaOS/eliza/commit/4ab1e0f8e4ad9f1811882f8c7e2444ea25a97e85) 2026-04-24 renovate[bot]: fix(deps): update dependency @elizaos to v2.0.0-alpha.336
 - [`edb1011dc745`](https://github.com/elizaOS/eliza/commit/edb1011dc74510fa52860a665b0cf3dd0c00806a) 2026-04-23 Shaw: Merge remote-tracking branch 'origin/pr/7068' into develop
 - [`45e0be8f21f1`](https://github.com/elizaOS/eliza/commit/45e0be8f21f1d9e0a8150d4b2e66c6bd74c4b42b) 2026-04-23 renovate[bot]: fix(deps): update dependency org.jetbrains.kotlin:kotlin-gradle-plugin to v2.3.21
 - [`25662f66ebdd`](https://github.com/elizaOS/eliza/commit/25662f66ebdd66a54fdad4f705a7b2a4e7086986) 2026-04-23 Shaw: Merge remote-tracking branch 'origin/pr/7067' into develop
@@ -20701,7 +20701,7 @@ Original commit hashes, oldest first:
 - [`7f45d600c27b`](https://github.com/elizaOS/eliza/commit/7f45d600c27b247c75aa9b991720d1affb52a885) 2026-04-23 lalalune: Merge branch 'develop' of https://github.com/elizaOS/eliza into develop
 - [`03fc0d9228e8`](https://github.com/elizaOS/eliza/commit/03fc0d9228e839f68b444bd5b2226c5c21aac24b) 2026-04-23 lalalune: update
 - [`a51f3a411b7b`](https://github.com/elizaOS/eliza/commit/a51f3a411b7bd36d54c29ae38e51295ca7518379) 2026-04-24 github-actions[bot]: chore: release v2.0.0-alpha.340 (alpha) [skip ci]
-- [`18433f587a2b`](https://github.com/elizaOS/eliza/commit/18433f587a2babf1f9992b902e7fe587c0ee74b0) 2026-04-23 renovate[bot]: fix(deps): update dependency @elizaos/core to v2.0.0-alpha.339 (#7081)
+- [`18433f587a2b`](https://github.com/elizaOS/eliza/commit/18433f587a2babf1f9992b902e7fe587c0ee74b0) 2026-04-23 renovate[bot]: fix(deps): update dependency @elizaos to v2.0.0-alpha.339 (#7081)
 - [`8537da06fe24`](https://github.com/elizaOS/eliza/commit/8537da06fe24f94cea8e8f63294ac72f90252fd2) 2026-04-23 renovate[bot]: fix(deps): update dependency @anthropic-ai/sdk to ^0.91.0 (#7082)
 - [`8aa08778f5e4`](https://github.com/elizaOS/eliza/commit/8aa08778f5e47e75b48ba4e1d791e6e473221934) 2026-04-24 github-actions[bot]: chore: release v2.0.0-alpha.341 (alpha) [skip ci]
 - [`d0b85a57612c`](https://github.com/elizaOS/eliza/commit/d0b85a57612c9c560b51e96a7324b8f2af99ffdb) 2026-04-24 remilio nubilio: docs: fix typo in deploy-a-project.mdx (#7085)
@@ -20798,7 +20798,7 @@ Original commit hashes, oldest first:
 - [`e128fb35a5b8`](https://github.com/elizaOS/eliza/commit/e128fb35a5b80577551e7eb69b1fbbb5c958e597) 2026-04-25 Shaw: wip: more session deltas (race continues)
 - [`7ee15a5a9916`](https://github.com/elizaOS/eliza/commit/7ee15a5a9916ad1abd25a897aad3c8899561891d) 2026-04-25 Shaw: fix(agent): tighten x402 plugin-route + replay-guard typing after PR 7100 merge
 - [`2da68165539e`](https://github.com/elizaOS/eliza/commit/2da68165539ea3a7a29cae96da186d0aeff89a3e) 2026-04-25 Shaw: chore: biome auto-formatting + auto-fixes after PR 7100 merge
-- [`be5e7f719cbc`](https://github.com/elizaOS/eliza/commit/be5e7f719cbcff0a5cdb9f56e6631fd4dbde0b08) 2026-04-25 Shaw: fix(agent): drop duplicate ./api/server-auth export + lifeops payments + i18n
+- [`be5e7f719cbc`](https://github.com/elizaOS/eliza/commit/be5e7f719cbcff0a5cdb9f56e6631fd4dbde0b08) 2026-04-25 Shaw: fix(agent): drop duplicate./api/server-auth export + lifeops payments + i18n
 - [`d9332de7cfce`](https://github.com/elizaOS/eliza/commit/d9332de7cfce3367d0cff082a3d0af2cdbc1c66e) 2026-04-25 moon: Fix bundled workspace setup and build cycles
 - [`5de6cabdbe57`](https://github.com/elizaOS/eliza/commit/5de6cabdbe57110e7fad8e1ec5e08a5b7bee3fa7) 2026-04-25 moon: Wire iMessage UI to native LifeOps bridge
 - [`578dfd0d9271`](https://github.com/elizaOS/eliza/commit/578dfd0d9271209aa131587b2c338678e9d043d0) 2026-04-25 moon: some helpers
@@ -21764,11 +21764,11 @@ Original commit hashes, oldest first:
 - [`60623f3b033f`](https://github.com/elizaOS/eliza/commit/60623f3b033f85b6b1bae18bbf66ee7231e9e94c) 2026-04-29 Shaw: Merge pull request #7206 from elizaOS/renovate/ai-6.x
 - [`ce1d46583d25`](https://github.com/elizaOS/eliza/commit/ce1d46583d25c9ed3e524ddb4bcc0dd56693ccf4) 2026-04-29 lalalune: test(aosp-llama-adapter): TBQ KV-cache wiring + Bonsai-blurb refresh
 - [`ce90f7f0b33c`](https://github.com/elizaOS/eliza/commit/ce90f7f0b33c827b866814095da75694cae679d4) 2026-04-29 lalalune: fix(android-agent): wire SIGSYS shim into stage-android-agent for x86_64
-- [`714d3abb0834`](https://github.com/elizaOS/eliza/commit/714d3abb083468c72488f329d3b06ff8d7d640ce) 2026-04-29 lalalune: fix(android): preserve .tar.gz / .gguf / .so in APK packaging
+- [`714d3abb0834`](https://github.com/elizaOS/eliza/commit/714d3abb083468c72488f329d3b06ff8d7d640ce) 2026-04-29 lalalune: fix(android): preserve.tar.gz /.gguf /.so in APK packaging
 - [`8b5d52872ae9`](https://github.com/elizaOS/eliza/commit/8b5d52872ae9a1e37b2aaa43bf6b66bd99fe465f) 2026-04-29 lalalune: fix(android-agent): export ELIZA_PORT / ELIZA_UI_PORT to bun process
 - [`f2497b536405`](https://github.com/elizaOS/eliza/commit/f2497b536405ea81682add7f1752f76c7ccec6fe) 2026-04-29 lalalune: fix(local-inference): bump LOCAL_INFERENCE_PRIORITY -1 → 0
 - [`bebf6e15099b`](https://github.com/elizaOS/eliza/commit/bebf6e15099b157c88c88fc4340b854db0822ac5) 2026-04-29 lalalune: fix(android-agent): chmod ld-musl-*.so.1.real, bump watchdog, log info
-- [`3db4f31f5ee6`](https://github.com/elizaOS/eliza/commit/3db4f31f5ee61c6e4abe681267095e56d848fb85) 2026-04-29 lalalune: fix(android): rename .tar.gz on extraction, aapt2 strips .gz at pack time
+- [`3db4f31f5ee6`](https://github.com/elizaOS/eliza/commit/3db4f31f5ee61c6e4abe681267095e56d848fb85) 2026-04-29 lalalune: fix(android): rename.tar.gz on extraction, aapt2 strips.gz at pack time
 - [`2d95d9134484`](https://github.com/elizaOS/eliza/commit/2d95d9134484e776bdb21b2162bc1a38ad29ee99) 2026-04-29 lalalune: fix(android-agent): wire AOSP local-inference handlers post-startEliza
 - [`3cc148403d78`](https://github.com/elizaOS/eliza/commit/3cc148403d78e2bc9c7419e9f62b3efc6660250d) 2026-04-29 lalalune: fix(local-agent-on-android): unblock AOSP cuttlefish chat path
 - [`47e2d73db176`](https://github.com/elizaOS/eliza/commit/47e2d73db176b251c675fd021931c8ff7d4e591d) 2026-04-29 lalalune: fix(local-agent-on-android): reset llama embeddings flag per decode path
@@ -21913,7 +21913,7 @@ Original commit hashes, oldest first:
 - [`9e0144c5a9d3`](https://github.com/elizaOS/eliza/commit/9e0144c5a9d3364b624c31b48da4e0306619fbb4) 2026-04-29 NubsCarson: fix(onboarding): remove placeholder hero images from runtime chooser
 - [`77b8a236497a`](https://github.com/elizaOS/eliza/commit/77b8a236497a8765904af783ca79e5e66915dd17) 2026-04-29 NubsCarson: fix(desktop): windows icon embedding + splash-bg file extension
 - [`725551e6bc14`](https://github.com/elizaOS/eliza/commit/725551e6bc14f0122873dec48e8d31f064f1595e) 2026-04-30 NubsCarson: fix(desktop): brand-config.json for runtime branding + fix context-catalog import
-- [`0680b19265e2`](https://github.com/elizaOS/eliza/commit/0680b19265e29d0b06fdff94482695bc6433ddba) 2026-04-30 NubsCarson: fix(agent): replace cross-package TS imports with @elizaos/core exports
+- [`0680b19265e2`](https://github.com/elizaOS/eliza/commit/0680b19265e29d0b06fdff94482695bc6433ddba) 2026-04-30 NubsCarson: fix(agent): replace cross-package TS imports with @elizaos exports
 - [`7a886bbd3ab0`](https://github.com/elizaOS/eliza/commit/7a886bbd3ab01e3b3fb4f13c888313b127c31eeb) 2026-04-30 NubsCarson: fix(desktop): embed icon into all exe files including CEF helpers
 - [`493363cde941`](https://github.com/elizaOS/eliza/commit/493363cde9418cc0f6283426d2f7163eed9a2bef) 2026-04-30 NubsCarson: fix(agent): inline experience enums to avoid cross-package import crash
 - [`97827264b9aa`](https://github.com/elizaOS/eliza/commit/97827264b9aaf44757d4a60a2b8f8ae7a6b3aa07) 2026-04-30 NubsCarson: fix(desktop): cross-platform rcedit lookup in embedWindowsIcons
@@ -22162,7 +22162,7 @@ Original commit hashes, oldest first:
 - [`a0b40621d088`](https://github.com/elizaOS/eliza/commit/a0b40621d088d984eca13b8da42d787c4b060013) 2026-05-02 Shaw: fix(ci): unblock proto generation, format check, and PR-flagged tests
 - [`6e787549e810`](https://github.com/elizaOS/eliza/commit/6e787549e810076e0a3f4ef0353b9d3b06e72697) 2026-05-02 Shaw: style: biome migrate + format across workspace
 - [`05322e377a92`](https://github.com/elizaOS/eliza/commit/05322e377a922fbc435befdf27afb4426a3ee8be) 2026-05-02 Shaw: WIP: in-progress changes from working tree
-- [`e02abc6a7c02`](https://github.com/elizaOS/eliza/commit/e02abc6a7c027393e864c46e21519c04e9ff4717) 2026-05-02 Shaw: ci(cloud): migrate 5 cloud workflows to root .github/workflows
+- [`e02abc6a7c02`](https://github.com/elizaOS/eliza/commit/e02abc6a7c027393e864c46e21519c04e9ff4717) 2026-05-02 Shaw: ci(cloud): migrate 5 cloud workflows to root.github/workflows
 - [`af591ea656c7`](https://github.com/elizaOS/eliza/commit/af591ea656c73e73c9615f1554f851c676a9e944) 2026-05-02 Shaw: feat(cloud/examples): add edad + clone-ur-crush standalone reference apps
 - [`9a51264f9306`](https://github.com/elizaOS/eliza/commit/9a51264f9306ac6cb3a92f2ce7acbd801b9a99f9) 2026-05-02 Shaw: fix(plugin-raydium): use biome instead of prettier for format
 - [`7828bbda50a8`](https://github.com/elizaOS/eliza/commit/7828bbda50a84795291b5feb8e22ce34a380df42) 2026-05-02 Shaw: ci: continue-on-error for all anthropics/claude-code-action invocations
