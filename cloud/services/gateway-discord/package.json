@@ -21,7 +21,7 @@
     "docker:logs": "docker compose logs -f gateway-discord"
   },
   "dependencies": {
-    "@hono/node-server": "1.19.13",
+    "@hono/node-server": "1.19.14",
     "@upstash/redis": "1.35.8",
     "discord.js": "14.25.1",
     "hashring": "^3.2.0",
