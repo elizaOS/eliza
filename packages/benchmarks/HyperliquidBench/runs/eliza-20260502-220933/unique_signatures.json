@@ -1,9 +1,0 @@
-[
-  "account.usdClassTransfer.toPerp",
-  "perp.cancel.all",
-  "perp.cancel.last",
-  "perp.order.ALO:true:none",
-  "perp.order.GTC:false:none",
-  "perp.order.IOC:false:none",
-  "risk.setLeverage.BTC"
-]
