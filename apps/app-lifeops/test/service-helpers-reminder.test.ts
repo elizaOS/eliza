@@ -1,12 +1,16 @@
 import type {
+  LifeOpsChannelPolicy,
+  LifeOpsReminderAttempt,
   LifeOpsReminderChannel,
   LifeOpsReminderPlan,
   LifeOpsReminderUrgency,
   LifeOpsTaskDefinition,
 } from "@elizaos/app-lifeops";
 import { describe, expect, it } from "vitest";
+import { resolveContactRouteCandidates } from "../src/lifeops/contact-route-policy.js";
 import {
   REMINDER_ACTIVITY_GATE_METADATA_KEY,
+  REMINDER_ESCALATION_PROFILE_METADATA_KEY,
   REMINDER_URGENCY_METADATA_KEY,
 } from "../src/lifeops/service-constants.js";
 import {
@@ -15,14 +19,19 @@ import {
 } from "../src/lifeops/service-helpers-misc.js";
 import {
   applyReminderIntensityToPlan,
+  buildReminderEnforcementState,
   buildReminderResponseClaim,
+  classifyReminderOwnerResponse,
   classifyReminderOwnerResponseText,
   decideReminderReviewTransition,
   normalizeReminderIntensityInput,
+  parseReminderOwnerResponseSemanticClassification,
   parseReminderSnoozeRequestFromText,
   rankReminderEscalationChannelCandidates,
   rankReminderEscalationChannels,
+  readReminderEscalationProfile,
   resolveReminderDeliveryUrgency,
+  resolveReminderEscalationProfileDecision,
   resolveReminderEscalationRoutingPolicy,
   resolveReminderReviewDelayMinutes,
   shouldDeferReminderUntilComputerActive,
@@ -90,6 +99,50 @@ function buildReminderPlan(): LifeOpsReminderPlan {
     quietHours: { timezone: "UTC", startMinute: 0, endMinute: 0 },
     createdAt: "2026-04-29T17:00:00.000Z",
     updatedAt: "2026-04-29T17:00:00.000Z",
+  };
+}
+
+function buildChannelPolicy(
+  channel: LifeOpsReminderChannel,
+  overrides: Partial<LifeOpsChannelPolicy> = {},
+): LifeOpsChannelPolicy {
+  return {
+    id: `policy-${channel}`,
+    agentId: "agent-1",
+    channelType: channel,
+    channelRef: `${channel}-owner`,
+    privacyClass: "private",
+    allowReminders: true,
+    allowEscalation: true,
+    allowPosts: false,
+    requireConfirmationForActions: false,
+    metadata: {},
+    createdAt: "2026-04-29T17:00:00.000Z",
+    updatedAt: "2026-04-29T17:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function buildAttempt(
+  overrides: Partial<LifeOpsReminderAttempt> = {},
+): LifeOpsReminderAttempt {
+  return {
+    id: "attempt-1",
+    agentId: "agent-1",
+    planId: "plan-1",
+    ownerType: "occurrence",
+    ownerId: "occurrence-1",
+    occurrenceId: "occurrence-1",
+    channel: "in_app",
+    stepIndex: 0,
+    scheduledFor: "2026-04-29T17:00:00.000Z",
+    attemptedAt: "2026-04-29T17:00:00.000Z",
+    outcome: "delivered",
+    connectorRef: "system:in_app",
+    deliveryMetadata: {},
+    reviewAt: null,
+    reviewStatus: null,
+    ...overrides,
   };
 }
 
@@ -313,6 +366,173 @@ describe("rankReminderEscalationChannels", () => {
   });
 });
 
+describe("resolveContactRouteCandidates", () => {
+  it("keeps busy-context routes low-cost by vetoing external channels", async () => {
+    const discordPolicy = buildChannelPolicy("discord");
+    const candidates = await resolveContactRouteCandidates({
+      activityProfile: buildActivityProfile({
+        screenContextBusy: true,
+        screenContextAvailable: true,
+      }),
+      ownerContactHints: {
+        discord: {
+          source: "discord",
+          preferredCommunicationChannel: "discord",
+          lastResponseAt: null,
+          lastResponseChannel: null,
+        },
+      },
+      ownerContactSources: ["discord"],
+      policies: [discordPolicy],
+      urgency: "medium",
+      callbacks: {
+        runtimeTargetSendAvailable: true,
+        resolvePrimaryChannelPolicy: async () => discordPolicy,
+        hasRuntimeTarget: async () => true,
+      },
+    });
+
+    expect(candidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          channel: "discord",
+          vetoReasons: ["attention_budget_low"],
+        }),
+        expect.objectContaining({
+          channel: "in_app",
+          vetoReasons: [],
+        }),
+      ]),
+    );
+  });
+
+  it("requires an explicit direct-channel policy for SMS and voice", async () => {
+    const candidates = await resolveContactRouteCandidates({
+      activityProfile: null,
+      ownerContactHints: {
+        sms: {
+          source: "sms",
+          preferredCommunicationChannel: "sms",
+          lastResponseAt: null,
+          lastResponseChannel: null,
+        },
+      },
+      ownerContactSources: ["sms"],
+      policies: [],
+      urgency: "high",
+      callbacks: {
+        runtimeTargetSendAvailable: true,
+        resolvePrimaryChannelPolicy: async () => null,
+        hasRuntimeTarget: async () => true,
+      },
+    });
+
+    expect(candidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          channel: "sms",
+          vetoReasons: ["missing_required_direct_policy"],
+        }),
+      ]),
+    );
+  });
+
+  it("uses scheduler time for recent route failure cooldowns", async () => {
+    const discordPolicy = buildChannelPolicy("discord");
+    const candidates = await resolveContactRouteCandidates({
+      activityProfile: null,
+      ownerContactHints: {
+        discord: {
+          source: "discord",
+          preferredCommunicationChannel: "discord",
+          lastResponseAt: null,
+          lastResponseChannel: null,
+        },
+      },
+      ownerContactSources: ["discord"],
+      policies: [discordPolicy],
+      urgency: "high",
+      attempts: [
+        buildAttempt({
+          id: "attempt-discord-failure",
+          channel: "discord",
+          outcome: "blocked_connector",
+          attemptedAt: "2026-04-29T16:30:00.000Z",
+        }),
+      ],
+      now: new Date("2026-04-29T17:00:00.000Z"),
+      callbacks: {
+        runtimeTargetSendAvailable: true,
+        resolvePrimaryChannelPolicy: async () => discordPolicy,
+        hasRuntimeTarget: async () => true,
+      },
+    });
+
+    expect(candidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          channel: "discord",
+          vetoReasons: ["recent_channel_failure"],
+        }),
+      ]),
+    );
+  });
+});
+
+describe("reminder escalation profiles", () => {
+  it("keeps the former routine voice behavior as typed default policy", () => {
+    const state = buildReminderEnforcementState(
+      new Date("2026-04-29T06:21:00.000Z"),
+      "UTC",
+      { kind: "morning_routine", metadata: {} },
+      { voice: true },
+    );
+
+    expect(
+      resolveReminderEscalationProfileDecision({
+        normalDelayMinutes: 10,
+        state,
+        urgency: "critical",
+      }),
+    ).toEqual({
+      delayMinutes: 5,
+      forceChannel: "voice",
+    });
+  });
+
+  it("lets arbitrary urgent tasks tune force-channel policy through metadata", () => {
+    const profile = readReminderEscalationProfile({
+      metadata: {
+        [REMINDER_ESCALATION_PROFILE_METADATA_KEY]: {
+          requireRoutineDefinition: false,
+          forceChannel: {
+            channel: "sms",
+            afterMinutes: 15,
+            urgencies: ["high"],
+            requireAvailable: false,
+          },
+        },
+      },
+    });
+    const state = buildReminderEnforcementState(
+      new Date("2026-04-29T06:16:00.000Z"),
+      "UTC",
+      { kind: "habit", metadata: {} },
+    );
+
+    expect(
+      resolveReminderEscalationProfileDecision({
+        normalDelayMinutes: 10,
+        state,
+        urgency: "high",
+        profile,
+      }),
+    ).toMatchObject({
+      forceChannel: "sms",
+    });
+  });
+});
+
 describe("classifyReminderOwnerResponseText", () => {
   it("treats explicit completion as a reminder resolution", () => {
     expect(classifyReminderOwnerResponseText("done")).toMatchObject({
@@ -460,6 +680,79 @@ describe("classifyReminderOwnerResponseText", () => {
       decision: "explicit_resolution",
       resolution: "snoozed",
       snoozeRequest: { preset: "30m" },
+    });
+  });
+});
+
+describe("classifyReminderOwnerResponse", () => {
+  it("accepts a semantic classifier for non-lexical task-bound replies", async () => {
+    await expect(
+      classifyReminderOwnerResponse({
+        text: "listo",
+        context: {
+          title: "Stretch",
+          attemptedAt: "2026-04-29T17:00:00.000Z",
+          respondedAt: "2026-04-29T17:03:00.000Z",
+          channel: "in_app",
+        },
+        semanticClassifier: async () => ({
+          decision: "explicit_resolution",
+          resolution: "completed",
+          snoozeRequest: null,
+          confidence: 0.9,
+          reason: "semantic_completion",
+        }),
+      }),
+    ).resolves.toMatchObject({
+      decision: "explicit_resolution",
+      resolution: "completed",
+      reason: "semantic_completion",
+      classifierSource: "semantic",
+      semanticReason: "semantic_completion",
+    });
+  });
+
+  it("falls back to deterministic classification when semantic review abstains", async () => {
+    await expect(
+      classifyReminderOwnerResponse({
+        text: "listo",
+        context: {
+          title: "Stretch",
+          attemptedAt: "2026-04-29T17:00:00.000Z",
+          respondedAt: "2026-04-29T17:03:00.000Z",
+          channel: "in_app",
+        },
+        semanticClassifier: async () => ({
+          decision: "abstain",
+          resolution: null,
+          snoozeRequest: null,
+          confidence: 0.2,
+          reason: "ambiguous",
+        }),
+      }),
+    ).resolves.toMatchObject({
+      decision: "unrelated",
+      resolution: null,
+      classifierSource: "semantic_abstain",
+      semanticReason: "ambiguous",
+    });
+  });
+
+  it("parses model JSON into a bounded semantic decision", () => {
+    expect(
+      parseReminderOwnerResponseSemanticClassification({
+        decision: "explicit_resolution",
+        resolution: "snoozed",
+        snoozeRequest: { minutes: 45 },
+        confidence: 2,
+        reason: "reply means later",
+      }),
+    ).toEqual({
+      decision: "explicit_resolution",
+      resolution: "snoozed",
+      snoozeRequest: { minutes: 45 },
+      confidence: 1,
+      reason: "reply means later",
     });
   });
 });

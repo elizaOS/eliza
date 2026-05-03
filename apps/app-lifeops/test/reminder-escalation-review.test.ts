@@ -5,8 +5,11 @@ import type {
 import { describe, expect, it, vi } from "vitest";
 import { LifeOpsService } from "../src/lifeops/service.js";
 import {
+  REMINDER_ESCALATION_PROFILE_METADATA_KEY,
   REMINDER_LIFECYCLE_METADATA_KEY,
   REMINDER_REVIEW_AT_METADATA_KEY,
+  REMINDER_REVIEW_CLASSIFIER_SOURCE_METADATA_KEY,
+  REMINDER_REVIEW_SEMANTIC_REASON_METADATA_KEY,
 } from "../src/lifeops/service-constants.js";
 
 const baseAt = new Date("2026-04-29T17:00:00.000Z");
@@ -151,6 +154,51 @@ describe("reminder escalation review", () => {
     );
     expect(service.markReminderReviewEscalated).toHaveBeenCalledWith(
       expect.objectContaining({ attempt, escalatedAttempt: escalationAttempt }),
+    );
+  });
+
+  it("uses reminder escalation profile data to force a tuned channel", async () => {
+    const plan = makePlan();
+    const attempt = makeAttempt();
+    const { service, escalationAttempt } = createHarness({
+      decision: "no_response",
+      resolution: null,
+      respondedAt: null,
+      responseText: null,
+      confidence: 0,
+      reason: "no_owner_response",
+    });
+    service.resolveReminderEscalationChannels = vi.fn(async () => [
+      "in_app",
+      "discord",
+      "sms",
+    ]);
+
+    await expect(
+      service.dispatchDueReminderEscalation({
+        ...dispatchArgs(plan, attempt),
+        definition: {
+          kind: "habit",
+          metadata: {
+            [REMINDER_ESCALATION_PROFILE_METADATA_KEY]: {
+              activeWindowOnly: false,
+              requireRoutineDefinition: false,
+              forceChannel: {
+                channel: "sms",
+                afterMinutes: 0,
+                urgencies: ["high"],
+                requireAvailable: false,
+              },
+            },
+          },
+        },
+      }),
+    ).resolves.toBe(escalationAttempt);
+
+    expect(service.dispatchReminderAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: "sms",
+      }),
     );
   });
 
@@ -429,6 +477,100 @@ describe("reminder escalation review", () => {
       decision: "unrelated",
       resolution: null,
     });
+  });
+
+  it("can resolve a task-bound response through semantic classification", async () => {
+    const service = Object.create(LifeOpsService.prototype) as LifeOpsService &
+      Record<string, unknown>;
+    const attempt = {
+      ...makeAttempt(),
+      deliveryMetadata: {
+        ...makeAttempt().deliveryMetadata,
+        title: "Stretch",
+        routeEndpoint: "room-reminder",
+      },
+    };
+    service.agentId = vi.fn(() => "agent-1");
+    service.ownerEntityId = vi.fn(() => "owner-1");
+    service.ownerRoutingEntityId = vi.fn(async () => "owner-1");
+    service.classifyReminderOwnerResponseSemantically = vi.fn(async () => ({
+      decision: "explicit_resolution",
+      resolution: "completed",
+      snoozeRequest: null,
+      confidence: 0.91,
+      reason: "semantic_completion",
+    }));
+    service.runtime = {
+      getRoomsForParticipants: vi.fn(async () => ["room-reminder"]),
+      getMemoriesByRoomIds: vi.fn(async () => [
+        {
+          entityId: "owner-1",
+          roomId: "room-reminder",
+          createdAt: new Date(addMinutes(baseAt, 2)).getTime(),
+          content: { text: "listo" },
+        },
+      ]),
+    };
+
+    await expect(
+      service.reviewOwnerResponseAfterReminderAttempt({
+        subjectType: "owner",
+        attempt,
+        now: new Date(addMinutes(baseAt, 8)),
+      }),
+    ).resolves.toMatchObject({
+      decision: "explicit_resolution",
+      resolution: "completed",
+      responseText: "listo",
+      reason: "semantic_completion",
+      classifierSource: "semantic",
+      semanticReason: "semantic_completion",
+    });
+    expect(
+      service.classifyReminderOwnerResponseSemantically,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "listo",
+      }),
+    );
+  });
+
+  it("persists classifier provenance with resolved owner acknowledgements", async () => {
+    const service = Object.create(LifeOpsService.prototype) as LifeOpsService &
+      Record<string, unknown>;
+    const attempt = makeAttempt();
+    service.repository = {
+      updateReminderAttemptOutcome: vi.fn(async () => undefined),
+      getOccurrence: vi.fn(async () => null),
+    };
+    service.runtime = { agentId: "agent-1" };
+    service.resolveReminderEscalation = vi.fn(async () => undefined);
+
+    await service.resolveReminderReviewFromOwnerResponse({
+      ownerType: "occurrence",
+      ownerId: "occurrence-1",
+      attempt,
+      reviewedAt: addMinutes(baseAt, 8),
+      resolution: "completed",
+      responseText: "listo",
+      respondedAt: addMinutes(baseAt, 2),
+      snoozeRequest: null,
+      confidence: 0.91,
+      reason: "semantic_completion",
+      classifierSource: "semantic",
+      semanticReason: "semantic_completion",
+    });
+
+    expect(
+      service.repository.updateReminderAttemptOutcome,
+    ).toHaveBeenCalledWith(
+      attempt.id,
+      attempt.outcome,
+      expect.objectContaining({
+        [REMINDER_REVIEW_CLASSIFIER_SOURCE_METADATA_KEY]: "semantic",
+        [REMINDER_REVIEW_SEMANTIC_REASON_METADATA_KEY]: "semantic_completion",
+      }),
+    );
   });
 
   it("binds a standalone acknowledgement to only the latest prompt in a room", async () => {
@@ -721,5 +863,57 @@ describe("reminder escalation review", () => {
         attempts: [],
       }),
     ).resolves.toEqual(["in_app"]);
+  });
+
+  it("uses scheduler time, not wall clock time, for route failure cooldowns", async () => {
+    const service = Object.create(LifeOpsService.prototype) as LifeOpsService &
+      Record<string, unknown>;
+    const discordPolicy = {
+      id: "policy-discord",
+      agentId: "agent-1",
+      channelType: "discord" as const,
+      channelRef: "discord-owner",
+      privacyClass: "private" as const,
+      allowReminders: true,
+      allowEscalation: true,
+      allowPosts: false,
+      requireConfirmationForActions: false,
+      metadata: {},
+      createdAt: baseAt.toISOString(),
+      updatedAt: baseAt.toISOString(),
+    };
+    const recentBlockedAttempt: LifeOpsReminderAttempt = {
+      ...makeAttempt(),
+      id: "attempt-recent-discord-failure",
+      channel: "discord",
+      stepIndex: 1,
+      scheduledFor: addMinutes(baseAt, -30),
+      attemptedAt: addMinutes(baseAt, -30),
+      outcome: "blocked_connector",
+      connectorRef: "discord:owner",
+      reviewAt: null,
+      deliveryMetadata: {
+        [REMINDER_LIFECYCLE_METADATA_KEY]: "plan",
+      },
+    };
+    service.runtime = {};
+    service.resolvePrimaryChannelPolicy = vi.fn(async () => discordPolicy);
+
+    const candidates = await service.resolveReminderEscalationRouteCandidates({
+      activityProfile: null,
+      policies: [discordPolicy],
+      urgency: "high",
+      attempts: [recentBlockedAttempt],
+      now: baseAt,
+    });
+
+    expect(candidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          channel: "discord",
+          vetoReasons: ["recent_channel_failure"],
+        }),
+      ]),
+    );
   });
 });
