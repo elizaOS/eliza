@@ -96,17 +96,17 @@ export class TwitterClientInstance implements ITwitterClient {
   }
 }
 
-export class TwitterService extends Service {
-  static serviceType = "twitter";
+export class XService extends Service {
+  static serviceType = "x";
 
   // Add the required abstract property
   capabilityDescription =
-    "The agent is able to send and receive messages on Twitter";
+    "The agent is able to send and receive messages on X";
 
   public twitterClient?: TwitterClientInstance;
 
-  static async start(runtime: IAgentRuntime): Promise<TwitterService> {
-    const service = new TwitterService();
+  static async start(runtime: IAgentRuntime): Promise<XService> {
+    const service = new XService();
     service.runtime = runtime;
 
     try {
@@ -167,6 +167,9 @@ export class TwitterService extends Service {
       await this.twitterClient.discovery.stop();
     }
 
-    logger.log("Twitter service stopped");
+    logger.log("X service stopped");
   }
 }
+
+// Backward-compatible alias for users still importing { TwitterService }.
+export const TwitterService = XService;
