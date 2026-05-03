@@ -660,9 +660,7 @@ export class CacheClient {
             "or set CACHE_DISABLE_REASON to acknowledge the disable.",
         );
       } else if (disableReason) {
-        logger.warn(
-          `[Cache] Caching is disabled (acknowledged): ${disableReason}`,
-        );
+        logger.warn(`[Cache] Caching is disabled (acknowledged): ${disableReason}`);
       } else {
         logger.warn("[Cache] Caching is disabled via CACHE_ENABLED flag");
       }
