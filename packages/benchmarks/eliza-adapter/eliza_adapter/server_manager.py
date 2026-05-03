@@ -5,6 +5,7 @@ from __future__ import annotations
 import atexit
 import logging
 import os
+import secrets
 import signal
 import subprocess
 import sys
@@ -17,13 +18,20 @@ logger = logging.getLogger(__name__)
 
 
 def _find_repo_root() -> Path:
-    """Walk up from this file to find the repository root (contains packages/)."""
+    """Walk up from this file to find the elizaOS repo root.
+
+    The repo root is the directory containing `packages/app-core/src/benchmark/server.ts`.
+    Older layouts used `packages/eliza/`; both are checked.
+    """
     current = Path(__file__).resolve()
     for parent in current.parents:
-        if (parent / "packages" / "eliza" / "package.json").exists():
+        if (parent / "packages" / "app-core" / "src" / "benchmark" / "server.ts").exists():
+            return parent
+        if (parent / "packages" / "eliza" / "src" / "benchmark" / "server.ts").exists():
             return parent
     raise FileNotFoundError(
-        "Could not locate repository root (expected packages/eliza/package.json)"
+        "Could not locate repository root "
+        "(expected packages/app-core/src/benchmark/server.ts or packages/eliza/src/benchmark/server.ts)"
     )
 
 
@@ -49,8 +57,15 @@ class ElizaServerManager:
         self.timeout = timeout
         self.repo_root = repo_root or _find_repo_root()
         self._proc: subprocess.Popen[str] | None = None
-        self._client = ElizaClient(f"http://localhost:{port}")
+        existing_token = os.environ.get("ELIZA_BENCH_TOKEN", "").strip()
+        self._token = existing_token or secrets.token_hex(32)
+        self._client = ElizaClient(f"http://localhost:{port}", token=self._token)
         atexit.register(self.stop)
+
+    @property
+    def token(self) -> str:
+        """Bearer token used to authenticate against the benchmark server."""
+        return self._token
 
     @property
     def client(self) -> ElizaClient:
@@ -64,30 +79,35 @@ class ElizaServerManager:
             logger.info("Eliza benchmark server already running (pid=%d)", self._proc.pid)
             return
 
-        # Try standard monorepo location first
-        server_script = (
-            self.repo_root / "packages" / "eliza" / "src" / "benchmark" / "server.ts"
-        )
-        cwd = self.repo_root / "packages" / "eliza"
-        
-        # Fallback to repo root if eliza is top-level (e.g. current workspace structure)
-        if not server_script.exists():
-            server_script = (
-                self.repo_root / "eliza" / "src" / "benchmark" / "server.ts"
+        candidates = [
+            (
+                self.repo_root / "packages" / "app-core" / "src" / "benchmark" / "server.ts",
+                self.repo_root / "packages" / "app-core",
+            ),
+            (
+                self.repo_root / "packages" / "eliza" / "src" / "benchmark" / "server.ts",
+                self.repo_root / "packages" / "eliza",
+            ),
+        ]
+        server_script: Path | None = None
+        cwd: Path | None = None
+        for script, script_cwd in candidates:
+            if script.exists():
+                server_script = script
+                cwd = script_cwd
+                break
+
+        if server_script is None or cwd is None:
+            tried = "\n  ".join(str(s) for s, _ in candidates)
+            raise FileNotFoundError(
+                f"Benchmark server script not found. Tried:\n  {tried}"
             )
-            cwd = self.repo_root / "eliza"
 
-        if not server_script.exists():
-            # Fallback for internal testing where repo_root might point differently
-             server_script = (
-                self.repo_root / "src" / "benchmark" / "server.ts"
-            )
-             cwd = self.repo_root
-
-        if not server_script.exists():
-            raise FileNotFoundError(f"Server script not found: {server_script} (checked packages/eliza, eliza, and root)")
-
-        env = {**os.environ, "ELIZA_BENCH_PORT": str(self.port)}
+        env = {
+            **os.environ,
+            "ELIZA_BENCH_PORT": str(self.port),
+            "ELIZA_BENCH_TOKEN": self._token,
+        }
 
         logger.info("Starting eliza benchmark server on port %d from %s ...", self.port, cwd)
         self._proc = subprocess.Popen(

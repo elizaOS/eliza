@@ -33,8 +33,7 @@ describe("@elizaos/plugin-video", () => {
       vi.fn(async () => ({
         ok: true,
         statusText: "OK",
-        text: async () =>
-          "1\n00:00:00,000 --> 00:00:01,000\nhello world\n",
+        text: async () => "1\n00:00:00,000 --> 00:00:01,000\nhello world\n",
       })) as unknown as typeof fetch,
     );
   });
