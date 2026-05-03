@@ -5,13 +5,13 @@ plugins:
 
 - **Grok (xAI)** for text generation + embeddings — `@elizaos/plugin-xai`
 - **X API v2** for mentions, posts, and timeline interactions —
-  `@elizaos/plugin-twitter`
+  `@elizaos/plugin-x`
 
 ## What this example does
 
 - **Replies to @mentions** by routing each mention through the elizaOS message
   pipeline (`runtime.messageService.handleMessage(...)`).
-- **Optional automated posting** via `plugin-twitter`'s built-in post loop.
+- **Optional automated posting** via `plugin-x`'s built-in post loop.
 - **Dry run mode** via `TWITTER_DRY_RUN=true` (no writes to X).
 
 ## Prerequisites
@@ -59,7 +59,7 @@ bun run start
 - `XAI_MODEL` (default `grok-3`)
 - `XAI_EMBEDDING_MODEL` (default `grok-embedding`)
 
-### X API v2 auth — `@elizaos/plugin-twitter`
+### X API v2 auth — `@elizaos/plugin-x`
 
 - `TWITTER_AUTH_MODE` — `env` (default), `oauth`, or `broker`.
 
@@ -90,7 +90,7 @@ Eliza Cloud broker (`TWITTER_AUTH_MODE=broker`):
 
 ## How it works
 
-`plugin-twitter`'s `TwitterService` runs background clients for posting,
+`plugin-x`'s `XService` runs background clients for posting,
 interactions, timeline, and discovery. Incoming mentions are routed into the
 runtime via `runtime.messageService.handleMessage(...)` so you get the standard
 state-composition → model → action pipeline.

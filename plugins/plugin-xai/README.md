@@ -3,7 +3,7 @@
 xAI Grok models for elizaOS — text generation and embeddings.
 
 For X (formerly Twitter) social posting, mentions, and timeline interactions,
-use [`@elizaos/plugin-twitter`](../plugin-twitter) instead. This package is
+use [`@elizaos/plugin-x`](../plugin-x) instead. This package is
 intentionally Grok-only.
 
 ## Installation

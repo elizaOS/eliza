@@ -168,7 +168,7 @@ where to get the credentials, minimum required fields, and tips for optional fie
 **Tips:** Use negative IDs for groups (they start with -100). Use `TELEGRAM_ALLOWED_CHATS` to restrict who can talk to the bot for safety.
 
 ### Twitter / X
-Twitter/X integration is bundled with the **xAI** provider plugin (`@elizaos/plugin-xai`). There is no separate `@elizaos/plugin-twitter`.
+Twitter/X integration is bundled with the **xAI** provider plugin (`@elizaos/plugin-xai`). There is no separate `@elizaos/plugin-x`.
 
 **Get credentials:** https://developer.twitter.com/en/portal/dashboard
 **Minimum required:** xAI plugin enabled + Twitter OAuth keys in connector config or env vars.

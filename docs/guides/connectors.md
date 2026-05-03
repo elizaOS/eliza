@@ -520,7 +520,7 @@ Connects to iMessage and SMS messaging via the Blooio service with signed webhoo
 
 ## Twitter
 
-Install from the registry before configuring: `eliza plugins install @elizaos/plugin-twitter`
+Install from the registry before configuring: `eliza plugins install @elizaos/plugin-x`
 
 ### Setup Requirements
 

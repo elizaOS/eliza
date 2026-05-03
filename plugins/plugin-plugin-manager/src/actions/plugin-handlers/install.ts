@@ -32,7 +32,7 @@ export async function runInstall({
   }
 
   if (!name) {
-    const text = "Specify a plugin name to install (e.g. @elizaos/plugin-twitter).";
+    const text = "Specify a plugin name to install (e.g. @elizaos/plugin-discord).";
     await callback?.({ text });
     return { success: false, text };
   }

@@ -170,7 +170,7 @@ const CONNECTOR_PLUGINS = {
   telegram:    "@elizaos/plugin-telegram",      // bundled
   discord:     "@elizaos/plugin-discord",        // bundled
   slack:       "@elizaos/plugin-slack",           // bundled
-  twitter:     "@elizaos/plugin-twitter",         // upstream (not in plugins.json)
+  twitter:     "@elizaos/plugin-x",         // upstream (not in plugins.json)
   whatsapp:    "@elizaos/plugin-whatsapp",        // bundled
   signal:      "@elizaos/plugin-signal",          // bundled
   imessage:    "@elizaos/plugin-imessage",        // bundled

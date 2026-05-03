@@ -313,7 +313,7 @@
     "bn.js": "5.2.3",
     "express-rate-limit": "8.3.0",
     "fast-xml-parser": "5.4.2",
-    "hono": "4.12.5",
+    "hono": "4.12.14",
     "lodash-es": "4.17.23",
     "multer": "2.1.1",
     "qs": "6.15.1",
@@ -324,6 +324,7 @@
   "overrides": {
     "@stwd/sdk": "0.8.1",
     "cpu-features": "empty-npm-package@1.0.0",
+    "hono": "4.12.14",
     "zod": "4.4.1"
   },
   "patchedDependencies": {
