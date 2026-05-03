@@ -70,7 +70,27 @@ function readAppIdentity() {
   if (!appId || !appName) {
     throw new Error("Could not parse appId/appName from app.config.ts");
   }
-  return { appId, appName, urlScheme };
+  // android.userAgentMarkers is an optional array literal nested under
+  // `android: { ... }`. Parse the array body via regex (rather than
+  // executing the TS file) so this script stays bun-import-free.
+  const userAgentMarkers = parseAndroidUserAgentMarkers(src);
+  return { appId, appName, urlScheme, userAgentMarkers };
+}
+
+function parseAndroidUserAgentMarkers(configSrc) {
+  const block = configSrc.match(
+    /android\s*:\s*\{[\s\S]*?userAgentMarkers\s*:\s*\[([\s\S]*?)\]/,
+  );
+  if (!block) return [];
+  const body = block[1];
+  const markers = [];
+  const entryRe =
+    /\{\s*systemProp\s*:\s*["']([^"']+)["']\s*,\s*uaPrefix\s*:\s*["']([^"']+)["']\s*[,}]/g;
+  let m;
+  while ((m = entryRe.exec(body))) {
+    markers.push({ systemProp: m[1], uaPrefix: m[2] });
+  }
+  return markers;
 }
 
 const APP = readAppIdentity();
@@ -746,6 +766,30 @@ function removeApplicationComponentBlock(xml, componentName) {
   return xml.replace(componentRe, "\n");
 }
 
+// Replace the BRAND_USER_AGENT_MARKERS array contents in the templated
+// MainActivity.java with framework default + entries from
+// `app.config.ts > android.userAgentMarkers`. Idempotent: re-running on
+// already-injected source produces the same result because we re-emit
+// the canonical default + configured set every time.
+function injectBrandUserAgentMarkers(javaSource, markers) {
+  const arrayRe =
+    /(private static final UserAgentMarker\[\] BRAND_USER_AGENT_MARKERS = new UserAgentMarker\[\]\s*\{)([\s\S]*?)(\};)/m;
+  if (!arrayRe.test(javaSource)) {
+    return javaSource;
+  }
+  const lines = [
+    `        new UserAgentMarker("ro.elizaos.product", "ElizaOS/"),`,
+  ];
+  for (const marker of markers) {
+    const systemProp = escapeJavaString(marker.systemProp);
+    const uaPrefix = escapeJavaString(marker.uaPrefix);
+    lines.push(
+      `        new UserAgentMarker("${systemProp}", "${uaPrefix}"),`,
+    );
+  }
+  return javaSource.replace(arrayRe, `$1\n${lines.join("\n")}\n    $3`);
+}
+
 function ensureElizaOsActivityFilters(xml) {
   if (xml.includes("android.intent.category.HOME")) {
     return xml;
@@ -854,6 +898,9 @@ function overlayAndroid() {
         "Shows elizaOS gateway connection status",
         `Shows ${escapeJavaString(APP.appName)} gateway connection status`,
       );
+      if (file === "MainActivity.java") {
+        code = injectBrandUserAgentMarkers(code, APP.userAgentMarkers ?? []);
+      }
       fs.writeFileSync(path.join(dstJava, file), code, "utf8");
     }
     console.log("[mobile-build] Overlaid Android Java sources.");
