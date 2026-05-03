@@ -30,7 +30,7 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@elizaos/core": "2.0.0-alpha.3",
+		"@elizaos/core": "workspace:*",
 		"google-auth-library": "^9.0.0",
 		"zod": "^4.3.6"
 	},

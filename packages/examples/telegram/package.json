@@ -11,9 +11,9 @@
   },
   "dependencies": {
     "@elizaos/core": "alpha",
-    "@elizaos/plugin-openai": "alpha",
-    "@elizaos/plugin-sql": "alpha",
-    "@elizaos/plugin-telegram": "alpha"
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "@elizaos/plugin-telegram": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

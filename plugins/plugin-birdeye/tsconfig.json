@@ -21,8 +21,7 @@
         "moduleDetection": "force",
         "noUnusedLocals": true,
         "noUnusedParameters": false,
-        "allowArbitraryExtensions": true,
-        "ignoreDeprecations": "6.0"
+        "allowArbitraryExtensions": true
     },
     "include": ["src/**/*.ts"]
 }

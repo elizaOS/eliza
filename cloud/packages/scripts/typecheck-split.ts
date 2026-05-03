@@ -17,7 +17,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readdir, unlink, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 interface CheckResult {
@@ -57,7 +57,7 @@ async function getDirectoriesToCheck(): Promise<string[]> {
   return ["packages/db", ...libSubdirs];
 }
 
-async function createTempTsconfig(directory: string, baseTsconfig: object): Promise<string> {
+async function createTempTsconfig(directory: string): Promise<string> {
   const safeDirectoryName = directory.replace(/[\\/]/g, ".");
   const workspaceRoot = process.cwd();
   const tempDir = join(workspaceRoot, "node_modules", ".cache", "typecheck-split");
@@ -67,16 +67,15 @@ async function createTempTsconfig(directory: string, baseTsconfig: object): Prom
     `eliza-cloud.tsconfig.${safeDirectoryName}.${process.pid}.${Date.now()}.json`,
   );
 
+  // Use `extends` so the parent tsconfig's `paths` resolve relative to its own
+  // location (the workspace root). TS 6.0 deprecates the `baseUrl` option, so
+  // we cannot inject one to redirect path resolution here.
   const tempConfig = {
-    ...baseTsconfig,
+    extends: resolve(workspaceRoot, "tsconfig.json"),
     compilerOptions: {
-      ...(baseTsconfig as { compilerOptions: object }).compilerOptions,
-      baseUrl: workspaceRoot,
       incremental: false,
-      tsBuildInfoFile: undefined,
       skipLibCheck: true,
       skipDefaultLibCheck: true,
-      ignoreDeprecations: "6.0",
     },
     include: [
       resolve(workspaceRoot, "next-env.d.ts"),
@@ -134,14 +133,14 @@ async function runTsc(tscPath: string, tempConfigPath: string): Promise<TscRunRe
   });
 }
 
-async function checkDirectory(directory: string, baseTsconfig: object): Promise<CheckResult> {
+async function checkDirectory(directory: string): Promise<CheckResult> {
   const start = Date.now();
   let tempConfigPath: string | null = null;
 
   try {
     console.log(`\n📁 Checking ${directory}/...`);
 
-    tempConfigPath = await createTempTsconfig(directory, baseTsconfig);
+    tempConfigPath = await createTempTsconfig(directory);
     const workspaceRoot = process.cwd();
     const tscPath = resolve(workspaceRoot, "node_modules", "typescript", "lib", "tsc.js");
 
@@ -187,9 +186,6 @@ async function main() {
   console.log("==================");
   console.log("Checking directories separately to reduce memory usage.\n");
 
-  const baseTsconfigContent = await readFile("tsconfig.json", "utf-8");
-  const baseTsconfig = JSON.parse(baseTsconfigContent);
-
   const directories = await getDirectoriesToCheck();
   console.log(`Found ${directories.length} directories to check\n`);
   const requestedConcurrency = Number.parseInt(process.env.CHECK_TYPES_CONCURRENCY ?? "2", 10);
@@ -210,7 +206,7 @@ async function main() {
         global.gc();
       }
 
-      const result = await checkDirectory(dir, baseTsconfig);
+      const result = await checkDirectory(dir);
       results.push(result);
     }
   }

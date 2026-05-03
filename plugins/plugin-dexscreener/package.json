@@ -19,7 +19,7 @@
   },
   "dependencies": {
     "@elizaos/cloud-routing": "workspace:*",
-    "@elizaos/core": "^1.0.0",
+    "@elizaos/core": "workspace:*",
     "axios": "^1.6.0"
   },
   "devDependencies": {

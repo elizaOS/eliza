@@ -12,12 +12,12 @@
   },
   "dependencies": {
     "@elizaos/core": "alpha",
-    "@elizaos/plugin-openai": "alpha",
-    "@elizaos/plugin-anthropic": "alpha",
-    "@elizaos/plugin-xai": "alpha",
-    "@elizaos/plugin-google-genai": "alpha",
-    "@elizaos/plugin-groq": "alpha",
-    "@elizaos/plugin-sql": "alpha",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-anthropic": "workspace:*",
+    "@elizaos/plugin-xai": "workspace:*",
+    "@elizaos/plugin-google-genai": "workspace:*",
+    "@elizaos/plugin-groq": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
     "convex": "^1.25.2",
     "dotenv": "^16.4.5",
     "uuid": "^14.0.0"

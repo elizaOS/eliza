@@ -5,7 +5,7 @@
   "type": "module",
   "types": "dist/index.d.ts",
   "dependencies": {
-    "@elizaos/core": "^1.0.0"
+    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
     "tsup": "^8.3.5"

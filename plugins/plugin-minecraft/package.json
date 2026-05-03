@@ -38,7 +38,7 @@
     "zod": "^4.3.6"
   },
   "peerDependencies": {
-    "@elizaos/core": "2.0.0-alpha.3"
+    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.11",

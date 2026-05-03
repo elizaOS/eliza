@@ -55,7 +55,7 @@ This plugin is being built incrementally. Tracked phases:
 - **Phase 2** — provider lifts (13+ providers).
 - **Phase 3** — canonical action implementations.
 - **Phase 4** — approval-queue surface (SSE + decision endpoint + tray + Capacitor bridge).
-- **Phase 5** — inline or drop `@elizaos/plugin-evm` / `@elizaos/plugin-solana` as standalone packages once callsites use `WalletBackend` only; full test coverage.
+- **Phase 5** — EVM + Solana chain implementations live under `src/chains/`; migrate remaining callsites to `WalletBackend` only; expand test coverage.
 
 See `docs/architecture/wallet-and-trading.md` §I for the dependency graph.
 

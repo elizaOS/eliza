@@ -25,8 +25,8 @@
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.14.0",
-    "@elizaos/core": "2.0.0-alpha.3",
-    "@elizaos/plugin-cli": "2.0.0-alpha.3"
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-cli": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

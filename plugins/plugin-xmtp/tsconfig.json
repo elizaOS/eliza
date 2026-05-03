@@ -15,8 +15,7 @@
     "emitDeclarationOnly": true,
     "resolveJsonModule": true,
     "moduleDetection": "force",
-    "allowArbitraryExtensions": true,
-    "ignoreDeprecations": "6.0"
+    "allowArbitraryExtensions": true
   },
   "include": [
     "src/**/*.ts"

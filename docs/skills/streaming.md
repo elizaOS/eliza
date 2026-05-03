@@ -89,12 +89,7 @@ Action: SET_STREAM_DESTINATION
 Parameters: { "destinationName": "Twitch" }
 ```
 
-**Configured destinations depend on installed streaming plugins:**
-- `twitch-streaming` → Twitch
-- `youtube-streaming` → YouTube Live
-- `x-streaming` → X (Twitter)
-- `custom-rtmp` → Any RTMP endpoint
-- `pumpfun-streaming` → Pump.fun
+**Configured destinations** use `@elizaos/plugin-streaming` with `streaming` config keys (`twitch`, `youtube`, `x`, `pumpfun`, `customRtmp`, `rtmpSources`, …)—see architecture docs.
 
 **Workflow to switch channels:**
 1. `GO_OFFLINE`

@@ -11,6 +11,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { composePromptFromState, logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import { isLineOutboundActionContext } from "../line-action-validate.js";
 import type { LineService } from "../service.js";
 import {
   isValidLineId,
@@ -86,40 +87,12 @@ export const sendFlexMessage: Action = {
   similes: ["SEND_LINE_CARD", "LINE_FLEX", "LINE_CARD", "SEND_LINE_FLEX"],
   description: "Send a rich flex message/card via LINE",
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
-    const __avTextRaw = typeof message?.content?.text === "string" ? message.content.text : "";
-    const __avText = __avTextRaw.toLowerCase();
-    const __avKeywords = ["line", "send", "flex", "message"];
-    const __avKeywordOk =
-      __avKeywords.length > 0 && __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
-    const __avRegex = /\b(?:line|send|flex|message)\b/i;
-    const __avRegexOk = __avRegex.test(__avText);
-    const __avSource = String(message?.content?.source ?? "");
-    const __avExpectedSource = "line";
-    const __avSourceOk = __avExpectedSource
-      ? __avSource === __avExpectedSource
-      : Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
-    const __avInputOk =
-      __avText.trim().length > 0 ||
-      Boolean(message?.content && typeof message.content === "object");
-
-    if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
-      return false;
-    }
-
-    const __avLegacyValidate = async (
-      _runtime: IAgentRuntime,
-      message: Memory,
-      _state?: State
-    ): Promise<boolean> => {
-      return message.content.source === "line";
-    };
-    try {
-      return Boolean(await __avLegacyValidate(runtime, message, state));
-    } catch {
-      return false;
-    }
-  },
+  validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> =>
+    isLineOutboundActionContext(
+      message,
+      ["line", "send", "flex", "message"],
+      /\b(?:line|send|flex|message)\b/i
+    ),
 
   handler: async (
     runtime: IAgentRuntime,

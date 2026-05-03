@@ -28,7 +28,7 @@
     "zod": "^4.3.6"
   },
   "peerDependencies": {
-    "@elizaos/core": "2.0.0-alpha.3"
+    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "^1.1.0",

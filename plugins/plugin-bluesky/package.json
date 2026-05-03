@@ -54,7 +54,7 @@
 		"@atproto/lexicon": "^0.4.11",
 		"@atproto/syntax": "^0.3.2",
 		"@atproto/xrpc": "^0.6.4",
-		"@elizaos/core": "2.0.0-alpha.3",
+		"@elizaos/core": "workspace:*",
 		"lru-cache": "^11.1.0",
 		"zod": "^4.3.6"
 	},
@@ -64,7 +64,7 @@
 		"typescript": "^6.0.3"
 	},
 	"peerDependencies": {
-		"@elizaos/core": "2.0.0-alpha.3"
+		"@elizaos/core": "workspace:*"
 	},
 	"publishConfig": {
 		"access": "public"

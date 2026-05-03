@@ -13,8 +13,8 @@
 	},
 	"dependencies": {
 		"@elizaos/core": "alpha",
-		"@elizaos/plugin-openai": "alpha",
-		"@elizaos/plugin-sql": "alpha",
+		"@elizaos/plugin-openai": "workspace:*",
+		"@elizaos/plugin-sql": "workspace:*",
 		"next": "^15.1.0",
 		"react": "19.2.3",
 		"react-dom": "19.2.3",

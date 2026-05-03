@@ -60,7 +60,7 @@
   },
   "homepage": "https://github.com/elizaos/eliza#readme",
   "dependencies": {
-    "@elizaos/core": "^1.4.2",
+    "@elizaos/core": "workspace:*",
     "socket.io-client": "^4.8.1",
     "uuid": "^9.0.0"
   },
