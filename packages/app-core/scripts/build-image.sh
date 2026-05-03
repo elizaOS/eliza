@@ -271,7 +271,7 @@ run "SKIP_AVATAR_CLONE=1 ELIZA_NO_VISION_DEPS=1 bun run postinstall 2>&1 | tail 
 ok "Postinstall patches complete"
 
 hdr "Step 2c: Build Capacitor plugins"
-run "cd packages/app && bun scripts/plugin-build.mjs && cd ${REPO_ROOT}"
+run "bun packages/app-core/scripts/build-native-plugins.mjs"
 ok "Capacitor plugins built"
 
 hdr "Step 2d: Build workspace packages"
