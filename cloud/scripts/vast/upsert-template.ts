@@ -90,11 +90,7 @@ async function vastFetch<T>(
 }
 
 async function findTemplateByName(apiKey: string, name: string): Promise<VastTemplate | null> {
-  const list = await vastFetch<{ templates?: VastTemplate[] }>(
-    apiKey,
-    "GET",
-    "/api/v0/templates/",
-  );
+  const list = await vastFetch<{ templates?: VastTemplate[] }>(apiKey, "GET", "/api/v0/templates/");
   return list.templates?.find((t) => t.name === name) ?? null;
 }
 
@@ -148,7 +144,9 @@ async function main(): Promise<void> {
 
   const template = await upsertTemplate(apiKey, config);
   console.log(`[vast] Template ready: id=${template.id} name=${template.name}`);
-  console.log(`[vast] Next: VAST_TEMPLATE_ID=${template.id} bun scripts/vast/provision-endpoint.ts`);
+  console.log(
+    `[vast] Next: VAST_TEMPLATE_ID=${template.id} bun scripts/vast/provision-endpoint.ts`,
+  );
 }
 
 main().catch((err: Error) => {
