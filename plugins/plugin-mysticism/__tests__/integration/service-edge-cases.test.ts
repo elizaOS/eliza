@@ -4,6 +4,7 @@ import { readingFeedbackForm } from "../../src/forms/feedback";
 import { tarotIntakeForm } from "../../src/forms/tarot-intake";
 import { MysticismService } from "../../src/services/mysticism-service";
 import type { BirthData, FeedbackEntry } from "../../src/types";
+import { assertNonNull } from "../assert-non-null";
 
 // ─── Shared Fixtures ───────────────────────────
 
@@ -162,7 +163,7 @@ describe("getIChingCastingSummary", () => {
   it("summary includes hexagram name and trigram info", () => {
     const service = new MysticismService();
     const session = service.startIChingReading("e1", "r1", "deep question");
-    const summary = service.getIChingCastingSummary("e1", "r1")!;
+    const summary = assertNonNull(service.getIChingCastingSummary("e1", "r1"));
 
     // Should contain the hexagram's english name
     expect(summary).toContain(session.iching?.hexagram.englishName);
@@ -207,7 +208,7 @@ describe("Session replacement", () => {
     expect(service.getSession("e1", "r1")).toBeNull();
 
     service.startTarotReading("e1", "r1", "celtic_cross", "q2");
-    const s = service.getSession("e1", "r1")!;
+    const s = assertNonNull(service.getSession("e1", "r1"));
     expect(s.tarot?.spread.id).toBe("celtic_cross");
     expect(s.id).not.toBe(firstId);
   });
@@ -258,7 +259,7 @@ describe("Full tarot lifecycle with feedback", () => {
     const service = new MysticismService();
     service.startIChingReading("e1", "r1", "life path");
 
-    const session = service.getSession("e1", "r1")!;
+    const session = assertNonNull(service.getSession("e1", "r1"));
     const changingCount = session.iching?.castResult.changingLines.length;
 
     // Reveal all changing lines
@@ -365,7 +366,7 @@ describe("Payment flow integration", () => {
 
     // Start reading
     service.startTarotReading("e1", "r1", "three_card", "love");
-    let session = service.getSession("e1", "r1")!;
+    let session = assertNonNull(service.getSession("e1", "r1"));
     expect(session.paymentStatus).toBe("none");
 
     // Get first reveal
@@ -374,13 +375,13 @@ describe("Payment flow integration", () => {
 
     // Request payment
     service.markPaymentRequested("e1", "r1", "2.50");
-    session = service.getSession("e1", "r1")!;
+    session = assertNonNull(service.getSession("e1", "r1"));
     expect(session.paymentStatus).toBe("requested");
     expect(session.paymentAmount).toBe("2.50");
 
     // Confirm payment
     service.recordConversationPayment("e1", "r1", "2.50", "0xabc123");
-    session = service.getSession("e1", "r1")!;
+    session = assertNonNull(service.getSession("e1", "r1"));
     expect(session.paymentStatus).toBe("paid");
     expect(session.paymentTxHash).toBe("0xabc123");
 
@@ -402,7 +403,7 @@ describe("Payment flow integration", () => {
       if (!reveal) break;
       service.recordFeedback("e1", "r1", makeFeedback(reveal.element, `turn ${i + 1}`));
 
-      const s = service.getSession("e1", "r1")!;
+      const s = assertNonNull(service.getSession("e1", "r1"));
       expect(s.paymentStatus).toBe("paid");
       expect(s.paymentTxHash).toBe("0xdef456");
     }
@@ -418,7 +419,7 @@ describe("Payment flow integration", () => {
 
     // Starting new session has clean payment state
     service.startTarotReading("e1", "r1", "single", "new");
-    const s = service.getSession("e1", "r1")!;
+    const s = assertNonNull(service.getSession("e1", "r1"));
     expect(s.paymentStatus).toBe("none");
     expect(s.paymentAmount).toBeNull();
     expect(s.paymentTxHash).toBeNull();
@@ -467,7 +468,7 @@ describe("Concurrent sessions", () => {
     service.recordFeedback("user1", "room1", makeFeedback(reveal1?.element, "nice"));
 
     // Room2 iching is untouched
-    const ichingSession = service.getSession("user1", "room2")!;
+    const ichingSession = assertNonNull(service.getSession("user1", "room2"));
     expect(ichingSession.iching?.revealedLines).toBe(0);
   });
 
@@ -517,12 +518,12 @@ describe("Additional service edge cases", () => {
     service.startTarotReading("e1", "r1", "single", "phases");
 
     // After start: casting
-    let session = service.getSession("e1", "r1")!;
+    let session = assertNonNull(service.getSession("e1", "r1"));
     expect(session.phase).toBe("casting");
 
     // After getNextReveal: interpretation
     service.getNextReveal("e1", "r1");
-    session = service.getSession("e1", "r1")!;
+    session = assertNonNull(service.getSession("e1", "r1"));
     expect(session.phase).toBe("interpretation");
 
     // Record feedback to complete reveals
@@ -530,19 +531,19 @@ describe("Additional service edge cases", () => {
 
     // After getSynthesis: synthesis
     service.getSynthesis("e1", "r1");
-    session = service.getSession("e1", "r1")!;
+    session = assertNonNull(service.getSession("e1", "r1"));
     expect(session.phase).toBe("synthesis");
   });
 
   it("session updatedAt changes on operations", () => {
     const service = new MysticismService();
     service.startTarotReading("e1", "r1", "single", "timing");
-    const session1 = service.getSession("e1", "r1")!;
+    const session1 = assertNonNull(service.getSession("e1", "r1"));
     const created = session1.updatedAt;
 
     // Small delay to ensure different timestamps
     const _reveal = service.getNextReveal("e1", "r1");
-    const session2 = service.getSession("e1", "r1")!;
+    const session2 = assertNonNull(service.getSession("e1", "r1"));
     expect(session2.updatedAt).toBeGreaterThanOrEqual(created);
   });
 

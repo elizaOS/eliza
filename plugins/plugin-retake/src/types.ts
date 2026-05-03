@@ -14,7 +14,7 @@ export interface RetakeChatComment {
 }
 
 /**
- * Re-export the canonical StreamingDestination from plugin-streaming-base.
+ * Re-export the canonical StreamingDestination from @elizaos/plugin-streaming.
  * Single source of truth — avoids duplicate definitions that can drift.
  */
-export type { StreamingDestination } from "@elizaos/plugin-streaming-base";
+export type { StreamingDestination } from "@elizaos/plugin-streaming";

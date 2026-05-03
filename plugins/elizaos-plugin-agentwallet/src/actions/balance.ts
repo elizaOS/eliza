@@ -40,7 +40,7 @@ export const balanceAction: Action = {
       const balances = await sdk.getBalances();
       const lines = balances.map(
         (b: TokenBalance) =>
-          `${b.symbol}: ${b.balance}${b.usdValue != null ? ` (~$${b.usdValue.toFixed(2)})` : ''}`
+          `${b.symbol}: ${b.balance}${b.usdValue !== undefined && b.usdValue !== null ? ` (~$${b.usdValue.toFixed(2)})` : ''}`
       );
 
       callback?.({

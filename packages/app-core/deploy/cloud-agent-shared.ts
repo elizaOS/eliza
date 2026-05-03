@@ -567,7 +567,7 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
 
     // Auth check (only when BRIDGE_SECRET is configured)
     if (BRIDGE_SECRET) {
-      const authHeader = req.headers["authorization"] ?? "";
+      const authHeader = req.headers.authorization ?? "";
       if (authHeader !== `Bearer ${BRIDGE_SECRET}`) {
         res.writeHead(401);
         res.end(JSON.stringify({ error: "Unauthorized" }));

@@ -331,88 +331,88 @@ export function StreamingPermissionsSettingsView({
         </div>
         <div className="text-xs-tight text-muted mb-3">{description}</div>
         <div className="border border-border bg-card">
-          {MEDIA_PERMISSIONS.filter(
-            (def) => !def.modes?.includes(mode),
-          ).map((def) => {
-            const status = permStates[def.id] ?? "unknown";
-            const isGranted = status === "granted";
-            const isRequesting = requestingId === def.id;
-            const name = translateWithFallback(t, def.nameKey, def.name);
-            const error =
-              permissionErrors[def.id] ??
-              (status === "denied"
-                ? `${name} is blocked for this site. Allow it in browser site settings, then try again.`
-                : null);
-            const description = translateWithFallback(
-              t,
-              def.descriptionKey,
-              def.description,
-            );
+          {MEDIA_PERMISSIONS.filter((def) => !def.modes?.includes(mode)).map(
+            (def) => {
+              const status = permStates[def.id] ?? "unknown";
+              const isGranted = status === "granted";
+              const isRequesting = requestingId === def.id;
+              const name = translateWithFallback(t, def.nameKey, def.name);
+              const error =
+                permissionErrors[def.id] ??
+                (status === "denied"
+                  ? `${name} is blocked for this site. Allow it in browser site settings, then try again.`
+                  : null);
+              const description = translateWithFallback(
+                t,
+                def.descriptionKey,
+                def.description,
+              );
 
-            return (
-              <div
-                key={def.id}
-                data-permission-id={def.id}
-                className="flex items-center gap-3 py-2.5 px-3"
-              >
-                <PermissionIcon icon={def.icon} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-sm">{name}</span>
-                    <StatusBadge
-                      label={translateWithFallback(
-                        t,
-                        status === "granted"
-                          ? "permissionssection.badge.granted"
-                          : status === "denied"
-                            ? "permissionssection.badge.denied"
-                            : "permissionssection.badge.notDetermined",
-                        getBadgeLabel(status),
-                      )}
-                      variant={getBadgeTone(status)}
-                      withDot
-                      className="rounded-full font-semibold"
-                    />
-                  </div>
-                  <div className="text-xs-tight text-muted mt-0.5 truncate">
-                    {description}
-                  </div>
-                  {error ? (
-                    <div className="mt-1 text-xs-tight text-danger">
-                      {error}
-                    </div>
-                  ) : null}
-                </div>
-                {!isGranted ? (
-                  <Button
-                    variant="default"
-                    size="sm"
-                    className="h-auto text-xs-tight py-1 px-2.5"
-                    disabled={isRequesting}
-                    onClick={() => void requestPermission(def.id)}
-                    aria-label={`${translateWithFallback(t, "permissionssection.Grant", "Grant")} ${name}`}
-                  >
-                    {isRequesting ? (
-                      <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
-                    ) : null}
-                    {isRequesting
-                      ? translateWithFallback(
+              return (
+                <div
+                  key={def.id}
+                  data-permission-id={def.id}
+                  className="flex items-center gap-3 py-2.5 px-3"
+                >
+                  <PermissionIcon icon={def.icon} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-sm">{name}</span>
+                      <StatusBadge
+                        label={translateWithFallback(
                           t,
-                          "permissionssection.Requesting",
-                          "Requesting",
-                        )
-                      : translateWithFallback(
-                          t,
-                          "permissionssection.Grant",
-                          "Grant",
+                          status === "granted"
+                            ? "permissionssection.badge.granted"
+                            : status === "denied"
+                              ? "permissionssection.badge.denied"
+                              : "permissionssection.badge.notDetermined",
+                          getBadgeLabel(status),
                         )}
-                  </Button>
-                ) : (
-                  <Check className="w-4 h-4 text-ok" />
-                )}
-              </div>
-            );
-          })}
+                        variant={getBadgeTone(status)}
+                        withDot
+                        className="rounded-full font-semibold"
+                      />
+                    </div>
+                    <div className="text-xs-tight text-muted mt-0.5 truncate">
+                      {description}
+                    </div>
+                    {error ? (
+                      <div className="mt-1 text-xs-tight text-danger">
+                        {error}
+                      </div>
+                    ) : null}
+                  </div>
+                  {!isGranted ? (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="h-auto text-xs-tight py-1 px-2.5"
+                      disabled={isRequesting}
+                      onClick={() => void requestPermission(def.id)}
+                      aria-label={`${translateWithFallback(t, "permissionssection.Grant", "Grant")} ${name}`}
+                    >
+                      {isRequesting ? (
+                        <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                      ) : null}
+                      {isRequesting
+                        ? translateWithFallback(
+                            t,
+                            "permissionssection.Requesting",
+                            "Requesting",
+                          )
+                        : translateWithFallback(
+                            t,
+                            "permissionssection.Grant",
+                            "Grant",
+                          )}
+                    </Button>
+                  ) : (
+                    <Check className="w-4 h-4 text-ok" />
+                  )}
+                </div>
+              );
+            },
+          )}
         </div>
       </div>
     </div>
@@ -466,64 +466,64 @@ export function StreamingPermissionsOnboardingView({
       </div>
 
       <div className="mb-6 space-y-2.5">
-        {MEDIA_PERMISSIONS.filter(
-          (def) => !def.modes?.includes(mode),
-        ).map((def) => {
-          const isGranted = permStates[def.id] === "granted";
-          const isRequesting = requestingId === def.id;
-          const name = translateWithFallback(t, def.nameKey, def.name);
-          const description = translateWithFallback(
-            t,
-            def.descriptionKey,
-            def.description,
-          );
+        {MEDIA_PERMISSIONS.filter((def) => !def.modes?.includes(mode)).map(
+          (def) => {
+            const isGranted = permStates[def.id] === "granted";
+            const isRequesting = requestingId === def.id;
+            const name = translateWithFallback(t, def.nameKey, def.name);
+            const description = translateWithFallback(
+              t,
+              def.descriptionKey,
+              def.description,
+            );
 
-          return (
-            <div
-              key={def.id}
-              data-permission-id={def.id}
-              className={`flex items-center gap-4 rounded-[16px] border px-4 py-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] ${
-                isGranted
-                  ? "border-ok bg-[color:color-mix(in_srgb,var(--ok)_16%,var(--onboarding-card-bg)_84%)]"
-                  : "border-[var(--onboarding-card-border)] bg-[var(--onboarding-card-bg)]"
-              }`}
-            >
-              <PermissionIcon icon={def.icon} />
-              <div className="flex-1">
-                <div className="text-sm font-semibold text-[var(--onboarding-text-strong)]">
-                  {name}
+            return (
+              <div
+                key={def.id}
+                data-permission-id={def.id}
+                className={`flex items-center gap-4 rounded-[16px] border px-4 py-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] ${
+                  isGranted
+                    ? "border-ok bg-[color:color-mix(in_srgb,var(--ok)_16%,var(--onboarding-card-bg)_84%)]"
+                    : "border-[var(--onboarding-card-border)] bg-[var(--onboarding-card-bg)]"
+                }`}
+              >
+                <PermissionIcon icon={def.icon} />
+                <div className="flex-1">
+                  <div className="text-sm font-semibold text-[var(--onboarding-text-strong)]">
+                    {name}
+                  </div>
+                  <div className="text-xs-tight text-[var(--onboarding-text-subtle)]">
+                    {description}
+                  </div>
                 </div>
-                <div className="text-xs-tight text-[var(--onboarding-text-subtle)]">
-                  {description}
-                </div>
+                {isGranted ? (
+                  <Check className="w-4 h-4 text-ok" />
+                ) : (
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="h-auto text-xs py-1.5 px-3"
+                    disabled={isRequesting}
+                    onClick={() => void requestPermission(def.id)}
+                    aria-label={`${translateWithFallback(t, "permissionssection.Grant", "Grant")} ${name}`}
+                  >
+                    {isRequesting
+                      ? translateWithFallback(
+                          t,
+                          "permissionssection.Requesting",
+                          "Requesting",
+                        )
+                      : translateWithFallback(
+                          t,
+                          "permissionssection.Grant",
+                          "Grant",
+                        )}
+                  </Button>
+                )}
               </div>
-              {isGranted ? (
-                <Check className="w-4 h-4 text-ok" />
-              ) : (
-                <Button
-                  variant="default"
-                  size="sm"
-                  className="h-auto text-xs py-1.5 px-3"
-                  disabled={isRequesting}
-                  onClick={() => void requestPermission(def.id)}
-                  aria-label={`${translateWithFallback(t, "permissionssection.Grant", "Grant")} ${name}`}
-                >
-                  {isRequesting
-                    ? translateWithFallback(
-                        t,
-                        "permissionssection.Requesting",
-                        "Requesting",
-                      )
-                    : translateWithFallback(
-                        t,
-                        "permissionssection.Grant",
-                        "Grant",
-                      )}
-                </Button>
-              )}
-            </div>
-          );
-        })}
+            );
+          },
+        )}
       </div>
 
       <div className="flex justify-between items-center gap-6 mt-[18px] pt-3.5">

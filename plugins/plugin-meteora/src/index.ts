@@ -1,4 +1,4 @@
-import { IAgentRuntime, Plugin } from "@elizaos/core";
+import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { meteoraScenarios } from "./e2e/scenarios.ts";
 import { meteoraPositionProvider } from "./providers/positionProvider.ts";
 import { MeteoraLpService } from "./services/MeteoraLpService.ts";
@@ -9,7 +9,7 @@ const meteoraPlugin: Plugin = {
   services: [MeteoraLpService],
   providers: [meteoraPositionProvider],
   tests: [meteoraScenarios],
-  init: async (config: Record<string, string>, runtime: IAgentRuntime) => {
+  init: async (_config: Record<string, string>, _runtime: IAgentRuntime) => {
     console.info("Meteora Plugin Initialized");
   },
 };

@@ -27,8 +27,7 @@ export function resolveBaseUrls(
     .flatMap((value) => value?.split(",") ?? [])
     .map((value) => value.trim())
     .filter(Boolean);
-  const legacyEnv =
-    env.ELIZA_DEPLOY_BASE_URL?.trim();
+  const legacyEnv = env.ELIZA_DEPLOY_BASE_URL?.trim();
   if (legacyEnv) {
     envList.push(legacyEnv);
   }

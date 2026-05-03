@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { MysticismService } from "../../src/services/mysticism-service";
 import type { BirthData, ReadingSession } from "../../src/types";
 import { getCurrentElement } from "../../src/utils/reading-helpers";
+import { assertNonNull } from "../assert-non-null";
 
 // ─── Test Fixtures ───────────────────────────
 
@@ -49,7 +50,7 @@ describe("getCurrentElement", () => {
         timestamp: Date.now(),
       });
 
-      const session = service.getSession(ENTITY, ROOM)!;
+      const session = assertNonNull(service.getSession(ENTITY, ROOM));
       expect(session.tarot?.revealedIndex).toBe(1);
 
       const result = getCurrentElement(session);
@@ -74,7 +75,7 @@ describe("getCurrentElement", () => {
         });
       }
 
-      const session = service.getSession(ENTITY, ROOM)!;
+      const session = assertNonNull(service.getSession(ENTITY, ROOM));
       expect(session.tarot?.revealedIndex).toBe(3);
       expect(session.tarot?.drawnCards.length).toBe(3);
 
@@ -92,7 +93,8 @@ describe("getCurrentElement", () => {
       const session = service.startTarotReading(ENTITY, ROOM, "single", "test");
 
       // Manually push revealedIndex beyond drawnCards.length
-      session.tarot!.revealedIndex = session.tarot?.drawnCards.length + 1;
+      const tarot = assertNonNull(session.tarot);
+      tarot.revealedIndex = tarot.drawnCards.length + 1;
 
       const result = getCurrentElement(session);
       expect(result).toBe("tarot synthesis");
@@ -123,7 +125,7 @@ describe("getCurrentElement", () => {
       let attempts = 0;
       do {
         service.startIChingReading(ENTITY, ROOM, "test question");
-        session = service.getSession(ENTITY, ROOM)!;
+        session = assertNonNull(service.getSession(ENTITY, ROOM));
         attempts++;
       } while (session.iching?.castResult.changingLines.length < 2 && attempts < 200);
 
@@ -141,7 +143,7 @@ describe("getCurrentElement", () => {
         timestamp: Date.now(),
       });
 
-      const updated = service.getSession(ENTITY, ROOM)!;
+      const updated = assertNonNull(service.getSession(ENTITY, ROOM));
       expect(updated.iching?.revealedLines).toBe(1);
 
       const result = getCurrentElement(updated);
@@ -158,7 +160,7 @@ describe("getCurrentElement", () => {
       let attempts = 0;
       do {
         service.startIChingReading(ENTITY, ROOM, "synthesis test");
-        session = service.getSession(ENTITY, ROOM)!;
+        session = assertNonNull(service.getSession(ENTITY, ROOM));
         attempts++;
       } while (session.iching?.castResult.changingLines.length < 1 && attempts < 200);
 
@@ -179,7 +181,7 @@ describe("getCurrentElement", () => {
         });
       }
 
-      const _updated = service.getSession(ENTITY, ROOM)!;
+      assertNonNull(service.getSession(ENTITY, ROOM));
       // revealedLines should now equal changingLines.length (or more),
       // which means revealed > changingLines.length (synthesis)
       // Actually the engine increments revealedLines by 1 per feedback.
@@ -210,7 +212,7 @@ describe("getCurrentElement", () => {
         timestamp: Date.now(),
       });
 
-      const synth = service.getSession(ENTITY, ROOM)!;
+      const synth = assertNonNull(service.getSession(ENTITY, ROOM));
       expect(synth.iching?.revealedLines).toBeGreaterThan(
         synth.iching?.castResult.changingLines.length
       );
@@ -244,7 +246,7 @@ describe("getCurrentElement", () => {
         timestamp: Date.now(),
       });
 
-      const session = service.getSession(ENTITY, ROOM)!;
+      const session = assertNonNull(service.getSession(ENTITY, ROOM));
       expect(session.astrology).toBeDefined();
       expect(session.astrology?.revealedPlanets.length).toBeGreaterThan(0);
 

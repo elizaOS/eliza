@@ -1,7 +1,27 @@
 <div align="center">
   <h1>elizaOS</h1>
-  <p><strong>An open-source framework — and a library of applications and benchmarks — for building autonomous AI agents.</strong></p>
+  <p><strong>An open-source framework for building autonomous AI agents.</strong></p>
 </div>
+
+## ✨ What is Eliza?
+
+elizaOS is an all-in-one, extensible platform for building and deploying AI-powered applications. Whether you're creating sophisticated chatbots, autonomous agents for business process automation, or intelligent game NPCs, Eliza provides the tools you need to get started quickly and scale effectively.
+
+It combines a modular architecture, a powerful CLI, and a rich web interface to give you full control over your agents' development, deployment, and management lifecycle.
+
+For complete guides and API references, visit our official **[documentation](https://docs.elizaos.ai/)**.
+
+## 🚀 Key Features
+
+- 🔌 **Rich Connectivity**: Out-of-the-box connectors for Discord, Telegram, Farcaster, and more.
+- 🧠 **Model Agnostic**: Supports all major models, including OpenAI, Gemini, Anthropic, Llama, and Grok.
+- 🖥️ **Modern Web UI**: A professional dashboard for managing agents, groups, and conversations in real-time.
+- 🤖 **Multi-Agent Architecture**: Designed from the ground up for creating and orchestrating groups of specialized agents.
+- 📄 **Document Ingestion**: Easily ingest documents and allow agents to retrieve information and answer questions from your data (RAG).
+- 🛠️ **Highly Extensible**: Build your own functionality with a powerful plugin system.
+- 📦 **It Just Works**: A seamless setup and development experience from day one.
+
+> **Looking for plugins?** Browse the community plugin registry at **[elizaOS-plugins/registry](https://github.com/elizaOS-plugins/registry)** for a full list of available ElizaOS plugins.
 
 ## Framework vs. application
 
@@ -51,23 +71,15 @@ A *plugin* sits between the two: framework-shaped (registers actions/providers/s
 **Prerequisites:** [Node.js v23+](https://nodejs.org/), [bun](https://bun.sh/docs/installation). On Windows, use [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual).
 
 ```bash
-bun install -g @elizaos/cli
-elizaos create my-first-agent       # interactive — pick `fullstack-app` for the standard path
+bun install -g elizaos@alpha
+elizaos create my-first-agent        # interactive — pick `fullstack-app` for the standard path
 cd my-first-agent
-elizaos env edit-local               # add OPENAI_API_KEY=...
-elizaos start
+# add OPENAI_API_KEY=... to .env (or your provider's key)
+bun install
+bun run dev
 ```
 
-Web UI: [http://localhost:3000](http://localhost:3000) — API: `http://localhost:3000/api`.
-
-Common follow-ups:
-
-```bash
-elizaos dev                          # auto-rebuild on save
-elizaos test                         # run tests
-elizaos agent list
-LOG_LEVEL=debug elizaos start
-```
+The scaffolded `fullstack-app` exposes the runtime scripts you'll use day-to-day: `bun run dev`, `bun run build`, `bun run test`, `bun run typecheck`, `bun run lint`, `bun run verify`. The `elizaos` CLI itself is intentionally minimal — its job is scaffolding (`elizaos create`) and template upgrades (`elizaos upgrade`). For a list of available templates, run `elizaos info`.
 
 Full reference: `elizaos --help` or `elizaos <command> --help`.
 
@@ -128,7 +140,7 @@ bun run build
 
 Or copy [`templates/min-plugin/`](templates/min-plugin) directly. See [`templates/min-plugin/SCAFFOLD.md`](templates/min-plugin/SCAFFOLD.md) for the contract.
 
-To publish, run `elizaos publish` once typecheck, lint, and tests pass. Community plugins are listed in [elizaOS-plugins/registry](https://github.com/elizaOS-plugins/registry).
+Once typecheck, lint, and tests pass, publish to npm. Community plugins are listed in [elizaOS-plugins/registry](https://github.com/elizaOS-plugins/registry).
 
 ## Examples
 
@@ -165,11 +177,10 @@ The runbook for orchestrator-driven benchmark runs is [`packages/benchmarks/ORCH
 
 ```bash
 bun install            # workspace install
-bun run dev            # API + Vite UI
-bun run build          # tsdown + vite
-bun run verify         # typecheck + lint
-bun run test           # parallel test suite
-bun run test:e2e       # end-to-end
+bun run dev            # API + Vite UI for apps/app
+bun run build          # turbo build across the workspace
+bun run lint           # turbo lint across the workspace
+bun run test           # full test suite (scripts/run-all-tests.mjs)
 ```
 
 Key framework packages:
@@ -177,7 +188,7 @@ Key framework packages:
 - **[`@elizaos/core`](packages/core)** — runtime, types, agent loop. The package the framework starts and ends with.
 - **[`@elizaos/agent`](packages/agent)** — `AgentRuntime`, plugin loader, default plugin map.
 - **[`@elizaos/app-core`](packages/app-core)** — Express API + dashboard host that runs agents.
-- **[`elizaos`](packages/elizaos)** — the `elizaos` CLI: `create`, `start`, `dev`, `test`, `env`, `agent`, `publish`, `upgrade`.
+- **[`elizaos`](packages/elizaos)** — the `elizaos` CLI: `create`, `info`, `upgrade`, `version`.
 - **[`@elizaos/prompts`](packages/prompts)** — shared prompt scaffolding.
 - **[`@elizaos/ui`](packages/ui)** — shared React component library.
 - **[`plugins/`](plugins)** — connectors and capabilities (Telegram, Discord, Farcaster, Twitter/X, browser, video, TEE, …).

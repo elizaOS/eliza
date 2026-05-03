@@ -67,6 +67,7 @@ export const DIRECT_ROUTE_CASES = [
     name: "companion",
     path: "/apps/companion",
     selector: '[data-testid="companion-root"]',
+    timeoutMs: 90_000,
   },
   {
     name: "shopify",

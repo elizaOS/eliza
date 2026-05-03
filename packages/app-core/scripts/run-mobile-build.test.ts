@@ -747,7 +747,9 @@ dependencies {
   it("inserts the noCompress block before the closing android brace", () => {
     const patched = injectNoCompressTarGz(baseGradle);
     expect(patched).not.toBe(baseGradle);
-    expect(patched).toMatch(/androidResources\s*\{[\s\S]*noCompress[\s\S]*['"]tar\.gz['"]/);
+    expect(patched).toMatch(
+      /androidResources\s*\{[\s\S]*noCompress[\s\S]*['"]tar\.gz['"]/,
+    );
     expect(patched).toMatch(/['"]gguf['"]/);
     expect(patched).toMatch(/['"]so['"]/);
     expect(patched).toMatch(/['"]tar['"]/);

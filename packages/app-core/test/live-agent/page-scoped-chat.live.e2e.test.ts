@@ -44,8 +44,7 @@ import {
   stampPageScopedRoomMetadata,
 } from "../helpers/trajectory-assertions.js";
 
-const liveModelTestsEnabled =
-  process.env.ELIZA_LIVE_TEST === "1";
+const liveModelTestsEnabled = process.env.ELIZA_LIVE_TEST === "1";
 const selectedLiveProvider = liveModelTestsEnabled
   ? selectLiveProvider()
   : null;

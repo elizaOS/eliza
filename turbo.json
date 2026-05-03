@@ -155,6 +155,10 @@
       "dependsOn": ["@elizaos/core#build"],
       "outputs": []
     },
+    "@elizaos/app-core#typecheck": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-video#build"],
+      "outputs": []
+    },
     "@elizaos/plugin-retake#typecheck": {
       "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-streaming-base#build"],
       "outputs": []

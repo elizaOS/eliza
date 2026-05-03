@@ -18,6 +18,6 @@ export default defineConfig({
     "http",
     "agentkeepalive",
     "zod",
-    "@elizaos/plugin-streaming-base",
+    "@elizaos/plugin-streaming",
   ],
 });

@@ -17,7 +17,12 @@ export const requestPaymentAction: Action = {
   similes: ["CHARGE_USER", "ASK_FOR_PAYMENT", "SET_PRICE"],
   description: "Request payment from the user for a reading service. Specify the amount to charge.",
 
-  validate: async (runtime: any, message: any, state?: any, options?: any): Promise<boolean> => {
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+    options?: HandlerOptions | Record<string, JsonValue | undefined>
+  ): Promise<boolean> => {
     const __avTextRaw = typeof message?.content?.text === "string" ? message.content.text : "";
     const __avText = __avTextRaw.toLowerCase();
     const __avKeywords = ["request", "payment"];
@@ -30,10 +35,14 @@ export const requestPaymentAction: Action = {
     const __avSourceOk = __avExpectedSource
       ? __avSource === __avExpectedSource
       : Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
-    const __avOptions = options && typeof options === "object" ? options : {};
+    const __avOptionsHasKeys =
+      options !== undefined &&
+      typeof options === "object" &&
+      options !== null &&
+      Object.keys(options).length > 0;
     const __avInputOk =
       __avText.trim().length > 0 ||
-      Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
+      __avOptionsHasKeys ||
       Boolean(message?.content && typeof message.content === "object");
 
     if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
@@ -41,18 +50,18 @@ export const requestPaymentAction: Action = {
     }
 
     const __avLegacyValidate = async (
-      runtime: IAgentRuntime,
-      message: Memory,
+      rt: IAgentRuntime,
+      msg: Memory,
       _state: State | undefined
     ): Promise<boolean> => {
-      const service = runtime.getService<MysticismService>("MYSTICISM");
+      const service = rt.getService<MysticismService>("MYSTICISM");
       if (!service) return false;
-      const session = service.getSession(message.entityId, message.roomId);
+      const session = service.getSession(msg.entityId, msg.roomId);
       // Only valid if there's an active session that hasn't been paid yet
       return session !== null && session.paymentStatus === "none";
     };
     try {
-      return Boolean(await (__avLegacyValidate as any)(runtime, message, state, options));
+      return Boolean(await __avLegacyValidate(runtime, message, state));
     } catch {
       return false;
     }

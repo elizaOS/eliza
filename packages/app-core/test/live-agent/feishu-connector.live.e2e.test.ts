@@ -37,7 +37,7 @@ import {
 } from "@elizaos/app-core";
 import { logger, type Plugin } from "@elizaos/core";
 import dotenv from "dotenv";
-import { describe, expect, it } from "vitest";
+import { expect, it } from "vitest";
 import { describeIf } from "../helpers/conditional-tests.ts";
 
 // ---------------------------------------------------------------------------
@@ -68,10 +68,10 @@ const describeIfPluginAvailable = describeIf(hasPlugin);
 
 // Credential-only guards (for direct API tests that don't need the plugin)
 const describeIfCreds = describeIf(runLiveTests);
-const describeIfCredsWrite = describeIf(runLiveWriteTests);
+const _describeIfCredsWrite = describeIf(runLiveWriteTests);
 
 const TEST_TIMEOUT = 30_000;
-const LIVE_WRITE_TIMEOUT = 60_000;
+const _LIVE_WRITE_TIMEOUT = 60_000;
 
 logger.info(
   `[feishu-connector] Live tests ${runLiveTests ? "ENABLED" : "DISABLED"} ` +
@@ -123,7 +123,7 @@ async function feishuGetTenantAccessToken(
 }
 
 /** GET wrapper for Feishu API. */
-async function feishuGet<T>(
+async function _feishuGet<T>(
   endpoint: string,
   token: string,
   domain?: string,
@@ -137,7 +137,7 @@ async function feishuGet<T>(
 }
 
 /** POST wrapper for Feishu API. */
-async function feishuPost<T>(
+async function _feishuPost<T>(
   endpoint: string,
   token: string,
   body: unknown,
@@ -230,7 +230,7 @@ describeIfCreds("Feishu Connector - Live Authentication", () => {
       expect(result.code).toBe(0);
       expect(result.tenant_access_token).toBeDefined();
       expect(typeof result.tenant_access_token).toBe("string");
-      expect(result.tenant_access_token!.length).toBeGreaterThan(0);
+      expect(result.tenant_access_token?.length).toBeGreaterThan(0);
     },
     TEST_TIMEOUT,
   );

@@ -43,8 +43,7 @@ import { createRealTestRuntime } from "../helpers/real-runtime.ts";
 // Environment
 // ---------------------------------------------------------------------------
 
-const liveModelTestsEnabled =
-  process.env.ELIZA_LIVE_TEST === "1";
+const liveModelTestsEnabled = process.env.ELIZA_LIVE_TEST === "1";
 const selectedLiveProvider = liveModelTestsEnabled
   ? selectLiveProvider()
   : null;

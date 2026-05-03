@@ -53,11 +53,12 @@ export const CONNECTOR_PLUGINS: Record<string, string> = {
 };
 
 export const STREAMING_PLUGINS: Record<string, string> = {
-  twitch: "@elizaos/plugin-twitch-streaming",
-  youtube: "@elizaos/plugin-youtube-streaming",
-  customRtmp: "@elizaos/plugin-custom-rtmp",
-  pumpfun: "@elizaos/plugin-pumpfun-streaming",
-  x: "@elizaos/plugin-x-streaming",
+  twitch: "@elizaos/plugin-streaming",
+  youtube: "@elizaos/plugin-streaming",
+  customRtmp: "@elizaos/plugin-streaming",
+  pumpfun: "@elizaos/plugin-streaming",
+  x: "@elizaos/plugin-streaming",
+  rtmpSources: "@elizaos/plugin-streaming",
 };
 
 const PROVIDER_PLUGINS: Record<string, string> = {
@@ -271,6 +272,18 @@ export function isStreamingDestinationConfigured(
       return Boolean(config.streamKey && config.rtmpUrl);
     case "x":
       return Boolean(config.streamKey && config.rtmpUrl);
+    case "rtmpSources":
+      return (
+        Array.isArray(destConfig) &&
+        destConfig.some((row) => {
+          if (!row || typeof row !== "object") return false;
+          const rec = row as Record<string, unknown>;
+          const id = String(rec.id ?? "").trim();
+          const url = String(rec.rtmpUrl ?? "").trim();
+          const key = String(rec.rtmpKey ?? "").trim();
+          return Boolean(id && url && key);
+        })
+      );
     default:
       return false;
   }
@@ -355,7 +368,7 @@ export function applyPluginAutoEnable(
       const pluginName = STREAMING_PLUGINS[destName];
       if (!pluginName) continue;
       if (!isStreamingDestinationConfigured(destName, destConfig)) continue;
-      // Derive short ID from the package name (e.g. "@elizaos/plugin-twitch-streaming" → "twitch-streaming")
+      // Derive short ID from the package name (e.g. "@elizaos/plugin-streaming" → "streaming")
       const shortId = pluginName.includes("/plugin-")
         ? pluginName.slice(
             pluginName.lastIndexOf("/plugin-") + "/plugin-".length,

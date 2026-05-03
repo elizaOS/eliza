@@ -26,6 +26,11 @@ _SWEAGENT_PKG = _ROOT / "eliza" / "packages" / "sweagent" / "python"
 if _SWEAGENT_PKG.exists():
     sys.path.insert(0, str(_SWEAGENT_PKG))
 
+# Eliza TS-bridge adapter (used when --provider eliza is requested).
+_ELIZA_ADAPTER_PKG = Path(__file__).resolve().parents[1] / "eliza-adapter"
+if _ELIZA_ADAPTER_PKG.exists():
+    sys.path.insert(0, str(_ELIZA_ADAPTER_PKG))
+
 from .character import create_swe_bench_character
 from .dataset import SWEBenchDataset
 from .runner import SWEBenchRunner
@@ -43,6 +48,32 @@ try:
     _ORCHESTRATOR_AVAILABLE = True
 except ImportError:
     pass
+
+
+# Lazily-initialized eliza server manager. Shared across run_benchmark /
+# run_orchestrated_benchmark so a single process only spawns one node server.
+_ELIZA_SERVER_MANAGER: object | None = None
+
+
+def _get_eliza_server_manager() -> object:
+    """Spawn (or return) the singleton eliza benchmark server manager."""
+    global _ELIZA_SERVER_MANAGER
+    if _ELIZA_SERVER_MANAGER is not None:
+        return _ELIZA_SERVER_MANAGER
+
+    try:
+        from eliza_adapter.server_manager import ElizaServerManager
+    except ImportError as exc:
+        raise RuntimeError(
+            "Provider 'eliza' requires the eliza_adapter package. "
+            "Install it from packages/benchmarks/eliza-adapter or add its src "
+            "directory to PYTHONPATH."
+        ) from exc
+
+    mgr = ElizaServerManager()
+    mgr.start()
+    _ELIZA_SERVER_MANAGER = mgr
+    return mgr
 
 
 def setup_logging(verbose: bool = False) -> None:
@@ -99,7 +130,11 @@ def _pick_backend(explicit_provider: str | None, requested_model: str, mock_mode
         return "mock"
 
     if explicit_provider:
-        return explicit_provider.strip().lower()
+        backend = explicit_provider.strip().lower()
+        # Normalize the eliza-bridge alias.
+        if backend in {"eliza", "eliza-bridge", "eliza-ts"}:
+            return "eliza"
+        return backend
 
     from_model = _model_provider_from_name(requested_model)
     if from_model is not None:
@@ -131,6 +166,11 @@ def _pick_runtime_model(
 ) -> str:
     requested = requested_model.strip()
     fallback = fallback_model.strip()
+
+    if backend == "eliza":
+        # The eliza TypeScript runtime owns model selection; we just thread
+        # the requested name through as a hint via context.model_name.
+        return requested or fallback or "eliza-default"
 
     if backend == "anthropic":
         if requested and _is_anthropic_model(requested):
@@ -259,9 +299,13 @@ Examples:
     parser.add_argument(
         "--provider",
         type=str,
-        choices=["openai", "anthropic", "groq", "openrouter"],
+        choices=["openai", "anthropic", "groq", "openrouter", "eliza"],
         default=None,
-        help="Model provider override (default: infer from model/env keys)",
+        help=(
+            "Model provider override (default: infer from model/env keys). "
+            "Use 'eliza' to route LLM calls through the eliza TypeScript "
+            "benchmark HTTP server (auto-spawned via ElizaServerManager)."
+        ),
     )
 
     parser.add_argument(
@@ -453,7 +497,7 @@ async def run_benchmark(args: argparse.Namespace) -> None:
     runtime_model_name = args.model
     if not args.gold:
         backend = _pick_backend(args.provider, args.model, args.mock_model)
-        if backend != "mock":
+        if backend not in {"mock", "eliza"}:
             key_var = _provider_key_var(backend)
             if not os.environ.get(key_var):
                 print(f"Error: Set {key_var} for provider '{backend}'.")
@@ -464,7 +508,10 @@ async def run_benchmark(args: argparse.Namespace) -> None:
             requested_model=args.model,
             fallback_model=args.model,
         )
-        if backend != "mock" and _strip_model_prefix(runtime_model_name) != _strip_model_prefix(args.model):
+        if (
+            backend not in {"mock", "eliza"}
+            and _strip_model_prefix(runtime_model_name) != _strip_model_prefix(args.model)
+        ):
             logging.getLogger(__name__).warning(
                 "Requested --model '%s' is incompatible with %s backend; using '%s'.",
                 args.model,
@@ -576,6 +623,14 @@ async def run_benchmark(args: argparse.Namespace) -> None:
 
             runtime.register_model(
                 ModelType.TEXT_LARGE, _mock_text_large, provider="mock", priority=100
+            )
+        elif backend == "eliza":
+            from eliza_adapter.swe_bench import make_eliza_swe_bench_model_handler
+
+            mgr = _get_eliza_server_manager()
+            handler = make_eliza_swe_bench_model_handler(client=mgr.client)  # type: ignore[attr-defined]
+            runtime.register_model(
+                ModelType.TEXT_LARGE, handler, provider="eliza", priority=100
             )
         elif backend == "anthropic":
             from anthropic import AsyncAnthropic
@@ -744,7 +799,7 @@ async def run_orchestrated_benchmark(args: argparse.Namespace) -> None:
     variant = SWEBenchVariant(args.variant)
 
     backend = _pick_backend(args.provider, args.model, args.mock_model)
-    if backend != "mock":
+    if backend not in {"mock", "eliza"}:
         key_var = _provider_key_var(backend)
         if not os.environ.get(key_var):
             print(f"Error: Set {key_var} for provider '{backend}' in orchestrated mode.")
@@ -755,7 +810,10 @@ async def run_orchestrated_benchmark(args: argparse.Namespace) -> None:
         requested_model=args.model,
         fallback_model=args.orchestrator_model,
     )
-    if backend != "mock" and _strip_model_prefix(runtime_model_name) != _strip_model_prefix(args.model):
+    if (
+        backend not in {"mock", "eliza"}
+        and _strip_model_prefix(runtime_model_name) != _strip_model_prefix(args.model)
+    ):
         logging.getLogger(__name__).warning(
             "Requested --model '%s' is incompatible with %s backend; using '%s'.",
             args.model,
@@ -917,6 +975,14 @@ async def run_orchestrated_benchmark(args: argparse.Namespace) -> None:
 
         runtime.register_model(
             ModelType.TEXT_LARGE, _mock_text_large, provider="mock", priority=100
+        )
+    elif backend == "eliza":
+        from eliza_adapter.swe_bench import make_eliza_swe_bench_model_handler
+
+        mgr = _get_eliza_server_manager()
+        handler = make_eliza_swe_bench_model_handler(client=mgr.client)  # type: ignore[attr-defined]
+        runtime.register_model(
+            ModelType.TEXT_LARGE, handler, provider="eliza", priority=100
         )
     elif backend == "anthropic":
         from anthropic import AsyncAnthropic

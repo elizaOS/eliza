@@ -9,7 +9,7 @@ import {
   type Plugin,
 } from "@elizaos/core";
 import dotenv from "dotenv";
-import { describe, expect, it } from "vitest";
+import { expect, it } from "vitest";
 import { describeIf } from "../helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../helpers/live-provider";
 
@@ -17,8 +17,7 @@ const testDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(testDir, "..");
 dotenv.config({ path: path.resolve(packageRoot, "..", "..", ".env") });
 
-const liveModelTestsEnabled =
-  process.env.ELIZA_LIVE_TEST === "1";
+const liveModelTestsEnabled = process.env.ELIZA_LIVE_TEST === "1";
 const selectedLiveProvider = liveModelTestsEnabled
   ? selectLiveProvider()
   : null;

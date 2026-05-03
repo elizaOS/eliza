@@ -73,8 +73,8 @@ import {
 } from "@elizaos/shared/runtime-env";
 import chalk from "chalk";
 import { allocateFirstFreeLoopbackPort } from "./lib/allocate-loopback-port.mjs";
-import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { createApiSupervisor } from "./lib/api-supervisor.mjs";
+import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { signalSpawnedProcessTree } from "./lib/kill-process-tree.mjs";
 import { killUiListenPort } from "./lib/kill-ui-listen-port.mjs";
 import { extendNodePathEnv } from "./lib/node-path-env.mjs";
@@ -82,7 +82,7 @@ import { formatOrchestratorDesktopDevBanner } from "./lib/orchestrator-desktop-d
 import { viteRendererBuildNeeded } from "./lib/vite-renderer-dist-stale.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const elizaRoot = path.resolve(here, "../../..");
+const _elizaRoot = path.resolve(here, "../../..");
 const elizaRoot = path.resolve(here, "../../../..");
 const isElizaMonorepo =
   existsSync(path.join(elizaRoot, "package.json")) &&

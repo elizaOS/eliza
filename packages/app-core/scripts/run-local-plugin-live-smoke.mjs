@@ -15,7 +15,10 @@ const liveTestPath = path.join(
   "live-agent",
   "plugin-lifecycle.live.e2e.test.ts",
 );
-const vitestConfigPath = path.join(repoRoot, "eliza/test/vitest/live-e2e.config.ts");
+const vitestConfigPath = path.join(
+  repoRoot,
+  "eliza/test/vitest/live-e2e.config.ts",
+);
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
