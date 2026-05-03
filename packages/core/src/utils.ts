@@ -15,8 +15,8 @@ import {
 	buildDeterministicSeed,
 	getDeterministicNames,
 } from "./utils/deterministic";
-import { RecursiveCharacterTextSplitter } from "./utils/recursive-character-text-splitter";
 import { extractAndParseJSONObjectFromText } from "./utils/json-llm";
+import { RecursiveCharacterTextSplitter } from "./utils/recursive-character-text-splitter";
 import {
 	mergeStructuredRecords,
 	normalizeStructuredRecord,
