@@ -40,5 +40,8 @@
     "tsup": "^8.5.1",
     "typescript": "^6.0.0",
     "vitest": "^4.0.17"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

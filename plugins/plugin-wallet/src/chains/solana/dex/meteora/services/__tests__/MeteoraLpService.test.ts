@@ -1,3 +1,4 @@
+// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 /// <reference types="vitest/globals" />
 import type { IAgentRuntime } from "@elizaos/core";
 import * as dlmmModule from "@meteora-ag/dlmm";

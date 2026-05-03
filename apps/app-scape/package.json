@@ -125,5 +125,8 @@
         ]
       }
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

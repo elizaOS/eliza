@@ -1,5 +1,5 @@
 """
-GAIA Benchmark Implementation for ElizaOS
+GAIA Benchmark Implementation for elizaOS
 
 A comprehensive implementation of the GAIA (General AI Assistants) benchmark
 for evaluating AI systems on real-world tasks requiring reasoning, multimodal
@@ -7,32 +7,15 @@ processing, web browsing, and tool use.
 
 Reference: https://gaiabenchmark.com/
 Paper: https://proceedings.iclr.cc/paper_files/paper/2024/hash/25ae35b5b1738d80f1f03a8713e405ec-Abstract-Conference.html
+
+All LLM/tool calls are routed through the elizaOS TypeScript benchmark
+bridge (``packages/app-core/src/benchmark/server.ts``) — the legacy
+Python ``AgentRuntime`` path has been removed.
 """
 
-from elizaos_gaia.agent import GAIAAgent
 from elizaos_gaia.dataset import GAIADataset
 from elizaos_gaia.evaluator import GAIAEvaluator
 from elizaos_gaia.metrics import MetricsCalculator
-from elizaos_gaia.plugin import create_gaia_plugin, gaia_plugin
-
-# Orchestrator runner depends on the optional `elizaos_plugin_agent_orchestrator`
-# python package shipped from the TS plugin's repo-local `python/` dir. When
-# that dir is absent (e.g. this checkout has only the TS plugin built), basic
-# GAIA mode must still work, so import it lazily and tolerate ImportError.
-try:
-    from elizaos_gaia.orchestrator.runner import OrchestratedGAIARunner
-    from elizaos_gaia.orchestrator.types import (
-        ExecutionMode,
-        OrchestratedGAIAReport,
-        ProviderQuestionResult,
-        ProviderType as OrchestratedProviderType,
-    )
-except ImportError:
-    OrchestratedGAIARunner = None  # type: ignore[assignment]
-    ExecutionMode = None  # type: ignore[assignment]
-    OrchestratedGAIAReport = None  # type: ignore[assignment]
-    ProviderQuestionResult = None  # type: ignore[assignment]
-    OrchestratedProviderType = None  # type: ignore[assignment]
 from elizaos_gaia.providers import (
     PRESETS,
     SUPPORTED_MODELS,
@@ -84,16 +67,7 @@ __all__ = [
     "GAIADataset",
     "GAIAEvaluator",
     "GAIARunner",
-    "GAIAAgent",
     "MetricsCalculator",
-    "OrchestratedGAIARunner",
-    "OrchestratedGAIAReport",
-    "ProviderQuestionResult",
-    "OrchestratedProviderType",
-    "ExecutionMode",
-    # Plugin
-    "gaia_plugin",
-    "create_gaia_plugin",
     # Functions
     "run_quick_test",
     "call_provider",

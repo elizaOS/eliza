@@ -84,5 +84,8 @@
         "sensitive": false
       }
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

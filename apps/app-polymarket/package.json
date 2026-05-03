@@ -20,5 +20,8 @@
     "app": {
       "heroImage": "assets/hero.svg"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

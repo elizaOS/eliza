@@ -44,5 +44,8 @@
         "sensitive": true
       }
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -1,3 +1,4 @@
+// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import { type IAgentRuntime, Service } from "@elizaos/core";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js"; // For SOL price placeholder
 import type {

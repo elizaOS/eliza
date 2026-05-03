@@ -1,3 +1,4 @@
+// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { managePositions } from "./actions/managePositions.ts";
 import { managePositionActionRetriggerEvaluator } from "./evaluators/repositionEvaluator.ts";

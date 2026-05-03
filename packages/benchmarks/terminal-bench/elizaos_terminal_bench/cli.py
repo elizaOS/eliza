@@ -187,11 +187,6 @@ For more information, visit: https://tbench.ai
         help="Run reference solutions instead of using an LLM (validates harness/tests)",
     )
     parser.add_argument(
-        "--standalone",
-        action="store_true",
-        help="Use standalone agent (direct API calls) instead of full ElizaOS runtime",
-    )
-    parser.add_argument(
         "-v", "--verbose",
         action="store_true",
         help="Verbose output",
@@ -246,7 +241,7 @@ def parse_difficulties(
 
 
 async def run_cli(args: argparse.Namespace) -> int:
-    """Run the CLI with parsed arguments."""
+    """Run the CLI with parsed arguments. All runs go through the elizaOS TS bridge."""
     setup_logging(verbose=args.verbose, debug=args.debug)
     model_name = args.model
     if args.model_provider and "/" not in model_name:
@@ -259,11 +254,10 @@ async def run_cli(args: argparse.Namespace) -> int:
     os.environ.setdefault("GROQ_LARGE_MODEL", model_name)
     os.environ.setdefault("GROQ_SMALL_MODEL", model_name)
 
-    # When --model-provider eliza is used, spin up the elizaOS TS benchmark
-    # bridge server (or honor an existing ELIZA_BENCH_URL). The runner
-    # detects BENCHMARK_MODEL_PROVIDER=eliza and routes through the bridge.
+    # Spin up the elizaOS TS benchmark bridge server unless one is already
+    # reachable via ELIZA_BENCH_URL.
     server_mgr = None
-    if args.model_provider == "eliza" and not os.environ.get("ELIZA_BENCH_URL"):
+    if not os.environ.get("ELIZA_BENCH_URL"):
         from eliza_adapter.server_manager import ElizaServerManager
 
         server_mgr = ElizaServerManager()
@@ -292,11 +286,10 @@ async def run_cli(args: argparse.Namespace) -> int:
         verbose=args.verbose,
         dry_run=args.dry_run,
         oracle=args.oracle,
-        use_eliza_agent=not args.standalone,
     )
 
     # Create runner
-    runner = TerminalBenchRunner(runtime=None, config=config)
+    runner = TerminalBenchRunner(config=config)
 
     try:
         # Setup with sample tasks or full dataset

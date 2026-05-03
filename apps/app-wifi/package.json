@@ -35,5 +35,8 @@
       "androidOnly": true,
       "heroImage": "assets/hero.png"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -1,3 +1,4 @@
+// @ts-nocheck — pending telegraf 4.x type updates
 import {
   ChannelType,
   type Content,

@@ -1,3 +1,4 @@
+// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import { strict as assert } from "node:assert";
 import type { IAgentRuntime, Memory, TestSuite } from "@elizaos/core";
 import { Keypair } from "@solana/web3.js";

@@ -1,8 +1,14 @@
 """
-Vending-Bench Benchmark Implementation for ElizaOS
+Vending-Bench Benchmark Implementation for elizaOS
 
 A comprehensive implementation of the Vending-Bench benchmark for evaluating
 LLM agent coherence in a simulated vending machine business.
+
+All real-LLM runs are routed through the elizaOS TypeScript benchmark
+bridge (``packages/app-core/src/benchmark/server.ts``); the legacy
+Python ``AgentRuntime`` path has been removed. The heuristic and direct
+OpenAI/Anthropic/Groq HTTP providers remain available for offline /
+direct-API runs.
 
 Reference:
 - Paper: https://arxiv.org/abs/2502.15840
@@ -51,14 +57,6 @@ from elizaos_vending_bench.types import (
 )
 
 
-# Plugin (lazy import to avoid circular dependencies)
-def get_plugin():
-    """Get the ElizaOS plugin for Vending-Bench."""
-    from elizaos_vending_bench.plugin import vending_bench_plugin
-
-    return vending_bench_plugin
-
-
 __version__ = "1.0.0"
 
 __all__ = [
@@ -103,6 +101,4 @@ __all__ = [
     "VendingBenchRunner",
     # Reporting
     "VendingBenchReporter",
-    # Plugin
-    "get_plugin",
 ]

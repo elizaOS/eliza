@@ -48,5 +48,8 @@
       "browser": "Web fallback reports messaging APIs unavailable.",
       "android": true
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

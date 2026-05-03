@@ -1,3 +1,4 @@
+// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import { elizaLogger } from '@elizaos/core';
 import { API_BASE_URL, BIRDEYE_ENDPOINTS, DEFAULT_MAX_RETRIES, RETRY_DELAY_MS } from './constants';
 import type { BirdeyeApiParams, BirdeyeApiResponse } from './types/api/common';

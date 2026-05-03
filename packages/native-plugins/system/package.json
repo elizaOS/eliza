@@ -48,5 +48,8 @@
       "browser": "Web fallback reports no Android roles.",
       "android": true
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
