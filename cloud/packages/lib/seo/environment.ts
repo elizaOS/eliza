@@ -1,4 +1,4 @@
-import { getAppHost, getAppUrl } from "@/lib/utils/app-url";
+import { type AppUrlEnv, getAppHost, getAppUrl } from "@/lib/utils/app-url";
 import type { Metadata, MetadataRoute } from "./metadata-types";
 
 const DEFAULT_INDEXABLE_HOSTS = ["elizacloud.ai", "www.elizacloud.ai"] as const;
@@ -16,7 +16,7 @@ export function getIndexableHosts(env: NodeJS.ProcessEnv = process.env): string[
 }
 
 export function shouldIndexSite(env: NodeJS.ProcessEnv = process.env): boolean {
-  const currentHost = normalizeHost(getAppHost(env));
+  const currentHost = normalizeHost(getAppHost(env as AppUrlEnv));
   return getIndexableHosts(env).includes(currentHost);
 }
 
@@ -41,7 +41,7 @@ export function getRobotsMetadata(
 
 export function generateRobotsFile(env: NodeJS.ProcessEnv = process.env): MetadataRoute.Robots {
   const index = shouldIndexSite(env);
-  const appUrl = getAppUrl(env);
+  const appUrl = getAppUrl(env as AppUrlEnv);
 
   return {
     rules: index

@@ -46,10 +46,7 @@ export async function issueNonce(redis: CompatibleRedis): Promise<string> {
  * Consumes the nonce from cache (single-use). Returns true if the nonce was
  * present and is now consumed; false otherwise.
  */
-export async function consumeNonce(
-  redis: CompatibleRedis,
-  nonce: string,
-): Promise<boolean> {
+export async function consumeNonce(redis: CompatibleRedis, nonce: string): Promise<boolean> {
   const value = await redis.getdel(CacheKeys.siwe.nonce(nonce));
   return value !== null;
 }
@@ -79,9 +76,7 @@ export async function validateSIWEMessage(
     throw new Error("SIWE message missing nonce");
   }
   if (parsed.domain !== expectedHost) {
-    throw new Error(
-      `${SIWE_DOMAIN_MISMATCH}: got ${parsed.domain}, expected ${expectedHost}`,
-    );
+    throw new Error(`${SIWE_DOMAIN_MISMATCH}: got ${parsed.domain}, expected ${expectedHost}`);
   }
 
   const address = getAddress(parsed.address);
