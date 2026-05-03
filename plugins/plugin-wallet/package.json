@@ -46,6 +46,7 @@
     "whatwg-url": "^16.0.0"
   },
   "dependencies": {
+    "@elizaos/cloud-routing": "workspace:*",
     "@lifi/data-types": "^6.0.0",
     "@lifi/sdk": "^3.7.9",
     "@lifi/types": "^17.18.0",
