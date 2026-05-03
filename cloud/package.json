@@ -294,7 +294,7 @@
     "@stwd/react": "0.7.2",
     "@stwd/sdk": "0.8.1",
     "@walletconnect/core": "2.22.4",
-    "@walletconnect/logger": "3.0.0",
+    "@walletconnect/logger": "3.0.2",
     "@walletconnect/sign-client": "2.22.4",
     "@walletconnect/types": "2.22.4",
     "@walletconnect/universal-provider": "2.22.4",
