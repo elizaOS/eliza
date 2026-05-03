@@ -36,7 +36,7 @@ type StartedLiveServer = {
   port: number;
 };
 
-async function assertWalletExportRemoved(
+async function assertWalletExportRejected(
   port: number,
   headers: Record<string, string>,
 ): Promise<void> {
@@ -47,8 +47,10 @@ async function assertWalletExportRemoved(
     { confirm: true, exportToken: "test-token" },
     headers,
   );
-  expect(status).toBe(410);
-  expect(String((data as { error?: string }).error ?? "")).toContain("removed");
+  expect(status).toBe(401);
+  expect(String((data as { error?: string }).error ?? "")).toContain(
+    "Invalid export token",
+  );
 }
 
 async function postConversationMessageWithRetry(
@@ -229,7 +231,7 @@ describeIf(CAN_RUN)(
       await restore?.();
     });
 
-    it("step 1: auth status reports required + pairing enabled", async () => {
+    it("step 1: auth status reports required + cloud pairing disabled", async () => {
       const { status, data } = await req(
         server?.port ?? 0,
         "GET",
@@ -237,7 +239,7 @@ describeIf(CAN_RUN)(
       );
       expect(status).toBe(200);
       expect(data.required).toBe(true);
-      expect(data.pairingEnabled).toBe(true);
+      expect(data.pairingEnabled).toBe(false);
     });
 
     it("step 2: unauthenticated requests are blocked", async () => {
@@ -350,7 +352,7 @@ describeIf(CAN_RUN)(
       expect(text.toLowerCase()).toContain("auth");
     }, 120_000);
 
-    it("step 9: wallet generate + export endpoint removed with auth", async () => {
+    it("step 9: wallet generate + invalid export token rejected with auth", async () => {
       const { status: genStatus, data: genData } = await req(
         server?.port ?? 0,
         "POST",
@@ -379,7 +381,7 @@ describeIf(CAN_RUN)(
         wallets[0].address.toLowerCase(),
       );
 
-      await assertWalletExportRemoved(server?.port ?? 0, authHeaders);
+      await assertWalletExportRejected(server?.port ?? 0, authHeaders);
     });
 
     it("step 10: agent stop with auth", async () => {
@@ -530,7 +532,7 @@ describeIf(CAN_RUN)("Live: Auth + CORS + wallet combined", () => {
     expect(status).toBe(403);
   });
 
-  it("wallet import works; export endpoint is removed", async () => {
+  it("wallet import works; invalid export token is rejected", async () => {
     const auth = { Authorization: `Bearer ${API_TOKEN}` };
     const importedKey = process.env.EVM_PRIVATE_KEY;
 
@@ -547,6 +549,6 @@ describeIf(CAN_RUN)("Live: Auth + CORS + wallet combined", () => {
     expect(importStatus).toBe(200);
     expect(importData.ok).toBe(true);
 
-    await assertWalletExportRemoved(server?.port ?? 0, auth);
+    await assertWalletExportRejected(server?.port ?? 0, auth);
   });
 });
