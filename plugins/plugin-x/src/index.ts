@@ -68,9 +68,7 @@ export const XPlugin: Plugin = {
     } else if (mode === "broker") {
       const brokerUrl = getSetting(runtime, "TWITTER_BROKER_URL");
       if (!brokerUrl) {
-        logger.warn(
-          "TWITTER_AUTH_MODE=broker requires TWITTER_BROKER_URL.",
-        );
+        logger.warn("TWITTER_AUTH_MODE=broker requires TWITTER_BROKER_URL.");
       } else {
         logger.log("✅ X broker mode configured");
       }

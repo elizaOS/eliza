@@ -138,9 +138,7 @@ export class BrokerAuthProvider
   private async fetchTokenFromBroker(): Promise<BrokerTokenResponse> {
     const baseUrl = getSetting(this.runtime, "TWITTER_BROKER_URL");
     if (!baseUrl) {
-      throw new Error(
-        "TWITTER_AUTH_MODE=broker requires TWITTER_BROKER_URL.",
-      );
+      throw new Error("TWITTER_AUTH_MODE=broker requires TWITTER_BROKER_URL.");
     }
     const brokerToken = getSetting(this.runtime, "TWITTER_BROKER_TOKEN");
     if (!brokerToken) {

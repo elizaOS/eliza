@@ -8,9 +8,7 @@ import {
 import { InMemoryDatabaseAdapter } from "./adapter";
 import { MemoryStorage } from "./storage-memory";
 
-const GLOBAL_SINGLETONS = Symbol.for(
-  "@elizaos/plugin-inmemorydb/global-singletons",
-);
+const GLOBAL_SINGLETONS = Symbol.for("@elizaos/plugin-inmemorydb/global-singletons");
 type GlobalSymbols = typeof globalThis & {
   [GLOBAL_SINGLETONS]?: {
     storageManager?: MemoryStorage;
@@ -43,17 +41,10 @@ type RuntimeWithRegister = IAgentRuntime & {
 
 export const plugin: Plugin = {
   name: "@elizaos/plugin-inmemorydb",
-  description:
-    "Pure in-memory, ephemeral database storage for elizaOS - no persistence",
+  description: "Pure in-memory, ephemeral database storage for elizaOS - no persistence",
 
-  async init(
-    _config: Record<string, string>,
-    runtime: IAgentRuntime,
-  ): Promise<void> {
-    logger.info(
-      { src: "plugin:inmemorydb" },
-      "Initializing in-memory database plugin",
-    );
+  async init(_config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {
+    logger.info({ src: "plugin:inmemorydb" }, "Initializing in-memory database plugin");
 
     const r = runtime as RuntimeWithRegister;
     const hasAdapter =
@@ -64,7 +55,7 @@ export const plugin: Plugin = {
     if (hasAdapter) {
       logger.debug(
         { src: "plugin:inmemorydb" },
-        "Database adapter already exists, skipping initialization",
+        "Database adapter already exists, skipping initialization"
       );
       return;
     }
@@ -75,7 +66,7 @@ export const plugin: Plugin = {
 
     logger.success(
       { src: "plugin:inmemorydb" },
-      "In-memory database adapter registered successfully",
+      "In-memory database adapter registered successfully"
     );
   },
 };

@@ -25,7 +25,9 @@ describe("BrokerAuthProvider", () => {
 
   it("throws a clear error when broker token is missing", async () => {
     const provider = new BrokerAuthProvider(
-      makeRuntime({ TWITTER_BROKER_URL: "https://api.eliza.cloud/connectors/x" }),
+      makeRuntime({
+        TWITTER_BROKER_URL: "https://api.eliza.cloud/connectors/x",
+      }),
     );
     await expect(provider.getAccessToken()).rejects.toThrow(
       /TWITTER_BROKER_TOKEN/,
@@ -128,9 +130,11 @@ describe("BrokerAuthProvider", () => {
   });
 
   it("invalidates cache and surfaces a 401 error message", async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue(
-      new Response("unauthorized", { status: 401 }),
-    ) as unknown as typeof fetch;
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValue(
+        new Response("unauthorized", { status: 401 }),
+      ) as unknown as typeof fetch;
 
     const provider = new BrokerAuthProvider(
       makeRuntime({
