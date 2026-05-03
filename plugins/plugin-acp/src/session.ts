@@ -1,13 +1,75 @@
 import { randomUUID } from "node:crypto";
-// Import core session utilities from @elizaos/core
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 import {
-  listSessionKeys,
-  loadSessionStore,
-  resolveDefaultSessionStorePath,
+  createSessionEntry,
   type SessionEntry,
-  upsertSessionEntry,
+  type SessionStore,
 } from "@elizaos/core";
 import type { AcpSession } from "./types.js";
+
+// ============================================================================
+// Local session-store helpers
+// ----------------------------------------------------------------------------
+// These wrap a JSON file on disk: `{ [sessionKey]: SessionEntry }`. They live
+// here (rather than in @elizaos/core) because core does not currently ship a
+// persistent session store implementation — only the SessionEntry/SessionStore
+// types and the in-memory `createSessionEntry` helper.
+// ============================================================================
+
+/** Resolve the default per-agent session-store path used by elizaOS. */
+function resolveDefaultSessionStorePath(agentId = "main"): string {
+  const stateDir = process.env.ELIZA_STATE_DIR ?? join(homedir(), ".eliza");
+  return join(stateDir, "agents", agentId, "sessions", "sessions.json");
+}
+
+/** Read the on-disk session store; returns an empty object if missing/invalid. */
+async function loadSessionStore(storePath: string): Promise<SessionStore> {
+  try {
+    const text = await readFile(storePath, "utf8");
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as SessionStore;
+    }
+  } catch {
+    // missing file / invalid JSON → start fresh
+  }
+  return {};
+}
+
+/** List all session keys present in the on-disk store. */
+async function listSessionKeys(storePath: string): Promise<string[]> {
+  const store = await loadSessionStore(storePath);
+  return Object.keys(store);
+}
+
+/** Read a single entry by key, or return undefined if missing. */
+async function getSessionEntry(
+  storePath: string,
+  sessionKey: string,
+): Promise<SessionEntry | undefined> {
+  const store = await loadSessionStore(storePath);
+  return store[sessionKey];
+}
+
+/**
+ * Merge `patch` into the existing entry for `sessionKey` (or create a new
+ * entry if absent) and persist the result. Atomic enough for our needs: read,
+ * merge, write back.
+ */
+async function upsertSessionEntry(args: {
+  storePath: string;
+  sessionKey: string;
+  patch: Partial<SessionEntry>;
+}): Promise<void> {
+  const { storePath, sessionKey, patch } = args;
+  const store = await loadSessionStore(storePath);
+  const existing = store[sessionKey] ?? createSessionEntry({ sessionId: sessionKey });
+  store[sessionKey] = { ...existing, ...patch, updatedAt: Date.now() };
+  await mkdir(dirname(storePath), { recursive: true });
+  await writeFile(storePath, JSON.stringify(store, null, 2), "utf8");
+}
 
 /**
  * Interface for ACP session storage
@@ -287,8 +349,8 @@ export function createPersistentSessionStore(
   };
 
   const loadFromCoreStore: AcpSessionStore["loadFromCoreStore"] = async () => {
-    const store = loadSessionStore(storePath);
-    const keys = listSessionKeys(storePath);
+    const store = await loadSessionStore(storePath);
+    const keys = await listSessionKeys(storePath);
 
     for (const key of keys) {
       const entry = store[key];
@@ -326,13 +388,13 @@ export function createPersistentSessionStore(
  */
 export const defaultAcpSessionStore = createInMemorySessionStore();
 
-// Re-export core session utilities for plugins that need full session support
+// Re-export the SessionEntry type from core, plus the local store helpers,
+// so consumers of this plugin can access the persistent session store API.
+export { createSessionEntry, type SessionEntry } from "@elizaos/core";
 export {
-  createSessionEntry,
   getSessionEntry,
   listSessionKeys,
   loadSessionStore,
   resolveDefaultSessionStorePath,
-  type SessionEntry,
   upsertSessionEntry,
-} from "@elizaos/core";
+};

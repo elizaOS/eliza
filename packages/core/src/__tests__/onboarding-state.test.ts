@@ -84,7 +84,9 @@ function getNextSetting(
 			return depSetting && depSetting.value !== null;
 		});
 
-		const isVisible = !setting.visibleIf(config.settings);
+		const isVisible = setting.visibleIf
+			? setting.visibleIf(config.settings)
+			: true;
 
 		if (dependenciesMet && isVisible) {
 			return [key, setting];
@@ -97,7 +99,9 @@ function getNextSetting(
 			const depSetting = config.settings[dep];
 			return depSetting && depSetting.value !== null;
 		});
-		const isVisible = !setting.visibleIf(config.settings);
+		const isVisible = setting.visibleIf
+			? setting.visibleIf(config.settings)
+			: true;
 
 		if (dependenciesMet && isVisible) {
 			return [key, setting];
