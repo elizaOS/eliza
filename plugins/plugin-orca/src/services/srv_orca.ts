@@ -1,8 +1,6 @@
-import { Service, IAgentRuntime, logger } from "@elizaos/core";
+import { type IAgentRuntime, Service } from "@elizaos/core";
 
 export class OrcaService extends Service {
-  private isRunning = false;
-
   static serviceType = "ORCA_SERVICE";
   capabilityDescription = "Provides Orca DEX integration for LP management";
 

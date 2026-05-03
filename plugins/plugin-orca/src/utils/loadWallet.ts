@@ -1,6 +1,6 @@
+import { type AgentRuntime, TEEMode } from "@elizaos/core";
 import { Keypair, PublicKey } from "@solana/web3.js";
 import bs58 from "bs58";
-import { AgentRuntime, TEEMode } from "@elizaos/core";
 
 export interface WalletResult {
   signer?: Keypair;
@@ -20,21 +20,9 @@ export async function loadWallet(
   const teeMode = runtime.getSetting("TEE_MODE") || TEEMode.OFF;
 
   if (teeMode !== TEEMode.OFF) {
-    const walletSecretSalt = runtime.getSetting("WALLET_SECRET_SALT");
-    if (!walletSecretSalt) {
-      throw new Error("WALLET_SECRET_SALT required when TEE_MODE is enabled");
-    }
-
-    const deriveKeyProvider = new DeriveKeyProvider(teeMode);
-    const deriveKeyResult = await deriveKeyProvider.deriveEd25519Keypair(
-      "/",
-      walletSecretSalt,
-      runtime.agentId,
+    throw new Error(
+      "Orca plugin does not load wallets in TEE mode; set TEE_MODE=OFF and use SOLANA_* / WALLET_* keys, or fork loadWallet to integrate @elizaos/plugin-tee.",
     );
-
-    return requirePrivateKey
-      ? { signer: deriveKeyResult.keypair }
-      : { address: deriveKeyResult.keypair.publicKey };
   }
 
   // TEE mode is OFF
