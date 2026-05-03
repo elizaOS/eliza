@@ -34,8 +34,8 @@ app.get("/", async (c) => {
   return c.json(
     {
       nonce,
-      domain: getAppHost(),
-      uri: getAppUrl(),
+      domain: getAppHost(c.env),
+      uri: getAppUrl(c.env),
       chainId: Number.isNaN(chainId) ? 1 : chainId,
       version: "1",
       statement: "Sign in to Eliza Cloud",
