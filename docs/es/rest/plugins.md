@@ -204,7 +204,7 @@ Lista todos los paquetes de plugins instalados con información de versión.
   "count": 3,
   "plugins": [
     {
-      "name": "@elizaos/plugin-twitter",
+      "name": "@elizaos/plugin-x",
       "version": "1.2.0",
       "installedAt": "2025-06-01T12:00:00.000Z"
     }
@@ -233,7 +233,7 @@ Lista todos los plugins expulsados (plugins que han sido copiados a un directori
 {
   "plugins": [
     {
-      "name": "@elizaos/plugin-twitter",
+      "name": "@elizaos/plugin-x",
       "localPath": "/path/to/local/plugin-twitter"
     }
   ]
@@ -312,9 +312,9 @@ Expulsa un plugin a un directorio local para desarrollo. Crea una copia local de
 ```json
 {
   "ok": true,
-  "pluginName": "@elizaos/plugin-twitter",
+  "pluginName": "@elizaos/plugin-x",
   "requiresRestart": true,
-  "message": "@elizaos/plugin-twitter ejected to local source."
+  "message": "@elizaos/plugin-x ejected to local source."
 }
 ```
 
@@ -345,9 +345,9 @@ Sincroniza un plugin expulsado — reconstruye desde la copia local.
 ```json
 {
   "ok": true,
-  "pluginName": "@elizaos/plugin-twitter",
+  "pluginName": "@elizaos/plugin-x",
   "requiresRestart": true,
-  "message": "@elizaos/plugin-twitter synced with upstream."
+  "message": "@elizaos/plugin-x synced with upstream."
 }
 ```
 
@@ -378,9 +378,9 @@ Restaura un plugin previamente expulsado a su versión del registro, eliminando 
 ```json
 {
   "ok": true,
-  "pluginName": "@elizaos/plugin-twitter",
+  "pluginName": "@elizaos/plugin-x",
   "requiresRestart": true,
-  "message": "@elizaos/plugin-twitter restored to registry version."
+  "message": "@elizaos/plugin-x restored to registry version."
 }
 ```
 
@@ -498,11 +498,11 @@ Lista todos los plugins del registro de elizaOS con estado de instalación y car
   "count": 87,
   "plugins": [
     {
-      "name": "@elizaos/plugin-twitter",
+      "name": "@elizaos/plugin-x",
       "displayName": "Twitter",
       "description": "Twitter/X integration for posting and monitoring",
       "npm": {
-        "package": "@elizaos/plugin-twitter",
+        "package": "@elizaos/plugin-x",
         "version": "1.2.0"
       },
       "installed": false,
@@ -543,11 +543,11 @@ Obtiene detalles de un plugin específico del registro. El parámetro `name` deb
 ```json
 {
   "plugin": {
-    "name": "@elizaos/plugin-twitter",
+    "name": "@elizaos/plugin-x",
     "displayName": "Twitter",
     "description": "Twitter/X integration for posting and monitoring",
     "npm": {
-      "package": "@elizaos/plugin-twitter",
+      "package": "@elizaos/plugin-x",
       "version": "1.2.0"
     },
     "author": "elizaOS Team",
@@ -585,10 +585,10 @@ Busca en el registro de plugins por palabra clave.
   "count": 2,
   "results": [
     {
-      "name": "@elizaos/plugin-twitter",
+      "name": "@elizaos/plugin-x",
       "displayName": "Twitter",
       "description": "Twitter/X integration",
-      "npmPackage": "@elizaos/plugin-twitter",
+      "npmPackage": "@elizaos/plugin-x",
       "version": "1.2.0"
     }
   ]

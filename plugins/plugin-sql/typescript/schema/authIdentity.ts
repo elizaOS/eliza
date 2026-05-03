@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import { bigint, index, pgTable, text } from "drizzle-orm/pg-core";
 
 /**
- * Auth identity row. One per real user / machine actor on this Milady instance.
+ * Auth identity row. One per real user / machine actor on this Eliza instance.
  *
  * `kind` distinguishes interactive ("owner") identities from non-interactive
  * ("machine") identities used by long-lived bearer tokens. Exactly one of

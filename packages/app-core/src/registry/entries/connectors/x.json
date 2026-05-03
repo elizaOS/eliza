@@ -119,9 +119,9 @@
       "type": "url",
       "required": false,
       "sensitive": false,
-      "default": "https://api.eliza.cloud/connectors/x",
+      "default": "https://www.elizacloud.ai/api/v1/twitter",
       "label": "Broker URL",
-      "help": "Eliza Cloud (or compatible) X OAuth broker. Override only to point at a self-hosted broker.",
+      "help": "Eliza Cloud X (Twitter) broker base URL. Override only to point at a self-hosted broker; otherwise leave the default.",
       "advanced": true,
       "visible": {
         "key": "TWITTER_AUTH_MODE",
@@ -132,9 +132,9 @@
       "type": "secret",
       "required": false,
       "sensitive": true,
-      "label": "Broker Token",
-      "help": "Eliza Cloud auth token used to identify this agent to the broker. Issued during the OAuth login flow.",
-      "advanced": false,
+      "label": "Broker Token (optional)",
+      "help": "Cloud auth token used to identify this agent to the broker. Defaults to ELIZAOS_CLOUD_API_KEY when unset, so most users can leave this blank.",
+      "advanced": true,
       "visible": {
         "key": "TWITTER_AUTH_MODE",
         "equals": "broker"

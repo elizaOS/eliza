@@ -24,7 +24,7 @@
     "@neondatabase/serverless": "^1.1.0",
     "@upstash/redis": "^1.36.1",
     "drizzle-orm": "^0.45.1",
-    "hono": "4.12.14",
+    "hono": "4.12.16",
     "mcp-handler": "^1.0.7",
     "jose": "^5.9.6",
     "stripe": "^20.2.0",

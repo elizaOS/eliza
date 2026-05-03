@@ -17,19 +17,31 @@ function validateEnvironment(): void {
   // Grok (xAI) is the model provider for this example.
   requireEnv("XAI_API_KEY");
 
-  // X (Twitter) is provided by @elizaos/plugin-x.
-  // Default to OAuth 1.0a user-context (TWITTER_AUTH_MODE=env) for posting.
-  const authMode = (process.env.TWITTER_AUTH_MODE ?? "env").toLowerCase();
-  if (authMode !== "env") {
-    throw new Error(
-      `This example expects TWITTER_AUTH_MODE=env (OAuth 1.0a). Got TWITTER_AUTH_MODE=${process.env.TWITTER_AUTH_MODE ?? ""}`,
-    );
+  // X (Twitter) is provided by @elizaos/plugin-x. Pick one of the three modes.
+  const authMode = (process.env.TWITTER_AUTH_MODE ?? "broker").toLowerCase();
+  switch (authMode) {
+    case "broker":
+      if (!process.env.TWITTER_BROKER_TOKEN && !process.env.ELIZAOS_CLOUD_API_KEY) {
+        throw new Error(
+          "TWITTER_AUTH_MODE=broker requires TWITTER_BROKER_TOKEN or ELIZAOS_CLOUD_API_KEY. Connect your X account on the Eliza Cloud connectors page first.",
+        );
+      }
+      break;
+    case "oauth":
+      requireEnv("TWITTER_CLIENT_ID");
+      requireEnv("TWITTER_REDIRECT_URI");
+      break;
+    case "env":
+      requireEnv("TWITTER_API_KEY");
+      requireEnv("TWITTER_API_SECRET_KEY");
+      requireEnv("TWITTER_ACCESS_TOKEN");
+      requireEnv("TWITTER_ACCESS_TOKEN_SECRET");
+      break;
+    default:
+      throw new Error(
+        `Invalid TWITTER_AUTH_MODE=${authMode}. Expected broker | oauth | env.`,
+      );
   }
-
-  requireEnv("TWITTER_API_KEY");
-  requireEnv("TWITTER_API_SECRET_KEY");
-  requireEnv("TWITTER_ACCESS_TOKEN");
-  requireEnv("TWITTER_ACCESS_TOKEN_SECRET");
 }
 
 async function main(): Promise<void> {
