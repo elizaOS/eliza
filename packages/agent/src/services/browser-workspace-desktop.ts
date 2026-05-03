@@ -764,7 +764,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
           if (command.selector && findTarget()) {
             const found = findTarget();
             const visible =
-              !command.state || command.state === "visible"
+              command.state === "visible"
                 ? found && isVisible(found)
                 : !found || !isVisible(found);
             if (visible) {
@@ -774,7 +774,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
           }
           if (
             command.findBy &&
-            (!command.state || command.state === "visible") &&
+            (command.state === "visible") &&
             findSemantic()
           ) {
             resolve({ findBy: command.findBy, ok: true });

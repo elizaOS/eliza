@@ -13,6 +13,23 @@
       ]
     },
     {
+      "name": "ASTROLOGY_READING",
+      "description": "Perform an astrological natal chart reading, progressively revealing planetary placements.",
+      "parameters": [],
+      "similes": [
+        "BIRTH_CHART",
+        "NATAL_CHART",
+        "HOROSCOPE_READING",
+        "ZODIAC_READING"
+      ]
+    },
+    {
+      "name": "AUTHENTICATE_GOOGLE",
+      "description": "Authenticate with Google to access Meet API",
+      "parameters": [],
+      "similes": ["login to google", "google auth", "sign in", "authenticate"]
+    },
+    {
       "name": "BLUEBUBBLES_SEND_REACTION",
       "description": "Add or remove a reaction on a message via BlueBubbles",
       "parameters": [],
@@ -33,6 +50,23 @@
       ]
     },
     {
+      "name": "CALL_MCP_TOOL",
+      "description": "Calls a tool from an MCP server to perform a specific task",
+      "parameters": [],
+      "similes": [
+        "CALL_TOOL",
+        "CALL_MCP_TOOL",
+        "USE_TOOL",
+        "USE_MCP_TOOL",
+        "EXECUTE_TOOL",
+        "EXECUTE_MCP_TOOL",
+        "RUN_TOOL",
+        "RUN_MCP_TOOL",
+        "INVOKE_TOOL",
+        "INVOKE_MCP_TOOL"
+      ]
+    },
+    {
       "name": "CHECK_CLOUD_CREDITS",
       "description": "Check ElizaCloud credit balance, container costs, and estimated remaining runtime.",
       "parameters": [],
@@ -44,10 +78,237 @@
       ]
     },
     {
+      "name": "CHECK_PAYMENT",
+      "description": "Check if payment has been received for the current reading session.",
+      "parameters": [],
+      "similes": ["VERIFY_PAYMENT", "PAYMENT_STATUS"]
+    },
+    {
+      "name": "CLAUDE_CODE_WORKBENCH_LIST",
+      "description": "List available Claude Code workbench workflows.",
+      "parameters": [],
+      "similes": ["LIST_WORKBENCH_WORKFLOWS", "WORKBENCH_LIST", "CCW_LIST"]
+    },
+    {
+      "name": "CLAUDE_CODE_WORKBENCH_RUN",
+      "description": "Run an allowlisted repo workflow through the Claude Code workbench service.",
+      "parameters": [],
+      "similes": ["RUN_WORKBENCH_WORKFLOW", "WORKBENCH_RUN", "CCW_RUN"]
+    },
+    {
+      "name": "CLEAR_GRAPH",
+      "description": "Clear all entities and relationships from the graph.",
+      "parameters": [],
+      "similes": ["RESET_GRAPH", "CLEAR_ALL", "DELETE_ALL"]
+    },
+    {
+      "name": "CLEAR_LINEAR_ACTIVITY",
+      "description": "Clear the Linear activity log",
+      "parameters": [],
+      "similes": [
+        "clear-linear-activity",
+        "reset-linear-activity",
+        "delete-linear-activity"
+      ]
+    },
+    {
       "name": "COMMANDS_LIST",
       "description": "List all available commands with their aliases. Only activates for /commands or /cmds slash commands.",
       "parameters": [],
       "similes": ["/commands", "/cmds"]
+    },
+    {
+      "name": "COUNT_STATISTICS",
+      "description": "Get statistics about the current relational data graph.",
+      "parameters": [
+        {
+          "name": "values",
+          "description": "The values to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": ["STATS", "STATISTICS", "COUNT"],
+      "exampleCalls": [
+        {
+          "user": "Use COUNT_STATISTICS with the provided parameters.",
+          "actions": ["COUNT_STATISTICS"],
+          "params": {
+            "COUNT_STATISTICS": {
+              "values": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "CREATE_ENTITY",
+      "description": "Create a new entity with a type and name. Entities are the nodes in our relational graph.",
+      "parameters": [
+        {
+          "name": "values",
+          "description": "The values to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": ["NEW_ENTITY", "ADD_ENTITY", "MAKE_ENTITY"],
+      "exampleCalls": [
+        {
+          "user": "Use CREATE_ENTITY with the provided parameters.",
+          "actions": ["CREATE_ENTITY"],
+          "params": {
+            "CREATE_ENTITY": {
+              "values": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "CREATE_LINEAR_COMMENT",
+      "description": "Add a comment to a Linear issue",
+      "parameters": [
+        {
+          "name": "name",
+          "description": "The name to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": [
+        "create-linear-comment",
+        "add-linear-comment",
+        "comment-on-linear-issue",
+        "reply-to-linear-issue"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use CREATE_LINEAR_COMMENT with the provided parameters.",
+          "actions": ["CREATE_LINEAR_COMMENT"],
+          "params": {
+            "CREATE_LINEAR_COMMENT": {
+              "name": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "CREATE_LINEAR_ISSUE",
+      "description": "Create a new issue in Linear",
+      "parameters": [],
+      "similes": ["create-linear-issue", "new-linear-issue", "add-linear-issue"]
+    },
+    {
+      "name": "CREATE_MEETING",
+      "description": "Create a new Google Meet meeting space",
+      "parameters": [],
+      "similes": [
+        "start a meeting",
+        "create a meet",
+        "new meeting",
+        "setup a call"
+      ]
+    },
+    {
+      "name": "CREATE_RELATIONSHIP",
+      "description": "Create a relationship between two entities. Relationships are the edges in our relational graph.",
+      "parameters": [
+        {
+          "name": "values",
+          "description": "The values to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": ["LINK", "CONNECT", "RELATE"],
+      "exampleCalls": [
+        {
+          "user": "Use CREATE_RELATIONSHIP with the provided parameters.",
+          "actions": ["CREATE_RELATIONSHIP"],
+          "params": {
+            "CREATE_RELATIONSHIP": {
+              "values": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "custom-generate-music",
+      "description": "Generate music with custom parameters using Suno AI",
+      "parameters": [],
+      "similes": [
+        "CREATE_CUSTOM_MUSIC",
+        "GENERATE_CUSTOM_AUDIO",
+        "MAKE_CUSTOM_MUSIC",
+        "COMPOSE_CUSTOM_MUSIC",
+        "COMPOSE_MUSIC",
+        "CREATE_MUSIC",
+        "GENERATE_MUSIC"
+      ]
+    },
+    {
+      "name": "DEEPEN_READING",
+      "description": "Provide a deeper interpretation of a specific element in an active reading.",
+      "parameters": [],
+      "similes": [
+        "EXPLAIN_MORE",
+        "GO_DEEPER",
+        "ELABORATE_READING",
+        "READING_DETAIL"
+      ]
+    },
+    {
+      "name": "DELETE_ENTITY",
+      "description": "Delete the current entity and all its relationships.",
+      "parameters": [
+        {
+          "name": "values",
+          "description": "The values to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": ["REMOVE_ENTITY", "DESTROY_ENTITY"],
+      "exampleCalls": [
+        {
+          "user": "Use DELETE_ENTITY with the provided parameters.",
+          "actions": ["DELETE_ENTITY"],
+          "params": {
+            "DELETE_ENTITY": {
+              "values": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "DELETE_LINEAR_ISSUE",
+      "description": "Delete (archive) an issue in Linear",
+      "parameters": [],
+      "similes": [
+        "delete-linear-issue",
+        "archive-linear-issue",
+        "remove-linear-issue",
+        "close-linear-issue"
+      ]
     },
     {
       "name": "DELETE_MESSAGE",
@@ -87,6 +348,59 @@
       ]
     },
     {
+      "name": "DEPLOY_TOKEN",
+      "description": "Deploy a new token on Base L2 using Clanker protocol",
+      "parameters": [],
+      "similes": ["CREATE_TOKEN", "LAUNCH_TOKEN", "MINT_TOKEN"]
+    },
+    {
+      "name": "DEXSCREENER_BOOSTED_TOKENS",
+      "description": "Get boosted (promoted/sponsored) tokens from DexScreener, showing tokens with paid promotional boosts",
+      "parameters": [],
+      "similes": ["promoted tokens", "sponsored tokens", "boosted coins"]
+    },
+    {
+      "name": "DEXSCREENER_CHAIN_PAIRS",
+      "description": "Get top trading pairs from a specific blockchain sorted by volume, liquidity, price change, or transaction count",
+      "parameters": [],
+      "similes": ["tokens on", "pairs on", "top on"]
+    },
+    {
+      "name": "DEXSCREENER_NEW_PAIRS",
+      "description": "Get newly created trading pairs from DexScreener, showing recently launched tokens and their initial liquidity",
+      "parameters": [],
+      "similes": ["new listings", "latest pairs", "new tokens", "fresh pairs"]
+    },
+    {
+      "name": "DEXSCREENER_SEARCH",
+      "description": "Search for tokens or trading pairs on DexScreener by name, symbol, or contract address",
+      "parameters": [],
+      "similes": ["find token", "look for", "search dexscreener"]
+    },
+    {
+      "name": "DEXSCREENER_TOKEN_INFO",
+      "description": "Get detailed information about a specific token including price, volume, liquidity, and trading pairs from DexScreener",
+      "parameters": [],
+      "similes": ["token details", "token price", "get token", "check token"]
+    },
+    {
+      "name": "DEXSCREENER_TOKEN_PROFILES",
+      "description": "Get latest token profiles from DexScreener including social links, descriptions, and project information",
+      "parameters": [],
+      "similes": ["token profiles", "token details page"]
+    },
+    {
+      "name": "DEXSCREENER_TRENDING",
+      "description": "Get trending tokens from DexScreener based on volume, price changes, and trading activity",
+      "parameters": [],
+      "similes": [
+        "hot tokens",
+        "popular coins",
+        "top gainers",
+        "what's trending"
+      ]
+    },
+    {
       "name": "DOWNLOAD_MUSIC",
       "description": "Download music to the local library without playing it. Requires confirmed:true before fetching and saving.",
       "parameters": [],
@@ -107,6 +421,17 @@
         "MODIFY_MESSAGE",
         "CHANGE_MESSAGE",
         "EDIT_DISCORD_MESSAGE"
+      ]
+    },
+    {
+      "name": "extend-audio",
+      "description": "Extend the duration of an existing audio generation",
+      "parameters": [],
+      "similes": [
+        "LENGTHEN_AUDIO",
+        "PROLONG_AUDIO",
+        "INCREASE_DURATION",
+        "MAKE_AUDIO_LONGER"
       ]
     },
     {
@@ -161,6 +486,33 @@
       ]
     },
     {
+      "name": "FIND_PATH",
+      "description": "Find the shortest path between two entities in the relationship graph.",
+      "parameters": [
+        {
+          "name": "values",
+          "description": "The values to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": ["PATH", "ROUTE", "CONNECTION_PATH"],
+      "exampleCalls": [
+        {
+          "user": "Use FIND_PATH with the provided parameters.",
+          "actions": ["FIND_PATH"],
+          "params": {
+            "FIND_PATH": {
+              "values": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "FREEZE_CLOUD_AGENT",
       "description": "Freeze a cloud agent: snapshot state, disconnect bridge, stop container.",
       "parameters": [],
@@ -172,16 +524,167 @@
       ]
     },
     {
+      "name": "GENERATE_REPORT",
+      "description": "Generate a comprehensive report from Google Meet artifacts (transcripts, recordings)",
+      "parameters": [],
+      "similes": [
+        "create report",
+        "meeting summary",
+        "get transcript",
+        "meeting notes"
+      ]
+    },
+    {
+      "name": "generate-music",
+      "description": "Generate music using Suno AI",
+      "parameters": [],
+      "similes": [
+        "CREATE_MUSIC",
+        "MAKE_MUSIC",
+        "COMPOSE_MUSIC",
+        "GENERATE_AUDIO",
+        "CREATE_SONG",
+        "MAKE_SONG"
+      ]
+    },
+    {
+      "name": "GET_LINEAR_ACTIVITY",
+      "description": "Get recent Linear activity log with optional filters",
+      "parameters": [],
+      "similes": [
+        "get-linear-activity",
+        "show-linear-activity",
+        "view-linear-activity",
+        "check-linear-activity"
+      ]
+    },
+    {
+      "name": "GET_LINEAR_ISSUE",
+      "description": "Get details of a specific Linear issue",
+      "parameters": [
+        {
+          "name": "name",
+          "description": "The name to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": [
+        "get-linear-issue",
+        "show-linear-issue",
+        "view-linear-issue",
+        "check-linear-issue",
+        "find-linear-issue"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use GET_LINEAR_ISSUE with the provided parameters.",
+          "actions": ["GET_LINEAR_ISSUE"],
+          "params": {
+            "GET_LINEAR_ISSUE": {
+              "name": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "GET_MEETING_INFO",
+      "description": "Get information about a Google Meet meeting",
+      "parameters": [],
+      "similes": [
+        "meeting info",
+        "check meeting",
+        "meeting status",
+        "meeting details"
+      ]
+    },
+    {
+      "name": "GET_PARTICIPANTS",
+      "description": "Get the list of participants in a Google Meet conference",
+      "parameters": [],
+      "similes": [
+        "who's in the meeting",
+        "list participants",
+        "attendees",
+        "who joined"
+      ]
+    },
+    {
+      "name": "GET_RETAKE_STREAM_STATUS",
+      "description": "Check the current status and health of the retake.tv stream (running, uptime, frame count, etc).",
+      "parameters": [],
+      "similes": [
+        "STREAM_STATUS",
+        "CHECK_STREAM",
+        "RETAKE_STATUS",
+        "IS_STREAM_LIVE",
+        "STREAM_HEALTH"
+      ]
+    },
+    {
       "name": "GET_SKILL_DETAILS",
       "description": "Get detailed information about a specific skill including version, owner, and stats.",
       "parameters": [],
       "similes": ["SKILL_INFO", "SKILL_DETAILS"]
     },
     {
+      "name": "GET_TAILSCALE_STATUS",
+      "description": "Get the current status of the Tailscale tunnel",
+      "parameters": [],
+      "similes": ["TAILSCALE_STATUS", "CHECK_TUNNEL", "TUNNEL_INFO"]
+    },
+    {
+      "name": "GOOGLE_CHAT_LIST_SPACES",
+      "description": "List all Google Chat spaces the bot is a member of",
+      "parameters": [],
+      "similes": [
+        "LIST_GOOGLE_CHAT_SPACES",
+        "GCHAT_SPACES",
+        "SHOW_GOOGLE_CHAT_SPACES"
+      ]
+    },
+    {
+      "name": "GOOGLE_CHAT_SEND_MESSAGE",
+      "description": "Send a message to a Google Chat space",
+      "parameters": [],
+      "similes": [
+        "SEND_GOOGLE_CHAT_MESSAGE",
+        "MESSAGE_GOOGLE_CHAT",
+        "GCHAT_SEND",
+        "GOOGLE_CHAT_TEXT"
+      ]
+    },
+    {
+      "name": "GOOGLE_CHAT_SEND_REACTION",
+      "description": "Add or remove an emoji reaction to a Google Chat message",
+      "parameters": [],
+      "similes": [
+        "REACT_GOOGLE_CHAT",
+        "GCHAT_REACT",
+        "GOOGLE_CHAT_EMOJI",
+        "ADD_GOOGLE_CHAT_REACTION"
+      ]
+    },
+    {
       "name": "HELP_COMMAND",
       "description": "Show available commands and their descriptions. Only activates for /help, /h, or /? slash commands.",
       "parameters": [],
       "similes": ["/help", "/h", "/?"]
+    },
+    {
+      "name": "ICHING_READING",
+      "description": "Perform an I Ching divination reading by casting a hexagram and interpreting changing lines.",
+      "parameters": [],
+      "similes": [
+        "CAST_HEXAGRAM",
+        "CONSULT_ICHING",
+        "THROW_COINS",
+        "ORACLE_READING"
+      ]
     },
     {
       "name": "IMESSAGE_SEND_MESSAGE",
@@ -199,6 +702,34 @@
       "description": "Install a skill from the ClawHub registry. The skill will be security-scanned before activation. ",
       "parameters": [],
       "similes": ["DOWNLOAD_SKILL", "ADD_SKILL", "GET_SKILL"]
+    },
+    {
+      "name": "LINE_SEND_FLEX_MESSAGE",
+      "description": "Send a rich flex message/card via LINE",
+      "parameters": [],
+      "similes": ["SEND_LINE_CARD", "LINE_FLEX", "LINE_CARD", "SEND_LINE_FLEX"]
+    },
+    {
+      "name": "LINE_SEND_LOCATION",
+      "description": "Send a location message via LINE",
+      "parameters": [],
+      "similes": [
+        "SEND_LINE_LOCATION",
+        "LINE_LOCATION",
+        "LINE_MAP",
+        "SHARE_LOCATION_LINE"
+      ]
+    },
+    {
+      "name": "LINE_SEND_MESSAGE",
+      "description": "Send a text message via LINE",
+      "parameters": [],
+      "similes": [
+        "SEND_LINE_MESSAGE",
+        "LINE_MESSAGE",
+        "LINE_TEXT",
+        "MESSAGE_LINE"
+      ]
     },
     {
       "name": "LIST_AGENTS",
@@ -224,6 +755,49 @@
         "show ejected plugins",
         "which plugins are ejected",
         "list local plugins"
+      ]
+    },
+    {
+      "name": "LIST_LINEAR_PROJECTS",
+      "description": "List projects in Linear with optional filters",
+      "parameters": [
+        {
+          "name": "toLowerCase",
+          "description": "The to lower case to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": [
+        "list-linear-projects",
+        "show-linear-projects",
+        "get-linear-projects",
+        "view-linear-projects"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use LIST_LINEAR_PROJECTS with the provided parameters.",
+          "actions": ["LIST_LINEAR_PROJECTS"],
+          "params": {
+            "LIST_LINEAR_PROJECTS": {
+              "toLowerCase": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "LIST_LINEAR_TEAMS",
+      "description": "List teams in Linear with optional filters",
+      "parameters": [],
+      "similes": [
+        "list-linear-teams",
+        "show-linear-teams",
+        "get-linear-teams",
+        "view-linear-teams"
       ]
     },
     {
@@ -291,6 +865,18 @@
       ]
     },
     {
+      "name": "lp_management",
+      "description": "Manages Liquidity Pool (LP) operations including: onboarding for LP management, depositing tokens into pools, withdrawing from pools, showing LP positions, concentrated liquidity positions with custom price ranges, checking APR/yield, setting auto-rebalance preferences, and finding best pools. Use this action when users mention: liquidity, LP, pools, APR, yield, deposit, withdraw, concentrated, price range, narrow range, degenai, ai16z, SOL pairs, or want help getting started with LP management.",
+      "parameters": [],
+      "similes": [
+        "LP_MANAGEMENT",
+        "LIQUIDITY_POOL_MANAGEMENT",
+        "LP_MANAGER",
+        "MANAGE_LP",
+        "MANAGE_LIQUIDITY"
+      ]
+    },
+    {
       "name": "MANAGE_ISSUES",
       "description": "Manage GitHub issues for a repository. ",
       "parameters": [],
@@ -301,6 +887,16 @@
         "COMMENT_ISSUE",
         "UPDATE_ISSUE",
         "GET_ISSUE"
+      ]
+    },
+    {
+      "name": "manage_raydium_positions",
+      "description": "Automatically manage Raydium positions by rebalancing them when they drift too far from the pool price",
+      "parameters": [],
+      "similes": [
+        "AUTOMATE_RAYDIUM_REBALANCING",
+        "AUTOMATE_RAYDIUM_POSITIONS",
+        "START_MANAGING_RAYDIUM_POSITIONS"
       ]
     },
     {
@@ -359,10 +955,435 @@
       ]
     },
     {
+      "name": "MATH_CLEAR",
+      "description": "Clear all calculation buffers and reset to zero.",
+      "parameters": [],
+      "similes": ["CLEAR", "RESET", "CLEAR_ALL"]
+    },
+    {
+      "name": "MATH_RECALL",
+      "description": "Recall value from memory to input buffer.",
+      "parameters": [
+        {
+          "name": "values",
+          "description": "The values to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": ["RECALL", "LOAD", "MEMORY_RECALL"],
+      "exampleCalls": [
+        {
+          "user": "Use MATH_RECALL with the provided parameters.",
+          "actions": ["MATH_RECALL"],
+          "params": {
+            "MATH_RECALL": {
+              "values": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "MATH_STORE",
+      "description": "Store current accumulator value to memory.",
+      "parameters": [
+        {
+          "name": "values",
+          "description": "The values to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": ["STORE", "SAVE", "MEMORY_STORE"],
+      "exampleCalls": [
+        {
+          "user": "Use MATH_STORE with the provided parameters.",
+          "actions": ["MATH_STORE"],
+          "params": {
+            "MATH_STORE": {
+              "values": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "MATRIX_JOIN_ROOM",
+      "description": "Join a Matrix room by ID or alias",
+      "parameters": [],
+      "similes": ["JOIN_MATRIX_ROOM", "ENTER_ROOM"]
+    },
+    {
+      "name": "MATRIX_LIST_ROOMS",
+      "description": "List all Matrix rooms the bot has joined",
+      "parameters": [],
+      "similes": ["LIST_MATRIX_ROOMS", "SHOW_ROOMS", "GET_ROOMS", "MY_ROOMS"]
+    },
+    {
+      "name": "MATRIX_SEND_MESSAGE",
+      "description": "Send a message to a Matrix room",
+      "parameters": [
+        {
+          "name": "data",
+          "description": "The data to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": ["SEND_MATRIX_MESSAGE", "MESSAGE_MATRIX", "MATRIX_TEXT"],
+      "exampleCalls": [
+        {
+          "user": "Use MATRIX_SEND_MESSAGE with the provided parameters.",
+          "actions": ["MATRIX_SEND_MESSAGE"],
+          "params": {
+            "MATRIX_SEND_MESSAGE": {
+              "data": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "MATRIX_SEND_REACTION",
+      "description": "React to a Matrix message with an emoji",
+      "parameters": [
+        {
+          "name": "data",
+          "description": "The data to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": ["REACT_MATRIX", "MATRIX_REACT", "ADD_MATRIX_REACTION"],
+      "exampleCalls": [
+        {
+          "user": "Use MATRIX_SEND_REACTION with the provided parameters.",
+          "actions": ["MATRIX_SEND_REACTION"],
+          "params": {
+            "MATRIX_SEND_REACTION": {
+              "data": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "MC_ATTACK",
+      "description": "Attack an entity by numeric entityId (from MC_WORLD_STATE.nearbyEntities).",
+      "parameters": [],
+      "similes": ["MINECRAFT_ATTACK", "HIT_ENTITY"]
+    },
+    {
+      "name": "MC_CHAT",
+      "description": "Send a chat message in Minecraft as the bot",
+      "parameters": [],
+      "similes": ["MINECRAFT_CHAT", "SAY_IN_MINECRAFT", "CHAT"]
+    },
+    {
+      "name": "MC_CONNECT",
+      "description": "Connect the Mineflayer bot to a Minecraft server",
+      "parameters": [],
+      "similes": ["MINECRAFT_CONNECT", "JOIN_SERVER", "CONNECT_TO_MINECRAFT"]
+    },
+    {
+      "name": "MC_CONTROL",
+      "description": "Set a control state (e.g. forward/back/left/right/jump/sprint/sneak). Provide JSON {control,state,durationMs?} or 'forward true 1000'.",
+      "parameters": [],
+      "similes": ["MINECRAFT_CONTROL", "SET_CONTROL_STATE"]
+    },
+    {
+      "name": "MC_DIG",
+      "description": "Dig/break the block at (x y z). Provide coordinates like '10 64 -20' or JSON {\"x\":10,\"y\":64,\"z\":-20}.",
+      "parameters": [],
+      "similes": ["MINECRAFT_DIG", "MINE_BLOCK", "BREAK_BLOCK"]
+    },
+    {
+      "name": "MC_DISCONNECT",
+      "description": "Disconnect the Mineflayer bot from the Minecraft server",
+      "parameters": [],
+      "similes": ["MINECRAFT_DISCONNECT", "LEAVE_SERVER", "QUIT_MINECRAFT"]
+    },
+    {
+      "name": "MC_GOTO",
+      "description": "Pathfind to a target (x y z). Provide coordinates like '10 64 -20' or JSON {\"x\":10,\"y\":64,\"z\":-20}.",
+      "parameters": [],
+      "similes": ["MINECRAFT_GOTO", "WALK_TO", "MOVE_TO_COORDS"]
+    },
+    {
+      "name": "MC_LOOK",
+      "description": "Look to yaw/pitch (radians). Provide 'yaw pitch' or JSON {yaw,pitch}.",
+      "parameters": [],
+      "similes": ["MINECRAFT_LOOK", "TURN_HEAD"]
+    },
+    {
+      "name": "MC_PLACE",
+      "description": "Place the currently-held block onto a reference block face. Provide 'x y z face' (face=up/down/north/south/east/west) or JSON {x,y,z,face}.",
+      "parameters": [],
+      "similes": ["MINECRAFT_PLACE", "PLACE_BLOCK"]
+    },
+    {
+      "name": "MC_SCAN",
+      "description": "Scan nearby blocks. Optional JSON input: {\"blocks\":[\"oak_log\"],\"radius\":16,\"maxResults\":32}. If omitted, scans for any non-air blocks.",
+      "parameters": [],
+      "similes": ["MINECRAFT_SCAN", "FIND_BLOCKS", "SCAN_BLOCKS"]
+    },
+    {
+      "name": "MC_STOP",
+      "description": "Stop pathfinding / movement goals.",
+      "parameters": [],
+      "similes": ["MINECRAFT_STOP", "STOP_PATHFINDER", "STOP_MOVING"]
+    },
+    {
+      "name": "MC_WAYPOINT_DELETE",
+      "description": "Delete a named waypoint (message text is the name).",
+      "parameters": [],
+      "similes": [
+        "MINECRAFT_WAYPOINT_DELETE",
+        "DELETE_WAYPOINT",
+        "REMOVE_WAYPOINT"
+      ]
+    },
+    {
+      "name": "MC_WAYPOINT_GOTO",
+      "description": "Pathfind to a named waypoint (message text is the name).",
+      "parameters": [],
+      "similes": [
+        "MINECRAFT_WAYPOINT_GOTO",
+        "GOTO_WAYPOINT",
+        "NAVIGATE_WAYPOINT"
+      ]
+    },
+    {
+      "name": "MC_WAYPOINT_LIST",
+      "description": "List saved waypoints.",
+      "parameters": [],
+      "similes": ["MINECRAFT_WAYPOINT_LIST", "LIST_WAYPOINTS", "SHOW_WAYPOINTS"]
+    },
+    {
+      "name": "MC_WAYPOINT_SET",
+      "description": "Save the bot's current position as a named waypoint (message text is the name).",
+      "parameters": [],
+      "similes": ["MINECRAFT_WAYPOINT_SET", "SET_WAYPOINT", "SAVE_WAYPOINT"]
+    },
+    {
       "name": "MODELS_COMMAND",
       "description": "List available AI models and providers. Only activates for /models slash command.",
       "parameters": [],
       "similes": ["/models"]
+    },
+    {
+      "name": "MULTIVERSE_ADD",
+      "description": "Performs addition in the multiverse where numbers behave differently based on dimensional constants (prime, quantum, or chaos).",
+      "parameters": [
+        {
+          "name": "values",
+          "description": "The values to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": ["M_ADD", "MULTI_ADD", "DIMENSIONAL_ADD"],
+      "exampleCalls": [
+        {
+          "user": "Use MULTIVERSE_ADD with the provided parameters.",
+          "actions": ["MULTIVERSE_ADD"],
+          "params": {
+            "MULTIVERSE_ADD": {
+              "values": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "MULTIVERSE_DIVIDE",
+      "description": "Performs division in the multiverse where infinity and zero have special meanings (safe, infinite, or golden).",
+      "parameters": [
+        {
+          "name": "values",
+          "description": "The values to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": ["M_DIVIDE", "MULTI_DIV", "DIMENSIONAL_DIVIDE"],
+      "exampleCalls": [
+        {
+          "user": "Use MULTIVERSE_DIVIDE with the provided parameters.",
+          "actions": ["MULTIVERSE_DIVIDE"],
+          "params": {
+            "MULTIVERSE_DIVIDE": {
+              "values": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "MULTIVERSE_MODULO",
+      "description": "Performs modulo operation in the multiverse with cyclical dimensional properties (cyclical, spiral, or fractal).",
+      "parameters": [
+        {
+          "name": "values",
+          "description": "The values to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": ["M_MODULO", "MULTI_MOD", "DIMENSIONAL_MODULO"],
+      "exampleCalls": [
+        {
+          "user": "Use MULTIVERSE_MODULO with the provided parameters.",
+          "actions": ["MULTIVERSE_MODULO"],
+          "params": {
+            "MULTIVERSE_MODULO": {
+              "values": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "MULTIVERSE_MULTIPLY",
+      "description": "Performs multiplication across dimensional boundaries with exotic number behaviors (fibonacci, exponential, or harmonic).",
+      "parameters": [
+        {
+          "name": "values",
+          "description": "The values to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": ["M_MULTIPLY", "MULTI_MUL", "DIMENSIONAL_MULTIPLY"],
+      "exampleCalls": [
+        {
+          "user": "Use MULTIVERSE_MULTIPLY with the provided parameters.",
+          "actions": ["MULTIVERSE_MULTIPLY"],
+          "params": {
+            "MULTIVERSE_MULTIPLY": {
+              "values": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "MULTIVERSE_POWER",
+      "description": "Raises numbers to powers in the multiverse with dimensional effects (standard, imaginary, or recursive).",
+      "parameters": [
+        {
+          "name": "values",
+          "description": "The values to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": ["M_POWER", "MULTI_POW", "DIMENSIONAL_POWER"],
+      "exampleCalls": [
+        {
+          "user": "Use MULTIVERSE_POWER with the provided parameters.",
+          "actions": ["MULTIVERSE_POWER"],
+          "params": {
+            "MULTIVERSE_POWER": {
+              "values": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "MULTIVERSE_SQRT",
+      "description": "Takes square root in the multiverse with dimensional variations (positive, complex, or quantum).",
+      "parameters": [
+        {
+          "name": "values",
+          "description": "The values to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": ["M_SQRT", "MULTI_ROOT", "DIMENSIONAL_SQRT"],
+      "exampleCalls": [
+        {
+          "user": "Use MULTIVERSE_SQRT with the provided parameters.",
+          "actions": ["MULTIVERSE_SQRT"],
+          "params": {
+            "MULTIVERSE_SQRT": {
+              "values": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "MULTIVERSE_SUBTRACT",
+      "description": "Performs subtraction in the multiverse where negative numbers might not exist in some dimensions (absolute, mirror, or void).",
+      "parameters": [
+        {
+          "name": "values",
+          "description": "The values to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": ["M_SUBTRACT", "MULTI_SUB", "DIMENSIONAL_SUBTRACT"],
+      "exampleCalls": [
+        {
+          "user": "Use MULTIVERSE_SUBTRACT with the provided parameters.",
+          "actions": ["MULTIVERSE_SUBTRACT"],
+          "params": {
+            "MULTIVERSE_SUBTRACT": {
+              "values": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "NOSTR_PUBLISH_PROFILE",
+      "description": "Publish or update the bot's Nostr profile (kind:0 metadata)",
+      "parameters": [],
+      "similes": ["UPDATE_NOSTR_PROFILE", "SET_NOSTR_PROFILE", "NOSTR_PROFILE"]
+    },
+    {
+      "name": "NOSTR_SEND_DM",
+      "description": "Send an encrypted direct message via Nostr (NIP-04)",
+      "parameters": [],
+      "similes": ["SEND_NOSTR_DM", "NOSTR_MESSAGE", "NOSTR_TEXT", "DM_NOSTR"]
     },
     {
       "name": "PAUSE_MUSIC",
@@ -390,6 +1411,19 @@
       ]
     },
     {
+      "name": "PLAY_EMOTE",
+      "description": "Play an emote animation on your avatar. Available emotes: ${VALID_EMOTE_IDS.join(\", \")}. Use emotes to express yourself visually on stream — react to chat, celebrate, dance, etc.",
+      "parameters": [],
+      "similes": [
+        "DO_EMOTE",
+        "EMOTE",
+        "AVATAR_EMOTE",
+        "PLAY_ANIMATION",
+        "DANCE",
+        "WAVE"
+      ]
+    },
+    {
       "name": "PLAY_MUSIC_QUERY",
       "description": "Handle any complex music query that requires understanding and research, then queue the selected track after confirmed:true. Supports: artist queries (first single, latest song, similar artists, popular songs, nth album), temporal (80s, 90s, specific years), genre/mood/vibe, activities (workout, study, party), charts/trending, albums, movie/game/TV soundtracks, lyrics/topics, versions (covers, remixes, acoustic, live), and more. Uses Wikipedia, music databases, and web search to find the right music.",
       "parameters": [],
@@ -398,6 +1432,38 @@
         "RESEARCH_AND_PLAY",
         "FIND_AND_PLAY",
         "INTELLIGENT_MUSIC_SEARCH"
+      ]
+    },
+    {
+      "name": "POST_INSTAGRAM_COMMENT",
+      "description": "Post a comment on an Instagram post or media",
+      "parameters": [
+        {
+          "name": "response",
+          "description": "The response to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": [
+        "instagram_comment",
+        "comment_instagram",
+        "reply_instagram",
+        "post_comment_instagram"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use POST_INSTAGRAM_COMMENT with the provided parameters.",
+          "actions": ["POST_INSTAGRAM_COMMENT"],
+          "params": {
+            "POST_INSTAGRAM_COMMENT": {
+              "response": "example"
+            }
+          }
+        }
       ]
     },
     {
@@ -456,6 +1522,60 @@
       ]
     },
     {
+      "name": "QUERY_ENTITIES",
+      "description": "Query entities by type or attribute values.",
+      "parameters": [
+        {
+          "name": "values",
+          "description": "The values to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": ["FIND_ENTITIES", "SEARCH_ENTITIES", "LIST_ENTITIES"],
+      "exampleCalls": [
+        {
+          "user": "Use QUERY_ENTITIES with the provided parameters.",
+          "actions": ["QUERY_ENTITIES"],
+          "params": {
+            "QUERY_ENTITIES": {
+              "values": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "QUERY_RELATIONSHIPS",
+      "description": "Query relationships of a specific type or for a specific entity.",
+      "parameters": [
+        {
+          "name": "values",
+          "description": "The values to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": ["FIND_RELATIONSHIPS", "GET_CONNECTIONS", "SHOW_LINKS"],
+      "exampleCalls": [
+        {
+          "user": "Use QUERY_RELATIONSHIPS with the provided parameters.",
+          "actions": ["QUERY_RELATIONSHIPS"],
+          "params": {
+            "QUERY_RELATIONSHIPS": {
+              "values": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "QUEUE_MUSIC",
       "description": "Add a song to the queue for later after confirmed:true.",
       "parameters": [
@@ -483,16 +1603,63 @@
       ]
     },
     {
+      "name": "READ_MCP_RESOURCE",
+      "description": "Reads a resource from an MCP server",
+      "parameters": [],
+      "similes": [
+        "READ_RESOURCE",
+        "READ_MCP_RESOURCE",
+        "GET_RESOURCE",
+        "GET_MCP_RESOURCE",
+        "FETCH_RESOURCE",
+        "FETCH_MCP_RESOURCE",
+        "ACCESS_RESOURCE",
+        "ACCESS_MCP_RESOURCE"
+      ]
+    },
+    {
       "name": "READ_UNREAD_X_DMS",
       "description": "List unread Twitter/X direct messages.",
       "parameters": [],
       "similes": ["READ_X_DMS", "GET_X_UNREAD_DMS", "CHECK_X_DMS"]
     },
     {
+      "name": "READING_FOLLOWUP",
+      "description": "Continue an active reading by processing user feedback and revealing the next element.",
+      "parameters": [],
+      "similes": [
+        "CONTINUE_READING",
+        "NEXT_CARD",
+        "READING_RESPONSE",
+        "PROCEED_READING"
+      ]
+    },
+    {
+      "name": "REMOTE_ATTESTATION",
+      "description": "Generate a remote attestation to prove that the agent is running in a TEE (Trusted Execution Environment)",
+      "parameters": [],
+      "similes": [
+        "REMOTE_ATTESTATION",
+        "TEE_REMOTE_ATTESTATION",
+        "TEE_ATTESTATION",
+        "TEE_QUOTE",
+        "ATTESTATION",
+        "TEE_ATTESTATION_QUOTE",
+        "PROVE_TEE",
+        "VERIFY_TEE"
+      ]
+    },
+    {
       "name": "REPLY_X_DM",
       "description": "Reply to a Twitter/X direct message. Two-stage: without `confirmed: true` this returns a preview and requires confirmation; with `confirmed: true` the DM is sent.",
       "parameters": [],
       "similes": ["SEND_X_DM", "REPLY_TWITTER_DM", "X_DM_REPLY"]
+    },
+    {
+      "name": "REQUEST_PAYMENT",
+      "description": "Request payment from the user for a reading service. Specify the amount to charge.",
+      "parameters": [],
+      "similes": ["CHARGE_USER", "ASK_FOR_PAYMENT", "SET_PRICE"]
     },
     {
       "name": "RESUME_CLOUD_AGENT",
@@ -551,6 +1718,38 @@
       ]
     },
     {
+      "name": "SEARCH_LINEAR_ISSUES",
+      "description": "Search for issues in Linear with various filters",
+      "parameters": [
+        {
+          "name": "name",
+          "description": "The name to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": [
+        "search-linear-issues",
+        "find-linear-issues",
+        "query-linear-issues",
+        "list-linear-issues"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use SEARCH_LINEAR_ISSUES with the provided parameters.",
+          "actions": ["SEARCH_LINEAR_ISSUES"],
+          "params": {
+            "SEARCH_LINEAR_ISSUES": {
+              "name": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "SEARCH_SHOPIFY_STORE",
       "description": "Search across products, orders, and customers in a connected Shopify store.",
       "parameters": [],
@@ -582,6 +1781,60 @@
       ]
     },
     {
+      "name": "SELECT_DIMENSION",
+      "description": "Select the dimensional constant that affects how mathematical operations behave in the multiverse.",
+      "parameters": [
+        {
+          "name": "values",
+          "description": "The values to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": ["DIMENSION", "SET_DIMENSION", "CHOOSE_DIMENSION"],
+      "exampleCalls": [
+        {
+          "user": "Use SELECT_DIMENSION with the provided parameters.",
+          "actions": ["SELECT_DIMENSION"],
+          "params": {
+            "SELECT_DIMENSION": {
+              "values": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SELECT_ENTITY",
+      "description": "Select an entity as the current entity for operations.",
+      "parameters": [
+        {
+          "name": "values",
+          "description": "The values to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": ["CHOOSE_ENTITY", "FOCUS_ENTITY", "SET_CURRENT_ENTITY"],
+      "exampleCalls": [
+        {
+          "user": "Use SELECT_ENTITY with the provided parameters.",
+          "actions": ["SELECT_ENTITY"],
+          "params": {
+            "SELECT_ENTITY": {
+              "values": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "SEND_BLUEBUBBLES_MESSAGE",
       "description": "Send a message via iMessage through BlueBubbles",
       "parameters": [],
@@ -591,6 +1844,39 @@
         "IMESSAGE_REPLY",
         "BLUEBUBBLES_SEND",
         "APPLE_MESSAGE"
+      ]
+    },
+    {
+      "name": "SEND_INSTAGRAM_DM",
+      "description": "Send a direct message to an Instagram user",
+      "parameters": [
+        {
+          "name": "response",
+          "description": "The response to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": [
+        "instagram_dm",
+        "instagram_message",
+        "send_instagram_message",
+        "dm_instagram",
+        "direct_message_instagram"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use SEND_INSTAGRAM_DM with the provided parameters.",
+          "actions": ["SEND_INSTAGRAM_DM"],
+          "params": {
+            "SEND_INSTAGRAM_DM": {
+              "response": "example"
+            }
+          }
+        }
       ]
     },
     {
@@ -633,6 +1919,33 @@
       "description": "Publish a tweet on Twitter/X with a confirmation gate. Two-stage: without `confirmed: true` this returns a preview; with `confirmed: true` the tweet is posted.",
       "parameters": [],
       "similes": ["POST_X", "TWEET_WITH_CONFIRMATION", "PUBLISH_TWEET"]
+    },
+    {
+      "name": "SET_ATTRIBUTE",
+      "description": "Set an attribute on the current entity. Attributes store additional data on entities.",
+      "parameters": [
+        {
+          "name": "values",
+          "description": "The values to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": ["ADD_ATTRIBUTE", "SET_PROPERTY", "UPDATE_ATTRIBUTE"],
+      "exampleCalls": [
+        {
+          "user": "Use SET_ATTRIBUTE with the provided parameters.",
+          "actions": ["SET_ATTRIBUTE"],
+          "params": {
+            "SET_ATTRIBUTE": {
+              "values": "example"
+            }
+          }
+        }
+      ]
     },
     {
       "name": "SETUP_CREDENTIALS",
@@ -814,6 +2127,29 @@
       ]
     },
     {
+      "name": "START_RETAKE_STREAM",
+      "description": "Start streaming to retake.tv. Initiates the RTMP pipeline with browser capture.",
+      "parameters": [],
+      "similes": [
+        "GO_LIVE",
+        "START_STREAMING",
+        "BEGIN_STREAM",
+        "START_RETAKE",
+        "GO_LIVE_RETAKE"
+      ]
+    },
+    {
+      "name": "START_TAILSCALE",
+      "description": "Start a Tailscale tunnel exposing a local port to your tailnet (or the public internet via Funnel)",
+      "parameters": [],
+      "similes": [
+        "START_TUNNEL",
+        "OPEN_TUNNEL",
+        "CREATE_TUNNEL",
+        "TAILSCALE_UP"
+      ]
+    },
+    {
       "name": "STATUS_COMMAND",
       "description": "Show session directive settings via /status slash command. Only activates for /status or /s prefix.",
       "parameters": [],
@@ -874,6 +2210,24 @@
       ]
     },
     {
+      "name": "STOP_RETAKE_STREAM",
+      "description": "Stop the active retake.tv stream. Shuts down FFmpeg and notifies retake.tv.",
+      "parameters": [],
+      "similes": [
+        "GO_OFFLINE",
+        "STOP_STREAMING",
+        "END_STREAM",
+        "STOP_RETAKE",
+        "GO_OFFLINE_RETAKE"
+      ]
+    },
+    {
+      "name": "STOP_TAILSCALE",
+      "description": "Stop the running Tailscale tunnel",
+      "parameters": [],
+      "similes": ["STOP_TUNNEL", "CLOSE_TUNNEL", "TAILSCALE_DOWN"]
+    },
+    {
       "name": "SUMMARIZE_FEED",
       "description": "Fetch the top-N X tweets and produce a concise natural-language summary using the runtime's small text model.",
       "parameters": [],
@@ -884,6 +2238,12 @@
       "description": "Sync the skill catalog from the registry to discover new skills.",
       "parameters": [],
       "similes": ["REFRESH_SKILLS", "UPDATE_CATALOG"]
+    },
+    {
+      "name": "TAROT_READING",
+      "description": "Perform a tarot card reading, drawing cards into a spread and revealing each one iteratively.",
+      "parameters": [],
+      "similes": ["READ_TAROT", "DRAW_CARDS", "TAROT_SPREAD", "CARD_READING"]
     },
     {
       "name": "TASK_CONTROL",
@@ -949,6 +2309,83 @@
       ]
     },
     {
+      "name": "TOKEN_INFO",
+      "description": "Get information about tokens including price, liquidity, market cap, and other stats. Supports multiple tokens.",
+      "parameters": [],
+      "similes": [
+        "GET_TOKEN_INFO",
+        "CHECK_TOKEN",
+        "TOKEN_DETAILS",
+        "TOKEN_STATS"
+      ]
+    },
+    {
+      "name": "TRANSFER_TO_INPUT",
+      "description": "Transfer accumulator value to input buffer for next operation.",
+      "parameters": [
+        {
+          "name": "values",
+          "description": "The values to use.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["example"]
+        }
+      ],
+      "similes": ["TRANSFER", "MOVE_TO_INPUT", "ACCUMULATOR_TO_INPUT"],
+      "exampleCalls": [
+        {
+          "user": "Use TRANSFER_TO_INPUT with the provided parameters.",
+          "actions": ["TRANSFER_TO_INPUT"],
+          "params": {
+            "TRANSFER_TO_INPUT": {
+              "values": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "TWITCH_JOIN_CHANNEL",
+      "description": "Join a Twitch channel to listen and send messages",
+      "parameters": [],
+      "similes": ["JOIN_TWITCH_CHANNEL", "ENTER_CHANNEL", "CONNECT_CHANNEL"]
+    },
+    {
+      "name": "TWITCH_LEAVE_CHANNEL",
+      "description": "Leave a Twitch channel",
+      "parameters": [],
+      "similes": [
+        "LEAVE_TWITCH_CHANNEL",
+        "EXIT_CHANNEL",
+        "PART_CHANNEL",
+        "DISCONNECT_CHANNEL"
+      ]
+    },
+    {
+      "name": "TWITCH_LIST_CHANNELS",
+      "description": "List all Twitch channels the bot is currently in",
+      "parameters": [],
+      "similes": [
+        "LIST_TWITCH_CHANNELS",
+        "SHOW_CHANNELS",
+        "GET_CHANNELS",
+        "CURRENT_CHANNELS"
+      ]
+    },
+    {
+      "name": "TWITCH_SEND_MESSAGE",
+      "description": "Send a message to a Twitch channel",
+      "parameters": [],
+      "similes": [
+        "SEND_TWITCH_MESSAGE",
+        "TWITCH_CHAT",
+        "CHAT_TWITCH",
+        "SAY_IN_TWITCH"
+      ]
+    },
+    {
       "name": "UNINSTALL_SKILL",
       "description": "Uninstall a non-bundled skill. Bundled skills cannot be removed. ",
       "parameters": [],
@@ -982,6 +2419,54 @@
       "description": "Invoke an enabled skill by slug. The skill's instructions or script run and the result returns to the conversation.",
       "parameters": [],
       "similes": ["INVOKE_SKILL", "EXECUTE_SKILL", "RUN_SKILL", "CALL_SKILL"]
+    },
+    {
+      "name": "WALLET_BALANCE",
+      "description": "Check the current token balances in the agent wallet. ",
+      "parameters": [],
+      "similes": [
+        "CHECK_BALANCE",
+        "GET_BALANCE",
+        "WALLET_STATUS",
+        "HOW_MUCH_DO_I_HAVE"
+      ]
+    },
+    {
+      "name": "WALLET_BRIDGE",
+      "description": "Bridge USDC cross-chain via Circle's CCTP V2. Supported routes include ",
+      "parameters": [],
+      "similes": ["BRIDGE_TOKENS", "CROSS_CHAIN", "CCTP_BRIDGE", "BRIDGE_USDC"]
+    },
+    {
+      "name": "WALLET_SWAP",
+      "description": "Swap tokens using Jupiter (Solana) or Uniswap V3 (EVM). ",
+      "parameters": [],
+      "similes": [
+        "SWAP_TOKENS",
+        "EXCHANGE_TOKENS",
+        "TRADE_TOKENS",
+        "JUPITER_SWAP",
+        "UNISWAP"
+      ]
+    },
+    {
+      "name": "WALLET_TRANSFER",
+      "description": "Transfer SOL, ETH, USDC, or any ERC-20/SPL token to another address. ",
+      "parameters": [],
+      "similes": [
+        "SEND_TOKENS",
+        "TRANSFER_FUNDS",
+        "PAY",
+        "SEND_SOL",
+        "SEND_ETH",
+        "SEND_USDC"
+      ]
+    },
+    {
+      "name": "X402_PAY",
+      "description": "Pay for a resource or API endpoint using the x402 micropayment protocol. ",
+      "parameters": [],
+      "similes": ["PAY_API", "MICROPAYMENT", "PAY_ENDPOINT", "X402_REQUEST"]
     }
   ]
 }

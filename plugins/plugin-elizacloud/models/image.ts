@@ -1,0 +1,159 @@
+import type { IAgentRuntime, ImageDescriptionParams, ImageGenerationParams } from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
+import { getImageDescriptionModel, getImageGenerationModel, getSetting } from "../utils/config";
+import { emitModelUsageEvent } from "../utils/events";
+import { parseImageDescriptionResponse } from "../utils/helpers";
+import { createElizaCloudClient } from "../utils/sdk-client";
+
+export async function handleImageGeneration(
+  runtime: IAgentRuntime,
+  params: ImageGenerationParams
+): Promise<{ url: string }[]> {
+  const numImages = params.count || 1;
+  const size = params.size || "1024x1024";
+  const prompt = params.prompt;
+  const modelName = getImageGenerationModel(runtime);
+  logger.log(`[ELIZAOS_CLOUD] Using IMAGE model: ${modelName}`);
+
+  const aspectRatioMap: Record<string, string> = {
+    "1024x1024": "1:1",
+    "1792x1024": "16:9",
+    "1024x1792": "9:16",
+  };
+  const aspectRatio = aspectRatioMap[size] || "1:1";
+
+  try {
+    const requestBody = {
+      prompt: prompt,
+      numImages: numImages,
+      aspectRatio: aspectRatio,
+      model: modelName,
+    };
+
+    const typedData = await createElizaCloudClient(runtime).generateImage(requestBody);
+
+    const result = typedData.images.map((img) => ({
+      url: img.url || img.image,
+    }));
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(`[ELIZAOS_CLOUD] Image generation error: ${message}`);
+    throw error;
+  }
+}
+
+export async function handleImageDescription(
+  runtime: IAgentRuntime,
+  params: ImageDescriptionParams | string
+): Promise<{ title: string; description: string }> {
+  let imageUrl: string;
+  let promptText: string | undefined;
+  const modelName = getImageDescriptionModel(runtime);
+  logger.log(`[ELIZAOS_CLOUD] Using IMAGE_DESCRIPTION model: ${modelName}`);
+  const maxTokens = Number.parseInt(
+    getSetting(runtime, "ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS", "8192") || "8192",
+    10
+  );
+
+  if (typeof params === "string") {
+    imageUrl = params;
+    promptText = "Please analyze this image and provide a title and detailed description.";
+  } else {
+    imageUrl = params.imageUrl;
+    promptText =
+      params.prompt || "Please analyze this image and provide a title and detailed description.";
+  }
+
+  const messages = [
+    {
+      role: "user",
+      content: [
+        { type: "text", text: promptText },
+        { type: "image_url", image_url: { url: imageUrl } },
+      ],
+    },
+  ];
+
+  const client = createElizaCloudClient(runtime);
+
+  try {
+    const requestBody: Record<string, unknown> = {
+      model: modelName,
+      messages: messages,
+      max_tokens: maxTokens,
+    };
+
+    // Retry with exponential backoff for transient errors (429 rate limit)
+    let response: Response | null = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      response = await client.routes.postApiV1ChatCompletionsRaw({
+        json: requestBody,
+      });
+
+      if (response.status === 429 && attempt < 2) {
+        const wait = (attempt + 1) * 2000; // 2s, 4s
+        logger.warn(
+          `[ELIZAOS_CLOUD] Image analysis rate-limited (429), retrying in ${wait / 1000}s...`
+        );
+        await new Promise((r) => setTimeout(r, wait));
+        continue;
+      }
+      break;
+    }
+
+    if (!response?.ok) {
+      const status = response?.status ?? 0;
+      if (status === 402) {
+        throw new Error(
+          "Eliza Cloud credits exhausted — top up at https://www.elizacloud.ai/dashboard/settings?tab=billing"
+        );
+      }
+      throw new Error(`ElizaOS Cloud API error: ${status}`);
+    }
+
+    type OpenAIResponseType = {
+      choices?: Array<{
+        message?: { content?: string };
+        finish_reason?: string;
+      }>;
+      usage?: {
+        prompt_tokens: number;
+        completion_tokens: number;
+        total_tokens: number;
+      };
+    };
+
+    const typedResult = (await response.json()) as OpenAIResponseType;
+    const content = typedResult.choices?.[0]?.message?.content;
+
+    if (typedResult.usage) {
+      emitModelUsageEvent(
+        runtime,
+        ModelType.IMAGE_DESCRIPTION,
+        typeof params === "string" ? params : params.prompt || "",
+        {
+          inputTokens: typedResult.usage.prompt_tokens,
+          outputTokens: typedResult.usage.completion_tokens,
+          totalTokens: typedResult.usage.total_tokens,
+        }
+      );
+    }
+
+    if (!content) {
+      return {
+        title: "Failed to analyze image",
+        description: "No response from API",
+      };
+    }
+
+    return parseImageDescriptionResponse(content);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(`Error analyzing image: ${message}`);
+    return {
+      title: "Failed to analyze image",
+      description: `Error: ${message}`,
+    };
+  }
+}

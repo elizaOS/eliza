@@ -694,9 +694,9 @@ verify_packaged_renderer_assets() {
   if [[ -d "$renderer_dir" ]]; then
     assert_packaged_asset "$renderer_dir/index.html" "renderer entrypoint" 256
     assert_packaged_asset_variants "default avatar VRM" 1024 \
-      "$renderer_dir/vrms/milady-1.vrm.gz" \
-      "$renderer_dir/vrms/milady-1.vrm"
-    assert_packaged_asset "$renderer_dir/vrms/backgrounds/milady-1.png" "default avatar background" 1024
+      "$renderer_dir/vrms/eliza-1.vrm.gz" \
+      "$renderer_dir/vrms/eliza-1.vrm"
+    assert_packaged_asset "$renderer_dir/vrms/backgrounds/eliza-1.png" "default avatar background" 1024
     assert_packaged_asset_variants "default idle animation" 1024 \
       "$renderer_dir/animations/idle.glb.gz" \
       "$renderer_dir/animations/idle.glb"
@@ -709,9 +709,9 @@ verify_packaged_renderer_assets() {
     archive_bundle_root="$(basename "$LAUNCH_APP_BUNDLE")/Contents/Resources/app/renderer"
     assert_packaged_archive_asset "$RUNTIME_ARCHIVE" "$archive_bundle_root/index.html" "renderer entrypoint" 256
     assert_packaged_archive_asset_variants "$RUNTIME_ARCHIVE" "default avatar VRM" 1024 \
-      "$archive_bundle_root/vrms/milady-1.vrm.gz" \
-      "$archive_bundle_root/vrms/milady-1.vrm"
-    assert_packaged_archive_asset "$RUNTIME_ARCHIVE" "$archive_bundle_root/vrms/backgrounds/milady-1.png" "default avatar background" 1024
+      "$archive_bundle_root/vrms/eliza-1.vrm.gz" \
+      "$archive_bundle_root/vrms/eliza-1.vrm"
+    assert_packaged_archive_asset "$RUNTIME_ARCHIVE" "$archive_bundle_root/vrms/backgrounds/eliza-1.png" "default avatar background" 1024
     assert_packaged_archive_asset_variants "$RUNTIME_ARCHIVE" "default idle animation" 1024 \
       "$archive_bundle_root/animations/idle.glb.gz" \
       "$archive_bundle_root/animations/idle.glb"

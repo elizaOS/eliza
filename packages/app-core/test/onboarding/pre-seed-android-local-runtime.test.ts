@@ -1,19 +1,19 @@
 // @vitest-environment jsdom
 
 /**
- * Pre-seed contract for the MiladyOS APK boot flow.
+ * Pre-seed contract for the ElizaOS APK boot flow.
  *
- * The AOSP MiladyOS variant bypasses the RuntimeGate "Choose your setup"
+ * The AOSP ElizaOS variant bypasses the RuntimeGate "Choose your setup"
  * picker entirely — `apps/app/src/main.tsx` calls
  * `preSeedAndroidLocalRuntimeIfFresh()` before React mounts (gated on
- * `isMiladyOS()`), which writes the persisted runtime mode + active
- * server so `StartupShell` (and RuntimeGate's MiladyOS branch) treat the
+ * `isElizaOS()`), which writes the persisted runtime mode + active
+ * server so `StartupShell` (and RuntimeGate's ElizaOS branch) treat the
  * device as already-onboarded for the local on-device agent.
  *
  * The same APK installed on a stock Android phone never enters this
  * branch — it falls through to the picker and a deliberate user choice
  * is required. The tests below exercise the helper in isolation; the
- * `isMiladyOS()` gate is covered separately by `is-milady-os.test.ts`
+ * `isElizaOS()` gate is covered separately by `is-eliza-os.test.ts`
  * and the `RuntimeGate.test.tsx` mocks.
  *
  * These tests pin the two invariants:

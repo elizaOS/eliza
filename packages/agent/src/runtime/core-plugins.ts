@@ -33,20 +33,20 @@ export const DESKTOP_ONLY_PLUGINS: readonly string[] = ["agent-orchestrator"];
 export const MOBILE_CORE_PLUGINS: readonly string[] = ["@elizaos/plugin-sql"];
 
 /**
- * MiladyOS-only overlay app plugins. Used when the runtime is the custom
+ * ElizaOS-only overlay app plugins. Used when the runtime is the custom
  * Android OS build (`ELIZA_PLATFORM=android` plus `ELIZA_LOCAL_LLAMA=1`),
  * appended to `MOBILE_CORE_PLUGINS` in `collectPluginNames`. Each one is a
  * runtime-app plugin (the `/plugin` subpath of the matching overlay app)
  * that exposes privileged system surfaces — WiFi, Contacts, Phone — to the
  * agent as actions. The overlay UIs themselves register at app boot via
- * `@elizaos/app-{wifi,contacts,phone}/register`, gated on `isMiladyOS()` so
+ * `@elizaos/app-{wifi,contacts,phone}/register`, gated on `isElizaOS()` so
  * stock Android, iOS, web, and desktop are no-ops.
  *
  * Stock Android does not get these because Play Store style builds should not
  * expose privileged OS-control surfaces merely because `Capacitor` reports
  * `android`.
  */
-export const MILADYOS_ANDROID_CORE_PLUGINS: readonly string[] = [
+export const ELIZAOS_ANDROID_CORE_PLUGINS: readonly string[] = [
   "@elizaos/app-wifi",
   "@elizaos/app-contacts",
   "@elizaos/app-phone",
@@ -59,7 +59,7 @@ export const CORE_PLUGINS: readonly string[] = [
   // @elizaos/app-form — now built-in as advanced capability (form); enabled when advancedCapabilities: true
   "@elizaos/app-companion", // VRM companion emotes; actions gated until app session is active
   // @elizaos/plugin-agent-orchestrator — opt-in via ELIZA_AGENT_ORCHESTRATOR (Eliza app enables by default)
-  "@elizaos/plugin-cron", // scheduled jobs and automation
+  // Recurring work uses runtime TaskService + triggers (no @elizaos/plugin-cron).
   "@elizaos/plugin-app-control", // launch, close, and list running Eliza apps from agent chat
   "@elizaos/plugin-shell", // shell command execution
   "@elizaos/plugin-agent-skills", // skill execution and marketplace runtime

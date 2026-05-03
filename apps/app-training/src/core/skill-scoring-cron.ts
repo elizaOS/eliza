@@ -5,8 +5,8 @@
  * trajectories that referenced the skill, run `scoreSkill`, and rewrite the
  * SKILL.md frontmatter with the new `provenance.lastEvalScore`.
  *
- * The job is registered against the @elizaos/plugin-cron CronService at
- * agent boot. Failure to compute a score for a single skill never aborts the
+ * The job is registered via the runtime cron/Task scheduling path at agent boot.
+ * Failure to compute a score for a single skill never aborts the
  * batch — we surface per-skill errors via the logger and continue.
  */
 

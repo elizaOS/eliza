@@ -1,5 +1,5 @@
 import type { PublicKey, Transaction, VersionedTransaction } from "@solana/web3.js";
-import type { Account as ViemAccount } from "viem/accounts";
+import type { Account } from "viem";
 import type { Hex, TypedDataDefinition } from "viem";
 import type { SignResult, SignScope } from "./pending.js";
 
@@ -17,8 +17,8 @@ export interface SolanaSigner {
 }
 
 export interface WalletAddresses {
-	readonly evm: `0x${string}`;
-	readonly solana: PublicKey;
+	readonly evm: `0x${string}` | null;
+	readonly solana: PublicKey | null;
 }
 
 export type WalletBackendKind = "local" | "steward";
@@ -40,7 +40,7 @@ export interface WalletBackend {
 	 */
 	canSign(chainHint: "evm" | "solana" | "off-chain"): boolean;
 
-	getEvmAccount(chainId: number): ViemAccount;
+	getEvmAccount(chainId: number): Account;
 
 	getSolanaSigner(): SolanaSigner;
 

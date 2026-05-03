@@ -267,25 +267,10 @@ function clearLaunchFailure(agentName: string): void {
   recentLaunchFailures.delete(agentName);
 }
 
-/** Optional system event bridge — loaded lazily from plugin-cron. */
-let pushSystemEventFn:
-  | ((agentId: string, text: string, source: string) => void)
-  | null = null;
-
-async function loadPushSystemEvent(): Promise<void> {
-  if (pushSystemEventFn) return;
-  try {
-    const mod = await import(/* webpackIgnore: true */ "@elizaos/plugin-cron");
-    if (typeof mod.pushSystemEvent === "function") {
-      pushSystemEventFn = mod.pushSystemEvent;
-    }
-  } catch {
-    // plugin-cron not available — game loop still works, just no heartbeat bridge
-  }
-}
-
-function pushEvent(agentId: string, text: string): void {
-  pushSystemEventFn?.(agentId, text, "defense-of-the-agents");
+/** Legacy heartbeat hook (always inactive — @elizaos/plugin-cron removed from the tree). */
+function pushEvent(_agentId: string, _text: string): void {
+  void _agentId;
+  void _text;
 }
 
 const HERO_CLASS_VALUES = new Set<HeroClass>(["melee", "ranged", "mage"]);
@@ -1304,8 +1289,6 @@ function startGameLoop(
 
   // Don't start a duplicate loop
   if (activeLoops.has(agentId)) return;
-
-  void loadPushSystemEvent();
 
   let tickRunning = false;
   const timer = setInterval(() => {

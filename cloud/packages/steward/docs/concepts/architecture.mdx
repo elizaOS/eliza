@@ -1,0 +1,184 @@
+---
+title: "Architecture"
+description: "How Steward's three pillars work together to secure autonomous agents."
+---
+
+# Architecture
+
+Steward is the single chokepoint between an AI agent and the outside world. Every API call, every transaction, every secret access flows through Steward, gets policy-checked, gets logged, gets metered.
+
+## Three Pillars
+
+<CardGroup cols={3}>
+  <Card title="Wallet Vault" icon="vault">
+    Encrypted key storage with policy-enforced signing. Agents never see private keys.
+  </Card>
+  <Card title="Secret Vault" icon="key">
+    Encrypted credential storage with an API proxy. Agents never see API keys.
+  </Card>
+  <Card title="Policy Engine" icon="shield-check">
+    Declarative policy evaluation on every action. Default deny.
+  </Card>
+</CardGroup>
+
+## High-Level Flow
+
+```mermaid
+flowchart TB
+    subgraph agent["Agent Container"]
+        A["Agent runtime"]
+        ENV["Proxy URL + agent token"]
+    end
+
+    subgraph steward["Steward"]
+        PROXY["API proxy gateway"]
+        POLICY["Policy engine"]
+        SECRET["Secret vault"]
+        WALLET["Wallet vault"]
+        AUDIT["Audit log"]
+
+        PROXY --> POLICY
+        POLICY --> SECRET
+        POLICY --> WALLET
+        PROXY --> AUDIT
+    end
+
+    A -->|"HTTP (internal)"| PROXY
+
+    SECRET -->|"HTTPS (real credentials)"| EXT["External APIs"]
+    WALLET -->|"Signed transactions"| CHAIN["Blockchains"]
+```
+
+## Request Flow: API Proxy
+
+When an agent makes an API call (e.g., to OpenAI):
+
+```mermaid
+sequenceDiagram
+    participant Agent
+    participant Proxy as API Proxy
+    participant Policy as Policy Engine
+    participant Vault as Secret Vault
+    participant API as External API
+
+    Agent->>Proxy: Request + JWT
+    Proxy->>Proxy: Authenticate JWT → agent ID, tenant, scopes
+    Proxy->>Proxy: Resolve route (host/path → credential set)
+    Proxy->>Policy: Evaluate policies
+    Policy-->>Proxy: ✓ API access, spend limit, rate limit pass
+    Proxy->>Vault: Decrypt credential
+    Vault-->>Proxy: Real API key (in-memory only)
+    Proxy->>API: Forward request with real credential
+    API-->>Proxy: Response
+    Proxy->>Proxy: Log cost, update spend tracking
+    Proxy-->>Agent: Response (credentials stripped)
+```
+
+## Request Flow: Wallet Signing
+
+When an agent needs to sign a transaction:
+
+```mermaid
+sequenceDiagram
+    participant Agent
+    participant API as Steward API
+    participant Policy as Policy Engine
+    participant Vault as Wallet Vault
+    participant Chain as Blockchain
+
+    Agent->>API: Sign request via SDK
+    API->>Policy: Evaluate signing policies
+
+    alt Below auto-approve threshold
+        Policy-->>API: ✓ Auto-approve
+        API->>Vault: Decrypt private key
+        Vault->>Vault: Sign transaction
+        Vault-->>API: Signed TX
+
+        opt broadcast=true
+            API->>Chain: Broadcast transaction
+            Chain-->>API: TX hash
+        end
+
+        API->>API: Record TX + policy results
+        API-->>Agent: Signed TX / TX hash
+    else Above threshold
+        Policy-->>API: ⏳ Queue for approval
+        API->>API: Record pending approval state
+        Note over API: Webhook → tenant admin
+        API-->>Agent: Pending approval
+        Note over API,Vault: Signing happens later after approval
+    end
+```
+
+## Deployment Topology
+
+```mermaid
+flowchart TB
+    subgraph host["Host server"]
+        subgraph services["Steward services"]
+            API["steward-api (:3200)"]
+            PRX["steward-proxy (:8080)"]
+        end
+
+        subgraph agents["Agent containers"]
+            A1["agent-1"]
+            A2["agent-2"]
+            A3["agent-3"]
+        end
+
+        A1 -->|"internal"| PRX
+        A2 -->|"internal"| PRX
+        A3 -->|"internal"| PRX
+    end
+
+    PRX -->|"HTTPS"| EXT["External services"]
+```
+
+<Note>
+  Agent containers can be firewalled to **only reach the Steward proxy**. Even if fully compromised, an agent cannot exfiltrate data to arbitrary endpoints.
+</Note>
+
+## Multi-Tenant Isolation
+
+Steward is multi-tenant by design:
+
+```mermaid
+flowchart LR
+    subgraph T1["Tenant: acme-corp"]
+        A1["Agent A"] --> P1["Policies A"]
+        A2["Agent B"] --> P1
+        S1["Secrets"]
+        W1["Wallets"]
+    end
+
+    subgraph T2["Tenant: degen-dao"]
+        A3["Agent C"] --> P2["Policies C"]
+        S2["Secrets"]
+        W2["Wallets"]
+    end
+
+    MK["Master key"] --> TK1["Tenant key 1"]
+    MK --> TK2["Tenant key 2"]
+    TK1 --> S1
+    TK1 --> W1
+    TK2 --> S2
+    TK2 --> W2
+```
+
+- **Tenants** are isolated at the database level — each tenant's agents, secrets, and policies are scoped
+- **Agents** authenticate with JWTs scoped to their tenant and agent ID
+- **Secrets** are encrypted with per-tenant encryption keys (key hierarchy: master → tenant → secret)
+- **Policies** are evaluated per-agent within their tenant context
+
+## Tech Stack
+
+| Component | Technology |
+|-----------|-----------|
+| API Server | [Hono](https://hono.dev) on [Bun](https://bun.sh) |
+| Database | PostgreSQL (Neon) |
+| Encryption | AES-256-GCM with Argon2id key derivation |
+| EVM Signing | [viem](https://viem.sh) |
+| Solana Signing | [@solana/web3.js](https://solana-labs.github.io/solana-web3.js/) |
+| ORM | [Drizzle](https://orm.drizzle.team) |
+| SDK | TypeScript, zero dependencies |

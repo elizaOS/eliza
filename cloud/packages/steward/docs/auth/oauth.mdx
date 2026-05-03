@@ -1,0 +1,184 @@
+---
+title: "OAuth Providers"
+description: "Sign in with Google, Discord, or Twitter/X using OAuth with PKCE."
+---
+
+# OAuth Providers
+
+Steward supports OAuth sign-in with **Google**, **Discord**, and **Twitter/X**. All flows use the PKCE (Proof Key for Code Exchange) extension for security, with no client secret exposed to the browser.
+
+## Supported Providers
+
+| Provider | SDK Name | Status |
+|----------|----------|--------|
+| Google | `"google"` | ✅ Supported |
+| Discord | `"discord"` | ✅ Supported |
+| Twitter/X | `"twitter"` | ✅ Supported |
+
+## How It Works (PKCE Flow)
+
+```
+1. SDK generates a random code_verifier + code_challenge (SHA-256)
+2. Opens a popup to /auth/oauth/{provider}/authorize with the challenge
+3. User authorizes in the provider's UI
+4. Provider redirects back with an authorization code
+5. SDK exchanges code + code_verifier at /auth/oauth/{provider}/token
+6. Steward returns a JWT session
+```
+
+The popup-based flow keeps the user on your page while authentication happens in a separate window.
+
+## SDK Usage
+
+```typescript
+import { StewardAuth } from "@stwd/sdk";
+
+const auth = new StewardAuth({
+  baseUrl: "https://api.steward.fi",
+  storage: localStorage,
+});
+
+// Opens a popup for the provider's sign-in page
+const result = await auth.signInWithOAuth("google");
+console.log(result);
+// {
+//   token: "eyJhbGci...",
+//   refreshToken: "stwd_rt_...",
+//   expiresIn: 900,
+//   user: { id: "usr_...", email: "user@gmail.com", walletAddress: "0x..." },
+//   provider: "google"
+// }
+```
+
+### Configuration Options
+
+```typescript
+const result = await auth.signInWithOAuth("discord", {
+  redirectUri: "https://myapp.com/auth/callback", // custom callback URL
+  tenantId: "my-tenant",                           // specific tenant
+  popupWidth: 500,                                  // popup dimensions
+  popupHeight: 600,
+});
+```
+
+### Redirect Flow (Non-Popup)
+
+For environments where popups are blocked, use the redirect flow:
+
+```typescript
+// Step 1: Start the flow (this will throw with the authorization URL)
+try {
+  await auth.signInWithOAuth("google");
+} catch (err) {
+  // In non-browser environments, the error contains the redirect URL
+  window.location.href = err.message.match(/Redirect to: (.+)/)?.[1];
+}
+
+// Step 2: On your callback page, complete the exchange
+const params = Object.fromEntries(new URLSearchParams(window.location.search));
+const result = await auth.handleOAuthCallback("google", params);
+```
+
+## React Usage
+
+The `<StewardLogin>` component renders OAuth buttons based on which providers are enabled on the server:
+
+```tsx
+<StewardLogin
+  showGoogle    // enabled by default
+  showDiscord   // enabled by default
+  showPasskey={false}
+  showEmail={false}
+  title="Sign in"
+/>
+```
+
+The component automatically queries `GET /auth/providers` to discover which OAuth providers are available. Buttons are only shown for providers that are both enabled on the server and not disabled via props.
+
+## Setting Up OAuth Apps
+
+### Google
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+2. Create a new OAuth 2.0 Client ID (Web application)
+3. Add authorized redirect URI:
+   ```
+   https://your-steward-url/auth/oauth/google/callback
+   ```
+4. Copy the Client ID and Client Secret
+
+```bash
+# Server environment variables
+GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=GOCSPX-xxxx
+```
+
+### Discord
+
+1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
+2. Create a new application
+3. Go to OAuth2 settings
+4. Add redirect URI:
+   ```
+   https://your-steward-url/auth/oauth/discord/callback
+   ```
+5. Copy the Client ID and Client Secret
+
+```bash
+DISCORD_CLIENT_ID=1234567890
+DISCORD_CLIENT_SECRET=xxxx
+```
+
+### Twitter/X
+
+1. Go to [Twitter Developer Portal](https://developer.twitter.com/en/portal)
+2. Create a project and app
+3. Enable OAuth 2.0 with PKCE
+4. Add callback URL:
+   ```
+   https://your-steward-url/auth/oauth/twitter/callback
+   ```
+5. Copy the Client ID
+
+```bash
+TWITTER_CLIENT_ID=xxxx
+TWITTER_CLIENT_SECRET=xxxx
+```
+
+## Redirect URIs
+
+All OAuth providers require a registered redirect URI. The pattern is:
+
+```
+https://your-steward-url/auth/oauth/{provider}/callback
+```
+
+For local development:
+```
+http://localhost:3200/auth/oauth/google/callback
+http://localhost:3200/auth/oauth/discord/callback
+http://localhost:3200/auth/oauth/twitter/callback
+```
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/auth/providers` | GET | Discover enabled auth methods |
+| `/auth/oauth/{provider}/authorize` | GET | Start OAuth flow (redirect to provider) |
+| `/auth/oauth/{provider}/callback` | GET | Provider redirect target |
+| `/auth/oauth/{provider}/token` | POST | Exchange code for session (PKCE) |
+
+## Security
+
+- All flows use PKCE (S256 challenge method) to prevent authorization code interception
+- State parameter prevents CSRF attacks
+- Code verifier is stored client-side and never sent to the provider
+- Popup polling includes a 5-minute timeout
+- Provider tokens are not stored; only the Steward JWT is persisted
+
+## Related
+
+- [Auth Overview](/auth/overview) — Session management
+- [Passkeys](/auth/passkeys) — Alternative passwordless method
+- [Self-Hosting](/guides/self-hosting) — Environment variable reference

@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "ignoreDeprecations": "6.0",
+    "outDir": "dist",
+    "lib": ["ESNext"],
+    "target": "ESNext",
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "allowImportingTsExtensions": true,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "resolveJsonModule": true,
+    "moduleDetection": "force",
+    "allowArbitraryExtensions": true
+  },
+  "include": ["src/**/*.ts"]
+}

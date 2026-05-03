@@ -1,0 +1,100 @@
+---
+title: "Installation"
+description: "Install the Steward SDK for TypeScript/JavaScript."
+---
+
+# Installation
+
+The `@stwd/sdk` package provides a typed client for the Steward API with zero dependencies.
+
+## Install
+
+<CodeGroup>
+```bash npm
+npm install @stwd/sdk
+```
+
+```bash pnpm
+pnpm add @stwd/sdk
+```
+
+```bash yarn
+yarn add @stwd/sdk
+```
+
+```bash bun
+bun add @stwd/sdk
+```
+</CodeGroup>
+
+## Requirements
+
+- **Runtime:** Node.js 18+, Bun 1.0+, Deno, or any environment with `fetch()`
+- **TypeScript:** 5.0+ (optional but recommended)
+- **Dependencies:** None — zero external dependencies
+
+## Quick Setup
+
+```typescript
+import { StewardClient } from "@stwd/sdk";
+
+// Tenant-level client (for management operations)
+const steward = new StewardClient({
+  baseUrl: "https://api.steward.fi",
+  apiKey: "stwd_your_tenant_api_key",
+});
+
+// Agent-level client (for signing operations)
+const agentClient = new StewardClient({
+  baseUrl: "https://api.steward.fi",
+  bearerToken: process.env.STEWARD_AGENT_TOKEN,
+});
+```
+
+## Package Contents
+
+The SDK exports:
+
+| Export | Description |
+|--------|-------------|
+| `StewardClient` | Main API client class |
+| `StewardApiError` | Typed error class with status code and response data |
+| Types | Full TypeScript types for all request/response shapes |
+
+```typescript
+import {
+  StewardClient,
+  StewardApiError,
+  type StewardClientConfig,
+  type SignTransactionInput,
+  type SignTypedDataInput,
+  type SignSolanaTransactionInput,
+  type PolicyRule,
+  type AgentIdentity,
+} from "@stwd/sdk";
+```
+
+## Environment Variables
+
+Common environment variables used with the SDK:
+
+```bash
+STEWARD_API_URL=https://api.steward.fi    # API base URL
+STEWARD_API_KEY=stwd_your_tenant_key       # Tenant API key
+STEWARD_AGENT_TOKEN=stwd_jwt_...           # Agent JWT token
+STEWARD_AGENT_ID=my-agent                  # Agent identifier
+STEWARD_PROXY_URL=http://steward-proxy:8080 # Proxy URL (for containers)
+```
+
+## Published Packages
+
+| Package | Version | Description |
+|---------|---------|-------------|
+| `@stwd/sdk` | 0.3.0 | TypeScript SDK client |
+| `@stwd/eliza-plugin` | 0.2.0 | ElizaOS integration plugin |
+
+## Next Steps
+
+- [StewardClient Reference](/sdk/client) — Full API reference
+- [Quickstart](/quickstart) — Get started in 5 minutes
+- [ElizaOS Plugin](/sdk/eliza-plugin) — Drop-in ElizaOS integration

@@ -133,15 +133,11 @@ describe("agent packaged runtime dependencies", () => {
       "utf8",
     );
 
-    expect(relinker).toContain(
-      '"eliza/plugins/plugin-agent-skills/typescript"',
-    );
+    expect(relinker).toContain('"eliza/plugins/plugin-agent-skills"');
     expect(relinker).toContain('"eliza/packages/shared"');
     expect(relinker).toContain('"eliza/packages/skills"');
-    expect(relinker).toContain(
-      '"eliza/plugins/plugin-local-embedding/typescript"',
-    );
-    expect(relinker).toContain('"eliza/plugins/plugin-pdf/typescript"');
+    expect(relinker).toContain('"eliza/plugins/plugin-local-embedding"');
+    expect(relinker).toContain('"eliza/plugins/plugin-pdf"');
   });
 
   it("keeps local embeddings optional during packaged startup", () => {

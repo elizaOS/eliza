@@ -47,7 +47,7 @@ import {
   isAndroid,
   isDesktopPlatform,
   isIOS,
-  isMiladyOS,
+  isElizaOS,
 } from "../../platform/init";
 import {
   addAgentProfile,
@@ -68,12 +68,12 @@ const LOCAL_AGENT_API_BASE = "http://127.0.0.1:31337";
 
 /**
  * URL query flag that deliberately re-opens the RuntimeGate picker on
- * MiladyOS, which is otherwise bypassed in favour of the pre-seeded
+ * ElizaOS, which is otherwise bypassed in favour of the pre-seeded
  * on-device agent.
  *
  * Settings ▸ Runtime navigates to a URL with `?runtime=picker` after clearing
  * the persisted mode + active server when the user wants to switch runtimes.
- * Without this exact query value the MiladyOS branch falls through to the
+ * Without this exact query value the ElizaOS branch falls through to the
  * "Starting your local agent…" splash and auto-completes as local.
  *
  * Has no effect on the vanilla Android APK (installed on a stock phone) —
@@ -290,17 +290,17 @@ export function RuntimeGate() {
     synchronousLocal ? true : isAndroid ? null : false,
   );
 
-  // MiladyOS: the picker is bypassed entirely unless the user explicitly asks
+  // ElizaOS: the picker is bypassed entirely unless the user explicitly asks
   // for it via `?runtime=picker` (Settings ▸ Runtime is the only legitimate
   // caller). Without the override the gate renders an "INITIALIZING AGENT…"
   // splash with the same probe-poll loop as the chooser tile, then calls
   // `finishAsLocal()` the moment the probe succeeds.
   //
-  // The same APK installed on a stock Android phone (no `MiladyOS/<tag>`
+  // The same APK installed on a stock Android phone (no `ElizaOS/<tag>`
   // user-agent suffix) falls through to the regular picker — those users
   // pick Cloud / Remote / Local themselves.
   const pickerOverride = hasPickerOverride();
-  const miladyOSAutoLocal = isMiladyOS() && !pickerOverride;
+  const elizaOSAutoLocal = isElizaOS() && !pickerOverride;
 
   useEffect(() => {
     if (synchronousLocal) return;
@@ -471,7 +471,7 @@ export function RuntimeGate() {
     completeOnboarding();
   }, [completeOnboarding, setState, startupCoordinator]);
 
-  // Auto-pick the on-device agent on MiladyOS. The picker is bypassed by
+  // Auto-pick the on-device agent on ElizaOS. The picker is bypassed by
   // default — the only legitimate way to see it is `?runtime=picker`, set
   // by Settings ▸ Runtime when the user explicitly wants to switch
   // runtimes. As soon as the on-device agent's `/api/health` responds we
@@ -484,14 +484,14 @@ export function RuntimeGate() {
   // `ONBOARDING_COMPLETE` dispatch that flips the startup coordinator out
   // of `onboarding-required`.
   //
-  // The vanilla Android APK (no MiladyOS user-agent suffix) does not enter
+  // The vanilla Android APK (no ElizaOS user-agent suffix) does not enter
   // this branch — it renders the chooser tiles like iOS / web and waits for
   // a user choice.
   useEffect(() => {
-    if (!miladyOSAutoLocal) return;
+    if (!elizaOSAutoLocal) return;
     if (!showLocalOption) return;
     finishAsLocal();
-  }, [miladyOSAutoLocal, finishAsLocal, showLocalOption]);
+  }, [elizaOSAutoLocal, finishAsLocal, showLocalOption]);
 
   const finishAsRemoteGateway = useCallback(
     (gateway: GatewayDiscoveryEndpoint) => {
@@ -688,17 +688,17 @@ export function RuntimeGate() {
     setCloudStage("loading");
   }, []);
 
-  // ── Render: MiladyOS local-only splash ────────────────────────────
-  // MiladyOS never shows the picker tiles — the device IS the agent. Render
+  // ── Render: ElizaOS local-only splash ────────────────────────────
+  // ElizaOS never shows the picker tiles — the device IS the agent. Render
   // the same yellow "INITIALIZING AGENT…" bar that surrounds the rest of the
   // startup flow and let the probe-poll + auto-pick effect upstream call
   // `finishAsLocal()` once the on-device agent answers `/api/health`.
   // Settings ▸ Runtime opens this component with `?runtime=picker` to
   // bypass this branch and render the chooser. The vanilla Android APK
   // never enters this branch and falls through to the chooser below.
-  if (miladyOSAutoLocal) {
+  if (elizaOSAutoLocal) {
     return (
-      <MiladyOSLocalSplash
+      <ElizaOSLocalSplash
         message={t("runtimegate.startingLocalAgent", {
           defaultValue: "INITIALIZING AGENT...",
         })}
@@ -1308,16 +1308,16 @@ function ChoiceCard({
 }
 
 /**
- * MiladyOS-only "starting your local agent" splash. Matches the yellow
+ * ElizaOS-only "starting your local agent" splash. Matches the yellow
  * segmented-bar style of `StartupShell`'s loading screens so the transition
  * from auth/agent handshake → onboarding → chat reads as one continuous
  * boot. The auto-pick effect in `RuntimeGate` calls `finishAsLocal()` as
  * soon as the probe succeeds, at which point this component unmounts.
  */
-function MiladyOSLocalSplash({ message }: { message: string }) {
+function ElizaOSLocalSplash({ message }: { message: string }) {
   return (
     <div
-      data-testid="runtime-gate-miladyos-local-splash"
+      data-testid="runtime-gate-elizaos-local-splash"
       className="relative flex h-full w-full items-center justify-center overflow-hidden bg-[#ffe600] text-black"
     >
       <img

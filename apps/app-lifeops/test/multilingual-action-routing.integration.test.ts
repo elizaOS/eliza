@@ -6,7 +6,7 @@
  * utterances to the same subaction / operation as their English counterparts.
  *
  * Runs against a real AgentRuntime with a real LLM provider. Skips unless
- * `ELIZA_LIVE_TEST=1` (or `ELIZA_LIVE_TEST=1`) is set AND at least one
+ * `ELIZA_LIVE_TEST=1` is set AND at least one
  * provider API key is available — same gating as `lifeops-llm-extraction.live.test.ts`.
  *
  * WHY: Earlier heuristic routers used English-only regex. A Spanish user asking
@@ -44,7 +44,7 @@ try {
 }
 
 const LIVE_ENABLED =
-  process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
+  process.env.ELIZA_LIVE_TEST === "1";
 const provider = LIVE_ENABLED ? selectLiveProvider() : null;
 
 if (!LIVE_ENABLED || !provider) {

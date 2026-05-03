@@ -125,7 +125,6 @@ const FEATURE_PLUGINS: Record<string, string> = {
   browser: "@elizaos/plugin-browser",
   cua: "@elizaos/plugin-cua",
   obsidian: "@elizaos/plugin-obsidian",
-  cron: "@elizaos/plugin-cron",
   shell: "@elizaos/plugin-shell",
   executeCode: "@elizaos/plugin-executecode",
   imageGen: "@elizaos/plugin-image-generation",
@@ -153,6 +152,9 @@ const FEATURE_PLUGINS: Record<string, string> = {
 
 const EVM_PLUGIN_PACKAGE = "@elizaos/plugin-evm";
 const EVM_PLUGIN_SHORT_ID = "evm";
+
+const AGENT_WALLET_PLUGIN_PACKAGE = "@elizaos/plugin-agent-wallet";
+const AGENT_WALLET_PLUGIN_SHORT_ID = "agent-wallet";
 
 const STEWARD_ELIZA_PLUGIN_PACKAGE = "@stwd/eliza-plugin";
 const STEWARD_ELIZA_PLUGIN_SHORT_ID = "stwd-eliza-plugin";
@@ -457,6 +459,34 @@ export function applyPluginAutoEnable(
       changes,
       evmAutoEnableReason,
     );
+  }
+
+  if (env.ELIZA_AGENT_WALLET_AUTO_ENABLE !== "0") {
+    const solanaKeyReason =
+      typeof env.SOLANA_PRIVATE_KEY === "string" &&
+      env.SOLANA_PRIVATE_KEY.trim().length > 0
+        ? "env: SOLANA_PRIVATE_KEY"
+        : null;
+    const cloudStewardReason =
+      env.ELIZA_CLOUD_PROVISIONED === "1" &&
+      env.STEWARD_API_URL?.trim() &&
+      env.STEWARD_AGENT_TOKEN?.trim()
+        ? "cloud-provisioned Steward"
+        : null;
+    const agentWalletReason =
+      evmAutoEnableReason ?? solanaKeyReason ?? cloudStewardReason;
+    if (
+      agentWalletReason &&
+      pluginsConfig.entries[AGENT_WALLET_PLUGIN_SHORT_ID]?.enabled !== false
+    ) {
+      addToAllowlist(
+        pluginsConfig.allow,
+        AGENT_WALLET_PLUGIN_PACKAGE,
+        AGENT_WALLET_PLUGIN_SHORT_ID,
+        changes,
+        agentWalletReason,
+      );
+    }
   }
 
   // Auto-enable @stwd/eliza-plugin when Steward API is configured.

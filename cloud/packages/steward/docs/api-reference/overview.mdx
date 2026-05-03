@@ -1,0 +1,141 @@
+---
+title: "API Overview"
+description: "Authentication, base URL, and common patterns for the Steward REST API."
+---
+
+# API Overview
+
+The Steward API is a REST API built with [Hono](https://hono.dev) running on [Bun](https://bun.sh). All responses follow a consistent `ApiResponse<T>` shape.
+
+## Base URL
+
+```
+https://api.steward.fi
+```
+
+For self-hosted instances, replace with your deployment URL.
+
+## Authentication
+
+Steward supports three authentication methods:
+
+<Tabs>
+  <Tab title="Tenant API Key">
+    For tenant-level operations (agent CRUD, policy management, secret management):
+
+    ```bash
+    curl https://api.steward.fi/agents \
+      -H "X-Steward-Key: stwd_your_tenant_api_key"
+    ```
+
+    The API key is returned once when a tenant is created and cannot be retrieved again.
+  </Tab>
+  <Tab title="Agent JWT">
+    For agent-scoped operations (signing, balance checks). Preferred for agents:
+
+    ```bash
+    curl https://api.steward.fi/vault/my-agent/sign \
+      -H "Authorization: Bearer stwd_jwt_..."
+    ```
+
+    Generate agent tokens via `POST /agents/:agentId/token` (requires tenant auth).
+  </Tab>
+  <Tab title="SIWE (Sign In With Ethereum)">
+    For web dashboard authentication:
+
+    ```bash
+    # 1. Get nonce
+    curl https://api.steward.fi/auth/nonce
+
+    # 2. Sign message and verify
+    curl -X POST https://api.steward.fi/auth/verify \
+      -H "Content-Type: application/json" \
+      -d '{ "message": "...", "signature": "0x..." }'
+    ```
+
+    Returns a session JWT. Auto-creates a tenant on first sign-in.
+  </Tab>
+</Tabs>
+
+### Platform Key
+
+For platform-level operations (cross-tenant management), use the platform key:
+
+```bash
+curl https://api.steward.fi/platform/stats \
+  -H "X-Steward-Platform-Key: your-platform-key"
+```
+
+## Response Format
+
+All endpoints return a consistent format:
+
+```typescript
+// Success
+{
+  "ok": true,
+  "data": T  // Response payload
+}
+
+// Error
+{
+  "ok": false,
+  "error": "Human-readable error message",
+  "data"?: T  // Optional additional context (e.g., policy results)
+}
+```
+
+## HTTP Status Codes
+
+| Code | Meaning |
+|------|---------|
+| 200 | Success |
+| 201 | Created (new resource) |
+| 202 | Accepted (transaction queued for approval) |
+| 400 | Bad request (invalid input) |
+| 401 | Unauthorized (missing or invalid auth) |
+| 403 | Forbidden (policy denied, wrong scope) |
+| 404 | Not found |
+| 409 | Conflict (duplicate resource) |
+| 500 | Internal server error |
+| 502 | Bad gateway (RPC error from blockchain) |
+
+## Rate Limits
+
+The API does not currently enforce global rate limits. Per-agent rate limits are configured via [policies](/guides/policies).
+
+## Route Groups
+
+| Prefix | Description | Auth Required |
+|--------|-------------|---------------|
+| `/agents` | Agent CRUD + policy management | Tenant key or agent JWT |
+| `/vault` | Signing, approvals, history | Agent JWT or tenant key |
+| `/secrets` | Secret + route CRUD | Tenant key only |
+| `/tenants` | Tenant management | Tenant key |
+| `/auth` | SIWE, passkeys, email login | Varies |
+| `/platform` | Cross-tenant admin | Platform key |
+| `/health` | Health check | None |
+
+## Content Type
+
+All request bodies must be JSON:
+
+```
+Content-Type: application/json
+```
+
+## Error Handling
+
+```typescript
+import { StewardClient, StewardApiError } from "@stwd/sdk";
+
+try {
+  await steward.signTransaction("my-agent", { ... });
+} catch (error) {
+  if (error instanceof StewardApiError) {
+    console.error(`Status: ${error.status}`);
+    console.error(`Message: ${error.message}`);
+    console.error(`Data:`, error.data); // May contain policy results
+  }
+}
+```

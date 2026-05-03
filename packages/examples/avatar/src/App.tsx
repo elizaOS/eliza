@@ -412,7 +412,7 @@ export default function App() {
     const interval = setInterval(() => {
       const now = Date.now();
       setMessages((prev) =>
-        prev.filter((m) => !m.visibleUntil || m.visibleUntil > now),
+        prev.filter((m) => m.visibleUntil > now),
       );
     }, 1000);
     return () => clearInterval(interval);
@@ -447,7 +447,7 @@ export default function App() {
   // Get visible messages for chat bubble display
   const now = Date.now();
   const visibleMessages = messages.filter(
-    (m) => !m.visibleUntil || m.visibleUntil > now,
+    (m) => m.visibleUntil > now,
   );
 
   return (

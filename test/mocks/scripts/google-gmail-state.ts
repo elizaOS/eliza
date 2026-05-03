@@ -1268,7 +1268,7 @@ function googleOAuthSearchDirs(): string[] {
     return [path.join(explicitOAuthDir, "lifeops", "google")];
   }
   const stateDir =
-    process.env.ELIZA_STATE_DIR?.trim() ?? process.env.ELIZA_STATE_DIR?.trim();
+    process.env.ELIZA_STATE_DIR?.trim();
   return stateDir
     ? [path.join(stateDir, "credentials", "lifeops", "google")]
     : [];

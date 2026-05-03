@@ -5,7 +5,7 @@ This runbook covers deployment validation, monitoring, alerting inputs, and roll
 ## Preconditions
 
 - Build and tests pass for the life-ops suites.
-- API auth is configured for any non-loopback deployment via `ELIZA_API_TOKEN` or `ELIZA_API_TOKEN`.
+- API auth is configured for any non-loopback deployment via `ELIZA_API_TOKEN`.
 - Connector credentials are provided only through environment variables:
   - Google OAuth: `ELIZA_GOOGLE_OAUTH_*` or `ELIZA_GOOGLE_OAUTH_*`
   - Twilio: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`
@@ -44,7 +44,7 @@ The deploy workflow also runs this automatically on the app origin in [deploy-or
 
 - Live connector tests remain env-gated and will stay skipped until real Google/Twilio credentials and callback marker files are provided.
 - `smoke-lifeops` only validates capabilities that are actually granted. A Gmail-only Google grant should not be forced through Calendar routes, and a Calendar-only grant should not be forced through Gmail routes.
-- For auth-protected deployments, `ELIZA_SMOKE_API_TOKEN` or `ELIZA_SMOKE_API_TOKEN` must be populated in the deployment smoke environment.
+- For auth-protected deployments, `ELIZA_SMOKE_API_TOKEN` must be populated in the deployment smoke environment.
 - A green life-ops smoke run does not clear the workspace dependency audit. Use `bun run audit:deps` for the full advisory inventory and `bun run audit:deps:release` for the deployment gate.
 - As of April 4, 2026, the full audit still reports `GHSA-848j-6mx2-7j84` (`elliptic`) through `@elizaos/core` in `eliza-cloud-agent`. There is no newer published `elliptic` release to force, so the release gate is currently set to `moderate+` while that upstream low-severity advisory is tracked separately.
 

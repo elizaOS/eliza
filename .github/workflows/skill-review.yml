@@ -23,7 +23,11 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 1
-      - uses: anthropics/claude-code-action@v1
+      # Don't fail the workflow when the Anthropic API is unavailable
+      # (low credit balance, rate limit, transient outage). The bot review
+      # is best-effort; a missing review must not block CI.
+      - continue-on-error: true
+        uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           track_progress: true

@@ -239,7 +239,7 @@ export function validateAccepts(accepts: Partial<Accepts>): ValidationResult {
   if (accepts.outputSchema) {
     const schema = accepts.outputSchema;
 
-    if (!schema.input || schema.input.type !== "http") {
+    if (schema.input.type !== "http") {
       errors.push('outputSchema.input.type must be "http"');
     }
 

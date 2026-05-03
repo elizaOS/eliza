@@ -164,7 +164,7 @@ class VaultImpl implements Vault {
     if (ref.source !== "1password" && ref.source !== "protonpass") {
       throw new TypeError(`unsupported password manager: ${ref.source}`);
     }
-    if (!ref.path || ref.path.trim().length === 0) {
+    if (ref.path.trim().length === 0) {
       throw new TypeError("setReference: path required");
     }
     await this.mutate((s) =>

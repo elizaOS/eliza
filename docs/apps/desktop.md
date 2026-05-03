@@ -120,7 +120,7 @@ On startup, the Electrobun shell and `AgentManager` coordinate these steps:
 
 **`disabled` mode:** no auto-start; the renderer still targets the **expected** local API base for a process you manage yourself—set **`ELIZA_PORT`** / **`ELIZA_API_PORT`** to match that server.
 
-**CLI `eliza start` (non-Electrobun):** after `startApiServer` returns, Eliza syncs **`ELIZA_PORT`**, **`ELIZA_API_PORT`**, and **`ELIZA_PORT`** to the **actual** bound port. **Why:** if the HTTP stack falls forward to another port, shells and scripts reading env see the same port as **`/api/health`**.
+**CLI `eliza start` (non-Electrobun):** after `startApiServer` returns, Eliza syncs **`ELIZA_PORT`** and **`ELIZA_API_PORT`** to the **actual** bound port. **Why:** if the HTTP stack falls forward to another port, shells and scripts reading env see the same port as **`/api/health`**.
 
 ### Native application menu (e.g. macOS **Eliza** menu)
 

@@ -347,7 +347,7 @@ export class BotSdk {
   }
 
   private sendFrame(frame: ClientFrame): void {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+    if (this.ws.readyState !== WebSocket.OPEN) {
       throw new Error(
         `sendFrame: socket not open (state=${this.ws?.readyState})`,
       );

@@ -36,82 +36,19 @@ type StartedLiveServer = {
   port: number;
 };
 
-type WalletExportResponse = {
-  evm: {
-    address: string | null;
-    privateKey: string;
-  } | null;
-  solana: {
-    address: string | null;
-    privateKey: string;
-  } | null;
-};
-
-function readExportNonce(errorMessage: unknown): {
-  delaySeconds: number;
-  nonce: string;
-} {
-  if (typeof errorMessage !== "string" || errorMessage.length === 0) {
-    throw new Error(
-      "Wallet export nonce request did not return an error payload",
-    );
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(errorMessage);
-  } catch (error) {
-    throw new Error(
-      `Wallet export nonce response was not valid JSON: ${errorMessage}`,
-      { cause: error },
-    );
-  }
-
-  if (
-    !parsed ||
-    typeof parsed !== "object" ||
-    Array.isArray(parsed) ||
-    typeof parsed.nonce !== "string" ||
-    typeof parsed.delaySeconds !== "number"
-  ) {
-    throw new Error(
-      `Wallet export nonce response was malformed: ${errorMessage}`,
-    );
-  }
-
-  return {
-    nonce: parsed.nonce,
-    delaySeconds: parsed.delaySeconds,
-  };
-}
-
-async function exportWallet(
+async function assertWalletExportRemoved(
   port: number,
-  exportToken: string,
   headers: Record<string, string>,
-): Promise<WalletExportResponse> {
-  const { status: nonceStatus, data: nonceData } = await req(
+): Promise<void> {
+  const { status, data } = await req(
     port,
     "POST",
     "/api/wallet/export",
-    { confirm: true, exportToken, requestNonce: true },
+    { confirm: true, exportToken: "test-token" },
     headers,
   );
-  expect(nonceStatus).toBe(403);
-
-  const { delaySeconds, nonce } = readExportNonce(nonceData.error);
-  await sleep((delaySeconds + 1) * 1_000);
-
-  const { status: exportStatus, data: exportData } = await req(
-    port,
-    "POST",
-    "/api/wallet/export",
-    { confirm: true, exportToken, exportNonce: nonce },
-    headers,
-  );
-  expect(exportStatus).toBe(200);
-
-  return exportData as WalletExportResponse;
+  expect(status).toBe(410);
+  expect(String((data as { error?: string }).error ?? "")).toContain("removed");
 }
 
 async function postConversationMessageWithRetry(
@@ -413,7 +350,7 @@ describeIf(CAN_RUN)(
       expect(text.toLowerCase()).toContain("auth");
     }, 120_000);
 
-    it("step 9: wallet generate + export round-trip with auth", async () => {
+    it("step 9: wallet generate + export endpoint removed with auth", async () => {
       const { status: genStatus, data: genData } = await req(
         server?.port ?? 0,
         "POST",
@@ -442,15 +379,7 @@ describeIf(CAN_RUN)(
         wallets[0].address.toLowerCase(),
       );
 
-      const exported = await exportWallet(
-        server?.port ?? 0,
-        EXPORT_TOKEN,
-        authHeaders,
-      );
-      const evm = exported.evm;
-      expect(evm).not.toBeNull();
-      expect(evm.address?.toLowerCase()).toBe(wallets[0].address.toLowerCase());
-      expect(evm.privateKey.startsWith("0x")).toBe(true);
+      await assertWalletExportRemoved(server?.port ?? 0, authHeaders);
     });
 
     it("step 10: agent stop with auth", async () => {
@@ -601,7 +530,7 @@ describeIf(CAN_RUN)("Live: Auth + CORS + wallet combined", () => {
     expect(status).toBe(403);
   });
 
-  it("wallet import + export through auth works with real keys", async () => {
+  it("wallet import works; export endpoint is removed", async () => {
     const auth = { Authorization: `Bearer ${API_TOKEN}` };
     const importedKey = process.env.EVM_PRIVATE_KEY;
 
@@ -618,10 +547,6 @@ describeIf(CAN_RUN)("Live: Auth + CORS + wallet combined", () => {
     expect(importStatus).toBe(200);
     expect(importData.ok).toBe(true);
 
-    const exported = await exportWallet(server?.port ?? 0, EXPORT_TOKEN, auth);
-    const evm = exported.evm;
-    expect(evm).not.toBeNull();
-    expect(evm.privateKey).toBe(importedKey);
-    expect(evm.address).toBe(importData.address);
+    await assertWalletExportRemoved(server?.port ?? 0, auth);
   });
 });

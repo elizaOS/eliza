@@ -187,11 +187,11 @@ function loadTasks(args: CliArgs): TaskDefinition[] {
   const tasksDir = join(__dirname, "tasks");
   const files: Array<{ path: string; type: string }> = [];
 
-  if (!args.type || args.type === "research") {
+  if (args.type === "research") {
     const p = join(tasksDir, "research-tasks.json");
     if (existsSync(p)) files.push({ path: p, type: "research" });
   }
-  if (!args.type || args.type === "coding") {
+  if (args.type === "coding") {
     const p = join(tasksDir, "coding-tasks.json");
     if (existsSync(p)) files.push({ path: p, type: "coding" });
   }

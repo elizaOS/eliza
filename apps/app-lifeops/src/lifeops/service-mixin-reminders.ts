@@ -64,17 +64,14 @@ import {
   shouldRunNightCheckinFromSleepCycle,
 } from "./checkin/sleep-cycle-dispatch.js";
 import {
+  type ContactRoutePurpose,
+  resolveContactRouteCandidates,
+} from "./contact-route-policy.js";
+import {
   computeAdaptiveWindowPolicy,
   resolveDefaultTimeZone,
   windowPolicyMatchesDefaults,
 } from "./defaults.js";
-import {
-  DEFAULT_MORNING_WINDOW,
-  DEFAULT_NIGHT_WINDOW,
-  type EnforcementWindow,
-  getCurrentEnforcementWindow,
-  minutesPastWindowStart,
-} from "./enforcement-windows.js";
 import { materializeDefinitionOccurrences } from "./engine.js";
 import { refreshLifeOpsRelativeTime } from "./relative-time.js";
 import {
@@ -129,6 +126,7 @@ import {
   REMINDER_PREFERENCE_SCOPE_METADATA_KEY,
   REMINDER_REVIEW_AFTER_MINUTES_METADATA_KEY,
   REMINDER_REVIEW_AT_METADATA_KEY,
+  REMINDER_REVIEW_CLASSIFIER_SOURCE_METADATA_KEY,
   REMINDER_REVIEW_DECISION_METADATA_KEY,
   REMINDER_REVIEW_ESCALATED_AT_METADATA_KEY,
   REMINDER_REVIEW_ESCALATED_ATTEMPT_ID_METADATA_KEY,
@@ -136,6 +134,7 @@ import {
   REMINDER_REVIEW_REASON_METADATA_KEY,
   REMINDER_REVIEW_RESPONDED_AT_METADATA_KEY,
   REMINDER_REVIEW_RESPONSE_TEXT_METADATA_KEY,
+  REMINDER_REVIEW_SEMANTIC_REASON_METADATA_KEY,
   REMINDER_REVIEW_STATUS_METADATA_KEY,
 } from "./service-constants.js";
 import {
@@ -146,18 +145,21 @@ import {
 import { computeDefinitionPerformance } from "./service-helpers-occurrence.js";
 import {
   applyReminderIntensityToPlan,
+  buildReminderEnforcementState,
   buildReminderResponseClaim,
-  classifyReminderOwnerResponseText,
+  classifyReminderOwnerResponse,
   decideReminderReviewTransition,
   isReminderReviewClosed,
   normalizeReminderIntensityInput,
-  rankReminderEscalationChannelCandidates,
+  parseReminderOwnerResponseSemanticClassification,
+  type ReminderRouteCandidate,
   readReminderAttemptLifecycle,
+  readReminderEscalationProfile,
   readReminderPreferenceSettingFromMetadata,
   readReminderReviewAt,
   resolveReminderDeliveryUrgency,
   resolveReminderEscalationDelayMinutes,
-  resolveReminderEscalationRoutingPolicy,
+  resolveReminderEscalationProfileDecision,
   resolveReminderReviewDelayMinutes,
   shouldDeferReminderUntilComputerActive,
   shouldDeliverReminderForIntensity,
@@ -191,42 +193,6 @@ import {
   sendTwilioSms,
   sendTwilioVoiceCall,
 } from "./twilio.js";
-
-/**
- * State computed once per reminder dispatch cycle describing whether
- * the owner is inside a morning/night routine enforcement window and
- * how far past the window start we are. Used to shorten escalation
- * gaps and force alarm-level channels for routine occurrences.
- */
-export interface ReminderEnforcementState {
-  window: EnforcementWindow;
-  minutesPastStart: number;
-  /** True if the definition represents a morning/night routine. */
-  definitionIsRoutine: boolean;
-  /** True if Twilio voice credentials are available for alarm escalation. */
-  twilioVoiceAvailable: boolean;
-}
-
-/**
- * Given a "normal" delay in minutes between reminder steps and the
- * current enforcement state, return the effective delay. Inside an
- * active enforcement window for a routine definition, once more than
- * 10 minutes have elapsed past the window start, the gap is halved.
- */
-export function applyEnforcementOverrides(
-  normalDelayMinutes: number,
-  state: ReminderEnforcementState | null,
-): { delayMinutes: number; forceVoice: boolean } {
-  if (!state || state.window.kind === "none" || !state.definitionIsRoutine) {
-    return { delayMinutes: normalDelayMinutes, forceVoice: false };
-  }
-  let delay = normalDelayMinutes;
-  if (state.minutesPastStart > 10) {
-    delay = Math.max(1, Math.floor(normalDelayMinutes / 2));
-  }
-  const forceVoice = state.twilioVoiceAvailable && state.minutesPastStart > 20;
-  return { delayMinutes: delay, forceVoice };
-}
 
 type AdaptiveWindowProfile = Pick<
   ActivityProfile,
@@ -289,59 +255,6 @@ function buildAdaptiveWindowProfile(args: {
   return Object.values(adaptiveProfile).some((value) => value !== null)
     ? adaptiveProfile
     : null;
-}
-
-/**
- * Determine whether a task/routine definition should trigger enforcement
- * overrides inside a morning/night window.
- */
-export function definitionTriggersEnforcement(
-  definition:
-    | Pick<LifeOpsTaskDefinition, "kind" | "metadata">
-    | null
-    | undefined,
-): boolean {
-  if (!definition) return false;
-  if (
-    definition.kind === "morning_routine" ||
-    definition.kind === "night_routine"
-  ) {
-    return true;
-  }
-  const metadata = definition.metadata as
-    | Record<string, unknown>
-    | null
-    | undefined;
-  if (metadata && metadata.enforceRoutineWindow === true) return true;
-  return false;
-}
-
-/**
- * Build the enforcement state for a dispatch. Callers pass the relevant
- * definition (may be null for calendar events) and the owner's timezone.
- */
-export function buildReminderEnforcementState(
-  now: Date,
-  timezone: string,
-  definition:
-    | Pick<LifeOpsTaskDefinition, "kind" | "metadata">
-    | null
-    | undefined,
-  twilioVoiceAvailable: boolean,
-  windows?: EnforcementWindow[],
-): ReminderEnforcementState {
-  const window = getCurrentEnforcementWindow(
-    now,
-    timezone,
-    windows ?? [DEFAULT_MORNING_WINDOW, DEFAULT_NIGHT_WINDOW],
-  );
-  const minutesPast = minutesPastWindowStart(now, timezone, window);
-  return {
-    window,
-    minutesPastStart: minutesPast,
-    definitionIsRoutine: definitionTriggersEnforcement(definition),
-    twilioVoiceAvailable,
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -565,24 +478,6 @@ const LIFEOPS_OWNER_CONTACTS_LOAD_CONTEXT = {
   envPrefix: "LIFEOPS_OWNER_",
 } as const;
 
-// Reminder-specific helpers
-
-function isReminderChannel(value: unknown): value is LifeOpsReminderChannel {
-  return (
-    typeof value === "string" &&
-    (value === "in_app" ||
-      value === "email" ||
-      value === "telegram" ||
-      value === "discord" ||
-      value === "signal" ||
-      value === "whatsapp" ||
-      value === "imessage" ||
-      value === "sms" ||
-      value === "voice" ||
-      value === "push")
-  );
-}
-
 function isDeliveredReminderOutcome(
   outcome: LifeOpsReminderAttemptOutcome,
 ): boolean {
@@ -707,6 +602,52 @@ function normalizeGeneratedReminderBody(value: string): string | null {
 function normalizeGeneratedWorkflowBody(value: string): string | null {
   const cleaned = value.replace(/^["'`]+|["'`]+$/g, "").trim();
   return cleaned.length > 0 ? cleaned : null;
+}
+
+function parseJsonObjectFromModelText(
+  value: string,
+): Record<string, unknown> | null {
+  const trimmed = value.trim();
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/u);
+  const candidate = fenced?.[1]?.trim() ?? trimmed;
+  try {
+    const parsed = JSON.parse(candidate);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    const start = candidate.indexOf("{");
+    const end = candidate.lastIndexOf("}");
+    if (start < 0 || end <= start) {
+      return null;
+    }
+    try {
+      const parsed = JSON.parse(candidate.slice(start, end + 1));
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : null;
+    } catch {
+      return null;
+    }
+  }
+}
+
+function serializeContactRouteCandidates(
+  candidates: readonly ReminderRouteCandidate[],
+): Array<{
+  channel: LifeOpsReminderChannel;
+  score: number;
+  evidence: string[];
+  vetoReasons: string[];
+  interruptionBudget: string;
+}> {
+  return candidates.map((candidate) => ({
+    channel: candidate.channel,
+    score: candidate.score,
+    evidence: candidate.evidence,
+    vetoReasons: candidate.vetoReasons,
+    interruptionBudget: candidate.interruptionBudget,
+  }));
 }
 
 function formatNearbyReminderTitlesForPrompt(titles: string[]): string {
@@ -947,6 +888,63 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       }
     }
 
+    public async classifyReminderOwnerResponseSemantically(input: {
+      text: string;
+      context?: {
+        title?: string | null;
+        attemptedAt?: string | null;
+        respondedAt?: string | number | Date | null;
+        channel?: LifeOpsReminderChannel | null;
+        allowStandaloneResolution?: boolean;
+      };
+    }) {
+      if (typeof this.runtime.useModel !== "function") {
+        return null;
+      }
+      const context = input.context ?? {};
+      const prompt = [
+        "Classify whether the owner reply resolves one specific reminder.",
+        "Return one JSON object only. Do not include markdown.",
+        "",
+        "Allowed decisions:",
+        '- {"decision":"explicit_resolution","resolution":"completed|acknowledged|skipped|snoozed","snoozeRequest":null,"confidence":0.0,"reason":"short_reason"}',
+        '- {"decision":"needs_clarification","resolution":null,"snoozeRequest":null,"confidence":0.0,"reason":"short_reason"}',
+        '- {"decision":"unrelated","resolution":null,"snoozeRequest":null,"confidence":0.0,"reason":"short_reason"}',
+        '- {"decision":"abstain","resolution":null,"snoozeRequest":null,"confidence":0.0,"reason":"short_reason"}',
+        "",
+        "Use abstain when the reply is ambiguous, context-heavy, or you cannot confidently bind it to the reminder.",
+        "Only resolve standalone replies like done/yes/later when the context says standalone resolution is allowed.",
+        'For snoozed, include snoozeRequest as {"minutes":30} or {"preset":"15m|30m|1h|tonight|tomorrow_morning"}; otherwise ask for clarification.',
+        "",
+        "Reminder context:",
+        JSON.stringify({
+          title: context.title ?? null,
+          attemptedAt: context.attemptedAt ?? null,
+          respondedAt:
+            context.respondedAt instanceof Date
+              ? context.respondedAt.toISOString()
+              : (context.respondedAt ?? null),
+          channel: context.channel ?? null,
+          allowStandaloneResolution: context.allowStandaloneResolution ?? null,
+        }),
+        "",
+        "Owner reply:",
+        input.text,
+      ].join("\n");
+      try {
+        const response = await this.runtime.useModel(ModelType.TEXT_SMALL, {
+          prompt,
+        });
+        if (typeof response !== "string") {
+          return null;
+        }
+        const parsed = parseJsonObjectFromModelText(response);
+        return parseReminderOwnerResponseSemanticClassification(parsed);
+      } catch {
+        return null;
+      }
+    }
+
     public async reviewOwnerResponseAfterReminderAttempt(args: {
       subjectType: LifeOpsSubjectType;
       attempt: LifeOpsReminderAttempt;
@@ -964,6 +962,8 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       responseText: string | null;
       confidence: number;
       reason: string;
+      classifierSource?: string;
+      semanticReason?: string | null;
     }> {
       const noResponse = {
         decision: "no_response" as const,
@@ -973,6 +973,8 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         responseText: null,
         confidence: 0,
         reason: "no_owner_response",
+        classifierSource: "none",
+        semanticReason: null,
       };
       if (
         args.subjectType !== "owner" ||
@@ -1039,6 +1041,17 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
           args.competingAttempts && args.competingAttempts.length > 0
             ? args.competingAttempts
             : [args.attempt];
+        let latestUnrelated: {
+          decision: "unrelated";
+          resolution: null;
+          snoozeRequest: null;
+          respondedAt: string;
+          responseText: string;
+          confidence: number;
+          reason: string;
+          classifierSource?: string;
+          semanticReason?: string | null;
+        } | null = null;
         for (const response of ownerResponses) {
           const responseClaim = buildReminderResponseClaim({
             attempt: args.attempt,
@@ -1050,9 +1063,9 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
             },
             roomIds,
           });
-          const classification = classifyReminderOwnerResponseText(
-            response.text,
-            {
+          const classification = await classifyReminderOwnerResponse({
+            text: response.text,
+            context: {
               title,
               attemptedAt,
               respondedAt: response.createdAt,
@@ -1060,7 +1073,9 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
               allowStandaloneResolution:
                 responseClaim.allowStandaloneResolution,
             },
-          );
+            semanticClassifier: (input) =>
+              this.classifyReminderOwnerResponseSemantically(input),
+          });
           if (classification.decision === "explicit_resolution") {
             return {
               decision: "explicit_resolution",
@@ -1070,6 +1085,8 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
               responseText: response.text,
               confidence: classification.confidence,
               reason: classification.reason,
+              classifierSource: classification.classifierSource,
+              semanticReason: classification.semanticReason ?? null,
             };
           }
           if (classification.decision === "needs_clarification") {
@@ -1081,19 +1098,35 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
               responseText: response.text,
               confidence: classification.confidence,
               reason: classification.reason,
+              classifierSource: classification.classifierSource,
+              semanticReason: classification.semanticReason ?? null,
             };
           }
+          latestUnrelated = {
+            decision: "unrelated",
+            resolution: null,
+            snoozeRequest: null,
+            respondedAt: new Date(response.createdAt).toISOString(),
+            responseText: response.text,
+            confidence: classification.confidence,
+            reason: classification.reason,
+            classifierSource: classification.classifierSource,
+            semanticReason: classification.semanticReason ?? null,
+          };
         }
-        const latest = ownerResponses.at(-1);
-        return {
-          decision: "unrelated",
-          resolution: null,
-          snoozeRequest: null,
-          respondedAt: latest ? new Date(latest.createdAt).toISOString() : null,
-          responseText: latest?.text ?? null,
-          confidence: 0.4,
-          reason: "owner_responded_without_explicit_reminder_resolution",
-        };
+        return (
+          latestUnrelated ?? {
+            decision: "unrelated",
+            resolution: null,
+            snoozeRequest: null,
+            respondedAt: null,
+            responseText: null,
+            confidence: 0.4,
+            reason: "owner_responded_without_explicit_reminder_resolution",
+            classifierSource: "none",
+            semanticReason: null,
+          }
+        );
       } catch {
         return noResponse;
       }
@@ -1248,12 +1281,18 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         workflow,
         run,
       });
+      const routeMetadata = await this.buildOwnerContactRouteEventMetadata({
+        purpose: "workflow",
+        urgency: run.status === "success" ? "medium" : "high",
+        now: new Date(),
+      });
       this.emitAssistantEvent(message, "lifeops-workflow", {
         workflowId: workflow.id,
         workflowTitle: workflow.title,
         workflowRunId: run.id,
         status: run.status,
         subjectType: workflow.subjectType,
+        ...routeMetadata,
       });
     }
 
@@ -2274,7 +2313,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       } catch (error) {
         this.logLifeOpsWarn(
           "reminder_activity_profile",
-          "[lifeops] Failed to read proactive activity profile; using connector order for reminder escalation.",
+          "[lifeops] Failed to read proactive activity profile; using connector order for owner contact routing.",
           {
             error: lifeOpsErrorMessage(error),
           },
@@ -2408,13 +2447,14 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       return rows;
     }
 
-    public async resolveReminderEscalationRouteCandidates(args: {
+    public async resolveOwnerContactRouteCandidates(args: {
+      purpose?: ContactRoutePurpose;
       activityProfile: ReminderActivityProfileSnapshot | null;
       policies: LifeOpsChannelPolicy[];
       urgency: LifeOpsReminderUrgency;
       attempts?: LifeOpsReminderAttempt[];
+      now?: Date;
     }) {
-      const candidates = [];
       const ownerContacts = loadOwnerContactsConfig(
         LIFEOPS_OWNER_CONTACTS_LOAD_CONTEXT,
       );
@@ -2422,137 +2462,81 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         this.runtime,
         ownerContacts,
       );
-      const nowMs = Date.now();
-      const failureCooldownMs = 6 * 60 * 60_000;
-      const hasRecentChannelFailure = (
-        channel: LifeOpsReminderChannel,
-      ): boolean =>
-        (args.attempts ?? []).some((attempt) => {
-          if (attempt.channel !== channel) {
-            return false;
-          }
-          if (
-            attempt.outcome !== "blocked_connector" &&
-            attempt.outcome !== "blocked_policy"
-          ) {
-            return false;
-          }
-          const attemptedMs = attempt.attemptedAt
-            ? Date.parse(attempt.attemptedAt)
-            : Number.NaN;
-          return (
-            Number.isFinite(attemptedMs) &&
-            nowMs - attemptedMs <= failureCooldownMs
-          );
-        });
-      const policyWeightAdjustments: Partial<
-        Record<LifeOpsReminderChannel, number>
-      > = {};
-      for (const policy of args.policies) {
-        const channel = isReminderChannel(policy.channelType)
-          ? policy.channelType
-          : null;
-        if (!channel) continue;
-        const weight = policy.metadata.routingWeight;
-        if (typeof weight === "number" && Number.isFinite(weight)) {
-          policyWeightAdjustments[channel] =
-            (policyWeightAdjustments[channel] ?? 0) + weight;
-        }
-      }
-      const evaluateCandidate = async (
-        candidate:
-          | ReturnType<typeof rankReminderEscalationChannelCandidates>[number]
-          | null,
-      ): Promise<void> => {
-        if (
-          !candidate ||
-          candidates.some((resolvedCandidate) => {
-            return resolvedCandidate.channel === candidate.channel;
-          })
-        ) {
-          return;
-        }
-        const vetoReasons: string[] = [];
-        const channel = candidate.channel;
-        if (!isReminderChannelAllowedForUrgency(channel, args.urgency)) {
-          vetoReasons.push("urgency_policy");
-        }
-        if (args.urgency !== "critical" && hasRecentChannelFailure(channel)) {
-          vetoReasons.push("recent_channel_failure");
-        }
-        if (
-          channel !== "in_app" &&
-          routingPolicy.interruptionBudget === "low"
-        ) {
-          vetoReasons.push("attention_budget_low");
-        }
-        if (vetoReasons.length > 0) {
-          candidates.push({ ...candidate, vetoReasons });
-          return;
-        }
-        if (channel === "in_app") {
-          candidates.push({ ...candidate, vetoReasons });
-          return;
-        }
-        const policy = await this.resolvePrimaryChannelPolicy(channel);
-        if (policy) {
-          if (policy.metadata.disableReminderRouting === true) {
-            vetoReasons.push("channel_policy_disabled");
-            candidates.push({ ...candidate, vetoReasons });
-            return;
-          }
-          if (!policy.allowReminders || !policy.allowEscalation) {
-            vetoReasons.push("channel_policy_blocks_escalation");
-            candidates.push({ ...candidate, vetoReasons });
-            return;
-          }
-        } else if (channel === "sms" || channel === "voice") {
-          vetoReasons.push("missing_required_direct_policy");
-          candidates.push({ ...candidate, vetoReasons });
-          return;
-        }
-        if (channel === "sms" || channel === "voice") {
-          candidates.push({ ...candidate, vetoReasons });
-          return;
-        }
-        if (typeof this.runtime.sendMessageToTarget !== "function") {
-          vetoReasons.push("runtime_target_send_unavailable");
-          candidates.push({ ...candidate, vetoReasons });
-          return;
-        }
-        const runtimeTarget = await this.resolveRuntimeReminderTarget(
-          channel,
-          policy,
-          ownerContacts,
-          ownerContactHints,
-        );
-        if (runtimeTarget !== null) {
-          candidates.push({ ...candidate, vetoReasons });
-        } else {
-          candidates.push({
-            ...candidate,
-            vetoReasons: ["runtime_target_missing"],
-          });
-        }
-      };
-
-      const routingPolicy = resolveReminderEscalationRoutingPolicy({
-        activityProfile: args.activityProfile,
-        urgency: args.urgency,
-      });
-      const rankedCandidates = rankReminderEscalationChannelCandidates({
+      return resolveContactRouteCandidates({
+        purpose: args.purpose,
         activityProfile: args.activityProfile,
         ownerContactHints,
         ownerContactSources: Object.keys(ownerContacts),
-        policyChannels: args.policies.map((policy) => policy.channelType),
-        policyChannelWeightAdjustments: policyWeightAdjustments,
+        policies: args.policies,
         urgency: args.urgency,
-        routingPolicy,
+        attempts: args.attempts,
+        now: args.now,
+        callbacks: {
+          runtimeTargetSendAvailable:
+            typeof this.runtime.sendMessageToTarget === "function",
+          resolvePrimaryChannelPolicy: (channel) =>
+            this.resolvePrimaryChannelPolicy(channel),
+          hasRuntimeTarget: async (channel, policy) =>
+            (await this.resolveRuntimeReminderTarget(
+              channel,
+              policy,
+              ownerContacts,
+              ownerContactHints,
+            )) !== null,
+        },
       });
-      for (const candidate of rankedCandidates) {
-        await evaluateCandidate(candidate);
+    }
+
+    public async resolveReminderEscalationRouteCandidates(args: {
+      activityProfile: ReminderActivityProfileSnapshot | null;
+      policies: LifeOpsChannelPolicy[];
+      urgency: LifeOpsReminderUrgency;
+      attempts?: LifeOpsReminderAttempt[];
+      now?: Date;
+    }) {
+      return this.resolveOwnerContactRouteCandidates({
+        ...args,
+        purpose: "reminder_escalation",
+      });
+    }
+
+    public async buildOwnerContactRouteEventMetadata(args: {
+      purpose: ContactRoutePurpose;
+      urgency: LifeOpsReminderUrgency;
+      now: Date;
+    }): Promise<Record<string, unknown>> {
+      try {
+        const [activityProfile, policies] = await Promise.all([
+          this.readReminderActivityProfileSnapshot(),
+          this.repository.listChannelPolicies(this.agentId()),
+        ]);
+        const candidates = await this.resolveOwnerContactRouteCandidates({
+          purpose: args.purpose,
+          activityProfile,
+          policies,
+          urgency: args.urgency,
+          attempts: [],
+          now: args.now,
+        });
+        return {
+          contactRoutePurpose: args.purpose,
+          contactRouteCandidates: serializeContactRouteCandidates(candidates),
+        };
+      } catch (error) {
+        this.logLifeOpsWarn(
+          "owner_contact_route_metadata",
+          "[lifeops] Failed to resolve owner contact route metadata.",
+          {
+            purpose: args.purpose,
+            error: lifeOpsErrorMessage(error),
+          },
+        );
+        return {
+          contactRoutePurpose: args.purpose,
+          contactRouteCandidates: [],
+          contactRouteError: lifeOpsErrorMessage(error),
+        };
       }
-      return candidates;
     }
 
     public async resolveReminderEscalationChannels(args: {
@@ -2560,6 +2544,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       policies: LifeOpsChannelPolicy[];
       urgency: LifeOpsReminderUrgency;
       attempts?: LifeOpsReminderAttempt[];
+      now?: Date;
     }): Promise<LifeOpsReminderChannel[]> {
       const candidates =
         await this.resolveReminderEscalationRouteCandidates(args);
@@ -2764,6 +2749,8 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       snoozeRequest: SnoozeLifeOpsOccurrenceRequest | null;
       confidence: number;
       reason: string;
+      classifierSource?: string | null;
+      semanticReason?: string | null;
     }): Promise<void> {
       if (args.resolution === "snoozed") {
         if (args.ownerType !== "occurrence" || !args.snoozeRequest) {
@@ -2773,6 +2760,8 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
             respondedAt: args.respondedAt,
             responseText: args.responseText,
             reason: "snooze_resolution_missing_reschedulable_occurrence",
+            classifierSource: args.classifierSource,
+            semanticReason: args.semanticReason,
           });
           return;
         }
@@ -2784,6 +2773,10 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         [REMINDER_REVIEW_RESPONSE_TEXT_METADATA_KEY]: args.responseText,
         reviewConfidence: args.confidence,
         reviewReason: args.reason,
+        [REMINDER_REVIEW_CLASSIFIER_SOURCE_METADATA_KEY]:
+          args.classifierSource ?? null,
+        [REMINDER_REVIEW_SEMANTIC_REASON_METADATA_KEY]:
+          args.semanticReason ?? null,
       };
       const acknowledgementNote = args.responseText
         ? `Owner replied: ${args.responseText}`
@@ -2934,6 +2927,8 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       respondedAt: string | null;
       responseText: string | null;
       reason: string;
+      classifierSource?: string | null;
+      semanticReason?: string | null;
     }): Promise<void> {
       const reviewMetadata = {
         [REMINDER_REVIEW_STATUS_METADATA_KEY]: args.decision,
@@ -2941,6 +2936,10 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         [REMINDER_REVIEW_RESPONDED_AT_METADATA_KEY]: args.respondedAt,
         [REMINDER_REVIEW_RESPONSE_TEXT_METADATA_KEY]: args.responseText,
         reviewReason: args.reason,
+        [REMINDER_REVIEW_CLASSIFIER_SOURCE_METADATA_KEY]:
+          args.classifierSource ?? null,
+        [REMINDER_REVIEW_SEMANTIC_REASON_METADATA_KEY]:
+          args.semanticReason ?? null,
       };
       await this.repository.updateReminderAttemptOutcome(
         args.attempt.id,
@@ -3242,19 +3241,19 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       if (!previousAttempt) {
         return null;
       }
-      const twilioVoiceAvailable = readTwilioCredentialsFromEnv() !== null;
+      const escalationProfile = readReminderEscalationProfile(args.definition);
       const enforcementState = buildReminderEnforcementState(
         args.now,
         args.timezone,
         args.definition,
-        twilioVoiceAvailable,
+        { voice: readTwilioCredentialsFromEnv() !== null },
       );
-      let forceVoice =
-        args.urgency === "critical" &&
-        enforcementState?.twilioVoiceAvailable &&
-        enforcementState.definitionIsRoutine &&
-        enforcementState.window.kind !== "none" &&
-        enforcementState.minutesPastStart > 20;
+      let forceChannel = resolveReminderEscalationProfileDecision({
+        normalDelayMinutes: null,
+        state: enforcementState,
+        urgency: args.urgency,
+        profile: escalationProfile,
+      }).forceChannel;
       let scheduledFor = reviewDue ? reviewAt : null;
       if (!scheduledFor) {
         const baseDelayMinutes = resolveReminderEscalationDelayMinutes(
@@ -3265,15 +3264,16 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         if (baseDelayMinutes === null) {
           return null;
         }
-        const enforcement = applyEnforcementOverrides(
-          baseDelayMinutes,
-          enforcementState,
-        );
-        forceVoice =
-          forceVoice || (args.urgency === "critical" && enforcement.forceVoice);
+        const enforcement = resolveReminderEscalationProfileDecision({
+          normalDelayMinutes: baseDelayMinutes,
+          state: enforcementState,
+          urgency: args.urgency,
+          profile: escalationProfile,
+        });
+        forceChannel = forceChannel ?? enforcement.forceChannel;
         scheduledFor = addMinutes(
           new Date(previousAttempt.attemptedAt ?? previousAttempt.scheduledFor),
-          enforcement.delayMinutes,
+          enforcement.delayMinutes ?? baseDelayMinutes,
         ).toISOString();
       }
       if (Date.parse(scheduledFor) > nowMs) {
@@ -3304,6 +3304,8 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
             snoozeRequest: reviewTransition.snoozeRequest,
             confidence: reviewTransition.confidence,
             reason: reviewTransition.reason,
+            classifierSource: reviewTransition.classifierSource,
+            semanticReason: reviewTransition.semanticReason,
           });
           return null;
         }
@@ -3314,6 +3316,8 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
             respondedAt: reviewTransition.observation.respondedAt,
             responseText: reviewTransition.observation.responseText,
             reason: reviewTransition.observation.reason,
+            classifierSource: reviewTransition.observation.classifierSource,
+            semanticReason: reviewTransition.observation.semanticReason,
           });
           const clarificationAttempt = await this.dispatchReminderAttempt({
             plan: args.plan,
@@ -3358,6 +3362,8 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
             respondedAt: reviewTransition.observation.respondedAt,
             responseText: reviewTransition.observation.responseText,
             reason: reviewTransition.observation.reason,
+            classifierSource: reviewTransition.observation.classifierSource,
+            semanticReason: reviewTransition.observation.semanticReason,
           });
         }
       }
@@ -3378,6 +3384,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         policies: args.policies,
         urgency: args.urgency,
         attempts: ownerAttempts,
+        now: args.now,
       });
       const attemptedChannels = new Set(
         ownerAttempts.map((attempt) => attempt.channel),
@@ -3402,11 +3409,11 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         nextChannel = previousAttempt.channel;
       }
       if (
-        forceVoice &&
-        nextChannel !== "voice" &&
-        candidateChannels.includes("voice")
+        forceChannel &&
+        nextChannel !== forceChannel &&
+        candidateChannels.includes(forceChannel)
       ) {
-        nextChannel = "voice";
+        nextChannel = forceChannel;
       }
       if (!nextChannel) {
         return null;
@@ -5030,6 +5037,11 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
           kind === "morning"
             ? await service.runMorningCheckin({ now: args.now, timezone })
             : await service.runNightCheckin({ now: args.now, timezone });
+        const routeMetadata = await this.buildOwnerContactRouteEventMetadata({
+          purpose: "checkin",
+          urgency: report.escalationLevel >= 2 ? "high" : "medium",
+          now: args.now,
+        });
         this.emitAssistantEvent(report.summaryText, "lifeops-checkin", {
           checkinKind: kind,
           reportId: report.reportId,
@@ -5039,6 +5051,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
           bedtimeTargetAt: currentSchedule.relativeTime.bedtimeTargetAt,
           minutesUntilBedtimeTarget:
             currentSchedule.relativeTime.minutesUntilBedtimeTarget,
+          ...routeMetadata,
         });
       };
 

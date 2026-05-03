@@ -2,8 +2,8 @@
 /**
  * Benchmark Comparison Tool
  *
- * Reads JSON result files from all three runtimes and generates
- * a side-by-side comparison report with relative performance ratios.
+ * Reads JSON benchmark result files and generates a comparison report
+ * with relative performance ratios (typically TypeScript-only now).
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";

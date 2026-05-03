@@ -67,7 +67,6 @@ Les plugins principaux sont toujours chargés et chacun fournit un ou plusieurs 
 | `knowledge` | Knowledge service | Indexation et récupération de connaissances RAG |
 | `trajectories` | `trajectories` | Capture de trajectoires de débogage et d'entraînement RL |
 | `@elizaos/plugin-agent-orchestrator` | Orchestrator service | Coordination et génération de tâches multi-agents |
-| `@elizaos/plugin-cron` | Cron service | Exécution de tâches planifiées |
 | `@elizaos/plugin-shell` | Shell service | Exécution de commandes shell avec contrôles de sécurité |
 | `@elizaos/plugin-agent-skills` | `AGENT_SKILLS_SERVICE` | Chargement et exécution du catalogue de compétences |
 | `@elizaos/plugin-commands` | Commands service | Gestion des commandes slash (les compétences s'enregistrent automatiquement en tant que /commands) |

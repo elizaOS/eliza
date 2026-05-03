@@ -1,0 +1,382 @@
+---
+title: "Vault"
+description: "Transaction signing, approval flows, history, and key management endpoints."
+---
+
+# Vault API
+
+The Vault API handles all signing operations — EVM transactions, EIP-712 typed data, Solana transactions, and the approval/rejection flow.
+
+## Sign Transaction (EVM)
+
+Sign and optionally broadcast an EVM transaction. The transaction is evaluated against the agent's policies before signing.
+
+```
+POST /vault/:agentId/sign
+```
+
+**Auth:** Agent JWT
+
+**Request Body:**
+
+```typescript
+{
+  to: string;          // Destination address (0x...)
+  value: string;       // Wei amount as string
+  data?: string;       // Calldata (hex string)
+  chainId?: number;    // Chain ID (default: server's active chain, typically 8453)
+  broadcast?: boolean; // Broadcast after signing (default: true)
+}
+```
+
+**Success Response (200):**
+
+```json
+{
+  "ok": true,
+  "data": {
+    "txId": "550e8400-e29b-41d4-a716-446655440000",
+    "txHash": "0x8d7592b1a2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7"
+  }
+}
+```
+
+**Pending Approval Response (202):**
+
+```json
+{
+  "ok": false,
+  "error": "Transaction requires manual approval",
+  "data": {
+    "txId": "550e8400-...",
+    "results": [
+      { "type": "auto-approve-threshold", "passed": false, "reason": "Value exceeds threshold" }
+    ],
+    "status": "pending_approval"
+  }
+}
+```
+
+**Policy Denied Response (403):**
+
+```json
+{
+  "ok": false,
+  "error": "Transaction rejected by policy",
+  "data": {
+    "txId": "550e8400-...",
+    "results": [
+      { "type": "spending-limit", "passed": false, "reason": "Exceeds daily limit" }
+    ]
+  }
+}
+```
+
+<CodeGroup>
+```typescript SDK
+const result = await steward.signTransaction("my-agent", {
+  to: "0xDEX_ROUTER",
+  value: "50000000000000000",
+  chainId: 8453,
+});
+
+if ("txHash" in result) {
+  console.log("Broadcast:", result.txHash);
+} else if ("status" in result) {
+  console.log("Queued for approval");
+}
+```
+
+```bash cURL
+curl -X POST https://api.steward.fi/vault/my-agent/sign \
+  -H "Authorization: Bearer agent-jwt" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to": "0xDEX_ROUTER",
+    "value": "50000000000000000",
+    "chainId": 8453
+  }'
+```
+</CodeGroup>
+
+---
+
+## Sign Typed Data (EIP-712)
+
+Sign structured data using `eth_signTypedData_v4`. Used for DEX approvals, ERC-20 permits, and other typed signatures.
+
+```
+POST /vault/:agentId/sign-typed-data
+```
+
+**Auth:** Agent JWT
+
+**Request Body:**
+
+```typescript
+{
+  domain: {
+    name?: string;
+    version?: string;
+    chainId?: number;
+    verifyingContract?: string;
+  };
+  types: Record<string, Array<{ name: string; type: string }>>;
+  primaryType: string;
+  value: Record<string, unknown>;
+}
+```
+
+**Response:**
+
+```json
+{
+  "ok": true,
+  "data": {
+    "signature": "0x...",
+    "txId": "550e8400-..."
+  }
+}
+```
+
+<CodeGroup>
+```typescript SDK
+const result = await steward.signTypedData("my-agent", {
+  domain: {
+    name: "USDC",
+    version: "2",
+    chainId: 8453,
+    verifyingContract: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+  },
+  types: {
+    Permit: [
+      { name: "owner", type: "address" },
+      { name: "spender", type: "address" },
+      { name: "value", type: "uint256" },
+      { name: "nonce", type: "uint256" },
+      { name: "deadline", type: "uint256" },
+    ],
+  },
+  primaryType: "Permit",
+  value: {
+    owner: "0x742d35Cc...",
+    spender: "0xDEX_ROUTER",
+    value: "1000000",
+    nonce: 0,
+    deadline: Math.floor(Date.now() / 1000) + 3600,
+  },
+});
+```
+</CodeGroup>
+
+---
+
+## Sign Solana Transaction
+
+Sign a serialized Solana transaction and optionally broadcast it.
+
+```
+POST /vault/:agentId/sign-solana
+```
+
+**Auth:** Agent JWT
+
+**Request Body:**
+
+```typescript
+{
+  transaction: string; // Base64-encoded serialized Solana transaction
+  to: string;          // Recipient address (for policy evaluation)
+  value: string;       // Lamports as string (for policy evaluation)
+  chainId?: number;    // 101 = mainnet, 102 = devnet (default: 101)
+  broadcast?: boolean; // Broadcast after signing (default: true)
+}
+```
+
+**Response:**
+
+```json
+{
+  "ok": true,
+  "data": {
+    "txId": "550e8400-...",
+    "signature": "5KtP2dN8...",
+    "broadcast": true,
+    "chainId": 101,
+    "caip2": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+  }
+}
+```
+
+---
+
+## Approve Transaction
+
+Manually approve a pending transaction from the approval queue.
+
+```
+POST /vault/:agentId/approve/:txId
+```
+
+**Auth:** Tenant API key (agents cannot approve their own transactions)
+
+**Response:**
+
+```json
+{
+  "ok": true,
+  "data": {
+    "txId": "550e8400-...",
+    "txHash": "0x8d7592b..."
+  }
+}
+```
+
+---
+
+## Reject Transaction
+
+Reject a pending transaction.
+
+```
+POST /vault/:agentId/reject/:txId
+```
+
+**Auth:** Tenant API key
+
+---
+
+## Pending Approvals
+
+List transactions awaiting manual approval.
+
+```
+GET /vault/:agentId/pending
+```
+
+**Auth:** Agent JWT or tenant key
+
+**Response:**
+
+```json
+{
+  "ok": true,
+  "data": [
+    {
+      "queueId": "queue-uuid",
+      "status": "pending",
+      "requestedAt": "2026-03-26T15:08:00Z",
+      "transaction": {
+        "id": "550e8400-...",
+        "toAddress": "0xDEX_ROUTER",
+        "value": "100000000000000000",
+        "chainId": 8453,
+        "policyResults": [/* ... */]
+      }
+    }
+  ]
+}
+```
+
+---
+
+## Transaction History
+
+List all transactions for an agent.
+
+```
+GET /vault/:agentId/history
+```
+
+**Auth:** Agent JWT or tenant key
+
+<CodeGroup>
+```typescript SDK
+const history = await steward.getHistory("my-agent");
+```
+
+```bash cURL
+curl https://api.steward.fi/vault/my-agent/history \
+  -H "Authorization: Bearer agent-jwt"
+```
+</CodeGroup>
+
+---
+
+## Get Addresses
+
+List all wallet addresses across chain families.
+
+```
+GET /vault/:agentId/addresses
+```
+
+**Auth:** Agent JWT or tenant key
+
+<CodeGroup>
+```typescript SDK
+const addresses = await steward.getAddresses("my-agent");
+```
+
+```bash cURL
+curl https://api.steward.fi/vault/my-agent/addresses \
+  -H "Authorization: Bearer agent-jwt"
+```
+</CodeGroup>
+
+---
+
+## Import Key
+
+Import an existing private key into the vault.
+
+```
+POST /vault/:agentId/import
+```
+
+**Auth:** Tenant API key only
+
+**Request Body:**
+
+```typescript
+{
+  privateKey: string;  // Raw private key
+  chain: "evm" | "solana";
+}
+```
+
+<Warning>
+  Key import requires tenant-level authentication. The imported key is immediately encrypted. The plaintext is never stored or logged.
+</Warning>
+
+---
+
+## RPC Passthrough
+
+Proxy read-only RPC calls to the appropriate chain provider.
+
+```
+POST /vault/:agentId/rpc
+```
+
+**Auth:** Agent JWT
+
+**Request Body:**
+
+```typescript
+{
+  method: string;     // RPC method (e.g., "eth_getBalance")
+  params?: unknown[]; // Method parameters
+  chainId: number;    // Target chain
+}
+```
+
+<CodeGroup>
+```typescript SDK
+const result = await steward.rpcPassthrough("my-agent", {
+  method: "eth_getBalance",
+  params: ["0x742d35Cc...", "latest"],
+  chainId: 8453,
+});
+```
+</CodeGroup>
