@@ -21,10 +21,16 @@ export async function validateTelegramConfig(
   runtime: IAgentRuntime,
 ): Promise<TelegramConfig | null> {
   try {
+    const rawToken = runtime.getSetting('TELEGRAM_BOT_TOKEN');
+    const fromRuntime =
+      typeof rawToken === 'string' && rawToken.trim()
+        ? rawToken.trim()
+        : '';
+    const fromEnv = process.env.TELEGRAM_BOT_TOKEN;
     const config = {
       TELEGRAM_BOT_TOKEN:
-        runtime.getSetting('TELEGRAM_BOT_TOKEN') ||
-        process.env.TELEGRAM_BOT_TOKEN,
+        fromRuntime ||
+        (typeof fromEnv === 'string' && fromEnv.trim() ? fromEnv.trim() : ''),
     };
 
     return telegramEnvSchema.parse(config);
