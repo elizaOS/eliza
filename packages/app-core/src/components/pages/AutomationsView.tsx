@@ -69,9 +69,12 @@ import {
   type Conversation,
   isMissingCredentialsResponse,
   isNeedsClarificationResponse,
+  type N8nClarificationRequest,
+  type N8nClarificationTargetGroup,
   type N8nStatusResponse,
   type N8nWorkflow,
   type N8nWorkflowMissingCredential,
+  type N8nWorkflowNeedsClarificationResponse,
   type N8nWorkflowWriteRequest,
   type TriggerSummary,
   type WorkbenchTask,
@@ -91,6 +94,7 @@ import { formatDateTime, formatDurationMs } from "../../utils/format";
 // (warning: "reexported through module ... while both modules are
 // dependencies of each other"); the direct import skips it.
 import { WidgetHost } from "../../widgets/WidgetHost";
+import { ChoiceWidget } from "../chat/widgets/ChoiceWidget";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import {
   AppWorkspaceChrome,
@@ -1677,6 +1681,185 @@ function TaskForm() {
         )}
       </div>
     </PagePanel>
+  );
+}
+
+/**
+ * Render a single clarification ("Which channel in Cozy Devs?") with a row
+ * of quick-pick buttons drawn from the catalog. Falls back to a hint when
+ * the catalog has no entries for the clarification's platform/scope (e.g.
+ * the user only configured Discord but the LLM asked about Slack), since
+ * the user has nothing to pick from in that case.
+ */
+function ClarificationPanel({
+  state,
+  onChoose,
+  onDismiss,
+}: {
+  state: {
+    response: N8nWorkflowNeedsClarificationResponse;
+    currentIndex: number;
+    busy: boolean;
+    error?: string;
+  };
+  onChoose: (paramPath: string, value: string) => void;
+  onDismiss: () => void;
+}) {
+  const current = state.response.clarifications[state.currentIndex];
+  if (!current) return null;
+
+  const options = optionsForClarification(state.response.catalog, current);
+  // Stable id derived from the paramPath so React preserves selection state
+  // across renders and the ChoiceWidget's internal "locked after first
+  // click" semantics behave correctly.
+  const choiceId = `n8n-clarification-${current.paramPath || "free-text"}`;
+
+  return (
+    <PagePanel
+      variant="padded"
+      className="mb-4 border border-accent/40 bg-accent/5"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="space-y-2 min-w-0 flex-1">
+          <p className="text-sm font-semibold text-txt">{current.question}</p>
+          {state.response.clarifications.length > 1 ? (
+            <p className="text-2xs text-muted">
+              Step {state.currentIndex + 1} of{" "}
+              {state.response.clarifications.length}
+            </p>
+          ) : null}
+          {options.length > 0 ? (
+            <ChoiceWidget
+              id={choiceId}
+              scope="n8n-clarification"
+              options={options}
+              onChoose={(value) => {
+                if (state.busy) return;
+                onChoose(current.paramPath, value);
+              }}
+            />
+          ) : (
+            <ClarificationFreeTextInput
+              busy={state.busy}
+              onSubmit={(value) => onChoose(current.paramPath, value)}
+              placeholderHint={current.platform}
+            />
+          )}
+          {state.error ? (
+            <p className="text-2xs text-danger">{state.error}</p>
+          ) : null}
+          {state.busy ? (
+            <p className="text-2xs text-muted">Applying choice…</p>
+          ) : null}
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-muted hover:text-txt"
+          onClick={onDismiss}
+          disabled={state.busy}
+        >
+          Cancel
+        </Button>
+      </div>
+    </PagePanel>
+  );
+}
+
+/**
+ * Filter the catalog snapshot down to the picker options for one
+ * clarification. Channel pickers narrow to a single guild via
+ * `scope.guildId`. Server pickers list one entry per group. Free-text and
+ * value clarifications fall back to a text input (returns []).
+ */
+function optionsForClarification(
+  catalog: ReadonlyArray<N8nClarificationTargetGroup>,
+  clarification: N8nClarificationRequest,
+): Array<{ value: string; label: string }> {
+  const platform = clarification.platform;
+  if (!platform) return [];
+  const groups = catalog.filter((g) => g.platform === platform);
+  if (groups.length === 0) return [];
+
+  switch (clarification.kind) {
+    case "target_server":
+      return groups.map((g) => ({
+        value: g.groupId,
+        label: g.groupName,
+      }));
+    case "target_channel": {
+      const guildId = clarification.scope?.guildId;
+      const scoped = guildId
+        ? groups.filter((g) => g.groupId === guildId)
+        : groups;
+      const out: Array<{ value: string; label: string }> = [];
+      for (const g of scoped) {
+        for (const t of g.targets) {
+          if (t.kind !== "channel") continue;
+          // When we have multiple guilds in scope, prefix the label so the
+          // user can disambiguate same-named channels.
+          const label =
+            scoped.length > 1 ? `${g.groupName}/#${t.name}` : `#${t.name}`;
+          out.push({ value: t.id, label });
+        }
+      }
+      return out;
+    }
+    case "recipient": {
+      const out: Array<{ value: string; label: string }> = [];
+      for (const g of groups) {
+        for (const t of g.targets) {
+          if (t.kind !== "recipient") continue;
+          out.push({ value: t.id, label: t.name });
+        }
+      }
+      return out;
+    }
+    default:
+      return [];
+  }
+}
+
+function ClarificationFreeTextInput({
+  busy,
+  onSubmit,
+  placeholderHint,
+}: {
+  busy: boolean;
+  onSubmit: (value: string) => void;
+  placeholderHint?: string;
+}) {
+  const [value, setValue] = useState("");
+  const trimmed = value.trim();
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (busy || trimmed.length === 0) return;
+        onSubmit(trimmed);
+      }}
+      className="mt-1 flex items-center gap-2"
+    >
+      <Input
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder={
+          placeholderHint
+            ? `Enter a value for ${placeholderHint}…`
+            : "Type your answer…"
+        }
+        disabled={busy}
+        className="h-8 text-xs"
+      />
+      <Button
+        type="submit"
+        size="sm"
+        variant="outline"
+        disabled={busy || trimmed.length === 0}
+      >
+        Apply
+      </Button>
+    </form>
   );
 }
 
@@ -4369,6 +4552,18 @@ function AutomationsLayout() {
   const [missingCredentials, setMissingCredentials] = useState<
     N8nWorkflowMissingCredential[] | null
   >(null);
+  // Active clarification state — populated when /generate or
+  // /resolve-clarification returns `needs_clarification`. The draft is the
+  // unmodified workflow JSON the route returned; clarifications drive the
+  // ChoiceWidget renders below; catalog supplies the picker options;
+  // currentIndex chains successive pickers (server-then-channel etc.) by
+  // surfacing one clarification at a time.
+  const [clarification, setClarification] = useState<{
+    response: N8nWorkflowNeedsClarificationResponse;
+    currentIndex: number;
+    busy: boolean;
+    error?: string;
+  } | null>(null);
   const [workflowBusyId, setWorkflowBusyId] = useState<string | null>(null);
   const [workflowOpsBusy, setWorkflowOpsBusy] = useState(false);
   const [activeWorkflowConversation, setActiveWorkflowConversation] =
@@ -4727,6 +4922,7 @@ function AutomationsLayout() {
       setWorkflowOpsBusy(true);
       setPageNotice(null);
       setMissingCredentials(null);
+      setClarification(null);
       try {
         const result = await client.generateN8nWorkflow({
           prompt,
@@ -4739,9 +4935,11 @@ function AutomationsLayout() {
           return null;
         }
         if (isNeedsClarificationResponse(result)) {
-          setPageNotice(
-            "Workflow needs more details before it can deploy. Continue in the chat to clarify.",
-          );
+          setClarification({
+            response: result,
+            currentIndex: 0,
+            busy: false,
+          });
           return null;
         }
         if (conversation) {
@@ -4760,6 +4958,54 @@ function AutomationsLayout() {
     },
     [bindConversationToWorkflow, ctx, selectWorkflowById],
   );
+
+  // Resolve one clarification by posting the picked value to
+  // /resolve-clarification. The route either returns the next pending
+  // clarification (chained pickers) or a fully-deployed workflow.
+  const resolveClarificationChoice = useCallback(
+    async (paramPath: string, value: string): Promise<void> => {
+      setClarification((prev) =>
+        prev ? { ...prev, busy: true, error: undefined } : prev,
+      );
+      try {
+        const draftRecord = clarification?.response.draft as
+          | (Record<string, unknown> & { id?: string; name?: string })
+          | undefined;
+        if (!draftRecord) return;
+        const result = await client.resolveN8nClarification({
+          draft: draftRecord,
+          resolutions: [{ paramPath, value }],
+        });
+        if (isMissingCredentialsResponse(result)) {
+          setClarification(null);
+          setMissingCredentials(result.missingCredentials);
+          return;
+        }
+        if (isNeedsClarificationResponse(result)) {
+          setClarification({
+            response: result,
+            currentIndex: 0,
+            busy: false,
+          });
+          return;
+        }
+        // Successful deploy — refresh, select, and clear the panel.
+        setClarification(null);
+        await ctx.refreshAutomations();
+        selectWorkflowById(result.id);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setClarification((prev) =>
+          prev ? { ...prev, busy: false, error: message } : prev,
+        );
+      }
+    },
+    [clarification, ctx, selectWorkflowById],
+  );
+
+  const dismissClarification = useCallback(() => {
+    setClarification(null);
+  }, []);
 
   const createWorkflowDraft = useCallback(
     async (options?: { initialPrompt?: string; title?: string }) => {
@@ -5453,6 +5699,14 @@ function AutomationsLayout() {
             </div>
           </PagePanel>
         )}
+
+        {clarification ? (
+          <ClarificationPanel
+            state={clarification}
+            onChoose={resolveClarificationChoice}
+            onDismiss={dismissClarification}
+          />
+        ) : null}
 
         {(pageNotice || combinedError) && (
           <PagePanel

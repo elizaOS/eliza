@@ -12,6 +12,7 @@ import type {
   N8nWorkflow,
   N8nWorkflowGenerateRequest,
   N8nWorkflowGenerateResponse,
+  N8nWorkflowResolveClarificationRequest,
   N8nWorkflowWriteRequest,
 } from "./client-types-chat";
 
@@ -31,6 +32,9 @@ declare module "./client-base" {
     ): Promise<N8nWorkflow>;
     generateN8nWorkflow(
       request: N8nWorkflowGenerateRequest,
+    ): Promise<N8nWorkflowGenerateResponse>;
+    resolveN8nClarification(
+      request: N8nWorkflowResolveClarificationRequest,
     ): Promise<N8nWorkflowGenerateResponse>;
     activateN8nWorkflow(id: string): Promise<N8nWorkflow>;
     deactivateN8nWorkflow(id: string): Promise<N8nWorkflow>;
@@ -103,6 +107,24 @@ ElizaClient.prototype.generateN8nWorkflow = async function (
   // the backend would have succeeded a few seconds later.
   return this.fetch<N8nWorkflowGenerateResponse>(
     "/api/n8n/workflows/generate",
+    {
+      method: "POST",
+      body: JSON.stringify(request),
+    },
+    { timeoutMs: 120_000 },
+  );
+};
+
+ElizaClient.prototype.resolveN8nClarification = async function (
+  this: ElizaClient,
+  request: N8nWorkflowResolveClarificationRequest,
+): Promise<N8nWorkflowGenerateResponse> {
+  // Patch + deploy is server-side and synchronous from the user's view, but
+  // it still runs validateAndRepair + a deploy round-trip. Reuse the same
+  // generous timeout as the generate call so a slow n8n write does not
+  // surface as a misleading "Request timed out" toast.
+  return this.fetch<N8nWorkflowGenerateResponse>(
+    "/api/n8n/workflows/resolve-clarification",
     {
       method: "POST",
       body: JSON.stringify(request),
