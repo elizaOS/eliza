@@ -646,11 +646,22 @@ export class CacheClient {
     this.enabled = env.CACHE_ENABLED !== "false";
 
     if (!this.enabled) {
-      if (env.NODE_ENV === "production") {
+      // CACHE_DISABLE_REASON acknowledges an intentional disable
+      // (e.g. CF Workers cross-request I/O isolation incompatibility while
+      // CacheClient remains a module-level singleton). When set, downgrade
+      // the production log to warn so monitoring dashboards do not
+      // alert on every cold start.
+      const disableReason = env.CACHE_DISABLE_REASON;
+      if (env.NODE_ENV === "production" && !disableReason) {
         logger.error(
           "🚨 [Cache] CRITICAL: Caching disabled in production! " +
             "This will cause severe performance degradation. " +
-            "Set CACHE_ENABLED=true and configure Redis credentials.",
+            "Set CACHE_ENABLED=true and configure Redis credentials, " +
+            "or set CACHE_DISABLE_REASON to acknowledge the disable.",
+        );
+      } else if (disableReason) {
+        logger.warn(
+          `[Cache] Caching is disabled (acknowledged): ${disableReason}`,
         );
       } else {
         logger.warn("[Cache] Caching is disabled via CACHE_ENABLED flag");
