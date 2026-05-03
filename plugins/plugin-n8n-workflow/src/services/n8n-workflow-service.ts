@@ -21,19 +21,27 @@ import {
   correctOptionParameters,
   detectUnknownParameters,
   ensureExpressionPrefix,
+  injectMissingCredentialBlocks,
 } from '../utils/workflow';
 import { resolveCredentials } from '../utils/credentialResolver';
+import { validateAndRepair } from '../utils/validateAndRepair';
+import { fixWorkflowErrors } from '../utils/generation';
 import type {
   N8nWorkflow,
   N8nWorkflowResponse,
   N8nExecution,
   WorkflowCreationResult,
   N8nCredentialStoreApi,
+  NodeDefinition,
+  RuntimeContext,
+  TriggerContext,
 } from '../types/index';
 import {
   N8N_CREDENTIAL_STORE_TYPE,
   N8N_CREDENTIAL_PROVIDER_TYPE,
+  N8N_RUNTIME_CONTEXT_PROVIDER_TYPE,
   isCredentialProvider,
+  isRuntimeContextProvider,
   UnsupportedIntegrationError,
 } from '../types/index';
 
@@ -161,16 +169,69 @@ export class N8nWorkflowService extends Service {
     return this.serviceConfig;
   }
 
-  async generateWorkflowDraft(prompt: string): Promise<N8nWorkflow> {
+  /**
+   * Query the optional `n8n_runtime_context_provider` service for runtime
+   * facts to inject into the workflow-generation prompt. The host (e.g. Milady)
+   * uses this to surface real Discord guild/channel IDs, the user's Gmail
+   * email, and which credential types it can resolve. Returns `undefined`
+   * when no provider is registered or the call throws — generation proceeds
+   * with the baseline prompt.
+   */
+  private async fetchRuntimeContext(
+    nodeDefs: NodeDefinition[],
+    userId: string,
+    triggerContext?: TriggerContext
+  ): Promise<RuntimeContext | undefined> {
+    const raw = this.runtime.getService(N8N_RUNTIME_CONTEXT_PROVIDER_TYPE);
+    const provider = isRuntimeContextProvider(raw) ? raw : null;
+    if (!provider) {
+      return undefined;
+    }
+    const relevantCredTypes = [
+      ...new Set(nodeDefs.flatMap((n) => (n.credentials ?? []).map((c) => c.name))),
+    ];
+    try {
+      return await provider.getRuntimeContext({
+        userId,
+        relevantNodes: nodeDefs,
+        relevantCredTypes,
+        ...(triggerContext ? { triggerContext } : {}),
+      });
+    } catch (err) {
+      logger.warn(
+        {
+          src: 'plugin:n8n-workflow:service:main',
+          err: err instanceof Error ? err.message : String(err),
+        },
+        'RuntimeContextProvider threw — generating without runtime facts'
+      );
+      return undefined;
+    }
+  }
+
+  async generateWorkflowDraft(
+    prompt: string,
+    opts?: { userId?: string; triggerContext?: TriggerContext }
+  ): Promise<N8nWorkflow> {
     logger.info(
       { src: 'plugin:n8n-workflow:service:main' },
       'Generating workflow draft from prompt'
     );
 
-    const keywords = await extractKeywords(this.runtime, prompt);
+    // Fetch host-supplied bias hints early (before keyword extraction) so the
+    // LLM is told which providers the host already knows it can satisfy.
+    // We pass empty `relevantNodes` / `relevantCredTypes` here because we do
+    // not yet have searchNodes results — `preferredProviders` is derived from
+    // the host's connector config alone (independent of node search). The
+    // full runtime context (with credentials + facts) is fetched again later
+    // once we have the filtered node list.
+    const earlyContext = await this.fetchRuntimeContext([], opts?.userId ?? 'local');
+    const preferredProviders = earlyContext?.preferredProviders;
+
+    const keywords = await extractKeywords(this.runtime, prompt, preferredProviders);
     logger.debug(
       { src: 'plugin:n8n-workflow:service:main' },
-      `Extracted keywords: ${keywords.join(', ')}`
+      `Extracted keywords: ${keywords.join(', ')}${preferredProviders?.length ? ` (with bias: ${preferredProviders.join(', ')})` : ''}`
     );
 
     let relevantNodes = searchNodes(keywords, 15);
@@ -235,15 +296,85 @@ export class N8nWorkflowService extends Service {
     }
     // ── End integration check ──
 
-    let workflow = await generateWorkflow(
-      this.runtime,
-      prompt,
-      relevantNodes.map((r) => r.node)
+    const finalNodeDefs = relevantNodes.map((r) => r.node);
+    const runtimeContext = await this.fetchRuntimeContext(
+      finalNodeDefs,
+      opts?.userId ?? 'local',
+      opts?.triggerContext
     );
+
+    let workflow = await generateWorkflow(this.runtime, prompt, finalNodeDefs, runtimeContext);
     logger.debug(
       { src: 'plugin:n8n-workflow:service:main' },
       `Generated workflow with ${workflow.nodes?.length || 0} nodes`
     );
+
+    // Safety net: even with the MANDATORY INVARIANT prompt rule, the LLM
+    // sometimes omits the `credentials` block on credentialed nodes. Inject
+    // it deterministically based on the node's catalog definition + the
+    // host's supported cred types so resolveCredentials can mint the
+    // credential server-side instead of falling back to a manual UI step.
+    const injectedCreds = injectMissingCredentialBlocks(
+      workflow,
+      finalNodeDefs,
+      runtimeContext
+    );
+    if (injectedCreds > 0) {
+      logger.debug(
+        { src: 'plugin:n8n-workflow:service:main' },
+        `Injected ${injectedCreds} missing credentials block(s) (LLM omitted)`
+      );
+    }
+
+    // Layer 1+3 (Session 21): deterministic pre-deploy validation pass with
+    // bounded LLM-retry. Catches typeVersion hallucinations, missing
+    // parameters.authentication, output-field case mismatches (Subject vs
+    // subject), node-name collisions, and dangling connection edges. When
+    // an error can't be auto-fixed deterministically, fixWorkflowErrors
+    // sends a surgical fix prompt to the LLM. Cap at 3 retries to bound
+    // worst-case cost.
+    //
+    // Fetch the live n8n runtime's node-type registry once per deploy so
+    // typeVersion clamping intersects catalog ∩ runtime — necessary
+    // because the bundled `defaultNodes.json` can be ahead of the user's
+    // actually-installed n8n binary (e.g. catalog says Gmail v2.2 but
+    // runtime only ships up to v2.1).
+    const generateClient = this.getClient();
+    const runtimeVersions =
+      (await generateClient.getRuntimeNodeTypeVersions()) ?? undefined;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const repairResult = validateAndRepair(workflow, finalNodeDefs, runtimeContext, runtimeVersions);
+      workflow = repairResult.workflow;
+      if (repairResult.errors.length === 0) break;
+      if (attempt === 2) {
+        logger.warn(
+          { src: 'plugin:n8n-workflow:service:main', errors: repairResult.errors },
+          `validateAndRepair: ${repairResult.errors.length} unrecoverable error(s) after 3 retries — proceeding to deploy with _meta.errors`
+        );
+        workflow._meta = workflow._meta ?? {};
+        const errorLines = repairResult.errors.map(
+          (e) => `${e.node}: ${e.detail}${e.availableFields?.length ? ` (available: ${e.availableFields.join(', ')})` : ''}`
+        );
+        const existing = workflow._meta.requiresClarification ?? [];
+        workflow._meta.requiresClarification = [...existing, ...errorLines];
+        break;
+      }
+      try {
+        workflow = await fixWorkflowErrors(
+          this.runtime,
+          workflow,
+          repairResult.errors,
+          finalNodeDefs
+        );
+      } catch (err) {
+        logger.warn(
+          { src: 'plugin:n8n-workflow:service:main', err: err instanceof Error ? err.message : String(err) },
+          'fixWorkflowErrors threw — exiting retry loop'
+        );
+        break;
+      }
+    }
+
 
     normalizeTriggerSimpleParam(workflow);
 
@@ -302,7 +433,8 @@ export class N8nWorkflowService extends Service {
 
   async modifyWorkflowDraft(
     existingWorkflow: N8nWorkflow,
-    modificationRequest: string
+    modificationRequest: string,
+    opts?: { userId?: string; triggerContext?: TriggerContext }
   ): Promise<N8nWorkflow> {
     logger.info(
       { src: 'plugin:n8n-workflow:service:main' },
@@ -332,12 +464,76 @@ export class N8nWorkflowService extends Service {
       `Modify context: ${existingDefs.length} existing + ${newDefs.length} searched → ${combinedDefs.length} unique node defs`
     );
 
+    const runtimeContext = await this.fetchRuntimeContext(
+      combinedDefs,
+      opts?.userId ?? 'local',
+      opts?.triggerContext
+    );
+
     let workflow = await modifyWorkflow(
       this.runtime,
       existingWorkflow,
       modificationRequest,
-      combinedDefs
+      combinedDefs,
+      runtimeContext
     );
+
+    // Safety net: same deterministic credential-block injection as
+    // generateWorkflowDraft. Modification regenerations are equally prone
+    // to dropping the credentials block.
+    const injectedCreds = injectMissingCredentialBlocks(
+      workflow,
+      combinedDefs,
+      runtimeContext
+    );
+    if (injectedCreds > 0) {
+      logger.debug(
+        { src: 'plugin:n8n-workflow:service:main' },
+        `Injected ${injectedCreds} missing credentials block(s) on modify (LLM omitted)`
+      );
+    }
+
+    // Layer 1+3 (Session 21): mirror the validate-and-repair retry loop on
+    // the modify path. Modifications can drift in the same ways generations
+    // do (typeVersion hallucination, missing authentication, etc.) so the
+    // gate must run here too. Same runtime-version intersect as the
+    // generate path — fetch once, reuse across all 3 retry attempts.
+    const modifyClient = this.getClient();
+    const runtimeVersionsForModify =
+      (await modifyClient.getRuntimeNodeTypeVersions()) ?? undefined;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const repairResult = validateAndRepair(workflow, combinedDefs, runtimeContext, runtimeVersionsForModify);
+      workflow = repairResult.workflow;
+      if (repairResult.errors.length === 0) break;
+      if (attempt === 2) {
+        logger.warn(
+          { src: 'plugin:n8n-workflow:service:main', errors: repairResult.errors },
+          `validateAndRepair (modify): ${repairResult.errors.length} unrecoverable error(s) after 3 retries`
+        );
+        workflow._meta = workflow._meta ?? {};
+        const errorLines = repairResult.errors.map(
+          (e) => `${e.node}: ${e.detail}${e.availableFields?.length ? ` (available: ${e.availableFields.join(', ')})` : ''}`
+        );
+        const existing = workflow._meta.requiresClarification ?? [];
+        workflow._meta.requiresClarification = [...existing, ...errorLines];
+        break;
+      }
+      try {
+        workflow = await fixWorkflowErrors(
+          this.runtime,
+          workflow,
+          repairResult.errors,
+          combinedDefs
+        );
+      } catch (err) {
+        logger.warn(
+          { src: 'plugin:n8n-workflow:service:main', err: err instanceof Error ? err.message : String(err) },
+          'fixWorkflowErrors (modify) threw — exiting retry loop'
+        );
+        break;
+      }
+    }
+
 
     normalizeTriggerSimpleParam(workflow);
 

@@ -6,6 +6,7 @@ import type {
   WorkflowValidationResult,
   OutputRefValidation,
   SchemaContent,
+  RuntimeContext,
 } from '../types/index';
 import { getNodeDefinition, simplifyNodeForLLM } from './catalog';
 import {
@@ -732,6 +733,113 @@ export function detectUnknownParameters(workflow: N8nWorkflow): UnknownParamDete
  * Without =, n8n treats {{ }} as literal text.
  * Returns the number of values prefixed.
  */
+/**
+ * Deterministically attach a `credentials` block to every node that requires
+ * one. Runs after LLM generation as a safety net: even with a hardened
+ * `MANDATORY INVARIANT` rule in the system prompt, the LLM occasionally omits
+ * the block — and resolveCredentials only fires when a block is present, so
+ * an omission means the credential never gets minted server-side and the user
+ * has to wire it in n8n's UI.
+ *
+ * Selection rule:
+ *  1. Skip nodes that already have at least one credentials entry.
+ *  2. Look up the node's catalog definition. If `def.credentials` is empty,
+ *     the node doesn't need credentials — skip.
+ *  3. Pick the first credential type from `def.credentials` that:
+ *     - is listed in `runtimeContext.supportedCredentials.nodeTypes` for
+ *       this node's type, AND
+ *     - matches the node's `parameters.authentication` (when the credential's
+ *       displayOptions.show.authentication is set; otherwise unconditional).
+ *  4. Inject `node.credentials = { [credType]: { id: "{{CREDENTIAL_ID}}", name } }`.
+ *     The plugin's `resolveCredentials` later replaces `{{CREDENTIAL_ID}}` with
+ *     the real n8n credential id.
+ *
+ * Returns the number of nodes that received an injected block (for logging).
+ */
+export function injectMissingCredentialBlocks(
+  workflow: N8nWorkflow,
+  relevantNodes: NodeDefinition[],
+  runtimeContext: RuntimeContext | undefined
+): number {
+  if (!runtimeContext?.supportedCredentials?.length) {
+    return 0;
+  }
+  // Build supportedCredType-by-nodeType lookup. Each supportedCredential entry
+  // applies to one or more node types; flip that map so we can ask
+  // "for this node type, which cred types does the host support?".
+  const supportedByNodeType = new Map<string, Map<string, string>>();
+  for (const sc of runtimeContext.supportedCredentials) {
+    for (const nodeType of sc.nodeTypes) {
+      if (!supportedByNodeType.has(nodeType)) {
+        supportedByNodeType.set(nodeType, new Map());
+      }
+      supportedByNodeType.get(nodeType)!.set(sc.credType, sc.friendlyName);
+    }
+  }
+  if (supportedByNodeType.size === 0) {
+    return 0;
+  }
+  const defByType = new Map(relevantNodes.map((n) => [n.name, n]));
+  let injected = 0;
+  for (const node of workflow.nodes) {
+    if (
+      node.credentials &&
+      Object.keys(node.credentials).length > 0
+    ) {
+      continue;
+    }
+    const def = defByType.get(node.type);
+    if (!def?.credentials?.length) {
+      continue;
+    }
+    const supportedForType = supportedByNodeType.get(node.type);
+    if (!supportedForType?.size) {
+      continue;
+    }
+    // Resolve which credential type matches this node's authentication choice.
+    // n8n nodes typically gate credentials by `displayOptions.show.authentication`
+    // (e.g. discord's discordBotApi shows when authentication=botToken).
+    const auth =
+      typeof node.parameters?.authentication === 'string'
+        ? (node.parameters.authentication as string)
+        : null;
+    const candidate = def.credentials.find((c) => {
+      if (!supportedForType.has(c.name)) {
+        return false;
+      }
+      const showOpts = (c.displayOptions as
+        | { show?: { authentication?: string[] } }
+        | undefined)?.show;
+      if (showOpts?.authentication && showOpts.authentication.length > 0) {
+        return auth ? showOpts.authentication.includes(auth) : false;
+      }
+      // Unconditional credential or no show-rule: take it.
+      return true;
+    });
+    if (!candidate) {
+      continue;
+    }
+    const friendlyName = supportedForType.get(candidate.name) ?? candidate.name;
+    node.credentials = {
+      [candidate.name]: {
+        id: '{{CREDENTIAL_ID}}',
+        name: friendlyName,
+      },
+    };
+    logger.debug(
+      {
+        src: 'plugin:n8n-workflow:utils:workflow',
+        node: node.name,
+        nodeType: node.type,
+        credType: candidate.name,
+      },
+      'Injected missing credentials block on node (LLM omitted it)'
+    );
+    injected++;
+  }
+  return injected;
+}
+
 export function ensureExpressionPrefix(workflow: N8nWorkflow): number {
   let count = 0;
   for (const node of workflow.nodes) {

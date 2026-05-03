@@ -68,6 +68,40 @@ describe('extractKeywords', () => {
 
     expect(extractKeywords(runtime, 'test')).rejects.toThrow('non-string elements');
   });
+
+  test('omits the bias directive when preferredProviders is undefined', async () => {
+    const useModel = mock(() => Promise.resolve({ keywords: ['email'] }));
+    const runtime = createMockRuntime({ useModel });
+
+    await extractKeywords(runtime, 'Send my emails');
+
+    const promptArg = (useModel as unknown as { mock: { calls: unknown[][] } }).mock
+      .calls[0][1] as { prompt: string };
+    expect(promptArg.prompt).not.toContain('Host-supported providers');
+  });
+
+  test('appends the bias directive when preferredProviders is non-empty', async () => {
+    const useModel = mock(() => Promise.resolve({ keywords: ['gmail', 'discord'] }));
+    const runtime = createMockRuntime({ useModel });
+
+    await extractKeywords(runtime, 'Summarize my emails to my chat', ['gmail', 'discord']);
+
+    const promptArg = (useModel as unknown as { mock: { calls: unknown[][] } }).mock
+      .calls[0][1] as { prompt: string };
+    expect(promptArg.prompt).toContain('Host-supported providers: gmail, discord');
+    expect(promptArg.prompt).toContain('emit the specific provider keyword');
+  });
+
+  test('omits the bias directive when preferredProviders is empty array', async () => {
+    const useModel = mock(() => Promise.resolve({ keywords: ['email'] }));
+    const runtime = createMockRuntime({ useModel });
+
+    await extractKeywords(runtime, 'Send my emails', []);
+
+    const promptArg = (useModel as unknown as { mock: { calls: unknown[][] } }).mock
+      .calls[0][1] as { prompt: string };
+    expect(promptArg.prompt).not.toContain('Host-supported providers');
+  });
 });
 
 // ============================================================================

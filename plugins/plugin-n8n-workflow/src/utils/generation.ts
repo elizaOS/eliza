@@ -9,6 +9,7 @@ import {
   NodeSearchResult,
   FeasibilityResult,
   OutputRefValidation,
+  RuntimeContext,
 } from '../types/index';
 import {
   KEYWORD_EXTRACTION_SYSTEM_PROMPT,
@@ -38,14 +39,30 @@ import {
 } from './outputSchema';
 import type { UnknownParamDetection } from './workflow';
 
+/**
+ * Build an optional bias directive that nudges keyword extraction toward
+ * providers the host has already declared it can satisfy. The directive is
+ * appended to KEYWORD_EXTRACTION_SYSTEM_PROMPT only when a non-empty
+ * `preferredProviders` list is supplied — keeps existing baseline behavior
+ * for non-host installs.
+ */
+function buildPreferredProvidersDirective(preferredProviders?: string[]): string {
+  if (!preferredProviders || preferredProviders.length === 0) {
+    return '';
+  }
+  const list = preferredProviders.map((p) => p.toLowerCase()).join(', ');
+  return `\n\nHost-supported providers: ${list}. When the user names a generic concept that maps to one of these (e.g. "my email" with gmail in the list, "my chat" with discord in the list), emit the specific provider keyword (gmail, discord) — NOT a generic fallback (imap, webhook, email). Prefer these provider names over alternative integrations.`;
+}
+
 export async function extractKeywords(
   runtime: IAgentRuntime,
-  userPrompt: string
+  userPrompt: string,
+  preferredProviders?: string[]
 ): Promise<string[]> {
   let result: KeywordExtractionResult;
   try {
     result = (await runtime.useModel(ModelType.OBJECT_SMALL, {
-      prompt: `${KEYWORD_EXTRACTION_SYSTEM_PROMPT}\n\nUser request: ${userPrompt}`,
+      prompt: `${KEYWORD_EXTRACTION_SYSTEM_PROMPT}${buildPreferredProvidersDirective(preferredProviders)}\n\nUser request: ${userPrompt}`,
       schema: keywordExtractionSchema,
     })) as KeywordExtractionResult;
   } catch (error) {
@@ -200,6 +217,83 @@ ${userMessage}`,
   return result;
 }
 
+/**
+ * Layer 3 retry helper (Session 21). When `validateAndRepair` flags errors
+ * it can't auto-fix deterministically (e.g. truly unknown output field),
+ * send a surgical fix prompt to the LLM listing only the failing items
+ * and re-validate. The caller wraps this in a 3-attempt loop.
+ *
+ * Lives next to `correctFieldReferences` and `correctParameterNames` —
+ * those are still the preferred specific-class corrections. This is the
+ * generic backstop for any remaining error class.
+ */
+export async function fixWorkflowErrors(
+  runtime: IAgentRuntime,
+  workflow: N8nWorkflow,
+  errors: Array<{
+    kind: string;
+    node: string;
+    detail: string;
+    expression?: string;
+    availableFields?: string[];
+  }>,
+  relevantNodes: NodeDefinition[]
+): Promise<N8nWorkflow> {
+  if (errors.length === 0) return workflow;
+  const errorBlock = errors
+    .map((e, i) => {
+      const av = e.availableFields?.length
+        ? ` Available fields on the upstream node: ${e.availableFields.join(', ')}.`
+        : '';
+      const expr = e.expression ? ` Expression: \`${e.expression}\`.` : '';
+      return `${i + 1}. Node "${e.node}" — ${e.detail}.${expr}${av}`;
+    })
+    .join('\n');
+
+  const simplifiedNodes = relevantNodes.map(simplifyNodeForLLM);
+  const fixPrompt = `You are fixing a deterministic-validator-flagged n8n workflow. Apply ONLY the listed fixes — do not refactor anything else.
+
+## Errors to fix
+
+${errorBlock}
+
+## Available node definitions (for reference)
+
+${JSON.stringify(simplifiedNodes, null, 2)}
+
+## Current workflow JSON
+
+${JSON.stringify(workflow, null, 2)}
+
+Return the COMPLETE corrected workflow JSON. Preserve every field that was not part of the error list. Only change what is required to fix the listed items.`;
+
+  let response: string;
+  try {
+    response = (await runtime.useModel(ModelType.TEXT_LARGE, {
+      prompt: fixPrompt,
+      temperature: 0,
+      responseFormat: { type: 'json_object' },
+    })) as string;
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    logger.error(
+      { src: 'plugin:n8n-workflow:generation:fixErrors', err: errMsg },
+      `fixWorkflowErrors LLM call failed: ${errMsg}`
+    );
+    throw err;
+  }
+
+  try {
+    return parseWorkflowResponse(response);
+  } catch (err) {
+    logger.error(
+      { src: 'plugin:n8n-workflow:generation:fixErrors' },
+      `fixWorkflowErrors response could not be parsed; keeping original workflow`
+    );
+    return workflow;
+  }
+}
+
 function parseWorkflowResponse(response: string): N8nWorkflow {
   // Strip markdown code fences (handles ```json, ```, with any whitespace/newlines)
   const cleaned = response
@@ -262,13 +356,50 @@ function buildOutputSchemaContext(nodes: NodeDefinition[]): string {
   return `\n## Node Output Schemas\n\nWhen referencing output data from a previous node using expressions like \`{{ $json.field }}\`, use ONLY the field paths listed below. Do NOT invent field names from your training data.\n\n${sections.join('\n\n')}`;
 }
 
+/**
+ * Render the optional host-supplied runtime context as two prompt sections:
+ * `## Available Credentials` (which credential types the host can resolve) and
+ * `## Runtime Facts` (real values like Discord guild/channel IDs, the user's
+ * email). Returns the empty string when the host did not register a provider
+ * — preserving exact baseline behavior for non-host installs.
+ */
+function buildRuntimeContextSections(ctx?: RuntimeContext): string {
+  if (!ctx) {
+    return '';
+  }
+  const lines: string[] = [];
+  if (ctx.supportedCredentials?.length) {
+    lines.push('## Available Credentials');
+    lines.push(
+      'These credential types are pre-resolved by the host. Attach the credentials block to every relevant node — the host injects the real id post-generation.'
+    );
+    for (const c of ctx.supportedCredentials) {
+      lines.push(
+        `- ${c.credType}: name "${c.friendlyName}" — applies to: ${c.nodeTypes.join(', ')}`
+      );
+    }
+    lines.push('');
+  }
+  if (ctx.facts?.length) {
+    lines.push('## Runtime Facts');
+    lines.push('Use these real values verbatim instead of placeholders.');
+    for (const f of ctx.facts) {
+      lines.push(`- ${f}`);
+    }
+    lines.push('');
+  }
+  return lines.length ? `\n${lines.join('\n')}\n` : '';
+}
+
 export async function generateWorkflow(
   runtime: IAgentRuntime,
   userPrompt: string,
-  relevantNodes: NodeDefinition[]
+  relevantNodes: NodeDefinition[],
+  runtimeContext?: RuntimeContext
 ): Promise<N8nWorkflow> {
   const simplifiedNodes = relevantNodes.map(simplifyNodeForLLM);
   const outputSchemaCtx = buildOutputSchemaContext(relevantNodes);
+  const runtimeCtxSections = buildRuntimeContextSections(runtimeContext);
 
   const fullPrompt = `${WORKFLOW_GENERATION_SYSTEM_PROMPT}
 
@@ -277,7 +408,7 @@ export async function generateWorkflow(
 ${JSON.stringify(simplifiedNodes, null, 2)}
 
 Use these node definitions to generate the workflow. Each node's "properties" field defines the available parameters.
-${outputSchemaCtx}
+${outputSchemaCtx}${runtimeCtxSections}
 
 ## User Request
 
@@ -304,12 +435,14 @@ export async function modifyWorkflow(
   runtime: IAgentRuntime,
   existingWorkflow: N8nWorkflow,
   modificationRequest: string,
-  relevantNodes: NodeDefinition[]
+  relevantNodes: NodeDefinition[],
+  runtimeContext?: RuntimeContext
 ): Promise<N8nWorkflow> {
   const { _meta, ...workflowForLLM } = existingWorkflow;
 
   const simplifiedNodes = relevantNodes.map(simplifyNodeForLLM);
   const outputSchemaCtx = buildOutputSchemaContext(relevantNodes);
+  const runtimeCtxSections = buildRuntimeContextSections(runtimeContext);
 
   const fullPrompt = `${WORKFLOW_GENERATION_SYSTEM_PROMPT}
 
@@ -318,7 +451,7 @@ export async function modifyWorkflow(
 ${JSON.stringify(simplifiedNodes, null, 2)}
 
 Use these node definitions to modify the workflow. Each node's "properties" field defines the available parameters.
-${outputSchemaCtx}
+${outputSchemaCtx}${runtimeCtxSections}
 
 ## Existing Workflow (modify this)
 
