@@ -29,7 +29,8 @@
     "format": "bunx @biomejs/biome format src",
     "format:fix": "bunx @biomejs/biome format --write src",
     "build:dist": "rm -rf dist && tsc -p tsconfig.build.json && node ../../scripts/copy-package-assets.mjs packages/app-core src/styles src/i18n/locales && node ../../scripts/prepare-package-dist.mjs packages/app-core --compiled-prefix=packages/app-core/src",
-    "pack:dry-run": "cd dist && npm pack --dry-run"
+    "pack:dry-run": "cd dist && npm pack --dry-run",
+    "benchmark:server": "node --import tsx src/benchmark/server.ts"
   },
   "exports": {
     ".": "./src/index.ts",

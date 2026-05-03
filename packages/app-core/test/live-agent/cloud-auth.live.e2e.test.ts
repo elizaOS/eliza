@@ -7,13 +7,13 @@
  *
  * Gated on ELIZA_LIVE_TEST=1.
  */
-import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeIf } from "../helpers/conditional-tests.ts";
 import {
   createConversation,
@@ -23,8 +23,7 @@ import {
 import { createLiveRuntimeChildEnv } from "../helpers/live-child-env.ts";
 import { selectLiveProvider } from "../helpers/live-provider.ts";
 
-const LIVE =
-  process.env.ELIZA_LIVE_TEST === "1";
+const LIVE = process.env.ELIZA_LIVE_TEST === "1";
 const REPO_ROOT = path.resolve(
   import.meta.dirname,
   "..",

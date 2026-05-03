@@ -200,6 +200,19 @@ Examples:
         help="Use mock agent (for testing benchmark infrastructure)",
     )
     parser.add_argument(
+        "--provider",
+        type=str,
+        choices=["python", "eliza"],
+        default="python",
+        help=(
+            "Agent backend. 'python' (default) uses the in-process elizaOS "
+            "Python runtime. 'eliza' routes the planning loop through the "
+            "TypeScript benchmark server via eliza_adapter.realm.ElizaREALMAgent. "
+            "When 'eliza' is selected the eliza_adapter.ElizaServerManager will "
+            "auto-spawn the TS server unless ELIZA_BENCH_URL is set."
+        ),
+    )
+    parser.add_argument(
         "--check-env",
         action="store_true",
         help="Check environment for API keys and exit",
@@ -436,25 +449,54 @@ def print_results_summary(report: REALMReport) -> None:
 
 
 async def run_benchmark(
-    config: REALMConfig, 
+    config: REALMConfig,
     verbose: bool = False,
     use_mock: bool = False,
     enable_trajectory_logging: bool = True,
+    provider: str = "python",
 ) -> REALMReport:
     """Run the benchmark."""
     if verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
+    eliza_server = None
+    agent: object | None = None
+
+    if provider == "eliza":
+        # Route the planning loop through the TS benchmark server.
+        from eliza_adapter import ElizaREALMAgent, ElizaServerManager
+
+        if not os.environ.get("ELIZA_BENCH_URL"):
+            eliza_server = ElizaServerManager()
+            eliza_server.start()
+            client = eliza_server.client
+        else:
+            from eliza_adapter import ElizaClient
+
+            client = ElizaClient()
+            client.wait_until_ready(timeout=120)
+
+        agent = ElizaREALMAgent(
+            client=client,
+            max_steps=config.max_steps,
+            execution_model=config.execution_model,
+            enable_adaptation=config.enable_adaptation,
+        )
+
     runner = REALMRunner(
         config,
         use_mock=use_mock,
         enable_trajectory_logging=enable_trajectory_logging,
+        agent=agent,
     )
-    report = await runner.run_benchmark()
-    
-    # Clean up
-    await runner.agent.close()
-    
+
+    try:
+        report = await runner.run_benchmark()
+    finally:
+        await runner.agent.close()
+        if eliza_server is not None:
+            eliza_server.stop()
+
     return report
 
 
@@ -496,10 +538,11 @@ def main() -> int:
     try:
         enable_traj_logging = not args.no_trajectory_logging
         report = asyncio.run(run_benchmark(
-            config, 
-            args.verbose, 
+            config,
+            args.verbose,
             args.mock,
             enable_trajectory_logging=enable_traj_logging,
+            provider=args.provider,
         ))
 
         if args.json:

@@ -42,7 +42,7 @@ export const walletProvider: Provider = {
 
       const balances = await sdk.getBalances();
       const balanceLines = balances
-        .map((b: TokenBalance) => `  ${b.symbol}: ${b.balance}${b.usdValue != null ? ` ($${b.usdValue.toFixed(2)})` : ''}`)
+        .map((b: TokenBalance) => `  ${b.symbol}: ${b.balance}${b.usdValue !== undefined && b.usdValue !== null ? ` ($${b.usdValue.toFixed(2)})` : ''}`)
         .join('\n');
 
       const text = [

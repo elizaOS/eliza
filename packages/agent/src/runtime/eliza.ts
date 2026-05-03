@@ -55,7 +55,6 @@ export {
   resolvePackageEntry,
   STATIC_ELIZA_PLUGINS,
   scanDropInPlugins,
-  shouldIgnoreMissingPluginExport,
 } from "./plugin-types.js";
 
 // resolvePlugins is re-exported via index.ts from ./plugin-resolver

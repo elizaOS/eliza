@@ -238,10 +238,6 @@ export function resolveElizaPluginImportSpecifier(
   return existsSync(indexPath) ? pathToFileURL(indexPath).href : pluginName;
 }
 
-export function shouldIgnoreMissingPluginExport(pluginName: string): boolean {
-  return pluginName === "@elizaos/plugin-streaming-base";
-}
-
 export function findPluginBrowserStagehandDir(startDir: string): string | null {
   let dir = path.resolve(startDir);
   for (let depth = 0; depth < 14; depth++) {

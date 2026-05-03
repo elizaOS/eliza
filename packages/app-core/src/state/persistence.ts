@@ -242,8 +242,7 @@ export function applyUiTheme(theme: UiTheme): void {
   const classMatchesTheme = root.classList
     ? root.classList.contains("dark") === shouldBeDark
     : true;
-  const colorSchemeMatches =
-    root.style.colorScheme === normalizedTheme;
+  const colorSchemeMatches = root.style.colorScheme === normalizedTheme;
 
   const uiThemeChanged = !(
     currentTheme === normalizedTheme &&

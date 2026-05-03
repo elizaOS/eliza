@@ -17,22 +17,22 @@ function validateEnvironment(): void {
   // Grok (xAI) is the model provider for this example.
   requireEnv("XAI_API_KEY");
 
-  // X API user-context OAuth 1.0a (recommended for posting/replying).
-  const authMode = (process.env.X_AUTH_MODE ?? "env").toLowerCase();
+  // X / Twitter is provided by @elizaos/plugin-twitter.
+  // Default to OAuth 1.0a user-context (TWITTER_AUTH_MODE=env) for posting.
+  const authMode = (process.env.TWITTER_AUTH_MODE ?? "env").toLowerCase();
   if (authMode !== "env") {
     throw new Error(
-      `This example expects X_AUTH_MODE=env (OAuth 1.0a). Got X_AUTH_MODE=${process.env.X_AUTH_MODE ?? ""}`,
+      `This example expects TWITTER_AUTH_MODE=env (OAuth 1.0a). Got TWITTER_AUTH_MODE=${process.env.TWITTER_AUTH_MODE ?? ""}`,
     );
   }
 
-  requireEnv("X_API_KEY");
-  requireEnv("X_API_SECRET");
-  requireEnv("X_ACCESS_TOKEN");
-  requireEnv("X_ACCESS_TOKEN_SECRET");
+  requireEnv("TWITTER_API_KEY");
+  requireEnv("TWITTER_API_SECRET_KEY");
+  requireEnv("TWITTER_ACCESS_TOKEN");
+  requireEnv("TWITTER_ACCESS_TOKEN_SECRET");
 }
 
 async function main(): Promise<void> {
-  // Load environment variables from parent directory and current directory.
   loadDotEnv({ path: "../.env" });
   loadDotEnv();
 
@@ -49,33 +49,31 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // Dynamically import workspace plugins (matches other examples).
   const sqlPlugin = (await import("@elizaos/plugin-sql")).default;
   const { XAIPlugin } = await import("@elizaos/plugin-xai");
+  const twitterPlugin = (await import("@elizaos/plugin-twitter")).default;
 
   const runtime = new AgentRuntime({
     character,
-    plugins: [sqlPlugin, XAIPlugin],
+    plugins: [sqlPlugin, XAIPlugin, twitterPlugin],
   });
 
   console.log("⏳ Initializing runtime...");
   await runtime.initialize();
 
-  // Fail fast if the X service did not start (registerPlugin starts services async).
-  // This prevents "agent is running" logs when the X integration is actually down.
-  await runtime.getServiceLoadPromise("x");
+  // Fail fast if the Twitter service did not start (registerPlugin starts services async).
+  await runtime.getServiceLoadPromise("twitter");
 
   console.log(`\n✅ Agent "${character.name}" is now running on X.`);
-  console.log(`   Dry run mode: ${process.env.X_DRY_RUN === "true"}`);
+  console.log(`   Dry run mode: ${process.env.TWITTER_DRY_RUN === "true"}`);
   console.log(
-    `   Replies enabled: ${(process.env.X_ENABLE_REPLIES ?? "true") !== "false"}`,
-  );
-  console.log(`   Posting enabled: ${process.env.X_ENABLE_POST === "true"}`);
-  console.log(
-    `   Timeline actions enabled: ${process.env.X_ENABLE_ACTIONS === "true"}`,
+    `   Replies enabled: ${(process.env.TWITTER_ENABLE_REPLIES ?? "true") !== "false"}`,
   );
   console.log(
-    `   Discovery enabled: ${process.env.X_ENABLE_DISCOVERY === "true"}`,
+    `   Posting enabled: ${process.env.TWITTER_ENABLE_POST === "true"}`,
+  );
+  console.log(
+    `   Timeline actions enabled: ${process.env.TWITTER_ENABLE_ACTIONS === "true"}`,
   );
   console.log("\n   Press Ctrl+C to stop.\n");
 
@@ -88,7 +86,7 @@ async function main(): Promise<void> {
   process.on("SIGINT", () => void shutdown("SIGINT"));
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
-  // Keep process alive; the X service runs polling loops internally.
+  // Keep process alive; the Twitter service runs polling loops internally.
   await new Promise(() => {});
 }
 

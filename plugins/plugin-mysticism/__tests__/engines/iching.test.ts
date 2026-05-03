@@ -14,6 +14,7 @@ import {
   IChingEngine,
 } from "../../src/engines/iching/index";
 import type { FeedbackEntry } from "../../src/types";
+import { assertNonNull } from "../assert-non-null";
 
 // ─── Divination Core Tests ───────────────────────────────
 
@@ -77,8 +78,9 @@ describe("I Ching Divination", () => {
         expect(result.transformedHexagramNumber).toBeGreaterThanOrEqual(1);
         expect(result.transformedHexagramNumber).toBeLessThanOrEqual(64);
         expect(result.transformedBinary).toBeTypeOf("string");
-        expect(result.transformedBinary!).toHaveLength(6);
-        expect(result.transformedBinary!).toMatch(/^[01]{6}$/);
+        const transformedBinary = assertNonNull(result.transformedBinary);
+        expect(transformedBinary).toHaveLength(6);
+        expect(transformedBinary).toMatch(/^[01]{6}$/);
         found = true;
         break;
       }
@@ -427,7 +429,7 @@ describe("I Ching Interpreter Prompts", () => {
   });
 
   it("buildLinePrompt includes the line position number and line text", () => {
-    const line3 = hex1.lines.find((l) => l.position === 3)!;
+    const line3 = assertNonNull(hex1.lines.find((l) => l.position === 3));
     const prompt = buildLinePrompt(hex1, 3, question, emptyFeedback);
     expect(prompt).toContain("3");
     expect(prompt).toContain(line3.text);

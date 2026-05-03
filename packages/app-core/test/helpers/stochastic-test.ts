@@ -61,7 +61,7 @@ function resolveRepoRoot(start: string): string {
       // A repo root has `.git` as a directory. Submodules have it as a file
       // (a gitfile), which we skip so results always land at the top-level
       // checkout no matter where vitest is invoked from.
-      if (stat && stat.isDirectory()) {
+      if (stat?.isDirectory()) {
         return current;
       }
     } catch {

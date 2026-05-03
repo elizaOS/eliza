@@ -75,6 +75,12 @@ class BFCLRunner:
         elif agent:
             self.agent = agent
             self._model_name = getattr(agent, 'model_name', None)
+        elif provider == "eliza":
+            # Route LLM calls through the elizaOS TypeScript benchmark bridge.
+            from eliza_adapter.bfcl import ElizaBFCLAgent
+            from eliza_adapter.client import ElizaClient
+            self.agent = ElizaBFCLAgent(client=ElizaClient(), model_name=model or "eliza-ts-bridge")
+            self._model_name = model or "eliza-ts-bridge"
         else:
             self.agent = BFCLAgent(config, provider=provider, model=model)
             self._model_name = None  # Will be set after initialization

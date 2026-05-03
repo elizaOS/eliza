@@ -1,12 +1,12 @@
 import {
   elizaLogger,
-  IAgentRuntime,
-  Memory,
-  Provider,
-  State,
+  type IAgentRuntime,
+  type Memory,
+  type Provider,
+  type State,
 } from "@elizaos/core";
+import { type Connection, PublicKey } from "@solana/web3.js";
 import { DLMM } from "../utils/dlmm.ts";
-import { Connection, PublicKey } from "@solana/web3.js";
 import { loadWallet } from "../utils/loadWallet.ts";
 
 export interface MeteoraPositionStatistics {
@@ -80,9 +80,9 @@ export const meteoraPositionProvider: Provider = {
         text: positionText,
       };
     } catch (error) {
-      elizaLogger.error("Error in Meteora position provider:", error);
       const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
+        error instanceof Error ? error.message : String(error);
+      elizaLogger.error(`Error in Meteora position provider: ${errorMessage}`);
       return {
         data: {
           positions: [],
@@ -110,9 +110,11 @@ const fetchPositions = async (
 
     const positions: MeteoraPositionStatistics[] = [];
 
+    type DlmmConnectionArg = Parameters<typeof DLMM.create>[0];
+
     for (const poolAddress of POOL_ADDRESSES) {
       const dlmmPool = await DLMM.create(
-        connection as any,
+        connection as DlmmConnectionArg,
         new PublicKey(poolAddress),
       );
       const { userPositions } =

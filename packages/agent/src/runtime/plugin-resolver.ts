@@ -48,7 +48,6 @@ import {
   resolvePackageEntry,
   STATIC_ELIZA_PLUGINS,
   scanDropInPlugins,
-  shouldIgnoreMissingPluginExport,
 } from "./plugin-types.js";
 
 const LAST_FAILED_PLUGIN_NAMES = Symbol.for(
@@ -1164,13 +1163,6 @@ export async function resolvePlugins(
         logger.debug(`[eliza] ✓ Loaded plugin: ${pluginName}`);
         return { name: pluginName, plugin: wrappedPlugin };
       } else {
-        if (shouldIgnoreMissingPluginExport(pluginName)) {
-          logger.info(
-            `[eliza] Skipping helper package ${pluginName}: no Plugin export is expected`,
-          );
-          return null;
-        }
-
         const msg = `[eliza] Plugin ${pluginName} did not export a valid Plugin object`;
         failedPlugins.push({
           name: pluginName,

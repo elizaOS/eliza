@@ -1,123 +1,96 @@
 # X (Twitter) Agent Example (Grok + X API)
 
-A full-featured elizaOS agent that runs on **X (formerly Twitter)** and uses:
+A full-featured elizaOS agent that runs on **X (formerly Twitter)** using two
+plugins:
 
-- **Grok (xAI)** for text generation + embeddings (via `@elizaos/plugin-xai` / `elizaos-plugin-xai` / `elizaos-plugin-xai` Rust crate)
-- **X API v2** for reading mentions and creating posts/replies
-
-This example is implemented in **TypeScript**, **Python**, and **Rust**.
+- **Grok (xAI)** for text generation + embeddings — `@elizaos/plugin-xai`
+- **X API v2** for mentions, posts, and timeline interactions —
+  `@elizaos/plugin-twitter`
 
 ## What this example does
 
-- **Replies to @mentions** by polling X search results and routing each mention through the **full elizaOS pipeline** (`messageService.handleMessage()` / `message_service.handle_message()`).
-- **Optional automated posting** (TypeScript version uses the plugin’s built-in post loop; Python/Rust versions include an explicit loop).
-- **Dry run mode** supported via `X_DRY_RUN=true` (no writes to X).
+- **Replies to @mentions** by routing each mention through the elizaOS message
+  pipeline (`runtime.messageService.handleMessage(...)`).
+- **Optional automated posting** via `plugin-twitter`'s built-in post loop.
+- **Dry run mode** via `TWITTER_DRY_RUN=true` (no writes to X).
 
 ## Prerequisites
 
 - An **xAI API key** for Grok (`XAI_API_KEY`).
 - An **X developer app** with **user-context write access**.
-  - This example defaults to **OAuth 1.0a user-context** credentials:
-    - `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_TOKEN_SECRET`
+  - Default: **OAuth 1.0a user-context** credentials (`TWITTER_API_KEY`,
+    `TWITTER_API_SECRET_KEY`, `TWITTER_ACCESS_TOKEN`,
+    `TWITTER_ACCESS_TOKEN_SECRET`).
+  - Alternative: **OAuth 2.0 PKCE** (interactive login) with
+    `TWITTER_AUTH_MODE=oauth`.
+  - Alternative: **Eliza Cloud broker** with `TWITTER_AUTH_MODE=broker` —
+    delegates OAuth to a managed service.
 
 ## Quick start
 
 ### 1) Configure environment
 
 ```bash
-cd examples/xai
+cd packages/examples/twitter-xai
 cp env.example .env
 # edit .env
 ```
 
-Start with `X_DRY_RUN=true` until you’ve verified everything.
+Start with `TWITTER_DRY_RUN=true` until you've verified everything.
 
-### 2) Run (choose language)
-
-#### TypeScript
+### 2) Run
 
 ```bash
 # from repo root (build workspace deps)
 bun install
 bun run build
 
-cd examples/twitter-xai
-bun install
+cd packages/examples/twitter-xai
 bun run start
-```
-
-#### Python
-
-```bash
-cd examples/twitter-xai/python
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python agent.py
-```
-
-#### Rust
-
-```bash
-cd examples/twitter-xai/rust/xai-agent
-cargo run --release
 ```
 
 ## Configuration
 
-### Grok (xAI)
+### Grok (xAI) — `@elizaos/plugin-xai`
 
 - `XAI_API_KEY` (required)
-- `XAI_BASE_URL` (optional, default `https://api.x.ai/v1`)
-- `XAI_SMALL_MODEL` (optional, default `grok-3-mini`)
-- `XAI_MODEL` / `XAI_LARGE_MODEL` (optional, default `grok-3`)
-- `XAI_EMBEDDING_MODEL` (optional, default `grok-embedding`)
+- `XAI_BASE_URL` (default `https://api.x.ai/v1`)
+- `XAI_SMALL_MODEL` (default `grok-3-mini`)
+- `XAI_MODEL` (default `grok-3`)
+- `XAI_EMBEDDING_MODEL` (default `grok-embedding`)
 
-### X API v2 auth (recommended: OAuth 1.0a env credentials)
+### X API v2 auth — `@elizaos/plugin-twitter`
 
-- `X_AUTH_MODE=env`
-- `X_API_KEY`
-- `X_API_SECRET`
-- `X_ACCESS_TOKEN`
-- `X_ACCESS_TOKEN_SECRET`
+- `TWITTER_AUTH_MODE` — `env` (default), `oauth`, or `broker`.
+
+OAuth 1.0a user context (`TWITTER_AUTH_MODE=env`):
+
+- `TWITTER_API_KEY`
+- `TWITTER_API_SECRET_KEY`
+- `TWITTER_ACCESS_TOKEN`
+- `TWITTER_ACCESS_TOKEN_SECRET`
+
+OAuth 2.0 PKCE (`TWITTER_AUTH_MODE=oauth`):
+
+- `TWITTER_CLIENT_ID`
+- `TWITTER_REDIRECT_URI`
+- `TWITTER_SCOPES` (default `tweet.read tweet.write users.read offline.access`)
+
+Eliza Cloud broker (`TWITTER_AUTH_MODE=broker`):
+
+- `TWITTER_BROKER_URL`
 
 ### Agent behavior toggles
 
-- `X_DRY_RUN` (default: `true`)
-- `X_ENABLE_REPLIES` (default: `true`)
-- `X_ENABLE_POST` (default: `false`)
-- `X_POST_INTERVAL_MIN`, `X_POST_INTERVAL_MAX` (minutes; used when posting is enabled)
-- `X_ENGAGEMENT_INTERVAL_MIN`, `X_ENGAGEMENT_INTERVAL_MAX` (minutes; polling cadence)
-- `X_MAX_ENGAGEMENTS_PER_RUN` (default: `5`)
-- `X_TARGET_USERS` (optional comma list or `*` for broad engagement)
+- `TWITTER_DRY_RUN` (default `true`)
+- `TWITTER_ENABLE_REPLIES` (default `true`)
+- `TWITTER_ENABLE_POST` (default `false`)
+- `TWITTER_ENABLE_ACTIONS` (default `false`)
+- `TWITTER_TARGET_USERS` (optional comma list or `*` for broad engagement)
 
-## How it works (canonical pipeline)
+## How it works
 
-For each incoming mention, the examples aim to route the event through the elizaOS “message service” so you get consistent state composition and response generation.
-
-### TypeScript (most complete, service-driven)
-
-- Mentions/timeline/posting are handled by `@elizaos/plugin-xai`’s `XService` background clients.
-- Incoming mentions are routed into the runtime via `runtime.messageService.handleMessage(...)` inside the plugin.
-
-### Python (pipeline-driven)
-
-- The example explicitly polls mentions and calls `runtime.message_service.handle_message(...)`.
-- The Python `DefaultMessageService` implements the canonical flow (state → model → parse actions/providers → optional action execution → evaluators).
-
-### Rust (currently response-only message service)
-
-- The example explicitly polls mentions and calls `runtime.message_service().handle_message(...)`.
-- **Important**: the current Rust `DefaultMessageService` is not yet feature-parity with TypeScript/Python (it saves the incoming message, composes state, calls the text model, persists the response, and returns it; it does not yet implement `shouldRespond`, action planning, or evaluators).
-
-### Steps
-
-For each incoming mention, we:
-
-1. **Create a `Memory`** for the X post (stable IDs per post/conversation).\n
-2. **Ensure connection/room** exists in elizaOS (world + room + entity).\n
-3. Call the language runtime’s **message service**.\n
-4. Post a reply to X (unless `X_DRY_RUN=true`).\n
-
-TypeScript relies on the `plugin-xai` X service background clients for polling and posting; Python/Rust run explicit polling loops in the example.\n
-
+`plugin-twitter`'s `TwitterService` runs background clients for posting,
+interactions, timeline, and discovery. Incoming mentions are routed into the
+runtime via `runtime.messageService.handleMessage(...)` so you get the standard
+state-composition → model → action pipeline.

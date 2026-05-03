@@ -12,6 +12,7 @@ import {
 import { createCommentTemplate } from "../generated/prompts/typescript/prompts.js";
 import type { LinearService } from "../services/linear";
 import type { CreateCommentParameters } from "../types/index.js";
+import { validateLinearActionIntent } from "./validate-linear-intent";
 
 export const createCommentAction: Action = {
   name: "CREATE_LINEAR_COMMENT",
@@ -71,118 +72,11 @@ export const createCommentAction: Action = {
     ],
   ],
 
-  validate: async (runtime: any, message: any, state?: any, options?: any): Promise<boolean> => {
-    const __avTextRaw = typeof message?.content?.text === "string" ? message.content.text : "";
-    const __avText = __avTextRaw.toLowerCase();
-    const __avKeywords = ["create", "linear", "comment"];
-    const __avKeywordOk =
-      __avKeywords.length > 0 &&
-      __avKeywords.some((word) => word.length > 0 && __avText.includes(word));
-    const __avRegex = /\b(?:create|linear|comment)\b/i;
-    const __avRegexOk = __avRegex.test(__avText);
-    const __avSource = String(message?.content?.source ?? "");
-    const __avExpectedSource = "";
-    const __avSourceOk = __avExpectedSource
-      ? __avSource === __avExpectedSource
-      : Boolean(
-          __avSource || state || runtime?.agentId || runtime?.getService || runtime?.getSetting
-        );
-    const __avOptions = options && typeof options === "object" ? options : {};
-    const __avInputOk =
-      __avText.trim().length > 0 ||
-      Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-      Boolean(message?.content && typeof message.content === "object");
-
-    if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
-      return false;
-    }
-
-    const __avLegacyValidate = async (
-      runtime: any,
-      message: any,
-      state?: any,
-      options?: any
-    ): Promise<boolean> => {
-      const __avTextRaw = typeof message?.content?.text === "string" ? message.content.text : "";
-      const __avText = __avTextRaw.toLowerCase();
-      const __avKeywords = ["create", "linear", "comment"];
-      const __avKeywordOk =
-        __avKeywords.length > 0 &&
-        __avKeywords.some((word) => word.length > 0 && __avText.includes(word));
-      const __avRegex = /\b(?:create|linear|comment)\b/i;
-      const __avRegexOk = __avRegex.test(__avText);
-      const __avSource = String(message?.content?.source ?? "");
-      const __avExpectedSource = "";
-      const __avSourceOk = __avExpectedSource
-        ? __avSource === __avExpectedSource
-        : Boolean(
-            __avSource || state || runtime?.agentId || runtime?.getService || runtime?.getSetting
-          );
-      const __avOptions = options && typeof options === "object" ? options : {};
-      const __avInputOk =
-        __avText.trim().length > 0 ||
-        Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-        Boolean(message?.content && typeof message.content === "object");
-
-      if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
-        return false;
-      }
-
-      const __avLegacyValidate = async (
-        runtime: any,
-        message: any,
-        state?: any,
-        options?: any
-      ): Promise<boolean> => {
-        const __avTextRaw = typeof message?.content?.text === "string" ? message.content.text : "";
-        const __avText = __avTextRaw.toLowerCase();
-        const __avKeywords = ["create", "linear", "comment"];
-        const __avKeywordOk =
-          __avKeywords.length > 0 &&
-          __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
-        const __avRegex = /\b(?:create|linear|comment)\b/i;
-        const __avRegexOk = __avRegex.test(__avText);
-        const __avSource = String(message?.content?.source ?? "");
-        const __avExpectedSource = "";
-        const __avSourceOk = __avExpectedSource
-          ? __avSource === __avExpectedSource
-          : Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
-        const __avOptions = options && typeof options === "object" ? options : {};
-        const __avInputOk =
-          __avText.trim().length > 0 ||
-          Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-          Boolean(message?.content && typeof message.content === "object");
-
-        if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
-          return false;
-        }
-
-        const __avLegacyValidate = async (
-          runtime: IAgentRuntime,
-          _message: Memory,
-          _state?: State
-        ) => {
-          const apiKey = runtime.getSetting("LINEAR_API_KEY");
-          return !!apiKey;
-        };
-        try {
-          return Boolean(await (__avLegacyValidate as any)(runtime, message, state, options));
-        } catch {
-          return false;
-        }
-      };
-      try {
-        return Boolean(await (__avLegacyValidate as any)(runtime, message, state, options));
-      } catch {
-        return false;
-      }
-    };
-    try {
-      return Boolean(await (__avLegacyValidate as any)(runtime, message, state, options));
-    } catch {
-      return false;
-    }
-  },
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
+    validateLinearActionIntent(runtime, message, state, {
+      keywords: ["create", "linear", "comment"],
+      regexAlternation: "create|linear|comment",
+    }),
 
   async handler(
     runtime: IAgentRuntime,

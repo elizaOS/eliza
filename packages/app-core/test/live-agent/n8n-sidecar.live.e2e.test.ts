@@ -26,7 +26,7 @@ import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { afterAll, beforeAll, describe, expect } from "vitest";
+import { afterAll, beforeAll, expect } from "vitest";
 import {
   describeIf,
   itIf,
