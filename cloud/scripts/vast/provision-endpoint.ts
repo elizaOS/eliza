@@ -1,18 +1,20 @@
 /**
  * Idempotent Vast.ai Serverless endpoint provisioning.
  *
- * Run once per environment to create or update the endpoint that hosts
- * `QuantTrio/Qwen3.6-35B-A3B-AWQ`. Vast manages the autoscaler, queue,
- * and load balancer; this script only declares the desired endpoint
- * + workergroup config.
+ * Run once per environment to create or update the endpoint that hosts the
+ * Qwen3.6 27B NEO-CODE Q6_K GGUF on RTX 5090 via llama.cpp. Vast manages the
+ * autoscaler, queue, and load balancer; this script only declares the desired
+ * endpoint + workergroup config.
  *
  * Required env:
  *   VASTAI_API_KEY        — vast CLI key (starts with `vastai_`)
  *   VAST_TEMPLATE_ID      — id of the serverless-compatible template that
- *                           launches vLLM + PyWorker (see services/vast-pyworker/README.md)
+ *                           launches llama-server + PyWorker (see
+ *                           services/vast-pyworker/README.md and
+ *                           scripts/vast/upsert-template.ts)
  *
  * Optional env:
- *   VAST_ENDPOINT_NAME    — defaults to "eliza-cloud-qwen3.6-35b-a3b-awq"
+ *   VAST_ENDPOINT_NAME    — defaults to "eliza-cloud-qwen3.6-27b-neo-code"
  *   VAST_MIN_WORKERS      — defaults to 1
  *   VAST_MAX_WORKERS      — defaults to 8
  *   VAST_TARGET_UTIL      — defaults to 0.9
@@ -124,7 +126,7 @@ async function main(): Promise<void> {
   }
 
   const config: EndpointConfig = {
-    name: readEnv("VAST_ENDPOINT_NAME", "eliza-cloud-qwen3.6-35b-a3b-awq"),
+    name: readEnv("VAST_ENDPOINT_NAME", "eliza-cloud-qwen3.6-27b-neo-code"),
     template_id: templateId,
     min_workers: readNumber("VAST_MIN_WORKERS", 1),
     max_workers: readNumber("VAST_MAX_WORKERS", 8),
@@ -136,8 +138,12 @@ async function main(): Promise<void> {
     target_queue_time: readNumber("VAST_TARGET_QUEUE_TIME", 5),
     search_params: {
       gpu_name: ["RTX_5090"],
-      gpu_ram_min: readNumber("VAST_GPU_RAM_MIN_MB", 23170),
-      disk_space_min: readNumber("VAST_DISK_MIN_GB", 16),
+      // RTX 5090 has 32 GB VRAM. Q6_K is 22.4 GB; min 25 GB ensures KV-cache
+      // headroom for at least 4096-token context with --parallel 2.
+      gpu_ram_min: readNumber("VAST_GPU_RAM_MIN_MB", 25000),
+      // Q6_K GGUF is 22.4 GB; require 50 GB to leave room for HF cache,
+      // staging, and a second quant variant if we hot-swap.
+      disk_space_min: readNumber("VAST_DISK_MIN_GB", 50),
       duration_min: readNumber("VAST_DURATION_MIN_SECONDS", 7 * 24 * 3600),
       rentable: true,
       verified: true,

@@ -1,45 +1,110 @@
-# vast-pyworker — Qwen3.6-35B-A3B-AWQ on Vast Serverless
+# vast-pyworker — Qwen3.6 27B NEO-CODE on Vast Serverless
 
-PyWorker that fronts a vLLM server hosting `QuantTrio/Qwen3.6-35B-A3B-AWQ`
-(INT4) on a single RTX 5090 worker. Deployed by Vast.ai Serverless via
-`PYWORKER_REPO` on the template.
+PyWorker that fronts a `llama.cpp` `llama-server` hosting the Q6_K GGUF of
+[`DavidAU/Qwen3.6-27B-Heretic-Uncensored-FINETUNE-NEO-CODE-Di-IMatrix-MAX-GGUF`][1]
+on a single RTX 5090 worker. Deployed by Vast.ai Serverless; the template
+defines the image and the on-start script, both committed in this repo.
+
+[1]: https://huggingface.co/DavidAU/Qwen3.6-27B-Heretic-Uncensored-FINETUNE-NEO-CODE-Di-IMatrix-MAX-GGUF
+
+## Why GGUF + llama.cpp (not vLLM)
+
+The default served file is a Q6_K GGUF (22.4 GB on disk, ~24 GB resident
+including KV cache at 32k context with `--parallel 2`). vLLM's GGUF support
+is experimental and slow; `llama-server` is the native, well-tuned path for
+k-quants on consumer Blackwell GPUs and exposes the same OpenAI-compatible
+endpoints (`/v1/chat/completions`, `/v1/completions`, `/v1/models`) that the
+PyWorker proxies through.
+
+GPU sizing (RTX 5090, 32 GB VRAM):
+
+| context | parallel | weights | KV cache | resident | headroom |
+|---------|---------:|--------:|---------:|---------:|---------:|
+| 32k     | 2        | 22.4 GB | ~2 GB    | ~25 GB   | ~7 GB    |
+| 32k     | 4        | 22.4 GB | ~4 GB    | ~27 GB   | ~5 GB    |
+| 65k     | 2        | 22.4 GB | ~4 GB    | ~27 GB   | ~5 GB    |
+
+Default config: `LLAMA_CONTEXT=32768`, `LLAMA_PARALLEL=2`. Tune via the
+template env if a workload needs longer context or more concurrent decode
+slots.
+
+## Files
+
+| path | purpose |
+|------|---------|
+| `worker.py` | PyWorker process; tails `llama-server` log for readiness, registers handlers, reports per-request workload to the Vast Serverless Engine. |
+| `onstart.sh` | Inline `on_start` script for the Vast template. Clones the repo, downloads the GGUF, launches `llama-server`, exec's `worker.py`. Idempotent — reruns reuse the cached weight file. |
+| `requirements.txt` | Python deps for `worker.py`. The image already provides `llama-server` and CUDA. |
 
 ## How Vast deploys this
 
-Vast templates pull this directory at cold start by setting:
+A Vast template (managed by `cloud/scripts/vast/upsert-template.ts`) declares:
 
-- `PYWORKER_REPO` — git URL of this repo
-- `PYWORKER_REF` — branch/tag/commit (use a pinned commit in production)
+- `image = ghcr.io/ggml-org/llama.cpp:server-cuda` (CUDA build of the official
+  llama.cpp server; bundles `llama-server`, CUDA runtime, python3).
+- `disk = 60 GB` (room for the GGUF + HF cache + a swap-in alternate quant).
+- `onstart = <inline contents of onstart.sh>`.
+- `env = { PYWORKER_REPO, PYWORKER_REF, MODEL_REPO, MODEL_FILE, MODEL_ALIAS,
+  LLAMA_CONTEXT, LLAMA_PARALLEL, LLAMA_NGL }` — all overridable per-template.
 
-The template `on_start` script then runs:
+On every cold start the on-start script:
 
-```bash
-pip install -r requirements.txt
-vllm serve QuantTrio/Qwen3.6-35B-A3B-AWQ \
-  --host 127.0.0.1 --port 8000 \
-  --quantization awq --max-model-len 32768 \
-  > /var/log/vllm.log 2>&1 &
-python worker.py
-```
-
-`worker.py` watches `/var/log/vllm.log` for readiness, forwards
-`/v1/chat/completions` and `/v1/completions`, and reports per-request
-workload back to the Vast Serverless Engine so it can scale the endpoint.
+1. Clones `PYWORKER_REPO` at `PYWORKER_REF` into `/workspace/pyworker`.
+2. `pip install -r services/vast-pyworker/requirements.txt`.
+3. Downloads `MODEL_REPO/MODEL_FILE` into `/workspace/models` (skip if cached).
+4. Launches `llama-server --alias "$MODEL_ALIAS" --port 8080 …` in the
+   background, redirecting to `/var/log/llama-server.log`.
+5. `exec`s `python3 worker.py`. The worker tails the log for the
+   `server is listening` line, then routes traffic.
 
 ## Endpoint scaling
 
-Vast manages the queue, load balancer, and autoscaler. Configure the
-endpoint via `cloud/scripts/vast/provision-endpoint.ts`:
+Vast manages the queue, load balancer, and autoscaler. Configure the endpoint
+via `cloud/scripts/vast/provision-endpoint.ts`:
 
-- `min_workers = 1`, `inactivity_timeout = -1` → always one warm worker
-- `max_workers = 8`
-- `target_util = 0.9`
-- `search_params`: `gpu_name=RTX_5090`, `reliability ≥ 0.9`, verified, ≥ 23 GB VRAM, ≥ 16 GB disk
+- `min_workers = 1`, `inactivity_timeout = -1` → always one warm worker.
+- `max_workers = 8`.
+- `target_util = 0.9`.
+- `search_params`: `gpu_name=RTX_5090`, `reliability ≥ 0.9`, verified,
+  `gpu_ram ≥ 25000 MB`, `disk_space ≥ 50 GB`.
+
+## End-to-end provisioning
+
+```bash
+# 1. (one-time) Upsert the Vast template. Captures image + onstart + env.
+VASTAI_API_KEY=vastai_… \
+PYWORKER_REPO=https://github.com/elizaOS/cloud.git \
+PYWORKER_REF=<commit-sha> \
+bun cloud/scripts/vast/upsert-template.ts
+# → prints VAST_TEMPLATE_ID=<n>
+
+# 2. Provision (or update) the endpoint.
+VASTAI_API_KEY=vastai_… VAST_TEMPLATE_ID=<n> \
+bun cloud/scripts/vast/provision-endpoint.ts
+
+# 3. Wire the cloud Worker to forward to the endpoint.
+wrangler secret put VAST_BASE_URL    # e.g. https://run.vast.ai/route/abc123
+wrangler secret put VAST_API_KEY     # endpoint-specific token, NOT the CLI key
+```
 
 ## Routing from eliza/cloud
 
-The cloud Worker routes `vast/qwen3.6-35b-a3b-awq` requests through
+The cloud Worker routes `vast/qwen3.6-27b-neo-code` requests through
 `VastProvider` (`packages/lib/providers/vast.ts`), which posts to
 `${VAST_BASE_URL}/v1/chat/completions` with `Authorization: Bearer
 ${VAST_API_KEY}`. Both secrets are wrangler-managed and listed in
 `apps/api/wrangler.toml`.
+
+## Swapping in a fine-tuned model
+
+After the training pipeline (`/training/scripts/train_nebius.sh` or vast)
+emits a checkpoint and pushes it to HF as a GGUF (e.g.
+`elizaos/qwen3.6-27b-eliza-v0.1-gguf`):
+
+1. Update the Vast template's `MODEL_REPO` / `MODEL_FILE` env (re-run
+   `upsert-template.ts` with the new env, or change in the Vast UI).
+2. Optionally change `MODEL_ALIAS` to `vast/qwen3.6-27b-eliza-v0.1` and add
+   the matching catalog entry in `cloud/packages/lib/models/catalog.ts`.
+3. Vast cycles workers automatically once the template is updated; the next
+   cold-start downloads the new GGUF on first run, then caches it on the
+   worker volume.

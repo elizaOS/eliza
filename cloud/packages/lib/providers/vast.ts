@@ -2,14 +2,15 @@
  * Vast.ai Serverless provider.
  *
  * Forwards OpenAI-compatible chat completions to a Vast Serverless endpoint
- * fronted by vLLM (via PyWorker). The endpoint URL and auth token come from
- * `VAST_BASE_URL` and `VAST_API_KEY` because each Vast endpoint has a unique
- * routing URL — we don't bake one in.
+ * fronted by llama.cpp's `llama-server` (via PyWorker). The endpoint URL and
+ * auth token come from `VAST_BASE_URL` and `VAST_API_KEY` because each Vast
+ * endpoint has a unique routing URL — we don't bake one in.
  *
- * Catalog ids look like `vast/qwen3.6-35b-a3b-awq`. The upstream vLLM server
- * expects the bare HF id (e.g. `QuantTrio/Qwen3.6-35B-A3B-AWQ`); the catalog's
- * `VAST_NATIVE_MODEL_ID_MAP` does that translation. Vast itself manages
- * autoscaling, queueing, and load balancing — we are a thin pass-through.
+ * Catalog ids look like `vast/qwen3.6-27b-neo-code`. The upstream llama-server
+ * is launched with `--alias <catalog id>` so the model id round-trips
+ * unchanged; `VAST_NATIVE_MODEL_ID_MAP` is kept available so we can register
+ * additional quants/variants later. Vast itself manages autoscaling, queueing,
+ * and load balancing — we are a thin pass-through.
  */
 
 import { getVastApiModelId, VAST_NATIVE_MODELS } from "@/lib/models";
