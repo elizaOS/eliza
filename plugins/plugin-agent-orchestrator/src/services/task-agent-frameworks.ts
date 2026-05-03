@@ -22,7 +22,10 @@ import {
 } from "./config-env.js";
 
 export type SupportedTaskAgentAdapter = "claude" | "codex" | "gemini" | "aider";
-export type TaskAgentFrameworkId = SupportedTaskAgentAdapter | "pi";
+export type TaskAgentFrameworkId =
+  | SupportedTaskAgentAdapter
+  | "pi"
+  | "opencode";
 
 export interface TaskAgentModelPrefs {
   powerful?: string;
@@ -182,6 +185,16 @@ const FRAMEWORK_CAPABILITY_PROFILES: Record<
     repoWork: 0.5,
     fastIteration: 0.5,
   },
+  opencode: {
+    implementation: 0.85,
+    research: 0.75,
+    planning: 0.75,
+    ops: 0.7,
+    verification: 0.8,
+    coordination: 0.7,
+    repoWork: 0.85,
+    fastIteration: 0.85,
+  },
 };
 
 const FRAMEWORK_LABELS: Record<TaskAgentFrameworkId, string> = {
@@ -190,6 +203,7 @@ const FRAMEWORK_LABELS: Record<TaskAgentFrameworkId, string> = {
   gemini: "Gemini CLI",
   aider: "Aider",
   pi: "Pi",
+  opencode: "OpenCode",
 };
 
 const STANDARD_FRAMEWORKS: SupportedTaskAgentAdapter[] = [
@@ -200,7 +214,7 @@ const STANDARD_FRAMEWORKS: SupportedTaskAgentAdapter[] = [
 ];
 
 const TASK_AGENT_MODEL_PREF_SETTING_KEYS: Record<
-  SupportedTaskAgentAdapter,
+  SupportedTaskAgentAdapter | "opencode",
   { powerful: string; fast: string }
 > = {
   claude: {
@@ -219,16 +233,21 @@ const TASK_AGENT_MODEL_PREF_SETTING_KEYS: Record<
     powerful: "PARALLAX_AIDER_MODEL_POWERFUL",
     fast: "PARALLAX_AIDER_MODEL_FAST",
   },
+  opencode: {
+    powerful: "PARALLAX_OPENCODE_MODEL_POWERFUL",
+    fast: "PARALLAX_OPENCODE_MODEL_FAST",
+  },
 };
 
 export const TASK_AGENT_DEFAULT_MODEL_PREFS: Record<
-  SupportedTaskAgentAdapter,
+  SupportedTaskAgentAdapter | "opencode",
   TaskAgentModelPrefs
 > = {
   claude: { powerful: "claude-opus-4-7" },
   codex: { powerful: "gpt-5.5", fast: "gpt-5.5-mini" },
   gemini: {},
   aider: {},
+  opencode: {},
 };
 
 const TASK_AGENT_COMPLEXITY_RE =
@@ -335,7 +354,7 @@ export function mergeTaskAgentModelPrefs(
 
 function normalizeTaskAgentAdapterForModelPrefs(
   agentType: string | undefined,
-): SupportedTaskAgentAdapter | undefined {
+): SupportedTaskAgentAdapter | "opencode" | undefined {
   const normalized = agentType?.trim().toLowerCase();
   switch (normalized) {
     case "claude":
@@ -347,6 +366,10 @@ function normalizeTaskAgentAdapterForModelPrefs(
     case "openai-codex":
     case "openai codex":
       return "codex";
+    case "opencode":
+    case "open-code":
+    case "open code":
+      return "opencode";
     case "gemini":
     case "google":
     case "gemini-cli":
@@ -518,6 +541,15 @@ function hasElizaCloudApiKey(): boolean {
 
 function hasPiBinary(): boolean {
   return hasBinaryOnPath("pi");
+}
+
+function hasOpencodeBinary(): boolean {
+  return hasBinaryOnPath("opencode");
+}
+
+function isOpencodeLocalMode(): boolean {
+  const flag = readConfigEnvKey("PARALLAX_OPENCODE_LOCAL");
+  return flag === "1" || flag?.toLowerCase() === "true";
 }
 
 function hasBinaryOnPath(binaryName: string): boolean {
@@ -704,6 +736,35 @@ async function computeTaskAgentFrameworkState(
     temporarilyDisabled: false,
     recommended: false,
     reason: piReady ? "CLI detected" : "CLI not detected",
+  });
+
+  const opencodeReady = hasOpencodeBinary();
+  const opencodeLocalMode = isOpencodeLocalMode();
+  const opencodeAuthReady =
+    opencodeReady &&
+    (cloudReady ||
+      opencodeLocalMode ||
+      Boolean(readConfigEnvKey("PARALLAX_OPENCODE_BASE_URL")));
+  const opencodeReason = !opencodeReady
+    ? "CLI not detected"
+    : opencodeAuthReady
+      ? cloudReady
+        ? "ready to use Eliza Cloud as the model provider"
+        : opencodeLocalMode
+          ? "ready to use a local model provider (PARALLAX_OPENCODE_LOCAL)"
+          : "ready to use the configured OpenCode provider"
+      : "installed but no model provider is configured (set PARALLAX_OPENCODE_LOCAL=1 for local Ollama, pair Eliza Cloud, or set PARALLAX_OPENCODE_BASE_URL)";
+  inventory.push({
+    id: "opencode",
+    label: FRAMEWORK_LABELS.opencode,
+    installed: opencodeReady,
+    authReady: opencodeAuthReady,
+    subscriptionReady: false,
+    temporarilyDisabled: false,
+    recommended: false,
+    reason: opencodeReason,
+    installCommand: "curl -fsSL https://opencode.ai/install | bash",
+    docsUrl: "https://opencode.ai/docs/",
   });
 
   const frameworks = inventory.map((framework) => ({
