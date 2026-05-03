@@ -1,0 +1,103 @@
+# Deploy to Railway
+# Triggers:
+#   1. Manual dispatch (workflow_dispatch) with image tag input
+#   2. Reusable workflow (workflow_call) from other repos (e.g. eliza)
+#   3. Automatically after Docker workflow completes on develop/tags
+name: Deploy Railway
+
+on:
+  # Manual trigger from Actions tab
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Docker image tag to deploy (e.g. v0.5.0, develop)"
+        required: true
+        type: string
+      dry_run:
+        description: "Dry run (skip actual deploy)"
+        required: false
+        type: boolean
+        default: false
+
+  # Reusable workflow (callable from eliza or other repos)
+  workflow_call:
+    inputs:
+      image_tag:
+        description: "Docker image tag to deploy"
+        required: true
+        type: string
+      dry_run:
+        description: "Dry run (skip actual deploy)"
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      RAILWAY_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Resolve the image tag based on trigger type
+      - name: Resolve image tag
+        id: resolve
+        run: |
+          TAG="${{ inputs.image_tag }}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Image tag resolved: ${TAG}"
+
+      - name: Resolve dry-run flag
+        id: flags
+        run: |
+          echo "dry_run=${{ inputs.dry_run }}" >> "$GITHUB_OUTPUT"
+
+      # Create GitHub deployment (shows in repo's Deployments tab)
+      - name: Create GitHub deployment
+        id: deployment
+        uses: chrnorm/deployment-action@v2
+        with:
+          token: ${{ github.token }}
+          environment: production
+          ref: ${{ github.sha }}
+          description: "Deploy ghcr.io/steward-fi/steward:${{ steps.resolve.outputs.tag }} to Railway"
+
+      # Run the deploy script
+      - name: Deploy to Railway
+        id: deploy
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          ARGS="${{ steps.resolve.outputs.tag }}"
+          if [[ "${{ steps.flags.outputs.dry_run }}" == "true" ]]; then
+            ARGS="${ARGS} --dry-run"
+          fi
+          chmod +x scripts/railway-deploy.sh
+          ./scripts/railway-deploy.sh $ARGS
+
+      # Update deployment status on success
+      - name: Update deployment status (success)
+        if: success()
+        uses: chrnorm/deployment-status@v2
+        with:
+          token: ${{ github.token }}
+          deployment-id: ${{ steps.deployment.outputs.deployment_id }}
+          state: success
+          environment-url: https://steward-api-production-115d.up.railway.app
+
+      # Update deployment status on failure
+      - name: Update deployment status (failure)
+        if: failure()
+        uses: chrnorm/deployment-status@v2
+        with:
+          token: ${{ github.token }}
+          deployment-id: ${{ steps.deployment.outputs.deployment_id }}
+          state: failure

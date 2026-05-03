@@ -1066,7 +1066,7 @@ export async function runCrossChannelSearch(
   runtime: IAgentRuntime,
   query: CrossChannelSearchQuery,
 ): Promise<CrossChannelSearchResult> {
-  if (!query.query || query.query.trim().length === 0) {
+  if (query.query.trim().length === 0) {
     throw new Error("runCrossChannelSearch: query.query is required");
   }
 

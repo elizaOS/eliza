@@ -15,6 +15,6 @@ export function shouldStartTelegramStandaloneBot(
     return false;
   }
   return isExplicitTrue(
-    env.ELIZA_TELEGRAM_STANDALONE_BOT ?? env.ELIZA_TELEGRAM_STANDALONE_BOT,
+    env.ELIZA_TELEGRAM_STANDALONE_BOT,
   );
 }

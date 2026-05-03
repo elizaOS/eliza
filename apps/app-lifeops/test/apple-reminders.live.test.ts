@@ -12,7 +12,7 @@ import {
 
 const execFileAsync = promisify(execFile);
 const LIVE_TESTS_ENABLED =
-  process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
+  process.env.ELIZA_LIVE_TEST === "1";
 const LIVE_APPLE_REMINDER_TESTS_ENABLED =
   LIVE_TESTS_ENABLED &&
   process.platform === "darwin" &&
@@ -20,7 +20,7 @@ const LIVE_APPLE_REMINDER_TESTS_ENABLED =
 
 if (!LIVE_APPLE_REMINDER_TESTS_ENABLED) {
   const reasons = [
-    !LIVE_TESTS_ENABLED ? "set ELIZA_LIVE_TEST=1 or ELIZA_LIVE_TEST=1" : null,
+    !LIVE_TESTS_ENABLED ? "set ELIZA_LIVE_TEST=1" : null,
     process.platform !== "darwin" ? "run on macOS" : null,
     process.env.ELIZA_LIVE_APPLE_REMINDERS_TEST !== "1"
       ? "set ELIZA_LIVE_APPLE_REMINDERS_TEST=1"

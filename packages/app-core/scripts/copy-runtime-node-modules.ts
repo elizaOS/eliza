@@ -57,16 +57,7 @@ const ALLOW_REGISTRY_FETCH =
   process.env.ELIZA_RUNTIME_COPY_ALLOW_REGISTRY_FETCH === "1";
 const DEP_SKIP = new Set(["typescript", "@types/node", "lucide-react"]);
 const ALWAYS_HOISTED_PACKAGES = new Set(["@elizaos/core"]);
-const PACKAGED_DEPENDENCY_SKIPS = new Map<string, Set<string>>([
-  [
-    "@elizaos/plugin-cron",
-    new Set([
-      // The desktop/runtime bundle does not expose the Eliza CLI surface.
-      // Cron only imports plugin-cli to register commands at module load.
-      "@elizaos/plugin-cli",
-    ]),
-  ],
-]);
+const PACKAGED_DEPENDENCY_SKIPS = new Map<string, Set<string>>();
 const PLATFORM_ALIASES = new Map<string, string>([
   ["android", "android"],
   ["aix", "aix"],
@@ -352,6 +343,157 @@ function copyPackageDir(
   return true;
 }
 
+type PackageJsonManifest = {
+  exports?: Record<string, unknown>;
+};
+
+type AgentDeepImportExportEntry = {
+  exportKey: string;
+  jsPath: string;
+  typesPath: string | null;
+};
+
+const AGENT_DEEP_IMPORT_EXPORT_DIRS = [
+  "config",
+  "providers",
+  "runtime",
+] as const;
+
+function toPosixPath(value: string): string {
+  return value.split(path.sep).join("/");
+}
+
+function collectAgentDeepImportExportEntries(
+  sourceRoot: string,
+): AgentDeepImportExportEntry[] {
+  const entries: AgentDeepImportExportEntry[] = [];
+
+  const visit = (directory: string): void => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const entryPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        visit(entryPath);
+        continue;
+      }
+
+      if (
+        !entry.isFile() ||
+        !entry.name.endsWith(".js") ||
+        entry.name.endsWith(".test.js")
+      ) {
+        continue;
+      }
+
+      const sourceRelative = toPosixPath(path.relative(sourceRoot, entryPath));
+      const importPath = `./packages/agent/src/${sourceRelative}`;
+      const typeFilePath = entryPath.replace(/\.js$/, ".d.ts");
+      entries.push({
+        exportKey: `./${sourceRelative.replace(/\.js$/, "")}`,
+        jsPath: importPath,
+        typesPath: fs.existsSync(typeFilePath)
+          ? importPath.replace(/\.js$/, ".d.ts")
+          : null,
+      });
+    }
+  };
+
+  for (const dirName of AGENT_DEEP_IMPORT_EXPORT_DIRS) {
+    const sourceDir = path.join(sourceRoot, dirName);
+    if (fs.existsSync(sourceDir)) {
+      visit(sourceDir);
+    }
+  }
+
+  return entries.sort((left, right) =>
+    left.exportKey.localeCompare(right.exportKey),
+  );
+}
+
+function patchCopiedAgentRuntimeExports(packageDir: string): void {
+  const manifestPath = path.join(packageDir, "package.json");
+  if (!fs.existsSync(manifestPath)) {
+    return;
+  }
+
+  const sourceRoot = path.join(packageDir, "packages", "agent", "src");
+  if (!fs.existsSync(sourceRoot)) {
+    return;
+  }
+
+  const manifest = readJson<PackageJsonManifest>(manifestPath);
+  if (
+    !manifest.exports ||
+    typeof manifest.exports !== "object" ||
+    Array.isArray(manifest.exports)
+  ) {
+    return;
+  }
+
+  let changed = false;
+  for (const entry of collectAgentDeepImportExportEntries(sourceRoot)) {
+    const exportValue = entry.typesPath
+      ? {
+          types: entry.typesPath,
+          import: entry.jsPath,
+          default: entry.jsPath,
+        }
+      : {
+          import: entry.jsPath,
+          default: entry.jsPath,
+        };
+
+    if (
+      JSON.stringify(manifest.exports[entry.exportKey]) ===
+      JSON.stringify(exportValue)
+    ) {
+      continue;
+    }
+
+    manifest.exports[entry.exportKey] = exportValue;
+    changed = true;
+  }
+
+  if (changed) {
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
+  }
+}
+
+export function rewritePackagedLifeOpsTelegramAuthImport(source: string): string {
+  return source.replace(
+    'from "../../../../plugins/plugin-telegram/src/account-auth-service.ts";',
+    'from "@elizaos/plugin-telegram/account-auth-service";',
+  );
+}
+
+function patchCopiedAppLifeOpsRuntimeImports(packageDir: string): void {
+  const telegramAuthPath = path.join(
+    packageDir,
+    "src",
+    "lifeops",
+    "telegram-auth.ts",
+  );
+  if (!fs.existsSync(telegramAuthPath)) {
+    return;
+  }
+
+  const original = fs.readFileSync(telegramAuthPath, "utf8");
+  const rewritten = rewritePackagedLifeOpsTelegramAuthImport(original);
+  if (rewritten !== original) {
+    fs.writeFileSync(telegramAuthPath, rewritten);
+  }
+}
+
+function patchCopiedPackageRuntimeSurface(name: string, packageDir: string): void {
+  if (name === "@elizaos/app-lifeops") {
+    patchCopiedAppLifeOpsRuntimeImports(packageDir);
+    return;
+  }
+  if (name === "@elizaos/agent") {
+    patchCopiedAgentRuntimeExports(packageDir);
+    return;
+  }
+}
+
 export function shouldSkipPackagedDependency(
   requesterName: string,
   dependencyName: string,
@@ -359,37 +501,6 @@ export function shouldSkipPackagedDependency(
   return (
     PACKAGED_DEPENDENCY_SKIPS.get(requesterName)?.has(dependencyName) ?? false
   );
-}
-
-export function stripPackagedCronCliRegistration(source: string): string {
-  return source.replace(
-    'import { defineCliCommand, registerCliCommand } from "@elizaos/plugin-cli";',
-    [
-      "// Packaged desktop/runtime bundles do not expose the Eliza CLI registry.",
-      "const defineCliCommand = () => null;",
-      "const registerCliCommand = () => {};",
-    ].join("\n"),
-  );
-}
-
-function patchCopiedPackageRuntimeSurface(
-  name: string,
-  packageDir: string,
-): void {
-  if (name !== "@elizaos/plugin-cron") {
-    return;
-  }
-
-  const cronEntryPath = path.join(packageDir, "dist", "index.js");
-  if (!fs.existsSync(cronEntryPath)) {
-    return;
-  }
-
-  const original = fs.readFileSync(cronEntryPath, "utf8");
-  const rewritten = stripPackagedCronCliRegistration(original);
-  if (rewritten !== original) {
-    fs.writeFileSync(cronEntryPath, rewritten);
-  }
 }
 
 export function shouldCopyPackageEntry(entry: string): boolean {

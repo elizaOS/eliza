@@ -203,12 +203,6 @@ try {
 } catch {
   pluginCommands = null;
 }
-let pluginCron: unknown = null;
-try {
-  pluginCron = require("@elizaos/plugin-cron");
-} catch {
-  pluginCron = null;
-}
 // Keep plugin-elizacloud behind a guarded runtime require as well. Some
 // published alpha builds advertise dist/node/index.node.js but do not ship
 // that ESM entry, which breaks CLI bootstrap in published-only CI.
@@ -336,7 +330,6 @@ Object.assign(STATIC_ELIZA_PLUGINS, {
   ...(pluginAgentOrchestrator
     ? { "agent-orchestrator": pluginAgentOrchestrator }
     : {}),
-  ...(pluginCron ? { "@elizaos/plugin-cron": pluginCron } : {}),
   ...(pluginShell ? { "@elizaos/plugin-shell": pluginShell } : {}),
   // plugin-manager: now built-in core capability (ENABLE_PLUGIN_MANAGER)
   "@elizaos/plugin-agent-skills": pluginAgentSkills,
@@ -3771,13 +3764,17 @@ export async function startEliza(
   };
 
   const initializeRuntimeServices = async (): Promise<void> => {
-    try {
-      const { stewardEvmPreBoot } = await import(
-        "@elizaos/app-steward/services/steward-evm-bridge"
-      );
-      await stewardEvmPreBoot(runtime);
-    } catch (err) {
-      logger.debug(`[eliza] Steward EVM pre-boot skipped: ${formatError(err)}`);
+    if (process.env.ELIZA_LEGACY_STEWARD_EVM_BRIDGE !== "0") {
+      try {
+        const { stewardEvmPreBoot } = await import(
+          "@elizaos/app-steward/services/steward-evm-bridge"
+        );
+        await stewardEvmPreBoot(runtime);
+      } catch (err) {
+        logger.debug(
+          `[eliza] Steward EVM pre-boot skipped: ${formatError(err)}`,
+        );
+      }
     }
 
     // 7f. Pre-register ConnectorSetupService so connector plugins can access
@@ -3862,15 +3859,17 @@ export async function startEliza(
       );
     }
 
-    try {
-      const { stewardEvmPostBoot } = await import(
-        "@elizaos/app-steward/services/steward-evm-bridge"
-      );
-      await stewardEvmPostBoot(runtime);
-    } catch (err) {
-      logger.debug(
-        `[eliza] Steward EVM post-boot skipped: ${formatError(err)}`,
-      );
+    if (process.env.ELIZA_LEGACY_STEWARD_EVM_BRIDGE !== "0") {
+      try {
+        const { stewardEvmPostBoot } = await import(
+          "@elizaos/app-steward/services/steward-evm-bridge"
+        );
+        await stewardEvmPostBoot(runtime);
+      } catch (err) {
+        logger.debug(
+          `[eliza] Steward EVM post-boot skipped: ${formatError(err)}`,
+        );
+      }
     }
 
     try {

@@ -6,6 +6,6 @@ export * from "./definitions";
 
 const loadWeb = () => import("./web").then((m) => new m.WiFiWeb());
 
-export const WiFi = registerPlugin<WiFiPlugin>("MiladyWiFi", {
+export const WiFi = registerPlugin<WiFiPlugin>("ElizaWiFi", {
   web: loadWeb,
 });

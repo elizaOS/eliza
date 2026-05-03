@@ -160,11 +160,15 @@ class StewardSigningClient {
  * Fetch the EVM wallet address for an agent from the Steward API.
  * Tries /vault/:agentId/addresses first (multi-chain), falls back to /agents/:agentId.
  */
-export async function fetchStewardWalletAddress(
+/**
+ * Fetch optional multi-chain addresses from Steward (`/vault` first, then `/agents`).
+ * Solana may be present from `/vault/.../addresses` while EVM may come from either path.
+ */
+export async function fetchStewardVaultChainAddresses(
   apiUrl: string,
   agentToken: string,
   agentId: string,
-): Promise<Address> {
+): Promise<{ evm: Address | null; solana: string | null }> {
   const baseUrl = apiUrl.replace(/\/+$/, "");
   const timeoutMs = 10_000;
   const headers = {
@@ -173,7 +177,6 @@ export async function fetchStewardWalletAddress(
     Authorization: `Bearer ${agentToken}`,
   };
 
-  // Try /vault/:agentId/addresses first (returns { evm: "0x...", solana: "..." })
   try {
     const addrResp = await fetch(
       `${baseUrl}/vault/${encodeURIComponent(agentId)}/addresses`,
@@ -187,15 +190,19 @@ export async function fetchStewardWalletAddress(
         evm?: string;
         solana?: string;
       }>;
-      if (addrData.ok && addrData.data?.evm) {
-        return addrData.data.evm as Address;
+      if (addrData.ok && addrData.data) {
+        const evmRaw = addrData.data.evm?.trim();
+        const solRaw = addrData.data.solana?.trim();
+        return {
+          evm: evmRaw ? (evmRaw as Address) : null,
+          solana: solRaw ?? null,
+        };
       }
     }
   } catch {
     // fall through
   }
 
-  // Fallback: /agents/:agentId
   try {
     const agentResp = await fetch(
       `${baseUrl}/agents/${encodeURIComponent(agentId)}`,
@@ -209,16 +216,36 @@ export async function fetchStewardWalletAddress(
         walletAddress?: string;
       }>;
       if (agentData.ok && agentData.data?.walletAddress) {
-        return agentData.data.walletAddress as Address;
+        return {
+          evm: agentData.data.walletAddress as Address,
+          solana: null,
+        };
       }
     }
   } catch {
     // fall through
   }
 
-  throw new Error(
-    `[StewardAccount] Could not fetch wallet address for agent "${agentId}" from ${baseUrl}`,
+  return { evm: null, solana: null };
+}
+
+export async function fetchStewardWalletAddress(
+  apiUrl: string,
+  agentToken: string,
+  agentId: string,
+): Promise<Address> {
+  const baseUrl = apiUrl.replace(/\/+$/, "");
+  const { evm } = await fetchStewardVaultChainAddresses(
+    apiUrl,
+    agentToken,
+    agentId,
   );
+  if (!evm) {
+    throw new Error(
+      `[StewardAccount] Could not fetch wallet address for agent "${agentId}" from ${baseUrl}`,
+    );
+  }
+  return evm;
 }
 
 // ─── Create viem Account ─────────────────────────────────────────────────────
@@ -408,7 +435,9 @@ function extractAgentIdFromJwt(token: string): string | null {
   try {
     const parts = token.split(".");
     if (parts.length !== 3) return null;
-    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString());
+    const payloadB64 = parts[1];
+    if (!payloadB64) return null;
+    const payload = JSON.parse(Buffer.from(payloadB64, "base64url").toString());
     return payload.agentId || payload.sub || null;
   } catch {
     return null;

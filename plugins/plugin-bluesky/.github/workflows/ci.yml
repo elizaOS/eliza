@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  typescript:
+    name: TypeScript
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Type check
+        run: cd typescript && bun run tsc --noEmit -p tsconfig.json
+
+      - name: Build
+        run: bun run build
+
+      - name: Test
+        run: bun run test:unit
+
+  python:
+    name: Python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          cd python
+          pip install -e ".[dev]"
+
+      - name: Type check
+        run: |
+          cd python
+          python -m mypy elizaos_plugin_bluesky
+
+      - name: Lint
+        run: |
+          cd python
+          ruff check .
+          ruff format --check .
+
+      - name: Test
+        run: |
+          cd python
+          pytest
+
+  rust:
+    name: Rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            rust/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('rust/Cargo.toml') }}
+
+      - name: Build
+        run: |
+          cd rust
+          cargo build --release
+
+      - name: Clippy
+        run: |
+          cd rust
+          cargo clippy --all-targets -- -D warnings
+
+      - name: Format check
+        run: |
+          cd rust
+          cargo fmt -- --check
+
+      - name: Test
+        run: |
+          cd rust
+          cargo test
+
+
+

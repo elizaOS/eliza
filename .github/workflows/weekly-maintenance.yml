@@ -27,6 +27,10 @@ jobs:
           bun-version: latest
 
       - name: Run Weekly Maintenance
+        # Don't fail the cron when the Anthropic API is unavailable (low
+        # credit balance, rate limit, transient outage). Skipping a weekly
+        # maintenance run is preferable to a perma-red scheduled workflow.
+        continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}

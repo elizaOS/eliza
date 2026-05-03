@@ -369,7 +369,7 @@ export async function startBenchmarkServer() {
       process.env.COMPUTERUSE_ENABLED ??= "true";
       process.env.COMPUTERUSE_MODE ??= "local";
       const localComputerusePath =
-        "../../../plugins/plugin-computeruse/typescript/src/index.ts";
+        "../../../../plugins/plugin-computeruse/src/index.ts";
       const computeruseModule = (await import(localComputerusePath)) as Record<
         string,
         unknown

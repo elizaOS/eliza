@@ -3,10 +3,10 @@ import { AnimatedSprite, Container, Graphics, Sprite, Text } from "pixi.js";
 import { Viewport } from "pixi-viewport";
 
 extend({
-  AnimatedSprite,
-  Container,
-  Graphics,
-  Sprite,
-  Text,
-  Viewport,
+	AnimatedSprite,
+	Container,
+	Graphics,
+	Sprite,
+	Text,
+	Viewport,
 });

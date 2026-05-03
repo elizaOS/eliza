@@ -192,6 +192,9 @@ tasks/
 
 # Development database and tool directories
 **/data/
+# But cloud's frontend uses src/lib/data/ as legitimate source — un-ignore it
+!cloud/apps/frontend/src/lib/data/
+!cloud/apps/frontend/src/lib/data/**
 **/.roo/
 **/.roomodes/
 **/.taskmaster/
@@ -230,6 +233,7 @@ standalone.ts
 .claude/cache/
 
 # Proto-generated files (regenerated from schemas/)
+packages/core/src/types/generated/
 packages/typescript/src/types/generated/
 packages/python/elizaos/types/generated/
 packages/rust/src/types/generated/
@@ -239,19 +243,9 @@ packages/rust/.cargo-tools/
 packages/shared/src/i18n/generated/
 packages/typescript/src/i18n/generated/
 
-# Vitest config files (if not needed in repo)
-vitest.config.ts
-!apps/app-companion/vitest.config.ts
-!apps/app-defense-of-the-agents/vitest.config.ts
-!apps/app-lifeops/vitest.config.ts
-!apps/app-training/vitest.config.ts
-!packages/agent/vitest.config.ts
-!packages/app/vitest.config.ts
-!packages/confidant/vitest.config.ts
-!packages/shared/vitest.config.ts
-!packages/cloud-routing/vitest.config.ts
-!plugins/plugin-agent-wallet/vitest.config.ts
 tsconfig.test.json
+# But cloud has a real source-tracked tsconfig.test.json — un-ignore it
+!cloud/tsconfig.test.json
 
 # Migration status docs (temporary)
 MIGRATION_*.md

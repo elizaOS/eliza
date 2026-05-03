@@ -48,38 +48,6 @@ import {
   resolveWalletRpcReadiness,
 } from "./wallet-rpc.js";
 
-// Rate limiter for wallet export.
-// In test/CI mode the limit is relaxed to avoid blocking E2E suites.
-const IS_TEST = process.env.NODE_ENV === "test" || !!process.env.VITEST;
-const WALLET_EXPORT_MAX_ATTEMPTS = IS_TEST ? 500 : 5;
-const WALLET_EXPORT_WINDOW_MS = 15 * 60_000;
-const walletExportAttempts = new Map<
-  string,
-  { count: number; resetAt: number }
->();
-
-function rateLimitWalletExport(req: http.IncomingMessage): boolean {
-  const key = req.socket?.remoteAddress ?? "unknown";
-  const now = Date.now();
-  // Lazy sweep
-  if (walletExportAttempts.size > 50) {
-    for (const [k, v] of walletExportAttempts) {
-      if (now > v.resetAt) walletExportAttempts.delete(k);
-    }
-  }
-  const current = walletExportAttempts.get(key);
-  if (!current || now > current.resetAt) {
-    walletExportAttempts.set(key, {
-      count: 1,
-      resetAt: now + WALLET_EXPORT_WINDOW_MS,
-    });
-    return true;
-  }
-  if (current.count >= WALLET_EXPORT_MAX_ATTEMPTS) return false;
-  current.count += 1;
-  return true;
-}
-
 const WALLET_CONFIG_COMPAT_KEYS = new Set([
   "ALCHEMY_API_KEY",
   "INFURA_API_KEY",
@@ -399,7 +367,6 @@ export async function handleWalletRoutes(
     pathname,
     config,
     saveConfig,
-    resolveWalletExportRejection,
     readJsonBody,
     json,
     error,
@@ -1146,38 +1113,63 @@ export async function handleWalletRoutes(
     return true;
   }
 
-  // POST /api/wallet/export
-  if (method === "POST" && pathname === "/api/wallet/export") {
-    if (!rateLimitWalletExport(req)) {
-      error(res, "Too many export attempts. Try again later.", 429);
-      return true;
-    }
+  // GET /api/wallet/approvals/stream — SSE stub until Steward approval wiring lands.
+  if (method === "GET" && pathname === "/api/wallet/approvals/stream") {
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
 
-    const body = await readJsonBody<WalletExportRequestBody>(req, res);
-    if (!body) return true;
+    const writeSse = (event: string, data: Record<string, unknown>) => {
+      res.write(`event: ${event}\n`);
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
 
-    const rejection = resolveWalletExportRejection(req, body);
-    if (rejection) {
-      error(res, rejection.reason, rejection.status);
-      return true;
-    }
-
-    const evmKey = process.env.EVM_PRIVATE_KEY ?? null;
-    const solanaKey = process.env.SOLANA_PRIVATE_KEY ?? null;
-    const addresses = deps.getWalletAddresses();
-
-    logger.warn(
-      `[wallet] Private keys exported via API (ip=${req.socket?.remoteAddress ?? "unknown"})`,
-    );
-
-    json(res, {
-      evm: evmKey
-        ? { privateKey: evmKey, address: addresses.evmAddress }
-        : null,
-      solana: solanaKey
-        ? { privateKey: solanaKey, address: addresses.solanaAddress }
-        : null,
+    writeSse("wallet_approvals", {
+      ok: true,
+      approvals: [],
+      note: "Approval stream placeholder — connect Steward decision bridge when available.",
     });
+
+    const ping = setInterval(() => {
+      try {
+        writeSse("ping", { t: Date.now() });
+      } catch {
+        clearInterval(ping);
+      }
+    }, 15_000);
+
+    req.on("close", () => {
+      clearInterval(ping);
+      try {
+        res.end();
+      } catch {
+        /* ignore */
+      }
+    });
+    return true;
+  }
+
+  const approvalDecision = /^\/api\/wallet\/approvals\/([^/]+)\/decision$/.exec(
+    pathname,
+  );
+  if (method === "POST" && approvalDecision) {
+    error(
+      res,
+      "Wallet approval decisions are not wired to Steward in this build.",
+      501,
+    );
+    return true;
+  }
+
+  // POST /api/wallet/export — removed (no plaintext key export from the agent API).
+  if (method === "POST" && pathname === "/api/wallet/export") {
+    error(
+      res,
+      "Private key export has been removed. Use Steward or OS-backed custody flows.",
+      410,
+    );
     return true;
   }
 

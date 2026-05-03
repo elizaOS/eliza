@@ -1,0 +1,83 @@
+# Build and push Docker image to GitHub Container Registry (GHCR)
+# Triggers on pushes to develop branch and version tags (v*)
+name: Docker
+
+on:
+  push:
+    branches: [develop]
+    tags: ["v*"]
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.image-tag.outputs.tag }}
+      image_tags: ${{ steps.meta.outputs.tags }}
+    # packages:write is required to push to GHCR
+    # contents:read is required to checkout the repo
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      # Checkout the repository
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Authenticate with GHCR only when publishing a tagged release image.
+      - name: Login to GHCR
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Enable BuildKit for layer caching and multi-platform builds
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Generate image tags and labels from git metadata
+      # - branch pushes get the branch name as tag (e.g. develop)
+      # - version tags get semver tags (e.g. 0.4.0, 0.4)
+      # - version tags also get "latest"
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/steward-fi/steward
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+
+      # Build on branch pushes and publish only on version tags. Branch builds still
+      # validate the Dockerfile, but avoid failing on repo tokens that cannot write
+      # to the org GHCR package.
+      - name: Build and optionally push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+          build-args: |
+            CACHE_BUST=${{ github.sha }}
+
+      # Output the primary image tag for downstream workflows (deploy-railway)
+      # For version tags: use semver (e.g. 0.5.0)
+      # For branch pushes: use branch name (e.g. develop)
+      - name: Export image tag
+        id: image-tag
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF#refs/tags/v}"
+          else
+            TAG="${GITHUB_REF#refs/heads/}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Primary image tag: ${TAG}"

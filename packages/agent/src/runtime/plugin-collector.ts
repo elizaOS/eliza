@@ -25,7 +25,7 @@ import {
 import type { ElizaConfig } from "../config/config.js";
 import {
   CORE_PLUGINS,
-  MILADYOS_ANDROID_CORE_PLUGINS,
+  ELIZAOS_ANDROID_CORE_PLUGINS,
   MOBILE_CORE_PLUGINS,
   OPTIONAL_CORE_PLUGINS,
 } from "./core-plugins.js";
@@ -53,7 +53,7 @@ function orchestratorCompatPluginRequested(config: ElizaConfig): boolean {
   return raw === "1" || raw === "true" || raw === "yes";
 }
 
-function isMiladyOsAndroidRuntime(): boolean {
+function isElizaOsAndroidRuntime(): boolean {
   return (
     isAndroidMobile() &&
     process.env.ELIZA_LOCAL_LLAMA?.trim().toLowerCase() === "1"
@@ -315,7 +315,7 @@ export function collectPluginNames(
   // launchers (/usr/bin/open, osascript, xdg-open), or PTY tooling — all
   // unavailable in the app sandbox. Substitute the curated mobile-safe set.
   const onMobile = isMobilePlatform();
-  const onMiladyOsAndroid = isMiladyOsAndroidRuntime();
+  const onElizaOsAndroid = isElizaOsAndroidRuntime();
   const seedCorePlugins = onMobile ? MOBILE_CORE_PLUGINS : CORE_PLUGINS;
   const pluginsToLoad = new Set<string>(seedCorePlugins);
   const track = (name: string, reason: string) => {
@@ -324,16 +324,16 @@ export function collectPluginNames(
   for (const core of seedCorePlugins) {
     track(core, onMobile ? "MOBILE_CORE_PLUGINS" : "CORE_PLUGINS");
   }
-  // MiladyOS-only: add the system-surface overlay app plugins (WiFi,
+  // ElizaOS-only: add the system-surface overlay app plugins (WiFi,
   // Contacts, Phone). These wrap privileged Android system APIs available
   // only in the custom AOSP build, not in the stock Android APK. The overlay
   // UI registration happens in the renderer via @elizaos/app-*/register
   // imports — these are the *runtime* plugin halves that expose actions
   // to the agent for `Connect to wifi`, `Find contact`, `Call so-and-so`.
-  if (onMiladyOsAndroid) {
-    for (const name of MILADYOS_ANDROID_CORE_PLUGINS) {
+  if (onElizaOsAndroid) {
+    for (const name of ELIZAOS_ANDROID_CORE_PLUGINS) {
       pluginsToLoad.add(name);
-      track(name, "MILADYOS_ANDROID_CORE_PLUGINS");
+      track(name, "ELIZAOS_ANDROID_CORE_PLUGINS");
     }
   }
   // Agent orchestrator depends on PTY / coding-swarm subprocesses (none of
@@ -549,7 +549,7 @@ export function collectPluginNames(
   if (onMobile) {
     const mobileAllowed = new Set<string>([
       ...MOBILE_CORE_PLUGINS,
-      ...(onMiladyOsAndroid ? MILADYOS_ANDROID_CORE_PLUGINS : []),
+      ...(onElizaOsAndroid ? ELIZAOS_ANDROID_CORE_PLUGINS : []),
       "@elizaos/plugin-anthropic",
       "@elizaos/plugin-openai",
       "@elizaos/plugin-ollama",

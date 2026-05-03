@@ -85,7 +85,7 @@ const checks = [
     command: "bun",
     args: [
       "test",
-      "eliza/plugins/plugin-discord/typescript/__tests__/messaging.test.ts",
+      "eliza/plugins/plugin-discord/__tests__/smoke.test.ts",
       "eliza/packages/typescript/src/agent-orchestrator/__tests__/task-policy.test.ts",
     ],
     timeoutMs: 10 * 60_000,

@@ -950,7 +950,7 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
       const { sinceMs, untilMs } = buildWindowBounds(opts.since, opts.until);
       const rows: ScreenTimeAggregateRow[] = [];
 
-      if (!opts.source || opts.source === "app") {
+      if (opts.source === "app") {
         const appReport = await getActivityReportBetween(
           this.runtime,
           this.agentId(),
@@ -1007,7 +1007,7 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
         );
       }
 
-      if (!opts.source || opts.source === "website") {
+      if (opts.source === "website") {
         const websiteSessions =
           await this.repository.listScreenTimeSessionsOverlapping(
             this.agentId(),

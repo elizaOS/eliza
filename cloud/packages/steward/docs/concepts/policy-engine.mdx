@@ -1,0 +1,202 @@
+---
+title: "Policy Engine"
+description: "Declarative policy evaluation on every agent action — default deny, composable rules."
+---
+
+# Policy Engine
+
+The Policy Engine evaluates declarative policies before every agent action. It enforces **default deny** — if no policy explicitly allows an action, it's rejected.
+
+## Design Principles
+
+- **Default deny** — new agents can't do anything until policies are assigned
+- **Declarative** — JSON-based policy definitions, no custom DSL to learn
+- **Composable** — multiple policies evaluated in order; ALL must pass
+- **Fast** — < 5ms evaluation, cached in Redis
+
+## Policy Types
+
+### Spending Limit
+
+Controls how much value an agent can transact:
+
+```json
+{
+  "id": "spending-limit-1",
+  "type": "spending-limit",
+  "enabled": true,
+  "config": {
+    "maxPerTransaction": "100000000000000000",
+    "maxPerDay": "500000000000000000",
+    "maxPerWeek": "2000000000000000000"
+  }
+}
+```
+
+Values are in **wei** (for EVM) or **lamports** (for Solana). The engine tracks cumulative spend per agent over rolling time windows.
+
+### Approved Addresses
+
+Whitelist of addresses an agent can interact with:
+
+```json
+{
+  "id": "approved-addrs-1",
+  "type": "approved-addresses",
+  "enabled": true,
+  "config": {
+    "addresses": [
+      "0x1111111254EEB25477B68fb85Ed929f73A960582",
+      "0xDef1C0ded9bec7F1a1670819833240f027b25EfF"
+    ]
+  }
+}
+```
+
+<Note>
+  Approved addresses work as a **whitelist**. If enabled, only transactions to listed addresses are allowed. Disable this policy to allow transactions to any address.
+</Note>
+
+### Auto-Approve Threshold
+
+Transactions below this value are auto-approved; above requires manual approval:
+
+```json
+{
+  "id": "auto-approve-1",
+  "type": "auto-approve-threshold",
+  "enabled": true,
+  "config": {
+    "maxValue": "50000000000000000"
+  }
+}
+```
+
+When a transaction exceeds the threshold but passes other policies, it enters the **approval queue**. A tenant admin must explicitly approve or reject it.
+
+### Rate Limit
+
+Controls how many transactions an agent can submit:
+
+```json
+{
+  "id": "rate-limit-1",
+  "type": "rate-limit",
+  "enabled": true,
+  "config": {
+    "maxPerMinute": 10,
+    "maxPerHour": 100
+  }
+}
+```
+
+### Time Window
+
+Restricts when an agent can transact:
+
+```json
+{
+  "id": "time-window-1",
+  "type": "time-window",
+  "enabled": true,
+  "config": {
+    "allowedHours": { "start": 8, "end": 22 },
+    "timezone": "UTC"
+  }
+}
+```
+
+### Allowed Chains
+
+Restricts which blockchain networks an agent can use:
+
+```json
+{
+  "id": "allowed-chains-1",
+  "type": "allowed-chains",
+  "enabled": true,
+  "config": {
+    "chainIds": [8453, 1]
+  }
+}
+```
+
+## Evaluation Flow
+
+```
+Incoming Request
+    │
+    ├─ Load applicable policies (cached, 30s TTL)
+    │
+    ├─ Evaluate in order:
+    │   1. allowed-chains    → DENY/ALLOW
+    │   2. approved-addresses → DENY/ALLOW
+    │   3. spending-limit    → DENY/ALLOW
+    │   4. rate-limit        → DENY/ALLOW
+    │   5. time-window       → DENY/ALLOW
+    │   6. auto-approve      → AUTO/QUEUE
+    │
+    │   ALL must pass. First DENY short-circuits.
+    │
+    ├── ALLOW → Execute action, log result
+    ├── DENY  → Return 403, log denial
+    └── QUEUE → Hold for manual approval, notify via webhook
+```
+
+## Policy Results
+
+Every policy evaluation returns detailed results:
+
+```json
+{
+  "approved": false,
+  "requiresManualApproval": true,
+  "results": [
+    { "type": "spending-limit", "passed": true, "reason": "Within daily limit" },
+    { "type": "approved-addresses", "passed": true, "reason": "Address whitelisted" },
+    { "type": "auto-approve-threshold", "passed": false, "reason": "Value 0.1 ETH exceeds auto-approve threshold of 0.05 ETH" }
+  ]
+}
+```
+
+These results are stored with every transaction record and returned in API responses, making it easy to debug why a transaction was denied or queued.
+
+## Approval Queue
+
+Transactions that pass all policies except auto-approve enter the approval queue:
+
+```typescript
+// List pending approvals
+const pending = await fetch(
+  `https://api.steward.fi/vault/${agentId}/pending`,
+  { headers: { Authorization: `Bearer ${agentToken}` } }
+);
+
+// Approve (requires tenant-level auth)
+await fetch(
+  `https://api.steward.fi/vault/${agentId}/approve/${txId}`,
+  {
+    method: "POST",
+    headers: { "X-Steward-Key": "tenant-key" },
+  }
+);
+
+// Reject
+await fetch(
+  `https://api.steward.fi/vault/${agentId}/reject/${txId}`,
+  {
+    method: "POST",
+    headers: { "X-Steward-Key": "tenant-key" },
+  }
+);
+```
+
+<Note>
+  Webhooks are dispatched for `approval_required`, `tx_signed`, `tx_rejected`, and `tx_failed` events. Configure your webhook URL via the [Tenants API](/api-reference/tenants).
+</Note>
+
+## Related
+
+- [Policies Guide](/guides/policies) — Configuring policies step-by-step
+- [Policies API Reference](/api-reference/policies) — CRUD API for policy management
+- [Vault API Reference](/api-reference/vault) — Signing and approval endpoints

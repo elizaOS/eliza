@@ -9,7 +9,7 @@
  *     configured backend throws `HealthBridgeError("no health backend
  *     available", "none")` so the caller can surface a clear status.
  *   - Google Fit REST API as a cross-platform fallback, authenticated via an
- *     OAuth access token supplied through config or `ELIZA_GOOGLE_FIT_ACCESS_TOKEN`.
+ *     OAuth access token supplied through config.
  *
  * Never log raw health values in plaintext.
  */

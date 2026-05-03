@@ -42,7 +42,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { isMiladyOS } from "../../platform/init";
+import { isElizaOS } from "../../platform/init";
 import {
   consumePendingFocusProvider,
   SETTINGS_FOCUS_CONNECTOR_EVENT,
@@ -685,13 +685,13 @@ export function SettingsView({
   }, []);
 
   const visibleSections = useMemo(() => {
-    // The Runtime section is the deliberate escape hatch out of MiladyOS's
+    // The Runtime section is the deliberate escape hatch out of ElizaOS's
     // pre-seeded local agent. On the vanilla Android APK and on desktop /
     // iOS / web there is nothing to switch *out of* — the runtime was
     // chosen at first launch through the regular RuntimeGate flow — so the
     // section is hidden to avoid offering an action that would silently
     // re-show a picker the user already answered.
-    const showRuntime = isMiladyOS();
+    const showRuntime = isElizaOS();
     return SETTINGS_SECTIONS.filter((section) => {
       if (section.id === "wallet-rpc" && walletEnabled === false) return false;
       if (section.id === "runtime" && !showRuntime) return false;

@@ -52,9 +52,7 @@ jobs:
 
       - uses: actions/checkout@v6
         with:
-          submodules: true
           sparse-checkout: |
-            /.gitmodules
             /package.json
             /bun.lock
             /bunfig.toml
@@ -79,6 +77,7 @@ jobs:
           install-command: bun install --ignore-scripts --no-frozen-lockfile
           install-native-deps: "false"
           run-postinstall: "false"
+          init-submodules: "false"
 
       - name: Verify json5 interop
         run: >

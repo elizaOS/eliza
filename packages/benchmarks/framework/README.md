@@ -1,6 +1,6 @@
 # Eliza Framework Benchmark
 
-Cross-language performance benchmark comparing the Eliza agent framework across **TypeScript**, **Python**, and **Rust** runtimes.
+Performance benchmark for the Eliza agent framework using the **TypeScript** runtime (Bun).
 
 ## What It Measures
 
@@ -17,11 +17,8 @@ By replacing the real LLM with a deterministic mock plugin that returns instant,
 ## Quick Start
 
 ```bash
-# Run all three runtimes with default scenarios
+# Run default scenarios
 ./run.sh
-
-# Run only TypeScript
-./run.sh --ts-only
 
 # Run all scenarios (including stress tests)
 ./run.sh --all
@@ -33,9 +30,8 @@ By replacing the real LLM with a deterministic mock plugin that returns instant,
 ./run.sh --compare
 ```
 
-## Individual Runtime Benchmarks
+## TypeScript harness (direct)
 
-### TypeScript (Bun)
 ```bash
 cd typescript
 bun install
@@ -44,21 +40,7 @@ bun run src/bench.ts --all
 bun run src/bench.ts --scenarios=single-message,startup-cold
 ```
 
-### Python
-```bash
-cd python
-pip install -e ../../packages/python psutil
-python -m src.bench
-python -m src.bench --all
-```
-
-### Rust
-```bash
-cd rust
-cargo build --release
-./target/release/bench
-./target/release/bench --all
-```
+Flags `--ts-only`, `--py-only`, and `--rs-only` are obsolete; `--py-only` / `--rs-only` exit with an error.
 
 ## Comparison Report
 
@@ -75,7 +57,7 @@ benchmarks/framework/
 ├── README.md               # This file
 ├── PLAN.md                 # Detailed design document
 ├── run.sh                  # Orchestrator script
-├── compare.ts              # Cross-runtime comparison tool
+├── compare.ts              # Comparison tool for result JSON files
 ├── shared/
 │   ├── character.json      # Shared agent character definition
 │   └── scenarios.json      # 20 test scenarios
@@ -85,24 +67,12 @@ benchmarks/framework/
 │       ├── bench.ts        # Benchmark harness
 │       ├── mock-llm-plugin.ts  # Mock LLM model handlers
 │       └── metrics.ts      # Measurement utilities
-├── python/
-│   ├── pyproject.toml
-│   └── src/
-│       ├── bench.py        # Benchmark harness
-│       ├── mock_llm_plugin.py  # Mock LLM model handlers
-│       └── metrics.py      # Measurement utilities
-├── rust/
-│   ├── Cargo.toml
-│   └── src/
-│       ├── main.rs         # Benchmark harness
-│       ├── mock_llm_plugin.rs  # Mock LLM model handlers
-│       └── metrics.rs      # Measurement utilities
 └── results/                # JSON output files
 ```
 
 ## Mock LLM Plugin
 
-Each runtime includes a mock LLM plugin that:
+The harness uses a mock LLM plugin that:
 
 1. Registers handlers for `TEXT_SMALL`, `TEXT_LARGE`, `TEXT_EMBEDDING`, `TEXT_COMPLETION`, `OBJECT_SMALL`, `OBJECT_LARGE`
 2. Returns **deterministic, pre-computed XML responses** that pass the framework's validation pipeline

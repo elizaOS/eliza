@@ -1,0 +1,138 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: agent-lifecycle
+spec:
+  description: Full CRUD agent lifecycle via HTTP endpoints
+  steps:
+    - name: Create Server CR
+      try:
+        - apply:
+            file: server-cr.yaml
+      cleanup:
+        - script:
+            content: kubectl delete server srv-life -n eliza-agents --ignore-not-found
+
+    - name: Wake via KEDA
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              for attempt in 1 2 3; do
+                RESULT=$(kubectl run cs-wake-$RANDOM --rm -i --restart=Never -n eliza-infra \
+                  --image=redis:7-alpine --quiet -- \
+                  redis-cli -h redis LPUSH "keda:srv-life:activity" "wake" 2>&1)
+                echo "$RESULT" | grep -qE "^\(integer\)|^[0-9]" && exit 0
+                echo "KEDA wake attempt $attempt failed: $RESULT"
+                sleep 3
+              done
+              echo "FAIL: KEDA wake LPUSH failed after 3 attempts"
+              exit 1
+
+    - name: Wait for pod ready
+      try:
+        - script:
+            timeout: 300s
+            content: |
+              for i in $(seq 1 60); do
+                POD=$(kubectl get pods -n eliza-agents -l "eliza.ai/server=srv-life" --no-headers 2>/dev/null || true)
+                if echo "$POD" | grep -q "1/1.*Running"; then
+                  echo "Pod is ready"
+                  exit 0
+                fi
+                sleep 5
+              done
+              echo "FAIL: Pod not ready within 300s"
+              kubectl get pods -n eliza-agents -l "eliza.ai/server=srv-life" --no-headers 2>/dev/null || true
+              kubectl logs -n eliza-agents -l "eliza.ai/server=srv-life" --tail=20 2>/dev/null || true
+              exit 1
+
+    - name: Assert CR phase Running
+      try:
+        - script:
+            timeout: 15s
+            content: |
+              sleep 3
+              PHASE=$(kubectl get server srv-life -n eliza-agents -o jsonpath='{.status.phase}')
+              [ "$PHASE" = "Running" ] || { echo "FAIL: phase=$PHASE, expected Running"; exit 1; }
+
+    - name: HTTP lifecycle tests
+      try:
+        - script:
+            timeout: 120s
+            content: |
+              SECRET=$(kubectl get secret eliza-agent-secrets -n eliza-agents -o jsonpath='{.data.AGENT_SERVER_SHARED_SECRET}' | base64 -d)
+              AUTH="-H X-Server-Token:$SECRET"
+
+              kubectl port-forward -n eliza-agents svc/srv-life 3010:3000 > /dev/null 2>&1 &
+              PF=$!
+              trap "kill $PF 2>/dev/null" EXIT
+              BASE="http://localhost:3010"
+              for i in $(seq 1 10); do
+                curl -sf "$BASE/health" > /dev/null 2>&1 && break
+                sleep 2
+              done
+              curl -sf "$BASE/health" > /dev/null 2>&1 || { echo "FAIL: port-forward not ready after 20s"; exit 1; }
+              FAIL=0
+
+              # Health
+              curl -sf "$BASE/health" | grep -q '"alive":true' || { echo "FAIL: GET /health"; FAIL=1; }
+
+              # Ready
+              curl -sf "$BASE/ready" | grep -q '"ready":true' || { echo "FAIL: GET /ready"; FAIL=1; }
+
+              # Status
+              curl -sf $AUTH "$BASE/status" | grep -q '"serverName":"srv-life"' || { echo "FAIL: status serverName"; FAIL=1; }
+
+              # Create agent
+              HTTP=$(curl -s -o /tmp/cs-resp -w "%{http_code}" -X POST $AUTH "$BASE/agents" \
+                -H "Content-Type: application/json" -d '{"agentId":"a1","characterRef":"Eliza"}')
+              [ "$HTTP" = "201" ] || { echo "FAIL: POST /agents status=$HTTP"; FAIL=1; }
+              grep -q '"status":"running"' /tmp/cs-resp || { echo "FAIL: POST /agents body"; FAIL=1; }
+
+              # Status after create (a1 exists, count >= 1)
+              AGENTS_AFTER=$(curl -sf $AUTH "$BASE/status" | grep -o '"agentCount":[0-9]*' | grep -o '[0-9]*')
+              [ "$AGENTS_AFTER" -ge 1 ] || { echo "FAIL: agentCount=$AGENTS_AFTER after create"; FAIL=1; }
+
+              # Message
+              curl -sf -X POST $AUTH "$BASE/agents/a1/message" \
+                -H "Content-Type: application/json" -d '{"userId":"u1","text":"hello"}' \
+                | grep -q '"response"' || { echo "FAIL: POST /agents/a1/message"; FAIL=1; }
+
+              # Stop
+              curl -sf -X POST $AUTH "$BASE/agents/a1/stop" \
+                | grep -q '"status":"stopped"' || { echo "FAIL: POST /agents/a1/stop"; FAIL=1; }
+
+              # Message to stopped agent → 404
+              HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X POST $AUTH "$BASE/agents/a1/message" \
+                -H "Content-Type: application/json" -d '{"userId":"u","text":"t"}')
+              [ "$HTTP" = "404" ] || { echo "FAIL: msg to stopped=$HTTP, expected 404"; FAIL=1; }
+
+              # Delete
+              curl -sf -X DELETE $AUTH "$BASE/agents/a1" \
+                | grep -q '"deleted":true' || { echo "FAIL: DELETE /agents/a1"; FAIL=1; }
+
+              # Error: nonexistent agent → 404
+              HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X POST $AUTH "$BASE/agents/nonexistent/message" \
+                -H "Content-Type: application/json" -d '{"userId":"u","text":"t"}')
+              [ "$HTTP" = "404" ] || { echo "FAIL: nonexistent=$HTTP, expected 404"; FAIL=1; }
+
+              # Error: stop deleted agent → 404
+              HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X POST $AUTH "$BASE/agents/a1/stop")
+              [ "$HTTP" = "404" ] || { echo "FAIL: stop deleted=$HTTP, expected 404"; FAIL=1; }
+
+              # Error: delete deleted agent → 404
+              HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE $AUTH "$BASE/agents/a1")
+              [ "$HTTP" = "404" ] || { echo "FAIL: delete deleted=$HTTP, expected 404"; FAIL=1; }
+
+              # Error: empty body → 400
+              HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X POST $AUTH "$BASE/agents" \
+                -H "Content-Type: application/json" -d '{}')
+              [ "$HTTP" = "400" ] || { echo "FAIL: empty body=$HTTP, expected 400"; FAIL=1; }
+
+              # Error: empty message body → 400
+              HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X POST $AUTH "$BASE/agents/a1/message" \
+                -H "Content-Type: application/json" -d '{}')
+              [ "$HTTP" = "400" ] || { echo "FAIL: empty msg=$HTTP, expected 400"; FAIL=1; }
+
+              exit $FAIL

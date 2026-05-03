@@ -1,11 +1,10 @@
 /**
  * Poll a runtime's service registry until a named service becomes available,
- * or the timeout expires. Used by cron registrants that run at agent boot
- * before the @elizaos/plugin-cron service has finished registering — without
- * this, the cron job never gets scheduled.
+ * or the timeout expires. Used by boot-time registrants that must wait until
+ * a service (e.g. cron/Task scheduling) has registered.
  *
- * Keeps zero cross-package dependencies on the cron plugin itself so callers
- * in app-training don't need to pull in @elizaos/plugin-cron typings.
+ * Callers stay loosely typed against `runtime.getService(name)` so app-training
+ * does not need plugin-specific typings.
  */
 
 interface RuntimeLike {

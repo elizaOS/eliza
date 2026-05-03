@@ -55,7 +55,6 @@ Core plugins are always loaded and each provides one or more services:
 | `knowledge` | Knowledge service | RAG knowledge indexing and retrieval |
 | `trajectories` | `trajectories` | Debug and RL training trajectory capture |
 | `@elizaos/plugin-agent-orchestrator` | Orchestrator service | Multi-agent task coordination and spawning |
-| `@elizaos/plugin-cron` | Cron service | Scheduled job execution |
 | `@elizaos/plugin-shell` | Shell service | Shell command execution with security controls |
 | `@elizaos/plugin-agent-skills` | `AGENT_SKILLS_SERVICE` | Skill catalog loading and execution |
 | `@elizaos/plugin-commands` | Commands service | Slash command handling (skills auto-register as /commands) |

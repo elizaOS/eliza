@@ -1,6 +1,6 @@
 # elizaOS Protocol Buffer Schemas
 
-This directory contains the **single source of truth** for all elizaOS types. These Protocol Buffer schemas are compiled to generate type definitions for TypeScript, Python, and Rust.
+This directory contains the **single source of truth** for all elizaOS types. These Protocol Buffer schemas are compiled to generate TypeScript type definitions.
 
 ## Architecture
 
@@ -26,9 +26,7 @@ schemas/
 └── README.md
 
 Generated output:
-├── packages/typescript/src/types/generated/  # TypeScript
-├── packages/python/elizaos/types/generated/  # Python
-└── packages/rust/src/types/generated/        # Rust
+└── packages/typescript/src/types/generated/  # TypeScript
 ```
 
 ## Quick Start
@@ -129,18 +127,6 @@ message Content {
 - Import from `@elizaos/core/types/generated`
 - Full TypeScript types with proper inference
 
-### Python
-
-- Generated with `betterproto` for clean, Pythonic code
-- Dataclass-style types with type hints
-- Import from `elizaos.types.generated`
-
-### Rust
-
-- Generated with `prost` (WASM-compatible)
-- Includes `serde` support for JSON serialization
-- Import from `elizaos::types::generated`
-
 ## Adding New Types
 
 1. Create or edit a `.proto` file in `eliza/v1/`
@@ -158,8 +144,6 @@ message Content {
 The generated types replace the manual type definitions in:
 
 - `packages/typescript/src/types/*.ts`
-- `packages/python/elizaos/types/*.py`
-- `packages/rust/src/types/*.rs`
 
 ### Compatibility Layer
 
@@ -195,5 +179,3 @@ buf format -w
 - [Buf Documentation](https://buf.build/docs)
 - [Protocol Buffers Language Guide](https://protobuf.dev/programming-guides/proto3/)
 - [bufbuild/protobuf-es](https://github.com/bufbuild/protobuf-es) (TypeScript)
-- [danielgtaylor/python-betterproto](https://github.com/danielgtaylor/python-betterproto) (Python)
-- [tokio-rs/prost](https://github.com/tokio-rs/prost) (Rust)
