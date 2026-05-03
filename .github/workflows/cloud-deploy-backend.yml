@@ -197,7 +197,7 @@ jobs:
           ssh-keyscan -H "$DEPLOY_VPS_HOST" >> "$HOME/.ssh/known_hosts"
 
       - name: Prepare VPS checkout
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: ${{ env.DEPLOY_VPS_HOST }}
           username: deploy
@@ -363,7 +363,7 @@ jobs:
             'set -e; cd /opt/eliza-cloud; rm -rf .next .next-build/*; tar -xzf - -C .next-build; ln -sfn .next-build .next'
 
       - name: Restart services
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: ${{ env.DEPLOY_VPS_HOST }}
           username: deploy
@@ -389,7 +389,7 @@ jobs:
             echo "=== Deploy complete ==="
 
       - name: Health Check
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: ${{ env.DEPLOY_VPS_HOST }}
           username: deploy
