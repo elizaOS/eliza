@@ -151,15 +151,15 @@ export const OPTIONAL_PLUGIN_MAP: Readonly<Record<string, string>> = {
   // present in process.env. Without entries here, collectPluginNames()
   // would fall through to loading the short id as a literal package
   // name (`import("evm")`), which silently fails inside the loader's
-  // error boundary — plugin-evm / plugin-solana never load even when
-  // the keys are set and the wallet page shows addresses. This was a
-  // multi-hour landmine. Keep these in sync with AUTH_PROVIDER_PLUGINS
+  // error boundary — short ids must resolve to real package names or optional
+  // plugins silently fail inside the loader. Keep in sync with AUTH_PROVIDER_PLUGINS
   // in packages/agent/src/config/plugin-auto-enable.ts.
-  evm: "@elizaos/plugin-evm",
-  solana: "@elizaos/plugin-solana",
+  evm: "@elizaos/plugin-wallet",
+  solana: "@elizaos/plugin-wallet",
+  wallet: "@elizaos/plugin-wallet",
   /** Unified wallet (canonical actions + providers — incremental migration). */
-  agent_wallet: "@elizaos/plugin-agent-wallet",
-  "agent-wallet": "@elizaos/plugin-agent-wallet",
+  agent_wallet: "@elizaos/plugin-wallet",
+  "agent-wallet": "@elizaos/plugin-wallet",
   browser: "@elizaos/plugin-browser",
   /** Eliza desktop browser workspace + Steward; package is `@elizaos/app-browser`. */
   "app-browser": "@elizaos/app-browser",
@@ -183,12 +183,6 @@ export const OPTIONAL_PLUGIN_MAP: Readonly<Record<string, string>> = {
   // plugin-manager, secrets (SECRETS), trust: now built-in core capabilities
   // Enable via ENABLE_PLUGIN_MANAGER, ENABLE_SECRETS_MANAGER, ENABLE_TRUST
   streaming: "@elizaos/plugin-streaming",
-  "streaming-base": "@elizaos/plugin-streaming",
-  "twitch-streaming": "@elizaos/plugin-streaming",
-  "youtube-streaming": "@elizaos/plugin-streaming",
-  "custom-rtmp": "@elizaos/plugin-streaming",
-  "pumpfun-streaming": "@elizaos/plugin-streaming",
-  "x-streaming": "@elizaos/plugin-streaming",
   // Steward wallet plugin — short ID used by auto-enable
   "stwd-eliza-plugin": "@stwd/eliza-plugin",
 };

@@ -120,15 +120,20 @@
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
+    "@elizaos/plugin-wallet#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/plugin-evm#build",
+        "@elizaos/plugin-solana#build"
+      ],
+      "outputs": []
+    },
     "@elizaos/plugin-sql-root#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
     "@elizaos/plugin-sql#build": {
       "outputs": ["typescript/dist/**"]
-    },
-    "@elizaos/plugin-farcaster#build": {
-      "outputs": ["$TURBO_ROOT$/plugins/typescript/dist/**"]
     },
     "@elizaos/plugin-whatsapp-root#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
@@ -152,7 +157,7 @@
       "outputs": []
     },
     "typecheck": {
-      "dependsOn": ["@elizaos/core#build"],
+      "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-video#build"],
       "outputs": []
     },
     "@elizaos/app-core#typecheck": {
@@ -163,24 +168,16 @@
       "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-streaming#build"],
       "outputs": []
     },
-    "@elizaos/plugin-retake#typecheck": {
-      "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-streaming-base#build"],
+    "@elizaos/ui#typecheck": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-video#build"],
       "outputs": []
     },
-    "@elizaos/plugin-twitch-streaming#typecheck": {
-      "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-streaming-base#build"],
+    "@elizaos/app#typecheck": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-video#build"],
       "outputs": []
     },
-    "@elizaos/plugin-x-streaming#typecheck": {
-      "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-streaming-base#build"],
-      "outputs": []
-    },
-    "@elizaos/plugin-youtube-streaming#typecheck": {
-      "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-streaming-base#build"],
-      "outputs": []
-    },
-    "@elizaos/plugin-pumpfun-streaming#typecheck": {
-      "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-streaming-base#build"],
+    "@elizaos/plugin-streaming#typecheck": {
+      "dependsOn": ["@elizaos/core#build"],
       "outputs": []
     },
     "format": {

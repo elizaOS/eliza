@@ -484,7 +484,7 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 				{
 					name: "{{agentName}}",
 					content: {
-						text: 'Found 3 plugin(s) matching "handle blockchain":\n\n1. @elizaos/plugin-evm (match: 90%)\n   …',
+						text: 'Found 3 plugin(s) matching "handle blockchain":\n\n1. @elizaos/plugin-wallet (match: 90%)\n   …',
 						action: "PLUGIN",
 					},
 				},

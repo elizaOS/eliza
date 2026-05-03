@@ -28,10 +28,10 @@
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.31.0",
-    "@elizaos/core": "2.0.0-alpha.3",
-    "@elizaos/plugin-anthropic": "2.0.0-alpha.3",
-    "@elizaos/plugin-discord": "2.0.0-alpha.3",
-    "@elizaos/plugin-telegram": "2.0.0-alpha.3",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-anthropic": "workspace:*",
+    "@elizaos/plugin-discord": "workspace:*",
+    "@elizaos/plugin-telegram": "workspace:*",
     "@meteora-ag/dlmm": "^1.0.0",
     "@orca-so/whirlpools": "^0.3.0",
     "@orca-so/whirlpools-client": "^0.3.0",
@@ -50,7 +50,7 @@
     "viem": "^2.48.8"
   },
   "peerDependencies": {
-    "@elizaos/plugin-evm": "2.0.0-alpha.3"
+    "@elizaos/plugin-wallet": "workspace:*"
   },
   "devDependencies": {
     "@types/decimal.js": "^7.4.0",

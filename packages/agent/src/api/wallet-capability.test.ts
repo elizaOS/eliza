@@ -7,24 +7,24 @@ import {
 } from "./wallet-capability.js";
 
 describe("wallet capability plugin detection", () => {
-  it("detects plugin-evm by short runtime plugin name", () => {
+  it("detects @elizaos/plugin-wallet by short runtime plugin name", () => {
     const runtime = {
-      plugins: [{ name: "evm" }],
+      plugins: [{ name: "wallet" }],
     } as unknown as AgentRuntime;
 
-    expect(isPluginLoadedByName(runtime, "@elizaos/plugin-evm")).toBe(true);
+    expect(isPluginLoadedByName(runtime, "@elizaos/plugin-wallet")).toBe(true);
     expect(resolvePluginEvmLoaded(runtime)).toBe(true);
   });
 
-  it("detects plugin-evm from iterable plugin containers", () => {
+  it("detects plugin-wallet from iterable plugin containers", () => {
     const runtime = {
-      plugins: new Set([{ id: "evm" }]),
+      plugins: new Set([{ id: "wallet" }]),
     } as unknown as AgentRuntime;
 
-    expect(isPluginLoadedByName(runtime, "@elizaos/plugin-evm")).toBe(true);
+    expect(isPluginLoadedByName(runtime, "@elizaos/plugin-wallet")).toBe(true);
   });
 
-  it("detects plugin-evm from the runtime service alias", () => {
+  it("detects EVM execution readiness from the runtime service alias", () => {
     const runtime = {
       plugins: [],
       getService: (name: string) => (name === "evmService" ? {} : null),

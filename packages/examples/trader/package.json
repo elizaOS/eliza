@@ -10,11 +10,11 @@
   },
   "dependencies": {
     "@elizaos/core": "alpha",
-    "@elizaos/plugin-auto-trader": "alpha",
-    "@elizaos/plugin-solana": "alpha",
-    "@elizaos/plugin-anthropic": "alpha",
-    "@elizaos/plugin-openai": "alpha",
-    "@elizaos/plugin-sql": "alpha",
+    "@elizaos/plugin-auto-trader": "workspace:*",
+    "@elizaos/plugin-wallet": "workspace:*",
+    "@elizaos/plugin-anthropic": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

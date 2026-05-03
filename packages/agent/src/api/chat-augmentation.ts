@@ -184,7 +184,7 @@ export async function buildAgentAwarenessContextPrompt(
     : !rpcReady
       ? "BSC RPC is not configured."
       : !pluginEvmLoaded
-        ? "plugin-evm is not loaded."
+        ? "@elizaos/plugin-wallet is not loaded."
         : "none";
   const model = detectRuntimeModel(runtime) ?? "unknown";
   const provider = resolveProviderFromModel(model) ?? "unknown";
