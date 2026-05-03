@@ -7,13 +7,14 @@
  * are configured.
  */
 
-import { isGroqNativeModel } from "@/lib/models";
+import { isGroqNativeModel, isVastNativeModel } from "@/lib/models";
 import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import { AnthropicDirectProvider } from "./anthropic-direct";
 import { GroqProvider } from "./groq";
 import { OpenAIDirectProvider } from "./openai-direct";
 import { OpenRouterProvider } from "./openrouter";
 import type { AIProvider } from "./types";
+import { VastProvider } from "./vast";
 
 export { AnthropicDirectProvider } from "./anthropic-direct";
 // Note: anthropic-thinking parse helpers (parseAnthropicCotBudgetFromEnv, etc.) are exported
@@ -25,6 +26,7 @@ export { GroqProvider } from "./groq";
 export { OpenAIDirectProvider } from "./openai-direct";
 export { OpenRouterProvider } from "./openrouter";
 export * from "./types";
+export { VastProvider } from "./vast";
 
 interface ProviderSingleton {
   apiKey: string;
@@ -35,6 +37,7 @@ let openRouterProviderInstance: ProviderSingleton | null = null;
 let groqProviderInstance: ProviderSingleton | null = null;
 let openAIDirectProviderInstance: ProviderSingleton | null = null;
 let anthropicDirectProviderInstance: ProviderSingleton | null = null;
+let vastProviderInstance: { apiKey: string; baseUrl: string; provider: AIProvider } | null = null;
 
 function getRequiredProviderKey(envName: string): string {
   const apiKey = getCloudAwareEnv()[envName]?.trim();
@@ -118,9 +121,35 @@ function getAnthropicDirectProvider(): AIProvider {
   return anthropicDirectProviderInstance.provider;
 }
 
+export function hasVastProviderConfigured(): boolean {
+  const env = getCloudAwareEnv();
+  return Boolean(env.VAST_API_KEY?.trim() && env.VAST_BASE_URL?.trim());
+}
+
+export function getVastProvider(): AIProvider {
+  const apiKey = getRequiredProviderKey("VAST_API_KEY");
+  const baseUrl = getRequiredProviderKey("VAST_BASE_URL");
+  if (
+    !vastProviderInstance ||
+    vastProviderInstance.apiKey !== apiKey ||
+    vastProviderInstance.baseUrl !== baseUrl
+  ) {
+    vastProviderInstance = {
+      apiKey,
+      baseUrl,
+      provider: new VastProvider(apiKey, baseUrl),
+    };
+  }
+  return vastProviderInstance.provider;
+}
+
 export function getProviderForModel(model: string): AIProvider {
   if (isGroqNativeModel(model)) {
     return getGroqProvider();
+  }
+
+  if (isVastNativeModel(model)) {
+    return getVastProvider();
   }
 
   return getProvider();
@@ -134,6 +163,7 @@ export function getProviderForModel(model: string): AIProvider {
  *
  * Fallback rules:
  *   - Groq native models: no fallback (Groq runs through its own provider).
+ *   - Vast native models: no fallback (Vast Serverless is the only host for these self-hosted ids).
  *   - `openai/*`: OpenAI direct fallback when OPENAI_API_KEY is set.
  *   - `anthropic/*`: Anthropic direct fallback when ANTHROPIC_API_KEY is set.
  *   - All other models (xai, google, mistral, …): no fallback.
@@ -144,6 +174,10 @@ export function getProviderForModelWithFallback(model: string): {
 } {
   if (isGroqNativeModel(model)) {
     return { primary: getGroqProvider(), fallback: null };
+  }
+
+  if (isVastNativeModel(model)) {
+    return { primary: getVastProvider(), fallback: null };
   }
 
   const primary = getProvider();
