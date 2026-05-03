@@ -13,7 +13,7 @@
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/plugin-eliza-classic": "workspace:*",
-    "hono": "^4.6.0",
+    "hono": "^4.12.16",
     "uuid": "^14.0.0"
   },
   "devDependencies": {

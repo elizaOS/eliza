@@ -106,6 +106,23 @@ export class BrokerAuthProvider
     this.cached = null;
   }
 
+  private resolveBrokerUrl(): string {
+    const explicit = getSetting(this.runtime, "TWITTER_BROKER_URL");
+    if (explicit) return explicit;
+    const cloudBase =
+      getSetting(this.runtime, "ELIZAOS_CLOUD_BASE_URL") ||
+      "https://www.elizacloud.ai/api/v1";
+    return `${cloudBase.replace(/\/+$/, "")}/twitter`;
+  }
+
+  private resolveBrokerToken(): string | null {
+    return (
+      getSetting(this.runtime, "TWITTER_BROKER_TOKEN") ||
+      getSetting(this.runtime, "ELIZAOS_CLOUD_API_KEY") ||
+      null
+    );
+  }
+
   private async fetchToken(): Promise<BrokerTokenResponse> {
     if (this.cached && Date.now() < this.cached.expiresAt) {
       return this.cached.token;
@@ -136,14 +153,11 @@ export class BrokerAuthProvider
   }
 
   private async fetchTokenFromBroker(): Promise<BrokerTokenResponse> {
-    const baseUrl = getSetting(this.runtime, "TWITTER_BROKER_URL");
-    if (!baseUrl) {
-      throw new Error("TWITTER_AUTH_MODE=broker requires TWITTER_BROKER_URL.");
-    }
-    const brokerToken = getSetting(this.runtime, "TWITTER_BROKER_TOKEN");
+    const baseUrl = this.resolveBrokerUrl();
+    const brokerToken = this.resolveBrokerToken();
     if (!brokerToken) {
       throw new Error(
-        "TWITTER_AUTH_MODE=broker requires TWITTER_BROKER_TOKEN. Connect your X account through Eliza Cloud to obtain one.",
+        "TWITTER_AUTH_MODE=broker requires either TWITTER_BROKER_TOKEN or ELIZAOS_CLOUD_API_KEY. Connect your X account through Eliza Cloud to authorize the agent.",
       );
     }
 

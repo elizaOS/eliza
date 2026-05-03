@@ -66,11 +66,15 @@ export const XPlugin: Plugin = {
         logger.log("✅ X OAuth configuration found");
       }
     } else if (mode === "broker") {
-      const brokerUrl = getSetting(runtime, "TWITTER_BROKER_URL");
-      if (!brokerUrl) {
-        logger.warn("TWITTER_AUTH_MODE=broker requires TWITTER_BROKER_URL.");
+      const token =
+        getSetting(runtime, "TWITTER_BROKER_TOKEN") ||
+        getSetting(runtime, "ELIZAOS_CLOUD_API_KEY");
+      if (!token) {
+        logger.warn(
+          "TWITTER_AUTH_MODE=broker needs TWITTER_BROKER_TOKEN or ELIZAOS_CLOUD_API_KEY. Connect your X account on the Eliza Cloud connectors page first.",
+        );
       } else {
-        logger.log("✅ X broker mode configured");
+        logger.log("✅ X broker mode configured (Eliza Cloud)");
       }
     } else {
       logger.warn(

@@ -172,7 +172,7 @@ const CHANNEL_PLUGIN_MAP = {
   telegram:    "@elizaos/plugin-telegram",
   discord:     "@elizaos/plugin-discord",
   slack:       "@elizaos/plugin-slack",
-  twitter:     "@elizaos/plugin-twitter",
+  twitter:     "@elizaos/plugin-x",
   whatsapp:    "@elizaos/plugin-whatsapp",
   signal:      "@elizaos/plugin-signal",
   imessage:    "@elizaos/plugin-imessage",
