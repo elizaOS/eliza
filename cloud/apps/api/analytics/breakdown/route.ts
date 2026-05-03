@@ -8,9 +8,11 @@
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { analyticsService } from "@/lib/services/analytics";
-import { organizationsService } from "@/lib/services/organizations";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -67,10 +69,17 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const rawTimeRange = c.req.query("timeRange");
-    const timeRange: TimeRange = isTimeRange(rawTimeRange) ? rawTimeRange : "weekly";
+    const timeRange: TimeRange = isTimeRange(rawTimeRange)
+      ? rawTimeRange
+      : "weekly";
 
-    const { startDate, endDate, granularity, previousStartDate, previousEndDate } =
-      resolveDateRange(timeRange);
+    const {
+      startDate,
+      endDate,
+      granularity,
+      previousStartDate,
+      previousEndDate,
+    } = resolveDateRange(timeRange);
 
     const [
       overallStats,
@@ -81,14 +90,20 @@ app.get("/", async (c) => {
       trends,
       organization,
     ] = await Promise.all([
-      analyticsService.getUsageStats(user.organization_id, { startDate, endDate }),
+      analyticsService.getUsageStats(user.organization_id, {
+        startDate,
+        endDate,
+      }),
       analyticsService.getUsageTimeSeries(user.organization_id, {
         startDate,
         endDate,
         granularity,
       }),
       analyticsService.getCostTrending(user.organization_id),
-      analyticsService.getProviderBreakdown(user.organization_id, { startDate, endDate }),
+      analyticsService.getProviderBreakdown(user.organization_id, {
+        startDate,
+        endDate,
+      }),
       analyticsService.getModelBreakdown(user.organization_id, {
         startDate,
         endDate,
@@ -99,7 +114,7 @@ app.get("/", async (c) => {
         { startDate, endDate },
         { startDate: previousStartDate, endDate: previousEndDate },
       ),
-      organizationsService.getById(user.organization_id),
+      c.var.deps.getOrganizationById.execute(user.organization_id),
     ]);
 
     if (!organization) {

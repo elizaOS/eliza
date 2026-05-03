@@ -20,7 +20,6 @@ import {
 } from "@/lib/api/cloud-worker-errors";
 import { anonymousSessionsService } from "@/lib/services/anonymous-sessions";
 import { charactersService } from "@/lib/services/characters/characters";
-import { organizationsService } from "@/lib/services/organizations";
 import { usersService } from "@/lib/services/users";
 import type { ElizaCharacter } from "@/lib/types";
 import { getCorsHeaders } from "@/lib/utils/cors";
@@ -137,10 +136,11 @@ async function authenticateAffiliate(c: AppContext) {
   return apiKey;
 }
 
-async function getOrCreateAffiliateOrg() {
-  const existing = await organizationsService.getBySlug(AFFILIATE_ORG_SLUG);
+async function getOrCreateAffiliateOrg(c: AppContext) {
+  const existing =
+    await c.var.deps.getOrganizationBySlug.execute(AFFILIATE_ORG_SLUG);
   if (existing) return existing;
-  return organizationsService.create({
+  return c.var.deps.createOrganization.execute({
     name: AFFILIATE_ORG_NAME,
     slug: AFFILIATE_ORG_SLUG,
     credit_balance: AFFILIATE_ORG_INITIAL_BALANCE,
@@ -209,7 +209,7 @@ app.post("/", async (c) => {
       },
     );
 
-    const affiliateOrg = await getOrCreateAffiliateOrg();
+    const affiliateOrg = await getOrCreateAffiliateOrg(c);
 
     const anonymousUser = await usersService.create({
       name: character.name,

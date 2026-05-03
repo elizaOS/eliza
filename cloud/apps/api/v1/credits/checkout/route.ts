@@ -8,12 +8,14 @@ import type Stripe from "stripe";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import {
   assertAllowedAbsoluteRedirectUrl,
   getDefaultPlatformRedirectOrigins,
 } from "@/lib/security/redirect-validation";
-import { organizationsService } from "@/lib/services/organizations";
 import { requireStripe } from "@/lib/stripe";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -31,12 +33,16 @@ app.use("*", rateLimit(RateLimitPresets.STANDARD));
 app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const stripeCurrency = (c.env.STRIPE_CURRENCY as string | undefined) || "usd";
+    const stripeCurrency =
+      (c.env.STRIPE_CURRENCY as string | undefined) || "usd";
 
     const body = await c.req.json();
     const validation = CheckoutSchema.safeParse(body);
     if (!validation.success) {
-      return c.json({ error: "Invalid request", details: validation.error.format() }, 400);
+      return c.json(
+        { error: "Invalid request", details: validation.error.format() },
+        400,
+      );
     }
 
     const { credits: amount, success_url, cancel_url } = validation.data;
@@ -57,7 +63,9 @@ app.post("/", async (c) => {
     // stripe v22 re-exports `SessionCreateParams` as a type alias from the
     // Checkout barrel, which strips the nested `LineItem` namespace. Derive
     // the line-item type from the params shape directly.
-    type LineItem = NonNullable<Stripe.Checkout.SessionCreateParams["line_items"]>[number];
+    type LineItem = NonNullable<
+      Stripe.Checkout.SessionCreateParams["line_items"]
+    >[number];
     const lineItems: LineItem[] = [
       {
         price_data: {
@@ -94,7 +102,7 @@ app.post("/", async (c) => {
       }
       const customer = await requireStripe().customers.create(customerData);
       customerId = customer.id;
-      await organizationsService.update(organizationId, {
+      await c.var.deps.updateOrganization.execute(organizationId, {
         stripe_customer_id: customerId,
         updated_at: new Date(),
       });

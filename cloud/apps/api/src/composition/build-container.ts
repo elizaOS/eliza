@@ -28,9 +28,20 @@ import { IssueApiKeyUseCase } from "@/lib/application/api-key/issue-api-key";
 import { ListApiKeysByOrganizationUseCase } from "@/lib/application/api-key/list-api-keys-by-organization";
 import { UpdateApiKeyUseCase } from "@/lib/application/api-key/update-api-key";
 import { ValidateApiKeyUseCase } from "@/lib/application/api-key/validate-api-key";
+import { CreateOrganizationUseCase } from "@/lib/application/organization/create-organization";
+import { DeleteOrganizationUseCase } from "@/lib/application/organization/delete-organization";
+import { GetOrganizationByIdUseCase } from "@/lib/application/organization/get-organization-by-id";
+import { GetOrganizationBySlugUseCase } from "@/lib/application/organization/get-organization-by-slug";
+import { GetOrganizationByStripeCustomerIdUseCase } from "@/lib/application/organization/get-organization-by-stripe-customer-id";
+import { GetOrganizationWithUsersUseCase } from "@/lib/application/organization/get-organization-with-users";
+import { UpdateOrganizationUseCase } from "@/lib/application/organization/update-organization";
+import { UpdateOrganizationCreditBalanceUseCase } from "@/lib/application/organization/update-organization-credit-balance";
 import type { ApiKeyRepository } from "@/lib/domain/api-key/api-key-repository";
+import type { OrganizationRepository } from "@/lib/domain/organization/organization-repository";
 import { CachedApiKeyRepository } from "@/lib/infrastructure/cache/api-key/cached-api-key-repository";
+import { CachedOrganizationRepository } from "@/lib/infrastructure/cache/organization/cached-organization-repository";
 import { PostgresApiKeyRepository } from "@/lib/infrastructure/db/api-key/postgres-api-key-repository";
+import { PostgresOrganizationRepository } from "@/lib/infrastructure/db/organization/postgres-organization-repository";
 import type { Bindings } from "@/types/cloud-worker-env";
 
 export interface CompositionContext {
@@ -43,6 +54,16 @@ export interface CompositionContext {
   updateApiKey: UpdateApiKeyUseCase;
   deleteApiKey: DeleteApiKeyUseCase;
   deactivateApiKeysByName: DeactivateApiKeysByNameUseCase;
+
+  // ── Organization aggregate (Phase C.1) ────────────────────────────────
+  getOrganizationById: GetOrganizationByIdUseCase;
+  getOrganizationBySlug: GetOrganizationBySlugUseCase;
+  getOrganizationByStripeCustomerId: GetOrganizationByStripeCustomerIdUseCase;
+  getOrganizationWithUsers: GetOrganizationWithUsersUseCase;
+  createOrganization: CreateOrganizationUseCase;
+  updateOrganization: UpdateOrganizationUseCase;
+  updateOrganizationCreditBalance: UpdateOrganizationCreditBalanceUseCase;
+  deleteOrganization: DeleteOrganizationUseCase;
 }
 
 export function buildContainer(_env: Bindings): CompositionContext {
@@ -50,6 +71,11 @@ export function buildContainer(_env: Bindings): CompositionContext {
     new PostgresApiKeyRepository(),
     cache,
   );
+  const organizationRepo: OrganizationRepository =
+    new CachedOrganizationRepository(
+      new PostgresOrganizationRepository(),
+      cache,
+    );
 
   return {
     issueApiKey: new IssueApiKeyUseCase(apiKeyRepo),
@@ -60,5 +86,19 @@ export function buildContainer(_env: Bindings): CompositionContext {
     updateApiKey: new UpdateApiKeyUseCase(apiKeyRepo),
     deleteApiKey: new DeleteApiKeyUseCase(apiKeyRepo),
     deactivateApiKeysByName: new DeactivateApiKeysByNameUseCase(apiKeyRepo),
+
+    getOrganizationById: new GetOrganizationByIdUseCase(organizationRepo),
+    getOrganizationBySlug: new GetOrganizationBySlugUseCase(organizationRepo),
+    getOrganizationByStripeCustomerId:
+      new GetOrganizationByStripeCustomerIdUseCase(organizationRepo),
+    getOrganizationWithUsers: new GetOrganizationWithUsersUseCase(
+      organizationRepo,
+    ),
+    createOrganization: new CreateOrganizationUseCase(organizationRepo),
+    updateOrganization: new UpdateOrganizationUseCase(organizationRepo),
+    updateOrganizationCreditBalance: new UpdateOrganizationCreditBalanceUseCase(
+      organizationRepo,
+    ),
+    deleteOrganization: new DeleteOrganizationUseCase(organizationRepo),
   };
 }
