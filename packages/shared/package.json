@@ -48,6 +48,7 @@
     "./config": "./src/config/types.ts",
     "./awareness": "./src/awareness/index.ts",
     "./restart": "./src/restart.ts",
+    "./self-edit": "./src/self-edit.ts",
     "./spoken-text": "./src/spoken-text.ts",
     "./eliza-core-roles": "./src/eliza-core-roles.ts",
     "./validation-keywords": "./src/validation-keywords.ts",
