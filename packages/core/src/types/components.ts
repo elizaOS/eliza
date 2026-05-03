@@ -372,6 +372,52 @@ export interface Provider {
 }
 
 /**
+ * Error codes an action handler may set on `ActionResult.values.error` or
+ * `ActionResult.data.error` to signal that the next step requires a fresh
+ * confirmation message from the user. The post-action continuation loop in
+ * `MessagingService` checks for these (alongside the canonical
+ * `requiresConfirmation: true` flag) and breaks the chain so the agent does
+ * not spin re-running the same step until `MAX_MULTISTEP_ITERATIONS`.
+ *
+ * Keep this list aligned with `ACTION_CONFIRMATION_STATUS_VALUES` below —
+ * both the type and the runtime set are exported so callers (actions,
+ * test-spies, downstream packages) can `Set.has(code)` without re-declaring
+ * the strings.
+ */
+export type ActionConfirmationStatus =
+	| "CONFIRMATION_REQUIRED"
+	| "NOT_CONFIRMED"
+	| "REQUIRES_CONFIRMATION"
+	| "AWAITING_CONFIRMATION"
+	| "NEEDS_CONFIRMATION";
+
+/**
+ * Runtime set of {@link ActionConfirmationStatus} values. Frozen so callers
+ * cannot mutate the canonical list.
+ */
+export const ACTION_CONFIRMATION_STATUS_VALUES: ReadonlySet<ActionConfirmationStatus> =
+	new Set<ActionConfirmationStatus>([
+		"CONFIRMATION_REQUIRED",
+		"NOT_CONFIRMED",
+		"REQUIRES_CONFIRMATION",
+		"AWAITING_CONFIRMATION",
+		"NEEDS_CONFIRMATION",
+	]);
+
+/**
+ * Type-narrowing predicate. Returns true when `value` is a known confirmation
+ * status string. Use this on stringly-typed error fields off `ActionResult`.
+ */
+export function isActionConfirmationStatus(
+	value: unknown,
+): value is ActionConfirmationStatus {
+	return (
+		typeof value === "string" &&
+		ACTION_CONFIRMATION_STATUS_VALUES.has(value as ActionConfirmationStatus)
+	);
+}
+
+/**
  * Result returned by an action after execution
  * Used for action chaining and state management
  */
