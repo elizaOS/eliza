@@ -17,6 +17,7 @@ import {
   SidebarContent,
   SidebarPanel,
   SidebarScrollRegion,
+  Spinner,
   StatusBadge,
   StatusDot,
   Textarea,
@@ -67,6 +68,7 @@ import {
   type AutomationItem as CatalogAutomationItem,
   type Conversation,
   isMissingCredentialsResponse,
+  isNeedsClarificationResponse,
   type N8nStatusResponse,
   type N8nWorkflow,
   type N8nWorkflowMissingCredential,
@@ -979,8 +981,9 @@ function useAutomationsViewController() {
     }
   };
 
-  const onDeleteTrigger = async () => {
-    if (!editingId) return;
+  const onDeleteTrigger = async (triggerId?: string) => {
+    const targetId = triggerId ?? editingId;
+    if (!targetId) return;
     const confirmed = await confirmDesktopAction({
       title: t("heartbeatsview.deleteTitle"),
       message: t("heartbeatsview.deleteMessage", { name: form.displayName }),
@@ -990,15 +993,17 @@ function useAutomationsViewController() {
     });
     if (!confirmed) return;
 
-    const deleted = await deleteTrigger(editingId);
+    const deleted = await deleteTrigger(targetId);
     if (!deleted) return;
 
-    if (selectedItemId === `trigger:${editingId}`) {
+    if (selectedItemId === `trigger:${targetId}`) {
       setSelectedItemId(null);
       setSelectedItemKind(null);
     }
     await refreshAutomations();
-    closeEditor();
+    if (targetId === editingId) {
+      closeEditor();
+    }
   };
 
   const onDeleteTask = async (taskId: string) => {
@@ -2424,6 +2429,124 @@ function OverviewListItem({
   );
 }
 
+function HeroEmptyState({
+  ideas,
+  onSubmit,
+  drafts,
+  onSelectDraft,
+  onDeleteDraft,
+  t,
+}: {
+  ideas: AutomationExample[];
+  onSubmit: (text: string) => void;
+  drafts: AutomationItem[];
+  onSelectDraft: (item: AutomationItem) => void;
+  onDeleteDraft?: (item: AutomationItem) => void | Promise<void>;
+  t: AutomationsViewController["t"];
+}) {
+  const [value, setValue] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const submit = useCallback(() => {
+    const text = value.trim();
+    if (text.length === 0) return;
+    setValue("");
+    onSubmit(text);
+  }, [onSubmit, value]);
+
+  const handleChipSelect = useCallback((idea: AutomationExample) => {
+    setValue(idea.prompt);
+    textareaRef.current?.focus();
+  }, []);
+
+  const canSubmit = value.trim().length > 0;
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-6 py-10">
+      <div className="w-full max-w-[560px] space-y-3">
+        <div className="relative">
+          <Textarea
+            ref={textareaRef}
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                submit();
+              }
+            }}
+            placeholder="Describe a task or workflow…"
+            rows={2}
+            variant="form"
+            className="resize-none pr-12"
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="absolute bottom-2 right-2 h-7 w-7 p-0"
+            onClick={submit}
+            disabled={!canSubmit}
+            aria-label="Submit"
+          >
+            <ArrowRight className="h-4 w-4" aria-hidden />
+          </Button>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {ideas.map((idea) => (
+            <button
+              key={idea.label}
+              type="button"
+              onClick={() => handleChipSelect(idea)}
+              className="rounded-full border border-border/50 bg-bg-accent px-2.5 py-1 text-xs text-txt transition-colors hover:border-accent/40 hover:bg-accent/5"
+            >
+              {idea.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {drafts.length > 0 && (
+        <div className="w-full max-w-[560px]">
+          <DetailSection title="Drafts in progress">
+            <div className="divide-y divide-border/20">
+              {drafts.map((item) => (
+                <div key={item.id} className="flex items-stretch gap-1">
+                  <div className="min-w-0 flex-1">
+                    <OverviewListItem
+                      onClick={() => onSelectDraft(item)}
+                      title={getOverviewDisplayTitle(item)}
+                      badge="Draft"
+                      meta={formatRelativePast(item.updatedAt, t)}
+                      detail={
+                        item.description.trim() ||
+                        "Open it and keep shaping it in the sidebar agent."
+                      }
+                      tone="warning"
+                    />
+                  </div>
+                  {onDeleteDraft && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-auto w-8 shrink-0 self-center text-muted hover:bg-danger/10 hover:text-danger"
+                      onClick={() => void onDeleteDraft(item)}
+                      aria-label="Delete draft"
+                      title="Delete draft"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </DetailSection>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AutomationsDashboard({
   items,
   onSelectItem,
@@ -2931,10 +3054,12 @@ function AutomationDraftPane({
   automation,
   onSeedPrompt,
   onDeleteDraft,
+  isGenerating,
 }: {
   automation: AutomationItem;
   onSeedPrompt: (prompt: string) => void;
   onDeleteDraft: (item: AutomationItem) => Promise<void>;
+  isGenerating?: boolean;
 }) {
   const chatChrome = useAppWorkspaceChatChrome();
 
@@ -2948,6 +3073,20 @@ function AutomationDraftPane({
 
   return (
     <div className="space-y-4 px-4 pt-6">
+      {isGenerating && (
+        <div className="flex items-start gap-3 rounded-xl border border-accent/40 bg-accent/5 px-4 py-3 text-sm">
+          <Spinner className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+          <div className="min-w-0 flex-1">
+            <div className="font-semibold text-txt">
+              Building your workflow…
+            </div>
+            <div className="mt-0.5 text-xs text-muted">
+              Generations usually take 10–30 seconds. Hooking up connectors,
+              picking nodes, and wiring the graph.
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
           <h2 className="text-lg font-semibold text-txt">
@@ -3227,6 +3366,7 @@ function TriggerAutomationDetailPane({
     openEditTrigger,
     onRunSelectedTrigger,
     onToggleTriggerEnabled,
+    onDeleteTrigger,
     loadTriggerRuns,
     triggerRunsById,
     setForm,
@@ -3328,6 +3468,12 @@ function TriggerAutomationDetailPane({
               label="Compile to Workflow"
               onClick={() => void onPromoteToWorkflow(automation)}
               icon={<GitBranch className="h-3.5 w-3.5" />}
+            />
+            <IconAction
+              label={t("common.delete")}
+              onClick={() => void onDeleteTrigger(trigger.id)}
+              icon={<Trash2 className="h-3.5 w-3.5" />}
+              tone="danger"
             />
           </>
         }
@@ -4587,6 +4733,12 @@ function AutomationsLayout() {
           setMissingCredentials(result.missingCredentials);
           return null;
         }
+        if (isNeedsClarificationResponse(result)) {
+          setPageNotice(
+            "Workflow needs more details before it can deploy. Continue in the chat to clarify.",
+          );
+          return null;
+        }
         if (conversation) {
           await bindConversationToWorkflow(
             conversation,
@@ -5272,7 +5424,7 @@ function AutomationsLayout() {
                       size="sm"
                       variant="outline"
                       onClick={() => {
-                        setTab("settings");
+                        setTab("connectors");
                         dispatchFocusConnector(
                           providerFromCredType(cred.credType),
                         );
@@ -5362,28 +5514,24 @@ function AutomationsLayout() {
         ) : activeSubpage === "node-catalog" ? (
           <AutomationNodeCatalogPane nodes={automationNodes} />
         ) : showDashboard ? (
-          <AutomationsDashboard
-            items={ctx.allItems}
-            onSelectItem={selectItem}
-            onCreateTask={handleZeroStateNewTask}
-            onCreateWorkflow={() => void createWorkflowDraft()}
-            onDescribeAutomation={handleDescribeAutomation}
-            onUseIdea={(idea) => {
-              if (idea.kind === "workflow") {
-                void createWorkflowDraft({
-                  title: idea.label,
-                  initialPrompt: idea.prompt,
-                });
-                return;
-              }
-              openSeededTask(idea);
-            }}
+          <HeroEmptyState
+            ideas={AUTOMATION_DRAFT_EXAMPLES}
+            onSubmit={(text) =>
+              void createWorkflowDraft({ initialPrompt: text })
+            }
+            drafts={ctx.allItems
+              .filter((item) => item.isDraft)
+              .slice(0, 4)}
+            onSelectDraft={selectItem}
+            onDeleteDraft={handleDeleteDraft}
+            t={t}
           />
         ) : resolvedSelectedItem?.type === "automation_draft" ? (
           <AutomationDraftPane
             automation={resolvedSelectedItem}
             onSeedPrompt={(prompt) => prefillPageChat(prompt, { select: true })}
             onDeleteDraft={handleDeleteDraft}
+            isGenerating={workflowOpsBusy}
           />
         ) : resolvedSelectedItem?.type === "n8n_workflow" ? (
           <WorkflowAutomationDetailPane

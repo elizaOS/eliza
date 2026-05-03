@@ -1,96 +1,96 @@
 {
-  "name": "@elizaos/plugin-line",
-  "version": "2.0.0-alpha.7",
-  "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "default": "./dist/index.js"
-    }
-  },
-  "files": [
-    "dist"
-  ],
-  "scripts": {
-    "build": "bun run build.ts",
-    "test": "vitest run --config vitest.config.ts --passWithNoTests",
-    "test:watch": "vitest --config vitest.config.ts",
-    "lint": "bunx @biomejs/biome check --write --unsafe .",
-    "lint:check": "bunx @biomejs/biome check .",
-    "format": "bunx @biomejs/biome format --write .",
-    "format:check": "bunx @biomejs/biome format .",
-    "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@elizaos/core": "workspace:*",
-    "@line/bot-sdk": "^11.0.0",
-    "zod": "^4.4.2"
-  },
-  "devDependencies": {
-    "@types/node": "^22.19.17",
-    "typescript": "^6.0.3",
-    "vitest": "^4.0.0",
-    "@biomejs/biome": "^2.4.14"
-  },
-  "publishConfig": {
-    "access": "public"
-  },
-  "eliza": {
-    "platforms": [
-      "node"
-    ],
-    "runtime": "node",
-    "platformDetails": {
-      "node": "Node.js via main entry point"
-    }
-  },
-  "agentConfig": {
-    "pluginParameters": {
-      "LINE_CHANNEL_ACCESS_TOKEN": {
-        "type": "string",
-        "description": "Access token for Line Channel",
-        "required": true,
-        "sensitive": true
-      },
-      "LINE_CHANNEL_SECRET": {
-        "type": "string",
-        "description": "Secret for Line Channel",
-        "required": false,
-        "sensitive": true
-      },
-      "LINE_WEBHOOK_PATH": {
-        "type": "string",
-        "description": "Webhook path",
-        "required": false,
-        "sensitive": false
-      },
-      "LINE_DM_POLICY": {
-        "type": "string",
-        "description": "DM policy (e.g. allow, deny, allowlist)",
-        "required": false,
-        "sensitive": false
-      },
-      "LINE_GROUP_POLICY": {
-        "type": "string",
-        "description": "Group message policy (e.g. allow, deny)",
-        "required": false,
-        "sensitive": false
-      },
-      "LINE_ALLOW_FROM": {
-        "type": "string",
-        "description": "Comma-separated allowed user list",
-        "required": false,
-        "sensitive": false
-      },
-      "LINE_ENABLED": {
-        "type": "boolean",
-        "description": "Enable or disable this feature",
-        "required": false,
-        "sensitive": false
-      }
-    }
-  }
+	"name": "@elizaos/plugin-line",
+	"version": "2.0.0-alpha.536",
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"default": "./dist/index.js"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "bun run build.ts",
+		"test": "vitest run --config vitest.config.ts --passWithNoTests",
+		"test:watch": "vitest --config vitest.config.ts",
+		"lint": "bunx @biomejs/biome check --write --unsafe .",
+		"lint:check": "bunx @biomejs/biome check .",
+		"format": "bunx @biomejs/biome format --write .",
+		"format:check": "bunx @biomejs/biome format .",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@elizaos/core": "workspace:*",
+		"@line/bot-sdk": "^10.5.0",
+		"zod": "^4.3.6"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.3.11",
+		"@types/node": "^20.0.0",
+		"typescript": "^6.0.3",
+		"vitest": "^2.0.0"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"eliza": {
+		"platforms": [
+			"node"
+		],
+		"runtime": "node",
+		"platformDetails": {
+			"node": "Node.js via main entry point"
+		}
+	},
+	"agentConfig": {
+		"pluginParameters": {
+			"LINE_CHANNEL_ACCESS_TOKEN": {
+				"type": "string",
+				"description": "Access token for Line Channel",
+				"required": true,
+				"sensitive": true
+			},
+			"LINE_CHANNEL_SECRET": {
+				"type": "string",
+				"description": "Secret for Line Channel",
+				"required": false,
+				"sensitive": true
+			},
+			"LINE_WEBHOOK_PATH": {
+				"type": "string",
+				"description": "Webhook path",
+				"required": false,
+				"sensitive": false
+			},
+			"LINE_DM_POLICY": {
+				"type": "string",
+				"description": "DM policy (e.g. allow, deny, allowlist)",
+				"required": false,
+				"sensitive": false
+			},
+			"LINE_GROUP_POLICY": {
+				"type": "string",
+				"description": "Group message policy (e.g. allow, deny)",
+				"required": false,
+				"sensitive": false
+			},
+			"LINE_ALLOW_FROM": {
+				"type": "string",
+				"description": "Comma-separated allowed user list",
+				"required": false,
+				"sensitive": false
+			},
+			"LINE_ENABLED": {
+				"type": "boolean",
+				"description": "Enable or disable this feature",
+				"required": false,
+				"sensitive": false
+			}
+		}
+	}
 }
