@@ -1,6 +1,6 @@
 import type { ChannelType, Room, RoomMetadata, UUID } from "@elizaos/core";
 import { and, eq, inArray } from "drizzle-orm";
-import { v4 } from "uuid";
+import { randomUUID } from "node:crypto";
 import { roomTable } from "../schema/index";
 import type { DrizzleDatabase } from "../types";
 import type { Store, StoreContext } from "./types";
@@ -77,7 +77,7 @@ export class RoomStore implements Store {
       const roomsWithIds = rooms.map((room) => ({
         ...room,
         agentId: this.ctx.agentId,
-        id: room.id || v4(),
+        id: room.id || randomUUID(),
       }));
 
       await this.db.insert(roomTable).values(roomsWithIds).onConflictDoNothing();

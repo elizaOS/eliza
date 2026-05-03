@@ -41,8 +41,8 @@ jobs:
 
       - name: Create test env file
         run: |
-          echo "TEST_DATABASE_CLIENT=pglite" > packages/typescript/.env.test
-          echo "NODE_ENV=test" >> packages/typescript/.env.test
+          echo "TEST_DATABASE_CLIENT=pglite" > packages/core/.env.test
+          echo "NODE_ENV=test" >> packages/core/.env.test
 
       - name: Build packages
         run: bun run build

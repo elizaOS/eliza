@@ -12,16 +12,16 @@
 import { readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { InMemoryDatabaseAdapter } from "../../../../packages/typescript/src/database/inMemoryAdapter";
+import { InMemoryDatabaseAdapter } from "../../../../packages/core/src/database/inMemoryAdapter";
 // Direct source imports — Bun transpiles TS at runtime, no build step needed
-import { AgentRuntime } from "../../../../packages/typescript/src/runtime";
-import type { Character } from "../../../../packages/typescript/src/types/agent";
-import type { Memory } from "../../../../packages/typescript/src/types/memory";
-import type { Plugin } from "../../../../packages/typescript/src/types/plugin";
+import { AgentRuntime } from "../../../../packages/core/src/runtime";
+import type { Character } from "../../../../packages/core/src/types/agent";
+import type { Memory } from "../../../../packages/core/src/types/memory";
+import type { Plugin } from "../../../../packages/core/src/types/plugin";
 import type {
   Content,
   UUID,
-} from "../../../../packages/typescript/src/types/primitives";
+} from "../../../../packages/core/src/types/primitives";
 import {
   type BenchmarkResult,
   computeLatencyStats,
@@ -720,7 +720,7 @@ async function main(): Promise<void> {
   try {
     const corePkg = resolve(
       __dirname,
-      "../../../packages/typescript/dist/node/index.node.js",
+      "../../../packages/core/dist/node/index.node.js",
     );
     const stat = statSync(corePkg);
     results.binary_size_bytes = stat.size;

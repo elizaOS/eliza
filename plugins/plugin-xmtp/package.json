@@ -20,7 +20,7 @@
     "sharp": "0.34.1",
     "tsup": "8.3.5",
     "uint8arrays": "^5.1.0",
-    "viem": "^2.22.17"
+    "viem": "^2.48.8"
   },
   "devDependencies": {
     "prettier": "3.5.3",

@@ -196,7 +196,7 @@ const stubResolverPlugin = {
 // Force a single resolution for `@elizaos/core` and `@elizaos/shared`.
 //
 // `eliza/packages/agent/tsconfig.json` maps `@elizaos/core` to the source
-// at `../typescript/src/index.node.ts`, but `@elizaos/plugin-sql` (and other
+// at `../core/src/index.node.ts`, but `@elizaos/plugin-sql` (and other
 // plugin packages) compile against the prebuilt `dist/index.node.js`. Bun
 // then bundles BOTH copies, ending up with two distinct AgentRuntime classes
 // — the runtime instance receives an adapter from one copy and tries to
@@ -210,7 +210,7 @@ const corePackages = [
 ];
 
 // Inside the eliza repo the source trees live directly under the repo
-// root: `packages/typescript/`, `packages/shared/`, and
+// root: `packages/core/`, `packages/shared/`, and
 // `plugins/plugin-sql/`. The earlier `eliza/` prefix here was a leftover
 // from eliza's outer-repo layout where this whole tree was nested under
 // `eliza/`.

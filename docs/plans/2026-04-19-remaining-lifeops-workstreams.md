@@ -369,7 +369,7 @@ Exact seams:
 - `eliza/apps/app-lifeops/src/actions/owner-inbox.ts`
 - `eliza/packages/agent/src/services/escalation.ts`
 - `eliza/apps/app-lifeops/src/actions/device-bus.ts`
-- `eliza/packages/typescript/src/features/advanced-capabilities/actions/muteRoom.ts`
+- `eliza/packages/core/src/features/advanced-capabilities/actions/muteRoom.ts`
 - `eliza/plugins/plugin-telegram/src/service.ts`
 - `eliza/apps/app-lifeops/src/lifeops/x-dm-reader.ts`
 - `eliza/apps/app-lifeops/src/actions/x-read.ts`

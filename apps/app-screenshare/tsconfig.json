@@ -11,8 +11,8 @@
     "sourceMap": false,
     "types": ["bun-types", "node"],
     "paths": {
-      "@elizaos/core": ["../../packages/typescript/src/index.ts"],
-      "@elizaos/core/*": ["../../packages/typescript/src/*"],
+      "@elizaos/core": ["../../packages/core/src/index.ts"],
+      "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/agent/*": ["../../packages/agent/src/*"],
       "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
       "@elizaos/app-core/*": ["../../packages/app-core/src/*"],

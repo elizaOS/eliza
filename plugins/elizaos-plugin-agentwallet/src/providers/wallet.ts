@@ -1,27 +1,43 @@
-import type { IAgentRuntime, Memory, Provider, State } from '@elizaos/core';
+import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from '@elizaos/core';
+import type { BridgeChain } from 'agentwallet-sdk';
 import type {
   AgentWalletSDK,
+  BridgeParams,
+  BridgeResult,
+  SwapParams,
+  SwapResult,
   TokenBalance,
   TransferParams,
-  SwapParams,
-  BridgeParams,
-  X402PayParams,
   TransferResult,
-  SwapResult,
-  BridgeResult,
+  X402PayParams,
   X402PayResult,
 } from '../types';
+
+function settingString(value: string | number | boolean | null | undefined): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return undefined;
+}
+
+function settingPrivateKey(value: string | number | boolean | null | undefined): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
 
 /**
  * WalletProvider — surfaces wallet state (address, balances, spend limit) into the
  * agent's context window so it can reason about its own funds before taking action.
  */
 export const walletProvider: Provider = {
-  get: async (runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<string> => {
+  name: 'agentWallet',
+  description: 'Surfaces configured agent wallet address, network, and token balances.',
+  get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {
     try {
       const sdk = await getSDK(runtime);
       if (!sdk) {
-        return 'Wallet: not configured. Set AGENTWALLET_PRIVATE_KEY and AGENTWALLET_CHAIN in agent settings.';
+        return {
+          text: 'Wallet: not configured. Set AGENTWALLET_PRIVATE_KEY and AGENTWALLET_CHAIN in agent settings.',
+        };
       }
 
       const balances = await sdk.getBalances();
@@ -29,7 +45,7 @@ export const walletProvider: Provider = {
         .map((b: TokenBalance) => `  ${b.symbol}: ${b.balance}${b.usdValue != null ? ` ($${b.usdValue.toFixed(2)})` : ''}`)
         .join('\n');
 
-      return [
+      const text = [
         `## Agent Wallet`,
         `Address: ${sdk.getAddress()}`,
         `Network: ${sdk.getNetwork()}`,
@@ -38,8 +54,10 @@ export const walletProvider: Provider = {
       ]
         .filter(Boolean)
         .join('\n');
+      return { text };
     } catch (err) {
-      return `Wallet: error fetching state — ${(err as Error).message}`;
+      const messageErr = err instanceof Error ? err.message : String(err);
+      return { text: `Wallet: error fetching state — ${messageErr}` };
     }
   },
 };
@@ -59,21 +77,22 @@ export const walletProvider: Provider = {
  * agentwallet-sdk release. EVM chains only.
  */
 export async function getSDK(runtime: IAgentRuntime): Promise<AgentWalletSDK | null> {
-  const evmPrivateKey = runtime.getSetting('AGENTWALLET_PRIVATE_KEY');
+  const evmPrivateKey = settingPrivateKey(runtime.getSetting('AGENTWALLET_PRIVATE_KEY'));
 
   if (!evmPrivateKey) return null;
 
   // Dynamic import so the plugin won't crash when SDK is absent (mocked in tests)
   const sdkModule = await import('agentwallet-sdk');
+  type SdkWalletClient = Parameters<typeof sdkModule.createWallet>[0]['walletClient'];
 
   let evmWalletObj: ReturnType<typeof sdkModule.createWallet> | null = null;
   let evmWalletClient: import('viem').WalletClient | null = null;
 
   // ── EVM wallet setup ──────────────────────────────────────────────────────
-  const accountAddress = runtime.getSetting('AGENTWALLET_ACCOUNT_ADDRESS');
-  const chain = (runtime.getSetting('AGENTWALLET_CHAIN') ?? 'base') as
+  const accountAddress = settingString(runtime.getSetting('AGENTWALLET_ACCOUNT_ADDRESS'));
+  const chain = (settingString(runtime.getSetting('AGENTWALLET_CHAIN')) ?? 'base') as
     'base' | 'base-sepolia' | 'ethereum' | 'arbitrum' | 'polygon';
-  const rpcUrl = runtime.getSetting('AGENTWALLET_RPC_URL') ?? undefined;
+  const rpcUrl = settingString(runtime.getSetting('AGENTWALLET_RPC_URL'));
 
   if (accountAddress) {
     const { createWalletClient, http } = await import('viem');
@@ -100,7 +119,7 @@ export async function getSDK(runtime: IAgentRuntime): Promise<AgentWalletSDK | n
       accountAddress: accountAddress as `0x${string}`,
       chain,
       rpcUrl,
-      walletClient: evmWalletClient,
+      walletClient: evmWalletClient as SdkWalletClient,
     });
   }
 
@@ -126,7 +145,7 @@ function buildSDKWrapper(
     },
 
     getNetwork(): string {
-      return runtime.getSetting('AGENTWALLET_CHAIN') ?? 'base';
+      return settingString(runtime.getSetting('AGENTWALLET_CHAIN')) ?? 'base';
     },
 
     // ── Balances ─────────────────────────────────────────────────────────────
@@ -198,11 +217,12 @@ function buildSDKWrapper(
     async swap(params: SwapParams): Promise<SwapResult> {
       const { SwapModule } = sdkModule;
       const { parseUnits } = await import('viem');
+      type SdkSwapArgs = ConstructorParameters<typeof SwapModule>;
 
       const swapMod = new SwapModule(
-        evmWallet.publicClient as any,
-        evmWallet.walletClient as any,
-        evmWallet.address
+        evmWallet.publicClient as SdkSwapArgs[0],
+        evmWallet.walletClient as SdkSwapArgs[1],
+        evmWallet.address as SdkSwapArgs[2]
       );
 
       const fromDecimals = params.fromToken.toUpperCase() === 'USDC' ? 6 : 18;
@@ -224,15 +244,18 @@ function buildSDKWrapper(
     async bridge(params: BridgeParams): Promise<BridgeResult> {
       const { BridgeModule } = sdkModule;
       const { parseUnits } = await import('viem');
+      type SdkBridgeWalletClient = ConstructorParameters<typeof BridgeModule>[0];
 
       if (!evmWalletClient) {
         throw new Error('EVM wallet client required for bridge operations');
       }
 
-      const bridge = new BridgeModule(evmWalletClient, params.fromChain as any);
+      const fromChain = params.fromChain.toLowerCase() as BridgeChain;
+      const toChain = params.toChain.toLowerCase() as BridgeChain;
+      const bridge = new BridgeModule(evmWalletClient as SdkBridgeWalletClient, fromChain);
       const amountUsdc = parseUnits(params.amount, 6);
 
-      const result = await bridge.bridge(amountUsdc, params.toChain as any, {
+      const result = await bridge.bridge(amountUsdc, toChain, {
         destinationAddress: (params.toAddress ?? evmWallet.address) as `0x${string}`,
       });
 

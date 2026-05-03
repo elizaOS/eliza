@@ -86,7 +86,7 @@ const checks = [
     args: [
       "test",
       "eliza/plugins/plugin-discord/__tests__/smoke.test.ts",
-      "eliza/packages/typescript/src/agent-orchestrator/__tests__/task-policy.test.ts",
+      "eliza/packages/core/src/agent-orchestrator/__tests__/task-policy.test.ts",
     ],
     timeoutMs: 10 * 60_000,
   },

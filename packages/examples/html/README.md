@@ -61,7 +61,7 @@ The demo uses native ES module import maps to resolve the elizaOS packages to th
 <script type="importmap">
   {
     "imports": {
-      "@elizaos/core": "../../packages/typescript/dist/browser/index.browser.js",
+      "@elizaos/core": "../../packages/core/dist/browser/index.browser.js",
       "@elizaos/plugin-eliza-classic": "../../plugins/plugin-eliza-classic/dist/browser/index.browser.js",
       "@elizaos/plugin-localdb": "../../plugins/plugin-localdb/dist/browser/index.browser.js",
       "uuid": "https://esm.sh/uuid@11"

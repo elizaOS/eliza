@@ -1,6 +1,6 @@
 import { logger, type Metadata, type Relationship, type UUID } from "@elizaos/core";
 import { and, eq, type SQL, sql } from "drizzle-orm";
-import { v4 } from "uuid";
+import { randomUUID } from "node:crypto";
 import { relationshipTable } from "../schema/index";
 import type { DrizzleDatabase } from "../types";
 import type { Store, StoreContext } from "./types";
@@ -19,7 +19,7 @@ export class RelationshipStore implements Store {
     metadata?: Metadata;
   }): Promise<boolean> {
     return this.ctx.withRetry(async () => {
-      const id = v4();
+      const id = randomUUID();
       const saveParams = {
         id,
         sourceEntityId: params.sourceEntityId,

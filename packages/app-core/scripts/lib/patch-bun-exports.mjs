@@ -164,7 +164,7 @@ export function patchBrokenElizaCoreRuntimeDists(root, log = console.log) {
  * Copy a pre-bundled shim (see `scripts/lib/elizaos-core-roles-shim.js`) to
  * each installed `@elizaos/core/dist/roles.js` location and add the matching
  * `./roles` entry to the package.json `exports` field. The shim bundles
- * `eliza/packages/typescript/src/roles.ts` verbatim with its two runtime
+ * `eliza/packages/core/src/roles.ts` verbatim with its two runtime
  * dependencies (`createUniqueUuid`, `logger`) left as top-level imports from
  * `@elizaos/core` — both of which are already present in the main published
  * runtime bundle.

@@ -1,7 +1,10 @@
 {
   "compilerOptions": {
     "outDir": "dist",
-    "lib": ["ESNext", "DOM"],
+    "lib": [
+      "ESNext",
+      "DOM"
+    ],
     "target": "ESNext",
     "module": "Preserve",
     "moduleResolution": "Bundler",
@@ -16,12 +19,17 @@
     "noImplicitAny": false,
     "allowJs": true,
     "checkJs": false,
-    "types": ["node", "vitest/globals"],
+    "types": [
+      "node",
+      "vitest/globals"
+    ],
     "noEmitOnError": false,
     "moduleDetection": "force",
-    "allowArbitraryExtensions": true,
-    "baseUrl": ".",
-    "ignoreDeprecations": "6.0"
+    "allowArbitraryExtensions": true
   },
-  "include": ["src/**/*.ts", "e2e/**/*.ts", "__tests__/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "e2e/**/*.ts",
+    "__tests__/**/*.ts"
+  ]
 }

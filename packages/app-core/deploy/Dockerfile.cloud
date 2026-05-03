@@ -26,7 +26,7 @@ WORKDIR /src
 # Copy only the manifests Bun needs to resolve the production dependency graph.
 COPY package.json bun.lock ./
 COPY eliza/packages/app-core/patches ./eliza/packages/app-core/patches
-COPY eliza/packages/typescript/package.json ./eliza/packages/typescript/package.json
+COPY eliza/packages/core/package.json ./eliza/packages/core/package.json
 COPY eliza/packages/agent/package.json ./eliza/packages/agent/package.json
 COPY eliza/packages/app-core/package.json ./eliza/packages/app-core/package.json
 COPY eliza/packages/shared/package.json ./eliza/packages/shared/package.json
@@ -69,7 +69,7 @@ const PRUNE_FIELDS = [
 const STRIP_NAMES =
   /^@elizaos\/(app-|capacitor-|plugin-agent-orchestrator|plugin-cli|plugin-imessage|plugin-local-ai|plugin-pdf|plugin-wechat|steward-)/;
 const VERSION_MANIFESTS = [
-  "eliza/packages/typescript/package.json",
+  "eliza/packages/core/package.json",
   "eliza/plugins/plugin-sql/package.json",
   "eliza/plugins/plugin-elizacloud/package.json",
 ];

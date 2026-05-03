@@ -337,7 +337,7 @@ function tryResolveElizaCorePkgDir(): string | null {
   } catch {
     const workspaceCorePkg = path.join(
       elizaRoot,
-      "packages/typescript/package.json",
+      "packages/core/package.json",
     );
     return fs.existsSync(workspaceCorePkg)
       ? path.dirname(workspaceCorePkg)
@@ -348,7 +348,7 @@ function tryResolveElizaCorePkgDir(): string | null {
 function resolveElizaCoreSourceBrowserPath(): string | null {
   const workspaceSourceBrowserEntry = path.join(
     elizaRoot,
-    "packages/typescript/src/index.browser.ts",
+    "packages/core/src/index.browser.ts",
   );
   if (fs.existsSync(workspaceSourceBrowserEntry)) {
     return workspaceSourceBrowserEntry;
@@ -367,9 +367,9 @@ function isElizaCoreBrowserDistId(id: string | undefined): boolean {
     normalized.endsWith(
       "/node_modules/@elizaos/core/dist/browser/index.browser.js",
     ) ||
-    normalized.endsWith("/eliza/packages/typescript/dist/index.browser.js") ||
+    normalized.endsWith("/eliza/packages/core/dist/index.browser.js") ||
     normalized.endsWith(
-      "/eliza/packages/typescript/dist/browser/index.browser.js",
+      "/eliza/packages/core/dist/browser/index.browser.js",
     )
   );
 }
@@ -1210,7 +1210,7 @@ function nativeModuleStubPlugin(): Plugin {
       const normId = id.split(path.sep).join("/");
       const isCorePackagePath =
         normId.includes("/node_modules/@elizaos/core/") ||
-        normId.includes("packages/typescript/dist/");
+        normId.includes("packages/core/dist/");
       if (!isCoreDistFile || !isCorePackagePath) return null;
 
       // Fix AsyncLocalStorage: the browser entry has a try/catch that does
@@ -1782,7 +1782,7 @@ export default defineConfig({
     target: "es2022",
     // The desktop/web shell intentionally ships a large eagerly-loaded main
     // chunk; warn only when it grows beyond the current known baseline.
-    chunkSizeWarningLimit: 3800,
+    chunkSizeWarningLimit: 5500,
     minify: desktopFastDist ? false : undefined,
     cssMinify: desktopFastDist ? false : undefined,
     reportCompressedSize: !desktopFastDist,

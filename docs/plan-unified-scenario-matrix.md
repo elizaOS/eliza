@@ -106,7 +106,7 @@ Listed in §12. Non-blocking for writing the plan but must resolve before certai
 **Other scenario-adjacent frameworks** (out of scope for this plan but noted):
 - `packages/benchmarks/configbench/` — plugin/secrets/security.
 - `packages/benchmarks/gauntlet/` — Solana trading YAML.
-- `packages/typescript/test/live/coordinator-*` — coordinator readiness.
+- `packages/core/test/live/coordinator-*` — coordinator readiness.
 
 ### 2.2 Capability registry
 
@@ -698,7 +698,7 @@ Ordered by priority; each unit has explicit deliverables. No stubs.
 **6.1 Action parameter extraction + verification pipeline**
 - *Gap:* Runtime captures actions but params verification isn't part of any test surface.
 - *Deliverable:* Extend `HandlerOptions.parameters` tracing; expose `runtime.getActionResults(messageId)` uniformly; implement `expectedActionParams` matcher with MongoDB-style operators in USR.
-- *Files:* `eliza/packages/typescript/src/runtime.ts` (expose plan), `eliza/packages/scenario-runner/src/assertions.ts`.
+- *Files:* `eliza/packages/core/src/runtime.ts` (expose plan), `eliza/packages/scenario-runner/src/assertions.ts`.
 
 **6.2 Unified Scenario Schema + Runner package**
 - Two new packages (`@elizaos/scenario-schema`, `@elizaos/scenario-runner`) per §3.3.
@@ -706,7 +706,7 @@ Ordered by priority; each unit has explicit deliverables. No stubs.
 
 **6.3 Rolodex / contacts core service**
 - *Gap:* Only profile fields exist (`partnerName`, `relationshipStatus`). No contact CRUD with history, cross-platform ID merge, or follow-up tracking.
-- *Deliverable:* `eliza/packages/typescript/src/features/relationships/` — full Contact entity with platform handles (`gmail`, `discord`, `telegram`, `twitter`, `signal`, `phone`, `imessage-id`). Actions: `ADD_CONTACT`, `UPDATE_CONTACT`, `SEARCH_CONTACTS`, `MERGE_CONTACTS`, `LIST_OVERDUE_FOLLOWUPS`. Provider: `relationshipsProvider` exposes context to agent.
+- *Deliverable:* `eliza/packages/core/src/features/relationships/` — full Contact entity with platform handles (`gmail`, `discord`, `telegram`, `twitter`, `signal`, `phone`, `imessage-id`). Actions: `ADD_CONTACT`, `UPDATE_CONTACT`, `SEARCH_CONTACTS`, `MERGE_CONTACTS`, `LIST_OVERDUE_FOLLOWUPS`. Provider: `relationshipsProvider` exposes context to agent.
 - *Schema:* new PGLite tables `contacts`, `contact_handles`, `contact_interactions`, `followup_rules`.
 
 **6.4 Follow-up tracker service**
@@ -715,7 +715,7 @@ Ordered by priority; each unit has explicit deliverables. No stubs.
 
 **6.5 Message triage v2 — cross-platform**
 - *Gap:* `inbox-triage.ts` exists but Gmail-only.
-- *Deliverable:* Promote to `eliza/packages/typescript/src/features/messaging/triage/`. Unified `MessageRef = { source, externalId, contact, channel, text, receivedAt }`. Triage scoring operates over all connected sources. Action: `TRIAGE_MESSAGES`.
+- *Deliverable:* Promote to `eliza/packages/core/src/features/messaging/triage/`. Unified `MessageRef = { source, externalId, contact, channel, text, receivedAt }`. Triage scoring operates over all connected sources. Action: `TRIAGE_MESSAGES`.
 
 **6.6 Calendar: scheduling-with-others**
 - *Gap:* CRUD exists; no proposal, availability, preferences.
