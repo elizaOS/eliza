@@ -124,11 +124,7 @@ fi
 APP_CORE_SCRIPTS_DIR="$APP_CORE_DIR/scripts"
 AGENT_DIR="$PACKAGES_DIR/agent"
 SCHEMAS_DIR="$PACKAGES_DIR/schemas"
-if [[ -d "$PACKAGES_DIR/core" ]]; then
-  TYPESCRIPT_DIR="$PACKAGES_DIR/core"
-else
-  TYPESCRIPT_DIR="$PACKAGES_DIR/typescript"
-fi
+TYPESCRIPT_DIR="$PACKAGES_DIR/typescript"
 
 [[ -f "$APP_CORE_DIR/deploy/Dockerfile.ci" ]] || fail "$APP_CORE_DIR/deploy/Dockerfile.ci not found"
 [[ -f "$APP_CORE_DIR/deploy/.dockerignore.ci" ]] || fail "$APP_CORE_DIR/deploy/.dockerignore.ci not found"
@@ -234,12 +230,22 @@ else
   node "$APP_CORE_SCRIPTS_DIR/ensure-type-package-aliases.mjs" || true
 fi
 
-if [[ ! -f "$TYPESCRIPT_DIR/src/types/generated/eliza/v1/agent_pb.ts" ]]; then
+# buf.gen.yaml outputs to packages/core (current name) or packages/typescript (legacy name)
+_proto_marker=""
+for _candidate in "$PACKAGES_DIR/core/src/types/generated/eliza/v1/agent_pb.ts" \
+                  "$PACKAGES_DIR/typescript/src/types/generated/eliza/v1/agent_pb.ts"; do
+  if [[ -f "$_candidate" ]]; then
+    _proto_marker="$_candidate"
+    break
+  fi
+done
+if [[ -z "$_proto_marker" ]]; then
   log "Generating core protobuf sources"
   pushd "$SCHEMAS_DIR" >/dev/null
   bunx --package @bufbuild/buf@1.68.3 buf generate
   popd >/dev/null
 fi
+unset _proto_marker _candidate
 
 if [[ -f "$TYPESCRIPT_DIR/package.json" ]]; then
   log "Building @elizaos/core source artifacts"
