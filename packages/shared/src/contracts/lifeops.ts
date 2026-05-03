@@ -995,6 +995,14 @@ export const LIFEOPS_REMINDER_ATTEMPT_OUTCOMES = [
 export type LifeOpsReminderAttemptOutcome =
   (typeof LIFEOPS_REMINDER_ATTEMPT_OUTCOMES)[number];
 
+export type LifeOpsReminderReviewStatus =
+  | "unrelated"
+  | "needs_clarification"
+  | "no_response"
+  | "resolved"
+  | "escalated"
+  | "clarification_requested";
+
 export interface LifeOpsReminderAttempt {
   id: string;
   agentId: string;
@@ -1009,6 +1017,8 @@ export interface LifeOpsReminderAttempt {
   outcome: LifeOpsReminderAttemptOutcome;
   connectorRef: string | null;
   deliveryMetadata: Record<string, unknown>;
+  reviewAt?: string | null;
+  reviewStatus?: LifeOpsReminderReviewStatus | null;
 }
 
 export interface LifeOpsConnectorGrant {

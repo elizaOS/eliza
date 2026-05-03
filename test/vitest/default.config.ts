@@ -247,6 +247,13 @@ const vitestResolveAlias: ModuleAlias[] = [
     ),
   },
   {
+    find: "@elizaos/plugin-sql/drizzle",
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "plugins/plugin-sql/typescript/drizzle/index.ts",
+    ),
+  },
+  {
     find: /^@elizaos\/plugin-sql\/(.+)$/,
     replacement: path.join(elizaWorkspaceRoot, "plugins/plugin-sql/$1"),
   },
