@@ -1,17 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import type { CompatibleRedis } from "@/lib/cache/redis-factory";
-import {
-  consumeNonce,
-  issueNonce,
-  validateSIWEMessage,
-} from "@/lib/utils/siwe-helpers";
+import { consumeNonce, issueNonce, validateSIWEMessage } from "@/lib/utils/siwe-helpers";
 
-function buildSiweMessage(opts: {
-  domain: string;
-  address: string;
-  nonce: string;
-}): string {
+function buildSiweMessage(opts: { domain: string; address: string; nonce: string }): string {
   return [
     `${opts.domain} wants you to sign in with your Ethereum account:`,
     opts.address,
@@ -86,11 +78,7 @@ describe("validateSIWEMessage", () => {
     });
     const signature = await account.signMessage({ message });
 
-    const result = await validateSIWEMessage(
-      message,
-      signature,
-      "elizacloud.ai",
-    );
+    const result = await validateSIWEMessage(message, signature, "elizacloud.ai");
 
     expect(result.address).toBe(account.address);
     expect(result.parsed.nonce).toBe("abc123def456abc1");
@@ -106,9 +94,7 @@ describe("validateSIWEMessage", () => {
     });
     const signature = await account.signMessage({ message });
 
-    await expect(
-      validateSIWEMessage(message, signature, "elizacloud.ai"),
-    ).rejects.toThrow(
+    await expect(validateSIWEMessage(message, signature, "elizacloud.ai")).rejects.toThrow(
       "SIWE domain does not match app host: got evil.com, expected elizacloud.ai",
     );
   });
@@ -123,8 +109,8 @@ describe("validateSIWEMessage", () => {
     });
     const signature = await signer.signMessage({ message });
 
-    await expect(
-      validateSIWEMessage(message, signature, "elizacloud.ai"),
-    ).rejects.toThrow("SIWE signature invalid");
+    await expect(validateSIWEMessage(message, signature, "elizacloud.ai")).rejects.toThrow(
+      "SIWE signature invalid",
+    );
   });
 });
