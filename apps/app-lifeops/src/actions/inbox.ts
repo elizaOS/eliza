@@ -37,6 +37,19 @@ import { INTERNAL_URL } from "./lifeops-google-helpers.js";
 // Subaction types & params
 // ---------------------------------------------------------------------------
 
+/**
+ * Triage sweep window in milliseconds.
+ *
+ * Mirrors the default `triageCron` in `inbox/config.ts` (`0 * * * *`, hourly).
+ * Each cron tick walks the past hour of inbound messages so the window matches
+ * the cadence — shorter windows would miss messages, longer windows would
+ * re-triage entries already classified by the previous tick.
+ *
+ * If the cron is ever made user-configurable, this constant must be derived
+ * from the same source so the window stays in lockstep with the cadence.
+ */
+const TRIAGE_SWEEP_WINDOW_MS = 60 * 60 * 1000;
+
 type InboxSubaction = "triage" | "digest" | "respond";
 
 type InboxActionParams = {
@@ -603,10 +616,12 @@ async function handleTriage(
   const config = loadInboxTriageConfig();
   const repo = new InboxTriageRepository(runtime);
 
-  // 1. "since" window: current time minus one hour (the triage interval).
+  // 1. "since" window: current time minus the triage sweep window.
   //    Previous implementation used the most-recent unresolved entry's
   //    createdAt, which could miss messages arriving after that entry.
-  const sinceIso = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const sinceIso = new Date(
+    Date.now() - TRIAGE_SWEEP_WINDOW_MS,
+  ).toISOString();
 
   // 2. Fetch messages from all channels
   const service = new LifeOpsService(runtime);
