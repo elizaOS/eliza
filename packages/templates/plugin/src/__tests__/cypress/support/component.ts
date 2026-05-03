@@ -19,15 +19,15 @@ import { type MountReturn, mount } from "@cypress/react";
 
 // Add custom TypeScript types
 declare global {
-	namespace Cypress {
-		interface Chainable {
-			/**
-			 * Custom command to mount React components
-			 * @example cy.mount(<Component />)
-			 */
-			mount(component: React.ReactElement): Chainable<MountReturn>;
-		}
-	}
+  namespace Cypress {
+    interface Chainable {
+      /**
+       * Custom command to mount React components
+       * @example cy.mount(<Component />)
+       */
+      mount(component: React.ReactElement): Chainable<MountReturn>;
+    }
+  }
 }
 
 // Make mount available globally
