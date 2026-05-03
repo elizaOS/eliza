@@ -189,6 +189,7 @@ tasks/
 !packages/benchmarks/app-eval/tasks/__init__.py
 !packages/benchmarks/app-eval/tasks/*-tasks.json
 !packages/benchmarks/app-eval/tasks/*_evaluator.py
+!plugins/plugin-agent-skills/src/tasks/
 
 # Development database and tool directories
 **/data/
@@ -277,6 +278,8 @@ apps/*/src/**/*.js
 apps/*/src/**/*.d.ts
 apps/*/src/**/*.d.ts.map
 !apps/app-companion/src/three-subpath.d.ts
+plugins/*/src/**/*.d.ts
+plugins/*/src/**/*.d.ts.map
 !apps/app-companion/src/types/three-vrm-shim.d.ts
 !apps/app-lifeops/src/website-blocker/elizaos-core-roles.ts
 

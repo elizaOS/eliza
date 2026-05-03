@@ -74,7 +74,6 @@
     "./hooks": "./src/hooks/index.ts",
     "./hooks/*": "./src/hooks/*.ts",
     "./middleware/x402": "./src/middleware/x402/index.ts",
-    "./plugins/custom-rtmp": "./src/plugins/custom-rtmp/index.ts",
     "./plugins/*": "./src/plugins/*/index.ts",
     "./providers": "./src/providers/index.ts",
     "./providers/*": "./src/providers/*.ts",
@@ -137,6 +136,7 @@
   "dependencies": {
     "@clack/prompts": "^1.0.0",
     "@elizaos/app-task-coordinator": "workspace:*",
+    "@elizaos/app-training": "workspace:*",
     "@elizaos/capacitor-contacts": "workspace:*",
     "@elizaos/capacitor-phone": "workspace:*",
     "@elizaos/capacitor-wifi": "workspace:*",
@@ -144,6 +144,7 @@
     "@elizaos/plugin-agent-orchestrator": "workspace:*",
     "@elizaos/plugin-agent-skills": "workspace:*",
     "@elizaos/plugin-agent-wallet": "workspace:*",
+    "@elizaos/plugin-streaming": "workspace:*",
     "@elizaos/plugin-browser-bridge": "workspace:*",
     "@elizaos/plugin-local-embedding": "workspace:*",
     "@elizaos/plugin-ollama": "workspace:*",
