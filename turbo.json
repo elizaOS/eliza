@@ -159,6 +159,10 @@
       "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-video#build"],
       "outputs": []
     },
+    "@elizaos/scenario-runner#typecheck": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-streaming#build"],
+      "outputs": []
+    },
     "@elizaos/plugin-retake#typecheck": {
       "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-streaming-base#build"],
       "outputs": []

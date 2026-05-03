@@ -72,9 +72,10 @@ function expandDescriptionTemplateLiterals(description, actionFilePath) {
   /** @type {string[]} */
   const ids = [];
   const idRe = /"([a-zA-Z0-9_-]+)"/g;
-  let m;
-  while ((m = idRe.exec(block[1])) !== null) {
-    ids.push(m[1]);
+  let match = idRe.exec(block[1]);
+  while (match !== null) {
+    ids.push(match[1]);
+    match = idRe.exec(block[1]);
   }
   if (ids.length === 0) {
     return description;
