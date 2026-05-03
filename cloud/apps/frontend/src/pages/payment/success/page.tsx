@@ -26,18 +26,18 @@ function PaymentSuccessContent() {
     const trackId = searchParams.get("trackId");
     const status = searchParams.get("status");
 
-    const targetUrl = new URL("/dashboard/settings", window.location.origin);
-    targetUrl.searchParams.set("tab", "billing");
-    targetUrl.searchParams.set("payment", "success");
-    if (trackId) targetUrl.searchParams.set("trackId", trackId);
-    if (status) targetUrl.searchParams.set("status", status);
+    const targetParams = new URLSearchParams();
+    targetParams.set("tab", "billing");
+    targetParams.set("payment", "success");
+    if (trackId) targetParams.set("trackId", trackId);
+    if (status) targetParams.set("status", status);
+    const targetPath = `/dashboard/settings?${targetParams.toString()}`;
 
     if (authenticated) {
-      navigate(targetUrl.toString(), { replace: true });
+      navigate(targetPath, { replace: true });
     } else {
-      const loginUrl = new URL("/login", window.location.origin);
-      loginUrl.searchParams.set("returnTo", targetUrl.pathname + targetUrl.search);
-      navigate(loginUrl.toString(), { replace: true });
+      const loginParams = new URLSearchParams({ returnTo: targetPath });
+      navigate(`/login?${loginParams.toString()}`, { replace: true });
     }
   }, [ready, authenticated, navigate, searchParams]);
 
