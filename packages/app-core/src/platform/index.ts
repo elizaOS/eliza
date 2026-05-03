@@ -51,7 +51,6 @@ export {
   isDesktopPlatform,
   isElizaOS,
   isIOS,
-  isMiladyOS,
   isNative,
   isPopoutWindow,
   isWebPlatform,

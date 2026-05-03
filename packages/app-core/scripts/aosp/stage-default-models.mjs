@@ -21,7 +21,7 @@
 // scans the directory and registers each file in the local-inference
 // registry tagged with the manifest's `source` field, which the
 // staging step writes from `app.config.ts > aosp.modelSourceLabel`
-// (e.g. `"milady-download"`).
+// (e.g. `"acme-download"` for a fork named "AcmeOS").
 //
 // APK size impact (Q4_K_M quants):
 //   Llama-3.2-1B-Instruct          ~770 MB
@@ -47,7 +47,7 @@
 //
 // Opt out for builders who want to download at runtime instead:
 //   --skip-bundled-models       (passed by build-aosp.mjs)
-//   MILADY_SKIP_BUNDLED_MODELS=1 (env var, also respected)
+//   ELIZA_SKIP_BUNDLED_MODELS=1 (env var, also respected)
 //
 // Idempotent: re-running with the same files on disk and matching size
 // is a no-op. A size mismatch triggers a re-download. The script never
@@ -73,8 +73,9 @@ const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
  * runtime registry treats them as known catalog models, not orphans.
  *
  * The embedding model has no catalog entry yet (catalog only carries
- * chat models); we still register it as a Milady-owned model with a
- * stable id so the auto-assign logic can wire it to TEXT_EMBEDDING.
+ * chat models); we still register it under the fork's brand source
+ * label with a stable id so the auto-assign logic can wire it to
+ * TEXT_EMBEDDING.
  *
  * Sizes are sanity-checked at download time. If HuggingFace serves
  * a smaller file (e.g. partial download, repo deleted, replaced) the
@@ -144,7 +145,7 @@ async function streamDownload(url, dest, sizeMin, sizeMax) {
   // fast on non-200, content-length mismatch, or under-size.
   const res = await fetch(url, {
     redirect: "follow",
-    headers: { "User-Agent": "Milady-AOSP-build/1.0" },
+    headers: { "User-Agent": "ElizaOS-AOSP-build/1.0" },
   });
   if (!res.ok) {
     throw new Error(`HTTP ${res.status} ${res.statusText} for ${url}`);
@@ -235,11 +236,7 @@ function parseStagingArgs(argv) {
       throw new Error(`Unknown argument: ${arg}`);
     }
   }
-  if (
-    !out.skip &&
-    (process.env.MILADY_SKIP_BUNDLED_MODELS === "1" ||
-      process.env.ELIZA_SKIP_BUNDLED_MODELS === "1")
-  ) {
+  if (!out.skip && process.env.ELIZA_SKIP_BUNDLED_MODELS === "1") {
     out.skip = true;
   }
   return out;
@@ -250,14 +247,14 @@ export async function main(argv = process.argv.slice(2)) {
     parseStagingArgs(argv);
   if (skip) {
     console.log(
-      "[stage-default-models] --skip-bundled-models / *_SKIP_BUNDLED_MODELS=1; nothing to do.",
+      "[stage-default-models] --skip-bundled-models / ELIZA_SKIP_BUNDLED_MODELS=1; nothing to do.",
     );
     return;
   }
 
   // Source label drives the manifest's `source` field, which the
   // runtime first-run bootstrap reads to tag each registered model
-  // (e.g. `"milady-download"` for the Milady fork). CLI flag wins,
+  // (e.g. `"acme-download"` for an "AcmeOS" fork). CLI flag wins,
   // then app.config.ts > aosp.modelSourceLabel, then a generic
   // `"eliza-bundled"` fallback so the manifest field is always
   // populated.

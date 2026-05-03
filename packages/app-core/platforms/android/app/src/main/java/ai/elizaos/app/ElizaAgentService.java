@@ -849,11 +849,8 @@ public class ElizaAgentService extends Service {
             // path so the agent never spins up a training round on-device.
             // Trajectories are still useful for live chat context, but
             // this disables PERSISTENCE — the optimizer has no input data
-            // and no-ops at boot. Both env names are set: the source uses
-            // ELIZA_* post-rename, the bundled training-trigger.js still
-            // reads MILADY_* in older dist-mobile builds.
+            // and no-ops at boot.
             agentEnv.put("ELIZA_DISABLE_AUTO_BOOTSTRAP", "1");
-            agentEnv.put("MILADY_DISABLE_AUTO_BOOTSTRAP", "1");
             agentEnv.put("ELIZA_DISABLE_TRAJECTORY_LOGGING", "1");
 
             // ── Vault passphrase ──────────────────────────────────────
