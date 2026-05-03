@@ -59,6 +59,7 @@ import {
   updateNativeAppleReminderLikeItem,
 } from "./apple-reminders.js";
 import { CheckinService } from "./checkin/checkin-service.js";
+import { resolveCheckinSchedule } from "./checkin/schedule-resolver.js";
 import {
   shouldRunMorningCheckinFromSleepCycle,
   shouldRunNightCheckinFromSleepCycle,
@@ -5063,9 +5064,17 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       ) {
         await dispatch("morning");
       }
+      // For irregular-schedule owners, the relative-time resolver leaves
+      // `bedtimeTargetAt` null because no projection is trustworthy. Read the
+      // owner's configured `nightCheckinTime` (HH:MM local) and pass it as a
+      // fallback bedtime so the night summary still fires inside the lead
+      // window. Defaults to 23:00 local when the field is unset.
+      const profileSchedule = await resolveCheckinSchedule(this.runtime);
       if (
         shouldRunNightCheckinFromSleepCycle({
           state: currentSchedule,
+          now: args.now,
+          nightFallbackBedtimeLocal: profileSchedule.nightCheckinTime,
         })
       ) {
         await dispatch("night");
