@@ -39,8 +39,8 @@ The rest of this document focuses on the test framework needed to verify those a
 | Real runtime helper | `eliza/packages/app-core/test/helpers/real-runtime.ts` | Extends PGLite with optional real LLM + connectors |
 | Live provider selector | `test/helpers/live-provider.ts` | Picks cheapest available LLM provider (Groq > OpenAI > Anthropic > etc.) |
 | Conditional tests | `test/helpers/conditional-tests.ts` | `itIf()` for gating tests on env vars/API keys |
-| Action unit tests | `eliza/packages/typescript/src/__tests__/actions.test.ts` | Action formatting, example parsing, param extraction — no real LLM |
-| Context routing tests | `eliza/packages/typescript/src/__tests__/context-routing.test.ts` | Action filtering by context — mocked runtime |
+| Action unit tests | `eliza/packages/core/src/__tests__/actions.test.ts` | Action formatting, example parsing, param extraction — no real LLM |
+| Context routing tests | `eliza/packages/core/src/__tests__/context-routing.test.ts` | Action filtering by context — mocked runtime |
 | Callback history tests | `eliza/packages/agent/src/api/conversation-routes.test.ts` | Action callback dedup, formatting, memory persistence |
 | Vitest configs | `test/vitest/*.config.ts` | 7 configs: default, integration, e2e, real, live-e2e, real-qa, unit |
 | CI workflow | `.github/workflows/test.yml` | regression-matrix, unit-tests, db-check, desktop-contract, cloud-live-e2e, validation-e2e, ui-playwright-smoke |

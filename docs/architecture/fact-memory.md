@@ -127,13 +127,13 @@ flowchart TD
 
 | File | Change |
 |---|---|
-| `eliza/packages/typescript/src/types/memory.ts` | Extend fact metadata: `kind`, `category`, `structured_fields`, `valid_at`, `last_confirmed_at`, `verification_status` |
-| `eliza/packages/typescript/src/features/advanced-capabilities/providers/facts.ts` | Split retrieval into durable + current; per-kind time weight; two-section formatted output |
-| `eliza/packages/typescript/src/features/advanced-capabilities/evaluators/reflection.ts` | Replace fact-extraction block with delegation to new extractor; remove `TEMPORARY_REFLECTION_FACT_PATTERNS` regex; keep relationship + task-completion paths |
-| `eliza/packages/typescript/src/features/advanced-capabilities/evaluators/factRefinement.ts` | **DELETE** — folded into per-message extractor |
-| New: `eliza/packages/typescript/src/features/advanced-capabilities/evaluators/factExtractor.ts` | Single-call extractor with ops schema, embedding pre-filter, write-time dedup, zod-validated output |
-| New: `eliza/packages/typescript/src/features/advanced-capabilities/evaluators/factExtractor.schema.ts` | Zod schema for ops + category taxonomy enums |
-| `eliza/packages/typescript/src/prompts.ts` (or specs) | New `factExtractionTemplate` |
+| `eliza/packages/core/src/types/memory.ts` | Extend fact metadata: `kind`, `category`, `structured_fields`, `valid_at`, `last_confirmed_at`, `verification_status` |
+| `eliza/packages/core/src/features/advanced-capabilities/providers/facts.ts` | Split retrieval into durable + current; per-kind time weight; two-section formatted output |
+| `eliza/packages/core/src/features/advanced-capabilities/evaluators/reflection.ts` | Replace fact-extraction block with delegation to new extractor; remove `TEMPORARY_REFLECTION_FACT_PATTERNS` regex; keep relationship + task-completion paths |
+| `eliza/packages/core/src/features/advanced-capabilities/evaluators/factRefinement.ts` | **DELETE** — folded into per-message extractor |
+| New: `eliza/packages/core/src/features/advanced-capabilities/evaluators/factExtractor.ts` | Single-call extractor with ops schema, embedding pre-filter, write-time dedup, zod-validated output |
+| New: `eliza/packages/core/src/features/advanced-capabilities/evaluators/factExtractor.schema.ts` | Zod schema for ops + category taxonomy enums |
+| `eliza/packages/core/src/prompts.ts` (or specs) | New `factExtractionTemplate` |
 | Plugin registration site | Replace `factRefinementEvaluator` with `factExtractor`; keep `reflectionEvaluator` for relationship/task paths |
 | Migration | Lazy reclassification: untouched legacy facts default to `kind=durable`, `category=uncategorized` |
 

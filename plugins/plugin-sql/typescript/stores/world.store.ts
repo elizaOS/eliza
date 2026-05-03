@@ -1,6 +1,6 @@
 import type { UUID, World } from "@elizaos/core";
 import { eq } from "drizzle-orm";
-import { v4 } from "uuid";
+import { randomUUID } from "node:crypto";
 import { worldTable } from "../schema/index";
 import type { DrizzleDatabase } from "../types";
 import type { Store, StoreContext } from "./types";
@@ -14,7 +14,7 @@ export class WorldStore implements Store {
 
   async create(world: World): Promise<UUID> {
     return this.ctx.withRetry(async () => {
-      const newWorldId = world.id || v4();
+      const newWorldId = world.id || randomUUID();
       await this.db
         .insert(worldTable)
         .values({

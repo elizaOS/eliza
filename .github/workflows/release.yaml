@@ -151,6 +151,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          filter: blob:none
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Git
@@ -621,7 +622,7 @@ jobs:
             packages/prompts/dist/typescript/index.ts \
             packages/shared/dist/package.json \
             packages/skills/dist/index.js \
-            packages/typescript/dist/index.node.js \
+            packages/core/dist/index.node.js \
             plugins/plugin-whatsapp/dist/src/index.d.ts \
             packages/ui/dist/package.json; do
             if [ ! -f "${artifact}" ]; then

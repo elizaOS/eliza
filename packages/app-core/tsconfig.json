@@ -6,7 +6,10 @@
     "jsx": "react-jsx",
     "strict": true,
     "skipLibCheck": true,
-    "types": ["node", "bun-types"],
+    "types": [
+      "node",
+      "bun-types"
+    ],
     "typeRoots": [
       "./node_modules/@types",
       "../../node_modules/@types",
@@ -19,55 +22,85 @@
     "allowImportingTsExtensions": true,
     "declaration": false,
     "noEmit": true,
-    "baseUrl": "../../",
-    "ignoreDeprecations": "6.0",
     "paths": {
       "@elizaos/plugin-lifeops-browser": [
-        "./plugins/plugin-lifeops-browser/src/index.ts"
+        "../../plugins/plugin-lifeops-browser/src/index.ts"
       ],
       "@elizaos/plugin-lifeops-browser/*": [
-        "./plugins/plugin-lifeops-browser/src/*"
+        "../../plugins/plugin-lifeops-browser/src/*"
       ],
       "@elizaos/plugin-browser-bridge": [
-        "./plugins/plugin-browser-bridge/src/index.ts"
+        "../../plugins/plugin-browser-bridge/src/index.ts"
       ],
       "@elizaos/plugin-browser-bridge/*": [
-        "./plugins/plugin-browser-bridge/src/*"
+        "../../plugins/plugin-browser-bridge/src/*"
       ],
-      "@elizaos/app-core": ["./packages/app-core/src/index.ts"],
-      "@elizaos/app-core/*": ["./packages/app-core/src/*"],
-      "@elizaos/ui": ["./packages/ui/src/index.ts"],
-      "@elizaos/ui/*": ["./packages/ui/src/*"],
-      "@elizaos/agent": ["./packages/agent/src/index.ts"],
-      "@elizaos/agent/*": ["./packages/agent/src/*"],
-      "@elizaos/shared": ["./packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["./packages/shared/src/*"],
-      "@elizaos/skills": ["./packages/skills/src/index.ts"],
-      "@elizaos/skills/*": ["./packages/skills/src/*"],
-      "@elizaos/core": ["./packages/core/src/index.node.ts"],
-      "@elizaos/core/*": ["./packages/core/src/*"],
-      "@elizaos/capacitor-*": ["./packages/native-plugins/*/src/index.ts"],
+      "@elizaos/app-core": [
+        "./src/index.ts"
+      ],
+      "@elizaos/app-core/*": [
+        "./src/*"
+      ],
+      "@elizaos/ui": [
+        "../ui/src/index.ts"
+      ],
+      "@elizaos/ui/*": [
+        "../ui/src/*"
+      ],
+      "@elizaos/agent": [
+        "../agent/src/index.ts"
+      ],
+      "@elizaos/agent/*": [
+        "../agent/src/*"
+      ],
+      "@elizaos/shared": [
+        "../shared/src/index.ts"
+      ],
+      "@elizaos/shared/*": [
+        "../shared/src/*"
+      ],
+      "@elizaos/skills": [
+        "../skills/src/index.ts"
+      ],
+      "@elizaos/skills/*": [
+        "../skills/src/*"
+      ],
+      "@elizaos/core": [
+        "../core/src/index.node.ts"
+      ],
+      "@elizaos/core/*": [
+        "../core/src/*"
+      ],
+      "@elizaos/capacitor-*": [
+        "../native-plugins/*/src/index.ts"
+      ],
       "@elizaos/native-activity-tracker": [
-        "./packages/native-plugins/activity-tracker/src/index.ts"
+        "../native-plugins/activity-tracker/src/index.ts"
       ],
       "drizzle-orm": [
-        "./plugins/plugin-sql/node_modules/drizzle-orm"
+        "../../plugins/plugin-sql/node_modules/drizzle-orm"
       ],
       "drizzle-orm/*": [
-        "./plugins/plugin-sql/node_modules/drizzle-orm/*"
+        "../../plugins/plugin-sql/node_modules/drizzle-orm/*"
       ],
-      "react": ["./packages/app-core/node_modules/@types/react/index.d.ts"],
+      "react": [
+        "./node_modules/@types/react/index.d.ts"
+      ],
       "react/jsx-runtime": [
-        "./packages/app-core/node_modules/@types/react/jsx-runtime.d.ts"
+        "./node_modules/@types/react/jsx-runtime.d.ts"
       ],
       "react/jsx-dev-runtime": [
-        "./packages/app-core/node_modules/@types/react/jsx-dev-runtime.d.ts"
+        "./node_modules/@types/react/jsx-dev-runtime.d.ts"
       ],
       "react-dom": [
-        "./packages/app-core/node_modules/@types/react-dom/index.d.ts"
+        "./node_modules/@types/react-dom/index.d.ts"
       ],
-      "@elizaos/*": ["./node_modules/@elizaos/*"],
-      "lucide-react": ["./packages/app-core/node_modules/lucide-react"]
+      "@elizaos/*": [
+        "../../node_modules/@elizaos/*"
+      ],
+      "lucide-react": [
+        "./node_modules/lucide-react"
+      ]
     }
   },
   "exclude": [

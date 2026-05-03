@@ -7,11 +7,19 @@
     "emitDeclarationOnly": true,
     "outDir": "./dist",
     "rootDir": ".",
-    "baseUrl": ".",
     "paths": {
-      "@elizaos/core": ["../../../packages/core/dist"]
+      "@elizaos/core": [
+        "../../../packages/core/dist"
+      ]
     }
   },
-  "include": ["**/*.ts"],
-  "exclude": ["node_modules", "dist", "__tests__", "build.ts"]
+  "include": [
+    "**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "__tests__",
+    "build.ts"
+  ]
 }

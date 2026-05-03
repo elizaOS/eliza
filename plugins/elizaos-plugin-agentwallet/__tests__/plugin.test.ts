@@ -240,12 +240,12 @@ describe('Action handlers', () => {
 describe('Wallet provider', () => {
   it('returns wallet state as formatted string', async () => {
     const result = await walletProvider.get(mockRuntime, mockMessage(''), {} as any);
-    expect(result).toContain('0xMockContractAddress');
-    expect(result).toContain('ETH');
+    expect(result.text).toContain('0xMockContractAddress');
+    expect(result.text).toContain('ETH');
   });
 
   it('returns config error when no private key', async () => {
     const result = await walletProvider.get(mockRuntimeNoKey, mockMessage(''), {} as any);
-    expect(result).toContain('not configured');
+    expect(result.text).toContain('not configured');
   });
 });

@@ -200,6 +200,7 @@ jobs:
         with:
           submodules: false
           fetch-depth: 0
+          filter: blob:none
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2

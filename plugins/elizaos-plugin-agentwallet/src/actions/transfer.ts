@@ -1,4 +1,12 @@
-import type { Action, IAgentRuntime, Memory, State, HandlerCallback } from '@elizaos/core';
+import type {
+  Action,
+  ActionResult,
+  HandlerCallback,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  State,
+} from '@elizaos/core';
 import { getSDK } from '../providers/wallet';
 
 export const transferAction: Action = {
@@ -20,43 +28,47 @@ export const transferAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state: State | undefined,
-    _options?: Record<string, unknown>,
+    _options?: HandlerOptions,
     callback?: HandlerCallback
-  ): Promise<boolean> => {
+  ): Promise<ActionResult | undefined> => {
     const sdk = await getSDK(runtime);
     if (!sdk) {
-      callback?.({ text: "I don't have a wallet configured yet." });
-      return false;
+      const text = "I don't have a wallet configured yet.";
+      callback?.({ text });
+      return { success: false, text };
     }
 
     const params = parseTransferIntent(message.content.text ?? '');
     if (!params) {
-      callback?.({ text: 'Could not parse transfer details. Please specify: to address, amount, and token.' });
-      return false;
+      const text = 'Could not parse transfer details. Please specify: to address, amount, and token.';
+      callback?.({ text });
+      return { success: false, text };
     }
 
     try {
       const result = await sdk.transfer(params);
+      const text = `Sent ${params.amount} ${params.token} to ${params.toAddress}. Tx: ${result.txHash}`;
       callback?.({
-        text: `Sent ${params.amount} ${params.token} to ${params.toAddress}. Tx: ${result.txHash}`,
+        text,
         content: { success: true, txHash: result.txHash, params },
       });
-      return true;
+      return { success: true, text };
     } catch (err) {
-      const msg = (err as Error).message;
-      callback?.({ text: `Transfer failed: ${msg}` });
-      return false;
+      const msg = err instanceof Error ? err.message : String(err);
+      const text = `Transfer failed: ${msg}`;
+      callback?.({ text });
+      return { success: false, text, error: msg };
     }
   },
 
   examples: [
     [
       {
-        user: '{{user1}}',
+        name: '{{user1}}',
         content: { text: 'Send 0.1 SOL to 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU' },
       },
       {
-        user: '{{agentName}}',
+        name: '{{agentName}}',
         content: {
           text: 'Sent 0.1 SOL to 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU. Tx: abc123...',
           action: 'WALLET_TRANSFER',
@@ -65,11 +77,11 @@ export const transferAction: Action = {
     ],
     [
       {
-        user: '{{user1}}',
+        name: '{{user1}}',
         content: { text: 'Transfer 50 USDC to 0x742d35Cc6634C0532925a3b8D4C9C6Fb93' },
       },
       {
-        user: '{{agentName}}',
+        name: '{{agentName}}',
         content: {
           text: 'Sent 50 USDC to 0x742d35Cc6634C0532925a3b8D4C9C6Fb93. Tx: 0xabc...',
           action: 'WALLET_TRANSFER',

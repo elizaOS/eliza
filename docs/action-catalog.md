@@ -311,7 +311,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### ADD_CONTACT
 
-- **File:** `eliza/packages/typescript/src/features/advanced-capabilities/actions/addContact.ts`
+- **File:** `eliza/packages/core/src/features/advanced-capabilities/actions/addContact.ts`
 - **Description:** _(not provided)_
 - **Validate:** ✅ yes
 - **Handler:** ✅ yes
@@ -319,7 +319,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### CLIPBOARD_APPEND
 
-- **File:** `eliza/packages/typescript/src/features/advanced-capabilities/clipboard/actions/append.ts`
+- **File:** `eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/append.ts`
 - **Description:** _(not provided)_
 - **Validate:** ✅ yes
 - **Handler:** ✅ yes
@@ -327,7 +327,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### CLIPBOARD_DELETE
 
-- **File:** `eliza/packages/typescript/src/features/advanced-capabilities/clipboard/actions/delete.ts`
+- **File:** `eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/delete.ts`
 - **Description:** _(not provided)_
 - **Validate:** ✅ yes
 - **Handler:** ✅ yes
@@ -335,7 +335,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### CLIPBOARD_LIST
 
-- **File:** `eliza/packages/typescript/src/features/advanced-capabilities/clipboard/actions/list.ts`
+- **File:** `eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/list.ts`
 - **Description:** _(not provided)_
 - **Validate:** ✅ yes
 - **Handler:** ✅ yes
@@ -343,7 +343,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### CLIPBOARD_READ
 
-- **File:** `eliza/packages/typescript/src/features/advanced-capabilities/clipboard/actions/read.ts`
+- **File:** `eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/read.ts`
 - **Description:** _(not provided)_
 - **Validate:** ✅ yes
 - **Handler:** ✅ yes
@@ -351,7 +351,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### CLIPBOARD_SEARCH
 
-- **File:** `eliza/packages/typescript/src/features/advanced-capabilities/clipboard/actions/search.ts`
+- **File:** `eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/search.ts`
 - **Description:** _(not provided)_
 - **Validate:** ✅ yes
 - **Handler:** ✅ yes
@@ -359,7 +359,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### CLIPBOARD_WRITE
 
-- **File:** `eliza/packages/typescript/src/features/advanced-capabilities/clipboard/actions/write.ts`
+- **File:** `eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/write.ts`
 - **Description:** _(not provided)_
 - **Validate:** ✅ yes
 - **Handler:** ✅ yes
@@ -367,7 +367,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### FOLLOW_ROOM
 
-- **File:** `eliza/packages/typescript/src/features/advanced-capabilities/actions/followRoom.ts`
+- **File:** `eliza/packages/core/src/features/advanced-capabilities/actions/followRoom.ts`
 - **Description:** _(not provided)_
 - **Validate:** ✅ yes
 - **Handler:** ✅ yes
@@ -375,7 +375,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### FORM_RESTORE
 
-- **File:** `eliza/packages/typescript/src/features/advanced-capabilities/form/actions/restore.ts`
+- **File:** `eliza/packages/core/src/features/advanced-capabilities/form/actions/restore.ts`
 - **Description:** Restore a previously stashed form session
 - **Similes:** `RESUME_FORM`, `CONTINUE_FORM`
 - **Validate:** ✅ yes
@@ -384,7 +384,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### GENERATE_IMAGE
 
-- **File:** `eliza/packages/typescript/src/features/advanced-capabilities/actions/imageGeneration.ts`
+- **File:** `eliza/packages/core/src/features/advanced-capabilities/actions/imageGeneration.ts`
 - **Description:** _(not provided)_
 - **Validate:** ✅ yes
 - **Handler:** ✅ yes
@@ -392,7 +392,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### MODIFY_CHARACTER
 
-- **File:** `eliza/packages/typescript/src/features/advanced-capabilities/personality/actions/modify-character.ts`
+- **File:** `eliza/packages/core/src/features/advanced-capabilities/personality/actions/modify-character.ts`
 - **Description:** Optional natural-language request describing the desired character or interaction change. If provided, the action evaluates this request instead of relying only on the raw message text.
 - **Similes:** `UPDATE_PERSONALITY`, `CHANGE_PERSONALITY`, `UPDATE_CHARACTER`, `CHANGE_CHARACTER`, `CHANGE_BEHAVIOR`, `ADJUST_BEHAVIOR`, `CHANGE_TONE`, `UPDATE_TONE`, `CHANGE_STYLE`, `UPDATE_STYLE`, `CHANGE_VOICE`, `CHANGE_RESPONSE_STYLE`, `UPDATE_RESPONSE_STYLE`, `EVOLVE_CHARACTER`, `SELF_MODIFY`, `SET_RESPONSE_STYLE`, `SET_LANGUAGE`, `SET_INTERACTION_MODE`, `SET_USER_PREFERENCE`
 - **Validate:** ✅ yes
@@ -401,7 +401,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### MUTE_ROOM
 
-- **File:** `eliza/packages/typescript/src/features/advanced-capabilities/actions/muteRoom.ts`
+- **File:** `eliza/packages/core/src/features/advanced-capabilities/actions/muteRoom.ts`
 - **Description:** _(not provided)_
 - **Validate:** ✅ yes
 - **Handler:** ✅ yes
@@ -409,7 +409,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### READ_ATTACHMENT
 
-- **File:** `eliza/packages/typescript/src/features/advanced-capabilities/clipboard/actions/read-attachment.ts`
+- **File:** `eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/read-attachment.ts`
 - **Description:** Read a stored attachment by attachment ID. Use this instead of relying on inline attachment descriptions in the conversation context. Set addToClipboard=true to keep the result in bounded task clipboa
 - **Similes:** `OPEN_ATTACHMENT`, `INSPECT_ATTACHMENT`
 - **Validate:** ✅ yes
@@ -418,7 +418,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### READ_FILE
 
-- **File:** `eliza/packages/typescript/src/features/advanced-capabilities/clipboard/actions/read-file.ts`
+- **File:** `eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/read-file.ts`
 - **Description:** Read a local text file for the current task. Returns the file content so the agent can reference it. Set addToClipboard=true to keep the read result in bounded task clipboard state.
 - **Similes:** `OPEN_FILE`, `LOAD_FILE`
 - **Validate:** ✅ yes
@@ -427,7 +427,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### RECORD_EXPERIENCE
 
-- **File:** `eliza/packages/typescript/src/features/advanced-capabilities/experience/actions/record-experience.ts`
+- **File:** `eliza/packages/core/src/features/advanced-capabilities/experience/actions/record-experience.ts`
 - **Description:** _(not provided)_
 - **Validate:** ✅ yes
 - **Handler:** ❌ no
@@ -435,7 +435,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### REMOVE_CONTACT
 
-- **File:** `eliza/packages/typescript/src/features/advanced-capabilities/actions/removeContact.ts`
+- **File:** `eliza/packages/core/src/features/advanced-capabilities/actions/removeContact.ts`
 - **Description:** _(not provided)_
 - **Validate:** ✅ yes
 - **Handler:** ✅ yes
@@ -443,7 +443,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### REMOVE_FROM_CLIPBOARD
 
-- **File:** `eliza/packages/typescript/src/features/advanced-capabilities/clipboard/actions/remove-from-clipboard.ts`
+- **File:** `eliza/packages/core/src/features/advanced-capabilities/clipboard/actions/remove-from-clipboard.ts`
 - **Description:** Remove an item from the bounded clipboard when it is no longer needed for the current task.
 - **Similes:** `CLEAR_CLIPBOARD_ITEM`, `DELETE_CLIPBOARD_ITEM`
 - **Validate:** ✅ yes
@@ -452,7 +452,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### SEARCH_CONTACTS
 
-- **File:** `eliza/packages/typescript/src/features/advanced-capabilities/actions/searchContacts.ts`
+- **File:** `eliza/packages/core/src/features/advanced-capabilities/actions/searchContacts.ts`
 - **Description:** _(not provided)_
 - **Validate:** ✅ yes
 - **Handler:** ✅ yes
@@ -460,7 +460,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### SEND_MESSAGE
 
-- **File:** `eliza/packages/typescript/src/features/advanced-capabilities/actions/sendMessage.ts`
+- **File:** `eliza/packages/core/src/features/advanced-capabilities/actions/sendMessage.ts`
 - **Description:** _(not provided)_
 - **Validate:** ✅ yes
 - **Handler:** ✅ yes
@@ -468,7 +468,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### THINK
 
-- **File:** `eliza/packages/typescript/src/features/advanced-capabilities/actions/think.ts`
+- **File:** `eliza/packages/core/src/features/advanced-capabilities/actions/think.ts`
 - **Description:** _(not provided)_
 - **Validate:** ✅ yes
 - **Handler:** ✅ yes
@@ -476,7 +476,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### UNFOLLOW_ROOM
 
-- **File:** `eliza/packages/typescript/src/features/advanced-capabilities/actions/unfollowRoom.ts`
+- **File:** `eliza/packages/core/src/features/advanced-capabilities/actions/unfollowRoom.ts`
 - **Description:** _(not provided)_
 - **Validate:** ✅ yes
 - **Handler:** ✅ yes
@@ -484,7 +484,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### UNMUTE_ROOM
 
-- **File:** `eliza/packages/typescript/src/features/advanced-capabilities/actions/unmuteRoom.ts`
+- **File:** `eliza/packages/core/src/features/advanced-capabilities/actions/unmuteRoom.ts`
 - **Description:** _(not provided)_
 - **Validate:** ✅ yes
 - **Handler:** ✅ yes
@@ -492,7 +492,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### UPDATE_CONTACT
 
-- **File:** `eliza/packages/typescript/src/features/advanced-capabilities/actions/updateContact.ts`
+- **File:** `eliza/packages/core/src/features/advanced-capabilities/actions/updateContact.ts`
 - **Description:** _(not provided)_
 - **Validate:** ✅ yes
 - **Handler:** ✅ yes
@@ -500,7 +500,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### UPDATE_ENTITY
 
-- **File:** `eliza/packages/typescript/src/features/advanced-capabilities/actions/updateEntity.ts`
+- **File:** `eliza/packages/core/src/features/advanced-capabilities/actions/updateEntity.ts`
 - **Description:** _(not provided)_
 - **Validate:** ✅ yes
 - **Handler:** ✅ yes
@@ -1040,7 +1040,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### EVALUATE_TRUST
 
-- **File:** `eliza/packages/typescript/src/features/trust/actions/evaluateTrust.ts`
+- **File:** `eliza/packages/core/src/features/trust/actions/evaluateTrust.ts`
 - **Description:** Evaluates the trust score and profile for a specified entity
 - **Validate:** ✅ yes
 - **Handler:** ✅ yes
@@ -1048,7 +1048,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### RECORD_TRUST_INTERACTION
 
-- **File:** `eliza/packages/typescript/src/features/trust/actions/recordTrustInteraction.ts`
+- **File:** `eliza/packages/core/src/features/trust/actions/recordTrustInteraction.ts`
 - **Description:** Records a trust-affecting interaction between entities
 - **Validate:** ✅ yes
 - **Handler:** ✅ yes
@@ -1056,7 +1056,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### REQUEST_ELEVATION
 
-- **File:** `eliza/packages/typescript/src/features/trust/actions/requestElevation.ts`
+- **File:** `eliza/packages/core/src/features/trust/actions/requestElevation.ts`
 - **Description:** Request temporary elevation of permissions for a specific action
 - **Validate:** ✅ yes
 - **Handler:** ✅ yes
@@ -1064,7 +1064,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### UPDATE_ROLE
 
-- **File:** `eliza/packages/typescript/src/features/trust/actions/roles.ts`
+- **File:** `eliza/packages/core/src/features/trust/actions/roles.ts`
 - **Description:** Assigns a role (Admin, Owner, None) to a user or list of users in a channel.
 - **Similes:** `CHANGE_ROLE`, `SET_PERMISSIONS`, `ASSIGN_ROLE`, `MAKE_ADMIN`
 - **Validate:** ✅ yes
@@ -1073,7 +1073,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### UPDATE_SETTINGS
 
-- **File:** `eliza/packages/typescript/src/features/trust/actions/settings.ts`
+- **File:** `eliza/packages/core/src/features/trust/actions/settings.ts`
 - **Description:** Saves a configuration setting during the onboarding process, or update an existing setting. Use this when you are onboarding with a world owner or admin.
 - **Similes:** `UPDATE_SETTING`, `SAVE_SETTING`, `SET_CONFIGURATION`, `CONFIGURE`
 - **Validate:** ✅ yes
@@ -1131,7 +1131,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### CHOOSE_OPTION
 
-- **File:** `eliza/packages/typescript/src/features/basic-capabilities/actions/choice.ts`
+- **File:** `eliza/packages/core/src/features/basic-capabilities/actions/choice.ts`
 - **Description:** _(not provided)_
 - **Validate:** ✅ yes
 - **Handler:** ✅ yes
@@ -1139,7 +1139,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### IGNORE
 
-- **File:** `eliza/packages/typescript/src/features/basic-capabilities/actions/ignore.ts`
+- **File:** `eliza/packages/core/src/features/basic-capabilities/actions/ignore.ts`
 - **Description:** _(not provided)_
 - **Validate:** ✅ yes
 - **Handler:** ✅ yes
@@ -1147,7 +1147,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### NONE
 
-- **File:** `eliza/packages/typescript/src/features/basic-capabilities/actions/none.ts`
+- **File:** `eliza/packages/core/src/features/basic-capabilities/actions/none.ts`
 - **Description:** Response without additional action
 - **Validate:** ✅ yes
 - **Handler:** ✅ yes
@@ -1155,7 +1155,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### REPLY
 
-- **File:** `eliza/packages/typescript/src/features/basic-capabilities/actions/reply.ts`
+- **File:** `eliza/packages/core/src/features/basic-capabilities/actions/reply.ts`
 - **Description:** _(not provided)_
 - **Validate:** ✅ yes
 - **Handler:** ✅ yes
@@ -1232,7 +1232,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### CORE_STATUS
 
-- **File:** `eliza/packages/typescript/src/features/plugin-manager/actions/coreStatusAction.ts`
+- **File:** `eliza/packages/core/src/features/plugin-manager/actions/coreStatusAction.ts`
 - **Description:** Check thestatus of the @elizaos/core package (ejected or npm)
 - **Validate:** ✅ yes
 - **Handler:** ❌ no
@@ -1240,7 +1240,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### LIST_EJECTED_PLUGINS
 
-- **File:** `eliza/packages/typescript/src/features/plugin-manager/actions/listEjectedPluginsAction.ts`
+- **File:** `eliza/packages/core/src/features/plugin-manager/actions/listEjectedPluginsAction.ts`
 - **Description:** List all ejected plugins currently being managed locally
 - **Validate:** ✅ yes
 - **Handler:** ❌ no
@@ -1248,7 +1248,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### SEARCH_PLUGINS
 
-- **File:** `eliza/packages/typescript/src/features/plugin-manager/actions/searchPluginAction.ts`
+- **File:** `eliza/packages/core/src/features/plugin-manager/actions/searchPluginAction.ts`
 - **Description:** Search for plugins in the elizaOS registry by functionality, features, and natural language descriptions.
 - **Validate:** ✅ yes
 - **Handler:** ✅ yes
@@ -1258,7 +1258,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### MANAGE_SECRET
 
-- **File:** `eliza/packages/typescript/src/features/secrets/actions/manage-secret.ts`
+- **File:** `eliza/packages/core/src/features/secrets/actions/manage-secret.ts`
 - **Description:** Manage secrets - get, set, delete, or list secrets at various levels
 - **Similes:** `SECRET_MANAGEMENT`, `HANDLE_SECRET`, `SECRET_OPERATION`, `GET_SECRET`, `DELETE_SECRET`, `LIST_SECRETS`, `CHECK_SECRET`
 - **Validate:** ✅ yes
@@ -1267,7 +1267,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### REQUEST_SECRET
 
-- **File:** `eliza/packages/typescript/src/features/secrets/actions/request-secret.ts`
+- **File:** `eliza/packages/core/src/features/secrets/actions/request-secret.ts`
 - **Description:** Request a missing secret from the user or administrator
 - **Similes:** `ASK_FOR_SECRET`, `REQUIRE_SECRET`, `NEED_SECRET`, `MISSING_SECRET`
 - **Validate:** ✅ yes
@@ -1276,7 +1276,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### SET_SECRET
 
-- **File:** `eliza/packages/typescript/src/features/secrets/actions/set-secret.ts`
+- **File:** `eliza/packages/core/src/features/secrets/actions/set-secret.ts`
 - **Description:** Set a secret value (API key, token, password, etc.) for the agent to use
 - **Similes:** `STORE_SECRET`, `SAVE_SECRET`, `SET_API_KEY`, `CONFIGURE_SECRET`, `SET_ENV_VAR`, `STORE_API_KEY`, `SET_TOKEN`, `SAVE_KEY`
 - **Validate:** ✅ yes
@@ -1287,7 +1287,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### ANALYZE_INPUT
 
-- **File:** `eliza/packages/typescript/src/features/advanced-planning/actions/chain-example.ts`
+- **File:** `eliza/packages/core/src/features/advanced-planning/actions/chain-example.ts`
 - **Description:** Analyzes user input and extracts key information
 - **Similes:** `PLAN_PROJECT`, `GENERATE_PLAN`, `MAKE_PLAN`, `PROJECT_PLAN`
 - **Validate:** ✅ yes
@@ -1296,7 +1296,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### SCHEDULE_FOLLOW_UP
 
-- **File:** `eliza/packages/typescript/src/features/advanced-planning/actions/scheduleFollowUp.ts`
+- **File:** `eliza/packages/core/src/features/advanced-planning/actions/scheduleFollowUp.ts`
 - **Description:** Schedule a follow-up reminder for a contact
 - **Validate:** ✅ yes
 - **Handler:** ✅ yes
@@ -1359,7 +1359,7 @@ _Generated on: 2026-04-16. Total actions: 147._
 
 ### RESET_SESSION
 
-- **File:** `eliza/packages/typescript/src/features/advanced-memory/actions/resetSession.ts`
+- **File:** `eliza/packages/core/src/features/advanced-memory/actions/resetSession.ts`
 - **Description:** Resets the conversation session by creating a compaction point. Messages before this point will not be included in future context. Use when the user wants to start fresh or clear conversation history.
 - **Similes:** `CLEAR_HISTORY`, `NEW_SESSION`, `FORGET`, `START_OVER`, `RESET`
 - **Validate:** ✅ yes

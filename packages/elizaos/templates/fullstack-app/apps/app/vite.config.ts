@@ -748,7 +748,7 @@ function nativeModuleStubPlugin(): Plugin {
       const normId = id.split(path.sep).join("/");
       const isCorePackagePath =
         normId.includes("/node_modules/@elizaos/core/") ||
-        normId.includes("packages/typescript/dist/");
+        normId.includes("packages/core/dist/");
       if (!isCoreDistFile || !isCorePackagePath) return null;
 
       // Fix AsyncLocalStorage: the browser entry has a try/catch that does

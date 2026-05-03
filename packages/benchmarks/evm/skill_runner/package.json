@@ -5,7 +5,7 @@
   "description": "TypeScript skill runner for EVM benchmark",
   "type": "module",
   "dependencies": {
-    "viem": "^2.21.0"
+    "viem": "^2.48.8"
   },
   "devDependencies": {
     "@types/bun": "latest",

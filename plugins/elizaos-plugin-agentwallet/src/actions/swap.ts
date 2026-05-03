@@ -1,4 +1,12 @@
-import type { Action, IAgentRuntime, Memory, State, HandlerCallback } from '@elizaos/core';
+import type {
+  Action,
+  ActionResult,
+  HandlerCallback,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  State,
+} from '@elizaos/core';
 import { getSDK } from '../providers/wallet';
 
 export const swapAction: Action = {
@@ -20,39 +28,43 @@ export const swapAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state: State | undefined,
-    _options?: Record<string, unknown>,
+    _options?: HandlerOptions,
     callback?: HandlerCallback
-  ): Promise<boolean> => {
+  ): Promise<ActionResult | undefined> => {
     const sdk = await getSDK(runtime);
     if (!sdk) {
       callback?.({ text: 'No wallet configured for swaps.' });
-      return false;
+      return { success: false, text: 'No wallet configured for swaps.' };
     }
 
     const params = parseSwapIntent(message.content.text ?? '');
     if (!params) {
-      callback?.({ text: 'Could not parse swap details. Format: "swap <amount> <FROM> to <TO>"' });
-      return false;
+      const text = 'Could not parse swap details. Format: "swap <amount> <FROM> to <TO>"';
+      callback?.({ text });
+      return { success: false, text };
     }
 
     try {
       const result = await sdk.swap(params);
+      const text = `Swapped ${params.amount} ${params.fromToken} → ${params.toToken}. Got: ${result.outputAmount}. Tx: ${result.txHash}`;
       callback?.({
-        text: `Swapped ${params.amount} ${params.fromToken} → ${params.toToken}. Got: ${result.outputAmount}. Tx: ${result.txHash}`,
+        text,
         content: { success: true, ...result, params },
       });
-      return true;
+      return { success: true, text };
     } catch (err) {
-      callback?.({ text: `Swap failed: ${(err as Error).message}` });
-      return false;
+      const messageErr = err instanceof Error ? err.message : String(err);
+      const text = `Swap failed: ${messageErr}`;
+      callback?.({ text });
+      return { success: false, text, error: messageErr };
     }
   },
 
   examples: [
     [
-      { user: '{{user1}}', content: { text: 'Swap 0.5 SOL to USDC' } },
+      { name: '{{user1}}', content: { text: 'Swap 0.5 SOL to USDC' } },
       {
-        user: '{{agentName}}',
+        name: '{{agentName}}',
         content: {
           text: 'Swapped 0.5 SOL → USDC. Got: 48.32 USDC. Tx: abc...',
           action: 'WALLET_SWAP',
@@ -60,9 +72,9 @@ export const swapAction: Action = {
       },
     ],
     [
-      { user: '{{user1}}', content: { text: 'swap 100 USDC to ETH' } },
+      { name: '{{user1}}', content: { text: 'swap 100 USDC to ETH' } },
       {
-        user: '{{agentName}}',
+        name: '{{agentName}}',
         content: {
           text: 'Swapped 100 USDC → ETH. Got: 0.0416 ETH. Tx: 0xabc...',
           action: 'WALLET_SWAP',

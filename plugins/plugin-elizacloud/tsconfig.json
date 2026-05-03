@@ -13,20 +13,36 @@
     "isolatedModules": true,
     "noEmit": true,
     "outDir": "./dist",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["node", "bun-types"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "types": [
+      "node",
+      "bun-types"
+    ],
     "noImplicitAny": false,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "allowImportingTsExtensions": true,
-    "ignoreDeprecations": "6.0",
-    "baseUrl": "../../../",
     "paths": {
-      "@elizaos/cloud-sdk": ["cloud/packages/sdk/dist/index.d.ts"],
-      "@elizaos/core": ["packages/typescript/dist/node"],
-      "@elizaos/core/*": ["packages/typescript/dist/*"]
+      "@elizaos/cloud-sdk": [
+        "../../../cloud/packages/sdk/dist/index.d.ts"
+      ],
+      "@elizaos/core": [
+        "../../../packages/core/dist/node"
+      ],
+      "@elizaos/core/*": [
+        "../../../packages/core/dist/*"
+      ]
     }
   },
-  "include": ["./**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "./**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }

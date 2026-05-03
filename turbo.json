@@ -124,6 +124,12 @@
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
+    "@elizaos/plugin-sql#build": {
+      "outputs": ["typescript/dist/**"]
+    },
+    "@elizaos/plugin-farcaster#build": {
+      "outputs": ["$TURBO_ROOT$/plugins/typescript/dist/**"]
+    },
     "@elizaos/plugin-whatsapp-root#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
@@ -133,7 +139,7 @@
       "outputs": []
     },
     "@elizaos/schemas#build": {
-      "outputs": ["../typescript/src/types/generated/**", "../core/src/types/generated/**"],
+      "outputs": ["../core/src/types/generated/**"],
       "inputs": ["eliza/**", "buf.yaml", "buf.gen.yaml"]
     },
     "lint": {

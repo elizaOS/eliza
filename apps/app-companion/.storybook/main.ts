@@ -29,7 +29,7 @@ const config: StorybookConfig = {
       ),
       "@elizaos/core": path.resolve(
         elizaRoot,
-        "packages/typescript/src/index.ts",
+        "packages/core/src/index.ts",
       ),
     };
     return config;

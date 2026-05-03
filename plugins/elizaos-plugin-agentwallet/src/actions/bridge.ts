@@ -1,4 +1,12 @@
-import type { Action, IAgentRuntime, Memory, State, HandlerCallback } from '@elizaos/core';
+import type {
+  Action,
+  ActionResult,
+  HandlerCallback,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  State,
+} from '@elizaos/core';
 import { getSDK } from '../providers/wallet';
 
 export const bridgeAction: Action = {
@@ -20,43 +28,46 @@ export const bridgeAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state: State | undefined,
-    _options?: Record<string, unknown>,
+    _options?: HandlerOptions,
     callback?: HandlerCallback
-  ): Promise<boolean> => {
+  ): Promise<ActionResult | undefined> => {
     const sdk = await getSDK(runtime);
     if (!sdk) {
       callback?.({ text: 'No wallet configured for bridging.' });
-      return false;
+      return { success: false, text: 'No wallet configured for bridging.' };
     }
 
     const params = parseBridgeIntent(message.content.text ?? '');
     if (!params) {
-      callback?.({
-        text: 'Could not parse bridge details. Format: "bridge <amount> USDC from <chain> to <chain>"',
-      });
-      return false;
+      const text =
+        'Could not parse bridge details. Format: "bridge <amount> USDC from <chain> to <chain>"';
+      callback?.({ text });
+      return { success: false, text };
     }
 
     try {
       const result = await sdk.bridge(params);
+      const text =
+        `Bridging ${params.amount} USDC from ${params.fromChain} → ${params.toChain}. ` +
+        `Tx: ${result.sourceTxHash}. ETA: ~3 min. Track: ${result.trackingUrl ?? 'check block explorer'}`;
       callback?.({
-        text:
-          `Bridging ${params.amount} USDC from ${params.fromChain} → ${params.toChain}. ` +
-          `Tx: ${result.sourceTxHash}. ETA: ~3 min. Track: ${result.trackingUrl ?? 'check block explorer'}`,
+        text,
         content: { success: true, ...result, params },
       });
-      return true;
+      return { success: true, text };
     } catch (err) {
-      callback?.({ text: `Bridge failed: ${(err as Error).message}` });
-      return false;
+      const messageErr = err instanceof Error ? err.message : String(err);
+      const text = `Bridge failed: ${messageErr}`;
+      callback?.({ text });
+      return { success: false, text, error: messageErr };
     }
   },
 
   examples: [
     [
-      { user: '{{user1}}', content: { text: 'Bridge 100 USDC from base to solana' } },
+      { name: '{{user1}}', content: { text: 'Bridge 100 USDC from base to solana' } },
       {
-        user: '{{agentName}}',
+        name: '{{agentName}}',
         content: {
           text: 'Bridging 100 USDC from base → solana. Tx: 0xabc... ETA: ~3 min.',
           action: 'WALLET_BRIDGE',
@@ -64,9 +75,9 @@ export const bridgeAction: Action = {
       },
     ],
     [
-      { user: '{{user1}}', content: { text: 'bridge 500 USDC from arbitrum to optimism' } },
+      { name: '{{user1}}', content: { text: 'bridge 500 USDC from arbitrum to optimism' } },
       {
-        user: '{{agentName}}',
+        name: '{{agentName}}',
         content: {
           text: 'Bridging 500 USDC from arbitrum → optimism. Tx: 0xdef...',
           action: 'WALLET_BRIDGE',

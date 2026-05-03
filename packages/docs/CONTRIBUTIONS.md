@@ -19710,7 +19710,7 @@ Original commit hashes, oldest first:
 - [`236a86cde489`](https://github.com/elizaOS/eliza/commit/236a86cde4899ac46984641269a2acd5ccf70836) 2026-04-20 renovate[bot]: chore(deps): update dependency typedoc-plugin-markdown to v4.11.0
 - [`262030cfd3bd`](https://github.com/elizaOS/eliza/commit/262030cfd3bd6e3fddffc34b1463c7ec7ffbe155) 2026-04-20 renovate[bot]: chore(deps): update dependency vitest to v3.2.4
 - [`fd3c8e915f44`](https://github.com/elizaOS/eliza/commit/fd3c8e915f449e3f0ddbee9e7a7a265ecd905a68) 2026-04-20 standujar: feat(core): PROMPT_OUTPUT_FORMAT env var for dynamicPromptExecFromState
-- [`c8d8c9f97429`](https://github.com/elizaOS/eliza/commit/c8d8c9f97429d89dbef50b5f11f5f635a584df40) 2026-04-20 Stan: Update packages/typescript/src/runtime.ts
+- [`c8d8c9f97429`](https://github.com/elizaOS/eliza/commit/c8d8c9f97429d89dbef50b5f11f5f635a584df40) 2026-04-20 Stan: Update packages/core/src/runtime.ts
 - [`158cd7340013`](https://github.com/elizaOS/eliza/commit/158cd73400134513dfde1dfd6290a28c5fcaa3e1) 2026-04-20 Codex: merge: absorb PR #6984 phone-companion + typecheck alignment
 - [`852390ca3a9c`](https://github.com/elizaOS/eliza/commit/852390ca3a9c682e2a2ab9e65d1ae59d5048e1fa) 2026-04-17 github-actions[bot]: chore: release v2.0.0-alpha.0 (alpha) [skip ci]
 - [`d827dd32a37a`](https://github.com/elizaOS/eliza/commit/d827dd32a37ae49d2faca512077c8b733f425415) 2026-04-17 Shaw: merge remote-tracking branch 'miladyremote/develop' into publish
@@ -19921,7 +19921,7 @@ Original commit hashes, oldest first:
 - [`e45a8ba71af0`](https://github.com/elizaOS/eliza/commit/e45a8ba71af0b8e37958edbad6202708db1826cd) 2026-04-21 milady-bot: Merge remote-tracking branch 'origin/renovate/tokio-1.x-lockfile' into develop
 - [`49241d8c0c24`](https://github.com/elizaOS/eliza/commit/49241d8c0c2414688882d19bc635bc3d6b8aa7be) 2026-04-20 standujar: feat(core): PROMPT_OUTPUT_FORMAT env var for dynamicPromptExecFromState
 - [`b888253902f3`](https://github.com/elizaOS/eliza/commit/b888253902f3422a26046a1ca161d76a4d15ab20) 2026-04-20 Stan: Merge branch 'develop' into feat/default-encapsulation-env-var
-- [`cb500f9b2df0`](https://github.com/elizaOS/eliza/commit/cb500f9b2df0459182dbdadc833d3f9374b39872) 2026-04-20 Stan: Update packages/typescript/src/runtime.ts
+- [`cb500f9b2df0`](https://github.com/elizaOS/eliza/commit/cb500f9b2df0459182dbdadc833d3f9374b39872) 2026-04-20 Stan: Update packages/core/src/runtime.ts
 - [`e16e361f1d21`](https://github.com/elizaOS/eliza/commit/e16e361f1d212bdd8bc52119c4c3b36654de657a) 2026-04-21 milady-bot: Merge branch 'pr-6978' into develop
 - [`79be8da883ab`](https://github.com/elizaOS/eliza/commit/79be8da883ab9b38c83e741f659d091aeb73cb1e) 2026-04-21 renovate[bot]: fix(deps): update dependency @elizaos to v2.0.0-alpha.223
 - [`d5985c592abd`](https://github.com/elizaOS/eliza/commit/d5985c592abd9dece47aee1fd9bfeeadaf323fe2) 2026-04-21 renovate[bot]: chore(deps): update dependency lerna to v9.0.7

@@ -470,8 +470,8 @@ jobs:
             done
             popd
           fi
-          test -f packages/typescript/src/types/generated/eliza/v1/agent_pb.ts
-          test -f packages/typescript/src/types/generated/eliza/v1/components_pb.ts
+          test -f packages/core/src/types/generated/eliza/v1/agent_pb.ts
+          test -f packages/core/src/types/generated/eliza/v1/components_pb.ts
 
       - name: Stage desktop bundle inputs
         run: |

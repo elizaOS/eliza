@@ -1,5 +1,5 @@
 {
-  "name": "@elizaos/plugin-sql-root",
+  "name": "@elizaos/plugin-sql",
   "private": true,
   "version": "2.0.0-alpha.1",
   "description": "",
@@ -47,15 +47,9 @@
     "url": "https://github.com/elizaos-plugins/plugin-sql"
   },
   "scripts": {
-    "build": "bun run build:ts && bun run build:rust && bun run build:python",
-    "build:ts": "cd typescript && bun run build.ts",
-    "build:rust": "test -d rust && cd rust && cargo build --release || echo 'Rust build skipped - no rust directory'",
-    "build:python": "test -n \"$SKIP_PYTHON_BUILD\" && echo 'Python build skipped (SKIP_PYTHON_BUILD set)' || (test -d python && cd python && (timeout 120 python3 -m build 2>/dev/null || timeout 120 pyproject-build 2>/dev/null) || echo 'Python build skipped or timed out')",
+    "build": "cd typescript && bun run build.ts",
     "dev": "cd typescript && bun --hot build.ts",
-    "test": "bun run test:ts && bun run test:rust && bun run test:python",
-    "test:ts": "cd typescript && vitest run --passWithNoTests",
-    "test:rust": "if [ -d rust ]; then cd rust && cargo test; else echo 'Rust tests skipped - no rust directory'; fi",
-    "test:python": "if [ -d python ]; then cd python && tmpdir=$(mktemp -d) && python3 -m venv \"$tmpdir\" && \"$tmpdir/bin/python\" -m pip install -e ../../../packages/python -e '.[dev]' -q && \"$tmpdir/bin/python\" -m pytest -p no:anchorpy --asyncio-mode=auto; status=$?; rm -rf \"$tmpdir\"; exit $status; else echo 'Python tests skipped - no python directory'; fi",
+    "test": "cd typescript && vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit -p typescript/tsconfig.json",
     "lint": "cd typescript && bun run lint",
     "lint:check": "cd typescript && bun run lint:check",

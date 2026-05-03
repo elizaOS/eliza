@@ -10,8 +10,7 @@
 		"allowJs": false,
 		"jsx": "react-jsx",
 		"skipLibCheck": true,
-		"ignoreDeprecations": "6.0",
-		"allowSyntheticDefaultImports": true,
+				"allowSyntheticDefaultImports": true,
 		"strict": false,
 		"useUnknownInCatchVariables": false,
 		"forceConsistentCasingInFileNames": true,
@@ -50,10 +49,10 @@
 				"../agent/src/*"
 			],
 			"@elizaos/core": [
-				"../typescript/src/index.node.ts"
+				"../core/src/index.node.ts"
 			],
 			"@elizaos/core/*": [
-				"../typescript/src/*"
+				"../core/src/*"
 			],
 			"@elizaos/shared": [
 				"../shared/src/index.ts"
