@@ -6,7 +6,7 @@ description: "EVM chain connector for Eliza — Ethereum, Base, Arbitrum, Optimi
 
 The EVM plugin enables Eliza agents to interact with Ethereum and EVM-compatible chains — reading balances, sending tokens, interacting with smart contracts, executing swaps, and participating in DeFi protocols.
 
-**Package:** `@elizaos/plugin-evm` (community)
+**Package:** `@elizaos/plugin-wallet`
 
 ## Overview
 
@@ -15,7 +15,7 @@ The EVM plugin provides the agent with an embedded wallet and a set of on-chain 
 ## Installation
 
 ```bash
-eliza plugins install @elizaos/plugin-evm
+eliza plugins install @elizaos/plugin-wallet
 ```
 
 ## Auto-Enable

@@ -163,14 +163,6 @@ The engines (`TarotEngine`, `IChingEngine`, `AstrologyEngine`) are pure computat
 
 The service includes built-in crisis detection that scans user input for indicators of distress. When detected, the agent pauses the reading and provides appropriate mental health resource referrals rather than continuing with potentially harmful mystical interpretations.
 
-## Multi-Language Support
-
-The divination engines are implemented in three languages for cross-platform use:
-
-- **TypeScript** — Primary implementation, published as `@elizaos/plugin-mysticism`
-- **Python** — `python/elizaos_plugin_mysticism/` with pytest test suite
-- **Rust** — `rust/src/` with integration tests
-
 ## Development
 
 ```bash

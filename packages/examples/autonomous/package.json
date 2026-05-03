@@ -3,7 +3,6 @@
   "version": "2.0.0-alpha",
   "description": "Sandboxed autonomous loop using local-ai + shell + inmemorydb",
   "type": "module",
-  "private": true,
   "scripts": {
     "start": "bun run autonomous.ts",
     "dev": "bun --watch run autonomous.ts"

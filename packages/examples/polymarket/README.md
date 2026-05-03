@@ -10,7 +10,7 @@ The CLI supports:
 
 Uses:
 
-- `plugin-evm` for wallet handling
+- `plugin-wallet` for wallet handling
 - `plugin-polymarket` for Polymarket CLOB access
 
 ## Production assumptions

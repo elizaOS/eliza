@@ -1,7 +1,6 @@
 {
   "name": "@elizaos/app-elizamaker",
   "version": "0.0.0",
-  "private": true,
   "type": "module",
   "description": "ElizaMaker: ERC-8041 NFT drop/mint/whitelist routes, Twitter-verified Merkle proofs, and OG code tracking.",
   "main": "./src/index.ts",

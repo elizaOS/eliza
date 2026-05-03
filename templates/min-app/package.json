@@ -1,7 +1,6 @@
 {
   "name": "__APP_NAME__",
   "version": "0.0.0",
-  "private": true,
   "type": "module",
   "description": "TODO: replace with a one-line description of __APP_DISPLAY_NAME__",
   "main": "./src/index.ts",

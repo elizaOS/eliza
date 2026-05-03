@@ -34,13 +34,13 @@ function concatPlugins<T>(
 }
 
 /**
- * Single plugin surface: legacy `plugin-evm` + `plugin-solana` + wallet backend.
+ * Single plugin surface: EVM + Solana wallet backend.
  * Consumers should depend only on `@elizaos/plugin-wallet`.
  */
 export const walletPlugin: Plugin = {
 	name: "wallet",
 	description:
-		"Unified non-custodial wallet for elizaOS — EVM + Solana inlined (legacy plugin-evm + plugin-solana), Steward/local backends, x402, CCTP, and venue routing.",
+		"Unified non-custodial wallet for elizaOS — EVM + Solana, Steward/local backends, x402, CCTP, and venue routing.",
 	services: concatServices(
 		coreWalletPlugin.services,
 		evmPlugin.services as ServiceClass[] | undefined,

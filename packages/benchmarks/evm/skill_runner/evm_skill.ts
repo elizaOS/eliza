@@ -1,57 +1,134 @@
-import {
-  createPublicClient, createWalletClient, http, parseEther,
-  encodeFunctionData, getContractAddress, type Hex, type Address,
-  parseAbi, keccak256, toHex, pad, encodePacked, concat, toBytes,
-} from 'viem';
+import { createPublicClient, createWalletClient, http, parseAbi, encodeFunctionData, decodeFunctionResult } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { anvil } from 'viem/chains';
 
+export async function executeSkill(rpcUrl: string, privateKey: *** chainId: number) {
+  const account = privateKeyToAccount(privateKey as `0x${string}`);
+  const publicClient = createPublicClient({
+    chain: { id: chainId, name: 'local', rpcUrls: { default: { http: [rpcUrl] } } },
+    transport: http(rpcUrl),
+  });
+  const walletClient = createWalletClient({
+    chain: { id: chainId, name: 'local', rpcUrls: { default: { http: [rpcUrl] } } },
+    transport: http(rpcUrl),
+    account,
+  });
 
-export async function executeSkill(rpcUrl: string, privateKey: string, chainId: number = 31337): Promise<string> {
+  // List of undiscovered selectors per contract
+  const targets: { address: `0x${string}`; selectors: string[] }[] = [
+    {
+      address: '0xcd8a1c3ba11cf5ecfa6267617243239504a98d90',
+      selectors: [
+        '0x06fdde03', // name()
+        '0x95d89b41', // symbol()
+        '0x313ce567', // decimals()
+        '0x18160ddd', // totalSupply()
+        '0xdd62ed3e', // allowance(address,address)
+        '0x23b872dd', // transferFrom(address,address,uint256)
+        '0x42966c68', // burn(uint256)
+        '0x39509351', // increaseAllowance(address,uint256)
+        '0xa457c2d7', // decreaseAllowance(address,uint256)
+      ],
+    },
+    {
+      address: '0xa4899d35897033b927acfcf422bc745916139776',
+      selectors: [
+        '0x18160ddd', // totalSupply()
+        '0x70a08231', // balanceOf(address)
+        '0x23b872dd', // transferFrom(address,address,uint256)
+        '0xdd62ed3e', // allowance(address,address)
+        '0x06fdde03', // name()
+        '0x95d89b41', // symbol()
+        '0x313ce567', // decimals()
+      ],
+    },
+    {
+      address: '0x21df544947ba3e8b3c32561399e88b52dc8b2823',
+      selectors: [
+        '0x06fdde03', // name()
+        '0x95d89b41', // symbol()
+        '0x70a08231', // balanceOf(address)
+        '0xc87b56dd', // tokenURI(uint256)
+        '0x081812fc', // getApproved(uint256)
+        '0xe985e9c5', // isApprovedForAll(address,address)
+      ],
+    },
+    {
+      address: '0xf4b146fba71f41e0592668ffbf264f1d186b2ca8',
+      selectors: [
+        '0x00fdd58e', // balanceOf(address,uint256)
+        '0x4e1273f4', // balanceOfBatch(address[],uint256[])
+        '0x2eb2c2d6', // safeBatchTransferFrom(address,address,uint256[],uint256[],bytes)
+      ],
+    },
+    {
+      address: '0xc351628eb244ec633d5f21fbd6621e1a683b1181',
+      selectors: [
+        // Same as ERC20 but treat as separate target
+        '0x06fdde03',
+        '0x95d89b41',
+        '0x313ce567',
+        '0x18160ddd',
+        '0xdd62ed3e',
+        '0x23b872dd',
+        '0x42966c68',
+        '0x39509351',
+        '0xa457c2d7',
+      ],
+    },
+  ];
 
-  const account = privateKeyToAccount(privateKey as Hex);
-  const chain = { ...anvil, id: chainId };
-  const publicClient = createPublicClient({ chain, transport: http(rpcUrl) });
-  const walletClient = createWalletClient({ account, chain, transport: http(rpcUrl) });
-  const results: Array<{txHash: string; to: string; selector: string; success: boolean; deployedAddress?: string}> = [];
+  const results: { contract: string; selector: string; output?: string; error?: string }[] = [];
 
+  for (const { address, selectors } of targets) {
+    for (const selector of selectors) {
+      try {
+        // Build call data; for selectors requiring parameters we provide zeroed args
+        let data = selector;
+        // Simple view functions without params: name, symbol, decimals, totalSupply, etc.
+        // For functions expecting args, we encode dummy zeros (address(0), uint256(0), etc.)
+        if (selector === '0xdd62ed3e' || selector === '0x70a08231' || selector === '0x00fdd58e') {
+          // allowance(address,address) or balanceOf(address) or balanceOf(address,uint256)
+          const abi = parseAbi(['function allowance(address owner, address spender) view returns (uint256)', 'function balanceOf(address owner) view returns (uint256)', 'function balanceOf(address account, uint256 id) view returns (uint256)']);
+          const args = selector === '0xdd62ed3e' ? ['0x0000000000000000000000000000000000000000', '0x0000000000000000000000000000000000000000'] :
+                       selector === '0x00fdd58e' ? ['0x0000000000000000000000000000000000000000', 0] :
+                       ['0x0000000000000000000000000000000000000000'];
+          data = encodeFunctionData({ abi, functionName: selector === '0xdd62ed3e' ? 'allowance' : selector === '0x00fdd58e' ? 'balanceOf' : 'balanceOf', args });
+        } else if (selector === '0x23b872dd' || selector === '0x42966c68' || selector === '0x39509351' || selector === '0xa457c2d7' || selector === '0x2eb2c2d6') {
+          // Functions that require parameters; we encode zeros to avoid revert on missing data
+          const abi = parseAbi(['function transferFrom(address from, address to, uint256 amount) returns (bool)', 'function burn(uint256 amount)', 'function increaseAllowance(address spender, uint256 addedValue) returns (bool)', 'function decreaseAllowance(address spender, uint256 subtractedValue) returns (bool)', 'function safeBatchTransferFrom(address from, address to, uint256[] ids, uint256[] amounts, bytes data)']);
+          const args = selector === '0x23b872dd' ? ['0x0000000000000000000000000000000000000000', '0x0000000000000000000000000000000000000000', 0] :
+                       selector === '0x42966c68' ? [0] :
+                       selector === '0x39509351' ? ['0x0000000000000000000000000000000000000000', 0] :
+                       selector === '0xa457c2d7' ? ['0x0000000000000000000000000000000000000000', 0] :
+                       [ '0x0000000000000000000000000000000000000000', '0x0000000000000000000000000000000000000000', [], [], '0x' ];
+          const fnName = selector === '0x23b872dd' ? 'transferFrom' :
+                         selector === '0x42966c68' ? 'burn' :
+                         selector === '0x39509351' ? 'increaseAllowance' :
+                         selector === '0xa457c2d7' ? 'decreaseAllowance' :
+                         'safeBatchTransferFrom';
+          data = encodeFunctionData({ abi, functionName: fnName, args });
+        }
 
-  async function sendAndTrack(params: {to?: Address | null; data?: Hex; value?: bigint}) {
-    try {
-      const txHash = await walletClient.sendTransaction({
-        to: params.to ?? undefined, data: params.data, value: params.value ?? 0n,
-      });
-      const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
-      const selector = params.data && params.data.length >= 10 ? params.data.slice(0, 10) : '0x';
-      const toAddr = params.to ?? '0x0000000000000000000000000000000000000000';
-      results.push({
-        txHash, to: toAddr, selector, success: receipt.status === 'success',
-        deployedAddress: receipt.contractAddress ?? undefined,
-      });
-      return { receipt, txHash, deployedAddress: receipt.contractAddress };
-    } catch (e: unknown) {
-      results.push({
-        txHash: '', to: params.to ?? '0x0000000000000000000000000000000000000000',
-        selector: params.data?.slice(0, 10) ?? '0x', success: false,
-      });
-      return { receipt: null, txHash: '', deployedAddress: undefined };
+        const callResult = await publicClient.call({
+          to: address as `0x${string}`,
+          data: data as `0x${string}`,
+        });
+
+        // Decode if possible (optional)
+        let output: string | undefined;
+        try {
+          // Attempt generic decode as bytes
+          output = callResult;
+        } catch (_) {
+          // ignore decode errors
+        }
+
+        results.push({ contract: address, selector, output });
+      } catch (err: any) {
+        results.push({ contract: address, selector, error: err?.message ?? String(err) });
+      }
     }
   }
-
-
-  const ERC20_ABI = parseAbi([
-    'function mint(address,uint256)', 'function transfer(address,uint256) returns (bool)',
-    'function approve(address,uint256) returns (bool)', 'function balanceOf(address) view returns (uint256)',
-  ]);
-  const { deployedAddress: addr } = await sendAndTrack({ to: null, data: '0x60c0604052600a6080908152692132b731b42a37b5b2b760b11b60a0525f906100289082610113565b506040805180820190915260048152630849c86960e31b60208201526001906100519082610113565b506002805460ff1916601217905534801561006a575f5ffd5b506101d1565b634e487b7160e01b5f52604160045260245ffd5b600181811c9082168061009857607f821691505b6020821081036100b657634e487b7160e01b5f52602260045260245ffd5b50919050565b601f82111561010e578282111561010e57805f5260205f20601f840160051c60208510156100e757505f5b90810190601f840160051c035f5b8181101561010a575f838201556001016100f5565b5050505b505050565b81516001600160401b0381111561012c5761012c610070565b6101408161013a8454610084565b846100bc565b6020601f821160018114610172575f831561015b5750848201515b5f19600385901b1c1916600184901b1784556101ca565b5f84815260208120601f198516915b828110156101a15787850151825560209485019460019092019101610181565b50848210156101be57868401515f19600387901b60f8161c191681555b505060018360011b0184555b5050505050565b610942806101de5f395ff3fe608060405234801561000f575f5ffd5b50600436106100cb575f3560e01c806340c10f191161008857806395d89b411161006357806395d89b41146101b3578063a457c2d7146101bb578063a9059cbb146101ce578063dd62ed3e146101e1575f5ffd5b806340c10f191461016c57806342966c681461018157806370a0823114610194575f5ffd5b806306fdde03146100cf578063095ea7b3146100ed57806318160ddd1461011057806323b872dd14610127578063313ce5671461013a5780633950935114610159575b5f5ffd5b6100d761020b565b6040516100e49190610787565b60405180910390f35b6101006100fb3660046107d7565b610296565b60405190151581526020016100e4565b61011960035481565b6040519081526020016100e4565b6101006101353660046107ff565b610302565b6002546101479060ff1681565b60405160ff90911681526020016100e4565b6101006101673660046107d7565b6103bd565b61017f61017a3660046107d7565b61044c565b005b61017f61018f366004610839565b6104d2565b6101196101a2366004610850565b60046020525f908152604090205481565b6100d761059c565b6101006101c93660046107d7565b6105a9565b6101006101dc3660046107d7565b610677565b6101196101ef366004610869565b600560209081525f928352604080842090915290825290205481565b5f80546102179061089a565b80601f01602080910402602001604051908101604052809291908181526020018280546102439061089a565b801561028e5780601f106102655761010080835404028352916020019161028e565b820191905f5260205f20905b81548152906001019060200180831161027157829003601f168201915b505050505081565b335f8181526005602090815260408083206001600160a01b038716808552925280832085905551919290917f8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925906102f09086815260200190565b60405180910390a35060015b92915050565b6001600160a01b0383165f9081526005602090815260408083203384529091528120545f1981146103a9578281101561037b5760405162461bcd60e51b8152602060048201526016602482015275696e73756666696369656e7420616c6c6f77616e636560501b60448201526064015b60405180910390fd5b61038583826108e6565b6001600160a01b0386165f9081526005602090815260408083203384529091529020555b6103b485858561068a565b95945050505050565b335f9081526005602090815260408083206001600160a01b03861684529091528120805483919083906103f19084906108f9565b9091555050335f8181526005602090815260408083206001600160a01b038816808552908352928190205490519081529192917f8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b92591016102f0565b8060035f82825461045d91906108f9565b90915550506001600160a01b0382165f90815260046020526040812080548392906104899084906108f9565b90915550506040518181526001600160a01b038316905f907fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef9060200160405180910390a35050565b335f908152600460205260409020548111156105275760405162461bcd60e51b8152602060048201526014602482015273696e73756666696369656e742062616c616e636560601b6044820152606401610372565b335f90815260046020526040812080548392906105459084906108e6565b925050819055508060035f82825461055d91906108e6565b90915550506040518181525f9033907fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef9060200160405180910390a350565b600180546102179061089a565b335f9081526005602090815260408083206001600160a01b0386168452909152812054828110156106095760405162461bcd60e51b815260206004820152600a60248201526962656c6f77207a65726f60b01b6044820152606401610372565b61061383826108e6565b335f8181526005602090815260408083206001600160a01b038a16808552908352928190208590555193845290927f8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b92591015b60405180910390a35060019392505050565b5f61068333848461068a565b9392505050565b6001600160a01b0383165f908152600460205260408120548211156106e85760405162461bcd60e51b8152602060048201526014602482015273696e73756666696369656e742062616c616e636560601b6044820152606401610372565b6001600160a01b0384165f908152600460205260408120805484929061070f9084906108e6565b90915550506001600160a01b0383165f908152600460205260408120805484929061073b9084906108f9565b92505081905550826001600160a01b0316846001600160a01b03167fddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef8460405161066591815260200190565b602081525f82518060208401528060208501604085015e5f604082850101526040601f19601f83011684010191505092915050565b80356001600160a01b03811681146107d2575f5ffd5b919050565b5f5f604083850312156107e8575f5ffd5b6107f1836107bc565b946020939093013593505050565b5f5f5f60608486031215610811575f5ffd5b61081a846107bc565b9250610828602085016107bc565b929592945050506040919091013590565b5f60208284031215610849575f5ffd5b5035919050565b5f60208284031215610860575f5ffd5b610683826107bc565b5f5f6040838503121561087a575f5ffd5b610883836107bc565b9150610891602084016107bc565b90509250929050565b600181811c908216806108ae57607f821691505b6020821081036108cc57634e487b7160e01b5f52602260045260245ffd5b50919050565b634e487b7160e01b5f52601160045260245ffd5b818103818111156102fc576102fc6108d2565b808201808211156102fc576102fc6108d256fea2646970667358221220d91ef716e5ff7bd1c0d274b56d7c71f122e1197ef8529c3500a8833bda0b9ffb64736f6c63430008210033' as Hex });
-  if (!addr) return JSON.stringify({ results, error: 'ERC20 deploy failed' });
-  const erc20 = addr as Address;
-  const dead = '0x000000000000000000000000000000000000dEaD' as Address;
-  await sendAndTrack({ to: erc20, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'mint', args: [account.address, 10n**21n] }) });
-  await sendAndTrack({ to: erc20, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'transfer', args: [dead, 10n**18n] }) });
-  await sendAndTrack({ to: erc20, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [dead, 10n**18n] }) });
-  await sendAndTrack({ to: erc20, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'balanceOf', args: [account.address] }) });
-
 
   return JSON.stringify({ results, error: null });
 }

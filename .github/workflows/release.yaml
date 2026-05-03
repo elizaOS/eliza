@@ -602,7 +602,6 @@ jobs:
             --filter=@elizaos/agent
             --filter=@elizaos/app-core
             --filter=elizaos
-            --filter=@elizaos/interop
             --filter=@elizaos/plugin-pdf
             --filter=@elizaos/prompts
             --filter=@elizaos/shared
@@ -618,7 +617,6 @@ jobs:
             packages/agent/dist/package.json \
             packages/app-core/dist/package.json \
             packages/elizaos/dist/index.js \
-            packages/interop/dist/index.d.ts \
             packages/prompts/dist/typescript/index.ts \
             packages/shared/dist/package.json \
             packages/skills/dist/index.js \

@@ -1,7 +1,6 @@
 {
   "name": "@elizaos/native-activity-tracker",
   "version": "0.0.0",
-  "private": true,
   "description": "macOS activity-tracker native helper (Swift) plus a small TypeScript driver that spawns and line-parses the collector process.",
   "type": "module",
   "main": "./src/index.ts",
@@ -21,7 +20,9 @@
     "@elizaos/core": "workspace:*"
   },
   "elizaos": {
-    "platforms": ["darwin"],
+    "platforms": [
+      "darwin"
+    ],
     "runtime": "native",
     "platformDetails": {
       "darwin": "NSWorkspace app-focus collector via Swift helper.",

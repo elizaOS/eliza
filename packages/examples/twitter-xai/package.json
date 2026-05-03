@@ -3,7 +3,6 @@
   "version": "2.0.0-alpha",
   "description": "X (Twitter) agent using Grok (xAI) + X API via elizaOS",
   "type": "module",
-  "private": true,
   "scripts": {
     "start": "bun run agent.ts",
     "dev": "bun --watch run agent.ts",

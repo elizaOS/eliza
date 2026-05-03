@@ -1,7 +1,6 @@
 {
   "name": "@elizaos/app",
   "version": "2.0.0-alpha.87",
-  "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",

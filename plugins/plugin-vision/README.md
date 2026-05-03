@@ -5,18 +5,6 @@ real-time camera integration and scene analysis capabilities. This plugin
 enables agents to "see" their environment, describe scenes, detect people and
 objects, and make decisions based on visual input.
 
-## Multi-Language Support
-
-This plugin is implemented in multiple languages with complete feature parity:
-
-| Language   | Directory | Status              |
-| ---------- | --------- | ------------------- |
-| TypeScript | `src/`    | ✅ Production Ready |
-| Python     | `python/` | ✅ Production Ready |
-| Rust       | `rust/`   | 🔄 In Development   |
-
-The TypeScript implementation is the primary and most feature-complete version.
-
 ## Features
 
 ### Phase 1 (Implemented)
@@ -69,21 +57,6 @@ cd plugins/plugin-vision
 bun install
 bun run build
 ```
-
-### Python
-
-```bash
-cd plugins/plugin-vision/python
-pip install -e .
-```
-
-### Rust
-
-```bash
-cd plugins/plugin-vision/rust
-cargo build --release
-```
-
 ### Camera Tools Required
 
 The plugin requires platform-specific camera tools:
@@ -288,18 +261,6 @@ plugin-vision/
 │   ├── florence2-model.ts    # Florence2 model integration
 │   ├── vision-worker-manager.ts # Worker management
 │   └── tests/                # E2E tests
-├── python/                   # Python implementation
-│   ├── pyproject.toml
-│   └── elizaos_vision/
-│       ├── __init__.py       # Plugin entry point
-│       ├── service.py        # Vision service
-│       ├── provider.py       # Vision provider
-│       ├── actions.py        # All actions
-│       └── ...
-└── rust/                     # Rust implementation (in development)
-    ├── Cargo.toml
-    └── src/
-        └── ...
 ```
 
 ## Development
@@ -307,20 +268,12 @@ plugin-vision/
 ### Running Tests
 
 ```bash
-# TypeScript - Run E2E tests
+# Run E2E tests
 cd plugins/plugin-vision
 npx vitest
 
-# TypeScript - Run local E2E tests
+# Run local E2E tests
 bun run test:e2e:local
-
-# Python - Run tests
-cd plugins/plugin-vision/python
-pytest
-
-# Rust - Run tests
-cd plugins/plugin-vision/rust
-cargo test
 ```
 
 ### Test Coverage

@@ -2,7 +2,6 @@
   "name": "@elizaos/docs",
   "version": "2.0.0-alpha.93",
   "type": "module",
-  "private": true,
   "description": "ElizaOS documentation",
   "scripts": {
     "test": "bun test ./test"

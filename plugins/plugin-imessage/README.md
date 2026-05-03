@@ -11,7 +11,6 @@ iMessage plugin for ElizaOS agents. Enables chat integration with Apple's iMessa
 - **Attachments**: Send media attachments (via CLI tool)
 - **Message Polling**: Receive incoming messages via polling
 - **Policy Controls**: Configure DM and group policies
-- **Multi-language Support**: Available in TypeScript and Python
 
 ## Requirements
 
@@ -157,11 +156,7 @@ iMessage supports multiple target types:
 ### Building
 
 ```bash
-# TypeScript
 cd typescript && npm run build
-
-# Python
-cd python && pip install -e .
 ```
 
 ### Testing
@@ -169,11 +164,7 @@ cd python && pip install -e .
 Testing requires a macOS environment with Messages app configured:
 
 ```bash
-# TypeScript
 npm test
-
-# Python
-pytest
 ```
 
 ## Troubleshooting

@@ -101,10 +101,12 @@ class LpManagerAgent {
 
   private async loadPlugins(): Promise<Plugin[]> {
     const sql = (await import("@elizaos/plugin-sql")).default;
-    const lp = (
-      (await import("@elizaos/plugin-lp-manager")) as { default: Plugin }
-    ).default;
-    return [sql, lp];
+    const wallet = (
+      (await import("@elizaos/plugin-wallet")) as {
+        lpManagerPlugin: Plugin;
+      }
+    ).lpManagerPlugin;
+    return [sql, wallet];
   }
 
   private async waitForServices(): Promise<void> {

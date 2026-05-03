@@ -12,16 +12,6 @@ This plugin provides BlueSky integration for elizaOS agents, enabling:
 - **Profile Management**: Access user profiles and timelines
 - **Automated Posting**: Schedule and automate post creation
 
-## Multi-Language Support
-
-This plugin is implemented in three languages with feature parity:
-
-| Language   | Directory     | Package Name              |
-| ---------- | ------------- | ------------------------- |
-| TypeScript | `typescript/` | `@elizaos/plugin-bluesky` |
-| Python     | `python/`     | `elizaos-plugin-bluesky`  |
-| Rust       | `rust/`       | `elizaos-plugin-bluesky`  |
-
 ## Installation
 
 ### TypeScript/JavaScript
@@ -31,22 +21,6 @@ npm install @elizaos/plugin-bluesky
 # or
 bun add @elizaos/plugin-bluesky
 ```
-
-### Python
-
-```bash
-pip install elizaos-plugin-bluesky
-```
-
-### Rust
-
-Add to your `Cargo.toml`:
-
-```toml
-[dependencies]
-elizaos-plugin-bluesky = "1.0.0"
-```
-
 ## Configuration
 
 ### Environment Variables
@@ -95,33 +69,6 @@ const client = new BlueSkyClient({
 await client.authenticate();
 const post = await client.sendPost({ content: { text: "Hello BlueSky!" } });
 ```
-
-### Python
-
-```python
-from elizaos_plugin_bluesky import BlueSkyClient, BlueSkyConfig
-
-config = BlueSkyConfig.from_env()
-async with BlueSkyClient(config) as client:
-    await client.authenticate()
-
-    from elizaos_plugin_bluesky import CreatePostRequest, CreatePostContent
-    request = CreatePostRequest(content=CreatePostContent(text="Hello from Python!"))
-    post = await client.send_post(request)
-```
-
-### Rust
-
-```rust
-use elizaos_plugin_bluesky::{BlueSkyClient, BlueSkyConfig, CreatePostRequest};
-
-let config = BlueSkyConfig::from_env()?;
-let client = BlueSkyClient::new(config)?;
-
-client.authenticate().await?;
-let post = client.send_post(CreatePostRequest::new("Hello from Rust!")).await?;
-```
-
 ## Features
 
 ### Posting
@@ -217,26 +164,6 @@ bun install
 bun run build
 npx vitest
 ```
-
-### Python
-
-```bash
-cd python
-pip install -e ".[dev]"
-pytest
-mypy elizaos_plugin_bluesky
-ruff check .
-```
-
-### Rust
-
-```bash
-cd rust
-cargo build
-cargo test
-cargo clippy
-```
-
 ## Architecture
 
 ```

@@ -3,7 +3,6 @@
   "version": "2.0.0-alpha",
   "description": "Farcaster agent using OpenAI + Neynar API via elizaOS",
   "type": "module",
-  "private": true,
   "scripts": {
     "start": "bun run agent.ts",
     "dev": "bun --watch run agent.ts",

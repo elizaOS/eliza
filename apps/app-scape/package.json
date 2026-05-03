@@ -1,7 +1,6 @@
 {
   "name": "@elizaos/app-scape",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
   "description": "'scape — first-class agent integration for xRSPS. Autonomous RuneScape-alike agent with TOON-encoded state, Scape Journal, and directed-prompt operator control.",
   "main": "./src/index.ts",

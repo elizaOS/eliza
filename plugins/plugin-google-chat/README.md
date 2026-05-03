@@ -11,7 +11,6 @@ Google Chat messaging integration for ElizaOS agents, providing full support for
 - **Reactions**: Add and remove emoji reactions
 - **Attachments**: Upload and download media files
 - **Webhook Support**: Receive messages via configurable webhook endpoint
-- **Multi-language**: TypeScript, Python, and Rust implementations
 
 ## Installation
 
@@ -20,22 +19,6 @@ Google Chat messaging integration for ElizaOS agents, providing full support for
 ```bash
 npm install @elizaos-plugins/plugin-google-chat
 ```
-
-### Python
-
-```bash
-pip install elizaos-plugin-google-chat
-```
-
-### Rust
-
-Add to your `Cargo.toml`:
-
-```toml
-[dependencies]
-elizaos-plugin-google-chat = "2.0.0-alpha.1"
-```
-
 ## Prerequisites
 
 1. **Google Cloud Project**: Create a project in the [Google Cloud Console](https://console.cloud.google.com/)
@@ -96,32 +79,8 @@ const agent = createAgent({
   // ... other config
 });
 ```
-
-### Python
-
-```python
-from elizaos_plugin_google_chat import get_plugin
-
-plugin = get_plugin()
 # Register with ElizaOS runtime
 ```
-
-### Rust
-
-```rust
-use elizaos_plugin_google_chat::GoogleChatService;
-
-let settings = GoogleChatSettings {
-    audience_type: GoogleChatAudienceType::AppUrl,
-    audience: "https://chat.googleapis.com/api/...".to_string(),
-    // ... other settings
-    ..Default::default()
-};
-
-let service = GoogleChatService::new(settings).await?;
-service.start().await?;
-```
-
 ## Actions
 
 ### GOOGLE_CHAT_SEND_MESSAGE
@@ -222,21 +181,6 @@ Google Chat uses resource names for identifying entities:
 1. Check service account permissions
 2. Verify the bot is added to the target space
 3. Ensure proper IAM roles are assigned
-
-## Multi-language Support
-
-This plugin provides parallel implementations in:
-
-- **TypeScript**: Primary implementation with full feature support
-- **Python**: Feature-complete using `aiohttp` and `google-auth`
-- **Rust**: Full implementation using `reqwest` and async runtime
-
-All implementations maintain consistent:
-- Type definitions
-- Action interfaces
-- Provider outputs
-- Event types
-- Error handling
 
 ## License
 

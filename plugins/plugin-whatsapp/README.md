@@ -14,7 +14,6 @@ WhatsApp plugin for ElizaOS. Supports both WhatsApp Cloud API and Baileys (QR au
 - **Baileys QR Auth**: Connect personal WhatsApp accounts with QR login + session persistence
 - **Message Status**: Track sent, delivered, read, and failed statuses
 - **Media Downloads**: Retrieve media URLs for incoming messages
-- **Multi-language Support**: TypeScript, Python, and Rust implementations
 
 ## Installation
 
@@ -23,22 +22,6 @@ WhatsApp plugin for ElizaOS. Supports both WhatsApp Cloud API and Baileys (QR au
 ```bash
 npm install @elizaos/plugin-whatsapp
 ```
-
-### Python
-
-```bash
-pip install elizaos-plugin-whatsapp
-```
-
-### Rust
-
-Add to `Cargo.toml`:
-
-```toml
-[dependencies]
-elizaos-plugin-whatsapp = "2.0.0-alpha.1"
-```
-
 ## Configuration
 
 ### Environment Variables
@@ -83,44 +66,6 @@ const service = runtime.getService<WhatsAppConnectorService>("whatsapp");
 await service?.sendMessage({ type: "text", to: "+14155552671", content: "hello" });
 ```
 
-### Python Configuration
-
-```python
-from elizaos_plugin_whatsapp import WhatsAppService
-
-# From environment variables
-service = WhatsAppService.from_env()
-
-# Or with explicit config
-from elizaos_plugin_whatsapp import WhatsAppConfig
-
-config = WhatsAppConfig(
-    access_token="your_token",
-    phone_number_id="your_phone_id",
-    webhook_verify_token="optional_verify_token",
-    api_version="v24.0",
-)
-service = WhatsAppService(config)
-```
-
-### Rust Configuration
-
-```rust
-use elizaos_plugin_whatsapp::{WhatsAppConfig, WhatsAppService};
-
-// From environment variables
-let service = WhatsAppService::from_env()?;
-
-// Or with explicit config
-let config = WhatsAppConfig::new(
-    "your_access_token".to_string(),
-    "your_phone_number_id".to_string(),
-)
-.with_webhook_verify_token("optional_token".to_string());
-
-let service = WhatsAppService::new(config);
-```
-
 ## Usage
 
 ### Sending Messages
@@ -139,14 +84,8 @@ await service?.sendMessage({ type: "text", to: "1234567890", content: "Hello, Wo
 ```
 
 **Python**:
-```python
-await service.send_text('1234567890', 'Hello, World!')
-```
 
 **Rust**:
-```rust
-service.send_text("1234567890", "Hello, World!").await?;
-```
 
 #### Image Message
 
@@ -156,14 +95,8 @@ await client.sendImage('1234567890', 'https://example.com/image.jpg', 'Caption')
 ```
 
 **Python**:
-```python
-await service.send_image('1234567890', 'https://example.com/image.jpg', caption='Caption')
-```
 
 **Rust**:
-```rust
-service.send_image("1234567890", "https://example.com/image.jpg", Some("Caption")).await?;
-```
 
 #### Interactive Button Message
 
@@ -183,34 +116,8 @@ await client.sendButtonMessage(
 ```
 
 **Python**:
-```python
-await service.send_button_message(
-    '1234567890',
-    'Choose an option:',
-    [
-        {'id': 'opt1', 'title': 'Option 1'},
-        {'id': 'opt2', 'title': 'Option 2'},
-        {'id': 'opt3', 'title': 'Option 3'},
-    ],
-    header_text='Header Text',
-    footer_text='Footer Text',
-)
-```
 
 **Rust**:
-```rust
-service.send_button_message(
-    "1234567890",
-    "Choose an option:",
-    &[
-        ("opt1".to_string(), "Option 1".to_string()),
-        ("opt2".to_string(), "Option 2".to_string()),
-        ("opt3".to_string(), "Option 3".to_string()),
-    ],
-    Some("Header Text"),
-    Some("Footer Text"),
-).await?;
-```
 
 ### Sending Reactions
 
@@ -227,32 +134,8 @@ await client.removeReaction('1234567890', 'wamid.xxx');
 ```
 
 **Python**:
-```python
-from elizaos_plugin_whatsapp import SendReactionParams
-
-await service.send_reaction(SendReactionParams(
-    to='1234567890',
-    message_id='wamid.xxx',
-    emoji='👍',
-))
-
-# Remove reaction
-await service.remove_reaction('1234567890', 'wamid.xxx')
-```
 
 **Rust**:
-```rust
-use elizaos_plugin_whatsapp::SendReactionParams;
-
-service.send_reaction(&SendReactionParams {
-    to: "1234567890".to_string(),
-    message_id: "wamid.xxx".to_string(),
-    emoji: "👍".to_string(),
-}).await?;
-
-// Remove reaction
-service.remove_reaction("1234567890", "wamid.xxx").await?;
-```
 
 ### Handling Webhooks
 
@@ -286,37 +169,8 @@ app.post('/webhook', express.json(), async (req, res) => {
 ```
 
 **Python**:
-```python
-from aiohttp import web
-
-async def verify_webhook(request):
-    mode = request.query.get('hub.mode')
-    token = request.query.get('hub.verify_token')
-    challenge = request.query.get('hub.challenge')
-    
-    result = service.verify_webhook(mode, token, challenge)
-    if result:
-        return web.Response(text=result)
-    return web.Response(status=403)
-
-async def handle_webhook(request):
-    from elizaos_plugin_whatsapp.types import WhatsAppWebhookEvent
-    
-    data = await request.json()
-    event = WhatsAppWebhookEvent(**data)
-    await service.handle_webhook(event)
-    return web.Response(status=200)
-```
 
 **Rust**:
-```rust
-// Verification
-let challenge = service.verify_webhook(mode, token, challenge_str);
-
-// Handle webhook event
-let event: WhatsAppWebhookEvent = serde_json::from_str(&body)?;
-service.handle_webhook(event).await;
-```
 
 ### Event Handling
 
@@ -333,27 +187,8 @@ webhookHandler.onStatus((status) => {
 ```
 
 **Python**:
-```python
-from elizaos_plugin_whatsapp import WhatsAppEventType
-
-service.on_event(WhatsAppEventType.MESSAGE_RECEIVED, lambda msg: print(f"Message: {msg}"))
-service.on_event(WhatsAppEventType.MESSAGE_SENT, lambda status: print(f"Sent: {status}"))
-service.on_event(WhatsAppEventType.MESSAGE_DELIVERED, lambda status: print(f"Delivered: {status}"))
-service.on_event(WhatsAppEventType.MESSAGE_READ, lambda status: print(f"Read: {status}"))
-```
 
 **Rust**:
-```rust
-use elizaos_plugin_whatsapp::WhatsAppEventType;
-
-service.on_event(WhatsAppEventType::MessageReceived, |payload| {
-    println!("Message received: {:?}", payload);
-}).await;
-
-service.on_event(WhatsAppEventType::MessageSent, |payload| {
-    println!("Message sent: {:?}", payload);
-}).await;
-```
 
 ## Actions
 

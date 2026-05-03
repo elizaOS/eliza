@@ -205,7 +205,7 @@ function readUserPrimarySelection(config: ElizaConfig): {
 
 /**
  * When cloud mode + cloud wallet are both on and the cloud cache holds
- * descriptors, mark the runtime env so plugin-evm / plugin-solana bind
+ * descriptors, mark the runtime env so plugin-wallet binds
  * against the cloud signer rather than a local private key. Writes
  * `WALLET_SOURCE_EVM=cloud` / `WALLET_SOURCE_SOLANA=cloud` and the resolved
  * cloud wallet addresses to config.env (durable across restarts) and to
@@ -795,7 +795,7 @@ export async function runFirstTimeSetup(
 
   // If cloud-mode onboarding already left cloud-wallet descriptors in the
   // config (rare on first run, but possible when resuming a partial flow),
-  // make sure plugin-evm / plugin-solana see WALLET_SOURCE_*=cloud before
+  // make sure plugin-wallet sees WALLET_SOURCE_*=cloud before
   // they load.
   try {
     await bindCloudProvider(topologyUpdated);
