@@ -84,9 +84,9 @@ fi
 SOURCE_SHA="$(git rev-parse "$SOURCE_BRANCH")"
 if git rev-parse --verify --quiet "$BACKUP_BRANCH" >/dev/null; then
   EXISTING_BACKUP_SHA="$(git rev-parse "$BACKUP_BRANCH")"
-  if [ "$EXISTING_BACKUP_SHA" != "$SOURCE_SHA" ]; then
-    echo "Backup branch '$BACKUP_BRANCH' exists at $EXISTING_BACKUP_SHA but $SOURCE_BRANCH is at $SOURCE_SHA." >&2
-    echo "Delete or move the backup branch first." >&2
+  if ! git merge-base --is-ancestor "$EXISTING_BACKUP_SHA" "$SOURCE_SHA"; then
+    echo "Backup branch '$BACKUP_BRANCH' is at $EXISTING_BACKUP_SHA, which is not an ancestor of $SOURCE_BRANCH ($SOURCE_SHA)." >&2
+    echo "The backup must be reachable from $SOURCE_BRANCH (i.e. fast-forward only)." >&2
     exit 1
   fi
   BACKUP_ALREADY_EXISTS=1
