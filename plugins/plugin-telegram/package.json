@@ -35,11 +35,11 @@
   },
   "devDependencies": {
     "@elizaos/config": "1.7.3-alpha.4",
-    "@eslint/js": "^9.17.0",
+    "@eslint/js": "^10.0.1",
     "@typescript-eslint/eslint-plugin": "^8.22.0",
     "@typescript-eslint/parser": "^8.22.0",
-    "eslint": "^9.17.0",
-    "prettier": "3.5.3",
+    "eslint": "^10.3.0",
+    "prettier": "3.8.3",
     "tsup": "8.4.0",
     "vitest": "1.6.1"
   },

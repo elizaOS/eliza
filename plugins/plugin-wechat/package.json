@@ -39,7 +39,7 @@
   },
   "devDependencies": {
     "@elizaos/core": "workspace:*",
-    "tsdown": "^0.12.0",
+    "tsdown": "^0.21.10",
     "typescript": "^6.0.0",
     "vitest": "^4.0.18"
   },

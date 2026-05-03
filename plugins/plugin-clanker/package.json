@@ -52,7 +52,7 @@
   "devDependencies": {
     "@types/bun": "latest",
     "@types/node": "^24.5.2",
-    "prettier": "3.5.3",
+    "prettier": "3.8.3",
     "tsup": "^8.5.0",
     "twitter-api-v2": "^1.27.0",
     "typescript": "^5.9.2"

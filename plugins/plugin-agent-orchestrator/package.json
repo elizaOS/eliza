@@ -37,7 +37,7 @@
     "pty-manager": "1.11.0"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.3.9",
+    "@electric-sql/pglite": "^0.4.5",
     "@elizaos/core": "workspace:*",
     "@types/node": "^25.2.3",
     "bun-types": "latest",

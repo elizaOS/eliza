@@ -16,7 +16,7 @@
     "@types/bn.js": "^5.1.5",
     "dotenv": "^16.5.0",
     "tsup": "8.5.0",
-    "vite-tsconfig-paths": "^4.3.2",
+    "vite-tsconfig-paths": "^6.1.1",
     "vitest": "^2.0.4"
   },
   "scripts": {

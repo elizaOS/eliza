@@ -30,7 +30,7 @@
   "devDependencies": {
     "@types/json-schema": "^7.0.15",
     "@types/node": "24.12.2",
-    "prettier": "3.6.2",
+    "prettier": "3.8.3",
     "tsup": "8.5.1",
     "typescript": "6.0.3",
     "vitest": "4.1.5"

@@ -18,9 +18,9 @@
     },
     "devDependencies": {
         "@biomejs/biome": "1.5.3",
-        "@types/jest": "^27.0.0",
+        "@types/jest": "^30.0.0",
         "@types/node": "^16.0.0",
-        "jest": "^27.0.0",
+        "jest": "^30.3.0",
         "tsup": "^8.3.5",
         "typescript": "^5.0.0"
     },
