@@ -1,0 +1,49 @@
+# Local Kind overrides for gateway-webhook chart
+
+namespace: "eliza-infra"
+
+image:
+  repository: localhost:5001/gateway-webhook
+  tag: dev
+  pullPolicy: Always
+
+imagePullSecrets: []
+
+# Local: use envFrom with flat secret (env var names directly)
+envFrom:
+  - secretRef:
+      name: gateway-webhook-secrets
+
+# Disable individual secretKeyRef (envFrom handles it)
+secrets:
+  name: "gateway-webhook-secrets"
+
+# Fast scale-to-zero for dev
+kedaCooldownSeconds: 60
+
+# Local env overrides
+config:
+  nodeEnv: "development"
+  port: "3000"
+
+# Lighter resources for local
+resources:
+  requests:
+    memory: "128Mi"
+    cpu: "50m"
+  limits:
+    memory: "256Mi"
+    cpu: "250m"
+
+# Disable HPA, PDB, Prometheus for local
+hpa:
+  enabled: false
+pdb:
+  enabled: false
+prometheus:
+  enabled: false
+podAnnotations: {}
+
+# Short graceful shutdown for local (no persistent connections)
+terminationGracePeriodSeconds: 15
+preStopDrainSleepSeconds: 5

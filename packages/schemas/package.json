@@ -19,7 +19,7 @@
     "generate:ts": "buf generate --template buf.gen.ts.yaml",
     "generate:py": "buf generate --template buf.gen.py.yaml",
     "generate:rs": "buf generate --template buf.gen.rs.yaml",
-    "clean": "rm -rf ../typescript/src/types/generated ../python/elizaos/types/generated ../rust/src/types/generated",
+    "clean": "rm -rf ../core/src/types/generated ../typescript/src/types/generated ../python/elizaos/types/generated ../rust/src/types/generated",
     "build": "npm run lint && npm run generate",
     "test": "buf lint --path eliza --disable-symlinks"
   },

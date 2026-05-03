@@ -258,14 +258,14 @@ function Verify-PackagedRendererAssets([string]$LauncherPath) {
       (Join-Path $rendererDir "index.html")
     )
     Assert-PackagedAssetVariants -Description "default avatar VRM" -MinSizeBytes 1024 -Candidates @(
-      (Join-Path $rendererDir "vrms\\milady-1.vrm.gz"),
-      (Join-Path $rendererDir "vrms\\milady-1.vrm")
+      (Join-Path $rendererDir "vrms\\eliza-1.vrm.gz"),
+      (Join-Path $rendererDir "vrms\\eliza-1.vrm")
     )
     Assert-PackagedAssetVariants -Description "default avatar preview" -MinSizeBytes 1024 -Candidates @(
-      (Join-Path $rendererDir "vrms\\previews\\milady-1.png")
+      (Join-Path $rendererDir "vrms\\previews\\eliza-1.png")
     )
     Assert-PackagedAssetVariants -Description "default avatar background" -MinSizeBytes 1024 -Candidates @(
-      (Join-Path $rendererDir "vrms\\backgrounds\\milady-1.png")
+      (Join-Path $rendererDir "vrms\\backgrounds\\eliza-1.png")
     )
     Write-Host "Packaged renderer asset check PASSED (direct app bundle)."
     return
@@ -284,14 +284,14 @@ function Verify-PackagedRendererAssets([string]$LauncherPath) {
     "renderer/index.html"
   )
   Assert-PackagedArchiveAssetVariants -ArchivePath $runtimeArchive.FullName -Description "default avatar VRM" -MinSizeBytes 1024 -Suffixes @(
-    "renderer/vrms/milady-1.vrm.gz",
-    "renderer/vrms/milady-1.vrm"
+    "renderer/vrms/eliza-1.vrm.gz",
+    "renderer/vrms/eliza-1.vrm"
   )
   Assert-PackagedArchiveAssetVariants -ArchivePath $runtimeArchive.FullName -Description "default avatar preview" -MinSizeBytes 1024 -Suffixes @(
-    "renderer/vrms/previews/milady-1.png"
+    "renderer/vrms/previews/eliza-1.png"
   )
   Assert-PackagedArchiveAssetVariants -ArchivePath $runtimeArchive.FullName -Description "default avatar background" -MinSizeBytes 1024 -Suffixes @(
-    "renderer/vrms/backgrounds/milady-1.png"
+    "renderer/vrms/backgrounds/eliza-1.png"
   )
   Write-Host "Packaged renderer asset check PASSED (runtime archive)."
 }

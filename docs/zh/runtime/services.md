@@ -67,7 +67,6 @@ const status = runtime.getServiceRegistrationStatus("trajectories");
 | `knowledge` | Knowledge service | RAG 知识索引和检索 |
 | `trajectories` | `trajectories` | 调试和 RL 训练轨迹捕获 |
 | `@elizaos/plugin-agent-orchestrator` | Orchestrator service | 多代理任务协调和生成 |
-| `@elizaos/plugin-cron` | Cron service | 定时任务执行 |
 | `@elizaos/plugin-shell` | Shell service | 带安全控制的 shell 命令执行 |
 | `@elizaos/plugin-agent-skills` | `AGENT_SKILLS_SERVICE` | 技能目录加载和执行 |
 | `@elizaos/plugin-commands` | Commands service | 斜杠命令处理（技能自动注册为 /commands） |

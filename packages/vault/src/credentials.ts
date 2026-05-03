@@ -74,10 +74,10 @@ export async function setSavedLogin(
   vault: Vault,
   login: Omit<SavedLogin, "lastModified">,
 ): Promise<void> {
-  if (!login.domain || login.domain.trim().length === 0) {
+  if (login.domain.trim().length === 0) {
     throw new TypeError("setSavedLogin: domain required");
   }
-  if (!login.username || login.username.length === 0) {
+  if (login.username.length === 0) {
     throw new TypeError("setSavedLogin: username required");
   }
   if (typeof login.password !== "string" || login.password.length === 0) {

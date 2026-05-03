@@ -9,8 +9,6 @@ TIMESTAMP=$(python3 -c 'import time; print(int(time.time() * 1000))')
 PROFILE="groq"
 ITERATIONS=""
 RUN_TS=true
-RUN_PY=true
-RUN_RS=true
 OUT_DIR="${RESULTS_DIR}"
 DATASET=""
 
@@ -18,9 +16,9 @@ for arg in "$@"; do
   case "$arg" in
     --profile=*) PROFILE="${arg#*=}" ;;
     --iterations=*) ITERATIONS="${arg#*=}" ;;
-    --ts-only) RUN_PY=false; RUN_RS=false ;;
-    --py-only) RUN_TS=false; RUN_RS=false ;;
-    --rs-only) RUN_TS=false; RUN_PY=false ;;
+    --ts-only) ;;
+    --py-only) echo "[voicebench] Python runner removed; use TypeScript only." >&2; exit 1 ;;
+    --rs-only) echo "[voicebench] Rust runner removed; use TypeScript only." >&2; exit 1 ;;
     --output-dir=*) OUT_DIR="${arg#*=}" ;;
     --dataset=*) DATASET="${arg#*=}" ;;
     *) echo "Unknown arg: $arg"; exit 1 ;;
@@ -96,31 +94,6 @@ if $RUN_TS; then
   TS_OUT="${OUT_DIR}/voicebench-typescript-${PROFILE}-${TIMESTAMP}.json"
   (cd "${ROOT_DIR}" && bun run "${SCRIPT_DIR}/typescript/src/bench.ts" "${COMMON_ARGS[@]}" "--output=${TS_OUT}")
   echo "  -> ${TS_OUT}"
-fi
-
-if $RUN_PY; then
-  echo "[voicebench] Python"
-  PY_OUT="${OUT_DIR}/voicebench-python-${PROFILE}-${TIMESTAMP}.json"
-  (cd "${SCRIPT_DIR}/python" && python3 -m src.bench "${COMMON_ARGS[@]}" "--output=${PY_OUT}")
-  echo "  -> ${PY_OUT}"
-fi
-
-if $RUN_RS; then
-  echo "[voicebench] Rust"
-  RS_OUT="${OUT_DIR}/voicebench-rust-${PROFILE}-${TIMESTAMP}.json"
-  if (cd "${SCRIPT_DIR}/rust" && cargo run --release -- "${COMMON_ARGS[@]}" "--output=${RS_OUT}"); then
-    :
-  else
-    RS_BIN="${SCRIPT_DIR}/rust/target/release/voicebench-rust"
-    if [[ -x "${RS_BIN}" ]]; then
-      echo "[voicebench] Rust cargo build failed, using prebuilt binary fallback"
-      (cd "${SCRIPT_DIR}/rust" && "${RS_BIN}" "${COMMON_ARGS[@]}" "--output=${RS_OUT}")
-    else
-      echo "[voicebench] Rust failed and no prebuilt binary found at ${RS_BIN}"
-      exit 1
-    fi
-  fi
-  echo "  -> ${RS_OUT}"
 fi
 
 echo "[voicebench] done"

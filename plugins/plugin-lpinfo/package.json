@@ -1,0 +1,41 @@
+{
+  "name": "@elizaos/plugin-lpinfo",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "type": "module",
+  "types": "dist/index.d.ts",
+  "description": "Liquidity Pool Information plugin for Steer Finance and Kamino Protocol",
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@kamino-finance/kliquidity-sdk": "^8.4.7",
+    "@kamino-finance/klend-sdk": "latest",
+    "@steerprotocol/sdk": "^1.20.1",
+    "@solana/web3.js": "^1.98.2",
+    "@solana/spl-token": "0.4.9",
+    "@coral-xyz/anchor": "^0.31.1",
+    "bignumber.js": "^9.1.2",
+    "bn.js": "^5.2.1"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.5",
+    "@types/node": "^20.0.0"
+  },
+  "scripts": {
+    "build": "tsup --format esm",
+    "dev": "tsup --format esm --watch",
+    "clean": "rm -rf dist",
+    "lint": "prettier --write ./src"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-lpinfo.git"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {}
+  }
+}
+

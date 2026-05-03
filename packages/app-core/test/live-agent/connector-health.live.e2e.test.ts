@@ -19,7 +19,7 @@ import { req } from "../helpers/http.ts";
 import { createLiveRuntimeChildEnv } from "../helpers/live-child-env.ts";
 
 const LIVE =
-  process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
+  process.env.ELIZA_LIVE_TEST === "1";
 const REPO_ROOT = path.resolve(
   import.meta.dirname,
   "..",
@@ -55,7 +55,7 @@ const LIVE_CONNECTOR_SUITE_ENABLED = LIVE && CONFIGURED_CONNECTORS.length > 0;
 
 if (!LIVE_CONNECTOR_SUITE_ENABLED) {
   const warnings = [
-    !LIVE ? "set ELIZA_LIVE_TEST=1 or ELIZA_LIVE_TEST=1" : null,
+    !LIVE ? "set ELIZA_LIVE_TEST=1" : null,
     CONFIGURED_CONNECTORS.length === 0
       ? "provide at least one real connector token (Discord or Telegram) to run connector live tests"
       : null,

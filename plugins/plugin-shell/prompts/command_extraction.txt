@@ -1,0 +1,52 @@
+# Extracting shell command from request
+{{recentMessages}}
+
+# Instructions: {{senderName}} wants to execute a shell command. Extract the COMPLETE shell command they want to run.
+
+IMPORTANT: 
+1. Always return the FULL executable shell command, not just the content or partial command.
+2. If the user mentions installing something, create the appropriate brew/npm/apt command.
+3. If the user directly provides a command (like "brew install X"), use it exactly as provided.
+4. ALWAYS extract a command if the user is asking for ANY kind of system operation.
+
+Common patterns:
+- "run ls -la" -> command: "ls -la"
+- "execute npm test" -> command: "npm test"
+- "show me the files" or "list files" -> command: "ls -la"
+- "what's in this directory" -> command: "ls -la"
+- "check git status" -> command: "git status"
+- "navigate to src folder" -> command: "cd src"
+- "create a file called test.txt" -> command: "touch test.txt"
+- "write hello world to a file" -> command: "echo 'hello world' > file.txt"
+- "create hello.js with javascript code" -> command: "echo 'console.log(\"Hello, World!\");' > hello.js"
+- "create hello_world.py and write a python hello world script inside" -> command: "echo 'print(\"Hello, World!\")' > hello_world.py"
+- "make a new directory" -> command: "mkdir newdir"
+- "list files inside your filesystem" -> command: "ls -la"
+- "install orbstack" or "brew install orbstack" -> command: "brew install orbstack"
+- "install mullvad vpn" -> command: "brew install --cask mullvad-vpn"
+- "get system info" -> command: "system_profiler SPHardwareDataType"
+- "check memory usage" -> command: "vm_stat"
+- "install package" -> command: "brew install <package>"
+
+Special cases:
+- "Run it in your shell" or "execute it" -> Extract the command from previous context
+- "Install these" -> Look for package names in previous messages
+- Direct commands should be used exactly as provided
+
+Key rules:
+1. For file creation with content, use: echo 'content' > filename
+2. For listing files, use: ls -la (not just ls)
+3. Always include the echo command when writing to files
+4. Include all flags and arguments
+5. When user says "run it", "execute it", or similar, they want you to run the command
+
+Your response must be formatted as a JSON block:
+```json
+{
+  "command": "<complete shell command to execute>"
+}
+```
+
+
+
+

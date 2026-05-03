@@ -12,12 +12,6 @@ benchmarks_path = Path(__file__).parent.parent.parent
 if str(benchmarks_path) not in sys.path:
     sys.path.insert(0, str(benchmarks_path))
 
-# Also add the packages/python directory for elizaos imports
-packages_path = benchmarks_path.parent / "packages" / "python"
-if str(packages_path) not in sys.path:
-    sys.path.insert(0, str(packages_path))
-
-
 @pytest.fixture
 def sample_task():
     """Create a sample MINT task for testing."""

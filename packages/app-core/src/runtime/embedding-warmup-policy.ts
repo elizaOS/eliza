@@ -22,14 +22,12 @@ export function shouldWarmupLocalEmbeddingModel(): boolean {
   if (
     isTruthyEnv(
       "ELIZA_DISABLE_LOCAL_EMBEDDINGS",
-      "ELIZA_DISABLE_LOCAL_EMBEDDINGS",
     )
   ) {
     return false;
   }
 
   const cloudEmbeddingsRoutedLocally = isTruthyEnv(
-    "ELIZA_CLOUD_EMBEDDINGS_DISABLED",
     "ELIZA_CLOUD_EMBEDDINGS_DISABLED",
   );
 

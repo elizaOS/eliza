@@ -50,7 +50,7 @@ export class CalendlyClient {
   private readonly fetchImpl: FetchLike;
 
   constructor(options: CalendlyClientOptions) {
-    if (!options.accessToken || options.accessToken.length === 0) {
+    if (options.accessToken.length === 0) {
       throw new Error("CalendlyClient requires a non-empty accessToken");
     }
     this.accessToken = options.accessToken;

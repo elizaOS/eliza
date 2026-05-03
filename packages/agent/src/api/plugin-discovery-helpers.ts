@@ -635,10 +635,7 @@ export const BLOCKED_ENV_KEYS = new Set([
   "SHELL",
   // Auth / step-up tokens — writable via API would grant privilege escalation
   "ELIZA_API_TOKEN",
-  "ELIZA_API_TOKEN",
   "ELIZA_WALLET_EXPORT_TOKEN",
-  "ELIZA_WALLET_EXPORT_TOKEN",
-  "ELIZA_TERMINAL_RUN_TOKEN",
   "ELIZA_TERMINAL_RUN_TOKEN",
   "HYPERSCAPE_AUTH_TOKEN",
   // Wallet private keys — writable via API would enable key theft / replacement

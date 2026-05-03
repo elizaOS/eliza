@@ -12,7 +12,7 @@ import {
 import { createLiveRuntimeChildEnv } from "../../../../../eliza/test/helpers/live-child-env.ts";
 
 export const LIVE_TESTS_ENABLED =
-  process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
+  process.env.ELIZA_LIVE_TEST === "1";
 export const LIVE_PROVIDER_OVERRIDE =
   process.env.ELIZA_LIVE_PROVIDER?.trim().toLowerCase() ?? "";
 export const LIVE_CHAT_TEST_TIMEOUT_MS = 300_000;
@@ -317,7 +317,7 @@ export function getLifeOpsLiveSetupWarnings(
   selectedProvider: SelectedLiveProvider | null,
 ): string[] {
   return [
-    !LIVE_TESTS_ENABLED ? "set ELIZA_LIVE_TEST=1 or ELIZA_LIVE_TEST=1" : null,
+    !LIVE_TESTS_ENABLED ? "set ELIZA_LIVE_TEST=1" : null,
     !selectedProvider
       ? "provide a live provider key such as OPENAI_API_KEY, OPENROUTER_API_KEY, GOOGLE_API_KEY, ANTHROPIC_API_KEY, or GROQ_API_KEY, or configure cloud.apiKey in the Eliza config"
       : null,

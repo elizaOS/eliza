@@ -1,0 +1,73 @@
+/* Steward docs — warm dark theme to match landing page */
+
+:root {
+  --background-dark: #0b0a09;
+  --background-dark-elevated: #141210;
+  --background-dark-surface: #1c1a17;
+}
+
+/* Dark mode overrides */
+.dark {
+  --tw-prose-body: #9c9788;
+  --tw-prose-headings: #e8e5e0;
+  --tw-prose-links: #D4740A;
+  --tw-prose-code: #e8e5e0;
+}
+
+/* Warm-tinted dark backgrounds */
+.dark body,
+.dark .bg-background {
+  background-color: #0b0a09 !important;
+}
+
+.dark .bg-background-dark {
+  background-color: #0b0a09 !important;
+}
+
+/* Sidebar warm tint */
+.dark nav[aria-label="Main"],
+.dark [data-testid="sidebar"] {
+  background-color: #0b0a09 !important;
+  border-color: #1f1d1a !important;
+}
+
+/* Card/surface warm tint */
+.dark .bg-card,
+.dark [class*="card"] {
+  background-color: #141210 !important;
+  border-color: #2a2722 !important;
+}
+
+/* Code blocks — match landing page elevated bg */
+.dark pre,
+.dark code {
+  background-color: #141210 !important;
+  border-color: #2a2722 !important;
+}
+
+/* Borders — warm tint */
+.dark [class*="border"] {
+  border-color: #1f1d1a;
+}
+
+/* Selection highlight — amber */
+::selection {
+  background: rgba(212, 116, 10, 0.3);
+  color: #e8e5e0;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #2a2722;
+  border-radius: 3px;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #6b6560;
+}

@@ -9,14 +9,14 @@ at those local URLs via env vars instead of hitting real services.
 
 | File                                  | Mocks                                | Env var                                                  |
 | ------------------------------------- | ------------------------------------ | -------------------------------------------------------- |
-| `environments/twilio.json`            | Twilio Programmable Messaging/Voice  | `ELIZA_MOCK_TWILIO_BASE` / `ELIZA_MOCK_TWILIO_BASE`     |
-| `environments/whatsapp.json`          | WhatsApp Business Cloud (Meta Graph) | `ELIZA_MOCK_WHATSAPP_BASE` / `ELIZA_MOCK_WHATSAPP_BASE` |
-| `environments/calendly.json`          | Calendly v2                          | `ELIZA_MOCK_CALENDLY_BASE` / `ELIZA_MOCK_CALENDLY_BASE` |
-| `environments/x-twitter.json`         | X (Twitter) v2                       | `ELIZA_MOCK_X_BASE` / `ELIZA_MOCK_X_BASE`               |
-| `environments/google.json`            | Gmail / Calendar / OAuth token       | `ELIZA_MOCK_GOOGLE_BASE` / `ELIZA_MOCK_GOOGLE_BASE`     |
+| `environments/twilio.json`            | Twilio Programmable Messaging/Voice  | `ELIZA_MOCK_TWILIO_BASE`     |
+| `environments/whatsapp.json`          | WhatsApp Business Cloud (Meta Graph) | `ELIZA_MOCK_WHATSAPP_BASE` |
+| `environments/calendly.json`          | Calendly v2                          | `ELIZA_MOCK_CALENDLY_BASE` |
+| `environments/x-twitter.json`         | X (Twitter) v2                       | `ELIZA_MOCK_X_BASE`               |
+| `environments/google.json`            | Gmail / Calendar / OAuth token       | `ELIZA_MOCK_GOOGLE_BASE`     |
 | `environments/cloud-managed.json`     | Eliza Cloud managed-Google endpoints | `ELIZA_CLOUD_BASE_URL`                                   |
 | `environments/signal.json`            | signal-cli HTTP receive/send         | `SIGNAL_HTTP_URL`                                        |
-| `environments/browser-workspace.json` | Desktop browser workspace bridge     | `ELIZA_BROWSER_WORKSPACE_URL` / `ELIZA_BROWSER_WORKSPACE_TOKEN` / `ELIZA_DISABLE_DISCORD_DESKTOP_CDP` / `ELIZA_DISABLE_DISCORD_DESKTOP_CDP` |
+| `environments/browser-workspace.json` | Desktop browser workspace bridge     | `ELIZA_BROWSER_WORKSPACE_URL` / `ELIZA_BROWSER_WORKSPACE_TOKEN` / `ELIZA_DISABLE_DISCORD_DESKTOP_CDP` |
 | `environments/bluebubbles.json`       | BlueBubbles iMessage HTTP API        | `ELIZA_BLUEBUBBLES_URL`                                  |
 | `environments/github.json`            | GitHub REST plus Octokit fixtures    | `ELIZA_MOCK_GITHUB_BASE`                                 |
 

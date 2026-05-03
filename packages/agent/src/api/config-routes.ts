@@ -393,10 +393,7 @@ export async function handleConfigRoutes(
       // sync below. Keeping both guards prevents accidental persistence if one
       // path changes in future refactors.
       delete envPatch.ELIZA_API_TOKEN;
-      delete envPatch.ELIZA_API_TOKEN;
       delete envPatch.ELIZA_WALLET_EXPORT_TOKEN;
-      delete envPatch.ELIZA_WALLET_EXPORT_TOKEN;
-      delete envPatch.ELIZA_TERMINAL_RUN_TOKEN;
       delete envPatch.ELIZA_TERMINAL_RUN_TOKEN;
       delete envPatch.HYPERSCAPE_AUTH_TOKEN;
       delete envPatch.EVM_PRIVATE_KEY;
@@ -409,10 +406,7 @@ export async function handleConfigRoutes(
       ) {
         const vars = envPatch.vars as Record<string, unknown>;
         delete vars.ELIZA_API_TOKEN;
-        delete vars.ELIZA_API_TOKEN;
         delete vars.ELIZA_WALLET_EXPORT_TOKEN;
-        delete vars.ELIZA_WALLET_EXPORT_TOKEN;
-        delete vars.ELIZA_TERMINAL_RUN_TOKEN;
         delete vars.ELIZA_TERMINAL_RUN_TOKEN;
         delete vars.HYPERSCAPE_AUTH_TOKEN;
         delete vars.EVM_PRIVATE_KEY;

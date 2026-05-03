@@ -28,7 +28,7 @@ export function resolveBaseUrls(
     .map((value) => value.trim())
     .filter(Boolean);
   const legacyEnv =
-    env.ELIZA_DEPLOY_BASE_URL?.trim() || env.ELIZA_DEPLOY_BASE_URL?.trim();
+    env.ELIZA_DEPLOY_BASE_URL?.trim();
   if (legacyEnv) {
     envList.push(legacyEnv);
   }
@@ -48,7 +48,7 @@ export async function runSmokeApiStatus(options = {}) {
   const bases = resolveBaseUrls(argv, env);
   if (bases.length === 0) {
     error(
-      "[smoke-api-status] Missing base URLs. Pass args or set ELIZA_DEPLOY_BASE_URLS or ELIZA_DEPLOY_BASE_URLS.",
+      "[smoke-api-status] Missing base URLs. Pass args or set ELIZA_DEPLOY_BASE_URLS.",
     );
     return 2;
   }

@@ -15,7 +15,6 @@
     "eliza/packages/app-core/platforms/electrobun",
     "eliza/apps/*",
     "eliza/plugins/*",
-    "eliza/plugins/plugin-*/typescript",
     "eliza/packages/*"
   ],
   "scripts": {

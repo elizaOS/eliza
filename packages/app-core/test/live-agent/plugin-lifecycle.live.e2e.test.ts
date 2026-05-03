@@ -30,7 +30,7 @@ const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
 loadDotenv({ path: path.join(REPO_ROOT, ".env") });
 
 const LIVE =
-  process.env.ELIZA_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
+  process.env.ELIZA_LIVE_TEST === "1";
 const FILTER_TOKENS = (process.env.ELIZA_PLUGIN_LIFECYCLE_FILTER ?? "")
   .split(",")
   .map((value) => value.trim())

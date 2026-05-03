@@ -16,13 +16,6 @@ updates:
     schedule:
       interval: "weekly"
 
-  # Python — main package
-  - package-ecosystem: "pip"
-    directory: "/packages/python"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 3
-
   # Python benchmarks (kept on weekly cadence; demo / research code)
   - package-ecosystem: "pip"
     directory: "/packages/benchmarks/OSWorld"

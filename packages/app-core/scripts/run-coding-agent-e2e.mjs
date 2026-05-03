@@ -27,7 +27,6 @@ const result = spawnSync(
   [
     "eliza/packages/app-core/scripts/run-with-env.mjs",
     "ELIZA_LIVE_TEST=1",
-    "ELIZA_LIVE_TEST=1",
     "--",
     "bunx",
     "vitest",

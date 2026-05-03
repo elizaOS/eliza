@@ -23,10 +23,9 @@ export async function loadMergedCatalogApps({
   const installedApps =
     installedAppsResult.status === "fulfilled" ? installedAppsResult.value : [];
   const staticApps = [...getInternalToolApps(), ...catalogApps];
-  // `getAvailableOverlayApps()` drops `androidOnly: true` apps off Android
-  // so the WiFi / Contacts / Phone tiles never appear on iOS, desktop, or
-  // web — those builds have no Capacitor native bridge to satisfy the
-  // app's actions.
+  // `getAvailableOverlayApps()` drops `androidOnly: true` apps outside
+  // MiladyOS Android so WiFi / Contacts / Phone tiles never appear in stock
+  // Android, iOS, desktop, or web builds.
   const overlayApps = getAvailableOverlayApps()
     .filter(
       (app) => !staticApps.some((candidate) => candidate.name === app.name),

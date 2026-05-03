@@ -1,0 +1,6 @@
+.env
+.env.*
+!__tests__/.env.example
+dist
+node_modules
+.turbo

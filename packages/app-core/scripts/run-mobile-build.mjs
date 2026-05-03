@@ -1576,8 +1576,8 @@ export function resolveIosBuildTarget({
   appDirValue = appDir,
 } = {}) {
   const explicitDestination =
-    env.ELIZA_IOS_BUILD_DESTINATION ?? env.ELIZA_IOS_BUILD_DESTINATION;
-  const explicitSdk = env.ELIZA_IOS_BUILD_SDK ?? env.ELIZA_IOS_BUILD_SDK;
+    env.ELIZA_IOS_BUILD_DESTINATION;
+  const explicitSdk = env.ELIZA_IOS_BUILD_SDK;
 
   if (explicitDestination || explicitSdk) {
     return {

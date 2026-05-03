@@ -47,6 +47,7 @@ export interface TrajectoryLlmCall {
   prompt: string;
   systemPrompt?: string;
   response: string;
+  error?: string;
   /** Heuristic classification: "action_planner", "should_respond", "reply", "embedding", "other". */
   purpose: string;
 }
@@ -210,6 +211,25 @@ function memoryToTranscriptEntry(m: Memory): {
     ? actionsRaw.filter((a): a is string => typeof a === "string")
     : undefined;
   return { text, actions };
+}
+
+export function serializeLlmCallResult(result: unknown): {
+  response: string;
+  error?: string;
+} {
+  if (result && typeof result === "object") {
+    const error = (result as { error?: unknown }).error;
+    if (typeof error === "string" && error.trim()) {
+      return {
+        response: safeStringify(result),
+        error,
+      };
+    }
+  }
+
+  return {
+    response: typeof result === "string" ? result : safeStringify(result),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -435,8 +455,7 @@ export class RecordingHarness {
       typeof paramsRecord.systemPrompt === "string"
         ? paramsRecord.systemPrompt
         : undefined;
-    const response =
-      typeof result === "string" ? result : safeStringify(result);
+    const serializedResult = serializeLlmCallResult(result);
     this.llmCalls.push({
       callId: id,
       timestamp: start,
@@ -444,8 +463,9 @@ export class RecordingHarness {
       modelType,
       prompt,
       systemPrompt,
-      response,
-      purpose: classifyLlmPurpose(prompt, response, modelType),
+      response: serializedResult.response,
+      error: serializedResult.error,
+      purpose: classifyLlmPurpose(prompt, serializedResult.response, modelType),
     });
   }
 

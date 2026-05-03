@@ -1503,7 +1503,7 @@ export const manageElizaBrowserWorkspaceAction: Action = {
 
     if (
       request.subaction === "batch" &&
-      (!request.steps || request.steps.length === 0)
+      (request.steps.length === 0)
     ) {
       const text =
         "Browser batch mode requires stepsJson with at least one subaction step.";

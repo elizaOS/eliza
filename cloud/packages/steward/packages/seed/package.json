@@ -1,0 +1,16 @@
+{
+  "name": "@stwd/seed",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "seed": "bun src/index.ts"
+  },
+  "dependencies": {
+    "@stwd/db": "workspace:*",
+    "@stwd/vault": "workspace:*",
+    "viem": "^2.30.0"
+  },
+  "description": "Database seed scripts for local development and demos"
+}

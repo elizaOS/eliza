@@ -1,18 +1,23 @@
 import type { PendingApproval } from "./pending.js";
 
-export class WalletBackendNotConfiguredError extends Error {
-	readonly code: "EVM_PRIVATE_KEY_MISSING" | "SOLANA_PRIVATE_KEY_MISSING";
+export type WalletBackendNotConfiguredCode =
+	| "EVM_PRIVATE_KEY_MISSING"
+	| "SOLANA_PRIVATE_KEY_MISSING"
+	| "NO_WALLET_CONFIGURED";
 
-	constructor(
-		code: "EVM_PRIVATE_KEY_MISSING" | "SOLANA_PRIVATE_KEY_MISSING",
-		message?: string,
-	) {
-		super(
-			message ??
-				(code === "EVM_PRIVATE_KEY_MISSING"
-					? "EVM private key is not configured. Set EVM_PRIVATE_KEY (or hydrate from the OS keychain) before using wallet actions."
-					: "Solana private key is not configured. Set SOLANA_PRIVATE_KEY (base58; or hydrate from the OS keychain) before using wallet actions."),
-		);
+export class WalletBackendNotConfiguredError extends Error {
+	readonly code: WalletBackendNotConfiguredCode;
+
+	constructor(code: WalletBackendNotConfiguredCode, message?: string) {
+		const defaults: Record<WalletBackendNotConfiguredCode, string> = {
+			EVM_PRIVATE_KEY_MISSING:
+				"EVM private key is not configured. Set EVM_PRIVATE_KEY (or hydrate from the OS keychain) before using EVM wallet actions.",
+			SOLANA_PRIVATE_KEY_MISSING:
+				"Solana private key is not configured. Set SOLANA_PRIVATE_KEY (base58; or hydrate from the OS keychain) before using Solana wallet actions.",
+			NO_WALLET_CONFIGURED:
+				"No wallet keys are configured. Set at least EVM_PRIVATE_KEY and/or SOLANA_PRIVATE_KEY (local), or use Steward (cloud).",
+		};
+		super(message ?? defaults[code]);
 		this.name = "WalletBackendNotConfiguredError";
 		this.code = code;
 	}

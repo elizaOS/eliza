@@ -118,53 +118,65 @@ class LocalSolanaSigner implements SolanaSigner {
 export class LocalEoaBackend implements WalletBackend {
 	readonly kind = "local" as const;
 
-	private readonly evmAccount: ReturnType<typeof privateKeyToAccount>;
+	private readonly evmAccount: ReturnType<typeof privateKeyToAccount> | null;
 
-	private readonly solanaSigner: SolanaSigner;
+	private readonly solanaSigner: SolanaSigner | null;
 
-	private constructor(
-		evmHex: Hex,
-		solanaKeypair: Keypair,
-	) {
-		this.evmAccount = privateKeyToAccount(evmHex);
-		this.solanaSigner = new LocalSolanaSigner(solanaKeypair);
+	private constructor(evmHex: Hex | null, solanaKeypair: Keypair | null) {
+		this.evmAccount = evmHex ? privateKeyToAccount(evmHex) : null;
+		this.solanaSigner = solanaKeypair
+			? new LocalSolanaSigner(solanaKeypair)
+			: null;
 	}
 
 	static async create(runtime: IAgentRuntime): Promise<LocalEoaBackend> {
 		const evm = resolveEvmPrivateKey(runtime);
-		if (!evm) {
-			throw new WalletBackendNotConfiguredError("EVM_PRIVATE_KEY_MISSING");
-		}
 		const kp = resolveSolanaKeypair(runtime);
-		if (!kp) {
-			throw new WalletBackendNotConfiguredError(
-				"SOLANA_PRIVATE_KEY_MISSING",
-			);
+		if (!evm && !kp) {
+			throw new WalletBackendNotConfiguredError("NO_WALLET_CONFIGURED");
 		}
 		return new LocalEoaBackend(evm, kp);
 	}
 
 	getAddresses(): WalletAddresses {
 		return {
-			evm: this.evmAccount.address,
-			solana: this.solanaSigner.publicKey,
+			evm: this.evmAccount?.address ?? null,
+			solana: this.solanaSigner?.publicKey ?? null,
 		};
 	}
 
-	canSign(_chainHint: "evm" | "solana" | "off-chain"): boolean {
-		return true;
+	canSign(chainHint: "evm" | "solana" | "off-chain"): boolean {
+		if (chainHint === "evm") {
+			return this.evmAccount !== null;
+		}
+		if (chainHint === "solana") {
+			return this.solanaSigner !== null;
+		}
+		return this.evmAccount !== null;
 	}
 
 	getEvmAccount(_chainId: number) {
+		void _chainId;
+		if (!this.evmAccount) {
+			throw new WalletBackendNotConfiguredError("EVM_PRIVATE_KEY_MISSING");
+		}
 		return this.evmAccount;
 	}
 
 	getSolanaSigner(): SolanaSigner {
+		if (!this.solanaSigner) {
+			throw new WalletBackendNotConfiguredError(
+				"SOLANA_PRIVATE_KEY_MISSING",
+			);
+		}
 		return this.solanaSigner;
 	}
 
 	async signMessage(scope: SignScope, message: Hex): Promise<SignResult> {
 		void scope;
+		if (!this.evmAccount) {
+			throw new WalletBackendNotConfiguredError("EVM_PRIVATE_KEY_MISSING");
+		}
 		const sig = await this.evmAccount.signMessage({
 			message: { raw: hexToBytes(message) },
 		});
@@ -176,6 +188,9 @@ export class LocalEoaBackend implements WalletBackend {
 		typedData: TypedDataDefinition,
 	): Promise<SignResult> {
 		void scope;
+		if (!this.evmAccount) {
+			throw new WalletBackendNotConfiguredError("EVM_PRIVATE_KEY_MISSING");
+		}
 		const sig = await this.evmAccount.signTypedData(typedData);
 		return { kind: "signature", signature: sig };
 	}

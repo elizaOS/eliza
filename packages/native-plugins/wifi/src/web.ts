@@ -17,7 +17,7 @@ let warned = false;
 function warnOnce(): void {
   if (warned) return;
   warned = true;
-  console.warn(`[MiladyWiFi] ${UNAVAILABLE_MESSAGE}`);
+  console.warn(`[ElizaWiFi] ${UNAVAILABLE_MESSAGE}`);
 }
 
 /**

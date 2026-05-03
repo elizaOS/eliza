@@ -15,15 +15,15 @@ import java.lang.reflect.Method;
 
 public class MainActivity extends BridgeActivity {
 
-    private static final String TAG = "MiladyMainActivity";
+    private static final String TAG = "ElizaMainActivity";
     private static final int REQUEST_NOTIFICATION_PERMISSION = 1001;
 
-    // Set by the AOSP product config (vendor/milady/milady_common.mk) on
-    // every MiladyOS image; absent on stock Android. Reading it is the
-    // signal that this APK is running as the system app on a Milady
+    // Set by the AOSP product config (vendor/eliza/eliza_common.mk) on
+    // every ElizaOS image; absent on stock Android. Reading it is the
+    // signal that this APK is running as the system app on a Eliza
     // device, vs. installed on a vanilla phone where Eliza Cloud / Remote
     // / Local must remain user-selectable in the RuntimeGate picker.
-    private static final String MILADYOS_PRODUCT_PROP = "ro.miladyos.product";
+    private static final String ELIZAOS_PRODUCT_PROP = "ro.elizaos.product";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -42,7 +42,7 @@ public class MainActivity extends BridgeActivity {
         if (getBridge() != null && getBridge().getWebView() != null) {
             WebSettings settings = getBridge().getWebView().getSettings();
             settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-            applyMiladyOSUserAgentSuffix(settings);
+            applyElizaOSUserAgentSuffix(settings);
         }
 
         // Android 13+ requires explicit POST_NOTIFICATIONS permission for the
@@ -72,23 +72,23 @@ public class MainActivity extends BridgeActivity {
     }
 
     /**
-     * Append `MiladyOS/<tag>` to the WebView's user-agent string when the
-     * AOSP-set system property `ro.miladyos.product` is present. The web
-     * layer (`platform/init.ts → isMiladyOS()`) sniffs this suffix to
+     * Append `ElizaOS/<tag>` to the WebView's user-agent string when the
+     * AOSP-set system property `ro.elizaos.product` is present. The web
+     * layer (`platform/init.ts → isElizaOS()`) sniffs this suffix to
      * decide whether the RuntimeGate "Choose your setup" picker is
-     * bypassed (MiladyOS) or rendered (vanilla Android APK).
+     * bypassed (ElizaOS) or rendered (vanilla Android APK).
      *
      * `android.os.SystemProperties` is hidden API but accessible via
      * reflection from the system app; on stock Android it returns "" and
      * we leave the user-agent untouched, preserving the picker.
      */
-    private void applyMiladyOSUserAgentSuffix(WebSettings settings) {
-        String tag = readSystemProperty(MILADYOS_PRODUCT_PROP);
+    private void applyElizaOSUserAgentSuffix(WebSettings settings) {
+        String tag = readSystemProperty(ELIZAOS_PRODUCT_PROP);
         if (tag == null || tag.isEmpty()) {
             return;
         }
         String currentUa = settings.getUserAgentString();
-        String marker = "MiladyOS/" + tag;
+        String marker = "ElizaOS/" + tag;
         if (currentUa != null && currentUa.contains(marker)) {
             return;
         }

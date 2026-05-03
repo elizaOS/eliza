@@ -1,0 +1,30 @@
+Given the recent messages and wallet information below:
+
+{{recentMessages}}
+
+{{walletInfo}}
+
+Extract the following information about the requested proposal:
+- Targets
+- Values
+- Calldatas
+- Description
+- Governor address
+- Chain to execute on
+
+Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined:
+
+```json
+{
+    "targets": string[] | null,
+    "values": string[] | null,
+    "calldatas": string[] | null,
+    "description": string | null,
+    "governor": string | null,
+    "chain": string | null
+}
+```
+
+
+
+

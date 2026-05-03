@@ -44,7 +44,7 @@ import { createDummyProviders, mockLlmPlugin } from "./mock-llm-plugin.js";
  */
 async function loadOpenAIPlugin(): Promise<Plugin> {
   const mod = (await import(
-    "../../../../plugins/plugin-openai/typescript/index.js"
+    "../../../../plugins/plugin-openai/index.js"
   )) as { openaiPlugin: Plugin; default: Plugin };
   return mod.openaiPlugin ?? mod.default;
 }

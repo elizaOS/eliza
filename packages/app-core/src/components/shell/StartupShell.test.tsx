@@ -16,7 +16,7 @@ vi.mock("../../api", () => ({
 }));
 
 vi.mock("../../events", () => ({
-  CONNECT_EVENT: "milady:test-connect",
+  CONNECT_EVENT: "eliza:test-connect",
 }));
 
 vi.mock("../../onboarding/mobile-runtime-mode", () => ({

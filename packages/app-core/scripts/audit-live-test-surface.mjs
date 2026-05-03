@@ -54,7 +54,6 @@ const STUB_PATTERNS = [
 ];
 const HARNESS_BLOCKER_PATTERNS = [
   { id: "ELIZA_LIVE_TEST=0", regex: /ELIZA_LIVE_TEST\s*=\s*["']0["']/g },
-  { id: "ELIZA_LIVE_TEST=0", regex: /ELIZA_LIVE_TEST\s*=\s*["']0["']/g },
   {
     id: "ELIZA_SKIP_STEWARD_FI_LIVE_SMOKE=1",
     regex: /ELIZA_SKIP_STEWARD_FI_LIVE_SMOKE\s*=\s*["']1["']/g,
@@ -222,7 +221,7 @@ function applyFileAllowances(text, counts) {
   if (
     text.includes("@eliza-live-audit allow-route-fixtures") ||
     text.includes("@agent-live-audit allow-route-fixtures") ||
-    text.includes("@milady-live-audit allow-route-fixtures")
+    text.includes("@eliza-live-audit allow-route-fixtures")
   ) {
     counts["page.route"] = 0;
     counts.fulfillJson = 0;

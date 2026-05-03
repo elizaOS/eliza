@@ -105,7 +105,6 @@ export function isWorkspaceDependency(version: string | undefined): boolean {
 
 const DISCORD_PLUGIN_PACKAGE_NAME = "@elizaos/plugin-discord";
 const DISCORD_PLUGIN_LOCAL_ENTRY_CANDIDATES = [
-  "../../plugins/plugin-discord/typescript/dist/index",
   "../../plugins/plugin-discord/dist/index",
 ] as const;
 
