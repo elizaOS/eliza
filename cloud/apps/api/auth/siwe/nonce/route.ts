@@ -1,22 +1,23 @@
 /**
  * GET /api/auth/siwe/nonce
  * Returns a one-time nonce + SIWE message parameters (EIP-4361).
+ *
+ * Redis is built per-request via `buildRedisClient(c.env)` rather than going
+ * through the module-level `cache` singleton, which is currently disabled in
+ * production (`CACHE_ENABLED=false`) because its lazy-opened socket is bound
+ * to the first request's I/O context on Cloudflare Workers. This bypass is a
+ * targeted hotfix; the singleton is replaced by an ALS facade in a follow-up.
  */
 
 import { Hono } from "hono";
-import { cache } from "@/lib/cache/client";
-import { CacheKeys, CacheTTL } from "@/lib/cache/keys";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import { buildRedisClient } from "@/lib/cache/redis-factory";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { getAppHost, getAppUrl } from "@/lib/utils/app-url";
-import type { AppEnv } from "@/types/cloud-worker-env";
-
-function randomHex(bytes: number): string {
-  const arr = new Uint8Array(bytes);
-  crypto.getRandomValues(arr);
-  return Array.from(arr)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
+import { issueNonce } from "@/lib/utils/siwe-helpers";
+import type { AppEnv, Bindings } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
@@ -26,12 +27,12 @@ app.get("/", async (c) => {
   const chainIdRaw = c.req.query("chainId") ?? "1";
   const chainId = Number.parseInt(chainIdRaw, 10);
 
-  if (!cache.isAvailable()) {
+  const redis = buildRedisClient(c.env as Bindings);
+  if (!redis) {
     return c.json({ error: "Nonce storage unavailable" }, 503);
   }
 
-  const nonce = randomHex(16);
-  await cache.set(CacheKeys.siwe.nonce(nonce), nonce, CacheTTL.siwe.nonce);
+  const nonce = await issueNonce(redis);
 
   return c.json(
     {
