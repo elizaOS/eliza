@@ -85,7 +85,7 @@ dependencies = [
     'pyobjc; platform_system == "Darwin"',
     'pywinauto; platform_system == "Windows"',
     'pywin32; platform_system == "Windows"',
-    "tldextract>=5.3.0",
+    "tldextract>=5.3.1",
 ]
 
 [tool.uv]
