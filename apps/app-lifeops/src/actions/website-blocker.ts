@@ -14,6 +14,7 @@ import {
   getSelfControlAccess,
   SELFCONTROL_ACCESS_ERROR,
 } from "../website-blocker/access.ts";
+import { hasActiveHarshNoBypassRule } from "../website-blocker/chat-integration/harsh-mode-check.ts";
 import {
   formatWebsiteList,
   type getSelfControlPermissionState,
@@ -956,6 +957,16 @@ export const unblockWebsitesAction: Action = {
       return {
         success: false,
         text: access.reason ?? SELFCONTROL_ACCESS_ERROR,
+      };
+    }
+
+    if (await hasActiveHarshNoBypassRule(runtime)) {
+      return {
+        success: false,
+        text: "You set a harsh-no-bypass rule for this — clear the rule first via the rule manager. The reconciler would re-create the block on its next tick anyway.",
+        data: {
+          refusedByHarshNoBypassRule: true,
+        },
       };
     }
 
