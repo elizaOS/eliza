@@ -24,7 +24,7 @@ export const minecraftDigAction: Action = {
       __avKeywords.length > 0 && __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
     const __avRegex = /\b(?:dig)\b/i;
     const __avRegexOk = __avRegex.test(__avText);
-    const __avSource = String(message?.content?.source ?? message?.source ?? "");
+    const __avSource = String(message?.content?.source ?? "");
     const __avExpectedSource = "";
     const __avSourceOk = __avExpectedSource
       ? __avSource === __avExpectedSource

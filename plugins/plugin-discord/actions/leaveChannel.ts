@@ -213,7 +213,7 @@ export const leaveChannel: Action = {
 		const __avRegex = /\b(?:leave|channel)\b/i;
 		const __avRegexOk = __avRegex.test(__avText);
 		const __avSource = String(
-			message?.content?.source ?? message?.source ?? "",
+			message?.content?.source ?? "",
 		);
 		const __avExpectedSource = "";
 		const __avSourceOk = __avExpectedSource

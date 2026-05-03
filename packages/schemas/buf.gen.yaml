@@ -8,8 +8,8 @@ managed:
       value: github.com/elizaos/eliza/gen/go
 
 plugins:
-  # TypeScript generation using @bufbuild/protobuf
-  - remote: buf.build/bufbuild/es:v2.2.2
+  # TypeScript generation using local protoc-gen-es (avoids BSR remote plugin rate limits).
+  - local: protoc-gen-es
     out: ../core/src/types/generated
     opt:
       - target=ts
