@@ -1,8 +1,4 @@
 {
-  "acp": {
-    "description": "Agent Communication Protocol connector for linking agents through an ACP gateway.",
-    "tags": ["connector", "agents", "gateway", "realtime"]
-  },
   "anthropic": {
     "description": "Anthropic model provider for Claude chat and reasoning models.",
     "tags": ["ai-provider", "llm", "anthropic", "chat"]

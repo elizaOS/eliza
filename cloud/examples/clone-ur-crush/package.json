@@ -12,7 +12,7 @@
   "dependencies": {
     "@fal-ai/client": "^1.7.0",
     "@privy-io/react-auth": "^1.90.0",
-    "ai": "^4.0.38",
+    "ai": "^6.0.174",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.468.0",

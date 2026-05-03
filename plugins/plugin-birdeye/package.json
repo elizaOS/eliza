@@ -36,7 +36,7 @@
         "check": "biome check --apply ."
     },
     "peerDependencies": {
-        "form-data": "4.0.1",
+        "form-data": "4.0.5",
         "whatwg-url": "7.1.0"
     },
     "agentConfig": {
