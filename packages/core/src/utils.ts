@@ -1,4 +1,3 @@
-import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import Handlebars from "handlebars";
 import z from "zod";
 
@@ -16,6 +15,7 @@ import {
 	buildDeterministicSeed,
 	getDeterministicNames,
 } from "./utils/deterministic";
+import { RecursiveCharacterTextSplitter } from "./utils/recursive-character-text-splitter";
 import { extractAndParseJSONObjectFromText } from "./utils/json-llm";
 import {
 	mergeStructuredRecords,
