@@ -9,6 +9,7 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": false,
+    "ignoreDeprecations": "6.0",
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "declaration": false,
