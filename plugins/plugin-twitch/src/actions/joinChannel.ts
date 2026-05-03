@@ -56,9 +56,7 @@ export const joinChannel: Action = {
     const __avRegexOk =
       __avRegex.test(__avText) ||
       String(message?.content?.source ?? "") === "twitch";
-    const __avSource = String(
-      message?.content?.source ?? "",
-    );
+    const __avSource = String(message?.content?.source ?? "");
     const __avExpectedSource = "twitch";
     const __avSourceOk = __avExpectedSource
       ? __avSource === __avExpectedSource
