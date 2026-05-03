@@ -66,4 +66,35 @@ describe("sleep-cycle check-in dispatch", () => {
       }),
     ).toBe(false);
   });
+
+  it("runs the night check-in immediately on circadianState=winding_down even when the bedtime window is hours out", () => {
+    // bedtime is 8h away (480 min) — well outside NIGHT_CHECKIN_LEAD_MINUTES
+    // (180 min) — but HID-idle/desktop-lock signals already classify the user
+    // as winding_down, so the night summary should fire on the early signal.
+    expect(
+      shouldRunNightCheckinFromSleepCycle({
+        state: {
+          circadianState: "winding_down",
+          wakeAt: "2026-04-22T14:00:00.000Z",
+          relativeTime: {
+            minutesUntilBedtimeTarget: 480,
+          },
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it("runs the night check-in on winding_down even when no bedtime target is known (irregular owner)", () => {
+    expect(
+      shouldRunNightCheckinFromSleepCycle({
+        state: {
+          circadianState: "winding_down",
+          wakeAt: null,
+          relativeTime: {
+            minutesUntilBedtimeTarget: null,
+          },
+        },
+      }),
+    ).toBe(true);
+  });
 });

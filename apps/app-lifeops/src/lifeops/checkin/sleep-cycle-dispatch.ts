@@ -32,10 +32,20 @@ export function shouldRunMorningCheckinFromSleepCycle(args: {
 export function shouldRunNightCheckinFromSleepCycle(args: {
   readonly state: CheckinSleepCycleState | null;
 }): boolean {
+  if (!args.state) {
+    return false;
+  }
+  // `winding_down` is the circadian-rules answer for "user is winding down":
+  // HID idle >=20m or session locked >=30m outside the overnight window. Treat
+  // it as an immediate night-summary trigger so an irregular-schedule owner
+  // who winds down at an unusual time still gets the night check-in even when
+  // the bedtime-window proximity check below would not fire.
+  if (args.state.circadianState === "winding_down") {
+    return true;
+  }
   if (
-    !args.state ||
-    (args.state.circadianState !== "awake" &&
-      args.state.circadianState !== "waking")
+    args.state.circadianState !== "awake" &&
+    args.state.circadianState !== "waking"
   ) {
     return false;
   }
