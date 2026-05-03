@@ -34,7 +34,9 @@ export const CONNECTOR_PLUGINS: Record<string, string> = {
   discord: "@elizaos/plugin-discord",
   discordLocal: "@elizaos/plugin-discord-local",
   slack: "@elizaos/plugin-slack",
-  twitter: "@elizaos/plugin-twitter",
+  x: "@elizaos/plugin-x",
+  // Backward-compat alias: legacy "twitter" connector key resolves to plugin-x.
+  twitter: "@elizaos/plugin-x",
   // Internal connector built from src/plugins/whatsapp (not an npm package).
   whatsapp: "@elizaos/plugin-whatsapp",
   // Internal connector built from src/plugins/signal (not an npm package).

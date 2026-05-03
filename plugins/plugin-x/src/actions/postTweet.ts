@@ -8,7 +8,7 @@ import {
   ModelType,
   type State,
 } from "@elizaos/core";
-import type { TwitterService } from "../services/twitter.service";
+import type { TwitterService } from "../services/x.service";
 import {
   terminalActionInteractionSemantics,
   terminalActionResultData,
@@ -67,7 +67,7 @@ export const postTweetAction: Action = {
       runtime: IAgentRuntime,
       _message: Memory,
     ): Promise<boolean> => {
-      const service = runtime.getService("twitter");
+      const service = runtime.getService("x") ?? runtime.getService("twitter");
       return !!service;
     };
     try {
@@ -88,11 +88,11 @@ export const postTweetAction: Action = {
     logger.info("Executing POST_TWEET action");
 
     try {
-      // Get the Twitter service instead of creating a new client
-      const twitterService = runtime.getService("twitter") as TwitterService;
+      const twitterService = (runtime.getService("x") ??
+        runtime.getService("twitter")) as TwitterService | null;
 
       if (!twitterService) {
-        throw new Error("Twitter service not available");
+        throw new Error("X service not available");
       }
 
       // Get the initialized client from the service

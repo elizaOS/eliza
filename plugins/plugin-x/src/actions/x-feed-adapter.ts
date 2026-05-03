@@ -1,5 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import type { TwitterService } from "../services/twitter.service.js";
+import type { TwitterService } from "../services/x.service.js";
 import type { XDirectMessage, XFeedTweet } from "./x-feed-helpers.js";
 import { getTwitterService } from "./x-feed-helpers.js";
 
