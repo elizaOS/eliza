@@ -100,8 +100,7 @@ export class XService extends Service {
   static serviceType = "x";
 
   // Add the required abstract property
-  capabilityDescription =
-    "The agent is able to send and receive messages on X";
+  capabilityDescription = "The agent is able to send and receive messages on X";
 
   public twitterClient?: TwitterClientInstance;
 
