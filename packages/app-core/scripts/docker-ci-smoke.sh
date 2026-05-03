@@ -270,9 +270,7 @@ else
 fi
 
 log "Building Capacitor plugins"
-pushd "$APP_DIR" >/dev/null
-"$BUN_BIN" scripts/plugin-build.mjs
-popd >/dev/null
+"$BUN_BIN" packages/app-core/scripts/build-native-plugins.mjs
 
 WHATSAPP_PLUGIN_TS_DIR="$PLUGINS_DIR/plugin-whatsapp/typescript"
 if [[ -f "$WHATSAPP_PLUGIN_TS_DIR/package.json" ]]; then
