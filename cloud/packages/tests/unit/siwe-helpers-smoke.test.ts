@@ -1,6 +1,6 @@
-import { test, expect, describe } from "bun:test";
-import { issueNonce, consumeNonce } from "@/lib/utils/siwe-helpers";
+import { describe, expect, test } from "bun:test";
 import type { CompatibleRedis } from "@/lib/cache/redis-factory";
+import { consumeNonce, issueNonce } from "@/lib/utils/siwe-helpers";
 
 // Minimal in-memory mock that satisfies the bits issueNonce/consumeNonce use.
 // Anything else throws — keeps the surface tight.
