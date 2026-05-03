@@ -67,16 +67,8 @@ def _load_dotenv() -> None:
 
 
 async def main() -> int:
-    parser = argparse.ArgumentParser(description="Run AgentBench benchmark")
-    parser.add_argument(
-        "--elizaos",
-        action="store_true",
-        help="Use ElizaOS runtime (requires elizaos package)",
-    )
-    parser.add_argument(
-        "--eliza",
-        action="store_true",
-        help="Use eliza TypeScript agent via benchmark server",
+    parser = argparse.ArgumentParser(
+        description="Run AgentBench benchmark via the eliza TS bridge"
     )
     parser.add_argument(
         "--env",
@@ -157,120 +149,22 @@ async def main() -> int:
         if env == AgentBenchEnvironment.OS:
             env_config.additional_settings["use_docker"] = False
 
-    # Initialize runtime
-    runtime = None
-    if args.elizaos:
-        try:
-            from elizaos.runtime import AgentRuntime
-            from elizaos.bootstrap import bootstrap_plugin
-            from elizaos.types.model import LLMMode, ModelType
+    # Initialize runtime: route every step through the eliza TS bridge.
+    print("\n" + "=" * 60)
+    print("Using ELIZA TypeScript agent via benchmark server")
+    print("=" * 60)
+    from eliza_adapter import ElizaServerManager
+    from eliza_adapter.agentbench import ElizaAgentHarness
 
-            from elizaos_agentbench.eliza_harness import create_benchmark_character
-
-            _load_dotenv()
-
-            # Start with bootstrap plugin for basicCapabilities (providers, actions, etc.)
-            plugins = [bootstrap_plugin]
-            has_model_plugin = False
-
-            try:
-                from elizaos_plugin_openai import get_openai_plugin
-
-                if os.environ.get("OPENAI_API_KEY"):
-                    plugins.append(get_openai_plugin())
-                    has_model_plugin = True
-                else:
-                    print("Warning: OPENAI_API_KEY not set; cannot run AgentBench with OpenAI models.")
-            except ImportError as e:
-                print(f"Warning: OpenAI plugin not available ({e}); cannot run real model evaluation.")
-            except Exception as e:
-                print(f"Warning: Failed to initialize OpenAI plugin ({e}); cannot run real model evaluation.")
-
-            if not has_model_plugin:
-                print("Falling back to deterministic mock runtime")
-                runtime = SmartMockRuntime()
-            else:
-                print("\n" + "=" * 60)
-                print("Initializing FULL ElizaOS Pipeline")
-                print("=" * 60)
-                print("\n📦 Loading plugins:")
-                print("   • bootstrap (basicCapabilities: providers, actions, evaluators)")
-                print("   • openai (model provider)")
-
-                # Create benchmark-optimized character
-                character = create_benchmark_character()
-                print(f"\n🤖 Character: {character.name}")
-                print(f"   System: {character.system[:80]}...")
-
-                # Add benchmark plugin (provider + action for benchmarks)
-                from elizaos_agentbench.eliza_harness import create_benchmark_plugin
-
-                benchmark_plugin = create_benchmark_plugin()
-                plugins.append(benchmark_plugin)
-                print("   • agentbench (BENCHMARK provider + BENCHMARK_ACTION)")
-
-                # Optional: register trajectory logger plugin for end-to-end capture
-                if args.trajectories:
-                    try:
-                        from elizaos_plugin_trajectory_logger import get_trajectory_logger_plugin
-
-                        plugins.append(get_trajectory_logger_plugin())
-                        print("   • trajectory-logger (end-to-end training/benchmark capture)")
-                    except ImportError:
-                        print("   • trajectory-logger: disabled (python plugin not installed)")
-
-                # Create runtime with full pipeline
-                # AgentBench is iterative; default to SMALL to reduce latency/cost.
-                runtime = AgentRuntime(character=character, plugins=plugins, llm_mode=LLMMode.SMALL)
-
-                # Register in-memory database adapter for message storage
-                from elizaos_agentbench.eliza_harness import BenchmarkDatabaseAdapter
-
-                db_adapter = BenchmarkDatabaseAdapter()
-                await db_adapter.initialize()
-                runtime.register_database_adapter(db_adapter)  # type: ignore[arg-type]
-                print("   • database: in-memory adapter (for benchmarks)")
-
-                await runtime.initialize()
-
-                if not runtime.has_model(ModelType.TEXT_LARGE):
-                    print("Warning: No TEXT_LARGE model handler registered; falling back to mock runtime.")
-                    await runtime.stop()
-                    runtime = SmartMockRuntime()
-                else:
-                    print("\n✅ ElizaOS runtime ready")
-                    print("   • message_service: enabled (full pipeline)")
-                    print(f"   • providers: {len(runtime.providers)} loaded")
-                    print(f"   • actions: {len(runtime.actions)} registered")
-                    print("=" * 60)
-
-        except ImportError as e:
-            print(f"Warning: ElizaOS not available ({e})")
-            print("Falling back to deterministic mock runtime")
-            runtime = SmartMockRuntime()
-    elif args.eliza:
-        print("\n" + "=" * 60)
-        print("Using ELIZA TypeScript agent via benchmark server")
-        print("=" * 60)
-        from eliza_adapter import ElizaServerManager
-        from eliza_adapter.agentbench import ElizaAgentHarness
-
-        _load_dotenv()
-        eliza_server = ElizaServerManager()
-        eliza_server.start()
-        eliza_harness = ElizaAgentHarness(eliza_server.client)
-        # Use mock runtime for the runner scaffolding; the harness overrides
-        # the actual agent loop.
-        runtime = SmartMockRuntime()
-        runtime._app_harness = eliza_harness  # type: ignore[attr-defined]
-        print("✅ Eliza benchmark server connected")
-    else:
-        print("\nUsing deterministic mock runtime (for harness validation)")
-        runtime = SmartMockRuntime()
-
-    # Baseline comparisons are only meaningful for real model runs
-    if isinstance(runtime, SmartMockRuntime) and not getattr(runtime, "_app_harness", None):
-        config.enable_baseline_comparison = False
+    _load_dotenv()
+    eliza_server = ElizaServerManager()
+    eliza_server.start()
+    eliza_harness = ElizaAgentHarness(eliza_server.client)
+    # Use mock runtime for the runner scaffolding; the harness overrides the
+    # actual agent loop.
+    runtime = SmartMockRuntime()
+    runtime._app_harness = eliza_harness  # type: ignore[attr-defined]
+    print("✅ Eliza benchmark server connected")
 
     # Show enabled environments
     enabled = config.get_enabled_environments()
