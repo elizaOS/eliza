@@ -1,33 +1,69 @@
 import {
     type IAgentRuntime,
+    ITranscriptionService,
+    IVideoService,
     type Media,
+    type Service,
     ServiceType,
     stringToUuid,
     elizaLogger,
-    Service,
+    type VideoDownloadOptions,
+    type VideoFormat,
+    type VideoInfo,
+    type VideoProcessingOptions,
 } from "@elizaos/core";
-import {
-    ITranscriptionService,
-    IVideoService,
-    VideoInfo,
-    VideoFormat,
-    VideoDownloadOptions,
-    VideoProcessingOptions
-} from "@elizaos/service-interfaces";
 import ffmpeg from "fluent-ffmpeg";
+import ffmpegStatic from "ffmpeg-static";
 import fs from "fs";
 import { tmpdir } from "os";
 import path from "path";
 import youtubeDl from "youtube-dl-exec";
 
+if (typeof ffmpegStatic === "string" && ffmpegStatic.length > 0) {
+    ffmpeg.setFfmpegPath(ffmpegStatic);
+}
+
+/** Minimal yt-dlp JSON shape used by this service (fields vary by extractor). */
+interface YtDlpSubtitleTrack {
+    url: string;
+}
+
+interface YtDlpJson {
+    title?: string;
+    description?: string;
+    channel?: string;
+    duration?: number;
+    thumbnail?: string;
+    view_count?: number;
+    upload_date?: string;
+    formats?: YtDlpFormatRow[];
+    categories?: string[];
+    subtitles?: Record<string, YtDlpSubtitleTrack[]>;
+    automatic_captions?: Record<string, YtDlpSubtitleTrack[]>;
+}
+
+interface YtDlpFormatRow {
+    format_id?: string;
+    url?: string;
+    ext?: string;
+    quality?: string | number;
+    filesize?: number;
+    vcodec?: string;
+    acodec?: string;
+    resolution?: string;
+    fps?: number;
+    tbr?: number;
+}
+
 export class VideoService extends IVideoService {
-    public readonly capabilityDescription = 'Video processing and transcription capabilities';
-    static serviceType = ServiceType.VIDEO;
+    public readonly capabilityDescription =
+        "Video download, processing, and conversion capabilities";
+    static override readonly serviceType = ServiceType.VIDEO;
     private cacheKey = "content/video";
     private dataDir = "./content_cache";
 
-    private queue: string[] = [];
-    private processing = false;
+    /** Serialize downloads/processing so cache keys and temp files do not race. */
+    private processingChain: Promise<void> = Promise.resolve();
 
     constructor(runtime?: IAgentRuntime) {
         super(runtime);
@@ -44,14 +80,29 @@ export class VideoService extends IVideoService {
     async initialize(_runtime: IAgentRuntime): Promise<void> { }
 
     async stop(): Promise<void> {
-        // Clean up any resources if needed
-        this.queue = [];
-        this.processing = false;
+        this.processingChain = Promise.resolve();
     }
 
     // Required abstract methods from IVideoService
     async getVideoInfo(url: string): Promise<VideoInfo> {
         const videoInfo = await this.fetchVideoInfo(url);
+        const formats: VideoFormat[] = (videoInfo.formats ?? []).map(
+            (f: YtDlpFormatRow) => ({
+                formatId: f.format_id ?? "",
+                url: f.url ?? "",
+                extension: f.ext ?? "",
+                quality:
+                    f.quality !== undefined && f.quality !== ""
+                        ? String(f.quality)
+                        : "unknown",
+                fileSize: f.filesize,
+                videoCodec: f.vcodec,
+                audioCodec: f.acodec,
+                resolution: f.resolution,
+                fps: f.fps,
+                bitrate: f.tbr,
+            }),
+        );
         return {
             title: videoInfo.title,
             duration: videoInfo.duration,
@@ -61,7 +112,7 @@ export class VideoService extends IVideoService {
             uploader: videoInfo.channel,
             viewCount: videoInfo.view_count,
             uploadDate: videoInfo.upload_date ? new Date(videoInfo.upload_date) : undefined,
-            formats: videoInfo.formats || []
+            formats,
         };
     }
 
@@ -75,7 +126,7 @@ export class VideoService extends IVideoService {
         }
 
         try {
-            const downloadOptions: any = {
+            const downloadOptions: Record<string, string | boolean> = {
                 verbose: true,
                 output: outputFile,
                 writeInfoJson: true,
@@ -222,20 +273,23 @@ export class VideoService extends IVideoService {
                 skipDownload: true,
             });
 
-            if (typeof result === 'object' && result && 'formats' in result) {
-                const resultWithFormats = result as any;
-                if (resultWithFormats.formats) {
-                    return resultWithFormats.formats.map((format: any) => ({
-                        formatId: format.format_id,
+            if (typeof result === "object" && result !== null && "formats" in result) {
+                const parsed = result as YtDlpJson;
+                if (parsed.formats?.length) {
+                    return parsed.formats.map((format: YtDlpFormatRow) => ({
+                        formatId: format.format_id ?? "",
                         url: format.url,
                         extension: format.ext,
-                        quality: format.quality || 'unknown',
+                        quality:
+                            format.quality !== undefined && format.quality !== ""
+                                ? String(format.quality)
+                                : "unknown",
                         fileSize: format.filesize,
                         videoCodec: format.vcodec,
                         audioCodec: format.acodec,
                         resolution: format.resolution,
                         fps: format.fps,
-                        bitrate: format.tbr
+                        bitrate: format.tbr,
                     }));
                 }
             }
@@ -287,45 +341,16 @@ export class VideoService extends IVideoService {
 
     public async processVideo(
         url: string,
-        runtime: IAgentRuntime
+        runtime: IAgentRuntime,
     ): Promise<Media> {
-        this.queue.push(url);
-        this.processQueue(runtime);
-
-        return new Promise((resolve, reject) => {
-            const checkQueue = async () => {
-                const index = this.queue.indexOf(url);
-                if (index !== -1) {
-                    setTimeout(checkQueue, 100);
-                } else {
-                    try {
-                        const result = await this.processVideoFromUrl(
-                            url,
-                            runtime
-                        );
-                        resolve(result);
-                    } catch (error) {
-                        reject(error);
-                    }
-                }
-            };
-            checkQueue();
-        });
-    }
-
-    private async processQueue(runtime): Promise<void> {
-        if (this.processing || this.queue.length === 0) {
-            return;
-        }
-
-        this.processing = true;
-
-        while (this.queue.length > 0) {
-            const url = this.queue.shift()!;
-            await this.processVideoFromUrl(url, runtime);
-        }
-
-        this.processing = false;
+        const run = this.processingChain.then(() =>
+            this.processVideoFromUrl(url, runtime),
+        );
+        this.processingChain = run.then(
+            () => undefined,
+            () => undefined,
+        );
+        return run;
     }
 
     private async processVideoFromUrl(
@@ -370,7 +395,7 @@ export class VideoService extends IVideoService {
         return stringToUuid(url);
     }
 
-    async fetchVideoInfo(url: string): Promise<any> {
+    async fetchVideoInfo(url: string): Promise<YtDlpJson> {
         if (url.endsWith(".mp4") || url.includes(".mp4?")) {
             try {
                 const response = await fetch(url);
@@ -401,7 +426,7 @@ export class VideoService extends IVideoService {
                 subLang: "en",
                 skipDownload: true,
             });
-            return result;
+            return result as YtDlpJson;
         } catch (error) {
             elizaLogger.log("Error fetching video info:", error);
             throw new Error("Failed to fetch video information");
@@ -410,8 +435,8 @@ export class VideoService extends IVideoService {
 
     private async getTranscript(
         url: string,
-        videoInfo: any,
-        runtime: IAgentRuntime
+        videoInfo: YtDlpJson,
+        runtime: IAgentRuntime,
     ): Promise<string> {
         elizaLogger.log("Getting transcript");
         try {
