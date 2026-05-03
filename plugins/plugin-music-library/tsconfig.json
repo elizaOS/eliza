@@ -22,8 +22,6 @@
     "allowArbitraryExtensions": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "ignoreDeprecations": "6.0",
-    "baseUrl": ".",
     "typeRoots": ["./types", "./node_modules/@types"],
     "types": ["node"],
     "paths": {

@@ -5,10 +5,8 @@
   "workspaces": [
     "apps/*",
     "packages/*",
-    "!packages/steward",
     "packages/services/*",
     "services/*",
-    "packages/steward/packages/*",
     "examples/*"
   ],
   "scripts": {
@@ -114,9 +112,9 @@
     "@elizaos/plugin-elevenlabs": "^1.6.0",
     "@elizaos/plugin-elizacloud": "^2.0.0-alpha.8",
     "@elizaos/plugin-knowledge": "^1.6.1",
-    "@elizaos/plugin-mcp": "1.8.2",
-    "@elizaos/plugin-n8n-workflow": "1.2.3",
-    "@elizaos/plugin-sql": "1.7.1",
+    "@elizaos/plugin-mcp": "^1.8.2",
+    "@elizaos/plugin-n8n-workflow": "^1.2.3",
+    "@elizaos/plugin-sql": "^1.7.1",
     "@elizaos/plugin-web-search": "^1.0.1",
     "@elizaos/shared": "alpha",
     "@fal-ai/client": "^1.10.0",
@@ -222,7 +220,7 @@
     "motion": "^12.38.0",
     "music-metadata": "^11.12.3",
     "nanoid": "^5.1.9",
-    "nodemailer": "^7.0.13",
+    "nodemailer": "^8.0.7",
     "openai": "^6.35.0",
     "oxapay": "^1.0.3",
     "react": "19.2.4",
@@ -254,7 +252,7 @@
     "use-stick-to-bottom": "^1.1.3",
     "uuid": "^14.0.0",
     "vaul": "^1.1.2",
-    "viem": "^2.48.4",
+    "viem": "^2.48.8",
     "wagmi": "^2.19.5",
     "ws": "^8.20.0",
     "x402-mcp": "^0.1.1",
@@ -286,7 +284,7 @@
     "tsx": "^4.21.0",
     "tw-animate-css": "^1.4.0",
     "typescript": "^6.0.3",
-    "vite": "^5.4.10",
+    "vite": "^8.0.10",
     "wadis": "^1.0.2"
   },
   "resolutions": {
@@ -296,7 +294,7 @@
     "@stwd/react": "0.7.2",
     "@stwd/sdk": "0.8.1",
     "@walletconnect/core": "2.22.4",
-    "@walletconnect/logger": "3.0.0",
+    "@walletconnect/logger": "3.0.2",
     "@walletconnect/sign-client": "2.22.4",
     "@walletconnect/types": "2.22.4",
     "@walletconnect/universal-provider": "2.22.4",
@@ -309,27 +307,30 @@
     "thread-stream": "3.1.0",
     "bs58": "4.0.1",
     "base-x": "3.0.11",
-    "@hono/node-server": "1.19.11",
-    "axios": "1.13.6",
+    "@hono/node-server": "2.0.1",
+    "axios": "1.15.0",
     "dompurify": "3.3.2",
     "bn.js": "5.2.3",
     "express-rate-limit": "8.3.0",
     "fast-xml-parser": "5.4.2",
-    "hono": "4.12.5",
+    "hono": "4.12.16",
     "lodash-es": "4.17.23",
     "multer": "2.1.1",
-    "qs": "6.15.0",
-    "tar": "7.5.10",
+    "qs": "6.15.1",
+    "tar": "7.5.13",
     "undici": "6.23.0",
     "underscore": "1.13.8"
   },
   "overrides": {
     "@stwd/sdk": "0.8.1",
     "cpu-features": "empty-npm-package@1.0.0",
+    "hono": "4.12.16",
+    "@hono/node-server": "2.0.1",
     "zod": "4.4.1"
   },
   "patchedDependencies": {
     "x402@1.1.0": "packages/patches/x402@1.1.0.patch",
-    "@elizaos/core@2.0.0-alpha.136": "packages/patches/@elizaos%2Fcore@2.0.0-alpha.136.patch"
+    "@elizaos/core@2.0.0-alpha.136": "packages/patches/@elizaos%2Fcore@2.0.0-alpha.136.patch",
+    "@brighter/storage-adapter-s3@1.6.3": "packages/patches/@brighter+storage-adapter-s3@1.6.3.patch"
   }
 }

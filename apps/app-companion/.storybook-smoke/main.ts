@@ -35,7 +35,7 @@ const config: StorybookConfig = {
         "packages/app-core/src/styles/styles.css",
       ),
       "@elizaos/app-core": path.resolve(elizaRoot, "packages/app-core/src"),
-      "@elizaos/core": path.resolve(elizaRoot, "packages/typescript/src"),
+      "@elizaos/core": path.resolve(elizaRoot, "packages/core/src"),
       "@elizaos/ui": path.resolve(elizaRoot, "packages/ui/src"),
     };
     return config;

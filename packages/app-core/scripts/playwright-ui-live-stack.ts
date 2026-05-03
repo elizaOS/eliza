@@ -138,22 +138,36 @@ async function proxyUiRequest(args: {
       : requestUrl.pathname.replace(/^\/+/, "");
   let filePath = resolveDistAssetPath(requestedPath);
   const isAssetRequest = path.extname(requestedPath).length > 0;
+  const indexHtmlPath = path.join(APP_DIST_DIR, "index.html");
   if (!filePath && !isAssetRequest) {
-    filePath = path.join(APP_DIST_DIR, "index.html");
+    filePath = indexHtmlPath;
   }
 
-  let body: Buffer;
-  try {
-    body = await readFile(filePath ?? path.join(APP_DIST_DIR, "index.html"));
-  } catch {
-    body = await readFile(path.join(APP_DIST_DIR, "index.html"));
-    filePath = path.join(APP_DIST_DIR, "index.html");
+  const primaryPath = filePath ?? indexHtmlPath;
+  let body: Buffer | null = null;
+  let resolvedPath = primaryPath;
+  const maxReadAttempts = 40;
+  for (let attempt = 0; attempt < maxReadAttempts; attempt++) {
+    try {
+      body = await readFile(primaryPath);
+      resolvedPath = primaryPath;
+      break;
+    } catch {
+      try {
+        body = await readFile(indexHtmlPath);
+        resolvedPath = indexHtmlPath;
+        break;
+      } catch {
+        await sleep(100);
+      }
+    }
+  }
+  if (!body) {
+    throw new Error(`UI dist unavailable after retries: ${indexHtmlPath}`);
   }
 
   args.response.writeHead(200, {
-    "Content-Type": contentTypeFor(
-      filePath ?? path.join(APP_DIST_DIR, "index.html"),
-    ),
+    "Content-Type": contentTypeFor(resolvedPath),
   });
   args.response.end(body);
 }
@@ -538,8 +552,6 @@ async function startRealStack(): Promise<StartedStack> {
         ELIZA_API_PORT: String(API_PORT),
         ELIZA_HOME_PORT: String(UI_PORT),
         ELIZA_PORT: String(API_PORT),
-        ELIZA_STATE_DIR: stateDir,
-        ELIZA_API_PORT: String(API_PORT),
         ELIZA_STATE_DIR: stateDir,
       },
       stdio: ["ignore", "pipe", "pipe"],

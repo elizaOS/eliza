@@ -17,8 +17,6 @@
     "composite": false,
     "declaration": false,
     "declarationMap": false,
-    "ignoreDeprecations": "6.0",
-    "baseUrl": ".",
     "paths": {
       "@/lib/*": ["../../packages/lib/*"],
       "@/db/*": ["../../packages/db/*"],

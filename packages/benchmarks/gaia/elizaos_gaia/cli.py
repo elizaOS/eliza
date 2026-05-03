@@ -27,7 +27,6 @@ from elizaos_gaia.providers import (
     get_available_providers,
     list_models,
 )
-from elizaos_gaia.orchestrator.runner import OrchestratedGAIARunner
 from elizaos_gaia.runner import GAIARunner, run_quick_test
 from elizaos_gaia.types import GAIAConfig, GAIALevel
 
@@ -315,7 +314,7 @@ Environment Variables:
     parser.add_argument(
         "--providers",
         nargs="+",
-        choices=["claude-code", "swe-agent", "codex"],
+        choices=["claude-code", "swe-agent", "codex", "eliza-code"],
         default=None,
         help="Provider set for orchestrated mode (default: all)",
     )
@@ -501,6 +500,7 @@ async def run_benchmark_async(args: argparse.Namespace) -> int:
                 f"({config.execution_mode}, matrix={config.matrix}) "
                 f"with providers={','.join(config.provider_set)}..."
             )
+            from elizaos_gaia.orchestrator.runner import OrchestratedGAIARunner
             runner = OrchestratedGAIARunner(config)
             report = await runner.run_benchmark(hf_token=hf_token)
             print("\n=== Orchestrated GAIA Results ===")

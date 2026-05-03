@@ -116,13 +116,16 @@
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
-    "@elizaos/plugin-solana-root#build": {
+    "@elizaos/plugin-wallet#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
     "@elizaos/plugin-sql-root#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
+    },
+    "@elizaos/plugin-sql#build": {
+      "outputs": ["typescript/dist/**"]
     },
     "@elizaos/plugin-whatsapp-root#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
@@ -133,7 +136,7 @@
       "outputs": []
     },
     "@elizaos/schemas#build": {
-      "outputs": ["../typescript/src/types/generated/**", "../core/src/types/generated/**"],
+      "outputs": ["../core/src/types/generated/**"],
       "inputs": ["eliza/**", "buf.yaml", "buf.gen.yaml"]
     },
     "lint": {
@@ -146,6 +149,26 @@
       "outputs": []
     },
     "typecheck": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-video#build"],
+      "outputs": []
+    },
+    "@elizaos/app-core#typecheck": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-video#build"],
+      "outputs": []
+    },
+    "@elizaos/scenario-runner#typecheck": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-streaming#build"],
+      "outputs": []
+    },
+    "@elizaos/ui#typecheck": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-video#build"],
+      "outputs": []
+    },
+    "@elizaos/app#typecheck": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-video#build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-streaming#typecheck": {
       "dependsOn": ["@elizaos/core#build"],
       "outputs": []
     },

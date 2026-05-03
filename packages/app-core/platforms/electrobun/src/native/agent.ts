@@ -101,9 +101,7 @@ export function getHealthPollTimeoutMs(
 	env: NodeJS.ProcessEnv = process.env,
 	platform: string = process.platform,
 ): number {
-	const raw = (
-		env.ELIZA_AGENT_HEALTH_TIMEOUT_MS
-	)?.trim();
+	const raw = env.ELIZA_AGENT_HEALTH_TIMEOUT_MS?.trim();
 	if (raw) {
 		const parsed = Number.parseInt(raw, 10);
 		if (Number.isFinite(parsed) && parsed > 0) {
@@ -587,10 +585,7 @@ export function isPackagedDesktopRuntime(
 		normalizedExecPath.includes("/self-extraction/") ||
 		normalizedExecPath.endsWith("/launcher") ||
 		normalizedExecPath.endsWith("/launcher.exe");
-	if (
-		(process.env.ELIZA_DIST_PATH)?.trim() &&
-		!looksLikePackagedExec
-	) {
+	if (process.env.ELIZA_DIST_PATH?.trim() && !looksLikePackagedExec) {
 		return false;
 	}
 	if (!normalizedModuleDir.includes("/src/")) {
@@ -1245,8 +1240,7 @@ export class AgentManager {
 				ELIZA_PORT: String(apiPort),
 			};
 			childEnv.ELIZA_NAMESPACE =
-				childEnv.ELIZA_NAMESPACE?.trim() ||
-				getBrandConfig().namespace;
+				childEnv.ELIZA_NAMESPACE?.trim() || getBrandConfig().namespace;
 			childEnv.ELIZA_NAMESPACE =
 				childEnv.ELIZA_NAMESPACE?.trim() || childEnv.ELIZA_NAMESPACE;
 			delete childEnv.ELIZA_PORT;

@@ -22,8 +22,8 @@
     "dist"
   ],
   "dependencies": {
-    "@elizaos/core": "2.0.0-alpha.3",
-    "typescript": "^5.9.3",
+    "@elizaos/core": "workspace:*",
+    "typescript": "^6.0.3",
     "zod": "^4.3.6"
   },
   "devDependencies": {

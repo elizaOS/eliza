@@ -2584,6 +2584,20 @@ export const allActionsSpec = {
 				"Generate image from conversation context. Use to visualize or illustrate.",
 		},
 		{
+			name: "ACTIVATE_N8N_WORKFLOW",
+			description:
+				"Activate an n8n workflow to start processing triggers and running automatically. Identifies workflows by ID, name, or semantic description in any language.",
+			parameters: [],
+			similes: [
+				"ACTIVATE_WORKFLOW",
+				"ENABLE_WORKFLOW",
+				"START_WORKFLOW",
+				"TURN_ON_WORKFLOW",
+			],
+			descriptionCompressed:
+				"Activate an n8n workflow to start processing triggers and running automatically. Identifies workflows by ID, name, or semantic description in any language.",
+		},
+		{
 			name: "ADD_TO_PLAYLIST",
 			description:
 				"Add music to a playlist after confirmed:true. If the track is not already in the library, the configured music fetch service must resolve it first. Creates the playlist if it does not exist.",
@@ -2596,6 +2610,27 @@ export const allActionsSpec = {
 			],
 			descriptionCompressed:
 				"Add music to a playlist after confirmed:true. If the track is not already in the library, the configured music fetch service must resolve it first. Creates t...",
+		},
+		{
+			name: "ASTROLOGY_READING",
+			description:
+				"Perform an astrological natal chart reading, progressively revealing planetary placements.",
+			parameters: [],
+			similes: [
+				"BIRTH_CHART",
+				"NATAL_CHART",
+				"HOROSCOPE_READING",
+				"ZODIAC_READING",
+			],
+			descriptionCompressed:
+				"Perform an astrological natal chart reading, progressively revealing planetary placements.",
+		},
+		{
+			name: "AUTHENTICATE_GOOGLE",
+			description: "Authenticate with Google to access Meet API",
+			parameters: [],
+			similes: ["login to google", "google auth", "sign in", "authenticate"],
+			descriptionCompressed: "Authenticate with Google to access Meet API",
 		},
 		{
 			name: "BLUEBUBBLES_SEND_REACTION",
@@ -2623,6 +2658,25 @@ export const allActionsSpec = {
 				"Control a Chromium-based browser through the local runtime. This action opens or connects to a browser session, navigates pages, clicks elements, types into...",
 		},
 		{
+			name: "CALL_MCP_TOOL",
+			description: "Calls a tool from an MCP server to perform a specific task",
+			parameters: [],
+			similes: [
+				"CALL_TOOL",
+				"CALL_MCP_TOOL",
+				"USE_TOOL",
+				"USE_MCP_TOOL",
+				"EXECUTE_TOOL",
+				"EXECUTE_MCP_TOOL",
+				"RUN_TOOL",
+				"RUN_MCP_TOOL",
+				"INVOKE_TOOL",
+				"INVOKE_MCP_TOOL",
+			],
+			descriptionCompressed:
+				"Calls a tool from an MCP server to perform a specific task",
+		},
+		{
 			name: "CHECK_CLOUD_CREDITS",
 			description:
 				"Check ElizaCloud credit balance, container costs, and estimated remaining runtime.",
@@ -2637,6 +2691,50 @@ export const allActionsSpec = {
 				"Check ElizaCloud credit balance, container costs, and estimated remaining runtime.",
 		},
 		{
+			name: "CHECK_PAYMENT",
+			description:
+				"Check if payment has been received for the current reading session.",
+			parameters: [],
+			similes: ["VERIFY_PAYMENT", "PAYMENT_STATUS"],
+			descriptionCompressed:
+				"Check if payment has been received for the current reading session.",
+		},
+		{
+			name: "CLAUDE_CODE_WORKBENCH_LIST",
+			description: "List available Claude Code workbench workflows.",
+			parameters: [],
+			similes: ["LIST_WORKBENCH_WORKFLOWS", "WORKBENCH_LIST", "CCW_LIST"],
+			descriptionCompressed: "List available Claude Code workbench workflows.",
+		},
+		{
+			name: "CLAUDE_CODE_WORKBENCH_RUN",
+			description:
+				"Run an allowlisted repo workflow through the Claude Code workbench service.",
+			parameters: [],
+			similes: ["RUN_WORKBENCH_WORKFLOW", "WORKBENCH_RUN", "CCW_RUN"],
+			descriptionCompressed:
+				"Run an allowlisted repo workflow through the Claude Code workbench service.",
+		},
+		{
+			name: "CLEAR_GRAPH",
+			description: "Clear all entities and relationships from the graph.",
+			parameters: [],
+			similes: ["RESET_GRAPH", "CLEAR_ALL", "DELETE_ALL"],
+			descriptionCompressed:
+				"Clear all entities and relationships from the graph.",
+		},
+		{
+			name: "CLEAR_LINEAR_ACTIVITY",
+			description: "Clear the Linear activity log",
+			parameters: [],
+			similes: [
+				"clear-linear-activity",
+				"reset-linear-activity",
+				"delete-linear-activity",
+			],
+			descriptionCompressed: "Clear the Linear activity log",
+		},
+		{
 			name: "COMMANDS_LIST",
 			description:
 				"List all available commands with their aliases. Only activates for /commands or /cmds slash commands.",
@@ -2646,11 +2744,252 @@ export const allActionsSpec = {
 				"List all available commands with their aliases. Only activates for /commands or /cmds slash commands.",
 		},
 		{
+			name: "COUNT_STATISTICS",
+			description: "Get statistics about the current relational data graph.",
+			parameters: [
+				{
+					name: "values",
+					description: "The values to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The values to use.",
+				},
+			],
+			similes: ["STATS", "STATISTICS", "COUNT"],
+			exampleCalls: [
+				{
+					user: "Use COUNT_STATISTICS with the provided parameters.",
+					actions: ["COUNT_STATISTICS"],
+					params: {
+						COUNT_STATISTICS: {
+							values: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"Get statistics about the current relational data graph.",
+		},
+		{
+			name: "CREATE_ENTITY",
+			description:
+				"Create a new entity with a type and name. Entities are the nodes in our relational graph.",
+			parameters: [
+				{
+					name: "values",
+					description: "The values to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The values to use.",
+				},
+			],
+			similes: ["NEW_ENTITY", "ADD_ENTITY", "MAKE_ENTITY"],
+			exampleCalls: [
+				{
+					user: "Use CREATE_ENTITY with the provided parameters.",
+					actions: ["CREATE_ENTITY"],
+					params: {
+						CREATE_ENTITY: {
+							values: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"Create a new entity with a type and name. Entities are the nodes in our relational graph.",
+		},
+		{
+			name: "CREATE_LINEAR_COMMENT",
+			description: "Add a comment to a Linear issue",
+			parameters: [
+				{
+					name: "name",
+					description: "The name to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The name to use.",
+				},
+			],
+			similes: [
+				"create-linear-comment",
+				"add-linear-comment",
+				"comment-on-linear-issue",
+				"reply-to-linear-issue",
+			],
+			exampleCalls: [
+				{
+					user: "Use CREATE_LINEAR_COMMENT with the provided parameters.",
+					actions: ["CREATE_LINEAR_COMMENT"],
+					params: {
+						CREATE_LINEAR_COMMENT: {
+							name: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed: "Add a comment to a Linear issue",
+		},
+		{
+			name: "CREATE_LINEAR_ISSUE",
+			description: "Create a new issue in Linear",
+			parameters: [],
+			similes: ["create-linear-issue", "new-linear-issue", "add-linear-issue"],
+			descriptionCompressed: "Create a new issue in Linear",
+		},
+		{
+			name: "CREATE_MEETING",
+			description: "Create a new Google Meet meeting space",
+			parameters: [],
+			similes: [
+				"start a meeting",
+				"create a meet",
+				"new meeting",
+				"setup a call",
+			],
+			descriptionCompressed: "Create a new Google Meet meeting space",
+		},
+		{
+			name: "CREATE_RELATIONSHIP",
+			description:
+				"Create a relationship between two entities. Relationships are the edges in our relational graph.",
+			parameters: [
+				{
+					name: "values",
+					description: "The values to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The values to use.",
+				},
+			],
+			similes: ["LINK", "CONNECT", "RELATE"],
+			exampleCalls: [
+				{
+					user: "Use CREATE_RELATIONSHIP with the provided parameters.",
+					actions: ["CREATE_RELATIONSHIP"],
+					params: {
+						CREATE_RELATIONSHIP: {
+							values: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"Create a relationship between two entities. Relationships are the edges in our relational graph.",
+		},
+		{
+			name: "custom-generate-music",
+			description: "Generate music with custom parameters using Suno AI",
+			parameters: [],
+			similes: [
+				"CREATE_CUSTOM_MUSIC",
+				"GENERATE_CUSTOM_AUDIO",
+				"MAKE_CUSTOM_MUSIC",
+				"COMPOSE_CUSTOM_MUSIC",
+				"COMPOSE_MUSIC",
+				"CREATE_MUSIC",
+				"GENERATE_MUSIC",
+			],
+			descriptionCompressed:
+				"Generate music with custom parameters using Suno AI",
+		},
+		{
+			name: "DEACTIVATE_N8N_WORKFLOW",
+			description:
+				"Deactivate an n8n workflow to stop it from processing triggers and running automatically. Identifies workflows by ID, name, or semantic description in any language.",
+			parameters: [],
+			similes: [
+				"DEACTIVATE_WORKFLOW",
+				"DISABLE_WORKFLOW",
+				"STOP_WORKFLOW",
+				"PAUSE_WORKFLOW",
+				"TURN_OFF_WORKFLOW",
+			],
+			descriptionCompressed:
+				"Deactivate an n8n workflow to stop it from processing triggers and running automatically. Identifies workflows by ID, name, or semantic description in any la...",
+		},
+		{
+			name: "DEEPEN_READING",
+			description:
+				"Provide a deeper interpretation of a specific element in an active reading.",
+			parameters: [],
+			similes: [
+				"EXPLAIN_MORE",
+				"GO_DEEPER",
+				"ELABORATE_READING",
+				"READING_DETAIL",
+			],
+			descriptionCompressed:
+				"Provide a deeper interpretation of a specific element in an active reading.",
+		},
+		{
+			name: "DELETE_ENTITY",
+			description: "Delete the current entity and all its relationships.",
+			parameters: [
+				{
+					name: "values",
+					description: "The values to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The values to use.",
+				},
+			],
+			similes: ["REMOVE_ENTITY", "DESTROY_ENTITY"],
+			exampleCalls: [
+				{
+					user: "Use DELETE_ENTITY with the provided parameters.",
+					actions: ["DELETE_ENTITY"],
+					params: {
+						DELETE_ENTITY: {
+							values: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"Delete the current entity and all its relationships.",
+		},
+		{
+			name: "DELETE_LINEAR_ISSUE",
+			description: "Delete (archive) an issue in Linear",
+			parameters: [],
+			similes: [
+				"delete-linear-issue",
+				"archive-linear-issue",
+				"remove-linear-issue",
+				"close-linear-issue",
+			],
+			descriptionCompressed: "Delete (archive) an issue in Linear",
+		},
+		{
 			name: "DELETE_MESSAGE",
 			description: "Delete a message from a Discord channel",
 			parameters: [],
 			similes: ["REMOVE_MESSAGE", "UNSEND_MESSAGE", "DELETE_DISCORD_MESSAGE"],
 			descriptionCompressed: "Delete a message from a Discord channel",
+		},
+		{
+			name: "DELETE_N8N_WORKFLOW",
+			description:
+				"Delete an n8n workflow permanently. This action cannot be undone. Identifies workflows by ID, name, or semantic description in any language.",
+			parameters: [],
+			similes: ["DELETE_WORKFLOW", "REMOVE_WORKFLOW", "DESTROY_WORKFLOW"],
+			descriptionCompressed:
+				"Delete an n8n workflow permanently. This action cannot be undone. Identifies workflows by ID, name, or semantic description in any language.",
 		},
 		{
 			name: "DELETE_PLAYLIST",
@@ -2688,6 +3027,74 @@ export const allActionsSpec = {
 				"Delete a saved playlist after confirmed:true. Works best in DMs to avoid flooding group chats.",
 		},
 		{
+			name: "DEXSCREENER_BOOSTED_TOKENS",
+			description:
+				"Get boosted (promoted/sponsored) tokens from DexScreener, showing tokens with paid promotional boosts",
+			parameters: [],
+			similes: ["promoted tokens", "sponsored tokens", "boosted coins"],
+			descriptionCompressed:
+				"Get boosted (promoted/sponsored) tokens from DexScreener, showing tokens with paid promotional boosts",
+		},
+		{
+			name: "DEXSCREENER_CHAIN_PAIRS",
+			description:
+				"Get top trading pairs from a specific blockchain sorted by volume, liquidity, price change, or transaction count",
+			parameters: [],
+			similes: ["tokens on", "pairs on", "top on"],
+			descriptionCompressed:
+				"Get top trading pairs from a specific blockchain sorted by volume, liquidity, price change, or transaction count",
+		},
+		{
+			name: "DEXSCREENER_NEW_PAIRS",
+			description:
+				"Get newly created trading pairs from DexScreener, showing recently launched tokens and their initial liquidity",
+			parameters: [],
+			similes: ["new listings", "latest pairs", "new tokens", "fresh pairs"],
+			descriptionCompressed:
+				"Get newly created trading pairs from DexScreener, showing recently launched tokens and their initial liquidity",
+		},
+		{
+			name: "DEXSCREENER_SEARCH",
+			description:
+				"Search for tokens or trading pairs on DexScreener by name, symbol, or contract address",
+			parameters: [],
+			similes: ["find token", "look for", "search dexscreener"],
+			descriptionCompressed:
+				"Search for tokens or trading pairs on DexScreener by name, symbol, or contract address",
+		},
+		{
+			name: "DEXSCREENER_TOKEN_INFO",
+			description:
+				"Get detailed information about a specific token including price, volume, liquidity, and trading pairs from DexScreener",
+			parameters: [],
+			similes: ["token details", "token price", "get token", "check token"],
+			descriptionCompressed:
+				"Get detailed information about a specific token including price, volume, liquidity, and trading pairs from DexScreener",
+		},
+		{
+			name: "DEXSCREENER_TOKEN_PROFILES",
+			description:
+				"Get latest token profiles from DexScreener including social links, descriptions, and project information",
+			parameters: [],
+			similes: ["token profiles", "token details page"],
+			descriptionCompressed:
+				"Get latest token profiles from DexScreener including social links, descriptions, and project information",
+		},
+		{
+			name: "DEXSCREENER_TRENDING",
+			description:
+				"Get trending tokens from DexScreener based on volume, price changes, and trading activity",
+			parameters: [],
+			similes: [
+				"hot tokens",
+				"popular coins",
+				"top gainers",
+				"what's trending",
+			],
+			descriptionCompressed:
+				"Get trending tokens from DexScreener based on volume, price changes, and trading activity",
+		},
+		{
 			name: "DOWNLOAD_MUSIC",
 			description:
 				"Download music to the local library without playing it. Requires confirmed:true before fetching and saving.",
@@ -2713,6 +3120,19 @@ export const allActionsSpec = {
 				"EDIT_DISCORD_MESSAGE",
 			],
 			descriptionCompressed: "Edit an existing message in a Discord channel",
+		},
+		{
+			name: "extend-audio",
+			description: "Extend the duration of an existing audio generation",
+			parameters: [],
+			similes: [
+				"LENGTHEN_AUDIO",
+				"PROLONG_AUDIO",
+				"INCREASE_DURATION",
+				"MAKE_AUDIO_LONGER",
+			],
+			descriptionCompressed:
+				"Extend the duration of an existing audio generation",
 		},
 		{
 			name: "FETCH_FEED_TOP",
@@ -2776,6 +3196,37 @@ export const allActionsSpec = {
 				"Finalize workspace changes by committing, pushing, and optionally creating a pull request.",
 		},
 		{
+			name: "FIND_PATH",
+			description:
+				"Find the shortest path between two entities in the relationship graph.",
+			parameters: [
+				{
+					name: "values",
+					description: "The values to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The values to use.",
+				},
+			],
+			similes: ["PATH", "ROUTE", "CONNECTION_PATH"],
+			exampleCalls: [
+				{
+					user: "Use FIND_PATH with the provided parameters.",
+					actions: ["FIND_PATH"],
+					params: {
+						FIND_PATH: {
+							values: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"Find the shortest path between two entities in the relationship graph.",
+		},
+		{
 			name: "FREEZE_CLOUD_AGENT",
 			description:
 				"Freeze a cloud agent: snapshot state, disconnect bridge, stop container.",
@@ -2790,6 +3241,122 @@ export const allActionsSpec = {
 				"Freeze a cloud agent: snapshot state, disconnect bridge, stop container.",
 		},
 		{
+			name: "GENERATE_REPORT",
+			description:
+				"Generate a comprehensive report from Google Meet artifacts (transcripts, recordings)",
+			parameters: [],
+			similes: [
+				"create report",
+				"meeting summary",
+				"get transcript",
+				"meeting notes",
+			],
+			descriptionCompressed:
+				"Generate a comprehensive report from Google Meet artifacts (transcripts, recordings)",
+		},
+		{
+			name: "generate-music",
+			description: "Generate music using Suno AI",
+			parameters: [],
+			similes: [
+				"CREATE_MUSIC",
+				"MAKE_MUSIC",
+				"COMPOSE_MUSIC",
+				"GENERATE_AUDIO",
+				"CREATE_SONG",
+				"MAKE_SONG",
+			],
+			descriptionCompressed: "Generate music using Suno AI",
+		},
+		{
+			name: "GET_LINEAR_ACTIVITY",
+			description: "Get recent Linear activity log with optional filters",
+			parameters: [],
+			similes: [
+				"get-linear-activity",
+				"show-linear-activity",
+				"view-linear-activity",
+				"check-linear-activity",
+			],
+			descriptionCompressed:
+				"Get recent Linear activity log with optional filters",
+		},
+		{
+			name: "GET_LINEAR_ISSUE",
+			description: "Get details of a specific Linear issue",
+			parameters: [
+				{
+					name: "name",
+					description: "The name to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The name to use.",
+				},
+			],
+			similes: [
+				"get-linear-issue",
+				"show-linear-issue",
+				"view-linear-issue",
+				"check-linear-issue",
+				"find-linear-issue",
+			],
+			exampleCalls: [
+				{
+					user: "Use GET_LINEAR_ISSUE with the provided parameters.",
+					actions: ["GET_LINEAR_ISSUE"],
+					params: {
+						GET_LINEAR_ISSUE: {
+							name: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed: "Get details of a specific Linear issue",
+		},
+		{
+			name: "GET_MEETING_INFO",
+			description: "Get information about a Google Meet meeting",
+			parameters: [],
+			similes: [
+				"meeting info",
+				"check meeting",
+				"meeting status",
+				"meeting details",
+			],
+			descriptionCompressed: "Get information about a Google Meet meeting",
+		},
+		{
+			name: "GET_N8N_EXECUTIONS",
+			description:
+				"Get execution history for an n8n workflow. Shows status, start time, and error messages if any. Identifies workflows by ID, name, or semantic description in any language.",
+			parameters: [],
+			similes: [
+				"GET_EXECUTIONS",
+				"SHOW_EXECUTIONS",
+				"EXECUTION_HISTORY",
+				"WORKFLOW_RUNS",
+				"WORKFLOW_EXECUTIONS",
+			],
+			descriptionCompressed:
+				"Get execution history for an n8n workflow. Shows status, start time, and error messages if any. Identifies workflows by ID, name, or semantic description in...",
+		},
+		{
+			name: "GET_PARTICIPANTS",
+			description: "Get the list of participants in a Google Meet conference",
+			parameters: [],
+			similes: [
+				"who's in the meeting",
+				"list participants",
+				"attendees",
+				"who joined",
+			],
+			descriptionCompressed:
+				"Get the list of participants in a Google Meet conference",
+		},
+		{
 			name: "GET_SKILL_DETAILS",
 			description:
 				"Get detailed information about a specific skill including version, owner, and stats.",
@@ -2799,6 +3366,50 @@ export const allActionsSpec = {
 				"Get detailed information about a specific skill including version, owner, and stats.",
 		},
 		{
+			name: "GET_TAILSCALE_STATUS",
+			description: "Get the current status of the Tailscale tunnel",
+			parameters: [],
+			similes: ["TAILSCALE_STATUS", "CHECK_TUNNEL", "TUNNEL_INFO"],
+			descriptionCompressed: "Get the current status of the Tailscale tunnel",
+		},
+		{
+			name: "GOOGLE_CHAT_LIST_SPACES",
+			description: "List all Google Chat spaces the bot is a member of",
+			parameters: [],
+			similes: [
+				"LIST_GOOGLE_CHAT_SPACES",
+				"GCHAT_SPACES",
+				"SHOW_GOOGLE_CHAT_SPACES",
+			],
+			descriptionCompressed:
+				"List all Google Chat spaces the bot is a member of",
+		},
+		{
+			name: "GOOGLE_CHAT_SEND_MESSAGE",
+			description: "Send a message to a Google Chat space",
+			parameters: [],
+			similes: [
+				"SEND_GOOGLE_CHAT_MESSAGE",
+				"MESSAGE_GOOGLE_CHAT",
+				"GCHAT_SEND",
+				"GOOGLE_CHAT_TEXT",
+			],
+			descriptionCompressed: "Send a message to a Google Chat space",
+		},
+		{
+			name: "GOOGLE_CHAT_SEND_REACTION",
+			description: "Add or remove an emoji reaction to a Google Chat message",
+			parameters: [],
+			similes: [
+				"REACT_GOOGLE_CHAT",
+				"GCHAT_REACT",
+				"GOOGLE_CHAT_EMOJI",
+				"ADD_GOOGLE_CHAT_REACTION",
+			],
+			descriptionCompressed:
+				"Add or remove an emoji reaction to a Google Chat message",
+		},
+		{
 			name: "HELP_COMMAND",
 			description:
 				"Show available commands and their descriptions. Only activates for /help, /h, or /? slash commands.",
@@ -2806,6 +3417,20 @@ export const allActionsSpec = {
 			similes: ["/help", "/h", "/?"],
 			descriptionCompressed:
 				"Show available commands and their descriptions. Only activates for /help, /h, or /? slash commands.",
+		},
+		{
+			name: "ICHING_READING",
+			description:
+				"Perform an I Ching divination reading by casting a hexagram and interpreting changing lines.",
+			parameters: [],
+			similes: [
+				"CAST_HEXAGRAM",
+				"CONSULT_ICHING",
+				"THROW_COINS",
+				"ORACLE_READING",
+			],
+			descriptionCompressed:
+				"Perform an I Ching divination reading by casting a hexagram and interpreting changing lines.",
 		},
 		{
 			name: "IMESSAGE_SEND_MESSAGE",
@@ -2822,6 +3447,37 @@ export const allActionsSpec = {
 			similes: ["DOWNLOAD_SKILL", "ADD_SKILL", "GET_SKILL"],
 			descriptionCompressed:
 				"Install a skill from the ClawHub registry. The skill will be security-scanned before activation.",
+		},
+		{
+			name: "LINE_SEND_FLEX_MESSAGE",
+			description: "Send a rich flex message/card via LINE",
+			parameters: [],
+			similes: ["SEND_LINE_CARD", "LINE_FLEX", "LINE_CARD", "SEND_LINE_FLEX"],
+			descriptionCompressed: "Send a rich flex message/card via LINE",
+		},
+		{
+			name: "LINE_SEND_LOCATION",
+			description: "Send a location message via LINE",
+			parameters: [],
+			similes: [
+				"SEND_LINE_LOCATION",
+				"LINE_LOCATION",
+				"LINE_MAP",
+				"SHARE_LOCATION_LINE",
+			],
+			descriptionCompressed: "Send a location message via LINE",
+		},
+		{
+			name: "LINE_SEND_MESSAGE",
+			description: "Send a text message via LINE",
+			parameters: [],
+			similes: [
+				"SEND_LINE_MESSAGE",
+				"LINE_MESSAGE",
+				"LINE_TEXT",
+				"MESSAGE_LINE",
+			],
+			descriptionCompressed: "Send a text message via LINE",
 		},
 		{
 			name: "LIST_AGENTS",
@@ -2853,6 +3509,52 @@ export const allActionsSpec = {
 			],
 			descriptionCompressed:
 				"List all ejected plugins currently being managed locally",
+		},
+		{
+			name: "LIST_LINEAR_PROJECTS",
+			description: "List projects in Linear with optional filters",
+			parameters: [
+				{
+					name: "toLowerCase",
+					description: "The to lower case to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The to lower case to use.",
+				},
+			],
+			similes: [
+				"list-linear-projects",
+				"show-linear-projects",
+				"get-linear-projects",
+				"view-linear-projects",
+			],
+			exampleCalls: [
+				{
+					user: "Use LIST_LINEAR_PROJECTS with the provided parameters.",
+					actions: ["LIST_LINEAR_PROJECTS"],
+					params: {
+						LIST_LINEAR_PROJECTS: {
+							toLowerCase: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed: "List projects in Linear with optional filters",
+		},
+		{
+			name: "LIST_LINEAR_TEAMS",
+			description: "List teams in Linear with optional filters",
+			parameters: [],
+			similes: [
+				"list-linear-teams",
+				"show-linear-teams",
+				"get-linear-teams",
+				"view-linear-teams",
+			],
+			descriptionCompressed: "List teams in Linear with optional filters",
 		},
 		{
 			name: "LIST_PLAYLISTS",
@@ -2927,6 +3629,21 @@ export const allActionsSpec = {
 				"Load a saved playlist and add all tracks to the queue after confirmed:true. Works best in DMs to avoid flooding group chats.",
 		},
 		{
+			name: "lp_management",
+			description:
+				"Manages Liquidity Pool (LP) operations including: onboarding for LP management, depositing tokens into pools, withdrawing from pools, showing LP positions, concentrated liquidity positions with custom price ranges, checking APR/yield, setting auto-rebalance preferences, and finding best pools. Use this action when users mention: liquidity, LP, pools, APR, yield, deposit, withdraw, concentrated, price range, narrow range, degenai, ai16z, SOL pairs, or want help getting started with LP management.",
+			parameters: [],
+			similes: [
+				"LP_MANAGEMENT",
+				"LIQUIDITY_POOL_MANAGEMENT",
+				"LP_MANAGER",
+				"MANAGE_LP",
+				"MANAGE_LIQUIDITY",
+			],
+			descriptionCompressed:
+				"Manages Liquidity Pool (LP) operations including: onboarding for LP management, depositing tokens into pools, withdrawing from pools, showing LP positions, c...",
+		},
+		{
 			name: "MANAGE_ISSUES",
 			description: "Manage GitHub issues for a repository. ",
 			parameters: [],
@@ -2939,6 +3656,19 @@ export const allActionsSpec = {
 				"GET_ISSUE",
 			],
 			descriptionCompressed: "Manage GitHub issues for a repository.",
+		},
+		{
+			name: "manage_raydium_positions",
+			description:
+				"Automatically manage Raydium positions by rebalancing them when they drift too far from the pool price",
+			parameters: [],
+			similes: [
+				"AUTOMATE_RAYDIUM_REBALANCING",
+				"AUTOMATE_RAYDIUM_POSITIONS",
+				"START_MANAGING_RAYDIUM_POSITIONS",
+			],
+			descriptionCompressed:
+				"Automatically manage Raydium positions by rebalancing them when they drift too far from the pool price",
 		},
 		{
 			name: "MANAGE_SHOPIFY_CUSTOMERS",
@@ -3005,6 +3735,275 @@ export const allActionsSpec = {
 				"Manage desktop windows — list all visible windows, bring a window to the front,",
 		},
 		{
+			name: "MATH_CLEAR",
+			description: "Clear all calculation buffers and reset to zero.",
+			parameters: [],
+			similes: ["CLEAR", "RESET", "CLEAR_ALL"],
+			descriptionCompressed: "Clear all calculation buffers and reset to zero.",
+		},
+		{
+			name: "MATH_RECALL",
+			description: "Recall value from memory to input buffer.",
+			parameters: [
+				{
+					name: "values",
+					description: "The values to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The values to use.",
+				},
+			],
+			similes: ["RECALL", "LOAD", "MEMORY_RECALL"],
+			exampleCalls: [
+				{
+					user: "Use MATH_RECALL with the provided parameters.",
+					actions: ["MATH_RECALL"],
+					params: {
+						MATH_RECALL: {
+							values: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed: "Recall value from memory to input buffer.",
+		},
+		{
+			name: "MATH_STORE",
+			description: "Store current accumulator value to memory.",
+			parameters: [
+				{
+					name: "values",
+					description: "The values to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The values to use.",
+				},
+			],
+			similes: ["STORE", "SAVE", "MEMORY_STORE"],
+			exampleCalls: [
+				{
+					user: "Use MATH_STORE with the provided parameters.",
+					actions: ["MATH_STORE"],
+					params: {
+						MATH_STORE: {
+							values: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed: "Store current accumulator value to memory.",
+		},
+		{
+			name: "MATRIX_JOIN_ROOM",
+			description: "Join a Matrix room by ID or alias",
+			parameters: [],
+			similes: ["JOIN_MATRIX_ROOM", "ENTER_ROOM"],
+			descriptionCompressed: "Join a Matrix room by ID or alias",
+		},
+		{
+			name: "MATRIX_LIST_ROOMS",
+			description: "List all Matrix rooms the bot has joined",
+			parameters: [],
+			similes: ["LIST_MATRIX_ROOMS", "SHOW_ROOMS", "GET_ROOMS", "MY_ROOMS"],
+			descriptionCompressed: "List all Matrix rooms the bot has joined",
+		},
+		{
+			name: "MATRIX_SEND_MESSAGE",
+			description: "Send a message to a Matrix room",
+			parameters: [
+				{
+					name: "data",
+					description: "The data to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The data to use.",
+				},
+			],
+			similes: ["SEND_MATRIX_MESSAGE", "MESSAGE_MATRIX", "MATRIX_TEXT"],
+			exampleCalls: [
+				{
+					user: "Use MATRIX_SEND_MESSAGE with the provided parameters.",
+					actions: ["MATRIX_SEND_MESSAGE"],
+					params: {
+						MATRIX_SEND_MESSAGE: {
+							data: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed: "Send a message to a Matrix room",
+		},
+		{
+			name: "MATRIX_SEND_REACTION",
+			description: "React to a Matrix message with an emoji",
+			parameters: [
+				{
+					name: "data",
+					description: "The data to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The data to use.",
+				},
+			],
+			similes: ["REACT_MATRIX", "MATRIX_REACT", "ADD_MATRIX_REACTION"],
+			exampleCalls: [
+				{
+					user: "Use MATRIX_SEND_REACTION with the provided parameters.",
+					actions: ["MATRIX_SEND_REACTION"],
+					params: {
+						MATRIX_SEND_REACTION: {
+							data: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed: "React to a Matrix message with an emoji",
+		},
+		{
+			name: "MC_ATTACK",
+			description:
+				"Attack an entity by numeric entityId (from MC_WORLD_STATE.nearbyEntities).",
+			parameters: [],
+			similes: ["MINECRAFT_ATTACK", "HIT_ENTITY"],
+			descriptionCompressed:
+				"Attack an entity by numeric entityId (from MC_WORLD_STATE.nearbyEntities).",
+		},
+		{
+			name: "MC_CHAT",
+			description: "Send a chat message in Minecraft as the bot",
+			parameters: [],
+			similes: ["MINECRAFT_CHAT", "SAY_IN_MINECRAFT", "CHAT"],
+			descriptionCompressed: "Send a chat message in Minecraft as the bot",
+		},
+		{
+			name: "MC_CONNECT",
+			description: "Connect the Mineflayer bot to a Minecraft server",
+			parameters: [],
+			similes: ["MINECRAFT_CONNECT", "JOIN_SERVER", "CONNECT_TO_MINECRAFT"],
+			descriptionCompressed: "Connect the Mineflayer bot to a Minecraft server",
+		},
+		{
+			name: "MC_CONTROL",
+			description:
+				"Set a control state (e.g. forward/back/left/right/jump/sprint/sneak). Provide JSON {control,state,durationMs?} or 'forward true 1000'.",
+			parameters: [],
+			similes: ["MINECRAFT_CONTROL", "SET_CONTROL_STATE"],
+			descriptionCompressed:
+				"Set a control state (e.g. forward/back/left/right/jump/sprint/sneak). Provide JSON {control,state,durationMs?} or 'forward true 1000'.",
+		},
+		{
+			name: "MC_DIG",
+			description:
+				'Dig/break the block at (x y z). Provide coordinates like \'10 64 -20\' or JSON {"x":10,"y":64,"z":-20}.',
+			parameters: [],
+			similes: ["MINECRAFT_DIG", "MINE_BLOCK", "BREAK_BLOCK"],
+			descriptionCompressed:
+				'Dig/break the block at (x y z). Provide coordinates like \'10 64 -20\' or JSON {"x":10,"y":64,"z":-20}.',
+		},
+		{
+			name: "MC_DISCONNECT",
+			description: "Disconnect the Mineflayer bot from the Minecraft server",
+			parameters: [],
+			similes: ["MINECRAFT_DISCONNECT", "LEAVE_SERVER", "QUIT_MINECRAFT"],
+			descriptionCompressed:
+				"Disconnect the Mineflayer bot from the Minecraft server",
+		},
+		{
+			name: "MC_GOTO",
+			description:
+				'Pathfind to a target (x y z). Provide coordinates like \'10 64 -20\' or JSON {"x":10,"y":64,"z":-20}.',
+			parameters: [],
+			similes: ["MINECRAFT_GOTO", "WALK_TO", "MOVE_TO_COORDS"],
+			descriptionCompressed:
+				'Pathfind to a target (x y z). Provide coordinates like \'10 64 -20\' or JSON {"x":10,"y":64,"z":-20}.',
+		},
+		{
+			name: "MC_LOOK",
+			description:
+				"Look to yaw/pitch (radians). Provide 'yaw pitch' or JSON {yaw,pitch}.",
+			parameters: [],
+			similes: ["MINECRAFT_LOOK", "TURN_HEAD"],
+			descriptionCompressed:
+				"Look to yaw/pitch (radians). Provide 'yaw pitch' or JSON {yaw,pitch}.",
+		},
+		{
+			name: "MC_PLACE",
+			description:
+				"Place the currently-held block onto a reference block face. Provide 'x y z face' (face=up/down/north/south/east/west) or JSON {x,y,z,face}.",
+			parameters: [],
+			similes: ["MINECRAFT_PLACE", "PLACE_BLOCK"],
+			descriptionCompressed:
+				"Place the currently-held block onto a reference block face. Provide 'x y z face' (face=up/down/north/south/east/west) or JSON {x,y,z,face}.",
+		},
+		{
+			name: "MC_SCAN",
+			description:
+				'Scan nearby blocks. Optional JSON input: {"blocks":["oak_log"],"radius":16,"maxResults":32}. If omitted, scans for any non-air blocks.',
+			parameters: [],
+			similes: ["MINECRAFT_SCAN", "FIND_BLOCKS", "SCAN_BLOCKS"],
+			descriptionCompressed:
+				'Scan nearby blocks. Optional JSON input: {"blocks":["oak_log"],"radius":16,"maxResults":32}. If omitted, scans for any non-air blocks.',
+		},
+		{
+			name: "MC_STOP",
+			description: "Stop pathfinding / movement goals.",
+			parameters: [],
+			similes: ["MINECRAFT_STOP", "STOP_PATHFINDER", "STOP_MOVING"],
+			descriptionCompressed: "Stop pathfinding / movement goals.",
+		},
+		{
+			name: "MC_WAYPOINT_DELETE",
+			description: "Delete a named waypoint (message text is the name).",
+			parameters: [],
+			similes: [
+				"MINECRAFT_WAYPOINT_DELETE",
+				"DELETE_WAYPOINT",
+				"REMOVE_WAYPOINT",
+			],
+			descriptionCompressed:
+				"Delete a named waypoint (message text is the name).",
+		},
+		{
+			name: "MC_WAYPOINT_GOTO",
+			description: "Pathfind to a named waypoint (message text is the name).",
+			parameters: [],
+			similes: [
+				"MINECRAFT_WAYPOINT_GOTO",
+				"GOTO_WAYPOINT",
+				"NAVIGATE_WAYPOINT",
+			],
+			descriptionCompressed:
+				"Pathfind to a named waypoint (message text is the name).",
+		},
+		{
+			name: "MC_WAYPOINT_LIST",
+			description: "List saved waypoints.",
+			parameters: [],
+			similes: ["MINECRAFT_WAYPOINT_LIST", "LIST_WAYPOINTS", "SHOW_WAYPOINTS"],
+			descriptionCompressed: "List saved waypoints.",
+		},
+		{
+			name: "MC_WAYPOINT_SET",
+			description:
+				"Save the bot's current position as a named waypoint (message text is the name).",
+			parameters: [],
+			similes: ["MINECRAFT_WAYPOINT_SET", "SET_WAYPOINT", "SAVE_WAYPOINT"],
+			descriptionCompressed:
+				"Save the bot's current position as a named waypoint (message text is the name).",
+		},
+		{
 			name: "MODELS_COMMAND",
 			description:
 				"List available AI models and providers. Only activates for /models slash command.",
@@ -3012,6 +4011,253 @@ export const allActionsSpec = {
 			similes: ["/models"],
 			descriptionCompressed:
 				"List available AI models and providers. Only activates for /models slash command.",
+		},
+		{
+			name: "MODIFY_EXISTING_N8N_WORKFLOW",
+			description: "Load an existing deployed n8n workflow for modification. ",
+			parameters: [],
+			similes: [
+				"EDIT_EXISTING_WORKFLOW",
+				"UPDATE_EXISTING_WORKFLOW",
+				"CHANGE_EXISTING_WORKFLOW",
+				"LOAD_WORKFLOW_FOR_EDIT",
+			],
+			descriptionCompressed:
+				"Load an existing deployed n8n workflow for modification.",
+		},
+		{
+			name: "MULTIVERSE_ADD",
+			description:
+				"Performs addition in the multiverse where numbers behave differently based on dimensional constants (prime, quantum, or chaos).",
+			parameters: [
+				{
+					name: "values",
+					description: "The values to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The values to use.",
+				},
+			],
+			similes: ["M_ADD", "MULTI_ADD", "DIMENSIONAL_ADD"],
+			exampleCalls: [
+				{
+					user: "Use MULTIVERSE_ADD with the provided parameters.",
+					actions: ["MULTIVERSE_ADD"],
+					params: {
+						MULTIVERSE_ADD: {
+							values: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"Performs addition in the multiverse where numbers behave differently based on dimensional constants (prime, quantum, or chaos).",
+		},
+		{
+			name: "MULTIVERSE_DIVIDE",
+			description:
+				"Performs division in the multiverse where infinity and zero have special meanings (safe, infinite, or golden).",
+			parameters: [
+				{
+					name: "values",
+					description: "The values to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The values to use.",
+				},
+			],
+			similes: ["M_DIVIDE", "MULTI_DIV", "DIMENSIONAL_DIVIDE"],
+			exampleCalls: [
+				{
+					user: "Use MULTIVERSE_DIVIDE with the provided parameters.",
+					actions: ["MULTIVERSE_DIVIDE"],
+					params: {
+						MULTIVERSE_DIVIDE: {
+							values: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"Performs division in the multiverse where infinity and zero have special meanings (safe, infinite, or golden).",
+		},
+		{
+			name: "MULTIVERSE_MODULO",
+			description:
+				"Performs modulo operation in the multiverse with cyclical dimensional properties (cyclical, spiral, or fractal).",
+			parameters: [
+				{
+					name: "values",
+					description: "The values to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The values to use.",
+				},
+			],
+			similes: ["M_MODULO", "MULTI_MOD", "DIMENSIONAL_MODULO"],
+			exampleCalls: [
+				{
+					user: "Use MULTIVERSE_MODULO with the provided parameters.",
+					actions: ["MULTIVERSE_MODULO"],
+					params: {
+						MULTIVERSE_MODULO: {
+							values: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"Performs modulo operation in the multiverse with cyclical dimensional properties (cyclical, spiral, or fractal).",
+		},
+		{
+			name: "MULTIVERSE_MULTIPLY",
+			description:
+				"Performs multiplication across dimensional boundaries with exotic number behaviors (fibonacci, exponential, or harmonic).",
+			parameters: [
+				{
+					name: "values",
+					description: "The values to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The values to use.",
+				},
+			],
+			similes: ["M_MULTIPLY", "MULTI_MUL", "DIMENSIONAL_MULTIPLY"],
+			exampleCalls: [
+				{
+					user: "Use MULTIVERSE_MULTIPLY with the provided parameters.",
+					actions: ["MULTIVERSE_MULTIPLY"],
+					params: {
+						MULTIVERSE_MULTIPLY: {
+							values: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"Performs multiplication across dimensional boundaries with exotic number behaviors (fibonacci, exponential, or harmonic).",
+		},
+		{
+			name: "MULTIVERSE_POWER",
+			description:
+				"Raises numbers to powers in the multiverse with dimensional effects (standard, imaginary, or recursive).",
+			parameters: [
+				{
+					name: "values",
+					description: "The values to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The values to use.",
+				},
+			],
+			similes: ["M_POWER", "MULTI_POW", "DIMENSIONAL_POWER"],
+			exampleCalls: [
+				{
+					user: "Use MULTIVERSE_POWER with the provided parameters.",
+					actions: ["MULTIVERSE_POWER"],
+					params: {
+						MULTIVERSE_POWER: {
+							values: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"Raises numbers to powers in the multiverse with dimensional effects (standard, imaginary, or recursive).",
+		},
+		{
+			name: "MULTIVERSE_SQRT",
+			description:
+				"Takes square root in the multiverse with dimensional variations (positive, complex, or quantum).",
+			parameters: [
+				{
+					name: "values",
+					description: "The values to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The values to use.",
+				},
+			],
+			similes: ["M_SQRT", "MULTI_ROOT", "DIMENSIONAL_SQRT"],
+			exampleCalls: [
+				{
+					user: "Use MULTIVERSE_SQRT with the provided parameters.",
+					actions: ["MULTIVERSE_SQRT"],
+					params: {
+						MULTIVERSE_SQRT: {
+							values: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"Takes square root in the multiverse with dimensional variations (positive, complex, or quantum).",
+		},
+		{
+			name: "MULTIVERSE_SUBTRACT",
+			description:
+				"Performs subtraction in the multiverse where negative numbers might not exist in some dimensions (absolute, mirror, or void).",
+			parameters: [
+				{
+					name: "values",
+					description: "The values to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The values to use.",
+				},
+			],
+			similes: ["M_SUBTRACT", "MULTI_SUB", "DIMENSIONAL_SUBTRACT"],
+			exampleCalls: [
+				{
+					user: "Use MULTIVERSE_SUBTRACT with the provided parameters.",
+					actions: ["MULTIVERSE_SUBTRACT"],
+					params: {
+						MULTIVERSE_SUBTRACT: {
+							values: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"Performs subtraction in the multiverse where negative numbers might not exist in some dimensions (absolute, mirror, or void).",
+		},
+		{
+			name: "NOSTR_PUBLISH_PROFILE",
+			description:
+				"Publish or update the bot's Nostr profile (kind:0 metadata)",
+			parameters: [],
+			similes: ["UPDATE_NOSTR_PROFILE", "SET_NOSTR_PROFILE", "NOSTR_PROFILE"],
+			descriptionCompressed:
+				"Publish or update the bot's Nostr profile (kind:0 metadata)",
+		},
+		{
+			name: "NOSTR_SEND_DM",
+			description: "Send an encrypted direct message via Nostr (NIP-04)",
+			parameters: [],
+			similes: ["SEND_NOSTR_DM", "NOSTR_MESSAGE", "NOSTR_TEXT", "DM_NOSTR"],
+			descriptionCompressed:
+				"Send an encrypted direct message via Nostr (NIP-04)",
 		},
 		{
 			name: "PAUSE_MUSIC",
@@ -3057,6 +4303,40 @@ export const allActionsSpec = {
 			],
 			descriptionCompressed:
 				"Handle any complex music query that requires understanding and research, then queue the selected track after confirmed:true. Supports: artist queries (first...",
+		},
+		{
+			name: "POST_INSTAGRAM_COMMENT",
+			description: "Post a comment on an Instagram post or media",
+			parameters: [
+				{
+					name: "response",
+					description: "The response to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The response to use.",
+				},
+			],
+			similes: [
+				"instagram_comment",
+				"comment_instagram",
+				"reply_instagram",
+				"post_comment_instagram",
+			],
+			exampleCalls: [
+				{
+					user: "Use POST_INSTAGRAM_COMMENT with the provided parameters.",
+					actions: ["POST_INSTAGRAM_COMMENT"],
+					params: {
+						POST_INSTAGRAM_COMMENT: {
+							response: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed: "Post a comment on an Instagram post or media",
 		},
 		{
 			name: "POST_TWEET",
@@ -3120,6 +4400,66 @@ export const allActionsSpec = {
 			descriptionCompressed: "Create a git workspace for coding tasks.",
 		},
 		{
+			name: "QUERY_ENTITIES",
+			description: "Query entities by type or attribute values.",
+			parameters: [
+				{
+					name: "values",
+					description: "The values to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The values to use.",
+				},
+			],
+			similes: ["FIND_ENTITIES", "SEARCH_ENTITIES", "LIST_ENTITIES"],
+			exampleCalls: [
+				{
+					user: "Use QUERY_ENTITIES with the provided parameters.",
+					actions: ["QUERY_ENTITIES"],
+					params: {
+						QUERY_ENTITIES: {
+							values: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed: "Query entities by type or attribute values.",
+		},
+		{
+			name: "QUERY_RELATIONSHIPS",
+			description:
+				"Query relationships of a specific type or for a specific entity.",
+			parameters: [
+				{
+					name: "values",
+					description: "The values to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The values to use.",
+				},
+			],
+			similes: ["FIND_RELATIONSHIPS", "GET_CONNECTIONS", "SHOW_LINKS"],
+			exampleCalls: [
+				{
+					user: "Use QUERY_RELATIONSHIPS with the provided parameters.",
+					actions: ["QUERY_RELATIONSHIPS"],
+					params: {
+						QUERY_RELATIONSHIPS: {
+							values: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"Query relationships of a specific type or for a specific entity.",
+		},
+		{
 			name: "QUEUE_MUSIC",
 			description: "Add a song to the queue for later after confirmed:true.",
 			parameters: [
@@ -3150,11 +4490,59 @@ export const allActionsSpec = {
 				"Add a song to the queue for later after confirmed:true.",
 		},
 		{
+			name: "READ_MCP_RESOURCE",
+			description: "Reads a resource from an MCP server",
+			parameters: [],
+			similes: [
+				"READ_RESOURCE",
+				"READ_MCP_RESOURCE",
+				"GET_RESOURCE",
+				"GET_MCP_RESOURCE",
+				"FETCH_RESOURCE",
+				"FETCH_MCP_RESOURCE",
+				"ACCESS_RESOURCE",
+				"ACCESS_MCP_RESOURCE",
+			],
+			descriptionCompressed: "Reads a resource from an MCP server",
+		},
+		{
 			name: "READ_UNREAD_X_DMS",
 			description: "List unread Twitter/X direct messages.",
 			parameters: [],
 			similes: ["READ_X_DMS", "GET_X_UNREAD_DMS", "CHECK_X_DMS"],
 			descriptionCompressed: "List unread Twitter/X direct messages.",
+		},
+		{
+			name: "READING_FOLLOWUP",
+			description:
+				"Continue an active reading by processing user feedback and revealing the next element.",
+			parameters: [],
+			similes: [
+				"CONTINUE_READING",
+				"NEXT_CARD",
+				"READING_RESPONSE",
+				"PROCEED_READING",
+			],
+			descriptionCompressed:
+				"Continue an active reading by processing user feedback and revealing the next element.",
+		},
+		{
+			name: "REMOTE_ATTESTATION",
+			description:
+				"Generate a remote attestation to prove that the agent is running in a TEE (Trusted Execution Environment)",
+			parameters: [],
+			similes: [
+				"REMOTE_ATTESTATION",
+				"TEE_REMOTE_ATTESTATION",
+				"TEE_ATTESTATION",
+				"TEE_QUOTE",
+				"ATTESTATION",
+				"TEE_ATTESTATION_QUOTE",
+				"PROVE_TEE",
+				"VERIFY_TEE",
+			],
+			descriptionCompressed:
+				"Generate a remote attestation to prove that the agent is running in a TEE (Trusted Execution Environment)",
 		},
 		{
 			name: "REPLY_X_DM",
@@ -3164,6 +4552,15 @@ export const allActionsSpec = {
 			similes: ["SEND_X_DM", "REPLY_TWITTER_DM", "X_DM_REPLY"],
 			descriptionCompressed:
 				"Reply to a Twitter/X direct message. Two-stage: without `confirmed: true` this returns a preview and requires confirmation; with `confirmed: true` the DM is...",
+		},
+		{
+			name: "REQUEST_PAYMENT",
+			description:
+				"Request payment from the user for a reading service. Specify the amount to charge.",
+			parameters: [],
+			similes: ["CHARGE_USER", "ASK_FOR_PAYMENT", "SET_PRICE"],
+			descriptionCompressed:
+				"Request payment from the user for a reading service. Specify the amount to charge.",
 		},
 		{
 			name: "RESUME_CLOUD_AGENT",
@@ -3232,6 +4629,40 @@ export const allActionsSpec = {
 				"Save the current music queue as a playlist for the user after confirmed:true. Works best in DMs to avoid flooding group chats.",
 		},
 		{
+			name: "SEARCH_LINEAR_ISSUES",
+			description: "Search for issues in Linear with various filters",
+			parameters: [
+				{
+					name: "name",
+					description: "The name to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The name to use.",
+				},
+			],
+			similes: [
+				"search-linear-issues",
+				"find-linear-issues",
+				"query-linear-issues",
+				"list-linear-issues",
+			],
+			exampleCalls: [
+				{
+					user: "Use SEARCH_LINEAR_ISSUES with the provided parameters.",
+					actions: ["SEARCH_LINEAR_ISSUES"],
+					params: {
+						SEARCH_LINEAR_ISSUES: {
+							name: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed: "Search for issues in Linear with various filters",
+		},
+		{
 			name: "SEARCH_SHOPIFY_STORE",
 			description:
 				"Search across products, orders, and customers in a connected Shopify store.",
@@ -3275,6 +4706,67 @@ export const allActionsSpec = {
 				"Search YouTube for a song or video and return the link. Use this when a user asks to find or search for a YouTube video or song without providing a specific...",
 		},
 		{
+			name: "SELECT_DIMENSION",
+			description:
+				"Select the dimensional constant that affects how mathematical operations behave in the multiverse.",
+			parameters: [
+				{
+					name: "values",
+					description: "The values to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The values to use.",
+				},
+			],
+			similes: ["DIMENSION", "SET_DIMENSION", "CHOOSE_DIMENSION"],
+			exampleCalls: [
+				{
+					user: "Use SELECT_DIMENSION with the provided parameters.",
+					actions: ["SELECT_DIMENSION"],
+					params: {
+						SELECT_DIMENSION: {
+							values: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"Select the dimensional constant that affects how mathematical operations behave in the multiverse.",
+		},
+		{
+			name: "SELECT_ENTITY",
+			description: "Select an entity as the current entity for operations.",
+			parameters: [
+				{
+					name: "values",
+					description: "The values to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The values to use.",
+				},
+			],
+			similes: ["CHOOSE_ENTITY", "FOCUS_ENTITY", "SET_CURRENT_ENTITY"],
+			exampleCalls: [
+				{
+					user: "Use SELECT_ENTITY with the provided parameters.",
+					actions: ["SELECT_ENTITY"],
+					params: {
+						SELECT_ENTITY: {
+							values: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"Select an entity as the current entity for operations.",
+		},
+		{
 			name: "SEND_BLUEBUBBLES_MESSAGE",
 			description: "Send a message via iMessage through BlueBubbles",
 			parameters: [],
@@ -3286,6 +4778,41 @@ export const allActionsSpec = {
 				"APPLE_MESSAGE",
 			],
 			descriptionCompressed: "Send a message via iMessage through BlueBubbles",
+		},
+		{
+			name: "SEND_INSTAGRAM_DM",
+			description: "Send a direct message to an Instagram user",
+			parameters: [
+				{
+					name: "response",
+					description: "The response to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The response to use.",
+				},
+			],
+			similes: [
+				"instagram_dm",
+				"instagram_message",
+				"send_instagram_message",
+				"dm_instagram",
+				"direct_message_instagram",
+			],
+			exampleCalls: [
+				{
+					user: "Use SEND_INSTAGRAM_DM with the provided parameters.",
+					actions: ["SEND_INSTAGRAM_DM"],
+					params: {
+						SEND_INSTAGRAM_DM: {
+							response: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed: "Send a direct message to an Instagram user",
 		},
 		{
 			name: "SEND_TO_AGENT",
@@ -3334,6 +4861,37 @@ export const allActionsSpec = {
 			similes: ["POST_X", "TWEET_WITH_CONFIRMATION", "PUBLISH_TWEET"],
 			descriptionCompressed:
 				"Publish a tweet on Twitter/X with a confirmation gate. Two-stage: without `confirmed: true` this returns a preview; with `confirmed: true` the tweet is posted.",
+		},
+		{
+			name: "SET_ATTRIBUTE",
+			description:
+				"Set an attribute on the current entity. Attributes store additional data on entities.",
+			parameters: [
+				{
+					name: "values",
+					description: "The values to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The values to use.",
+				},
+			],
+			similes: ["ADD_ATTRIBUTE", "SET_PROPERTY", "UPDATE_ATTRIBUTE"],
+			exampleCalls: [
+				{
+					user: "Use SET_ATTRIBUTE with the provided parameters.",
+					actions: ["SET_ATTRIBUTE"],
+					params: {
+						SET_ATTRIBUTE: {
+							values: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"Set an attribute on the current entity. Attributes store additional data on entities.",
 		},
 		{
 			name: "SETUP_CREDENTIALS",
@@ -3536,6 +5094,15 @@ export const allActionsSpec = {
 				"Spawn a specific task agent inside an existing workspace when you need direct control.",
 		},
 		{
+			name: "START_TAILSCALE",
+			description:
+				"Start a Tailscale tunnel exposing a local port to your tailnet (or the public internet via Funnel)",
+			parameters: [],
+			similes: ["START_TUNNEL", "OPEN_TUNNEL", "CREATE_TUNNEL", "TAILSCALE_UP"],
+			descriptionCompressed:
+				"Start a Tailscale tunnel exposing a local port to your tailnet (or the public internet via Funnel)",
+		},
+		{
 			name: "STATUS_COMMAND",
 			description:
 				"Show session directive settings via /status slash command. Only activates for /status or /s prefix.",
@@ -3607,6 +5174,13 @@ export const allActionsSpec = {
 				"Stop playback and clear the queue. Use when the user wants music off or the queue cleared.",
 		},
 		{
+			name: "STOP_TAILSCALE",
+			description: "Stop the running Tailscale tunnel",
+			parameters: [],
+			similes: ["STOP_TUNNEL", "CLOSE_TUNNEL", "TAILSCALE_DOWN"],
+			descriptionCompressed: "Stop the running Tailscale tunnel",
+		},
+		{
 			name: "SUMMARIZE_FEED",
 			description:
 				"Fetch the top-N X tweets and produce a concise natural-language summary using the runtime's small text model.",
@@ -3623,6 +5197,15 @@ export const allActionsSpec = {
 			similes: ["REFRESH_SKILLS", "UPDATE_CATALOG"],
 			descriptionCompressed:
 				"Sync the skill catalog from the registry to discover new skills.",
+		},
+		{
+			name: "TAROT_READING",
+			description:
+				"Perform a tarot card reading, drawing cards into a spread and revealing each one iteratively.",
+			parameters: [],
+			similes: ["READ_TAROT", "DRAW_CARDS", "TAROT_SPREAD", "CARD_READING"],
+			descriptionCompressed:
+				"Perform a tarot card reading, drawing cards into a spread and revealing each one iteratively.",
 		},
 		{
 			name: "TASK_CONTROL",
@@ -3703,6 +5286,81 @@ export const allActionsSpec = {
 				"Enable or disable an installed skill. Say 'enable <skill>' or 'disable <skill>'.",
 		},
 		{
+			name: "TRANSFER_TO_INPUT",
+			description:
+				"Transfer accumulator value to input buffer for next operation.",
+			parameters: [
+				{
+					name: "values",
+					description: "The values to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The values to use.",
+				},
+			],
+			similes: ["TRANSFER", "MOVE_TO_INPUT", "ACCUMULATOR_TO_INPUT"],
+			exampleCalls: [
+				{
+					user: "Use TRANSFER_TO_INPUT with the provided parameters.",
+					actions: ["TRANSFER_TO_INPUT"],
+					params: {
+						TRANSFER_TO_INPUT: {
+							values: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"Transfer accumulator value to input buffer for next operation.",
+		},
+		{
+			name: "TWITCH_JOIN_CHANNEL",
+			description: "Join a Twitch channel to listen and send messages",
+			parameters: [],
+			similes: ["JOIN_TWITCH_CHANNEL", "ENTER_CHANNEL", "CONNECT_CHANNEL"],
+			descriptionCompressed:
+				"Join a Twitch channel to listen and send messages",
+		},
+		{
+			name: "TWITCH_LEAVE_CHANNEL",
+			description: "Leave a Twitch channel",
+			parameters: [],
+			similes: [
+				"LEAVE_TWITCH_CHANNEL",
+				"EXIT_CHANNEL",
+				"PART_CHANNEL",
+				"DISCONNECT_CHANNEL",
+			],
+			descriptionCompressed: "Leave a Twitch channel",
+		},
+		{
+			name: "TWITCH_LIST_CHANNELS",
+			description: "List all Twitch channels the bot is currently in",
+			parameters: [],
+			similes: [
+				"LIST_TWITCH_CHANNELS",
+				"SHOW_CHANNELS",
+				"GET_CHANNELS",
+				"CURRENT_CHANNELS",
+			],
+			descriptionCompressed: "List all Twitch channels the bot is currently in",
+		},
+		{
+			name: "TWITCH_SEND_MESSAGE",
+			description: "Send a message to a Twitch channel",
+			parameters: [],
+			similes: [
+				"SEND_TWITCH_MESSAGE",
+				"TWITCH_CHAT",
+				"CHAT_TWITCH",
+				"SAY_IN_TWITCH",
+			],
+			descriptionCompressed: "Send a message to a Twitch channel",
+		},
+		{
 			name: "UNINSTALL_SKILL",
 			description:
 				"Uninstall a non-bundled skill. Bundled skills cannot be removed. ",
@@ -3745,6 +5403,25 @@ export const allActionsSpec = {
 			similes: ["INVOKE_SKILL", "EXECUTE_SKILL", "RUN_SKILL", "CALL_SKILL"],
 			descriptionCompressed:
 				"Invoke an enabled skill by slug. The skill's instructions or script run and the result returns to the conversation.",
+		},
+		{
+			name: "WEB_SEARCH",
+			description:
+				"Perform a web search to find information related to the message.",
+			parameters: [],
+			similes: [
+				"SEARCH_WEB",
+				"INTERNET_SEARCH",
+				"LOOKUP",
+				"QUERY_WEB",
+				"FIND_ONLINE",
+				"SEARCH_ENGINE",
+				"WEB_LOOKUP",
+				"ONLINE_SEARCH",
+				"FIND_INFORMATION",
+			],
+			descriptionCompressed:
+				"Perform a web search to find information related to the message.",
 		},
 	],
 } as const satisfies { version: string; actions: readonly ActionDoc[] };

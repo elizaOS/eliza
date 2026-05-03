@@ -372,21 +372,25 @@ function loadDatasetSamples(datasetPath: string): {
 async function seedRuntimeGraph(
   adapter: InMemoryDatabaseAdapter,
 ): Promise<void> {
-  await adapter.createWorld({
-    id: WORLD_ID,
-    name: "VoicebenchWorld",
-    agentId: AGENT_ID,
-    messageServerId: "voicebench",
-  });
+  await adapter.createWorlds([
+    {
+      id: WORLD_ID,
+      name: "VoicebenchWorld",
+      agentId: AGENT_ID,
+      messageServerId: "voicebench",
+    } as Parameters<typeof adapter.createWorlds>[0][number],
+  ]);
 
-  await adapter.createRoom({
-    id: ROOM_ID,
-    name: "VoicebenchRoom",
-    agentId: AGENT_ID,
-    source: "voicebench",
-    type: "GROUP",
-    worldId: WORLD_ID,
-  } as Parameters<typeof adapter.createRoom>[0]);
+  await adapter.createRooms([
+    {
+      id: ROOM_ID,
+      name: "VoicebenchRoom",
+      agentId: AGENT_ID,
+      source: "voicebench",
+      type: "GROUP",
+      worldId: WORLD_ID,
+    } as Parameters<typeof adapter.createRooms>[0][number],
+  ]);
 
   await adapter.createEntities([
     {
@@ -401,17 +405,24 @@ async function seedRuntimeGraph(
     } as Parameters<typeof adapter.createEntities>[0][number],
   ]);
 
-  await adapter.addParticipantsRoom([USER_ENTITY_ID, AGENT_ID], ROOM_ID);
+  await adapter.createRoomParticipants(
+    [USER_ENTITY_ID, AGENT_ID],
+    ROOM_ID,
+  );
 }
 
 async function resolvePlugins(profile: string): Promise<Plugin[]> {
-  const groqModule = await import(
-    "../../../../plugins/plugin-groq/index.ts"
-  );
-  const groq =
-    (groqModule as { groqPlugin?: Plugin }).groqPlugin ??
-    (groqModule as { default?: Plugin }).default;
-
+  // Try the npm-published packages first (the workspace install path), then
+  // fall back to the sibling source-checkout layout that some workspaces use.
+  let groqModule: { groqPlugin?: Plugin; default?: Plugin } | null = null;
+  try {
+    groqModule = (await import("@elizaos/plugin-groq")) as typeof groqModule;
+  } catch {
+    groqModule = (await import(
+      "../../../../plugins/plugin-groq/index.ts"
+    )) as typeof groqModule;
+  }
+  const groq = groqModule?.groqPlugin ?? groqModule?.default;
   if (!groq) {
     throw new Error("Failed to load Groq TypeScript plugin");
   }
@@ -420,12 +431,19 @@ async function resolvePlugins(profile: string): Promise<Plugin[]> {
     return [groq];
   }
 
-  const elevenLabsModule = await import(
-    "../../../../plugins/plugin-elevenlabs/src/index.ts"
-  );
+  let elevenLabsModule: { elevenLabsPlugin?: Plugin; default?: Plugin } | null =
+    null;
+  try {
+    elevenLabsModule = (await import(
+      "@elizaos/plugin-elevenlabs"
+    )) as typeof elevenLabsModule;
+  } catch {
+    elevenLabsModule = (await import(
+      "../../../../plugins/plugin-elevenlabs/src/index.ts"
+    )) as typeof elevenLabsModule;
+  }
   const elevenLabs =
-    (elevenLabsModule as { elevenLabsPlugin?: Plugin }).elevenLabsPlugin ??
-    (elevenLabsModule as { default?: Plugin }).default;
+    elevenLabsModule?.elevenLabsPlugin ?? elevenLabsModule?.default;
   if (!elevenLabs) {
     throw new Error("Failed to load ElevenLabs TypeScript plugin");
   }

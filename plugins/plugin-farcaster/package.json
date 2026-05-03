@@ -35,10 +35,10 @@
   ],
   "sideEffects": false,
   "dependencies": {
-    "@elizaos/core": "2.0.0-alpha.3",
+    "@elizaos/core": "workspace:*",
     "@neynar/nodejs-sdk": "^3.34.0",
     "lru-cache": "^11.1.0",
-    "typescript": "^5.9.3",
+    "typescript": "^6.0.3",
     "zod": "^4.3.6"
   },
   "devDependencies": {

@@ -12,8 +12,8 @@
   },
   "dependencies": {
     "@elizaos/core": "alpha",
-    "@elizaos/plugin-lp-manager": "alpha",
-    "@elizaos/plugin-sql": "alpha"
+    "@elizaos/plugin-lp-manager": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

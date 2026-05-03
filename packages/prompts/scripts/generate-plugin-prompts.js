@@ -3,14 +3,13 @@
 /**
  * Plugin Prompt Generator Script
  *
- * Generates native code from .txt prompt templates for plugins.
- * Can be used by any plugin to generate TypeScript, Python, and Rust exports.
+ * Generates a TypeScript prompts.ts module from .txt prompt templates for plugins.
  *
  * Usage:
- *   node generate-plugin-prompts.js <prompts-dir> <output-base-dir> [--target typescript|python|rust|all]
+ *   node generate-plugin-prompts.js <prompts-dir> <output-base-dir>
  *
  * Example:
- *   node generate-plugin-prompts.js ./prompts ./dist --target all
+ *   node generate-plugin-prompts.js ./prompts ./dist
  */
 
 import { spawnSync } from "node:child_process";
@@ -76,26 +75,6 @@ function escapeTypeScript(content) {
     .replace(/\\/g, "\\\\")
     .replace(/`/g, "\\`")
     .replace(/\$\{/g, "\\${");
-}
-
-/**
- * Escape a string for use in Python triple-quoted string
- */
-function escapePython(content) {
-  return content.replace(/\\/g, "\\\\").replace(/"""/g, '\\"\\"\\"');
-}
-
-/**
- * Escape a string for use in Rust raw string literal
- * Rust raw strings r#"..."# don't need escaping except for the delimiter itself
- */
-function escapeRust(content) {
-  // Check if content contains "# - if so, we need more # in our delimiter
-  let hashCount = 1;
-  while (content.includes(`"${"#".repeat(hashCount)}`)) {
-    hashCount++;
-  }
-  return { content, hashCount };
 }
 
 /**
@@ -181,105 +160,6 @@ function generateTypeScript(prompts, outputBaseDir, sourcePath) {
 }
 
 /**
- * Generate Python output
- */
-function generatePython(prompts, outputBaseDir, sourcePath) {
-  const outputDir = path.join(outputBaseDir, "python");
-  fs.mkdirSync(outputDir, { recursive: true });
-
-  const relativeSourcePath = path
-    .relative(outputDir, sourcePath)
-    .replace(/\\/g, "/");
-
-  let output = `"""
-Auto-generated prompt templates
-DO NOT EDIT - Generated from ${relativeSourcePath}/*.txt
-
-These prompts use Handlebars-style template syntax:
-- {{variableName}} for simple substitution
-- {{#each items}}...{{/each}} for iteration
-- {{#if condition}}...{{/if}} for conditionals
-"""
-
-from __future__ import annotations
-
-`;
-
-  for (const prompt of prompts) {
-    const escaped = escapePython(prompt.content);
-    output += `${prompt.constName} = """${escaped}"""\n\n`;
-  }
-
-  // Add __all__ for explicit exports
-  output += `__all__ = [\n`;
-  for (const prompt of prompts) {
-    output += `    "${prompt.constName}",\n`;
-  }
-  output += `]\n`;
-
-  fs.writeFileSync(path.join(outputDir, "prompts.py"), output);
-
-  console.log(`Generated Python output: ${outputDir}/prompts.py`);
-
-  // Try to copy to Python package directory if it exists
-  // Look for python/elizaos_plugin_*/ directory structure
-  const pluginRoot = path.resolve(outputBaseDir, "../..");
-  const pythonDir = path.join(pluginRoot, "python");
-
-  if (fs.existsSync(pythonDir)) {
-    // Find elizaos_plugin_* directory
-    const pythonPkgDirs = fs
-      .readdirSync(pythonDir)
-      .filter(
-        (dir) =>
-          dir.startsWith("elizaos_plugin_") &&
-          fs.statSync(path.join(pythonDir, dir)).isDirectory(),
-      );
-
-    if (pythonPkgDirs.length > 0) {
-      const pythonPkgDir = path.join(pythonDir, pythonPkgDirs[0]);
-      const targetFile = path.join(pythonPkgDir, "_generated_prompts.py");
-
-      // Copy generated prompts to Python package as _generated_prompts.py
-      fs.copyFileSync(path.join(outputDir, "prompts.py"), targetFile);
-      console.log(`Copied Python prompts to ${targetFile}`);
-    }
-  }
-}
-
-/**
- * Generate Rust output
- */
-function generateRust(prompts, outputBaseDir, sourcePath) {
-  const outputDir = path.join(outputBaseDir, "rust");
-  fs.mkdirSync(outputDir, { recursive: true });
-
-  const relativeSourcePath = path
-    .relative(outputDir, sourcePath)
-    .replace(/\\/g, "/");
-
-  let output = `//! Auto-generated prompt templates
-//! DO NOT EDIT - Generated from ${relativeSourcePath}/*.txt
-//!
-//! These prompts use Handlebars-style template syntax:
-//! - {{variableName}} for simple substitution
-//! - {{#each items}}...{{/each}} for iteration
-//! - {{#if condition}}...{{/if}} for conditionals
-
-`;
-
-  for (const prompt of prompts) {
-    const { content, hashCount } = escapeRust(prompt.content);
-    const delimiter = "#".repeat(hashCount);
-    output += `pub const ${prompt.constName}: &str = r${delimiter}"${content}"${delimiter};\n\n`;
-  }
-
-  fs.writeFileSync(path.join(outputDir, "prompts.rs"), output);
-
-  console.log(`Generated Rust output: ${outputDir}/prompts.rs`);
-}
-
-/**
  * Main entry point
  */
 function main() {
@@ -287,15 +167,13 @@ function main() {
 
   if (args.length < 2) {
     console.error(
-      "Usage: generate-plugin-prompts.js <prompts-dir> <output-base-dir> [--target typescript|python|rust|all]",
+      "Usage: generate-plugin-prompts.js <prompts-dir> <output-base-dir>",
     );
     process.exit(1);
   }
 
   const promptsDir = path.resolve(args[0]);
   const outputBaseDir = path.resolve(args[1]);
-  const targetIndex = args.indexOf("--target");
-  const target = targetIndex !== -1 ? args[targetIndex + 1] : "all";
 
   console.log(`Loading prompts from: ${promptsDir}`);
   const prompts = loadPrompts(promptsDir);
@@ -306,25 +184,8 @@ function main() {
     return;
   }
 
-  // Ensure output directory exists
   fs.mkdirSync(outputBaseDir, { recursive: true });
-
-  switch (target) {
-    case "typescript":
-      generateTypeScript(prompts, outputBaseDir, promptsDir);
-      break;
-    case "python":
-      generatePython(prompts, outputBaseDir, promptsDir);
-      break;
-    case "rust":
-      generateRust(prompts, outputBaseDir, promptsDir);
-      break;
-    default:
-      generateTypeScript(prompts, outputBaseDir, promptsDir);
-      generatePython(prompts, outputBaseDir, promptsDir);
-      generateRust(prompts, outputBaseDir, promptsDir);
-      break;
-  }
+  generateTypeScript(prompts, outputBaseDir, promptsDir);
 
   console.log("Done!");
 }

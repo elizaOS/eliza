@@ -24,15 +24,15 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "matrix-js-sdk": "^31.0.0",
+    "matrix-js-sdk": "^41.4.0",
     "zod": "^4.3.6"
   },
   "peerDependencies": {
-    "@elizaos/core": "2.0.0-alpha.3"
+    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "^1.1.0",
-    "typescript": "^5.3.0",
+    "typescript": "^6.0.3",
     "@biomejs/biome": "^2.3.11",
     "vitest": "^3.2.4"
   },

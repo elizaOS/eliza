@@ -19,6 +19,7 @@ import {
   type Media,
   type UUID,
 } from "@elizaos/core";
+import { isPrivyWalletProvisioningEnabled } from "../services/external-bridge-state.js";
 import {
   normalizeCharacterLanguage,
   resolveStylePresetByAvatarIndex,
@@ -671,7 +672,7 @@ function buildWalletContextPrompt(
     : !rpcReady
       ? "BSC RPC is not configured."
       : !pluginEvmLoaded
-        ? "plugin-evm is not loaded."
+        ? "@elizaos/plugin-wallet is not loaded."
         : "none";
   const encodedUserPrompt = JSON.stringify(userPrompt);
   return [
@@ -761,7 +762,7 @@ export function buildWalletActionNotExecutedReply(
     : !rpcReady
       ? "BSC RPC is not configured."
       : !pluginEvmLoaded
-        ? "plugin-evm is not loaded, so EVM wallet execution is unavailable."
+        ? "@elizaos/plugin-wallet is not loaded, so EVM wallet execution is unavailable."
         : "A wallet action was not executed for this turn.";
 
   return [
@@ -770,7 +771,7 @@ export function buildWalletActionNotExecutedReply(
     `Detected wallets:`,
     `- EVM: ${addrs.evmAddress ?? "not generated"}`,
     `- Solana: ${addrs.solanaAddress ?? "not generated"}`,
-    `plugin-evm: ${pluginEvmLoaded ? "loaded" : "not loaded"}.`,
+    `@elizaos/plugin-wallet: ${pluginEvmLoaded ? "loaded" : "not loaded"}.`,
     `RPC ready: ${rpcReady ? "yes" : "no"}.`,
     `Blocked reason: ${executionBlockedReason}`,
   ].join("\n");
@@ -861,7 +862,7 @@ export function resolveWalletModeGuidanceReply(
     return [
       `Wallet network: ${walletNetwork}.`,
       walletSummary,
-      `plugin-evm: ${pluginEvmLoaded ? "loaded" : "not loaded"}.`,
+      `@elizaos/plugin-wallet: ${pluginEvmLoaded ? "loaded" : "not loaded"}.`,
       `Execution readiness: ${executionReady ? "ready for wallet actions" : (executionBlockedReason ?? "blocked")}.`,
       `Automation mode: ${automationMode}.`,
     ].join("\n");
@@ -872,7 +873,7 @@ export function resolveWalletModeGuidanceReply(
       `Wallet execution is currently blocked: ${executionBlockedReason ?? "unknown reason"}`,
       `Wallet network: ${walletNetwork}.`,
       walletSummary,
-      `plugin-evm: ${pluginEvmLoaded ? "loaded" : "not loaded"}.`,
+      `@elizaos/plugin-wallet: ${pluginEvmLoaded ? "loaded" : "not loaded"}.`,
       `Automation mode: ${automationMode}.`,
     ].join("\n");
   }

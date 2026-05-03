@@ -3,6 +3,7 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { resolveElectrobunDir, resolveMainAppDir } from "./lib/app-dir.mjs";
 import {
   buildWindowsRepairSteps,
   classifyElectrobunViewFailure,
@@ -10,7 +11,6 @@ import {
   hasElectrobunViewExport,
   isSupportedBunVersion,
 } from "./lib/desktop-preflight.mjs";
-import { resolveElectrobunDir, resolveMainAppDir } from "./lib/app-dir.mjs";
 
 const ROOT = process.cwd();
 // --app=<name> selects which app to build (default: "app" → packages/app)
@@ -555,16 +555,32 @@ function embedWindowsIcons() {
     }
     // Also check bun's flat cache layout
     try {
-      for (const entry of fs.readdirSync(path.join(base, "node_modules", ".bun"))) {
+      for (const entry of fs.readdirSync(
+        path.join(base, "node_modules", ".bun"),
+      )) {
         if (!entry.startsWith("rcedit@")) continue;
-        const nested = path.join(base, "node_modules", ".bun", entry, "node_modules", "rcedit", "bin", "rcedit-x64.exe");
-        if (fs.existsSync(nested)) { rceditBin = nested; break; }
+        const nested = path.join(
+          base,
+          "node_modules",
+          ".bun",
+          entry,
+          "node_modules",
+          "rcedit",
+          "bin",
+          "rcedit-x64.exe",
+        );
+        if (fs.existsSync(nested)) {
+          rceditBin = nested;
+          break;
+        }
       }
     } catch {}
     if (rceditBin) break;
   }
   if (!rceditBin) {
-    console.log("[desktop-build] rcedit-x64.exe not found — install rcedit as a devDep to embed Windows icons");
+    console.log(
+      "[desktop-build] rcedit-x64.exe not found — install rcedit as a devDep to embed Windows icons",
+    );
     return;
   }
   // Embed into all executables — CEF helper processes create the visible
@@ -582,7 +598,9 @@ function embedWindowsIcons() {
     if (result.status === 0) {
       console.log(`[desktop-build] Embedded icon into ${exe}`);
     } else {
-      console.log(`[desktop-build] Warning: failed to embed icon into ${exe}: ${result.stderr || result.error}`);
+      console.log(
+        `[desktop-build] Warning: failed to embed icon into ${exe}: ${result.stderr || result.error}`,
+      );
     }
   }
 }
@@ -702,19 +720,20 @@ function packageDesktopBuild() {
   }
 
   if (stageMacosReleaseApp && process.platform === "darwin") {
-    run("bash", [
-      STAGE_MACOS_RELEASE_SCRIPT,
-      path.join(ELECTROBUN_DIR, "artifacts"),
-    ], {
-      cwd: ROOT,
-      env: {
-        ...packageEnv,
-        ELECTROBUN_SKIP_CODESIGN: process.env.ELECTROBUN_SKIP_CODESIGN ?? "1",
-        ELIZA_STAGE_MACOS_SKIP_DMG:
-          process.env.ELIZA_STAGE_MACOS_SKIP_DMG ?? "1",
+    run(
+      "bash",
+      [STAGE_MACOS_RELEASE_SCRIPT, path.join(ELECTROBUN_DIR, "artifacts")],
+      {
+        cwd: ROOT,
+        env: {
+          ...packageEnv,
+          ELECTROBUN_SKIP_CODESIGN: process.env.ELECTROBUN_SKIP_CODESIGN ?? "1",
+          ELIZA_STAGE_MACOS_SKIP_DMG:
+            process.env.ELIZA_STAGE_MACOS_SKIP_DMG ?? "1",
+        },
+        label: "Staging direct macOS release app",
       },
-      label: "Staging direct macOS release app",
-    });
+    );
   }
 }
 

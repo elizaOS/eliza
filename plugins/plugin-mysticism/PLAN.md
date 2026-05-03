@@ -6,7 +6,7 @@ Build `plugin-mysticism` — an ElizaOS plugin that gives agents the ability to 
 
 - Full-fidelity divination engines (not toy demos)
 - Conversational, interactive reading flows (small pieces, not one-shot scripts)
-- Integration with `plugin-form` for onboarding and structured data collection
+- Integration with core **advanced capabilities** (`FORM` service / form flows in `@elizaos/core`) for onboarding and structured data collection
 - Paywall via x402 routes for monetized readings
 - A companion benchmark (`woobench`) that evaluates the agent's ability to conduct readings, navigate adversarial/skeptical users, and earn revenue
 
@@ -129,7 +129,7 @@ plugins/plugin-mysticism/
 
 A reading is NOT one-shot. It is a multi-turn conversation with five phases:
 
-**Phase 1: INTAKE** (via plugin-form)
+**Phase 1: INTAKE** (via core form / advanced capabilities)
 - Detect reading intent from user message
 - Ask clarifying questions ("What's on your mind?")
 - Collect required data (question for tarot/iching, birth data for astrology)
@@ -156,7 +156,7 @@ A reading is NOT one-shot. It is a multi-turn conversation with five phases:
 **Phase 5: CLOSING**
 - Summarize key takeaways
 - Offer follow-up options
-- Collect feedback (via plugin-form)
+- Collect feedback (via core form flows)
 
 ### 3.3 Session State
 
@@ -213,7 +213,6 @@ interface ReadingSession {
 {
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-form": "workspace:*",
     "i-ching": "^0.3.5",
     "@swisseph/node": "^1.2.1"
   }
@@ -231,5 +230,5 @@ Tarot deck mechanics vendored (~50 LOC). All interpretation data bundled as JSON
 | swisseph over hades-js | hades-js is 6 years stale. @swisseph/node is modern, accurate, typed. |
 | Moshier default | 0 extra files, 0.1 arcsec, covers 6000 years. Swiss Ephemeris (90MB) optional. |
 | Iterative reveal not dump | One element at a time with check-ins = dramatically more engaging. |
-| plugin-form for intake | Birth data has required fields and validation. plugin-form handles it. |
+| Core FORM / advanced capabilities for intake | Birth data has required fields and validation; structured flows live in `@elizaos/core`. |
 | RWS tarot deck | Rider-Waite-Smith (1909) is public domain and the standard. |

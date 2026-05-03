@@ -13,8 +13,8 @@ name: ElizaOS Cuttlefish
 #     build:
 #       uses: elizaOS/eliza/.github/workflows/elizaos-cuttlefish.yml@develop
 #       with:
-#         brand-config: os/android/brand.mybrand.json
-#         vendor-source: os/android/vendor/mybrand
+#         brand-config: packages/os/android/brand.mybrand.json
+#         vendor-source: packages/os/android/vendor/mybrand
 #         aosp-root: /aosp
 #         launch: true
 

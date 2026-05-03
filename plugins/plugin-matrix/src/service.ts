@@ -6,6 +6,7 @@
 
 import { type EventPayload, type IAgentRuntime, logger, Service } from "@elizaos/core";
 import * as sdk from "matrix-js-sdk";
+import type { RoomMessageEventContent } from "matrix-js-sdk/lib/@types/events.js";
 import {
   getMatrixLocalpart,
   type IMatrixService,
@@ -242,8 +243,10 @@ export class MatrixService extends Service implements IMatrixService {
       canonicalAlias: room.getCanonicalAlias() || undefined,
       isEncrypted: room.hasEncryptionStateEvent(),
       isDirect:
-        this.client.getAccountData("m.direct")?.getContent()?.[sender || ""]?.includes(roomId) ||
-        false,
+        this.client
+          .getAccountData(sdk.EventType.Direct)
+          ?.getContent()
+          ?.[sender || ""]?.includes(roomId) || false,
       memberCount: room.getJoinedMemberCount(),
     };
 
@@ -372,7 +375,10 @@ export class MatrixService extends Service implements IMatrixService {
       }
     }
 
-    const response = await this.client.sendMessage(resolvedRoomId, content);
+    const response = await this.client.sendMessage(
+      resolvedRoomId,
+      content as unknown as RoomMessageEventContent
+    );
     const eventId = response.event_id;
 
     this.runtime.emitEvent(MatrixEventTypes.MESSAGE_SENT, {
@@ -396,13 +402,13 @@ export class MatrixService extends Service implements IMatrixService {
 
     const content = {
       "m.relates_to": {
-        rel_type: "m.annotation",
+        rel_type: sdk.RelationType.Annotation as const,
         event_id: eventId,
         key: emoji,
       },
     };
 
-    const response = await this.client.sendEvent(roomId, "m.reaction", content);
+    const response = await this.client.sendEvent(roomId, sdk.EventType.Reaction, content);
 
     return {
       success: true,

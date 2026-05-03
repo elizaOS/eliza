@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "ignoreDeprecations": "6.0",
     "rootDir": "src",
     "outDir": "dist",
     "lib": ["ES2022", "dom"],
@@ -17,4 +18,4 @@
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
-} 
+}

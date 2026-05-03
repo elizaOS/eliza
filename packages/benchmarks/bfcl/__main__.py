@@ -85,8 +85,8 @@ Environment Variables:
     run_parser.add_argument(
         "--provider",
         type=str,
-        choices=["groq", "openai", "anthropic", "google-genai", "openrouter", "xai", "ollama", "local-ai"],
-        help="Model provider (default: groq if GROQ_API_KEY set)",
+        choices=["groq", "openai", "anthropic", "google-genai", "openrouter", "xai", "ollama", "local-ai", "eliza"],
+        help="Model provider (default: groq if GROQ_API_KEY set; 'eliza' routes through the elizaOS TS bridge)",
     )
     run_parser.add_argument(
         "--model",
@@ -222,19 +222,23 @@ async def run_benchmark(args: argparse.Namespace) -> int:
     try:
         # Show which model is being used
         if not args.mock:
-            from benchmarks.bfcl.models import get_default_model_config, get_model_config
-            
-            model_config = None
-            if args.model:
-                model_config = get_model_config(args.model)
-            if model_config is None:
-                model_config = get_default_model_config()
-            
-            if model_config:
-                print(f"\n🤖 Model: {model_config.display_name}")
-                print(f"   Provider: {model_config.provider.value}")
+            if getattr(args, 'provider', None) == "eliza":
+                print(f"\n🤖 Model: {args.model or 'eliza-ts-bridge'}")
+                print("   Provider: eliza (elizaOS TypeScript benchmark bridge)")
             else:
-                print("\n⚠️  No model available, running in mock mode")
+                from benchmarks.bfcl.models import get_default_model_config, get_model_config
+
+                model_config = None
+                if args.model:
+                    model_config = get_model_config(args.model)
+                if model_config is None:
+                    model_config = get_default_model_config()
+
+                if model_config:
+                    print(f"\n🤖 Model: {model_config.display_name}")
+                    print(f"   Provider: {model_config.provider.value}")
+                else:
+                    print("\n⚠️  No model available, running in mock mode")
         
         if args.sample:
             # Run sample

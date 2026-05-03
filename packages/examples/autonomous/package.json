@@ -10,9 +10,9 @@
   },
   "dependencies": {
     "@elizaos/core": "alpha",
-    "@elizaos/plugin-inmemorydb": "alpha",
-    "@elizaos/plugin-local-ai": "alpha",
-    "@elizaos/plugin-shell": "alpha",
+    "@elizaos/plugin-inmemorydb": "workspace:*",
+    "@elizaos/plugin-local-ai": "workspace:*",
+    "@elizaos/plugin-shell": "workspace:*",
     "uuid": "^14.0.0"
   },
   "devDependencies": {

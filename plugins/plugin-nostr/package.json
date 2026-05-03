@@ -29,13 +29,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@elizaos/core": "2.0.0-alpha.3",
+    "@elizaos/core": "workspace:*",
     "nostr-tools": "^2.0.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "typescript": "^5.3.0",
+    "typescript": "^6.0.3",
     "@biomejs/biome": "^2.3.11",
     "vitest": "^3.2.4"
   },

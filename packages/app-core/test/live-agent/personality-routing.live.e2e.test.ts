@@ -31,7 +31,7 @@ import {
 } from "@elizaos/core";
 import dotenv from "dotenv";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { USER_PREFS_TABLE } from "../../../typescript/src/features/advanced-capabilities/personality/types.ts";
+import { USER_PREFS_TABLE } from "../../../core/src/features/advanced-capabilities/personality/types.ts";
 import { describeIf } from "../helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../helpers/live-provider";
 import { withTimeout } from "../helpers/test-utils";
@@ -41,8 +41,7 @@ const packageRoot = path.resolve(testDir, "..");
 dotenv.config({ path: path.resolve(packageRoot, ".env") });
 dotenv.config({ path: path.resolve(packageRoot, "..", "..", ".env") });
 
-const liveModelTestsEnabled =
-  process.env.ELIZA_LIVE_TEST === "1";
+const liveModelTestsEnabled = process.env.ELIZA_LIVE_TEST === "1";
 const selectedLiveProvider = liveModelTestsEnabled
   ? selectLiveProvider()
   : null;

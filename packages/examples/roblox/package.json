@@ -11,9 +11,9 @@
   },
   "dependencies": {
     "@elizaos/core": "alpha",
-    "@elizaos/plugin-openai": "alpha",
-    "@elizaos/plugin-roblox": "alpha",
-    "@elizaos/plugin-sql": "alpha",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-roblox": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
     "express": "^4.21.2",
     "uuid": "^14.0.0"
   },

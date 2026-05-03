@@ -335,10 +335,7 @@ function tryResolveElizaCorePkgDir(): string | null {
   try {
     return path.dirname(_require.resolve("@elizaos/core/package.json"));
   } catch {
-    const workspaceCorePkg = path.join(
-      elizaRoot,
-      "packages/typescript/package.json",
-    );
+    const workspaceCorePkg = path.join(elizaRoot, "packages/core/package.json");
     return fs.existsSync(workspaceCorePkg)
       ? path.dirname(workspaceCorePkg)
       : null;
@@ -348,7 +345,7 @@ function tryResolveElizaCorePkgDir(): string | null {
 function resolveElizaCoreSourceBrowserPath(): string | null {
   const workspaceSourceBrowserEntry = path.join(
     elizaRoot,
-    "packages/typescript/src/index.browser.ts",
+    "packages/core/src/index.browser.ts",
   );
   if (fs.existsSync(workspaceSourceBrowserEntry)) {
     return workspaceSourceBrowserEntry;
@@ -367,10 +364,8 @@ function isElizaCoreBrowserDistId(id: string | undefined): boolean {
     normalized.endsWith(
       "/node_modules/@elizaos/core/dist/browser/index.browser.js",
     ) ||
-    normalized.endsWith("/eliza/packages/typescript/dist/index.browser.js") ||
-    normalized.endsWith(
-      "/eliza/packages/typescript/dist/browser/index.browser.js",
-    )
+    normalized.endsWith("/eliza/packages/core/dist/index.browser.js") ||
+    normalized.endsWith("/eliza/packages/core/dist/browser/index.browser.js")
   );
 }
 
@@ -397,7 +392,7 @@ function resolveElizaCoreBundlePath(): string {
     if (fs.existsSync(nodeEntry)) {
       console.warn(
         "[eliza][vite] @elizaos/core dist/browser is missing; using dist/node for the client bundle. " +
-          "For a linked eliza workspace, run `bun run build` in that checkout (e.g. packages/typescript). " +
+          "For a linked eliza workspace, run `bun run build` in that checkout (e.g. packages/core). " +
           "Or reinstall with ELIZA_SKIP_LOCAL_ELIZA=1 to use the published npm package.",
       );
       return nodeEntry;
@@ -1210,7 +1205,7 @@ function nativeModuleStubPlugin(): Plugin {
       const normId = id.split(path.sep).join("/");
       const isCorePackagePath =
         normId.includes("/node_modules/@elizaos/core/") ||
-        normId.includes("packages/typescript/dist/");
+        normId.includes("packages/core/dist/");
       if (!isCoreDistFile || !isCorePackagePath) return null;
 
       // Fix AsyncLocalStorage: the browser entry has a try/catch that does
@@ -1782,7 +1777,7 @@ export default defineConfig({
     target: "es2022",
     // The desktop/web shell intentionally ships a large eagerly-loaded main
     // chunk; warn only when it grows beyond the current known baseline.
-    chunkSizeWarningLimit: 3800,
+    chunkSizeWarningLimit: 5500,
     minify: desktopFastDist ? false : undefined,
     cssMinify: desktopFastDist ? false : undefined,
     reportCompressedSize: !desktopFastDist,

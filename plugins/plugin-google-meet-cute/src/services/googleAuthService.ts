@@ -13,9 +13,13 @@ export class GoogleAuthService extends Service {
     return "Google OAuth2 authentication service for Google Meet API";
   }
   
-  constructor(runtime: IAgentRuntime) {
+  constructor(runtime?: IAgentRuntime) {
     super(runtime);
-    
+
+    if (!runtime) {
+      throw new Error("GoogleAuthService requires a runtime");
+    }
+
     const clientId = runtime.getSetting("GOOGLE_CLIENT_ID") as string | undefined;
     const clientSecret = runtime.getSetting("GOOGLE_CLIENT_SECRET") as string | undefined;
     const redirectUri =

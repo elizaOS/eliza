@@ -7,8 +7,7 @@
     "declarationMap": true,
     "noEmit": false,
     "emitDeclarationOnly": true,
-    "rootDir": "src",
-    "baseUrl": "."
+    "rootDir": "src"
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "__tests__", "../dist"]

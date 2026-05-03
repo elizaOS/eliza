@@ -17,14 +17,13 @@ import {
   chromium,
   type Page,
 } from "playwright-core";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
 import { buildOnboardingRuntimeConfig } from "../../src/onboarding-config";
 import { describeIf } from "../helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../helpers/live-provider";
 
-const LIVE_TESTS_ENABLED =
-  process.env.ELIZA_LIVE_TEST === "1";
+const LIVE_TESTS_ENABLED = process.env.ELIZA_LIVE_TEST === "1";
 const LIVE_PROVIDER =
   (LIVE_TESTS_ENABLED && selectLiveProvider("openai")) ||
   (LIVE_TESTS_ENABLED ? selectLiveProvider() : null);

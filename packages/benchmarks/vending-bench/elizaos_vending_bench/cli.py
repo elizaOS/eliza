@@ -108,7 +108,7 @@ Examples:
     run_parser.add_argument(
         "--provider",
         type=str,
-        choices=["openai", "anthropic", "heuristic"],
+        choices=["openai", "anthropic", "groq", "heuristic"],
         default="heuristic",
         help="LLM provider (default: heuristic)",
     )
@@ -215,6 +215,31 @@ async def run_benchmark(args: argparse.Namespace) -> int:
             logger.warning("Anthropic provider not available, falling back to heuristic")
         except ValueError as e:
             logger.warning(f"Anthropic provider not configured ({e}), falling back to heuristic")
+
+    elif args.provider == "groq":
+        # Groq exposes an OpenAI-compatible /v1 API, so reuse OpenAIProvider
+        # with Groq's base URL and GROQ_API_KEY. This matches the provider
+        # selection just added to adhdbench / mint / gauntlet / woobench / solana.
+        try:
+            import os
+
+            from elizaos_vending_bench.providers.openai import OpenAIProvider
+
+            api_key = args.api_key or os.getenv("GROQ_API_KEY")
+            if not api_key:
+                raise ValueError("GROQ_API_KEY not set")
+            # Pass the model name as-is — Groq's catalog uses fully qualified IDs
+            # like "openai/gpt-oss-120b", so we must NOT strip the slash prefix.
+            llm_provider = OpenAIProvider(
+                api_key=api_key,
+                model=args.model,
+                base_url="https://api.groq.com/openai/v1",
+            )
+            logger.info(f"Using Groq provider (OpenAI-compatible) with model {args.model}")
+        except ImportError:
+            logger.warning("Groq/OpenAI provider not available, falling back to heuristic")
+        except ValueError as e:
+            logger.warning(f"Groq provider not configured ({e}), falling back to heuristic")
 
     # Run benchmark
     runner = VendingBenchRunner(config, llm_provider)

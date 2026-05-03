@@ -2,7 +2,7 @@
 
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { generateDts, runBuild } from "../../packages/core/build";
 
 const PLUGIN_ROOT = dirname(import.meta.path);

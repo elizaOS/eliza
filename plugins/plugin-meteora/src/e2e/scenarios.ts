@@ -1,8 +1,8 @@
-import type { IAgentRuntime, TestSuite } from "@elizaos/core";
 import { strict as assert } from "node:assert";
+import type { IAgentRuntime, Memory, State, TestSuite } from "@elizaos/core";
 import { Keypair } from "@solana/web3.js";
-import { MeteoraLpService } from "../services/MeteoraLpService.ts";
 import { meteoraPositionProvider } from "../providers/positionProvider.ts";
+import type { MeteoraLpService } from "../services/MeteoraLpService.ts";
 
 /**
  * Defines a suite of E2E tests for Meteora LP management scenarios.
@@ -165,19 +165,21 @@ export const meteoraScenarios: TestSuite = {
 
         // Test that the position provider is properly registered and can be called
         // Create a minimal Memory object for testing
-        const testMemory = {
+        const testMemory: Memory = {
           id: "test-memory-id",
+          entityId: "test-entity",
           userId: "test-user",
           agentId: "test-agent",
           roomId: "test-room",
           content: { text: "test message" },
           createdAt: Date.now(),
-        } as any;
+        };
 
+        const emptyState = {} as State;
         const context = await meteoraPositionProvider.get(
           runtime,
           testMemory,
-          {} as any,
+          emptyState,
         );
 
         assert(
@@ -351,19 +353,21 @@ export const meteoraScenarios: TestSuite = {
         );
 
         // 3. Check position provider context
-        const testMemory2 = {
+        const testMemory2: Memory = {
           id: "test-memory-id-2",
+          entityId: "test-entity-2",
           userId: "test-user",
           agentId: "test-agent",
           roomId: "test-room",
           content: { text: "test message" },
           createdAt: Date.now(),
-        } as any;
+        };
 
+        const emptyState = {} as State;
         const context = await meteoraPositionProvider.get(
           runtime,
           testMemory2,
-          {} as any,
+          emptyState,
         );
         assert(
           typeof context === "object" && context !== null,

@@ -2,7 +2,6 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "ignoreDeprecations": "6.0",
     "lib": ["ESNext"],
     "target": "ESNext",
     "module": "Preserve",

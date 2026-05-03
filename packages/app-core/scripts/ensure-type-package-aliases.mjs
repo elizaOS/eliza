@@ -149,7 +149,7 @@ function ensureBunTypesAlias(targetTypesDir) {
   );
   writeFileSync(
     path.join(bunTypesDir, "package.json"),
-    JSON.stringify(
+    `${JSON.stringify(
       {
         name: "@types/bun",
         private: true,
@@ -157,7 +157,7 @@ function ensureBunTypesAlias(targetTypesDir) {
       },
       null,
       2,
-    ) + "\n",
+    )}\n`,
     "utf8",
   );
 }

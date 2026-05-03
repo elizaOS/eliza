@@ -109,9 +109,7 @@ export const serverInfo: Action = {
 			__avKeywords.some((word) => word.length > 0 && __avText.includes(word));
 		const __avRegex = /\b(?:server|info)\b/i;
 		const __avRegexOk = __avRegex.test(__avText);
-		const __avSource = String(
-			message?.content?.source ?? message?.source ?? "",
-		);
+		const __avSource = String(message?.content?.source ?? "");
 		const __avExpectedSource = "";
 		const __avSourceOk = __avExpectedSource
 			? __avSource === __avExpectedSource

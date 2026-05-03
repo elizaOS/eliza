@@ -5,7 +5,6 @@
 		"moduleResolution": "bundler",
 		"esModuleInterop": true,
 		"strict": true,
-		"ignoreDeprecations": "6.0",
 		"skipLibCheck": true,
 		"declaration": true,
 		"declarationMap": true,
@@ -15,8 +14,8 @@
 		"types": ["node"],
 		"allowImportingTsExtensions": true,
 		"paths": {
-			"@elizaos/core": ["../packages/typescript/src/index.node.ts"],
-			"@elizaos/core/*": ["../packages/typescript/src/*"],
+			"@elizaos/core": ["../packages/core/src/index.node.ts"],
+			"@elizaos/core/*": ["../packages/core/src/*"],
 			"@elizaos/shared": ["../packages/shared/src/index.ts"],
 			"@elizaos/shared/*": ["../packages/shared/src/*"]
 		}

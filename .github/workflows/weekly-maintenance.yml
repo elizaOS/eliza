@@ -20,6 +20,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          filter: blob:none
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2

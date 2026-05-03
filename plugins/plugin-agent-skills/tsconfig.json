@@ -11,8 +11,7 @@
 		"forceConsistentCasingInFileNames": true,
 		"types": ["node"],
 		"outDir": "./dist",
-		"rootDir": "./src",
-		"ignoreDeprecations": "6.0"
+		"rootDir": "./src"
 	},
 	"include": ["src/**/*"],
 	"exclude": ["node_modules", "dist", "src/__tests__/**/*"]

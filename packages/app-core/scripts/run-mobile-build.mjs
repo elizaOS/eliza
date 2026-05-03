@@ -42,6 +42,7 @@ const iosDir = path.join(appDir, "ios", "App");
 const androidDir = path.join(appDir, "android");
 const elizaOsVendorDir = path.join(
   repoRoot,
+  "packages",
   "os",
   "android",
   "vendor",
@@ -1575,8 +1576,7 @@ export function resolveIosBuildTarget({
   env = process.env,
   appDirValue = appDir,
 } = {}) {
-  const explicitDestination =
-    env.ELIZA_IOS_BUILD_DESTINATION;
+  const explicitDestination = env.ELIZA_IOS_BUILD_DESTINATION;
   const explicitSdk = env.ELIZA_IOS_BUILD_SDK;
 
   if (explicitDestination || explicitSdk) {

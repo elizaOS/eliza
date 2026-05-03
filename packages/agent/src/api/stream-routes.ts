@@ -75,7 +75,7 @@ function pushFrameToSubscribers(frame: Buffer): void {
 
 /**
  * A streaming destination provides RTMP credentials and optional lifecycle
- * hooks. Canonical definition lives in plugin-streaming-base; re-exported here
+ * hooks. Canonical definition lives in @elizaos/plugin-streaming; re-exported here
  * so existing consumers keep working.
  */
 export type {

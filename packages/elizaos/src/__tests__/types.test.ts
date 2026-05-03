@@ -14,13 +14,13 @@ describe("TemplateDefinition", () => {
       description: "Plugin starter",
       id: "plugin",
       kind: "plugin",
-      languages: ["typescript", "python", "rust"],
+      languages: ["typescript"],
       name: "plugin",
       version: 1,
     };
 
     expect(template.id).toBe("plugin");
-    expect(template.languages).toContain("rust");
+    expect(template.languages).toEqual(["typescript"]);
   });
 });
 

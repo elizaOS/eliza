@@ -51,7 +51,7 @@ Core plugins are always loaded and each provides one or more services:
 |---|---|---|
 | `@elizaos/plugin-sql` | Database adapter | PGLite or PostgreSQL persistence; provides `runtime.adapter` |
 | `@elizaos/plugin-local-embedding` | `TEXT_EMBEDDING` handler | Local GGUF embedding model via node-llama-cpp |
-| `@elizaos/plugin-form` | Form service | Structured form packaging for guided user journeys |
+| `@elizaos/core` (advanced capabilities) | `FORM` | Structured conversational forms — FormService, form provider/evaluator (loads when advanced capabilities are enabled; not a separate npm plugin) |
 | `knowledge` | Knowledge service | RAG knowledge indexing and retrieval |
 | `trajectories` | `trajectories` | Debug and RL training trajectory capture |
 | `@elizaos/plugin-agent-orchestrator` | Orchestrator service | Multi-agent task coordination and spawning |

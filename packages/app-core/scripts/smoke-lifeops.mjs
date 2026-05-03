@@ -14,10 +14,7 @@ export function resolveLifeOpsBaseUrls(
   env = process.env,
 ) {
   const argvBases = argv.map((value) => value.trim()).filter(Boolean);
-  const envLists = [
-    env.ELIZA_LIFEOPS_BASE_URLS,
-    env.ELIZA_DEPLOY_BASE_URLS,
-  ]
+  const envLists = [env.ELIZA_LIFEOPS_BASE_URLS, env.ELIZA_DEPLOY_BASE_URLS]
     .flatMap((value) => value?.split(",") ?? [])
     .map((value) => value.trim())
     .filter(Boolean);

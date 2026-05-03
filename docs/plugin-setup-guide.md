@@ -168,7 +168,7 @@ where to get the credentials, minimum required fields, and tips for optional fie
 **Tips:** Use negative IDs for groups (they start with -100). Use `TELEGRAM_ALLOWED_CHATS` to restrict who can talk to the bot for safety.
 
 ### Twitter / X
-Twitter/X integration is bundled with the **xAI** provider plugin (`@elizaos/plugin-xai`). There is no separate `@elizaos/plugin-twitter`.
+Twitter/X integration is bundled with the **xAI** provider plugin (`@elizaos/plugin-xai`). There is no separate `@elizaos/plugin-x`.
 
 **Get credentials:** https://developer.twitter.com/en/portal/dashboard
 **Minimum required:** xAI plugin enabled + Twitter OAuth keys in connector config or env vars.
@@ -562,27 +562,28 @@ Monitors Gmail via Google Pub/Sub push notifications.
 
 ---
 
+<div id="streaming"></div>
+
 ## Streaming (Live Broadcasting)
 
-> **Note:** All streaming plugins listed below are upstream elizaOS plugins and are not included in the bundled `plugins.json` registry. They are installable from the remote elizaOS plugin registry.
+Enable **`@elizaos/plugin-streaming`** once. It covers Twitch, YouTube, X, pump.fun, custom RTMP, and optional multiple named ingests via `streaming.rtmpSources` in config.
 
-### Enable Streaming (streaming-base)
-Adds the Stream tab to the UI with RTMP destination management.
-**No configuration needed** — just enable the plugin. Then add destination plugins below.
+### Stream tab (`streaming`)
+Adds the Stream tab to the UI with RTMP destination management when the plugin is enabled.
 
-### Twitch Streaming
+### Twitch
 **Get credentials:** https://dashboard.twitch.tv → Settings → Stream
 **Variable:** `TWITCH_STREAM_KEY` — Your stream key (keep secret!)
 **Tips:** Never share your stream key — it lets anyone stream to your channel. Regenerate if leaked.
 
-### YouTube Streaming
+### YouTube
 **Get credentials:** https://studio.youtube.com → Go Live → Stream settings
 **Variables:**
 - `YOUTUBE_STREAM_KEY` — From YouTube Studio → Stream key
 - `YOUTUBE_RTMP_URL` — Default: `rtmp://a.rtmp.youtube.com/live2` (rarely needs changing)
 **Tips:** You need a YouTube channel with Live streaming enabled (may require phone verification).
 
-### X Streaming
+### X (Twitter)
 Live stream to X using RTMP credentials generated for the active broadcast.
 **Get credentials:** From X Live Producer / Media Studio when you create a live stream
 **Variables:**
@@ -590,7 +591,7 @@ Live stream to X using RTMP credentials generated for the active broadcast.
 - `X_RTMP_URL` — RTMP ingest URL for the broadcast session
 **Tips:** X RTMP credentials are often per-broadcast. Create the stream first, then copy both values directly into the plugin.
 
-### pump.fun Streaming
+### pump.fun
 Stream to pump.fun using the platform's RTMP ingest credentials.
 **Get credentials:** From the pump.fun live streaming flow when you create a stream
 **Variables:**

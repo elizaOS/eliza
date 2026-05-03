@@ -19,6 +19,27 @@ vi.mock(
   { virtual: true },
 );
 
+// @elizaos/core is a workspace package in the eliza submodule and is not in
+// root node_modules, so native file-URL dynamic imports (used by loadScenario)
+// cannot resolve it.  Provide the subset consumed by scenario fixtures.
+vi.mock(
+  "@elizaos/core",
+  () => ({
+    ChannelType: {
+      GROUP: "group",
+      DM: "dm",
+      VOICE: "voice",
+      FEED: "feed",
+      THREAD: "thread",
+      WORLD: "world",
+      SELF: "self",
+      API: "api",
+    },
+    stringToUuid: (str: string) => str,
+  }),
+  { virtual: true },
+);
+
 type ScenarioFinalCheck = {
   type?: string;
   name?: string;

@@ -56,15 +56,11 @@ describe("stageSeccompShimForAbi", () => {
     });
     expect(changes).toBe(0);
     // Original Alpine loader is left in place untouched.
+    expect(fs.existsSync(path.join(abiAssetsDir, "ld-musl-aarch64.so.1"))).toBe(
+      true,
+    );
     expect(
-      fs.existsSync(
-        path.join(abiAssetsDir, "ld-musl-aarch64.so.1"),
-      ),
-    ).toBe(true);
-    expect(
-      fs.existsSync(
-        path.join(abiAssetsDir, "ld-musl-aarch64.so.1.real"),
-      ),
+      fs.existsSync(path.join(abiAssetsDir, "ld-musl-aarch64.so.1.real")),
     ).toBe(false);
   });
 
@@ -79,9 +75,9 @@ describe("stageSeccompShimForAbi", () => {
     });
     expect(changes).toBe(0);
     // Loader stays at the canonical name (no rename).
-    expect(
-      fs.existsSync(path.join(abiAssetsDir, "ld-musl-x86_64.so.1")),
-    ).toBe(true);
+    expect(fs.existsSync(path.join(abiAssetsDir, "ld-musl-x86_64.so.1"))).toBe(
+      true,
+    );
     expect(
       fs.existsSync(path.join(abiAssetsDir, "ld-musl-x86_64.so.1.real")),
     ).toBe(false);
@@ -107,17 +103,11 @@ describe("stageSeccompShimForAbi", () => {
     ).toBeGreaterThan(200 * 1024);
     // Wrapper installed at the canonical name (small file from cache)
     expect(
-      fs.readFileSync(
-        path.join(abiAssetsDir, "ld-musl-x86_64.so.1"),
-        "utf8",
-      ),
+      fs.readFileSync(path.join(abiAssetsDir, "ld-musl-x86_64.so.1"), "utf8"),
     ).toBe("ELF-wrap");
     // Shim staged alongside.
     expect(
-      fs.readFileSync(
-        path.join(abiAssetsDir, "libsigsys-handler.so"),
-        "utf8",
-      ),
+      fs.readFileSync(path.join(abiAssetsDir, "libsigsys-handler.so"), "utf8"),
     ).toBe("ELF-shim");
   });
 

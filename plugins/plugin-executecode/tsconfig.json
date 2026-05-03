@@ -20,18 +20,8 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
     "exactOptionalPropertyTypes": false,
-    "types": [
-      "node",
-      "bun-types"
-    ]
+    "types": ["node", "bun-types"]
   },
-  "include": [
-    "./**/*"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "**/*.test.ts",
-    "__tests__"
-  ]
+  "include": ["./**/*"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "__tests__"]
 }

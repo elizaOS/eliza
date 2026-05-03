@@ -454,11 +454,13 @@ function patchCopiedAgentRuntimeExports(packageDir: string): void {
   }
 
   if (changed) {
-    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
+    fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
   }
 }
 
-export function rewritePackagedLifeOpsTelegramAuthImport(source: string): string {
+export function rewritePackagedLifeOpsTelegramAuthImport(
+  source: string,
+): string {
   return source.replace(
     'from "../../../../plugins/plugin-telegram/src/account-auth-service.ts";',
     'from "@elizaos/plugin-telegram/account-auth-service";',
@@ -483,7 +485,10 @@ function patchCopiedAppLifeOpsRuntimeImports(packageDir: string): void {
   }
 }
 
-function patchCopiedPackageRuntimeSurface(name: string, packageDir: string): void {
+function patchCopiedPackageRuntimeSurface(
+  name: string,
+  packageDir: string,
+): void {
   if (name === "@elizaos/app-lifeops") {
     patchCopiedAppLifeOpsRuntimeImports(packageDir);
     return;

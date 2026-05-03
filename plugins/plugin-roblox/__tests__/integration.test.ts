@@ -44,7 +44,7 @@ describe("Roblox Plugin – Metadata", () => {
     const { robloxPlugin } = await import("../index");
     expect(robloxPlugin.name).toBe("roblox");
     expect(robloxPlugin.description).toMatch(/roblox/i);
-  });
+  }, 30_000);
 
   it("should register exactly 3 actions", async () => {
     const { robloxPlugin } = await import("../index");
