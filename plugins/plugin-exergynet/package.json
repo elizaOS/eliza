@@ -1,0 +1,44 @@
+{
+  "name": "@elizaos/plugin-exergynet",
+  "version": "2.0.0-alpha.2",
+  "description": "ExergyNet LNES-03 Unidirectional Compute Membrane Integration",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "SOLANA_PRIVATE_KEY": {
+        "type": "string"
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.95.0",
+    "@solana/spl-token": "^0.4.0",
+    "bs58": "^6.0.0"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.5",
+    "typescript": "^5.6.3",
+    "@types/node": "^20.0.0"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "package.json"
+  ]
+}
