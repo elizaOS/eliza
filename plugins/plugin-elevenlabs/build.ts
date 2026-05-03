@@ -108,7 +108,7 @@ export { default } from "../index.browser";
   );
 }
 
-build().catch((err: Error) => {
+build().catch((err) => {
   console.error("Build failed:", err);
   process.exit(1);
 });
