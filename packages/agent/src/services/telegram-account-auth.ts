@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { Api, TelegramClient } from "telegram";
-import { StringSession } from "telegram/sessions";
+import { StringSession } from "telegram/sessions/index.js";
 
 export type TelegramAccountAuthStatus =
   | "idle"
@@ -342,7 +342,7 @@ function createTelegramClient(
 }
 
 function serializeSession(client: TelegramClient): string {
-  return (client.session as StringSession).save();
+  return (client.session as unknown as StringSession).save();
 }
 
 function createAjaxHeaders(): Record<string, string> {

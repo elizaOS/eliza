@@ -486,12 +486,6 @@ def main() -> int:
 
             if not args.no_save:
                 print(f"\n📁 Full results saved to: {config.output_dir}/")
-                if not args.no_trajectory_logging:
-                    try:
-                        __import__("elizaos_plugin_trajectory_logger")
-                        print(f"   📊 Training trajectories exported (ART/GRPO formats)")
-                    except ImportError:
-                        pass
 
             print("\n✅ Benchmark completed successfully!")
 

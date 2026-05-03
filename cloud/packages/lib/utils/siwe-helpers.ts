@@ -13,9 +13,8 @@
 
 import { getAddress, verifyMessage } from "viem";
 import { parseSiweMessage, type SiweMessage } from "viem/siwe";
-import type { CompatibleRedis } from "@/lib/cache/redis-factory";
 import { CacheKeys, CacheTTL } from "@/lib/cache/keys";
-import { getAppHost } from "@/lib/utils/app-url";
+import type { CompatibleRedis } from "@/lib/cache/redis-factory";
 
 export type { SiweMessage };
 
@@ -56,9 +55,13 @@ export async function consumeNonce(
 }
 
 /**
- * Validates EIP-4361 message and signature. Ensures domain matches app host,
- * then verifies the signature. Does NOT consume the nonce (caller must call
- * consumeNonce after successful validation).
+ * Validates EIP-4361 message and signature. Ensures domain matches the
+ * passed-in expected host, then verifies the signature. Does NOT consume the
+ * nonce (caller must call consumeNonce after successful validation).
+ *
+ * `expectedHost` is taken as a parameter because `getAppHost()` reads from
+ * `process.env`, which is empty under Cloudflare Workers — routes resolve it
+ * via `getAppHost(c.env)` and pass it down.
  *
  * @returns Parsed SIWE message and the checksummed address that signed it.
  * @throws Error if message is invalid, domain mismatch, or signature invalid.
@@ -66,6 +69,7 @@ export async function consumeNonce(
 export async function validateSIWEMessage(
   message: string,
   signature: `0x${string}`,
+  expectedHost: string,
 ): Promise<{ address: string; parsed: SiweMessage }> {
   const parsed = parseSiweMessage(message);
   if (!parsed.address) {
@@ -74,7 +78,6 @@ export async function validateSIWEMessage(
   if (!parsed.nonce) {
     throw new Error("SIWE message missing nonce");
   }
-  const expectedHost = getAppHost();
   if (parsed.domain !== expectedHost) {
     throw new Error(
       `${SIWE_DOMAIN_MISMATCH}: got ${parsed.domain}, expected ${expectedHost}`,
@@ -114,8 +117,9 @@ export async function validateAndConsumeSIWE(
   redis: CompatibleRedis,
   message: string,
   signature: `0x${string}`,
+  expectedHost: string,
 ): Promise<{ address: string; parsed: SiweMessage }> {
-  const result = await validateSIWEMessage(message, signature);
+  const result = await validateSIWEMessage(message, signature, expectedHost);
   const consumed = await consumeNonce(redis, result.parsed.nonce);
   if (!consumed) {
     throw new Error(SIWE_NONCE_INVALID);

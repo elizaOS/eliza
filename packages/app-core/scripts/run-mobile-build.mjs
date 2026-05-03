@@ -70,7 +70,27 @@ function readAppIdentity() {
   if (!appId || !appName) {
     throw new Error("Could not parse appId/appName from app.config.ts");
   }
-  return { appId, appName, urlScheme };
+  // android.userAgentMarkers is an optional array literal nested under
+  // `android: { ... }`. Parse the array body via regex (rather than
+  // executing the TS file) so this script stays bun-import-free.
+  const userAgentMarkers = parseAndroidUserAgentMarkers(src);
+  return { appId, appName, urlScheme, userAgentMarkers };
+}
+
+function parseAndroidUserAgentMarkers(configSrc) {
+  const block = configSrc.match(
+    /android\s*:\s*\{[\s\S]*?userAgentMarkers\s*:\s*\[([\s\S]*?)\]/,
+  );
+  if (!block) return [];
+  const body = block[1];
+  const markers = [];
+  const entryRe =
+    /\{\s*systemProp\s*:\s*["']([^"']+)["']\s*,\s*uaPrefix\s*:\s*["']([^"']+)["']\s*[,}]/g;
+  let m;
+  while ((m = entryRe.exec(body))) {
+    markers.push({ systemProp: m[1], uaPrefix: m[2] });
+  }
+  return markers;
 }
 
 const APP = readAppIdentity();
@@ -185,8 +205,21 @@ function ensurePlistArrayStrings(content, key, values) {
  * symlinks). Returns a path relative to `relativeTo`.
  */
 function resolvePackagePath(pkgName, relativeTo) {
-  const linked = path.join(appDir, "node_modules", ...pkgName.split("/"));
-  if (!fs.existsSync(linked)) return null;
+  const appPackage = path.join(appDir, "node_modules", ...pkgName.split("/"));
+  const rootNodeModulesPackage = path.join(repoRoot, "node_modules", ...pkgName.split("/"));
+  const candidates = [appPackage, rootNodeModulesPackage];
+  for (const bunStore of [
+    path.join(appDir, "node_modules", ".bun"),
+    path.join(repoRoot, "node_modules", ".bun"),
+  ]) {
+    if (!fs.existsSync(bunStore)) continue;
+    for (const entry of fs.readdirSync(bunStore, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      candidates.push(path.join(bunStore, entry.name, "node_modules", ...pkgName.split("/")));
+    }
+  }
+  const linked = candidates.find((candidate) => fs.existsSync(candidate));
+  if (!linked) return null;
   return path.relative(relativeTo, fs.realpathSync(linked));
 }
 
@@ -733,6 +766,30 @@ function removeApplicationComponentBlock(xml, componentName) {
   return xml.replace(componentRe, "\n");
 }
 
+// Replace the BRAND_USER_AGENT_MARKERS array contents in the templated
+// MainActivity.java with framework default + entries from
+// `app.config.ts > android.userAgentMarkers`. Idempotent: re-running on
+// already-injected source produces the same result because we re-emit
+// the canonical default + configured set every time.
+function injectBrandUserAgentMarkers(javaSource, markers) {
+  const arrayRe =
+    /(private static final UserAgentMarker\[\] BRAND_USER_AGENT_MARKERS = new UserAgentMarker\[\]\s*\{)([\s\S]*?)(\};)/m;
+  if (!arrayRe.test(javaSource)) {
+    return javaSource;
+  }
+  const lines = [
+    `        new UserAgentMarker("ro.elizaos.product", "ElizaOS/"),`,
+  ];
+  for (const marker of markers) {
+    const systemProp = escapeJavaString(marker.systemProp);
+    const uaPrefix = escapeJavaString(marker.uaPrefix);
+    lines.push(
+      `        new UserAgentMarker("${systemProp}", "${uaPrefix}"),`,
+    );
+  }
+  return javaSource.replace(arrayRe, `$1\n${lines.join("\n")}\n    $3`);
+}
+
 function ensureElizaOsActivityFilters(xml) {
   if (xml.includes("android.intent.category.HOME")) {
     return xml;
@@ -841,6 +898,9 @@ function overlayAndroid() {
         "Shows elizaOS gateway connection status",
         `Shows ${escapeJavaString(APP.appName)} gateway connection status`,
       );
+      if (file === "MainActivity.java") {
+        code = injectBrandUserAgentMarkers(code, APP.userAgentMarkers ?? []);
+      }
       fs.writeFileSync(path.join(dstJava, file), code, "utf8");
     }
     console.log("[mobile-build] Overlaid Android Java sources.");
@@ -1540,7 +1600,90 @@ function stripSpmIncompatiblePlugins() {
   }
 }
 
+function patchAndroidGradleWrapperForReleaseCompat() {
+  const wrapperPath = path.join(
+    androidDir,
+    "gradle",
+    "wrapper",
+    "gradle-wrapper.properties",
+  );
+  if (!fs.existsSync(wrapperPath)) return;
+  const current = fs.readFileSync(wrapperPath, "utf8");
+  const patched = current.replace(
+    /^distributionUrl=.*$/m,
+    "distributionUrl=https\\://services.gradle.org/distributions/gradle-9.4.1-all.zip",
+  );
+  if (patched !== current) {
+    fs.writeFileSync(wrapperPath, patched, "utf8");
+    console.log("[mobile-build] Patched Android Gradle wrapper for AGP 9.");
+  }
+}
+
+// llama-cpp-capacitor 0.x ships Android Gradle DSL 8 syntax in its own
+// build.gradle. AGP 9 + Gradle 9 demand explicit `=` assignment for the
+// project-level DSL keys it uses (`namespace`, `version`, `ndkVersion`,
+// `lintOptions.abortOnError`) and rejects the legacy whitespace form, and
+// the legacy proguard file path is no longer shipped. Patch the installed
+// node_modules copy in place each build — modifying node_modules survives
+// the gradle invocation but a fresh `bun install` will re-clobber it,
+// which is fine because this function runs before every build.
+function patchInstalledLlamaCapacitorBuildGradle() {
+  const candidates = [
+    path.join(appDir, "node_modules", "llama-cpp-capacitor", "android", "build.gradle"),
+    path.join(repoRoot, "node_modules", "llama-cpp-capacitor", "android", "build.gradle"),
+  ];
+  const bunStores = [
+    path.join(appDir, "node_modules", ".bun"),
+    path.join(repoRoot, "node_modules", ".bun"),
+  ];
+  for (const bunStore of bunStores) {
+    if (!fs.existsSync(bunStore)) continue;
+    for (const entry of fs.readdirSync(bunStore, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      if (!entry.name.startsWith("llama-cpp-capacitor@")) continue;
+      candidates.push(
+        path.join(
+          bunStore,
+          entry.name,
+          "node_modules",
+          "llama-cpp-capacitor",
+          "android",
+          "build.gradle",
+        ),
+      );
+    }
+  }
+  for (const gradlePath of candidates) {
+    if (!fs.existsSync(gradlePath)) continue;
+    const current = fs.readFileSync(gradlePath, "utf8");
+    let patched = current
+      .replaceAll(
+        'namespace "ai.annadata.plugin.capacitor"',
+        'namespace = "ai.annadata.plugin.capacitor"',
+      )
+      .replaceAll('version "3.22.1"', 'version = "3.22.1"')
+      .replaceAll('ndkVersion "29.0.13113456"', 'ndkVersion = "29.0.13113456"')
+      .replaceAll("abortOnError false", "abortOnError = false")
+      .replaceAll(
+        "getDefaultProguardFile('proguard-android.txt')",
+        "getDefaultProguardFile('proguard-android-optimize.txt')",
+      );
+    patched = patched.replace(
+      /\n\s*\/\/ Disable clean tasks[^\n]*\n\s*tasks\.whenTaskAdded\s*\{\s*task\s*->\s*\n\s*if\s*\(\s*task\.name\.contains\(["']Clean["']\)\s*&&\s*task\.name\.contains\(["']Debug["']\)\s*\)\s*\{\s*\n\s*task\.enabled\s*=\s*false\s*\n\s*\}\s*\n\s*\}\s*/g,
+      "\n",
+    );
+    if (patched !== current) {
+      fs.writeFileSync(gradlePath, patched, "utf8");
+      console.log(
+        `[mobile-build] Patched llama-cpp-capacitor build.gradle for AGP 9: ${path.relative(repoRoot, gradlePath)}`,
+      );
+    }
+  }
+}
+
 function patchAndroidGradle() {
+  patchAndroidGradleWrapperForReleaseCompat();
+  patchInstalledLlamaCapacitorBuildGradle();
   // Overwrite root build.gradle with our template (Maven mirrors, Kotlin version)
   const templateGradle = path.join(platformsDir, "android", "build.gradle");
   const targetGradle = path.join(androidDir, "build.gradle");

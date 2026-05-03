@@ -18,18 +18,19 @@ export function parseJSON<T>(input: string): T {
 
 const ajv = new Ajv({
   allErrors: true,
-  strict: false,
 });
 
-interface AjvError {
-  readonly instancePath: string;
+interface AjvErrorLike {
+  readonly instancePath?: string;
+  readonly dataPath?: string;
   readonly message?: string;
 }
 
-function formatAjvErrors(errors: readonly AjvError[]): string {
+function formatAjvErrors(errors: readonly AjvErrorLike[]): string {
   return errors
     .map((err) => {
-      const path = err.instancePath ? `${err.instancePath.replace(/^\//, "")}` : "value";
+      const errorPath = err.instancePath ?? err.dataPath ?? "";
+      const path = errorPath ? errorPath.replace(/^\//, "") : "value";
       return `${path}: ${err.message ?? "validation failed"}`;
     })
     .join(", ");
@@ -44,7 +45,7 @@ export function validateJsonSchema<T>(
 
   if (!valid) {
     const errors = validate.errors ?? [];
-    const errorMessage = formatAjvErrors(errors as readonly AjvError[]);
+    const errorMessage = formatAjvErrors(errors);
     return { success: false, error: errorMessage };
   }
 

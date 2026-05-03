@@ -15,6 +15,7 @@ import {
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { apiKeysService } from "@/lib/services/api-keys";
 import { findOrCreateUserByWalletAddress } from "@/lib/services/wallet-signup";
+import { getAppHost } from "@/lib/utils/app-url";
 import { logger } from "@/lib/utils/logger";
 import { validateAndConsumeSIWE } from "@/lib/utils/siwe-helpers";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -45,6 +46,7 @@ app.post("/", async (c) => {
       redis,
       body.message,
       body.signature,
+      getAppHost(c.env),
     );
     address = result.address;
   } catch (err) {
