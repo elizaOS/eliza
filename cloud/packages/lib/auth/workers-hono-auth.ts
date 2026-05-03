@@ -16,7 +16,11 @@
 import { type JWTPayload, jwtVerify } from "jose";
 
 import type { UserWithOrganization } from "@/db/repositories/users";
-import { ApiError, AuthenticationError, ForbiddenError } from "@/lib/api/cloud-worker-errors";
+import {
+  ApiError,
+  AuthenticationError,
+  ForbiddenError,
+} from "@/lib/api/cloud-worker-errors";
 import {
   PLAYWRIGHT_TEST_SESSION_COOKIE_NAME,
   type PlaywrightTestAuthEnv,
@@ -24,7 +28,11 @@ import {
 } from "@/lib/auth/playwright-test-session";
 import { cache } from "@/lib/cache/client";
 import { logger } from "@/lib/utils/logger";
-import type { AppContext, AuthedUser, Bindings } from "@/types/cloud-worker-env";
+import type {
+  AppContext,
+  AuthedUser,
+  Bindings,
+} from "@/types/cloud-worker-env";
 
 const STEWARD_AUTH_TTL_SECS = 300;
 
@@ -48,7 +56,9 @@ function nonEmptySecret(value: string | undefined): string | null {
 }
 
 function getStewardSecret(env: Bindings): Uint8Array | null {
-  const raw = nonEmptySecret(env.STEWARD_SESSION_SECRET) ?? nonEmptySecret(env.STEWARD_JWT_SECRET);
+  const raw =
+    nonEmptySecret(env.STEWARD_SESSION_SECRET) ??
+    nonEmptySecret(env.STEWARD_JWT_SECRET);
   if (!raw) return null;
   if (_stewardSecret && _stewardSecret.raw === raw) return _stewardSecret.key;
   _stewardSecret = { raw, key: new TextEncoder().encode(raw) };
@@ -86,7 +96,8 @@ function extractStewardClaims(payload: JWTPayload): StewardClaims | null {
     stringClaim(payload, "walletAddress") ??
     stringClaim(payload, "address") ??
     stringClaim(payload, "publicKey");
-  const tenantId = stringClaim(payload, "tenantId") ?? stringClaim(payload, "tenant_id");
+  const tenantId =
+    stringClaim(payload, "tenantId") ?? stringClaim(payload, "tenant_id");
 
   return {
     userId,
@@ -210,7 +221,11 @@ function toAuthedUser(user: UserWithOrganization): AuthedUser {
   };
 }
 
-function trackApiKeyUsage(c: AppContext, id: string, increment: () => Promise<void>): void {
+function trackApiKeyUsage(
+  c: AppContext,
+  id: string,
+  increment: () => Promise<void>,
+): void {
   const update = increment().catch((error) => {
     logger.warn("[Auth] API key usage tracking failed", {
       apiKeyId: id,
@@ -226,7 +241,9 @@ function trackApiKeyUsage(c: AppContext, id: string, increment: () => Promise<vo
 function testAuthEnv(env: Bindings): PlaywrightTestAuthEnv {
   return {
     PLAYWRIGHT_TEST_AUTH:
-      typeof env.PLAYWRIGHT_TEST_AUTH === "string" ? env.PLAYWRIGHT_TEST_AUTH : undefined,
+      typeof env.PLAYWRIGHT_TEST_AUTH === "string"
+        ? env.PLAYWRIGHT_TEST_AUTH
+        : undefined,
     PLAYWRIGHT_TEST_AUTH_SECRET:
       typeof env.PLAYWRIGHT_TEST_AUTH_SECRET === "string"
         ? env.PLAYWRIGHT_TEST_AUTH_SECRET
@@ -234,7 +251,9 @@ function testAuthEnv(env: Bindings): PlaywrightTestAuthEnv {
   };
 }
 
-async function getPlaywrightTestUser(c: AppContext): Promise<AuthedUser | null> {
+async function getPlaywrightTestUser(
+  c: AppContext,
+): Promise<AuthedUser | null> {
   if (c.env.PLAYWRIGHT_TEST_AUTH !== "true") return null;
 
   const token = readCookie(c, PLAYWRIGHT_TEST_SESSION_COOKIE_NAME);
@@ -251,7 +270,9 @@ async function getPlaywrightTestUser(c: AppContext): Promise<AuthedUser | null> 
   return toAuthedUser(user);
 }
 
-export async function getCurrentUser(c: AppContext): Promise<AuthedUser | null> {
+export async function getCurrentUser(
+  c: AppContext,
+): Promise<AuthedUser | null> {
   const cached = c.get("user");
   if (cached !== undefined) return cached;
 
@@ -311,7 +332,8 @@ export async function getCurrentUser(c: AppContext): Promise<AuthedUser | null> 
 export async function requireUser(c: AppContext): Promise<AuthedUser> {
   const user = await getCurrentUser(c);
   if (!user) throw AuthenticationError();
-  if (user.is_active === false) throw ForbiddenError("User account is inactive");
+  if (user.is_active === false)
+    throw ForbiddenError("User account is inactive");
   return user;
 }
 
@@ -350,8 +372,7 @@ export async function requireUserOrApiKeyWithOrg(c: AppContext): Promise<
   const apiKey = apiKeyHeader || elizaBearer;
 
   if (apiKey) {
-    const { apiKeysService } = await import("@/lib/services/api-keys");
-    const validated = await apiKeysService.validateApiKey(apiKey);
+    const validated = await c.var.deps.validateApiKey.execute(apiKey);
     if (!validated) throw AuthenticationError("Invalid or expired API key");
     if (!validated.is_active) throw ForbiddenError("API key is inactive");
     if (validated.expires_at && new Date(validated.expires_at) < new Date()) {
@@ -359,13 +380,19 @@ export async function requireUserOrApiKeyWithOrg(c: AppContext): Promise<
     }
     const { usersService } = await import("@/lib/services/users");
     const user = await usersService.getWithOrganization(validated.user_id);
-    if (!user) throw AuthenticationError("User associated with API key not found");
+    if (!user)
+      throw AuthenticationError("User associated with API key not found");
     if (!user.is_active) throw ForbiddenError("User account is inactive");
-    if (!user.organization?.is_active) throw ForbiddenError("Organization is inactive");
+    if (!user.organization?.is_active)
+      throw ForbiddenError("Organization is inactive");
     if (!user.organization_id) {
-      throw ForbiddenError("This feature requires a full account. Please sign up to continue.");
+      throw ForbiddenError(
+        "This feature requires a full account. Please sign up to continue.",
+      );
     }
-    trackApiKeyUsage(c, validated.id, () => apiKeysService.incrementUsageDebounced(validated.id));
+    trackApiKeyUsage(c, validated.id, () =>
+      c.var.deps.incrementApiKeyUsage.execute(validated.id),
+    );
     const authed = toAuthedUser(user);
     c.set("user", authed);
     c.set("authMethod", "api_key");
@@ -385,8 +412,7 @@ export async function requireUserOrApiKey(c: AppContext): Promise<AuthedUser> {
   const apiKey = apiKeyHeader || elizaBearer;
 
   if (apiKey) {
-    const { apiKeysService } = await import("@/lib/services/api-keys");
-    const validated = await apiKeysService.validateApiKey(apiKey);
+    const validated = await c.var.deps.validateApiKey.execute(apiKey);
     if (!validated) throw AuthenticationError("Invalid or expired API key");
     if (!validated.is_active) throw ForbiddenError("API key is inactive");
     if (validated.expires_at && new Date(validated.expires_at) < new Date()) {
@@ -394,9 +420,12 @@ export async function requireUserOrApiKey(c: AppContext): Promise<AuthedUser> {
     }
     const { usersService } = await import("@/lib/services/users");
     const user = await usersService.getWithOrganization(validated.user_id);
-    if (!user) throw AuthenticationError("User associated with API key not found");
+    if (!user)
+      throw AuthenticationError("User associated with API key not found");
     if (!user.is_active) throw ForbiddenError("User account is inactive");
-    trackApiKeyUsage(c, validated.id, () => apiKeysService.incrementUsageDebounced(validated.id));
+    trackApiKeyUsage(c, validated.id, () =>
+      c.var.deps.incrementApiKeyUsage.execute(validated.id),
+    );
     const authed = toAuthedUser(user);
     c.set("user", authed);
     c.set("authMethod", "api_key");
