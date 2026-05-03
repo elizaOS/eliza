@@ -27,6 +27,7 @@ import {
 } from "@elizaos/cloud-ui";
 import { formatDistanceToNow } from "date-fns";
 import {
+  Bird,
   Bot,
   Clock,
   ExternalLink,
@@ -39,7 +40,6 @@ import {
   Send,
   Settings,
   Trash2,
-  Twitter,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
@@ -108,7 +108,7 @@ const PLATFORM_CONFIG = {
   },
   twitter: {
     name: "Twitter/X",
-    icon: Twitter,
+    icon: Bird,
     color: "#1DA1F2",
     bgColor: "bg-sky-500/10",
     borderColor: "border-sky-500/30",
