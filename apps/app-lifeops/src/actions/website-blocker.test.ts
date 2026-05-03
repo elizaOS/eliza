@@ -389,4 +389,44 @@ describe("website blocker actions", () => {
     expect(result.success).toBe(true);
     expect(result.text).toBe("No website block is active right now.");
   });
+
+  it("refuses UNBLOCK when an active harsh_no_bypass rule exists and never touches the hosts file", async () => {
+    engineMocks.getSelfControlStatus.mockResolvedValue({
+      active: true,
+      available: true,
+      canUnblockEarly: true,
+      elevationPromptMethod: null,
+      endsAt: null,
+      engine: "hosts-file",
+      hostsFilePath: "/etc/hosts",
+      managedBy: "eliza-selfcontrol",
+      metadata: null,
+      platform: process.platform,
+      reason: undefined,
+      requiresElevation: false,
+      scheduledByAgentId: AGENT_ID,
+      startedAt: "2026-04-19T19:30:00.000Z",
+      supportsElevationPrompt: false,
+      websites: ["x.com"],
+    });
+
+    const execute = vi.fn(async (_query: unknown) => [{ ok: 1 }]);
+    const runtime = createRuntime({
+      adapter: { db: { execute } },
+    } as unknown as Partial<IAgentRuntime>);
+
+    const result = (await unblockWebsitesAction.handler(
+      runtime,
+      createMessage("Unblock x.com now."),
+      undefined,
+      undefined,
+    )) as ActionResult;
+
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(engineMocks.stopSelfControlBlock).not.toHaveBeenCalled();
+    expect(engineMocks.getSelfControlStatus).not.toHaveBeenCalled();
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("harsh-no-bypass rule");
+    expect(result.text).toContain("rule manager");
+  });
 });
