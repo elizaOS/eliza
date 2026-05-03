@@ -7,9 +7,9 @@ import {
 } from "@elizaos/core";
 import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
 import {
-  SpeechToTextConvertRequestModelId,
-  SpeechToTextConvertRequestTimestampsGranularity,
-  TextToSpeechStreamRequestOutputFormat,
+  SpeechToTextConvertRequestModelId as SttModelIdEnum,
+  SpeechToTextConvertRequestTimestampsGranularity as SttTimestampsGranularityEnum,
+  TextToSpeechStreamRequestOutputFormat as TtsOutputFormatEnum,
 } from "@elevenlabs/elevenlabs-js/api";
 import type {
   BodySpeechToTextV1SpeechToTextPost,
@@ -23,14 +23,14 @@ import type {
 function parseTtsOutputFormat(
   format: string,
 ): TextToSpeechStreamRequestOutputFormat {
-  for (const allowed of Object.values(TextToSpeechStreamRequestOutputFormat)) {
+  for (const allowed of Object.values(TtsOutputFormatEnum)) {
     if (allowed === format) return allowed;
   }
   throw new Error(`Unsupported ElevenLabs TTS output format: ${format}`);
 }
 
 function parseSttModelId(id: string): SpeechToTextConvertRequestModelId {
-  for (const allowed of Object.values(SpeechToTextConvertRequestModelId)) {
+  for (const allowed of Object.values(SttModelIdEnum)) {
     if (allowed === id) return allowed;
   }
   throw new Error(`Unsupported ElevenLabs STT model: ${id}`);
@@ -39,9 +39,7 @@ function parseSttModelId(id: string): SpeechToTextConvertRequestModelId {
 function parseSttTimestampsGranularity(
   value: string,
 ): SpeechToTextConvertRequestTimestampsGranularity {
-  for (const allowed of Object.values(
-    SpeechToTextConvertRequestTimestampsGranularity,
-  )) {
+  for (const allowed of Object.values(SttTimestampsGranularityEnum)) {
     if (allowed === value) return allowed;
   }
   throw new Error(
@@ -86,47 +84,57 @@ interface TranscriptionSettings {
 }
 
 function isBrowser(): boolean {
-  return (
-    typeof globalThis !== "undefined" &&
-    typeof (globalThis as unknown as { document?: unknown }).document !==
-      "undefined"
-  );
+  return typeof globalThis.document !== "undefined";
 }
 
+function getSetting(runtime: IAgentRuntime, key: string): string | undefined;
+function getSetting(
+  runtime: IAgentRuntime,
+  key: string,
+  fallback: string,
+): string;
 function getSetting(
   runtime: IAgentRuntime,
   key: string,
   fallback?: string,
-): string {
+): string | undefined {
+  const rawRuntime = runtime.getSetting(key);
+  const fromRuntime =
+    rawRuntime === null || rawRuntime === undefined
+      ? undefined
+      : String(rawRuntime);
+
   const envValue =
     typeof process !== "undefined" &&
-    (process as { env?: Record<string, string> }).env
-      ? (process as { env: Record<string, string> }).env[key]
+    process.env &&
+    typeof process.env[key] === "string"
+      ? process.env[key]
       : undefined;
-  return (
-    (runtime.getSetting(key) as string) ??
-    (envValue as string) ??
-    (fallback as string)
-  );
+
+  return fromRuntime ?? envValue ?? fallback;
 }
 
 function getBaseURL(runtime: IAgentRuntime): string {
-  const browserURL = runtime.getSetting("ELEVENLABS_BROWSER_URL") as
-    | string
-    | undefined;
+  const browserRaw = runtime.getSetting("ELEVENLABS_BROWSER_URL");
+  const browserURL =
+    browserRaw === null || browserRaw === undefined
+      ? undefined
+      : String(browserRaw);
   if (isBrowser() && browserURL) return browserURL;
   return "https://api.elevenlabs.io/v1";
 }
 
 function getApiKey(runtime: IAgentRuntime): string | undefined {
-  const env =
-    (typeof process !== "undefined" &&
-      (process as { env?: Record<string, string> }).env) ||
-    {};
-  return (
-    (runtime.getSetting("ELEVENLABS_API_KEY") as string | undefined) ||
-    (env.ELEVENLABS_API_KEY as string | undefined)
-  );
+  const raw = runtime.getSetting("ELEVENLABS_API_KEY");
+  const fromRuntime =
+    raw === null || raw === undefined ? undefined : String(raw);
+  const fromEnv =
+    typeof process !== "undefined" &&
+    process.env &&
+    typeof process.env.ELEVENLABS_API_KEY === "string"
+      ? process.env.ELEVENLABS_API_KEY
+      : undefined;
+  return fromRuntime ?? fromEnv;
 }
 
 /**
@@ -154,7 +162,7 @@ function getVoiceSettings(runtime: IAgentRuntime): VoiceSettings {
     ),
     style: getSetting(runtime, "ELEVENLABS_VOICE_STYLE", "0"),
     speakerBoost: parseBooleanFromText(
-      `${getSetting(runtime, "ELEVENLABS_VOICE_USE_SPEAKER_BOOST", "true")}` as string,
+      `${getSetting(runtime, "ELEVENLABS_VOICE_USE_SPEAKER_BOOST", "true") ?? "true"}`,
     ),
   };
 }
@@ -175,11 +183,11 @@ function getTranscriptionSettings(
       "word",
     ),
     diarize: parseBooleanFromText(
-      `${getSetting(runtime, "ELEVENLABS_STT_DIARIZE", "false")}` as string,
+      `${getSetting(runtime, "ELEVENLABS_STT_DIARIZE", "false") ?? "false"}`,
     ),
     numSpeakers: numSpeakersStr ? Number(numSpeakersStr) : undefined,
     tagAudioEvents: parseBooleanFromText(
-      `${getSetting(runtime, "ELEVENLABS_STT_TAG_AUDIO_EVENTS", "false")}` as string,
+      `${getSetting(runtime, "ELEVENLABS_STT_TAG_AUDIO_EVENTS", "false") ?? "false"}`,
     ),
   };
 }
@@ -241,7 +249,7 @@ async function fetchSpeech(
     const stream = await client.textToSpeech.stream(params.voiceId, {
       text: params.text,
       modelId: params.modelId,
-      outputFormat: params.outputFormat as any,
+      outputFormat: parseTtsOutputFormat(params.outputFormat),
       optimizeStreamingLatency: Number(params.latency) || 0,
       voiceSettings: {
         stability: Number(params.stability) || 0,
@@ -283,48 +291,39 @@ async function fetchTranscription(
       baseUrl,
     });
 
-    const requestParams: any = {
-      modelId: params.modelId,
-      audio: params.audioFile,
+    const body: BodySpeechToTextV1SpeechToTextPost = {
+      modelId: parseSttModelId(params.modelId),
+      file: params.audioFile,
     };
 
     if (params.languageCode) {
-      requestParams.languageCode = params.languageCode;
+      body.languageCode = params.languageCode;
     }
 
     if (params.timestampsGranularity !== "none") {
-      requestParams.timestampsGranularity = params.timestampsGranularity;
+      body.timestampsGranularity = parseSttTimestampsGranularity(
+        params.timestampsGranularity,
+      );
     }
 
     if (params.diarize) {
-      requestParams.diarize = true;
-      if (params.numSpeakers) {
-        requestParams.numSpeakers = params.numSpeakers;
+      body.diarize = true;
+      if (params.numSpeakers !== undefined) {
+        body.numSpeakers = params.numSpeakers;
       }
     }
 
     if (params.tagAudioEvents) {
-      requestParams.tagAudioEvents = true;
+      body.tagAudioEvents = true;
     }
 
-    const response = await client.speechToText.convert(requestParams);
+    const response = await client.speechToText.convert(body);
 
     if (!response) {
       throw new Error("Empty response from ElevenLabs STT API");
     }
 
-    let transcript = "";
-    if ("transcript" in response && response.transcript) {
-      const transcriptObj = response.transcript as { text?: string };
-      transcript = transcriptObj.text || "";
-    } else if ("transcripts" in response && response.transcripts) {
-      const transcriptsArray = response.transcripts as Array<{ text?: string }>;
-      transcript = transcriptsArray
-        .map((t: { text?: string }) => t.text || "")
-        .join("\n");
-    }
-
-    return transcript;
+    return extractTranscript(response);
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
     logger.error(`ElevenLabs fetchTranscription error: ${msg}`);
@@ -392,8 +391,7 @@ export const elevenLabsPlugin: Plugin = {
       const settings = getVoiceSettings(runtime);
       const resolvedModel = options.model || settings.model;
       // Prefer explicit ElevenLabs voiceId param; fall back to configured voiceId.
-      const resolvedVoiceId =
-        (options.voiceId as string | undefined) || settings.voiceId;
+      const resolvedVoiceId = options.voiceId ?? settings.voiceId;
       // Honor explicit caller-provided format (e.g., "pcm_16000", "mp3_22050_64").
       // Gracefully map generic "mp3" to a valid ElevenLabs enum, otherwise pass through.
       // Only default to settings.outputFormat when absent.
@@ -561,26 +559,26 @@ export const elevenLabsPlugin: Plugin = {
 
             const testText = "Hello from ElevenLabs test.";
             try {
-              const audioStream = (await runtime.useModel(
+              const audio = await runtime.useModel(
                 ModelType.TEXT_TO_SPEECH,
                 testText,
-              )) as ReadableStream<Uint8Array>;
+              );
 
-              if (
-                !audioStream ||
-                typeof (audioStream as { getReader?: unknown }).getReader !==
-                  "function"
-              ) {
-                throw new Error("TTS output is not a Web ReadableStream");
-              }
+              const bytes: Uint8Array | null =
+                audio instanceof Uint8Array
+                  ? audio
+                  : Buffer.isBuffer(audio)
+                    ? new Uint8Array(audio)
+                    : audio instanceof ArrayBuffer
+                      ? new Uint8Array(audio)
+                      : null;
 
-              const reader = audioStream.getReader();
-              const { value, done } = await reader.read();
-              reader.releaseLock();
-              if (done && !value) {
-                throw new Error("Received empty audio stream");
+              if (!bytes || bytes.byteLength === 0) {
+                throw new Error(
+                  "TTS output must be non-empty Uint8Array, Buffer, or ArrayBuffer",
+                );
               }
-              logger.success("Received audio stream chunk successfully");
+              logger.success("Received TTS binary payload successfully");
             } catch (error: unknown) {
               const msg =
                 error instanceof Error ? error.message : String(error);
