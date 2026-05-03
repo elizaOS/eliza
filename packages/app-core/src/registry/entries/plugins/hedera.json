@@ -1,0 +1,48 @@
+{
+  "id": "hedera",
+  "name": "Hedera",
+  "description": "ElizaOS plugin for Hedera blockchain",
+  "npmName": "@elizaos/plugin-hedera",
+  "source": "bundled",
+  "tags": ["hedera", "hedera-agent-kit", "llm"],
+  "config": {
+    "HEDERA_NETWORK": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "testnet",
+      "label": "Network",
+      "help": "Hedera network to connect to (mainnet, testnet, or previewnet)",
+      "advanced": false
+    },
+    "HEDERA_ACCOUNT_ID": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Account Id",
+      "help": "Id/address of Hedera account (ex. 0.X.XXXXXX)",
+      "advanced": false,
+      "min": 0
+    },
+    "HEDERA_PRIVATE_KEY": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Private Key",
+      "help": "Private key for Hedera account. Accepts ED25519 and ECDSA private keys both DER and HEX encoded",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "group": "feature-other",
+    "groupOrder": 12,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "other"
+}

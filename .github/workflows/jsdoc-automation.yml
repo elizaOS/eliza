@@ -1,0 +1,118 @@
+name: Autodocs Documentation Generator
+
+on:
+  workflow_dispatch:
+    inputs:
+      jsdoc:
+        description: "Generate code comments (T/F)"
+        required: true
+        default: "T"
+        type: choice
+        options: [T, F]
+      readme:
+        description: "Generate README documentation (T/F)"
+        required: true
+        default: "T"
+        type: choice
+        options: [T, F]
+      pull_number:
+        description: "Pull Request Number (if not provided, scans root_directory) - PR must be merged to develop branch. DONT provide if `README documentation` is T from above"
+        required: false
+        type: string
+      root_directory:
+        description: "Only scans files in this directory (relative to repository root, e.g., packages/core/src)"
+        required: true
+        default: "packages/core/src"
+        type: string
+      excluded_directories:
+        description: "Directories to exclude from scanning (comma-separated, relative to root_directory)"
+        required: true
+        default: "node_modules,dist,test"
+        type: string
+      reviewers:
+        description: "Pull Request Reviewers (Must be collaborator on the repository) comma-separated GitHub usernames"
+        required: true
+        default: ""
+        type: string
+      branch:
+        description: "Target branch for PR (defaults to develop)"
+        required: false
+        default: "develop"
+        type: string
+
+jobs:
+  generate-docs:
+    runs-on: ubuntu-latest
+    # NOTE: This workflow requires packages/autodoc to exist
+    # Currently disabled until autodoc package is added to the monorepo
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    env:
+      GITHUB_ACCESS_TOKEN: ${{ secrets.GH_PAT }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          filter: blob:none
+
+      - name: Check if autodoc package exists
+        id: check-autodoc
+        run: |
+          if [ -d "packages/autodoc" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "⚠️ packages/autodoc does not exist. Skipping documentation generation."
+            echo "To enable this workflow, create the autodoc package or update this workflow."
+          fi
+
+      - name: Setup Node.js
+        if: steps.check-autodoc.outputs.exists == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: "23"
+
+      - name: Setup Python
+        if: steps.check-autodoc.outputs.exists == 'true'
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Setup Bun
+        if: steps.check-autodoc.outputs.exists == 'true'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.13"
+
+      - name: Install dependencies
+        if: steps.check-autodoc.outputs.exists == 'true'
+        run: bun install
+
+      - name: Install autodoc package dependencies
+        if: steps.check-autodoc.outputs.exists == 'true'
+        working-directory: packages/autodoc
+        run: bun install
+
+      - name: Build autodoc
+        if: steps.check-autodoc.outputs.exists == 'true'
+        working-directory: packages/autodoc
+        run: bun run build
+
+      - name: Run documentation generator
+        if: steps.check-autodoc.outputs.exists == 'true'
+        working-directory: packages/autodoc
+        run: bun run autodoc
+        env:
+          INPUT_ROOT_DIRECTORY: ${{ github.event.inputs.root_directory }}
+          INPUT_PULL_NUMBER: ${{ github.event.inputs.pull_number }}
+          INPUT_EXCLUDED_DIRECTORIES: ${{ github.event.inputs.excluded_directories }}
+          INPUT_REVIEWERS: ${{ github.event.inputs.reviewers }}
+          INPUT_BRANCH: ${{ github.event.inputs.branch }}
+          INPUT_JSDOC: ${{ github.event.inputs.jsdoc }}
+          INPUT_README: ${{ github.event.inputs.readme }}

@@ -1,0 +1,60 @@
+{
+  "builderCode": null,
+  "demoMode": true,
+  "effectTimeoutMs": 2000,
+  "llmDryRun": false,
+  "network": "demo",
+  "outDir": "/Users/shawwalters/eliza-workspace/benchmarks/HyperliquidBench/runs/eliza-20260214-201314",
+  "plan": {
+    "steps": [
+      {
+        "perp_orders": {
+          "orders": [
+            {
+              "coin": "ETH",
+              "px": {
+                "MidPercent": {
+                  "offset_pct": -0.5
+                }
+              },
+              "reduceOnly": false,
+              "side": "buy",
+              "sz": 0.01,
+              "tif": "ALO",
+              "trigger": null
+            },
+            {
+              "coin": "BTC",
+              "px": {
+                "MidPercent": {
+                  "offset_pct": 0.8
+                }
+              },
+              "reduceOnly": true,
+              "side": "sell",
+              "sz": 0.005,
+              "tif": "GTC",
+              "trigger": null
+            }
+          ]
+        }
+      },
+      {
+        "usd_class_transfer": {
+          "toPerp": true,
+          "usdc": 1000.0
+        }
+      },
+      {
+        "set_leverage": {
+          "coin": "ETH",
+          "cross": true,
+          "leverage": 10
+        }
+      }
+    ]
+  },
+  "timestamp": "20260215-031314",
+  "wallet": null,
+  "windowMs": 200
+}

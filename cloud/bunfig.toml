@@ -1,0 +1,2 @@
+[test]
+preload = ["./packages/tests/load-env.ts"]

@@ -1,0 +1,27 @@
+{
+	"extends": "../../tsconfig.json",
+	"compilerOptions": {
+		"outDir": "./dist",
+		"rootDir": "./src",
+		"moduleResolution": "bundler",
+		"types": ["node", "bun"],
+		"noEmit": false,
+		"emitDeclarationOnly": true,
+		"composite": false,
+		"incremental": false,
+		"skipLibCheck": true,
+		"paths": {
+			"@elizaos/core": ["./src/index.node.ts"],
+			"@elizaos/core/*": ["./src/*"],
+			"@elizaos/shared": ["../../shared/src/index.ts"],
+			"@elizaos/shared/*": ["../../shared/src/*"]
+		}
+	},
+	"include": ["src/index.ts", "src/index.node.ts", "src/index.browser.ts"],
+	"exclude": [
+		"src/**/*.test.ts",
+		"src/**/*.spec.ts",
+		"src/__tests__/**/*",
+		"src/testing/**/*"
+	]
+}

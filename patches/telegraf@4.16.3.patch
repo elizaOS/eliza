@@ -1,0 +1,19 @@
+diff --git a/lib/core/network/client.js b/lib/core/network/client.js
+index 25fbbbb47c7f88e83ae26f629e5ae1a0c141725c..4ee9fbc994b04d89b70166d28409e218741f0b1e 100644
+--- a/lib/core/network/client.js
++++ b/lib/core/network/client.js
+@@ -245,7 +245,13 @@ async function answerToWebhook(response, payload, options) {
+     return true;
+ }
+ function redactToken(error) {
+-    error.message = error.message.replace(/\/(bot|user)(\d+):[^/]+\//, '/$1$2:[REDACTED]/');
++    const redacted = error.message.replace(/\/(bot|user)(\d+):[^/]+\//, '/$1$2:[REDACTED]/');
++    try {
++        error.message = redacted;
++    }
++    catch {
++        // Bun / JavaScriptCore: some wrapped fetch errors use a non-writable `message`.
++    }
+     throw error;
+ }
+ class ApiClient {

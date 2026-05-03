@@ -1,0 +1,84 @@
+{
+  "builderCode": null,
+  "demoMode": true,
+  "effectTimeoutMs": 2000,
+  "llmDryRun": false,
+  "network": "demo",
+  "outDir": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/HyperliquidBench/runs/eliza-20260502-220958",
+  "plan": {
+    "steps": [
+      {
+        "perp_orders": {
+          "orders": [
+            {
+              "coin": "ETH",
+              "px": {
+                "Absolute": 2000.0
+              },
+              "reduceOnly": false,
+              "side": "buy",
+              "sz": 0.1,
+              "tif": "GTC",
+              "trigger": null
+            },
+            {
+              "coin": "ETH",
+              "px": {
+                "MidPercent": {
+                  "offset_pct": 0.5
+                }
+              },
+              "reduceOnly": true,
+              "side": "sell",
+              "sz": 0.2,
+              "tif": "ALO",
+              "trigger": null
+            },
+            {
+              "coin": "BTC",
+              "px": {
+                "MidPercent": {
+                  "offset_pct": -0.3
+                }
+              },
+              "reduceOnly": false,
+              "side": "buy",
+              "sz": 0.01,
+              "tif": "IOC",
+              "trigger": null
+            }
+          ]
+        }
+      },
+      {
+        "usd_class_transfer": {
+          "toPerp": true,
+          "usdc": 5.0
+        }
+      },
+      {
+        "usd_class_transfer": {
+          "toPerp": false,
+          "usdc": 3.0
+        }
+      },
+      {
+        "set_leverage": {
+          "coin": "ETH",
+          "cross": false,
+          "leverage": 10
+        }
+      },
+      {
+        "set_leverage": {
+          "coin": "BTC",
+          "cross": true,
+          "leverage": 8
+        }
+      }
+    ]
+  },
+  "timestamp": "20260503-050958",
+  "wallet": null,
+  "windowMs": 200
+}

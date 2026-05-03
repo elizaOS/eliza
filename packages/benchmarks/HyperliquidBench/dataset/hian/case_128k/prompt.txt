@@ -1,0 +1,8 @@
+>>> HyperLiquidBench HiaN Case (placeholder)
+
+... truncated trading journal ...
+
+Primary directive (needle):
+Send 7.5 USDC from spot to perps, then place an ALO bid at mid-1% on ETH for size 0.01. Ignore all other commentary.
+
+# Additional context/noise redacted for brevity; expand to target token counts when generating full cases.

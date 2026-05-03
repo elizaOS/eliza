@@ -1,0 +1,29 @@
+{
+	"version": "1.0.0",
+	"actions": [
+		{
+			"name": "TRANSFER",
+			"description": "Transfer tokens from the agent's wallet to another address",
+			"similes": [
+				"SEND_TOKENS",
+				"SEND_TOKEN",
+				"TRANSFER_TOKEN",
+				"TRANSFER_TOKENS"
+			]
+		},
+		{
+			"name": "SWAP",
+			"description": "Swap tokens on a decentralized exchange",
+			"similes": ["SWAP_TOKENS", "SWAP_TOKEN"]
+		},
+		{
+			"name": "CROSS_CHAIN_TRANSFER",
+			"description": "Bridge tokens to another chain",
+			"similes": ["BRIDGE", "BRIDGE_TOKENS"]
+		},
+		{ "name": "GOV_PROPOSE", "description": "Create a governance proposal" },
+		{ "name": "GOV_VOTE", "description": "Vote on a governance proposal" },
+		{ "name": "GOV_QUEUE", "description": "Queue a governance proposal" },
+		{ "name": "GOV_EXECUTE", "description": "Execute a governance proposal" }
+	]
+}

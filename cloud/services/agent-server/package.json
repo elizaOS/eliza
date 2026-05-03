@@ -1,0 +1,29 @@
+{
+  "name": "@elizaos/agent-server",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "start": "bun run src/index.ts",
+    "dev": "bun --watch run src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "test:unit": "bun test __tests__/unit/",
+    "test:integration": "bun test __tests__/integration/"
+  },
+  "dependencies": {
+    "@elizaos/core": "alpha",
+    "@elizaos/plugin-elizacloud": "^2.0.0-alpha.8",
+    "@elizaos/plugin-openai": "^1.6.0",
+    "@elizaos/plugin-sql": "^1.7.1",
+    "elysia": "^1.1.0",
+    "ioredis": "^5.4.1",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.2",
+    "bun-types": "^1.3.10",
+    "typescript": "^6.0.0"
+  }
+}

@@ -1,0 +1,30 @@
+# Production environment overrides for gateway-discord
+
+# Enable Eliza App Discord bot (system-wide DM-based interactions)
+elizaAppBot:
+  enabled: true
+  leaderKey: "discord:eliza-app-bot:leader:prod"
+
+# Production resource limits
+resources:
+  requests:
+    memory: "512Mi"
+    cpu: "200m"
+  limits:
+    memory: "2Gi"
+    cpu: "1"
+
+# Production scaling configuration
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 20
+
+# Enable Prometheus monitoring in production (requires Prometheus Operator)
+prometheus:
+  enabled: true
+  serviceMonitor:
+    interval: 30s
+    path: /metrics
+  alerts:
+    enabled: true

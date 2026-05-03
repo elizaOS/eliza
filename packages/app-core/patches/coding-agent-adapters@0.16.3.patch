@@ -1,0 +1,44 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+index 091bfe5a59bfe6c366a0f7b0f9f8934b7abccf40..2dacd9dda83a4d8ad8bde205092a760f96ade27b 100644
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -1987,7 +1987,7 @@ var CodexAdapter = class extends BaseCodingAdapter {
+       safe: true
+     },
+     {
+-      pattern: /do.?you.?trust.?the.?contents|trust.?this.?directory|yes,?.?continue|prompt.?injection/i,
++      pattern: /do.?you.?trust.?the.?contents|trust.?this.?directory|allow.?codex.?to.?work.?in.?this.?folder|without.?asking.?for.?approval|yes,?.?continue|prompt.?injection/i,
+       type: "permission",
+       response: "",
+       responseType: "keys",
+@@ -2222,7 +2222,7 @@ ${credentials.extraConfigToml}`;
+    */
+   detectBlockingPrompt(output) {
+     const stripped = this.stripAnsi(output);
+-    if (/would.?you.?like.?to.?run.?the.?following.?command/i.test(stripped) || /do.?you.?want.?to.?approve.?access/i.test(stripped) || /would.?you.?like.?to.?make.?the.?following.?edits/i.test(stripped) || /press.?enter.?to.?confirm/i.test(stripped) && /esc.?to.?cancel/i.test(stripped)) {
++    if (/would.?you.?like.?to.?run.?the.?following.?command/i.test(stripped) || /do.?you.?want.?to.?approve.?access/i.test(stripped) || /would.?you.?like.?to.?make.?the.?following.?edits/i.test(stripped) || /allow.?codex.?to.?work.?in.?this.?folder/i.test(stripped) || /without.?asking.?for.?approval/i.test(stripped) || /press.?enter.?to.?confirm/i.test(stripped) && /esc.?to.?cancel/i.test(stripped)) {
+       return {
+         detected: true,
+         type: "permission",
+diff --git a/dist/index.js b/dist/index.js
+index f17f3f346a2b0368c239a2367ac4494c2219bf8d..510be83f6624f63bed1d196dd7e7ab193b6d48c7 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -1981,7 +1981,7 @@ var CodexAdapter = class extends BaseCodingAdapter {
+       safe: true
+     },
+     {
+-      pattern: /do.?you.?trust.?the.?contents|trust.?this.?directory|yes,?.?continue|prompt.?injection/i,
++      pattern: /do.?you.?trust.?the.?contents|trust.?this.?directory|allow.?codex.?to.?work.?in.?this.?folder|without.?asking.?for.?approval|yes,?.?continue|prompt.?injection/i,
+       type: "permission",
+       response: "",
+       responseType: "keys",
+@@ -2216,7 +2216,7 @@ ${credentials.extraConfigToml}`;
+    */
+   detectBlockingPrompt(output) {
+     const stripped = this.stripAnsi(output);
+-    if (/would.?you.?like.?to.?run.?the.?following.?command/i.test(stripped) || /do.?you.?want.?to.?approve.?access/i.test(stripped) || /would.?you.?like.?to.?make.?the.?following.?edits/i.test(stripped) || /press.?enter.?to.?confirm/i.test(stripped) && /esc.?to.?cancel/i.test(stripped)) {
++    if (/would.?you.?like.?to.?run.?the.?following.?command/i.test(stripped) || /do.?you.?want.?to.?approve.?access/i.test(stripped) || /would.?you.?like.?to.?make.?the.?following.?edits/i.test(stripped) || /allow.?codex.?to.?work.?in.?this.?folder/i.test(stripped) || /without.?asking.?for.?approval/i.test(stripped) || /press.?enter.?to.?confirm/i.test(stripped) && /esc.?to.?cancel/i.test(stripped)) {
+       return {
+         detected: true,
+         type: "permission",

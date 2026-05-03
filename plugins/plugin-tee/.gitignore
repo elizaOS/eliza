@@ -1,0 +1,16 @@
+node_modules
+.turbo
+dist
+elizaConfig.yaml
+custom_actions/
+cache/
+*.tsbuildinfo.env
+.elizadb
+target/
+__pycache__
+*.pyc
+.venv
+*.egg-info
+.DS_Store
+package-lock.json
+.env

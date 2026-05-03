@@ -1,0 +1,27 @@
+{
+  "id": "memory-viewer",
+  "name": "Memory Viewer",
+  "description": "Browse memory, fact, and extraction activity.",
+  "npmName": "@elizaos/app-memory-viewer",
+  "source": "bundled",
+  "tags": ["memory", "facts", "viewer"],
+  "config": {},
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Dna",
+    "group": "Apps",
+    "groupOrder": 5,
+    "actions": ["launch"]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "app",
+  "subtype": "tool",
+  "launch": {
+    "type": "internal-tab",
+    "target": "memories",
+    "capabilities": ["memory", "facts", "viewer"]
+  }
+}

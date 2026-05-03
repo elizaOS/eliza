@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: srv-gen
+  namespace: eliza-agents
+  labels:
+    eliza.ai/managed-by: server-operator
+    eliza.ai/server: srv-gen
+    eliza.ai/tier: shared
+    eliza.ai/project: cloud
+spec:
+  selector:
+    matchLabels:
+      eliza.ai/server: srv-gen
+  template:
+    metadata:
+      labels:
+        eliza.ai/managed-by: server-operator
+        eliza.ai/server: srv-gen
+        eliza.ai/tier: shared
+        eliza.ai/project: cloud
+    spec:
+      containers:
+        - name: agent-server
+          image: localhost:5001/agent-server:dev
+          ports:
+            - containerPort: 3000
+              name: http
+          envFrom:
+            - secretRef:
+                name: eliza-agent-secrets
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 3000
+            initialDelaySeconds: 1
+            periodSeconds: 2
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 2
+            periodSeconds: 5

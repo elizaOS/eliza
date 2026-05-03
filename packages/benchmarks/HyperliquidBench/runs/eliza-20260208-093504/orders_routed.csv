@@ -1,0 +1,5 @@
+ts,oid,coin,side,px,sz,tif,reduceOnly,builderCode
+tsMs,oid,coin,side,px,sz,tif,reduceOnly,builderCode
+1770572104492,1,ETH,buy,3482.5,0.01,Alo,false,COV1
+1770572104492,2,BTC,sell,60600.0,0.005,Gtc,true,COV2
+1770572104492,3,SOL,buy,179.55,0.1,Ioc,false,COV3

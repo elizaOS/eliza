@@ -1,0 +1,1839 @@
+#!/usr/bin/env node
+/**
+ * Mobile build orchestrator for elizaOS apps.
+ *
+ * Builds an iOS or Android app from any elizaOS host app (Eliza, etc.).
+ * Reads app identity from the host's app.config.ts so web, desktop, and
+ * native builds share one canonical app contract.
+ *
+ * Usage: node scripts/run-mobile-build.mjs <android|android-system|ios|ios-overlay>
+ *
+ * Phases:
+ *   1. Resolve config       — read app.config.ts for appId / appName
+ *   2. Build web            — vite build → dist/
+ *   3. Capacitor sync       — generate native platform projects
+ *   4. Overlay native       — permissions, services, entitlements, Podfile
+ *   5. Platform patches     — Gradle template, SPM compat, xcconfig
+ *   5b. Stage Android agent — bun + musl + libstdc++ + libgcc + bundle
+ *                             into packages/app/android/app/src/main/assets/agent/
+ *                             (Android targets only; see
+ *                             scripts/lib/stage-android-agent.mjs and
+ *                             docs/agent-on-mobile.md).
+ *   6. Native build         — gradlew / xcodebuild
+ */
+import { spawn } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import process from "node:process";
+import { fileURLToPath } from "node:url";
+import { resolveMainAppDir } from "./lib/app-dir.mjs";
+import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
+import { stageAndroidAgentRuntime } from "./lib/stage-android-agent.mjs";
+
+// ── Paths ───────────────────────────────────────────────────────────────
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
+const appCoreRoot = path.resolve(__dirname, "..");
+const packagesRoot = path.resolve(appCoreRoot, "..");
+const appDir = resolveMainAppDir(repoRoot, "app");
+const iosDir = path.join(appDir, "ios", "App");
+const androidDir = path.join(appDir, "android");
+const elizaOsVendorDir = path.join(
+  repoRoot,
+  "packages",
+  "os",
+  "android",
+  "vendor",
+  "eliza",
+);
+const elizaOsApkDir = path.join(elizaOsVendorDir, "apps", "Eliza");
+const platformsDir = path.join(appCoreRoot, "platforms");
+const nativePluginsDir = path.join(packagesRoot, "native-plugins");
+const androidAgentSpikeDir = path.join(
+  repoRoot,
+  "scripts",
+  "spike-android-agent",
+);
+// ── Phase 1: Resolve app identity from app.config.ts ────────────────────
+
+function readAppIdentity() {
+  const cfgPath = path.join(appDir, "app.config.ts");
+  if (!fs.existsSync(cfgPath)) {
+    throw new Error(`app.config.ts not found at ${cfgPath}`);
+  }
+  const src = fs.readFileSync(cfgPath, "utf8");
+  const appId = src.match(/appId:\s*["']([^"']+)["']/)?.[1];
+  const appName = src.match(/appName:\s*["']([^"']+)["']/)?.[1];
+  const urlScheme = src.match(/urlScheme:\s*["']([^"']+)["']/)?.[1] ?? appId;
+  if (!appId || !appName) {
+    throw new Error("Could not parse appId/appName from app.config.ts");
+  }
+  return { appId, appName, urlScheme };
+}
+
+const APP = readAppIdentity();
+console.log(`[mobile-build] App: ${APP.appName} (${APP.appId})`);
+
+// ── Helpers ─────────────────────────────────────────────────────────────
+
+function run(command, args, { cwd, env = process.env } = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { cwd, env, stdio: "inherit" });
+    child.on("exit", (code, signal) => {
+      if (signal) return reject(new Error(`${command} killed by ${signal}`));
+      if ((code ?? 1) !== 0)
+        return reject(new Error(`${command} exited with code ${code ?? 1}`));
+      resolve();
+    });
+  });
+}
+
+function firstExisting(paths) {
+  for (const p of paths) {
+    if (p && fs.existsSync(p)) return p;
+  }
+  return null;
+}
+
+function resolveAndroidSdkRoot() {
+  return firstExisting([
+    process.env.ANDROID_SDK_ROOT,
+    process.env.ANDROID_HOME,
+    path.join(os.homedir(), "Library", "Android", "sdk"),
+    path.join(os.homedir(), "Android", "Sdk"),
+  ]);
+}
+
+function resolveJavaHome() {
+  return firstExisting([
+    process.env.JAVA_HOME,
+    "/opt/homebrew/opt/openjdk@21",
+    "/usr/local/opt/openjdk@21",
+    "/usr/lib/jvm/temurin-21-jdk-amd64",
+    "/usr/lib/jvm/java-21-openjdk-amd64",
+    "/usr/lib/jvm/java-21-openjdk",
+  ]);
+}
+
+function prependPath(env, entries) {
+  const sep = process.platform === "win32" ? ";" : ":";
+  const valid = entries.filter(Boolean);
+  return valid.length
+    ? `${valid.join(sep)}${sep}${env.PATH ?? ""}`
+    : (env.PATH ?? "");
+}
+
+function escapeJavaString(value) {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function escapeXmlText(value) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function escapeXcodeBuildSetting(value) {
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+function replaceOrInsertPlistString(content, key, value) {
+  const escapedValue = escapeXmlText(value);
+  const keyRe = escapeRegExp(key);
+  const existingRe = new RegExp(
+    `(<key>${keyRe}</key>\\s*<string>)[^<]*(</string>)`,
+  );
+  if (existingRe.test(content)) {
+    return content.replace(existingRe, `$1${escapedValue}$2`);
+  }
+  return content.replace(
+    "</dict>",
+    `\t<key>${key}</key>\n\t<string>${escapedValue}</string>\n</dict>`,
+  );
+}
+
+function ensurePlistArrayStrings(content, key, values) {
+  const escapedValues = values.map(escapeXmlText);
+  const keyRe = escapeRegExp(key);
+  const arrayRe = new RegExp(
+    `(<key>${keyRe}</key>\\s*<array>)([\\s\\S]*?)(\\s*</array>)`,
+  );
+  const match = content.match(arrayRe);
+  if (!match) {
+    const body = escapedValues
+      .map((value) => `\t\t<string>${value}</string>`)
+      .join("\n");
+    return content.replace(
+      "</dict>",
+      `\t<key>${key}</key>\n\t<array>\n${body}\n\t</array>\n</dict>`,
+    );
+  }
+  let body = match[2];
+  for (const value of escapedValues) {
+    if (!body.includes(`<string>${value}</string>`)) {
+      body += `\n\t\t<string>${value}</string>`;
+    }
+  }
+  return content.replace(arrayRe, `$1${body}$3`);
+}
+
+/**
+ * Resolve the real filesystem path to a node_modules package (follows bun
+ * symlinks). Returns a path relative to `relativeTo`.
+ */
+function resolvePackagePath(pkgName, relativeTo) {
+  const linked = path.join(appDir, "node_modules", ...pkgName.split("/"));
+  if (!fs.existsSync(linked)) return null;
+  return path.relative(relativeTo, fs.realpathSync(linked));
+}
+
+function collectTemplateFiles(root, dir = root) {
+  if (!fs.existsSync(dir)) return [];
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...collectTemplateFiles(root, fullPath));
+    } else if (entry.isFile()) {
+      files.push(path.relative(root, fullPath));
+    }
+  }
+  return files;
+}
+
+function templateFilePriority(platform, relPath) {
+  if (platform !== "ios") return relPath;
+  const priority = [
+    path.join("App", "Podfile"),
+    path.join("App", "App.xcodeproj", "project.pbxproj"),
+    path.join("App", "App", "Base.lproj", "LaunchScreen.storyboard"),
+    path.join("App", "App", "ElizaIntentPlugin.swift"),
+    path.join("App", "App", "PrivacyInfo.xcprivacy"),
+    path.join(
+      "App",
+      "App",
+      "WebsiteBlockerContentExtension",
+      "ActionRequestHandler.swift",
+    ),
+    path.join("App", "App", "WebsiteBlockerContentExtension", "Info.plist"),
+    path.join(
+      "App",
+      "App",
+      "WebsiteBlockerContentExtension",
+      "WebsiteBlockerContentExtension.entitlements",
+    ),
+    path.join(
+      "App",
+      "App",
+      "WebsiteBlockerContentExtension",
+      "PrivacyInfo.xcprivacy",
+    ),
+  ];
+  const index = priority.indexOf(relPath);
+  return `${String(index === -1 ? priority.length : index).padStart(4, "0")}:${relPath}`;
+}
+
+export function resolvePlatformTemplateRoot(
+  platform,
+  { repoRootValue = repoRoot } = {},
+) {
+  const templateRoot = path.join(
+    repoRootValue,
+    "eliza",
+    "packages",
+    "app-core",
+    "platforms",
+    platform,
+  );
+  return fs.existsSync(templateRoot) ? templateRoot : null;
+}
+
+export function syncPlatformTemplateFiles(
+  platform,
+  { repoRootValue = repoRoot, appDirValue = appDir, log = console.log } = {},
+) {
+  const templateRoot = resolvePlatformTemplateRoot(platform, { repoRootValue });
+  if (!templateRoot) return [];
+  const targetRoot = path.join(appDirValue, platform);
+  const files = collectTemplateFiles(templateRoot).sort((a, b) =>
+    templateFilePriority(platform, a).localeCompare(
+      templateFilePriority(platform, b),
+    ),
+  );
+  const copied = [];
+  for (const relPath of files) {
+    const source = path.join(templateRoot, relPath);
+    const targetPath = path.join(targetRoot, relPath);
+    fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+    fs.copyFileSync(source, targetPath);
+    copied.push(relPath);
+  }
+  if (copied.length > 0) {
+    log(
+      `[mobile-build] Synced ${copied.length} ${platform} platform template file(s).`,
+    );
+  }
+  return copied;
+}
+
+export function isCapacitorPlatformReady(
+  platform,
+  { appDirValue = appDir } = {},
+) {
+  if (platform === "ios") {
+    return (
+      fs.existsSync(path.join(appDirValue, "ios", "App", "Podfile")) &&
+      fs.existsSync(
+        path.join(
+          appDirValue,
+          "ios",
+          "App",
+          "App.xcodeproj",
+          "project.pbxproj",
+        ),
+      )
+    );
+  }
+  if (platform === "android") {
+    return (
+      fs.existsSync(path.join(appDirValue, "android", "gradlew")) &&
+      fs.existsSync(path.join(appDirValue, "android", "app", "build.gradle")) &&
+      fs.existsSync(
+        path.join(
+          appDirValue,
+          "android",
+          "app",
+          "src",
+          "main",
+          "AndroidManifest.xml",
+        ),
+      )
+    );
+  }
+  return false;
+}
+
+function replaceInFile(filePath, replacements) {
+  if (!fs.existsSync(filePath)) return false;
+  let content = fs.readFileSync(filePath, "utf8");
+  const original = content;
+  for (const [search, replacement] of replacements) {
+    content = content.replaceAll(search, replacement);
+  }
+  if (content === original) return false;
+  fs.writeFileSync(filePath, content, "utf8");
+  return true;
+}
+
+export function applyIosAppIdentity({
+  appDirValue = appDir,
+  appId = APP.appId,
+  appName = APP.appName,
+  appGroup = `group.${appId}`,
+  developmentTeam = process.env.ELIZA_IOS_DEVELOPMENT_TEAM ??
+    process.env.ELIZA_IOS_DEVELOPMENT_TEAM ??
+    null,
+  log = console.log,
+} = {}) {
+  const iosAppRoot = path.join(appDirValue, "ios", "App");
+  const changed = [];
+  const projectPath = path.join(iosAppRoot, "App.xcodeproj", "project.pbxproj");
+  if (fs.existsSync(projectPath)) {
+    let project = fs.readFileSync(projectPath, "utf8");
+    const original = project;
+    project = project.replaceAll(
+      "PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app.WebsiteBlockerContentExtension;",
+      `PRODUCT_BUNDLE_IDENTIFIER = ${appId}.WebsiteBlockerContentExtension;`,
+    );
+    project = project.replaceAll(
+      "PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app;",
+      `PRODUCT_BUNDLE_IDENTIFIER = ${appId};`,
+    );
+    const displayNameSetting = `ELIZA_DISPLAY_NAME = ${escapeXcodeBuildSetting(appName)};`;
+    if (project.includes("ELIZA_DISPLAY_NAME = ")) {
+      project = project.replace(
+        /ELIZA_DISPLAY_NAME = .*?;/g,
+        displayNameSetting,
+      );
+    } else {
+      project = project.replace(
+        new RegExp(
+          `(^[ \\t]*MARKETING_VERSION = 1\\.0;\\n)([ \\t]*)PRODUCT_BUNDLE_IDENTIFIER = ${escapeRegExp(appId)};`,
+          "m",
+        ),
+        `$1$2${displayNameSetting}\n$2PRODUCT_BUNDLE_IDENTIFIER = ${appId};`,
+      );
+    }
+    if (developmentTeam) {
+      project = project.replace(
+        /DEVELOPMENT_TEAM = [A-Z0-9]+;/g,
+        `DEVELOPMENT_TEAM = ${developmentTeam};`,
+      );
+    }
+    if (project !== original) {
+      fs.writeFileSync(projectPath, project, "utf8");
+      changed.push(path.relative(iosAppRoot, projectPath));
+    }
+  }
+
+  const replacements = [
+    ["group.ai.elizaos.app", appGroup],
+    ['"group.ai.elizaos.app"', `"${appGroup}"`],
+  ];
+  for (const relPath of [
+    path.join("App", "App.entitlements"),
+    path.join("App", "ScreenTimeSupport.swift"),
+    path.join(
+      "App",
+      "WebsiteBlockerContentExtension",
+      "WebsiteBlockerContentExtension.entitlements",
+    ),
+    path.join(
+      "App",
+      "WebsiteBlockerContentExtension",
+      "ActionRequestHandler.swift",
+    ),
+  ]) {
+    const filePath = path.join(iosAppRoot, relPath);
+    if (replaceInFile(filePath, replacements)) {
+      changed.push(relPath);
+    }
+  }
+
+  const extensionId = `${appId}.WebsiteBlockerContentExtension`;
+  const fastlaneReplacements = [
+    [
+      'ENV["APP_IDENTIFIER"] || "ai.elizaos.app"',
+      `ENV["APP_IDENTIFIER"] || "${appId}"`,
+    ],
+    [
+      'ENV["APP_IDENTIFIER_EXTRA"] || ""',
+      `ENV["APP_IDENTIFIER_EXTRA"] || "${extensionId}"`,
+    ],
+  ];
+  for (const relPath of [
+    path.join("fastlane", "Appfile"),
+    path.join("fastlane", "Fastfile"),
+    path.join("fastlane", "Matchfile"),
+  ]) {
+    const filePath = path.join(path.dirname(iosAppRoot), relPath);
+    if (replaceInFile(filePath, fastlaneReplacements)) {
+      changed.push(relPath);
+    }
+  }
+  if (changed.length > 0) {
+    log(`[mobile-build] Applied iOS identity ${appId}.`);
+  }
+  return changed;
+}
+
+// ── Phase 2: Build web bundle ───────────────────────────────────────────
+
+async function buildWeb() {
+  await run("bun", ["scripts/build.mjs"], { cwd: appDir });
+}
+
+// ── Phase 3: Capacitor sync ────────────────────────────────────────────
+
+async function ensurePlatform(platform) {
+  const dir = platform === "android" ? androidDir : iosDir;
+  if (!fs.existsSync(dir)) {
+    console.log(`[mobile-build] Adding Capacitor ${platform} platform...`);
+    await run("bun", ["x", "capacitor", "add", platform], { cwd: appDir });
+  }
+  if (!isCapacitorPlatformReady(platform)) {
+    syncPlatformTemplateFiles(platform);
+  }
+}
+
+// ── Phase 4: Android native overlay ─────────────────────────────────────
+
+/** Permissions that Capacitor sync doesn't generate (it only adds INTERNET). */
+const ANDROID_PERMISSIONS = [
+  "READ_CONTACTS",
+  "WRITE_CONTACTS",
+  "CALL_PHONE",
+  "READ_PHONE_STATE",
+  "ANSWER_PHONE_CALLS",
+  "MANAGE_OWN_CALLS",
+  "READ_CALL_LOG",
+  "WRITE_CALL_LOG",
+  "READ_SMS",
+  "SEND_SMS",
+  "RECEIVE_SMS",
+  "RECEIVE_MMS",
+  "RECEIVE_WAP_PUSH",
+  "RECORD_AUDIO",
+  "CAMERA",
+  "ACCESS_FINE_LOCATION",
+  "ACCESS_COARSE_LOCATION",
+  "ACCESS_BACKGROUND_LOCATION",
+  "FOREGROUND_SERVICE",
+  "FOREGROUND_SERVICE_DATA_SYNC",
+  "FOREGROUND_SERVICE_SPECIAL_USE",
+  "POST_NOTIFICATIONS",
+  "WAKE_LOCK",
+  // PACKAGE_USAGE_STATS is granted via the privapp-permissions whitelist;
+  // MANAGE_APP_OPS_MODES is what ElizaBootReceiver actually needs to
+  // reflectively flip the GET_USAGE_STATS appop to ALLOWED at boot.
+  // Without MANAGE_APP_OPS_MODES the receiver throws SecurityException
+  // and PACKAGE_USAGE_STATS stays appop-default-denied, which breaks
+  // priv-app usage-stats access. See vendor/eliza/permissions/
+  // privapp-permissions-com.elizaai.eliza.xml.
+  "PACKAGE_USAGE_STATS",
+  "MANAGE_APP_OPS_MODES",
+];
+
+function replaceOrInsertGradleString(content, key, value) {
+  const quoted = `${key} "${value}"`;
+  const assignmentRe = new RegExp(`${key}\\s+["'][^"']+["']`);
+  if (assignmentRe.test(content)) {
+    return content.replace(assignmentRe, quoted);
+  }
+  return content;
+}
+
+function appendMissingGradleDependency(content, notation) {
+  if (content.includes(notation)) return content;
+  return content.replace(
+    /dependencies\s*\{/,
+    `dependencies {\n    implementation "${notation}"`,
+  );
+}
+
+/**
+ * Inject `buildFeatures { buildConfig true }` and the `AOSP_BUILD`
+ * buildConfigField into the app-level build.gradle.
+ *
+ * Why: `ElizaAgentService` reads `BuildConfig.AOSP_BUILD` to decide whether
+ * to export `ELIZA_LOCAL_LLAMA=1` to the spawned bun process (see
+ * eliza/packages/agent/src/runtime/aosp-llama-adapter.ts). AGP 8+ defaults
+ * `buildFeatures.buildConfig` to false, so without the flag flip the
+ * BuildConfig.java is never generated and the Java service refuses to
+ * compile. The boolean field defaults to false, so the Capacitor APK build
+ * keeps DeviceBridge inference; the AOSP build flow flips it to true via
+ * the `-PelizaAospBuild=true` gradle property documented in
+ * scripts/elizaos/build-aosp.mjs and SETUP_AOSP.md.
+ */
+function injectBuildConfigAospField(content) {
+  let next = content;
+  if (!/\bbuildFeatures\s*\{/.test(next)) {
+    next = next.replace(
+      /android\s*\{/,
+      `android {\n    buildFeatures {\n        buildConfig true\n    }\n`,
+    );
+  } else if (!/buildConfig\s+true/.test(next)) {
+    next = next.replace(
+      /buildFeatures\s*\{/,
+      "buildFeatures {\n        buildConfig true",
+    );
+  }
+  if (!/buildConfigField\s+["']boolean["'],\s*["']AOSP_BUILD["']/.test(next)) {
+    next = next.replace(
+      /defaultConfig\s*\{/,
+      `defaultConfig {\n        buildConfigField "boolean", "AOSP_BUILD", "\${project.findProperty('elizaAospBuild') ?: 'false'}"\n`,
+    );
+  }
+  return next;
+}
+
+/**
+ * Inject the `androidResources { noCompress += [...] }` block that keeps
+ * `.tar.gz`, `.tar`, `.gguf`, and `.so` files byte-identical in the
+ * packaged APK.
+ *
+ * Why: aapt2's default packaging treats `.gz` and `.tar.gz` as
+ * "compressed-extension-to-preserve-uncompressed" and rewrites the entry
+ * to a plain `.tar`. PGlite's runtime extension loader resolves
+ * `vector.tar.gz` and `fuzzystrmatch.tar.gz` via
+ * `new URL("../X", import.meta.url)`; when aapt2 strips the `.gz` the
+ * loader can't find the file and the runtime falls over at first
+ * Postgres extension call.
+ *
+ * Idempotent: re-runs are no-ops once the block is present. The matcher
+ * accepts AGP-modern `androidResources` and legacy `aaptOptions` blocks,
+ * but only injects when neither already lists `tar.gz`.
+ */
+export function injectNoCompressTarGz(content) {
+  if (/noCompress[^\n]*['"]tar\.gz['"]/.test(content)) return content;
+  const block =
+    `\n    // Preserve .tar.gz / .tar / .gguf / .so as-is in the packaged APK.\n` +
+    `    // aapt2 otherwise rewrites .tar.gz to .tar and PGlite's runtime\n` +
+    `    // extension loader fails to find vector.tar.gz / fuzzystrmatch.tar.gz.\n` +
+    `    androidResources {\n` +
+    `        noCompress += ['gguf', 'tar.gz', 'so', 'tar']\n` +
+    `    }\n`;
+  // Inject just before the closing brace of the top-level `android { ... }`
+  // block. Match the LAST `}` in the file as a heuristic that's robust
+  // against arbitrary middle content.
+  const androidOpen = content.search(/\n\s*android\s*\{/);
+  if (androidOpen < 0) return content;
+  // Find the matching closing brace by counting from the open.
+  let depth = 0;
+  let i = content.indexOf("{", androidOpen);
+  while (i < content.length) {
+    const ch = content[i];
+    if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return content.slice(0, i) + block + content.slice(i);
+      }
+    }
+    i += 1;
+  }
+  return content;
+}
+
+function patchCapacitorBarcodeScannerGradle() {
+  const pkgRel = resolvePackagePath("@capacitor/barcode-scanner", androidDir);
+  if (!pkgRel) return;
+  patchGradleFileForAgp9(
+    path.resolve(androidDir, pkgRel, "android", "build.gradle"),
+    "@capacitor/barcode-scanner",
+  );
+}
+
+function patchLlamaCppCapacitorGradle() {
+  const pkgRel = resolvePackagePath("llama-cpp-capacitor", androidDir);
+  if (!pkgRel) return;
+  patchGradleFileForAgp9(
+    path.resolve(androidDir, pkgRel, "android", "build.gradle"),
+    "llama-cpp-capacitor",
+  );
+}
+
+function patchGradleFileForAgp9(filePath, label) {
+  if (!fs.existsSync(filePath)) return;
+  const current = fs.readFileSync(filePath, "utf8");
+  const patched = current
+    .replace(
+      /^\s*apply plugin:\s*['"](org\.jetbrains\.kotlin\.android|kotlin-android)['"]\s*\r?\n/gm,
+      "",
+    )
+    .replace(/\n\s*kotlin\s*\{\s*jvmToolchain\(\d+\)\s*\}\s*/g, "\n")
+    .replace(
+      /getDefaultProguardFile\('proguard-android\.txt'\)/g,
+      "getDefaultProguardFile('proguard-android-optimize.txt')",
+    );
+  if (patched !== current) {
+    fs.writeFileSync(filePath, patched, "utf8");
+    console.log(`[mobile-build] Patched ${label} Gradle for AGP 9.`);
+  }
+}
+
+function patchNativePluginGradleForAgp9() {
+  if (!fs.existsSync(nativePluginsDir)) return;
+  for (const entry of fs.readdirSync(nativePluginsDir, {
+    withFileTypes: true,
+  })) {
+    if (!entry.isDirectory()) continue;
+    patchGradleFileForAgp9(
+      path.join(nativePluginsDir, entry.name, "android", "build.gradle"),
+      `@elizaos/capacitor-${entry.name}`,
+    );
+  }
+}
+
+function appendMissingAndroidManifestBlock(xml, marker, block) {
+  if (xml.includes(marker)) return xml;
+  return xml.replace("</manifest>", `${block}\n</manifest>`);
+}
+
+function appendMissingApplicationBlock(xml, marker, block) {
+  if (xml.includes(marker)) return xml;
+  return xml.replace("</application>", `${block}\n    </application>`);
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function removeApplicationComponentBlock(xml, componentName) {
+  const escapedName = escapeRegExp(componentName);
+  const componentRe = new RegExp(
+    `\\n\\s*<(activity|service|receiver)\\b(?=[^>]*android:name="${escapedName}")[\\s\\S]*?<\\/\\1>\\s*`,
+    "g",
+  );
+  return xml.replace(componentRe, "\n");
+}
+
+function ensureElizaOsActivityFilters(xml) {
+  if (xml.includes("android.intent.category.HOME")) {
+    return xml;
+  }
+  const mainActivityRe =
+    /(<activity\b(?=[\s\S]*?android:name="\.?MainActivity")[\s\S]*?)(\n\s*<\/activity>)/m;
+  const homeFilter = `
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+`;
+  return xml.replace(mainActivityRe, `$1${homeFilter}$2`);
+}
+
+function overlayAndroid() {
+  const srcJava = path.join(
+    platformsDir,
+    "android",
+    "app",
+    "src",
+    "main",
+    "java",
+    "ai",
+    "elizaos",
+    "app",
+  );
+  const gradlePath = path.join(androidDir, "app", "build.gradle");
+  const namespace = fs.existsSync(gradlePath)
+    ? fs
+        .readFileSync(gradlePath, "utf8")
+        .match(/namespace\s*(?:[=:]\s*)?["']([^"']+)["']/)?.[1]
+    : APP.appId;
+
+  const androidPackage = namespace || APP.appId;
+  const dstJava = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "java",
+    ...androidPackage.split("."),
+  );
+  const legacyJava = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "java",
+    "ai",
+    "elizaos",
+    "app",
+  );
+  const appIdJava = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "java",
+    ...APP.appId.split("."),
+  );
+
+  if (fs.existsSync(srcJava)) {
+    for (const staleJava of [legacyJava, appIdJava]) {
+      if (staleJava !== dstJava) {
+        fs.rmSync(staleJava, { recursive: true, force: true });
+      }
+    }
+    fs.mkdirSync(dstJava, { recursive: true });
+    for (const file of [
+      "GatewayConnectionService.java",
+      "MainActivity.java",
+      "ElizaAgentService.java",
+      "ElizaAssistActivity.java",
+      "ElizaBootReceiver.java",
+      "ElizaBrowserActivity.java",
+      "ElizaCalendarActivity.java",
+      "ElizaCameraActivity.java",
+      "ElizaClockActivity.java",
+      "ElizaContactsActivity.java",
+      "ElizaDialActivity.java",
+      "ElizaInCallService.java",
+      "ElizaMmsReceiver.java",
+      "ElizaRespondViaMessageService.java",
+      "ElizaSmsComposeActivity.java",
+      "ElizaSmsReceiver.java",
+    ]) {
+      const src = path.join(srcJava, file);
+      if (!fs.existsSync(src)) continue;
+      let code = fs.readFileSync(src, "utf8");
+      code = code.replace(
+        /^package\s+ai\.elizaos\.app;/m,
+        `package ${androidPackage};`,
+      );
+      code = code.replaceAll(
+        "ai.elizaos.app.action.",
+        `${androidPackage}.action.`,
+      );
+      code = code.replaceAll("ai.elizaos.app://", `${APP.urlScheme}://`);
+      code = code.replaceAll(
+        "elizaOS Gateway",
+        `${escapeJavaString(APP.appName)} Gateway`,
+      );
+      code = code.replaceAll(
+        "Shows elizaOS gateway connection status",
+        `Shows ${escapeJavaString(APP.appName)} gateway connection status`,
+      );
+      fs.writeFileSync(path.join(dstJava, file), code, "utf8");
+    }
+    console.log("[mobile-build] Overlaid Android Java sources.");
+  }
+
+  // Merge AndroidManifest.xml
+  const manifestPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "AndroidManifest.xml",
+  );
+  if (fs.existsSync(manifestPath)) {
+    let xml = fs.readFileSync(manifestPath, "utf8");
+    let dirty = false;
+
+    if (!xml.includes("usesCleartextTraffic")) {
+      xml = xml.replace(
+        "<application",
+        '<application\n        android:usesCleartextTraffic="true"',
+      );
+      dirty = true;
+    }
+    if (!xml.includes("<queries>")) {
+      xml = xml.replace(
+        /(\s*)<application/,
+        '\n    <queries>\n        <package android:name="com.google.android.apps.healthdata" />\n    </queries>\n\n    <application',
+      );
+      dirty = true;
+    }
+    xml = appendMissingAndroidManifestBlock(
+      xml,
+      "android.hardware.telephony",
+      '    <uses-feature android:name="android.hardware.telephony" android:required="false" />',
+    );
+    xml = ensureElizaOsActivityFilters(xml);
+    const gatewayServiceName = `${androidPackage}.GatewayConnectionService`;
+    const gatewayServicePattern =
+      /\n\s*<service\b[^>]*android:name="[^"]*GatewayConnectionService"[^>]*\/>\s*/g;
+    const withoutGatewayServices = xml.replace(gatewayServicePattern, "\n");
+    if (withoutGatewayServices !== xml) {
+      xml = withoutGatewayServices;
+      dirty = true;
+    }
+    xml = xml.replace(
+      "</application>",
+      `\n        <service\n            android:name="${gatewayServiceName}"\n            android:exported="false"\n            android:foregroundServiceType="dataSync" />\n    </application>`,
+    );
+    dirty = true;
+
+    // ElizaAgentService — special-use foreground service that owns the
+    // local Eliza agent process. Nested <property> tag carries the Android
+    // 14+ specialUse subtype. Pattern matches both self-closing and
+    // explicit-close forms so re-runs collapse cleanly.
+    const agentServiceName = `${androidPackage}.ElizaAgentService`;
+    const agentServiceSelfClosingPattern =
+      /\n\s*<service\b[^>]*android:name="[^"]*ElizaAgentService"[^>]*\/>\s*/g;
+    const agentServicePairedPattern =
+      /\n\s*<service\b[^>]*android:name="[^"]*ElizaAgentService"[\s\S]*?<\/service>\s*/g;
+    const withoutAgentServiceSelfClose = xml.replace(
+      agentServiceSelfClosingPattern,
+      "\n",
+    );
+    if (withoutAgentServiceSelfClose !== xml) {
+      xml = withoutAgentServiceSelfClose;
+      dirty = true;
+    }
+    const withoutAgentServicePaired = xml.replace(
+      agentServicePairedPattern,
+      "\n",
+    );
+    if (withoutAgentServicePaired !== xml) {
+      xml = withoutAgentServicePaired;
+      dirty = true;
+    }
+    xml = xml.replace(
+      "</application>",
+      `\n        <service\n            android:name="${agentServiceName}"\n            android:exported="false"\n            android:foregroundServiceType="specialUse">\n            <property\n                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"\n                android:value="local-agent-runtime" />\n        </service>\n    </application>`,
+    );
+    dirty = true;
+    for (const component of [
+      "ElizaDialActivity",
+      "ElizaAssistActivity",
+      "ElizaInCallService",
+      "ElizaSmsReceiver",
+      "ElizaMmsReceiver",
+      "ElizaRespondViaMessageService",
+      "ElizaSmsComposeActivity",
+      "ElizaBootReceiver",
+      "ElizaBrowserActivity",
+      "ElizaContactsActivity",
+      "ElizaCameraActivity",
+      "ElizaClockActivity",
+      "ElizaCalendarActivity",
+    ]) {
+      const nextXml = removeApplicationComponentBlock(
+        xml,
+        `${androidPackage}.${component}`,
+      );
+      if (nextXml !== xml) {
+        xml = nextXml;
+        dirty = true;
+      }
+    }
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.ElizaDialActivity`,
+      `
+        <activity
+            android:name="${androidPackage}.ElizaDialActivity"
+            android:exported="true"
+            android:theme="@style/AppTheme.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.DIAL" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.DIAL" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="tel" />
+            </intent-filter>
+        </activity>`,
+    );
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.ElizaAssistActivity`,
+      `
+        <activity
+            android:name="${androidPackage}.ElizaAssistActivity"
+            android:exported="true"
+            android:theme="@style/AppTheme.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>`,
+    );
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.ElizaInCallService`,
+      `
+        <service
+            android:name="${androidPackage}.ElizaInCallService"
+            android:exported="true"
+            android:permission="android.permission.BIND_INCALL_SERVICE">
+            <meta-data
+                android:name="android.telecom.IN_CALL_SERVICE_UI"
+                android:value="true" />
+            <meta-data
+                android:name="android.telecom.IN_CALL_SERVICE_RINGING"
+                android:value="true" />
+            <intent-filter>
+                <action android:name="android.telecom.InCallService" />
+            </intent-filter>
+        </service>`,
+    );
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.ElizaSmsReceiver`,
+      `
+        <receiver
+            android:name="${androidPackage}.ElizaSmsReceiver"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.SMS_DELIVER" />
+            </intent-filter>
+        </receiver>`,
+    );
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.ElizaMmsReceiver`,
+      `
+        <receiver
+            android:name="${androidPackage}.ElizaMmsReceiver"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_WAP_PUSH">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.WAP_PUSH_DELIVER" />
+                <data android:mimeType="application/vnd.wap.mms-message" />
+            </intent-filter>
+        </receiver>`,
+    );
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.ElizaRespondViaMessageService`,
+      `
+        <service
+            android:name="${androidPackage}.ElizaRespondViaMessageService"
+            android:exported="true"
+            android:permission="android.permission.SEND_RESPOND_VIA_MESSAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.RESPOND_VIA_MESSAGE" />
+                <data android:scheme="sms" />
+                <data android:scheme="smsto" />
+                <data android:scheme="mms" />
+                <data android:scheme="mmsto" />
+            </intent-filter>
+        </service>`,
+    );
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.ElizaSmsComposeActivity`,
+      `
+        <activity
+            android:name="${androidPackage}.ElizaSmsComposeActivity"
+            android:exported="true"
+            android:theme="@style/AppTheme.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SENDTO" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="sms" />
+                <data android:scheme="smsto" />
+                <data android:scheme="mms" />
+                <data android:scheme="mmsto" />
+            </intent-filter>
+        </activity>`,
+    );
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.ElizaBootReceiver`,
+      `
+        <receiver
+            android:name="${androidPackage}.ElizaBootReceiver"
+            android:directBootAware="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>`,
+    );
+    // Browser: replaces stripped Browser2 as the only http(s) handler.
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.ElizaBrowserActivity`,
+      `
+        <activity
+            android:name="${androidPackage}.ElizaBrowserActivity"
+            android:exported="true"
+            android:theme="@style/AppTheme.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.WEB_SEARCH" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>`,
+    );
+    // Contacts: replaces stripped Contacts. Handles content://contacts.
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.ElizaContactsActivity`,
+      `
+        <activity
+            android:name="${androidPackage}.ElizaContactsActivity"
+            android:exported="true"
+            android:label="Contacts"
+            android:theme="@style/AppTheme.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.APP_CONTACTS" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="vnd.android.cursor.dir/contact" />
+                <data android:mimeType="vnd.android.cursor.dir/person" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="vnd.android.cursor.item/contact" />
+                <data android:mimeType="vnd.android.cursor.item/person" />
+            </intent-filter>
+        </activity>`,
+    );
+    // Camera: replaces stripped Camera2. STILL_IMAGE_CAMERA + IMAGE_CAPTURE.
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.ElizaCameraActivity`,
+      `
+        <activity
+            android:name="${androidPackage}.ElizaCameraActivity"
+            android:exported="true"
+            android:label="Camera"
+            android:theme="@style/AppTheme.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.media.action.STILL_IMAGE_CAMERA" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.media.action.IMAGE_CAPTURE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.media.action.VIDEO_CAPTURE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>`,
+    );
+    // Clock: replaces stripped DeskClock. SET_ALARM is critical.
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.ElizaClockActivity`,
+      `
+        <activity
+            android:name="${androidPackage}.ElizaClockActivity"
+            android:exported="true"
+            android:label="Clock"
+            android:theme="@style/AppTheme.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SET_ALARM" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SHOW_ALARMS" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SET_TIMER" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SHOW_TIMERS" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.DISMISS_ALARM" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>`,
+    );
+    // Calendar: replaces stripped Calendar.
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.ElizaCalendarActivity`,
+      `
+        <activity
+            android:name="${androidPackage}.ElizaCalendarActivity"
+            android:exported="true"
+            android:label="Calendar"
+            android:theme="@style/AppTheme.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.APP_CALENDAR" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="vnd.android.cursor.item/event" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.INSERT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="vnd.android.cursor.dir/event" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.EDIT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="vnd.android.cursor.item/event" />
+            </intent-filter>
+        </activity>`,
+    );
+    dirty = true;
+    for (const perm of ANDROID_PERMISSIONS) {
+      const full = `android.permission.${perm}`;
+      if (!xml.includes(full)) {
+        xml = xml.replace(
+          "</manifest>",
+          `    <uses-permission android:name="${full}" />\n</manifest>`,
+        );
+        dirty = true;
+      }
+    }
+    // Storage permissions with maxSdkVersion
+    if (!xml.includes("WRITE_EXTERNAL_STORAGE")) {
+      xml = xml.replace(
+        "</manifest>",
+        '    <uses-permission\n        android:name="android.permission.WRITE_EXTERNAL_STORAGE"\n        android:maxSdkVersion="28" />\n</manifest>',
+      );
+      dirty = true;
+    }
+    if (!xml.includes("READ_EXTERNAL_STORAGE")) {
+      xml = xml.replace(
+        "</manifest>",
+        '    <uses-permission\n        android:name="android.permission.READ_EXTERNAL_STORAGE"\n        android:maxSdkVersion="32" />\n</manifest>',
+      );
+      dirty = true;
+    }
+    if (dirty) {
+      fs.writeFileSync(manifestPath, xml, "utf8");
+      console.log(
+        "[mobile-build] Merged permissions and service into AndroidManifest.xml.",
+      );
+    }
+  }
+
+  // Copy ProGuard rules, rewriting the elizaOS default package to match the
+  // app's actual namespace. Without this rewrite, R8 may strip Eliza-only
+  // manifest-referenced classes (Dial/Assist/InCall/Boot) when the app is
+  // namespaced as e.g. com.elizaai.eliza.
+  const srcPro = path.join(
+    platformsDir,
+    "android",
+    "app",
+    "proguard-rules.pro",
+  );
+  if (fs.existsSync(srcPro)) {
+    let proguardRules = fs.readFileSync(srcPro, "utf8");
+    if (androidPackage && androidPackage !== "ai.elizaos.app") {
+      proguardRules = proguardRules.replaceAll(
+        "ai.elizaos.app.**",
+        `${androidPackage}.**`,
+      );
+    }
+    fs.writeFileSync(
+      path.join(androidDir, "app", "proguard-rules.pro"),
+      proguardRules,
+      "utf8",
+    );
+    console.log("[mobile-build] Copied ProGuard rules.");
+  }
+
+  // Enable release minification
+  if (fs.existsSync(gradlePath)) {
+    let g = fs.readFileSync(gradlePath, "utf8");
+    if (g.includes("minifyEnabled false")) {
+      g = g.replace(
+        "minifyEnabled false",
+        "minifyEnabled true\n            shrinkResources true",
+      );
+      fs.writeFileSync(gradlePath, g, "utf8");
+      console.log("[mobile-build] Enabled release minification.");
+    }
+  }
+}
+
+// ── Phase 4: iOS native overlay ─────────────────────────────────────────
+
+const IOS_PERMISSION_KEYS = [
+  [
+    "NSCameraUsageDescription",
+    "This app uses your camera to capture photos and video when you ask it to.",
+  ],
+  [
+    "NSMicrophoneUsageDescription",
+    "This app needs microphone access for voice wake, talk mode, and video capture.",
+  ],
+  [
+    "NSLocationWhenInUseUsageDescription",
+    "This app uses your location to provide location-aware responses when you allow it.",
+  ],
+  [
+    "NSLocationAlwaysAndWhenInUseUsageDescription",
+    "This app can share your location in the background so it stays up to date even when the app is not in use.",
+  ],
+  [
+    "NSPhotoLibraryUsageDescription",
+    "This app accesses your photo library to attach and share photos or videos.",
+  ],
+  [
+    "NSPhotoLibraryAddUsageDescription",
+    "This app saves captured photos and videos to your photo library.",
+  ],
+  [
+    "NSHealthShareUsageDescription",
+    "This app reads your HealthKit sleep and biometric data to infer when you are asleep, awake, and ready for reminders.",
+  ],
+  [
+    "NSHealthUpdateUsageDescription",
+    "This app does not write to HealthKit, but iOS requires this key when HealthKit capability is enabled.",
+  ],
+  [
+    "NSSpeechRecognitionUsageDescription",
+    "This app uses on-device speech recognition to listen for voice commands and wake words.",
+  ],
+  [
+    "NSLocalNetworkUsageDescription",
+    "This app discovers and connects to your elizaOS gateway on the local network.",
+  ],
+];
+
+const IOS_OFFICIAL_COMPATIBLE_PODS = [
+  ["CapacitorKeyboard", "@capacitor/keyboard"],
+];
+
+const IOS_INCOMPATIBLE_SPM_PLUGINS = new Set([
+  "CapacitorApp",
+  "CapacitorPreferences",
+  "CapacitorStatusBar",
+]);
+
+const IOS_BONJOUR_SERVICES = [
+  "_eliza-gw._tcp",
+  "_elizaos-gw._tcp",
+  "_eliza._tcp",
+];
+
+function overlayIos() {
+  const targetAppDir = path.join(appDir, "ios", "App", "App");
+
+  // Merge Info.plist permission strings
+  const plistPath = path.join(targetAppDir, "Info.plist");
+  if (fs.existsSync(plistPath)) {
+    let plist = fs.readFileSync(plistPath, "utf8");
+    let dirty = false;
+    for (const [key, desc] of IOS_PERMISSION_KEYS) {
+      if (!plist.includes(key)) {
+        plist = plist.replace(
+          "</dict>",
+          `\t<key>${key}</key>\n\t<string>${desc}</string>\n</dict>`,
+        );
+        dirty = true;
+      }
+    }
+    const nextPlist = ensurePlistArrayStrings(
+      ensurePlistArrayStrings(
+        replaceOrInsertPlistString(
+          plist,
+          "CFBundleDisplayName",
+          "$(ELIZA_DISPLAY_NAME)",
+        ),
+        "NSBonjourServices",
+        IOS_BONJOUR_SERVICES,
+      ),
+      "UIBackgroundModes",
+      ["fetch"],
+    );
+    if (nextPlist !== plist) {
+      plist = nextPlist;
+      dirty = true;
+    }
+    if (dirty) {
+      fs.writeFileSync(plistPath, plist, "utf8");
+      console.log("[mobile-build] Merged iOS permission strings.");
+    }
+  }
+
+  // Copy entitlements with app group derived from appId
+  const srcEnt = path.join(
+    platformsDir,
+    "ios",
+    "App",
+    "App",
+    "App.entitlements",
+  );
+  if (fs.existsSync(srcEnt)) {
+    let ent = fs.readFileSync(srcEnt, "utf8");
+    ent = ent.replace("group.ai.elizaos.app", `group.${APP.appId}`);
+    fs.writeFileSync(path.join(targetAppDir, "App.entitlements"), ent, "utf8");
+    console.log(
+      `[mobile-build] Copied iOS entitlements (app group: group.${APP.appId}).`,
+    );
+  }
+
+  // Patch xcconfigs to include CocoaPods settings
+  for (const cfg of ["debug", "release"]) {
+    const xcPath = path.join(appDir, "ios", `${cfg}.xcconfig`);
+    if (fs.existsSync(xcPath)) {
+      const xc = fs.readFileSync(xcPath, "utf8");
+      const inc = `#include "App/Pods/Target Support Files/Pods-App/Pods-App.${cfg}.xcconfig"`;
+      if (!xc.includes(inc)) {
+        fs.writeFileSync(xcPath, `${inc}\n${xc}`, "utf8");
+      }
+    }
+  }
+
+  // Generate Podfile
+  generatePodfile();
+  applyIosAppIdentity();
+}
+
+export function prepareIosOverlay() {
+  const syncedFiles = syncPlatformTemplateFiles("ios");
+  overlayIos();
+  stripSpmIncompatiblePlugins();
+  return syncedFiles;
+}
+
+function generatePodfile() {
+  const podfileDir = path.join(appDir, "ios", "App");
+  const iosPath = resolvePackagePath("@capacitor/ios", podfileDir);
+  if (!iosPath) {
+    console.warn(
+      "[mobile-build] Could not resolve @capacitor/ios — skipping Podfile.",
+    );
+    return;
+  }
+
+  const customPods = [
+    ["ElizaosCapacitorAgent", "agent"],
+    ["ElizaosCapacitorAppblocker", "appblocker"],
+    ["ElizaosCapacitorCamera", "camera"],
+    ["ElizaosCapacitorCanvas", "canvas"],
+    ["ElizaosCapacitorGateway", "gateway"],
+    ["ElizaosCapacitorLocation", "location"],
+    ["ElizaosCapacitorMobileSignals", "mobile-signals"],
+    ["ElizaosCapacitorScreencapture", "screencapture"],
+    ["ElizaosCapacitorSwabble", "swabble"],
+    ["ElizaosCapacitorTalkmode", "talkmode"],
+    ["ElizaosCapacitorWebsiteblocker", "websiteblocker"],
+  ];
+
+  const lines = [
+    `  pod 'Capacitor', :path => '${iosPath}'`,
+    `  pod 'CapacitorCordova', :path => '${iosPath}'`,
+  ];
+
+  for (const [name, pkg] of IOS_OFFICIAL_COMPATIBLE_PODS) {
+    const p = resolvePackagePath(pkg, podfileDir);
+    if (p) lines.push(`  pod '${name}', :path => '${p}'`);
+  }
+
+  const pluginsRel = path.relative(podfileDir, nativePluginsDir);
+  for (const [name, dir] of customPods) {
+    if (fs.existsSync(path.join(nativePluginsDir, dir))) {
+      lines.push(`  pod '${name}', :path => '${pluginsRel}/${dir}'`);
+    }
+  }
+
+  fs.writeFileSync(
+    path.join(podfileDir, "Podfile"),
+    `\
+require_relative '${iosPath}/scripts/pods_helpers'
+
+platform :ios, '15.0'
+use_frameworks!
+
+install! 'cocoapods', :disable_input_output_paths => true
+
+def capacitor_pods
+${lines.join("\n")}
+end
+
+target 'App' do
+  capacitor_pods
+end
+
+post_install do |installer|
+  assertDeploymentTarget(installer)
+end
+`,
+    "utf8",
+  );
+  console.log("[mobile-build] Generated Podfile.");
+}
+
+// ── Phase 5: Platform patches ───────────────────────────────────────────
+
+/** Strip incompatible official plugins from SPM Package.swift. */
+function stripSpmIncompatiblePlugins() {
+  const pkgPath = path.join(
+    appDir,
+    "ios",
+    "App",
+    "CapApp-SPM",
+    "Package.swift",
+  );
+  if (!fs.existsSync(pkgPath)) return;
+
+  let content = fs.readFileSync(pkgPath, "utf8");
+  const lines = content.split("\n");
+  const filtered = lines.filter((line) => {
+    for (const name of IOS_INCOMPATIBLE_SPM_PLUGINS) {
+      if (line.includes(`"${name}"`)) return false;
+    }
+    return true;
+  });
+  const changed = filtered.length !== lines.length;
+  content = filtered.join("\n");
+
+  if (changed) {
+    content = content.replace(/,(\s*[\])])/g, "$1").replace(/\n{3,}/g, "\n\n");
+    fs.writeFileSync(pkgPath, content, "utf8");
+    console.log(
+      `[mobile-build] Stripped incompatible SPM plugins: ${Array.from(
+        IOS_INCOMPATIBLE_SPM_PLUGINS,
+      ).join(", ")}`,
+    );
+  }
+}
+
+function patchAndroidGradle() {
+  // Overwrite root build.gradle with our template (Maven mirrors, Kotlin version)
+  const templateGradle = path.join(platformsDir, "android", "build.gradle");
+  const targetGradle = path.join(androidDir, "build.gradle");
+  if (fs.existsSync(templateGradle) && fs.existsSync(targetGradle)) {
+    const current = fs.readFileSync(targetGradle, "utf8");
+    const template = fs.readFileSync(templateGradle, "utf8");
+    if (current !== template) {
+      fs.writeFileSync(targetGradle, template, "utf8");
+      console.log("[mobile-build] Patched android/build.gradle.");
+    }
+  }
+
+  // Keep generated Android projects aligned with current Capacitor/AndroidX requirements.
+  const varsPath = path.join(androidDir, "variables.gradle");
+  if (fs.existsSync(varsPath)) {
+    const vars = fs.readFileSync(varsPath, "utf8");
+    const patched = vars
+      .replace(/minSdkVersion\s*=\s*\d+/, "minSdkVersion = 26")
+      .replace(/compileSdkVersion\s*=\s*\d+/, "compileSdkVersion = 36");
+    if (patched !== vars) {
+      fs.writeFileSync(varsPath, patched, "utf8");
+      console.log("[mobile-build] Patched Android SDK versions.");
+    }
+  }
+
+  const appGradlePath = path.join(androidDir, "app", "build.gradle");
+  if (fs.existsSync(appGradlePath)) {
+    const current = fs.readFileSync(appGradlePath, "utf8");
+    let patched = replaceOrInsertGradleString(current, "namespace", APP.appId);
+    patched = replaceOrInsertGradleString(patched, "applicationId", APP.appId);
+    patched = appendMissingGradleDependency(
+      patched,
+      "com.google.code.gson:gson:2.13.2",
+    );
+    patched = appendMissingGradleDependency(
+      patched,
+      "com.google.firebase:firebase-common-ktx:21.0.0",
+    );
+    patched = patched.replace(
+      /getDefaultProguardFile\('proguard-android\.txt'\)/g,
+      "getDefaultProguardFile('proguard-android-optimize.txt')",
+    );
+    patched = injectBuildConfigAospField(patched);
+    patched = injectNoCompressTarGz(patched);
+    if (patched !== current) {
+      fs.writeFileSync(appGradlePath, patched, "utf8");
+      console.log(
+        `[mobile-build] Applied Android package identity ${APP.appId}.`,
+      );
+    }
+  }
+
+  patchCapacitorBarcodeScannerGradle();
+  patchLlamaCppCapacitorGradle();
+  patchNativePluginGradleForAgp9();
+
+  const stringsPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "res",
+    "values",
+    "strings.xml",
+  );
+  if (fs.existsSync(stringsPath)) {
+    const current = fs.readFileSync(stringsPath, "utf8");
+    const appName = escapeXmlText(APP.appName);
+    const appId = escapeXmlText(APP.appId);
+    const urlScheme = escapeXmlText(APP.urlScheme);
+    const patched = current
+      .replace(
+        /<string name="app_name">[^<]*<\/string>/,
+        `<string name="app_name">${appName}</string>`,
+      )
+      .replace(
+        /<string name="title_activity_main">[^<]*<\/string>/,
+        `<string name="title_activity_main">${appName}</string>`,
+      )
+      .replace(
+        /<string name="package_name">[^<]*<\/string>/,
+        `<string name="package_name">${appId}</string>`,
+      )
+      .replace(
+        /<string name="custom_url_scheme">[^<]*<\/string>/,
+        `<string name="custom_url_scheme">${urlScheme}</string>`,
+      );
+    if (patched !== current) {
+      fs.writeFileSync(stringsPath, patched, "utf8");
+      console.log(
+        `[mobile-build] Applied Android app strings for ${APP.appName}.`,
+      );
+    }
+  }
+}
+
+// ── Phase 6: Native builds ──────────────────────────────────────────────
+
+export function shouldRunIosPodInstall(syncedFiles = []) {
+  return syncedFiles.includes(path.join("App", "Podfile"));
+}
+
+export function resolveIosBuildTarget({
+  env = process.env,
+  appDirValue = appDir,
+} = {}) {
+  const explicitDestination = env.ELIZA_IOS_BUILD_DESTINATION;
+  const explicitSdk = env.ELIZA_IOS_BUILD_SDK;
+
+  if (explicitDestination || explicitSdk) {
+    return {
+      destination: explicitDestination ?? "generic/platform=iOS Simulator",
+      sdk: explicitSdk ?? "iphonesimulator",
+      reason: "explicit environment override",
+    };
+  }
+
+  const llamaCppFramework = path.join(
+    appDirValue,
+    "node_modules",
+    "llama-cpp-capacitor",
+    "ios",
+    "Frameworks",
+    "llama-cpp.framework",
+    "llama-cpp",
+  );
+
+  if (fs.existsSync(llamaCppFramework)) {
+    return {
+      destination: "generic/platform=iOS",
+      sdk: "iphoneos",
+      reason: "llama-cpp-capacitor ships a device iOS framework",
+    };
+  }
+
+  return {
+    destination: "generic/platform=iOS Simulator",
+    sdk: "iphonesimulator",
+    reason: "default simulator build",
+  };
+}
+
+async function buildAndroid() {
+  const sdk = resolveAndroidSdkRoot();
+  const jdk = resolveJavaHome();
+  if (!sdk)
+    throw new Error(
+      "Android SDK not found. Set ANDROID_SDK_ROOT or ANDROID_HOME.",
+    );
+  if (!jdk) throw new Error("JDK 21 not found. Set JAVA_HOME.");
+
+  await buildWeb();
+  await ensurePlatform("android");
+  await run("bun", ["run", "cap:sync:android"], { cwd: appDir });
+
+  patchAndroidGradle();
+  overlayAndroid();
+  await stageAndroidAgentRuntime({
+    androidDir,
+    spikeDir: androidAgentSpikeDir,
+  });
+
+  const env = {
+    ...process.env,
+    ANDROID_HOME: sdk,
+    ANDROID_SDK_ROOT: sdk,
+    JAVA_HOME: jdk,
+    PATH: prependPath(process.env, [
+      path.join(jdk, "bin"),
+      path.join(sdk, "platform-tools"),
+    ]),
+  };
+
+  // Mirror the AOSP gradle property forwarding from buildAndroidSystem so
+  // a developer iterating with `bun run build:android` under ELIZA_AOSP_BUILD=1
+  // gets BuildConfig.AOSP_BUILD=true in the debug APK as well.
+  const gradleArgs = [
+    ":elizaos-capacitor-websiteblocker:testDebugUnitTest",
+    ":app:assembleDebug",
+  ];
+  if (
+    process.env.ELIZA_GRADLE_AOSP_BUILD === "true" ||
+    process.env.ELIZA_GRADLE_AOSP_BUILD === "1"
+  ) {
+    gradleArgs.unshift("-PelizaAospBuild=true");
+  }
+  await run("./gradlew", gradleArgs, {
+    cwd: androidDir,
+    env,
+  });
+}
+
+function findAndroidSystemApk() {
+  // Release-only. Staging a debug APK ships without R8 shrinking and
+  // bypasses the release signing config — both invariants the AOSP
+  // prebuilt path assumes hold. Soong re-signs with the platform key
+  // either way, so a debug fallback is never an acceptable substitute.
+  const candidates = [
+    path.join(
+      androidDir,
+      "app",
+      "build",
+      "outputs",
+      "apk",
+      "release",
+      "app-release-unsigned.apk",
+    ),
+    path.join(
+      androidDir,
+      "app",
+      "build",
+      "outputs",
+      "apk",
+      "release",
+      "app-release.apk",
+    ),
+  ];
+  return firstExisting(candidates);
+}
+
+function stageAndroidSystemApk() {
+  const apk = findAndroidSystemApk();
+  if (!apk) {
+    throw new Error(
+      "No release APK found at app/build/outputs/apk/release/. Run :app:assembleRelease before staging the ElizaOS prebuilt — debug APKs are not accepted.",
+    );
+  }
+  fs.mkdirSync(elizaOsApkDir, { recursive: true });
+  const target = path.join(elizaOsApkDir, "Eliza.apk");
+  fs.copyFileSync(apk, target);
+  console.log(`[mobile-build] Staged ElizaOS APK at ${target}.`);
+}
+
+async function buildAndroidSystem() {
+  const sdk = resolveAndroidSdkRoot();
+  const jdk = resolveJavaHome();
+  if (!sdk)
+    throw new Error(
+      "Android SDK not found. Set ANDROID_SDK_ROOT or ANDROID_HOME.",
+    );
+  if (!jdk) throw new Error("JDK 21 not found. Set JAVA_HOME.");
+
+  await buildWeb();
+  await ensurePlatform("android");
+  await run("bun", ["run", "cap:sync:android"], { cwd: appDir });
+
+  patchAndroidGradle();
+  overlayAndroid();
+  await stageAndroidAgentRuntime({
+    androidDir,
+    spikeDir: androidAgentSpikeDir,
+  });
+
+  const env = {
+    ...process.env,
+    ANDROID_HOME: sdk,
+    ANDROID_SDK_ROOT: sdk,
+    JAVA_HOME: jdk,
+    PATH: prependPath(process.env, [
+      path.join(jdk, "bin"),
+      path.join(sdk, "platform-tools"),
+    ]),
+  };
+
+  // AOSP product builds set ELIZA_GRADLE_AOSP_BUILD=true upstream so
+  // gradle bakes BuildConfig.AOSP_BUILD=true into the privileged APK.
+  // The Capacitor APK path leaves it false; both share the same gradle
+  // because the packages/app/android/ tree is regenerated each run.
+  const gradleArgs = [":app:assembleRelease"];
+  if (
+    process.env.ELIZA_GRADLE_AOSP_BUILD === "true" ||
+    process.env.ELIZA_GRADLE_AOSP_BUILD === "1"
+  ) {
+    gradleArgs.unshift("-PelizaAospBuild=true");
+  }
+  await run("./gradlew", gradleArgs, {
+    cwd: androidDir,
+    env,
+  });
+  stageAndroidSystemApk();
+}
+
+async function buildIos() {
+  if (process.platform !== "darwin")
+    throw new Error("iOS builds require macOS and Xcode.");
+
+  const cocoapodsScript = path.join(
+    appCoreRoot,
+    "scripts",
+    "prepare-ios-cocoapods.sh",
+  );
+
+  await buildWeb();
+  await ensurePlatform("ios");
+  if (fs.existsSync(cocoapodsScript)) {
+    await run("bash", [cocoapodsScript], { cwd: repoRoot });
+  }
+  await run("bun", ["run", "cap:sync:ios"], { cwd: appDir });
+
+  const syncedFiles = prepareIosOverlay();
+
+  // CocoaPods compiles Capacitor from source, avoiding SPM binary API issues
+  if (
+    fs.existsSync(path.join(iosDir, "Podfile")) ||
+    shouldRunIosPodInstall(syncedFiles)
+  ) {
+    await run("pod", ["install"], { cwd: iosDir });
+  }
+
+  const wsPath = path.join(iosDir, "App.xcworkspace");
+  const projectArgs = fs.existsSync(wsPath)
+    ? ["-workspace", "App.xcworkspace"]
+    : ["-project", "App.xcodeproj"];
+  const buildTarget = resolveIosBuildTarget();
+
+  await run(
+    "xcodebuild",
+    [
+      ...projectArgs,
+      "-scheme",
+      "App",
+      "-configuration",
+      "Debug",
+      "-destination",
+      buildTarget.destination,
+      "-sdk",
+      buildTarget.sdk,
+      "CODE_SIGNING_ALLOWED=NO",
+      "build",
+    ],
+    { cwd: iosDir },
+  );
+}
+
+// ── Entry point ─────────────────────────────────────────────────────────
+
+export async function main(argv = process.argv.slice(2)) {
+  const target = argv[0];
+  if (
+    target !== "android" &&
+    target !== "android-system" &&
+    target !== "ios" &&
+    target !== "ios-overlay"
+  ) {
+    console.error(
+      "Usage: node scripts/run-mobile-build.mjs <android|android-system|ios|ios-overlay>",
+    );
+    process.exit(1);
+  }
+  if (target === "android") {
+    await buildAndroid();
+  } else if (target === "android-system") {
+    await buildAndroidSystem();
+  } else if (target === "ios") {
+    await buildIos();
+  } else {
+    prepareIosOverlay();
+  }
+}
+
+const isMain =
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isMain) {
+  await main();
+}

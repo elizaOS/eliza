@@ -1,0 +1,191 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: vertical-scaling
+spec:
+  description: Patch a Server CR and verify operator re-reconciles Deployment and ScaledObject
+  steps:
+    - name: Create baseline Server CR
+      try:
+        - apply:
+            file: server-cr.yaml
+      cleanup:
+        - script:
+            content: kubectl delete server srv-vert -n eliza-agents --ignore-not-found
+
+    - name: Assert baseline state
+      try:
+        - assert:
+            timeout: 15s
+            resource:
+              apiVersion: keda.sh/v1alpha1
+              kind: ScaledObject
+              metadata:
+                name: srv-vert
+                namespace: eliza-agents
+              spec:
+                maxReplicaCount: 1
+                advanced:
+                  horizontalPodAutoscalerConfig:
+                    behavior:
+                      scaleDown:
+                        stabilizationWindowSeconds: 300
+                        policies:
+                          - type: Pods
+                            value: 1
+                            periodSeconds: 60
+                triggers:
+                  - type: redis
+                    metadata:
+                      listName: keda:srv-vert:activity
+                  - type: cpu
+                    metricType: Utilization
+                    metadata:
+                      value: "70"
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: srv-vert
+                namespace: eliza-agents
+                labels:
+                  eliza.ai/project: cloud
+              spec:
+                template:
+                  metadata:
+                    labels:
+                      eliza.ai/project: cloud
+                  spec:
+                    containers:
+                      - name: agent-server
+                        resources:
+                          requests:
+                            memory: "256Mi"
+                            cpu: "100m"
+
+    - name: Patch maxReplicas + resources + project
+      try:
+        - patch:
+            resource:
+              apiVersion: eliza.ai/v1alpha1
+              kind: Server
+              metadata:
+                name: srv-vert
+                namespace: eliza-agents
+              spec:
+                maxReplicas: 5
+                project: soulmate
+                resources:
+                  requests:
+                    memory: "512Mi"
+                    cpu: "200m"
+                  limits:
+                    memory: "2Gi"
+                    cpu: "1"
+
+    - name: Assert patch 1 applied
+      try:
+        - assert:
+            timeout: 15s
+            resource:
+              apiVersion: keda.sh/v1alpha1
+              kind: ScaledObject
+              metadata:
+                name: srv-vert
+                namespace: eliza-agents
+              spec:
+                maxReplicaCount: 5
+        - assert:
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: srv-vert
+                namespace: eliza-agents
+                labels:
+                  eliza.ai/project: soulmate
+              spec:
+                template:
+                  metadata:
+                    labels:
+                      eliza.ai/project: soulmate
+                  spec:
+                    containers:
+                      - name: agent-server
+                        resources:
+                          requests:
+                            memory: "512Mi"
+                            cpu: "200m"
+                          limits:
+                            memory: "2Gi"
+                            cpu: "1"
+
+    - name: Patch tier to dedicated
+      try:
+        - patch:
+            resource:
+              apiVersion: eliza.ai/v1alpha1
+              kind: Server
+              metadata:
+                name: srv-vert
+                namespace: eliza-agents
+              spec:
+                tier: dedicated
+
+    - name: Assert tier change propagated
+      try:
+        - assert:
+            timeout: 15s
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: srv-vert
+                namespace: eliza-agents
+                labels:
+                  eliza.ai/tier: dedicated
+              spec:
+                template:
+                  metadata:
+                    labels:
+                      eliza.ai/tier: dedicated
+
+    - name: Patch secretRef
+      try:
+        - patch:
+            resource:
+              apiVersion: eliza.ai/v1alpha1
+              kind: Server
+              metadata:
+                name: srv-vert
+                namespace: eliza-agents
+              spec:
+                secretRef: other-secret
+
+    - name: Assert secretRef change propagated
+      try:
+        - assert:
+            timeout: 15s
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: srv-vert
+                namespace: eliza-agents
+              spec:
+                template:
+                  spec:
+                    containers:
+                      - name: agent-server
+                        envFrom:
+                          - secretRef:
+                              name: other-secret
+
+    - name: Assert observedGeneration advanced
+      try:
+        - script:
+            timeout: 15s
+            content: |
+              GEN=$(kubectl get server srv-vert -n eliza-agents -o jsonpath='{.status.observedGeneration}')
+              [ -n "$GEN" ] && [ "$GEN" -gt 1 ] || { echo "FAIL: observedGeneration=$GEN, expected >1"; exit 1; }

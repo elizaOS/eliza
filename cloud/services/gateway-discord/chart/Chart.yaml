@@ -1,0 +1,14 @@
+apiVersion: v2
+name: gateway-discord
+description: Multi-tenant Discord gateway service for Eliza Cloud
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+maintainers:
+  - name: elizaOS
+    url: https://github.com/elizaOS
+keywords:
+  - discord
+  - gateway
+  - eliza
+  - bot

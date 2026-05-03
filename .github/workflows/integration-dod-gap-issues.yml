@@ -1,0 +1,62 @@
+name: Integration DoD Gap Issues
+
+on:
+  schedule:
+    # Nightly at 03:30 UTC
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Parse report and log actions without mutating issues"
+        required: false
+        type: boolean
+        default: false
+      close_resolved_gaps:
+        description: "Close managed issues that are no longer in the report"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: integration-dod-gap-issues
+  cancel-in-progress: false
+
+jobs:
+  sync-gap-issues:
+    name: Sync gap issues from INTEGRATION_DOD_MAP.md
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Check report
+        id: report
+        env:
+          INTEGRATION_DOD_REPORT: INTEGRATION_DOD_MAP.md
+        run: |
+          if [[ -f "$INTEGRATION_DOD_REPORT" ]]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::${INTEGRATION_DOD_REPORT} not found; skipping gap issue sync"
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Node.js
+        if: steps.report.outputs.exists == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          check-latest: false
+
+      - name: Sync issues
+        if: steps.report.outputs.exists == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INTEGRATION_DOD_REPORT: INTEGRATION_DOD_MAP.md
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
+          CLOSE_RESOLVED_GAPS: ${{ github.event_name == 'workflow_dispatch' && inputs.close_resolved_gaps || 'true' }}
+        run: node packages/app-core/scripts/sync-dod-gap-issues.mjs
