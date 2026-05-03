@@ -124,7 +124,14 @@ fi
 APP_CORE_SCRIPTS_DIR="$APP_CORE_DIR/scripts"
 AGENT_DIR="$PACKAGES_DIR/agent"
 SCHEMAS_DIR="$PACKAGES_DIR/schemas"
-TYPESCRIPT_DIR="$PACKAGES_DIR/typescript"
+# @elizaos/core source lives under packages/core (current) or packages/typescript
+# (legacy). Prefer the current name; fall back to the legacy path so older branches
+# still work.
+if [[ -f "$PACKAGES_DIR/core/package.json" ]]; then
+  TYPESCRIPT_DIR="$PACKAGES_DIR/core"
+else
+  TYPESCRIPT_DIR="$PACKAGES_DIR/typescript"
+fi
 
 [[ -f "$APP_CORE_DIR/deploy/Dockerfile.ci" ]] || fail "$APP_CORE_DIR/deploy/Dockerfile.ci not found"
 [[ -f "$APP_CORE_DIR/deploy/.dockerignore.ci" ]] || fail "$APP_CORE_DIR/deploy/.dockerignore.ci not found"
