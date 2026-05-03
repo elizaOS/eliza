@@ -58,6 +58,10 @@ const publicPathPrefixes = [
   "/api/agents",
   "/api/v1/track",
   "/api/v1/discovery",
+  // Legacy birdeye proxy is a 308 redirect to /api/v1/apis/birdeye/*. The
+  // redirect itself is public so unauthenticated clients learn the new URL;
+  // the target /api/v1/apis/birdeye is still auth-gated.
+  "/api/v1/proxy/birdeye",
   "/api/v1/discord/callback",
   "/api/v1/twitter/callback",
   "/api/v1/oauth/providers",
