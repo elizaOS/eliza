@@ -55,7 +55,7 @@ export function getBackendStartupTimeoutMs(): number {
   // instead of dead-ending on a "Backend Timeout" card.
   if (
     typeof navigator !== "undefined" &&
-    /\bMiladyOS\//.test(navigator.userAgent ?? "")
+    /\bElizaOS\//.test(navigator.userAgent ?? "")
   ) {
     return 180_000;
   }

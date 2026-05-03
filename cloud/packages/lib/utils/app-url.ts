@@ -10,7 +10,7 @@
  * at build time) and Node tests.
  */
 /** Minimal env shape: accepts Node `ProcessEnv` and Cloudflare `Bindings` via `as` cast. */
-export type AppUrlEnv = { NEXT_PUBLIC_APP_URL?: string | undefined };
+export type AppUrlEnv = { NEXT_PUBLIC_APP_URL?: string | null | undefined };
 
 export function getAppUrl(env: AppUrlEnv = process.env as AppUrlEnv): string {
   const url = env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";

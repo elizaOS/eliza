@@ -302,21 +302,22 @@ export const GROQ_NATIVE_MODEL_ID_MAP: Record<string, string> = {
 
 export const VAST_NATIVE_MODELS: CatalogModel[] = [
   {
-    id: "vast/qwen3.6-35b-a3b-awq",
+    id: "vast/qwen3.6-27b-neo-code",
     object: "model",
     created: 0,
     owned_by: "vast",
-    name: "Qwen3.6 35B A3B (AWQ)",
+    name: "Qwen3.6 27B NEO-CODE (Q6_K)",
     description:
-      "Qwen3.6 35B A3B (INT4 AWQ), self-hosted on Vast.ai Serverless via vLLM + PyWorker",
+      "Qwen3.6 27B NEO-CODE (Q6_K GGUF, llama.cpp), self-hosted on Vast.ai Serverless on RTX 5090. Base: DavidAU/Qwen3.6-27B-Heretic-Uncensored-FINETUNE-NEO-CODE-Di-IMatrix-MAX-GGUF",
     type: "language",
-    tags: ["self-hosted", "vllm"],
+    tags: ["self-hosted", "llama.cpp", "gguf"],
   },
 ] as const;
 
-export const VAST_NATIVE_MODEL_ID_MAP: Record<string, string> = {
-  "vast/qwen3.6-35b-a3b-awq": "QuantTrio/Qwen3.6-35B-A3B-AWQ",
-};
+// llama-server's `--alias` flag makes the upstream model id match the catalog id,
+// so this map intentionally has no translation entry. Kept in place so we can
+// add quants/variants (e.g. a Q5_K_M for cheaper hosts) without restructuring.
+export const VAST_NATIVE_MODEL_ID_MAP: Record<string, string> = {};
 
 export const STATIC_TEXT_CATALOG_MODELS: CatalogModel[] = [
   ...OPENAI_TEXT_MODEL_IDS,
