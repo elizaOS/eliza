@@ -298,7 +298,7 @@
     "@walletconnect/sign-client": "2.23.9",
     "@walletconnect/types": "2.22.4",
     "@walletconnect/universal-provider": "2.22.4",
-    "@walletconnect/utils": "2.22.4",
+    "@walletconnect/utils": "2.23.9",
     "pino": "10.0.0",
     "pino-std-serializers": "7.0.0",
     "on-exit-leak-free": "2.1.2",
