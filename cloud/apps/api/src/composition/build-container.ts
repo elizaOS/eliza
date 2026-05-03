@@ -10,34 +10,55 @@
  * cases). Routes never instantiate use cases or repositories directly.
  *
  * Aggregates are added incrementally as they migrate during the Clean
- * Architecture refactor (see plan). Phase A ships an empty container —
- * routes still use legacy service singletons. Phase B onwards populates
+ * Architecture refactor (see plan). Phase B onwards populates
  * `CompositionContext` with use cases per aggregate.
+ *
+ * Cache injection: today consumes the legacy module-level `cache` singleton
+ * (which is a no-op in prod since `CACHE_ENABLED=false`). Phase D refactors
+ * `CacheClient` to be per-request and replaces the singleton import with
+ * `new CacheClient(env)`.
  */
 
+import { cache } from "@/lib/cache/client";
+import { DeactivateApiKeysByNameUseCase } from "@/lib/application/api-key/deactivate-api-keys-by-name";
+import { DeleteApiKeyUseCase } from "@/lib/application/api-key/delete-api-key";
+import { GetApiKeyByIdUseCase } from "@/lib/application/api-key/get-api-key-by-id";
+import { IncrementApiKeyUsageUseCase } from "@/lib/application/api-key/increment-api-key-usage";
+import { IssueApiKeyUseCase } from "@/lib/application/api-key/issue-api-key";
+import { ListApiKeysByOrganizationUseCase } from "@/lib/application/api-key/list-api-keys-by-organization";
+import { UpdateApiKeyUseCase } from "@/lib/application/api-key/update-api-key";
+import { ValidateApiKeyUseCase } from "@/lib/application/api-key/validate-api-key";
+import type { ApiKeyRepository } from "@/lib/domain/api-key/api-key-repository";
+import { CachedApiKeyRepository } from "@/lib/infrastructure/cache/api-key/cached-api-key-repository";
+import { PostgresApiKeyRepository } from "@/lib/infrastructure/db/api-key/postgres-api-key-repository";
 import type { Bindings } from "@/types/cloud-worker-env";
 
-/**
- * Per-request dependency container, keyed by use-case identifier.
- *
- * As aggregates migrate, properties are added here:
- *   issueApiKey: IssueApiKeyUseCase
- *   validateApiKey: ValidateApiKeyUseCase
- *   findOrCreateUserByWalletAddress: FindOrCreateUserByWalletAddressUseCase
- *   ...
- *
- * Phase A: empty (no use cases migrated yet).
- */
-export interface CompositionContext {}
+export interface CompositionContext {
+  // ── ApiKey aggregate (Phase B) ────────────────────────────────────────
+  issueApiKey: IssueApiKeyUseCase;
+  validateApiKey: ValidateApiKeyUseCase;
+  incrementApiKeyUsage: IncrementApiKeyUsageUseCase;
+  getApiKeyById: GetApiKeyByIdUseCase;
+  listApiKeysByOrganization: ListApiKeysByOrganizationUseCase;
+  updateApiKey: UpdateApiKeyUseCase;
+  deleteApiKey: DeleteApiKeyUseCase;
+  deactivateApiKeysByName: DeactivateApiKeysByNameUseCase;
+}
 
-/**
- * Build a fresh container from the request env. Pure factory — no global
- * mutable state, no module-level instances.
- *
- * `env` is typed as the Worker `Bindings` type so the function compiles
- * against the full env shape; concrete adapters consume only the keys they
- * need (DATABASE_URL, KV_REST_API_URL, etc.).
- */
 export function buildContainer(_env: Bindings): CompositionContext {
-  return {};
+  const apiKeyRepo: ApiKeyRepository = new CachedApiKeyRepository(
+    new PostgresApiKeyRepository(),
+    cache,
+  );
+
+  return {
+    issueApiKey: new IssueApiKeyUseCase(apiKeyRepo),
+    validateApiKey: new ValidateApiKeyUseCase(apiKeyRepo),
+    incrementApiKeyUsage: new IncrementApiKeyUsageUseCase(apiKeyRepo),
+    getApiKeyById: new GetApiKeyByIdUseCase(apiKeyRepo),
+    listApiKeysByOrganization: new ListApiKeysByOrganizationUseCase(apiKeyRepo),
+    updateApiKey: new UpdateApiKeyUseCase(apiKeyRepo),
+    deleteApiKey: new DeleteApiKeyUseCase(apiKeyRepo),
+    deactivateApiKeysByName: new DeactivateApiKeysByNameUseCase(apiKeyRepo),
+  };
 }
