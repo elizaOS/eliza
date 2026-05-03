@@ -55,18 +55,12 @@ export function shouldUseHeadlessDesktopSmoke(
 export function resolveMainWindowPartition(
 	env: NodeJS.ProcessEnv = process.env,
 ): string | null {
-	const explicit = trimToNull(
-		env.ELIZA_DESKTOP_TEST_PARTITION,
-	);
+	const explicit = trimToNull(env.ELIZA_DESKTOP_TEST_PARTITION);
 	if (explicit) {
 		return normalizePersistentPartition(explicit);
 	}
 
-	if (
-		trimToNull(
-			env.ELIZA_DESKTOP_TEST_API_BASE,
-		)
-	) {
+	if (trimToNull(env.ELIZA_DESKTOP_TEST_API_BASE)) {
 		// The Windows smoke harness redirects APPDATA/LOCALAPPDATA before launch,
 		// so the bootstrap renderer can now use a persistent isolated partition.
 		return PACKAGED_WINDOWS_BOOTSTRAP_PARTITION;

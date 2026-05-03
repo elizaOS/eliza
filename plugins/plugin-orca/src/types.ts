@@ -1,5 +1,3 @@
-import { PublicKey } from "@solana/web3.js";
-
 export interface LPPosition {
   positionId: string;
   poolAddress: string;
