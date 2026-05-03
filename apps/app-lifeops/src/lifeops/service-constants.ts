@@ -59,6 +59,8 @@ export const REMINDER_ESCALATION_RESOLUTION_METADATA_KEY =
   "reminderEscalationResolution";
 export const REMINDER_ESCALATION_RESOLUTION_NOTE_METADATA_KEY =
   "reminderEscalationResolutionNote";
+export const REMINDER_ESCALATION_PROFILE_METADATA_KEY =
+  "reminderEscalationProfile";
 export const REMINDER_REVIEW_AFTER_MINUTES_METADATA_KEY =
   "reminderReviewAfterMinutes";
 export const REMINDER_REVIEW_AT_METADATA_KEY = "reminderReviewAt";
@@ -69,6 +71,10 @@ export const REMINDER_REVIEW_RESPONDED_AT_METADATA_KEY =
   "reminderReviewRespondedAt";
 export const REMINDER_REVIEW_RESPONSE_TEXT_METADATA_KEY =
   "reminderReviewResponseText";
+export const REMINDER_REVIEW_CLASSIFIER_SOURCE_METADATA_KEY =
+  "reminderReviewClassifierSource";
+export const REMINDER_REVIEW_SEMANTIC_REASON_METADATA_KEY =
+  "reminderReviewSemanticReason";
 export const REMINDER_REVIEW_ESCALATED_AT_METADATA_KEY =
   "reminderReviewEscalatedAt";
 export const REMINDER_REVIEW_ESCALATED_ATTEMPT_ID_METADATA_KEY =
