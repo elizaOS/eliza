@@ -226,6 +226,48 @@ async def run_eliza_agent(args: argparse.Namespace) -> None:
         print(f"\n[ExperienceBench] Report written to {args.output}")
 
 
+async def run_eliza_bridge(args: argparse.Namespace) -> None:
+    """Run the experience benchmark via the elizaOS TS benchmark bridge."""
+    from eliza_adapter.experience import (
+        ElizaBridgeExperienceRunner,
+        ElizaExperienceConfig,
+    )
+
+    print("=" * 60)
+    print("ElizaOS Experience Benchmark - Bridge Mode")
+    print("=" * 60)
+    print("Routing LLM calls through the elizaOS TypeScript benchmark bridge.")
+    print()
+
+    config = ElizaExperienceConfig(
+        num_learning_scenarios=args.learning_cycles,
+        num_retrieval_queries=args.queries,
+        num_background_experiences=min(args.experiences, 200),
+        seed=args.seed,
+    )
+
+    def on_progress(phase: str, completed: int, total: int) -> None:
+        pct = completed / total * 100 if total > 0 else 0
+        bar_len = 30
+        filled = int(bar_len * completed / total) if total > 0 else 0
+        bar = "█" * filled + "░" * (bar_len - filled)
+        print(f"\r  {phase}: [{bar}] {completed}/{total} ({pct:.1f}%)", end="", flush=True)
+        if completed >= total:
+            print()
+
+    runner = ElizaBridgeExperienceRunner(config=config)
+    result = await runner.run(progress_callback=on_progress)
+
+    import json
+
+    if args.output:
+        with open(args.output, "w") as f:
+            json.dump(result, f, indent=2, default=str)
+        print(f"\n[ExperienceBench] Bridge report written to {args.output}")
+    else:
+        print(json.dumps(result, indent=2, default=str))
+
+
 def _serialize_agent_result(result: "BenchmarkResult") -> dict:
     """Serialize agent benchmark result to JSON-friendly dict."""
     from elizaos_experience_bench.types import BenchmarkResult
@@ -261,11 +303,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Experience Plugin Benchmark")
     parser.add_argument(
         "--mode",
-        choices=["direct", "eliza-agent"],
+        choices=["direct", "eliza-agent", "eliza-bridge"],
         default="direct",
         help=(
             "Benchmark mode: 'direct' tests ExperienceService directly (default), "
-            "'eliza-agent' tests through a real Eliza agent with LLM"
+            "'eliza-agent' tests through an in-process Python Eliza agent with LLM, "
+            "'eliza-bridge' routes the LLM call through the elizaOS TypeScript "
+            "benchmark bridge (requires ELIZA_BENCH_URL/ELIZA_BENCH_TOKEN)."
         ),
     )
     parser.add_argument("--experiences", type=int, default=1000, help="Number of synthetic experiences")
@@ -292,6 +336,8 @@ def main() -> None:
         run_direct(args)
     elif args.mode == "eliza-agent":
         asyncio.run(run_eliza_agent(args))
+    elif args.mode == "eliza-bridge":
+        asyncio.run(run_eliza_bridge(args))
     else:
         parser.error(f"Unknown mode: {args.mode}")
 
