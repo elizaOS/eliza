@@ -1,0 +1,4 @@
+[submodule "plugins/plugin-sql"]
+	path = plugins/plugin-sql
+	url = https://github.com/elizaos-plugins/plugin-sql.git
+	branch = alpha

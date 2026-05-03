@@ -368,6 +368,17 @@ const realResolveAlias: ModuleAlias[] = [
       "types.ts",
     ),
   },
+  {
+    find: "@elizaos/plugin-sql/drizzle",
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "plugins",
+      "plugin-sql",
+      "typescript",
+      "drizzle",
+      "index.ts",
+    ),
+  },
   // Bare-package alias to source so the runtime migrator sees the same
   // `Plugin.schema` namespace the auth-store imports from. Without this
   // the dist build would ship the pre-P0 schema and `auth_identities`
