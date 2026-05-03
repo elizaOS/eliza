@@ -96,7 +96,6 @@ import * as pluginAgentSkills from "@elizaos/plugin-agent-skills";
 import * as pluginBrowserBridge from "@elizaos/plugin-browser-bridge";
 import * as pluginPdf from "@elizaos/plugin-pdf";
 import * as pluginSql from "@elizaos/plugin-sql";
-import * as pluginVideo from "@elizaos/plugin-video";
 import {
   formatError,
   getDefaultStylePreset,
@@ -202,6 +201,16 @@ try {
   pluginCommands = require("@elizaos/plugin-commands");
 } catch {
   pluginCommands = null;
+}
+// Keep plugin-video behind a guarded runtime require. plugin-video's main
+// points at dist/index.js, which is not built in test/CI flows that do not
+// run a full plugin build first; a static ESM import then crashes vitest at
+// resolution time. Same pattern as plugin-shell / plugin-commands above.
+let pluginVideo: unknown = null;
+try {
+  pluginVideo = require("@elizaos/plugin-video");
+} catch {
+  pluginVideo = null;
 }
 // Keep plugin-elizacloud behind a guarded runtime require as well. Some
 // published alpha builds advertise dist/node/index.node.js but do not ship
@@ -335,7 +344,7 @@ Object.assign(STATIC_ELIZA_PLUGINS, {
   "@elizaos/plugin-agent-skills": pluginAgentSkills,
   ...(pluginCommands ? { "@elizaos/plugin-commands": pluginCommands } : {}),
   "@elizaos/plugin-pdf": pluginPdf,
-  "@elizaos/plugin-video": pluginVideo,
+  ...(pluginVideo ? { "@elizaos/plugin-video": pluginVideo } : {}),
   ...(pluginOpenai ? { "@elizaos/plugin-openai": pluginOpenai } : {}),
   ...(pluginAnthropic ? { "@elizaos/plugin-anthropic": pluginAnthropic } : {}),
   ...(pluginOllama ? { "@elizaos/plugin-ollama": pluginOllama } : {}),
