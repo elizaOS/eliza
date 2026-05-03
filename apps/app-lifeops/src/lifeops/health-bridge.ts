@@ -18,6 +18,7 @@ import { execFile } from "node:child_process";
 import { accessSync, constants as fsConstants } from "node:fs";
 import { promisify } from "node:util";
 import { logger } from "@elizaos/core";
+import { rewriteGoogleUrlForMock } from "./google-fetch.js";
 
 const execFileAsync = promisify(execFile);
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -459,7 +460,8 @@ async function callGoogleFitAggregate(
   accessToken: string,
   body: Record<string, unknown>,
 ): Promise<GoogleFitAggregateResponse> {
-  const response = await fetch(GOOGLE_FIT_AGGREGATE_URL, {
+  const targetUrl = rewriteGoogleUrlForMock(GOOGLE_FIT_AGGREGATE_URL);
+  const response = await fetch(targetUrl, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
