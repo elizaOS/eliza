@@ -1,13 +1,13 @@
 /**
- * Global auth middleware — Hono auth gate. Steward cookie/session resolution
+ * Global auth middleware, Hono auth gate. Steward cookie/session resolution
  * lives in `getCurrentUser` (`packages/lib/auth/workers-hono-auth.ts`).
  *
  * Behavior:
  *   - Public paths pass through with no auth.
- *   - Programmatic auth (X-API-Key, Bearer eliza_*) — pass through; per-route
+ *   - Programmatic auth (X-API-Key, Bearer eliza_*), pass through; per-route
  *     handlers validate the key against the DB.
- *   - Steward cookie / Steward Bearer JWT — verify via `getCurrentUser` and
- *     fall through on success. Failure on a protected /api/ path → 401.
+ *   - Steward cookie / Steward Bearer JWT, verify via `getCurrentUser` and
+ *     fall through on success. Failure on a protected /api/ path returns 401.
  *
  * This middleware is mounted globally before the router in src/index.ts.
  */
@@ -92,6 +92,15 @@ export const authMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
   if (!pathname.startsWith("/api/")) {
     await next();
     return;
+  }
+
+  if (c.req.method === "GET" && pathname.startsWith("/api/v1/proxy/birdeye/")) {
+    const redirectUrl = new URL(c.req.url);
+    redirectUrl.pathname = redirectUrl.pathname.replace(
+      "/api/v1/proxy/birdeye",
+      "/api/v1/apis/birdeye",
+    );
+    return c.redirect(redirectUrl.toString(), 308);
   }
 
   if (isPublicPath(pathname)) {
