@@ -189,8 +189,10 @@ class REALMRunner:
         if self.config.generate_report:
             await self._save_results(report)
 
-        # Export trajectories for training if configured
-        if self.config.save_trajectories and isinstance(self.agent, REALMAgent):
+        # Export trajectories for training if the bridge agent exposes them
+        if self.config.save_trajectories and hasattr(
+            self.agent, "get_completed_trajectories"
+        ):
             await self._export_training_trajectories(report)
 
         logger.info(
@@ -316,13 +318,14 @@ class REALMRunner:
 
     async def _export_training_trajectories(self, report: REALMReport) -> None:
         """Export trajectories in training-ready formats (ART/GRPO)."""
-        if not isinstance(self.agent, REALMAgent):
+        getter = getattr(self.agent, "get_completed_trajectories", None)
+        if not callable(getter):
             return
 
         output_dir = Path(self.config.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        completed = self.agent.get_completed_trajectories()
+        completed = getter()
         if not completed:
             logger.info("[REALMRunner] No completed trajectories to export")
             return
