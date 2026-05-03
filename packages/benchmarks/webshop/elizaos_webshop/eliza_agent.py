@@ -67,11 +67,26 @@ except ImportError:
 # ---------------------------------------------------------------------------
 
 
-def _strip_model_prefix(model_name: str) -> str:
+def _strip_model_prefix(model_name: str, provider: str | None = None) -> str:
+    """Strip provider routing prefix from a model id.
+
+    Strip the prefix only when it matches the targeted provider, e.g.
+    ``openai/gpt-4o`` -> ``gpt-4o`` when calling OpenAI directly. Leave
+    ``openai/gpt-oss-120b`` intact when the targeted provider is Groq —
+    Groq exposes that model under the literal id ``openai/gpt-oss-120b``,
+    so stripping breaks the request. Stripping ``groq/`` / ``openrouter/``
+    when targeting that same provider remains a no-op safety hatch.
+    """
     lowered = model_name.lower().strip()
-    for prefix in ("openai/", "groq/", "openrouter/"):
-        if lowered.startswith(prefix):
-            return model_name[len(prefix) :]
+    target = (provider or "").strip().lower()
+    if not target:
+        for prefix in ("openai/", "groq/", "openrouter/"):
+            if lowered.startswith(prefix):
+                return model_name[len(prefix) :]
+        return model_name
+    prefix = f"{target}/"
+    if lowered.startswith(prefix):
+        return model_name[len(prefix) :]
     return model_name
 
 
@@ -115,7 +130,7 @@ def get_model_provider_plugin(provider: str | None = None) -> "Plugin | None":
         "groq": "https://api.groq.com/openai/v1",
         "openrouter": "https://openrouter.ai/api/v1",
     }
-    clean_model = _strip_model_prefix(model_name) if model_name else ""
+    clean_model = _strip_model_prefix(model_name, requested) if model_name else ""
     if not clean_model:
         clean_model = "qwen3-32b" if requested in {"groq", "openrouter"} else "gpt-4o-mini"
 

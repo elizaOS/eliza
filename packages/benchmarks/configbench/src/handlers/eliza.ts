@@ -111,43 +111,137 @@ async function tryImportDeps(): Promise<boolean> {
   return true;
 }
 
-function sendMessageAndWaitForResponse(
+/**
+ * Load a model-provider plugin. Picks the first available based on
+ * env vars in priority order: groq > anthropic > openai. Without a
+ * model provider plugin the runtime cannot generate responses and the
+ * sendMessage callback never fires.
+ */
+async function loadModelProviderPlugin(): Promise<Plugin | null> {
+  const explicit = (process.env.CONFIGBENCH_AGENT_PROVIDER ?? "").trim().toLowerCase();
+  const hasGroq = !!process.env.GROQ_API_KEY;
+  const hasAnthropic = !!process.env.ANTHROPIC_API_KEY;
+  const hasOpenAI = !!process.env.OPENAI_API_KEY;
+
+  let order: string[];
+  if (explicit) {
+    order = [explicit];
+  } else if (hasGroq) {
+    order = ["groq", "anthropic", "openai"];
+  } else if (hasAnthropic) {
+    order = ["anthropic", "openai", "groq"];
+  } else {
+    order = ["openai", "anthropic", "groq"];
+  }
+
+  for (const provider of order) {
+    if (provider === "groq" && !hasGroq) continue;
+    if (provider === "anthropic" && !hasAnthropic) continue;
+    if (provider === "openai" && !hasOpenAI) continue;
+    try {
+      if (provider === "groq") {
+        const mod = await import("@elizaos/plugin-groq");
+        const plugin = (mod.groqPlugin ?? mod.default ?? null) as Plugin | null;
+        if (plugin) {
+          console.log("[ElizaHandler] Loaded model provider plugin: groq");
+          return plugin;
+        }
+      } else if (provider === "anthropic") {
+        const mod = await import("@elizaos/plugin-anthropic");
+        const plugin = (mod.anthropicPlugin ?? mod.default ?? null) as Plugin | null;
+        if (plugin) {
+          console.log("[ElizaHandler] Loaded model provider plugin: anthropic");
+          return plugin;
+        }
+      } else if (provider === "openai") {
+        const mod = await import("@elizaos/plugin-openai");
+        const plugin = (mod.openaiPlugin ?? mod.default ?? null) as Plugin | null;
+        if (plugin) {
+          console.log("[ElizaHandler] Loaded model provider plugin: openai");
+          return plugin;
+        }
+      }
+    } catch (err) {
+      console.warn(
+        `[ElizaHandler] Failed to load ${provider} plugin: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+  return null;
+}
+
+async function sendMessageAndWaitForResponse(
   rt: IAgentRuntime,
   room: Room,
   user: Entity,
   text: string,
   timeoutMs = 120_000,
 ): Promise<Content> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(
-        new Error(
-          `Timed out waiting for agent response after ${timeoutMs}ms. Message: "${text}"`,
+  const message: Memory = {
+    id: createUniqueUuid(rt, `${user.id}-${Date.now()}-${Math.random()}`),
+    agentId: rt.agentId,
+    entityId: user.id!,
+    roomId: room.id,
+    content: { text, source: "configbench" },
+    createdAt: Date.now(),
+  };
+
+  let captured: Content | null = null;
+  const callback = async (responseContent: Content): Promise<Memory[]> => {
+    if (captured === null) captured = responseContent;
+    return [];
+  };
+
+  // Prefer the runtime's messageService (DefaultMessageService) which actually
+  // generates a response via the model provider plugin. emitEvent alone only
+  // triggers logging/trajectory hooks and never produces a reply.
+  const messageService = (rt as unknown as {
+    messageService?: {
+      handleMessage(
+        runtime: IAgentRuntime,
+        message: Memory,
+        callback: (responseContent: Content) => Promise<Memory[]>,
+      ): Promise<unknown>;
+    } | null;
+  }).messageService;
+
+  const work = (async () => {
+    if (messageService && typeof messageService.handleMessage === "function") {
+      await messageService.handleMessage(rt, message, callback);
+    } else {
+      await new Promise<void>((resolveEvent, rejectEvent) => {
+        try {
+          rt.emitEvent(EventType.MESSAGE_RECEIVED, {
+            runtime: rt,
+            message,
+            callback: async (responseContent: Content) => {
+              await callback(responseContent);
+              resolveEvent();
+              return [];
+            },
+            source: "configbench",
+          });
+        } catch (err) {
+          rejectEvent(err);
+        }
+      });
+    }
+  })();
+
+  const timeout = new Promise<never>((_resolve, reject) => {
+    setTimeout(
+      () =>
+        reject(
+          new Error(
+            `Timed out waiting for agent response after ${timeoutMs}ms. Message: "${text}"`,
+          ),
         ),
-      );
-    }, timeoutMs);
-
-    const message: Memory = {
-      id: createUniqueUuid(rt, `${user.id}-${Date.now()}-${Math.random()}`),
-      agentId: rt.agentId,
-      entityId: user.id!,
-      roomId: room.id,
-      content: { text },
-      createdAt: Date.now(),
-    };
-
-    const callback = async (responseContent: Content): Promise<Memory[]> => {
-      clearTimeout(timer);
-      resolve(responseContent);
-      return [];
-    };
-
-    rt.emitEvent(EventType.MESSAGE_RECEIVED, {
-      runtime: rt,
-      message,
-      callback,
-    });
+      timeoutMs,
+    );
   });
+
+  await Promise.race([work, timeout]);
+  return captured ?? { text: "" };
 }
 
 export const elizaHandler: Handler = {
@@ -183,6 +277,28 @@ export const elizaHandler: Handler = {
     }
 
     // Character only needs name and system — Character is Partial<...>
+    // Forward provider env vars into character.secrets so plugin init() finds
+    // them via runtime.getSetting (which reads from character.secrets/settings,
+    // not process.env).
+    const providerSecrets: Record<string, string> = {};
+    for (const key of [
+      "GROQ_API_KEY",
+      "OPENAI_API_KEY",
+      "ANTHROPIC_API_KEY",
+      "OPENAI_BASE_URL",
+      "GROQ_SMALL_MODEL",
+      "GROQ_LARGE_MODEL",
+      "OPENAI_SMALL_MODEL",
+      "OPENAI_LARGE_MODEL",
+      "ANTHROPIC_SMALL_MODEL",
+      "ANTHROPIC_LARGE_MODEL",
+    ]) {
+      const v = process.env[key];
+      if (typeof v === "string" && v.trim().length > 0) {
+        providerSecrets[key] = v;
+      }
+    }
+
     const character: Character = {
       name: "ConfigBench Agent",
       system:
@@ -190,12 +306,23 @@ export const elizaHandler: Handler = {
       settings: {
         ALLOW_NO_DATABASE: true,
       },
+      secrets: providerSecrets,
     };
 
     const plugins: Plugin[] = [];
     if (sqlPlugin) plugins.push(sqlPlugin);
     if (secretsManagerPlugin) plugins.push(secretsManagerPlugin);
     if (pluginManagerPlugin) plugins.push(pluginManagerPlugin);
+
+    const modelProviderPlugin = await loadModelProviderPlugin();
+    if (!modelProviderPlugin) {
+      console.warn(
+        "[ElizaHandler] No model provider plugin could be loaded. Eliza handler will skip.",
+      );
+      depsAvailable = false;
+      return;
+    }
+    plugins.push(modelProviderPlugin);
 
     const agentId = crypto.randomUUID();
     const sqlDataDir = join(
