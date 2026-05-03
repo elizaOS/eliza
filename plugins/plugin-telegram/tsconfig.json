@@ -2,7 +2,10 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "lib": ["ESNext", "dom"],
+    "lib": [
+      "ESNext",
+      "dom"
+    ],
     "target": "ESNext",
     "module": "Preserve",
     "moduleResolution": "Bundler",
@@ -23,7 +26,12 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "allowUnusedLabels": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ],
+    "ignoreDeprecations": "6.0"
   },
-  "include": ["src/**/*.ts"]
+  "include": [
+    "src/**/*.ts"
+  ]
 }
