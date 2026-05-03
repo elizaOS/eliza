@@ -3,11 +3,13 @@ import {
   describe,
   it,
   expect,
-  mock,
+  vi,
   beforeEach,
   afterEach,
-  spyOn,
-} from "bun:test";
+} from "vitest";
+
+const mock = vi.fn;
+const spyOn = vi.spyOn;
 import axios from "axios";
 import { DexScreenerService } from "../service";
 import { createMockRuntime } from "./test-utils";
@@ -44,8 +46,7 @@ describe("DexScreenerService", () => {
   });
 
   afterEach(() => {
-    // Restore mocks
-    mock.restore();
+    vi.restoreAllMocks();
   });
 
   describe("constructor", () => {

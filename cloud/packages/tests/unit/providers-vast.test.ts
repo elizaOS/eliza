@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { VastProvider } from "@/lib/providers/vast";
 import type { OpenAIChatRequest } from "@/lib/providers/types";
+import { VastProvider } from "@/lib/providers/vast";
 
 const baseChatRequest: OpenAIChatRequest = {
   model: "vast/qwen3.6-35b-a3b-awq",
