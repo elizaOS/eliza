@@ -1,0 +1,66 @@
+import type { Plugin, ServiceClass } from "@elizaos/core";
+import evmPlugin from "@elizaos/plugin-evm";
+import solanaPlugin from "@elizaos/plugin-solana";
+import { unifiedWalletProvider } from "./providers/unified-wallet-provider.js";
+import { WalletBackendService } from "./services/wallet-backend-service.js";
+
+const coreWalletPlugin: Plugin = {
+	name: "wallet-backend",
+	description: "Wallet backend service + unified wallet provider (Steward / local).",
+	services: [WalletBackendService],
+	providers: [unifiedWalletProvider],
+	actions: [],
+	evaluators: [],
+};
+
+function concatServices(
+	...chunks: (readonly ServiceClass[] | undefined)[]
+): ServiceClass[] {
+	const out: ServiceClass[] = [];
+	for (const c of chunks) {
+		if (c) out.push(...c);
+	}
+	return out;
+}
+
+function concatPlugins<T>(
+	...chunks: (readonly T[] | undefined)[]
+): T[] {
+	const out: T[] = [];
+	for (const c of chunks) {
+		if (c) out.push(...c);
+	}
+	return out;
+}
+
+/**
+ * Single plugin surface: legacy `plugin-evm` + `plugin-solana` + wallet backend.
+ * Consumers should depend only on `@elizaos/plugin-wallet`.
+ */
+export const walletPlugin: Plugin = {
+	name: "wallet",
+	description:
+		"Unified non-custodial wallet for elizaOS — EVM + Solana, Steward/local backends, x402, CCTP, and venue routing (replaces @elizaos/plugin-evm + @elizaos/plugin-solana).",
+	services: concatServices(
+		coreWalletPlugin.services,
+		evmPlugin.services as ServiceClass[] | undefined,
+		solanaPlugin.services as ServiceClass[] | undefined,
+	),
+	providers: concatPlugins(
+		coreWalletPlugin.providers,
+		evmPlugin.providers,
+	),
+	evaluators: concatPlugins(coreWalletPlugin.evaluators, evmPlugin.evaluators),
+	actions: concatPlugins(coreWalletPlugin.actions, evmPlugin.actions),
+	routes: concatPlugins(solanaPlugin.routes),
+	init: async (config, runtime) => {
+		await coreWalletPlugin.init?.(config, runtime);
+		await evmPlugin.init?.(config, runtime);
+		await solanaPlugin.init?.(config, runtime);
+	},
+};
+
+/** @deprecated Use {@link walletPlugin} */
+export const agentWalletPlugin = walletPlugin;
+
+export default walletPlugin;

@@ -228,13 +228,13 @@ export const getPluginDetailsAction: Action = {
 			{
 				name: "{{user1}}",
 				content: {
-					text: "Tell me more about @elizaos/plugin-solana",
+					text: "Tell me more about @elizaos/plugin-wallet",
 				},
 			},
 			{
 				name: "{{agentName}}",
 				content: {
-					text: "**@elizaos/plugin-solana** Details:\n\nDescription: Comprehensive Solana blockchain integration\n\nTags: blockchain, solana, defi, transaction\n\nVersion: 2.0.0-alpha.3\nRepository: https://github.com/elizaos-plugins/plugin-solana",
+					text: "**@elizaos/plugin-wallet** Details:\n\nDescription: Unified EVM + Solana wallet and chain execution\n\nTags: blockchain, evm, solana, defi, wallet\n\nVersion: 0.1.0\nRepository: https://github.com/eliza-ai/eliza",
 				},
 			},
 		],
@@ -256,7 +256,7 @@ export const getPluginDetailsAction: Action = {
 
 		if (!pluginMatch) {
 			const responseText =
-				'Please specify which plugin you\'d like to know more about.\n\nExample: "Tell me more about @elizaos/plugin-solana"';
+				'Please specify which plugin you\'d like to know more about.\n\nExample: "Tell me more about @elizaos/plugin-wallet"';
 			if (callback) {
 				await callback({
 					text: responseText,

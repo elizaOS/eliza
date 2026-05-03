@@ -1,6 +1,6 @@
 import "./core-augmentation.js";
 
-export { agentWalletPlugin } from "./plugin.js";
+export { agentWalletPlugin, walletPlugin } from "./plugin.js";
 export { default } from "./plugin.js";
 
 export * from "./wallet/index.js";
@@ -11,4 +11,4 @@ export * from "./audit/audit-log.js";
 export { WalletBackendService } from "./services/wallet-backend-service.js";
 export { unifiedWalletProvider } from "./providers/unified-wallet-provider.js";
 
-/** ERC-6551 / x402 / CCTP / swaps live under `import "@elizaos/plugin-agent-wallet/sdk"`. */
+/** ERC-6551 / x402 / CCTP / swaps live under `import "@elizaos/plugin-wallet/sdk"`. */

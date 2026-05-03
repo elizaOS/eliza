@@ -1,6 +1,6 @@
-# @elizaos/plugin-agent-wallet
+# @elizaos/plugin-wallet
 
-Unified non-custodial wallet for elizaOS agents. Replaces the legacy fan-out across `plugin-evm`, `plugin-solana`, `plugin-raydium`, `plugin-orca`, `plugin-meteora`, `plugin-jupiter`, `plugin-lp-manager`, `plugin-clanker`, and `elizaos-plugin-agentwallet` with one canonical action+provider surface governed by [`docs/architecture/wallet-and-trading.md`](../../../docs/architecture/wallet-and-trading.md).
+Unified non-custodial wallet for elizaOS agents. Replaces the legacy fan-out across `plugin-evm`, `plugin-solana`, `plugin-raydium`, `plugin-orca`, `plugin-meteora`, `plugin-jupiter`, `plugin-lp-manager`, `plugin-clanker`, and the former `elizaos-plugin-agentwallet` stub with one canonical action+provider surface governed by [`docs/architecture/wallet-and-trading.md`](../../../docs/architecture/wallet-and-trading.md).
 
 ## Surface
 
@@ -51,11 +51,11 @@ The `sdk/` subtree carries forward primitives from [agent-wallet-sdk](https://gi
 This plugin is being built incrementally. Tracked phases:
 
 - **Phase 0** — interfaces (`WalletBackend`, `CanonicalProvider`, `CanonicalAction`, `PolicyModule`, audit log schema, failure-code unions).
-- **Phase 1** — backend impls + migration of `plugin-evm` / `plugin-solana` to consume `WalletBackend`.
+- **Phase 1** — backend impls + `@elizaos/plugin-wallet` composes legacy `plugin-evm` + `plugin-solana`; migrate call sites to consume `WalletBackend` only.
 - **Phase 2** — provider lifts (13+ providers).
 - **Phase 3** — canonical action implementations.
 - **Phase 4** — approval-queue surface (SSE + decision endpoint + tray + Capacitor bridge).
-- **Phase 5** — delete the source plugins; full test coverage.
+- **Phase 5** — inline or drop `@elizaos/plugin-evm` / `@elizaos/plugin-solana` as standalone packages once callsites use `WalletBackend` only; full test coverage.
 
 See `docs/architecture/wallet-and-trading.md` §I for the dependency graph.
 
