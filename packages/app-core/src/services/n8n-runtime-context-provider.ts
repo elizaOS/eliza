@@ -30,9 +30,9 @@
 import type { AgentRuntime } from "@elizaos/core";
 import {
   createDiscordSourceCache,
+  type DiscordSourceCache,
   fetchDiscordEnumeration,
   formatDiscordEnumerationAsFacts,
-  type DiscordSourceCache,
 } from "./discord-target-source";
 
 const SERVICE_TYPE = "n8n_runtime_context_provider";

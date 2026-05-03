@@ -522,9 +522,7 @@ async function getOrCreateProvisionedApp(
   return extractProvisionedApp(await createResponse.text());
 }
 
-export class TelegramAccountAuthSession
-  implements TelegramAccountAuthSessionLike
-{
+export class TelegramAccountAuthSession implements TelegramAccountAuthSessionLike {
   private snapshot: TelegramAccountAuthSnapshot = {
     status: 'idle',
     phone: null,

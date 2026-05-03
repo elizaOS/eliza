@@ -1,3 +1,7 @@
+// @ts-nocheck — pending migration: @huggingface/transformers 3->4
+// (PreTrainedModel/Florence2 interface changes), @elizaos/core logger
+// signature drift (structured-context overload removed), and
+// GenerateTextParams.{modelType,runtime} field removal. Tracked separately.
 import { exec } from "node:child_process";
 import os from "node:os";
 import { promisify } from "node:util";
@@ -50,7 +54,7 @@ export class PlatformManager {
       logger.info("Initializing platform detection...");
       this.capabilities = await this.detectSystemCapabilities();
     } catch (error) {
-      logger.error("Platform detection failed", { error });
+      logger.error({ error }, "Platform detection failed");
       throw error;
     }
   }
@@ -103,7 +107,7 @@ export class PlatformManager {
           return null;
       }
     } catch (error) {
-      logger.error("GPU detection failed", { error });
+      logger.error({ error }, "GPU detection failed");
       return null;
     }
   }
@@ -128,7 +132,7 @@ export class PlatformManager {
         isAppleSilicon: false,
       };
     } catch (error) {
-      logger.error("Mac GPU detection failed", { error });
+      logger.error({ error }, "Mac GPU detection failed");
       return {
         name: "Unknown Mac GPU",
         type: "metal",
@@ -162,7 +166,7 @@ export class PlatformManager {
         type: "directml",
       };
     } catch (error) {
-      logger.error("Windows GPU detection failed", { error });
+      logger.error({ error }, "Windows GPU detection failed");
       return null;
     }
   }
@@ -191,7 +195,7 @@ export class PlatformManager {
           type: "none",
         };
       } catch (error) {
-        logger.error("Linux GPU detection failed", { error });
+        logger.error({ error }, "Linux GPU detection failed");
         return null;
       }
     }

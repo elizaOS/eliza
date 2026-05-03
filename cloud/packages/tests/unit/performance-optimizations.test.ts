@@ -1,4 +1,3 @@
-// @ts-nocheck — type errors from @elizaos/core version mismatch
 /**
  * Tests for feat/performance-optimizations branch.
  * Run: SKIP_SERVER_CHECK=true bun test tests/unit/performance-optimizations.test.ts

@@ -70,7 +70,11 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
       return c.json({ error: "Payment processing is not configured" }, 503);
     }
 
-    let lineItems: Stripe.Checkout.SessionCreateParams.LineItem[];
+    // stripe v22 re-exports `SessionCreateParams` as a type alias from the
+    // Checkout barrel, which strips the nested `LineItem` namespace. Derive
+    // the line-item type from the params shape directly.
+    type LineItem = NonNullable<Stripe.Checkout.SessionCreateParams["line_items"]>[number];
+    let lineItems: LineItem[];
     let sessionMetadata: Record<string, string>;
 
     const organizationId = user.organization_id;

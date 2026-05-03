@@ -170,10 +170,10 @@ export const executeSwap: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State | undefined,
-    options: Record<string, string | number | boolean> | undefined,
+    state?: State,
+    options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<undefined | ActionResult | undefined> => {
+  ): Promise<ActionResult | undefined> => {
     state = await runtime.composeState(message, ["RECENT_MESSAGES"]);
 
     try {

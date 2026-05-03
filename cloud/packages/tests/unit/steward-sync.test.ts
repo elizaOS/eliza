@@ -1,5 +1,3 @@
-// @ts-nocheck
-
 import { beforeEach, describe, expect, test } from "bun:test";
 import { organizationInvitesRepository } from "@/db/repositories/organization-invites";
 import { apiKeysService } from "@/lib/services/api-keys";

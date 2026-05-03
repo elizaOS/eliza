@@ -616,9 +616,9 @@ let _n8nRuntimeContextProvider: { stop: () => void } | null = null;
 // resolve time) hit one 5-minute REST window instead of two. Reset whenever
 // the runtime-context provider is re-created so a hot-reload cannot leak
 // stale guild/channel state into the fresh runtime.
-let _discordEnumerationCache: import(
-  "../services/discord-target-source"
-).DiscordSourceCache | null = null;
+let _discordEnumerationCache:
+  | import("../services/discord-target-source").DiscordSourceCache
+  | null = null;
 
 // Module-level handle for the connector-target-catalog service. Reset across
 // hot-reloads with the same cadence as _n8nRuntimeContextProvider so both
@@ -822,10 +822,9 @@ async function ensureConnectorTargetCatalog(
       discordCache: _discordEnumerationCache ?? undefined,
       logger: { warn: runtime.logger.warn?.bind(runtime.logger) },
     });
-    runtime.services.set(
-      CONNECTOR_TARGET_CATALOG_SERVICE_TYPE as never,
-      [catalog as never],
-    );
+    runtime.services.set(CONNECTOR_TARGET_CATALOG_SERVICE_TYPE as never, [
+      catalog as never,
+    ]);
     _connectorTargetCatalog = {
       stop: () => {
         try {

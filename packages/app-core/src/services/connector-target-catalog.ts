@@ -16,9 +16,9 @@
 
 import {
   createDiscordSourceCache,
-  fetchDiscordEnumeration,
   type DiscordSourceCache,
   type DiscordSourceLogger,
+  fetchDiscordEnumeration,
 } from "./discord-target-source";
 
 export interface TargetGroup {

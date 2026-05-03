@@ -156,9 +156,7 @@ export function formatDiscordEnumerationAsFacts(
   const facts: string[] = [];
   for (const guild of results) {
     if (guild.channels) {
-      const text = guild.channels
-        .map((c) => `#${c.name} (${c.id})`)
-        .join(", ");
+      const text = guild.channels.map((c) => `#${c.name} (${c.id})`).join(", ");
       facts.push(
         text.length > 0
           ? `Discord guild "${guild.guildName}" (id ${guild.guildId}) channels: ${text}.`
@@ -170,7 +168,7 @@ export function formatDiscordEnumerationAsFacts(
       const detail =
         typeof guild.channelsError.status === "number"
           ? `status ${guild.channelsError.status}`
-          : guild.channelsError.message ?? "unknown error";
+          : (guild.channelsError.message ?? "unknown error");
       facts.push(
         `Discord guild "${guild.guildName}" (id ${guild.guildId}) — channels not enumerable (${detail}).`,
       );

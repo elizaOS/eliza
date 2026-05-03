@@ -312,7 +312,8 @@ class TestRunner:
 
     @pytest.mark.asyncio
     async def test_runner_eliza_mode_requires_runtime(self) -> None:
-        """Test eliza mode raises without runtime."""
+        """'eliza' mode is dispatched outside RLMBenchRunner — calling
+        run_task('eliza') directly must raise."""
         from elizaos_rlm_bench.runner import RLMBenchRunner
 
         config = RLMBenchConfig(context_lengths=[1000])
@@ -320,8 +321,7 @@ class TestRunner:
 
         task = runner.generator.generate_s_niah_task(1000, 0.5)
 
-        # Eliza mode without runtime should raise
-        with pytest.raises(RuntimeError, match="No Eliza runtime configured"):
+        with pytest.raises(RuntimeError, match="dispatched via the TS bridge"):
             await runner.run_task(task, mode="eliza")
 
     @pytest.mark.asyncio
