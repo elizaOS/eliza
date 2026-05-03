@@ -126,7 +126,9 @@ export function buildCodingAgentSummary(ctx: CodingAgentContext): string {
 
   // Human feedback
   const pendingFeedback = ctx.allFeedback.filter(
-    (fb) => fb.iterationRef !== undefined && fb.iterationRef >= ctx.iterations.length - 1,
+    (fb) =>
+      fb.iterationRef !== undefined &&
+      fb.iterationRef >= ctx.iterations.length - 1,
   );
   if (pendingFeedback.length > 0) {
     lines.push("");

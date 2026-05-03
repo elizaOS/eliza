@@ -1,11 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": [
-      "DOM",
-      "DOM.Iterable",
-      "ES2022"
-    ],
+    "lib": ["DOM", "DOM.Iterable", "ES2022"],
     "jsx": "react-jsx",
     "module": "ESNext",
     "moduleResolution": "Bundler",
@@ -16,48 +12,19 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "types": [
-      "node",
-      "vite/client"
-    ],
+    "types": ["node", "vite/client"],
     "paths": {
-      "@elizaos/cloud-ui": [
-        "./src/index.ts"
-      ],
-      "@elizaos/cloud-ui/*": [
-        "./src/*"
-      ],
-      "@/*": [
-        "./src/*"
-      ],
-      "@/lib/*": [
-        "../lib/*"
-      ],
-      "@/db/*": [
-        "../db/*"
-      ],
-      "@/types/*": [
-        "../types/*"
-      ],
-      "@/components/*": [
-        "./src/components/*"
-      ],
-      "@/app/*": [
-        "../../app/*"
-      ],
-      "@/packages/ui/src/*": [
-        "./src/*"
-      ]
+      "@elizaos/cloud-ui": ["./src/index.ts"],
+      "@elizaos/cloud-ui/*": ["./src/*"],
+      "@/*": ["./src/*"],
+      "@/lib/*": ["../lib/*"],
+      "@/db/*": ["../db/*"],
+      "@/types/*": ["../types/*"],
+      "@/components/*": ["./src/components/*"],
+      "@/app/*": ["../../app/*"],
+      "@/packages/ui/src/*": ["./src/*"]
     }
   },
-  "include": [
-    "src",
-    "../types/**/*.d.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "**/*.stories.ts",
-    "**/*.stories.tsx"
-  ]
+  "include": ["src", "../types/**/*.d.ts"],
+  "exclude": ["node_modules", "dist", "**/*.stories.ts", "**/*.stories.tsx"]
 }
