@@ -46,7 +46,7 @@ spec:
             content: |
               URI=$(kubectl get secret pg-local-cluster-app -n eliza-agents -o jsonpath='{.data.uri}' | base64 -d)
               RESULT=$(kubectl run cs-pg-connect-$RANDOM --rm -i --restart=Never -n eliza-agents \
-                --image=postgres:17-alpine --quiet -- \
+                --image=postgres:18-alpine --quiet -- \
                 psql "$URI" -t -c "SELECT 'cnpg-ok'" 2>/dev/null)
               echo "$RESULT" | grep -q "cnpg-ok" || { echo "FAIL: connectivity test failed, got: $RESULT"; exit 1; }
 
@@ -57,7 +57,7 @@ spec:
             content: |
               URI=$(kubectl get secret pg-local-cluster-app -n eliza-agents -o jsonpath='{.data.uri}' | base64 -d)
               EXTS=$(kubectl run cs-pg-exts-$RANDOM --rm -i --restart=Never -n eliza-agents \
-                --image=postgres:17-alpine --quiet -- \
+                --image=postgres:18-alpine --quiet -- \
                 psql "$URI" -t -c "SELECT extname FROM pg_extension ORDER BY extname" 2>/dev/null)
               echo "$EXTS" | grep -q "vector" || { echo "FAIL: vector extension missing"; exit 1; }
               echo "$EXTS" | grep -q "uuid-ossp" || { echo "FAIL: uuid-ossp extension missing"; exit 1; }
@@ -69,6 +69,6 @@ spec:
             content: |
               URI=$(kubectl get secret pg-local-cluster-app -n eliza-agents -o jsonpath='{.data.uri}' | base64 -d)
               DB_INFO=$(kubectl run cs-pg-db-$RANDOM --rm -i --restart=Never -n eliza-agents \
-                --image=postgres:17-alpine --quiet -- \
+                --image=postgres:18-alpine --quiet -- \
                 psql "$URI" -t -c "SELECT current_database() || '/' || current_user" 2>/dev/null)
               echo "$DB_INFO" | grep -q "app/app" || { echo "FAIL: expected app/app, got: $DB_INFO"; exit 1; }

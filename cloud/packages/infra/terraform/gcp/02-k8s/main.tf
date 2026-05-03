@@ -175,7 +175,7 @@ resource "helm_release" "keda" {
   create_namespace = true
   repository       = "https://kedacore.github.io/charts"
   chart            = "keda"
-  version          = "2.16.1"
+  version          = "2.19.0"
   wait             = true
   timeout          = 180
 }
@@ -206,7 +206,7 @@ resource "helm_release" "cnpg_operator" {
   create_namespace = true
   repository       = "https://cloudnative-pg.github.io/charts"
   chart            = "cloudnative-pg"
-  version          = "0.23.0"
+  version          = "0.28.0"
   wait             = true
 }
 
@@ -218,7 +218,7 @@ resource "helm_release" "pg_cluster" {
   namespace  = each.key
   repository = "https://cloudnative-pg.github.io/charts"
   chart      = "cluster"
-  version    = "0.3.0"
+  version    = "0.6.0"
   wait       = true
   timeout    = 300
 
@@ -320,7 +320,7 @@ resource "helm_release" "redis" {
   namespace  = "eliza-infra"
   repository = "oci://registry-1.docker.io/bitnamicharts"
   chart      = "redis"
-  version    = "25.3.8"
+  version    = "25.4.1"
   wait       = true
   timeout    = 180
 
