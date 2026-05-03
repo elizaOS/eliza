@@ -1,5 +1,5 @@
-import { ChannelType, createMessageMemory, type UUID } from "@elizaos/core";
 import { randomUUID } from "node:crypto";
+import { ChannelType, createMessageMemory, type UUID } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import executeGameAction from "../actions/executeGameAction";
 

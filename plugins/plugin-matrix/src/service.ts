@@ -377,7 +377,7 @@ export class MatrixService extends Service implements IMatrixService {
 
     const response = await this.client.sendMessage(
       resolvedRoomId,
-      content as unknown as RoomMessageEventContent,
+      content as unknown as RoomMessageEventContent
     );
     const eventId = response.event_id;
 
@@ -408,11 +408,7 @@ export class MatrixService extends Service implements IMatrixService {
       },
     };
 
-    const response = await this.client.sendEvent(
-      roomId,
-      sdk.EventType.Reaction,
-      content,
-    );
+    const response = await this.client.sendEvent(roomId, sdk.EventType.Reaction, content);
 
     return {
       success: true,
