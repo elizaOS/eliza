@@ -43,9 +43,9 @@ export function normalizePluginName(name: string): string {
 /**
  * Parse plugin name and optional version from user input.
  * Examples:
- *   - "twitter" → { name: "@elizaos/plugin-twitter", version: undefined }
- *   - "twitter@1.2.3" → { name: "@elizaos/plugin-twitter", version: "1.2.3" }
- *   - "@custom/plugin-x@2.0.0" → { name: "@custom/plugin-x", version: "2.0.0" }
+ *   - "discord" → { name: "@elizaos/plugin-discord", version: undefined }
+ *   - "discord@1.2.3" → { name: "@elizaos/plugin-discord", version: "1.2.3" }
+ *   - "@custom/plugin-foo@2.0.0" → { name: "@custom/plugin-foo", version: "2.0.0" }
  */
 export function parsePluginSpec(input: string): {
   name: string;

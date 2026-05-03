@@ -597,14 +597,12 @@ const formatSocialLinks = (data: TokenMetadataSingleResponse['data']): string =>
 
 export const waitFor = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-export const convertToStringParams = (params: BirdeyeApiParams) => {
-    return Object.entries(params || {}).reduce(
-        (acc, [key, value]) => ({
-            ...acc,
-            [key]: value?.toString() || '',
-        }),
-        {} as Record<string, string>
-    );
+export const convertToStringParams = (params: BirdeyeApiParams): Record<string, string> => {
+    const result: Record<string, string> = {};
+    for (const [key, value] of Object.entries(params || {})) {
+        result[key] = value?.toString() || '';
+    }
+    return result;
 };
 
 export const getTokenResultFromSearchResponse = (

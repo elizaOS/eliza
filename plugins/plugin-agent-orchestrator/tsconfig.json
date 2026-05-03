@@ -1,10 +1,7 @@
 {
   "compilerOptions": {
     "outDir": "dist",
-    "lib": [
-      "ESNext",
-      "dom"
-    ],
+    "lib": ["ESNext", "dom"],
     "target": "ESNext",
     "module": "Preserve",
     "moduleResolution": "Bundler",
@@ -26,10 +23,7 @@
     "allowArbitraryExtensions": true,
     "isolatedModules": false,
     "noEmit": true,
-    "types": [
-      "node",
-      "bun-types"
-    ],
+    "types": ["node", "bun-types"],
     "typeRoots": [
       "./node_modules/@types",
       "../../node_modules/@types",
@@ -39,12 +33,6 @@
       "../../../node_modules"
     ]
   },
-  "include": [
-    "src/**/*.ts"
-  ],
-  "exclude": [
-    "src/__tests__/**/*",
-    "**/*.test.ts",
-    "**/*.spec.ts"
-  ]
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/__tests__/**/*", "**/*.test.ts", "**/*.spec.ts"]
 }

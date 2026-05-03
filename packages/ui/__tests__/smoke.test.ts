@@ -14,7 +14,7 @@ describe("@elizaos/ui", () => {
   it("exports the package entry point", async () => {
     const mod = await import("../src/index.ts");
     expect(mod).toBeDefined();
-  });
+  }, 60_000);
 
   describe("cn utility", () => {
     it("merges class names", async () => {

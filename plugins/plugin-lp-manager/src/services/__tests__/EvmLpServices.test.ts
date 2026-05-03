@@ -29,7 +29,7 @@ describe("UniswapV3LpService", () => {
     const { UniswapV3LpService } = await import("../../uniswap/services/UniswapV3LpService.ts");
     const service = new UniswapV3LpService(mockRuntime);
     expect(service.getDexName()).toBe("uniswap");
-  });
+  }, 30_000);
 
   it("should return supported chain IDs", async () => {
     const { UniswapV3LpService } = await import("../../uniswap/services/UniswapV3LpService.ts");

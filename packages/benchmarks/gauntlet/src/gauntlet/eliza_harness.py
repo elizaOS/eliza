@@ -686,13 +686,30 @@ class ElizaGauntletHarness:
 
     async def setup_runtime(self) -> None:
         """Create and initialize the ElizaOS runtime with gauntlet plugin."""
-        from elizaos.bootstrap import bootstrap_plugin
         from elizaos.runtime import AgentRuntime
 
-        plugins: list[object] = [bootstrap_plugin]
+        # The runtime auto-loads basic_capabilities_plugin (REPLY/IGNORE/NONE
+        # actions + core providers) when none is supplied — no explicit
+        # bootstrap import needed.  See elizaos.runtime.AgentRuntime.initialize.
+        plugins: list[object] = []
 
-        # Add model provider plugin if API key is available
-        if os.environ.get("OPENAI_API_KEY"):
+        # Add model provider plugin. Prefer the explicit GAUNTLET_AGENT_PROVIDER
+        # override; otherwise auto-detect from available API keys.
+        provider = (os.environ.get("GAUNTLET_AGENT_PROVIDER", "")).strip().lower()
+        if not provider:
+            if os.environ.get("GROQ_API_KEY"):
+                provider = "groq"
+            elif os.environ.get("OPENAI_API_KEY"):
+                provider = "openai"
+        if provider == "groq" and os.environ.get("GROQ_API_KEY"):
+            try:
+                from elizaos_plugin_groq import get_groq_plugin
+
+                plugins.append(get_groq_plugin())
+                print("    [ElizaOS] Groq plugin loaded")
+            except ImportError:
+                logger.warning("Groq plugin not available — install elizaos-plugin-groq")
+        elif provider == "openai" and os.environ.get("OPENAI_API_KEY"):
             try:
                 from elizaos_plugin_openai import get_openai_plugin
 
@@ -700,6 +717,12 @@ class ElizaGauntletHarness:
                 print("    [ElizaOS] OpenAI plugin loaded")
             except ImportError:
                 logger.warning("OpenAI plugin not available — install elizaos-plugin-openai")
+        else:
+            logger.warning(
+                "No model provider plugin configured (GAUNTLET_AGENT_PROVIDER=%r); "
+                "agent will fail on first LLM call",
+                provider,
+            )
 
         # Add gauntlet plugin (provider + action)
         plugins.append(create_gauntlet_plugin())

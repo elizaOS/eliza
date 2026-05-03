@@ -363,6 +363,22 @@ export async function startBenchmarkServer() {
     }
   }
 
+  const anthropicApiKey = process.env.ANTHROPIC_API_KEY?.trim();
+  if (anthropicApiKey) {
+    process.env.ANTHROPIC_API_KEY = anthropicApiKey;
+    try {
+      const { default: anthropicPlugin } = await import(
+        "@elizaos/plugin-anthropic"
+      );
+      plugins.push(toPlugin(anthropicPlugin, "@elizaos/plugin-anthropic"));
+      elizaLogger.info("[bench] Loaded LLM plugin: @elizaos/plugin-anthropic");
+    } catch (error: unknown) {
+      elizaLogger.debug(
+        `[bench] Anthropic plugin not available: ${formatUnknownError(error)}`,
+      );
+    }
+  }
+
   // Load computer use plugin if enabled
   if (process.env.ELIZA_ENABLE_COMPUTERUSE) {
     try {

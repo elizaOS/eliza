@@ -10,6 +10,7 @@ import type {
 } from "@elizaos/core";
 import { MINECRAFT_SERVICE_TYPE, type MinecraftService } from "../services/minecraft-service.js";
 import { WAYPOINTS_SERVICE_TYPE, type WaypointsService } from "../services/waypoints-service.js";
+import { matchPlannerValidateGate } from "./action-validate-gate.js";
 
 function parseName(text: string): string | null {
   const name = text.trim();
@@ -20,44 +21,14 @@ export const minecraftWaypointSetAction: Action = {
   name: "MC_WAYPOINT_SET",
   similes: ["MINECRAFT_WAYPOINT_SET", "SET_WAYPOINT", "SAVE_WAYPOINT"],
   description: "Save the bot's current position as a named waypoint (message text is the name).",
-  validate: async (runtime: any, message: any, state?: any, options?: any): Promise<boolean> => {
-    const __avTextRaw = typeof message?.content?.text === "string" ? message.content.text : "";
-    const __avText = __avTextRaw.toLowerCase();
-    const __avKeywords = ["waypoint", "set"];
-    const __avKeywordOk =
-      __avKeywords.length > 0 && __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
-    const __avRegex = /\b(?:waypoint|set)\b/i;
-    const __avRegexOk = __avRegex.test(__avText);
-    const __avSource = String(message?.content?.source ?? message?.source ?? "");
-    const __avExpectedSource = "";
-    const __avSourceOk = __avExpectedSource
-      ? __avSource === __avExpectedSource
-      : Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
-    const __avOptions = options && typeof options === "object" ? options : {};
-    const __avInputOk =
-      __avText.trim().length > 0 ||
-      Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-      Boolean(message?.content && typeof message.content === "object");
-
-    if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
-      return false;
-    }
-
-    const __avLegacyValidate = async (
-      runtime: IAgentRuntime,
-      message: Memory
-    ): Promise<boolean> => {
-      return (
-        Boolean(runtime.getService(WAYPOINTS_SERVICE_TYPE)) &&
-        Boolean(parseName(message.content.text ?? ""))
-      );
-    };
-    try {
-      return Boolean(await (__avLegacyValidate as any)(runtime, message, state, options));
-    } catch {
-      return false;
-    }
-  },
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
+    matchPlannerValidateGate(runtime, message, state, {
+      keywords: ["waypoint", "set"],
+      regex: /\b(?:waypoint|set)\b/i,
+      legacyValidate: async (rt, msg) =>
+        Boolean(rt.getService(WAYPOINTS_SERVICE_TYPE)) &&
+        Boolean(parseName(msg.content.text ?? "")),
+    }),
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -108,44 +79,14 @@ export const minecraftWaypointDeleteAction: Action = {
   name: "MC_WAYPOINT_DELETE",
   similes: ["MINECRAFT_WAYPOINT_DELETE", "DELETE_WAYPOINT", "REMOVE_WAYPOINT"],
   description: "Delete a named waypoint (message text is the name).",
-  validate: async (runtime: any, message: any, state?: any, options?: any): Promise<boolean> => {
-    const __avTextRaw = typeof message?.content?.text === "string" ? message.content.text : "";
-    const __avText = __avTextRaw.toLowerCase();
-    const __avKeywords = ["waypoint", "delete"];
-    const __avKeywordOk =
-      __avKeywords.length > 0 && __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
-    const __avRegex = /\b(?:waypoint|delete)\b/i;
-    const __avRegexOk = __avRegex.test(__avText);
-    const __avSource = String(message?.content?.source ?? message?.source ?? "");
-    const __avExpectedSource = "";
-    const __avSourceOk = __avExpectedSource
-      ? __avSource === __avExpectedSource
-      : Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
-    const __avOptions = options && typeof options === "object" ? options : {};
-    const __avInputOk =
-      __avText.trim().length > 0 ||
-      Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-      Boolean(message?.content && typeof message.content === "object");
-
-    if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
-      return false;
-    }
-
-    const __avLegacyValidate = async (
-      runtime: IAgentRuntime,
-      message: Memory
-    ): Promise<boolean> => {
-      return (
-        Boolean(runtime.getService(WAYPOINTS_SERVICE_TYPE)) &&
-        Boolean(parseName(message.content.text ?? ""))
-      );
-    };
-    try {
-      return Boolean(await (__avLegacyValidate as any)(runtime, message, state, options));
-    } catch {
-      return false;
-    }
-  },
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
+    matchPlannerValidateGate(runtime, message, state, {
+      keywords: ["waypoint", "delete"],
+      regex: /\b(?:waypoint|delete)\b/i,
+      legacyValidate: async (rt, msg) =>
+        Boolean(rt.getService(WAYPOINTS_SERVICE_TYPE)) &&
+        Boolean(parseName(msg.content.text ?? "")),
+    }),
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -173,38 +114,12 @@ export const minecraftWaypointListAction: Action = {
   name: "MC_WAYPOINT_LIST",
   similes: ["MINECRAFT_WAYPOINT_LIST", "LIST_WAYPOINTS", "SHOW_WAYPOINTS"],
   description: "List saved waypoints.",
-  validate: async (runtime: any, message: any, state?: any, options?: any): Promise<boolean> => {
-    const __avTextRaw = typeof message?.content?.text === "string" ? message.content.text : "";
-    const __avText = __avTextRaw.toLowerCase();
-    const __avKeywords = ["waypoint", "list"];
-    const __avKeywordOk =
-      __avKeywords.length > 0 && __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
-    const __avRegex = /\b(?:waypoint|list)\b/i;
-    const __avRegexOk = __avRegex.test(__avText);
-    const __avSource = String(message?.content?.source ?? message?.source ?? "");
-    const __avExpectedSource = "";
-    const __avSourceOk = __avExpectedSource
-      ? __avSource === __avExpectedSource
-      : Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
-    const __avOptions = options && typeof options === "object" ? options : {};
-    const __avInputOk =
-      __avText.trim().length > 0 ||
-      Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-      Boolean(message?.content && typeof message.content === "object");
-
-    if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
-      return false;
-    }
-
-    const __avLegacyValidate = async (runtime: IAgentRuntime): Promise<boolean> => {
-      return Boolean(runtime.getService(WAYPOINTS_SERVICE_TYPE));
-    };
-    try {
-      return Boolean(await (__avLegacyValidate as any)(runtime, message, state, options));
-    } catch {
-      return false;
-    }
-  },
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
+    matchPlannerValidateGate(runtime, message, state, {
+      keywords: ["waypoint", "list"],
+      regex: /\b(?:waypoint|list)\b/i,
+      legacyValidate: async (rt) => Boolean(rt.getService(WAYPOINTS_SERVICE_TYPE)),
+    }),
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -244,45 +159,15 @@ export const minecraftWaypointGotoAction: Action = {
   name: "MC_WAYPOINT_GOTO",
   similes: ["MINECRAFT_WAYPOINT_GOTO", "GOTO_WAYPOINT", "NAVIGATE_WAYPOINT"],
   description: "Pathfind to a named waypoint (message text is the name).",
-  validate: async (runtime: any, message: any, state?: any, options?: any): Promise<boolean> => {
-    const __avTextRaw = typeof message?.content?.text === "string" ? message.content.text : "";
-    const __avText = __avTextRaw.toLowerCase();
-    const __avKeywords = ["waypoint", "goto"];
-    const __avKeywordOk =
-      __avKeywords.length > 0 && __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
-    const __avRegex = /\b(?:waypoint|goto)\b/i;
-    const __avRegexOk = __avRegex.test(__avText);
-    const __avSource = String(message?.content?.source ?? message?.source ?? "");
-    const __avExpectedSource = "";
-    const __avSourceOk = __avExpectedSource
-      ? __avSource === __avExpectedSource
-      : Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
-    const __avOptions = options && typeof options === "object" ? options : {};
-    const __avInputOk =
-      __avText.trim().length > 0 ||
-      Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-      Boolean(message?.content && typeof message.content === "object");
-
-    if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
-      return false;
-    }
-
-    const __avLegacyValidate = async (
-      runtime: IAgentRuntime,
-      message: Memory
-    ): Promise<boolean> => {
-      return (
-        Boolean(runtime.getService(WAYPOINTS_SERVICE_TYPE)) &&
-        Boolean(runtime.getService(MINECRAFT_SERVICE_TYPE)) &&
-        Boolean(parseName(message.content.text ?? ""))
-      );
-    };
-    try {
-      return Boolean(await (__avLegacyValidate as any)(runtime, message, state, options));
-    } catch {
-      return false;
-    }
-  },
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
+    matchPlannerValidateGate(runtime, message, state, {
+      keywords: ["waypoint", "goto"],
+      regex: /\b(?:waypoint|goto)\b/i,
+      legacyValidate: async (rt, msg) =>
+        Boolean(rt.getService(WAYPOINTS_SERVICE_TYPE)) &&
+        Boolean(rt.getService(MINECRAFT_SERVICE_TYPE)) &&
+        Boolean(parseName(msg.content.text ?? "")),
+    }),
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,

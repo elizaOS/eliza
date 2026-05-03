@@ -12,7 +12,7 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
 import { describeIf } from "../helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../helpers/live-provider";
@@ -47,8 +47,7 @@ const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY?.trim() ?? "";
 const CHROME_PATH =
   process.env.ELIZA_CHROME_PATH ??
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-const LIVE_TESTS_ENABLED =
-  process.env.ELIZA_LIVE_TEST === "1";
+const LIVE_TESTS_ENABLED = process.env.ELIZA_LIVE_TEST === "1";
 const CHROME_AVAILABLE = existsSync(CHROME_PATH);
 const LIVE_PROVIDER =
   (LIVE_TESTS_ENABLED && selectLiveProvider("groq")) ||
@@ -1795,7 +1794,7 @@ async function currentVrmRegistry(page: Page): Promise<QaVrmRegistryEntry[]> {
   });
 }
 
-async function waitForWorldStageAvatar(
+async function _waitForWorldStageAvatar(
   page: Page,
   expectedSlug?: string | null,
   timeout = 90_000,
@@ -1821,7 +1820,7 @@ async function qaEmoteEvents(page: Page): Promise<QaEmoteEventRecord[]> {
   });
 }
 
-async function qaPlayEmoteCalls(page: Page): Promise<QaPlayEmoteRecord[]> {
+async function _qaPlayEmoteCalls(page: Page): Promise<QaPlayEmoteRecord[]> {
   return page.evaluate(() => {
     const qaWindow = window as typeof window & {
       __qaPlayEmoteCalls?: QaPlayEmoteRecord[];
@@ -1830,7 +1829,7 @@ async function qaPlayEmoteCalls(page: Page): Promise<QaPlayEmoteRecord[]> {
   });
 }
 
-async function qaTeleportEvents(page: Page): Promise<QaTeleportRecord[]> {
+async function _qaTeleportEvents(page: Page): Promise<QaTeleportRecord[]> {
   return page.evaluate(() => {
     const qaWindow = window as typeof window & {
       __qaTeleportEvents?: QaTeleportRecord[];
@@ -1902,7 +1901,7 @@ async function characterRosterEntries(
   });
 }
 
-async function selectedCharacterPreviewSrc(page: Page): Promise<string> {
+async function _selectedCharacterPreviewSrc(page: Page): Promise<string> {
   const previewSrc = await page.$eval(
     '[data-testid^="character-preset-"][aria-pressed="true"] img',
     (img) => img.getAttribute("src"),
@@ -2485,7 +2484,7 @@ async function isHttpOk(url: string): Promise<boolean> {
   }
 }
 
-async function resolveLiveUiUrl(): Promise<string> {
+async function _resolveLiveUiUrl(): Promise<string> {
   if (await isHttpOk(`${DEFAULT_UI_URL}/`)) {
     return DEFAULT_UI_URL;
   }

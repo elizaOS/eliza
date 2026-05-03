@@ -15,7 +15,7 @@ const appTaskCoordinatorSrc = path.join(
   "apps/app-task-coordinator/src",
 );
 const appCompanionSrc = path.join(monorepoRoot, "apps/app-companion/src");
-const pluginSqlSrc = path.join(monorepoRoot, "plugins/plugin-sql");
+const pluginSqlSrc = path.join(monorepoRoot, "plugins/plugin-sql/typescript");
 const pluginAgentSkillsSrc = path.join(
   monorepoRoot,
   "plugins/plugin-agent-skills/src",
@@ -49,20 +49,41 @@ export default defineConfig({
   },
   resolve: {
     alias: [
-      { find: /^@elizaos\/app-core$/, replacement: path.join(appCoreSrc, "index.ts") },
+      {
+        find: /^@elizaos\/app-core$/,
+        replacement: path.join(appCoreSrc, "index.ts"),
+      },
       {
         find: /^@elizaos\/app-core\/(.+)$/,
         replacement: path.join(appCoreSrc, "$1"),
       },
-      { find: /^@elizaos\/agent$/, replacement: path.join(agentSrc, "index.ts") },
-      { find: /^@elizaos\/agent\/(.+)$/, replacement: path.join(agentSrc, "$1") },
+      {
+        find: /^@elizaos\/agent$/,
+        replacement: path.join(agentSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/agent\/(.+)$/,
+        replacement: path.join(agentSrc, "$1"),
+      },
       { find: /^@elizaos\/ui$/, replacement: path.join(uiDir, "src/index.ts") },
       { find: /^@elizaos\/ui\/(.+)$/, replacement: path.join(uiDir, "src/$1") },
-      { find: /^@elizaos\/shared$/, replacement: path.join(sharedSrc, "index.ts") },
-      { find: /^@elizaos\/shared\/(.+)$/, replacement: path.join(sharedSrc, "$1") },
-      { find: /^@elizaos\/core$/, replacement: path.join(coreSrc, "index.node.ts") },
+      {
+        find: /^@elizaos\/shared$/,
+        replacement: path.join(sharedSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/shared\/(.+)$/,
+        replacement: path.join(sharedSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/core$/,
+        replacement: path.join(coreSrc, "index.node.ts"),
+      },
       { find: /^@elizaos\/core\/(.+)$/, replacement: path.join(coreSrc, "$1") },
-      { find: /^@elizaos\/app-lifeops$/, replacement: path.join(appLifeopsSrc, "index.ts") },
+      {
+        find: /^@elizaos\/app-lifeops$/,
+        replacement: path.join(appLifeopsSrc, "index.ts"),
+      },
       {
         find: /^@elizaos\/app-lifeops\/selfcontrol$/,
         replacement: path.join(
@@ -74,13 +95,22 @@ export default defineConfig({
         find: /^@elizaos\/app-lifeops\/(.+)$/,
         replacement: path.join(appLifeopsSrc, "$1"),
       },
-      { find: /^@elizaos\/app-companion$/, replacement: path.join(appCompanionSrc, "index.ts") },
-      { find: /^@elizaos\/app-companion\/ui$/, replacement: path.join(appCompanionSrc, "ui.ts") },
+      {
+        find: /^@elizaos\/app-companion$/,
+        replacement: path.join(appCompanionSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/app-companion\/ui$/,
+        replacement: path.join(appCompanionSrc, "ui.ts"),
+      },
       {
         find: /^@elizaos\/app-companion\/(.+)$/,
         replacement: path.join(appCompanionSrc, "$1"),
       },
-      { find: /^@elizaos\/plugin-sql$/, replacement: path.join(pluginSqlSrc, "index.node.ts") },
+      {
+        find: /^@elizaos\/plugin-sql$/,
+        replacement: path.join(pluginSqlSrc, "index.node.ts"),
+      },
       {
         find: /^@elizaos\/plugin-sql\/(.+)$/,
         replacement: path.join(pluginSqlSrc, "$1"),

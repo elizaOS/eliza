@@ -1,13 +1,18 @@
 /// <reference types="vitest/globals" />
-import { IAgentRuntime } from "@elizaos/core";
-import * as dlmmModule from "@meteora-ag/dlmm";
+import type { IAgentRuntime } from "@elizaos/core";
 import { Keypair as SolanaKeypair } from "@solana/web3.js";
-import { Mock, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  type Mock,
+  vi,
+} from "vitest";
 import { MeteoraLpService } from "../MeteoraLpService.ts";
 
-// Mock fetch
 const mockFetch = vi.fn();
-global.fetch = mockFetch as any;
 
 const mockRuntime = {
   agentId: "123e4567-e89b-12d3-a456-426614174000",
@@ -37,13 +42,10 @@ const mockPoolsResponse = [
 describe("MeteoraLpService", () => {
   let meteoraService: MeteoraLpService;
   const mockUserKeypair = SolanaKeypair.generate();
-  let mockDlmmCreate: any;
 
   beforeEach(async () => {
     vi.clearAllMocks();
-
-    // Use vi.spyOn to mock the create method after importing the module
-    mockDlmmCreate = vi.spyOn(dlmmModule.default, "create");
+    vi.stubGlobal("fetch", mockFetch);
 
     (mockRuntime.getSetting as Mock).mockReturnValue(
       "https://api.mainnet-beta.solana.com",
@@ -56,6 +58,10 @@ describe("MeteoraLpService", () => {
     });
 
     vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("should have correct dex name", () => {

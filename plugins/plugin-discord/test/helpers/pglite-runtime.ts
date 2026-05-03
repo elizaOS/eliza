@@ -2,4 +2,4 @@ export {
 	createTestRuntime,
 	type TestRuntimeOptions,
 	type TestRuntimeResult,
-} from "../../../../packages/typescript/test/helpers/pglite-runtime.ts";
+} from "../../../../packages/core/test/helpers/pglite-runtime.ts";

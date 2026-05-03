@@ -26,7 +26,7 @@ schemas/
 └── README.md
 
 Generated output:
-└── packages/typescript/src/types/generated/  # TypeScript
+└── packages/core/src/types/generated/  # TypeScript
 ```
 
 ## Quick Start
@@ -143,14 +143,14 @@ message Content {
 
 The generated types replace the manual type definitions in:
 
-- `packages/typescript/src/types/*.ts`
+- `packages/core/src/types/*.ts`
 
 ### Compatibility Layer
 
 During migration, a compatibility layer re-exports generated types with the original names. This allows gradual migration:
 
 ```typescript
-// packages/typescript/src/types/index.ts
+// packages/core/src/types/index.ts
 export * from "./generated";
 export { Memory as MemoryType } from "./generated/eliza/v1/memory_pb";
 ```

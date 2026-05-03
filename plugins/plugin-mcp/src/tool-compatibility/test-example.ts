@@ -64,7 +64,6 @@ function createMockRuntime(modelProvider: string, model: string): MockRuntime {
     },
     getRegisteredServiceTypes: () => [],
     hasService: () => false,
-    registerDatabaseAdapter: () => {},
   };
 
   return {

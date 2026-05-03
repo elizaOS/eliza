@@ -8,7 +8,7 @@
         "@elizaos/cloud-routing": "workspace:*",
         "@elizaos/core": "latest",
         "@coral-xyz/anchor": "0.30.1",
-        "@solana/spl-token": "0.4.9",
+        "@solana/spl-token": "0.4.14",
         "@solana/web3.js": "1.95.8",
         "bignumber": "1.1.0",
         "bignumber.js": "9.1.2",
@@ -25,7 +25,7 @@
         "@types/node": "^22.10.2",
         "ts-node": "^10.9.2",
         "tsconfig-paths": "^4.2.0",
-        "typescript": "^5.7.2"
+        "typescript": "^6.0.3"
     },
     "scripts": {
         "build": "tsup --format esm --dts",
@@ -36,7 +36,7 @@
         "check": "biome check --apply ."
     },
     "peerDependencies": {
-        "form-data": "4.0.1",
+        "form-data": "4.0.5",
         "whatwg-url": "7.1.0"
     },
     "agentConfig": {

@@ -3,16 +3,10 @@
 /**
  * Prompt Generator Script
  *
- * Generates native code from .txt prompt templates for:
- * - TypeScript
- * - Python
- * - Rust
+ * Generates TypeScript code from .txt prompt templates.
  *
  * Usage:
- *   node scripts/generate.js              # Generate all targets
- *   node scripts/generate.js --target typescript
- *   node scripts/generate.js --target python
- *   node scripts/generate.js --target rust
+ *   node scripts/generate.js
  */
 
 import fs from "node:fs";
@@ -59,26 +53,6 @@ function escapeTypeScript(content) {
     .replace(/\\/g, "\\\\")
     .replace(/`/g, "\\`")
     .replace(/\$\{/g, "\\${");
-}
-
-/**
- * Escape a string for use in Python triple-quoted string
- */
-function escapePython(content) {
-  return content.replace(/\\/g, "\\\\").replace(/"""/g, '\\"\\"\\"');
-}
-
-/**
- * Escape a string for use in Rust raw string literal
- * Rust raw strings r#"..."# don't need escaping except for the delimiter itself
- */
-function escapeRust(content) {
-  // Check if content contains "# - if so, we need more # in our delimiter
-  let hashCount = 1;
-  while (content.includes(`"${"#".repeat(hashCount)}`)) {
-    hashCount++;
-  }
-  return { content, hashCount };
 }
 
 /**
@@ -157,121 +131,15 @@ function generateTypeScript(prompts) {
 }
 
 /**
- * Generate Python output
- */
-function generatePython(prompts) {
-  const outputDir = path.join(DIST_DIR, "python");
-  fs.mkdirSync(outputDir, { recursive: true });
-
-  let output = `"""
-Auto-generated prompt templates for elizaOS Python runtime.
-DO NOT EDIT - Generated from packages/prompts/prompts/*.txt
-
-These prompts use Handlebars-style template syntax:
-- {{variableName}} for simple substitution
-- {{#each items}}...{{/each}} for iteration
-- {{#if condition}}...{{/if}} for conditionals
-"""
-
-from __future__ import annotations
-
-`;
-
-  for (const prompt of prompts) {
-    const escaped = escapePython(prompt.content);
-    output += `${prompt.constName} = """${escaped}"""\n\n`;
-  }
-
-  // Add boolean footer
-  output += `BOOLEAN_FOOTER = "Respond with only a YES or a NO."\n`;
-
-  // Add __all__ for explicit exports
-  output += `\n__all__ = [\n`;
-  for (const prompt of prompts) {
-    output += `    "${prompt.constName}",\n`;
-  }
-  output += `    "BOOLEAN_FOOTER",\n`;
-  output += `]\n`;
-
-  fs.writeFileSync(path.join(outputDir, "prompts.py"), output);
-
-  // Create __init__.py for package import
-  fs.writeFileSync(
-    path.join(outputDir, "__init__.py"),
-    `"""elizaOS Prompts Package"""\nfrom .prompts import *\n`,
-  );
-
-  console.log(`Generated Python output: ${outputDir}/prompts.py`);
-}
-
-/**
- * Generate Rust output
- */
-function generateRust(prompts) {
-  const outputDir = path.join(DIST_DIR, "rust");
-  fs.mkdirSync(outputDir, { recursive: true });
-
-  let output = `//! Auto-generated prompt templates for elizaOS Rust runtime.
-//! DO NOT EDIT - Generated from packages/prompts/prompts/*.txt
-//!
-//! These prompts use Handlebars-style template syntax:
-//! - {{variableName}} for simple substitution
-//! - {{#each items}}...{{/each}} for iteration
-//! - {{#if condition}}...{{/if}} for conditionals
-
-`;
-
-  for (const prompt of prompts) {
-    const { content, hashCount } = escapeRust(prompt.content);
-    const delimiter = "#".repeat(hashCount);
-    output += `pub const ${prompt.constName}: &str = r${delimiter}"${content}"${delimiter};\n\n`;
-  }
-
-  // Add boolean footer
-  output += `pub const BOOLEAN_FOOTER: &str = "Respond with only a YES or a NO.";\n`;
-
-  fs.writeFileSync(path.join(outputDir, "prompts.rs"), output);
-
-  // Also create a mod.rs that re-exports
-  fs.writeFileSync(
-    path.join(outputDir, "mod.rs"),
-    `//! elizaOS Prompts Module\nmod prompts;\npub use prompts::*;\n`,
-  );
-
-  console.log(`Generated Rust output: ${outputDir}/prompts.rs`);
-}
-
-/**
  * Main entry point
  */
 function main() {
-  const args = process.argv.slice(2);
-  const targetIndex = args.indexOf("--target");
-  const target = targetIndex !== -1 ? args[targetIndex + 1] : "all";
-
   console.log("Loading prompts...");
   const prompts = loadPrompts();
   console.log(`Found ${prompts.length} prompt templates`);
 
-  // Ensure dist directory exists
   fs.mkdirSync(DIST_DIR, { recursive: true });
-
-  switch (target) {
-    case "typescript":
-      generateTypeScript(prompts);
-      break;
-    case "python":
-      generatePython(prompts);
-      break;
-    case "rust":
-      generateRust(prompts);
-      break;
-    default:
-      generateTypeScript(prompts);
-      generatePython(prompts);
-      generateRust(prompts);
-      break;
-  }
+  generateTypeScript(prompts);
 
   console.log("Done!");
 }

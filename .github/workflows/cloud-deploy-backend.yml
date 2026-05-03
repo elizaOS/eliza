@@ -54,6 +54,11 @@ jobs:
   determine-env:
     name: Determine Environment
     runs-on: ubuntu-latest
+    # Workflow defaults use working-directory: cloud; this job does not checkout,
+    # so `cloud/` does not exist yet and bash fails to start.
+    defaults:
+      run:
+        working-directory: .
     outputs:
       environment: ${{ steps.env.outputs.environment }}
       branch: ${{ steps.env.outputs.branch }}
@@ -87,9 +92,6 @@ jobs:
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
-
-      - name: Prepare Steward workspaces
-        run: bash packages/scripts/prepare-steward-workspaces.sh
 
       - name: Install dependencies
         run: |
@@ -162,9 +164,6 @@ jobs:
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
-
-      - name: Prepare Steward workspaces
-        run: bash packages/scripts/prepare-steward-workspaces.sh
 
       - name: Install dependencies
         run: |
@@ -315,7 +314,6 @@ jobs:
               curl -fsSL https://bun.sh/install | bash
               export PATH="$BUN_INSTALL/bin:$PATH"
             fi
-            bash packages/scripts/prepare-steward-workspaces.sh
             for attempt in 1 2 3; do
               if bun install --frozen-lockfile; then
                 break

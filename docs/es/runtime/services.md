@@ -63,7 +63,7 @@ Los plugins principales siempre se cargan y cada uno proporciona uno o más serv
 |---|---|---|
 | `@elizaos/plugin-sql` | Database adapter | Persistencia con PGLite o PostgreSQL; proporciona `runtime.adapter` |
 | `@elizaos/plugin-local-embedding` | `TEXT_EMBEDDING` handler | Modelo de embedding GGUF local mediante node-llama-cpp |
-| `@elizaos/plugin-form` | Form service | Empaquetado de formularios estructurados para recorridos guiados del usuario |
+| `@elizaos/core` (capacidades avanzadas) | `FORM` | Formularios conversacionales estructurados — FormService, proveedor y evaluador de formularios (se carga con capacidades avanzadas activadas; sin plugin npm aparte) |
 | `knowledge` | Knowledge service | Indexación y recuperación de conocimiento RAG |
 | `trajectories` | `trajectories` | Captura de trayectorias de depuración y entrenamiento RL |
 | `@elizaos/plugin-agent-orchestrator` | Orchestrator service | Coordinación y generación de tareas multi-agente |

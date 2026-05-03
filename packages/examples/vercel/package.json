@@ -17,8 +17,8 @@
   },
   "dependencies": {
     "@elizaos/core": "alpha",
-    "@elizaos/plugin-openai": "alpha",
-    "@elizaos/plugin-sql": "alpha",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
     "uuid": "^14.0.0"
   },
   "devDependencies": {

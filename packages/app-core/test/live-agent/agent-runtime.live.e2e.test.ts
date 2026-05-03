@@ -28,7 +28,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import dotenv from "dotenv";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect } from "vitest";
 import { itIf } from "../helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../helpers/live-provider";
 import { sleep, withTimeout } from "../helpers/test-utils";
@@ -53,8 +53,7 @@ const packageRoot = path.resolve(testDir, "..");
 dotenv.config({ path: path.resolve(packageRoot, ".env") });
 dotenv.config({ path: path.resolve(packageRoot, "..", "..", ".env") });
 
-const liveModelTestsEnabled =
-  process.env.ELIZA_LIVE_TEST === "1";
+const liveModelTestsEnabled = process.env.ELIZA_LIVE_TEST === "1";
 const selectedLiveProvider = liveModelTestsEnabled
   ? selectLiveProvider()
   : null;
@@ -217,7 +216,7 @@ async function shouldSkipDueModelProviderUnavailable(
   return false;
 }
 
-function readSerializedProperty(
+function _readSerializedProperty(
   value: unknown,
   key: string,
 ): unknown | undefined {
@@ -234,7 +233,7 @@ function readSerializedProperty(
   return (properties as Record<string, unknown>)[key];
 }
 
-function readSerializedArray(value: unknown): Array<Record<string, unknown>> {
+function _readSerializedArray(value: unknown): Array<Record<string, unknown>> {
   if (Array.isArray(value)) return value as Array<Record<string, unknown>>;
   if (!value || typeof value !== "object") return [];
   const items = (value as Record<string, unknown>).items;
@@ -462,7 +461,7 @@ describe("Agent Runtime E2E", () => {
       await instance.initialize();
       if (!instance.getService("AUTONOMY")) {
         const { AutonomyService } = await import(
-          "../../../typescript/src/features/autonomy/service.ts"
+          "../../../core/src/features/autonomy/service.ts"
         );
         await AutonomyService.start(instance);
       }

@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Build script for @elizaos/plugin-x TypeScript package
+ * Build script for @elizaos/plugin-xai
  *
  * Produces:
  * - dist/node/index.node.js (ESM for Node.js)
@@ -16,7 +16,7 @@ async function build(): Promise<void> {
 
   // Node ESM build
   const nodeStart = Date.now();
-  console.log("🔨 Building @elizaos/plugin-x for Node (ESM)...");
+  console.log("🔨 Building @elizaos/plugin-xai for Node (ESM)...");
 
   const nodeResult = await Bun.build({
     entrypoints: ["index.node.ts"],
@@ -39,7 +39,7 @@ async function build(): Promise<void> {
 
   // Browser ESM build
   const browserStart = Date.now();
-  console.log("🌐 Building @elizaos/plugin-x for Browser...");
+  console.log("🌐 Building @elizaos/plugin-xai for Browser...");
 
   const browserResult = await Bun.build({
     entrypoints: ["index.browser.ts"],
@@ -62,7 +62,7 @@ async function build(): Promise<void> {
 
   // Node CJS build
   const cjsStart = Date.now();
-  console.log("🧱 Building @elizaos/plugin-x for Node (CJS)...");
+  console.log("🧱 Building @elizaos/plugin-xai for Node (CJS)...");
 
   const cjsResult = await Bun.build({
     entrypoints: ["index.node.ts"],

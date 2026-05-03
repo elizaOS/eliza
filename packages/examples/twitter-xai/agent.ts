@@ -17,22 +17,34 @@ function validateEnvironment(): void {
   // Grok (xAI) is the model provider for this example.
   requireEnv("XAI_API_KEY");
 
-  // X API user-context OAuth 1.0a (recommended for posting/replying).
-  const authMode = (process.env.X_AUTH_MODE ?? "env").toLowerCase();
-  if (authMode !== "env") {
-    throw new Error(
-      `This example expects X_AUTH_MODE=env (OAuth 1.0a). Got X_AUTH_MODE=${process.env.X_AUTH_MODE ?? ""}`,
-    );
+  // X (Twitter) is provided by @elizaos/plugin-x. Pick one of the three modes.
+  const authMode = (process.env.TWITTER_AUTH_MODE ?? "broker").toLowerCase();
+  switch (authMode) {
+    case "broker":
+      if (!process.env.TWITTER_BROKER_TOKEN && !process.env.ELIZAOS_CLOUD_API_KEY) {
+        throw new Error(
+          "TWITTER_AUTH_MODE=broker requires TWITTER_BROKER_TOKEN or ELIZAOS_CLOUD_API_KEY. Connect your X account on the Eliza Cloud connectors page first.",
+        );
+      }
+      break;
+    case "oauth":
+      requireEnv("TWITTER_CLIENT_ID");
+      requireEnv("TWITTER_REDIRECT_URI");
+      break;
+    case "env":
+      requireEnv("TWITTER_API_KEY");
+      requireEnv("TWITTER_API_SECRET_KEY");
+      requireEnv("TWITTER_ACCESS_TOKEN");
+      requireEnv("TWITTER_ACCESS_TOKEN_SECRET");
+      break;
+    default:
+      throw new Error(
+        `Invalid TWITTER_AUTH_MODE=${authMode}. Expected broker | oauth | env.`,
+      );
   }
-
-  requireEnv("X_API_KEY");
-  requireEnv("X_API_SECRET");
-  requireEnv("X_ACCESS_TOKEN");
-  requireEnv("X_ACCESS_TOKEN_SECRET");
 }
 
 async function main(): Promise<void> {
-  // Load environment variables from parent directory and current directory.
   loadDotEnv({ path: "../.env" });
   loadDotEnv();
 
@@ -49,33 +61,31 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // Dynamically import workspace plugins (matches other examples).
   const sqlPlugin = (await import("@elizaos/plugin-sql")).default;
   const { XAIPlugin } = await import("@elizaos/plugin-xai");
+  const xPlugin = (await import("@elizaos/plugin-x")).default;
 
   const runtime = new AgentRuntime({
     character,
-    plugins: [sqlPlugin, XAIPlugin],
+    plugins: [sqlPlugin, XAIPlugin, xPlugin],
   });
 
   console.log("⏳ Initializing runtime...");
   await runtime.initialize();
 
-  // Fail fast if the X service did not start (registerPlugin starts services async).
-  // This prevents "agent is running" logs when the X integration is actually down.
+  // Fail fast if the Twitter service did not start (registerPlugin starts services async).
   await runtime.getServiceLoadPromise("x");
 
   console.log(`\n✅ Agent "${character.name}" is now running on X.`);
-  console.log(`   Dry run mode: ${process.env.X_DRY_RUN === "true"}`);
+  console.log(`   Dry run mode: ${process.env.TWITTER_DRY_RUN === "true"}`);
   console.log(
-    `   Replies enabled: ${(process.env.X_ENABLE_REPLIES ?? "true") !== "false"}`,
-  );
-  console.log(`   Posting enabled: ${process.env.X_ENABLE_POST === "true"}`);
-  console.log(
-    `   Timeline actions enabled: ${process.env.X_ENABLE_ACTIONS === "true"}`,
+    `   Replies enabled: ${(process.env.TWITTER_ENABLE_REPLIES ?? "true") !== "false"}`,
   );
   console.log(
-    `   Discovery enabled: ${process.env.X_ENABLE_DISCOVERY === "true"}`,
+    `   Posting enabled: ${process.env.TWITTER_ENABLE_POST === "true"}`,
+  );
+  console.log(
+    `   Timeline actions enabled: ${process.env.TWITTER_ENABLE_ACTIONS === "true"}`,
   );
   console.log("\n   Press Ctrl+C to stop.\n");
 
@@ -88,7 +98,7 @@ async function main(): Promise<void> {
   process.on("SIGINT", () => void shutdown("SIGINT"));
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
-  // Keep process alive; the X service runs polling loops internally.
+  // Keep process alive; the Twitter service runs polling loops internally.
   await new Promise(() => {});
 }
 

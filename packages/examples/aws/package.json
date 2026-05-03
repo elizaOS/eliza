@@ -23,8 +23,8 @@
   },
   "dependencies": {
     "@elizaos/core": "alpha",
-    "@elizaos/plugin-openai": "alpha",
-    "@elizaos/plugin-sql": "alpha"
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.145",

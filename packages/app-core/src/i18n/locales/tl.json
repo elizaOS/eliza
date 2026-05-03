@@ -2912,7 +2912,7 @@
   "streamview.StreamReady": "Handa na ang Stream",
   "streamview.StreamingUnavailabl": "Hindi available ang streaming",
   "streamview.pluginThenReload": "plugin, pagkatapos i-reload ang Stream tab.",
-  "streamview.streamingBase": "streaming-base",
+  "streamview.streamingBase": "streaming",
   "streamview.{{appName}}CouldNotRea": "Hindi ma-reach ang",
   "subscriptionstatus.AfterLoggingInCo": "Pagkatapos mag-login sa Claude, kopyahin ang authorization code at\n                i-paste ito sa ibaba.",
   "subscriptionstatus.AfterLoggingInYo": "Pagkatapos mag-login, ire-redirect ka ng iyong browser sa isang page na hindi maglo-load\n                (nagsisimula sa",

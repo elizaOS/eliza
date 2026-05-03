@@ -10,17 +10,16 @@ import {
 import { afterAll, beforeAll, describe, expect } from "vitest";
 import { itIf } from "../../../../../eliza/test/helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../../../../../eliza/test/helpers/live-provider";
-import { experienceEvaluator } from "../../../typescript/src/features/advanced-capabilities/experience/evaluators/experienceEvaluator.ts";
-import { ExperienceService } from "../../../typescript/src/features/advanced-capabilities/experience/service.ts";
+import { experienceEvaluator } from "../../../core/src/features/advanced-capabilities/experience/evaluators/experienceEvaluator.ts";
+import { ExperienceService } from "../../../core/src/features/advanced-capabilities/experience/service.ts";
 import {
   ExperienceType,
   OutcomeType,
-} from "../../../typescript/src/features/advanced-capabilities/experience/types.ts";
+} from "../../../core/src/features/advanced-capabilities/experience/types.ts";
 import { ConversationHarness } from "../helpers/conversation-harness.js";
 import { createRealTestRuntime } from "../helpers/real-runtime.ts";
 
-const liveModelTestsEnabled =
-  process.env.ELIZA_LIVE_TEST === "1";
+const liveModelTestsEnabled = process.env.ELIZA_LIVE_TEST === "1";
 const selectedLiveProvider = liveModelTestsEnabled
   ? selectLiveProvider()
   : null;

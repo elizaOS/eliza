@@ -44,7 +44,7 @@ export const remoteAttestationAction: Action = {
     const __avRegex = new RegExp("\\b(?:remote|attestation)\\b", "i");
     const __avRegexOk = __avRegex.test(__avText);
     const __avSource = String(
-      message?.content?.source ?? message?.source ?? "",
+      message?.content?.source ?? "",
     );
     const __avExpectedSource = "";
     const __avSourceOk = __avExpectedSource

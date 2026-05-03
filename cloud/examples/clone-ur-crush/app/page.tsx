@@ -159,6 +159,7 @@ export default function HomePage() {
   };
 
   // Handle auto-generation flow when user triggers photo generation
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Multi-step auto-gen; full deps would re-enter while generatingField/generatingPhoto flip.
   useEffect(() => {
     if (!shouldAutoGeneratePhoto) return;
 
@@ -216,7 +217,6 @@ export default function HomePage() {
     };
 
     autoGenerate();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shouldAutoGeneratePhoto, formData.description, generatingField, generatingPhoto]);
 
   const handleGeneratePhotoWithAppearance = async (appearance: string) => {

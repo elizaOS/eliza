@@ -1,10 +1,13 @@
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import { type ClmmPoolInfo, Position, type PositionInfo } from "@raydium-io/raydium-sdk";
 import type { Connection, PublicKey } from "@solana/web3.js";
+import type { JupiterQuoteResponse } from "../types.ts";
+
+type RaydiumRegisteredProvider = { name: string };
 
 export class RaydiumService extends Service {
   private isRunning = false;
-  private registry: Record<number, any> = {};
+  private registry: Record<number, RaydiumRegisteredProvider> = {};
 
   static serviceType = "RAYDIUM_SERVICE";
   capabilityDescription = "Provides Raydium DEX integration for token swaps";
@@ -24,7 +27,7 @@ export class RaydiumService extends Service {
   }
 
   // return Raydium Provider handle
-  async registerProvider(provider: any) {
+  async registerProvider(provider: RaydiumRegisteredProvider) {
     // add to registry
     const id = Object.values(this.registry).length + 1;
     console.log("registered", provider.name, `as Raydium provider #${id}`);
@@ -70,7 +73,7 @@ export class RaydiumService extends Service {
     userPublicKey,
     slippageBps,
   }: {
-    quoteResponse: any;
+    quoteResponse: JupiterQuoteResponse;
     userPublicKey: string;
     slippageBps: number;
   }) {
@@ -294,8 +297,8 @@ export class RaydiumService extends Service {
     inputMint: string;
     outputMint: string;
   }): Promise<{
-    inputToken: any;
-    outputToken: any;
+    inputToken: Record<string, string | number | boolean | null>;
+    outputToken: Record<string, string | number | boolean | null>;
     liquidity: number;
     volume24h: number;
   }> {
@@ -345,7 +348,7 @@ export class RaydiumService extends Service {
   async findArbitragePaths({
     startingMint,
     amount,
-    maxHops = 3,
+    maxHops: _maxHops = 3,
   }: {
     startingMint: string;
     amount: number;

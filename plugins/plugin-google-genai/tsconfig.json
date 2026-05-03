@@ -18,12 +18,10 @@
     "noImplicitReturns": false,
     "noImplicitAny": false,
     "types": ["node", "bun-types"],
-    "ignoreDeprecations": "6.0",
     "allowImportingTsExtensions": true,
-    "baseUrl": "../../../",
     "paths": {
-      "@elizaos/core": ["packages/core/dist/node"],
-      "@elizaos/core/*": ["packages/core/dist/*"]
+      "@elizaos/core": ["../../../packages/core/dist/node"],
+      "@elizaos/core/*": ["../../../packages/core/dist/*"]
     }
   },
   "include": ["./**/*.ts"],

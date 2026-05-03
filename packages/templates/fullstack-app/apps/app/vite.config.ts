@@ -121,7 +121,7 @@ function resolveElizaCoreBundlePath(): string {
   if (fs.existsSync(nodeEntry)) {
     console.warn(
       "[eliza][vite] @elizaos/core dist/browser is missing; using dist/node for the client bundle. " +
-        "For a linked eliza workspace, run `bun run build` in that checkout (e.g. packages/typescript). " +
+        "For a linked eliza workspace, run `bun run build` in that checkout (e.g. packages/core). " +
         "Or reinstall with ELIZA_SKIP_LOCAL_ELIZA=1 to use the published npm package.",
     );
     return nodeEntry;
@@ -748,7 +748,7 @@ function nativeModuleStubPlugin(): Plugin {
       const normId = id.split(path.sep).join("/");
       const isCorePackagePath =
         normId.includes("/node_modules/@elizaos/core/") ||
-        normId.includes("packages/typescript/dist/");
+        normId.includes("packages/core/dist/");
       if (!isCoreDistFile || !isCorePackagePath) return null;
 
       // Fix AsyncLocalStorage: the browser entry has a try/catch that does

@@ -40,9 +40,7 @@ import { createSerialise } from "../utils/serialise";
 
 const execFileAsync = promisify(execFile);
 const require = createRequire(import.meta.url);
-const RELEASE_CHANNEL_ENV_KEYS = [
-  "ELIZA_PLUGIN_RELEASE_CHANNEL",
-] as const;
+const RELEASE_CHANNEL_ENV_KEYS = ["ELIZA_PLUGIN_RELEASE_CHANNEL"] as const;
 
 // ---------------------------------------------------------------------------
 // Input validation — prevent shell injection
@@ -238,7 +236,7 @@ export async function detectPackageManager(): Promise<"bun" | "npm"> {
  * 5. Returns metadata about the installation for the caller to
  *    decide whether to trigger a restart.
  *
- * @param pluginName - The plugin name (e.g., "@elizaos/plugin-twitter")
+ * @param pluginName - The plugin name (e.g., "@elizaos/plugin-discord")
  * @param onProgress - Optional progress callback
  * @param requestedVersion - Optional specific version to install (e.g., "1.2.23-alpha.0")
  */

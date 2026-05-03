@@ -52,8 +52,7 @@ export function formatApiDevSettingsBannerText(
       source: bindWin
         ? `env set — ${bindWin.key}=${bindWin.value}`
         : `default (unset — ${sec.bindHost})`,
-      change:
-        "export ELIZA_API_BIND=127.0.0.1; unset both for default",
+      change: "export ELIZA_API_BIND=127.0.0.1; unset both for default",
     },
     {
       setting: "ELIZA_API_TOKEN / ELIZA_API_TOKEN",

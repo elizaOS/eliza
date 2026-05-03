@@ -20,10 +20,9 @@
     "types": ["node"],
     "jsx": "react-jsx",
     "allowImportingTsExtensions": true,
-    "baseUrl": "../../..",
     "paths": {
-      "@elizaos/core": ["packages/core/dist/node"],
-      "@elizaos/core/*": ["packages/core/dist/*"]
+      "@elizaos/core": ["../../../packages/core/dist/node"],
+      "@elizaos/core/*": ["../../../packages/core/dist/*"]
     }
   },
   "include": ["./**/*.ts", "./**/*.tsx"],

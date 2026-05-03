@@ -85,8 +85,7 @@ interface DesktopBootstrapResponseBody {
  * `~/.<namespace>` derived from brand config.
  */
 export function resolveStateDir(env: NodeJS.ProcessEnv = process.env): string {
-	const explicit =
-		env.ELIZA_STATE_DIR?.trim() || "";
+	const explicit = env.ELIZA_STATE_DIR?.trim() || "";
 	if (explicit) return explicit;
 	return path.join(os.homedir(), `.${getBrandConfig().namespace}`);
 }

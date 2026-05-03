@@ -34,14 +34,26 @@ async function main(): Promise<void> {
       ? resolve(args[outputIndex + 1])
       : join(import.meta.dir ?? process.cwd(), "..", "results");
 
+  const limitIndex = args.indexOf("--limit");
+  const limit =
+    limitIndex >= 0 && args[limitIndex + 1]
+      ? Number.parseInt(args[limitIndex + 1], 10)
+      : undefined;
+  const scenarios =
+    limit && Number.isFinite(limit) && limit > 0
+      ? ALL_SCENARIOS.slice(0, limit)
+      : ALL_SCENARIOS;
+
   header("CONFIGBENCH — Plugin Configuration & Secrets Security Benchmark");
 
   const categories = new Map<string, number>();
-  for (const s of ALL_SCENARIOS) {
+  for (const s of scenarios) {
     categories.set(s.category, (categories.get(s.category) ?? 0) + 1);
   }
 
-  console.log(`  Total scenarios: ${B}${ALL_SCENARIOS.length}${X}`);
+  console.log(
+    `  Total scenarios: ${B}${scenarios.length}${X}${limit ? ` (limited from ${ALL_SCENARIOS.length})` : ""}`,
+  );
   for (const [cat, count] of categories) {
     console.log(`    ${cat}: ${count}`);
   }
@@ -55,7 +67,7 @@ async function main(): Promise<void> {
     console.log(`  ${Y}Eliza handler enabled — requires LLM API key${X}\n`);
   }
 
-  const results = await runBenchmark(handlers, ALL_SCENARIOS, {
+  const results = await runBenchmark(handlers, scenarios, {
     progressCallback: (handlerName, scenarioId, idx, total) => {
       process.stdout.write(
         `\r  Running ${handlerName}: ${scenarioId} (${idx}/${total})  `,

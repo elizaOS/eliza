@@ -144,7 +144,7 @@ export async function extractAndPersistOnboardingApiKey(
   if (
     llmSelection?.transport === "direct" &&
     llmSelection.backend !== "elizacloud" &&
-    (!llmSelection.apiKey || !llmSelection.apiKey.startsWith("****"))
+    !llmSelection.apiKey?.startsWith("****")
   ) {
     const resolved = resolveProviderCredential(llmSelection.backend);
     if (resolved && resolved.authType === "subscription") {

@@ -115,80 +115,34 @@ export const sayAloudAction: Action = {
     ],
   ],
 
-  validate: async (runtime: any, message: any, state?: any, options?: any): Promise<boolean> => {
-    const __avTextRaw = typeof message?.content?.text === "string" ? message.content.text : "";
-    const __avText = __avTextRaw.toLowerCase();
-    const __avKeywords = ["say", "aloud"];
-    const __avKeywordOk =
-      __avKeywords.length > 0 && __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
-    const __avRegex = /\b(?:say|aloud)\b/i;
-    const __avRegexOk = __avRegex.test(__avText);
-    const __avSource = String(message?.content?.source ?? message?.source ?? "");
-    const __avExpectedSource = "";
-    const __avSourceOk = __avExpectedSource
-      ? __avSource === __avExpectedSource
-      : Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
-    const __avOptions = options && typeof options === "object" ? options : {};
-    const __avInputOk =
-      __avText.trim().length > 0 ||
-      Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-      Boolean(message?.content && typeof message.content === "object");
-
-    if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
-      return false;
-    }
-
-    const __avLegacyValidate = async (
-      runtime: any,
-      message: any,
-      state?: any,
-      options?: any
-    ): Promise<boolean> => {
-      const __avTextRaw = typeof message?.content?.text === "string" ? message.content.text : "";
-      const __avText = __avTextRaw.toLowerCase();
-      const __avKeywords = ["say", "aloud"];
-      const __avKeywordOk =
-        __avKeywords.length > 0 &&
-        __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
-      const __avRegexOk = /\b(?:say|aloud)\b/i.test(__avText);
-      const __avSource = String(message?.content?.source ?? message?.source ?? "");
-      const __avExpectedSource = "";
-      const __avSourceOk = __avExpectedSource
-        ? __avSource === __avExpectedSource
-        : Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
-      const __avOptions = options && typeof options === "object" ? options : {};
-      const __avInputOk =
-        __avText.trim().length > 0 ||
-        Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-        Boolean(message?.content && typeof message.content === "object");
-
-      if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
-        return false;
-      }
-
-      const __avLegacyValidate = async (
-        _runtime: IAgentRuntime,
-        message: Memory,
-        _state?: State
-      ): Promise<boolean> => {
-        const text = (message.content.text ?? "").toLowerCase();
-
-        const hasTrigger = SPEECH_TRIGGERS.some((trigger) => text.includes(trigger));
-        const hasIntent =
-          VOCALIZATION_PATTERNS.some((pattern) => text.includes(pattern)) ||
-          /say ["'].*["']/.test(text) ||
-          /speak ["'].*["']/.test(text);
-
-        return hasTrigger || hasIntent;
-      };
-      try {
-        return Boolean(await (__avLegacyValidate as any)(runtime, message, state, options));
-      } catch {
-        return false;
-      }
-    };
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
     try {
-      return Boolean(await (__avLegacyValidate as any)(runtime, message, state, options));
+      const textRaw = typeof message.content?.text === "string" ? message.content.text : "";
+      const textLower = textRaw.toLowerCase();
+      const keywords = ["say", "aloud"];
+      const keywordOk =
+        keywords.length > 0 && keywords.some((kw) => kw.length > 0 && textLower.includes(kw));
+      const regexOk = /\b(?:say|aloud)\b/i.test(textLower);
+      const msgSource = String(message.content?.source ?? "");
+      const expectedSource = "";
+      const sourceOk = expectedSource
+        ? msgSource === expectedSource
+        : Boolean(msgSource || state || runtime.agentId || runtime.getService);
+      const contentObj = Boolean(message.content && typeof message.content === "object");
+      const inputOk = textRaw.trim().length > 0 || contentObj;
+
+      if (!(keywordOk && regexOk && sourceOk && inputOk)) {
+        return false;
+      }
+
+      const text = (message.content.text ?? "").toLowerCase();
+      const hasTrigger = SPEECH_TRIGGERS.some((trigger) => text.includes(trigger));
+      const hasIntent =
+        VOCALIZATION_PATTERNS.some((pattern) => text.includes(pattern)) ||
+        /say ["'].*["']/.test(text) ||
+        /speak ["'].*["']/.test(text);
+
+      return hasTrigger || hasIntent;
     } catch {
       return false;
     }

@@ -5,8 +5,8 @@
   "type": "module",
   "types": "dist/index.d.ts",
   "dependencies": {
-    "@elizaos/core": "^1.0.0",
-    "@elizaos/plugin-solana": "^1.0.0-beta.51"
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-wallet": "workspace:*"
   },
   "devDependencies": {
     "tsup": "^8.3.5"

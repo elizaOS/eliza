@@ -5,5 +5,23 @@ Bridges Python benchmark runners with the eliza benchmark HTTP server.
 
 from eliza_adapter.client import ElizaClient
 from eliza_adapter.server_manager import ElizaServerManager
+from eliza_adapter.swe_bench import (
+    SWEBenchModelHandler,
+    make_eliza_swe_bench_model_handler,
+)
 
-__all__ = ["ElizaClient", "ElizaServerManager"]
+__all__ = [
+    "ElizaClient",
+    "ElizaServerManager",
+    "SWEBenchModelHandler",
+    "make_eliza_swe_bench_model_handler",
+]
+
+# Optional: REALM adapter is only importable when the benchmarks.realm package
+# is on sys.path (it lives under eliza/packages/benchmarks/realm). We expose it
+# lazily to avoid forcing every consumer of eliza-adapter to install REALM.
+try:
+    from eliza_adapter.realm import ElizaREALMAgent  # noqa: F401
+    __all__.append("ElizaREALMAgent")
+except ImportError:
+    pass

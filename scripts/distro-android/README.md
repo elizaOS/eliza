@@ -12,7 +12,7 @@ config and a vendor tree.
 ## Whitelabel contract
 
 A "brand" is fully described by a JSON config (see `brand-config.mjs`)
-and a corresponding **vendor tree** under `os/android/vendor/<brand>/`.
+and a corresponding **vendor tree** under `packages/os/android/vendor/<brand>/`.
 
 ### Brand config schema
 
@@ -29,7 +29,7 @@ and a corresponding **vendor tree** under `os/android/vendor/<brand>/`.
   "envPrefix":     "ELIZA",                  // env var prefix (ELIZA_PIXEL_CODENAME, ELIZA_AOSP_BUILD)
 
   // Optional — sensible defaults derived from `brand` if omitted
-  "vendorDir":     "os/android/vendor/eliza",
+  "vendorDir":     "packages/os/android/vendor/eliza",
   "initRcName":    "init.eliza.rc",
   "commonMakefile":"eliza_common.mk",
   "cuttlefishMakefile":"eliza_cf_x86_64_phone.mk",
@@ -117,8 +117,8 @@ jobs:
   build:
     uses: elizaOS/eliza/.github/workflows/elizaos-cuttlefish.yml@develop
     with:
-      brand-config: os/android/brand.mybrand.json
-      vendor-source: os/android/vendor/mybrand
+      brand-config: packages/os/android/brand.mybrand.json
+      vendor-source: packages/os/android/vendor/mybrand
       aosp-root: ${{ inputs.aosp-root }}
       jobs: 16
       launch: true
@@ -128,8 +128,8 @@ Or invoke the scripts directly when eliza is checked out as a submodule:
 
 ```bash
 node eliza/scripts/distro-android/build-aosp.mjs \
-  --brand-config os/android/brand.mybrand.json \
-  --source-vendor os/android/vendor/mybrand \
+  --brand-config packages/os/android/brand.mybrand.json \
+  --source-vendor packages/os/android/vendor/mybrand \
   --aosp-root /aosp \
   --jobs 16 \
   --launch \

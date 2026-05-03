@@ -20,7 +20,12 @@ export const readingFollowupAction: Action = {
   description:
     "Continue an active reading by processing user feedback and revealing the next element.",
 
-  validate: async (runtime: any, message: any, state?: any, options?: any): Promise<boolean> => {
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+    options?: HandlerOptions | Record<string, JsonValue | undefined>
+  ): Promise<boolean> => {
     const __avTextRaw = typeof message?.content?.text === "string" ? message.content.text : "";
     const __avText = __avTextRaw.toLowerCase();
     const __avKeywords = ["reading", "followup"];
@@ -28,15 +33,19 @@ export const readingFollowupAction: Action = {
       __avKeywords.length > 0 && __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
     const __avRegex = /\b(?:reading|followup)\b/i;
     const __avRegexOk = __avRegex.test(__avText);
-    const __avSource = String(message?.content?.source ?? message?.source ?? "");
+    const __avSource = String(message?.content?.source ?? "");
     const __avExpectedSource = "";
     const __avSourceOk = __avExpectedSource
       ? __avSource === __avExpectedSource
       : Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
-    const __avOptions = options && typeof options === "object" ? options : {};
+    const __avOptionsHasKeys =
+      options !== undefined &&
+      typeof options === "object" &&
+      options !== null &&
+      Object.keys(options).length > 0;
     const __avInputOk =
       __avText.trim().length > 0 ||
-      Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
+      __avOptionsHasKeys ||
       Boolean(message?.content && typeof message.content === "object");
 
     if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
@@ -44,21 +53,21 @@ export const readingFollowupAction: Action = {
     }
 
     const __avLegacyValidate = async (
-      runtime: IAgentRuntime,
-      message: Memory,
+      rt: IAgentRuntime,
+      msg: Memory,
       _state: State | undefined
     ): Promise<boolean> => {
-      const service = runtime.getService<MysticismService>("MYSTICISM");
+      const service = rt.getService<MysticismService>("MYSTICISM");
       if (!service) return false;
 
-      const entityId = message.entityId;
-      const session = service.getSession(entityId, message.roomId);
+      const entityId = msg.entityId;
+      const session = service.getSession(entityId, msg.roomId);
       if (!session) return false;
 
       return session.phase === "casting" || session.phase === "interpretation";
     };
     try {
-      return Boolean(await (__avLegacyValidate as any)(runtime, message, state, options));
+      return Boolean(await __avLegacyValidate(runtime, message, state));
     } catch {
       return false;
     }
@@ -188,7 +197,12 @@ export const deepenReadingAction: Action = {
   similes: ["EXPLAIN_MORE", "GO_DEEPER", "ELABORATE_READING", "READING_DETAIL"],
   description: "Provide a deeper interpretation of a specific element in an active reading.",
 
-  validate: async (runtime: any, message: any, state?: any, options?: any): Promise<boolean> => {
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+    options?: HandlerOptions | Record<string, JsonValue | undefined>
+  ): Promise<boolean> => {
     const __avTextRaw = typeof message?.content?.text === "string" ? message.content.text : "";
     const __avText = __avTextRaw.toLowerCase();
     const __avKeywords = ["deepen", "reading"];
@@ -196,15 +210,19 @@ export const deepenReadingAction: Action = {
       __avKeywords.length > 0 && __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
     const __avRegex = /\b(?:deepen|reading)\b/i;
     const __avRegexOk = __avRegex.test(__avText);
-    const __avSource = String(message?.content?.source ?? message?.source ?? "");
+    const __avSource = String(message?.content?.source ?? "");
     const __avExpectedSource = "";
     const __avSourceOk = __avExpectedSource
       ? __avSource === __avExpectedSource
       : Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
-    const __avOptions = options && typeof options === "object" ? options : {};
+    const __avOptionsHasKeys =
+      options !== undefined &&
+      typeof options === "object" &&
+      options !== null &&
+      Object.keys(options).length > 0;
     const __avInputOk =
       __avText.trim().length > 0 ||
-      Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
+      __avOptionsHasKeys ||
       Boolean(message?.content && typeof message.content === "object");
 
     if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
@@ -212,21 +230,21 @@ export const deepenReadingAction: Action = {
     }
 
     const __avLegacyValidate = async (
-      runtime: IAgentRuntime,
-      message: Memory,
+      rt: IAgentRuntime,
+      msg: Memory,
       _state: State | undefined
     ): Promise<boolean> => {
-      const service = runtime.getService<MysticismService>("MYSTICISM");
+      const service = rt.getService<MysticismService>("MYSTICISM");
       if (!service) return false;
 
-      const entityId = message.entityId;
-      const session = service.getSession(entityId, message.roomId);
+      const entityId = msg.entityId;
+      const session = service.getSession(entityId, msg.roomId);
       if (!session) return false;
 
       return session.phase === "interpretation" || session.phase === "casting";
     };
     try {
-      return Boolean(await (__avLegacyValidate as any)(runtime, message, state, options));
+      return Boolean(await __avLegacyValidate(runtime, message, state));
     } catch {
       return false;
     }

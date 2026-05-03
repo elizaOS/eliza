@@ -25,8 +25,8 @@ elizaos create
 # Create a fullstack app workspace
 elizaos create my-app --template fullstack-app
 
-# Create a Rust plugin starter
-elizaos create plugin-foo --template plugin --language rust
+# Create a TypeScript plugin starter
+elizaos create plugin-foo --template plugin
 ```
 
 ### `elizaos upgrade`
@@ -45,14 +45,14 @@ Show available templates and languages.
 ```bash
 elizaos info
 elizaos info --template fullstack-app
-elizaos info --language rust
+elizaos info --language typescript
 ```
 
 ## Templates
 
 | Template | Description | Languages |
 | --- | --- | --- |
-| `plugin` | Plugin starter workspace | TypeScript, Python, Rust |
+| `plugin` | Plugin starter workspace | TypeScript |
 | `fullstack-app` | Eliza-style app workspace backed by a local `eliza` checkout | TypeScript |
 
 ## Development

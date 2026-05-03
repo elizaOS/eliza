@@ -13,6 +13,15 @@ import { sendTransaction } from "../utils/sendTransaction.ts";
 
 const { BN } = anchor;
 
+/** Narrow view of a DLMM position used by this service */
+interface MeteoraDlmmPositionView {
+  publicKey: PublicKey;
+  positionData: {
+    positionBinData: Array<{ binId: number; binLiquidity: string }>;
+  };
+  getAmounts: () => { x: anchor.BN; y: anchor.BN };
+}
+
 /** Response shape from Meteora DLMM API */
 interface MeteoraPoolResponse {
   address: string;
@@ -173,11 +182,11 @@ export class MeteoraLpService extends Service {
           symbol: "METEORA-POS",
         },
       };
-    } catch (error: any) {
+    } catch (error) {
       console.error("[MeteoraLpService] Error adding liquidity:", error);
       return {
         success: false,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
       };
     }
   }
@@ -261,11 +270,11 @@ export class MeteoraLpService extends Service {
         transactionId: lastSignature,
         tokensReceived,
       };
-    } catch (error: any) {
+    } catch (error) {
       console.error("[MeteoraLpService] Error removing liquidity:", error);
       return {
         success: false,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
       };
     }
   }
@@ -277,7 +286,7 @@ export class MeteoraLpService extends Service {
     try {
       const userPubKey = new PublicKey(userAccountPublicKey);
 
-      let position: any = null;
+      let position: MeteoraDlmmPositionView | null = null;
       let poolAddress: string = "";
 
       try {
@@ -352,7 +361,7 @@ export class MeteoraLpService extends Service {
         underlyingTokens,
         valueUsd: 0, // TODO: requires a price oracle
       };
-    } catch (error: any) {
+    } catch (error) {
       console.error("[MeteoraLpService] Error getting LP position details:", error);
       return null;
     }

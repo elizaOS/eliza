@@ -21,10 +21,9 @@
     "allowSyntheticDefaultImports": true,
     "allowImportingTsExtensions": true,
     "types": ["node"],
-    "baseUrl": "../../../",
     "paths": {
-      "@elizaos/core": ["packages/core/dist/node"],
-      "@elizaos/core/*": ["packages/core/dist/*"]
+      "@elizaos/core": ["../../../packages/core/dist/node"],
+      "@elizaos/core/*": ["../../../packages/core/dist/*"]
     }
   },
   "include": ["**/*.ts"],

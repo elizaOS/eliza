@@ -276,7 +276,7 @@ ok "Capacitor plugins built"
 
 hdr "Step 2d: Build workspace packages"
 run "cd eliza/packages/agent && bun run build:docker-dist && cd ${REPO_ROOT}"
-run "cd eliza/packages/typescript && bun run build:node && cd ${REPO_ROOT}"
+run "cd eliza/packages/core && bun run build:node && cd ${REPO_ROOT}"
 ok "Workspace packages built"
 
 # ─────────────────────────────────────────────────────────────────────────────

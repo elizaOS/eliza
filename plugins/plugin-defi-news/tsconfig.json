@@ -1,6 +1,5 @@
 {
   "compilerOptions": {
-    "ignoreDeprecations": "6.0",
     "outDir": "dist",
     "rootDir": "src",
     "lib": ["ESNext", "dom"],
@@ -23,4 +22,3 @@
   },
   "include": ["src/**/*.ts"]
 }
-

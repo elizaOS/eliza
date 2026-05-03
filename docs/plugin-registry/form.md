@@ -1,56 +1,20 @@
 ---
-title: "Form Plugin"
+title: "Form (advanced capability)"
 sidebarTitle: "Form"
-description: "Form chain integration for Eliza — curves-based token economics with ERC20 compatibility."
+description: "Structured conversational forms — FORM service and related providers/actions built into elizaOS core."
 ---
 
-The Form plugin integrates Form chain capabilities into Eliza, enabling agents to interact with curves-based token economics and ERC20-compatible assets on the Form network.
-
-**Package:** `@elizaos/plugin-form` (core plugin — always loaded)
+Forms are **not** a separate installable plugin package. They ship inside **`@elizaos/core`** as part of **advanced capabilities**: `FormService` (service type `FORM`), form context provider, form evaluator, and related actions (see `packages/core/src/features/advanced-capabilities/form/`).
 
 ## Overview
 
-This plugin connects agents to the Form chain, providing access to curves-based token economics with full ERC20 compatibility. Agents can interact with Form chain smart contracts, manage token operations, and participate in the Form ecosystem. The plugin requires a private key for signing transactions.
+Structured form flows support guided user journeys (collecting fields, restoring incomplete sessions, evaluating form-related dialogue). Capabilities register when advanced capabilities are enabled for the agent.
 
-## Installation
+## Enabling
 
-This plugin is a core plugin and is always loaded. No manual installation is required.
-
-## Auto-Enable
-
-The plugin auto-enables when the `FORM_PRIVATE_KEY` environment variable is set.
-
-## Configuration
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `FORM_PRIVATE_KEY` | string | **Yes** | Private key for Form chain (sensitive) |
-| `FORM_RPC_URL` | string | No | Custom RPC URL for the Form network |
-
-Set via environment variables:
-
-```bash
-export FORM_PRIVATE_KEY="your-private-key-here"
-export FORM_RPC_URL="https://custom-rpc.example.com"
-```
-
-Or in `eliza.json`:
-
-```json
-{
-  "settings": {
-    "secrets": {
-      "FORM_PRIVATE_KEY": "<FORM_PRIVATE_KEY>"
-    },
-    "FORM_RPC_URL": "https://custom-rpc.example.com"
-  }
-}
-```
-
-## Security
-
-The `FORM_PRIVATE_KEY` is a sensitive value. Store it via environment variables or the Secrets Manager rather than committing it to configuration files.
+Toggle advanced capabilities in character / dashboard settings (`advancedCapabilities: true`), or control individual capability entries under `plugins.entries` for `form`, `experience`, `clipboard`, and `personality` (see `packages/agent/src/runtime/advanced-capabilities-config.ts`).
 
 ## Related
 
-- [Secrets (runtime)](/runtime/services#secrets-secrets-service) — Secure secret storage
+- [Services](/runtime/services) — service types and registry usage
+- [Plugin architecture](/plugins/architecture) — advanced capabilities note for `personality`, `experience`, and `form`

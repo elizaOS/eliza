@@ -45,6 +45,7 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           submodules: false
           fetch-depth: 0
+          filter: blob:none
 
       - name: Check for new commits since last nightly
         id: check
@@ -232,6 +233,7 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           submodules: false
           fetch-depth: 0
+          filter: blob:none
 
       - name: Create nightly tag
         run: |

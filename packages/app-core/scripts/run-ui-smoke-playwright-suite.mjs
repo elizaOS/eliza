@@ -12,7 +12,9 @@ const candidateRoots = [
 ];
 const repoRoot =
   candidateRoots.find((candidate) =>
-    fs.existsSync(path.join(resolveMainAppDir(candidate, "app"), "package.json")),
+    fs.existsSync(
+      path.join(resolveMainAppDir(candidate, "app"), "package.json"),
+    ),
   ) ?? path.resolve(here, "..");
 const appDir = resolveMainAppDir(repoRoot, "app");
 const uiPlaywrightRunner = path.join(
@@ -67,8 +69,7 @@ if (!env.ELIZA_UI_SMOKE_API_PORT) {
   const apiPort = await getFreePort();
   env.ELIZA_UI_SMOKE_API_PORT = String(apiPort);
 }
-env.ELIZA_UI_SMOKE_API_PORT =
-  env.ELIZA_UI_SMOKE_API_PORT;
+env.ELIZA_UI_SMOKE_API_PORT = env.ELIZA_UI_SMOKE_API_PORT;
 env.ELIZA_API_PORT = env.ELIZA_API_PORT || env.ELIZA_UI_SMOKE_API_PORT;
 
 if (!env.ELIZA_UI_SMOKE_PORT) {

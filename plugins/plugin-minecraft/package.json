@@ -38,12 +38,12 @@
     "zod": "^4.3.6"
   },
   "peerDependencies": {
-    "@elizaos/core": "2.0.0-alpha.3"
+    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.11",
     "@types/ws": "^8.5.10",
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.3"
   },
   "scripts": {
     "dev": "bun --hot build.ts",

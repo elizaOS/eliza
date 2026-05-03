@@ -21,7 +21,7 @@ elizaOS is the plugin-based agent runtime that Eliza builds on top of.
 
 ## Working Rules
 
-- Treat the TypeScript runtime in `eliza/packages/typescript/src/` as the primary reference implementation.
+- Treat the TypeScript runtime in `eliza/packages/core/src/` as the primary reference implementation.
 - Prefer elizaOS-native abstractions over product-specific wrappers when reasoning about upstream behavior.
 - Remember the split between persistent `Memory` and ephemeral `State`.
 - Remember that plugins are the main composition mechanism.

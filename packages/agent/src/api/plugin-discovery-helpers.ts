@@ -1194,15 +1194,7 @@ export function categorizePlugin(
     "blooio",
     "twitch",
   ];
-  const streamingDests = [
-    "streaming-base",
-    "custom-rtmp",
-    "youtube",
-    "youtube-streaming",
-    "twitch-streaming",
-    "x-streaming",
-    "pumpfun-streaming",
-  ];
+  const streamingDests = ["streaming"];
   const databases = ["sql", "localdb", "inmemorydb"];
 
   if (aiProviders.includes(id)) return "ai-provider";
@@ -1317,12 +1309,7 @@ const PLUGIN_SETUP_GUIDE_ANCHORS: Record<string, string> = {
   mcp: "#mcp-model-context-protocol",
   iq: "#iq-solana-on-chain",
   "gmail-watch": "#gmail-watch",
-  "streaming-base": "#enable-streaming-streaming-base",
-  "twitch-streaming": "#twitch-streaming",
-  "youtube-streaming": "#youtube-streaming",
-  "x-streaming": "#x-streaming",
-  "pumpfun-streaming": "#pumpfun-streaming",
-  "custom-rtmp": "#custom-rtmp",
+  streaming: "#streaming",
 };
 
 export function resolvePluginSetupGuideUrl(id: string): string | undefined {

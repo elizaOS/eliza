@@ -10,7 +10,7 @@
  *
  * This script finds every bun-cached @elizaos/core that is missing
  * dist/node/index.node.js and replaces the entire dist/ with the local
- * packages/typescript/dist/ so all subpath exports resolve correctly.
+ * packages/core/dist/ so all subpath exports resolve correctly.
  */
 
 import { cpSync, existsSync, readdirSync, rmSync } from "node:fs";

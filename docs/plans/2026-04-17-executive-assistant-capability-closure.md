@@ -24,10 +24,10 @@ Three things have to be true when this is done:
 
 ### 2.1 What's real (keep)
 
-- `getMemories` / `searchMemories` support roomId/worldId/entityId/embedding filters. `eliza/packages/typescript/src/types/database.ts:825`.
+- `getMemories` / `searchMemories` support roomId/worldId/entityId/embedding filters. `eliza/packages/core/src/types/database.ts:825`.
 - `SEARCH_CONVERSATIONS` action with semantic search and cross-room aggregation. `eliza/packages/agent/src/actions/search-conversations.ts:52`.
 - `relevant-conversations` provider. `eliza/packages/agent/src/providers/relevant-conversations.ts:21`.
-- Clipboard plugin (CLIPBOARD_WRITE/SEARCH/READ/APPEND/DELETE). `eliza/packages/typescript/src/features/advanced-capabilities/clipboard/index.ts`.
+- Clipboard plugin (CLIPBOARD_WRITE/SEARCH/READ/APPEND/DELETE). `eliza/packages/core/src/features/advanced-capabilities/clipboard/index.ts`.
 - `life-smoke.integration.test.ts` boots a real AgentRuntime on PGlite. `apps/app-lifeops/test/life-smoke.integration.test.ts:44`.
 - 37 `.live.e2e.test.ts` suites exist, gated on credentials (`credentialDependentE2EPaths` in `test/vitest/e2e.config.ts:41`).
 - Scenario runner at `scripts/lifeops-scenario-runner.ts` executes scenarios against a live HTTP runtime with LLM judging.

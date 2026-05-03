@@ -13,12 +13,10 @@ import path from "node:path";
 import {
   type AgentRuntime,
   ChannelType,
-  createMessageMemory,
   type Memory,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { ConversationHarness } from "../helpers/conversation-harness.ts";
 import {
   isTrajectoryCaptureEnabled,
   RecordingHarness,
@@ -152,7 +150,7 @@ function resolveBenchmarkOwnerEntityId(runtime: AgentRuntime): UUID {
   return stringToUuid(`${runtime.agentId}-admin-entity`);
 }
 
-async function ensureBenchmarkConversation(args: {
+async function _ensureBenchmarkConversation(args: {
   runtime: AgentRuntime;
   entityId: UUID;
   roomId: UUID;
@@ -326,7 +324,7 @@ function pickObservedAction(
  * them). This is what distinguishes "action exists but was hidden" from "LLM
  * picked wrong action".
  */
-async function computeFilteredActions(
+async function _computeFilteredActions(
   runtime: AgentRuntime,
   message: Memory,
 ): Promise<string[]> {
