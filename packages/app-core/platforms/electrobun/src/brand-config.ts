@@ -72,9 +72,7 @@ function envFallback(...keys: string[]): string {
 }
 
 function loadFileConfig(): Partial<DesktopBrandConfig> {
-	const envPath = envFallback(
-		"ELIZA_BRAND_CONFIG_PATH",
-	);
+	const envPath = envFallback("ELIZA_BRAND_CONFIG_PATH");
 	const candidatePaths = [
 		envPath,
 		path.resolve(process.cwd(), "brand-config.json"),

@@ -47,38 +47,29 @@ export const minecraftControlAction: Action = {
   similes: ["MINECRAFT_CONTROL", "SET_CONTROL_STATE"],
   description:
     "Set a control state (e.g. forward/back/left/right/jump/sprint/sneak). Provide JSON {control,state,durationMs?} or 'forward true 1000'.",
-  validate: async (runtime: any, message: any, state?: any, options?: any): Promise<boolean> => {
-    const __avTextRaw = typeof message?.content?.text === "string" ? message.content.text : "";
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
+    const __avTextRaw = typeof message.content?.text === "string" ? message.content.text : "";
     const __avText = __avTextRaw.toLowerCase();
     const __avKeywords = ["control"];
     const __avKeywordOk =
       __avKeywords.length > 0 && __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
     const __avRegex = /\b(?:control)\b/i;
     const __avRegexOk = __avRegex.test(__avText);
-    const __avSource = String(message?.content?.source ?? "");
+    const __avSource = String(message.content?.source ?? "");
     const __avExpectedSource = "";
     const __avSourceOk = __avExpectedSource
       ? __avSource === __avExpectedSource
-      : Boolean(__avSource || state || runtime?.agentId || runtime?.getService);
-    const __avOptions = options && typeof options === "object" ? options : {};
+      : Boolean(__avSource || state || runtime.agentId || runtime.getService);
     const __avInputOk =
-      __avText.trim().length > 0 ||
-      Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-      Boolean(message?.content && typeof message.content === "object");
+      __avText.trim().length > 0 || Boolean(message.content && typeof message.content === "object");
 
     if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
       return false;
     }
 
-    const __avLegacyValidate = async (
-      runtime: IAgentRuntime,
-      message: Memory
-    ): Promise<boolean> => {
+    try {
       const service = runtime.getService<MinecraftService>(MINECRAFT_SERVICE_TYPE);
       return Boolean(service) && Boolean(parseControl(message.content.text ?? ""));
-    };
-    try {
-      return Boolean(await (__avLegacyValidate as any)(runtime, message, state, options));
     } catch {
       return false;
     }

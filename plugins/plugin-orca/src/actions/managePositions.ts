@@ -1,39 +1,37 @@
 import {
-  actions,
-  elizaLogger,
+  type AgentRuntime,
+  type actions,
   composeContext,
-  HandlerCallback,
-  AgentRuntime,
+  elizaLogger,
+  type HandlerCallback,
+  type Memory,
   ModelTypes,
-  Memory,
   parseJSONObjectFromText,
+  type State,
   settings,
-  State,
 } from "@elizaos/core";
 import {
-  Connection as SolanaRpc,
-  Keypair as KeyPairSigner,
-  Connection as Rpc,
-  Connection as SolanaRpcApi,
-  PublicKey,
-  Connection,
-} from "@solana/web3.js";
-import { getMint } from "@solana/spl-token";
+  closePositionInstructions,
+  type IncreaseLiquidityQuoteParam,
+  openPositionInstructions,
+  setDefaultFunder,
+  setDefaultSlippageToleranceBps,
+} from "@orca-so/whirlpools";
 import {
   fetchPosition,
   fetchWhirlpool,
   getPositionAddress,
 } from "@orca-so/whirlpools-client";
 import { sqrtPriceToPrice } from "@orca-so/whirlpools-core";
-import { sendTransaction } from "../utils/sendTransaction";
+import { getMint } from "@solana/spl-token";
 import {
-  closePositionInstructions,
-  IncreaseLiquidityQuoteParam,
-  openPositionInstructions,
-  setDefaultFunder,
-  setDefaultSlippageToleranceBps,
-} from "@orca-so/whirlpools";
+  type Connection,
+  type Keypair as KeyPairSigner,
+  PublicKey,
+  Connection as SolanaRpc,
+} from "@solana/web3.js";
 import { loadWallet } from "../utils/loadWallet";
+import { sendTransaction } from "../utils/sendTransaction";
 
 interface FetchedPosition {
   whirlpoolAddress: string;
@@ -83,8 +81,8 @@ export const managePositions: typeof actions = {
     runtime: AgentRuntime,
     message: Memory,
     state: State,
-    params: { [key: string]: unknown },
-    callback?: HandlerCallback,
+    _params: { [key: string]: unknown },
+    _callback?: HandlerCallback,
   ) => {
     elizaLogger.log("Start managing positions");
     if (!state) {
@@ -109,7 +107,12 @@ export const managePositions: typeof actions = {
     elizaLogger.log("Fetched positions:", fetchedPositions);
 
     const { signer: wallet } = await loadWallet(runtime, true);
-    const rpc = createSolanaRpc(settings.SOLANA_RPC_URL!);
+    const rpcUrl = settings.SOLANA_RPC_URL;
+    if (!rpcUrl || typeof rpcUrl !== "string") {
+      elizaLogger.error("SOLANA_RPC_URL is not configured");
+      return false;
+    }
+    const rpc = createSolanaRpc(rpcUrl);
     setDefaultSlippageToleranceBps(slippageToleranceBps);
     setDefaultFunder(wallet);
 
@@ -154,7 +157,7 @@ async function extractFetchedPositions(
 }
 
 function validateManagePositionsInput(
-  obj: Record<string, any>,
+  obj: Record<string, unknown>,
 ): ManagePositionsInput {
   if (
     typeof obj.repositionThresholdBps !== "number" ||
@@ -168,7 +171,11 @@ function validateManagePositionsInput(
       "Invalid input: Object does not match the ManagePositionsInput type.",
     );
   }
-  return obj as ManagePositionsInput;
+  return {
+    repositionThresholdBps: obj.repositionThresholdBps,
+    intervalSeconds: obj.intervalSeconds,
+    slippageToleranceBps: obj.slippageToleranceBps,
+  };
 }
 
 export async function extractAndValidateConfiguration(
@@ -196,7 +203,16 @@ export async function extractAndValidateConfiguration(
 
   try {
     const configuration = parseJSONObjectFromText(content);
-    return validateManagePositionsInput(configuration);
+    if (
+      !configuration ||
+      typeof configuration !== "object" ||
+      Array.isArray(configuration)
+    ) {
+      throw new Error("Configuration must be a JSON object");
+    }
+    return validateManagePositionsInput(
+      configuration as Record<string, unknown>,
+    );
   } catch (error) {
     elizaLogger.warn("Invalid configuration detected:", error);
     return null;
@@ -233,7 +249,7 @@ async function handleRepositioning(
         const positionAddress = (
           await getPositionAddress(positionMintAddress)
         )[0];
-        let positionData = await fetchPosition(rpc, positionAddress);
+        const positionData = await fetchPosition(rpc, positionAddress);
         const whirlpoolAddress = positionData.data.whirlpool;
         let whirlpool = await fetchWhirlpool(rpc, whirlpoolAddress);
         const mintA = await getMint(rpc, whirlpool.data.tokenMintA);
@@ -250,13 +266,13 @@ async function handleRepositioning(
         elizaLogger.log(`Repositioning position: ${positionMintAddress}`);
 
         let closeSuccess = false;
-        let closeTxId;
+        let closeTxId: string | undefined;
         while (!closeSuccess) {
           try {
             const { instructions: closeInstructions, quote } =
               await closePositionInstructions(rpc, positionMintAddress);
             closeTxId = await sendTransaction(rpc, closeInstructions, wallet);
-            closeSuccess = closeTxId ? true : false;
+            closeSuccess = !!closeTxId;
 
             // Prepare for open position
             const increaseLiquidityQuoteParam: IncreaseLiquidityQuoteParam = {
@@ -272,7 +288,7 @@ async function handleRepositioning(
             newLowerPrice = newPriceBounds.newLowerPrice;
             newUpperPrice = newPriceBounds.newUpperPrice;
             let openSuccess = false;
-            let openTxId;
+            let openTxId: string | undefined;
             while (!openSuccess) {
               try {
                 const {
@@ -286,7 +302,7 @@ async function handleRepositioning(
                   newUpperPrice,
                 );
                 openTxId = await sendTransaction(rpc, openInstructions, wallet);
-                openSuccess = openTxId ? true : false;
+                openSuccess = !!openTxId;
 
                 elizaLogger.log(
                   `Successfully reopened position with mint: ${newPositionMint}`,

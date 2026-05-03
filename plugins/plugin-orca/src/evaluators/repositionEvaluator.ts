@@ -1,10 +1,10 @@
 import {
+  type Evaluator,
   elizaLogger,
-  Evaluator,
-  IAgentRuntime,
-  Memory,
-  State,
-  HandlerCallback,
+  type HandlerCallback,
+  type IAgentRuntime,
+  type Memory,
+  type State,
 } from "@elizaos/core";
 import { extractAndValidateConfiguration } from "../actions/managePositions";
 
@@ -15,15 +15,17 @@ export const managePositionActionRetriggerEvaluator: Evaluator = {
   description:
     "Schedules and monitors ongoing repositioning actions to ensure continuous operation.",
 
-  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
-    true,
+  validate: async (
+    _runtime: IAgentRuntime,
+    _message: Memory,
+  ): Promise<boolean> => true,
 
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
     state: State,
     _options: { [key: string]: unknown },
-    callback?: HandlerCallback,
+    _callback?: HandlerCallback,
   ) => {
     elizaLogger.log("Checking LP position status");
     if (!state) {
