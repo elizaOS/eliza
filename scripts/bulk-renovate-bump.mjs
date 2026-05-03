@@ -105,7 +105,10 @@ const UPDATES = [
   ['@steerprotocol/sdk', '3.0.0'],
   ['@stripe/react-stripe-js', '6.0.0'],
   ['@stripe/stripe-js', '9.0.0'],
-  ['@telegraf/types', '9.0.0'],
+  // @telegraf/types deliberately pinned to ^7.1.0 in plugin-telegram —
+  // matches the bundled types for telegraf@4.16.3. Bumping to v9 caused
+  // type conflicts in scenario-runner. Re-add once telegraf itself is bumped.
+  // ['@telegraf/types', '9.0.0'],
   ['@twurple/auth', '8.0.0'],
   ['@twurple/chat', '8.0.0'],
   ['@types/nodemailer', '8.0.0'],
