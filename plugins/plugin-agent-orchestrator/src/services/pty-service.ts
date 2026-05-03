@@ -80,7 +80,13 @@ import type {
   SessionInfo,
   SpawnSessionOptions,
 } from "./pty-types.js";
-import { isPiAgentType, toPiCommand } from "./pty-types.js";
+import {
+  isOpencodeAgentType,
+  isPiAgentType,
+  toOpencodeCommand,
+  toPiCommand,
+} from "./pty-types.js";
+import { buildOpencodeSpawnConfig } from "./agent-credentials.js";
 import {
   classifyAndDecideForCoordinator,
   classifyStallOutput,
@@ -140,6 +146,7 @@ const TOOL_DISCOVERY_HINTS: Record<CodingAgentType, string> = {
   hermes: "",
   shell: "",
   pi: "",
+  opencode: "",
 };
 
 function buildWorkspaceLockMemory(
@@ -751,12 +758,33 @@ export class PTYService {
     }
 
     const piRequested = isPiAgentType(options.agentType);
-    const resolvedAgentType: CodingAgentType = piRequested
-      ? "shell"
-      : options.agentType;
+    const opencodeRequested = isOpencodeAgentType(options.agentType);
+    const resolvedAgentType: CodingAgentType =
+      piRequested || opencodeRequested ? "shell" : options.agentType;
     const effectiveApprovalPreset =
       options.approvalPreset ??
       (resolvedAgentType !== "shell" ? this.defaultApprovalPreset : undefined);
+
+    let opencodeConfigEnv: Record<string, string> | undefined;
+    if (opencodeRequested) {
+      const spawnConfig = buildOpencodeSpawnConfig(this.runtime);
+      if (!spawnConfig) {
+        throw new Error(
+          "OpenCode is requested but no model provider is configured. " +
+            "Set PARALLAX_LLM_PROVIDER=cloud and pair an Eliza Cloud key, " +
+            "set PARALLAX_OPENCODE_LOCAL=1 to use a local provider, " +
+            "or set PARALLAX_OPENCODE_MODEL_POWERFUL to defer to your global opencode.json.",
+        );
+      }
+      opencodeConfigEnv = {
+        OPENCODE_CONFIG_CONTENT: spawnConfig.configContent,
+        OPENCODE_DISABLE_AUTOUPDATE: "1",
+        OPENCODE_DISABLE_TERMINAL_TITLE: "1",
+      };
+      this.log(
+        `OpenCode spawn provider: ${spawnConfig.providerLabel} (model=${spawnConfig.model}${spawnConfig.smallModel ? `, small=${spawnConfig.smallModel}` : ""})`,
+      );
+    }
 
     const maxSessions = this.serviceConfig.maxConcurrentSessions ?? 8;
     const activeSessions = (await this.listSessions()).length;
@@ -789,7 +817,9 @@ export class PTYService {
         : prependWorkspaceLockToTask(options.initialTask, workspaceTaskPrefix);
     const resolvedInitialTask = piRequested
       ? toPiCommand(effectiveInitialTask)
-      : effectiveInitialTask;
+      : opencodeRequested
+        ? toOpencodeCommand(effectiveInitialTask)
+        : effectiveInitialTask;
 
     // Store workdir for later retrieval
     this.sessionWorkdirs.set(sessionId, workdir);
@@ -972,13 +1002,16 @@ export class PTYService {
       ...(resolvedModelPrefs ? { modelPrefs: resolvedModelPrefs } : {}),
     };
 
+    const mergedSpawnEnv = {
+      ...(options.env ?? {}),
+      ...(codexApprovalEnv ?? {}),
+      ...(opencodeConfigEnv ?? {}),
+    };
     const spawnConfig = buildSpawnConfig(
       sessionId,
       {
         ...options,
-        env: codexApprovalEnv
-          ? { ...(options.env ?? {}), ...codexApprovalEnv }
-          : options.env,
+        env: Object.keys(mergedSpawnEnv).length > 0 ? mergedSpawnEnv : undefined,
         agentType: resolvedAgentType,
         initialTask: resolvedInitialTask,
         approvalPreset: effectiveApprovalPreset,
@@ -1798,7 +1831,7 @@ export class PTYService {
   }
 
   getSupportedAgentTypes(): CodingAgentType[] {
-    return ["shell", "claude", "gemini", "codex", "aider", "pi"];
+    return ["shell", "claude", "gemini", "codex", "aider", "pi", "opencode"];
   }
 
   private async classifyStall(
@@ -2071,7 +2104,9 @@ export class PTYService {
     const displayAgentType =
       session.type === "shell" && isPiAgentType(requestedType)
         ? "pi"
-        : session.type;
+        : session.type === "shell" && isOpencodeAgentType(requestedType)
+          ? "opencode"
+          : session.type;
     return {
       id: session.id,
       name: session.name,
@@ -2099,7 +2134,9 @@ export class PTYService {
     const displayAgentType =
       storedAgentType === "shell" && isPiAgentType(requestedType)
         ? "pi"
-        : storedAgentType;
+        : storedAgentType === "shell" && isOpencodeAgentType(requestedType)
+          ? "opencode"
+          : storedAgentType;
     return {
       id: sessionId,
       name: this.sessionNames.get(sessionId) ?? sessionId,

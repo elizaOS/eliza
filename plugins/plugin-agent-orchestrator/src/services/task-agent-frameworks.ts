@@ -377,6 +377,10 @@ function normalizeTaskAgentAdapterForModelPrefs(
       return "gemini";
     case "aider":
       return "aider";
+    case "opencode":
+    case "open-code":
+    case "open code":
+      return "opencode";
     default:
       return undefined;
   }
