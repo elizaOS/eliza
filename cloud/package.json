@@ -5,10 +5,8 @@
   "workspaces": [
     "apps/*",
     "packages/*",
-    "!packages/steward",
     "packages/services/*",
     "services/*",
-    "packages/steward/packages/*",
     "examples/*"
   ],
   "scripts": {
