@@ -38,6 +38,8 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "DELETE /api/v1/agents/{agentId}/n8n/{path}": { method: "DELETE", path: "/api/v1/agents/{agentId}/n8n/{path}", methodName: "deleteApiV1AgentsByAgentIdN8nByPath", responseMode: "json", pathParams: ["agentId", "path"], catchAllPathParams: ["path"], file: "apps/api/v1/agents/[agentId]/n8n/[...path]/route.ts" },
   "DELETE /api/v1/agents/{agentId}/publish": { method: "DELETE", path: "/api/v1/agents/{agentId}/publish", methodName: "deleteApiV1AgentsByAgentIdPublish", responseMode: "json", pathParams: ["agentId"], catchAllPathParams: [], file: "apps/api/v1/agents/[agentId]/publish/route.ts" },
   "DELETE /api/v1/api-keys/{id}": { method: "DELETE", path: "/api/v1/api-keys/{id}", methodName: "deleteApiV1ApiKeysById", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/api-keys/[id]/route.ts" },
+  "DELETE /api/v1/apis/storage/objects/{key}": { method: "DELETE", path: "/api/v1/apis/storage/objects/{key}", methodName: "deleteApiV1ApisStorageObjectsByKey", responseMode: "json", pathParams: ["key"], catchAllPathParams: ["key"], file: "apps/api/v1/apis/storage/objects/[...key]/route.ts" },
+  "DELETE /api/v1/apis/streaming/sessions/{id}": { method: "DELETE", path: "/api/v1/apis/streaming/sessions/{id}", methodName: "deleteApiV1ApisStreamingSessionsById", responseMode: "stream", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apis/streaming/sessions/[id]/route.ts" },
   "DELETE /api/v1/apps/{id}": { method: "DELETE", path: "/api/v1/apps/{id}", methodName: "deleteApiV1AppsById", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/route.ts" },
   "DELETE /api/v1/apps/{id}/discord-automation": { method: "DELETE", path: "/api/v1/apps/{id}/discord-automation", methodName: "deleteApiV1AppsByIdDiscordAutomation", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/discord-automation/route.ts" },
   "DELETE /api/v1/apps/{id}/telegram-automation": { method: "DELETE", path: "/api/v1/apps/{id}/telegram-automation", methodName: "deleteApiV1AppsByIdTelegramAutomation", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/telegram-automation/route.ts" },
@@ -204,6 +206,11 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "GET /api/v1/agents/by-token": { method: "GET", path: "/api/v1/agents/by-token", methodName: "getApiV1AgentsByToken", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/agents/by-token/route.ts" },
   "GET /api/v1/api-keys": { method: "GET", path: "/api/v1/api-keys", methodName: "getApiV1ApiKeys", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/api-keys/route.ts" },
   "GET /api/v1/api-keys/explorer": { method: "GET", path: "/api/v1/api-keys/explorer", methodName: "getApiV1ApiKeysExplorer", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/api-keys/explorer/route.ts" },
+  "GET /api/v1/apis/birdeye/{path}": { method: "GET", path: "/api/v1/apis/birdeye/{path}", methodName: "getApiV1ApisBirdeyeByPath", responseMode: "json", pathParams: ["path"], catchAllPathParams: ["path"], file: "apps/api/v1/apis/birdeye/[...path]/route.ts" },
+  "GET /api/v1/apis/dexscreener/{path}": { method: "GET", path: "/api/v1/apis/dexscreener/{path}", methodName: "getApiV1ApisDexscreenerByPath", responseMode: "json", pathParams: ["path"], catchAllPathParams: ["path"], file: "apps/api/v1/apis/dexscreener/[...path]/route.ts" },
+  "GET /api/v1/apis/storage/list": { method: "GET", path: "/api/v1/apis/storage/list", methodName: "getApiV1ApisStorageList", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/apis/storage/list/route.ts" },
+  "GET /api/v1/apis/storage/objects/{key}": { method: "GET", path: "/api/v1/apis/storage/objects/{key}", methodName: "getApiV1ApisStorageObjectsByKey", responseMode: "json", pathParams: ["key"], catchAllPathParams: ["key"], file: "apps/api/v1/apis/storage/objects/[...key]/route.ts" },
+  "GET /api/v1/apis/streaming/sessions/{id}": { method: "GET", path: "/api/v1/apis/streaming/sessions/{id}", methodName: "getApiV1ApisStreamingSessionsById", responseMode: "stream", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apis/streaming/sessions/[id]/route.ts" },
   "GET /api/v1/app-auth/session": { method: "GET", path: "/api/v1/app-auth/session", methodName: "getApiV1AppAuthSession", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/app-auth/session/route.ts" },
   "GET /api/v1/app-credits/balance": { method: "GET", path: "/api/v1/app-credits/balance", methodName: "getApiV1AppCreditsBalance", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/app-credits/balance/route.ts" },
   "GET /api/v1/app-credits/verify": { method: "GET", path: "/api/v1/app-credits/verify", methodName: "getApiV1AppCreditsVerify", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/app-credits/verify/route.ts" },
@@ -499,6 +506,8 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "POST /api/v1/agents/{agentId}/suspend": { method: "POST", path: "/api/v1/agents/{agentId}/suspend", methodName: "postApiV1AgentsByAgentIdSuspend", responseMode: "json", pathParams: ["agentId"], catchAllPathParams: [], file: "apps/api/v1/agents/[agentId]/suspend/route.ts" },
   "POST /api/v1/api-keys": { method: "POST", path: "/api/v1/api-keys", methodName: "postApiV1ApiKeys", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/api-keys/route.ts" },
   "POST /api/v1/api-keys/{id}/regenerate": { method: "POST", path: "/api/v1/api-keys/{id}/regenerate", methodName: "postApiV1ApiKeysByIdRegenerate", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/api-keys/[id]/regenerate/route.ts" },
+  "POST /api/v1/apis/storage/presign": { method: "POST", path: "/api/v1/apis/storage/presign", methodName: "postApiV1ApisStoragePresign", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/apis/storage/presign/route.ts" },
+  "POST /api/v1/apis/streaming/sessions": { method: "POST", path: "/api/v1/apis/streaming/sessions", methodName: "postApiV1ApisStreamingSessions", responseMode: "stream", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/apis/streaming/sessions/route.ts" },
   "POST /api/v1/app-auth/connect": { method: "POST", path: "/api/v1/app-auth/connect", methodName: "postApiV1AppAuthConnect", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/app-auth/connect/route.ts" },
   "POST /api/v1/app-credits/checkout": { method: "POST", path: "/api/v1/app-credits/checkout", methodName: "postApiV1AppCreditsCheckout", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/app-credits/checkout/route.ts" },
   "POST /api/v1/app/agents": { method: "POST", path: "/api/v1/app/agents", methodName: "postApiV1AppAgents", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/app/agents/route.ts" },
@@ -652,6 +661,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "PUT /api/v1/affiliates": { method: "PUT", path: "/api/v1/affiliates", methodName: "putApiV1Affiliates", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/affiliates/route.ts" },
   "PUT /api/v1/agents/{agentId}/monetization": { method: "PUT", path: "/api/v1/agents/{agentId}/monetization", methodName: "putApiV1AgentsByAgentIdMonetization", responseMode: "json", pathParams: ["agentId"], catchAllPathParams: [], file: "apps/api/v1/agents/[agentId]/monetization/route.ts" },
   "PUT /api/v1/agents/{agentId}/n8n/{path}": { method: "PUT", path: "/api/v1/agents/{agentId}/n8n/{path}", methodName: "putApiV1AgentsByAgentIdN8nByPath", responseMode: "json", pathParams: ["agentId", "path"], catchAllPathParams: ["path"], file: "apps/api/v1/agents/[agentId]/n8n/[...path]/route.ts" },
+  "PUT /api/v1/apis/storage/objects/{key}": { method: "PUT", path: "/api/v1/apis/storage/objects/{key}", methodName: "putApiV1ApisStorageObjectsByKey", responseMode: "json", pathParams: ["key"], catchAllPathParams: ["key"], file: "apps/api/v1/apis/storage/objects/[...key]/route.ts" },
   "PUT /api/v1/apps/{id}": { method: "PUT", path: "/api/v1/apps/{id}", methodName: "putApiV1AppsById", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/route.ts" },
   "PUT /api/v1/apps/{id}/characters": { method: "PUT", path: "/api/v1/apps/{id}/characters", methodName: "putApiV1AppsByIdCharacters", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/characters/route.ts" },
   "PUT /api/v1/apps/{id}/monetization": { method: "PUT", path: "/api/v1/apps/{id}/monetization", methodName: "putApiV1AppsByIdMonetization", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/apps/[id]/monetization/route.ts" },
@@ -717,6 +727,8 @@ export interface PublicRoutePathParams {
   "DELETE /api/v1/agents/{agentId}/n8n/{path}": { "agentId": string | number; "path": string | number | readonly (string | number)[] };
   "DELETE /api/v1/agents/{agentId}/publish": { "agentId": string | number };
   "DELETE /api/v1/api-keys/{id}": { "id": string | number };
+  "DELETE /api/v1/apis/storage/objects/{key}": { "key": string | number | readonly (string | number)[] };
+  "DELETE /api/v1/apis/streaming/sessions/{id}": { "id": string | number };
   "DELETE /api/v1/apps/{id}": { "id": string | number };
   "DELETE /api/v1/apps/{id}/discord-automation": { "id": string | number };
   "DELETE /api/v1/apps/{id}/telegram-automation": { "id": string | number };
@@ -883,6 +895,11 @@ export interface PublicRoutePathParams {
   "GET /api/v1/agents/by-token": Record<never, never>;
   "GET /api/v1/api-keys": Record<never, never>;
   "GET /api/v1/api-keys/explorer": Record<never, never>;
+  "GET /api/v1/apis/birdeye/{path}": { "path": string | number | readonly (string | number)[] };
+  "GET /api/v1/apis/dexscreener/{path}": { "path": string | number | readonly (string | number)[] };
+  "GET /api/v1/apis/storage/list": Record<never, never>;
+  "GET /api/v1/apis/storage/objects/{key}": { "key": string | number | readonly (string | number)[] };
+  "GET /api/v1/apis/streaming/sessions/{id}": { "id": string | number };
   "GET /api/v1/app-auth/session": Record<never, never>;
   "GET /api/v1/app-credits/balance": Record<never, never>;
   "GET /api/v1/app-credits/verify": Record<never, never>;
@@ -1178,6 +1195,8 @@ export interface PublicRoutePathParams {
   "POST /api/v1/agents/{agentId}/suspend": { "agentId": string | number };
   "POST /api/v1/api-keys": Record<never, never>;
   "POST /api/v1/api-keys/{id}/regenerate": { "id": string | number };
+  "POST /api/v1/apis/storage/presign": Record<never, never>;
+  "POST /api/v1/apis/streaming/sessions": Record<never, never>;
   "POST /api/v1/app-auth/connect": Record<never, never>;
   "POST /api/v1/app-credits/checkout": Record<never, never>;
   "POST /api/v1/app/agents": Record<never, never>;
@@ -1331,6 +1350,7 @@ export interface PublicRoutePathParams {
   "PUT /api/v1/affiliates": Record<never, never>;
   "PUT /api/v1/agents/{agentId}/monetization": { "agentId": string | number };
   "PUT /api/v1/agents/{agentId}/n8n/{path}": { "agentId": string | number; "path": string | number | readonly (string | number)[] };
+  "PUT /api/v1/apis/storage/objects/{key}": { "key": string | number | readonly (string | number)[] };
   "PUT /api/v1/apps/{id}": { "id": string | number };
   "PUT /api/v1/apps/{id}/characters": { "id": string | number };
   "PUT /api/v1/apps/{id}/monetization": { "id": string | number };
@@ -1652,6 +1672,18 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"DELETE /api/v1/api-keys/{id}">
   ): Promise<TResponse> {
     return this.call<"DELETE /api/v1/api-keys/{id}", TResponse>("DELETE /api/v1/api-keys/{id}", options);
+  }
+
+  deleteApiV1ApisStorageObjectsByKey<TResponse = unknown>(
+    options: PublicRouteCallOptions<"DELETE /api/v1/apis/storage/objects/{key}">
+  ): Promise<TResponse> {
+    return this.call<"DELETE /api/v1/apis/storage/objects/{key}", TResponse>("DELETE /api/v1/apis/storage/objects/{key}", options);
+  }
+
+  deleteApiV1ApisStreamingSessionsById(
+    options: PublicRouteCallOptions<"DELETE /api/v1/apis/streaming/sessions/{id}">
+  ): Promise<Response> {
+    return this.callRaw("DELETE /api/v1/apis/streaming/sessions/{id}", options);
   }
 
   deleteApiV1AppsById<TResponse = unknown>(
@@ -2648,6 +2680,36 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"GET /api/v1/api-keys/explorer"> = {}
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/api-keys/explorer", TResponse>("GET /api/v1/api-keys/explorer", options);
+  }
+
+  getApiV1ApisBirdeyeByPath<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/apis/birdeye/{path}">
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/apis/birdeye/{path}", TResponse>("GET /api/v1/apis/birdeye/{path}", options);
+  }
+
+  getApiV1ApisDexscreenerByPath<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/apis/dexscreener/{path}">
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/apis/dexscreener/{path}", TResponse>("GET /api/v1/apis/dexscreener/{path}", options);
+  }
+
+  getApiV1ApisStorageList<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/apis/storage/list"> = {}
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/apis/storage/list", TResponse>("GET /api/v1/apis/storage/list", options);
+  }
+
+  getApiV1ApisStorageObjectsByKey<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/apis/storage/objects/{key}">
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/apis/storage/objects/{key}", TResponse>("GET /api/v1/apis/storage/objects/{key}", options);
+  }
+
+  getApiV1ApisStreamingSessionsById(
+    options: PublicRouteCallOptions<"GET /api/v1/apis/streaming/sessions/{id}">
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/apis/streaming/sessions/{id}", options);
   }
 
   getApiV1AppAuthSession<TResponse = unknown>(
@@ -4420,6 +4482,18 @@ export class ElizaCloudPublicRoutesClient {
     return this.call<"POST /api/v1/api-keys/{id}/regenerate", TResponse>("POST /api/v1/api-keys/{id}/regenerate", options);
   }
 
+  postApiV1ApisStoragePresign<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/apis/storage/presign"> = {}
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/apis/storage/presign", TResponse>("POST /api/v1/apis/storage/presign", options);
+  }
+
+  postApiV1ApisStreamingSessions(
+    options: PublicRouteCallOptions<"POST /api/v1/apis/streaming/sessions"> = {}
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/apis/streaming/sessions", options);
+  }
+
   postApiV1AppAuthConnect<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/app-auth/connect"> = {}
   ): Promise<TResponse> {
@@ -5338,6 +5412,12 @@ export class ElizaCloudPublicRoutesClient {
     return this.call<"PUT /api/v1/agents/{agentId}/n8n/{path}", TResponse>("PUT /api/v1/agents/{agentId}/n8n/{path}", options);
   }
 
+  putApiV1ApisStorageObjectsByKey<TResponse = unknown>(
+    options: PublicRouteCallOptions<"PUT /api/v1/apis/storage/objects/{key}">
+  ): Promise<TResponse> {
+    return this.call<"PUT /api/v1/apis/storage/objects/{key}", TResponse>("PUT /api/v1/apis/storage/objects/{key}", options);
+  }
+
   putApiV1AppsById<TResponse = unknown>(
     options: PublicRouteCallOptions<"PUT /api/v1/apps/{id}">
   ): Promise<TResponse> {
@@ -5530,6 +5610,14 @@ export class ElizaCloudPublicRoutesClient {
 
   deleteApiV1ApiKeysByIdRaw(options: PublicRouteCallOptions<"DELETE /api/v1/api-keys/{id}">): Promise<Response> {
     return this.callRaw("DELETE /api/v1/api-keys/{id}", options);
+  }
+
+  deleteApiV1ApisStorageObjectsByKeyRaw(options: PublicRouteCallOptions<"DELETE /api/v1/apis/storage/objects/{key}">): Promise<Response> {
+    return this.callRaw("DELETE /api/v1/apis/storage/objects/{key}", options);
+  }
+
+  deleteApiV1ApisStreamingSessionsByIdRaw(options: PublicRouteCallOptions<"DELETE /api/v1/apis/streaming/sessions/{id}">): Promise<Response> {
+    return this.callRaw("DELETE /api/v1/apis/streaming/sessions/{id}", options);
   }
 
   deleteApiV1AppsByIdRaw(options: PublicRouteCallOptions<"DELETE /api/v1/apps/{id}">): Promise<Response> {
@@ -6194,6 +6282,26 @@ export class ElizaCloudPublicRoutesClient {
 
   getApiV1ApiKeysExplorerRaw(options: PublicRouteCallOptions<"GET /api/v1/api-keys/explorer"> = {}): Promise<Response> {
     return this.callRaw("GET /api/v1/api-keys/explorer", options);
+  }
+
+  getApiV1ApisBirdeyeByPathRaw(options: PublicRouteCallOptions<"GET /api/v1/apis/birdeye/{path}">): Promise<Response> {
+    return this.callRaw("GET /api/v1/apis/birdeye/{path}", options);
+  }
+
+  getApiV1ApisDexscreenerByPathRaw(options: PublicRouteCallOptions<"GET /api/v1/apis/dexscreener/{path}">): Promise<Response> {
+    return this.callRaw("GET /api/v1/apis/dexscreener/{path}", options);
+  }
+
+  getApiV1ApisStorageListRaw(options: PublicRouteCallOptions<"GET /api/v1/apis/storage/list"> = {}): Promise<Response> {
+    return this.callRaw("GET /api/v1/apis/storage/list", options);
+  }
+
+  getApiV1ApisStorageObjectsByKeyRaw(options: PublicRouteCallOptions<"GET /api/v1/apis/storage/objects/{key}">): Promise<Response> {
+    return this.callRaw("GET /api/v1/apis/storage/objects/{key}", options);
+  }
+
+  getApiV1ApisStreamingSessionsByIdRaw(options: PublicRouteCallOptions<"GET /api/v1/apis/streaming/sessions/{id}">): Promise<Response> {
+    return this.callRaw("GET /api/v1/apis/streaming/sessions/{id}", options);
   }
 
   getApiV1AppAuthSessionRaw(options: PublicRouteCallOptions<"GET /api/v1/app-auth/session"> = {}): Promise<Response> {
@@ -7376,6 +7484,14 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("POST /api/v1/api-keys/{id}/regenerate", options);
   }
 
+  postApiV1ApisStoragePresignRaw(options: PublicRouteCallOptions<"POST /api/v1/apis/storage/presign"> = {}): Promise<Response> {
+    return this.callRaw("POST /api/v1/apis/storage/presign", options);
+  }
+
+  postApiV1ApisStreamingSessionsRaw(options: PublicRouteCallOptions<"POST /api/v1/apis/streaming/sessions"> = {}): Promise<Response> {
+    return this.callRaw("POST /api/v1/apis/streaming/sessions", options);
+  }
+
   postApiV1AppAuthConnectRaw(options: PublicRouteCallOptions<"POST /api/v1/app-auth/connect"> = {}): Promise<Response> {
     return this.callRaw("POST /api/v1/app-auth/connect", options);
   }
@@ -7986,6 +8102,10 @@ export class ElizaCloudPublicRoutesClient {
 
   putApiV1AgentsByAgentIdN8nByPathRaw(options: PublicRouteCallOptions<"PUT /api/v1/agents/{agentId}/n8n/{path}">): Promise<Response> {
     return this.callRaw("PUT /api/v1/agents/{agentId}/n8n/{path}", options);
+  }
+
+  putApiV1ApisStorageObjectsByKeyRaw(options: PublicRouteCallOptions<"PUT /api/v1/apis/storage/objects/{key}">): Promise<Response> {
+    return this.callRaw("PUT /api/v1/apis/storage/objects/{key}", options);
   }
 
   putApiV1AppsByIdRaw(options: PublicRouteCallOptions<"PUT /api/v1/apps/{id}">): Promise<Response> {

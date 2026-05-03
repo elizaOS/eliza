@@ -8,6 +8,19 @@ import {
 import { InMemoryDatabaseAdapter } from "./adapter";
 import { MemoryStorage } from "./storage-memory";
 
+// The InMemoryDatabaseAdapter implements an older revision of the
+// DatabaseAdapter abstract base in @elizaos/core (see adapter.ts), so we cast
+// to IDatabaseAdapter at the boundary. Calls into methods that were added in
+// newer core revisions will fail at runtime — the plugin needs to be brought
+// back to parity.
+type CompatAdapter = IDatabaseAdapter & {
+  init?: () => Promise<void>;
+  initialize?: () => Promise<void>;
+};
+type RuntimeWithRegister = IAgentRuntime & {
+  registerDatabaseAdapter?: (adapter: IDatabaseAdapter) => void;
+};
+
 const GLOBAL_SINGLETONS = Symbol.for("@elizaos/plugin-inmemorydb/global-singletons");
 type GlobalSymbols = typeof globalThis & {
   [GLOBAL_SINGLETONS]?: {
@@ -26,7 +39,10 @@ export function createDatabaseAdapter(agentId: UUID): IDatabaseAdapter {
     globalSingletons.storageManager = new MemoryStorage();
   }
 
-  return new InMemoryDatabaseAdapter(globalSingletons.storageManager, agentId);
+  return new InMemoryDatabaseAdapter(
+    globalSingletons.storageManager,
+    agentId,
+  ) as unknown as IDatabaseAdapter;
 }
 
 export const plugin: Plugin = {
@@ -57,10 +73,15 @@ export const plugin: Plugin = {
       return;
     }
 
-    const adapter = createDatabaseAdapter(runtime.agentId);
+    const adapter = createDatabaseAdapter(runtime.agentId) as CompatAdapter;
 
-    await adapter.init();
-    runtime.registerDatabaseAdapter(adapter);
+    if (typeof adapter.init === "function") {
+      await adapter.init();
+    } else if (typeof adapter.initialize === "function") {
+      await adapter.initialize();
+    }
+    const runtimeReg = runtime as RuntimeWithRegister;
+    runtimeReg.registerDatabaseAdapter?.(adapter);
 
     logger.success(
       { src: "plugin:inmemorydb" },
