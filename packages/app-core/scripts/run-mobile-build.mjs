@@ -42,6 +42,7 @@ const iosDir = path.join(appDir, "ios", "App");
 const androidDir = path.join(appDir, "android");
 const elizaOsVendorDir = path.join(
   repoRoot,
+  "packages",
   "os",
   "android",
   "vendor",
