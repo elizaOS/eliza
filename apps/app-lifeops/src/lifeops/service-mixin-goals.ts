@@ -177,11 +177,80 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(
       request: CreateLifeOpsGoalRequest,
     ): Promise<LifeOpsGoalRecord> {
       const ownership = this.normalizeOwnership(request.ownership);
+      const requestTitle = requireNonEmptyString(request.title, "title");
+      const requestDescription =
+        normalizeOptionalString(request.description) ?? "";
+      const requestSuccessCriteria = (() => {
+        const criteria =
+          normalizeOptionalRecord(
+            request.successCriteria,
+            "successCriteria",
+          ) ?? {};
+        if (Array.isArray(criteria)) {
+          fail(400, "successCriteria must be an object, not an array");
+        }
+        return criteria;
+      })();
+
+      // Dedup: short-circuit if a near-duplicate active goal already exists
+      // in the same ownership scope. Avoids spamming duplicate rows when the
+      // user re-issues the same chat phrase. Threshold 0.85 is conservative;
+      // see scoreGoalSimilarity (this file) for the scoring algorithm.
+      const existingGoals = await this.repository.listGoals(this.agentId());
+      const dedupCandidate = (() => {
+        let best: { record: LifeOpsGoalDefinition; score: number } | null =
+          null;
+        for (const candidate of existingGoals) {
+          if (candidate.status !== "active") continue;
+          if (candidate.subjectType !== ownership.subjectType) continue;
+          if (candidate.subjectId !== ownership.subjectId) continue;
+          const score = this.scoreGoalSimilarity({
+            reference: {
+              title: requestTitle,
+              description: requestDescription,
+              successCriteria: requestSuccessCriteria,
+            },
+            candidate,
+          });
+          if (score >= 0.85 && (best === null || score > best.score)) {
+            best = { record: candidate, score };
+          }
+        }
+        return best;
+      })();
+
+      if (dedupCandidate !== null) {
+        const links = await this.repository.listGoalLinksForGoal(
+          this.agentId(),
+          dedupCandidate.record.id,
+        );
+        await this.recordAudit(
+          "goal_created",
+          "goal",
+          dedupCandidate.record.id,
+          "goal create short-circuited by dedup",
+          {
+            request,
+          },
+          {
+            dedup: true,
+            similarityScore: Number(dedupCandidate.score.toFixed(3)),
+            existingGoalId: dedupCandidate.record.id,
+            status: dedupCandidate.record.status,
+            reviewState: dedupCandidate.record.reviewState,
+          },
+        );
+        return {
+          goal: dedupCandidate.record,
+          links,
+        };
+      }
+
       const goal = createLifeOpsGoalDefinition({
         agentId: this.agentId(),
         ...ownership,
-        title: requireNonEmptyString(request.title, "title"),
-        description: normalizeOptionalString(request.description) ?? "",
+        title: requestTitle,
+        description: requestDescription,
         cadence: (() => {
           const cadence = normalizeNullableRecord(request.cadence, "cadence");
           if (cadence && typeof cadence.kind !== "string") {
@@ -200,17 +269,7 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(
           }
           return strategy;
         })(),
-        successCriteria: (() => {
-          const criteria =
-            normalizeOptionalRecord(
-              request.successCriteria,
-              "successCriteria",
-            ) ?? {};
-          if (Array.isArray(criteria)) {
-            fail(400, "successCriteria must be an object, not an array");
-          }
-          return criteria;
-        })(),
+        successCriteria: requestSuccessCriteria,
         status:
           request.status === undefined
             ? "active"
