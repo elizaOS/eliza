@@ -50,6 +50,24 @@ export type TravelTimeFetch = (
   json: () => Promise<unknown>;
 }>;
 
+/**
+ * Structural slice of the Location plugin
+ * (`@elizaos/plugin-location`'s `LocationPlugin`).
+ *
+ * Captured here as a local interface so this service stays free of any
+ * platform/native imports — the action layer wires the real plugin in.
+ */
+export interface LocationProviderLike {
+  checkPermissions(): Promise<{ location: "granted" | "denied" | "prompt" }>;
+  getCurrentPosition(options?: {
+    timeout?: number;
+    accuracy?: "best" | "high" | "medium" | "low" | "passive";
+    maxAge?: number;
+  }): Promise<{
+    coords: { latitude: number; longitude: number };
+  } | null>;
+}
+
 export interface TravelTimeServiceDeps {
   calendar: CalendarEventLookupLike;
   /** Optional fetch override. Defaults to global `fetch`. */
@@ -58,6 +76,15 @@ export interface TravelTimeServiceDeps {
   getApiKey?: () => string | undefined;
   /** Default origin used when caller omits originAddress. */
   defaultOriginAddress?: string | null;
+  /**
+   * Optional Location plugin handle. When supplied, the service falls back
+   * to `Location.getCurrentPosition()` if no origin address was provided
+   * (and no `defaultOriginAddress` is configured) but the user has granted
+   * location permission. A denied permission, a missing plugin, or a
+   * plugin error all surface as `MISSING_ORIGIN` so callers fail loud
+   * instead of silently fabricating a buffer.
+   */
+  locationProvider?: LocationProviderLike;
 }
 
 interface DistanceMatrixElement {
@@ -109,7 +136,7 @@ export class TravelTimeService {
     originAddressInput?: string,
   ): Promise<TravelBufferResult> {
     const destinationAddress = normalizeAddress(event.location);
-    const originAddress =
+    const explicitOrigin =
       normalizeAddress(originAddressInput) ??
       normalizeAddress(this.deps.defaultOriginAddress ?? null);
 
@@ -119,6 +146,9 @@ export class TravelTimeService {
         "MISSING_DESTINATION",
       );
     }
+
+    const originAddress =
+      explicitOrigin ?? (await this.resolveOriginFromLocationPlugin());
     if (!originAddress) {
       throw new TravelTimeUnavailableError(
         "Cannot compute travel time because no origin address was supplied.",
@@ -163,6 +193,70 @@ export class TravelTimeService {
       originAddress,
       destinationAddress,
     };
+  }
+
+  /**
+   * Ask the Location plugin for the user's current coordinates and format
+   * them as a `lat,lng` string the Distance Matrix API accepts as origin.
+   *
+   * Returns null when:
+   *   - no location provider was injected,
+   *   - the user has not granted location permission,
+   *   - the plugin returned no fix.
+   *
+   * Throws `TravelTimeUnavailableError("MISSING_ORIGIN")` when the plugin
+   * call itself fails — surfaces the underlying error message so callers
+   * can debug instead of silently fabricating a buffer.
+   *
+   * Returning null causes the caller to throw `MISSING_ORIGIN` too.
+   */
+  private async resolveOriginFromLocationPlugin(): Promise<string | null> {
+    const provider = this.deps.locationProvider;
+    if (!provider) return null;
+
+    const status = await this.callLocationPlugin(
+      () => provider.checkPermissions(),
+      "checkPermissions",
+    );
+    if (status.location !== "granted") return null;
+
+    const position = await this.callLocationPlugin(
+      () => provider.getCurrentPosition({ timeout: 5000 }),
+      "getCurrentPosition",
+    );
+    if (!position) return null;
+
+    const { latitude, longitude } = position.coords;
+    if (
+      typeof latitude !== "number" ||
+      typeof longitude !== "number" ||
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude)
+    ) {
+      return null;
+    }
+    return `${latitude},${longitude}`;
+  }
+
+  /**
+   * Boundary-translation wrapper for the Location plugin. The plugin lives
+   * outside this service's trust domain (Capacitor / native bridge), so we
+   * convert any rejection into a typed `TravelTimeUnavailableError` with
+   * enough context for an operator to diagnose the failure.
+   */
+  private async callLocationPlugin<T>(
+    op: () => Promise<T>,
+    label: string,
+  ): Promise<T> {
+    try {
+      return await op();
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new TravelTimeUnavailableError(
+        `Cannot compute travel time because the location plugin failed during ${label}: ${detail}`,
+        "MISSING_ORIGIN",
+      );
+    }
   }
 
   private async resolveEvent(
