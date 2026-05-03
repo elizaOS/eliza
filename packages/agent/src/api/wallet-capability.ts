@@ -1,6 +1,6 @@
-import { isStewardEvmBridgeActive } from "@elizaos/app-steward/services/steward-evm-bridge";
 import type { AgentRuntime } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.js";
+import { isStewardEvmBridgeActive } from "../services/external-bridge-state.js";
 import {
   type EvmSigningCapability,
   type EvmSigningCapabilityKind,

@@ -395,7 +395,7 @@ describe('generateWorkflow', () => {
 
     const callArgs = useModel.mock.calls[0] as any[];
     const params = callArgs[1] as { prompt: string };
-    expect(params.prompt).not.toContain('Node Output Schemas');
+    expect(params.prompt).not.toContain('Do NOT invent field names');
   });
 });
 
