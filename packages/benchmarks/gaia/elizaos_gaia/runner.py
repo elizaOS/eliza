@@ -115,6 +115,22 @@ class GAIARunner:
         self.runtime = runtime
         self._runtime_initialized = False
 
+        # If --provider eliza, route every LLM call through the elizaOS
+        # TypeScript benchmark bridge instead of building a Python
+        # AgentRuntime. The Python runtime is being removed.
+        self._use_eliza_bridge = (config.provider or "").lower() == "eliza"
+        if self._use_eliza_bridge:
+            from eliza_adapter.client import ElizaClient
+            from eliza_adapter.gaia import ElizaGAIAAgent
+
+            self.dataset = GAIADataset(cache_dir=config.cache_dir)
+            self.agent = ElizaGAIAAgent(config, client=ElizaClient())  # type: ignore[assignment]
+            self.evaluator = GAIAEvaluator()
+            self.metrics_calculator = MetricsCalculator()
+            self.memory_tracker = MemoryTracker(enabled=True)
+            self._start_time = 0.0
+            return
+
         # If requested and no runtime was provided, build a canonical Eliza runtime.
         if self.runtime is None and self.config.use_eliza_runtime:
             from elizaos.runtime import AgentRuntime as _AgentRuntime

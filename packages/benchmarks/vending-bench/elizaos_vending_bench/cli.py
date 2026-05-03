@@ -108,9 +108,13 @@ Examples:
     run_parser.add_argument(
         "--provider",
         type=str,
-        choices=["openai", "anthropic", "groq", "heuristic"],
+        choices=["openai", "anthropic", "groq", "heuristic", "eliza"],
         default="heuristic",
-        help="LLM provider (default: heuristic)",
+        help=(
+            "LLM provider (default: heuristic). 'eliza' routes through the "
+            "elizaOS TypeScript benchmark bridge (Python AgentRuntime is "
+            "being removed)."
+        ),
     )
     run_parser.add_argument(
         "--api-key",
@@ -173,6 +177,20 @@ async def run_benchmark(args: argparse.Namespace) -> int:
     setup_logging(args.verbose)
     logger = logging.getLogger(__name__)
 
+    # When --provider eliza is used, spin up the elizaOS TS benchmark
+    # bridge server (or honor an existing ELIZA_BENCH_URL).
+    server_mgr = None
+    if args.provider == "eliza" and not __import__("os").environ.get("ELIZA_BENCH_URL"):
+        from eliza_adapter.server_manager import ElizaServerManager
+        import os as _os
+
+        server_mgr = ElizaServerManager()
+        server_mgr.start()
+        _os.environ["ELIZA_BENCH_TOKEN"] = server_mgr.token
+        _os.environ.setdefault(
+            "ELIZA_BENCH_URL", f"http://localhost:{server_mgr.port}"
+        )
+
     # Build config
     config = VendingBenchConfig(
         num_runs=args.runs,
@@ -216,6 +234,16 @@ async def run_benchmark(args: argparse.Namespace) -> int:
         except ValueError as e:
             logger.warning(f"Anthropic provider not configured ({e}), falling back to heuristic")
 
+    elif args.provider == "eliza":
+        # Route generation through the elizaOS TS benchmark bridge.
+        from eliza_adapter.vending_bench import ElizaVendingProvider
+
+        llm_provider = ElizaVendingProvider(model=args.model or "eliza-ts-bridge")
+        logger.info(
+            "Using Eliza TS bridge provider (set ELIZA_BENCH_URL/TOKEN to "
+            "reuse a running bridge; otherwise the cli will spawn one)."
+        )
+
     elif args.provider == "groq":
         # Groq exposes an OpenAI-compatible /v1 API, so reuse OpenAIProvider
         # with Groq's base URL and GROQ_API_KEY. This matches the provider
@@ -253,7 +281,11 @@ async def run_benchmark(args: argparse.Namespace) -> int:
     logger.info(f"Model: {config.model_name}")
     logger.info("=" * 60)
 
-    report = await runner.run_benchmark()
+    try:
+        report = await runner.run_benchmark()
+    finally:
+        if server_mgr is not None:
+            server_mgr.stop()
 
     # Print summary
     print("\n" + "=" * 60)
