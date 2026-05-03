@@ -55,7 +55,7 @@ export function makeNotConfigured(
   return {
     success: false,
     reason: "twitter-not-configured",
-    text: "Twitter/X is not configured on this agent. Install @elizaos/plugin-twitter and provide TWITTER_API_KEY, TWITTER_API_SECRET_KEY, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_TOKEN_SECRET.",
+    text: "X (Twitter) is not configured on this agent. Install @elizaos/plugin-x and provide TWITTER_API_KEY, TWITTER_API_SECRET_KEY, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_TOKEN_SECRET.",
   };
 }
 

@@ -175,7 +175,7 @@ const character = {
     // ... other config
     plugins: [
          // Required for content generation
-        "@elizaos/plugin-twitter"      // Twitter functionality
+        "@elizaos/plugin-x"      // X (Twitter) functionality
     ],
     postExamples: [                    // Examples for tweet generation
         "Just discovered an amazing pattern in the data...",

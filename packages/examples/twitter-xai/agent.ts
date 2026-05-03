@@ -17,7 +17,7 @@ function validateEnvironment(): void {
   // Grok (xAI) is the model provider for this example.
   requireEnv("XAI_API_KEY");
 
-  // X / Twitter is provided by @elizaos/plugin-twitter.
+  // X (Twitter) is provided by @elizaos/plugin-x.
   // Default to OAuth 1.0a user-context (TWITTER_AUTH_MODE=env) for posting.
   const authMode = (process.env.TWITTER_AUTH_MODE ?? "env").toLowerCase();
   if (authMode !== "env") {
@@ -51,18 +51,18 @@ async function main(): Promise<void> {
 
   const sqlPlugin = (await import("@elizaos/plugin-sql")).default;
   const { XAIPlugin } = await import("@elizaos/plugin-xai");
-  const twitterPlugin = (await import("@elizaos/plugin-twitter")).default;
+  const xPlugin = (await import("@elizaos/plugin-x")).default;
 
   const runtime = new AgentRuntime({
     character,
-    plugins: [sqlPlugin, XAIPlugin, twitterPlugin],
+    plugins: [sqlPlugin, XAIPlugin, xPlugin],
   });
 
   console.log("⏳ Initializing runtime...");
   await runtime.initialize();
 
   // Fail fast if the Twitter service did not start (registerPlugin starts services async).
-  await runtime.getServiceLoadPromise("twitter");
+  await runtime.getServiceLoadPromise("x");
 
   console.log(`\n✅ Agent "${character.name}" is now running on X.`);
   console.log(`   Dry run mode: ${process.env.TWITTER_DRY_RUN === "true"}`);
