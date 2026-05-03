@@ -9,6 +9,7 @@ import {
 	updateEntityAction,
 } from "../features/advanced-capabilities/actions/index";
 import {
+	factExtractorEvaluator,
 	reflectionEvaluator,
 	relationshipExtractionEvaluator,
 } from "../features/advanced-capabilities/evaluators/index";
@@ -60,7 +61,11 @@ export const relationshipsPlugin: Plugin = {
 		followUpsProvider,
 		relationshipsProvider,
 	],
-	evaluators: [reflectionEvaluator, relationshipExtractionEvaluator],
+	evaluators: [
+		factExtractorEvaluator,
+		reflectionEvaluator,
+		relationshipExtractionEvaluator,
+	],
 	services: [RelationshipsService, FollowUpService],
 };
 
