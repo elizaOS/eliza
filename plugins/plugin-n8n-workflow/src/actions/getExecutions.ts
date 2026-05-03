@@ -7,58 +7,55 @@ import {
   logger,
   type Memory,
   type State,
-} from "@elizaos/core";
-import {
-  N8N_WORKFLOW_SERVICE_TYPE,
-  type N8nWorkflowService,
-} from "../services/index";
-import { matchWorkflow } from "../utils/generation";
-import { buildConversationContext } from "../utils/context";
+} from '@elizaos/core';
+import { N8N_WORKFLOW_SERVICE_TYPE, type N8nWorkflowService } from '../services/index';
+import { matchWorkflow } from '../utils/generation';
+import { buildConversationContext } from '../utils/context';
 
 const examples: ActionExample[][] = [
   [
     {
-      name: "{{user1}}",
+      name: '{{user1}}',
       content: {
-        text: "Show me the execution history for the Stripe workflow",
+        text: 'Show me the execution history for the Stripe workflow',
       },
     },
     {
-      name: "{{agent}}",
+      name: '{{agent}}',
       content: {
         text: "I'll fetch the execution history for that workflow.",
-        actions: ["GET_N8N_EXECUTIONS"],
+        actions: ['GET_N8N_EXECUTIONS'],
       },
     },
   ],
   [
     {
-      name: "{{user1}}",
+      name: '{{user1}}',
       content: {
-        text: "How did the email automation run last time?",
+        text: 'How did the email automation run last time?',
       },
     },
     {
-      name: "{{agent}}",
+      name: '{{agent}}',
       content: {
-        text: "Let me check the recent runs for that workflow.",
-        actions: ["GET_N8N_EXECUTIONS"],
+        text: 'Let me check the recent runs for that workflow.',
+        actions: ['GET_N8N_EXECUTIONS'],
       },
     },
   ],
 ];
 
 export const getExecutionsAction: Action = {
-  name: "GET_N8N_EXECUTIONS",
+  name: 'GET_N8N_EXECUTIONS',
   similes: [
-    "GET_EXECUTIONS",
-    "SHOW_EXECUTIONS",
-    "EXECUTION_HISTORY",
-    "WORKFLOW_RUNS",
-    "WORKFLOW_EXECUTIONS",
+    'GET_EXECUTIONS',
+    'SHOW_EXECUTIONS',
+    'EXECUTION_HISTORY',
+    'WORKFLOW_RUNS',
+    'WORKFLOW_EXECUTIONS',
   ],
   description:
-    "Get execution history for an n8n workflow. Shows status, start time, and error messages if any. Identifies workflows by ID, name, or semantic description in any language.",
+    'Get execution history for an n8n workflow. Shows status, start time, and error messages if any. Identifies workflows by ID, name, or semantic description in any language.',
 
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
     return !!runtime.getService(N8N_WORKFLOW_SERVICE_TYPE);
@@ -69,20 +66,18 @@ export const getExecutionsAction: Action = {
     message: Memory,
     state: State | undefined,
     _options?: unknown,
-    callback?: HandlerCallback,
+    callback?: HandlerCallback
   ): Promise<ActionResult> => {
-    const service = runtime.getService<N8nWorkflowService>(
-      N8N_WORKFLOW_SERVICE_TYPE,
-    );
+    const service = runtime.getService<N8nWorkflowService>(N8N_WORKFLOW_SERVICE_TYPE);
 
     if (!service) {
       logger.error(
-        { src: "plugin:n8n-workflow:action:get-executions" },
-        "N8n Workflow service not available",
+        { src: 'plugin:n8n-workflow:action:get-executions' },
+        'N8n Workflow service not available'
       );
       if (callback) {
         await callback({
-          text: "N8n Workflow service is not available.",
+          text: 'N8n Workflow service is not available.',
           success: false,
         });
       }
@@ -96,7 +91,7 @@ export const getExecutionsAction: Action = {
       if (workflows.length === 0) {
         if (callback) {
           await callback({
-            text: "No workflows available to check executions for.",
+            text: 'No workflows available to check executions for.',
             success: false,
           });
         }
@@ -106,10 +101,8 @@ export const getExecutionsAction: Action = {
       const context = buildConversationContext(message, state);
       const matchResult = await matchWorkflow(runtime, context, workflows);
 
-      if (!matchResult.matchedWorkflowId || matchResult.confidence === "none") {
-        const workflowList = matchResult.matches
-          .map((m) => `- ${m.name} (ID: ${m.id})`)
-          .join("\n");
+      if (!matchResult.matchedWorkflowId || matchResult.confidence === 'none') {
+        const workflowList = matchResult.matches.map((m) => `- ${m.name} (ID: ${m.id})`).join('\n');
 
         if (callback) {
           await callback({
@@ -124,8 +117,8 @@ export const getExecutionsAction: Action = {
       const executions = await service.getWorkflowExecutions(workflowId, 10);
 
       logger.info(
-        { src: "plugin:n8n-workflow:action:get-executions" },
-        `Retrieved ${executions.length} executions for workflow ${workflowId}`,
+        { src: 'plugin:n8n-workflow:action:get-executions' },
+        `Retrieved ${executions.length} executions for workflow ${workflowId}`
       );
 
       if (executions.length === 0) {
@@ -142,13 +135,13 @@ export const getExecutionsAction: Action = {
 
       for (const execution of executions) {
         const statusEmoji =
-          execution.status === "success"
-            ? "✅"
-            : execution.status === "error"
-              ? "❌"
-              : execution.status === "running"
-                ? "⏳"
-                : "⏸️";
+          execution.status === 'success'
+            ? '✅'
+            : execution.status === 'error'
+              ? '❌'
+              : execution.status === 'running'
+                ? '⏳'
+                : '⏸️';
 
         responseText += `${statusEmoji} ${execution.status.toUpperCase()}\n`;
         responseText += `   Execution ID: ${execution.id}\n`;
@@ -162,7 +155,7 @@ export const getExecutionsAction: Action = {
           responseText += `   Error: ${execution.data.resultData.error.message}\n`;
         }
 
-        responseText += "\n";
+        responseText += '\n';
       }
 
       if (callback) {
@@ -177,11 +170,10 @@ export const getExecutionsAction: Action = {
         data: { executions },
       };
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error(
-        { src: "plugin:n8n-workflow:action:get-executions" },
-        `Failed to get executions: ${errorMessage}`,
+        { src: 'plugin:n8n-workflow:action:get-executions' },
+        `Failed to get executions: ${errorMessage}`
       );
 
       if (callback) {
