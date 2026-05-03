@@ -1,4 +1,3 @@
-// @ts-nocheck — pending @line/bot-sdk type updates
 /**
  * LINE service implementation for ElizaOS.
  */

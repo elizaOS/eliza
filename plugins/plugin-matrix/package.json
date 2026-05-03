@@ -25,16 +25,16 @@
   },
   "dependencies": {
     "matrix-js-sdk": "^41.4.0",
-    "zod": "^4.3.6"
+    "zod": "^4.4.2"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.3.11",
+    "@biomejs/biome": "^2.4.14",
     "@types/bun": "^1.1.0",
     "typescript": "^6.0.3",
-    "vitest": "^3.2.4"
+    "vitest": "^4.0.0"
   },
   "eliza": {
     "platforms": [

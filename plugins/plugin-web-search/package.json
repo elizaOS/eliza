@@ -19,9 +19,9 @@
     ],
     "dependencies": {
         "@elizaos/core": "workspace:*",
-        "@tavily/core": "^0.0.2",
+        "@tavily/core": "^0.7.0",
         "js-tiktoken": "1.0.15",
-        "tsup": "8.3.5"
+        "tsup": "^8.5.1"
     },
     "devDependencies": {
         "@biomejs/biome": "2.4.14"
@@ -36,7 +36,7 @@
         "typecheck": "tsc --noEmit -p tsconfig.json"
     },
     "peerDependencies": {
-        "whatwg-url": "7.1.0"
+        "whatwg-url": "^16.0.0"
     },
     "agentConfig": {
         "pluginType": "elizaos:client:1.0.0",

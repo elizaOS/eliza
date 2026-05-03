@@ -43,20 +43,20 @@
   "peerDependencies": {
     "@elizaos/core": "workspace:*",
     "form-data": "4.0.5",
-    "whatwg-url": "7.1.0"
+    "whatwg-url": "^16.0.0"
   },
   "dependencies": {
-    "@lifi/data-types": "5.15.5",
+    "@lifi/data-types": "^6.0.0",
     "@lifi/sdk": "^3.7.9",
     "@lifi/types": "^17.18.0",
     "@solana/spl-token": "0.4.14",
     "@solana/spl-token-metadata": "^0.1.6",
     "@solana/web3.js": "^1.98.4",
-    "bignumber.js": "9.3.0",
+    "bignumber.js": "^11.0.0",
     "bs58": "^6.0.0",
     "tweetnacl": "^1.0.3",
     "viem": "^2.48.8",
-    "zod": "^4.3.6"
+    "zod": "^4.4.2"
   },
   "publishConfig": {
     "access": "public"
