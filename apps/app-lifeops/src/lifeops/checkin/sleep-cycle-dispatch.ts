@@ -111,16 +111,24 @@ export function shouldRunMorningCheckinFromSleepCycle(args: {
   );
 }
 
+/**
+ * Decide whether the night summary should fire on this scheduler tick.
+ *
+ * Triggers (any one is sufficient):
+ * 1. `circadianState === "winding_down"` (early signal from HID-idle / lock).
+ * 2. `circadianState` is `awake` or `waking` AND
+ *    `minutesUntilBedtimeTarget` is inside `NIGHT_CHECKIN_LEAD_MINUTES`.
+ * 3. Irregular-owner fallback: `regularityClass` is `irregular` /
+ *    `very_irregular`, `minutesUntilBedtimeTarget` is null, and the owner's
+ *    `nightFallbackBedtimeLocal` (or 23:00 default) is inside the lead window.
+ *
+ * `nightFallbackBedtimeLocal` is read from the owner's `nightCheckinTime`
+ * profile field by `processSleepCycleCheckins` and threaded in here. It is
+ * not consulted for `regular` / `very_regular` owners — those flow through
+ * the schedule's bedtime projection exclusively.
+ */
 export function shouldRunNightCheckinFromSleepCycle(args: {
   readonly state: CheckinSleepCycleState | null;
-  /**
-   * Owner-configured fallback bedtime (HH:MM in the schedule's timezone).
-   * Read from the `nightCheckinTime` profile field. Used only when the owner
-   * is irregular/very_irregular AND the schedule's bedtime projection is null
-   * (the typical case for irregular owners — without this they would never
-   * get a night summary). When unset and the owner is irregular, falls back
-   * to `DEFAULT_IRREGULAR_BEDTIME_LOCAL` (23:00).
-   */
   readonly now?: Date;
   readonly nightFallbackBedtimeLocal?: string | null;
 }): boolean {
