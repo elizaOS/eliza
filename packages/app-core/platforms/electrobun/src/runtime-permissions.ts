@@ -5,7 +5,7 @@ import type {
 	SystemPermissionId,
 } from "./native/permissions-shared";
 
-export const RUNTIME_PERMISSION_IDS = ["website-blocking"] as const;
+export const RUNTIME_PERMISSION_IDS = ["website-blocking", "location"] as const;
 
 type RuntimePermissionId = (typeof RUNTIME_PERMISSION_IDS)[number];
 type RuntimePermissionOperation = "check" | "request" | "open-settings";
@@ -31,7 +31,7 @@ export function isRuntimePermissionId(id: string): id is RuntimePermissionId {
 
 export function buildRuntimePermissionUnavailableState(
 	permissionId: RuntimePermissionId,
-	reason = `${getBrandConfig().appName} runtime is unavailable, so website blocking permission cannot be checked from desktop right now.`,
+	reason = `${getBrandConfig().appName} runtime is unavailable, so the ${permissionId} permission cannot be checked from desktop right now.`,
 ): PermissionState {
 	return {
 		id: permissionId,
