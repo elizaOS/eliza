@@ -208,17 +208,12 @@ function simplifyProperty(prop: NodeProperty): NodeProperty | null {
  *
  * Returns undefined when no credential entries gate on `authentication`.
  */
-function buildCredentialAuthMatrix(
-  node: NodeDefinition,
-): Record<string, string> | undefined {
+function buildCredentialAuthMatrix(node: NodeDefinition): Record<string, string> | undefined {
   if (!node.credentials?.length) return undefined;
   const out: Record<string, string> = {};
   for (const cred of node.credentials) {
-    const authValues = (
-      cred.displayOptions as
-        | { show?: { authentication?: string[] } }
-        | undefined
-    )?.show?.authentication;
+    const authValues = (cred.displayOptions as { show?: { authentication?: string[] } } | undefined)
+      ?.show?.authentication;
     if (Array.isArray(authValues) && authValues.length === 1) {
       out[cred.name] = authValues[0];
     }
@@ -245,9 +240,7 @@ export function simplifyNodeForLLM(node: NodeDefinition): NodeDefinition {
   // sees the EXACT set of valid values (catches typeVersion hallucinations
   // like 2.2 when only [1, 2, 2.1] exist). Pair with the prompt rule
   // "pick the highest from version[]; never invent versions".
-  const versions: number[] = Array.isArray(node.version)
-    ? [...node.version]
-    : [node.version];
+  const versions: number[] = Array.isArray(node.version) ? [...node.version] : [node.version];
 
   // Layer 2 (Session 21): expose the credential→authentication mapping
   // so the LLM sets `parameters.authentication` correctly when it

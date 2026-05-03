@@ -1,5 +1,0 @@
-ts,oid,coin,side,px,sz,tif,reduceOnly,builderCode
-tsMs,oid,coin,side,px,sz,tif,reduceOnly,builderCode
-1777784974002,1,ETH,buy,3517.4999999999995,0.01,Gtc,false,
-1777784974002,2,BTC,sell,59820.0,0.02,Alo,true,
-1777784974002,3,ETH,sell,2500.0,0.005,Ioc,false,

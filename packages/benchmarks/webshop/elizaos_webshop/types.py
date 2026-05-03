@@ -101,8 +101,10 @@ class WebShopConfig:
     save_detailed_logs: bool = True
     # ElizaOS integration
     use_mock: bool = False
+    use_bridge: bool = False  # route through the eliza TS benchmark server
     temperature: float = 0.0
     model_provider: str | None = None
+    model_name: str | None = None
     # Trajectory logging
     enable_trajectory_logging: bool = False
     trajectory_export_format: str = "art"  # "art" | "grpo"

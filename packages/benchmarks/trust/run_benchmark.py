@@ -46,6 +46,16 @@ def _discover_handler_names() -> list[str]:
     except ImportError:
         pass
 
+    # eliza-bridge: routes through the elizaOS TS benchmark server
+    # (no in-process AgentRuntime needed). Always available because it only
+    # depends on the lightweight eliza_adapter HTTP client.
+    try:
+        from eliza_adapter.trust import ElizaBridgeTrustHandler  # noqa: F401
+
+        names.append("eliza-bridge")
+    except ImportError:
+        pass
+
     return names
 
 
@@ -79,6 +89,10 @@ def _create_handler(
             model_provider=model_provider,
             model_name=model_name,
         )
+    if name == "eliza-bridge":
+        from eliza_adapter.trust import ElizaBridgeTrustHandler
+
+        return ElizaBridgeTrustHandler()
 
     raise ValueError(f"Unknown handler: {name}")
 
@@ -103,10 +117,11 @@ Examples:
   python run_benchmark.py --threshold 0.8 --output out.json  # Set pass threshold + output
 
 Handler descriptions:
-  oracle  Ground truth oracle — validates benchmark framework (should score 100%%)
-  random  Coin flip baseline — validates benchmark discriminates good from bad
-  real    Heuristic detection + Python SecurityModuleService (runtime)
-  eliza   LLM-based detection using a full ElizaOS agent with OpenAI
+  oracle         Ground truth oracle — validates benchmark framework (should score 100%%)
+  random         Coin flip baseline — validates benchmark discriminates good from bad
+  real           Heuristic detection + Python SecurityModuleService (runtime)
+  eliza          LLM-based detection using a full ElizaOS agent (in-process)
+  eliza-bridge   LLM-based detection routed through the elizaOS TS benchmark server
         """,
     )
     parser.add_argument(

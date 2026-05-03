@@ -66,9 +66,13 @@ def parse_args() -> argparse.Namespace:
     # Model/runtime selection
     parser.add_argument(
         "--provider",
-        choices=["mock", "eliza-classic", "openai", "gateway", "xai", "groq"],
+        choices=["mock", "eliza-classic", "openai", "gateway", "xai", "groq", "eliza"],
         default="openai",
-        help="Model provider to use (default: openai). Use --provider mock for testing without LLM.",
+        help=(
+            "Model provider to use (default: openai). "
+            "Use --provider mock for testing without LLM. "
+            "Use --provider eliza to route through the elizaOS TS benchmark server."
+        ),
     )
     parser.add_argument(
         "--dotenv",
@@ -365,7 +369,7 @@ async def run_benchmark(
             _load_dotenv_file(candidate)
 
         trajectory_logger_service: object | None = None
-        if provider != "mock":
+        if provider not in ("mock", "eliza"):
             runtime = await _create_eliza_runtime(
                 provider,
                 verbose=verbose,
@@ -388,6 +392,20 @@ async def run_benchmark(
             trajectory_logger_service=trajectory_logger_service,
             trajectory_dataset=trajectory_dataset,
         )
+
+        # When --provider eliza, swap MINTAgent for the bridge-backed ElizaMINTAgent
+        # so the multi-turn loop forwards each LLM call to the TS benchmark server.
+        if provider == "eliza":
+            from eliza_adapter.mint import ElizaMINTAgent
+
+            runner.agent = ElizaMINTAgent(
+                tool_executor=runner.executor,
+                feedback_generator=runner.feedback_generator,
+                temperature=config.temperature,
+            )
+            logging.getLogger(__name__).info(
+                "Using ElizaMINTAgent (TS benchmark bridge) instead of MINTAgent"
+            )
         results = await runner.run_benchmark()
 
         # Print summary

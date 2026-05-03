@@ -25,6 +25,37 @@ from elizaos_webshop.types import (
     WebShopTask,
 )
 
+
+def _maybe_make_bridge_factory(config: WebShopConfig):
+    """Return (agent_factory, bridge_client_for_summary) when bridge mode is active."""
+    if not config.use_bridge:
+        return None, None
+    try:
+        from eliza_adapter.server_manager import ElizaServerManager
+        from eliza_adapter.webshop import create_eliza_bridge_webshop_agent
+    except ImportError as exc:
+        raise RuntimeError(
+            "Bridge mode requires the eliza_adapter package. "
+            "Install it from packages/benchmarks/eliza-adapter or add its src "
+            f"directory to PYTHONPATH (import error: {exc})."
+        ) from exc
+
+    mgr = ElizaServerManager()
+    mgr.start()
+    logger.info(
+        "[WebShopRunner] Eliza bridge ready at %s", mgr.client.base_url
+    )
+
+    def _factory(env: WebShopEnvironment) -> object:
+        return create_eliza_bridge_webshop_agent(
+            env=env,
+            max_turns=config.max_turns_per_task,
+            client=mgr.client,
+            model=config.model_name,
+        )
+
+    return _factory, mgr
+
 logger = logging.getLogger(__name__)
 
 
@@ -38,7 +69,8 @@ class WebShopRunner:
         self.evaluator = WebShopEvaluator()
         self._start_time = 0.0
 
-        self._elizaos_mode = (not config.use_mock) and ELIZAOS_AVAILABLE
+        self._elizaos_mode = (not config.use_mock) and (not config.use_bridge) and ELIZAOS_AVAILABLE
+        self._bridge_factory, self._bridge_manager = _maybe_make_bridge_factory(config)
         self._trajectory: WebShopTrajectoryIntegration | None = None
         if self._elizaos_mode and config.enable_trajectory_logging:
             if not TRAJECTORY_LOGGER_AVAILABLE:
@@ -104,14 +136,17 @@ class WebShopRunner:
             )
 
         env = WebShopEnvironment(products=self.dataset.products)
-        agent = create_webshop_agent(
-            env,
-            max_turns=self.config.max_turns_per_task,
-            use_mock=self.config.use_mock,
-            model_provider=self.config.model_provider,
-            temperature=self.config.temperature,
-            trajectory=self._trajectory,
-        )
+        if self._bridge_factory is not None:
+            agent = self._bridge_factory(env)
+        else:
+            agent = create_webshop_agent(
+                env,
+                max_turns=self.config.max_turns_per_task,
+                use_mock=self.config.use_mock,
+                model_provider=self.config.model_provider,
+                temperature=self.config.temperature,
+                trajectory=self._trajectory,
+            )
 
         await agent.initialize()
 
@@ -188,10 +223,16 @@ class WebShopRunner:
         else:
             status = "needs_improvement"
 
+        if self._bridge_factory is not None:
+            mode = "eliza-bridge"
+        elif self._elizaos_mode:
+            mode = "real-llm"
+        else:
+            mode = "mock"
         summary: dict[str, str | int | float | bool] = {
             "status": status,
             "timestamp": datetime.now().isoformat(),
-            "mode": "real-llm" if self._elizaos_mode else "mock",
+            "mode": mode,
         }
 
         return WebShopReport(

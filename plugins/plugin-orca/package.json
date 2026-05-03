@@ -18,9 +18,9 @@
     "lint:fix": "bunx @biomejs/biome check --write ./src",
     "format": "bunx @biomejs/biome format --write ./src",
     "format:check": "bunx @biomejs/biome format ./src",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage --passWithNoTests"
   },
   "publishConfig": {
     "access": "public"

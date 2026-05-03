@@ -1,5 +1,4 @@
 {
-  "extends": "../../../tsconfig.json",
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
@@ -12,13 +11,14 @@
     "skipLibCheck": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
+    "ignoreDeprecations": "6.0",
     "types": [
       "node",
       "bun-types"
     ]
   },
   "include": [
-    "types.ts"
+    "**/*.ts"
   ],
   "exclude": [
     "node_modules",

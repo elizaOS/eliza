@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import type { IAgentRuntime } from "@elizaos/core";
 import { loadClaudeCodeWorkbenchConfig } from "../config.ts";
 import { claudeCodeWorkbenchPlugin } from "../plugin.ts";
@@ -6,11 +6,24 @@ import { claudeCodeWorkbenchPlugin } from "../plugin.ts";
 const runtime = {} as IAgentRuntime;
 
 describe("claudeCodeWorkbenchPlugin", () => {
+  let savedNodeOptions: string | undefined;
   beforeEach(() => {
     delete process.env.CLAUDE_CODE_WORKBENCH_WORKSPACE_ROOT;
     delete process.env.CLAUDE_CODE_WORKBENCH_TIMEOUT_MS;
     delete process.env.CLAUDE_CODE_WORKBENCH_ALLOWED_WORKFLOWS;
     delete process.env.CLAUDE_CODE_WORKBENCH_ENABLE_MUTATING_WORKFLOWS;
+    // CI sets NODE_OPTIONS=--max-old-space-size=4096 globally; the
+    // "writes only prefixed env vars" assertion expects NODE_OPTIONS to be
+    // undefined after init, so unset it here and restore afterwards.
+    savedNodeOptions = process.env.NODE_OPTIONS;
+    delete process.env.NODE_OPTIONS;
+  });
+  afterEach(() => {
+    if (savedNodeOptions === undefined) {
+      delete process.env.NODE_OPTIONS;
+    } else {
+      process.env.NODE_OPTIONS = savedNodeOptions;
+    }
   });
 
   it("exposes expected plugin metadata and wiring", () => {

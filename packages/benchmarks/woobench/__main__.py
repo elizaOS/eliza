@@ -79,13 +79,14 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--agent",
-        choices=["dummy", "eliza"],
+        choices=["dummy", "eliza", "eliza-bridge"],
         default="dummy",
         help=(
             "Agent under test. 'dummy' returns a fixed string (smoke test), "
-            "'eliza' drives the full ElizaOS message_service.handle_message "
-            "pipeline (provider chosen by WOOBENCH_AGENT_PROVIDER env, "
-            "default groq)."
+            "'eliza' drives the in-process Python ElizaOS pipeline (chosen via "
+            "WOOBENCH_AGENT_PROVIDER, default groq), and 'eliza-bridge' routes "
+            "through the elizaOS TS benchmark server (ELIZA_BENCH_URL / "
+            "ELIZA_BENCH_TOKEN)."
         ),
     )
     return parser
@@ -265,6 +266,10 @@ async def _run(args: argparse.Namespace) -> None:
     # Build runner
     if args.agent == "eliza":
         agent_fn = _build_eliza_agent_fn()
+    elif args.agent == "eliza-bridge":
+        from eliza_adapter.woobench import build_eliza_bridge_agent_fn
+
+        agent_fn = build_eliza_bridge_agent_fn()
     else:
         agent_fn = _create_dummy_agent
     runner = WooBenchRunner(
