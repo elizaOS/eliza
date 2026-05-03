@@ -10,6 +10,7 @@ import type {
 } from "@elizaos/core";
 import { z } from "zod";
 import { MINECRAFT_SERVICE_TYPE, type MinecraftService } from "../services/minecraft-service.js";
+import { matchPlannerValidateGate } from "./action-validate-gate.js";
 
 const controlSchema = z.object({
   control: z.string(),
@@ -47,33 +48,15 @@ export const minecraftControlAction: Action = {
   similes: ["MINECRAFT_CONTROL", "SET_CONTROL_STATE"],
   description:
     "Set a control state (e.g. forward/back/left/right/jump/sprint/sneak). Provide JSON {control,state,durationMs?} or 'forward true 1000'.",
-  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
-    const __avTextRaw = typeof message.content?.text === "string" ? message.content.text : "";
-    const __avText = __avTextRaw.toLowerCase();
-    const __avKeywords = ["control"];
-    const __avKeywordOk =
-      __avKeywords.length > 0 && __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));
-    const __avRegex = /\b(?:control)\b/i;
-    const __avRegexOk = __avRegex.test(__avText);
-    const __avSource = String(message.content?.source ?? "");
-    const __avExpectedSource = "";
-    const __avSourceOk = __avExpectedSource
-      ? __avSource === __avExpectedSource
-      : Boolean(__avSource || state || runtime.agentId || runtime.getService);
-    const __avInputOk =
-      __avText.trim().length > 0 || Boolean(message.content && typeof message.content === "object");
-
-    if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
-      return false;
-    }
-
-    try {
-      const service = runtime.getService<MinecraftService>(MINECRAFT_SERVICE_TYPE);
-      return Boolean(service) && Boolean(parseControl(message.content.text ?? ""));
-    } catch {
-      return false;
-    }
-  },
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> =>
+    matchPlannerValidateGate(runtime, message, state, {
+      keywords: ["control"],
+      regex: /\b(?:control)\b/i,
+      legacyValidate: async (rt, msg) => {
+        const service = rt.getService<MinecraftService>(MINECRAFT_SERVICE_TYPE);
+        return Boolean(service) && Boolean(parseControl(msg.content.text ?? ""));
+      },
+    }),
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
