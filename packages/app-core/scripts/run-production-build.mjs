@@ -5,7 +5,7 @@
  * 2. vite build (packages/app)
  * 3. write-build-info (dist metadata)
  *
- * Requires prior `bun install` / postinstall (see packages/app/scripts/build.mjs).
+ * Requires prior `bun install` / postinstall.
  */
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -107,7 +107,7 @@ function resolveViteCli() {
 
 const tsdownCli = resolveTsdownCli();
 const viteCli = resolveViteCli();
-const pluginBuildScript = path.join(appDir, "scripts", "plugin-build.mjs");
+const pluginBuildScript = path.join(scriptDir, "build-native-plugins.mjs");
 const writeBuildInfoScript = path.join(
   rootDir,
   "scripts",

@@ -243,7 +243,18 @@ const vitestResolveAlias: ModuleAlias[] = [
     ),
   },
   {
-    find: "@elizaos/plugin-sql/drizzle",
+    find: /^@elizaos\/plugin-sql\/schema$/,
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "plugins",
+      "plugin-sql",
+      "typescript",
+      "schema",
+      "index.ts",
+    ),
+  },
+  {
+    find: /^@elizaos\/plugin-sql\/drizzle$/,
     replacement: path.join(
       elizaWorkspaceRoot,
       "plugins/plugin-sql/typescript/drizzle/index.ts",
@@ -251,7 +262,10 @@ const vitestResolveAlias: ModuleAlias[] = [
   },
   {
     find: /^@elizaos\/plugin-sql\/(.+)$/,
-    replacement: path.join(elizaWorkspaceRoot, "plugins/plugin-sql/$1"),
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "plugins/plugin-sql/typescript/$1",
+    ),
   },
   {
     // App-core tests mock this plugin, but Vitest still has to resolve the specifier.
@@ -278,17 +292,6 @@ const vitestResolveAlias: ModuleAlias[] = [
       "plugin-telegram",
       "src",
       "account-auth-service.ts",
-    ),
-  },
-  {
-    find: "@elizaos/plugin-sql/schema",
-    replacement: path.join(
-      elizaWorkspaceRoot,
-      "plugins",
-      "plugin-sql",
-      "typescript",
-      "schema",
-      "index.ts",
     ),
   },
   {
