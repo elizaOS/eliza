@@ -73,6 +73,15 @@ def parse_args() -> argparse.Namespace:
     # Eliza integration
     p.add_argument("--mock", action="store_true", help="Use mock agent instead of real LLM (for testing)")
     p.add_argument("--real-llm", action="store_true", help="(deprecated, now the default) Use real LLM via ElizaOS runtime")
+    p.add_argument(
+        "--bridge",
+        action="store_true",
+        help=(
+            "Route all LLM/agent calls through the eliza TypeScript benchmark "
+            "server (auto-spawned via ElizaServerManager). Bypasses the in-process "
+            "Python AgentRuntime entirely."
+        ),
+    )
     p.add_argument("--temperature", type=float, default=0.0, help="LLM temperature")
     p.add_argument("--model", type=str, default=None, help="Model name (e.g. qwen3-32b)")
     p.add_argument(
@@ -108,6 +117,7 @@ def create_config(args: argparse.Namespace) -> WebShopConfig:
         out = f"./benchmark_results/webshop/{ts}"
 
     use_mock = bool(args.mock)
+    use_bridge = bool(args.bridge)
 
     return WebShopConfig(
         output_dir=out,
@@ -118,9 +128,13 @@ def create_config(args: argparse.Namespace) -> WebShopConfig:
         verbose=bool(args.verbose),
         save_detailed_logs=not bool(args.no_details),
         use_mock=use_mock,
+        use_bridge=use_bridge,
         temperature=float(args.temperature),
         model_provider=args.model_provider,
-        enable_trajectory_logging=(bool(args.trajectories) or not use_mock)
+        model_name=args.model,
+        enable_trajectory_logging=(
+            bool(args.trajectories) or (not use_mock and not use_bridge)
+        )
         and not bool(args.no_trajectories),
         trajectory_export_format=str(args.trajectory_format),
     )
@@ -164,6 +178,10 @@ def main() -> int:
     if config.use_mock:
         logger.warning(
             "WARNING: Running in mock mode. Results are not representative of real agent performance."
+        )
+    elif config.use_bridge:
+        logger.info(
+            "Bridge mode: routing all LLM calls through the eliza TypeScript benchmark server."
         )
     else:
         provider = (config.model_provider or os.environ.get("BENCHMARK_MODEL_PROVIDER", "")).strip().lower()
