@@ -280,9 +280,20 @@ describe("E2E: DELETE workflow", () => {
     cleanup = ctx.cleanup;
 
     const callback = ctx.createCallback();
-    const result = await deleteWorkflowAction.handler(
+
+    // Step 1: match workflow and set pending confirmation
+    await deleteWorkflowAction.handler(
       ctx.runtime,
       ctx.createMessage("Delete the Stripe workflow"),
+      ctx.state,
+      {},
+      callback,
+    );
+
+    // Step 2: confirm deletion
+    const result = await deleteWorkflowAction.handler(
+      ctx.runtime,
+      ctx.createMessage("yes"),
       ctx.state,
       {},
       callback,

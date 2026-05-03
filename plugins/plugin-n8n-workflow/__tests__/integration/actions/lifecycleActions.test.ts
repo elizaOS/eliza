@@ -207,14 +207,21 @@ describe("DEACTIVATE_N8N_WORKFLOW action", () => {
 describe("DELETE_N8N_WORKFLOW action", () => {
   test("deletes matched workflow", async () => {
     const { runtime, service } = createRuntimeWithMatchingWorkflow();
-    const message = createMockMessage({
-      content: { text: "Delete the Stripe workflow" },
-    });
     const callback = createMockCallback();
 
+    // Step 1: match workflow and set pending confirmation
+    await deleteWorkflowAction.handler(
+      runtime,
+      createMockMessage({ content: { text: "Delete the Stripe workflow" } }),
+      createStateWithWorkflows(),
+      {},
+      callback,
+    );
+
+    // Step 2: confirm deletion
     const result = await deleteWorkflowAction.handler(
       runtime,
-      message,
+      createMockMessage({ content: { text: "yes" } }),
       createStateWithWorkflows(),
       {},
       callback,
