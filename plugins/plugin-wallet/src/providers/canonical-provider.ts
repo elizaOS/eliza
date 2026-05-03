@@ -1,8 +1,11 @@
-import type { IAgentRuntime, Memory, ProviderResult, State } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  Memory,
+  ProviderResult,
+  State,
+} from "@elizaos/core";
 
-export type HealthStatus =
-	| { ok: true }
-	| { ok: false; reason: string };
+export type HealthStatus = { ok: true } | { ok: false; reason: string };
 
 /**
  * Typed venue / data-source adapter. Canonical actions dispatch into concrete
@@ -11,14 +14,14 @@ export type HealthStatus =
  * See docs/architecture/wallet-and-trading.md §B.3.
  */
 export interface CanonicalProvider {
-	readonly name: string;
-	readonly contextBudgetTokens: number;
+  readonly name: string;
+  readonly contextBudgetTokens: number;
 
-	getContext(
-		runtime: IAgentRuntime,
-		message: Memory,
-		state: State,
-	): Promise<ProviderResult>;
+  getContext(
+    runtime: IAgentRuntime,
+    message: Memory,
+    state: State,
+  ): Promise<ProviderResult>;
 
-	healthcheck(runtime: IAgentRuntime): Promise<HealthStatus>;
+  healthcheck(runtime: IAgentRuntime): Promise<HealthStatus>;
 }

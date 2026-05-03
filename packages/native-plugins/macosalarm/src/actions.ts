@@ -39,8 +39,12 @@ function getText(message: Memory): string {
   return (message.content.text ?? "").toLowerCase();
 }
 
-function parseSchedule(options: HandlerOptions | undefined): ScheduleAlarmParams | null {
-  const params = (options as { parameters?: Record<string, unknown> } | undefined)?.parameters;
+function parseSchedule(
+  options: HandlerOptions | undefined,
+): ScheduleAlarmParams | null {
+  const params = (
+    options as { parameters?: Record<string, unknown> } | undefined
+  )?.parameters;
   if (!params) return null;
   const timeIso = typeof params.timeIso === "string" ? params.timeIso : null;
   const title = typeof params.title === "string" ? params.title : null;
@@ -51,8 +55,12 @@ function parseSchedule(options: HandlerOptions | undefined): ScheduleAlarmParams
   return { timeIso, title, body, id, sound };
 }
 
-function parseCancel(options: HandlerOptions | undefined): CancelAlarmParams | null {
-  const params = (options as { parameters?: Record<string, unknown> } | undefined)?.parameters;
+function parseCancel(
+  options: HandlerOptions | undefined,
+): CancelAlarmParams | null {
+  const params = (
+    options as { parameters?: Record<string, unknown> } | undefined
+  )?.parameters;
   if (!params) return null;
   const id = typeof params.id === "string" ? params.id : null;
   if (!id) return null;
@@ -90,7 +98,10 @@ export function createSetAlarmAction(deps: MacosAlarmActionDeps = {}): Action {
         schema: { type: "string" },
       },
     ],
-    validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+    validate: async (
+      _runtime: IAgentRuntime,
+      message: Memory,
+    ): Promise<boolean> => {
       if (!isDarwin()) return false;
       const text = getText(message);
       return text.includes("alarm") || text.includes("wake");
@@ -185,7 +196,9 @@ export function createSetAlarmAction(deps: MacosAlarmActionDeps = {}): Action {
   };
 }
 
-export function createCancelAlarmAction(deps: MacosAlarmActionDeps = {}): Action {
+export function createCancelAlarmAction(
+  deps: MacosAlarmActionDeps = {},
+): Action {
   return {
     name: "CANCEL_ALARM_MACOS",
     description: "Cancel a previously scheduled macOS alarm by its id.",
@@ -244,7 +257,9 @@ export function createCancelAlarmAction(deps: MacosAlarmActionDeps = {}): Action
   };
 }
 
-export function createListAlarmsAction(deps: MacosAlarmActionDeps = {}): Action {
+export function createListAlarmsAction(
+  deps: MacosAlarmActionDeps = {},
+): Action {
   return {
     name: "LIST_ALARMS_MACOS",
     description: "List pending macOS alarms scheduled via SET_ALARM_MACOS.",

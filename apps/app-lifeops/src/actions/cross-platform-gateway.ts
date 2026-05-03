@@ -470,7 +470,8 @@ export const crossPlatformGatewayAction: Action = {
   parameters: [
     {
       name: "subaction",
-      description: "create_group_chat vs escalate_to_user when caller supplies it.",
+      description:
+        "create_group_chat vs escalate_to_user when caller supplies it.",
       required: false,
       schema: {
         type: "string" as const,
@@ -479,8 +480,7 @@ export const crossPlatformGatewayAction: Action = {
     },
     {
       name: "platform",
-      description:
-        "Target connector (discord, telegram, whatsapp, signal).",
+      description: "Target connector (discord, telegram, whatsapp, signal).",
       required: false,
       schema: { type: "string" as const },
     },
@@ -528,8 +528,7 @@ export const crossPlatformGatewayAction: Action = {
       {
         name: "{{name1}}",
         content: {
-          text:
-            "Negotiate my lease renewal with the landlord and sign the lease — I cannot do their part.",
+          text: "Negotiate my lease renewal with the landlord and sign the lease — I cannot do their part.",
         },
       },
       {

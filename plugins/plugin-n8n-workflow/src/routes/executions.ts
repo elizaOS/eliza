@@ -22,8 +22,17 @@ async function listExecutions(
     const cursor = req.query?.cursor as string | undefined;
 
     const service = getService(runtime);
-    const response = await service.listExecutions({ workflowId, status, limit, cursor });
-    res.json({ success: true, data: response.data, nextCursor: response.nextCursor });
+    const response = await service.listExecutions({
+      workflowId,
+      status,
+      limit,
+      cursor,
+    });
+    res.json({
+      success: true,
+      data: response.data,
+      nextCursor: response.nextCursor,
+    });
   } catch (error) {
     res.status(500).json({
       success: false,

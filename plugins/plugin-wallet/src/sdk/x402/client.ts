@@ -12,18 +12,18 @@
  *       X-PAYMENT header.
  */
 // x402 Client — automatic 402 payment handling for AgentWallet (v6: multi-asset)
-import type { Address, Hash } from 'viem';
+import type { Address, Hash } from "viem";
 import type {
   X402PaymentRequired,
   X402PaymentRequirements,
   X402PaymentPayload,
   X402ClientConfig,
   X402TransactionLog,
-} from './types.js';
-import { DEFAULT_SUPPORTED_NETWORKS } from './types.js';
-import { X402BudgetTracker } from './budget.js';
-import { agentTransferToken, checkBudget } from '../index.js';
-import { resolveAssetAddress } from './multi-asset.js';
+} from "./types.js";
+import { DEFAULT_SUPPORTED_NETWORKS } from "./types.js";
+import { X402BudgetTracker } from "./budget.js";
+import { agentTransferToken, checkBudget } from "../index.js";
+import { resolveAssetAddress } from "./multi-asset.js";
 
 /**
  * [MAX-ADDED] x402 Payment Client for AgentWallet.
@@ -129,7 +129,7 @@ export class X402Client {
     // Retry request with payment proof
     const retryHeaders = new Headers(init?.headers);
     const payloadB64 = btoa(JSON.stringify(paymentPayload));
-    retryHeaders.set('X-PAYMENT', payloadB64);
+    retryHeaders.set("X-PAYMENT", payloadB64);
 
     const retryResponse = await globalThis.fetch(url, {
       ...init,
@@ -142,10 +142,13 @@ export class X402Client {
   /**
    * Parse a 402 response to extract payment requirements.
    */
-  async parse402Response(response: Response): Promise<X402PaymentRequired | null> {
+  async parse402Response(
+    response: Response,
+  ): Promise<X402PaymentRequired | null> {
     // Try PAYMENT-REQUIRED header first (standard x402)
-    const headerValue = response.headers.get('payment-required')
-      ?? response.headers.get('x-payment-required');
+    const headerValue =
+      response.headers.get("payment-required") ??
+      response.headers.get("x-payment-required");
 
     if (headerValue) {
       try {
@@ -176,15 +179,17 @@ export class X402Client {
    * v6 change: resolves assets via TokenRegistry in addition to USDC_ADDRESSES.
    * Now accepts any ERC-20 whose address is in the TokenRegistry for the network.
    */
-  selectPaymentOption(accepts: X402PaymentRequirements[]): X402PaymentRequirements | null {
+  selectPaymentOption(
+    accepts: X402PaymentRequirements[],
+  ): X402PaymentRequirements | null {
     // Filter to supported networks and resolvable assets
-    const compatible = accepts.filter(req => {
+    const compatible = accepts.filter((req) => {
       if (!this.supportedNetworks.has(req.network)) return false;
 
       // Config override: explicit supportedAssets list
       if (this.config.supportedAssets?.[req.network]) {
         return this.config.supportedAssets[req.network].some(
-          a => a.toLowerCase() === req.asset.toLowerCase()
+          (a) => a.toLowerCase() === req.asset.toLowerCase(),
         );
       }
 
@@ -196,7 +201,7 @@ export class X402Client {
     if (compatible.length === 0) return null;
 
     // Prefer "exact" scheme, then lowest amount
-    const exact = compatible.filter(r => r.scheme === 'exact');
+    const exact = compatible.filter((r) => r.scheme === "exact");
     const candidates = exact.length > 0 ? exact : compatible;
     candidates.sort((a, b) => Number(BigInt(a.amount) - BigInt(b.amount)));
 
@@ -209,13 +214,15 @@ export class X402Client {
    * v6 change: resolves asset address via TokenRegistry before executing.
    * The 402 response may specify an asset by symbol ("USDC") or by address.
    */
-  private async executePayment(req: X402PaymentRequirements): Promise<{ txHash: Hash }> {
+  private async executePayment(
+    req: X402PaymentRequirements,
+  ): Promise<{ txHash: Hash }> {
     // Resolve the actual contract address for the requested asset
     const resolvedAddress = resolveAssetAddress(req.asset, req.network);
     if (!resolvedAddress) {
       throw new X402PaymentError(
         `Cannot resolve asset "${req.asset}" on network "${req.network}" to a contract address`,
-        req
+        req,
       );
     }
 
@@ -226,20 +233,20 @@ export class X402Client {
     if (amount > onChainBudget.perTxLimit) {
       throw new X402PaymentError(
         `Amount ${amount} exceeds on-chain per-tx limit ${onChainBudget.perTxLimit}`,
-        req
+        req,
       );
     }
 
     if (amount > onChainBudget.remainingInPeriod) {
       throw new X402PaymentError(
         `Amount ${amount} exceeds remaining period budget ${onChainBudget.remainingInPeriod}`,
-        req
+        req,
       );
     }
 
     // Calculate and transfer protocol fee (0.77% = 77 bps)
     const X402_PROTOCOL_FEE_BPS = 77n;
-    const FEE_COLLECTOR: Address = '0xff86829393C6C26A4EC122bE0Cc3E466Ef876AdD';
+    const FEE_COLLECTOR: Address = "0xff86829393C6C26A4EC122bE0Cc3E466Ef876AdD";
     const feeAmount = (amount * X402_PROTOCOL_FEE_BPS) / 10000n;
 
     if (feeAmount > 0n) {
@@ -268,7 +275,10 @@ export class X402Client {
   }
 
   /** Get transaction log */
-  getTransactionLog(filter?: { service?: string; since?: number }): X402TransactionLog[] {
+  getTransactionLog(filter?: {
+    service?: string;
+    since?: number;
+  }): X402TransactionLog[] {
     return this.budget.getTransactionLog(filter);
   }
 
@@ -283,10 +293,10 @@ export class X402Client {
 export class X402PaymentError extends Error {
   constructor(
     message: string,
-    public readonly paymentRequirements: X402PaymentRequirements
+    public readonly paymentRequirements: X402PaymentRequirements,
   ) {
     super(`x402 payment error: ${message}`);
-    this.name = 'X402PaymentError';
+    this.name = "X402PaymentError";
   }
 }
 
@@ -294,9 +304,9 @@ export class X402BudgetExceededError extends Error {
   constructor(
     public readonly reason: string,
     public readonly url: string,
-    public readonly paymentRequirements: X402PaymentRequirements
+    public readonly paymentRequirements: X402PaymentRequirements,
   ) {
     super(`x402 budget exceeded: ${reason}`);
-    this.name = 'X402BudgetExceededError';
+    this.name = "X402BudgetExceededError";
   }
 }

@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../platform/helpers.js", async (importOriginal) => {
-  const mod = (await importOriginal()) as typeof import("../platform/helpers.js");
+  const mod =
+    (await importOriginal()) as typeof import("../platform/helpers.js");
   return {
     ...mod,
     commandExists: vi.fn(() => true),

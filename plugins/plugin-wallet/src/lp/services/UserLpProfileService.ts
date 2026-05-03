@@ -7,7 +7,10 @@ import type {
   UserLpProfile,
 } from "../types.ts";
 
-export class UserLpProfileService extends Service implements IUserLpProfileService {
+export class UserLpProfileService
+  extends Service
+  implements IUserLpProfileService
+{
   public static readonly serviceType = "UserLpProfileService";
   public readonly capabilityDescription =
     "Manages user profiles and preferences for LP management.";
@@ -36,7 +39,7 @@ export class UserLpProfileService extends Service implements IUserLpProfileServi
     userId: string,
     vaultPublicKey: string,
     encryptedSecretKey: string,
-    initialConfig?: Partial<UserLpProfile["autoRebalanceConfig"]>
+    initialConfig?: Partial<UserLpProfile["autoRebalanceConfig"]>,
   ): Promise<UserLpProfile> {
     const profile = await this.getProfile(userId);
     if (profile) {
@@ -87,7 +90,7 @@ export class UserLpProfileService extends Service implements IUserLpProfileServi
 
   public async updateProfile(
     userId: string,
-    updates: Partial<Omit<UserLpProfile, "userId" | "createdAt" | "version">>
+    updates: Partial<Omit<UserLpProfile, "userId" | "createdAt" | "version">>,
   ): Promise<UserLpProfile> {
     const profile = await this.getProfile(userId);
     if (!profile) {
@@ -116,7 +119,7 @@ export class UserLpProfileService extends Service implements IUserLpProfileServi
 
   public async addTrackedPosition(
     userId: string,
-    position: TrackedLpPositionInput
+    position: TrackedLpPositionInput,
   ): Promise<UserLpProfile> {
     const profile = await this.getProfile(userId);
     if (!profile) {
@@ -134,19 +137,21 @@ export class UserLpProfileService extends Service implements IUserLpProfileServi
 
   public async removeTrackedPosition(
     userId: string,
-    positionIdentifier: string
+    positionIdentifier: string,
   ): Promise<UserLpProfile> {
     const profile = await this.getProfile(userId);
     if (!profile) {
       throw new Error("User profile not found.");
     }
     const updatedPositions = (profile.trackedPositions || []).filter(
-      (p) => p.positionIdentifier !== positionIdentifier
+      (p) => p.positionIdentifier !== positionIdentifier,
     );
     return this.updateProfile(userId, { trackedPositions: updatedPositions });
   }
 
-  public async getTrackedPositions(userId: string): Promise<TrackedLpPosition[]> {
+  public async getTrackedPositions(
+    userId: string,
+  ): Promise<TrackedLpPosition[]> {
     const profile = await this.getProfile(userId);
     return profile?.trackedPositions || [];
   }

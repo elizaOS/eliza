@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
-import type { AgentRuntime } from '@elizaos/core';
-import type { AutoTradingManager } from '@elizaos/plugin-auto-trader';
+import { useState, useEffect, useCallback } from "react";
+import type { AgentRuntime } from "@elizaos/core";
+import type { AutoTradingManager } from "@elizaos/plugin-auto-trader";
 
 interface StatusPosition {
   id: string;
@@ -43,7 +43,7 @@ export interface TradingState {
   recentTrades: Array<{
     id: string;
     timestamp: number;
-    action: 'BUY' | 'SELL';
+    action: "BUY" | "SELL";
     token: string;
     quantity: number;
     price: number;
@@ -77,13 +77,15 @@ export function useTrading(runtime: AgentRuntime | null) {
   const refreshStatus = useCallback(async () => {
     if (!runtime) return;
 
-    const tradingManager = runtime.getService('AutoTradingManager') as AutoTradingManager | undefined;
+    const tradingManager = runtime.getService("AutoTradingManager") as
+      | AutoTradingManager
+      | undefined;
     if (!tradingManager) return;
 
     const status = tradingManager.getStatus();
     const transactions = tradingManager.getLatestTransactions(10);
 
-    setState(prev => ({
+    setState((prev) => ({
       ...prev,
       isTrading: status.isTrading,
       strategy: status.strategy || null,
@@ -103,7 +105,7 @@ export function useTrading(runtime: AgentRuntime | null) {
       recentTrades: transactions.map((t: Transaction) => ({
         id: t.id,
         timestamp: t.timestamp,
-        action: t.action as 'BUY' | 'SELL',
+        action: t.action as "BUY" | "SELL",
         token: t.token,
         quantity: t.quantity,
         price: t.price,
@@ -116,13 +118,18 @@ export function useTrading(runtime: AgentRuntime | null) {
   const refreshWallet = useCallback(async () => {
     if (!runtime) return;
 
-    const swapService = runtime.getService('SwapService') as unknown as { getWalletAddress(): string | null; getWalletBalances(): Promise<{ solBalance: number }> } | undefined;
+    const swapService = runtime.getService("SwapService") as unknown as
+      | {
+          getWalletAddress(): string | null;
+          getWalletBalances(): Promise<{ solBalance: number }>;
+        }
+      | undefined;
     if (!swapService) return;
 
     const address = swapService.getWalletAddress();
     const balances = await swapService.getWalletBalances();
 
-    setState(prev => ({
+    setState((prev) => ({
       ...prev,
       walletAddress: address,
       walletBalance: balances.solBalance,
@@ -130,41 +137,46 @@ export function useTrading(runtime: AgentRuntime | null) {
   }, [runtime]);
 
   // Start trading
-  const startTrading = useCallback(async (config: {
-    strategy: string;
-    tokens?: string[];
-    maxPositionSize?: number;
-    intervalMs?: number;
-    stopLossPercent?: number;
-    takeProfitPercent?: number;
-  }) => {
-    if (!runtime) {
-      setError('Runtime not initialized');
-      return;
-    }
+  const startTrading = useCallback(
+    async (config: {
+      strategy: string;
+      tokens?: string[];
+      maxPositionSize?: number;
+      intervalMs?: number;
+      stopLossPercent?: number;
+      takeProfitPercent?: number;
+    }) => {
+      if (!runtime) {
+        setError("Runtime not initialized");
+        return;
+      }
 
-    setLoading(true);
-    setError(null);
+      setLoading(true);
+      setError(null);
 
-    const tradingManager = runtime.getService('AutoTradingManager') as AutoTradingManager | undefined;
-    if (!tradingManager) {
-      setError('Trading service not available');
+      const tradingManager = runtime.getService("AutoTradingManager") as
+        | AutoTradingManager
+        | undefined;
+      if (!tradingManager) {
+        setError("Trading service not available");
+        setLoading(false);
+        return;
+      }
+
+      await tradingManager.startTrading({
+        strategy: config.strategy,
+        tokens: config.tokens || ["auto"],
+        maxPositionSize: config.maxPositionSize || 0.15,
+        intervalMs: config.intervalMs || 60000,
+        stopLossPercent: config.stopLossPercent || 5,
+        takeProfitPercent: config.takeProfitPercent || 15,
+      });
+
+      await refreshStatus();
       setLoading(false);
-      return;
-    }
-
-    await tradingManager.startTrading({
-      strategy: config.strategy,
-      tokens: config.tokens || ['auto'],
-      maxPositionSize: config.maxPositionSize || 0.15,
-      intervalMs: config.intervalMs || 60000,
-      stopLossPercent: config.stopLossPercent || 5,
-      takeProfitPercent: config.takeProfitPercent || 15,
-    });
-
-    await refreshStatus();
-    setLoading(false);
-  }, [runtime, refreshStatus]);
+    },
+    [runtime, refreshStatus],
+  );
 
   // Stop trading
   const stopTrading = useCallback(async () => {
@@ -173,9 +185,11 @@ export function useTrading(runtime: AgentRuntime | null) {
     setLoading(true);
     setError(null);
 
-    const tradingManager = runtime.getService('AutoTradingManager') as AutoTradingManager | undefined;
+    const tradingManager = runtime.getService("AutoTradingManager") as
+      | AutoTradingManager
+      | undefined;
     if (!tradingManager) {
-      setError('Trading service not available');
+      setError("Trading service not available");
       setLoading(false);
       return;
     }

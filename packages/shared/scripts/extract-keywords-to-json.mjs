@@ -33,7 +33,11 @@ function splitTermDoc(value) {
   for (const line of value.split(/\n+/)) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-    const key = trimmed.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
+    const key = trimmed
+      .normalize("NFKC")
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .trim();
     if (seen.has(key)) continue;
     seen.add(key);
     terms.push(trimmed);
@@ -141,13 +145,22 @@ async function extractFromFile(tsPath, label) {
   try {
     docs = eval(`(${objSource})`);
   } catch (e) {
-    console.error(`  Failed to eval extracted object from ${tsPath}:`, e.message);
+    console.error(
+      `  Failed to eval extracted object from ${tsPath}:`,
+      e.message,
+    );
     // Try to write it out for debugging
-    writeFileSync(join(keywordsDir, `_debug_${label}.js`), `(${objSource})`, "utf-8");
+    writeFileSync(
+      join(keywordsDir, `_debug_${label}.js`),
+      `(${objSource})`,
+      "utf-8",
+    );
     return null;
   }
 
-  console.log(`  Extracted ${label}: ${Object.keys(docs).length} top-level keys`);
+  console.log(
+    `  Extracted ${label}: ${Object.keys(docs).length} top-level keys`,
+  );
   return collectEntries(docs);
 }
 
@@ -175,12 +188,20 @@ if (sharedEntries) {
 
   const outPath = join(keywordsDir, "shared.keywords.json");
   writeFileSync(outPath, JSON.stringify(json, null, 2) + "\n", "utf-8");
-  console.log(`  Wrote ${outPath} (${Object.keys(sharedEntries).length} entries)\n`);
+  console.log(
+    `  Wrote ${outPath} (${Object.keys(sharedEntries).length} entries)\n`,
+  );
 }
 
 // Extract from typescript package
 const tsPackagePath = join(
-  __dirname, "..", "..", "typescript", "src", "i18n", "validation-keywords.ts"
+  __dirname,
+  "..",
+  "..",
+  "typescript",
+  "src",
+  "i18n",
+  "validation-keywords.ts",
 );
 console.log(`Processing: typescript (${tsPackagePath})`);
 const tsEntries = await extractFromFile(tsPackagePath, "typescript");
@@ -201,7 +222,9 @@ if (tsEntries) {
 
   const outPath = join(keywordsDir, "typescript.keywords.json");
   writeFileSync(outPath, JSON.stringify(json, null, 2) + "\n", "utf-8");
-  console.log(`  Wrote ${outPath} (${Object.keys(tsEntries).length} entries)\n`);
+  console.log(
+    `  Wrote ${outPath} (${Object.keys(tsEntries).length} entries)\n`,
+  );
 }
 
 console.log("Done! Review the JSON files in src/i18n/keywords/");

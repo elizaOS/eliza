@@ -9,9 +9,9 @@ import type { RouteSpec } from "../src/types.ts";
 
 type SettingValue = string | boolean | number | null;
 
-function mockRuntime(
-  settings: Record<string, SettingValue>,
-): { getSetting: (key: string) => SettingValue } {
+function mockRuntime(settings: Record<string, SettingValue>): {
+  getSetting: (key: string) => SettingValue;
+} {
   return {
     getSetting(key: string): SettingValue {
       const value = settings[key];
@@ -262,7 +262,9 @@ describe("cloudServiceApisBaseUrl", () => {
     const got = cloudServiceApisBaseUrl(rt as never, "dexscreener");
     expect(got).not.toBeNull();
     if (!got) throw new Error("unreachable");
-    expect(got.baseUrl).toBe("https://www.elizacloud.ai/api/v1/apis/dexscreener");
+    expect(got.baseUrl).toBe(
+      "https://www.elizacloud.ai/api/v1/apis/dexscreener",
+    );
     expect(got.headers.Authorization).toBe("Bearer ck");
   });
 

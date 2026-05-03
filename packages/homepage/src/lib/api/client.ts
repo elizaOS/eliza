@@ -7,7 +7,9 @@
 const ELIZACLOUD_DEFAULT_URL = "https://www.elizacloud.ai";
 
 function getBaseUrl(): string {
-  return (import.meta.env.VITE_ELIZACLOUD_API_URL ?? ELIZACLOUD_DEFAULT_URL).replace(/\/$/, "");
+  return (
+    import.meta.env.VITE_ELIZACLOUD_API_URL ?? ELIZACLOUD_DEFAULT_URL
+  ).replace(/\/$/, "");
 }
 
 export function getElizacloudUrl(): string {
@@ -29,7 +31,7 @@ function buildUrl(path: string, params?: Record<string, string>): string {
 
 export async function elizacloudFetch<T = unknown>(
   path: string,
-  init?: ApiRequestInit
+  init?: ApiRequestInit,
 ): Promise<T> {
   const { params, ...reqInit } = init ?? {};
   const url = buildUrl(path, params);
@@ -60,7 +62,7 @@ export function getAuthToken(): string | null {
 
 export async function elizacloudAuthFetch<T = unknown>(
   path: string,
-  init?: ApiRequestInit
+  init?: ApiRequestInit,
 ): Promise<T> {
   const token = getAuthToken();
   const authHeaders: Record<string, string> = {};
@@ -85,7 +87,7 @@ export class UnauthorizedError extends Error {
 
 export async function elizacloudAuthFetchStrict<T = unknown>(
   path: string,
-  init?: ApiRequestInit
+  init?: ApiRequestInit,
 ): Promise<T> {
   const token = getAuthToken();
   if (!token) {

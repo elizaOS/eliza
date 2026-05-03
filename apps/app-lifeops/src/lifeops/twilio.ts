@@ -24,7 +24,7 @@ function roundCurrency(value: number): number {
 
 function calculateTwilioSmsBilling(
   body: string,
-  costPerSegmentUsd: number
+  costPerSegmentUsd: number,
 ): TwilioSmsBillingBreakdown {
   const segments = Math.max(1, Math.ceil(body.length / 160));
   const rawCost = roundCurrency(segments * costPerSegmentUsd);
@@ -68,7 +68,7 @@ function resolveSmsCostPerSegment(): number {
       {
         raw,
       },
-      "[lifeops] Invalid TWILIO_SMS_COST_PER_SEGMENT_USD; falling back to default"
+      "[lifeops] Invalid TWILIO_SMS_COST_PER_SEGMENT_USD; falling back to default",
     );
     return DEFAULT_SMS_COST_PER_SEGMENT_USD;
   }
@@ -76,7 +76,7 @@ function resolveSmsCostPerSegment(): number {
 }
 
 export function readTwilioCredentialsFromEnv(
-  env: NodeJS.ProcessEnv = process.env
+  env: NodeJS.ProcessEnv = process.env,
 ): TwilioCredentials | null {
   const accountSid = env.TWILIO_ACCOUNT_SID?.trim();
   const authToken = env.TWILIO_AUTH_TOKEN?.trim();
@@ -117,7 +117,7 @@ async function sendTwilioRequest(args: {
 }): Promise<TwilioDeliveryResult> {
   const { credentials, path, payload } = args;
   const url = `${getTwilioBaseUrl()}/2010-04-01/Accounts/${encodeURIComponent(
-    credentials.accountSid
+    credentials.accountSid,
   )}${path}`;
   const operation = twilioOperation(path);
 
@@ -134,7 +134,7 @@ async function sendTwilioRequest(args: {
           attempt,
           delayMs,
         },
-        `[lifeops] Twilio request retry ${attempt}/${MAX_RETRIES} after ${delayMs}ms`
+        `[lifeops] Twilio request retry ${attempt}/${MAX_RETRIES} after ${delayMs}ms`,
       );
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
@@ -151,7 +151,7 @@ async function sendTwilioRequest(args: {
         headers: {
           Authorization: `Basic ${encodeBasicAuth(
             credentials.accountSid,
-            credentials.authToken
+            credentials.authToken,
           )}`,
           "Content-Type": "application/x-www-form-urlencoded",
         },
@@ -172,7 +172,7 @@ async function sendTwilioRequest(args: {
             operation,
             statusCode: response.status,
           },
-          `[lifeops] Twilio request failed: ${errorMsg}`
+          `[lifeops] Twilio request failed: ${errorMsg}`,
         );
         span.failure({
           statusCode: response.status,
@@ -207,7 +207,7 @@ async function sendTwilioRequest(args: {
           operation,
           err: error instanceof Error ? error : undefined,
         },
-        `[lifeops] Twilio request failed: ${errorMsg}`
+        `[lifeops] Twilio request failed: ${errorMsg}`,
       );
       span.failure({
         error,

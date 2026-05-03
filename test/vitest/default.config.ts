@@ -154,11 +154,7 @@ const workspacePluginSourceAliases = getWorkspacePluginAliases(repoRoot, [
   "plugin-agent-skills",
   "plugin-browser-bridge",
 ]);
-const pluginPdfSrc = path.join(
-  elizaWorkspaceRoot,
-  "plugins",
-  "plugin-pdf",
-);
+const pluginPdfSrc = path.join(elizaWorkspaceRoot, "plugins", "plugin-pdf");
 // Fall back to a stub when an optional plugin tarball has a broken entry point.
 const unresolvedPluginStubs = workspacePluginPackageNames
   .filter((name) => !resolvedPluginNames.has(name))

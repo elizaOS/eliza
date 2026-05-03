@@ -1,13 +1,19 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import { type IAgentRuntime, Service } from "@elizaos/core";
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
-import { type Connection, Keypair, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
+import {
+  type Connection,
+  Keypair,
+  LAMPORTS_PER_SOL,
+  PublicKey,
+} from "@solana/web3.js";
 import type { IVaultService, TokenBalance } from "../types.ts";
 import { getConnection } from "../utils/solanaClient.ts";
 
 export class VaultService extends Service implements IVaultService {
   public static readonly serviceType = "VaultService";
-  public readonly capabilityDescription = "Manages secure vaults for user cryptographic keys.";
+  public readonly capabilityDescription =
+    "Manages secure vaults for user cryptographic keys.";
 
   private connection!: Connection;
   // Simple in-memory cache for vault public keys - in production, use proper storage
@@ -33,7 +39,7 @@ export class VaultService extends Service implements IVaultService {
   }
 
   public async createVault(
-    userId: string
+    userId: string,
   ): Promise<{ publicKey: string; secretKeyEncrypted: string }> {
     const keypair = Keypair.generate();
     const publicKey = keypair.publicKey.toBase58();
@@ -45,7 +51,10 @@ export class VaultService extends Service implements IVaultService {
     return { publicKey, secretKeyEncrypted };
   }
 
-  public async getVaultKeypair(userId: string, encryptedSecretKey: string): Promise<Keypair> {
+  public async getVaultKeypair(
+    userId: string,
+    encryptedSecretKey: string,
+  ): Promise<Keypair> {
     try {
       const secretKey = Buffer.from(encryptedSecretKey, "hex");
       if (secretKey.length !== 64) {
@@ -53,7 +62,10 @@ export class VaultService extends Service implements IVaultService {
       }
       return Keypair.fromSecretKey(new Uint8Array(secretKey));
     } catch (error) {
-      console.error(`Failed to create Keypair from secret for user ${userId}:`, error);
+      console.error(
+        `Failed to create Keypair from secret for user ${userId}:`,
+        error,
+      );
       throw new Error("Could not derive Keypair from the provided secret.");
     }
   }
@@ -87,9 +99,12 @@ export class VaultService extends Service implements IVaultService {
       });
 
       // Get SPL token accounts
-      const tokenAccounts = await this.connection.getParsedTokenAccountsByOwner(pubKey, {
-        programId: TOKEN_PROGRAM_ID,
-      });
+      const tokenAccounts = await this.connection.getParsedTokenAccountsByOwner(
+        pubKey,
+        {
+          programId: TOKEN_PROGRAM_ID,
+        },
+      );
 
       for (const account of tokenAccounts.value) {
         const parsedInfo = account.account.data.parsed.info;
@@ -109,7 +124,7 @@ export class VaultService extends Service implements IVaultService {
     } catch (error) {
       console.error("Error fetching balances:", error);
       throw new Error(
-        `Failed to fetch balances for ${publicKey}: ${error instanceof Error ? error.message : "Unknown error"}`
+        `Failed to fetch balances for ${publicKey}: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
     }
   }
@@ -117,7 +132,7 @@ export class VaultService extends Service implements IVaultService {
   public async exportPrivateKey(
     userId: string,
     encryptedSecretKey: string,
-    confirmationToken: string
+    confirmationToken: string,
   ): Promise<string> {
     // In a real implementation, you would verify the confirmationToken
     // For now, we'll do a simple check

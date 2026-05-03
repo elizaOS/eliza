@@ -284,8 +284,7 @@ export class CodingWorkspaceService {
     const repo = normalizeRepositoryInput(options.repo);
     const executionId = options.execution?.id ?? `exec-${Date.now()}`;
     const taskId = options.task?.id ?? `task-${Date.now()}`;
-    const baseBranch =
-      options.baseBranch ?? (await resolveDefaultBranch(repo));
+    const baseBranch = options.baseBranch ?? (await resolveDefaultBranch(repo));
 
     const workspaceConfig: WorkspaceConfig = {
       repo,

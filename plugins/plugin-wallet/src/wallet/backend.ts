@@ -1,4 +1,8 @@
-import type { PublicKey, Transaction, VersionedTransaction } from "@solana/web3.js";
+import type {
+  PublicKey,
+  Transaction,
+  VersionedTransaction,
+} from "@solana/web3.js";
 import type { Account } from "viem";
 import type { Hex, TypedDataDefinition } from "viem";
 import type { SignResult, SignScope } from "./pending.js";
@@ -7,18 +11,18 @@ import type { SignResult, SignScope } from "./pending.js";
  * Narrow signing surface for Solana venues (swap, LP, transfers).
  */
 export interface SolanaSigner {
-	readonly publicKey: PublicKey;
-	signTransaction(
-		tx: Transaction | VersionedTransaction,
-	): Promise<Transaction | VersionedTransaction>;
-	signAllTransactions(
-		txs: ReadonlyArray<Transaction | VersionedTransaction>,
-	): Promise<Array<Transaction | VersionedTransaction>>;
+  readonly publicKey: PublicKey;
+  signTransaction(
+    tx: Transaction | VersionedTransaction,
+  ): Promise<Transaction | VersionedTransaction>;
+  signAllTransactions(
+    txs: ReadonlyArray<Transaction | VersionedTransaction>,
+  ): Promise<Array<Transaction | VersionedTransaction>>;
 }
 
 export interface WalletAddresses {
-	readonly evm: `0x${string}` | null;
-	readonly solana: PublicKey | null;
+  readonly evm: `0x${string}` | null;
+  readonly solana: PublicKey | null;
 }
 
 export type WalletBackendKind = "local" | "steward";
@@ -30,24 +34,24 @@ export type WalletBackendKind = "local" | "steward";
  * See docs/architecture/wallet-and-trading.md §A.
  */
 export interface WalletBackend {
-	readonly kind: WalletBackendKind;
+  readonly kind: WalletBackendKind;
 
-	getAddresses(): WalletAddresses;
+  getAddresses(): WalletAddresses;
 
-	/**
-	 * Returns true when this backend can satisfy signing for the given hint.
-	 * Read-only QUERY_* flows may skip wallet checks per spec.
-	 */
-	canSign(chainHint: "evm" | "solana" | "off-chain"): boolean;
+  /**
+   * Returns true when this backend can satisfy signing for the given hint.
+   * Read-only QUERY_* flows may skip wallet checks per spec.
+   */
+  canSign(chainHint: "evm" | "solana" | "off-chain"): boolean;
 
-	getEvmAccount(chainId: number): Account;
+  getEvmAccount(chainId: number): Account;
 
-	getSolanaSigner(): SolanaSigner;
+  getSolanaSigner(): SolanaSigner;
 
-	signMessage(scope: SignScope, message: Hex): Promise<SignResult>;
+  signMessage(scope: SignScope, message: Hex): Promise<SignResult>;
 
-	signTypedData(
-		scope: SignScope,
-		typedData: TypedDataDefinition,
-	): Promise<SignResult>;
+  signTypedData(
+    scope: SignScope,
+    typedData: TypedDataDefinition,
+  ): Promise<SignResult>;
 }

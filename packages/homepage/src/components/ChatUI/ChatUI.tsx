@@ -93,7 +93,8 @@ export default function ChatUI() {
         <Bubble from="bot">Hey! How can I help you today? 👋</Bubble>
         <Bubble from="user">Can you help me build a landing page?</Bubble>
         <Bubble from="bot">
-          Of course! I&apos;d love to help. What kind of style are you going for?
+          Of course! I&apos;d love to help. What kind of style are you going
+          for?
         </Bubble>
         <Bubble from="user">Something minimal and modern</Bubble>
         <Bubble from="bot">

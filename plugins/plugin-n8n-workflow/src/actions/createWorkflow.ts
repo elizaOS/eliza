@@ -80,8 +80,12 @@ function buildPreviewData(workflow: N8nWorkflow): Record<string, unknown> {
     })),
     flow: buildFlowChain(workflow.connections),
     credentials: [...creds],
-    ...(workflow._meta?.assumptions?.length && { assumptions: workflow._meta.assumptions }),
-    ...(workflow._meta?.suggestions?.length && { suggestions: workflow._meta.suggestions }),
+    ...(workflow._meta?.assumptions?.length && {
+      assumptions: workflow._meta.assumptions,
+    }),
+    ...(workflow._meta?.suggestions?.length && {
+      suggestions: workflow._meta.suggestions,
+    }),
   };
 }
 
@@ -164,7 +168,10 @@ const examples: ActionExample[][] = [
     },
     {
       name: '{{agent}}',
-      content: { text: 'Deploying your workflow now...', actions: ['CREATE_N8N_WORKFLOW'] },
+      content: {
+        text: 'Deploying your workflow now...',
+        actions: ['CREATE_N8N_WORKFLOW'],
+      },
     },
   ],
   [
@@ -174,7 +181,10 @@ const examples: ActionExample[][] = [
     },
     {
       name: '{{agent}}',
-      content: { text: 'Deploying your workflow...', actions: ['CREATE_N8N_WORKFLOW'] },
+      content: {
+        text: 'Deploying your workflow...',
+        actions: ['CREATE_N8N_WORKFLOW'],
+      },
     },
   ],
   [
@@ -184,7 +194,10 @@ const examples: ActionExample[][] = [
     },
     {
       name: '{{agent}}',
-      content: { text: 'Deploying your workflow...', actions: ['CREATE_N8N_WORKFLOW'] },
+      content: {
+        text: 'Deploying your workflow...',
+        actions: ['CREATE_N8N_WORKFLOW'],
+      },
     },
   ],
   [
@@ -194,7 +207,10 @@ const examples: ActionExample[][] = [
     },
     {
       name: '{{agent}}',
-      content: { text: 'Workflow draft cancelled.', actions: ['CREATE_N8N_WORKFLOW'] },
+      content: {
+        text: 'Workflow draft cancelled.',
+        actions: ['CREATE_N8N_WORKFLOW'],
+      },
     },
   ],
   [
@@ -217,7 +233,10 @@ const examples: ActionExample[][] = [
     },
     {
       name: '{{agent}}',
-      content: { text: 'Deploying your workflow...', actions: ['CREATE_N8N_WORKFLOW'] },
+      content: {
+        text: 'Deploying your workflow...',
+        actions: ['CREATE_N8N_WORKFLOW'],
+      },
     },
   ],
   [
@@ -227,7 +246,10 @@ const examples: ActionExample[][] = [
     },
     {
       name: '{{agent}}',
-      content: { text: 'Deploying your workflow now.', actions: ['CREATE_N8N_WORKFLOW'] },
+      content: {
+        text: 'Deploying your workflow now.',
+        actions: ['CREATE_N8N_WORKFLOW'],
+      },
     },
   ],
   [
@@ -237,7 +259,10 @@ const examples: ActionExample[][] = [
     },
     {
       name: '{{agent}}',
-      content: { text: 'Deploying your workflow...', actions: ['CREATE_N8N_WORKFLOW'] },
+      content: {
+        text: 'Deploying your workflow...',
+        actions: ['CREATE_N8N_WORKFLOW'],
+      },
     },
   ],
 ];
@@ -521,7 +546,9 @@ export const createWorkflowAction: Action & {
         `Failed to create workflow: ${errorMessage}`
       );
 
-      const text = await formatActionResponse(runtime, 'ERROR', { error: errorMessage });
+      const text = await formatActionResponse(runtime, 'ERROR', {
+        error: errorMessage,
+      });
       if (callback) {
         await callback({ text, success: false });
       }

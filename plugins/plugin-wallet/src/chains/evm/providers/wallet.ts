@@ -219,7 +219,10 @@ export class WalletProvider {
       });
       return formatUnits(balance, 18);
     } catch (error) {
-      logger.error(`Error getting wallet balance for ${chainName}:`, error instanceof Error ? error.message : String(error));
+      logger.error(
+        `Error getting wallet balance for ${chainName}:`,
+        error instanceof Error ? error.message : String(error)
+      );
       return null;
     }
   }
@@ -425,7 +428,7 @@ async function generateAndStorePrivateKey(runtime: IAgentRuntime): Promise<`0x${
   } catch (error) {
     logger.warn(
       "Could not persist EVM private key to database - key is only in memory",
-      error instanceof Error ? error.message : String(error),
+      error instanceof Error ? error.message : String(error)
     );
   }
 
@@ -630,7 +633,10 @@ export const evmWalletProvider: Provider = {
         },
       };
     } catch (error) {
-      logger.error("Error in EVM wallet provider:", error instanceof Error ? error.message : String(error));
+      logger.error(
+        "Error in EVM wallet provider:",
+        error instanceof Error ? error.message : String(error)
+      );
       throw error;
     }
   },

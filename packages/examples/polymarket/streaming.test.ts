@@ -24,7 +24,9 @@ describe("ResponseStreamExtractor behavior", () => {
 
   test("non-REPLY action blocks streaming", () => {
     const extractor = new ResponseStreamExtractor();
-    const output = extractor.push("<actions>GET_BALANCES</actions><text>Checking...</text>");
+    const output = extractor.push(
+      "<actions>GET_BALANCES</actions><text>Checking...</text>",
+    );
     expect(output).toBe("");
   });
 
@@ -39,7 +41,13 @@ describe("ResponseStreamExtractor behavior", () => {
   test("handles split tag boundaries", () => {
     const extractor = new ResponseStreamExtractor();
     const chunks: string[] = [];
-    for (const c of ["<actions>REP", "LY</actions><te", "xt>A", "B</te", "xt>"]) {
+    for (const c of [
+      "<actions>REP",
+      "LY</actions><te",
+      "xt>A",
+      "B</te",
+      "xt>",
+    ]) {
       const extracted = extractor.push(c);
       if (extracted) chunks.push(extracted);
     }
@@ -48,7 +56,9 @@ describe("ResponseStreamExtractor behavior", () => {
 
   test("special characters pass through", () => {
     const extractor = new ResponseStreamExtractor();
-    const result = extractor.push('<actions>REPLY</actions><text>$0.45 → $0.50</text>');
+    const result = extractor.push(
+      "<actions>REPLY</actions><text>$0.45 → $0.50</text>",
+    );
     expect(result).toBe("$0.45 → $0.50");
   });
 });

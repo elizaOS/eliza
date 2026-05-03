@@ -89,8 +89,7 @@ function parseAcceptanceEvaluation(raw: string): AcceptanceEvaluation | null {
 
 function getVerifierRootDir(): string {
   const stateDir =
-    process.env.ELIZA_STATE_DIR?.trim() ||
-    path.join(homedir(), ".eliza");
+    process.env.ELIZA_STATE_DIR?.trim() || path.join(homedir(), ".eliza");
   return path.join(stateDir, "task-verifiers");
 }
 

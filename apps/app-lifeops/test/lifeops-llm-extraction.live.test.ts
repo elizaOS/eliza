@@ -37,8 +37,7 @@ try {
   // dotenv optional
 }
 
-const LIVE_ENABLED =
-  process.env.ELIZA_LIVE_TEST === "1";
+const LIVE_ENABLED = process.env.ELIZA_LIVE_TEST === "1";
 const provider = LIVE_ENABLED ? selectLiveProvider() : null;
 
 if (!LIVE_ENABLED || !provider) {

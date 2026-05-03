@@ -228,7 +228,11 @@ export const modifyExistingWorkflowAction: Action = {
       });
 
       if (callback) {
-        await callback({ text, success: true, data: { awaitingUserInput: true } });
+        await callback({
+          text,
+          success: true,
+          data: { awaitingUserInput: true },
+        });
       }
 
       return { success: true, data: { workflowId, awaitingUserInput: true } };
@@ -239,7 +243,9 @@ export const modifyExistingWorkflowAction: Action = {
         `Failed to load workflow for modification: ${errorMessage}`
       );
 
-      const text = await formatActionResponse(runtime, 'ERROR', { error: errorMessage });
+      const text = await formatActionResponse(runtime, 'ERROR', {
+        error: errorMessage,
+      });
       if (callback) {
         await callback({ text, success: false });
       }

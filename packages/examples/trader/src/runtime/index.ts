@@ -1,6 +1,6 @@
-import { AgentRuntime, type Plugin } from '@elizaos/core';
-import autoTraderPlugin from '@elizaos/plugin-auto-trader';
-import { traderCharacter } from './character';
+import { AgentRuntime, type Plugin } from "@elizaos/core";
+import autoTraderPlugin from "@elizaos/plugin-auto-trader";
+import { traderCharacter } from "./character";
 
 let runtimeInstance: AgentRuntime | null = null;
 let initializationPromise: Promise<AgentRuntime> | null = null;
@@ -11,7 +11,7 @@ export interface RuntimeConfig {
   birdeyeApiKey?: string;
   anthropicApiKey?: string;
   openaiApiKey?: string;
-  tradingMode?: 'paper' | 'live';
+  tradingMode?: "paper" | "live";
   defaultStrategy?: string;
   maxPositionSizeUsd?: number;
   stopLossPercent?: number;
@@ -27,19 +27,20 @@ async function initializeRuntime(config: RuntimeConfig): Promise<AgentRuntime> {
     ...traderCharacter,
     settings: {
       ...traderCharacter.settings,
-      SOLANA_RPC_URL: config.solanaRpcUrl || 'https://api.mainnet-beta.solana.com',
-      TRADING_MODE: config.tradingMode || 'paper',
-      DEFAULT_STRATEGY: config.defaultStrategy || 'llm',
+      SOLANA_RPC_URL:
+        config.solanaRpcUrl || "https://api.mainnet-beta.solana.com",
+      TRADING_MODE: config.tradingMode || "paper",
+      DEFAULT_STRATEGY: config.defaultStrategy || "llm",
       MAX_POSITION_SIZE_USD: String(config.maxPositionSizeUsd || 100),
       STOP_LOSS_PERCENT: String(config.stopLossPercent || 5),
       TAKE_PROFIT_PERCENT: String(config.takeProfitPercent || 15),
     },
     secrets: {
       ...traderCharacter.secrets,
-      SOLANA_PRIVATE_KEY: config.solanaPrivateKey || '',
-      BIRDEYE_API_KEY: config.birdeyeApiKey || '',
-      ANTHROPIC_API_KEY: config.anthropicApiKey || '',
-      OPENAI_API_KEY: config.openaiApiKey || '',
+      SOLANA_PRIVATE_KEY: config.solanaPrivateKey || "",
+      BIRDEYE_API_KEY: config.birdeyeApiKey || "",
+      ANTHROPIC_API_KEY: config.anthropicApiKey || "",
+      OPENAI_API_KEY: config.openaiApiKey || "",
     },
   };
 
@@ -58,7 +59,9 @@ async function initializeRuntime(config: RuntimeConfig): Promise<AgentRuntime> {
 /**
  * Get or create the runtime instance
  */
-export async function getRuntime(config?: RuntimeConfig): Promise<AgentRuntime> {
+export async function getRuntime(
+  config?: RuntimeConfig,
+): Promise<AgentRuntime> {
   if (runtimeInstance) {
     return runtimeInstance;
   }

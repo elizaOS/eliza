@@ -1,5 +1,11 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
-import type { Content, IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
+import type {
+  Content,
+  IAgentRuntime,
+  Memory,
+  State,
+  UUID,
+} from "@elizaos/core";
 import { ChannelType } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { LpManagementAgentAction } from "../LpManagementAgentAction.ts";
@@ -7,7 +13,10 @@ import { LpManagementAgentAction } from "../LpManagementAgentAction.ts";
 /**
  * Creates a test Memory object with LP-related content
  */
-function createTestMemory(text: string, overrides: Partial<Content> = {}): Memory {
+function createTestMemory(
+  text: string,
+  overrides: Partial<Content> = {},
+): Memory {
   return {
     id: "test-memory-id" as UUID,
     roomId: "test-room-id" as UUID,
@@ -47,7 +56,9 @@ function createTestState(): State {
 describe("LpManagementAgentAction", () => {
   it("should have a name and description", () => {
     expect(LpManagementAgentAction.name).toBe("lp_management");
-    expect(LpManagementAgentAction.description).toContain("Manages Liquidity Pool (LP) operations");
+    expect(LpManagementAgentAction.description).toContain(
+      "Manages Liquidity Pool (LP) operations",
+    );
   });
 
   it("should validate an intent", async () => {
@@ -58,7 +69,11 @@ describe("LpManagementAgentAction", () => {
     });
     const testState = createTestState();
 
-    const result = await LpManagementAgentAction.validate?.(testRuntime, testMessage, testState);
+    const result = await LpManagementAgentAction.validate?.(
+      testRuntime,
+      testMessage,
+      testState,
+    );
     expect(result).toBe(true);
   });
 });

@@ -3,11 +3,11 @@ import {
   describe,
   expect,
   it,
-  mock,
+  vi,
   beforeEach,
   afterEach,
-  spyOn,
-} from "bun:test";
+  type Mock,
+} from "vitest";
 import {
   type IAgentRuntime,
   type Memory,
@@ -20,7 +20,10 @@ import {
   ChannelType,
 } from "@elizaos/core";
 
-// Re-export bun test utilities for convenience
+const mock = vi.fn;
+const spyOn = vi.spyOn;
+
+// Re-export vitest utilities for convenience
 export { describe, it, expect, mock, beforeEach, afterEach, spyOn };
 
 // Create a valid UUID for testing
@@ -30,28 +33,28 @@ export const testUUID = "550e8400-e29b-41d4-a716-446655440000" as UUID;
 export type MockRuntime = Partial<IAgentRuntime> & {
   agentId: UUID;
   character: Character;
-  getSetting: ReturnType<typeof mock>;
-  useModel: ReturnType<typeof mock>;
-  composeState: ReturnType<typeof mock>;
-  createMemory: ReturnType<typeof mock>;
-  getMemories: ReturnType<typeof mock>;
-  searchMemories: ReturnType<typeof mock>;
-  updateMemory: ReturnType<typeof mock>;
-  getRoom: ReturnType<typeof mock>;
-  getParticipantUserState: ReturnType<typeof mock>;
-  setParticipantUserState: ReturnType<typeof mock>;
-  emitEvent: ReturnType<typeof mock>;
-  getTasks: ReturnType<typeof mock>;
+  getSetting: Mock;
+  useModel: Mock;
+  composeState: Mock;
+  createMemory: Mock;
+  getMemories: Mock;
+  searchMemories: Mock;
+  updateMemory: Mock;
+  getRoom: Mock;
+  getParticipantUserState: Mock;
+  setParticipantUserState: Mock;
+  emitEvent: Mock;
+  getTasks: Mock;
   providers: any[];
   actions: any[];
   evaluators: any[];
   services: any[];
-  getService: ReturnType<typeof mock>;
+  getService: Mock;
 };
 
 // Create Mock Runtime
 export function createMockRuntime(
-  overrides: Partial<MockRuntime> = {}
+  overrides: Partial<MockRuntime> = {},
 ): MockRuntime {
   return {
     agentId: testUUID,
@@ -102,7 +105,7 @@ export function createMockRuntime(
     emitEvent: mock().mockResolvedValue(undefined),
     getTasks: mock().mockResolvedValue([]),
     getService: mock().mockImplementation((name: string) =>
-      overrides.services?.find((s: any) => s.serviceType === name)
+      overrides.services?.find((s: any) => s.serviceType === name),
     ),
     providers: [],
     actions: [],
@@ -115,7 +118,7 @@ export function createMockRuntime(
 // Create Mock Memory
 export function createTestMemory(
   content: string | Content,
-  overrides: Partial<Memory> = {}
+  overrides: Partial<Memory> = {},
 ): Memory {
   return {
     id: testUUID,

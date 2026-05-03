@@ -40,7 +40,7 @@ describe("DexScreener Actions - Additional Coverage", () => {
       const message = createTestMemory("Show me boosted tokens");
       const isValid = await getBoostedTokensAction.validate(
         mockRuntime,
-        message
+        message,
       );
       expect(isValid).toBe(true);
     });
@@ -49,7 +49,7 @@ describe("DexScreener Actions - Additional Coverage", () => {
       const message = createTestMemory("What are the promoted tokens?");
       const isValid = await getBoostedTokensAction.validate(
         mockRuntime,
-        message
+        message,
       );
       expect(isValid).toBe(true);
     });
@@ -58,7 +58,7 @@ describe("DexScreener Actions - Additional Coverage", () => {
       const message = createTestMemory("Show sponsored tokens");
       const isValid = await getBoostedTokensAction.validate(
         mockRuntime,
-        message
+        message,
       );
       expect(isValid).toBe(true);
     });
@@ -97,7 +97,7 @@ describe("DexScreener Actions - Additional Coverage", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(mockService.getTopBoostedTokens).toHaveBeenCalled();
@@ -138,7 +138,7 @@ describe("DexScreener Actions - Additional Coverage", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(mockService.getLatestBoostedTokens).toHaveBeenCalled();
@@ -164,7 +164,7 @@ describe("DexScreener Actions - Additional Coverage", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith({
@@ -188,7 +188,7 @@ describe("DexScreener Actions - Additional Coverage", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith({
@@ -208,8 +208,8 @@ describe("DexScreener Actions - Additional Coverage", () => {
           message,
           state,
           {},
-          undefined
-        )
+          undefined,
+        ),
       ).resolves.toBeUndefined();
     });
   });
@@ -219,7 +219,7 @@ describe("DexScreener Actions - Additional Coverage", () => {
       const message = createTestMemory("Show me token profiles");
       const isValid = await getTokenProfilesAction.validate(
         mockRuntime,
-        message
+        message,
       );
       expect(isValid).toBe(true);
     });
@@ -259,7 +259,7 @@ describe("DexScreener Actions - Additional Coverage", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(mockService.getLatestTokenProfiles).toHaveBeenCalled();
@@ -299,7 +299,7 @@ describe("DexScreener Actions - Additional Coverage", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith({
@@ -324,7 +324,7 @@ describe("DexScreener Actions - Additional Coverage", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith({
@@ -348,7 +348,7 @@ describe("DexScreener Actions - Additional Coverage", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith({
@@ -368,8 +368,8 @@ describe("DexScreener Actions - Additional Coverage", () => {
           message,
           state,
           {},
-          undefined
-        )
+          undefined,
+        ),
       ).resolves.toBeUndefined();
     });
 
@@ -397,7 +397,7 @@ describe("DexScreener Actions - Additional Coverage", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       expect(callback).toHaveBeenCalledWith({
@@ -432,7 +432,7 @@ describe("DexScreener Actions - Additional Coverage", () => {
         message,
         state,
         {},
-        callback
+        callback,
       );
 
       const callArgs = callback.mock.calls[0][0];
@@ -446,7 +446,7 @@ describe("DexScreener Actions - Additional Coverage", () => {
       expect(getBoostedTokensAction.examples).toBeDefined();
       expect(getBoostedTokensAction.examples.length).toBeGreaterThan(0);
       expect(getBoostedTokensAction.examples[0][0].content).toHaveProperty(
-        "text"
+        "text",
       );
     });
 
@@ -454,7 +454,7 @@ describe("DexScreener Actions - Additional Coverage", () => {
       expect(getTokenProfilesAction.examples).toBeDefined();
       expect(getTokenProfilesAction.examples.length).toBeGreaterThan(0);
       expect(getTokenProfilesAction.examples[0][0].content).toHaveProperty(
-        "text"
+        "text",
       );
     });
   });

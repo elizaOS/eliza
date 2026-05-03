@@ -27,10 +27,7 @@ const config: StorybookConfig = {
         elizaRoot,
         "packages/app-core/src/index.ts",
       ),
-      "@elizaos/core": path.resolve(
-        elizaRoot,
-        "packages/core/src/index.ts",
-      ),
+      "@elizaos/core": path.resolve(elizaRoot, "packages/core/src/index.ts"),
     };
     return config;
   },

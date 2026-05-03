@@ -142,9 +142,9 @@ describe("manager — routing", () => {
     ).rejects.toThrow(/cannot accept direct writes/);
     await m.set("anthropic.apiKey", "sk-ant", { sensitive: true });
     expect(await m.vault.describe("openrouter.apiKey")).toBeNull();
-    expect(
-      (await m.vault.describe("anthropic.apiKey"))?.source,
-    ).toBe("keychain-encrypted");
+    expect((await m.vault.describe("anthropic.apiKey"))?.source).toBe(
+      "keychain-encrypted",
+    );
   });
 
   it("rejects external direct writes", async () => {

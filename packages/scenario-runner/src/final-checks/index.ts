@@ -36,7 +36,10 @@ export function registerFinalCheckHandler(
   HANDLERS.set(type, handler);
 }
 
-function registerStrictFinalCheckKeys(type: string, keys: readonly string[]): void {
+function registerStrictFinalCheckKeys(
+  type: string,
+  keys: readonly string[],
+): void {
   STRICT_FINAL_CHECK_KEYS.set(type, new Set(["type", "name", ...keys]));
 }
 
@@ -63,7 +66,10 @@ function matchesActionName(
 }
 
 function normalizeChannel(value: string): string {
-  return value.trim().toLowerCase().replace(/[-\s]+/g, "_");
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[-\s]+/g, "_");
 }
 
 function matchesChannel(
@@ -102,7 +108,12 @@ function valuesEqual(actual: unknown, expected: unknown): boolean {
   if (Array.isArray(actual)) {
     return actual.some((candidate) => valuesEqual(candidate, expected));
   }
-  if (actual && expected && typeof actual === "object" && typeof expected === "object") {
+  if (
+    actual &&
+    expected &&
+    typeof actual === "object" &&
+    typeof expected === "object"
+  ) {
     const actualRecord = toRecord(actual);
     const expectedRecord = toRecord(expected);
     if (!actualRecord || !expectedRecord) {
@@ -174,12 +185,15 @@ async function readGmailMockRequests(): Promise<GmailMockRequest[]> {
   }
   const response = await fetch(`${base}/__mock/requests`);
   if (!response.ok) {
-    throw new Error(`Gmail mock request ledger returned HTTP ${response.status}`);
+    throw new Error(
+      `Gmail mock request ledger returned HTTP ${response.status}`,
+    );
   }
   const body = (await response.json()) as { requests?: unknown };
   return Array.isArray(body.requests)
-    ? body.requests.filter((entry): entry is GmailMockRequest =>
-        Boolean(entry) && typeof entry === "object",
+    ? body.requests.filter(
+        (entry): entry is GmailMockRequest =>
+          Boolean(entry) && typeof entry === "object",
       )
     : [];
 }
@@ -208,10 +222,7 @@ function gmailRequestMatches(
 }
 
 function gmailSendLedgerPaths(): string[] {
-  return [
-    "/gmail/v1/users/me/messages/send",
-    "/gmail/v1/users/me/drafts/send",
-  ];
+  return ["/gmail/v1/users/me/messages/send", "/gmail/v1/users/me/drafts/send"];
 }
 
 function hasGmailDraftData(
@@ -305,7 +316,9 @@ function hasBrowserTaskNeedsHumanValue(value: unknown): boolean {
   return session?.status === "awaiting_confirmation";
 }
 
-function actionArtifactsPresent(action: ScenarioContext["actionsCalled"][number]): boolean {
+function actionArtifactsPresent(
+  action: ScenarioContext["actionsCalled"][number],
+): boolean {
   const result = action.result;
   if (!result) {
     return false;
@@ -327,13 +340,11 @@ function actionArtifactsPresent(action: ScenarioContext["actionsCalled"][number]
       : null;
   return (
     Array.isArray(raw?.attachments) ||
-    Array.isArray(nestedArtifacts) && nestedArtifacts.length > 0
+    (Array.isArray(nestedArtifacts) && nestedArtifacts.length > 0)
   );
 }
 
-function actionBlob(
-  action: ScenarioContext["actionsCalled"][number],
-): string {
+function actionBlob(action: ScenarioContext["actionsCalled"][number]): string {
   const parts = [action.actionName];
   if (action.parameters) {
     parts.push(JSON.stringify(action.parameters));
@@ -383,9 +394,12 @@ function actionMatchesChannel(
     case "desktop":
     case "mobile":
     case "phone_call":
-      return ["PUBLISH_DEVICE_INTENT", "INTENT_SYNC", "CALL_USER", "CALL_EXTERNAL"].includes(
-        action.actionName,
-      );
+      return [
+        "PUBLISH_DEVICE_INTENT",
+        "INTENT_SYNC",
+        "CALL_USER",
+        "CALL_EXTERNAL",
+      ].includes(action.actionName);
     default:
       return false;
   }
@@ -515,49 +529,47 @@ registerFinalCheckHandler("memoryWriteOccurred", (check, { ctx }) => {
   };
 });
 
-registerFinalCheckHandler(
-  "approvalRequestExists",
-  (check, { ctx }) => {
-    if (ctx.approvalRequests === undefined) {
-      return {
-        status: "skipped-dependency-missing",
-        detail: "no approval queue service registered",
-      };
-    }
-    const { expected, actionName, state } = check as {
-      expected?: boolean;
-      actionName?: string | string[];
-      state?: string | string[];
+registerFinalCheckHandler("approvalRequestExists", (check, { ctx }) => {
+  if (ctx.approvalRequests === undefined) {
+    return {
+      status: "skipped-dependency-missing",
+      detail: "no approval queue service registered",
     };
-    const filtered = ctx.approvalRequests.filter((request) => {
-      if (!matchesActionName(request.actionName, actionName)) {
-        return false;
-      }
-      if (state === undefined) {
-        return true;
-      }
-      return toArray(state).includes(request.state);
-    });
-    const want = expected ?? true;
-    const any = filtered.length > 0;
-    if (any === want) {
-      return {
-        status: "passed",
-        detail: `${filtered.length} matching approval request(s)`,
-      };
+  }
+  const { expected, actionName, state } = check as {
+    expected?: boolean;
+    actionName?: string | string[];
+    state?: string | string[];
+  };
+  const filtered = ctx.approvalRequests.filter((request) => {
+    if (!matchesActionName(request.actionName, actionName)) {
+      return false;
     }
-    if (!any) {
-      return {
-        status: "failed",
-        detail: "approval queue registered but no matching requests were captured",
-      };
+    if (state === undefined) {
+      return true;
     }
+    return toArray(state).includes(request.state);
+  });
+  const want = expected ?? true;
+  const any = filtered.length > 0;
+  if (any === want) {
+    return {
+      status: "passed",
+      detail: `${filtered.length} matching approval request(s)`,
+    };
+  }
+  if (!any) {
     return {
       status: "failed",
-      detail: `expected approvalRequestExists=${want}, saw ${filtered.length} matching request(s)`,
+      detail:
+        "approval queue registered but no matching requests were captured",
     };
-  },
-);
+  }
+  return {
+    status: "failed",
+    detail: `expected approvalRequestExists=${want}, saw ${filtered.length} matching request(s)`,
+  };
+});
 
 registerFinalCheckHandler("approvalStateTransition", (check, { ctx }) => {
   const { from, to, actionName } = check as {
@@ -697,7 +709,9 @@ registerFinalCheckHandler("pushSent", (check, { ctx }) => {
 
 registerFinalCheckHandler("pushEscalationOrder", (check, { ctx }) => {
   const { channelOrder } = check as { channelOrder: string[] };
-  const seen = (ctx.connectorDispatches ?? []).map((dispatch) => dispatch.channel);
+  const seen = (ctx.connectorDispatches ?? []).map(
+    (dispatch) => dispatch.channel,
+  );
   let cursor = 0;
   for (const channel of channelOrder) {
     const index = seen.indexOf(channel, cursor);
@@ -787,11 +801,14 @@ registerFinalCheckHandler("noSideEffectOnReject", (check, { ctx }) => {
       detail: `no rejected action found for [${toArray(actionName).join(",")}]`,
     };
   }
-  const completed = matchingActions.some((action) =>
-    hasBrowserTaskCompletedValue(action.result?.data) ||
-    hasBrowserTaskCompletedValue(action.result?.raw),
+  const completed = matchingActions.some(
+    (action) =>
+      hasBrowserTaskCompletedValue(action.result?.data) ||
+      hasBrowserTaskCompletedValue(action.result?.raw),
   );
-  const artifacts = matchingActions.some((action) => actionArtifactsPresent(action));
+  const artifacts = matchingActions.some((action) =>
+    actionArtifactsPresent(action),
+  );
   if (completed || artifacts) {
     return {
       status: "failed",
@@ -839,7 +856,8 @@ registerFinalCheckHandler("browserTaskNeedsHuman", (check, { ctx }) => {
     ) ||
     (ctx.stateTransitions ?? []).some(
       (transition) =>
-        transition.subject === "browser_task" && transition.to === "needs_human",
+        transition.subject === "browser_task" &&
+        transition.to === "needs_human",
     );
   const want = expected ?? true;
   if (any === want) {
@@ -943,8 +961,8 @@ registerFinalCheckHandler("connectorDispatchOccurred", (check, { ctx }) => {
     actionName?: string | string[];
     minCount?: number;
   };
-  const dispatchCount = (ctx.connectorDispatches ?? []).filter(
-    (dispatch) => matchesChannel(dispatch.channel, channel),
+  const dispatchCount = (ctx.connectorDispatches ?? []).filter((dispatch) =>
+    matchesChannel(dispatch.channel, channel),
   ).length;
   const actionFallbackCount = ctx.actionsCalled.filter((action) => {
     if (!matchesActionName(action.actionName, actionName)) {
@@ -1067,7 +1085,9 @@ registerFinalCheckHandler("gmailDraftCreated", async (check, { ctx }) => {
       path: "/gmail/v1/users/me/drafts",
     }),
   );
-  const actionHit = ctx.actionsCalled.some((action) => hasGmailDraftData(action));
+  const actionHit = ctx.actionsCalled.some((action) =>
+    hasGmailDraftData(action),
+  );
   const any = ledgerHit || actionHit;
   const want = expected ?? true;
   if (any === want) {
@@ -1147,12 +1167,16 @@ registerFinalCheckHandler("gmailApproval", async (check, { ctx }) => {
     const any =
       (ctx.approvalRequests ?? []).some(
         (request) =>
-          matchesActionName(request.actionName, ["GMAIL_ACTION", "send_email"]) &&
-          request.state === "pending",
+          matchesActionName(request.actionName, [
+            "GMAIL_ACTION",
+            "send_email",
+          ]) && request.state === "pending",
       ) ||
       ctx.actionsCalled.some((action) => {
         const data = actionResultData(action);
-        return data?.pendingApproval === true || data?.requiresConfirmation === true;
+        return (
+          data?.pendingApproval === true || data?.requiresConfirmation === true
+        );
       });
     return any
       ? { status: "passed", detail: "pending Gmail approval observed" }
@@ -1186,7 +1210,8 @@ registerFinalCheckHandler("gmailNoRealWrite", () => {
   if (!isLoopbackUrl(process.env.ELIZA_MOCK_GOOGLE_BASE)) {
     return {
       status: "failed",
-      detail: "ELIZA_MOCK_GOOGLE_BASE is not loopback; Gmail write proof cannot exclude real writes",
+      detail:
+        "ELIZA_MOCK_GOOGLE_BASE is not loopback; Gmail write proof cannot exclude real writes",
     };
   }
   if (process.env.ELIZA_ALLOW_REAL_GMAIL_WRITES === "1") {
@@ -1208,12 +1233,15 @@ registerFinalCheckHandler("n8nDispatchOccurred", (check, { ctx }) => {
     minCount?: number;
   };
   const matchedActions = ctx.actionsCalled.filter((action) =>
-    hasRecursiveObjectMatch(action.result?.data ?? action.result?.raw, (record) => {
-      if (record.kind !== "dispatch_n8n_workflow") {
-        return false;
-      }
-      return workflowId === undefined || record.workflowId === workflowId;
-    }),
+    hasRecursiveObjectMatch(
+      action.result?.data ?? action.result?.raw,
+      (record) => {
+        if (record.kind !== "dispatch_n8n_workflow") {
+          return false;
+        }
+        return workflowId === undefined || record.workflowId === workflowId;
+      },
+    ),
   );
   const matchedWrites = (ctx.memoryWrites ?? []).filter((write) =>
     hasRecursiveObjectMatch(write.content, (record) => {
@@ -1244,7 +1272,11 @@ registerFinalCheckHandler("n8nDispatchOccurred", (check, { ctx }) => {
 });
 
 registerStrictFinalCheckKeys("custom", ["predicate"]);
-registerStrictFinalCheckKeys("actionCalled", ["actionName", "status", "minCount"]);
+registerStrictFinalCheckKeys("actionCalled", [
+  "actionName",
+  "status",
+  "minCount",
+]);
 registerStrictFinalCheckKeys("selectedAction", ["actionName"]);
 registerStrictFinalCheckKeys("selectedActionArguments", [
   "actionName",

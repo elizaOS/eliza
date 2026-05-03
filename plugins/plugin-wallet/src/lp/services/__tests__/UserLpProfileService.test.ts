@@ -3,7 +3,11 @@
 
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { IUserLpProfileService, TrackedLpPositionInput, UserLpProfile } from "../../types.ts";
+import type {
+  IUserLpProfileService,
+  TrackedLpPositionInput,
+  UserLpProfile,
+} from "../../types.ts";
 import { UserLpProfileService } from "../UserLpProfileService.ts";
 
 /**
@@ -25,7 +29,11 @@ describe("UserLpProfileService", () => {
   });
 
   it("should ensure a profile is created", async () => {
-    const profile = await service.ensureProfile("test-user", "test-pk", "test-sk");
+    const profile = await service.ensureProfile(
+      "test-user",
+      "test-pk",
+      "test-sk",
+    );
     expect(profile).toBeDefined();
     expect(profile.userId).toBe("test-user");
     expect(profile.vaultPublicKey).toBe("test-pk");
@@ -80,7 +88,11 @@ describe("UserLpProfileService with In-Memory Storage", () => {
   describe("getProfile", () => {
     it("should return profile from in-memory storage", async () => {
       // First create a profile
-      await profileService.ensureProfile(testUserId1, testVaultPk1, testEncryptedKey1);
+      await profileService.ensureProfile(
+        testUserId1,
+        testVaultPk1,
+        testEncryptedKey1,
+      );
       const profile = await profileService.getProfile(testUserId1);
       expect(profile).toBeDefined();
       expect(profile?.userId).toBe(testUserId1);
@@ -98,7 +110,7 @@ describe("UserLpProfileService with In-Memory Storage", () => {
       const profile = await profileService.ensureProfile(
         testUserId1,
         testVaultPk1,
-        testEncryptedKey1
+        testEncryptedKey1,
       );
       expect(profile).toBeDefined();
       expect(profile.userId).toBe(testUserId1);
@@ -109,12 +121,21 @@ describe("UserLpProfileService with In-Memory Storage", () => {
 
     it("should update an existing profile if found", async () => {
       // First create a profile
-      await profileService.ensureProfile(testUserId1, testVaultPk1, testEncryptedKey1);
+      await profileService.ensureProfile(
+        testUserId1,
+        testVaultPk1,
+        testEncryptedKey1,
+      );
 
       // Then ensure with new data
-      const updatedProfile = await profileService.ensureProfile(testUserId1, "newPk", "newKey", {
-        enabled: true,
-      });
+      const updatedProfile = await profileService.ensureProfile(
+        testUserId1,
+        "newPk",
+        "newKey",
+        {
+          enabled: true,
+        },
+      );
       expect(updatedProfile.vaultPublicKey).toBe("newPk");
       expect(updatedProfile.encryptedSecretKey).toBe("newKey");
       expect(updatedProfile.autoRebalanceConfig.enabled).toBe(true);
@@ -128,7 +149,7 @@ describe("UserLpProfileService with In-Memory Storage", () => {
         testUserId1,
         testVaultPk1,
         testEncryptedKey1,
-        { enabled: true, cycleIntervalHours: 2 }
+        { enabled: true, cycleIntervalHours: 2 },
       );
 
       // Get the initial config to verify the starting values
@@ -149,32 +170,43 @@ describe("UserLpProfileService with In-Memory Storage", () => {
 
       expect(updatedProfile.version).toBe(2);
       expect(updatedProfile.autoRebalanceConfig.enabled).toBe(true); // Should be preserved
-      expect(updatedProfile.autoRebalanceConfig.minGainThresholdPercent).toBe(1.5); // Should be updated
+      expect(updatedProfile.autoRebalanceConfig.minGainThresholdPercent).toBe(
+        1.5,
+      ); // Should be updated
       expect(updatedProfile.autoRebalanceConfig.cycleIntervalHours).toBe(3); // Should be updated
     });
 
     it("should throw if profile not found", async () => {
-      await expect(profileService.updateProfile("non-existent", { version: 2 })).rejects.toThrow(
-        "User profile not found."
-      );
+      await expect(
+        profileService.updateProfile("non-existent", { version: 2 }),
+      ).rejects.toThrow("User profile not found.");
     });
   });
 
   describe("addTrackedPosition", () => {
     it("should add a new position and call updateProfile", async () => {
       // First create a profile
-      await profileService.ensureProfile(testUserId1, testVaultPk1, testEncryptedKey1);
+      await profileService.ensureProfile(
+        testUserId1,
+        testVaultPk1,
+        testEncryptedKey1,
+      );
 
       const newPos: TrackedLpPositionInput = {
         positionIdentifier: "p1",
         dex: "d1",
         poolAddress: "pa1",
       };
-      const updatedProfile = await profileService.addTrackedPosition(testUserId1, newPos);
+      const updatedProfile = await profileService.addTrackedPosition(
+        testUserId1,
+        newPos,
+      );
 
       expect(updatedProfile.trackedPositions).toBeDefined();
       expect(updatedProfile.trackedPositions?.length).toBe(1);
-      expect(updatedProfile.trackedPositions?.[0].positionIdentifier).toBe("p1");
+      expect(updatedProfile.trackedPositions?.[0].positionIdentifier).toBe(
+        "p1",
+      );
       expect(updatedProfile.trackedPositions?.[0].dex).toBe("d1");
     });
 
@@ -184,16 +216,20 @@ describe("UserLpProfileService with In-Memory Storage", () => {
         dex: "d1",
         poolAddress: "pa1",
       };
-      await expect(profileService.addTrackedPosition("non-existent", newPos)).rejects.toThrow(
-        "User profile not found."
-      );
+      await expect(
+        profileService.addTrackedPosition("non-existent", newPos),
+      ).rejects.toThrow("User profile not found.");
     });
   });
 
   describe("removeTrackedPosition", () => {
     it("should remove a tracked position", async () => {
       // First create a profile and add a position
-      await profileService.ensureProfile(testUserId1, testVaultPk1, testEncryptedKey1);
+      await profileService.ensureProfile(
+        testUserId1,
+        testVaultPk1,
+        testEncryptedKey1,
+      );
       const newPos: TrackedLpPositionInput = {
         positionIdentifier: "p1",
         dex: "d1",
@@ -202,7 +238,10 @@ describe("UserLpProfileService with In-Memory Storage", () => {
       await profileService.addTrackedPosition(testUserId1, newPos);
 
       // Then remove it
-      const updatedProfile = await profileService.removeTrackedPosition(testUserId1, "p1");
+      const updatedProfile = await profileService.removeTrackedPosition(
+        testUserId1,
+        "p1",
+      );
       expect(updatedProfile.trackedPositions).toBeDefined();
       expect(updatedProfile.trackedPositions?.length).toBe(0);
     });
@@ -211,7 +250,11 @@ describe("UserLpProfileService with In-Memory Storage", () => {
   describe("getTrackedPositions", () => {
     it("should return tracked positions for a user", async () => {
       // First create a profile and add positions
-      await profileService.ensureProfile(testUserId1, testVaultPk1, testEncryptedKey1);
+      await profileService.ensureProfile(
+        testUserId1,
+        testVaultPk1,
+        testEncryptedKey1,
+      );
       const pos1: TrackedLpPositionInput = {
         positionIdentifier: "p1",
         dex: "d1",
@@ -232,7 +275,11 @@ describe("UserLpProfileService with In-Memory Storage", () => {
     });
 
     it("should return empty array for user with no positions", async () => {
-      await profileService.ensureProfile(testUserId1, testVaultPk1, testEncryptedKey1);
+      await profileService.ensureProfile(
+        testUserId1,
+        testVaultPk1,
+        testEncryptedKey1,
+      );
       const positions = await profileService.getTrackedPositions(testUserId1);
       expect(positions).toEqual([]);
     });
@@ -251,7 +298,8 @@ describe("UserLpProfileService with In-Memory Storage", () => {
         enabled: true,
       });
 
-      const result = await profileService.getAllProfilesWithAutoRebalanceEnabled();
+      const result =
+        await profileService.getAllProfilesWithAutoRebalanceEnabled();
 
       expect(result).toBeInstanceOf(Array);
       expect(result.length).toBe(2);
@@ -269,7 +317,8 @@ describe("UserLpProfileService with In-Memory Storage", () => {
         enabled: false,
       });
 
-      const result = await profileService.getAllProfilesWithAutoRebalanceEnabled();
+      const result =
+        await profileService.getAllProfilesWithAutoRebalanceEnabled();
       expect(result).toEqual([]);
     });
   });

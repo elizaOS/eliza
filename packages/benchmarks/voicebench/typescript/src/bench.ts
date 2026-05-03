@@ -405,10 +405,7 @@ async function seedRuntimeGraph(
     } as Parameters<typeof adapter.createEntities>[0][number],
   ]);
 
-  await adapter.createRoomParticipants(
-    [USER_ENTITY_ID, AGENT_ID],
-    ROOM_ID,
-  );
+  await adapter.createRoomParticipants([USER_ENTITY_ID, AGENT_ID], ROOM_ID);
 }
 
 async function resolvePlugins(profile: string): Promise<Plugin[]> {

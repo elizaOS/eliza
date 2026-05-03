@@ -284,7 +284,10 @@ export class SwapAction {
         swapData: routes.routes[0],
       };
     } catch (error) {
-      logger.error("Error in getLifiQuote:", error instanceof Error ? error.message : String(error));
+      logger.error(
+        "Error in getLifiQuote:",
+        error instanceof Error ? error.message : String(error)
+      );
       return undefined;
     }
   }
@@ -371,7 +374,10 @@ export class SwapAction {
         swapData: route,
       };
     } catch (error) {
-      logger.error("Error in getBebopQuote:", error instanceof Error ? error.message : String(error));
+      logger.error(
+        "Error in getBebopQuote:",
+        error instanceof Error ? error.message : String(error)
+      );
       return undefined;
     }
   }

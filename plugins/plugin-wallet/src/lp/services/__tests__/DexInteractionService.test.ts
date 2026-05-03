@@ -2,7 +2,15 @@
 /// <reference types="vitest/globals" />
 import type { IAgentRuntime } from "@elizaos/core";
 import { Keypair as SolanaKeypair } from "@solana/web3.js";
-import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  type Mock,
+  vi,
+} from "vitest";
 import type {
   ILpService,
   LpPositionDetails,
@@ -115,7 +123,9 @@ describe("DexInteractionService", () => {
     mockOrcaService = createMockDexLpService("orca");
     mockRaydiumService = createMockDexLpService("raydium");
 
-    (mockUserLpProfileService.getProfile as Mock).mockResolvedValue(testUserProfile);
+    (mockUserLpProfileService.getProfile as Mock).mockResolvedValue(
+      testUserProfile,
+    );
   });
 
   afterEach(async () => {
@@ -138,7 +148,9 @@ describe("DexInteractionService", () => {
       // Create a replacement service that returns different data
       const replacementOrcaService = createMockDexLpService("ORCA");
       const uniquePoolData = [{ id: "replacement-pool" }];
-      (replacementOrcaService.getPools as Mock).mockResolvedValue(uniquePoolData);
+      (replacementOrcaService.getPools as Mock).mockResolvedValue(
+        uniquePoolData,
+      );
 
       // Register replacement service (should overwrite)
       dexInteractionService.registerDexService(replacementOrcaService);
@@ -154,7 +166,9 @@ describe("DexInteractionService", () => {
       const testable = dexInteractionService as unknown as {
         getDexService: (name: string) => ILpService;
       };
-      expect(() => testable.getDexService("nonexistent")).toThrow(/No service registered/);
+      expect(() => testable.getDexService("nonexistent")).toThrow(
+        /No service registered/,
+      );
     });
   });
 
@@ -174,7 +188,9 @@ describe("DexInteractionService", () => {
 
     it("should get pools from all registered DEXs if no dexName specified", async () => {
       const orcaPools: PoolInfo[] = [{ id: "orca1", dex: "orca" } as PoolInfo];
-      const raydiumPools: PoolInfo[] = [{ id: "raydium1", dex: "raydium" } as PoolInfo];
+      const raydiumPools: PoolInfo[] = [
+        { id: "raydium1", dex: "raydium" } as PoolInfo,
+      ];
       (mockOrcaService.getPools as Mock).mockResolvedValue(orcaPools);
       (mockRaydiumService.getPools as Mock).mockResolvedValue(raydiumPools);
       const pools = await dexInteractionService.getPools();
@@ -225,7 +241,7 @@ describe("DexInteractionService", () => {
           slippageBps: 50,
           tickLowerIndex: 100,
           tickUpperIndex: 200,
-        })
+        }),
       );
       expect(mockUserLpProfileService.getProfile).not.toHaveBeenCalled();
       expect(mockVaultService.getVaultKeypair).not.toHaveBeenCalled();
@@ -236,7 +252,7 @@ describe("DexInteractionService", () => {
         dexInteractionService.addLiquidity({
           ...addParams,
           dexName: "unknown",
-        })
+        }),
       ).rejects.toThrow(/No service registered for DEX 'unknown'/);
     });
   });
@@ -249,7 +265,9 @@ describe("DexInteractionService", () => {
       dexName: "raydium",
       slippageBps: 30,
     };
-    const expectedTokens: TokenBalance[] = [{ address: "SOL", balance: "100", decimals: 9 }];
+    const expectedTokens: TokenBalance[] = [
+      { address: "SOL", balance: "100", decimals: 9 },
+    ];
     const expectedResult: TransactionResult & {
       tokensReceived?: TokenBalance[];
     } = {
@@ -260,7 +278,9 @@ describe("DexInteractionService", () => {
 
     it("should remove liquidity via the correct DEX service", async () => {
       dexInteractionService.registerDexService(mockRaydiumService);
-      (mockRaydiumService.removeLiquidity as Mock).mockResolvedValue(expectedResult);
+      (mockRaydiumService.removeLiquidity as Mock).mockResolvedValue(
+        expectedResult,
+      );
 
       const result = await dexInteractionService.removeLiquidity(removeParams);
 
@@ -271,7 +291,7 @@ describe("DexInteractionService", () => {
           poolId: "pRay",
           lpTokenAmountLamports: "500",
           slippageBps: 30,
-        })
+        }),
       );
       expect(mockUserLpProfileService.getProfile).not.toHaveBeenCalled();
       expect(mockVaultService.getVaultKeypair).not.toHaveBeenCalled();
@@ -282,7 +302,7 @@ describe("DexInteractionService", () => {
         dexInteractionService.removeLiquidity({
           ...removeParams,
           dexName: "unknown",
-        })
+        }),
       ).rejects.toThrow(/No service registered for DEX 'unknown'/);
     });
   });
@@ -297,23 +317,31 @@ describe("DexInteractionService", () => {
         dex: "orca",
         valueUsd: 100,
       } as LpPositionDetails;
-      (mockOrcaService.getLpPositionDetails as Mock).mockResolvedValue(expectedPosition);
+      (mockOrcaService.getLpPositionDetails as Mock).mockResolvedValue(
+        expectedPosition,
+      );
 
-      const position = await dexInteractionService.getLpPosition(testUserId, poolId, "orca");
+      const position = await dexInteractionService.getLpPosition(
+        testUserId,
+        poolId,
+        "orca",
+      );
 
       expect(position).toEqual(expectedPosition);
-      expect(mockUserLpProfileService.getProfile).toHaveBeenCalledWith(testUserId);
+      expect(mockUserLpProfileService.getProfile).toHaveBeenCalledWith(
+        testUserId,
+      );
       expect(mockOrcaService.getLpPositionDetails).toHaveBeenCalledWith(
         testUserKeypair.publicKey.toBase58(),
-        poolId
+        poolId,
       );
     });
 
     it("should throw if user profile not found for getLpPosition", async () => {
       (mockUserLpProfileService.getProfile as Mock).mockResolvedValue(null);
-      await expect(dexInteractionService.getLpPosition(testUserId, "p1", "orca")).rejects.toThrow(
-        /User profile or vault public key not found/
-      );
+      await expect(
+        dexInteractionService.getLpPosition(testUserId, "p1", "orca"),
+      ).rejects.toThrow(/User profile or vault public key not found/);
     });
   });
 
@@ -322,15 +350,22 @@ describe("DexInteractionService", () => {
       dexInteractionService.registerDexService(mockOrcaService);
 
       // Mock getTrackedPositions to return empty array
-      (mockUserLpProfileService.getTrackedPositions as Mock).mockResolvedValue([]);
+      (mockUserLpProfileService.getTrackedPositions as Mock).mockResolvedValue(
+        [],
+      );
 
-      await expect(dexInteractionService.getAllUserLpPositions(testUserId)).resolves.toEqual([]);
-      expect(mockUserLpProfileService.getProfile).toHaveBeenCalledWith(testUserId);
+      await expect(
+        dexInteractionService.getAllUserLpPositions(testUserId),
+      ).resolves.toEqual([]);
+      expect(mockUserLpProfileService.getProfile).toHaveBeenCalledWith(
+        testUserId,
+      );
     });
 
     it("should return empty array if profile or public key not found", async () => {
       (mockUserLpProfileService.getProfile as Mock).mockResolvedValue(null);
-      const positions = await dexInteractionService.getAllUserLpPositions(testUserId);
+      const positions =
+        await dexInteractionService.getAllUserLpPositions(testUserId);
       expect(positions).toEqual([]);
     });
   });

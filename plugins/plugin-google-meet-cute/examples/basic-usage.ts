@@ -1,6 +1,6 @@
 /**
  * Basic usage example for the Google Meet REST API plugin
- * 
+ *
  * This plugin uses the official Google Meet REST API to:
  * - Create and manage meeting spaces
  * - Get participant information
@@ -26,25 +26,25 @@ async function setupAgent() {
   });
 
   // The plugin will be automatically loaded and available
-  
+
   // First time setup: Authenticate with Google
   // User: "Authenticate with Google"
   // Agent will provide OAuth2 URL for authentication
-  
+
   // Example actions that can be triggered:
-  
+
   // 1. Create a new meeting
   // User: "Create a new meeting"
   // User: "Start a private team meeting" (creates restricted access)
-  
+
   // 2. Get meeting information
   // User: "What's the status of the current meeting?"
   // User: "Show meeting details"
-  
+
   // 3. List participants
   // User: "Who's in the meeting?"
   // User: "List all participants"
-  
+
   // 4. Generate meeting report
   // User: "Generate a meeting report"
   // User: "Get the meeting transcript"
@@ -78,4 +78,4 @@ Available actions:
 - GET_MEETING_INFO: Get meeting details
 - GET_PARTICIPANTS: List meeting participants  
 - GENERATE_REPORT: Generate meeting report from artifacts
-`); 
+`);

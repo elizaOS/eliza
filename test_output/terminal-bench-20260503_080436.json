@@ -15,8 +15,8 @@
     "avg_commands_per_task": 0.0,
     "total_tokens": 0,
     "avg_tokens_per_task": 0.0,
-    "evaluation_time_seconds": 9.059906005859375e-06,
-    "avg_time_per_task_seconds": 4.5299530029296875e-06
+    "evaluation_time_seconds": 9.059906005859375e-6,
+    "avg_time_per_task_seconds": 4.5299530029296875e-6
   },
   "leaderboard_comparison": null,
   "by_category": {

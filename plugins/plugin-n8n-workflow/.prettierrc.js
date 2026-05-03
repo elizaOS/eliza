@@ -1,1 +1,1 @@
-export { default } from '@elizaos/config/prettier/prettier.config.js';
+export { default } from "@elizaos/config/prettier/prettier.config.js";

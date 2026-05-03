@@ -125,9 +125,10 @@ function summarizeValidatorFailure(result: CustomValidatorResult): string {
     result.details && typeof result.details === "object" && result.details
       ? (result.details as Record<string, unknown>)
       : null;
-  const summary = detailsObj && typeof detailsObj.summary === "string"
-    ? detailsObj.summary
-    : null;
+  const summary =
+    detailsObj && typeof detailsObj.summary === "string"
+      ? detailsObj.summary
+      : null;
   return summary ?? result.retryablePromptForChild;
 }
 
@@ -1017,9 +1018,7 @@ async function runCustomValidatorBranch(
       },
     });
     ctx.ptyService.stopSession(sessionId, /* force */ true).catch((err) => {
-      ctx.log(
-        `Failed to stop session after custom-validator pass: ${err}`,
-      );
+      ctx.log(`Failed to stop session after custom-validator pass: ${err}`);
     });
     checkAllTasksComplete(ctx);
     return true;

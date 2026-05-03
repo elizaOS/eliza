@@ -79,14 +79,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--agent",
-        choices=["dummy", "eliza", "eliza-bridge"],
-        default="dummy",
+        choices=["dummy", "eliza"],
+        default="eliza",
         help=(
-            "Agent under test. 'dummy' returns a fixed string (smoke test), "
-            "'eliza' drives the in-process Python ElizaOS pipeline (chosen via "
-            "WOOBENCH_AGENT_PROVIDER, default groq), and 'eliza-bridge' routes "
-            "through the elizaOS TS benchmark server (ELIZA_BENCH_URL / "
-            "ELIZA_BENCH_TOKEN)."
+            "Agent under test. 'dummy' returns a fixed string (smoke test only). "
+            "'eliza' (default) routes through the elizaOS TS benchmark server "
+            "(ELIZA_BENCH_URL / ELIZA_BENCH_TOKEN, auto-spawned if unset)."
         ),
     )
     return parser
@@ -129,104 +127,6 @@ async def _create_dummy_agent(
     )
 
 
-def _build_eliza_agent_fn():
-    """Construct an agent_fn backed by a real ElizaOS AgentRuntime.
-
-    Returns an async callable matching ``Callable[[list[dict[str,str]]], str]``
-    that drives ``runtime.message_service.handle_message`` for each turn.
-
-    The runtime is created lazily on first invocation so a dry-run / list
-    command never spins it up.
-    """
-    import os
-    import uuid as _uuid
-    from elizaos.runtime import AgentRuntime
-    from elizaos.types.agent import Character
-    from elizaos.types.memory import Memory
-    from elizaos.types.primitives import Content, as_uuid
-
-    state: dict[str, object] = {"runtime": None, "room_id": None, "entity_id": None}
-
-    async def _ensure_runtime() -> AgentRuntime:
-        rt = state.get("runtime")
-        if rt is not None:
-            return rt  # type: ignore[return-value]
-
-        plugins: list[object] = []
-        from elizaos_plugin_sql import sql_plugin
-
-        plugins.append(sql_plugin)
-
-        provider = (os.environ.get("WOOBENCH_AGENT_PROVIDER", "groq")).strip().lower()
-        if provider == "groq":
-            if not os.environ.get("GROQ_API_KEY"):
-                raise RuntimeError(
-                    "GROQ_API_KEY not set; required for WooBench groq agent provider"
-                )
-            from elizaos_plugin_groq import get_groq_plugin
-
-            plugins.append(get_groq_plugin())
-        elif provider == "openai":
-            if not os.environ.get("OPENAI_API_KEY"):
-                raise RuntimeError("OPENAI_API_KEY not set for openai provider")
-            from elizaos_plugin_openai import get_openai_plugin
-
-            plugins.append(get_openai_plugin())
-        else:
-            raise RuntimeError(f"Unsupported WOOBENCH_AGENT_PROVIDER={provider!r}")
-
-        character = Character(
-            name="Mystic-Reader",
-            bio=[
-                "A skilled mystical reading agent.",
-                "Conducts tarot, I Ching, and astrology readings.",
-            ],
-            system=(
-                "You are a mystical reader providing personalized divination "
-                "readings. Listen carefully, respond thoughtfully, and build "
-                "rapport. Be empathetic and use intuitive insight."
-            ),
-        )
-
-        runtime = AgentRuntime(
-            character=character,
-            plugins=plugins,
-            log_level="WARNING",
-            check_should_respond=False,
-        )
-        await runtime.initialize()
-        state["runtime"] = runtime
-        state["room_id"] = str(_uuid.uuid4())
-        state["entity_id"] = str(_uuid.uuid4())
-        return runtime
-
-    async def _agent_fn(conversation_history: list[dict[str, str]]) -> str:
-        runtime = await _ensure_runtime()
-        last_user = next(
-            (
-                turn["content"]
-                for turn in reversed(conversation_history)
-                if turn.get("role") == "user"
-            ),
-            "",
-        )
-        if not last_user:
-            return ""
-
-        room_id = state["room_id"]
-        entity_id = state["entity_id"]
-        message = Memory(
-            id=as_uuid(str(_uuid.uuid4())),
-            entity_id=as_uuid(str(entity_id)),
-            room_id=as_uuid(str(room_id)),
-            content=Content(text=str(last_user)),
-        )
-        result = await runtime.message_service.handle_message(runtime, message, None)
-        if result.response_content is not None and result.response_content.text:
-            return str(result.response_content.text)
-        return ""
-
-    return _agent_fn
 
 
 async def _run(args: argparse.Namespace) -> None:
@@ -265,8 +165,6 @@ async def _run(args: argparse.Namespace) -> None:
 
     # Build runner
     if args.agent == "eliza":
-        agent_fn = _build_eliza_agent_fn()
-    elif args.agent == "eliza-bridge":
         from eliza_adapter.woobench import build_eliza_bridge_agent_fn
 
         agent_fn = build_eliza_bridge_agent_fn()

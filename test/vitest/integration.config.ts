@@ -24,74 +24,74 @@ const autonomousSourceRoot = getAutonomousSourceRoot(repoRoot);
 const appCoreSourceRoot = getAppCoreSourceRoot(repoRoot);
 const sharedSourceRoot = getSharedSourceRoot(repoRoot);
 const integrationResolveAlias: ModuleAlias[] = [
-      ...getOptionalPluginSdkAliases(repoRoot),
-      {
-        find: "@elizaos/core/roles",
-        replacement: elizaCoreRolesEntry,
+  ...getOptionalPluginSdkAliases(repoRoot),
+  {
+    find: "@elizaos/core/roles",
+    replacement: elizaCoreRolesEntry,
+  },
+  ...(elizaCoreEntry
+    ? [
+        {
+          find: "@elizaos/core",
+          replacement: elizaCoreEntry,
+        },
+      ]
+    : []),
+  ...getAgentSourceAliases(autonomousSourceRoot),
+  ...getAppCoreSourceAliases(appCoreSourceRoot),
+  ...getWorkspaceAppAliases(repoRoot, [
+    "app-companion",
+    "app-lifeops",
+    "app-task-coordinator",
+    "app-vincent",
+    "app-shopify",
+    "app-steward",
+  ]),
+  ...getSharedSourceAliases(sharedSourceRoot),
+  ...getOptionalInstalledPackageAliases(repoRoot, [
+    {
+      find: "@elizaos/plugin-signal",
+      packageName: "@elizaos/plugin-signal",
+      options: {
+        fallbackPath: path.join(
+          repoRoot,
+          "plugins",
+          "plugin-signal",
+          "typescript",
+          "src",
+          "index",
+        ),
       },
-      ...(elizaCoreEntry
-        ? [
-            {
-              find: "@elizaos/core",
-              replacement: elizaCoreEntry,
-            },
-          ]
-        : []),
-      ...getAgentSourceAliases(autonomousSourceRoot),
-      ...getAppCoreSourceAliases(appCoreSourceRoot),
-      ...getWorkspaceAppAliases(repoRoot, [
-        "app-companion",
-        "app-lifeops",
-        "app-task-coordinator",
-        "app-vincent",
-        "app-shopify",
-        "app-steward",
-      ]),
-      ...getSharedSourceAliases(sharedSourceRoot),
-      ...getOptionalInstalledPackageAliases(repoRoot, [
-        {
-          find: "@elizaos/plugin-signal",
-          packageName: "@elizaos/plugin-signal",
-          options: {
-            fallbackPath: path.join(
-              repoRoot,
-              "plugins",
-              "plugin-signal",
-              "typescript",
-              "src",
-              "index",
-            ),
-          },
-        },
-        {
-          find: "@elizaos/plugin-sql",
-          packageName: "@elizaos/plugin-sql",
-          options: {
-            entryKind: "node",
-            fallbackPath: path.join(
-              repoRoot,
-              "plugins",
-              "plugin-sql",
-              "typescript",
-              "index.node",
-            ),
-          },
-        },
-        {
-          find: "@elizaos/plugin-whatsapp",
-          packageName: "@elizaos/plugin-whatsapp",
-          options: {
-            fallbackPath: path.join(
-              repoRoot,
-              "plugins",
-              "plugin-whatsapp",
-              "typescript",
-              "src",
-              "index",
-            ),
-          },
-        },
-      ]),
+    },
+    {
+      find: "@elizaos/plugin-sql",
+      packageName: "@elizaos/plugin-sql",
+      options: {
+        entryKind: "node",
+        fallbackPath: path.join(
+          repoRoot,
+          "plugins",
+          "plugin-sql",
+          "typescript",
+          "index.node",
+        ),
+      },
+    },
+    {
+      find: "@elizaos/plugin-whatsapp",
+      packageName: "@elizaos/plugin-whatsapp",
+      options: {
+        fallbackPath: path.join(
+          repoRoot,
+          "plugins",
+          "plugin-whatsapp",
+          "typescript",
+          "src",
+          "index",
+        ),
+      },
+    },
+  ]),
 ];
 
 export default defineConfig({

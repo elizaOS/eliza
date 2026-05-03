@@ -63,17 +63,6 @@ def parse_args() -> argparse.Namespace:
         epilog=__doc__,
     )
 
-    # Model/runtime selection
-    parser.add_argument(
-        "--provider",
-        choices=["mock", "eliza-classic", "openai", "gateway", "xai", "groq", "eliza"],
-        default="openai",
-        help=(
-            "Model provider to use (default: openai). "
-            "Use --provider mock for testing without LLM. "
-            "Use --provider eliza to route through the elizaOS TS benchmark server."
-        ),
-    )
     parser.add_argument(
         "--dotenv",
         type=str,
@@ -227,139 +216,15 @@ def _load_dotenv_file(path: Path) -> None:
             os.environ[k] = v
 
 
-async def _create_eliza_runtime(
-    provider: str, verbose: bool, *, enable_trajectory_logging: bool, use_docker: bool = True
-) -> object:
-    """Create and initialize an AgentRuntime with the selected model provider plugin.
-
-    The runtime is configured with:
-    - A database adapter (sql plugin) for the canonical message pipeline
-    - The selected model provider plugin (openai, gateway, xai, eliza-classic)
-    - The MINT benchmark plugin (EXECUTE_CODE action + MINT_CONTEXT provider)
-    - A custom messageHandlerTemplate tuned for MINT tasks
-    """
-    from elizaos.runtime import AgentRuntime
-    from elizaos.types.agent import Character
-    from elizaos.types.model import ModelType
-
-    from benchmarks.mint.executor import PythonExecutor
-    from benchmarks.mint.plugin import create_mint_plugin, MINT_MESSAGE_TEMPLATE
-
-    plugins: list[object] = []
-    # Ensure a database adapter exists so the canonical message pipeline works end-to-end.
-    # This matches examples/chat (TypeScript) + examples/telegram (Python) behavior.
-    from elizaos_plugin_sql import sql_plugin
-
-    plugins.append(sql_plugin)
-
-    if provider == "openai":
-        if not os.environ.get("OPENAI_API_KEY"):
-            raise ValueError(
-                "OPENAI_API_KEY is not set. Provide it via environment variables or --dotenv."
-            )
-        from elizaos_plugin_openai import get_openai_plugin
-
-        plugins.append(get_openai_plugin())
-    elif provider == "gateway":
-        if not (
-            os.environ.get("AI_GATEWAY_API_KEY")
-            or os.environ.get("AIGATEWAY_API_KEY")
-            or os.environ.get("VERCEL_OIDC_TOKEN")
-        ):
-            raise ValueError(
-                "AI_GATEWAY_API_KEY / AIGATEWAY_API_KEY / VERCEL_OIDC_TOKEN is not set. "
-                "Provide it via environment variables or --dotenv."
-            )
-        from elizaos_plugin_gateway.plugin import get_gateway_plugin
-
-        plugins.append(get_gateway_plugin())
-    elif provider == "xai":
-        if not os.environ.get("XAI_API_KEY"):
-            raise ValueError(
-                "XAI_API_KEY is not set. Provide it via environment variables or --dotenv."
-            )
-        from elizaos_plugin_xai.plugin import get_xai_elizaos_plugin
-
-        plugins.append(get_xai_elizaos_plugin())
-    elif provider == "eliza-classic":
-        from elizaos_plugin_eliza_classic.plugin import get_eliza_classic_plugin
-
-        plugins.append(get_eliza_classic_plugin())
-    elif provider == "groq":
-        if not os.environ.get("GROQ_API_KEY"):
-            raise ValueError(
-                "GROQ_API_KEY is not set. Provide it via environment variables or --dotenv."
-            )
-        from elizaos_plugin_groq import get_groq_plugin
-
-        plugins.append(get_groq_plugin())
-    else:
-        raise ValueError(f"Unknown provider: {provider}")
-
-    # Register the MINT benchmark plugin (EXECUTE_CODE + MINT_CONTEXT)
-    executor = PythonExecutor(timeout=30, use_docker=use_docker)
-    mint_plugin = create_mint_plugin(executor)
-    plugins.append(mint_plugin)
-
-    # Optional: enable end-to-end trajectory capture for training/benchmarks.
-    if enable_trajectory_logging:
-        try:
-            from elizaos_plugin_trajectory_logger import get_trajectory_logger_plugin
-
-            plugins.append(get_trajectory_logger_plugin())
-        except Exception:
-            # Never fail benchmark startup due to optional logging.
-            pass
-
-    # Create a complete Character with all fields for full provider support
-    from elizaos.types.agent import StyleGuides
-
-    character = Character(
-        name="MINT-Benchmark",
-        username="mint_benchmark",
-        bio=[
-            "An AI assistant specialized in solving benchmark tasks.",
-            "Expert in reasoning, coding, decision making, and information retrieval.",
-        ],
-        system="You are an AI assistant being evaluated on the MINT benchmark. "
-        "Solve tasks precisely and provide clear, formatted answers.",
-        adjectives=["precise", "analytical", "thorough", "methodical"],
-        topics=["mathematics", "coding", "logic", "problem-solving", "data analysis"],
-        style=StyleGuides(
-            all=["Be concise", "Show reasoning", "Provide clear answers"],
-            chat=["Answer format: 'Final answer: X'"],
-        ),
-        templates={
-            "messageHandlerTemplate": MINT_MESSAGE_TEMPLATE,
-        },
-    )
-
-    runtime = AgentRuntime(
-        character=character,
-        plugins=plugins,  # bootstrap plugin will be auto-added during initialize()
-        log_level="DEBUG" if verbose else "ERROR",
-        check_should_respond=False,  # benchmark mode: always respond
-    )
-    await runtime.initialize()
-
-    # Validate that the runtime has a text generation handler.
-    if not runtime.has_model(ModelType.TEXT_LARGE):
-        raise RuntimeError("Runtime is missing a TEXT_LARGE model handler after initialization")
-
-    return runtime
-
-
 async def run_benchmark(
     config: MINTConfig,
-    provider: str,
     dotenv_path: str | None,
     verbose: bool,
     *,
     enable_trajectory_logging: bool,
     trajectory_dataset: str,
 ) -> int:
-    """Run the benchmark and return exit code."""
-    runtime: object | None = None
+    """Run the benchmark via the eliza TS bridge and return exit code."""
     try:
         # Load .env (if provided or if repo-root .env exists)
         if dotenv_path:
@@ -368,44 +233,26 @@ async def run_benchmark(
             candidate = benchmark_root / ".env"
             _load_dotenv_file(candidate)
 
-        trajectory_logger_service: object | None = None
-        if provider not in ("mock", "eliza"):
-            runtime = await _create_eliza_runtime(
-                provider,
-                verbose=verbose,
-                enable_trajectory_logging=enable_trajectory_logging,
-                use_docker=config.use_docker,
-            )
-
-            if enable_trajectory_logging:
-                try:
-                    # Prefer the canonical runtime service registered by the plugin.
-                    get_service = getattr(runtime, "get_service", None)
-                    if callable(get_service):
-                        trajectory_logger_service = get_service("trajectory_logger")
-                except Exception:
-                    trajectory_logger_service = None
-
         runner = MINTRunner(
             config=config,
-            runtime=runtime,
-            trajectory_logger_service=trajectory_logger_service,
+            runtime=None,
+            trajectory_logger_service=None,
             trajectory_dataset=trajectory_dataset,
         )
 
-        # When --provider eliza, swap MINTAgent for the bridge-backed ElizaMINTAgent
-        # so the multi-turn loop forwards each LLM call to the TS benchmark server.
-        if provider == "eliza":
-            from eliza_adapter.mint import ElizaMINTAgent
+        # The bridge agent forwards every multi-turn LLM call to the TS bench
+        # server; MINTRunner reuses runner.executor and runner.feedback_generator.
+        from eliza_adapter.mint import ElizaMINTAgent
 
-            runner.agent = ElizaMINTAgent(
-                tool_executor=runner.executor,
-                feedback_generator=runner.feedback_generator,
-                temperature=config.temperature,
-            )
-            logging.getLogger(__name__).info(
-                "Using ElizaMINTAgent (TS benchmark bridge) instead of MINTAgent"
-            )
+        runner.agent = ElizaMINTAgent(
+            tool_executor=runner.executor,
+            feedback_generator=runner.feedback_generator,
+            temperature=config.temperature,
+        )
+        logging.getLogger(__name__).info(
+            "[mint] using ElizaMINTAgent (eliza TS benchmark bridge)"
+        )
+        _ = enable_trajectory_logging  # trajectory logging now lives in the bridge
         results = await runner.run_benchmark()
 
         # Print summary
@@ -461,7 +308,7 @@ def main() -> int:
     config = create_config(args)
 
     print("Configuration:")
-    print(f"  Provider: {args.provider}")
+    print("  Provider: eliza-ts-bridge")
     print(f"  Categories: {[c.value for c in (config.categories or list(MINTCategory))]}")
     print(f"  Max tasks per category: {config.max_tasks_per_category or 'all'}")
     print(f"  Max turns: {config.max_turns}")
@@ -475,7 +322,6 @@ def main() -> int:
     return asyncio.run(
         run_benchmark(
             config,
-            args.provider,
             args.dotenv,
             args.verbose,
             enable_trajectory_logging=not bool(args.no_trajectory_logging),

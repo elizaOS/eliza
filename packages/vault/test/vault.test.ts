@@ -57,7 +57,9 @@ describe("vault — set / get / has / remove", () => {
 
   it("rejects empty / non-string keys", async () => {
     await expect(test.vault.set("", "v")).rejects.toThrow();
-    await expect(test.vault.set(123 as unknown as string, "v")).rejects.toThrow();
+    await expect(
+      test.vault.set(123 as unknown as string, "v"),
+    ).rejects.toThrow();
   });
 
   it("rejects non-string values", async () => {
@@ -342,9 +344,7 @@ describe("vault — bug-fix demonstrations", () => {
     await test.vault.set("openrouter.apiKey", "sk-or-v1-real-key", {
       sensitive: true,
     });
-    expect(await test.vault.get("openrouter.apiKey")).toBe(
-      "sk-or-v1-real-key",
-    );
+    expect(await test.vault.get("openrouter.apiKey")).toBe("sk-or-v1-real-key");
     expect(await test.vault.get("openrouter.largeModel")).toBe(
       "tencent/hy3-preview",
     );

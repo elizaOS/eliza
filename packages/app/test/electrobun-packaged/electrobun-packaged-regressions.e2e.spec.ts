@@ -27,10 +27,9 @@ function isPackagedPlatform(): boolean {
 }
 
 function getApiBaseExpression(): string {
-  return [
-    "window.__ELIZAOS_API_BASE__",
-    "window.__ELIZA_API_BASE__",
-  ].join(" ?? ");
+  return ["window.__ELIZAOS_API_BASE__", "window.__ELIZA_API_BASE__"].join(
+    " ?? ",
+  );
 }
 
 function debugPackagedPhase(label: string): void {

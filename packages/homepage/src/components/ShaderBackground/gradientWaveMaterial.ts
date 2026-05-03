@@ -1,5 +1,3 @@
-
-
 import { shaderMaterial } from "@react-three/drei";
 import { extend, type ThreeElement } from "@react-three/fiber";
 import * as THREE from "three";
@@ -134,7 +132,7 @@ const GradientWaveMaterial = shaderMaterial(
 
       gl_FragColor = vec4(color, 1.0);
     }
-  `
+  `,
 );
 
 extend({ GradientWaveMaterial });

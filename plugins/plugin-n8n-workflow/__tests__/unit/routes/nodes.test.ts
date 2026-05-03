@@ -1,10 +1,17 @@
-import { describe, test, expect } from 'bun:test';
-import { nodeRoutes } from '../../../src/routes/nodes';
-import { createMockRuntime } from '../../helpers/mockRuntime';
-import type { RouteRequest, RouteResponse } from '@elizaos/core';
+import { describe, test, expect } from "bun:test";
+import { nodeRoutes } from "../../../src/routes/nodes";
+import { createMockRuntime } from "../../helpers/mockRuntime";
+import type { RouteRequest, RouteResponse } from "@elizaos/core";
 
 function createRouteRequest(overrides?: Partial<RouteRequest>): RouteRequest {
-  return { body: undefined, params: {}, query: {}, headers: {}, method: 'GET', ...overrides };
+  return {
+    body: undefined,
+    params: {},
+    query: {},
+    headers: {},
+    method: "GET",
+    ...overrides,
+  };
 }
 
 function createRouteResponse(): {
@@ -40,8 +47,8 @@ const searchHandler = nodeRoutes[2].handler!;
 
 const runtime = createMockRuntime();
 
-describe('GET /nodes', () => {
-  test('returns 400 when q parameter is missing', async () => {
+describe("GET /nodes", () => {
+  test("returns 400 when q parameter is missing", async () => {
     const req = createRouteRequest({ query: {} });
     const { res, getResult } = createRouteResponse();
 
@@ -50,8 +57,8 @@ describe('GET /nodes', () => {
     expect(getResult().status).toBe(400);
   });
 
-  test('returns search results for gmail keyword', async () => {
-    const req = createRouteRequest({ query: { q: 'gmail' } });
+  test("returns search results for gmail keyword", async () => {
+    const req = createRouteRequest({ query: { q: "gmail" } });
     const { res, getResult } = createRouteResponse();
 
     await searchHandler(req, res, runtime);
@@ -64,14 +71,14 @@ describe('GET /nodes', () => {
     };
     expect(data.success).toBe(true);
     expect(data.data.length).toBeGreaterThan(0);
-    expect(data.data[0].name.toLowerCase()).toContain('gmail');
+    expect(data.data[0].name.toLowerCase()).toContain("gmail");
     // Search results include score and matchReason
-    expect(typeof data.data[0].score).toBe('number');
-    expect(typeof data.data[0].matchReason).toBe('string');
+    expect(typeof data.data[0].score).toBe("number");
+    expect(typeof data.data[0].matchReason).toBe("string");
   });
 
-  test('respects limit parameter', async () => {
-    const req = createRouteRequest({ query: { q: 'send', limit: '3' } });
+  test("respects limit parameter", async () => {
+    const req = createRouteRequest({ query: { q: "send", limit: "3" } });
     const { res, getResult } = createRouteResponse();
 
     await searchHandler(req, res, runtime);
@@ -80,8 +87,8 @@ describe('GET /nodes', () => {
     expect(data.data.length).toBeLessThanOrEqual(3);
   });
 
-  test('handles comma-separated keywords', async () => {
-    const req = createRouteRequest({ query: { q: 'gmail,slack' } });
+  test("handles comma-separated keywords", async () => {
+    const req = createRouteRequest({ query: { q: "gmail,slack" } });
     const { res, getResult } = createRouteResponse();
 
     await searchHandler(req, res, runtime);
@@ -92,23 +99,30 @@ describe('GET /nodes', () => {
   });
 });
 
-describe('GET /nodes/:type', () => {
-  test('returns node definition for valid type', async () => {
-    const req = createRouteRequest({ params: { type: 'n8n-nodes-base.gmail' } });
+describe("GET /nodes/:type", () => {
+  test("returns node definition for valid type", async () => {
+    const req = createRouteRequest({
+      params: { type: "n8n-nodes-base.gmail" },
+    });
     const { res, getResult } = createRouteResponse();
 
     await getNodeHandler(req, res, runtime);
 
     const { status, body } = getResult();
     expect(status).toBe(200);
-    const data = body as { success: boolean; data: { name: string; properties: unknown[] } };
+    const data = body as {
+      success: boolean;
+      data: { name: string; properties: unknown[] };
+    };
     expect(data.success).toBe(true);
-    expect(data.data.name).toBe('n8n-nodes-base.gmail');
+    expect(data.data.name).toBe("n8n-nodes-base.gmail");
     expect(data.data.properties.length).toBeGreaterThan(0);
   });
 
-  test('returns 404 for unknown node type', async () => {
-    const req = createRouteRequest({ params: { type: 'n8n-nodes-base.nonexistentNode12345' } });
+  test("returns 404 for unknown node type", async () => {
+    const req = createRouteRequest({
+      params: { type: "n8n-nodes-base.nonexistentNode12345" },
+    });
     const { res, getResult } = createRouteResponse();
 
     await getNodeHandler(req, res, runtime);
@@ -116,7 +130,7 @@ describe('GET /nodes/:type', () => {
     expect(getResult().status).toBe(404);
   });
 
-  test('returns 400 when type param is missing', async () => {
+  test("returns 400 when type param is missing", async () => {
     const req = createRouteRequest({ params: {} });
     const { res, getResult } = createRouteResponse();
 
@@ -126,8 +140,8 @@ describe('GET /nodes/:type', () => {
   });
 });
 
-describe('GET /nodes/available', () => {
-  test('returns categorized nodes without credential bridge', async () => {
+describe("GET /nodes/available", () => {
+  test("returns categorized nodes without credential bridge", async () => {
     const req = createRouteRequest();
     const { res, getResult } = createRouteResponse();
 
@@ -153,15 +167,15 @@ describe('GET /nodes/available', () => {
     expect(first.matchReason).toBeUndefined();
   });
 
-  test('filters nodes when credential bridge is available', async () => {
+  test("filters nodes when credential bridge is available", async () => {
     const runtimeWithBridge = createMockRuntime({
       services: {
         n8n_credential_provider: {
           resolve: () => Promise.resolve(null),
           checkCredentialTypes: (types: string[]) => ({
             // Only support gmail-related credentials
-            supported: types.filter((t) => t.startsWith('gmail')),
-            unsupported: types.filter((t) => !t.startsWith('gmail')),
+            supported: types.filter((t) => t.startsWith("gmail")),
+            unsupported: types.filter((t) => !t.startsWith("gmail")),
           }),
         },
       },
@@ -185,6 +199,8 @@ describe('GET /nodes/available', () => {
     expect(data.data.unsupported.length).toBeGreaterThan(0);
     // Unsupported nodes should have missingCredentials array
     expect(data.data.unsupported[0].missingCredentials).toBeDefined();
-    expect(Array.isArray(data.data.unsupported[0].missingCredentials)).toBe(true);
+    expect(Array.isArray(data.data.unsupported[0].missingCredentials)).toBe(
+      true,
+    );
   });
 });

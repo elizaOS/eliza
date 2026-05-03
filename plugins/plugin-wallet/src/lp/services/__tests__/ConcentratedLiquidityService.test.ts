@@ -11,7 +11,8 @@ vi.mock("../UserLpProfileService");
 /**
  * Interface for accessing private members for testing
  */
-interface ConcentratedLiquidityServiceTestable extends ConcentratedLiquidityService {
+interface ConcentratedLiquidityServiceTestable
+  extends ConcentratedLiquidityService {
   isInitialized: boolean;
 }
 
@@ -85,7 +86,8 @@ describe("ConcentratedLiquidityService", () => {
   describe("start", () => {
     it("should initialize without errors", async () => {
       await expect(service.start(mockRuntime)).resolves.not.toThrow();
-      const testableService = service as unknown as ConcentratedLiquidityServiceTestable;
+      const testableService =
+        service as unknown as ConcentratedLiquidityServiceTestable;
       expect(testableService.isInitialized).toBe(true);
     });
   });
@@ -103,9 +105,9 @@ describe("ConcentratedLiquidityService", () => {
         baseAmount: 1000,
       };
 
-      await expect(service.createConcentratedPosition("test-user", params)).rejects.toThrow(
-        "Concentrated liquidity positions are coming soon!"
-      );
+      await expect(
+        service.createConcentratedPosition("test-user", params),
+      ).rejects.toThrow("Concentrated liquidity positions are coming soon!");
     });
   });
 
@@ -116,7 +118,7 @@ describe("ConcentratedLiquidityService", () => {
 
     it("should throw placeholder error for now", async () => {
       await expect(
-        service.rebalanceConcentratedPosition("test-user", "test-position")
+        service.rebalanceConcentratedPosition("test-user", "test-position"),
       ).rejects.toThrow("Concentrated position rebalancing is coming soon!");
     });
   });
@@ -157,7 +159,7 @@ describe("ConcentratedLiquidityService", () => {
 
       const { priceLower, priceUpper } = service.calculateOptimalRange(
         currentPrice,
-        rangeWidthPercent
+        rangeWidthPercent,
       );
 
       expect(priceLower).toBe(90); // 100 * (1 - 10/100) = 90
@@ -169,7 +171,8 @@ describe("ConcentratedLiquidityService", () => {
     it("should reset initialization state", async () => {
       await service.start(mockRuntime);
 
-      const testableService = service as unknown as ConcentratedLiquidityServiceTestable;
+      const testableService =
+        service as unknown as ConcentratedLiquidityServiceTestable;
 
       // Verify service is initialized
       expect(testableService.isInitialized).toBe(true);

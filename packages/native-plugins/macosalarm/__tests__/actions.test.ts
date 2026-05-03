@@ -110,8 +110,12 @@ describe("macOS alarm actions", () => {
       const set = createSetAlarmAction();
       const cancel = createCancelAlarmAction();
       const list = createListAlarmsAction();
-      expect(await set.validate(fakeRuntime(), fakeMessage("alarm"))).toBe(false);
-      expect(await cancel.validate(fakeRuntime(), fakeMessage("x"))).toBe(false);
+      expect(await set.validate(fakeRuntime(), fakeMessage("alarm"))).toBe(
+        false,
+      );
+      expect(await cancel.validate(fakeRuntime(), fakeMessage("x"))).toBe(
+        false,
+      );
       expect(await list.validate(fakeRuntime(), fakeMessage("x"))).toBe(false);
     });
   });

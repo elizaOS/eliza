@@ -1,26 +1,26 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
-import type { BIRDEYE_SUPPORTED_CHAINS } from '../utils';
+import type { BIRDEYE_SUPPORTED_CHAINS } from "../utils";
 
 // Types
 export type BirdeyeSupportedChain = (typeof BIRDEYE_SUPPORTED_CHAINS)[number];
 
 export interface BaseAddress {
-    type?: 'wallet' | 'token' | 'contract';
-    symbol?: string;
-    address: string;
-    chain: BirdeyeSupportedChain;
+  type?: "wallet" | "token" | "contract";
+  symbol?: string;
+  address: string;
+  chain: BirdeyeSupportedChain;
 }
 
 export interface WalletAddress extends BaseAddress {
-    type: 'wallet';
+  type: "wallet";
 }
 
 export interface TokenAddress extends BaseAddress {
-    type: 'token';
+  type: "token";
 }
 
 export interface ContractAddress extends BaseAddress {
-    type: 'contract';
+  type: "contract";
 }
 
 /**
@@ -35,16 +35,16 @@ export interface ContractAddress extends BaseAddress {
 
 // Shape of what's stored in the cache
 export interface CacheWrapper<T> {
-    data: T;
-    /** Unix ms timestamp when the entry was set */
-    setAt: number;
+  data: T;
+  /** Unix ms timestamp when the entry was set */
+  setAt: number;
 }
 
 export interface GetCacheTimedOptions {
-    /** Max age in milliseconds. If exceeded, treat as a cache miss. */
-    notOlderThan?: number;
-    /** Timestamp in milliseconds for cache entry. Defaults to Date.now() if not provided. */
-    tsInMs?: number;
+  /** Max age in milliseconds. If exceeded, treat as a cache miss. */
+  notOlderThan?: number;
+  /** Timestamp in milliseconds for cache entry. Defaults to Date.now() if not provided. */
+  tsInMs?: number;
 }
 
 /**
@@ -66,20 +66,20 @@ export interface GetCacheTimedOptions {
  * @property { Date } last_updated - The date when the token data was last updated.
  */
 export interface IToken {
-    provider: string;
-    chain: BirdeyeSupportedChain;
-    address: string;
-    decimals: number;
-    liquidity: number;
-    marketcap: number;
-    logoURI: string;
-    name: string;
-    symbol: string;
-    volume24hUSD: number;
-    rank: number;
-    price: number;
-    price24hChangePercent: number;
-    last_updated: Date;
+  provider: string;
+  chain: BirdeyeSupportedChain;
+  address: string;
+  decimals: number;
+  liquidity: number;
+  marketcap: number;
+  logoURI: string;
+  name: string;
+  symbol: string;
+  volume24hUSD: number;
+  rank: number;
+  price: number;
+  price24hChangePercent: number;
+  last_updated: Date;
 }
 
 /**
@@ -89,9 +89,9 @@ export interface IToken {
  * @property {any} data - Additional data related to the transaction.
  */
 export interface TransactionHistory {
-    txHash: string;
-    blockTime: Date;
-    data: unknown;
+  txHash: string;
+  blockTime: Date;
+  data: unknown;
 }
 
 /**
@@ -101,6 +101,6 @@ export interface TransactionHistory {
  * @property {any} data - The data contained in the portfolio.
  */
 export interface Portfolio {
-    key: string;
-    data: unknown;
+  key: string;
+  data: unknown;
 }

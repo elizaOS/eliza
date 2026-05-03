@@ -49,14 +49,18 @@ describe("@elizaos/shared", () => {
 
     it("strips URLs", async () => {
       const { sanitizeSpeechText } = await import("../src/index.ts");
-      const result = sanitizeSpeechText("Visit https://example.com for details");
+      const result = sanitizeSpeechText(
+        "Visit https://example.com for details",
+      );
       expect(result).not.toContain("https://example.com");
       expect(result).toContain("Visit");
     });
 
     it("strips thinking tags", async () => {
       const { sanitizeSpeechText } = await import("../src/index.ts");
-      const result = sanitizeSpeechText("Hello <think>internal reasoning</think> world");
+      const result = sanitizeSpeechText(
+        "Hello <think>internal reasoning</think> world",
+      );
       expect(result).not.toContain("internal reasoning");
       expect(result).toContain("Hello");
       expect(result).toContain("world");
@@ -174,8 +178,11 @@ describe("@elizaos/shared", () => {
 
   describe("runtime-env utilities", () => {
     it("resolves default ports when no env is set", async () => {
-      const { resolveRuntimePorts, DEFAULT_DESKTOP_API_PORT, DEFAULT_DESKTOP_UI_PORT } =
-        await import("../src/index.ts");
+      const {
+        resolveRuntimePorts,
+        DEFAULT_DESKTOP_API_PORT,
+        DEFAULT_DESKTOP_UI_PORT,
+      } = await import("../src/index.ts");
       const ports = resolveRuntimePorts({});
       expect(ports.desktopApiPort).toBe(DEFAULT_DESKTOP_API_PORT);
       expect(ports.desktopUiPort).toBe(DEFAULT_DESKTOP_UI_PORT);
@@ -183,13 +190,18 @@ describe("@elizaos/shared", () => {
 
     it("resolves custom ports from env", async () => {
       const { resolveRuntimePorts } = await import("../src/index.ts");
-      const ports = resolveRuntimePorts({ ELIZA_API_PORT: "9999", ELIZA_UI_PORT: "8888" });
+      const ports = resolveRuntimePorts({
+        ELIZA_API_PORT: "9999",
+        ELIZA_UI_PORT: "8888",
+      });
       expect(ports.desktopApiPort).toBe(9999);
       expect(ports.desktopUiPort).toBe(8888);
     });
 
     it("ignores invalid port values", async () => {
-      const { resolveRuntimePorts, DEFAULT_DESKTOP_API_PORT } = await import("../src/index.ts");
+      const { resolveRuntimePorts, DEFAULT_DESKTOP_API_PORT } = await import(
+        "../src/index.ts"
+      );
       const ports = resolveRuntimePorts({ ELIZA_API_PORT: "not-a-number" });
       expect(ports.desktopApiPort).toBe(DEFAULT_DESKTOP_API_PORT);
     });
@@ -213,7 +225,9 @@ describe("@elizaos/shared", () => {
     it("stripOptionalHostPort strips port from host:port", async () => {
       const { stripOptionalHostPort } = await import("../src/index.ts");
       expect(stripOptionalHostPort("localhost:3000")).toBe("localhost");
-      expect(stripOptionalHostPort("http://example.com:8080")).toBe("example.com");
+      expect(stripOptionalHostPort("http://example.com:8080")).toBe(
+        "example.com",
+      );
       expect(stripOptionalHostPort("")).toBe("");
     });
 
@@ -230,7 +244,9 @@ describe("@elizaos/shared", () => {
 
     it("resolveApiSecurityConfig reads ELIZA_API_TOKEN", async () => {
       const { resolveApiSecurityConfig } = await import("../src/index.ts");
-      const config = resolveApiSecurityConfig({ ELIZA_API_TOKEN: "test-token-123" });
+      const config = resolveApiSecurityConfig({
+        ELIZA_API_TOKEN: "test-token-123",
+      });
       expect(config.token).toBe("test-token-123");
     });
 
@@ -239,7 +255,10 @@ describe("@elizaos/shared", () => {
       const config = resolveApiSecurityConfig({
         ELIZA_ALLOWED_ORIGINS: "http://localhost:3000,http://example.com",
       });
-      expect(config.allowedOrigins).toEqual(["http://localhost:3000", "http://example.com"]);
+      expect(config.allowedOrigins).toEqual([
+        "http://localhost:3000",
+        "http://example.com",
+      ]);
     });
   });
 
@@ -251,7 +270,9 @@ describe("@elizaos/shared", () => {
 
     it("isElizaSettingsDebugEnabled returns true when ELIZA_SETTINGS_DEBUG=1", async () => {
       const { isElizaSettingsDebugEnabled } = await import("../src/index.ts");
-      expect(isElizaSettingsDebugEnabled({ env: { ELIZA_SETTINGS_DEBUG: "1" } })).toBe(true);
+      expect(
+        isElizaSettingsDebugEnabled({ env: { ELIZA_SETTINGS_DEBUG: "1" } }),
+      ).toBe(true);
     });
 
     it("sanitizeForSettingsDebug masks sensitive keys", async () => {
@@ -265,7 +286,7 @@ describe("@elizaos/shared", () => {
       // Sensitive string values are masked (showing partial chars and length), not passed through
       expect(result.apikey).not.toBe("sk-1234567890abcdef");
       expect(typeof result.apikey).toBe("string");
-      expect((result.apikey as string)).toContain("chars");
+      expect(result.apikey as string).toContain("chars");
       expect(result.password).not.toBe("supersecret123");
     });
 
@@ -305,7 +326,9 @@ describe("@elizaos/shared", () => {
     });
 
     it("setRestartHandler and requestRestart work together", async () => {
-      const { setRestartHandler, requestRestart } = await import("../src/index.ts");
+      const { setRestartHandler, requestRestart } = await import(
+        "../src/index.ts"
+      );
       let capturedReason: string | undefined;
       setRestartHandler((reason) => {
         capturedReason = reason;

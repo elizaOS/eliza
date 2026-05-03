@@ -43,9 +43,10 @@ import { createDummyProviders, mockLlmPlugin } from "./mock-llm-plugin.js";
  * Isolated in a function so the import only happens when --real-llm is used.
  */
 async function loadOpenAIPlugin(): Promise<Plugin> {
-  const mod = (await import(
-    "../../../../plugins/plugin-openai/index.js"
-  )) as { openaiPlugin: Plugin; default: Plugin };
+  const mod = (await import("../../../../plugins/plugin-openai/index.js")) as {
+    openaiPlugin: Plugin;
+    default: Plugin;
+  };
   return mod.openaiPlugin ?? mod.default;
 }
 

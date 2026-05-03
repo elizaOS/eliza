@@ -11,16 +11,22 @@
  *
  * Run with: bun run crawl:schemas
  */
-import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
-import path from 'node:path';
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
 
-const OUTPUT = path.resolve(import.meta.dir, '..', 'src', 'data', 'schemaIndex.json');
+const OUTPUT = path.resolve(
+  import.meta.dir,
+  "..",
+  "src",
+  "data",
+  "schemaIndex.json",
+);
 const LANGCHAIN_OVERRIDES = path.resolve(
   import.meta.dir,
-  '..',
-  'src',
-  'data',
-  'langchain-output-schemas.json'
+  "..",
+  "src",
+  "data",
+  "langchain-output-schemas.json",
 );
 
 // Full schema content embedded
@@ -43,10 +49,10 @@ interface SchemaIndex {
 
 async function findNodesBasePath(): Promise<string> {
   try {
-    const resolved = require.resolve('n8n-nodes-base');
-    return path.join(resolved, '..', 'dist', 'nodes');
+    const resolved = require.resolve("n8n-nodes-base");
+    return path.join(resolved, "..", "dist", "nodes");
   } catch {
-    console.error('n8n-nodes-base not found. Run: bun add -d n8n-nodes-base');
+    console.error("n8n-nodes-base not found. Run: bun add -d n8n-nodes-base");
     process.exit(1);
   }
 }
@@ -64,7 +70,7 @@ async function* walkDir(dir: string): AsyncGenerator<string> {
 }
 
 async function scanSchemaFolder(
-  schemaDir: string
+  schemaDir: string,
 ): Promise<Record<string, Record<string, SchemaContent>>> {
   const schemas: Record<string, Record<string, SchemaContent>> = {};
 
@@ -75,7 +81,7 @@ async function scanSchemaFolder(
 
     // Sort versions descending to get highest first
     const sortedVersions = versionDirs
-      .filter((d) => d.isDirectory() && d.name.startsWith('v'))
+      .filter((d) => d.isDirectory() && d.name.startsWith("v"))
       .map((d) => d.name)
       .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
 
@@ -88,23 +94,25 @@ async function scanSchemaFolder(
 
         const resource = resourceDir.name;
         const resourcePath = path.join(versionPath, resource);
-        const operationFiles = await readdir(resourcePath, { withFileTypes: true });
+        const operationFiles = await readdir(resourcePath, {
+          withFileTypes: true,
+        });
 
         if (!schemas[resource]) {
           schemas[resource] = {};
         }
 
         for (const opFile of operationFiles) {
-          if (!opFile.isFile() || !opFile.name.endsWith('.json')) continue;
+          if (!opFile.isFile() || !opFile.name.endsWith(".json")) continue;
 
-          const operation = opFile.name.replace('.json', '');
+          const operation = opFile.name.replace(".json", "");
 
           // Only take first (highest version) schema for each operation
           if (schemas[resource][operation]) continue;
 
           try {
             const schemaPath = path.join(resourcePath, opFile.name);
-            const content = await readFile(schemaPath, 'utf-8');
+            const content = await readFile(schemaPath, "utf-8");
             const schema = JSON.parse(content) as SchemaContent;
             schemas[resource][operation] = schema;
           } catch {
@@ -127,13 +135,13 @@ async function main() {
   const index: SchemaIndex = {
     nodeTypes: {},
     generatedAt: new Date().toISOString(),
-    version: '2.0.0', // Version bump: now includes full schema content
+    version: "2.0.0", // Version bump: now includes full schema content
   };
 
   // Find all .node.json files
   const nodeJsonFiles: string[] = [];
   for await (const filePath of walkDir(nodesPath)) {
-    if (filePath.endsWith('.node.json')) {
+    if (filePath.endsWith(".node.json")) {
       nodeJsonFiles.push(filePath);
     }
   }
@@ -145,7 +153,7 @@ async function main() {
 
   for (const nodeJsonPath of nodeJsonFiles) {
     try {
-      const content = await readFile(nodeJsonPath, 'utf-8');
+      const content = await readFile(nodeJsonPath, "utf-8");
       const nodeJson = JSON.parse(content);
       const nodeType = nodeJson.node as string;
 
@@ -156,12 +164,12 @@ async function main() {
       const relativeFolder = path.relative(nodesPath, nodeDir);
 
       // Check for __schema__ folder
-      const schemaDir = path.join(nodeDir, '__schema__');
+      const schemaDir = path.join(nodeDir, "__schema__");
       const schemas = await scanSchemaFolder(schemaDir);
 
       const schemaCount = Object.values(schemas).reduce(
         (sum, ops) => sum + Object.keys(ops).length,
-        0
+        0,
       );
 
       if (schemaCount > 0) {
@@ -179,14 +187,16 @@ async function main() {
 
   // Merge langchain override schemas (no __schema__ dirs in that package)
   try {
-    const overrideRaw = await readFile(LANGCHAIN_OVERRIDES, 'utf-8');
-    const overrideData = JSON.parse(overrideRaw) as { nodes: Record<string, SchemaEntry> };
+    const overrideRaw = await readFile(LANGCHAIN_OVERRIDES, "utf-8");
+    const overrideData = JSON.parse(overrideRaw) as {
+      nodes: Record<string, SchemaEntry>;
+    };
 
     for (const [nodeType, entry] of Object.entries(overrideData.nodes)) {
       index.nodeTypes[nodeType] = entry;
       const count = Object.values(entry.schemas).reduce(
         (sum, ops) => sum + Object.keys(ops).length,
-        0
+        0,
       );
       nodesWithSchemas++;
       totalSchemas += count;
@@ -194,12 +204,12 @@ async function main() {
     }
   } catch (error) {
     console.warn(
-      `Warning: failed to load langchain overrides: ${error instanceof Error ? error.message : String(error)}`
+      `Warning: failed to load langchain overrides: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
 
   await mkdir(path.dirname(OUTPUT), { recursive: true });
-  await writeFile(OUTPUT, JSON.stringify(index, null, 2), 'utf-8');
+  await writeFile(OUTPUT, JSON.stringify(index, null, 2), "utf-8");
 
   console.log(`\nSchema index created:`);
   console.log(`  - Nodes with schemas: ${nodesWithSchemas}`);
@@ -208,6 +218,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('crawl-output-schemas failed:', err);
+  console.error("crawl-output-schemas failed:", err);
   process.exit(1);
 });

@@ -229,28 +229,35 @@ export interface IEvmLpService extends Service {
     chainId: number,
     tokenA?: Address,
     tokenB?: Address,
-    feeTier?: number
+    feeTier?: number,
   ): Promise<EvmPoolInfo[]>;
 
   /** Add liquidity to a pool */
   addLiquidity(params: EvmAddLiquidityParams): Promise<EvmTransactionResult>;
 
   /** Remove liquidity from a pool */
-  removeLiquidity(params: EvmRemoveLiquidityParams): Promise<EvmTransactionResult>;
+  removeLiquidity(
+    params: EvmRemoveLiquidityParams,
+  ): Promise<EvmTransactionResult>;
 
   /** Get position details */
   getPositionDetails(
     chainId: number,
     owner: Address,
     poolAddress: Address,
-    tokenId?: bigint
+    tokenId?: bigint,
   ): Promise<EvmPositionDetails | null>;
 
   /** Get all positions for an address */
-  getAllPositions(chainId: number, owner: Address): Promise<EvmPositionDetails[]>;
+  getAllPositions(
+    chainId: number,
+    owner: Address,
+  ): Promise<EvmPositionDetails[]>;
 
   /** Get market data for pools */
-  getMarketData(poolAddresses: Address[]): Promise<Record<string, Partial<EvmPoolInfo>>>;
+  getMarketData(
+    poolAddresses: Address[],
+  ): Promise<Record<string, Partial<EvmPoolInfo>>>;
 }
 
 // ============================================================================
@@ -313,7 +320,9 @@ export type SupportedEvmChain = keyof typeof SUPPORTED_EVM_CHAINS;
 // Helper function to get chain config
 export function getChainConfig(chainNameOrId: string | number) {
   if (typeof chainNameOrId === "number") {
-    return Object.values(SUPPORTED_EVM_CHAINS).find((c) => c.chainId === chainNameOrId);
+    return Object.values(SUPPORTED_EVM_CHAINS).find(
+      (c) => c.chainId === chainNameOrId,
+    );
   }
   return SUPPORTED_EVM_CHAINS[chainNameOrId as SupportedEvmChain];
 }
@@ -412,14 +421,19 @@ export interface LpActionParams {
 }
 
 export interface IVaultService extends Service {
-  createVault(userId: string): Promise<{ publicKey: string; secretKeyEncrypted: string }>;
-  getVaultKeypair(userId: string, encryptedSecretKey: string): Promise<SolanaKeypair>;
+  createVault(
+    userId: string,
+  ): Promise<{ publicKey: string; secretKeyEncrypted: string }>;
+  getVaultKeypair(
+    userId: string,
+    encryptedSecretKey: string,
+  ): Promise<SolanaKeypair>;
   getVaultPublicKey(userId: string): Promise<string | null>;
   getBalances(publicKey: string): Promise<TokenBalance[]>;
   exportPrivateKey(
     userId: string,
     encryptedSecretKey: string,
-    confirmationToken: string
+    confirmationToken: string,
   ): Promise<string>;
 }
 
@@ -428,15 +442,21 @@ export interface IUserLpProfileService extends Service {
     userId: string,
     vaultPublicKey: string,
     encryptedSecretKey: string,
-    initialConfig?: Partial<UserLpProfile["autoRebalanceConfig"]>
+    initialConfig?: Partial<UserLpProfile["autoRebalanceConfig"]>,
   ): Promise<UserLpProfile>;
   getProfile(userId: string): Promise<UserLpProfile | null>;
   updateProfile(
     userId: string,
-    updates: Partial<Omit<UserLpProfile, "userId">>
+    updates: Partial<Omit<UserLpProfile, "userId">>,
   ): Promise<UserLpProfile>;
-  addTrackedPosition(userId: string, position: TrackedLpPositionInput): Promise<UserLpProfile>;
-  removeTrackedPosition(userId: string, positionIdentifier: string): Promise<UserLpProfile>;
+  addTrackedPosition(
+    userId: string,
+    position: TrackedLpPositionInput,
+  ): Promise<UserLpProfile>;
+  removeTrackedPosition(
+    userId: string,
+    positionIdentifier: string,
+  ): Promise<UserLpProfile>;
   getTrackedPositions(userId: string): Promise<TrackedLpPosition[]>;
   getAllProfilesWithAutoRebalanceEnabled(): Promise<UserLpProfile[]>;
   start(runtime?: IAgentRuntime): Promise<void>;
@@ -445,13 +465,17 @@ export interface IUserLpProfileService extends Service {
 
 export interface IDexInteractionService extends Service {
   registerDexService(dexService: ILpService): void;
-  getPools(dexName?: string, tokenAMint?: string, tokenBMint?: string): Promise<PoolInfo[]>;
+  getPools(
+    dexName?: string,
+    tokenAMint?: string,
+    tokenBMint?: string,
+  ): Promise<PoolInfo[]>;
   addLiquidity(config: AddLiquidityConfig): Promise<TransactionResult>;
   removeLiquidity(config: RemoveLiquidityConfig): Promise<TransactionResult>;
   getLpPosition(
     userId: string,
     poolIdOrPositionIdentifier: string,
-    dexName: string
+    dexName: string,
   ): Promise<LpPositionDetails | null>;
   getAllUserLpPositions(userId: string): Promise<LpPositionDetails[]>;
 }
@@ -461,14 +485,14 @@ export interface IYieldOptimizationService extends Service {
   findBestYieldOpportunities(
     userId: string,
     currentPositions: LpPositionDetails[],
-    idleAssets: TokenBalance[]
+    idleAssets: TokenBalance[],
   ): Promise<OptimizationOpportunity[]>;
   calculateRebalanceCost(
     fromPosition: LpPositionDetails | null,
     toPool: PoolInfo,
     solPriceUsd: number,
     amountToMoveLamports?: string,
-    underlyingTokensToMove?: TokenBalance[]
+    underlyingTokensToMove?: TokenBalance[],
   ): Promise<{
     costSolLamports: string;
     costUsd?: number;
@@ -478,7 +502,7 @@ export interface IYieldOptimizationService extends Service {
   findBestYield(
     userId: string,
     currentTokenA: string,
-    currentTokenB: string
+    currentTokenB: string,
   ): Promise<OptimizationOpportunity[]>;
 }
 
@@ -502,11 +526,14 @@ export interface IRangeParams {
 }
 
 export interface IConcentratedLiquidityService extends Service {
-  createConcentratedPosition(userId: string, params: IRangeParams): Promise<IConcentratedPosition>;
+  createConcentratedPosition(
+    userId: string,
+    params: IRangeParams,
+  ): Promise<IConcentratedPosition>;
   getConcentratedPositions(userId: string): Promise<IConcentratedPosition[]>;
   rebalanceConcentratedPosition(
     userId: string,
     positionId: string,
-    newRangeParams?: Partial<IRangeParams>
+    newRangeParams?: Partial<IRangeParams>,
   ): Promise<IConcentratedPosition>;
 }

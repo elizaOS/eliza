@@ -142,16 +142,12 @@ describe("inventory — meta read/write", () => {
 
   it("rejects malformed JSON instead of silently returning empty meta", async () => {
     await vault.set("_meta.OPENROUTER_API_KEY", "not-json");
-    await expect(
-      readEntryMeta(vault, "OPENROUTER_API_KEY"),
-    ).rejects.toThrow();
+    await expect(readEntryMeta(vault, "OPENROUTER_API_KEY")).rejects.toThrow();
   });
 
   it("rejects non-object JSON", async () => {
     await vault.set("_meta.OPENROUTER_API_KEY", JSON.stringify(["not-object"]));
-    await expect(
-      readEntryMeta(vault, "OPENROUTER_API_KEY"),
-    ).rejects.toThrow();
+    await expect(readEntryMeta(vault, "OPENROUTER_API_KEY")).rejects.toThrow();
   });
 
   it("filters invalid profile entries on read", async () => {
@@ -169,7 +165,10 @@ describe("inventory — meta read/write", () => {
     );
     const meta = await readEntryMeta(vault, "OPENROUTER_API_KEY");
     expect(meta?.profiles).toHaveLength(2);
-    expect(meta?.profiles?.[0]).toMatchObject({ id: "default", label: "Default" });
+    expect(meta?.profiles?.[0]).toMatchObject({
+      id: "default",
+      label: "Default",
+    });
     expect(meta?.profiles?.[1]).toMatchObject({ id: "work", label: "work" });
   });
 });
@@ -223,7 +222,10 @@ describe("inventory — listVaultInventory", () => {
       category: "provider",
     });
     await vault.set("_routing.config", JSON.stringify({ rules: [] }));
-    await vault.set("_manager.preferences", JSON.stringify({ enabled: ["in-house"] }));
+    await vault.set(
+      "_manager.preferences",
+      JSON.stringify({ enabled: ["in-house"] }),
+    );
 
     const inv = await listVaultInventory(vault);
     expect(inv.find((e) => e.key.startsWith("_meta."))).toBeUndefined();
@@ -257,9 +259,7 @@ describe("inventory — listVaultInventory", () => {
     });
 
     const inv = await listVaultInventory(vault);
-    const matching = inv.filter((e) =>
-      e.key.startsWith("OPENROUTER_API_KEY"),
-    );
+    const matching = inv.filter((e) => e.key.startsWith("OPENROUTER_API_KEY"));
     expect(matching).toHaveLength(1);
     expect(matching[0]?.hasProfiles).toBe(true);
     expect(matching[0]?.profiles).toHaveLength(2);
@@ -271,7 +271,9 @@ describe("inventory — listVaultInventory", () => {
     // Heuristic would say "plugin"; the meta override forces "provider".
     await setEntryMeta(vault, "RANDOM_TOKEN", { category: "provider" });
     const inv = await listVaultInventory(vault);
-    expect(inv.find((e) => e.key === "RANDOM_TOKEN")?.category).toBe("provider");
+    expect(inv.find((e) => e.key === "RANDOM_TOKEN")?.category).toBe(
+      "provider",
+    );
   });
 
   it("reports kind faithfully for value/secret/reference entries", async () => {

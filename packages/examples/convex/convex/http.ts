@@ -62,8 +62,7 @@ http.route({
           ? body.conversationId
           : crypto.randomUUID();
 
-      const userId =
-        typeof body.userId === "string" ? body.userId : undefined;
+      const userId = typeof body.userId === "string" ? body.userId : undefined;
 
       const result = await ctx.runAction(internal.agent.chat, {
         message,
