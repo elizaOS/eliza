@@ -156,8 +156,15 @@ class ElizaClient:
 
     @staticmethod
     def _do(req: urllib.request.Request) -> dict[str, object]:
+        # Long ceiling: vending-bench day 1 with a fresh runtime (full plugin
+        # init + first slow LLM call) regularly takes >5 min. Override via
+        # ELIZA_BENCH_HTTP_TIMEOUT env var if the operator wants a tighter cap.
         try:
-            with urllib.request.urlopen(req, timeout=300) as resp:
+            timeout_s = float(os.environ.get("ELIZA_BENCH_HTTP_TIMEOUT", "1800"))
+        except ValueError:
+            timeout_s = 1800.0
+        try:
+            with urllib.request.urlopen(req, timeout=timeout_s) as resp:
                 raw = resp.read().decode("utf-8")
                 return json.loads(raw)  # type: ignore[no-any-return]
         except urllib.error.HTTPError as exc:
