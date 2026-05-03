@@ -2584,6 +2584,20 @@ export const allActionsSpec = {
 				"Generate image from conversation context. Use to visualize or illustrate.",
 		},
 		{
+			name: "ACTIVATE_N8N_WORKFLOW",
+			description:
+				"Activate an n8n workflow to start processing triggers and running automatically. Identifies workflows by ID, name, or semantic description in any language.",
+			parameters: [],
+			similes: [
+				"ACTIVATE_WORKFLOW",
+				"ENABLE_WORKFLOW",
+				"START_WORKFLOW",
+				"TURN_ON_WORKFLOW",
+			],
+			descriptionCompressed:
+				"Activate an n8n workflow to start processing triggers and running automatically. Identifies workflows by ID, name, or semantic description in any language.",
+		},
+		{
 			name: "ADD_TO_PLAYLIST",
 			description:
 				"Add music to a playlist after confirmed:true. If the track is not already in the library, the configured music fetch service must resolve it first. Creates the playlist if it does not exist.",
@@ -2891,6 +2905,21 @@ export const allActionsSpec = {
 				"Generate music with custom parameters using Suno AI",
 		},
 		{
+			name: "DEACTIVATE_N8N_WORKFLOW",
+			description:
+				"Deactivate an n8n workflow to stop it from processing triggers and running automatically. Identifies workflows by ID, name, or semantic description in any language.",
+			parameters: [],
+			similes: [
+				"DEACTIVATE_WORKFLOW",
+				"DISABLE_WORKFLOW",
+				"STOP_WORKFLOW",
+				"PAUSE_WORKFLOW",
+				"TURN_OFF_WORKFLOW",
+			],
+			descriptionCompressed:
+				"Deactivate an n8n workflow to stop it from processing triggers and running automatically. Identifies workflows by ID, name, or semantic description in any la...",
+		},
+		{
 			name: "DEEPEN_READING",
 			description:
 				"Provide a deeper interpretation of a specific element in an active reading.",
@@ -2954,6 +2983,15 @@ export const allActionsSpec = {
 			descriptionCompressed: "Delete a message from a Discord channel",
 		},
 		{
+			name: "DELETE_N8N_WORKFLOW",
+			description:
+				"Delete an n8n workflow permanently. This action cannot be undone. Identifies workflows by ID, name, or semantic description in any language.",
+			parameters: [],
+			similes: ["DELETE_WORKFLOW", "REMOVE_WORKFLOW", "DESTROY_WORKFLOW"],
+			descriptionCompressed:
+				"Delete an n8n workflow permanently. This action cannot be undone. Identifies workflows by ID, name, or semantic description in any language.",
+		},
+		{
 			name: "DELETE_PLAYLIST",
 			description:
 				"Delete a saved playlist after confirmed:true. Works best in DMs to avoid flooding group chats.",
@@ -2987,14 +3025,6 @@ export const allActionsSpec = {
 			],
 			descriptionCompressed:
 				"Delete a saved playlist after confirmed:true. Works best in DMs to avoid flooding group chats.",
-		},
-		{
-			name: "DEPLOY_TOKEN",
-			description: "Deploy a new token on Base L2 using Clanker protocol",
-			parameters: [],
-			similes: ["CREATE_TOKEN", "LAUNCH_TOKEN", "MINT_TOKEN"],
-			descriptionCompressed:
-				"Deploy a new token on Base L2 using Clanker protocol",
 		},
 		{
 			name: "DEXSCREENER_BOOSTED_TOKENS",
@@ -3299,6 +3329,21 @@ export const allActionsSpec = {
 			descriptionCompressed: "Get information about a Google Meet meeting",
 		},
 		{
+			name: "GET_N8N_EXECUTIONS",
+			description:
+				"Get execution history for an n8n workflow. Shows status, start time, and error messages if any. Identifies workflows by ID, name, or semantic description in any language.",
+			parameters: [],
+			similes: [
+				"GET_EXECUTIONS",
+				"SHOW_EXECUTIONS",
+				"EXECUTION_HISTORY",
+				"WORKFLOW_RUNS",
+				"WORKFLOW_EXECUTIONS",
+			],
+			descriptionCompressed:
+				"Get execution history for an n8n workflow. Shows status, start time, and error messages if any. Identifies workflows by ID, name, or semantic description in...",
+		},
+		{
 			name: "GET_PARTICIPANTS",
 			description: "Get the list of participants in a Google Meet conference",
 			parameters: [],
@@ -3310,21 +3355,6 @@ export const allActionsSpec = {
 			],
 			descriptionCompressed:
 				"Get the list of participants in a Google Meet conference",
-		},
-		{
-			name: "GET_RETAKE_STREAM_STATUS",
-			description:
-				"Check the current status and health of the retake.tv stream (running, uptime, frame count, etc).",
-			parameters: [],
-			similes: [
-				"STREAM_STATUS",
-				"CHECK_STREAM",
-				"RETAKE_STATUS",
-				"IS_STREAM_LIVE",
-				"STREAM_HEALTH",
-			],
-			descriptionCompressed:
-				"Check the current status and health of the retake.tv stream (running, uptime, frame count, etc).",
 		},
 		{
 			name: "GET_SKILL_DETAILS",
@@ -3983,6 +4013,19 @@ export const allActionsSpec = {
 				"List available AI models and providers. Only activates for /models slash command.",
 		},
 		{
+			name: "MODIFY_EXISTING_N8N_WORKFLOW",
+			description: "Load an existing deployed n8n workflow for modification. ",
+			parameters: [],
+			similes: [
+				"EDIT_EXISTING_WORKFLOW",
+				"UPDATE_EXISTING_WORKFLOW",
+				"CHANGE_EXISTING_WORKFLOW",
+				"LOAD_WORKFLOW_FOR_EDIT",
+			],
+			descriptionCompressed:
+				"Load an existing deployed n8n workflow for modification.",
+		},
+		{
 			name: "MULTIVERSE_ADD",
 			description:
 				"Performs addition in the multiverse where numbers behave differently based on dimensional constants (prime, quantum, or chaos).",
@@ -4246,22 +4289,6 @@ export const allActionsSpec = {
 			],
 			descriptionCompressed:
 				"Start playing a new song: provide a track name, artist, search words, or a media URL.",
-		},
-		{
-			name: "PLAY_EMOTE",
-			description:
-				"Play an emote animation on your avatar. Available emotes: wave, kiss, crying, sorrow, rude-gesture, looking-around, dance-happy, dance-breaking, dance-hiphop, dance-popping, hook-punch, punching, firing-gun, sword-swing, chopping, spell-cast, range, death, idle, talk, squat, fishing, float, jump, flip, run, walk, crawling, fall. Use emotes to express yourself visually on stream — react to chat, celebrate, dance, etc.",
-			parameters: [],
-			similes: [
-				"DO_EMOTE",
-				"EMOTE",
-				"AVATAR_EMOTE",
-				"PLAY_ANIMATION",
-				"DANCE",
-				"WAVE",
-			],
-			descriptionCompressed:
-				"Play an emote animation on your avatar. Available emotes: wave, kiss, crying, sorrow, rude-gesture, looking-around, dance-happy, dance-breaking, dance-hiphop...",
 		},
 		{
 			name: "PLAY_MUSIC_QUERY",
@@ -5067,21 +5094,6 @@ export const allActionsSpec = {
 				"Spawn a specific task agent inside an existing workspace when you need direct control.",
 		},
 		{
-			name: "START_RETAKE_STREAM",
-			description:
-				"Start streaming to retake.tv. Initiates the RTMP pipeline with browser capture.",
-			parameters: [],
-			similes: [
-				"GO_LIVE",
-				"START_STREAMING",
-				"BEGIN_STREAM",
-				"START_RETAKE",
-				"GO_LIVE_RETAKE",
-			],
-			descriptionCompressed:
-				"Start streaming to retake.tv. Initiates the RTMP pipeline with browser capture.",
-		},
-		{
 			name: "START_TAILSCALE",
 			description:
 				"Start a Tailscale tunnel exposing a local port to your tailnet (or the public internet via Funnel)",
@@ -5160,21 +5172,6 @@ export const allActionsSpec = {
 			],
 			descriptionCompressed:
 				"Stop playback and clear the queue. Use when the user wants music off or the queue cleared.",
-		},
-		{
-			name: "STOP_RETAKE_STREAM",
-			description:
-				"Stop the active retake.tv stream. Shuts down FFmpeg and notifies retake.tv.",
-			parameters: [],
-			similes: [
-				"GO_OFFLINE",
-				"STOP_STREAMING",
-				"END_STREAM",
-				"STOP_RETAKE",
-				"GO_OFFLINE_RETAKE",
-			],
-			descriptionCompressed:
-				"Stop the active retake.tv stream. Shuts down FFmpeg and notifies retake.tv.",
 		},
 		{
 			name: "STOP_TAILSCALE",
@@ -5287,20 +5284,6 @@ export const allActionsSpec = {
 			],
 			descriptionCompressed:
 				"Enable or disable an installed skill. Say 'enable <skill>' or 'disable <skill>'.",
-		},
-		{
-			name: "TOKEN_INFO",
-			description:
-				"Get information about tokens including price, liquidity, market cap, and other stats. Supports multiple tokens.",
-			parameters: [],
-			similes: [
-				"GET_TOKEN_INFO",
-				"CHECK_TOKEN",
-				"TOKEN_DETAILS",
-				"TOKEN_STATS",
-			],
-			descriptionCompressed:
-				"Get information about tokens including price, liquidity, market cap, and other stats. Supports multiple tokens.",
 		},
 		{
 			name: "TRANSFER_TO_INPUT",
@@ -5422,65 +5405,23 @@ export const allActionsSpec = {
 				"Invoke an enabled skill by slug. The skill's instructions or script run and the result returns to the conversation.",
 		},
 		{
-			name: "WALLET_BALANCE",
-			description: "Check the current token balances in the agent wallet. ",
+			name: "WEB_SEARCH",
+			description:
+				"Perform a web search to find information related to the message.",
 			parameters: [],
 			similes: [
-				"CHECK_BALANCE",
-				"GET_BALANCE",
-				"WALLET_STATUS",
-				"HOW_MUCH_DO_I_HAVE",
+				"SEARCH_WEB",
+				"INTERNET_SEARCH",
+				"LOOKUP",
+				"QUERY_WEB",
+				"FIND_ONLINE",
+				"SEARCH_ENGINE",
+				"WEB_LOOKUP",
+				"ONLINE_SEARCH",
+				"FIND_INFORMATION",
 			],
 			descriptionCompressed:
-				"Check the current token balances in the agent wallet.",
-		},
-		{
-			name: "WALLET_BRIDGE",
-			description:
-				"Bridge USDC cross-chain via Circle's CCTP V2. Supported routes include ",
-			parameters: [],
-			similes: ["BRIDGE_TOKENS", "CROSS_CHAIN", "CCTP_BRIDGE", "BRIDGE_USDC"],
-			descriptionCompressed:
-				"Bridge USDC cross-chain via Circle's CCTP V2. Supported routes include",
-		},
-		{
-			name: "WALLET_SWAP",
-			description: "Swap tokens using Jupiter (Solana) or Uniswap V3 (EVM). ",
-			parameters: [],
-			similes: [
-				"SWAP_TOKENS",
-				"EXCHANGE_TOKENS",
-				"TRADE_TOKENS",
-				"JUPITER_SWAP",
-				"UNISWAP",
-			],
-			descriptionCompressed:
-				"Swap tokens using Jupiter (Solana) or Uniswap V3 (EVM).",
-		},
-		{
-			name: "WALLET_TRANSFER",
-			description:
-				"Transfer SOL, ETH, USDC, or any ERC-20/SPL token to another address. ",
-			parameters: [],
-			similes: [
-				"SEND_TOKENS",
-				"TRANSFER_FUNDS",
-				"PAY",
-				"SEND_SOL",
-				"SEND_ETH",
-				"SEND_USDC",
-			],
-			descriptionCompressed:
-				"Transfer SOL, ETH, USDC, or any ERC-20/SPL token to another address.",
-		},
-		{
-			name: "X402_PAY",
-			description:
-				"Pay for a resource or API endpoint using the x402 micropayment protocol. ",
-			parameters: [],
-			similes: ["PAY_API", "MICROPAYMENT", "PAY_ENDPOINT", "X402_REQUEST"],
-			descriptionCompressed:
-				"Pay for a resource or API endpoint using the x402 micropayment protocol.",
+				"Perform a web search to find information related to the message.",
 		},
 	],
 } as const satisfies { version: string; actions: readonly ActionDoc[] };

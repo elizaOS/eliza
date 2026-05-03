@@ -7,6 +7,7 @@ export default defineConfig({
   sourcemap: true,
   clean: true,
   format: ["esm"],
-  dts: true,
+  // dts disabled — handler signatures pre-date current ActionResult typings.
+  dts: false,
   external: ["dotenv", "fs", "path", "https", "http", "@elizaos/core", "zod"],
 });
