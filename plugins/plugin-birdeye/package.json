@@ -20,7 +20,7 @@
         "vitest": "2.1.9"
     },
     "devDependencies": {
-        "@biomejs/biome": "1.5.3",
+        "@biomejs/biome": "1.9.4",
         "@elizaos/cli": "^1.4.2",
         "@types/node": "^22.10.2",
         "ts-node": "^10.9.2",
