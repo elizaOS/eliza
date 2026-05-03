@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-nostr",
-  "version": "2.0.0-alpha.8",
+  "version": "2.0.0-alpha.536",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -31,13 +31,13 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "nostr-tools": "^2.0.0",
-    "zod": "^4.4.2"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@types/node": "^22.19.17",
+    "@biomejs/biome": "^2.3.11",
+    "@types/node": "^20.0.0",
     "typescript": "^6.0.3",
-    "@biomejs/biome": "^2.4.14",
-    "vitest": "^4.0.0"
+    "vitest": "^3.2.4"
   },
   "eliza": {
     "platforms": [

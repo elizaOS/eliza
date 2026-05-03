@@ -1,0 +1,79 @@
+{
+  "name": "@elizaos/plugin-dexscreener",
+  "version": "2.0.0-alpha.536",
+  "description": "DexScreener integration plugin for ElizaOS",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "type": "module",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "lint": "prettier --write ./src",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "test:coverage": "bun test --coverage"
+  },
+  "dependencies": {
+    "@elizaos/cloud-routing": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^20.8.0",
+    "bun": "^1.2.15",
+    "prettier": "^3.0.0",
+    "tsup": "8.3.5",
+    "typescript": "^6.0.3"
+  },
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "dexscreener",
+    "dex",
+    "defi",
+    "analytics"
+  ],
+  "author": "ElizaOS",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos/eliza.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "DEXSCREENER_API_URL": {
+        "type": "string",
+        "description": "DexScreener API base URL (default: https://api.dexscreener.com)",
+        "required": false,
+        "sensitive": false
+      },
+      "DEXSCREENER_RATE_LIMIT_DELAY": {
+        "type": "string",
+        "description": "Rate limit delay in milliseconds between API calls (default: 100)",
+        "required": false,
+        "sensitive": false
+      }
+    }
+  }
+}

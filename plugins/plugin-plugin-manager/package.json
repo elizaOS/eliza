@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-plugin-manager",
-  "version": "2.0.0-alpha.8",
+  "version": "2.0.0-alpha.536",
   "description": "Plugin manager for ElizaOS",
   "type": "module",
   "main": "dist/index.js",
@@ -31,11 +31,11 @@
     "fs-extra": "^11.2.0"
   },
   "devDependencies": {
-    "dotenv": "^17.0.0",
-    "tsup": "^8.5.1",
+    "@biomejs/biome": "^2.3.11",
+    "dotenv": "16.4.5",
+    "tsup": "8.4.0",
     "typescript": "6.0.3",
-    "vitest": "^4.0.0",
-    "@biomejs/biome": "^2.4.14"
+    "vitest": "3.1.4"
   },
   "publishConfig": {
     "access": "public"
