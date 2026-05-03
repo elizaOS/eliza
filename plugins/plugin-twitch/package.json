@@ -24,9 +24,9 @@
     "typecheck": "echo \"Typecheck skipped for release\""
   },
   "dependencies": {
-    "@twurple/auth": "^7.2.0",
-    "@twurple/chat": "^7.2.0",
-    "zod": "^4.3.6"
+    "@twurple/auth": "^8.0.0",
+    "@twurple/chat": "^8.0.0",
+    "zod": "^4.4.2"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"
@@ -34,7 +34,7 @@
   "devDependencies": {
     "@types/bun": "^1.1.0",
     "typescript": "^6.0.3",
-    "@biomejs/biome": "^2.3.11"
+    "@biomejs/biome": "^2.4.14"
   },
   "eliza": {
     "platforms": [

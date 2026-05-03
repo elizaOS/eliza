@@ -4,7 +4,7 @@
   "description": "elizaOS Server Operator",
   "type": "module",
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=24.0.0"
   },
   "pepr": {
     "uuid": "eliza-operator",
@@ -40,9 +40,9 @@
     "deploy:local": "npx pepr build && ./scripts/deploy-local.sh"
   },
   "dependencies": {
-    "ioredis": "^5.9.3",
+    "ioredis": "^5.10.1",
     "kubernetes-fluent-client": "^3.11.7",
-    "pepr": "^1.1.1"
+    "pepr": "^1.1.7"
   },
   "devDependencies": {
     "@types/bun": "latest",

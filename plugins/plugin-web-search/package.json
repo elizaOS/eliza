@@ -19,8 +19,8 @@
     ],
     "dependencies": {
         "@elizaos/core": "workspace:*",
-        "@tavily/core": "^0.0.2",
-        "tsup": "8.3.5",
+        "@tavily/core": "^0.7.0",
+        "tsup": "^8.5.1",
         "js-tiktoken": "1.0.15"
     },
     "devDependencies": {
@@ -36,15 +36,15 @@
         "typecheck": "tsc --noEmit -p tsconfig.json"
     },
     "peerDependencies": {
-        "whatwg-url": "7.1.0"
+        "whatwg-url": "^16.0.0"
     },
     "agentConfig": {
-      "pluginType": "elizaos:client:1.0.0",
-      "pluginParameters": {
-        "TAVILY_API_KEY": {
-          "type": "string",
-          "description": "Tavily API key for accessing news services"
+        "pluginType": "elizaos:client:1.0.0",
+        "pluginParameters": {
+            "TAVILY_API_KEY": {
+                "type": "string",
+                "description": "Tavily API key for accessing news services"
+            }
         }
-      }
     }
 }

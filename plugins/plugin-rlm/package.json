@@ -47,17 +47,17 @@
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.9.4",
-    "@types/node": "^22.10.0",
-    "tsup": "^8.3.5",
+    "@biomejs/biome": "^2.4.14",
+    "@types/node": "^22.19.17",
+    "tsup": "^8.5.1",
     "typescript": "^6.0.3",
-    "vitest": "^3.0.0"
+    "vitest": "^4.0.0"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=24.0.0"
   },
   "eliza": {
     "platforms": [

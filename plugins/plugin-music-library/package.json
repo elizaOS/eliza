@@ -25,11 +25,11 @@
     "uuid": "^14.0.0"
   },
   "devDependencies": {
-    "@types/node": "^20.14.9",
-    "prettier": "3.5.3",
-    "tsup": "8.4.0",
+    "@types/node": "^22.19.17",
+    "prettier": "^3.8.3",
+    "tsup": "^8.5.1",
     "typescript": "^6.0.0",
-    "vitest": "3.2.4"
+    "vitest": "^4.0.0"
   },
   "scripts": {
     "build": "tsup",
@@ -44,7 +44,7 @@
     "test:live": "bun run test:e2e"
   },
   "peerDependencies": {
-    "whatwg-url": "7.1.0"
+    "whatwg-url": "^16.0.0"
   },
   "publishConfig": {
     "access": "public"

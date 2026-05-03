@@ -176,7 +176,7 @@
     "telegram": "2.26.22",
     "viem": "^2.48.8",
     "ws": "^8.19.0",
-    "zod": "^4.3.6"
+    "zod": "^4.4.2"
   },
   "peerDependencies": {
     "@elizaos/signal-native": "*"
