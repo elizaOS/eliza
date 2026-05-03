@@ -75,6 +75,47 @@ class InstrumentedCapture:
         runtime.compose_state = types.MethodType(instrumented_compose_state, runtime)
 
 
+def _load_model_plugin(provider: str) -> object:
+    """Load the model provider plugin matching the configured provider name.
+
+    Mirrors the canonical model-provider selection used by other native
+    Python benchmarks (e.g. mint/run_benchmark.py).  Raises a clear error
+    when the required env var is missing so the failure is observable
+    instead of silently producing baseline-equivalent results.
+    """
+    name = (provider or "").strip().lower()
+    if name == "openai":
+        if not __import__("os").environ.get("OPENAI_API_KEY"):
+            raise RuntimeError(
+                "OPENAI_API_KEY not set; the openai provider requires an API key. "
+                "Set OPENAI_API_KEY (or use a different --provider)."
+            )
+        from elizaos_plugin_openai import get_openai_plugin
+
+        return get_openai_plugin()
+    if name == "groq":
+        if not __import__("os").environ.get("GROQ_API_KEY"):
+            raise RuntimeError(
+                "GROQ_API_KEY not set; the groq provider requires an API key."
+            )
+        from elizaos_plugin_groq import get_groq_plugin
+
+        return get_groq_plugin()
+    if name == "gateway":
+        from elizaos_plugin_gateway.plugin import get_gateway_plugin
+
+        return get_gateway_plugin()
+    if name == "xai":
+        from elizaos_plugin_xai.plugin import get_xai_elizaos_plugin
+
+        return get_xai_elizaos_plugin()
+    if name == "eliza-classic":
+        from elizaos_plugin_eliza_classic.plugin import get_eliza_classic_plugin
+
+        return get_eliza_classic_plugin()
+    raise ValueError(f"Unknown provider for ADHDBench runtime: {provider!r}")
+
+
 def create_benchmark_runtime(
     config: ADHDBenchConfig,
     config_name: str,
@@ -93,8 +134,16 @@ def create_benchmark_runtime(
         advanced_planning=is_full,
     )
 
+    plugins: list[object] = []
+    # SQL adapter is required for the canonical message pipeline.
+    from elizaos_plugin_sql import sql_plugin
+
+    plugins.append(sql_plugin)
+    plugins.append(_load_model_plugin(config.model_provider))
+
     runtime = AgentRuntime(
         character=character,
+        plugins=plugins,
         log_level="WARNING",
     )
 

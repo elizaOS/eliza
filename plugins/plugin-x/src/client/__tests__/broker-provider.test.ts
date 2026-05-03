@@ -1,5 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { BrokerAuthProvider } from "../auth-providers/broker";
 
 function makeRuntime(settings: Record<string, string>): IAgentRuntime {
@@ -16,22 +16,59 @@ describe("BrokerAuthProvider", () => {
     vi.useRealTimers();
   });
 
-  it("throws if TWITTER_BROKER_URL is missing", async () => {
+  it("throws a clear error when neither TWITTER_BROKER_TOKEN nor ELIZAOS_CLOUD_API_KEY is set", async () => {
     const provider = new BrokerAuthProvider(makeRuntime({}));
     await expect(provider.getAccessToken()).rejects.toThrow(
-      "TWITTER_AUTH_MODE=broker requires TWITTER_BROKER_URL",
+      /TWITTER_BROKER_TOKEN.*ELIZAOS_CLOUD_API_KEY/,
     );
   });
 
-  it("throws a clear error when broker token is missing", async () => {
+  it("falls back to ELIZAOS_CLOUD_API_KEY when TWITTER_BROKER_TOKEN is unset", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          auth_mode: "oauth2",
+          access_token: "from-cloud-key",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
     const provider = new BrokerAuthProvider(
       makeRuntime({
-        TWITTER_BROKER_URL: "https://api.eliza.cloud/connectors/x",
+        ELIZAOS_CLOUD_API_KEY: "eliza_test_key",
       }),
     );
-    await expect(provider.getAccessToken()).rejects.toThrow(
-      /TWITTER_BROKER_TOKEN/,
+
+    const token = await provider.getAccessToken();
+    expect(token).toBe("from-cloud-key");
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://www.elizacloud.ai/api/v1/twitter/token");
+    expect((init as RequestInit).headers).toMatchObject({
+      Authorization: "Bearer eliza_test_key",
+    });
+  });
+
+  it("prefers explicit TWITTER_BROKER_TOKEN over ELIZAOS_CLOUD_API_KEY", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ auth_mode: "oauth2", access_token: "ok" }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
     );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const provider = new BrokerAuthProvider(
+      makeRuntime({
+        TWITTER_BROKER_TOKEN: "specific-tok",
+        ELIZAOS_CLOUD_API_KEY: "fallback-tok",
+      }),
+    );
+
+    await provider.getAccessToken();
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(init.headers).toMatchObject({ Authorization: "Bearer specific-tok" });
   });
 
   it("calls the broker /token endpoint with the bearer token and returns OAuth2 access_token", async () => {

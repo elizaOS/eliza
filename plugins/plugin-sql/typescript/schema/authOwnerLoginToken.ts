@@ -5,7 +5,7 @@ import { authOwnerBindingTable } from "./authOwnerBinding";
 /**
  * Single-use DM-link login tokens for the connector-owner convenience flow.
  *
- * The user types `/milady-pair` in their connector and asks Milady to DM
+ * The user types `/eliza-pair` in their connector and asks Eliza to DM
  * a login link. The DM contains a short-lived URL whose `?token=...` is
  * the SHA-256 hash of a random UUID v7. The plaintext is sent only via the
  * DM channel; the database stores only the hash so a DB read does not

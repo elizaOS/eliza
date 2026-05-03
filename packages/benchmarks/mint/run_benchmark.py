@@ -66,7 +66,7 @@ def parse_args() -> argparse.Namespace:
     # Model/runtime selection
     parser.add_argument(
         "--provider",
-        choices=["mock", "eliza-classic", "openai", "gateway", "xai"],
+        choices=["mock", "eliza-classic", "openai", "gateway", "xai", "groq"],
         default="openai",
         help="Model provider to use (default: openai). Use --provider mock for testing without LLM.",
     )
@@ -281,6 +281,14 @@ async def _create_eliza_runtime(
         from elizaos_plugin_eliza_classic.plugin import get_eliza_classic_plugin
 
         plugins.append(get_eliza_classic_plugin())
+    elif provider == "groq":
+        if not os.environ.get("GROQ_API_KEY"):
+            raise ValueError(
+                "GROQ_API_KEY is not set. Provide it via environment variables or --dotenv."
+            )
+        from elizaos_plugin_groq import get_groq_plugin
+
+        plugins.append(get_groq_plugin())
     else:
         raise ValueError(f"Unknown provider: {provider}")
 
