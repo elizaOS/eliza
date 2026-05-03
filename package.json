@@ -140,10 +140,13 @@
     "@uniswap/v4-sdk": "2.0.0",
     "drizzle-orm": "0.45.2",
     "@electric-sql/pglite": "^0.4.5",
-    "rimraf": "^6.0.1"
+    "rimraf": "^6.0.1",
+    "tsup": "8.5.1",
+    "viem": "2.48.8"
   },
   "patchedDependencies": {
-    "@pixiv/three-vrm@3.5.2": "packages/app-core/patches/@pixiv%2Fthree-vrm@3.5.2.patch"
+    "@pixiv/three-vrm@3.5.2": "packages/app-core/patches/@pixiv%2Fthree-vrm@3.5.2.patch",
+    "tsup@8.5.1": "packages/app-core/patches/tsup@8.5.1.patch"
   },
   "trustedDependencies": [
     "@biomejs/biome",

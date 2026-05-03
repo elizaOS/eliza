@@ -1,13 +1,7 @@
 import { Service, IAgentRuntime, logger } from "@elizaos/core";
 import { Clanker } from "clanker-sdk/v4";
 import { Contract, JsonRpcProvider, parseUnits } from "ethers";
-import {
-  createWalletClient,
-  createPublicClient,
-  http,
-  PublicClient,
-  WalletClient,
-} from "viem";
+import { createWalletClient, createPublicClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
 import {
@@ -21,12 +15,17 @@ import { ClankerError } from "../utils/errors";
 import { retryTransaction } from "../utils/transactions";
 import { loadClankerConfig } from "../utils/config";
 
+/** Clanker SDK constructor config (uses SDK-linked viem types; avoids duplicate-viem TS conflicts in nested workspaces). */
+type ClankerSdkInit = NonNullable<ConstructorParameters<typeof Clanker>[0]>;
+type ClankerSdkPublicClient = NonNullable<ClankerSdkInit["publicClient"]>;
+type ClankerSdkWalletClient = NonNullable<ClankerSdkInit["wallet"]>;
+
 export class ClankerService extends Service {
   static serviceType = "clanker";
   capabilityDescription = "";
   private provider: JsonRpcProvider | null = null;
-  private publicClient: PublicClient | null = null;
-  private walletClient: WalletClient | null = null;
+  private publicClient: ClankerSdkPublicClient | null = null;
+  private walletClient: ClankerSdkWalletClient | null = null;
   private clanker: Clanker | null = null;
   private clankerConfig: ClankerConfig | null = null;
   private tokenCache: Map<string, TokenInfo> = new Map();
@@ -66,7 +65,7 @@ export class ClankerService extends Service {
       const publicClient = createPublicClient({
         chain: base,
         transport: http(this.clankerConfig.BASE_RPC_URL),
-      }) as PublicClient;
+      }) as ClankerSdkPublicClient;
 
       this.publicClient = publicClient;
 
@@ -74,7 +73,7 @@ export class ClankerService extends Service {
         account,
         chain: base,
         transport: http(this.clankerConfig.BASE_RPC_URL),
-      });
+      }) as ClankerSdkWalletClient;
 
       this.walletClient = wallet;
 

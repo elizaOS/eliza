@@ -47,6 +47,7 @@
     "@elizaos/core": "1.5.11",
     "clanker-sdk": "^4.0.0",
     "ethers": "^6.13.1",
+    "viem": "^2.48.8",
     "zod": "^4.0.5"
   },
   "devDependencies": {
