@@ -11,6 +11,7 @@ import android.content.pm.ServiceInfo;
 import android.content.res.AssetManager;
 import android.os.Build;
 import android.os.IBinder;
+import android.provider.Settings;
 import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
@@ -808,6 +809,87 @@ public class ElizaAgentService extends Service {
             agentEnv.put("BUN_FEATURE_FLAG_FORCE_WAITER_THREAD", "1");
             agentEnv.put("BUN_FEATURE_FLAG_DISABLE_RWF_NONBLOCK", "1");
             agentEnv.put("BUN_FEATURE_FLAG_DISABLE_SPAWNSYNC_FAST_PATH", "1");
+            // BUN_FEATURE_FLAG_DISABLE_ASYNC_TRANSPILER=1
+            //     Forces bun's transpiler to run on the main thread
+            //     instead of the async worker pool. The worker pool
+            //     uses pthread + futex_waitv (added in 5.16) which
+            //     Android's app seccomp policy blocks on most kernels
+            //     before API 34. Disables the worker thread spawn
+            //     entirely — the transpiler still runs, just inline.
+            //
+            // NOTE: Do NOT set BUN_FEATURE_FLAG_DISABLE_MEMFD=1 here.
+            // memfd_create IS on Android's app seccomp allowlist
+            // (verified API 30+), and bun's JSC tier uses memfd as
+            // the W^X dual-mapping mechanism for JIT code pages.
+            // Disabling memfd forces JSC to fall back to raw RWX
+            // mmap, which IS blocked by SELinux execmem on platform_app
+            // — that combination kills bun before any log line is
+            // written. Tested empirically: with the 43 MB agent-bundle,
+            // DISABLE_MEMFD=1 produces an early SIGSYS during JIT init;
+            // with memfd allowed, bun reaches PGlite + listener.
+            agentEnv.put("BUN_FEATURE_FLAG_DISABLE_ASYNC_TRANSPILER", "1");
+
+            // ── No on-device prompt-optimization / training ────────────
+            //
+            // The runtime ships with a trajectory-driven prompt-optimization
+            // pipeline (MIPRO / GEPA / bootstrap-fewshot via the native
+            // backend). On boot, OptimizedPromptService kicks off a one-
+            // shot bootstrap when accumulated trajectories cross threshold,
+            // and the cron auto-trainer dispatches further rounds in the
+            // background. None of that belongs on a phone or a privileged
+            // system app:
+            //   - MIPRO/GEPA spawn coding sub-agents (PTY-backed bash) that
+            //     blow past the bun seccomp envelope this service builds.
+            //   - The trajectory writer fans out to the trajectories table
+            //     under PGlite which already churns the device flash.
+            //   - On AOSP cvd we want a deterministic agent binary, not
+            //     one that mutates its prompts mid-smoke.
+            //
+            // Hard-disable both the bootstrap and the trajectory ingest
+            // path so the agent never spins up a training round on-device.
+            // Trajectories are still useful for live chat context, but
+            // this disables PERSISTENCE — the optimizer has no input data
+            // and no-ops at boot. Both env names are set: the source uses
+            // ELIZA_* post-rename, the bundled training-trigger.js still
+            // reads MILADY_* in older dist-mobile builds.
+            agentEnv.put("ELIZA_DISABLE_AUTO_BOOTSTRAP", "1");
+            agentEnv.put("MILADY_DISABLE_AUTO_BOOTSTRAP", "1");
+            agentEnv.put("ELIZA_DISABLE_TRAJECTORY_LOGGING", "1");
+
+            // ── Vault passphrase ──────────────────────────────────────
+            // The runtime's vault-bootstrap mirrors process.env secrets
+            // through @elizaos/vault, which on a headless Linux host
+            // (Android counts: no reachable D-Bus session) refuses the
+            // OS keychain and demands ELIZA_VAULT_PASSPHRASE (≥12 chars)
+            // to derive a master key. Without it the bootstrap fails
+            // and startEliza() throws "[vault-bootstrap] all 1 secret
+            // writes failed; vault unreachable", which the watchdog
+            // interprets as a crash and restart-loops the agent.
+            //
+            // Derive a per-install stable passphrase from ANDROID_ID
+            // (Settings.Secure.ANDROID_ID — 16 hex chars, per-app-install
+            // on Android 8+, stable across reboots and OS updates).
+            // Prefix with a constant so the value is always ≥12 chars
+            // even if ANDROID_ID is unexpectedly short or null. The
+            // resulting passphrase is opaque to the user and is only
+            // ever stored in memory in the spawned bun process.
+            //
+            // Operators can override by setting ELIZA_VAULT_PASSPHRASE
+            // in the parent service env (e.g. for a deterministic dev
+            // passphrase across reinstalls).
+            if (!env.containsKey("ELIZA_VAULT_PASSPHRASE")) {
+                String androidId = Settings.Secure.getString(
+                    getContentResolver(),
+                    Settings.Secure.ANDROID_ID
+                );
+                if (androidId == null || androidId.length() < 8) {
+                    androidId = "fallback-" + Build.SERIAL;
+                }
+                agentEnv.put(
+                    "ELIZA_VAULT_PASSPHRASE",
+                    "elizaos-android-vault-" + androidId
+                );
+            }
 
             // Default to info-level logging so plugin resolution + listen
             // progress is visible in agent.log. The runtime defaults to

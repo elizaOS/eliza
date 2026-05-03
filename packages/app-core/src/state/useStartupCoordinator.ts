@@ -16,10 +16,11 @@
 
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import { isElectrobunRuntime } from "../bridge";
-import { isNative } from "../platform";
+import { isMiladyOS, isNative } from "../platform";
 import { loadPersistedOnboardingComplete } from "./persistence";
 import {
   createDesktopPolicy,
+  createMiladyOSPolicy,
   createMobilePolicy,
   createWebPolicy,
   INITIAL_STARTUP_STATE,
@@ -86,6 +87,10 @@ export interface StartupCoordinatorHandle {
 
 function detectPlatformPolicy(): PlatformPolicy {
   if (isElectrobunRuntime()) return createDesktopPolicy();
+  // MiladyOS check must come before the generic mobile branch — both are
+  // native, but MiladyOS bundles the on-device agent and needs the longer
+  // backend timeout (vanilla mobile is cloud-only with a fast-fail budget).
+  if (isMiladyOS()) return createMiladyOSPolicy();
   if (isNative) return createMobilePolicy();
   return createWebPolicy();
 }

@@ -44,9 +44,9 @@ export const autonomyContinuousContinueTemplate = `Your job: reflect on context,
 - Use available actions/tools when they can advance the goal.
 - Use thinking to think about and plan what you want to do.
 - Do NOT speak out loud. This loop is internal-only.
-- Output structure: ONLY a <thought> plus any actions. No other message text.
-- If you don't need to make a change this round, take no action and output only a <thought>.
-- If you cannot act, explain what is missing inside <thought> and take no action.
+- Output structure: a TOON document with a thought field plus an optional actions list. No other message text. No XML, no JSON, no markdown fences.
+- If you don't need to make a change this round, take no action and output only the thought field with an empty actions value.
+- If you cannot act, explain what is missing inside thought and take no action.
 - Keep the response concise, focused on the next action.
 
 USER CONTEXT (most recent last):
@@ -54,7 +54,11 @@ USER CONTEXT (most recent last):
 
 Your last autonomous note: "{{lastThought}}"
 
-Continue from that note. Output <thought> and take action if needed.`;
+Continue from that note. Output a TOON thought and take action if needed.
+
+Example (no action this round):
+thought: Continuing from prior note; nothing new to act on.
+actions:`;
 
 export const AUTONOMY_CONTINUOUS_CONTINUE_TEMPLATE =
 	autonomyContinuousContinueTemplate;
@@ -63,15 +67,19 @@ export const autonomyContinuousFirstTemplate = `Your job: reflect on context, de
 - Use available actions/tools when they can advance the goal.
 - Use thinking to think about and plan what you want to do.
 - Do NOT speak out loud. This loop is internal-only.
-- Output structure: ONLY a <thought> plus any actions. No other message text.
-- If you don't need to make a change this round, take no action and output only a <thought>.
-- If you cannot act, explain what is missing inside <thought> and take no action.
+- Output structure: a TOON document with a thought field plus an optional actions list. No other message text. No XML, no JSON, no markdown fences.
+- If you don't need to make a change this round, take no action and output only the thought field with an empty actions value.
+- If you cannot act, explain what is missing inside thought and take no action.
 - Keep the response concise, focused on the next action.
 
 USER CONTEXT (most recent last):
 {{targetRoomContext}}
 
-Think briefly, then output <thought> and take action if needed.`;
+Think briefly, then output a TOON thought and take action if needed.
+
+Example (no action this round):
+thought: Inspecting current state; nothing to act on this round.
+actions:`;
 
 export const AUTONOMY_CONTINUOUS_FIRST_TEMPLATE =
 	autonomyContinuousFirstTemplate;
@@ -82,9 +90,9 @@ Your job: continue helping the user and make progress toward the task.
 - Use available actions/tools to gather information or execute steps.
 - Use thinking to think about and plan what you want to do.
 - Do NOT speak out loud. This loop is internal-only.
-- Output structure: ONLY a <thought> plus any actions. No other message text.
-- If you don't need to make a change this round, take no action and output only a <thought>.
-- If you cannot act, explain what is missing inside <thought> and take no action.
+- Output structure: a TOON document with a thought field plus an optional actions list. No other message text. No XML, no JSON, no markdown fences.
+- If you don't need to make a change this round, take no action and output only the thought field with an empty actions value.
+- If you cannot act, explain what is missing inside thought and take no action.
 - Keep the response concise, focused on the next action.
 
 USER CHAT CONTEXT (most recent last):
@@ -92,7 +100,11 @@ USER CHAT CONTEXT (most recent last):
 
 Your last autonomous note: "{{lastThought}}"
 
-Continue the task. Output <thought> and take action now.`;
+Continue the task. Output a TOON thought and take action now.
+
+Example (no action this round):
+thought: Waiting on prior step to complete; nothing to do this round.
+actions:`;
 
 export const AUTONOMY_TASK_CONTINUE_TEMPLATE = autonomyTaskContinueTemplate;
 
@@ -104,12 +116,17 @@ Your job: continue helping the user and make progress toward the task.
 - In MCP mode, selector-based actions require a process scope (pass process=... or prefix selector with "process:<name> >> ...").
 - Prefer safe, incremental steps; if unsure, gather more UI context before acting.
 - Do NOT speak out loud. This loop is internal-only.
-- Output structure: ONLY a <thought> plus any actions. No other message text.
+- Output structure: a TOON document with a thought field plus an optional actions list. No other message text. No XML, no JSON, no markdown fences.
 
 USER CHAT CONTEXT (most recent last):
 {{targetRoomContext}}
 
-Decide what to do next. Output <thought>, then take the most useful action.`;
+Decide what to do next. Output a TOON thought, then take the most useful action.
+
+Example:
+thought: Need to gather UI state before acting.
+actions[1]:
+  - name: COMPUTER_USE_INSPECT`;
 
 export const AUTONOMY_TASK_FIRST_TEMPLATE = autonomyTaskFirstTemplate;
 
@@ -443,7 +460,7 @@ context:
 
 rules[22]:
 - think briefly, then respond
-- always include a <thought> field, even for direct replies
+- always include a thought field, even for direct replies
 - actions execute in listed order
 - if replying without another grounded state/action query, REPLY goes first
 - REPLY means a direct chat reply in the current conversation only; it is not an email reply, inbox workflow, or external-channel send
@@ -456,7 +473,7 @@ rules[22]:
 - when the user asks about uploaded files, documents, prior uploads, or knowledge-base contents, call the relevant providers before replying instead of asking the user to resend the material
 - when the user refers to "the uploaded file", "the document I uploaded", or a prior upload without naming it, treat that as a provider lookup request first; only ask which file after grounded document/knowledge lookup still leaves multiple plausible answers
 - use provider_hints from context when present instead of restating the same rules
-- if an action needs inputs, include them inside that action's <params> block
+- if an action needs inputs, include them inside that action's params block
 - if a required param is unknown, ask for clarification in text
 - for live status questions or remaining-work queries, do not answer from recent conversation alone; call the relevant action/provider to refresh state, and do not pair it with a speculative REPLY that guesses the result
 - when an action will fetch the state and produce the final grounded answer, do not add REPLY just to say "checking", "let me look", or similar filler; use the action alone and leave text empty
@@ -477,8 +494,8 @@ control_actions:
 
 fields[5]{name,meaning}:
 - thought | short plan
-- actions | ordered <action> entries inside <actions>
-- providers | array of provider names, or empty
+- actions | ordered list of action entries, each with a name and optional params
+- providers | comma-separated provider names, or empty
 - text | next message for {{agentName}}
 - simple | true only when text itself should be sent directly as the final reply; false when actions should run, including REPLY-driven finalization
 
@@ -487,20 +504,15 @@ formatting:
 - use inline backticks for short code identifiers
 
 output:
-XML only. Return exactly one <response>...</response> document. No prose before or after it. No <think>.
+TOON only. Return exactly one TOON document with the keys above. No prose before or after it. No <think>. No XML, no JSON, no markdown fences.
 
 Example:
-<response>
-  <thought>Reply briefly. No extra providers needed.</thought>
-  <actions>
-    <action>
-      <name>REPLY</name>
-    </action>
-  </actions>
-  <providers></providers>
-  <text>Your message here</text>
-  <simple>true</simple>
-</response>`;
+thought: Reply briefly. No extra providers needed.
+actions[1]:
+  - name: REPLY
+providers:
+text: Your message here
+simple: true`;
 
 export const MESSAGE_HANDLER_TEMPLATE = messageHandlerTemplate;
 
