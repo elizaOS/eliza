@@ -7,6 +7,7 @@ Orchestrates the full Terminal-Bench evaluation pipeline.
 import asyncio
 import json
 import logging
+import os
 import time
 from datetime import datetime
 from pathlib import Path
@@ -278,6 +279,10 @@ class TerminalBenchRunner:
 
     async def _run_with_eliza_agent(self, task: TerminalTask) -> TerminalBenchResult:
         """Run task with full ElizaOS agent (canonical)."""
+        # Route to the TS benchmark bridge if BENCHMARK_MODEL_PROVIDER=eliza.
+        # This is set by the CLI when --model-provider eliza is used.
+        use_bridge = (os.environ.get("BENCHMARK_MODEL_PROVIDER", "").lower() == "eliza")
+
         from elizaos_terminal_bench.eliza_agent import ElizaTerminalAgent
 
         # Create environment
@@ -290,14 +295,24 @@ class TerminalBenchRunner:
         try:
             await env.start(task)
 
-            # Create ElizaOS agent
-            agent = ElizaTerminalAgent(
-                environment=env,
-                max_iterations=self.config.max_iterations,
-                model_name=self.config.model_name,
-                temperature=self.config.temperature,
-                verbose=self.config.verbose,
-            )
+            if use_bridge:
+                from eliza_adapter.terminal_bench import ElizaBridgeTerminalAgent
+
+                agent = ElizaBridgeTerminalAgent(
+                    environment=env,
+                    max_iterations=self.config.max_iterations,
+                    model_name=self.config.model_name,
+                    verbose=self.config.verbose,
+                )
+            else:
+                # Create ElizaOS agent
+                agent = ElizaTerminalAgent(
+                    environment=env,
+                    max_iterations=self.config.max_iterations,
+                    model_name=self.config.model_name,
+                    temperature=self.config.temperature,
+                    verbose=self.config.verbose,
+                )
 
             result = await asyncio.wait_for(
                 agent.solve_task(task),

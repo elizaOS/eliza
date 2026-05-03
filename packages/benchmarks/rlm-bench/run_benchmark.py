@@ -199,13 +199,13 @@ async def run_eliza_benchmark_mode(
     progress_callback_fn: Callable[[int, int], None],
     output_dir: str,
 ) -> int:
-    """Run the full Eliza agent loop benchmark.
+    """Run the full Eliza agent loop benchmark via the elizaOS TS bridge.
 
-    This mode exercises the complete canonical Eliza flow:
-    1. RLM_CONTEXT provider injects benchmark context
-    2. MESSAGE_HANDLER_TEMPLATE generates response with actions
-    3. REPLY action (from bootstrap) processes the response
-    4. RLM_BENCH_EVALUATOR assesses accuracy
+    The Python AgentRuntime path is being removed: every task now routes
+    through ``eliza_adapter.rlm_bench.run_eliza_bridge_benchmark`` which
+    sends the context + question to the TS benchmark server
+    (``packages/app-core/src/benchmark/server.ts``) and parses the
+    predicted answer out of the response.
 
     Args:
         config: Benchmark configuration.
@@ -216,34 +216,32 @@ async def run_eliza_benchmark_mode(
         Exit code.
 
     """
-    from elizaos_rlm_bench.runner import run_eliza_benchmark
+    from eliza_adapter.rlm_bench import run_eliza_bridge_benchmark
 
-    print("Running FULL Eliza Agent Loop benchmark...")
-    print("This tests the complete canonical flow:")
-    print("  RLM_CONTEXT Provider -> MESSAGE_HANDLER -> REPLY Action -> Evaluator")
+    print("Running Eliza TS benchmark bridge mode...")
+    print("Tasks are forwarded to the elizaOS TypeScript benchmark server")
+    print("at packages/app-core/src/benchmark/server.ts.")
     print()
 
-    # Auto-pick a model plugin based on available API keys so the agent loop
-    # actually has TEXT_LARGE / OBJECT_LARGE handlers. Mirrors the provider
-    # selection just added to adhdbench / mint / gauntlet / woobench / solana /
-    # vending-bench.
-    model_plugin_factory: Callable[[], object] | None = None
-    if os.getenv("GROQ_API_KEY"):
-        try:
-            from elizaos_plugin_groq import get_groq_plugin
+    server_mgr = None
+    if not os.environ.get("ELIZA_BENCH_URL"):
+        from eliza_adapter.server_manager import ElizaServerManager
 
-            os.environ.setdefault("GROQ_LARGE_MODEL", "openai/gpt-oss-120b")
-            os.environ.setdefault("GROQ_SMALL_MODEL", "openai/gpt-oss-120b")
-            logger.info("rlm-bench: using Groq model plugin (openai/gpt-oss-120b)")
-            model_plugin_factory = get_groq_plugin  # type: ignore[assignment]
-        except ImportError:
-            logger.warning("rlm-bench: GROQ_API_KEY set but elizaos_plugin_groq not importable")
+        server_mgr = ElizaServerManager()
+        server_mgr.start()
+        os.environ["ELIZA_BENCH_TOKEN"] = server_mgr.token
+        os.environ.setdefault(
+            "ELIZA_BENCH_URL", f"http://localhost:{server_mgr.port}"
+        )
 
-    results = await run_eliza_benchmark(
-        config=config,
-        model_plugin_factory=model_plugin_factory,
-        progress_callback=progress_callback_fn,
-    )
+    try:
+        results = await run_eliza_bridge_benchmark(
+            config=config,
+            progress_callback=progress_callback_fn,
+        )
+    finally:
+        if server_mgr is not None:
+            server_mgr.stop()
 
     print()  # Newline after progress bar
 

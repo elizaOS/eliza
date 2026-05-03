@@ -38,6 +38,11 @@ class ModelProvider(str, Enum):
     OPENROUTER = "openrouter"
     GOOGLE = "google"
     XAI = "xai"
+    # Routes LLM calls through the elizaOS TypeScript benchmark bridge
+    # (eliza/packages/app-core/src/benchmark/server.ts). The bridge uses
+    # the runtime's configured model provider, so no per-request model is
+    # needed here.
+    ELIZA = "eliza"
 
 
 # Default models for each provider

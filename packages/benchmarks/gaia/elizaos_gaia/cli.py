@@ -459,11 +459,66 @@ def handle_list_commands(args: argparse.Namespace) -> bool:
     return False
 
 
+async def _run_eliza_bridge(args: argparse.Namespace) -> int:
+    """Run GAIA through the elizaOS TS benchmark bridge.
+
+    Spawns ``ElizaServerManager`` if no ``ELIZA_BENCH_URL`` is set, then
+    drives ``GAIARunner`` with ``provider == "eliza"``. The runner picks
+    up ``ElizaGAIAAgent`` and routes every solve() through the bridge
+    HTTP server.
+    """
+    print("\nProvider: eliza (elizaOS TypeScript benchmark bridge)")
+    config = build_config(args)
+    if args.quick_test and not config.max_questions:
+        config.max_questions = args.max_questions or 5
+
+    hf_token = args.hf_token or os.getenv("HF_TOKEN")
+
+    server_mgr = None
+    spawn_server = not os.environ.get("ELIZA_BENCH_URL")
+    try:
+        if spawn_server:
+            from eliza_adapter.server_manager import ElizaServerManager
+
+            server_mgr = ElizaServerManager()
+            server_mgr.start()
+            # Export the token + URL so any ElizaClient() created by the
+            # runner / agent picks them up via the env auto-discovery path.
+            os.environ["ELIZA_BENCH_TOKEN"] = server_mgr.token
+            os.environ.setdefault(
+                "ELIZA_BENCH_URL", f"http://localhost:{server_mgr.port}"
+            )
+            print(f"Eliza bench server ready on port {server_mgr.port}")
+        else:
+            from eliza_adapter.client import ElizaClient
+
+            ElizaClient().wait_until_ready(timeout=120)
+
+        runner = GAIARunner(config)
+        results = await runner.run_benchmark(hf_token=hf_token)
+        print(f"\n=== Results: eliza/{config.model_name or 'eliza-ts-bridge'} ===")
+        print(f"Overall Accuracy: {results.metrics.overall_accuracy:.1%}")
+        print(
+            f"Correct: {results.metrics.correct_answers}/"
+            f"{results.metrics.total_questions}"
+        )
+        return 0 if results.metrics.overall_accuracy >= 0.3 else 2
+    finally:
+        if server_mgr is not None:
+            server_mgr.stop()
+
+
 async def run_benchmark_async(args: argparse.Namespace) -> int:
     """Run the benchmark asynchronously."""
     # Handle list commands first
     if handle_list_commands(args):
         return 0
+
+    # --provider eliza routes through the elizaOS TS benchmark bridge.
+    # The bridge owns its own model provider via runtime settings, so we
+    # don't need a per-provider API key check here.
+    if args.provider == "eliza":
+        return await _run_eliza_bridge(args)
 
     # Check for available API keys
     available_providers = get_available_providers()
