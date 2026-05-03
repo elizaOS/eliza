@@ -2,10 +2,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { promises as fs } from "node:fs";
 import { decrypt, encrypt } from "./crypto.js";
-import {
-  defaultMasterKey,
-  type MasterKeyResolver,
-} from "./master-key.js";
+import { defaultMasterKey, type MasterKeyResolver } from "./master-key.js";
 import { resolveReference } from "./password-managers.js";
 import {
   emptyStore,
@@ -288,9 +285,7 @@ class VaultImpl implements Vault {
     return this.cachedKey;
   }
 
-  private async mutate(
-    mutator: (s: StoreData) => StoreData,
-  ): Promise<void> {
+  private async mutate(mutator: (s: StoreData) => StoreData): Promise<void> {
     const previous = this.mutex;
     let release!: () => void;
     this.mutex = new Promise<void>((resolve) => {
@@ -350,7 +345,10 @@ async function withStoreMutationLock<T>(
   const current = new Promise<void>((resolveLock) => {
     releaseProcessLock = resolveLock;
   });
-  const chained = previous.then(() => current, () => current);
+  const chained = previous.then(
+    () => current,
+    () => current,
+  );
   PROCESS_STORE_LOCKS.set(key, chained);
   await previous;
 

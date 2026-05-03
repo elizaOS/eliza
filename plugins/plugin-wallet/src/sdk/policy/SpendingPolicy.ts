@@ -25,7 +25,7 @@ export interface PaymentIntent {
   description?: string;
 }
 
-export type PolicyStatus = 'approved' | 'rejected' | 'draft';
+export type PolicyStatus = "approved" | "rejected" | "draft";
 
 /** Result returned by SpendingPolicy.check(). */
 export interface PolicyResult {
@@ -101,7 +101,7 @@ export class SpendingPolicy {
   constructor(config: SpendingPolicyConfig) {
     this.config = config;
     this.allowlist = new Set(
-      (config.merchantAllowlist ?? []).map((m) => m.toLowerCase())
+      (config.merchantAllowlist ?? []).map((m) => m.toLowerCase()),
     );
     this.spendWindow = [];
     this.auditLog = [];
@@ -119,8 +119,10 @@ export class SpendingPolicy {
       return await this._check(payment);
     } catch (err: unknown) {
       const reason = `Policy engine error (fail-closed): ${err instanceof Error ? err.message : String(err)}`;
-      const result: PolicyResult = { status: 'rejected', reason };
-      await this.log(payment, result).catch(() => {/* ignore log errors in fail-closed path */});
+      const result: PolicyResult = { status: "rejected", reason };
+      await this.log(payment, result).catch(() => {
+        /* ignore log errors in fail-closed path */
+      });
       return result;
     }
   }
@@ -130,7 +132,7 @@ export class SpendingPolicy {
    */
   async log(payment: PaymentIntent, result: PolicyResult): Promise<void> {
     const entry: AuditEntry = {
-      id: nextId('audit'),
+      id: nextId("audit"),
       timestamp: payment.timestamp ?? new Date().toISOString(),
       merchant: payment.merchant,
       amount: payment.amount,
@@ -177,7 +179,7 @@ export class SpendingPolicy {
   /** Return all pending (not yet approved or rejected) drafts. */
   getPendingDrafts(): DraftEntry[] {
     return Array.from(this.drafts.values()).filter(
-      (d) => !d.approved && !d.rejected
+      (d) => !d.approved && !d.rejected,
     );
   }
 
@@ -194,7 +196,7 @@ export class SpendingPolicy {
       const merchant = payment.merchant.toLowerCase();
       if (!this.allowlist.has(merchant)) {
         const result: PolicyResult = {
-          status: 'rejected',
+          status: "rejected",
           reason: `Merchant "${payment.merchant}" is not on the allowlist.`,
         };
         await this.log(payment, result);
@@ -214,7 +216,7 @@ export class SpendingPolicy {
       const spent = this.spendWindow.reduce((sum, e) => sum + e.amount, 0);
       if (spent + payment.amount > maxAmount) {
         const result: PolicyResult = {
-          status: 'rejected',
+          status: "rejected",
           reason: `Rolling spend cap exceeded: spent ${spent}, cap ${maxAmount}, attempted ${payment.amount}.`,
         };
         await this.log(payment, result);
@@ -227,7 +229,7 @@ export class SpendingPolicy {
       this.config.draftThreshold !== undefined &&
       payment.amount >= this.config.draftThreshold
     ) {
-      const draftId = nextId('draft');
+      const draftId = nextId("draft");
       const draft: DraftEntry = {
         draftId,
         payment,
@@ -238,7 +240,7 @@ export class SpendingPolicy {
       this.drafts.set(draftId, draft);
 
       const result: PolicyResult = {
-        status: 'draft',
+        status: "draft",
         reason: `Amount ${payment.amount} meets or exceeds draft threshold ${this.config.draftThreshold}. Awaiting approval.`,
         draftId,
       };
@@ -251,7 +253,7 @@ export class SpendingPolicy {
       this.spendWindow.push({ amount: payment.amount, ts: Date.now() });
     }
 
-    const result: PolicyResult = { status: 'approved' };
+    const result: PolicyResult = { status: "approved" };
     await this.log(payment, result);
     return result;
   }

@@ -108,13 +108,13 @@ describe("profiles — resolveActiveValue", () => {
       ],
     });
 
-    expect(
-      await resolveActiveValue(vault, KEY, { agentId: "agent-A" }),
-    ).toBe("sk-or-personal");
+    expect(await resolveActiveValue(vault, KEY, { agentId: "agent-A" })).toBe(
+      "sk-or-personal",
+    );
     // Different agent → no rule matches → falls back to activeProfile.
-    expect(
-      await resolveActiveValue(vault, KEY, { agentId: "agent-B" }),
-    ).toBe("sk-or-work");
+    expect(await resolveActiveValue(vault, KEY, { agentId: "agent-B" })).toBe(
+      "sk-or-work",
+    );
   });
 
   it("matches scope by kind: agent / app / skill", async () => {
@@ -178,9 +178,9 @@ describe("profiles — resolveActiveValue", () => {
         },
       ],
     });
-    expect(
-      await resolveActiveValue(vault, KEY, { agentId: "agent-A" }),
-    ).toBe("sk-default");
+    expect(await resolveActiveValue(vault, KEY, { agentId: "agent-A" })).toBe(
+      "sk-default",
+    );
   });
 
   it("ignores routing rules that name an unknown profile id", async () => {
@@ -200,9 +200,9 @@ describe("profiles — resolveActiveValue", () => {
         },
       ],
     });
-    expect(
-      await resolveActiveValue(vault, KEY, { agentId: "agent-A" }),
-    ).toBe("sk-default");
+    expect(await resolveActiveValue(vault, KEY, { agentId: "agent-A" })).toBe(
+      "sk-default",
+    );
   });
 });
 

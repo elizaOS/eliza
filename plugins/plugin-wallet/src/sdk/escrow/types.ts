@@ -1,4 +1,4 @@
-import type { Address, Hash, Hex } from 'viem';
+import type { Address, Hash, Hex } from "viem";
 
 /** Mirrors the on-chain TaskStatus enum */
 export enum TaskStatus {
@@ -11,7 +11,7 @@ export enum TaskStatus {
 }
 
 /** Supported built-in verifier types */
-export type VerifierType = 'optimistic' | 'hash';
+export type VerifierType = "optimistic" | "hash";
 
 /** Parameters for creating a new mutual-stake escrow */
 export interface CreateEscrowParams {

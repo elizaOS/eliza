@@ -89,9 +89,7 @@ const ciExcludedRealPaths = [
   elizaWorkspacePattern(
     "plugins/plugin-wallet/src/chains/evm/__tests__/integration/transfer.live.test.ts",
   ),
-  elizaWorkspacePattern(
-    "plugins/plugin-shell/__tests__/shell.real.test.ts",
-  ),
+  elizaWorkspacePattern("plugins/plugin-shell/__tests__/shell.real.test.ts"),
   // plugin-openrouter sdk nested workspace deps don't resolve in this CI lane.
   elizaWorkspacePattern(
     "plugins/plugin-openrouter/__tests__/models.live.test.ts",
@@ -126,10 +124,7 @@ const appCompanionSourceRoot = path.join(
   "app-companion",
   "src",
 );
-const liveRetryCount =
-  process.env.ELIZA_LIVE_TEST === "1"
-    ? 1
-    : 0;
+const liveRetryCount = process.env.ELIZA_LIVE_TEST === "1" ? 1 : 0;
 process.env.ELIZA_LIVE_TEST = "1";
 
 const realResolveAlias: ModuleAlias[] = [

@@ -122,9 +122,7 @@ export async function listSavedLogins(
   vault: Vault,
   domain?: string,
 ): Promise<readonly SavedLoginSummary[]> {
-  const prefix = domain
-    ? `${PREFIX}.${normalizeDomain(domain)}`
-    : PREFIX;
+  const prefix = domain ? `${PREFIX}.${normalizeDomain(domain)}` : PREFIX;
   const keys = await vault.list(prefix);
   const summaries: SavedLoginSummary[] = [];
   const failures: string[] = [];

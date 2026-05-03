@@ -1,12 +1,5 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
-import {
-  describe,
-  it,
-  expect,
-  vi,
-  beforeEach,
-  afterEach,
-} from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const mock = vi.fn;
 const spyOn = vi.spyOn;
@@ -41,7 +34,7 @@ describe("DexScreenerService", () => {
 
     // Create service instance using the start method
     service = (await DexScreenerService.start(
-      mockRuntime
+      mockRuntime,
     )) as DexScreenerService;
   });
 
@@ -126,7 +119,7 @@ describe("DexScreenerService", () => {
       const result = await service.getTokenPairs({ tokenAddress: "0x123" });
 
       expect(mockAxiosInstance.get).toHaveBeenCalledWith(
-        "/latest/dex/tokens/0x123"
+        "/latest/dex/tokens/0x123",
       );
       expect(result).toEqual({
         success: true,
@@ -148,7 +141,7 @@ describe("DexScreenerService", () => {
       const result = await service.getPair({ pairAddress: "0x456" });
 
       expect(mockAxiosInstance.get).toHaveBeenCalledWith(
-        "/latest/dex/pairs/0x456"
+        "/latest/dex/pairs/0x456",
       );
       expect(result).toEqual({
         success: true,
@@ -170,7 +163,7 @@ describe("DexScreenerService", () => {
       });
 
       expect(mockAxiosInstance.get).toHaveBeenCalledWith(
-        "/latest/dex/pairs/0x456"
+        "/latest/dex/pairs/0x456",
       );
       expect(result).toEqual({
         success: true,
@@ -190,7 +183,7 @@ describe("DexScreenerService", () => {
       const result = await service.getTrending();
 
       expect(mockAxiosInstance.get).toHaveBeenCalledWith(
-        "/token-boosts/top/v1"
+        "/token-boosts/top/v1",
       );
       expect(result.success).toBe(true);
     });
@@ -208,7 +201,7 @@ describe("DexScreenerService", () => {
       });
 
       expect(mockAxiosInstance.get).toHaveBeenCalledWith(
-        "/token-boosts/top/v1"
+        "/token-boosts/top/v1",
       );
       expect(result.success).toBe(true);
     });
@@ -231,7 +224,7 @@ describe("DexScreenerService", () => {
       const result = await service.getNewPairs();
 
       expect(mockAxiosInstance.get).toHaveBeenCalledWith(
-        "/token-profiles/latest/v1"
+        "/token-profiles/latest/v1",
       );
       expect(result.success).toBe(true);
     });
@@ -261,7 +254,7 @@ describe("DexScreenerService", () => {
 
       expect(result.success).toBe(true);
       expect(mockAxiosInstance.get).toHaveBeenCalledWith(
-        "/token-profiles/latest/v1"
+        "/token-profiles/latest/v1",
       );
     });
   });
@@ -321,7 +314,7 @@ describe("DexScreenerService", () => {
       const result = await service.getTopBoostedTokens();
 
       expect(mockAxiosInstance.get).toHaveBeenCalledWith(
-        "/token-boosts/top/v1"
+        "/token-boosts/top/v1",
       );
       expect(result).toEqual({
         success: true,
@@ -347,7 +340,7 @@ describe("DexScreenerService", () => {
       const result = await service.getLatestBoostedTokens();
 
       expect(mockAxiosInstance.get).toHaveBeenCalledWith(
-        "/token-boosts/latest/v1"
+        "/token-boosts/latest/v1",
       );
       expect(result).toEqual({
         success: true,
@@ -374,7 +367,7 @@ describe("DexScreenerService", () => {
       const result = await service.getLatestTokenProfiles();
 
       expect(mockAxiosInstance.get).toHaveBeenCalledWith(
-        "/token-profiles/latest/v1"
+        "/token-profiles/latest/v1",
       );
       expect(result).toEqual({
         success: true,

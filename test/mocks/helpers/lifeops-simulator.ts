@@ -91,12 +91,9 @@ const LIFEOPS_SIMULATOR_PASSIVE_INGEST = {
 } as const;
 
 function stateDirFromEnv(): string {
-  const dir =
-    process.env.ELIZA_STATE_DIR?.trim();
+  const dir = process.env.ELIZA_STATE_DIR?.trim();
   if (!dir) {
-    throw new Error(
-      "LifeOps simulator requires ELIZA_STATE_DIR.",
-    );
+    throw new Error("LifeOps simulator requires ELIZA_STATE_DIR.");
   }
   return dir;
 }

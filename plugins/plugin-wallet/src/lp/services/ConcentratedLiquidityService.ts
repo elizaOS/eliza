@@ -1,17 +1,26 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import { type IAgentRuntime, Service } from "@elizaos/core";
-import type { IConcentratedLiquidityService, IConcentratedPosition, IRangeParams } from "../types";
+import type {
+  IConcentratedLiquidityService,
+  IConcentratedPosition,
+  IRangeParams,
+} from "../types";
 
 /**
  * ConcentratedLiquidityService provides foundation support for concentrated liquidity positions.
  * This is a placeholder implementation that will be expanded when DEX plugins add concentrated liquidity support.
  */
-export class ConcentratedLiquidityService extends Service implements IConcentratedLiquidityService {
+export class ConcentratedLiquidityService
+  extends Service
+  implements IConcentratedLiquidityService
+{
   public static readonly serviceType = "concentrated-liquidity";
   public readonly capabilityDescription =
     "Manages concentrated liquidity positions with range selection and automated rebalancing";
 
-  static async start(runtime: IAgentRuntime): Promise<ConcentratedLiquidityService> {
+  static async start(
+    runtime: IAgentRuntime,
+  ): Promise<ConcentratedLiquidityService> {
     const service = new ConcentratedLiquidityService();
     await service.start(runtime);
     return service;
@@ -24,7 +33,9 @@ export class ConcentratedLiquidityService extends Service implements IConcentrat
   async start(_runtime: IAgentRuntime): Promise<void> {
     // Service initialization
     this.isInitialized = true;
-    console.info("ConcentratedLiquidityService started - awaiting DEX integration");
+    console.info(
+      "ConcentratedLiquidityService started - awaiting DEX integration",
+    );
   }
 
   async stop(): Promise<void> {
@@ -33,15 +44,17 @@ export class ConcentratedLiquidityService extends Service implements IConcentrat
 
   async createConcentratedPosition(
     _userId: string,
-    _params: IRangeParams
+    _params: IRangeParams,
   ): Promise<IConcentratedPosition> {
     // Placeholder implementation
     throw new Error(
-      "Concentrated liquidity positions are coming soon! This feature requires DEX integration."
+      "Concentrated liquidity positions are coming soon! This feature requires DEX integration.",
     );
   }
 
-  async getConcentratedPositions(userId: string): Promise<IConcentratedPosition[]> {
+  async getConcentratedPositions(
+    userId: string,
+  ): Promise<IConcentratedPosition[]> {
     // Placeholder implementation
     console.info(`Getting concentrated positions for user ${userId}`);
     return [];
@@ -50,7 +63,7 @@ export class ConcentratedLiquidityService extends Service implements IConcentrat
   async rebalanceConcentratedPosition(
     _userId: string,
     _positionId: string,
-    _newRangeParams?: Partial<IRangeParams>
+    _newRangeParams?: Partial<IRangeParams>,
   ): Promise<IConcentratedPosition> {
     // Placeholder implementation
     throw new Error("Concentrated position rebalancing is coming soon!");
@@ -62,7 +75,7 @@ export class ConcentratedLiquidityService extends Service implements IConcentrat
   calculateOptimalRange(
     currentPrice: number,
     rangeWidthPercent: number,
-    _targetUtilization: number = 80
+    _targetUtilization: number = 80,
   ): { priceLower: number; priceUpper: number } {
     // Simple symmetric range calculation
     const halfWidth = rangeWidthPercent / 2;
@@ -75,14 +88,22 @@ export class ConcentratedLiquidityService extends Service implements IConcentrat
   /**
    * Check if current price is within the position's range
    */
-  isPriceInRange(currentPrice: number, priceLower: number, priceUpper: number): boolean {
+  isPriceInRange(
+    currentPrice: number,
+    priceLower: number,
+    priceUpper: number,
+  ): boolean {
     return currentPrice >= priceLower && currentPrice <= priceUpper;
   }
 
   /**
    * Calculate how much of the liquidity is currently active
    */
-  calculateUtilization(currentPrice: number, priceLower: number, priceUpper: number): number {
+  calculateUtilization(
+    currentPrice: number,
+    priceLower: number,
+    priceUpper: number,
+  ): number {
     if (!this.isPriceInRange(currentPrice, priceLower, priceUpper)) {
       return 0;
     }
@@ -92,7 +113,8 @@ export class ConcentratedLiquidityService extends Service implements IConcentrat
     const distanceFromUpper = priceUpper - currentPrice;
 
     // Liquidity utilization is highest when price is in the middle of the range
-    const utilization = (Math.min(distanceFromLower, distanceFromUpper) / (priceRange / 2)) * 100;
+    const utilization =
+      (Math.min(distanceFromLower, distanceFromUpper) / (priceRange / 2)) * 100;
     return Math.min(utilization, 100);
   }
 }

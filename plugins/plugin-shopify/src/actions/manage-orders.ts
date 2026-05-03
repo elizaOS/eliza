@@ -149,8 +149,7 @@ export const manageOrdersAction: Action = {
   parameters: [
     {
       name: "confirmed",
-      description:
-        "Must be true to fulfill a Shopify order after preview.",
+      description: "Must be true to fulfill a Shopify order after preview.",
       required: false,
       schema: { type: "boolean", default: false },
     },
@@ -180,7 +179,8 @@ export const manageOrdersAction: Action = {
 
     const text =
       typeof message.content?.text === "string" ? message.content.text : "";
-    const intent = readOrderIntent(options) ?? (await classifyIntent(runtime, text));
+    const intent =
+      readOrderIntent(options) ?? (await classifyIntent(runtime, text));
 
     if (!intent) {
       await callback?.({

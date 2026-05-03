@@ -15,8 +15,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { describeIf } from "../../../../eliza/test/helpers/conditional-tests.ts";
 import { LifeOpsScreenContextSampler } from "../src/lifeops/screen-context.js";
 
-const LIVE_TESTS_ENABLED =
-  process.env.ELIZA_LIVE_TEST === "1";
+const LIVE_TESTS_ENABLED = process.env.ELIZA_LIVE_TEST === "1";
 const CHROME_SUPPORTED = isBrowserCaptureSupported();
 
 console.info(

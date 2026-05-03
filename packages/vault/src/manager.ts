@@ -43,11 +43,7 @@ const exec = promisify(execFile);
  * for the references that point at external password managers.
  */
 
-export type BackendId =
-  | "in-house"
-  | "1password"
-  | "protonpass"
-  | "bitwarden";
+export type BackendId = "in-house" | "1password" | "protonpass" | "bitwarden";
 
 export interface BackendStatus {
   readonly id: BackendId;
@@ -345,7 +341,8 @@ class ManagerImpl implements SecretsManager {
     // (dozens to low-hundreds of items) this stays under a second.
     const filteredExternal = requestedDomain
       ? externalEntries.filter(
-          (e) => e.domain !== null && e.domain.toLowerCase() === requestedDomain,
+          (e) =>
+            e.domain !== null && e.domain.toLowerCase() === requestedDomain,
         )
       : externalEntries;
 
@@ -411,7 +408,11 @@ class ManagerImpl implements SecretsManager {
       return reveal;
     }
     if (source === "1password") {
-      const out = await revealOnePasswordLogin(this.vault, this.execFn, identifier);
+      const out = await revealOnePasswordLogin(
+        this.vault,
+        this.execFn,
+        identifier,
+      );
       return mapExternalReveal(out);
     }
     // bitwarden
@@ -577,11 +578,10 @@ async function detectOnePassword(vault: Vault): Promise<BackendStatus> {
 /** Read the first registered 1Password account shorthand, or null. */
 async function readDefaultOpAccount(): Promise<string | null> {
   try {
-    const { stdout } = await exec(
-      "op",
-      ["account", "list", "--format=json"],
-      { timeout: 3000, encoding: "utf8" },
-    );
+    const { stdout } = await exec("op", ["account", "list", "--format=json"], {
+      timeout: 3000,
+      encoding: "utf8",
+    });
     const accounts = JSON.parse(stdout) as Array<{
       shorthand?: string;
       url?: string;

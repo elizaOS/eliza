@@ -1,6 +1,10 @@
 // [MAX-ADDED] x402 Budget Controls — per-service spending caps and transaction logging
 // viem types imported on-demand within class methods
-import type { X402ServiceBudget, X402TransactionLog, X402ClientConfig } from './types.js';
+import type {
+  X402ServiceBudget,
+  X402TransactionLog,
+  X402ClientConfig,
+} from "./types.js";
 
 /**
  * [MAX-ADDED] In-memory budget tracker for x402 payments.
@@ -19,8 +23,10 @@ export class X402BudgetTracker {
   private globalPerRequestMax: bigint;
 
   constructor(config: X402ClientConfig = {}) {
-    this.globalDailyLimit = config.globalDailyLimit ?? BigInt('0xFFFFFFFFFFFFFFFFFFFFFFFF'); // effectively unlimited
-    this.globalPerRequestMax = config.globalPerRequestMax ?? BigInt('0xFFFFFFFFFFFFFFFFFFFFFFFF');
+    this.globalDailyLimit =
+      config.globalDailyLimit ?? BigInt("0xFFFFFFFFFFFFFFFFFFFFFFFF"); // effectively unlimited
+    this.globalPerRequestMax =
+      config.globalPerRequestMax ?? BigInt("0xFFFFFFFFFFFFFFFFFFFFFFFF");
     this.dailyResetTimestamp = this.startOfDay();
 
     if (config.serviceBudgets) {
@@ -34,28 +40,43 @@ export class X402BudgetTracker {
    * Check if a payment is within budget limits.
    * Returns { allowed: true } or { allowed: false, reason: string }.
    */
-  checkBudget(service: string, amount: bigint): { allowed: boolean; reason?: string } {
+  checkBudget(
+    service: string,
+    amount: bigint,
+  ): { allowed: boolean; reason?: string } {
     this.maybeResetDaily();
 
     // Global per-request check
     if (amount > this.globalPerRequestMax) {
-      return { allowed: false, reason: `Amount ${amount} exceeds global per-request max ${this.globalPerRequestMax}` };
+      return {
+        allowed: false,
+        reason: `Amount ${amount} exceeds global per-request max ${this.globalPerRequestMax}`,
+      };
     }
 
     // Global daily check
     if (this.globalDailySpend + amount > this.globalDailyLimit) {
-      return { allowed: false, reason: `Would exceed global daily limit ${this.globalDailyLimit}` };
+      return {
+        allowed: false,
+        reason: `Would exceed global daily limit ${this.globalDailyLimit}`,
+      };
     }
 
     // Service-specific checks
     const budget = this.findServiceBudget(service);
     if (budget) {
       if (amount > budget.maxPerRequest) {
-        return { allowed: false, reason: `Amount ${amount} exceeds service per-request max ${budget.maxPerRequest} for ${service}` };
+        return {
+          allowed: false,
+          reason: `Amount ${amount} exceeds service per-request max ${budget.maxPerRequest} for ${service}`,
+        };
       }
       const serviceDailySpend = this.dailySpend.get(service) ?? 0n;
       if (serviceDailySpend + amount > budget.dailyLimit) {
-        return { allowed: false, reason: `Would exceed daily limit ${budget.dailyLimit} for ${service}` };
+        return {
+          allowed: false,
+          reason: `Would exceed daily limit ${budget.dailyLimit} for ${service}`,
+        };
       }
     }
 
@@ -71,7 +92,10 @@ export class X402BudgetTracker {
 
     if (log.success) {
       const service = log.service;
-      this.dailySpend.set(service, (this.dailySpend.get(service) ?? 0n) + log.amount);
+      this.dailySpend.set(
+        service,
+        (this.dailySpend.get(service) ?? 0n) + log.amount,
+      );
       this.globalDailySpend += log.amount;
     }
   }
@@ -79,13 +103,16 @@ export class X402BudgetTracker {
   /**
    * Get transaction history, optionally filtered.
    */
-  getTransactionLog(filter?: { service?: string; since?: number }): X402TransactionLog[] {
+  getTransactionLog(filter?: {
+    service?: string;
+    since?: number;
+  }): X402TransactionLog[] {
     let logs = this.transactionLog;
     if (filter?.service) {
-      logs = logs.filter(l => l.service === filter.service);
+      logs = logs.filter((l) => l.service === filter.service);
     }
     if (filter?.since) {
-      logs = logs.filter(l => l.timestamp >= filter.since!);
+      logs = logs.filter((l) => l.timestamp >= filter.since!);
     }
     return logs;
   }
@@ -93,7 +120,11 @@ export class X402BudgetTracker {
   /**
    * Get current daily spend summary.
    */
-  getDailySpendSummary(): { global: bigint; byService: Record<string, bigint>; resetsAt: number } {
+  getDailySpendSummary(): {
+    global: bigint;
+    byService: Record<string, bigint>;
+    resetsAt: number;
+  } {
     this.maybeResetDaily();
     const byService: Record<string, bigint> = {};
     for (const [service, amount] of this.dailySpend) {
@@ -117,7 +148,7 @@ export class X402BudgetTracker {
 
   private findServiceBudget(service: string): X402ServiceBudget | undefined {
     // Exact match first, then wildcard
-    return this.serviceBudgets.get(service) ?? this.serviceBudgets.get('*');
+    return this.serviceBudgets.get(service) ?? this.serviceBudgets.get("*");
   }
 
   private maybeResetDaily(): void {

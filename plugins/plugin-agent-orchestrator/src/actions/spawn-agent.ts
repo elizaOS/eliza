@@ -82,7 +82,10 @@ function summarizeSpawnError(message: string): string {
   }
   // Long, multi-line errors are usually drivers attaching SQL or stack
   // traces. Keep the first non-empty line and cap length.
-  const firstLine = message.split("\n").map((l) => l.trim()).find((l) => l.length > 0);
+  const firstLine = message
+    .split("\n")
+    .map((l) => l.trim())
+    .find((l) => l.length > 0);
   const candidate = firstLine ?? message;
   return candidate.length > 200 ? `${candidate.slice(0, 197)}...` : candidate;
 }
@@ -503,9 +506,9 @@ export const spawnAgentAction: Action = {
         // doesn't propagate through the spawn env allowlist, so without
         // this the PTY child blocks on the login prompt forever.
         if (!spawnEnv.CLAUDE_CODE_OAUTH_TOKEN) {
-          const fallbackOauth = runtime.getSetting(
-            "CLAUDE_CODE_OAUTH_TOKEN",
-          ) as string | undefined;
+          const fallbackOauth = runtime.getSetting("CLAUDE_CODE_OAUTH_TOKEN") as
+            | string
+            | undefined;
           if (fallbackOauth?.trim()) {
             spawnEnv.CLAUDE_CODE_OAUTH_TOKEN = fallbackOauth;
             spawnEnv.ANTHROPIC_AUTH_TOKEN = fallbackOauth;
@@ -593,7 +596,10 @@ export const spawnAgentAction: Action = {
                 "subprocess stderr: invalid_grant",
               );
             } else {
-              shim.markInvalid(accountId, "subprocess stderr: 401/unauthorized");
+              shim.markInvalid(
+                accountId,
+                "subprocess stderr: 401/unauthorized",
+              );
             }
             unsubscribe();
           },

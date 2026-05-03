@@ -20,7 +20,10 @@ import {
   invokeDesktopBridgeRequest,
   subscribeDesktopBridgeEvent,
 } from "@elizaos/app-core";
-import type { EventCallback, ListenerEntry as BaseListenerEntry } from "../../../shared-types.js";
+import type {
+  EventCallback,
+  ListenerEntry as BaseListenerEntry,
+} from "../../../shared-types.js";
 import type {
   SpeakOptions,
   SpeakResult,

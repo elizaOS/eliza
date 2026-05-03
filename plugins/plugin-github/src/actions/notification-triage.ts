@@ -116,7 +116,11 @@ export const notificationTriageAction: Action = {
         id: string;
         reason?: string | null;
         repository?: { full_name?: string | null; pushed_at?: string | null };
-        subject?: { title?: string | null; type?: string | null; url?: string | null };
+        subject?: {
+          title?: string | null;
+          type?: string | null;
+          url?: string | null;
+        };
         updated_at: string;
       }>;
       const nowMs = Date.now();

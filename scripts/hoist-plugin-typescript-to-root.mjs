@@ -106,10 +106,7 @@ function hoist(pluginRoot) {
   if (rootPkg.gitHead && !innerPkg.gitHead) innerPkg.gitHead = rootPkg.gitHead;
 
   const indent = "\t";
-  fs.writeFileSync(
-    rootPkgPath,
-    `${JSON.stringify(innerPkg, null, indent)}\n`,
-  );
+  fs.writeFileSync(rootPkgPath, `${JSON.stringify(innerPkg, null, indent)}\n`);
 
   fixPackageJsonScripts(rootPkgPath);
   walkFix(pluginRoot);
@@ -117,9 +114,7 @@ function hoist(pluginRoot) {
 }
 
 function main() {
-  const names = fs.existsSync(PLUGINS)
-    ? fs.readdirSync(PLUGINS).sort()
-    : [];
+  const names = fs.existsSync(PLUGINS) ? fs.readdirSync(PLUGINS).sort() : [];
   let n = 0;
   for (const name of names) {
     const pluginRoot = path.join(PLUGINS, name);

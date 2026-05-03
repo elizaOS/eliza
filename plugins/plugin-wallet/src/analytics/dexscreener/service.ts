@@ -35,14 +35,14 @@ export class DexScreenerService extends Service {
     const service = new DexScreenerService(runtime);
 
     const customBase = String(
-      runtime.getSetting("DEXSCREENER_API_URL") ?? ""
+      runtime.getSetting("DEXSCREENER_API_URL") ?? "",
     ).trim();
     const delayRaw = runtime.getSetting("DEXSCREENER_RATE_LIMIT_DELAY");
     const delayParsed = Number.parseInt(
       typeof delayRaw === "number"
         ? String(delayRaw)
         : String(delayRaw ?? "100"),
-      10
+      10,
     );
     const rateLimitDelay = Number.isFinite(delayParsed) ? delayParsed : 100;
 
@@ -54,7 +54,7 @@ export class DexScreenerService extends Service {
     } else {
       const cloud = cloudServiceApisBaseUrl(
         toRuntimeSettings(runtime),
-        "dexscreener"
+        "dexscreener",
       );
       if (cloud !== null) {
         apiUrl = cloud.baseUrl;
@@ -97,8 +97,8 @@ export class DexScreenerService extends Service {
       await new Promise((resolve) =>
         setTimeout(
           resolve,
-          this.dexConfig.rateLimitDelay! - timeSinceLastRequest
-        )
+          this.dexConfig.rateLimitDelay! - timeSinceLastRequest,
+        ),
       );
     }
     this.lastRequestTime = Date.now();
@@ -108,7 +108,7 @@ export class DexScreenerService extends Service {
    * Search for tokens/pairs
    */
   async search(
-    params: DexScreenerSearchParams
+    params: DexScreenerSearchParams,
   ): Promise<DexScreenerServiceResponse<DexScreenerPair[]>> {
     try {
       await this.rateLimit();
@@ -136,12 +136,12 @@ export class DexScreenerService extends Service {
    * Get token pairs by token address
    */
   async getTokenPairs(
-    params: DexScreenerTokenParams
+    params: DexScreenerTokenParams,
   ): Promise<DexScreenerServiceResponse<DexScreenerPair[]>> {
     try {
       await this.rateLimit();
       const response = await this.api.get(
-        `/latest/dex/tokens/${params.tokenAddress}`
+        `/latest/dex/tokens/${params.tokenAddress}`,
       );
 
       return {
@@ -164,12 +164,12 @@ export class DexScreenerService extends Service {
    * Get pair by address
    */
   async getPair(
-    params: DexScreenerPairParams
+    params: DexScreenerPairParams,
   ): Promise<DexScreenerServiceResponse<DexScreenerPair>> {
     try {
       await this.rateLimit();
       const response = await this.api.get(
-        `/latest/dex/pairs/${params.pairAddress}`
+        `/latest/dex/pairs/${params.pairAddress}`,
       );
 
       if (!response.data.pair) {
@@ -199,7 +199,7 @@ export class DexScreenerService extends Service {
    * Get trending pairs
    */
   async getTrending(
-    params: DexScreenerTrendingParams = {}
+    params: DexScreenerTrendingParams = {},
   ): Promise<DexScreenerServiceResponse<DexScreenerPair[]>> {
     try {
       await this.rateLimit();
@@ -219,7 +219,7 @@ export class DexScreenerService extends Service {
         .map(async (token) => {
           try {
             const pairResponse = await this.api.get(
-              `/tokens/v1/${token.chainId}/${token.tokenAddress}`
+              `/tokens/v1/${token.chainId}/${token.tokenAddress}`,
             );
             return Array.isArray(pairResponse.data)
               ? pairResponse.data[0]
@@ -227,14 +227,14 @@ export class DexScreenerService extends Service {
           } catch (error) {
             console.error(
               `Failed to get pair data for ${token.tokenAddress}:`,
-              error
+              error,
             );
             return null;
           }
         });
 
       const pairs = (await Promise.all(pairPromises)).filter(
-        (pair) => pair !== null
+        (pair) => pair !== null,
       );
 
       return {
@@ -257,7 +257,7 @@ export class DexScreenerService extends Service {
    * Get pairs by chain
    */
   async getPairsByChain(
-    params: DexScreenerChainParams
+    params: DexScreenerChainParams,
   ): Promise<DexScreenerServiceResponse<DexScreenerPair[]>> {
     try {
       await this.rateLimit();
@@ -273,7 +273,7 @@ export class DexScreenerService extends Service {
 
       // Filter to only include pairs from the specified chain
       pairs = pairs.filter(
-        (pair) => pair.chainId.toLowerCase() === params.chain.toLowerCase()
+        (pair) => pair.chainId.toLowerCase() === params.chain.toLowerCase(),
       );
 
       // Sort by specified criteria
@@ -322,7 +322,7 @@ export class DexScreenerService extends Service {
    * Get new pairs
    */
   async getNewPairs(
-    params: DexScreenerNewPairsParams = {}
+    params: DexScreenerNewPairsParams = {},
   ): Promise<DexScreenerServiceResponse<DexScreenerPair[]>> {
     try {
       await this.rateLimit();
@@ -339,7 +339,7 @@ export class DexScreenerService extends Service {
       // Filter by chain if specified
       const filteredProfiles = params.chain
         ? profiles.filter(
-            (p) => p.chainId?.toLowerCase() === params.chain?.toLowerCase()
+            (p) => p.chainId?.toLowerCase() === params.chain?.toLowerCase(),
           )
         : profiles;
 
@@ -349,7 +349,7 @@ export class DexScreenerService extends Service {
         .map(async (profile) => {
           try {
             const pairResponse = await this.api.get(
-              `/tokens/v1/${profile.chainId}/${profile.tokenAddress}`
+              `/tokens/v1/${profile.chainId}/${profile.tokenAddress}`,
             );
             const pairs = Array.isArray(pairResponse.data)
               ? pairResponse.data
@@ -367,14 +367,14 @@ export class DexScreenerService extends Service {
           } catch (error) {
             console.error(
               `Failed to get pair data for ${profile.tokenAddress}:`,
-              error
+              error,
             );
             return null;
           }
         });
 
       const pairs = (await Promise.all(pairPromises)).filter(
-        (pair) => pair !== null
+        (pair) => pair !== null,
       );
 
       return {
@@ -397,7 +397,7 @@ export class DexScreenerService extends Service {
    * Get token profile
    */
   async getTokenProfile(
-    tokenAddress: string
+    tokenAddress: string,
   ): Promise<DexScreenerServiceResponse<DexScreenerProfile>> {
     try {
       await this.rateLimit();
@@ -409,7 +409,7 @@ export class DexScreenerService extends Service {
         : [response.data];
 
       const profile = profiles.find(
-        (p) => p.tokenAddress?.toLowerCase() === tokenAddress.toLowerCase()
+        (p) => p.tokenAddress?.toLowerCase() === tokenAddress.toLowerCase(),
       );
 
       if (!profile) {
@@ -475,7 +475,7 @@ export class DexScreenerService extends Service {
    */
   async getMultipleTokens(
     chainId: string,
-    tokenAddresses: string[]
+    tokenAddresses: string[],
   ): Promise<DexScreenerServiceResponse<DexScreenerPair[]>> {
     try {
       if (tokenAddresses.length > 30) {
@@ -584,12 +584,12 @@ export class DexScreenerService extends Service {
    */
   async checkOrderStatus(
     chainId: string,
-    tokenAddress: string
+    tokenAddress: string,
   ): Promise<DexScreenerServiceResponse<any[]>> {
     try {
       await this.rateLimit();
       const response = await this.api.get(
-        `/orders/v1/${chainId}/${tokenAddress}`
+        `/orders/v1/${chainId}/${tokenAddress}`,
       );
 
       return {
@@ -613,12 +613,12 @@ export class DexScreenerService extends Service {
    */
   async getTokenPairsByChain(
     chainId: string,
-    tokenAddress: string
+    tokenAddress: string,
   ): Promise<DexScreenerServiceResponse<DexScreenerPair[]>> {
     try {
       await this.rateLimit();
       const response = await this.api.get(
-        `/token-pairs/v1/${chainId}/${tokenAddress}`
+        `/token-pairs/v1/${chainId}/${tokenAddress}`,
       );
 
       return {

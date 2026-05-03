@@ -22,9 +22,9 @@
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type PaymentRail = 'x402' | 'mpp' | 'x402-solana' | 'google-ap2';
+export type PaymentRail = "x402" | "mpp" | "x402-solana" | "google-ap2";
 
-export type RailStatus = 'live' | 'roadmap' | 'disabled';
+export type RailStatus = "live" | "roadmap" | "disabled";
 
 export interface RailConfig {
   rail: PaymentRail;
@@ -47,7 +47,7 @@ export interface PaymentContext {
   /** Whether the agent is operating autonomously (no human in loop) */
   autonomous?: boolean;
   /** Preferred chain, if any */
-  preferredChain?: 'base' | 'solana' | 'google-ap2';
+  preferredChain?: "base" | "solana" | "google-ap2";
 }
 
 export interface RoutingDecision {
@@ -63,26 +63,26 @@ export interface RoutingDecision {
 
 const DEFAULT_RAILS: RailConfig[] = [
   {
-    rail: 'x402',
-    status: 'live',
-    minAmount: 1_000,        // $0.001 minimum
-    maxAmount: 100_000_000,  // $100 max per tx (soft limit)
+    rail: "x402",
+    status: "live",
+    minAmount: 1_000, // $0.001 minimum
+    maxAmount: 100_000_000, // $100 max per tx (soft limit)
   },
   {
-    rail: 'mpp',
-    status: 'live',
-    minAmount: 100_000,      // $0.10 minimum (Stripe floor)
+    rail: "mpp",
+    status: "live",
+    minAmount: 100_000, // $0.10 minimum (Stripe floor)
     maxAmount: 10_000_000_000, // $10,000 max
   },
   {
-    rail: 'x402-solana',
-    status: 'roadmap',
+    rail: "x402-solana",
+    status: "roadmap",
   },
   {
-    rail: 'google-ap2',
-    status: 'roadmap',
-    minAmount: 1_000,        // $0.001 minimum (aligned with x402)
-    maxAmount: 50_000_000,   // $50 max per tx (conservative until spec finalized)
+    rail: "google-ap2",
+    status: "roadmap",
+    minAmount: 1_000, // $0.001 minimum (aligned with x402)
+    maxAmount: 50_000_000, // $50 max per tx (conservative until spec finalized)
   },
 ];
 
@@ -109,30 +109,36 @@ export class PaymentRouter {
    * Select the optimal payment rail for a given context.
    */
   route(context: PaymentContext): RoutingDecision {
-    const { amount, isSessionContext, sessionTxCount, autonomous, preferredChain } = context;
+    const {
+      amount,
+      isSessionContext,
+      sessionTxCount,
+      autonomous,
+      preferredChain,
+    } = context;
 
     // If Google AP2 rail is live and context indicates Google ecosystem preference
     // Google AP2 (Agent Payment Protocol) — Google's native agent payment rail
     // Currently roadmap; will activate when Google publishes the full AP2 spec
-    const googleRail = this.getRail('google-ap2');
-    if (googleRail?.status === 'live' && preferredChain === 'base') {
+    const googleRail = this.getRail("google-ap2");
+    if (googleRail?.status === "live" && preferredChain === "base") {
       // Google AP2 routes through Base for on-chain settlement
       // When live, AP2 provides Google-managed identity + payment in a single flow
       return {
-        rail: 'google-ap2',
-        reason: 'Google AP2 rail — managed identity + payment bundle',
+        rail: "google-ap2",
+        reason: "Google AP2 rail — managed identity + payment bundle",
         estimatedOverheadBps: 100, // Estimated Google platform fee
         isLive: true,
       };
     }
 
     // If Solana is explicitly preferred and x402-solana is available
-    if (preferredChain === 'solana') {
-      const solanaRail = this.getRail('x402-solana');
-      if (solanaRail?.status === 'live') {
+    if (preferredChain === "solana") {
+      const solanaRail = this.getRail("x402-solana");
+      if (solanaRail?.status === "live") {
         return {
-          rail: 'x402-solana',
-          reason: 'Preferred chain: Solana x402',
+          rail: "x402-solana",
+          reason: "Preferred chain: Solana x402",
           estimatedOverheadBps: 0,
           isLive: true,
         };
@@ -141,11 +147,14 @@ export class PaymentRouter {
     }
 
     // Rule 1: High-frequency session context → MPP (batching efficiency)
-    if (isSessionContext && (sessionTxCount ?? 0) >= this.highFrequencyThreshold) {
-      const mppRail = this.getRail('mpp');
-      if (mppRail?.status === 'live') {
+    if (
+      isSessionContext &&
+      (sessionTxCount ?? 0) >= this.highFrequencyThreshold
+    ) {
+      const mppRail = this.getRail("mpp");
+      if (mppRail?.status === "live") {
         return {
-          rail: 'mpp',
+          rail: "mpp",
           reason: `High-frequency session (${sessionTxCount} txns) — MPP batching is more efficient`,
           estimatedOverheadBps: 290, // Stripe's ~2.9%
           isLive: true,
@@ -155,10 +164,10 @@ export class PaymentRouter {
 
     // Rule 2: Micropayments + autonomous → x402 (lower overhead, no session needed)
     if (amount < this.microPaymentThreshold && autonomous !== false) {
-      const x402Rail = this.getRail('x402');
-      if (x402Rail?.status === 'live') {
+      const x402Rail = this.getRail("x402");
+      if (x402Rail?.status === "live") {
         return {
-          rail: 'x402',
+          rail: "x402",
           reason: `Micropayment ($${(amount / 1_000_000).toFixed(2)}) + autonomous — x402 optimal`,
           estimatedOverheadBps: 0, // x402 has no protocol fee
           isLive: true,
@@ -167,10 +176,10 @@ export class PaymentRouter {
     }
 
     // Rule 3: Larger amounts or supervised → MPP (better dispute resolution, fiat rails)
-    const mppRail = this.getRail('mpp');
-    if (mppRail?.status === 'live' && amount >= (mppRail.minAmount ?? 0)) {
+    const mppRail = this.getRail("mpp");
+    if (mppRail?.status === "live" && amount >= (mppRail.minAmount ?? 0)) {
       return {
-        rail: 'mpp',
+        rail: "mpp",
         reason: `Amount $${(amount / 1_000_000).toFixed(2)} — MPP provides fiat rails and dispute resolution`,
         estimatedOverheadBps: 290,
         isLive: true,
@@ -179,10 +188,10 @@ export class PaymentRouter {
 
     // Default: x402 on Base
     return {
-      rail: 'x402',
-      reason: 'Default rail — Base x402',
+      rail: "x402",
+      reason: "Default rail — Base x402",
       estimatedOverheadBps: 0,
-      isLive: this.getRail('x402')?.status === 'live',
+      isLive: this.getRail("x402")?.status === "live",
     };
   }
 
@@ -190,14 +199,14 @@ export class PaymentRouter {
    * Get all available (live) rails.
    */
   getLiveRails(): RailConfig[] {
-    return this.rails.filter((r) => r.status === 'live');
+    return this.rails.filter((r) => r.status === "live");
   }
 
   /**
    * Check if a specific rail is available.
    */
   isRailLive(rail: PaymentRail): boolean {
-    return this.getRail(rail)?.status === 'live';
+    return this.getRail(rail)?.status === "live";
   }
 
   private getRail(rail: PaymentRail): RailConfig | undefined {

@@ -31,7 +31,12 @@ import {
   type EnvConfig,
   type LlmProvider,
 } from "./lib";
-import { runPolymarketTui, runSettingsWizard, setFatalError, type SettingsField } from "./tui";
+import {
+  runPolymarketTui,
+  runSettingsWizard,
+  setFatalError,
+  type SettingsField,
+} from "./tui";
 import { runInkInputTest } from "./ink-input-test";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -54,7 +59,13 @@ const DEFAULT_ROOM_ID = stringToUuid("polymarket-runtime-room");
 const DEFAULT_WORLD_ID = stringToUuid("polymarket-runtime-world");
 const DEFAULT_USER_ID = stringToUuid("polymarket-operator");
 const POLYGON_CHAIN_ID = 137;
-const PROVIDER_OPTIONS = ["openai", "anthropic", "gemini", "groq", "grok"] as const;
+const PROVIDER_OPTIONS = [
+  "openai",
+  "anthropic",
+  "gemini",
+  "groq",
+  "grok",
+] as const;
 const DEFAULT_LLM_MODELS: Record<LlmProvider, string> = {
   openai: "gpt-5",
   anthropic: "claude-sonnet-4-6",
@@ -86,11 +97,12 @@ const wrappedStreams = new WeakSet<NodeJS.WriteStream>();
  */
 function logErrorToFile(error: Error | string, context?: string): void {
   const timestamp = new Date().toISOString();
-  const errorMessage = error instanceof Error 
-    ? `${error.message}\n${error.stack ?? ""}`
-    : String(error);
+  const errorMessage =
+    error instanceof Error
+      ? `${error.message}\n${error.stack ?? ""}`
+      : String(error);
   const logEntry = `[${timestamp}]${context ? ` [${context}]` : ""}\n${errorMessage}\n\n`;
-  
+
   try {
     fs.appendFileSync(ERROR_LOG_PATH, logEntry);
   } catch {
@@ -110,10 +122,10 @@ function displayFatalError(error: Error | string, context?: string): void {
     // Clear any partial lines and move to a new line
     process.stdout.write("\n");
   }
-  
+
   const errorMessage = error instanceof Error ? error.message : String(error);
   const stack = error instanceof Error ? error.stack : undefined;
-  
+
   console.error("\n" + "=".repeat(60));
   console.error("❌ FATAL ERROR" + (context ? ` [${context}]` : ""));
   console.error("=".repeat(60));
@@ -132,14 +144,14 @@ function displayFatalError(error: Error | string, context?: string): void {
  */
 function handleFatalError(error: Error | string, context?: string): void {
   logErrorToFile(error, context);
-  
+
   // Try to notify the TUI first (if it's running)
   try {
     setFatalError(error instanceof Error ? error.message : String(error));
   } catch {
     // TUI might not be running, that's OK
   }
-  
+
   // Give the TUI a moment to display the error, then force display and exit
   setTimeout(() => {
     displayFatalError(error, context);
@@ -155,7 +167,7 @@ function installGlobalErrorHandlers(): void {
   process.on("uncaughtException", (error) => {
     handleFatalError(error, "uncaughtException");
   });
-  
+
   process.on("unhandledRejection", (reason) => {
     const error = reason instanceof Error ? reason : new Error(String(reason));
     handleFatalError(error, "unhandledRejection");
@@ -167,7 +179,7 @@ installGlobalErrorHandlers();
 
 function normalizeWriteArgs(
   encoding: BufferEncoding | WriteCallback | undefined,
-  callback?: WriteCallback
+  callback?: WriteCallback,
 ): WriteArgs {
   if (typeof encoding === "function") {
     return { encoding: undefined, callback: encoding };
@@ -188,7 +200,7 @@ function filterLines(text: string, pending: { value: string }): string {
   const combined = pending.value + text;
   const lines = combined.split("\n");
   const hasTrailingNewline = combined.endsWith("\n");
-  pending.value = hasTrailingNewline ? "" : lines.pop() ?? "";
+  pending.value = hasTrailingNewline ? "" : (lines.pop() ?? "");
 
   const kept = lines.filter((line) => !shouldDropLine(line));
   if (kept.length === 0) {
@@ -206,7 +218,7 @@ function wrapWriteStream(stream: NodeJS.WriteStream): void {
   stream.write = (
     chunk: string | Uint8Array,
     encoding?: BufferEncoding | WriteCallback,
-    callback?: WriteCallback
+    callback?: WriteCallback,
   ): boolean => {
     const args = normalizeWriteArgs(encoding, callback);
     const text =
@@ -252,10 +264,12 @@ function buildCharacter(config: CharacterConfig): Character {
 
 function buildCharacterSettings(
   options: CliOptions,
-  config: EnvConfig
+  config: EnvConfig,
 ): CharacterConfig {
   const signatureTypeSecret =
-    typeof config.signatureType === "number" ? String(config.signatureType) : undefined;
+    typeof config.signatureType === "number"
+      ? String(config.signatureType)
+      : undefined;
 
   const secrets: Record<string, string> = {
     EVM_PRIVATE_KEY: config.privateKey,
@@ -316,7 +330,10 @@ function resolveProvider(snapshot: EnvSnapshot): LlmProvider | null {
   return resolveLlmProvider((key) => getEnvValue(snapshot, key));
 }
 
-function resolveModel(snapshot: EnvSnapshot, provider: LlmProvider | null): string | null {
+function resolveModel(
+  snapshot: EnvSnapshot,
+  provider: LlmProvider | null,
+): string | null {
   return resolveLlmModel(provider, (key) => getEnvValue(snapshot, key));
 }
 
@@ -331,10 +348,11 @@ type SettingsFieldOptions = {
 function buildSettingsFields(
   snapshot: EnvSnapshot,
   options: CliOptions,
-  fieldOptions: SettingsFieldOptions
+  fieldOptions: SettingsFieldOptions,
 ): SettingsField[] {
   const provider = resolveProvider(snapshot) ?? "openai";
-  const model = resolveModel(snapshot, provider) ?? DEFAULT_LLM_MODELS[provider];
+  const model =
+    resolveModel(snapshot, provider) ?? DEFAULT_LLM_MODELS[provider];
   const fields: SettingsField[] = [];
   if (fieldOptions.includeProvider) {
     fields.push({
@@ -400,7 +418,8 @@ function buildSettingsFields(
     {
       key: "CLOB_API_URL",
       label: "CLOB API URL",
-      value: getEnvValue(snapshot, "CLOB_API_URL") ?? "https://clob.polymarket.com",
+      value:
+        getEnvValue(snapshot, "CLOB_API_URL") ?? "https://clob.polymarket.com",
     },
     {
       key: "CLOB_API_KEY",
@@ -432,7 +451,7 @@ function buildSettingsFields(
       key: "POLYMARKET_FUNDER_ADDRESS",
       label: "Polymarket Funder Address",
       value: getEnvValue(snapshot, "POLYMARKET_FUNDER_ADDRESS") ?? "",
-    }
+    },
   );
   return fields;
 }
@@ -444,7 +463,10 @@ function findMissingRequired(fields: SettingsField[]): string[] {
     .map((field) => field.label);
 }
 
-async function ensureEnvConfig(options: CliOptions, force: boolean): Promise<void> {
+async function ensureEnvConfig(
+  options: CliOptions,
+  force: boolean,
+): Promise<void> {
   const envPath = resolveEnvPath();
   const envFile = await readEnvFile(envPath);
   const snapshot = collectEnvSnapshot(envFile.values);
@@ -493,7 +515,9 @@ function resolveRuntimeModel(provider: LlmProvider | null): string | null {
   });
 }
 
-function buildLlmPlugins(provider: LlmProvider | null): Array<typeof openaiPlugin> {
+function buildLlmPlugins(
+  provider: LlmProvider | null,
+): Array<typeof openaiPlugin> {
   if (!provider) return [openaiPlugin];
   switch (provider) {
     case "anthropic":
@@ -510,10 +534,15 @@ function buildLlmPlugins(provider: LlmProvider | null): Array<typeof openaiPlugi
   }
 }
 
-function buildRuntimeSettings(provider: LlmProvider | null): Record<string, string | undefined> {
+function buildRuntimeSettings(
+  provider: LlmProvider | null,
+): Record<string, string | undefined> {
   const model = resolveRuntimeModel(provider);
   const smallModel =
-    process.env.ELIZA_LLM_SMALL_MODEL ?? process.env.LLM_SMALL_MODEL ?? model ?? undefined;
+    process.env.ELIZA_LLM_SMALL_MODEL ??
+    process.env.LLM_SMALL_MODEL ??
+    model ??
+    undefined;
   const settings: Record<string, string | undefined> = {
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
@@ -549,7 +578,7 @@ function buildRuntimeSettings(provider: LlmProvider | null): Record<string, stri
 
 async function createRuntimeSession(
   options: CliOptions,
-  config: EnvConfig
+  config: EnvConfig,
 ): Promise<RuntimeSession> {
   const configBundle = buildCharacterSettings(options, config);
   const character = buildCharacter(configBundle);
@@ -569,7 +598,7 @@ async function createRuntimeSession(
 
   // Enable autonomy for action execution (user can toggle with /autonomy command)
   // Don't disable by default - actions need autonomy service to execute
-  
+
   await runtime.initialize();
 
   await runtime.ensureConnection({
@@ -612,7 +641,9 @@ async function startChat(session: RuntimeSession): Promise<void> {
 
   const messageService = runtime.messageService;
   if (!messageService) {
-    throw new Error("Message service not initialized - ensure OpenAI plugin is loaded.");
+    throw new Error(
+      "Message service not initialized - ensure OpenAI plugin is loaded.",
+    );
   }
   await runPolymarketTui({
     runtime,
@@ -625,7 +656,7 @@ async function startChat(session: RuntimeSession): Promise<void> {
 
 async function resolveApiCredentials(
   options: CliOptions,
-  config: EnvConfig
+  config: EnvConfig,
 ): Promise<EnvConfig> {
   const signer = new Wallet(config.privateKey);
   const client = new ClobClient(config.clobApiUrl, POLYGON_CHAIN_ID, signer);
@@ -636,14 +667,14 @@ async function resolveApiCredentials(
     const message = error instanceof Error ? error.message : String(error);
     if (config.creds) {
       console.warn(
-        `⚠️ Failed to derive API key (${message}); using .env credentials for this run.`
+        `⚠️ Failed to derive API key (${message}); using .env credentials for this run.`,
       );
       return config;
     }
     throw new Error(
       `Unable to derive API key (${message}). ` +
         "Create API credentials once in Polymarket and set CLOB_API_KEY, CLOB_API_SECRET, " +
-        "CLOB_API_PASSPHRASE, or enable creation explicitly."
+        "CLOB_API_PASSPHRASE, or enable creation explicitly.",
     );
   }
 
@@ -654,7 +685,7 @@ async function resolveApiCredentials(
 
   if (config.creds && config.creds.key !== derivedKey) {
     console.warn(
-      "⚠️ CLOB_API_KEY does not match derived key; using derived credentials for this run."
+      "⚠️ CLOB_API_KEY does not match derived key; using derived credentials for this run.",
     );
   }
 
@@ -676,7 +707,7 @@ function logSessionStart(options: CliOptions): void {
 
 async function runWithSession(
   options: CliOptions,
-  handler: (session: RuntimeSession) => Promise<void>
+  handler: (session: RuntimeSession) => Promise<void>,
 ): Promise<void> {
   wrapWriteStream(process.stdout);
   wrapWriteStream(process.stderr);

@@ -95,7 +95,11 @@ export class N8nApiClient {
 
   /** @see POST /workflows */
   async createWorkflow(workflow: N8nWorkflow): Promise<N8nWorkflowResponse> {
-    return this.request<N8nWorkflowResponse>('POST', '/workflows', toWorkflowPayload(workflow));
+    return this.request<N8nWorkflowResponse>(
+      'POST',
+      '/workflows',
+      toWorkflowPayload(workflow),
+    );
   }
 
   /** @see GET /workflows */
@@ -121,7 +125,7 @@ export class N8nApiClient {
 
     return this.request<{ data: N8nWorkflowResponse[]; nextCursor?: string }>(
       'GET',
-      `/workflows${query.toString() ? `?${query.toString()}` : ''}`
+      `/workflows${query.toString() ? `?${query.toString()}` : ''}`,
     );
   }
 
@@ -131,11 +135,14 @@ export class N8nApiClient {
   }
 
   /** @see PUT /workflows/{id} */
-  async updateWorkflow(id: string, workflow: N8nWorkflow): Promise<N8nWorkflowResponse> {
+  async updateWorkflow(
+    id: string,
+    workflow: N8nWorkflow,
+  ): Promise<N8nWorkflowResponse> {
     return this.request<N8nWorkflowResponse>(
       'PUT',
       `/workflows/${id}`,
-      toWorkflowPayload(workflow)
+      toWorkflowPayload(workflow),
     );
   }
 
@@ -146,12 +153,18 @@ export class N8nApiClient {
 
   /** @see POST /workflows/{id}/activate */
   async activateWorkflow(id: string): Promise<N8nWorkflowResponse> {
-    return this.request<N8nWorkflowResponse>('POST', `/workflows/${id}/activate`);
+    return this.request<N8nWorkflowResponse>(
+      'POST',
+      `/workflows/${id}/activate`,
+    );
   }
 
   /** @see POST /workflows/{id}/deactivate */
   async deactivateWorkflow(id: string): Promise<N8nWorkflowResponse> {
-    return this.request<N8nWorkflowResponse>('POST', `/workflows/${id}/deactivate`);
+    return this.request<N8nWorkflowResponse>(
+      'POST',
+      `/workflows/${id}/deactivate`,
+    );
   }
 
   /** @see PUT /workflows/{id}/tags */
@@ -159,7 +172,7 @@ export class N8nApiClient {
     return this.request<N8nTag[]>(
       'PUT',
       `/workflows/${id}/tags`,
-      tagIds.map((id) => ({ id }))
+      tagIds.map((id) => ({ id })),
     );
   }
 
@@ -208,7 +221,7 @@ export class N8nApiClient {
 
     return this.request<{ data: N8nExecution[]; nextCursor?: string }>(
       'GET',
-      `/executions${query.toString() ? `?${query.toString()}` : ''}`
+      `/executions${query.toString() ? `?${query.toString()}` : ''}`,
     );
   }
 
@@ -242,7 +255,9 @@ export class N8nApiClient {
    */
   async getOrCreateTag(name: string): Promise<N8nTag> {
     const { data: tags } = await this.listTags();
-    const existing = tags.find((tag) => tag.name.toLowerCase() === name.toLowerCase());
+    const existing = tags.find(
+      (tag) => tag.name.toLowerCase() === name.toLowerCase(),
+    );
     if (existing) {
       return existing;
     }
@@ -252,7 +267,9 @@ export class N8nApiClient {
       // Only retry on 409 "Tag already exists" — pagination may have missed it
       if (error instanceof N8nApiError && error.statusCode === 409) {
         const { data: refreshed } = await this.listTags();
-        const found = refreshed.find((tag) => tag.name.toLowerCase() === name.toLowerCase());
+        const found = refreshed.find(
+          (tag) => tag.name.toLowerCase() === name.toLowerCase(),
+        );
         if (found) {
           return found;
         }
@@ -276,8 +293,13 @@ export class N8nApiClient {
       const response = await fetch(`${this.baseUrl}/types/nodes.json`, {
         headers: { 'X-N8N-API-KEY': this.apiKey },
       });
-      if (!response.ok) {return null;}
-      const data = (await response.json()) as Array<{ name?: string; version?: number | number[] }>;
+      if (!response.ok) {
+        return null;
+      }
+      const data = (await response.json()) as Array<{
+        name?: string;
+        version?: number | number[];
+      }>;
       // n8n's `/types/nodes.json` lists ONE ENTRY PER VERSIONED-NODE CLASS,
       // not one entry per node type. e.g. Gmail appears twice: once with
       // `version: [2, 2.1]` (the modern class) and once with `version: 1`
@@ -287,23 +309,31 @@ export class N8nApiClient {
       // regression, observed in Session 21 dogfood).
       const acc = new Map<string, Set<number>>();
       for (const entry of data) {
-        if (typeof entry?.name !== 'string') {continue;}
+        if (typeof entry?.name !== 'string') {
+          continue;
+        }
         const versions = Array.isArray(entry.version)
           ? entry.version.filter((v): v is number => typeof v === 'number')
           : typeof entry.version === 'number'
             ? [entry.version]
             : [];
-        if (versions.length === 0) {continue;}
+        if (versions.length === 0) {
+          continue;
+        }
         const set = acc.get(entry.name) ?? new Set<number>();
-        for (const v of versions) {set.add(v);}
+        for (const v of versions) {
+          set.add(v);
+        }
         acc.set(entry.name, set);
       }
-      if (acc.size === 0) {return null;}
+      if (acc.size === 0) {
+        return null;
+      }
       const out = new Map<string, number[]>();
       for (const [name, set] of acc) {
         out.set(
           name,
-          [...set].sort((a, b) => a - b)
+          [...set].sort((a, b) => a - b),
         );
       }
       return out;
@@ -316,7 +346,11 @@ export class N8nApiClient {
   // INTERNAL HELPERS
   // ============================================================================
 
-  private async request<T = void>(method: string, path: string, body?: unknown): Promise<T> {
+  private async request<T = void>(
+    method: string,
+    path: string,
+    body?: unknown,
+  ): Promise<T> {
     const url = `${this.baseUrl}/api/v1${path}`;
 
     const options: RequestInit = {
@@ -363,7 +397,7 @@ export class N8nApiClient {
       throw new N8nApiError(
         `Failed to call n8n API: ${error instanceof Error ? error.message : String(error)}`,
         undefined,
-        error
+        error,
       );
     }
   }

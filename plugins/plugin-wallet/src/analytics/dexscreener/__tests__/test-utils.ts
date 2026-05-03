@@ -54,7 +54,7 @@ export type MockRuntime = Partial<IAgentRuntime> & {
 
 // Create Mock Runtime
 export function createMockRuntime(
-  overrides: Partial<MockRuntime> = {}
+  overrides: Partial<MockRuntime> = {},
 ): MockRuntime {
   return {
     agentId: testUUID,
@@ -105,7 +105,7 @@ export function createMockRuntime(
     emitEvent: mock().mockResolvedValue(undefined),
     getTasks: mock().mockResolvedValue([]),
     getService: mock().mockImplementation((name: string) =>
-      overrides.services?.find((s: any) => s.serviceType === name)
+      overrides.services?.find((s: any) => s.serviceType === name),
     ),
     providers: [],
     actions: [],
@@ -118,7 +118,7 @@ export function createMockRuntime(
 // Create Mock Memory
 export function createTestMemory(
   content: string | Content,
-  overrides: Partial<Memory> = {}
+  overrides: Partial<Memory> = {},
 ): Memory {
   return {
     id: testUUID,

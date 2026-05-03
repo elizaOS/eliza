@@ -5,8 +5,8 @@
  */
 
 // Decimal normalization
-export { toRaw, toHuman, formatBalance, parseAmount } from './decimals.js';
-export type { TokenInfo } from './decimals.js';
+export { toRaw, toHuman, formatBalance, parseAmount } from "./decimals.js";
+export type { TokenInfo } from "./decimals.js";
 
 // Token Registry
 export {
@@ -24,8 +24,8 @@ export {
   SONIC_REGISTRY,
   WORLDCHAIN_REGISTRY,
   BASE_SEPOLIA_REGISTRY,
-} from './registry.js';
-export type { TokenEntry, AddTokenParams } from './registry.js';
+} from "./registry.js";
+export type { TokenEntry, AddTokenParams } from "./registry.js";
 
 // EVM Transfers
 export {
@@ -35,16 +35,21 @@ export {
   getNativeBalance,
   getBalances,
   encodeERC20Transfer,
-} from './transfers.js';
+} from "./transfers.js";
 export type {
   TransferContext,
   TransferOptions,
   TokenBalanceResult,
   NativeBalanceResult,
-} from './transfers.js';
+} from "./transfers.js";
 
 // Solana (optional)
-export { SolanaWallet, createSolanaWallet, SOLANA_TOKENS, SOLANA_TOKEN_DECIMALS } from './solana.js';
+export {
+  SolanaWallet,
+  createSolanaWallet,
+  SOLANA_TOKENS,
+  SOLANA_TOKEN_DECIMALS,
+} from "./solana.js";
 export type {
   SolanaWalletConfig,
   SolanaTokenInfo,
@@ -52,4 +57,4 @@ export type {
   SolBalanceResult,
   SplBalanceResult,
   SolanaTxResult,
-} from './solana.js';
+} from "./solana.js";

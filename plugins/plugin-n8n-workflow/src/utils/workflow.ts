@@ -22,7 +22,9 @@ function isTriggerNode(type: string): boolean {
   return t.includes('trigger') || t.includes('webhook');
 }
 
-export function validateWorkflow(workflow: N8nWorkflow): WorkflowValidationResult {
+export function validateWorkflow(
+  workflow: N8nWorkflow,
+): WorkflowValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
 
@@ -67,8 +69,14 @@ export function validateWorkflow(workflow: N8nWorkflow): WorkflowValidationResul
     nodeMap.set(node.name, node);
 
     // Check position (positionNodes() will fix this after validation)
-    if (!node.position || !Array.isArray(node.position) || node.position.length !== 2) {
-      warnings.push(`Node "${node.name}" has invalid position, will be auto-positioned`);
+    if (
+      !node.position ||
+      !Array.isArray(node.position) ||
+      node.position.length !== 2
+    ) {
+      warnings.push(
+        `Node "${node.name}" has invalid position, will be auto-positioned`,
+      );
     }
 
     // Check parameters
@@ -80,7 +88,9 @@ export function validateWorkflow(workflow: N8nWorkflow): WorkflowValidationResul
   // 4. Validate connections reference existing nodes
   for (const [sourceName, outputs] of Object.entries(workflow.connections)) {
     if (!nodeNames.has(sourceName)) {
-      errors.push(`Connection references non-existent source node: "${sourceName}"`);
+      errors.push(
+        `Connection references non-existent source node: "${sourceName}"`,
+      );
       continue;
     }
 
@@ -103,7 +113,7 @@ export function validateWorkflow(workflow: N8nWorkflow): WorkflowValidationResul
 
           if (!nodeNames.has(connection.node)) {
             errors.push(
-              `Connection references non-existent target node: "${connection.node}" (from "${sourceName}")`
+              `Connection references non-existent target node: "${connection.node}" (from "${sourceName}")`,
             );
           }
         }
@@ -113,11 +123,14 @@ export function validateWorkflow(workflow: N8nWorkflow): WorkflowValidationResul
 
   // 5. Check for at least one trigger node
   const hasTrigger = workflow.nodes.some(
-    (node) => isTriggerNode(node.type) || node.name.toLowerCase().includes('start')
+    (node) =>
+      isTriggerNode(node.type) || node.name.toLowerCase().includes('start'),
   );
 
   if (!hasTrigger) {
-    warnings.push('Workflow has no trigger node - it can only be executed manually');
+    warnings.push(
+      'Workflow has no trigger node - it can only be executed manually',
+    );
   }
 
   // 6. Check for orphan nodes (nodes with no incoming connections, except triggers)
@@ -138,7 +151,9 @@ export function validateWorkflow(workflow: N8nWorkflow): WorkflowValidationResul
       !node.name.toLowerCase().includes('start') &&
       !nodesWithIncoming.has(node.name)
     ) {
-      warnings.push(`Node "${node.name}" has no incoming connections - it will never execute`);
+      warnings.push(
+        `Node "${node.name}" has no incoming connections - it will never execute`,
+      );
     }
   }
 
@@ -174,7 +189,9 @@ export function validateNodeParameters(workflow: N8nWorkflow): string[] {
       const value = node.parameters?.[prop.name];
       if (value === undefined || value === null || value === '') {
         const label = prop.displayName || prop.name;
-        warnings.push(`Node "${node.name}": missing required parameter "${label}"`);
+        warnings.push(
+          `Node "${node.name}": missing required parameter "${label}"`,
+        );
       }
     }
   }
@@ -195,13 +212,17 @@ export function validateNodeParameters(workflow: N8nWorkflow): string[] {
  */
 function buildEffectiveParams(
   nodeDef: NodeDefinition,
-  node: { typeVersion: number; parameters: Record<string, unknown> }
+  node: { typeVersion: number; parameters: Record<string, unknown> },
 ): Record<string, unknown> {
   const effective: Record<string, unknown> = { '@version': node.typeVersion };
 
   // Pass 1: always-visible properties (no displayOptions)
   for (const prop of nodeDef.properties) {
-    if (!prop.displayOptions && !(prop.name in node.parameters) && prop.default !== undefined) {
+    if (
+      !prop.displayOptions &&
+      !(prop.name in node.parameters) &&
+      prop.default !== undefined
+    ) {
       effective[prop.name] = prop.default;
     }
   }
@@ -230,7 +251,10 @@ function buildEffectiveParams(
  * - `show`: ALL conditions must match for visible
  * - `hide`: ANY match hides the property
  */
-function isPropertyVisible(prop: NodeProperty, parameters: Record<string, unknown>): boolean {
+function isPropertyVisible(
+  prop: NodeProperty,
+  parameters: Record<string, unknown>,
+): boolean {
   if (!prop.displayOptions) {
     return true;
   }
@@ -307,7 +331,7 @@ export function validateNodeInputs(workflow: N8nWorkflow): string[] {
 
     if (expectedInputs > 0 && actualInputs < expectedInputs) {
       warnings.push(
-        `Node "${node.name}" expects ${expectedInputs} input(s) but has ${actualInputs}`
+        `Node "${node.name}" expects ${expectedInputs} input(s) but has ${actualInputs}`,
       );
     }
   }
@@ -327,7 +351,7 @@ export function positionNodes(workflow: N8nWorkflow): N8nWorkflow {
       Array.isArray(node.position) &&
       node.position.length === 2 &&
       typeof node.position[0] === 'number' &&
-      typeof node.position[1] === 'number'
+      typeof node.position[1] === 'number',
   );
 
   if (allHavePositions) {
@@ -352,7 +376,9 @@ export function normalizeTriggerSimpleParam(workflow: N8nWorkflow): void {
     }
 
     const def = getNodeDefinition(node.type);
-    const hasSimple = def?.properties?.some((p: { name: string }) => p.name === 'simple');
+    const hasSimple = def?.properties?.some(
+      (p: { name: string }) => p.name === 'simple',
+    );
     if (hasSimple) {
       node.parameters = { ...node.parameters, simple: true };
     }
@@ -363,14 +389,20 @@ export function normalizeTriggerSimpleParam(workflow: N8nWorkflow): void {
  * Validates that $json expressions reference fields that exist in upstream node output schemas.
  * Returns a list of invalid references that need correction.
  */
-export function validateOutputReferences(workflow: N8nWorkflow): OutputRefValidation[] {
+export function validateOutputReferences(
+  workflow: N8nWorkflow,
+): OutputRefValidation[] {
   const invalidRefs: OutputRefValidation[] = [];
   const upstreamMap = buildUpstreamMap(workflow);
   const nodeMap = new Map(workflow.nodes.map((n) => [n.name, n]));
 
   const schemaCache = new Map<
     string,
-    { schema: SchemaContent; fields: string[]; node: N8nWorkflow['nodes'][0] } | null
+    {
+      schema: SchemaContent;
+      fields: string[];
+      node: N8nWorkflow['nodes'][0];
+    } | null
   >();
 
   function getSourceSchema(sourceName: string) {
@@ -385,13 +417,20 @@ export function validateOutputReferences(workflow: N8nWorkflow): OutputRefValida
     const resource = (sourceNode.parameters?.resource as string) || '';
     const operation = (sourceNode.parameters?.operation as string) || '';
     const schemaResult = isTriggerNode(sourceNode.type)
-      ? loadTriggerOutputSchema(sourceNode.type, sourceNode.parameters as Record<string, unknown>)
+      ? loadTriggerOutputSchema(
+        sourceNode.type,
+          sourceNode.parameters as Record<string, unknown>,
+      )
       : loadOutputSchema(sourceNode.type, resource, operation);
     if (!schemaResult) {
       schemaCache.set(sourceName, null);
       return null;
     }
-    const entry = { schema: schemaResult.schema, fields: schemaResult.fields, node: sourceNode };
+    const entry = {
+      schema: schemaResult.schema,
+      fields: schemaResult.fields,
+      node: sourceNode,
+    };
     schemaCache.set(sourceName, entry);
     return entry;
   }
@@ -432,7 +471,9 @@ export function validateOutputReferences(workflow: N8nWorkflow): OutputRefValida
           sourceNodeType: cached.node.type,
           resource,
           operation,
-          availableFields: getAllFieldPathsTyped(cached.schema).map((f) => `${f.path} (${f.type})`),
+          availableFields: getAllFieldPathsTyped(cached.schema).map(
+            (f) => `${f.path} (${f.type})`,
+          ),
         });
       }
     }
@@ -457,18 +498,20 @@ export function correctOptionParameters(workflow: N8nWorkflow): number {
     if (node.type !== nodeDef.name) {
       logger.warn(
         { src: 'plugin:n8n-workflow:correctOptions' },
-        `Node "${node.name}": type "${node.type}" → "${nodeDef.name}"`
+        `Node "${node.name}": type "${node.type}" → "${nodeDef.name}"`,
       );
       node.type = nodeDef.name;
       corrections++;
     }
 
-    const validVersions = Array.isArray(nodeDef.version) ? nodeDef.version : [nodeDef.version];
+    const validVersions = Array.isArray(nodeDef.version)
+      ? nodeDef.version
+      : [nodeDef.version];
     if (node.typeVersion && !validVersions.includes(node.typeVersion)) {
       const maxVersion = Math.max(...validVersions);
       logger.warn(
         { src: 'plugin:n8n-workflow:correctOptions' },
-        `Node "${node.name}": typeVersion ${node.typeVersion} → ${maxVersion}`
+        `Node "${node.name}": typeVersion ${node.typeVersion} → ${maxVersion}`,
       );
       node.typeVersion = maxVersion;
       corrections++;
@@ -503,7 +546,10 @@ export function correctOptionParameters(workflow: N8nWorkflow): number {
   return corrections;
 }
 
-function fixOptionValue(node: N8nWorkflow['nodes'][0], prop: NodeProperty): number {
+function fixOptionValue(
+  node: N8nWorkflow['nodes'][0],
+  prop: NodeProperty,
+): number {
   const currentValue = node.parameters[prop.name];
   if (currentValue === undefined) {
     return 0;
@@ -515,13 +561,14 @@ function fixOptionValue(node: N8nWorkflow['nodes'][0], prop: NodeProperty): numb
   }
 
   const corrected =
-    prop.default !== undefined && allowedValues.includes(prop.default as string | number | boolean)
+    prop.default !== undefined &&
+    allowedValues.includes(prop.default as string | number | boolean)
       ? prop.default
       : allowedValues[0];
 
   logger.warn(
     { src: 'plugin:n8n-workflow:correctOptions' },
-    `Node "${node.name}": ${prop.name} "${currentValue}" → "${corrected}"`
+    `Node "${node.name}": ${prop.name} "${currentValue}" → "${corrected}"`,
   );
   node.parameters[prop.name] = corrected;
   return 1;
@@ -581,7 +628,7 @@ function buildNodeGraph(workflow: N8nWorkflow): Map<string, string[]> {
 
 function positionByLevels(
   nodes: N8nWorkflow['nodes'],
-  graph: Map<string, string[]>
+  graph: Map<string, string[]>,
 ): N8nWorkflow['nodes'] {
   // Find trigger/start nodes (nodes with no incoming connections)
   const incomingCount = new Map<string, number>();
@@ -595,7 +642,9 @@ function positionByLevels(
     }
   }
 
-  const triggerNodes = nodes.filter((node) => incomingCount.get(node.name) === 0);
+  const triggerNodes = nodes.filter(
+    (node) => incomingCount.get(node.name) === 0,
+  );
 
   // Organize into levels
   const levels: string[][] = [];
@@ -681,7 +730,9 @@ export interface UnknownParamDetection {
   propertyDefs: NodeProperty[];
 }
 
-export function detectUnknownParameters(workflow: N8nWorkflow): UnknownParamDetection[] {
+export function detectUnknownParameters(
+  workflow: N8nWorkflow,
+): UnknownParamDetection[] {
   const detections: UnknownParamDetection[] = [];
 
   for (const node of workflow.nodes) {
@@ -714,7 +765,9 @@ export function detectUnknownParameters(workflow: N8nWorkflow): UnknownParamDete
 
     // Provide simplified visible properties for the LLM correction prompt
     const simplified = simplifyNodeForLLM(nodeDef);
-    const visibleSimplified = simplified.properties.filter((p) => visibleNames.has(p.name));
+    const visibleSimplified = simplified.properties.filter((p) =>
+      visibleNames.has(p.name),
+    );
 
     detections.push({
       nodeName: node.name,
@@ -759,7 +812,7 @@ export function detectUnknownParameters(workflow: N8nWorkflow): UnknownParamDete
 export function injectMissingCredentialBlocks(
   workflow: N8nWorkflow,
   relevantNodes: NodeDefinition[],
-  runtimeContext: RuntimeContext | undefined
+  runtimeContext: RuntimeContext | undefined,
 ): number {
   if (!runtimeContext?.supportedCredentials?.length) {
     return 0;
@@ -804,8 +857,9 @@ export function injectMissingCredentialBlocks(
       if (!supportedForType.has(c.name)) {
         return false;
       }
-      const showOpts = (c.displayOptions as { show?: { authentication?: string[] } } | undefined)
-        ?.show;
+      const showOpts = (
+        c.displayOptions as { show?: { authentication?: string[] } } | undefined
+      )?.show;
       if (showOpts?.authentication && showOpts.authentication.length > 0) {
         return auth ? showOpts.authentication.includes(auth) : false;
       }
@@ -829,7 +883,7 @@ export function injectMissingCredentialBlocks(
         nodeType: node.type,
         credType: candidate.name,
       },
-      'Injected missing credentials block on node (LLM omitted it)'
+      'Injected missing credentials block on node (LLM omitted it)',
     );
     injected++;
   }
@@ -851,12 +905,20 @@ function prefixExpressions(obj: Record<string, unknown>): number {
   let count = 0;
   for (const key of Object.keys(obj)) {
     const value = obj[key];
-    if (typeof value === 'string' && value.includes('{{') && !value.startsWith('=')) {
+    if (
+      typeof value === 'string' &&
+      value.includes('{{') &&
+      !value.startsWith('=')
+    ) {
       obj[key] = `=${value}`;
       count++;
     } else if (Array.isArray(value)) {
       for (let i = 0; i < value.length; i++) {
-        if (typeof value[i] === 'string' && value[i].includes('{{') && !value[i].startsWith('=')) {
+        if (
+          typeof value[i] === 'string' &&
+          value[i].includes('{{') &&
+          !value[i].startsWith('=')
+        ) {
           value[i] = `=${value[i]}`;
           count++;
         } else if (typeof value[i] === 'object' && value[i] !== null) {

@@ -11,33 +11,35 @@ const apiCalls: Array<{
 const tickCalls: Array<Record<string, unknown>> = [];
 
 vi.mock("@elizaos/app-lifeops/routes/lifeops-routes", () => ({
-  handleLifeOpsRoutes: vi.fn(async (ctx: {
-    method: string;
-    pathname: string;
-    url: URL;
-    req: unknown;
-    res: unknown;
-    json: (res: unknown, data: unknown, status?: number) => void;
-    readJsonBody: () => Promise<unknown>;
-  }) => {
-    const body = await ctx.readJsonBody();
-    apiCalls.push({
-      method: ctx.method,
-      path: `${ctx.pathname}${ctx.url.search}`,
-      body,
-    });
-    ctx.json(
-      ctx.res,
-      {
-        ok: true,
+  handleLifeOpsRoutes: vi.fn(
+    async (ctx: {
+      method: string;
+      pathname: string;
+      url: URL;
+      req: unknown;
+      res: unknown;
+      json: (res: unknown, data: unknown, status?: number) => void;
+      readJsonBody: () => Promise<unknown>;
+    }) => {
+      const body = await ctx.readJsonBody();
+      apiCalls.push({
         method: ctx.method,
         path: `${ctx.pathname}${ctx.url.search}`,
         body,
-      },
-      201,
-    );
-    return true;
-  }),
+      });
+      ctx.json(
+        ctx.res,
+        {
+          ok: true,
+          method: ctx.method,
+          path: `${ctx.pathname}${ctx.url.search}`,
+          body,
+        },
+        201,
+      );
+      return true;
+    },
+  ),
 }));
 
 vi.mock("@elizaos/app-lifeops/lifeops/runtime", () => {
@@ -171,11 +173,17 @@ describe("scenario-runner executor", () => {
               if (status !== 200) {
                 return `expected 200, saw ${status}`;
               }
-              const record = body as { success?: boolean; workflowRuns?: unknown[] };
+              const record = body as {
+                success?: boolean;
+                workflowRuns?: unknown[];
+              };
               if (record.success !== true) {
                 return "expected success=true";
               }
-              if (!Array.isArray(record.workflowRuns) || record.workflowRuns.length !== 1) {
+              if (
+                !Array.isArray(record.workflowRuns) ||
+                record.workflowRuns.length !== 1
+              ) {
                 return "expected one workflow run";
               }
               return undefined;

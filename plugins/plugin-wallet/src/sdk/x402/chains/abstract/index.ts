@@ -12,8 +12,8 @@
  *   - Abstract Testnet: 11124
  */
 
-import type { Address, Hex, WalletClient } from 'viem';
-import { encodeAbiParameters, parseAbiParameters } from 'viem';
+import type { Address, Hex, WalletClient } from "viem";
+import { encodeAbiParameters, parseAbiParameters } from "viem";
 
 // ─── Abstract Chain Constants ────────────────────────────────────────────────
 
@@ -24,32 +24,32 @@ export const ABSTRACT_CHAIN_IDS = {
 
 /** USDC on Abstract Mainnet (official Bridged USDC) */
 export const ABSTRACT_USDC: Record<number, Address> = {
-  2741: '0x84A71ccD554Cc1b02749b35d22F684CC8ec987e1', // Abstract Mainnet USDC
-  11124: '0x3eBdeaA0DB3FfDe96E7a0DBBAFEC961FC50F725f', // Abstract Testnet USDC
+  2741: "0x84A71ccD554Cc1b02749b35d22F684CC8ec987e1", // Abstract Mainnet USDC
+  11124: "0x3eBdeaA0DB3FfDe96E7a0DBBAFEC961FC50F725f", // Abstract Testnet USDC
 };
 
 /** Abstract's approved payment facilitator contracts */
 export const ABSTRACT_APPROVED_FACILITATORS: Address[] = [
-  '0x5FbDB2315678afecb367f032d93F642f64180aa3', // Abstract official facilitator (mainnet)
+  "0x5FbDB2315678afecb367f032d93F642f64180aa3", // Abstract official facilitator (mainnet)
 ];
 
 // ─── EIP-712 Types for Abstract Delegated Payment ───────────────────────────
 
 const ABSTRACT_PERMIT_DOMAIN = {
-  name: 'AbstractDelegatedPayment',
-  version: '1',
+  name: "AbstractDelegatedPayment",
+  version: "1",
   chainId: ABSTRACT_CHAIN_IDS.mainnet,
 } as const;
 
 const ABSTRACT_PERMIT_TYPES = {
   DelegatedPaymentPermit: [
-    { name: 'facilitator', type: 'address' },
-    { name: 'token', type: 'address' },
-    { name: 'amount', type: 'uint256' },
-    { name: 'payTo', type: 'address' },
-    { name: 'nonce', type: 'uint256' },
-    { name: 'deadline', type: 'uint256' },
-    { name: 'resource', type: 'string' },
+    { name: "facilitator", type: "address" },
+    { name: "token", type: "address" },
+    { name: "amount", type: "uint256" },
+    { name: "payTo", type: "address" },
+    { name: "nonce", type: "uint256" },
+    { name: "deadline", type: "uint256" },
+    { name: "resource", type: "string" },
   ],
 } as const;
 
@@ -118,7 +118,7 @@ export class AbstractDelegatedFacilitatorAdapter {
   constructor(
     walletClient: WalletClient,
     config: AbstractDelegatedPaymentConfig,
-    chainId: number = ABSTRACT_CHAIN_IDS.mainnet
+    chainId: number = ABSTRACT_CHAIN_IDS.mainnet,
   ) {
     this.walletClient = walletClient;
     this.chainId = chainId;
@@ -129,18 +129,21 @@ export class AbstractDelegatedFacilitatorAdapter {
       ...(config.userAllowlist ?? []),
     ];
     const isApproved = approved.some(
-      (a) => a.toLowerCase() === config.facilitatorAddress.toLowerCase()
+      (a) => a.toLowerCase() === config.facilitatorAddress.toLowerCase(),
     );
     if (!isApproved) {
       throw new Error(
         `Facilitator ${config.facilitatorAddress} is not on the Abstract approved list. ` +
-        `Pass it in userAllowlist to explicitly allow it.`
+          `Pass it in userAllowlist to explicitly allow it.`,
       );
     }
 
     this.config = {
       facilitatorAddress: config.facilitatorAddress,
-      token: config.token ?? ABSTRACT_USDC[chainId] ?? ABSTRACT_USDC[ABSTRACT_CHAIN_IDS.mainnet],
+      token:
+        config.token ??
+        ABSTRACT_USDC[chainId] ??
+        ABSTRACT_USDC[ABSTRACT_CHAIN_IDS.mainnet],
       deadlineSeconds: config.deadlineSeconds ?? 300,
       userAllowlist: config.userAllowlist ?? [],
     };
@@ -156,7 +159,9 @@ export class AbstractDelegatedFacilitatorAdapter {
     nonce: bigint;
     resource: string;
   }): Promise<AbstractPaymentResult> {
-    const deadline = BigInt(Math.floor(Date.now() / 1000) + this.config.deadlineSeconds);
+    const deadline = BigInt(
+      Math.floor(Date.now() / 1000) + this.config.deadlineSeconds,
+    );
 
     const permit: DelegatedPaymentPermit = {
       facilitator: this.config.facilitatorAddress,
@@ -174,19 +179,21 @@ export class AbstractDelegatedFacilitatorAdapter {
     };
 
     const account = this.walletClient.account;
-    if (!account) throw new Error('WalletClient has no account attached');
+    if (!account) throw new Error("WalletClient has no account attached");
 
     const signature = await this.walletClient.signTypedData({
       account,
       domain,
       types: ABSTRACT_PERMIT_TYPES,
-      primaryType: 'DelegatedPaymentPermit',
+      primaryType: "DelegatedPaymentPermit",
       message: permit,
     });
 
     // Encode the permit for submission to the facilitator contract
     const permitData = encodeAbiParameters(
-      parseAbiParameters('address facilitator, address token, uint256 amount, address payTo, uint256 nonce, uint256 deadline, string resource, bytes signature'),
+      parseAbiParameters(
+        "address facilitator, address token, uint256 amount, address payTo, uint256 nonce, uint256 deadline, string resource, bytes signature",
+      ),
       [
         permit.facilitator,
         permit.token,
@@ -196,7 +203,7 @@ export class AbstractDelegatedFacilitatorAdapter {
         permit.deadline,
         permit.resource,
         signature,
-      ]
+      ],
     );
 
     return {
@@ -220,7 +227,7 @@ export class AbstractDelegatedFacilitatorAdapter {
     const result = await this.signPaymentPermit(params);
 
     return {
-      scheme: 'abstract-delegated',
+      scheme: "abstract-delegated",
       chainId: result.chainId,
       facilitator: result.permit.facilitator,
       token: result.permit.token,
@@ -252,22 +259,22 @@ export class AbstractDelegatedFacilitatorAdapter {
  * These route through AbstractDelegatedFacilitatorAdapter for x402 payments.
  */
 export const ABSTRACT_SUPPORTED_CHAINS = {
-  'abstract:2741': {
+  "abstract:2741": {
     chainId: ABSTRACT_CHAIN_IDS.mainnet,
-    name: 'Abstract Mainnet',
-    rpcUrl: 'https://api.mainnet.abs.xyz',
-    nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-    blockExplorer: 'https://explorer.mainnet.abs.xyz',
-    x402Model: 'delegated-facilitator' as const,
+    name: "Abstract Mainnet",
+    rpcUrl: "https://api.mainnet.abs.xyz",
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+    blockExplorer: "https://explorer.mainnet.abs.xyz",
+    x402Model: "delegated-facilitator" as const,
     usdc: ABSTRACT_USDC[ABSTRACT_CHAIN_IDS.mainnet],
   },
-  'abstract-testnet:11124': {
+  "abstract-testnet:11124": {
     chainId: ABSTRACT_CHAIN_IDS.testnet,
-    name: 'Abstract Testnet',
-    rpcUrl: 'https://api.testnet.abs.xyz',
-    nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-    blockExplorer: 'https://explorer.testnet.abs.xyz',
-    x402Model: 'delegated-facilitator' as const,
+    name: "Abstract Testnet",
+    rpcUrl: "https://api.testnet.abs.xyz",
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+    blockExplorer: "https://explorer.testnet.abs.xyz",
+    x402Model: "delegated-facilitator" as const,
     usdc: ABSTRACT_USDC[ABSTRACT_CHAIN_IDS.testnet],
   },
 } as const;

@@ -19,7 +19,11 @@ export {
 } from './generation';
 
 // Workflow validation & positioning
-export { validateWorkflow, positionNodes, validateOutputReferences } from './workflow';
+export {
+  validateWorkflow,
+  positionNodes,
+  validateOutputReferences,
+} from './workflow';
 
 // Output schema utilities
 export {

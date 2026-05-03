@@ -1,8 +1,6 @@
-
 /**
  * Hero section: heading and subtitle only.
  */
-
 
 export function HeroChatInput() {
   return (

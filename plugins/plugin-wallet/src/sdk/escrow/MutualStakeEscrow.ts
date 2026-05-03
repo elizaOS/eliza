@@ -3,100 +3,157 @@ import {
   type Hex,
   type PublicClient,
   type WalletClient,
-} from 'viem';
+} from "viem";
 import type {
   CreateEscrowParams,
   EscrowCreated,
   EscrowDetails,
   TaskStatus,
   TxResult,
-} from './types.js';
-import { resolveVerifierAddress, encodeOptimisticVerifierData } from './verifiers.js';
+} from "./types.js";
+import {
+  resolveVerifierAddress,
+  encodeOptimisticVerifierData,
+} from "./verifiers.js";
 
 // ─── ABIs ────────────────────────────────────────────────────────────────────
 
 const StakeVaultFactoryAbi = [
   {
-    name: 'createEscrow',
-    type: 'function',
-    stateMutability: 'nonpayable',
+    name: "createEscrow",
+    type: "function",
+    stateMutability: "nonpayable",
     inputs: [
-      { name: '_buyer', type: 'address' },
-      { name: '_seller', type: 'address' },
-      { name: '_token', type: 'address' },
-      { name: '_paymentAmount', type: 'uint256' },
-      { name: '_buyerStake', type: 'uint256' },
-      { name: '_sellerStake', type: 'uint256' },
-      { name: '_verifier', type: 'address' },
-      { name: '_verifierData', type: 'bytes' },
-      { name: '_deadline', type: 'uint256' },
-      { name: '_challengeWindow', type: 'uint256' },
+      { name: "_buyer", type: "address" },
+      { name: "_seller", type: "address" },
+      { name: "_token", type: "address" },
+      { name: "_paymentAmount", type: "uint256" },
+      { name: "_buyerStake", type: "uint256" },
+      { name: "_sellerStake", type: "uint256" },
+      { name: "_verifier", type: "address" },
+      { name: "_verifierData", type: "bytes" },
+      { name: "_deadline", type: "uint256" },
+      { name: "_challengeWindow", type: "uint256" },
     ],
-    outputs: [{ name: 'vault', type: 'address' }],
+    outputs: [{ name: "vault", type: "address" }],
   },
   {
-    name: 'VaultCreated',
-    type: 'event',
+    name: "VaultCreated",
+    type: "event",
     inputs: [
-      { name: 'vault', type: 'address', indexed: true },
-      { name: 'buyer', type: 'address', indexed: true },
-      { name: 'seller', type: 'address', indexed: true },
-      { name: 'token', type: 'address', indexed: false },
-      { name: 'paymentAmount', type: 'uint256', indexed: false },
-      { name: 'buyerStake', type: 'uint256', indexed: false },
-      { name: 'sellerStake', type: 'uint256', indexed: false },
-      { name: 'verifier', type: 'address', indexed: false },
-      { name: 'deadline', type: 'uint256', indexed: false },
+      { name: "vault", type: "address", indexed: true },
+      { name: "buyer", type: "address", indexed: true },
+      { name: "seller", type: "address", indexed: true },
+      { name: "token", type: "address", indexed: false },
+      { name: "paymentAmount", type: "uint256", indexed: false },
+      { name: "buyerStake", type: "uint256", indexed: false },
+      { name: "sellerStake", type: "uint256", indexed: false },
+      { name: "verifier", type: "address", indexed: false },
+      { name: "deadline", type: "uint256", indexed: false },
     ],
   },
 ] as const;
 
 const StakeVaultAbi = [
-  { name: 'fund', type: 'function', stateMutability: 'nonpayable', inputs: [], outputs: [] },
-  { name: 'accept', type: 'function', stateMutability: 'nonpayable', inputs: [], outputs: [] },
-  { name: 'fulfill', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'proof', type: 'bytes' }], outputs: [] },
-  { name: 'verify', type: 'function', stateMutability: 'nonpayable', inputs: [], outputs: [] },
-  { name: 'challenge', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'evidence', type: 'bytes' }], outputs: [] },
-  { name: 'resolve', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'sellerWins', type: 'bool' }], outputs: [] },
-  { name: 'cancel', type: 'function', stateMutability: 'nonpayable', inputs: [], outputs: [] },
-  { name: 'reclaimExpired', type: 'function', stateMutability: 'nonpayable', inputs: [], outputs: [] },
   {
-    name: 'getEscrowDetails',
-    type: 'function',
-    stateMutability: 'view',
+    name: "fund",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [],
+    outputs: [],
+  },
+  {
+    name: "accept",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [],
+    outputs: [],
+  },
+  {
+    name: "fulfill",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "proof", type: "bytes" }],
+    outputs: [],
+  },
+  {
+    name: "verify",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [],
+    outputs: [],
+  },
+  {
+    name: "challenge",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "evidence", type: "bytes" }],
+    outputs: [],
+  },
+  {
+    name: "resolve",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "sellerWins", type: "bool" }],
+    outputs: [],
+  },
+  {
+    name: "cancel",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [],
+    outputs: [],
+  },
+  {
+    name: "reclaimExpired",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [],
+    outputs: [],
+  },
+  {
+    name: "getEscrowDetails",
+    type: "function",
+    stateMutability: "view",
     inputs: [],
     outputs: [
-      { name: '_buyer', type: 'address' },
-      { name: '_seller', type: 'address' },
-      { name: '_token', type: 'address' },
-      { name: '_paymentAmount', type: 'uint256' },
-      { name: '_buyerStake', type: 'uint256' },
-      { name: '_sellerStake', type: 'uint256' },
-      { name: '_verifier', type: 'address' },
-      { name: '_deadline', type: 'uint256' },
-      { name: '_challengeWindow', type: 'uint256' },
-      { name: '_status', type: 'uint8' },
-      { name: '_fulfilledAt', type: 'uint256' },
+      { name: "_buyer", type: "address" },
+      { name: "_seller", type: "address" },
+      { name: "_token", type: "address" },
+      { name: "_paymentAmount", type: "uint256" },
+      { name: "_buyerStake", type: "uint256" },
+      { name: "_sellerStake", type: "uint256" },
+      { name: "_verifier", type: "address" },
+      { name: "_deadline", type: "uint256" },
+      { name: "_challengeWindow", type: "uint256" },
+      { name: "_status", type: "uint8" },
+      { name: "_fulfilledAt", type: "uint256" },
     ],
   },
-  { name: 'status', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint8' }] },
+  {
+    name: "status",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint8" }],
+  },
 ] as const;
 
 const ERC20ApproveAbi = [
   {
-    name: 'approve',
-    type: 'function',
-    stateMutability: 'nonpayable',
+    name: "approve",
+    type: "function",
+    stateMutability: "nonpayable",
     inputs: [
-      { name: 'spender', type: 'address' },
-      { name: 'amount', type: 'uint256' },
+      { name: "spender", type: "address" },
+      { name: "amount", type: "uint256" },
     ],
-    outputs: [{ name: '', type: 'bool' }],
+    outputs: [{ name: "", type: "bool" }],
   },
 ] as const;
 
 /** Base USDC address */
-const BASE_USDC: Address = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+const BASE_USDC: Address = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 
 /**
  * MutualStakeEscrow — SDK class for creating and managing mutual-stake escrow vaults
@@ -129,16 +186,19 @@ export class MutualStakeEscrow {
    */
   async create(params: CreateEscrowParams): Promise<EscrowCreated> {
     const account = this.walletClient.account;
-    if (!account) throw new Error('Wallet client must have an account');
+    if (!account) throw new Error("Wallet client must have an account");
 
     const token = params.token ?? BASE_USDC;
-    const verifierAddress = resolveVerifierAddress(params.verifier, this.chainId);
+    const verifierAddress = resolveVerifierAddress(
+      params.verifier,
+      this.chainId,
+    );
     const verifierData = params.verifierData ?? encodeOptimisticVerifierData();
 
     const txHash = await this.walletClient.writeContract({
       address: this.factoryAddress,
       abi: StakeVaultFactoryAbi,
-      functionName: 'createEscrow',
+      functionName: "createEscrow",
       args: [
         account.address,
         params.seller,
@@ -159,10 +219,10 @@ export class MutualStakeEscrow {
 
     // Read vault address from return data via simulation
     // (VaultCreated event parsing reserved for future use)
-    const vaultAddress = await this.publicClient.readContract({
+    const vaultAddress = (await this.publicClient.readContract({
       address: this.factoryAddress,
       abi: StakeVaultFactoryAbi,
-      functionName: 'createEscrow',
+      functionName: "createEscrow",
       args: [
         account.address,
         params.seller,
@@ -175,7 +235,7 @@ export class MutualStakeEscrow {
         BigInt(params.deadline),
         BigInt(params.challengeWindow),
       ],
-    }) as Address;
+    })) as Address;
 
     return { address: vaultAddress, txHash };
   }
@@ -187,7 +247,7 @@ export class MutualStakeEscrow {
    */
   async fund(vaultAddress: Address, approveAmount: bigint): Promise<TxResult> {
     const account = this.walletClient.account;
-    if (!account) throw new Error('Wallet client must have an account');
+    if (!account) throw new Error("Wallet client must have an account");
 
     const details = await this.getDetails(vaultAddress);
 
@@ -195,7 +255,7 @@ export class MutualStakeEscrow {
     await this.walletClient.writeContract({
       address: details.token,
       abi: ERC20ApproveAbi,
-      functionName: 'approve',
+      functionName: "approve",
       args: [vaultAddress, approveAmount],
       account,
       chain: this.walletClient.chain,
@@ -204,7 +264,7 @@ export class MutualStakeEscrow {
     const txHash = await this.walletClient.writeContract({
       address: vaultAddress,
       abi: StakeVaultAbi,
-      functionName: 'fund',
+      functionName: "fund",
       args: [],
       account,
       chain: this.walletClient.chain,
@@ -219,7 +279,7 @@ export class MutualStakeEscrow {
    */
   async accept(vaultAddress: Address): Promise<TxResult> {
     const account = this.walletClient.account;
-    if (!account) throw new Error('Wallet client must have an account');
+    if (!account) throw new Error("Wallet client must have an account");
 
     const details = await this.getDetails(vaultAddress);
 
@@ -227,7 +287,7 @@ export class MutualStakeEscrow {
     await this.walletClient.writeContract({
       address: details.token,
       abi: ERC20ApproveAbi,
-      functionName: 'approve',
+      functionName: "approve",
       args: [vaultAddress, details.sellerStake],
       account,
       chain: this.walletClient.chain,
@@ -236,7 +296,7 @@ export class MutualStakeEscrow {
     const txHash = await this.walletClient.writeContract({
       address: vaultAddress,
       abi: StakeVaultAbi,
-      functionName: 'accept',
+      functionName: "accept",
       args: [],
       account,
       chain: this.walletClient.chain,
@@ -252,12 +312,12 @@ export class MutualStakeEscrow {
    */
   async fulfill(vaultAddress: Address, proof: Hex): Promise<TxResult> {
     const account = this.walletClient.account;
-    if (!account) throw new Error('Wallet client must have an account');
+    if (!account) throw new Error("Wallet client must have an account");
 
     const txHash = await this.walletClient.writeContract({
       address: vaultAddress,
       abi: StakeVaultAbi,
-      functionName: 'fulfill',
+      functionName: "fulfill",
       args: [proof],
       account,
       chain: this.walletClient.chain,
@@ -272,12 +332,12 @@ export class MutualStakeEscrow {
    */
   async verify(vaultAddress: Address): Promise<TxResult> {
     const account = this.walletClient.account;
-    if (!account) throw new Error('Wallet client must have an account');
+    if (!account) throw new Error("Wallet client must have an account");
 
     const txHash = await this.walletClient.writeContract({
       address: vaultAddress,
       abi: StakeVaultAbi,
-      functionName: 'verify',
+      functionName: "verify",
       args: [],
       account,
       chain: this.walletClient.chain,
@@ -293,12 +353,12 @@ export class MutualStakeEscrow {
    */
   async challenge(vaultAddress: Address, evidence: Hex): Promise<TxResult> {
     const account = this.walletClient.account;
-    if (!account) throw new Error('Wallet client must have an account');
+    if (!account) throw new Error("Wallet client must have an account");
 
     const txHash = await this.walletClient.writeContract({
       address: vaultAddress,
       abi: StakeVaultAbi,
-      functionName: 'challenge',
+      functionName: "challenge",
       args: [evidence],
       account,
       chain: this.walletClient.chain,
@@ -313,12 +373,12 @@ export class MutualStakeEscrow {
    */
   async cancel(vaultAddress: Address): Promise<TxResult> {
     const account = this.walletClient.account;
-    if (!account) throw new Error('Wallet client must have an account');
+    if (!account) throw new Error("Wallet client must have an account");
 
     const txHash = await this.walletClient.writeContract({
       address: vaultAddress,
       abi: StakeVaultAbi,
-      functionName: 'cancel',
+      functionName: "cancel",
       args: [],
       account,
       chain: this.walletClient.chain,
@@ -333,12 +393,12 @@ export class MutualStakeEscrow {
    */
   async reclaimExpired(vaultAddress: Address): Promise<TxResult> {
     const account = this.walletClient.account;
-    if (!account) throw new Error('Wallet client must have an account');
+    if (!account) throw new Error("Wallet client must have an account");
 
     const txHash = await this.walletClient.writeContract({
       address: vaultAddress,
       abi: StakeVaultAbi,
-      functionName: 'reclaimExpired',
+      functionName: "reclaimExpired",
       args: [],
       account,
       chain: this.walletClient.chain,
@@ -355,11 +415,35 @@ export class MutualStakeEscrow {
     const result = await this.publicClient.readContract({
       address: vaultAddress,
       abi: StakeVaultAbi,
-      functionName: 'getEscrowDetails',
+      functionName: "getEscrowDetails",
       args: [],
     });
 
-    const [buyer, seller, token, paymentAmount, buyerStake, sellerStake, verifier, deadline, challengeWindow, statusNum, fulfilledAt] = result as [Address, Address, Address, bigint, bigint, bigint, Address, bigint, bigint, number, bigint];
+    const [
+      buyer,
+      seller,
+      token,
+      paymentAmount,
+      buyerStake,
+      sellerStake,
+      verifier,
+      deadline,
+      challengeWindow,
+      statusNum,
+      fulfilledAt,
+    ] = result as [
+      Address,
+      Address,
+      Address,
+      bigint,
+      bigint,
+      bigint,
+      Address,
+      bigint,
+      bigint,
+      number,
+      bigint,
+    ];
 
     return {
       buyer,
@@ -384,7 +468,7 @@ export class MutualStakeEscrow {
     const result = await this.publicClient.readContract({
       address: vaultAddress,
       abi: StakeVaultAbi,
-      functionName: 'status',
+      functionName: "status",
       args: [],
     });
 

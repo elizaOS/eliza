@@ -10,7 +10,7 @@ export function useTypingPlaceholder(
   typingSpeed = 60,
   deletingSpeed = 20,
   pauseAfterTyping = 5000,
-  pauseAfterDeleting = 500
+  pauseAfterDeleting = 500,
 ): string {
   const [placeholder, setPlaceholder] = useState("");
   const [sentenceIndex, setSentenceIndex] = useState(0);

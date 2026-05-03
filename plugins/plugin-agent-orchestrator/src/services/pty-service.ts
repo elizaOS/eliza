@@ -1011,7 +1011,8 @@ export class PTYService {
       sessionId,
       {
         ...options,
-        env: Object.keys(mergedSpawnEnv).length > 0 ? mergedSpawnEnv : undefined,
+        env:
+          Object.keys(mergedSpawnEnv).length > 0 ? mergedSpawnEnv : undefined,
         agentType: resolvedAgentType,
         initialTask: resolvedInitialTask,
         approvalPreset: effectiveApprovalPreset,

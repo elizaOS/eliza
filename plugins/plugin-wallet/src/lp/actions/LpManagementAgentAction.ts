@@ -1,5 +1,11 @@
 // @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
-import type { Action, ActionExample, IAgentRuntime, Memory, State } from "@elizaos/core";
+import type {
+  Action,
+  ActionExample,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
 import type {
   IDexInteractionService,
   IUserLpProfileService,
@@ -17,7 +23,9 @@ const formatPositions = (positions: LpPositionDetails[]): string => {
   let response = "Your LP Positions:\n";
   positions.forEach((pos, index) => {
     const underlying = pos.underlyingTokens
-      .map((t: TokenBalance) => `${t.uiAmount?.toFixed(4) || "N/A"} ${t.symbol}`)
+      .map(
+        (t: TokenBalance) => `${t.uiAmount?.toFixed(4) || "N/A"} ${t.symbol}`,
+      )
       .join(" & ");
     response +=
       `\n[${index + 1}] **${pos.poolId}** on **${pos.dex.toUpperCase()}**\n` +
@@ -51,7 +59,11 @@ const parseIntentFromMessage = (text: string): LpActionParams | null => {
     lowerText.includes("narrow range") ||
     lowerText.includes("tight range")
   ) {
-    if (lowerText.includes("create") || lowerText.includes("open") || lowerText.includes("add")) {
+    if (
+      lowerText.includes("create") ||
+      lowerText.includes("open") ||
+      lowerText.includes("add")
+    ) {
       return { intent: "create_concentrated_lp", userId: "" };
     }
     if (
@@ -61,7 +73,11 @@ const parseIntentFromMessage = (text: string): LpActionParams | null => {
     ) {
       return { intent: "rebalance_concentrated_lp", userId: "" };
     }
-    if (lowerText.includes("show") || lowerText.includes("check") || lowerText.includes("view")) {
+    if (
+      lowerText.includes("show") ||
+      lowerText.includes("check") ||
+      lowerText.includes("view")
+    ) {
       return { intent: "show_concentrated_lps", userId: "" };
     }
   }
@@ -88,7 +104,8 @@ const parseIntentFromMessage = (text: string): LpActionParams | null => {
 
   // Show positions patterns
   if (
-    (lowerText.includes("show") && (lowerText.includes("position") || lowerText.includes("lp"))) ||
+    (lowerText.includes("show") &&
+      (lowerText.includes("position") || lowerText.includes("lp"))) ||
     lowerText.includes("my lp") ||
     (lowerText.includes("check") && lowerText.includes("position"))
   ) {
@@ -109,7 +126,9 @@ const parseIntentFromMessage = (text: string): LpActionParams | null => {
   // Pool discovery patterns
   if (
     lowerText.includes("pool") &&
-    (lowerText.includes("show") || lowerText.includes("find") || lowerText.includes("best"))
+    (lowerText.includes("show") ||
+      lowerText.includes("find") ||
+      lowerText.includes("best"))
   ) {
     return { intent: "deposit_lp", userId: "" }; // Default to deposit intent for pool discovery
   }
@@ -121,10 +140,12 @@ const _handleOnboardLp = async (
   runtime: IAgentRuntime,
   userId: string,
   existingProfile: UserLpProfile | null,
-  config?: Partial<UserLpProfile["autoRebalanceConfig"]>
+  config?: Partial<UserLpProfile["autoRebalanceConfig"]>,
 ) => {
   const vaultService = runtime.getService<IVaultService>("VaultService");
-  const userLpProfileService = runtime.getService<IUserLpProfileService>("UserLpProfileService");
+  const userLpProfileService = runtime.getService<IUserLpProfileService>(
+    "UserLpProfileService",
+  );
 
   if (!vaultService || !userLpProfileService) {
     throw new Error("Could not get required services for onboarding.");
@@ -135,12 +156,13 @@ const _handleOnboardLp = async (
       text: `You are already onboarded. Your vault public key is: ${existingProfile.vaultPublicKey}`,
     };
   }
-  const { publicKey, secretKeyEncrypted } = await vaultService.createVault(userId);
+  const { publicKey, secretKeyEncrypted } =
+    await vaultService.createVault(userId);
   const newProfile = await userLpProfileService.ensureProfile(
     userId,
     publicKey,
     secretKeyEncrypted,
-    config
+    config,
   );
   return {
     content: `Welcome! I've created a new secure vault for you. **Your vault address is: ${newProfile.vaultPublicKey}**. Please send the assets you want me to manage to this address. Auto-rebalancing is currently **${newProfile.autoRebalanceConfig.enabled ? "ON" : "OFF"}**.`,
@@ -162,7 +184,11 @@ export const LpManagementAgentAction: Action = {
 
   examples: [] as ActionExample[][], // Empty for now - add examples when specific LP workflows are documented
 
-  validate: async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
+  validate: async (
+    _runtime: IAgentRuntime,
+    message: Memory,
+    _state?: State,
+  ): Promise<boolean> => {
     if (!message?.content?.text) {
       return false;
     }
@@ -206,7 +232,7 @@ export const LpManagementAgentAction: Action = {
   handler: async (runtime, message, _state) => {
     console.info(
       "[LpManagementAgentAction] Handler called with message:",
-      message?.content?.text || "No text"
+      message?.content?.text || "No text",
     );
 
     // Try to get params from message content
@@ -231,7 +257,9 @@ export const LpManagementAgentAction: Action = {
 
     const vault = runtime.getService<IVaultService>("VaultService");
     const dex = runtime.getService<IDexInteractionService>("dex-interaction");
-    const profileService = runtime.getService<IUserLpProfileService>("UserLpProfileService");
+    const profileService = runtime.getService<IUserLpProfileService>(
+      "UserLpProfileService",
+    );
 
     if (!vault || !dex || !profileService) {
       return {
@@ -258,11 +286,12 @@ export const LpManagementAgentAction: Action = {
               text: `You're already set up! Your vault address is: ${profile.vaultPublicKey}`,
             };
           }
-          const { publicKey, secretKeyEncrypted } = await vault.createVault(userId);
+          const { publicKey, secretKeyEncrypted } =
+            await vault.createVault(userId);
           const newProfile = await profileService.ensureProfile(
             userId,
             publicKey,
-            secretKeyEncrypted
+            secretKeyEncrypted,
           );
           return {
             success: true,
@@ -272,7 +301,13 @@ export const LpManagementAgentAction: Action = {
 
         case "deposit_lp": {
           if (!profile) throw new Error("Profile not found");
-          const { dexName, poolId, tokenAAmount, tokenBAmount, maxSlippageBps } = params;
+          const {
+            dexName,
+            poolId,
+            tokenAAmount,
+            tokenBAmount,
+            maxSlippageBps,
+          } = params;
 
           // If no specific pool info, show available pools
           if (!dexName || !poolId) {
@@ -298,7 +333,10 @@ export const LpManagementAgentAction: Action = {
             };
           }
 
-          const userVault = await vault.getVaultKeypair(userId, profile.encryptedSecretKey);
+          const userVault = await vault.getVaultKeypair(
+            userId,
+            profile.encryptedSecretKey,
+          );
           const result = await dex.addLiquidity({
             userVault,
             dexName,
@@ -332,7 +370,10 @@ export const LpManagementAgentAction: Action = {
               text: 'To withdraw, please tell me the DEX, the pool, and the amount (e.g., "withdraw 50% from the SOL/USDC pool on Orca").',
             };
           }
-          const wd_userVault = await vault.getVaultKeypair(userId, profile.encryptedSecretKey);
+          const wd_userVault = await vault.getVaultKeypair(
+            userId,
+            profile.encryptedSecretKey,
+          );
           const wd_result = await dex.removeLiquidity({
             userVault: wd_userVault,
             dexName: wd_dexName,
@@ -419,7 +460,8 @@ export const LpManagementAgentAction: Action = {
           };
       }
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       console.error(`[LpManagementAgentAction] Error: ${errorMessage}`);
       return {
         success: false,

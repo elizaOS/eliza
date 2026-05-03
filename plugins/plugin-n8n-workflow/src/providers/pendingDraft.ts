@@ -1,4 +1,9 @@
-import { type IAgentRuntime, type Memory, type Provider, type State } from '@elizaos/core';
+import {
+  type IAgentRuntime,
+  type Memory,
+  type Provider,
+  type State,
+} from '@elizaos/core';
 import type { WorkflowDraft } from '../types/index';
 
 const DRAFT_TTL_MS = 30 * 60 * 1000;
@@ -12,7 +17,8 @@ const DRAFT_TTL_MS = 30 * 60 * 1000;
  */
 export const pendingDraftProvider: Provider = {
   name: 'PENDING_WORKFLOW_DRAFT',
-  description: 'Pending workflow draft awaiting user confirmation, modification, or cancellation',
+  description:
+    'Pending workflow draft awaiting user confirmation, modification, or cancellation',
 
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     const cacheKey = `workflow_draft:${message.entityId}`;

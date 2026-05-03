@@ -21,7 +21,7 @@ export interface TelegramLocalClientLike {
   getEntity(target: unknown): Promise<unknown>;
   sendMessage(
     entity: unknown,
-    args: { message: string }
+    args: { message: string },
   ): Promise<{ id?: unknown } | null | undefined>;
   getMessages(
     entity: unknown,
@@ -29,7 +29,7 @@ export interface TelegramLocalClientLike {
       search?: string;
       ids?: number | number[];
       limit?: number;
-    }
+    },
   ): Promise<ReadonlyArray<TelegramMessageLike | null | undefined>>;
 }
 
@@ -121,7 +121,7 @@ function createGramJsClient(args: {
       connectionRetries: 5,
       deviceModel: args.deviceModel,
       systemVersion: args.systemVersion,
-    }
+    },
   ) as unknown as TelegramLocalClientLike;
 }
 
@@ -152,7 +152,7 @@ function toIsoDate(value: Date | number | string | undefined): string | null {
   }
   if (typeof value === "number" && Number.isFinite(value)) {
     return new Date(
-      value < 1_000_000_000_000 ? value * 1000 : value
+      value < 1_000_000_000_000 ? value * 1000 : value,
     ).toISOString();
   }
   if (typeof value === "string" && value.trim().length > 0) {
@@ -176,7 +176,7 @@ function normalizeDialogTitle(dialog: TelegramDialogLike): string {
 }
 
 function dialogSummary(
-  dialog: TelegramDialogLike
+  dialog: TelegramDialogLike,
 ): LifeOpsTelegramDialogSummary {
   return {
     id: serializeTelegramId(dialog.id) || normalizeDialogTitle(dialog),
@@ -211,7 +211,7 @@ function resolveApiCredentials(token: StoredTelegramConnectorToken): {
   const apiHash =
     token.apiHash.trim().length > 0
       ? token.apiHash.trim()
-      : token.connectorConfig?.appHash?.trim() ?? "";
+      : (token.connectorConfig?.appHash?.trim() ?? "");
   if (!Number.isInteger(apiId) || apiId <= 0 || apiHash.length === 0) {
     throw new Error("Telegram connector is missing MTProto credentials.");
   }
@@ -245,7 +245,7 @@ function collectDialogAliases(dialog: TelegramDialogLike): string[] {
 
 function findMatchingDialog(
   target: string,
-  dialogs: ReadonlyArray<TelegramDialogLike>
+  dialogs: ReadonlyArray<TelegramDialogLike>,
 ): TelegramDialogLike | null {
   const lookup = normalizeLookup(target);
   if (lookup.length === 0) {
@@ -253,7 +253,7 @@ function findMatchingDialog(
   }
 
   const exact = dialogs.find((dialog) =>
-    collectDialogAliases(dialog).includes(lookup)
+    collectDialogAliases(dialog).includes(lookup),
   );
   if (exact) {
     return exact;
@@ -261,7 +261,7 @@ function findMatchingDialog(
 
   return (
     dialogs.find((dialog) =>
-      collectDialogAliases(dialog).some((alias) => alias.includes(lookup))
+      collectDialogAliases(dialog).some((alias) => alias.includes(lookup)),
     ) ?? null
   );
 }
@@ -296,17 +296,17 @@ interface TelegramLocalMockSession {
 const telegramLocalMockStates = new Map<string, TelegramLocalMockDialog[]>();
 
 function decodeTelegramLocalMockSession(
-  sessionString: string
+  sessionString: string,
 ): TelegramLocalMockSession | null {
   if (!sessionString.startsWith(TELEGRAM_LOCAL_MOCK_SESSION_PREFIX)) {
     return null;
   }
   const encoded = sessionString.slice(
-    TELEGRAM_LOCAL_MOCK_SESSION_PREFIX.length
+    TELEGRAM_LOCAL_MOCK_SESSION_PREFIX.length,
   );
   try {
     const parsed = JSON.parse(
-      Buffer.from(encoded, "base64url").toString("utf8")
+      Buffer.from(encoded, "base64url").toString("utf8"),
     ) as TelegramLocalMockSession;
     if (
       !parsed ||
@@ -322,7 +322,7 @@ function decodeTelegramLocalMockSession(
 }
 
 function materializeTelegramLocalMockDialogs(
-  fixture: TelegramLocalMockSession
+  fixture: TelegramLocalMockSession,
 ): TelegramLocalMockDialog[] {
   return fixture.dialogs.map((dialog) => {
     const entity = {
@@ -338,7 +338,7 @@ function materializeTelegramLocalMockDialogs(
         fromId: { userId: message.fromId ?? dialog.id },
         peerId: { userId: dialog.id },
         dialogId: dialog.id,
-      })
+      }),
     );
     return {
       id: dialog.id,
@@ -360,7 +360,7 @@ function materializeTelegramLocalMockDialogs(
 }
 
 function telegramLocalMockDialogsForSession(
-  sessionString: string
+  sessionString: string,
 ): TelegramLocalMockDialog[] | null {
   const existing = telegramLocalMockStates.get(sessionString);
   if (existing) {
@@ -376,7 +376,7 @@ function telegramLocalMockDialogsForSession(
 }
 
 function createTelegramLocalMockClient(
-  dialogs: TelegramLocalMockDialog[]
+  dialogs: TelegramLocalMockDialog[],
 ): TelegramLocalClientLike {
   return {
     async connect() {},
@@ -425,17 +425,17 @@ function createTelegramLocalMockClient(
           ? serializeTelegramId((entity as { id?: unknown }).id)
           : "";
       const source = entityId
-        ? dialogs.find((dialog) => dialog.id === entityId)?.messages ?? []
+        ? (dialogs.find((dialog) => dialog.id === entityId)?.messages ?? [])
         : dialogs.flatMap((dialog) => dialog.messages);
       const ids = Array.isArray(args.ids)
         ? args.ids
         : args.ids !== undefined
-        ? [args.ids]
-        : null;
+          ? [args.ids]
+          : null;
       const searched = source.filter((message) => {
         if (ids) {
           return ids.some(
-            (id) => parseNumericId(id) === parseNumericId(message.id)
+            (id) => parseNumericId(id) === parseNumericId(message.id),
           );
         }
         if (args.search?.trim()) {
@@ -453,7 +453,7 @@ function createTelegramLocalMockClient(
 async function resolveTelegramTarget(
   client: TelegramLocalClientLike,
   target: string,
-  dialogs: ReadonlyArray<TelegramDialogLike>
+  dialogs: ReadonlyArray<TelegramDialogLike>,
 ): Promise<unknown> {
   const trimmed = target.trim();
   if (trimmed.length === 0) {
@@ -475,7 +475,7 @@ async function resolveTelegramTarget(
 async function withTelegramLocalClient<T>(
   tokenRef: string,
   deps: TelegramLocalClientDeps,
-  work: (client: TelegramLocalClientLike) => Promise<T>
+  work: (client: TelegramLocalClientLike) => Promise<T>,
 ): Promise<T> {
   const readStoredToken = deps.readStoredToken ?? readStoredTelegramToken;
   const loadSessionString =
@@ -574,7 +574,7 @@ function messageSenderId(message: TelegramMessageLike): string | null {
 
 function findDialogForMessage(
   message: TelegramMessageLike,
-  dialogs: ReadonlyArray<TelegramDialogLike>
+  dialogs: ReadonlyArray<TelegramDialogLike>,
 ): TelegramDialogLike | null {
   const peerId = messagePeerId(message);
   if (!peerId) {
@@ -596,7 +596,7 @@ function isGlobalSearchScope(scope?: string): boolean {
 }
 
 export function telegramLocalSessionAvailable(
-  deps: Pick<TelegramLocalClientDeps, "loadSessionString"> = {}
+  deps: Pick<TelegramLocalClientDeps, "loadSessionString"> = {},
 ): boolean {
   const loadSessionString =
     deps.loadSessionString ?? loadTelegramAccountSessionString;
@@ -627,7 +627,7 @@ export async function sendTelegramAccountMessage(args: {
   const deps = args.deps ?? {};
   return withTelegramLocalClient(args.tokenRef, deps, async (client) => {
     const dialogs = Array.from(
-      await client.getDialogs({ limit: MAX_TARGET_LOOKUP_DIALOGS })
+      await client.getDialogs({ limit: MAX_TARGET_LOOKUP_DIALOGS }),
     );
     const entity = await resolveTelegramTarget(client, args.target, dialogs);
     const sent = await client.sendMessage(entity, { message: args.message });
@@ -658,7 +658,7 @@ export async function searchTelegramMessages(args: {
   const limit = normalizeSearchLimit(args.limit);
   return withTelegramLocalClient(args.tokenRef, deps, async (client) => {
     const dialogs = Array.from(
-      await client.getDialogs({ limit: MAX_TARGET_LOOKUP_DIALOGS })
+      await client.getDialogs({ limit: MAX_TARGET_LOOKUP_DIALOGS }),
     );
     const scoped = !isGlobalSearchScope(args.scope);
     const scope = args.scope?.trim() ?? "";
@@ -667,7 +667,7 @@ export async function searchTelegramMessages(args: {
       ? await resolveTelegramTarget(client, scope, dialogs)
       : undefined;
     const messages = Array.from(
-      await client.getMessages(entity, { search: query, limit })
+      await client.getMessages(entity, { search: query, limit }),
     );
 
     return messages
@@ -729,7 +729,7 @@ export async function getTelegramReadReceipts(args: {
 
   return withTelegramLocalClient(args.tokenRef, deps, async (client) => {
     const dialogs = Array.from(
-      await client.getDialogs({ limit: MAX_TARGET_LOOKUP_DIALOGS })
+      await client.getDialogs({ limit: MAX_TARGET_LOOKUP_DIALOGS }),
     );
     const dialog = findMatchingDialog(target, dialogs);
     const entity = await resolveTelegramTarget(client, target, dialogs);

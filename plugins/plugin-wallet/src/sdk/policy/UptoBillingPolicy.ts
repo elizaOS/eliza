@@ -10,7 +10,11 @@
  * - ledger deltas for reservation, settlement, and release of unused capacity
  */
 
-export type UptoAuthorizationStatus = 'authorized' | 'partially_settled' | 'settled' | 'released';
+export type UptoAuthorizationStatus =
+  | "authorized"
+  | "partially_settled"
+  | "settled"
+  | "released";
 
 export interface UptoAuthorizationRequest {
   authorizationId?: string;
@@ -62,7 +66,7 @@ export interface UptoAuthorizationRecord {
 export interface WalletLedgerDelta {
   deltaId: string;
   authorizationId: string;
-  type: 'authorization' | 'settlement' | 'release';
+  type: "authorization" | "settlement" | "release";
   timestamp: string;
   reservedDelta: bigint;
   settledDelta: bigint;
@@ -87,7 +91,9 @@ function nowIso(value?: string): string {
   return value ?? new Date().toISOString();
 }
 
-function cloneAuthorization(record: UptoAuthorizationRecord): UptoAuthorizationRecord {
+function cloneAuthorization(
+  record: UptoAuthorizationRecord,
+): UptoAuthorizationRecord {
   return {
     ...record,
     metadata: record.metadata ? { ...record.metadata } : undefined,
@@ -112,10 +118,10 @@ export class UptoBillingPolicy {
 
   authorize(request: UptoAuthorizationRequest): UptoAuthorizationRecord {
     if (request.maxAmount <= 0n) {
-      throw new Error('maxAmount must be greater than zero');
+      throw new Error("maxAmount must be greater than zero");
     }
 
-    const authorizationId = request.authorizationId ?? nextId('upto-auth');
+    const authorizationId = request.authorizationId ?? nextId("upto-auth");
     if (this.authorizations.has(authorizationId)) {
       throw new Error(`Authorization already exists: ${authorizationId}`);
     }
@@ -132,7 +138,7 @@ export class UptoBillingPolicy {
       releasedAmount: 0n,
       remainingAmount: request.maxAmount,
       authorizedAt: nowIso(request.authorizedAt),
-      status: 'authorized',
+      status: "authorized",
       metadata: request.metadata ? { ...request.metadata } : undefined,
     };
 
@@ -140,9 +146,9 @@ export class UptoBillingPolicy {
     this.settlements.set(authorizationId, []);
     this.ledger.set(authorizationId, [
       {
-        deltaId: nextId('upto-ledger'),
+        deltaId: nextId("upto-ledger"),
         authorizationId,
-        type: 'authorization',
+        type: "authorization",
         timestamp: record.authorizedAt,
         reservedDelta: record.maxAmount,
         settledDelta: 0n,
@@ -160,11 +166,11 @@ export class UptoBillingPolicy {
   ): UptoBillingSnapshot {
     const auth = this.requireAuthorization(authorizationId);
 
-    if (auth.status === 'settled' || auth.status === 'released') {
+    if (auth.status === "settled" || auth.status === "released") {
       throw new Error(`Authorization is already finalized: ${authorizationId}`);
     }
     if (amount <= 0n) {
-      throw new Error('Settlement amount must be greater than zero');
+      throw new Error("Settlement amount must be greater than zero");
     }
     if (amount > auth.remainingAmount) {
       throw new Error(
@@ -174,7 +180,7 @@ export class UptoBillingPolicy {
 
     const settledAt = nowIso(options.settledAt);
     const settlement: UptoSettlementRecord = {
-      settlementId: nextId('upto-settlement'),
+      settlementId: nextId("upto-settlement"),
       authorizationId,
       amount,
       settledAt,
@@ -185,16 +191,16 @@ export class UptoBillingPolicy {
 
     auth.settledAmount += amount;
     auth.remainingAmount -= amount;
-    auth.status = auth.remainingAmount === 0n ? 'settled' : 'partially_settled';
+    auth.status = auth.remainingAmount === 0n ? "settled" : "partially_settled";
 
     const settlementList = this.settlements.get(authorizationId)!;
     settlementList.push(settlement);
 
     const ledger = this.ledger.get(authorizationId)!;
     ledger.push({
-      deltaId: nextId('upto-ledger'),
+      deltaId: nextId("upto-ledger"),
       authorizationId,
-      type: 'settlement',
+      type: "settlement",
       timestamp: settledAt,
       reservedDelta: -amount,
       settledDelta: amount,
@@ -219,7 +225,7 @@ export class UptoBillingPolicy {
     const ledger = this.ledger.get(authorizationId)!;
     const timestamp = nowIso(finalizedAt);
 
-    if (auth.status === 'settled' || auth.status === 'released') {
+    if (auth.status === "settled" || auth.status === "released") {
       auth.finalizedAt = auth.finalizedAt ?? timestamp;
       return cloneAuthorization(auth);
     }
@@ -228,13 +234,13 @@ export class UptoBillingPolicy {
     auth.releasedAmount += released;
     auth.remainingAmount = 0n;
     auth.finalizedAt = timestamp;
-    auth.status = auth.settledAmount > 0n ? 'settled' : 'released';
+    auth.status = auth.settledAmount > 0n ? "settled" : "released";
 
     if (released > 0n) {
       ledger.push({
-        deltaId: nextId('upto-ledger'),
+        deltaId: nextId("upto-ledger"),
         authorizationId,
-        type: 'release',
+        type: "release",
         timestamp,
         reservedDelta: -released,
         settledDelta: 0n,
@@ -265,7 +271,9 @@ export class UptoBillingPolicy {
 
   getSnapshot(authorizationId: string): UptoBillingSnapshot {
     return {
-      authorization: cloneAuthorization(this.requireAuthorization(authorizationId)),
+      authorization: cloneAuthorization(
+        this.requireAuthorization(authorizationId),
+      ),
       settlements: this.getSettlements(authorizationId),
       ledgerDeltas: this.getWalletLedgerDeltas(authorizationId),
     };
@@ -285,7 +293,9 @@ export class UptoBillingPolicy {
     );
   }
 
-  private requireAuthorization(authorizationId: string): UptoAuthorizationRecord {
+  private requireAuthorization(
+    authorizationId: string,
+  ): UptoAuthorizationRecord {
     const auth = this.authorizations.get(authorizationId);
     if (!auth) {
       throw new Error(`Unknown authorization: ${authorizationId}`);

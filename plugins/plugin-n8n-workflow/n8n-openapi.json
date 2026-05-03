@@ -74,9 +74,7 @@
       "post": {
         "x-eov-operation-id": "generateAudit",
         "x-eov-operation-handler": "v1/handlers/audit/audit.handler",
-        "tags": [
-          "Audit"
-        ],
+        "tags": ["Audit"],
         "summary": "Generate an audit",
         "description": "Generate a security audit for your n8n instance.",
         "requestBody": {
@@ -137,9 +135,7 @@
       "post": {
         "x-eov-operation-id": "createCredential",
         "x-eov-operation-handler": "v1/handlers/credentials/credentials.handler",
-        "tags": [
-          "Credential"
-        ],
+        "tags": ["Credential"],
         "summary": "Create a credential",
         "description": "Creates a credential that can be used by nodes of the specified type.",
         "requestBody": {
@@ -177,9 +173,7 @@
       "patch": {
         "x-eov-operation-id": "updateCredential",
         "x-eov-operation-handler": "v1/handlers/credentials/credentials.handler",
-        "tags": [
-          "Credential"
-        ],
+        "tags": ["Credential"],
         "summary": "Update credential by ID",
         "description": "Updates an existing credential. You must be the owner of the credential.",
         "operationId": "updateCredential",
@@ -230,9 +224,7 @@
       "delete": {
         "x-eov-operation-id": "deleteCredential",
         "x-eov-operation-handler": "v1/handlers/credentials/credentials.handler",
-        "tags": [
-          "Credential"
-        ],
+        "tags": ["Credential"],
         "summary": "Delete credential by ID",
         "description": "Deletes a credential from your instance. You must be the owner of the credentials",
         "operationId": "deleteCredential",
@@ -271,9 +263,7 @@
       "get": {
         "x-eov-operation-id": "getCredentialType",
         "x-eov-operation-handler": "v1/handlers/credentials/credentials.handler",
-        "tags": [
-          "Credential"
-        ],
+        "tags": ["Credential"],
         "summary": "Show credential data schema",
         "parameters": [
           {
@@ -307,10 +297,7 @@
                           "type": "string"
                         }
                       },
-                      "required": [
-                        "apiKey",
-                        "domain"
-                      ]
+                      "required": ["apiKey", "domain"]
                     }
                   },
                   "slackOAuth2Api": {
@@ -325,10 +312,7 @@
                           "type": "string"
                         }
                       },
-                      "required": [
-                        "clientId",
-                        "clientSecret"
-                      ]
+                      "required": ["clientId", "clientSecret"]
                     }
                   }
                 }
@@ -348,9 +332,7 @@
       "put": {
         "x-eov-operation-id": "transferCredential",
         "x-eov-operation-handler": "v1/handlers/credentials/credentials.handler",
-        "tags": [
-          "Credential"
-        ],
+        "tags": ["Credential"],
         "summary": "Transfer a credential to another project.",
         "description": "Transfer a credential to another project.",
         "parameters": [
@@ -370,9 +352,7 @@
                     "description": "The ID of the project to transfer the credential to."
                   }
                 },
-                "required": [
-                  "destinationProjectId"
-                ]
+                "required": ["destinationProjectId"]
               }
             }
           },
@@ -398,9 +378,7 @@
       "get": {
         "x-eov-operation-id": "getExecutions",
         "x-eov-operation-handler": "v1/handlers/executions/executions.handler",
-        "tags": [
-          "Execution"
-        ],
+        "tags": ["Execution"],
         "summary": "Retrieve all executions",
         "description": "Retrieve all executions from your instance.",
         "parameters": [
@@ -414,13 +392,7 @@
             "required": false,
             "schema": {
               "type": "string",
-              "enum": [
-                "canceled",
-                "error",
-                "running",
-                "success",
-                "waiting"
-              ]
+              "enum": ["canceled", "error", "running", "success", "waiting"]
             }
           },
           {
@@ -475,9 +447,7 @@
       "get": {
         "x-eov-operation-id": "getExecution",
         "x-eov-operation-handler": "v1/handlers/executions/executions.handler",
-        "tags": [
-          "Execution"
-        ],
+        "tags": ["Execution"],
         "summary": "Retrieve an execution",
         "description": "Retrieve an execution from your instance.",
         "parameters": [
@@ -510,9 +480,7 @@
       "delete": {
         "x-eov-operation-id": "deleteExecution",
         "x-eov-operation-handler": "v1/handlers/executions/executions.handler",
-        "tags": [
-          "Execution"
-        ],
+        "tags": ["Execution"],
         "summary": "Delete an execution",
         "description": "Deletes an execution from your instance.",
         "parameters": [
@@ -544,9 +512,7 @@
       "post": {
         "x-eov-operation-id": "retryExecution",
         "x-eov-operation-handler": "v1/handlers/executions/executions.handler",
-        "tags": [
-          "Execution"
-        ],
+        "tags": ["Execution"],
         "summary": "Retry an execution",
         "description": "Retry an execution from your instance.",
         "parameters": [
@@ -597,9 +563,7 @@
       "post": {
         "x-eov-operation-id": "createTag",
         "x-eov-operation-handler": "v1/handlers/tags/tags.handler",
-        "tags": [
-          "Tags"
-        ],
+        "tags": ["Tags"],
         "summary": "Create a tag",
         "description": "Create a tag in your instance.",
         "requestBody": {
@@ -638,9 +602,7 @@
       "get": {
         "x-eov-operation-id": "getTags",
         "x-eov-operation-handler": "v1/handlers/tags/tags.handler",
-        "tags": [
-          "Tags"
-        ],
+        "tags": ["Tags"],
         "summary": "Retrieve all tags",
         "description": "Retrieve all tags from your instance.",
         "parameters": [
@@ -672,9 +634,7 @@
       "get": {
         "x-eov-operation-id": "getTag",
         "x-eov-operation-handler": "v1/handlers/tags/tags.handler",
-        "tags": [
-          "Tags"
-        ],
+        "tags": ["Tags"],
         "summary": "Retrieves a tag",
         "description": "Retrieves a tag.",
         "parameters": [
@@ -704,9 +664,7 @@
       "delete": {
         "x-eov-operation-id": "deleteTag",
         "x-eov-operation-handler": "v1/handlers/tags/tags.handler",
-        "tags": [
-          "Tags"
-        ],
+        "tags": ["Tags"],
         "summary": "Delete a tag",
         "description": "Deletes a tag.",
         "parameters": [
@@ -739,9 +697,7 @@
       "put": {
         "x-eov-operation-id": "updateTag",
         "x-eov-operation-handler": "v1/handlers/tags/tags.handler",
-        "tags": [
-          "Tags"
-        ],
+        "tags": ["Tags"],
         "summary": "Update a tag",
         "description": "Update a tag.",
         "parameters": [
@@ -790,9 +746,7 @@
       "post": {
         "x-eov-operation-id": "createWorkflow",
         "x-eov-operation-handler": "v1/handlers/workflows/workflows.handler",
-        "tags": [
-          "Workflow"
-        ],
+        "tags": ["Workflow"],
         "summary": "Create a workflow",
         "description": "Create a workflow in your instance.",
         "requestBody": {
@@ -828,9 +782,7 @@
       "get": {
         "x-eov-operation-id": "getWorkflows",
         "x-eov-operation-handler": "v1/handlers/workflows/workflows.handler",
-        "tags": [
-          "Workflow"
-        ],
+        "tags": ["Workflow"],
         "summary": "Retrieve all workflows",
         "description": "Retrieve all workflows from your instance.",
         "parameters": [
@@ -913,9 +865,7 @@
       "get": {
         "x-eov-operation-id": "getWorkflow",
         "x-eov-operation-handler": "v1/handlers/workflows/workflows.handler",
-        "tags": [
-          "Workflow"
-        ],
+        "tags": ["Workflow"],
         "summary": "Retrieve a workflow",
         "description": "Retrieve a workflow.",
         "parameters": [
@@ -955,9 +905,7 @@
       "delete": {
         "x-eov-operation-id": "deleteWorkflow",
         "x-eov-operation-handler": "v1/handlers/workflows/workflows.handler",
-        "tags": [
-          "Workflow"
-        ],
+        "tags": ["Workflow"],
         "summary": "Delete a workflow",
         "description": "Delete a workflow.",
         "parameters": [
@@ -987,9 +935,7 @@
       "put": {
         "x-eov-operation-id": "updateWorkflow",
         "x-eov-operation-handler": "v1/handlers/workflows/workflows.handler",
-        "tags": [
-          "Workflow"
-        ],
+        "tags": ["Workflow"],
         "summary": "Update a workflow",
         "description": "Update a workflow. If the workflow is published, the updated version will be automatically re-published.",
         "parameters": [
@@ -1035,9 +981,7 @@
       "get": {
         "x-eov-operation-id": "getWorkflowVersion",
         "x-eov-operation-handler": "v1/handlers/workflows/workflows.handler",
-        "tags": [
-          "Workflow"
-        ],
+        "tags": ["Workflow"],
         "summary": "Retrieves a specific version of a workflow",
         "description": "Retrieves a specific version of a workflow from workflow history.",
         "parameters": [
@@ -1079,9 +1023,7 @@
       "post": {
         "x-eov-operation-id": "activateWorkflow",
         "x-eov-operation-handler": "v1/handlers/workflows/workflows.handler",
-        "tags": [
-          "Workflow"
-        ],
+        "tags": ["Workflow"],
         "summary": "Publish a workflow",
         "description": "Publish a workflow. In n8n v1, this action was termed activating a workflow.",
         "parameters": [
@@ -1141,9 +1083,7 @@
       "post": {
         "x-eov-operation-id": "deactivateWorkflow",
         "x-eov-operation-handler": "v1/handlers/workflows/workflows.handler",
-        "tags": [
-          "Workflow"
-        ],
+        "tags": ["Workflow"],
         "summary": "Deactivate a workflow",
         "description": "Deactivate a workflow.",
         "parameters": [
@@ -1175,9 +1115,7 @@
       "put": {
         "x-eov-operation-id": "transferWorkflow",
         "x-eov-operation-handler": "v1/handlers/workflows/workflows.handler",
-        "tags": [
-          "Workflow"
-        ],
+        "tags": ["Workflow"],
         "summary": "Transfer a workflow to another project",
         "description": "Transfer a workflow to another project",
         "parameters": [
@@ -1197,9 +1135,7 @@
                     "description": "The ID of the project to transfer the workflow to."
                   }
                 },
-                "required": [
-                  "destinationProjectId"
-                ]
+                "required": ["destinationProjectId"]
               }
             }
           },
@@ -1225,9 +1161,7 @@
       "get": {
         "x-eov-operation-id": "getWorkflowTags",
         "x-eov-operation-handler": "v1/handlers/workflows/workflows.handler",
-        "tags": [
-          "Workflow"
-        ],
+        "tags": ["Workflow"],
         "summary": "Get workflow tags",
         "description": "Get workflow tags.",
         "parameters": [
@@ -1260,9 +1194,7 @@
       "put": {
         "x-eov-operation-id": "updateWorkflowTags",
         "x-eov-operation-handler": "v1/handlers/workflows/workflows.handler",
-        "tags": [
-          "Workflow"
-        ],
+        "tags": ["Workflow"],
         "summary": "Update tags of a workflow",
         "description": "Update tags of a workflow.",
         "parameters": [
@@ -1308,9 +1240,7 @@
       "get": {
         "x-eov-operation-id": "getUsers",
         "x-eov-operation-handler": "v1/handlers/users/users.handler.ee",
-        "tags": [
-          "User"
-        ],
+        "tags": ["User"],
         "summary": "Retrieve all users",
         "description": "Retrieve all users from your instance. Only available for the instance owner.",
         "parameters": [
@@ -1354,9 +1284,7 @@
       "post": {
         "x-eov-operation-id": "createUser",
         "x-eov-operation-handler": "v1/handlers/users/users.handler.ee",
-        "tags": [
-          "User"
-        ],
+        "tags": ["User"],
         "summary": "Create multiple users",
         "description": "Create one or more users.",
         "requestBody": {
@@ -1378,9 +1306,7 @@
                       "example": "global:member"
                     }
                   },
-                  "required": [
-                    "email"
-                  ]
+                  "required": ["email"]
                 }
               }
             }
@@ -1432,9 +1358,7 @@
       "get": {
         "x-eov-operation-id": "getUser",
         "x-eov-operation-handler": "v1/handlers/users/users.handler.ee",
-        "tags": [
-          "User"
-        ],
+        "tags": ["User"],
         "summary": "Get user by ID/Email",
         "description": "Retrieve a user from your instance. Only available for the instance owner.",
         "parameters": [
@@ -1464,9 +1388,7 @@
       "delete": {
         "x-eov-operation-id": "deleteUser",
         "x-eov-operation-handler": "v1/handlers/users/users.handler.ee",
-        "tags": [
-          "User"
-        ],
+        "tags": ["User"],
         "summary": "Delete a user",
         "description": "Delete a user from your instance.",
         "parameters": [
@@ -1494,9 +1416,7 @@
       "patch": {
         "x-eov-operation-id": "changeRole",
         "x-eov-operation-handler": "v1/handlers/users/users.handler.ee",
-        "tags": [
-          "User"
-        ],
+        "tags": ["User"],
         "summary": "Change a user's global role",
         "description": "Change a user's global role",
         "parameters": [
@@ -1517,9 +1437,7 @@
                     "example": "global:member"
                   }
                 },
-                "required": [
-                  "newRoleName"
-                ]
+                "required": ["newRoleName"]
               }
             }
           }
@@ -1544,9 +1462,7 @@
       "post": {
         "x-eov-operation-id": "pull",
         "x-eov-operation-handler": "v1/handlers/source-control/source-control.handler",
-        "tags": [
-          "SourceControl"
-        ],
+        "tags": ["SourceControl"],
         "summary": "Pull changes from the remote repository",
         "description": "Requires the Source Control feature to be licensed and connected to a repository.",
         "requestBody": {
@@ -1584,9 +1500,7 @@
       "post": {
         "x-eov-operation-id": "createVariable",
         "x-eov-operation-handler": "v1/handlers/variables/variables.handler",
-        "tags": [
-          "Variables"
-        ],
+        "tags": ["Variables"],
         "summary": "Create a variable",
         "description": "Create a variable in your instance.",
         "requestBody": {
@@ -1615,9 +1529,7 @@
       "get": {
         "x-eov-operation-id": "getVariables",
         "x-eov-operation-handler": "v1/handlers/variables/variables.handler",
-        "tags": [
-          "Variables"
-        ],
+        "tags": ["Variables"],
         "summary": "Retrieve variables",
         "description": "Retrieve variables from your instance.",
         "parameters": [
@@ -1644,9 +1556,7 @@
             "required": false,
             "schema": {
               "type": "string",
-              "enum": [
-                "empty"
-              ]
+              "enum": ["empty"]
             }
           }
         ],
@@ -1671,9 +1581,7 @@
       "delete": {
         "x-eov-operation-id": "deleteVariable",
         "x-eov-operation-handler": "v1/handlers/variables/variables.handler",
-        "tags": [
-          "Variables"
-        ],
+        "tags": ["Variables"],
         "summary": "Delete a variable",
         "description": "Delete a variable from your instance.",
         "parameters": [
@@ -1696,9 +1604,7 @@
       "put": {
         "x-eov-operation-id": "updateVariable",
         "x-eov-operation-handler": "v1/handlers/variables/variables.handler",
-        "tags": [
-          "Variables"
-        ],
+        "tags": ["Variables"],
         "summary": "Update a variable",
         "description": "Update a variable from your instance.",
         "parameters": [
@@ -1740,9 +1646,7 @@
       "get": {
         "x-eov-operation-id": "listDataTables",
         "x-eov-operation-handler": "v1/handlers/data-tables/data-tables.handler",
-        "tags": [
-          "DataTable"
-        ],
+        "tags": ["DataTable"],
         "summary": "List all data tables",
         "description": "Retrieve a list of all data tables with optional filtering, sorting, and pagination.",
         "operationId": "list-data-tables",
@@ -1800,9 +1704,7 @@
       "post": {
         "x-eov-operation-id": "createDataTable",
         "x-eov-operation-handler": "v1/handlers/data-tables/data-tables.handler",
-        "tags": [
-          "DataTable"
-        ],
+        "tags": ["DataTable"],
         "summary": "Create a new data table",
         "description": "Create a new data table in your workspace.",
         "operationId": "create-data-table",
@@ -1865,9 +1767,7 @@
       "get": {
         "x-eov-operation-id": "getDataTable",
         "x-eov-operation-handler": "v1/handlers/data-tables/data-tables.handler",
-        "tags": [
-          "DataTable"
-        ],
+        "tags": ["DataTable"],
         "summary": "Get a data table",
         "description": "Retrieve a specific data table by ID.",
         "operationId": "get-data-table",
@@ -1903,9 +1803,7 @@
       "patch": {
         "x-eov-operation-id": "updateDataTable",
         "x-eov-operation-handler": "v1/handlers/data-tables/data-tables.handler",
-        "tags": [
-          "DataTable"
-        ],
+        "tags": ["DataTable"],
         "summary": "Update a data table",
         "description": "Update a data table's name.",
         "operationId": "update-data-table",
@@ -1960,9 +1858,7 @@
       "delete": {
         "x-eov-operation-id": "deleteDataTable",
         "x-eov-operation-handler": "v1/handlers/data-tables/data-tables.handler",
-        "tags": [
-          "DataTable"
-        ],
+        "tags": ["DataTable"],
         "summary": "Delete a data table",
         "description": "Delete a data table. This will also delete all rows in the table.",
         "operationId": "delete-data-table",
@@ -1993,9 +1889,7 @@
       "get": {
         "x-eov-operation-id": "getDataTableRows",
         "x-eov-operation-handler": "v1/handlers/data-tables/data-tables.rows.handler",
-        "tags": [
-          "DataTable"
-        ],
+        "tags": ["DataTable"],
         "summary": "Retrieve rows from a data table",
         "description": "Query and retrieve rows from a data table with optional filtering, sorting, and pagination.",
         "operationId": "get-data-table-rows",
@@ -2067,9 +1961,7 @@
       "post": {
         "x-eov-operation-id": "insertDataTableRows",
         "x-eov-operation-handler": "v1/handlers/data-tables/data-tables.rows.handler",
-        "tags": [
-          "DataTable"
-        ],
+        "tags": ["DataTable"],
         "summary": "Insert rows into a data table",
         "description": "Insert one or more rows into a data table.",
         "operationId": "insert-data-table-rows",
@@ -2159,9 +2051,7 @@
       "patch": {
         "x-eov-operation-id": "updateDataTableRows",
         "x-eov-operation-handler": "v1/handlers/data-tables/data-tables.rows.handler",
-        "tags": [
-          "DataTable"
-        ],
+        "tags": ["DataTable"],
         "summary": "Update rows in a data table",
         "description": "Update rows matching filter conditions in a data table.",
         "operationId": "update-data-table-rows",
@@ -2242,9 +2132,7 @@
       "post": {
         "x-eov-operation-id": "upsertDataTableRow",
         "x-eov-operation-handler": "v1/handlers/data-tables/data-tables.rows.handler",
-        "tags": [
-          "DataTable"
-        ],
+        "tags": ["DataTable"],
         "summary": "Upsert a row in a data table",
         "description": "Update an existing row or insert a new one if no row matches the filter conditions.",
         "operationId": "upsert-data-table-row",
@@ -2327,9 +2215,7 @@
       "delete": {
         "x-eov-operation-id": "deleteDataTableRows",
         "x-eov-operation-handler": "v1/handlers/data-tables/data-tables.rows.handler",
-        "tags": [
-          "DataTable"
-        ],
+        "tags": ["DataTable"],
         "summary": "Delete rows from a data table",
         "description": "Delete rows matching filter conditions from a data table. Filter is required to prevent accidental deletion of all data.",
         "operationId": "delete-data-table-rows",
@@ -2411,9 +2297,7 @@
       "post": {
         "x-eov-operation-id": "createProject",
         "x-eov-operation-handler": "v1/handlers/projects/projects.handler",
-        "tags": [
-          "Projects"
-        ],
+        "tags": ["Projects"],
         "summary": "Create a project",
         "description": "Create a project on your instance.",
         "requestBody": {
@@ -2442,9 +2326,7 @@
       "get": {
         "x-eov-operation-id": "getProjects",
         "x-eov-operation-handler": "v1/handlers/projects/projects.handler",
-        "tags": [
-          "Projects"
-        ],
+        "tags": ["Projects"],
         "summary": "Retrieve projects",
         "description": "Retrieve projects from your instance.",
         "parameters": [
@@ -2476,9 +2358,7 @@
       "delete": {
         "x-eov-operation-id": "deleteProject",
         "x-eov-operation-handler": "v1/handlers/projects/projects.handler",
-        "tags": [
-          "Projects"
-        ],
+        "tags": ["Projects"],
         "summary": "Delete a project",
         "description": "Delete a project from your instance.",
         "parameters": [
@@ -2510,9 +2390,7 @@
       "put": {
         "x-eov-operation-id": "updateProject",
         "x-eov-operation-handler": "v1/handlers/projects/projects.handler",
-        "tags": [
-          "Projects"
-        ],
+        "tags": ["Projects"],
         "summary": "Update a project",
         "description": "Update a project on your instance.",
         "parameters": [
@@ -2560,9 +2438,7 @@
       "post": {
         "x-eov-operation-id": "addUsersToProject",
         "x-eov-operation-handler": "v1/handlers/projects/projects.handler",
-        "tags": [
-          "Projects"
-        ],
+        "tags": ["Projects"],
         "summary": "Add one or more users to a project",
         "description": "Add one or more users to a project on your instance.",
         "parameters": [
@@ -2600,16 +2476,11 @@
                           "example": "project:viewer"
                         }
                       },
-                      "required": [
-                        "userId",
-                        "role"
-                      ]
+                      "required": ["userId", "role"]
                     }
                   }
                 },
-                "required": [
-                  "relations"
-                ]
+                "required": ["relations"]
               }
             }
           }
@@ -2634,9 +2505,7 @@
       "delete": {
         "x-eov-operation-id": "deleteUserFromProject",
         "x-eov-operation-handler": "v1/handlers/projects/projects.handler",
-        "tags": [
-          "Projects"
-        ],
+        "tags": ["Projects"],
         "summary": "Delete a user from a project",
         "description": "Delete a user from a project on your instance.",
         "parameters": [
@@ -2677,9 +2546,7 @@
       "patch": {
         "x-eov-operation-id": "changeUserRoleInProject",
         "x-eov-operation-handler": "v1/handlers/projects/projects.handler",
-        "tags": [
-          "Projects"
-        ],
+        "tags": ["Projects"],
         "summary": "Change a user's role in a project",
         "description": "Change a user's role in a project.",
         "parameters": [
@@ -2715,9 +2582,7 @@
                     "example": "project:viewer"
                   }
                 },
-                "required": [
-                  "role"
-                ]
+                "required": ["role"]
               }
             }
           }
@@ -2857,11 +2722,7 @@
         }
       },
       "credential": {
-        "required": [
-          "name",
-          "type",
-          "data"
-        ],
+        "required": ["name", "type", "data"],
         "type": "object",
         "properties": {
           "id": {
@@ -2904,13 +2765,7 @@
         }
       },
       "create-credential-response": {
-        "required": [
-          "id",
-          "name",
-          "type",
-          "createdAt",
-          "updatedAt"
-        ],
+        "required": ["id", "name", "type", "createdAt", "updatedAt"],
         "type": "object",
         "properties": {
           "id": {
@@ -3074,9 +2929,7 @@
       "tag": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "name"
-        ],
+        "required": ["name"],
         "properties": {
           "id": {
             "type": "string",
@@ -3181,10 +3034,7 @@
             "items": {
               "type": "number"
             },
-            "example": [
-              -100,
-              80
-            ]
+            "example": [-100, 80]
           },
           "parameters": {
             "type": "object",
@@ -3226,17 +3076,11 @@
           },
           "saveDataErrorExecution": {
             "type": "string",
-            "enum": [
-              "all",
-              "none"
-            ]
+            "enum": ["all", "none"]
           },
           "saveDataSuccessExecution": {
             "type": "string",
-            "enum": [
-              "all",
-              "none"
-            ]
+            "enum": ["all", "none"]
           },
           "executionTimeout": {
             "type": "number",
@@ -3392,12 +3236,7 @@
       "workflow": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "name",
-          "nodes",
-          "connections",
-          "settings"
-        ],
+        "required": ["name", "nodes", "connections", "settings"],
         "properties": {
           "id": {
             "type": "string",
@@ -3589,9 +3428,7 @@
         "items": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "id"
-          ],
+          "required": ["id"],
           "properties": {
             "id": {
               "type": "string",
@@ -3601,9 +3438,7 @@
         }
       },
       "user": {
-        "required": [
-          "email"
-        ],
+        "required": ["email"],
         "type": "object",
         "properties": {
           "id": {
@@ -3776,9 +3611,7 @@
       "project": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "name"
-        ],
+        "required": ["name"],
         "properties": {
           "id": {
             "type": "string",
@@ -3796,10 +3629,7 @@
       "variable": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "key",
-          "value"
-        ],
+        "required": ["key", "value"],
         "properties": {
           "id": {
             "type": "string",
@@ -3841,10 +3671,7 @@
       "variable.create": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "key",
-          "value"
-        ],
+        "required": ["key", "value"],
         "properties": {
           "id": {
             "type": "string",
@@ -3895,12 +3722,7 @@
                 },
                 "type": {
                   "type": "string",
-                  "enum": [
-                    "string",
-                    "number",
-                    "boolean",
-                    "date"
-                  ],
+                  "enum": ["string", "number", "boolean", "date"],
                   "description": "Column data type"
                 },
                 "index": {
@@ -3973,27 +3795,15 @@
                 },
                 "type": {
                   "type": "string",
-                  "enum": [
-                    "string",
-                    "number",
-                    "boolean",
-                    "date",
-                    "json"
-                  ],
+                  "enum": ["string", "number", "boolean", "date", "json"],
                   "description": "Column data type"
                 }
               },
-              "required": [
-                "name",
-                "type"
-              ]
+              "required": ["name", "type"]
             }
           }
         },
-        "required": [
-          "name",
-          "columns"
-        ]
+        "required": ["name", "columns"]
       },
       "updateDataTableRequest": {
         "type": "object",
@@ -4005,9 +3815,7 @@
             "maxLength": 128
           }
         },
-        "required": [
-          "name"
-        ]
+        "required": ["name"]
       },
       "dataTableRow": {
         "type": "object",
@@ -4061,18 +3869,12 @@
           },
           "returnType": {
             "type": "string",
-            "enum": [
-              "count",
-              "id",
-              "all"
-            ],
+            "enum": ["count", "id", "all"],
             "default": "count",
             "description": "- count: Return only the number of rows inserted\n- id: Return an array of inserted row IDs\n- all: Return the full row data for all inserted rows\n"
           }
         },
-        "required": [
-          "data"
-        ]
+        "required": ["data"]
       },
       "updateRowsRequest": {
         "type": "object",
@@ -4082,10 +3884,7 @@
             "properties": {
               "type": {
                 "type": "string",
-                "enum": [
-                  "and",
-                  "or"
-                ],
+                "enum": ["and", "or"],
                 "default": "and"
               },
               "filters": {
@@ -4112,17 +3911,11 @@
                     },
                     "value": {}
                   },
-                  "required": [
-                    "columnName",
-                    "condition",
-                    "value"
-                  ]
+                  "required": ["columnName", "condition", "value"]
                 }
               }
             },
-            "required": [
-              "filters"
-            ],
+            "required": ["filters"],
             "description": "Filter conditions to match rows for update"
           },
           "data": {
@@ -4141,10 +3934,7 @@
             "description": "If true, preview changes without persisting them"
           }
         },
-        "required": [
-          "filter",
-          "data"
-        ]
+        "required": ["filter", "data"]
       },
       "upsertRowRequest": {
         "type": "object",
@@ -4154,10 +3944,7 @@
             "properties": {
               "type": {
                 "type": "string",
-                "enum": [
-                  "and",
-                  "or"
-                ],
+                "enum": ["and", "or"],
                 "default": "and"
               },
               "filters": {
@@ -4184,17 +3971,11 @@
                     },
                     "value": {}
                   },
-                  "required": [
-                    "columnName",
-                    "condition",
-                    "value"
-                  ]
+                  "required": ["columnName", "condition", "value"]
                 }
               }
             },
-            "required": [
-              "filters"
-            ],
+            "required": ["filters"],
             "description": "Filter conditions to match existing row. If no row matches, a new row is inserted."
           },
           "data": {
@@ -4213,10 +3994,7 @@
             "description": "If true, preview changes without persisting them"
           }
         },
-        "required": [
-          "filter",
-          "data"
-        ]
+        "required": ["filter", "data"]
       },
       "projectList": {
         "type": "object",
@@ -4236,9 +4014,7 @@
         }
       },
       "error": {
-        "required": [
-          "message"
-        ],
+        "required": ["message"],
         "type": "object",
         "properties": {
           "code": {

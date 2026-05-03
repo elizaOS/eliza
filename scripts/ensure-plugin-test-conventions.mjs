@@ -38,7 +38,8 @@ function findPackageJsonFiles(dir, list = []) {
   for (const e of entries) {
     const p = join(dir, e.name);
     const relPath = p.replace(ROOT + "/", "");
-    if (e.name === "node_modules" || e.name === "dist" || e.name === ".git") continue;
+    if (e.name === "node_modules" || e.name === "dist" || e.name === ".git")
+      continue;
     if (e.name === "data" || e.name === "stagehand-server") continue;
     if (e.isDirectory()) {
       findPackageJsonFiles(p, list);
@@ -66,7 +67,8 @@ function ensureRustResilient(value) {
   ) {
     if (trimmed.startsWith("(") && trimmed.includes(") ||")) return value;
     if (trimmed.includes(") ||")) return value;
-    if (trimmed.startsWith("(test ") && trimmed.includes("Darwin")) return value;
+    if (trimmed.startsWith("(test ") && trimmed.includes("Darwin"))
+      return value;
     return `(${trimmed}) || echo '${RUST_SKIP_MSG}'`;
   }
   return value;
@@ -74,10 +76,13 @@ function ensureRustResilient(value) {
 
 function ensurePythonPytestGuard(value) {
   if (typeof value !== "string") return value;
-  if (value.includes("command -v pytest") || value.includes("pytest not found")) return value;
+  if (value.includes("command -v pytest") || value.includes("pytest not found"))
+    return value;
   if (!value.includes("pytest")) return value;
-  if (value.includes("test -d python") && value.includes("|| echo")) return value;
-  const hasDirCheck = value.includes("test -d python") || value.includes("test -d python;");
+  if (value.includes("test -d python") && value.includes("|| echo"))
+    return value;
+  const hasDirCheck =
+    value.includes("test -d python") || value.includes("test -d python;");
   if (hasDirCheck) return value;
   if (value.startsWith("cd python") && value.includes("pytest")) {
     return `test -d python && (command -v pytest >/dev/null 2>&1 && cd python && ${value.replace(/^cd python && ?/, "")}) || echo '${PYTHON_SKIP_MSG} (no dir or pytest not found)'`;
@@ -129,7 +134,10 @@ function processPackageJson(filePath) {
     if (!DRY_RUN) {
       writeFileSync(filePath, newContent);
     }
-    console.log(DRY_RUN ? "Would update:" : "Updated:", filePath.replace(ROOT + "/", ""));
+    console.log(
+      DRY_RUN ? "Would update:" : "Updated:",
+      filePath.replace(ROOT + "/", ""),
+    );
   }
   return { changed };
 }

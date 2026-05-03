@@ -8,28 +8,34 @@
  *
  * Run with: bun run crawl:nodes
  */
-import { mkdir, readFile, writeFile, rm } from 'node:fs/promises';
-import { execSync } from 'node:child_process';
-import path from 'node:path';
+import { mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { execSync } from "node:child_process";
+import path from "node:path";
 
-const OUTPUT = path.resolve(import.meta.dir, '..', 'src', 'data', 'defaultNodes.json');
-const TMP_DIR = path.join(import.meta.dir, '..', '.tmp-langchain');
+const OUTPUT = path.resolve(
+  import.meta.dir,
+  "..",
+  "src",
+  "data",
+  "defaultNodes.json",
+);
+const TMP_DIR = path.join(import.meta.dir, "..", ".tmp-langchain");
 
 const KEEP_KEYS = [
-  'name',
-  'displayName',
-  'group',
-  'description',
-  'version',
-  'inputs',
-  'outputs',
-  'properties',
-  'credentials',
-  'documentationUrl',
+  "name",
+  "displayName",
+  "group",
+  "description",
+  "version",
+  "inputs",
+  "outputs",
+  "properties",
+  "credentials",
+  "documentationUrl",
 ] as const;
 
 /** Langchain nodes that override their deprecated n8n-nodes-base counterpart. */
-const LANGCHAIN_OVERRIDES = ['openAi'];
+const LANGCHAIN_OVERRIDES = ["openAi"];
 
 function filterKeys(node: Record<string, unknown>): Record<string, unknown> {
   const filtered: Record<string, unknown> = {};
@@ -41,21 +47,31 @@ function filterKeys(node: Record<string, unknown>): Record<string, unknown> {
   return filtered;
 }
 
-async function loadLangchainNodes(): Promise<Map<string, Record<string, unknown>>> {
+async function loadLangchainNodes(): Promise<
+  Map<string, Record<string, unknown>>
+> {
   const overrides = new Map<string, Record<string, unknown>>();
 
   try {
     await mkdir(TMP_DIR, { recursive: true });
 
-    console.log('Downloading @n8n/n8n-nodes-langchain tarball...');
-    execSync('npm pack @n8n/n8n-nodes-langchain', { cwd: TMP_DIR, stdio: 'pipe' });
+    console.log("Downloading @n8n/n8n-nodes-langchain tarball...");
+    execSync("npm pack @n8n/n8n-nodes-langchain", {
+      cwd: TMP_DIR,
+      stdio: "pipe",
+    });
 
-    const tgzFile = execSync('ls *.tgz', { cwd: TMP_DIR, encoding: 'utf-8' }).trim().split('\n')[0];
-    execSync(`tar -xf "${tgzFile}" package/dist/types/nodes.json`, { cwd: TMP_DIR, stdio: 'pipe' });
+    const tgzFile = execSync("ls *.tgz", { cwd: TMP_DIR, encoding: "utf-8" })
+      .trim()
+      .split("\n")[0];
+    execSync(`tar -xf "${tgzFile}" package/dist/types/nodes.json`, {
+      cwd: TMP_DIR,
+      stdio: "pipe",
+    });
 
     const raw = await readFile(
-      path.join(TMP_DIR, 'package', 'dist', 'types', 'nodes.json'),
-      'utf-8'
+      path.join(TMP_DIR, "package", "dist", "types", "nodes.json"),
+      "utf-8",
     );
     const allNodes: Record<string, unknown>[] = JSON.parse(raw);
     console.log(`  Found ${allNodes.length} langchain node definitions`);
@@ -81,12 +97,12 @@ async function loadLangchainNodes(): Promise<Map<string, Record<string, unknown>
       prefixed.name = `@n8n/n8n-nodes-langchain.${nodeName}`;
       overrides.set(nodeName, prefixed);
       console.log(
-        `  Extracted ${prefixed.name} v${Array.isArray(latest.version) ? (latest.version as number[]).join('/') : latest.version} from langchain`
+        `  Extracted ${prefixed.name} v${Array.isArray(latest.version) ? (latest.version as number[]).join("/") : latest.version} from langchain`,
       );
     }
   } catch (error) {
     console.warn(
-      `Warning: failed to load langchain nodes (catalog will use n8n-nodes-base only): ${error instanceof Error ? error.message : String(error)}`
+      `Warning: failed to load langchain nodes (catalog will use n8n-nodes-base only): ${error instanceof Error ? error.message : String(error)}`,
     );
   } finally {
     await rm(TMP_DIR, { recursive: true, force: true }).catch(() => {});
@@ -98,18 +114,24 @@ async function loadLangchainNodes(): Promise<Map<string, Record<string, unknown>
 async function main() {
   let nodesBasePath: string;
   try {
-    nodesBasePath = require.resolve('n8n-nodes-base');
+    nodesBasePath = require.resolve("n8n-nodes-base");
   } catch {
-    console.error('n8n-nodes-base not found. Run: bun add -d n8n-nodes-base');
+    console.error("n8n-nodes-base not found. Run: bun add -d n8n-nodes-base");
     process.exit(1);
   }
 
   const langchainOverrides = await loadLangchainNodes();
 
-  const typesPath = path.join(nodesBasePath, '..', 'dist', 'types', 'nodes.json');
+  const typesPath = path.join(
+    nodesBasePath,
+    "..",
+    "dist",
+    "types",
+    "nodes.json",
+  );
   console.log(`Reading ${typesPath} ...`);
 
-  const raw = await readFile(typesPath, 'utf-8');
+  const raw = await readFile(typesPath, "utf-8");
   const allNodes: Record<string, unknown>[] = JSON.parse(raw);
   console.log(`Found ${allNodes.length} base node definitions`);
 
@@ -133,11 +155,11 @@ async function main() {
   }
 
   await mkdir(path.dirname(OUTPUT), { recursive: true });
-  await writeFile(OUTPUT, JSON.stringify(nodes, null, 2), 'utf-8');
+  await writeFile(OUTPUT, JSON.stringify(nodes, null, 2), "utf-8");
   console.log(`Wrote ${nodes.length} unique nodes to ${OUTPUT}`);
 }
 
 main().catch((err) => {
-  console.error('crawl-nodes failed:', err);
+  console.error("crawl-nodes failed:", err);
   process.exit(1);
 });

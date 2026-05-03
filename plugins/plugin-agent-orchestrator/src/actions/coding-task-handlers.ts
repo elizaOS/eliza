@@ -904,7 +904,10 @@ export async function handleMultiAgent(
         !specOpencodeRequested
       ) {
         const [preflight] = await ptyService.checkAvailableAgents([
-          specAgentType as Exclude<CodingAgentType, "shell" | "pi" | "opencode">,
+          specAgentType as Exclude<
+            CodingAgentType,
+            "shell" | "pi" | "opencode"
+          >,
         ]);
         if (preflight && !preflight.installed) {
           results.push({

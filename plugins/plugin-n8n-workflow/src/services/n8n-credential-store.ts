@@ -12,7 +12,10 @@ import type { N8nCredentialStoreApi, CredentialMapping } from '../types/index';
  * On the cloud, a different plugin can register its own implementation
  * under the same service type — runtime.getService() returns the first registered.
  */
-export class N8nCredentialStore extends Service implements N8nCredentialStoreApi {
+export class N8nCredentialStore
+  extends Service
+  implements N8nCredentialStoreApi
+{
   static override readonly serviceType = N8N_CREDENTIAL_STORE_TYPE;
 
   override capabilityDescription =
@@ -29,12 +32,12 @@ export class N8nCredentialStore extends Service implements N8nCredentialStoreApi
   static async start(runtime: IAgentRuntime): Promise<N8nCredentialStore> {
     logger.info(
       { src: 'plugin:n8n-workflow:service:credential-store' },
-      'Starting N8n Credential Store...'
+      'Starting N8n Credential Store...',
     );
     const service = new N8nCredentialStore(runtime);
     logger.info(
       { src: 'plugin:n8n-workflow:service:credential-store' },
-      'N8n Credential Store started'
+      'N8n Credential Store started',
     );
     return service;
   }
@@ -42,7 +45,7 @@ export class N8nCredentialStore extends Service implements N8nCredentialStoreApi
   override async stop(): Promise<void> {
     logger.info(
       { src: 'plugin:n8n-workflow:service:credential-store' },
-      'N8n Credential Store stopped'
+      'N8n Credential Store stopped',
     );
   }
 
@@ -51,12 +54,21 @@ export class N8nCredentialStore extends Service implements N8nCredentialStoreApi
     const rows = await db
       .select()
       .from(credentialMappings)
-      .where(and(eq(credentialMappings.userId, userId), eq(credentialMappings.credType, credType)))
+      .where(
+        and(
+          eq(credentialMappings.userId, userId),
+          eq(credentialMappings.credType, credType),
+        ),
+      )
       .limit(1);
     return rows[0]?.n8nCredentialId ?? null;
   }
 
-  async set(userId: string, credType: string, n8nCredId: string): Promise<void> {
+  async set(
+    userId: string,
+    credType: string,
+    n8nCredId: string,
+  ): Promise<void> {
     const db = this.getDb();
     await db
       .insert(credentialMappings)
@@ -83,6 +95,11 @@ export class N8nCredentialStore extends Service implements N8nCredentialStoreApi
     const db = this.getDb();
     await db
       .delete(credentialMappings)
-      .where(and(eq(credentialMappings.userId, userId), eq(credentialMappings.credType, credType)));
+      .where(
+        and(
+          eq(credentialMappings.userId, userId),
+          eq(credentialMappings.credType, credType),
+        ),
+      );
   }
 }

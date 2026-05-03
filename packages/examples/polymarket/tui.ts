@@ -132,7 +132,9 @@ function shortenId(value: string): string {
   return `${value.slice(0, 5)}...${value.slice(-5)}`;
 }
 
-function normalizeSetting(value: string | number | boolean | null | undefined): string | null {
+function normalizeSetting(
+  value: string | number | boolean | null | undefined,
+): string | null {
   if (typeof value === "number") return String(value);
   if (typeof value === "boolean") return value ? "true" : "false";
   if (typeof value !== "string") return null;
@@ -158,7 +160,11 @@ function formatLogArgs(args: LogArg[]): string {
   return parts.filter((p) => p.length > 0).join(" ");
 }
 
-function buildSidebarCard(title: string, bodyLines: string[], maxInnerWidth: number): string[] {
+function buildSidebarCard(
+  title: string,
+  bodyLines: string[],
+  maxInnerWidth: number,
+): string[] {
   const titleLines = wrapText(title, maxInnerWidth);
   const border = "─".repeat(maxInnerWidth);
   const divider = "═".repeat(maxInnerWidth);
@@ -179,7 +185,9 @@ function buildSidebarCard(title: string, bodyLines: string[], maxInnerWidth: num
   return result;
 }
 
-function isAutonomyResponse(memory: Memory): memory is Memory & { createdAt: number } {
+function isAutonomyResponse(
+  memory: Memory,
+): memory is Memory & { createdAt: number } {
   if (typeof memory.createdAt !== "number") return false;
   if (typeof memory.content?.text !== "string") return false;
   const metadata = memory.content?.metadata;
@@ -191,7 +199,7 @@ function isAutonomyResponse(memory: Memory): memory is Memory & { createdAt: num
 async function pollAutonomyLogs(
   runtime: AgentRuntime,
   lastSeen: { value: number },
-  onLog: (text: string) => void
+  onLog: (text: string) => void,
 ): Promise<void> {
   const svc = runtime.getService<AutonomyService>("AUTONOMY");
   if (!svc) return;
@@ -215,7 +223,10 @@ async function pollAutonomyLogs(
   }
 }
 
-async function setAutonomy(runtime: AgentRuntime, enabled: boolean): Promise<string> {
+async function setAutonomy(
+  runtime: AgentRuntime,
+  enabled: boolean,
+): Promise<string> {
   const svc = runtime.getService<AutonomyService>("AUTONOMY");
   if (!svc) {
     return "Autonomy service not available.";
@@ -242,7 +253,7 @@ class ChatPanel implements Component, Focusable {
 
   constructor(
     onSubmit: (text: string) => void,
-    onScrollChange: (maxScroll: number) => void
+    onScrollChange: (maxScroll: number) => void,
   ) {
     this.onSubmit = onSubmit;
     this.onScrollChange = onScrollChange;
@@ -293,7 +304,13 @@ class ChatPanel implements Component, Focusable {
     const messagesHeight = Math.max(0, height - 1);
 
     // Build render lines
-    const renderLines: { text: string; color?: string; dim?: boolean; bold?: boolean; italic?: boolean }[] = [];
+    const renderLines: {
+      text: string;
+      color?: string;
+      dim?: boolean;
+      bold?: boolean;
+      italic?: boolean;
+    }[] = [];
     for (const msg of this.messages) {
       if (msg.role === "system") {
         const wrapped = wrapText(msg.content, contentWidth);
@@ -309,7 +326,10 @@ class ChatPanel implements Component, Focusable {
       const indent = "  ";
       const contentLines = msg.content.split("\n");
       for (const rawLine of contentLines) {
-        const wrapped = wrapText(rawLine, Math.max(1, contentWidth - indent.length));
+        const wrapped = wrapText(
+          rawLine,
+          Math.max(1, contentWidth - indent.length),
+        );
         for (const line of wrapped) {
           renderLines.push({ text: indent + line });
         }
@@ -416,7 +436,12 @@ class SidebarPanel implements Component, Focusable {
     this.width = width;
     this.height = height;
 
-    const title = this.view === "positions" ? "Account" : this.view === "markets" ? "Active Markets" : "Agent Logs";
+    const title =
+      this.view === "positions"
+        ? "Account"
+        : this.view === "markets"
+          ? "Active Markets"
+          : "Agent Logs";
     const contentWidth = Math.max(10, width - 2);
 
     // Build body lines
@@ -453,7 +478,9 @@ class SidebarPanel implements Component, Focusable {
     const visibleBody = bodyLines.slice(startIdx, endIdx);
 
     const scrollIndicator = effectiveOffset > 0 ? ` ↑${effectiveOffset}` : "";
-    const header = this.updatedAt ? `${title} (${this.updatedAt})${scrollIndicator}` : `${title}${scrollIndicator}`;
+    const header = this.updatedAt
+      ? `${title} (${this.updatedAt})${scrollIndicator}`
+      : `${title}${scrollIndicator}`;
 
     const output: string[] = [];
 
@@ -520,12 +547,14 @@ class PolymarketTuiApp {
 
     this.chatPanel = new ChatPanel(
       (text) => this.handleSubmit(text),
-      (max) => { this.chatMaxScroll = max; }
+      (max) => {
+        this.chatMaxScroll = max;
+      },
     );
 
-    this.sidebarPanel = new SidebarPanel(
-      (max) => { this.sidebarMaxScroll = max; }
-    );
+    this.sidebarPanel = new SidebarPanel((max) => {
+      this.sidebarMaxScroll = max;
+    });
   }
 
   async run(): Promise<void> {
@@ -577,7 +606,7 @@ class PolymarketTuiApp {
 
   private updateMessage(id: string, content: string): void {
     this.messages = this.messages.map((msg) =>
-      msg.id === id ? { ...msg, content } : msg
+      msg.id === id ? { ...msg, content } : msg,
     );
     this.chatPanel.setMessages(this.messages);
     this.tui.requestRender();
@@ -594,10 +623,14 @@ class PolymarketTuiApp {
 
   private async fetchBalance(): Promise<void> {
     const runtime = this.session.runtime;
-    let service = runtime.getService<PolymarketService>(POLYMARKET_SERVICE_NAME);
+    let service = runtime.getService<PolymarketService>(
+      POLYMARKET_SERVICE_NAME,
+    );
     if (!service && typeof runtime.getServiceLoadPromise === "function") {
       try {
-        service = await runtime.getServiceLoadPromise(POLYMARKET_SERVICE_NAME) as PolymarketService;
+        service = (await runtime.getServiceLoadPromise(
+          POLYMARKET_SERVICE_NAME,
+        )) as PolymarketService;
       } catch {
         // Service load failed
       }
@@ -605,7 +638,9 @@ class PolymarketTuiApp {
     if (!service) {
       for (let i = 0; i < 10; i++) {
         await new Promise((r) => setTimeout(r, 500));
-        service = runtime.getService<PolymarketService>(POLYMARKET_SERVICE_NAME);
+        service = runtime.getService<PolymarketService>(
+          POLYMARKET_SERVICE_NAME,
+        );
         if (service) break;
       }
     }
@@ -639,10 +674,14 @@ class PolymarketTuiApp {
     this.sidebarPanel.setContent(this.sidebarContent);
     this.tui.requestRender();
 
-    let service = runtime.getService<PolymarketService>(POLYMARKET_SERVICE_NAME);
+    let service = runtime.getService<PolymarketService>(
+      POLYMARKET_SERVICE_NAME,
+    );
     if (!service && typeof runtime.getServiceLoadPromise === "function") {
       try {
-        service = await runtime.getServiceLoadPromise(POLYMARKET_SERVICE_NAME) as PolymarketService;
+        service = (await runtime.getServiceLoadPromise(
+          POLYMARKET_SERVICE_NAME,
+        )) as PolymarketService;
       } catch {
         // Service failed to load
       }
@@ -650,7 +689,9 @@ class PolymarketTuiApp {
     if (!service) {
       for (let attempt = 0; attempt < 5; attempt++) {
         await new Promise((resolve) => setTimeout(resolve, 1000));
-        service = runtime.getService<PolymarketService>(POLYMARKET_SERVICE_NAME);
+        service = runtime.getService<PolymarketService>(
+          POLYMARKET_SERVICE_NAME,
+        );
         if (service) break;
         this.sidebarContent = `Starting up... (attempt ${attempt + 2}/6)`;
         this.sidebarPanel.setContent(this.sidebarContent);
@@ -718,7 +759,9 @@ class PolymarketTuiApp {
                 marketName = cachedName;
               } else {
                 try {
-                  const market = (await service.getClobClient().getMarket(marketIdRaw)) as Market;
+                  const market = (await service
+                    .getClobClient()
+                    .getMarket(marketIdRaw)) as Market;
                   if (market?.question) {
                     marketName = market.question;
                     this.marketNameCache.set(marketIdRaw, market.question);
@@ -744,34 +787,40 @@ class PolymarketTuiApp {
         }
 
         const gammaPromise = fetch(
-          "https://gamma-api.polymarket.com/events?closed=false&active=true&limit=20&order=volume&ascending=false"
-        ).then(async (res) => {
-          if (!res.ok) return [];
-          interface GammaEvent {
-            id?: string;
-            slug?: string;
-            title?: string;
-            question?: string;
-            endDate?: string;
-            volume?: number;
-            closed?: boolean;
-            active?: boolean;
-          }
-          const events = (await res.json()) as GammaEvent[];
-          return events
-            .filter((e) => e.active !== false && e.closed !== true)
-            .map((e): MarketItem => ({
-              id: e.id || e.slug || "",
-              title: e.title || e.question || e.slug || "Unknown",
-              volume: e.volume ?? 0,
-              endDate: e.endDate || null,
-              source: "gamma",
-            }));
-        }).catch(() => [] as MarketItem[]);
+          "https://gamma-api.polymarket.com/events?closed=false&active=true&limit=20&order=volume&ascending=false",
+        )
+          .then(async (res) => {
+            if (!res.ok) return [];
+            interface GammaEvent {
+              id?: string;
+              slug?: string;
+              title?: string;
+              question?: string;
+              endDate?: string;
+              volume?: number;
+              closed?: boolean;
+              active?: boolean;
+            }
+            const events = (await res.json()) as GammaEvent[];
+            return events
+              .filter((e) => e.active !== false && e.closed !== true)
+              .map(
+                (e): MarketItem => ({
+                  id: e.id || e.slug || "",
+                  title: e.title || e.question || e.slug || "Unknown",
+                  volume: e.volume ?? 0,
+                  endDate: e.endDate || null,
+                  source: "gamma",
+                }),
+              );
+          })
+          .catch(() => [] as MarketItem[]);
 
         const clobPromise = (async () => {
           const client = service.getClobClient();
-          const response = (await client.getMarkets(undefined)) as MarketsResponse;
+          const response = (await client.getMarkets(
+            undefined,
+          )) as MarketsResponse;
           const now = Date.now();
           return (response?.data ?? [])
             .filter((m) => {
@@ -783,16 +832,21 @@ class PolymarketTuiApp {
               }
               return true;
             })
-            .map((m): MarketItem => ({
-              id: m.condition_id,
-              title: m.question || m.condition_id,
-              volume: 0,
-              endDate: m.end_date_iso || null,
-              source: "clob",
-            }));
+            .map(
+              (m): MarketItem => ({
+                id: m.condition_id,
+                title: m.question || m.condition_id,
+                volume: 0,
+                endDate: m.end_date_iso || null,
+                source: "clob",
+              }),
+            );
         })().catch(() => [] as MarketItem[]);
 
-        const [gammaMarkets, clobMarkets] = await Promise.all([gammaPromise, clobPromise]);
+        const [gammaMarkets, clobMarkets] = await Promise.all([
+          gammaPromise,
+          clobPromise,
+        ]);
 
         const seen = new Set<string>();
         const combined: MarketItem[] = [];
@@ -813,7 +867,9 @@ class PolymarketTuiApp {
         combined.sort((a, b) => {
           if (b.volume !== a.volume) return b.volume - a.volume;
           if (a.endDate && b.endDate) {
-            return new Date(a.endDate).getTime() - new Date(b.endDate).getTime();
+            return (
+              new Date(a.endDate).getTime() - new Date(b.endDate).getTime()
+            );
           }
           return 0;
         });
@@ -828,13 +884,24 @@ class PolymarketTuiApp {
           const cards: string[] = [];
           for (const m of trimmed) {
             const bodyLines: string[] = [];
-            if (m.volume > 0) bodyLines.push(`Volume: $${Math.round(m.volume).toLocaleString()}`);
-            if (m.endDate) bodyLines.push(`Ends: ${new Date(m.endDate).toLocaleDateString()}`);
-            const url = m.source === "gamma"
-              ? `https://polymarket.com/event/${m.id}`
-              : `https://polymarket.com/market/${m.id}`;
+            if (m.volume > 0)
+              bodyLines.push(
+                `Volume: $${Math.round(m.volume).toLocaleString()}`,
+              );
+            if (m.endDate)
+              bodyLines.push(
+                `Ends: ${new Date(m.endDate).toLocaleDateString()}`,
+              );
+            const url =
+              m.source === "gamma"
+                ? `https://polymarket.com/event/${m.id}`
+                : `https://polymarket.com/market/${m.id}`;
             bodyLines.push(url);
-            const cardLines = buildSidebarCard(m.title, bodyLines, cardInnerWidth);
+            const cardLines = buildSidebarCard(
+              m.title,
+              bodyLines,
+              cardInnerWidth,
+            );
             cards.push(...cardLines, "");
           }
           this.sidebarContent = cards.join("\n");
@@ -861,21 +928,25 @@ class PolymarketTuiApp {
 
   private async pollAutonomyLogs(): Promise<void> {
     try {
-      await pollAutonomyLogs(this.session.runtime, this.lastAutonomyTime, (text) => {
-        const trimmed = text.trim();
-        if (!trimmed) return;
-        const lines = trimmed.split("\n").map((line) => `[Autonomy] ${line}`);
-        const now = Date.now();
-        for (const line of lines) {
-          this.appendMessage({
-            id: uuidv4(),
-            role: "system",
-            content: line,
-            timestamp: now,
-          });
-          this.appendLog(line);
-        }
-      });
+      await pollAutonomyLogs(
+        this.session.runtime,
+        this.lastAutonomyTime,
+        (text) => {
+          const trimmed = text.trim();
+          if (!trimmed) return;
+          const lines = trimmed.split("\n").map((line) => `[Autonomy] ${line}`);
+          const now = Date.now();
+          for (const line of lines) {
+            this.appendMessage({
+              id: uuidv4(),
+              role: "system",
+              content: line,
+              timestamp: now,
+            });
+            this.appendLog(line);
+          }
+        },
+      );
     } catch {
       // Ignore errors
     }
@@ -891,7 +962,10 @@ class PolymarketTuiApp {
         if (original) original(...args);
         const text = formatLogArgs(args);
         if (!text) return;
-        const clipped = text.length > MAX_LOG_LENGTH ? `${text.slice(0, MAX_LOG_LENGTH)}…` : text;
+        const clipped =
+          text.length > MAX_LOG_LENGTH
+            ? `${text.slice(0, MAX_LOG_LENGTH)}…`
+            : text;
         this.appendLog(`${level.toUpperCase()}: ${clipped}`);
       };
 
@@ -910,7 +984,9 @@ class PolymarketTuiApp {
       if (!content) return;
       const actionName = content.actions?.[0] ?? "action";
       const actionId =
-        typeof content.actionId === "string" ? content.actionId : `${actionName}:${Date.now()}`;
+        typeof content.actionId === "string"
+          ? content.actionId
+          : `${actionName}:${Date.now()}`;
       const messageId = uuidv4();
       this.actionMessageIds.set(actionId, messageId);
       this.appendMessage({
@@ -928,9 +1004,13 @@ class PolymarketTuiApp {
       if (!content) return;
       const actionName = content.actions?.[0] ?? "action";
       const actionId =
-        typeof content.actionId === "string" ? content.actionId : `${actionName}:done`;
+        typeof content.actionId === "string"
+          ? content.actionId
+          : `${actionName}:done`;
       const status =
-        typeof content.actionStatus === "string" ? content.actionStatus : "completed";
+        typeof content.actionStatus === "string"
+          ? content.actionStatus
+          : "completed";
       const messageId = this.actionMessageIds.get(actionId);
       if (messageId) {
         this.updateMessage(messageId, `action ${actionName} ${status}`);
@@ -1024,7 +1104,10 @@ class PolymarketTuiApp {
     if (this.focusPanel === "chat") {
       if (char === "\x1b[5~") {
         // Page Up
-        this.scrollOffset = Math.min(this.chatMaxScroll, this.scrollOffset + 10);
+        this.scrollOffset = Math.min(
+          this.chatMaxScroll,
+          this.scrollOffset + 10,
+        );
         this.chatPanel.setScrollOffset(this.scrollOffset);
         this.tui.requestRender();
         return;
@@ -1039,7 +1122,10 @@ class PolymarketTuiApp {
       if (char === "\x1b[A" || char === "\x1b[B") {
         // Arrow keys
         const delta = char === "\x1b[A" ? 1 : -1;
-        this.scrollOffset = Math.max(0, Math.min(this.chatMaxScroll, this.scrollOffset + delta));
+        this.scrollOffset = Math.max(
+          0,
+          Math.min(this.chatMaxScroll, this.scrollOffset + delta),
+        );
         this.chatPanel.setScrollOffset(this.scrollOffset);
         this.tui.requestRender();
         return;
@@ -1050,7 +1136,10 @@ class PolymarketTuiApp {
     if (this.focusPanel === "sidebar") {
       if (char === "\x1b[5~") {
         // Page Up
-        this.sidebarScrollOffset = Math.min(this.sidebarMaxScroll, this.sidebarScrollOffset + 10);
+        this.sidebarScrollOffset = Math.min(
+          this.sidebarMaxScroll,
+          this.sidebarScrollOffset + 10,
+        );
         this.sidebarPanel.setScrollOffset(this.sidebarScrollOffset);
         this.tui.requestRender();
         return;
@@ -1065,7 +1154,10 @@ class PolymarketTuiApp {
       if (char === "\x1b[A" || char === "\x1b[B") {
         // Arrow keys
         const delta = char === "\x1b[A" ? 1 : -1;
-        this.sidebarScrollOffset = Math.max(0, Math.min(this.sidebarMaxScroll, this.sidebarScrollOffset + delta));
+        this.sidebarScrollOffset = Math.max(
+          0,
+          Math.min(this.sidebarMaxScroll, this.sidebarScrollOffset + delta),
+        );
         this.sidebarPanel.setScrollOffset(this.sidebarScrollOffset);
         this.tui.requestRender();
         return;
@@ -1095,7 +1187,8 @@ class PolymarketTuiApp {
       this.appendMessage({
         id: uuidv4(),
         role: "system",
-        content: "Commands: /clear, /account, /markets, /logs, /autonomy true|false, /help, /exit",
+        content:
+          "Commands: /clear, /account, /markets, /logs, /autonomy true|false, /help, /exit",
         timestamp: Date.now(),
       });
       return;
@@ -1202,8 +1295,12 @@ class PolymarketTuiApp {
         async (content: Content) => {
           if (typeof content.text === "string" && content.text.trim()) {
             const text = content.text.trim();
-            const isActionResult = text.startsWith("⏳") || text.startsWith("🔍") ||
-              text.startsWith("📊") || text.startsWith("❌") || text.startsWith("✅") ||
+            const isActionResult =
+              text.startsWith("⏳") ||
+              text.startsWith("🔍") ||
+              text.startsWith("📊") ||
+              text.startsWith("❌") ||
+              text.startsWith("✅") ||
               text.includes("**");
 
             if (isActionResult) {
@@ -1226,7 +1323,7 @@ class PolymarketTuiApp {
             streamedText += chunk;
             this.updateMessage(assistantId, streamedText);
           },
-        } as never
+        } as never,
       );
 
       const finalText = (streamedText || callbackText).trim();
@@ -1259,24 +1356,37 @@ class PolymarketTuiApp {
         const bodyHeight = Math.max(0, rows - headerHeight - bottomReserve);
 
         const showChat = this.layout === "chat" || this.layout === "split";
-        const showSidebar = this.layout === "sidebar" || this.layout === "split";
+        const showSidebar =
+          this.layout === "sidebar" || this.layout === "split";
 
-        const targetSidebarWidth = Math.min(42, Math.max(28, Math.floor(columns * 0.35)));
-        const sidebarWidth = showSidebar ? (showChat && isWide ? targetSidebarWidth : columns) : 0;
+        const targetSidebarWidth = Math.min(
+          42,
+          Math.max(28, Math.floor(columns * 0.35)),
+        );
+        const sidebarWidth = showSidebar
+          ? showChat && isWide
+            ? targetSidebarWidth
+            : columns
+          : 0;
         const gap = showChat && showSidebar && isWide ? 1 : 0;
-        const chatWidth = showChat ? Math.max(20, columns - sidebarWidth - gap) : 0;
+        const chatWidth = showChat
+          ? Math.max(20, columns - sidebarWidth - gap)
+          : 0;
 
         const showChatPanel = isWide ? showChat : this.layout !== "sidebar";
-        const showSidebarPanel = isWide ? showSidebar : this.layout === "sidebar";
+        const showSidebarPanel = isWide
+          ? showSidebar
+          : this.layout === "sidebar";
 
         const output: string[] = [];
 
         // Header
         if (headerHeight > 0) {
           const statusText = `Eliza Polymarket | ${this.balanceText} | ${this.isProcessing ? "..." : "Idle"} | Tab: Focus | Enter: View | Shift+Tab: Hide`;
-          const headerText = statusText.length > columns - 2
-            ? statusText.slice(0, columns - 5) + "..."
-            : statusText;
+          const headerText =
+            statusText.length > columns - 2
+              ? statusText.slice(0, columns - 5) + "..."
+              : statusText;
           output.push(" " + chalk.hex("#FFA500")(headerText));
         }
 
@@ -1285,7 +1395,10 @@ class PolymarketTuiApp {
           ? this.chatPanel.render(chatWidth, bodyHeight)
           : [];
         const sidebarLines = showSidebarPanel
-          ? this.sidebarPanel.render(isWide ? sidebarWidth : chatWidth, bodyHeight)
+          ? this.sidebarPanel.render(
+              isWide ? sidebarWidth : chatWidth,
+              bodyHeight,
+            )
           : [];
 
         for (let i = 0; i < bodyHeight; i++) {
@@ -1359,7 +1472,10 @@ class SettingsWizardApp {
   private editor: Editor | null = null;
   private running = true;
 
-  constructor(config: SettingsWizardConfig, onDone: (result: SettingsWizardResult) => void) {
+  constructor(
+    config: SettingsWizardConfig,
+    onDone: (result: SettingsWizardResult) => void,
+  ) {
     this.config = config;
     this.onDone = onDone;
     this.tui = new TUI();
@@ -1502,29 +1618,42 @@ class SettingsWizardApp {
           output.push(" Review settings:");
           for (const field of fields) {
             const value = this.values[field.key] ?? "";
-            const pretty = field.secret && value.length > 0
-              ? "•".repeat(Math.min(12, value.length))
-              : value || "(empty)";
+            const pretty =
+              field.secret && value.length > 0
+                ? "•".repeat(Math.min(12, value.length))
+                : value || "(empty)";
             const requiredMark = field.required ? "*" : "";
             output.push(` ${field.label}${requiredMark}: ${pretty}`);
           }
           output.push("");
-          output.push(" " + chalk.dim("Press Enter to save, Esc to cancel, Up to edit."));
+          output.push(
+            " " + chalk.dim("Press Enter to save, Esc to cancel, Up to edit."),
+          );
         } else if (currentField) {
           const requiredMark = currentField.required ? "*" : "";
-          output.push(` ${currentField.label}${requiredMark} (${this.index + 1}/${fields.length})`);
+          output.push(
+            ` ${currentField.label}${requiredMark} (${this.index + 1}/${fields.length})`,
+          );
 
           if (currentField.type === "select") {
             const options = currentField.options ?? [];
-            const currentValue = this.values[currentField.key] ?? options[0] ?? "";
-            output.push(" " + chalk.dim("Use ← → to change, Enter to confirm. ") + chalk.cyan(currentValue));
+            const currentValue =
+              this.values[currentField.key] ?? options[0] ?? "";
+            output.push(
+              " " +
+                chalk.dim("Use ← → to change, Enter to confirm. ") +
+                chalk.cyan(currentValue),
+            );
           } else if (this.editor) {
             const editorLines = this.editor.render(60, 1);
             output.push(" " + (editorLines[0] || ""));
           }
 
           output.push("");
-          output.push(" " + chalk.dim("Enter to continue, Esc to cancel, Up/Down to move."));
+          output.push(
+            " " +
+              chalk.dim("Enter to continue, Esc to cancel, Up/Down to move."),
+          );
         }
 
         return output;
@@ -1534,7 +1663,7 @@ class SettingsWizardApp {
 }
 
 export async function runSettingsWizard(
-  config: SettingsWizardConfig
+  config: SettingsWizardConfig,
 ): Promise<SettingsWizardResult> {
   return new Promise((resolve) => {
     let result: SettingsWizardResult = { status: "cancelled" };

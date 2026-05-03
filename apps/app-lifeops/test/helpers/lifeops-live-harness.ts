@@ -11,8 +11,7 @@ import {
 } from "../../../../../eliza/test/helpers/http.ts";
 import { createLiveRuntimeChildEnv } from "../../../../../eliza/test/helpers/live-child-env.ts";
 
-export const LIVE_TESTS_ENABLED =
-  process.env.ELIZA_LIVE_TEST === "1";
+export const LIVE_TESTS_ENABLED = process.env.ELIZA_LIVE_TEST === "1";
 export const LIVE_PROVIDER_OVERRIDE =
   process.env.ELIZA_LIVE_PROVIDER?.trim().toLowerCase() ?? "";
 export const LIVE_CHAT_TEST_TIMEOUT_MS = 300_000;

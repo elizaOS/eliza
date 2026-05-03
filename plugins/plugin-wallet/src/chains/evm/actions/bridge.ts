@@ -302,7 +302,7 @@ export class BridgeAction {
       } catch (statusError) {
         logger.warn(
           `Status check attempt ${attempt} failed:`,
-          statusError instanceof Error ? statusError.message : String(statusError),
+          statusError instanceof Error ? statusError.message : String(statusError)
         );
       }
     }

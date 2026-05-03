@@ -246,9 +246,30 @@ export default function QRCode({ className }: { className?: string }) {
             fill="#222222"
             fillRule="evenodd"
           />
-          <rect x="15.998" y="15.998" width="23.998" height="23.998" fill="#222222" rx="4" />
-          <rect x="160.004" y="15.998" width="23.998" height="23.998" fill="#222222" rx="4" />
-          <rect x="15.998" y="160.004" width="23.998" height="23.998" fill="#222222" rx="4" />
+          <rect
+            x="15.998"
+            y="15.998"
+            width="23.998"
+            height="23.998"
+            fill="#222222"
+            rx="4"
+          />
+          <rect
+            x="160.004"
+            y="15.998"
+            width="23.998"
+            height="23.998"
+            fill="#222222"
+            rx="4"
+          />
+          <rect
+            x="15.998"
+            y="160.004"
+            width="23.998"
+            height="23.998"
+            fill="#222222"
+            rx="4"
+          />
         </g>
       </g>
     </svg>

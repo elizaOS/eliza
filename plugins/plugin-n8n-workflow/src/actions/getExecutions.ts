@@ -8,7 +8,10 @@ import {
   type Memory,
   type State,
 } from '@elizaos/core';
-import { N8N_WORKFLOW_SERVICE_TYPE, type N8nWorkflowService } from '../services/index';
+import {
+  N8N_WORKFLOW_SERVICE_TYPE,
+  type N8nWorkflowService,
+} from '../services/index';
 import { matchWorkflow } from '../utils/generation';
 import { buildConversationContext } from '../utils/context';
 
@@ -66,14 +69,16 @@ export const getExecutionsAction: Action = {
     message: Memory,
     state: State | undefined,
     _options?: unknown,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const service = runtime.getService<N8nWorkflowService>(N8N_WORKFLOW_SERVICE_TYPE);
+    const service = runtime.getService<N8nWorkflowService>(
+      N8N_WORKFLOW_SERVICE_TYPE,
+    );
 
     if (!service) {
       logger.error(
         { src: 'plugin:n8n-workflow:action:get-executions' },
-        'N8n Workflow service not available'
+        'N8n Workflow service not available',
       );
       if (callback) {
         await callback({
@@ -102,7 +107,9 @@ export const getExecutionsAction: Action = {
       const matchResult = await matchWorkflow(runtime, context, workflows);
 
       if (!matchResult.matchedWorkflowId || matchResult.confidence === 'none') {
-        const workflowList = matchResult.matches.map((m) => `- ${m.name} (ID: ${m.id})`).join('\n');
+        const workflowList = matchResult.matches
+          .map((m) => `- ${m.name} (ID: ${m.id})`)
+          .join('\n');
 
         if (callback) {
           await callback({
@@ -118,7 +125,7 @@ export const getExecutionsAction: Action = {
 
       logger.info(
         { src: 'plugin:n8n-workflow:action:get-executions' },
-        `Retrieved ${executions.length} executions for workflow ${workflowId}`
+        `Retrieved ${executions.length} executions for workflow ${workflowId}`,
       );
 
       if (executions.length === 0) {
@@ -170,10 +177,11 @@ export const getExecutionsAction: Action = {
         data: { executions },
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
       logger.error(
         { src: 'plugin:n8n-workflow:action:get-executions' },
-        `Failed to get executions: ${errorMessage}`
+        `Failed to get executions: ${errorMessage}`,
       );
 
       if (callback) {

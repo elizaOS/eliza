@@ -118,8 +118,7 @@ function summarizeArtifactsForJudge(value: unknown): string | null {
       if (!record) {
         return null;
       }
-      const kind =
-        typeof record.kind === "string" ? record.kind : "artifact";
+      const kind = typeof record.kind === "string" ? record.kind : "artifact";
       const label =
         typeof record.label === "string" && record.label.length > 0
           ? `:${record.label}`
@@ -159,7 +158,9 @@ function summarizeActionForJudge(
       lines.push(
         `Browser task: completed=${browserTask.completed === true}, needsHuman=${browserTask.needsHuman === true}`,
       );
-      const browserArtifacts = summarizeArtifactsForJudge(browserTask.artifacts);
+      const browserArtifacts = summarizeArtifactsForJudge(
+        browserTask.artifacts,
+      );
       if (browserArtifacts) {
         lines.push(`Browser artifacts: ${browserArtifacts}`);
       }
@@ -291,7 +292,8 @@ function resolveRequiredPlugins(scenario: ScenarioDefinition): string[] {
 }
 
 function pluginIsRegistered(runtime: AgentRuntime, name: string): boolean {
-  const plugins = (runtime as { plugins?: Array<{ name?: unknown }> }).plugins ?? [];
+  const plugins =
+    (runtime as { plugins?: Array<{ name?: unknown }> }).plugins ?? [];
   const normalized = name.replace(/^@elizaos\/plugin-/, "");
   return plugins.some((p) => {
     const pn = typeof p.name === "string" ? p.name : "";
@@ -492,7 +494,9 @@ async function startScenarioApiServer(
         continue;
       }
       const params =
-        route.path === url.pathname ? {} : matchRoutePath(route.path, url.pathname);
+        route.path === url.pathname
+          ? {}
+          : matchRoutePath(route.path, url.pathname);
       if (params === null) {
         continue;
       }
@@ -514,7 +518,9 @@ async function startScenarioApiServer(
 
     res.statusCode = 404;
     res.setHeader("Content-Type", "application/json; charset=utf-8");
-    res.end(JSON.stringify({ error: `No route matched ${method} ${url.pathname}` }));
+    res.end(
+      JSON.stringify({ error: `No route matched ${method} ${url.pathname}` }),
+    );
   });
 
   await new Promise<void>((resolve, reject) => {
@@ -574,7 +580,9 @@ function resolveScenarioTemplates(value: unknown, currentNow: Date): unknown {
       const token = String(rawToken).trim();
       const resolved = resolveNowToken(token, currentNow);
       if (resolved === null) {
-        throw new Error(`[executor] unsupported scenario template token ${fullMatch}`);
+        throw new Error(
+          `[executor] unsupported scenario template token ${fullMatch}`,
+        );
       }
       return resolved;
     });
@@ -638,7 +646,9 @@ async function lookupDefinitionIdByTitle(args: {
   if (cached) {
     return cached;
   }
-  const response = await fetch(`${args.apiServer.baseUrl}/api/lifeops/definitions`);
+  const response = await fetch(
+    `${args.apiServer.baseUrl}/api/lifeops/definitions`,
+  );
   const body = await response.json();
   const definitions = Array.isArray(asRecord(body)?.definitions)
     ? (asRecord(body)?.definitions as unknown[])
@@ -655,7 +665,9 @@ async function lookupDefinitionIdByTitle(args: {
       }
     }
   }
-  throw new Error(`[executor] could not resolve definitionId for title "${args.title}"`);
+  throw new Error(
+    `[executor] could not resolve definitionId for title "${args.title}"`,
+  );
 }
 
 async function lookupOccurrenceIdByTitle(args: {
@@ -667,14 +679,18 @@ async function lookupOccurrenceIdByTitle(args: {
   if (cached) {
     return cached;
   }
-  const response = await fetch(`${args.apiServer.baseUrl}/api/lifeops/overview`);
+  const response = await fetch(
+    `${args.apiServer.baseUrl}/api/lifeops/overview`,
+  );
   const body = await response.json();
   indexResponseIdentifiers(body, args.variables);
   const occurrenceId = args.variables.occurrenceIdsByTitle.get(args.title);
   if (occurrenceId) {
     return occurrenceId;
   }
-  throw new Error(`[executor] could not resolve occurrenceId for title "${args.title}"`);
+  throw new Error(
+    `[executor] could not resolve occurrenceId for title "${args.title}"`,
+  );
 }
 
 async function resolveTemplateString(args: {
@@ -707,7 +723,9 @@ async function resolveTemplateString(args: {
       });
     }
     if (replacement === null) {
-      throw new Error(`[executor] unsupported scenario template token ${fullMatch}`);
+      throw new Error(
+        `[executor] unsupported scenario template token ${fullMatch}`,
+      );
     }
     resolved = resolved.replace(fullMatch, replacement);
   }
@@ -826,7 +844,10 @@ async function runCustomSeeds(
   let currentNow = new Date(initialNow.getTime());
   for (const seed of seeds) {
     if (seed === null || typeof seed !== "object") continue;
-    const resolvedSeed = resolveScenarioTemplates(seed, currentNow) as typeof seed;
+    const resolvedSeed = resolveScenarioTemplates(
+      seed,
+      currentNow,
+    ) as typeof seed;
     const { type, name, apply } = resolvedSeed as {
       type?: unknown;
       name?: unknown;
@@ -865,7 +886,10 @@ async function runCustomSeeds(
           scenarioCtx,
         );
         if (typeof result === "string" && result.length > 0) {
-          return { now: currentNow, error: `seed ${name ?? "(unnamed)"}: ${result}` };
+          return {
+            now: currentNow,
+            error: `seed ${name ?? "(unnamed)"}: ${result}`,
+          };
         }
       } catch (err) {
         return {
@@ -882,7 +906,10 @@ async function runCustomSeeds(
         resolvedSeed as Exclude<ScenarioDefinition["seed"], undefined>[number],
       );
       if (typeof result === "string" && result.length > 0) {
-        return { now: currentNow, error: `seed ${name ?? "(unnamed)"}: ${result}` };
+        return {
+          now: currentNow,
+          error: `seed ${name ?? "(unnamed)"}: ${result}`,
+        };
       }
     } catch (err) {
       return {
@@ -961,7 +988,9 @@ async function runScenarioCleanups(
     try {
       const result = await deleteMockGmailDrafts();
       if (result) {
-        failures.push(`cleanup ${String(step.name ?? "gmailDeleteDrafts")}: ${result}`);
+        failures.push(
+          `cleanup ${String(step.name ?? "gmailDeleteDrafts")}: ${result}`,
+        );
       }
     } catch (err) {
       failures.push(
@@ -1004,19 +1033,21 @@ async function executeMessageTurn(
     },
   });
 
-  const messageService = (runtime as {
-    messageService?: {
-      handleMessage: (
-        rt: AgentRuntime,
-        memory: Memory,
-        cb: (content: { text?: string }) => Promise<unknown>,
-        options?: Record<string, unknown>,
-      ) => Promise<{
-        responseContent?: { text?: string };
-        responseMessages?: Memory[];
-      }>;
-    };
-  }).messageService;
+  const messageService = (
+    runtime as {
+      messageService?: {
+        handleMessage: (
+          rt: AgentRuntime,
+          memory: Memory,
+          cb: (content: { text?: string }) => Promise<unknown>,
+          options?: Record<string, unknown>,
+        ) => Promise<{
+          responseContent?: { text?: string };
+          responseMessages?: Memory[];
+        }>;
+      };
+    }
+  ).messageService;
   if (!messageService) {
     throw new Error(
       "[executor] runtime.messageService is not initialized — cannot send messages",
@@ -1208,9 +1239,9 @@ async function runTurnAssertions(
         ? await (
             turn.assertResponse as (status: number, body: unknown) => unknown
           )(execution.statusCode ?? 0, execution.responseBody)
-        : await (
-            turn.assertResponse as (text: string) => unknown
-          )(execution.responseText ?? "");
+        : await (turn.assertResponse as (text: string) => unknown)(
+            execution.responseText ?? "",
+          );
     if (typeof result === "string" && result.length > 0) {
       failures.push(`assertResponse: ${result}`);
     }
@@ -1356,7 +1387,7 @@ export async function runScenario(
     title: scenario.title,
     domain: scenario.domain,
     tags: Array.isArray((scenario as unknown as { tags?: unknown }).tags)
-      ? (((scenario as unknown as { tags: unknown[] }).tags).filter(
+      ? ((scenario as unknown as { tags: unknown[] }).tags.filter(
           (t): t is string => typeof t === "string",
         ) as readonly string[])
       : [],
@@ -1506,16 +1537,16 @@ export async function runScenario(
                   runtime,
                 })),
               }
-          : {
-              actionsCalled: [],
-              ...(await executeMessageTurn(
-                runtime,
-                turn,
-                resolveTurnRoom(turn, rooms),
-                logicalNow,
-                opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
-              )),
-            };
+            : {
+                actionsCalled: [],
+                ...(await executeMessageTurn(
+                  runtime,
+                  turn,
+                  resolveTurnRoom(turn, rooms),
+                  logicalNow,
+                  opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
+                )),
+              };
       let actionsThisTurn = interceptor.actions.slice(actionsBefore);
       // Synthesize an implicit REPLY capture when the runtime emitted text
       // via the message callback but the LLM failed to wrap the response in
@@ -1616,9 +1647,7 @@ export async function runScenario(
   } catch (err) {
     report.status = "failed";
     report.error = err instanceof Error ? err.message : String(err);
-    logger.warn(
-      `[scenario-runner] ${scenario.id} threw: ${report.error}`,
-    );
+    logger.warn(`[scenario-runner] ${scenario.id} threw: ${report.error}`);
   } finally {
     (
       runtime as {

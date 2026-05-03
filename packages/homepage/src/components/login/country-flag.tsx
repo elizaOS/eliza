@@ -1,5 +1,3 @@
-
-
 import * as React from "react";
 import * as FlagComponents from "country-flag-icons/react/3x2";
 import { hasFlag } from "country-flag-icons";
@@ -15,17 +13,17 @@ interface CountryFlagProps {
   title?: string;
 }
 
-export function CountryFlag({ countryCode, className, title }: CountryFlagProps) {
+export function CountryFlag({
+  countryCode,
+  className,
+  title,
+}: CountryFlagProps) {
   const key = countryCode.replace(/-/g, "_");
   const Flag = FlagMap[key];
 
   if (!hasFlag(countryCode) || !Flag) {
     return (
-      <span
-        className={className}
-        title={title ?? countryCode}
-        aria-hidden
-      >
+      <span className={className} title={title ?? countryCode} aria-hidden>
         {countryCode}
       </span>
     );

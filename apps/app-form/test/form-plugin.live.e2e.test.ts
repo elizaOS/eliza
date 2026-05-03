@@ -13,8 +13,7 @@ import {
   type RealTestRuntimeResult,
 } from "../../../../eliza/test/helpers/real-runtime";
 
-const LIVE =
-  process.env.ELIZA_LIVE_TEST === "1";
+const LIVE = process.env.ELIZA_LIVE_TEST === "1";
 
 describeIf(LIVE)("App-Form: Plugin e2e", () => {
   let testResult: RealTestRuntimeResult;

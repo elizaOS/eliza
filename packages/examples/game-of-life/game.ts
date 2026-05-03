@@ -566,7 +566,11 @@ function escapeXml(text: string): string {
     .replaceAll("'", "&apos;");
 }
 
-function decisionXml(actionName: string, thought: string, text: string): string {
+function decisionXml(
+  actionName: string,
+  thought: string,
+  text: string,
+): string {
   // DefaultMessageService expects XML-ish tags like <thought>, <actions>, <text>.
   // We return a minimal, deterministic payload (no LLM) that still flows through
   // the full Eliza message pipeline.
@@ -1038,7 +1042,10 @@ async function main(): Promise<void> {
             .filter((n): n is string => typeof n === "string");
 
           // Keep output compact: only print when something executed or every ~25 ticks.
-          if (executedNames.length > 0 && (world.tick % 25 === 0 || world.tick <= 5)) {
+          if (
+            executedNames.length > 0 &&
+            (world.tick % 25 === 0 || world.tick <= 5)
+          ) {
             console.log(
               `tick=${world.tick} agent=${id.slice(0, 6)} decision=${decisionActions.join(",")} executed=${executedNames.join(",")} thought=${decisionThought.slice(0, 80)}`,
             );

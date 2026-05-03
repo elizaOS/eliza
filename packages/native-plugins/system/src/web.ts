@@ -22,6 +22,8 @@ export class SystemWeb extends WebPlugin implements SystemPlugin {
   async requestRole(options: {
     role: AndroidRoleName;
   }): Promise<AndroidRoleRequestResult> {
-    throw new Error(`Android role ${options.role} is only available on Android.`);
+    throw new Error(
+      `Android role ${options.role} is only available on Android.`,
+    );
   }
 }
