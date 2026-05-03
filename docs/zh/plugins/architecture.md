@@ -32,7 +32,6 @@ export const CORE_PLUGINS: readonly string[] = [
   "knowledge",         // RAG knowledge management — required for knowledge tab
   "trajectories", // trajectory logging for debugging and RL training
   "@elizaos/plugin-agent-orchestrator",// multi-agent orchestration (PTY, SwarmCoordinator, workspace provisioning)
-  "@elizaos/plugin-cron",              // scheduled jobs and automation
   "@elizaos/plugin-shell",             // shell command execution
   "@elizaos/plugin-agent-skills",      // skill execution and marketplace runtime
   "@elizaos/plugin-commands",          // slash command handling (skills auto-register as /commands)
@@ -230,7 +229,6 @@ const FEATURE_PLUGINS = {
   browser:              "@elizaos/plugin-browser",
   cua:                  "@elizaos/plugin-cua",
   obsidian:             "@elizaos/plugin-obsidian",
-  cron:                 "@elizaos/plugin-cron",
   shell:                "@elizaos/plugin-shell",
   imageGen:             "@elizaos/plugin-image-generation",
   tts:                  "@elizaos/plugin-tts",

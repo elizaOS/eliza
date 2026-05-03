@@ -37,8 +37,6 @@ eliza/**/node_modules
 !eliza/packages/agent/node_modules/**
 eliza/packages/app-core/deploy/**/node_modules
 eliza/.turbo
-eliza/packages/rust
-eliza/packages/python
 eliza/packages/benchmarks
 eliza/packages/examples
 eliza/apps

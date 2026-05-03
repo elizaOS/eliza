@@ -62,7 +62,7 @@ function guardRealGmailWrite(
   }
   throw new GoogleApiError(
     409,
-    "Real Gmail writes require ELIZA_ALLOW_REAL_GMAIL_WRITES=1. Point ELIZA_MOCK_GOOGLE_BASE or ELIZA_MOCK_GOOGLE_BASE at a loopback mock for tests or set the allow env var for an explicitly confirmed real write."
+    "Real Gmail writes require ELIZA_ALLOW_REAL_GMAIL_WRITES=1. Point ELIZA_MOCK_GOOGLE_BASE at a loopback mock for tests or set the allow env var for an explicitly confirmed real write."
   );
 }
 

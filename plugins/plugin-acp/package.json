@@ -1,0 +1,152 @@
+{
+  "name": "@elizaos/plugin-acp",
+  "version": "2.0.0-alpha.5",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check . --no-errors-on-unmatched",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "^0.14.0",
+    "@elizaos/core": "2.0.0-alpha.3",
+    "@elizaos/plugin-cli": "2.0.0-alpha.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0",
+    "@biomejs/biome": "^2.3.11"
+  },
+  "files": [
+    "dist"
+  ],
+  "eliza": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Default export (Node.js)"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginParameters": {
+      "ACP_GATEWAY_URL": {
+        "type": "string",
+        "description": "URL for Acp Gateway",
+        "required": false,
+        "sensitive": false
+      },
+      "ACP_GATEWAY_TOKEN": {
+        "type": "string",
+        "description": "Authentication token for Acp Gateway",
+        "required": false,
+        "sensitive": true
+      },
+      "ACP_GATEWAY_PASSWORD": {
+        "type": "string",
+        "description": "Password for Acp Gateway",
+        "required": true,
+        "sensitive": true
+      },
+      "ACP_DEFAULT_SESSION_KEY": {
+        "type": "string",
+        "description": "Session identifier",
+        "required": false,
+        "sensitive": false
+      },
+      "ACP_DEFAULT_SESSION_LABEL": {
+        "type": "string",
+        "description": "Session identifier",
+        "required": false,
+        "sensitive": false
+      },
+      "ACP_REQUIRE_EXISTING": {
+        "type": "boolean",
+        "description": "Require existing session",
+        "required": false,
+        "sensitive": false
+      },
+      "ACP_RESET_SESSION": {
+        "type": "boolean",
+        "description": "Reset session on start",
+        "required": false,
+        "sensitive": false
+      },
+      "ACP_PREFIX_CWD": {
+        "type": "string",
+        "description": "Prefix current working directory",
+        "required": false,
+        "sensitive": false
+      },
+      "ACP_VERBOSE": {
+        "type": "boolean",
+        "description": "Enable verbose logging",
+        "required": false,
+        "sensitive": false
+      },
+      "ACP_CLIENT_NAME": {
+        "type": "string",
+        "description": "Display name",
+        "required": false,
+        "sensitive": false
+      },
+      "ACP_CLIENT_DISPLAY_NAME": {
+        "type": "string",
+        "description": "Display name",
+        "required": false,
+        "sensitive": false
+      },
+      "ACP_CLIENT_VERSION": {
+        "type": "string",
+        "description": "Version identifier",
+        "required": false,
+        "sensitive": false
+      },
+      "ACP_CLIENT_MODE": {
+        "type": "string",
+        "description": "Operating mode",
+        "required": false,
+        "sensitive": false
+      },
+      "ACP_PERSIST_SESSIONS": {
+        "type": "boolean",
+        "description": "Persist sessions to disk",
+        "required": false,
+        "sensitive": false
+      },
+      "ACP_SESSION_STORE_PATH": {
+        "type": "string",
+        "description": "Directory or file path",
+        "required": false,
+        "sensitive": false
+      },
+      "ACP_AGENT_ID": {
+        "type": "string",
+        "description": "Agent identifier",
+        "required": false,
+        "sensitive": false
+      }
+    }
+  }
+}

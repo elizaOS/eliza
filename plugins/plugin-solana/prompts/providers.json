@@ -1,0 +1,10 @@
+{
+  "version": "1.0.0",
+  "providers": [
+    {
+      "name": "solana-wallet",
+      "description": "your solana wallet information",
+      "dynamic": true
+    }
+  ]
+}

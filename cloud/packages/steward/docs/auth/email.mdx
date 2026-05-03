@@ -1,0 +1,141 @@
+---
+title: "Email Magic Link"
+description: "Passwordless sign-in via email magic links."
+---
+
+# Email Magic Link
+
+Email authentication sends a one-time sign-in link to the user's email address. Clicking the link completes authentication without a password.
+
+## How It Works
+
+```
+1. User enters email → SDK calls POST /auth/email/send
+2. Steward sends a magic link to the email
+3. User clicks the link → redirected to your callback URL with ?token=...&email=...
+4. Your app calls auth.verifyEmailCallback(token, email) → JWT session
+```
+
+## SDK Usage
+
+### Step 1: Send the Magic Link
+
+```typescript
+import { StewardAuth } from "@stwd/sdk";
+
+const auth = new StewardAuth({
+  baseUrl: "https://api.steward.fi",
+  storage: localStorage,
+});
+
+const result = await auth.signInWithEmail("user@example.com");
+console.log(result);
+// { ok: true, expiresAt: "2026-04-10T21:00:00.000Z" }
+```
+
+### Step 2: Handle the Callback
+
+On your callback page (e.g. `/auth/callback`), read the URL params and verify:
+
+```typescript
+// On your /auth/callback route
+const params = new URLSearchParams(window.location.search);
+const token = params.get("token");
+const email = params.get("email");
+
+const result = await auth.verifyEmailCallback(token, email);
+console.log(result);
+// {
+//   token: "eyJhbGci...",
+//   refreshToken: "stwd_rt_...",
+//   expiresIn: 900,
+//   user: { id: "usr_...", email: "user@example.com", walletAddress: "0x..." }
+// }
+```
+
+## React Usage
+
+### Login Component
+
+```tsx
+<StewardLogin
+  showEmail          // enabled by default
+  showPasskey={false} // hide passkey if you only want email
+  showGoogle={false}
+  showDiscord={false}
+  title="Sign in with email"
+/>
+```
+
+When the user clicks "Send Magic Link", the component shows a confirmation message: "Magic link sent to user@example.com. Check your inbox."
+
+### Callback Component
+
+Mount `<StewardEmailCallback>` on your callback route to handle token verification automatically:
+
+```tsx
+import { StewardEmailCallback } from "@stwd/react";
+
+// In your router:
+<Route
+  path="/auth/callback"
+  element={
+    <StewardEmailCallback
+      onSuccess={(result) => navigate("/dashboard")}
+      onError={(err) => console.error("Verification failed:", err)}
+      redirectTo="/dashboard"
+    />
+  }
+/>
+```
+
+The component reads `token` and `email` from the URL search params, calls `verifyEmailCallback`, and shows loading/success/error states.
+
+## Server Configuration
+
+To enable email auth on a self-hosted instance:
+
+```bash
+# Resend API key for sending emails
+RESEND_API_KEY=re_xxxxxxxxxxxx
+
+# Sender address (must be verified in Resend)
+EMAIL_FROM=auth@myapp.com
+
+# Your app's public URL (used for magic link generation)
+APP_URL=https://myapp.com
+```
+
+<Note>
+  Steward uses [Resend](https://resend.com) for email delivery. Create a free account at resend.com and verify your sending domain. The free tier supports 100 emails/day.
+</Note>
+
+### Callback URL
+
+The magic link directs users to:
+
+```
+{APP_URL}/auth/callback?token={token}&email={email}
+```
+
+Make sure your app has a route at `/auth/callback` that handles this. If you need a different path, configure `EMAIL_CALLBACK_PATH` in your environment.
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/auth/email/send` | POST | Send a magic link. Body: `{ email, tenantId? }` |
+| `/auth/email/verify` | POST | Verify a magic link token. Body: `{ token, email, tenantId? }` |
+
+## Security
+
+- Magic link tokens expire after 15 minutes
+- Each token is single-use and invalidated after verification
+- Tokens are cryptographically random (32 bytes)
+- Rate limiting: 5 emails per address per 15 minutes
+
+## Related
+
+- [Auth Overview](/auth/overview) — Session management and token lifecycle
+- [Passkeys](/auth/passkeys) — Alternative passwordless method
+- [React Components](/sdk/react-components) — `<StewardLogin>` and `<StewardEmailCallback>`

@@ -66,7 +66,6 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     environment: "google",
     envVars: [
       "ELIZA_MOCK_GOOGLE_BASE",
-      "ELIZA_MOCK_GOOGLE_BASE",
       "ELIZA_BLOCK_REAL_GMAIL_WRITES",
     ],
     surfaces: [
@@ -223,7 +222,6 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     envVars: [
       "ELIZA_BROWSER_WORKSPACE_URL",
       "ELIZA_BROWSER_WORKSPACE_TOKEN",
-      "ELIZA_DISABLE_DISCORD_DESKTOP_CDP",
       "ELIZA_DISABLE_DISCORD_DESKTOP_CDP",
     ],
     surfaces: [

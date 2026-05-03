@@ -62,7 +62,6 @@ function getLiveTestBaseUrlOverride(
   const suffix = providerName.toUpperCase().replace(/-/g, "_");
   for (const name of [
     `ELIZA_LIVE_TEST_${suffix}_BASE_URL`,
-    `ELIZA_LIVE_TEST_${suffix}_BASE_URL`,
   ]) {
     const value = getTrimmedEnv(name);
     if (value) {
@@ -277,7 +276,6 @@ export function requireLiveProvider(
  */
 export function isLiveTestEnabled(): boolean {
   return (
-    process.env.ELIZA_LIVE_TEST === "1" ||
     process.env.ELIZA_LIVE_TEST === "1" ||
     process.env.LIVE === "1"
   );

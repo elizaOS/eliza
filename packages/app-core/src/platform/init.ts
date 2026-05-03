@@ -35,34 +35,34 @@ export function isDesktopPlatform(): boolean {
  * Pure UA inspector. Exported only so tests can pin the regex contract
  * without having to mock the platform module.
  *
- * Returns `true` only when `ua` contains a `MiladyOS/<tag>` token at a
- * word boundary. Substrings like `MiladyOSlike/...` or `NotMiladyOS...`
- * must not match — the regex requires the slash to follow `MiladyOS`
+ * Returns `true` only when `ua` contains a `ElizaOS/<tag>` token at a
+ * word boundary. Substrings like `ElizaOSlike/...` or `NotElizaOS...`
+ * must not match — the regex requires the slash to follow `ElizaOS`
  * directly.
  */
-export function userAgentHasMiladyOSMarker(ua: string): boolean {
-  return /\bMiladyOS\//.test(ua);
+export function userAgentHasElizaOSMarker(ua: string): boolean {
+  return /\bElizaOS\//.test(ua);
 }
 
 /**
- * True when the APK is running on the AOSP MiladyOS variant (the system
- * app on a Milady-branded device), as opposed to the same APK installed
+ * True when the APK is running on the AOSP ElizaOS variant (the system
+ * app on a Eliza-branded device), as opposed to the same APK installed
  * on a stock Android phone from Play Store.
  *
- * Detection: `MainActivity.applyMiladyOSUserAgentSuffix` appends
- * `MiladyOS/<tag>` to the WebView user-agent when `ro.miladyos.product`
- * is set by the AOSP product makefile (vendor/milady/milady_common.mk).
+ * Detection: `MainActivity.applyElizaOSUserAgentSuffix` appends
+ * `ElizaOS/<tag>` to the WebView user-agent when `ro.elizaos.product`
+ * is set by the AOSP product makefile (vendor/eliza/eliza_common.mk).
  * Stock Android leaves the user-agent untouched.
  *
  * Used by `RuntimeGate` and the Android boot pre-seed to decide whether
- * the "Choose your setup" picker is bypassed (MiladyOS — the device IS
+ * the "Choose your setup" picker is bypassed (ElizaOS — the device IS
  * the agent) or rendered (vanilla APK — the user picks Cloud / Remote /
  * Local).
  */
-export function isMiladyOS(): boolean {
+export function isElizaOS(): boolean {
   if (!isAndroid) return false;
   if (typeof navigator === "undefined") return false;
-  return userAgentHasMiladyOSMarker(navigator.userAgent ?? "");
+  return userAgentHasElizaOSMarker(navigator.userAgent ?? "");
 }
 
 /** True when the runtime can spin up a local agent — desktop or dev server. */

@@ -74,7 +74,7 @@ eliza start --connection-key my-secret-key
 Cuando ejecutas `eliza start`:
 
 1. El CLI llama a `startEliza({ serverOnly: true })` desde el entorno de ejecución de elizaOS.
-2. En producción (`eliza start`), el servidor API se inicia en el puerto `2138` por defecto (se puede sobreescribir con `ELIZA_PORT` o `ELIZA_PORT`). En modo desarrollo (`bun run dev`), la API se ejecuta en el puerto `31337` (`ELIZA_API_PORT`) mientras que la interfaz del panel usa `2138` (`ELIZA_PORT`).
+2. En producción (`eliza start`), el servidor API se inicia en el puerto `2138` por defecto (se puede sobreescribir con `ELIZA_PORT`). En modo desarrollo (`bun run dev`), la API se ejecuta en el puerto `31337` (`ELIZA_API_PORT`) mientras que la interfaz del panel usa `2138` (`ELIZA_PORT`).
 3. El bucle del agente comienza a procesar mensajes de clientes conectados y plataformas de mensajería.
 4. No se lanza ninguna interfaz interactiva -- el proceso se ejecuta sin interfaz gráfica.
 
@@ -88,7 +88,7 @@ El comando `run` es un alias directo que llama exactamente a la misma función `
 
 | Variable | Descripción | Por defecto |
 |----------|-------------|-------------|
-| `ELIZA_PORT` | Puerto del servidor API (también acepta `ELIZA_PORT` como alternativa) | `2138` |
+| `ELIZA_PORT` | Puerto del servidor API | `2138` |
 | `ELIZA_STATE_DIR` | Sobreescritura del directorio de estado | `~/.eliza/` |
 | `ELIZA_CONFIG_PATH` | Sobreescritura de la ruta del archivo de configuración | `~/.eliza/eliza.json` |
 

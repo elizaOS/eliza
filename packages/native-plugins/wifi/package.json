@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/capacitor-wifi",
   "version": "1.0.0",
-  "description": "Android Wi-Fi (WifiManager) bridge for MiladyOS.",
+  "description": "Android Wi-Fi (WifiManager) bridge for ElizaOS.",
   "main": "./dist/plugin.cjs.js",
   "module": "./dist/esm/index.js",
   "types": "./dist/esm/index.d.ts",

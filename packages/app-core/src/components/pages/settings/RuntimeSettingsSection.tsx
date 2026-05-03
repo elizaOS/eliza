@@ -1,7 +1,7 @@
 /**
- * Runtime Settings Section — only rendered on the MiladyOS variant.
+ * Runtime Settings Section — only rendered on the ElizaOS variant.
  *
- * MiladyOS bypasses the RuntimeGate "Choose your setup" picker on first
+ * ElizaOS bypasses the RuntimeGate "Choose your setup" picker on first
  * launch (the device IS the agent). This section is the deliberate
  * escape hatch: it lets the user switch out of the default on-device
  * agent into Eliza Cloud or a Remote Mac.
@@ -11,7 +11,7 @@
  * its contract is testable without booting the SettingsView dependency
  * graph.
  *
- * The vanilla Android APK never enters this section — `isMiladyOS()` is
+ * The vanilla Android APK never enters this section — `isElizaOS()` is
  * false there, so users on a stock device pick their runtime through the
  * regular picker flow on first launch and don't need this surface.
  */

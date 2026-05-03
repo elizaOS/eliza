@@ -1,0 +1,16 @@
+{
+  "name": "@stwd/policy-engine",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "dev": "tsc --watch",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@stwd/shared": "workspace:*"
+  },
+  "description": "Composable policy evaluation engine — spending limits, address filters, rate limits, time windows"
+}

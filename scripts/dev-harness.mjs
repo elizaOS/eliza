@@ -17,9 +17,9 @@ const ROOT = resolve(import.meta.dirname, "..");
 const INSTALL_STAMP = join(ROOT, ".eliza", "plugin-dev-needs-install");
 
 const PLUGIN_TYPESCRIPT = [
-	"plugins/plugin-sql/typescript",
-	"plugins/plugin-ollama/typescript",
-	"plugins/plugin-local-ai/typescript",
+	"plugins/plugin-sql",
+	"plugins/plugin-ollama",
+	"plugins/plugin-local-ai",
 ];
 
 function run(cmd, args, opts = {}) {

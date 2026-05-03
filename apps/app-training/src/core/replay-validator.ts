@@ -123,7 +123,7 @@ export function validateSample(sample: TrainingSample): ValidationResult {
     errors.push({ type: "no_agent_name", message: "Missing agent name" });
 
   // Check messages
-  if (!sample.messages || sample.messages.length === 0) {
+  if (sample.messages.length === 0) {
     errors.push({ type: "empty_messages", message: "No messages in sample" });
   } else {
     if (sample.messages.length < 2) {

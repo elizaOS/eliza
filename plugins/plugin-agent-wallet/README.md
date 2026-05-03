@@ -28,7 +28,7 @@ Two backends behind `WalletBackend`:
 - **`LocalEoaBackend`** — desktop default. EOA private keys hydrated from the OS keychain. Optional ERC-6551 token-bound account mode (via the bundled SDK at `./sdk`) for on-chain spend policy enforcement.
 - **`StewardBackend`** — cloud + mobile default. Multi-tenant Steward service is the only custody primitive in cloud. No fallback to local.
 
-See `src/wallet/` for interface and impls. `MILADY_WALLET_BACKEND=local|steward|auto` selects at runtime.
+See `src/wallet/` for interface and impls. `ELIZA_WALLET_BACKEND=local|steward|auto` selects at runtime.
 
 ## Layout
 

@@ -110,22 +110,6 @@ jobs:
           git add -A
           git commit -m "chore: prepare v${{ steps.version.outputs.next }} for next publish [skip ci]"
 
-      - name: Build WASM packages
-        run: |
-          echo "Building WASM packages..."
-
-          cd packages/rust
-          wasm-pack build --target web --out-dir pkg/web --features wasm --no-default-features || echo "WASM web build skipped"
-          wasm-pack build --target nodejs --out-dir pkg/node --features wasm --no-default-features || echo "WASM node build skipped"
-          cd ../..
-
-          if [ -d "plugins/plugin-sql/rust" ]; then
-            cd plugins/plugin-sql/rust
-            wasm-pack build --target web --out-dir pkg/web --features wasm --no-default-features || echo "WASM web build skipped"
-            wasm-pack build --target nodejs --out-dir pkg/node --features wasm --no-default-features || echo "WASM node build skipped"
-            cd ../../..
-          fi
-
       - name: Build packages
         run: bun run build
 

@@ -45,7 +45,6 @@
     "examples/react/**",
     "examples/next/**",
     "examples/farcaster-miniapp/**",
-    "packages/python/**",
     "packages/elizaos/examples/**",
     "plugins/plugin-lp-manager/**",
     "plugins/plugin-local-ai/**",

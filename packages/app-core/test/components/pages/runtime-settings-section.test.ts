@@ -7,7 +7,7 @@
  *   3. trigger a navigation so the splash unmounts and the picker tiles
  *      render.
  *
- * The section itself only renders on MiladyOS (the only platform where
+ * The section itself only renders on ElizaOS (the only platform where
  * the picker is bypassed by default). The visibility gate lives in
  * `SettingsView.tsx`; this file targets the action helper directly so we
  * don't have to mount the full Settings shell.

@@ -102,8 +102,8 @@ const appsAndPluginsSourceTestFiles = [
     "eliza/plugins/plugin-music-player/src",
   ),
   ...[
-    "eliza/plugins/plugin-discord/typescript/__tests__/identity.test.ts",
-    "eliza/plugins/plugin-discord/typescript/__tests__/slash-command-roles.test.ts",
+    "eliza/plugins/plugin-discord/__tests__/smoke.test.ts",
+    "eliza/plugins/plugin-discord/__tests__/draft-stream.test.ts",
   ].filter((file) => fs.existsSync(path.join(repoRoot, file))),
 ];
 const workspaceTestFiles = collectTestFiles(

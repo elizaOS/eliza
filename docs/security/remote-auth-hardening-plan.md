@@ -12,7 +12,7 @@ We need to replace this with a layered model: bootstrap secret to gate the conta
 
 ## 1. Auth Model — Data Structures
 
-All persistent auth state lives in the eliza namespace under `~/.eliza/auth/` (respecting `ELIZA_STATE_DIR` / `ELIZA_STATE_DIR`). The DB (pglite) holds session and audit rows because we already have transactional writes there and because Bun + pglite is the project's blessed storage path. Files are reserved for material that must survive a DB rebuild (password hash, signing keys).
+All persistent auth state lives in the eliza namespace under `~/.eliza/auth/` (respecting `ELIZA_STATE_DIR`). The DB (pglite) holds session and audit rows because we already have transactional writes there and because Bun + pglite is the project's blessed storage path. Files are reserved for material that must survive a DB rebuild (password hash, signing keys).
 
 ### 1.1 Identity
 

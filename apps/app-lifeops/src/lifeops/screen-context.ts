@@ -413,7 +413,7 @@ export async function tryCreateVisionOcrAdapter(): Promise<LifeOpsScreenOcrAdapt
   const localVisionOcrServiceUrl = pathToFileURL(
     path.resolve(
       path.dirname(fileURLToPath(import.meta.url)),
-      "../../../../plugins/plugin-vision/typescript/src/ocr-service.ts",
+      "../../../../plugins/plugin-vision/src/ocr-service.ts",
     ),
   ).href;
   const visionImportCandidates = [
