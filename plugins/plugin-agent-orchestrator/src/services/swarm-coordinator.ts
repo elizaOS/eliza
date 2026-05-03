@@ -322,6 +322,9 @@ function inferProviderSource(
   if (framework.id === "pi") {
     return framework.installed ? "local-cli" : null;
   }
+  if (framework.id === "opencode") {
+    return framework.installed ? "local-cli" : null;
+  }
   return framework.authReady ? "credentials" : null;
 }
 
