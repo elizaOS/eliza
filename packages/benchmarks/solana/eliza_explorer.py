@@ -310,13 +310,26 @@ async def main() -> None:
     run_index = int(os.getenv("RUN_INDEX", "0"))
     environment_config = os.getenv("ENVIRONMENT_CONFIG")
     use_external = os.getenv("USE_EXTERNAL_SURFPOOL", "false").lower() == "true"
+    # Two execution modes:
+    #   "python" (default)  -> in-process AgentRuntime (this file's ElizaExplorer)
+    #   "eliza"             -> route LLM calls through the elizaOS TS benchmark server
+    mode = (os.getenv("EXECUTION_MODE") or os.getenv("MODE") or "python").strip().lower()
 
-    logger.info("Model: %s  Messages: %d  Env: %s  External: %s",
-                model_name, max_messages, environment_config or "basic", use_external)
+    logger.info("Model: %s  Messages: %d  Env: %s  External: %s  Mode: %s",
+                model_name, max_messages, environment_config or "basic", use_external, mode)
 
-    explorer = ElizaExplorer(model_name=model_name, max_messages=max_messages,
-                             run_index=run_index, environment_config=environment_config,
-                             code_file=os.getenv("CODE_FILE"))
+    if mode == "eliza":
+        from eliza_adapter.solana import ElizaBridgeSolanaExplorer
+
+        explorer = ElizaBridgeSolanaExplorer(
+            model_name=model_name, max_messages=max_messages,
+            run_index=run_index, environment_config=environment_config,
+            code_file=os.getenv("CODE_FILE"),
+        )
+    else:
+        explorer = ElizaExplorer(model_name=model_name, max_messages=max_messages,
+                                 run_index=run_index, environment_config=environment_config,
+                                 code_file=os.getenv("CODE_FILE"))
 
     allowed = []
     if explorer.env_config and "reward_config" in explorer.env_config:
