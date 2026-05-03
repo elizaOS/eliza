@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { AgentRuntime, type Plugin } from "@elizaos/core";
+import { AgentRuntime } from "@elizaos/core";
 import { config as loadDotEnv } from "dotenv";
 
 import { character } from "./character";
@@ -53,14 +53,9 @@ async function main(): Promise<void> {
   const { XAIPlugin } = await import("@elizaos/plugin-xai");
   const twitterPlugin = (await import("@elizaos/plugin-twitter")).default;
 
-  // Cast: published @elizaos/plugin-* packages carry their own bundled
-  // @elizaos/core types, which TypeScript treats as a different Plugin shape
-  // than the one resolved from the workspace.
-  const plugins = [sqlPlugin, XAIPlugin, twitterPlugin] as unknown as Plugin[];
-
   const runtime = new AgentRuntime({
     character,
-    plugins,
+    plugins: [sqlPlugin, XAIPlugin, twitterPlugin],
   });
 
   console.log("⏳ Initializing runtime...");
