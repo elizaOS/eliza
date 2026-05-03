@@ -436,8 +436,8 @@ describe("buildOpencodeSpawnConfig", () => {
       }),
     );
     expect(config).not.toBeNull();
-    expect(config?.providerId).toBe("milady-local");
-    expect(config?.model).toBe("milady-local/qwen2.5-coder:7b");
+    expect(config?.providerId).toBe("eliza-local");
+    expect(config?.model).toBe("eliza-local/qwen2.5-coder:7b");
     expect(config?.providerLabel).toBe("Local (http://localhost:11434/v1)");
 
     const parsed = JSON.parse(config?.configContent ?? "{}") as {
@@ -446,11 +446,11 @@ describe("buildOpencodeSpawnConfig", () => {
         { options: { baseURL: string; apiKey?: string } }
       >;
     };
-    expect(parsed.provider["milady-local"].options.baseURL).toBe(
+    expect(parsed.provider["eliza-local"].options.baseURL).toBe(
       "http://localhost:11434/v1",
     );
     // No apiKey when none was provided — Ollama doesn't need one.
-    expect(parsed.provider["milady-local"].options.apiKey).toBeUndefined();
+    expect(parsed.provider["eliza-local"].options.apiKey).toBeUndefined();
   });
 
   it("respects PARALLAX_OPENCODE_BASE_URL for non-Ollama local servers", () => {
@@ -475,10 +475,10 @@ describe("buildOpencodeSpawnConfig", () => {
         { options: { baseURL: string; apiKey?: string } }
       >;
     };
-    expect(parsed.provider["milady-local"].options.baseURL).toBe(
+    expect(parsed.provider["eliza-local"].options.baseURL).toBe(
       "http://localhost:1234/v1",
     );
-    expect(parsed.provider["milady-local"].options.apiKey).toBe(
+    expect(parsed.provider["eliza-local"].options.apiKey).toBe(
       "lm-studio-key",
     );
   });

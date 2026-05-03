@@ -204,7 +204,7 @@ export function buildOpencodeSpawnConfig(
   if (localOptIn || customBaseUrl?.trim()) {
     const baseURL = customBaseUrl?.trim() || OPENCODE_LOCAL_DEFAULT_BASE_URL;
     const apiKey = readConfigEnvKey("PARALLAX_OPENCODE_API_KEY");
-    const providerId = "milady-local";
+    const providerId = "eliza-local";
     const powerful = userPowerful?.trim() || "qwen2.5-coder:7b";
     const fast = userFast?.trim();
     const config = {

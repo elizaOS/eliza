@@ -814,10 +814,10 @@ async function ensureConnectorTargetCatalog(
     _connectorTargetCatalog = null;
   }
   try {
-    const { createMiladyConnectorTargetCatalog } = await import(
+    const { createElizaConnectorTargetCatalog } = await import(
       "../services/connector-target-catalog.js"
     );
-    const catalog = createMiladyConnectorTargetCatalog({
+    const catalog = createElizaConnectorTargetCatalog({
       getConfig: () => loadElizaConfig(),
       discordCache: _discordEnumerationCache ?? undefined,
       logger: { warn: runtime.logger.warn?.bind(runtime.logger) },

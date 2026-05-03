@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   type ConnectorConfigLike,
-  createMiladyConnectorTargetCatalog,
+  createElizaConnectorTargetCatalog,
 } from "./connector-target-catalog";
 import { createDiscordSourceCache } from "./discord-target-source";
 
@@ -28,7 +28,7 @@ function makeFetch(
   return { fn: mock as unknown as typeof fetch, mock };
 }
 
-describe("MiladyConnectorTargetCatalog — Discord", () => {
+describe("ElizaConnectorTargetCatalog — Discord", () => {
   it("returns one TargetGroup per Discord guild with text channels as targets", async () => {
     const config: ConnectorConfigLike = {
       connectors: { discord: { enabled: true, token: "tok" } },
@@ -50,7 +50,7 @@ describe("MiladyConnectorTargetCatalog — Discord", () => {
         body: [{ id: "c-only", name: "only-text", type: 0 }],
       },
     });
-    const catalog = createMiladyConnectorTargetCatalog({
+    const catalog = createElizaConnectorTargetCatalog({
       getConfig: () => config,
       fetchImpl: fn,
     });
@@ -87,7 +87,7 @@ describe("MiladyConnectorTargetCatalog — Discord", () => {
       },
       "/guilds/g2/channels": { body: [] },
     });
-    const catalog = createMiladyConnectorTargetCatalog({
+    const catalog = createElizaConnectorTargetCatalog({
       getConfig: () => config,
       fetchImpl: fn,
     });
@@ -101,7 +101,7 @@ describe("MiladyConnectorTargetCatalog — Discord", () => {
 
   it("returns [] when no Discord token is configured", async () => {
     const fetchImpl = vi.fn();
-    const catalog = createMiladyConnectorTargetCatalog({
+    const catalog = createElizaConnectorTargetCatalog({
       getConfig: () => ({ connectors: {} }),
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
@@ -116,7 +116,7 @@ describe("MiladyConnectorTargetCatalog — Discord", () => {
     const { fn } = makeFetch({
       "/users/@me/guilds": { ok: false, status: 401 },
     });
-    const catalog = createMiladyConnectorTargetCatalog({
+    const catalog = createElizaConnectorTargetCatalog({
       getConfig: () => config,
       fetchImpl: fn,
     });
@@ -131,7 +131,7 @@ describe("MiladyConnectorTargetCatalog — Discord", () => {
       "/users/@me/guilds": { body: [{ id: "g", name: "G" }] },
       "/guilds/g/channels": { ok: false, status: 429 },
     });
-    const catalog = createMiladyConnectorTargetCatalog({
+    const catalog = createElizaConnectorTargetCatalog({
       getConfig: () => config,
       fetchImpl: fn,
     });
@@ -146,7 +146,7 @@ describe("MiladyConnectorTargetCatalog — Discord", () => {
       connectors: { discord: { token: "tok" } },
     };
     const fetchImpl = vi.fn();
-    const catalog = createMiladyConnectorTargetCatalog({
+    const catalog = createElizaConnectorTargetCatalog({
       getConfig: () => config,
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
@@ -163,7 +163,7 @@ describe("MiladyConnectorTargetCatalog — Discord", () => {
       "/guilds/g/channels": { body: [] },
     });
     const cache = createDiscordSourceCache();
-    const catalog = createMiladyConnectorTargetCatalog({
+    const catalog = createElizaConnectorTargetCatalog({
       getConfig: () => config,
       fetchImpl: fn,
       discordCache: cache,

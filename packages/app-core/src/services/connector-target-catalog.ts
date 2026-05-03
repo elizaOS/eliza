@@ -62,7 +62,7 @@ export interface ConnectorConfigLike {
   };
 }
 
-export interface MiladyConnectorTargetCatalogOptions {
+export interface ElizaConnectorTargetCatalogOptions {
   /** Re-read on every call so connector edits do not require a restart. */
   getConfig: () => ConnectorConfigLike;
   /** Test injection seam — defaults to fetch. */
@@ -75,8 +75,8 @@ export interface MiladyConnectorTargetCatalogOptions {
   logger?: DiscordSourceLogger;
 }
 
-export function createMiladyConnectorTargetCatalog(
-  options: MiladyConnectorTargetCatalogOptions,
+export function createElizaConnectorTargetCatalog(
+  options: ElizaConnectorTargetCatalogOptions,
 ): ConnectorTargetCatalog {
   const fetchImpl = options.fetchImpl ?? fetch;
   const now = options.now ?? Date.now;

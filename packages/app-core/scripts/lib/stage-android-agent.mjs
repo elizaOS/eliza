@@ -510,8 +510,8 @@ export async function stageAndroidAgentRuntime({
   // it relative to THIS script's location (eliza/packages/app-core/scripts/lib/)
   // — that's a stable layout invariant. Resolving relative to spikeDir or
   // process.cwd() breaks when the eliza package is nested as a submodule
-  // under a consumer repo (Eliza/Milady-style), because their `scripts/`
-  // and `packages/` directories live one level OUT from the eliza checkout.
+  // under a consumer/white-label repo, because their `scripts/` and
+  // `packages/` directories live one level OUT from the eliza checkout.
   //
   // The legacy fallback to `<repoRoot>/packages/agent/dist-mobile/` is kept
   // for the standalone-eliza-monorepo build path where this same script

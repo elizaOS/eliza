@@ -326,7 +326,7 @@ export function createMobilePolicy(): PlatformPolicy {
 }
 
 /**
- * MiladyOS variant — the bundled APK runs the on-device agent on
+ * ElizaOS variant — the bundled APK runs the on-device agent on
  * loopback. Cold-boot timing observed on cuttlefish: ~30s PGlite
  * migration + ~30s agent registration + plugin load before
  * `/api/auth/status` is reachable. The vanilla `createMobilePolicy`
@@ -336,9 +336,10 @@ export function createMobilePolicy(): PlatformPolicy {
  *
  * Also flips `supportsLocalRuntime` and `defaultTarget` because the
  * device IS the agent — there is no "cloud-managed" default to fall
- * back to on a Milady-branded handset.
+ * back to on an ElizaOS-branded handset (or any white-label fork
+ * thereof).
  */
-export function createMiladyOSPolicy(): PlatformPolicy {
+export function createElizaOSPolicy(): PlatformPolicy {
   return {
     supportsLocalRuntime: true,
     backendTimeoutMs: 180_000,
