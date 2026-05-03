@@ -17,7 +17,7 @@
         "typecheck": "echo \"Typecheck skipped for release\""
     },
     "devDependencies": {
-        "@biomejs/biome": "1.5.3",
+        "@biomejs/biome": "1.9.4",
         "@types/jest": "^27.0.0",
         "@types/node": "^16.0.0",
         "jest": "^27.0.0",
