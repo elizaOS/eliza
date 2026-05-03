@@ -5,6 +5,7 @@ import {
   type MessagePayload,
   Service,
 } from "@elizaos/core";
+import { getDeviceId } from "../lifeops/device-identity.js";
 import {
   createLifeOpsActivitySignal,
   LifeOpsRepository,
@@ -146,6 +147,7 @@ export class PresenceSignalBridgeService extends Service {
           eventType: "ACTION_STARTED",
           actionName,
           messageId,
+          deviceId: getDeviceId(),
         },
       }),
     );
@@ -188,6 +190,7 @@ export class PresenceSignalBridgeService extends Service {
         metadata: {
           eventType,
           entityId,
+          deviceId: getDeviceId(),
         },
       }),
     );
