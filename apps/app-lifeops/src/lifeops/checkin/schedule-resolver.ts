@@ -6,8 +6,11 @@ import { readLifeOpsOwnerProfile } from "../owner-profile.js";
  * Reads the owner's configured morning/night check-in times from the existing
  * owner-profile row. Returns null for a slot if the owner hasn't configured it.
  *
- * Cron wiring that actually fires `runMorningCheckin` at these times is a
- * follow-up PR (T9f-followup-PR).
+ * `nightCheckinTime` is consumed by `shouldRunNightCheckinFromSleepCycle` as a
+ * fallback bedtime anchor for irregular owners. `morningCheckinTime` is read
+ * here for parity but the morning dispatcher currently relies exclusively on
+ * the inferred `circadianState === "awake"` transition; an explicit timer
+ * fallback is intentionally not wired.
  */
 
 export interface CheckinSchedule {
