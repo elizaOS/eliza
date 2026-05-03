@@ -1295,20 +1295,6 @@ function parseReminderAttempt(
   row: Record<string, unknown>,
 ): LifeOpsReminderAttempt {
   const deliveryMetadata = parseJsonRecord(row.delivery_metadata_json);
-  if (
-    row.review_at &&
-    typeof deliveryMetadata[REMINDER_REVIEW_AT_METADATA_KEY] !== "string"
-  ) {
-    deliveryMetadata[REMINDER_REVIEW_AT_METADATA_KEY] = toText(row.review_at);
-  }
-  if (
-    row.review_status &&
-    typeof deliveryMetadata[REMINDER_REVIEW_STATUS_METADATA_KEY] !== "string"
-  ) {
-    deliveryMetadata[REMINDER_REVIEW_STATUS_METADATA_KEY] = toText(
-      row.review_status,
-    );
-  }
   return {
     id: toText(row.id),
     agentId: toText(row.agent_id),
@@ -1323,17 +1309,27 @@ function parseReminderAttempt(
     outcome: toText(row.outcome) as LifeOpsReminderAttempt["outcome"],
     connectorRef: row.connector_ref ? toText(row.connector_ref) : null,
     deliveryMetadata,
+    reviewAt: row.review_at ? toText(row.review_at) : null,
+    reviewStatus: row.review_status
+      ? (toText(row.review_status) as LifeOpsReminderAttempt["reviewStatus"])
+      : null,
   };
 }
 
 function readReminderReviewColumnValues(
   metadata: Record<string, unknown> | null | undefined,
-): { reviewAt: string | null; reviewStatus: string | null } {
+): {
+  reviewAt: string | null;
+  reviewStatus: LifeOpsReminderAttempt["reviewStatus"];
+} {
   const reviewAt = metadata?.[REMINDER_REVIEW_AT_METADATA_KEY];
   const reviewStatus = metadata?.[REMINDER_REVIEW_STATUS_METADATA_KEY];
   return {
     reviewAt: typeof reviewAt === "string" ? reviewAt : null,
-    reviewStatus: typeof reviewStatus === "string" ? reviewStatus : null,
+    reviewStatus:
+      typeof reviewStatus === "string"
+        ? (reviewStatus as LifeOpsReminderAttempt["reviewStatus"])
+        : null,
   };
 }
 
@@ -5080,9 +5076,12 @@ export class LifeOpsRepository {
   }
 
   async createReminderAttempt(attempt: LifeOpsReminderAttempt): Promise<void> {
-    const reviewColumns = readReminderReviewColumnValues(
+    const metadataReviewColumns = readReminderReviewColumnValues(
       attempt.deliveryMetadata,
     );
+    const reviewAt = attempt.reviewAt ?? metadataReviewColumns.reviewAt;
+    const reviewStatus =
+      attempt.reviewStatus ?? metadataReviewColumns.reviewStatus;
     await executeRawSql(
       this.runtime,
       `INSERT INTO life_reminder_attempts (
@@ -5103,8 +5102,8 @@ export class LifeOpsRepository {
         ${sqlQuote(attempt.outcome)},
         ${sqlText(attempt.connectorRef)},
         ${sqlJson(attempt.deliveryMetadata)},
-        ${sqlText(reviewColumns.reviewAt)},
-        ${sqlText(reviewColumns.reviewStatus)}
+        ${sqlText(reviewAt)},
+        ${sqlText(reviewStatus)}
       )`,
     );
   }
@@ -5152,37 +5151,28 @@ export class LifeOpsRepository {
         WHERE agent_id = ${sqlQuote(agentId)}
           AND attempted_at IS NOT NULL
           AND outcome IN ('delivered', 'delivered_read', 'delivered_unread')
-          AND COALESCE(review_at, delivery_metadata_json::jsonb ->> ${sqlQuote(REMINDER_REVIEW_AT_METADATA_KEY)}) IS NOT NULL
-          AND COALESCE(review_at, delivery_metadata_json::jsonb ->> ${sqlQuote(REMINDER_REVIEW_AT_METADATA_KEY)}) <= ${sqlQuote(nowIso)}
-          AND COALESCE(review_status, delivery_metadata_json::jsonb ->> ${sqlQuote(REMINDER_REVIEW_STATUS_METADATA_KEY)}, '') NOT IN ('resolved', 'escalated', 'clarification_requested')
+          AND review_at IS NOT NULL
+          AND review_at <= ${sqlQuote(nowIso)}
+          AND COALESCE(review_status, '') NOT IN ('resolved', 'escalated', 'clarification_requested')
           AND (review_next_retry_at IS NULL OR review_next_retry_at <= ${sqlQuote(nowIso)})
-        ORDER BY COALESCE(review_at, delivery_metadata_json::jsonb ->> ${sqlQuote(REMINDER_REVIEW_AT_METADATA_KEY)}) ASC,
-                 attempted_at ASC
+        ORDER BY review_at ASC, attempted_at ASC
         LIMIT ${sqlInteger(normalizedLimit)}`,
     );
     return rows
       .map(parseReminderAttempt)
       .filter((attempt) => {
-        const reviewAt =
-          attempt.deliveryMetadata[REMINDER_REVIEW_AT_METADATA_KEY];
-        if (typeof reviewAt !== "string" || reviewAt > nowIso) {
+        if (!attempt.reviewAt || attempt.reviewAt > nowIso) {
           return false;
         }
-        const status =
-          attempt.deliveryMetadata[REMINDER_REVIEW_STATUS_METADATA_KEY];
         return (
-          status !== "resolved" &&
-          status !== "escalated" &&
-          status !== "clarification_requested"
+          attempt.reviewStatus !== "resolved" &&
+          attempt.reviewStatus !== "escalated" &&
+          attempt.reviewStatus !== "clarification_requested"
         );
       })
       .sort((left, right) => {
-        const leftReviewAt = String(
-          left.deliveryMetadata[REMINDER_REVIEW_AT_METADATA_KEY] ?? "",
-        );
-        const rightReviewAt = String(
-          right.deliveryMetadata[REMINDER_REVIEW_AT_METADATA_KEY] ?? "",
-        );
+        const leftReviewAt = left.reviewAt ?? "";
+        const rightReviewAt = right.reviewAt ?? "";
         const reviewDelta = leftReviewAt.localeCompare(rightReviewAt);
         if (reviewDelta !== 0) {
           return reviewDelta;
@@ -5211,16 +5201,15 @@ export class LifeOpsRepository {
            WHERE agent_id = ${sqlQuote(agentId)}
              AND attempted_at IS NOT NULL
              AND outcome IN ('delivered', 'delivered_read', 'delivered_unread')
-             AND COALESCE(review_at, delivery_metadata_json::jsonb ->> ${sqlQuote(REMINDER_REVIEW_AT_METADATA_KEY)}) IS NOT NULL
-             AND COALESCE(review_at, delivery_metadata_json::jsonb ->> ${sqlQuote(REMINDER_REVIEW_AT_METADATA_KEY)}) <= ${sqlQuote(nowIso)}
-             AND COALESCE(review_status, delivery_metadata_json::jsonb ->> ${sqlQuote(REMINDER_REVIEW_STATUS_METADATA_KEY)}, '') NOT IN ('resolved', 'escalated', 'clarification_requested')
+             AND review_at IS NOT NULL
+             AND review_at <= ${sqlQuote(nowIso)}
+             AND COALESCE(review_status, '') NOT IN ('resolved', 'escalated', 'clarification_requested')
              AND (review_next_retry_at IS NULL OR review_next_retry_at <= ${sqlQuote(nowIso)})
              AND (
                review_claimed_at IS NULL OR
                review_claimed_at <= ${sqlQuote(new Date(Date.parse(nowIso) - 5 * 60_000).toISOString())}
              )
-           ORDER BY COALESCE(review_at, delivery_metadata_json::jsonb ->> ${sqlQuote(REMINDER_REVIEW_AT_METADATA_KEY)}) ASC,
-                    attempted_at ASC
+           ORDER BY review_at ASC, attempted_at ASC
            LIMIT ${sqlInteger(normalizedLimit)}
         )
         RETURNING *`,
@@ -7469,9 +7458,12 @@ export function createLifeOpsWorkflowRun(
 export function createLifeOpsReminderAttempt(
   params: Omit<LifeOpsReminderAttempt, "id">,
 ): LifeOpsReminderAttempt {
+  const reviewColumns = readReminderReviewColumnValues(params.deliveryMetadata);
   return {
     ...params,
     id: crypto.randomUUID(),
+    reviewAt: params.reviewAt ?? reviewColumns.reviewAt,
+    reviewStatus: params.reviewStatus ?? reviewColumns.reviewStatus,
   };
 }
 

@@ -15,9 +15,12 @@ import {
 } from "../src/lifeops/service-helpers-misc.js";
 import {
   applyReminderIntensityToPlan,
+  buildReminderResponseClaim,
   classifyReminderOwnerResponseText,
+  decideReminderReviewTransition,
   normalizeReminderIntensityInput,
   parseReminderSnoozeRequestFromText,
+  rankReminderEscalationChannelCandidates,
   rankReminderEscalationChannels,
   resolveReminderDeliveryUrgency,
   resolveReminderEscalationRoutingPolicy,
@@ -287,6 +290,27 @@ describe("rankReminderEscalationChannels", () => {
 
     expect(channels.slice(0, 2)).toEqual(["discord", "in_app"]);
   });
+
+  it("returns route candidates with semantic evidence", () => {
+    const candidates = rankReminderEscalationChannelCandidates({
+      activityProfile: buildActivityProfile({
+        primaryPlatform: "telegram",
+        lastSeenPlatform: "telegram",
+      }),
+      ownerContactHints: {},
+      ownerContactSources: [],
+      policyChannels: ["sms"],
+    });
+
+    expect(candidates[0]).toMatchObject({
+      channel: "telegram",
+      evidence: expect.arrayContaining([
+        "currently_active_platform",
+        "primary_platform",
+      ]),
+      vetoReasons: [],
+    });
+  });
 });
 
 describe("classifyReminderOwnerResponseText", () => {
@@ -436,6 +460,113 @@ describe("classifyReminderOwnerResponseText", () => {
       decision: "explicit_resolution",
       resolution: "snoozed",
       snoozeRequest: { preset: "30m" },
+    });
+  });
+});
+
+describe("buildReminderResponseClaim", () => {
+  it("binds standalone replies only to the latest prompt in the delivery thread", () => {
+    const older = {
+      id: "attempt-older",
+      agentId: "agent-1",
+      planId: "plan-1",
+      ownerType: "occurrence" as const,
+      ownerId: "occurrence-1",
+      occurrenceId: "occurrence-1",
+      channel: "in_app" as const,
+      stepIndex: 0,
+      scheduledFor: "2026-04-29T17:00:00.000Z",
+      attemptedAt: "2026-04-29T17:00:00.000Z",
+      outcome: "delivered" as const,
+      connectorRef: "system:in_app",
+      deliveryMetadata: { deliveryRoomId: "room-1" },
+      reviewAt: "2026-04-29T17:07:00.000Z",
+      reviewStatus: null,
+    };
+    const newer = {
+      ...older,
+      id: "attempt-newer",
+      ownerId: "occurrence-2",
+      attemptedAt: "2026-04-29T17:01:00.000Z",
+      scheduledFor: "2026-04-29T17:01:00.000Z",
+    };
+
+    expect(
+      buildReminderResponseClaim({
+        attempt: older,
+        competingAttempts: [older, newer],
+        response: {
+          text: "done",
+          createdAt: Date.parse("2026-04-29T17:02:00.000Z"),
+          roomId: "room-1",
+        },
+        roomIds: ["room-1"],
+      }),
+    ).toMatchObject({
+      binding: "stale_or_competing_prompt",
+      allowStandaloneResolution: false,
+    });
+    expect(
+      buildReminderResponseClaim({
+        attempt: newer,
+        competingAttempts: [older, newer],
+        response: {
+          text: "done",
+          createdAt: Date.parse("2026-04-29T17:02:00.000Z"),
+          roomId: "room-1",
+        },
+        roomIds: ["room-1"],
+      }),
+    ).toMatchObject({
+      binding: "latest_prompt_in_thread",
+      allowStandaloneResolution: true,
+    });
+  });
+});
+
+describe("decideReminderReviewTransition", () => {
+  it("turns explicit completion into one resolve transition", () => {
+    expect(
+      decideReminderReviewTransition({
+        reviewDue: true,
+        ownerType: "occurrence",
+        responseReview: {
+          decision: "explicit_resolution",
+          resolution: "completed",
+          snoozeRequest: null,
+          respondedAt: "2026-04-29T17:03:00.000Z",
+          responseText: "done",
+          confidence: 0.86,
+          reason: "completion_language",
+        },
+      }),
+    ).toMatchObject({
+      kind: "resolve",
+      resolution: "completed",
+    });
+  });
+
+  it("turns vague snooze into one clarification transition", () => {
+    expect(
+      decideReminderReviewTransition({
+        reviewDue: true,
+        ownerType: "occurrence",
+        responseReview: {
+          decision: "needs_clarification",
+          resolution: null,
+          snoozeRequest: null,
+          respondedAt: "2026-04-29T17:03:00.000Z",
+          responseText: "later",
+          confidence: 0.68,
+          reason: "snooze_needs_duration",
+        },
+      }),
+    ).toMatchObject({
+      kind: "clarify",
+      observation: {
+        decision: "needs_clarification",
+        reason: "snooze_needs_duration",
+      },
     });
   });
 });

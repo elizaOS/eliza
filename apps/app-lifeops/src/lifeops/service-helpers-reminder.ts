@@ -6,6 +6,7 @@ import type {
   LifeOpsReminderIntensity,
   LifeOpsReminderPlan,
   LifeOpsReminderPreferenceSetting,
+  LifeOpsReminderReviewStatus,
   LifeOpsReminderUrgency,
   LifeOpsTaskDefinition,
   SnoozeLifeOpsOccurrenceRequest,
@@ -81,6 +82,34 @@ export function isReminderChannel(
   return (
     typeof value === "string" &&
     LIFEOPS_REMINDER_CHANNELS.includes(value as LifeOpsReminderChannel)
+  );
+}
+
+function isValidIsoString(value: string | null | undefined): value is string {
+  return typeof value === "string" && Number.isFinite(Date.parse(value));
+}
+
+export function readReminderReviewAt(
+  attempt: Pick<LifeOpsReminderAttempt, "reviewAt">,
+): string | null {
+  const reviewAt = attempt.reviewAt ?? null;
+  return isValidIsoString(reviewAt) ? reviewAt : null;
+}
+
+export function readReminderReviewStatus(
+  attempt: Pick<LifeOpsReminderAttempt, "reviewStatus">,
+): LifeOpsReminderReviewStatus | null {
+  return attempt.reviewStatus ?? null;
+}
+
+export function isReminderReviewClosed(
+  attempt: Pick<LifeOpsReminderAttempt, "reviewStatus">,
+): boolean {
+  const status = readReminderReviewStatus(attempt);
+  return (
+    status === "resolved" ||
+    status === "escalated" ||
+    status === "clarification_requested"
   );
 }
 
@@ -225,6 +254,14 @@ export type ReminderEscalationRoutingPolicy = {
   reason: string;
 };
 
+export type ReminderRouteCandidate = {
+  channel: LifeOpsReminderChannel;
+  score: number;
+  evidence: string[];
+  vetoReasons: string[];
+  interruptionBudget: ReminderInterruptionBudget;
+};
+
 export function resolveReminderEscalationRoutingPolicy(args: {
   activityProfile: ReminderActivityProfileSnapshot | null;
   urgency?: LifeOpsReminderUrgency;
@@ -302,6 +339,8 @@ function addReminderChannelScore(
   channel: LifeOpsReminderChannel | null,
   score: number,
   evidenceOrder: Map<LifeOpsReminderChannel, number>,
+  evidence?: Map<LifeOpsReminderChannel, string[]>,
+  reason?: string,
 ): void {
   if (!channel) {
     return;
@@ -310,6 +349,11 @@ function addReminderChannelScore(
     evidenceOrder.set(channel, evidenceOrder.size);
   }
   scores.set(channel, (scores.get(channel) ?? 0) + score);
+  if (evidence && reason) {
+    const reasons = evidence.get(channel) ?? [];
+    reasons.push(reason);
+    evidence.set(channel, reasons);
+  }
 }
 
 function lastResponseRecencyScore(
@@ -328,7 +372,7 @@ function lastResponseRecencyScore(
   return Math.max(0, maxScore - Math.round(ageHours));
 }
 
-export function rankReminderEscalationChannels(args: {
+export function rankReminderEscalationChannelCandidates(args: {
   activityProfile: ReminderActivityProfileSnapshot | null;
   ownerContactHints: Record<string, ReminderEscalationRoutingHint>;
   ownerContactSources: readonly string[];
@@ -341,7 +385,7 @@ export function rankReminderEscalationChannels(args: {
   routingPolicy?: ReminderEscalationRoutingPolicy;
   now?: Date | number;
   weights?: Partial<ReminderChannelRankingWeights>;
-}): LifeOpsReminderChannel[] {
+}): ReminderRouteCandidate[] {
   const routingPolicy =
     args.routingPolicy ??
     resolveReminderEscalationRoutingPolicy({
@@ -359,12 +403,15 @@ export function rankReminderEscalationChannels(args: {
         : Date.now();
   const scores = new Map<LifeOpsReminderChannel, number>();
   const evidenceOrder = new Map<LifeOpsReminderChannel, number>();
+  const evidence = new Map<LifeOpsReminderChannel, string[]>();
   if (routingPolicy.includeInApp) {
     addReminderChannelScore(
       scores,
       "in_app",
       weights.inAppAnchor,
       evidenceOrder,
+      evidence,
+      "default_in_app_surface",
     );
   }
 
@@ -376,24 +423,32 @@ export function rankReminderEscalationChannels(args: {
     ),
     weights.activePlatform,
     evidenceOrder,
+    evidence,
+    "currently_active_platform",
   );
   addReminderChannelScore(
     scores,
     mapPlatformToReminderChannel(activity?.primaryPlatform),
     weights.primaryPlatform,
     evidenceOrder,
+    evidence,
+    "primary_platform",
   );
   addReminderChannelScore(
     scores,
     mapPlatformToReminderChannel(activity?.secondaryPlatform),
     weights.secondaryPlatform,
     evidenceOrder,
+    evidence,
+    "secondary_platform",
   );
   addReminderChannelScore(
     scores,
     mapPlatformToReminderChannel(activity?.lastSeenPlatform),
     weights.lastSeenPlatform,
     evidenceOrder,
+    evidence,
+    "last_seen_platform",
   );
 
   for (const hint of Object.values(args.ownerContactHints)) {
@@ -402,6 +457,8 @@ export function rankReminderEscalationChannels(args: {
       mapPlatformToReminderChannel(hint.preferredCommunicationChannel),
       weights.preferredContactChannel,
       evidenceOrder,
+      evidence,
+      `owner_preferred_contact:${hint.source}`,
     );
     addReminderChannelScore(
       scores,
@@ -413,12 +470,16 @@ export function rankReminderEscalationChannels(args: {
           weights.recencyMax,
         ),
       evidenceOrder,
+      evidence,
+      `recent_owner_response:${hint.source}`,
     );
     addReminderChannelScore(
       scores,
       mapPlatformToReminderChannel(hint.source),
       weights.contactSource,
       evidenceOrder,
+      evidence,
+      `contact_source:${hint.source}`,
     );
   }
 
@@ -428,6 +489,8 @@ export function rankReminderEscalationChannels(args: {
       mapPlatformToReminderChannel(source),
       weights.ownerContactSource,
       evidenceOrder,
+      evidence,
+      `configured_owner_contact:${source}`,
     );
   }
   for (const channel of args.policyChannels) {
@@ -440,6 +503,8 @@ export function rankReminderEscalationChannels(args: {
           ? (args.policyChannelWeightAdjustments?.[reminderChannel] ?? 0)
           : 0),
       evidenceOrder,
+      evidence,
+      `channel_policy:${channel}`,
     );
   }
 
@@ -454,7 +519,33 @@ export function rankReminderEscalationChannels(args: {
         (evidenceOrder.get(left) ?? Number.MAX_SAFE_INTEGER) -
         (evidenceOrder.get(right) ?? Number.MAX_SAFE_INTEGER);
       return orderDelta !== 0 ? orderDelta : left.localeCompare(right);
-    });
+    })
+    .map((channel) => ({
+      channel,
+      score: scores.get(channel) ?? 0,
+      evidence: evidence.get(channel) ?? [],
+      vetoReasons: [],
+      interruptionBudget: routingPolicy.interruptionBudget,
+    }));
+}
+
+export function rankReminderEscalationChannels(args: {
+  activityProfile: ReminderActivityProfileSnapshot | null;
+  ownerContactHints: Record<string, ReminderEscalationRoutingHint>;
+  ownerContactSources: readonly string[];
+  policyChannels: readonly string[];
+  policyChannelWeightAdjustments?: Partial<
+    Record<LifeOpsReminderChannel, number>
+  >;
+  includeInApp?: boolean;
+  urgency?: LifeOpsReminderUrgency;
+  routingPolicy?: ReminderEscalationRoutingPolicy;
+  now?: Date | number;
+  weights?: Partial<ReminderChannelRankingWeights>;
+}): LifeOpsReminderChannel[] {
+  return rankReminderEscalationChannelCandidates(args).map(
+    (candidate) => candidate.channel,
+  );
 }
 
 export function readReminderAttemptLifecycle(
@@ -547,7 +638,8 @@ export type ReminderOwnerResponseResolution =
 export type ReminderOwnerResponseDecision =
   | "explicit_resolution"
   | "needs_clarification"
-  | "unrelated";
+  | "unrelated"
+  | "no_response";
 
 export type ReminderOwnerResponseContext = {
   title?: string | null;
@@ -564,6 +656,243 @@ export type ReminderOwnerResponseClassification = {
   confidence: number;
   reason: string;
 };
+
+export type ReminderResponseCandidate = {
+  text: string;
+  createdAt: number;
+  roomId: string | null;
+  memoryId?: string | null;
+};
+
+export type ReminderResponseClaim = {
+  attemptId: string;
+  responseText: string;
+  responseCreatedAt: number;
+  responseRoomId: string | null;
+  deliveryRoomId: string | null;
+  binding:
+    | "delivery_thread"
+    | "single_in_app_room"
+    | "latest_prompt_in_thread"
+    | "wrong_thread"
+    | "stale_or_competing_prompt";
+  allowStandaloneResolution: boolean;
+};
+
+export type ReminderReviewResponseEvidence =
+  ReminderOwnerResponseClassification & {
+    respondedAt: string | null;
+    responseText: string | null;
+  };
+
+export type ReminderReviewObservation = {
+  decision: "unrelated" | "needs_clarification" | "no_response";
+  respondedAt: string | null;
+  responseText: string | null;
+  reason: string;
+};
+
+export type ReminderReviewTransition =
+  | {
+      kind: "resolve";
+      resolution: ReminderOwnerResponseResolution;
+      responseText: string | null;
+      respondedAt: string | null;
+      snoozeRequest: SnoozeLifeOpsOccurrenceRequest | null;
+      confidence: number;
+      reason: string;
+    }
+  | {
+      kind: "clarify";
+      observation: ReminderReviewObservation;
+    }
+  | {
+      kind: "escalate";
+      observation: ReminderReviewObservation | null;
+    }
+  | { kind: "wait" };
+
+function readReminderAttemptDeliveryRoomId(
+  attempt: LifeOpsReminderAttempt,
+  roomIds: readonly string[],
+): string | null {
+  const explicitRoomId = attempt.deliveryMetadata.deliveryRoomId;
+  if (typeof explicitRoomId === "string" && roomIds.includes(explicitRoomId)) {
+    return explicitRoomId;
+  }
+  const routeEndpoint = attempt.deliveryMetadata.routeEndpoint;
+  return typeof routeEndpoint === "string" && roomIds.includes(routeEndpoint)
+    ? routeEndpoint
+    : null;
+}
+
+function readReminderAttemptAttemptedMs(
+  attempt: LifeOpsReminderAttempt,
+): number | null {
+  const attemptedAt = attempt.attemptedAt ?? attempt.scheduledFor ?? null;
+  const attemptedMs = attemptedAt ? Date.parse(attemptedAt) : Number.NaN;
+  return Number.isFinite(attemptedMs) ? attemptedMs : null;
+}
+
+function reminderAttemptMatchesResponseRoom(args: {
+  attempt: LifeOpsReminderAttempt;
+  responseRoomId: string | null;
+  roomIds: readonly string[];
+}): boolean {
+  const deliveryRoomId = readReminderAttemptDeliveryRoomId(
+    args.attempt,
+    args.roomIds,
+  );
+  if (deliveryRoomId) {
+    return args.responseRoomId === deliveryRoomId;
+  }
+  return (
+    args.roomIds.length === 1 &&
+    args.attempt.channel === "in_app" &&
+    args.responseRoomId === args.roomIds[0]
+  );
+}
+
+export function buildReminderResponseClaim(args: {
+  attempt: LifeOpsReminderAttempt;
+  competingAttempts: readonly LifeOpsReminderAttempt[];
+  response: ReminderResponseCandidate;
+  roomIds: readonly string[];
+}): ReminderResponseClaim {
+  const deliveryRoomId = readReminderAttemptDeliveryRoomId(
+    args.attempt,
+    args.roomIds,
+  );
+  const baseClaim = {
+    attemptId: args.attempt.id,
+    responseText: args.response.text,
+    responseCreatedAt: args.response.createdAt,
+    responseRoomId: args.response.roomId,
+    deliveryRoomId,
+  };
+  if (
+    !reminderAttemptMatchesResponseRoom({
+      attempt: args.attempt,
+      responseRoomId: args.response.roomId,
+      roomIds: args.roomIds,
+    })
+  ) {
+    return {
+      ...baseClaim,
+      binding: "wrong_thread",
+      allowStandaloneResolution: false,
+    };
+  }
+
+  const promptWindowMs = 10 * 60_000;
+  const candidates = args.competingAttempts
+    .filter((attempt) =>
+      ["delivered", "delivered_read", "delivered_unread"].includes(
+        attempt.outcome,
+      ),
+    )
+    .filter((attempt) => !isReminderReviewClosed(attempt))
+    .filter((attempt) =>
+      reminderAttemptMatchesResponseRoom({
+        attempt,
+        responseRoomId: args.response.roomId,
+        roomIds: args.roomIds,
+      }),
+    )
+    .map((attempt) => ({
+      attempt,
+      attemptedMs: readReminderAttemptAttemptedMs(attempt),
+    }))
+    .filter(
+      (
+        candidate,
+      ): candidate is {
+        attempt: LifeOpsReminderAttempt;
+        attemptedMs: number;
+      } =>
+        candidate.attemptedMs !== null &&
+        candidate.attemptedMs <= args.response.createdAt &&
+        args.response.createdAt - candidate.attemptedMs <= promptWindowMs,
+    );
+
+  if (candidates.length === 0) {
+    return {
+      ...baseClaim,
+      binding: deliveryRoomId ? "delivery_thread" : "single_in_app_room",
+      allowStandaloneResolution: true,
+    };
+  }
+  const latestAttemptedMs = Math.max(
+    ...candidates.map((candidate) => candidate.attemptedMs),
+  );
+  const latestCandidates = candidates.filter(
+    (candidate) => candidate.attemptedMs === latestAttemptedMs,
+  );
+  const isOnlyLatest =
+    latestCandidates.length === 1 &&
+    latestCandidates[0]?.attempt.id === args.attempt.id;
+  return {
+    ...baseClaim,
+    binding: isOnlyLatest
+      ? "latest_prompt_in_thread"
+      : "stale_or_competing_prompt",
+    allowStandaloneResolution: isOnlyLatest,
+  };
+}
+
+export function decideReminderReviewTransition(args: {
+  reviewDue: boolean;
+  ownerType: "occurrence" | "calendar_event";
+  responseReview: ReminderReviewResponseEvidence;
+}): ReminderReviewTransition {
+  if (
+    args.responseReview.decision === "explicit_resolution" &&
+    args.responseReview.resolution !== null
+  ) {
+    if (
+      args.responseReview.resolution === "snoozed" &&
+      (args.ownerType !== "occurrence" || !args.responseReview.snoozeRequest)
+    ) {
+      const observation: ReminderReviewObservation = {
+        decision: "needs_clarification",
+        respondedAt: args.responseReview.respondedAt,
+        responseText: args.responseReview.responseText,
+        reason: "snooze_resolution_requires_occurrence_duration",
+      };
+      return args.reviewDue
+        ? { kind: "clarify", observation }
+        : { kind: "escalate", observation };
+    }
+    return {
+      kind: "resolve",
+      resolution: args.responseReview.resolution,
+      responseText: args.responseReview.responseText,
+      respondedAt: args.responseReview.respondedAt,
+      snoozeRequest: args.responseReview.snoozeRequest,
+      confidence: args.responseReview.confidence,
+      reason: args.responseReview.reason,
+    };
+  }
+
+  if (!args.reviewDue) {
+    return { kind: "wait" };
+  }
+
+  const observation: ReminderReviewObservation = {
+    decision:
+      args.responseReview.decision === "needs_clarification"
+        ? "needs_clarification"
+        : args.responseReview.decision === "no_response"
+          ? "no_response"
+          : "unrelated",
+    respondedAt: args.responseReview.respondedAt,
+    responseText: args.responseReview.responseText,
+    reason: args.responseReview.reason,
+  };
+  return args.responseReview.decision === "needs_clarification"
+    ? { kind: "clarify", observation }
+    : { kind: "escalate", observation };
+}
 
 const SNOOZE_RESPONSE_PATTERNS = [
   /^\s*\d{1,3}\s*(m|min|mins|minute|minutes|h|hr|hrs|hour|hours)\s*$/i,

@@ -50,6 +50,8 @@ function makeAttempt(): LifeOpsReminderAttempt {
       [REMINDER_LIFECYCLE_METADATA_KEY]: "plan",
       [REMINDER_REVIEW_AT_METADATA_KEY]: addMinutes(baseAt, 7),
     },
+    reviewAt: addMinutes(baseAt, 7),
+    reviewStatus: null,
   };
 }
 
@@ -164,6 +166,7 @@ describe("reminder escalation review", () => {
         [REMINDER_LIFECYCLE_METADATA_KEY]: "plan",
         [REMINDER_REVIEW_AT_METADATA_KEY]: addMinutes(baseAt, 20),
       },
+      reviewAt: addMinutes(baseAt, 20),
     };
     const { service, escalationAttempt } = createHarness({
       decision: "no_response",
@@ -635,7 +638,7 @@ describe("reminder escalation review", () => {
     );
   });
 
-  it("returns due review callbacks even when later overview materialization fails", async () => {
+  it("keeps review callbacks independent while delivery materialization failures surface", async () => {
     const service = Object.create(LifeOpsService.prototype) as LifeOpsService &
       Record<string, unknown>;
     const reviewAttempt = makeAttempt();
@@ -647,14 +650,12 @@ describe("reminder escalation review", () => {
     }));
     service.readReminderActivityProfileSnapshot = vi.fn(async () => null);
     service.processDueReminderReviewJobs = vi.fn(async () => [reviewAttempt]);
-    service.logLifeOpsWarn = vi.fn();
+    service.processDueReminderDeliveries = vi.fn(async () => {
+      throw new Error("overview failed");
+    });
     service.repository = {
       listChannelPolicies: vi.fn(async () => []),
       listReminderAttempts: vi.fn(async () => []),
-      listActiveDefinitions: vi.fn(async () => []),
-      listOccurrenceViewsForOverview: vi.fn(async () => {
-        throw new Error("overview failed");
-      }),
     };
 
     await expect(
@@ -662,16 +663,63 @@ describe("reminder escalation review", () => {
         now: addMinutes(baseAt, 8),
         limit: 3,
       }),
-    ).resolves.toMatchObject({
-      now: addMinutes(baseAt, 8),
-      attempts: [reviewAttempt],
-    });
+    ).rejects.toThrow("overview failed");
 
     expect(service.processDueReminderReviewJobs).toHaveBeenCalled();
-    expect(service.logLifeOpsWarn).toHaveBeenCalledWith(
-      "reminder_processing",
-      expect.stringContaining("due review callbacks ran"),
-      expect.objectContaining({ error: "overview failed" }),
+    expect(service.processDueReminderDeliveries).toHaveBeenCalledWith(
+      expect.objectContaining({
+        existingAttempts: [reviewAttempt],
+        limit: 2,
+      }),
     );
+  });
+
+  it("returns route candidates with veto reasons before flattening channels", async () => {
+    const service = Object.create(LifeOpsService.prototype) as LifeOpsService &
+      Record<string, unknown>;
+    const discordPolicy = {
+      id: "policy-discord",
+      agentId: "agent-1",
+      channelType: "discord" as const,
+      channelRef: "discord-owner",
+      privacyClass: "private" as const,
+      allowReminders: true,
+      allowEscalation: true,
+      allowPosts: false,
+      requireConfirmationForActions: false,
+      metadata: {},
+      createdAt: baseAt.toISOString(),
+      updatedAt: baseAt.toISOString(),
+    };
+    service.runtime = {};
+    service.resolvePrimaryChannelPolicy = vi.fn(async () => discordPolicy);
+
+    const candidates = await service.resolveReminderEscalationRouteCandidates({
+      activityProfile: null,
+      policies: [discordPolicy],
+      urgency: "high",
+      attempts: [],
+    });
+
+    expect(candidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          channel: "in_app",
+          vetoReasons: [],
+        }),
+        expect.objectContaining({
+          channel: "discord",
+          vetoReasons: ["runtime_target_send_unavailable"],
+        }),
+      ]),
+    );
+    await expect(
+      service.resolveReminderEscalationChannels({
+        activityProfile: null,
+        policies: [discordPolicy],
+        urgency: "high",
+        attempts: [],
+      }),
+    ).resolves.toEqual(["in_app"]);
   });
 });

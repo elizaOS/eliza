@@ -139,17 +139,22 @@ import {
   REMINDER_REVIEW_STATUS_METADATA_KEY,
 } from "./service-constants.js";
 import {
+  buildActiveReminders,
   isReminderChannelAllowedForUrgency,
   isWithinQuietHours as isWithinQuietHoursPolicy,
 } from "./service-helpers-misc.js";
 import { computeDefinitionPerformance } from "./service-helpers-occurrence.js";
 import {
   applyReminderIntensityToPlan,
+  buildReminderResponseClaim,
   classifyReminderOwnerResponseText,
+  decideReminderReviewTransition,
+  isReminderReviewClosed,
   normalizeReminderIntensityInput,
-  rankReminderEscalationChannels,
+  rankReminderEscalationChannelCandidates,
   readReminderAttemptLifecycle,
   readReminderPreferenceSettingFromMetadata,
+  readReminderReviewAt,
   resolveReminderDeliveryUrgency,
   resolveReminderEscalationDelayMinutes,
   resolveReminderEscalationRoutingPolicy,
@@ -588,31 +593,6 @@ function isDeliveredReminderOutcome(
   );
 }
 
-function readReminderReviewAt(attempt: LifeOpsReminderAttempt): string | null {
-  const value = attempt.deliveryMetadata?.[REMINDER_REVIEW_AT_METADATA_KEY];
-  if (typeof value !== "string") {
-    return null;
-  }
-  return Number.isFinite(Date.parse(value)) ? value : null;
-}
-
-function readReminderReviewStatus(
-  attempt: LifeOpsReminderAttempt,
-): string | null {
-  const value =
-    attempt.deliveryMetadata?.[REMINDER_REVIEW_STATUS_METADATA_KEY] ?? null;
-  return typeof value === "string" && value.trim().length > 0 ? value : null;
-}
-
-function isReminderReviewClosed(attempt: LifeOpsReminderAttempt): boolean {
-  const status = readReminderReviewStatus(attempt);
-  return (
-    status === "resolved" ||
-    status === "escalated" ||
-    status === "clarification_requested"
-  );
-}
-
 function buildReminderSnoozeClarificationBody(title: string): string {
   return `I can snooze "${title}", but I need a clear time first. Reply with something like "30 minutes", "1 hour", "tonight", or "tomorrow morning".`;
 }
@@ -643,104 +623,6 @@ function readLatestPendingReminderReviewAttempt(
           readReminderAttemptAnchorMs(right),
       )
       .at(-1) ?? null
-  );
-}
-
-function readReminderAttemptDeliveryRoomId(
-  attempt: LifeOpsReminderAttempt,
-  roomIds: string[],
-): string | null {
-  const explicitRoomId = attempt.deliveryMetadata.deliveryRoomId;
-  if (typeof explicitRoomId === "string" && roomIds.includes(explicitRoomId)) {
-    return explicitRoomId;
-  }
-  const routeEndpoint = attempt.deliveryMetadata.routeEndpoint;
-  return typeof routeEndpoint === "string" && roomIds.includes(routeEndpoint)
-    ? routeEndpoint
-    : null;
-}
-
-function readReminderAttemptAttemptedMs(
-  attempt: LifeOpsReminderAttempt,
-): number | null {
-  const attemptedAt = attempt.attemptedAt ?? attempt.scheduledFor ?? null;
-  const attemptedMs = attemptedAt ? Date.parse(attemptedAt) : Number.NaN;
-  return Number.isFinite(attemptedMs) ? attemptedMs : null;
-}
-
-function reminderAttemptMatchesResponseRoom(args: {
-  attempt: LifeOpsReminderAttempt;
-  responseRoomId: string | null;
-  roomIds: string[];
-}): boolean {
-  const deliveryRoomId = readReminderAttemptDeliveryRoomId(
-    args.attempt,
-    args.roomIds,
-  );
-  if (deliveryRoomId) {
-    return args.responseRoomId === deliveryRoomId;
-  }
-  return (
-    args.roomIds.length === 1 &&
-    args.attempt.channel === "in_app" &&
-    args.responseRoomId === args.roomIds[0]
-  );
-}
-
-function shouldAllowStandaloneReminderResponse(args: {
-  attempt: LifeOpsReminderAttempt;
-  competingAttempts: LifeOpsReminderAttempt[];
-  responseCreatedAt: number;
-  responseRoomId: string | null;
-  roomIds: string[];
-}): boolean {
-  if (
-    !reminderAttemptMatchesResponseRoom({
-      attempt: args.attempt,
-      responseRoomId: args.responseRoomId,
-      roomIds: args.roomIds,
-    })
-  ) {
-    return false;
-  }
-  const promptWindowMs = 10 * 60_000;
-  const candidates = args.competingAttempts
-    .filter((attempt) => isDeliveredReminderOutcome(attempt.outcome))
-    .filter((attempt) => !isReminderReviewClosed(attempt))
-    .filter((attempt) =>
-      reminderAttemptMatchesResponseRoom({
-        attempt,
-        responseRoomId: args.responseRoomId,
-        roomIds: args.roomIds,
-      }),
-    )
-    .map((attempt) => ({
-      attempt,
-      attemptedMs: readReminderAttemptAttemptedMs(attempt),
-    }))
-    .filter(
-      (
-        candidate,
-      ): candidate is {
-        attempt: LifeOpsReminderAttempt;
-        attemptedMs: number;
-      } =>
-        candidate.attemptedMs !== null &&
-        candidate.attemptedMs <= args.responseCreatedAt &&
-        args.responseCreatedAt - candidate.attemptedMs <= promptWindowMs,
-    );
-  if (candidates.length === 0) {
-    return true;
-  }
-  const latestAttemptedMs = Math.max(
-    ...candidates.map((candidate) => candidate.attemptedMs),
-  );
-  const latestCandidates = candidates.filter(
-    (candidate) => candidate.attemptedMs === latestAttemptedMs,
-  );
-  return (
-    latestCandidates.length === 1 &&
-    latestCandidates[0]?.attempt.id === args.attempt.id
   );
 }
 
@@ -863,57 +745,6 @@ function collectNearbyReminderTitles(args: {
     if (titles.length >= args.limit) return titles;
   }
   return titles;
-}
-
-function buildActiveReminders(
-  occurrences: LifeOpsOccurrenceView[],
-  plansByDefinitionId: Map<string, LifeOpsReminderPlan>,
-  now: Date,
-): Array<{
-  ownerType: "occurrence";
-  ownerId: string;
-  occurrenceId: string;
-  definitionId: string;
-  title: string;
-  channel: LifeOpsReminderStep["channel"];
-  stepIndex: number;
-  scheduledFor: string;
-}> {
-  const rows: Array<{
-    ownerType: "occurrence";
-    ownerId: string;
-    occurrenceId: string;
-    definitionId: string;
-    title: string;
-    channel: LifeOpsReminderStep["channel"];
-    stepIndex: number;
-    scheduledFor: string;
-  }> = [];
-  for (const occurrence of occurrences) {
-    const plan = plansByDefinitionId.get(occurrence.definitionId);
-    if (!plan) continue;
-    const anchorIso = occurrence.snoozedUntil ?? occurrence.relevanceStartAt;
-    if (!anchorIso) continue;
-    const anchorDate = new Date(anchorIso);
-    for (const [stepIndex, step] of plan.steps.entries()) {
-      const scheduledFor = addMinutes(
-        anchorDate,
-        step.offsetMinutes,
-      ).toISOString();
-      if (Date.parse(scheduledFor) > now.getTime()) continue;
-      rows.push({
-        ownerType: "occurrence",
-        ownerId: occurrence.id,
-        occurrenceId: occurrence.id,
-        definitionId: occurrence.definitionId,
-        title: occurrence.title,
-        channel: step.channel,
-        stepIndex,
-        scheduledFor,
-      });
-    }
-  }
-  return rows;
 }
 
 function buildActiveCalendarEventReminders(
@@ -1209,14 +1040,16 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
             ? args.competingAttempts
             : [args.attempt];
         for (const response of ownerResponses) {
-          const allowStandaloneResolution =
-            shouldAllowStandaloneReminderResponse({
-              attempt: args.attempt,
-              competingAttempts,
-              responseCreatedAt: response.createdAt,
-              responseRoomId: response.roomId,
-              roomIds,
-            });
+          const responseClaim = buildReminderResponseClaim({
+            attempt: args.attempt,
+            competingAttempts,
+            response: {
+              text: response.text,
+              createdAt: response.createdAt,
+              roomId: response.roomId,
+            },
+            roomIds,
+          });
           const classification = classifyReminderOwnerResponseText(
             response.text,
             {
@@ -1224,7 +1057,8 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
               attemptedAt,
               respondedAt: response.createdAt,
               channel: args.attempt.channel,
-              allowStandaloneResolution,
+              allowStandaloneResolution:
+                responseClaim.allowStandaloneResolution,
             },
           );
           if (classification.decision === "explicit_resolution") {
@@ -2334,7 +2168,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       };
     }
 
-    public async readReminderActivityProfileSnapshot(): Promise<ReminderActivityProfileSnapshot | null> {
+    public async readLifeOpsAttentionContext(): Promise<ReminderActivityProfileSnapshot | null> {
       try {
         const schedule = await this.refreshEffectiveScheduleState({
           timezone: resolveDefaultTimeZone(),
@@ -2358,7 +2192,30 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         if (!isRecord(profile) && !schedule) {
           return null;
         }
+        const profileLastSeenAt =
+          isRecord(profile) && typeof profile.lastSeenAt === "number"
+            ? profile.lastSeenAt
+            : null;
+        const scheduleLastSeenAt = schedule?.lastActiveAt
+          ? Date.parse(schedule.lastActiveAt)
+          : null;
+        const lastSeenAt = profileLastSeenAt ?? scheduleLastSeenAt;
         return {
+          source:
+            isRecord(profile) && schedule
+              ? "mixed"
+              : isRecord(profile)
+                ? "proactive_activity_profile"
+                : schedule
+                  ? "schedule_state"
+                  : "unknown",
+          capturedAt: new Date().toISOString(),
+          sourceFreshnessMs:
+            lastSeenAt !== null ? Math.max(0, Date.now() - lastSeenAt) : null,
+          sourceConfidence: schedule?.stateConfidence ?? null,
+          privacyMode: "unknown",
+          socialContext: "unknown",
+          locationSafety: "unknown",
           primaryPlatform: isRecord(profile)
             ? (normalizeOptionalString(profile.primaryPlatform) ?? null)
             : null,
@@ -2370,12 +2227,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
             : null,
           isCurrentlyActive:
             isRecord(profile) && profile.isCurrentlyActive === true,
-          lastSeenAt:
-            isRecord(profile) && typeof profile.lastSeenAt === "number"
-              ? profile.lastSeenAt
-              : schedule?.lastActiveAt
-                ? Date.parse(schedule.lastActiveAt)
-                : null,
+          lastSeenAt,
           circadianState: schedule?.circadianState ?? "unclear",
           stateConfidence: schedule?.stateConfidence ?? 0,
           lastSleepEndedAt: schedule?.lastSleepEndedAt ?? null,
@@ -2429,6 +2281,10 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         );
         return null;
       }
+    }
+
+    public async readReminderActivityProfileSnapshot(): Promise<ReminderActivityProfileSnapshot | null> {
+      return this.readLifeOpsAttentionContext();
     }
 
     /**
@@ -2552,13 +2408,13 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       return rows;
     }
 
-    public async resolveReminderEscalationChannels(args: {
+    public async resolveReminderEscalationRouteCandidates(args: {
       activityProfile: ReminderActivityProfileSnapshot | null;
       policies: LifeOpsChannelPolicy[];
       urgency: LifeOpsReminderUrgency;
       attempts?: LifeOpsReminderAttempt[];
-    }): Promise<LifeOpsReminderChannel[]> {
-      const ordered: LifeOpsReminderChannel[] = [];
+    }) {
+      const candidates = [];
       const ownerContacts = loadOwnerContactsConfig(
         LIFEOPS_OWNER_CONTACTS_LOAD_CONTEXT,
       );
@@ -2603,41 +2459,65 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
             (policyWeightAdjustments[channel] ?? 0) + weight;
         }
       }
-      const pushChannel = async (
-        channel: LifeOpsReminderChannel | null,
+      const evaluateCandidate = async (
+        candidate:
+          | ReturnType<typeof rankReminderEscalationChannelCandidates>[number]
+          | null,
       ): Promise<void> => {
-        if (!channel || ordered.includes(channel)) {
+        if (
+          !candidate ||
+          candidates.some((resolvedCandidate) => {
+            return resolvedCandidate.channel === candidate.channel;
+          })
+        ) {
           return;
         }
+        const vetoReasons: string[] = [];
+        const channel = candidate.channel;
         if (!isReminderChannelAllowedForUrgency(channel, args.urgency)) {
+          vetoReasons.push("urgency_policy");
+        }
+        if (args.urgency !== "critical" && hasRecentChannelFailure(channel)) {
+          vetoReasons.push("recent_channel_failure");
+        }
+        if (
+          channel !== "in_app" &&
+          routingPolicy.interruptionBudget === "low"
+        ) {
+          vetoReasons.push("attention_budget_low");
+        }
+        if (vetoReasons.length > 0) {
+          candidates.push({ ...candidate, vetoReasons });
           return;
         }
         if (channel === "in_app") {
-          ordered.push(channel);
-          return;
-        }
-        if (args.urgency !== "critical" && hasRecentChannelFailure(channel)) {
-          return;
-        }
-        if (routingPolicy.interruptionBudget === "low") {
+          candidates.push({ ...candidate, vetoReasons });
           return;
         }
         const policy = await this.resolvePrimaryChannelPolicy(channel);
         if (policy) {
           if (policy.metadata.disableReminderRouting === true) {
+            vetoReasons.push("channel_policy_disabled");
+            candidates.push({ ...candidate, vetoReasons });
             return;
           }
           if (!policy.allowReminders || !policy.allowEscalation) {
+            vetoReasons.push("channel_policy_blocks_escalation");
+            candidates.push({ ...candidate, vetoReasons });
             return;
           }
         } else if (channel === "sms" || channel === "voice") {
+          vetoReasons.push("missing_required_direct_policy");
+          candidates.push({ ...candidate, vetoReasons });
           return;
         }
         if (channel === "sms" || channel === "voice") {
-          ordered.push(channel);
+          candidates.push({ ...candidate, vetoReasons });
           return;
         }
         if (typeof this.runtime.sendMessageToTarget !== "function") {
+          vetoReasons.push("runtime_target_send_unavailable");
+          candidates.push({ ...candidate, vetoReasons });
           return;
         }
         const runtimeTarget = await this.resolveRuntimeReminderTarget(
@@ -2647,7 +2527,12 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
           ownerContactHints,
         );
         if (runtimeTarget !== null) {
-          ordered.push(channel);
+          candidates.push({ ...candidate, vetoReasons });
+        } else {
+          candidates.push({
+            ...candidate,
+            vetoReasons: ["runtime_target_missing"],
+          });
         }
       };
 
@@ -2655,7 +2540,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         activityProfile: args.activityProfile,
         urgency: args.urgency,
       });
-      const rankedChannels = rankReminderEscalationChannels({
+      const rankedCandidates = rankReminderEscalationChannelCandidates({
         activityProfile: args.activityProfile,
         ownerContactHints,
         ownerContactSources: Object.keys(ownerContacts),
@@ -2664,10 +2549,23 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         urgency: args.urgency,
         routingPolicy,
       });
-      for (const channel of rankedChannels) {
-        await pushChannel(channel);
+      for (const candidate of rankedCandidates) {
+        await evaluateCandidate(candidate);
       }
-      return ordered;
+      return candidates;
+    }
+
+    public async resolveReminderEscalationChannels(args: {
+      activityProfile: ReminderActivityProfileSnapshot | null;
+      policies: LifeOpsChannelPolicy[];
+      urgency: LifeOpsReminderUrgency;
+      attempts?: LifeOpsReminderAttempt[];
+    }): Promise<LifeOpsReminderChannel[]> {
+      const candidates =
+        await this.resolveReminderEscalationRouteCandidates(args);
+      return candidates
+        .filter((candidate) => candidate.vetoReasons.length === 0)
+        .map((candidate) => candidate.channel);
     }
 
     public async markReminderEscalationStarted(args: {
@@ -2902,6 +2800,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
           reviewMetadata,
         );
         Object.assign(args.attempt.deliveryMetadata, reviewMetadata);
+        args.attempt.reviewStatus = "resolved";
         return;
       }
       await this.repository.updateReminderAttemptOutcome(
@@ -2910,6 +2809,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         reviewMetadata,
       );
       Object.assign(args.attempt.deliveryMetadata, reviewMetadata);
+      args.attempt.reviewStatus = "resolved";
       if (args.ownerType === "occurrence") {
         const occurrence = await this.repository.getOccurrence(
           this.agentId(),
@@ -2972,6 +2872,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         reviewMetadata,
       );
       Object.assign(args.attempt.deliveryMetadata, reviewMetadata);
+      args.attempt.reviewStatus = "resolved";
       await this.resolveReminderEscalation({
         ownerType: args.ownerType,
         ownerId: args.ownerId,
@@ -3001,6 +2902,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         reviewMetadata,
       );
       Object.assign(args.attempt.deliveryMetadata, reviewMetadata);
+      args.attempt.reviewStatus = "escalated";
     }
 
     public async markReminderReviewClarificationRequested(args: {
@@ -3023,6 +2925,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         reviewMetadata,
       );
       Object.assign(args.attempt.deliveryMetadata, reviewMetadata);
+      args.attempt.reviewStatus = "clarification_requested";
     }
 
     public async markReminderReviewObservedResponse(args: {
@@ -3045,6 +2948,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         reviewMetadata,
       );
       Object.assign(args.attempt.deliveryMetadata, reviewMetadata);
+      args.attempt.reviewStatus = args.decision;
     }
 
     public async processDueReminderReviewJobs(args: {
@@ -3383,44 +3287,33 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
             competingAttempts: ownerAttempts,
             now: args.now,
           });
-        if (
-          responseReview.decision === "explicit_resolution" &&
-          responseReview.resolution !== null
-        ) {
-          if (
-            responseReview.resolution === "snoozed" &&
-            (args.ownerType !== "occurrence" || !responseReview.snoozeRequest)
-          ) {
-            await this.markReminderReviewObservedResponse({
-              attempt: previousAttempt,
-              decision: "needs_clarification",
-              respondedAt: responseReview.respondedAt,
-              responseText: responseReview.responseText,
-              reason: "snooze_resolution_requires_occurrence_duration",
-            });
-          } else {
-            await this.resolveReminderReviewFromOwnerResponse({
-              ownerType: args.ownerType,
-              ownerId: args.ownerId,
-              attempt: previousAttempt,
-              reviewedAt: args.attemptedAt,
-              resolution: responseReview.resolution,
-              responseText: responseReview.responseText,
-              respondedAt: responseReview.respondedAt,
-              snoozeRequest: responseReview.snoozeRequest,
-              confidence: responseReview.confidence,
-              reason: responseReview.reason,
-            });
-            return null;
-          }
+        const reviewTransition = decideReminderReviewTransition({
+          reviewDue,
+          ownerType: args.ownerType,
+          responseReview,
+        });
+        if (reviewTransition.kind === "resolve") {
+          await this.resolveReminderReviewFromOwnerResponse({
+            ownerType: args.ownerType,
+            ownerId: args.ownerId,
+            attempt: previousAttempt,
+            reviewedAt: args.attemptedAt,
+            resolution: reviewTransition.resolution,
+            responseText: reviewTransition.responseText,
+            respondedAt: reviewTransition.respondedAt,
+            snoozeRequest: reviewTransition.snoozeRequest,
+            confidence: reviewTransition.confidence,
+            reason: reviewTransition.reason,
+          });
+          return null;
         }
-        if (reviewDue && responseReview.decision === "needs_clarification") {
+        if (reviewTransition.kind === "clarify") {
           await this.markReminderReviewObservedResponse({
             attempt: previousAttempt,
-            decision: "needs_clarification",
-            respondedAt: responseReview.respondedAt,
-            responseText: responseReview.responseText,
-            reason: responseReview.reason,
+            decision: reviewTransition.observation.decision,
+            respondedAt: reviewTransition.observation.respondedAt,
+            responseText: reviewTransition.observation.responseText,
+            reason: reviewTransition.observation.reason,
           });
           const clarificationAttempt = await this.dispatchReminderAttempt({
             plan: args.plan,
@@ -3455,13 +3348,16 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
           }
           return clarificationAttempt;
         }
-        if (reviewDue && responseReview.decision !== "explicit_resolution") {
+        if (
+          reviewTransition.kind === "escalate" &&
+          reviewTransition.observation
+        ) {
           await this.markReminderReviewObservedResponse({
             attempt: previousAttempt,
-            decision: responseReview.decision,
-            respondedAt: responseReview.respondedAt,
-            responseText: responseReview.responseText,
-            reason: responseReview.reason,
+            decision: reviewTransition.observation.decision,
+            respondedAt: reviewTransition.observation.respondedAt,
+            responseText: reviewTransition.observation.responseText,
+            reason: reviewTransition.observation.reason,
           });
         }
       }
@@ -4516,6 +4412,390 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       };
     }
 
+    async processDueReminderDeliveries(args: {
+      now: Date;
+      limit: number;
+      ownerTimezone: string;
+      policies: LifeOpsChannelPolicy[];
+      globalReminderPreference: LifeOpsReminderPreference;
+      existingAttempts: LifeOpsReminderAttempt[];
+      activityProfile: ReminderActivityProfileSnapshot | null;
+    }): Promise<LifeOpsReminderAttempt[]> {
+      const {
+        now,
+        limit,
+        ownerTimezone,
+        policies,
+        globalReminderPreference,
+        existingAttempts,
+        activityProfile,
+      } = args;
+      const dueAttempts: LifeOpsReminderAttempt[] = [];
+      if (limit <= 0) {
+        return dueAttempts;
+      }
+
+      const definitions = await this.repository.listActiveDefinitions(
+        this.agentId(),
+      );
+      for (const definition of definitions) {
+        await this.refreshDefinitionOccurrences(definition, now);
+      }
+      const definitionsById = new Map(
+        definitions.map((definition) => [definition.id, definition]),
+      );
+
+      const horizon = addMinutes(now, OVERVIEW_HORIZON_MINUTES).toISOString();
+      const occurrenceViews =
+        await this.repository.listOccurrenceViewsForOverview(
+          this.agentId(),
+          horizon,
+        );
+      const occurrencePlans = await this.repository.listReminderPlansForOwners(
+        this.agentId(),
+        "definition",
+        occurrenceViews.map((occurrence) => occurrence.definitionId),
+      );
+      const definitionPreferencesById = new Map<
+        string,
+        LifeOpsReminderPreference
+      >();
+      const plansByDefinitionId = new Map<string, LifeOpsReminderPlan>();
+      for (const plan of occurrencePlans) {
+        const definition = definitionsById.get(plan.ownerId) ?? null;
+        const preference = this.buildReminderPreferenceResponse(
+          definition,
+          policies,
+        );
+        definitionPreferencesById.set(plan.ownerId, preference);
+        const effectivePlan = this.resolveEffectiveReminderPlan(
+          plan,
+          preference,
+        );
+        if (effectivePlan) {
+          plansByDefinitionId.set(plan.ownerId, effectivePlan);
+        }
+      }
+
+      const eventWindowEnd = addMinutes(
+        now,
+        OVERVIEW_HORIZON_MINUTES,
+      ).toISOString();
+      const calendarEvents = await this.repository.listCalendarEvents(
+        this.agentId(),
+        "google",
+        now.toISOString(),
+        eventWindowEnd,
+      );
+      const eventPlans = await this.repository.listReminderPlansForOwners(
+        this.agentId(),
+        "calendar_event",
+        calendarEvents.map((event) => event.id),
+      );
+      const occurrenceUrgencies = new Map<string, LifeOpsReminderUrgency>();
+      for (const occurrence of occurrenceViews) {
+        occurrenceUrgencies.set(
+          occurrence.id,
+          resolveReminderDeliveryUrgency({
+            metadata: occurrence.metadata,
+            priority: occurrence.priority,
+          }),
+        );
+      }
+      const plansByEventId = new Map<string, LifeOpsReminderPlan>();
+      for (const plan of eventPlans) {
+        const effectivePlan = this.resolveEffectiveReminderPlan(
+          plan,
+          globalReminderPreference,
+        );
+        if (effectivePlan) {
+          plansByEventId.set(plan.ownerId, effectivePlan);
+        }
+      }
+      const eventUrgencies = new Map<string, LifeOpsReminderUrgency>();
+      for (const event of calendarEvents) {
+        eventUrgencies.set(
+          event.id,
+          resolveReminderDeliveryUrgency({
+            metadata: event.metadata,
+            fallback: "medium",
+          }),
+        );
+      }
+
+      const attemptKey = (
+        planId: string,
+        stepIndex: number,
+        scheduledFor: string,
+      ) => `${planId}:${stepIndex}:${scheduledFor}`;
+      const deliveredAttempts = new Set(
+        existingAttempts
+          .filter((attempt) => isDeliveredReminderOutcome(attempt.outcome))
+          .map((attempt) =>
+            attemptKey(attempt.planId, attempt.stepIndex, attempt.scheduledFor),
+          ),
+      );
+      const blockedAckAttempts = new Set(
+        existingAttempts
+          .filter((attempt) => attempt.outcome === "blocked_acknowledged")
+          .map((attempt) =>
+            attemptKey(attempt.planId, attempt.stepIndex, attempt.scheduledFor),
+          ),
+      );
+
+      for (const reminder of buildActiveReminders(
+        occurrenceViews,
+        plansByDefinitionId,
+        now,
+      )) {
+        if (dueAttempts.length >= limit) break;
+        const plan = reminder.definitionId
+          ? plansByDefinitionId.get(reminder.definitionId)
+          : null;
+        if (!plan) continue;
+        const occurrence = occurrenceViews.find(
+          (candidate) => candidate.id === reminder.ownerId,
+        );
+        if (!occurrence) continue;
+        const preference =
+          definitionPreferencesById.get(reminder.definitionId ?? "") ??
+          globalReminderPreference;
+        const urgency = occurrenceUrgencies.get(reminder.ownerId) ?? "medium";
+        const definition = definitionsById.get(occurrence.definitionId) ?? null;
+        if (
+          !shouldDeliverReminderForIntensity(
+            preference.effective.intensity,
+            urgency,
+          )
+        ) {
+          continue;
+        }
+        const key = attemptKey(
+          plan.id,
+          reminder.stepIndex,
+          reminder.scheduledFor,
+        );
+        const acknowledged = Boolean(
+          occurrence.metadata.reminderAcknowledgedAt ||
+            occurrence.state === "completed",
+        );
+        if (
+          deliveredAttempts.has(key) ||
+          (acknowledged && blockedAckAttempts.has(key))
+        ) {
+          continue;
+        }
+        if (
+          shouldDeferReminderUntilComputerActive({
+            channel: reminder.channel,
+            definition,
+            activityProfile,
+            urgency,
+          })
+        ) {
+          continue;
+        }
+        const attempt = await this.dispatchReminderAttempt({
+          plan,
+          ownerType: "occurrence",
+          ownerId: reminder.ownerId,
+          occurrenceId: reminder.occurrenceId,
+          subjectType: occurrence.subjectType,
+          title: reminder.title,
+          channel: reminder.channel,
+          stepIndex: reminder.stepIndex,
+          scheduledFor: reminder.scheduledFor,
+          dueAt: occurrence.dueAt,
+          urgency,
+          quietHours: plan.quietHours,
+          acknowledged,
+          attemptedAt: now.toISOString(),
+          activityProfile,
+          nearbyReminderTitles: collectNearbyReminderTitles({
+            currentOwnerId: reminder.ownerId,
+            currentAnchorAt: occurrence.dueAt,
+            occurrences: occurrenceViews,
+            events: calendarEvents,
+            limit: 3,
+          }),
+          timezone: ownerTimezone,
+          definition,
+        });
+        dueAttempts.push(attempt);
+        if (isDeliveredReminderOutcome(attempt.outcome)) {
+          deliveredAttempts.add(key);
+        }
+      }
+
+      for (const reminder of buildActiveCalendarEventReminders(
+        calendarEvents,
+        plansByEventId,
+        this.ownerEntityId(),
+        now,
+      )) {
+        if (dueAttempts.length >= limit) break;
+        const plan = reminder.eventId
+          ? plansByEventId.get(reminder.eventId)
+          : null;
+        if (!plan) continue;
+        const event = calendarEvents.find(
+          (candidate) => candidate.id === reminder.ownerId,
+        );
+        if (!event) continue;
+        if (
+          !shouldDeliverReminderForIntensity(
+            globalReminderPreference.effective.intensity,
+            eventUrgencies.get(reminder.ownerId) ?? "medium",
+          )
+        ) {
+          continue;
+        }
+        const key = attemptKey(
+          plan.id,
+          reminder.stepIndex,
+          reminder.scheduledFor,
+        );
+        const acknowledged = Boolean(event.metadata.reminderAcknowledgedAt);
+        if (
+          deliveredAttempts.has(key) ||
+          (acknowledged && blockedAckAttempts.has(key))
+        ) {
+          continue;
+        }
+        const attempt = await this.dispatchReminderAttempt({
+          plan,
+          ownerType: "calendar_event",
+          ownerId: reminder.ownerId,
+          occurrenceId: null,
+          subjectType: reminder.subjectType,
+          title: reminder.title,
+          channel: reminder.channel,
+          stepIndex: reminder.stepIndex,
+          scheduledFor: reminder.scheduledFor,
+          dueAt: reminder.dueAt,
+          urgency: resolveReminderDeliveryUrgency({
+            metadata: event.metadata,
+            fallback: "medium",
+          }),
+          quietHours: plan.quietHours,
+          acknowledged,
+          attemptedAt: now.toISOString(),
+          activityProfile,
+          nearbyReminderTitles: collectNearbyReminderTitles({
+            currentOwnerId: reminder.ownerId,
+            currentAnchorAt: reminder.dueAt,
+            occurrences: occurrenceViews,
+            events: calendarEvents,
+            limit: 3,
+          }),
+          timezone: ownerTimezone,
+          definition: null,
+        });
+        dueAttempts.push(attempt);
+        if (isDeliveredReminderOutcome(attempt.outcome)) {
+          deliveredAttempts.add(key);
+        }
+      }
+
+      const reminderAttemptsForEscalation = [
+        ...existingAttempts,
+        ...dueAttempts,
+      ];
+      await this.scanReadReceipts(
+        reminderAttemptsForEscalation,
+        activityProfile,
+        now,
+      );
+
+      for (const occurrence of occurrenceViews) {
+        if (dueAttempts.length >= limit) break;
+        const plan = plansByDefinitionId.get(occurrence.definitionId) ?? null;
+        if (!plan) continue;
+        const acknowledged = Boolean(
+          occurrence.metadata.reminderAcknowledgedAt ||
+            occurrence.state === "completed",
+        );
+        const attempt = await this.dispatchDueReminderEscalation({
+          plan,
+          ownerType: "occurrence",
+          ownerId: occurrence.id,
+          occurrenceId: occurrence.id,
+          subjectType: occurrence.subjectType,
+          title: occurrence.title,
+          dueAt: occurrence.dueAt,
+          urgency: resolveReminderDeliveryUrgency({
+            metadata: occurrence.metadata,
+            priority: occurrence.priority,
+          }),
+          intensity:
+            definitionPreferencesById.get(occurrence.definitionId)?.effective
+              ?.intensity ?? globalReminderPreference.effective.intensity,
+          quietHours: plan.quietHours,
+          attemptedAt: now.toISOString(),
+          now,
+          attempts: reminderAttemptsForEscalation,
+          policies,
+          activityProfile,
+          occurrence,
+          acknowledged,
+          nearbyReminderTitles: collectNearbyReminderTitles({
+            currentOwnerId: occurrence.id,
+            currentAnchorAt: occurrence.dueAt,
+            occurrences: occurrenceViews,
+            events: calendarEvents,
+            limit: 3,
+          }),
+          timezone: ownerTimezone,
+          definition: definitionsById.get(occurrence.definitionId) ?? null,
+        });
+        if (!attempt) continue;
+        dueAttempts.push(attempt);
+        reminderAttemptsForEscalation.push(attempt);
+      }
+
+      for (const event of calendarEvents) {
+        if (dueAttempts.length >= limit) break;
+        const plan = plansByEventId.get(event.id) ?? null;
+        if (!plan) continue;
+        const attempt = await this.dispatchDueReminderEscalation({
+          plan,
+          ownerType: "calendar_event",
+          ownerId: event.id,
+          occurrenceId: null,
+          subjectType: "owner",
+          title: event.title,
+          dueAt: event.startAt,
+          urgency: resolveReminderDeliveryUrgency({
+            metadata: event.metadata,
+            fallback: "medium",
+          }),
+          intensity: globalReminderPreference.effective.intensity,
+          quietHours: plan.quietHours,
+          attemptedAt: now.toISOString(),
+          now,
+          attempts: reminderAttemptsForEscalation,
+          policies,
+          activityProfile,
+          eventStartAt: event.startAt,
+          acknowledged: Boolean(event.metadata.reminderAcknowledgedAt),
+          nearbyReminderTitles: collectNearbyReminderTitles({
+            currentOwnerId: event.id,
+            currentAnchorAt: event.startAt,
+            occurrences: occurrenceViews,
+            events: calendarEvents,
+            limit: 3,
+          }),
+          timezone: ownerTimezone,
+          definition: null,
+        });
+        if (!attempt) continue;
+        dueAttempts.push(attempt);
+        reminderAttemptsForEscalation.push(attempt);
+      }
+
+      return dueAttempts;
+    }
+
     async processReminders(
       request: { now?: string; limit?: number } = {},
     ): Promise<LifeOpsReminderProcessingResult> {
@@ -4562,404 +4842,22 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
           };
         }
 
-        try {
-          const definitions = await this.repository.listActiveDefinitions(
-            this.agentId(),
-          );
-          for (const definition of definitions) {
-            await this.refreshDefinitionOccurrences(definition, now);
-          }
-          const definitionsById = new Map(
-            definitions.map((definition) => [definition.id, definition]),
-          );
-
-          const horizon = addMinutes(
+        dueAttempts.push(
+          ...(await this.processDueReminderDeliveries({
             now,
-            OVERVIEW_HORIZON_MINUTES,
-          ).toISOString();
-          const occurrenceViews =
-            await this.repository.listOccurrenceViewsForOverview(
-              this.agentId(),
-              horizon,
-            );
-          const occurrencePlans =
-            await this.repository.listReminderPlansForOwners(
-              this.agentId(),
-              "definition",
-              occurrenceViews.map((occurrence) => occurrence.definitionId),
-            );
-          const definitionPreferencesById = new Map<
-            string,
-            LifeOpsReminderPreference
-          >();
-          const plansByDefinitionId = new Map<string, LifeOpsReminderPlan>();
-          for (const plan of occurrencePlans) {
-            const definition = definitionsById.get(plan.ownerId) ?? null;
-            const preference = this.buildReminderPreferenceResponse(
-              definition,
-              policies,
-            );
-            definitionPreferencesById.set(plan.ownerId, preference);
-            const effectivePlan = this.resolveEffectiveReminderPlan(
-              plan,
-              preference,
-            );
-            if (effectivePlan) {
-              plansByDefinitionId.set(plan.ownerId, effectivePlan);
-            }
-          }
-          const eventWindowEnd = addMinutes(
-            now,
-            OVERVIEW_HORIZON_MINUTES,
-          ).toISOString();
-          const calendarEvents = await this.repository.listCalendarEvents(
-            this.agentId(),
-            "google",
-            now.toISOString(),
-            eventWindowEnd,
-          );
-          const eventPlans = await this.repository.listReminderPlansForOwners(
-            this.agentId(),
-            "calendar_event",
-            calendarEvents.map((event) => event.id),
-          );
-          const occurrenceUrgencies = new Map<string, LifeOpsReminderUrgency>();
-          for (const occurrence of occurrenceViews) {
-            occurrenceUrgencies.set(
-              occurrence.id,
-              resolveReminderDeliveryUrgency({
-                metadata: occurrence.metadata,
-                priority: occurrence.priority,
-              }),
-            );
-          }
-          const plansByEventId = new Map<string, LifeOpsReminderPlan>();
-          for (const plan of eventPlans) {
-            const effectivePlan = this.resolveEffectiveReminderPlan(
-              plan,
-              globalReminderPreference,
-            );
-            if (effectivePlan) {
-              plansByEventId.set(plan.ownerId, effectivePlan);
-            }
-          }
-          const eventUrgencies = new Map<string, LifeOpsReminderUrgency>();
-          for (const event of calendarEvents) {
-            eventUrgencies.set(
-              event.id,
-              resolveReminderDeliveryUrgency({
-                metadata: event.metadata,
-                fallback: "medium",
-              }),
-            );
-          }
-          const attemptKey = (
-            planId: string,
-            stepIndex: number,
-            scheduledFor: string,
-          ) => `${planId}:${stepIndex}:${scheduledFor}`;
-          const deliveredAttempts = new Set(
-            existingAttempts
-              .filter(
-                (attempt) =>
-                  attempt.outcome === "delivered" ||
-                  attempt.outcome === "delivered_read" ||
-                  attempt.outcome === "delivered_unread",
-              )
-              .map((attempt) =>
-                attemptKey(
-                  attempt.planId,
-                  attempt.stepIndex,
-                  attempt.scheduledFor,
-                ),
-              ),
-          );
-          const blockedAckAttempts = new Set(
-            existingAttempts
-              .filter((attempt) => attempt.outcome === "blocked_acknowledged")
-              .map((attempt) =>
-                attemptKey(
-                  attempt.planId,
-                  attempt.stepIndex,
-                  attempt.scheduledFor,
-                ),
-              ),
-          );
-          for (const reminder of buildActiveReminders(
-            occurrenceViews,
-            plansByDefinitionId,
-            now,
-          )) {
-            if (dueAttempts.length >= limit) break;
-            const plan = reminder.definitionId
-              ? plansByDefinitionId.get(reminder.definitionId)
-              : null;
-            if (!plan) continue;
-            const occurrence = occurrenceViews.find(
-              (candidate) => candidate.id === reminder.ownerId,
-            );
-            if (!occurrence) continue;
-            const preference =
-              definitionPreferencesById.get(reminder.definitionId ?? "") ??
-              globalReminderPreference;
-            const urgency =
-              occurrenceUrgencies.get(reminder.ownerId) ?? "medium";
-            const definition =
-              definitionsById.get(occurrence.definitionId) ?? null;
-            if (
-              !shouldDeliverReminderForIntensity(
-                preference.effective.intensity,
-                urgency,
-              )
-            ) {
-              continue;
-            }
-            const key = attemptKey(
-              plan.id,
-              reminder.stepIndex,
-              reminder.scheduledFor,
-            );
-            const acknowledged = Boolean(
-              occurrence.metadata.reminderAcknowledgedAt ||
-                occurrence.state === "completed",
-            );
-            if (
-              deliveredAttempts.has(key) ||
-              (acknowledged && blockedAckAttempts.has(key))
-            ) {
-              continue;
-            }
-            if (
-              shouldDeferReminderUntilComputerActive({
-                channel: reminder.channel,
-                definition,
-                activityProfile,
-                urgency,
-              })
-            ) {
-              continue;
-            }
-            const attempt = await this.dispatchReminderAttempt({
-              plan,
-              ownerType: "occurrence",
-              ownerId: reminder.ownerId,
-              occurrenceId: reminder.occurrenceId,
-              subjectType: occurrence.subjectType,
-              title: reminder.title,
-              channel: reminder.channel,
-              stepIndex: reminder.stepIndex,
-              scheduledFor: reminder.scheduledFor,
-              dueAt: occurrence.dueAt,
-              urgency,
-              quietHours: plan.quietHours,
-              acknowledged,
-              attemptedAt: now.toISOString(),
-              activityProfile,
-              nearbyReminderTitles: collectNearbyReminderTitles({
-                currentOwnerId: reminder.ownerId,
-                currentAnchorAt: occurrence.dueAt,
-                occurrences: occurrenceViews,
-                events: calendarEvents,
-                limit: 3,
-              }),
-              timezone: ownerTimezone,
-              definition,
-            });
-            dueAttempts.push(attempt);
-            if (attempt.outcome === "delivered") {
-              deliveredAttempts.add(key);
-            }
-          }
-
-          for (const reminder of buildActiveCalendarEventReminders(
-            calendarEvents,
-            plansByEventId,
-            this.ownerEntityId(),
-            now,
-          )) {
-            if (dueAttempts.length >= limit) break;
-            const plan = reminder.eventId
-              ? plansByEventId.get(reminder.eventId)
-              : null;
-            if (!plan) continue;
-            const event = calendarEvents.find(
-              (candidate) => candidate.id === reminder.ownerId,
-            );
-            if (!event) continue;
-            if (
-              !shouldDeliverReminderForIntensity(
-                globalReminderPreference.effective.intensity,
-                eventUrgencies.get(reminder.ownerId) ?? "medium",
-              )
-            ) {
-              continue;
-            }
-            const key = attemptKey(
-              plan.id,
-              reminder.stepIndex,
-              reminder.scheduledFor,
-            );
-            const acknowledged = Boolean(event.metadata.reminderAcknowledgedAt);
-            if (
-              deliveredAttempts.has(key) ||
-              (acknowledged && blockedAckAttempts.has(key))
-            ) {
-              continue;
-            }
-            const attempt = await this.dispatchReminderAttempt({
-              plan,
-              ownerType: "calendar_event",
-              ownerId: reminder.ownerId,
-              occurrenceId: null,
-              subjectType: reminder.subjectType,
-              title: reminder.title,
-              channel: reminder.channel,
-              stepIndex: reminder.stepIndex,
-              scheduledFor: reminder.scheduledFor,
-              dueAt: reminder.dueAt,
-              urgency: resolveReminderDeliveryUrgency({
-                metadata: event.metadata,
-                fallback: "medium",
-              }),
-              quietHours: plan.quietHours,
-              acknowledged,
-              attemptedAt: now.toISOString(),
-              activityProfile,
-              nearbyReminderTitles: collectNearbyReminderTitles({
-                currentOwnerId: reminder.ownerId,
-                currentAnchorAt: reminder.dueAt,
-                occurrences: occurrenceViews,
-                events: calendarEvents,
-                limit: 3,
-              }),
-              timezone: ownerTimezone,
-              definition: null,
-            });
-            dueAttempts.push(attempt);
-            if (attempt.outcome === "delivered") {
-              deliveredAttempts.add(key);
-            }
-          }
-
-          const reminderAttemptsForEscalation = [
-            ...existingAttempts,
-            ...dueAttempts,
-          ];
-
-          // Scan recent "delivered" attempts and upgrade to "delivered_read" when
-          // the owner was active after delivery. This improves escalation decisions.
-          await this.scanReadReceipts(
-            reminderAttemptsForEscalation,
+            limit: limit - dueAttempts.length,
+            ownerTimezone,
+            policies,
+            globalReminderPreference,
+            existingAttempts: [...existingAttempts, ...dueAttempts],
             activityProfile,
-            now,
-          );
+          })),
+        );
 
-          for (const occurrence of occurrenceViews) {
-            if (dueAttempts.length >= limit) break;
-            const plan =
-              plansByDefinitionId.get(occurrence.definitionId) ?? null;
-            if (!plan) continue;
-            const acknowledged = Boolean(
-              occurrence.metadata.reminderAcknowledgedAt ||
-                occurrence.state === "completed",
-            );
-            const attempt = await this.dispatchDueReminderEscalation({
-              plan,
-              ownerType: "occurrence",
-              ownerId: occurrence.id,
-              occurrenceId: occurrence.id,
-              subjectType: occurrence.subjectType,
-              title: occurrence.title,
-              dueAt: occurrence.dueAt,
-              urgency: resolveReminderDeliveryUrgency({
-                metadata: occurrence.metadata,
-                priority: occurrence.priority,
-              }),
-              intensity:
-                definitionPreferencesById.get(occurrence.definitionId)
-                  ?.effective?.intensity ??
-                globalReminderPreference.effective.intensity,
-              quietHours: plan.quietHours,
-              attemptedAt: now.toISOString(),
-              now,
-              attempts: reminderAttemptsForEscalation,
-              policies,
-              activityProfile,
-              occurrence,
-              acknowledged,
-              nearbyReminderTitles: collectNearbyReminderTitles({
-                currentOwnerId: occurrence.id,
-                currentAnchorAt: occurrence.dueAt,
-                occurrences: occurrenceViews,
-                events: calendarEvents,
-                limit: 3,
-              }),
-              timezone: ownerTimezone,
-              definition: definitionsById.get(occurrence.definitionId) ?? null,
-            });
-            if (!attempt) continue;
-            dueAttempts.push(attempt);
-            reminderAttemptsForEscalation.push(attempt);
-          }
-
-          for (const event of calendarEvents) {
-            if (dueAttempts.length >= limit) break;
-            const plan = plansByEventId.get(event.id) ?? null;
-            if (!plan) continue;
-            const attempt = await this.dispatchDueReminderEscalation({
-              plan,
-              ownerType: "calendar_event",
-              ownerId: event.id,
-              occurrenceId: null,
-              subjectType: "owner",
-              title: event.title,
-              dueAt: event.startAt,
-              urgency: resolveReminderDeliveryUrgency({
-                metadata: event.metadata,
-                fallback: "medium",
-              }),
-              intensity: globalReminderPreference.effective.intensity,
-              quietHours: plan.quietHours,
-              attemptedAt: now.toISOString(),
-              now,
-              attempts: reminderAttemptsForEscalation,
-              policies,
-              activityProfile,
-              eventStartAt: event.startAt,
-              acknowledged: Boolean(event.metadata.reminderAcknowledgedAt),
-              nearbyReminderTitles: collectNearbyReminderTitles({
-                currentOwnerId: event.id,
-                currentAnchorAt: event.startAt,
-                occurrences: occurrenceViews,
-                events: calendarEvents,
-                limit: 3,
-              }),
-              timezone: ownerTimezone,
-              definition: null,
-            });
-            if (!attempt) continue;
-            dueAttempts.push(attempt);
-            reminderAttemptsForEscalation.push(attempt);
-          }
-
-          return {
-            now: now.toISOString(),
-            attempts: dueAttempts,
-          };
-        } catch (error) {
-          if (dueAttempts.length > 0) {
-            this.logLifeOpsWarn(
-              "reminder_processing",
-              "[lifeops] Reminder overview processing failed after due review callbacks ran.",
-              { error: lifeOpsErrorMessage(error) },
-            );
-            return {
-              now: now.toISOString(),
-              attempts: dueAttempts,
-            };
-          }
-          throw error;
-        }
+        return {
+          now: now.toISOString(),
+          attempts: dueAttempts,
+        };
       });
     }
 
