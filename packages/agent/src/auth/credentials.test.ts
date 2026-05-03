@@ -88,6 +88,41 @@ describe("Codex CLI ~/.codex/auth.json", () => {
 
     expect(process.env.OPENAI_API_KEY).toBe("cli-oauth-token");
   });
+
+  it("surfaces codex-cli row for legacy OPENAI_API_KEY + non-api-key auth_mode", async () => {
+    fs.writeFileSync(
+      path.join(tmpHome, ".codex", "auth.json"),
+      JSON.stringify({
+        OPENAI_API_KEY: "legacy-subscription-token",
+        auth_mode: "oauth",
+      }),
+    );
+
+    const { getSubscriptionStatus } = await import("./credentials.js");
+    const rows = getSubscriptionStatus();
+    expect(
+      rows.some(
+        (r) =>
+          r.provider === "openai-codex" &&
+          r.accountId === "codex-cli" &&
+          r.source === "codex-cli",
+      ),
+    ).toBe(true);
+  });
+
+  it("does not emit codex-cli row when Codex CLI is in api-key mode", async () => {
+    fs.writeFileSync(
+      path.join(tmpHome, ".codex", "auth.json"),
+      JSON.stringify({
+        OPENAI_API_KEY: "sk-openai-api-key",
+        auth_mode: "api-key",
+      }),
+    );
+
+    const { getSubscriptionStatus } = await import("./credentials.js");
+    const rows = getSubscriptionStatus();
+    expect(rows.some((r) => r.source === "codex-cli")).toBe(false);
+  });
 });
 
 describe("applySubscriptionCredentials", () => {
