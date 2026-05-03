@@ -5,6 +5,7 @@
     "rootDir": "./src",
     "sourceMap": true,
     "inlineSources": true,
+    "ignoreDeprecations": "6.0",
     "declaration": true
   },
   "include": ["src/**/*.ts"],
