@@ -1,0 +1,12 @@
+diff --git a/src/storage.js b/src/storage.js
+index 9c0ccf5f4b1e2c7f7f0cf2b0f5f4c0a6f64e5fb5..099cb03828e9a99d62b1cd8ee96df4ca3afcde48 100644
+--- a/src/storage.js
++++ b/src/storage.js
+@@ -1,5 +1,5 @@
+-import S3 from '@aws-sdk/client-s3'
+-import S3Presign from '@aws-sdk/s3-request-presigner'
++import * as S3 from '@aws-sdk/client-s3'
++import * as S3Presign from '@aws-sdk/s3-request-presigner'
+ 
+ import { Storage as StorageCore } from '@brighter/storage'
+ 
