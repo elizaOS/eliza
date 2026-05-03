@@ -299,7 +299,7 @@
     "@walletconnect/universal-provider": "2.23.9",
     "@walletconnect/utils": "2.23.9",
     "pino": "10.0.0",
-    "pino-std-serializers": "7.0.0",
+    "pino-std-serializers": "7.1.0",
     "on-exit-leak-free": "2.1.2",
     "process-warning": "5.0.0",
     "sonic-boom": "3.8.1",
