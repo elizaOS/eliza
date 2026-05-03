@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-claude-code-workbench",
   "description": "Claude Code companion workflow plugin for Eliza/ElizaOS",
-  "version": "0.1.0",
+  "version": "2.0.0-alpha.536",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",

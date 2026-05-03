@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-music-library",
-  "version": "1.0.0",
+  "version": "2.0.0-alpha.536",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -18,9 +18,9 @@
     "dist"
   ],
   "dependencies": {
-    "@vookav2/play-dl": "^1.9.9",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
+    "@vookav2/play-dl": "^1.9.9",
     "buffer": "^6.0.3",
     "uuid": "^14.0.0"
   },
