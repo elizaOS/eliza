@@ -18,10 +18,10 @@ interface FflateModule {
 
 // fflate's package.json exports map omits a "types" entry in older transitive
 // resolutions (v0.6.10 pulled in by three-stdlib), which breaks tsup's DTS
-// build under bun's isolated layout. Resolve via a string alias so TS doesn't
-// attempt to read the upstream type maps, and assert the runtime shape.
+// build under bun's isolated layout. Widening moduleId to `string` prevents
+// TypeScript from evaluating the import as a literal and triggering TS7016.
 async function loadFflate(): Promise<FflateModule> {
-	const moduleId = "fflate";
+	const moduleId: string = "fflate";
 	return (await import(moduleId)) as FflateModule;
 }
 
