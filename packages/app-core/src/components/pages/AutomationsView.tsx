@@ -4997,10 +4997,23 @@ function AutomationsLayout() {
           });
           return;
         }
-        // Successful deploy — refresh, select, and clear the panel.
+        // Successful deploy — refresh, select, and clear the panel. Wrap
+        // the post-deploy refresh in its own try so that a refresh failure
+        // surfaces via pageNotice instead of being swallowed by the outer
+        // catch (which would no-op once clarification is null).
         setClarification(null);
-        await ctx.refreshAutomations();
-        selectWorkflowById(result.id);
+        try {
+          await ctx.refreshAutomations();
+          selectWorkflowById(result.id);
+        } catch (refreshErr) {
+          const message =
+            refreshErr instanceof Error
+              ? refreshErr.message
+              : String(refreshErr);
+          setPageNotice(
+            `Workflow deployed but the automations list could not refresh: ${message}`,
+          );
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         setClarification((prev) =>
