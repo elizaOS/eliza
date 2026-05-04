@@ -31,13 +31,10 @@ function getApiBaseUrl(): string {
   const fromEnv = import.meta.env.VITE_API_URL ?? import.meta.env.NEXT_PUBLIC_API_URL;
   if (typeof fromEnv === "string" && fromEnv.length > 0) return fromEnv.replace(/\/+$/, "");
 
-  if (typeof window !== "undefined") {
-    const host = window.location.hostname.toLowerCase();
-    if (host === "elizacloud.ai" || host === "www.elizacloud.ai") {
-      return "https://api.elizacloud.ai";
-    }
-  }
-
+  // Browser calls default to same-origin so Cloudflare Pages Functions can
+  // proxy /api/* to the Worker while preserving frontend-scoped auth marker
+  // cookies. Deployments without a same-origin proxy can opt into a separate
+  // API origin with VITE_API_URL / NEXT_PUBLIC_API_URL.
   return "";
 }
 

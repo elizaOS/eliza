@@ -48,7 +48,12 @@ function nonEmptySecret(value: string | undefined): string | null {
 }
 
 function getStewardSecret(env: Bindings): Uint8Array | null {
-  const raw = nonEmptySecret(env.STEWARD_SESSION_SECRET) ?? nonEmptySecret(env.STEWARD_JWT_SECRET);
+  // Mirror @stwd/auth getJwtSecret() and the shared Steward verifier:
+  // STEWARD_JWT_SECRET is canonical; STEWARD_SESSION_SECRET is the legacy
+  // fallback. If both are configured, choosing SESSION first makes routes that
+  // authenticate via workers-hono-auth (notably CLI login completion) reject
+  // valid Steward JWTs even though /api/auth/steward-session accepts them.
+  const raw = nonEmptySecret(env.STEWARD_JWT_SECRET) ?? nonEmptySecret(env.STEWARD_SESSION_SECRET);
   if (!raw) return null;
   if (_stewardSecret && _stewardSecret.raw === raw) return _stewardSecret.key;
   _stewardSecret = { raw, key: new TextEncoder().encode(raw) };
