@@ -119,11 +119,16 @@ async function main(): Promise<number> {
     { runScenario },
     { buildAggregate, printStdoutSummary, writeReport, writeReportBundle },
     { createScenarioRuntime },
+  // Cast to `string` so TypeScript does not statically resolve the module paths
+  // for files that live outside this package's rootDir. The runtime paths are
+  // correct — only the type-checker resolution is suppressed.
   ] = await Promise.all([
-    import("../../app-core/test/helpers/live-provider.ts"),
+    // biome-ignore lint/suspicious/noExplicitAny: dynamic import outside rootDir
+    import("../../app-core/test/helpers/live-provider.ts" as string) as any,
     import("./executor.ts"),
     import("./reporter.ts"),
-    import("./runtime-factory.ts"),
+    // biome-ignore lint/suspicious/noExplicitAny: dynamic import outside rootDir
+    import("./runtime-factory.ts" as string) as any,
   ]);
 
   if (availableProviderNames().length === 0) {

@@ -9,7 +9,6 @@ export {
   loadScenarioMetadataFile,
 } from "./loader.ts";
 export { buildAggregate, printStdoutSummary, writeReport } from "./reporter.ts";
-export { createScenarioRuntime } from "./runtime-factory.ts";
 export type {
   AggregateReport,
   FinalCheckReport,
