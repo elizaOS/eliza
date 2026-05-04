@@ -292,7 +292,6 @@ export const createWorkflowAction: Action & {
     'about the draft — including "yes", "ok", "deploy it", "cancel", or modification requests. ' +
     'Never reply with text only when a draft is pending.',
 
-
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
     return !!runtime.getService(N8N_WORKFLOW_SERVICE_TYPE);
   },
