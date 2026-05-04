@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Plugin } from "@elizaos/core";
 import { AgentRuntime, createCharacter, logger } from "@elizaos/core";
 import { configureLocalEmbeddingPlugin } from "../../../agent/src/runtime/eliza";
@@ -10,6 +11,8 @@ import type {
   LiveProviderConfig,
   LiveProviderName,
 } from "./live-provider";
+
+const helperDir = path.dirname(fileURLToPath(import.meta.url));
 
 export interface RealTestRuntimeOptions {
   /** Name for the test agent character. Defaults to "TestAgent". */
@@ -100,6 +103,36 @@ function extractPlugin(
   }
 
   return null;
+}
+
+async function importPluginSql(): Promise<Plugin> {
+  try {
+    const { default: pluginSql } = await import("@elizaos/plugin-sql");
+    return pluginSql as Plugin;
+  } catch (packageError) {
+    const fallbackPath = path.resolve(
+      helperDir,
+      "../../../../plugins/plugin-sql/typescript/index.node.ts",
+    );
+    try {
+      const { default: pluginSql } = await import(
+        pathToFileURL(fallbackPath).href
+      );
+      return pluginSql as Plugin;
+    } catch (fallbackError) {
+      const packageMessage =
+        packageError instanceof Error
+          ? packageError.message
+          : String(packageError);
+      const fallbackMessage =
+        fallbackError instanceof Error
+          ? fallbackError.message
+          : String(fallbackError);
+      throw new Error(
+        `Failed to import @elizaos/plugin-sql. Package import: ${packageMessage}; fallback ${fallbackPath}: ${fallbackMessage}`,
+      );
+    }
+  }
 }
 
 function suppressWindowDuringNodeRuntime(): () => void {
@@ -215,9 +248,8 @@ export async function createRealTestRuntime(
       enableAutonomy: false,
     });
 
-    // Always register plugin-sql for PGLite database
-    const { default: pluginSql } = await import("@elizaos/plugin-sql");
-    await runtime.registerPlugin(pluginSql);
+    // Always register plugin-sql for PGLite database.
+    await runtime.registerPlugin(await importPluginSql());
 
     if (options?.withLLM) {
       try {

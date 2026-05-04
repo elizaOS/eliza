@@ -36,13 +36,9 @@ import {
   type AgentRuntime,
   AutonomyService,
   ChannelType,
-  EventType,
   logger,
-  type Memory,
-  ModelType,
   type Plugin,
   stringToUuid,
-  type UUID,
 } from "@elizaos/core";
 
 import {
@@ -75,6 +71,7 @@ import {
 } from "./ensure-text-to-speech-handler.js";
 import { shouldEnableMobileLocalInference } from "./mobile-local-inference-gate.js";
 import { updateStartupEmbeddingProgress } from "./startup-overlay.js";
+import { handleTelegramStandaloneMessage } from "./telegram-standalone-handler.js";
 import { shouldStartTelegramStandaloneBot } from "./telegram-standalone-policy.js";
 
 const AUTONOMY_WORLD_ID = stringToUuid("00000000-0000-0000-0000-000000000001");
@@ -178,13 +175,6 @@ interface RuntimeAdapterAutonomyCompat {
       agentId: string;
       metadata?: Record<string, unknown>;
     }>,
-  ) => Promise<unknown>;
-}
-
-interface RuntimeModelCompat {
-  useModel?: (
-    type: (typeof ModelType)[keyof typeof ModelType] | string,
-    params: { prompt: string },
   ) => Promise<unknown>;
 }
 
@@ -875,177 +865,9 @@ async function ensureTelegramBotPolling(runtime: AgentRuntime): Promise<void> {
     const apiRoot = process.env.TELEGRAM_API_ROOT || "https://api.telegram.org";
     const bot = new Telegraf(botToken, { telegram: { apiRoot } });
 
-    // Build character context for personality
-    const char = runtime.character ?? ({} as Record<string, unknown>);
-    const bioText = Array.isArray(char.bio)
-      ? char.bio.join(" ")
-      : (char.bio ?? "");
-    const loreText = Array.isArray((char as Record<string, unknown>).lore)
-      ? ((char as Record<string, unknown>).lore as string[]).join(" ")
-      : "";
-    const styleText = (() => {
-      const s = (char as Record<string, unknown>).style as
-        | Record<string, string[]>
-        | undefined;
-      if (!s) return "";
-      const parts: string[] = [];
-      if (s.all?.length) parts.push(s.all.join(" "));
-      if (s.chat?.length) parts.push(s.chat.join(" "));
-      return parts.join(" ");
-    })();
-    const systemPrompt = [
-      `You are ${char.name}.`,
-      char.system ?? "",
-      bioText ? `Bio: ${bioText}` : "",
-      loreText ? `Lore: ${loreText}` : "",
-      styleText ? `Style: ${styleText}` : "",
-      "Respond in character. Keep responses concise for chat.",
-    ]
-      .filter(Boolean)
-      .join("\n");
-
-    const chatHistories = new Map<
-      number,
-      Array<{ role: string; content: string }>
-    >();
-
-    bot.on(
-      "message",
-      async (ctx: {
-        message: {
-          text?: string;
-          from?: { username?: string; first_name?: string };
-          chat?: { id: number };
-        };
-        reply: (t: string) => Promise<unknown>;
-      }) => {
-        try {
-          const text = ctx.message?.text;
-          if (!text) return;
-          const chatId = ctx.message.chat?.id ?? 0;
-
-          // Check allowed chats (reads live from process.env — no restart needed)
-          const allowedChats = process.env.TELEGRAM_ALLOWED_CHATS;
-          if (
-            allowedChats &&
-            allowedChats.trim() !== "" &&
-            allowedChats.trim() !== "[]"
-          ) {
-            try {
-              if (
-                !(JSON.parse(allowedChats) as string[]).includes(String(chatId))
-              )
-                return;
-            } catch {
-              return;
-            }
-          }
-
-          const username =
-            ctx.message.from?.username ??
-            ctx.message.from?.first_name ??
-            "Unknown";
-          logger.info(
-            `[eliza] Telegram message from @${username}: ${text.substring(0, 80)}`,
-          );
-
-          // Surface the inbound Telegram message on the runtime event bus so
-          // event-kind triggers can fire on real Telegram messages via the
-          // trigger-event-bridge → executeTriggerTask path. Without this hop
-          // the chat reply goes through useModel directly and bypasses
-          // messageService entirely, so triggers that filter on
-          // MESSAGE_RECEIVED never see Telegram traffic. Build a minimal
-          // Memory that satisfies the event-bus contract; the
-          // trigger-event-bridge only reads roomId / source / kind.
-          try {
-            const telegramRoomId = stringToUuid(`telegram:${chatId}`) as UUID;
-            const entityId = stringToUuid(
-              `telegram-user:${username}:${chatId}`,
-            ) as UUID;
-            const memory: Memory = {
-              // Use the same `username` value (with first_name fallback) that
-              // entityId is derived from — using ctx.message.from?.username
-              // here would give an empty string for users with no Telegram
-              // username, making `id` and `entityId` disagree for the same
-              // sender.
-              id: stringToUuid(
-                `telegram:${chatId}:${username}:${Date.now()}`,
-              ) as UUID,
-              entityId,
-              agentId: runtime.agentId,
-              roomId: telegramRoomId,
-              content: {
-                text,
-                source: "telegram",
-              },
-              createdAt: Date.now(),
-            };
-            await runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
-              runtime,
-              message: memory,
-              source: "telegram",
-            });
-          } catch (emitErr) {
-            logger.warn(
-              `[eliza] Telegram MESSAGE_RECEIVED emit failed: ${emitErr instanceof Error ? emitErr.message : String(emitErr)}`,
-            );
-          }
-
-          let history = chatHistories.get(chatId);
-          if (!history) {
-            history = [];
-            // Evict least-recently-used chat to prevent unbounded memory growth
-            if (chatHistories.size >= 500) {
-              const oldest = chatHistories.keys().next().value;
-              if (oldest !== undefined) chatHistories.delete(oldest);
-            }
-          } else {
-            // Move to end of Map iteration order (most-recently-used)
-            chatHistories.delete(chatId);
-          }
-          chatHistories.set(chatId, history);
-          history.push({ role: "user", content: `@${username}: ${text}` });
-          if (history.length > 20) history.splice(0, history.length - 20);
-
-          try {
-            const conv = history
-              .map(
-                (m) =>
-                  `${m.role === "user" ? "User" : char.name}: ${m.content}`,
-              )
-              .join("\n");
-            const modelRuntime = runtime as AgentRuntime & RuntimeModelCompat;
-            if (typeof modelRuntime.useModel !== "function") {
-              logger.warn("[eliza] Telegram runtime missing useModel");
-              return;
-            }
-            const response = await modelRuntime.useModel(ModelType.TEXT_LARGE, {
-              prompt: `${systemPrompt}\n\nConversation:\n${conv}\n\n${char.name}:`,
-            });
-            const responseText =
-              typeof response === "string"
-                ? response
-                : ((response as { text?: string })?.text ?? "");
-            if (responseText) {
-              history.push({ role: "assistant", content: responseText });
-              await ctx.reply(responseText);
-              logger.info(`[eliza] Telegram replied to @${username}`);
-            }
-          } catch (err) {
-            logger.warn(
-              `[eliza] Telegram response error: ${err instanceof Error ? err.message : String(err)}`,
-            );
-            await ctx
-              .reply("Sorry, I encountered an error processing your message.")
-              .catch(() => {});
-          }
-        } catch (outerErr) {
-          logger.warn(
-            `[eliza] Telegram handler error: ${outerErr instanceof Error ? outerErr.message : String(outerErr)}`,
-          );
-        }
-      },
-    );
+    bot.on("message", async (ctx) => {
+      await handleTelegramStandaloneMessage(runtime, ctx);
+    });
 
     bot.catch((err: unknown) =>
       logger.warn(

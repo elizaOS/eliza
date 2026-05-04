@@ -743,6 +743,29 @@ export function applyNobleHashesCompat(pkgPath) {
   const dir = dirname(pkgPath);
   const shims = [
     {
+      subpath: "_assert",
+      sourceFile: "utils.js",
+      contents: [
+        'import { isBytes, abytes, anumber, ahash, aexists, aoutput } from "./utils.js";',
+        "export { isBytes, abytes, anumber, ahash, aexists, aoutput };",
+        "export const number = anumber;",
+        "export function bool(value) {",
+        '  if (typeof value !== "boolean") throw new TypeError(`boolean expected, got ${value}`);',
+        "}",
+        "export function bytes(value, ...lengths) {",
+        "  abytes(value);",
+        "  if (lengths.length > 0 && !lengths.includes(value.length)) {",
+        "    throw new RangeError(`Uint8Array expected of length ${lengths}, got length=${value.length}`);",
+        "  }",
+        "}",
+        "export const hash = ahash;",
+        "export const exists = aexists;",
+        "export const output = aoutput;",
+        "export default { number, bool, bytes, hash, exists, output };",
+        "",
+      ].join("\n"),
+    },
+    {
       subpath: "ripemd160",
       sourceFile: "legacy.js",
       contents: 'export { ripemd160 } from "./legacy.js";\n',

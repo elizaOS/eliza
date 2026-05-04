@@ -19,9 +19,11 @@
     "./og-tracker": "./src/og-tracker.ts"
   },
   "dependencies": {
-    "@elizaos/agent": "workspace:*",
     "@elizaos/core": "workspace:*",
     "ethers": "^6.15.0"
+  },
+  "peerDependencies": {
+    "@elizaos/agent": "workspace:*"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",

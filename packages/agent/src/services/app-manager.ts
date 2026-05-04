@@ -14,6 +14,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
 import {
   type AppLaunchDiagnostic,
   type AppLaunchPreparation,
@@ -35,6 +36,7 @@ import {
   packageNameToAppDisplayName,
   packageNameToAppRouteSlug,
 } from "../contracts/apps.js";
+import { shouldRestoreAgentsListAfterAppLaunch } from "./app-manager-agents-list-guard.js";
 import {
   importAppPlugin,
   importAppRouteModule,
@@ -93,9 +95,73 @@ const MAX_RUN_EVENTS = 20;
 const RUN_HEARTBEAT_TIMEOUT_MS = 90_000;
 /** How often the sweeper wakes to look for stale runs. */
 const RUN_HEARTBEAT_SWEEP_INTERVAL_MS = 30_000;
+const DEFAULT_REGISTRY_REFRESH_TIMEOUT_MS = 5_000;
+
+type AgentsListSnapshot = unknown[] | undefined;
+
+function cloneJsonValue<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function readAgentsListSnapshot(): AgentsListSnapshot {
+  const list = loadElizaConfig().agents?.list;
+  return Array.isArray(list) ? cloneJsonValue(list) : undefined;
+}
+
+function restoreAgentsListAfterAppLaunchIfNeeded(
+  before: AgentsListSnapshot,
+  appName: string,
+  phase: string,
+): void {
+  const config = loadElizaConfig();
+  const current = config.agents?.list;
+  if (!shouldRestoreAgentsListAfterAppLaunch(before, current)) {
+    return;
+  }
+
+  config.agents ??= {};
+  if (!before) {
+    delete config.agents.list;
+  } else {
+    config.agents.list = cloneJsonValue(before) as typeof config.agents.list;
+  }
+  saveElizaConfig(config);
+  logger.warn(
+    `[app-manager] Restored agents.list after ${appName} ${phase}; app launch must not replace the user's active character config.`,
+  );
+}
 
 function isProductionRuntime(): boolean {
   return process.env.NODE_ENV === "production";
+}
+
+function resolveRegistryRefreshTimeoutMs(): number {
+  const raw = process.env.ELIZA_APPS_REGISTRY_REFRESH_TIMEOUT_MS?.trim();
+  if (!raw) return DEFAULT_REGISTRY_REFRESH_TIMEOUT_MS;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed >= 250
+    ? parsed
+    : DEFAULT_REGISTRY_REFRESH_TIMEOUT_MS;
+}
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label: string,
+): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => {
+          reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
 }
 
 type AppViewerConfig = NonNullable<AppLaunchResult["viewer"]>;
@@ -1881,6 +1947,7 @@ export class AppManager {
     if (!appInfo) {
       throw new Error(`App "${name}" not found in the registry.`);
     }
+    const agentsListBeforeLaunch = readAgentsListSnapshot();
 
     // The app's plugin is what the agent needs to play the game.
     // It's the same npm package name as the app, or a separate plugin ref.
@@ -1946,6 +2013,11 @@ export class AppManager {
             `Failed to install plugin "${pluginName}": ${result.error}`,
           );
         }
+        restoreAgentsListAfterAppLaunchIfNeeded(
+          agentsListBeforeLaunch,
+          name,
+          "plugin install",
+        );
         pluginInstalled = true;
         needsRestart = result.requiresRestart;
         logger.info(
@@ -1972,6 +2044,11 @@ export class AppManager {
       appInfo,
       initialLaunchUrl,
       _runtime ?? null,
+    );
+    restoreAgentsListAfterAppLaunchIfNeeded(
+      agentsListBeforeLaunch,
+      name,
+      "launch preparation",
     );
     const launchPreparationDiagnostics = launchPreparation.diagnostics ?? [];
     appInfo = applyLaunchPreparation(appInfo, launchPreparation);
@@ -2000,6 +2077,11 @@ export class AppManager {
         appInfo,
         _runtime ?? null,
         isLocal,
+      );
+      restoreAgentsListAfterAppLaunchIfNeeded(
+        agentsListBeforeLaunch,
+        name,
+        "runtime plugin registration",
       );
     }
     if (runtimePluginRegistered) {
@@ -2108,6 +2190,12 @@ export class AppManager {
       startedAt: run.startedAt,
     });
 
+    restoreAgentsListAfterAppLaunchIfNeeded(
+      agentsListBeforeLaunch,
+      name,
+      "launch",
+    );
+
     return {
       pluginInstalled,
       needsRestart,
@@ -2210,9 +2298,11 @@ export class AppManager {
   ): Promise<InstalledAppInfo[]> {
     const installed = await pluginManager.listInstalledPlugins();
     const registry = await getRegistryPlugins();
-    const refreshedRegistry = await pluginManager
-      .refreshRegistry()
-      .catch(() => new Map<string, RegistryPluginInfo>());
+    const refreshedRegistry = await withTimeout(
+      pluginManager.refreshRegistry(),
+      resolveRegistryRefreshTimeoutMs(),
+      "app registry refresh",
+    ).catch(() => new Map<string, RegistryPluginInfo>());
     const mergedRegistry = new Map<string, RegistryPluginInfo>(registry);
     for (const [name, info] of refreshedRegistry.entries()) {
       if (!mergedRegistry.has(name)) {
