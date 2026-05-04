@@ -439,12 +439,6 @@ export function definitionTriggersEnforcement(
     | undefined,
 ): boolean {
   if (!definition) return false;
-  if (
-    definition.kind === "morning_routine" ||
-    definition.kind === "night_routine"
-  ) {
-    return true;
-  }
   return definition.metadata?.enforceRoutineWindow === true;
 }
 

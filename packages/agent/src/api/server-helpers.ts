@@ -37,7 +37,6 @@ import {
   type AgentEventServiceLike,
   getAgentEventService,
 } from "../runtime/agent-event-service.js";
-import { isPrivyWalletProvisioningEnabled } from "../services/external-bridge-state.js";
 import {
   type CoreManagerLike,
   isCoreManagerLike,
@@ -53,7 +52,6 @@ import {
   resolvePluginEvmLoaded,
   resolveWalletCapabilityStatus,
 } from "./wallet-capability.js";
-
 
 // ---------------------------------------------------------------------------
 // Service accessors
@@ -706,7 +704,7 @@ export async function maybeAugmentChatMessageWithKnowledge(
 // ---------------------------------------------------------------------------
 
 const WALLET_CHAT_INTENT_RE =
-  /\b(wallet|privy|onchain|on-chain|address|balance|swap|trade|transfer|token|bnb|t?bnb|eth|sol)\b|(?:\bsend\b(?=[\s\S]{0,40}\b(?:token|eth|sol|t?bnb|wallet|crypto|coin)\b))/i;
+  /\b(wallet|onchain|on-chain|address|balance|swap|trade|transfer|token|bnb|t?bnb|eth|sol)\b|(?:\bsend\b(?=[\s\S]{0,40}\b(?:token|eth|sol|t?bnb|wallet|crypto|coin)\b))/i;
 
 export const WALLET_EXECUTION_INTENT_RE =
   /\b(swap|trade|transfer|buy|sell|execute|approve)\b|(?:\bsend\b(?=[\s\S]{0,40}\b(?:token|eth|sol|t?bnb|wallet|crypto|coin)\b))/i;
@@ -834,12 +832,9 @@ export function resolveWalletModeGuidanceReply(
     !solanaAddress &&
     WALLET_EXECUTION_INTENT_RE.test(prompt)
   ) {
-    const privyConfigured = isPrivyWalletProvisioningEnabled();
     return [
       "No wallet is active yet.",
-      "Open Wallet page and choose one setup path:",
-      `- Managed (Privy): ${privyConfigured ? "available" : "blocked until PRIVY_APP_ID and PRIVY_APP_SECRET are set on the backend"}.`,
-      "- Local: Generate or Import wallet in the Wallet wizard.",
+      "Open the Wallet page to set up Steward (Eliza Cloud) or a local wallet.",
       walletSummary,
     ].join("\n");
   }
