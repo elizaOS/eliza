@@ -26,6 +26,21 @@ export interface LocalAgentTokenResult {
   token: string | null;
 }
 
+export interface AgentRequestOptions {
+  method?: string;
+  path: string;
+  headers?: Record<string, string>;
+  body?: string | null;
+  timeoutMs?: number;
+}
+
+export interface AgentRequestResult {
+  status: number;
+  statusText: string;
+  headers: Record<string, string>;
+  body: string;
+}
+
 export interface AgentPlugin {
   /** Start the agent runtime. Resolves when it's ready. */
   start(): Promise<AgentStatus>;
@@ -41,4 +56,13 @@ export interface AgentPlugin {
 
   /** Read the per-boot bearer token for the bundled Android local agent. */
   getLocalAgentToken?(): Promise<LocalAgentTokenResult>;
+
+  /**
+   * Path-only request bridge for the bundled local agent.
+   *
+   * Native implementations must reject absolute URLs and route only to the
+   * app-owned local backend. This is a transitional transport before the
+   * backend route kernel can run over Binder/LocalSocket/WKURLSchemeHandler.
+   */
+  request?(options: AgentRequestOptions): Promise<AgentRequestResult>;
 }
