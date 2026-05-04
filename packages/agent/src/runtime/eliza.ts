@@ -2519,7 +2519,7 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     true;
   const advancedCapabilitiesEnabled =
     resolveAdvancedCapabilitiesEnabled(config);
-  const settings = applyAdvancedCapabilitySettings(
+  const baseSettings = applyAdvancedCapabilitySettings(
     {
       MEMORY_SUMMARY_MODEL_TYPE:
         process.env.MEMORY_SUMMARY_MODEL_TYPE?.trim() || "TEXT_SMALL",
@@ -2528,6 +2528,23 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     },
     advancedCapabilitiesEnabled,
   );
+
+  // Merge per-agent settings (config.agents.list[0].settings) on top of the
+  // base/derived settings. Per-agent values win over derived defaults so
+  // operators can override capability defaults from config when needed.
+  // Skipped silently if `agentEntry.settings` is missing or not a plain object.
+  const agentEntrySettings =
+    agentEntry?.settings && typeof agentEntry.settings === "object" && !Array.isArray(agentEntry.settings)
+      ? Object.fromEntries(
+          Object.entries(agentEntry.settings as Record<string, unknown>).filter(
+            ([, value]) => value !== undefined,
+          ),
+        )
+      : undefined;
+
+  const settings = agentEntrySettings
+    ? { ...baseSettings, ...agentEntrySettings }
+    : baseSettings;
 
   // Collect secrets from process.env (API keys the plugins need)
   const secretKeys = [

@@ -41,6 +41,19 @@ export type AgentConfig = {
   advancedMemory?: boolean;
   /** Enable built-in agent orchestrator (PTY / coding task agents) for this agent. */
   agentOrchestrator?: boolean;
+  /**
+   * Per-agent runtime settings exposed via `runtime.getSetting()`.
+   *
+   * Plugins (e.g., plugin-discord, plugin-twitter) read configuration through
+   * `runtime.getSetting('SOME_KEY')`. Without this field, the only way to
+   * deliver agent-scoped configuration to those plugins is environment
+   * variables behind a hard-coded allowlist. This field flows through to
+   * `Character.settings` in `buildCharacterFromConfig()`.
+   *
+   * Values are coerced to strings at read time by the runtime; prefer string
+   * values to avoid surprises.
+   */
+  settings?: Record<string, string | number | boolean | null | undefined>;
 
   // ── Personality fields (set during onboarding from style presets) ──────
   /** Agent bio lines. Set during onboarding from the chosen style preset. */
