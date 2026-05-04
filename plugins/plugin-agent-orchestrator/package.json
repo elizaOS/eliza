@@ -1,0 +1,58 @@
+{
+  "name": "@elizaos/plugin-agent-orchestrator",
+  "version": "2.0.0-alpha.536",
+  "description": "Task-agent orchestration plugin - spawn and manage open-ended CLI task agents via PTY",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "assets",
+    "dist",
+    "scripts",
+    "README.md",
+    "package.json"
+  ],
+  "scripts": {
+    "postinstall": "node ./scripts/ensure-node-pty.mjs",
+    "build": "bun run build.ts",
+    "test": "bun run build && bun run test:live",
+    "test:live": "ORCHESTRATOR_LIVE=1 vitest run --config ./vitest.config.ts",
+    "test:watch": "bun test --watch",
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "bun run test:live"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*",
+    "git-workspace-service": "0.4.5",
+    "pty-manager": "1.11.0"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.4.0",
+    "@elizaos/core": "workspace:*",
+    "@types/node": "^25.2.3",
+    "bun-types": "latest",
+    "git-workspace-service": "0.4.5",
+    "pty-manager": "1.11.0",
+    "typescript": "^6.0.0"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "coding-agent-adapters": "0.16.3",
+    "drizzle-orm": "^0.45.1",
+    "pty-console": "0.3.1",
+    "pty-state-capture": "0.2.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

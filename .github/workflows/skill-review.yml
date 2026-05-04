@@ -1,0 +1,52 @@
+name: Skill Review
+
+concurrency:
+  group: skill-review-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request_target:
+    types: [opened, ready_for_review, synchronize, reopened]
+    paths: ['**/SKILL.md']
+
+jobs:
+  review:
+    if: github.event.pull_request.draft != true
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      pull-requests: write
+      contents: read
+      issues: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      # Don't fail the workflow when the Anthropic API is unavailable
+      # (low credit balance, rate limit, transient outage). The bot review
+      # is best-effort; a missing review must not block CI.
+      - continue-on-error: true
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          track_progress: true
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Review only the changed SKILL.md files in this pull request.
+
+            Focus on:
+            - missing prerequisites or unsupported assumptions
+            - unsafe or over-broad tool guidance
+            - conflicting or duplicated instructions
+            - steps that do not match repo workflow
+            - vague prompts that will cause inconsistent agent behavior
+
+            Check existing review discussion first and avoid repeating resolved points.
+            Leave inline comments only for actionable problems. Skip praise and non-actionable notes.
+          allowed_bots: "cursor"
+          claude_args: |
+            --model claude-sonnet-4-6
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr diff *),Bash(gh pr view *),Bash(gh api *)"

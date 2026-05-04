@@ -1,0 +1,254 @@
+---
+title: Overview
+description: "Build autonomous AI agents in TypeScript, Python, or Rust"
+---
+
+<Card
+  title="$elizaOS Token Information"
+  icon="coins"
+  href="/tokenomics"
+  color="#0B35F1"
+>
+  Tokenomics, contract addresses, vesting schedules, and token release details
+</Card>
+
+## Build AI Agents in Your Language
+
+elizaOS is available in **TypeScript**, **Python**, and **Rust** with identical APIs. Choose your preferred language and get started in minutes.
+
+<CardGroup cols={3}>
+  <Card title="TypeScript" icon="js" href="/quickstart#typescript">
+    The original elizaOS experience. Full Node.js ecosystem.
+  </Card>
+  <Card title="Python" icon="python" href="/quickstart#python">
+    Pythonic APIs with Pydantic models and async/await.
+  </Card>
+  <Card title="Rust" icon="gear" href="/quickstart#rust">
+    Native performance + WebAssembly for browser deployment.
+  </Card>
+</CardGroup>
+
+---
+
+## Three Commands. Any Language.
+
+<Tabs>
+  <Tab title="TypeScript">
+    ```bash bun i -g elizaos # Install the CLI elizaos create # Create your
+    project elizaos start # Your agent is live ```
+  </Tab>
+  <Tab title="Python">
+    ```bash pip install elizaos # Install the package python -c "from elizaos
+    import *" # Verify installation python your_agent.py # Run your agent ```
+  </Tab>
+  <Tab title="Rust">
+    ```bash cargo add elizaos # Add to Cargo.toml cargo build # Build your
+    project cargo run # Run your agent ```
+  </Tab>
+</Tabs>
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart" horizontal />
+  <Card
+    title="Examples Gallery"
+    icon="grid-2"
+    href="/examples/overview"
+    horizontal
+  />
+  <Card
+    title="What You Can Build"
+    icon="lightbulb-on"
+    href="/what-you-can-build"
+    horizontal
+  />
+  <Card
+    title="Plugin Registry"
+    icon="puzzle-piece"
+    href="/plugin-registry/overview"
+    horizontal
+  />
+</CardGroup>
+
+---
+
+## Why elizaOS?
+
+<CardGroup cols={3}>
+  <Card title="Multi-Language" icon="code">
+    Identical APIs in TypeScript, Python, and Rust
+  </Card>
+  <Card title="90+ Plugins" icon="puzzle-piece">
+    Discord, X, Telegram, Ethereum, Solana, OpenAI, and more
+  </Card>
+  <Card title="Persistent Memory" icon="brain">
+    Agents remember and learn from every interaction
+  </Card>
+  <Card title="Deploy Anywhere" icon="server">
+    Local, Docker, AWS, GCP, Vercel, Cloudflare, or your own infrastructure
+  </Card>
+  <Card title="Browser Ready" icon="globe">
+    Run agents client-side with WASM and PGLite
+  </Card>
+  <Card title="Truly Open" icon="code-branch">
+    Every line is open source. Extend, contribute, build together.
+  </Card>
+</CardGroup>
+
+Your agents can trade onchain, manage social media, create content, analyze data, or interact with any API, blockchain, or repository.
+
+---
+
+## API Consistency Across Languages
+
+All three implementations share identical interfaces:
+
+| Operation      | TypeScript                          | Python                                | Rust                                    |
+| -------------- | ----------------------------------- | ------------------------------------- | --------------------------------------- |
+| Create runtime | `new AgentRuntime({...})`           | `AgentRuntime(...)`                   | `AgentRuntime::new(...)`                |
+| Initialize     | `await runtime.initialize()`        | `await runtime.initialize()`          | `runtime.initialize().await`            |
+| Use model      | `runtime.useModel(type, params)`    | `runtime.use_model(type, params)`     | `runtime.use_model(type, params).await` |
+| Handle message | `messageService.handleMessage(...)` | `message_service.handle_message(...)` | `message_service().handle_message(...)` |
+| Stop           | `await runtime.stop()`              | `await runtime.stop()`                | `runtime.stop().await`                  |
+
+---
+
+## Quick Example
+
+<Tabs>
+  <Tab title="TypeScript">
+```typescript
+import { AgentRuntime } from '@elizaos/core';
+import { openaiPlugin } from '@elizaos/plugin-openai';
+import { plugin as sqlPlugin } from '@elizaos/plugin-sql';
+
+const runtime = new AgentRuntime({
+character: {
+name: 'Eliza',
+bio: 'A helpful AI assistant.',
+},
+plugins: [sqlPlugin, openaiPlugin],
+});
+
+await runtime.initialize();
+console.log('Agent is ready!');
+
+````
+  </Tab>
+  <Tab title="Python">
+```python
+from elizaos import AgentRuntime, Character
+from elizaos_plugin_openai import get_openai_plugin
+
+character = Character(
+    name="Eliza",
+    bio="A helpful AI assistant.",
+)
+
+runtime = AgentRuntime(
+    character=character,
+    plugins=[get_openai_plugin()],
+)
+
+await runtime.initialize()
+print("Agent is ready!")
+````
+
+  </Tab>
+  <Tab title="Rust">
+```rust
+use elizaos::{AgentRuntime, RuntimeOptions, parse_character};
+use elizaos_plugin_openai::create_openai_plugin;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+let character = parse_character(r#"{
+"name": "Eliza",
+"bio": "A helpful AI assistant."
+}"#)?;
+
+    let runtime = AgentRuntime::new(RuntimeOptions {
+        character: Some(character),
+        plugins: vec![create_openai_plugin()?],
+        ..Default::default()
+    }).await?;
+
+    runtime.initialize().await?;
+    println!("Agent is ready!");
+    Ok(())
+
+}
+
+```
+  </Tab>
+</Tabs>
+
+---
+
+## Explore Examples
+
+<CardGroup cols={2}>
+  <Card title="Chat Applications" icon="comments" href="/examples/chat">
+    Build interactive CLI and web chat interfaces
+  </Card>
+  <Card title="REST APIs" icon="server" href="/examples/rest-api">
+    Express, FastAPI, Actix, and 5 more frameworks
+  </Card>
+  <Card title="Browser Apps" icon="browser" href="/examples/browser">
+    React, Next.js, and pure HTML implementations
+  </Card>
+  <Card title="Serverless" icon="cloud" href="/examples/serverless">
+    AWS Lambda, GCP Functions, Vercel, Cloudflare Workers
+  </Card>
+</CardGroup>
+
+---
+
+## Get Started
+
+<CardGroup cols={2}>
+  <Card
+    title="Installation"
+    icon="download"
+    href="/installation"
+    horizontal
+  />
+  <Card
+    title="Create a Plugin"
+    icon="wrench"
+    href="/guides/create-a-plugin"
+    horizontal
+  />
+  <Card
+    title="REST Reference"
+    icon="terminal"
+    href="/rest-reference/agents/create-a-new-agent"
+    horizontal
+  />
+  <Card
+    title="CLI Reference"
+    icon="command"
+    href="/cli-reference/overview"
+    horizontal
+  />
+</CardGroup>
+
+---
+
+## Design Philosophy
+
+**Ship Fast** — Three commands to a live agent. No boilerplate, no config hell.
+
+**Any Language** — TypeScript, Python, or Rust. Same APIs, same capabilities.
+
+**Scale Freely** — Start with a character file. Scale to millions of interactions.
+
+**Truly Open** — Every line is open source. Extend through plugins, contribute to core, build the future together.
+
+<Card
+  title="Contribute to Core"
+  icon="code-branch"
+  href="/guides/contribute-to-core"
+>
+  Join the community building the most popular agentic framework
+</Card>
+```

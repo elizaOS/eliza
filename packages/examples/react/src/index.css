@@ -1,0 +1,138 @@
+:root {
+  --phosphor-green: #39ff14;
+  --phosphor-green-dim: #1a8f0a;
+  --phosphor-glow: #00ff00;
+  --crt-bg: #050505;
+  --crt-bg-light: #0a0a0a;
+  --bezel-dark: #1a1a1a;
+  --bezel-light: #2a2a2a;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: "VT323", "Fira Code", monospace;
+  background: radial-gradient(
+    ellipse at center,
+    #0d0d0d 0%,
+    #050505 50%,
+    #000 100%
+  );
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+/* Global text glow */
+.glow-text {
+  text-shadow:
+    0 0 5px var(--phosphor-glow),
+    0 0 10px var(--phosphor-glow),
+    0 0 15px var(--phosphor-glow);
+}
+
+/* Animations */
+@keyframes flicker {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  92% {
+    opacity: 1;
+  }
+  93% {
+    opacity: 0.85;
+  }
+  94% {
+    opacity: 1;
+  }
+  97% {
+    opacity: 0.9;
+  }
+  98% {
+    opacity: 1;
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 8px var(--phosphor-glow);
+  }
+  50% {
+    opacity: 0.6;
+    box-shadow: 0 0 4px var(--phosphor-glow);
+  }
+}
+
+@keyframes blink {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  51%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes cursor-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes scanline {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(100vh);
+  }
+}
+
+@keyframes boot {
+  0% {
+    filter: brightness(0);
+    transform: scaleY(0.01);
+  }
+  40% {
+    filter: brightness(1.2);
+    transform: scaleY(0.01);
+  }
+  60% {
+    filter: brightness(0.8);
+    transform: scaleY(1);
+  }
+  100% {
+    filter: brightness(1);
+    transform: scaleY(1);
+  }
+}
+
+@keyframes typewriter {
+  from {
+    width: 0;
+  }
+  to {
+    width: 100%;
+  }
+}

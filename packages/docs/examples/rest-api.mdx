@@ -1,0 +1,524 @@
+---
+title: "REST API Examples"
+description: "Build HTTP endpoints for elizaOS agents using 8 different web frameworks"
+---
+
+Create REST APIs for your elizaOS agents using your favorite web framework. These examples work **without API keys** using the classic ELIZA pattern-matching algorithm.
+
+## Overview
+
+| Framework | Language   | Directory                    | Port |
+| --------- | ---------- | ---------------------------- | ---- |
+| Express   | TypeScript | `examples/rest-api/express/` | 3000 |
+| Hono      | TypeScript | `examples/rest-api/hono/`    | 3000 |
+| Elysia    | TypeScript | `examples/rest-api/elysia/`  | 3000 |
+| FastAPI   | Python     | `examples/rest-api/fastapi/` | 3000 |
+| Flask     | Python     | `examples/rest-api/flask/`   | 3000 |
+| Actix Web | Rust       | `examples/rest-api/actix/`   | 3000 |
+| Axum      | Rust       | `examples/rest-api/axum/`    | 3000 |
+| Rocket    | Rust       | `examples/rest-api/rocket/`  | 3000 |
+
+<Note>
+  **No API keys required!** These examples use `plugin-eliza-classic` for
+  pattern-matching responses and `plugin-localdb` for local storage.
+</Note>
+
+---
+
+## Quick Start
+
+<Tabs>
+  <Tab title="Express (TS)">
+    ```bash cd examples/rest-api/express bun install bun run start ```
+  </Tab>
+  <Tab title="Hono (TS)">
+    ```bash cd examples/rest-api/hono bun install bun run start ```
+  </Tab>
+  <Tab title="FastAPI (Py)">
+    ```bash cd examples/rest-api/fastapi python -m venv venv && source
+    venv/bin/activate pip install -r requirements.txt python server.py ```
+  </Tab>
+  <Tab title="Actix (Rust)">
+    ```bash cd examples/rest-api/actix cargo run --release ```
+  </Tab>
+</Tabs>
+
+---
+
+## Common API
+
+All examples expose the same REST API:
+
+### GET /
+
+Returns information about the agent.
+
+```bash
+curl http://localhost:3000/
+```
+
+**Response:**
+
+```json
+{
+  "name": "Eliza",
+  "bio": "A Rogerian psychotherapist simulation",
+  "status": "ready"
+}
+```
+
+### GET /health
+
+Health check endpoint.
+
+```bash
+curl http://localhost:3000/health
+```
+
+**Response:**
+
+```json
+{
+  "status": "healthy",
+  "runtime": "elizaos",
+  "uptime": 12345
+}
+```
+
+### POST /chat
+
+Send a message to the agent.
+
+```bash
+curl -X POST http://localhost:3000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello, how are you?"}'
+```
+
+**Response:**
+
+```json
+{
+  "response": "How do you do. Please state your problem.",
+  "character": "Eliza",
+  "userId": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+---
+
+## Complete Examples
+
+<Tabs>
+  <Tab title="Express (TypeScript)">
+```typescript
+import express from 'express';
+import { AgentRuntime, ModelType } from '@elizaos/core';
+import { elizaClassicPlugin } from '@elizaos/plugin-eliza-classic';
+import { plugin as localdbPlugin } from '@elizaos/plugin-localdb';
+import { v4 as uuidv4 } from 'uuid';
+
+const app = express();
+app.use(express.json());
+
+// Character definition
+const character = {
+name: 'Eliza',
+bio: 'A Rogerian psychotherapist simulation created at MIT in 1966.',
+};
+
+// Initialize runtime
+const runtime = new AgentRuntime({
+character,
+plugins: [localdbPlugin, elizaClassicPlugin],
+});
+
+await runtime.initialize();
+
+// Routes
+app.get('/', (req, res) => {
+res.json({
+name: character.name,
+bio: character.bio,
+status: 'ready',
+});
+});
+
+app.get('/health', (req, res) => {
+res.json({
+status: 'healthy',
+runtime: 'elizaos-typescript',
+uptime: process.uptime(),
+});
+});
+
+app.post('/chat', async (req, res) => {
+const { message, userId = uuidv4() } = req.body;
+
+if (!message) {
+return res.status(400).json({ error: 'Message is required' });
+}
+
+try {
+const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+prompt: message,
+});
+
+    res.json({
+      response: String(response),
+      character: character.name,
+      userId,
+    });
+
+} catch (error) {
+res.status(500).json({ error: 'Failed to process message' });
+}
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+console.log(`Eliza API running on http://localhost:${PORT}`);
+});
+
+````
+  </Tab>
+  <Tab title="FastAPI (Python)">
+```python
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from elizaos import AgentRuntime, Character
+from elizaos.plugin_eliza_classic import eliza_classic_plugin
+import uuid
+import time
+
+app = FastAPI()
+
+# Character definition
+character = Character(
+    name="Eliza",
+    bio="A Rogerian psychotherapist simulation created at MIT in 1966.",
+)
+
+# Initialize runtime
+runtime = AgentRuntime(
+    character=character,
+    plugins=[eliza_classic_plugin],
+)
+
+start_time = time.time()
+
+class ChatRequest(BaseModel):
+    message: str
+    userId: str | None = None
+
+class ChatResponse(BaseModel):
+    response: str
+    character: str
+    userId: str
+
+@app.on_event("startup")
+async def startup():
+    await runtime.initialize()
+
+@app.get("/")
+async def root():
+    return {
+        "name": character.name,
+        "bio": character.bio,
+        "status": "ready",
+    }
+
+@app.get("/health")
+async def health():
+    return {
+        "status": "healthy",
+        "runtime": "elizaos-python",
+        "uptime": time.time() - start_time,
+    }
+
+@app.post("/chat", response_model=ChatResponse)
+async def chat(request: ChatRequest):
+    if not request.message:
+        raise HTTPException(status_code=400, detail="Message is required")
+
+    user_id = request.userId or str(uuid.uuid4())
+
+    try:
+        from elizaos import ChannelType, Content, Memory, string_to_uuid
+
+        message = Memory(
+            entity_id=string_to_uuid(user_id),
+            room_id=string_to_uuid("rest-api-room"),
+            content=Content(
+                text=request.message,
+                source="rest-api",
+                channel_type=ChannelType.DM.value,
+            ),
+        )
+        result = await runtime.message_service.handle_message(runtime, message)
+        response = (
+            result.response_content.text
+            if result.response_content and result.response_content.text
+            else ""
+        )
+
+        return ChatResponse(
+            response=str(response),
+            character=character.name,
+            userId=user_id,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Failed to process message")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=3000)
+````
+
+  </Tab>
+  <Tab title="Actix Web (Rust)">
+```rust
+use actix_web::{web, App, HttpServer, HttpResponse, Result};
+use elizaos::{AgentRuntime, RuntimeOptions, parse_character};
+use elizaos_plugin_eliza_classic::create_eliza_classic_plugin;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use std::time::Instant;
+use uuid::Uuid;
+
+#[derive(Deserialize)]
+struct ChatRequest {
+message: String, #[serde(rename = "userId")]
+user_id: Option<String>,
+}
+
+#[derive(Serialize)]
+struct ChatResponse {
+response: String,
+character: String, #[serde(rename = "userId")]
+user_id: String,
+}
+
+#[derive(Serialize)]
+struct InfoResponse {
+name: String,
+bio: String,
+status: String,
+}
+
+#[derive(Serialize)]
+struct HealthResponse {
+status: String,
+runtime: String,
+uptime: f64,
+}
+
+struct AppState {
+runtime: Arc<AgentRuntime>,
+character_name: String,
+character_bio: String,
+start_time: Instant,
+}
+
+async fn root(data: web::Data<AppState>) -> Result<HttpResponse> {
+Ok(HttpResponse::Ok().json(InfoResponse {
+name: data.character_name.clone(),
+bio: data.character_bio.clone(),
+status: "ready".to_string(),
+}))
+}
+
+async fn health(data: web::Data<AppState>) -> Result<HttpResponse> {
+Ok(HttpResponse::Ok().json(HealthResponse {
+status: "healthy".to_string(),
+runtime: "elizaos-rust".to_string(),
+uptime: data.start_time.elapsed().as_secs_f64(),
+}))
+}
+
+async fn chat(
+data: web::Data<AppState>,
+req: web::Json<ChatRequest>,
+) -> Result<HttpResponse> {
+let user_id = req.user_id.clone()
+.unwrap_or_else(|| Uuid::new_v4().to_string());
+
+    let content = elizaos::types::Content {
+        text: Some(req.message.clone()),
+        source: Some("rest-api".to_string()),
+        channel_type: Some(elizaos::types::ChannelType::Dm),
+        ..Default::default()
+    };
+
+    let mut msg =
+        elizaos::types::Memory::new(elizaos::types::UUID::new_v4(), elizaos::types::UUID::new_v4(), content);
+
+    let result = data.runtime
+        .message_service()
+        .handle_message(data.runtime.as_ref(), &mut msg, None, None)
+        .await
+        .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to process"))?;
+
+    let response = result
+        .response_content
+        .and_then(|c| c.text)
+        .unwrap_or_default();
+
+    Ok(HttpResponse::Ok().json(ChatResponse {
+        response,
+        character: data.character_name.clone(),
+        user_id,
+    }))
+
+}
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+let character = parse_character(r#"{
+"name": "Eliza",
+"bio": "A Rogerian psychotherapist simulation created at MIT in 1966."
+}"#).unwrap();
+
+    let runtime = AgentRuntime::new(RuntimeOptions {
+        character: Some(character.clone()),
+        plugins: vec![create_eliza_classic_plugin()],
+        ..Default::default()
+    }).await.unwrap();
+
+    runtime.initialize().await.unwrap();
+
+    let state = web::Data::new(AppState {
+        runtime: Arc::new(runtime),
+        character_name: character.name.clone(),
+        character_bio: character.bio.clone(),
+        start_time: Instant::now(),
+    });
+
+    println!("Eliza API running on http://localhost:3000");
+
+    HttpServer::new(move || {
+        App::new()
+            .app_data(state.clone())
+            .route("/", web::get().to(root))
+            .route("/health", web::get().to(health))
+            .route("/chat", web::post().to(chat))
+    })
+    .bind("0.0.0.0:3000")?
+    .run()
+    .await
+
+}
+
+````
+  </Tab>
+</Tabs>
+
+---
+
+## Framework Comparison
+
+| Feature | Express | Hono | Elysia | FastAPI | Flask | Actix | Axum | Rocket |
+|---------|---------|------|--------|---------|-------|-------|------|--------|
+| Async | ✅ | ✅ | ✅ | ✅ | ⚠️ | ✅ | ✅ | ✅ |
+| Type Safety | ⚠️ | ✅ | ✅ | ✅ | ⚠️ | ✅ | ✅ | ✅ |
+| Performance | Good | Great | Great | Good | Fair | Excellent | Excellent | Great |
+| Bundle Size | Medium | Small | Small | N/A | N/A | Small | Small | Medium |
+
+---
+
+## Testing the API
+
+```bash
+# Get agent info
+curl http://localhost:3000/
+
+# Health check
+curl http://localhost:3000/health
+
+# Send a message
+curl -X POST http://localhost:3000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "I am feeling sad today"}'
+
+# Expected response:
+# {"response": "I am sorry to hear that you are feeling that way.", ...}
+````
+
+---
+
+## Configuration
+
+All examples support the `PORT` environment variable:
+
+```bash
+PORT=8080 bun run start        # TypeScript
+PORT=8080 python server.py     # Python
+PORT=8080 cargo run --release  # Rust
+```
+
+---
+
+## Adding OpenAI Support
+
+To use OpenAI instead of pattern matching, swap the plugin:
+
+<Tabs>
+  <Tab title="TypeScript">
+```typescript
+import { openaiPlugin } from '@elizaos/plugin-openai';
+import { plugin as sqlPlugin } from '@elizaos/plugin-sql';
+
+const runtime = new AgentRuntime({
+character,
+plugins: [sqlPlugin, openaiPlugin], // Replace elizaClassicPlugin
+});
+
+````
+  </Tab>
+  <Tab title="Python">
+```python
+from elizaos_plugin_openai import get_openai_plugin
+
+runtime = AgentRuntime(
+    character=character,
+    plugins=[get_openai_plugin()],
+)
+````
+
+  </Tab>
+  <Tab title="Rust">
+```rust
+use elizaos_plugin_openai::create_openai_plugin;
+
+let runtime = AgentRuntime::new(RuntimeOptions {
+character: Some(character),
+plugins: vec![create_openai_plugin()?],
+..Default::default()
+}).await?;
+
+```
+  </Tab>
+</Tabs>
+
+<Warning>
+  OpenAI requires `OPENAI_API_KEY` environment variable.
+</Warning>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Browser Examples" icon="browser" href="/examples/browser">
+    Run agents client-side without a server
+  </Card>
+  <Card title="Serverless Examples" icon="cloud" href="/examples/serverless">
+    Deploy to AWS, GCP, Vercel, or Cloudflare
+  </Card>
+</CardGroup>
+
+
+```
+
+
+

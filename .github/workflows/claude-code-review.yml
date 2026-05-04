@@ -1,0 +1,92 @@
+name: Claude Code Review
+
+# Cancel previous runs for the same PR/branch
+concurrency:
+  group: claude-code-review-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+    types: [opened, ready_for_review, synchronize, reopened]
+
+  # Allow manual triggering for when you specifically want a review
+  workflow_dispatch:
+
+jobs:
+  claude-review:
+    # Skip review if PR title contains [skip-review] or is a draft
+    if: |
+      !contains(github.event.pull_request.title, '[skip-review]') &&
+      github.event.pull_request.draft != true
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code Review
+        id: claude-review
+        # Don't fail the workflow when the Anthropic API is unavailable
+        # (low credit balance, rate limit, transient outage). The bot review
+        # is best-effort; a missing review must not block CI.
+        continue-on-error: true
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          track_progress: true
+
+          # Prompt for automated review (no @claude mention needed)
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Review this PR. Be concise and actionable.
+
+            **📝 IMPORTANT: Check and consider all previous review comments in this PR before making new suggestions. Don't repeat issues that have already been addressed or are being discussed.**
+
+            **🚨 CRITICAL CHECKS:**
+            - Security: hardcoded keys, SQL injection, XSS
+            - No tests = REJECT (untested code is broken)
+            - Wrong tools: npm/pnpm/yarn/jest = REJECT (use vitest)
+            - Breaking changes without migration = REJECT
+
+            **✅ REQUIRED:**
+            - TypeScript types (no 'any')
+            - Tests with vitest (via bun run test)
+            - Use @elizaos/core imports (canonical sources live under packages/core)
+            - Functional code (no classes)
+            - Error handling
+
+            **📋 VERIFY:**
+            - All new code has tests
+            - Use bun for scripts, vitest for testing
+            - No circular dependencies
+            - Follows existing patterns
+            - Docs updated if needed
+
+            **🎯 OUTPUT FORMAT:**
+            Provide detailed feedback using inline comments for specific issues.
+            ```
+            ❌ CRITICAL: [issue] → Fix: [specific action]
+            ⚠️ IMPORTANT: [issue] → Fix: [specific action]
+            💡 SUGGESTION: [improvement] → Consider: [action]
+            ```
+
+            Skip explanations. List issues with fixes.
+
+          # Allow cursor bot to trigger reviews
+          allowed_bots: "cursor"
+
+          # Claude CLI arguments for model and allowed tools
+          claude_args: |
+            --model claude-opus-4-7
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment *),Bash(gh pr diff *),Bash(gh pr view *),Bash(gh api *)"

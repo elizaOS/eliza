@@ -1,0 +1,61 @@
+import { scenario } from "@elizaos/scenario-schema";
+
+export default scenario({
+  id: "goal-sleep-basic",
+  title: "Sleep goal save flow",
+  domain: "goals",
+  tags: ["lifeops", "goals", "smoke"],
+  isolation: "per-scenario",
+  requires: {
+    plugins: ["@elizaos/plugin-agent-skills"],
+  },
+  rooms: [
+    {
+      id: "main",
+      source: "telegram",
+      title: "LifeOps Sleep Goal",
+    },
+  ],
+  turns: [
+    {
+      kind: "message",
+      name: "sleep-goal needs grounding",
+      text: "I want a goal called Stabilize sleep schedule.",
+      responseJudge: {
+        rubric:
+          "The assistant should recognize that the goal is not grounded enough to save yet. A passing reply keeps the goal title or sleep context in view, does not claim the goal was saved, and asks for the missing success definition such as target bedtime, wake time, consistency window, time horizon, or evidence signal.",
+      },
+    },
+    {
+      kind: "message",
+      name: "sleep-goal grounded preview",
+      text: "I want that to mean being asleep by 11:30 pm and awake around 7:30 am on weekdays, within 45 minutes, for the next month.",
+      responseJudge: {
+        rubric:
+          "The assistant should now treat the goal as grounded enough to preview for confirmation. A passing reply reflects the sleep target in substance, makes clear this is still a preview or confirmation step, and does not ask another vague generic question.",
+      },
+    },
+    {
+      kind: "message",
+      name: "sleep-goal confirm",
+      text: "Yes, save that goal.",
+      responseJudge: {
+        rubric:
+          "The assistant should confirm that the grounded goal was saved. A passing reply refers to the stabilized sleep schedule goal in substance and should not backslide into saying the goal is still undefined.",
+      },
+    },
+  ],
+  finalChecks: [
+    {
+      type: "goalCountDelta",
+      title: "Stabilize Sleep Schedule",
+      delta: 1,
+      expectedStatus: "active",
+      expectedReviewState: "idle",
+      requireDescription: true,
+      requireSuccessCriteria: true,
+      requireSupportStrategy: true,
+      expectedGroundingState: "grounded",
+    },
+  ],
+});

@@ -1,0 +1,344 @@
+#!/usr/bin/env python3
+"""CLI for running SWE-bench benchmark via the eliza TS bridge.
+
+The agent loop is a single-shot prompt-the-bridge-for-a-patch flow: each
+SWE-bench instance is converted into a prompt (issue text + repo context),
+sent through the bench server, and the response is parsed for a unified
+diff. The diff is then evaluated by ``SWEBenchEvaluator`` (Docker harness
+or basic validator).
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import logging
+import os
+import re
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+
+from .dataset import SWEBenchDataset
+from .evaluator import SWEBenchEvaluator
+from .types import (
+    PatchStatus,
+    RepoStats,
+    SWEBenchConfig,
+    SWEBenchInstance,
+    SWEBenchReport,
+    SWEBenchResult,
+    SWEBenchVariant,
+)
+
+# Ensure the eliza-adapter package is importable.
+_ELIZA_ADAPTER_PKG = Path(__file__).resolve().parents[1] / "eliza-adapter"
+if _ELIZA_ADAPTER_PKG.exists() and str(_ELIZA_ADAPTER_PKG) not in sys.path:
+    sys.path.insert(0, str(_ELIZA_ADAPTER_PKG))
+
+logger = logging.getLogger(__name__)
+
+
+_PATCH_FENCE_RE = re.compile(
+    r"```(?:diff|patch)?\s*\n(?P<body>.*?)```", re.DOTALL | re.IGNORECASE
+)
+_DIFF_HEADER_RE = re.compile(r"^diff --git ", re.MULTILINE)
+
+
+def _extract_patch(text: str) -> str:
+    """Pull a unified diff out of an LLM response.
+
+    Strategies, in order:
+      1. Triple-backtick block tagged ``diff`` or ``patch``.
+      2. Any triple-backtick block whose body starts with ``diff --git``.
+      3. Raw text starting with ``diff --git``.
+      4. Empty string.
+    """
+    if not text:
+        return ""
+
+    for match in _PATCH_FENCE_RE.finditer(text):
+        body = match.group("body").strip()
+        if body and "diff --git" in body:
+            return body if body.endswith("\n") else body + "\n"
+
+    diff_match = _DIFF_HEADER_RE.search(text)
+    if diff_match:
+        body = text[diff_match.start() :].strip()
+        return body if body.endswith("\n") else body + "\n"
+
+    return ""
+
+
+def _build_prompt(instance: SWEBenchInstance) -> str:
+    """Build a single prompt asking for a unified diff fix."""
+    return (
+        "You are an expert software engineer fixing a real-world bug.\n\n"
+        f"Repository: {instance.repo}\n"
+        f"Base commit: {instance.base_commit}\n\n"
+        "Problem statement:\n"
+        f"{instance.problem_statement}\n\n"
+        + (f"Hints:\n{instance.hints_text}\n\n" if instance.hints_text else "")
+        + "Respond with a SINGLE unified diff that resolves the issue. "
+        "Wrap it in a ```diff fenced code block. Do not include commentary "
+        "outside the diff. The diff must be applicable with `git apply` from "
+        "the repository root."
+    )
+
+
+async def _run_instance(
+    client: object,
+    instance: SWEBenchInstance,
+    evaluator: SWEBenchEvaluator,
+) -> SWEBenchResult:
+    """Run a single SWE-bench instance through the bridge."""
+    started = time.time()
+    try:
+        send_message = client.send_message  # type: ignore[attr-defined]
+        client.reset(task_id=instance.instance_id, benchmark="swe_bench")  # type: ignore[attr-defined]
+        response = send_message(
+            text=_build_prompt(instance),
+            context={
+                "benchmark": "swe_bench",
+                "task_id": instance.instance_id,
+                "repo": instance.repo,
+                "base_commit": instance.base_commit,
+            },
+        )
+        text = getattr(response, "text", "") or ""
+        patch = _extract_patch(text)
+    except Exception as exc:  # noqa: BLE001 — surface any client failure
+        return SWEBenchResult(
+            instance_id=instance.instance_id,
+            generated_patch="",
+            patch_status=PatchStatus.NOT_GENERATED,
+            tests_passed=[],
+            tests_failed=[],
+            success=False,
+            duration_seconds=time.time() - started,
+            tokens_used=0,
+            error=str(exc),
+        )
+
+    if not patch:
+        return SWEBenchResult(
+            instance_id=instance.instance_id,
+            generated_patch="",
+            patch_status=PatchStatus.NOT_GENERATED,
+            tests_passed=[],
+            tests_failed=[],
+            success=False,
+            duration_seconds=time.time() - started,
+            tokens_used=0,
+            error="no patch in response",
+        )
+
+    quality = await evaluator.evaluate_patch(instance, patch)
+    return SWEBenchResult(
+        instance_id=instance.instance_id,
+        generated_patch=patch,
+        patch_status=quality.status,
+        tests_passed=quality.tests_passed,
+        tests_failed=quality.tests_failed,
+        success=quality.status == PatchStatus.TESTS_PASSED,
+        duration_seconds=time.time() - started,
+        tokens_used=0,
+        error=quality.error,
+    )
+
+
+def _build_report(
+    config: SWEBenchConfig, results: list[SWEBenchResult]
+) -> SWEBenchReport:
+    total = len(results)
+    resolved = sum(1 for r in results if r.success)
+    applied = sum(
+        1
+        for r in results
+        if r.patch_status
+        in (PatchStatus.APPLIED, PatchStatus.TESTS_PASSED, PatchStatus.TESTS_FAILED)
+    )
+    avg_duration = sum(r.duration_seconds for r in results) / total if total else 0.0
+    avg_tokens = sum(r.tokens_used for r in results) / total if total else 0.0
+
+    by_repo: dict[str, RepoStats] = {}
+    grouped: dict[str, list[SWEBenchResult]] = {}
+    for r in results:
+        repo_key = r.instance_id.split("-", 1)[0]
+        grouped.setdefault(repo_key, []).append(r)
+    for repo, rs in grouped.items():
+        rresolved = sum(1 for r in rs if r.success)
+        by_repo[repo] = RepoStats(
+            total=len(rs),
+            resolved=rresolved,
+            resolve_rate=rresolved / len(rs) if rs else 0.0,
+        )
+
+    errors: dict[str, int] = {}
+    for r in results:
+        if r.error:
+            errors[r.error] = errors.get(r.error, 0) + 1
+
+    return SWEBenchReport(
+        variant=config.variant.value,
+        total_instances=total,
+        resolved=resolved,
+        unresolved=total - resolved,
+        resolve_rate=resolved / total if total else 0.0,
+        apply_rate=applied / total if total else 0.0,
+        average_duration=avg_duration,
+        average_tokens=avg_tokens,
+        results=results,
+        by_repo=by_repo,
+        errors=errors,
+    )
+
+
+def _report_to_dict(report: SWEBenchReport) -> dict[str, object]:
+    return {
+        "summary": {
+            "variant": report.variant,
+            "total_instances": report.total_instances,
+            "resolved": report.resolved,
+            "unresolved": report.unresolved,
+            "resolve_rate": report.resolve_rate,
+            "apply_rate": report.apply_rate,
+            "average_duration": report.average_duration,
+            "average_tokens": report.average_tokens,
+        },
+        "by_repo": {
+            k: {"total": v.total, "resolved": v.resolved, "resolve_rate": v.resolve_rate}
+            for k, v in report.by_repo.items()
+        },
+        "errors": report.errors,
+        "results": [
+            {
+                "instance_id": r.instance_id,
+                "patch_status": r.patch_status.value,
+                "success": r.success,
+                "duration_seconds": r.duration_seconds,
+                "tests_passed": r.tests_passed,
+                "tests_failed": r.tests_failed,
+                "error": r.error,
+                "generated_patch_preview": (r.generated_patch or "")[:1500],
+            }
+            for r in report.results
+        ],
+    }
+
+
+async def _run(args: argparse.Namespace) -> int:
+    from eliza_adapter import ElizaClient, ElizaServerManager
+
+    config = SWEBenchConfig(
+        variant=SWEBenchVariant(args.variant),
+        workspace_dir=args.workspace,
+        output_dir=args.output,
+        max_steps=args.max_steps,
+        max_instances=args.max_instances,
+        repo_filter=args.repo_filter,
+        use_docker_eval=not args.no_docker,
+        timeout_seconds=args.timeout,
+        model_name=args.model or "eliza-ts-bridge",
+    )
+    Path(config.output_dir).mkdir(parents=True, exist_ok=True)
+
+    dataset = SWEBenchDataset(variant=config.variant)
+    await dataset.load()
+    instances = list(
+        dataset.get_instances(
+            repo_filter=config.repo_filter, limit=config.max_instances
+        )
+    )
+    if not instances:
+        print("No instances matched filters; aborting.", file=sys.stderr)
+        return 2
+
+    eliza_server = None
+    if not os.environ.get("ELIZA_BENCH_URL"):
+        eliza_server = ElizaServerManager()
+        eliza_server.start()
+        client = eliza_server.client
+    else:
+        client = ElizaClient()
+        client.wait_until_ready(timeout=180)
+
+    evaluator = SWEBenchEvaluator(
+        workspace_dir=config.workspace_dir,
+        timeout_seconds=config.timeout_seconds,
+        use_docker=config.use_docker_eval,
+    )
+    docker_ok = await evaluator.check_docker_available()
+    if config.use_docker_eval and not docker_ok:
+        logger.warning(
+            "[swe_bench] docker not available — falling back to basic validation"
+        )
+
+    results: list[SWEBenchResult] = []
+    try:
+        for idx, inst in enumerate(instances):
+            logger.info(
+                "[swe_bench] %d/%d %s", idx + 1, len(instances), inst.instance_id
+            )
+            res = await _run_instance(client, inst, evaluator)
+            results.append(res)
+    finally:
+        if eliza_server is not None:
+            eliza_server.stop()
+
+    report = _build_report(config, results)
+    payload = _report_to_dict(report)
+    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    out_path = Path(config.output_dir) / f"swe-bench-{timestamp}.json"
+    out_path.write_text(json.dumps(payload, indent=2))
+    print(json.dumps(payload["summary"], indent=2))
+    print(f"\nResult file: {out_path}")
+    return 0
+
+
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        prog="benchmarks.swe_bench.cli",
+        description="Run SWE-bench through the eliza TS benchmark bridge.",
+    )
+    p.add_argument(
+        "--variant",
+        choices=["lite", "verified", "full"],
+        default="lite",
+        help="SWE-bench variant (default: lite)",
+    )
+    p.add_argument(
+        "--max-instances",
+        type=int,
+        default=None,
+        help="Cap on instances to run (default: all in variant)",
+    )
+    p.add_argument(
+        "--repo-filter", default=None, help="Substring filter on repo name"
+    )
+    p.add_argument(
+        "--workspace", default="./swe-bench-workspace", help="Workspace directory"
+    )
+    p.add_argument(
+        "--output", default="./benchmark_results/swe-bench", help="Output directory"
+    )
+    p.add_argument("--max-steps", type=int, default=30)
+    p.add_argument("--timeout", type=int, default=600)
+    p.add_argument("--no-docker", action="store_true", help="Skip docker evaluation")
+    p.add_argument("--model", default=None, help="Model label for the report")
+    return p.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    logging.basicConfig(
+        level=os.environ.get("SWE_BENCH_LOG_LEVEL", "INFO"),
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
+    args = _parse_args(argv)
+    return asyncio.run(_run(args))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

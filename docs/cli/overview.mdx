@@ -1,0 +1,90 @@
+---
+title: "CLI overview"
+description: "The eliza command-line interface — runtime control, configuration, and maintenance."
+---
+
+# CLI overview
+
+The `eliza` binary (also published as `eliza-ai` / `elizaai`) is the primary way to start the API server, run setup wizards, and manage local configuration from a terminal.
+
+## Requirements
+
+- **Node.js 22+** or **Bun** as documented in [Installation](/installation).
+- Config and state live under the Eliza state directory (by default `~/.eliza/` when `ELIZA_NAMESPACE=eliza`).
+
+## Global Flags
+
+| Flag | Description |
+|------|-------------|
+| `--verbose` | Enable informational runtime logs |
+| `--debug` | Enable debug-level runtime logs |
+| `--version` | Print version and exit |
+| `--help` | Show help for any command |
+
+## Command map
+
+| Command | Purpose |
+|---------|---------|
+| [`eliza start`](/cli/start) | Run the API server (embedded runtime). `eliza run` is an alias. |
+| [`eliza setup`](/cli/setup) | First-time wizard (keys, workspace) |
+| [`eliza configure`](/cli/configure) | Configuration guidance (prints env-var help) |
+| [`eliza config`](/cli/config) | Read config values (`get`, `path`, `show`) |
+| [`eliza dashboard`](/cli/dashboard) | Open the Control UI in your browser |
+| [`eliza models`](/cli/models) | Show configured model providers |
+| [`eliza plugins`](/cli/plugins) | Plugin listing, search, install, and management |
+| [`eliza update`](/cli/update) | Check for and install updates |
+| [`eliza doctor`](/cli/doctor) | Health and environment checks |
+| [`eliza db`](/cli/db) | Database utilities (reset) |
+| `eliza benchmark` | Run a benchmark task headlessly against the agent |
+
+## Global options
+
+| Flag | Description |
+|------|-------------|
+| `-v, --version` | Print version |
+| `--verbose` | Enable informational runtime logs |
+| `--debug` | Enable debug-level runtime logs |
+| `--dev` | Dev profile: isolate state under `~/.eliza-dev` with separate config and ports |
+| `--profile <name>` | Use a named profile (isolates state and config under `~/.eliza-<name>`) |
+| `--no-color` | Disable ANSI colors |
+
+### Config subcommands
+
+```bash
+eliza config get <key>   # read a config value
+eliza config path        # print resolved config file path
+eliza config show        # display all config values grouped by section
+```
+
+### Plugin subcommands
+
+```bash
+eliza plugins list            # browse registry plugins
+eliza plugins installed       # show installed plugins
+eliza plugins install <name>  # install a plugin from the registry
+eliza plugins uninstall <name>  # remove an installed plugin
+eliza plugins search <query>  # search plugins by keyword
+```
+
+## Global flags
+
+| Flag | Purpose |
+|------|---------|
+| `--help` | Show help for any command |
+| `--version` | Print the installed version |
+| `--verbose` | Enable informational runtime logs |
+| `--debug` | Enable debug-level runtime logs |
+
+```bash
+eliza --version
+eliza --debug start
+eliza plugins --help
+```
+
+## Help
+
+Run `eliza --help` or `eliza <command> --help` for the exact flags in your build. Implementation lives under `eliza/packages/app-core/src/cli/` in the elizaOS submodule (run `bun run setup:upstreams` to initialize it for development).
+
+## Environment
+
+See [CLI environment](/cli/environment) for variables that affect bind addresses, ports, and state paths.

@@ -1,0 +1,194 @@
+/**
+ * AI provider implementations and singleton access.
+ *
+ * OpenRouter is the principal non-Groq provider. Per-family direct
+ * providers (OpenAI, Anthropic) are wired as failover targets via
+ * `getProviderForModelWithFallback` when their respective API keys
+ * are configured.
+ */
+
+import { isGroqNativeModel, isVastNativeModel } from "@/lib/models";
+import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
+import { AnthropicDirectProvider } from "./anthropic-direct";
+import { GroqProvider } from "./groq";
+import { OpenAIDirectProvider } from "./openai-direct";
+import { OpenRouterProvider } from "./openrouter";
+import type { AIProvider } from "./types";
+import { VastProvider } from "./vast";
+
+export { AnthropicDirectProvider } from "./anthropic-direct";
+// Note: anthropic-thinking parse helpers (parseAnthropicCotBudgetFromEnv, etc.) are exported
+// as public API. Whitespace-only env values (e.g. "   ") will throw at startup rather than
+// silently disable thinking - this is intentional fail-fast behavior.
+export * from "./anthropic-thinking";
+export { withProviderFallback } from "./failover";
+export { GroqProvider } from "./groq";
+export { OpenAIDirectProvider } from "./openai-direct";
+export { OpenRouterProvider } from "./openrouter";
+export * from "./types";
+export { VastProvider } from "./vast";
+
+interface ProviderSingleton {
+  apiKey: string;
+  provider: AIProvider;
+}
+
+let openRouterProviderInstance: ProviderSingleton | null = null;
+let groqProviderInstance: ProviderSingleton | null = null;
+let openAIDirectProviderInstance: ProviderSingleton | null = null;
+let anthropicDirectProviderInstance: ProviderSingleton | null = null;
+let vastProviderInstance: { apiKey: string; baseUrl: string; provider: AIProvider } | null = null;
+
+function getRequiredProviderKey(envName: string): string {
+  const apiKey = getCloudAwareEnv()[envName]?.trim();
+  if (!apiKey) {
+    throw new Error(`${envName} environment variable is required`);
+  }
+
+  return apiKey;
+}
+
+/**
+ * Gets the principal AI provider instance (OpenRouter).
+ *
+ * Lazy initialized on first call.
+ *
+ * @returns OpenRouter provider instance.
+ * @throws Error if OPENROUTER_API_KEY is not configured.
+ */
+export function getProvider(): AIProvider {
+  const apiKey = getRequiredProviderKey("OPENROUTER_API_KEY");
+  if (!openRouterProviderInstance || openRouterProviderInstance.apiKey !== apiKey) {
+    openRouterProviderInstance = {
+      apiKey,
+      provider: new OpenRouterProvider(apiKey),
+    };
+  }
+  return openRouterProviderInstance.provider;
+}
+
+export function hasGroqProviderConfigured(): boolean {
+  return Boolean(getCloudAwareEnv().GROQ_API_KEY?.trim());
+}
+
+export function getGroqProvider(): AIProvider {
+  const apiKey = getRequiredProviderKey("GROQ_API_KEY");
+  if (!groqProviderInstance || groqProviderInstance.apiKey !== apiKey) {
+    groqProviderInstance = {
+      apiKey,
+      provider: new GroqProvider(apiKey),
+    };
+  }
+
+  return groqProviderInstance.provider;
+}
+
+export function hasOpenRouterProviderConfigured(): boolean {
+  return Boolean(getCloudAwareEnv().OPENROUTER_API_KEY?.trim());
+}
+
+export function getOpenRouterProvider(): AIProvider {
+  return getProvider();
+}
+
+function hasOpenAIDirectConfigured(): boolean {
+  return Boolean(getCloudAwareEnv().OPENAI_API_KEY?.trim());
+}
+
+function getOpenAIDirectProvider(): AIProvider {
+  const apiKey = getRequiredProviderKey("OPENAI_API_KEY");
+  if (!openAIDirectProviderInstance || openAIDirectProviderInstance.apiKey !== apiKey) {
+    openAIDirectProviderInstance = {
+      apiKey,
+      provider: new OpenAIDirectProvider(apiKey),
+    };
+  }
+  return openAIDirectProviderInstance.provider;
+}
+
+function hasAnthropicDirectConfigured(): boolean {
+  return Boolean(getCloudAwareEnv().ANTHROPIC_API_KEY?.trim());
+}
+
+function getAnthropicDirectProvider(): AIProvider {
+  const apiKey = getRequiredProviderKey("ANTHROPIC_API_KEY");
+  if (!anthropicDirectProviderInstance || anthropicDirectProviderInstance.apiKey !== apiKey) {
+    anthropicDirectProviderInstance = {
+      apiKey,
+      provider: new AnthropicDirectProvider(apiKey),
+    };
+  }
+  return anthropicDirectProviderInstance.provider;
+}
+
+export function hasVastProviderConfigured(): boolean {
+  const env = getCloudAwareEnv();
+  return Boolean(env.VAST_API_KEY?.trim() && env.VAST_BASE_URL?.trim());
+}
+
+export function getVastProvider(): AIProvider {
+  const apiKey = getRequiredProviderKey("VAST_API_KEY");
+  const baseUrl = getRequiredProviderKey("VAST_BASE_URL");
+  if (
+    !vastProviderInstance ||
+    vastProviderInstance.apiKey !== apiKey ||
+    vastProviderInstance.baseUrl !== baseUrl
+  ) {
+    vastProviderInstance = {
+      apiKey,
+      baseUrl,
+      provider: new VastProvider(apiKey, baseUrl),
+    };
+  }
+  return vastProviderInstance.provider;
+}
+
+export function getProviderForModel(model: string): AIProvider {
+  if (isGroqNativeModel(model)) {
+    return getGroqProvider();
+  }
+
+  if (isVastNativeModel(model)) {
+    return getVastProvider();
+  }
+
+  return getProvider();
+}
+
+/**
+ * Returns primary + fallback providers for a model.
+ *
+ * Routes used by chat/completions, responses, embeddings, and apps/[id]/chat
+ * call this to enable automatic 402/429 failover via `withProviderFallback`.
+ *
+ * Fallback rules:
+ *   - Groq native models: no fallback (Groq runs through its own provider).
+ *   - Vast native models: no fallback (Vast Serverless is the only host for these self-hosted ids).
+ *   - `openai/*`: OpenAI direct fallback when OPENAI_API_KEY is set.
+ *   - `anthropic/*`: Anthropic direct fallback when ANTHROPIC_API_KEY is set.
+ *   - All other models (xai, google, mistral, …): no fallback.
+ */
+export function getProviderForModelWithFallback(model: string): {
+  primary: AIProvider;
+  fallback: AIProvider | null;
+} {
+  if (isGroqNativeModel(model)) {
+    return { primary: getGroqProvider(), fallback: null };
+  }
+
+  if (isVastNativeModel(model)) {
+    return { primary: getVastProvider(), fallback: null };
+  }
+
+  const primary = getProvider();
+
+  if (model.startsWith("openai/") && hasOpenAIDirectConfigured()) {
+    return { primary, fallback: getOpenAIDirectProvider() };
+  }
+
+  if (model.startsWith("anthropic/") && hasAnthropicDirectConfigured()) {
+    return { primary, fallback: getAnthropicDirectProvider() };
+  }
+
+  return { primary, fallback: null };
+}

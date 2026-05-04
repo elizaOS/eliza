@@ -1,0 +1,125 @@
+name: Build, Push & Deploy to Phala Cloud
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "Dockerfile"
+  workflow_dispatch:
+    inputs:
+      logLevel:
+        description: "Log level"
+        required: true
+        default: "warning"
+      environment:
+        description: "Environment to deploy"
+        required: false
+        default: "staging"
+
+# Prevent concurrent deploys
+concurrency:
+  group: tee-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+# Environment variables - prefer secrets over vars for sensitive data
+env:
+  # Docker configuration
+  DOCKER_REGISTRY: ${{ vars.DOCKER_REGISTRY || 'docker.io' }}
+  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+  DOCKER_IMAGE: ${{ vars.DOCKER_IMAGE || 'elizaos' }}
+  DOCKER_REGISTRY_USERNAME: ${{ secrets.DOCKER_REGISTRY_USERNAME }}
+  DOCKER_REGISTRY_PASSWORD: ${{ secrets.DOCKER_REGISTRY_PASSWORD }}
+
+  # Phala Cloud
+  APP_ID: ${{ vars.APP_ID }}
+  PHALA_CLOUD_API_KEY: ${{ secrets.PHALA_CLOUD_API_KEY }}
+
+  # API Keys
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  BIRDEYE_API_KEY: ${{ secrets.BIRDEYE_API_KEY }}
+
+  # Server configuration
+  SERVER_PORT: ${{ vars.SERVER_PORT || '3000' }}
+  POSTGRES_URL: ${{ secrets.POSTGRES_URL }}
+
+  # TEE configuration
+  TEE_MODE: ${{ vars.TEE_MODE || 'PRODUCTION' }}
+  TEE_VENDOR: ${{ vars.TEE_VENDOR || 'phala' }}
+  WALLET_SECRET_SALT: ${{ secrets.WALLET_SECRET_SALT }}
+
+  # Discord bot tokens (passed to deployment)
+  TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+  EVM_CHAINS: ${{ vars.EVM_CHAINS }}
+jobs:
+  build-and-push:
+    permissions:
+      contents: read
+      packages: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.DOCKER_REGISTRY }}
+          username: ${{ env.DOCKER_REGISTRY_USERNAME }}
+          password: ${{ env.DOCKER_REGISTRY_PASSWORD }}
+
+      - name: Build and Push Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: |
+            ${{ env.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE }}:latest
+            ${{ env.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE }}:${{ github.sha }}
+      - name: Set Docker Image Full Name
+        run: |
+          export DOCKER_IMAGE_FULL_NAME=${{ env.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE }}:${{ github.sha }}
+      - name: Update Docker Compose
+        run: |
+          sed -i "s|\${DOCKER_IMAGE_FULL_NAME}|${{ env.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE }}:${{ github.sha }}|g" ./tee-docker-compose.yaml
+
+      - name: Deploy to Phala Cloud
+        uses: Leechael/phala-deploy-action@v2
+        with:
+          # Required parameters
+          phala-api-key: ${{ secrets.PHALA_CLOUD_API_KEY }}
+
+          # Optional parameters (with defaults)
+          app-id: ${{ env.APP_ID || '' }} # App ID of existing CVM (if updating)
+          cvm-name: ""
+          compose-file: "./tee-docker-compose.yaml" # Default: './docker-compose.yml'
+          vcpu: "4" # Default: '2'
+          memory: "4096" # Default: '2048'
+          disk-size: "40" # Default: '40'
+          envs:
+            | # Environment variables passed to CVM
+            # Docker registry credentials
+            DOCKER_REGISTRY: ${{ env.DOCKER_REGISTRY }}
+            DOCKER_REGISTRY_USERNAME: ${{ env.DOCKER_REGISTRY_USERNAME }}
+            DOCKER_REGISTRY_PASSWORD: ${{ env.DOCKER_REGISTRY_PASSWORD }}
+            # API keys
+            OPENAI_API_KEY: ${{ env.OPENAI_API_KEY }}
+            ANTHROPIC_API_KEY: ${{ env.ANTHROPIC_API_KEY }}
+            BIRDEYE_API_KEY: ${{ env.BIRDEYE_API_KEY }}
+            # Server configuration
+            SERVER_PORT: ${{ env.SERVER_PORT }}
+            POSTGRES_URL: ${{ env.POSTGRES_URL }}
+            EVM_CHAINS: ${{ env.EVM_CHAINS }}
+            # TEE configuration
+            TEE_MODE: ${{ env.TEE_MODE }}
+            TEE_VENDOR: ${{ env.TEE_VENDOR }}
+            WALLET_SECRET_SALT: ${{ env.WALLET_SECRET_SALT }}
+            # Bot tokens
+            TELEGRAM_BOT_TOKEN: ${{ env.TELEGRAM_BOT_TOKEN }}
+            # Discord bots - add as needed via secrets
+            DISCORD_APPLICATION_ID: ${{ secrets.DISCORD_APPLICATION_ID }}
+            DISCORD_API_TOKEN: ${{ secrets.DISCORD_API_TOKEN }}
+          node-id: "" # Node ID (Teepod ID: Default to available node id)
+          base-image: "" # Base image to use for the CVM (Default to latest dstack image)

@@ -1,0 +1,163 @@
+name: Publish Alpha (tag)
+
+# Bump and publish all non-private workspace packages and plugins to npm
+# with the `alpha` dist-tag only when an alpha version tag is pushed.
+# Lerna covers `packages/*` and `plugins/*`.
+# `lerna publish from-package` is idempotent — versions already on npm
+# are skipped, so re-runs and partial failures are safe.
+
+on:
+  push:
+    tags:
+      - "v*-alpha*"
+
+concurrency:
+  group: publish-alpha-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    env:
+      TARGET_REF: ${{ github.ref }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.TARGET_REF }}
+          fetch-depth: 0
+          filter: blob:none
+
+      - name: Resolve alpha version from tag
+        id: version
+        run: |
+          set -euo pipefail
+
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+
+          if [[ ! "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-alpha(\.[0-9A-Za-z-]+)?$ ]]; then
+            echo "Expected an alpha semver tag like v2.0.0-alpha.537; got ${TAG}"
+            exit 1
+          fi
+
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Publishing ${VERSION} from ${TAG} to dist-tag alpha"
+
+      - name: Create local release branch
+        # Tag checkouts are detached. Pin a local branch name that matches
+        # lerna's release/* allowBranch rule before versioning.
+        run: git checkout -B "release/alpha-${{ steps.version.outputs.version }}"
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24.x"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.13"
+
+      - name: Install Linux system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libpq-dev \
+            postgresql-client \
+            pkg-config \
+            libatspi2.0-dev \
+            libgtk-3-dev \
+            libx11-dev \
+            libxcb1-dev \
+            libxcb-randr0-dev \
+            libxkbcommon-dev \
+            libwayland-dev \
+            libpipewire-0.3-dev \
+            libgbm-dev \
+            libdrm-dev \
+            libegl1-mesa-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --locked
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump package versions
+        run: |
+          CURRENT_VERSION=$(node -p "require('./lerna.json').version")
+          if [[ "${CURRENT_VERSION}" == "${{ steps.version.outputs.version }}" ]]; then
+            echo "Packages are already at ${{ steps.version.outputs.version }}."
+          else
+            bunx lerna version "${{ steps.version.outputs.version }}" \
+              --force-publish \
+              --yes \
+              --no-private \
+              --allow-branch "release/*" \
+              --no-git-tag-version \
+              --no-push
+          fi
+
+      - name: Update lockfile
+        run: bun install --no-frozen-lockfile
+
+      - name: Create local version commit
+        run: |
+          git add -A
+          if git diff --staged --quiet; then
+            echo "No local version changes to commit."
+          else
+            git commit -m "chore: prepare v${{ steps.version.outputs.version }} for alpha publish [skip ci]"
+          fi
+
+      - name: Build packages
+        run: bun run build
+
+      - name: Ensure clean tree before publish
+        run: |
+          git checkout -- packages/elizaos/examples-manifest.json || true
+
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "Working tree must be clean before publish."
+            git status --short
+            exit 1
+          fi
+
+      - name: Publish to npm with alpha tag
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          bunx lerna publish from-package \
+            --dist-tag alpha \
+            --force-publish \
+            --yes \
+            --no-verify-access
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Publish Alpha"
+            echo ""
+            echo "- Source tag: \`${{ steps.version.outputs.tag }}\`"
+            echo "- Published version: \`${{ steps.version.outputs.version }}\`"
+            echo "- Dist-tag: \`alpha\`"
+            echo "- Scope: all non-private packages under \`packages/*\` and \`plugins/*\`"
+          } >> "$GITHUB_STEP_SUMMARY"

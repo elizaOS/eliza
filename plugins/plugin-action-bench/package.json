@@ -1,0 +1,73 @@
+{
+  "name": "@elizaos/plugin-action-bench",
+  "version": "2.0.0-alpha.536",
+  "description": "Action calling benchmark plugins for ElizaOS with typewriter, multiverse math, and relational data operations",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "clean": "rm -rf dist",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "benchmark": "cd test-scripts && npm install && npm test",
+    "benchmark:typewriter": "cd test-scripts && npm install && npm run test:typewriter",
+    "benchmark:math": "cd test-scripts && npm install && npm run test:math",
+    "benchmark:relational": "cd test-scripts && npm install && npm run test:relational",
+    "benchmark:verbose": "cd test-scripts && npm install && npm run test:verbose",
+    "benchmark:install": "cd test-scripts && npm install"
+  },
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "benchmark",
+    "typewriter",
+    "actions",
+    "multiverse",
+    "math",
+    "dimensional",
+    "context-dependent",
+    "relational",
+    "graph",
+    "entities",
+    "testing"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "author": "elizaOS Contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/eliza.git",
+    "directory": "plugin-action-bench"
+  },
+  "bugs": {
+    "url": "https://github.com/elizaos/eliza/issues"
+  },
+  "homepage": "https://github.com/elizaos/eliza#readme",
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "socket.io-client": "^4.8.1",
+    "uuid": "^14.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.2.0",
+    "prettier": "^3.8.3",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3"
+  }
+}

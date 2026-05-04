@@ -1,0 +1,73 @@
+[build-system]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[project]
+name = "elizaos-mind2web"
+version = "0.1.0"
+description = "Mind2Web benchmark for ElizaOS - web agent evaluation"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "ElizaOS Team" }
+]
+keywords = ["benchmark", "mind2web", "web-agent", "elizaos", "browser-automation"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "elizaos>=0.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "mypy>=1.8",
+    "ruff>=0.5",
+]
+hf = [
+    "datasets>=2.0",
+]
+groq = [
+    "elizaos-plugin-groq>=1.0",
+]
+openai = [
+    "elizaos-plugin-openai>=1.0",
+]
+all = [
+    "elizaos-mind2web[dev,hf,groq,openai]",
+]
+
+[project.scripts]
+mind2web = "benchmarks.mind2web.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["benchmarks/mind2web"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_any_generics = true
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM"]
+ignore = ["E501"]

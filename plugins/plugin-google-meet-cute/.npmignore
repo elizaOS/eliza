@@ -1,0 +1,37 @@
+# Source files (only publish built files)
+src/
+*.ts
+!*.d.ts
+
+# Configuration files
+tsconfig.json
+tsup.config.ts
+vitest.config.ts
+.env
+.env.*
+
+# Development files
+node_modules/
+*.log
+.DS_Store
+
+# Test files
+__tests__/
+*.test.ts
+*.spec.ts
+coverage/
+
+# Editor files
+.vscode/
+.idea/
+
+# Git files
+.git/
+.gitignore
+
+# Documentation source
+docs/
+
+# Credentials (NEVER publish these)
+*.json
+!package.json 

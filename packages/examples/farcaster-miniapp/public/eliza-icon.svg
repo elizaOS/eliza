@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <defs>
+    <linearGradient id="spartanGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#8a63d2;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#4ecdc4;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Shield outline -->
+  <path d="M50 5 L90 20 L90 50 Q90 80 50 95 Q10 80 10 50 L10 20 Z" 
+        stroke="url(#spartanGradient)" 
+        stroke-width="3" 
+        fill="none"/>
+  
+  <!-- Shield fill -->
+  <path d="M50 10 L85 23 L85 50 Q85 77 50 90 Q15 77 15 50 L15 23 Z" 
+        fill="url(#spartanGradient)" 
+        opacity="0.2"/>
+  
+  <!-- Eliza AI symbol -->
+  <g transform="translate(50, 40)">
+    <!-- Helmet top -->
+    <path d="M-15,-10 Q-15,-20 0,-25 Q15,-20 15,-10 L15,5 L-15,5 Z" 
+          fill="url(#spartanGradient)"/>
+    
+    <!-- Crest -->
+    <path d="M-2,-25 L0,-35 L2,-25 Z" 
+          fill="url(#spartanGradient)"/>
+    
+    <!-- Face opening -->
+    <rect x="-10" y="-5" width="20" height="15" 
+          fill="#0f0f1e"/>
+    
+    <!-- Nose guard -->
+    <rect x="-1" y="-5" width="2" height="15" 
+          fill="url(#spartanGradient)"/>
+    
+    <!-- Cheek guards -->
+    <path d="M-15,5 L-15,15 L-10,20 L-5,15 L-5,5 Z" 
+          fill="url(#spartanGradient)"/>
+    <path d="M15,5 L15,15 L10,20 L5,15 L5,5 Z" 
+          fill="url(#spartanGradient)"/>
+  </g>
+  
+  <!-- Chain links (representing multi-chain) -->
+  <g transform="translate(25, 70)" opacity="0.6">
+    <circle cx="0" cy="0" r="4" stroke="url(#spartanGradient)" stroke-width="2" fill="none"/>
+    <circle cx="8" cy="0" r="4" stroke="url(#spartanGradient)" stroke-width="2" fill="none"/>
+  </g>
+  <g transform="translate(65, 70)" opacity="0.6">
+    <circle cx="0" cy="0" r="4" stroke="url(#spartanGradient)" stroke-width="2" fill="none"/>
+    <circle cx="8" cy="0" r="4" stroke="url(#spartanGradient)" stroke-width="2" fill="none"/>
+  </g>
+</svg>
+

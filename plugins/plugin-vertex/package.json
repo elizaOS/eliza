@@ -1,0 +1,80 @@
+{
+  "name": "@elizaos/plugin-vertex",
+  "version": "2.0.0-alpha.536",
+  "description": "Google Vertex AI plugin for ElizaOS — Claude and Gemini models via GCP",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@ai-sdk/google-vertex": "^4.0.0",
+    "ai": "^6.0.23"
+  },
+  "devDependencies": {
+    "@elizaos/core": "workspace:*",
+    "@types/node": "^25.6.0",
+    "typescript": "^6.0.3"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "GOOGLE_VERTEX_PROJECT_ID": {
+        "type": "string",
+        "description": "Google Cloud project ID with Vertex AI API enabled",
+        "required": true
+      },
+      "GOOGLE_VERTEX_REGION": {
+        "type": "string",
+        "description": "Vertex AI region (e.g. us-east5 for Claude, us-central1 for Gemini). Defaults are provider-aware if unset.",
+        "required": false
+      },
+      "VERTEX_SMALL_MODEL": {
+        "type": "string",
+        "description": "Model for TEXT_SMALL — claude-* or gemini-* (provider auto-detected by prefix)",
+        "default": "claude-haiku-4-5",
+        "required": false
+      },
+      "VERTEX_LARGE_MODEL": {
+        "type": "string",
+        "description": "Model for TEXT_LARGE — claude-* or gemini-* (provider auto-detected by prefix)",
+        "default": "claude-sonnet-4-6",
+        "required": false
+      },
+      "VERTEX_REASONING_SMALL_MODEL": {
+        "type": "string",
+        "description": "Model for TEXT_REASONING_SMALL — claude-* or gemini-* (provider auto-detected by prefix)",
+        "default": "claude-sonnet-4-6",
+        "required": false
+      },
+      "VERTEX_REASONING_LARGE_MODEL": {
+        "type": "string",
+        "description": "Model for TEXT_REASONING_LARGE — claude-* or gemini-* (provider auto-detected by prefix)",
+        "default": "claude-opus-4-6",
+        "required": false
+      }
+    }
+  },
+  "license": "MIT",
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "vertex-ai",
+    "google-cloud",
+    "claude",
+    "anthropic",
+    "gemini",
+    "google"
+  ]
+}
