@@ -1451,14 +1451,15 @@ async function handleResolveClarification(
     return true;
   }
 
-  pruneResolvedClarifications(
-    draft,
-    new Set(
-      resolutions
-        .map((r) => r.paramPath)
-        .filter((p): p is string => typeof p === "string" && p.length > 0),
-    ),
+  const resolvedPaths = new Set(
+    resolutions
+      .map((r) => r.paramPath)
+      .filter((p): p is string => typeof p === "string" && p.length > 0),
   );
+  const freeFormCount = resolutions.filter(
+    (r) => typeof r.paramPath !== "string" || r.paramPath.length === 0,
+  ).length;
+  pruneResolvedClarifications(draft, resolvedPaths, freeFormCount);
 
   if (name?.trim()) {
     draft.name = name.trim();
