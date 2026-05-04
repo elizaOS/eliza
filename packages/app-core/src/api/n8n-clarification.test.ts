@@ -161,10 +161,43 @@ describe("applyResolutions", () => {
     });
   });
 
-  it("rejects a missing paramPath", () => {
+  it("treats empty paramPath as a free-form note under _meta.userNotes", () => {
+    const draft: Record<string, unknown> = {};
+    const result = applyResolutions(draft, [
+      { paramPath: "", value: "user-supplied context" },
+    ]);
+    expect(result).toEqual({ ok: true });
+    expect(draft).toEqual({
+      _meta: { userNotes: ["user-supplied context"] },
+    });
+  });
+
+  it("appends free-form notes when _meta.userNotes already exists as array", () => {
+    const draft: Record<string, unknown> = {
+      _meta: { userNotes: ["earlier note"] },
+    };
+    applyResolutions(draft, [{ paramPath: "", value: "next note" }]);
+    expect(draft).toEqual({
+      _meta: { userNotes: ["earlier note", "next note"] },
+    });
+  });
+
+  it("preserves non-array prior userNotes by coercing to a single-element array", () => {
+    const draft: Record<string, unknown> = {
+      _meta: { userNotes: "legacy string" },
+    };
+    applyResolutions(draft, [{ paramPath: "", value: "fresh note" }]);
+    expect(draft).toEqual({
+      _meta: { userNotes: ["legacy string", "fresh note"] },
+    });
+  });
+
+  it("rejects a non-string paramPath", () => {
     const draft: Record<string, unknown> = {};
     expect(
-      applyResolutions(draft, [{ paramPath: "", value: "x" } as never]),
+      applyResolutions(draft, [
+        { paramPath: undefined as unknown as string, value: "x" },
+      ]),
     ).toEqual({ ok: false, error: "resolution missing paramPath" });
   });
 
