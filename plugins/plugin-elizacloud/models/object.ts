@@ -59,11 +59,7 @@ export function extractFirstBalancedJsonValue(text: string): string {
     const firstObj = text.indexOf("{", searchFrom);
     const firstArr = text.indexOf("[", searchFrom);
     const start =
-      firstObj === -1
-        ? firstArr
-        : firstArr === -1
-          ? firstObj
-          : Math.min(firstObj, firstArr);
+      firstObj === -1 ? firstArr : firstArr === -1 ? firstObj : Math.min(firstObj, firstArr);
     if (start < 0) break;
     const open = text[start];
     const close = open === "{" ? "}" : "]";

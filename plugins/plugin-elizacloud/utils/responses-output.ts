@@ -102,16 +102,12 @@ export function extractResponsesOutputText(data: unknown): string {
   }
 
   if (Array.isArray(record.output)) {
-    const fromOutput = record.output
-      .flatMap(extractTextFromOutputItem)
-      .join("");
+    const fromOutput = record.output.flatMap(extractTextFromOutputItem).join("");
     if (fromOutput.trim()) return fromOutput;
   }
 
   if (Array.isArray(record.choices)) {
-    const fromChoices = record.choices
-      .flatMap(extractTextFromChoice)
-      .join("");
+    const fromChoices = record.choices.flatMap(extractTextFromChoice).join("");
     if (fromChoices.trim()) return fromChoices;
   }
 
