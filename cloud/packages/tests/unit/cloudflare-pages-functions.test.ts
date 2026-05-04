@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
+import { onRequest as middleware } from "../../../apps/frontend/functions/_middleware";
 import { resolveApiWorkerTarget } from "../../../apps/frontend/functions/_proxy";
-import { onRequest as apiProxy } from "../../../apps/frontend/functions/api/[[path]]";
-import { onRequest as stewardProxy } from "../../../apps/frontend/functions/steward/[[path]]";
 
 const originalFetch = globalThis.fetch;
 
@@ -24,15 +23,20 @@ function captureFetches(): Request[] {
   return requests;
 }
 
+function nextStub(): () => Promise<Response> {
+  return async () => new Response("spa-fallthrough", { status: 418 });
+}
+
 describe("Cloudflare Pages Functions proxy", () => {
   it("routes Pages preview /api traffic to the staging Worker by default", async () => {
     const requests = captureFetches();
-    const response = await apiProxy({
+    const response = await middleware({
       request: new Request("https://eliza-cloud-enq.pages.dev/api/credits/balance?fresh=1", {
         headers: { "x-test-header": "present" },
         method: "POST",
       }),
       env: {},
+      next: nextStub(),
     });
 
     expect(response.headers.get("x-target")).toBe(
@@ -59,14 +63,28 @@ describe("Cloudflare Pages Functions proxy", () => {
 
   it("routes same-origin /steward traffic through the same Worker upstream", async () => {
     const requests = captureFetches();
-    const response = await stewardProxy({
+    const response = await middleware({
       request: new Request("https://eliza-cloud-enq.pages.dev/steward/tenants/config"),
       env: {},
+      next: nextStub(),
     });
 
     expect(response.headers.get("x-target")).toBe(
       "https://api-staging.elizacloud.ai/steward/tenants/config",
     );
     expect(requests).toHaveLength(1);
+  });
+
+  it("falls through to the SPA for non-/api and non-/steward requests", async () => {
+    const requests = captureFetches();
+    const response = await middleware({
+      request: new Request("https://www.elizacloud.ai/dashboard"),
+      env: {},
+      next: nextStub(),
+    });
+
+    expect(await response.text()).toBe("spa-fallthrough");
+    expect(response.status).toBe(418);
+    expect(requests).toHaveLength(0);
   });
 });
