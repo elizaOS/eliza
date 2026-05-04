@@ -39,7 +39,9 @@ import { stageAndroidAgentRuntime } from "./lib/stage-android-agent.mjs";
 // ── Paths ───────────────────────────────────────────────────────────────
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
+const repoRoot = resolveRepoRootFromImportMeta(import.meta.url, {
+  fallbackToCwd: true,
+});
 const appCoreRoot = path.resolve(__dirname, "..");
 const packagesRoot = path.resolve(appCoreRoot, "..");
 const appDir = resolveMainAppDir(repoRoot, "app");
@@ -211,7 +213,11 @@ function ensurePlistArrayStrings(content, key, values) {
  */
 function resolvePackagePath(pkgName, relativeTo) {
   const appPackage = path.join(appDir, "node_modules", ...pkgName.split("/"));
-  const rootNodeModulesPackage = path.join(repoRoot, "node_modules", ...pkgName.split("/"));
+  const rootNodeModulesPackage = path.join(
+    repoRoot,
+    "node_modules",
+    ...pkgName.split("/"),
+  );
   const candidates = [appPackage, rootNodeModulesPackage];
   for (const bunStore of [
     path.join(appDir, "node_modules", ".bun"),
@@ -220,7 +226,9 @@ function resolvePackagePath(pkgName, relativeTo) {
     if (!fs.existsSync(bunStore)) continue;
     for (const entry of fs.readdirSync(bunStore, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
-      candidates.push(path.join(bunStore, entry.name, "node_modules", ...pkgName.split("/")));
+      candidates.push(
+        path.join(bunStore, entry.name, "node_modules", ...pkgName.split("/")),
+      );
     }
   }
   const linked = candidates.find((candidate) => fs.existsSync(candidate));
@@ -706,9 +714,7 @@ function injectBrandUserAgentMarkers(javaSource, markers) {
   for (const marker of markers) {
     const systemProp = escapeJavaString(marker.systemProp);
     const uaPrefix = escapeJavaString(marker.uaPrefix);
-    lines.push(
-      `        new UserAgentMarker("${systemProp}", "${uaPrefix}"),`,
-    );
+    lines.push(`        new UserAgentMarker("${systemProp}", "${uaPrefix}"),`);
   }
   return javaSource.replace(arrayRe, `$1\n${lines.join("\n")}\n    $3`);
 }
@@ -1553,8 +1559,20 @@ function patchAndroidGradleWrapperForReleaseCompat() {
 // which is fine because this function runs before every build.
 function patchInstalledLlamaCapacitorBuildGradle() {
   const candidates = [
-    path.join(appDir, "node_modules", "llama-cpp-capacitor", "android", "build.gradle"),
-    path.join(repoRoot, "node_modules", "llama-cpp-capacitor", "android", "build.gradle"),
+    path.join(
+      appDir,
+      "node_modules",
+      "llama-cpp-capacitor",
+      "android",
+      "build.gradle",
+    ),
+    path.join(
+      repoRoot,
+      "node_modules",
+      "llama-cpp-capacitor",
+      "android",
+      "build.gradle",
+    ),
   ];
   const bunStores = [
     path.join(appDir, "node_modules", ".bun"),

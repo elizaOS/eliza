@@ -60,17 +60,9 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Build web assets
+      - name: Prepare Android platform
         working-directory: ${{ env.APP_DIR }}
-        run: bun run build
-
-      - name: Build Capacitor plugins
-        working-directory: ${{ env.APP_DIR }}
-        run: bun run plugin:build
-
-      - name: Sync Capacitor Android
-        working-directory: ${{ env.APP_DIR }}
-        run: bun run cap:sync:android
+        run: bun run build:android
 
       - name: Override Gradle JDK path for CI
         working-directory: ${{ env.APP_DIR }}/android
@@ -94,20 +86,20 @@ jobs:
           VERSION_CODE=$(( ${major:-0} * 10000 + ${minor:-0} * 100 + ${patch:-0} ))
           echo "version_code=$VERSION_CODE" >> $GITHUB_OUTPUT
 
-      - name: Set version in build.gradle
-        working-directory: ${{ env.APP_DIR }}/android/app
-        run: |
-          sed -i "s/versionCode 1/versionCode ${{ steps.version.outputs.version_code }}/" build.gradle
-          sed -i "s/versionName \"1.0\"/versionName \"${{ steps.version.outputs.version }}\"/" build.gradle
-
       - name: Build debug APK
         if: github.event_name == 'workflow_dispatch'
         working-directory: ${{ env.APP_DIR }}/android
+        env:
+          ELIZAOS_VERSION_NAME: ${{ steps.version.outputs.version }}
+          ELIZAOS_VERSION_CODE: ${{ steps.version.outputs.version_code }}
         run: ./gradlew assembleDebug --no-daemon
 
       - name: Build release APK & AAB
         if: github.event_name == 'release'
         working-directory: ${{ env.APP_DIR }}/android
+        env:
+          ELIZAOS_VERSION_NAME: ${{ steps.version.outputs.version }}
+          ELIZAOS_VERSION_CODE: ${{ steps.version.outputs.version_code }}
         run: |
           ./gradlew assembleRelease --no-daemon
           ./gradlew bundleRelease --no-daemon

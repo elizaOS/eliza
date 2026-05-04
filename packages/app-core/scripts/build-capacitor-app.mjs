@@ -26,7 +26,9 @@ import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
+const repoRoot = resolveRepoRootFromImportMeta(import.meta.url, {
+  fallbackToCwd: true,
+});
 const appDir = resolveMainAppDir(repoRoot, "app");
 const repoSetupScript = path.join(__dirname, "run-repo-setup.mjs");
 const pruneCdnAssetsScript = path.join(__dirname, "prune-cdn-local-assets.mjs");

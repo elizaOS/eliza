@@ -94,7 +94,6 @@ import {
 } from "@elizaos/core";
 import * as pluginAgentSkills from "@elizaos/plugin-agent-skills";
 import * as pluginBrowserBridge from "@elizaos/plugin-browser-bridge";
-// @ts-expect-error
 import * as pluginPdf from "@elizaos/plugin-pdf";
 import * as pluginSql from "@elizaos/plugin-sql";
 import {
