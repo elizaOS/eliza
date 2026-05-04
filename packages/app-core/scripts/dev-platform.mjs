@@ -402,6 +402,11 @@ function waitForPort(port, { timeout = 120_000, interval = 400 } = {}) {
   });
 }
 
+function envFlagEnabled(name) {
+  const value = process.env[name]?.trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes" || value === "on";
+}
+
 async function waitForApiRoute(
   port,
   pathname,
@@ -429,6 +434,57 @@ async function waitForApiRoute(
   throw new Error(
     `Timed out waiting for ${pathname} on port ${port} after ${timeout / 1000}s`,
   );
+}
+
+async function waitForApiRuntimeReady(
+  port,
+  { timeout = 180_000, interval = 750 } = {},
+) {
+  const deadline = Date.now() + timeout;
+  const url = `http://127.0.0.1:${port}/api/health`;
+
+  while (Date.now() <= deadline) {
+    try {
+      const response = await fetch(url, {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (response.ok) {
+        const body = await response.json().catch(() => null);
+        if (
+          body &&
+          typeof body === "object" &&
+          body.runtime === "ok" &&
+          body.startup?.phase === "running"
+        ) {
+          return;
+        }
+      }
+    } catch {
+      // Keep polling until the runtime finishes bootstrapping.
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, interval));
+  }
+
+  throw new Error(
+    `Timed out waiting for runtime readiness on port ${port} after ${timeout / 1000}s`,
+  );
+}
+
+async function warmApiRoute(port, pathname, { timeout = 30_000 } = {}) {
+  const headers = { Accept: "application/json" };
+  const token = process.env.ELIZA_API_TOKEN?.trim();
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  await fetch(`http://127.0.0.1:${port}${pathname}`, {
+    headers,
+    signal: AbortSignal.timeout(timeout),
+  }).catch(() => {
+    // Warmup is best-effort; the renderer can still load without this route.
+  });
 }
 
 const children = [];
@@ -683,6 +739,17 @@ async function launch() {
     apiSupervisor.start();
     await waitForPort(Number(apiPort));
     await waitForApiRoute(Number(apiPort), "/api/status");
+    if (envFlagEnabled("ELIZA_DESKTOP_WAIT_FOR_RUNTIME")) {
+      console.log(
+        "[eliza] Waiting for runtime readiness before opening desktop renderer…",
+      );
+      await waitForApiRuntimeReady(Number(apiPort));
+      console.log("[eliza] Runtime ready.");
+
+      if (process.env.ELIZA_DESKTOP_PREWARM_CODING_PREFLIGHT !== "0") {
+        await warmApiRoute(Number(apiPort), "/api/coding-agents/preflight");
+      }
+    }
   }
 
   if (viteDevServer) {

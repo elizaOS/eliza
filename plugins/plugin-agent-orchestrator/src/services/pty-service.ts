@@ -498,6 +498,12 @@ export class PTYService {
   private metricsTracker = new AgentMetricsTracker();
   /** Active provider auth helper processes keyed by agent type. */
   private activeAuthFlows: Map<string, TaskAgentAuthFlowHandle> = new Map();
+  private preflightCache: Map<
+    string,
+    { expiresAt: number; results: PreflightResult[] }
+  > = new Map();
+  private preflightInFlight: Map<string, Promise<PreflightResult[]>> =
+    new Map();
   // Coalesces concurrent listSessions() calls against the Bun worker.
   // pty-manager keys its pending-response map by the command name ("list"),
   // so when two list() promises are in flight the second overwrites the
@@ -1565,10 +1571,36 @@ export class PTYService {
   ): Promise<PreflightResult[]> {
     const agentTypes =
       types ?? (["claude", "gemini", "codex", "aider"] as AdapterType[]);
-    const results = await checkAdapters(agentTypes);
-    return await augmentTaskAgentPreflightResults(results, {
-      runtime: this.runtime,
-    });
+    const cacheKey = agentTypes.join(",");
+    const now = Date.now();
+    const cached = this.preflightCache.get(cacheKey);
+    if (cached && cached.expiresAt > now) {
+      return cached.results;
+    }
+
+    const active = this.preflightInFlight.get(cacheKey);
+    if (active) {
+      return active;
+    }
+
+    const probe = (async () => {
+      const results = await checkAdapters(agentTypes);
+      const augmented = await augmentTaskAgentPreflightResults(results, {
+        runtime: this.runtime,
+      });
+      this.preflightCache.set(cacheKey, {
+        expiresAt: Date.now() + 60_000,
+        results: augmented,
+      });
+      return augmented;
+    })();
+
+    this.preflightInFlight.set(cacheKey, probe);
+    try {
+      return await probe;
+    } finally {
+      this.preflightInFlight.delete(cacheKey);
+    }
   }
 
   async getAgentAuthStatus(
