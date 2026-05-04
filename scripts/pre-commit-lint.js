@@ -5,8 +5,13 @@ import { existsSync } from "node:fs";
 // Log that we're starting
 console.log("Running pre-commit hook...");
 
-try {
-  // Get all staged files using git diff --staged instead
+const generatedAppPlatformPrefixes = [
+  "packages/app/android/",
+  "packages/app/ios/",
+  "packages/app/electrobun/",
+];
+
+function readStagedFiles() {
   console.log("Checking for staged files...");
   const proc = Bun.spawnSync(["git", "diff", "--staged", "--name-only"], {
     stdout: "pipe",
@@ -17,11 +22,55 @@ try {
     throw new Error("Failed to get staged files");
   }
 
-  const stagedFiles = new TextDecoder()
+  return new TextDecoder()
     .decode(proc.stdout)
     .trim()
     .split("\n")
     .filter(Boolean);
+}
+
+function readNewOrModifiedStagedFiles() {
+  const proc = Bun.spawnSync(
+    ["git", "diff", "--staged", "--name-only", "--diff-filter=ACMR"],
+    {
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  );
+
+  if (proc.exitCode !== 0) {
+    throw new Error("Failed to get new or modified staged files");
+  }
+
+  return new TextDecoder()
+    .decode(proc.stdout)
+    .trim()
+    .split("\n")
+    .filter(Boolean);
+}
+
+function assertNoGeneratedAppPlatformsStaged() {
+  const blockedFiles = readNewOrModifiedStagedFiles().filter((file) =>
+    generatedAppPlatformPrefixes.some((prefix) => file.startsWith(prefix)),
+  );
+
+  if (blockedFiles.length === 0) return;
+
+  const formattedFiles = blockedFiles.map((file) => `  - ${file}`).join("\n");
+  throw new Error(
+    [
+      "Generated app platform files must not be committed.",
+      "Canonical native templates live under packages/app-core/platforms and packages/app/* platform shells are materialized during builds.",
+      "Unstage these files and rely on the ignored generated output instead:",
+      formattedFiles,
+    ].join("\n"),
+  );
+}
+
+try {
+  // Get all staged files using git diff --staged instead
+  assertNoGeneratedAppPlatformsStaged();
+  const stagedFiles = readStagedFiles();
 
   console.log(`Found ${stagedFiles.length} staged files.`);
 
