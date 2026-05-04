@@ -203,7 +203,9 @@ function CliLoginContent() {
     return () => {
       active = false;
       clearTimeout(timeout);
-      abort.abort();
+      if (!completionFiredRef.current) {
+        abort.abort();
+      }
     };
   }, [authenticated, ready, sessionId]);
 
