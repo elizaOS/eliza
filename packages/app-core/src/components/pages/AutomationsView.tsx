@@ -4975,9 +4975,7 @@ function AutomationsLayout() {
           | (Record<string, unknown> & { id?: string; name?: string })
           | undefined;
         if (!draftRecord) {
-          setClarification((prev) =>
-            prev ? { ...prev, busy: false } : prev,
-          );
+          setClarification((prev) => (prev ? { ...prev, busy: false } : prev));
           return;
         }
         const result = await client.resolveN8nClarification({

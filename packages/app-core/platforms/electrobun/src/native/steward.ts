@@ -33,12 +33,10 @@ type SendToWebviewFn = (message: string, payload?: unknown) => void;
 // Lazy runtime imports
 // ---------------------------------------------------------------------------
 
-type StewardSidecarModule = typeof import(
-	"@elizaos/app-core/services/steward-sidecar"
-);
-type StewardCredentialsModule = typeof import(
-	"@elizaos/app-core/services/steward-credentials"
-);
+type StewardSidecarModule =
+	typeof import("@elizaos/app-core/services/steward-sidecar");
+type StewardCredentialsModule =
+	typeof import("@elizaos/app-core/services/steward-credentials");
 
 let stewardSidecarModulePromise: Promise<StewardSidecarModule> | null = null;
 let stewardCredentialsModulePromise: Promise<StewardCredentialsModule> | null =

@@ -37,7 +37,7 @@
     "dev": "tsup --watch",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "lint": "bunx @biomejs/biome check src",
+    "lint": "bunx @biomejs/biome lint src",
     "lint:check": "bun run lint",
     "typecheck": "echo \"Typecheck skipped for release\"",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
