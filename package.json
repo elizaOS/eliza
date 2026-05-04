@@ -88,6 +88,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.4.14",
     "@bufbuild/buf": "^1.47.2",
+    "@elizaos/app-lifeops": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/scenario-schema": "workspace:*",
     "@testing-library/react": "^16.3.2",
