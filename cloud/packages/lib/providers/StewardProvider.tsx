@@ -5,29 +5,6 @@ import { StewardAuth, StewardClient } from "@stwd/sdk";
 import { createContext, useEffect, useMemo, useRef } from "react";
 import { resolveBrowserStewardApiUrl } from "@/lib/steward-url";
 
-// Resolve the absolute origin to use for /api/* calls in the browser. On
-// known elizacloud.ai hosts, bypass the same-origin Pages Functions proxy
-// and hit the Workers API directly so the steward-session cookie is set on
-// the same host that subsequent apiFetch / cli-login calls hit. Without
-// this, the cookie is set on www.elizacloud.ai while later requests go
-// cross-origin to api.elizacloud.ai and the host-only cookie does not
-// flow, deadlocking the CLI login spinner at "Generating API Key".
-const ELIZA_CLOUD_PROXIED_HOSTS = new Set([
-  "elizacloud.ai",
-  "www.elizacloud.ai",
-  "dev.elizacloud.ai",
-]);
-const ELIZA_CLOUD_DIRECT_API = "https://api.elizacloud.ai";
-
-function stewardSessionUrl(): string {
-  if (typeof window === "undefined") return "/api/auth/steward-session";
-  const host = window.location.hostname.toLowerCase();
-  if (ELIZA_CLOUD_PROXIED_HOSTS.has(host)) {
-    return `${ELIZA_CLOUD_DIRECT_API}/api/auth/steward-session`;
-  }
-  return "/api/auth/steward-session";
-}
-
 /**
  * Steward authentication provider for Eliza Cloud.
  *
@@ -53,8 +30,16 @@ type ImportMetaEnvLike = {
   env?: Record<string, string | undefined>;
 };
 
-function getViteEnvFlag(name: string): string | undefined {
+function getViteEnvValue(name: string): string | undefined {
   return (import.meta as unknown as ImportMetaEnvLike).env?.[name];
+}
+
+function getViteEnvFlag(name: string): string | undefined {
+  return getViteEnvValue(name);
+}
+
+function trimTrailingSlash(value: string): string {
+  return value.replace(/\/+$/, "");
 }
 
 function isPlaywrightTestAuthEnabled(): boolean {
@@ -70,10 +55,40 @@ function isPlaywrightTestAuthEnabled(): boolean {
  */
 const STEWARD_TOKEN_KEY = "steward_session_token";
 const STEWARD_REFRESH_TOKEN_KEY = "steward_refresh_token";
+const STEWARD_SESSION_ENDPOINT = "/api/auth/steward-session";
+const ELIZA_CLOUD_COOKIE_HOSTS = new Set(["elizacloud.ai", "www.elizacloud.ai"]);
+const ELIZA_CLOUD_DIRECT_SESSION_ENDPOINT = "https://api.elizacloud.ai/api/auth/steward-session";
 
 export const LocalStewardAuthContext = createContext<ReturnType<typeof useStewardAuth> | null>(
   null,
 );
+
+function configuredSessionEndpoint(): string {
+  const apiBase =
+    getViteEnvValue("VITE_API_URL") ||
+    getViteEnvValue("NEXT_PUBLIC_API_URL") ||
+    process.env.NEXT_PUBLIC_API_URL;
+  if (apiBase && !isPlaceholderValue(apiBase)) {
+    return `${trimTrailingSlash(apiBase)}${STEWARD_SESSION_ENDPOINT}`;
+  }
+  return STEWARD_SESSION_ENDPOINT;
+}
+
+function stewardSessionClearUrls(): string[] {
+  if (typeof window === "undefined") return [configuredSessionEndpoint()];
+  const urls = new Set([STEWARD_SESSION_ENDPOINT, configuredSessionEndpoint()]);
+  const host = window.location.hostname.toLowerCase();
+  if (ELIZA_CLOUD_COOKIE_HOSTS.has(host)) {
+    urls.add(ELIZA_CLOUD_DIRECT_SESSION_ENDPOINT);
+  }
+  return [...urls];
+}
+
+function clearServerStewardSessionCookies(): void {
+  for (const url of stewardSessionClearUrls()) {
+    fetch(url, { method: "DELETE", credentials: "include" }).catch(() => {});
+  }
+}
 
 function readStoredToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -157,7 +172,7 @@ export function clearStaleStewardSession(): void {
     // ignore
   }
   // Server-side cookies (HttpOnly — JS can't touch them directly).
-  fetch(stewardSessionUrl(), { method: "DELETE", credentials: "include" }).catch(() => {});
+  clearServerStewardSessionCookies();
   // Notify any in-tab listeners; the "storage" event covers cross-tab.
   try {
     window.dispatchEvent(new CustomEvent("steward-token-sync"));
@@ -198,7 +213,7 @@ function AuthTokenSync({ children }: { children: React.ReactNode }) {
           lastSyncedToken.current = null;
           lastSyncedRefreshToken.current = null;
           wasAuthenticated.current = false;
-          fetch(stewardSessionUrl(), { method: "DELETE", credentials: "include" }).catch(() => {});
+          clearServerStewardSessionCookies();
         }
         return;
       }
@@ -215,7 +230,7 @@ function AuthTokenSync({ children }: { children: React.ReactNode }) {
       lastSyncedRefreshToken.current = refreshToken;
       wasAuthenticated.current = true;
 
-      fetch(stewardSessionUrl(), {
+      fetch(configuredSessionEndpoint(), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -290,9 +305,7 @@ function AuthTokenSync({ children }: { children: React.ReactNode }) {
             lastSyncedToken.current = null;
             lastSyncedRefreshToken.current = null;
             wasAuthenticated.current = false;
-            fetch(stewardSessionUrl(), { method: "DELETE", credentials: "include" }).catch(
-              () => {},
-            );
+            clearServerStewardSessionCookies();
           }
         }
       } catch (err) {
