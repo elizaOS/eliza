@@ -588,7 +588,9 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
 
         if (isSandboxMode) {
           const cloudApiBase =
-            getBootConfig().cloudApiBase ?? "https://www.elizacloud.ai";
+            client.getBaseUrl().trim() ||
+            getBootConfig().cloudApiBase ||
+            "https://www.elizacloud.ai";
           const authToken = String(
             (globalThis as Record<string, unknown>)
               .__ELIZA_CLOUD_AUTH_TOKEN__ ?? "",

@@ -109,7 +109,12 @@ function isConfiguredCloudSiteBase(baseUrl: string): boolean {
 
   try {
     const host = new URL(baseUrl).hostname.toLowerCase();
-    return host === "elizacloud.ai" || host === "www.elizacloud.ai";
+    return (
+      host === "api.elizacloud.ai" ||
+      host === "elizacloud.ai" ||
+      host === "www.elizacloud.ai" ||
+      host === "dev.elizacloud.ai"
+    );
   } catch {
     return false;
   }
@@ -398,6 +403,7 @@ export function useCloudState({
       try {
         let resp: {
           ok: boolean;
+          apiBase?: string;
           browserUrl?: string;
           sessionId?: string;
           error?: string;
@@ -445,6 +451,8 @@ export function useCloudState({
         }
 
         const sessionId = resp.sessionId ?? "";
+        const authenticatedCloudApiBase =
+          useDirectAuth && resp.apiBase ? resp.apiBase : cloudApiBase;
 
         let pollInFlight = false;
         let consecutivePollErrors = 0;
@@ -482,7 +490,10 @@ export function useCloudState({
               error?: string;
             };
             if (useDirectAuth) {
-              poll = await client.cloudLoginPollDirect(cloudApiBase, sessionId);
+              poll = await client.cloudLoginPollDirect(
+                authenticatedCloudApiBase,
+                sessionId,
+              );
             } else {
               poll = await client.cloudLoginPoll(sessionId);
             }
@@ -496,7 +507,10 @@ export function useCloudState({
                 ).__ELIZA_CLOUD_AUTH_TOKEN__ = poll.token;
                 // Also update boot config so subsequent reads use the resolved cloud base.
                 const cfg = getBootConfig();
-                setBootConfig({ ...cfg, cloudApiBase });
+                setBootConfig({
+                  ...cfg,
+                  cloudApiBase: authenticatedCloudApiBase,
+                });
               }
 
               if (useDirectAuth) {
@@ -506,7 +520,7 @@ export function useCloudState({
                   );
                   return;
                 }
-                client.setBaseUrl(cloudApiBase);
+                client.setBaseUrl(authenticatedCloudApiBase);
                 client.setToken(poll.token);
               }
 

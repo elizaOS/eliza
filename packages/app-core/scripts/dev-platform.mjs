@@ -438,7 +438,7 @@ async function waitForApiRoute(
 
 async function waitForApiRuntimeReady(
   port,
-  { timeout = 180_000, interval = 750 } = {},
+  { timeout = 360_000, interval = 750 } = {},
 ) {
   const deadline = Date.now() + timeout;
   const url = `http://127.0.0.1:${port}/api/health`;
@@ -479,12 +479,43 @@ async function warmApiRoute(port, pathname, { timeout = 30_000 } = {}) {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  await fetch(`http://127.0.0.1:${port}${pathname}`, {
+  const response = await fetch(`http://127.0.0.1:${port}${pathname}`, {
     headers,
     signal: AbortSignal.timeout(timeout),
-  }).catch(() => {
-    // Warmup is best-effort; the renderer can still load without this route.
   });
+  await response.arrayBuffer().catch(() => {});
+}
+
+async function warmApiRoutes(port) {
+  const routes = [
+    { pathname: "/api/apps", timeout: 90_000 },
+    { pathname: "/api/coding-agents/coordinator/status", timeout: 60_000 },
+    { pathname: "/api/apps/installed", timeout: 90_000 },
+    { pathname: "/api/apps/runs", timeout: 30_000 },
+    { pathname: "/api/computer-use/approvals", timeout: 30_000 },
+    { pathname: "/api/drop/status", timeout: 30_000 },
+  ];
+
+  if (process.env.ELIZA_DESKTOP_PREWARM_CODING_PREFLIGHT !== "0") {
+    routes.push({ pathname: "/api/coding-agents/preflight", timeout: 60_000 });
+  }
+
+  const started = Date.now();
+  console.log("[eliza] Prewarming desktop startup API routes...");
+  for (const route of routes) {
+    try {
+      await warmApiRoute(port, route.pathname, { timeout: route.timeout });
+    } catch (error) {
+      console.warn(
+        `[eliza] Warning: failed to prewarm ${route.pathname}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+  console.log(
+    `[eliza] Desktop startup API routes prewarmed in ${Date.now() - started}ms.`,
+  );
 }
 
 const children = [];
@@ -745,10 +776,7 @@ async function launch() {
       );
       await waitForApiRuntimeReady(Number(apiPort));
       console.log("[eliza] Runtime ready.");
-
-      if (process.env.ELIZA_DESKTOP_PREWARM_CODING_PREFLIGHT !== "0") {
-        await warmApiRoute(Number(apiPort), "/api/coding-agents/preflight");
-      }
+      await warmApiRoutes(Number(apiPort));
     }
   }
 

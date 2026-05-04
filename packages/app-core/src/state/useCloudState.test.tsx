@@ -269,6 +269,35 @@ describe("useCloudState", () => {
     );
   });
 
+  it("keeps using direct Eliza Cloud auth when the native client already points at the API host", async () => {
+    (
+      globalThis as { Capacitor?: { isNativePlatform: () => boolean } }
+    ).Capacitor = { isNativePlatform: () => true };
+    clientMock.getBaseUrl.mockReturnValue("https://api.elizacloud.ai");
+    clientMock.cloudLoginDirect.mockResolvedValue({
+      ok: true,
+      apiBase: "https://api.elizacloud.ai",
+      sessionId: "mobile-session-api-host",
+      browserUrl:
+        "https://www.elizacloud.ai/auth/cli-login?session=mobile-session-api-host",
+    });
+
+    const { result } = renderHook(() => useCloudState(createParams()));
+
+    await act(async () => {
+      await result.current.handleCloudLogin();
+    });
+
+    expect(clientMock.cloudLoginDirect).toHaveBeenCalledWith(
+      "https://www.elizacloud.ai",
+    );
+    expect(clientMock.cloudLogin).not.toHaveBeenCalled();
+    expect(clientMock.getCloudStatus).not.toHaveBeenCalled();
+    expect(openExternalUrlMock).toHaveBeenCalledWith(
+      "https://www.elizacloud.ai/auth/cli-login?session=mobile-session-api-host",
+    );
+  });
+
   it("keeps direct Eliza Cloud tokens client-side instead of persisting through a missing local backend", async () => {
     (
       globalThis as { Capacitor?: { isNativePlatform: () => boolean } }
@@ -279,6 +308,7 @@ describe("useCloudState", () => {
     });
     clientMock.cloudLoginDirect.mockResolvedValue({
       ok: true,
+      apiBase: "https://api.elizacloud.ai",
       sessionId: "mobile-session-2",
       browserUrl:
         "https://www.elizacloud.ai/auth/cli-login?session=mobile-session-2",
@@ -306,8 +336,11 @@ describe("useCloudState", () => {
 
     expect(clientMock.cloudLoginPersist).not.toHaveBeenCalled();
     expect(clientMock.setBaseUrl).toHaveBeenCalledWith(
-      "https://www.elizacloud.ai",
+      "https://api.elizacloud.ai",
     );
+    expect(setBootConfigMock).toHaveBeenCalledWith({
+      cloudApiBase: "https://api.elizacloud.ai",
+    });
     expect(clientMock.setToken).toHaveBeenCalledWith("eliza_mobile_key");
     await waitFor(() => {
       expect(result.current.elizaCloudConnected).toBe(true);
