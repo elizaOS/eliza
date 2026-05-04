@@ -10,7 +10,6 @@ import { apiKeysService } from "./api-keys";
  * Session expiry time in minutes.
  */
 const SESSION_EXPIRY_MINUTES = 10; // Sessions expire after 10 minutes
-const CLI_LOGIN_KEY_NAME = "CLI Login";
 
 /**
  * Service for CLI authentication flow and session management.
@@ -78,13 +77,9 @@ export class CliAuthSessionsService {
       throw new Error("Session already authenticated or expired");
     }
 
-    // Keep only one active CLI-login key per user to prevent key sprawl when
-    // the login flow is retried repeatedly.
-    await apiKeysService.deactivateUserKeysByName(userId, CLI_LOGIN_KEY_NAME);
-
     // Generate API key for CLI usage
     const { apiKey, plainKey } = await apiKeysService.create({
-      name: CLI_LOGIN_KEY_NAME,
+      name: `CLI Login - ${new Date().toISOString()}`,
       description: "Generated via CLI login command",
       organization_id: organizationId,
       user_id: userId,
