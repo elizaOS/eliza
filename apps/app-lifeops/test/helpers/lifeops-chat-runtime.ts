@@ -383,6 +383,21 @@ export function createLifeOpsChatTestRuntime(options: {
       updated_at TEXT NOT NULL,
       finished_at TEXT
     );
+    CREATE TABLE IF NOT EXISTS life_block_rules (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      profile TEXT NOT NULL,
+      websites TEXT NOT NULL,
+      gate_type TEXT NOT NULL,
+      gate_todo_id TEXT,
+      gate_until_ms INTEGER,
+      fixed_duration_ms INTEGER,
+      unlock_duration_ms INTEGER,
+      active INTEGER DEFAULT 1,
+      created_at INTEGER NOT NULL,
+      released_at INTEGER,
+      released_reason TEXT
+    );
   `);
   let tasks: Task[] = [];
   const settings = new Map<string, string>();
