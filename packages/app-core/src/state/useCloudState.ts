@@ -115,10 +115,30 @@ function isConfiguredCloudSiteBase(baseUrl: string): boolean {
   }
 }
 
+function isCapacitorAssetBase(baseUrl: string): boolean {
+  if (!isCapacitorNativeRuntime()) return false;
+  try {
+    const parsed = new URL(baseUrl);
+    if (parsed.pathname !== "/" || parsed.search || parsed.hash) return false;
+    return (
+      (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+      parsed.hostname.toLowerCase() === "localhost" &&
+      parsed.port === ""
+    );
+  } catch {
+    return false;
+  }
+}
+
 function hasCloudLoginBackend(): boolean {
   const explicitBase =
     typeof client.getBaseUrl === "function" ? client.getBaseUrl().trim() : "";
-  if (explicitBase) return !isConfiguredCloudSiteBase(explicitBase);
+  if (explicitBase) {
+    return (
+      !isConfiguredCloudSiteBase(explicitBase) &&
+      !isCapacitorAssetBase(explicitBase)
+    );
+  }
   if (isCapacitorNativeRuntime()) return false;
   return isSameOriginLocalHttpBackend();
 }

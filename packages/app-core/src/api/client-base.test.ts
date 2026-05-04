@@ -56,4 +56,22 @@ describe("ElizaClient.setToken", () => {
     expect(getBootConfig().apiToken).toBe("hello");
     expect(getElizaApiToken()).toBe("hello");
   });
+
+  it("routes REST requests through the configured request transport", async () => {
+    client.setBaseUrl("http://127.0.0.1:31337");
+    const seen: Array<{ url: string; init: RequestInit }> = [];
+    client.setRequestTransport({
+      async request(url, init) {
+        seen.push({ url, init });
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      },
+    });
+
+    await expect(client.fetch("/api/test")).resolves.toEqual({ ok: true });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.url).toBe("http://127.0.0.1:31337/api/test");
+  });
 });
