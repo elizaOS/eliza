@@ -1,26 +1,27 @@
+import { Capacitor, registerPlugin } from "@capacitor/core";
 import {
   getElectrobunRendererRpc,
   invokeDesktopBridgeRequestWithTimeout,
 } from "../bridge/electrobun-rpc";
 
-interface CapacitorGlobal {
-  isNativePlatform?: () => boolean;
-}
 interface CapacitorBrowserPlugin {
   open: (options: { url: string; presentationStyle?: string }) => Promise<void>;
 }
 
+const registeredCapacitorBrowser =
+  registerPlugin<CapacitorBrowserPlugin>("Browser");
+
 function getCapacitorBrowser(): CapacitorBrowserPlugin | null {
-  if (typeof globalThis === "undefined") return null;
+  if (!Capacitor.isNativePlatform()) return null;
+
   const cap = (
     globalThis as unknown as {
-      Capacitor?: CapacitorGlobal & {
+      Capacitor?: {
         Plugins?: { Browser?: CapacitorBrowserPlugin };
       };
     }
   ).Capacitor;
-  if (!cap?.isNativePlatform?.()) return null;
-  return cap.Plugins?.Browser ?? null;
+  return cap?.Plugins?.Browser ?? registeredCapacitorBrowser;
 }
 
 export async function openExternalUrl(url: string): Promise<void> {

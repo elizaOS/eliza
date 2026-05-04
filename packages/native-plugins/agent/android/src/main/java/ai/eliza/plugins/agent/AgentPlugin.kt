@@ -47,7 +47,7 @@ class AgentPlugin : Plugin() {
             return
         }
 
-        val timeoutMs = call.getInt("timeoutMs", 10_000).coerceIn(1_000, 120_000)
+        val timeoutMs = (call.getInt("timeoutMs") ?: 10_000).coerceIn(1_000, 120_000)
         val body = call.getString("body")
         val headers = call.getObject("headers") ?: JSObject()
         val token = readLocalAgentToken()

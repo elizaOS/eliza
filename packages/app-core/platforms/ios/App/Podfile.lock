@@ -38,16 +38,16 @@ DEPENDENCIES:
   - "CapacitorKeyboard (from `../../../../node_modules/.bun/@capacitor+keyboard@8.0.0+db0c1b46371b240c/node_modules/@capacitor/keyboard`)"
   - "CapacitorPreferences (from `../../../../node_modules/.bun/@capacitor+preferences@8.0.1+db0c1b46371b240c/node_modules/@capacitor/preferences`)"
   - "CapacitorStatusBar (from `../../../../node_modules/.bun/@capacitor+status-bar@8.0.2+db0c1b46371b240c/node_modules/@capacitor/status-bar`)"
-  - ElizaosCapacitorAgent (from `../../../../eliza/packages/native-plugins/agent`)
-  - ElizaosCapacitorCamera (from `../../../../eliza/packages/native-plugins/camera`)
-  - ElizaosCapacitorCanvas (from `../../../../eliza/packages/native-plugins/canvas`)
-  - ElizaosCapacitorGateway (from `../../../../eliza/packages/native-plugins/gateway`)
-  - ElizaosCapacitorLocation (from `../../../../eliza/packages/native-plugins/location`)
-  - ElizaosCapacitorMobileSignals (from `../../../../eliza/packages/native-plugins/mobile-signals`)
-  - ElizaosCapacitorScreencapture (from `../../../../eliza/packages/native-plugins/screencapture`)
-  - ElizaosCapacitorSwabble (from `../../../../eliza/packages/native-plugins/swabble`)
-  - ElizaosCapacitorTalkmode (from `../../../../eliza/packages/native-plugins/talkmode`)
-  - ElizaosCapacitorWebsiteblocker (from `../../../../eliza/packages/native-plugins/websiteblocker`)
+  - ElizaosCapacitorAgent (from `../../../../native-plugins/agent`)
+  - ElizaosCapacitorCamera (from `../../../../native-plugins/camera`)
+  - ElizaosCapacitorCanvas (from `../../../../native-plugins/canvas`)
+  - ElizaosCapacitorGateway (from `../../../../native-plugins/gateway`)
+  - ElizaosCapacitorLocation (from `../../../../native-plugins/location`)
+  - ElizaosCapacitorMobileSignals (from `../../../../native-plugins/mobile-signals`)
+  - ElizaosCapacitorScreencapture (from `../../../../native-plugins/screencapture`)
+  - ElizaosCapacitorSwabble (from `../../../../native-plugins/swabble`)
+  - ElizaosCapacitorTalkmode (from `../../../../native-plugins/talkmode`)
+  - ElizaosCapacitorWebsiteblocker (from `../../../../native-plugins/websiteblocker`)
 
 EXTERNAL SOURCES:
   Capacitor:
@@ -63,25 +63,25 @@ EXTERNAL SOURCES:
   CapacitorStatusBar:
     :path: "../../../../node_modules/.bun/@capacitor+status-bar@8.0.2+db0c1b46371b240c/node_modules/@capacitor/status-bar"
   ElizaosCapacitorAgent:
-    :path: "../../../../eliza/packages/native-plugins/agent"
+    :path: "../../../../native-plugins/agent"
   ElizaosCapacitorCamera:
-    :path: "../../../../eliza/packages/native-plugins/camera"
+    :path: "../../../../native-plugins/camera"
   ElizaosCapacitorCanvas:
-    :path: "../../../../eliza/packages/native-plugins/canvas"
+    :path: "../../../../native-plugins/canvas"
   ElizaosCapacitorGateway:
-    :path: "../../../../eliza/packages/native-plugins/gateway"
+    :path: "../../../../native-plugins/gateway"
   ElizaosCapacitorLocation:
-    :path: "../../../../eliza/packages/native-plugins/location"
+    :path: "../../../../native-plugins/location"
   ElizaosCapacitorMobileSignals:
-    :path: "../../../../eliza/packages/native-plugins/mobile-signals"
+    :path: "../../../../native-plugins/mobile-signals"
   ElizaosCapacitorScreencapture:
-    :path: "../../../../eliza/packages/native-plugins/screencapture"
+    :path: "../../../../native-plugins/screencapture"
   ElizaosCapacitorSwabble:
-    :path: "../../../../eliza/packages/native-plugins/swabble"
+    :path: "../../../../native-plugins/swabble"
   ElizaosCapacitorTalkmode:
-    :path: "../../../../eliza/packages/native-plugins/talkmode"
+    :path: "../../../../native-plugins/talkmode"
   ElizaosCapacitorWebsiteblocker:
-    :path: "../../../../eliza/packages/native-plugins/websiteblocker"
+    :path: "../../../../native-plugins/websiteblocker"
 
 SPEC CHECKSUMS:
   Capacitor: 22e541237135648c9aa736232bb4d2eec35fddcb

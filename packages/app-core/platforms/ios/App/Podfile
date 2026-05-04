@@ -1,4 +1,4 @@
-require_relative '../../node_modules/@capacitor/ios/scripts/pods_helpers'
+require_relative '../../../../app/node_modules/@capacitor/ios/scripts/pods_helpers'
 
 platform :ios, '15.0'
 use_frameworks!
@@ -9,25 +9,25 @@ use_frameworks!
 install! 'cocoapods', :disable_input_output_paths => true
 
 def capacitor_pods
-  pod 'Capacitor', :path => '../../node_modules/@capacitor/ios'
-  pod 'CapacitorCordova', :path => '../../node_modules/@capacitor/ios'
-  pod 'CapacitorApp', :path => '../../node_modules/@capacitor/app'
-  pod 'CapacitorBarcodeScanner', :path => '../../node_modules/@capacitor/barcode-scanner'
-  pod 'CapacitorHaptics', :path => '../../node_modules/@capacitor/haptics'
-  pod 'CapacitorKeyboard', :path => '../../node_modules/@capacitor/keyboard'
-  pod 'CapacitorPreferences', :path => '../../node_modules/@capacitor/preferences'
-  pod 'LlamaCppCapacitor', :path => '../../node_modules/llama-cpp-capacitor'
-  pod 'CapacitorPushNotifications', :path => '../../node_modules/@capacitor/push-notifications'
-  pod 'ElizaosCapacitorAgent', :path => '../../../../eliza/packages/native-plugins/agent'
-  pod 'ElizaosCapacitorCamera', :path => '../../../../eliza/packages/native-plugins/camera'
-  pod 'ElizaosCapacitorCanvas', :path => '../../../../eliza/packages/native-plugins/canvas'
-  pod 'ElizaosCapacitorGateway', :path => '../../../../eliza/packages/native-plugins/gateway'
-  pod 'ElizaosCapacitorLocation', :path => '../../../../eliza/packages/native-plugins/location'
-  pod 'ElizaosCapacitorMobileSignals', :path => '../../../../eliza/packages/native-plugins/mobile-signals'
-  pod 'ElizaosCapacitorScreencapture', :path => '../../../../eliza/packages/native-plugins/screencapture'
-  pod 'ElizaosCapacitorSwabble', :path => '../../../../eliza/packages/native-plugins/swabble'
-  pod 'ElizaosCapacitorTalkmode', :path => '../../../../eliza/packages/native-plugins/talkmode'
-  pod 'ElizaosCapacitorWebsiteblocker', :path => '../../../../eliza/packages/native-plugins/websiteblocker'
+  pod 'Capacitor', :path => '../../../../app/node_modules/@capacitor/ios'
+  pod 'CapacitorCordova', :path => '../../../../app/node_modules/@capacitor/ios'
+  pod 'CapacitorApp', :path => '../../../../app/node_modules/@capacitor/app'
+  pod 'CapacitorBarcodeScanner', :path => '../../../../app/node_modules/@capacitor/barcode-scanner'
+  pod 'CapacitorHaptics', :path => '../../../../app/node_modules/@capacitor/haptics'
+  pod 'CapacitorKeyboard', :path => '../../../../app/node_modules/@capacitor/keyboard'
+  pod 'CapacitorPreferences', :path => '../../../../app/node_modules/@capacitor/preferences'
+  pod 'LlamaCppCapacitor', :path => '../../../../app/node_modules/llama-cpp-capacitor'
+  pod 'CapacitorPushNotifications', :path => '../../../../app/node_modules/@capacitor/push-notifications'
+  pod 'ElizaosCapacitorAgent', :path => '../../../../native-plugins/agent'
+  pod 'ElizaosCapacitorCamera', :path => '../../../../native-plugins/camera'
+  pod 'ElizaosCapacitorCanvas', :path => '../../../../native-plugins/canvas'
+  pod 'ElizaosCapacitorGateway', :path => '../../../../native-plugins/gateway'
+  pod 'ElizaosCapacitorLocation', :path => '../../../../native-plugins/location'
+  pod 'ElizaosCapacitorMobileSignals', :path => '../../../../native-plugins/mobile-signals'
+  pod 'ElizaosCapacitorScreencapture', :path => '../../../../native-plugins/screencapture'
+  pod 'ElizaosCapacitorSwabble', :path => '../../../../native-plugins/swabble'
+  pod 'ElizaosCapacitorTalkmode', :path => '../../../../native-plugins/talkmode'
+  pod 'ElizaosCapacitorWebsiteblocker', :path => '../../../../native-plugins/websiteblocker'
 end
 
 target 'App' do
