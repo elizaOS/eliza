@@ -881,6 +881,39 @@ export function shouldDeferReminderUntilComputerActive(args: {
   return !isActivelyUsingComputer(args.activityProfile);
 }
 
+/**
+ * Snapshot-side mirror of `isBusyDay()` from
+ * `activity-profile/proactive-planner.ts`. The reminder dispatch loop
+ * only carries a `LifeOpsAttentionContext` snapshot — not the full
+ * `ActivityProfile` — so we cannot call the planner helper directly.
+ * The signals checked here are the ones the snapshot already exposes:
+ * `screenContextBusy`, `calendarBusy`, and `avgWeekdayMeetings`. Keep
+ * this in sync with the planner-side rule when either side changes.
+ *
+ * Used by the stretch reminder gate so soft self-care never competes
+ * with calendar-heavy or screen-busy days.
+ */
+export function isReminderBusyDay(
+  activityProfile: ReminderActivityProfileSnapshot | null,
+): boolean {
+  if (!activityProfile) {
+    return false;
+  }
+  if (activityProfile.screenContextBusy === true) {
+    return true;
+  }
+  if (activityProfile.calendarBusy === true) {
+    return true;
+  }
+  if (
+    typeof activityProfile.avgWeekdayMeetings === "number" &&
+    activityProfile.avgWeekdayMeetings >= 4
+  ) {
+    return true;
+  }
+  return false;
+}
+
 export type ReminderOwnerResponseResolution =
   | "acknowledged"
   | "completed"

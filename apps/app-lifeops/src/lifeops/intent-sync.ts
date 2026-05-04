@@ -419,3 +419,52 @@ export async function pruneExpiredIntents(
 
   return { pruned };
 }
+
+export async function escalateUnacknowledgedIntents(
+  runtime: IAgentRuntime,
+  opts?: { thresholdMinutes?: number }
+): Promise<{ escalated: number }> {
+  const threshold = opts?.thresholdMinutes ?? 5;
+  const cutoffTime = new Date(Date.now() - threshold * 60_000).toISOString();
+
+  // Find intents targeting 'desktop' that have not been acknowledged and are older than cutoff
+  const selectSql = `
+    SELECT id, agent_id, kind, target, target_device_id,
+           title, body, action_url, priority,
+           created_at, expires_at, acknowledged_at, metadata_json
+    FROM life_intents
+    WHERE agent_id = ${sqlText(runtime.agentId)}
+      AND target = 'desktop'
+      AND acknowledged_at IS NULL
+      AND created_at <= ${sqlText(cutoffTime)}
+      AND (expires_at IS NULL OR expires_at > ${sqlText(new Date().toISOString())})`;
+
+  const rows = await executeRawSql(runtime, selectSql);
+  const unacknowledgedIntents = rows.map(rowToIntent);
+
+  let escalated = 0;
+  for (const intent of unacknowledgedIntents) {
+    // Suppress the original 'desktop' intent by acknowledging it by the system
+    await acknowledgeIntent(runtime, intent.id, "system-escalator");
+
+    // Broadcast the escalated intent to 'mobile'
+    const escalatedMetadata = {
+      ...(intent.metadata || {}),
+      escalatedFrom: intent.id,
+      escalatedAt: new Date().toISOString()
+    };
+
+    await broadcastIntent(runtime, {
+      kind: intent.kind,
+      target: "mobile",
+      title: `[Escalated] ${intent.title}`,
+      body: intent.body,
+      actionUrl: intent.actionUrl,
+      priority: intent.priority === "urgent" ? "urgent" : "high", // Bump priority
+      metadata: escalatedMetadata
+    });
+    escalated++;
+  }
+
+  return { escalated };
+}

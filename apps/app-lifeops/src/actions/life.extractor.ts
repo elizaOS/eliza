@@ -5,6 +5,7 @@ import {
   parseKeyValueXml,
 } from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared";
+import { runExtractorPipeline } from "./extractor-pipeline.js";
 import { resolveContextWindow } from "./lifeops-extraction-config.js";
 
 export const LIFE_OPERATION_VALUES = [
@@ -327,13 +328,6 @@ export async function extractLifeOperationWithLlm(args: {
     -resolveContextWindow(),
   );
   const currentMessage = messageText(message);
-  if (typeof runtime.useModel !== "function") {
-    runtime.logger?.warn?.(
-      { src: "action:life" },
-      "Life operation extraction skipped because runtime.useModel is unavailable",
-    );
-    return REPLY_ONLY_OPERATION_PLAN;
-  }
   const prompt = [
     "Plan the LifeOps response for the current user request.",
     "The user may speak in any language.",
@@ -407,57 +401,28 @@ export async function extractLifeOperationWithLlm(args: {
     return parsed ? normalizeOperationPlan(parsed) : null;
   };
 
-  try {
-    const result = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
-    const rawResponse = typeof result === "string" ? result : "";
-    const parsedPlan = parseResponse(rawResponse);
-    if (parsedPlan) {
-      if (parsedPlan.operation !== null) {
-        return parsedPlan;
-      }
-      const recoveredPlan = await recoverCoreLifeOperationWithLlm({
-        runtime,
+  const { parsed: pipelinePlan } = await runExtractorPipeline({
+    runtime,
+    prompt,
+    parser: parseResponse,
+    buildRepairPrompt: (rawFirstPass) =>
+      buildRepairPrompt({
         currentMessage,
         intent,
-        recentConversation,
-      });
-      return recoveredPlan ?? parsedPlan;
-    }
-
-    const repairResult = await runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt: buildRepairPrompt({
-        currentMessage,
-        intent,
-        rawResponse,
+        rawResponse: rawFirstPass,
         recentConversation,
       }),
-    });
-    const repairedRawResponse =
-      typeof repairResult === "string" ? repairResult : "";
-    const repairedPlan = parseResponse(repairedRawResponse);
-    if (repairedPlan && repairedPlan.operation !== null) {
-      return repairedPlan;
-    }
+  });
 
-    const recoveredPlan = await recoverCoreLifeOperationWithLlm({
-      runtime,
-      currentMessage,
-      intent,
-      recentConversation,
-    });
-    if (recoveredPlan) {
-      return recoveredPlan;
-    }
-
-    return repairedPlan ?? REPLY_ONLY_OPERATION_PLAN;
-  } catch (error) {
-    runtime.logger?.warn?.(
-      {
-        src: "action:life",
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Life operation extraction model call failed",
-    );
-    return REPLY_ONLY_OPERATION_PLAN;
+  if (pipelinePlan && pipelinePlan.operation !== null) {
+    return pipelinePlan;
   }
+
+  const recoveredPlan = await recoverCoreLifeOperationWithLlm({
+    runtime,
+    currentMessage,
+    intent,
+    recentConversation,
+  });
+  return recoveredPlan ?? pipelinePlan ?? REPLY_ONLY_OPERATION_PLAN;
 }

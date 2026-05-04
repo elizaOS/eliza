@@ -100,6 +100,7 @@ import {
 	extractFirstSentence,
 	hasFirstSentence,
 } from "../utils/text-splitting";
+import { maybeHandleAnalysisActivation } from "./analysis-mode-handler";
 import {
 	OPTIMIZED_PROMPT_SERVICE,
 	type OptimizedPromptService,
@@ -2909,6 +2910,35 @@ export class DefaultMessageService implements IMessageService {
 		callback?: HandlerCallback,
 		options?: MessageProcessingOptions,
 	): Promise<MessageProcessingResult> {
+		// Analysis-mode token detection runs BEFORE any planner work so the
+		// agent never hallucinates a "performing an analysis" reply. Gated by
+		// `MILADY_ENABLE_ANALYSIS_MODE` / `NODE_ENV=development`. See
+		// services/analysis-mode-handler.ts and review #15.
+		const analysisActivation = maybeHandleAnalysisActivation({
+			text: message.content?.text,
+			roomId: message.roomId,
+		});
+		if (analysisActivation.handled) {
+			if (callback && typeof analysisActivation.responseText === "string") {
+				await callback({
+					text: analysisActivation.responseText,
+					thought: "analysis-mode toggle",
+				});
+			}
+			return {
+				didRespond: true,
+				responseContent: {
+					text: analysisActivation.responseText ?? "",
+					thought: "analysis-mode toggle",
+				},
+				responseMessages: [],
+				state: { values: {}, data: {}, text: "" } as State,
+				mode: "none",
+				skipEvaluation: true,
+				reason: "analysis-mode-token",
+			};
+		}
+
 		const source =
 			typeof message.content?.source === "string" &&
 			message.content.source.trim() !== ""
@@ -5583,7 +5613,9 @@ export class DefaultMessageService implements IMessageService {
 		const optimizedResponseService = runtime.getService<OptimizedPromptService>(
 			OPTIMIZED_PROMPT_SERVICE,
 		);
+		const dynamicPrompt = await runtime.getCache<string>("core_prompt_messageHandlerTemplate");
 		const baselineResponseTemplate =
+			dynamicPrompt ||
 			runtime.character.templates?.messageHandlerTemplate ||
 			messageHandlerTemplate;
 		let prompt =

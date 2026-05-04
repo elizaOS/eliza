@@ -57,6 +57,14 @@ export async function executeLifeOpsSchedulerTask(
 
   const service = new LifeOpsService(runtime);
   const scheduledWork = await service.processScheduledWork({ now });
+
+  // Escalate any unacknowledged intents from desktop to mobile
+  const { escalateUnacknowledgedIntents } = await import("./intent-sync.js");
+  const escalationResult = await escalateUnacknowledgedIntents(runtime);
+  if (escalationResult.escalated > 0) {
+    logger.info(`[lifeops-scheduler] Escalated ${escalationResult.escalated} unacknowledged intent(s) to mobile.`);
+  }
+
   return {
     nextInterval: resolveLifeOpsTaskIntervalMs(runtime.agentId),
     now: scheduledWork.now,

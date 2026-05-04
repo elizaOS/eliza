@@ -17,6 +17,7 @@ import {
   LIFEOPS_REMINDER_INTENSITIES,
   type LifeOpsReminderIntensity,
 } from "../contracts/index.js";
+import { runExtractorPipeline } from "./extractor-pipeline.js";
 import { recentConversationTexts } from "./life-recent-context.js";
 import { resolveContextWindow } from "./lifeops-extraction-config.js";
 import { normalizeExplicitTimeZoneToken } from "./timezone-normalization.js";
@@ -327,51 +328,33 @@ export async function extractTaskCreatePlanWithLlm(args: {
     state: args.state,
     limit: Math.max(resolveContextWindow(), REQUEST_KIND_VALIDATION_WINDOW),
   });
-  if (typeof runtime.useModel !== "function") {
-    return buildExtractionFailurePlan();
-  }
   const recentConversation = recentWindow
     .slice(-resolveContextWindow())
     .join("\n");
   const prompt = buildExtractionPrompt(intent, recentConversation);
 
-  try {
-    const result = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
-    const raw = typeof result === "string" ? result : "";
-    const parsed = parseJSONObjectFromText(raw);
-    const parsedPlan = parsed
-      ? buildTaskCreatePlan({
-          parsed,
-          intent,
-          recentWindow,
-        })
-      : null;
-    if (parsedPlan) {
-      return parsedPlan;
-    }
-
-    const repairResult = await runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt: buildRepairPrompt({
+  const { parsed } = await runExtractorPipeline({
+    runtime,
+    prompt,
+    parser: (raw) => {
+      const parsedObject = parseJSONObjectFromText(raw);
+      return parsedObject
+        ? buildTaskCreatePlan({
+            parsed: parsedObject,
+            intent,
+            recentWindow,
+          })
+        : null;
+    },
+    buildRepairPrompt: (rawFirstPass) =>
+      buildRepairPrompt({
         intent,
         recentConversation,
-        rawResponse: raw,
+        rawResponse: rawFirstPass,
       }),
-    });
-    const repairedRaw = typeof repairResult === "string" ? repairResult : "";
-    const repairedParsed = parseJSONObjectFromText(repairedRaw);
-    if (!repairedParsed) {
-      return buildExtractionFailurePlan();
-    }
-    return (
-      buildTaskCreatePlan({
-        parsed: repairedParsed,
-        intent,
-        recentWindow,
-      }) ?? buildExtractionFailurePlan()
-    );
-  } catch {
-    return buildExtractionFailurePlan();
-  }
+  });
+
+  return parsed ?? buildExtractionFailurePlan();
 }
 
 export async function extractTaskParamsWithLlm(args: {
@@ -456,10 +439,6 @@ export async function extractReminderIntensityWithLlm(args: {
   runtime: IAgentRuntime;
   intent: string;
 }): Promise<ExtractedReminderIntensityPlan> {
-  if (typeof args.runtime.useModel !== "function") {
-    return { ...EMPTY_REMINDER_INTENSITY_PLAN };
-  }
-
   const prompt = [
     "The user is requesting a change to their reminder frequency.",
     "Classify into exactly one of these values:",
@@ -473,31 +452,19 @@ export async function extractReminderIntensityWithLlm(args: {
     `User said: ${JSON.stringify(args.intent)}`,
   ].join("\n");
 
-  try {
-    const result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
-      prompt,
-    });
-    const raw = typeof result === "string" ? result : "";
-    const parsed = parseReminderIntensityPlan(raw);
-    if (parsed) {
-      return parsed;
-    }
-
-    const repairResult = await args.runtime.useModel(ModelType.TEXT_SMALL, {
-      prompt: buildReminderIntensityRepairPrompt({
+  const { parsed } = await runExtractorPipeline({
+    runtime: args.runtime,
+    prompt,
+    modelType: ModelType.TEXT_SMALL,
+    parser: parseReminderIntensityPlan,
+    buildRepairPrompt: (rawFirstPass) =>
+      buildReminderIntensityRepairPrompt({
         intent: args.intent,
-        rawResponse: raw,
+        rawResponse: rawFirstPass,
       }),
-    });
-    const repairedRaw = typeof repairResult === "string" ? repairResult : "";
-    return (
-      parseReminderIntensityPlan(repairedRaw) ?? {
-        ...EMPTY_REMINDER_INTENSITY_PLAN,
-      }
-    );
-  } catch {
-    return { ...EMPTY_REMINDER_INTENSITY_PLAN };
-  }
+  });
+
+  return parsed ?? { ...EMPTY_REMINDER_INTENSITY_PLAN };
 }
 
 // ── Website unlock mode extractor ────────────────────

@@ -51,7 +51,7 @@ export const MOCK_PROVIDER_ENVIRONMENTS = [
   "github",
 ] as const;
 
-export const MOCK_SCENARIO_ENVIRONMENTS = ["lifeops-samantha"] as const;
+export const MOCK_SCENARIO_ENVIRONMENTS = ["lifeops-samantha", "lifeops-presence"] as const;
 
 export const MOCK_ENVIRONMENTS = [
   ...MOCK_PROVIDER_ENVIRONMENTS,
