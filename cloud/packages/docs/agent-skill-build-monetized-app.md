@@ -217,17 +217,16 @@ already know the skill pick up the new behavior automatically.
 
 ---
 
-## Footnote: a different "skill" — Claude Code / Codex sub-agent skill
+## Footnote: a different "skill" — task-agent runtime bridge
 
-There's a related but separate concept worth flagging: **a Claude Code
-/ Codex `SKILL.md` skill for sub-agents that run inside a Eliza agent
-via the stealth claude-code path.** That skill would give those
-sub-agents access to the parent Eliza agent's APIs (memories,
-characters, runtime state) so they aren't disconnected when Claude
-Code spawns inside an Eliza-orchestrated coding flow.
+There's a related but separate concept worth flagging: **a task-agent
+`SKILL.md` skill for Codex, Claude Code, Gemini, Aider, or other CLI
+agents that run inside an Eliza agent.** That skill gives child agents
+read-only access to the parent Eliza agent's APIs (memories, characters,
+runtime state) so they aren't disconnected from the originating runtime
+context.
 
 Different audience from THIS skill (which targets the Eliza agent
 itself, not its sub-agents). Worth its own doc + its own implementation.
-Likely lives at `docs/claude-subagent-skill-agent-bridge.md` (not yet
-written) and the actual `SKILL.md` would land in the Eliza agent's
-bundled skills directory rather than in this repo.
+The actual `SKILL.md` belongs in the bundled skills directory rather than
+in this repo's Cloud app-build recipe.
