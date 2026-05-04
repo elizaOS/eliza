@@ -12,6 +12,7 @@ import {
   getVolumePath,
   MAX_AGENT_ID_LENGTH,
   parseDockerNodes,
+  readDockerHostPortFromMetadata,
   requiresDockerHostGateway,
   resolveStewardContainerUrl,
   shellQuote,
@@ -357,6 +358,20 @@ describe("Docker Infrastructure - Pure Functions", () => {
 
     test("single-port range with no exclusions returns that port", () => {
       expect(allocatePort(42, 43, new Set())).toBe(42);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  describe("readDockerHostPortFromMetadata", () => {
+    test("reads a positive integer hostPort", () => {
+      expect(readDockerHostPortFromMetadata({ hostPort: 23456 })).toBe(23456);
+    });
+
+    test("rejects missing and invalid host ports", () => {
+      expect(readDockerHostPortFromMetadata(null)).toBeNull();
+      expect(readDockerHostPortFromMetadata({})).toBeNull();
+      expect(readDockerHostPortFromMetadata({ hostPort: "23456" })).toBeNull();
+      expect(readDockerHostPortFromMetadata({ hostPort: 0 })).toBeNull();
     });
   });
 

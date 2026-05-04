@@ -45,9 +45,9 @@ interface CleanupResult {
   stuckSinceMinutes: number;
 }
 
-async function handleCleanupStuckProvisioning(request: Request) {
+async function handleCleanupStuckProvisioning(request: Request, env?: AppEnv["Bindings"]) {
   try {
-    const authError = verifyCronSecret(request, "[Cleanup Stuck Provisioning]");
+    const authError = verifyCronSecret(request, "[Cleanup Stuck Provisioning]", env);
     if (authError) return authError;
 
     logger.info("[Cleanup Stuck Provisioning] Starting scan");
@@ -154,19 +154,19 @@ async function handleCleanupStuckProvisioning(request: Request) {
  * GET /api/cron/cleanup-stuck-provisioning
  * Cron endpoint — protected by CRON_SECRET.
  */
-async function __hono_GET(request: Request) {
-  return handleCleanupStuckProvisioning(request);
+async function __hono_GET(request: Request, env?: AppEnv["Bindings"]) {
+  return handleCleanupStuckProvisioning(request, env);
 }
 
 /**
  * POST /api/cron/cleanup-stuck-provisioning
  * Manual trigger for testing — same auth requirement.
  */
-async function __hono_POST(request: Request) {
-  return handleCleanupStuckProvisioning(request);
+async function __hono_POST(request: Request, env?: AppEnv["Bindings"]) {
+  return handleCleanupStuckProvisioning(request, env);
 }
 
 const __hono_app = new Hono<AppEnv>();
-__hono_app.get("/", async (c) => __hono_GET(c.req.raw));
-__hono_app.post("/", async (c) => __hono_POST(c.req.raw));
+__hono_app.get("/", async (c) => __hono_GET(c.req.raw, c.env));
+__hono_app.post("/", async (c) => __hono_POST(c.req.raw, c.env));
 export default __hono_app;

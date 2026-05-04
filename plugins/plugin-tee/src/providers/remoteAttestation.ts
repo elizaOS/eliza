@@ -7,7 +7,7 @@ import {
 import {
   TappdClient,
   type TdxQuoteHashAlgorithms,
-  type TdxQuoteResponse,
+  type GetQuoteResponse as TdxQuoteResponse,
 } from "@phala/dstack-sdk";
 import type {
   RemoteAttestationMessage,

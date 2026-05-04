@@ -15,9 +15,9 @@ function readStringEnv(c: AppContext, keys: readonly string[]): string | null {
   return null;
 }
 
-export async function forwardToContainerControlPlane(
+async function forwardControlPlaneRequest(
   c: AppContext,
-  user: Pick<AuthedUser, "id"> & { organization_id: string },
+  configureHeaders: (headers: Headers) => void,
 ): Promise<Response> {
   const baseUrl = readStringEnv(c, CONTROL_PLANE_URL_KEYS);
   if (!baseUrl) {
@@ -40,11 +40,10 @@ export async function forwardToContainerControlPlane(
   headers.delete("host");
   headers.set("x-forwarded-host", sourceUrl.host);
   headers.set("x-forwarded-proto", sourceUrl.protocol.replace(":", ""));
-  headers.set("x-eliza-user-id", user.id);
-  headers.set("x-eliza-organization-id", user.organization_id);
 
   const internalToken = readStringEnv(c, ["CONTAINER_CONTROL_PLANE_TOKEN"]);
   if (internalToken) headers.set("x-container-control-plane-token", internalToken);
+  configureHeaders(headers);
 
   try {
     const upstream = await fetch(target, {
@@ -60,7 +59,7 @@ export async function forwardToContainerControlPlane(
       statusText: upstream.statusText,
     });
   } catch (error) {
-    logger.error("[Containers API] control plane request failed", {
+    logger.error("[ContainerControlPlane] forward failed", {
       target: target.origin,
       error: error instanceof Error ? error.message : String(error),
     });
@@ -73,4 +72,18 @@ export async function forwardToContainerControlPlane(
       502,
     );
   }
+}
+
+export async function forwardToContainerControlPlane(
+  c: AppContext,
+  user: Pick<AuthedUser, "id"> & { organization_id: string },
+): Promise<Response> {
+  return forwardControlPlaneRequest(c, (headers) => {
+    headers.set("x-eliza-user-id", user.id);
+    headers.set("x-eliza-organization-id", user.organization_id);
+  });
+}
+
+export async function forwardCronToContainerControlPlane(c: AppContext): Promise<Response> {
+  return forwardControlPlaneRequest(c, () => {});
 }

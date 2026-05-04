@@ -125,6 +125,27 @@ Apps are first-class backend integration units. A typical agent workflow:
 
 Current monetization is markup/share based: `monetization_enabled`, `inference_markup_percentage`, `purchase_share_percentage`, `platform_offset_amount`, and creator earnings.
 
+AI inference apps are monetized apps by default. They must use app auth and the
+app-specific chat endpoint:
+
+- Browser starts sign-in at `/app-auth/authorize` with `app_id`, `redirect_uri`, and `state`.
+- Browser stores only the returned user token, never an owner API key.
+- Browser calls a same-origin proxy with `x-user-token`.
+- Proxy forwards to `/api/v1/apps/:id/chat` with `Authorization: Bearer <user_jwt>` and optional `x-affiliate-code`; the app id belongs in the route path.
+- Enable monetization with `PUT /api/v1/apps/:id/monetization` using the current markup/share schema.
+
+Static-hosted apps do not need a Cloud container unless they have their own
+server workload. Register their public URL as the Cloud app, keep only
+non-secret config in the frontend app directory, and route AI calls through a
+same-origin proxy. The config's `cloudUrl` is the browser-facing Cloud
+frontend/OAuth base that serves `/app-auth/authorize`; it must come from
+`ELIZA_CLOUD_PUBLIC_URL`, then `ELIZA_CLOUD_URL`, then `ELIZA_CLOUD_BASE_URL`
+only when that same origin serves the frontend too. Do not point `cloudUrl` at
+an API-only local worker such as `:8787`, and do not silently mix a localhost
+API base with production OAuth. In local testing, `apiBase:
+http://localhost:8787/api/v1` pairs with `cloudUrl:
+http://127.0.0.1:3000`.
+
 ## Agents And Containers
 
 Use Cloud agents for managed Eliza agent hosting. Use containers for arbitrary server-side workloads.

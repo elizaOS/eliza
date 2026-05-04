@@ -18,8 +18,8 @@
   },
   "dependencies": {
     "@elizaos/cloud-ui": "workspace:*",
-    "@stwd/react": "^0.7.2",
     "@mdx-js/rollup": "^3.1.0",
+    "@stwd/react": "^0.7.2",
     "@tailwindcss/vite": "^4.1.18",
     "@types/mdx": "^2.0.13",
     "@types/react": "^19.2.9",
@@ -29,6 +29,7 @@
     "react": "19.2.5",
     "react-dom": "19.2.5",
     "react-helmet-async": "^3.0.0",
+    "react-router": "^7.0.0",
     "react-router-dom": "^7.0.0",
     "remark-frontmatter": "^5.0.0",
     "remark-gfm": "^4.0.1",

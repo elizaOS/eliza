@@ -5,7 +5,10 @@ import {
   type Memory,
   type Provider,
 } from "@elizaos/core";
-import { type DeriveKeyResponse, TappdClient } from "@phala/dstack-sdk";
+import {
+  type GetTlsKeyResponse as DeriveKeyResponse,
+  TappdClient,
+} from "@phala/dstack-sdk";
 import { Keypair } from "@solana/web3.js";
 import { keccak256 } from "viem";
 import { type PrivateKeyAccount, privateKeyToAccount } from "viem/accounts";

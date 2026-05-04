@@ -14,6 +14,7 @@ import { containersEnv } from "@/lib/config/containers-env";
 import { getAgentBaseDomain } from "@/lib/eliza-agent-web-ui";
 import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import { dockerNodeManager } from "@/lib/services/docker-node-manager";
+import { getUsedDockerHostPorts } from "@/lib/services/docker-port-allocation";
 import { DockerSSHClient } from "@/lib/services/docker-ssh";
 import { resolveStewardTenantCredentials } from "@/lib/services/steward-tenant-config";
 import { resolveServerStewardApiUrlFromEnv } from "@/lib/steward-url";
@@ -111,31 +112,6 @@ const PULL_TIMEOUT_MS = 300_000; // 5 min
 
 /** SSH command timeout for docker run / stop / rm. */
 const DOCKER_CMD_TIMEOUT_MS = 60_000;
-
-/**
- * Get the set of ports currently allocated on a specific node.
- * Queries the DB for active sandboxes on that node.
- *
- * Note: Combines bridge and web UI ports into a single set for simplicity.
- * Since the port ranges never overlap (bridge: 18790-19790, web UI: 20000-25000),
- * this doesn't cause false conflicts. The performance cost is negligible (dozens
- * of ports max per node).
- */
-async function getUsedPorts(nodeId: string): Promise<Set<number>> {
-  const used = new Set<number>();
-  try {
-    const sandboxes = await agentSandboxesRepository.listByNodeId(nodeId);
-    for (const s of sandboxes) {
-      if (s.bridge_port) used.add(s.bridge_port);
-      if (s.web_ui_port) used.add(s.web_ui_port);
-    }
-  } catch (err) {
-    logger.warn(
-      `[docker-sandbox] Failed to query used ports for node ${nodeId}: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-  return used;
-}
 
 function getDockerHealthCmd(port: string): string {
   if (!/^\d+$/.test(port)) {
@@ -357,7 +333,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     validateAgentId(agentId);
 
     // 2. Select target node via DockerNodeManager (least-loaded, DB-backed).
-    // getAvailableNode + incrementAllocated + getUsedPorts are three sequential
+    // getAvailableNode + incrementAllocated + getUsedDockerHostPorts are three sequential
     // DB round-trips without a transaction boundary; the UNIQUE port index and
     // retry logic provide safety against concurrent capacity changes.
     const dbNode = await dockerNodeManager.getAvailableNode();
@@ -401,7 +377,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     );
 
     // 3. Allocate ports (check DB for existing assignments to avoid collisions)
-    const usedPorts = await getUsedPorts(nodeId);
+    const usedPorts = await getUsedDockerHostPorts(nodeId);
     const bridgePort = allocatePort(BRIDGE_PORT_MIN, BRIDGE_PORT_MAX, usedPorts);
     // No need to add bridgePort to exclusion set — web UI port range [20000,25000)
     // never overlaps bridge range [18790,19790)
