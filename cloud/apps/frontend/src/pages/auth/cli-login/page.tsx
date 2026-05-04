@@ -143,8 +143,12 @@ function CliLoginContent() {
     setCompletion({ status: "idle" });
   }, [sessionId]);
 
+  // Do not list `completion.status` in the dependency array. When this effect
+  // sets "completing", a re-render would tear the effect down while the POST
+  // is in flight; cleanup sets `active = false` and aborts, and the catch
+  // returns early — leaving the UI stuck in "completing" forever.
   useEffect(() => {
-    if (!sessionId || !ready || !authenticated || completion.status !== "idle") {
+    if (!sessionId || !ready || !authenticated) {
       return;
     }
 
@@ -199,7 +203,7 @@ function CliLoginContent() {
       clearTimeout(timeout);
       abort.abort();
     };
-  }, [authenticated, completion.status, ready, sessionId]);
+  }, [authenticated, ready, sessionId]);
 
   const pageState = getPageState({ authenticated, completion, ready, sessionId });
   const returnToQuery = searchParams.toString();
