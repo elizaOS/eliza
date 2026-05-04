@@ -392,9 +392,9 @@ function buildRuntimeContextSections(ctx?: RuntimeContext): string {
   if (ctx.facts?.length) {
     lines.push('## Runtime Facts');
     lines.push('Use these real values verbatim instead of placeholders.');
-    for (const f of ctx.facts) {
-      lines.push(`- ${f}`);
-    }
+    lines.push('```json');
+    lines.push(JSON.stringify(ctx.facts, null, 2));
+    lines.push('```');
     lines.push('');
   }
   return lines.length ? `\n${lines.join('\n')}\n` : '';
