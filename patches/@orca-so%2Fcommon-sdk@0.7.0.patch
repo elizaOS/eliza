@@ -1,0 +1,13 @@
+diff --git a/dist/web3/token-util.js b/dist/web3/token-util.js
+index c482fa7..fb06246 100644
+--- a/dist/web3/token-util.js
++++ b/dist/web3/token-util.js
+@@ -6,7 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
+ exports.TokenUtil = void 0;
+ const spl_token_1 = require("@solana/spl-token");
+ const web3_js_1 = require("@solana/web3.js");
+-const sha256_1 = require("@noble/hashes/sha256");
++const sha256_1 = require("@noble/hashes/sha2");
+ const tiny_invariant_1 = __importDefault(require("tiny-invariant"));
+ const math_1 = require("../math");
+ const web3_1 = require("../web3");

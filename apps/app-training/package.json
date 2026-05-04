@@ -49,12 +49,12 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@elizaos/agent": "workspace:*",
-    "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/ui": "workspace:*"
   },
   "peerDependencies": {
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/app-core": "workspace:*",
     "react": "*"
   },
   "agentConfig": {

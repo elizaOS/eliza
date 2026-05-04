@@ -165,7 +165,7 @@
     "@elizaos/skills": "workspace:*",
     "@elizaos/vault": "workspace:*",
     "@hapi/boom": "^10.0.1",
-    "@noble/curves": "^2.0.1",
+    "@noble/curves": "2.2.0",
     "@solana/web3.js": "1.98.4",
     "@whiskeysockets/baileys": "7.0.0-rc.9",
     "abitype": "^1.0.0",

@@ -5053,6 +5053,316 @@ export const allActionsSpec = {
 				"Skip the current track and play the next queued song. Use for skip, next track, or next song.",
 		},
 		{
+			name: "SLACK_DELETE_MESSAGE",
+			description: "Delete a Slack message",
+			parameters: [
+				{
+					name: "data",
+					description: "The data to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The data to use.",
+				},
+			],
+			similes: ["REMOVE_SLACK_MESSAGE", "DELETE_MESSAGE", "SLACK_REMOVE"],
+			exampleCalls: [
+				{
+					user: "Use SLACK_DELETE_MESSAGE with the provided parameters.",
+					actions: ["SLACK_DELETE_MESSAGE"],
+					params: {
+						SLACK_DELETE_MESSAGE: {
+							data: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed: "Delete a Slack message",
+		},
+		{
+			name: "SLACK_EDIT_MESSAGE",
+			description: "Edit an existing Slack message",
+			parameters: [
+				{
+					name: "data",
+					description: "The data to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The data to use.",
+				},
+			],
+			similes: [
+				"UPDATE_SLACK_MESSAGE",
+				"MODIFY_MESSAGE",
+				"CHANGE_MESSAGE",
+				"SLACK_UPDATE",
+			],
+			exampleCalls: [
+				{
+					user: "Use SLACK_EDIT_MESSAGE with the provided parameters.",
+					actions: ["SLACK_EDIT_MESSAGE"],
+					params: {
+						SLACK_EDIT_MESSAGE: {
+							data: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed: "Edit an existing Slack message",
+		},
+		{
+			name: "SLACK_EMOJI_LIST",
+			description: "List custom emoji available in the Slack workspace",
+			parameters: [],
+			similes: [
+				"LIST_SLACK_EMOJI",
+				"SHOW_EMOJI",
+				"GET_CUSTOM_EMOJI",
+				"CUSTOM_EMOJI",
+				"WORKSPACE_EMOJI",
+			],
+			descriptionCompressed:
+				"List custom emoji available in the Slack workspace",
+		},
+		{
+			name: "SLACK_GET_USER_INFO",
+			description: "Get information about a Slack user",
+			parameters: [],
+			similes: [
+				"GET_SLACK_USER",
+				"USER_INFO",
+				"SLACK_USER",
+				"MEMBER_INFO",
+				"WHO_IS",
+			],
+			descriptionCompressed: "Get information about a Slack user",
+		},
+		{
+			name: "SLACK_LIST_CHANNELS",
+			description: "List available Slack channels in the workspace",
+			parameters: [],
+			similes: [
+				"LIST_SLACK_CHANNELS",
+				"SHOW_CHANNELS",
+				"GET_CHANNELS",
+				"CHANNELS_LIST",
+			],
+			descriptionCompressed: "List available Slack channels in the workspace",
+		},
+		{
+			name: "SLACK_LIST_PINS",
+			description: "List pinned messages in a Slack channel",
+			parameters: [
+				{
+					name: "data",
+					description: "The data to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The data to use.",
+				},
+			],
+			similes: [
+				"LIST_SLACK_PINS",
+				"SHOW_PINS",
+				"GET_PINNED_MESSAGES",
+				"PINNED_MESSAGES",
+			],
+			exampleCalls: [
+				{
+					user: "Use SLACK_LIST_PINS with the provided parameters.",
+					actions: ["SLACK_LIST_PINS"],
+					params: {
+						SLACK_LIST_PINS: {
+							data: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed: "List pinned messages in a Slack channel",
+		},
+		{
+			name: "SLACK_PIN_MESSAGE",
+			description: "Pin a message in a Slack channel",
+			parameters: [
+				{
+					name: "data",
+					description: "The data to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The data to use.",
+				},
+			],
+			similes: [
+				"PIN_SLACK_MESSAGE",
+				"PIN_MESSAGE",
+				"SLACK_PIN",
+				"SAVE_MESSAGE",
+			],
+			exampleCalls: [
+				{
+					user: "Use SLACK_PIN_MESSAGE with the provided parameters.",
+					actions: ["SLACK_PIN_MESSAGE"],
+					params: {
+						SLACK_PIN_MESSAGE: {
+							data: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed: "Pin a message in a Slack channel",
+		},
+		{
+			name: "SLACK_REACT_TO_MESSAGE",
+			description: "Add or remove an emoji reaction to a Slack message",
+			parameters: [
+				{
+					name: "data",
+					description: "The data to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The data to use.",
+				},
+			],
+			similes: [
+				"ADD_SLACK_REACTION",
+				"REACT_SLACK",
+				"SLACK_EMOJI",
+				"ADD_EMOJI",
+				"REMOVE_REACTION",
+			],
+			exampleCalls: [
+				{
+					user: "Use SLACK_REACT_TO_MESSAGE with the provided parameters.",
+					actions: ["SLACK_REACT_TO_MESSAGE"],
+					params: {
+						SLACK_REACT_TO_MESSAGE: {
+							data: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"Add or remove an emoji reaction to a Slack message",
+		},
+		{
+			name: "SLACK_READ_CHANNEL",
+			description: "Read message history from a Slack channel",
+			parameters: [
+				{
+					name: "data",
+					description: "The data to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The data to use.",
+				},
+			],
+			similes: [
+				"READ_SLACK_MESSAGES",
+				"GET_CHANNEL_HISTORY",
+				"SLACK_HISTORY",
+				"FETCH_MESSAGES",
+				"LIST_MESSAGES",
+			],
+			exampleCalls: [
+				{
+					user: "Use SLACK_READ_CHANNEL with the provided parameters.",
+					actions: ["SLACK_READ_CHANNEL"],
+					params: {
+						SLACK_READ_CHANNEL: {
+							data: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed: "Read message history from a Slack channel",
+		},
+		{
+			name: "SLACK_SEND_MESSAGE",
+			description: "Send a message to a Slack channel or thread",
+			parameters: [
+				{
+					name: "data",
+					description: "The data to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The data to use.",
+				},
+			],
+			similes: [
+				"SEND_SLACK_MESSAGE",
+				"POST_TO_SLACK",
+				"MESSAGE_SLACK",
+				"SLACK_POST",
+				"SEND_TO_CHANNEL",
+			],
+			exampleCalls: [
+				{
+					user: "Use SLACK_SEND_MESSAGE with the provided parameters.",
+					actions: ["SLACK_SEND_MESSAGE"],
+					params: {
+						SLACK_SEND_MESSAGE: {
+							data: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed: "Send a message to a Slack channel or thread",
+		},
+		{
+			name: "SLACK_UNPIN_MESSAGE",
+			description: "Unpin a message from a Slack channel",
+			parameters: [
+				{
+					name: "data",
+					description: "The data to use.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["example"],
+					descriptionCompressed: "The data to use.",
+				},
+			],
+			similes: [
+				"UNPIN_SLACK_MESSAGE",
+				"UNPIN_MESSAGE",
+				"SLACK_UNPIN",
+				"REMOVE_PIN",
+			],
+			exampleCalls: [
+				{
+					user: "Use SLACK_UNPIN_MESSAGE with the provided parameters.",
+					actions: ["SLACK_UNPIN_MESSAGE"],
+					params: {
+						SLACK_UNPIN_MESSAGE: {
+							data: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed: "Unpin a message from a Slack channel",
+		},
+		{
 			name: "SPAWN_AGENT",
 			description:
 				"Spawn a specific task agent inside an existing workspace when you need direct control. ",

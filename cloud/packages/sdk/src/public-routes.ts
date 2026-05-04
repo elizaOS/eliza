@@ -63,6 +63,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "DELETE /api/v1/mcps/{mcpId}": { method: "DELETE", path: "/api/v1/mcps/{mcpId}", methodName: "deleteApiV1McpsByMcpId", responseMode: "json", pathParams: ["mcpId"], catchAllPathParams: [], file: "apps/api/v1/mcps/[mcpId]/route.ts" },
   "DELETE /api/v1/mcps/{mcpId}/publish": { method: "DELETE", path: "/api/v1/mcps/{mcpId}/publish", methodName: "deleteApiV1McpsByMcpIdPublish", responseMode: "json", pathParams: ["mcpId"], catchAllPathParams: [], file: "apps/api/v1/mcps/[mcpId]/publish/route.ts" },
   "DELETE /api/v1/oauth/connections/{id}": { method: "DELETE", path: "/api/v1/oauth/connections/{id}", methodName: "deleteApiV1OauthConnectionsById", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/oauth/connections/[id]/route.ts" },
+  "DELETE /api/v1/proxy/birdeye/{path}": { method: "DELETE", path: "/api/v1/proxy/birdeye/{path}", methodName: "deleteApiV1ProxyBirdeyeByPath", responseMode: "json", pathParams: ["path"], catchAllPathParams: ["path"], file: "apps/api/v1/proxy/birdeye/[...path]/route.ts" },
   "DELETE /api/v1/telegram/disconnect": { method: "DELETE", path: "/api/v1/telegram/disconnect", methodName: "deleteApiV1TelegramDisconnect", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/telegram/disconnect/route.ts" },
   "DELETE /api/v1/twilio/disconnect": { method: "DELETE", path: "/api/v1/twilio/disconnect", methodName: "deleteApiV1TwilioDisconnect", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/twilio/disconnect/route.ts" },
   "DELETE /api/v1/twitter/disconnect": { method: "DELETE", path: "/api/v1/twitter/disconnect", methodName: "deleteApiV1TwitterDisconnect", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/twitter/disconnect/route.ts" },
@@ -343,6 +344,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "GET /api/v1/twilio/status": { method: "GET", path: "/api/v1/twilio/status", methodName: "getApiV1TwilioStatus", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/twilio/status/route.ts" },
   "GET /api/v1/twitter/callback": { method: "GET", path: "/api/v1/twitter/callback", methodName: "getApiV1TwitterCallback", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/twitter/callback/route.ts" },
   "GET /api/v1/twitter/status": { method: "GET", path: "/api/v1/twitter/status", methodName: "getApiV1TwitterStatus", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/twitter/status/route.ts" },
+  "GET /api/v1/twitter/token": { method: "GET", path: "/api/v1/twitter/token", methodName: "getApiV1TwitterToken", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/twitter/token/route.ts" },
   "GET /api/v1/user": { method: "GET", path: "/api/v1/user", methodName: "getApiV1User", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/user/route.ts" },
   "GET /api/v1/user/avatar": { method: "GET", path: "/api/v1/user/avatar", methodName: "getApiV1UserAvatar", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/user/avatar/route.ts" },
   "GET /api/v1/user/wallets": { method: "GET", path: "/api/v1/user/wallets", methodName: "getApiV1UserWallets", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/user/wallets/route.ts" },
@@ -391,6 +393,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "PATCH /api/v1/eliza/google/calendar/events/{eventId}": { method: "PATCH", path: "/api/v1/eliza/google/calendar/events/{eventId}", methodName: "patchApiV1ElizaGoogleCalendarEventsByEventId", responseMode: "json", pathParams: ["eventId"], catchAllPathParams: [], file: "apps/api/v1/eliza/google/calendar/events/[eventId]/route.ts" },
   "PATCH /api/v1/generate-image": { method: "PATCH", path: "/api/v1/generate-image", methodName: "patchApiV1GenerateImage", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/generate-image/route.ts" },
   "PATCH /api/v1/generate-video": { method: "PATCH", path: "/api/v1/generate-video", methodName: "patchApiV1GenerateVideo", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/generate-video/route.ts" },
+  "PATCH /api/v1/proxy/birdeye/{path}": { method: "PATCH", path: "/api/v1/proxy/birdeye/{path}", methodName: "patchApiV1ProxyBirdeyeByPath", responseMode: "json", pathParams: ["path"], catchAllPathParams: ["path"], file: "apps/api/v1/proxy/birdeye/[...path]/route.ts" },
   "PATCH /api/v1/user": { method: "PATCH", path: "/api/v1/user", methodName: "patchApiV1User", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/user/route.ts" },
   "PATCH /api/v1/user/avatar": { method: "PATCH", path: "/api/v1/user/avatar", methodName: "patchApiV1UserAvatar", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/user/avatar/route.ts" },
   "PATCH /api/v1/user/email": { method: "PATCH", path: "/api/v1/user/email", methodName: "patchApiV1UserEmail", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/user/email/route.ts" },
@@ -596,6 +599,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "POST /api/v1/oauth/{platform}/initiate": { method: "POST", path: "/api/v1/oauth/{platform}/initiate", methodName: "postApiV1OauthByPlatformInitiate", responseMode: "json", pathParams: ["platform"], catchAllPathParams: [], file: "apps/api/v1/oauth/[platform]/initiate/route.ts" },
   "POST /api/v1/oauth/connect": { method: "POST", path: "/api/v1/oauth/connect", methodName: "postApiV1OauthConnect", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/oauth/connect/route.ts" },
   "POST /api/v1/oauth/initiate": { method: "POST", path: "/api/v1/oauth/initiate", methodName: "postApiV1OauthInitiate", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/oauth/initiate/route.ts" },
+  "POST /api/v1/proxy/birdeye/{path}": { method: "POST", path: "/api/v1/proxy/birdeye/{path}", methodName: "postApiV1ProxyBirdeyeByPath", responseMode: "json", pathParams: ["path"], catchAllPathParams: ["path"], file: "apps/api/v1/proxy/birdeye/[...path]/route.ts" },
   "POST /api/v1/proxy/evm-rpc/{chain}": { method: "POST", path: "/api/v1/proxy/evm-rpc/{chain}", methodName: "postApiV1ProxyEvmRpcByChain", responseMode: "json", pathParams: ["chain"], catchAllPathParams: [], file: "apps/api/v1/proxy/evm-rpc/[chain]/route.ts" },
   "POST /api/v1/proxy/solana-rpc": { method: "POST", path: "/api/v1/proxy/solana-rpc", methodName: "postApiV1ProxySolanaRpc", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/proxy/solana-rpc/route.ts" },
   "POST /api/v1/redemptions": { method: "POST", path: "/api/v1/redemptions", methodName: "postApiV1Redemptions", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/redemptions/route.ts" },
@@ -672,6 +676,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "PUT /api/v1/generate-image": { method: "PUT", path: "/api/v1/generate-image", methodName: "putApiV1GenerateImage", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/generate-image/route.ts" },
   "PUT /api/v1/generate-video": { method: "PUT", path: "/api/v1/generate-video", methodName: "putApiV1GenerateVideo", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/generate-video/route.ts" },
   "PUT /api/v1/mcps/{mcpId}": { method: "PUT", path: "/api/v1/mcps/{mcpId}", methodName: "putApiV1McpsByMcpId", responseMode: "json", pathParams: ["mcpId"], catchAllPathParams: [], file: "apps/api/v1/mcps/[mcpId]/route.ts" },
+  "PUT /api/v1/proxy/birdeye/{path}": { method: "PUT", path: "/api/v1/proxy/birdeye/{path}", methodName: "putApiV1ProxyBirdeyeByPath", responseMode: "json", pathParams: ["path"], catchAllPathParams: ["path"], file: "apps/api/v1/proxy/birdeye/[...path]/route.ts" },
   "PUT /api/v1/user/avatar": { method: "PUT", path: "/api/v1/user/avatar", methodName: "putApiV1UserAvatar", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/user/avatar/route.ts" },
 } as const;
 
@@ -752,6 +757,7 @@ export interface PublicRoutePathParams {
   "DELETE /api/v1/mcps/{mcpId}": { "mcpId": string | number };
   "DELETE /api/v1/mcps/{mcpId}/publish": { "mcpId": string | number };
   "DELETE /api/v1/oauth/connections/{id}": { "id": string | number };
+  "DELETE /api/v1/proxy/birdeye/{path}": { "path": string | number | readonly (string | number)[] };
   "DELETE /api/v1/telegram/disconnect": Record<never, never>;
   "DELETE /api/v1/twilio/disconnect": Record<never, never>;
   "DELETE /api/v1/twitter/disconnect": Record<never, never>;
@@ -1032,6 +1038,7 @@ export interface PublicRoutePathParams {
   "GET /api/v1/twilio/status": Record<never, never>;
   "GET /api/v1/twitter/callback": Record<never, never>;
   "GET /api/v1/twitter/status": Record<never, never>;
+  "GET /api/v1/twitter/token": Record<never, never>;
   "GET /api/v1/user": Record<never, never>;
   "GET /api/v1/user/avatar": Record<never, never>;
   "GET /api/v1/user/wallets": Record<never, never>;
@@ -1080,6 +1087,7 @@ export interface PublicRoutePathParams {
   "PATCH /api/v1/eliza/google/calendar/events/{eventId}": { "eventId": string | number };
   "PATCH /api/v1/generate-image": Record<never, never>;
   "PATCH /api/v1/generate-video": Record<never, never>;
+  "PATCH /api/v1/proxy/birdeye/{path}": { "path": string | number | readonly (string | number)[] };
   "PATCH /api/v1/user": Record<never, never>;
   "PATCH /api/v1/user/avatar": Record<never, never>;
   "PATCH /api/v1/user/email": Record<never, never>;
@@ -1285,6 +1293,7 @@ export interface PublicRoutePathParams {
   "POST /api/v1/oauth/{platform}/initiate": { "platform": string | number };
   "POST /api/v1/oauth/connect": Record<never, never>;
   "POST /api/v1/oauth/initiate": Record<never, never>;
+  "POST /api/v1/proxy/birdeye/{path}": { "path": string | number | readonly (string | number)[] };
   "POST /api/v1/proxy/evm-rpc/{chain}": { "chain": string | number };
   "POST /api/v1/proxy/solana-rpc": Record<never, never>;
   "POST /api/v1/redemptions": Record<never, never>;
@@ -1361,6 +1370,7 @@ export interface PublicRoutePathParams {
   "PUT /api/v1/generate-image": Record<never, never>;
   "PUT /api/v1/generate-video": Record<never, never>;
   "PUT /api/v1/mcps/{mcpId}": { "mcpId": string | number };
+  "PUT /api/v1/proxy/birdeye/{path}": { "path": string | number | readonly (string | number)[] };
   "PUT /api/v1/user/avatar": Record<never, never>;
 }
 
@@ -1822,6 +1832,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"DELETE /api/v1/oauth/connections/{id}">
   ): Promise<TResponse> {
     return this.call<"DELETE /api/v1/oauth/connections/{id}", TResponse>("DELETE /api/v1/oauth/connections/{id}", options);
+  }
+
+  deleteApiV1ProxyBirdeyeByPath<TResponse = unknown>(
+    options: PublicRouteCallOptions<"DELETE /api/v1/proxy/birdeye/{path}">
+  ): Promise<TResponse> {
+    return this.call<"DELETE /api/v1/proxy/birdeye/{path}", TResponse>("DELETE /api/v1/proxy/birdeye/{path}", options);
   }
 
   deleteApiV1TelegramDisconnect<TResponse = unknown>(
@@ -3504,6 +3520,12 @@ export class ElizaCloudPublicRoutesClient {
     return this.call<"GET /api/v1/twitter/status", TResponse>("GET /api/v1/twitter/status", options);
   }
 
+  getApiV1TwitterToken<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/twitter/token"> = {}
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/twitter/token", TResponse>("GET /api/v1/twitter/token", options);
+  }
+
   getApiV1User<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/user"> = {}
   ): Promise<TResponse> {
@@ -3790,6 +3812,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"PATCH /api/v1/generate-video"> = {}
   ): Promise<TResponse> {
     return this.call<"PATCH /api/v1/generate-video", TResponse>("PATCH /api/v1/generate-video", options);
+  }
+
+  patchApiV1ProxyBirdeyeByPath<TResponse = unknown>(
+    options: PublicRouteCallOptions<"PATCH /api/v1/proxy/birdeye/{path}">
+  ): Promise<TResponse> {
+    return this.call<"PATCH /api/v1/proxy/birdeye/{path}", TResponse>("PATCH /api/v1/proxy/birdeye/{path}", options);
   }
 
   patchApiV1User<TResponse = unknown>(
@@ -5022,6 +5050,12 @@ export class ElizaCloudPublicRoutesClient {
     return this.call<"POST /api/v1/oauth/initiate", TResponse>("POST /api/v1/oauth/initiate", options);
   }
 
+  postApiV1ProxyBirdeyeByPath<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/proxy/birdeye/{path}">
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/proxy/birdeye/{path}", TResponse>("POST /api/v1/proxy/birdeye/{path}", options);
+  }
+
   postApiV1ProxyEvmRpcByChain<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/proxy/evm-rpc/{chain}">
   ): Promise<TResponse> {
@@ -5478,6 +5512,12 @@ export class ElizaCloudPublicRoutesClient {
     return this.call<"PUT /api/v1/mcps/{mcpId}", TResponse>("PUT /api/v1/mcps/{mcpId}", options);
   }
 
+  putApiV1ProxyBirdeyeByPath<TResponse = unknown>(
+    options: PublicRouteCallOptions<"PUT /api/v1/proxy/birdeye/{path}">
+  ): Promise<TResponse> {
+    return this.call<"PUT /api/v1/proxy/birdeye/{path}", TResponse>("PUT /api/v1/proxy/birdeye/{path}", options);
+  }
+
   putApiV1UserAvatar<TResponse = unknown>(
     options: PublicRouteCallOptions<"PUT /api/v1/user/avatar"> = {}
   ): Promise<TResponse> {
@@ -5710,6 +5750,10 @@ export class ElizaCloudPublicRoutesClient {
 
   deleteApiV1OauthConnectionsByIdRaw(options: PublicRouteCallOptions<"DELETE /api/v1/oauth/connections/{id}">): Promise<Response> {
     return this.callRaw("DELETE /api/v1/oauth/connections/{id}", options);
+  }
+
+  deleteApiV1ProxyBirdeyeByPathRaw(options: PublicRouteCallOptions<"DELETE /api/v1/proxy/birdeye/{path}">): Promise<Response> {
+    return this.callRaw("DELETE /api/v1/proxy/birdeye/{path}", options);
   }
 
   deleteApiV1TelegramDisconnectRaw(options: PublicRouteCallOptions<"DELETE /api/v1/telegram/disconnect"> = {}): Promise<Response> {
@@ -6832,6 +6876,10 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("GET /api/v1/twitter/status", options);
   }
 
+  getApiV1TwitterTokenRaw(options: PublicRouteCallOptions<"GET /api/v1/twitter/token"> = {}): Promise<Response> {
+    return this.callRaw("GET /api/v1/twitter/token", options);
+  }
+
   getApiV1UserRaw(options: PublicRouteCallOptions<"GET /api/v1/user"> = {}): Promise<Response> {
     return this.callRaw("GET /api/v1/user", options);
   }
@@ -7022,6 +7070,10 @@ export class ElizaCloudPublicRoutesClient {
 
   patchApiV1GenerateVideoRaw(options: PublicRouteCallOptions<"PATCH /api/v1/generate-video"> = {}): Promise<Response> {
     return this.callRaw("PATCH /api/v1/generate-video", options);
+  }
+
+  patchApiV1ProxyBirdeyeByPathRaw(options: PublicRouteCallOptions<"PATCH /api/v1/proxy/birdeye/{path}">): Promise<Response> {
+    return this.callRaw("PATCH /api/v1/proxy/birdeye/{path}", options);
   }
 
   patchApiV1UserRaw(options: PublicRouteCallOptions<"PATCH /api/v1/user"> = {}): Promise<Response> {
@@ -7844,6 +7896,10 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("POST /api/v1/oauth/initiate", options);
   }
 
+  postApiV1ProxyBirdeyeByPathRaw(options: PublicRouteCallOptions<"POST /api/v1/proxy/birdeye/{path}">): Promise<Response> {
+    return this.callRaw("POST /api/v1/proxy/birdeye/{path}", options);
+  }
+
   postApiV1ProxyEvmRpcByChainRaw(options: PublicRouteCallOptions<"POST /api/v1/proxy/evm-rpc/{chain}">): Promise<Response> {
     return this.callRaw("POST /api/v1/proxy/evm-rpc/{chain}", options);
   }
@@ -8146,6 +8202,10 @@ export class ElizaCloudPublicRoutesClient {
 
   putApiV1McpsByMcpIdRaw(options: PublicRouteCallOptions<"PUT /api/v1/mcps/{mcpId}">): Promise<Response> {
     return this.callRaw("PUT /api/v1/mcps/{mcpId}", options);
+  }
+
+  putApiV1ProxyBirdeyeByPathRaw(options: PublicRouteCallOptions<"PUT /api/v1/proxy/birdeye/{path}">): Promise<Response> {
+    return this.callRaw("PUT /api/v1/proxy/birdeye/{path}", options);
   }
 
   putApiV1UserAvatarRaw(options: PublicRouteCallOptions<"PUT /api/v1/user/avatar"> = {}): Promise<Response> {

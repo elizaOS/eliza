@@ -8,12 +8,16 @@ vi.mock("@elizaos/agent/config/config", () => ({
   loadElizaConfig: loadElizaConfigMock,
 }));
 
-import { resolveLifeOpsIMessageBridgeConfig } from "./service-mixin-imessage.js";
+let resolveLifeOpsIMessageBridgeConfig: typeof import("./service-mixin-imessage.js").resolveLifeOpsIMessageBridgeConfig;
 
 describe("resolveLifeOpsIMessageBridgeConfig", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.resetModules();
     loadElizaConfigMock.mockReset();
     loadElizaConfigMock.mockReturnValue({});
+    ({ resolveLifeOpsIMessageBridgeConfig } = await import(
+      "./service-mixin-imessage.js"
+    ));
   });
 
   it("prefers BlueBubbles config from Eliza config when present", () => {

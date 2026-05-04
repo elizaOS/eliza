@@ -62,6 +62,12 @@
   "publishConfig": {
     "access": "public"
   },
+  "resolutions": {
+    "@noble/hashes": "2.2.0"
+  },
+  "overrides": {
+    "@noble/hashes": "2.2.0"
+  },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {

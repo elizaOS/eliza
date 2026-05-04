@@ -24,7 +24,7 @@ import { lifeAction } from "../src/actions/life.js";
 import { appLifeOpsPlugin } from "../src/plugin.js";
 
 let runtime: AgentRuntime;
-let cleanup: () => Promise<void>;
+let cleanup: () => Promise<void> = async () => {};
 let isolatedStateDir: string;
 let isolatedConfigPath: string;
 
@@ -99,7 +99,9 @@ beforeAll(async () => {
 afterAll(async () => {
   await cleanup();
   restoreIsolatedLifeSmokeEnv();
-  rmSync(isolatedStateDir, { recursive: true, force: true });
+  if (isolatedStateDir) {
+    rmSync(isolatedStateDir, { recursive: true, force: true });
+  }
 });
 
 describe("LIFE action smoke tests -- BRD acceptance criteria", () => {

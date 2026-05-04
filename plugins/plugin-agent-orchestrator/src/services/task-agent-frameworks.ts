@@ -213,6 +213,37 @@ const STANDARD_FRAMEWORKS: SupportedTaskAgentAdapter[] = [
   "aider",
 ];
 
+const DEFAULT_FRAMEWORK_PREFLIGHT_TIMEOUT_MS = 5_000;
+
+function resolveFrameworkPreflightTimeoutMs(): number {
+  const raw = process.env.PARALLAX_FRAMEWORK_PREFLIGHT_TIMEOUT_MS?.trim();
+  if (!raw) return DEFAULT_FRAMEWORK_PREFLIGHT_TIMEOUT_MS;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed >= 250
+    ? parsed
+    : DEFAULT_FRAMEWORK_PREFLIGHT_TIMEOUT_MS;
+}
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label: string,
+): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => {
+          reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
 const TASK_AGENT_MODEL_PREF_SETTING_KEYS: Record<
   SupportedTaskAgentAdapter | "opencode",
   { powerful: string; fast: string }
@@ -609,7 +640,11 @@ async function computeTaskAgentFrameworkState(
 
   if (probe?.checkAvailableAgents) {
     try {
-      const results = await probe.checkAvailableAgents(STANDARD_FRAMEWORKS);
+      const results = await withTimeout(
+        probe.checkAvailableAgents(STANDARD_FRAMEWORKS),
+        resolveFrameworkPreflightTimeoutMs(),
+        "task-agent framework preflight",
+      );
       // checkAdapters returns `adapter` as the human-readable display name
       // (e.g. "Claude Code", "OpenAI Codex"), not the lowercase ID. Map back
       // to the canonical framework ID via case-insensitive substring match.
