@@ -2,10 +2,9 @@
  * Containers API
  *
  * GET  /api/v1/containers — list containers for the authed user's org (Workers-safe).
- * POST /api/v1/containers — create + deploy a container. Stubbed at 501 on the
- *   Worker because the Hetzner-Docker client transitively imports `ssh2`,
- *   which is Node-only. The Node sidecar serves POST; see
- *   `cloud/CONTAINERS_MIGRATION.md`.
+ * POST /api/v1/containers — create + deploy a container. The Hetzner-Docker
+ *   client transitively imports `ssh2`, so Workers forward this mutation to
+ *   the Node container control plane when configured.
  */
 
 import { Hono } from "hono";
@@ -14,6 +13,7 @@ import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { listContainers } from "@/lib/services/containers";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { forwardToContainerControlPlane } from "../_container-control-plane-forward";
 
 const app = new Hono<AppEnv>();
 
@@ -28,15 +28,14 @@ app.get("/", async (c) => {
   }
 });
 
-app.post("/", (c) =>
-  c.json(
-    {
-      success: false,
-      error: "not_yet_migrated",
-      reason: "node-only dep: ssh2 (Hetzner-Docker client). Sidecar serves this endpoint.",
-    },
-    501,
-  ),
-);
+app.post("/", async (c) => {
+  try {
+    const user = await requireUserOrApiKeyWithOrg(c);
+    return forwardToContainerControlPlane(c, user);
+  } catch (error) {
+    logger.error("[Containers API] create forward error:", error);
+    return failureResponse(c, error);
+  }
+});
 
 export default app;

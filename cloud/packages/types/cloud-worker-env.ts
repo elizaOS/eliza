@@ -17,6 +17,11 @@ export interface Bindings {
   /** Object storage for voice samples, avatars, and other binary blobs. */
   BLOB: RuntimeR2Bucket;
 
+  // ---- Cloudflare Registrar/DNS ----
+  CLOUDFLARE_ACCOUNT_ID?: string;
+  CLOUDFLARE_API_TOKEN?: string;
+  ELIZA_CF_REGISTRAR_DEV_STUB?: string;
+
   // ---- ElevenLabs ----
   ELEVENLABS_API_KEY?: string;
 
@@ -25,6 +30,9 @@ export interface Bindings {
   OPENAI_API_KEY?: string;
   ANTHROPIC_API_KEY?: string;
   AI_GATEWAY_API_KEY?: string;
+  AIGATEWAY_API_KEY?: string;
+  AI_GATEWAY_BASE_URL?: string;
+  VERCEL_OIDC_TOKEN?: string;
   /**
    * Public hostname that serves the BLOB R2 bucket. Used to construct sample
    * URLs returned to clients. Defaults to "blob.elizacloud.ai" if unset.
@@ -95,6 +103,7 @@ export interface Bindings {
 
   // ---- Feature flags ----
   REDIS_RATE_LIMITING?: string;
+  CACHE_ENABLED?: string;
   RATE_LIMIT_DISABLED?: string;
   RATE_LIMIT_MULTIPLIER?: string;
   PLAYWRIGHT_TEST_AUTH?: string;

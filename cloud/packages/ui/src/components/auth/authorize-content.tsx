@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "@elizaos/cloud-ui/runtime/navigation
 import { StewardLogin, useAuth } from "@stwd/react";
 import { AlertTriangle, CheckCircle2, Loader2, Shield } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { storeCurrentAppAuthorizeReturnTo } from "./authorize-return";
 
 interface AppInfo {
   id: string;
@@ -60,6 +61,8 @@ function AuthorizeAuthenticatedContent({
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
   const [status, setStatus] = useState<AuthorizeStatus>("validating");
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(storeCurrentAppAuthorizeReturnTo, []);
 
   // Validate app + redirect_uri exactly once on mount.
   useEffect(() => {

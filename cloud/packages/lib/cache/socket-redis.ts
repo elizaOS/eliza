@@ -69,7 +69,7 @@ async function getConnect(): Promise<ConnectFn> {
             // already closed
           }
         });
-        sock.on("error", (err) => controller.error(err));
+        sock.on("error", (err: Error) => controller.error(err));
       },
       cancel() {
         sock.destroy();
@@ -79,7 +79,7 @@ async function getConnect(): Promise<ConnectFn> {
     const writable = new WritableStream<Uint8Array>({
       write(chunk) {
         return new Promise((resolve, reject) => {
-          sock.write(chunk, (err) => (err ? reject(err) : resolve()));
+          sock.write(chunk, (err?: Error | null) => (err ? reject(err) : resolve()));
         });
       },
       close() {

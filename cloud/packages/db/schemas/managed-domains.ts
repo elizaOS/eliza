@@ -25,9 +25,12 @@ import { userCharacters } from "./user-characters";
 import { userMcps } from "./user-mcps";
 
 // Enums
-export const domainRegistrarEnum = pgEnum("domain_registrar", ["external"]);
+export const domainRegistrarEnum = pgEnum("domain_registrar", ["external", "cloudflare"]);
 
-export const domainNameserverModeEnum = pgEnum("domain_nameserver_mode", ["external"]);
+export const domainNameserverModeEnum = pgEnum("domain_nameserver_mode", [
+  "external",
+  "cloudflare",
+]);
 
 export const domainResourceTypeEnum = pgEnum("domain_resource_type", [
   "app",
@@ -189,6 +192,10 @@ export const managedDomains = pgTable(
     suspensionNotification: jsonb("suspension_notification").$type<SuspensionNotification>(),
     ownerNotifiedAt: timestamp("owner_notified_at"),
 
+    // Cloudflare registrar identifiers (only set when registrar='cloudflare')
+    cloudflareZoneId: text("cloudflare_zone_id"),
+    cloudflareRegistrationId: text("cloudflare_registration_id"),
+
     // Pricing (for purchased domains)
     purchasePrice: text("purchase_price"), // In cents USD
     renewalPrice: text("renewal_price"), // In cents USD
@@ -211,6 +218,7 @@ export const managedDomains = pgTable(
     expiresIdx: index("managed_domains_expires_idx").on(table.expiresAt),
     contentScanIdx: index("managed_domains_content_scan_idx").on(table.lastContentScanAt),
     suspendedIdx: index("managed_domains_suspended_idx").on(table.suspendedAt),
+    cloudflareZoneIdx: index("managed_domains_cloudflare_zone_idx").on(table.cloudflareZoneId),
   }),
 );
 

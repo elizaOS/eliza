@@ -3,13 +3,13 @@
  *
  * Typed adapter that the `/api/v1/containers/*` routes use to drive the
  * underlying Hetzner-Docker control plane. Wraps the existing
- * `DockerSandboxProvider` + `dockerNodesRepository` so the route layer
- * stays free of SSH, port allocation, and node-selection details.
+ * `DockerSSHClient` + `dockerNodesRepository` so the route layer stays free
+ * of SSH, port allocation, and node-selection details.
  *
  * This is intentionally a NARROW interface — the public surface for
- * "user containers" is a small subset of what `DockerSandboxProvider`
- * supports for agent sandboxes. New methods get added here only when a
- * route needs them.
+ * "user containers" is a small subset of what the Docker sandbox backend
+ * supports for agent sandboxes. New methods get added here only when a route
+ * needs them.
  *
  * Implementation notes:
  *
@@ -17,16 +17,16 @@
  *   The Docker `containerName` (e.g. `cloud-container-<id>`) is an internal
  *   detail derived from container metadata.
  *
- * - This module imports `ssh2` transitively via `DockerSandboxProvider`
- *   and is therefore Node-only. Cloudflare Workers cannot host the
- *   routes that use it; they run on the Node sidecar (see INFRA.md
- *   "Container backend").
+ * - This module imports `ssh2` transitively via `DockerSSHClient` and is
+ *   therefore Node-only. Cloudflare Workers cannot host the routes that use
+ *   it; they run on the Node sidecar (see INFRA.md "Container backend").
  *
  * - All errors are normalized to `HetznerClientError` so the route layer
  *   has a single error type to map to HTTP status codes.
  */
 
 import { and, eq, sql } from "drizzle-orm";
+import * as fs from "fs";
 import { dbRead, dbWrite } from "@/db/client";
 import {
   type Container,
@@ -42,7 +42,13 @@ import {
   getHetznerVolumeService,
   isHetznerVolumesAvailable,
 } from "@/lib/services/containers/hetzner-volumes";
-import { DockerSandboxProvider } from "@/lib/services/docker-sandbox-provider";
+import { getUsedDockerHostPorts } from "@/lib/services/docker-port-allocation";
+import {
+  allocatePort,
+  shellQuote,
+  WEBUI_PORT_MAX,
+  WEBUI_PORT_MIN,
+} from "@/lib/services/docker-sandbox-utils";
 import { DockerSSHClient } from "@/lib/services/docker-ssh";
 import { logger } from "@/lib/utils/logger";
 
@@ -265,12 +271,6 @@ function rowToSummary(row: Container): ContainerSummary {
   };
 }
 
-function shellQuote(value: string): string {
-  // Same quoting rule used by docker-sandbox-utils: wrap in single quotes,
-  // escape interior single quotes by closing-and-reopening.
-  return `'${value.replace(/'/g, `'\\''`)}'`;
-}
-
 function validateEnvKey(key: string): void {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
     throw new HetznerClientError(
@@ -342,13 +342,57 @@ function getDockerNodeLocation(node: DockerNode): string | null {
   return typeof location === "string" ? location : null;
 }
 
+function getImageRegistryHost(image: string): string | null {
+  const firstSegment = image.split("/")[0];
+  if (!firstSegment) return null;
+  if (firstSegment.includes(".") || firstSegment.includes(":") || firstSegment === "localhost") {
+    return firstSegment;
+  }
+  return null;
+}
+
+function readRegistryToken(): string | undefined {
+  const envToken = containersEnv.registryToken();
+  if (envToken) return envToken;
+
+  const tokenFile = containersEnv.registryTokenFile();
+  if (!tokenFile) return undefined;
+
+  try {
+    const token = fs.readFileSync(tokenFile, "utf8").trim();
+    return token || undefined;
+  } catch (error) {
+    throw new HetznerClientError(
+      "invalid_input",
+      `Failed to read Docker registry token file '${tokenFile.split("/").pop() ?? "unknown"}': ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+async function loginToImageRegistry(ssh: DockerSSHClient, image: string): Promise<void> {
+  const registryHost = getImageRegistryHost(image);
+  const username = containersEnv.registryUsername();
+  const token = readRegistryToken();
+  if (!registryHost && !username && !token) return;
+  if (!registryHost) return;
+  if (!username || !token) {
+    throw new HetznerClientError(
+      "invalid_input",
+      `Docker registry credentials are required to pull from ${registryHost}`,
+    );
+  }
+
+  await ssh.exec(
+    `printf %s ${shellQuote(token)} | docker login ${shellQuote(registryHost)} -u ${shellQuote(username)} --password-stdin >/dev/null`,
+    60_000,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // HetznerContainersClient
 // ---------------------------------------------------------------------------
 
 export class HetznerContainersClient {
-  private readonly sandbox = new DockerSandboxProvider();
-
   // ----------------------------------------------------------------------
   // CRUD
   // ----------------------------------------------------------------------
@@ -477,11 +521,7 @@ export class HetznerContainersClient {
     );
 
     const containerName = deriveContainerName(row.id);
-    // Host port = container port until we wire dynamic allocation per-app
-    // through the same `getUsedPorts` flow used by the sandbox provider.
-    // For v1 the public URL is the node's hostname:hostPort; ALB / shared
-    // ingress is a follow-up.
-    const hostPort = input.port;
+    const usedPorts = await getUsedDockerHostPorts(node.node_id);
 
     // Local volume path - used for non-hcloud persistent volumes. For hcloud
     // volumes this is set after the attach step below.
@@ -495,6 +535,7 @@ export class HetznerContainersClient {
         status: "building",
         deployment_log: `Pulling image ${input.image} on ${node.node_id}...`,
       });
+      await loginToImageRegistry(ssh, input.image);
       await ssh.exec(`docker pull ${shellQuote(input.image)}`, 5 * 60 * 1000);
 
       // 5. Hetzner Cloud volume attachment. The volume service handles:
@@ -520,21 +561,48 @@ export class HetznerContainersClient {
         .map(([k, v]) => `-e ${shellQuote(`${k}=${v}`)}`)
         .join(" ");
 
-      const dockerCreateCmd = [
-        "docker create",
-        `--name ${shellQuote(containerName)}`,
-        "--restart unless-stopped",
-        `--network ${shellQuote(DEFAULT_NODE_NETWORK)}`,
-        `--memory ${input.memoryMb}m`,
-        ...(volumePath ? [`-v ${shellQuote(volumePath)}:/data`] : []),
-        `-p ${hostPort}:${input.port}`,
-        envFlags,
-        shellQuote(input.image),
-      ]
-        .filter((part) => part.length > 0)
-        .join(" ");
+      let hostPort: number | undefined;
+      const maxPortAttempts = 5;
+      for (let attempt = 1; attempt <= maxPortAttempts; attempt++) {
+        hostPort = allocatePort(WEBUI_PORT_MIN, WEBUI_PORT_MAX, usedPorts);
+        const dockerCreateCmd = [
+          "docker create",
+          `--name ${shellQuote(containerName)}`,
+          "--restart unless-stopped",
+          `--network ${shellQuote(DEFAULT_NODE_NETWORK)}`,
+          `--memory ${input.memoryMb}m`,
+          ...(volumePath ? [`-v ${shellQuote(volumePath)}:/data`] : []),
+          `-p ${hostPort}:${input.port}`,
+          envFlags,
+          shellQuote(input.image),
+        ]
+          .filter((part) => part.length > 0)
+          .join(" ");
 
-      await ssh.exec(dockerCreateCmd, 60_000);
+        try {
+          await ssh.exec(dockerCreateCmd, 60_000);
+          break;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const isPortCollision =
+            message.includes("already in use") ||
+            message.includes("port is already allocated") ||
+            message.includes("Bind for 0.0.0.0");
+          if (!isPortCollision || attempt === maxPortAttempts) {
+            throw error;
+          }
+          usedPorts.add(hostPort);
+          logger.warn("[hetzner-client] host port collision, retrying container create", {
+            containerId: row.id,
+            nodeId: node.node_id,
+            hostPort,
+            attempt,
+          });
+        }
+      }
+      if (hostPort === undefined) {
+        throw new HetznerClientError("container_create_failed", "Failed to allocate host port");
+      }
       await ssh.exec(`docker start ${shellQuote(containerName)}`, 60_000);
       await dockerNodesRepository.incrementAllocated(node.node_id);
 
@@ -987,29 +1055,36 @@ export class HetznerContainersClient {
         const status = (
           await this.execOnNode(meta, (ssh) =>
             ssh.exec(
-              `docker inspect --format '{{.State.Health.Status}}' ${shellQuote(meta.containerName)} 2>/dev/null || docker inspect --format '{{.State.Status}}' ${shellQuote(meta.containerName)}`,
+              `docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' ${shellQuote(meta.containerName)}`,
               15_000,
             ),
           )
         ).trim();
 
         if (status === "healthy" || status === "running") {
+          const checkedAt = new Date();
           await dbWrite
             .update(containersTable)
             .set({
               status: "running",
-              last_deployed_at: new Date(),
-              updated_at: new Date(),
+              deployment_log: `Container is running on ${meta.nodeId}.`,
+              error_message: null,
+              last_deployed_at: checkedAt,
+              last_health_check: checkedAt,
+              updated_at: checkedAt,
             })
             .where(eq(containersTable.id, row.id));
           running += 1;
         } else if (status === "exited" || status === "dead") {
+          const checkedAt = new Date();
           await dbWrite
             .update(containersTable)
             .set({
               status: "failed",
+              deployment_log: `Container is ${status}.`,
               error_message: `Container is ${status}`,
-              updated_at: new Date(),
+              last_health_check: checkedAt,
+              updated_at: checkedAt,
             })
             .where(eq(containersTable.id, row.id));
           failed += 1;
