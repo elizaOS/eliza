@@ -638,7 +638,9 @@ const postGeneratedHandler = async ({
 	const optimizedResponseService = runtime.getService<OptimizedPromptService>(
 		OPTIMIZED_PROMPT_SERVICE,
 	);
-	const dynamicPrompt = await runtime.getCache<string>("core_prompt_messageHandlerTemplate");
+	const dynamicPrompt = await runtime.getCache<string>(
+		"core_prompt_messageHandlerTemplate",
+	);
 	const baselineResponseTemplate =
 		dynamicPrompt ||
 		runtime.character.templates?.messageHandlerTemplate ||
