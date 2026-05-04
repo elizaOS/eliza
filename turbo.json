@@ -133,6 +133,7 @@
       "outputs": []
     },
     "@elizaos/plugin-sql#build": {
+      "dependsOn": ["@elizaos/core#build"],
       "outputs": ["typescript/dist/**"]
     },
     "@elizaos/plugin-whatsapp-root#build": {
