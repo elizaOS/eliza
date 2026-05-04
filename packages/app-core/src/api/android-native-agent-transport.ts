@@ -29,13 +29,17 @@ let nativeTransportPromise: Promise<AgentRequestTransport | null> | null = null;
 
 function isNativeAndroid(): boolean {
   try {
-    return Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android";
+    return (
+      Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android"
+    );
   } catch {
     return false;
   }
 }
 
-function headersToRecord(headers: HeadersInit | undefined): Record<string, string> {
+function headersToRecord(
+  headers: HeadersInit | undefined,
+): Record<string, string> {
   if (!headers) return {};
   const record: Record<string, string> = {};
   new Headers(headers).forEach((value, key) => {
@@ -49,8 +53,11 @@ function methodAllowsBody(method: string): boolean {
   return normalized !== "GET" && normalized !== "HEAD";
 }
 
-function bodyToString(body: BodyInit | null | undefined): string | null | undefined {
-  if (body == null) return body;
+function bodyToString(
+  body: BodyInit | null | undefined,
+): string | null | undefined {
+  if (body === null) return null;
+  if (body === undefined) return undefined;
   if (typeof body === "string") return body;
   if (body instanceof URLSearchParams) return body.toString();
   return undefined;

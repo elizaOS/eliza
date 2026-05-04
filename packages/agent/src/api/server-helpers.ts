@@ -54,21 +54,6 @@ import {
   resolveWalletCapabilityStatus,
 } from "./wallet-capability.js";
 
-function hasNonEmptyEnvValue(value: string | undefined): boolean {
-  return typeof value === "string" && value.trim().length > 0;
-}
-
-function isPrivyWalletProvisioningEnabled(
-  env: NodeJS.ProcessEnv = process.env,
-): boolean {
-  const appId =
-    hasNonEmptyEnvValue(env.PRIVY_APP_ID) ||
-    hasNonEmptyEnvValue(env.BABYLON_PRIVY_APP_ID);
-  const appSecret =
-    hasNonEmptyEnvValue(env.PRIVY_APP_SECRET) ||
-    hasNonEmptyEnvValue(env.BABYLON_PRIVY_APP_SECRET);
-  return appId && appSecret;
-}
 
 // ---------------------------------------------------------------------------
 // Service accessors
