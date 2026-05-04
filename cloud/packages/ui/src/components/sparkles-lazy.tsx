@@ -6,9 +6,10 @@
 "use client";
 
 import dynamic from "@elizaos/cloud-ui/runtime/dynamic";
+import type { ParticlesProps } from "./sparkles";
 
 // Dynamic import to reduce initial bundle size
-const SparklesCore = dynamic(
+const SparklesCore = dynamic<ParticlesProps>(
   () => import("./sparkles").then((mod) => ({ default: mod.SparklesCore })),
   {
     ssr: false,

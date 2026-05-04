@@ -28,22 +28,16 @@ export class ApiError extends Error {
 }
 
 function getApiBaseUrl(): string {
-  // PRODUCTION INVARIANT: in the browser we ALWAYS go same-origin so that
-  //   1. cookies set by /api/auth/steward-session land on the Pages domain
-  //      (no Domain attribute mismatch);
-  //   2. `credentials: "include"` is not blocked by the Worker's wildcard
-  //      `Access-Control-Allow-Origin: *` (forbidden combo, browser drops
-  //      the response — the symptom is "login appears to work but the user
-  //      is never authenticated").
-  // The Pages Function at functions/api/[[path]].ts proxies /api/* to the
-  // Worker server-side, so same-origin is fine.
-  //
-  // VITE_API_URL is only honored in Node contexts (SSR / scripts) where
-  // there is no Pages Function to proxy through.
-  if (typeof window !== "undefined") return "";
-
   const fromEnv = import.meta.env.VITE_API_URL ?? import.meta.env.NEXT_PUBLIC_API_URL;
-  if (typeof fromEnv === "string" && fromEnv.length > 0) return fromEnv.replace(/\/$/, "");
+  if (typeof fromEnv === "string" && fromEnv.length > 0) return fromEnv.replace(/\/+$/, "");
+
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname.toLowerCase();
+    if (host === "elizacloud.ai" || host === "www.elizacloud.ai") {
+      return "https://api.elizacloud.ai";
+    }
+  }
+
   return "";
 }
 

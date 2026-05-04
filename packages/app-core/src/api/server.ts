@@ -997,6 +997,26 @@ async function handleCompatRoute(
     return handled;
   }
 
+  if (method === "GET" && url.pathname === "/api/drop/status") {
+    const config = loadElizaConfig() as ElizaConfig & {
+      features?: { dropEnabled?: boolean };
+    };
+    if (config.features?.dropEnabled === true) {
+      return false;
+    }
+    sendJsonResponse(res, 200, {
+      dropEnabled: false,
+      publicMintOpen: false,
+      whitelistMintOpen: false,
+      mintedOut: false,
+      currentSupply: 0,
+      maxSupply: 2138,
+      shinyPrice: "0.1",
+      userHasMinted: false,
+    });
+    return true;
+  }
+
   // ── Vincent OAuth routes — extracted to app-vincent/src/plugin.ts ──
   // Now served via vincentPlugin.routes (rawPath) on the runtime plugin
   // route system.  /callback/vincent is marked public: true.

@@ -48,6 +48,7 @@ import type {
 
 const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 4;
 const DEFAULT_DIRECT_CLOUD_BASE_URL = "https://www.elizacloud.ai";
+const DEFAULT_DIRECT_CLOUD_API_BASE_URL = "https://api.elizacloud.ai";
 
 type DirectCloudAgent = {
   id?: string;
@@ -138,6 +139,19 @@ function generateCloudLoginSessionId(): string {
 
 function shouldUseNativeCloudHttp(): boolean {
   return Capacitor.isNativePlatform();
+}
+
+function resolveDirectCloudAuthApiBase(cloudWebBase: string): string {
+  try {
+    const url = new URL(cloudWebBase);
+    const host = url.hostname.toLowerCase();
+    if (host === "elizacloud.ai" || host === "www.elizacloud.ai") {
+      return DEFAULT_DIRECT_CLOUD_API_BASE_URL;
+    }
+  } catch {
+    // Fall back to the provided base below.
+  }
+  return cloudWebBase.replace(/\/+$/, "");
 }
 
 function toCloudCompatAgent(input: DirectCloudAgent): CloudCompatAgent {
@@ -1130,10 +1144,12 @@ ElizaClient.prototype.cloudLoginDirect = async function (
   cloudApiBase,
 ) {
   const sessionId = generateCloudLoginSessionId();
+  const cloudWebBase = cloudApiBase.replace(/\/+$/, "");
+  const authApiBase = resolveDirectCloudAuthApiBase(cloudWebBase);
   try {
     if (shouldUseNativeCloudHttp()) {
       const res = await CapacitorHttp.post({
-        url: `${cloudApiBase}/api/auth/cli-session`,
+        url: `${authApiBase}/api/auth/cli-session`,
         headers: { "Content-Type": "application/json" },
         data: { sessionId },
         responseType: "json",
@@ -1146,11 +1162,11 @@ ElizaClient.prototype.cloudLoginDirect = async function (
       return {
         ok: true,
         sessionId,
-        browserUrl: `${cloudApiBase}/auth/cli-login?session=${encodeURIComponent(sessionId)}`,
+        browserUrl: `${cloudWebBase}/auth/cli-login?session=${encodeURIComponent(sessionId)}`,
       };
     }
 
-    const res = await fetch(`${cloudApiBase}/api/auth/cli-session`, {
+    const res = await fetch(`${authApiBase}/api/auth/cli-session`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sessionId }),
@@ -1161,7 +1177,7 @@ ElizaClient.prototype.cloudLoginDirect = async function (
     return {
       ok: true,
       sessionId,
-      browserUrl: `${cloudApiBase}/auth/cli-login?session=${encodeURIComponent(sessionId)}`,
+      browserUrl: `${cloudWebBase}/auth/cli-login?session=${encodeURIComponent(sessionId)}`,
     };
   } catch (err) {
     return {
@@ -1176,10 +1192,11 @@ ElizaClient.prototype.cloudLoginPollDirect = async function (
   cloudApiBase,
   sessionId,
 ) {
+  const authApiBase = resolveDirectCloudAuthApiBase(cloudApiBase);
   try {
     if (shouldUseNativeCloudHttp()) {
       const res = await CapacitorHttp.get({
-        url: `${cloudApiBase}/api/auth/cli-session/${encodeURIComponent(sessionId)}`,
+        url: `${authApiBase}/api/auth/cli-session/${encodeURIComponent(sessionId)}`,
         responseType: "json",
         connectTimeout: 10_000,
         readTimeout: 10_000,
@@ -1209,7 +1226,7 @@ ElizaClient.prototype.cloudLoginPollDirect = async function (
     }
 
     const res = await fetch(
-      `${cloudApiBase}/api/auth/cli-session/${encodeURIComponent(sessionId)}`,
+      `${authApiBase}/api/auth/cli-session/${encodeURIComponent(sessionId)}`,
     );
     if (!res.ok) {
       if (res.status === 404) {
