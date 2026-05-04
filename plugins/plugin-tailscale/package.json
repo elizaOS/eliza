@@ -22,7 +22,7 @@
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "bun run --cwd ../../packages/cloud-routing build && vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "clean": "rm -rf dist coverage",
