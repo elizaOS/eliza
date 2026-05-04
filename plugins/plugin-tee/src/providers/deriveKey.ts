@@ -70,7 +70,7 @@ export class PhalaDeriveKeyProvider extends DeriveKeyProvider {
     }
   }
 
-  async rawDeriveKeyResponse(
+  async rawGetTlsKeyResponse(
     path: string,
     subject: string,
   ): Promise<GetTlsKeyResponse> {

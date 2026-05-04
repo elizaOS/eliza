@@ -104,6 +104,7 @@ import type {
 
 // Re-export the class from client-base (no circular dependency issues)
 export { ElizaClient } from "./client-base";
+export type { AgentRequestTransport } from "./transport";
 export type {
   ComputerUseApprovalMode,
   ComputerUseApprovalResolution,
