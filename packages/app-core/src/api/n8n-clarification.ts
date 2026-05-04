@@ -222,7 +222,8 @@ export function applyResolutions(
       >;
       const notes = Array.isArray(meta.userNotes)
         ? (meta.userNotes as string[])
-        : ((meta.userNotes = []) as string[]);
+        : ((meta.userNotes =
+            meta.userNotes != null ? [String(meta.userNotes)] : []) as string[]);
       notes.push(r.value);
       continue;
     }
@@ -249,6 +250,13 @@ export function applyResolutions(
  *     paramPath) and object-form clarifications with empty paramPath →
  *     prune positionally by `freeFormCount` (UI presents them in order, so
  *     each free-form resolution consumes the next one).
+ *
+ * Positional-pruning contract: free-form items are dropped from the head of
+ * the stored list in order. The UI must therefore submit answers in the
+ * order they were presented, with no skipped or out-of-order items in a
+ * single batch — otherwise the wrong question gets pruned. If we ever need
+ * to support partial/interleaved submissions, switch the resolution payload
+ * to send the answered question text and match by value here instead.
  */
 export function pruneResolvedClarifications(
   draft: Record<string, unknown>,
