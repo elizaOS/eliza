@@ -19,9 +19,9 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@elizaos/agent": "^2.0.0-alpha.537",
-    "@elizaos/core": "^2.0.0-alpha.537",
-    "@elizaos/shared": "^2.0.0-alpha.537",
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*",
     "drizzle-orm": "0.45.2"
   },
   "devDependencies": {
