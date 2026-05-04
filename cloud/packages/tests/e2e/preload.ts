@@ -33,10 +33,12 @@ process.env.PLAYWRIGHT_TEST_AUTH_SECRET ??= "playwright-local-auth-secret";
 // provider is configured. The e2e test fixtures don't actually call the
 // upstream provider — `model-catalog` reads from a static fallback and the
 // chat endpoints are mocked at the SDK layer — but the gate runs first.
-// Inject placeholder keys so the gate passes without leaking real secrets.
-process.env.OPENROUTER_API_KEY ??= "sk-or-test-placeholder";
-process.env.OPENAI_API_KEY ??= "sk-test-placeholder";
-process.env.ANTHROPIC_API_KEY ??= "sk-ant-test-placeholder";
+// Inject deterministic fake keys so the gate passes without leaking real
+// secrets. These must not look like sample placeholders because provider-env
+// intentionally filters those out.
+process.env.OPENROUTER_API_KEY ??= "sk-or-e2e-test-token";
+process.env.OPENAI_API_KEY ??= "sk-e2e-test-token";
+process.env.ANTHROPIC_API_KEY ??= "sk-ant-e2e-test-token";
 
 if (process.env.PRESERVE_LOCAL_OAUTH_PROVIDER_ENV !== "1") {
   for (const envVar of OPTIONAL_OAUTH_ENV_VARS) {
