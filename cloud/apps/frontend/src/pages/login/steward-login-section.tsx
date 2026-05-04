@@ -104,13 +104,6 @@ export default function StewardLoginSection() {
   const hasOAuthProviders = Boolean(providers.google || providers.discord || providers.github);
 
   const setSessionCookie = useCallback(async (token: string, refreshToken?: string | null) => {
-    // Use apiFetch instead of raw fetch so the request resolves to the
-    // direct Workers origin (https://api.elizacloud.ai) on production.
-    // Routing through the same-origin Pages Functions proxy would set
-    // Set-Cookie on www.elizacloud.ai, but every subsequent apiFetch call
-    // (e.g. /api/auth/cli-session/<id>/complete) goes cross-origin to
-    // api.elizacloud.ai and the host-only www cookie does not flow with
-    // it, which deadlocks the CLI login spinner at "Generating API Key".
     const response = await apiFetch("/api/auth/steward-session", {
       method: "POST",
       skipAuth: true,
