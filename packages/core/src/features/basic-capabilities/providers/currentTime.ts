@@ -37,7 +37,10 @@ export const currentTimeProvider: Provider = {
 		const humanReadable = new Intl.DateTimeFormat("en-US", options).format(now);
 
 		const dateOnly = now.toLocaleDateString("en-CA", { timeZone });
-		const timeOnly = now.toLocaleTimeString("en-GB", { timeZone, hour12: false });
+		const timeOnly = now.toLocaleTimeString("en-GB", {
+			timeZone,
+			hour12: false,
+		});
 		const dayOfWeek = new Intl.DateTimeFormat("en-US", {
 			weekday: "long",
 			timeZone,
