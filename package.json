@@ -88,9 +88,12 @@
   "devDependencies": {
     "@biomejs/biome": "2.4.14",
     "@bufbuild/buf": "^1.47.2",
+    "@elizaos/agent": "workspace:*",
     "@elizaos/app-lifeops": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-agent-skills": "workspace:*",
     "@elizaos/scenario-schema": "workspace:*",
+    "@elizaos/shared": "workspace:*",
     "@testing-library/react": "^16.3.2",
     "@types/bun": "^1.3.5",
     "@types/js-yaml": "^4.0.9",
