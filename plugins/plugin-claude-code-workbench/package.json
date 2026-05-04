@@ -52,7 +52,7 @@
     "access": "public"
   },
   "resolutions": {
-    "zod": "4.3.5"
+    "zod": "4.4.2"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
