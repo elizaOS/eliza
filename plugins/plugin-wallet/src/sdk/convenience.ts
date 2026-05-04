@@ -37,11 +37,18 @@ import {
   NATIVE_TOKEN,
   USDC_ADDRESSES,
   DEFAULT_SUPPORTED_NETWORKS,
-} from './index.js';
-import { createWalletClient, http, parseUnits } from 'viem';
-import { privateKeyToAccount } from 'viem/accounts';
-import { base, mainnet, arbitrum, optimism, polygon, baseSepolia } from 'viem/chains';
-import type { Address, Hex } from 'viem';
+} from "./index.js";
+import { createWalletClient, http, parseUnits } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import {
+  base,
+  mainnet,
+  arbitrum,
+  optimism,
+  polygon,
+  baseSepolia,
+} from "viem/chains";
+import type { Address, Hex } from "viem";
 
 // ─── Chain registry ────────────────────────────────────────────────────────
 
@@ -51,7 +58,7 @@ import type { Address, Hex } from 'viem';
  */
 const CHAIN_MAP: Record<string, any> = {
   base,
-  'base-sepolia': baseSepolia,
+  "base-sepolia": baseSepolia,
   basesepolia: baseSepolia,
   mainnet,
   ethereum: mainnet,
@@ -66,13 +73,13 @@ const CHAIN_MAP: Record<string, any> = {
 
 /** Fallback RPC endpoints for chains that have no public default in viem. */
 const DEFAULT_RPC: Record<string, string> = {
-  base: 'https://mainnet.base.org',
-  'base-sepolia': 'https://sepolia.base.org',
-  mainnet: 'https://cloudflare-eth.com',
-  ethereum: 'https://cloudflare-eth.com',
-  arbitrum: 'https://arb1.arbitrum.io/rpc',
-  optimism: 'https://mainnet.optimism.io',
-  polygon: 'https://polygon-rpc.com',
+  base: "https://mainnet.base.org",
+  "base-sepolia": "https://sepolia.base.org",
+  mainnet: "https://cloudflare-eth.com",
+  ethereum: "https://cloudflare-eth.com",
+  arbitrum: "https://arb1.arbitrum.io/rpc",
+  optimism: "https://mainnet.optimism.io",
+  polygon: "https://polygon-rpc.com",
 };
 
 /**
@@ -83,7 +90,7 @@ const DEFAULT_RPC: Record<string, string> = {
  * @returns The viem Chain object, or `base` as the default.
  */
 function resolveChain(nameOrId: string | number): any {
-  if (typeof nameOrId === 'number') {
+  if (typeof nameOrId === "number") {
     const found = Object.values(CHAIN_MAP).find((c) => c.id === nameOrId);
     return found ?? base;
   }
@@ -102,7 +109,7 @@ const USDC_DECIMALS = 6;
  * @param value - Decimal string such as "0.50" or "100".
  */
 function parseUsdc(value: string | undefined): bigint | undefined {
-  if (!value || value.trim() === '') return undefined;
+  if (!value || value.trim() === "") return undefined;
   try {
     return parseUnits(value.trim(), USDC_DECIMALS);
   } catch {
@@ -141,20 +148,20 @@ export function walletFromEnv(options?: {
 }): ReturnType<typeof createWallet> {
   // ── Private key ────────────────────────────────────────────────────────
   const rawKey = process.env.AGENT_PRIVATE_KEY;
-  if (!rawKey || rawKey.trim() === '') {
+  if (!rawKey || rawKey.trim() === "") {
     throw new Error(
-      '[walletFromEnv] AGENT_PRIVATE_KEY environment variable is required. ' +
-      'Set it to the 0x-prefixed 32-byte hex private key of your agent EOA.'
+      "[walletFromEnv] AGENT_PRIVATE_KEY environment variable is required. " +
+        "Set it to the 0x-prefixed 32-byte hex private key of your agent EOA.",
     );
   }
-  const privateKey = (rawKey.startsWith('0x') ? rawKey : `0x${rawKey}`) as Hex;
+  const privateKey = (rawKey.startsWith("0x") ? rawKey : `0x${rawKey}`) as Hex;
 
   // ── Wallet (smart-contract) address ────────────────────────────────────
   const walletAddress = process.env.AGENT_WALLET_ADDRESS;
-  if (!walletAddress || walletAddress.trim() === '') {
+  if (!walletAddress || walletAddress.trim() === "") {
     throw new Error(
-      '[walletFromEnv] AGENT_WALLET_ADDRESS environment variable is required. ' +
-      'Set it to the address of your deployed AgentAccountV2 smart wallet.'
+      "[walletFromEnv] AGENT_WALLET_ADDRESS environment variable is required. " +
+        "Set it to the address of your deployed AgentAccountV2 smart wallet.",
     );
   }
 
@@ -168,7 +175,7 @@ export function walletFromEnv(options?: {
     ? resolveChain(
         /^\d+$/.test(String(chainSource))
           ? parseInt(chainSource, 10)
-          : String(chainSource)
+          : String(chainSource),
       )
     : base;
 
@@ -177,7 +184,7 @@ export function walletFromEnv(options?: {
     options?.rpcUrl ??
     process.env.RPC_URL ??
     DEFAULT_RPC[chain.name.toLowerCase()] ??
-    DEFAULT_RPC['base'];
+    DEFAULT_RPC["base"];
 
   // ── Build viem walletClient ──────────────────────────────────────────────
   const account = privateKeyToAccount(privateKey);
@@ -216,14 +223,16 @@ export function walletFromEnv(options?: {
  * await setPolicyFromEnv(wallet);
  * ```
  */
-export async function setPolicyFromEnv(wallet: ReturnType<typeof createWallet>): Promise<string> {
+export async function setPolicyFromEnv(
+  wallet: ReturnType<typeof createWallet>,
+): Promise<string> {
   const perTxLimit = parseUsdc(process.env.SPEND_LIMIT_PER_TX);
   const periodLimit = parseUsdc(process.env.SPEND_LIMIT_DAILY);
 
   // Determine which USDC token address to use for this chain
   const chainId = wallet.chain.id;
   const networkKey = Object.keys(USDC_ADDRESSES).find((k) => {
-    const parts = k.split(':');
+    const parts = k.split(":");
     return parts.length === 2 && parseInt(parts[1], 10) === chainId;
   });
   // Use USDC if found for this chain, otherwise fall back to native ETH (zero address)
@@ -234,9 +243,9 @@ export async function setPolicyFromEnv(wallet: ReturnType<typeof createWallet>):
   // Warn and use safe defaults when no limits are configured
   if (perTxLimit === undefined && periodLimit === undefined) {
     console.warn(
-      '[setPolicyFromEnv] Neither SPEND_LIMIT_PER_TX nor SPEND_LIMIT_DAILY is set. ' +
-      'Defaulting to queue-for-approval mode (all agent transactions require owner sign-off). ' +
-      'Set these env vars to enable autonomous spending.'
+      "[setPolicyFromEnv] Neither SPEND_LIMIT_PER_TX nor SPEND_LIMIT_DAILY is set. " +
+        "Defaulting to queue-for-approval mode (all agent transactions require owner sign-off). " +
+        "Set these env vars to enable autonomous spending.",
     );
     const hash = await setSpendPolicy(wallet, {
       token,
@@ -244,7 +253,9 @@ export async function setPolicyFromEnv(wallet: ReturnType<typeof createWallet>):
       periodLimit: 0n,
       periodLength: 86400, // 24 h
     });
-    console.info(`[setPolicyFromEnv] Queue-for-approval policy set. tx: ${hash}`);
+    console.info(
+      `[setPolicyFromEnv] Queue-for-approval policy set. tx: ${hash}`,
+    );
     return hash;
   }
 
@@ -260,7 +271,7 @@ export async function setPolicyFromEnv(wallet: ReturnType<typeof createWallet>):
 
   console.info(
     `[setPolicyFromEnv] Policy set — perTx: ${resolvedPerTxLimit} base units, ` +
-    `daily: ${resolvedPeriodLimit} base units on ${wallet.chain.name}. tx: ${hash}`
+      `daily: ${resolvedPeriodLimit} base units on ${wallet.chain.name}. tx: ${hash}`,
   );
 
   return hash;
@@ -288,11 +299,16 @@ export async function setPolicyFromEnv(wallet: ReturnType<typeof createWallet>):
  * const data = await client.fetch('https://api.example.com/premium-endpoint');
  * ```
  */
-export function x402FromEnv(wallet: ReturnType<typeof createWallet>): ReturnType<typeof createX402Client> {
+export function x402FromEnv(
+  wallet: ReturnType<typeof createWallet>,
+): ReturnType<typeof createX402Client> {
   // Supported networks — override with comma-separated list or use all defaults
   const networksEnv = process.env.X402_SUPPORTED_NETWORKS;
   const supportedNetworks: string[] = networksEnv
-    ? networksEnv.split(',').map((s: string) => s.trim()).filter(Boolean)
+    ? networksEnv
+        .split(",")
+        .map((s: string) => s.trim())
+        .filter(Boolean)
     : [...DEFAULT_SUPPORTED_NETWORKS];
 
   // Global daily limit
@@ -301,8 +317,12 @@ export function x402FromEnv(wallet: ReturnType<typeof createWallet>): ReturnType
 
   return createX402Client(wallet, {
     supportedNetworks,
-    ...(globalDailyLimitUsdc !== undefined && { globalDailyLimit: globalDailyLimitUsdc }),
-    ...(globalPerRequestMaxUsdc !== undefined && { globalPerRequestMax: globalPerRequestMaxUsdc }),
+    ...(globalDailyLimitUsdc !== undefined && {
+      globalDailyLimit: globalDailyLimitUsdc,
+    }),
+    ...(globalPerRequestMaxUsdc !== undefined && {
+      globalPerRequestMax: globalPerRequestMaxUsdc,
+    }),
     autoPay: true,
     maxRetries: 1,
   });

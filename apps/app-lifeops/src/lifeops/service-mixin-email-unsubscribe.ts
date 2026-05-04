@@ -1,4 +1,10 @@
-// @ts-nocheck — mixin: type safety is enforced on the composed class
+// @ts-nocheck — Mixin pattern: each `withFoo()` returns a class that calls
+// methods belonging to sibling mixins (e.g. `this.recordScreenTimeEvent`).
+// Type checking each mixin in isolation surfaces 700+ phantom errors because
+// the local TBase constraint can't see sibling mixin methods. Real type
+// safety is enforced at the composed-service level (LifeOpsService class).
+// Refactoring requires either declaration-merging every cross-mixin method
+// or moving to a single composed interface — tracked as separate work.
 
 import crypto from "node:crypto";
 import type { LifeOpsConnectorGrant } from "@elizaos/shared";

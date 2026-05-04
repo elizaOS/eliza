@@ -166,13 +166,6 @@ The plugin emits the following events:
 2. Check that the channel name is correct (no # prefix)
 3. Ensure your token has `chat:edit` scope
 
-## Multi-language Support
-
-This plugin supports:
-- **TypeScript** - Full implementation with @twurple/chat
-- **Python** - Full implementation with twitchio
-- **Rust** - Full implementation with native WebSocket
-
 ## License
 
 MIT

@@ -40,6 +40,9 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const BUN_VERSION = "1.3.13";
 const ALPINE_BRANCH = "v3.21";
@@ -502,19 +505,50 @@ export async function stageAndroidAgentRuntime({
   // Mirror that by staging vector + fuzzystrmatch in the assets tree at
   // the same level as agent-bundle.js, leaving relative resolution alone.
   //
-  // spikeDir is `<repoRoot>/scripts/spike-android-agent/`; its parent's
-  // parent is the repo root. Resolve dist-mobile relative to that.
-  // (Inside this repo there is no nested `eliza/` directory — that
-  // prefix was a leftover from eliza's outer repo layout where eliza
-  // was a submodule.)
-  const distMobileDir = path.resolve(
+  // The agent bundle is produced by `bun run --cwd packages/agent build:mobile`
+  // and always lands in `<eliza-root>/packages/agent/dist-mobile/`. Resolve
+  // it relative to THIS script's location (eliza/packages/app-core/scripts/lib/)
+  // — that's a stable layout invariant. Resolving relative to spikeDir or
+  // process.cwd() breaks when the eliza package is nested as a submodule
+  // under a consumer/white-label repo, because their `scripts/` and
+  // `packages/` directories live one level OUT from the eliza checkout.
+  //
+  // The legacy fallback to `<repoRoot>/packages/agent/dist-mobile/` is kept
+  // for the standalone-eliza-monorepo build path where this same script
+  // also runs and the bundle sits at the consumer-repo root.
+  const elizaPackagesAgentDistMobile = path.resolve(
+    __dirname,
+    "..", // scripts/
+    "..", // app-core/
+    "..", // packages/
+    "agent",
+    "dist-mobile",
+  );
+  const consumerPackagesAgentDistMobile = path.resolve(
     path.dirname(spikeDir),
     "..",
     "packages",
     "agent",
     "dist-mobile",
   );
-  const distBundle = path.join(distMobileDir, "agent-bundle.js");
+  const distMobileCandidates = [
+    elizaPackagesAgentDistMobile,
+    consumerPackagesAgentDistMobile,
+  ];
+  let distMobileDir = null;
+  let distBundle = null;
+  for (const candidate of distMobileCandidates) {
+    const bundle = path.join(candidate, "agent-bundle.js");
+    if (fs.existsSync(bundle)) {
+      distMobileDir = candidate;
+      distBundle = bundle;
+      break;
+    }
+  }
+  if (!distBundle) {
+    distMobileDir = elizaPackagesAgentDistMobile;
+    distBundle = path.join(distMobileDir, "agent-bundle.js");
+  }
   const spikeServerJs = path.join(spikeDir, "server.js");
 
   let bundleSrc;

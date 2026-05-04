@@ -1,40 +1,29 @@
-name: Publish Alpha (develop)
+name: Publish Alpha (tag)
 
 # Bump and publish all non-private workspace packages and plugins to npm
-# with the `alpha` dist-tag whenever the Tests workflow finishes
-# successfully on develop. Lerna covers `packages/*` and `plugins/*`.
+# with the `alpha` dist-tag only when an alpha version tag is pushed.
+# Lerna covers `packages/*` and `plugins/*`.
 # `lerna publish from-package` is idempotent — versions already on npm
 # are skipped, so re-runs and partial failures are safe.
 
 on:
-  workflow_run:
-    workflows: ["Tests"]
-    types: [completed]
-  workflow_dispatch:
-    inputs:
-      ref:
-        description: "Git ref to publish from (defaults to develop)"
-        required: false
-        default: "develop"
+  push:
+    tags:
+      - "v*-alpha*"
 
 concurrency:
-  group: publish-alpha-develop
+  group: publish-alpha-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
   publish:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.head_branch == 'develop' &&
-       github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
       id-token: write
     env:
-      TARGET_REF: ${{ github.event.workflow_run.head_sha || inputs.ref || 'develop' }}
+      TARGET_REF: ${{ github.ref }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -43,11 +32,27 @@ jobs:
           fetch-depth: 0
           filter: blob:none
 
-      - name: Force local branch to develop
-        # workflow_run checks out a SHA in detached-HEAD state, which
-        # makes lerna's allowBranch check fail. Pin the local branch
-        # name to "develop" so lerna sees an allowed branch.
-        run: git checkout -B develop
+      - name: Resolve alpha version from tag
+        id: version
+        run: |
+          set -euo pipefail
+
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+
+          if [[ ! "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-alpha(\.[0-9A-Za-z-]+)?$ ]]; then
+            echo "Expected an alpha semver tag like v2.0.0-alpha.537; got ${TAG}"
+            exit 1
+          fi
+
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Publishing ${VERSION} from ${TAG} to dist-tag alpha"
+
+      - name: Create local release branch
+        # Tag checkouts are detached. Pin a local branch name that matches
+        # lerna's release/* allowBranch rule before versioning.
+        run: git checkout -B "release/alpha-${{ steps.version.outputs.version }}"
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -95,40 +100,20 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Compute next prerelease version
-        id: version
-        run: |
-          set -euo pipefail
-          CURRENT=$(npm view @elizaos/core versions --json | node -e '
-            const fs = require("fs");
-            const versions = JSON.parse(fs.readFileSync(0, "utf8"));
-            const prereleases = versions
-              .filter((version) => /^2\.0\.0-alpha(?:\.\d+)?$/.test(version))
-              .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-            process.stdout.write(prereleases.at(-1) ?? "2.0.0-alpha.0");
-          ')
-
-          if [[ "${CURRENT}" =~ ^2\.0\.0-alpha\.([0-9]+)$ ]]; then
-            NEXT="2.0.0-alpha.$((BASH_REMATCH[1] + 1))"
-          elif [[ "${CURRENT}" == "2.0.0-alpha" ]]; then
-            NEXT="2.0.0-alpha.1"
-          else
-            echo "Unexpected prerelease version: ${CURRENT}"
-            exit 1
-          fi
-
-          echo "current=${CURRENT}" >> "$GITHUB_OUTPUT"
-          echo "next=${NEXT}" >> "$GITHUB_OUTPUT"
-          echo "Publishing ${NEXT} to dist-tag alpha"
-
       - name: Bump package versions
         run: |
-          bunx lerna version "${{ steps.version.outputs.next }}" \
-            --force-publish \
-            --yes \
-            --no-private \
-            --no-git-tag-version \
-            --no-push
+          CURRENT_VERSION=$(node -p "require('./lerna.json').version")
+          if [[ "${CURRENT_VERSION}" == "${{ steps.version.outputs.version }}" ]]; then
+            echo "Packages are already at ${{ steps.version.outputs.version }}."
+          else
+            bunx lerna version "${{ steps.version.outputs.version }}" \
+              --force-publish \
+              --yes \
+              --no-private \
+              --allow-branch "release/*" \
+              --no-git-tag-version \
+              --no-push
+          fi
 
       - name: Update lockfile
         run: bun install --no-frozen-lockfile
@@ -136,7 +121,11 @@ jobs:
       - name: Create local version commit
         run: |
           git add -A
-          git commit -m "chore: prepare v${{ steps.version.outputs.next }} for next publish [skip ci]"
+          if git diff --staged --quiet; then
+            echo "No local version changes to commit."
+          else
+            git commit -m "chore: prepare v${{ steps.version.outputs.version }} for alpha publish [skip ci]"
+          fi
 
       - name: Build packages
         run: bun run build
@@ -167,9 +156,8 @@ jobs:
           {
             echo "## Publish Alpha"
             echo ""
-            echo "- Source SHA: \`${{ env.TARGET_REF }}\`"
-            echo "- Previous alpha on npm: \`${{ steps.version.outputs.current }}\`"
-            echo "- Published version: \`${{ steps.version.outputs.next }}\`"
+            echo "- Source tag: \`${{ steps.version.outputs.tag }}\`"
+            echo "- Published version: \`${{ steps.version.outputs.version }}\`"
             echo "- Dist-tag: \`alpha\`"
             echo "- Scope: all non-private packages under \`packages/*\` and \`plugins/*\`"
           } >> "$GITHUB_STEP_SUMMARY"

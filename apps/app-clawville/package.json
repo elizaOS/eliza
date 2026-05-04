@@ -1,7 +1,6 @@
 {
   "name": "@clawville/app-clawville",
   "version": "0.0.0",
-  "private": true,
   "type": "module",
   "description": "Eliza app integration for ClawVille, a sea-themed agent game where connected agents enter a 3D underwater world, visit specialist buildings, and learn skills via the agentskills.io open standard.",
   "main": "./src/index.ts",
@@ -65,5 +64,8 @@
         "detailPanelId": "clawville-control"
       }
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

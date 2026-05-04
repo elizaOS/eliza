@@ -102,6 +102,7 @@ import {
   getDefaultStylePreset,
   getOnboardingProviderOption,
   isElizaSettingsDebugEnabled,
+  isMobilePlatform,
   migrateLegacyRuntimeConfig,
   normalizeCharacterLanguage,
   normalizeOnboardingProviderId,
@@ -1588,51 +1589,82 @@ export function applyX402ConfigToEnv(config: ElizaConfig): void {
 /**
  * Resolve N8N_HOST + N8N_API_KEY for @elizaos/plugin-n8n-workflow.
  *
- * Precedence:
- *   1. Existing process.env values (user override) — respected as-is.
- *   2. Eliza Cloud authenticated (cloud.apiKey present AND cloud.enabled !== false):
- *      N8N_HOST = `${cloudBaseUrl}/api/v1/agents/${agentId}/n8n`
- *      N8N_API_KEY = cloud.apiKey
- *   3. Local sidecar — the sidecar lifecycle writes `config.n8n.host` and
- *      `config.n8n.apiKey` when it reaches "ready". We pump those into
- *      process.env here when cloud did not fire. The authoritative shape is
- *      `N8nConfig` in types.eliza.ts.
- *   4. Otherwise: leave unset. The plugin's init() no-ops without credentials.
+ * Resolution order (first match wins, later sources are not consulted):
  *
- * Called from startEliza() after applyCloudConfigToEnv so cloud settings are
- * already reflected in process.env.
+ *   1. Explicit process.env (user override) — both N8N_HOST and N8N_API_KEY
+ *      already set. Respected as-is.
+ *
+ *   2. Eliza Cloud minted token. When `cloud.apiKey` is set and
+ *      `cloud.enabled !== false`, mint a short-lived scoped n8n token via
+ *      `POST {cloudBaseUrl}/api/v1/n8n/tokens` (auth: `Bearer <cloud.apiKey>`,
+ *      body: `{ purpose: "milady-runtime" }`). The full Cloud key is NEVER
+ *      passed through as `N8N_API_KEY`. The minted token is cached at
+ *      `<stateDir>/n8n/cloud-token.json` and reused while it has more than
+ *      60s of life remaining. See `docs/cloud/n8n-gateway-contract.md` (§4).
+ *
+ *      404 from the gateway endpoint → fall through to (3).
+ *      401/403 from the gateway → log error, fall through to (3).
+ *      Network/timeout → retried once, then fall through to (3).
+ *
+ *   3. Local sidecar. When not on a mobile platform, boot the local n8n
+ *      sidecar via the app-core sidecar bridge and await readiness. The
+ *      sidecar handles owner-setup → login → api-key minting itself; we
+ *      just wait for it to land in `ready` and surface its host + apiKey.
+ *      Mobile platforms skip this entirely (no child_process available).
+ *
+ *   4. Disabled. Leave env unset. The plugin's init() warns and the actions
+ *      return a structured error to the caller.
+ *
+ * Called from startEliza() after applyCloudConfigToEnv so cloud settings
+ * are already reflected in process.env.
  *
  * @internal Exported for testing.
  */
-export function applyN8nConfigToEnv(
+export async function applyN8nConfigToEnv(
   config: ElizaConfig,
-  agentId: string,
-): void {
-  // 1. Respect existing process.env overrides.
+  _agentId: string,
+): Promise<void> {
+  // 1. Respect existing process.env overrides — the power-user path
+  //    (their own n8n on their own VPS).
   if (process.env.N8N_HOST && process.env.N8N_API_KEY) return;
 
   // Master gate — when config.n8n.enabled is false, do not pump anything.
   if (config.n8n?.enabled === false) return;
 
+  // 2. Eliza Cloud minted token.
   const cloud = config.cloud;
   const cloudAuthed = Boolean(cloud?.apiKey) && cloud?.enabled !== false;
   if (cloudAuthed && cloud?.apiKey) {
-    const rawBase = cloud.baseUrl ?? "https://www.elizacloud.ai";
-    // Strip trailing /api/v1 (or /api/v1/) plus any trailing slashes so we can
-    // build `${siteUrl}/api/v1/agents/${agentId}/n8n` without duplication.
-    const safeBase = rawBase.length > 8192 ? rawBase.slice(0, 8192) : rawBase;
-    const siteUrl = safeBase
-      .replace(/\/api\/v1\/?$/, "")
-      .replace(/\/{1,1024}$/, "");
-    const gateway = `${siteUrl}/api/v1/agents/${agentId}/n8n`;
-    if (!process.env.N8N_HOST) process.env.N8N_HOST = gateway;
-    if (!process.env.N8N_API_KEY) process.env.N8N_API_KEY = cloud.apiKey;
-    return;
+    try {
+      const { resolveN8nCloudToken } = await import("./n8n-cloud-resolver.js");
+      const stateDir = resolveStateDir();
+      const resolved = await resolveN8nCloudToken(
+        cloud.apiKey,
+        cloud.baseUrl ?? "https://www.elizacloud.ai",
+        stateDir,
+      );
+      if (resolved) {
+        if (!process.env.N8N_HOST) process.env.N8N_HOST = resolved.host;
+        if (!process.env.N8N_API_KEY) {
+          process.env.N8N_API_KEY = resolved.apiKey;
+        }
+        return;
+      }
+    } catch (err) {
+      logger.warn(
+        `[N8nCloudResolver] resolver crashed, falling through to sidecar: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+    // Cloud failed but is configured — fall through to local sidecar
+    // (the autostart bridge will own ongoing lifecycle; we boot here only
+    // to populate env before the n8n plugin reads it).
   }
 
-  // 2. Local sidecar path — the sidecar populates `config.n8n.host` and
-  //    `config.n8n.apiKey` (authoritative N8nConfig shape) when it reaches
-  //    "ready". Surface those to process.env for the plugin.
+  // 2b. If the autostart bridge already populated config.n8n.host/apiKey
+  //     (e.g. on a hot-reload after the sidecar has been ready for a while),
+  //     prefer that over re-booting through the bridge.
   const n8n = config.n8n;
   if (n8n?.host && n8n?.apiKey) {
     if (!process.env.N8N_HOST) process.env.N8N_HOST = n8n.host;
@@ -1640,7 +1672,36 @@ export function applyN8nConfigToEnv(
     return;
   }
 
-  // 3. Fallback — leave unset. Legacy `config.env.vars` entries (N8N_HOST /
+  // 3. Local sidecar. Skip on mobile (no child_process).
+  if (isMobilePlatform()) {
+    logger.info("[N8nSidecar] Skipping (mobile platform)");
+    return;
+  }
+  if (n8n?.localEnabled === false) {
+    return;
+  }
+
+  try {
+    const { bootLocalN8nSidecar } = await import("./n8n-sidecar-bridge.js");
+    const booted = await bootLocalN8nSidecar({
+      enabled: true,
+      version: n8n?.version,
+      startPort: n8n?.startPort,
+    });
+    if (booted) {
+      if (!process.env.N8N_HOST) process.env.N8N_HOST = booted.host;
+      if (!process.env.N8N_API_KEY) process.env.N8N_API_KEY = booted.apiKey;
+      return;
+    }
+  } catch (err) {
+    logger.warn(
+      `[N8nSidecar] bridge crashed: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+
+  // 4. Fallback — leave unset. Legacy `config.env.vars` entries (N8N_HOST /
   //    N8N_API_KEY) still flow through the generic env-var pump in startEliza.
 }
 
@@ -2193,6 +2254,11 @@ export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
     "GROQ_API_KEY",
     "XAI_API_KEY",
     "DEEPSEEK_API_KEY",
+    "ZAI_API_KEY",
+    "Z_AI_API_KEY",
+    "MOONSHOT_API_KEY",
+    "KIMI_API_KEY",
+    "OPENAI_BASE_URL",
     "OPENROUTER_API_KEY",
     // Google model defaults
     "GOOGLE_SMALL_MODEL",
@@ -3156,7 +3222,24 @@ export async function startEliza(
     }
   }
 
-  // 2f. Apply subscription-based credentials (Claude Max, Codex Max).
+  // 2f. Install the multi-account pool shims and apply selected direct API
+  //     accounts before plugin resolution snapshots process.env.
+  try {
+    const accountPool = await import("@elizaos/app-core/services/account-pool");
+    accountPool.getDefaultAccountPool();
+    await accountPool.applyAccountPoolApiCredentials({
+      activeBackend: resolveServiceRoutingInConfig(
+        config as Record<string, unknown>,
+      )?.llmText?.backend,
+    });
+    accountPool.startAccountPoolKeepAlive();
+  } catch (err) {
+    logger.debug(
+      `[eliza] Account pool bootstrap skipped: ${formatError(err)}`,
+    );
+  }
+
+  // 2g. Apply subscription-based credentials (Claude Max, Codex Max).
   //     Failure is non-fatal — the agent can still start with other providers.
   //     Config is NOT rolled back on failure; partial mutations may persist in
   //     the in-memory config but are not saved to disk until explicit save.
@@ -3169,7 +3252,7 @@ export async function startEliza(
     );
   }
 
-  // 2g. Cloud mode — if the user chose cloud during onboarding (or on a
+  // 2h. Cloud mode — if the user chose cloud during onboarding (or on a
   //     subsequent start with cloud config), skip local runtime setup and
   //     connect via the thin client instead.
   const deploymentTarget = resolveDeploymentTargetInConfig(
@@ -3183,6 +3266,17 @@ export async function startEliza(
   ) {
     return startInCloudMode(config, config.cloud.agentId, opts);
   }
+
+  // 2i. Pump N8N_HOST + N8N_API_KEY into process.env for
+  //     @elizaos/plugin-n8n-workflow. Must run BEFORE
+  //     buildCharacterFromConfig — that function snapshots
+  //     `process.env.N8N_*` into character.secrets, which is what
+  //     `runtime.getSetting()` reads. Setting env after the snapshot would
+  //     leave the plugin with empty credentials.
+  await applyN8nConfigToEnv(
+    config,
+    config.cloud?.agentId?.trim() ?? "milady-runtime",
+  );
 
   // 3. Build elizaOS Character from Eliza config
   const character = buildCharacterFromConfig(config);
@@ -3264,12 +3358,9 @@ export async function startEliza(
   // 5a. If cloud is configured and no local GitHub token, try fetching from cloud
   await autoFetchCloudGithubToken(config.cloud?.agentId?.trim() || agentId);
 
-  // 5b. Pump N8N_HOST + N8N_API_KEY into process.env for
-  //     @elizaos/plugin-n8n-workflow. Must run AFTER applyCloudConfigToEnv
-  //     (2b above) and AFTER agentId is derived — the cloud gateway URL
-  //     embeds the agent id. Prefer the persisted cloud-agent id when set;
-  //     fall back to the derived local agent slug.
-  applyN8nConfigToEnv(config, config.cloud?.agentId?.trim() || agentId);
+  // 5b. (n8n env pump moved to step 2h, before buildCharacterFromConfig —
+  //     character.secrets is snapshotted from process.env at character-build
+  //     time, so the env must be populated before that runs.)
 
   const elizaPlugin = createElizaPlugin({
     workspaceDir,
@@ -4111,13 +4202,30 @@ export async function startEliza(
           applyCloudConfigToEnv(freshConfig);
           applyX402ConfigToEnv(freshConfig);
           applyDatabaseConfigToEnv(freshConfig);
-          applyN8nConfigToEnv(
+          await applyN8nConfigToEnv(
             freshConfig,
             freshConfig.cloud?.agentId?.trim() || agentId,
           );
           await autoFetchCloudGithubToken(
             freshConfig.cloud?.agentId?.trim() || agentId,
           );
+
+          try {
+            const accountPool = await import(
+              "@elizaos/app-core/services/account-pool"
+            );
+            accountPool.getDefaultAccountPool();
+            await accountPool.applyAccountPoolApiCredentials({
+              activeBackend: resolveServiceRoutingInConfig(
+                freshConfig as Record<string, unknown>,
+              )?.llmText?.backend,
+            });
+            accountPool.startAccountPoolKeepAlive();
+          } catch (poolErr) {
+            logger.debug(
+              `[eliza] Hot-reload: account pool bootstrap skipped: ${formatError(poolErr)}`,
+            );
+          }
 
           // Apply subscription-based credentials (Claude Max, Codex Max)
           // that may have been set up during onboarding.

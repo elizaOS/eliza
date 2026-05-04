@@ -6,19 +6,51 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, renameSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 
 const ROOT = resolveRepoRootFromImportMeta(import.meta.url);
 const ARTIFACTS_DIR = path.join(ROOT, "artifacts");
+const ELIZA_ROOT = existsSync(
+  path.join(ROOT, "packages", "core", "package.json"),
+)
+  ? ROOT
+  : path.join(ROOT, "eliza");
 
-// Target packages to pack (MVP for Phase 5).
-// @elizaos/core now contains the orchestrator runtime, so pairing it with one
-// vendored plugin proves both core and plugin tarballs build cleanly.
+// Target packages to pack. These are the package boundary that Milady consumes
+// when it runs without a repo-local eliza checkout.
 const TARGETS = [
-  path.join(ROOT, "eliza", "packages", "typescript"), // @elizaos/core
-  path.join(ROOT, "eliza", "plugins", "plugin-sql", "typescript"), // representative vendored plugin
+  { label: "@elizaos/core", dir: path.join(ELIZA_ROOT, "packages", "core") },
+  {
+    label: "@elizaos/shared",
+    dir: path.join(ELIZA_ROOT, "packages", "shared"),
+  },
+  { label: "@elizaos/ui", dir: path.join(ELIZA_ROOT, "packages", "ui") },
+  {
+    label: "@elizaos/vault",
+    dir: path.join(ELIZA_ROOT, "packages", "vault"),
+  },
+  {
+    label: "@elizaos/cloud-routing",
+    dir: path.join(ELIZA_ROOT, "packages", "cloud-routing"),
+  },
+  {
+    label: "@elizaos/skills",
+    dir: path.join(ELIZA_ROOT, "packages", "skills"),
+  },
+  {
+    label: "@elizaos/app-core",
+    dir: path.join(ELIZA_ROOT, "packages", "app-core"),
+  },
+  {
+    label: "@elizaos/agent",
+    dir: path.join(ELIZA_ROOT, "packages", "agent"),
+  },
+  {
+    label: "@elizaos/plugin-sql",
+    dir: path.join(ELIZA_ROOT, "plugins", "plugin-sql", "typescript"),
+  },
 ];
 
 function runCommand(command, args, cwd) {
@@ -46,52 +78,93 @@ function readPackageJson(dir) {
   }
 }
 
+function packageTarballName(pkgJson) {
+  return `${pkgJson.name.replace(/^@/, "").replace("/", "-")}-${pkgJson.version}.tgz`;
+}
+
+function resolvePackDir(pkgDir, pkgJson) {
+  const directory = pkgJson.publishConfig?.directory;
+  return typeof directory === "string" && directory.trim()
+    ? path.join(pkgDir, directory)
+    : pkgDir;
+}
+
 async function packUpstreams() {
+  if (!existsSync(path.join(ELIZA_ROOT, "package.json"))) {
+    throw new Error(
+      `Could not find eliza workspace at ${ELIZA_ROOT}. Run this from a standalone eliza checkout or a Milady checkout with eliza/ present.`,
+    );
+  }
+
   if (!existsSync(ARTIFACTS_DIR)) {
     mkdirSync(ARTIFACTS_DIR, { recursive: true });
   }
 
-  for (const pkgDir of TARGETS) {
+  for (const target of TARGETS) {
+    const pkgDir = target.dir;
     if (!existsSync(pkgDir)) {
-      console.warn(`[pack-upstreams] Skipping missing directory: ${pkgDir}`);
-      continue;
+      throw new Error(
+        `[pack-upstreams] Missing required ${target.label} directory: ${pkgDir}`,
+      );
     }
 
     const pkgJson = readPackageJson(pkgDir);
     if (!pkgJson) {
-      console.warn(`[pack-upstreams] No package.json found in ${pkgDir}`);
-      continue;
+      throw new Error(`[pack-upstreams] No package.json found in ${pkgDir}`);
+    }
+    if (pkgJson.name !== target.label) {
+      throw new Error(
+        `[pack-upstreams] Expected ${target.label} at ${pkgDir}, found ${pkgJson.name ?? "unknown"}`,
+      );
     }
 
     console.log(`\n[pack-upstreams] === Packing ${pkgJson.name} ===`);
+    const sourceTarballPath = path.join(
+      ARTIFACTS_DIR,
+      packageTarballName(pkgJson),
+    );
+    if (
+      process.env.PACK_UPSTREAMS_FORCE !== "1" &&
+      existsSync(sourceTarballPath)
+    ) {
+      console.log(
+        `[pack-upstreams] Reusing existing tarball at ${sourceTarballPath}`,
+      );
+      continue;
+    }
 
-    // Some packages require build before pack if dist isn't precompiled
-    if (pkgJson.scripts?.build && !existsSync(path.join(pkgDir, "dist"))) {
+    if (pkgJson.scripts?.build) {
       console.log(`[pack-upstreams] Building ${pkgJson.name}...`);
       await runCommand("bun", ["run", "build"], pkgDir);
     }
 
-    // We use npm pack as it handles prepack correctly and is standard.
-    // Bun pm pack also works but npm pack is generally more tested for tarball generation.
-    console.log(`[pack-upstreams] Packing ${pkgJson.name}...`);
-    // Output directly into the package directory
-    await runCommand("npm", ["pack"], pkgDir);
-
-    // Move the generated tarball to ARTIFACTS_DIR
-    const expectedTarballName = `${pkgJson.name.replace("@", "").replace("/", "-")}-${pkgJson.version}.tgz`;
-    const tarballPath = path.join(pkgDir, expectedTarballName);
-    const destTarballPath = path.join(ARTIFACTS_DIR, expectedTarballName);
-
-    if (existsSync(tarballPath)) {
-      renameSync(tarballPath, destTarballPath);
-      console.log(
-        `[pack-upstreams] Packed tarball moved to ${destTarballPath}`,
-      );
-    } else {
-      console.warn(
-        `[pack-upstreams] Tarball not found at expected path: ${tarballPath}. Ensure pack succeeded.`,
+    const packDir = resolvePackDir(pkgDir, pkgJson);
+    const packPkgJson = readPackageJson(packDir);
+    if (!packPkgJson) {
+      throw new Error(
+        `[pack-upstreams] No package.json found in pack directory ${packDir}`,
       );
     }
+    const expectedTarballName = packageTarballName(packPkgJson);
+    const destTarballPath = path.join(ARTIFACTS_DIR, expectedTarballName);
+
+    // We use npm pack as it handles prepack correctly and is standard.
+    // Bun pm pack also works but npm pack is generally more tested for tarball generation.
+    console.log(
+      `[pack-upstreams] Packing ${packPkgJson.name} from ${packDir}...`,
+    );
+    await runCommand(
+      "npm",
+      ["pack", "--pack-destination", ARTIFACTS_DIR],
+      packDir,
+    );
+
+    if (!existsSync(destTarballPath)) {
+      throw new Error(
+        `[pack-upstreams] Tarball not found at expected path after pack: ${destTarballPath}`,
+      );
+    }
+    console.log(`[pack-upstreams] Packed tarball at ${destTarballPath}`);
   }
 
   console.log("\n[pack-upstreams] Done packing all targets.");

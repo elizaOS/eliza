@@ -113,17 +113,17 @@ function runCodesign(
 export function collectMacCodeSignTargets(appBundlePath: string): string[] {
 	const binaryDir = path.join(appBundlePath, "Contents", "MacOS");
 	return [
-		path.join(binaryDir, "launcher"),
-		path.join(binaryDir, "bun"),
 		path.join(binaryDir, "libNativeWrapper.dylib"),
 		path.join(binaryDir, "libwebgpu_dawn.dylib"),
 		path.join(binaryDir, "libasar.dylib"),
+		path.join(binaryDir, "bun"),
 		path.join(binaryDir, "extractor"),
 		path.join(binaryDir, "process_helper"),
 		path.join(binaryDir, "zig-zstd"),
 		path.join(binaryDir, "zig-asar"),
 		path.join(binaryDir, "bspatch"),
 		path.join(binaryDir, "bsdiff"),
+		path.join(binaryDir, "launcher"),
 		appBundlePath,
 	].filter((target, index, targets) => targets.indexOf(target) === index);
 }

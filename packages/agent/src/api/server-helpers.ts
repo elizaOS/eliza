@@ -37,6 +37,7 @@ import {
   type AgentEventServiceLike,
   getAgentEventService,
 } from "../runtime/agent-event-service.js";
+import { isPrivyWalletProvisioningEnabled } from "../services/external-bridge-state.js";
 import {
   type CoreManagerLike,
   isCoreManagerLike,

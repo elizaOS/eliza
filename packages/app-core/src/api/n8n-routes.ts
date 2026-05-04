@@ -34,6 +34,13 @@ import { isNativeServerPlatform } from "../platform/is-native-server";
 import { type N8nMode, resolveN8nMode } from "../services/n8n-mode";
 import type { N8nSidecar, N8nSidecarStatus } from "../services/n8n-sidecar";
 import { readCompatJsonBody } from "./compat-route-shared";
+import {
+  applyResolutions,
+  buildCatalogSnapshot,
+  type CatalogLike,
+  coerceClarifications,
+  pruneResolvedClarifications,
+} from "./n8n-clarification";
 
 export type { N8nMode } from "../services/n8n-mode";
 
@@ -1009,6 +1016,13 @@ export async function handleN8nRoutes(ctx: N8nRouteContext): Promise<boolean> {
     return handleGenerateWorkflow(ctx);
   }
 
+  if (
+    method === "POST" &&
+    pathname === "/api/n8n/workflows/resolve-clarification"
+  ) {
+    return handleResolveClarification(ctx);
+  }
+
   if (method === "POST" && pathname === "/api/n8n/workflows") {
     const sidecar = await resolveSidecarForRequest(ctx, native);
     return handleCreateWorkflow(ctx, sidecar, native);
@@ -1258,6 +1272,79 @@ async function handleUpdateWorkflow(
   );
 }
 
+interface N8nWorkflowServiceLike {
+  generateWorkflowDraft?: (
+    prompt: string,
+    opts?: { triggerContext?: TriggerContext },
+  ) => Promise<{
+    id?: string;
+    [k: string]: unknown;
+  }>;
+  deployWorkflow?: (
+    workflow: Record<string, unknown>,
+    userId: string,
+  ) => Promise<{
+    id: string;
+    name: string;
+    active: boolean;
+    missingCredentials: Array<{ credType: string; authUrl?: string }>;
+  }>;
+  getWorkflow?: (id: string) => Promise<Record<string, unknown>>;
+}
+
+function getN8nWorkflowService(
+  ctx: N8nRouteContext,
+): N8nWorkflowServiceLike | null {
+  const service = ctx.runtime?.getService?.("n8n_workflow") as
+    | N8nWorkflowServiceLike
+    | undefined;
+  if (
+    typeof service?.generateWorkflowDraft !== "function" ||
+    typeof service.deployWorkflow !== "function" ||
+    typeof service.getWorkflow !== "function"
+  ) {
+    return null;
+  }
+  return service;
+}
+
+function getConnectorTargetCatalog(ctx: N8nRouteContext): CatalogLike | null {
+  // The runtime registers the catalog in `runtime.services` keyed by
+  // `connector_target_catalog`. We use the same lookup pattern as the
+  // n8n_workflow service. Falling back to null is fine — the route then
+  // returns clarifications without a catalog and the UI renders free-text
+  // inputs only.
+  const candidate = ctx.runtime?.getService?.("connector_target_catalog") as
+    | CatalogLike
+    | undefined;
+  if (candidate && typeof candidate.listGroups === "function") {
+    return candidate;
+  }
+  return null;
+}
+
+async function deployAndRespond(
+  ctx: N8nRouteContext,
+  service: N8nWorkflowServiceLike,
+  draft: Record<string, unknown>,
+): Promise<void> {
+  const userId = resolveAgentId(ctx);
+  const deployed = await service.deployWorkflow?.(draft, userId);
+  if (!deployed) {
+    sendJson(ctx, 500, { error: "deployWorkflow not available" });
+    return;
+  }
+  if (deployed.missingCredentials.length > 0) {
+    sendJson(ctx, 200, {
+      ...deployed,
+      warning: "missing credentials",
+    });
+    return;
+  }
+  const full = await service.getWorkflow?.(deployed.id);
+  sendJson(ctx, 200, full);
+}
+
 async function handleGenerateWorkflow(ctx: N8nRouteContext): Promise<boolean> {
   const body = await readCompatJsonBody(ctx.req, ctx.res);
   if (!body) return true;
@@ -1272,32 +1359,8 @@ async function handleGenerateWorkflow(ctx: N8nRouteContext): Promise<boolean> {
   const workflowId = readOptionalString(body, "workflowId");
   const bridgeConversationId = readOptionalString(body, "bridgeConversationId");
 
-  const service = ctx.runtime?.getService?.("n8n_workflow") as
-    | {
-        generateWorkflowDraft?: (
-          prompt: string,
-          opts?: { triggerContext?: TriggerContext },
-        ) => Promise<{
-          id?: string;
-          [k: string]: unknown;
-        }>;
-        deployWorkflow?: (
-          workflow: Record<string, unknown>,
-          userId: string,
-        ) => Promise<{
-          id: string;
-          name: string;
-          active: boolean;
-          missingCredentials: Array<{ credType: string; authUrl?: string }>;
-        }>;
-        getWorkflow?: (id: string) => Promise<Record<string, unknown>>;
-      }
-    | undefined;
-  if (
-    typeof service?.generateWorkflowDraft !== "function" ||
-    typeof service.deployWorkflow !== "function" ||
-    typeof service.getWorkflow !== "function"
-  ) {
+  const service = getN8nWorkflowService(ctx);
+  if (!service) {
     sendJson(ctx, 503, { error: "n8n workflow service unavailable" });
     return true;
   }
@@ -1310,28 +1373,120 @@ async function handleGenerateWorkflow(ctx: N8nRouteContext): Promise<boolean> {
     : undefined;
 
   const draft = triggerContext
-    ? await service.generateWorkflowDraft(prompt, { triggerContext })
-    : await service.generateWorkflowDraft(prompt);
+    ? await service.generateWorkflowDraft?.(prompt, { triggerContext })
+    : await service.generateWorkflowDraft?.(prompt);
   if (name?.trim()) {
     (draft as Record<string, unknown>).name = name.trim();
   }
   if (workflowId) {
     (draft as Record<string, unknown>).id = workflowId;
   }
-  const userId = resolveAgentId(ctx);
-  const deployed = await service.deployWorkflow(
-    draft as Record<string, unknown>,
-    userId,
-  );
-  if (deployed.missingCredentials.length > 0) {
+
+  // If the LLM emitted clarifications, short-circuit before deploy and ask
+  // the host to render quick-picks. The draft is preserved verbatim so the
+  // client can post it back to /resolve-clarification with the user's
+  // chosen values.
+  const meta = (draft as { _meta?: Record<string, unknown> })._meta;
+  const rawClarifications = meta?.requiresClarification;
+  const clarifications = coerceClarifications(rawClarifications);
+  if (clarifications.length > 0) {
+    const catalogService = getConnectorTargetCatalog(ctx);
+    const catalog = catalogService
+      ? await buildCatalogSnapshot(catalogService, clarifications)
+      : [];
     sendJson(ctx, 200, {
-      ...deployed,
-      warning: "missing credentials",
+      status: "needs_clarification",
+      draft,
+      clarifications,
+      catalog,
     });
     return true;
   }
-  const full = await service.getWorkflow(deployed.id);
-  sendJson(ctx, 200, full);
+
+  await deployAndRespond(ctx, service, draft as Record<string, unknown>);
+  return true;
+}
+
+async function handleResolveClarification(
+  ctx: N8nRouteContext,
+): Promise<boolean> {
+  const body = await readCompatJsonBody(ctx.req, ctx.res);
+  if (!body) return true;
+
+  const draftRaw = (body as Record<string, unknown>).draft;
+  if (!draftRaw || typeof draftRaw !== "object" || Array.isArray(draftRaw)) {
+    sendJson(ctx, 400, { error: "draft required" });
+    return true;
+  }
+  const draft = draftRaw as Record<string, unknown>;
+
+  const resolutionsRaw = (body as Record<string, unknown>).resolutions;
+  if (!Array.isArray(resolutionsRaw) || resolutionsRaw.length === 0) {
+    sendJson(ctx, 400, { error: "resolutions required" });
+    return true;
+  }
+  const resolutions = resolutionsRaw as Array<{
+    paramPath?: unknown;
+    value?: unknown;
+  }>;
+
+  const name = readOptionalString(body, "name");
+  const workflowId = readOptionalString(body, "workflowId");
+
+  const service = getN8nWorkflowService(ctx);
+  if (!service) {
+    sendJson(ctx, 503, { error: "n8n workflow service unavailable" });
+    return true;
+  }
+
+  const result = applyResolutions(
+    draft,
+    resolutions as Array<{ paramPath: string; value: string }>,
+  );
+  if (!result.ok) {
+    sendJson(ctx, 400, {
+      error: result.error,
+      paramPath: result.paramPath,
+    });
+    return true;
+  }
+
+  pruneResolvedClarifications(
+    draft,
+    new Set(
+      resolutions
+        .map((r) => r.paramPath)
+        .filter((p): p is string => typeof p === "string" && p.length > 0),
+    ),
+  );
+
+  if (name?.trim()) {
+    draft.name = name.trim();
+  }
+  if (workflowId) {
+    draft.id = workflowId;
+  }
+
+  // If the LLM emitted multiple clarifications and the client only resolved
+  // a subset (e.g. server first, channel pending), return the still-pending
+  // clarifications so the UI can chain a second picker. Otherwise deploy.
+  const meta = (draft as { _meta?: Record<string, unknown> })._meta;
+  const remaining = coerceClarifications(meta?.requiresClarification);
+  if (remaining.length > 0) {
+    const catalogService = getConnectorTargetCatalog(ctx);
+    const catalog = catalogService
+      ? await buildCatalogSnapshot(catalogService, remaining)
+      : [];
+    sendJson(ctx, 200, {
+      status: "needs_clarification",
+      draft,
+      clarifications: remaining,
+      catalog,
+    });
+    return true;
+  }
+
+  await deployAndRespond(ctx, service, draft);
   return true;
 }
 

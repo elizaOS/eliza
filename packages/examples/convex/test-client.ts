@@ -117,9 +117,7 @@ async function main() {
         const result = await sendMessage(text, conversationId);
         console.log(`\n${result.agentName}: ${result.response}\n`);
       } catch (err) {
-        console.error(
-          `\nError: ${err instanceof Error ? err.message : err}\n`,
-        );
+        console.error(`\nError: ${err instanceof Error ? err.message : err}\n`);
       }
 
       prompt();

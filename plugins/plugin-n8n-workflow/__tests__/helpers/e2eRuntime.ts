@@ -8,14 +8,14 @@
  * ⚠️ WARNING: These tests make REAL API calls and modify data on the n8n instance.
  * Use a dedicated test n8n instance, not production!
  */
-import { mock } from 'bun:test';
-import type { IAgentRuntime } from '@elizaos/core';
+import { mock } from "bun:test";
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   N8nWorkflowService,
   N8N_WORKFLOW_SERVICE_TYPE,
-} from '../../src/services/n8n-workflow-service';
-import { N8nApiClient } from '../../src/utils/api';
-import { N8N_CREDENTIAL_STORE_TYPE } from '../../src/types/index';
+} from "../../src/services/n8n-workflow-service";
+import { N8nApiClient } from "../../src/utils/api";
+import { N8N_CREDENTIAL_STORE_TYPE } from "../../src/types/index";
 
 export interface E2EConfig {
   /** Override n8n host from .env */
@@ -32,12 +32,14 @@ export function createE2ERuntime(config: E2EConfig = {}) {
   const n8nApiKey = config.n8nApiKey || Bun.env.N8N_API_KEY;
 
   if (!n8nHost) {
-    throw new Error('N8N_HOST not found in .env or config. Set it to run e2e tests with real API.');
+    throw new Error(
+      "N8N_HOST not found in .env or config. Set it to run e2e tests with real API.",
+    );
   }
 
   if (!n8nApiKey) {
     throw new Error(
-      'N8N_API_KEY not found in .env or config. Set it to run e2e tests with real API.'
+      "N8N_API_KEY not found in .env or config. Set it to run e2e tests with real API.",
     );
   }
 
@@ -46,7 +48,7 @@ export function createE2ERuntime(config: E2EConfig = {}) {
 
   // Minimal runtime mock with real service
   const runtime: IAgentRuntime = {
-    agentId: 'agent-e2e',
+    agentId: "agent-e2e",
     services: new Map([[N8N_WORKFLOW_SERVICE_TYPE, n8nService]]),
     getService: mock((type: string) => {
       if (type === N8N_WORKFLOW_SERVICE_TYPE) return n8nService;
@@ -54,12 +56,12 @@ export function createE2ERuntime(config: E2EConfig = {}) {
       return null;
     }),
     getSetting: mock((key: string) => {
-      if (key === 'N8N_HOST') return n8nHost;
-      if (key === 'N8N_API_KEY') return n8nApiKey;
+      if (key === "N8N_HOST") return n8nHost;
+      if (key === "N8N_API_KEY") return n8nApiKey;
       return null;
     }),
     getEntityById: mock((userId: string) => {
-      return Promise.resolve({ id: userId, names: ['E2E Test User'] });
+      return Promise.resolve({ id: userId, names: ["E2E Test User"] });
     }),
     character: { settings: {} },
   } as unknown as IAgentRuntime;

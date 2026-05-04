@@ -1,4 +1,5 @@
-// @ts-nocheck
+// @ts-nocheck — Cypress support scaffolding generated from the plugin
+// template; type-checks against runtime-only Cypress globals.
 // ***********************************************************
 // This file is processed and loaded automatically before your test files.
 // You can change the location of this file or turn off processing using the

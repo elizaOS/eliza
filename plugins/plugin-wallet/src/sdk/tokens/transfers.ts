@@ -18,19 +18,18 @@ import {
   type PublicClient,
   type WalletClient,
   zeroAddress,
-} from 'viem';
-import { getGlobalRegistry } from './registry.js';
-import { parseAmount, toHuman, formatBalance } from './decimals.js';
-
+} from "viem";
+import { getGlobalRegistry } from "./registry.js";
+import { parseAmount, toHuman, formatBalance } from "./decimals.js";
 
 // ─── ERC20 ABI (minimal) ─────────────────────────────────────────────────────
 
 const ERC20_ABI = parseAbi([
-  'function transfer(address to, uint256 amount) returns (bool)',
-  'function balanceOf(address account) view returns (uint256)',
-  'function decimals() view returns (uint8)',
-  'function symbol() view returns (string)',
-  'function name() view returns (string)',
+  "function transfer(address to, uint256 amount) returns (bool)",
+  "function balanceOf(address account) view returns (uint256)",
+  "function decimals() view returns (uint8)",
+  "function symbol() view returns (string)",
+  "function name() view returns (string)",
 ]);
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -96,14 +95,19 @@ export async function sendToken(
 ): Promise<Hash> {
   let rawAmount: bigint;
 
-  if (typeof amount === 'string') {
+  if (typeof amount === "string") {
     // Need decimals to parse string amount
     let decimals: number;
 
     // Try registry first
     if (ctx.chainId != null) {
-      const entry = getGlobalRegistry().getTokenByAddress(tokenAddress, ctx.chainId);
-      decimals = entry?.decimals ?? await fetchTokenDecimals(ctx.publicClient, tokenAddress);
+      const entry = getGlobalRegistry().getTokenByAddress(
+        tokenAddress,
+        ctx.chainId,
+      );
+      decimals =
+        entry?.decimals ??
+        (await fetchTokenDecimals(ctx.publicClient, tokenAddress));
     } else {
       decimals = await fetchTokenDecimals(ctx.publicClient, tokenAddress);
     }
@@ -115,7 +119,7 @@ export async function sendToken(
 
   const data = encodeFunctionData({
     abi: ERC20_ABI,
-    functionName: 'transfer',
+    functionName: "transfer",
     args: [to, rawAmount],
   });
 
@@ -172,30 +176,38 @@ export async function getTokenBalance(
     ctx.publicClient.readContract({
       address: tokenAddress,
       abi: ERC20_ABI,
-      functionName: 'balanceOf',
+      functionName: "balanceOf",
       args: [target],
     }) as Promise<bigint>,
     ctx.publicClient.readContract({
       address: tokenAddress,
       abi: ERC20_ABI,
-      functionName: 'decimals',
+      functionName: "decimals",
     }) as Promise<number>,
     ctx.publicClient.readContract({
       address: tokenAddress,
       abi: ERC20_ABI,
-      functionName: 'symbol',
+      functionName: "symbol",
     }) as Promise<string>,
     ctx.publicClient.readContract({
       address: tokenAddress,
       abi: ERC20_ABI,
-      functionName: 'name',
+      functionName: "name",
     }) as Promise<string>,
   ]);
 
   const humanBalance = toHuman(rawBalance, decimals);
   const formatted = formatBalance(rawBalance, { symbol, decimals });
 
-  return { address: tokenAddress, symbol, name, decimals, rawBalance, humanBalance, formatted };
+  return {
+    address: tokenAddress,
+    symbol,
+    name,
+    decimals,
+    rawBalance,
+    humanBalance,
+    formatted,
+  };
 }
 
 /**
@@ -212,10 +224,13 @@ export async function getNativeBalance(
   const rawBalance = await ctx.publicClient.getBalance({ address: target });
 
   // Determine native token symbol from registry if chainId is known
-  let symbol = 'ETH';
+  let symbol = "ETH";
   if (ctx.chainId != null) {
-    const native = getGlobalRegistry().getTokenByAddress(zeroAddress, ctx.chainId);
-    symbol = native?.symbol ?? 'ETH';
+    const native = getGlobalRegistry().getTokenByAddress(
+      zeroAddress,
+      ctx.chainId,
+    );
+    symbol = native?.symbol ?? "ETH";
   }
 
   const humanBalance = toHuman(rawBalance, 18);
@@ -243,9 +258,7 @@ export async function getBalances(
   if (!addresses || addresses.length === 0) {
     if (ctx.chainId != null) {
       const tokens = getGlobalRegistry().listTokens(ctx.chainId);
-      addresses = tokens
-        .filter(t => !t.isNative)
-        .map(t => t.address);
+      addresses = tokens.filter((t) => !t.isNative).map((t) => t.address);
     } else {
       return [];
     }
@@ -253,12 +266,15 @@ export async function getBalances(
 
   // Parallel balance fetches
   const results = await Promise.allSettled(
-    addresses.map(addr => getTokenBalance(ctx, addr, target))
+    addresses.map((addr) => getTokenBalance(ctx, addr, target)),
   );
 
   return results
-    .filter((r): r is PromiseFulfilledResult<TokenBalanceResult> => r.status === 'fulfilled')
-    .map(r => r.value);
+    .filter(
+      (r): r is PromiseFulfilledResult<TokenBalanceResult> =>
+        r.status === "fulfilled",
+    )
+    .map((r) => r.value);
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -270,16 +286,17 @@ async function fetchTokenDecimals(
   return publicClient.readContract({
     address: tokenAddress,
     abi: ERC20_ABI,
-    functionName: 'decimals',
+    functionName: "decimals",
   }) as Promise<number>;
 }
 
 function buildGasOptions(options: TransferOptions) {
   const gas: Record<string, bigint> = {};
-  if (options.gas != null)                gas.gas = options.gas;
-  if (options.gasPrice != null)           gas.gasPrice = options.gasPrice;
-  if (options.maxFeePerGas != null)       gas.maxFeePerGas = options.maxFeePerGas;
-  if (options.maxPriorityFeePerGas != null) gas.maxPriorityFeePerGas = options.maxPriorityFeePerGas;
+  if (options.gas != null) gas.gas = options.gas;
+  if (options.gasPrice != null) gas.gasPrice = options.gasPrice;
+  if (options.maxFeePerGas != null) gas.maxFeePerGas = options.maxFeePerGas;
+  if (options.maxPriorityFeePerGas != null)
+    gas.maxPriorityFeePerGas = options.maxPriorityFeePerGas;
   return gas;
 }
 
@@ -287,10 +304,13 @@ function buildGasOptions(options: TransferOptions) {
  * Encode an ERC-20 transfer call as raw calldata.
  * Useful for building calldata for agentExecute() or multicall.
  */
-export function encodeERC20Transfer(to: Address, amount: bigint): `0x${string}` {
+export function encodeERC20Transfer(
+  to: Address,
+  amount: bigint,
+): `0x${string}` {
   return encodeFunctionData({
     abi: ERC20_ABI,
-    functionName: 'transfer',
+    functionName: "transfer",
     args: [to, amount],
   });
 }

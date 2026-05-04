@@ -107,16 +107,16 @@ function hasConfiguredTelegramAccount(
 ): boolean {
   return Boolean(
     typeof connConfig.phone === 'string' &&
-      connConfig.phone.trim() &&
-      (typeof connConfig.appId === 'string' ||
-        typeof connConfig.appId === 'number') &&
-      typeof connConfig.appHash === 'string' &&
-      connConfig.appHash.trim() &&
-      typeof connConfig.deviceModel === 'string' &&
-      connConfig.deviceModel.trim() &&
-      typeof connConfig.systemVersion === 'string' &&
-      connConfig.systemVersion.trim() &&
-      connConfig.enabled !== false,
+    connConfig.phone.trim() &&
+    (typeof connConfig.appId === 'string' ||
+      typeof connConfig.appId === 'number') &&
+    typeof connConfig.appHash === 'string' &&
+    connConfig.appHash.trim() &&
+    typeof connConfig.deviceModel === 'string' &&
+    connConfig.deviceModel.trim() &&
+    typeof connConfig.systemVersion === 'string' &&
+    connConfig.systemVersion.trim() &&
+    connConfig.enabled !== false,
   );
 }
 
@@ -202,8 +202,8 @@ function statusFromState(
     hasAppCredentials: Boolean(
       (typeof connectorConfig.appId === 'string' ||
         typeof connectorConfig.appId === 'number') &&
-        typeof connectorConfig.appHash === 'string' &&
-        connectorConfig.appHash.trim().length > 0,
+      typeof connectorConfig.appHash === 'string' &&
+      connectorConfig.appHash.trim().length > 0,
     ),
     phone: authSnapshot?.phone ?? fallbackPhone,
     isCodeViaApp: authSnapshot?.isCodeViaApp ?? false,

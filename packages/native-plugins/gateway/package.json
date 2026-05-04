@@ -57,7 +57,7 @@
   "devDependencies": {
     "@capacitor/android": "^8.0.0",
     "@capacitor/cli": "^8.0.0",
-    "@capacitor/core": "^8.0.0",
+    "@capacitor/core": "^8.3.1",
     "@capacitor/docgen": "^0.3.0",
     "@capacitor/ios": "^8.0.0",
     "@ionic/eslint-config": "^0.4.0",
@@ -66,14 +66,14 @@
     "@typescript-eslint/eslint-plugin": "^8.22.0",
     "@typescript-eslint/parser": "^8.22.0",
     "eslint": "^10.0.0",
-    "prettier": "^3.0.0",
+    "prettier": "^3.8.3",
     "rimraf": "^6.0.0",
-    "rollup": "^4.0.0",
+    "rollup": "^4.60.2",
     "swiftlint": "^2.0.0",
     "typescript": "^6.0.0"
   },
   "peerDependencies": {
-    "@capacitor/core": "^8.0.0"
+    "@capacitor/core": "^8.3.1"
   },
   "publishConfig": {
     "access": "public"

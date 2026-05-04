@@ -22,9 +22,9 @@
  *   --filter=xxx  Only create credentials matching this name
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
-import { fileURLToPath } from 'url';
+import * as fs from "fs";
+import * as path from "path";
+import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -35,7 +35,7 @@ const N8N_API_KEY = process.env.N8N_API_KEY;
 // ─── Local credentials map (.credentials-map.json) ──────────────────────────
 // n8n cloud doesn't support GET /credentials, so we persist IDs locally.
 
-const CRED_MAP_PATH = path.join(__dirname, '..', '.credentials-map.json');
+const CRED_MAP_PATH = path.join(__dirname, "..", ".credentials-map.json");
 
 interface CredMapEntry {
   id: string;
@@ -45,25 +45,29 @@ interface CredMapEntry {
 
 function loadCredentialsMap(): Record<string, CredMapEntry> {
   if (!fs.existsSync(CRED_MAP_PATH)) return {};
-  return JSON.parse(fs.readFileSync(CRED_MAP_PATH, 'utf-8'));
+  return JSON.parse(fs.readFileSync(CRED_MAP_PATH, "utf-8"));
 }
 
 function saveCredentialsMap(map: Record<string, CredMapEntry>): void {
-  fs.writeFileSync(CRED_MAP_PATH, JSON.stringify(map, null, 2) + '\n');
+  fs.writeFileSync(CRED_MAP_PATH, JSON.stringify(map, null, 2) + "\n");
 }
 
 // ─── n8n API helpers ─────────────────────────────────────────────────────────
 
-async function n8nRequest<T>(method: string, endpoint: string, body?: unknown): Promise<T> {
+async function n8nRequest<T>(
+  method: string,
+  endpoint: string,
+  body?: unknown,
+): Promise<T> {
   if (!N8N_HOST || !N8N_API_KEY) {
-    throw new Error('Missing N8N_HOST or N8N_API_KEY environment variables');
+    throw new Error("Missing N8N_HOST or N8N_API_KEY environment variables");
   }
   const url = `${N8N_HOST}/api/v1${endpoint}`;
   const options: RequestInit = {
     method,
     headers: {
-      'Content-Type': 'application/json',
-      'X-N8N-API-KEY': N8N_API_KEY,
+      "Content-Type": "application/json",
+      "X-N8N-API-KEY": N8N_API_KEY,
     },
   };
   if (body) options.body = JSON.stringify(body);
@@ -72,7 +76,9 @@ async function n8nRequest<T>(method: string, endpoint: string, body?: unknown): 
   if (response.status === 204) return undefined as unknown as T;
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`n8n API ${method} ${endpoint}: ${response.status} ${text}`);
+    throw new Error(
+      `n8n API ${method} ${endpoint}: ${response.status} ${text}`,
+    );
   }
   const text = await response.text();
   return text ? JSON.parse(text) : (undefined as unknown as T);
@@ -85,27 +91,27 @@ interface N8nCredential {
 }
 
 async function deleteCredential(id: string): Promise<void> {
-  await n8nRequest('DELETE', `/credentials/${id}`);
+  await n8nRequest("DELETE", `/credentials/${id}`);
 }
 
 // ─── Supported platforms (mirrors eliza-cloud-v2 oauth-cred-map.ts) ─────────
 // Only create credentials for platforms that eliza-cloud supports.
 
 const SUPPORTED_PREFIXES: Record<string, string[]> = {
-  google: ['gmail', 'google', 'gSuite', 'youTube'],
-  microsoft: ['microsoft'],
-  slack: ['slack'],
-  github: ['github'],
-  linear: ['linear'],
-  notion: ['notion'],
-  twitter: ['twitter'],
-  asana: ['asana'],
-  salesforce: ['salesforce'],
-  airtable: ['airtable'],
-  jira: ['jira'],
-  dropbox: ['dropbox'],
-  zoom: ['zoom'],
-  linkedin: ['linkedin'],
+  google: ["gmail", "google", "gSuite", "youTube"],
+  microsoft: ["microsoft"],
+  slack: ["slack"],
+  github: ["github"],
+  linear: ["linear"],
+  notion: ["notion"],
+  twitter: ["twitter"],
+  asana: ["asana"],
+  salesforce: ["salesforce"],
+  airtable: ["airtable"],
+  jira: ["jira"],
+  dropbox: ["dropbox"],
+  zoom: ["zoom"],
+  linkedin: ["linkedin"],
 };
 
 const PREFIX_LIST = Object.values(SUPPORTED_PREFIXES).flat();
@@ -121,23 +127,50 @@ const PLATFORM_ENV_MAP: Record<
   string,
   { clientId: string; clientSecret: string; extra?: Record<string, string> }
 > = {
-  google: { clientId: 'GOOGLE_CLIENT_ID', clientSecret: 'GOOGLE_CLIENT_SECRET' },
-  microsoft: {
-    clientId: 'MICROSOFT_CLIENT_ID',
-    clientSecret: 'MICROSOFT_CLIENT_SECRET',
+  google: {
+    clientId: "GOOGLE_CLIENT_ID",
+    clientSecret: "GOOGLE_CLIENT_SECRET",
   },
-  slack: { clientId: 'SLACK_CLIENT_ID', clientSecret: 'SLACK_CLIENT_SECRET' },
-  github: { clientId: 'GITHUB_CLIENT_ID', clientSecret: 'GITHUB_CLIENT_SECRET' },
-  linear: { clientId: 'LINEAR_CLIENT_ID', clientSecret: 'LINEAR_CLIENT_SECRET' },
-  notion: { clientId: 'NOTION_CLIENT_ID', clientSecret: 'NOTION_CLIENT_SECRET' },
-  twitter: { clientId: 'TWITTER_CLIENT_ID', clientSecret: 'TWITTER_CLIENT_SECRET' },
-  asana: { clientId: 'ASANA_CLIENT_ID', clientSecret: 'ASANA_CLIENT_SECRET' },
-  salesforce: { clientId: 'SALESFORCE_CLIENT_ID', clientSecret: 'SALESFORCE_CLIENT_SECRET' },
-  airtable: { clientId: 'AIRTABLE_CLIENT_ID', clientSecret: 'AIRTABLE_CLIENT_SECRET' },
-  jira: { clientId: 'JIRA_CLIENT_ID', clientSecret: 'JIRA_CLIENT_SECRET' },
-  dropbox: { clientId: 'DROPBOX_CLIENT_ID', clientSecret: 'DROPBOX_CLIENT_SECRET' },
-  zoom: { clientId: 'ZOOM_CLIENT_ID', clientSecret: 'ZOOM_CLIENT_SECRET' },
-  linkedin: { clientId: 'LINKEDIN_CLIENT_ID', clientSecret: 'LINKEDIN_CLIENT_SECRET' },
+  microsoft: {
+    clientId: "MICROSOFT_CLIENT_ID",
+    clientSecret: "MICROSOFT_CLIENT_SECRET",
+  },
+  slack: { clientId: "SLACK_CLIENT_ID", clientSecret: "SLACK_CLIENT_SECRET" },
+  github: {
+    clientId: "GITHUB_CLIENT_ID",
+    clientSecret: "GITHUB_CLIENT_SECRET",
+  },
+  linear: {
+    clientId: "LINEAR_CLIENT_ID",
+    clientSecret: "LINEAR_CLIENT_SECRET",
+  },
+  notion: {
+    clientId: "NOTION_CLIENT_ID",
+    clientSecret: "NOTION_CLIENT_SECRET",
+  },
+  twitter: {
+    clientId: "TWITTER_CLIENT_ID",
+    clientSecret: "TWITTER_CLIENT_SECRET",
+  },
+  asana: { clientId: "ASANA_CLIENT_ID", clientSecret: "ASANA_CLIENT_SECRET" },
+  salesforce: {
+    clientId: "SALESFORCE_CLIENT_ID",
+    clientSecret: "SALESFORCE_CLIENT_SECRET",
+  },
+  airtable: {
+    clientId: "AIRTABLE_CLIENT_ID",
+    clientSecret: "AIRTABLE_CLIENT_SECRET",
+  },
+  jira: { clientId: "JIRA_CLIENT_ID", clientSecret: "JIRA_CLIENT_SECRET" },
+  dropbox: {
+    clientId: "DROPBOX_CLIENT_ID",
+    clientSecret: "DROPBOX_CLIENT_SECRET",
+  },
+  zoom: { clientId: "ZOOM_CLIENT_ID", clientSecret: "ZOOM_CLIENT_SECRET" },
+  linkedin: {
+    clientId: "LINKEDIN_CLIENT_ID",
+    clientSecret: "LINKEDIN_CLIENT_SECRET",
+  },
 };
 
 /** Find the platform key for a credential type (e.g. "googleOAuth2Api" → "google") */
@@ -153,11 +186,11 @@ function findPlatform(credType: string): string | undefined {
 /** Resolve OAuth client ID/secret from env vars if available */
 function resolveOAuthData(credType: string): Record<string, unknown> {
   const data: Record<string, unknown> = {
-    clientId: '',
-    clientSecret: '',
-    serverUrl: '',
+    clientId: "",
+    clientSecret: "",
+    serverUrl: "",
     sendAdditionalBodyProperties: false,
-    additionalBodyProperties: '',
+    additionalBodyProperties: "",
   };
 
   const platform = findPlatform(credType);
@@ -177,8 +210,8 @@ function resolveOAuthData(credType: string): Record<string, unknown> {
   }
 
   // Some credential types require extra fields
-  if (credType.startsWith('microsoftOutlook')) {
-    data.userPrincipalName = '';
+  if (credType.startsWith("microsoftOutlook")) {
+    data.userPrincipalName = "";
   }
 
   return data;
@@ -194,15 +227,15 @@ interface NodeDef {
 }
 
 function discoverOAuth2CredTypes(): string[] {
-  const catalogPath = path.join(__dirname, '../src/data/defaultNodes.json');
-  const nodes: NodeDef[] = JSON.parse(fs.readFileSync(catalogPath, 'utf-8'));
+  const catalogPath = path.join(__dirname, "../src/data/defaultNodes.json");
+  const nodes: NodeDef[] = JSON.parse(fs.readFileSync(catalogPath, "utf-8"));
 
-  const triggers = nodes.filter((n) => n.group?.includes('trigger'));
+  const triggers = nodes.filter((n) => n.group?.includes("trigger"));
   const oauth2 = new Set<string>();
 
   for (const trigger of triggers) {
     for (const cred of trigger.credentials || []) {
-      if (!cred.name.toLowerCase().includes('oauth2')) continue;
+      if (!cred.name.toLowerCase().includes("oauth2")) continue;
       if (!isSupportedCredType(cred.name)) continue;
       oauth2.add(cred.name);
     }
@@ -218,10 +251,12 @@ async function main() {
   const credMap = loadCredentialsMap();
 
   // --list mode
-  if (args.includes('--list')) {
+  if (args.includes("--list")) {
     const entries = Object.entries(credMap);
     if (entries.length === 0) {
-      console.log('No credentials in .credentials-map.json. Run without --list to create some.');
+      console.log(
+        "No credentials in .credentials-map.json. Run without --list to create some.",
+      );
       return;
     }
     console.log(`${entries.length} credentials in .credentials-map.json:\n`);
@@ -232,14 +267,14 @@ async function main() {
   }
 
   // --delete-all mode
-  if (args.includes('--delete-all')) {
+  if (args.includes("--delete-all")) {
     if (!N8N_HOST || !N8N_API_KEY) {
-      console.error('Missing N8N_HOST or N8N_API_KEY environment variables');
+      console.error("Missing N8N_HOST or N8N_API_KEY environment variables");
       process.exit(1);
     }
     const entries = Object.entries(credMap);
     if (entries.length === 0) {
-      console.log('No credentials to delete.');
+      console.log("No credentials to delete.");
       return;
     }
     console.log(`Deleting ${entries.length} credentials...`);
@@ -250,7 +285,7 @@ async function main() {
         console.log(`  Deleted: ${credType} — "${entry.name}" (${entry.id})`);
       } catch (error) {
         console.log(
-          `  FAIL: ${credType} (${entry.id}) — ${error instanceof Error ? error.message : error}`
+          `  FAIL: ${credType} (${entry.id}) — ${error instanceof Error ? error.message : error}`,
         );
       }
     }
@@ -259,21 +294,27 @@ async function main() {
   }
 
   if (!N8N_HOST || !N8N_API_KEY) {
-    console.error('Missing N8N_HOST or N8N_API_KEY environment variables');
+    console.error("Missing N8N_HOST or N8N_API_KEY environment variables");
     process.exit(1);
   }
 
-  const dryRun = args.includes('--dry-run');
-  const filter = args.find((a) => a.startsWith('--filter='))?.split('=')[1];
+  const dryRun = args.includes("--dry-run");
+  const filter = args.find((a) => a.startsWith("--filter="))?.split("=")[1];
 
   // Discover OAuth2 credential types from trigger nodes
   let credTypes = discoverOAuth2CredTypes();
   if (filter) {
-    credTypes = credTypes.filter((ct) => ct.toLowerCase().includes(filter.toLowerCase()));
+    credTypes = credTypes.filter((ct) =>
+      ct.toLowerCase().includes(filter.toLowerCase()),
+    );
   }
-  console.log(`Discovered ${credTypes.length} OAuth2 credential types from trigger nodes\n`);
+  console.log(
+    `Discovered ${credTypes.length} OAuth2 credential types from trigger nodes\n`,
+  );
 
-  console.log(`Creating credentials on ${N8N_HOST} (using n8n cloud defaults)...\n`);
+  console.log(
+    `Creating credentials on ${N8N_HOST} (using n8n cloud defaults)...\n`,
+  );
 
   const needsConnect: string[] = [];
   let created = 0;
@@ -298,7 +339,7 @@ async function main() {
 
     try {
       const data = resolveOAuthData(credType);
-      const result = await n8nRequest<N8nCredential>('POST', '/credentials', {
+      const result = await n8nRequest<N8nCredential>("POST", "/credentials", {
         name: displayName,
         type: credType,
         data,
@@ -313,17 +354,21 @@ async function main() {
 
       const hasEnvCreds = data.clientId && data.clientSecret;
       console.log(
-        `  OK    ${credType} (${result.id})${hasEnvCreds ? ' — with env credentials' : ' — n8n defaults'}`
+        `  OK    ${credType} (${result.id})${hasEnvCreds ? " — with env credentials" : " — n8n defaults"}`,
       );
       needsConnect.push(`  ${credType} → ${N8N_HOST}/credentials/${result.id}`);
       created++;
     } catch (error) {
-      console.log(`  FAIL  ${credType} — ${error instanceof Error ? error.message : error}`);
+      console.log(
+        `  FAIL  ${credType} — ${error instanceof Error ? error.message : error}`,
+      );
     }
   }
 
   if (dryRun) {
-    console.log(`\n${created} credentials would be created. Run without --dry-run to create.`);
+    console.log(
+      `\n${created} credentials would be created. Run without --dry-run to create.`,
+    );
     return;
   }
 
@@ -346,6 +391,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error('Fatal error:', error);
+  console.error("Fatal error:", error);
   process.exit(1);
 });

@@ -1,5 +1,5 @@
 /**
- * Steward EVM Bridge — intercepts plugin-evm initialization in cloud-provisioned
+ * Steward EVM Bridge — intercepts plugin-wallet EVM initialization in cloud-provisioned
  * containers to route signing through Steward API instead of local private keys.
  *
  * Strategy:

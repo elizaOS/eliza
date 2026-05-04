@@ -9,14 +9,14 @@
  * Supported chains: Base, Ethereum, Arbitrum, Polygon, Optimism, Avalanche,
  * Unichain, Linea, Sonic, Worldchain, and Base Sepolia (testnet).
  */
-import type { Address, Hash, Hex } from 'viem';
+import type { Address, Hash, Hex } from "viem";
 
 /** Spend policy for a single token */
 export interface SpendPolicy {
-  token: Address;         // address(0) for native ETH
-  perTxLimit: bigint;     // max single tx amount (0 = no autonomous spending)
-  periodLimit: bigint;    // max total per rolling window (0 = no autonomous spending)
-  periodLength: number;   // window duration in seconds (default 86400)
+  token: Address; // address(0) for native ETH
+  perTxLimit: bigint; // max single tx amount (0 = no autonomous spending)
+  periodLimit: bigint; // max total per rolling window (0 = no autonomous spending)
+  periodLength: number; // window duration in seconds (default 86400)
 }
 
 /** On-chain spend policy state (includes tracking fields) */
@@ -49,13 +49,24 @@ export interface BudgetStatus {
 export interface ExecuteResult {
   executed: boolean;
   txHash: Hash;
-  pendingTxId?: bigint;   // set if queued
+  pendingTxId?: bigint; // set if queued
 }
 
 /** Config for creating an AgentWallet client */
 export interface AgentWalletConfig {
   accountAddress: Address;
-  chain: 'base' | 'base-sepolia' | 'ethereum' | 'arbitrum' | 'polygon' | 'optimism' | 'avalanche' | 'unichain' | 'linea' | 'sonic' | 'worldchain';
+  chain:
+    | "base"
+    | "base-sepolia"
+    | "ethereum"
+    | "arbitrum"
+    | "polygon"
+    | "optimism"
+    | "avalanche"
+    | "unichain"
+    | "linea"
+    | "sonic"
+    | "worldchain";
   rpcUrl?: string;
 }
 
@@ -107,7 +118,13 @@ export interface WalletHealth {
 
 /** A decoded activity log entry from on-chain events */
 export interface ActivityEntry {
-  type: 'execution' | 'queued' | 'approved' | 'cancelled' | 'policy_update' | 'operator_update';
+  type:
+    | "execution"
+    | "queued"
+    | "approved"
+    | "cancelled"
+    | "policy_update"
+    | "operator_update";
   blockNumber: bigint;
   transactionHash: Hash;
   /** Decoded event args (varies by type) */
@@ -123,17 +140,17 @@ export interface BatchTransfer {
 
 /** Supported chain IDs */
 export const CHAIN_IDS = {
-  'base':        8453,
-  'base-sepolia': 84532,
-  'ethereum':    1,
-  'arbitrum':    42161,
-  'polygon':     137,
-  'optimism':    10,
-  'avalanche':   43114,
-  'unichain':    130,
-  'linea':       59144,
-  'sonic':       146,
-  'worldchain':  480,
+  base: 8453,
+  "base-sepolia": 84532,
+  ethereum: 1,
+  arbitrum: 42161,
+  polygon: 137,
+  optimism: 10,
+  avalanche: 43114,
+  unichain: 130,
+  linea: 59144,
+  sonic: 146,
+  worldchain: 480,
 } as const;
 
 /** Supported chain name type */

@@ -26,7 +26,11 @@ export function generateMasterKey(): Buffer {
   return randomBytes(KEY_BYTES);
 }
 
-export function encrypt(masterKey: Buffer, plaintext: string, aad: string): string {
+export function encrypt(
+  masterKey: Buffer,
+  plaintext: string,
+  aad: string,
+): string {
   if (masterKey.length !== KEY_BYTES) {
     throw new CryptoError(`master key must be ${KEY_BYTES} bytes`);
   }
@@ -38,7 +42,11 @@ export function encrypt(masterKey: Buffer, plaintext: string, aad: string): stri
   return `v1:${nonce.toString("base64")}:${tag.toString("base64")}:${ct.toString("base64")}`;
 }
 
-export function decrypt(masterKey: Buffer, ciphertext: string, aad: string): string {
+export function decrypt(
+  masterKey: Buffer,
+  ciphertext: string,
+  aad: string,
+): string {
   if (masterKey.length !== KEY_BYTES) {
     throw new CryptoError(`master key must be ${KEY_BYTES} bytes`);
   }
@@ -62,10 +70,14 @@ export function decrypt(masterKey: Buffer, ciphertext: string, aad: string): str
   decipher.setAAD(Buffer.from(aad, "utf8"));
   decipher.setAuthTag(tag);
   try {
-    return Buffer.concat([decipher.update(ct), decipher.final()]).toString("utf8");
+    return Buffer.concat([decipher.update(ct), decipher.final()]).toString(
+      "utf8",
+    );
   } catch (err) {
     throw new CryptoError(
-      err instanceof Error ? `decryption failed: ${err.message}` : "decryption failed",
+      err instanceof Error
+        ? `decryption failed: ${err.message}`
+        : "decryption failed",
     );
   }
 }

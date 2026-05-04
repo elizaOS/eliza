@@ -15,10 +15,17 @@ import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { readConfigCodexSubscriptionRestrictedToCodexFramework } from "../services/config-env.js";
+import { buildOpencodeSpawnConfig } from "../services/agent-credentials.js";
+import {
+  isOpencodeAgentType,
+  normalizeAgentType,
+  toOpencodeCommand,
+} from "../services/pty-types.js";
 import {
   clearTaskAgentFrameworkStateCache,
   getTaskAgentFrameworkState,
   getTaskAgentModelPrefs,
+  TASK_AGENT_FRAMEWORK_LABELS,
 } from "../services/task-agent-frameworks.js";
 
 function createRuntime(
@@ -330,5 +337,165 @@ describe("codexSubscriptionRestrictedToCodexFramework flag", () => {
       },
     });
     expect(readConfigCodexSubscriptionRestrictedToCodexFramework()).toBe(false);
+  });
+});
+
+describe("opencode framework integration", () => {
+  it("recognizes the opencode aliases", () => {
+    expect(isOpencodeAgentType("opencode")).toBe(true);
+    expect(isOpencodeAgentType("OpenCode")).toBe(true);
+    expect(isOpencodeAgentType("open-code")).toBe(true);
+    expect(isOpencodeAgentType("opencodeagent")).toBe(true);
+    expect(isOpencodeAgentType("claude")).toBe(false);
+    expect(isOpencodeAgentType(undefined)).toBe(false);
+  });
+
+  it("normalizes opencode requests through the shell adapter", () => {
+    expect(normalizeAgentType("opencode")).toBe("shell");
+    expect(normalizeAgentType("OpenCode")).toBe("shell");
+    expect(normalizeAgentType("open-code")).toBe("shell");
+  });
+
+  it("builds opencode run commands with --dangerously-skip-permissions AFTER `run`", () => {
+    expect(toOpencodeCommand(undefined)).toBe("opencode");
+    expect(toOpencodeCommand("")).toBe("opencode");
+    // Critical: the flag must come AFTER `run`, not before — verified live
+    // with opencode 1.14.33 + ollama qwen2.5-coder:0.5b. Putting it before
+    // `run` made opencode print the top-level help and exit.
+    expect(toOpencodeCommand("hello world")).toBe(
+      "opencode run --dangerously-skip-permissions 'hello world'",
+    );
+    // Single-quote escaping survives nested quotes.
+    expect(toOpencodeCommand("it's fine")).toBe(
+      "opencode run --dangerously-skip-permissions 'it'\"'\"'s fine'",
+    );
+  });
+
+  it("exposes a label for opencode in the framework label map", () => {
+    expect(TASK_AGENT_FRAMEWORK_LABELS.opencode).toBe("OpenCode");
+  });
+});
+
+describe("buildOpencodeSpawnConfig", () => {
+  let fixture: FrameworkFixture;
+
+  beforeEach(() => {
+    fixture = setupFixture();
+  });
+
+  afterEach(() => {
+    teardownFixture(fixture);
+  });
+
+  it("returns null when no provider mode is configured", () => {
+    expect(buildOpencodeSpawnConfig(createRuntime())).toBeNull();
+  });
+
+  it("returns a cloud config when PARALLAX_LLM_PROVIDER=cloud and a cloud key is paired", () => {
+    writeElizaConfig(fixture, {
+      env: { PARALLAX_LLM_PROVIDER: "cloud" },
+      cloud: { apiKey: "ec_test_key_123" },
+    });
+
+    const config = buildOpencodeSpawnConfig(createRuntime());
+    expect(config).not.toBeNull();
+    expect(config?.providerLabel).toBe("Eliza Cloud");
+    expect(config?.providerId).toBe("elizacloud");
+    expect(config?.model).toBe("elizacloud/claude-opus-4-7");
+
+    const parsed = JSON.parse(config?.configContent ?? "{}") as {
+      provider: Record<
+        string,
+        {
+          npm: string;
+          name: string;
+          options: { baseURL: string; apiKey: string };
+          models: Record<string, { name: string }>;
+        }
+      >;
+      model: string;
+    };
+    expect(parsed.provider.elizacloud.npm).toBe("@ai-sdk/openai-compatible");
+    expect(parsed.provider.elizacloud.options.baseURL).toBe(
+      "https://www.elizacloud.ai/api/v1",
+    );
+    expect(parsed.provider.elizacloud.options.apiKey).toBe("ec_test_key_123");
+    expect(parsed.model).toBe("elizacloud/claude-opus-4-7");
+  });
+
+  it("returns a local config when PARALLAX_OPENCODE_LOCAL=1", () => {
+    writeElizaConfig(fixture, {
+      env: { PARALLAX_OPENCODE_LOCAL: "1" },
+    });
+
+    const config = buildOpencodeSpawnConfig(
+      createRuntime({
+        PARALLAX_OPENCODE_MODEL_POWERFUL: "qwen2.5-coder:7b",
+      }),
+    );
+    expect(config).not.toBeNull();
+    expect(config?.providerId).toBe("eliza-local");
+    expect(config?.model).toBe("eliza-local/qwen2.5-coder:7b");
+    expect(config?.providerLabel).toBe("Local (http://localhost:11434/v1)");
+
+    const parsed = JSON.parse(config?.configContent ?? "{}") as {
+      provider: Record<
+        string,
+        { options: { baseURL: string; apiKey?: string } }
+      >;
+    };
+    expect(parsed.provider["eliza-local"].options.baseURL).toBe(
+      "http://localhost:11434/v1",
+    );
+    // No apiKey when none was provided — Ollama doesn't need one.
+    expect(parsed.provider["eliza-local"].options.apiKey).toBeUndefined();
+  });
+
+  it("respects PARALLAX_OPENCODE_BASE_URL for non-Ollama local servers", () => {
+    writeElizaConfig(fixture, {
+      env: {
+        PARALLAX_OPENCODE_BASE_URL: "http://localhost:1234/v1",
+        PARALLAX_OPENCODE_API_KEY: "lm-studio-key",
+      },
+    });
+
+    const config = buildOpencodeSpawnConfig(
+      createRuntime({
+        PARALLAX_OPENCODE_MODEL_POWERFUL: "local-model-id",
+      }),
+    );
+    expect(config).not.toBeNull();
+    expect(config?.providerLabel).toBe("Local (http://localhost:1234/v1)");
+
+    const parsed = JSON.parse(config?.configContent ?? "{}") as {
+      provider: Record<
+        string,
+        { options: { baseURL: string; apiKey?: string } }
+      >;
+    };
+    expect(parsed.provider["eliza-local"].options.baseURL).toBe(
+      "http://localhost:1234/v1",
+    );
+    expect(parsed.provider["eliza-local"].options.apiKey).toBe("lm-studio-key");
+  });
+
+  it("returns a thin user-config override when only PARALLAX_OPENCODE_MODEL_POWERFUL is set", () => {
+    const config = buildOpencodeSpawnConfig(
+      createRuntime({
+        PARALLAX_OPENCODE_MODEL_POWERFUL: "anthropic/claude-3-5-sonnet-latest",
+      }),
+    );
+    expect(config).not.toBeNull();
+    expect(config?.providerLabel).toBe("User-configured opencode.json");
+    expect(config?.providerId).toBe("user");
+    expect(config?.model).toBe("anthropic/claude-3-5-sonnet-latest");
+
+    const parsed = JSON.parse(config?.configContent ?? "{}") as {
+      provider?: unknown;
+      model: string;
+    };
+    // Thin override: no provider block — defers to user's opencode.json.
+    expect(parsed.provider).toBeUndefined();
+    expect(parsed.model).toBe("anthropic/claude-3-5-sonnet-latest");
   });
 });

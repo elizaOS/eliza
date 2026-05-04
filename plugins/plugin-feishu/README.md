@@ -9,7 +9,6 @@ This plugin integrates a Feishu (飞书) / Lark client with ElizaOS, allowing ag
 - **Multi-region Support**: Works with both Feishu (China) and Lark (Global) platforms.
 - **Configuration Validation**: Ensures required settings are properly configured before starting.
 - **DM and Group Support**: Handles both direct messages and group conversations.
-- **Multi-language Implementation**: Available in TypeScript, Rust, and Python.
 
 ## Configuration Options
 

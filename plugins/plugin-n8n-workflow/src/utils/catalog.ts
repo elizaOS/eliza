@@ -4,7 +4,7 @@ import {
   NodeSearchResult,
   IntegrationFilterResult,
 } from '../types/index';
-import defaultNodesData from '../data/defaultNodes.json' assert { type: 'json' };
+import defaultNodesData from '../data/defaultNodes.json' with { type: 'json' };
 
 /**
  * n8n node catalog with keyword-based search
@@ -209,7 +209,9 @@ function simplifyProperty(prop: NodeProperty): NodeProperty | null {
  * Returns undefined when no credential entries gate on `authentication`.
  */
 function buildCredentialAuthMatrix(node: NodeDefinition): Record<string, string> | undefined {
-  if (!node.credentials?.length) return undefined;
+  if (!node.credentials?.length) {
+    return undefined;
+  }
   const out: Record<string, string> = {};
   for (const cred of node.credentials) {
     const authValues = (cred.displayOptions as { show?: { authentication?: string[] } } | undefined)

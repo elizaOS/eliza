@@ -14,7 +14,10 @@ interface PositionListProps {
   onClosePosition?: (positionId: string) => void;
 }
 
-export function PositionList({ positions, onClosePosition }: PositionListProps) {
+export function PositionList({
+  positions,
+  onClosePosition,
+}: PositionListProps) {
   const truncateAddress = (address: string) => {
     return `${address.slice(0, 4)}...${address.slice(-4)}`;
   };
@@ -23,7 +26,9 @@ export function PositionList({ positions, onClosePosition }: PositionListProps) 
     <div className="card">
       <div className="card-header">
         <h2 className="card-title">📊 Open Positions</h2>
-        <span className="card-subtitle">{positions.length} position{positions.length !== 1 ? 's' : ''}</span>
+        <span className="card-subtitle">
+          {positions.length} position{positions.length !== 1 ? "s" : ""}
+        </span>
       </div>
 
       {positions.length === 0 ? (
@@ -41,30 +46,39 @@ export function PositionList({ positions, onClosePosition }: PositionListProps) 
                     {position.symbol || truncateAddress(position.tokenAddress)}
                   </span>
                 </div>
-                <span className={`position-pnl ${position.pnl >= 0 ? 'positive' : 'negative'}`}>
-                  {position.pnl >= 0 ? '+' : ''}{position.pnlPercent.toFixed(2)}%
+                <span
+                  className={`position-pnl ${position.pnl >= 0 ? "positive" : "negative"}`}
+                >
+                  {position.pnl >= 0 ? "+" : ""}
+                  {position.pnlPercent.toFixed(2)}%
                 </span>
               </div>
               <div className="position-details">
                 <div>
                   <div className="position-detail-label">Entry</div>
-                  <div className="position-detail-value">${position.entryPrice.toFixed(6)}</div>
+                  <div className="position-detail-value">
+                    ${position.entryPrice.toFixed(6)}
+                  </div>
                 </div>
                 <div>
                   <div className="position-detail-label">Current</div>
-                  <div className="position-detail-value">${position.currentPrice.toFixed(6)}</div>
+                  <div className="position-detail-value">
+                    ${position.currentPrice.toFixed(6)}
+                  </div>
                 </div>
                 <div>
                   <div className="position-detail-label">P&L</div>
-                  <div className={`position-detail-value ${position.pnl >= 0 ? 'positive' : 'negative'}`}>
+                  <div
+                    className={`position-detail-value ${position.pnl >= 0 ? "positive" : "negative"}`}
+                  >
                     ${position.pnl.toFixed(2)}
                   </div>
                 </div>
               </div>
               {onClosePosition && (
-                <button 
+                <button
                   className="btn btn-secondary btn-full"
-                  style={{ marginTop: '12px' }}
+                  style={{ marginTop: "12px" }}
                   onClick={() => onClosePosition(position.id)}
                 >
                   Close Position

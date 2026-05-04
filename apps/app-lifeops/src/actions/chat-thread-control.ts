@@ -236,8 +236,7 @@ export const chatThreadControlAction: Action & {
       ?.parameters ?? {}) as ChatThreadParams;
     const planned = await resolveChatThreadPlan({ runtime, message, state });
     const operation = normalizeOperation(params.operation) ?? planned.operation;
-    const platform =
-      normalizePlatform(params.platform) ?? planned.platform;
+    const platform = normalizePlatform(params.platform) ?? planned.platform;
     const roomId = normalizeString(params.roomId) ?? planned.roomId;
     const chatName = normalizeString(params.chatName) ?? planned.chatName;
     const durationMinutes =

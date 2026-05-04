@@ -23,7 +23,7 @@ import {
   client,
 } from "../../api";
 import { useApp } from "../../state";
-import { openExternalUrl } from "../../utils";
+import { openExternalUrl, preOpenWindow } from "../../utils";
 import { StripeEmbeddedCheckout } from "../cloud/StripeEmbeddedCheckout";
 import {
   autoTopUpFormReducer,
@@ -491,7 +491,7 @@ export function CloudDashboard() {
           variant="default"
           size="sm"
           className="h-8 rounded-lg px-3 text-xs font-semibold"
-          onClick={() => void handleCloudLogin()}
+          onClick={() => void handleCloudLogin(preOpenWindow())}
           disabled={elizaCloudLoginBusy}
         >
           {elizaCloudLoginBusy ? (

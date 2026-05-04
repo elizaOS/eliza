@@ -39,12 +39,9 @@ const STALL_TIMEOUT_MS = 60_000;
 // cwd-relative resolution — passing the bare module name "coding-agent-adapters"
 // fails when the worker's cwd doesn't contain node_modules.
 const _require = createRequire(import.meta.url);
-const {
-  BunCompatiblePTYManager,
-  isBun,
-  PTYManager,
-  ShellAdapter,
-} = _require("pty-manager") as typeof import("pty-manager");
+const { BunCompatiblePTYManager, isBun, PTYManager, ShellAdapter } = _require(
+  "pty-manager",
+) as typeof import("pty-manager");
 let resolvedAdapterModule = "coding-agent-adapters";
 try {
   resolvedAdapterModule = _require.resolve("coding-agent-adapters");

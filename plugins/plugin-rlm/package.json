@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-rlm",
-  "version": "2.0.0-alpha.7",
+  "version": "2.0.0-alpha.536",
   "description": "RLM (Recursive Language Model) plugin for elizaOS - enables processing of arbitrarily long contexts",
   "type": "module",
   "main": "dist/index.js",
@@ -18,7 +18,7 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "test": "vitest run --config vitest.config.ts --passWithNoTests",
+    "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:fix": "biome check --write .",
@@ -47,17 +47,17 @@
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.9.4",
-    "@types/node": "^22.10.0",
-    "tsup": "^8.3.5",
+    "@biomejs/biome": "^2.4.14",
+    "@types/node": "^22.19.17",
+    "tsup": "^8.5.1",
     "typescript": "^6.0.3",
-    "vitest": "^3.0.0"
+    "vitest": "^4.0.0"
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=24.0.0"
   },
   "eliza": {
     "platforms": [

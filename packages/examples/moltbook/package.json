@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "Autonomous Eliza agent for Moltbook social engagement",
   "type": "module",
-  "private": true,
   "scripts": {
     "start": "bun run autonomous.ts",
     "dev": "bun --watch run autonomous.ts",
@@ -20,10 +19,10 @@
     "@elizaos/plugin-inmemorydb": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-moltbook": "workspace:*",
-    "@solana/web3.js": "^1.98.4",
+    "@solana/web3.js": "1.98.4",
     "bs58": "^6.0.0",
     "uuid": "^14.0.0",
-    "dotenv": "^16.4.5"
+    "dotenv": "^17.0.0"
   },
   "devDependencies": {
     "@types/bun": "^1.2.5",
@@ -32,6 +31,6 @@
     "typescript": "^6.0.0"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=24.0.0"
   }
 }

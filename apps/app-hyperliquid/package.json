@@ -1,7 +1,6 @@
 {
   "name": "@elizaos/app-hyperliquid",
   "version": "0.0.0",
-  "private": true,
   "type": "module",
   "main": "./src/index.ts",
   "exports": {
@@ -21,5 +20,8 @@
     "app": {
       "heroImage": "assets/hero.png"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

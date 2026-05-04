@@ -18,6 +18,12 @@
     "elizaos"
   ],
   "main": "src/index.ts",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "bin": {
     "eliza-autonomous": "./src/bin.ts"
   },
@@ -25,6 +31,7 @@
     "clean": "rm -rf dist",
     "start": "bun run src/bin.ts",
     "dev": "bun --hot src/bin.ts",
+    "prepublishOnly": "bun run build:dist",
     "build": "bun run build:dist",
     "build:mobile": "bun run scripts/build-mobile-bundle.mjs",
     "build:docker-dist": "rm -rf dist && tsc --noCheck -p tsconfig.build.json && node ../../scripts/prepare-package-dist.mjs packages/agent --compiled-prefix=packages/agent/src",
@@ -136,6 +143,7 @@
   "dependencies": {
     "@clack/prompts": "^1.0.0",
     "@elizaos/app-elizamaker": "workspace:*",
+    "@elizaos/app-lifeops": "workspace:*",
     "@elizaos/app-task-coordinator": "workspace:*",
     "@elizaos/app-training": "workspace:*",
     "@elizaos/capacitor-contacts": "workspace:*",
@@ -144,21 +152,21 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-agent-orchestrator": "workspace:*",
     "@elizaos/plugin-agent-skills": "workspace:*",
-    "@elizaos/plugin-wallet": "workspace:*",
-    "@elizaos/plugin-streaming": "workspace:*",
     "@elizaos/plugin-browser-bridge": "workspace:*",
     "@elizaos/plugin-local-embedding": "workspace:*",
     "@elizaos/plugin-ollama": "workspace:*",
     "@elizaos/plugin-pdf": "workspace:*",
-    "@elizaos/plugin-video": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
+    "@elizaos/plugin-streaming": "workspace:*",
+    "@elizaos/plugin-video": "workspace:*",
+    "@elizaos/plugin-wallet": "workspace:*",
     "@elizaos/plugin-wechat": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/skills": "workspace:*",
     "@elizaos/vault": "workspace:*",
     "@hapi/boom": "^10.0.1",
     "@noble/curves": "^2.0.1",
-    "@solana/web3.js": "^1.98.4",
+    "@solana/web3.js": "1.98.4",
     "@whiskeysockets/baileys": "7.0.0-rc.9",
     "abitype": "^1.0.0",
     "coding-agent-adapters": "0.16.3",
@@ -176,7 +184,7 @@
     "telegram": "2.26.22",
     "viem": "^2.48.8",
     "ws": "^8.19.0",
-    "zod": "^4.3.6"
+    "zod": "^4.4.2"
   },
   "peerDependencies": {
     "@elizaos/signal-native": "*"

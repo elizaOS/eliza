@@ -263,6 +263,20 @@ const PROVIDER_ENV_KEYS: Record<
     envKey: "OPENROUTER_API_KEY",
     baseUrl: "https://openrouter.ai/api/v1",
   },
+  deepseek: {
+    envKey: "DEEPSEEK_API_KEY",
+    baseUrl: "https://api.deepseek.com",
+  },
+  zai: {
+    envKey: "ZAI_API_KEY",
+    altEnvKeys: ["Z_AI_API_KEY"],
+    baseUrl: "https://api.z.ai/api/paas/v4",
+  },
+  moonshot: {
+    envKey: "MOONSHOT_API_KEY",
+    altEnvKeys: ["KIMI_API_KEY"],
+    baseUrl: "https://api.moonshot.ai/v1",
+  },
   "google-genai": {
     envKey: "GOOGLE_GENERATIVE_AI_API_KEY",
     altEnvKeys: ["GOOGLE_API_KEY", "GEMINI_API_KEY"],
@@ -545,6 +559,24 @@ export async function fetchProviderModels(
         providerId,
         apiKey,
         baseUrl ?? "https://api.x.ai/v1",
+      );
+    case "deepseek":
+      return fetchModelsREST(
+        providerId,
+        apiKey,
+        baseUrl ?? "https://api.deepseek.com",
+      );
+    case "zai":
+      return fetchModelsREST(
+        providerId,
+        apiKey,
+        baseUrl ?? "https://api.z.ai/api/paas/v4",
+      );
+    case "moonshot":
+      return fetchModelsREST(
+        providerId,
+        apiKey,
+        baseUrl ?? "https://api.moonshot.ai/v1",
       );
     case "vercel-ai-gateway":
       return fetchVercelGatewayModels(

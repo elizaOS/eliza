@@ -54,7 +54,11 @@ app.post("/", async (c) => {
 
     const organizationId = user.organization_id;
 
-    const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [
+    // stripe v22 re-exports `SessionCreateParams` as a type alias from the
+    // Checkout barrel, which strips the nested `LineItem` namespace. Derive
+    // the line-item type from the params shape directly.
+    type LineItem = NonNullable<Stripe.Checkout.SessionCreateParams["line_items"]>[number];
+    const lineItems: LineItem[] = [
       {
         price_data: {
           currency: stripeCurrency,

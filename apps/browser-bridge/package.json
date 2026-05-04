@@ -1,6 +1,5 @@
 {
   "name": "@elizaos/browser-bridge-extension",
-  "private": true,
   "version": "0.1.0",
   "type": "module",
   "scripts": {
@@ -15,5 +14,6 @@
     "test:smoke": "node scripts/extension-smoke.mjs",
     "test:smoke:safari": "node scripts/extension-smoke-safari.mjs",
     "test:ci": "bun run test && bun run test:smoke"
-  }
+  },
+  "private": true
 }

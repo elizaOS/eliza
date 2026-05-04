@@ -35,8 +35,8 @@ import { confirmationRequired, createEvmActionValidator, isConfirmed } from "./h
 
 export { bridgeTemplate };
 
-type LiFiGetWalletClient = Parameters<typeof EVM>[0]["getWalletClient"];
-type LiFiSwitchChain = Parameters<typeof EVM>[0]["switchChain"];
+type LiFiGetWalletClient = NonNullable<Parameters<typeof EVM>[0]>["getWalletClient"];
+type LiFiSwitchChain = NonNullable<Parameters<typeof EVM>[0]>["switchChain"];
 
 function createLiFiGetWalletClientAdapter(
   walletProvider: WalletProvider,
@@ -300,7 +300,10 @@ export class BridgeAction {
           return updatedStatus;
         }
       } catch (statusError) {
-        logger.warn(`Status check attempt ${attempt} failed:`, statusError);
+        logger.warn(
+          `Status check attempt ${attempt} failed:`,
+          statusError instanceof Error ? statusError.message : String(statusError)
+        );
       }
     }
 

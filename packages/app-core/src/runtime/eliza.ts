@@ -235,9 +235,9 @@ export function applyCloudConfigToEnv(
   return result;
 }
 
-export function applyN8nConfigToEnv(
+export async function applyN8nConfigToEnv(
   ...args: Parameters<typeof upstreamApplyN8nConfigToEnv>
-): ReturnType<typeof upstreamApplyN8nConfigToEnv> {
+): Promise<void> {
   syncBrandEnvAliases();
   // On mobile (iOS / Android) the local n8n sidecar cannot run — spawning a
   // child process via node:child_process is unavailable. Treat
@@ -250,13 +250,12 @@ export function applyN8nConfigToEnv(
       config?.n8n?.localEnabled === false
         ? config
         : { ...config, n8n: { ...(config.n8n ?? {}), localEnabled: false } };
-    const result = upstreamApplyN8nConfigToEnv(mobileConfig, agentId);
+    await upstreamApplyN8nConfigToEnv(mobileConfig, agentId);
     syncBrandEnvAliases();
-    return result;
+    return;
   }
-  const result = upstreamApplyN8nConfigToEnv(...args);
+  await upstreamApplyN8nConfigToEnv(...args);
   syncBrandEnvAliases();
-  return result;
 }
 
 async function ensureAutonomyBootstrapContext(
@@ -578,6 +577,7 @@ async function repairRuntimeAfterBoot(
   // service as advisory; if it isn't registered the prompt simply omits the
   // facts/credentials sections.
   await ensureN8nRuntimeContextProvider(runtime);
+  await ensureConnectorTargetCatalog(runtime);
 
   return runtime;
 }
@@ -609,6 +609,22 @@ let _triggerEventBridge: { stop: () => void } | null = null;
 // hot-reloads so the previous closure (capturing an outdated config getter)
 // does not survive into the fresh runtime's services map.
 let _n8nRuntimeContextProvider: { stop: () => void } | null = null;
+
+// Shared Discord enumeration cache so the runtime-context provider (called
+// at generate time) and the connector-target-catalog (called at quick-pick
+// resolve time) hit one 5-minute REST window instead of two. Reset whenever
+// the runtime-context provider is re-created so a hot-reload cannot leak
+// stale guild/channel state into the fresh runtime.
+let _discordEnumerationCache:
+  | import("../services/discord-target-source").DiscordSourceCache
+  | null = null;
+
+// Module-level handle for the connector-target-catalog service. Reset across
+// hot-reloads with the same cadence as _n8nRuntimeContextProvider so both
+// services share a single Discord enumeration cache.
+let _connectorTargetCatalog: { stop: () => void } | null = null;
+
+const CONNECTOR_TARGET_CATALOG_SERVICE_TYPE = "connector_target_catalog";
 
 async function ensureN8nAuthBridge(runtime: AgentRuntime): Promise<void> {
   if (_n8nAuthBridge) {
@@ -742,6 +758,12 @@ async function ensureN8nRuntimeContextProvider(
     }
     _n8nRuntimeContextProvider = null;
   }
+  // Fresh cache on every (re)build — the catalog service picks up the same
+  // instance below in ensureConnectorTargetCatalog.
+  const { createDiscordSourceCache } = await import(
+    "../services/discord-target-source.js"
+  );
+  _discordEnumerationCache = createDiscordSourceCache();
   try {
     const { startElizaN8nRuntimeContextProvider } = await import(
       "../services/n8n-runtime-context-provider.js"
@@ -767,11 +789,56 @@ async function ensureN8nRuntimeContextProvider(
     _n8nRuntimeContextProvider = startElizaN8nRuntimeContextProvider(runtime, {
       getConfig: () => loadElizaConfig(),
       credProvider,
+      discordCache: _discordEnumerationCache ?? undefined,
     });
     logger.info("[eliza] n8n runtime-context provider registered");
   } catch (err) {
     logger.warn(
       `[eliza] Failed to register n8n runtime-context provider: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+}
+
+async function ensureConnectorTargetCatalog(
+  runtime: AgentRuntime,
+): Promise<void> {
+  if (_connectorTargetCatalog) {
+    try {
+      _connectorTargetCatalog.stop();
+    } catch {
+      /* ignore */
+    }
+    _connectorTargetCatalog = null;
+  }
+  try {
+    const { createElizaConnectorTargetCatalog } = await import(
+      "../services/connector-target-catalog.js"
+    );
+    const catalog = createElizaConnectorTargetCatalog({
+      getConfig: () => loadElizaConfig(),
+      discordCache: _discordEnumerationCache ?? undefined,
+      logger: { warn: runtime.logger.warn?.bind(runtime.logger) },
+    });
+    runtime.services.set(CONNECTOR_TARGET_CATALOG_SERVICE_TYPE as never, [
+      catalog as never,
+    ]);
+    _connectorTargetCatalog = {
+      stop: () => {
+        try {
+          runtime.services.delete(
+            CONNECTOR_TARGET_CATALOG_SERVICE_TYPE as never,
+          );
+        } catch {
+          /* ignore */
+        }
+      },
+    };
+    logger.info("[eliza] connector-target-catalog registered");
+  } catch (err) {
+    logger.warn(
+      `[eliza] Failed to register connector-target-catalog: ${
         err instanceof Error ? err.message : String(err)
       }`,
     );

@@ -35,7 +35,13 @@ export type {
   PassphraseOptions,
 } from "./master-key.js";
 
-export { encrypt, decrypt, generateMasterKey, KEY_BYTES, CryptoError } from "./crypto.js";
+export {
+  encrypt,
+  decrypt,
+  generateMasterKey,
+  KEY_BYTES,
+  CryptoError,
+} from "./crypto.js";
 
 export {
   PasswordManagerError,

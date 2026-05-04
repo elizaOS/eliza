@@ -65,9 +65,12 @@ function loadSpecs(specPath, kind) {
   }
 
   const root = readJson(specPath);
-  const items = kind === "actions" ? root.actions : 
-                kind === "providers" ? root.providers : 
-                root.evaluators || [];
+  const items =
+    kind === "actions"
+      ? root.actions
+      : kind === "providers"
+        ? root.providers
+        : root.evaluators || [];
 
   return {
     core: {
@@ -120,7 +123,10 @@ function generateTypeScript(actionsSpec, providersSpec, evaluatorsSpec) {
     2,
   );
   const providersJson = JSON.stringify(
-    { version: providersSpec.core.version, providers: providersSpec.core.items },
+    {
+      version: providersSpec.core.version,
+      providers: providersSpec.core.items,
+    },
     null,
     2,
   );
@@ -190,7 +196,7 @@ export const allEvaluatorDocs: readonly EvaluatorDoc[] = allEvaluatorsSpec.evalu
 `;
 
   fs.writeFileSync(path.join(outDir, "specs.ts"), content);
-  
+
   // Generate spec-helpers.ts
   const helpersContent = `/**
  * Helper functions to lookup action/provider/evaluator specs by name.
@@ -304,12 +310,18 @@ export function requireEvaluatorSpec(name: string): EvaluatorDoc {
 // Re-export types for convenience
 export type { ActionDoc, ProviderDoc, EvaluatorDoc };
 `;
-  
+
   fs.writeFileSync(path.join(outDir, "spec-helpers.ts"), helpersContent);
 }
 
 function generatePython(actionsSpec, providersSpec, evaluatorsSpec) {
-  const outDir = path.join(PLUGIN_ROOT, "python", "elizaos_plugin_sql", "generated", "specs");
+  const outDir = path.join(
+    PLUGIN_ROOT,
+    "python",
+    "elizaos_plugin_sql",
+    "generated",
+    "specs",
+  );
   ensureDir(outDir);
 
   const initPath = path.join(outDir, "__init__.py");
@@ -328,7 +340,10 @@ function generatePython(actionsSpec, providersSpec, evaluatorsSpec) {
     2,
   );
   const providersJson = JSON.stringify(
-    { version: providersSpec.core.version, providers: providersSpec.core.items },
+    {
+      version: providersSpec.core.version,
+      providers: providersSpec.core.items,
+    },
     null,
     2,
   );
@@ -429,7 +444,10 @@ function generateRust(actionsSpec, providersSpec, evaluatorsSpec) {
     2,
   );
   const providersJson = JSON.stringify(
-    { version: providersSpec.core.version, providers: providersSpec.core.items },
+    {
+      version: providersSpec.core.version,
+      providers: providersSpec.core.items,
+    },
     null,
     2,
   );

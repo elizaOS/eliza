@@ -6,6 +6,7 @@
  */
 
 import { getBootConfig, setBootConfig } from "../config/boot-config";
+import { hydrateAndroidLocalAgentTokenForUrl } from "../onboarding/local-agent-token";
 import { stripAssistantStageDirections } from "../utils/assistant-text";
 import {
   clearElizaApiBase,
@@ -26,6 +27,10 @@ import type {
   WsEventHandler,
 } from "./client-types";
 import { ApiError } from "./client-types";
+import {
+  fetchAgentTransport,
+  type AgentRequestTransport,
+} from "./transport";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -45,6 +50,7 @@ export class ElizaClient {
   private _userSetBase: boolean;
   private _token: string | null;
   private readonly clientId: string;
+  private requestTransport: AgentRequestTransport = fetchAgentTransport;
   private ws: WebSocket | null = null;
   private wsHandlers = new Map<string, Set<WsEventHandler>>();
   private wsSendQueue: string[] = [];
@@ -149,6 +155,11 @@ export class ElizaClient {
    */
   getRestAuthToken(): string | null {
     return this.apiToken;
+  }
+
+  setRequestTransport(transport: AgentRequestTransport | null): void {
+    this.requestTransport = transport ?? fetchAgentTransport;
+    this.disconnectWs();
   }
 
   setToken(token: string | null): void {
@@ -280,7 +291,7 @@ export class ElizaClient {
       };
 
       try {
-        return await fetch(requestUrl, requestInit);
+        return await this.requestTransport.request(requestUrl, requestInit);
       } catch (err) {
         if (timedOut) {
           throw new ApiError({
@@ -319,11 +330,16 @@ export class ElizaClient {
       }
     };
 
-    const token = this.apiToken;
+    const token =
+      this.apiToken ?? (await hydrateAndroidLocalAgentTokenForUrl(requestUrl));
     let res = await makeRequest(token);
-    if (res.status === 401 && !token) {
-      const retryToken = this.apiToken;
-      if (retryToken) {
+    if (res.status === 401) {
+      const hydratedToken = await hydrateAndroidLocalAgentTokenForUrl(
+        requestUrl,
+        { force: true },
+      );
+      const retryToken = hydratedToken ?? (!token ? this.apiToken : null);
+      if (retryToken && retryToken !== token) {
         res = await makeRequest(retryToken);
       }
     }

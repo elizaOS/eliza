@@ -45,9 +45,7 @@ export type ToolArgs = Record<string, unknown> | undefined;
  * (or simile) registered on the runtime; resolution happens at call time.
  */
 export type ToolsProxy = {
-  [actionName: string]: (
-    args?: ToolArgs,
-  ) => Promise<ToolCallResult>;
+  [actionName: string]: (args?: ToolArgs) => Promise<ToolCallResult>;
 };
 
 /**
@@ -102,7 +100,10 @@ export interface BuildToolsProxyParams {
 }
 
 /** Cheap predicate that rejects inputs which won't survive `JSON.stringify`. */
-function isJsonCloneable(value: unknown, seen = new WeakSet<object>()): boolean {
+function isJsonCloneable(
+  value: unknown,
+  seen = new WeakSet<object>(),
+): boolean {
   if (value === null) return true;
   const t = typeof value;
   if (t === "string" || t === "number" || t === "boolean") {
@@ -248,7 +249,11 @@ export function buildToolsProxy({
       }
       return async (args?: ToolArgs): Promise<ToolCallResult> => {
         if (args !== undefined) {
-          if (typeof args !== "object" || args === null || Array.isArray(args)) {
+          if (
+            typeof args !== "object" ||
+            args === null ||
+            Array.isArray(args)
+          ) {
             throw new Error(
               `${LOG_PREFIX} tools.${prop}: args must be a plain object or undefined`,
             );
@@ -260,18 +265,15 @@ export function buildToolsProxy({
           }
         }
 
-        if (
-          allowSet &&
-          !allowSet.has(prop.toLowerCase().replace(/_/g, ""))
-        ) {
-          throw new Error(
-            `${LOG_PREFIX} tools.${prop}: ${rejectionReason}`,
-          );
+        if (allowSet && !allowSet.has(prop.toLowerCase().replace(/_/g, ""))) {
+          throw new Error(`${LOG_PREFIX} tools.${prop}: ${rejectionReason}`);
         }
 
         const action = findActionByName(runtime, prop);
         if (!action) {
-          throw new Error(`${LOG_PREFIX} tools.${prop}: action not found on runtime`);
+          throw new Error(
+            `${LOG_PREFIX} tools.${prop}: action not found on runtime`,
+          );
         }
         if (typeof action.handler !== "function") {
           throw new Error(`${LOG_PREFIX} tools.${prop}: action has no handler`);
@@ -322,10 +324,8 @@ export function buildToolsProxy({
           `${LOG_PREFIX} tools.${prop} dispatching (childStepId=${childStepId})`,
         );
 
-        const handlerResult = await runWithTrajectoryContext(
-          childContext,
-          () =>
-            action.handler(runtime, message, state, options, callback, undefined),
+        const handlerResult = await runWithTrajectoryContext(childContext, () =>
+          action.handler(runtime, message, state, options, callback, undefined),
         );
 
         const result: ToolCallResult = {

@@ -324,52 +324,5 @@ The plugin includes comprehensive tests across TypeScript, Python, and Rust impl
 ```bash
 # TypeScript - from monorepo root
 bun run --filter @elizaos/plugin-agent-skills test
-
-# Python
-cd plugins/plugin-agent-skills/python
-pip install -e ".[dev]"
-pytest tests/ -v
-
-# Rust
-cd plugins/plugin-agent-skills/rust
-cargo test
-```
-
-### Run Integration Tests with Anthropic API
-
-Integration tests verify that skills work end-to-end with a real Anthropic API. They load real Otto skills, format them for prompt injection, and verify the agent can understand and use the skill instructions.
-
-```bash
 # TypeScript
 ANTHROPIC_API_KEY=your-key bun run --filter @elizaos/plugin-agent-skills test
-
-# Python
-ANTHROPIC_API_KEY=your-key pytest tests/test_integration.py -v
-
-# Rust
-ANTHROPIC_API_KEY=your-key cargo test --test integration_tests
-```
-
-### Test Coverage
-
-| Language | Tests | Description |
-|----------|-------|-------------|
-| TypeScript | parser.test.ts | SKILL.md parsing, validation, XML generation |
-| TypeScript | storage.test.ts | Memory and filesystem storage backends |
-| TypeScript | integration.test.ts | Anthropic API integration, real skill loading |
-| Python | test_parser.py | Parser functions, frontmatter extraction |
-| Python | test_storage.py | Storage backends, skill loading |
-| Python | test_integration.py | Anthropic API integration |
-| Rust | parser_tests.rs | Parser, validation, XML generation |
-| Rust | integration_tests.rs | Storage, Anthropic API integration |
-
-## Related
-
-- [Agent Skills Specification](https://agentskills.io)
-- [Claude Agent Skills](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview)
-- [ClawHub Registry](https://clawhub.ai)
-- [Otto](https://github.com/otto)
-
-## License
-
-MIT

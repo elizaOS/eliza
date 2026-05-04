@@ -161,7 +161,9 @@ async function sendMessage(
     request,
   );
   if (status !== 200) {
-    const errorMsg = isErrorResponse(data) ? data.error : `Request failed with status ${status}`;
+    const errorMsg = isErrorResponse(data)
+      ? data.error
+      : `Request failed with status ${status}`;
     throw new Error(errorMsg);
   }
   return data as ChatResponse;
@@ -334,4 +336,3 @@ main().catch((error) => {
   console.error("Fatal error:", error);
   Deno.exit(1);
 });
-

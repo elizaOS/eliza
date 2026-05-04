@@ -22,7 +22,7 @@ export const LIFEOPS_CONTEXT_BROKER_MANIFEST_ENTRY = {
   description:
     "Task-scoped parent broker for owner LifeOps context. Supports email, calendar, inbox/priority, contacts, scratchpad when available, and generic cross-channel search/context.",
   guidance:
-    "Use only when task-relevant personal context is needed. Example: `USE_SKILL lifeops-context {\"category\":\"email\",\"query\":\"contract from Alex\",\"limit\":5}`. Categories: email, calendar, inbox, priority, contacts, scratchpad, search, context.",
+    'Use only when task-relevant personal context is needed. Example: `USE_SKILL lifeops-context {"category":"email","query":"contract from Alex","limit":5}`. Categories: email, calendar, inbox, priority, contacts, scratchpad, search, context.',
 } as const;
 
 type LifeOpsBrokerCategory =
@@ -131,7 +131,9 @@ function normalizeArgs(raw: unknown): LifeOpsContextBrokerArgs {
 }
 
 function normalizeCategory(value: unknown): LifeOpsBrokerCategory | undefined {
-  const normalized = normalizeString(value)?.toLowerCase().replace(/[_\s]+/g, "-");
+  const normalized = normalizeString(value)
+    ?.toLowerCase()
+    .replace(/[_\s]+/g, "-");
   switch (normalized) {
     case "email":
     case "mail":
@@ -172,7 +174,10 @@ function normalizeCategory(value: unknown): LifeOpsBrokerCategory | undefined {
 function inferCategory(args: LifeOpsContextBrokerArgs): LifeOpsBrokerCategory {
   const explicit = normalizeCategory(args.category);
   if (explicit) return explicit;
-  const haystack = [args.intent, args.query].filter(Boolean).join(" ").toLowerCase();
+  const haystack = [args.intent, args.query]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
   if (/\b(gmail|email|mail)\b/.test(haystack)) return "email";
   if (/\b(calendar|schedule|meeting|event)\b/.test(haystack)) return "calendar";
   if (/\b(inbox|message|dm|urgent|priority)\b/.test(haystack)) {
@@ -248,7 +253,11 @@ function createPlan(args: LifeOpsContextBrokerArgs): BrokerPlan {
     case "scratchpad":
       return {
         category,
-        actionNames: ["SCRATCHPAD_SEARCH", "KNOWLEDGE_SCRATCHPAD", "SCRATCHPAD"],
+        actionNames: [
+          "SCRATCHPAD_SEARCH",
+          "KNOWLEDGE_SCRATCHPAD",
+          "SCRATCHPAD",
+        ],
         intent,
         parameters: compactParameters({
           query: args.query ?? intent,
@@ -410,7 +419,10 @@ export async function runLifeOpsContextBroker(
     return {
       success: false,
       text,
-      data: { actionName: LIFEOPS_CONTEXT_BROKER_SLUG, category: plan.category },
+      data: {
+        actionName: LIFEOPS_CONTEXT_BROKER_SLUG,
+        category: plan.category,
+      },
     };
   }
 
@@ -430,7 +442,10 @@ export async function runLifeOpsContextBroker(
     return {
       success: false,
       text,
-      data: { actionName: LIFEOPS_CONTEXT_BROKER_SLUG, category: plan.category },
+      data: {
+        actionName: LIFEOPS_CONTEXT_BROKER_SLUG,
+        category: plan.category,
+      },
     };
   }
 
@@ -478,7 +493,9 @@ export async function runLifeOpsContextBroker(
     };
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : `Unknown error: ${String(error)}`;
+      error instanceof Error
+        ? error.message
+        : `Unknown error: ${String(error)}`;
     log?.error?.(
       {
         src: LOG_PREFIX,
@@ -518,7 +535,10 @@ export function shouldRecommendLifeOpsContextBroker(taskText: string): boolean {
   const hasPersonalContext =
     PERSONAL_CONTEXT_RE.test(text) || LIFEOPS_CONTEXT_RE.test(text);
   if (!hasPersonalContext) return false;
-  if (CODING_TASK_RE.test(text) && !/\b(my|owner'?s|user'?s|personal)\b/i.test(text)) {
+  if (
+    CODING_TASK_RE.test(text) &&
+    !/\b(my|owner'?s|user'?s|personal)\b/i.test(text)
+  ) {
     return false;
   }
   return true;

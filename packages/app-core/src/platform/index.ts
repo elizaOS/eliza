@@ -59,6 +59,7 @@ export {
   type ShareTargetPayload,
   setupPlatformStyles,
 } from "./init";
+export * from "./ios-runtime";
 export * from "./onboarding-reset";
 export type {
   CloudPreferenceClientLike,

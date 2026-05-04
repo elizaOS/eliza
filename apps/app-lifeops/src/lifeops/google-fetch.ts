@@ -21,12 +21,12 @@ export function rewriteGoogleUrlForMock(url: string): string {
   ) {
     throw new GoogleApiError(
       409,
-      "Google mock base must point to loopback for Gmail/Google mock tests."
+      "Google mock base must point to loopback for Gmail/Google mock tests.",
     );
   }
   return url.replace(
     /^https:\/\/(?:gmail|www|oauth2|openidconnect|sheets|docs|fitness)\.googleapis\.com|^https:\/\/accounts\.google\.com/,
-    mockUrl.toString().replace(/\/+$/, "")
+    mockUrl.toString().replace(/\/+$/, ""),
   );
 }
 
@@ -49,7 +49,7 @@ function isGoogleGmailWrite(method: string, url: string): boolean {
 function guardRealGmailWrite(
   method: string,
   originalUrl: string,
-  targetUrl: string
+  targetUrl: string,
 ): void {
   if (!isGoogleGmailWrite(method, originalUrl)) {
     return;
@@ -62,7 +62,7 @@ function guardRealGmailWrite(
   }
   throw new GoogleApiError(
     409,
-    "Real Gmail writes require ELIZA_ALLOW_REAL_GMAIL_WRITES=1. Point ELIZA_MOCK_GOOGLE_BASE at a loopback mock for tests or set the allow env var for an explicitly confirmed real write."
+    "Real Gmail writes require ELIZA_ALLOW_REAL_GMAIL_WRITES=1. Point ELIZA_MOCK_GOOGLE_BASE at a loopback mock for tests or set the allow env var for an explicitly confirmed real write.",
   );
 }
 
@@ -77,7 +77,7 @@ function guardRealGmailWrite(
  */
 export async function googleApiFetch(
   url: string,
-  init?: RequestInit
+  init?: RequestInit,
 ): Promise<Response> {
   const method = init?.method ?? "GET";
   const targetUrl = rewriteGoogleUrlForMock(url);
@@ -95,7 +95,7 @@ export async function googleApiFetch(
           attempt,
           delayMs,
         },
-        `[lifeops] Google API retry ${attempt}/${MAX_RETRIES} after ${delayMs}ms`
+        `[lifeops] Google API retry ${attempt}/${MAX_RETRIES} after ${delayMs}ms`,
       );
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
@@ -137,7 +137,7 @@ export async function googleApiFetch(
           statusCode: response.status,
           attempt,
         },
-        `[lifeops] Google API transient error: ${errorMessage}`
+        `[lifeops] Google API transient error: ${errorMessage}`,
       );
     } catch (error) {
       if (error instanceof GoogleApiError) {
@@ -151,7 +151,7 @@ export async function googleApiFetch(
           method,
           attempt,
         },
-        `[lifeops] Google API network error: ${errorMsg}`
+        `[lifeops] Google API network error: ${errorMsg}`,
       );
       lastError = new GoogleApiError(0, errorMsg);
     }

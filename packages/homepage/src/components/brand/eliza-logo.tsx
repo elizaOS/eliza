@@ -3,11 +3,5 @@ interface ElizaLogoProps {
 }
 
 export function ElizaLogo({ className }: ElizaLogoProps) {
-  return (
-    <img
-      src="/eliza-logo.png"
-      alt="Eliza"
-      className={className}
-    />
-  );
+  return <img src="/eliza-logo.png" alt="Eliza" className={className} />;
 }

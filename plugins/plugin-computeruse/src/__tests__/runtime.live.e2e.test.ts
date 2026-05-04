@@ -32,13 +32,7 @@ type RuntimeDebugSnapshot = {
   };
 };
 
-const REPO_ROOT = path.resolve(
-  import.meta.dirname,
-  "..",
-  "..",
-  "..",
-  "..",
-);
+const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
 
 async function getFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {

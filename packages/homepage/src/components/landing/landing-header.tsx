@@ -1,10 +1,8 @@
-
 /**
  * Landing header: logo and "Get started" CTA.
  * Users click Get started to choose their preferred messaging method.
  * Desktop hover shows QR code to continue on phone.
  */
-
 
 import { useState } from "react";
 import { Link } from "react-router-dom";
@@ -35,7 +33,7 @@ export function LandingHeader() {
         </Link>
 
         {/* Get Started button with QR code hover */}
-        <div 
+        <div
           className="relative"
           onMouseEnter={() => setShowQR(true)}
           onMouseLeave={() => setShowQR(false)}
@@ -60,8 +58,12 @@ export function LandingHeader() {
               >
                 <div className="bg-white/10 backdrop-blur-2xl rounded-xl p-5 shadow-xl border border-white/20">
                   <div className="text-center mb-3">
-                    <p className="text-xs text-white/50 font-medium">On desktop?</p>
-                    <p className="text-sm text-white/80 font-medium">Continue on your phone</p>
+                    <p className="text-xs text-white/50 font-medium">
+                      On desktop?
+                    </p>
+                    <p className="text-sm text-white/80 font-medium">
+                      Continue on your phone
+                    </p>
                   </div>
                   <QRCodeSVG
                     value={smsUri}

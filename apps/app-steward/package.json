@@ -1,7 +1,6 @@
 {
   "name": "@elizaos/app-steward",
   "version": "0.0.0",
-  "private": true,
   "type": "module",
   "main": "./src/index.ts",
   "exports": {
@@ -21,7 +20,7 @@
   "dependencies": {
     "@noble/curves": "^2.0.1",
     "@simplewebauthn/browser": "^13.0.0",
-    "@solana/web3.js": "^1.98.4",
+    "@solana/web3.js": "1.98.4",
     "@stwd/sdk": "^0.8.1",
     "@elizaos/agent": "workspace:*",
     "@elizaos/app-core": "workspace:*",
@@ -36,5 +35,8 @@
     "app": {
       "heroImage": "assets/hero.png"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

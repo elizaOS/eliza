@@ -186,8 +186,7 @@ describe("external-credentials — 1Password", () => {
         accountListEmpty,
         whoamiFails,
         {
-          match: (_cmd, args) =>
-            args.includes("item") && args.includes("list"),
+          match: (_cmd, args) => args.includes("item") && args.includes("list"),
           stdout: listJson,
         },
       ],
@@ -243,9 +242,7 @@ describe("external-credentials — 1Password", () => {
             {
               id: "no-url",
               title: "Internal",
-              fields: [
-                { purpose: "USERNAME", label: "username", value: "u" },
-              ],
+              fields: [{ purpose: "USERNAME", label: "username", value: "u" }],
             },
           ]),
         },
@@ -310,7 +307,8 @@ describe("external-credentials — 1Password", () => {
         accountListEmpty,
         whoamiFails,
         {
-          match: (_cmd, args) => args.includes("get") && args.includes("abc111"),
+          match: (_cmd, args) =>
+            args.includes("get") && args.includes("abc111"),
           stdout: itemJson,
         },
       ],
@@ -326,9 +324,9 @@ describe("external-credentials — 1Password", () => {
   it("reveal throws when no externalId provided", async () => {
     await vault.set("pm.1password.session", "TOKEN-OP", { sensitive: true });
     const exec = fakeExec([], []);
-    await expect(revealOnePasswordLogin(vault, exec, "")).rejects.toBeInstanceOf(
-      TypeError,
-    );
+    await expect(
+      revealOnePasswordLogin(vault, exec, ""),
+    ).rejects.toBeInstanceOf(TypeError);
   });
 
   it("reveal uses desktop-app integration when whoami succeeds", async () => {
@@ -347,7 +345,8 @@ describe("external-credentials — 1Password", () => {
         accountListMy,
         whoamiOk,
         {
-          match: (_cmd, args) => args.includes("get") && args.includes("abc111"),
+          match: (_cmd, args) =>
+            args.includes("get") && args.includes("abc111"),
           stdout: itemJson,
         },
       ],
@@ -501,7 +500,9 @@ describe("external-credentials — Bitwarden", () => {
       ],
       [],
     );
-    await expect(revealBitwardenLogin(vault, exec, "x")).rejects.toThrow(/not a login/);
+    await expect(revealBitwardenLogin(vault, exec, "x")).rejects.toThrow(
+      /not a login/,
+    );
   });
 
   it("reveal throws when password is empty", async () => {
@@ -519,6 +520,8 @@ describe("external-credentials — Bitwarden", () => {
       ],
       [],
     );
-    await expect(revealBitwardenLogin(vault, exec, "x")).rejects.toThrow(/no password/);
+    await expect(revealBitwardenLogin(vault, exec, "x")).rejects.toThrow(
+      /no password/,
+    );
   });
 });

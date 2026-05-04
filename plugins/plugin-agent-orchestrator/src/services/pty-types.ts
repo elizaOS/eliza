@@ -37,9 +37,14 @@ export interface PTYServiceConfig {
 }
 
 /** Available task-agent types */
-export type CodingAgentType = "shell" | "pi" | AdapterType;
+export type CodingAgentType = "shell" | "pi" | "opencode" | AdapterType;
 
 const PI_AGENT_ALIASES = new Set(["pi", "pi-coding-agent", "picodingagent"]);
+const OPENCODE_AGENT_ALIASES = new Set([
+  "opencode",
+  "open-code",
+  "opencodeagent",
+]);
 
 /** True when the user requested the Pi coding agent. */
 export const isPiAgentType = (input: string | undefined | null): boolean => {
@@ -47,11 +52,23 @@ export const isPiAgentType = (input: string | undefined | null): boolean => {
   return PI_AGENT_ALIASES.has(input.toLowerCase().trim());
 };
 
+/** True when the user requested the OpenCode agent. */
+export const isOpencodeAgentType = (
+  input: string | undefined | null,
+): boolean => {
+  if (!input) return false;
+  return OPENCODE_AGENT_ALIASES.has(input.toLowerCase().trim());
+};
+
 /** Normalize user-provided agent type string to a valid CodingAgentType */
 export const normalizeAgentType = (input: string): CodingAgentType => {
   const normalized = input.toLowerCase().trim();
   if (isPiAgentType(normalized)) {
     // PI currently runs through the generic shell adapter.
+    return "shell";
+  }
+  if (isOpencodeAgentType(normalized)) {
+    // OpenCode also runs through the generic shell adapter — see toOpencodeCommand.
     return "shell";
   }
   const mapping: Record<string, CodingAgentType> = {
@@ -78,10 +95,28 @@ export const toPiCommand = (task: string | undefined): string => {
   return `pi ${shellSafe}`;
 };
 
+/**
+ * Build the initial shell command for OpenCode agent sessions.
+ *
+ * `--dangerously-skip-permissions` is a flag of the `run` subcommand
+ * (NOT the top-level opencode command), so it must come AFTER `run` —
+ * verified live with opencode 1.14.33 + ollama qwen2.5-coder:0.5b.
+ *
+ * Model + provider selection comes from the OPENCODE_CONFIG_CONTENT env
+ * var that the spawn pipeline injects — see buildOpencodeSpawnConfig in
+ * `agent-credentials.ts`.
+ */
+export const toOpencodeCommand = (task: string | undefined): string => {
+  const trimmed = task?.trim();
+  if (!trimmed) return "opencode";
+  const shellSafe = `'${trimmed.replace(/'/g, `'"'"'`)}'`;
+  return `opencode run --dangerously-skip-permissions ${shellSafe}`;
+};
+
 export interface SpawnSessionOptions {
   /** Human-readable session name */
   name: string;
-  /** Adapter type: "shell" | "pi" | "claude" | "gemini" | "codex" | "aider" */
+  /** Adapter type: "shell" | "pi" | "opencode" | "claude" | "gemini" | "codex" | "aider" */
   agentType: CodingAgentType;
   /** Working directory for the session */
   workdir?: string;

@@ -60,7 +60,8 @@ export async function initializeRegistryAndDropServices(
   const config = loadElizaConfig() as ElizaConfigShape;
 
   const evmKey =
-    readRuntimeSetting(runtime, "EVM_PRIVATE_KEY") ?? config.env?.EVM_PRIVATE_KEY;
+    readRuntimeSetting(runtime, "EVM_PRIVATE_KEY") ??
+    config.env?.EVM_PRIVATE_KEY;
   const registryConfig = config.registry;
   if (
     !evmKey ||

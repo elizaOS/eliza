@@ -21,15 +21,18 @@ import {
   type UUID,
 } from "@elizaos/core";
 import type { AgentCredentials, ApprovalPreset } from "coding-agent-adapters";
+import { buildOpencodeSpawnConfig } from "../services/agent-credentials.js";
 import type { AgentSelectionStrategy } from "../services/agent-selection.js";
 import { readConfigEnvKey } from "../services/config-env.js";
 import type { PTYService } from "../services/pty-service.js";
 import { getCoordinator } from "../services/pty-service.js";
 import {
   type CodingAgentType,
+  isOpencodeAgentType,
   isPiAgentType,
   normalizeAgentType,
   type SessionInfo,
+  toOpencodeCommand,
   toPiCommand,
 } from "../services/pty-types.js";
 import { diagnoseWorkspaceBootstrapFailure } from "../services/repo-input.js";
@@ -80,6 +83,9 @@ const KNOWN_AGENT_PREFIXES = [
   "pi",
   "pi-coding-agent",
   "picodingagent",
+  "opencode",
+  "open-code",
+  "opencodeagent",
   "shell",
   "bash",
 ] as const;
@@ -792,6 +798,7 @@ export async function handleMultiAgent(
     agentSpecs.map(async (spec, i) => {
       let specAgentType = defaultAgentType;
       let specPiRequested = isPiAgentType(rawAgentType);
+      let specOpencodeRequested = isOpencodeAgentType(rawAgentType);
       let specRequestedType = rawAgentType;
       let specTask = spec;
       let hasExplicitPrefix = false;
@@ -806,6 +813,7 @@ export async function handleMultiAgent(
           hasExplicitPrefix = true;
           specRequestedType = prefix;
           specPiRequested = isPiAgentType(prefix);
+          specOpencodeRequested = isOpencodeAgentType(prefix);
           specAgentType = normalizeAgentType(prefix);
           specTask = spec.slice(colonIdx + 1).trim();
         }
@@ -828,12 +836,14 @@ export async function handleMultiAgent(
           subtaskCount: agentSpecs.length,
         });
         specPiRequested = isPiAgentType(specRequestedType);
+        specOpencodeRequested = isOpencodeAgentType(specRequestedType);
         specAgentType = normalizeAgentType(specRequestedType);
       }
 
       return {
         specAgentType,
         specPiRequested,
+        specOpencodeRequested,
         specRequestedType,
         specTask,
         specLabel,
@@ -861,6 +871,7 @@ export async function handleMultiAgent(
     const {
       specAgentType,
       specPiRequested,
+      specOpencodeRequested,
       specRequestedType,
       specTask,
       specLabel,
@@ -887,9 +898,16 @@ export async function handleMultiAgent(
 
       // Preflight check
       failureStage = "preflight";
-      if (specAgentType !== "shell" && specAgentType !== "pi") {
+      if (
+        specAgentType !== "shell" &&
+        !specPiRequested &&
+        !specOpencodeRequested
+      ) {
         const [preflight] = await ptyService.checkAvailableAgents([
-          specAgentType as Exclude<CodingAgentType, "shell" | "pi">,
+          specAgentType as Exclude<
+            CodingAgentType,
+            "shell" | "pi" | "opencode"
+          >,
         ]);
         if (preflight && !preflight.installed) {
           results.push({
@@ -927,8 +945,14 @@ export async function handleMultiAgent(
       );
       const initialTask = specPiRequested
         ? toPiCommand(taskWithSkills)
-        : taskWithSkills;
-      const displayType = specPiRequested ? "pi" : specAgentType;
+        : specOpencodeRequested
+          ? toOpencodeCommand(taskWithSkills)
+          : taskWithSkills;
+      const displayType = specPiRequested
+        ? "pi"
+        : specOpencodeRequested
+          ? "opencode"
+          : specAgentType;
 
       // Append swarm coordination instructions to agent memory so the agent
       // knows to surface design decisions explicitly for the orchestrator.
@@ -945,9 +969,34 @@ export async function handleMultiAgent(
       const useDirectCallbackResponses = Boolean(callback);
 
       failureStage = "spawn";
-      const skillEnv: Record<string, string> | undefined = skillAwareness
+      const skillEnv: Record<string, string> = skillAwareness
         ? { ELIZA_SKILLS_MANIFEST: skillAwareness.manifestPath }
-        : undefined;
+        : {};
+      if (specOpencodeRequested) {
+        const opencodeSpawnConfig = buildOpencodeSpawnConfig(runtime);
+        if (!opencodeSpawnConfig) {
+          results.push({
+            sessionId: "",
+            agentType: displayType,
+            workdir,
+            label: specLabel,
+            status: "failed",
+            error:
+              "OpenCode is selected but no model provider is configured. " +
+              "Set PARALLAX_LLM_PROVIDER=cloud and pair an Eliza Cloud key, " +
+              "or set PARALLAX_OPENCODE_LOCAL=1 to use a local OpenAI-compatible model server.",
+          });
+          continue;
+        }
+        skillEnv.OPENCODE_CONFIG_CONTENT = opencodeSpawnConfig.configContent;
+        skillEnv.OPENCODE_DISABLE_AUTOUPDATE = "1";
+        skillEnv.OPENCODE_DISABLE_TERMINAL_TITLE = "1";
+        logger.info(
+          `[start-coding-task] OpenCode provider: ${opencodeSpawnConfig.providerLabel} (model=${opencodeSpawnConfig.model})`,
+        );
+      }
+      const finalSkillEnv =
+        Object.keys(skillEnv).length > 0 ? skillEnv : undefined;
       const session: SessionInfo = await ptyService.spawnSession({
         name: `coding-${Date.now()}-${i}`,
         agentType: specAgentType,
@@ -959,7 +1008,7 @@ export async function handleMultiAgent(
           (approvalPreset as ApprovalPreset | undefined) ??
           ptyService.defaultApprovalPreset,
         customCredentials,
-        ...(skillEnv ? { env: skillEnv } : {}),
+        ...(finalSkillEnv ? { env: finalSkillEnv } : {}),
         ...(coordinatorManagedSession ? { skipAdapterAutoResponse: true } : {}),
         metadata: {
           threadId: taskThread?.id,

@@ -5,13 +5,27 @@
   "type": "module",
   "main": "src/index.ts",
   "license": "MIT",
+  "homepage": "https://github.com/elizaOS/eliza",
   "repository": {
     "type": "git",
-    "url": "https://github.com/elizaos/eliza.git",
-    "directory": "eliza/packages/shared"
+    "url": "git+https://github.com/elizaOS/eliza.git",
+    "directory": "packages/shared"
+  },
+  "keywords": [
+    "elizaos",
+    "shared",
+    "contracts",
+    "i18n"
+  ],
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
   },
   "scripts": {
     "clean": "rm -rf dist",
+    "prepublishOnly": "bun run build",
     "build": "bun run build:i18n && bun run build:dist",
     "build:i18n": "node scripts/generate-keywords.mjs --target ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -66,7 +80,7 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "zod": "^4.3.6"
+    "zod": "^4.4.2"
   },
   "optionalDependencies": {
     "figlet": "^1.11.0"

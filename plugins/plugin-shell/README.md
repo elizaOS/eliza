@@ -58,7 +58,6 @@ A comprehensive shell command execution plugin for ElizaOS with PTY support, bac
 - ✅ **Shell context provider**: Provides command history and working directory to agent context
 - ✅ **Output capture**: Returns both stdout and stderr from executed commands
 - ✅ **Safety first**: Disabled by default, requires explicit enabling
-- ✅ **Multi-language**: Available in TypeScript, Python, and Rust
 
 ### Advanced Features (TypeScript)
 - ✅ **PTY Support**: Run interactive terminal applications (vim, htop, etc.) with `@lydell/node-pty`
@@ -109,22 +108,6 @@ npm install @elizaos/plugin-shell
 # Using pnpm
 pnpm add @elizaos/plugin-shell
 ```
-
-### Python
-
-```bash
-pip install elizaos-plugin-shell
-```
-
-### Rust
-
-Add to your `Cargo.toml`:
-
-```toml
-[dependencies]
-elizaos-plugin-shell = "1.2.0"
-```
-
 ## Configuration
 
 Set the following environment variables:
@@ -190,34 +173,6 @@ if (execResult.status === "running") {
 // Get the service from an Eliza agent runtime
 const shellService = runtime.getService<ShellService>("shell");
 ```
-
-### Python
-
-```python
-from elizaos_plugin_shell import ShellService, ShellConfig
-
-config = ShellConfig.from_env()
-service = ShellService(config)
-
-result = await service.execute_command("ls -la", "conversation-123")
-if result.success:
-    print(f"Output: {result.stdout}")
-```
-
-### Rust
-
-```rust
-use elizaos_plugin_shell::{ShellConfig, ShellService};
-
-let config = ShellConfig::from_env()?;
-let mut service = ShellService::new(config);
-
-let result = service.execute_command("ls -la", Some("conversation-123")).await?;
-if result.success {
-    println!("Output: {}", result.stdout);
-}
-```
-
 ## 📋 Available Actions
 
 ### EXECUTE_COMMAND
@@ -310,24 +265,6 @@ cd typescript
 bun run build.ts     # Build
 npx vitest           # Run tests
 ```
-
-### Python
-
-```bash
-cd python
-pip install -e ".[dev]"  # Install with dev dependencies
-pytest                    # Run tests
-mypy elizaos_plugin_shell # Type check
-```
-
-### Rust
-
-```bash
-cd rust
-cargo build --release  # Build
-cargo test             # Run tests
-```
-
 ### All Languages
 
 ```bash

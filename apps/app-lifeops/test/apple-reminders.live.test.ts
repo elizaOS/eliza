@@ -11,8 +11,7 @@ import {
 } from "../src/lifeops/apple-reminders.js";
 
 const execFileAsync = promisify(execFile);
-const LIVE_TESTS_ENABLED =
-  process.env.ELIZA_LIVE_TEST === "1";
+const LIVE_TESTS_ENABLED = process.env.ELIZA_LIVE_TEST === "1";
 const LIVE_APPLE_REMINDER_TESTS_ENABLED =
   LIVE_TESTS_ENABLED &&
   process.platform === "darwin" &&

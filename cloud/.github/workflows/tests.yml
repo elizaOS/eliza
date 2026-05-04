@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: ./.github/actions/setup-test-env
       - name: Check migration journal
         run: bun run db:check-migrations
@@ -35,7 +35,7 @@ jobs:
     env:
       NODE_ENV: test
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: ./.github/actions/setup-test-env
       - name: Run unit tests
         run: |
@@ -59,7 +59,7 @@ jobs:
     env:
       NODE_ENV: test
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: ./.github/actions/setup-test-env
         with:
           setup-db: "true"
@@ -72,7 +72,7 @@ jobs:
     env:
       NODE_ENV: test
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: ./.github/actions/setup-test-env
         with:
           setup-db: "true"
@@ -85,7 +85,7 @@ jobs:
     env:
       NODE_ENV: test
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: ./.github/actions/setup-test-env
         with:
           setup-db: "true"
@@ -98,7 +98,7 @@ jobs:
     env:
       NODE_ENV: test
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: ./.github/actions/setup-test-env
         with:
           setup-db: "true"
@@ -111,7 +111,7 @@ jobs:
     env:
       NODE_ENV: production
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: ./.github/actions/setup-test-env
       - name: Run build
         run: bun run build
@@ -123,7 +123,7 @@ jobs:
     env:
       NODE_ENV: test
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: ./.github/actions/setup-test-env
         with:
           setup-db: "true"
@@ -137,7 +137,7 @@ jobs:
     env:
       NODE_ENV: test
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: ./.github/actions/setup-test-env
         with:
           setup-db: "true"
@@ -151,7 +151,7 @@ jobs:
     env:
       NODE_ENV: test
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: ./.github/actions/setup-test-env
         with:
           setup-db: "true"
@@ -165,7 +165,7 @@ jobs:
     env:
       NODE_ENV: test
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: ./.github/actions/setup-test-env
         with:
           setup-db: "true"
@@ -179,7 +179,7 @@ jobs:
     env:
       NODE_ENV: test
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: ./.github/actions/setup-test-env
         with:
           setup-db: "true"
@@ -193,7 +193,7 @@ jobs:
     env:
       NODE_ENV: test
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: ./.github/actions/setup-test-env
         with:
           setup-db: "true"
@@ -208,7 +208,7 @@ jobs:
       NODE_ENV: test
       PLAYWRIGHT_WORKERS: "1"
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: ./.github/actions/setup-test-env
         with:
           setup-db: "true"

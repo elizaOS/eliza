@@ -5,7 +5,7 @@ import type { EvmSigningCapabilityKind } from "@elizaos/shared";
  *
  * Enumerates the possible paths for signing EVM transactions and reports
  * which (if any) is usable in the current process. A single authority for
- * "does plugin-evm have a working signer?" — consumed by auto-enable logic
+ * "does plugin-wallet have a working signer?" — consumed by auto-enable logic
  * and wallet UI diagnostics so both agree on state.
  *
  * Paths (see `EvmSigningCapabilityKind` in shared/contracts/wallet.ts):
@@ -81,7 +81,7 @@ export function resolveEvmSigningCapability(
 
   // Cloud bind persisted an address but no usable signing path is wired up
   // in this runtime. The UI can still show the address (view-only), but
-  // plugin-evm must NOT be auto-enabled — its actions would fail at runtime.
+  // plugin-wallet must NOT be auto-enabled — its actions would fail at runtime.
   const cloudAddress = env.ELIZA_CLOUD_EVM_ADDRESS?.trim();
   if (cloudAddress) {
     return {
@@ -95,7 +95,7 @@ export function resolveEvmSigningCapability(
 }
 
 /**
- * Shortcut for auto-enable callers: returns the reason when plugin-evm
+ * Shortcut for auto-enable callers: returns the reason when plugin-wallet
  * should be auto-enabled (signing available), or null otherwise.
  */
 export function evmAutoEnableReasonFromCapability(

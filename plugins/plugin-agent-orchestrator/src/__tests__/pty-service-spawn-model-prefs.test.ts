@@ -383,11 +383,16 @@ describe("PTYService.spawnSession — model preferences wiring", () => {
     expect(manager.lastSpawnConfig?.env?.ANTHROPIC_MODEL).toBeUndefined();
     // Codex CLI removed the old --full-auto flag; permissions now flow through
     // a per-session CODEX_HOME/config.toml instead of adapter CLI flags.
-    expect(manager.lastSpawnConfig?.adapterConfig?.approvalPreset).toBeUndefined();
+    expect(
+      manager.lastSpawnConfig?.adapterConfig?.approvalPreset,
+    ).toBeUndefined();
     const codexHome = manager.lastSpawnConfig?.env?.CODEX_HOME;
     expect(codexHome).toContain("eliza-codex-");
     if (!codexHome) throw new Error("expected Codex home to be configured");
-    const configToml = readFileSync(path.join(codexHome, "config.toml"), "utf8");
+    const configToml = readFileSync(
+      path.join(codexHome, "config.toml"),
+      "utf8",
+    );
     expect(configToml).toContain('approval_policy = "never"');
     expect(configToml).toContain('sandbox_mode = "workspace-write"');
     expect(configToml).toContain("[tools]");

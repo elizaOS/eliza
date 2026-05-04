@@ -96,7 +96,9 @@ function extractDictAfterKey(plist, key) {
 }
 
 function plistBooleanIsTrue(plist, key, { enclosingKey } = {}) {
-  const source = enclosingKey ? extractDictAfterKey(plist, enclosingKey) : plist;
+  const source = enclosingKey
+    ? extractDictAfterKey(plist, enclosingKey)
+    : plist;
   if (!source) return false;
   const pattern = new RegExp(
     `<key>\\s*${escapeRegExp(key)}\\s*</key>\\s*<true\\s*/>`,
@@ -138,7 +140,8 @@ function decodeProvisioningProfile(profilePath) {
 
 export function validateIosScreenTimeBuildWiring(options = {}) {
   const defaults = defaultIosScreenTimeValidationPaths(options);
-  const entitlementsPath = options.entitlementsPath ?? defaults.entitlementsPath;
+  const entitlementsPath =
+    options.entitlementsPath ?? defaults.entitlementsPath;
   const projectPath = options.projectPath ?? defaults.projectPath;
   const podspecPath = options.podspecPath ?? defaults.podspecPath;
   const provisioningProfilePath =

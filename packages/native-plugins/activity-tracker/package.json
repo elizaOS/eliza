@@ -21,7 +21,9 @@
     "@elizaos/core": "workspace:*"
   },
   "elizaos": {
-    "platforms": ["darwin"],
+    "platforms": [
+      "darwin"
+    ],
     "runtime": "native",
     "platformDetails": {
       "darwin": "NSWorkspace app-focus collector via Swift helper.",

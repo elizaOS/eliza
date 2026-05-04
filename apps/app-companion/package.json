@@ -1,7 +1,6 @@
 {
   "name": "@elizaos/app-companion",
   "version": "0.0.0",
-  "private": true,
   "type": "module",
   "description": "Companion app package with the VRM scene runtime and avatar utilities.",
   "main": "./src/index.ts",
@@ -60,7 +59,7 @@
     "@pixiv/three-vrm": "^3.4.5",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "three": "^0.182.0 || ^0.184.0"
+    "three": "^0.184.0"
   },
   "elizaos": {
     "app": {
@@ -68,5 +67,8 @@
       "category": "game",
       "heroImage": "assets/hero.png"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

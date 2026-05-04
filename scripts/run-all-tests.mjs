@@ -14,10 +14,7 @@ const EXTRA_SCRIPT_NAMES = [
   "test:ui",
   "test:live",
 ];
-const NO_TEST_OUTPUT_PATTERNS = [
-  /No test files found/i,
-  /No tests found/i,
-];
+const NO_TEST_OUTPUT_PATTERNS = [/No test files found/i, /No tests found/i];
 const TEST_FILE_PATTERN = /\.(?:test|spec)\.[cm]?[tj]sx?$/;
 const TEST_FILE_SKIP_DIRS = new Set([
   ".git",
@@ -38,7 +35,8 @@ const scriptFilter = process.env.TEST_SCRIPT_FILTER
   ? new RegExp(process.env.TEST_SCRIPT_FILTER)
   : null;
 const startAt = process.env.TEST_START_AT?.trim() || "";
-const DEFAULT_POSTGRES_URL = "postgresql://eliza_test:test123@localhost:5432/eliza_test";
+const DEFAULT_POSTGRES_URL =
+  "postgresql://eliza_test:test123@localhost:5432/eliza_test";
 const POSTGRES_INIT_SQL_PATH = path.join(
   repoRoot,
   "plugins",
@@ -114,7 +112,9 @@ function resolveScriptCommand(scriptName, scripts, seen = new Set()) {
   }
   seen.add(scriptName);
 
-  const aliasMatch = raw.match(/^(?:bun|npm|pnpm|yarn)(?:\s+run)?\s+([A-Za-z0-9:_-]+)$/);
+  const aliasMatch = raw.match(
+    /^(?:bun|npm|pnpm|yarn)(?:\s+run)?\s+([A-Za-z0-9:_-]+)$/,
+  );
   if (aliasMatch?.[1] && scripts?.[aliasMatch[1]]) {
     return resolveScriptCommand(aliasMatch[1], scripts, seen);
   }
@@ -145,17 +145,26 @@ function resetPostgresDatabase() {
     "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'eliza_test' AND pid <> pg_backend_pid()",
   ]);
   if (terminateResult.status !== 0) {
-    throw new Error(terminateResult.combinedOutput || "failed to terminate active PostgreSQL test connections");
+    throw new Error(
+      terminateResult.combinedOutput ||
+        "failed to terminate active PostgreSQL test connections",
+    );
   }
 
   const dropResult = runCommand("dropdb", ["--if-exists", "eliza_test"]);
   if (dropResult.status !== 0) {
-    throw new Error(dropResult.combinedOutput || "failed to drop local PostgreSQL test database");
+    throw new Error(
+      dropResult.combinedOutput ||
+        "failed to drop local PostgreSQL test database",
+    );
   }
 
   const createResult = runCommand("createdb", ["eliza_test"]);
   if (createResult.status !== 0) {
-    throw new Error(createResult.combinedOutput || "failed to recreate local PostgreSQL test database");
+    throw new Error(
+      createResult.combinedOutput ||
+        "failed to recreate local PostgreSQL test database",
+    );
   }
 }
 
@@ -187,10 +196,15 @@ function ensurePluginSqlPostgresEnv() {
       POSTGRES_INIT_SQL_PATH,
     ]);
     if (initResult.status !== 0) {
-      throw new Error(initResult.combinedOutput || "failed to initialize local PostgreSQL test database");
+      throw new Error(
+        initResult.combinedOutput ||
+          "failed to initialize local PostgreSQL test database",
+      );
     }
     process.env.POSTGRES_URL = DEFAULT_POSTGRES_URL;
-    console.log(`[eliza-test] INFO using PostgreSQL test database at ${DEFAULT_POSTGRES_URL}`);
+    console.log(
+      `[eliza-test] INFO using PostgreSQL test database at ${DEFAULT_POSTGRES_URL}`,
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.warn(
@@ -220,7 +234,8 @@ function getReferencedScriptNames(command, scripts) {
   }
 
   const matches = [];
-  const invocationPattern = /(?:bun|npm|pnpm|yarn)(?:\s+run)?\s+([A-Za-z0-9:_-]+)/g;
+  const invocationPattern =
+    /(?:bun|npm|pnpm|yarn)(?:\s+run)?\s+([A-Za-z0-9:_-]+)/g;
   for (const match of command.matchAll(invocationPattern)) {
     const scriptName = match[1];
     if (scriptName && scripts?.[scriptName]) {
@@ -230,7 +245,12 @@ function getReferencedScriptNames(command, scripts) {
   return matches;
 }
 
-function scriptInvokesScript(entryScriptName, targetScriptName, scripts, seen = new Set()) {
+function scriptInvokesScript(
+  entryScriptName,
+  targetScriptName,
+  scripts,
+  seen = new Set(),
+) {
   if (entryScriptName === targetScriptName) {
     return true;
   }
@@ -247,7 +267,10 @@ function scriptInvokesScript(entryScriptName, targetScriptName, scripts, seen = 
     return true;
   }
 
-  for (const referencedScriptName of getReferencedScriptNames(command, scripts)) {
+  for (const referencedScriptName of getReferencedScriptNames(
+    command,
+    scripts,
+  )) {
     if (
       referencedScriptName !== entryScriptName &&
       scriptInvokesScript(referencedScriptName, targetScriptName, scripts, seen)
@@ -264,7 +287,9 @@ function collectScriptsToRun(scripts) {
   const seenCommands = new Set();
 
   if (scripts.test) {
-    const resolvedTestCommand = resolveScriptCommand("test", scripts) || normalizeWhitespace(scripts.test);
+    const resolvedTestCommand =
+      resolveScriptCommand("test", scripts) ||
+      normalizeWhitespace(scripts.test);
     scriptNames.push("test");
     if (resolvedTestCommand) {
       seenCommands.add(resolvedTestCommand);
@@ -340,8 +365,10 @@ function isSingleVitestRunCommand(command) {
   if (/[;&|]/.test(commandWithoutEnv)) {
     return false;
   }
-  return /^(?:(?:bunx|npx)\s+)?vitest\s+run\b/.test(commandWithoutEnv) ||
-    /^bun\s+x\s+vitest\s+run\b/.test(commandWithoutEnv);
+  return (
+    /^(?:(?:bunx|npx)\s+)?vitest\s+run\b/.test(commandWithoutEnv) ||
+    /^bun\s+x\s+vitest\s+run\b/.test(commandWithoutEnv)
+  );
 }
 
 function shouldSkipEmptyVitestScript(cwd, scriptName, scripts) {

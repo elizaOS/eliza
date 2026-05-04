@@ -45,12 +45,20 @@ import {
   submitFlowCode,
   subscribeFlow,
 } from "../auth/oauth-flow.js";
-import type { SubscriptionProvider } from "../auth/types.js";
+import {
+  DIRECT_ACCOUNT_PROVIDER_ENV,
+  isAccountCredentialProvider,
+  isSubscriptionProvider,
+  type AccountCredentialProvider,
+  type DirectAccountProvider,
+  type SubscriptionProvider,
+} from "../auth/types.js";
 import type { ElizaConfig } from "../config/types.eliza.js";
-import type {
+import {
+  isLinkedAccountProviderId,
   LinkedAccountConfig,
-  LinkedAccountProviderId,
-  ServiceRouteAccountStrategy,
+  type LinkedAccountProviderId,
+  type ServiceRouteAccountStrategy,
 } from "../contracts/service-routing.js";
 import type { RouteRequestContext } from "./route-helpers.js";
 
@@ -96,38 +104,34 @@ export function _resetAccountsRoutesPoolCache(): void {
 
 // ─── Provider id mapping ────────────────────────────────────────────
 
-/**
- * Provider IDs the multi-account API accepts. The on-disk credential
- * store currently only handles the two subscription providers
- * (`SubscriptionProvider`); plain API keys are accepted by the API
- * but writing them is out of scope until the storage layer grows
- * support for them — for now we reject `anthropic-api` / `openai-api`
- * with 501.
- */
 const SUPPORTED_PROVIDER_IDS = [
   "anthropic-subscription",
   "openai-codex",
   "anthropic-api",
   "openai-api",
+  "deepseek-api",
+  "zai-api",
+  "moonshot-api",
 ] as const satisfies readonly LinkedAccountProviderId[];
 
-const SUBSCRIPTION_PROVIDER_IDS = new Set<LinkedAccountProviderId>([
-  "anthropic-subscription",
-  "openai-codex",
+const DIRECT_PROVIDER_IDS = new Set<LinkedAccountProviderId>([
+  "anthropic-api",
+  "openai-api",
+  "deepseek-api",
+  "zai-api",
+  "moonshot-api",
 ]);
-
-function isLinkedAccountProviderId(
-  value: string,
-): value is LinkedAccountProviderId {
-  return (SUPPORTED_PROVIDER_IDS as readonly string[]).includes(value);
-}
 
 function asSubscriptionProvider(
   providerId: LinkedAccountProviderId,
 ): SubscriptionProvider | null {
-  return SUBSCRIPTION_PROVIDER_IDS.has(providerId)
-    ? (providerId as SubscriptionProvider)
-    : null;
+  return isSubscriptionProvider(providerId) ? providerId : null;
+}
+
+function asAccountCredentialProvider(
+  providerId: LinkedAccountProviderId,
+): AccountCredentialProvider | null {
+  return isAccountCredentialProvider(providerId) ? providerId : null;
 }
 
 // ─── Validation schemas ─────────────────────────────────────────────
@@ -365,6 +369,101 @@ async function probeCodexUsage(
   }
 }
 
+function asDirectProvider(
+  providerId: LinkedAccountProviderId,
+): DirectAccountProvider | null {
+  return DIRECT_PROVIDER_IDS.has(providerId)
+    ? (providerId as DirectAccountProvider)
+    : null;
+}
+
+function directProviderBaseUrl(providerId: DirectAccountProvider): string {
+  switch (providerId) {
+    case "anthropic-api":
+      return (
+        process.env.ANTHROPIC_BASE_URL?.trim() ||
+        "https://api.anthropic.com/v1"
+      );
+    case "openai-api":
+      return process.env.OPENAI_BASE_URL?.trim() || "https://api.openai.com/v1";
+    case "deepseek-api":
+      return process.env.DEEPSEEK_BASE_URL?.trim() || "https://api.deepseek.com";
+    case "zai-api":
+      return (
+        process.env.ZAI_BASE_URL?.trim() ||
+        process.env.Z_AI_BASE_URL?.trim() ||
+        "https://api.z.ai/api/paas/v4"
+      );
+    case "moonshot-api":
+      return (
+        process.env.MOONSHOT_BASE_URL?.trim() ||
+        process.env.KIMI_BASE_URL?.trim() ||
+        "https://api.moonshot.ai/v1"
+      );
+  }
+}
+
+async function probeDirectApiKey(
+  providerId: DirectAccountProvider,
+  apiKey: string,
+): Promise<{
+  ok: boolean;
+  status: number;
+  error?: string;
+  latencyMs: number;
+}> {
+  const start = Date.now();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const baseUrl = directProviderBaseUrl(providerId).replace(/\/+$/, "");
+    const response =
+      providerId === "anthropic-api"
+        ? await fetch(`${baseUrl}/models?limit=1`, {
+            method: "GET",
+            signal: controller.signal,
+            headers: {
+              "anthropic-version": "2023-06-01",
+              "x-api-key": apiKey,
+            },
+          })
+        : await fetch(`${baseUrl}/models`, {
+            method: "GET",
+            signal: controller.signal,
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+            },
+          });
+    const latencyMs = Date.now() - start;
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      return {
+        ok: false,
+        status: response.status,
+        error: `${providerId} ${response.status}: ${text.slice(0, 200)}`,
+        latencyMs,
+      };
+    }
+    return { ok: true, status: response.status, latencyMs };
+  } catch (err) {
+    return {
+      ok: false,
+      status: 0,
+      error: err instanceof Error ? err.message : String(err),
+      latencyMs: Date.now() - start,
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function healthForProbeStatus(status: number): LinkedAccountConfig["health"] {
+  if (status === 401 || status === 403) return "needs-reauth";
+  if (status === 429) return "rate-limited";
+  if (status >= 500 || status === 0) return "unknown";
+  return "invalid";
+}
+
 // ─── Route handler ──────────────────────────────────────────────────
 
 export interface AccountsRouteContext extends RouteRequestContext {
@@ -474,9 +573,9 @@ async function handleListAllAccounts(
     const linkedConfigs = pool
       .list(providerId)
       .sort((a, b) => a.priority - b.priority);
-    const subscription = asSubscriptionProvider(providerId);
-    const onDiskAccounts = subscription
-      ? listAccounts(subscription).map((r) => r.id)
+    const accountProvider = asAccountCredentialProvider(providerId);
+    const onDiskAccounts = accountProvider
+      ? listAccounts(accountProvider).map((r) => r.id)
       : [];
     const onDiskSet = new Set(onDiskAccounts);
     return {
@@ -505,13 +604,9 @@ async function handleCreateApiKeyAccount(
     return true;
   }
 
-  const subscription = asSubscriptionProvider(providerId);
-  if (!subscription) {
-    error(
-      res,
-      `API-key accounts for ${providerId} are not yet wired up — track WS2`,
-      501,
-    );
+  const accountProvider = asAccountCredentialProvider(providerId);
+  if (!accountProvider) {
+    error(res, `Credential storage not supported for ${providerId}`, 400);
     return true;
   }
 
@@ -526,7 +621,7 @@ async function handleCreateApiKeyAccount(
   const now = Date.now();
   const record: AccountCredentialRecord = {
     id,
-    providerId: subscription,
+    providerId: accountProvider,
     label: parsed.data.label,
     source: "api-key",
     credentials: {
@@ -539,6 +634,17 @@ async function handleCreateApiKeyAccount(
     updatedAt: now,
   };
   saveAccount(record);
+
+  const envKey =
+    accountProvider in DIRECT_ACCOUNT_PROVIDER_ENV
+      ? DIRECT_ACCOUNT_PROVIDER_ENV[accountProvider as DirectAccountProvider]
+      : null;
+  if (envKey) {
+    process.env[envKey] = parsed.data.apiKey;
+    if (accountProvider === "zai-api") {
+      process.env.Z_AI_API_KEY ??= parsed.data.apiKey;
+    }
+  }
 
   const linkedConfig = buildLinkedAccountConfigFromRecord(record, priority);
   await pool.upsert(linkedConfig);
@@ -760,9 +866,9 @@ async function handlePatchAccount(
   // Mirror label changes onto the on-disk credential so listAccounts()
   // and the runtime keep reading the same name.
   if (parsed.data.label !== undefined) {
-    const subscription = asSubscriptionProvider(providerId);
-    if (subscription) {
-      const record = loadAccount(subscription, accountId);
+    const accountProvider = asAccountCredentialProvider(providerId);
+    if (accountProvider) {
+      const record = loadAccount(accountProvider, accountId);
       if (record && record.label !== parsed.data.label) {
         saveAccount({ ...record, label: parsed.data.label });
       }
@@ -781,9 +887,9 @@ async function handleDeleteAccount(
   const { res, json } = ctx;
   const pool = await getPool();
   await pool.deleteMetadata(providerId, accountId);
-  const subscription = asSubscriptionProvider(providerId);
-  if (subscription) {
-    deleteAccount(subscription, accountId);
+  const accountProvider = asAccountCredentialProvider(providerId);
+  if (accountProvider) {
+    deleteAccount(accountProvider, accountId);
   }
   json(res, { deleted: true });
   return true;
@@ -796,11 +902,12 @@ async function handleTestAccount(
 ): Promise<boolean> {
   const { res, json, error } = ctx;
   const subscription = asSubscriptionProvider(providerId);
-  if (!subscription) {
+  const direct = asDirectProvider(providerId);
+  if (!subscription && !direct) {
     error(res, `Test not supported for ${providerId}`, 501);
     return true;
   }
-  const accessToken = await getAccessToken(subscription, accountId);
+  const accessToken = await getAccessToken(subscription ?? direct!, accountId);
   if (!accessToken) {
     json(res, { ok: false, error: "No credential available" });
     return true;
@@ -809,8 +916,9 @@ async function handleTestAccount(
   const linked = pool.get(accountId);
   const codexAccountId =
     linked?.providerId === "openai-codex" ? linked.organizationId : undefined;
-  const probe =
-    subscription === "anthropic-subscription"
+  const probe = direct
+    ? await probeDirectApiKey(direct, accessToken)
+    : subscription === "anthropic-subscription"
       ? await probeAnthropicUsage(accessToken)
       : await probeCodexUsage(accessToken, codexAccountId);
   if (probe.ok) {
@@ -833,7 +941,8 @@ async function handleRefreshUsage(
 ): Promise<boolean> {
   const { res, json, error } = ctx;
   const subscription = asSubscriptionProvider(providerId);
-  if (!subscription) {
+  const direct = asDirectProvider(providerId);
+  if (!subscription && !direct) {
     error(res, `Usage refresh not supported for ${providerId}`, 501);
     return true;
   }
@@ -843,9 +952,28 @@ async function handleRefreshUsage(
     error(res, "Account not found", 404);
     return true;
   }
-  const accessToken = await getAccessToken(subscription, accountId);
+  const accessToken = await getAccessToken(subscription ?? direct!, accountId);
   if (!accessToken) {
     error(res, "No credential available", 400);
+    return true;
+  }
+
+  if (direct) {
+    const probe = await probeDirectApiKey(direct, accessToken);
+    const next: LinkedAccountConfig = {
+      ...linked,
+      health: probe.ok ? "ok" : healthForProbeStatus(probe.status),
+      healthDetail: {
+        lastChecked: Date.now(),
+        ...(probe.ok ? {} : { lastError: probe.error ?? `HTTP ${probe.status}` }),
+      },
+      usage: {
+        ...(linked.usage ?? {}),
+        refreshedAt: Date.now(),
+      },
+    };
+    await pool.upsert(next);
+    json(res, { account: next, probe, source: "direct-probe" });
     return true;
   }
 

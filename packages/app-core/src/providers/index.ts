@@ -3,6 +3,7 @@
 export {
   getOnboardingProviderFamily,
   getOnboardingProviderOption,
+  getDirectAccountProviderForOnboardingProvider,
   getStoredOnboardingProviderId,
   getStoredSubscriptionProvider,
   getSubscriptionProviderFamily,
