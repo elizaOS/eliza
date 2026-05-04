@@ -3,7 +3,7 @@ import { AlertCircle, CheckCircle2, Key, Loader2, Terminal } from "lucide-react"
 import type { ComponentType, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ApiError, apiFetch } from "@/lib/api-client";
+import { ApiError, apiFetch } from "../../../lib/api-client";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
 import { clearStaleStewardSession } from "@/lib/providers/StewardProvider";
 
