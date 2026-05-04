@@ -396,7 +396,10 @@ export const createWorkflowAction: Action & {
             if (callback) {
               await callback({ text, success: true });
             }
-            return { success: true, data: result as unknown as ProviderDataRecord };
+            return {
+              success: true,
+              data: result as unknown as ProviderDataRecord,
+            };
           }
 
           case 'cancel': {
