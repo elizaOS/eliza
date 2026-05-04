@@ -40,6 +40,12 @@ coverage/
 .cache/
 .npm/
 .eslintcache
+.vite/
+
+# Cypress
+cypress/screenshots/
+cypress/videos/
+cypress/downloads/
 
 # Temporary folders
 tmp/

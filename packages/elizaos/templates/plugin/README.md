@@ -300,7 +300,17 @@ elizaos publish --dry-run
 
 ## Configuration
 
-The `agentConfig` section in `package.json` defines the parameters your plugin requires:
+The `agentConfig` section in `package.json` declares every environment variable
+or runtime parameter your plugin needs. Eliza reads this when installing the
+plugin and prompts the operator for any required value at first run. Add as many
+entries as you need; the schema for each entry is:
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `type` | yes | `"string"`, `"number"`, or `"boolean"`. Numbers and booleans are coerced. |
+| `description` | yes | Shown in the onboarding prompt. Be explicit about what the value is for. |
+| `defaultValue` | no | Provided when the operator does not enter a value. Omit for secrets. |
+| `sensitive` | no | When `true`, Eliza hides the value in logs and config dumps. Use for keys/tokens. |
 
 ```json
 "agentConfig": {
@@ -308,13 +318,20 @@ The `agentConfig` section in `package.json` defines the parameters your plugin r
   "pluginParameters": {
     "API_KEY": {
       "type": "string",
-      "description": "API key for the service"
+      "description": "Secret API key for the service. Required at runtime; do not commit values."
+    },
+    "BASE_URL": {
+      "type": "string",
+      "description": "Base URL of the service the plugin talks to. Override per environment.",
+      "defaultValue": "https://api.example.com"
     }
   }
 }
 ```
 
-Customize this section to match your plugin's requirements.
+Customize this section to match your plugin's requirements. Use the same
+identifiers in your `configSchema` (see `src/plugin.ts`) so Zod validation and
+the agent prompt stay in sync.
 
 ## Documentation
 

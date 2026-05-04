@@ -1,2 +1,2 @@
-#!/usr/bin/env bun
-import "../src/cli.ts";
+#!/usr/bin/env node
+import "../dist/cli.js";

@@ -1,24 +1,46 @@
 {
   "name": "@elizaos/vault",
-  "version": "2.0.0-alpha.533",
+  "version": "2.0.0-alpha.537",
   "description": "Simple secrets/config vault for Eliza agents. One API for sensitive credentials and non-sensitive configuration; routes to OS keychain, file, or password manager based on the user's choice.",
   "type": "module",
   "license": "MIT",
+  "homepage": "https://github.com/elizaOS/eliza",
   "repository": {
     "type": "git",
-    "url": "https://github.com/elizaos/eliza.git",
+    "url": "git+https://github.com/elizaOS/eliza.git",
     "directory": "packages/vault"
   },
+  "keywords": [
+    "elizaos",
+    "vault",
+    "secrets",
+    "keychain"
+  ],
   "engines": {
     "node": ">=24.0.0"
   },
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "exports": {
-    ".": "./src/index.ts",
-    "./testing": "./src/testing.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "import": "./dist/testing.js",
+      "default": "./dist/testing.js"
+    },
+    "./package.json": "./package.json"
   },
   "scripts": {
+    "clean": "rm -rf dist",
+    "prepublishOnly": "bun run build",
+    "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit -p tsconfig.json"

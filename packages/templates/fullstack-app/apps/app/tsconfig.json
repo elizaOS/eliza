@@ -15,6 +15,9 @@
         "./src/type-stubs/app-core/CharacterEditor.d.ts"
       ],
       "@elizaos/app-core/config": ["./src/type-stubs/app-core/config.d.ts"],
+      "@elizaos/app-core/config/allowed-hosts": [
+        "./src/type-stubs/app-core/allowed-hosts.d.ts"
+      ],
       "@elizaos/app-core/events": ["./src/type-stubs/app-core/events.d.ts"],
       "@elizaos/app-core/platform": ["./src/type-stubs/app-core/platform.d.ts"],
       "@elizaos/app-core/platform/native-plugin-entrypoints": [

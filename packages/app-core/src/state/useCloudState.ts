@@ -28,6 +28,7 @@ import { dispatchElizaCloudStatusUpdated } from "../events";
 import {
   confirmDesktopAction,
   isCloudStatusAuthenticated,
+  navigatePreOpenedWindow,
   openExternalUrl,
   yieldHttpAfterNativeMessageBox,
 } from "../utils";
@@ -292,13 +293,27 @@ export function useCloudState({
     return isConnected;
   }, []);
 
-  const handleCloudLogin = useCallback(async () => {
+  const handleCloudLogin = useCallback(async (
+    prePoppedWindow: Window | null = null,
+  ) => {
     if (
       isCloudStatusAuthenticated(elizaCloudConnected, elizaCloudStatusReason)
     ) {
+      try {
+        prePoppedWindow?.close();
+      } catch {
+        // Cross-origin — ignore.
+      }
       return;
     }
-    if (elizaCloudLoginBusyRef.current || elizaCloudLoginBusy) return;
+    if (elizaCloudLoginBusyRef.current || elizaCloudLoginBusy) {
+      try {
+        prePoppedWindow?.close();
+      } catch {
+        // Cross-origin — ignore.
+      }
+      return;
+    }
     elizaCloudLoginBusyRef.current = true;
     setElizaCloudLoginBusy(true);
     setElizaCloudLoginError(null);
@@ -318,6 +333,11 @@ export function useCloudState({
         cloudStatus?.reason,
       );
       if (alreadyAuthenticated) {
+        try {
+          prePoppedWindow?.close();
+        } catch {
+          // Cross-origin — ignore.
+        }
         await pollCloudCredits();
         await loadWalletConfig().catch(() => undefined);
         setElizaCloudLoginError(null);
@@ -341,6 +361,11 @@ export function useCloudState({
         resp = await client.cloudLogin();
       }
       if (!resp.ok) {
+        try {
+          prePoppedWindow?.close();
+        } catch {
+          // Cross-origin — ignore.
+        }
         setElizaCloudLoginError(
           resp.error || "Failed to start Eliza Cloud login",
         );
@@ -349,15 +374,26 @@ export function useCloudState({
         return;
       }
 
-      // Open the login URL in the system browser.
+      // Open the login URL in the system browser. On Capacitor iOS the
+      // pre-opened window preserves the user-gesture context so WKWebView
+      // routes the URL out to Safari instead of dropping it silently.
       if (resp.browserUrl) {
+        if (prePoppedWindow) {
+          navigatePreOpenedWindow(prePoppedWindow, resp.browserUrl);
+        } else {
+          try {
+            await openExternalUrl(resp.browserUrl);
+          } catch {
+            setElizaCloudLoginError(
+              `Open this link to log in: ${resp.browserUrl}`,
+            );
+          }
+        }
+      } else {
         try {
-          await openExternalUrl(resp.browserUrl);
+          prePoppedWindow?.close();
         } catch {
-          // Popup was blocked — show a clickable link so the user can open it.
-          setElizaCloudLoginError(
-            `Open this link to log in: ${resp.browserUrl}`,
-          );
+          // Cross-origin — ignore.
         }
       }
 
