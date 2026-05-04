@@ -31,7 +31,7 @@ if (typeof globalThis !== "undefined" && !("Buffer" in globalThis)) {
 import { renderToString } from "react-dom/server";
 import { HelmetProvider, type HelmetServerState } from "react-helmet-async";
 // react-router-dom v7 exposes StaticRouter from the main entry.
-import { StaticRouter } from "react-router-dom";
+import { StaticRouter } from "react-router-dom/server";
 import { Toaster } from "sonner";
 import LandingPageRoute from "./pages/page";
 import "./globals.css";
