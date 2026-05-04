@@ -336,4 +336,39 @@ describe("intent-sync — real PGLite", () => {
     expect(data?.intent?.title).toBe("Phone reminder");
     expect(data?.intent?.target).toBe("mobile");
   });
+
+  it("escalateUnacknowledgedIntents escalates desktop intents to mobile when ignored", async () => {
+    // 1. Broadcast an intent to desktop
+    const intent = await broadcastIntent(runtime, {
+      kind: "attention_request",
+      title: "Confirm travel",
+      body: "Need to confirm travel arrangements",
+      target: "desktop",
+      priority: "medium",
+    });
+
+    // 2. We mock its creation time to be 10 minutes ago to simulate it being ignored
+    const cutoffTime = new Date(Date.now() - 10 * 60_000).toISOString();
+    await runtime.databaseAdapter.db.execute(
+      `UPDATE life_intents SET created_at = $1 WHERE id = $2`,
+      [cutoffTime, intent.id]
+    );
+
+    // 3. Trigger escalation
+    const { escalateUnacknowledgedIntents } = await import("../src/lifeops/intent-sync.js");
+    const result = await escalateUnacknowledgedIntents(runtime, { thresholdMinutes: 5 });
+    
+    expect(result.escalated).toBeGreaterThanOrEqual(1);
+
+    // 4. Verify that the desktop intent is now acknowledged
+    const pendingDesktop = await receivePendingIntents(runtime, { device: "desktop" });
+    expect(pendingDesktop.find(i => i.id === intent.id)).toBeFalsy();
+
+    // 5. Verify that a mobile intent was created
+    const pendingMobile = await receivePendingIntents(runtime, { device: "mobile" });
+    const escalatedIntent = pendingMobile.find(i => i.metadata?.escalatedFrom === intent.id);
+    expect(escalatedIntent).toBeTruthy();
+    expect(escalatedIntent?.title).toContain("[Escalated]");
+    expect(escalatedIntent?.priority).toBe("high");
+  });
 });

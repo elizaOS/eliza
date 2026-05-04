@@ -6,7 +6,10 @@ import {
   LIFEOPS_PROVIDER_MOCK_COVERAGE,
   REQUIRED_LIFEOPS_PROVIDER_IDS,
 } from "../helpers/provider-coverage.ts";
-import { MOCK_ENVIRONMENTS, startMocks } from "../scripts/start-mocks.ts";
+import {
+  MOCK_PROVIDER_ENVIRONMENTS,
+  startMocks,
+} from "../scripts/start-mocks.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "../../..");
@@ -25,6 +28,13 @@ describe("LifeOps provider mock coverage contract", () => {
 
     expect(new Set(coveredIds).size).toBe(coveredIds.length);
     expect(coveredIds).toEqual([...REQUIRED_LIFEOPS_PROVIDER_IDS]);
+
+    for (const entry of LIFEOPS_PROVIDER_MOCK_COVERAGE) {
+      expect(
+        new Set(entry.envVars).size,
+        `${entry.id} declares duplicate env vars`,
+      ).toBe(entry.envVars.length);
+    }
   });
 
   it("claims every startMocks environment and maps HTTP mocks to env vars", () => {
@@ -35,13 +45,13 @@ describe("LifeOps provider mock coverage contract", () => {
     );
 
     expect([...claimedEnvironments].sort()).toEqual(
-      [...MOCK_ENVIRONMENTS].sort(),
+      [...MOCK_PROVIDER_ENVIRONMENTS].sort(),
     );
 
     for (const entry of LIFEOPS_PROVIDER_MOCK_COVERAGE) {
       if (entry.environment === null) continue;
 
-      expect(MOCK_ENVIRONMENTS).toContain(entry.environment);
+      expect(MOCK_PROVIDER_ENVIRONMENTS).toContain(entry.environment);
       expect(entry.envVars.length).toBeGreaterThan(0);
       expect(
         fs.existsSync(path.join(ENVIRONMENTS_DIR, `${entry.environment}.json`)),
@@ -54,7 +64,7 @@ describe("LifeOps provider mock coverage contract", () => {
   });
 
   it("emits every registry env var from the real mock runner", async () => {
-    for (const environment of MOCK_ENVIRONMENTS) {
+    for (const environment of MOCK_PROVIDER_ENVIRONMENTS) {
       const providers = LIFEOPS_PROVIDER_MOCK_COVERAGE.filter(
         (entry) => entry.environment === environment,
       );
@@ -81,7 +91,7 @@ describe("LifeOps provider mock coverage contract", () => {
     const documentedEnvVars = new Set(
       LIFEOPS_PROVIDER_MOCK_COVERAGE.flatMap((entry) => entry.envVars),
     );
-    const mocks = await startMocks({ envs: MOCK_ENVIRONMENTS });
+    const mocks = await startMocks({ envs: MOCK_PROVIDER_ENVIRONMENTS });
     try {
       expect(Object.keys(mocks.envVars).sort()).toEqual(
         [...documentedEnvVars].sort(),

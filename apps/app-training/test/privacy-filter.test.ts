@@ -168,4 +168,65 @@ describe("applyPrivacyFilter", () => {
     const result = applyPrivacyFilter([trajectory]);
     expect(result.trajectories[0]?.metadata).toEqual(trajectory.metadata);
   });
+
+  it("redacts geo coordinates in every supported shape", () => {
+    const trajectory: FilterableTrajectory = {
+      trajectoryId: "t-geo",
+      steps: [
+        {
+          llmCalls: [
+            {
+              systemPrompt:
+                'travel-time origin {"coords":{"latitude":37.7749,"longitude":-122.4194,"accuracy":50}} ready',
+              userPrompt:
+                "I am at 37.7749, -122.4194 and current location: 40.7128, -74.0060 — also lat: 51.5074, lng: -0.1278",
+              response:
+                '{"latitude":48.8566,"longitude":2.3522} arrived in Paris',
+            },
+          ],
+        },
+      ],
+    };
+    const result = applyPrivacyFilter([trajectory]);
+    const call = result.trajectories[0]?.steps?.[0]?.llmCalls?.[0];
+
+    expect(call?.systemPrompt).toContain("[REDACTED_GEO]");
+    expect(call?.systemPrompt).not.toContain("37.7749");
+    expect(call?.systemPrompt).not.toContain("-122.4194");
+    expect(call?.systemPrompt).not.toContain("latitude");
+
+    expect(call?.userPrompt).toContain("[REDACTED_GEO]");
+    expect(call?.userPrompt).not.toContain("37.7749");
+    expect(call?.userPrompt).not.toContain("40.7128");
+    expect(call?.userPrompt).not.toContain("51.5074");
+
+    expect(call?.response).toContain("[REDACTED_GEO]");
+    expect(call?.response).not.toContain("48.8566");
+    expect(call?.response).not.toContain("2.3522");
+    expect(call?.response).toContain("arrived in Paris");
+
+    // Each distinct geo span gets one redaction increment.
+    expect(result.redactionCount).toBeGreaterThanOrEqual(5);
+  });
+
+  it("does not redact ordinary integer pairs that are not coordinates", () => {
+    const trajectory: FilterableTrajectory = {
+      trajectoryId: "t-geo-falseneg",
+      steps: [
+        {
+          llmCalls: [
+            {
+              userPrompt:
+                "transferred 100, 200 records — process IDs 1234, 5678 and step 12, 34",
+            },
+          ],
+        },
+      ],
+    };
+    const result = applyPrivacyFilter([trajectory]);
+    const call = result.trajectories[0]?.steps?.[0]?.llmCalls?.[0];
+    expect(call?.userPrompt).not.toContain("[REDACTED_GEO]");
+    expect(call?.userPrompt).toContain("100, 200");
+    expect(call?.userPrompt).toContain("1234, 5678");
+  });
 });

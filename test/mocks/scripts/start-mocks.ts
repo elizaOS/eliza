@@ -5,6 +5,12 @@ import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  findLifeOpsSamanthaScenario,
+  LIFEOPS_SAMANTHA_FIXTURE_CATALOG,
+  lifeOpsSamanthaScenarioSummaries,
+  lifeOpsSamanthaTaskSnapshots,
+} from "../fixtures/lifeops-samantha.ts";
+import {
   getLifeOpsSimulatorPerson,
   LIFEOPS_SIMULATOR_CHANNEL_MESSAGES,
   LIFEOPS_SIMULATOR_OWNER,
@@ -32,7 +38,7 @@ const ENVS_DIR = path.resolve(__dirname, "..", "environments");
 const MOCK_BROWSER_WORKSPACE_TOKEN = "mock-browser-workspace-token";
 const MOCK_BLUEBUBBLES_PASSWORD = "mock-bluebubbles-password";
 
-export const MOCK_ENVIRONMENTS = [
+export const MOCK_PROVIDER_ENVIRONMENTS = [
   "google",
   "twilio",
   "whatsapp",
@@ -43,6 +49,13 @@ export const MOCK_ENVIRONMENTS = [
   "browser-workspace",
   "bluebubbles",
   "github",
+] as const;
+
+export const MOCK_SCENARIO_ENVIRONMENTS = ["lifeops-samantha", "lifeops-presence"] as const;
+
+export const MOCK_ENVIRONMENTS = [
+  ...MOCK_PROVIDER_ENVIRONMENTS,
+  ...MOCK_SCENARIO_ENVIRONMENTS,
 ] as const;
 
 export type MockEnvironmentName = (typeof MOCK_ENVIRONMENTS)[number];
@@ -109,6 +122,7 @@ export interface MockRequestLedgerEntry {
   browserWorkspace?: BrowserWorkspaceRequestLedgerMetadata;
   bluebubbles?: BlueBubblesRequestLedgerMetadata;
   github?: GitHubRequestLedgerMetadata;
+  lifeopsSamantha?: LifeOpsSamanthaRequestLedgerMetadata;
 }
 
 interface XRequestLedgerMetadata {
@@ -165,6 +179,14 @@ interface GitHubRequestLedgerMetadata {
   runId?: string;
 }
 
+interface LifeOpsSamanthaRequestLedgerMetadata {
+  action: string;
+  scenarioId?: string;
+  taskId?: string;
+  status?: string;
+  runId?: string;
+}
+
 export interface StartedMocks {
   portMap: Record<MockEnvironmentName, number>;
   baseUrls: Record<MockEnvironmentName, string>;
@@ -189,13 +211,9 @@ function envVarsFor(
   }
   if (envs.includes("whatsapp"))
     out.ELIZA_MOCK_WHATSAPP_BASE = baseUrls.whatsapp;
-  if (envs.includes("whatsapp"))
-    out.ELIZA_MOCK_WHATSAPP_BASE = baseUrls.whatsapp;
   if (envs.includes("x-twitter")) {
     out.ELIZA_MOCK_X_BASE = baseUrls["x-twitter"];
   }
-  if (envs.includes("calendly"))
-    out.ELIZA_MOCK_CALENDLY_BASE = baseUrls.calendly;
   if (envs.includes("calendly"))
     out.ELIZA_MOCK_CALENDLY_BASE = baseUrls.calendly;
   if (envs.includes("cloud-managed"))
@@ -219,6 +237,9 @@ function envVarsFor(
   if (envs.includes("github")) {
     out.ELIZA_MOCK_GITHUB_BASE = baseUrls.github;
     out.GITHUB_API_URL = baseUrls.github;
+  }
+  if (envs.includes("lifeops-samantha")) {
+    out.ELIZA_MOCK_LIFEOPS_SAMANTHA_BASE = baseUrls["lifeops-samantha"];
   }
   return out;
 }
@@ -1384,21 +1405,25 @@ function browserWorkspaceDynamicFixture(
   if (!tab) return mockJsonError(404, "tab not found");
 
   if (action === "show" && method === "POST") {
+    const nextTab = { ...tab, show: true };
+    state.tabs.set(tabId, nextTab);
     ledgerEntry.browserWorkspace =
       withRunId<BrowserWorkspaceRequestLedgerMetadata>(ledgerEntry, {
         action: "tabs.show",
         tabId,
       });
-    return jsonFixture({ tab: { ...tab, show: true } });
+    return jsonFixture({ tab: nextTab });
   }
 
   if (action === "hide" && method === "POST") {
+    const nextTab = { ...tab, show: false };
+    state.tabs.set(tabId, nextTab);
     ledgerEntry.browserWorkspace =
       withRunId<BrowserWorkspaceRequestLedgerMetadata>(ledgerEntry, {
         action: "tabs.hide",
         tabId,
       });
-    return jsonFixture({ tab: { ...tab, show: false } });
+    return jsonFixture({ tab: nextTab });
   }
 
   if (action === "navigate" && method === "POST") {
@@ -1666,13 +1691,73 @@ function bluebubblesDynamicFixture(
   return null;
 }
 
+interface GitHubIssueFixture {
+  number: number;
+  title: string;
+  state: "open" | "closed";
+  html_url: string;
+  user: { login: string };
+  assignees: Array<{ login: string }>;
+  body?: string;
+}
+
+interface GitHubReviewFixture {
+  id: number;
+  body: string;
+  event: string;
+  state: string;
+  user: { login: string };
+  submitted_at: string;
+  pull_request_url: string;
+}
+
 interface GitHubMockState {
   nextIssueNumber: number;
   nextReviewId: number;
+  issuesByRepo: Map<string, GitHubIssueFixture[]>;
+  reviewsByPull: Map<string, GitHubReviewFixture[]>;
 }
 
 function createGitHubMockState(): GitHubMockState {
-  return { nextIssueNumber: 101, nextReviewId: 777 };
+  return {
+    nextIssueNumber: 101,
+    nextReviewId: 777,
+    issuesByRepo: new Map(),
+    reviewsByPull: new Map(),
+  };
+}
+
+function githubRepoKey(owner: string, repo: string): string {
+  return `${owner}/${repo}`;
+}
+
+function githubPullKey(owner: string, repo: string, number: number): string {
+  return `${githubRepoKey(owner, repo)}#${number}`;
+}
+
+function cloneGitHubIssue(issue: GitHubIssueFixture): GitHubIssueFixture {
+  return {
+    ...issue,
+    user: { ...issue.user },
+    assignees: issue.assignees.map((assignee) => ({ ...assignee })),
+  };
+}
+
+function cloneGitHubReview(review: GitHubReviewFixture): GitHubReviewFixture {
+  return {
+    ...review,
+    user: { ...review.user },
+  };
+}
+
+function findGitHubIssue(
+  state: GitHubMockState,
+  owner: string,
+  repo: string,
+  number: number,
+): GitHubIssueFixture | null {
+  const issues = state.issuesByRepo.get(githubRepoKey(owner, repo)) ?? [];
+  return issues.find((issue) => issue.number === number) ?? null;
 }
 
 function parseGitHubRepoPath(
@@ -1720,13 +1805,45 @@ function githubDynamicFixture(
   if (method === "POST" && reviewPath) {
     const number = Number.parseInt(reviewPath.match[3] ?? "", 10);
     const id = state.nextReviewId++;
+    const event = readOptionalString(requestBody, "event") ?? "COMMENT";
+    const review: GitHubReviewFixture = {
+      id,
+      body: readOptionalString(requestBody, "body") ?? "",
+      event,
+      state: event === "APPROVE" ? "APPROVED" : event,
+      user: { login: "mocked-reviewer" },
+      submitted_at: new Date().toISOString(),
+      pull_request_url: `https://api.github.com/repos/${reviewPath.owner}/${reviewPath.repo}/pulls/${number}`,
+    };
+    const key = githubPullKey(reviewPath.owner, reviewPath.repo, number);
+    state.reviewsByPull.set(key, [
+      review,
+      ...(state.reviewsByPull.get(key) ?? []),
+    ]);
     ledgerEntry.github = withRunId<GitHubRequestLedgerMetadata>(ledgerEntry, {
       action: "pulls.createReview",
       owner: reviewPath.owner,
       repo: reviewPath.repo,
       number,
     });
-    return jsonFixture({ id });
+    return jsonFixture(cloneGitHubReview(review));
+  }
+
+  if (method === "GET" && reviewPath) {
+    const number = Number.parseInt(reviewPath.match[3] ?? "", 10);
+    ledgerEntry.github = withRunId<GitHubRequestLedgerMetadata>(ledgerEntry, {
+      action: "pulls.listReviews",
+      owner: reviewPath.owner,
+      repo: reviewPath.repo,
+      number,
+    });
+    return jsonFixture(
+      (
+        state.reviewsByPull.get(
+          githubPullKey(reviewPath.owner, reviewPath.repo, number),
+        ) ?? []
+      ).map(cloneGitHubReview),
+    );
   }
 
   const createIssuePath = parseGitHubRepoPath(
@@ -1735,17 +1852,72 @@ function githubDynamicFixture(
   );
   if (method === "POST" && createIssuePath) {
     const number = state.nextIssueNumber++;
+    const issue: GitHubIssueFixture = {
+      number,
+      html_url: `https://github.com/${createIssuePath.owner}/${createIssuePath.repo}/issues/${number}`,
+      title: readOptionalString(requestBody, "title") ?? "Mock issue",
+      state: "open",
+      user: { login: "mocked-owner" },
+      assignees: [],
+      ...(readOptionalString(requestBody, "body")
+        ? { body: readOptionalString(requestBody, "body") ?? undefined }
+        : {}),
+    };
+    const key = githubRepoKey(createIssuePath.owner, createIssuePath.repo);
+    state.issuesByRepo.set(key, [
+      issue,
+      ...(state.issuesByRepo.get(key) ?? []),
+    ]);
     ledgerEntry.github = withRunId<GitHubRequestLedgerMetadata>(ledgerEntry, {
       action: "issues.create",
       owner: createIssuePath.owner,
       repo: createIssuePath.repo,
       number,
     });
-    return jsonFixture({
-      number,
-      html_url: `https://github.com/${createIssuePath.owner}/${createIssuePath.repo}/issues/${number}`,
-      title: readOptionalString(requestBody, "title") ?? "Mock issue",
+    return jsonFixture(cloneGitHubIssue(issue));
+  }
+
+  if (method === "GET" && createIssuePath) {
+    const requestedState = searchParams.get("state") ?? "open";
+    const issues =
+      state.issuesByRepo.get(
+        githubRepoKey(createIssuePath.owner, createIssuePath.repo),
+      ) ?? [];
+    ledgerEntry.github = withRunId<GitHubRequestLedgerMetadata>(ledgerEntry, {
+      action: "issues.list",
+      owner: createIssuePath.owner,
+      repo: createIssuePath.repo,
     });
+    return jsonFixture(
+      issues
+        .filter(
+          (issue) => requestedState === "all" || issue.state === requestedState,
+        )
+        .map(cloneGitHubIssue),
+    );
+  }
+
+  const issuePath = parseGitHubRepoPath(
+    pathname,
+    /^\/repos\/([^/]+)\/([^/]+)\/issues\/(\d+)\/?$/,
+  );
+  if (method === "GET" && issuePath) {
+    const number = Number.parseInt(issuePath.match[3] ?? "", 10);
+    const issue = findGitHubIssue(
+      state,
+      issuePath.owner,
+      issuePath.repo,
+      number,
+    );
+    ledgerEntry.github = withRunId<GitHubRequestLedgerMetadata>(ledgerEntry, {
+      action: "issues.get",
+      owner: issuePath.owner,
+      repo: issuePath.repo,
+      number,
+    });
+    return issue
+      ? jsonFixture(cloneGitHubIssue(issue))
+      : mockJsonError(404, "issue not found");
   }
 
   const assigneesPath = parseGitHubRepoPath(
@@ -1757,13 +1929,29 @@ function githubDynamicFixture(
     const assignees = readStringArray(requestBody, "assignees").map(
       (login) => ({ login }),
     );
+    const issue = findGitHubIssue(
+      state,
+      assigneesPath.owner,
+      assigneesPath.repo,
+      number,
+    );
+    if (issue) {
+      const existing = new Set(issue.assignees.map((entry) => entry.login));
+      for (const assignee of assignees) {
+        if (!existing.has(assignee.login)) issue.assignees.push(assignee);
+      }
+    }
     ledgerEntry.github = withRunId<GitHubRequestLedgerMetadata>(ledgerEntry, {
       action: "issues.addAssignees",
       owner: assigneesPath.owner,
       repo: assigneesPath.repo,
       number,
     });
-    return jsonFixture({ assignees });
+    return jsonFixture({
+      assignees: issue
+        ? issue.assignees.map((entry) => ({ ...entry }))
+        : assignees,
+    });
   }
 
   if (method === "GET" && pathname === "/search/issues") {
@@ -1913,6 +2101,12 @@ async function startFixtureServer(
   const environment = readEnvironment(dataPath);
   const routes = compileRoutes(environment);
   const requests: MockRequestLedgerEntry[] = [];
+  const isLifeOpsSamanthaEnvironment =
+    environment.name === "LifeOps Samantha Scenarios";
+  const lifeOpsTasks = new Map<
+    string,
+    { scenarioId: string; snapshotIndex: number }
+  >();
   const dynamicProvider = createDynamicProviderState(environment.name, opts);
   let stopped = false;
 
@@ -1957,6 +2151,208 @@ async function startFixtureServer(
           : {}),
       };
       requests.push(ledgerEntry);
+      if (
+        isLifeOpsSamanthaEnvironment &&
+        method === "GET" &&
+        requestUrl.pathname === "/__mock/lifeops/samantha/scenarios"
+      ) {
+        ledgerEntry.lifeopsSamantha =
+          withRunId<LifeOpsSamanthaRequestLedgerMetadata>(ledgerEntry, {
+            action: "scenarios.list",
+          });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            version: LIFEOPS_SAMANTHA_FIXTURE_CATALOG.version,
+            scenarioCount: LIFEOPS_SAMANTHA_FIXTURE_CATALOG.scenarioCount,
+            providers: LIFEOPS_SAMANTHA_FIXTURE_CATALOG.providers,
+            scenarios: lifeOpsSamanthaScenarioSummaries(),
+          }),
+        );
+        return;
+      }
+      const lifeOpsScenarioId = isLifeOpsSamanthaEnvironment
+        ? routeParam(
+            requestUrl.pathname,
+            /^\/__mock\/lifeops\/samantha\/scenarios\/([^/]+)\/?$/,
+          )
+        : null;
+      if (method === "GET" && lifeOpsScenarioId) {
+        const scenario = findLifeOpsSamanthaScenario(lifeOpsScenarioId);
+        ledgerEntry.lifeopsSamantha =
+          withRunId<LifeOpsSamanthaRequestLedgerMetadata>(ledgerEntry, {
+            action: "scenarios.get",
+            scenarioId: lifeOpsScenarioId,
+          });
+        if (!scenario) {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "scenario_not_found" }));
+          return;
+        }
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ scenario }));
+        return;
+      }
+      if (
+        isLifeOpsSamanthaEnvironment &&
+        method === "POST" &&
+        requestUrl.pathname === "/__mock/lifeops/samantha/tasks"
+      ) {
+        const scenarioId =
+          typeof requestBody.scenarioId === "string"
+            ? requestBody.scenarioId
+            : "move-07-proactive-multihop-and-long-running";
+        const scenario = findLifeOpsSamanthaScenario(scenarioId);
+        if (!scenario) {
+          ledgerEntry.lifeopsSamantha =
+            withRunId<LifeOpsSamanthaRequestLedgerMetadata>(ledgerEntry, {
+              action: "tasks.create.rejected",
+              scenarioId,
+              status: "unknown_scenario",
+            });
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "unknown_scenario", scenarioId }));
+          return;
+        }
+        const snapshots = lifeOpsSamanthaTaskSnapshots(scenarioId);
+        if (
+          snapshots.length === 0 ||
+          !scenario.useCases.includes("long-running")
+        ) {
+          ledgerEntry.lifeopsSamantha =
+            withRunId<LifeOpsSamanthaRequestLedgerMetadata>(ledgerEntry, {
+              action: "tasks.create.rejected",
+              scenarioId,
+              status: "not_long_running",
+            });
+          res.writeHead(422, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              error: "scenario_not_long_running",
+              scenarioId,
+            }),
+          );
+          return;
+        }
+        const taskId = `lifeops-${crypto.randomUUID()}`;
+        lifeOpsTasks.set(taskId, { scenarioId, snapshotIndex: 0 });
+        ledgerEntry.lifeopsSamantha =
+          withRunId<LifeOpsSamanthaRequestLedgerMetadata>(ledgerEntry, {
+            action: "tasks.create",
+            scenarioId,
+            taskId,
+            status: snapshots[0]?.status,
+          });
+        res.writeHead(202, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            task: snapshots[0]
+              ? { ...snapshots[0], taskId }
+              : {
+                  taskId,
+                  scenarioId,
+                  status: "queued",
+                  step: "Task queued.",
+                  percentComplete: 0,
+                  nextPollMs: 1000,
+                },
+            taskId,
+            pollUrl: `/__mock/lifeops/samantha/tasks/${taskId}`,
+          }),
+        );
+        return;
+      }
+      const lifeOpsAdvanceTaskId = isLifeOpsSamanthaEnvironment
+        ? routeParam(
+            requestUrl.pathname,
+            /^\/__mock\/lifeops\/samantha\/tasks\/([^/]+)\/advance\/?$/,
+          )
+        : null;
+      if (method === "POST" && lifeOpsAdvanceTaskId) {
+        const task =
+          lifeOpsTasks.get(lifeOpsAdvanceTaskId) ??
+          (lifeOpsAdvanceTaskId === "task-vendor-packet-watch-001"
+            ? {
+                scenarioId: "move-07-proactive-multihop-and-long-running",
+                snapshotIndex: 0,
+              }
+            : null);
+        if (!task) {
+          ledgerEntry.lifeopsSamantha =
+            withRunId<LifeOpsSamanthaRequestLedgerMetadata>(ledgerEntry, {
+              action: "tasks.advance.not_found",
+              taskId: lifeOpsAdvanceTaskId,
+            });
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "task_not_found" }));
+          return;
+        }
+        const snapshots = lifeOpsSamanthaTaskSnapshots(task.scenarioId);
+        task.snapshotIndex = Math.min(
+          task.snapshotIndex + 1,
+          Math.max(0, snapshots.length - 1),
+        );
+        lifeOpsTasks.set(lifeOpsAdvanceTaskId, task);
+        const snapshot = snapshots[task.snapshotIndex] ?? null;
+        ledgerEntry.lifeopsSamantha =
+          withRunId<LifeOpsSamanthaRequestLedgerMetadata>(ledgerEntry, {
+            action: "tasks.advance",
+            scenarioId: task.scenarioId,
+            taskId: lifeOpsAdvanceTaskId,
+            status: snapshot?.status,
+          });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            task: snapshot
+              ? { ...snapshot, taskId: lifeOpsAdvanceTaskId }
+              : null,
+          }),
+        );
+        return;
+      }
+      const lifeOpsTaskId = isLifeOpsSamanthaEnvironment
+        ? routeParam(
+            requestUrl.pathname,
+            /^\/__mock\/lifeops\/samantha\/tasks\/([^/]+)\/?$/,
+          )
+        : null;
+      if (method === "GET" && lifeOpsTaskId) {
+        const task =
+          lifeOpsTasks.get(lifeOpsTaskId) ??
+          (lifeOpsTaskId === "task-vendor-packet-watch-001"
+            ? {
+                scenarioId: "move-07-proactive-multihop-and-long-running",
+                snapshotIndex: 0,
+              }
+            : null);
+        if (!task) {
+          ledgerEntry.lifeopsSamantha =
+            withRunId<LifeOpsSamanthaRequestLedgerMetadata>(ledgerEntry, {
+              action: "tasks.get.not_found",
+              taskId: lifeOpsTaskId,
+            });
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "task_not_found" }));
+          return;
+        }
+        const snapshots = lifeOpsSamanthaTaskSnapshots(task.scenarioId);
+        const snapshot = snapshots[task.snapshotIndex] ?? null;
+        ledgerEntry.lifeopsSamantha =
+          withRunId<LifeOpsSamanthaRequestLedgerMetadata>(ledgerEntry, {
+            action: "tasks.get",
+            scenarioId: task.scenarioId,
+            taskId: lifeOpsTaskId,
+            status: snapshot?.status,
+          });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            task: snapshot ? { ...snapshot, taskId: lifeOpsTaskId } : null,
+          }),
+        );
+        return;
+      }
       const dynamicResponse = dynamicProviderFixture({
         provider: dynamicProvider,
         method,

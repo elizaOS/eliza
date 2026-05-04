@@ -15,15 +15,12 @@ import type { ConnectorHealthMonitor } from "./connector-health.js";
 // PluginEntry and PluginParamDef are defined here to avoid a circular dependency
 // with plugin-discovery-helpers.ts (which imports from server-helpers.ts).
 
-// Canonical TrainingServiceLike / TrainingServiceWithRuntime live in
-// @elizaos/app-training. Re-export here so existing callers that imported from
-// server-types keep working without duplicating the interface.
 export type {
   TrainingServiceLike,
   TrainingServiceWithRuntime,
-} from "@elizaos/app-training/services/training-service-like";
+} from "./training-service-like.js";
 
-import type { TrainingServiceWithRuntime } from "@elizaos/app-training/services/training-service-like";
+import type { TrainingServiceWithRuntime } from "./training-service-like.js";
 
 // ---------------------------------------------------------------------------
 // Conversation metadata

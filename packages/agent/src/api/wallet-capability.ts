@@ -139,6 +139,13 @@ function getPluginIdentifiers(plugin: unknown): string[] {
     .filter((value): value is string => typeof value === "string");
 }
 
+function isManagedEvmBridgeActive(): boolean {
+  return Boolean(
+    process.env.ELIZA_MANAGED_EVM_ADDRESS?.trim() ||
+      process.env.ELIZA_CLOUD_EVM_ADDRESS?.trim(),
+  );
+}
+
 export function isPluginLoadedByName(
   runtime: AgentRuntime | null,
   pluginName: string,
@@ -180,7 +187,7 @@ export function resolvePluginEvmLoaded(runtime: AgentRuntime | null): boolean {
   return (
     isPluginLoadedByName(runtime, EVM_PLUGIN_PACKAGE) ||
     hasRuntimeEvmService(runtime) ||
-    isStewardEvmBridgeActive()
+    isManagedEvmBridgeActive()
   );
 }
 

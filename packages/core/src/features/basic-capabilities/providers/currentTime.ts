@@ -23,27 +23,29 @@ export const currentTimeProvider: Provider = {
 	dynamic: spec.dynamic ?? true,
 	get: async (_runtime: IAgentRuntime, _message: Memory, _state: State) => {
 		const now = new Date();
+		const setting = _runtime.getSetting("TIMEZONE");
+		const timeZone = (typeof setting === "string" ? setting : "UTC") || "UTC";
 
 		const isoTimestamp = now.toISOString();
 		const unixTimestamp = Math.floor(now.getTime() / 1000);
 
 		const options = {
-			timeZone: "UTC",
+			timeZone,
 			dateStyle: "full" as const,
 			timeStyle: "long" as const,
 		};
 		const humanReadable = new Intl.DateTimeFormat("en-US", options).format(now);
 
-		const dateOnly = now.toISOString().split("T")[0];
-		const timeOnly = now.toISOString().split("T")[1].split(".")[0];
-		const dayOfWeek = now.toLocaleDateString("en-US", {
+		const dateOnly = now.toLocaleDateString("en-CA", { timeZone });
+		const timeOnly = now.toLocaleTimeString("en-GB", { timeZone, hour12: false });
+		const dayOfWeek = new Intl.DateTimeFormat("en-US", {
 			weekday: "long",
-			timeZone: "UTC",
-		});
+			timeZone,
+		}).format(now);
 
 		const contextText = `# Current Time
 - Date: ${dateOnly}
-- Time: ${timeOnly} UTC
+- Time: ${timeOnly} ${timeZone}
 - Day: ${dayOfWeek}
 - Full: ${humanReadable}
 - ISO: ${isoTimestamp}`;

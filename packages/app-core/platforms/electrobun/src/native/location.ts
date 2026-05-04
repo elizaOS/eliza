@@ -12,6 +12,21 @@ const IP_GEO_SERVICES = [
 	"https://ipapi.co/json/",
 ];
 
+/**
+ * Reported accuracy (meters) for the IP-geolocation desktop fallback.
+ *
+ * IP-based lookup typically resolves to a city centroid — accurate to
+ * roughly 5 km in the median case for residential ISPs and worse on
+ * mobile/VPN networks. We surface 5000 m so downstream consumers (the
+ * travel-time fallback, the Location plugin's `accuracy` contract, and
+ * any UI that gates behavior on accuracy) treat this fix as coarse and
+ * never confuse it with a real GPS reading.
+ *
+ * Replace with a tighter floor only when wiring up Mac Core Location via
+ * the Swift shell.
+ */
+const IP_GEO_ACCURACY_METERS = 5000;
+
 export class LocationManager {
 	private sendToWebview: SendToWebview | null = null;
 	private lastKnown: GeoPosition | null = null;
@@ -37,7 +52,7 @@ export class LocationManager {
 				const position: GeoPosition = {
 					latitude: lat,
 					longitude: lon,
-					accuracy: 5000, // IP-based: ~5km
+					accuracy: IP_GEO_ACCURACY_METERS,
 					timestamp: Date.now(),
 				};
 				this.lastKnown = position;

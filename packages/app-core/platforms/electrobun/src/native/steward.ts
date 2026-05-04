@@ -56,6 +56,7 @@ function loadStewardCredentialsModule(): Promise<StewardCredentialsModule> {
 	return stewardCredentialsModulePromise;
 }
 
+// ---------------------------------------------------------------------------
 // Singleton
 // ---------------------------------------------------------------------------
 

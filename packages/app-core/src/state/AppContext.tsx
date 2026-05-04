@@ -775,6 +775,7 @@ function AppProviderInner({
   const miscUiHook = useMiscUiState();
   const {
     state: {
+      analysisMode,
       commandPaletteOpen,
       commandQuery,
       commandActiveIndex,
@@ -808,6 +809,7 @@ function AppProviderInner({
     },
     setActiveInboxChat,
     setActiveTerminalSessionId,
+    setAnalysisMode,
     setCommandQuery,
     setCommandActiveIndex,
     setEmotePickerOpen,
@@ -1477,6 +1479,7 @@ function AppProviderInner({
         commandQuery: setCommandQuery,
         commandActiveIndex: setCommandActiveIndex,
         emotePickerOpen: setEmotePickerOpen,
+        analysisMode: setAnalysisMode,
         storeSearch: setStoreSearch,
         storeFilter: setStoreFilter,
         storeSubTab: setStoreSubTab,
@@ -1675,6 +1678,7 @@ function AppProviderInner({
       setActivePackId,
       setActiveGameRunId,
       setActiveTerminalSessionId,
+      setAnalysisMode,
       setRecentApps,
     ],
   );
@@ -2244,6 +2248,8 @@ function AppProviderInner({
       droppedFiles,
       shareIngestNotice,
       chatPendingImages,
+      analysisMode,
+      setAnalysisMode,
       appRuns,
       activeGameRunId,
       activeGameApp,
@@ -2814,6 +2820,8 @@ function AppProviderInner({
       chatSending,
       ptySessions, // chatInput/chatSending/chatPendingImages are stale here — read via useChatComposer()
       chatInput,
+      analysisMode,
+      setAnalysisMode,
     ],
   );
 

@@ -4,6 +4,11 @@
  * Subactions: list_contacts, add_contact, log_interaction, add_follow_up,
  * complete_follow_up, follow_up_list, days_since, list_overdue_followups,
  * mark_followup_done, set_followup_threshold.
+ *
+ * Every user-visible reply runs through `renderLifeOpsActionReply` so the raw
+ * data templates land in the agent's character voice instead of being streamed
+ * raw. The structured `data` payload on each ActionResult is preserved verbatim
+ * for downstream consumers (ACTION_STATE provider, scenario assertions, UI).
  */
 
 import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
@@ -27,6 +32,10 @@ import {
 } from "@elizaos/shared";
 import { LifeOpsService } from "../lifeops/service.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
+import {
+  messageText as getMessageText,
+  renderLifeOpsActionReply,
+} from "./lifeops-grounded-reply.js";
 import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
 
 type Subaction =
@@ -67,7 +76,7 @@ function getParams(
   return params ?? {};
 }
 
-function messageText(message: Memory): string {
+function messageBodyText(message: Memory): string {
   return (message?.content?.text ?? "").toString();
 }
 
@@ -521,10 +530,47 @@ export const relationshipAction: Action & {
     options,
     callback,
   ): Promise<ActionResult> => {
+    const intent = getMessageText(message).trim();
+
+    const respond = async <
+      T extends NonNullable<ActionResult["data"]> | undefined,
+    >(payload: {
+      success: boolean;
+      scenario: string;
+      fallback: string;
+      context?: Record<string, unknown>;
+      data?: T;
+      values?: ActionResult["values"];
+    }): Promise<ActionResult> => {
+      const text = await renderLifeOpsActionReply({
+        runtime,
+        message,
+        state,
+        intent,
+        scenario: payload.scenario,
+        fallback: payload.fallback,
+        context: payload.context,
+      });
+      await callback?.({
+        text,
+        source: "action",
+        action: "OWNER_RELATIONSHIP",
+      });
+      return {
+        text,
+        success: payload.success,
+        ...(payload.values ? { values: payload.values } : {}),
+        ...(payload.data ? { data: payload.data } : {}),
+      };
+    };
+
     if (!(await hasLifeOpsAccess(runtime, message))) {
-      const text = "Relationship management is restricted to the owner.";
-      await callback?.({ text });
-      return { text, success: false, data: { error: "PERMISSION_DENIED" } };
+      return respond({
+        success: false,
+        scenario: "access_denied",
+        fallback: "Relationship management is restricted to the owner.",
+        data: { error: "PERMISSION_DENIED" },
+      });
     }
 
     const rawParams = getParams(options);
@@ -538,27 +584,28 @@ export const relationshipAction: Action & {
       existingParams: rawParams,
       requiredFields: ["subaction"],
     })) as RelationshipParameters;
-    const body = messageText(message);
+    const body = messageBodyText(message);
     const explicitSubaction = normalizeRelationshipSubaction(params.subaction);
     let subaction: Subaction | null = explicitSubaction;
     if (!subaction) {
-      const intent = (params.intent ?? body).trim();
+      const planIntent = (params.intent ?? body).trim();
       const plan = await resolveRelationshipPlanWithLlm({
         runtime,
         message,
         state,
-        intent,
+        intent: planIntent,
         params,
       });
       subaction = plan.subaction;
       if (plan.shouldAct === false || !subaction) {
-        const text =
+        const fallback =
           plan.response ??
           "Tell me whether you want to list contacts, add a contact, log an interaction, schedule a follow-up, complete a follow-up, list overdue follow-ups, change a follow-up threshold, or check days since last contact.";
-        await callback?.({ text });
-        return {
-          text,
+        return respond({
           success: false,
+          scenario: "planner_clarification",
+          fallback,
+          context: { suggestedSubaction: subaction },
           values: {
             success: false,
             error: "PLANNER_SHOULDACT_FALSE",
@@ -570,27 +617,24 @@ export const relationshipAction: Action & {
             error: "PLANNER_SHOULDACT_FALSE",
             suggestedSubaction: subaction,
           },
-        };
+        });
       }
     }
     const service = new LifeOpsService(runtime);
 
     if (subaction === "list_contacts") {
       const contacts = await service.listRelationships({ limit: 50 });
-      const text =
+      const fallback =
         contacts.length === 0
           ? "You have no contacts in your Rolodex yet."
           : `You have ${contacts.length} contact${contacts.length === 1 ? "" : "s"}:\n${contacts.map(formatRelationshipLine).join("\n")}`;
-      await callback?.({
-        text,
-        source: "action",
-        action: "OWNER_RELATIONSHIP",
-      });
-      return {
-        text,
+      return respond({
         success: true,
+        scenario: "relationship_list_contacts",
+        fallback,
+        context: { contactCount: contacts.length },
         data: { subaction, contacts },
-      };
+      });
     }
 
     if (subaction === "add_contact") {
@@ -598,23 +642,22 @@ export const relationshipAction: Action & {
       const channel = params.channel;
       const handle = params.handle;
       if (!name || !channel || !handle) {
-        const text =
-          "To add a contact I need at least a name, a primary channel, and a handle.";
-        await callback?.({ text });
-        return {
-          text,
+        return respond({
           success: false,
+          scenario: "relationship_add_missing_fields",
+          fallback:
+            "To add a contact I need at least a name, a primary channel, and a handle.",
           data: { subaction, error: "MISSING_FIELDS" },
-        };
+        });
       }
       if (!LIFEOPS_MESSAGE_CHANNELS.includes(channel)) {
-        const text = `Unknown channel '${channel}'. Supported: ${LIFEOPS_MESSAGE_CHANNELS.join(", ")}.`;
-        await callback?.({ text });
-        return {
-          text,
+        return respond({
           success: false,
+          scenario: "relationship_add_invalid_channel",
+          fallback: `Unknown channel '${channel}'. Supported: ${LIFEOPS_MESSAGE_CHANNELS.join(", ")}.`,
+          context: { channel },
           data: { subaction, error: "INVALID_CHANNEL" },
-        };
+        });
       }
       const rel = await service.upsertRelationship({
         name,
@@ -628,39 +671,38 @@ export const relationshipAction: Action & {
         lastContactedAt: null,
         metadata: {},
       });
-      const text = `Added ${rel.name} (${rel.primaryChannel}: ${rel.primaryHandle}) to your Rolodex.`;
-      await callback?.({
-        text,
-        source: "action",
-        action: "OWNER_RELATIONSHIP",
-      });
-      return {
-        text,
+      return respond({
         success: true,
+        scenario: "relationship_add_contact",
+        fallback: `Added ${rel.name} (${rel.primaryChannel}: ${rel.primaryHandle}) to your Rolodex.`,
+        context: {
+          name: rel.name,
+          channel: rel.primaryChannel,
+          handle: rel.primaryHandle,
+        },
         data: { subaction, relationship: rel },
-      };
+      });
     }
 
     if (subaction === "log_interaction") {
       const relationshipId = await resolveRelationshipId(service, params, body);
       if (!relationshipId) {
-        const text = "I need a known contact to log an interaction.";
-        await callback?.({ text });
-        return {
-          text,
+        return respond({
           success: false,
+          scenario: "relationship_log_missing_id",
+          fallback: "I need a known contact to log an interaction.",
           data: { subaction, error: "MISSING_RELATIONSHIP_ID" },
-        };
+        });
       }
       const rel = await service.getRelationship(relationshipId);
       if (!rel) {
-        const text = `No contact found with id ${relationshipId}.`;
-        await callback?.({ text });
-        return {
-          text,
+        return respond({
           success: false,
+          scenario: "relationship_log_not_found",
+          fallback: `No contact found with id ${relationshipId}.`,
+          context: { relationshipId },
           data: { subaction, error: "NOT_FOUND" },
-        };
+        });
       }
       const channel = params.channel ?? rel.primaryChannel;
       const interaction = await service.logInteraction({
@@ -671,17 +713,13 @@ export const relationshipAction: Action & {
         occurredAt: new Date().toISOString(),
         metadata: {},
       });
-      const text = `Logged interaction with ${rel.name} on ${channel}.`;
-      await callback?.({
-        text,
-        source: "action",
-        action: "OWNER_RELATIONSHIP",
-      });
-      return {
-        text,
+      return respond({
         success: true,
+        scenario: "relationship_log_interaction",
+        fallback: `Logged interaction with ${rel.name} on ${channel}.`,
+        context: { name: rel.name, channel },
         data: { subaction, interaction },
-      };
+      });
     }
 
     if (subaction === "add_follow_up") {
@@ -690,24 +728,25 @@ export const relationshipAction: Action & {
       const dueAt = dueAtSource ? normalizeFollowUpDueAt(dueAtSource) : null;
       const reason = params.reason ?? params.notes ?? "";
       if (!relationshipId || !dueAt) {
-        const text = !relationshipId
+        const fallback = !relationshipId
           ? "I need a known contact to schedule a follow-up."
           : "I need a due date or time to schedule a follow-up.";
-        await callback?.({ text });
         // Selection + execution were correct: the user asked to add a
         // follow-up, the action ran, and we're now waiting on the user to
         // disambiguate the contact or supply a due date. Mark as
         // awaiting-confirmation.
-        return {
-          text,
+        return respond({
           success: false,
+          scenario: "relationship_add_followup_missing",
+          fallback,
+          context: { hasRelationshipId: Boolean(relationshipId) },
           values: { requiresConfirmation: true },
           data: {
             subaction,
             error: "MISSING_FIELDS",
             requiresConfirmation: true,
           },
-        };
+        });
       }
       const followUp = await service.createFollowUp({
         relationshipId,
@@ -718,96 +757,80 @@ export const relationshipAction: Action & {
         completedAt: null,
         metadata: {},
       });
-      const text = `Scheduled follow-up for ${dueAt}: ${reason || "(no reason)"}.`;
-      await callback?.({
-        text,
-        source: "action",
-        action: "OWNER_RELATIONSHIP",
-      });
-      return {
-        text,
+      return respond({
         success: true,
+        scenario: "relationship_add_followup",
+        fallback: `Scheduled follow-up for ${dueAt}: ${reason || "(no reason)"}.`,
+        context: { dueAt, reason: reason || null },
         data: { subaction, followUp },
-      };
+      });
     }
 
     if (subaction === "complete_follow_up") {
       const followUpId = params.followUpId;
       if (!followUpId) {
-        const text = "I need the followUpId to complete.";
-        await callback?.({ text });
-        return {
-          text,
+        return respond({
           success: false,
+          scenario: "relationship_complete_followup_missing_id",
+          fallback: "I need the followUpId to complete.",
           data: { subaction, error: "MISSING_FOLLOW_UP_ID" },
-        };
+        });
       }
       await service.completeFollowUp(followUpId);
-      const text = `Marked follow-up ${followUpId} as completed.`;
-      await callback?.({
-        text,
-        source: "action",
-        action: "OWNER_RELATIONSHIP",
-      });
-      return {
-        text,
+      return respond({
         success: true,
+        scenario: "relationship_complete_followup",
+        fallback: `Marked follow-up ${followUpId} as completed.`,
+        context: { followUpId },
         data: { subaction, followUpId },
-      };
+      });
     }
 
     if (subaction === "follow_up_list") {
       const queue = await service.getDailyFollowUpQueue({ limit: 50 });
-      const text =
+      const fallback =
         queue.length === 0
           ? "No follow-ups due today."
           : `You have ${queue.length} follow-up${queue.length === 1 ? "" : "s"} due:\n${queue
               .map((fu) => `- ${fu.dueAt} — ${fu.reason} (id: ${fu.id})`)
               .join("\n")}`;
-      await callback?.({
-        text,
-        source: "action",
-        action: "OWNER_RELATIONSHIP",
-      });
-      return {
-        text,
+      return respond({
         success: true,
+        scenario: "relationship_followup_list",
+        fallback,
+        context: { dueCount: queue.length },
         data: { subaction, followUps: queue },
-      };
+      });
     }
 
     if (subaction === "days_since") {
       const relationshipId = await resolveRelationshipId(service, params, body);
       if (!relationshipId) {
-        const text = "I need a known contact to check last contact.";
-        await callback?.({ text });
-        return {
-          text,
+        return respond({
           success: false,
+          scenario: "relationship_days_since_missing_id",
+          fallback: "I need a known contact to check last contact.",
           data: { subaction, error: "MISSING_RELATIONSHIP_ID" },
-        };
+        });
       }
       const rel = await service.getRelationship(relationshipId);
       const days = await service.getDaysSinceContact(relationshipId);
-      const text =
+      const fallback =
         days === null
           ? `No contact has been logged with ${rel?.name ?? relationshipId}.`
           : `It has been ${days} day${days === 1 ? "" : "s"} since you contacted ${rel?.name ?? relationshipId}.`;
-      await callback?.({
-        text,
-        source: "action",
-        action: "OWNER_RELATIONSHIP",
-      });
-      return {
-        text,
+      return respond({
         success: true,
+        scenario: "relationship_days_since",
+        fallback,
+        context: { name: rel?.name ?? null, days },
         data: { subaction, relationshipId, days },
-      };
+      });
     }
 
     if (subaction === "list_overdue_followups") {
       const overdue = await listOverdueRelationships(service);
-      const text =
+      const fallback =
         overdue.length === 0
           ? "No overdue follow-ups."
           : `Overdue follow-ups (${overdue.length}):\n${overdue
@@ -816,38 +839,34 @@ export const relationshipAction: Action & {
                   `- ${entry.name}: last contacted ${entry.lastContactedAt} (+${entry.daysOverdue}d over ${entry.thresholdDays}d threshold)`,
               )
               .join("\n")}`;
-      await callback?.({
-        text,
-        source: "action",
-        action: "OWNER_RELATIONSHIP",
-      });
-      return {
-        text,
+      return respond({
         success: true,
+        scenario: "relationship_overdue_list",
+        fallback,
+        context: { overdueCount: overdue.length },
         data: { subaction, overdue },
-      };
+      });
     }
 
     if (subaction === "mark_followup_done") {
       const relationshipId = await resolveRelationshipId(service, params, body);
       if (!relationshipId) {
-        const text = "I need a known contact to mark that follow-up done.";
-        await callback?.({ text });
-        return {
-          text,
+        return respond({
           success: false,
+          scenario: "relationship_mark_done_missing_id",
+          fallback: "I need a known contact to mark that follow-up done.",
           data: { subaction, error: "MISSING_RELATIONSHIP_ID" },
-        };
+        });
       }
       const relationship = await service.getRelationship(relationshipId);
       if (!relationship) {
-        const text = `No contact found with id ${relationshipId}.`;
-        await callback?.({ text });
-        return {
-          text,
+        return respond({
           success: false,
+          scenario: "relationship_mark_done_not_found",
+          fallback: `No contact found with id ${relationshipId}.`,
+          context: { relationshipId },
           data: { subaction, error: "NOT_FOUND" },
-        };
+        });
       }
       const nowIso = new Date().toISOString();
       await service.upsertRelationship({
@@ -872,50 +891,51 @@ export const relationshipAction: Action & {
       for (const followUp of pendingFollowUps) {
         await service.completeFollowUp(followUp.id);
       }
-      const text =
+      const fallback =
         pendingFollowUps.length > 0
           ? `Marked ${relationship.name} as followed up and completed ${pendingFollowUps.length} open follow-up${pendingFollowUps.length === 1 ? "" : "s"}.`
           : `Marked ${relationship.name} as followed up.`;
-      await callback?.({
-        text,
-        source: "action",
-        action: "OWNER_RELATIONSHIP",
-      });
-      return {
-        text,
+      return respond({
         success: true,
+        scenario: "relationship_mark_done",
+        fallback,
+        context: {
+          name: relationship.name,
+          completedCount: pendingFollowUps.length,
+        },
         data: {
           subaction,
           relationshipId: relationship.id,
           completedFollowUpIds: pendingFollowUps.map((followUp) => followUp.id),
           lastContactedAt: nowIso,
         },
-      };
+      });
     }
 
     if (subaction === "set_followup_threshold") {
       const relationshipId = await resolveRelationshipId(service, params, body);
       const thresholdDays = parseThresholdDays(params.thresholdDays);
       if (!relationshipId || thresholdDays === null) {
-        const text = !relationshipId
+        const fallback = !relationshipId
           ? "I need a known contact to change the follow-up threshold."
           : "I need a positive threshold in days.";
-        await callback?.({ text });
-        return {
-          text,
+        return respond({
           success: false,
+          scenario: "relationship_set_threshold_missing",
+          fallback,
+          context: { hasRelationshipId: Boolean(relationshipId) },
           data: { subaction, error: "MISSING_FIELDS" },
-        };
+        });
       }
       const relationship = await service.getRelationship(relationshipId);
       if (!relationship) {
-        const text = `No contact found with id ${relationshipId}.`;
-        await callback?.({ text });
-        return {
-          text,
+        return respond({
           success: false,
+          scenario: "relationship_set_threshold_not_found",
+          fallback: `No contact found with id ${relationshipId}.`,
+          context: { relationshipId },
           data: { subaction, error: "NOT_FOUND" },
-        };
+        });
       }
       await service.upsertRelationship({
         id: relationship.id,
@@ -933,26 +953,22 @@ export const relationshipAction: Action & {
           followupThresholdDays: thresholdDays,
         },
       });
-      const text = `Set follow-up threshold for ${relationship.name} to ${thresholdDays} days.`;
-      await callback?.({
-        text,
-        source: "action",
-        action: "OWNER_RELATIONSHIP",
-      });
-      return {
-        text,
+      return respond({
         success: true,
+        scenario: "relationship_set_threshold",
+        fallback: `Set follow-up threshold for ${relationship.name} to ${thresholdDays} days.`,
+        context: { name: relationship.name, thresholdDays },
         data: { subaction, relationshipId: relationship.id, thresholdDays },
-      };
+      });
     }
 
-    const text = `Unknown relationship subaction: ${subaction}.`;
-    await callback?.({ text });
-    return {
-      text,
+    return respond({
       success: false,
+      scenario: "relationship_unknown_subaction",
+      fallback: `Unknown relationship subaction: ${subaction}.`,
+      context: { subaction },
       data: { error: "UNKNOWN_SUBACTION", subaction },
-    };
+    });
   },
   parameters: [
     {

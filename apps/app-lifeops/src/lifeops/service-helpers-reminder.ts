@@ -19,9 +19,17 @@ import {
   type LIFEOPS_REMINDER_PREFERENCE_SOURCES,
 } from "../contracts/index.js";
 import {
+  DEFAULT_MORNING_WINDOW,
+  DEFAULT_NIGHT_WINDOW,
+  type EnforcementWindow,
+  getCurrentEnforcementWindow,
+  minutesPastWindowStart,
+} from "./enforcement-windows.js";
+import {
   REMINDER_ACTIVITY_GATE_METADATA_KEY,
   REMINDER_ACTIVITY_GATES,
   REMINDER_ESCALATION_DELAYS,
+  REMINDER_ESCALATION_PROFILE_METADATA_KEY,
   REMINDER_INTENSITY_CANONICAL_ALIASES,
   REMINDER_INTENSITY_METADATA_KEY,
   REMINDER_INTENSITY_NOTE_METADATA_KEY,
@@ -205,7 +213,7 @@ export function mapPlatformToReminderChannel(
   return isReminderChannel(lower) ? lower : null;
 }
 
-type ReminderEscalationRoutingHint = {
+export type ReminderEscalationRoutingHint = {
   source: string;
   preferredCommunicationChannel: string | null;
   lastResponseAt: string | null;
@@ -261,6 +269,250 @@ export type ReminderRouteCandidate = {
   vetoReasons: string[];
   interruptionBudget: ReminderInterruptionBudget;
 };
+
+export interface ReminderEnforcementState {
+  window: EnforcementWindow;
+  minutesPastStart: number;
+  definitionIsRoutine: boolean;
+  channelAvailability: Partial<Record<LifeOpsReminderChannel, boolean>>;
+}
+
+export type ReminderEscalationDelayCompressionProfile = {
+  afterMinutes: number;
+  factor: number;
+  minMinutes: number;
+};
+
+export type ReminderEscalationForceChannelProfile = {
+  channel: LifeOpsReminderChannel;
+  afterMinutes: number;
+  urgencies: readonly LifeOpsReminderUrgency[];
+  requireAvailable: boolean;
+};
+
+export type ReminderEscalationProfile = {
+  activeWindowOnly: boolean;
+  requireRoutineDefinition: boolean;
+  delayCompression: ReminderEscalationDelayCompressionProfile | null;
+  forceChannel: ReminderEscalationForceChannelProfile | null;
+};
+
+export type ReminderEscalationProfileDecision = {
+  delayMinutes: number | null;
+  forceChannel: LifeOpsReminderChannel | null;
+};
+
+export const DEFAULT_REMINDER_ESCALATION_PROFILE: ReminderEscalationProfile = {
+  activeWindowOnly: true,
+  requireRoutineDefinition: true,
+  delayCompression: {
+    afterMinutes: 10,
+    factor: 0.5,
+    minMinutes: 1,
+  },
+  forceChannel: {
+    channel: "voice",
+    afterMinutes: 20,
+    urgencies: ["critical"],
+    requireAvailable: true,
+  },
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function readProfileNumber(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function readProfileBoolean(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function readProfileUrgencies(
+  value: unknown,
+  fallback: readonly LifeOpsReminderUrgency[],
+): readonly LifeOpsReminderUrgency[] {
+  if (!Array.isArray(value)) {
+    return fallback;
+  }
+  const urgencies = value.filter(
+    (entry): entry is LifeOpsReminderUrgency =>
+      entry === "low" ||
+      entry === "medium" ||
+      entry === "high" ||
+      entry === "critical",
+  );
+  return urgencies.length > 0 ? urgencies : fallback;
+}
+
+function readDelayCompressionProfile(
+  value: unknown,
+  fallback: ReminderEscalationDelayCompressionProfile | null,
+): ReminderEscalationDelayCompressionProfile | null {
+  if (value === null) {
+    return null;
+  }
+  if (!isRecord(value)) {
+    return fallback;
+  }
+  const base = fallback ?? DEFAULT_REMINDER_ESCALATION_PROFILE.delayCompression;
+  if (!base) {
+    return null;
+  }
+  return {
+    afterMinutes: Math.max(
+      0,
+      Math.floor(readProfileNumber(value.afterMinutes, base.afterMinutes)),
+    ),
+    factor: Math.max(0, readProfileNumber(value.factor, base.factor)),
+    minMinutes: Math.max(
+      1,
+      Math.floor(readProfileNumber(value.minMinutes, base.minMinutes)),
+    ),
+  };
+}
+
+function readForceChannelProfile(
+  value: unknown,
+  fallback: ReminderEscalationForceChannelProfile | null,
+): ReminderEscalationForceChannelProfile | null {
+  if (value === null) {
+    return null;
+  }
+  if (!isRecord(value)) {
+    return fallback;
+  }
+  const base = fallback ?? DEFAULT_REMINDER_ESCALATION_PROFILE.forceChannel;
+  if (!base) {
+    return null;
+  }
+  const channel = isReminderChannel(value.channel)
+    ? value.channel
+    : base.channel;
+  return {
+    channel,
+    afterMinutes: Math.max(
+      0,
+      Math.floor(readProfileNumber(value.afterMinutes, base.afterMinutes)),
+    ),
+    urgencies: readProfileUrgencies(value.urgencies, base.urgencies),
+    requireAvailable: readProfileBoolean(
+      value.requireAvailable,
+      base.requireAvailable,
+    ),
+  };
+}
+
+export function readReminderEscalationProfile(
+  definition: Pick<LifeOpsTaskDefinition, "metadata"> | null | undefined,
+): ReminderEscalationProfile {
+  const raw = definition?.metadata?.[REMINDER_ESCALATION_PROFILE_METADATA_KEY];
+  if (!isRecord(raw)) {
+    return DEFAULT_REMINDER_ESCALATION_PROFILE;
+  }
+  return {
+    activeWindowOnly: readProfileBoolean(
+      raw.activeWindowOnly,
+      DEFAULT_REMINDER_ESCALATION_PROFILE.activeWindowOnly,
+    ),
+    requireRoutineDefinition: readProfileBoolean(
+      raw.requireRoutineDefinition,
+      DEFAULT_REMINDER_ESCALATION_PROFILE.requireRoutineDefinition,
+    ),
+    delayCompression: readDelayCompressionProfile(
+      raw.delayCompression,
+      DEFAULT_REMINDER_ESCALATION_PROFILE.delayCompression,
+    ),
+    forceChannel: readForceChannelProfile(
+      raw.forceChannel,
+      DEFAULT_REMINDER_ESCALATION_PROFILE.forceChannel,
+    ),
+  };
+}
+
+export function definitionTriggersEnforcement(
+  definition:
+    | Pick<LifeOpsTaskDefinition, "kind" | "metadata">
+    | null
+    | undefined,
+): boolean {
+  if (!definition) return false;
+  if (
+    definition.kind === "morning_routine" ||
+    definition.kind === "night_routine"
+  ) {
+    return true;
+  }
+  return definition.metadata?.enforceRoutineWindow === true;
+}
+
+export function buildReminderEnforcementState(
+  now: Date,
+  timezone: string,
+  definition:
+    | Pick<LifeOpsTaskDefinition, "kind" | "metadata">
+    | null
+    | undefined,
+  channelAvailability: Partial<Record<LifeOpsReminderChannel, boolean>> = {},
+  windows?: EnforcementWindow[],
+): ReminderEnforcementState {
+  const window = getCurrentEnforcementWindow(
+    now,
+    timezone,
+    windows ?? [DEFAULT_MORNING_WINDOW, DEFAULT_NIGHT_WINDOW],
+  );
+  return {
+    window,
+    minutesPastStart: minutesPastWindowStart(now, timezone, window),
+    definitionIsRoutine: definitionTriggersEnforcement(definition),
+    channelAvailability,
+  };
+}
+
+export function resolveReminderEscalationProfileDecision(args: {
+  normalDelayMinutes: number | null;
+  state: ReminderEnforcementState | null;
+  urgency: LifeOpsReminderUrgency;
+  profile?: ReminderEscalationProfile;
+}): ReminderEscalationProfileDecision {
+  const profile = args.profile ?? DEFAULT_REMINDER_ESCALATION_PROFILE;
+  let delayMinutes = args.normalDelayMinutes;
+  let forceChannel: LifeOpsReminderChannel | null = null;
+  const state = args.state;
+  if (!state) {
+    return { delayMinutes, forceChannel };
+  }
+  if (profile.activeWindowOnly && state.window.kind === "none") {
+    return { delayMinutes, forceChannel };
+  }
+  if (profile.requireRoutineDefinition && !state.definitionIsRoutine) {
+    return { delayMinutes, forceChannel };
+  }
+  const compression = profile.delayCompression;
+  if (
+    delayMinutes !== null &&
+    compression &&
+    state.minutesPastStart >= compression.afterMinutes
+  ) {
+    delayMinutes = Math.max(
+      compression.minMinutes,
+      Math.floor(delayMinutes * compression.factor),
+    );
+  }
+  const forceProfile = profile.forceChannel;
+  if (
+    forceProfile &&
+    state.minutesPastStart >= forceProfile.afterMinutes &&
+    forceProfile.urgencies.includes(args.urgency) &&
+    (!forceProfile.requireAvailable ||
+      state.channelAvailability[forceProfile.channel] === true)
+  ) {
+    forceChannel = forceProfile.channel;
+  }
+  return { delayMinutes, forceChannel };
+}
 
 export function resolveReminderEscalationRoutingPolicy(args: {
   activityProfile: ReminderActivityProfileSnapshot | null;
@@ -629,6 +881,39 @@ export function shouldDeferReminderUntilComputerActive(args: {
   return !isActivelyUsingComputer(args.activityProfile);
 }
 
+/**
+ * Snapshot-side mirror of `isBusyDay()` from
+ * `activity-profile/proactive-planner.ts`. The reminder dispatch loop
+ * only carries a `LifeOpsAttentionContext` snapshot — not the full
+ * `ActivityProfile` — so we cannot call the planner helper directly.
+ * The signals checked here are the ones the snapshot already exposes:
+ * `screenContextBusy`, `calendarBusy`, and `avgWeekdayMeetings`. Keep
+ * this in sync with the planner-side rule when either side changes.
+ *
+ * Used by the stretch reminder gate so soft self-care never competes
+ * with calendar-heavy or screen-busy days.
+ */
+export function isReminderBusyDay(
+  activityProfile: ReminderActivityProfileSnapshot | null,
+): boolean {
+  if (!activityProfile) {
+    return false;
+  }
+  if (activityProfile.screenContextBusy === true) {
+    return true;
+  }
+  if (activityProfile.calendarBusy === true) {
+    return true;
+  }
+  if (
+    typeof activityProfile.avgWeekdayMeetings === "number" &&
+    activityProfile.avgWeekdayMeetings >= 4
+  ) {
+    return true;
+  }
+  return false;
+}
+
 export type ReminderOwnerResponseResolution =
   | "acknowledged"
   | "completed"
@@ -640,6 +925,13 @@ export type ReminderOwnerResponseDecision =
   | "needs_clarification"
   | "unrelated"
   | "no_response";
+
+export type ReminderOwnerResponseClassifierSource =
+  | "none"
+  | "deterministic"
+  | "semantic"
+  | "semantic_abstain"
+  | "semantic_error";
 
 export type ReminderOwnerResponseContext = {
   title?: string | null;
@@ -655,6 +947,8 @@ export type ReminderOwnerResponseClassification = {
   snoozeRequest: SnoozeLifeOpsOccurrenceRequest | null;
   confidence: number;
   reason: string;
+  classifierSource?: ReminderOwnerResponseClassifierSource;
+  semanticReason?: string | null;
 };
 
 export type ReminderResponseCandidate = {
@@ -690,6 +984,8 @@ export type ReminderReviewObservation = {
   respondedAt: string | null;
   responseText: string | null;
   reason: string;
+  classifierSource?: ReminderOwnerResponseClassifierSource;
+  semanticReason?: string | null;
 };
 
 export type ReminderReviewTransition =
@@ -701,6 +997,8 @@ export type ReminderReviewTransition =
       snoozeRequest: SnoozeLifeOpsOccurrenceRequest | null;
       confidence: number;
       reason: string;
+      classifierSource?: ReminderOwnerResponseClassifierSource;
+      semanticReason?: string | null;
     }
   | {
       kind: "clarify";
@@ -858,6 +1156,8 @@ export function decideReminderReviewTransition(args: {
         respondedAt: args.responseReview.respondedAt,
         responseText: args.responseReview.responseText,
         reason: "snooze_resolution_requires_occurrence_duration",
+        classifierSource: args.responseReview.classifierSource,
+        semanticReason: args.responseReview.semanticReason,
       };
       return args.reviewDue
         ? { kind: "clarify", observation }
@@ -871,6 +1171,8 @@ export function decideReminderReviewTransition(args: {
       snoozeRequest: args.responseReview.snoozeRequest,
       confidence: args.responseReview.confidence,
       reason: args.responseReview.reason,
+      classifierSource: args.responseReview.classifierSource,
+      semanticReason: args.responseReview.semanticReason,
     };
   }
 
@@ -888,6 +1190,8 @@ export function decideReminderReviewTransition(args: {
     respondedAt: args.responseReview.respondedAt,
     responseText: args.responseReview.responseText,
     reason: args.responseReview.reason,
+    classifierSource: args.responseReview.classifierSource,
+    semanticReason: args.responseReview.semanticReason,
   };
   return args.responseReview.decision === "needs_clarification"
     ? { kind: "clarify", observation }
@@ -1269,6 +1573,169 @@ export function classifyReminderOwnerResponseText(
     confidence: 0.4,
     reason: "no_explicit_reminder_resolution",
   };
+}
+
+export type ReminderOwnerResponseClassificationInput = {
+  text: string;
+  context?: ReminderOwnerResponseContext;
+};
+
+export type ReminderOwnerResponseSemanticClassification =
+  | ReminderOwnerResponseClassification
+  | {
+      decision: "abstain";
+      resolution: null;
+      snoozeRequest: null;
+      confidence: number;
+      reason: string;
+    };
+
+export type ReminderOwnerResponseSemanticClassifier = (
+  input: ReminderOwnerResponseClassificationInput,
+) =>
+  | ReminderOwnerResponseSemanticClassification
+  | null
+  | Promise<ReminderOwnerResponseSemanticClassification | null>;
+
+function normalizeSemanticConfidence(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(0, Math.min(1, value))
+    : 0.5;
+}
+
+function normalizeSemanticReason(value: unknown): string {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim().slice(0, 120)
+    : "semantic_classifier";
+}
+
+function normalizeSemanticResolution(
+  value: unknown,
+): ReminderOwnerResponseResolution | null {
+  return value === "acknowledged" ||
+    value === "completed" ||
+    value === "skipped" ||
+    value === "snoozed"
+    ? value
+    : null;
+}
+
+function normalizeSemanticDecision(
+  value: unknown,
+): ReminderOwnerResponseDecision | "abstain" | null {
+  return value === "explicit_resolution" ||
+    value === "needs_clarification" ||
+    value === "unrelated" ||
+    value === "abstain"
+    ? value
+    : null;
+}
+
+function normalizeSemanticSnoozeRequest(
+  value: unknown,
+): SnoozeLifeOpsOccurrenceRequest | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const minutes = value.minutes;
+  if (typeof minutes === "number" && Number.isFinite(minutes) && minutes > 0) {
+    return { minutes: Math.floor(minutes) };
+  }
+  const preset = value.preset;
+  if (
+    preset === "15m" ||
+    preset === "30m" ||
+    preset === "1h" ||
+    preset === "tomorrow_morning" ||
+    preset === "tonight"
+  ) {
+    return { preset };
+  }
+  return null;
+}
+
+export function parseReminderOwnerResponseSemanticClassification(
+  value: unknown,
+): ReminderOwnerResponseSemanticClassification | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const decision = normalizeSemanticDecision(value.decision);
+  if (!decision) {
+    return null;
+  }
+  const confidence = normalizeSemanticConfidence(value.confidence);
+  const reason = normalizeSemanticReason(value.reason);
+  if (decision === "abstain") {
+    return {
+      decision,
+      resolution: null,
+      snoozeRequest: null,
+      confidence,
+      reason,
+    };
+  }
+  const resolution =
+    decision === "explicit_resolution"
+      ? normalizeSemanticResolution(value.resolution)
+      : null;
+  if (decision === "explicit_resolution" && !resolution) {
+    return null;
+  }
+  const snoozeRequest =
+    resolution === "snoozed"
+      ? normalizeSemanticSnoozeRequest(value.snoozeRequest)
+      : null;
+  return {
+    decision,
+    resolution,
+    snoozeRequest,
+    confidence,
+    reason,
+  };
+}
+
+export async function classifyReminderOwnerResponse(args: {
+  text: string;
+  context?: ReminderOwnerResponseContext;
+  semanticClassifier?: ReminderOwnerResponseSemanticClassifier | null;
+}): Promise<ReminderOwnerResponseClassification> {
+  const deterministic = classifyReminderOwnerResponseText(
+    args.text,
+    args.context,
+  );
+  if (deterministic.decision !== "unrelated" || !args.semanticClassifier) {
+    return { ...deterministic, classifierSource: "deterministic" };
+  }
+  if (args.semanticClassifier) {
+    try {
+      const semantic = await args.semanticClassifier({
+        text: args.text,
+        context: args.context,
+      });
+      if (semantic && semantic.decision !== "abstain") {
+        return {
+          ...semantic,
+          classifierSource: "semantic",
+          semanticReason: semantic.reason,
+        };
+      }
+      if (semantic?.decision === "abstain") {
+        return {
+          ...deterministic,
+          classifierSource: "semantic_abstain",
+          semanticReason: semantic.reason,
+        };
+      }
+    } catch {
+      return {
+        ...deterministic,
+        classifierSource: "semantic_error",
+        semanticReason: "semantic_classifier_error",
+      };
+    }
+  }
+  return { ...deterministic, classifierSource: "deterministic" };
 }
 
 export function normalizeReminderUrgencyValue(

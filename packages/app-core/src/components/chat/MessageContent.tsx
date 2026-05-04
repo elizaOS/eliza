@@ -46,6 +46,7 @@ function isSafeNormalizedPluginId(id: string): boolean {
 
 interface MessageContentProps {
   message: ConversationMessage;
+  analysisMode?: boolean;
 }
 
 // ── Segment types ───────────────────────────────────────────────────
@@ -59,7 +60,8 @@ type Segment =
       id: string;
       scope: string;
       options: ChoiceOption[];
-    };
+    }
+  | { kind: "analysis-xml"; tag: string; content: string };
 
 // ── Detection ───────────────────────────────────────────────────────
 
@@ -325,32 +327,42 @@ export function findPatchRegions(
   return results;
 }
 
-/**
- * Parse message text for [CONFIG:id] markers, [CHOICE:...] blocks,
- * fenced UiSpec JSON, and inline JSONL patch blocks (Chat Mode).
- * Returns an array of segments for rendering.
- */
-function parseSegments(text: string): Segment[] {
-  const cleaned = normalizeDisplayText(text);
-  if (!cleaned) return [{ kind: "text", text: "" }];
+function parseSegments(text: string, analysisMode: boolean): Segment[] {
+  // If analysis mode is enabled, we parse the raw text to extract XML blocks,
+  // otherwise we use the normalized text which strips them.
+  const targetText = analysisMode ? text : normalizeDisplayText(text);
+  if (!targetText) return [{ kind: "text", text: "" }];
 
   // Build a list of match regions sorted by position
   const regions: Array<{ start: number; end: number; segment: Segment }> = [];
 
+  if (analysisMode) {
+    const XML_RE = /<(thought|analysis|reasoning|scratchpad|tool_calls?|tools?|action|providers?|response|text)\b[^>]*>([\s\S]*?)(?:<\/\1>|$)/gi;
+    let m: RegExpExecArray | null = XML_RE.exec(targetText);
+    while (m !== null) {
+      regions.push({
+        start: m.index,
+        end: m.index + m[0].length,
+        segment: { kind: "analysis-xml", tag: m[1].toLowerCase(), content: m[2] },
+      });
+      m = XML_RE.exec(targetText);
+    }
+  }
+
   // 1. Find [CONFIG:pluginId] markers
   CONFIG_RE.lastIndex = 0;
-  let m: RegExpExecArray | null = CONFIG_RE.exec(cleaned);
+  let m: RegExpExecArray | null = CONFIG_RE.exec(targetText);
   while (m !== null) {
     regions.push({
       start: m.index,
       end: m.index + m[0].length,
       segment: { kind: "config", pluginId: m[1] },
     });
-    m = CONFIG_RE.exec(cleaned);
+    m = CONFIG_RE.exec(targetText);
   }
 
   // 1b. Find [CHOICE:scope id=...] ... [/CHOICE] blocks
-  for (const choice of findChoiceRegions(cleaned)) {
+  for (const choice of findChoiceRegions(targetText)) {
     regions.push({
       start: choice.start,
       end: choice.end,
@@ -365,7 +377,7 @@ function parseSegments(text: string): Segment[] {
 
   // 2. Find fenced JSON that is a UiSpec (Generate Mode / legacy format)
   FENCED_JSON_RE.lastIndex = 0;
-  m = FENCED_JSON_RE.exec(cleaned);
+  m = FENCED_JSON_RE.exec(targetText);
   while (m !== null) {
     const json = m[1].trim();
     const parsed = tryParse(json);
@@ -376,11 +388,11 @@ function parseSegments(text: string): Segment[] {
         segment: { kind: "ui-spec", spec: parsed, raw: json },
       });
     }
-    m = FENCED_JSON_RE.exec(cleaned);
+    m = FENCED_JSON_RE.exec(targetText);
   }
 
   // 3. Find inline JSONL patch blocks (Chat Mode)
-  for (const patch of findPatchRegions(cleaned)) {
+  for (const patch of findPatchRegions(targetText)) {
     // Skip if this region overlaps with an already-found fenced block
     const overlaps = regions.some(
       (r) => patch.start < r.end && patch.end > r.start,
@@ -396,7 +408,7 @@ function parseSegments(text: string): Segment[] {
 
   // No special content found — return plain text
   if (regions.length === 0) {
-    return [{ kind: "text", text: cleaned }];
+    return [{ kind: "text", text: targetText }];
   }
 
   // Sort by start position, then interleave with text segments
@@ -410,7 +422,7 @@ function parseSegments(text: string): Segment[] {
 
     // Push preceding text
     if (r.start > cursor) {
-      const t = cleaned.slice(cursor, r.start);
+      const t = targetText.slice(cursor, r.start);
       if (t.trim()) segments.push({ kind: "text", text: t });
     }
     segments.push(r.segment);
@@ -418,8 +430,8 @@ function parseSegments(text: string): Segment[] {
   }
 
   // Trailing text
-  if (cursor < cleaned.length) {
-    const t = cleaned.slice(cursor);
+  if (cursor < targetText.length) {
+    const t = targetText.slice(cursor);
     if (t.trim()) segments.push({ kind: "text", text: t });
   }
 
@@ -894,18 +906,18 @@ function UiSpecBlock({ spec, raw }: { spec: UiSpec; raw: string }) {
 
 // ── Main component ──────────────────────────────────────────────────
 
-export function MessageContent({ message }: MessageContentProps) {
+export function MessageContent({ message, analysisMode = false }: MessageContentProps) {
   const { sendActionMessage } = useApp();
 
   // Parse segments — memoize to avoid re-parsing on every render
   const segments = useMemo(() => {
     try {
-      return parseSegments(message.text);
+      return parseSegments(message.text, analysisMode);
     } catch {
       // If parsing fails, just show plain text
       return [{ kind: "text" as const, text: message.text }];
     }
-  }, [message.text]);
+  }, [message.text, analysisMode]);
 
   const handleChoice = useCallback(
     (value: string) => {
@@ -937,7 +949,9 @@ export function MessageContent({ message }: MessageContentProps) {
                 ? `config:${seg.pluginId}`
                 : seg.kind === "choice"
                   ? `choice:${seg.id}`
-                  : `ui:${seg.raw.slice(0, 80)}`;
+                  : seg.kind === "analysis-xml"
+                    ? `analysis:${seg.tag}`
+                    : `ui:${seg.raw.slice(0, 80)}`;
           const segmentKey = nextKey(baseKey);
 
           switch (seg.kind) {
@@ -945,6 +959,17 @@ export function MessageContent({ message }: MessageContentProps) {
               return (
                 <div key={segmentKey} className="whitespace-pre-wrap">
                   {seg.text}
+                </div>
+              );
+            case "analysis-xml":
+              return (
+                <div key={segmentKey} className="my-2 border border-accent/20 rounded bg-accent/5 overflow-hidden">
+                  <div className="bg-accent/10 px-3 py-1 text-xs font-mono font-bold text-accent uppercase tracking-wider">
+                    &lt;{seg.tag}&gt;
+                  </div>
+                  <pre className="px-3 py-2 text-xs font-mono whitespace-pre-wrap break-words text-muted m-0 overflow-x-auto">
+                    {seg.content.trim()}
+                  </pre>
                 </div>
               );
             case "config":
@@ -973,6 +998,30 @@ export function MessageContent({ message }: MessageContentProps) {
           }
         });
       })()}
+      {analysisMode && message.actionName && (
+        <div className="my-2 border border-purple-500/20 rounded bg-purple-500/5 overflow-hidden">
+          <div className="bg-purple-500/10 px-3 py-1 text-xs font-mono font-bold text-purple-500 uppercase tracking-wider">
+            ACTION TAKEN
+          </div>
+          <div className="px-3 py-2 text-xs font-mono text-muted space-y-1">
+            {message.actionName}
+          </div>
+        </div>
+      )}
+      {analysisMode && message.actionCallbackHistory && message.actionCallbackHistory.length > 0 && (
+        <div className="my-2 border border-blue-500/20 rounded bg-blue-500/5 overflow-hidden">
+          <div className="bg-blue-500/10 px-3 py-1 text-xs font-mono font-bold text-blue-500 uppercase tracking-wider">
+            ACTION CALLBACK HISTORY
+          </div>
+          <div className="px-3 py-2 text-xs font-mono text-muted space-y-1">
+            {message.actionCallbackHistory.map((log, idx) => (
+              <div key={idx} className="break-words border-b border-blue-500/10 pb-1 last:border-0 last:pb-0">
+                {log}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

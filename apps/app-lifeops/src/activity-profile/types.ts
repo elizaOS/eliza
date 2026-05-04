@@ -131,7 +131,8 @@ export interface ProactiveAction {
     | "gn"
     | "pre_activity_nudge"
     | "goal_check_in"
-    | "onboarding_seed";
+    | "onboarding_seed"
+    | "social_overuse_check";
   scheduledFor: number;
   targetPlatform: string;
   contextSummary: string;
@@ -151,4 +152,6 @@ export interface FiredActionsLog {
   nudgedCalendarEventIds: string[];
   checkedGoalIds?: string[];
   seedingOfferedAt?: number;
+  /** Epoch ms of the most recent social_overuse_check delivery, if any. */
+  socialOveruseCheckedAt?: number;
 }

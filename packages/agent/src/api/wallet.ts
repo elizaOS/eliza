@@ -4,7 +4,7 @@
  * Balance data from Alchemy/Ankr (EVM), NodeReal/QuickNode (BSC RPC),
  * and Helius (Solana) REST APIs.
  *
- * DEX price oracle logic lives in ./wallet-dex-prices.ts
+ * DEX price oracle logic lives in ./wallet-dex-prices.ts.
  * EVM balance + NFT fetching lives in ./wallet-evm-balance.ts
  */
 import crypto from "node:crypto";

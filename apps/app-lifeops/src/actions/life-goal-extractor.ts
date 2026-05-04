@@ -1,5 +1,5 @@
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
-import { ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import { parseJSONObjectFromText } from "@elizaos/core";
 import type {
   CreateLifeOpsGoalRequest,
   LifeOpsGoalDefinition,
@@ -12,6 +12,7 @@ import {
   type GoalGroundingState,
   mergeGoalGroundingMetadata,
 } from "../lifeops/goal-grounding.js";
+import { runExtractorPipeline } from "./extractor-pipeline.js";
 import { recentConversationTexts } from "./life-recent-context.js";
 
 export const GOAL_GROUNDING_FIELD_VALUES = [
@@ -376,7 +377,7 @@ export async function extractGoalCreatePlanWithLlm(args: {
   state: State | undefined;
   message?: Memory;
 }): Promise<ExtractedGoalCreatePlan> {
-  if (!args.intent.trim() || typeof args.runtime.useModel !== "function") {
+  if (!args.intent.trim()) {
     return { ...EMPTY_GOAL_CREATE_PLAN };
   }
   const recentConversation = (
@@ -391,33 +392,25 @@ export async function extractGoalCreatePlanWithLlm(args: {
     args.intent,
     recentConversation,
   );
-  try {
-    const raw = await args.runtime.useModel(ModelType.TEXT_LARGE, { prompt });
-    const parsed = parseJSONObjectFromText(typeof raw === "string" ? raw : "");
-    const plan = parsed ? buildCreatePlan(parsed) : null;
-    if (plan) {
-      return stabilizeCreatePlan(plan, args.intent);
-    }
-    const repairedRaw = await args.runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt: buildGoalCreateRepairPrompt({
+
+  const { parsed } = await runExtractorPipeline({
+    runtime: args.runtime,
+    prompt,
+    parser: (raw) => {
+      const parsedObject = parseJSONObjectFromText(raw);
+      return parsedObject ? buildCreatePlan(parsedObject) : null;
+    },
+    buildRepairPrompt: (rawFirstPass) =>
+      buildGoalCreateRepairPrompt({
         intent: args.intent,
         recentConversation,
-        rawResponse: typeof raw === "string" ? raw : "",
+        rawResponse: rawFirstPass,
       }),
-    });
-    const repairedParsed = parseJSONObjectFromText(
-      typeof repairedRaw === "string" ? repairedRaw : "",
-    );
-    if (!repairedParsed) {
-      return { ...EMPTY_GOAL_CREATE_PLAN };
-    }
-    const repairedPlan = buildCreatePlan(repairedParsed);
-    return repairedPlan
-      ? stabilizeCreatePlan(repairedPlan, args.intent)
-      : { ...EMPTY_GOAL_CREATE_PLAN };
-  } catch {
-    return { ...EMPTY_GOAL_CREATE_PLAN };
-  }
+  });
+
+  return parsed
+    ? stabilizeCreatePlan(parsed, args.intent)
+    : { ...EMPTY_GOAL_CREATE_PLAN };
 }
 
 export function buildGoalUpdateExtractionPrompt(args: {
@@ -482,7 +475,7 @@ export async function extractGoalUpdatePlanWithLlm(args: {
   state: State | undefined;
   message?: Memory;
 }): Promise<ExtractedGoalUpdatePlan> {
-  if (!args.intent.trim() || typeof args.runtime.useModel !== "function") {
+  if (!args.intent.trim()) {
     return { ...EMPTY_GOAL_UPDATE_PLAN };
   }
   const recentConversation = (
@@ -498,30 +491,24 @@ export async function extractGoalUpdatePlanWithLlm(args: {
     intent: args.intent,
     recentConversation,
   });
-  try {
-    const raw = await args.runtime.useModel(ModelType.TEXT_LARGE, { prompt });
-    const parsed = parseJSONObjectFromText(typeof raw === "string" ? raw : "");
-    const plan = parsed ? buildUpdatePlan(parsed) : null;
-    if (plan) {
-      return plan;
-    }
-    const repairedRaw = await args.runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt: buildGoalUpdateRepairPrompt({
+
+  const { parsed } = await runExtractorPipeline({
+    runtime: args.runtime,
+    prompt,
+    parser: (raw) => {
+      const parsedObject = parseJSONObjectFromText(raw);
+      return parsedObject ? buildUpdatePlan(parsedObject) : null;
+    },
+    buildRepairPrompt: (rawFirstPass) =>
+      buildGoalUpdateRepairPrompt({
         currentGoal: args.currentGoal,
         intent: args.intent,
         recentConversation,
-        rawResponse: typeof raw === "string" ? raw : "",
+        rawResponse: rawFirstPass,
       }),
-    });
-    const repairedParsed = parseJSONObjectFromText(
-      typeof repairedRaw === "string" ? repairedRaw : "",
-    );
-    return repairedParsed
-      ? (buildUpdatePlan(repairedParsed) ?? { ...EMPTY_GOAL_UPDATE_PLAN })
-      : { ...EMPTY_GOAL_UPDATE_PLAN };
-  } catch {
-    return { ...EMPTY_GOAL_UPDATE_PLAN };
-  }
+  });
+
+  return parsed ?? { ...EMPTY_GOAL_UPDATE_PLAN };
 }
 
 type GoalGroundingPlanInput = {
