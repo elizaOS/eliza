@@ -304,11 +304,21 @@ Return the COMPLETE corrected workflow JSON. Preserve every field that was not p
 
 /**
  * Walk a string starting at every `{` opener, extract the first slice that
- * yields a valid JSON object, and return that slice. Tolerates leading and
- * trailing prose around the workflow JSON (which the LLM occasionally emits
- * in spite of `responseFormat: { type: 'json_object' }`).
+ * yields a valid JSON object, and return that parsed value. Tolerates leading
+ * and trailing prose around the workflow JSON (which the LLM occasionally
+ * emits in spite of `responseFormat: { type: 'json_object' }`).
+ *
+ * Returns the parsed value rather than the source string so callers don't pay
+ * for a second `JSON.parse` on the same bytes.
+ *
+ * Caveat: returns the *first* slice that round-trips through `JSON.parse`. If
+ * the LLM ever prefixes the workflow with a small standalone JSON fragment
+ * (e.g. `{"ok":true}\n{…full workflow…}`), the small fragment wins and the
+ * downstream `nodes`/`connections` validation throws "missing nodes array".
+ * That's an obvious failure mode rather than a silent corruption, so we don't
+ * try to second-guess which candidate is the workflow here.
  */
-function extractFirstBalancedJsonObject(text: string): string | null {
+function extractFirstBalancedJsonObject(text: string): unknown | null {
   for (let start = 0; start < text.length; start++) {
     if (text[start] !== '{') continue;
     let depth = 0;
@@ -335,8 +345,7 @@ function extractFirstBalancedJsonObject(text: string): string | null {
         if (depth === 0) {
           const candidate = text.slice(start, i + 1);
           try {
-            JSON.parse(candidate);
-            return candidate;
+            return JSON.parse(candidate);
           } catch {
             break;
           }
@@ -362,13 +371,13 @@ function parseWorkflowResponse(response: string): N8nWorkflow {
     // prose despite responseFormat: { type: 'json_object' }. Walk the cleaned
     // text and extract the first balanced JSON object that parses.
     const extracted = extractFirstBalancedJsonObject(cleaned);
-    if (!extracted) {
+    if (extracted == null) {
       throw new Error(
         `Failed to parse workflow JSON: ${initialError instanceof Error ? initialError.message : String(initialError)}\n\nRaw response: ${response}`,
         { cause: initialError }
       );
     }
-    workflow = JSON.parse(extracted) as N8nWorkflow;
+    workflow = extracted as N8nWorkflow;
   }
 
   if (!workflow.nodes || !Array.isArray(workflow.nodes)) {
