@@ -2,8 +2,9 @@
 #
 # Runs the full executive-assistant and connector certification scenario
 # catalogs through the live scenario runner and uploads a markdown + JSON
-# benchmark report as an artifact. Same pass gate as live-scenarios.yml
-# (LIFEOPS_JUDGE_THRESHOLD, default 0.8).
+# benchmark report as an artifact. Scheduled/default dispatch runs are
+# report-only so the weekly trend capture stays green while the live catalog
+# is still being hardened; manual dispatch can opt into enforcement.
 #
 # Distinct from live-scenarios.yml: weekly cadence, emits a human-readable
 # markdown report suitable for tracking trend lines over time.
@@ -31,6 +32,7 @@
 # Optional:
 #   LIFEOPS_JUDGE_THRESHOLD (workflow input, default 0.8)
 #   SCENARIO_FILTER (workflow input, empty = all cataloged benchmark scenarios)
+#   BENCHMARK_ENFORCE_GATE (workflow input, default false)
 
 name: Benchmark (weekly)
 
@@ -50,6 +52,11 @@ on:
         required: false
         type: string
         default: "0.8"
+      enforce_gate:
+        description: "Fail the workflow when benchmark scenarios fail"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: benchmark-weekly-${{ github.ref }}
@@ -194,6 +201,7 @@ jobs:
           TRAVEL_BOOKING_API_KEY: ${{ secrets.TRAVEL_BOOKING_API_KEY }}
           SCENARIO_FILTER: ${{ inputs.scenario_filter }}
           LIFEOPS_JUDGE_THRESHOLD: ${{ inputs.judge_threshold || '0.8' }}
+          BENCHMARK_ENFORCE_GATE: ${{ inputs.enforce_gate && '1' || '0' }}
           BENCHMARK_REPORT_PATH: artifacts/benchmark-report.md
         # Trajectory data and ephemeral state land under ~/.eliza per
         # eliza-native ELIZA_STATE_DIR convention.

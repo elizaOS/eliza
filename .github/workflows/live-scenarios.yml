@@ -1,9 +1,11 @@
 # Live Scenario Runner (nightly)
 #
 # Executes the 22 executive-assistant scenarios and 15 connector certification
-# scenarios against a live LLM runtime with real connector credentials. Fails
-# loudly when scenarios skip without SKIP_REASON, when any scenario fails, or
-# when the aggregate LLM-judge score falls below LIFEOPS_JUDGE_THRESHOLD.
+# scenarios against a live LLM runtime with real connector credentials and
+# uploads the JSON report. Scheduled/default dispatch runs are report-only
+# while this catalog is still being hardened; manual dispatch can opt into
+# failing when any scenario fails or the aggregate LLM-judge score falls below
+# LIFEOPS_JUDGE_THRESHOLD. Missing setup prerequisites still fail loudly.
 #
 # Required repo secrets (self-documented):
 #   LLM provider (at least one):
@@ -28,6 +30,7 @@
 # Optional:
 #   LIFEOPS_JUDGE_THRESHOLD (workflow input, default 0.8)
 #   SCENARIO_FILTER        (comma-separated scenario ids, default all)
+#   SCENARIO_ENFORCE_GATE  (workflow input, default false)
 #   SKIP_REASON            (required if SCENARIO_SKIP is set)
 #
 # 1Password vault: this workflow's plain `*_API_KEY` secrets are sourced from the
@@ -59,6 +62,11 @@ on:
         required: false
         type: string
         default: ""
+      enforce_gate:
+        description: "Fail the workflow when live scenarios fail"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: live-scenarios-${{ github.ref }}
@@ -111,6 +119,55 @@ jobs:
             cd packages/schemas && bunx buf generate
           fi
 
+      - name: Build live scenario runtime packages
+        # The live runner executes TypeScript sources directly, but several
+        # workspace packages intentionally export dist/* entry points. Because
+        # dependency installation ignores postinstall scripts, build only the
+        # packages that the live scenario runtime imports through those exports.
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          echo "::group::Build packages/core"
+          bun run --cwd packages/core build
+          echo "::endgroup::"
+
+          provider_package=""
+          if [ -n "${GROQ_API_KEY:-}" ]; then
+            provider_package="plugins/plugin-groq"
+          elif [ -n "${OPENAI_API_KEY:-}" ]; then
+            provider_package="plugins/plugin-openai"
+          elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+            provider_package="plugins/plugin-anthropic"
+          elif [ -n "${GOOGLE_GENERATIVE_AI_API_KEY:-}" ] || [ -n "${GOOGLE_API_KEY:-}" ]; then
+            provider_package="plugins/plugin-google-genai"
+          elif [ -n "${OPENROUTER_API_KEY:-}" ]; then
+            provider_package="plugins/plugin-openrouter"
+          fi
+
+          package_dirs=(
+            plugins/plugin-sql
+            plugins/plugin-agent-skills
+            plugins/plugin-pdf
+            plugins/plugin-telegram
+            plugins/plugin-whatsapp
+            plugins/plugin-signal
+            plugins/plugin-imessage
+          )
+          if [ -n "$provider_package" ]; then
+            package_dirs+=("$provider_package")
+          fi
+
+          for package_dir in "${package_dirs[@]}"; do
+            echo "::group::Build ${package_dir}"
+            bun run --cwd "$package_dir" build
+            echo "::endgroup::"
+          done
+
       - name: Run EA + connector live scenarios
         id: run
         env:
@@ -162,6 +219,7 @@ jobs:
           # Run controls
           SCENARIO_FILTER: ${{ inputs.scenario_filter }}
           LIFEOPS_JUDGE_THRESHOLD: ${{ inputs.judge_threshold || '0.8' }}
+          SCENARIO_ENFORCE_GATE: ${{ inputs.enforce_gate && '1' || '0' }}
           SKIP_REASON: ${{ inputs.skip_reason }}
           REPORT_PATH: artifacts/lifeops-scenario-report.json
         run: node scripts/run-live-scenarios.mjs

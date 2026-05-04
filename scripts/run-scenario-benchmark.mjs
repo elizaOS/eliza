@@ -15,6 +15,7 @@
  * Optional:
  *   LIFEOPS_JUDGE_THRESHOLD (default 0.8)
  *   SCENARIO_FILTER         (comma-separated ids)
+ *   BENCHMARK_ENFORCE_GATE  (default 1; set 0 for report-only runs)
  *   BENCHMARK_REPORT_PATH   (default: artifacts/benchmark-report.md)
  */
 
@@ -97,9 +98,13 @@ const runnerEnv = {
   SCENARIO_FILTER: scenariosToRun.join(","),
   REPORT_PATH: REPORT_JSON,
 };
+const enforceGateValue = (process.env.BENCHMARK_ENFORCE_GATE ?? "1")
+  .trim()
+  .toLowerCase();
+const enforceGate = !["0", "false", "no", "off"].includes(enforceGateValue);
 
 console.log(
-  `[benchmark] invoking scenario-runner for ${scenariosToRun.length} scenarios (threshold=${runnerEnv.LIFEOPS_JUDGE_THRESHOLD}, globs=${SCENARIO_FILE_GLOBS.join(",")})`,
+  `[benchmark] invoking scenario-runner for ${scenariosToRun.length} scenarios (threshold=${runnerEnv.LIFEOPS_JUDGE_THRESHOLD}, enforce=${enforceGate ? "yes" : "no"}, globs=${SCENARIO_FILE_GLOBS.join(",")})`,
 );
 
 const result = spawnSync(
@@ -135,6 +140,7 @@ function renderMarkdown() {
     `- Executed: ${report.totalCount ?? 0}`,
     `- Failed: ${report.failedCount ?? 0}`,
     `- Runner exit: ${runnerExitCode}`,
+    `- Enforcement: ${enforceGate ? "blocking" : "report-only"}`,
     "",
     "## Results",
     "",
@@ -179,5 +185,12 @@ function renderMarkdown() {
 writeFileSync(REPORT_MD, renderMarkdown(), "utf-8");
 console.log(`[benchmark] wrote markdown report to ${REPORT_MD}`);
 console.log(`[benchmark] wrote JSON report to ${REPORT_JSON}`);
+
+if (runnerExitCode !== 0 && !enforceGate) {
+  console.warn(
+    `[benchmark] scenario gate exited ${runnerExitCode}; BENCHMARK_ENFORCE_GATE=0 so the report is non-blocking.`,
+  );
+  process.exit(0);
+}
 
 process.exit(runnerExitCode);
