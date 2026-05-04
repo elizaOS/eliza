@@ -1,10 +1,6 @@
 {
   "name": "elizaos",
-<<<<<<< HEAD
   "version": "2.0.0-alpha.537",
-=======
-  "version": "2.0.0-alpha.536",
->>>>>>> cfc0183e705ae487b1741d60e3f07d64ede8cb9f
   "description": "elizaOS CLI - Create and upgrade elizaOS project templates",
   "type": "module",
   "bin": {
