@@ -53,6 +53,7 @@ const getMessageService = (runtime: IAgentRuntime): IMessageService | null => {
   return null;
 };
 
+import { markdownToSlackMrkdwn } from "./formatting";
 import {
   getSlackChannelType,
   getSlackUserDisplayName,
@@ -70,8 +71,6 @@ import {
   type SlackSettings,
   type SlackUser,
 } from "./types";
-
-import { markdownToSlackMrkdwn } from "./formatting";
 
 /**
  * SlackService class for interacting with Slack via Socket Mode
@@ -91,7 +90,6 @@ export class SlackService extends Service implements ISlackService {
   private botToken: string | null = null;
   private appToken: string | null = null;
   private signingSecret: string | null = null;
-  private userToken: string | undefined = undefined;
   private allowedChannelIds: Set<string> = new Set();
   private dynamicChannelIds: Set<string> = new Set();
   private userCache: Map<string, SlackUser> = new Map();
@@ -113,7 +111,9 @@ export class SlackService extends Service implements ISlackService {
         .split(",")
         .map((s) => s.trim())
         .filter((s) => s.length > 0 && isValidChannelId(s))
-        .forEach((id) => this.allowedChannelIds.add(id));
+        .forEach((id) => {
+          this.allowedChannelIds.add(id);
+        });
 
       this.runtime.logger.debug(
         {
@@ -151,11 +151,7 @@ export class SlackService extends Service implements ISlackService {
     const signingSecret = runtime.getSetting("SLACK_SIGNING_SECRET") as
       | string
       | undefined;
-    const userToken = runtime.getSetting("SLACK_USER_TOKEN") as
-      | string
-      | undefined;
-
-    if (!botToken || !botToken.trim()) {
+    if (!botToken?.trim()) {
       runtime.logger.warn(
         { src: "plugin:slack", agentId: runtime.agentId },
         "SLACK_BOT_TOKEN not provided, Slack service will not start",
@@ -163,7 +159,7 @@ export class SlackService extends Service implements ISlackService {
       return service;
     }
 
-    if (!appToken || !appToken.trim()) {
+    if (!appToken?.trim()) {
       runtime.logger.warn(
         { src: "plugin:slack", agentId: runtime.agentId },
         "SLACK_APP_TOKEN not provided, Socket Mode will not work",
@@ -174,7 +170,6 @@ export class SlackService extends Service implements ISlackService {
     service.botToken = botToken;
     service.appToken = appToken;
     service.signingSecret = signingSecret || undefined;
-    service.userToken = userToken || undefined;
 
     await service.initialize();
 
@@ -200,6 +195,13 @@ export class SlackService extends Service implements ISlackService {
     }
 
     this.isStarting = true;
+    const botToken = this.botToken;
+    const appToken = this.appToken;
+
+    if (!botToken || !appToken) {
+      this.isStarting = false;
+      throw new Error("Slack service requires bot and app tokens");
+    }
 
     this.runtime.logger.info(
       { src: "plugin:slack", agentId: this.runtime.agentId },
@@ -207,8 +209,8 @@ export class SlackService extends Service implements ISlackService {
     );
 
     this.app = new App({
-      token: this.botToken!,
-      appToken: this.appToken!,
+      token: botToken,
+      appToken,
       socketMode: true,
       logLevel: LogLevel.INFO,
       ...(this.signingSecret ? { signingSecret: this.signingSecret } : {}),
@@ -330,7 +332,7 @@ export class SlackService extends Service implements ISlackService {
     // Check if we should only respond to mentions
     const isMentioned = message.text?.includes(`<@${this.botUserId}>`);
     // Skip @mentions in channels — handleAppMention handles those
-    if (isMentioned && message.channel_type !== 'im') {
+    if (isMentioned && message.channel_type !== "im") {
       return;
     }
     if (this.settings.shouldRespondOnlyToMentions && !isMentioned) {
@@ -358,7 +360,13 @@ export class SlackService extends Service implements ISlackService {
       await this.runtime.createEntity({
         id: memory.entityId,
         names: [displayName],
-        metadata: { slack: { id: message.user, name: displayName, userName: user?.name || message.user } },
+        metadata: {
+          slack: {
+            id: message.user,
+            name: displayName,
+            userName: user?.name || message.user,
+          },
+        },
         agentId: this.runtime.agentId,
       });
     }
@@ -411,7 +419,13 @@ export class SlackService extends Service implements ISlackService {
       await this.runtime.createEntity({
         id: memory.entityId,
         names: [displayName],
-        metadata: { slack: { id: event.user, name: displayName, userName: user?.name || event.user } },
+        metadata: {
+          slack: {
+            id: event.user,
+            name: displayName,
+            userName: user?.name || event.user,
+          },
+        },
         agentId: this.runtime.agentId,
       });
     }
@@ -547,7 +561,10 @@ export class SlackService extends Service implements ISlackService {
     ): Promise<Memory[]> => {
       const responseText = response.text || "";
       if (!responseText.trim()) {
-        this.runtime.logger.warn({ src: "plugin:slack", channelId, roomId: room.id }, "Empty response from model, skipping sendMessage");
+        this.runtime.logger.warn(
+          { src: "plugin:slack", channelId, roomId: room.id },
+          "Empty response from model, skipping sendMessage",
+        );
         return [];
       }
 
@@ -787,8 +804,9 @@ export class SlackService extends Service implements ISlackService {
 
   async getUser(userId: string): Promise<SlackUser | null> {
     // Check cache first
-    if (this.userCache.has(userId)) {
-      return this.userCache.get(userId)!;
+    const cachedUser = this.userCache.get(userId);
+    if (cachedUser) {
+      return cachedUser;
     }
 
     if (!this.client) return null;
@@ -797,9 +815,9 @@ export class SlackService extends Service implements ISlackService {
     if (!result.user) return null;
 
     const user: SlackUser = {
-      id: result.user.id!,
+      id: result.user.id ?? userId,
       teamId: result.user.team_id,
-      name: result.user.name!,
+      name: result.user.name ?? "",
       deleted: result.user.deleted || false,
       realName: result.user.real_name,
       tz: result.user.tz,
@@ -844,8 +862,9 @@ export class SlackService extends Service implements ISlackService {
 
   async getChannel(channelId: string): Promise<SlackChannel | null> {
     // Check cache first
-    if (this.channelCache.has(channelId)) {
-      return this.channelCache.get(channelId)!;
+    const cachedChannel = this.channelCache.get(channelId);
+    if (cachedChannel) {
+      return cachedChannel;
     }
 
     if (!this.client) return null;
@@ -930,10 +949,8 @@ export class SlackService extends Service implements ISlackService {
         unfurl_links: options?.unfurlLinks,
         unfurl_media: options?.unfurlMedia,
         mrkdwn: options?.mrkdwn ?? true,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        attachments: options?.attachments as unknown as any,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        blocks: options?.blocks as unknown as any,
+        attachments: options?.attachments as never,
+        blocks: options?.blocks as never,
       });
 
       lastTs = result.ts as string;
@@ -1107,7 +1124,7 @@ export class SlackService extends Service implements ISlackService {
     });
 
     return (result.channels || []).map((ch) => ({
-      id: ch.id!,
+      id: ch.id ?? "",
       name: ch.name || "",
       isChannel: ch.is_channel || false,
       isGroup: ch.is_group || false,
@@ -1121,16 +1138,16 @@ export class SlackService extends Service implements ISlackService {
       isMember: ch.is_member || false,
       topic: ch.topic
         ? {
-            value: ch.topic.value!,
-            creator: ch.topic.creator!,
-            lastSet: ch.topic.last_set!,
+            value: ch.topic.value ?? "",
+            creator: ch.topic.creator ?? "",
+            lastSet: ch.topic.last_set ?? 0,
           }
         : undefined,
       purpose: ch.purpose
         ? {
-            value: ch.purpose.value!,
-            creator: ch.purpose.creator!,
-            lastSet: ch.purpose.last_set!,
+            value: ch.purpose.value ?? "",
+            creator: ch.purpose.creator ?? "",
+            lastSet: ch.purpose.last_set ?? 0,
           }
         : undefined,
       numMembers: ch.num_members,

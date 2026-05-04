@@ -1,7 +1,7 @@
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
+import { validateActionKeywords, validateActionRegex } from "@elizaos/core";
 import type { SlackService } from "../service";
 import { getSlackChannelType, ServiceType } from "../types";
-import { validateActionKeywords, validateActionRegex } from "@elizaos/core";
 
 /**
  * Provider for retrieving Slack channel state information.
@@ -9,7 +9,7 @@ import { validateActionKeywords, validateActionRegex } from "@elizaos/core";
 export const channelStateProvider: Provider = {
   name: "slackChannelState",
   description: "Provides information about the current Slack channel context",
-    dynamic: true,
+  dynamic: true,
   relevanceKeywords: [
     "slackchannelstate",
     "channelstateprovider",
@@ -26,16 +26,35 @@ export const channelStateProvider: Provider = {
     "room",
     "channel",
   ],
-get: async (runtime: IAgentRuntime, message: Memory, state: State) => {  const __providerKeywords = ["slackchannelstate", "channelstateprovider", "plugin", "slack", "status", "state", "context", "info", "details", "chat", "conversation", "agent", "room", "channel"];
-  const __providerRegex = new RegExp(`\\b(${__providerKeywords.join("|")})\\b`, "i");
-  const __recentMessages = (state?.recentMessagesData as Memory[] | undefined) ?? [];
-  const __isRelevant =
-    validateActionKeywords(message, __recentMessages, __providerKeywords) ||
-    validateActionRegex(message, __recentMessages, __providerRegex);
-  if (!__isRelevant) {
-    return { text: "" };
-  }
-
+  get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
+    const __providerKeywords = [
+      "slackchannelstate",
+      "channelstateprovider",
+      "plugin",
+      "slack",
+      "status",
+      "state",
+      "context",
+      "info",
+      "details",
+      "chat",
+      "conversation",
+      "agent",
+      "room",
+      "channel",
+    ];
+    const __providerRegex = new RegExp(
+      `\\b(${__providerKeywords.join("|")})\\b`,
+      "i",
+    );
+    const __recentMessages =
+      (state?.recentMessagesData as Memory[] | undefined) ?? [];
+    const __isRelevant =
+      validateActionKeywords(message, __recentMessages, __providerKeywords) ||
+      validateActionRegex(message, __recentMessages, __providerRegex);
+    if (!__isRelevant) {
+      return { text: "" };
+    }
 
     const room = state.data?.room ?? (await runtime.getRoom(message.roomId));
     if (!room) {
@@ -66,7 +85,7 @@ get: async (runtime: IAgentRuntime, message: Memory, state: State) => {  const _
     const threadTs = room.metadata?.threadTs as string | undefined;
 
     const slackService = runtime.getService(ServiceType.SLACK) as SlackService;
-    if (!slackService || !slackService.client) {
+    if (!slackService?.client) {
       runtime.logger.warn(
         {
           src: "plugin:slack:provider:channelState",

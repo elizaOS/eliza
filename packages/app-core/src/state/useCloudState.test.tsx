@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   clientMock,
+  closeExternalBrowserMock,
   dispatchElizaCloudStatusUpdatedMock,
   getBootConfigMock,
   invokeDesktopBridgeRequestWithTimeoutMock,
@@ -26,6 +27,7 @@ const {
     setBaseUrl: vi.fn(),
     setToken: vi.fn(),
   },
+  closeExternalBrowserMock: vi.fn(),
   dispatchElizaCloudStatusUpdatedMock: vi.fn(),
   getBootConfigMock: vi.fn(() => ({})),
   invokeDesktopBridgeRequestWithTimeoutMock: vi.fn(),
@@ -56,6 +58,7 @@ vi.mock("../events", () => ({
 }));
 
 vi.mock("../utils", () => ({
+  closeExternalBrowser: closeExternalBrowserMock,
   confirmDesktopAction: vi.fn(),
   isCloudStatusAuthenticated: (
     connected: boolean,
@@ -342,6 +345,7 @@ describe("useCloudState", () => {
       cloudApiBase: "https://api.elizacloud.ai",
     });
     expect(clientMock.setToken).toHaveBeenCalledWith("eliza_mobile_key");
+    expect(closeExternalBrowserMock).toHaveBeenCalledTimes(1);
     await waitFor(() => {
       expect(result.current.elizaCloudConnected).toBe(true);
       expect(result.current.elizaCloudUserId).toBe("user-mobile");
