@@ -432,14 +432,19 @@ export function readReminderEscalationProfile(
   };
 }
 
+type ReminderDefinitionDescriptor = Pick<LifeOpsTaskDefinition, "metadata"> & {
+  kind: string;
+};
+
 export function definitionTriggersEnforcement(
-  definition:
-    | Pick<LifeOpsTaskDefinition, "kind" | "metadata">
-    | null
-    | undefined,
+  definition: ReminderDefinitionDescriptor | null | undefined,
 ): boolean {
   if (!definition) return false;
-  if (definition.kind === "routine") {
+  if (
+    definition.kind === "routine" ||
+    definition.kind === "morning_routine" ||
+    definition.kind === "night_routine"
+  ) {
     return true;
   }
   return definition.metadata?.enforceRoutineWindow === true;
@@ -448,10 +453,7 @@ export function definitionTriggersEnforcement(
 export function buildReminderEnforcementState(
   now: Date,
   timezone: string,
-  definition:
-    | Pick<LifeOpsTaskDefinition, "kind" | "metadata">
-    | null
-    | undefined,
+  definition: ReminderDefinitionDescriptor | null | undefined,
   channelAvailability: Partial<Record<LifeOpsReminderChannel, boolean>> = {},
   windows?: EnforcementWindow[],
 ): ReminderEnforcementState {
