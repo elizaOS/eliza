@@ -49,6 +49,12 @@ import type {
 const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 4;
 const DEFAULT_DIRECT_CLOUD_BASE_URL = "https://www.elizacloud.ai";
 const DEFAULT_DIRECT_CLOUD_API_BASE_URL = "https://api.elizacloud.ai";
+const DIRECT_ELIZA_CLOUD_WEB_HOSTS = new Set([
+  "elizacloud.ai",
+  "www.elizacloud.ai",
+  "dev.elizacloud.ai",
+]);
+const DIRECT_ELIZA_CLOUD_API_HOST = "api.elizacloud.ai";
 
 type DirectCloudAgent = {
   id?: string;
@@ -113,7 +119,10 @@ function isDirectCloudBase(client: ElizaClient): boolean {
 
   try {
     const host = new URL(baseUrl).hostname.toLowerCase();
-    return host === "elizacloud.ai" || host === "www.elizacloud.ai";
+    return (
+      host === DIRECT_ELIZA_CLOUD_API_HOST ||
+      DIRECT_ELIZA_CLOUD_WEB_HOSTS.has(host)
+    );
   } catch {
     return false;
   }
@@ -141,17 +150,34 @@ function shouldUseNativeCloudHttp(): boolean {
   return Capacitor.isNativePlatform();
 }
 
-function resolveDirectCloudAuthApiBase(cloudWebBase: string): string {
+function resolveDirectCloudWebBase(cloudBase: string): string {
+  const normalized = cloudBase.replace(/\/+$/, "");
   try {
-    const url = new URL(cloudWebBase);
+    const host = new URL(normalized).hostname.toLowerCase();
+    if (host === DIRECT_ELIZA_CLOUD_API_HOST) {
+      return DEFAULT_DIRECT_CLOUD_BASE_URL;
+    }
+  } catch {
+    // Fall back to the provided base below.
+  }
+  return normalized;
+}
+
+function resolveDirectCloudAuthApiBase(cloudBase: string): string {
+  const normalized = cloudBase.replace(/\/+$/, "");
+  try {
+    const url = new URL(normalized);
     const host = url.hostname.toLowerCase();
-    if (host === "elizacloud.ai" || host === "www.elizacloud.ai") {
+    if (
+      host === DIRECT_ELIZA_CLOUD_API_HOST ||
+      DIRECT_ELIZA_CLOUD_WEB_HOSTS.has(host)
+    ) {
       return DEFAULT_DIRECT_CLOUD_API_BASE_URL;
     }
   } catch {
     // Fall back to the provided base below.
   }
-  return cloudWebBase.replace(/\/+$/, "");
+  return normalized;
 }
 
 function toCloudCompatAgent(input: DirectCloudAgent): CloudCompatAgent {
@@ -468,6 +494,7 @@ declare module "./client-base" {
     startDocker(): Promise<SandboxStartResponse>;
     cloudLoginDirect(cloudApiBase: string): Promise<{
       ok: boolean;
+      apiBase?: string;
       browserUrl?: string;
       sessionId?: string;
       error?: string;
@@ -1144,8 +1171,8 @@ ElizaClient.prototype.cloudLoginDirect = async function (
   cloudApiBase,
 ) {
   const sessionId = generateCloudLoginSessionId();
-  const cloudWebBase = cloudApiBase.replace(/\/+$/, "");
-  const authApiBase = resolveDirectCloudAuthApiBase(cloudWebBase);
+  const cloudWebBase = resolveDirectCloudWebBase(cloudApiBase);
+  const authApiBase = resolveDirectCloudAuthApiBase(cloudApiBase);
   try {
     if (shouldUseNativeCloudHttp()) {
       const res = await CapacitorHttp.post({
@@ -1161,6 +1188,7 @@ ElizaClient.prototype.cloudLoginDirect = async function (
       }
       return {
         ok: true,
+        apiBase: authApiBase,
         sessionId,
         browserUrl: `${cloudWebBase}/auth/cli-login?session=${encodeURIComponent(sessionId)}`,
       };
@@ -1176,6 +1204,7 @@ ElizaClient.prototype.cloudLoginDirect = async function (
     }
     return {
       ok: true,
+      apiBase: authApiBase,
       sessionId,
       browserUrl: `${cloudWebBase}/auth/cli-login?session=${encodeURIComponent(sessionId)}`,
     };
@@ -1257,6 +1286,7 @@ ElizaClient.prototype.cloudLoginPollDirect = async function (
 
 ElizaClient.prototype.provisionCloudSandbox = async (options) => {
   const { cloudApiBase, authToken, name, bio, onProgress } = options;
+  const resolvedCloudApiBase = resolveDirectCloudAuthApiBase(cloudApiBase);
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     Authorization: `Bearer ${authToken}`,
@@ -1265,20 +1295,23 @@ ElizaClient.prototype.provisionCloudSandbox = async (options) => {
   onProgress?.("creating", "Creating agent...");
 
   // Step 1: Create agent
-  const createRes = await fetch(`${cloudApiBase}/api/v1/eliza/agents`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      agentName: name,
-      ...(bio?.length
-        ? {
-            agentConfig: {
-              bio,
-            },
-          }
-        : {}),
-    }),
-  });
+  const createRes = await fetch(
+    `${resolvedCloudApiBase}/api/v1/eliza/agents`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        agentName: name,
+        ...(bio?.length
+          ? {
+              agentConfig: {
+                bio,
+              },
+            }
+          : {}),
+      }),
+    },
+  );
   if (!createRes.ok) {
     const err = await createRes.text().catch(() => "Unknown error");
     throw new Error(`Failed to create cloud agent: ${err}`);
@@ -1296,7 +1329,7 @@ ElizaClient.prototype.provisionCloudSandbox = async (options) => {
 
   // Step 2: Start provisioning
   const provisionRes = await fetch(
-    `${cloudApiBase}/api/v1/eliza/agents/${agentId}/provision`,
+    `${resolvedCloudApiBase}/api/v1/eliza/agents/${agentId}/provision`,
     { method: "POST", headers },
   );
   if (!provisionRes.ok) {
@@ -1327,7 +1360,7 @@ ElizaClient.prototype.provisionCloudSandbox = async (options) => {
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 2000));
 
-    const jobRes = await fetch(`${cloudApiBase}/api/v1/jobs/${jobId}`, {
+    const jobRes = await fetch(`${resolvedCloudApiBase}/api/v1/jobs/${jobId}`, {
       headers,
     });
     if (!jobRes.ok) continue;
