@@ -5,7 +5,6 @@
  */
 
 import { type EventPayload, type IAgentRuntime, logger, Service } from "@elizaos/core";
-import type { RoomMessageEventContent } from "matrix-js-sdk";
 import * as sdk from "matrix-js-sdk";
 import {
   getMatrixLocalpart,
@@ -375,9 +374,13 @@ export class MatrixService extends Service implements IMatrixService {
       }
     }
 
+    // sendMessage's content parameter is typed RoomMessageEventContent, which is
+    // not re-exported from matrix-js-sdk's main barrel. The runtime check is the
+    // structural shape of `content` (msgtype + body); skip the unreachable type.
     const response = await this.client.sendMessage(
       resolvedRoomId,
-      content as unknown as RoomMessageEventContent
+      // biome-ignore lint/suspicious/noExplicitAny: type not exported from main entry
+      content as any,
     );
     const eventId = response.event_id;
 
