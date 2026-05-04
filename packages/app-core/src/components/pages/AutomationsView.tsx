@@ -981,12 +981,14 @@ function useAutomationsViewController() {
     }
   };
 
-  const onDeleteTrigger = async (triggerId?: string) => {
+  const onDeleteTrigger = async (triggerId?: string, displayName?: string) => {
     const targetId = triggerId ?? editingId;
     if (!targetId) return;
     const confirmed = await confirmDesktopAction({
       title: t("heartbeatsview.deleteTitle"),
-      message: t("heartbeatsview.deleteMessage", { name: form.displayName }),
+      message: t("heartbeatsview.deleteMessage", {
+        name: displayName ?? form.displayName,
+      }),
       confirmLabel: t("common.delete"),
       cancelLabel: t("common.cancel"),
       type: "warning",
@@ -3472,7 +3474,9 @@ function TriggerAutomationDetailPane({
             />
             <IconAction
               label={t("common.delete")}
-              onClick={() => void onDeleteTrigger(trigger.id)}
+              onClick={() =>
+                void onDeleteTrigger(trigger.id, trigger.displayName)
+              }
               icon={<Trash2 className="h-3.5 w-3.5" />}
               tone="danger"
             />
